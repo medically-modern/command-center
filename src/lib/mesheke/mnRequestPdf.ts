@@ -68,14 +68,14 @@ interface TemplateBlock {
 }
 
 // --- Reason key constants ----------------------------------------------
-const CGM_SCRIPT_REASONS = ["CGM Script invalid", "CGM Script missing"];
-const IP_SCRIPT_REASONS = ["Insulin Pump Script invalid", "Insulin Pump Script missing"];
+const CGM_SCRIPT_REASONS = ["CGM Script invalid", "CGM Script missing", "CGM Script"];
+const IP_SCRIPT_REASONS = ["Insulin Pump Script invalid", "Insulin Pump Script missing", "Insulin Pump Script", "Updated Insulin Pump Script", "Insulin Pump Script (must include OOW date and malfunction note)"];
 const EDU_REASONS = ["Diabetes Education invalid", "Diabetes education completed"];
 const INJ_REASONS = ["3+ Injections invalid", "3+ insulin injections / day for > 6 months"];
 const CGM_USE_REASONS = ["CGM Use invalid", "Current CGM use"];
 const BS_REASONS = ["Blood Sugar Issues invalid", "Difficulty managing blood sugar despite treatment"];
 const LMN_REASONS = ["Letter of MN missing", "Letter of MN invalid", "Letter of Medical Necessity", "Updated Letter of Medical Necessity"];
-const MAL_REASONS = ["Malfunction missing"];
+const MAL_REASONS = ["Malfunction missing", "Non-repairable malfunction reason", "Omnipod insufficient", "malfunction note"];
 const OOW_NOT_ON_SCRIPT_REASONS = ["OOW Date not on script"];
 const HYPO_LANG_REASONS = ["Hypoglycemia language"];
 
