@@ -695,6 +695,17 @@ function IpCriteria({ state, patient, update }: IpCriteriaProps) {
           </div>
         </div>
       )}
+
+      {cfg.showOowOnScript && (
+        <div className="mt-1 grid grid-cols-1 sm:grid-cols-2 gap-x-6">
+          <StatusSelect
+            label="OOW Date on Script?"
+            value={state.oowDateOnScript}
+            options={YES_NO_OPTS}
+            onChange={(v) => update("oowDateOnScript", v as YesNo)}
+          />
+        </div>
+      )}
     </div>
   );
 }

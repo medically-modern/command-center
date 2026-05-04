@@ -33,6 +33,10 @@ export interface EvalState {
   bloodSugarIssues?: YesNo;
   lmn?: LmnStatus;
   oowDate?: string; // ISO date YYYY-MM-DD
+  /** Whether the OOW date is already written on the IP script. Only relevant
+   *  when path = "OOW Pump" and oowDate is set. If "No", the doctor ask becomes
+   *  "Add OOW date of {date} to the script". */
+  oowDateOnScript?: YesNo;
   malfunction?: YesNo;
 
   // Diagnosis & Clinicals
@@ -245,6 +249,10 @@ export function deriveValidity(
           const yrs = (oow.thresholdDays / 365.25).toFixed(0);
           ipValid = false;
           ipReasons.push(`OOW Date invalid (<${yrs} years)`);
+        } else if (cfg.showOowOnScript && state.oowDateOnScript !== "Yes") {
+          // Date is known and old enough — but not yet on the script.
+          ipValid = false;
+          ipReasons.push("OOW Date not on script");
         }
       }
       if (cfg.showMalfunction && state.malfunction !== "Yes") {
@@ -286,19 +294,22 @@ export function deriveValidity(
 
 // ---- Doctor-facing ask list ----
 //
-// Rolls the granular validity reasons into a short list of actionable
-// requests phrased for the doctor. Two tiers:
-//   1. Whole document is missing → ask for the document (path-aware
-//      sub-clauses for IP Script / Medical Records).
-//   2. Document is on file but specific items are missing → ask for an
-//      updated document with the specific items called out.
+// One entry per missing item. No bundled "Updated MR — must include …" or
+// "Updated IP Script — must include …" rows; each gap is its own line so
+// the MN Request PDF / dropdown / Send Request UI can render one row each
+// with its own sample language.
 //
-// Things the helper deliberately does NOT surface:
-//   - "Diagnosis missing" — diagnosis is read off Medical Records or a
-//     script; if both are present and diagnosis is still empty, that's
-//     an agent-side classification task, not a doctor ask.
-//   - "CGM Coverage Path missing" / "IP Coverage Path missing" — same
-//     story; coverage path is the agent's classification of the records.
+// Things the helper deliberately does NOT surface (agent classification,
+// not something the doctor can act on):
+//   - "Diagnosis missing"
+//   - "IP Coverage Path missing" / unset
+//   - "Last Visit Date empty" while MR Received = Yes (the agent should
+//     fill this in from the records)
+//
+// Note: CGM Coverage Path "Hypo Invalid", "Missing", or unset all surface
+// the same "Hypoglycemia language" ask — the records don't have either
+// insulin or hypo language and the doctor needs to add one. Only Insulin
+// and Hypo paths are considered satisfied.
 
 export function computeDoctorAskList(
   state: EvalState,
@@ -308,40 +319,46 @@ export function computeDoctorAskList(
 ): string[] {
   const asks: string[] = [];
 
-  // ---- Medical Records ----
+  // ---- Medical Records (whole document) ----
+  // When MR is missing or expired, suppress the granular gap rows below —
+  // a fresh MR resolves them and listing them would clutter the request.
   const mrReceived = state.mrReceived === "Yes";
-  const lastVisitSet = !!state.lastVisitDate;
   const { expired } = getMrExpiry(state.lastVisitDate);
 
   if (!mrReceived) {
     asks.push("Medical Records");
-    // Don't surface MR sub-items — a fresh MR will resolve them.
   } else if (expired) {
-    asks.push("Updated Medical Records (current within 6 months)");
-    // Don't surface MR sub-items — a fresh MR will resolve them.
+    asks.push("Updated Medical Records");
   } else {
-    // MR is present and current — collect any specific gaps.
-    const gaps: string[] = [];
-    if (!lastVisitSet) gaps.push("last visit date");
-    // CGM coverage path "Hypo Invalid" means the records don't have either
-    // insulin language or hypoglycemia language — doctor needs to add
-    // one of them. (Path "Missing" / unset is an agent classification
-    // task and is suppressed.)
-    if (showCgm && state.cgmCoveragePath === "Hypo Invalid") {
-      gaps.push("insulin or hypoglycemia language");
+    // MR is on file and current — surface specific record-level gaps as
+    // their own rows.
+
+    // CGM coverage path:
+    //   - Insulin or Hypo → records have the right language → no ask
+    //   - Hypo Invalid, Missing, or unset → ask for hypoglycemia language
+    if (
+      showCgm &&
+      state.cgmCoveragePath !== "Insulin" &&
+      state.cgmCoveragePath !== "Hypo"
+    ) {
+      asks.push("Hypoglycemia language");
     }
+
+    // IP-path-driven record requirements
     if (showIp && state.ipCoveragePath) {
       const cfg = IP_PATH_FIELDS[state.ipCoveragePath];
-      if (cfg.showEducation && state.diabetesEducation !== "Yes")
-        gaps.push("diabetes education");
-      if (cfg.show3Injections && state.threeInjections !== "Yes")
-        gaps.push("3+ insulin injections per day");
-      if (cfg.showCgmUse && state.cgmUse !== "Yes") gaps.push("CGM use");
-      if (cfg.showBsIssues && state.bloodSugarIssues !== "Yes")
-        gaps.push("blood sugar issues");
-    }
-    if (gaps.length > 0) {
-      asks.push(`Updated Medical Records — must include ${gaps.join(", ")}`);
+      if (cfg.showEducation && state.diabetesEducation !== "Yes") {
+        asks.push("Diabetes education completed");
+      }
+      if (cfg.show3Injections && state.threeInjections !== "Yes") {
+        asks.push("3+ insulin injections / day for > 6 months");
+      }
+      if (cfg.showCgmUse && state.cgmUse !== "Yes") {
+        asks.push("Current CGM use");
+      }
+      if (cfg.showBsIssues && state.bloodSugarIssues !== "Yes") {
+        asks.push("Difficulty managing blood sugar despite treatment");
+      }
     }
   }
 
@@ -354,7 +371,6 @@ export function computeDoctorAskList(
 
   // ---- Insulin Pump Script ----
   if (showIp && state.ipCoveragePath) {
-    const cfg = IP_PATH_FIELDS[state.ipCoveragePath];
     if (state.ipScriptValid === "Missing") {
       // Path-aware base ask — bake in OOW requirements so the doctor
       // doesn't send back a script we'd just have to ask to update.
@@ -365,22 +381,37 @@ export function computeDoctorAskList(
       asks.push(title);
     } else if (state.ipScriptValid === "Invalid") {
       asks.push("Updated Insulin Pump Script");
-    } else if (state.ipScriptValid === "Valid") {
-      // Script is on file — collect IP-script-specific gaps.
-      const gaps: string[] = [];
-      if (cfg.showOow) {
-        const oow = isOowDateValid(state.oowDate, patient.primaryInsurance);
-        if (!oow) gaps.push("OOW date");
-        else if (!oow.valid) {
-          const yrs = (oow.thresholdDays / 365.25).toFixed(0);
-          gaps.push(`OOW date (must be ≥${yrs} years old)`);
-        }
+    }
+    // If script is Valid, OOW / malfunction gaps are surfaced as their
+    // own rows below — no bundled "Updated IP Script — must include …".
+  }
+
+  // ---- OOW Date (only when path = OOW Pump and IP Script exists) ----
+  // We only surface OOW asks when the IP script is on file (Valid). When
+  // the script is missing/invalid, the IP Script ask above already covers
+  // OOW for OOW Pump path via the "must include" sub-clause.
+  if (showIp && state.ipCoveragePath) {
+    const cfg = IP_PATH_FIELDS[state.ipCoveragePath];
+    if (cfg.showOow && state.ipScriptValid === "Valid") {
+      const oow = isOowDateValid(state.oowDate, patient.primaryInsurance);
+      if (!oow) {
+        asks.push("OOW date");
+      } else if (!oow.valid) {
+        asks.push("OOW date — must be > 4 years");
+      } else if (cfg.showOowOnScript && state.oowDateOnScript !== "Yes") {
+        // Date is known and old enough — just not yet on the script.
+        asks.push(`Add OOW date of ${formatOowDate(state.oowDate)} to the script`);
       }
-      if (cfg.showMalfunction && state.malfunction !== "Yes")
-        gaps.push("malfunction note");
-      if (gaps.length > 0) {
-        asks.push(`Updated Insulin Pump Script — must include ${gaps.join(", ")}`);
-      }
+    }
+    if (cfg.showMalfunction && state.malfunction !== "Yes" && state.ipScriptValid === "Valid") {
+      // Phrasing differs by path so the consolidated list lines up with the
+      // PDF row templates (Omnipod Switch has its own "Omnipod insufficient"
+      // row instead of the generic "Non-repairable malfunction reason").
+      asks.push(
+        state.ipCoveragePath === "Omnipod Switch"
+          ? "Omnipod insufficient"
+          : "Non-repairable malfunction reason",
+      );
     }
   }
 
@@ -397,6 +428,15 @@ export function computeDoctorAskList(
   }
 
   return asks;
+}
+
+/** Format an ISO date (YYYY-MM-DD) as MM/DD/YYYY for the doctor-facing
+ *  ask string. Returns the input unchanged if it doesn't parse. */
+function formatOowDate(iso?: string): string {
+  if (!iso) return "";
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
+  if (!m) return iso;
+  return `${m[2]}/${m[3]}/${m[1]}`;
 }
 
 // ---- Preview payload (what would be written to Monday) ----

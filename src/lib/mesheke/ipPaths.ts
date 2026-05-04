@@ -21,6 +21,8 @@ export interface IpPathConfig {
   showBsIssues: boolean;
   showLmn: boolean;
   showOow: boolean;
+  /** "OOW Date on Script?" Yes/No dropdown — only relevant when showOow. */
+  showOowOnScript: boolean;
   showMalfunction: boolean;
 }
 
@@ -32,6 +34,7 @@ export const IP_PATH_FIELDS: Record<IpPath, IpPathConfig> = {
     showBsIssues: false,
     showLmn: false,
     showOow: false,
+    showOowOnScript: false,
     showMalfunction: false,
   },
   "1st Pump >6M Diagnosed": {
@@ -41,6 +44,7 @@ export const IP_PATH_FIELDS: Record<IpPath, IpPathConfig> = {
     showBsIssues: true,
     showLmn: false,
     showOow: false,
+    showOowOnScript: false,
     showMalfunction: false,
   },
   "1st Pump <6M Diagnosed": {
@@ -50,6 +54,7 @@ export const IP_PATH_FIELDS: Record<IpPath, IpPathConfig> = {
     showBsIssues: true,
     showLmn: true,
     showOow: false,
+    showOowOnScript: false,
     showMalfunction: false,
   },
   "OOW Pump": {
@@ -59,6 +64,7 @@ export const IP_PATH_FIELDS: Record<IpPath, IpPathConfig> = {
     showBsIssues: false,
     showLmn: false,
     showOow: true,
+    showOowOnScript: true,
     showMalfunction: true,
   },
   "Omnipod Switch": {
@@ -68,6 +74,7 @@ export const IP_PATH_FIELDS: Record<IpPath, IpPathConfig> = {
     showBsIssues: true,
     showLmn: false,
     showOow: false,
+    showOowOnScript: false,
     showMalfunction: true,
   },
   "IW New Insurance": {
@@ -77,6 +84,7 @@ export const IP_PATH_FIELDS: Record<IpPath, IpPathConfig> = {
     showBsIssues: true,
     showLmn: false,
     showOow: false,
+    showOowOnScript: false,
     showMalfunction: false,
   },
 };
