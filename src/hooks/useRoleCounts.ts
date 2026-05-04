@@ -54,6 +54,7 @@ export function useRoleCounts() {
         // Chase Benefits = mesheke's Chase tab.
         //
         // For now, count what we have:
+        next.benefits = Array.isArray(benefits) ? benefits.length : 0;
         next.submitAuth = Array.isArray(submitAuth) ? submitAuth.length : 0;
         next.authOutstanding = Array.isArray(authOutstanding) ? authOutstanding.length : 0;
       }

@@ -100,9 +100,9 @@ const ChaseBenefitsPage = () => {
                   <Stethoscope className="h-5 w-5 text-primary-foreground" />
                 </div>
                 <div>
-                  <p className="text-[10px] uppercase tracking-[0.2em] opacity-70">Medically Modern · Chase Benefits</p>
+                  <p className="text-[10px] uppercase tracking-[0.2em] opacity-70">Medically Modern · Benefits</p>
                   <h1 className="text-xl font-semibold">
-                    {selected ? `${selected.name} · Insurance & Benefits` : "Chase Benefits"}
+                    {selected ? `${selected.name} · Benefits` : "Benefits"}
                   </h1>
                 </div>
               </div>

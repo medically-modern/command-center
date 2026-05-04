@@ -10,7 +10,8 @@ const SendRequestPage = lazy(() => import("./pages/SendRequestPage"));
 const ConfirmReceiptPage = lazy(() => import("./pages/ConfirmReceiptPage"));
 const ChaseClinicalsPage = lazy(() => import("./pages/ChaseClinicalsPage"));
 
-// Samantha board roles (2)
+// Samantha board roles (3)
+const BenefitsPage = lazy(() => import("./pages/ChaseBenefitsPage"));
 const SubmitAuthPage = lazy(() => import("./pages/SubmitAuthPage"));
 const AuthOutstandingPage = lazy(() => import("./pages/AuthOutstandingPage"));
 
@@ -38,6 +39,7 @@ const App = () => (
           <Route path="/send-request" element={<SendRequestPage />} />
           <Route path="/confirm-receipt" element={<ConfirmReceiptPage />} />
           <Route path="/chase-benefits" element={<ChaseClinicalsPage />} />
+          <Route path="/benefits" element={<BenefitsPage />} />
           <Route path="/submit-auth" element={<SubmitAuthPage />} />
           <Route path="/auth-outstanding" element={<AuthOutstandingPage />} />
           <Route path="*" element={<Index />} />
