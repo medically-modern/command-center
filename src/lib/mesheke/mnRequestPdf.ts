@@ -381,6 +381,20 @@ const PAGE_W = 612; // letter
 const PAGE_H = 792;
 const MARGIN_X = 60;
 const MARGIN_Y = 60;
+const FOOTER_RESERVE = 50; // space reserved for footer at page bottom
+
+/**
+ * Ensure at least `needed` vertical points remain on the current page.
+ * If not, draw the footer on the current page, add a new page, and
+ * reset ctx so subsequent draws land on the fresh page.
+ */
+function ensureSpace(ctx: DrawCtx, needed: number) {
+  if (ctx.y - needed >= MARGIN_Y) return; // plenty of room
+  drawFooter(ctx);
+  const newPage = ctx.pdfDoc.addPage([PAGE_W, PAGE_H]);
+  ctx.page = newPage;
+  ctx.y = PAGE_H - MARGIN_Y;
+}
 
 function drawCheck(page: PDFPage, cx: number, cy: number, color: RGB) {
   page.drawLine({ start: { x: cx - 5, y: cy + 0 }, end: { x: cx - 1, y: cy - 5 }, thickness: 2.4, color });
@@ -572,6 +586,8 @@ function drawIntroAndLegend(ctx: DrawCtx) {
 }
 
 function drawSituation(ctx: DrawCtx, situation: string) {
+  // Situation label + table header + at least one row ≈ 22 + 28 + 40 = 90
+  ensureSpace(ctx, 90);
   const { page, fonts, marginX } = ctx;
   page.drawText("Situation:", { x: marginX, y: ctx.y, size: 13, font: fonts.bold, color: TEXT });
   const w = fonts.bold.widthOfTextAtSize("Situation:", 13);
@@ -607,6 +623,8 @@ function drawTableColumnLines(page: PDFPage, tableX: number, tableW: number, top
 }
 
 function drawTableHeader(ctx: DrawCtx) {
+  // Header + at least one row ≈ 28 + 40 = 68
+  ensureSpace(ctx, 68);
   const { page, fonts, marginX, width } = ctx;
   const tableX = marginX;
   const tableW = width - marginX * 2;
@@ -637,7 +655,7 @@ function drawTableHeader(ctx: DrawCtx) {
 }
 
 function drawTableRow(ctx: DrawCtx, row: ReqRow, allReasons: string[]) {
-  const { page, fonts, marginX, width } = ctx;
+  const { fonts, marginX, width } = ctx;
   const tableX = marginX;
   const tableW = width - marginX * 2;
   const reqW = COL_X_EX - COL_X_REQ - 8;
@@ -655,6 +673,10 @@ function drawTableRow(ctx: DrawCtx, row: ReqRow, allReasons: string[]) {
   const lineH = 14;
   const padY = 10;
   const rowH = padY * 2 + linesNeeded * lineH;
+
+  // Page break if this row won't fit
+  ensureSpace(ctx, rowH);
+  const { page } = ctx;
 
   // Row border
   const cellTop = ctx.y;
@@ -833,7 +855,7 @@ export async function generateMnRequestPdf(patient: Patient): Promise<Uint8Array
       ctx.y -= 18;
     }
   } else {
-    page.drawText(
+    ctx.page.drawText(
       "(No outstanding items — medical necessity is established.)",
       { x: MARGIN_X, y: ctx.y, size: 12, font: fonts.regular, color: GRAY },
     );
