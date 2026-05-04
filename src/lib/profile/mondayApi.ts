@@ -48,6 +48,8 @@ export const COL = {
 
   // Plan Name flows from Stedi → Insurance Plan dropdown on Submit
   insurancePlan: "dropdown_mm1y2x75",
+  // Active/Not Active status — derived from stediEligibilityActive on submit
+  activeNotActive: "color_mm1xycqc",
 
   // ── Insurance ──
   primaryInsurance: "color_mm1xg10n",

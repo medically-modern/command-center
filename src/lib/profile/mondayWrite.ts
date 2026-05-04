@@ -121,6 +121,17 @@ export async function sendPatientToMonday(
     tasks.push(writeDropdownLabels(p.id, COL.insurancePlan, [p.stediPlanName.trim()]));
   }
 
+  // ── Active / Not Active (derived from Stedi Eligibility Active) ──
+  // stediEligibilityActive is text "Yes" / "No" from Stedi. Map to the
+  // Active/Not-Active status column: "Yes" → Active (index 0),
+  // "No" → Not Active (index 1). Anything else → don't write.
+  const activeText = p.stediEligibilityActive?.toLowerCase().trim();
+  if (activeText === "yes") {
+    tasks.push(writeStatusIndex(p.id, COL.activeNotActive, 0));
+  } else if (activeText === "no") {
+    tasks.push(writeStatusIndex(p.id, COL.activeNotActive, 1));
+  }
+
   // ── Serving / Product ──
   tasks.push(statusTask(p.id, COL.referralType, p.referralType, REFERRAL_TYPE_INDEX));
   tasks.push(statusTask(p.id, COL.referralSource, p.referralSource, REFERRAL_SOURCE_INDEX));
