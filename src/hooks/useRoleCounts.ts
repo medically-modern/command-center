@@ -1,14 +1,44 @@
 /**
- * Fetches patient counts for each role from both Monday boards.
+ * Fetches patient counts for each role from all 4 Monday boards.
  *
-import { fetchGroupItems as fetchWelcomeCallGroup, GROUPS as WC_GROUPS, hasToken as wcHasToken } from "@/lib/welcomeCall/mondayApi";
-import { fetchGroupItems as fetchProfileGroup, GROUPS as PROFILE_GROUPS, hasToken as profileHasToken } from "@/lib/profile/mondayApi";
- * Samantha board (18410601299): 3 groups → Chase Benefits, Submit Auth, Auth Outstanding
+ * Samantha board (18410601299): 3 groups → Benefits, Submit Auth, Auth Outstanding
  * Mesheke board (18406060017): 1 group, filtered by Stage Advancer → Evaluate, Send Request, Confirm Receipt, Chase Clinicals
+ * Welcome Call board (18410804557): welcomeCall group
+ * Profile board (18406352652): intake group
  */
 import { useEffect, useState, useCallback } from "react";
 import { fetchGroupItems as fetchSamanthaGroup, GROUPS as SAM_GROUPS, hasToken as samHasToken } from "@/lib/samantha/mondayApi";
 import { fetchGroupItems as fetchMeshekeGroup, GROUPS as MESH_GROUPS, hasToken as meshHasToken } from "@/lib/mesheke/mondayApi";
+
+// Inline count fetcher for Welcome Call and Profile boards.
+// We avoid importing from their mondayApi modules because Vite code-splits
+// those into lazy page chunks, making the imports undefined in this eager chunk.
+const WC_BOARD_ID = 18410804557;
+const WC_GROUP_ID = "group_mm1wvq8p";
+const PROFILE_BOARD_ID = 18406352652;
+const PROFILE_GROUP_ID = "group_mm1xf2jb";
+
+function getMondayToken(): string {
+  return (import.meta.env.VITE_MONDAY_API_TOKEN as string | undefined) ?? "";
+}
+
+async function fetchBoardGroupCount(boardId: number, groupId: string): Promise<number> {
+  const token = getMondayToken();
+  if (!token) return 0;
+  const query = `query { boards(ids: [${boardId}]) { items_page(limit: 500, query_params: { rules: [{ column_id: \"group\", compare_value: ${JSON.stringify([groupId]).replace('"', '\\"').replace('"', '\\"')} }] }) { items { id } } } }`;
+  try {
+    const res = await fetch("https://api.monday.com/v2", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: token },
+      body: JSON.stringify({ query }),
+    });
+    const json = await res.json();
+    const items = json?.data?.boards?.[0]?.items_page?.items;
+    return Array.isArray(items) ? items.length : 0;
+  } catch {
+    return 0;
+  }
+}
 
 export interface RoleCounts {
   [roleId: string]: number;
@@ -85,17 +115,11 @@ export function useRoleCounts() {
         }
       }
 
-      // Welcome Call board — single group
-      if (wcHasToken()) {
-        const wcItems = await fetchWelcomeCallGroup(WC_GROUPS.welcomeCall).catch(() => []);
-        next.welcomeCall = Array.isArray(wcItems) ? wcItems.length : 0;
-      }
+      // Welcome Call board
+      next.welcomeCall = await fetchBoardGroupCount(WC_BOARD_ID, WC_GROUP_ID);
 
-      // Profile board — intake group
-      if (profileHasToken()) {
-        const profileItems = await fetchProfileGroup(PROFILE_GROUPS.intake).catch(() => []);
-        next.profile = Array.isArray(profileItems) ? profileItems.length : 0;
-      }
+      // Profile board
+      next.profile = await fetchBoardGroupCount(PROFILE_BOARD_ID, PROFILE_GROUP_ID);
     } catch (e) {
       console.error("Failed to fetch role counts:", e);
     }
