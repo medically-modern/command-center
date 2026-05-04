@@ -4,8 +4,8 @@
  */
 import {
   writeStatusIndex, writeText, writePhone, writeEmail, writeNumber,
-  writeLocation, writeItemName, writeDropdownIds, fetchItem,
-  clearStatusColumn, COL,
+  writeLocation, writeItemName, writeDropdownIds, writeDropdownLabels,
+  fetchItem, clearStatusColumn, COL,
 } from "./mondayApi";
 import type { Patient } from "./workflow";
 import { phoneDigits } from "./workflow";
@@ -110,6 +110,16 @@ export async function sendPatientToMonday(
     tasks.push(writeDropdownIds(p.id, COL.clinicName, [clinicLabelId]));
   }
   if (p.clinicAddress) tasks.push(writeLocation(p.id, COL.clinicAddress, p.clinicAddress, p.clinicAddressLat ?? 0, p.clinicAddressLng ?? 0));
+
+  // ── Insurance Plan (copied from Stedi plan name) ──
+  // Stedi resolves the patient's specific plan during eligibility check
+  // (e.g. "Fidelis Care Silver"). Copy it into the Insurance Plan
+  // dropdown so downstream auth flows have the granular plan, not just
+  // the carrier. Auto-creates the label on Monday if it's a new plan
+  // we haven't seen before.
+  if (p.stediPlanName?.trim()) {
+    tasks.push(writeDropdownLabels(p.id, COL.insurancePlan, [p.stediPlanName.trim()]));
+  }
 
   // ── Serving / Product ──
   tasks.push(statusTask(p.id, COL.referralType, p.referralType, REFERRAL_TYPE_INDEX));

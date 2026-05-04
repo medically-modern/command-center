@@ -46,6 +46,9 @@ export const COL = {
   stediGender: "dropdown_mm30thnj",
   stediMedicaidId: "text_mm31e5se",
 
+  // Plan Name flows from Stedi → Insurance Plan dropdown on Submit
+  insurancePlan: "dropdown_mm1y2x75",
+
   // ── Insurance ──
   primaryInsurance: "color_mm1xg10n",
   generalInsurance: "color_mm24ap4j",
@@ -247,6 +250,33 @@ export async function writeDropdownIds(itemId: string, columnId: string, ids: nu
     }
   `;
   await gql(query, { boardId: BOARD_ID, itemId, columnId, value: JSON.stringify({ ids }) });
+}
+
+/** Write a dropdown column by label string(s). Auto-creates the label
+ *  on the column if it doesn't already exist. Useful when the value
+ *  comes from upstream data (e.g. Stedi plan name) and may or may not
+ *  match a pre-existing dropdown option. */
+export async function writeDropdownLabels(
+  itemId: string,
+  columnId: string,
+  labels: string[],
+): Promise<void> {
+  const value = JSON.stringify({ labels });
+  // Mutation uses literal `value` because change_column_value accepts a
+  // JSON string and `create_labels_if_missing` only works on the inline
+  // form (it's a top-level mutation arg, not a column-value field).
+  const query = `
+    mutation {
+      change_column_value(
+        board_id: ${BOARD_ID},
+        item_id: ${itemId},
+        column_id: "${columnId}",
+        value: ${JSON.stringify(value)},
+        create_labels_if_missing: true
+      ) { id }
+    }
+  `;
+  await gql(query, {});
 }
 
 /** Write a phone column. */
