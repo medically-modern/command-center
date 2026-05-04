@@ -5,7 +5,9 @@
   "evaluate": [
     "Brandon"
   ],
-  "sendRequest": [],
+  "sendRequest": [
+    "Brandon"
+  ],
   "confirmReceipt": [],
   "chaseBenefits": [],
   "benefits": [],
