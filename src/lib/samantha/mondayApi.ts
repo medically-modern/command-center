@@ -118,6 +118,8 @@ export const READ_COLUMN_IDS = [
   COL.doctorFax,
   COL.clinicalsMethod,
   COL.clinicName,
+  // Escalation column hydrates the Escalate-button toggle on all 3 pages.
+  COL.escalation,
 ];
 
 /** Extended read columns for auth groups — includes auth results + universal statuses */

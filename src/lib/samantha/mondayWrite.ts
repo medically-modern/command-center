@@ -230,21 +230,27 @@ export async function sendPatientToMonday(p: Patient, context: "benefits" | "sub
   }
 
   // ----- Escalation + Stage Advancer -----
-  // Stage Advancer never goes to "Stuck" — the Escalation column is the
-  // only place we surface that something needs attention. Blocker
-  // conditions (universal not confirmed, SoS not clear) leave the
-  // patient in the Benefits / SoS stage with Escalation flagged.
+  // One write each per send. Per-context rules decide the Stage Advancer
+  // index, and Escalation is computed as: manual toggle (p.escalated) is
+  // the floor — true means "Required" no matter what auto rules say.
+  // Auto rules can also force Required (denial / blocker). When neither
+  // manual nor auto demands escalation, we write "Done" so the toggle
+  // round-trips through Monday cleanly.
+  const manualEscalate = p.escalated === true;
+  let stageWriteIndex: number | null = null;
+  type EscalationDecision = "required" | "done";
+  let escalationDecision: EscalationDecision = manualEscalate ? "required" : "done";
+
   if (context === "submitAuth") {
-    tasks.push({
-      label: "Stage Advancer",
-      columnId: COL.stageAdvancer,
-      fn: () => writeStatusIndex(p.id, COL.stageAdvancer, STAGE_INDEX.authOutstanding),
-    });
+    stageWriteIndex = STAGE_INDEX.authOutstanding;
+    // submitAuth doesn't auto-touch escalation; manual toggle decides.
   } else if (context === "authOutstanding") {
     // Auth Outstanding outcome rules:
     //   - ANY product denied        → Stage = Auth Denied + Escalation Required
     //   - All served products are
-    //     auth-valid OR no-auth-needed → Stage = Complete + Escalation cleared
+    //     auth-valid OR no-auth-needed → Stage = Complete (escalation
+    //     follows the manual toggle so an agent can keep escalation on
+    //     even when all products resolved)
     //   - Otherwise (partial — some
     //     products still blank)      → leave Stage Advancer alone
     const anyDenied = entries.some(
@@ -262,6 +268,7 @@ export async function sendPatientToMonday(p: Patient, context: "benefits" | "sub
     console.log("[mondayWrite] authOutstanding rule:", {
       anyDenied,
       allResolved,
+      manualEscalate,
       results: entries.map((e) => ({
         cid: e.cid,
         authOutstandingResult: e.state?.authOutstandingResult ?? "(unset)",
@@ -269,62 +276,46 @@ export async function sendPatientToMonday(p: Patient, context: "benefits" | "sub
     });
 
     if (anyDenied) {
-      console.log("[mondayWrite] → Stage = Auth Denied, Escalation = Required");
-      tasks.push({
-        label: "Stage Advancer",
-        columnId: COL.stageAdvancer,
-        fn: () => writeStatusIndex(p.id, COL.stageAdvancer, STAGE_INDEX.authDenied),
-      });
-      tasks.push({
-        label: "Escalation",
-        columnId: COL.escalation,
-        fn: () => writeStatusIndex(p.id, COL.escalation, ESCALATION_INDEX.required),
-      });
+      stageWriteIndex = STAGE_INDEX.authDenied;
+      escalationDecision = "required"; // forced by denial regardless of toggle
     } else if (allResolved) {
-      // Everything is resolved cleanly — patient moves to Complete and
-      // any prior denial-driven escalation flag is cleared.
-      console.log("[mondayWrite] → Stage = Complete, Escalation = Done");
-      tasks.push({
-        label: "Stage Advancer",
-        columnId: COL.stageAdvancer,
-        fn: () => writeStatusIndex(p.id, COL.stageAdvancer, STAGE_INDEX.complete),
-      });
-      tasks.push({
-        label: "Escalation",
-        columnId: COL.escalation,
-        fn: () => writeStatusIndex(p.id, COL.escalation, ESCALATION_INDEX.done),
-      });
-    } else {
-      console.log("[mondayWrite] → Stage Advancer / Escalation: no change (partial results)");
+      stageWriteIndex = STAGE_INDEX.complete;
+      // escalation follows manualEscalate (already set above)
     }
+    // else: partial → no Stage Advancer write; escalation still follows toggle
   } else {
+    // benefits page — use insurance outcome to drive Stage Advancer.
     const outcome = deriveInsuranceOutcome(effectiveIns, entries.map(e => e.cid));
+    if (outcome === "all-clear") stageWriteIndex = STAGE_INDEX.complete;
+    else if (outcome === "auth-required") stageWriteIndex = STAGE_INDEX.authorization;
+    else stageWriteIndex = STAGE_INDEX.benefitsSos;
+    // Blocker condition force-elevates escalation.
+    if (outcome === "blocker") escalationDecision = "required";
+  }
 
-    // Blocker → only flag escalation. Do NOT move Stage Advancer to Stuck.
-    if (outcome === "blocker") {
-      tasks.push({
-        label: "Escalation",
-        columnId: COL.escalation,
-        fn: () => writeStatusIndex(p.id, COL.escalation, ESCALATION_INDEX.required),
-      });
-    }
-
-    // Stage Advancer — always one of: Benefits / SoS, Authorization, Complete.
-    let stageIndex: number;
-    if (outcome === "all-clear") {
-      stageIndex = STAGE_INDEX.complete;
-    } else if (outcome === "auth-required") {
-      stageIndex = STAGE_INDEX.authorization;
-    } else {
-      // "blocker" or "incomplete" → still working through Benefits / SoS
-      stageIndex = STAGE_INDEX.benefitsSos;
-    }
+  if (stageWriteIndex !== null) {
+    const finalStageIndex = stageWriteIndex;
     tasks.push({
       label: "Stage Advancer",
       columnId: COL.stageAdvancer,
-      fn: () => writeStatusIndex(p.id, COL.stageAdvancer, stageIndex),
+      fn: () => writeStatusIndex(p.id, COL.stageAdvancer, finalStageIndex),
     });
   }
+  // Always write the Escalation column so the toggle round-trips: an
+  // agent toggling OFF + sending will clear a previously-required flag.
+  tasks.push({
+    label: "Escalation",
+    columnId: COL.escalation,
+    fn: () =>
+      writeStatusIndex(
+        p.id,
+        COL.escalation,
+        escalationDecision === "required"
+          ? ESCALATION_INDEX.required
+          : ESCALATION_INDEX.done,
+      ),
+  });
+  console.log(`[mondayWrite] Stage = ${stageWriteIndex ?? "(no change)"}, Escalation = ${escalationDecision}`);
 
   // ----- Per-product auth submission fields (Authorizations tab) -----
   for (const { cid, state } of entries) {
@@ -583,12 +574,3 @@ export async function sendPatientToMonday(p: Patient, context: "benefits" | "sub
   }
 }
 
-/**
- * Manual escalation — flag the patient's Escalation column to "Escalation
- * Required". Fires immediately (no batch). Used by the Escalate button on
- * the Benefits page when an agent needs to hand off ownership before the
- * normal blocker logic would auto-flag it.
- */
-export async function escalatePatient(itemId: string): Promise<void> {
-  await writeStatusIndex(itemId, COL.escalation, ESCALATION_INDEX.required);
-}

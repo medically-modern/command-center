@@ -143,7 +143,10 @@ const ChaseBenefitsPage = () => {
                     </p>
                   </div>
 
-                  <EscalateButton itemId={selected.id} />
+                  <EscalateButton
+                    escalated={!!selected.escalated}
+                    onToggle={() => update(selected.id, { escalated: !selected.escalated })}
+                  />
 
                   <SendToMondayButton onSend={handleSend} disabled={!selected || benefitsMissing.length > 0} />
                   {benefitsMissing.length > 0 && (

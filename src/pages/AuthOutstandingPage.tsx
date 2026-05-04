@@ -102,7 +102,10 @@ const AuthOutstandingPage = () => {
                 <>
                   <PatientProfileCard patient={selected} />
                   <AuthOutstandingPanel patient={selected} onCodeChange={updateCode} onNotesChange={(v) => update(selected.id, { notes: v })} />
-                  <EscalateButton itemId={selected.id} />
+                  <EscalateButton
+                    escalated={!!selected.escalated}
+                    onToggle={() => update(selected.id, { escalated: !selected.escalated })}
+                  />
                   <SendToMondayButton onSend={handleSend} disabled={!selected} />
                 </>
               )}

@@ -216,6 +216,13 @@ export function mondayItemToPatient(item: MondayItem): Patient {
   const sosUniversal = sosText?.toLowerCase().trim();
   // Note: SoS is per-patient, auth result is per-product. We store SoS on the universal level.
 
+  // Escalation toggle — hydrated from Monday so the Escalate button on the
+  // Benefits / Submit Auth / Auth Outstanding pages reflects the current
+  // state when the patient loads. "Escalation Required" → on; "Done" or
+  // unset → off.
+  const escalationText = cv(COL.escalation)?.text?.trim();
+  const escalated = escalationText === "Escalation Required";
+
   return {
     id: item.id,
     name: item.name,
@@ -246,6 +253,7 @@ export function mondayItemToPatient(item: MondayItem): Patient {
     secondaryInsurance,
     memberId1,
     memberId2,
+    escalated,
     insurance: {
       universal: {
         "in-network": inNetAndActive,
