@@ -8,7 +8,9 @@
   "sendRequest": [
     "Brandon"
   ],
-  "confirmReceipt": [],
+  "confirmReceipt": [
+    "Brandon"
+  ],
   "chaseBenefits": [],
   "benefits": [],
   "submitAuth": [],
