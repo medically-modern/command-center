@@ -711,10 +711,30 @@ export async function generateMnRequestPdf(patient: Patient): Promise<Uint8Array
       ];
 
   if (blocks.length === 0 && allReasons.length > 0) {
+    // No coverage-path blocks at all — show every reason as its own row.
     blocks.push({
       situation: "Outstanding Items",
       rows: allReasons.map((r) => ({ name: r, reasonKeys: [r] })),
     });
+  } else if (blocks.length > 0 && allReasons.length > 0) {
+    // Coverage-path blocks exist but may not cover every consolidated
+    // reason (e.g. "Medical Records" has no matching template row).
+    // Collect all reasonKeys already handled by template rows, then
+    // surface any unmatched reasons as an extra block so nothing is
+    // silently dropped from the PDF.
+    const coveredKeys = new Set<string>();
+    for (const b of blocks) {
+      for (const row of b.rows) {
+        for (const k of row.reasonKeys) coveredKeys.add(k);
+      }
+    }
+    const unmatched = allReasons.filter((r) => !coveredKeys.has(r));
+    if (unmatched.length > 0) {
+      blocks.push({
+        situation: "Additional Outstanding Items",
+        rows: unmatched.map((r) => ({ name: r, reasonKeys: [r] })),
+      });
+    }
   }
 
   if (blocks.length > 0) {
