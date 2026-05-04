@@ -3,20 +3,20 @@
 export interface RoleConfig {
   id: string;
   label: string;
-  color: string;          // tailwind bg class
-  icon: string;           // lucide icon name
-  dashboardUrl?: string;  // future: link to the role's dashboard
+  color: string;
+  icon: string;
+  route: string;           // client-side route path
 }
 
 export const ROLES: RoleConfig[] = [
-  { id: "profile",         label: "Profile Checklist",  color: "bg-blue-500",    icon: "UserCircle"   },
-  { id: "evaluate",        label: "Evaluate",           color: "bg-violet-500",  icon: "ClipboardCheck" },
-  { id: "sendRequest",     label: "Send Request",       color: "bg-cyan-500",    icon: "Send"         },
-  { id: "confirmReceipt",  label: "Confirm Receipt",    color: "bg-emerald-500", icon: "CheckCircle"  },
-  { id: "chaseBenefits",   label: "Chase Benefits",     color: "bg-amber-500",   icon: "PhoneCall"    },
-  { id: "submitAuth",      label: "Submit Auth",        color: "bg-indigo-500",  icon: "FileCheck"    },
-  { id: "authOutstanding", label: "Auth Outstanding",   color: "bg-orange-500",  icon: "Clock"        },
-  { id: "authDenied",      label: "Auth Denied",        color: "bg-red-500",     icon: "XCircle"      },
+  { id: "profile",         label: "Profile Checklist",  color: "bg-blue-500",    icon: "UserCircle",     route: "/profile"          },
+  { id: "evaluate",        label: "Evaluate",           color: "bg-violet-500",  icon: "ClipboardCheck", route: "/evaluate"         },
+  { id: "sendRequest",     label: "Send Request",       color: "bg-cyan-500",    icon: "Send",           route: "/send-request"     },
+  { id: "confirmReceipt",  label: "Confirm Receipt",    color: "bg-emerald-500", icon: "CheckCircle",    route: "/confirm-receipt"  },
+  { id: "chaseBenefits",   label: "Chase Benefits",     color: "bg-amber-500",   icon: "PhoneCall",      route: "/chase-benefits"   },
+  { id: "submitAuth",      label: "Submit Auth",        color: "bg-indigo-500",  icon: "FileCheck",      route: "/submit-auth"      },
+  { id: "authOutstanding", label: "Auth Outstanding",   color: "bg-orange-500",  icon: "Clock",          route: "/auth-outstanding" },
+  { id: "authDenied",      label: "Auth Denied",        color: "bg-red-500",     icon: "XCircle",        route: "/auth-denied"      },
 ];
 
 export const USERS = [
@@ -33,7 +33,6 @@ export type UserName = (typeof USERS)[number];
 /** roleId → list of assigned user names */
 export type RoleAssignments = Record<string, UserName[]>;
 
-/* ── Default assignments (edit this to change who's assigned) ── */
 export const DEFAULT_ASSIGNMENTS: RoleAssignments = {
   profile:         [],
   evaluate:        [],

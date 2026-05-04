@@ -1,0 +1,110 @@
+import { useCallback, useEffect, useRef, useState } from "react";
+import type { Patient, ProductCodeId, ProductCodeState } from "@/lib/samantha/workflow";
+import { fetchGroupItems, GROUPS, hasToken } from "@/lib/samantha/mondayApi";
+import { mondayItemToPatient } from "@/lib/samantha/mondayMapping";
+
+/**
+ * Apply the local-edit overlay on top of a freshly-fetched patient.
+ *
+ * IMPORTANT: insurance.codes must be deep-merged per code id, NOT shallow-replaced.
+ * The user's overlay holds fields they edited (auth, sos), but the fresh fetch from
+ * an auth-group fetch ALSO carries Monday-only readback fields like _mondayAuthLabel,
+ * methods, dates. A naive `{ ...p, ...overlay }` clobbers those Monday fields when
+ * the user switches from Benefits → Submit Auth (the overlay was built without them).
+ */
+function applyOverlay(p: Patient, o: Partial<Patient> | undefined): Patient {
+  if (!o) return p;
+  const merged: Patient = { ...p, ...o };
+  if (o.insurance && p.insurance) {
+    const fromMondayCodes = p.insurance.codes ?? {};
+    const fromOverlayCodes = o.insurance.codes ?? {};
+    const codeKeys = new Set<ProductCodeId>([
+      ...(Object.keys(fromMondayCodes) as ProductCodeId[]),
+      ...(Object.keys(fromOverlayCodes) as ProductCodeId[]),
+    ]);
+    const codes: Partial<Record<ProductCodeId, ProductCodeState>> = {};
+    for (const k of codeKeys) {
+      codes[k] = {
+        ...(fromMondayCodes[k] ?? { status: "pending" }),
+        ...(fromOverlayCodes[k] ?? {}),
+      } as ProductCodeState;
+    }
+    merged.insurance = {
+      ...p.insurance,
+      ...o.insurance,
+      codes,
+    };
+  }
+  return merged;
+}
+
+const POLL_MS = 30_000;
+
+export type SidebarGroup = "benefits" | "submitAuth" | "authOutstanding";
+
+export function useMondayPatients(activeGroup: SidebarGroup = "benefits") {
+  const [patients, setPatients] = useState<Patient[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  // local-session overlay so UI edits persist without re-fetching from Monday
+  const overlayRef = useRef<Map<string, Partial<Patient>>>(new Map());
+
+  const mountedRef = useRef(true);
+
+  const refetch = useCallback(async () => {
+    if (!hasToken()) {
+      if (mountedRef.current) {
+        setError("VITE_MONDAY_API_TOKEN is not set. Add it in your project env vars and rebuild.");
+        setLoading(false);
+      }
+      return;
+    }
+    if (mountedRef.current) {
+      setLoading(true);
+      setError(null);
+    }
+    try {
+      const groupId = GROUPS[activeGroup];
+      const items = await fetchGroupItems(groupId);
+      if (!mountedRef.current) return;
+      const safeItems = Array.isArray(items) ? items : [];
+      const ps = safeItems.map(mondayItemToPatient);
+      const merged = ps.map((p) => applyOverlay(p, overlayRef.current.get(p.id)));
+      setPatients(merged);
+    } catch (e) {
+      if (mountedRef.current)
+        setError(e instanceof Error ? e.message : "Failed to load patients from Monday");
+    } finally {
+      if (mountedRef.current) setLoading(false);
+    }
+  }, [activeGroup]);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    refetch();
+    const id = setInterval(refetch, POLL_MS);
+    return () => {
+      mountedRef.current = false;
+      clearInterval(id);
+    };
+  }, [refetch]);
+
+  // Local-only update — used by UI handlers. Does NOT write to Monday;
+  // call writeStatusIndex from mondayApi for that.
+  const update = useCallback((id: string, patch: Partial<Patient>) => {
+    setPatients((prev) =>
+      prev.map((p) => {
+        if (p.id !== id) return p;
+        const merged = { ...p, ...patch, lastUpdated: new Date().toISOString() };
+        overlayRef.current.set(id, { ...(overlayRef.current.get(id) ?? {}), ...patch });
+        return merged;
+      }),
+    );
+  }, []);
+
+  const clearOverlay = useCallback((id: string) => {
+    overlayRef.current.delete(id);
+  }, []);
+
+  return { patients, loading, error, refetch, update, clearOverlay };
+}

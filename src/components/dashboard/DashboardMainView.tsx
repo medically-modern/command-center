@@ -1,15 +1,21 @@
 import { ROLES, USERS, type UserName } from "@/lib/config";
 import type { RoleAssignments } from "@/lib/config";
 import { cn } from "@/lib/utils";
-import { BarChart3, ExternalLink, LayoutDashboard } from "lucide-react";
+import { BarChart3, ExternalLink, LayoutDashboard, Loader2 } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import type { RoleCounts } from "@/hooks/useRoleCounts";
 
 interface Props {
   selectedUser: UserName | null;
   assignments: RoleAssignments;
   getRolesForUser: (user: UserName) => string[];
+  roleCounts: RoleCounts;
+  countsLoading: boolean;
 }
 
-export function DashboardMainView({ selectedUser, assignments, getRolesForUser }: Props) {
+export function DashboardMainView({ selectedUser, assignments, getRolesForUser, roleCounts, countsLoading }: Props) {
+  const navigate = useNavigate();
+
   if (!selectedUser) {
     return (
       <div className="flex-1 flex items-center justify-center p-8">
@@ -29,17 +35,7 @@ export function DashboardMainView({ selectedUser, assignments, getRolesForUser }
 
   const roleIds = getRolesForUser(selectedUser);
   const assignedRoles = ROLES.filter((r) => roleIds.includes(r.id));
-
-  // Placeholder stats — will be wired to real Monday data later
-  // Using a seeded approach so they don't change on every render
-  const stats = assignedRoles.map((role, i) => {
-    const seed = selectedUser.charCodeAt(0) + role.id.length + i;
-    const pending = (seed * 7 + 3) % 18 + 2;
-    const completed = (seed * 13 + 5) % 35 + 8;
-    const total = pending + completed;
-    return { role, pending, completed, total };
-  });
-  const maxTotal = Math.max(...stats.map((s) => s.total), 1);
+  const maxCount = Math.max(...assignedRoles.map((r) => roleCounts[r.id] ?? 0), 1);
 
   return (
     <div className="flex-1 flex flex-col overflow-y-auto">
@@ -56,6 +52,7 @@ export function DashboardMainView({ selectedUser, assignments, getRolesForUser }
               : `${assignedRoles.length} role${assignedRoles.length !== 1 ? "s" : ""} assigned`}
           </p>
         </div>
+        {countsLoading && <Loader2 className="w-4 h-4 animate-spin text-muted-foreground ml-auto" />}
       </div>
 
       {/* Content */}
@@ -72,66 +69,47 @@ export function DashboardMainView({ selectedUser, assignments, getRolesForUser }
         ) : (
           <div className="max-w-3xl space-y-5">
             <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wider">
-              Workload by Role
+              Patients by Role
             </h3>
 
-            {stats.map(({ role, pending, completed, total }) => {
-              const pct = (total / maxTotal) * 100;
-              const completedPct = total > 0 ? (completed / total) * 100 : 0;
+            {assignedRoles.map((role) => {
+              const count = roleCounts[role.id] ?? 0;
+              const pct = maxCount > 0 ? (count / maxCount) * 100 : 0;
+              const hasRoute = role.route && role.id !== "profile" && role.id !== "authDenied";
+
               return (
                 <button
                   key={role.id}
-                  className="w-full text-left group"
+                  className={cn("w-full text-left group", hasRoute ? "cursor-pointer" : "cursor-default")}
                   onClick={() => {
-                    // TODO: navigate to role dashboard
+                    if (hasRoute) navigate(role.route);
                   }}
-                  title={`${role.label} — click to open (coming soon)`}
+                  title={hasRoute ? `Open ${role.label}` : `${role.label} (coming soon)`}
                 >
                   <div className="flex items-center justify-between mb-1.5">
                     <span className="text-sm font-medium text-foreground flex items-center gap-2">
-                      <div
-                        className={cn(
-                          "w-3 h-3 rounded-full shrink-0",
-                          role.color,
-                        )}
-                      />
+                      <div className={cn("w-3 h-3 rounded-full shrink-0", role.color)} />
                       {role.label}
                     </span>
                     <span className="text-sm text-muted-foreground tabular-nums">
-                      {completed} / {total}
-                      <ExternalLink className="w-3.5 h-3.5 inline ml-1.5 opacity-0 group-hover:opacity-60 transition-opacity" />
+                      {countsLoading ? "…" : count} patient{count !== 1 ? "s" : ""}
+                      {hasRoute && (
+                        <ExternalLink className="w-3.5 h-3.5 inline ml-1.5 opacity-0 group-hover:opacity-60 transition-opacity" />
+                      )}
                     </span>
                   </div>
-                  {/* Stacked bar */}
                   <div className="h-9 w-full bg-muted rounded-lg overflow-hidden relative">
                     <div
-                      className="h-full rounded-lg flex transition-all duration-500"
-                      style={{ width: `${pct}%` }}
-                    >
-                      <div
-                        className={cn("h-full transition-all duration-500", role.color)}
-                        style={{ width: `${completedPct}%` }}
-                      />
-                      <div
-                        className={cn(
-                          "h-full opacity-30 transition-all duration-500",
-                          role.color,
-                        )}
-                        style={{ width: `${100 - completedPct}%` }}
-                      />
-                    </div>
+                      className={cn("h-full rounded-lg transition-all duration-500", role.color)}
+                      style={{ width: `${Math.max(pct, count > 0 ? 4 : 0)}%` }}
+                    />
                   </div>
                 </button>
               );
             })}
 
             <div className="flex items-center gap-6 pt-4 text-xs text-muted-foreground">
-              <span className="flex items-center gap-1.5">
-                <div className="w-3 h-3 rounded bg-primary" /> Completed
-              </span>
-              <span className="flex items-center gap-1.5">
-                <div className="w-3 h-3 rounded bg-primary/30" /> Pending
-              </span>
+              <span>Bar width = patient count in that stage</span>
               <span className="ml-auto">Click a bar to open that role&rsquo;s dashboard</span>
             </div>
           </div>
