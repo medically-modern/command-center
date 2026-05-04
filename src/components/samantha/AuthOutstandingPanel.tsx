@@ -283,6 +283,36 @@ function ProductAuthBlock({ meta, resolved, state, onChange, primaryInsurance }:
                 </SelectContent>
               </Select>
             </div>
+            {state.sos === "skip" && state.authOutstandingResult === "no-auth-needed" && (
+              <div className="sm:col-span-5 rounded-md border border-sky-300 bg-sky-50/60 dark:border-sky-800 dark:bg-sky-950/30 p-3">
+                <div className="flex items-start justify-between gap-2 mb-2">
+                  <FieldLabel>Same or Similar — recheck</FieldLabel>
+                  <span className="text-[10px] text-muted-foreground italic">
+                    Skipped at Benefits — confirm now that no auth was needed.
+                  </span>
+                </div>
+                <Select
+                  value={state.sosRecheck || "__none__"}
+                  onValueChange={(v) => {
+                    const next = (v === "__none__" ? "" : v) as "" | "clear" | "not-clear";
+                    onChange({ sosRecheck: next });
+                  }}
+                >
+                  <SelectTrigger className={cn(
+                    "h-9 font-medium bg-background",
+                    state.sosRecheck === "clear" && "bg-success/10 border-success/40 text-success",
+                    state.sosRecheck === "not-clear" && "bg-warning/15 border-warning/50 text-warning-foreground",
+                  )}>
+                    <SelectValue placeholder="Select Clear / Not Clear…" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">— Not selected —</SelectItem>
+                    <SelectItem value="clear">Clear</SelectItem>
+                    <SelectItem value="not-clear">Not Clear</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
             <div className="sm:col-span-5">
               <FieldLabel>Auth ID</FieldLabel>
               <Input

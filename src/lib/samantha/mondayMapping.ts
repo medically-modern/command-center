@@ -48,6 +48,18 @@ export const NOT_CLEAR_PRODUCT_ID: Record<ProductCodeId, number> = {
   cartridges: 5,
 };
 
+// "Skip SoS Products" dropdown option ids — same labels and ids as
+// Not Clear Products. Populated when an agent picks SoS = Skip on the
+// Benefits page; products are removed when the Auth Outstanding recheck
+// resolves the SoS to Clear.
+export const SKIP_SOS_PRODUCT_ID: Record<ProductCodeId, number> = {
+  pump: 1,
+  "cgm-monitor": 2,
+  "cgm-sensors": 3,
+  "infusion-sets": 4,
+  cartridges: 5,
+};
+
 // Per-product auth result indices
 export const AUTH_RESULT_INDEX = {
   evaluate: 0,
@@ -79,6 +91,26 @@ function findExact<T extends string>(options: readonly T[], text: string | null 
   if (!text) return "";
   const norm = text.trim();
   return (options.find((o) => o.toLowerCase() === norm.toLowerCase()) as T) ?? "";
+}
+
+// Maps Monday product-label strings (used by Not Clear Products / Skip SoS
+// Products dropdowns) back to internal ProductCodeId.
+const PRODUCT_LABEL_TO_CODE: Record<string, ProductCodeId> = {
+  "Insulin Pump": "pump",
+  "CGM Monitor": "cgm-monitor",
+  "CGM Sensors": "cgm-sensors",
+  "Infusion Sets": "infusion-sets",
+  "Cartridges": "cartridges",
+};
+
+function parseProductsDropdown(text: string | null | undefined): Set<ProductCodeId> {
+  if (!text) return new Set();
+  const out = new Set<ProductCodeId>();
+  for (const raw of text.split(",")) {
+    const code = PRODUCT_LABEL_TO_CODE[raw.trim()];
+    if (code) out.add(code);
+  }
+  return out;
 }
 
 // Map Monday auth result text labels → internal AuthChoice
@@ -215,6 +247,21 @@ export function mondayItemToPatient(item: MondayItem): Patient {
   const sosText = cv(COL.sos)?.text;
   const sosUniversal = sosText?.toLowerCase().trim();
   // Note: SoS is per-patient, auth result is per-product. We store SoS on the universal level.
+
+  // Per-product SoS — overlay the Not Clear and Skip dropdown reads on
+  // top of any sos value the AUTH_RESULT_TEXT_MAP populated. These two
+  // dropdowns are the canonical record of which products are flagged
+  // not-clear or skip-deferred.
+  const notClearSet = parseProductsDropdown(cv(COL.notClearProducts)?.text);
+  const skipSet = parseProductsDropdown(cv(COL.skipSosProducts)?.text);
+  for (const codeId of notClearSet) {
+    if (!codes[codeId]) codes[codeId] = { status: "pending" } as ProductCodeState;
+    codes[codeId]!.sos = "not-clear";
+  }
+  for (const codeId of skipSet) {
+    if (!codes[codeId]) codes[codeId] = { status: "pending" } as ProductCodeState;
+    codes[codeId]!.sos = "skip";
+  }
 
   // Escalation toggle — hydrated from Monday so the Escalate button on the
   // Benefits / Submit Auth / Auth Outstanding pages reflects the current

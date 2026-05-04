@@ -13,6 +13,7 @@ import {
   ESCALATION_INDEX,
   NOT_CLEAR_PRODUCT_ID,
   PRODUCT_CODE_TO_PRODUCT_ID,
+  SKIP_SOS_PRODUCT_ID,
   STAGE_INDEX,
   UNIVERSAL_INDEX,
 } from "./mondayMapping";
@@ -196,16 +197,34 @@ export async function sendPatientToMonday(p: Patient, context: "benefits" | "sub
     }
   }
 
-  // ----- Not Clear Products dropdown -----
-  // Any product with SoS = not-clear lands here, regardless of auth.
+  // ----- Not Clear Products + Skip SoS Products dropdowns -----
+  // Effective SoS per product = recheck if set, else the Benefits-page sos.
+  // This way an Auth Outstanding recheck of Clear / Not Clear properly
+  // moves a product between the two dropdowns and out of skip.
+  const effectiveSos = (e: typeof entries[number]): "" | "clear" | "not-clear" | "skip" => {
+    const recheck = e.state?.sosRecheck;
+    if (recheck === "clear" || recheck === "not-clear") return recheck;
+    return (e.state?.sos as "" | "clear" | "not-clear" | "skip" | undefined) ?? "";
+  };
+
   const notClearIds = entries
-    .filter((e) => e.state?.sos === "not-clear")
+    .filter((e) => effectiveSos(e) === "not-clear")
     .map((e) => NOT_CLEAR_PRODUCT_ID[e.cid])
     .filter((n): n is number => typeof n === "number");
   tasks.push({
     label: "Not Clear Products",
     columnId: COL.notClearProducts,
     fn: () => writeDropdownIds(p.id, COL.notClearProducts, notClearIds),
+  });
+
+  const skipIds = entries
+    .filter((e) => effectiveSos(e) === "skip")
+    .map((e) => SKIP_SOS_PRODUCT_ID[e.cid])
+    .filter((n): n is number => typeof n === "number");
+  tasks.push({
+    label: "Skip SoS Products",
+    columnId: COL.skipSosProducts,
+    fn: () => writeDropdownIds(p.id, COL.skipSosProducts, skipIds),
   });
 
   // ----- Aggregate SoS + Auth -----
@@ -215,10 +234,11 @@ export async function sendPatientToMonday(p: Patient, context: "benefits" | "sub
   const states = entries.map((e) => e.state);
   const allFilled =
     states.length > 0 &&
-    states.every((s) => !!s?.auth && !!s?.sos);
+    entries.every((e) => !!e.state?.auth && !!effectiveSos(e));
   if (allFilled) {
     const anyAuth = states.some((s) => s?.auth === "required");
-    const anyNotClear = states.some((s) => s?.sos === "not-clear");
+    const anyNotClear = entries.some((e) => effectiveSos(e) === "not-clear");
+    const anySkip = entries.some((e) => effectiveSos(e) === "skip");
 
     tasks.push({
       label: "Auth aggregate",
@@ -227,11 +247,17 @@ export async function sendPatientToMonday(p: Patient, context: "benefits" | "sub
         writeStatusIndex(p.id, COL.auth, anyAuth ? UNIVERSAL_INDEX.auth.required : UNIVERSAL_INDEX.auth.noAuth),
     });
 
+    // SoS aggregate priority:
+    //   not-clear > skip > clear
+    const sosIndex = anyNotClear
+      ? UNIVERSAL_INDEX.sos.fail
+      : anySkip
+        ? UNIVERSAL_INDEX.sos.skip
+        : UNIVERSAL_INDEX.sos.pass;
     tasks.push({
       label: "SoS aggregate",
       columnId: COL.sos,
-      fn: () =>
-        writeStatusIndex(p.id, COL.sos, anyNotClear ? UNIVERSAL_INDEX.sos.fail : UNIVERSAL_INDEX.sos.pass),
+      fn: () => writeStatusIndex(p.id, COL.sos, sosIndex),
     });
   }
 
@@ -262,39 +288,61 @@ export async function sendPatientToMonday(p: Patient, context: "benefits" | "sub
     stageWriteIndex = STAGE_INDEX.authOutstanding;
     // submitAuth doesn't auto-touch escalation; manual toggle decides.
   } else if (context === "authOutstanding") {
-    // Auth Outstanding outcome rules:
-    //   - ANY product denied        → Stage = Auth Denied + Escalation Required
-    //   - All served products are
-    //     auth-valid OR no-auth-needed → Stage = Complete (escalation
-    //     follows the manual toggle so an agent can keep escalation on
-    //     even when all products resolved)
-    //   - Otherwise (partial — some
-    //     products still blank)      → leave Stage Advancer alone
+    // Auth Outstanding outcome rules (priority order):
+    //   1. ANY product denied                → Stage = Auth Denied + Escalation Required
+    //   2. ANY skipped product's recheck = Not Clear
+    //                                          → Stage = Benefits / SoS + Escalation Required
+    //                                            (mirrors Benefits-page Not Clear behavior)
+    //   3. ALL served products fully resolved → Stage = Complete
+    //      (auth-valid is resolved; no-auth-needed is resolved unless
+    //       the product was sos=skip on Benefits, in which case its
+    //       sosRecheck must be Clear to count as resolved)
+    //   4. Otherwise (partial — some product
+    //      missing a result, or skipped recheck still unset)
+    //                                          → leave Stage Advancer alone
     const anyDenied = entries.some(
       (e) => e.state?.authOutstandingResult === "denied",
     );
+    const anyRecheckNotClear = entries.some(
+      (e) => e.state?.sos === "skip" && e.state?.sosRecheck === "not-clear",
+    );
+    const isProductResolved = (e: typeof entries[number]) => {
+      const r = e.state?.authOutstandingResult;
+      if (r === "auth-valid") return true;
+      if (r === "no-auth-needed") {
+        // If this product was sos=skip on Benefits, the recheck must be
+        // Clear to count as resolved. Not Clear is handled by the
+        // anyRecheckNotClear branch above; unset means still pending.
+        if (e.state?.sos === "skip") {
+          return e.state?.sosRecheck === "clear";
+        }
+        return true;
+      }
+      return false;
+    };
     const allResolved =
-      entries.length > 0 &&
-      entries.every(
-        (e) =>
-          e.state?.authOutstandingResult === "auth-valid" ||
-          e.state?.authOutstandingResult === "no-auth-needed",
-      );
+      entries.length > 0 && entries.every(isProductResolved);
 
     // Diagnostic — verify the rule sees the right per-product results.
     console.log("[mondayWrite] authOutstanding rule:", {
       anyDenied,
+      anyRecheckNotClear,
       allResolved,
       manualEscalate,
       results: entries.map((e) => ({
         cid: e.cid,
         authOutstandingResult: e.state?.authOutstandingResult ?? "(unset)",
+        sos: e.state?.sos ?? "(unset)",
+        sosRecheck: e.state?.sosRecheck ?? "(unset)",
       })),
     });
 
     if (anyDenied) {
       stageWriteIndex = STAGE_INDEX.authDenied;
       escalationDecision = "required"; // forced by denial regardless of toggle
+    } else if (anyRecheckNotClear) {
+      stageWriteIndex = STAGE_INDEX.benefitsSos;
+      escalationDecision = "required"; // recheck Not Clear escalates
     } else if (allResolved) {
       stageWriteIndex = STAGE_INDEX.complete;
       // escalation follows manualEscalate (already set above)

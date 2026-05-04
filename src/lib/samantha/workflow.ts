@@ -325,6 +325,10 @@ export interface ProductCodeState {
   intakeId?: string; // Carecentrix Portal only
   callFaxNumber?: string; // Phone or fax number used when method is Call/Fax
   authOutstandingResult?: "auth-valid" | "denied" | "no-auth-needed" | "";
+  /** SoS recheck on Auth Outstanding. Only meaningful when this product
+   *  was SoS=Skip on Benefits AND the auth comes back as No Auth Needed.
+   *  Allowed values: "" (unset), "clear", "not-clear" — never "skip" again. */
+  sosRecheck?: SosChoice;
   /** Original Monday auth result label — populated when reading from auth groups, used for read-only display */
   _mondayAuthLabel?: string;
 }

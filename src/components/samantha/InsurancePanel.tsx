@@ -368,7 +368,18 @@ function CodeCard({ meta, resolved, state, universalDone, onChange }: CardProps)
           </label>
           <Select
             value={auth || "__none__"}
-            onValueChange={(v) => onChange({ auth: (v === "__none__" ? "" : v) as AuthChoice })}
+            onValueChange={(v) => {
+              const next = (v === "__none__" ? "" : v) as AuthChoice;
+              const patch: Partial<ProductCodeState> = { auth: next };
+              // SoS = Skip is only meaningful when auth = required; if the
+              // agent flips auth to not-required (or unselected) while sos
+              // is Skip, reset the SoS so they have to re-pick Clear /
+              // Not Clear.
+              if (next !== "required" && sos === "skip") {
+                patch.sos = "";
+              }
+              onChange(patch);
+            }}
           >
             <SelectTrigger
               className={cn(
@@ -399,6 +410,7 @@ function CodeCard({ meta, resolved, state, universalDone, onChange }: CardProps)
                 "mt-1 h-9 font-medium",
                 sos === "not-clear" && "bg-warning/15 border-warning/50 text-warning-foreground",
                 sos === "clear" && "bg-success/10 border-success/40 text-success",
+                sos === "skip" && "bg-sky-50 border-sky-300 text-sky-800 dark:bg-sky-950/40 dark:border-sky-800 dark:text-sky-200",
               )}
             >
               <SelectValue placeholder="Select SoS status…" />
@@ -407,6 +419,12 @@ function CodeCard({ meta, resolved, state, universalDone, onChange }: CardProps)
               <SelectItem value="__none__">— Not selected —</SelectItem>
               <SelectItem value="clear">Clear</SelectItem>
               <SelectItem value="not-clear">Not Clear</SelectItem>
+              {/* Skip is only valid when this product needs an auth — if
+                  the auth comes back as No Auth Needed on Auth Outstanding,
+                  the agent revisits SoS there. */}
+              {auth === "required" && (
+                <SelectItem value="skip">Skip (defer until auth resolved)</SelectItem>
+              )}
             </SelectContent>
           </Select>
           {(() => {

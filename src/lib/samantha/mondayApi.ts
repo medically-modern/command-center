@@ -41,6 +41,11 @@ export const COL = {
   escalation: "color_mm2vsh2f",
   stageAdvancer: "color_mm1ws96t",
   notClearProducts: "dropdown_mm2vez5a",
+  /** Products whose SoS check was deferred at intake. Populated when an
+   *  agent picks SoS = Skip on the Benefits page; products are removed
+   *  from this dropdown when the recheck on Auth Outstanding resolves
+   *  the SoS to Clear. Same option-id schema as notClearProducts. */
+  skipSosProducts: "dropdown_mm31163t",
 
   callReferenceNotes: "long_text_mm2ffsme",
   carecentrixIntakeId: "text_mm2wnhx",
@@ -123,6 +128,10 @@ export const READ_COLUMN_IDS = [
   COL.clinicName,
   // Escalation column hydrates the Escalate-button toggle on all 3 pages.
   COL.escalation,
+  // Per-product SoS state (read on every page so the agent sees what was
+  // recorded on Benefits — Not Clear products and Skip-deferred products).
+  COL.notClearProducts,
+  COL.skipSosProducts,
 ];
 
 /** Extended read columns for auth groups — includes auth results + universal statuses */
