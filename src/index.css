@@ -1,0 +1,108 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Medically Modern · Masheke Dashboard — Clinical Calm design system */
+
+@layer base {
+  :root {
+    --background: 210 33% 98%;
+    --foreground: 215 40% 12%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 215 40% 12%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 215 40% 12%;
+
+    --primary: 217 91% 50%;
+    --primary-foreground: 0 0% 100%;
+    --primary-glow: 217 95% 65%;
+
+    --secondary: 215 30% 95%;
+    --secondary-foreground: 215 40% 18%;
+
+    --muted: 215 25% 94%;
+    --muted-foreground: 215 16% 45%;
+
+    --accent: 199 89% 48%;
+    --accent-foreground: 0 0% 100%;
+
+    --success: 152 68% 38%;
+    --success-foreground: 0 0% 100%;
+
+    --warning: 38 92% 50%;
+    --warning-foreground: 215 40% 12%;
+
+    --destructive: 0 75% 55%;
+    --destructive-foreground: 0 0% 100%;
+
+    --escalate: 280 70% 55%;
+    --escalate-foreground: 0 0% 100%;
+
+    --border: 215 25% 88%;
+    --input: 215 25% 90%;
+    --ring: 217 91% 50%;
+
+    --navy: 215 60% 15%;
+    --navy-foreground: 210 40% 98%;
+
+    --radius: 0.65rem;
+
+    --gradient-primary: linear-gradient(135deg, hsl(var(--primary)), hsl(var(--accent)));
+    --gradient-navy: linear-gradient(180deg, hsl(215 55% 18%), hsl(215 60% 12%));
+    --gradient-subtle: linear-gradient(180deg, hsl(210 33% 99%), hsl(210 33% 96%));
+
+    --shadow-sm: 0 1px 2px 0 hsl(215 40% 12% / 0.05);
+    --shadow-md: 0 4px 12px -2px hsl(215 40% 12% / 0.08);
+    --shadow-lg: 0 12px 32px -8px hsl(217 91% 50% / 0.18);
+
+    --sidebar-background: 215 60% 13%;
+    --sidebar-foreground: 210 40% 96%;
+    --sidebar-primary: 217 91% 55%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 215 50% 20%;
+    --sidebar-accent-foreground: 210 40% 96%;
+    --sidebar-border: 215 50% 22%;
+    --sidebar-ring: 217 91% 55%;
+  }
+
+  .dark {
+    --background: 215 50% 8%;
+    --foreground: 210 33% 96%;
+    --card: 215 50% 11%;
+    --card-foreground: 210 33% 96%;
+    --popover: 215 50% 11%;
+    --popover-foreground: 210 33% 96%;
+    --primary: 217 91% 60%;
+    --primary-foreground: 215 50% 8%;
+    --secondary: 215 40% 16%;
+    --secondary-foreground: 210 33% 96%;
+    --muted: 215 40% 16%;
+    --muted-foreground: 215 20% 65%;
+    --accent: 199 89% 55%;
+    --accent-foreground: 215 50% 8%;
+    --destructive: 0 70% 55%;
+    --destructive-foreground: 210 33% 96%;
+    --border: 215 40% 20%;
+    --input: 215 40% 20%;
+    --ring: 217 91% 60%;
+  }
+}
+
+@layer base {
+  * { @apply border-border; }
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  }
+  h1, h2, h3, h4 { @apply tracking-tight; }
+}
+
+@layer utilities {
+  .bg-gradient-primary { background: var(--gradient-primary); }
+  .bg-gradient-navy { background: var(--gradient-navy); }
+  .bg-gradient-subtle { background: var(--gradient-subtle); }
+  .shadow-elevate { box-shadow: var(--shadow-lg); }
+  .shadow-card { box-shadow: var(--shadow-md); }
+}
