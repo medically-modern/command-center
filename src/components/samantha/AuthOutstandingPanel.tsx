@@ -224,6 +224,16 @@ function ProductAuthBlock({ meta, resolved, state, onChange, primaryInsurance }:
         >
           {(() => {
             const noAuthNeeded = state.authOutstandingResult === "no-auth-needed";
+            // Display-only placeholder for the Units field — typical
+            // approved unit count by product. Not used as a default value.
+            const unitsPlaceholderByProduct: Record<ProductId, string> = {
+              monitor: "1",
+              sensors: "12",
+              insulin_pump: "1",
+              infusion_set: "30",
+              cartridge: "30",
+            };
+            const unitsPlaceholder = unitsPlaceholderByProduct[resolved.product] ?? "";
             return (
           <div className="grid grid-cols-1 sm:grid-cols-5 gap-3">
             <div className="sm:col-span-5">
@@ -307,7 +317,7 @@ function ProductAuthBlock({ meta, resolved, state, onChange, primaryInsurance }:
                 min={0}
                 value={state.authUnits ?? ""}
                 onChange={(e) => onChange({ authUnits: e.target.value })}
-                placeholder={noAuthNeeded ? "—" : "90"}
+                placeholder={noAuthNeeded ? "—" : unitsPlaceholder}
                 disabled={noAuthNeeded}
                 className="mt-1 h-9 bg-background"
               />

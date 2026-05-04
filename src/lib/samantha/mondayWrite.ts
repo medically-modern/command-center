@@ -153,7 +153,11 @@ export async function sendPatientToMonday(p: Patient, context: "benefits" | "sub
       // the Monday automation can trigger DVS later, when IP Auth Result
       // changes to Auth Valid (or Not Serving for Supplies-Only patients).
       if (context === "submitAuth") {
-        if (isMedicaidSupply) continue;
+        if (isMedicaidSupply) {
+          console.log(`[mondayWrite] submitAuth: skipping Medicaid-routed supply ${productId} (staying at Required)`);
+          continue;
+        }
+        console.log(`[mondayWrite] submitAuth: writing ${productId} → Submitted`);
         tasks.push({
           label: `Auth result: ${productId}`,
           columnId: authColumnId,
