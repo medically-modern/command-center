@@ -20,7 +20,7 @@ const Index = () => {
 
   return (
     <div className="min-h-screen bg-gradient-subtle flex">
-      {/* ── Left sidebar with tabs ───────────────────────────── */}
+      {/* ── Left sidebar ─────────────────────────────────────── */}
       <aside className="w-[340px] border-r border-border bg-card flex flex-col shadow-lg shrink-0">
         <header className="bg-gradient-navy text-white px-5 py-4 flex items-center gap-3">
           <div className="w-9 h-9 rounded-xl bg-white/10 flex items-center justify-center">
@@ -38,10 +38,18 @@ const Index = () => {
         </div>
 
         <div className="flex-1 overflow-y-auto p-4">
-          {activeTab === "roles" ? (
-            <RolesPanel assignments={assignments} onToggle={toggle} />
-          ) : (
+          {activeTab === "dashboard" && (
             <UserList selectedUser={selectedUser} onSelect={setSelectedUser} getRolesForUser={getRolesForUser} />
+          )}
+          {activeTab === "roles" && (
+            <div className="text-center py-8 space-y-3">
+              <div className="mx-auto w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center">
+                <Shield className="w-6 h-6 text-primary" />
+              </div>
+              <p className="text-sm text-muted-foreground">
+                Manage role assignments in the main panel.
+              </p>
+            </div>
           )}
         </div>
       </aside>
@@ -57,16 +65,15 @@ const Index = () => {
             countsLoading={countsLoading}
           />
         ) : (
-          <div className="flex-1 flex items-center justify-center p-8">
-            <div className="text-center space-y-4 max-w-md">
-              <div className="mx-auto w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center">
-                <Shield className="w-8 h-8 text-primary" />
+          <div className="flex-1 overflow-y-auto p-8">
+            <div className="max-w-3xl mx-auto space-y-6">
+              <div>
+                <h2 className="text-xl font-semibold text-foreground">Role Assignments</h2>
+                <p className="text-sm text-muted-foreground mt-1">
+                  Assign team members to each role. Changes sync across all devices.
+                </p>
               </div>
-              <h2 className="text-xl font-semibold text-foreground">Role Assignments</h2>
-              <p className="text-sm text-muted-foreground leading-relaxed">
-                Use the sidebar to assign team members to each role. Multiple people can share the same role. Switch to{" "}
-                <span className="font-medium text-primary">Dashboard</span> to see workload at a glance.
-              </p>
+              <RolesPanel assignments={assignments} onToggle={toggle} />
             </div>
           </div>
         )}
