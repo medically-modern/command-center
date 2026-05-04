@@ -108,6 +108,11 @@ export async function sendPatientToMonday(p: Patient, context: "benefits" | "sub
   // Build entries from resolved products. For Medicaid-billed supplies
   // (hidden in the UI) the user never sets state, so we auto-fill
   // Auth=Required, SoS=Clear here — matching the UI preview's behavior.
+  // We also tag the entry with isMedicaidSupply so the Submit Auth write
+  // path can leave these supplies at "Required" (the Monday DVS-trigger
+  // automation expects them to flip from blank → Required at Benefits
+  // send and stay Required until IP Auth Result becomes Auth Valid /
+  // Not Serving).
   const entries = resolved
     .map((r) => {
       const cid = Object.entries(PRODUCT_CODE_TO_PRODUCT_ID).find(([, v]) => v === r.product)?.[0] as
@@ -115,12 +120,16 @@ export async function sendPatientToMonday(p: Patient, context: "benefits" | "sub
         | undefined;
       if (!cid) return null;
       const userState = ins.codes[cid];
-      const state: ProductCodeState | undefined = isAutoFilledMedicaidSupply(r)
+      const isMedicaidSupply = isAutoFilledMedicaidSupply(r);
+      const state: ProductCodeState | undefined = isMedicaidSupply
         ? { ...(userState ?? { status: "pending" }), auth: "required", sos: "clear" }
         : userState;
-      return { cid, state };
+      return { cid, state, isMedicaidSupply };
     })
-    .filter((e): e is { cid: ProductCodeId; state: ProductCodeState | undefined } => !!e);
+    .filter(
+      (e): e is { cid: ProductCodeId; state: ProductCodeState | undefined; isMedicaidSupply: boolean } =>
+        !!e,
+    );
 
   // Effective insurance state with auto-filled codes — used by
   // deriveInsuranceOutcome below so blocker/auth-required/all-clear logic
@@ -134,13 +143,17 @@ export async function sendPatientToMonday(p: Patient, context: "benefits" | "sub
   // Write auth result for served products (skip for authOutstanding — handled separately below)
   const servedProductKeys = new Set(entries.map((e) => PRODUCT_CODE_TO_PRODUCT_ID[e.cid]));
   if (context !== "authOutstanding") {
-  for (const { cid, state } of entries) {
+  for (const { cid, state, isMedicaidSupply } of entries) {
     if (!state?.auth) continue;
     const productId = PRODUCT_CODE_TO_PRODUCT_ID[cid];
     const authColumnId = COL.authResult[productId];
     if (state.auth === "required") {
       // When sending from Submit Auth tab, flip auth result to "Submitted"
+      // — but skip Medicaid-routed supplies. They stay at "Required" so
+      // the Monday automation can trigger DVS later, when IP Auth Result
+      // changes to Auth Valid (or Not Serving for Supplies-Only patients).
       if (context === "submitAuth") {
+        if (isMedicaidSupply) continue;
         tasks.push({
           label: `Auth result: ${productId}`,
           columnId: authColumnId,
