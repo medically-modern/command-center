@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { useAssignments } from "@/lib/assignmentsStore";
 import { RolesPanel } from "@/components/dashboard/RolesPanel";
 import { DashboardMainView } from "@/components/dashboard/DashboardMainView";
@@ -10,7 +11,9 @@ import { useRoleCounts } from "@/hooks/useRoleCounts";
 type Tab = "roles" | "dashboard";
 
 const Index = () => {
-  const [activeTab, setActiveTab] = useState<Tab>("roles");
+  const [searchParams] = useSearchParams();
+  const initialTab = searchParams.get("tab") === "dashboard" ? "dashboard" : "roles";
+  const [activeTab, setActiveTab] = useState<Tab>(initialTab);
   const [selectedUser, setSelectedUser] = useState<UserName | null>(null);
   const { assignments, toggle, getRolesForUser } = useAssignments();
   const { counts, loading: countsLoading } = useRoleCounts();
