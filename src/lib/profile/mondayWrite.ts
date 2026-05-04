@@ -34,7 +34,10 @@ import {
  * field still batches into sendPatientToMonday.
  */
 export async function triggerStediRun(itemId: string): Promise<void> {
-  // Result columns to blank. All text columns; safe to clear in parallel.
+  // Result columns to blank. Written SEQUENTIALLY (not in parallel) —
+  // Monday returns "Item link max locks exceeded" when too many
+  // change_column_value mutations hit the same item concurrently if
+  // any of those columns participate in mirror/connect links.
   const stediResultColumns: string[] = [
     COL.stediEligibilityActive,
     COL.stediCoverageType,
@@ -63,7 +66,14 @@ export async function triggerStediRun(itemId: string): Promise<void> {
     COL.stediErrorDescription,
     COL.stediSecondaryMedicaidId,
   ];
-  await Promise.all(stediResultColumns.map((c) => writeText(itemId, c, "")));
+  for (const colId of stediResultColumns) {
+    try {
+      await writeText(itemId, colId, "");
+    } catch (e) {
+      // Don't let one stuck column block the rest — log and continue.
+      console.warn(`[triggerStediRun] failed to clear ${colId}:`, e);
+    }
+  }
 
   // Force a real status transition: clear → Run.
   await clearStatusColumn(itemId, COL.runStediEligibility);
