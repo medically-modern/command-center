@@ -2,7 +2,9 @@
   "profile": [
     "Brandon"
   ],
-  "evaluate": [],
+  "evaluate": [
+    "Brandon"
+  ],
   "sendRequest": [],
   "confirmReceipt": [],
   "chaseBenefits": [],
