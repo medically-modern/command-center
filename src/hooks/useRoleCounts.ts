@@ -1,6 +1,8 @@
 /**
  * Fetches patient counts for each role from both Monday boards.
  *
+import { fetchGroupItems as fetchWelcomeCallGroup, GROUPS as WC_GROUPS, hasToken as wcHasToken } from "@/lib/welcomeCall/mondayApi";
+import { fetchGroupItems as fetchProfileGroup, GROUPS as PROFILE_GROUPS, hasToken as profileHasToken } from "@/lib/profile/mondayApi";
  * Samantha board (18410601299): 3 groups → Chase Benefits, Submit Auth, Auth Outstanding
  * Mesheke board (18406060017): 1 group, filtered by Stage Advancer → Evaluate, Send Request, Confirm Receipt, Chase Clinicals
  */
@@ -81,6 +83,18 @@ export function useRoleCounts() {
             next[roleId]++;
           }
         }
+      }
+
+      // Welcome Call board — single group
+      if (wcHasToken()) {
+        const wcItems = await fetchWelcomeCallGroup(WC_GROUPS.welcomeCall).catch(() => []);
+        next.welcomeCall = Array.isArray(wcItems) ? wcItems.length : 0;
+      }
+
+      // Profile board — intake group
+      if (profileHasToken()) {
+        const profileItems = await fetchProfileGroup(PROFILE_GROUPS.intake).catch(() => []);
+        next.profile = Array.isArray(profileItems) ? profileItems.length : 0;
       }
     } catch (e) {
       console.error("Failed to fetch role counts:", e);

@@ -1,0 +1,78 @@
+import { useCallback, useEffect, useRef, useState } from "react";
+import type { Patient } from "@/lib/profile/workflow";
+import { fetchGroupItems, hasToken } from "@/lib/profile/mondayApi";
+import { mondayItemToPatient } from "@/lib/profile/mondayMapping";
+
+const POLL_MS = 15_000;
+
+export function useMondayPatients() {
+  const [patients, setPatients] = useState<Patient[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const mountedRef = useRef(true);
+
+  // Overlay: local edits keyed by patient id → partial patient.
+  // These survive re-fetches so polling doesn't clobber in-progress edits.
+  const overlayRef = useRef<Record<string, Partial<Patient>>>({});
+
+  const applyOverlays = useCallback((base: Patient[]): Patient[] => {
+    const ov = overlayRef.current;
+    return base.map((p) => (ov[p.id] ? { ...p, ...ov[p.id] } : p));
+  }, []);
+
+  const refetch = useCallback(async () => {
+    if (!hasToken()) {
+      if (mountedRef.current) {
+        setError("VITE_MONDAY_API_TOKEN is not set. Add it in your project env vars and rebuild.");
+        setLoading(false);
+      }
+      return;
+    }
+    if (mountedRef.current) {
+      setLoading(true);
+      setError(null);
+    }
+    try {
+      const items = await fetchGroupItems();
+      if (!mountedRef.current) return;
+      const safeItems = Array.isArray(items) ? items : [];
+      const ps = safeItems.map(mondayItemToPatient);
+      setPatients(applyOverlays(ps));
+    } catch (e) {
+      if (mountedRef.current)
+        setError(e instanceof Error ? e.message : "Failed to load patients from Monday");
+    } finally {
+      if (mountedRef.current) setLoading(false);
+    }
+  }, [applyOverlays]);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    refetch();
+    const id = setInterval(refetch, POLL_MS);
+    return () => {
+      mountedRef.current = false;
+      clearInterval(id);
+    };
+  }, [refetch]);
+
+  /**
+   * Optimistic local update — stores in overlay and patches state immediately.
+   */
+  const updateLocal = useCallback((id: string, patch: Partial<Patient>) => {
+    overlayRef.current[id] = { ...overlayRef.current[id], ...patch };
+    setPatients((prev) =>
+      prev.map((p) => (p.id === id ? { ...p, ...patch } : p)),
+    );
+  }, []);
+
+  /**
+   * Clear overlay for a patient after successful submit so next poll picks up
+   * the Monday-side state.
+   */
+  const clearOverlay = useCallback((id: string) => {
+    delete overlayRef.current[id];
+  }, []);
+
+  return { patients, loading, error, refetch, updateLocal, clearOverlay };
+}

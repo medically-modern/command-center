@@ -1,0 +1,192 @@
+/**
+ * Jenelle Profile Checklist — Data Model
+ */
+
+export interface Patient {
+  id: string;
+  name: string;
+
+  // ── Demographics ──
+  dob: string;
+  ptPhone: string;
+  email: string;
+  gender: string;
+  dateOfIntake: string;
+  patientAddress: string;
+  patientAddressLat: number | null;
+  patientAddressLng: number | null;
+
+  // ── Status / Workflow ──
+  alreadyInSystem: string;
+  moveToOnboarding: string;
+
+  // ── Stedi ──
+  runStediEligibility: string;
+  stediEligibilityActive: string;
+  stediCoverageType: string;
+  stediPayerName: string;
+  stediMedicareAdvantage: string;
+  stediMedicareAdvantageCarrier: string;
+  stediMedicareAdvantageMemberId: string;
+  stediQmb: string;
+  stediMedicareJurisdiction: string;
+  stediMedicaidMltc: string;
+  stediManagedMedicaid: string;
+  stediInNetwork: string;
+  stediPriorAuthRequired: string;
+  stediCoinsurance: string;
+  stediCopay: string;
+  stediIndividualDeductible: string;
+  stediIndividualDeductibleRemaining: string;
+  stediFamilyDeductible: string;
+  stediFamilyDeductibleRemaining: string;
+  stediIndividualOopMax: string;
+  stediIndividualOopMaxRemaining: string;
+  stediFamilyOopMax: string;
+  stediFamilyOopMaxRemaining: string;
+  stediPlanBeginDate: string;
+  stediErrorDescription: string;
+  stediSecondaryMedicaidId: string;
+  stediPlanName: string;
+
+  // ── Insurance ──
+  primaryInsurance: string;
+  generalInsurance: string;
+  memberId1: string;
+  memberId2: string;
+  secondaryInsurance: string;
+
+  // ── Working cost-sharing (editable by user, default from individual) ──
+  workingCoinsurance: string;
+  workingDeductible: string;
+  workingDeductibleRemaining: string;
+  workingOopMax: string;
+  workingOopMaxRemaining: string;
+
+  // ── Doctor ──
+  doctorStatus: string;
+  doctorName: string;
+  doctorPhone: string;
+  doctorNpi: string;
+  clinicalsMethod: string;
+  doctorEmail: string;
+  doctorFax: string;
+  clinicName: string;
+  clinicAddress: string;
+  clinicAddressLat: number | null;
+  clinicAddressLng: number | null;
+
+  // ── Serving / Product ──
+  referralType: string;
+  referralSource: string;
+  pumpType: string;
+  cgmType: string;
+  requestType: string;
+  cgmCrossSell: string;
+  serving: string;
+  insulinPumpCoveragePath: string;
+  cgmCoveragePath: string;
+}
+
+/**
+ * Cross-sell exclusions:
+ *   - Medicaid plans: not eligible (rule)
+ *   - United plans: business decision — we choose not to cross-sell United patients
+ *   - Cigna: business decision — we choose not to cross-sell Cigna patients
+ */
+export type CrossSellReason =
+  | "no-primary"   // Primary insurance not yet selected
+  | "eligible"     // Allowed → auto Cross-Sell
+  | "medicaid"     // Blocked: Medicaid plan
+  | "united"       // Blocked: United business rule
+  | "cigna";       // Blocked: Cigna business rule
+
+export function crossSellReason(primaryInsurance: string): CrossSellReason {
+  if (!primaryInsurance) return "no-primary";
+  const lower = primaryInsurance.toLowerCase();
+  if (lower.includes("medicaid")) return "medicaid";
+  if (lower.includes("united")) return "united";
+  if (lower.includes("cigna")) return "cigna";
+  return "eligible";
+}
+
+/**
+ * Cross-sell logic: determines if we can cross-sell CGM based on primary insurance.
+ * See crossSellReason() for the categorical reason (used to drive UI explanations).
+ */
+export function canCrossSellCgm(primaryInsurance: string): boolean {
+  return crossSellReason(primaryInsurance) === "eligible";
+}
+
+/**
+ * Derive the Serving value based on cross-sell status and request type.
+ */
+export function deriveServing(cgmCrossSell: string, requestType: string): string | null {
+  if (cgmCrossSell === "Cross-Sell") {
+    if (requestType === "Supplies Only") return "Supplies + CGM";
+    if (requestType === "Insulin Pump") return "Insulin Pump + CGM";
+  }
+  if (cgmCrossSell === "Couldn't Cross-Sell" || cgmCrossSell === "Already Serving CGM") {
+    // Serving stays same as request type
+    return requestType || null;
+  }
+  return null;
+}
+
+/**
+ * Phone number formatting: (xxx) xxx-xxxx
+ */
+export function formatPhone(raw: string): string {
+  const digits = raw.replace(/\D/g, "");
+  if (digits.length === 0) return "";
+  if (digits.length <= 3) return `(${digits}`;
+  if (digits.length <= 6) return `(${digits.slice(0, 3)}) ${digits.slice(3)}`;
+  return `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6, 10)}`;
+}
+
+/**
+ * Extract raw digits from formatted phone.
+ */
+export function phoneDigits(formatted: string): string {
+  return formatted.replace(/\D/g, "").slice(0, 10);
+}
+
+/**
+ * Extract the 5-digit zip code from an address string. Rejects ZIP+4 — we
+ * never store the dash-extension form in this app.
+ */
+export function extractZip(address: string): string | null {
+  // Reject explicit ZIP+4: "12345-6789" should never pass validation.
+  if (/\b\d{5}-\d{4}\b/.test(address)) return null;
+  const match = address.match(/\b(\d{5})\b/);
+  return match ? match[1] : null;
+}
+
+export function hasValidZip(address: string): boolean {
+  if (!address.trim()) return true; // empty is ok
+  return extractZip(address) !== null;
+}
+
+/**
+ * Normalize a DOB to MM/DD/YYYY. Pads month and day to 2 digits.
+ * Accepts 2-digit year shorthand: <30 → 20xx, otherwise 19xx.
+ * Returns the input unchanged if it doesn't look like a date.
+ */
+export function normalizeDob(input: string): string {
+  const trimmed = (input ?? "").trim();
+  if (!trimmed) return "";
+  const parts = trimmed.split("/").map((s) => s.trim());
+  if (parts.length !== 3) return trimmed;
+  let [m, d, y] = parts;
+  if (!m || !d || !y || !/^\d+$/.test(m) || !/^\d+$/.test(d) || !/^\d+$/.test(y)) {
+    return trimmed;
+  }
+  m = m.padStart(2, "0");
+  d = d.padStart(2, "0");
+  if (y.length === 2) {
+    const yn = parseInt(y, 10);
+    y = yn < 30 ? `20${y}` : `19${y}`;
+  }
+  return `${m}/${d}/${y}`;
+}
+

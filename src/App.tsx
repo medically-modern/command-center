@@ -12,6 +12,8 @@ const ChaseClinicalsPage = lazy(() => import("./pages/ChaseClinicalsPage"));
 
 // Samantha board roles (3)
 const BenefitsPage = lazy(() => import("./pages/ChaseBenefitsPage"));
+const WelcomeCallPage = lazy(() => import("./pages/WelcomeCallPage"));
+const ProfilePage = lazy(() => import("./pages/ProfilePage"));
 const SubmitAuthPage = lazy(() => import("./pages/SubmitAuthPage"));
 const AuthOutstandingPage = lazy(() => import("./pages/AuthOutstandingPage"));
 
@@ -40,6 +42,8 @@ const App = () => (
           <Route path="/confirm-receipt" element={<ConfirmReceiptPage />} />
           <Route path="/chase-benefits" element={<ChaseClinicalsPage />} />
           <Route path="/benefits" element={<BenefitsPage />} />
+          <Route path="/welcome-call" element={<WelcomeCallPage />} />
+          <Route path="/profile" element={<ProfilePage />} />
           <Route path="/submit-auth" element={<SubmitAuthPage />} />
           <Route path="/auth-outstanding" element={<AuthOutstandingPage />} />
           <Route path="*" element={<Index />} />
