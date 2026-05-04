@@ -258,7 +258,18 @@ export async function sendPatientToMonday(p: Patient, context: "benefits" | "sub
           e.state?.authOutstandingResult === "no-auth-needed",
       );
 
+    // Diagnostic — verify the rule sees the right per-product results.
+    console.log("[mondayWrite] authOutstanding rule:", {
+      anyDenied,
+      allResolved,
+      results: entries.map((e) => ({
+        cid: e.cid,
+        authOutstandingResult: e.state?.authOutstandingResult ?? "(unset)",
+      })),
+    });
+
     if (anyDenied) {
+      console.log("[mondayWrite] → Stage = Auth Denied, Escalation = Required");
       tasks.push({
         label: "Stage Advancer",
         columnId: COL.stageAdvancer,
@@ -272,6 +283,7 @@ export async function sendPatientToMonday(p: Patient, context: "benefits" | "sub
     } else if (allResolved) {
       // Everything is resolved cleanly — patient moves to Complete and
       // any prior denial-driven escalation flag is cleared.
+      console.log("[mondayWrite] → Stage = Complete, Escalation = Done");
       tasks.push({
         label: "Stage Advancer",
         columnId: COL.stageAdvancer,
@@ -282,8 +294,9 @@ export async function sendPatientToMonday(p: Patient, context: "benefits" | "sub
         columnId: COL.escalation,
         fn: () => writeStatusIndex(p.id, COL.escalation, ESCALATION_INDEX.done),
       });
+    } else {
+      console.log("[mondayWrite] → Stage Advancer / Escalation: no change (partial results)");
     }
-    // else: partial — leave Stage Advancer and Escalation as they are.
   } else {
     const outcome = deriveInsuranceOutcome(effectiveIns, entries.map(e => e.cid));
 
