@@ -101,6 +101,12 @@ export function StediPanel({ patient, onRefresh, onUpdate, onNext, onRemoveOverl
   const [costSharingMode, setCostSharingMode] = useState<"individual" | "family">("individual");
   const [primaryOpen, setPrimaryOpen] = useState(false);
   const [pollingForStedi, setPollingForStedi] = useState(false);
+  // Snapshot of stediPlanName / stediErrorDescription at the moment Run
+  // is clicked. Used by the spinner watcher to ignore stale-read polls.
+  const valuesAtRunClickRef = useRef<{ planName: string; errorDescription: string }>({
+    planName: "",
+    errorDescription: "",
+  });
 
   // Snapshot of what we believe is currently in Monday for the profile fields.
   // We track patient.id alongside it so we can re-baseline synchronously
@@ -171,6 +177,15 @@ export function StediPanel({ patient, onRefresh, onUpdate, onNext, onRemoveOverl
   };
 
   const handleRunStedi = async () => {
+    // Snapshot the values that exist on Monday RIGHT NOW. The watcher
+    // below only clears the spinner once it sees a value that differs
+    // from this snapshot — so a stale-read poll (Monday's read replica
+    // returning the previous run's errorDescription before our clear
+    // has propagated) won't prematurely flip stediIsComplete to true.
+    valuesAtRunClickRef.current = {
+      planName: patient.stediPlanName ?? "",
+      errorDescription: patient.stediErrorDescription ?? "",
+    };
     setRunning(true);
     setPollingForStedi(true);
     // Two-step trick to keep the loading spinner up until *new* results
@@ -234,10 +249,30 @@ export function StediPanel({ patient, onRefresh, onUpdate, onNext, onRemoveOverl
     }
   };
 
-  // Clear the polling banner the moment we see a terminal Stedi signal.
+  // Clear the spinner only once we see Monday return a stediPlanName /
+  // stediErrorDescription that's NEW (different from what was there at
+  // Run-click time). A stale-read poll that returns the previous run's
+  // value would otherwise satisfy stediIsComplete and kill the spinner
+  // before the actual fresh result arrives.
   useEffect(() => {
-    if (pollingForStedi && stediIsComplete) setPollingForStedi(false);
-  }, [pollingForStedi, stediIsComplete]);
+    if (!pollingForStedi || !stediIsComplete) return;
+    const currentPlanName = patient.stediPlanName ?? "";
+    const currentErrorDescription = patient.stediErrorDescription ?? "";
+    const planNameIsNew = currentPlanName !== valuesAtRunClickRef.current.planName;
+    const errorDescriptionIsNew =
+      currentErrorDescription !== valuesAtRunClickRef.current.errorDescription;
+    console.log("[Stedi watcher]", {
+      planName: currentPlanName || "(empty)",
+      errorDescription: currentErrorDescription || "(empty)",
+      atClick: valuesAtRunClickRef.current,
+      planNameIsNew,
+      errorDescriptionIsNew,
+      willClearSpinner: planNameIsNew || errorDescriptionIsNew,
+    });
+    if (planNameIsNew || errorDescriptionIsNew) {
+      setPollingForStedi(false);
+    }
+  }, [pollingForStedi, stediIsComplete, patient.stediPlanName, patient.stediErrorDescription]);
 
   const isActive = patient.stediEligibilityActive?.toLowerCase() === "yes";
 
