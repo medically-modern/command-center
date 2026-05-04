@@ -531,3 +531,13 @@ export async function sendPatientToMonday(p: Patient, context: "benefits" | "sub
     );
   }
 }
+
+/**
+ * Manual escalation — flag the patient's Escalation column to "Escalation
+ * Required". Fires immediately (no batch). Used by the Escalate button on
+ * the Benefits page when an agent needs to hand off ownership before the
+ * normal blocker logic would auto-flag it.
+ */
+export async function escalatePatient(itemId: string): Promise<void> {
+  await writeStatusIndex(itemId, COL.escalation, ESCALATION_INDEX.required);
+}

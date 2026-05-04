@@ -18,15 +18,16 @@ import { PatientProfileCard } from "@/components/samantha/PatientProfileCard";
 import { SendToMondayButton } from "@/components/samantha/SendToMondayButton";
 import { Button } from "@/components/ui/button";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
-import { RotateCcw, Stethoscope, ArrowLeft } from "lucide-react";
+import { AlertTriangle, RotateCcw, Stethoscope, ArrowLeft } from "lucide-react";
 import { toast } from "sonner";
-import { sendPatientToMonday } from "@/lib/samantha/mondayWrite";
+import { escalatePatient, sendPatientToMonday } from "@/lib/samantha/mondayWrite";
 import { useNavigate } from "react-router-dom";
 
 const ChaseBenefitsPage = () => {
   const navigate = useNavigate();
   const { patients, loading, error, refetch, update, clearOverlay } = useMondayPatients("benefits");
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [escalating, setEscalating] = useState(false);
 
   useEffect(() => {
     if (!selectedId && patients.length > 0) setSelectedId(patients[0].id);
@@ -59,6 +60,21 @@ const ChaseBenefitsPage = () => {
     update(selected.id, { insurance: EMPTY_INSURANCE, notes: "" });
     toast.success("Cleared local edits — refetching from Monday");
     refetch();
+  };
+
+  const handleEscalate = async () => {
+    if (!selected || escalating) return;
+    setEscalating(true);
+    try {
+      await escalatePatient(selected.id);
+      toast.success("Escalation flagged on Monday");
+    } catch (e) {
+      toast.error("Could not flag escalation", {
+        description: e instanceof Error ? e.message : String(e),
+      });
+    } finally {
+      setEscalating(false);
+    }
   };
 
   const benefitsMissing = selected ? validateBenefitsForSubmit(selected) : [];
@@ -107,6 +123,15 @@ const ChaseBenefitsPage = () => {
                 </div>
               </div>
               <div className="flex items-center gap-2">
+                <Button
+                  onClick={handleEscalate}
+                  disabled={!selected || escalating}
+                  variant="outline"
+                  className="gap-2 border-red-300 !text-red-600 hover:bg-red-50 hover:animate-shake"
+                >
+                  <AlertTriangle className="h-4 w-4" />
+                  {escalating ? "Escalating…" : "Escalate"}
+                </Button>
                 <Button onClick={resetForNewPatient} disabled={!selected} className="gap-2 bg-white text-navy hover:bg-white/90 shadow-elevate">
                   <RotateCcw className="h-4 w-4" /> Reset
                 </Button>
