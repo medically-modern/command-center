@@ -7,6 +7,8 @@
   "benefits": [],
   "submitAuth": [],
   "authOutstanding": [],
-  "welcomeCall": [],
+  "welcomeCall": [
+    "Corey"
+  ],
   "authDenied": []
 }
