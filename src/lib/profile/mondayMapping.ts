@@ -59,6 +59,8 @@ export function mondayItemToPatient(item: MondayItem): Patient {
     stediErrorDescription: col(item, COL.stediErrorDescription),
     stediSecondaryMedicaidId: col(item, COL.stediSecondaryMedicaidId),
     stediPlanName: col(item, COL.stediPlanName),
+    stediGender: col(item, COL.stediGender),
+    stediMedicaidId: col(item, COL.stediMedicaidId),
 
     // Insurance
     primaryInsurance: col(item, COL.primaryInsurance),

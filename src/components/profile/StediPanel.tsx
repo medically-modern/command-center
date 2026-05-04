@@ -55,15 +55,19 @@ interface Props {
   onRemoveOverlayKeys?: (keys: (keyof Patient)[]) => void;
 }
 
-// Fields always shown after Stedi run
-const ALWAYS_FIELDS: { key: keyof Patient; label: string }[] = [
+// Fields always shown after Stedi run. `alwaysShow: true` means render
+// the row even when the value is empty (with an em-dash placeholder);
+// otherwise the row is suppressed when empty.
+const ALWAYS_FIELDS: { key: keyof Patient; label: string; alwaysShow?: boolean }[] = [
   { key: "stediEligibilityActive", label: "Active?" },
   { key: "stediCoverageType", label: "Coverage Type" },
   { key: "stediPayerName", label: "Payer Name" },
   { key: "stediPlanName", label: "Plan Name" },
+  { key: "stediGender", label: "Gender", alwaysShow: true },
   { key: "stediInNetwork", label: "In Network?" },
   { key: "stediPriorAuthRequired", label: "Prior Auth Required?" },
   { key: "stediPlanBeginDate", label: "Plan Begin Date" },
+  { key: "stediMedicaidId", label: "Medicaid ID" },
   { key: "stediErrorDescription", label: "Error Description" },
 ];
 
@@ -83,13 +87,27 @@ const MEDICAID_FIELDS: { key: keyof Patient; label: string }[] = [
   { key: "stediSecondaryMedicaidId", label: "Medicaid ID" },
 ];
 
-function ResultRow({ label, value, isError }: { label: string; value: string; isError?: boolean }) {
-  if (!value) return null;
+function ResultRow({
+  label,
+  value,
+  isError,
+  alwaysShow,
+}: {
+  label: string;
+  value: string;
+  isError?: boolean;
+  alwaysShow?: boolean;
+}) {
+  if (!value && !alwaysShow) return null;
   return (
     <div className="flex justify-between py-1.5 border-b border-border/50">
       <span className="text-sm text-muted-foreground">{label}</span>
-      <span className={`text-sm font-medium text-right max-w-[60%] ${isError ? "text-red-500" : ""}`}>
-        {value}
+      <span
+        className={`text-sm font-medium text-right max-w-[60%] ${
+          isError ? "text-red-500" : value ? "" : "text-muted-foreground/60"
+        }`}
+      >
+        {value || "—"}
       </span>
     </div>
   );
@@ -227,6 +245,8 @@ export function StediPanel({ patient, onRefresh, onUpdate, onNext, onRemoveOverl
       "stediFamilyOopMaxRemaining",
       "stediPlanBeginDate",
       "stediSecondaryMedicaidId",
+      "stediGender",
+      "stediMedicaidId",
     ]);
     try {
       await triggerStediRun(patient.id);
@@ -438,12 +458,13 @@ export function StediPanel({ patient, onRefresh, onUpdate, onNext, onRemoveOverl
             </CardHeader>
             <CardContent>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6">
-                {ALWAYS_FIELDS.map(({ key, label }) => (
+                {ALWAYS_FIELDS.map(({ key, label, alwaysShow }) => (
                   <ResultRow
                     key={key}
                     label={label}
                     value={patient[key] as string}
                     isError={key === "stediErrorDescription"}
+                    alwaysShow={alwaysShow}
                   />
                 ))}
               </div>

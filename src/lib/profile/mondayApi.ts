@@ -43,6 +43,8 @@ export const COL = {
   stediErrorDescription: "text_mm1x9tje",
   stediSecondaryMedicaidId: "text_mm25bjz7",
   stediPlanName: "text_mm1xdcet",
+  stediGender: "dropdown_mm30thnj",
+  stediMedicaidId: "text_mm31e5se",
 
   // ── Insurance ──
   primaryInsurance: "color_mm1xg10n",
@@ -112,6 +114,7 @@ export const READ_COLUMN_IDS: string[] = [
   COL.stediFamilyOopMax, COL.stediFamilyOopMaxRemaining,
   COL.stediPlanBeginDate, COL.stediErrorDescription,
   COL.stediSecondaryMedicaidId,
+  COL.stediGender, COL.stediMedicaidId,
   // Insurance
   COL.primaryInsurance, COL.generalInsurance, COL.memberId1, COL.memberId2,
   COL.secondaryInsurance,
