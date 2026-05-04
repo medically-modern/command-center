@@ -14,6 +14,7 @@ import { PatientsSidebar } from "@/components/samantha/PatientsSidebar";
 import { PatientProfileCard } from "@/components/samantha/PatientProfileCard";
 import { SendToMondayButton } from "@/components/samantha/SendToMondayButton";
 import { Button } from "@/components/ui/button";
+import { EscalateButton } from "@/components/samantha/EscalateButton";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { RotateCcw, Stethoscope, ArrowLeft } from "lucide-react";
 import { toast } from "sonner";
@@ -101,6 +102,7 @@ const SubmitAuthPage = () => {
                 <>
                   <PatientProfileCard patient={selected} />
                   <AuthorizationsPanel patient={selected} onCodeChange={updateCode} onNotesChange={(v) => update(selected.id, { notes: v })} />
+                  <EscalateButton itemId={selected.id} />
                   <SendToMondayButton onSend={handleSend} disabled={!selected} />
                 </>
               )}
