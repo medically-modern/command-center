@@ -387,20 +387,9 @@ function CodeCard({ meta, resolved, state, universalDone, onChange }: CardProps)
           </Select>
         </div>
         <div>
-          {(() => {
-            const { date, isLong } = sosClearBeforeDate(meta.id);
-            return (
-              <div className="flex items-baseline justify-between gap-2 flex-wrap">
-                <label className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-                  Same or Similar
-                </label>
-                <span className="text-[10px] text-muted-foreground">
-                  Last bill must be before <span className="font-semibold text-foreground">{date}</span>
-                  <span className="ml-1 text-muted-foreground/80">({isLong ? "4 yr" : "90 day"} lookback)</span>
-                </span>
-              </div>
-            );
-          })()}
+          <label className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+            Same or Similar
+          </label>
           <Select
             value={sos || "__none__"}
             onValueChange={(v) => onChange({ sos: (v === "__none__" ? "" : v) as SosChoice })}
@@ -420,6 +409,18 @@ function CodeCard({ meta, resolved, state, universalDone, onChange }: CardProps)
               <SelectItem value="not-clear">Not Clear</SelectItem>
             </SelectContent>
           </Select>
+          {(() => {
+            const { date, isLong } = sosClearBeforeDate(meta.id);
+            return (
+              <p className="mt-1 text-[10px] text-muted-foreground leading-tight">
+                Last bill must be before{" "}
+                <span className="font-semibold text-foreground">{date}</span>
+                <span className="ml-1 text-muted-foreground/80">
+                  ({isLong ? "4 yr" : "90 day"} lookback)
+                </span>
+              </p>
+            );
+          })()}
         </div>
       </div>
     </div>
