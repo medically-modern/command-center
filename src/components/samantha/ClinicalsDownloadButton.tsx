@@ -88,7 +88,7 @@ export function ClinicalsDownloadButton({ itemId }: Props) {
       size="sm"
       onClick={handleDownload}
       disabled={loading || countLoading}
-      className="gap-2 h-9 bg-sky-50 hover:bg-sky-100 border-sky-300 text-sky-800 dark:bg-sky-950/40 dark:hover:bg-sky-950/60 dark:border-sky-800 dark:text-sky-200"
+      className="gap-2 h-9 bg-sky-50 hover:bg-sky-100 border-sky-300 !text-sky-800 hover:!text-sky-900 dark:bg-sky-950/40 dark:hover:bg-sky-950/60 dark:border-sky-800 dark:!text-sky-200 dark:hover:!text-sky-100"
     >
       {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <FolderDown className="h-4 w-4" />}
       Download Clinicals
