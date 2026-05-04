@@ -80,7 +80,7 @@ const OOW_NOT_ON_SCRIPT_REASONS = ["OOW Date not on script"];
 
 // --- Example text for standalone / Additional Outstanding Items rows -----
 const REASON_EXAMPLES: Record<string, string> = {
-  "Medical Records": "Most recent visit notes within the past 6 months",
+  // --- Granular reason keys (future: Brandon's eval-state rewrite) ---
   "CGM Script missing": "Signed CGM script",
   "CGM Script invalid": "Signed CGM script",
   "Insulin Pump Script missing": "Signed insulin pump script",
@@ -94,6 +94,13 @@ const REASON_EXAMPLES: Record<string, string> = {
   "OOW Date missing": "OOW date must be included on the script",
   "OOW Date not on script": "OOW date must be added to the script",
   "Malfunction missing": "Non-repairable malfunction reason must be included on the script",
+  // --- Consolidated / short-form keys (current bundled strings from eval-state) ---
+  "Medical Records": "Most recent visit notes within the past 6 months",
+  "CGM Script": "Signed CGM script",
+  "Insulin Pump Script": "Signed insulin pump script",
+  "Letter of Medical Necessity": "Signed LMN explaining why pump therapy is medically necessary",
+  "malfunction note": "Non-repairable malfunction reason must be included on the script",
+  "blood sugar issues": "\u201cPatient experiences recurring hypoglycemia despite adhering to the treatment plan\u201d",
 };
 
 // --- Pre-built rows ----------------------------------------------------
