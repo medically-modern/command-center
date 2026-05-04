@@ -2,18 +2,26 @@ import type { Patient } from "@/lib/profile/workflow";
 import { formatPhone, normalizeDob, hasValidZip } from "@/lib/profile/workflow";
 import { AddressAutocomplete } from "@/components/profile/AddressAutocomplete";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { UpdatesSheet } from "@/components/profile/UpdatesSheet";
 import { CalendarDays, User, Phone, Mail, Heart, MapPin, AlertCircle } from "lucide-react";
+import { Mail as MailIcon } from "lucide-react";
 
 interface Props {
   patient: Patient;
   onUpdate: (patch: Partial<Patient>) => void;
+  referralEmailOpen?: boolean;
+  onToggleReferralEmail?: () => void;
 }
 
-export function PatientProfileCard({ patient, onUpdate }: Props) {
+export function PatientProfileCard({
+  patient,
+  onUpdate,
+  referralEmailOpen,
+  onToggleReferralEmail,
+}: Props) {
   const alreadyInSystem = patient.alreadyInSystem?.toLowerCase();
 
   const handlePhoneChange = (value: string) => {
@@ -32,7 +40,17 @@ export function PatientProfileCard({ patient, onUpdate }: Props) {
       <div className="flex items-center justify-between mb-4">
         <p className="text-xs uppercase tracking-wider text-muted-foreground font-semibold">Patient Profile</p>
         <div className="flex items-center gap-2">
-          <UpdatesSheet itemId={patient.id} patientName={patient.name} />
+          {onToggleReferralEmail && (
+            <Button
+              variant={referralEmailOpen ? "default" : "outline"}
+              size="sm"
+              onClick={onToggleReferralEmail}
+              className="gap-1.5 text-xs"
+            >
+              <MailIcon className="h-3.5 w-3.5" />
+              {referralEmailOpen ? "Hide Referral Email" : "See Referral Email"}
+            </Button>
+          )}
           {patient.alreadyInSystem && (
             <Badge
               variant="outline"

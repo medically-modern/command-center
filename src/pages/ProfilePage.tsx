@@ -12,6 +12,7 @@ import { DoctorPanel } from "@/components/profile/DoctorPanel";
 import { ServingPanel } from "@/components/profile/ServingPanel";
 import { PatientsSidebar } from "@/components/profile/PatientsSidebar";
 import { PatientProfileCard } from "@/components/profile/PatientProfileCard";
+import { ReferralEmailPanel } from "@/components/profile/ReferralEmailPanel";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
@@ -27,6 +28,7 @@ const ProfilePage = () => {
   const [activeTab, setActiveTab] = useState<"stedi" | "serving" | "doctor">("stedi");
   const [clinicLabels, setClinicLabels] = useState<{ id: number; name: string }[]>([]);
   const [selectedClinicId, setSelectedClinicId] = useState<number | null>(null);
+  const [referralEmailOpen, setReferralEmailOpen] = useState(false);
 
   useEffect(() => {
     fetchClinicLabels().then(setClinicLabels).catch(console.error);
@@ -139,7 +141,12 @@ const ProfilePage = () => {
 
               {selected && (
                 <>
-                  <PatientProfileCard patient={selected} onUpdate={handleUpdate} />
+                  <PatientProfileCard
+                    patient={selected}
+                    onUpdate={handleUpdate}
+                    referralEmailOpen={referralEmailOpen}
+                    onToggleReferralEmail={() => setReferralEmailOpen((o) => !o)}
+                  />
 
                   <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as "stedi" | "serving" | "doctor")} className="space-y-5">
                     <TabsList className="grid w-full max-w-md grid-cols-3 mx-auto">
@@ -207,6 +214,17 @@ const ProfilePage = () => {
             </section>
           </main>
         </div>
+
+        {/* Side-by-side referral email panel — sibling of the main
+            column, NOT a modal. The user can scroll/interact with both
+            simultaneously. */}
+        {referralEmailOpen && selected && (
+          <ReferralEmailPanel
+            itemId={selected.id}
+            patientName={selected.name}
+            onClose={() => setReferralEmailOpen(false)}
+          />
+        )}
       </div>
     </SidebarProvider>
   );
