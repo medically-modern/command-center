@@ -8,7 +8,7 @@ import type { Patient } from "./workflow";
 
 export type ValidInvalid = "Valid" | "Invalid" | "Missing";
 export type YesNo = "Yes" | "No";
-export type CgmCoveragePath = "Insulin" | "Hypo" | "Invalid";
+export type CgmCoveragePath = "Insulin" | "Hypo" | "Hypo Invalid" | "Missing";
 export type LmnStatus = "Yes & Valid" | "Yes, but Invalid" | "No";
 
 export interface LocalFile {
@@ -104,7 +104,8 @@ export function seedEvalStateFromPatient(patient: Patient): EvalState {
     if (
       patient.cgmCoveragePath === "Insulin" ||
       patient.cgmCoveragePath === "Hypo" ||
-      patient.cgmCoveragePath === "Invalid"
+      patient.cgmCoveragePath === "Hypo Invalid" ||
+      patient.cgmCoveragePath === "Missing"
     ) {
       seed.cgmCoveragePath = patient.cgmCoveragePath;
     }
@@ -188,10 +189,10 @@ export function deriveValidity(
       if (state.cgmScriptValid === "Missing") cgmReasons.push("CGM Script missing");
       else cgmReasons.push("CGM Script invalid");
     }
-    if (!state.cgmCoveragePath) {
+    if (!state.cgmCoveragePath || state.cgmCoveragePath === "Missing") {
       cgmValid = false;
       cgmReasons.push("CGM Coverage Path missing");
-    } else if (state.cgmCoveragePath === "Invalid") {
+    } else if (state.cgmCoveragePath === "Hypo Invalid") {
       cgmValid = false;
       cgmReasons.push("CGM Coverage Path invalid");
     }
@@ -322,11 +323,11 @@ export function computeDoctorAskList(
     // MR is present and current — collect any specific gaps.
     const gaps: string[] = [];
     if (!lastVisitSet) gaps.push("last visit date");
-    // CGM coverage path "Invalid" means the records don't have either
+    // CGM coverage path "Hypo Invalid" means the records don't have either
     // insulin language or hypoglycemia language — doctor needs to add
-    // one of them. (Path "missing" is an agent classification task and
-    // is suppressed.)
-    if (showCgm && state.cgmCoveragePath === "Invalid") {
+    // one of them. (Path "Missing" / unset is an agent classification
+    // task and is suppressed.)
+    if (showCgm && state.cgmCoveragePath === "Hypo Invalid") {
       gaps.push("insulin or hypoglycemia language");
     }
     if (showIp && state.ipCoveragePath) {

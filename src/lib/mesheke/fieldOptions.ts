@@ -122,7 +122,8 @@ export const YES_NO_OPTS: StatusOption[] = [
 export const CGM_COVERAGE_OPTS: StatusOption[] = [
   { label: "Insulin", index: 0 },
   { label: "Hypo", index: 1 },
-  { label: "Invalid", index: 2 },
+  { label: "Hypo Invalid", index: 3 },
+  { label: "Missing", index: 7 },
 ];
 
 export const LMN_OPTS: StatusOption[] = [
