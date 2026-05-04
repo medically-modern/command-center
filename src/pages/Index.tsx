@@ -1,53 +1,33 @@
 import { useState } from "react";
 import { useAssignments } from "@/lib/assignmentsStore";
 import { RolesPanel } from "@/components/dashboard/RolesPanel";
-import { DashboardPanel } from "@/components/dashboard/DashboardPanel";
+import { DashboardMainView } from "@/components/dashboard/DashboardMainView";
 import { cn } from "@/lib/utils";
 import { Shield, LayoutDashboard, Stethoscope } from "lucide-react";
+import { USERS, type UserName } from "@/lib/config";
 
 type Tab = "roles" | "dashboard";
 
 const Index = () => {
   const [activeTab, setActiveTab] = useState<Tab>("roles");
+  const [selectedUser, setSelectedUser] = useState<UserName | null>(null);
   const { assignments, toggle, getRolesForUser } = useAssignments();
 
   return (
     <div className="min-h-screen bg-gradient-subtle flex">
-      {/* ── Main content area (left, stretches) ──────────────── */}
-      <div className="flex-1 flex flex-col">
-        {/* Top bar */}
-        <header className="bg-gradient-navy text-white px-6 py-4 flex items-center gap-3 shadow-md">
-          <div className="w-10 h-10 rounded-xl bg-white/10 flex items-center justify-center">
-            <Stethoscope className="w-6 h-6" />
+      {/* ── Left sidebar with tabs ───────────────────────────── */}
+      <aside className="w-[340px] border-r border-border bg-card flex flex-col shadow-lg shrink-0">
+        {/* Sidebar header */}
+        <header className="bg-gradient-navy text-white px-5 py-4 flex items-center gap-3">
+          <div className="w-9 h-9 rounded-xl bg-white/10 flex items-center justify-center">
+            <Stethoscope className="w-5 h-5" />
           </div>
           <div>
-            <h1 className="text-lg font-bold tracking-tight">Command Center</h1>
-            <p className="text-xs text-white/60">Medically Modern</p>
+            <h1 className="text-base font-bold tracking-tight">Command Center</h1>
+            <p className="text-[11px] text-white/60">Medically Modern</p>
           </div>
         </header>
 
-        {/* Center placeholder — will hold embedded dashboards later */}
-        <div className="flex-1 flex items-center justify-center p-8">
-          <div className="text-center space-y-4 max-w-md">
-            <div className="mx-auto w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center">
-              <LayoutDashboard className="w-8 h-8 text-primary" />
-            </div>
-            <h2 className="text-xl font-semibold text-foreground">
-              Welcome to Command Center
-            </h2>
-            <p className="text-sm text-muted-foreground leading-relaxed">
-              Assign team members to roles using the{" "}
-              <span className="font-medium text-primary">Roles</span> tab, then
-              switch to{" "}
-              <span className="font-medium text-primary">Dashboard</span> to
-              see each person&rsquo;s workload at a glance.
-            </p>
-          </div>
-        </div>
-      </div>
-
-      {/* ── Right sidebar with tabs ──────────────────────────── */}
-      <aside className="w-[380px] border-l border-border bg-card flex flex-col shadow-lg">
         {/* Tab bar */}
         <div className="flex border-b border-border">
           <TabButton
@@ -69,16 +49,102 @@ const Index = () => {
           {activeTab === "roles" ? (
             <RolesPanel assignments={assignments} onToggle={toggle} />
           ) : (
-            <DashboardPanel
-              assignments={assignments}
+            /* User list in sidebar when Dashboard tab is active */
+            <UserList
+              selectedUser={selectedUser}
+              onSelect={setSelectedUser}
               getRolesForUser={getRolesForUser}
             />
           )}
         </div>
       </aside>
+
+      {/* ── Main content area (right, stretches) ─────────────── */}
+      <div className="flex-1 flex flex-col min-w-0">
+        {activeTab === "dashboard" ? (
+          <DashboardMainView
+            selectedUser={selectedUser}
+            assignments={assignments}
+            getRolesForUser={getRolesForUser}
+          />
+        ) : (
+          /* Roles welcome state */
+          <div className="flex-1 flex items-center justify-center p-8">
+            <div className="text-center space-y-4 max-w-md">
+              <div className="mx-auto w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center">
+                <Shield className="w-8 h-8 text-primary" />
+              </div>
+              <h2 className="text-xl font-semibold text-foreground">
+                Role Assignments
+              </h2>
+              <p className="text-sm text-muted-foreground leading-relaxed">
+                Use the sidebar to assign team members to each role.
+                Multiple people can share the same role. Switch to{" "}
+                <span className="font-medium text-primary">Dashboard</span> to
+                see workload at a glance.
+              </p>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 };
+
+/* ── Sidebar user list for Dashboard tab ─────────────────── */
+
+function UserList({
+  selectedUser,
+  onSelect,
+  getRolesForUser,
+}: {
+  selectedUser: UserName | null;
+  onSelect: (user: UserName) => void;
+  getRolesForUser: (user: UserName) => string[];
+}) {
+  return (
+    <div className="space-y-1.5">
+      <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3">
+        Team Members
+      </p>
+      {USERS.map((user) => {
+        const roleIds = getRolesForUser(user);
+        const active = selectedUser === user;
+        return (
+          <button
+            key={user}
+            onClick={() => onSelect(user)}
+            className={cn(
+              "w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors",
+              active
+                ? "bg-primary/10 text-primary font-medium border border-primary/20"
+                : "hover:bg-muted/50 text-foreground border border-transparent",
+            )}
+          >
+            <div
+              className={cn(
+                "w-8 h-8 rounded-full flex items-center justify-center text-white font-bold text-xs shrink-0",
+                active ? "bg-primary" : "bg-gradient-primary",
+              )}
+            >
+              {user[0]}
+            </div>
+            <div className="flex-1 text-left">
+              <div className="text-sm">{user}</div>
+              <div className="text-[11px] text-muted-foreground">
+                {roleIds.length === 0
+                  ? "No roles"
+                  : `${roleIds.length} role${roleIds.length > 1 ? "s" : ""}`}
+              </div>
+            </div>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+/* ── Tab button ──────────────────────────────────────────── */
 
 function TabButton({
   active,
