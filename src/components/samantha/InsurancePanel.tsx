@@ -531,17 +531,26 @@ function deriveMondayColumns(patient: Patient, resolved: ResolvedProduct[]) {
     productStates.length > 0 && productStates.every((p) => !!p.auth);
   const auth = !allAuthsFilled ? "—" : anyAuthRequired ? "Auths Required" : "No Auths Required";
 
-  // 4) SoS — count every product, no skip carve-out.
+  // 4) SoS — count every product. Priority: not-clear > skip > clear.
   const anyNotClear = productStates.some((p) => p.sos === "not-clear");
+  const anySkip = productStates.some((p) => p.sos === "skip");
   const sosCol = !allFilled
     ? "—"
     : anyNotClear
       ? "Partial / Not Clear"
-      : "All Clear";
+      : anySkip
+        ? "Skip"
+        : "All Clear";
 
   // 5) Not Clear Products — list every product whose SoS came back not clear.
   const notClearProducts = productStates
     .filter((p) => p.sos === "not-clear")
+    .map((p) => p.label)
+    .join(", ");
+
+  // 5b) Skip SoS Products — list every product whose SoS was skipped.
+  const skipSosProducts = productStates
+    .filter((p) => p.sos === "skip")
     .map((p) => p.label)
     .join(", ");
 
@@ -573,6 +582,7 @@ function deriveMondayColumns(patient: Patient, resolved: ResolvedProduct[]) {
     auth,
     sos: sosCol,
     notClearProducts: notClearProducts || "—",
+    skipSosProducts: skipSosProducts || "—",
     stageAdvancer,
     escalation,
     allFilled,
@@ -621,6 +631,7 @@ function MondayOutput({
     { key: "auth", label: "Auth", value: cols.auth },
     { key: "sos", label: "SoS", value: cols.sos },
     { key: "notclear", label: "Not Clear Products", value: cols.notClearProducts },
+    { key: "skipsos", label: "Skip SoS Products", value: cols.skipSosProducts },
     { key: "stage", label: "Stage Advancer", value: cols.stageAdvancer },
     { key: "escalation", label: "Escalation", value: cols.escalation },
   ];
