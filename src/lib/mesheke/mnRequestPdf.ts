@@ -70,17 +70,18 @@ interface TemplateBlock {
 // --- Reason key constants ----------------------------------------------
 const CGM_SCRIPT_REASONS = ["CGM Script invalid", "CGM Script missing"];
 const IP_SCRIPT_REASONS = ["Insulin Pump Script invalid", "Insulin Pump Script missing"];
-const EDU_REASONS = ["Diabetes Education invalid"];
-const INJ_REASONS = ["3+ Injections invalid"];
-const CGM_USE_REASONS = ["CGM Use invalid"];
-const BS_REASONS = ["Blood Sugar Issues invalid"];
-const LMN_REASONS = ["Letter of MN missing", "Letter of MN invalid"];
+const EDU_REASONS = ["Diabetes Education invalid", "Diabetes education completed"];
+const INJ_REASONS = ["3+ Injections invalid", "3+ insulin injections / day for > 6 months"];
+const CGM_USE_REASONS = ["CGM Use invalid", "Current CGM use"];
+const BS_REASONS = ["Blood Sugar Issues invalid", "Difficulty managing blood sugar despite treatment"];
+const LMN_REASONS = ["Letter of MN missing", "Letter of MN invalid", "Letter of Medical Necessity", "Updated Letter of Medical Necessity"];
 const MAL_REASONS = ["Malfunction missing"];
 const OOW_NOT_ON_SCRIPT_REASONS = ["OOW Date not on script"];
+const HYPO_LANG_REASONS = ["Hypoglycemia language"];
 
 // --- Example text for standalone / Additional Outstanding Items rows -----
 const REASON_EXAMPLES: Record<string, string> = {
-  // --- Granular reason keys (future: Brandon's eval-state rewrite) ---
+  // --- Legacy granular keys (pre-rewrite, kept for backward compat) ---
   "CGM Script missing": "Signed CGM script",
   "CGM Script invalid": "Signed CGM script",
   "Insulin Pump Script missing": "Signed insulin pump script",
@@ -94,7 +95,20 @@ const REASON_EXAMPLES: Record<string, string> = {
   "OOW Date missing": "OOW date must be included on the script",
   "OOW Date not on script": "OOW date must be added to the script",
   "Malfunction missing": "Non-repairable malfunction reason must be included on the script",
-  // --- Consolidated / short-form keys (current bundled strings from eval-state) ---
+  // --- New granular keys (Brandon's eval-state rewrite) ---
+  "Hypoglycemia language": "\u201cPatient has experienced multiple Level 2 hypoglycemic events (<54 mg/dL), despite treatment adjustments\u201d",
+  "Diabetes education completed": "\u201cPatient completed a comprehensive diabetes education program\u201d",
+  "3+ insulin injections / day for > 6 months": "\u201cPatient injects insulin 3 or more times per day\u201d",
+  "Current CGM use": "\u201cPatient uses a dexcom / freestyle libre daily\u201d",
+  "Difficulty managing blood sugar despite treatment": "\u201cPatient experiences recurring hypoglycemia despite adhering to the treatment plan\u201d",
+  "Updated Medical Records": "Most recent visit notes within the past 6 months",
+  "OOW date": "Out-of-warranty date listed on the script",
+  "OOW date \u2014 must be > 4 years": "Pump must be out of warranty for at least 4 years (5 for Medicare)",
+  "Updated Insulin Pump Script": "Signed insulin pump script",
+  "Updated Letter of Medical Necessity": "Signed LMN explaining why pump therapy is medically necessary",
+  "Omnipod insufficient": "\u201cThe patient\u2019s current Omnipod system continues to malfunction despite reprogramming and manufacturer troubleshooting\u201d",
+  "Non-repairable malfunction reason": "Non-repairable malfunction reason must be included on the script",
+  // --- Consolidated / short-form keys ---
   "Medical Records": "Most recent visit notes within the past 6 months",
   "CGM Script": "Signed CGM script",
   "Insulin Pump Script": "Signed insulin pump script",
@@ -177,17 +191,20 @@ function cgmBlock(path?: string): TemplateBlock | null {
       rows: [CGM_SCRIPT_ROW],
     };
   }
-  if (path === "Invalid") {
+  // "Invalid", "Hypo Invalid", "Missing", or unset all need the
+  // hypoglycemia-language documentation row alongside CGM script.
+  if (path === "Invalid" || path === "Hypo Invalid" || path === "Missing" || !path) {
     return {
-      situation: "CGM — coverage path invalid",
+      situation: !path || path === "Missing"
+        ? "CGM — coverage path needs documentation"
+        : "CGM — coverage path invalid",
       rows: [
         CGM_SCRIPT_ROW,
         {
           name: "Hypoglycemia language",
           examples:
-            "\u201cPatient has experienced multiple Level 2 hypoglycemic events (<54mg/dl), despite treatment adjustments\u201d",
-          reasonKeys: [],
-          alwaysMissing: true,
+            "\u201cPatient has experienced multiple Level 2 hypoglycemic events (<54 mg/dL), despite treatment adjustments\u201d",
+          reasonKeys: HYPO_LANG_REASONS,
         },
       ],
     };
@@ -238,19 +255,19 @@ function ipBlock(path?: string, patient?: Patient): TemplateBlock | null {
           IP_SCRIPT_ROW,
           {
             name: "OOW date",
-            examples: "OOW date must be included on the script",
-            reasonKeys: ["OOW Date missing"],
+            examples: "Out-of-warranty date listed on the script",
+            reasonKeys: ["OOW date", "OOW Date missing"],
           },
           {
             name: "OOW date — must be > 4 years",
-            examples: "Warranty expiration must be at least 4 years ago (5 for Medicare A&B)",
-            reasonKeys: ["OOW Date missing"],
+            examples: "Pump must be out of warranty for at least 4 years (5 for Medicare)",
+            reasonKeys: ["OOW date — must be > 4 years", "OOW Date missing"],
             // Also catches "OOW Date invalid (<X years)" via prefix match in isReceived
           },
           {
             name: `Add OOW date of ${oowDateStr} to the script`,
-            examples: "OOW date must appear on the prescription/script",
-            reasonKeys: OOW_NOT_ON_SCRIPT_REASONS,
+            examples: "Add OOW date to script",
+            reasonKeys: [...OOW_NOT_ON_SCRIPT_REASONS, "Add OOW date"],
           },
           {
             name: "Non-repairable malfunction reason",
@@ -317,14 +334,22 @@ function splitReasons(text?: string): string[] {
 function isReceived(row: ReqRow, allReasons: string[]): boolean {
   if (row.alwaysMissing) return false;
   if (row.reasonKeys.length === 0) {
-    // Row has no reason mapping (e.g. Diagnosis > 6 months) — there's no
+    // Row has no reason mapping (e.g. Diagnosis > 6 months) — there’s no
     // "diagnosis age" reason on the board, so default to received.
     return true;
   }
   for (const r of allReasons) {
     if (row.reasonKeys.includes(r)) return false;
-    // OOW Date can also fail with "OOW Date invalid (<X years)"
+    // OOW Date can also fail with "OOW Date invalid (<X years)" (legacy)
     if (row.reasonKeys.includes("OOW Date missing") && r.startsWith("OOW Date invalid")) {
+      return false;
+    }
+    // "Add OOW date of MM/DD/YYYY to the script" — prefix match
+    if (row.reasonKeys.includes("Add OOW date") && r.startsWith("Add OOW date")) {
+      return false;
+    }
+    // "OOW date — must be > 4 years" — also catch legacy "OOW Date invalid"
+    if (row.reasonKeys.includes("OOW date — must be > 4 years") && r.startsWith("OOW Date invalid")) {
       return false;
     }
   }
@@ -764,12 +789,25 @@ export async function generateMnRequestPdf(patient: Patient): Promise<Uint8Array
     // surface any unmatched reasons as an extra block so nothing is
     // silently dropped from the PDF.
     const coveredKeys = new Set<string>();
+    const coveredPrefixes: string[] = [];
     for (const b of blocks) {
       for (const row of b.rows) {
-        for (const k of row.reasonKeys) coveredKeys.add(k);
+        for (const k of row.reasonKeys) {
+          coveredKeys.add(k);
+          // "Add OOW date" is a prefix-match key
+          if (k === "Add OOW date") coveredPrefixes.push(k);
+        }
       }
     }
-    const unmatched = allReasons.filter((r) => !coveredKeys.has(r));
+    const unmatched = allReasons.filter((r) => {
+      if (coveredKeys.has(r)) return false;
+      // Check prefix matches (e.g. "Add OOW date of 07/15/2019 to the script")
+      if (coveredPrefixes.some((p) => r.startsWith(p))) return false;
+      // Legacy "OOW Date invalid (<X years)" covered by OOW Date missing key
+      if (coveredKeys.has("OOW Date missing") && r.startsWith("OOW Date invalid")) return false;
+      if (coveredKeys.has("OOW date \u2014 must be > 4 years") && r.startsWith("OOW Date invalid")) return false;
+      return true;
+    });
     if (unmatched.length > 0) {
       blocks.push({
         situation: "Additional Outstanding Items",
