@@ -11,7 +11,9 @@
   "confirmReceipt": [
     "Brandon"
   ],
-  "chaseBenefits": [],
+  "chaseBenefits": [
+    "Brandon"
+  ],
   "benefits": [],
   "submitAuth": [],
   "authOutstanding": [],
