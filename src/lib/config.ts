@@ -13,7 +13,7 @@ export const ROLES: RoleConfig[] = [
   { id: "evaluate",        label: "Evaluate",           color: "bg-violet-500",  icon: "ClipboardCheck", route: "/evaluate"         },
   { id: "sendRequest",     label: "Send Request",       color: "bg-cyan-500",    icon: "Send",           route: "/send-request"     },
   { id: "confirmReceipt",  label: "Confirm Receipt",    color: "bg-emerald-500", icon: "CheckCircle",    route: "/confirm-receipt"  },
-  { id: "chaseBenefits",   label: "Chase Benefits",     color: "bg-amber-500",   icon: "PhoneCall",      route: "/chase-benefits"   },
+  { id: "chaseBenefits",   label: "Chase Clinicals",     color: "bg-amber-500",   icon: "PhoneCall",      route: "/chase-benefits"   },
   { id: "submitAuth",      label: "Submit Auth",        color: "bg-indigo-500",  icon: "FileCheck",      route: "/submit-auth"      },
   { id: "authOutstanding", label: "Auth Outstanding",   color: "bg-orange-500",  icon: "Clock",          route: "/auth-outstanding" },
   { id: "welcomeCall",    label: "Welcome Call",     color: "bg-teal-500",    icon: "Phone",          route: "/welcome-call"     },
