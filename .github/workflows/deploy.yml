@@ -28,6 +28,8 @@ jobs:
         run: npm install
 
       - name: Build
+        env:
+          VITE_MONDAY_API_TOKEN: ${{ secrets.VITE_MONDAY_API_TOKEN }}
         run: npx vite build --base=/command-center-test/
 
       - name: Copy 404
