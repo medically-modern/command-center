@@ -108,29 +108,44 @@ export function ServingPanel({ patient, onUpdate, onNext }: Props) {
 
   return (
     <div className="space-y-5">
-      {/* Primary Insurance summary (carried over from Stedi tab) */}
+      {/* Primary + Secondary Insurance summary (carried over from Stedi tab) */}
       <Card className="shadow-card border-blue-200 bg-blue-50/40">
-        <CardContent className="pt-5 pb-4">
-          <div className="flex flex-wrap items-center gap-3 text-sm">
+        <CardContent className="pt-5 pb-4 space-y-2">
+          {/* Primary row */}
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
             <Shield className="h-4 w-4 text-blue-600 shrink-0" />
-            <span className="text-xs uppercase tracking-wider text-muted-foreground font-semibold">Primary Insurance</span>
+            <span className="text-xs uppercase tracking-wider text-muted-foreground font-semibold">
+              Primary
+            </span>
             <span className="font-semibold text-foreground">
-              {patient.primaryInsurance || <span className="text-amber-600">Not selected — set on Stedi tab</span>}
+              {patient.primaryInsurance || (
+                <span className="text-amber-600">Not selected — set on Stedi tab</span>
+              )}
             </span>
             {patient.memberId1 && (
-              <span className="text-muted-foreground">· Member ID {patient.memberId1}</span>
-            )}
-            {patient.secondaryInsurance && (
-              <span className="ml-auto inline-flex items-center gap-1.5">
-                <Badge variant="outline" className="border-blue-300 bg-white text-blue-800">
-                  Secondary: {patient.secondaryInsurance}
-                </Badge>
-                {patient.memberId2 && (
-                  <span className="text-xs text-muted-foreground">ID {patient.memberId2}</span>
-                )}
+              <span className="text-xs text-muted-foreground">
+                · Member ID {patient.memberId1}
               </span>
             )}
           </div>
+
+          {/* Secondary row — only when present */}
+          {patient.secondaryInsurance && (
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm pt-2 border-t border-blue-200/70">
+              <Shield className="h-4 w-4 text-blue-600/60 shrink-0" />
+              <span className="text-xs uppercase tracking-wider text-muted-foreground font-semibold">
+                Secondary
+              </span>
+              <span className="font-semibold text-foreground">
+                {patient.secondaryInsurance}
+              </span>
+              {patient.memberId2 && (
+                <span className="text-xs text-muted-foreground">
+                  · Member ID {patient.memberId2}
+                </span>
+              )}
+            </div>
+          )}
         </CardContent>
       </Card>
 
