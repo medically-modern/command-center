@@ -77,7 +77,7 @@ export function mondayItemToPatient(item: MondayItem): Patient {
     // Doctor
     doctorStatus: col(item, COL.doctorStatus),
     doctorName: col(item, COL.doctorName),
-    doctorPhone: col(item, COL.doctorPhone),
+    doctorPhone: formatPhone(col(item, COL.doctorPhone)),
     doctorNpi: col(item, COL.doctorNpi),
     clinicalsMethod: col(item, COL.clinicalsMethod),
     doctorEmail: col(item, COL.doctorEmail),

@@ -134,10 +134,23 @@ export function deriveServing(cgmCrossSell: string, requestType: string): string
 }
 
 /**
+ * Strip non-digits and drop a leading "1" country code so an E.164
+ * input like "+19142202922" normalizes to the same 10-digit US number
+ * the rest of the app expects.
+ */
+function normalizePhoneDigits(raw: string): string {
+  const digits = raw.replace(/\D/g, "");
+  if (digits.length === 11 && digits.startsWith("1")) {
+    return digits.slice(1);
+  }
+  return digits;
+}
+
+/**
  * Phone number formatting: (xxx) xxx-xxxx
  */
 export function formatPhone(raw: string): string {
-  const digits = raw.replace(/\D/g, "");
+  const digits = normalizePhoneDigits(raw);
   if (digits.length === 0) return "";
   if (digits.length <= 3) return `(${digits}`;
   if (digits.length <= 6) return `(${digits.slice(0, 3)}) ${digits.slice(3)}`;
@@ -145,10 +158,10 @@ export function formatPhone(raw: string): string {
 }
 
 /**
- * Extract raw digits from formatted phone.
+ * Extract raw digits from formatted phone (10-digit US number).
  */
 export function phoneDigits(formatted: string): string {
-  return formatted.replace(/\D/g, "").slice(0, 10);
+  return normalizePhoneDigits(formatted).slice(0, 10);
 }
 
 /**
