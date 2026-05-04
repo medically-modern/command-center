@@ -75,7 +75,7 @@ export function DashboardMainView({ selectedUser, assignments, getRolesForUser, 
             {assignedRoles.map((role) => {
               const count = roleCounts[role.id] ?? 0;
               const pct = maxCount > 0 ? (count / maxCount) * 100 : 0;
-              const hasRoute = role.route && role.id !== "profile" && role.id !== "authDenied";
+              const hasRoute = role.route && role.id !== "authDenied";
 
               return (
                 <button
