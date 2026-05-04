@@ -76,6 +76,25 @@ const CGM_USE_REASONS = ["CGM Use invalid"];
 const BS_REASONS = ["Blood Sugar Issues invalid"];
 const LMN_REASONS = ["Letter of MN missing", "Letter of MN invalid"];
 const MAL_REASONS = ["Malfunction missing"];
+const OOW_NOT_ON_SCRIPT_REASONS = ["OOW Date not on script"];
+
+// --- Example text for standalone / Additional Outstanding Items rows -----
+const REASON_EXAMPLES: Record<string, string> = {
+  "Medical Records": "Most recent visit notes within the past 6 months",
+  "CGM Script missing": "Signed CGM script",
+  "CGM Script invalid": "Signed CGM script",
+  "Insulin Pump Script missing": "Signed insulin pump script",
+  "Insulin Pump Script invalid": "Signed insulin pump script",
+  "Diabetes Education invalid": "\u201cPatient completed a comprehensive diabetes education program\u201d",
+  "3+ Injections invalid": "\u201cPatient injects insulin 3 or more times per day\u201d",
+  "CGM Use invalid": "\u201cPatient uses a dexcom / freestyle libre daily\u201d",
+  "Blood Sugar Issues invalid": "\u201cPatient experiences recurring hypoglycemia despite adhering to the treatment plan\u201d",
+  "Letter of MN missing": "Signed LMN explaining why pump therapy is medically necessary",
+  "Letter of MN invalid": "Signed LMN explaining why pump therapy is medically necessary",
+  "OOW Date missing": "OOW date must be included on the script",
+  "OOW Date not on script": "OOW date must be added to the script",
+  "Malfunction missing": "Non-repairable malfunction reason must be included on the script",
+};
 
 // --- Pre-built rows ----------------------------------------------------
 const CGM_SCRIPT_ROW: ReqRow = {
@@ -103,30 +122,30 @@ const IP_SCRIPT_ROW_NO_EXAMPLE: ReqRow = {
 };
 const DIAGNOSIS_ROW: ReqRow = {
   name: "Diagnosis > 6 months",
-  examples: "“Patient has been diagnosed with diabetes for 6+ months”",
+  examples: "\u201cPatient has been diagnosed with diabetes for 6+ months\u201d",
   reasonKeys: [],
   alwaysMissing: false,
 };
 const INJ_ROW: ReqRow = {
   name: "3+ insulin injections / day for > 6 months",
   examples:
-    "“Patient injects insulin 3 or more times per day with frequent self-adjustments”",
+    "\u201cPatient injects insulin 3 or more times per day with frequent self-adjustments\u201d",
   reasonKeys: INJ_REASONS,
 };
 const EDU_ROW: ReqRow = {
   name: "Diabetes education completed",
-  examples: "“Patient completed a comprehensive diabetes education program”",
+  examples: "\u201cPatient completed a comprehensive diabetes education program\u201d",
   reasonKeys: EDU_REASONS,
 };
 const CGM_USE_ROW: ReqRow = {
   name: "Current CGM use",
-  examples: "“Patient uses a dexcom / freestyle libre daily”",
+  examples: "\u201cPatient uses a dexcom / freestyle libre daily\u201d",
   reasonKeys: CGM_USE_REASONS,
 };
 const BS_ROW: ReqRow = {
   name: "Difficulty managing blood sugar despite treatment",
   examples:
-    "“Patient experiences recurring hypoglycemia despite adhering to the treatment plan” or “wide fluctuations in blood glucose before mealtime despite adhering to the treatment plan”",
+    "\u201cPatient experiences recurring hypoglycemia despite adhering to the treatment plan\u201d or \u201cwide fluctuations in blood glucose before mealtime despite adhering to the treatment plan\u201d",
   reasonKeys: BS_REASONS,
 };
 const LMN_ROW: ReqRow = {
@@ -142,26 +161,24 @@ function cgmBlock(path?: string): TemplateBlock | null {
   if (path === "Insulin") {
     return {
       situation: "CGM for insulin-treated patient",
-      rows: [
-        CGM_SCRIPT_ROW,
-        {
-          name: "Insulin-treated",
-          examples: "Insulin listed in medications section of medical records",
-          reasonKeys: [],
-          alwaysMissing: true,
-        },
-      ],
+      rows: [CGM_SCRIPT_ROW],
     };
   }
   if (path === "Hypo") {
     return {
       situation: "CGM for patient experiencing hypoglycemia",
+      rows: [CGM_SCRIPT_ROW],
+    };
+  }
+  if (path === "Invalid") {
+    return {
+      situation: "CGM — coverage path invalid",
       rows: [
         CGM_SCRIPT_ROW,
         {
           name: "Hypoglycemia language",
           examples:
-            "“Patient has experienced multiple Level 2 hypoglycemic events (<54mg/dl), despite treatment adjustments”",
+            "\u201cPatient has experienced multiple Level 2 hypoglycemic events (<54mg/dl), despite treatment adjustments\u201d",
           reasonKeys: [],
           alwaysMissing: true,
         },
@@ -171,7 +188,7 @@ function cgmBlock(path?: string): TemplateBlock | null {
   return null;
 }
 
-function ipBlock(path?: string): TemplateBlock | null {
+function ipBlock(path?: string, patient?: Patient): TemplateBlock | null {
   switch (path) {
     case "Supplies Only":
       return {
@@ -205,29 +222,42 @@ function ipBlock(path?: string): TemplateBlock | null {
           LMN_ROW,
         ],
       };
-    case "OOW Pump":
+    case "OOW Pump": {
+      const oowDateStr = patient?.oowDate ?? "___";
       return {
         situation: "Out-of-Warranty Pump",
         rows: [
           CGM_SCRIPT_ROW_BUNDLED,
           IP_SCRIPT_ROW,
           {
-            name: "Out-of-Warranty Date",
+            name: "OOW date",
             examples: "OOW date must be included on the script",
             reasonKeys: ["OOW Date missing"],
+          },
+          {
+            name: "OOW date — must be > 4 years",
+            examples: "Warranty expiration must be at least 4 years ago (5 for Medicare A&B)",
+            reasonKeys: ["OOW Date missing"],
+            // Also catches "OOW Date invalid (<X years)" via prefix match in isReceived
+          },
+          {
+            name: `Add OOW date of ${oowDateStr} to the script`,
+            examples: "OOW date must appear on the prescription/script",
+            reasonKeys: OOW_NOT_ON_SCRIPT_REASONS,
           },
           {
             name: "Non-repairable malfunction reason",
             examples: [
               "Non-repairable malfunction must be included on the script",
-              "“cracked/broken screen” or “battery is depleted”",
+              "\u201ccracked/broken screen\u201d or \u201cbattery is depleted\u201d",
               "AND",
-              "“Pump cannot be repaired or replaced”",
+              "\u201cPump cannot be repaired or replaced\u201d",
             ],
             reasonKeys: MAL_REASONS,
           },
         ],
       };
+    }
     case "Omnipod Switch":
       return {
         situation: "Switching from Omnipod",
@@ -242,7 +272,7 @@ function ipBlock(path?: string): TemplateBlock | null {
           {
             name: "Omnipod insufficient",
             examples:
-              "“The patient’s current Omnipod system continues to malfunction despite reprogramming and manufacturer troubleshooting”",
+              "\u201cThe patient\u2019s current Omnipod system continues to malfunction despite reprogramming and manufacturer troubleshooting\u201d",
             reasonKeys: MAL_REASONS,
           },
         ],
@@ -695,7 +725,7 @@ export async function generateMnRequestPdf(patient: Patient): Promise<Uint8Array
   drawPatientInfo(ctx, patient);
 
   const cgm = cgmBlock(patient.cgmCoveragePath);
-  const ip = ipBlock(patient.ipCoveragePath);
+  const ip = ipBlock(patient.ipCoveragePath, patient);
   const blocks = [cgm, ip].filter((b): b is TemplateBlock => b !== null);
 
   // Prefer the consolidated, doctor-facing ask list. Fall back to the
@@ -714,7 +744,11 @@ export async function generateMnRequestPdf(patient: Patient): Promise<Uint8Array
     // No coverage-path blocks at all — show every reason as its own row.
     blocks.push({
       situation: "Outstanding Items",
-      rows: allReasons.map((r) => ({ name: r, reasonKeys: [r] })),
+      rows: allReasons.map((r) => ({
+        name: r,
+        examples: REASON_EXAMPLES[r],
+        reasonKeys: [r],
+      })),
     });
   } else if (blocks.length > 0 && allReasons.length > 0) {
     // Coverage-path blocks exist but may not cover every consolidated
@@ -732,7 +766,11 @@ export async function generateMnRequestPdf(patient: Patient): Promise<Uint8Array
     if (unmatched.length > 0) {
       blocks.push({
         situation: "Additional Outstanding Items",
-        rows: unmatched.map((r) => ({ name: r, reasonKeys: [r] })),
+        rows: unmatched.map((r) => ({
+          name: r,
+          examples: REASON_EXAMPLES[r],
+          reasonKeys: [r],
+        })),
       });
     }
   }
