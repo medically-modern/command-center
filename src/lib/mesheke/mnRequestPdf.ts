@@ -647,7 +647,7 @@ function drawTableHeader(ctx: DrawCtx) {
   page.drawText("Examples of simple language for each requirement", {
     x: tableX + COL_X_EX,
     y: baseY,
-    size: 12,
+    size: 10,
     font: fonts.bold,
     color: TEXT,
   });
