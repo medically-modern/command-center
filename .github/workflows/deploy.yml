@@ -31,7 +31,7 @@ jobs:
         env:
           VITE_MONDAY_API_TOKEN: ${{ secrets.VITE_MONDAY_API_TOKEN }}
           VITE_GOOGLE_MAPS_API_KEY: ${{ secrets.VITE_GOOGLE_MAPS_API_KEY }}
-          VITE_GITHUB_PAT: ${{ secrets.VITE_GITHUB_PAT }}
+          VITE_GITHUB_PAT: ${{ secrets.GH_PAT }}
         run: npx vite build --base=/command-center-test/
 
       - name: Copy 404
