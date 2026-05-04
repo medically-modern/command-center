@@ -173,11 +173,18 @@ export function StediPanel({ patient, onRefresh, onUpdate, onNext, onRemoveOverl
   const handleRunStedi = async () => {
     setRunning(true);
     setPollingForStedi(true);
-    // Scrub any prior Stedi entries from the local-edit overlay BEFORE
-    // we trigger the run. updateLocal-style optimistic clears would put
-    // empty strings into the overlay and mask whatever Monday writes
-    // back — so once a fresh result lands the UI would never show it.
-    // Removing the keys entirely lets polling render Monday's truth.
+    // Two-step trick to keep the loading spinner up until *new* results
+    // land:
+    //   1. updateLocal sets stediPlanName + stediErrorDescription to ''
+    //      so stediIsComplete becomes false immediately (otherwise the
+    //      stale prior result would satisfy it and the watcher effect
+    //      would kill the spinner the moment Run is clicked).
+    //   2. removeOverlayKeys deletes those same keys from the overlay
+    //      so the next refetch can render Monday's freshly-written
+    //      values without being masked by the empty strings we just
+    //      put into local state. setPatients on refetch overwrites
+    //      state directly; the overlay is what would have persisted.
+    onUpdate({ stediPlanName: "", stediErrorDescription: "" });
     onRemoveOverlayKeys?.([
       "stediPlanName",
       "stediErrorDescription",
