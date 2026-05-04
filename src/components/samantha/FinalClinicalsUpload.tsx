@@ -155,7 +155,7 @@ export function FinalClinicalsUpload({ itemId, onUploaded }: Props) {
             ? "Uploading…"
             : dragOver
               ? "Drop to upload"
-              : "Upload Clinicals"}
+              : "Upload Auth Docs"}
         </p>
         <p className="text-[11px] text-muted-foreground leading-tight mt-0.5">
           {uploading
