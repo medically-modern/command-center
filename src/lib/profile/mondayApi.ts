@@ -204,6 +204,18 @@ export async function writeStatusIndex(itemId: string, columnId: string, index: 
   await gql(query, { boardId: BOARD_ID, itemId, columnId, value: JSON.stringify({ index }) });
 }
 
+/** Clear a status column (set it back to no value / blank). Useful when
+ *  a "When status changes to X" automation needs to be re-fired even
+ *  though the column already shows X — write blank first, then X again. */
+export async function clearStatusColumn(itemId: string, columnId: string): Promise<void> {
+  const query = `
+    mutation ($boardId: ID!, $itemId: ID!, $columnId: String!, $value: String!) {
+      change_simple_column_value(board_id: $boardId, item_id: $itemId, column_id: $columnId, value: $value) { id }
+    }
+  `;
+  await gql(query, { boardId: BOARD_ID, itemId, columnId, value: "" });
+}
+
 /** Write a text column. */
 export async function writeText(itemId: string, columnId: string, text: string): Promise<void> {
   const query = `

@@ -169,6 +169,37 @@ export function StediPanel({ patient, onRefresh, onUpdate, onNext }: Props) {
   const handleRunStedi = async () => {
     setRunning(true);
     setPollingForStedi(true);
+    // Optimistic local clear — wipes the previous run's results from
+    // the UI immediately so the agent doesn't read stale data while the
+    // new check is in flight. Monday gets cleared by triggerStediRun.
+    onUpdate({
+      stediEligibilityActive: "",
+      stediCoverageType: "",
+      stediPayerName: "",
+      stediPlanName: "",
+      stediMedicareAdvantage: "",
+      stediMedicareAdvantageCarrier: "",
+      stediMedicareAdvantageMemberId: "",
+      stediQmb: "",
+      stediMedicareJurisdiction: "",
+      stediMedicaidMltc: "",
+      stediManagedMedicaid: "",
+      stediInNetwork: "",
+      stediPriorAuthRequired: "",
+      stediCoinsurance: "",
+      stediCopay: "",
+      stediIndividualDeductible: "",
+      stediIndividualDeductibleRemaining: "",
+      stediFamilyDeductible: "",
+      stediFamilyDeductibleRemaining: "",
+      stediIndividualOopMax: "",
+      stediIndividualOopMaxRemaining: "",
+      stediFamilyOopMax: "",
+      stediFamilyOopMaxRemaining: "",
+      stediPlanBeginDate: "",
+      stediErrorDescription: "",
+      stediSecondaryMedicaidId: "",
+    });
     try {
       await triggerStediRun(patient.id);
       toast.success("Stedi eligibility check triggered");

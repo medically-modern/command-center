@@ -4,7 +4,8 @@
  */
 import {
   writeStatusIndex, writeText, writePhone, writeEmail, writeNumber,
-  writeLocation, writeItemName, writeDropdownIds, fetchItem, COL,
+  writeLocation, writeItemName, writeDropdownIds, fetchItem,
+  clearStatusColumn, COL,
 } from "./mondayApi";
 import type { Patient } from "./workflow";
 import { phoneDigits } from "./workflow";
@@ -16,8 +17,56 @@ import {
   CGM_COVERAGE_PATH_INDEX, GENDER_INDEX, MOVE_TO_ONBOARDING_INDEX,
 } from "./mondayMapping";
 
-/** Trigger a Stedi eligibility run — the ONLY immediate write. */
+/**
+ * Trigger a Stedi eligibility run.
+ *
+ * Steps:
+ *   1. Wipe every Stedi result text column on Monday so the page stops
+ *      showing stale data from the previous run (especially the error
+ *      description, which otherwise sticks around and makes a new run
+ *      look like nothing happened).
+ *   2. Clear the runStediEligibility status column to blank, then write
+ *      "Run" (index 1). Two writes, but it guarantees a real transition
+ *      so the "When status changes to Run" Monday automation re-fires
+ *      even if the column was already showing "Run".
+ *
+ * This is the ONLY immediate write from the profile UI — every other
+ * field still batches into sendPatientToMonday.
+ */
 export async function triggerStediRun(itemId: string): Promise<void> {
+  // Result columns to blank. All text columns; safe to clear in parallel.
+  const stediResultColumns: string[] = [
+    COL.stediEligibilityActive,
+    COL.stediCoverageType,
+    COL.stediPayerName,
+    COL.stediPlanName,
+    COL.stediMedicareAdvantage,
+    COL.stediMedicareAdvantageCarrier,
+    COL.stediMedicareAdvantageMemberId,
+    COL.stediQmb,
+    COL.stediMedicareJurisdiction,
+    COL.stediMedicaidMltc,
+    COL.stediManagedMedicaid,
+    COL.stediInNetwork,
+    COL.stediPriorAuthRequired,
+    COL.stediCoinsurance,
+    COL.stediCopay,
+    COL.stediIndividualDeductible,
+    COL.stediIndividualDeductibleRemaining,
+    COL.stediFamilyDeductible,
+    COL.stediFamilyDeductibleRemaining,
+    COL.stediIndividualOopMax,
+    COL.stediIndividualOopMaxRemaining,
+    COL.stediFamilyOopMax,
+    COL.stediFamilyOopMaxRemaining,
+    COL.stediPlanBeginDate,
+    COL.stediErrorDescription,
+    COL.stediSecondaryMedicaidId,
+  ];
+  await Promise.all(stediResultColumns.map((c) => writeText(itemId, c, "")));
+
+  // Force a real status transition: clear → Run.
+  await clearStatusColumn(itemId, COL.runStediEligibility);
   await writeStatusIndex(itemId, COL.runStediEligibility, 1);
 }
 
