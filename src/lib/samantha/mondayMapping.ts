@@ -31,6 +31,7 @@ export const ESCALATION_INDEX = {
 
 // Stage Advancer indices
 export const STAGE_INDEX = {
+  authDenied: 0,
   stuck: 2,
   benefitsSos: 3,
   authorization: 4,

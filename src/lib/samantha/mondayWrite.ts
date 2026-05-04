@@ -241,11 +241,49 @@ export async function sendPatientToMonday(p: Patient, context: "benefits" | "sub
       fn: () => writeStatusIndex(p.id, COL.stageAdvancer, STAGE_INDEX.authOutstanding),
     });
   } else if (context === "authOutstanding") {
-    tasks.push({
-      label: "Stage Advancer",
-      columnId: COL.stageAdvancer,
-      fn: () => writeStatusIndex(p.id, COL.stageAdvancer, STAGE_INDEX.complete),
-    });
+    // Auth Outstanding outcome rules:
+    //   - ANY product denied        → Stage = Auth Denied + Escalation Required
+    //   - All served products are
+    //     auth-valid OR no-auth-needed → Stage = Complete + Escalation cleared
+    //   - Otherwise (partial — some
+    //     products still blank)      → leave Stage Advancer alone
+    const anyDenied = entries.some(
+      (e) => e.state?.authOutstandingResult === "denied",
+    );
+    const allResolved =
+      entries.length > 0 &&
+      entries.every(
+        (e) =>
+          e.state?.authOutstandingResult === "auth-valid" ||
+          e.state?.authOutstandingResult === "no-auth-needed",
+      );
+
+    if (anyDenied) {
+      tasks.push({
+        label: "Stage Advancer",
+        columnId: COL.stageAdvancer,
+        fn: () => writeStatusIndex(p.id, COL.stageAdvancer, STAGE_INDEX.authDenied),
+      });
+      tasks.push({
+        label: "Escalation",
+        columnId: COL.escalation,
+        fn: () => writeStatusIndex(p.id, COL.escalation, ESCALATION_INDEX.required),
+      });
+    } else if (allResolved) {
+      // Everything is resolved cleanly — patient moves to Complete and
+      // any prior denial-driven escalation flag is cleared.
+      tasks.push({
+        label: "Stage Advancer",
+        columnId: COL.stageAdvancer,
+        fn: () => writeStatusIndex(p.id, COL.stageAdvancer, STAGE_INDEX.complete),
+      });
+      tasks.push({
+        label: "Escalation",
+        columnId: COL.escalation,
+        fn: () => writeStatusIndex(p.id, COL.escalation, ESCALATION_INDEX.done),
+      });
+    }
+    // else: partial — leave Stage Advancer and Escalation as they are.
   } else {
     const outcome = deriveInsuranceOutcome(effectiveIns, entries.map(e => e.cid));
 
