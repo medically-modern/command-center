@@ -74,5 +74,24 @@ export function useMondayPatients() {
     delete overlayRef.current[id];
   }, []);
 
-  return { patients, loading, error, refetch, updateLocal, clearOverlay };
+  /**
+   * Remove a specific set of fields from a patient's overlay. Use when
+   * the page-side optimistic update needs to step out of the way so
+   * Monday's freshly-polled value can render unmasked. Leaves all other
+   * in-progress edits intact (unlike clearOverlay).
+   */
+  const removeOverlayKeys = useCallback(
+    (id: string, keys: (keyof Patient)[]) => {
+      const entry = overlayRef.current[id];
+      if (!entry) return;
+      for (const k of keys) delete entry[k];
+      // If we just emptied the overlay, drop the bucket entirely.
+      if (Object.keys(entry).length === 0) {
+        delete overlayRef.current[id];
+      }
+    },
+    [],
+  );
+
+  return { patients, loading, error, refetch, updateLocal, clearOverlay, removeOverlayKeys };
 }

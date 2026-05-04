@@ -21,7 +21,7 @@ import { useNavigate } from "react-router-dom";
 
 const ProfilePage = () => {
   const navigate = useNavigate();
-  const { patients, loading, error, refetch, updateLocal, clearOverlay } = useMondayPatients();
+  const { patients, loading, error, refetch, updateLocal, clearOverlay, removeOverlayKeys } = useMondayPatients();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [activeTab, setActiveTab] = useState<"stedi" | "serving" | "doctor">("stedi");
@@ -118,8 +118,10 @@ const ProfilePage = () => {
                   <ClipboardCheck className="h-5 w-5 text-primary-foreground" />
                 </div>
                 <div>
-                  <p className="text-[10px] uppercase tracking-[0.2em] opacity-70">Medically Modern</p>
-                  <h1 className="text-2xl font-bold">Profile Checklist</h1>{selected && <p className="text-sm opacity-80 mt-0.5">{selected.name}</p>}
+                  <p className="text-[10px] uppercase tracking-[0.2em] opacity-70">Medically Modern · Profile Tool</p>
+                  <h1 className="text-xl font-semibold">
+                    {selected ? selected.name : "Profile Send Off"}
+                  </h1>
                 </div>
               </div>
             </div>
@@ -147,7 +149,15 @@ const ProfilePage = () => {
                     </TabsList>
 
                     <TabsContent value="stedi" className="mt-0">
-                      <StediPanel patient={selected} onRefresh={refetch} onUpdate={handleUpdate} onNext={() => setActiveTab("serving")} />
+                      <StediPanel
+                        patient={selected}
+                        onRefresh={refetch}
+                        onUpdate={handleUpdate}
+                        onNext={() => setActiveTab("serving")}
+                        onRemoveOverlayKeys={(keys) =>
+                          selected && removeOverlayKeys(selected.id, keys)
+                        }
+                      />
                     </TabsContent>
 
                     <TabsContent value="serving" className="mt-0">

@@ -49,6 +49,10 @@ interface Props {
   onRefresh: () => void;
   onUpdate: (patch: Partial<Patient>) => void;
   onNext?: () => void;
+  /** Drop specific keys from the patient's local-edit overlay. Used
+   *  before triggering a Stedi run so any prior optimistic clears (or
+   *  page-side edits) don't mask the values Monday is about to write. */
+  onRemoveOverlayKeys?: (keys: (keyof Patient)[]) => void;
 }
 
 // Fields always shown after Stedi run
@@ -91,7 +95,7 @@ function ResultRow({ label, value, isError }: { label: string; value: string; is
   );
 }
 
-export function StediPanel({ patient, onRefresh, onUpdate, onNext }: Props) {
+export function StediPanel({ patient, onRefresh, onUpdate, onNext, onRemoveOverlayKeys }: Props) {
   const [running, setRunning] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [costSharingMode, setCostSharingMode] = useState<"individual" | "family">("individual");
@@ -169,14 +173,39 @@ export function StediPanel({ patient, onRefresh, onUpdate, onNext }: Props) {
   const handleRunStedi = async () => {
     setRunning(true);
     setPollingForStedi(true);
-    // Clear the two "is the run done?" signals locally so the UI flips
-    // to a clean running state immediately. Other fields keep their
-    // stale values until the new run overwrites them — that's better
-    // than blanking everything if the run hangs.
-    onUpdate({
-      stediPlanName: "",
-      stediErrorDescription: "",
-    });
+    // Scrub any prior Stedi entries from the local-edit overlay BEFORE
+    // we trigger the run. updateLocal-style optimistic clears would put
+    // empty strings into the overlay and mask whatever Monday writes
+    // back — so once a fresh result lands the UI would never show it.
+    // Removing the keys entirely lets polling render Monday's truth.
+    onRemoveOverlayKeys?.([
+      "stediPlanName",
+      "stediErrorDescription",
+      "stediEligibilityActive",
+      "stediCoverageType",
+      "stediPayerName",
+      "stediMedicareAdvantage",
+      "stediMedicareAdvantageCarrier",
+      "stediMedicareAdvantageMemberId",
+      "stediQmb",
+      "stediMedicareJurisdiction",
+      "stediMedicaidMltc",
+      "stediManagedMedicaid",
+      "stediInNetwork",
+      "stediPriorAuthRequired",
+      "stediCoinsurance",
+      "stediCopay",
+      "stediIndividualDeductible",
+      "stediIndividualDeductibleRemaining",
+      "stediFamilyDeductible",
+      "stediFamilyDeductibleRemaining",
+      "stediIndividualOopMax",
+      "stediIndividualOopMaxRemaining",
+      "stediFamilyOopMax",
+      "stediFamilyOopMaxRemaining",
+      "stediPlanBeginDate",
+      "stediSecondaryMedicaidId",
+    ]);
     try {
       await triggerStediRun(patient.id);
       toast.success("Stedi eligibility check triggered");
