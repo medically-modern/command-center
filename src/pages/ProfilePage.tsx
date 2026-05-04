@@ -118,10 +118,8 @@ const ProfilePage = () => {
                   <ClipboardCheck className="h-5 w-5 text-primary-foreground" />
                 </div>
                 <div>
-                  <p className="text-[10px] uppercase tracking-[0.2em] opacity-70">Medically Modern · Profile Tool</p>
-                  <h1 className="text-xl font-semibold">
-                    {selected ? selected.name : "Profile Send Off"}
-                  </h1>
+                  <p className="text-[10px] uppercase tracking-[0.2em] opacity-70">Medically Modern</p>
+                  <h1 className="text-2xl font-bold">Profile Checklist</h1>{selected && <p className="text-sm opacity-80 mt-0.5">{selected.name}</p>}
                 </div>
               </div>
             </div>

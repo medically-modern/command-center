@@ -79,8 +79,8 @@ const AuthOutstandingPage = () => {
                   <Stethoscope className="h-5 w-5 text-primary-foreground" />
                 </div>
                 <div>
-                  <p className="text-[10px] uppercase tracking-[0.2em] opacity-70">Medically Modern · Auth Outstanding</p>
-                  <h1 className="text-xl font-semibold">{selected ? `${selected.name} · Auth Outstanding` : "Auth Outstanding"}</h1>
+                  <p className="text-[10px] uppercase tracking-[0.2em] opacity-70">Medically Modern</p>
+                  <h1 className="text-2xl font-bold">Auth Outstanding</h1>{selected && <p className="text-sm opacity-80 mt-0.5">{selected.name}</p>}
                 </div>
               </div>
               <div className="flex items-center gap-2">
