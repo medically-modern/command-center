@@ -169,36 +169,13 @@ export function StediPanel({ patient, onRefresh, onUpdate, onNext }: Props) {
   const handleRunStedi = async () => {
     setRunning(true);
     setPollingForStedi(true);
-    // Optimistic local clear — wipes the previous run's results from
-    // the UI immediately so the agent doesn't read stale data while the
-    // new check is in flight. Monday gets cleared by triggerStediRun.
+    // Clear the two "is the run done?" signals locally so the UI flips
+    // to a clean running state immediately. Other fields keep their
+    // stale values until the new run overwrites them — that's better
+    // than blanking everything if the run hangs.
     onUpdate({
-      stediEligibilityActive: "",
-      stediCoverageType: "",
-      stediPayerName: "",
       stediPlanName: "",
-      stediMedicareAdvantage: "",
-      stediMedicareAdvantageCarrier: "",
-      stediMedicareAdvantageMemberId: "",
-      stediQmb: "",
-      stediMedicareJurisdiction: "",
-      stediMedicaidMltc: "",
-      stediManagedMedicaid: "",
-      stediInNetwork: "",
-      stediPriorAuthRequired: "",
-      stediCoinsurance: "",
-      stediCopay: "",
-      stediIndividualDeductible: "",
-      stediIndividualDeductibleRemaining: "",
-      stediFamilyDeductible: "",
-      stediFamilyDeductibleRemaining: "",
-      stediIndividualOopMax: "",
-      stediIndividualOopMaxRemaining: "",
-      stediFamilyOopMax: "",
-      stediFamilyOopMaxRemaining: "",
-      stediPlanBeginDate: "",
       stediErrorDescription: "",
-      stediSecondaryMedicaidId: "",
     });
     try {
       await triggerStediRun(patient.id);

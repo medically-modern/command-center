@@ -20,60 +20,21 @@ import {
 /**
  * Trigger a Stedi eligibility run.
  *
- * Steps:
- *   1. Wipe every Stedi result text column on Monday so the page stops
- *      showing stale data from the previous run (especially the error
- *      description, which otherwise sticks around and makes a new run
- *      look like nothing happened).
- *   2. Clear the runStediEligibility status column to blank, then write
- *      "Run" (index 1). Two writes, but it guarantees a real transition
- *      so the "When status changes to Run" Monday automation re-fires
- *      even if the column was already showing "Run".
+ * Minimal-touch version: only clear the two columns the page uses as
+ * "is the run finished?" signals (planName for success, errorDescription
+ * for failure). Everything else gets overwritten by the next Stedi
+ * response, so leaving stale values in those fields for a few seconds
+ * is preferable to wiping the whole results card and showing nothing
+ * if the new run hangs.
  *
- * This is the ONLY immediate write from the profile UI — every other
- * field still batches into sendPatientToMonday.
+ * Then force a real Run-Stedi-Eligibility status transition so the
+ * "When status changes to Run" Monday automation re-fires even if the
+ * column is already showing "Run".
  */
 export async function triggerStediRun(itemId: string): Promise<void> {
-  // Result columns to blank. Written SEQUENTIALLY (not in parallel) —
-  // Monday returns "Item link max locks exceeded" when too many
-  // change_column_value mutations hit the same item concurrently if
-  // any of those columns participate in mirror/connect links.
-  const stediResultColumns: string[] = [
-    COL.stediEligibilityActive,
-    COL.stediCoverageType,
-    COL.stediPayerName,
-    COL.stediPlanName,
-    COL.stediMedicareAdvantage,
-    COL.stediMedicareAdvantageCarrier,
-    COL.stediMedicareAdvantageMemberId,
-    COL.stediQmb,
-    COL.stediMedicareJurisdiction,
-    COL.stediMedicaidMltc,
-    COL.stediManagedMedicaid,
-    COL.stediInNetwork,
-    COL.stediPriorAuthRequired,
-    COL.stediCoinsurance,
-    COL.stediCopay,
-    COL.stediIndividualDeductible,
-    COL.stediIndividualDeductibleRemaining,
-    COL.stediFamilyDeductible,
-    COL.stediFamilyDeductibleRemaining,
-    COL.stediIndividualOopMax,
-    COL.stediIndividualOopMaxRemaining,
-    COL.stediFamilyOopMax,
-    COL.stediFamilyOopMaxRemaining,
-    COL.stediPlanBeginDate,
-    COL.stediErrorDescription,
-    COL.stediSecondaryMedicaidId,
-  ];
-  for (const colId of stediResultColumns) {
-    try {
-      await writeText(itemId, colId, "");
-    } catch (e) {
-      // Don't let one stuck column block the rest — log and continue.
-      console.warn(`[triggerStediRun] failed to clear ${colId}:`, e);
-    }
-  }
+  // Clear the two completion signals only. Sequential, only two writes.
+  await writeText(itemId, COL.stediErrorDescription, "");
+  await writeText(itemId, COL.stediPlanName, "");
 
   // Force a real status transition: clear → Run.
   await clearStatusColumn(itemId, COL.runStediEligibility);
