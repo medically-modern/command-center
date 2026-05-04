@@ -20,6 +20,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Package, Repeat, Send, Inbox, ShieldCheck } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ClinicalsDownloadButton } from "./ClinicalsDownloadButton";
+import { FinalClinicalsUpload } from "./FinalClinicalsUpload";
 
 interface Props {
   patient: Patient;
@@ -65,7 +66,10 @@ export function AuthOutstandingPanel({ patient, onCodeChange, onNotesChange }: P
             Review submission info and enter approval details for each required product.
           </p>
         </div>
-        <ClinicalsDownloadButton itemId={patient.id} />
+        <div className="flex items-center gap-2">
+          <FinalClinicalsUpload itemId={patient.id} />
+          <ClinicalsDownloadButton itemId={patient.id} />
+        </div>
       </div>
 
       {!dropdownsReady && (

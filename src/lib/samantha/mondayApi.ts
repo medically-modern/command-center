@@ -46,6 +46,9 @@ export const COL = {
   carecentrixIntakeId: "text_mm2wnhx",
   callFaxNumber: "text_mm2yd7st",
 
+  // File columns
+  finalClinicals: "file_mm25m8c1",
+
   // Per-product auth result columns
   authResult: {
     monitor: "color_mm1wgjd1",
@@ -370,4 +373,62 @@ export async function fetchItemAssets(itemId: string): Promise<MondayAsset[]> {
     itemId,
   });
   return data.boards?.[0]?.items_page?.items?.[0]?.assets ?? [];
+}
+
+/**
+ * Upload a file (PDF, image, etc.) into a Monday file column. Routed
+ * through the Cloudflare Worker proxy because Monday's /v2/file endpoint
+ * doesn't return CORS headers — direct browser POST would be blocked.
+ */
+export async function uploadFileToColumn(
+  itemId: string,
+  columnId: string,
+  bytes: Uint8Array,
+  filename: string,
+  mimeType = "application/pdf",
+): Promise<void> {
+  const token = getToken();
+  if (!token) throw new Error("VITE_MONDAY_API_TOKEN is not set");
+
+  const query = `mutation ($file: File!) { add_file_to_column(item_id: ${itemId}, column_id: "${columnId}", file: $file) { id } }`;
+
+  const fd = new FormData();
+  fd.append("query", query);
+  fd.append(
+    "variables[file]",
+    new Blob([bytes as BlobPart], { type: mimeType }),
+    filename,
+  );
+
+  const proxyUrl =
+    (import.meta.env.VITE_MONDAY_FILE_PROXY_URL as string | undefined) ||
+    "https://monday-file-proxy.medicallymodern.workers.dev";
+
+  let res: Response;
+  try {
+    res = await fetch(proxyUrl, {
+      method: "POST",
+      headers: { Authorization: token },
+      body: fd,
+    });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    console.error("[uploadFileToColumn] network error", { itemId, columnId, msg });
+    throw new Error(
+      `Upload network error (item ${itemId}, column ${columnId}): ${msg}`,
+    );
+  }
+  if (!res.ok) {
+    const txt = await res.text();
+    throw new Error(`File upload failed (${res.status}): ${txt}`);
+  }
+  let json: { errors?: unknown };
+  try {
+    json = await res.json();
+  } catch {
+    json = {};
+  }
+  if (json.errors) {
+    throw new Error(`Monday file upload error: ${JSON.stringify(json.errors)}`);
+  }
 }
