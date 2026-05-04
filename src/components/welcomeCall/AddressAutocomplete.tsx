@@ -17,7 +17,7 @@ async function loadGooglePlaces(): Promise<void> {
   if (!key) {
     console.warn("VITE_GOOGLE_MAPS_API_KEY is not set — address autocomplete disabled");
     mapsLoading = false;
-    return;
+    return Promise.reject(new Error("No API key"));
   }
 
   return new Promise((resolve, reject) => {
@@ -40,7 +40,7 @@ async function loadGooglePlaces(): Promise<void> {
 }
 
 /** Build a full address string from address_components, guaranteeing zip is included */
-function buildFullAddress(place: google.maps.places.PlaceResult): string {
+function buildFullAddress(place: any): string {
   const components = place.address_components || [];
   const get = (type: string) => components.find((c) => c.types.includes(type))?.long_name || "";
 
@@ -72,7 +72,7 @@ interface Props {
 
 export function AddressAutocomplete({ value, onChange, placeholder }: Props) {
   const inputRef = useRef<HTMLInputElement>(null);
-  const autocompleteRef = useRef<google.maps.places.Autocomplete | null>(null);
+  const autocompleteRef = useRef<any>(null);
   const onChangeRef = useRef(onChange);
   const [ready, setReady] = useState(mapsLoaded);
 
@@ -87,8 +87,9 @@ export function AddressAutocomplete({ value, onChange, placeholder }: Props) {
 
   useEffect(() => {
     if (!ready || !inputRef.current || autocompleteRef.current) return;
+    if (!(window as any).google?.maps?.places?.Autocomplete) return;
 
-    const autocomplete = new google.maps.places.Autocomplete(inputRef.current, {
+    const autocomplete = new (window as any).google.maps.places.Autocomplete(inputRef.current, {
       componentRestrictions: { country: "us" },
       types: ["address"],
       fields: ["address_components", "formatted_address", "geometry"],

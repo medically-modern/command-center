@@ -52,7 +52,7 @@ async function loadGooglePlaces(): Promise<void> {
  * Build a full address from place.address_components, guaranteeing the zip
  * is always included.
  */
-function buildFullAddress(place: google.maps.places.PlaceResult): string {
+function buildFullAddress(place: any): string {
   const components = place.address_components;
   if (!components || components.length === 0) {
     return place.formatted_address || "";
@@ -94,7 +94,7 @@ interface Props {
 
 export function AddressAutocomplete({ value, onChange, placeholder, className }: Props) {
   const inputRef = useRef<HTMLInputElement>(null);
-  const autocompleteRef = useRef<google.maps.places.Autocomplete | null>(null);
+  const autocompleteRef = useRef<any>(null);
   const onChangeRef = useRef(onChange);
   const [ready, setReady] = useState(mapsLoaded);
 
@@ -112,7 +112,7 @@ export function AddressAutocomplete({ value, onChange, placeholder, className }:
     if (!ready || !inputRef.current || autocompleteRef.current) return;
     if (!(window as any).google?.maps?.places?.Autocomplete) return;
 
-    const ac = new google.maps.places.Autocomplete(inputRef.current, {
+    const ac = new (window as any).google.maps.places.Autocomplete(inputRef.current, {
       componentRestrictions: { country: "us" },
       types: ["address"],
       fields: ["address_components", "formatted_address", "geometry"],
@@ -138,7 +138,7 @@ export function AddressAutocomplete({ value, onChange, placeholder, className }:
 
     return () => {
       if (autocompleteRef.current) {
-        google.maps.event.clearInstanceListeners(autocompleteRef.current);
+        (window as any).google.maps.event.clearInstanceListeners(autocompleteRef.current);
         autocompleteRef.current = null;
       }
     };
