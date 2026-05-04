@@ -17,6 +17,7 @@ import {
   SECONDARY_INSURANCE_INDEX,
   groupPrimaryInsuranceLabels,
 } from "@/lib/profile/mondayMapping";
+import { ClinicalsDownloadButton } from "./ClinicalsDownloadButton";
 import { toast } from "sonner";
 import { Play, Loader2, AlertTriangle, CheckCircle2, Save, CheckCheck, ArrowRight, ChevronsUpDown, Check } from "lucide-react";
 
@@ -301,9 +302,12 @@ export function StediPanel({ patient, onRefresh, onUpdate, onNext, onRemoveOverl
       {/* Step A: Insurance Input + Run Stedi */}
       <Card className="shadow-card">
         <CardHeader className="pb-3">
-          <div>
-            <p className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground font-semibold">Step 1</p>
-            <CardTitle className="text-lg">Run Stedi Check</CardTitle>
+          <div className="flex items-start justify-between gap-3 flex-wrap">
+            <div>
+              <p className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground font-semibold">Step 1</p>
+              <CardTitle className="text-lg">Run Stedi Check</CardTitle>
+            </div>
+            <ClinicalsDownloadButton itemId={patient.id} />
           </div>
         </CardHeader>
         <CardContent className="space-y-5">

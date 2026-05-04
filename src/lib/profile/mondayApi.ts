@@ -435,3 +435,33 @@ export async function createUpdate(itemId: string, body: string): Promise<void> 
   `;
   await gql(query, { itemId, body });
 }
+
+// ── Files / Assets ───────────────────────────────────────────────────
+
+export interface MondayAsset {
+  id: string;
+  name: string;
+  url: string;
+  public_url: string;
+}
+
+/** Fetch every file asset attached to a profile-board item — used by the
+ *  Clinicals download button on the Stedi tab so the agent can grab the
+ *  prior round's clinical files before re-running eligibility. */
+export async function fetchItemAssets(itemId: string): Promise<MondayAsset[]> {
+  const query = `
+    query ($boardId: ID!, $itemId: ID!) {
+      boards(ids: [$boardId]) {
+        items_page(limit: 1, query_params: { ids: [$itemId] }) {
+          items {
+            assets(assets_source: all) { id name url public_url }
+          }
+        }
+      }
+    }
+  `;
+  const data = await gql<{
+    boards: { items_page: { items: { assets: MondayAsset[] }[] } }[];
+  }>(query, { boardId: BOARD_ID, itemId });
+  return data.boards?.[0]?.items_page?.items?.[0]?.assets ?? [];
+}
