@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Download, Loader2 } from "lucide-react";
+import { FolderDown, Loader2 } from "lucide-react";
 import { fetchItemAssets } from "@/lib/samantha/mondayApi";
 import { toast } from "sonner";
 
@@ -88,12 +88,12 @@ export function ClinicalsDownloadButton({ itemId }: Props) {
       size="sm"
       onClick={handleDownload}
       disabled={loading || countLoading}
-      className="gap-2"
+      className="gap-2 h-9 bg-sky-50 hover:bg-sky-100 border-sky-300 text-sky-800 dark:bg-sky-950/40 dark:hover:bg-sky-950/60 dark:border-sky-800 dark:text-sky-200"
     >
-      {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
-      Clinicals
+      {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <FolderDown className="h-4 w-4" />}
+      Download Clinicals
       {showCount && (
-        <span className="ml-1 inline-flex items-center justify-center min-w-[1.5rem] px-1.5 py-0.5 rounded-full bg-primary/10 text-primary text-[10px] font-semibold leading-none">
+        <span className="ml-1 inline-flex items-center justify-center min-w-[1.25rem] px-1.5 py-0.5 rounded-full bg-sky-200/70 dark:bg-sky-800/70 text-sky-900 dark:text-sky-100 text-[10px] font-semibold leading-none">
           {fileCount}
         </span>
       )}

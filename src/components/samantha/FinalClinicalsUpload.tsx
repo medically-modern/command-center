@@ -3,13 +3,11 @@
  * Final Clinicals file column. Used on the Auth Outstanding page next
  * to the Clinicals download button.
  *
- * Accepts multiple files at once. Each file is uploaded sequentially —
- * Monday's add_file_to_column mutation only takes one file per call —
- * and progress is surfaced via toast.
+ * Renders as a sized drop-zone (not a button) so the drag-and-drop
+ * affordance is obvious at a glance.
  */
 import { useRef, useState } from "react";
-import { Upload, Loader2 } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { UploadCloud, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { uploadFileToColumn, COL } from "@/lib/samantha/mondayApi";
 import { cn } from "@/lib/utils";
@@ -93,12 +91,14 @@ export function FinalClinicalsUpload({ itemId, onUploaded }: Props) {
   const onDrop = (e: React.DragEvent) => {
     e.preventDefault();
     setDragOver(false);
+    if (uploading || !itemId) return;
     if (!e.dataTransfer?.files?.length) return;
     void handleFiles(e.dataTransfer.files);
   };
 
   const onDragOver = (e: React.DragEvent) => {
     e.preventDefault();
+    if (uploading || !itemId) return;
     if (!dragOver) setDragOver(true);
   };
 
@@ -107,33 +107,62 @@ export function FinalClinicalsUpload({ itemId, onUploaded }: Props) {
     setDragOver(false);
   };
 
+  const onClick = () => {
+    if (uploading || !itemId) return;
+    inputRef.current?.click();
+  };
+
   return (
     <div
       onDrop={onDrop}
       onDragOver={onDragOver}
       onDragLeave={onDragLeave}
+      onClick={onClick}
+      role="button"
+      tabIndex={0}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onClick();
+        }
+      }}
+      aria-disabled={!itemId || uploading}
       className={cn(
-        "rounded-md border border-dashed transition-colors",
+        "min-w-[260px] rounded-lg border-2 border-dashed px-4 py-3 transition-all cursor-pointer select-none",
+        "flex items-center gap-3 text-left",
         dragOver
-          ? "border-primary bg-primary/10"
-          : "border-border bg-background",
+          ? "border-primary bg-primary/10 ring-2 ring-primary/30"
+          : "border-border bg-muted/40 hover:border-primary/60 hover:bg-muted/60",
+        (!itemId || uploading) && "opacity-60 cursor-not-allowed",
       )}
+      title="Drag files here or click to upload to Final Clinicals on Monday"
     >
-      <Button
-        variant="outline"
-        size="sm"
-        onClick={() => inputRef.current?.click()}
-        disabled={!itemId || uploading}
-        className="gap-2 border-0 bg-transparent hover:bg-transparent"
-        title="Drag files here or click to upload to Final Clinicals"
+      <div
+        className={cn(
+          "h-10 w-10 rounded-md flex items-center justify-center shrink-0 transition-colors",
+          dragOver ? "bg-primary text-primary-foreground" : "bg-background border",
+        )}
       >
         {uploading ? (
-          <Loader2 className="h-4 w-4 animate-spin" />
+          <Loader2 className="h-5 w-5 animate-spin" />
         ) : (
-          <Upload className="h-4 w-4" />
+          <UploadCloud className="h-5 w-5" />
         )}
-        {uploading ? "Uploading…" : dragOver ? "Drop to upload" : "Upload Clinicals"}
-      </Button>
+      </div>
+      <div className="min-w-0">
+        <p className="text-sm font-semibold leading-tight">
+          {uploading
+            ? "Uploading…"
+            : dragOver
+              ? "Drop to upload"
+              : "Upload Clinicals"}
+        </p>
+        <p className="text-[11px] text-muted-foreground leading-tight mt-0.5">
+          {uploading
+            ? "Saving to Final Clinicals on Monday"
+            : "Drag files here or click to browse"}
+        </p>
+      </div>
       <input
         ref={inputRef}
         type="file"
