@@ -152,3 +152,10 @@ export async function sendWelcomeCallTextToMonday(p: Patient): Promise<void> {
 export async function sendNotesToMonday(itemId: string, notes: string): Promise<void> {
   await writeLongText(itemId, COL.notes, notes);
 }
+
+/**
+ * Immediately push call attempts count to Monday (called on +1 press).
+ */
+export async function sendCallAttemptsToMonday(itemId: string, count: number): Promise<void> {
+  await writeText(itemId, COL.callAttempts, String(count));
+}

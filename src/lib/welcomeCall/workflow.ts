@@ -47,6 +47,8 @@ export interface Patient {
   welcomeCallTextIndex: number | null;
   orderHandling: string;
   orderHandlingIndex: number | null;
+  // Call attempts
+  callAttempts: string;
   // Order dates (read-only)
   suppliesOrderDate: string;
   sensorsOrderDate: string;
