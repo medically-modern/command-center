@@ -47,6 +47,9 @@ export interface Patient {
   welcomeCallTextIndex: number | null;
   orderHandling: string;
   orderHandlingIndex: number | null;
+  // Order dates (read-only)
+  suppliesOrderDate: string;
+  sensorsOrderDate: string;
   // End-of-call decision: index 1 = Advance, index 2 = Don't Advance
   advanceDecision: string;
   advanceDecisionIndex: number | null;

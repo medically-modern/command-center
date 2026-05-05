@@ -72,6 +72,8 @@ export function PatientInfoCard({ patient, onFieldChange }: Props) {
             <Field label="Referral Source" value={patient.referralSource} />
             <Field label="Doctor Name" value={patient.doctorName} />
             <Field label="Request Type" value={patient.requestType} />
+            <Field label="Supplies Order Date" value={formatDateMDY(patient.suppliesOrderDate)} />
+            <Field label="Sensors Order Date" value={formatDateMDY(patient.sensorsOrderDate)} />
             {patient.serving ? (
               <div>
                 <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">

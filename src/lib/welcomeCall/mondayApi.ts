@@ -51,6 +51,10 @@ export const COL = {
   orderHandling: "color_mm2776fg",
   advanceDecision: "color_mm301cpp",
   
+  // Order dates (read-only)
+  suppliesOrderDate: "date_mm324s6q",
+  sensorsOrderDate: "date_mm32a179",
+
   // Stage
   stageAdvancer: "color_mm1ws96t",
   escalation: "color_mm1x7997",
@@ -65,6 +69,7 @@ export const READ_COLUMN_IDS = [
   COL.monitorQty, COL.pumpQty, COL.qtyInf1, COL.infusionSet1,
   COL.qtyInf2, COL.infusionSet2, COL.subscriptionType, COL.welcomeCallText,
   COL.orderHandling, COL.advanceDecision,
+  COL.suppliesOrderDate, COL.sensorsOrderDate,
 ];
 
 export interface MondayColumnValue {

@@ -73,6 +73,8 @@ export function mondayItemToPatient(item: MondayItem): Patient {
     welcomeCallTextIndex: statusIndex(COL.welcomeCallText),
     orderHandling: txt(COL.orderHandling),
     orderHandlingIndex: statusIndex(COL.orderHandling),
+    suppliesOrderDate: txt(COL.suppliesOrderDate),
+    sensorsOrderDate: txt(COL.sensorsOrderDate),
     advanceDecision: txt(COL.advanceDecision),
     advanceDecisionIndex: statusIndex(COL.advanceDecision),
     secondaryInsuranceIndex: statusIndex(COL.secondaryInsurance),
