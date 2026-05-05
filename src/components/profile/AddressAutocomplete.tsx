@@ -18,7 +18,7 @@ async function loadGooglePlaces(): Promise<void> {
 
   const key = import.meta.env.VITE_GOOGLE_MAPS_API_KEY as string | undefined;
   if (!key) {
-    console.warn("VITE_GOOGLE_MAPS_API_KEY is not set — address autocomplete disabled");
+    console.warn("VITE_GOOGLE_MAPS_API_KEY is not set \u2014 address autocomplete disabled");
     mapsLoading = false;
     return;
   }
@@ -50,7 +50,7 @@ async function loadGooglePlaces(): Promise<void> {
 
 /**
  * Build a full address from place.address_components, guaranteeing the zip
- * is always included.
+ * is always included and apartment/unit numbers are preserved.
  */
 function buildFullAddress(place: any): string {
   const components = place.address_components;
@@ -66,6 +66,7 @@ function buildFullAddress(place: any): string {
 
   const streetNumber = get("street_number");
   const route = get("route");
+  const subpremise = get("subpremise");
   const city =
     get("locality") ||
     get("sublocality_level_1") ||
@@ -73,7 +74,8 @@ function buildFullAddress(place: any): string {
   const state = get("administrative_area_level_1", true);
   const zip = get("postal_code");
 
-  const street = [streetNumber, route].filter(Boolean).join(" ");
+  let street = [streetNumber, route].filter(Boolean).join(" ");
+  if (subpremise) street += ` ${subpremise}`;
   const stateZip = [state, zip].filter(Boolean).join(" ");
   const parts = [street, city, stateZip].filter(Boolean);
   return parts.join(", ");
@@ -160,10 +162,10 @@ export function AddressAutocomplete({ value, onChange, placeholder, className }:
       }
       defaultValue={value}
       onChange={(e) => {
-        // Manual typing (no suggestion picked) — propagate raw text
+        // Manual typing (no suggestion picked) \u2014 propagate raw text
         onChangeRef.current({ address: e.target.value, lat: 0, lng: 0 });
       }}
-      placeholder={placeholder ?? "Start typing address…"}
+      placeholder={placeholder ?? "Start typing address\u2026"}
     />
   );
 }
