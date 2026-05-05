@@ -258,17 +258,18 @@ export function PatientInfoCard({ patient, onFieldChange }: Props) {
 
       {/* Row 2: Benefits + Auth Results */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {(patient.deductible || patient.deductibleRemaining || patient.oopMax || patient.oopMaxRemaining) && (
-          <Card className="p-4">
-            <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-3">Benefits</p>
-            <div className="grid grid-cols-2 gap-3">
-              <Field label="Deductible" value={patient.deductible} />
-              <Field label="Deductible Remaining" value={patient.deductibleRemaining} />
-              <Field label="OOP Max" value={patient.oopMax} />
-              <Field label="OOP Max Remaining" value={patient.oopMaxRemaining} />
-            </div>
-          </Card>
-        )}
+        <Card className="p-4">
+          <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-3">Benefits</p>
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Deductible" value={patient.deductible} />
+            <Field label="Deductible Remaining" value={patient.deductibleRemaining} />
+            <Field label="OOP Max" value={patient.oopMax} />
+            <Field label="OOP Max Remaining" value={patient.oopMaxRemaining} />
+          </div>
+          {!patient.deductible && !patient.deductibleRemaining && !patient.oopMax && !patient.oopMaxRemaining && (
+            <p className="text-sm text-muted-foreground italic">No benefits data yet.</p>
+          )}
+        </Card>
 
         {(patient.cgmAuthResult || patient.sensorsAuthResult || patient.ipAuthResult || patient.infusionSetAuthResult || patient.cartridgeAuthResult) && (
           <Card className="p-4">
