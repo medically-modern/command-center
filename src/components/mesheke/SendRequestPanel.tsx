@@ -14,6 +14,7 @@ import {
   deleteSingleFileFromColumn,
   hasToken,
   uploadFileToColumn,
+  writeDate,
   writeDateTime,
   writeStatusIndex,
   writeStatusLabel,
@@ -266,6 +267,13 @@ export function SendRequestPanel({ patient, resetVersion = 0 }: Props) {
         run: () => writeStatusLabel(patient.id, COL.subStage, nextStage),
       },
     ];
+    if (isParachute) {
+      const nextAction = toIsoDate(addBusinessDays(new Date(), 2));
+      tasks.push({
+        label: `Next Action Date → ${nextAction}`,
+        run: () => writeDate(patient.id, COL.nextActionDate, nextAction),
+      });
+    }
     const results = await Promise.allSettled(tasks.map((t) => t.run()));
     const failures: string[] = [];
     results.forEach((r, i) => {
@@ -1243,6 +1251,26 @@ function AttachmentSummary({ attachments }: { attachments: Attachment[] }) {
 // =====================================================================
 // Helpers
 // =====================================================================
+
+/** Add N business days (Mon–Fri) to a date. */
+function addBusinessDays(from: Date, days: number): Date {
+  const d = new Date(from);
+  let added = 0;
+  while (added < days) {
+    d.setDate(d.getDate() + 1);
+    const dow = d.getDay();
+    if (dow !== 0 && dow !== 6) added++;
+  }
+  return d;
+}
+
+/** Format a Date as YYYY-MM-DD for Monday's date column. */
+function toIsoDate(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
 
 /** Open a Monday file URL in Google Docs Viewer (no download). */
 function openInGoogleViewer(url: string) {
