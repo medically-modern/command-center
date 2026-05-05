@@ -83,9 +83,9 @@ export function PatientsSidebar({ patients, selectedId, onSelect, loading, error
 
   const [todayOnly, setTodayOnly] = useState(false);
 
-  // Use local date so the filter matches the user's calendar regardless of timezone
-  const now = new Date();
-  const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+  // Always use Eastern Time so all users see the same "today" regardless of their local timezone
+  const etParts = new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
+  const todayStr = etParts; // "YYYY-MM-DD" in ET
 
   // For chase tab: split into "action today" vs rest
   const todayPatients = activeTab === "chase" && todayOnly
