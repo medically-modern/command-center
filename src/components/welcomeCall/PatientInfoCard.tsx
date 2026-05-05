@@ -35,7 +35,7 @@ export function PatientInfoCard({ patient, onFieldChange }: Props) {
 
   return (
     <div className="space-y-4">
-      {/* Patient name + phone + intake date */}
+      {/* Patient name + DOB + phone + intake date */}
       <Card className="p-4 flex items-center justify-between gap-4">
         <div>
           <p className="text-xs uppercase tracking-wider text-muted-foreground font-semibold mb-1">
@@ -43,6 +43,15 @@ export function PatientInfoCard({ patient, onFieldChange }: Props) {
           </p>
           <p className="text-lg font-semibold">{patient.name}</p>
         </div>
+
+        {patient.dob && (
+          <div className="text-center">
+            <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1">
+              DOB
+            </p>
+            <p className="text-lg font-semibold">{patient.dob}</p>
+          </div>
+        )}
 
         {patient.referralReceivedDate && (
           <div className="text-center">
