@@ -54,6 +54,13 @@ export const COL = {
   // Call attempts
   callAttempts: "text_mm322fg9",
 
+  // Auth Results (read-only)
+  cgmAuthResult: "color_mm1wgjd1",
+  sensorsAuthResult: "color_mm1x5c99",
+  ipAuthResult: "color_mm1xnzmn",
+  infusionSetAuthResult: "color_mm1xr2j1",
+  cartridgeAuthResult: "color_mm1xybvt",
+
   // Benefits (read-only)
   deductible: "text_mm1xkbqc",
   deductibleRemaining: "text_mm1xdzxw",
@@ -79,6 +86,8 @@ export const READ_COLUMN_IDS = [
   COL.qtyInf2, COL.infusionSet2, COL.subscriptionType, COL.welcomeCallText,
   COL.orderHandling, COL.advanceDecision,
   COL.callAttempts,
+  COL.cgmAuthResult, COL.sensorsAuthResult, COL.ipAuthResult,
+  COL.infusionSetAuthResult, COL.cartridgeAuthResult,
   COL.deductible, COL.deductibleRemaining, COL.oopMax, COL.oopMaxRemaining,
   COL.suppliesOrderDate, COL.sensorsOrderDate,
 ];

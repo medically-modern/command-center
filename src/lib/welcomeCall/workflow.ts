@@ -49,6 +49,12 @@ export interface Patient {
   orderHandlingIndex: number | null;
   // Call attempts
   callAttempts: string;
+  // Auth Results (read-only)
+  cgmAuthResult: string;
+  sensorsAuthResult: string;
+  ipAuthResult: string;
+  infusionSetAuthResult: string;
+  cartridgeAuthResult: string;
   // Benefits (read-only)
   deductible: string;
   deductibleRemaining: string;
