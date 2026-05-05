@@ -572,6 +572,7 @@ export function EvaluatePanel({ patient, resetVersion = 0, onUpdate }: Props) {
         preview={preview}
         onSendToMonday={handleSendToMonday}
         sending={sending}
+        state={state}
       />
     </div>
   );
@@ -1229,11 +1230,27 @@ function FileUploadCard({
   );
 }
 
+/** Returns the list of IP criteria field labels that are shown but not yet filled in. */
+function getMissingIpCriteria(state: EvalState): string[] {
+  if (!state.ipCoveragePath) return [];
+  const cfg = IP_PATH_FIELDS[state.ipCoveragePath];
+  const missing: string[] = [];
+  if (cfg.showMalfunction && state.malfunction === undefined) missing.push("Malfunction");
+  if (cfg.showOow && !state.oowDate) missing.push("OOW Date");
+  if (cfg.showOowOnScript && state.oowDateOnScript === undefined) missing.push("OOW Date on Script?");
+  if (cfg.showEducation && state.diabetesEducation === undefined) missing.push("Diabetes Education");
+  if (cfg.showCgmUse && state.cgmUse === undefined) missing.push("CGM Use");
+  if (cfg.show3Injections && state.threeInjections === undefined) missing.push("3+ Injections / day");
+  if (cfg.showBsIssues && state.bloodSugarIssues === undefined) missing.push("Blood Sugar Issues");
+  return missing;
+}
+
 interface ValiditySummaryProps {
   validity: ReturnType<typeof deriveValidity>;
   preview: ReturnType<typeof buildMondayPreview>;
   onSendToMonday: () => void;
   sending: boolean;
+  state: EvalState;
 }
 
 function ValiditySummary({
@@ -1241,7 +1258,10 @@ function ValiditySummary({
   preview,
   onSendToMonday,
   sending,
+  state,
 }: ValiditySummaryProps) {
+  const missingIpFields = getMissingIpCriteria(state);
+  const blocked = missingIpFields.length > 0;
   return (
     <section className="rounded-xl bg-card border shadow-card p-5 space-y-4">
       <div>
@@ -1288,11 +1308,26 @@ function ValiditySummary({
         <MondayPreviewPanel preview={preview} />
       </div>
 
-      <div className="flex justify-end pt-1">
+      <div className="flex items-center justify-end gap-3 pt-1">
+        {blocked && (
+          <div className="flex items-start gap-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 max-w-sm">
+            <AlertTriangle className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
+            <div>
+              <p className="text-xs font-semibold text-amber-800">
+                Fill out all IP criteria to submit
+              </p>
+              <ul className="mt-1 space-y-0.5">
+                {missingIpFields.map((f) => (
+                  <li key={f} className="text-[11px] text-amber-700">• {f}</li>
+                ))}
+              </ul>
+            </div>
+          </div>
+        )}
         <Button
           size="lg"
           onClick={onSendToMonday}
-          disabled={sending}
+          disabled={sending || blocked}
           className="gap-2 bg-emerald-600 hover:bg-emerald-700 text-white shadow-elevate"
         >
           {sending ? (
