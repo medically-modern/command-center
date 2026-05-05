@@ -3,7 +3,7 @@
  *
  * Samantha board (18410601299): 3 groups → Benefits, Submit Auth, Auth Outstanding
  * Mesheke board (18406060017): 1 group, filtered by Stage Advancer → Evaluate, Send Request, Confirm Receipt, Chase Clinicals
- * Welcome Call board (18410804557): welcomeCall group
+ * Welcome Call board (18410804557): welcomeCall group + finalConfirm group
  * Profile board (18406352652): intake group
  */
 import { useEffect, useState, useCallback } from "react";
@@ -15,6 +15,7 @@ import { fetchGroupItems as fetchMeshekeGroup, GROUPS as MESH_GROUPS, hasToken a
 // those into lazy page chunks, making the imports undefined in this eager chunk.
 const WC_BOARD_ID = 18410804557;
 const WC_GROUP_ID = "group_mm1wvq8p";
+const FINAL_CONFIRM_GROUP_ID = "group_mm2x8jtj";
 const PROFILE_BOARD_ID = 18406352652;
 const PROFILE_GROUP_ID = "group_mm1xf2jb";
 
@@ -78,23 +79,6 @@ export function useRoleCounts() {
           fetchSamanthaGroup(SAM_GROUPS.submitAuth).catch(() => []),
           fetchSamanthaGroup(SAM_GROUPS.authOutstanding).catch(() => []),
         ]);
-        // Note: Samantha Benefits tab → "chaseBenefits" role in the original mapping
-        // was wrong. The Samantha Benefits group maps to the role that processes insurance benefits.
-        // Let's check: the user said Benefits tab = part of Samantha. The roles are:
-        // submitAuth → Submit Auth group, authOutstanding → Auth Outstanding group.
-        // The Benefits tab from Samantha wasn't mapped as a standalone role in the 6 we're building.
-        // Wait — looking back at the mapping: Chase Benefits = mesheke's Chase tab.
-        // Samantha has: Submit Auth and Auth Outstanding. Her Benefits tab isn't one of the 6 standalone roles.
-        // Hmm, but we built ChaseBenefitsPage using Samantha's InsurancePanel...
-        // 
-        // Actually re-reading Josh's clarification: the 6 roles from these two repos are:
-        // Mesheke: Evaluate, Send Request, Confirm Receipt, Chase (→ "Chase Benefits")
-        // Samantha: Submit Auth, Auth Outstanding
-        // That's only 6. The Benefits tab from Samantha is NOT one of the 6.
-        // But we built ChaseBenefitsPage from Samantha's Benefits tab — that's wrong per Josh's correction.
-        // Chase Benefits = mesheke's Chase tab.
-        //
-        // For now, count what we have:
         next.benefits = Array.isArray(benefits) ? benefits.length : 0;
         next.submitAuth = Array.isArray(submitAuth) ? submitAuth.length : 0;
         next.authOutstanding = Array.isArray(authOutstanding) ? authOutstanding.length : 0;
@@ -126,6 +110,9 @@ export function useRoleCounts() {
 
       // Welcome Call board
       next.welcomeCall = await fetchBoardGroupCount(WC_BOARD_ID, WC_GROUP_ID);
+
+      // Final Profile Confirmation (same board, different group)
+      next.finalConfirm = await fetchBoardGroupCount(WC_BOARD_ID, FINAL_CONFIRM_GROUP_ID);
 
       // Profile board
       next.profile = await fetchBoardGroupCount(PROFILE_BOARD_ID, PROFILE_GROUP_ID);
