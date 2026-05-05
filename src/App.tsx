@@ -4,6 +4,20 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { lazy, Suspense } from "react";
 import Index from "./pages/Index";
 
+// Mesheke board roles (4)
+const EvaluatePage = lazy(() => import("./pages/EvaluatePage"));
+const SendRequestPage = lazy(() => import("./pages/SendRequestPage"));
+const ConfirmReceiptPage = lazy(() => import("./pages/ConfirmReceiptPage"));
+const ChaseClinicalsPage = lazy(() => import("./pages/ChaseClinicalsPage"));
+
+// Samantha board roles (3)
+const BenefitsPage = lazy(() => import("./pages/ChaseBenefitsPage"));
+const WelcomeCallPage = lazy(() => import("./pages/WelcomeCallPage"));
+const ProfilePage = lazy(() => import("./pages/ProfilePage"));
+const SubmitAuthPage = lazy(() => import("./pages/SubmitAuthPage"));
+const AuthOutstandingPage = lazy(() => import("./pages/AuthOutstandingPage"));
+
+// Final Profile Confirmation (pre-check before Monday automations)
 const FinalConfirmPage = lazy(() => import("./pages/FinalConfirmPage"));
 
 const queryClient = new QueryClient();
@@ -26,6 +40,15 @@ const App = () => (
       <Suspense fallback={<Loading />}>
         <Routes>
           <Route path="/" element={<Index />} />
+          <Route path="/evaluate" element={<EvaluatePage />} />
+          <Route path="/send-request" element={<SendRequestPage />} />
+          <Route path="/confirm-receipt" element={<ConfirmReceiptPage />} />
+          <Route path="/chase-benefits" element={<ChaseClinicalsPage />} />
+          <Route path="/benefits" element={<BenefitsPage />} />
+          <Route path="/welcome-call" element={<WelcomeCallPage />} />
+          <Route path="/profile" element={<ProfilePage />} />
+          <Route path="/submit-auth" element={<SubmitAuthPage />} />
+          <Route path="/auth-outstanding" element={<AuthOutstandingPage />} />
           <Route path="/final-confirm" element={<FinalConfirmPage />} />
           <Route path="*" element={<Index />} />
         </Routes>
