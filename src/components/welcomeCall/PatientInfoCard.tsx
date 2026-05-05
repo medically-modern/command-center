@@ -1,7 +1,9 @@
+import { useState } from "react";
 import type { Patient } from "@/lib/welcomeCall/workflow";
 import { SECONDARY_INSURANCE_OPTIONS, formatPhone, formatDateMDY, isCrossSell } from "@/lib/welcomeCall/workflow";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { Pencil } from "lucide-react";
 import {
   Select,
   SelectContent,
@@ -57,6 +59,55 @@ function SosField({ label, dateStr }: { label: string; dateStr: string }) {
   );
 }
 
+function PhoneField({
+  phone,
+  phoneEdited,
+  onFieldChange,
+}: {
+  phone: string;
+  phoneEdited: string | null;
+  onFieldChange?: (field: keyof Patient, value: string | number | null) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const displayPhone = phoneEdited ?? phone;
+
+  if (!phone && !phoneEdited) return null;
+
+  return (
+    <div className="text-right">
+      <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1">
+        Phone
+      </p>
+      {editing ? (
+        <Input
+          className="h-9 text-sm font-semibold w-44 ml-auto"
+          value={phoneEdited ?? phone}
+          onChange={(e) => onFieldChange?.("phoneEdited", e.target.value)}
+          onBlur={() => setEditing(false)}
+          autoFocus
+          placeholder="(555) 555-5555"
+        />
+      ) : (
+        <div className="flex items-center justify-end gap-1.5">
+          <a href={`tel:${displayPhone}`} className="text-lg font-semibold text-primary hover:underline">
+            {formatPhone(displayPhone)}
+          </a>
+          <button
+            onClick={() => setEditing(true)}
+            className="p-1 rounded hover:bg-muted/60 text-muted-foreground hover:text-foreground transition-colors"
+            title="Edit phone number"
+          >
+            <Pencil className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      )}
+      {phoneEdited !== null && phoneEdited !== phone && (
+        <p className="text-[10px] text-amber-600 mt-0.5">edited</p>
+      )}
+    </div>
+  );
+}
+
 export function PatientInfoCard({ patient, onFieldChange }: Props) {
   const hasSecondaryInsurance = !!patient.secondaryInsurance && patient.secondaryInsurance !== "";
   const hasMemberId2 = !!patient.memberId2 && patient.memberId2 !== "";
@@ -90,16 +141,11 @@ export function PatientInfoCard({ patient, onFieldChange }: Props) {
           </div>
         )}
 
-        {patient.phone && (
-          <div className="text-right">
-            <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1">
-              Phone
-            </p>
-            <a href={`tel:${patient.phone}`} className="text-lg font-semibold text-primary hover:underline">
-              {formatPhone(patient.phone)}
-            </a>
-          </div>
-        )}
+        <PhoneField
+          phone={patient.phone}
+          phoneEdited={patient.phoneEdited}
+          onFieldChange={onFieldChange}
+        />
       </Card>
 
       {/* Row 1: Referral/Product + SOS + Insurance */}

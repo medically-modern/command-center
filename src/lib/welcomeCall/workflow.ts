@@ -53,6 +53,7 @@ export interface Patient {
   // End-of-call decision: index 1 = Advance, index 2 = Don't Advance
   advanceDecision: string;
   advanceDecisionIndex: number | null;
+  phoneEdited: string | null;   // local edit of phone
   addressEdited: string | null; // local edit of address
   addressLat: number | null;    // lat from Google Places geocode
   addressLng: number | null;    // lng from Google Places geocode

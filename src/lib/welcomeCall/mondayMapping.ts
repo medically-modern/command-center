@@ -80,6 +80,7 @@ export function mondayItemToPatient(item: MondayItem): Patient {
     secondaryInsuranceIndex: statusIndex(COL.secondaryInsurance),
     secondaryInsuranceEdited: null,
     memberId2Edited: null,
+    phoneEdited: null,
     addressEdited: null,
     addressLat: null,
     addressLng: null,

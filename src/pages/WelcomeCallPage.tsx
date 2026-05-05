@@ -58,6 +58,7 @@ const WelcomeCallPage = () => {
       secondaryInsuranceEdited: null,
       secondaryInsuranceIndex: null,
       memberId2Edited: null,
+      phoneEdited: null,
       monitorQty: "",
       pumpQty: "",
       qtyInf1: "",
