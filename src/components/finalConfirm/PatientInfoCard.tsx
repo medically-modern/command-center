@@ -138,6 +138,58 @@ function CollapsibleSection({
   );
 }
 
+/** Paired infusion set + quantity in a visual group */
+function InfusionSetPair({
+  setLabel,
+  setOptions,
+  setVal,
+  qtyVal,
+  onSetChange,
+  onQtyChange,
+}: {
+  setLabel: string;
+  setOptions: { index: number; label: string }[];
+  setVal: string;
+  qtyVal: string;
+  onSetChange: (index: number, label: string) => void;
+  onQtyChange: (v: string) => void;
+}) {
+  const selectedOpt = setOptions.find((o) => o.label === setVal);
+  return (
+    <div className="rounded-lg border border-dashed border-muted-foreground/30 bg-muted/20 p-3 space-y-2">
+      <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">{setLabel}</p>
+      <Select
+        value={selectedOpt ? String(selectedOpt.index) : ""}
+        onValueChange={(v) => {
+          const opt = setOptions.find((o) => String(o.index) === v);
+          if (opt) onSetChange(opt.index, opt.label);
+        }}
+      >
+        <SelectTrigger className="h-8 text-sm">
+          <SelectValue placeholder="Select infusion set" />
+        </SelectTrigger>
+        <SelectContent>
+          {setOptions.map((opt) => (
+            <SelectItem key={opt.index} value={String(opt.index)}>
+              {opt.label}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+      <div className="flex items-center gap-2">
+        <span className="text-xs text-muted-foreground font-medium whitespace-nowrap">Qty:</span>
+        <Input
+          className="h-8 text-sm w-20"
+          type="number"
+          value={qtyVal}
+          onChange={(e) => onQtyChange(e.target.value)}
+          placeholder="0"
+        />
+      </div>
+    </div>
+  );
+}
+
 export function PatientInfoCard({ patient, onFieldChange }: Props) {
   const handleAddressChange = (result: AddressResult) => {
     onFieldChange("addressEdited", result.address);
@@ -163,12 +215,12 @@ export function PatientInfoCard({ patient, onFieldChange }: Props) {
         )}
       </Card>
 
-      {/* Demographics — all editable */}
+      {/* Demographics */}
       <Card className="p-4 space-y-4">
         <p className="text-xs uppercase tracking-wider text-muted-foreground font-semibold flex items-center gap-2">
           <User className="h-3.5 w-3.5" /> Demographics
         </p>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <EditableTextField
             icon={<Stethoscope className="h-4 w-4" />}
             label="DOB"
@@ -189,20 +241,6 @@ export function PatientInfoCard({ patient, onFieldChange }: Props) {
             editedValue={patient.emailEdited}
             onChange={(v) => onFieldChange("emailEdited", v)}
           />
-          {/* Address with Google Places Autocomplete */}
-          <div className="flex items-start gap-2 min-w-0 sm:col-span-2">
-            <div className="h-8 w-8 rounded-md bg-muted flex items-center justify-center text-muted-foreground shrink-0">
-              <MapPin className="h-4 w-4" />
-            </div>
-            <div className="min-w-0 flex-1">
-              <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1">Address</p>
-              <AddressAutocomplete
-                value={patient.addressEdited ?? patient.address}
-                onChange={handleAddressChange}
-                placeholder="Start typing address…"
-              />
-            </div>
-          </div>
           <div>
             <SelectField
               label="Gender"
@@ -212,14 +250,28 @@ export function PatientInfoCard({ patient, onFieldChange }: Props) {
             />
           </div>
         </div>
+        {/* Address — full width with Google autocomplete */}
+        <div className="flex items-start gap-2 min-w-0">
+          <div className="h-8 w-8 rounded-md bg-muted flex items-center justify-center text-muted-foreground shrink-0">
+            <MapPin className="h-4 w-4" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1">Address</p>
+            <AddressAutocomplete
+              value={patient.addressEdited ?? patient.address}
+              onChange={handleAddressChange}
+              placeholder="Start typing address…"
+            />
+          </div>
+        </div>
       </Card>
 
-      {/* Insurance — all editable */}
+      {/* Insurance */}
       <Card className="p-4 space-y-4">
         <p className="text-xs uppercase tracking-wider text-muted-foreground font-semibold flex items-center gap-2">
           <Shield className="h-3.5 w-3.5" /> Insurance
         </p>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <EditableTextField
             icon={<Shield className="h-4 w-4" />}
             label="Primary Insurance"
@@ -249,6 +301,9 @@ export function PatientInfoCard({ patient, onFieldChange }: Props) {
             placeholder="Enter member ID"
             onChange={(v) => onFieldChange("memberId2Edited", v)}
           />
+        </div>
+        <div className="h-px bg-border" />
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
           <EditableTextField
             icon={<Activity className="h-4 w-4" />}
             label="Deductible"
@@ -257,7 +312,7 @@ export function PatientInfoCard({ patient, onFieldChange }: Props) {
           />
           <EditableTextField
             icon={<Activity className="h-4 w-4" />}
-            label="Deductible Remaining"
+            label="Ded. Remaining"
             value={patient.deductibleRemaining}
             onChange={(v) => onFieldChange("deductibleRemaining", v)}
           />
@@ -276,10 +331,10 @@ export function PatientInfoCard({ patient, onFieldChange }: Props) {
         </div>
       </Card>
 
-      {/* Doctor Info — all editable */}
+      {/* Doctor Info */}
       <Card className="p-4 space-y-4">
         <CollapsibleSection title="Doctor Info" defaultOpen>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <EditableTextField
               icon={<UserRound className="h-4 w-4" />}
               label="Doctor Name"
@@ -326,10 +381,10 @@ export function PatientInfoCard({ patient, onFieldChange }: Props) {
         </CollapsibleSection>
       </Card>
 
-      {/* Medical Necessity — all editable */}
+      {/* Medical Necessity */}
       <Card className="p-4 space-y-4">
         <CollapsibleSection title="Medical Necessity" defaultOpen>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <EditableTextField
               icon={<Heart className="h-4 w-4" />}
               label="Diagnosis"
@@ -358,12 +413,12 @@ export function PatientInfoCard({ patient, onFieldChange }: Props) {
         </CollapsibleSection>
       </Card>
 
-      {/* Product / Order Info — all editable */}
+      {/* Product / Order Info */}
       <Card className="p-4 space-y-4">
         <p className="text-xs uppercase tracking-wider text-muted-foreground font-semibold flex items-center gap-2">
           <Package className="h-3.5 w-3.5" /> Product & Order Info
         </p>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <EditableTextField
             icon={<Package className="h-4 w-4" />}
             label="Serving"
@@ -389,8 +444,11 @@ export function PatientInfoCard({ patient, onFieldChange }: Props) {
             onChange={(v) => onFieldChange("requestType", v)}
           />
         </div>
+
         <div className="h-px bg-border" />
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+
+        {/* Subscription + Order Handling row */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <SelectField
             label="Subscription Type"
             options={SUBSCRIPTION_TYPE_OPTIONS}
@@ -402,45 +460,49 @@ export function PatientInfoCard({ patient, onFieldChange }: Props) {
             }}
           />
           <SelectField
-            label="Infusion Set 1"
-            options={INFUSION_SET_1_OPTIONS}
-            value={patient.infusionSet1}
+            label="Order Handling"
+            options={ORDER_HANDLING_OPTIONS}
+            value={patient.orderHandling}
             onChange={(index) => {
+              onFieldChange("orderHandlingIndex", index);
+              const opt = ORDER_HANDLING_OPTIONS.find((o) => o.index === index);
+              if (opt) onFieldChange("orderHandling", opt.label);
+            }}
+          />
+        </div>
+
+        <div className="h-px bg-border" />
+
+        {/* Infusion Sets — visually paired with their quantities */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <InfusionSetPair
+            setLabel="Infusion Set 1"
+            setOptions={INFUSION_SET_1_OPTIONS}
+            setVal={patient.infusionSet1}
+            qtyVal={patient.qtyInf1}
+            onSetChange={(index) => {
               onFieldChange("infusionSet1Index", index);
               const opt = INFUSION_SET_1_OPTIONS.find((o) => o.index === index);
               if (opt) onFieldChange("infusionSet1", opt.label);
             }}
+            onQtyChange={(v) => onFieldChange("qtyInf1", v)}
           />
-          <div>
-            <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1">Qty Inf. Set 1</p>
-            <Input
-              className="h-8 text-sm"
-              type="number"
-              value={patient.qtyInf1}
-              onChange={(e) => onFieldChange("qtyInf1", e.target.value)}
-              placeholder="0"
-            />
-          </div>
-          <SelectField
-            label="Infusion Set 2"
-            options={INFUSION_SET_2_OPTIONS}
-            value={patient.infusionSet2}
-            onChange={(index) => {
+          <InfusionSetPair
+            setLabel="Infusion Set 2"
+            setOptions={INFUSION_SET_2_OPTIONS}
+            setVal={patient.infusionSet2}
+            qtyVal={patient.qtyInf2}
+            onSetChange={(index) => {
               onFieldChange("infusionSet2Index", index);
               const opt = INFUSION_SET_2_OPTIONS.find((o) => o.index === index);
               if (opt) onFieldChange("infusionSet2", opt.label);
             }}
+            onQtyChange={(v) => onFieldChange("qtyInf2", v)}
           />
-          <div>
-            <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1">Qty Inf. Set 2</p>
-            <Input
-              className="h-8 text-sm"
-              type="number"
-              value={patient.qtyInf2}
-              onChange={(e) => onFieldChange("qtyInf2", e.target.value)}
-              placeholder="0"
-            />
-          </div>
+        </div>
+
+        {/* Monitor + Pump quantities */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
           <div>
             <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1">Monitor Qty</p>
             <Input
@@ -461,16 +523,6 @@ export function PatientInfoCard({ patient, onFieldChange }: Props) {
               placeholder="0"
             />
           </div>
-          <SelectField
-            label="Order Handling"
-            options={ORDER_HANDLING_OPTIONS}
-            value={patient.orderHandling}
-            onChange={(index) => {
-              onFieldChange("orderHandlingIndex", index);
-              const opt = ORDER_HANDLING_OPTIONS.find((o) => o.index === index);
-              if (opt) onFieldChange("orderHandling", opt.label);
-            }}
-          />
         </div>
       </Card>
     </div>
