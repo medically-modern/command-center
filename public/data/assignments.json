@@ -17,7 +17,9 @@
   "benefits": [
     "Samantha"
   ],
-  "submitAuth": [],
+  "submitAuth": [
+    "Samantha"
+  ],
   "authOutstanding": [
     "Brandon"
   ],
