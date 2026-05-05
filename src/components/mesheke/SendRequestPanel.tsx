@@ -33,7 +33,6 @@ import {
   Loader2,
   FileText,
   ExternalLink,
-  Download,
   Send,
   Mail,
   AlertTriangle,
@@ -478,7 +477,7 @@ function ClinicalFilesCard({
                 disabled={!f.public_url && !f.url}
                 onClick={() => {
                   const u = f.public_url || f.url;
-                  if (u) window.open(u, "_blank");
+                  if (u) openInGoogleViewer(u);
                 }}
                 className="h-7 px-2 text-[11px] gap-1 shrink-0"
               >
@@ -885,7 +884,7 @@ function ScriptViewer({
               disabled={!f.public_url && !f.url}
               onClick={() => {
                 const u = f.public_url || f.url;
-                if (u) window.open(u, "_blank");
+                if (u) openInGoogleViewer(u);
               }}
               className="h-7 px-2 text-[11px] gap-1"
             >
@@ -1244,6 +1243,12 @@ function AttachmentSummary({ attachments }: { attachments: Attachment[] }) {
 // =====================================================================
 // Helpers
 // =====================================================================
+
+/** Open a Monday file URL in Google Docs Viewer (no download). */
+function openInGoogleViewer(url: string) {
+  const viewerUrl = `https://docs.google.com/gview?url=${encodeURIComponent(url)}&embedded=true`;
+  window.open(viewerUrl, "_blank");
+}
 
 function splitDropdownText(text?: string): string[] {
   if (!text) return [];
