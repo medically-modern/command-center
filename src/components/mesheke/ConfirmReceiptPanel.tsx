@@ -25,6 +25,7 @@ import {
   AlertTriangle,
   Check,
   CheckCircle2,
+  Download,
   ExternalLink,
   FileText,
   Loader2,
@@ -352,15 +353,46 @@ function FilesPanel({ files }: { files: ReturnType<typeof useMondayFiles> }) {
                   </span>
                   <span className="truncate font-medium">{file.name}</span>
                 </span>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  disabled={!url}
-                  onClick={() => url && window.open(url, "_blank")}
-                  className="h-7 px-2 text-[11px] gap-1 shrink-0"
-                >
-                  <ExternalLink className="h-3 w-3" /> View
-                </Button>
+                <div className="flex items-center gap-1 shrink-0">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={!url}
+                    onClick={() => {
+                      if (!url) return;
+                      const viewerUrl = `https://docs.google.com/gview?url=${encodeURIComponent(url)}&embedded=true`;
+                      window.open(viewerUrl, "_blank");
+                    }}
+                    className="h-7 px-2 text-[11px] gap-1"
+                  >
+                    <ExternalLink className="h-3 w-3" /> View
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={!url}
+                    onClick={async () => {
+                      if (!url) return;
+                      try {
+                        const resp = await fetch(url, { mode: "cors" });
+                        const blob = await resp.blob();
+                        const blobUrl = URL.createObjectURL(blob);
+                        const a = document.createElement("a");
+                        a.href = blobUrl;
+                        a.download = file.name || "file";
+                        document.body.appendChild(a);
+                        a.click();
+                        document.body.removeChild(a);
+                        URL.revokeObjectURL(blobUrl);
+                      } catch {
+                        window.open(url, "_blank");
+                      }
+                    }}
+                    className="h-7 px-2 text-[11px] gap-1"
+                  >
+                    <Download className="h-3 w-3" /> Download
+                  </Button>
+                </div>
               </div>
             );
           })}

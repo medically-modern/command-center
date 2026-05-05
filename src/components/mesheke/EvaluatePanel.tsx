@@ -1042,11 +1042,39 @@ function MondayScriptViewer({
               disabled={!f.public_url && !f.url}
               onClick={() => {
                 const u = f.public_url || f.url;
-                if (u) window.open(u, "_blank");
+                if (!u) return;
+                const viewerUrl = `https://docs.google.com/gview?url=${encodeURIComponent(u)}&embedded=true`;
+                window.open(viewerUrl, "_blank");
               }}
               className="h-7 px-2 text-[11px] gap-1"
             >
               <ExternalLink className="h-3 w-3" /> View
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={!f.public_url && !f.url}
+              onClick={async () => {
+                const u = f.public_url || f.url;
+                if (!u) return;
+                try {
+                  const resp = await fetch(u, { mode: "cors" });
+                  const blob = await resp.blob();
+                  const blobUrl = URL.createObjectURL(blob);
+                  const a = document.createElement("a");
+                  a.href = blobUrl;
+                  a.download = f.name || "file";
+                  document.body.appendChild(a);
+                  a.click();
+                  document.body.removeChild(a);
+                  URL.revokeObjectURL(blobUrl);
+                } catch {
+                  window.open(u, "_blank");
+                }
+              }}
+              className="h-7 px-2 text-[11px] gap-1"
+            >
+              <Download className="h-3 w-3" /> Download
             </Button>
             <Button
               variant="outline"
