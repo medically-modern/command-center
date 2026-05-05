@@ -55,13 +55,13 @@ import {
   COL,
   clearStatusColumn,
   deleteFileFromColumn,
+  fetchStatusLabels,
   hasToken,
   writeDate,
   writeDropdownLabels,
   writeLongText,
   writeStatusIndex,
   writeStatusLabel,
-  buildDoctorWriteTasks,
   type MondayFileEntry,
 } from "@/lib/mesheke/mondayApi";
 import { GEN_SCRIPT_STATUS } from "@/lib/mesheke/mondayMapping";
@@ -78,6 +78,7 @@ import {
   Download,
   ExternalLink,
   Loader2,
+  Plus,
   Send,
 } from "lucide-react";
 
@@ -382,10 +383,6 @@ export function EvaluatePanel({ patient, resetVersion = 0, onUpdate }: Props) {
       run: () => writeStatusLabel(patient.id, COL.subStage, nextStage),
     });
 
-
-
-    // Doctor info — uses correct column-type formats (phone, email, dropdown).
-    tasks.push(...buildDoctorWriteTasks(patient));
     const results = await Promise.allSettled(tasks.map((t) => t.run()));
     const failures: string[] = [];
     results.forEach((r, i) => {
@@ -774,6 +771,42 @@ interface DiagnosisFieldProps {
 
 function DiagnosisField({ value, onChange }: DiagnosisFieldProps) {
   const [open, setOpen] = useState(false);
+  const [newCode, setNewCode] = useState("");
+  const [customCodes, setCustomCodes] = useState<string[]>([]);
+  const [mondayLabels, setMondayLabels] = useState<string[] | null>(null);
+
+  // Fetch live diagnosis labels from Monday on first open
+  useEffect(() => {
+    if (!open || mondayLabels !== null) return;
+    if (!hasToken()) return;
+    fetchStatusLabels(COL.diagnosis)
+      .then((labels) => setMondayLabels(labels))
+      .catch(() => setMondayLabels([]));
+  }, [open, mondayLabels]);
+
+  // Merge: hardcoded favorites + Monday labels + custom codes, deduplicated
+  const allCodes = useMemo(() => {
+    const set = new Set<string>(DIAGNOSIS_FAVORITES);
+    for (const c of mondayLabels ?? []) set.add(c);
+    for (const c of DIAGNOSIS_OTHER) set.add(c);
+    for (const c of customCodes) set.add(c);
+    return [...set];
+  }, [mondayLabels, customCodes]);
+
+  const favorites = DIAGNOSIS_FAVORITES;
+  const otherCodes = allCodes.filter((c) => !favorites.includes(c)).sort();
+
+  const handleAddCode = () => {
+    const code = newCode.trim().toUpperCase();
+    if (!code) return;
+    if (!allCodes.includes(code)) {
+      setCustomCodes((prev) => [...prev, code]);
+    }
+    onChange(code);
+    setNewCode("");
+    setOpen(false);
+  };
+
   // Override the default Command "selected" highlight (which is dark/white) with
   // a light emerald that keeps text readable on hover/keyboard focus.
   const itemClass =
@@ -817,11 +850,13 @@ function DiagnosisField({ value, onChange }: DiagnosisFieldProps) {
             <ChevronsUpDown className="h-3 w-3 opacity-50 shrink-0" />
           </Button>
         </PopoverTrigger>
-        <PopoverContent className="w-[260px] p-0" align="end">
+        <PopoverContent className="w-[300px] p-0" align="end">
           <Command>
             <CommandInput placeholder="Search ICD-10..." className="h-9" />
             <CommandList>
-              <CommandEmpty>No code found.</CommandEmpty>
+              <CommandEmpty>
+                <span className="text-xs text-muted-foreground">No matching code — add it below.</span>
+              </CommandEmpty>
               <CommandGroup>
                 <CommandItem
                   key="__none__"
@@ -837,13 +872,38 @@ function DiagnosisField({ value, onChange }: DiagnosisFieldProps) {
                 </CommandItem>
               </CommandGroup>
               <CommandGroup heading="Favorites">
-                {DIAGNOSIS_FAVORITES.map(renderItem)}
+                {favorites.map(renderItem)}
               </CommandGroup>
               <CommandGroup heading="All Codes">
-                {DIAGNOSIS_OTHER.map(renderItem)}
+                {otherCodes.map(renderItem)}
               </CommandGroup>
             </CommandList>
           </Command>
+          {/* Add new code */}
+          <div className="border-t px-2 py-2 flex items-center gap-2">
+            <input
+              value={newCode}
+              onChange={(e) => setNewCode(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  handleAddCode();
+                }
+              }}
+              placeholder="New ICD-10 code…"
+              className="flex-1 h-7 px-2 text-xs border rounded-md bg-background focus:outline-none focus:ring-1 focus:ring-emerald-400"
+            />
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-7 px-2 text-xs gap-1"
+              disabled={!newCode.trim()}
+              onClick={handleAddCode}
+            >
+              <Plus className="h-3 w-3" />
+              Add
+            </Button>
+          </div>
         </PopoverContent>
       </Popover>
     </div>

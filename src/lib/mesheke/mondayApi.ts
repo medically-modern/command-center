@@ -214,6 +214,42 @@ export async function fetchGroupItems(groupId: string = GROUPS.medicalNecessity)
   return data.boards?.[0]?.groups?.[0]?.items_page?.items ?? [];
 }
 
+// ---- Read helpers ----
+
+/**
+ * Fetch all status labels from a status column's settings_str in Monday.
+ * Returns an array of label strings (e.g. ["E10.65", "E11.9", ...]).
+ * Excludes internal placeholders like "Evaluate" and "Collect".
+ */
+export async function fetchStatusLabels(columnId: string): Promise<string[]> {
+  const query = `
+    query ($boardId: ID!) {
+      boards(ids: [$boardId]) {
+        columns(ids: ["${columnId}"]) {
+          settings_str
+        }
+      }
+    }
+  `;
+  const data = await gql<{
+    boards: { columns: { settings_str: string }[] }[];
+  }>(query, { boardId: BOARD_ID });
+
+  const settingsStr = data.boards?.[0]?.columns?.[0]?.settings_str;
+  if (!settingsStr) return [];
+
+  try {
+    const settings = JSON.parse(settingsStr);
+    const labels: Record<string, { label: string }> = settings.labels ?? {};
+    return Object.values(labels)
+      .map((v) => v.label)
+      .filter((l) => l !== "Evaluate" && l !== "Collect")
+      .sort();
+  } catch {
+    return [];
+  }
+}
+
 // ---- Write primitives ----
 
 export async function writeStatusIndex(itemId: string, columnId: string, index: number): Promise<void> {
@@ -512,45 +548,4 @@ export async function fetchItemFileColumns(
     }
   }
   return out;
-}
-
-// ---- Doctor-field write helpers ----
-// Phone and email columns need specific JSON shapes.
-
-export async function writePhone(itemId: string, columnId: string, phone: string): Promise<void> {
-  const value = JSON.stringify({ phone, countryShortName: "US" });
-  await gql(`mutation { change_column_value(item_id: ${itemId}, board_id: ${BOARD_ID}, column_id: "${columnId}", value: ${JSON.stringify(value)}) { id } }`);
-}
-
-export async function writeEmail(itemId: string, columnId: string, email: string): Promise<void> {
-  const value = JSON.stringify({ email, text: email });
-  await gql(`mutation { change_column_value(item_id: ${itemId}, board_id: ${BOARD_ID}, column_id: "${columnId}", value: ${JSON.stringify(value)}) { id } }`);
-}
-
-/**
- * Write all doctor fields to Monday using the correct column-type format.
- * Phone → { phone, countryShortName }
- * Email/Fax → { email, text }
- * Clinic → dropdown labels (creates label if missing)
- * Name/NPI → plain text
- *
- * Collects into a { label, run } task array for batching with other writes.
- */
-export function buildDoctorWriteTasks(
-  patient: { id: string; doctorName?: string; doctorNpi?: string; doctorPhone?: string; doctorEmail?: string; doctorFax?: string; clinicName?: string },
-): { label: string; run: () => Promise<void> }[] {
-  const tasks: { label: string; run: () => Promise<void> }[] = [];
-  if (patient.doctorName != null)
-    tasks.push({ label: "Doctor Name", run: () => writeText(patient.id, COL.doctorName, patient.doctorName ?? "") });
-  if (patient.doctorNpi != null)
-    tasks.push({ label: "Doctor NPI", run: () => writeText(patient.id, COL.doctorNpi, patient.doctorNpi ?? "") });
-  if (patient.doctorPhone != null)
-    tasks.push({ label: "Doctor Phone", run: () => writePhone(patient.id, COL.doctorPhone, patient.doctorPhone ?? "") });
-  if (patient.doctorEmail != null)
-    tasks.push({ label: "Doctor Email", run: () => writeEmail(patient.id, COL.doctorEmail, patient.doctorEmail ?? "") });
-  if (patient.doctorFax != null)
-    tasks.push({ label: "Doctor Fax", run: () => writeEmail(patient.id, COL.doctorFax, patient.doctorFax ?? "") });
-  if (patient.clinicName != null)
-    tasks.push({ label: "Clinic Name", run: () => writeDropdownLabels(patient.id, COL.clinicName, [patient.clinicName ?? ""]) });
-  return tasks;
 }
