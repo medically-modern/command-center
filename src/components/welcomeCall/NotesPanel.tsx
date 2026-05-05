@@ -2,18 +2,21 @@ import { useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { MessageSquare, Plus } from "lucide-react";
+import { MessageSquare, Plus, Loader2 } from "lucide-react";
+import { toast } from "sonner";
 
 interface Props {
   notes: string;
   onNotesChange: (notes: string) => void;
+  onSaveToMonday?: (notes: string) => Promise<void>;
 }
 
-export function NotesPanel({ notes, onNotesChange }: Props) {
+export function NotesPanel({ notes, onNotesChange, onSaveToMonday }: Props) {
   const [newNote, setNewNote] = useState("");
   const [editing, setEditing] = useState(false);
+  const [saving, setSaving] = useState(false);
 
-  const handleAppend = () => {
+  const handleAppend = async () => {
     if (!newNote.trim()) return;
     const timestamp = new Date().toLocaleString("en-US", {
       month: "short",
@@ -27,6 +30,20 @@ export function NotesPanel({ notes, onNotesChange }: Props) {
       : `[${timestamp}] ${newNote.trim()}`;
     onNotesChange(appended);
     setNewNote("");
+
+    if (onSaveToMonday) {
+      setSaving(true);
+      try {
+        await onSaveToMonday(appended);
+        toast.success("Note saved to Monday");
+      } catch (e) {
+        toast.error("Failed to save note", {
+          description: e instanceof Error ? e.message : String(e),
+        });
+      } finally {
+        setSaving(false);
+      }
+    }
   };
 
   return (
@@ -70,11 +87,12 @@ export function NotesPanel({ notes, onNotesChange }: Props) {
         />
         <Button
           onClick={handleAppend}
-          disabled={!newNote.trim()}
+          disabled={!newNote.trim() || saving}
           size="sm"
           className="self-end gap-1"
         >
-          <Plus className="h-3.5 w-3.5" /> Add
+          {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
+          {saving ? "Saving" : "Add"}
         </Button>
       </div>
     </Card>

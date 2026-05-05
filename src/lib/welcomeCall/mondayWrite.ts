@@ -117,3 +117,10 @@ export async function sendWelcomeCallTextToMonday(p: Patient): Promise<void> {
   // with up-to-date column values.
   await writeStatusIndex(p.id, COL.welcomeCallText, 0);
 }
+
+/**
+ * Immediately push notes to Monday (called on Add press).
+ */
+export async function sendNotesToMonday(itemId: string, notes: string): Promise<void> {
+  await writeLongText(itemId, COL.notes, notes);
+}

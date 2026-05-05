@@ -16,7 +16,7 @@ import { Button } from "@/components/ui/button";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { RotateCcw, ClipboardCheck, ArrowLeft } from "lucide-react";
 import { toast } from "sonner";
-import { sendPatientToMonday, sendWelcomeCallTextToMonday } from "@/lib/welcomeCall/mondayWrite";
+import { sendPatientToMonday, sendWelcomeCallTextToMonday, sendNotesToMonday } from "@/lib/welcomeCall/mondayWrite";
 import { validatePatientForSend } from "@/lib/welcomeCall/workflow";
 import { useNavigate } from "react-router-dom";
 
@@ -169,6 +169,7 @@ const WelcomeCallPage = () => {
                   <NotesPanel
                     notes={selected.notes}
                     onNotesChange={(v) => update(selected.id, { notes: v })}
+                    onSaveToMonday={(v) => sendNotesToMonday(selected.id, v)}
                   />
                   <ReviewPanel patient={selected} />
                   <EscalateButton escalated={selected.escalated} onToggle={toggleEscalate} disabled={!selected} />
