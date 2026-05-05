@@ -49,6 +49,11 @@ export interface Patient {
   orderHandlingIndex: number | null;
   // Call attempts
   callAttempts: string;
+  // Benefits (read-only)
+  deductible: string;
+  deductibleRemaining: string;
+  oopMax: string;
+  oopMaxRemaining: string;
   // Order dates (read-only)
   suppliesOrderDate: string;
   sensorsOrderDate: string;

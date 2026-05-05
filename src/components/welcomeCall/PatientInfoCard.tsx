@@ -255,6 +255,19 @@ export function PatientInfoCard({ patient, onFieldChange }: Props) {
           </div>
         </Card>
       </div>
+
+      {/* Row 2: Benefits */}
+      {(patient.deductible || patient.deductibleRemaining || patient.oopMax || patient.oopMaxRemaining) && (
+        <Card className="p-4">
+          <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-3">Benefits</p>
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            <Field label="Deductible" value={patient.deductible} />
+            <Field label="Deductible Remaining" value={patient.deductibleRemaining} />
+            <Field label="OOP Max" value={patient.oopMax} />
+            <Field label="OOP Max Remaining" value={patient.oopMaxRemaining} />
+          </div>
+        </Card>
+      )}
     </div>
   );
 }

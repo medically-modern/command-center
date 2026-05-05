@@ -54,6 +54,12 @@ export const COL = {
   // Call attempts
   callAttempts: "text_mm322fg9",
 
+  // Benefits (read-only)
+  deductible: "text_mm1xkbqc",
+  deductibleRemaining: "text_mm1xdzxw",
+  oopMax: "text_mm1xdtj7",
+  oopMaxRemaining: "text_mm1xx5f",
+
   // Order dates (read-only)
   suppliesOrderDate: "date_mm324s6q",
   sensorsOrderDate: "date_mm32a179",
@@ -72,7 +78,9 @@ export const READ_COLUMN_IDS = [
   COL.monitorQty, COL.pumpQty, COL.qtyInf1, COL.infusionSet1,
   COL.qtyInf2, COL.infusionSet2, COL.subscriptionType, COL.welcomeCallText,
   COL.orderHandling, COL.advanceDecision,
-  COL.callAttempts, COL.suppliesOrderDate, COL.sensorsOrderDate,
+  COL.callAttempts,
+  COL.deductible, COL.deductibleRemaining, COL.oopMax, COL.oopMaxRemaining,
+  COL.suppliesOrderDate, COL.sensorsOrderDate,
 ];
 
 export interface MondayColumnValue {
