@@ -181,6 +181,7 @@ function InfusionSetPair({
   qtyVal,
   onSetChange,
   onQtyChange,
+  hasError,
 }: {
   setLabel: string;
   setOptions: { index: number; label: string }[];
@@ -188,10 +189,11 @@ function InfusionSetPair({
   qtyVal: string;
   onSetChange: (index: number, label: string) => void;
   onQtyChange: (v: string) => void;
+  hasError?: boolean;
 }) {
   const selectedOpt = setOptions.find((o) => o.label === setVal);
   return (
-    <div className="rounded-lg border border-dashed border-muted-foreground/30 bg-muted/20 p-3 space-y-2">
+    <div className={cn("rounded-lg border border-dashed p-3 space-y-2", hasError ? "border-red-300 bg-red-50 dark:bg-red-950/20 ring-1 ring-red-200 dark:ring-red-800/40" : "border-muted-foreground/30 bg-muted/20")}>
       <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">{setLabel}</p>
       <Select
         value={selectedOpt ? String(selectedOpt.index) : ""}
@@ -231,6 +233,11 @@ export function PatientInfoCard({ patient, onFieldChange }: Props) {
     onFieldChange("addressLat", result.lat);
     onFieldChange("addressLng", result.lng);
   };
+
+  // Infusion set validation: if serving requires supplies, infusion set 1 must be selected with qty
+  const servingRequiresInfusion = ["Insulin Pump", "Supplies Only", "Supplies + CGM", "Insulin Pump + CGM"].includes(patient.serving);
+  const infSet1Missing = servingRequiresInfusion && !patient.infusionSet1;
+  const infQty1Missing = servingRequiresInfusion && (!patient.qtyInf1 || patient.qtyInf1 === "0");
 
   return (
     <div className="space-y-4">
@@ -287,8 +294,9 @@ export function PatientInfoCard({ patient, onFieldChange }: Props) {
         {/* Address — full width with Google autocomplete */}
         {(() => {
           const addr = patient.addressEdited ?? patient.address;
-          const hasZip = /\d{5}(-\d{4})?/.test(addr);
-          const isAllCaps = addr.length > 3 && addr === addr.toUpperCase() && /[A-Z]/.test(addr);
+          const zipPattern = new RegExp("[0-9]{5}");
+          const hasZip = zipPattern.test(addr);
+          const isAllCaps = addr.length > 3 && addr === addr.toUpperCase() && addr.match(new RegExp("[A-Z]"));
           const hasError = addr ? (!hasZip || isAllCaps) : !addr;
           const errorMsg = !addr ? null : isAllCaps ? "Address should not be all uppercase" : !hasZip ? "Zip code is missing" : null;
           return (
@@ -301,7 +309,7 @@ export function PatientInfoCard({ patient, onFieldChange }: Props) {
                 <AddressAutocomplete
                   value={addr}
                   onChange={handleAddressChange}
-                  placeholder="Start typing address…"
+                  placeholder="Start typing address\u2026"
                 />
                 {errorMsg && (
                   <p className="text-[11px] text-red-500 font-medium mt-1">{errorMsg}</p>
@@ -567,18 +575,26 @@ export function PatientInfoCard({ patient, onFieldChange }: Props) {
 
         {/* Infusion Sets — visually paired with their quantities */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <InfusionSetPair
-            setLabel="Infusion Set 1"
-            setOptions={INFUSION_SET_1_OPTIONS}
-            setVal={patient.infusionSet1}
-            qtyVal={patient.qtyInf1}
-            onSetChange={(index) => {
-              onFieldChange("infusionSet1Index", index);
-              const opt = INFUSION_SET_1_OPTIONS.find((o) => o.index === index);
-              if (opt) onFieldChange("infusionSet1", opt.label);
-            }}
-            onQtyChange={(v) => onFieldChange("qtyInf1", v)}
-          />
+          <div className="space-y-1">
+            <InfusionSetPair
+              setLabel="Infusion Set 1"
+              setOptions={INFUSION_SET_1_OPTIONS}
+              setVal={patient.infusionSet1}
+              qtyVal={patient.qtyInf1}
+              onSetChange={(index) => {
+                onFieldChange("infusionSet1Index", index);
+                const opt = INFUSION_SET_1_OPTIONS.find((o) => o.index === index);
+                if (opt) onFieldChange("infusionSet1", opt.label);
+              }}
+              onQtyChange={(v) => onFieldChange("qtyInf1", v)}
+              hasError={infSet1Missing || infQty1Missing}
+            />
+            {servingRequiresInfusion && (infSet1Missing || infQty1Missing) && (
+              <p className="text-[11px] text-red-500 font-medium">
+                {infSet1Missing ? "Infusion set required for this serving type" : "Quantity required"}
+              </p>
+            )}
+          </div>
           <InfusionSetPair
             setLabel="Infusion Set 2"
             setOptions={INFUSION_SET_2_OPTIONS}
