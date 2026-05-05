@@ -1,4 +1,4 @@
-import { writeStatusIndex, writeNumber, writeLocation, writeText, COL } from "./mondayApi";
+import { writeStatusIndex, writeNumber, writeLocation, writeText, writeLongText, COL } from "./mondayApi";
 import type { Patient } from "./workflow";
 
 export async function sendPatientToMonday(p: Patient): Promise<void> {
@@ -42,6 +42,11 @@ export async function sendPatientToMonday(p: Patient): Promise<void> {
     const lat = p.addressLat ?? 0;
     const lng = p.addressLng ?? 0;
     tasks.push(writeLocation(p.id, COL.address, p.addressEdited, lat, lng));
+  }
+
+  // Notes
+  if (typeof p.notes === "string" && p.notes.trim() !== "") {
+    tasks.push(writeLongText(p.id, COL.notes, p.notes));
   }
 
   // Escalation toggle — if flagged, write Escalation Required

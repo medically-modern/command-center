@@ -11,6 +11,7 @@ import { ReviewPanel } from "@/components/welcomeCall/ReviewPanel";
 import { PatientsSidebar } from "@/components/welcomeCall/PatientsSidebar";
 import { SendToMondayButton } from "@/components/welcomeCall/SendToMondayButton";
 import { EscalateButton } from "@/components/welcomeCall/EscalateButton";
+import { NotesPanel } from "@/components/welcomeCall/NotesPanel";
 import { Button } from "@/components/ui/button";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { RotateCcw, ClipboardCheck, ArrowLeft } from "lucide-react";
@@ -165,6 +166,10 @@ const WelcomeCallPage = () => {
                 <>
                   <PatientInfoCard patient={selected} onFieldChange={handleFieldChange} />
                   <WelcomeCallForm patient={selected} onFieldChange={handleFieldChange} onSendWelcomeCallText={handleSendWelcomeCallText} />
+                  <NotesPanel
+                    notes={selected.notes}
+                    onNotesChange={(v) => update(selected.id, { notes: v })}
+                  />
                   <ReviewPanel patient={selected} />
                   <EscalateButton escalated={selected.escalated} onToggle={toggleEscalate} disabled={!selected} />
                   <SendToMondayButton onSend={handleSend} disabled={!selected || !validation.valid} validationErrors={validation.errors} />
