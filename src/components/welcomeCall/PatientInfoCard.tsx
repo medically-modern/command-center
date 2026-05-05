@@ -29,6 +29,34 @@ function Field({ label, value }: { label: string; value: string }) {
   );
 }
 
+/** Add 90 days to a YYYY-MM-DD date string and return formatted + whether it's past. */
+function addDaysAndFormat(dateStr: string, days: number): { formatted: string; isPast: boolean } | null {
+  if (!dateStr) return null;
+  const match = dateStr.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!match) return null;
+  const d = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+  d.setDate(d.getDate() + days);
+  const formatted = `${String(d.getMonth() + 1).padStart(2, "0")}/${String(d.getDate()).padStart(2, "0")}/${d.getFullYear()}`;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return { formatted, isPast: d < today };
+}
+
+function SosField({ label, dateStr }: { label: string; dateStr: string }) {
+  const result = addDaysAndFormat(dateStr, 90);
+  if (!result) return null;
+  return (
+    <div>
+      <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
+        {label}
+      </p>
+      <p className={`text-sm font-medium ${result.isPast ? "text-red-600" : "text-green-600"}`}>
+        {result.formatted}
+      </p>
+    </div>
+  );
+}
+
 export function PatientInfoCard({ patient, onFieldChange }: Props) {
   const hasSecondaryInsurance = !!patient.secondaryInsurance && patient.secondaryInsurance !== "";
   const hasMemberId2 = !!patient.memberId2 && patient.memberId2 !== "";
@@ -82,7 +110,9 @@ export function PatientInfoCard({ patient, onFieldChange }: Props) {
             <Field label="Doctor Name" value={patient.doctorName} />
             <Field label="Request Type" value={patient.requestType} />
             <Field label="Supplies Order Date" value={formatDateMDY(patient.suppliesOrderDate)} />
+            <SosField label="SOS Supplies Order Date" dateStr={patient.suppliesOrderDate} />
             <Field label="Sensors Order Date" value={formatDateMDY(patient.sensorsOrderDate)} />
+            <SosField label="SOS Sensors Order Date" dateStr={patient.sensorsOrderDate} />
             {patient.serving ? (
               <div>
                 <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
