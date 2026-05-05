@@ -235,3 +235,31 @@ export async function writeLocation(itemId: string, columnId: string, address: s
   });
 }
 
+// ── Files / Assets ───────────────────────────────────────────────────
+
+export interface MondayAsset {
+  id: string;
+  name: string;
+  url: string;
+  public_url: string;
+}
+
+/** Fetch every file asset attached to a welcome-call board item. */
+export async function fetchItemAssets(itemId: string): Promise<MondayAsset[]> {
+  const query = `
+    query ($boardId: ID!, $itemId: ID!) {
+      boards(ids: [$boardId]) {
+        items_page(limit: 1, query_params: { ids: [$itemId] }) {
+          items {
+            assets(assets_source: all) { id name url public_url }
+          }
+        }
+      }
+    }
+  `;
+  const data = await gql<{
+    boards: { items_page: { items: { assets: MondayAsset[] }[] } }[];
+  }>(query, { boardId: BOARD_ID, itemId });
+  return data.boards?.[0]?.items_page?.items?.[0]?.assets ?? [];
+}
+

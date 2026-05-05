@@ -12,6 +12,7 @@ import { PatientsSidebar } from "@/components/welcomeCall/PatientsSidebar";
 import { SendToMondayButton } from "@/components/welcomeCall/SendToMondayButton";
 import { EscalateButton } from "@/components/welcomeCall/EscalateButton";
 import { NotesPanel } from "@/components/welcomeCall/NotesPanel";
+import { ClinicalsDownloadButton } from "@/components/welcomeCall/ClinicalsDownloadButton";
 import { Button } from "@/components/ui/button";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { RotateCcw, ClipboardCheck, ArrowLeft } from "lucide-react";
@@ -145,6 +146,7 @@ const WelcomeCallPage = () => {
                 </div>
               </div>
               <div className="flex items-center gap-2">
+                {selected && <ClinicalsDownloadButton itemId={selected.id} />}
                 <Button onClick={resetForNewPatient} disabled={!selected} className="gap-2 bg-white text-navy hover:bg-white/90 shadow-elevate">
                   <RotateCcw className="h-4 w-4" /> Reset
                 </Button>
