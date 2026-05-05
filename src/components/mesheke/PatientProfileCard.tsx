@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import type { Patient } from "@/lib/mesheke/workflow";
 import {
   CalendarDays,
@@ -16,8 +16,18 @@ import {
   Send,
   Pencil,
   Check,
+  Loader2,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
+import {
+  COL,
+  hasToken,
+  writeText,
+  writePhone,
+  writeEmail,
+  writeDropdownLabels,
+} from "@/lib/mesheke/mondayApi";
+import { toast } from "sonner";
 
 interface Props {
   patient: Patient;
@@ -39,8 +49,6 @@ function Field({
   icon: React.ReactNode;
   label: string;
   value: string;
-  /** Tailwind classes added to the outer wrapper — useful for grid
-   *  spans on long values like clinic names. */
   className?: string;
 }) {
   return (
@@ -96,6 +104,32 @@ function EditableField({
   );
 }
 
+/**
+ * Write all doctor fields to Monday using the correct column-type format.
+ * Phone → { phone, countryShortName }
+ * Email/Fax → { email, text }
+ * Clinic → dropdown labels (creates label if missing)
+ * Name/NPI → plain text
+ */
+async function saveDoctorFieldsToMonday(patient: Patient): Promise<void> {
+  const tasks: Promise<void>[] = [];
+
+  if (patient.doctorName != null)
+    tasks.push(writeText(patient.id, COL.doctorName, patient.doctorName));
+  if (patient.doctorNpi != null)
+    tasks.push(writeText(patient.id, COL.doctorNpi, patient.doctorNpi));
+  if (patient.doctorPhone != null)
+    tasks.push(writePhone(patient.id, COL.doctorPhone, patient.doctorPhone));
+  if (patient.doctorEmail != null)
+    tasks.push(writeEmail(patient.id, COL.doctorEmail, patient.doctorEmail));
+  if (patient.doctorFax != null)
+    tasks.push(writeEmail(patient.id, COL.doctorFax, patient.doctorFax));
+  if (patient.clinicName != null)
+    tasks.push(writeDropdownLabels(patient.id, COL.clinicName, [patient.clinicName]));
+
+  await Promise.all(tasks);
+}
+
 export function PatientProfileCard({
   patient,
   defaultDoctorOpen = false,
@@ -104,7 +138,51 @@ export function PatientProfileCard({
 }: Props) {
   const [doctorOpen, setDoctorOpen] = useState(defaultDoctorOpen || lockDoctorOpen);
   const [editingDoctor, setEditingDoctor] = useState(false);
+  const [saving, setSaving] = useState(false);
   const canEdit = !!onDoctorEdit;
+
+  const toggleEdit = useCallback(async () => {
+    if (editingDoctor) {
+      // Leaving edit mode → save to Monday
+      if (!hasToken()) {
+        toast.error("Monday token not configured");
+        setEditingDoctor(false);
+        return;
+      }
+      setSaving(true);
+      try {
+        await saveDoctorFieldsToMonday(patient);
+        toast.success("Doctor info saved to Monday");
+      } catch (e) {
+        toast.error("Failed to save doctor info", {
+          description: e instanceof Error ? e.message : String(e),
+        });
+      } finally {
+        setSaving(false);
+        setEditingDoctor(false);
+      }
+    } else {
+      setEditingDoctor(true);
+    }
+  }, [editingDoctor, patient]);
+
+  const editButton = canEdit ? (
+    <button
+      onClick={toggleEdit}
+      disabled={saving}
+      className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors px-2 py-1 rounded-md hover:bg-muted disabled:opacity-50"
+      title={editingDoctor ? "Save & close" : "Edit doctor info"}
+    >
+      {saving ? (
+        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+      ) : editingDoctor ? (
+        <Check className="h-3.5 w-3.5" />
+      ) : (
+        <Pencil className="h-3.5 w-3.5" />
+      )}
+      <span>{saving ? "Saving…" : editingDoctor ? "Done" : "Edit"}</span>
+    </button>
+  ) : null;
 
   return (
     <div className="rounded-xl bg-card border shadow-card p-4 space-y-4">
@@ -128,7 +206,7 @@ export function PatientProfileCard({
 
       <div className="h-px bg-border" />
 
-      {/* Workflow context + equipment. */}
+      {/* Workflow context + equipment */}
       {(() => {
         const showCgmType =
           patient.serving === "CGM" ||
@@ -193,23 +271,14 @@ export function PatientProfileCard({
       })()}
 
       {/* Doctor info — collapsible by default, locked open on Chase Clinicals.
-         Pencil icon toggles inline editing when onDoctorEdit is provided. */}
+         Pencil icon toggles inline editing. Saves to Monday on Done click. */}
       <div className="border-t pt-3">
         {lockDoctorOpen ? (
           <div className="flex items-center justify-between">
             <p className="text-xs uppercase tracking-wider text-muted-foreground">
               Doctor Info
             </p>
-            {canEdit && (
-              <button
-                onClick={() => setEditingDoctor((e) => !e)}
-                className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors px-2 py-1 rounded-md hover:bg-muted"
-                title={editingDoctor ? "Done editing" : "Edit doctor info"}
-              >
-                {editingDoctor ? <Check className="h-3.5 w-3.5" /> : <Pencil className="h-3.5 w-3.5" />}
-                <span>{editingDoctor ? "Done" : "Edit"}</span>
-              </button>
-            )}
+            {editButton}
           </div>
         ) : (
           <div className="flex items-center justify-between">
@@ -238,16 +307,7 @@ export function PatientProfileCard({
                 </span>
               )}
             </button>
-            {canEdit && doctorOpen && (
-              <button
-                onClick={() => setEditingDoctor((e) => !e)}
-                className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors px-2 py-1 rounded-md hover:bg-muted ml-2"
-                title={editingDoctor ? "Done editing" : "Edit doctor info"}
-              >
-                {editingDoctor ? <Check className="h-3.5 w-3.5" /> : <Pencil className="h-3.5 w-3.5" />}
-                <span>{editingDoctor ? "Done" : "Edit"}</span>
-              </button>
-            )}
+            {doctorOpen && editButton}
           </div>
         )}
 

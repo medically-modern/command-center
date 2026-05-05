@@ -513,3 +513,16 @@ export async function fetchItemFileColumns(
   }
   return out;
 }
+
+// ---- Doctor-field write helpers ----
+// Phone and email columns need specific JSON shapes.
+
+export async function writePhone(itemId: string, columnId: string, phone: string): Promise<void> {
+  const value = JSON.stringify({ phone, countryShortName: "US" });
+  await gql(`mutation { change_column_value(item_id: ${itemId}, board_id: ${BOARD_ID}, column_id: "${columnId}", value: ${JSON.stringify(value)}) { id } }`);
+}
+
+export async function writeEmail(itemId: string, columnId: string, email: string): Promise<void> {
+  const value = JSON.stringify({ email, text: email });
+  await gql(`mutation { change_column_value(item_id: ${itemId}, board_id: ${BOARD_ID}, column_id: "${columnId}", value: ${JSON.stringify(value)}) { id } }`);
+}
