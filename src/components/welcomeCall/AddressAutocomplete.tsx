@@ -145,6 +145,10 @@ export function AddressAutocomplete({ value, onChange, placeholder }: Props) {
       ref={inputRef}
       className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
       defaultValue={value}
+      onChange={(e) => {
+        // Manual typing (e.g. adding apt number) — propagate raw text to parent
+        onChangeRef.current({ address: e.target.value, lat: 0, lng: 0 });
+      }}
       placeholder={placeholder ?? "Enter address"}
     />
   );
