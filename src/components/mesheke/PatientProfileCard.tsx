@@ -13,6 +13,7 @@ import {
   Mail,
   Hash,
   Building2,
+  MapPin,
   Send,
   Pencil,
   Check,
@@ -121,7 +122,7 @@ export function PatientProfileCard({
       <p className="text-xs uppercase tracking-wider text-muted-foreground">Patient Profile</p>
 
       {/* Row 1: identity + insurance */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         <Field icon={<User className="h-4 w-4" />} label="Name" value={patient.name} />
         <Field icon={<CalendarDays className="h-4 w-4" />} label="DOB" value={patient.dob} />
         <Field
@@ -133,6 +134,17 @@ export function PatientProfileCard({
           icon={<IdCard className="h-4 w-4" />}
           label="Member ID"
           value={patient.memberId1 ?? ""}
+        />
+        <Field
+          icon={<Phone className="h-4 w-4" />}
+          label="Phone"
+          value={patient.phone ?? ""}
+        />
+        <Field
+          icon={<MapPin className="h-4 w-4" />}
+          label="Address"
+          value={patient.address ?? ""}
+          className="sm:col-span-2"
         />
       </div>
 

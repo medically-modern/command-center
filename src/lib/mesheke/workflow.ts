@@ -7,6 +7,7 @@ export interface Patient {
   // Demographics (read-only context)
   dob: string;
   phone?: string;
+  address?: string;
   memberId1?: string;
   memberId2?: string;
   primaryInsurance?: string;

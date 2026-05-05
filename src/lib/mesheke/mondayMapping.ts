@@ -56,6 +56,8 @@ export function mondayItemToPatient(item: MondayItem): Patient {
     id: item.id,
     name: item.name,
     dob: col(item, "text_mm1xvxst"),
+    phone: col(item, "phone_mm1x44yk") || undefined,
+    address: col(item, "location_mm1xhw17") || undefined,
     primaryInsurance: col(item, "color_mm1x157j") || undefined,
     memberId1: col(item, "text_mm1x2qk2") || undefined,
     memberId2: col(item, "text_mm1xaccx") || undefined,
