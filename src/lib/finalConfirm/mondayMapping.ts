@@ -30,6 +30,7 @@ export function mondayItemToPatient(item: MondayItem): Patient {
 
     // Insurance
     primaryInsurance: cv(item, COL.primaryInsurance)?.text ?? "",
+    primaryInsuranceIndex: parseIndex(cv(item, COL.primaryInsurance)?.value ?? null),
     memberId1: cv(item, COL.memberId1)?.text ?? "",
     secondaryInsurance: cv(item, COL.secondaryInsurance)?.text ?? "",
     secondaryInsuranceIndex: parseIndex(cv(item, COL.secondaryInsurance)?.value ?? null),
@@ -49,20 +50,30 @@ export function mondayItemToPatient(item: MondayItem): Patient {
     doctorFax: cv(item, COL.doctorFax)?.text ?? "",
     clinicName: cv(item, COL.clinicName)?.text ?? "",
     clinicalsMethod: cv(item, COL.clinicalsMethod)?.text ?? "",
+    clinicalsMethodIndex: parseIndex(cv(item, COL.clinicalsMethod)?.value ?? null),
 
     // Medical Necessity
     diagnosis: cv(item, COL.diagnosis)?.text ?? "",
+    diagnosisIndex: parseIndex(cv(item, COL.diagnosis)?.value ?? null),
     cgmCoveragePath: cv(item, COL.cgmCoveragePath)?.text ?? "",
+    cgmCoveragePathIndex: parseIndex(cv(item, COL.cgmCoveragePath)?.value ?? null),
     ipCoveragePath: cv(item, COL.ipCoveragePath)?.text ?? "",
+    ipCoveragePathIndex: parseIndex(cv(item, COL.ipCoveragePath)?.value ?? null),
     mrExpiryDate: cv(item, COL.mrExpiryDate)?.text ?? "",
 
     // Product / Referral
     serving: cv(item, COL.serving)?.text ?? "",
+    servingIndex: parseIndex(cv(item, COL.serving)?.value ?? null),
     pumpType: cv(item, COL.pumpType)?.text ?? "",
+    pumpTypeIndex: parseIndex(cv(item, COL.pumpType)?.value ?? null),
     cgmType: cv(item, COL.cgmType)?.text ?? "",
+    cgmTypeIndex: parseIndex(cv(item, COL.cgmType)?.value ?? null),
     requestType: cv(item, COL.requestType)?.text ?? "",
+    requestTypeIndex: parseIndex(cv(item, COL.requestType)?.value ?? null),
     referralType: cv(item, COL.referralType)?.text ?? "",
+    referralTypeIndex: parseIndex(cv(item, COL.referralType)?.value ?? null),
     referralSource: cv(item, COL.referralSource)?.text ?? "",
+    referralSourceIndex: parseIndex(cv(item, COL.referralSource)?.value ?? null),
 
     // Welcome Call / Order
     subscriptionType: cv(item, COL.subscriptionType)?.text ?? "",

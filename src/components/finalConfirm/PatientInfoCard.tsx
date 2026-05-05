@@ -1,7 +1,18 @@
 import type { Patient } from "@/lib/finalConfirm/workflow";
 import {
   GENDER_OPTIONS,
+  PRIMARY_INSURANCE_OPTIONS,
   SECONDARY_INSURANCE_OPTIONS,
+  SERVING_OPTIONS,
+  PUMP_TYPE_OPTIONS,
+  CGM_TYPE_OPTIONS,
+  REQUEST_TYPE_OPTIONS,
+  DIAGNOSIS_OPTIONS,
+  CGM_COVERAGE_PATH_OPTIONS,
+  IP_COVERAGE_PATH_OPTIONS,
+  CLINICALS_METHOD_OPTIONS,
+  REFERRAL_TYPE_OPTIONS,
+  REFERRAL_SOURCE_OPTIONS,
   INFUSION_SET_1_OPTIONS,
   INFUSION_SET_2_OPTIONS,
   SUBSCRIPTION_TYPE_OPTIONS,
@@ -79,18 +90,20 @@ function EditableTextField({
 
 function SelectField({
   label,
+  icon,
   options,
   value,
   onChange,
 }: {
   label: string;
+  icon?: React.ReactNode;
   options: { index: number; label: string }[];
   value: string;
   onChange: (index: number, label: string) => void;
 }) {
   const selectedOpt = options.find((o) => o.label === value);
-  return (
-    <div>
+  const content = (
+    <div className={icon ? "min-w-0 flex-1" : ""}>
       <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1">{label}</p>
       <Select
         value={selectedOpt ? String(selectedOpt.index) : ""}
@@ -110,6 +123,17 @@ function SelectField({
           ))}
         </SelectContent>
       </Select>
+    </div>
+  );
+
+  if (!icon) return content;
+
+  return (
+    <div className="flex items-start gap-2 min-w-0">
+      <div className="h-8 w-8 rounded-md bg-muted flex items-center justify-center text-muted-foreground shrink-0">
+        {icon}
+      </div>
+      {content}
     </div>
   );
 }
@@ -241,14 +265,13 @@ export function PatientInfoCard({ patient, onFieldChange }: Props) {
             editedValue={patient.emailEdited}
             onChange={(v) => onFieldChange("emailEdited", v)}
           />
-          <div>
-            <SelectField
-              label="Gender"
-              options={GENDER_OPTIONS}
-              value={patient.gender}
-              onChange={(index) => onFieldChange("genderIndex", index)}
-            />
-          </div>
+          <SelectField
+            label="Gender"
+            icon={<User className="h-4 w-4" />}
+            options={GENDER_OPTIONS}
+            value={patient.gender}
+            onChange={(index) => onFieldChange("genderIndex", index)}
+          />
         </div>
         {/* Address — full width with Google autocomplete */}
         <div className="flex items-start gap-2 min-w-0">
@@ -272,11 +295,16 @@ export function PatientInfoCard({ patient, onFieldChange }: Props) {
           <Shield className="h-3.5 w-3.5" /> Insurance
         </p>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <EditableTextField
-            icon={<Shield className="h-4 w-4" />}
+          <SelectField
             label="Primary Insurance"
+            icon={<Shield className="h-4 w-4" />}
+            options={PRIMARY_INSURANCE_OPTIONS}
             value={patient.primaryInsurance}
-            onChange={(v) => onFieldChange("primaryInsurance", v)}
+            onChange={(index) => {
+              onFieldChange("primaryInsuranceIndex", index);
+              const opt = PRIMARY_INSURANCE_OPTIONS.find((o) => o.index === index);
+              if (opt) onFieldChange("primaryInsurance", opt.label);
+            }}
           />
           <EditableTextField
             icon={<IdCard className="h-4 w-4" />}
@@ -286,6 +314,7 @@ export function PatientInfoCard({ patient, onFieldChange }: Props) {
           />
           <SelectField
             label="Secondary Insurance"
+            icon={<Shield className="h-4 w-4" />}
             options={SECONDARY_INSURANCE_OPTIONS}
             value={patient.secondaryInsuranceEdited ?? patient.secondaryInsurance}
             onChange={(index, label) => {
@@ -365,11 +394,16 @@ export function PatientInfoCard({ patient, onFieldChange }: Props) {
               value={patient.doctorFax}
               onChange={(v) => onFieldChange("doctorFax", v)}
             />
-            <EditableTextField
-              icon={<Send className="h-4 w-4" />}
+            <SelectField
               label="Clinicals Method"
+              icon={<Send className="h-4 w-4" />}
+              options={CLINICALS_METHOD_OPTIONS}
               value={patient.clinicalsMethod}
-              onChange={(v) => onFieldChange("clinicalsMethod", v)}
+              onChange={(index) => {
+                onFieldChange("clinicalsMethodIndex", index);
+                const opt = CLINICALS_METHOD_OPTIONS.find((o) => o.index === index);
+                if (opt) onFieldChange("clinicalsMethod", opt.label);
+              }}
             />
             <EditableTextField
               icon={<Building2 className="h-4 w-4" />}
@@ -385,23 +419,38 @@ export function PatientInfoCard({ patient, onFieldChange }: Props) {
       <Card className="p-4 space-y-4">
         <CollapsibleSection title="Medical Necessity" defaultOpen>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <EditableTextField
-              icon={<Heart className="h-4 w-4" />}
+            <SelectField
               label="Diagnosis"
+              icon={<Heart className="h-4 w-4" />}
+              options={DIAGNOSIS_OPTIONS}
               value={patient.diagnosis}
-              onChange={(v) => onFieldChange("diagnosis", v)}
+              onChange={(index) => {
+                onFieldChange("diagnosisIndex", index);
+                const opt = DIAGNOSIS_OPTIONS.find((o) => o.index === index);
+                if (opt) onFieldChange("diagnosis", opt.label);
+              }}
             />
-            <EditableTextField
-              icon={<Activity className="h-4 w-4" />}
+            <SelectField
               label="CGM Coverage Path"
-              value={patient.cgmCoveragePath}
-              onChange={(v) => onFieldChange("cgmCoveragePath", v)}
-            />
-            <EditableTextField
               icon={<Activity className="h-4 w-4" />}
+              options={CGM_COVERAGE_PATH_OPTIONS}
+              value={patient.cgmCoveragePath}
+              onChange={(index) => {
+                onFieldChange("cgmCoveragePathIndex", index);
+                const opt = CGM_COVERAGE_PATH_OPTIONS.find((o) => o.index === index);
+                if (opt) onFieldChange("cgmCoveragePath", opt.label);
+              }}
+            />
+            <SelectField
               label="IP Coverage Path"
+              icon={<Activity className="h-4 w-4" />}
+              options={IP_COVERAGE_PATH_OPTIONS}
               value={patient.ipCoveragePath}
-              onChange={(v) => onFieldChange("ipCoveragePath", v)}
+              onChange={(index) => {
+                onFieldChange("ipCoveragePathIndex", index);
+                const opt = IP_COVERAGE_PATH_OPTIONS.find((o) => o.index === index);
+                if (opt) onFieldChange("ipCoveragePath", opt.label);
+              }}
             />
             <EditableTextField
               icon={<Stethoscope className="h-4 w-4" />}
@@ -419,35 +468,55 @@ export function PatientInfoCard({ patient, onFieldChange }: Props) {
           <Package className="h-3.5 w-3.5" /> Product & Order Info
         </p>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <EditableTextField
-            icon={<Package className="h-4 w-4" />}
+          <SelectField
             label="Serving"
+            icon={<Package className="h-4 w-4" />}
+            options={SERVING_OPTIONS}
             value={patient.serving}
-            onChange={(v) => onFieldChange("serving", v)}
+            onChange={(index) => {
+              onFieldChange("servingIndex", index);
+              const opt = SERVING_OPTIONS.find((o) => o.index === index);
+              if (opt) onFieldChange("serving", opt.label);
+            }}
           />
-          <EditableTextField
-            icon={<Package className="h-4 w-4" />}
+          <SelectField
             label="Pump Type"
+            icon={<Package className="h-4 w-4" />}
+            options={PUMP_TYPE_OPTIONS}
             value={patient.pumpType}
-            onChange={(v) => onFieldChange("pumpType", v)}
+            onChange={(index) => {
+              onFieldChange("pumpTypeIndex", index);
+              const opt = PUMP_TYPE_OPTIONS.find((o) => o.index === index);
+              if (opt) onFieldChange("pumpType", opt.label);
+            }}
           />
-          <EditableTextField
-            icon={<Package className="h-4 w-4" />}
+          <SelectField
             label="CGM Type"
-            value={patient.cgmType}
-            onChange={(v) => onFieldChange("cgmType", v)}
-          />
-          <EditableTextField
             icon={<Package className="h-4 w-4" />}
+            options={CGM_TYPE_OPTIONS}
+            value={patient.cgmType}
+            onChange={(index) => {
+              onFieldChange("cgmTypeIndex", index);
+              const opt = CGM_TYPE_OPTIONS.find((o) => o.index === index);
+              if (opt) onFieldChange("cgmType", opt.label);
+            }}
+          />
+          <SelectField
             label="Request Type"
+            icon={<Package className="h-4 w-4" />}
+            options={REQUEST_TYPE_OPTIONS}
             value={patient.requestType}
-            onChange={(v) => onFieldChange("requestType", v)}
+            onChange={(index) => {
+              onFieldChange("requestTypeIndex", index);
+              const opt = REQUEST_TYPE_OPTIONS.find((o) => o.index === index);
+              if (opt) onFieldChange("requestType", opt.label);
+            }}
           />
         </div>
 
         <div className="h-px bg-border" />
 
-        {/* Subscription + Order Handling row */}
+        {/* Subscription + Order Handling */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <SelectField
             label="Subscription Type"
