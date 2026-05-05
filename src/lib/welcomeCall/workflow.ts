@@ -121,6 +121,14 @@ export const ORDER_HANDLING_OPTIONS = [
   { index: 2, label: 'Not Applicable' },
 ];
 
+export const PUMP_TYPE_OPTIONS = [
+  { index: 0, label: 'iLet' },
+  { index: 1, label: 'Mobi' },
+  { index: 2, label: 't:slim' },
+  { index: 3, label: 'Not Serving' },
+  { index: 4, label: 'Minimed 780G' },
+];
+
 export const CGM_TYPE_OPTIONS = [
   { index: 0, label: 'FreeStyle Libre 14-Day' },
   { index: 1, label: 'Guardian 4' },

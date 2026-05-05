@@ -8,6 +8,10 @@ export async function sendPatientToMonday(p: Patient): Promise<void> {
   if (p.cgmTypeIndex !== null)
     tasks.push(writeStatusIndex(p.id, COL.cgmType, p.cgmTypeIndex));
 
+  // Pump Type override
+  if (p.pumpTypeIndex !== null)
+    tasks.push(writeStatusIndex(p.id, COL.pumpType, p.pumpTypeIndex));
+
   // Secondary Insurance (only if edited)
   if (p.secondaryInsuranceEdited !== null && p.secondaryInsuranceIndex !== null)
     tasks.push(writeStatusIndex(p.id, COL.secondaryInsurance, p.secondaryInsuranceIndex));

@@ -7,6 +7,7 @@ import {
   SUBSCRIPTION_TYPE_OPTIONS,
   ORDER_HANDLING_OPTIONS,
   servingIncludesCgm,
+  PUMP_TYPE_OPTIONS,
   servingIncludesPump,
   isCrossSell,
   isInfusionSelling,
@@ -288,14 +289,29 @@ export function WelcomeCallForm({ patient, onFieldChange, onSendWelcomeCallText 
             )}
           </div>
 
-          {/* Pump Type — read-only */}
+          {/* Pump Type — editable dropdown */}
           <div className="mb-5">
             <label className="text-xs uppercase tracking-wider text-muted-foreground font-semibold block mb-1">
               Pump Type
             </label>
-            <p className="text-sm font-medium px-3 py-2 rounded-md bg-muted/50 border border-input min-h-[40px] flex items-center">
-              {patient.pumpType || <span className="text-muted-foreground italic">Not set</span>}
-            </p>
+            <Select
+              value={patient.pumpTypeIndex !== null ? String(patient.pumpTypeIndex) : ""}
+              onValueChange={(value) => {
+                const option = PUMP_TYPE_OPTIONS.find((o) => String(o.index) === value);
+                handleSelectChange("pumpType", option?.label || "", option?.index ?? null);
+              }}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Select pump type" />
+              </SelectTrigger>
+              <SelectContent>
+                {PUMP_TYPE_OPTIONS.map((opt) => (
+                  <SelectItem key={opt.index} value={String(opt.index)}>
+                    {opt.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
 
           {/* Infusion Set pairs */}
