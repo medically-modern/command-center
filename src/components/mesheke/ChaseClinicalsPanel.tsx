@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { Patient } from "@/lib/mesheke/workflow";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { useMondayFiles } from "@/hooks/mesheke/useMondayFiles";
 import {
   COL,
@@ -10,7 +11,6 @@ import {
   writeLongText,
   writeStatusIndex,
   writeText,
-  buildDoctorWriteTasks,
   type MondayFileEntry,
 } from "@/lib/mesheke/mondayApi";
 import {
@@ -18,7 +18,6 @@ import {
   MN_ATTEMPTS_INDEX,
   SUB_STAGE_INDEX,
 } from "@/lib/mesheke/mondayMapping";
-import { NotesPanel } from "@/components/mesheke/NotesPanel";
 import { toast } from "sonner";
 import {
   AlertTriangle,
@@ -172,10 +171,14 @@ export function ChaseClinicalsPanel({ patient, onUpdate }: Props) {
           isParachute={isParachute}
         />
       )}
-      <NotesPanel
-        notes={patient.mnEvalNotes ?? ""}
-        onNotesChange={(v) => onUpdate({ mnEvalNotes: v })}
-        onSaveToMonday={(v) => writeLongText(patient.id, COL.mnEvalNotes, v)}
+      <NotesCard
+        value={patient.confirmChaseNotes ?? ""}
+        onChange={(v) => onUpdate({ confirmChaseNotes: v })}
+        onBlur={() => {
+          if (patient.confirmChaseNotes !== undefined && hasToken()) {
+            void writeLongText(patient.id, COL.confirmChaseNotes, patient.confirmChaseNotes ?? "");
+          }
+        }}
       />
       {!isEscalated && (
         <SaveBar
@@ -203,8 +206,6 @@ async function saveYes(patient: Patient, name: string) {
   // Next action date — 2 business days from now.
   const nextAction = formatDateInput(addBusinessDays(new Date(), 2));
   await writeDate(patient.id, COL.nextActionDate, nextAction);
-  // Doctor info — write with correct column-type formats.
-  await Promise.all(buildDoctorWriteTasks(patient).map((t) => t.run()));
 }
 
 async function saveNo({
@@ -239,8 +240,6 @@ async function saveNo({
   } else if (nextActionDateInput) {
     await writeDate(patient.id, COL.nextActionDate, nextActionDateInput);
   }
-  // Doctor info — write with correct column-type formats.
-  await Promise.all(buildDoctorWriteTasks(patient).map((t) => t.run()));
 }
 
 // =====================================================================
@@ -555,6 +554,37 @@ function EscalatedCard() {
           All 3 chase attempts came back unsuccessful. Notes are still editable below.
         </p>
       </div>
+    </section>
+  );
+}
+
+function NotesCard({
+  value,
+  onChange,
+  onBlur,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  onBlur: () => void;
+}) {
+  return (
+    <section className="rounded-xl bg-card border shadow-card p-5 space-y-2">
+      <div>
+        <p className="text-xs uppercase tracking-wider text-muted-foreground">
+          Confirming &amp; Chasing Notes
+        </p>
+        <p className="text-[11px] text-muted-foreground/80 mt-0.5">
+          Free-form notes. Saved to Monday on blur.
+        </p>
+      </div>
+      <Textarea
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        onBlur={onBlur}
+        placeholder="What did the office say? Any reasons for delay, callback windows, etc."
+        rows={4}
+        className="bg-background"
+      />
     </section>
   );
 }

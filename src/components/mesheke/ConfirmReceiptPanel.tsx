@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { Patient } from "@/lib/mesheke/workflow";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { useMondayFiles } from "@/hooks/mesheke/useMondayFiles";
 import {
   COL,
@@ -10,8 +11,6 @@ import {
   writeLongText,
   writeStatusIndex,
   writeText,
-  writeDropdownLabels,
-  buildDoctorWriteTasks,
   type MondayFileEntry,
 } from "@/lib/mesheke/mondayApi";
 import {
@@ -19,13 +18,11 @@ import {
   MN_ATTEMPTS_INDEX,
   SUB_STAGE_INDEX,
 } from "@/lib/mesheke/mondayMapping";
-import { NotesPanel } from "@/components/mesheke/NotesPanel";
 import { toast } from "sonner";
 import {
   AlertTriangle,
   Check,
   CheckCircle2,
-  Download,
   ExternalLink,
   FileText,
   Loader2,
@@ -153,6 +150,7 @@ export function ConfirmReceiptPanel({ patient, onUpdate }: Props) {
   return (
     <div className="space-y-4">
       <MethodBanner patient={patient} />
+      <DoctorContactCard patient={patient} />
       <RequestSentBanner patient={patient} />
       <FilesPanel files={mondayFiles} />
       {history.length > 0 && <HistoryCard history={history} />}
@@ -170,10 +168,16 @@ export function ConfirmReceiptPanel({ patient, onUpdate }: Props) {
           onNextActionChange={setNextAction}
         />
       )}
-      <NotesPanel
-        notes={patient.mnEvalNotes ?? ""}
-        onNotesChange={(v) => onUpdate({ mnEvalNotes: v })}
-        onSaveToMonday={(v) => writeLongText(patient.id, COL.mnEvalNotes, v)}
+      <NotesCard
+        value={patient.confirmChaseNotes ?? ""}
+        onChange={(v) => onUpdate({ confirmChaseNotes: v })}
+        // Push the latest local value to Monday on blur so we don't fire
+        // a write per keystroke.
+        onBlur={() => {
+          if (patient.confirmChaseNotes !== undefined && hasToken()) {
+            void writeLongText(patient.id, COL.confirmChaseNotes, patient.confirmChaseNotes ?? "");
+          }
+        }}
       />
       {!isEscalated && (
         <SaveBar
@@ -204,8 +208,6 @@ async function saveYes(patient: Patient, name: string) {
   // Next action date — 2 business days from now.
   const nextAction = formatDateInput(addBusinessDays(new Date(), 2));
   await writeDate(patient.id, COL.nextActionDate, nextAction);
-  // Doctor info — write with correct column-type formats.
-  await Promise.all(buildDoctorWriteTasks(patient).map((t) => t.run()));
 }
 
 async function saveNo({
@@ -243,8 +245,6 @@ async function saveNo({
   } else if (nextActionDateInput) {
     await writeDate(patient.id, COL.nextActionDate, nextActionDateInput);
   }
-  // Doctor info — write with correct column-type formats.
-  await Promise.all(buildDoctorWriteTasks(patient).map((t) => t.run()));
 }
 
 // =====================================================================
@@ -278,6 +278,49 @@ function MethodBanner({ patient }: { patient: Patient }) {
   );
 }
 
+function DoctorContactCard({ patient }: { patient: Patient }) {
+  return (
+    <section className="rounded-xl bg-card border shadow-card p-5">
+      <p className="text-xs uppercase tracking-wider text-muted-foreground mb-3">
+        Doctor Contact
+      </p>
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-sm">
+        <ContactField label="Name" value={patient.doctorName} />
+        <ContactField label="Phone" value={patient.doctorPhone} mono />
+        <ContactField label="Fax (@rcfax)" value={patient.doctorFax} mono />
+        <ContactField label="Email" value={patient.doctorEmail} mono />
+        <ContactField label="NPI" value={patient.doctorNpi} mono />
+        <ContactField label="Clinic" value={patient.clinicName} />
+      </div>
+    </section>
+  );
+}
+
+function ContactField({
+  label,
+  value,
+  mono,
+}: {
+  label: string;
+  value?: string;
+  mono?: boolean;
+}) {
+  return (
+    <div>
+      <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
+        {label}
+      </p>
+      <p
+        className={`mt-0.5 truncate ${mono ? "font-mono text-xs" : ""} ${
+          value ? "text-foreground" : "text-muted-foreground italic"
+        }`}
+        title={value || "—"}
+      >
+        {value || "—"}
+      </p>
+    </div>
+  );
+}
 
 function RequestSentBanner({ patient }: { patient: Patient }) {
   const sent = patient.requestSentAt;
@@ -356,46 +399,15 @@ function FilesPanel({ files }: { files: ReturnType<typeof useMondayFiles> }) {
                   </span>
                   <span className="truncate font-medium">{file.name}</span>
                 </span>
-                <div className="flex items-center gap-1 shrink-0">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={!url}
-                    onClick={() => {
-                      if (!url) return;
-                      const viewerUrl = `https://docs.google.com/gview?url=${encodeURIComponent(url)}&embedded=true`;
-                      window.open(viewerUrl, "_blank");
-                    }}
-                    className="h-7 px-2 text-[11px] gap-1"
-                  >
-                    <ExternalLink className="h-3 w-3" /> View
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={!url}
-                    onClick={async () => {
-                      if (!url) return;
-                      try {
-                        const resp = await fetch(url, { mode: "cors" });
-                        const blob = await resp.blob();
-                        const blobUrl = URL.createObjectURL(blob);
-                        const a = document.createElement("a");
-                        a.href = blobUrl;
-                        a.download = file.name || "file";
-                        document.body.appendChild(a);
-                        a.click();
-                        document.body.removeChild(a);
-                        URL.revokeObjectURL(blobUrl);
-                      } catch {
-                        window.open(url, "_blank");
-                      }
-                    }}
-                    className="h-7 px-2 text-[11px] gap-1"
-                  >
-                    <Download className="h-3 w-3" /> Download
-                  </Button>
-                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={!url}
+                  onClick={() => url && window.open(url, "_blank")}
+                  className="h-7 px-2 text-[11px] gap-1 shrink-0"
+                >
+                  <ExternalLink className="h-3 w-3" /> View
+                </Button>
               </div>
             );
           })}
@@ -553,6 +565,37 @@ function EscalatedCard() {
           All 3 confirm-receipt attempts came back unsuccessful. Notes are still editable below.
         </p>
       </div>
+    </section>
+  );
+}
+
+function NotesCard({
+  value,
+  onChange,
+  onBlur,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  onBlur: () => void;
+}) {
+  return (
+    <section className="rounded-xl bg-card border shadow-card p-5 space-y-2">
+      <div>
+        <p className="text-xs uppercase tracking-wider text-muted-foreground">
+          Confirming &amp; Chasing Notes
+        </p>
+        <p className="text-[11px] text-muted-foreground/80 mt-0.5">
+          Free-form notes. Saved to Monday on blur.
+        </p>
+      </div>
+      <Textarea
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        onBlur={onBlur}
+        placeholder="What did the office say? Any reasons for delay, callback windows, etc."
+        rows={4}
+        className="bg-background"
+      />
     </section>
   );
 }
