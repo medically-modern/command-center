@@ -127,25 +127,41 @@ export function seedEvalStateFromPatient(patient: Patient): EvalState {
 
 // ---- OOW Date validity ----
 
-const FOUR_YEARS_DAYS = 4 * 365.25;
-const FIVE_YEARS_DAYS = 5 * 365.25;
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
 /**
- * OOW Date is valid (i.e., the pump is sufficiently out of warranty) when
- * (today - oowDate) > 4 years, or > 5 years if Primary Insurance = Medicare A&B.
+ * OOW Date marks when the pump goes out of warranty.
+ *   • valid = true  → today is AFTER the OOW date (pump IS out of warranty)
+ *   • valid = false → today is BEFORE the OOW date (pump still under warranty)
+ *
+ * `diffDays` is positive when past OOW, negative when still under warranty.
  */
 export function isOowDateValid(
   oowDate: string | undefined,
-  primaryInsurance: string | undefined,
-): { valid: boolean; ageDays: number; thresholdDays: number } | null {
+  _primaryInsurance?: string | undefined,
+): { valid: boolean; diffDays: number; ageDays: number; thresholdDays: number } | null {
   if (!oowDate) return null;
   const d = new Date(oowDate);
   if (Number.isNaN(d.getTime())) return null;
-  const ageDays = (Date.now() - d.getTime()) / MS_PER_DAY;
-  const isMedicareAB = primaryInsurance === "Medicare A&B";
-  const thresholdDays = isMedicareAB ? FIVE_YEARS_DAYS : FOUR_YEARS_DAYS;
-  return { valid: ageDays > thresholdDays, ageDays, thresholdDays };
+  const diffDays = (Date.now() - d.getTime()) / MS_PER_DAY;
+  // valid when today is past the OOW date
+  return { valid: diffDays > 0, diffDays, ageDays: diffDays, thresholdDays: 0 };
+}
+
+/** Human-readable relative time from a day count. */
+export function formatOowDiff(diffDays: number): string {
+  const abs = Math.abs(diffDays);
+  if (abs < 1) return "today";
+  if (abs < 7) return `${Math.round(abs)}d`;
+  if (abs < 30) return `${Math.floor(abs / 7)}w ${Math.round(abs % 7)}d`;
+  if (abs < 365.25) {
+    const months = Math.floor(abs / 30.44);
+    const days = Math.round(abs % 30.44);
+    return days > 0 ? `${months}mo ${days}d` : `${months}mo`;
+  }
+  const years = Math.floor(abs / 365.25);
+  const months = Math.round((abs % 365.25) / 30.44);
+  return months > 0 ? `${years}y ${months}mo` : `${years}y`;
 }
 
 // ---- Validity rollup ----
@@ -246,9 +262,8 @@ export function deriveValidity(
           ipValid = false;
           ipReasons.push("OOW Date missing");
         } else if (!oow.valid) {
-          const yrs = (oow.thresholdDays / 365.25).toFixed(0);
           ipValid = false;
-          ipReasons.push(`OOW Date invalid (<${yrs} years)`);
+          ipReasons.push("Pump still under warranty");
         } else if (cfg.showOowOnScript && state.oowDateOnScript !== "Yes") {
           // Date is known and old enough — but not yet on the script.
           ipValid = false;
@@ -397,7 +412,7 @@ export function computeDoctorAskList(
       if (!oow) {
         asks.push("OOW date");
       } else if (!oow.valid) {
-        asks.push("OOW date — must be > 4 years");
+        asks.push("OOW date — pump still under warranty");
       } else if (cfg.showOowOnScript && state.oowDateOnScript !== "Yes") {
         // Date is known and old enough — just not yet on the script.
         asks.push(`Add OOW date of ${formatOowDate(state.oowDate)} to the script`);
