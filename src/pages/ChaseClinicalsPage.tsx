@@ -81,7 +81,7 @@ const ChaseClinicalsPage = () => {
               )}
               {selected && (
                 <>
-                  <PatientProfileCard patient={selected} lockDoctorOpen />
+                  <PatientProfileCard patient={selected} lockDoctorOpen onDoctorEdit={(patch) => update(selected.id, patch)} />
                   <ChaseClinicalsPanel patient={selected} onUpdate={onUpdate} />
                 </>
               )}

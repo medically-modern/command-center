@@ -150,7 +150,6 @@ export function ConfirmReceiptPanel({ patient, onUpdate }: Props) {
   return (
     <div className="space-y-4">
       <MethodBanner patient={patient} />
-      <DoctorContactCard patient={patient} />
       <RequestSentBanner patient={patient} />
       <FilesPanel files={mondayFiles} />
       {history.length > 0 && <HistoryCard history={history} />}
@@ -269,49 +268,6 @@ function MethodBanner({ patient }: { patient: Patient }) {
   );
 }
 
-function DoctorContactCard({ patient }: { patient: Patient }) {
-  return (
-    <section className="rounded-xl bg-card border shadow-card p-5">
-      <p className="text-xs uppercase tracking-wider text-muted-foreground mb-3">
-        Doctor Contact
-      </p>
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-sm">
-        <ContactField label="Name" value={patient.doctorName} />
-        <ContactField label="Phone" value={patient.doctorPhone} mono />
-        <ContactField label="Fax (@rcfax)" value={patient.doctorFax} mono />
-        <ContactField label="Email" value={patient.doctorEmail} mono />
-        <ContactField label="NPI" value={patient.doctorNpi} mono />
-        <ContactField label="Clinic" value={patient.clinicName} />
-      </div>
-    </section>
-  );
-}
-
-function ContactField({
-  label,
-  value,
-  mono,
-}: {
-  label: string;
-  value?: string;
-  mono?: boolean;
-}) {
-  return (
-    <div>
-      <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
-        {label}
-      </p>
-      <p
-        className={`mt-0.5 truncate ${mono ? "font-mono text-xs" : ""} ${
-          value ? "text-foreground" : "text-muted-foreground italic"
-        }`}
-        title={value || "—"}
-      >
-        {value || "—"}
-      </p>
-    </div>
-  );
-}
 
 function RequestSentBanner({ patient }: { patient: Patient }) {
   const sent = patient.requestSentAt;

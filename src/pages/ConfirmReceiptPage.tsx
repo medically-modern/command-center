@@ -80,7 +80,7 @@ const ConfirmReceiptPage = () => {
               )}
               {selected && (
                 <>
-                  <PatientProfileCard patient={selected} defaultDoctorOpen />
+                  <PatientProfileCard patient={selected} defaultDoctorOpen onDoctorEdit={(patch) => update(selected.id, patch)} />
                   <ConfirmReceiptPanel patient={selected} onUpdate={onUpdate} />
                 </>
               )}

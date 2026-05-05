@@ -14,7 +14,10 @@ import {
   Hash,
   Building2,
   Send,
+  Pencil,
+  Check,
 } from "lucide-react";
+import { Input } from "@/components/ui/input";
 
 interface Props {
   patient: Patient;
@@ -22,6 +25,9 @@ interface Props {
   defaultDoctorOpen?: boolean;
   /** When true, Doctor Info is always shown — no toggle, no collapse. */
   lockDoctorOpen?: boolean;
+  /** Called when the user edits a doctor field via the pencil-edit UI.
+   *  Omit to hide the pencil icon entirely (read-only). */
+  onDoctorEdit?: (patch: Partial<Patient>) => void;
 }
 
 function Field({
@@ -54,12 +60,51 @@ function Field({
   );
 }
 
+function EditableField({
+  icon,
+  label,
+  value,
+  editing,
+  onChange,
+  className,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  value: string;
+  editing: boolean;
+  onChange?: (v: string) => void;
+  className?: string;
+}) {
+  if (!editing) return <Field icon={icon} label={label} value={value} className={className} />;
+  return (
+    <div className={`flex items-start gap-2 min-w-0 ${className ?? ""}`}>
+      <div className="h-8 w-8 rounded-md bg-muted flex items-center justify-center text-muted-foreground shrink-0">
+        {icon}
+      </div>
+      <div className="min-w-0 flex-1">
+        <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-0.5">
+          {label}
+        </p>
+        <Input
+          className="h-7 text-sm"
+          value={value}
+          onChange={(e) => onChange?.(e.target.value)}
+          placeholder={`Enter ${label.toLowerCase()}`}
+        />
+      </div>
+    </div>
+  );
+}
+
 export function PatientProfileCard({
   patient,
   defaultDoctorOpen = false,
   lockDoctorOpen = false,
+  onDoctorEdit,
 }: Props) {
   const [doctorOpen, setDoctorOpen] = useState(defaultDoctorOpen || lockDoctorOpen);
+  const [editingDoctor, setEditingDoctor] = useState(false);
+  const canEdit = !!onDoctorEdit;
 
   return (
     <div className="rounded-xl bg-card border shadow-card p-4 space-y-4">
@@ -83,11 +128,7 @@ export function PatientProfileCard({
 
       <div className="h-px bg-border" />
 
-      {/* Workflow context + equipment.
-         CGM Type shows only when serving CGM. Pump Type shows when serving
-         Insulin Pump or Supplies Only. If there's only one type to show, the
-         result is 4 fields and fits in one row; if both, we render a second
-         row (3 + 2 layout). */}
+      {/* Workflow context + equipment. */}
       {(() => {
         const showCgmType =
           patient.serving === "CGM" ||
@@ -118,7 +159,6 @@ export function PatientProfileCard({
                 label="Serving"
                 value={patient.serving ?? ""}
               />
-              {/* If only ONE type to show, slot it into the 4th column to keep one row */}
               {!both && showCgmType && (
                 <Field
                   icon={<Stethoscope className="h-4 w-4" />}
@@ -134,7 +174,6 @@ export function PatientProfileCard({
                 />
               )}
             </div>
-            {/* If BOTH types apply, second row holds them */}
             {both && (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                 <Field
@@ -153,81 +192,113 @@ export function PatientProfileCard({
         );
       })()}
 
-      {/* Doctor info — collapsible by default, but locked open when
-         the calling tab needs the contact details always visible
-         (e.g. Chase Clinicals where the agent is dialing every visit). */}
+      {/* Doctor info — collapsible by default, locked open on Chase Clinicals.
+         Pencil icon toggles inline editing when onDoctorEdit is provided. */}
       <div className="border-t pt-3">
         {lockDoctorOpen ? (
-          <p className="text-xs uppercase tracking-wider text-muted-foreground">
-            Doctor Info
-          </p>
-        ) : (
-          <button
-            onClick={() => setDoctorOpen((o) => !o)}
-            className="w-full flex items-center justify-between text-xs uppercase tracking-wider text-muted-foreground hover:text-foreground transition-colors gap-3"
-          >
-            <span className="flex items-center gap-2">
-              {doctorOpen ? (
-                <ChevronDown className="h-3 w-3" />
-              ) : (
-                <ChevronRight className="h-3 w-3" />
-              )}
+          <div className="flex items-center justify-between">
+            <p className="text-xs uppercase tracking-wider text-muted-foreground">
               Doctor Info
-            </span>
-            {!doctorOpen && (
-              <span className="flex items-center gap-3 text-[11px] normal-case text-foreground/70 truncate">
-                <span className="inline-flex items-center gap-1 truncate">
-                  <UserRound className="h-3 w-3 shrink-0" />
-                  <span className="truncate">{patient.doctorName ?? "—"}</span>
-                </span>
-                <span className="inline-flex items-center gap-1">
-                  <Send className="h-3 w-3 shrink-0" />
-                  <span>{patient.clinicalsMethod ?? "—"}</span>
-                </span>
-              </span>
+            </p>
+            {canEdit && (
+              <button
+                onClick={() => setEditingDoctor((e) => !e)}
+                className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors px-2 py-1 rounded-md hover:bg-muted"
+                title={editingDoctor ? "Done editing" : "Edit doctor info"}
+              >
+                {editingDoctor ? <Check className="h-3.5 w-3.5" /> : <Pencil className="h-3.5 w-3.5" />}
+                <span>{editingDoctor ? "Done" : "Edit"}</span>
+              </button>
             )}
-          </button>
+          </div>
+        ) : (
+          <div className="flex items-center justify-between">
+            <button
+              onClick={() => setDoctorOpen((o) => !o)}
+              className="flex-1 flex items-center justify-between text-xs uppercase tracking-wider text-muted-foreground hover:text-foreground transition-colors gap-3"
+            >
+              <span className="flex items-center gap-2">
+                {doctorOpen ? (
+                  <ChevronDown className="h-3 w-3" />
+                ) : (
+                  <ChevronRight className="h-3 w-3" />
+                )}
+                Doctor Info
+              </span>
+              {!doctorOpen && (
+                <span className="flex items-center gap-3 text-[11px] normal-case text-foreground/70 truncate">
+                  <span className="inline-flex items-center gap-1 truncate">
+                    <UserRound className="h-3 w-3 shrink-0" />
+                    <span className="truncate">{patient.doctorName ?? "—"}</span>
+                  </span>
+                  <span className="inline-flex items-center gap-1">
+                    <Send className="h-3 w-3 shrink-0" />
+                    <span>{patient.clinicalsMethod ?? "—"}</span>
+                  </span>
+                </span>
+              )}
+            </button>
+            {canEdit && doctorOpen && (
+              <button
+                onClick={() => setEditingDoctor((e) => !e)}
+                className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors px-2 py-1 rounded-md hover:bg-muted ml-2"
+                title={editingDoctor ? "Done editing" : "Edit doctor info"}
+              >
+                {editingDoctor ? <Check className="h-3.5 w-3.5" /> : <Pencil className="h-3.5 w-3.5" />}
+                <span>{editingDoctor ? "Done" : "Edit"}</span>
+              </button>
+            )}
+          </div>
         )}
 
         {(doctorOpen || lockDoctorOpen) && (
           <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            <Field
+            <EditableField
               icon={<UserRound className="h-4 w-4" />}
               label="Doctor Name"
               value={patient.doctorName ?? ""}
+              editing={editingDoctor}
+              onChange={(v) => onDoctorEdit?.({ doctorName: v })}
             />
             <Field
               icon={<Send className="h-4 w-4" />}
               label="Clinicals Method"
               value={patient.clinicalsMethod ?? ""}
             />
-            <Field
+            <EditableField
               icon={<Hash className="h-4 w-4" />}
               label="NPI"
               value={patient.doctorNpi ?? ""}
+              editing={editingDoctor}
+              onChange={(v) => onDoctorEdit?.({ doctorNpi: v })}
             />
-            <Field
+            <EditableField
               icon={<Phone className="h-4 w-4" />}
               label="Phone"
               value={patient.doctorPhone ?? ""}
+              editing={editingDoctor}
+              onChange={(v) => onDoctorEdit?.({ doctorPhone: v })}
             />
-            <Field
+            <EditableField
               icon={<Mail className="h-4 w-4" />}
               label="Fax"
               value={patient.doctorFax ?? ""}
+              editing={editingDoctor}
+              onChange={(v) => onDoctorEdit?.({ doctorFax: v })}
             />
-            <Field
+            <EditableField
               icon={<Mail className="h-4 w-4" />}
               label="Email"
               value={patient.doctorEmail ?? ""}
+              editing={editingDoctor}
+              onChange={(v) => onDoctorEdit?.({ doctorEmail: v })}
             />
-            <Field
+            <EditableField
               icon={<Building2 className="h-4 w-4" />}
               label="Clinic"
               value={patient.clinicName ?? ""}
-              // Clinic names tend to be long — let it span the empty
-              // 4th column on lg + the empty 2nd column on sm so the
-              // value doesn't truncate.
+              editing={editingDoctor}
+              onChange={(v) => onDoctorEdit?.({ clinicName: v })}
               className="sm:col-span-2"
             />
           </div>
