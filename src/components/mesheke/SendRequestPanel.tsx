@@ -958,9 +958,9 @@ function RequestLetterCard({
            "Generating…" when its label changes. */}
         <Button
           size="sm"
-          onClick={onGenerate}
-          disabled={generating}
-          className="h-8 gap-1 text-xs bg-teal-600 hover:bg-teal-700 text-white min-w-[120px] justify-center"
+          disabled
+          title="Coming soon"
+          className="h-8 gap-1 text-xs bg-gray-400 text-white min-w-[120px] justify-center cursor-not-allowed opacity-60"
         >
           {generating ? (
             <>
