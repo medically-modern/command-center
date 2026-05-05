@@ -31,6 +31,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useState } from "react";
+import { cn } from "@/lib/utils";
 import {
   ChevronDown,
   ChevronRight,
@@ -72,15 +73,16 @@ function EditableTextField({
   onChange: (v: string) => void;
 }) {
   const displayValue = editedValue !== undefined && editedValue !== null ? editedValue : value;
+  const isEmpty = !displayValue;
   return (
-    <div className="flex items-start gap-2 min-w-0">
-      <div className="h-8 w-8 rounded-md bg-muted flex items-center justify-center text-muted-foreground shrink-0">
+    <div className={cn("flex items-start gap-2 min-w-0 rounded-lg p-1.5 -m-1.5 transition-colors", isEmpty && "bg-red-50 dark:bg-red-950/20 ring-1 ring-red-200 dark:ring-red-800/40")}>
+      <div className={cn("h-8 w-8 rounded-md flex items-center justify-center shrink-0", isEmpty ? "bg-red-100 dark:bg-red-900/30 text-red-500" : "bg-muted text-muted-foreground")}>
         {icon}
       </div>
       <div className="min-w-0 flex-1">
         <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1">{label}</p>
         <Input
-          className="h-8 text-sm"
+          className={cn("h-8 text-sm", isEmpty && "border-red-300 dark:border-red-700")}
           value={displayValue}
           onChange={(e) => onChange(e.target.value)}
           placeholder={placeholder ?? `Enter ${label.toLowerCase()}`}
@@ -104,7 +106,8 @@ function SelectField({
   onChange: (index: number, label: string) => void;
 }) {
   const selectedOpt = options.find((o) => o.label === value);
-  const content = (
+  const isEmpty = !value;
+  const selectContent = (
     <div className={icon ? "min-w-0 flex-1" : ""}>
       <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1">{label}</p>
       <Select
@@ -114,7 +117,7 @@ function SelectField({
           if (opt) onChange(opt.index, opt.label);
         }}
       >
-        <SelectTrigger className="h-8 text-sm">
+        <SelectTrigger className={cn("h-8 text-sm", isEmpty && "border-red-300 dark:border-red-700")}>
           <SelectValue placeholder={`Select ${label.toLowerCase()}`} />
         </SelectTrigger>
         <SelectContent>
@@ -128,14 +131,20 @@ function SelectField({
     </div>
   );
 
-  if (!icon) return content;
+  if (!icon) {
+    return (
+      <div className={cn("rounded-lg p-1.5 -m-1.5 transition-colors", isEmpty && "bg-red-50 dark:bg-red-950/20 ring-1 ring-red-200 dark:ring-red-800/40")}>
+        {selectContent}
+      </div>
+    );
+  }
 
   return (
-    <div className="flex items-start gap-2 min-w-0">
-      <div className="h-8 w-8 rounded-md bg-muted flex items-center justify-center text-muted-foreground shrink-0">
+    <div className={cn("flex items-start gap-2 min-w-0 rounded-lg p-1.5 -m-1.5 transition-colors", isEmpty && "bg-red-50 dark:bg-red-950/20 ring-1 ring-red-200 dark:ring-red-800/40")}>
+      <div className={cn("h-8 w-8 rounded-md flex items-center justify-center shrink-0", isEmpty ? "bg-red-100 dark:bg-red-900/30 text-red-500" : "bg-muted text-muted-foreground")}>
         {icon}
       </div>
-      {content}
+      {selectContent}
     </div>
   );
 }
