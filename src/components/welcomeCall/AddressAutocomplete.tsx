@@ -4,6 +4,11 @@ let mapsLoaded = false;
 let mapsLoading = false;
 const loadCallbacks: (() => void)[] = [];
 
+/** Strip "-NNNN" off any 5-digit zip. We only store 5-digit zips. */
+export function stripZipPlus4(addr: string): string {
+  return addr.replace(/(\b\d{5})-\d{4}\b/g, "$1");
+}
+
 async function loadGooglePlaces(): Promise<void> {
   if (mapsLoaded) return;
 
@@ -15,7 +20,7 @@ async function loadGooglePlaces(): Promise<void> {
 
   const key = import.meta.env.VITE_GOOGLE_MAPS_API_KEY as string | undefined;
   if (!key) {
-    console.warn("VITE_GOOGLE_MAPS_API_KEY is not set — address autocomplete disabled");
+    console.warn("VITE_GOOGLE_MAPS_API_KEY is not set \u2014 address autocomplete disabled");
     mapsLoading = false;
     return Promise.reject(new Error("No API key"));
   }
@@ -112,6 +117,9 @@ export function AddressAutocomplete({ value, onChange, placeholder }: Props) {
       }
 
       if (!addr) return;
+
+      // Strip ZIP+4 down to 5-digit zip
+      addr = stripZipPlus4(addr);
 
       // Update the input to show the full address with zip
       if (inputRef.current) {
