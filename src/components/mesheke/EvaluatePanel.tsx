@@ -3,7 +3,6 @@ import type { Patient } from "@/lib/mesheke/workflow";
 import { StatusSelect } from "./StatusSelect";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import {
   Popover,
@@ -19,6 +18,7 @@ import {
   CommandList,
 } from "@/components/ui/command";
 import { cn } from "@/lib/utils";
+import { NotesPanel } from "@/components/mesheke/NotesPanel";
 import {
   VALID_INVALID_OPTS,
   YES_NO_OPTS,
@@ -55,7 +55,6 @@ import {
   COL,
   clearStatusColumn,
   deleteFileFromColumn,
-  deleteSingleFileFromColumn,
   hasToken,
   writeDate,
   writeDropdownLabels,
@@ -85,6 +84,7 @@ interface Props {
   patient: Patient;
   /** Bumped by parent when Reset is pressed — forces local state to reload. */
   resetVersion?: number;
+  onUpdate: (patch: Partial<Patient>) => void;
 }
 
 // Compute "today + N months" — used for MR Expiry Date
@@ -102,7 +102,7 @@ function formatDate(iso?: string): string {
   return d.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
 }
 
-export function EvaluatePanel({ patient, resetVersion = 0 }: Props) {
+export function EvaluatePanel({ patient, resetVersion = 0, onUpdate }: Props) {
   const [state, setState] = useState<EvalState>(() => {
     const stored = loadEvalState(patient.id);
     return Object.keys(stored).length > 0 ? stored : seedEvalStateFromPatient(patient);
@@ -235,46 +235,6 @@ export function EvaluatePanel({ patient, resetVersion = 0 }: Props) {
   const setLastVisitDate = useCallback(
     (v: string) => update("lastVisitDate", v),
     [update],
-  );
-
-  // ---- Delete a single file from a Monday file column ----
-  const deleteOne = useCallback(
-    async (columnId: string, allFiles: MondayFileEntry[], assetId: string, label: string) => {
-      if (!hasToken()) {
-        toast.error("Monday token not configured");
-        return;
-      }
-      const keep = allFiles
-        .filter((f) => f.assetId !== assetId)
-        .map((f) => ({ name: f.name, url: f.public_url || f.url }))
-        .filter((f): f is { name: string; url: string } => !!f.url);
-      try {
-        if (keep.length === 0) {
-          await deleteFileFromColumn(patient.id, columnId);
-        } else {
-          await deleteSingleFileFromColumn(patient.id, columnId, keep);
-        }
-        await mondayFiles.refetch();
-        toast.success(`${label} deleted from Monday`);
-      } catch (e) {
-        toast.error(`Failed to delete ${label}`, {
-          description: e instanceof Error ? e.message : String(e),
-        });
-      }
-    },
-    [patient.id, mondayFiles],
-  );
-
-  const handleDeleteClinicalFile = useCallback(
-    (assetId: string) =>
-      deleteOne(COL.clinicalFiles, mondayFiles.clinicalFiles, assetId, "Clinical file"),
-    [deleteOne, mondayFiles.clinicalFiles],
-  );
-
-  const handleDeleteFinalClinicalFile = useCallback(
-    (assetId: string) =>
-      deleteOne(COL.finalClinicals, mondayFiles.finalClinicals, assetId, "Final clinical file"),
-    [deleteOne, mondayFiles.finalClinicals],
   );
 
   const validity = useMemo(
@@ -410,7 +370,7 @@ export function EvaluatePanel({ patient, resetVersion = 0 }: Props) {
     });
     tasks.push({
       label: "MN Evaluation Notes",
-      run: () => writeLongText(patient.id, COL.mnEvalNotes, state.notes ?? ""),
+      run: () => writeLongText(patient.id, COL.mnEvalNotes, patient.mnEvalNotes ?? ""),
     });
     // Advance the Stage Advancer based on MN outcome:
     //   Established     → Completed (skip Send Request entirely)
@@ -538,7 +498,6 @@ export function EvaluatePanel({ patient, resetVersion = 0 }: Props) {
               next.splice(idx, 1);
               update("clinicalFiles", next);
             }}
-            onDeleteMondayFile={handleDeleteClinicalFile}
           />
           <FileUploadCard
             label="Final Clinical Files"
@@ -553,20 +512,16 @@ export function EvaluatePanel({ patient, resetVersion = 0 }: Props) {
               next.splice(idx, 1);
               update("finalClinicalFiles", next);
             }}
-            onDeleteMondayFile={handleDeleteFinalClinicalFile}
           />
         </div>
       </SectionCard>
 
       {/* Notes */}
-      <SectionCard title="MN Evaluation Notes">
-        <Textarea
-          value={state.notes ?? ""}
-          onChange={(e) => update("notes", e.target.value)}
-          placeholder="Add evaluator notes..."
-          className="min-h-[100px] text-sm"
-        />
-      </SectionCard>
+      <NotesPanel
+        notes={patient.mnEvalNotes ?? ""}
+        onNotesChange={(v) => onUpdate({ mnEvalNotes: v })}
+        onSaveToMonday={(v) => writeLongText(patient.id, COL.mnEvalNotes, v)}
+      />
 
       {/* Sticky validity / preview footer */}
       <ValiditySummary
@@ -1043,8 +998,6 @@ interface FileUploadCardProps {
   mondayLoading: boolean;
   onAdd: (files: LocalFile[]) => void;
   onRemove: (idx: number) => void;
-  /** Delete a single Monday file by asset ID — removes from Monday's column. */
-  onDeleteMondayFile?: (assetId: string) => void | Promise<void>;
 }
 
 function FileUploadCard({
@@ -1054,20 +1007,7 @@ function FileUploadCard({
   mondayLoading,
   onAdd,
   onRemove,
-  onDeleteMondayFile,
 }: FileUploadCardProps) {
-  const [deletingId, setDeletingId] = useState<string | null>(null);
-
-  const handleDeleteMondayFile = async (file: MondayFileEntry) => {
-    if (!onDeleteMondayFile) return;
-    if (!window.confirm(`Delete "${file.name}" from Monday? This can't be undone.`)) return;
-    setDeletingId(file.assetId);
-    try {
-      await onDeleteMondayFile(file.assetId);
-    } finally {
-      setDeletingId(null);
-    }
-  };
   const [isDragOver, setIsDragOver] = useState(false);
 
   const handleFiles = (fileList: FileList | null) => {
@@ -1126,42 +1066,10 @@ function FileUploadCard({
           {mondayFiles.map((f) => (
             <li
               key={f.assetId}
-              className="flex items-center justify-between gap-2 text-xs bg-emerald-50 border border-emerald-200 rounded px-2 py-1 text-emerald-900"
+              className="flex items-center gap-2 text-xs bg-emerald-50 border border-emerald-200 rounded px-2 py-1 text-emerald-900"
             >
-              <span className="flex items-center gap-2 truncate">
-                <FileText className="h-3 w-3 shrink-0" />
-                <span className="truncate font-medium">{f.name}</span>
-              </span>
-              <div className="flex items-center gap-1 shrink-0">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  disabled={!f.public_url && !f.url}
-                  onClick={() => {
-                    const u = f.public_url || f.url;
-                    if (u) window.open(u, "_blank");
-                  }}
-                  className="h-6 px-1.5 text-[10px] gap-1"
-                >
-                  <ExternalLink className="h-2.5 w-2.5" /> View
-                </Button>
-                {onDeleteMondayFile && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => handleDeleteMondayFile(f)}
-                    disabled={deletingId !== null}
-                    title={`Delete "${f.name}" from Monday`}
-                    className="h-6 px-1.5 text-[10px] text-red-600 hover:bg-red-50 hover:text-red-700"
-                  >
-                    {deletingId === f.assetId ? (
-                      <Loader2 className="h-2.5 w-2.5 animate-spin" />
-                    ) : (
-                      <Trash2 className="h-2.5 w-2.5" />
-                    )}
-                  </Button>
-                )}
-              </div>
+              <FileText className="h-3 w-3 shrink-0" />
+              <span className="truncate font-medium">{f.name}</span>
             </li>
           ))}
         </ul>

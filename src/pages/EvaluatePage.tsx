@@ -54,8 +54,8 @@ const EvaluatePage = () => {
                   <Stethoscope className="h-5 w-5 text-primary-foreground" />
                 </div>
                 <div>
-                  <p className="text-[10px] uppercase tracking-[0.2em] opacity-70">Medically Modern</p>
-                  <h1 className="text-2xl font-bold">Evaluate</h1>{selected && <p className="text-sm opacity-80 mt-0.5">{selected.name}</p>}
+                  <p className="text-[10px] uppercase tracking-[0.2em] opacity-70">Medically Modern · Evaluate</p>
+                  <h1 className="text-xl font-semibold">{selected ? `${selected.name} · Evaluate` : "Evaluate"}</h1>
                 </div>
               </div>
               <div className="flex items-center gap-2">
@@ -76,7 +76,7 @@ const EvaluatePage = () => {
               {selected && (
                 <>
                   <PatientProfileCard patient={selected} />
-                  <EvaluatePanel patient={selected} resetVersion={resetVersion} />
+                  <EvaluatePanel patient={selected} resetVersion={resetVersion} onUpdate={(patch) => update(selected.id, patch)} />
                 </>
               )}
             </section>
