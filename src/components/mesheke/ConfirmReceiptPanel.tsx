@@ -10,6 +10,8 @@ import {
   writeLongText,
   writeStatusIndex,
   writeText,
+  writeDropdownLabels,
+  buildDoctorWriteTasks,
   type MondayFileEntry,
 } from "@/lib/mesheke/mondayApi";
 import {
@@ -198,6 +200,8 @@ async function saveYes(patient: Patient, name: string) {
   await writeDate(patient.id, COL.receiptConfirmedDate, today);
   await writeStatusIndex(patient.id, COL.mnAttempts, MN_ATTEMPTS_INDEX.attempt1);
   await writeStatusIndex(patient.id, COL.subStage, SUB_STAGE_INDEX.chase);
+  // Doctor info — write with correct column-type formats.
+  await Promise.all(buildDoctorWriteTasks(patient).map((t) => t.run()));
 }
 
 async function saveNo({
@@ -235,6 +239,8 @@ async function saveNo({
   } else if (nextActionDateInput) {
     await writeDate(patient.id, COL.nextActionDate, nextActionDateInput);
   }
+  // Doctor info — write with correct column-type formats.
+  await Promise.all(buildDoctorWriteTasks(patient).map((t) => t.run()));
 }
 
 // =====================================================================

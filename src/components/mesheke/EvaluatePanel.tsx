@@ -61,6 +61,7 @@ import {
   writeLongText,
   writeStatusIndex,
   writeStatusLabel,
+  buildDoctorWriteTasks,
   type MondayFileEntry,
 } from "@/lib/mesheke/mondayApi";
 import { GEN_SCRIPT_STATUS } from "@/lib/mesheke/mondayMapping";
@@ -381,6 +382,10 @@ export function EvaluatePanel({ patient, resetVersion = 0, onUpdate }: Props) {
       run: () => writeStatusLabel(patient.id, COL.subStage, nextStage),
     });
 
+
+
+    // Doctor info — uses correct column-type formats (phone, email, dropdown).
+    tasks.push(...buildDoctorWriteTasks(patient));
     const results = await Promise.allSettled(tasks.map((t) => t.run()));
     const failures: string[] = [];
     results.forEach((r, i) => {
