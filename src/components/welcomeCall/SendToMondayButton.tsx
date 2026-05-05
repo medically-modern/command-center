@@ -1,12 +1,6 @@
 import { useEffect, useState } from "react";
 import { Check, Loader2, Send, AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 
 type State = "idle" | "sending" | "success" | "error";
@@ -86,24 +80,16 @@ export function SendToMondayButton({ onSend, disabled, validationErrors = [] }: 
 
   return (
     <div className="flex flex-col items-center gap-2 pt-2">
-      {hasValidationErrors && disabled ? (
-        <TooltipProvider>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <span tabIndex={0}>{button}</span>
-            </TooltipTrigger>
-            <TooltipContent side="top" className="max-w-xs">
-              <p className="font-semibold text-xs mb-1">Required before sending:</p>
-              <ul className="text-xs space-y-0.5">
-                {validationErrors.map((err, i) => (
-                  <li key={i}>• {err}</li>
-                ))}
-              </ul>
-            </TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
-      ) : (
-        button
+      {button}
+      {hasValidationErrors && disabled && (
+        <div className="bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 rounded-lg px-4 py-3 max-w-md text-center">
+          <p className="font-semibold text-xs text-red-700 dark:text-red-400 mb-1">Required before sending:</p>
+          <ul className="text-xs text-red-600 dark:text-red-400 space-y-0.5">
+            {validationErrors.map((err, i) => (
+              <li key={i}>• {err}</li>
+            ))}
+          </ul>
+        </div>
       )}
     </div>
   );

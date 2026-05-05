@@ -235,9 +235,15 @@ function hasZipCode(address: string): boolean {
 export function validatePatientForSend(p: Patient): { valid: boolean; errors: string[] } {
   const errors: string[] = [];
 
-  // End-of-call decision is required
+  // End-of-call decision is always required
   if (p.advanceDecisionIndex === null) {
     errors.push('Pick Advance or Don\'t Advance before sending');
+  }
+
+  // If escalated + Don't Advance (index 2), skip remaining validation — allow send
+  const isDontAdvance = p.advanceDecisionIndex === 2;
+  if (p.escalated && isDontAdvance) {
+    return { valid: errors.length === 0, errors };
   }
 
   // Subscription type is required
