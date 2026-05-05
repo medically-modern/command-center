@@ -8,12 +8,12 @@ import {
   Send,
   CheckCircle,
   HeartPulse,
-  HeartPulse,
   Phone,
   PhoneCall,
   FileCheck,
   Clock,
   XCircle,
+  ShieldCheck,
   ChevronRight,
   Check,
 } from "lucide-react";
@@ -24,12 +24,12 @@ const ICON_MAP: Record<string, React.FC<{ className?: string }>> = {
   Send,
   CheckCircle,
   HeartPulse,
-  HeartPulse,
   Phone,
   PhoneCall,
   FileCheck,
   Clock,
   XCircle,
+  ShieldCheck,
 };
 
 interface Props {
