@@ -1138,7 +1138,12 @@ function FileUploadCard({
                   disabled={!f.public_url && !f.url}
                   onClick={() => {
                     const u = f.public_url || f.url;
-                    if (u) window.open(u, "_blank");
+                    if (!u) return;
+                    // Wrap in Google Docs Viewer so the browser renders
+                    // inline instead of downloading (Monday's CDN sets
+                    // Content-Disposition: attachment on direct links).
+                    const viewerUrl = `https://docs.google.com/gview?url=${encodeURIComponent(u)}&embedded=true`;
+                    window.open(viewerUrl, "_blank");
                   }}
                   className="h-6 px-1.5 text-[10px] gap-1"
                 >
