@@ -1,0 +1,97 @@
+import type { Patient } from "./workflow";
+import { COL, type MondayItem } from "./mondayApi";
+
+function cv(item: MondayItem, id: string) {
+  return item.column_values.find((c) => c.id === id);
+}
+
+function parseIndex(value: string | null): number | null {
+  if (!value) return null;
+  try {
+    const parsed = JSON.parse(value);
+    return typeof parsed?.index === "number" ? parsed.index : null;
+  } catch {
+    return null;
+  }
+}
+
+export function mondayItemToPatient(item: MondayItem): Patient {
+  return {
+    id: item.id,
+    name: item.name,
+
+    // Demographics
+    dob: cv(item, COL.dob)?.text ?? "",
+    phone: cv(item, COL.phone)?.text ?? "",
+    email: cv(item, COL.email)?.text ?? "",
+    address: cv(item, COL.address)?.text ?? "",
+    gender: cv(item, COL.gender)?.text ?? "",
+    genderIndex: parseIndex(cv(item, COL.gender)?.value ?? null),
+
+    // Insurance
+    primaryInsurance: cv(item, COL.primaryInsurance)?.text ?? "",
+    memberId1: cv(item, COL.memberId1)?.text ?? "",
+    secondaryInsurance: cv(item, COL.secondaryInsurance)?.text ?? "",
+    secondaryInsuranceIndex: parseIndex(cv(item, COL.secondaryInsurance)?.value ?? null),
+    secondaryInsuranceEdited: null,
+    memberId2: cv(item, COL.memberId2)?.text ?? "",
+    memberId2Edited: null,
+    deductible: cv(item, COL.deductible)?.text ?? "",
+    deductibleRemaining: cv(item, COL.deductibleRemaining)?.text ?? "",
+    oopMax: cv(item, COL.oopMax)?.text ?? "",
+    oopMaxRemaining: cv(item, COL.oopMaxRemaining)?.text ?? "",
+
+    // Doctor
+    doctorName: cv(item, COL.doctorName)?.text ?? "",
+    doctorNpi: cv(item, COL.doctorNpi)?.text ?? "",
+    doctorPhone: cv(item, COL.doctorPhone)?.text ?? "",
+    doctorEmail: cv(item, COL.doctorEmail)?.text ?? "",
+    doctorFax: cv(item, COL.doctorFax)?.text ?? "",
+    clinicName: cv(item, COL.clinicName)?.text ?? "",
+    clinicalsMethod: cv(item, COL.clinicalsMethod)?.text ?? "",
+
+    // Medical Necessity
+    diagnosis: cv(item, COL.diagnosis)?.text ?? "",
+    cgmCoveragePath: cv(item, COL.cgmCoveragePath)?.text ?? "",
+    ipCoveragePath: cv(item, COL.ipCoveragePath)?.text ?? "",
+    mrExpiryDate: cv(item, COL.mrExpiryDate)?.text ?? "",
+
+    // Product / Referral
+    serving: cv(item, COL.serving)?.text ?? "",
+    pumpType: cv(item, COL.pumpType)?.text ?? "",
+    cgmType: cv(item, COL.cgmType)?.text ?? "",
+    requestType: cv(item, COL.requestType)?.text ?? "",
+    referralType: cv(item, COL.referralType)?.text ?? "",
+    referralSource: cv(item, COL.referralSource)?.text ?? "",
+
+    // Welcome Call / Order
+    subscriptionType: cv(item, COL.subscriptionType)?.text ?? "",
+    subscriptionTypeIndex: parseIndex(cv(item, COL.subscriptionType)?.value ?? null),
+    infusionSet1: cv(item, COL.infusionSet1)?.text ?? "",
+    infusionSet1Index: parseIndex(cv(item, COL.infusionSet1)?.value ?? null),
+    qtyInf1: cv(item, COL.qtyInf1)?.text ?? "",
+    infusionSet2: cv(item, COL.infusionSet2)?.text ?? "",
+    infusionSet2Index: parseIndex(cv(item, COL.infusionSet2)?.value ?? null),
+    qtyInf2: cv(item, COL.qtyInf2)?.text ?? "",
+    monitorQty: cv(item, COL.monitorQty)?.text ?? "",
+    pumpQty: cv(item, COL.pumpQty)?.text ?? "",
+    orderHandling: cv(item, COL.orderHandling)?.text ?? "",
+    orderHandlingIndex: parseIndex(cv(item, COL.orderHandling)?.value ?? null),
+
+    // Notes
+    notes: cv(item, COL.notes)?.text ?? "",
+
+    // Editable overrides (start null — populated by local edits)
+    addressEdited: null,
+    addressLat: null,
+    addressLng: null,
+    emailEdited: null,
+    phoneEdited: null,
+
+    // Escalation
+    escalated: false,
+
+    receivedAt: new Date().toISOString(),
+    lastUpdated: new Date().toISOString(),
+  };
+}
