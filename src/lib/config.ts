@@ -11,7 +11,7 @@ export interface RoleConfig {
 export const ROLES: RoleConfig[] = [
   { id: "profile",         label: "Profile Checklist",  color: "bg-blue-500",    icon: "UserCircle",     route: "/profile"          },
   { id: "evaluate",        label: "Evaluate",           color: "bg-violet-500",  icon: "ClipboardCheck", route: "/evaluate"         },
-  { id: "sendRequest",     label: "Send Request",       color: "bg-cyan-500",    icon: "Send",           route: "/send-request"     },
+  { id: "sendRequest",     label: "Send Request",       color: "bg-cyan-500",    icon: "Send",           route: ""                  },
   { id: "confirmReceipt",  label: "Confirm Receipt",    color: "bg-emerald-500", icon: "CheckCircle",    route: "/confirm-receipt"  },
   { id: "chaseBenefits",   label: "Chase Clinicals",     color: "bg-amber-500",   icon: "PhoneCall",      route: "/chase-benefits"   },
   { id: "benefits",        label: "Benefits",           color: "bg-pink-500",    icon: "HeartPulse",     route: "/benefits"         },
