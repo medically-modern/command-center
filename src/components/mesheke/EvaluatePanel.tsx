@@ -55,7 +55,6 @@ import {
   COL,
   clearStatusColumn,
   deleteFileFromColumn,
-  deleteSingleFileFromColumn,
   hasToken,
   writeDate,
   writeDropdownLabels,
@@ -236,46 +235,6 @@ export function EvaluatePanel({ patient, resetVersion = 0, onUpdate }: Props) {
   const setLastVisitDate = useCallback(
     (v: string) => update("lastVisitDate", v),
     [update],
-  );
-
-  // ---- Delete a single file from a Monday file column ----
-  const deleteOne = useCallback(
-    async (columnId: string, allFiles: MondayFileEntry[], assetId: string, label: string) => {
-      if (!hasToken()) {
-        toast.error("Monday token not configured");
-        return;
-      }
-      const keep = allFiles
-        .filter((f) => f.assetId !== assetId)
-        .map((f) => ({ name: f.name, url: f.public_url || f.url }))
-        .filter((f): f is { name: string; url: string } => !!f.url);
-      try {
-        if (keep.length === 0) {
-          await deleteFileFromColumn(patient.id, columnId);
-        } else {
-          await deleteSingleFileFromColumn(patient.id, columnId, keep);
-        }
-        await mondayFiles.refetch();
-        toast.success(`${label} deleted from Monday`);
-      } catch (e) {
-        toast.error(`Failed to delete ${label}`, {
-          description: e instanceof Error ? e.message : String(e),
-        });
-      }
-    },
-    [patient.id, mondayFiles],
-  );
-
-  const handleDeleteClinicalFile = useCallback(
-    (assetId: string) =>
-      deleteOne(COL.clinicalFiles, mondayFiles.clinicalFiles, assetId, "Clinical file"),
-    [deleteOne, mondayFiles.clinicalFiles],
-  );
-
-  const handleDeleteFinalClinicalFile = useCallback(
-    (assetId: string) =>
-      deleteOne(COL.finalClinicals, mondayFiles.finalClinicals, assetId, "Final clinical file"),
-    [deleteOne, mondayFiles.finalClinicals],
   );
 
   const validity = useMemo(
@@ -539,7 +498,6 @@ export function EvaluatePanel({ patient, resetVersion = 0, onUpdate }: Props) {
               next.splice(idx, 1);
               update("clinicalFiles", next);
             }}
-            onDeleteMondayFile={handleDeleteClinicalFile}
           />
           <FileUploadCard
             label="Final Clinical Files"
@@ -554,7 +512,6 @@ export function EvaluatePanel({ patient, resetVersion = 0, onUpdate }: Props) {
               next.splice(idx, 1);
               update("finalClinicalFiles", next);
             }}
-            onDeleteMondayFile={handleDeleteFinalClinicalFile}
           />
         </div>
       </SectionCard>
@@ -573,6 +530,8 @@ export function EvaluatePanel({ patient, resetVersion = 0, onUpdate }: Props) {
         onSendToMonday={handleSendToMonday}
         sending={sending}
         state={state}
+        showCgm={showCgm}
+        showIp={showIp}
       />
     </div>
   );
@@ -1042,8 +1001,6 @@ interface FileUploadCardProps {
   mondayLoading: boolean;
   onAdd: (files: LocalFile[]) => void;
   onRemove: (idx: number) => void;
-  /** Delete a single Monday file by asset ID — removes from Monday's column. */
-  onDeleteMondayFile?: (assetId: string) => void | Promise<void>;
 }
 
 function FileUploadCard({
@@ -1053,21 +1010,7 @@ function FileUploadCard({
   mondayLoading,
   onAdd,
   onRemove,
-  onDeleteMondayFile,
 }: FileUploadCardProps) {
-  const [deletingId, setDeletingId] = useState<string | null>(null);
-
-  const handleDeleteMondayFile = async (file: MondayFileEntry) => {
-    if (!onDeleteMondayFile) return;
-    if (!window.confirm(`Delete "${file.name}" from Monday? This can't be undone.`)) return;
-    setDeletingId(file.assetId);
-    try {
-      await onDeleteMondayFile(file.assetId);
-    } finally {
-      setDeletingId(null);
-    }
-  };
-
   const [isDragOver, setIsDragOver] = useState(false);
 
   const handleFiles = (fileList: FileList | null) => {
@@ -1126,47 +1069,10 @@ function FileUploadCard({
           {mondayFiles.map((f) => (
             <li
               key={f.assetId}
-              className="flex items-center justify-between gap-2 text-xs bg-emerald-50 border border-emerald-200 rounded px-2 py-1 text-emerald-900"
+              className="flex items-center gap-2 text-xs bg-emerald-50 border border-emerald-200 rounded px-2 py-1 text-emerald-900"
             >
-              <span className="flex items-center gap-2 truncate">
-                <FileText className="h-3 w-3 shrink-0" />
-                <span className="truncate font-medium">{f.name}</span>
-              </span>
-              <div className="flex items-center gap-1 shrink-0">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  disabled={!f.public_url && !f.url}
-                  onClick={() => {
-                    const u = f.public_url || f.url;
-                    if (!u) return;
-                    // Wrap in Google Docs Viewer so the browser renders
-                    // inline instead of downloading (Monday's CDN sets
-                    // Content-Disposition: attachment on direct links).
-                    const viewerUrl = `https://docs.google.com/gview?url=${encodeURIComponent(u)}&embedded=true`;
-                    window.open(viewerUrl, "_blank");
-                  }}
-                  className="h-6 px-1.5 text-[10px] gap-1"
-                >
-                  <ExternalLink className="h-2.5 w-2.5" /> View
-                </Button>
-                {onDeleteMondayFile && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => handleDeleteMondayFile(f)}
-                    disabled={deletingId !== null}
-                    title={`Delete "${f.name}" from Monday`}
-                    className="h-6 px-1.5 text-[10px] text-red-600 hover:bg-red-50 hover:text-red-700"
-                  >
-                    {deletingId === f.assetId ? (
-                      <Loader2 className="h-2.5 w-2.5 animate-spin" />
-                    ) : (
-                      <Trash2 className="h-2.5 w-2.5" />
-                    )}
-                  </Button>
-                )}
-              </div>
+              <FileText className="h-3 w-3 shrink-0" />
+              <span className="truncate font-medium">{f.name}</span>
             </li>
           ))}
         </ul>
@@ -1230,18 +1136,35 @@ function FileUploadCard({
   );
 }
 
-/** Returns the list of IP criteria field labels that are shown but not yet filled in. */
-function getMissingIpCriteria(state: EvalState): string[] {
-  if (!state.ipCoveragePath) return [];
-  const cfg = IP_PATH_FIELDS[state.ipCoveragePath];
+/** Returns the list of required field labels that are visible but not yet filled in. */
+function getMissingRequiredFields(
+  state: EvalState,
+  showCgm: boolean,
+  showIp: boolean,
+): string[] {
   const missing: string[] = [];
-  if (cfg.showMalfunction && state.malfunction === undefined) missing.push("Malfunction");
-  if (cfg.showOow && !state.oowDate) missing.push("OOW Date");
-  if (cfg.showOowOnScript && state.oowDateOnScript === undefined) missing.push("OOW Date on Script?");
-  if (cfg.showEducation && state.diabetesEducation === undefined) missing.push("Diabetes Education");
-  if (cfg.showCgmUse && state.cgmUse === undefined) missing.push("CGM Use");
-  if (cfg.show3Injections && state.threeInjections === undefined) missing.push("3+ Injections / day");
-  if (cfg.showBsIssues && state.bloodSugarIssues === undefined) missing.push("Blood Sugar Issues");
+
+  // MRs Received — always required
+  if (state.mrReceived === undefined) missing.push("MRs Received");
+
+  // CGM Script — only if CGM block is shown
+  if (showCgm && state.cgmScriptValid === undefined) missing.push("CGM Script");
+
+  // IP Script — only if IP block is shown
+  if (showIp && state.ipScriptValid === undefined) missing.push("Insulin Pump Script");
+
+  // IP criteria fields — only if an IP coverage path is selected and those fields are shown
+  if (state.ipCoveragePath) {
+    const cfg = IP_PATH_FIELDS[state.ipCoveragePath];
+    if (cfg.showMalfunction && state.malfunction === undefined) missing.push("Malfunction");
+    if (cfg.showOow && !state.oowDate) missing.push("OOW Date");
+    if (cfg.showOowOnScript && state.oowDateOnScript === undefined) missing.push("OOW Date on Script?");
+    if (cfg.showEducation && state.diabetesEducation === undefined) missing.push("Diabetes Education");
+    if (cfg.showCgmUse && state.cgmUse === undefined) missing.push("CGM Use");
+    if (cfg.show3Injections && state.threeInjections === undefined) missing.push("3+ Injections / day");
+    if (cfg.showBsIssues && state.bloodSugarIssues === undefined) missing.push("Blood Sugar Issues");
+  }
+
   return missing;
 }
 
@@ -1251,6 +1174,8 @@ interface ValiditySummaryProps {
   onSendToMonday: () => void;
   sending: boolean;
   state: EvalState;
+  showCgm: boolean;
+  showIp: boolean;
 }
 
 function ValiditySummary({
@@ -1259,9 +1184,11 @@ function ValiditySummary({
   onSendToMonday,
   sending,
   state,
+  showCgm,
+  showIp,
 }: ValiditySummaryProps) {
-  const missingIpFields = getMissingIpCriteria(state);
-  const blocked = missingIpFields.length > 0;
+  const missingFields = getMissingRequiredFields(state, showCgm, showIp);
+  const blocked = missingFields.length > 0;
   return (
     <section className="rounded-xl bg-card border shadow-card p-5 space-y-4">
       <div>
@@ -1314,10 +1241,10 @@ function ValiditySummary({
             <AlertTriangle className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
             <div>
               <p className="text-xs font-semibold text-amber-800">
-                Fill out all IP criteria to submit
+                Complete these fields to submit
               </p>
               <ul className="mt-1 space-y-0.5">
-                {missingIpFields.map((f) => (
+                {missingFields.map((f) => (
                   <li key={f} className="text-[11px] text-amber-700">• {f}</li>
                 ))}
               </ul>
@@ -1343,6 +1270,13 @@ function ValiditySummary({
           )}
         </Button>
       </div>
+
+      {blocked && (
+        <p className="text-xs text-muted-foreground text-center pt-1">
+          Every visible evaluation field must be filled out — even if the answer is Missing or No —
+          so we have a complete record of what was checked before syncing to Monday.
+        </p>
+      )}
     </section>
   );
 }
