@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { MessageSquare, Plus, Loader2 } from "lucide-react";
 import { toast } from "sonner";
+import { etNow } from "@/lib/mesheke/etDate";
 
 interface Props {
   notes: string;
@@ -17,7 +18,7 @@ export function NotesPanel({ notes, onNotesChange, onSaveToMonday }: Props) {
 
   const handleAppend = async () => {
     if (!newNote.trim()) return;
-    const timestamp = new Date().toLocaleString("en-US", {
+    const timestamp = etNow().toLocaleString("en-US", {
       month: "short",
       day: "numeric",
       year: "numeric",

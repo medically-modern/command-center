@@ -14,6 +14,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { CalendarCheck, Loader2, RefreshCw, User, AlertCircle } from "lucide-react";
 import type { Patient } from "@/lib/mesheke/workflow";
+import { etToday } from "@/lib/mesheke/etDate";
 import type { TabKey } from "@/hooks/mesheke/useMondayPatients";
 import { cn } from "@/lib/utils";
 
@@ -83,9 +84,7 @@ export function PatientsSidebar({ patients, selectedId, onSelect, loading, error
 
   const [todayOnly, setTodayOnly] = useState(false);
 
-  // Always use Eastern Time so all users see the same "today" regardless of their local timezone
-  const etParts = new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
-  const todayStr = etParts; // "YYYY-MM-DD" in ET
+  const todayStr = etToday();
 
   // For chase tab: split into "action today" vs rest
   const todayPatients = activeTab === "chase" && todayOnly

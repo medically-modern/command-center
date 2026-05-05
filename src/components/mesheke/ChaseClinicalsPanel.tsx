@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import type { Patient } from "@/lib/mesheke/workflow";
+import { etNow } from "@/lib/mesheke/etDate";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -67,7 +68,7 @@ export function ChaseClinicalsPanel({ patient, onUpdate }: Props) {
   // visible default matches the chosen path.
   useEffect(() => {
     const days = confirmed === "no" ? 1 : 2;
-    setNextAction(formatDateInput(addBusinessDays(new Date(), days)));
+    setNextAction(formatDateInput(addBusinessDays(etNow(), days)));
   }, [patient.id, confirmed]);
 
   const currentAttempt = useMemo(() => {
@@ -114,8 +115,8 @@ export function ChaseClinicalsPanel({ patient, onUpdate }: Props) {
         // outreach instead of a person's name.
         const value =
           confirmed === "parachute-message"
-            ? formatAttemptValue("Parachute message", new Date())
-            : formatAttemptValue(name.trim(), new Date());
+            ? formatAttemptValue("Parachute message", etNow())
+            : formatAttemptValue(name.trim(), etNow());
         const nextSlot = nextMnAttempt(attempt);
         await saveNo({
           patient,
@@ -204,7 +205,7 @@ async function saveYes(patient: Patient, name: string) {
   await writeText(patient.id, COL.chaseRecipientName, name);
   await writeStatusIndex(patient.id, COL.subStage, SUB_STAGE_INDEX.completed);
   // Next action date — 2 business days from now.
-  const nextAction = formatDateInput(addBusinessDays(new Date(), 2));
+  const nextAction = formatDateInput(addBusinessDays(etNow(), 2));
   await writeDate(patient.id, COL.nextActionDate, nextAction);
 }
 

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import type { Patient } from "@/lib/mesheke/workflow";
+import { etNow } from "@/lib/mesheke/etDate";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -63,7 +64,7 @@ export function ConfirmReceiptPanel({ patient, onUpdate }: Props) {
   // Re-applies on patient change and on every confirmed change.
   useEffect(() => {
     const days = confirmed === "no" ? 1 : 2;
-    setNextAction(formatDateInput(addBusinessDays(new Date(), days)));
+    setNextAction(formatDateInput(addBusinessDays(etNow(), days)));
   }, [patient.id, confirmed]);
 
   // Determine current attempt slot (1, 2, or 3) from MN Attempts column.
@@ -105,12 +106,12 @@ export function ConfirmReceiptPanel({ patient, onUpdate }: Props) {
         toast.success("Receipt confirmed — moved to Chase Clinicals");
         onUpdate({
           receiptConfirmedName: name.trim(),
-          receiptConfirmedDate: formatDateInput(new Date()),
+          receiptConfirmedDate: formatDateInput(etNow()),
           subStage: "Chase Clinicals",
         });
       } else {
         const attempt = currentAttempt ?? 1;
-        const value = formatAttemptValue(name.trim(), new Date());
+        const value = formatAttemptValue(name.trim(), etNow());
         const nextSlot = nextMnAttempt(attempt);
         await saveNo({
           patient,
@@ -200,13 +201,13 @@ async function saveYes(patient: Patient, name: string) {
   // Yes path: stamp success columns + advance stage. Also reset
   // MN Attempts back to "Attempt 1" so the Chase Clinicals tab starts
   // fresh (the column is shared across stages).
-  const today = formatDateInput(new Date());
+  const today = formatDateInput(etNow());
   await writeText(patient.id, COL.receiptConfirmedName, name);
   await writeDate(patient.id, COL.receiptConfirmedDate, today);
   await writeStatusIndex(patient.id, COL.mnAttempts, MN_ATTEMPTS_INDEX.attempt1);
   await writeStatusIndex(patient.id, COL.subStage, SUB_STAGE_INDEX.chase);
   // Next action date — 2 business days from now.
-  const nextAction = formatDateInput(addBusinessDays(new Date(), 2));
+  const nextAction = formatDateInput(addBusinessDays(etNow(), 2));
   await writeDate(patient.id, COL.nextActionDate, nextAction);
 }
 

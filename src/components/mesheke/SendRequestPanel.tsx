@@ -5,6 +5,7 @@ import {
   useRef,
 } from "react";
 import type { Patient } from "@/lib/mesheke/workflow";
+import { etNow } from "@/lib/mesheke/etDate";
 import { Button } from "@/components/ui/button";
 import { useMondayFiles } from "@/hooks/mesheke/useMondayFiles";
 import {
@@ -268,7 +269,7 @@ export function SendRequestPanel({ patient, resetVersion = 0 }: Props) {
       },
     ];
     if (isParachute) {
-      const nextAction = toIsoDate(addBusinessDays(new Date(), 2));
+      const nextAction = toIsoDate(addBusinessDays(etNow(), 2));
       tasks.push({
         label: `Next Action Date → ${nextAction}`,
         run: () => writeDate(patient.id, COL.nextActionDate, nextAction),

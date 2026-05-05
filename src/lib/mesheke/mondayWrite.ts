@@ -1,6 +1,7 @@
 // Batch writer for Medical Necessity "Send to Monday"
 
 import { writeStatusIndex, writeText, writeLongText, writeDate, COL } from "./mondayApi";
+import { etNow } from "./etDate";
 import {
   SUB_STAGE_INDEX,
   ADVANCER_2A_INDEX,
@@ -211,7 +212,7 @@ export async function sendPatientToMonday(
   const failures = results.filter((r): r is string => r !== null);
 
   if (failures.length > 0) {
-    const timestamp = new Date().toISOString().slice(0, 19).replace("T", " ");
+    const timestamp = etNow().toISOString().slice(0, 19).replace("T", " ");
     const debugMsg = `[${timestamp}] ${failures.length} write(s) failed:\n${failures.join("\n")}`;
     try {
       await writeText(p.id, COL.joshDebug, debugMsg);
