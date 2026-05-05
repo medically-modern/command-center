@@ -8,6 +8,7 @@ import {
   ORDER_HANDLING_OPTIONS,
   formatPhone,
 } from "@/lib/finalConfirm/workflow";
+import { AddressAutocomplete, type AddressResult } from "@/components/finalConfirm/AddressAutocomplete";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import {
@@ -42,20 +43,6 @@ interface Props {
   onFieldChange: (field: keyof Patient, value: string | number | null) => void;
 }
 
-function ReadOnlyField({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
-  return (
-    <div className="flex items-start gap-2 min-w-0">
-      <div className="h-8 w-8 rounded-md bg-muted flex items-center justify-center text-muted-foreground shrink-0">
-        {icon}
-      </div>
-      <div className="min-w-0">
-        <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">{label}</p>
-        <p className="text-sm font-medium truncate" title={value || "—"}>{value || "—"}</p>
-      </div>
-    </div>
-  );
-}
-
 function EditableTextField({
   icon,
   label,
@@ -67,11 +54,11 @@ function EditableTextField({
   icon: React.ReactNode;
   label: string;
   value: string;
-  editedValue: string | null;
+  editedValue?: string | null;
   placeholder?: string;
   onChange: (v: string) => void;
 }) {
-  const displayValue = editedValue ?? value;
+  const displayValue = editedValue !== undefined && editedValue !== null ? editedValue : value;
   return (
     <div className="flex items-start gap-2 min-w-0">
       <div className="h-8 w-8 rounded-md bg-muted flex items-center justify-center text-muted-foreground shrink-0">
@@ -152,6 +139,12 @@ function CollapsibleSection({
 }
 
 export function PatientInfoCard({ patient, onFieldChange }: Props) {
+  const handleAddressChange = (result: AddressResult) => {
+    onFieldChange("addressEdited", result.address);
+    onFieldChange("addressLat", result.lat);
+    onFieldChange("addressLng", result.lng);
+  };
+
   return (
     <div className="space-y-4">
       {/* Patient name + phone header */}
@@ -170,13 +163,18 @@ export function PatientInfoCard({ patient, onFieldChange }: Props) {
         )}
       </Card>
 
-      {/* Demographics — editable */}
+      {/* Demographics — all editable */}
       <Card className="p-4 space-y-4">
         <p className="text-xs uppercase tracking-wider text-muted-foreground font-semibold flex items-center gap-2">
           <User className="h-3.5 w-3.5" /> Demographics
         </p>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          <ReadOnlyField icon={<Stethoscope className="h-4 w-4" />} label="DOB" value={patient.dob} />
+          <EditableTextField
+            icon={<Stethoscope className="h-4 w-4" />}
+            label="DOB"
+            value={patient.dob}
+            onChange={(v) => onFieldChange("dob", v)}
+          />
           <EditableTextField
             icon={<Phone className="h-4 w-4" />}
             label="Phone"
@@ -191,13 +189,20 @@ export function PatientInfoCard({ patient, onFieldChange }: Props) {
             editedValue={patient.emailEdited}
             onChange={(v) => onFieldChange("emailEdited", v)}
           />
-          <EditableTextField
-            icon={<MapPin className="h-4 w-4" />}
-            label="Address"
-            value={patient.address}
-            editedValue={patient.addressEdited}
-            onChange={(v) => onFieldChange("addressEdited", v)}
-          />
+          {/* Address with Google Places Autocomplete */}
+          <div className="flex items-start gap-2 min-w-0 sm:col-span-2">
+            <div className="h-8 w-8 rounded-md bg-muted flex items-center justify-center text-muted-foreground shrink-0">
+              <MapPin className="h-4 w-4" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1">Address</p>
+              <AddressAutocomplete
+                value={patient.addressEdited ?? patient.address}
+                onChange={handleAddressChange}
+                placeholder="Start typing address…"
+              />
+            </div>
+          </div>
           <div>
             <SelectField
               label="Gender"
@@ -209,83 +214,180 @@ export function PatientInfoCard({ patient, onFieldChange }: Props) {
         </div>
       </Card>
 
-      {/* Insurance */}
+      {/* Insurance — all editable */}
       <Card className="p-4 space-y-4">
         <p className="text-xs uppercase tracking-wider text-muted-foreground font-semibold flex items-center gap-2">
           <Shield className="h-3.5 w-3.5" /> Insurance
         </p>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          <ReadOnlyField icon={<Shield className="h-4 w-4" />} label="Primary Insurance" value={patient.primaryInsurance} />
-          <ReadOnlyField icon={<IdCard className="h-4 w-4" />} label="Member ID 1" value={patient.memberId1} />
-          {patient.secondaryInsurance ? (
-            <ReadOnlyField icon={<Shield className="h-4 w-4" />} label="Secondary Insurance" value={patient.secondaryInsurance} />
-          ) : (
-            <SelectField
-              label="Secondary Insurance"
-              options={SECONDARY_INSURANCE_OPTIONS}
-              value={patient.secondaryInsuranceEdited ?? ""}
-              onChange={(index, label) => {
-                onFieldChange("secondaryInsuranceIndex", index);
-                onFieldChange("secondaryInsuranceEdited", label);
-              }}
-            />
-          )}
-          {patient.memberId2 ? (
-            <ReadOnlyField icon={<IdCard className="h-4 w-4" />} label="Member ID 2" value={patient.memberId2} />
-          ) : (
-            <EditableTextField
-              icon={<IdCard className="h-4 w-4" />}
-              label="Member ID 2"
-              value=""
-              editedValue={patient.memberId2Edited}
-              placeholder="Enter member ID"
-              onChange={(v) => onFieldChange("memberId2Edited", v)}
-            />
-          )}
-          <ReadOnlyField icon={<Activity className="h-4 w-4" />} label="Deductible" value={patient.deductible} />
-          <ReadOnlyField icon={<Activity className="h-4 w-4" />} label="Deductible Remaining" value={patient.deductibleRemaining} />
-          <ReadOnlyField icon={<Activity className="h-4 w-4" />} label="OOP Max" value={patient.oopMax} />
-          <ReadOnlyField icon={<Activity className="h-4 w-4" />} label="OOP Remaining" value={patient.oopMaxRemaining} />
+          <EditableTextField
+            icon={<Shield className="h-4 w-4" />}
+            label="Primary Insurance"
+            value={patient.primaryInsurance}
+            onChange={(v) => onFieldChange("primaryInsurance", v)}
+          />
+          <EditableTextField
+            icon={<IdCard className="h-4 w-4" />}
+            label="Member ID 1"
+            value={patient.memberId1}
+            onChange={(v) => onFieldChange("memberId1", v)}
+          />
+          <SelectField
+            label="Secondary Insurance"
+            options={SECONDARY_INSURANCE_OPTIONS}
+            value={patient.secondaryInsuranceEdited ?? patient.secondaryInsurance}
+            onChange={(index, label) => {
+              onFieldChange("secondaryInsuranceIndex", index);
+              onFieldChange("secondaryInsuranceEdited", label);
+            }}
+          />
+          <EditableTextField
+            icon={<IdCard className="h-4 w-4" />}
+            label="Member ID 2"
+            value={patient.memberId2}
+            editedValue={patient.memberId2Edited}
+            placeholder="Enter member ID"
+            onChange={(v) => onFieldChange("memberId2Edited", v)}
+          />
+          <EditableTextField
+            icon={<Activity className="h-4 w-4" />}
+            label="Deductible"
+            value={patient.deductible}
+            onChange={(v) => onFieldChange("deductible", v)}
+          />
+          <EditableTextField
+            icon={<Activity className="h-4 w-4" />}
+            label="Deductible Remaining"
+            value={patient.deductibleRemaining}
+            onChange={(v) => onFieldChange("deductibleRemaining", v)}
+          />
+          <EditableTextField
+            icon={<Activity className="h-4 w-4" />}
+            label="OOP Max"
+            value={patient.oopMax}
+            onChange={(v) => onFieldChange("oopMax", v)}
+          />
+          <EditableTextField
+            icon={<Activity className="h-4 w-4" />}
+            label="OOP Remaining"
+            value={patient.oopMaxRemaining}
+            onChange={(v) => onFieldChange("oopMaxRemaining", v)}
+          />
         </div>
       </Card>
 
-      {/* Doctor Info */}
+      {/* Doctor Info — all editable */}
       <Card className="p-4 space-y-4">
         <CollapsibleSection title="Doctor Info" defaultOpen>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            <ReadOnlyField icon={<UserRound className="h-4 w-4" />} label="Doctor Name" value={patient.doctorName} />
-            <ReadOnlyField icon={<Hash className="h-4 w-4" />} label="NPI" value={patient.doctorNpi} />
-            <ReadOnlyField icon={<Phone className="h-4 w-4" />} label="Doctor Phone" value={patient.doctorPhone} />
-            <ReadOnlyField icon={<Mail className="h-4 w-4" />} label="Doctor Email" value={patient.doctorEmail} />
-            <ReadOnlyField icon={<Send className="h-4 w-4" />} label="Fax" value={patient.doctorFax} />
-            <ReadOnlyField icon={<Send className="h-4 w-4" />} label="Clinicals Method" value={patient.clinicalsMethod} />
-            <ReadOnlyField icon={<Building2 className="h-4 w-4" />} label="Clinic" value={patient.clinicName} />
+            <EditableTextField
+              icon={<UserRound className="h-4 w-4" />}
+              label="Doctor Name"
+              value={patient.doctorName}
+              onChange={(v) => onFieldChange("doctorName", v)}
+            />
+            <EditableTextField
+              icon={<Hash className="h-4 w-4" />}
+              label="NPI"
+              value={patient.doctorNpi}
+              onChange={(v) => onFieldChange("doctorNpi", v)}
+            />
+            <EditableTextField
+              icon={<Phone className="h-4 w-4" />}
+              label="Doctor Phone"
+              value={patient.doctorPhone}
+              onChange={(v) => onFieldChange("doctorPhone", v)}
+            />
+            <EditableTextField
+              icon={<Mail className="h-4 w-4" />}
+              label="Doctor Email"
+              value={patient.doctorEmail}
+              onChange={(v) => onFieldChange("doctorEmail", v)}
+            />
+            <EditableTextField
+              icon={<Send className="h-4 w-4" />}
+              label="Fax"
+              value={patient.doctorFax}
+              onChange={(v) => onFieldChange("doctorFax", v)}
+            />
+            <EditableTextField
+              icon={<Send className="h-4 w-4" />}
+              label="Clinicals Method"
+              value={patient.clinicalsMethod}
+              onChange={(v) => onFieldChange("clinicalsMethod", v)}
+            />
+            <EditableTextField
+              icon={<Building2 className="h-4 w-4" />}
+              label="Clinic"
+              value={patient.clinicName}
+              onChange={(v) => onFieldChange("clinicName", v)}
+            />
           </div>
         </CollapsibleSection>
       </Card>
 
-      {/* Medical Necessity */}
+      {/* Medical Necessity — all editable */}
       <Card className="p-4 space-y-4">
         <CollapsibleSection title="Medical Necessity" defaultOpen>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            <ReadOnlyField icon={<Heart className="h-4 w-4" />} label="Diagnosis" value={patient.diagnosis} />
-            <ReadOnlyField icon={<Activity className="h-4 w-4" />} label="CGM Coverage Path" value={patient.cgmCoveragePath} />
-            <ReadOnlyField icon={<Activity className="h-4 w-4" />} label="IP Coverage Path" value={patient.ipCoveragePath} />
-            <ReadOnlyField icon={<Stethoscope className="h-4 w-4" />} label="MR Expiry Date" value={patient.mrExpiryDate} />
+            <EditableTextField
+              icon={<Heart className="h-4 w-4" />}
+              label="Diagnosis"
+              value={patient.diagnosis}
+              onChange={(v) => onFieldChange("diagnosis", v)}
+            />
+            <EditableTextField
+              icon={<Activity className="h-4 w-4" />}
+              label="CGM Coverage Path"
+              value={patient.cgmCoveragePath}
+              onChange={(v) => onFieldChange("cgmCoveragePath", v)}
+            />
+            <EditableTextField
+              icon={<Activity className="h-4 w-4" />}
+              label="IP Coverage Path"
+              value={patient.ipCoveragePath}
+              onChange={(v) => onFieldChange("ipCoveragePath", v)}
+            />
+            <EditableTextField
+              icon={<Stethoscope className="h-4 w-4" />}
+              label="MR Expiry Date"
+              value={patient.mrExpiryDate}
+              onChange={(v) => onFieldChange("mrExpiryDate", v)}
+            />
           </div>
         </CollapsibleSection>
       </Card>
 
-      {/* Product / Order Info — editable */}
+      {/* Product / Order Info — all editable */}
       <Card className="p-4 space-y-4">
         <p className="text-xs uppercase tracking-wider text-muted-foreground font-semibold flex items-center gap-2">
           <Package className="h-3.5 w-3.5" /> Product & Order Info
         </p>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          <ReadOnlyField icon={<Package className="h-4 w-4" />} label="Serving" value={patient.serving} />
-          <ReadOnlyField icon={<Package className="h-4 w-4" />} label="Pump Type" value={patient.pumpType} />
-          <ReadOnlyField icon={<Package className="h-4 w-4" />} label="CGM Type" value={patient.cgmType} />
-          <ReadOnlyField icon={<Package className="h-4 w-4" />} label="Request Type" value={patient.requestType} />
+          <EditableTextField
+            icon={<Package className="h-4 w-4" />}
+            label="Serving"
+            value={patient.serving}
+            onChange={(v) => onFieldChange("serving", v)}
+          />
+          <EditableTextField
+            icon={<Package className="h-4 w-4" />}
+            label="Pump Type"
+            value={patient.pumpType}
+            onChange={(v) => onFieldChange("pumpType", v)}
+          />
+          <EditableTextField
+            icon={<Package className="h-4 w-4" />}
+            label="CGM Type"
+            value={patient.cgmType}
+            onChange={(v) => onFieldChange("cgmType", v)}
+          />
+          <EditableTextField
+            icon={<Package className="h-4 w-4" />}
+            label="Request Type"
+            value={patient.requestType}
+            onChange={(v) => onFieldChange("requestType", v)}
+          />
         </div>
         <div className="h-px bg-border" />
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">

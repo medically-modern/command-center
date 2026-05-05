@@ -167,46 +167,9 @@ export function formatPhone(raw: string): string {
   return raw;
 }
 
-function hasZipCode(address: string): boolean {
-  if (!address) return false;
-  return /\b\d{5}(-\d{4})?\b/.test(address);
-}
-
 /* ─── Validation ─── */
 
-export function validatePatientForSend(p: Patient): { valid: boolean; errors: string[] } {
-  const errors: string[] = [];
-
-  // Demographics
-  if (!p.dob) errors.push("DOB is required");
-  const effectivePhone = p.phoneEdited ?? p.phone;
-  if (!effectivePhone) errors.push("Phone number is required");
-  const effectiveAddress = p.addressEdited ?? p.address;
-  if (!effectiveAddress || !hasZipCode(effectiveAddress)) errors.push("Address with zip code is required");
-  const effectiveEmail = p.emailEdited ?? p.email;
-  if (!effectiveEmail) errors.push("Email is required");
-  if (!p.gender && p.genderIndex === null) errors.push("Gender is required");
-
-  // Insurance
-  if (!p.primaryInsurance) errors.push("Primary Insurance is required");
-  if (!p.memberId1) errors.push("Member ID 1 is required");
-
-  // Doctor
-  if (!p.doctorName) errors.push("Doctor Name is required");
-  if (!p.doctorNpi) errors.push("Doctor NPI is required");
-
-  // Product — subscription type needed if serving includes supplies
-  if (p.serving && !p.subscriptionType && p.subscriptionTypeIndex === null) {
-    errors.push("Subscription Type is required");
-  }
-
-  // Infusion set qty consistency
-  if (p.serving?.toLowerCase().includes("pump") || p.serving?.toLowerCase().includes("supplies")) {
-    const qty1 = Number(p.qtyInf1) || 0;
-    if (qty1 > 0 && p.infusionSet1Index === null && !p.infusionSet1) {
-      errors.push("Infusion Set 1 type required when quantity > 0");
-    }
-  }
-
-  return { valid: errors.length === 0, errors };
+/** No fields are required — user can send at any time */
+export function validatePatientForSend(_p: Patient): { valid: boolean; errors: string[] } {
+  return { valid: true, errors: [] };
 }
