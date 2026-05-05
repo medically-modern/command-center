@@ -39,23 +39,36 @@ async function loadGooglePlaces(): Promise<void> {
   });
 }
 
-/** Build a full address string from address_components, guaranteeing zip is included */
+/** Strip ZIP+4 (12345-6789) down to 5-digit zip (12345) */
+function stripZipPlus4(addr: string): string {
+  return addr.replace(/(\b\d{5})-\d{4}\b/g, "$1");
+}
+
+/** Build a full address string from address_components, guaranteeing zip and apt are included */
 function buildFullAddress(place: any): string {
   const components = place.address_components || [];
-  const get = (type: string) => components.find((c) => c.types.includes(type))?.long_name || "";
+  const get = (type: string, short = false): string => {
+    const c = components.find((comp: any) => comp.types.includes(type));
+    if (!c) return "";
+    return short ? c.short_name : c.long_name;
+  };
 
   const streetNumber = get("street_number");
   const route = get("route");
+  const subpremise = get("subpremise");
   const city = get("locality") || get("sublocality_level_1") || get("administrative_area_level_3");
-  const state = components.find((c) => c.types.includes("administrative_area_level_1"))?.short_name || "";
+  const state = get("administrative_area_level_1", true);
   const zip = get("postal_code");
-  const country = components.find((c) => c.types.includes("country"))?.short_name || "";
+  const country = get("country", true);
 
-  const street = [streetNumber, route].filter(Boolean).join(" ");
-  const parts = [street, city, [state, zip].filter(Boolean).join(" ")].filter(Boolean);
+  let street = [streetNumber, route].filter(Boolean).join(" ");
+  if (subpremise) street += ` ${subpremise}`;
+
+  const stateZip = [state, zip].filter(Boolean).join(" ");
+  const parts = [street, city, stateZip].filter(Boolean);
   let addr = parts.join(", ");
   if (country) addr += `, ${country}`;
-  return addr;
+  return stripZipPlus4(addr);
 }
 
 export interface AddressResult {
@@ -99,7 +112,7 @@ export function AddressAutocomplete({ value, onChange, placeholder }: Props) {
       const place = autocomplete.getPlace();
       if (!place) return;
 
-      // Build address from components to guarantee zip is included
+      // Build address from components to guarantee zip and apt are included
       const components = place.address_components || [];
       let addr = "";
 
@@ -107,13 +120,13 @@ export function AddressAutocomplete({ value, onChange, placeholder }: Props) {
         addr = buildFullAddress(place);
         console.log("[AddressAutocomplete] built from components:", addr);
       } else {
-        addr = place.formatted_address || inputRef.current?.value || "";
+        addr = stripZipPlus4(place.formatted_address || inputRef.current?.value || "");
         console.log("[AddressAutocomplete] using formatted_address:", addr);
       }
 
       if (!addr) return;
 
-      // Update the input to show the full address with zip
+      // Update the input to show the full address with zip and apt
       if (inputRef.current) {
         inputRef.current.value = addr;
       }
@@ -138,6 +151,9 @@ export function AddressAutocomplete({ value, onChange, placeholder }: Props) {
       className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
       defaultValue={value}
       placeholder={placeholder ?? "Enter address"}
+      onChange={(e) => {
+        onChangeRef.current({ address: e.target.value, lat: 0, lng: 0 });
+      }}
     />
   );
 }
