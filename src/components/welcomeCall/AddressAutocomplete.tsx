@@ -51,12 +51,14 @@ function buildFullAddress(place: any): string {
 
   const streetNumber = get("street_number");
   const route = get("route");
+  const subpremise = get("subpremise");
   const city = get("locality") || get("sublocality_level_1") || get("administrative_area_level_3");
   const state = components.find((c) => c.types.includes("administrative_area_level_1"))?.short_name || "";
   const zip = get("postal_code");
   const country = components.find((c) => c.types.includes("country"))?.short_name || "";
 
-  const street = [streetNumber, route].filter(Boolean).join(" ");
+  let street = [streetNumber, route].filter(Boolean).join(" ");
+  if (subpremise) street += ` ${subpremise}`;
   const parts = [street, city, [state, zip].filter(Boolean).join(" ")].filter(Boolean);
   let addr = parts.join(", ");
   if (country) addr += `, ${country}`;
@@ -146,7 +148,7 @@ export function AddressAutocomplete({ value, onChange, placeholder }: Props) {
       className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
       defaultValue={value}
       onChange={(e) => {
-        // Manual typing (e.g. adding apt number) — propagate raw text to parent
+        // Manual typing (e.g. adding apt number) \u2014 propagate raw text to parent
         onChangeRef.current({ address: e.target.value, lat: 0, lng: 0 });
       }}
       placeholder={placeholder ?? "Enter address"}
