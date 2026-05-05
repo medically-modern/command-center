@@ -2,6 +2,7 @@ import { NavLink } from "react-router-dom";
 import {
   Sidebar,
   SidebarContent,
+  SidebarFooter,
   SidebarGroup,
   SidebarGroupContent,
   SidebarGroupLabel,
@@ -13,6 +14,7 @@ import {
 } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
 import { Loader2, RefreshCw, User, AlertCircle } from "lucide-react";
+import { SidebarThemePicker } from "@/components/ThemePicker";
 import type { Patient } from "@/lib/welcomeCall/workflow";
 import { cn } from "@/lib/utils";
 
@@ -97,6 +99,10 @@ export function PatientsSidebar({ patients, selectedId, onSelect, loading, error
           </SidebarGroupContent>
         </SidebarGroup>
       </SidebarContent>
+
+      <SidebarFooter className="border-t border-sidebar-border p-2">
+        <SidebarThemePicker collapsed={collapsed} />
+      </SidebarFooter>
     </Sidebar>
   );
 }

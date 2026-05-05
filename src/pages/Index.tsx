@@ -3,6 +3,7 @@ import { useSearchParams } from "react-router-dom";
 import { useAssignments } from "@/lib/assignmentsStore";
 import { RolesPanel } from "@/components/dashboard/RolesPanel";
 import { DashboardMainView } from "@/components/dashboard/DashboardMainView";
+import { ThemePickerButton } from "@/components/ThemePicker";
 import { cn } from "@/lib/utils";
 import { Shield, LayoutDashboard, Stethoscope } from "lucide-react";
 import { USERS, type UserName } from "@/lib/config";
@@ -51,6 +52,10 @@ const Index = () => {
               </p>
             </div>
           )}
+        </div>
+
+        <div className="border-t border-border p-3">
+          <ThemePickerButton />
         </div>
       </aside>
 
