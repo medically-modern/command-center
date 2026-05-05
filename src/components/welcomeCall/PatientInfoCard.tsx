@@ -102,17 +102,13 @@ export function PatientInfoCard({ patient, onFieldChange }: Props) {
         )}
       </Card>
 
-      {/* Row 1: Referral/Product + Insurance */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+      {/* Row 1: Referral/Product + SOS + Insurance */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         <Card className="p-4">
           <div className="grid grid-cols-2 gap-3">
             <Field label="Referral Source" value={patient.referralSource} />
             <Field label="Doctor Name" value={patient.doctorName} />
             <Field label="Request Type" value={patient.requestType} />
-            <Field label="Supplies Order Date" value={formatDateMDY(patient.suppliesOrderDate)} />
-            <SosField label="SOS Supplies Order Date" dateStr={patient.suppliesOrderDate} />
-            <Field label="Sensors Order Date" value={formatDateMDY(patient.sensorsOrderDate)} />
-            <SosField label="SOS Sensors Order Date" dateStr={patient.sensorsOrderDate} />
             {patient.serving ? (
               <div>
                 <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
@@ -130,6 +126,16 @@ export function PatientInfoCard({ patient, onFieldChange }: Props) {
                 </div>
               </div>
             ) : null}
+          </div>
+        </Card>
+
+        <Card className="p-4">
+          <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-3">SOS</p>
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Supplies Order Date" value={formatDateMDY(patient.suppliesOrderDate)} />
+            <SosField label="SOS Supplies Order Date" dateStr={patient.suppliesOrderDate} />
+            <Field label="Sensors Order Date" value={formatDateMDY(patient.sensorsOrderDate)} />
+            <SosField label="SOS Sensors Order Date" dateStr={patient.sensorsOrderDate} />
           </div>
         </Card>
 
