@@ -75,6 +75,18 @@ export interface Patient {
   orderHandling: string;
   orderHandlingIndex: number | null;
 
+  // Auth Results
+  cgmAuthResult: string;
+  cgmAuthResultIndex: number | null;
+  sensorsAuthResult: string;
+  sensorsAuthResultIndex: number | null;
+  ipAuthResult: string;
+  ipAuthResultIndex: number | null;
+  infusionSetAuthResult: string;
+  infusionSetAuthResultIndex: number | null;
+  cartridgeAuthResult: string;
+  cartridgeAuthResultIndex: number | null;
+
   // Notes
   notes: string;
 
@@ -305,6 +317,16 @@ export const ORDER_HANDLING_OPTIONS = [
   { index: 0, label: "Separate" },
   { index: 1, label: "Together" },
   { index: 2, label: "Not Applicable" },
+];
+
+export const AUTH_RESULT_OPTIONS = [
+  { index: 0, label: "Evaluate" },
+  { index: 1, label: "Auth Valid" },
+  { index: 2, label: "Denied" },
+  { index: 3, label: "No Auth Needed" },
+  { index: 4, label: "Submitted" },
+  { index: 6, label: "Required" },
+  { index: 7, label: "Not Serving" },
 ];
 
 /* ─── Helpers ─── */

@@ -89,6 +89,18 @@ export function mondayItemToPatient(item: MondayItem): Patient {
     orderHandling: cv(item, COL.orderHandling)?.text ?? "",
     orderHandlingIndex: parseIndex(cv(item, COL.orderHandling)?.value ?? null),
 
+    // Auth Results
+    cgmAuthResult: cv(item, COL.cgmAuthResult)?.text ?? "",
+    cgmAuthResultIndex: parseIndex(cv(item, COL.cgmAuthResult)?.value ?? null),
+    sensorsAuthResult: cv(item, COL.sensorsAuthResult)?.text ?? "",
+    sensorsAuthResultIndex: parseIndex(cv(item, COL.sensorsAuthResult)?.value ?? null),
+    ipAuthResult: cv(item, COL.ipAuthResult)?.text ?? "",
+    ipAuthResultIndex: parseIndex(cv(item, COL.ipAuthResult)?.value ?? null),
+    infusionSetAuthResult: cv(item, COL.infusionSetAuthResult)?.text ?? "",
+    infusionSetAuthResultIndex: parseIndex(cv(item, COL.infusionSetAuthResult)?.value ?? null),
+    cartridgeAuthResult: cv(item, COL.cartridgeAuthResult)?.text ?? "",
+    cartridgeAuthResultIndex: parseIndex(cv(item, COL.cartridgeAuthResult)?.value ?? null),
+
     // Notes
     notes: cv(item, COL.notes)?.text ?? "",
 

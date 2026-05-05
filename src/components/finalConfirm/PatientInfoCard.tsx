@@ -17,6 +17,7 @@ import {
   INFUSION_SET_2_OPTIONS,
   SUBSCRIPTION_TYPE_OPTIONS,
   ORDER_HANDLING_OPTIONS,
+  AUTH_RESULT_OPTIONS,
   formatPhone,
 } from "@/lib/finalConfirm/workflow";
 import { AddressAutocomplete, type AddressResult } from "@/components/finalConfirm/AddressAutocomplete";
@@ -47,6 +48,7 @@ import {
   UserRound,
   Package,
   Heart,
+  ShieldCheck,
 } from "lucide-react";
 
 interface Props {
@@ -592,6 +594,69 @@ export function PatientInfoCard({ patient, onFieldChange }: Props) {
               placeholder="0"
             />
           </div>
+        </div>
+      </Card>
+      {/* Auth Results */}
+      <Card className="p-4 space-y-4">
+        <p className="text-xs uppercase tracking-wider text-muted-foreground font-semibold flex items-center gap-2">
+          <ShieldCheck className="h-3.5 w-3.5" /> Auth Results
+        </p>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          <SelectField
+            label="CGM Auth"
+            icon={<ShieldCheck className="h-4 w-4" />}
+            options={AUTH_RESULT_OPTIONS}
+            value={patient.cgmAuthResult}
+            onChange={(index) => {
+              onFieldChange("cgmAuthResultIndex", index);
+              const opt = AUTH_RESULT_OPTIONS.find((o) => o.index === index);
+              if (opt) onFieldChange("cgmAuthResult", opt.label);
+            }}
+          />
+          <SelectField
+            label="Sensors Auth"
+            icon={<ShieldCheck className="h-4 w-4" />}
+            options={AUTH_RESULT_OPTIONS}
+            value={patient.sensorsAuthResult}
+            onChange={(index) => {
+              onFieldChange("sensorsAuthResultIndex", index);
+              const opt = AUTH_RESULT_OPTIONS.find((o) => o.index === index);
+              if (opt) onFieldChange("sensorsAuthResult", opt.label);
+            }}
+          />
+          <SelectField
+            label="IP Auth"
+            icon={<ShieldCheck className="h-4 w-4" />}
+            options={AUTH_RESULT_OPTIONS}
+            value={patient.ipAuthResult}
+            onChange={(index) => {
+              onFieldChange("ipAuthResultIndex", index);
+              const opt = AUTH_RESULT_OPTIONS.find((o) => o.index === index);
+              if (opt) onFieldChange("ipAuthResult", opt.label);
+            }}
+          />
+          <SelectField
+            label="Infusion Set Auth"
+            icon={<ShieldCheck className="h-4 w-4" />}
+            options={AUTH_RESULT_OPTIONS}
+            value={patient.infusionSetAuthResult}
+            onChange={(index) => {
+              onFieldChange("infusionSetAuthResultIndex", index);
+              const opt = AUTH_RESULT_OPTIONS.find((o) => o.index === index);
+              if (opt) onFieldChange("infusionSetAuthResult", opt.label);
+            }}
+          />
+          <SelectField
+            label="Cartridge Auth"
+            icon={<ShieldCheck className="h-4 w-4" />}
+            options={AUTH_RESULT_OPTIONS}
+            value={patient.cartridgeAuthResult}
+            onChange={(index) => {
+              onFieldChange("cartridgeAuthResultIndex", index);
+              const opt = AUTH_RESULT_OPTIONS.find((o) => o.index === index);
+              if (opt) onFieldChange("cartridgeAuthResult", opt.label);
+            }}
+          />
         </div>
       </Card>
     </div>

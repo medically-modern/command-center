@@ -63,6 +63,13 @@ export const COL = {
   pumpQty: "numeric_mm1xa0z2",
   orderHandling: "color_mm2776fg",
 
+  // Auth Results
+  cgmAuthResult: "color_mm1wgjd1",
+  sensorsAuthResult: "color_mm1x5c99",
+  ipAuthResult: "color_mm1xnzmn",
+  infusionSetAuthResult: "color_mm1xr2j1",
+  cartridgeAuthResult: "color_mm1xybvt",
+
   // Notes (editable — append)
   notes: "long_text_mm2ffsme",
 
@@ -83,7 +90,10 @@ export const READ_COLUMN_IDS = [
   COL.referralType, COL.referralSource,
   COL.subscriptionType, COL.infusionSet1, COL.qtyInf1,
   COL.infusionSet2, COL.qtyInf2, COL.monitorQty, COL.pumpQty,
-  COL.orderHandling, COL.notes,
+  COL.orderHandling,
+  COL.cgmAuthResult, COL.sensorsAuthResult, COL.ipAuthResult,
+  COL.infusionSetAuthResult, COL.cartridgeAuthResult,
+  COL.notes,
 ];
 
 export interface MondayColumnValue {
