@@ -549,3 +549,83 @@ export async function fetchItemFileColumns(
   }
   return out;
 }
+
+// ---- Doctor-field write helpers ----
+// Phone and email columns need specific JSON shapes.
+
+export async function writePhone(itemId: string, columnId: string, phone: string): Promise<void> {
+  const value = JSON.stringify({ phone, countryShortName: "US" });
+  await gql(`mutation { change_column_value(item_id: ${itemId}, board_id: ${BOARD_ID}, column_id: "${columnId}", value: ${JSON.stringify(value)}) { id } }`);
+}
+
+export async function writeEmail(itemId: string, columnId: string, email: string): Promise<void> {
+  const value = JSON.stringify({ email, text: email });
+  await gql(`mutation { change_column_value(item_id: ${itemId}, board_id: ${BOARD_ID}, column_id: "${columnId}", value: ${JSON.stringify(value)}) { id } }`);
+}
+
+/**
+ * Write all doctor fields to Monday using the correct column-type format.
+ * Phone → { phone, countryShortName }
+ * Email/Fax → { email, text }
+ * Clinic → dropdown labels (creates label if missing)
+ * Name/NPI → plain text
+ *
+ * Collects into a { label, run } task array for batching with other writes.
+ */
+export function buildDoctorWriteTasks(
+  patient: { id: string; doctorName?: string; doctorNpi?: string; doctorPhone?: string; doctorEmail?: string; doctorFax?: string; clinicName?: string },
+): { label: string; run: () => Promise<void> }[] {
+  const tasks: { label: string; run: () => Promise<void> }[] = [];
+  if (patient.doctorName != null)
+    tasks.push({ label: "Doctor Name", run: () => writeText(patient.id, COL.doctorName, patient.doctorName ?? "") });
+  if (patient.doctorNpi != null)
+    tasks.push({ label: "Doctor NPI", run: () => writeText(patient.id, COL.doctorNpi, patient.doctorNpi ?? "") });
+  if (patient.doctorPhone != null)
+    tasks.push({ label: "Doctor Phone", run: () => writePhone(patient.id, COL.doctorPhone, patient.doctorPhone ?? "") });
+  if (patient.doctorEmail != null)
+    tasks.push({ label: "Doctor Email", run: () => writeEmail(patient.id, COL.doctorEmail, patient.doctorEmail ?? "") });
+  if (patient.doctorFax != null)
+    tasks.push({ label: "Doctor Fax", run: () => writeEmail(patient.id, COL.doctorFax, patient.doctorFax ?? "") });
+  if (patient.clinicName != null)
+    tasks.push({ label: "Clinic Name", run: () => writeDropdownLabels(patient.id, COL.clinicName, [patient.clinicName ?? ""]) });
+  return tasks;
+}
+
+// ---- Updates (referral email / item updates) ----
+
+export interface MondayUpdate {
+  id: string;
+  body: string;
+  created_at: string;
+  creator: { name: string } | null;
+}
+
+/** Fetch all updates for a Monday item, newest first. */
+export async function fetchUpdates(itemId: string): Promise<MondayUpdate[]> {
+  const query = `
+    query ($itemIds: [ID!]) {
+      items(ids: $itemIds) {
+        updates {
+          id
+          body
+          created_at
+          creator { name }
+        }
+      }
+    }
+  `;
+  const data = await gql<{ items: { updates: MondayUpdate[] }[] }>(query, {
+    itemIds: [itemId],
+  });
+  return data.items?.[0]?.updates ?? [];
+}
+
+/** Post a new update on a Monday item. */
+export async function createUpdate(itemId: string, body: string): Promise<void> {
+  const query = `
+    mutation ($itemId: ID!, $body: String!) {
+      create_update(item_id: $itemId, body: $body) { id }
+    }
+  `;
+  await gql(query, { itemId, body });
+}

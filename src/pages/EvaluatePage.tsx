@@ -7,9 +7,10 @@ import type { Patient } from "@/lib/mesheke/workflow";
 import { EvaluatePanel } from "@/components/mesheke/EvaluatePanel";
 import { PatientsSidebar } from "@/components/mesheke/PatientsSidebar";
 import { PatientProfileCard } from "@/components/mesheke/PatientProfileCard";
+import { ReferralEmailPanel } from "@/components/mesheke/ReferralEmailPanel";
 import { Button } from "@/components/ui/button";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
-import { RotateCcw, Stethoscope, ArrowLeft } from "lucide-react";
+import { RotateCcw, Stethoscope, ArrowLeft, Mail } from "lucide-react";
 import { toast } from "sonner";
 import { clearEvalState } from "@/lib/mesheke/evalState";
 import { useNavigate } from "react-router-dom";
@@ -19,6 +20,7 @@ const EvaluatePage = () => {
   const { patients, loading, error, refetch, update, clearOverlay } = useMondayPatients("evaluate");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [resetVersion, setResetVersion] = useState(0);
+  const [referralEmailOpen, setReferralEmailOpen] = useState(false);
 
   useEffect(() => {
     if (!selectedId && patients.length > 0) setSelectedId(patients[0].id);
@@ -59,6 +61,18 @@ const EvaluatePage = () => {
                 </div>
               </div>
               <div className="flex items-center gap-2">
+                <Button
+                  onClick={() => setReferralEmailOpen((o) => !o)}
+                  disabled={!selected}
+                  variant={referralEmailOpen ? "default" : "outline"}
+                  className={referralEmailOpen
+                    ? "gap-2 shadow-elevate"
+                    : "gap-2 bg-white text-navy hover:bg-white/90 shadow-elevate"
+                  }
+                >
+                  <Mail className="h-4 w-4" />
+                  {referralEmailOpen ? "Hide Referral Email" : "See Referral Email"}
+                </Button>
                 <Button onClick={resetForNewPatient} disabled={!selected} className="gap-2 bg-white text-navy hover:bg-white/90 shadow-elevate">
                   <RotateCcw className="h-4 w-4" /> Reset
                 </Button>
@@ -82,6 +96,15 @@ const EvaluatePage = () => {
             </section>
           </main>
         </div>
+
+        {/* Side-by-side referral email panel */}
+        {referralEmailOpen && selected && (
+          <ReferralEmailPanel
+            itemId={selected.id}
+            patientName={selected.name}
+            onClose={() => setReferralEmailOpen(false)}
+          />
+        )}
       </div>
     </SidebarProvider>
   );
