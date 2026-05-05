@@ -96,6 +96,18 @@ function EditableField({
   );
 }
 
+/** Format raw phone digits into (555)555-5555 or +1 (555)555-5555 */
+function formatPhone(raw: string): string {
+  const digits = raw.replace(/\D/g, "");
+  if (digits.length === 10) {
+    return `(${digits.slice(0, 3)})${digits.slice(3, 6)}-${digits.slice(6)}`;
+  }
+  if (digits.length === 11 && digits.startsWith("1")) {
+    return `+1 (${digits.slice(1, 4)})${digits.slice(4, 7)}-${digits.slice(7)}`;
+  }
+  return raw; // leave as-is if unexpected length
+}
+
 export function PatientProfileCard({
   patient,
   defaultDoctorOpen = false,
@@ -138,7 +150,7 @@ export function PatientProfileCard({
         <Field
           icon={<Phone className="h-4 w-4" />}
           label="Phone"
-          value={patient.phone ?? ""}
+          value={patient.phone ? formatPhone(patient.phone) : ""}
         />
         <Field
           icon={<MapPin className="h-4 w-4" />}
