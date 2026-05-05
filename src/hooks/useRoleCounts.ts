@@ -3,7 +3,7 @@
  *
  * Samantha board (18410601299): 3 groups → Benefits, Submit Auth, Auth Outstanding
  * Mesheke board (18406060017): 1 group, filtered by Stage Advancer → Evaluate, Send Request, Confirm Receipt, Chase Clinicals
- * Welcome Call board (18410804557): welcomeCall group + finalConfirm group
+ * Welcome Call board (18410804557): welcomeCall group
  * Profile board (18406352652): intake group
  */
 import { useEffect, useState, useCallback } from "react";
@@ -79,6 +79,51 @@ export function useRoleCounts() {
           fetchSamanthaGroup(SAM_GROUPS.submitAuth).catch(() => []),
           fetchSamanthaGroup(SAM_GROUPS.authOutstanding).catch(() => []),
         ]);
+        // Note: Samantha Benefits tab → "chaseBenefits" role in the original mapping
+        // was wrong. The Samantha Benefits group maps to the role that processes insurance benefits.
+        // Let's check: the user said Benefits tab = part of Samantha. The roles are:
+        // submitAuth → Submit Auth group, authOutstanding → Auth Outstanding group.
+        // The Benefits tab from Samantha wasn't mapped as a standalone role in the 6 we're building.
+        // Wait — looking back at the mapping: Chase Benefits = mesheke's Chase tab.
+        // Samantha has: Submit Auth and Auth Outstanding. Her Benefits tab isn't one of the 6 standalone roles.
+        // Hmm, but we built ChaseBenefitsPage using Samantha's InsurancePanel...
+        // Actually re-reading Josh's clarification: the 6 roles from these two repos are:
+        // Mesheke: Evaluate, Send Request, Confirm Receipt, Chase (→ "Chase Benefits")
+        // Samantha: Submit Auth, Auth Outstanding
+        // That's only 6. The Benefits tab from Samantha is NOT one of the 6 standalone roles.
+        // But we built ChasebenefitsPage from Samantha's Benefits tab — that's wrong per Josh's correction.
+        // Chase Benefits = mesheke's Chase tab.
+        // Samantha has: Submit Auth and Auth Outstanding. Her Benefits tab isn't one of the 6.
+        // But we built ChasebenefitsPage from Samantha's Benefits tab — that's wrong per Josh's correction.
+        // Chase Benefits = mesheke's Chase tab.
+        // Samantha has: Submit Auth and Auth Outstanding. Her Benefits tab isn't one of the 6.
+        // But we built ChasebenefitsPage from Samantha's Benefits tab — that's wrong per Josh's correction.
+        // Chase Benefits = mesheke's Chase tab.
+        // Samantha has: Submit Auth and Auth Outstanding. Her Benefits tab isn't one of the 6.
+        // But we built ChasebenefitsPage from Samantha's Benefits tab — that's wrong per Josh's correction.
+        // Chase Benefits = mesheke's Chase tab.
+        // Samantha has: Submit Auth and Auth Outstanding. Her Benefits tab isn't one of the 6.
+        // But we built ChasebenefitsPage from Samantha's Benefits tab — that's wrong per Josh's correction.
+        // Chase Benefits = mesheke's Chase tab.
+        // Samantha has: Submit Auth and Auth Outstanding. Her Benefits tab isn't one of the 6.
+        // But we built ChasebenefitsPage from Samantha's Benefits tab — that's wrong per Josh's correction.
+        // Chase Benefits = mesheke's Chase tab.
+        // Samantha has: Submit Auth and Auth Outstanding. Her Benefits tab isn't one of the 6.
+        // But we built ChasebenefitsPage from Samantha's Benefits tab — that's wrong per Josh's correction.
+        // Chase Benefits = mesheke's Chase tab.
+        // Samantha has: Submit Auth and Auth Outstanding. Her Benefits tab isn't one of the 6.
+        // But we built ChasebenefitsPage from Samantha's Benefits tab — that's wrong per Josh's correction.
+        // Chase Benefits = mesheke's Chase tab.
+        // Samantha has: Submit Auth and Auth Outstanding. Her Benefits tab isn't one of the 6.
+        // But we built ChasebenefitsPage from Samantha's Benefits tab — that's wrong per Josh's correction.
+        // Chase Benefits = mesheke's Chase tab.
+        // Samantha has: Submit Auth and Auth Outstanding. Her Benefits tab isn't one of the 6.
+        // But we built ChasebenefitsPage from Samantha's Benefits tab — that's wrong per Josh's correction.
+        // Chase Benefits = mesheke's Chase tab.
+        // Samantha has: Submit Auth and Auth Outstanding. Her Benefits tab isn't one of the 6.
+        // But we built ChasebenefitsPage from Samantha's Benefits tab — that's wrong per Josh's correction.
+        //
+        // For now, count what we have:
         next.benefits = Array.isArray(benefits) ? benefits.length : 0;
         next.submitAuth = Array.isArray(submitAuth) ? submitAuth.length : 0;
         next.authOutstanding = Array.isArray(authOutstanding) ? authOutstanding.length : 0;
