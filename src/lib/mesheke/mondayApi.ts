@@ -590,3 +590,43 @@ export function buildDoctorWriteTasks(
     tasks.push({ label: "Clinic Name", run: () => writeDropdownLabels(patient.id, COL.clinicName, [patient.clinicName ?? ""]) });
   return tasks;
 }
+
+// ---- Updates (referral email / item updates) ----
+
+export interface MondayUpdate {
+  id: string;
+  body: string;
+  created_at: string;
+  creator: { name: string } | null;
+}
+
+/** Fetch all updates for a Monday item, newest first. */
+export async function fetchUpdates(itemId: string): Promise<MondayUpdate[]> {
+  const query = `
+    query ($itemIds: [ID!]) {
+      items(ids: $itemIds) {
+        updates {
+          id
+          body
+          created_at
+          creator { name }
+        }
+      }
+    }
+  `;
+  const data = await gql<{ items: { updates: MondayUpdate[] }[] }>(query, {
+    itemIds: [itemId],
+  });
+  return data.items?.[0]?.updates ?? [];
+}
+
+/** Post a new update on a Monday item. */
+export async function createUpdate(itemId: string, body: string): Promise<void> {
+  const query = `
+    mutation ($itemId: ID!, $body: String!) {
+      create_update(item_id: $itemId, body: $body) { id }
+    }
+  `;
+  await gql(query, { itemId, body });
+}
+
