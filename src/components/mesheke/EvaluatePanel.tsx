@@ -56,6 +56,7 @@ import {
   clearStatusColumn,
   deleteFileFromColumn,
   deleteSingleFileFromColumn,
+  uploadFileToColumn,
   fetchStatusLabels,
   hasToken,
   writeDate,
@@ -154,6 +155,11 @@ export function EvaluatePanel({ patient, resetVersion = 0, onUpdate }: Props) {
   const mondayFiles = useMondayFiles(patient.id, {
     pollingIntervalMs: isGenerating ? 2000 : 0,
   });
+
+  // Raw File objects for upload — kept in refs so they survive re-renders
+  // but don't go to localStorage (File objects aren't serializable).
+  const clinicalFilesRaw = useRef<File[]>([]);
+  const finalClinicalFilesRaw = useRef<File[]>([]);
 
   // Generate button handlers — write the Monday status column so the
   // DocExport automation actually runs. The automation fires on a *change*
@@ -386,6 +392,26 @@ export function EvaluatePanel({ patient, resetVersion = 0, onUpdate }: Props) {
       run: () => writeStatusLabel(patient.id, COL.subStage, nextStage),
     });
 
+    // Upload any locally-added clinical files to Monday
+    for (const rawFile of clinicalFilesRaw.current) {
+      tasks.push({
+        label: `Upload ${rawFile.name} → Clinical Files`,
+        run: async () => {
+          const bytes = new Uint8Array(await rawFile.arrayBuffer());
+          await uploadFileToColumn(patient.id, COL.clinicalFiles, bytes, rawFile.name);
+        },
+      });
+    }
+    for (const rawFile of finalClinicalFilesRaw.current) {
+      tasks.push({
+        label: `Upload ${rawFile.name} → Final Clinicals`,
+        run: async () => {
+          const bytes = new Uint8Array(await rawFile.arrayBuffer());
+          await uploadFileToColumn(patient.id, COL.finalClinicals, bytes, rawFile.name);
+        },
+      });
+    }
+
     const results = await Promise.allSettled(tasks.map((t) => t.run()));
     const failures: string[] = [];
     results.forEach((r, i) => {
@@ -396,6 +422,16 @@ export function EvaluatePanel({ patient, resetVersion = 0, onUpdate }: Props) {
     setSending(false);
     if (failures.length === 0) {
       toast.success(`Sent ${tasks.length} fields to Monday`);
+      // Clear local file previews + raw refs after successful upload
+      if (clinicalFilesRaw.current.length > 0) {
+        clinicalFilesRaw.current = [];
+        update("clinicalFiles", []);
+      }
+      if (finalClinicalFilesRaw.current.length > 0) {
+        finalClinicalFilesRaw.current = [];
+        update("finalClinicalFiles", []);
+      }
+      mondayFiles.refetch();
     } else {
       toast.error(`${failures.length} write(s) failed`, {
         description: failures.slice(0, 3).join("\n"),
@@ -498,14 +534,16 @@ export function EvaluatePanel({ patient, resetVersion = 0, onUpdate }: Props) {
             mondayFiles={mondayFiles.clinicalFiles}
             mondayLoading={mondayFiles.loading}
             onAdd={(files) => update("clinicalFiles", [...(state.clinicalFiles ?? []), ...files])}
+            onAddRaw={(files) => { clinicalFilesRaw.current = [...clinicalFilesRaw.current, ...files]; }}
             onRemove={(idx) => {
               const next = [...(state.clinicalFiles ?? [])];
               next.splice(idx, 1);
               update("clinicalFiles", next);
+              clinicalFilesRaw.current.splice(idx, 1);
             }}
             onDeleteMondayFile={async (assetId) => {
               if (!patient) return;
-              await deleteSingleFileFromColumn(patient.mondayItemId, "file_mm1w5vwp", assetId);
+              await deleteSingleFileFromColumn(patient.id, "file_mm1w5vwp", assetId);
               mondayFiles.refetch();
             }}
           />
@@ -517,14 +555,16 @@ export function EvaluatePanel({ patient, resetVersion = 0, onUpdate }: Props) {
             onAdd={(files) =>
               update("finalClinicalFiles", [...(state.finalClinicalFiles ?? []), ...files])
             }
+            onAddRaw={(files) => { finalClinicalFilesRaw.current = [...finalClinicalFilesRaw.current, ...files]; }}
             onRemove={(idx) => {
               const next = [...(state.finalClinicalFiles ?? [])];
               next.splice(idx, 1);
               update("finalClinicalFiles", next);
+              finalClinicalFilesRaw.current.splice(idx, 1);
             }}
             onDeleteMondayFile={async (assetId) => {
               if (!patient) return;
-              await deleteSingleFileFromColumn(patient.mondayItemId, "file_mm25m8c1", assetId);
+              await deleteSingleFileFromColumn(patient.id, "file_mm25m8c1", assetId);
               mondayFiles.refetch();
             }}
           />
@@ -1080,6 +1120,8 @@ interface FileUploadCardProps {
   onAdd: (files: LocalFile[]) => void;
   onRemove: (idx: number) => void;
   onDeleteMondayFile?: (assetId: string) => void | Promise<void>;
+  /** Called with raw File objects so the parent can store bytes for upload. */
+  onAddRaw?: (files: File[]) => void;
 }
 
 function FileUploadCard({
@@ -1090,6 +1132,7 @@ function FileUploadCard({
   onAdd,
   onRemove,
   onDeleteMondayFile,
+  onAddRaw,
 }: FileUploadCardProps) {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -1127,12 +1170,14 @@ function FileUploadCard({
 
   const handleFiles = (fileList: FileList | null) => {
     if (!fileList) return;
-    const next: LocalFile[] = Array.from(fileList).map((f) => ({
+    const raw = Array.from(fileList);
+    const next: LocalFile[] = raw.map((f) => ({
       name: f.name,
       size: f.size,
       addedAt: new Date().toISOString(),
     }));
     onAdd(next);
+    onAddRaw?.(raw);
   };
 
   const onDrop = (e: DragEvent<HTMLDivElement>) => {
@@ -1302,7 +1347,7 @@ function FileUploadCard({
         <p className="text-xs text-muted-foreground">
           Drop files here or <span className="underline">browse</span>
         </p>
-        <p className="text-[10px] text-muted-foreground">(local preview — uploads to Monday wired up later)</p>
+        <p className="text-[10px] text-muted-foreground">Files upload to Monday when you press Send to Monday</p>
         <input
           type="file"
           multiple
