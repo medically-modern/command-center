@@ -200,6 +200,9 @@ async function saveYes(patient: Patient, name: string) {
   // No date column for chase success — the stage advance is the signal.
   await writeText(patient.id, COL.chaseRecipientName, name);
   await writeStatusIndex(patient.id, COL.subStage, SUB_STAGE_INDEX.completed);
+  // Next action date — 2 business days from now.
+  const nextAction = formatDateInput(addBusinessDays(new Date(), 2));
+  await writeDate(patient.id, COL.nextActionDate, nextAction);
   // Doctor info — write with correct column-type formats.
   await Promise.all(buildDoctorWriteTasks(patient).map((t) => t.run()));
 }
