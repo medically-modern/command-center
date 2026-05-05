@@ -55,6 +55,7 @@ import {
   COL,
   clearStatusColumn,
   deleteFileFromColumn,
+  deleteSingleFileFromColumn,
   fetchStatusLabels,
   hasToken,
   writeDate,
@@ -80,6 +81,8 @@ import {
   Loader2,
   Plus,
   Send,
+  CheckSquare,
+  Square,
 } from "lucide-react";
 
 interface Props {
@@ -500,6 +503,11 @@ export function EvaluatePanel({ patient, resetVersion = 0, onUpdate }: Props) {
               next.splice(idx, 1);
               update("clinicalFiles", next);
             }}
+            onDeleteMondayFile={async (assetId) => {
+              if (!patient) return;
+              await deleteSingleFileFromColumn(patient.mondayItemId, "file_mm1w5vwp", assetId);
+              mondayFiles.refetch();
+            }}
           />
           <FileUploadCard
             label="Final Clinical Files"
@@ -513,6 +521,11 @@ export function EvaluatePanel({ patient, resetVersion = 0, onUpdate }: Props) {
               const next = [...(state.finalClinicalFiles ?? [])];
               next.splice(idx, 1);
               update("finalClinicalFiles", next);
+            }}
+            onDeleteMondayFile={async (assetId) => {
+              if (!patient) return;
+              await deleteSingleFileFromColumn(patient.mondayItemId, "file_mm25m8c1", assetId);
+              mondayFiles.refetch();
             }}
           />
         </div>
@@ -1066,6 +1079,7 @@ interface FileUploadCardProps {
   mondayLoading: boolean;
   onAdd: (files: LocalFile[]) => void;
   onRemove: (idx: number) => void;
+  onDeleteMondayFile?: (assetId: string) => void | Promise<void>;
 }
 
 function FileUploadCard({
@@ -1075,7 +1089,40 @@ function FileUploadCard({
   mondayLoading,
   onAdd,
   onRemove,
+  onDeleteMondayFile,
 }: FileUploadCardProps) {
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [downloading, setDownloading] = useState(false);
+
+  const toggleSelect = (assetId: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(assetId)) next.delete(assetId);
+      else next.add(assetId);
+      return next;
+    });
+  };
+
+  const toggleAll = () => {
+    if (selectedIds.size === mondayFiles.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(mondayFiles.map((f) => f.assetId)));
+    }
+  };
+
+  const handleDeleteMondayFile = async (file: MondayFileEntry) => {
+    if (!onDeleteMondayFile) return;
+    if (!window.confirm(`Delete "${file.name}" from Monday? This can't be undone.`)) return;
+    setDeletingId(file.assetId);
+    try {
+      await onDeleteMondayFile(file.assetId);
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
   const [isDragOver, setIsDragOver] = useState(false);
 
   const handleFiles = (fileList: FileList | null) => {
@@ -1094,37 +1141,85 @@ function FileUploadCard({
     handleFiles(e.dataTransfer.files);
   };
 
-  const downloadAll = () => {
-    for (const f of mondayFiles) {
-      const url = f.public_url || f.url;
-      if (url) window.open(url, "_blank");
+  const downloadFiles = async (targets: MondayFileEntry[]) => {
+    if (targets.length === 0) return;
+    setDownloading(true);
+    try {
+      for (let i = 0; i < targets.length; i++) {
+        const f = targets[i];
+        const url = f.public_url || f.url;
+        if (!url) continue;
+        try {
+          const resp = await fetch(url, { mode: "cors" });
+          const blob = await resp.blob();
+          const blobUrl = URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          a.href = blobUrl;
+          a.download = f.name || "file";
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          URL.revokeObjectURL(blobUrl);
+        } catch {
+          window.open(url, "_blank");
+        }
+        if (i < targets.length - 1) {
+          await new Promise((r) => setTimeout(r, 300));
+        }
+      }
+    } finally {
+      setDownloading(false);
     }
   };
+
+  const handleDownload = () => {
+    const targets =
+      selectedIds.size > 0
+        ? mondayFiles.filter((f) => selectedIds.has(f.assetId))
+        : mondayFiles;
+    downloadFiles(targets);
+  };
+
+  const downloadBtnLabel =
+    selectedIds.size > 0
+      ? `Download (${selectedIds.size})`
+      : `Download all${mondayFiles.length > 0 ? ` (${mondayFiles.length})` : ""}`;
 
   return (
     <div className="rounded-lg border bg-muted/20 p-3 h-full flex flex-col gap-2 min-h-[200px]">
       {/* Header */}
       <div className="flex items-center justify-between gap-2">
-        <p className="text-xs uppercase tracking-wider text-muted-foreground">{label}</p>
+        <div className="flex items-center gap-2">
+          <p className="text-xs uppercase tracking-wider text-muted-foreground">{label}</p>
+          {mondayFiles.length > 1 && (
+            <button
+              onClick={toggleAll}
+              className="text-[10px] text-muted-foreground hover:text-foreground underline"
+            >
+              {selectedIds.size === mondayFiles.length ? "Deselect all" : "Select all"}
+            </button>
+          )}
+        </div>
         <Button
           variant="outline"
           size="sm"
-          onClick={downloadAll}
-          disabled={mondayFiles.length === 0 || mondayLoading}
+          onClick={handleDownload}
+          disabled={mondayFiles.length === 0 || mondayLoading || downloading}
           className="h-7 px-2 text-[11px] gap-1"
           title={
             mondayFiles.length === 0
               ? "No Monday files to download"
-              : `Download all ${mondayFiles.length} file(s) from Monday`
+              : selectedIds.size > 0
+                ? `Download ${selectedIds.size} selected file(s)`
+                : `Download all ${mondayFiles.length} file(s) from Monday`
           }
         >
-          {mondayLoading ? (
+          {mondayLoading || downloading ? (
             <Loader2 className="h-3 w-3 animate-spin" />
           ) : (
             <Download className="h-3 w-3" />
           )}
-          Download all
-          {mondayFiles.length > 0 && ` (${mondayFiles.length})`}
+          {downloadBtnLabel}
         </Button>
       </div>
 
@@ -1134,10 +1229,54 @@ function FileUploadCard({
           {mondayFiles.map((f) => (
             <li
               key={f.assetId}
-              className="flex items-center gap-2 text-xs bg-emerald-50 border border-emerald-200 rounded px-2 py-1 text-emerald-900"
+              className="flex items-center justify-between gap-2 text-xs bg-emerald-50 border border-emerald-200 rounded px-2 py-1 text-emerald-900"
             >
-              <FileText className="h-3 w-3 shrink-0" />
-              <span className="truncate font-medium">{f.name}</span>
+              <span className="flex items-center gap-2 truncate">
+                <button
+                  onClick={() => toggleSelect(f.assetId)}
+                  className="shrink-0 text-emerald-600 hover:text-emerald-800"
+                  title={selectedIds.has(f.assetId) ? "Deselect" : "Select for download"}
+                >
+                  {selectedIds.has(f.assetId) ? (
+                    <CheckSquare className="h-3.5 w-3.5" />
+                  ) : (
+                    <Square className="h-3.5 w-3.5" />
+                  )}
+                </button>
+                <span className="truncate font-medium">{f.name}</span>
+              </span>
+              <div className="flex items-center gap-1 shrink-0">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={!f.public_url && !f.url}
+                  onClick={() => {
+                    const u = f.public_url || f.url;
+                    if (!u) return;
+                    const viewerUrl = `https://docs.google.com/gview?url=${encodeURIComponent(u)}&embedded=true`;
+                    window.open(viewerUrl, "_blank");
+                  }}
+                  className="h-6 px-1.5 text-[10px] gap-1"
+                >
+                  <ExternalLink className="h-2.5 w-2.5" /> View
+                </Button>
+                {onDeleteMondayFile && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => handleDeleteMondayFile(f)}
+                    disabled={deletingId !== null}
+                    title={`Delete "${f.name}" from Monday`}
+                    className="h-6 px-1.5 text-[10px] text-red-600 hover:bg-red-50 hover:text-red-700"
+                  >
+                    {deletingId === f.assetId ? (
+                      <Loader2 className="h-2.5 w-2.5 animate-spin" />
+                    ) : (
+                      <Trash2 className="h-2.5 w-2.5" />
+                    )}
+                  </Button>
+                )}
+              </div>
             </li>
           ))}
         </ul>
