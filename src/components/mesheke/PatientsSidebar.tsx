@@ -12,7 +12,7 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
-import { Loader2, RefreshCw, User, AlertCircle } from "lucide-react";
+import { CalendarCheck, Loader2, RefreshCw, User, AlertCircle } from "lucide-react";
 import type { Patient } from "@/lib/mesheke/workflow";
 import type { TabKey } from "@/hooks/mesheke/useMondayPatients";
 import { cn } from "@/lib/utils";
@@ -81,6 +81,15 @@ export function PatientsSidebar({ patients, selectedId, onSelect, loading, error
   const { state } = useSidebar();
   const collapsed = state === "collapsed";
 
+  const [todayOnly, setTodayOnly] = useState(false);
+
+  const todayStr = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+
+  // For chase tab: split into "action today" vs rest
+  const todayPatients = activeTab === "chase" && todayOnly
+    ? patients.filter((p) => p.nextActionDate?.slice(0, 10) === todayStr)
+    : patients;
+
   const activeLabel = TAB_LABELS[activeTab];
 
   return (
@@ -94,6 +103,17 @@ export function PatientsSidebar({ patients, selectedId, onSelect, loading, error
             </div>
           )}
           <div className="flex items-center gap-1 shrink-0">
+            {activeTab === "chase" && !collapsed && (
+              <Button
+                variant={todayOnly ? "default" : "ghost"}
+                size="icon"
+                className={cn("h-7 w-7", todayOnly && "bg-emerald-600 hover:bg-emerald-700 text-white")}
+                onClick={() => setTodayOnly((v) => !v)}
+                title={todayOnly ? "Showing today's actions — click to show all" : "Filter to today's action dates"}
+              >
+                <CalendarCheck className="h-4 w-4" />
+              </Button>
+            )}
             <Button
               variant="ghost"
               size="icon"
@@ -150,9 +170,14 @@ export function PatientsSidebar({ patients, selectedId, onSelect, loading, error
           </>
         ) : (
           <SidebarGroup>
+            {activeTab === "chase" && todayOnly && !collapsed && (
+              <SidebarGroupLabel className="text-[10px] uppercase tracking-wider text-emerald-600 font-semibold">
+                Action Today ({todayPatients.length})
+              </SidebarGroupLabel>
+            )}
             <SidebarGroupContent>
               <SidebarMenu>
-                {patients.map((p) => (
+                {todayPatients.map((p) => (
                   <PatientRow
                     key={p.id}
                     patient={p}
@@ -161,8 +186,10 @@ export function PatientsSidebar({ patients, selectedId, onSelect, loading, error
                     onSelect={onSelect}
                   />
                 ))}
-                {!loading && patients.length === 0 && !error && !collapsed && (
-                  <p className="px-3 py-4 text-xs text-muted-foreground">No patients in {activeLabel}.</p>
+                {!loading && todayPatients.length === 0 && !error && !collapsed && (
+                  <p className="px-3 py-4 text-xs text-muted-foreground">
+                    {todayOnly ? "No patients with action date today." : `No patients in ${activeLabel}.`}
+                  </p>
                 )}
               </SidebarMenu>
             </SidebarGroupContent>
