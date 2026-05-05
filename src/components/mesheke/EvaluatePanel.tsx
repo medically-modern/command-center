@@ -55,6 +55,7 @@ import { useMondayFiles } from "@/hooks/mesheke/useMondayFiles";
 import {
   COL,
   clearStatusColumn,
+  clearDateColumn,
   deleteFileFromColumn,
   fetchStatusLabels,
   hasToken,
@@ -320,12 +321,22 @@ export function EvaluatePanel({ patient, resetVersion = 0, onUpdate }: Props) {
         label: "Last Visit Date",
         run: () => writeDate(patient.id, COL.lastVisit, state.lastVisitDate!),
       });
+    } else {
+      tasks.push({
+        label: "Last Visit Date (clear)",
+        run: () => clearDateColumn(patient.id, COL.lastVisit),
+      });
     }
     const { expiry } = getMrExpiry(state.lastVisitDate);
     if (expiry) {
       tasks.push({
         label: "MR Expiry Date",
         run: () => writeDate(patient.id, COL.mrExpiryDate, expiry.toISOString().slice(0, 10)),
+      });
+    } else {
+      tasks.push({
+        label: "MR Expiry Date (clear)",
+        run: () => clearDateColumn(patient.id, COL.mrExpiryDate),
       });
     }
     tasks.push({
