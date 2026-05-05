@@ -83,7 +83,9 @@ export function PatientsSidebar({ patients, selectedId, onSelect, loading, error
 
   const [todayOnly, setTodayOnly] = useState(false);
 
-  const todayStr = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+  // Use local date so the filter matches the user's calendar regardless of timezone
+  const now = new Date();
+  const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
 
   // For chase tab: split into "action today" vs rest
   const todayPatients = activeTab === "chase" && todayOnly
