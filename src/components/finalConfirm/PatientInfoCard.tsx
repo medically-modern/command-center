@@ -285,19 +285,31 @@ export function PatientInfoCard({ patient, onFieldChange }: Props) {
           />
         </div>
         {/* Address — full width with Google autocomplete */}
-        <div className="flex items-start gap-2 min-w-0">
-          <div className="h-8 w-8 rounded-md bg-muted flex items-center justify-center text-muted-foreground shrink-0">
-            <MapPin className="h-4 w-4" />
-          </div>
-          <div className="min-w-0 flex-1">
-            <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1">Address</p>
-            <AddressAutocomplete
-              value={patient.addressEdited ?? patient.address}
-              onChange={handleAddressChange}
-              placeholder="Start typing address…"
-            />
-          </div>
-        </div>
+        {(() => {
+          const addr = patient.addressEdited ?? patient.address;
+          const hasZip = /\d{5}(-\d{4})?/.test(addr);
+          const isAllCaps = addr.length > 3 && addr === addr.toUpperCase() && /[A-Z]/.test(addr);
+          const hasError = addr ? (!hasZip || isAllCaps) : !addr;
+          const errorMsg = !addr ? null : isAllCaps ? "Address should not be all uppercase" : !hasZip ? "Zip code is missing" : null;
+          return (
+            <div className={cn("flex items-start gap-2 min-w-0 rounded-lg p-1.5 -m-1.5 transition-colors", hasError && "bg-red-50 dark:bg-red-950/20 ring-1 ring-red-200 dark:ring-red-800/40")}>
+              <div className={cn("h-8 w-8 rounded-md flex items-center justify-center shrink-0", hasError ? "bg-red-100 dark:bg-red-900/30 text-red-500" : "bg-muted text-muted-foreground")}>
+                <MapPin className="h-4 w-4" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1">Address</p>
+                <AddressAutocomplete
+                  value={addr}
+                  onChange={handleAddressChange}
+                  placeholder="Start typing address…"
+                />
+                {errorMsg && (
+                  <p className="text-[11px] text-red-500 font-medium mt-1">{errorMsg}</p>
+                )}
+              </div>
+            </div>
+          );
+        })()}
       </Card>
 
       {/* Insurance */}
