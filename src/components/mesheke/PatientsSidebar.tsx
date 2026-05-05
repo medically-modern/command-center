@@ -2,7 +2,6 @@ import { useState } from "react";
 import {
   Sidebar,
   SidebarContent,
-  SidebarFooter,
   SidebarGroup,
   SidebarGroupContent,
   SidebarGroupLabel,
@@ -14,7 +13,6 @@ import {
 } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
 import { CalendarCheck, Loader2, RefreshCw, User, AlertCircle } from "lucide-react";
-import { SidebarThemePicker } from "@/components/ThemePicker";
 import type { Patient } from "@/lib/mesheke/workflow";
 import type { TabKey } from "@/hooks/mesheke/useMondayPatients";
 import { cn } from "@/lib/utils";
@@ -201,9 +199,6 @@ export function PatientsSidebar({ patients, selectedId, onSelect, loading, error
         )}
       </SidebarContent>
 
-      <SidebarFooter className="border-t border-sidebar-border p-2">
-        <SidebarThemePicker collapsed={collapsed} />
-      </SidebarFooter>
     </Sidebar>
   );
 }
