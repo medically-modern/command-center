@@ -68,7 +68,7 @@ import {
   uploadFileToColumn,
   type MondayFileEntry,
 } from "@/lib/masheke/mondayApi";
-import { GEN_SCRIPT_STATUS } from "@/lib/masheke/mondayMapping";
+import { GEN_SCRIPT_STATUS, ESCALATION_INDEX } from "@/lib/masheke/mondayMapping";
 import { EscalateButton } from "@/components/masheke/EscalateButton";
 import { toast } from "sonner";
 import {
@@ -264,6 +264,7 @@ export function EvaluatePanel({ patient, resetVersion = 0, onUpdate }: Props) {
   // Send to Monday — batched write of every column the rep has edited locally.
   // Generate Script triggers and template deletes are immediate elsewhere.
   const [sending, setSending] = useState(false);
+  const [escalated, setEscalated] = useState(false);
   const handleSendToMonday = useCallback(async () => {
     if (!hasToken()) {
       toast.error("Monday token not configured");
@@ -429,6 +430,13 @@ export function EvaluatePanel({ patient, resetVersion = 0, onUpdate }: Props) {
         },
       });
     }
+    // Escalation — only written when the toggle is active
+    if (escalated) {
+      tasks.push({
+        label: "Escalation → Required",
+        run: () => writeStatusIndex(patient.id, COL.escalation, ESCALATION_INDEX.required),
+      });
+    }
     const results = await Promise.allSettled(tasks.map((t) => t.run()));
     const failures: string[] = [];
     results.forEach((r, i) => {
@@ -441,12 +449,13 @@ export function EvaluatePanel({ patient, resetVersion = 0, onUpdate }: Props) {
       toast.success(`Sent ${tasks.length} fields to Monday`);
       // Clear pending file blobs after successful upload
       pendingFilesRef.current = { clinicalFiles: [], finalClinicalFiles: [] };
+      setEscalated(false);
     } else {
       toast.error(`${failures.length} write(s) failed`, {
         description: failures.slice(0, 3).join("\n"),
       });
     }
-  }, [patient, state, preview, showCgm, showIp]);
+  }, [patient, state, preview, showCgm, showIp, escalated]);
 
   return (
     <div className="space-y-4">
@@ -588,6 +597,8 @@ export function EvaluatePanel({ patient, resetVersion = 0, onUpdate }: Props) {
         showCgm={showCgm}
         showIp={showIp}
         patient={patient}
+        escalated={escalated}
+        onToggleEscalate={() => setEscalated((v) => !v)}
       />
     </div>
   );
@@ -1403,6 +1414,8 @@ interface ValiditySummaryProps {
   showCgm: boolean;
   showIp: boolean;
   patient: Patient;
+  escalated: boolean;
+  onToggleEscalate: () => void;
 }
 
 function ValiditySummary({
@@ -1414,6 +1427,8 @@ function ValiditySummary({
   showCgm,
   showIp,
   patient,
+  escalated,
+  onToggleEscalate,
 }: ValiditySummaryProps) {
   const missingFields = getMissingRequiredFields(state, showCgm, showIp);
   const blocked = missingFields.length > 0;
@@ -1480,8 +1495,8 @@ function ValiditySummary({
           </div>
         )}
         <EscalateButton
-          patientId={patient.id}
-          patientName={patient.name}
+          escalated={escalated}
+          onToggle={onToggleEscalate}
           disabled={sending}
         />
         <Button
