@@ -13,11 +13,11 @@ import {
 } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
 import { Ban, CalendarCheck, Loader2, RefreshCw, User, AlertCircle, Search, X, Undo2 } from "lucide-react";
-import type { Patient } from "@/lib/mesheke/workflow";
-import type { TabKey } from "@/hooks/mesheke/useMondayPatients";
+import type { Patient } from "@/lib/masheke/workflow";
+import type { TabKey } from "@/hooks/masheke/useMondayPatients";
 import { cn } from "@/lib/utils";
-import { writeStatusIndex, COL } from "@/lib/mesheke/mondayApi";
-import { SUB_STAGE_INDEX } from "@/lib/mesheke/mondayMapping";
+import { writeStatusIndex, COL } from "@/lib/masheke/mondayApi";
+import { SUB_STAGE_INDEX } from "@/lib/masheke/mondayMapping";
 
 /** Convert YYYY-MM-DD → MM/DD/YYYY */
 function fmtDate(iso: string): string {

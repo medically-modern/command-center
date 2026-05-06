@@ -7,7 +7,7 @@
  * independently and neither blocks the other.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
-import { fetchUpdates, createUpdate, type MondayUpdate } from "@/lib/mesheke/mondayApi";
+import { fetchUpdates, createUpdate, type MondayUpdate } from "@/lib/masheke/mondayApi";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Separator } from "@/components/ui/separator";

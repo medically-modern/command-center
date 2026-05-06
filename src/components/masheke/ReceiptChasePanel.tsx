@@ -1,9 +1,9 @@
-import type { Patient } from "@/lib/mesheke/workflow";
+import type { Patient } from "@/lib/masheke/workflow";
 import { StatusSelect } from "./StatusSelect";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import { MR_OPTS, MN_ATTEMPTS_OPTS } from "@/lib/mesheke/fieldOptions";
+import { MR_OPTS, MN_ATTEMPTS_OPTS } from "@/lib/masheke/fieldOptions";
 
 interface Props {
   patient: Patient;

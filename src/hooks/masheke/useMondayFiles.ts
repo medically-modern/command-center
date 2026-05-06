@@ -9,7 +9,7 @@ import {
   fetchItemFileColumns,
   hasToken,
   type MondayFileEntry,
-} from "@/lib/mesheke/mondayApi";
+} from "@/lib/masheke/mondayApi";
 
 const FILE_COLUMN_IDS = [
   COL.clinicalFiles,

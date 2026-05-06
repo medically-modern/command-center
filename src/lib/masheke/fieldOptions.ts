@@ -1,7 +1,7 @@
 // All status field options matching Monday board labels + indices.
 // Used by UI dropdowns and mondayWrite for reverse lookup.
 
-import type { StatusOption } from "@/components/mesheke/StatusSelect";
+import type { StatusOption } from "@/components/masheke/StatusSelect";
 
 // Most eval checklist items: Evaluate, Not Serving, Collect, Valid
 export const STANDARD_EVAL: StatusOption[] = [

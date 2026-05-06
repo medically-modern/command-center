@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { Patient } from "@/lib/mesheke/workflow";
-import { fetchGroupItems, GROUPS, hasToken } from "@/lib/mesheke/mondayApi";
-import { mondayItemToPatient } from "@/lib/mesheke/mondayMapping";
+import type { Patient } from "@/lib/masheke/workflow";
+import { fetchGroupItems, GROUPS, hasToken } from "@/lib/masheke/mondayApi";
+import { mondayItemToPatient } from "@/lib/masheke/mondayMapping";
 
 const POLL_MS = 30_000;
 

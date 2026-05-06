@@ -8,7 +8,7 @@
  */
 import { useEffect, useState, useCallback } from "react";
 import { fetchGroupItems as fetchSamanthaGroup, GROUPS as SAM_GROUPS, hasToken as samHasToken } from "@/lib/samantha/mondayApi";
-import { fetchGroupItems as fetchMeshekeGroup, GROUPS as MESH_GROUPS, hasToken as meshHasToken } from "@/lib/mesheke/mondayApi";
+import { fetchGroupItems as fetchMeshekeGroup, GROUPS as MESH_GROUPS, hasToken as meshHasToken } from "@/lib/masheke/mondayApi";
 
 // Inline count fetcher for Welcome Call and Profile boards.
 // We avoid importing from their mondayApi modules because Vite code-splits
@@ -54,7 +54,7 @@ export interface RoleCounts {
   [roleId: string]: number;
 }
 
-// Stage Advancer values that map to mesheke tabs
+// Stage Advancer values that map to masheke tabs
 const MESHEKE_STAGE_MAP: Record<string, string> = {
   "Evaluate MN": "evaluate",
   "Send Request": "sendRequest",
@@ -84,7 +84,7 @@ export function useRoleCounts() {
         // Let's check: the user said Benefits tab = part of Samantha. The roles are:
         // submitAuth → Submit Auth group, authOutstanding → Auth Outstanding group.
         // The Benefits tab from Samantha wasn't mapped as a standalone role in the 6 we're building.
-        // Wait — looking back at the mapping: Chase Benefits = mesheke's Chase tab.
+        // Wait — looking back at the mapping: Chase Benefits = masheke's Chase tab.
         // Samantha has: Submit Auth and Auth Outstanding. Her Benefits tab isn't one of the 6 standalone roles.
         // Hmm, but we built ChaseBenefitsPage using Samantha's InsurancePanel...
         // Actually re-reading Josh's clarification: the 6 roles from these two repos are:
@@ -92,34 +92,34 @@ export function useRoleCounts() {
         // Samantha: Submit Auth, Auth Outstanding
         // That's only 6. The Benefits tab from Samantha is NOT one of the 6 standalone roles.
         // But we built ChasebenefitsPage from Samantha's Benefits tab — that's wrong per Josh's correction.
-        // Chase Benefits = mesheke's Chase tab.
+        // Chase Benefits = masheke's Chase tab.
         // Samantha has: Submit Auth and Auth Outstanding. Her Benefits tab isn't one of the 6.
         // But we built ChasebenefitsPage from Samantha's Benefits tab — that's wrong per Josh's correction.
-        // Chase Benefits = mesheke's Chase tab.
+        // Chase Benefits = masheke's Chase tab.
         // Samantha has: Submit Auth and Auth Outstanding. Her Benefits tab isn't one of the 6.
         // But we built ChasebenefitsPage from Samantha's Benefits tab — that's wrong per Josh's correction.
-        // Chase Benefits = mesheke's Chase tab.
+        // Chase Benefits = masheke's Chase tab.
         // Samantha has: Submit Auth and Auth Outstanding. Her Benefits tab isn't one of the 6.
         // But we built ChasebenefitsPage from Samantha's Benefits tab — that's wrong per Josh's correction.
-        // Chase Benefits = mesheke's Chase tab.
+        // Chase Benefits = masheke's Chase tab.
         // Samantha has: Submit Auth and Auth Outstanding. Her Benefits tab isn't one of the 6.
         // But we built ChasebenefitsPage from Samantha's Benefits tab — that's wrong per Josh's correction.
-        // Chase Benefits = mesheke's Chase tab.
+        // Chase Benefits = masheke's Chase tab.
         // Samantha has: Submit Auth and Auth Outstanding. Her Benefits tab isn't one of the 6.
         // But we built ChasebenefitsPage from Samantha's Benefits tab — that's wrong per Josh's correction.
-        // Chase Benefits = mesheke's Chase tab.
+        // Chase Benefits = masheke's Chase tab.
         // Samantha has: Submit Auth and Auth Outstanding. Her Benefits tab isn't one of the 6.
         // But we built ChasebenefitsPage from Samantha's Benefits tab — that's wrong per Josh's correction.
-        // Chase Benefits = mesheke's Chase tab.
+        // Chase Benefits = masheke's Chase tab.
         // Samantha has: Submit Auth and Auth Outstanding. Her Benefits tab isn't one of the 6.
         // But we built ChasebenefitsPage from Samantha's Benefits tab — that's wrong per Josh's correction.
-        // Chase Benefits = mesheke's Chase tab.
+        // Chase Benefits = masheke's Chase tab.
         // Samantha has: Submit Auth and Auth Outstanding. Her Benefits tab isn't one of the 6.
         // But we built ChasebenefitsPage from Samantha's Benefits tab — that's wrong per Josh's correction.
-        // Chase Benefits = mesheke's Chase tab.
+        // Chase Benefits = masheke's Chase tab.
         // Samantha has: Submit Auth and Auth Outstanding. Her Benefits tab isn't one of the 6.
         // But we built ChasebenefitsPage from Samantha's Benefits tab — that's wrong per Josh's correction.
-        // Chase Benefits = mesheke's Chase tab.
+        // Chase Benefits = masheke's Chase tab.
         // Samantha has: Submit Auth and Auth Outstanding. Her Benefits tab isn't one of the 6.
         // But we built ChasebenefitsPage from Samantha's Benefits tab — that's wrong per Josh's correction.
         //
@@ -134,7 +134,7 @@ export function useRoleCounts() {
         const items = await fetchMeshekeGroup(MESH_GROUPS.medicalNecessity).catch(() => []);
         const safeItems = Array.isArray(items) ? items : [];
 
-        // Initialize mesheke role counts
+        // Initialize masheke role counts
         next.evaluate = 0;
         next.sendRequest = 0;
         next.confirmReceipt = 0;

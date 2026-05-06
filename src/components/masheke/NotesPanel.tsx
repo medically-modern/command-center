@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { MessageSquare, Plus, Loader2 } from "lucide-react";
 import { toast } from "sonner";
-import { etNow } from "@/lib/mesheke/etDate";
+import { etNow } from "@/lib/masheke/etDate";
 
 interface Props {
   notes: string;

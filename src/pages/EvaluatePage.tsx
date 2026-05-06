@@ -1,20 +1,20 @@
 /**
- * Evaluate — standalone view of mesheke-checklist's "Evaluate" tab.
+ * Evaluate — standalone view of masheke-checklist's "Evaluate" tab.
  */
 import { useEffect, useMemo, useState } from "react";
-import { useMondayPatients } from "@/hooks/mesheke/useMondayPatients";
-import type { Patient } from "@/lib/mesheke/workflow";
-import { EvaluatePanel } from "@/components/mesheke/EvaluatePanel";
-import { PatientsSidebar } from "@/components/mesheke/PatientsSidebar";
-import { PatientProfileCard } from "@/components/mesheke/PatientProfileCard";
-import { ReferralEmailPanel } from "@/components/mesheke/ReferralEmailPanel";
+import { useMondayPatients } from "@/hooks/masheke/useMondayPatients";
+import type { Patient } from "@/lib/masheke/workflow";
+import { EvaluatePanel } from "@/components/masheke/EvaluatePanel";
+import { PatientsSidebar } from "@/components/masheke/PatientsSidebar";
+import { PatientProfileCard } from "@/components/masheke/PatientProfileCard";
+import { ReferralEmailPanel } from "@/components/masheke/ReferralEmailPanel";
 import { Button } from "@/components/ui/button";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { RotateCcw, Stethoscope, ArrowLeft, Mail, Ban } from "lucide-react";
 import { toast } from "sonner";
-import { clearEvalState } from "@/lib/mesheke/evalState";
+import { clearEvalState } from "@/lib/masheke/evalState";
 import { useNavigate } from "react-router-dom";
-import { BlockedModal } from "@/components/mesheke/BlockedModal";
+import { BlockedModal } from "@/components/masheke/BlockedModal";
 
 const EvaluatePage = () => {
   const navigate = useNavigate();

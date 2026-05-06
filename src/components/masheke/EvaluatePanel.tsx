@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, useCallback, useRef, type DragEvent } from "react";
-import type { Patient } from "@/lib/mesheke/workflow";
+import type { Patient } from "@/lib/masheke/workflow";
 import { StatusSelect } from "./StatusSelect";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -18,7 +18,7 @@ import {
   CommandList,
 } from "@/components/ui/command";
 import { cn } from "@/lib/utils";
-import { NotesPanel } from "@/components/mesheke/NotesPanel";
+import { NotesPanel } from "@/components/masheke/NotesPanel";
 import {
   VALID_INVALID_OPTS,
   YES_NO_OPTS,
@@ -27,14 +27,14 @@ import {
   IP_PATH_OPTS,
   DIAGNOSIS_FAVORITES,
   DIAGNOSIS_OTHER,
-} from "@/lib/mesheke/fieldOptions";
+} from "@/lib/masheke/fieldOptions";
 import {
   IP_PATH_FIELDS,
   shouldShowCgmBlock,
   shouldShowIpBlock,
   defaultIpPath,
   type IpPath,
-} from "@/lib/mesheke/ipPaths";
+} from "@/lib/masheke/ipPaths";
 import {
   loadEvalState,
   saveEvalState,
@@ -50,8 +50,8 @@ import {
   type LmnStatus,
   type ValidInvalid,
   type YesNo,
-} from "@/lib/mesheke/evalState";
-import { useMondayFiles } from "@/hooks/mesheke/useMondayFiles";
+} from "@/lib/masheke/evalState";
+import { useMondayFiles } from "@/hooks/masheke/useMondayFiles";
 import {
   COL,
   clearStatusColumn,
@@ -67,8 +67,8 @@ import {
   buildDoctorWriteTasks,
   uploadFileToColumn,
   type MondayFileEntry,
-} from "@/lib/mesheke/mondayApi";
-import { GEN_SCRIPT_STATUS } from "@/lib/mesheke/mondayMapping";
+} from "@/lib/masheke/mondayApi";
+import { GEN_SCRIPT_STATUS } from "@/lib/masheke/mondayMapping";
 import { toast } from "sonner";
 import {
   Check,

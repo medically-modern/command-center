@@ -1,19 +1,19 @@
 /**
- * Send Request — standalone view of mesheke-checklist's "Send Request" tab.
+ * Send Request — standalone view of masheke-checklist's "Send Request" tab.
  */
 import { useEffect, useMemo, useState } from "react";
-import { useMondayPatients } from "@/hooks/mesheke/useMondayPatients";
-import type { Patient } from "@/lib/mesheke/workflow";
-import { SendRequestPanel } from "@/components/mesheke/SendRequestPanel";
-import { PatientsSidebar } from "@/components/mesheke/PatientsSidebar";
-import { PatientProfileCard } from "@/components/mesheke/PatientProfileCard";
+import { useMondayPatients } from "@/hooks/masheke/useMondayPatients";
+import type { Patient } from "@/lib/masheke/workflow";
+import { SendRequestPanel } from "@/components/masheke/SendRequestPanel";
+import { PatientsSidebar } from "@/components/masheke/PatientsSidebar";
+import { PatientProfileCard } from "@/components/masheke/PatientProfileCard";
 import { Button } from "@/components/ui/button";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { RotateCcw, Stethoscope, ArrowLeft, Ban } from "lucide-react";
 import { toast } from "sonner";
-import { clearEvalState } from "@/lib/mesheke/evalState";
+import { clearEvalState } from "@/lib/masheke/evalState";
 import { useNavigate } from "react-router-dom";
-import { BlockedModal } from "@/components/mesheke/BlockedModal";
+import { BlockedModal } from "@/components/masheke/BlockedModal";
 
 const SendRequestPage = () => {
   const navigate = useNavigate();

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import type { Patient } from "@/lib/mesheke/workflow";
+import type { Patient } from "@/lib/masheke/workflow";
 import {
   CalendarDays,
   IdCard,

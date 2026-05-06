@@ -4,12 +4,12 @@ import {
   useCallback,
   useRef,
 } from "react";
-import type { Patient } from "@/lib/mesheke/workflow";
-import { NotesPanel } from "@/components/mesheke/NotesPanel";
-import { WhatsNeededCard } from "@/components/mesheke/WhatsNeededCard";
-import { etNow } from "@/lib/mesheke/etDate";
+import type { Patient } from "@/lib/masheke/workflow";
+import { NotesPanel } from "@/components/masheke/NotesPanel";
+import { WhatsNeededCard } from "@/components/masheke/WhatsNeededCard";
+import { etNow } from "@/lib/masheke/etDate";
 import { Button } from "@/components/ui/button";
-import { useMondayFiles } from "@/hooks/mesheke/useMondayFiles";
+import { useMondayFiles } from "@/hooks/masheke/useMondayFiles";
 import {
   COL,
   clearStatusColumn,
@@ -23,14 +23,14 @@ import {
   writeStatusIndex,
   writeStatusLabel,
   type MondayFileEntry,
-} from "@/lib/mesheke/mondayApi";
-import { GEN_SCRIPT_STATUS } from "@/lib/mesheke/mondayMapping";
+} from "@/lib/masheke/mondayApi";
+import { GEN_SCRIPT_STATUS } from "@/lib/masheke/mondayMapping";
 import {
   loadEvalState,
   saveEvalState,
   type EvalState,
-} from "@/lib/mesheke/evalState";
-import { generateMnRequestPdf } from "@/lib/mesheke/mnRequestPdf";
+} from "@/lib/masheke/evalState";
+import { generateMnRequestPdf } from "@/lib/masheke/mnRequestPdf";
 import { toast } from "sonner";
 import {
   Check,

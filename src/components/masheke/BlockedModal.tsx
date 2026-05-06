@@ -13,8 +13,8 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Ban, Loader2 } from "lucide-react";
-import { writeStatusIndex, writeDate, COL } from "@/lib/mesheke/mondayApi";
-import { BLOCKED_INDEX } from "@/lib/mesheke/mondayMapping";
+import { writeStatusIndex, writeDate, COL } from "@/lib/masheke/mondayApi";
+import { BLOCKED_INDEX } from "@/lib/masheke/mondayMapping";
 import { toast } from "sonner";
 
 /** Convert YYYY-MM-DD → MM/DD/YYYY */

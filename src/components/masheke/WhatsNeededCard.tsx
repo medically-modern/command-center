@@ -3,7 +3,7 @@
  * the consolidated MN request items and medical necessity status.
  * Shared across Send Request, Confirm Receipt, and Chase Clinicals.
  */
-import type { Patient } from "@/lib/mesheke/workflow";
+import type { Patient } from "@/lib/masheke/workflow";
 import { AlertTriangle, Check, X } from "lucide-react";
 
 function splitDropdownText(text?: string): string[] {

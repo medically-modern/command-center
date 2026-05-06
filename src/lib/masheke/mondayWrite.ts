@@ -22,7 +22,7 @@ import {
   MN_ATTEMPTS_OPTS,
 } from "./fieldOptions";
 import type { Patient } from "./workflow";
-import type { StatusOption } from "@/components/mesheke/StatusSelect";
+import type { StatusOption } from "@/components/masheke/StatusSelect";
 
 const MAX_RETRIES = 2;
 const RETRY_DELAY_MS = 800;

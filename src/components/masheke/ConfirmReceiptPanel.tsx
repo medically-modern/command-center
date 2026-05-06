@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
-import type { Patient } from "@/lib/mesheke/workflow";
-import { NotesPanel } from "@/components/mesheke/NotesPanel";
-import { WhatsNeededCard } from "@/components/mesheke/WhatsNeededCard";
-import { etNow } from "@/lib/mesheke/etDate";
+import type { Patient } from "@/lib/masheke/workflow";
+import { NotesPanel } from "@/components/masheke/NotesPanel";
+import { WhatsNeededCard } from "@/components/masheke/WhatsNeededCard";
+import { etNow } from "@/lib/masheke/etDate";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { useMondayFiles } from "@/hooks/mesheke/useMondayFiles";
+import { useMondayFiles } from "@/hooks/masheke/useMondayFiles";
 import {
   COL,
   hasToken,
@@ -15,12 +15,12 @@ import {
   writeStatusIndex,
   writeText,
   type MondayFileEntry,
-} from "@/lib/mesheke/mondayApi";
+} from "@/lib/masheke/mondayApi";
 import {
   ESCALATION_INDEX,
   MN_ATTEMPTS_INDEX,
   SUB_STAGE_INDEX,
-} from "@/lib/mesheke/mondayMapping";
+} from "@/lib/masheke/mondayMapping";
 import { toast } from "sonner";
 import {
   AlertTriangle,
@@ -41,59 +41,58 @@ interface Props {
 }
 
 // =====================================================================
-// Main panel — mirrors ConfirmReceiptPanel for the Chase Clinicals stage.
-// On Yes, advances Stage Advancer to "Completed". On No, logs the
-// attempt to the matching chaseAttempt{N} text column, bumps MN Attempts,
-// and (after the 3rd No) flips the Escalation column.
+// Main panel
 // =====================================================================
 
-export function ChaseClinicalsPanel({ patient, onUpdate }: Props) {
+export function ConfirmReceiptPanel({ patient, onUpdate }: Props) {
   const mondayFiles = useMondayFiles(patient.id);
   const [saving, setSaving] = useState(false);
 
+  // Active-attempt form state — name + yes/no + (if no) next action date
   const [name, setName] = useState("");
-  const [confirmed, setConfirmed] = useState<"yes" | "no" | "parachute-message" | null>(null);
+  const [confirmed, setConfirmed] = useState<"yes" | "no" | null>(null);
   const [nextAction, setNextAction] = useState<string>("");
 
-  const isParachute = patient.clinicalsMethod === "Parachute";
-
+  // Reset form when patient changes
   useEffect(() => {
     setName("");
     setConfirmed(null);
     setNextAction("");
   }, [patient.id]);
 
-  // Default Next Action Date based on which option is selected:
-  //   No → next weekday (fast follow-up)
-  //   Yes / Parachute message / nothing → 2 weekdays
-  // Re-applies on patient change and on every confirmed change so the
-  // visible default matches the chosen path.
+  // Default Next Action Date based on the picked outcome:
+  //   No  → next weekday (fast follow-up after a confirmed-receipt no)
+  //   Yes / nothing → 2 weekdays
+  // Re-applies on patient change and on every confirmed change.
   useEffect(() => {
     const days = confirmed === "no" ? 1 : 2;
     setNextAction(formatDateInput(addBusinessDays(etNow(), days)));
   }, [patient.id, confirmed]);
 
+  // Determine current attempt slot (1, 2, or 3) from MN Attempts column.
+  // No value yet → Attempt 1.
   const currentAttempt = useMemo(() => {
     const v = (patient.mnAttempts || "").trim();
     if (v === "Attempt 2") return 2;
     if (v === "Attempt 3") return 3;
-    if (v === "Escalate") return null;
+    if (v === "Escalate") return null; // already escalated, no more attempts
     return 1;
   }, [patient.mnAttempts]);
 
   const isEscalated = currentAttempt === null;
 
+  // Build history from the 3 per-attempt text columns. Only attempts
+  // that have been saved (column has a value) appear here.
   const history = useMemo<AttemptChip[]>(() => {
     const out: AttemptChip[] = [];
-    if (patient.chaseAttempt1) out.push(parseAttemptValue(1, patient.chaseAttempt1));
-    if (patient.chaseAttempt2) out.push(parseAttemptValue(2, patient.chaseAttempt2));
-    if (patient.chaseAttempt3) out.push(parseAttemptValue(3, patient.chaseAttempt3));
+    if (patient.confirmAttempt1) out.push(parseAttemptValue(1, patient.confirmAttempt1));
+    if (patient.confirmAttempt2) out.push(parseAttemptValue(2, patient.confirmAttempt2));
+    if (patient.confirmAttempt3) out.push(parseAttemptValue(3, patient.confirmAttempt3));
     return out;
-  }, [patient.chaseAttempt1, patient.chaseAttempt2, patient.chaseAttempt3]);
+  }, [patient.confirmAttempt1, patient.confirmAttempt2, patient.confirmAttempt3]);
 
   // Name field is never required — agents sometimes don't catch a
-  // name on the call, and the Parachute message path has no human at
-  // all. Save only needs a selected outcome.
+  // name. Save only needs a selected outcome.
   const canSave = !!confirmed && !saving && !isEscalated;
 
   async function handleSave() {
@@ -106,19 +105,15 @@ export function ChaseClinicalsPanel({ patient, onUpdate }: Props) {
     try {
       if (confirmed === "yes") {
         await saveYes(patient, name.trim());
-        toast.success("Clinicals confirmed — moved to Completed");
+        toast.success("Receipt confirmed — moved to Chase Clinicals");
         onUpdate({
-          chaseRecipientName: name.trim(),
-          subStage: "Completed",
+          receiptConfirmedName: name.trim(),
+          receiptConfirmedDate: formatDateInput(etNow()),
+          subStage: "Chase Clinicals",
         });
       } else {
         const attempt = currentAttempt ?? 1;
-        // For Parachute-message attempts, the column value records the
-        // outreach instead of a person's name.
-        const value =
-          confirmed === "parachute-message"
-            ? formatAttemptValue("Parachute message", etNow())
-            : formatAttemptValue(name.trim(), etNow());
+        const value = formatAttemptValue(name.trim(), etNow());
         const nextSlot = nextMnAttempt(attempt);
         await saveNo({
           patient,
@@ -127,8 +122,9 @@ export function ChaseClinicalsPanel({ patient, onUpdate }: Props) {
           nextSlot,
           nextActionDateInput: nextAction,
         });
+        // Optimistic local update so the chip + next slot show before refetch
         const fieldKey =
-          attempt === 1 ? "chaseAttempt1" : attempt === 2 ? "chaseAttempt2" : "chaseAttempt3";
+          attempt === 1 ? "confirmAttempt1" : attempt === 2 ? "confirmAttempt2" : "confirmAttempt3";
         onUpdate({
           [fieldKey]: value,
           mnAttempts: nextSlot,
@@ -141,6 +137,7 @@ export function ChaseClinicalsPanel({ patient, onUpdate }: Props) {
             : `Attempt ${attempt} saved`,
         );
       }
+      // Reset form for next attempt (or clear if patient is leaving the tab)
       setName("");
       setConfirmed(null);
       setNextAction("");
@@ -156,7 +153,7 @@ export function ChaseClinicalsPanel({ patient, onUpdate }: Props) {
   return (
     <div className="space-y-4">
       <MethodBanner patient={patient} />
-      <ReceiptConfirmedBanner patient={patient} />
+      <RequestSentBanner patient={patient} />
       <WhatsNeededCard patient={patient} />
       <FilesPanel files={mondayFiles} />
       {history.length > 0 && <HistoryCard history={history} />}
@@ -172,7 +169,6 @@ export function ChaseClinicalsPanel({ patient, onUpdate }: Props) {
           onConfirmedChange={setConfirmed}
           nextAction={nextAction}
           onNextActionChange={setNextAction}
-          isParachute={isParachute}
         />
       )}
       <NotesPanel
@@ -198,11 +194,14 @@ export function ChaseClinicalsPanel({ patient, onUpdate }: Props) {
 // =====================================================================
 
 async function saveYes(patient: Patient, name: string) {
-  // Yes path: write the chase recipient (the person who said the
-  // clinicals are on the way) and advance Stage Advancer to Completed.
-  // No date column for chase success — the stage advance is the signal.
-  await writeText(patient.id, COL.chaseRecipientName, name);
-  await writeStatusIndex(patient.id, COL.subStage, SUB_STAGE_INDEX.completed);
+  // Yes path: stamp success columns + advance stage. Also reset
+  // MN Attempts back to "Attempt 1" so the Chase Clinicals tab starts
+  // fresh (the column is shared across stages).
+  const today = formatDateInput(etNow());
+  await writeText(patient.id, COL.receiptConfirmedName, name);
+  await writeDate(patient.id, COL.receiptConfirmedDate, today);
+  await writeStatusIndex(patient.id, COL.mnAttempts, MN_ATTEMPTS_INDEX.attempt1);
+  await writeStatusIndex(patient.id, COL.subStage, SUB_STAGE_INDEX.chase);
   // Next action date — 2 business days from now.
   const nextAction = formatDateInput(addBusinessDays(etNow(), 2));
   await writeDate(patient.id, COL.nextActionDate, nextAction);
@@ -221,13 +220,15 @@ async function saveNo({
   nextSlot: "Attempt 2" | "Attempt 3" | "Escalate";
   nextActionDateInput: string;
 }) {
+  // 1) Write the attempt's "Name — date" string into the matching column.
   const columnId =
     attempt === 1
-      ? COL.chaseAttempt1
+      ? COL.confirmAttempt1
       : attempt === 2
-        ? COL.chaseAttempt2
-        : COL.chaseAttempt3;
+        ? COL.confirmAttempt2
+        : COL.confirmAttempt3;
   await writeText(patient.id, columnId, value);
+  // 2) Bump MN Attempts.
   const mnIdx =
     nextSlot === "Attempt 2"
       ? MN_ATTEMPTS_INDEX.attempt2
@@ -235,6 +236,7 @@ async function saveNo({
         ? MN_ATTEMPTS_INDEX.attempt3
         : MN_ATTEMPTS_INDEX.escalate;
   await writeStatusIndex(patient.id, COL.mnAttempts, mnIdx);
+  // 3) Either set escalation flag (if 3rd failure) or write next action date.
   if (nextSlot === "Escalate") {
     await writeStatusIndex(patient.id, COL.escalation, ESCALATION_INDEX.required);
   } else if (nextActionDateInput) {
@@ -273,35 +275,30 @@ function MethodBanner({ patient }: { patient: Patient }) {
   );
 }
 
-function ReceiptConfirmedBanner({ patient }: { patient: Patient }) {
-  // Shows what we already know coming into Chase — who confirmed
-  // receipt and when. Helps the agent reference the prior step on the
-  // call ("you confirmed receipt on Apr 30 — do you have the chart back?").
-  const date = patient.receiptConfirmedDate;
-  const name = patient.receiptConfirmedName;
-  if (!date && !name) {
+
+function RequestSentBanner({ patient }: { patient: Patient }) {
+  const sent = patient.requestSentAt;
+  if (!sent) {
     return (
       <section className="rounded-xl border bg-amber-50 border-amber-200 px-5 py-3 flex items-center gap-3">
         <AlertTriangle className="h-4 w-4 text-amber-700 shrink-0" />
         <div>
-          <p className="text-sm font-semibold text-amber-900">No receipt-confirmed details on file</p>
+          <p className="text-sm font-semibold text-amber-900">No Request Sent date on file</p>
           <p className="text-[11px] text-amber-800">
-            Receipt Confirmed Name + Date are blank on Monday — re-check the prior step before calling.
+            Confirm the request actually went out before calling — the column is blank on Monday.
           </p>
         </div>
       </section>
     );
   }
-  const formatted = date ? formatDateLong(date) : "(no date)";
+  const formatted = formatSent(sent);
   return (
     <section className="rounded-xl border bg-emerald-50 border-emerald-200 px-5 py-3 flex items-center gap-3">
       <CheckCircle2 className="h-4 w-4 text-emerald-700 shrink-0" />
       <div className="min-w-0">
-        <p className="text-sm font-semibold text-emerald-900">Receipt confirmed</p>
+        <p className="text-sm font-semibold text-emerald-900">Request sent</p>
         <p className="text-[11px] text-emerald-800">
-          {formatted}
-          {name ? ` — by ${name}` : ""}
-          . Now chasing for the actual clinicals.
+          {formatted} — confirm with the doctor's office that they received the fax / email below.
         </p>
       </div>
     </section>
@@ -309,13 +306,18 @@ function ReceiptConfirmedBanner({ patient }: { patient: Patient }) {
 }
 
 function FilesPanel({ files }: { files: ReturnType<typeof useMondayFiles> }) {
+  // The agent should be able to see exactly which files were sent so they
+  // can describe them on the call.
   const groups: { label: string; entries: MondayFileEntry[] }[] = [
     { label: "MN Request Letter", entries: files.mnRequestLetter },
     { label: "CGM Script Template", entries: files.cgmTemplate },
     { label: "Insulin Pump Script Template", entries: files.ipTemplate },
     { label: "Clinical Files", entries: files.clinicalFiles },
   ];
-  const flat = groups.flatMap((g) => g.entries.map((f) => ({ group: g.label, file: f })));
+  const flat = groups.flatMap((g) =>
+    g.entries.map((f) => ({ group: g.label, file: f })),
+  );
+
   return (
     <section className="rounded-xl bg-card border shadow-card p-5 space-y-3">
       <div>
@@ -323,9 +325,10 @@ function FilesPanel({ files }: { files: ReturnType<typeof useMondayFiles> }) {
           Files attached to this request
         </p>
         <p className="text-[11px] text-muted-foreground/80 mt-0.5">
-          What we previously sent — handy if the office asks what they should be looking for.
+          Open any of these in a new tab to confirm what the doctor's office should have on file.
         </p>
       </div>
+
       {files.loading && flat.length === 0 ? (
         <div className="flex items-center gap-2 px-3 h-9 rounded-md border border-dashed bg-muted/20 text-xs text-muted-foreground">
           <Loader2 className="h-3 w-3 animate-spin" /> Loading…
@@ -400,25 +403,19 @@ function ActiveAttemptCard({
   onConfirmedChange,
   nextAction,
   onNextActionChange,
-  isParachute,
 }: {
   attemptNumber: number;
   totalAttempts: number;
   name: string;
   onNameChange: (v: string) => void;
-  confirmed: "yes" | "no" | "parachute-message" | null;
-  onConfirmedChange: (v: "yes" | "no" | "parachute-message" | null) => void;
+  confirmed: "yes" | "no" | null;
+  onConfirmedChange: (v: "yes" | "no" | null) => void;
   nextAction: string;
   onNextActionChange: (v: string) => void;
-  /** Parachute mode replaces the call + Yes/No flow with a single
-   *  "Sent message on Parachute" outreach action. */
-  isParachute?: boolean;
 }) {
   const isLastAttempt = attemptNumber === totalAttempts;
-
-  // Click-again-to-deselect: tapping the already-selected option clears
-  // the selection so the agent can switch paths or back out before save.
-  const toggle = (v: "yes" | "no" | "parachute-message") => {
+  // Click-again-to-deselect, same as the Chase panel.
+  const toggle = (v: "yes" | "no") => {
     onConfirmedChange(confirmed === v ? null : v);
   };
   return (
@@ -431,10 +428,8 @@ function ActiveAttemptCard({
           </h3>
           <p className="text-[11px] text-muted-foreground mt-0.5">
             {isLastAttempt
-              ? "Final attempt — if clinicals aren't sent, the patient will be flagged for escalation."
-              : isParachute
-                ? "Either send a message through the Parachute portal or call the doctor's office — pick one."
-                : "Call the doctor's office to confirm the clinicals are sent."}
+              ? "Final attempt — if not confirmed, the patient will be flagged for escalation."
+              : "Call the doctor's office to confirm receipt."}
           </p>
         </div>
         {isLastAttempt && (
@@ -445,40 +440,7 @@ function ActiveAttemptCard({
       </div>
 
       <div className="p-5 space-y-4">
-        {/* Parachute mode shows BOTH options — agents either send a
-            message via the portal OR call the office. The Parachute
-            button is its own selectable mode (no name input); call
-            mode uses the existing name + Yes/No inputs. */}
-        {isParachute && (
-          <>
-            <div>
-              <label className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-                Outreach via Parachute
-              </label>
-              <button
-                type="button"
-                onClick={() => toggle("parachute-message")}
-                className={`mt-2 w-full rounded-lg border-2 px-4 py-3 flex items-center gap-3 text-sm font-semibold transition-colors text-left ${
-                  confirmed === "parachute-message"
-                    ? "border-indigo-500 bg-indigo-50 text-indigo-900"
-                    : "border-border bg-background hover:bg-indigo-50/50 hover:border-indigo-300"
-                }`}
-              >
-                <Send className="h-4 w-4 text-indigo-600" />
-                <span>Sent message on Parachute</span>
-              </button>
-            </div>
-
-            <div className="flex items-center gap-3" role="separator" aria-label="or">
-              <span className="flex-1 h-px bg-border" />
-              <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-                or call instead
-              </span>
-              <span className="flex-1 h-px bg-border" />
-            </div>
-          </>
-        )}
-
+        {/* Name */}
         <div>
           <label className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
             Who answered the call?
@@ -491,9 +453,10 @@ function ActiveAttemptCard({
           />
         </div>
 
+        {/* Yes / No */}
         <div>
           <label className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-            Did they say they will send the clinicals?
+            Did they confirm receipt?
           </label>
           <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-2">
             <button
@@ -506,7 +469,7 @@ function ActiveAttemptCard({
               }`}
             >
               <Check className="h-4 w-4 text-emerald-600" />
-              <span>Yes — will send</span>
+              <span>Yes — confirmed</span>
             </button>
             <button
               type="button"
@@ -518,17 +481,19 @@ function ActiveAttemptCard({
               }`}
             >
               <XCircle className="h-4 w-4 text-rose-600" />
-              <span>No — still pending</span>
+              <span>No — not yet</span>
             </button>
           </div>
         </div>
 
+        {/* Next action date — always visible. Pre-populated to today
+            + 2 weekdays. Only written to Monday on a No save. */}
         <div>
           <label className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
             Next action date
           </label>
           <p className="text-[11px] text-muted-foreground mt-0.5">
-            Defaults to 2 weekdays from today. Adjust if you want a different follow-up.
+            Defaults to the next weekday. Adjust if the office asked for a different callback.
           </p>
           <Input
             type="date"
@@ -551,12 +516,13 @@ function EscalatedCard() {
           Escalated — awaiting human review
         </h3>
         <p className="text-[11px] text-rose-800 mt-0.5">
-          All 3 chase attempts came back unsuccessful. Notes are still editable below.
+          All 3 confirm-receipt attempts came back unsuccessful. Notes are still editable below.
         </p>
       </div>
     </section>
   );
 }
+
 
 function SaveBar({
   attemptNumber,
@@ -566,21 +532,15 @@ function SaveBar({
   onSave,
 }: {
   attemptNumber: number;
-  confirmed: "yes" | "no" | "parachute-message" | null;
+  confirmed: "yes" | "no" | null;
   canSave: boolean;
   saving: boolean;
   onSave: () => void;
 }) {
-  let hint = "Pick an option above to enable save.";
-  if (confirmed === "yes") hint = "Saves the chase recipient and advances to Completed.";
-  else if (confirmed === "no" && attemptNumber < 3)
-    hint = `Logs Attempt ${attemptNumber} as unsuccessful and schedules the next callback.`;
-  else if (confirmed === "no" && attemptNumber === 3)
-    hint = "Logs Attempt 3 as unsuccessful and flags Escalation Required.";
-  else if (confirmed === "parachute-message" && attemptNumber < 3)
-    hint = `Logs the Parachute message as Attempt ${attemptNumber} and schedules the next outreach.`;
-  else if (confirmed === "parachute-message" && attemptNumber === 3)
-    hint = "Logs the Parachute message as Attempt 3 and flags Escalation Required.";
+  let hint = "Pick Yes or No to enable save.";
+  if (confirmed === "yes") hint = "Saves the confirmation, advances to Chase Clinicals.";
+  else if (confirmed === "no" && attemptNumber < 3) hint = `Logs Attempt ${attemptNumber} as unsuccessful and schedules the next callback.`;
+  else if (confirmed === "no" && attemptNumber === 3) hint = "Logs Attempt 3 as unsuccessful and flags Escalation Required.";
   return (
     <div className="flex flex-col items-center gap-2 pt-1">
       <Button
@@ -617,6 +577,7 @@ interface AttemptChip {
   raw: string;
 }
 
+// Format used for the per-attempt text columns: "Donna — 5/1/26".
 const VALUE_REGEX = /^(.+?)\s+—\s+(.+)$/;
 
 function parseAttemptValue(attempt: number, raw: string): AttemptChip {
@@ -658,13 +619,18 @@ function formatDateShort(d: Date): string {
   return `${d.getMonth() + 1}/${d.getDate()}/${String(d.getFullYear()).slice(-2)}`;
 }
 
-function formatDateLong(iso: string): string {
-  const d = new Date(iso);
+function formatSent(iso: string): string {
+  // Monday's date+time text comes back as "2026-04-30 20:00:00 UTC" or
+  // "2026-04-30 20:00:00" — normalize and render in ET.
+  const cleaned = iso.replace(/\s+UTC$/, "Z").replace(" ", "T");
+  const d = new Date(cleaned);
   if (Number.isNaN(d.getTime())) return iso;
-  return d.toLocaleDateString("en-US", {
+  return d.toLocaleString("en-US", {
     timeZone: "America/New_York",
     month: "short",
     day: "numeric",
     year: "numeric",
-  });
+    hour: "numeric",
+    minute: "2-digit",
+  }) + " ET";
 }
