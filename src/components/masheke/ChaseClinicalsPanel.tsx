@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState , useRef } from "react";
 import type { Patient } from "@/lib/masheke/workflow";
 import { NotesPanel } from "@/components/masheke/NotesPanel";
 import { WhatsNeededCard } from "@/components/masheke/WhatsNeededCard";
@@ -52,6 +52,7 @@ export function ChaseClinicalsPanel({ patient, onUpdate }: Props) {
   const mondayFiles = useMondayFiles(patient.id);
   const [saving, setSaving] = useState(false);
   const [escalated, setEscalated] = useState(false);
+  const escalatedRef = useRef(false);
 
   const [name, setName] = useState("");
   const [confirmed, setConfirmed] = useState<"yes" | "no" | "parachute-message" | null>(null);
@@ -146,6 +147,11 @@ export function ChaseClinicalsPanel({ patient, onUpdate }: Props) {
       setName("");
       setConfirmed(null);
       setNextAction("");
+      // Write escalation if user toggled the Escalate button
+      if (escalatedRef.current) {
+        await writeStatusIndex(patient.id, COL.escalation, ESCALATION_INDEX.required);
+        setEscalated(false); escalatedRef.current = false;
+      }
     } catch (e) {
       toast.error("Save failed", {
         description: e instanceof Error ? e.message : String(e),
@@ -190,7 +196,7 @@ export function ChaseClinicalsPanel({ patient, onUpdate }: Props) {
           saving={saving}
           onSave={handleSave}
           escalated={escalated}
-          onToggleEscalate={() => setEscalated((v) => !v)}
+          onToggleEscalate={() => setEscalated((v) => { const nv = !v; escalatedRef.current = nv; return nv; })}
         />
       )}
     </div>
