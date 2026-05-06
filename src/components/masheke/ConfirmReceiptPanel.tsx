@@ -48,6 +48,7 @@ interface Props {
 export function ConfirmReceiptPanel({ patient, onUpdate }: Props) {
   const mondayFiles = useMondayFiles(patient.id);
   const [saving, setSaving] = useState(false);
+  const [escalated, setEscalated] = useState(false);
 
   // Active-attempt form state — name + yes/no + (if no) next action date
   const [name, setName] = useState("");
@@ -138,6 +139,11 @@ export function ConfirmReceiptPanel({ patient, onUpdate }: Props) {
             : `Attempt ${attempt} saved`,
         );
       }
+      // Write escalation if toggled
+      if (escalated) {
+        await writeStatusIndex(patient.id, COL.escalation, ESCALATION_INDEX.required);
+        setEscalated(false);
+      }
       // Reset form for next attempt (or clear if patient is leaving the tab)
       setName("");
       setConfirmed(null);
@@ -184,8 +190,8 @@ export function ConfirmReceiptPanel({ patient, onUpdate }: Props) {
           canSave={canSave}
           saving={saving}
           onSave={handleSave}
-          patientId={patient.id}
-          patientName={patient.name}
+          escalated={escalated}
+          onToggleEscalate={() => setEscalated((v) => !v)}
         />
       )}
     </div>
@@ -533,16 +539,16 @@ function SaveBar({
   canSave,
   saving,
   onSave,
-  patientId,
-  patientName,
+  escalated,
+  onToggleEscalate,
 }: {
   attemptNumber: number;
   confirmed: "yes" | "no" | null;
   canSave: boolean;
   saving: boolean;
   onSave: () => void;
-  patientId: string;
-  patientName: string;
+  escalated: boolean;
+  onToggleEscalate: () => void;
 }) {
   let hint = "Pick Yes or No to enable save.";
   if (confirmed === "yes") hint = "Saves the confirmation, advances to Chase Clinicals.";
@@ -552,8 +558,8 @@ function SaveBar({
     <div className="flex flex-col items-center gap-2 pt-1">
       <div className="flex items-center gap-3">
         <EscalateButton
-          patientId={patientId}
-          patientName={patientName}
+          escalated={escalated}
+          onToggle={onToggleEscalate}
           disabled={saving}
         />
         <Button
