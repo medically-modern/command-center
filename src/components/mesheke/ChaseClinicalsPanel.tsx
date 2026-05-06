@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import type { Patient } from "@/lib/mesheke/workflow";
 import { NotesPanel } from "@/components/mesheke/NotesPanel";
+import { WhatsNeededCard } from "@/components/mesheke/WhatsNeededCard";
 import { etNow } from "@/lib/mesheke/etDate";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -156,6 +157,7 @@ export function ChaseClinicalsPanel({ patient, onUpdate }: Props) {
     <div className="space-y-4">
       <MethodBanner patient={patient} />
       <ReceiptConfirmedBanner patient={patient} />
+      <WhatsNeededCard patient={patient} />
       <FilesPanel files={mondayFiles} />
       {history.length > 0 && <HistoryCard history={history} />}
       {isEscalated ? (
