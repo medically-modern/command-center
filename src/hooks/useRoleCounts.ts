@@ -55,7 +55,7 @@ export interface RoleCounts {
 }
 
 // Stage Advancer values that map to masheke tabs
-const MESHEKE_STAGE_MAP: Record<string, string> = {
+const MASHEKE_STAGE_MAP: Record<string, string> = {
   "Evaluate MN": "evaluate",
   "Send Request": "sendRequest",
   "Confirm Receipt": "confirmReceipt",
@@ -146,7 +146,7 @@ export function useRoleCounts() {
             (c: any) => c.id === "color_mm1wyr92"
           );
           const stageText = stageCol?.text ?? "";
-          const roleId = MESHEKE_STAGE_MAP[stageText];
+          const roleId = MASHEKE_STAGE_MAP[stageText];
           if (roleId && roleId in next) {
             next[roleId]++;
           }
