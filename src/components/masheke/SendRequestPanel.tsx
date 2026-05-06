@@ -255,6 +255,7 @@ export function SendRequestPanel({ patient, resetVersion = 0, onUpdate }: Props)
   // ---- Mark as Complete: advance stage. ----
   const [completing, setCompleting] = useState(false);
   const [escalated, setEscalated] = useState(false);
+  const escalatedRef = useRef(false);
   const handleMarkComplete = useCallback(async () => {
     if (!hasToken()) {
       toast.error("Monday token not configured");
@@ -282,7 +283,7 @@ export function SendRequestPanel({ patient, resetVersion = 0, onUpdate }: Props)
         run: () => writeDate(patient.id, COL.nextActionDate, nextAction),
       });
     }
-    if (escalated) {
+    if (escalatedRef.current) {
       tasks.push({
         label: "Escalation → Required",
         run: () => writeStatusIndex(patient.id, COL.escalation, ESCALATION_INDEX.required),
@@ -300,13 +301,13 @@ export function SendRequestPanel({ patient, resetVersion = 0, onUpdate }: Props)
     setCompleting(false);
     if (failures.length === 0) {
       toast.success(`Marked complete — moved to ${nextStage}`);
-      setEscalated(false);
+      setEscalated(false); escalatedRef.current = false;
     } else {
       toast.error(`${failures.length} write(s) failed`, {
         description: failures.slice(0, 3).join("\n"),
       });
     }
-  }, [patient, escalated]);
+  }, [patient]);
 
   const cgmIsGenerating = cgmIsGeneratingLocal || mondayFiles.generateCgmStatus === "Generate";
   const ipIsGenerating = ipIsGeneratingLocal || mondayFiles.generateIpStatus === "Generate";
@@ -415,7 +416,7 @@ export function SendRequestPanel({ patient, resetVersion = 0, onUpdate }: Props)
         onSend={handleSend}
         onMarkComplete={handleMarkComplete}
         escalated={escalated}
-        onToggleEscalate={() => setEscalated((v) => !v)}
+        onToggleEscalate={() => setEscalated((v) => { const nv = !v; escalatedRef.current = nv; return nv; })}
         attachments={[
           { label: "MN Request Letter", count: mondayFiles.mnRequestLetter.length, required: true },
           // Script template rows only show when this patient is being
