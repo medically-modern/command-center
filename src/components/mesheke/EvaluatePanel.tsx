@@ -1150,6 +1150,7 @@ function FileUploadCard({
   mondayFiles,
   mondayLoading,
   onAdd,
+  onAddRaw,
   onRemove,
 }: FileUploadCardProps) {
   const [isDragOver, setIsDragOver] = useState(false);
