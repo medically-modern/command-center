@@ -130,9 +130,7 @@ export function useRoleCounts() {
       }
 
       // Mesheke board — single group, filter by Stage Advancer
-      console.log("[useRoleCounts] meshHasToken:", meshHasToken());
       if (meshHasToken()) {
-        const items = await fetchMeshekeGroup(MESH_GROUPS.medicalNecessity).catch((e) => { console.error("[useRoleCounts] mesheke fetch failed:", e); return []; });
         const safeItems = Array.isArray(items) ? items : [];
 
         // Initialize mesheke role counts
@@ -152,7 +150,6 @@ export function useRoleCounts() {
             next[roleId]++;
           }
         }
-        console.log("[useRoleCounts] mesheke counts:", { evaluate: next.evaluate, sendRequest: next.sendRequest, confirmReceipt: next.confirmReceipt, chaseBenefits: next.chaseBenefits, totalItems: safeItems.length });
       }
 
       // Welcome Call board
