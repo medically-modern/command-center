@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState , useRef } from "react";
 import type { Patient } from "@/lib/masheke/workflow";
 import { NotesPanel } from "@/components/masheke/NotesPanel";
 import { WhatsNeededCard } from "@/components/masheke/WhatsNeededCard";
@@ -49,6 +49,7 @@ export function ConfirmReceiptPanel({ patient, onUpdate }: Props) {
   const mondayFiles = useMondayFiles(patient.id);
   const [saving, setSaving] = useState(false);
   const [escalated, setEscalated] = useState(false);
+  const escalatedRef = useRef(false);
 
   // Active-attempt form state — name + yes/no + (if no) next action date
   const [name, setName] = useState("");
@@ -140,9 +141,9 @@ export function ConfirmReceiptPanel({ patient, onUpdate }: Props) {
         );
       }
       // Write escalation if toggled
-      if (escalated) {
+      if (escalatedRef.current) {
         await writeStatusIndex(patient.id, COL.escalation, ESCALATION_INDEX.required);
-        setEscalated(false);
+        setEscalated(false); escalatedRef.current = false;
       }
       // Reset form for next attempt (or clear if patient is leaving the tab)
       setName("");
@@ -191,7 +192,7 @@ export function ConfirmReceiptPanel({ patient, onUpdate }: Props) {
           saving={saving}
           onSave={handleSave}
           escalated={escalated}
-          onToggleEscalate={() => setEscalated((v) => !v)}
+          onToggleEscalate={() => setEscalated((v) => { const nv = !v; escalatedRef.current = nv; return nv; })}
         />
       )}
     </div>
