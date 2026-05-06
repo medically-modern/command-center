@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { Patient } from "@/lib/masheke/workflow";
 import { NotesPanel } from "@/components/masheke/NotesPanel";
 import { WhatsNeededCard } from "@/components/masheke/WhatsNeededCard";
+import { EscalateButton } from "@/components/masheke/EscalateButton";
 import { etNow } from "@/lib/masheke/etDate";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -183,6 +184,8 @@ export function ConfirmReceiptPanel({ patient, onUpdate }: Props) {
           canSave={canSave}
           saving={saving}
           onSave={handleSave}
+          patientId={patient.id}
+          patientName={patient.name}
         />
       )}
     </div>
@@ -530,12 +533,16 @@ function SaveBar({
   canSave,
   saving,
   onSave,
+  patientId,
+  patientName,
 }: {
   attemptNumber: number;
   confirmed: "yes" | "no" | null;
   canSave: boolean;
   saving: boolean;
   onSave: () => void;
+  patientId: string;
+  patientName: string;
 }) {
   let hint = "Pick Yes or No to enable save.";
   if (confirmed === "yes") hint = "Saves the confirmation, advances to Chase Clinicals.";
@@ -543,24 +550,31 @@ function SaveBar({
   else if (confirmed === "no" && attemptNumber === 3) hint = "Logs Attempt 3 as unsuccessful and flags Escalation Required.";
   return (
     <div className="flex flex-col items-center gap-2 pt-1">
-      <Button
-        size="lg"
-        onClick={onSave}
-        disabled={!canSave}
-        className="gap-2 bg-teal-600 hover:bg-teal-700 text-white shadow-elevate min-w-[200px] justify-center"
-      >
-        {saving ? (
-          <>
-            <Loader2 className="h-4 w-4 animate-spin" />
-            Saving…
-          </>
-        ) : (
-          <>
-            <Mail className="h-4 w-4" />
-            Save Attempt
-          </>
-        )}
-      </Button>
+      <div className="flex items-center gap-3">
+        <EscalateButton
+          patientId={patientId}
+          patientName={patientName}
+          disabled={saving}
+        />
+        <Button
+          size="lg"
+          onClick={onSave}
+          disabled={!canSave}
+          className="gap-2 bg-teal-600 hover:bg-teal-700 text-white shadow-elevate min-w-[200px] justify-center"
+        >
+          {saving ? (
+            <>
+              <Loader2 className="h-4 w-4 animate-spin" />
+              Saving…
+            </>
+          ) : (
+            <>
+              <Mail className="h-4 w-4" />
+              Save Attempt
+            </>
+          )}
+        </Button>
+      </div>
       <p className="text-[11px] text-muted-foreground">{hint}</p>
     </div>
   );
