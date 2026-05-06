@@ -250,7 +250,7 @@ export function SendRequestPanel({ patient, resetVersion = 0, onUpdate }: Props)
     } finally {
       setSending(false);
     }
-  }, [patient, escalated]);
+  }, [patient]);
 
   // ---- Mark as Complete: advance stage. ----
   const [completing, setCompleting] = useState(false);
@@ -306,7 +306,7 @@ export function SendRequestPanel({ patient, resetVersion = 0, onUpdate }: Props)
         description: failures.slice(0, 3).join("\n"),
       });
     }
-  }, [patient]);
+  }, [patient, escalated]);
 
   const cgmIsGenerating = cgmIsGeneratingLocal || mondayFiles.generateCgmStatus === "Generate";
   const ipIsGenerating = ipIsGeneratingLocal || mondayFiles.generateIpStatus === "Generate";
