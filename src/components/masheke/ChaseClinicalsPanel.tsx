@@ -51,6 +51,7 @@ interface Props {
 export function ChaseClinicalsPanel({ patient, onUpdate }: Props) {
   const mondayFiles = useMondayFiles(patient.id);
   const [saving, setSaving] = useState(false);
+  const [escalated, setEscalated] = useState(false);
 
   const [name, setName] = useState("");
   const [confirmed, setConfirmed] = useState<"yes" | "no" | "parachute-message" | null>(null);
@@ -188,8 +189,8 @@ export function ChaseClinicalsPanel({ patient, onUpdate }: Props) {
           canSave={canSave}
           saving={saving}
           onSave={handleSave}
-          patientId={patient.id}
-          patientName={patient.name}
+          escalated={escalated}
+          onToggleEscalate={() => setEscalated((v) => !v)}
         />
       )}
     </div>
@@ -567,16 +568,16 @@ function SaveBar({
   canSave,
   saving,
   onSave,
-  patientId,
-  patientName,
+  escalated,
+  onToggleEscalate,
 }: {
   attemptNumber: number;
   confirmed: "yes" | "no" | "parachute-message" | null;
   canSave: boolean;
   saving: boolean;
   onSave: () => void;
-  patientId: string;
-  patientName: string;
+  escalated: boolean;
+  onToggleEscalate: () => void;
 }) {
   let hint = "Pick an option above to enable save.";
   if (confirmed === "yes") hint = "Saves the chase recipient and advances to Completed.";
@@ -592,8 +593,8 @@ function SaveBar({
     <div className="flex flex-col items-center gap-2 pt-1">
       <div className="flex items-center gap-3">
         <EscalateButton
-          patientId={patientId}
-          patientName={patientName}
+          escalated={escalated}
+          onToggle={onToggleEscalate}
           disabled={saving}
         />
         <Button
