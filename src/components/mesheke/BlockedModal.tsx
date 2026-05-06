@@ -104,4 +104,5 @@ export function BlockedModal({ open, onOpenChange, patientId, patientName, onSuc
         </div>
       </DialogContent>
     </Dialog>
-  +}
+  );
+}
