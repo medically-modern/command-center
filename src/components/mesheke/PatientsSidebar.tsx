@@ -12,7 +12,7 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
-import { CalendarCheck, Loader2, RefreshCw, User, AlertCircle, Search, X, Undo2 } from "lucide-react";
+import { Ban, CalendarCheck, Loader2, RefreshCw, User, AlertCircle, Search, X, Undo2 } from "lucide-react";
 import type { Patient } from "@/lib/mesheke/workflow";
 import type { TabKey } from "@/hooks/mesheke/useMondayPatients";
 import { cn } from "@/lib/utils";
@@ -101,14 +101,18 @@ export function PatientsSidebar({ patients, selectedId, onSelect, loading, error
   const [searchQuery, setSearchQuery] = useState("");
   const [sendingBack, setSendingBack] = useState<string | null>(null);
 
+  // Split patients into active vs blocked
+  const activePatients = patients.filter((p) => p.blocked !== "Blocked");
+  const blockedPatients = patients.filter((p) => p.blocked === "Blocked");
+
   // Always use Eastern Time so all users see the same "today" regardless of their local timezone
   const etParts = new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
   const todayStr = etParts; // "YYYY-MM-DD" in ET
 
   // For chase tab: split into "action today" vs rest
   const todayPatients = activeTab === "chase" && todayOnly
-    ? patients.filter((p) => p.nextActionDate?.slice(0, 10) === todayStr)
-    : patients;
+    ? activePatients.filter((p) => p.nextActionDate?.slice(0, 10) === todayStr)
+    : activePatients;
 
   const activeLabel = TAB_LABELS[activeTab];
 
@@ -235,7 +239,7 @@ export function PatientsSidebar({ patients, selectedId, onSelect, loading, error
             /* ── Normal grouped view ── */
             <>
               {EVALUATE_GROUP_ORDER.map((stage) => {
-                const inStage = patients.filter((p) => (p.subStage ?? "") === stage);
+                const inStage = activePatients.filter((p) => (p.subStage ?? "") === stage);
                 if (inStage.length === 0) return null;
                 return (
                   <SidebarGroup key={stage}>
@@ -260,7 +264,7 @@ export function PatientsSidebar({ patients, selectedId, onSelect, loading, error
                   </SidebarGroup>
                 );
               })}
-              {!loading && patients.length === 0 && !error && !collapsed && (
+              {!loading && activePatients.length === 0 && !error && !collapsed && (
                 <p className="px-3 py-4 text-xs text-muted-foreground">No patients in any MN stage.</p>
               )}
             </>
@@ -288,6 +292,40 @@ export function PatientsSidebar({ patients, selectedId, onSelect, loading, error
                     {todayOnly ? "No patients with action date today." : `No patients in ${activeLabel}.`}
                   </p>
                 )}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        )}
+
+        {/* ── Blocked section (all tabs) ── */}
+        {blockedPatients.length > 0 && !collapsed && (
+          <SidebarGroup>
+            <SidebarGroupLabel className="text-[10px] uppercase tracking-wider text-red-500 font-semibold flex items-center gap-1.5">
+              <Ban className="h-3 w-3" />
+              Blocked ({blockedPatients.length})
+            </SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu>
+                {blockedPatients.map((p) => (
+                  <SidebarMenuItem key={p.id}>
+                    <SidebarMenuButton
+                      isActive={selectedId === p.id}
+                      onClick={() => onSelect(p.id)}
+                      className={cn(
+                        "flex items-start gap-2 py-2 h-auto opacity-60",
+                        selectedId === p.id && "bg-sidebar-accent opacity-100",
+                      )}
+                    >
+                      <Ban className="h-4 w-4 mt-0.5 shrink-0 text-red-400" />
+                      <div className="min-w-0 text-left">
+                        <p className="text-sm font-medium truncate">{p.name}</p>
+                        <p className="text-[11px] text-red-400 truncate">
+                          Until {p.blockedDate || "—"}
+                        </p>
+                      </div>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                ))}
               </SidebarMenu>
             </SidebarGroupContent>
           </SidebarGroup>

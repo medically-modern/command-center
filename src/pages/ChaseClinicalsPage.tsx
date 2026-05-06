@@ -10,16 +10,18 @@ import { PatientsSidebar } from "@/components/mesheke/PatientsSidebar";
 import { PatientProfileCard } from "@/components/mesheke/PatientProfileCard";
 import { Button } from "@/components/ui/button";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
-import { RotateCcw, Stethoscope, ArrowLeft } from "lucide-react";
+import { RotateCcw, Stethoscope, ArrowLeft, Ban } from "lucide-react";
 import { toast } from "sonner";
 import { clearEvalState } from "@/lib/mesheke/evalState";
 import { useNavigate } from "react-router-dom";
+import { BlockedModal } from "@/components/mesheke/BlockedModal";
 
 const ChaseClinicalsPage = () => {
   const navigate = useNavigate();
   const { patients, loading, error, refetch, update, clearOverlay } = useMondayPatients("chase");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [resetVersion, setResetVersion] = useState(0);
+  const [blockedModalOpen, setBlockedModalOpen] = useState(false);
 
   useEffect(() => {
     if (!selectedId && patients.length > 0) setSelectedId(patients[0].id);
@@ -65,6 +67,13 @@ const ChaseClinicalsPage = () => {
                 </div>
               </div>
               <div className="flex items-center gap-2">
+                <Button
+                  onClick={() => setBlockedModalOpen(true)}
+                  disabled={!selected}
+                  className="gap-2 bg-red-600 hover:bg-red-700 text-white shadow-elevate"
+                >
+                  <Ban className="h-4 w-4" /> Blocked
+                </Button>
                 <Button onClick={resetForNewPatient} disabled={!selected} className="gap-2 bg-white text-navy hover:bg-white/90 shadow-elevate">
                   <RotateCcw className="h-4 w-4" /> Reset
                 </Button>
@@ -89,6 +98,16 @@ const ChaseClinicalsPage = () => {
           </main>
         </div>
       </div>
+
+      {selected && (
+        <BlockedModal
+          open={blockedModalOpen}
+          onOpenChange={setBlockedModalOpen}
+          patientId={selected.id}
+          patientName={selected.name}
+          onSuccess={refetch}
+        />
+      )}
     </SidebarProvider>
   );
 };

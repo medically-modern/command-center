@@ -10,10 +10,11 @@ import { PatientProfileCard } from "@/components/mesheke/PatientProfileCard";
 import { ReferralEmailPanel } from "@/components/mesheke/ReferralEmailPanel";
 import { Button } from "@/components/ui/button";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
-import { RotateCcw, Stethoscope, ArrowLeft, Mail } from "lucide-react";
+import { RotateCcw, Stethoscope, ArrowLeft, Mail, Ban } from "lucide-react";
 import { toast } from "sonner";
 import { clearEvalState } from "@/lib/mesheke/evalState";
 import { useNavigate } from "react-router-dom";
+import { BlockedModal } from "@/components/mesheke/BlockedModal";
 
 const EvaluatePage = () => {
   const navigate = useNavigate();
@@ -21,6 +22,7 @@ const EvaluatePage = () => {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [resetVersion, setResetVersion] = useState(0);
   const [referralEmailOpen, setReferralEmailOpen] = useState(false);
+  const [blockedModalOpen, setBlockedModalOpen] = useState(false);
 
   useEffect(() => {
     if (!selectedId && patients.length > 0) setSelectedId(patients[0].id);
@@ -61,6 +63,13 @@ const EvaluatePage = () => {
                 </div>
               </div>
               <div className="flex items-center gap-2">
+                <Button
+                  onClick={() => setBlockedModalOpen(true)}
+                  disabled={!selected}
+                  className="gap-2 bg-red-600 hover:bg-red-700 text-white shadow-elevate"
+                >
+                  <Ban className="h-4 w-4" /> Blocked
+                </Button>
                 <Button
                   onClick={() => setReferralEmailOpen((o) => !o)}
                   disabled={!selected}
@@ -106,6 +115,16 @@ const EvaluatePage = () => {
           />
         )}
       </div>
+
+      {selected && (
+        <BlockedModal
+          open={blockedModalOpen}
+          onOpenChange={setBlockedModalOpen}
+          patientId={selected.id}
+          patientName={selected.name}
+          onSuccess={refetch}
+        />
+      )}
     </SidebarProvider>
   );
 };

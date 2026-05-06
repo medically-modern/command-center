@@ -46,6 +46,9 @@ export const ESCALATION_INDEX = { required: 0, done: 1 } as const;
 // Clinicals Method: 0=Fax, 1=Parachute, 2=Email
 export const CLINICALS_METHOD_INDEX = { fax: 0, parachute: 1, email: 2 } as const;
 
+// Blocked: 0=Blocked
+export const BLOCKED_INDEX = { blocked: 0 } as const;
+
 // ---- Item → Patient conversion ----
 function col(item: MondayItem, id: string): string {
   return item.column_values.find((c: MondayColumnValue) => c.id === id)?.text ?? "";
@@ -125,6 +128,8 @@ export function mondayItemToPatient(item: MondayItem): Patient {
     advancer2b: col(item, "color_mm1wfbkz") || undefined,
     advancer2c: col(item, "color_mm1wf98t") || undefined,
     advancer2d: col(item, "color_mm1wcsbv") || undefined,
+    blocked: col(item, "color_mm33ppgw") || undefined,
+    blockedDate: col(item, "date_mm33vqkm") || undefined,
     notes: "",
   };
 }

@@ -110,6 +110,10 @@ export const COL = {
   advancer2c: "color_mm1wf98t",
   advancer2d: "color_mm1wcsbv",
 
+  // Blocked
+  blocked: "color_mm33ppgw",
+  blockedDate: "date_mm33vqkm",
+
   // Debug
   joshDebug: "text_mm2w1qn4",
 } as const;
@@ -145,6 +149,8 @@ export const READ_COLUMN_IDS: string[] = [
   COL.escalation,
   // Advancers
   COL.advancer2a, COL.advancer2b, COL.advancer2c, COL.advancer2d,
+  // Blocked
+  COL.blocked, COL.blockedDate,
 ];
 
 export interface MondayColumnValue {

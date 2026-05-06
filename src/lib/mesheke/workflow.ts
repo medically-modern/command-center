@@ -100,6 +100,10 @@ export interface Patient {
   advancer2c?: string;
   advancer2d?: string;
 
+  // Blocked
+  blocked?: string;
+  blockedDate?: string;
+
   // Notes
   notes: string;
   lastUpdated?: string;
