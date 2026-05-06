@@ -227,6 +227,27 @@ export async function sendPatientToMonday(p: Patient, context: "benefits" | "sub
     fn: () => writeDropdownIds(p.id, COL.skipSosProducts, skipIds),
   });
 
+  // ----- Per-product Order Date (date — when SoS = Not Clear) -----
+  for (const { cid, state } of entries) {
+    const productId = PRODUCT_CODE_TO_PRODUCT_ID[cid];
+    const orderDateCol = COL.orderDate[productId];
+    const eSos = effectiveSos({ cid, state, isMedicaidSupply: false });
+    if (eSos === "not-clear" && state?.orderDate) {
+      tasks.push({
+        label: `Order Date: ${productId}`,
+        columnId: orderDateCol,
+        fn: () => writeDate(p.id, orderDateCol, state.orderDate!),
+      });
+    } else {
+      // Clear order date when SoS is no longer not-clear
+      tasks.push({
+        label: `Order Date (clear): ${productId}`,
+        columnId: orderDateCol,
+        fn: () => writeDate(p.id, orderDateCol, ""),
+      });
+    }
+  }
+
   // ----- Aggregate SoS + Auth -----
   // SoS is now always required for every product (no auth-required skip
   // carve-out). A patient is "all filled" only when every served product

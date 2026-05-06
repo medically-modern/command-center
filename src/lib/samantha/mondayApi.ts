@@ -106,6 +106,15 @@ export const COL = {
     cartridge: "numeric_mm2w1df3",
   },
 
+  // Per-product Order Date columns (date — populated when SoS = Not Clear)
+  orderDate: {
+    monitor: "date_mm33h1qv",
+    sensors: "date_mm332rhq",
+    insulin_pump: "date_mm33qnew",
+    infusion_set: "date_mm33gj86",
+    cartridge: "date_mm33cd87",
+  },
+
   // Debug / error logging
   joshDebug: "text_mm2w1qn4",
 } as const;
@@ -132,6 +141,12 @@ export const READ_COLUMN_IDS = [
   // recorded on Benefits — Not Clear products and Skip-deferred products).
   COL.notClearProducts,
   COL.skipSosProducts,
+  // Per-product Order Date (populated when SoS = Not Clear on Benefits)
+  COL.orderDate.monitor,
+  COL.orderDate.sensors,
+  COL.orderDate.insulin_pump,
+  COL.orderDate.infusion_set,
+  COL.orderDate.cartridge,
 ];
 
 /** Extended read columns for auth groups — includes auth results + universal statuses */

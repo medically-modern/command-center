@@ -331,6 +331,8 @@ export interface ProductCodeState {
   sosRecheck?: SosChoice;
   /** Original Monday auth result label — populated when reading from auth groups, used for read-only display */
   _mondayAuthLabel?: string;
+  /** Order date — only meaningful when SoS = "not-clear". YYYY-MM-DD. */
+  orderDate?: string;
 }
 
 export type UniversalChoice = "" | "confirmed" | "not-confirmed";

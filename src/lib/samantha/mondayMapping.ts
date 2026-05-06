@@ -263,6 +263,23 @@ export function mondayItemToPatient(item: MondayItem): Patient {
     codes[codeId]!.sos = "skip";
   }
 
+  // Per-product Order Date — hydrated from the 5 Order Date date columns.
+  const ORDER_DATE_COLS: Record<ProductId, string> = {
+    monitor: COL.orderDate.monitor,
+    sensors: COL.orderDate.sensors,
+    insulin_pump: COL.orderDate.insulin_pump,
+    infusion_set: COL.orderDate.infusion_set,
+    cartridge: COL.orderDate.cartridge,
+  };
+  for (const pk of PRODUCT_KEYS) {
+    const codeId = PRODUCT_KEY_TO_CODE[pk];
+    const dateText = cv(ORDER_DATE_COLS[pk])?.text;
+    if (dateText) {
+      if (!codes[codeId]) codes[codeId] = { status: "pending" } as ProductCodeState;
+      codes[codeId]!.orderDate = dateText;
+    }
+  }
+
   // Escalation toggle — hydrated from Monday so the Escalate button on the
   // Benefits / Submit Auth / Auth Outstanding pages reflects the current
   // state when the patient loads. "Escalation Required" → on; "Done" or

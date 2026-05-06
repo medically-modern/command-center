@@ -23,8 +23,9 @@ import {
 import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { AlertTriangle, CheckCircle2, Clock, ShieldCheck, ShieldAlert, Repeat, Package, XCircle } from "lucide-react";
+import { AlertTriangle, CalendarDays, CheckCircle2, Clock, ShieldCheck, ShieldAlert, Repeat, Package, XCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useEffect } from "react";
 
@@ -441,6 +442,25 @@ function CodeCard({ meta, resolved, state, universalDone, onChange }: CardProps)
           })()}
         </div>
       </div>
+
+      {/* Order Date — appears when SoS = Not Clear */}
+      {sos === "not-clear" && (
+        <div className="mt-3 rounded-lg border border-warning/40 bg-warning/5 p-3">
+          <label className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-wider text-warning-foreground/80 mb-1.5">
+            <CalendarDays className="h-3.5 w-3.5" />
+            {meta.name} Order Date
+          </label>
+          <p className="text-[11px] text-muted-foreground mb-2">
+            Last billed date from Same or Similar check — syncs to Monday.
+          </p>
+          <Input
+            type="date"
+            value={state.orderDate ?? ""}
+            onChange={(e) => onChange({ orderDate: e.target.value })}
+            className="max-w-xs h-9 bg-background border-warning/30 focus-visible:ring-warning/40"
+          />
+        </div>
+      )}
     </div>
   );
 }
