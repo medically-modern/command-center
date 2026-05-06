@@ -46,6 +46,7 @@ import {
 } from "lucide-react";
 
 interface Props {
+  onUpdate: (patch: Partial<Patient>) => void;
   patient: Patient;
   /** Bumped by parent on Reset — forces local state reload. */
   resetVersion?: number;
@@ -55,7 +56,7 @@ interface Props {
 // Main panel
 // =====================================================================
 
-export function SendRequestPanel({ patient, resetVersion = 0 }: Props) {
+export function SendRequestPanel({ patient, resetVersion = 0, onUpdate }: Props) {
   const [state, setState] = useState<EvalState>(() => loadEvalState(patient.id));
 
   useEffect(() => {

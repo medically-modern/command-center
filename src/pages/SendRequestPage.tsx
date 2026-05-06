@@ -76,7 +76,7 @@ const SendRequestPage = () => {
               {selected && (
                 <>
                   <PatientProfileCard patient={selected} defaultDoctorOpen />
-                  <SendRequestPanel patient={selected} resetVersion={resetVersion} />
+                  <SendRequestPanel patient={selected} resetVersion={resetVersion} onUpdate={(patch) => update(selected.id, patch)} />
                 </>
               )}
             </section>

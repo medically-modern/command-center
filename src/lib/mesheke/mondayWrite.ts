@@ -98,6 +98,13 @@ export async function sendPatientToMonday(
     // MR + MedNec
     pushStatus(tasks, p.id, "MRs / Clinicals", COL.mrsClinicals, p.mrsClinicals, MR_OPTS);
     pushStatus(tasks, p.id, "Medical Necessity", COL.medicalNecessity, p.medicalNecessity, MED_NEC_OPTS);
+    if (p.mnEvalNotes) {
+      tasks.push({
+        label: "MN Evaluation Notes",
+        columnId: COL.mnEvalNotes,
+        fn: () => writeLongText(p.id, COL.mnEvalNotes, p.mnEvalNotes!),
+      });
+    }
     // Advancer 2A → Complete + Sub-Stage → 2B
     tasks.push({
       label: "Advancer 2A",
