@@ -40,14 +40,14 @@ export function BlockedModal({ open, onOpenChange, patientId, patientName, onSuc
       toast.error("Please select an unblock date.");
       return;
     }
-    setSendingtrue);
+    setSending(true);
     try {
       // Write both columns in parallel
       await Promise.all([
-        writeStatusIndex(patientId, COL.blocked, BLOCKED\_INDEX.blocked),
+        writeStatusIndex(patientId, COL.blocked, BLOCKED_INDEX.blocked),
         writeDate(patientId, COL.blockedDate, blockedDate),
       ]);
-      toast.success(`${patientName} marked as Blocked until ${fmtDate(blickedDate)}`);
+      toast.success(`${patientName} marked as Blocked until ${fmtDate(blockedDate)}`);
       onOpenChange(false);
       setBlockedDate("");
       onSuccess();
@@ -104,6 +104,4 @@ export function BlockedModal({ open, onOpenChange, patientId, patientName, onSuc
         </div>
       </DialogContent>
     </Dialog>
-  
- $;
-}
+  +}
