@@ -77,6 +77,9 @@ export const COL = {
   stageAdvancer: "color_mm1ws96t",
   escalation: "color_mm1x7997",
   escalationReason: "dropdown_mm2fhcd6",
+
+  // Debug
+  joshDebug: "text_mm2w1qn4",
 } as const;
 
 export const READ_COLUMN_IDS = [
