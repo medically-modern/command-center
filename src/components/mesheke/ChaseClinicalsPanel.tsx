@@ -556,32 +556,6 @@ function EscalatedCard() {
   );
 }
 
-  value: string;
-  onChange: (v: string) => void;
-  onBlur: () => void;
-}) {
-  return (
-    <section className="rounded-xl bg-card border shadow-card p-5 space-y-2">
-      <div>
-        <p className="text-xs uppercase tracking-wider text-muted-foreground">
-          Confirming &amp; Chasing Notes
-        </p>
-        <p className="text-[11px] text-muted-foreground/80 mt-0.5">
-          Free-form notes. Saved to Monday on blur.
-        </p>
-      </div>
-      <Textarea
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        onBlur={onBlur}
-        placeholder="What did the office say? Any reasons for delay, callback windows, etc."
-        rows={4}
-        className="bg-background"
-      />
-    </section>
-  );
-}
-
 function SaveBar({
   attemptNumber,
   confirmed,
