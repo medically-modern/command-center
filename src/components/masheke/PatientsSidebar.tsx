@@ -16,7 +16,8 @@ import { Ban, CalendarCheck, Loader2, RefreshCw, User, AlertCircle, Search, X, U
 import type { Patient } from "@/lib/masheke/workflow";
 import type { TabKey } from "@/hooks/masheke/useMondayPatients";
 import { cn } from "@/lib/utils";
-import { writeStatusIndex, COL } from "@/lib/masheke/mondayApi";
+import { toast } from "sonner";
+import { writeStatusIndex, clearStatusColumn, COL } from "@/lib/masheke/mondayApi";
 import { SUB_STAGE_INDEX } from "@/lib/masheke/mondayMapping";
 
 /** Convert YYYY-MM-DD → MM/DD/YYYY */
@@ -314,22 +315,25 @@ export function PatientsSidebar({ patients, selectedId, onSelect, loading, error
               <SidebarMenu>
                 {blockedPatients.map((p) => (
                   <SidebarMenuItem key={p.id}>
-                    <SidebarMenuButton
-                      isActive={selectedId === p.id}
-                      onClick={() => onSelect(p.id)}
-                      className={cn(
-                        "flex items-start gap-2 py-2 h-auto opacity-60",
-                        selectedId === p.id && "bg-sidebar-accent opacity-100",
-                      )}
-                    >
-                      <Ban className="h-4 w-4 mt-0.5 shrink-0 text-red-400" />
-                      <div className="min-w-0 text-left">
-                        <p className="text-sm font-medium truncate">{p.name}</p>
-                        <p className="text-[11px] text-red-400 truncate">
-                          Until {p.blockedDate ? fmtDate(p.blockedDate) : "—"}
-                        </p>
-                      </div>
-                    </SidebarMenuButton>
+                    <div className="flex items-center gap-1 w-full">
+                      <SidebarMenuButton
+                        isActive={selectedId === p.id}
+                        onClick={() => onSelect(p.id)}
+                        className={cn(
+                          "flex-1 flex items-start gap-2 py-2 h-auto opacity-60",
+                          selectedId === p.id && "bg-sidebar-accent opacity-100",
+                        )}
+                      >
+                        <Ban className="h-4 w-4 mt-0.5 shrink-0 text-red-400" />
+                        <div className="min-w-0 text-left">
+                          <p className="text-sm font-medium truncate">{p.name}</p>
+                          <p className="text-[11px] text-red-400 truncate">
+                            Until {p.blockedDate ? fmtDate(p.blockedDate) : "—"}
+                          </p>
+                        </div>
+                      </SidebarMenuButton>
+                      <UnblockButton patientId={p.id} patientName={p.name} onSuccess={onRefresh} />
+                    </div>
                   </SidebarMenuItem>
                 ))}
               </SidebarMenu>
@@ -339,5 +343,41 @@ export function PatientsSidebar({ patients, selectedId, onSelect, loading, error
       </SidebarContent>
 
     </Sidebar>
+  );
+}
+
+
+/** Small button to clear Blocked status + date on Monday */
+function UnblockButton({ patientId, patientName, onSuccess }: { patientId: string; patientName: string; onSuccess: () => void }) {
+  const [sending, setSending] = useState(false);
+
+  const handleUnblock = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setSending(true);
+    try {
+      await Promise.all([
+        clearStatusColumn(patientId, COL.blocked),
+        clearStatusColumn(patientId, COL.blockedDate),
+      ]);
+      toast.success(`${patientName} unblocked`);
+      onSuccess();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      toast.error(`Failed to unblock: ${msg}`);
+    } finally {
+      setSending(false);
+    }
+  };
+
+  return (
+    <button
+      onClick={handleUnblock}
+      disabled={sending}
+      className="shrink-0 flex items-center gap-1 px-2 py-1 rounded text-[10px] font-medium text-emerald-700 bg-emerald-50 border border-emerald-200 hover:bg-emerald-100 transition-colors disabled:opacity-50"
+      title={`Unblock ${patientName}`}
+    >
+      {sending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Undo2 className="h-3 w-3" />}
+      Un-Block
+    </button>
   );
 }
