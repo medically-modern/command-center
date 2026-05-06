@@ -7,6 +7,7 @@ import {
 import type { Patient } from "@/lib/masheke/workflow";
 import { NotesPanel } from "@/components/masheke/NotesPanel";
 import { WhatsNeededCard } from "@/components/masheke/WhatsNeededCard";
+import { EscalateButton } from "@/components/masheke/EscalateButton";
 import { etNow } from "@/lib/masheke/etDate";
 import { Button } from "@/components/ui/button";
 import { useMondayFiles } from "@/hooks/masheke/useMondayFiles";
@@ -1094,24 +1095,31 @@ function SendActionCard({
           title="Advance the stage"
           subtitle="Click after the request has been sent — moves the patient to the next stage on Monday."
         >
-          <Button
-            size="lg"
-            onClick={onMarkComplete}
-            disabled={completing}
-            className="gap-2 bg-emerald-600 hover:bg-emerald-700 text-white shadow-elevate"
-          >
-            {completing ? (
-              <>
-                <Loader2 className="h-4 w-4 animate-spin" />
-                Marking…
-              </>
-            ) : (
-              <>
-                <Check className="h-4 w-4" />
-                Mark as Complete
-              </>
-            )}
-          </Button>
+          <div className="flex items-center gap-3">
+            <EscalateButton
+              patientId={patient.id}
+              patientName={patient.name}
+              disabled={completing}
+            />
+            <Button
+              size="lg"
+              onClick={onMarkComplete}
+              disabled={completing}
+              className="gap-2 bg-emerald-600 hover:bg-emerald-700 text-white shadow-elevate"
+            >
+              {completing ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Marking…
+                </>
+              ) : (
+                <>
+                  <Check className="h-4 w-4" />
+                  Mark as Complete
+                </>
+              )}
+            </Button>
+          </div>
         </StepBlock>
       </div>
     </section>
