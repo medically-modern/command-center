@@ -141,9 +141,9 @@ export function useRoleCounts() {
         next.chaseBenefits = 0;
 
         for (const item of safeItems) {
-          // Find Stage Advancer column value
+          // Find Master Stage column value
           const stageCol = item.column_values?.find(
-            (c: any) => c.id === "color_mm1wyr92"
+            (c: any) => c.id === "color_mm1ws96t"
           );
           const stageText = stageCol?.text ?? "";
           const roleId = MESHEKE_STAGE_MAP[stageText];
