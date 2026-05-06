@@ -50,7 +50,7 @@ export function NotesPanel({ notes, onNotesChange, onSaveToMonday }: Props) {
     <section className="rounded-xl bg-card border shadow-card p-5 space-y-3">
       <div className="flex items-center justify-between">
         <p className="text-xs uppercase tracking-wider text-muted-foreground font-semibold flex items-center gap-2">
-          <MessageSquare className="h-3.5 w-3.5" /> MN Evaluation Notes
+          <MessageSquare className="h-3.5 w-3.5" /> MN Workflow Notes
         </p>
         <Button
           variant="ghost"

@@ -384,7 +384,7 @@ export function EvaluatePanel({ patient, resetVersion = 0, onUpdate }: Props) {
         ),
     });
     tasks.push({
-      label: "MN Evaluation Notes",
+      label: "MN Workflow Notes",
       run: () => writeLongText(patient.id, COL.mnEvalNotes, patient.mnEvalNotes ?? ""),
     });
     // Advance the Stage Advancer based on MN outcome:

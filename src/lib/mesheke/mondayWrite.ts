@@ -100,7 +100,7 @@ export async function sendPatientToMonday(
     pushStatus(tasks, p.id, "Medical Necessity", COL.medicalNecessity, p.medicalNecessity, MED_NEC_OPTS);
     if (p.mnEvalNotes) {
       tasks.push({
-        label: "MN Evaluation Notes",
+        label: "MN Workflow Notes",
         columnId: COL.mnEvalNotes,
         fn: () => writeLongText(p.id, COL.mnEvalNotes, p.mnEvalNotes!),
       });
@@ -125,7 +125,7 @@ export async function sendPatientToMonday(
     pushStatus(tasks, p.id, "Clinicals Method", COL.clinicalsMethod, p.clinicalsMethod, CLINICALS_METHOD_OPTS);
     if (p.mnEvalNotes) {
       tasks.push({
-        label: "MN Evaluation Notes",
+        label: "MN Workflow Notes",
         columnId: COL.mnEvalNotes,
         fn: () => writeLongText(p.id, COL.mnEvalNotes, p.mnEvalNotes!),
       });
@@ -163,7 +163,7 @@ export async function sendPatientToMonday(
     }
     if (p.mnEvalNotes) {
       tasks.push({
-        label: "MN Evaluation Notes",
+        label: "MN Workflow Notes",
         columnId: COL.mnEvalNotes,
         fn: () => writeLongText(p.id, COL.mnEvalNotes, p.mnEvalNotes!),
       });
@@ -201,7 +201,7 @@ export async function sendPatientToMonday(
     }
     if (p.mnEvalNotes) {
       tasks.push({
-        label: "MN Evaluation Notes",
+        label: "MN Workflow Notes",
         columnId: COL.mnEvalNotes,
         fn: () => writeLongText(p.id, COL.mnEvalNotes, p.mnEvalNotes!),
       });
