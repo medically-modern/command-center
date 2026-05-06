@@ -32,6 +32,7 @@ import {
   type EvalState,
 } from "@/lib/masheke/evalState";
 import { generateMnRequestPdf } from "@/lib/masheke/mnRequestPdf";
+import { ESCALATION_INDEX } from "@/lib/masheke/mondayMapping";
 import { toast } from "sonner";
 import {
   Check,
@@ -249,10 +250,11 @@ export function SendRequestPanel({ patient, resetVersion = 0, onUpdate }: Props)
     } finally {
       setSending(false);
     }
-  }, [patient]);
+  }, [patient, escalated]);
 
   // ---- Mark as Complete: advance stage. ----
   const [completing, setCompleting] = useState(false);
+  const [escalated, setEscalated] = useState(false);
   const handleMarkComplete = useCallback(async () => {
     if (!hasToken()) {
       toast.error("Monday token not configured");
@@ -280,6 +282,12 @@ export function SendRequestPanel({ patient, resetVersion = 0, onUpdate }: Props)
         run: () => writeDate(patient.id, COL.nextActionDate, nextAction),
       });
     }
+    if (escalated) {
+      tasks.push({
+        label: "Escalation → Required",
+        run: () => writeStatusIndex(patient.id, COL.escalation, ESCALATION_INDEX.required),
+      });
+    }
     const results = await Promise.allSettled(tasks.map((t) => t.run()));
     const failures: string[] = [];
     results.forEach((r, i) => {
@@ -292,6 +300,7 @@ export function SendRequestPanel({ patient, resetVersion = 0, onUpdate }: Props)
     setCompleting(false);
     if (failures.length === 0) {
       toast.success(`Marked complete — moved to ${nextStage}`);
+      setEscalated(false);
     } else {
       toast.error(`${failures.length} write(s) failed`, {
         description: failures.slice(0, 3).join("\n"),
@@ -405,6 +414,8 @@ export function SendRequestPanel({ patient, resetVersion = 0, onUpdate }: Props)
         completing={completing}
         onSend={handleSend}
         onMarkComplete={handleMarkComplete}
+        escalated={escalated}
+        onToggleEscalate={() => setEscalated((v) => !v)}
         attachments={[
           { label: "MN Request Letter", count: mondayFiles.mnRequestLetter.length, required: true },
           // Script template rows only show when this patient is being
@@ -976,6 +987,8 @@ function SendActionCard({
   onSend,
   onMarkComplete,
   attachments,
+  escalated,
+  onToggleEscalate,
 }: {
   patient: Patient;
   sending: boolean;
@@ -983,6 +996,8 @@ function SendActionCard({
   onSend: () => void;
   onMarkComplete: () => void;
   attachments: Attachment[];
+  escalated: boolean;
+  onToggleEscalate: () => void;
 }) {
   const method = patient.clinicalsMethod ?? "Fax";
   const alreadySent = !!patient.requestSentAt;
@@ -1097,8 +1112,8 @@ function SendActionCard({
         >
           <div className="flex items-center gap-3">
             <EscalateButton
-              patientId={patient.id}
-              patientName={patient.name}
+              escalated={escalated}
+              onToggle={onToggleEscalate}
               disabled={completing}
             />
             <Button
