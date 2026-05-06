@@ -69,6 +69,7 @@ import {
   type MondayFileEntry,
 } from "@/lib/masheke/mondayApi";
 import { GEN_SCRIPT_STATUS } from "@/lib/masheke/mondayMapping";
+import { EscalateButton } from "@/components/masheke/EscalateButton";
 import { toast } from "sonner";
 import {
   Check,
@@ -586,6 +587,7 @@ export function EvaluatePanel({ patient, resetVersion = 0, onUpdate }: Props) {
         state={state}
         showCgm={showCgm}
         showIp={showIp}
+        patient={patient}
       />
     </div>
   );
@@ -1400,6 +1402,7 @@ interface ValiditySummaryProps {
   state: EvalState;
   showCgm: boolean;
   showIp: boolean;
+  patient: Patient;
 }
 
 function ValiditySummary({
@@ -1410,6 +1413,7 @@ function ValiditySummary({
   state,
   showCgm,
   showIp,
+  patient,
 }: ValiditySummaryProps) {
   const missingFields = getMissingRequiredFields(state, showCgm, showIp);
   const blocked = missingFields.length > 0;
@@ -1475,6 +1479,11 @@ function ValiditySummary({
             </div>
           </div>
         )}
+        <EscalateButton
+          patientId={patient.id}
+          patientName={patient.name}
+          disabled={sending}
+        />
         <Button
           size="lg"
           onClick={onSendToMonday}
