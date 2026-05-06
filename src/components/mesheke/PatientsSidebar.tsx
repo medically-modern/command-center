@@ -339,6 +339,5 @@ export function PatientsSidebar({ patients, selectedId, onSelect, loading, error
       </SidebarContent>
 
     </Sidebar>
-  
- "»
+  );
 }
