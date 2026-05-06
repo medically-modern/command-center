@@ -660,14 +660,6 @@ function WhatsNeededCard({ patient }: { patient: Patient }) {
         </ul>
       )}
 
-      {patient.mnEvalNotes && (
-        <div className="border-t pt-2">
-          <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">
-            MN Evaluation Notes
-          </p>
-          <p className="text-xs text-foreground whitespace-pre-wrap">{patient.mnEvalNotes}</p>
-        </div>
-      )}
     </section>
   );
 }
