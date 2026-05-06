@@ -1260,7 +1260,7 @@ function getMissingRequiredFields(
   if (state.ipCoveragePath) {
     const cfg = IP_PATH_FIELDS[state.ipCoveragePath];
     if (cfg.showMalfunction && state.malfunction === undefined) missing.push("Malfunction");
-    if (cfg.showOow && !state.oowDate) missing.push("OOW Date");
+    // OOW Date is optional — not required for sync
     if (cfg.showOowOnScript && state.oowDateOnScript === undefined) missing.push("OOW Date on Script?");
     if (cfg.showEducation && state.diabetesEducation === undefined) missing.push("Diabetes Education");
     if (cfg.showCgmUse && state.cgmUse === undefined) missing.push("CGM Use");
