@@ -2,13 +2,13 @@
  * Fetches patient counts for each role from all 4 Monday boards.
  *
  * Samantha board (18410601299): 3 groups → Benefits, Submit Auth, Auth Outstanding
- * Mesheke board (18406060017): 1 group, filtered by Stage Advancer → Evaluate, Send Request, Confirm Receipt, Chase Clinicals
+ * Masheke board (18406060017): 1 group, filtered by Stage Advancer → Evaluate, Send Request, Confirm Receipt, Chase Clinicals
  * Welcome Call board (18410804557): welcomeCall group
  * Profile board (18406352652): intake group
  */
 import { useEffect, useState, useCallback } from "react";
 import { fetchGroupItems as fetchSamanthaGroup, GROUPS as SAM_GROUPS, hasToken as samHasToken } from "@/lib/samantha/mondayApi";
-import { fetchGroupItems as fetchMeshekeGroup, GROUPS as MESH_GROUPS, hasToken as meshHasToken } from "@/lib/masheke/mondayApi";
+import { fetchGroupItems as fetchMashekeGroup, GROUPS as MESH_GROUPS, hasToken as meshHasToken } from "@/lib/masheke/mondayApi";
 
 // Inline count fetcher for Welcome Call and Profile boards.
 // We avoid importing from their mondayApi modules because Vite code-splits
@@ -88,7 +88,7 @@ export function useRoleCounts() {
         // Samantha has: Submit Auth and Auth Outstanding. Her Benefits tab isn't one of the 6 standalone roles.
         // Hmm, but we built ChaseBenefitsPage using Samantha's InsurancePanel...
         // Actually re-reading Josh's clarification: the 6 roles from these two repos are:
-        // Mesheke: Evaluate, Send Request, Confirm Receipt, Chase (→ "Chase Benefits")
+        // Masheke: Evaluate, Send Request, Confirm Receipt, Chase (→ "Chase Benefits")
         // Samantha: Submit Auth, Auth Outstanding
         // That's only 6. The Benefits tab from Samantha is NOT one of the 6 standalone roles.
         // But we built ChasebenefitsPage from Samantha's Benefits tab — that's wrong per Josh's correction.
@@ -129,9 +129,9 @@ export function useRoleCounts() {
         next.authOutstanding = Array.isArray(authOutstanding) ? authOutstanding.length : 0;
       }
 
-      // Mesheke board — single group, filter by Stage Advancer
+      // Masheke board — single group, filter by Stage Advancer
       if (meshHasToken()) {
-        const items = await fetchMeshekeGroup(MESH_GROUPS.medicalNecessity).catch(() => []);
+        const items = await fetchMashekeGroup(MESH_GROUPS.medicalNecessity).catch(() => []);
         const safeItems = Array.isArray(items) ? items : [];
 
         // Initialize masheke role counts

@@ -26,7 +26,7 @@ export const USERS = [
   "Corey",
   "Brandon",
   "Josh",
-  "Mesheke",
+  "Masheke",
   "Samantha",
   "Janelle",
 ] as const;

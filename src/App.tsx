@@ -4,7 +4,7 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { lazy, Suspense } from "react";
 import Index from "./pages/Index";
 
-// Mesheke board roles (4)
+// Masheke board roles (4)
 const EvaluatePage = lazy(() => import("./pages/EvaluatePage"));
 const SendRequestPage = lazy(() => import("./pages/SendRequestPage"));
 const ConfirmReceiptPage = lazy(() => import("./pages/ConfirmReceiptPage"));
