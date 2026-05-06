@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import type { Patient } from "@/lib/mesheke/workflow";
+import { NotesPanel } from "@/components/mesheke/NotesPanel";
 import { etNow } from "@/lib/mesheke/etDate";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -172,14 +173,10 @@ export function ChaseClinicalsPanel({ patient, onUpdate }: Props) {
           isParachute={isParachute}
         />
       )}
-      <NotesCard
-        value={patient.mnEvalNotes ?? ""}
-        onChange={(v) => onUpdate({ mnEvalNotes: v })}
-        onBlur={() => {
-          if (patient.mnEvalNotes !== undefined && hasToken()) {
-            void writeLongText(patient.id, COL.mnEvalNotes, patient.mnEvalNotes ?? "");
-          }
-        }}
+      <NotesPanel
+        notes={patient.mnEvalNotes ?? ""}
+        onNotesChange={(v) => onUpdate({ mnEvalNotes: v })}
+        onSaveToMonday={(v) => writeLongText(patient.id, COL.mnEvalNotes, v)}
       />
       {!isEscalated && (
         <SaveBar
@@ -559,11 +556,6 @@ function EscalatedCard() {
   );
 }
 
-function NotesCard({
-  value,
-  onChange,
-  onBlur,
-}: {
   value: string;
   onChange: (v: string) => void;
   onBlur: () => void;
