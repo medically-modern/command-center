@@ -265,6 +265,7 @@ export function EvaluatePanel({ patient, resetVersion = 0, onUpdate }: Props) {
   // Generate Script triggers and template deletes are immediate elsewhere.
   const [sending, setSending] = useState(false);
   const [escalated, setEscalated] = useState(false);
+  const escalatedRef = useRef(false);
   const handleSendToMonday = useCallback(async () => {
     if (!hasToken()) {
       toast.error("Monday token not configured");
@@ -431,7 +432,7 @@ export function EvaluatePanel({ patient, resetVersion = 0, onUpdate }: Props) {
       });
     }
     // Escalation — only written when the toggle is active
-    if (escalated) {
+    if (escalatedRef.current) {
       tasks.push({
         label: "Escalation → Required",
         run: () => writeStatusIndex(patient.id, COL.escalation, ESCALATION_INDEX.required),
@@ -449,13 +450,13 @@ export function EvaluatePanel({ patient, resetVersion = 0, onUpdate }: Props) {
       toast.success(`Sent ${tasks.length} fields to Monday`);
       // Clear pending file blobs after successful upload
       pendingFilesRef.current = { clinicalFiles: [], finalClinicalFiles: [] };
-      setEscalated(false);
+      setEscalated(false); escalatedRef.current = false;
     } else {
       toast.error(`${failures.length} write(s) failed`, {
         description: failures.slice(0, 3).join("\n"),
       });
     }
-  }, [patient, state, preview, showCgm, showIp, escalated]);
+  }, [patient, state, preview, showCgm, showIp]);
 
   return (
     <div className="space-y-4">
@@ -598,7 +599,7 @@ export function EvaluatePanel({ patient, resetVersion = 0, onUpdate }: Props) {
         showIp={showIp}
         patient={patient}
         escalated={escalated}
-        onToggleEscalate={() => setEscalated((v) => !v)}
+        onToggleEscalate={() => setEscalated((v) => { const nv = !v; escalatedRef.current = nv; return nv; })}
       />
     </div>
   );
