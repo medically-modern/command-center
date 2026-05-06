@@ -131,6 +131,7 @@ export function useRoleCounts() {
 
       // Mesheke board — single group, filter by Stage Advancer
       if (meshHasToken()) {
+        const items = await fetchMeshekeGroup(MESH_GROUPS.medicalNecessity).catch(() => []);
         const safeItems = Array.isArray(items) ? items : [];
 
         // Initialize mesheke role counts
