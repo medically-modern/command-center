@@ -5,6 +5,7 @@ import {
   useRef,
 } from "react";
 import type { Patient } from "@/lib/mesheke/workflow";
+import { NotesPanel } from "@/components/mesheke/NotesPanel";
 import { etNow } from "@/lib/mesheke/etDate";
 import { Button } from "@/components/ui/button";
 import { useMondayFiles } from "@/hooks/mesheke/useMondayFiles";
@@ -16,6 +17,7 @@ import {
   hasToken,
   uploadFileToColumn,
   writeDate,
+  writeLongText,
   writeDateTime,
   writeStatusIndex,
   writeStatusLabel,
@@ -387,6 +389,12 @@ export function SendRequestPanel({ patient, resetVersion = 0 }: Props) {
           )}
         </>
       )}
+
+      <NotesPanel
+        notes={patient.mnEvalNotes ?? ""}
+        onNotesChange={(v) => onUpdate({ mnEvalNotes: v })}
+        onSaveToMonday={(v) => writeLongText(patient.id, COL.mnEvalNotes, v)}
+      />
 
       <SendActionCard
         patient={patient}
