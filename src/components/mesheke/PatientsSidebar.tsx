@@ -149,7 +149,7 @@ export function PatientsSidebar({ patients, selectedId, onSelect, loading, error
                 size="icon"
                 className={cn("h-7 w-7", todayOnly && "bg-emerald-600 hover:bg-emerald-700 text-white")}
                 onClick={() => setTodayOnly((v) => !v)}
-                title={todayOnly ? "Showing todays actions — click to show all" : "Filter to todays action dates"}
+                title={todayOnly ? "Showing today's actions — click to show all" : "Filter to today's action dates"}
               >
                 <CalendarCheck className="h-4 w-4" />
               </Button>
@@ -176,7 +176,7 @@ export function PatientsSidebar({ patients, selectedId, onSelect, loading, error
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Search patients…"
-              className="w-full pl-8 pr-8 py-1.5 rounded-md border border-border bg-background text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+              className="w-full pl-8 pr-8 py-1.5 rounded-md border border-border bg-white text-gray-900 text-sm placeholder:text-gray-400 focus:outline-none focus:ring-1 focus:ring-ring"
             />
             {searchQuery && (
               <button
