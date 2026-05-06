@@ -1154,6 +1154,25 @@ function FileUploadCard({
   onRemove,
 }: FileUploadCardProps) {
   const [isDragOver, setIsDragOver] = useState(false);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [downloading, setDownloading] = useState(false);
+
+  const toggleSelect = (assetId: string) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(assetId)) next.delete(assetId);
+      else next.add(assetId);
+      return next;
+    });
+  };
+
+  const selectAll = () => {
+    if (selected.size === mondayFiles.length) {
+      setSelected(new Set());
+    } else {
+      setSelected(new Set(mondayFiles.map((f) => f.assetId)));
+    }
+  };
 
   const handleFiles = (fileList: FileList | null) => {
     if (!fileList) return;
@@ -1172,12 +1191,44 @@ function FileUploadCard({
     handleFiles(e.dataTransfer.files);
   };
 
-  const downloadAll = () => {
-    for (const f of mondayFiles) {
-      const url = f.public_url || f.url;
-      if (url) window.open(url, "_blank");
+  const downloadFile = async (f: MondayFileEntry) => {
+    const url = f.public_url || f.url;
+    if (!url) return;
+    try {
+      const resp = await fetch(url, { mode: "cors" });
+      const blob = await resp.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = blobUrl;
+      a.download = f.name || "file";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(blobUrl);
+    } catch {
+      // fallback: open in new tab
+      window.open(url, "_blank");
     }
   };
+
+  const downloadSelected = async () => {
+    const toDownload = selected.size > 0
+      ? mondayFiles.filter((f) => selected.has(f.assetId))
+      : mondayFiles;
+    if (toDownload.length === 0) return;
+    setDownloading(true);
+    for (const f of toDownload) {
+      await downloadFile(f);
+      // small delay so browser doesn't choke on rapid downloads
+      await new Promise((r) => setTimeout(r, 400));
+    }
+    setDownloading(false);
+  };
+
+  const downloadCount = selected.size > 0 ? selected.size : mondayFiles.length;
+  const downloadLabel = selected.size > 0
+    ? `Download selected (${selected.size})`
+    : `Download all (${mondayFiles.length})`;
 
   return (
     <div className="rounded-lg border bg-muted/20 p-3 h-full flex flex-col gap-2 min-h-[200px]">
@@ -1187,45 +1238,75 @@ function FileUploadCard({
         <Button
           variant="outline"
           size="sm"
-          onClick={downloadAll}
-          disabled={mondayFiles.length === 0 || mondayLoading}
+          onClick={downloadSelected}
+          disabled={mondayFiles.length === 0 || mondayLoading || downloading}
           className="h-7 px-2 text-[11px] gap-1"
           title={
             mondayFiles.length === 0
               ? "No Monday files to download"
-              : `Download all ${mondayFiles.length} file(s) from Monday`
+              : downloadLabel
           }
         >
-          {mondayLoading ? (
+          {mondayLoading || downloading ? (
             <Loader2 className="h-3 w-3 animate-spin" />
           ) : (
             <Download className="h-3 w-3" />
           )}
-          Download all
-          {mondayFiles.length > 0 && ` (${mondayFiles.length})`}
+          {downloading ? "Downloading…" : downloadLabel}
         </Button>
       </div>
 
-      {/* Monday-attached files (always rendered for consistent layout) */}
+      {/* Monday-attached files with checkboxes */}
       {mondayFiles.length > 0 ? (
-        <ul className="space-y-1">
-          {mondayFiles.map((f) => (
-            <li
-              key={f.assetId}
-              className="flex items-center gap-2 text-xs bg-emerald-50 border border-emerald-200 rounded px-2 py-1 text-emerald-900"
+        <div className="space-y-1">
+          {mondayFiles.length > 1 && (
+            <button
+              onClick={selectAll}
+              className="text-[10px] text-muted-foreground hover:text-foreground underline ml-1 mb-0.5"
             >
-              <FileText className="h-3 w-3 shrink-0" />
-              <span className="truncate font-medium">{f.name}</span>
-            </li>
-          ))}
-        </ul>
+              {selected.size === mondayFiles.length ? "Deselect all" : "Select all"}
+            </button>
+          )}
+          <ul className="space-y-1">
+            {mondayFiles.map((f) => {
+              const isSelected = selected.has(f.assetId);
+              return (
+                <li
+                  key={f.assetId}
+                  onClick={() => toggleSelect(f.assetId)}
+                  className={`flex items-center gap-2 text-xs rounded px-2 py-1.5 cursor-pointer transition-colors ${
+                    isSelected
+                      ? "bg-emerald-100 border-2 border-emerald-400 text-emerald-900"
+                      : "bg-emerald-50 border border-emerald-200 text-emerald-900 hover:bg-emerald-100"
+                  }`}
+                >
+                  <div
+                    className={`h-4 w-4 rounded border flex items-center justify-center shrink-0 transition-colors ${
+                      isSelected
+                        ? "bg-emerald-600 border-emerald-600"
+                        : "border-emerald-300 bg-white"
+                    }`}
+                  >
+                    {isSelected && (
+                      <svg className="h-3 w-3 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                        <polyline points="20 6 9 17 4 12" />
+                      </svg>
+                    )}
+                  </div>
+                  <FileText className="h-3 w-3 shrink-0" />
+                  <span className="truncate font-medium">{f.name}</span>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
       ) : (
         <p className="text-[11px] text-muted-foreground italic px-1 py-1">
           No Monday files attached
         </p>
       )}
 
-      {/* Upload drop zone — fills remaining vertical space so both boxes mirror */}
+      {/* Upload drop zone */}
       <label
         onDragOver={(e) => {
           e.preventDefault();
