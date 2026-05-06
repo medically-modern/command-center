@@ -65,6 +65,7 @@ import {
   writeStatusIndex,
   writeStatusLabel,
   buildDoctorWriteTasks,
+  uploadFileToColumn,
   type MondayFileEntry,
 } from "@/lib/mesheke/mondayApi";
 import { GEN_SCRIPT_STATUS } from "@/lib/mesheke/mondayMapping";
@@ -113,11 +114,18 @@ export function EvaluatePanel({ patient, resetVersion = 0, onUpdate }: Props) {
     return Object.keys(stored).length > 0 ? stored : seedEvalStateFromPatient(patient);
   });
 
+  // Map of pending File objects keyed by column ("clinicalFiles" | "finalClinicalFiles").
+  // FileUploadCard stores only metadata in EvalState; the actual blobs live here
+  // so handleSendToMonday can upload them to Monday.
+  const pendingFilesRef = useRef<Record<string, File[]>>({ clinicalFiles: [], finalClinicalFiles: [] });
+
   // Reload state when patient changes OR when parent triggers a Reset.
   useEffect(() => {
     const stored = loadEvalState(patient.id);
     if (Object.keys(stored).length > 0) setState(stored);
     else setState(seedEvalStateFromPatient(patient));
+    // Clear pending file blobs on reset / patient switch
+    pendingFilesRef.current = { clinicalFiles: [], finalClinicalFiles: [] };
     // Re-run when patient.id changes or resetVersion bumps. We intentionally
     // don't depend on `patient` (the whole object) since useMondayPatients
     // creates a new reference on every poll which would re-seed unnecessarily.
@@ -398,6 +406,28 @@ export function EvaluatePanel({ patient, resetVersion = 0, onUpdate }: Props) {
 
     // Doctor fields (from pencil-edit overlay)
     tasks.push(...buildDoctorWriteTasks(patient));
+
+    // Upload pending clinical files & final clinical files to Monday
+    const pendingClinical = pendingFilesRef.current.clinicalFiles ?? [];
+    for (const file of pendingClinical) {
+      tasks.push({
+        label: `Upload Clinical: ${file.name}`,
+        run: async () => {
+          const bytes = new Uint8Array(await file.arrayBuffer());
+          await uploadFileToColumn(patient.id, COL.clinicalFiles, bytes, file.name, file.type || "application/octet-stream");
+        },
+      });
+    }
+    const pendingFinal = pendingFilesRef.current.finalClinicalFiles ?? [];
+    for (const file of pendingFinal) {
+      tasks.push({
+        label: `Upload Final Clinical: ${file.name}`,
+        run: async () => {
+          const bytes = new Uint8Array(await file.arrayBuffer());
+          await uploadFileToColumn(patient.id, COL.finalClinicals, bytes, file.name, file.type || "application/octet-stream");
+        },
+      });
+    }
     const results = await Promise.allSettled(tasks.map((t) => t.run()));
     const failures: string[] = [];
     results.forEach((r, i) => {
@@ -408,6 +438,8 @@ export function EvaluatePanel({ patient, resetVersion = 0, onUpdate }: Props) {
     setSending(false);
     if (failures.length === 0) {
       toast.success(`Sent ${tasks.length} fields to Monday`);
+      // Clear pending file blobs after successful upload
+      pendingFilesRef.current = { clinicalFiles: [], finalClinicalFiles: [] };
     } else {
       toast.error(`${failures.length} write(s) failed`, {
         description: failures.slice(0, 3).join("\n"),
@@ -510,9 +542,11 @@ export function EvaluatePanel({ patient, resetVersion = 0, onUpdate }: Props) {
             mondayFiles={mondayFiles.clinicalFiles}
             mondayLoading={mondayFiles.loading}
             onAdd={(files) => update("clinicalFiles", [...(state.clinicalFiles ?? []), ...files])}
+            onAddRaw={(rawFiles) => { pendingFilesRef.current.clinicalFiles = [...pendingFilesRef.current.clinicalFiles, ...rawFiles]; }}
             onRemove={(idx) => {
               const next = [...(state.clinicalFiles ?? [])];
               next.splice(idx, 1);
+              pendingFilesRef.current.clinicalFiles.splice(idx, 1);
               update("clinicalFiles", next);
             }}
           />
@@ -524,9 +558,12 @@ export function EvaluatePanel({ patient, resetVersion = 0, onUpdate }: Props) {
             onAdd={(files) =>
               update("finalClinicalFiles", [...(state.finalClinicalFiles ?? []), ...files])
             }
+            onAddRaw={(rawFiles) => { pendingFilesRef.current.finalClinicalFiles = [...pendingFilesRef.current.finalClinicalFiles, ...rawFiles]; }
+            }
             onRemove={(idx) => {
               const next = [...(state.finalClinicalFiles ?? [])];
               next.splice(idx, 1);
+              pendingFilesRef.current.finalClinicalFiles.splice(idx, 1);
               update("finalClinicalFiles", next);
             }}
           />
@@ -1103,6 +1140,7 @@ interface FileUploadCardProps {
   mondayFiles: MondayFileEntry[];
   mondayLoading: boolean;
   onAdd: (files: LocalFile[]) => void;
+  onAddRaw?: (files: File[]) => void;
   onRemove: (idx: number) => void;
 }
 
@@ -1124,6 +1162,7 @@ function FileUploadCard({
       addedAt: new Date().toISOString(),
     }));
     onAdd(next);
+    if (onAddRaw) onAddRaw(Array.from(fileList));
   };
 
   const onDrop = (e: DragEvent<HTMLDivElement>) => {
