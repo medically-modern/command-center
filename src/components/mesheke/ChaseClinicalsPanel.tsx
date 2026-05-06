@@ -173,11 +173,11 @@ export function ChaseClinicalsPanel({ patient, onUpdate }: Props) {
         />
       )}
       <NotesCard
-        value={patient.confirmChaseNotes ?? ""}
-        onChange={(v) => onUpdate({ confirmChaseNotes: v })}
+        value={patient.mnEvalNotes ?? ""}
+        onChange={(v) => onUpdate({ mnEvalNotes: v })}
         onBlur={() => {
-          if (patient.confirmChaseNotes !== undefined && hasToken()) {
-            void writeLongText(patient.id, COL.confirmChaseNotes, patient.confirmChaseNotes ?? "");
+          if (patient.mnEvalNotes !== undefined && hasToken()) {
+            void writeLongText(patient.id, COL.mnEvalNotes, patient.mnEvalNotes ?? "");
           }
         }}
       />

@@ -116,11 +116,11 @@ export async function sendPatientToMonday(
     pushStatus(tasks, p.id, "Generate CGM Script", COL.generateCgmScript, p.generateCgmScript, GEN_SCRIPT_OPTS);
     pushStatus(tasks, p.id, "Generate IP Script", COL.generateIpScript, p.generateIpScript, GEN_SCRIPT_OPTS);
     pushStatus(tasks, p.id, "Clinicals Method", COL.clinicalsMethod, p.clinicalsMethod, CLINICALS_METHOD_OPTS);
-    if (p.confirmChaseNotes) {
+    if (p.mnEvalNotes) {
       tasks.push({
-        label: "Confirm/Chase Notes",
-        columnId: COL.confirmChaseNotes,
-        fn: () => writeLongText(p.id, COL.confirmChaseNotes, p.confirmChaseNotes!),
+        label: "MN Evaluation Notes",
+        columnId: COL.mnEvalNotes,
+        fn: () => writeLongText(p.id, COL.mnEvalNotes, p.mnEvalNotes!),
       });
     }
     // Advancer 2B → Complete + Sub-Stage → 2C
@@ -154,11 +154,11 @@ export async function sendPatientToMonday(
         fn: () => writeText(p.id, COL.receiptConfirmedName, p.receiptConfirmedName!),
       });
     }
-    if (p.confirmChaseNotes) {
+    if (p.mnEvalNotes) {
       tasks.push({
-        label: "Confirm/Chase Notes",
-        columnId: COL.confirmChaseNotes,
-        fn: () => writeLongText(p.id, COL.confirmChaseNotes, p.confirmChaseNotes!),
+        label: "MN Evaluation Notes",
+        columnId: COL.mnEvalNotes,
+        fn: () => writeLongText(p.id, COL.mnEvalNotes, p.mnEvalNotes!),
       });
     }
     // Advancer 2C → Complete + Sub-Stage → 2D
@@ -192,11 +192,11 @@ export async function sendPatientToMonday(
         fn: () => writeText(p.id, COL.chaseRecipientName, p.chaseRecipientName!),
       });
     }
-    if (p.confirmChaseNotes) {
+    if (p.mnEvalNotes) {
       tasks.push({
-        label: "Confirm/Chase Notes",
-        columnId: COL.confirmChaseNotes,
-        fn: () => writeLongText(p.id, COL.confirmChaseNotes, p.confirmChaseNotes!),
+        label: "MN Evaluation Notes",
+        columnId: COL.mnEvalNotes,
+        fn: () => writeLongText(p.id, COL.mnEvalNotes, p.mnEvalNotes!),
       });
     }
     // Advancer 2D → Complete
