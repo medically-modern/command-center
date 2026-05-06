@@ -19,6 +19,12 @@ import { cn } from "@/lib/utils";
 import { writeStatusIndex, COL } from "@/lib/mesheke/mondayApi";
 import { SUB_STAGE_INDEX } from "@/lib/mesheke/mondayMapping";
 
+/** Convert YYYY-MM-DD → MM/DD/YYYY */
+function fmtDate(iso: string): string {
+  const [y, m, d] = iso.split("-");
+  return `${m}/${d}/${y}`;
+}
+
 const TAB_LABELS: Record<TabKey, string> = {
   evaluate: "Evaluate MN",
   sendRequest: "Send Request",
@@ -320,7 +326,7 @@ export function PatientsSidebar({ patients, selectedId, onSelect, loading, error
                       <div className="min-w-0 text-left">
                         <p className="text-sm font-medium truncate">{p.name}</p>
                         <p className="text-[11px] text-red-400 truncate">
-                          Until {p.blockedDate || "—"}
+                          Until {p.blockedDate ? fmtDate(p.blockedDate) : "—"}
                         </p>
                       </div>
                     </SidebarMenuButton>
@@ -333,5 +339,6 @@ export function PatientsSidebar({ patients, selectedId, onSelect, loading, error
       </SidebarContent>
 
     </Sidebar>
-  );
+  
+ "�
 }

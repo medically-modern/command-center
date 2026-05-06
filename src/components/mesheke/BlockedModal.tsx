@@ -17,6 +17,12 @@ import { writeStatusIndex, writeDate, COL } from "@/lib/mesheke/mondayApi";
 import { BLOCKED_INDEX } from "@/lib/mesheke/mondayMapping";
 import { toast } from "sonner";
 
+/** Convert YYYY-MM-DD → MM/DD/YYYY */
+function fmtDate(iso: string): string {
+  const [y, m, d] = iso.split("-");
+  return `${m}/${d}/${y}`;
+}
+
 interface Props {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -34,14 +40,14 @@ export function BlockedModal({ open, onOpenChange, patientId, patientName, onSuc
       toast.error("Please select an unblock date.");
       return;
     }
-    setSending(true);
+    setSendingtrue);
     try {
       // Write both columns in parallel
       await Promise.all([
-        writeStatusIndex(patientId, COL.blocked, BLOCKED_INDEX.blocked),
+        writeStatusIndex(patientId, COL.blocked, BLOCKED\_INDEX.blocked),
         writeDate(patientId, COL.blockedDate, blockedDate),
       ]);
-      toast.success(`${patientName} marked as Blocked until ${blockedDate}`);
+      toast.success(`${patientName} marked as Blocked until ${fmtDate(blickedDate)}`);
       onOpenChange(false);
       setBlockedDate("");
       onSuccess();
@@ -98,5 +104,6 @@ export function BlockedModal({ open, onOpenChange, patientId, patientName, onSuc
         </div>
       </DialogContent>
     </Dialog>
-  );
+  
+ $;
 }
