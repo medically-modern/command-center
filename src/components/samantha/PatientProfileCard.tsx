@@ -16,6 +16,7 @@ import {
   Hash,
   Building2,
   Send,
+  MapPin,
   Pencil,
   X,
 } from "lucide-react";
@@ -162,6 +163,21 @@ export function PatientProfileCard({ patient, onUpdate }: Props) {
           icon={<Stethoscope className="h-4 w-4" />}
           label="Serving"
           value={patient.serving ?? ""}
+        />
+      </div>
+
+      {/* Row 1b — Patient Phone & Address */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        <Field
+          icon={<Phone className="h-4 w-4" />}
+          label="Patient Phone"
+          value={patient.patientPhone ?? ""}
+        />
+        <Field
+          icon={<MapPin className="h-4 w-4" />}
+          label="Patient Address"
+          value={patient.patientAddress ?? ""}
+          className="sm:col-span-2"
         />
       </div>
 

@@ -28,6 +28,8 @@ export const COL = {
   clinicalsMethod: "color_mm1xw7y5",
   clinicName: "dropdown_mm1xbvas",
   dob: "text_mm1xvxst",
+  patientPhone: "phone_mm1x44yk",
+  patientAddress: "location_mm1xhw17",
   memberId1: "text_mm1x2qk2",
   memberId2: "text_mm1xaccx",
 
@@ -128,6 +130,8 @@ export const READ_COLUMN_IDS = [
   COL.diagnosis,
   COL.secondaryInsurance,
   COL.dob,
+  COL.patientPhone,
+  COL.patientAddress,
   COL.memberId1,
   COL.memberId2,
   COL.callReferenceNotes,

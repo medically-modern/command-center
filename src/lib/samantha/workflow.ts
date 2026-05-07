@@ -411,6 +411,8 @@ export interface Patient {
   secondaryInsurance?: string;
   memberId1?: string;
   memberId2?: string;
+  patientPhone?: string;
+  patientAddress?: string;
   escalated?: boolean;
   /** Trigger DVS — set when Medicaid + supplies serving. Written to
    *  Monday's "Trigger DVS -TEST" column on Send to Monday. */
