@@ -29,6 +29,11 @@ export const ESCALATION_INDEX = {
   done: 1,
 } as const;
 
+// Trigger DVS status indices
+export const TRIGGER_DVS_INDEX = {
+  triggerDvs: 1,
+} as const;
+
 // Stage Advancer indices
 export const STAGE_INDEX = {
   authDenied: 0,

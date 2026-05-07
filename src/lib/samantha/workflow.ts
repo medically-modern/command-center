@@ -412,6 +412,9 @@ export interface Patient {
   memberId1?: string;
   memberId2?: string;
   escalated?: boolean;
+  /** Trigger DVS — set when Medicaid + supplies serving. Written to
+   *  Monday's "Trigger DVS -TEST" column on Send to Monday. */
+  triggerDvs?: boolean;
   // Doctor info — surfaced in the collapsible Doctor Info row of the
   // patient profile across every tab.
   doctorPhone?: string;

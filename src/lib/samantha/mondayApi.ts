@@ -37,6 +37,9 @@ export const COL = {
   sos: "color_mm2vemyy",
   auth: "color_mm2vg3ew",
 
+  // Trigger DVS (Medicaid supplies automation)
+  triggerDvs: "color_mm26pk1a",
+
   // Escalation + stage flow
   escalation: "color_mm2vsh2f",
   stageAdvancer: "color_mm1ws96t",

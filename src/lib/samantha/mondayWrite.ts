@@ -13,6 +13,7 @@ import {
   ESCALATION_INDEX,
   NOT_CLEAR_PRODUCT_ID,
   PRODUCT_CODE_TO_PRODUCT_ID,
+  TRIGGER_DVS_INDEX,
   SKIP_SOS_PRODUCT_ID,
   STAGE_INDEX,
   UNIVERSAL_INDEX,
@@ -402,6 +403,16 @@ export async function sendPatientToMonday(p: Patient, context: "benefits" | "sub
       ),
   });
   console.log(`[mondayWrite] Stage = ${stageWriteIndex ?? "(no change)"}, Escalation = ${escalationDecision}`);
+
+  // ----- Trigger DVS (Medicaid + supplies) -----
+  // Only write when the agent toggled the button on the Benefits page.
+  if (p.triggerDvs) {
+    tasks.push({
+      label: "Trigger DVS",
+      columnId: COL.triggerDvs,
+      fn: () => writeStatusIndex(p.id, COL.triggerDvs, TRIGGER_DVS_INDEX.triggerDvs),
+    });
+  }
 
   // ----- Per-product auth submission fields (Authorizations tab) -----
   for (const { cid, state } of entries) {
