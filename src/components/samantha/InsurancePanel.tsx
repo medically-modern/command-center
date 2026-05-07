@@ -217,19 +217,19 @@ export function InsurancePanel({
         )}
       </StepSection>
 
-      {/* Notes — copy/paste into Call Reference Notes column */}
+      {/* Reference Notes */}
       <div className="rounded-lg border bg-muted/20 p-4 space-y-2">
         <div>
-          <h3 className="text-sm font-semibold">Notes — copy/paste into Call Reference Notes column</h3>
+          <h3 className="text-sm font-semibold">Reference Notes</h3>
           <p className="text-[11px] text-muted-foreground">
-            Working notes for this call. Copy into the Monday "Call Reference Notes" column when done.
+            Shared notes across Benefits, Submit Auth, and Auth Outstanding.
           </p>
         </div>
         <Textarea
           value={patient.notes}
           onChange={(e) => onNotesChange(e.target.value)}
           rows={5}
-          placeholder="Call Reference Notes, including SoS last bill dates and any other important information..."
+          placeholder="Reference notes..."
           className="bg-background"
         />
       </div>

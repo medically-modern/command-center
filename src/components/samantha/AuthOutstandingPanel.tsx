@@ -122,7 +122,7 @@ export function AuthOutstandingPanel({ patient, onCodeChange, onNotesChange }: P
           outstanding-auth step lands in the same place. */}
       <div className="rounded-lg border bg-muted/20 p-4 space-y-2">
         <div>
-          <h3 className="text-sm font-semibold">Notes — Call Reference Notes</h3>
+          <h3 className="text-sm font-semibold">Reference Notes</h3>
           <p className="text-[11px] text-muted-foreground">
             Carries over from Benefits + Submit Auth. Add anything from approval / denial follow-up.
           </p>

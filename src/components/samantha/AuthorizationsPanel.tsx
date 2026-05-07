@@ -136,7 +136,7 @@ export function AuthorizationsPanel({ patient, onCodeChange, onNotesChange }: Pr
           Samantha read what was logged from the prior stage and append. */}
       <div className="rounded-lg border bg-muted/20 p-4 space-y-2">
         <div>
-          <h3 className="text-sm font-semibold">Notes — Call Reference Notes</h3>
+          <h3 className="text-sm font-semibold">Reference Notes</h3>
           <p className="text-[11px] text-muted-foreground">
             Carries over from the Benefits tab. Add anything new from the auth submission step.
           </p>
