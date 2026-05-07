@@ -43,6 +43,10 @@ export const COL = {
   // Trigger DVS (Medicaid supplies automation)
   triggerDvs: "color_mm26pk1a",
 
+  // Follow Up
+  followUp: "color_mm34jz1x",
+  followUpDate: "date_mm34m2dz",
+
   // Escalation + stage flow
   escalation: "color_mm2vsh2f",
   stageAdvancer: "color_mm1ws96t",
@@ -159,6 +163,9 @@ export const READ_COLUMN_IDS = [
   COL.orderDate.insulin_pump,
   COL.orderDate.infusion_set,
   COL.orderDate.cartridge,
+  // Follow Up
+  COL.followUp,
+  COL.followUpDate,
 ];
 
 /** Extended read columns for auth groups — includes auth results + universal statuses */
@@ -526,6 +533,14 @@ export async function writeEmail(itemId: string, columnId: string, email: string
  * Write a simple column value by its display label (works for status
  * columns where you know the label text but not the index).
  */
+/** Clear a status (or date) column back to its empty/default state. */
+export async function clearStatusColumn(itemId: string, columnId: string): Promise<void> {
+  const value = JSON.stringify("");
+  await gql(
+    `mutation { change_simple_column_value(item_id: ${itemId}, board_id: ${BOARD_ID}, column_id: "${columnId}", value: ${value}) { id } }`,
+  );
+}
+
 export async function writeSimpleValue(itemId: string, columnId: string, label: string): Promise<void> {
   const query = `
     mutation ($boardId: ID!, $itemId: ID!, $columnId: String!, $value: String!) {

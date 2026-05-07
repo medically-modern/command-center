@@ -34,6 +34,11 @@ export const TRIGGER_DVS_INDEX = {
   triggerDvs: 1,
 } as const;
 
+// Follow Up status indices
+export const FOLLOW_UP_INDEX = {
+  followUp: 1,
+} as const;
+
 // Stage Advancer indices
 export const STAGE_INDEX = {
   authDenied: 0,
@@ -303,6 +308,10 @@ export function mondayItemToPatient(item: MondayItem): Patient {
     try { daysSinceStageIndex = JSON.parse(daysSinceRaw).index; } catch { /* ignore */ }
   }
 
+  // Follow Up — mirrors Blocked on the Evaluate board
+  const followUpText = cv(COL.followUp)?.text?.trim() ?? "";
+  const followUpDate = cv(COL.followUpDate)?.text ?? "";
+
   return {
     id: item.id,
     name: item.name,
@@ -339,6 +348,8 @@ export function mondayItemToPatient(item: MondayItem): Patient {
     escalated,
     daysSinceStage: daysSinceStage || undefined,
     daysSinceStageIndex,
+    followUp: followUpText,
+    followUpDate,
     insurance: {
       universal: {
         "in-network": inNetAndActive,

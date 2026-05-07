@@ -16,16 +16,17 @@ import { SendToMondayButton } from "@/components/samantha/SendToMondayButton";
 import { Button } from "@/components/ui/button";
 import { EscalateButton } from "@/components/samantha/EscalateButton";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
-import { RotateCcw, Stethoscope, ArrowLeft } from "lucide-react";
+import { RotateCcw, Stethoscope, ArrowLeft, Clock } from "lucide-react";
 import { toast } from "sonner";
 import { sendPatientToMonday } from "@/lib/samantha/mondayWrite";
-import { writeLongText, COL } from "@/lib/samantha/mondayApi";
+import { FollowUpModal } from "@/components/samantha/FollowUpModal";
 import { useNavigate } from "react-router-dom";
 
 const SubmitAuthPage = () => {
   const navigate = useNavigate();
   const { patients, loading, error, refetch, update, clearOverlay } = useMondayPatients("submitAuth");
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [followUpOpen, setFollowUpOpen] = useState(false);
 
   useEffect(() => {
     if (!selectedId && patients.length > 0) setSelectedId(patients[0].id);
@@ -85,6 +86,9 @@ const SubmitAuthPage = () => {
                 </div>
               </div>
               <div className="flex items-center gap-2">
+                <Button onClick={() => setFollowUpOpen(true)} disabled={!selected} className="gap-2 bg-white/90 text-blue-700 hover:bg-white shadow-elevate">
+                  <Clock className="h-4 w-4" /> Follow Up
+                </Button>
                 <Button onClick={resetForNewPatient} disabled={!selected} className="gap-2 bg-white text-navy hover:bg-white/90 shadow-elevate">
                   <RotateCcw className="h-4 w-4" /> Reset
                 </Button>
@@ -102,7 +106,7 @@ const SubmitAuthPage = () => {
               {selected && (
                 <>
                   <PatientProfileCard patient={selected} onUpdate={(p) => update(selected.id, p)} />
-                  <AuthorizationsPanel patient={selected} onCodeChange={updateCode} onNotesChange={(v) => update(selected.id, { notes: v })} onSaveNotesToMonday={(v) => writeLongText(selected.id, COL.callReferenceNotes, v)} />
+                  <AuthorizationsPanel patient={selected} onCodeChange={updateCode} onNotesChange={(v) => update(selected.id, { notes: v })} />
                   <EscalateButton
                     escalated={!!selected.escalated}
                     onToggle={() => update(selected.id, { escalated: !selected.escalated })}
@@ -114,6 +118,16 @@ const SubmitAuthPage = () => {
           </main>
         </div>
       </div>
+
+      {selected && (
+        <FollowUpModal
+          open={followUpOpen}
+          onOpenChange={setFollowUpOpen}
+          patientId={selected.id}
+          patientName={selected.name}
+          onSuccess={refetch}
+        />
+      )}
     </SidebarProvider>
   );
 };

@@ -12,10 +12,12 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
-import { Loader2, RefreshCw, User, AlertCircle, ArrowDownAZ } from "lucide-react";
+import { Clock, Loader2, RefreshCw, Undo2, User, AlertCircle, ArrowDownAZ } from "lucide-react";
 import type { Patient } from "@/lib/samantha/workflow";
 import type { SidebarGroup as SidebarGroupType } from "@/hooks/samantha/useMondayPatients";
 import { cn } from "@/lib/utils";
+import { toast } from "sonner";
+import { clearStatusColumn, COL } from "@/lib/samantha/mondayApi";
 
 const AUTH_TABS: { key: SidebarGroupType; label: string }[] = [
   { key: "submitAuth", label: "Submit Auth" },
@@ -27,6 +29,47 @@ const GROUP_LABELS: Record<SidebarGroupType, string> = {
   submitAuth: "Submit Auth",
   authOutstanding: "Auth Outstanding",
 };
+
+/** Convert YYYY-MM-DD → MM/DD/YYYY */
+function fmtDate(iso: string): string {
+  const [y, m, d] = iso.split("-");
+  return `${m}/${d}/${y}`;
+}
+
+/** Small button to clear Follow Up status + date on Monday */
+function ClearFollowUpButton({ patientId, patientName, onSuccess }: { patientId: string; patientName: string; onSuccess: () => void }) {
+  const [sending, setSending] = useState(false);
+
+  const handleClear = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setSending(true);
+    try {
+      await Promise.all([
+        clearStatusColumn(patientId, COL.followUp),
+        clearStatusColumn(patientId, COL.followUpDate),
+      ]);
+      toast.success(`${patientName} returned to active`);
+      onSuccess();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      toast.error(`Failed to clear follow up: ${msg}`);
+    } finally {
+      setSending(false);
+    }
+  };
+
+  return (
+    <button
+      onClick={handleClear}
+      disabled={sending}
+      className="shrink-0 flex items-center gap-1 px-2 py-1 rounded text-[10px] font-medium text-blue-700 bg-blue-50 border border-blue-200 hover:bg-blue-100 transition-colors disabled:opacity-50"
+      title={`Remove follow up for ${patientName}`}
+    >
+      {sending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Undo2 className="h-3 w-3" />}
+      Remove
+    </button>
+  );
+}
 
 /** Group patients by their primaryInsurance, sorted alphabetically by insurer name. */
 function groupByInsurance(patients: Patient[]): { label: string; patients: Patient[] }[] {
@@ -61,14 +104,18 @@ export function PatientsSidebar({ patients, selectedId, onSelect, loading, error
 
   const activeLabel = GROUP_LABELS[activeGroup];
 
-  const grouped = useMemo(() => groupByInsurance(patients), [patients]);
+  // Split patients into active vs follow-up
+  const activePatients = patients.filter((p) => p.followUp !== "Follow Up");
+  const followUpPatients = patients.filter((p) => p.followUp === "Follow Up");
+
+  const grouped = useMemo(() => groupByInsurance(activePatients), [activePatients]);
 
   // For Auth Outstanding, sort patients by daysSinceStageIndex descending
   // (longest in system first). Other groups keep Monday order.
   const sortedPatients = useMemo(() => {
-    if (activeGroup !== "authOutstanding") return patients;
-    return [...patients].sort((a, b) => (b.daysSinceStageIndex ?? -1) - (a.daysSinceStageIndex ?? -1));
-  }, [patients, activeGroup]);
+    if (activeGroup !== "authOutstanding") return activePatients;
+    return [...activePatients].sort((a, b) => (b.daysSinceStageIndex ?? -1) - (a.daysSinceStageIndex ?? -1));
+  }, [activePatients, activeGroup]);
 
   const isAuthOutstanding = activeGroup === "authOutstanding";
 
@@ -186,9 +233,46 @@ export function PatientsSidebar({ patients, selectedId, onSelect, loading, error
             <SidebarGroupContent>
               <SidebarMenu>
                 {sortedPatients.map(renderPatient)}
-                {!loading && patients.length === 0 && !error && !collapsed && (
+                {!loading && activePatients.length === 0 && !error && !collapsed && (
                   <p className="px-3 py-4 text-xs text-muted-foreground">No patients in {activeLabel} group.</p>
                 )}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        )}
+
+        {/* ── Follow Up section (all views) ── */}
+        {followUpPatients.length > 0 && !collapsed && (
+          <SidebarGroup>
+            <SidebarGroupLabel className="text-[10px] uppercase tracking-wider text-blue-500 font-semibold flex items-center gap-1.5">
+              <Clock className="h-3 w-3" />
+              Follow Up ({followUpPatients.length})
+            </SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu>
+                {followUpPatients.map((p) => (
+                  <SidebarMenuItem key={p.id}>
+                    <div className="flex items-center gap-1 w-full">
+                      <SidebarMenuButton
+                        isActive={selectedId === p.id}
+                        onClick={() => onSelect(p.id)}
+                        className={cn(
+                          "flex-1 flex items-start gap-2 py-2 h-auto opacity-60",
+                          selectedId === p.id && "bg-sidebar-accent opacity-100",
+                        )}
+                      >
+                        <Clock className="h-4 w-4 mt-0.5 shrink-0 text-blue-400" />
+                        <div className="min-w-0 text-left">
+                          <p className="text-sm font-medium truncate">{p.name}</p>
+                          <p className="text-[11px] text-blue-400 truncate">
+                            Until {p.followUpDate ? fmtDate(p.followUpDate) : "—"}
+                          </p>
+                        </div>
+                      </SidebarMenuButton>
+                      <ClearFollowUpButton patientId={p.id} patientName={p.name} onSuccess={onRefresh} />
+                    </div>
+                  </SidebarMenuItem>
+                ))}
               </SidebarMenu>
             </SidebarGroupContent>
           </SidebarGroup>

@@ -24,7 +24,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { NotesPanel } from "@/components/samantha/NotesPanel";
+import { Textarea } from "@/components/ui/textarea";
 import { AlertTriangle, CalendarDays, CheckCircle2, Clock, ShieldCheck, ShieldAlert, Repeat, Package, XCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useEffect } from "react";
@@ -34,7 +34,6 @@ interface Props {
   onUniversalChange: (id: string, value: UniversalChoice) => void;
   onCodeChange: (codeId: ProductCodeId, patch: Partial<ProductCodeState>) => void;
   onNotesChange: (v: string) => void;
-  onSaveNotesToMonday: (notes: string) => Promise<void>;
 }
 
 // Map resolver ProductId → existing ProductCodeId used for state tracking
@@ -51,7 +50,6 @@ export function InsurancePanel({
   onUniversalChange,
   onCodeChange,
   onNotesChange,
-  onSaveNotesToMonday,
 }: Props) {
   const ins = patient.insurance ?? EMPTY_INSURANCE;
   const universalDone = Object.values(ins.universal).every((v) => v === "confirmed");
@@ -219,11 +217,22 @@ export function InsurancePanel({
         )}
       </StepSection>
 
-      <NotesPanel
-        notes={patient.notes}
-        onNotesChange={onNotesChange}
-        onSaveToMonday={onSaveNotesToMonday}
-      />
+      {/* Notes — copy/paste into Call Reference Notes column */}
+      <div className="rounded-lg border bg-muted/20 p-4 space-y-2">
+        <div>
+          <h3 className="text-sm font-semibold">Notes — copy/paste into Call Reference Notes column</h3>
+          <p className="text-[11px] text-muted-foreground">
+            Working notes for this call. Copy into the Monday "Call Reference Notes" column when done.
+          </p>
+        </div>
+        <Textarea
+          value={patient.notes}
+          onChange={(e) => onNotesChange(e.target.value)}
+          rows={5}
+          placeholder="Call Reference Notes, including SoS last bill dates and any other important information..."
+          className="bg-background"
+        />
+      </div>
 
       {/* Monday output */}
       {dropdownsReady && (

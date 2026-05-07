@@ -19,17 +19,18 @@ import { SendToMondayButton } from "@/components/samantha/SendToMondayButton";
 import { Button } from "@/components/ui/button";
 import { EscalateButton } from "@/components/samantha/EscalateButton";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
-import { RotateCcw, Stethoscope, ArrowLeft, Zap } from "lucide-react";
+import { RotateCcw, Stethoscope, ArrowLeft, Zap, Clock } from "lucide-react";
 import { resolveHcpcs } from "@/lib/samantha/hcpcRules";
 import { toast } from "sonner";
 import { sendPatientToMonday } from "@/lib/samantha/mondayWrite";
-import { writeLongText, COL } from "@/lib/samantha/mondayApi";
+import { FollowUpModal } from "@/components/samantha/FollowUpModal";
 import { useNavigate } from "react-router-dom";
 
 const ChaseBenefitsPage = () => {
   const navigate = useNavigate();
   const { patients, loading, error, refetch, update, clearOverlay } = useMondayPatients("benefits");
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [followUpOpen, setFollowUpOpen] = useState(false);
 
   useEffect(() => {
     if (!selectedId && patients.length > 0) setSelectedId(patients[0].id);
@@ -120,6 +121,9 @@ const ChaseBenefitsPage = () => {
                 </div>
               </div>
               <div className="flex items-center gap-2">
+                <Button onClick={() => setFollowUpOpen(true)} disabled={!selected} className="gap-2 bg-white/90 text-blue-700 hover:bg-white shadow-elevate">
+                  <Clock className="h-4 w-4" /> Follow Up
+                </Button>
                 <Button onClick={resetForNewPatient} disabled={!selected} className="gap-2 bg-white text-navy hover:bg-white/90 shadow-elevate">
                   <RotateCcw className="h-4 w-4" /> Reset
                 </Button>
@@ -146,7 +150,6 @@ const ChaseBenefitsPage = () => {
                     onUniversalChange={onUniversalChange}
                     onCodeChange={updateCode}
                     onNotesChange={(v) => update(selected.id, { notes: v })}
-                    onSaveNotesToMonday={(v) => writeLongText(selected.id, COL.callReferenceNotes, v)}
                   />
 
                   <div className="rounded-xl bg-card border shadow-card p-5">
@@ -191,6 +194,16 @@ const ChaseBenefitsPage = () => {
           </main>
         </div>
       </div>
+
+      {selected && (
+        <FollowUpModal
+          open={followUpOpen}
+          onOpenChange={setFollowUpOpen}
+          patientId={selected.id}
+          patientName={selected.name}
+          onSuccess={refetch}
+        />
+      )}
     </SidebarProvider>
   );
 };

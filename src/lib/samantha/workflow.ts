@@ -418,6 +418,10 @@ export interface Patient {
   /** Trigger DVS — set when Medicaid + supplies serving. Written to
    *  Monday's "Trigger DVS -TEST" column on Send to Monday. */
   triggerDvs?: boolean;
+  /** Follow Up status — read from Monday. "Follow Up" when active. */
+  followUp?: string;
+  /** Follow Up date — YYYY-MM-DD. */
+  followUpDate?: string;
   // Doctor info — surfaced in the collapsible Doctor Info row of the
   // patient profile across every tab.
   doctorPhone?: string;
