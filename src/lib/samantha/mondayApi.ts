@@ -215,6 +215,8 @@ export const AUTH_READ_COLUMN_IDS = [
   COL.authUnits.cartridge,
   COL.carecentrixIntakeId,
   COL.daysSinceStage,
+  COL.triggerDvs,
+  COL.claimsStatus,
 ];
 
 const AUTH_GROUP_IDS = new Set([GROUPS.submitAuth, GROUPS.authOutstanding]);
