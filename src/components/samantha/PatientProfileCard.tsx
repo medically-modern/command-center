@@ -220,12 +220,12 @@ export function PatientProfileCard({ patient, onUpdate }: Props) {
         )}
       </div>
 
-      {/* Row 1c — Pump Brand (visible when serving includes Pump or Supplies) */}
+      {/* Row 1c — Pump Type (visible when serving includes Pump or Supplies) */}
       {hasPumpOrSupplies && (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           <Field
             icon={<Cpu className="h-4 w-4" />}
-            label="Pump Brand"
+            label="Pump Type"
             value={patient.pumpBrand ?? ""}
           />
         </div>
