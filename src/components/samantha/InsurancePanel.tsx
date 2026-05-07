@@ -182,7 +182,21 @@ export function InsurancePanel({
           </div>
         )}
 
-        {dropdownsReady && (
+        {dropdownsReady && visibleResolved.length === 0 && (
+          <div className="rounded-lg border border-dashed bg-muted/20 p-8 text-center space-y-2">
+            <p className="text-sm font-medium text-muted-foreground">
+              No product cards to display
+            </p>
+            <p className="text-xs text-muted-foreground leading-relaxed max-w-md mx-auto">
+              All products for this patient's serving type bill to Medicaid and are handled
+              automatically — Auth is set to Required and Same or Similar is set to Clear.
+              There's nothing to fill in here. You can proceed with the universal checks
+              above and send to Monday when ready.
+            </p>
+          </div>
+        )}
+
+        {dropdownsReady && visibleResolved.length > 0 && (
           <div className="space-y-3">
             {visibleResolved.map((r) => {
               const codeId = PRODUCT_TO_CODE_ID[r.product];
