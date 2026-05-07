@@ -5,7 +5,7 @@
 // still fail after retries are logged to the "Josh Debug" column so
 // nothing is silently lost.
 
-import { writeStatusIndex, writeLongText, writeDropdownIds, writeText, writeDate, writeNumber, writeItemName, writePhone, writeEmail, writeSimpleValue, COL } from "./mondayApi";
+import { writeStatusIndex, writeLongText, writeDropdownIds, writeText, writeDate, writeNumber, writeItemName, writePhone, writeEmail, writeSimpleValue, writeLocation, COL } from "./mondayApi";
 import { resolveHcpcs, isAutoFilledMedicaidSupply } from "./hcpcRules";
 import {
   AUTH_RESULT_INDEX,
@@ -731,6 +731,22 @@ export async function sendPatientToMonday(p: Patient, context: "benefits" | "sub
       label: 'Clinic Name',
       columnId: COL.clinicName,
       fn: () => writeSimpleValue(p.id, COL.clinicName, p.clinicName!),
+    });
+  }
+  // Patient Phone (phone column)
+  if (p.patientPhone !== undefined) {
+    tasks.push({
+      label: 'Patient Phone',
+      columnId: COL.patientPhone,
+      fn: () => writePhone(p.id, COL.patientPhone, p.patientPhone ?? ''),
+    });
+  }
+  // Patient Address (location column)
+  if (p.patientAddress !== undefined) {
+    tasks.push({
+      label: 'Patient Address',
+      columnId: COL.patientAddress,
+      fn: () => writeLocation(p.id, COL.patientAddress, p.patientAddress ?? ''),
     });
   }
 

@@ -93,6 +93,20 @@ function EditableField({
   );
 }
 
+/* ── Phone formatter ─────────────────────────────────────────────── */
+
+function formatPhone(raw: string): string {
+  if (!raw) return "";
+  const digits = raw.replace(/\D/g, "");
+  if (digits.length === 11 && digits.startsWith("1")) {
+    return `+1 (${digits.slice(1, 4)}) ${digits.slice(4, 7)}-${digits.slice(7)}`;
+  }
+  if (digits.length === 10) {
+    return `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`;
+  }
+  return raw; // fallback — return as-is
+}
+
 /* ── Main component ──────────────────────────────────────────────── */
 
 export function PatientProfileCard({ patient, onUpdate }: Props) {
@@ -168,17 +182,37 @@ export function PatientProfileCard({ patient, onUpdate }: Props) {
 
       {/* Row 1b — Patient Phone & Address */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-        <Field
-          icon={<Phone className="h-4 w-4" />}
-          label="Patient Phone"
-          value={patient.patientPhone ?? ""}
-        />
-        <Field
-          icon={<MapPin className="h-4 w-4" />}
-          label="Patient Address"
-          value={patient.patientAddress ?? ""}
-          className="sm:col-span-2"
-        />
+        {editing ? (
+          <EditableField
+            icon={<Phone className="h-4 w-4" />}
+            label="Patient Phone"
+            value={patient.patientPhone ?? ""}
+            onChange={(v) => patch({ patientPhone: v })}
+            placeholder="(xxx) xxx-xxxx"
+          />
+        ) : (
+          <Field
+            icon={<Phone className="h-4 w-4" />}
+            label="Patient Phone"
+            value={formatPhone(patient.patientPhone ?? "")}
+          />
+        )}
+        {editing ? (
+          <EditableField
+            icon={<MapPin className="h-4 w-4" />}
+            label="Patient Address"
+            value={patient.patientAddress ?? ""}
+            onChange={(v) => patch({ patientAddress: v })}
+            className="sm:col-span-2"
+          />
+        ) : (
+          <Field
+            icon={<MapPin className="h-4 w-4" />}
+            label="Patient Address"
+            value={patient.patientAddress ?? ""}
+            className="sm:col-span-2"
+          />
+        )}
       </div>
 
       {/* Divider */}
