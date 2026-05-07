@@ -22,6 +22,7 @@ import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { RotateCcw, Stethoscope, ArrowLeft } from "lucide-react";
 import { toast } from "sonner";
 import { sendPatientToMonday } from "@/lib/samantha/mondayWrite";
+import { writeLongText, COL } from "@/lib/samantha/mondayApi";
 import { useNavigate } from "react-router-dom";
 
 const ChaseBenefitsPage = () => {
@@ -132,6 +133,7 @@ const ChaseBenefitsPage = () => {
                     onUniversalChange={onUniversalChange}
                     onCodeChange={updateCode}
                     onNotesChange={(v) => update(selected.id, { notes: v })}
+                    onSaveNotesToMonday={(v) => writeLongText(selected.id, COL.callReferenceNotes, v)}
                   />
 
                   <div className="rounded-xl bg-card border shadow-card p-5">

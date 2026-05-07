@@ -15,7 +15,7 @@ import {
   type ResolvedProduct,
 } from "@/lib/samantha/hcpcRules";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
+import { NotesPanel } from "@/components/samantha/NotesPanel";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Package, Repeat, ShieldCheck } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -25,6 +25,7 @@ interface Props {
   patient: Patient;
   onCodeChange: (codeId: ProductCodeId, patch: Partial<ProductCodeState>) => void;
   onNotesChange: (v: string) => void;
+  onSaveNotesToMonday: (notes: string) => Promise<void>;
 }
 
 const PRODUCT_TO_CODE_ID: Record<ProductId, ProductCodeId> = {
@@ -35,7 +36,7 @@ const PRODUCT_TO_CODE_ID: Record<ProductId, ProductCodeId> = {
   cartridge: "cartridges",
 };
 
-export function AuthorizationsPanel({ patient, onCodeChange, onNotesChange }: Props) {
+export function AuthorizationsPanel({ patient, onCodeChange, onNotesChange, onSaveNotesToMonday }: Props) {
   const ins = patient.insurance ?? EMPTY_INSURANCE;
   const serving = patient.serving || "";
   const primaryInsurance = patient.primaryInsurance || "";
@@ -132,23 +133,11 @@ export function AuthorizationsPanel({ patient, onCodeChange, onNotesChange }: Pr
         );
       })()}
 
-      {/* Notes — same Call Reference Notes column as the Benefits tab. Lets
-          Samantha read what was logged from the prior stage and append. */}
-      <div className="rounded-lg border bg-muted/20 p-4 space-y-2">
-        <div>
-          <h3 className="text-sm font-semibold">Notes — Call Reference Notes</h3>
-          <p className="text-[11px] text-muted-foreground">
-            Carries over from the Benefits tab. Add anything new from the auth submission step.
-          </p>
-        </div>
-        <Textarea
-          value={patient.notes}
-          onChange={(e) => onNotesChange(e.target.value)}
-          rows={5}
-          placeholder="Auth submission notes, confirmation numbers, any rep feedback…"
-          className="bg-background"
-        />
-      </div>
+      <NotesPanel
+        notes={patient.notes}
+        onNotesChange={onNotesChange}
+        onSaveToMonday={onSaveNotesToMonday}
+      />
     </section>
   );
 }
