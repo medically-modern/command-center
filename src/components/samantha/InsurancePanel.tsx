@@ -189,9 +189,8 @@ export function InsurancePanel({
             </p>
             <p className="text-xs text-muted-foreground leading-relaxed max-w-md mx-auto">
               All products for this patient's serving type bill to Medicaid and are handled
-              automatically — Auth is set to Required and Same or Similar is set to Clear.
-              There's nothing to fill in here. You can proceed with the universal checks
-              above and send to Monday when ready.
+              automatically. You can proceed with the universal checks above and send to
+              Monday when ready.
             </p>
           </div>
         )}
