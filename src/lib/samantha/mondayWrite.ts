@@ -5,7 +5,7 @@
 // still fail after retries are logged to the "Josh Debug" column so
 // nothing is silently lost.
 
-import { writeStatusIndex, writeLongText, writeDropdownIds, writeText, writeDate, writeNumber, COL } from "./mondayApi";
+import { writeStatusIndex, writeLongText, writeDropdownIds, writeText, writeDate, writeNumber, writeItemName, writePhone, writeEmail, writeSimpleValue, COL } from "./mondayApi";
 import { resolveHcpcs, isAutoFilledMedicaidSupply } from "./hcpcRules";
 import {
   AUTH_RESULT_INDEX,
@@ -628,6 +628,99 @@ export async function sendPatientToMonday(p: Patient, context: "benefits" | "sub
         fn: () => writeNumber(p.id, colId, v),
       });
     }
+  }
+
+  // ----- Profile fields (editable from PatientProfileCard) -----
+  // Item name
+  if (p.name) {
+    tasks.push({
+      label: 'Patient Name',
+      columnId: 'name',
+      fn: () => writeItemName(p.id, p.name),
+    });
+  }
+  // DOB (text column)
+  if (p.dob) {
+    tasks.push({
+      label: 'DOB',
+      columnId: COL.dob,
+      fn: () => writeText(p.id, COL.dob, p.dob),
+    });
+  }
+  // Member IDs (text columns)
+  if (p.memberId1 !== undefined) {
+    tasks.push({
+      label: 'Member ID 1',
+      columnId: COL.memberId1,
+      fn: () => writeText(p.id, COL.memberId1, p.memberId1 ?? ''),
+    });
+  }
+  if (p.memberId2 !== undefined) {
+    tasks.push({
+      label: 'Member ID 2',
+      columnId: COL.memberId2,
+      fn: () => writeText(p.id, COL.memberId2, p.memberId2 ?? ''),
+    });
+  }
+  // Diagnosis (status column — write by label)
+  if (p.diagnosis) {
+    tasks.push({
+      label: 'Diagnosis',
+      columnId: COL.diagnosis,
+      fn: () => writeSimpleValue(p.id, COL.diagnosis, p.diagnosis!),
+    });
+  }
+  // Doctor fields
+  if (p.doctorName !== undefined) {
+    tasks.push({
+      label: 'Doctor Name',
+      columnId: COL.doctorName,
+      fn: () => writeText(p.id, COL.doctorName, p.doctorName ?? ''),
+    });
+  }
+  if (p.doctorPhone !== undefined) {
+    tasks.push({
+      label: 'Doctor Phone',
+      columnId: COL.doctorPhone,
+      fn: () => writePhone(p.id, COL.doctorPhone, p.doctorPhone ?? ''),
+    });
+  }
+  if (p.doctorNpi !== undefined) {
+    tasks.push({
+      label: 'Doctor NPI',
+      columnId: COL.doctorNpi,
+      fn: () => writeText(p.id, COL.doctorNpi, p.doctorNpi ?? ''),
+    });
+  }
+  if (p.doctorEmail !== undefined) {
+    tasks.push({
+      label: 'Doctor Email',
+      columnId: COL.doctorEmail,
+      fn: () => writeEmail(p.id, COL.doctorEmail, p.doctorEmail ?? ''),
+    });
+  }
+  if (p.doctorFax !== undefined) {
+    tasks.push({
+      label: 'Doctor Fax',
+      columnId: COL.doctorFax,
+      fn: () => writeEmail(p.id, COL.doctorFax, p.doctorFax ?? ''),
+    });
+  }
+  // Clinicals Method (status column — write by label)
+  if (p.clinicalsMethod) {
+    tasks.push({
+      label: 'Clinicals Method',
+      columnId: COL.clinicalsMethod,
+      fn: () => writeSimpleValue(p.id, COL.clinicalsMethod, p.clinicalsMethod!),
+    });
+  }
+  // Clinic Name (dropdown — write by label via simple value)
+  if (p.clinicName) {
+    tasks.push({
+      label: 'Clinic Name',
+      columnId: COL.clinicName,
+      fn: () => writeSimpleValue(p.id, COL.clinicName, p.clinicName!),
+    });
   }
 
   // ----- Notes (long text) -----

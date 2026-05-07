@@ -456,3 +456,73 @@ export async function uploadFileToColumn(
     throw new Error(`Monday file upload error: ${JSON.stringify(json.errors)}`);
   }
 }
+
+/**
+ * Rename an item (the item's "name" field, not a column).
+ */
+export async function writeItemName(itemId: string, name: string): Promise<void> {
+  const query = `
+    mutation ($boardId: ID!, $itemId: ID!, $value: JSON!) {
+      change_column_value(board_id: $boardId, item_id: $itemId, column_id: "name", value: $value) { id }
+    }
+  `;
+  await gql(query, {
+    boardId: BOARD_ID,
+    itemId,
+    value: JSON.stringify(name),
+  });
+}
+
+/**
+ * Write a phone column. Monday expects { phone, countryShortName }.
+ */
+export async function writePhone(itemId: string, columnId: string, phone: string): Promise<void> {
+  const query = `
+    mutation ($boardId: ID!, $itemId: ID!, $columnId: String!, $value: JSON!) {
+      change_column_value(board_id: $boardId, item_id: $itemId, column_id: $columnId, value: $value) { id }
+    }
+  `;
+  const val = phone ? { phone, countryShortName: "US" } : {};
+  await gql(query, {
+    boardId: BOARD_ID,
+    itemId,
+    columnId,
+    value: JSON.stringify(val),
+  });
+}
+
+/**
+ * Write an email column. Monday expects { email, text }.
+ */
+export async function writeEmail(itemId: string, columnId: string, email: string): Promise<void> {
+  const query = `
+    mutation ($boardId: ID!, $itemId: ID!, $columnId: String!, $value: JSON!) {
+      change_column_value(board_id: $boardId, item_id: $itemId, column_id: $columnId, value: $value) { id }
+    }
+  `;
+  const val = email ? { email, text: email } : {};
+  await gql(query, {
+    boardId: BOARD_ID,
+    itemId,
+    columnId,
+    value: JSON.stringify(val),
+  });
+}
+
+/**
+ * Write a simple column value by its display label (works for status
+ * columns where you know the label text but not the index).
+ */
+export async function writeSimpleValue(itemId: string, columnId: string, label: string): Promise<void> {
+  const query = `
+    mutation ($boardId: ID!, $itemId: ID!, $columnId: String!, $value: String!) {
+      change_simple_column_value(board_id: $boardId, item_id: $itemId, column_id: $columnId, value: $value) { id }
+    }
+  `;
+  await gql(query, {
+    boardId: BOARD_ID,
+    itemId,
+    columnId,
+    value: label,
+  });
+}

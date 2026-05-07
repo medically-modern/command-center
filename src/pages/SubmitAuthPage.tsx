@@ -100,7 +100,7 @@ const SubmitAuthPage = () => {
               )}
               {selected && (
                 <>
-                  <PatientProfileCard patient={selected} />
+                  <PatientProfileCard patient={selected} onUpdate={(p) => update(selected.id, p)} />
                   <AuthorizationsPanel patient={selected} onCodeChange={updateCode} onNotesChange={(v) => update(selected.id, { notes: v })} />
                   <EscalateButton
                     escalated={!!selected.escalated}

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import type { Patient } from "@/lib/samantha/workflow";
+import { Input } from "@/components/ui/input";
 import {
   CalendarDays,
   IdCard,
@@ -15,11 +16,16 @@ import {
   Hash,
   Building2,
   Send,
+  Pencil,
+  X,
 } from "lucide-react";
 
 interface Props {
   patient: Patient;
+  onUpdate?: (patch: Partial<Patient>) => void;
 }
+
+/* ── Read-only field ─────────────────────────────────────────────── */
 
 function Field({
   icon,
@@ -49,24 +55,109 @@ function Field({
   );
 }
 
-export function PatientProfileCard({ patient }: Props) {
+/* ── Editable field ──────────────────────────────────────────────── */
+
+function EditableField({
+  icon,
+  label,
+  value,
+  onChange,
+  className,
+  placeholder,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  className?: string;
+  placeholder?: string;
+}) {
+  return (
+    <div className={`flex items-start gap-2 min-w-0 ${className ?? ""}`}>
+      <div className="h-8 w-8 rounded-md bg-muted flex items-center justify-center text-muted-foreground shrink-0 mt-1">
+        {icon}
+      </div>
+      <div className="min-w-0 flex-1">
+        <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
+          {label}
+        </p>
+        <Input
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder={placeholder ?? label}
+          className="h-7 text-sm mt-0.5"
+        />
+      </div>
+    </div>
+  );
+}
+
+/* ── Main component ──────────────────────────────────────────────── */
+
+export function PatientProfileCard({ patient, onUpdate }: Props) {
   const hasMember2 = !!patient.memberId2 && patient.memberId2.trim().length > 0;
   const [doctorOpen, setDoctorOpen] = useState(false);
+  const [editing, setEditing] = useState(false);
 
-  // Two-row layout — Serving + Primary Insurance live in the patient
-  // profile so they're visible across every tab (Benefits, Auth, etc.).
-  // Row 1: Name · DOB · Serving
-  // Row 2: Primary Insurance · Member ID · Diagnosis (· Member ID 2)
+  const canEdit = !!onUpdate;
+
+  const toggleEdit = () => {
+    if (editing) {
+      // closing edit mode — force doctor section open stays as-is
+    }
+    setEditing((e) => !e);
+    // When entering edit mode, expand doctor info so all fields are visible
+    if (!editing) setDoctorOpen(true);
+  };
+
+  const patch = (p: Partial<Patient>) => onUpdate?.(p);
+
   return (
     <div className="rounded-xl bg-card border shadow-card p-4 space-y-4">
-      <p className="text-xs uppercase tracking-wider text-muted-foreground">
-        Patient Profile
-      </p>
+      <div className="flex items-center justify-between">
+        <p className="text-xs uppercase tracking-wider text-muted-foreground">
+          Patient Profile
+        </p>
+        {canEdit && (
+          <button
+            onClick={toggleEdit}
+            className={`p-1.5 rounded-md transition-colors ${
+              editing
+                ? "bg-destructive/10 text-destructive hover:bg-destructive/20"
+                : "text-muted-foreground hover:bg-muted hover:text-foreground"
+            }`}
+            title={editing ? "Stop editing" : "Edit profile"}
+          >
+            {editing ? <X className="h-4 w-4" /> : <Pencil className="h-4 w-4" />}
+          </button>
+        )}
+      </div>
 
       {/* Row 1 */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-        <Field icon={<User className="h-4 w-4" />} label="Name" value={patient.name} />
-        <Field icon={<CalendarDays className="h-4 w-4" />} label="Date of Birth" value={patient.dob} />
+        {editing ? (
+          <EditableField
+            icon={<User className="h-4 w-4" />}
+            label="Name"
+            value={patient.name}
+            onChange={(v) => patch({ name: v })}
+          />
+        ) : (
+          <Field icon={<User className="h-4 w-4" />} label="Name" value={patient.name} />
+        )}
+
+        {editing ? (
+          <EditableField
+            icon={<CalendarDays className="h-4 w-4" />}
+            label="Date of Birth"
+            value={patient.dob}
+            onChange={(v) => patch({ dob: v })}
+          />
+        ) : (
+          <Field icon={<CalendarDays className="h-4 w-4" />} label="Date of Birth" value={patient.dob} />
+        )}
+
+        {/* Serving — always read-only */}
         <Field
           icon={<Stethoscope className="h-4 w-4" />}
           label="Serving"
@@ -77,99 +168,141 @@ export function PatientProfileCard({ patient }: Props) {
       {/* Divider */}
       <div className="h-px bg-border" />
 
-      {/* Row 2 — keep 3-col grid so fields align with Row 1 */}
+      {/* Row 2 */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        {/* Primary Insurance — always read-only */}
         <Field
           icon={<ShieldCheck className="h-4 w-4" />}
           label="Primary Insurance"
           value={patient.primaryInsurance ?? ""}
         />
-        <Field
-          icon={<IdCard className="h-4 w-4" />}
-          label="Member ID"
-          value={patient.memberId1 ?? ""}
-        />
-        <Field
-          icon={<Activity className="h-4 w-4" />}
-          label="Diagnosis"
-          value={patient.diagnosis ?? ""}
-        />
-        {hasMember2 && (
-          <Field
+
+        {editing ? (
+          <EditableField
             icon={<IdCard className="h-4 w-4" />}
-            label="Member ID 2"
-            value={patient.memberId2 ?? ""}
+            label="Member ID"
+            value={patient.memberId1 ?? ""}
+            onChange={(v) => patch({ memberId1: v })}
           />
+        ) : (
+          <Field icon={<IdCard className="h-4 w-4" />} label="Member ID" value={patient.memberId1 ?? ""} />
+        )}
+
+        {editing ? (
+          <EditableField
+            icon={<Activity className="h-4 w-4" />}
+            label="Diagnosis"
+            value={patient.diagnosis ?? ""}
+            onChange={(v) => patch({ diagnosis: v })}
+          />
+        ) : (
+          <Field icon={<Activity className="h-4 w-4" />} label="Diagnosis" value={patient.diagnosis ?? ""} />
+        )}
+
+        {(hasMember2 || editing) && (
+          editing ? (
+            <EditableField
+              icon={<IdCard className="h-4 w-4" />}
+              label="Member ID 2"
+              value={patient.memberId2 ?? ""}
+              onChange={(v) => patch({ memberId2: v })}
+            />
+          ) : (
+            <Field icon={<IdCard className="h-4 w-4" />} label="Member ID 2" value={patient.memberId2 ?? ""} />
+          )
         )}
       </div>
 
-      {/* Doctor info — collapsible. Click to expand and see contact + clinic. */}
+      {/* Doctor info — collapsible */}
       <div className="border-t pt-3">
-        <button
-          onClick={() => setDoctorOpen((o) => !o)}
-          className="w-full flex items-center justify-between text-xs uppercase tracking-wider text-muted-foreground hover:text-foreground transition-colors gap-3"
-        >
-          <span className="flex items-center gap-2">
-            {doctorOpen ? (
-              <ChevronDown className="h-3 w-3" />
-            ) : (
-              <ChevronRight className="h-3 w-3" />
-            )}
-            Doctor Info
-          </span>
-          {!doctorOpen && (
-            <span className="flex items-center gap-3 text-[11px] normal-case text-foreground/70 truncate">
-              <span className="inline-flex items-center gap-1 truncate">
-                <UserRound className="h-3 w-3 shrink-0" />
-                <span className="truncate">{patient.doctorName || "—"}</span>
-              </span>
-              <span className="inline-flex items-center gap-1">
-                <Send className="h-3 w-3 shrink-0" />
-                <span>{patient.clinicalsMethod || "—"}</span>
-              </span>
+        <div className="flex items-center justify-between">
+          <button
+            onClick={() => setDoctorOpen((o) => !o)}
+            className="flex-1 flex items-center justify-between text-xs uppercase tracking-wider text-muted-foreground hover:text-foreground transition-colors gap-3"
+          >
+            <span className="flex items-center gap-2">
+              {doctorOpen ? (
+                <ChevronDown className="h-3 w-3" />
+              ) : (
+                <ChevronRight className="h-3 w-3" />
+              )}
+              Doctor Info
             </span>
-          )}
-        </button>
+            {!doctorOpen && (
+              <span className="flex items-center gap-3 text-[11px] normal-case text-foreground/70 truncate">
+                <span className="inline-flex items-center gap-1 truncate">
+                  <UserRound className="h-3 w-3 shrink-0" />
+                  <span className="truncate">{patient.doctorName || "—"}</span>
+                </span>
+                <span className="inline-flex items-center gap-1">
+                  <Send className="h-3 w-3 shrink-0" />
+                  <span>{patient.clinicalsMethod || "—"}</span>
+                </span>
+              </span>
+            )}
+          </button>
+        </div>
 
-        {doctorOpen && (
+        {doctorOpen && !editing && (
           <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            <Field
-              icon={<UserRound className="h-4 w-4" />}
-              label="Doctor Name"
-              value={patient.doctorName ?? ""}
-            />
-            <Field
-              icon={<Send className="h-4 w-4" />}
-              label="Clinicals Method"
-              value={patient.clinicalsMethod ?? ""}
-            />
-            <Field
-              icon={<Hash className="h-4 w-4" />}
-              label="NPI"
-              value={patient.doctorNpi ?? ""}
-            />
-            <Field
-              icon={<Phone className="h-4 w-4" />}
-              label="Phone"
-              value={patient.doctorPhone ?? ""}
-            />
-            <Field
-              icon={<Mail className="h-4 w-4" />}
-              label="Fax"
-              value={patient.doctorFax ?? ""}
-            />
-            <Field
-              icon={<Mail className="h-4 w-4" />}
-              label="Email"
-              value={patient.doctorEmail ?? ""}
-            />
+            <Field icon={<UserRound className="h-4 w-4" />} label="Doctor Name" value={patient.doctorName ?? ""} />
+            <Field icon={<Send className="h-4 w-4" />} label="Clinicals Method" value={patient.clinicalsMethod ?? ""} />
+            <Field icon={<Hash className="h-4 w-4" />} label="NPI" value={patient.doctorNpi ?? ""} />
+            <Field icon={<Phone className="h-4 w-4" />} label="Phone" value={patient.doctorPhone ?? ""} />
+            <Field icon={<Mail className="h-4 w-4" />} label="Fax" value={patient.doctorFax ?? ""} />
+            <Field icon={<Mail className="h-4 w-4" />} label="Email" value={patient.doctorEmail ?? ""} />
             <Field
               icon={<Building2 className="h-4 w-4" />}
               label="Clinic"
               value={patient.clinicName ?? ""}
-              // Clinic names tend to be long — let it span the empty
-              // 4th column on lg + the empty 2nd column on sm so the
-              // value doesn't truncate.
+              className="sm:col-span-2"
+            />
+          </div>
+        )}
+
+        {doctorOpen && editing && (
+          <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <EditableField
+              icon={<UserRound className="h-4 w-4" />}
+              label="Doctor Name"
+              value={patient.doctorName ?? ""}
+              onChange={(v) => patch({ doctorName: v })}
+            />
+            <EditableField
+              icon={<Send className="h-4 w-4" />}
+              label="Clinicals Method"
+              value={patient.clinicalsMethod ?? ""}
+              onChange={(v) => patch({ clinicalsMethod: v })}
+            />
+            <EditableField
+              icon={<Hash className="h-4 w-4" />}
+              label="NPI"
+              value={patient.doctorNpi ?? ""}
+              onChange={(v) => patch({ doctorNpi: v })}
+            />
+            <EditableField
+              icon={<Phone className="h-4 w-4" />}
+              label="Phone"
+              value={patient.doctorPhone ?? ""}
+              onChange={(v) => patch({ doctorPhone: v })}
+            />
+            <EditableField
+              icon={<Mail className="h-4 w-4" />}
+              label="Fax"
+              value={patient.doctorFax ?? ""}
+              onChange={(v) => patch({ doctorFax: v })}
+            />
+            <EditableField
+              icon={<Mail className="h-4 w-4" />}
+              label="Email"
+              value={patient.doctorEmail ?? ""}
+              onChange={(v) => patch({ doctorEmail: v })}
+            />
+            <EditableField
+              icon={<Building2 className="h-4 w-4" />}
+              label="Clinic"
+              value={patient.clinicName ?? ""}
+              onChange={(v) => patch({ clinicName: v })}
               className="sm:col-span-2"
             />
           </div>

@@ -125,7 +125,7 @@ const ChaseBenefitsPage = () => {
 
               {selected && (
                 <>
-                  <PatientProfileCard patient={selected} />
+                  <PatientProfileCard patient={selected} onUpdate={(p) => update(selected.id, p)} />
 
                   <InsurancePanel
                     patient={selected}
