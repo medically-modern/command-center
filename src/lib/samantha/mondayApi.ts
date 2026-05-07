@@ -121,6 +121,9 @@ export const COL = {
     cartridge: "date_mm33cd87",
   },
 
+  // Days Since Stage Started (status — used for Auth Outstanding sorting)
+  daysSinceStage: "color_mm1wwm05",
+
   // Debug / error logging
   joshDebug: "text_mm2w1qn4",
 } as const;
@@ -203,6 +206,7 @@ export const AUTH_READ_COLUMN_IDS = [
   COL.authUnits.infusion_set,
   COL.authUnits.cartridge,
   COL.carecentrixIntakeId,
+  COL.daysSinceStage,
 ];
 
 const AUTH_GROUP_IDS = new Set([GROUPS.submitAuth, GROUPS.authOutstanding]);

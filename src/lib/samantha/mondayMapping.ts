@@ -295,6 +295,14 @@ export function mondayItemToPatient(item: MondayItem): Patient {
   const escalationText = cv(COL.escalation)?.text?.trim();
   const escalated = escalationText === "Escalation Required";
 
+  // Days Since Stage Started — status column with index-based ordering
+  const daysSinceStage = cv(COL.daysSinceStage)?.text ?? "";
+  const daysSinceRaw = cv(COL.daysSinceStage)?.value;
+  let daysSinceStageIndex: number | undefined;
+  if (daysSinceRaw) {
+    try { daysSinceStageIndex = JSON.parse(daysSinceRaw).index; } catch { /* ignore */ }
+  }
+
   return {
     id: item.id,
     name: item.name,
@@ -329,6 +337,8 @@ export function mondayItemToPatient(item: MondayItem): Patient {
     patientAddress,
     pumpBrand,
     escalated,
+    daysSinceStage: daysSinceStage || undefined,
+    daysSinceStageIndex,
     insurance: {
       universal: {
         "in-network": inNetAndActive,

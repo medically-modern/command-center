@@ -63,6 +63,15 @@ export function PatientsSidebar({ patients, selectedId, onSelect, loading, error
 
   const grouped = useMemo(() => groupByInsurance(patients), [patients]);
 
+  // For Auth Outstanding, sort patients by daysSinceStageIndex descending
+  // (longest in system first). Other groups keep Monday order.
+  const sortedPatients = useMemo(() => {
+    if (activeGroup !== "authOutstanding") return patients;
+    return [...patients].sort((a, b) => (b.daysSinceStageIndex ?? -1) - (a.daysSinceStageIndex ?? -1));
+  }, [patients, activeGroup]);
+
+  const isAuthOutstanding = activeGroup === "authOutstanding";
+
   const renderPatient = (p: Patient) => (
     <SidebarMenuItem key={p.id}>
       <SidebarMenuButton
@@ -80,6 +89,16 @@ export function PatientsSidebar({ patients, selectedId, onSelect, loading, error
             <p className="text-[11px] text-muted-foreground truncate">
               {p.primaryInsurance || "—"} · {p.serving || "—"}
             </p>
+            {isAuthOutstanding && p.daysSinceStage && (
+              <p className={cn(
+                "text-[10px] font-medium truncate mt-0.5",
+                (p.daysSinceStageIndex ?? 0) >= 3 ? "text-destructive" :
+                (p.daysSinceStageIndex ?? 0) >= 2 ? "text-warning-foreground" :
+                "text-muted-foreground",
+              )}>
+                {p.daysSinceStage}
+              </p>
+            )}
           </div>
         )}
       </SidebarMenuButton>
@@ -166,7 +185,7 @@ export function PatientsSidebar({ patients, selectedId, onSelect, loading, error
           <SidebarGroup>
             <SidebarGroupContent>
               <SidebarMenu>
-                {patients.map(renderPatient)}
+                {sortedPatients.map(renderPatient)}
                 {!loading && patients.length === 0 && !error && !collapsed && (
                   <p className="px-3 py-4 text-xs text-muted-foreground">No patients in {activeLabel} group.</p>
                 )}
