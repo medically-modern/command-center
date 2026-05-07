@@ -93,7 +93,7 @@ export function PatientsSidebar({ patients, selectedId, onSelect, loading, error
               <p className={cn(
                 "text-[10px] font-medium truncate mt-0.5",
                 (p.daysSinceStageIndex ?? 0) >= 3 ? "text-destructive" :
-                (p.daysSinceStageIndex ?? 0) >= 2 ? "text-warning-foreground" :
+                (p.daysSinceStageIndex ?? 0) >= 2 ? "text-amber-400" :
                 "text-muted-foreground",
               )}>
                 {p.daysSinceStage}
