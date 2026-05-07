@@ -30,6 +30,7 @@ export const COL = {
   dob: "text_mm1xvxst",
   patientPhone: "phone_mm1x44yk",
   patientAddress: "location_mm1xhw17",
+  pumpBrand: "color_mm1wjjtk",
   memberId1: "text_mm1x2qk2",
   memberId2: "text_mm1xaccx",
 
@@ -132,6 +133,7 @@ export const READ_COLUMN_IDS = [
   COL.dob,
   COL.patientPhone,
   COL.patientAddress,
+  COL.pumpBrand,
   COL.memberId1,
   COL.memberId2,
   COL.callReferenceNotes,

@@ -413,6 +413,7 @@ export interface Patient {
   memberId2?: string;
   patientPhone?: string;
   patientAddress?: string;
+  pumpBrand?: string;
   escalated?: boolean;
   /** Trigger DVS — set when Medicaid + supplies serving. Written to
    *  Monday's "Trigger DVS -TEST" column on Send to Monday. */

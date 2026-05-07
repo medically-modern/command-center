@@ -17,6 +17,7 @@ import {
   Building2,
   Send,
   MapPin,
+  Cpu,
   Pencil,
   X,
 } from "lucide-react";
@@ -115,6 +116,10 @@ export function PatientProfileCard({ patient, onUpdate }: Props) {
   const [editing, setEditing] = useState(false);
 
   const canEdit = !!onUpdate;
+  const hasPumpOrSupplies = !!(
+    patient.serving &&
+    (patient.serving.includes("Pump") || patient.serving.includes("Supplies"))
+  );
 
   const toggleEdit = () => {
     if (editing) {
@@ -180,7 +185,7 @@ export function PatientProfileCard({ patient, onUpdate }: Props) {
         />
       </div>
 
-      {/* Row 1b — Patient Phone & Address */}
+      {/* Row 1b — Patient Phone, Address, Pump Brand */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         {editing ? (
           <EditableField
@@ -214,6 +219,17 @@ export function PatientProfileCard({ patient, onUpdate }: Props) {
           />
         )}
       </div>
+
+      {/* Row 1c — Pump Brand (visible when serving includes Pump or Supplies) */}
+      {hasPumpOrSupplies && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          <Field
+            icon={<Cpu className="h-4 w-4" />}
+            label="Pump Brand"
+            value={patient.pumpBrand ?? ""}
+          />
+        </div>
+      )}
 
       {/* Divider */}
       <div className="h-px bg-border" />
