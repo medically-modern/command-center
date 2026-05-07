@@ -31,6 +31,7 @@ export const COL = {
   patientPhone: "phone_mm1x44yk",
   patientAddress: "location_mm1xhw17",
   pumpBrand: "color_mm1wjjtk",
+  claimsStatus: "color_mm284z0b",
   memberId1: "text_mm1x2qk2",
   memberId2: "text_mm1xaccx",
 

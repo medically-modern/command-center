@@ -182,6 +182,8 @@ export function mondayItemToPatient(item: MondayItem): Patient {
   const patientPhone = cv(COL.patientPhone)?.text ?? "";
   const patientAddress = cv(COL.patientAddress)?.text ?? "";
   const pumpBrand = cv(COL.pumpBrand)?.text ?? "";
+  const dvsStatus = cv(COL.triggerDvs)?.text ?? "";
+  const claimsStatus = cv(COL.claimsStatus)?.text ?? "";
   // Secondary Insurance is a status column with labels: "None", "NY Medicaid",
   // "Medicare Supplement". The text comes back as the label string.
   const secondaryInsurance = cv(COL.secondaryInsurance)?.text ?? "";
@@ -345,6 +347,8 @@ export function mondayItemToPatient(item: MondayItem): Patient {
     patientPhone,
     patientAddress,
     pumpBrand,
+    dvsStatus: dvsStatus || undefined,
+    claimsStatus: claimsStatus || undefined,
     escalated,
     daysSinceStage: daysSinceStage || undefined,
     daysSinceStageIndex,

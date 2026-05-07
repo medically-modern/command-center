@@ -22,6 +22,43 @@ import { sendPatientToMonday } from "@/lib/samantha/mondayWrite";
 import { FollowUpModal } from "@/components/samantha/FollowUpModal";
 import { useNavigate } from "react-router-dom";
 
+
+/* ── DVS + Claims Status Visual ─────────────────────────────────── */
+
+function DvsClaimsVisual({ dvsStatus, claimsStatus }: { dvsStatus?: string; claimsStatus?: string }) {
+  if (!dvsStatus) return null;
+
+  const statusColor = (label: string | undefined) => {
+    if (!label) return "bg-muted text-muted-foreground";
+    const l = label.toLowerCase();
+    if (l.includes("success") || l.includes("paid")) return "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300";
+    if (l.includes("failed") || l.includes("denied") || l.includes("error")) return "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300";
+    if (l.includes("running") || l.includes("trigger") || l.includes("submit")) return "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300";
+    if (l.includes("review") || l.includes("incorrect") || l.includes("retry")) return "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300";
+    return "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300";
+  };
+
+  return (
+    <div className="rounded-xl bg-card border shadow-card p-4">
+      <p className="text-xs uppercase tracking-wider text-muted-foreground mb-3">Verification Status</p>
+      <div className="flex items-stretch gap-4">
+        <div className="flex-1 rounded-lg border p-3 text-center space-y-1.5">
+          <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">DVS</p>
+          <span className={`inline-block px-3 py-1 rounded-full text-xs font-medium ${statusColor(dvsStatus)}`}>
+            {dvsStatus}
+          </span>
+        </div>
+        <div className="flex-1 rounded-lg border p-3 text-center space-y-1.5">
+          <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Claim</p>
+          <span className={`inline-block px-3 py-1 rounded-full text-xs font-medium ${statusColor(claimsStatus)}`}>
+            {claimsStatus || "—"}
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 const AuthOutstandingPage = () => {
   const navigate = useNavigate();
   const { patients, loading, error, refetch, update, clearOverlay } = useMondayPatients("authOutstanding");
@@ -106,6 +143,7 @@ const AuthOutstandingPage = () => {
               {selected && (
                 <>
                   <PatientProfileCard patient={selected} onUpdate={(p) => update(selected.id, p)} />
+                  <DvsClaimsVisual dvsStatus={selected.dvsStatus} claimsStatus={selected.claimsStatus} />
                   <AuthOutstandingPanel patient={selected} onCodeChange={updateCode} onNotesChange={(v) => update(selected.id, { notes: v })} />
                   <EscalateButton
                     escalated={!!selected.escalated}

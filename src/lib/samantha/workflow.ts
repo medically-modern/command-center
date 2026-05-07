@@ -414,6 +414,10 @@ export interface Patient {
   patientPhone?: string;
   patientAddress?: string;
   pumpBrand?: string;
+  /** DVS status label from Monday (e.g. "Trigger DVS", "Running", "Success") */
+  dvsStatus?: string;
+  /** Claims Status label from Monday (e.g. "Claims Paid", "Claims Denied") */
+  claimsStatus?: string;
   escalated?: boolean;
   /** Trigger DVS — set when Medicaid + supplies serving. Written to
    *  Monday's "Trigger DVS -TEST" column on Send to Monday. */
