@@ -2,7 +2,7 @@ import { writeStatusIndex, writeLongText, writeText, writeNumber, writeLocation,
 import type { Patient } from "./workflow";
 
 // Stage Advancer: index 1 = Completed (green)
-const STAGE_ADVANCER_COMPLETED = 1;
+const STAGE_ADVANCER_COMPLETED = 4;
 
 const MAX_RETRIES = 2;
 const RETRY_DELAY_MS = 800;

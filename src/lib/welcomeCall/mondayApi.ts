@@ -11,6 +11,8 @@ export const GROUPS = {
   completed: "group_mm1x5s5d",
   stuck: "group_mm1xyczx",
   escalation: "group_mm1x5c0",
+  // Debug
+  joshDebug: "text_mm35b391",
 } as const;
 
 // Read columns — everything we need to display

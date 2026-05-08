@@ -115,7 +115,7 @@ export const COL = {
   blockedDate: "date_mm33vqkm",
 
   // Debug
-  joshDebug: "text_mm2w1qn4",
+  joshDebug: "text_mm356n2y",
 } as const;
 
 // Columns to read on load — keep small to avoid 503
