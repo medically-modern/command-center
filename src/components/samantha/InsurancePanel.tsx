@@ -470,12 +470,12 @@ function CodeCard({ meta, resolved, state, universalDone, onChange }: CardProps)
         </div>
       </div>
 
-      {/* Order Date — appears when SoS = Not Clear */}
+      {/* Last Bill Date — appears when SoS = Not Clear */}
       {sos === "not-clear" && (
         <div className="mt-3 rounded-lg border border-warning/40 bg-warning/5 p-3">
           <label className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-wider text-warning-foreground/80 mb-1.5">
             <CalendarDays className="h-3.5 w-3.5" />
-            {meta.name} Order Date
+            {meta.name} Last Bill Date
           </label>
           <p className="text-[11px] text-muted-foreground mb-2">
             {meta.name} last bill date
