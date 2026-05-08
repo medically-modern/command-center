@@ -504,6 +504,77 @@ const UNIVERSAL_LABELS: Record<string, string> = {
  *     and auto-filled, so they're skipped) must have BOTH Auth and SoS
  *     selected.
  */
+// ─────────────────────────────────────────────────────────────────────
+// Next Order Date calculations
+// ─────────────────────────────────────────────────────────────────────
+
+/** Add days to a YYYY-MM-DD date string and return YYYY-MM-DD. */
+function addDaysToDate(dateStr: string, days: number): string {
+  const d = new Date(dateStr + "T00:00:00");
+  if (isNaN(d.getTime())) return "";
+  d.setDate(d.getDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+
+/** Pick the later of two YYYY-MM-DD date strings. */
+function laterDate(a: string | undefined, b: string | undefined): string {
+  if (!a && !b) return "";
+  if (!a) return b!;
+  if (!b) return a;
+  return a >= b ? a : b;
+}
+
+export interface NextOrderDates {
+  ipNextOrderDate: string;
+  sensorsNextOrderDate: string;
+  suppliesNextOrderDate: string;
+}
+
+/**
+ * Compute the 3 calculated next order dates from product state.
+ *
+ * - IP Next Order Date = Insulin Pump last bill + 4 years
+ * - Sensors Next Order Date = CGM Sensors last bill + 90 days
+ * - Supplies Next Order Date = max(Infusion Sets, Cartridges) last bill
+ *     + 90 days, or + 60 days if patient has Medicaid
+ */
+export function computeNextOrderDates(
+  ins: InsuranceState,
+  primaryInsurance: string,
+  secondaryInsurance: string,
+): NextOrderDates {
+  const pumpState = ins.codes["pump"];
+  const sensorsState = ins.codes["cgm-sensors"];
+  const infusionState = ins.codes["infusion-sets"];
+  const cartridgeState = ins.codes["cartridges"];
+
+  // IP Next Order Date = pump last bill + 4 years (1461 days)
+  const ipNextOrderDate = pumpState?.orderDate
+    ? addDaysToDate(pumpState.orderDate, 365 * 4)
+    : "";
+
+  // Sensors Next Order Date = sensors last bill + 90 days
+  const sensorsNextOrderDate = sensorsState?.orderDate
+    ? addDaysToDate(sensorsState.orderDate, 90)
+    : "";
+
+  // Supplies Next Order Date = max(infusion, cartridge) + 90d (or 60d if Medicaid)
+  const suppliesLastBill = laterDate(infusionState?.orderDate, cartridgeState?.orderDate);
+  const isMedicaid =
+    (primaryInsurance ?? "").toLowerCase().includes("medicaid") ||
+    (secondaryInsurance ?? "").toLowerCase().includes("medicaid");
+  const suppliesDaysToAdd = isMedicaid ? 60 : 90;
+  const suppliesNextOrderDate = suppliesLastBill
+    ? addDaysToDate(suppliesLastBill, suppliesDaysToAdd)
+    : "";
+
+  return { ipNextOrderDate, sensorsNextOrderDate, suppliesNextOrderDate };
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Benefits-tab submit validation
+// ─────────────────────────────────────────────────────────────────────
+
 export function validateBenefitsForSubmit(patient: Patient): string[] {
   const missing: string[] = [];
   const ins = patient.insurance ?? EMPTY_INSURANCE;

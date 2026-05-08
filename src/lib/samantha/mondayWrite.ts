@@ -19,7 +19,7 @@ import {
   UNIVERSAL_INDEX,
 } from "./mondayMapping";
 import type { Patient, ProductCodeId, ProductCodeState } from "./workflow";
-import { EMPTY_INSURANCE, deriveInsuranceOutcome } from "./workflow";
+import { EMPTY_INSURANCE, deriveInsuranceOutcome, computeNextOrderDates } from "./workflow";
 
 const MAX_RETRIES = 2;
 const RETRY_DELAY_MS = 800;
@@ -247,6 +247,29 @@ export async function sendPatientToMonday(p: Patient, context: "benefits" | "sub
         fn: () => writeDate(p.id, orderDateCol, ""),
       });
     }
+  }
+
+  // ----- Calculated Next Order Dates (3 columns) -----
+  {
+    const nod = computeNextOrderDates(effectiveIns, p.primaryInsurance ?? "", p.secondaryInsurance ?? "");
+    // IP Next Order Date
+    tasks.push({
+      label: "IP Next Order Date",
+      columnId: COL.nextOrderDate.insulin_pump,
+      fn: () => writeDate(p.id, COL.nextOrderDate.insulin_pump, nod.ipNextOrderDate),
+    });
+    // Sensors Next Order Date
+    tasks.push({
+      label: "Sensors Next Order Date",
+      columnId: COL.nextOrderDate.sensors,
+      fn: () => writeDate(p.id, COL.nextOrderDate.sensors, nod.sensorsNextOrderDate),
+    });
+    // Supplies Next Order Date
+    tasks.push({
+      label: "Supplies Next Order Date",
+      columnId: COL.nextOrderDate.supplies,
+      fn: () => writeDate(p.id, COL.nextOrderDate.supplies, nod.suppliesNextOrderDate),
+    });
   }
 
   // ----- Aggregate SoS + Auth -----

@@ -126,6 +126,13 @@ export const COL = {
     cartridge: "date_mm33cd87",
   },
 
+  // Calculated Next Order Date columns (date — computed from last bill + lookback)
+  nextOrderDate: {
+    insulin_pump: "date_mm35aknj",   // IP Next Order Date = last bill + 4 years
+    sensors: "date_mm35f5j1",         // Sensors Next Order Date = last bill + 90 days
+    supplies: "date_mm35da3j",        // Supplies Next Order Date = max(infusion, cartridge) + 90d (or 60d if Medicaid)
+  },
+
   // Days Since Stage Started (status — used for Auth Outstanding sorting)
   daysSinceStage: "color_mm1wwm05",
 
