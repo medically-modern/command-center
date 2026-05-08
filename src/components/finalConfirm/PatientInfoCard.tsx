@@ -18,6 +18,7 @@ import {
   SUBSCRIPTION_TYPE_OPTIONS,
   ORDER_HANDLING_OPTIONS,
   AUTH_RESULT_OPTIONS,
+  SOS_OPTIONS,
   formatPhone,
 } from "@/lib/finalConfirm/workflow";
 import { AddressAutocomplete, type AddressResult } from "@/components/finalConfirm/AddressAutocomplete";
@@ -50,6 +51,7 @@ import {
   Package,
   Heart,
   ShieldCheck,
+  CalendarDays,
 } from "lucide-react";
 
 interface Props {
@@ -695,6 +697,74 @@ export function PatientInfoCard({ patient, onFieldChange }: Props) {
             }}
           />
         </div>
+      </Card>
+
+      {/* SoS & Order Dates */}
+      <Card className="p-4 space-y-4">
+        <p className="text-xs uppercase tracking-wider text-muted-foreground font-semibold flex items-center gap-2">
+          <CalendarDays className="h-3.5 w-3.5" /> Same or Similar & Order Dates
+        </p>
+        {([
+          { label: "CGM Monitor", sosField: "sosMonitor" as keyof Patient, dateField: "orderDateMonitor" as keyof Patient },
+          { label: "Sensors", sosField: "sosSensors" as keyof Patient, dateField: "orderDateSensors" as keyof Patient },
+          { label: "Insulin Pump", sosField: "sosIp" as keyof Patient, dateField: "orderDateIp" as keyof Patient },
+          { label: "Infusion Sets", sosField: "sosInfusionSet" as keyof Patient, dateField: "orderDateInfusionSet" as keyof Patient },
+          { label: "Cartridges", sosField: "sosCartridge" as keyof Patient, dateField: "orderDateCartridge" as keyof Patient },
+        ] as const).map(({ label, sosField, dateField }) => (
+          <div key={sosField} className="rounded-lg border border-dashed border-muted-foreground/30 bg-muted/20 p-3 space-y-2">
+            <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">{label}</p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <SelectField
+                label="Same or Similar"
+                icon={<ShieldCheck className="h-4 w-4" />}
+                options={SOS_OPTIONS}
+                value={patient[sosField] as string}
+                onChange={(index, lbl) => {
+                  onFieldChange(sosField, lbl);
+                  // Clear order date when switching to Clear
+                  if (lbl === "Clear") onFieldChange(dateField, "");
+                }}
+              />
+              {(patient[sosField] as string) === "Not Clear" && (
+                <EditableTextField
+                  icon={<CalendarDays className="h-4 w-4" />}
+                  label="Last Bill Date"
+                  value={patient[dateField] as string}
+                  placeholder="YYYY-MM-DD"
+                  onChange={(v) => onFieldChange(dateField, v)}
+                />
+              )}
+            </div>
+          </div>
+        ))}
+
+        {/* Read-only calculated next order dates */}
+        {(patient.nextOrderDateIp || patient.nextOrderDateSensors || patient.nextOrderDateSupplies) && (
+          <>
+            <div className="h-px bg-border" />
+            <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Calculated Next Order Dates</p>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              {patient.nextOrderDateIp && (
+                <div className="rounded-md bg-muted/40 p-2">
+                  <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">IP Next Order</p>
+                  <p className="text-sm font-medium">{patient.nextOrderDateIp}</p>
+                </div>
+              )}
+              {patient.nextOrderDateSensors && (
+                <div className="rounded-md bg-muted/40 p-2">
+                  <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Sensors Next Order</p>
+                  <p className="text-sm font-medium">{patient.nextOrderDateSensors}</p>
+                </div>
+              )}
+              {patient.nextOrderDateSupplies && (
+                <div className="rounded-md bg-muted/40 p-2">
+                  <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Supplies Next Order</p>
+                  <p className="text-sm font-medium">{patient.nextOrderDateSupplies}</p>
+                </div>
+              )}
+            </div>
+          </>
+        )}
       </Card>
     </div>
   );

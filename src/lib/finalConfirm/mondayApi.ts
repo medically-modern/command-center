@@ -78,6 +78,22 @@ export const COL = {
   escalation: "color_mm1x7997",
   escalationReason: "dropdown_mm2fhcd6",
 
+  // Per-product Order Date columns (date — populated when SoS = Not Clear)
+  orderDate: {
+    monitor: "date_mm33vqa0",
+    sensors: "date_mm33jsyt",
+    insulin_pump: "date_mm33kmz4",
+    infusion_set: "date_mm33mw14",
+    cartridge: "date_mm33rd8n",
+  },
+
+  // Calculated Next Order Date columns (read-only display)
+  nextOrderDate: {
+    insulin_pump: "date_mm356crn",
+    sensors: "date_mm35bdf8",
+    supplies: "date_mm351tva",
+  },
+
   // Debug
   joshDebug: "text_mm2w1qn4",
 } as const;
@@ -97,6 +113,9 @@ export const READ_COLUMN_IDS = [
   COL.cgmAuthResult, COL.sensorsAuthResult, COL.ipAuthResult,
   COL.infusionSetAuthResult, COL.cartridgeAuthResult,
   COL.notes,
+  COL.orderDate.monitor, COL.orderDate.sensors, COL.orderDate.insulin_pump,
+  COL.orderDate.infusion_set, COL.orderDate.cartridge,
+  COL.nextOrderDate.insulin_pump, COL.nextOrderDate.sensors, COL.nextOrderDate.supplies,
 ];
 
 export interface MondayColumnValue {
@@ -247,6 +266,23 @@ export async function writeLocation(itemId: string, columnId: string, address: s
     itemId,
     columnId,
     value: JSON.stringify({ address, lat, lng }),
+  });
+}
+
+/**
+ * Write a date column (YYYY-MM-DD string, or "" to clear).
+ */
+export async function writeDate(itemId: string, columnId: string, date: string): Promise<void> {
+  const query = `
+    mutation ($boardId: ID!, $itemId: ID!, $columnId: String!, $value: JSON!) {
+      change_column_value(board_id: $boardId, item_id: $itemId, column_id: $columnId, value: $value) { id }
+    }
+  `;
+  await gql(query, {
+    boardId: BOARD_ID,
+    itemId,
+    columnId,
+    value: date ? JSON.stringify({ date }) : JSON.stringify({}),
   });
 }
 

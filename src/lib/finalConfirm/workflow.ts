@@ -75,6 +75,22 @@ export interface Patient {
   orderHandling: string;
   orderHandlingIndex: number | null;
 
+  // SoS & Order Dates (per-product)
+  sosMonitor: string;       // "Clear" | "Not Clear" | ""
+  sosSensors: string;
+  sosIp: string;
+  sosInfusionSet: string;
+  sosCartridge: string;
+  orderDateMonitor: string;    // YYYY-MM-DD or ""
+  orderDateSensors: string;
+  orderDateIp: string;
+  orderDateInfusionSet: string;
+  orderDateCartridge: string;
+  // Calculated next order dates (read-only display)
+  nextOrderDateIp: string;
+  nextOrderDateSensors: string;
+  nextOrderDateSupplies: string;
+
   // Auth Results
   cgmAuthResult: string;
   cgmAuthResultIndex: number | null;
@@ -317,6 +333,11 @@ export const ORDER_HANDLING_OPTIONS = [
   { index: 0, label: "Separate" },
   { index: 1, label: "Together" },
   { index: 2, label: "Not Applicable" },
+];
+
+export const SOS_OPTIONS = [
+  { index: 0, label: "Clear" },
+  { index: 1, label: "Not Clear" },
 ];
 
 export const AUTH_RESULT_OPTIONS = [

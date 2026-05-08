@@ -65,6 +65,16 @@ const FinalConfirmPage = () => {
       infusionSet1Index: null,
       infusionSet2Index: null,
       orderHandlingIndex: null,
+      sosMonitor: "",
+      sosSensors: "",
+      sosIp: "",
+      sosInfusionSet: "",
+      sosCartridge: "",
+      orderDateMonitor: "",
+      orderDateSensors: "",
+      orderDateIp: "",
+      orderDateInfusionSet: "",
+      orderDateCartridge: "",
       escalated: false,
     } as Partial<Patient>);
     toast.success("Cleared local edits — refetching from Monday");

@@ -89,6 +89,22 @@ export function mondayItemToPatient(item: MondayItem): Patient {
     orderHandling: cv(item, COL.orderHandling)?.text ?? "",
     orderHandlingIndex: parseIndex(cv(item, COL.orderHandling)?.value ?? null),
 
+    // SoS & Order Dates — derive SoS from whether an order date is populated
+    orderDateMonitor: cv(item, COL.orderDate.monitor)?.text ?? "",
+    orderDateSensors: cv(item, COL.orderDate.sensors)?.text ?? "",
+    orderDateIp: cv(item, COL.orderDate.insulin_pump)?.text ?? "",
+    orderDateInfusionSet: cv(item, COL.orderDate.infusion_set)?.text ?? "",
+    orderDateCartridge: cv(item, COL.orderDate.cartridge)?.text ?? "",
+    sosMonitor: (cv(item, COL.orderDate.monitor)?.text ?? "") ? "Not Clear" : "",
+    sosSensors: (cv(item, COL.orderDate.sensors)?.text ?? "") ? "Not Clear" : "",
+    sosIp: (cv(item, COL.orderDate.insulin_pump)?.text ?? "") ? "Not Clear" : "",
+    sosInfusionSet: (cv(item, COL.orderDate.infusion_set)?.text ?? "") ? "Not Clear" : "",
+    sosCartridge: (cv(item, COL.orderDate.cartridge)?.text ?? "") ? "Not Clear" : "",
+    // Calculated next order dates (read-only)
+    nextOrderDateIp: cv(item, COL.nextOrderDate.insulin_pump)?.text ?? "",
+    nextOrderDateSensors: cv(item, COL.nextOrderDate.sensors)?.text ?? "",
+    nextOrderDateSupplies: cv(item, COL.nextOrderDate.supplies)?.text ?? "",
+
     // Auth Results
     cgmAuthResult: cv(item, COL.cgmAuthResult)?.text ?? "",
     cgmAuthResultIndex: parseIndex(cv(item, COL.cgmAuthResult)?.value ?? null),

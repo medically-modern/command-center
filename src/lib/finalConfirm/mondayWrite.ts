@@ -1,4 +1,4 @@
-import { writeStatusIndex, writeLongText, writeText, writeNumber, writeLocation, COL } from "./mondayApi";
+import { writeStatusIndex, writeLongText, writeText, writeNumber, writeLocation, writeDate, COL } from "./mondayApi";
 import type { Patient } from "./workflow";
 
 // Stage Advancer: index 1 = Completed (green)
@@ -115,6 +115,55 @@ export async function sendPatientToMonday(p: Patient): Promise<void> {
   // ─── Notes ────────────────────────────────────────────────
   if (typeof p.notes === "string" && p.notes.trim() !== "")
     tasks.push({ label: "Notes", columnId: COL.notes, fn: () => writeLongText(p.id, COL.notes, p.notes) });
+
+  // ─── Order Dates (write when SoS = Not Clear, clear when Clear) ───
+  const orderDateEntries: { label: string; sosVal: string; dateVal: string; colId: string }[] = [
+    { label: "CGM Monitor Order Date", sosVal: p.sosMonitor, dateVal: p.orderDateMonitor, colId: COL.orderDate.monitor },
+    { label: "Sensors Order Date", sosVal: p.sosSensors, dateVal: p.orderDateSensors, colId: COL.orderDate.sensors },
+    { label: "IP Order Date", sosVal: p.sosIp, dateVal: p.orderDateIp, colId: COL.orderDate.insulin_pump },
+    { label: "Infusion Set Order Date", sosVal: p.sosInfusionSet, dateVal: p.orderDateInfusionSet, colId: COL.orderDate.infusion_set },
+    { label: "Cartridge Order Date", sosVal: p.sosCartridge, dateVal: p.orderDateCartridge, colId: COL.orderDate.cartridge },
+  ];
+  for (const entry of orderDateEntries) {
+    if (entry.sosVal === "Not Clear" && entry.dateVal) {
+      tasks.push({ label: entry.label, columnId: entry.colId, fn: () => writeDate(p.id, entry.colId, entry.dateVal) });
+    } else if (entry.sosVal === "Clear") {
+      tasks.push({ label: entry.label, columnId: entry.colId, fn: () => writeDate(p.id, entry.colId, "") });
+    }
+  }
+
+  // ─── Calculated Next Order Dates ─────────────────────────
+  // Compute from the order dates being written:
+  // IP Next Order = IP order date + 4 years (1461 days)
+  // Sensors Next Order = Sensors order date + 90 days
+  // Supplies Next Order = max(infusion, cartridge) + 90 days (60 if Medicaid)
+  {
+    const addDays = (d: string, n: number) => {
+      if (!d) return "";
+      const dt = new Date(d + "T00:00:00");
+      if (isNaN(dt.getTime())) return "";
+      dt.setDate(dt.getDate() + n);
+      return dt.toISOString().slice(0, 10);
+    };
+    const laterDate = (a: string, b: string) => {
+      if (!a && !b) return "";
+      if (!a) return b;
+      if (!b) return a;
+      return a >= b ? a : b;
+    };
+
+    const ipNext = addDays(p.orderDateIp, 365 * 4);
+    const sensorsNext = addDays(p.orderDateSensors, 90);
+    const suppliesBase = laterDate(p.orderDateInfusionSet, p.orderDateCartridge);
+    const isMedicaid = (p.primaryInsurance ?? "").toLowerCase().includes("medicaid") ||
+                       (p.secondaryInsurance ?? "").toLowerCase().includes("medicaid") ||
+                       (p.secondaryInsuranceEdited ?? "").toLowerCase().includes("medicaid");
+    const suppliesNext = addDays(suppliesBase, isMedicaid ? 60 : 90);
+
+    tasks.push({ label: "IP Next Order Date", columnId: COL.nextOrderDate.insulin_pump, fn: () => writeDate(p.id, COL.nextOrderDate.insulin_pump, ipNext) });
+    tasks.push({ label: "Sensors Next Order Date", columnId: COL.nextOrderDate.sensors, fn: () => writeDate(p.id, COL.nextOrderDate.sensors, sensorsNext) });
+    tasks.push({ label: "Supplies Next Order Date", columnId: COL.nextOrderDate.supplies, fn: () => writeDate(p.id, COL.nextOrderDate.supplies, suppliesNext) });
+  }
 
   // ─── Escalation ───────────────────────────────────────────
   if (p.escalated)
