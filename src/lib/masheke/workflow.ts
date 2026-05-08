@@ -104,6 +104,10 @@ export interface Patient {
   blocked?: string;
   blockedDate?: string;
 
+  // Follow Up
+  followUp?: string;
+  followUpDate?: string;
+
   // Notes
   notes: string;
   lastUpdated?: string;

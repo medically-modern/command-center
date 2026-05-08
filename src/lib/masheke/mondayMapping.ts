@@ -47,7 +47,9 @@ export const ESCALATION_INDEX = { required: 0, done: 1 } as const;
 export const CLINICALS_METHOD_INDEX = { fax: 0, parachute: 1, email: 2 } as const;
 
 // Blocked: 0=Blocked
+// Follow Up: 1=Follow Up (index 1 = "Done" label, repurposed)
 export const BLOCKED_INDEX = { blocked: 0 } as const;
+export const FOLLOW_UP_INDEX = { followUp: 1 } as const;
 
 // ---- Item → Patient conversion ----
 function col(item: MondayItem, id: string): string {
@@ -129,6 +131,8 @@ export function mondayItemToPatient(item: MondayItem): Patient {
     advancer2c: col(item, "color_mm1wf98t") || undefined,
     advancer2d: col(item, "color_mm1wcsbv") || undefined,
     blocked: col(item, "color_mm33ppgw") || undefined,
+    followUp: col(item, "color_mm35v6a0") || undefined,
+    followUpDate: col(item, "date_mm35kbkj") || undefined,
     blockedDate: col(item, "date_mm33vqkm") || undefined,
     notes: "",
   };
