@@ -164,6 +164,12 @@ function EditableDateField({
   );
 }
 
+function formatMDY(raw: string): string {
+  const m = raw.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!m) return raw;
+  return `${m[2]}/${m[3]}/${m[1]}`;
+}
+
 function SelectField({
   label,
   icon,
@@ -769,73 +775,54 @@ export function PatientInfoCard({ patient, onFieldChange }: Props) {
         </div>
       </Card>
 
-      {/* Last Bill Dates */}
-      <Card className="p-4 space-y-4">
-        <p className="text-xs uppercase tracking-wider text-muted-foreground font-semibold flex items-center gap-2">
-          <CalendarDays className="h-3.5 w-3.5" /> Last Bill Dates
-        </p>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          <EditableDateField
-            icon={<CalendarDays className="h-4 w-4" />}
-            label="CGM Last Bill Date"
-            value={patient.orderDateMonitor}
-            onChange={(v) => onFieldChange("orderDateMonitor", v)}
-          />
-          <EditableDateField
-            icon={<CalendarDays className="h-4 w-4" />}
-            label="Sensors Last Bill Date"
-            value={patient.orderDateSensors}
-            onChange={(v) => onFieldChange("orderDateSensors", v)}
-          />
-          <EditableDateField
-            icon={<CalendarDays className="h-4 w-4" />}
-            label="IP Last Bill Date"
-            value={patient.orderDateIp}
-            onChange={(v) => onFieldChange("orderDateIp", v)}
-          />
-          <EditableDateField
-            icon={<CalendarDays className="h-4 w-4" />}
-            label="Infusion Set Last Bill Date"
-            value={patient.orderDateInfusionSet}
-            onChange={(v) => onFieldChange("orderDateInfusionSet", v)}
-          />
-          <EditableDateField
-            icon={<CalendarDays className="h-4 w-4" />}
-            label="Cartridge Last Bill Date"
-            value={patient.orderDateCartridge}
-            onChange={(v) => onFieldChange("orderDateCartridge", v)}
-          />
-        </div>
-
-      </Card>
-
-      {/* Subscription and Logistics — Next Order Dates */}
+      {/* Subscription and Logistics — Next Order Dates + Last Bill Date notes */}
       <Card className="p-4 space-y-4">
         <p className="text-xs uppercase tracking-wider text-muted-foreground font-semibold flex items-center gap-2">
           <CalendarDays className="h-3.5 w-3.5" /> Subscription and Logistics
         </p>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <EditableDateField
-            icon={<CalendarDays className="h-4 w-4" />}
-            label="IP Next Order Date"
-            value={patient.nextOrderDateIp}
-            onChange={(v) => onFieldChange("nextOrderDateIp", v)}
-            colorCode
-          />
-          <EditableDateField
-            icon={<CalendarDays className="h-4 w-4" />}
-            label="Sensors Next Order Date"
-            value={patient.nextOrderDateSensors}
-            onChange={(v) => onFieldChange("nextOrderDateSensors", v)}
-            colorCode
-          />
-          <EditableDateField
-            icon={<CalendarDays className="h-4 w-4" />}
-            label="Supplies Next Order Date"
-            value={patient.nextOrderDateSupplies}
-            onChange={(v) => onFieldChange("nextOrderDateSupplies", v)}
-            colorCode
-          />
+          <div className="space-y-1">
+            <EditableDateField
+              icon={<CalendarDays className="h-4 w-4" />}
+              label="IP Next Order Date"
+              value={patient.nextOrderDateIp}
+              onChange={(v) => onFieldChange("nextOrderDateIp", v)}
+              colorCode
+            />
+            {patient.orderDateIp && (
+              <p className="text-[10px] text-muted-foreground pl-10">IP Last Bill: {formatMDY(patient.orderDateIp)}</p>
+            )}
+          </div>
+          <div className="space-y-1">
+            <EditableDateField
+              icon={<CalendarDays className="h-4 w-4" />}
+              label="Sensors Next Order Date"
+              value={patient.nextOrderDateSensors}
+              onChange={(v) => onFieldChange("nextOrderDateSensors", v)}
+              colorCode
+            />
+            {(patient.orderDateSensors || patient.orderDateMonitor) && (
+              <div className="text-[10px] text-muted-foreground pl-10 space-y-0.5">
+                {patient.orderDateSensors && <p>Sensors Last Bill: {formatMDY(patient.orderDateSensors)}</p>}
+                {patient.orderDateMonitor && <p>CGM Last Bill: {formatMDY(patient.orderDateMonitor)}</p>}
+              </div>
+            )}
+          </div>
+          <div className="space-y-1">
+            <EditableDateField
+              icon={<CalendarDays className="h-4 w-4" />}
+              label="Supplies Next Order Date"
+              value={patient.nextOrderDateSupplies}
+              onChange={(v) => onFieldChange("nextOrderDateSupplies", v)}
+              colorCode
+            />
+            {(patient.orderDateCartridge || patient.orderDateInfusionSet) && (
+              <div className="text-[10px] text-muted-foreground pl-10 space-y-0.5">
+                {patient.orderDateCartridge && <p>Cartridge Last Bill: {formatMDY(patient.orderDateCartridge)}</p>}
+                {patient.orderDateInfusionSet && <p>Infusion Set Last Bill: {formatMDY(patient.orderDateInfusionSet)}</p>}
+              </div>
+            )}
+          </div>
         </div>
       </Card>
     </div>
