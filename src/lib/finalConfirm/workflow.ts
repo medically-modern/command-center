@@ -363,6 +363,13 @@ export function formatPhone(raw: string): string {
   return raw;
 }
 
+/** Convert YYYY-MM-DD → MM/DD/YYYY for display */
+export function formatDateMDY(raw: string): string {
+  const m = raw.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!m) return raw;
+  return `${m[2]}/${m[3]}/${m[1]}`;
+}
+
 /* ─── Validation ─── */
 
 /** No fields are required — user can send at any time */

@@ -1,4 +1,5 @@
 import type { Patient } from "@/lib/finalConfirm/workflow";
+import { formatDateMDY } from "@/lib/finalConfirm/workflow";
 import {
   GENDER_OPTIONS,
   PRIMARY_INSURANCE_OPTIONS,
@@ -487,7 +488,7 @@ export function PatientInfoCard({ patient, onFieldChange }: Props) {
             <EditableTextField
               icon={<Stethoscope className="h-4 w-4" />}
               label="MR Expiry Date"
-              value={patient.mrExpiryDate}
+              value={patient.mrExpiryDate ? formatDateMDY(patient.mrExpiryDate) : ""}
               onChange={(v) => onFieldChange("mrExpiryDate", v)}
             />
           </div>
@@ -741,34 +742,72 @@ export function PatientInfoCard({ patient, onFieldChange }: Props) {
           />
         </div>
 
-        {/* Read-only calculated next order dates */}
-        {(patient.nextOrderDateIp || patient.nextOrderDateSensors || patient.nextOrderDateSupplies) && (
-          <>
-            <div className="h-px bg-border" />
-            <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Calculated Next Order Dates</p>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              {patient.nextOrderDateIp && (
-                <div className="rounded-md bg-muted/40 p-2">
-                  <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">IP Next Order</p>
-                  <p className="text-sm font-medium">{patient.nextOrderDateIp}</p>
-                </div>
-              )}
-              {patient.nextOrderDateSensors && (
-                <div className="rounded-md bg-muted/40 p-2">
-                  <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Sensors Next Order</p>
-                  <p className="text-sm font-medium">{patient.nextOrderDateSensors}</p>
-                </div>
-              )}
-              {patient.nextOrderDateSupplies && (
-                <div className="rounded-md bg-muted/40 p-2">
-                  <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Supplies Next Order</p>
-                  <p className="text-sm font-medium">{patient.nextOrderDateSupplies}</p>
-                </div>
-              )}
-            </div>
-          </>
-        )}
       </Card>
+
+      {/* Subscription and Logistics — Next Order Dates */}
+      {(patient.nextOrderDateIp || patient.nextOrderDateSensors || patient.nextOrderDateSupplies) && (
+        <Card className="p-4 space-y-4">
+          <p className="text-xs uppercase tracking-wider text-muted-foreground font-semibold flex items-center gap-2">
+            <CalendarDays className="h-3.5 w-3.5" /> Subscription and Logistics
+          </p>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            {patient.nextOrderDateIp && (() => {
+              const match = patient.nextOrderDateIp.match(/^(\d{4})-(\d{2})-(\d{2})/);
+              if (!match) return null;
+              const d = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+              const today = new Date(); today.setHours(0,0,0,0);
+              const isReady = d <= today;
+              return (
+                <div className="flex items-start gap-2">
+                  <div className={cn("h-8 w-8 rounded-md flex items-center justify-center shrink-0", isReady ? "bg-green-100 text-green-600" : "bg-red-100 text-red-600")}>
+                    <CalendarDays className="h-4 w-4" />
+                  </div>
+                  <div>
+                    <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">IP Next Order Date</p>
+                    <p className={cn("text-sm font-medium", isReady ? "text-green-600" : "text-red-600")}>{formatDateMDY(patient.nextOrderDateIp)}</p>
+                  </div>
+                </div>
+              );
+            })()}
+            {patient.nextOrderDateSensors && (() => {
+              const match = patient.nextOrderDateSensors.match(/^(\d{4})-(\d{2})-(\d{2})/);
+              if (!match) return null;
+              const d = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+              const today = new Date(); today.setHours(0,0,0,0);
+              const isReady = d <= today;
+              return (
+                <div className="flex items-start gap-2">
+                  <div className={cn("h-8 w-8 rounded-md flex items-center justify-center shrink-0", isReady ? "bg-green-100 text-green-600" : "bg-red-100 text-red-600")}>
+                    <CalendarDays className="h-4 w-4" />
+                  </div>
+                  <div>
+                    <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Sensors Next Order Date</p>
+                    <p className={cn("text-sm font-medium", isReady ? "text-green-600" : "text-red-600")}>{formatDateMDY(patient.nextOrderDateSensors)}</p>
+                  </div>
+                </div>
+              );
+            })()}
+            {patient.nextOrderDateSupplies && (() => {
+              const match = patient.nextOrderDateSupplies.match(/^(\d{4})-(\d{2})-(\d{2})/);
+              if (!match) return null;
+              const d = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+              const today = new Date(); today.setHours(0,0,0,0);
+              const isReady = d <= today;
+              return (
+                <div className="flex items-start gap-2">
+                  <div className={cn("h-8 w-8 rounded-md flex items-center justify-center shrink-0", isReady ? "bg-green-100 text-green-600" : "bg-red-100 text-red-600")}>
+                    <CalendarDays className="h-4 w-4" />
+                  </div>
+                  <div>
+                    <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Supplies Next Order Date</p>
+                    <p className={cn("text-sm font-medium", isReady ? "text-green-600" : "text-red-600")}>{formatDateMDY(patient.nextOrderDateSupplies)}</p>
+                  </div>
+                </div>
+              );
+            })()}
+          </div>
+        </Card>
+      )}
     </div>
   );
 }
