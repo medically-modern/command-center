@@ -69,7 +69,7 @@ export const COL = {
 
   // Order dates (read-only)
   cgmOrderDate: "date_mm33vqa0",
-  sensorsOrderDate: "date_mm32a179",
+  sensorsOrderDate: "date_mm33jsyt",
   ipOrderDate: "date_mm33kmz4",
   infusionSetOrderDate: "date_mm33mw14",
   cartridgeOrderDate: "date_mm33rd8n",
