@@ -128,37 +128,14 @@ export async function sendPatientToMonday(p: Patient): Promise<void> {
     tasks.push({ label: entry.label, columnId: entry.colId, fn: () => writeDate(p.id, entry.colId, entry.dateVal) });
   }
 
-  // ─── Calculated Next Order Dates ─────────────────────────
-  // Compute from the order dates being written:
-  // IP Next Order = IP order date + 4 years (1461 days)
-  // Sensors Next Order = Sensors order date + 90 days
-  // Supplies Next Order = max(infusion, cartridge) + 90 days (60 if Medicaid)
-  {
-    const addDays = (d: string, n: number) => {
-      if (!d) return "";
-      const dt = new Date(d + "T00:00:00");
-      if (isNaN(dt.getTime())) return "";
-      dt.setDate(dt.getDate() + n);
-      return dt.toISOString().slice(0, 10);
-    };
-    const laterDate = (a: string, b: string) => {
-      if (!a && !b) return "";
-      if (!a) return b;
-      if (!b) return a;
-      return a >= b ? a : b;
-    };
-
-    const ipNext = addDays(p.orderDateIp, 365 * 4);
-    const sensorsNext = addDays(p.orderDateSensors, 90);
-    const suppliesBase = laterDate(p.orderDateInfusionSet, p.orderDateCartridge);
-    const isMedicaid = (p.primaryInsurance ?? "").toLowerCase().includes("medicaid") ||
-                       (p.secondaryInsurance ?? "").toLowerCase().includes("medicaid") ||
-                       (p.secondaryInsuranceEdited ?? "").toLowerCase().includes("medicaid");
-    const suppliesNext = addDays(suppliesBase, isMedicaid ? 60 : 90);
-
-    tasks.push({ label: "IP Next Order Date", columnId: COL.nextOrderDate.insulin_pump, fn: () => writeDate(p.id, COL.nextOrderDate.insulin_pump, ipNext) });
-    tasks.push({ label: "Sensors Next Order Date", columnId: COL.nextOrderDate.sensors, fn: () => writeDate(p.id, COL.nextOrderDate.sensors, sensorsNext) });
-    tasks.push({ label: "Supplies Next Order Date", columnId: COL.nextOrderDate.supplies, fn: () => writeDate(p.id, COL.nextOrderDate.supplies, suppliesNext) });
+  // ─── Next Order Dates (user-editable, written directly) ──
+  const nextOrderDateEntries: { label: string; dateVal: string; colId: string }[] = [
+    { label: "IP Next Order Date", dateVal: p.nextOrderDateIp, colId: COL.nextOrderDate.insulin_pump },
+    { label: "Sensors Next Order Date", dateVal: p.nextOrderDateSensors, colId: COL.nextOrderDate.sensors },
+    { label: "Supplies Next Order Date", dateVal: p.nextOrderDateSupplies, colId: COL.nextOrderDate.supplies },
+  ];
+  for (const entry of nextOrderDateEntries) {
+    tasks.push({ label: entry.label, columnId: entry.colId, fn: () => writeDate(p.id, entry.colId, entry.dateVal) });
   }
 
   // ─── Escalation ───────────────────────────────────────────

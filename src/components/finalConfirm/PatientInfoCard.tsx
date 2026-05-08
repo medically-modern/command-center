@@ -1,5 +1,4 @@
 import type { Patient } from "@/lib/finalConfirm/workflow";
-import { formatDateMDY } from "@/lib/finalConfirm/workflow";
 import {
   GENDER_OPTIONS,
   PRIMARY_INSURANCE_OPTIONS,
@@ -88,6 +87,77 @@ function EditableTextField({
           value={displayValue}
           onChange={(e) => onChange(e.target.value)}
           placeholder={placeholder ?? `Enter ${label.toLowerCase()}`}
+        />
+      </div>
+    </div>
+  );
+}
+
+function EditableDateField({
+  icon,
+  label,
+  value,
+  placeholder,
+  onChange,
+  colorCode,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  value: string;
+  placeholder?: string;
+  onChange: (v: string) => void;
+  colorCode?: boolean;
+}) {
+  // value is YYYY-MM-DD internally, display as MM/DD/YYYY
+  const displayVal = (() => {
+    const m = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (!m) return value;
+    return `${m[2]}/${m[3]}/${m[1]}`;
+  })();
+
+  // Parse user input back to YYYY-MM-DD when they type MM/DD/YYYY
+  const handleChange = (raw: string) => {
+    const m = raw.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+    if (m) {
+      onChange(`${m[3]}-${m[1]}-${m[2]}`);
+    } else {
+      onChange(raw);
+    }
+  };
+
+  const isEmpty = !value;
+
+  // Color coding for next order dates
+  let isReady = false;
+  if (colorCode && value) {
+    const m = value.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (m) {
+      const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+      const today = new Date(); today.setHours(0,0,0,0);
+      isReady = d <= today;
+    }
+  }
+
+  const iconBg = colorCode && value
+    ? (isReady ? "bg-green-100 text-green-600" : "bg-red-100 text-red-600")
+    : (isEmpty ? "bg-red-100 dark:bg-red-900/30 text-red-500" : "bg-muted text-muted-foreground");
+
+  const textColor = colorCode && value
+    ? (isReady ? "text-green-600" : "text-red-600")
+    : "";
+
+  return (
+    <div className={cn("flex items-start gap-2 min-w-0 rounded-lg p-1.5 -m-1.5 transition-colors", !colorCode && isEmpty && "bg-red-50 dark:bg-red-950/20 ring-1 ring-red-200 dark:ring-red-800/40")}>
+      <div className={cn("h-8 w-8 rounded-md flex items-center justify-center shrink-0", iconBg)}>
+        {icon}
+      </div>
+      <div className="min-w-0 flex-1">
+        <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1">{label}</p>
+        <Input
+          className={cn("h-8 text-sm", textColor, !colorCode && isEmpty && "border-red-300 dark:border-red-700")}
+          value={displayVal}
+          onChange={(e) => handleChange(e.target.value)}
+          placeholder={placeholder ?? "MM/DD/YYYY"}
         />
       </div>
     </div>
@@ -485,10 +555,10 @@ export function PatientInfoCard({ patient, onFieldChange }: Props) {
                 if (opt) onFieldChange("ipCoveragePath", opt.label);
               }}
             />
-            <EditableTextField
+            <EditableDateField
               icon={<Stethoscope className="h-4 w-4" />}
               label="MR Expiry Date"
-              value={patient.mrExpiryDate ? formatDateMDY(patient.mrExpiryDate) : ""}
+              value={patient.mrExpiryDate}
               onChange={(v) => onFieldChange("mrExpiryDate", v)}
             />
           </div>
@@ -705,39 +775,34 @@ export function PatientInfoCard({ patient, onFieldChange }: Props) {
           <CalendarDays className="h-3.5 w-3.5" /> Order Dates
         </p>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          <EditableTextField
+          <EditableDateField
             icon={<CalendarDays className="h-4 w-4" />}
             label="CGM Monitor Order Date"
             value={patient.orderDateMonitor}
-            placeholder="YYYY-MM-DD"
             onChange={(v) => onFieldChange("orderDateMonitor", v)}
           />
-          <EditableTextField
+          <EditableDateField
             icon={<CalendarDays className="h-4 w-4" />}
             label="Sensors Order Date"
             value={patient.orderDateSensors}
-            placeholder="YYYY-MM-DD"
             onChange={(v) => onFieldChange("orderDateSensors", v)}
           />
-          <EditableTextField
+          <EditableDateField
             icon={<CalendarDays className="h-4 w-4" />}
             label="IP Order Date"
             value={patient.orderDateIp}
-            placeholder="YYYY-MM-DD"
             onChange={(v) => onFieldChange("orderDateIp", v)}
           />
-          <EditableTextField
+          <EditableDateField
             icon={<CalendarDays className="h-4 w-4" />}
             label="Infusion Set Order Date"
             value={patient.orderDateInfusionSet}
-            placeholder="YYYY-MM-DD"
             onChange={(v) => onFieldChange("orderDateInfusionSet", v)}
           />
-          <EditableTextField
+          <EditableDateField
             icon={<CalendarDays className="h-4 w-4" />}
             label="Cartridge Order Date"
             value={patient.orderDateCartridge}
-            placeholder="YYYY-MM-DD"
             onChange={(v) => onFieldChange("orderDateCartridge", v)}
           />
         </div>
@@ -745,69 +810,34 @@ export function PatientInfoCard({ patient, onFieldChange }: Props) {
       </Card>
 
       {/* Subscription and Logistics — Next Order Dates */}
-      {(patient.nextOrderDateIp || patient.nextOrderDateSensors || patient.nextOrderDateSupplies) && (
-        <Card className="p-4 space-y-4">
-          <p className="text-xs uppercase tracking-wider text-muted-foreground font-semibold flex items-center gap-2">
-            <CalendarDays className="h-3.5 w-3.5" /> Subscription and Logistics
-          </p>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            {patient.nextOrderDateIp && (() => {
-              const match = patient.nextOrderDateIp.match(/^(\d{4})-(\d{2})-(\d{2})/);
-              if (!match) return null;
-              const d = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
-              const today = new Date(); today.setHours(0,0,0,0);
-              const isReady = d <= today;
-              return (
-                <div className="flex items-start gap-2">
-                  <div className={cn("h-8 w-8 rounded-md flex items-center justify-center shrink-0", isReady ? "bg-green-100 text-green-600" : "bg-red-100 text-red-600")}>
-                    <CalendarDays className="h-4 w-4" />
-                  </div>
-                  <div>
-                    <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">IP Next Order Date</p>
-                    <p className={cn("text-sm font-medium", isReady ? "text-green-600" : "text-red-600")}>{formatDateMDY(patient.nextOrderDateIp)}</p>
-                  </div>
-                </div>
-              );
-            })()}
-            {patient.nextOrderDateSensors && (() => {
-              const match = patient.nextOrderDateSensors.match(/^(\d{4})-(\d{2})-(\d{2})/);
-              if (!match) return null;
-              const d = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
-              const today = new Date(); today.setHours(0,0,0,0);
-              const isReady = d <= today;
-              return (
-                <div className="flex items-start gap-2">
-                  <div className={cn("h-8 w-8 rounded-md flex items-center justify-center shrink-0", isReady ? "bg-green-100 text-green-600" : "bg-red-100 text-red-600")}>
-                    <CalendarDays className="h-4 w-4" />
-                  </div>
-                  <div>
-                    <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Sensors Next Order Date</p>
-                    <p className={cn("text-sm font-medium", isReady ? "text-green-600" : "text-red-600")}>{formatDateMDY(patient.nextOrderDateSensors)}</p>
-                  </div>
-                </div>
-              );
-            })()}
-            {patient.nextOrderDateSupplies && (() => {
-              const match = patient.nextOrderDateSupplies.match(/^(\d{4})-(\d{2})-(\d{2})/);
-              if (!match) return null;
-              const d = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
-              const today = new Date(); today.setHours(0,0,0,0);
-              const isReady = d <= today;
-              return (
-                <div className="flex items-start gap-2">
-                  <div className={cn("h-8 w-8 rounded-md flex items-center justify-center shrink-0", isReady ? "bg-green-100 text-green-600" : "bg-red-100 text-red-600")}>
-                    <CalendarDays className="h-4 w-4" />
-                  </div>
-                  <div>
-                    <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Supplies Next Order Date</p>
-                    <p className={cn("text-sm font-medium", isReady ? "text-green-600" : "text-red-600")}>{formatDateMDY(patient.nextOrderDateSupplies)}</p>
-                  </div>
-                </div>
-              );
-            })()}
-          </div>
-        </Card>
-      )}
+      <Card className="p-4 space-y-4">
+        <p className="text-xs uppercase tracking-wider text-muted-foreground font-semibold flex items-center gap-2">
+          <CalendarDays className="h-3.5 w-3.5" /> Subscription and Logistics
+        </p>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <EditableDateField
+            icon={<CalendarDays className="h-4 w-4" />}
+            label="IP Next Order Date"
+            value={patient.nextOrderDateIp}
+            onChange={(v) => onFieldChange("nextOrderDateIp", v)}
+            colorCode
+          />
+          <EditableDateField
+            icon={<CalendarDays className="h-4 w-4" />}
+            label="Sensors Next Order Date"
+            value={patient.nextOrderDateSensors}
+            onChange={(v) => onFieldChange("nextOrderDateSensors", v)}
+            colorCode
+          />
+          <EditableDateField
+            icon={<CalendarDays className="h-4 w-4" />}
+            label="Supplies Next Order Date"
+            value={patient.nextOrderDateSupplies}
+            onChange={(v) => onFieldChange("nextOrderDateSupplies", v)}
+            colorCode
+          />
+        </div>
+      </Card>
     </div>
   );
 }
