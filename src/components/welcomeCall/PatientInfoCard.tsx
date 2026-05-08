@@ -59,6 +59,44 @@ function SosField({ label, dateStr }: { label: string; dateStr: string }) {
   );
 }
 
+function OrderDateField({ label, dateStr }: { label: string; dateStr: string }) {
+  if (!dateStr) return null;
+  const formatted = formatDateMDY(dateStr);
+  if (!formatted) return null;
+  return (
+    <div>
+      <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
+        {label}
+      </p>
+      <p className="text-sm font-medium">
+        {formatted}
+      </p>
+    </div>
+  );
+}
+
+function NextOrderDateField({ label, dateStr }: { label: string; dateStr: string }) {
+  if (!dateStr) return null;
+  const match = dateStr.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!match) return null;
+  const d = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  // Green if today or earlier (ready to order), red if future (not yet)
+  const isReady = d <= today;
+  const formatted = `${String(d.getMonth() + 1).padStart(2, "0")}/${String(d.getDate()).padStart(2, "0")}/${d.getFullYear()}`;
+  return (
+    <div>
+      <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
+        {label}
+      </p>
+      <p className={`text-sm font-medium ${isReady ? "text-green-600" : "text-red-600"}`}>
+        {formatted}
+      </p>
+    </div>
+  );
+}
+
 function PhoneField({
   phone,
   phoneEdited,
@@ -178,10 +216,16 @@ export function PatientInfoCard({ patient, onFieldChange }: Props) {
         <Card className="p-4">
           <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-3">SOS</p>
           <div className="grid grid-cols-2 gap-3">
-            <Field label="Supplies Order Date" value={formatDateMDY(patient.suppliesOrderDate)} />
-            <SosField label="SOS Supplies Order Date" dateStr={patient.suppliesOrderDate} />
-            <Field label="Sensors Order Date" value={formatDateMDY(patient.sensorsOrderDate)} />
-            <SosField label="SOS Sensors Order Date" dateStr={patient.sensorsOrderDate} />
+            <OrderDateField label="CGM Order Date" dateStr={patient.cgmOrderDate} />
+            <SosField label="SOS CGM" dateStr={patient.cgmOrderDate} />
+            <OrderDateField label="Sensors Order Date" dateStr={patient.sensorsOrderDate} />
+            <SosField label="SOS Sensors" dateStr={patient.sensorsOrderDate} />
+            <OrderDateField label="IP Order Date" dateStr={patient.ipOrderDate} />
+            <SosField label="SOS IP" dateStr={patient.ipOrderDate} />
+            <OrderDateField label="Infusion Set Order Date" dateStr={patient.infusionSetOrderDate} />
+            <SosField label="SOS Infusion Set" dateStr={patient.infusionSetOrderDate} />
+            <OrderDateField label="Cartridge Order Date" dateStr={patient.cartridgeOrderDate} />
+            <SosField label="SOS Cartridge" dateStr={patient.cartridgeOrderDate} />
           </div>
         </Card>
 
@@ -255,6 +299,20 @@ export function PatientInfoCard({ patient, onFieldChange }: Props) {
           </div>
         </Card>
       </div>
+
+      {/* Subscription & Logistics — Next Order Dates */}
+      {(patient.ipNextOrderDate || patient.sensorsNextOrderDate || patient.suppliesNextOrderDate) && (
+        <Card className="p-4">
+          <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-3">
+            Subscription and Logistics
+          </p>
+          <div className="grid grid-cols-3 gap-3">
+            <NextOrderDateField label="IP Next Order Date" dateStr={patient.ipNextOrderDate} />
+            <NextOrderDateField label="Sensors Next Order Date" dateStr={patient.sensorsNextOrderDate} />
+            <NextOrderDateField label="Supplies Next Order Date" dateStr={patient.suppliesNextOrderDate} />
+          </div>
+        </Card>
+      )}
 
       {/* Row 2: Benefits + Auth Results */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">

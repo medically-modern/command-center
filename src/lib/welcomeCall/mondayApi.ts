@@ -68,8 +68,16 @@ export const COL = {
   oopMaxRemaining: "text_mm1xx5f",
 
   // Order dates (read-only)
-  suppliesOrderDate: "date_mm324s6q",
+  cgmOrderDate: "date_mm33vqa0",
   sensorsOrderDate: "date_mm32a179",
+  ipOrderDate: "date_mm33kmz4",
+  infusionSetOrderDate: "date_mm33mw14",
+  cartridgeOrderDate: "date_mm33rd8n",
+  suppliesOrderDate: "date_mm324s6q",
+  // Next order dates (read-only)
+  ipNextOrderDate: "date_mm356crn",
+  sensorsNextOrderDate: "date_mm35bdf8",
+  suppliesNextOrderDate: "date_mm351tva",
 
   // Stage
   stageAdvancer: "color_mm1ws96t",
@@ -89,7 +97,9 @@ export const READ_COLUMN_IDS = [
   COL.cgmAuthResult, COL.sensorsAuthResult, COL.ipAuthResult,
   COL.infusionSetAuthResult, COL.cartridgeAuthResult,
   COL.deductible, COL.deductibleRemaining, COL.oopMax, COL.oopMaxRemaining,
-  COL.suppliesOrderDate, COL.sensorsOrderDate,
+  COL.cgmOrderDate, COL.sensorsOrderDate, COL.ipOrderDate,
+  COL.infusionSetOrderDate, COL.cartridgeOrderDate, COL.suppliesOrderDate,
+  COL.ipNextOrderDate, COL.sensorsNextOrderDate, COL.suppliesNextOrderDate,
 ];
 
 export interface MondayColumnValue {

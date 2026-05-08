@@ -61,8 +61,16 @@ export interface Patient {
   oopMax: string;
   oopMaxRemaining: string;
   // Order dates (read-only)
-  suppliesOrderDate: string;
+  cgmOrderDate: string;
   sensorsOrderDate: string;
+  ipOrderDate: string;
+  infusionSetOrderDate: string;
+  cartridgeOrderDate: string;
+  suppliesOrderDate: string;
+  // Next order dates (read-only)
+  ipNextOrderDate: string;
+  sensorsNextOrderDate: string;
+  suppliesNextOrderDate: string;
   // End-of-call decision: index 1 = Advance, index 2 = Don't Advance
   advanceDecision: string;
   advanceDecisionIndex: number | null;
