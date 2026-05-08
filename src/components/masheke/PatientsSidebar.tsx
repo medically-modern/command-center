@@ -12,7 +12,7 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
-import { Ban, CalendarCheck, Loader2, RefreshCw, User, AlertCircle, Search, X, Undo2 } Clock, from "lucide-react";
+import { Ban, CalendarCheck, Clock, Loader2, RefreshCw, User, AlertCircle, Search, X, Undo2 } from "lucide-react";
 import type { Patient } from "@/lib/masheke/workflow";
 import type { TabKey } from "@/hooks/masheke/useMondayPatients";
 import { cn } from "@/lib/utils";
