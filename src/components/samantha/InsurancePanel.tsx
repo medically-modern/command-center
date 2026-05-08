@@ -581,6 +581,7 @@ function deriveMondayColumns(patient: Patient, resolved: ResolvedProduct[]) {
   // 4) SoS — count every product. Priority: not-clear > skip > clear.
   const anyNotClear = productStates.some((p) => p.sos === "not-clear");
   const anySkip = productStates.some((p) => p.sos === "skip");
+  const pumpNotClear = productStates.some((p) => p.product === "insulin_pump" && p.sos === "not-clear");
   const sosCol = !allFilled
     ? "—"
     : anyNotClear
@@ -602,12 +603,11 @@ function deriveMondayColumns(patient: Patient, resolved: ResolvedProduct[]) {
     .join(", ");
 
   // 6) Stage Advancer
-  // - If any universal not confirmed OR SoS not clear → "Benefits / SoS"
-  // - Else if auths required → "Authorization"
+  // - If any universal not confirmed OR pump SoS not clear → "Benefits / SoS"
   // - Else if all clear → "Complete"
   // - Else (still working / not all filled) → "Benefits / SoS"
   let stageAdvancer: string;
-  if (anyUniversalNotConfirmed || !universalAllConfirmed || !allFilled || anyNotClear) {
+  if (anyUniversalNotConfirmed || !universalAllConfirmed || !allFilled || pumpNotClear) {
     stageAdvancer = "Benefits / SoS";
   } else if (anyAuthRequired) {
     stageAdvancer = "Authorization";
@@ -616,11 +616,9 @@ function deriveMondayColumns(patient: Patient, resolved: ResolvedProduct[]) {
   }
 
   // 7) Escalation column
-  // Eager: escalate as soon as any universal is "Not Confirmed" or any
-  // product's SoS is "Not Clear" — even if other products aren't filled
-  // yet. The Send-to-Monday guard prevents incomplete submits, so this
-  // only affects what the preview shows during data entry.
-  const shouldEscalate = anyUniversalNotConfirmed || anyNotClear;
+  // Only escalate for universal not confirmed or pump SoS not clear.
+  // Other products being not-clear on SoS do not trigger escalation.
+  const shouldEscalate = anyUniversalNotConfirmed || pumpNotClear;
   const escalation = shouldEscalate ? "Escalation Required" : "—";
 
   return {
