@@ -27,7 +27,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { AlertTriangle, CalendarDays, CheckCircle2, Clock, ShieldCheck, ShieldAlert, Repeat, Package, XCircle, ArrowRight } from "lucide-react";
+import { AlertTriangle, CalendarDays, CheckCircle2, Clock, ShieldCheck, ShieldAlert, Repeat, Package, XCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useEffect, useMemo } from "react";
 
@@ -231,51 +231,6 @@ export function InsurancePanel({
         )}
       </StepSection>
 
-      {/* Next Order Dates — read-only, calculated from last bill dates */}
-      {dropdownsReady && (nextOrderDates.ipNextOrderDate || nextOrderDates.sensorsNextOrderDate || nextOrderDates.suppliesNextOrderDate) && (
-        <div className="rounded-xl border-2 border-dashed border-primary/30 bg-primary/5 p-4 space-y-3">
-          <div className="flex items-center gap-2">
-            <CalendarDays className="h-4 w-4 text-primary" />
-            <h3 className="text-sm font-semibold text-primary">Next Order Dates</h3>
-            <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-primary/10 text-primary">AUTO-CALCULATED</span>
-          </div>
-          <p className="text-[11px] text-muted-foreground">
-            Computed from last bill dates above. Written to Monday on send — not editable.
-          </p>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-            {nextOrderDates.ipNextOrderDate && (
-              <div className="rounded-lg border bg-background p-3">
-                <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1">IP Next Order Date</p>
-                <div className="flex items-center gap-2">
-                  <span className="text-sm font-mono font-semibold">{formatDateDisplay(nextOrderDates.ipNextOrderDate)}</span>
-                  <span className="text-[10px] text-muted-foreground">(+4 yr)</span>
-                </div>
-              </div>
-            )}
-            {nextOrderDates.sensorsNextOrderDate && (
-              <div className="rounded-lg border bg-background p-3">
-                <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1">Sensors Next Order Date</p>
-                <div className="flex items-center gap-2">
-                  <span className="text-sm font-mono font-semibold">{formatDateDisplay(nextOrderDates.sensorsNextOrderDate)}</span>
-                  <span className="text-[10px] text-muted-foreground">(+90 days)</span>
-                </div>
-              </div>
-            )}
-            {nextOrderDates.suppliesNextOrderDate && (
-              <div className="rounded-lg border bg-background p-3">
-                <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1">Supplies Next Order Date</p>
-                <div className="flex items-center gap-2">
-                  <span className="text-sm font-mono font-semibold">{formatDateDisplay(nextOrderDates.suppliesNextOrderDate)}</span>
-                  <span className="text-[10px] text-muted-foreground">
-                    (+{(primaryInsurance ?? "").toLowerCase().includes("medicaid") || (patient.secondaryInsurance ?? "").toLowerCase().includes("medicaid") ? "60" : "90"} days)
-                  </span>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
       {/* Reference Notes */}
       <div className="rounded-lg border bg-muted/20 p-4 space-y-2">
         <div>
@@ -295,7 +250,7 @@ export function InsurancePanel({
 
       {/* Monday output */}
       {dropdownsReady && (
-        <MondayOutput patient={patient} resolved={resolved} outcome={outcome} />
+        <MondayOutput patient={patient} resolved={resolved} outcome={outcome} nextOrderDates={nextOrderDates} />
       )}
     </section>
   );
@@ -709,10 +664,12 @@ function MondayOutput({
   patient,
   resolved,
   outcome,
+  nextOrderDates,
 }: {
   patient: Patient;
   resolved: ResolvedProduct[];
   outcome: ReturnType<typeof deriveInsuranceOutcome>;
+  nextOrderDates: import("@/lib/samantha/workflow").NextOrderDates;
 }) {
   const cols = deriveMondayColumns(patient, resolved);
   const ins = patient.insurance ?? EMPTY_INSURANCE;
@@ -726,6 +683,15 @@ function MondayOutput({
     { key: "skipsos", label: "Skip SoS Products", value: cols.skipSosProducts },
     { key: "stage", label: "Stage Advancer", value: cols.stageAdvancer },
     { key: "escalation", label: "Escalation", value: cols.escalation },
+    ...(nextOrderDates.ipNextOrderDate
+      ? [{ key: "nod-ip", label: "IP Next Order Date", value: formatDateDisplay(nextOrderDates.ipNextOrderDate) }]
+      : []),
+    ...(nextOrderDates.sensorsNextOrderDate
+      ? [{ key: "nod-sensors", label: "Sensors Next Order Date", value: formatDateDisplay(nextOrderDates.sensorsNextOrderDate) }]
+      : []),
+    ...(nextOrderDates.suppliesNextOrderDate
+      ? [{ key: "nod-supplies", label: "Supplies Next Order Date", value: formatDateDisplay(nextOrderDates.suppliesNextOrderDate) }]
+      : []),
   ];
 
   // Auth result columns: show all 5 only if any product requires auth.
