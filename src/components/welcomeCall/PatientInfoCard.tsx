@@ -215,17 +215,12 @@ export function PatientInfoCard({ patient, onFieldChange }: Props) {
 
         <Card className="p-4">
           <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-3">SOS</p>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 gap-3">
             <OrderDateField label="CGM Order Date" dateStr={patient.cgmOrderDate} />
-            <SosField label="SOS CGM" dateStr={patient.cgmOrderDate} />
             <OrderDateField label="Sensors Order Date" dateStr={patient.sensorsOrderDate} />
-            <SosField label="SOS Sensors" dateStr={patient.sensorsOrderDate} />
             <OrderDateField label="IP Order Date" dateStr={patient.ipOrderDate} />
-            <SosField label="SOS IP" dateStr={patient.ipOrderDate} />
             <OrderDateField label="Infusion Set Order Date" dateStr={patient.infusionSetOrderDate} />
-            <SosField label="SOS Infusion Set" dateStr={patient.infusionSetOrderDate} />
             <OrderDateField label="Cartridge Order Date" dateStr={patient.cartridgeOrderDate} />
-            <SosField label="SOS Cartridge" dateStr={patient.cartridgeOrderDate} />
           </div>
         </Card>
 
