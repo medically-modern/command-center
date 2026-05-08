@@ -116,20 +116,16 @@ export async function sendPatientToMonday(p: Patient): Promise<void> {
   if (typeof p.notes === "string" && p.notes.trim() !== "")
     tasks.push({ label: "Notes", columnId: COL.notes, fn: () => writeLongText(p.id, COL.notes, p.notes) });
 
-  // ─── Order Dates (write when SoS = Not Clear, clear when Clear) ───
-  const orderDateEntries: { label: string; sosVal: string; dateVal: string; colId: string }[] = [
-    { label: "CGM Monitor Order Date", sosVal: p.sosMonitor, dateVal: p.orderDateMonitor, colId: COL.orderDate.monitor },
-    { label: "Sensors Order Date", sosVal: p.sosSensors, dateVal: p.orderDateSensors, colId: COL.orderDate.sensors },
-    { label: "IP Order Date", sosVal: p.sosIp, dateVal: p.orderDateIp, colId: COL.orderDate.insulin_pump },
-    { label: "Infusion Set Order Date", sosVal: p.sosInfusionSet, dateVal: p.orderDateInfusionSet, colId: COL.orderDate.infusion_set },
-    { label: "Cartridge Order Date", sosVal: p.sosCartridge, dateVal: p.orderDateCartridge, colId: COL.orderDate.cartridge },
+  // ─── Order Dates (always write current value) ────────────
+  const orderDateEntries: { label: string; dateVal: string; colId: string }[] = [
+    { label: "CGM Monitor Order Date", dateVal: p.orderDateMonitor, colId: COL.orderDate.monitor },
+    { label: "Sensors Order Date", dateVal: p.orderDateSensors, colId: COL.orderDate.sensors },
+    { label: "IP Order Date", dateVal: p.orderDateIp, colId: COL.orderDate.insulin_pump },
+    { label: "Infusion Set Order Date", dateVal: p.orderDateInfusionSet, colId: COL.orderDate.infusion_set },
+    { label: "Cartridge Order Date", dateVal: p.orderDateCartridge, colId: COL.orderDate.cartridge },
   ];
   for (const entry of orderDateEntries) {
-    if (entry.sosVal === "Not Clear" && entry.dateVal) {
-      tasks.push({ label: entry.label, columnId: entry.colId, fn: () => writeDate(p.id, entry.colId, entry.dateVal) });
-    } else if (entry.sosVal === "Clear") {
-      tasks.push({ label: entry.label, columnId: entry.colId, fn: () => writeDate(p.id, entry.colId, "") });
-    }
+    tasks.push({ label: entry.label, columnId: entry.colId, fn: () => writeDate(p.id, entry.colId, entry.dateVal) });
   }
 
   // ─── Calculated Next Order Dates ─────────────────────────
