@@ -468,8 +468,8 @@ export function deriveInsuranceOutcome(ins?: InsuranceState, servedCodeIds?: Pro
   ) {
     return "incomplete";
   }
-  // Any product's SoS not clear → blocker (escalate)
-  if (codeStates.some((c) => c.sos === "not-clear")) return "blocker";
+  // Only insulin pump SoS not clear → blocker (escalate)
+  if (ins.codes["pump"]?.sos === "not-clear") return "blocker";
   // Auths required is fine — not an escalation
   if (codeStates.some((c) => c.auth === "required")) return "auth-required";
   return "all-clear";
