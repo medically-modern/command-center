@@ -431,7 +431,7 @@ function CodeCard({ meta, resolved, state, universalDone, onChange }: CardProps)
           </label>
           <Select
             value={sos || "__none__"}
-            onValueChange={(v) => onChange({ sos: (v === "__none__" ? "" : v) as SosChoice })}
+            onValueChange={(v) => { const newSos = (v === "__none__" ? "" : v) as SosChoice; onChange(newSos === "not-clear" ? { sos: newSos } : { sos: newSos, orderDate: "" }); }}
           >
             <SelectTrigger
               className={cn(
