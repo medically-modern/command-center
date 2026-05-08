@@ -17,7 +17,7 @@ import type { Patient } from "@/lib/masheke/workflow";
 import type { TabKey } from "@/hooks/masheke/useMondayPatients";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
-import { writeStatusIndex, clearStatusColumn, COL } from "@/lib/masheke/mondayApi";
+import { writeStatusIndex, clearStatusColumn, clearDateColumn, COL } from "@/lib/masheke/mondayApi";
 import { SUB_STAGE_INDEX } from "@/lib/masheke/mondayMapping";
 
 /** Convert YYYY-MM-DD → MM/DD/YYYY */
