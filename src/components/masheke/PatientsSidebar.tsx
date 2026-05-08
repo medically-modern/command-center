@@ -109,9 +109,9 @@ export function PatientsSidebar({ patients, selectedId, onSelect, loading, error
   const [sendingBack, setSendingBack] = useState<string | null>(null);
 
   // Split patients into active vs blocked vs follow-up
-  const activePatients = patients.filter((p) => p.blocked !== "Blocked" && p.followUp !== "Done");
+  const activePatients = patients.filter((p) => p.blocked !== "Blocked" && p.followUp !== "Follow up");
   const blockedPatients = patients.filter((p) => p.blocked === "Blocked");
-  const followUpPatients = patients.filter((p) => p.followUp === "Done" && p.blocked !== "Blocked");
+  const followUpPatients = patients.filter((p) => p.followUp === "Follow up" && p.blocked !== "Blocked");
 
   // Always use Eastern Time so all users see the same "today" regardless of their local timezone
   const etParts = new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
