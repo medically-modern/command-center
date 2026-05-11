@@ -121,12 +121,12 @@ const FinalConfirmPage = () => {
     try {
       const newId = await duplicateItem(selected.id);
 
-      // Apply overrides to the existing (original) patient.
-      const originalOverrides = getSplitOverrides(originalSide, selected);
+      // Apply overrides + _splitCreated flag to the existing (original) patient.
+      const originalOverrides = { ...getSplitOverrides(originalSide, selected), _splitCreated: true };
       update(selected.id, originalOverrides);
 
       // Build the duplicate patient locally (clone of original + opposite-side overrides).
-      const otherOverrides = getSplitOverrides(otherSide, selected);
+      const otherOverrides = { ...getSplitOverrides(otherSide, selected), _splitCreated: true };
       const duplicate: Patient = {
         ...selected,
         ...otherOverrides,
@@ -207,11 +207,11 @@ const FinalConfirmPage = () => {
               {selected && (
                 <>
                   <PatientInfoCard patient={selected} onFieldChange={handleFieldChange} />
+                  <SplitOrderButton patient={selected} onSplit={handleSplit} />
                   <NotesPanel
                     notes={selected.notes}
                     onNotesChange={(v) => update(selected.id, { notes: v })}
                   />
-                  <SplitOrderButton patient={selected} onSplit={handleSplit} />
                   <EscalateButton
                     escalated={selected.escalated}
                     onToggle={toggleEscalate}

@@ -796,21 +796,6 @@ export function PatientInfoCard({ patient, onFieldChange }: Props) {
           <div className="space-y-1">
             <EditableDateField
               icon={<CalendarDays className="h-4 w-4" />}
-              label="Sensors Next Order Date"
-              value={patient.nextOrderDateSensors}
-              onChange={(v) => onFieldChange("nextOrderDateSensors", v)}
-              colorCode
-            />
-            {(patient.lastBillDateSensors || patient.lastBillDateMonitor) && (
-              <div className="text-[10px] text-muted-foreground pl-10 space-y-0.5">
-                {patient.lastBillDateSensors && <p>Sensors Last Bill: {formatMDY(patient.lastBillDateSensors)}</p>}
-                {patient.lastBillDateMonitor && <p>CGM Last Bill: {formatMDY(patient.lastBillDateMonitor)}</p>}
-              </div>
-            )}
-          </div>
-          <div className="space-y-1">
-            <EditableDateField
-              icon={<CalendarDays className="h-4 w-4" />}
               label="Supplies Next Order Date"
               value={patient.nextOrderDateSupplies}
               onChange={(v) => onFieldChange("nextOrderDateSupplies", v)}
@@ -820,6 +805,21 @@ export function PatientInfoCard({ patient, onFieldChange }: Props) {
               <div className="text-[10px] text-muted-foreground pl-10 space-y-0.5">
                 {patient.lastBillDateCartridge && <p>Cartridge Last Bill: {formatMDY(patient.lastBillDateCartridge)}</p>}
                 {patient.lastBillDateInfusionSet && <p>Infusion Set Last Bill: {formatMDY(patient.lastBillDateInfusionSet)}</p>}
+              </div>
+            )}
+          </div>
+          <div className="space-y-1">
+            <EditableDateField
+              icon={<CalendarDays className="h-4 w-4" />}
+              label="Sensors Next Order Date"
+              value={patient.nextOrderDateSensors}
+              onChange={(v) => onFieldChange("nextOrderDateSensors", v)}
+              colorCode
+            />
+            {(patient.lastBillDateSensors || patient.lastBillDateMonitor) && (
+              <div className="text-[10px] text-muted-foreground pl-10 space-y-0.5">
+                {patient.lastBillDateSensors && <p>Sensors Last Bill: {formatMDY(patient.lastBillDateSensors)}</p>}
+                {patient.lastBillDateMonitor && <p>CGM Last Bill: {formatMDY(patient.lastBillDateMonitor)}</p>}
               </div>
             )}
           </div>

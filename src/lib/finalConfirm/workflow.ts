@@ -116,6 +116,11 @@ export interface Patient {
   // Escalation
   escalated: boolean;
 
+  // Transient session flag — true after Split Order has been run on this
+  // profile. Used to flip the Split button into a "Split created" state.
+  // Cleared on Send (via clearOverlay) and on refetch (default false).
+  _splitCreated?: boolean;
+
   // Metadata
   receivedAt: string;
   lastUpdated: string;
@@ -419,12 +424,15 @@ function suppliesSideDate(p: Patient): string {
 
 /**
  * Returns true when the patient's order can be split into two profiles.
- * Eligibility:
- *  - The supplies-side date differs from the sensors-side date (both populated), OR
- *  - Order Handling is explicitly "Separate".
+ * Eligibility requires BOTH:
+ *  - Order Handling is "Separate", AND
+ *  - The supplies-side date differs from the sensors-side date (both populated).
+ *
+ * After a split, the sensor-side dates on the supplies profile are cleared,
+ * which fails the date-difference half of the rule and prevents re-splitting.
  */
 export function isSplitEligible(p: Patient): boolean {
-  if (p.orderHandlingIndex === ORDER_HANDLING_SEPARATE) return true;
+  if (p.orderHandlingIndex !== ORDER_HANDLING_SEPARATE) return false;
   const sup = suppliesSideDate(p);
   const sen = p.nextOrderDateSensors;
   return !!sup && !!sen && sup !== sen;
@@ -448,15 +456,22 @@ export function determineOriginalSide(p: Patient): SplitSide {
  * (or disabled). Returned as a short hint to render below the button.
  */
 export function describeSplitEligibility(p: Patient): string {
-  if (!isSplitEligible(p)) {
-    return "Split is available when Sensors and Supplies next order dates differ, or when Order Handling is Separate.";
-  }
-  if (p.orderHandlingIndex === ORDER_HANDLING_SEPARATE) {
-    return "Order Handling is set to Separate.";
-  }
+  const isSeparate = p.orderHandlingIndex === ORDER_HANDLING_SEPARATE;
   const sup = suppliesSideDate(p);
   const sen = p.nextOrderDateSensors;
-  return `Sensors (${formatDateMDY(sen)}) and Supplies (${formatDateMDY(sup)}) next order dates differ.`;
+  const datesDiffer = !!sup && !!sen && sup !== sen;
+
+  if (isSeparate && datesDiffer) {
+    return `Order Handling is Separate and Sensors (${formatDateMDY(sen)}) vs Supplies (${formatDateMDY(sup)}) next order dates differ.`;
+  }
+  if (!isSeparate && !datesDiffer) {
+    return "Split requires Order Handling = Separate AND Sensors/Supplies next order dates to differ.";
+  }
+  if (!isSeparate) {
+    return "Set Order Handling to Separate to enable Split.";
+  }
+  // dates don't differ
+  return "Sensors and Supplies next order dates must differ to enable Split.";
 }
 
 /**
