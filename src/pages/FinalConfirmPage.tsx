@@ -24,8 +24,9 @@ import { toast } from "sonner";
 import { sendPatientToMonday } from "@/lib/finalConfirm/mondayWrite";
 import { duplicateItem, writeStatusIndex, writeDate, COL } from "@/lib/finalConfirm/mondayApi";
 
-// Stage Advancer label index 7 = "Welcome Call" (per the board's status settings).
-const STAGE_ADVANCER_WELCOME_CALL = 7;
+// Stage Advancer label index 0 = "Review Profile" — the stage that lands an
+// item in the Final Profile Confirmation group on Monday.
+const STAGE_ADVANCER_REVIEW_PROFILE = 0;
 // Split column label index 0 = "Split" (per the Monday board column the user set up).
 const SPLIT_FLAG_INDEX = 0;
 import { useNavigate } from "react-router-dom";
@@ -158,9 +159,10 @@ const FinalConfirmPage = () => {
         await Promise.all([
           writeStatusIndex(newId, COL.split, SPLIT_FLAG_INDEX),
           // Defensive: Monday's new-item automation might fire faster than
-          // our Split write. Set the same values explicitly so even if the
-          // automation reset them, we overwrite back to the desired state.
-          writeStatusIndex(newId, COL.stageAdvancer, STAGE_ADVANCER_WELCOME_CALL),
+          // our Split write. Set Stage Advancer = Review Profile explicitly
+          // so even if the automation reset it to something else, we
+          // overwrite back to the correct stage.
+          writeStatusIndex(newId, COL.stageAdvancer, STAGE_ADVANCER_REVIEW_PROFILE),
           selected.dateOfStageStart
             ? writeDate(newId, COL.dateOfStageStart, selected.dateOfStageStart)
             : Promise.resolve(),
