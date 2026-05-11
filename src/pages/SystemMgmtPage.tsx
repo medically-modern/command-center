@@ -46,6 +46,7 @@ const SystemMgmtPage = () => {
   const [removingId, setRemovingId] = useState<string | null>(null);
   const [chartSelection, setChartSelection] = useState<SystemPatient[] | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [notesPatient, setNotesPatient] = useState<SystemPatient | null>(null);
 
   const handleChartSegmentClick = (segmentPatients: SystemPatient[]) => {
     setChartSelection(segmentPatients);
@@ -125,6 +126,10 @@ const SystemMgmtPage = () => {
 
   return (
     <div className="min-h-screen flex flex-col bg-gradient-subtle">
+      {/* Fixed notes panel on right edge */}
+      {notesPatient && (
+        <NotesPanel patient={notesPatient} onClose={() => setNotesPatient(null)} />
+      )}
       {/* Header */}
       <header className="bg-gradient-navy text-navy-foreground border-b border-sidebar-border">
         <div className="px-6 py-5 flex items-center justify-between gap-4 flex-wrap">
@@ -181,7 +186,7 @@ const SystemMgmtPage = () => {
       </header>
 
       {/* Content */}
-      <main className="flex-1 px-6 py-6 overflow-y-auto">
+      <main className={cn("flex-1 px-6 py-6 overflow-y-auto transition-[margin] duration-300", notesPatient ? "mr-[400px]" : "mr-0")}>
         <div className="max-w-4xl mx-auto">
           {loading && patients.length === 0 ? (
             <LoadingState />
@@ -199,6 +204,7 @@ const SystemMgmtPage = () => {
               onChartSegmentClick={handleChartSegmentClick}
               chartSelectionActive={chartSelection !== null}
               onClearChartSelection={() => setChartSelection(null)}
+              onNotesClick={(p) => setNotesPatient((prev) => prev?.id === p.id ? null : p)}
             />
           ) : (
             <EscalationView
@@ -285,6 +291,7 @@ function SearchView({
   onChartSegmentClick,
   chartSelectionActive,
   onClearChartSelection,
+  onNotesClick,
 }: {
   query: string;
   onQueryChange: (q: string) => void;
@@ -296,12 +303,10 @@ function SearchView({
   onChartSegmentClick: (patients: SystemPatient[]) => void;
   chartSelectionActive: boolean;
   onClearChartSelection: () => void;
+  onNotesClick: (p: SystemPatient) => void;
 }) {
-  const [notesPatient, setNotesPatient] = useState<SystemPatient | null>(null);
-
   return (
-    <div className="relative flex gap-4">
-    <div className={cn("space-y-4 transition-all", notesPatient ? "flex-1 min-w-0" : "w-full")}>
+    <div className="space-y-4">
       <div className="relative">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
         <Input
@@ -353,17 +358,11 @@ function SearchView({
               patient={p}
               onClick={() => onPatientClick(p)}
               completedStages={completionMap.get(p.name.trim().toLowerCase()) ?? []}
-              onNotesClick={(pt) => setNotesPatient((prev) => prev?.id === pt.id ? null : pt)}
+              onNotesClick={onNotesClick}
             />
           ))}
         </div>
       )}
-    </div>
-
-    {/* Notes side panel */}
-    {notesPatient && (
-      <NotesPanel patient={notesPatient} onClose={() => setNotesPatient(null)} />
-    )}
     </div>
   );
 }
@@ -479,9 +478,9 @@ function NotesPanel({
   }, [patient.notes]);
 
   return (
-    <div className="w-[380px] shrink-0 rounded-xl border bg-card shadow-card overflow-hidden flex flex-col max-h-[calc(100vh-220px)] sticky top-6">
+    <div className="fixed top-0 right-0 w-[400px] h-screen border-l bg-card shadow-2xl flex flex-col z-40">
       {/* Header */}
-      <div className="flex items-center gap-3 px-4 py-3 border-b bg-muted/30">
+      <div className="flex items-center gap-3 px-5 py-4 border-b bg-muted/30">
         <FileText className="w-4 h-4 text-primary shrink-0" />
         <div className="flex-1 min-w-0">
           <div className="text-sm font-semibold truncate">{patient.name}</div>
@@ -498,7 +497,7 @@ function NotesPanel({
       </div>
 
       {/* Notes content */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-3">
+      <div className="flex-1 overflow-y-auto px-5 py-4 space-y-3">
         {noteEntries.length === 0 ? (
           <p className="text-sm text-muted-foreground text-center py-6">
             No notes available.
