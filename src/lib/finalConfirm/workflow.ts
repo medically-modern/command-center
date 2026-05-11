@@ -493,6 +493,7 @@ export function getSplitOverrides(side: SplitSide, original: Patient): Partial<P
       servingLabel = original.serving;
     }
     return {
+      // ── Sensor-side fields → Not Serving / blank ─────────────────────
       cgmCoveragePathIndex: NOT_SERVING_INDEX.cgmCoveragePath,
       cgmCoveragePath: "Not Serving",
       cgmTypeIndex: NOT_SERVING_INDEX.cgmType,
@@ -501,22 +502,44 @@ export function getSplitOverrides(side: SplitSide, original: Patient): Partial<P
       cgmAuthResult: "Not Serving",
       sensorsAuthResultIndex: NOT_SERVING_INDEX.authResult,
       sensorsAuthResult: "Not Serving",
+      monitorQty: "0",
+      lastBillDateSensors: "",
+      lastBillDateMonitor: "",
+      nextOrderDateSensors: "",
+      // ── Pump/supplies-side fields → explicitly preserve from original
+      //    Monday's duplicate_item doesn't always copy status-column
+      //    indexes reliably; pinning them to the overlay guarantees the
+      //    UI shows the right value after a refetch.
+      pumpTypeIndex: original.pumpTypeIndex,
+      pumpType: original.pumpType,
+      ipCoveragePathIndex: original.ipCoveragePathIndex,
+      ipCoveragePath: original.ipCoveragePath,
+      infusionSet1Index: original.infusionSet1Index,
+      infusionSet1: original.infusionSet1,
+      infusionSet2Index: original.infusionSet2Index,
+      infusionSet2: original.infusionSet2,
+      qtyInf1: original.qtyInf1,
+      qtyInf2: original.qtyInf2,
+      pumpQty: original.pumpQty,
+      ipAuthResultIndex: original.ipAuthResultIndex,
+      ipAuthResult: original.ipAuthResult,
+      infusionSetAuthResultIndex: original.infusionSetAuthResultIndex,
+      infusionSetAuthResult: original.infusionSetAuthResult,
+      cartridgeAuthResultIndex: original.cartridgeAuthResultIndex,
+      cartridgeAuthResult: original.cartridgeAuthResult,
+      // ── New side identity ─────────────────────────────────────────────
       servingIndex: servingIdx,
       serving: servingLabel,
       subscriptionTypeIndex: SUBSCRIPTION_SUPPLIES,
       subscriptionType: "Supplies",
       orderHandlingIndex: ORDER_HANDLING_SEPARATE,
       orderHandling: "Separate",
-      monitorQty: "0",
-      // Clear the sensor-side dates entirely on the supplies-side item.
-      lastBillDateSensors: "",
-      lastBillDateMonitor: "",
-      nextOrderDateSensors: "",
     };
   }
 
   // sensors side
   return {
+    // ── Pump/supplies-side fields → Not Serving / 0 / blank ─────────
     ipCoveragePathIndex: NOT_SERVING_INDEX.ipCoveragePath,
     ipCoveragePath: "Not Serving",
     pumpTypeIndex: NOT_SERVING_INDEX.pumpType,
@@ -528,31 +551,39 @@ export function getSplitOverrides(side: SplitSide, original: Patient): Partial<P
     qtyInf1: "0",
     qtyInf2: "0",
     pumpQty: "0",
-    // IP / Infusion / Cartridge auth → Not Serving (this profile is CGM only).
     ipAuthResultIndex: NOT_SERVING_INDEX.authResult,
     ipAuthResult: "Not Serving",
     infusionSetAuthResultIndex: NOT_SERVING_INDEX.authResult,
     infusionSetAuthResult: "Not Serving",
     cartridgeAuthResultIndex: NOT_SERVING_INDEX.authResult,
     cartridgeAuthResult: "Not Serving",
-    // CGM Auth / Sensors Auth → explicitly preserve original values (this
-    // profile IS the CGM order, so those auths still apply). Stored on the
-    // overlay so refetch can't accidentally blank them.
+    lastBillDateIp: "",
+    lastBillDateInfusionSet: "",
+    lastBillDateCartridge: "",
+    nextOrderDateIp: "",
+    nextOrderDateSupplies: "",
+    // ── Sensor-side fields → explicitly preserve from original ───────
+    //    Pinned to the overlay so refetch from Monday cannot blank
+    //    them out (Monday's duplicate_item is unreliable for status
+    //    column indexes).
+    cgmTypeIndex: original.cgmTypeIndex,
+    cgmType: original.cgmType,
+    cgmCoveragePathIndex: original.cgmCoveragePathIndex,
+    cgmCoveragePath: original.cgmCoveragePath,
+    monitorQty: original.monitorQty,
     cgmAuthResultIndex: original.cgmAuthResultIndex,
     cgmAuthResult: original.cgmAuthResult,
     sensorsAuthResultIndex: original.sensorsAuthResultIndex,
     sensorsAuthResult: original.sensorsAuthResult,
+    lastBillDateSensors: original.lastBillDateSensors,
+    lastBillDateMonitor: original.lastBillDateMonitor,
+    nextOrderDateSensors: original.nextOrderDateSensors,
+    // ── New side identity ────────────────────────────────────────────
     servingIndex: SERVING_CGM,
     serving: "CGM",
     subscriptionTypeIndex: SUBSCRIPTION_SENSORS,
     subscriptionType: "Sensors",
     orderHandlingIndex: ORDER_HANDLING_SEPARATE,
     orderHandling: "Separate",
-    // Clear the pump/supplies-side dates entirely on the sensors-side item.
-    lastBillDateIp: "",
-    lastBillDateInfusionSet: "",
-    lastBillDateCartridge: "",
-    nextOrderDateIp: "",
-    nextOrderDateSupplies: "",
   };
 }
