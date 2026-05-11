@@ -67,6 +67,27 @@ export const MASHEKE_STAGE_ROUTES: Record<string, string> = {
   "Chase Clinicals": "/chase-benefits",
 };
 
+/** Insurance board Stage Advancer → route */
+export const INSURANCE_STAGE_ROUTES: Record<string, string> = {
+  "Benefits / SoS":    "/benefits",
+  "Submit Auth.":      "/submit-auth",
+  "Auth. Outstanding": "/auth-outstanding",
+  "Auth Denied":       "/auth-denied",
+};
+
+/** Welcome Call board Stage Advancer → route */
+export const WELCOME_CALL_STAGE_ROUTES: Record<string, string> = {
+  "Welcome Call":    "/welcome-call",
+  "Review Profile":  "/welcome-call",
+};
+
+/** All stage route maps keyed by board ID */
+const STAGE_ROUTE_MAPS: Record<number, Record<string, string>> = {
+  18406060017: MASHEKE_STAGE_ROUTES,
+  18410601299: INSURANCE_STAGE_ROUTES,
+  18410804557: WELCOME_CALL_STAGE_ROUTES,
+};
+
 export const BOARDS: BoardDef[] = [
   {
     boardId: 18407459988,
@@ -114,7 +135,7 @@ export const BOARDS: BoardDef[] = [
     ],
     escalationColId: "color_mm2vsh2f",
     phoneColId: "phone_mm1x44yk",
-    stageAdvancerColId: null,
+    stageAdvancerColId: "color_mm1ws96t",
   },
   {
     boardId: 18410804557,
@@ -127,7 +148,7 @@ export const BOARDS: BoardDef[] = [
     ],
     escalationColId: "color_mm1x7997",
     phoneColId: "phone_mm1x44yk",
-    stageAdvancerColId: null,
+    stageAdvancerColId: "color_mm1ws96t",
   },
 ];
 
@@ -212,12 +233,20 @@ function mapToSystemPatient(item: RawItem, board: BoardDef): SystemPatient {
   let roleRoute = groupDef?.roleRoute ?? "/";
   const isCompleted = groupDef?.isCompleted ?? false;
 
-  // For masheke, sub-route by Stage Advancer
+  // Use Stage Advancer to determine sub-route and pipeline stage.
+  // This is critical for escalation/completed groups where the group
+  // itself doesn't tell us which stage the patient was in.
   if (board.stageAdvancerColId) {
     const stageText = colVal(board.stageAdvancerColId);
-    if (stageText && MASHEKE_STAGE_ROUTES[stageText]) {
-      roleRoute = MASHEKE_STAGE_ROUTES[stageText];
-      pipelineStage = stageText;
+    const routeMap = STAGE_ROUTE_MAPS[board.boardId] ?? {};
+    if (stageText && routeMap[stageText]) {
+      roleRoute = routeMap[stageText];
+      // Show "Escalations (from Benefits)" style label for escalation groups
+      if (groupDef && !groupDef.isCompleted && groupDef.roleRoute === "") {
+        pipelineStage = `${groupDef.title} (from ${stageText})`;
+      } else {
+        pipelineStage = stageText;
+      }
     }
   }
 
