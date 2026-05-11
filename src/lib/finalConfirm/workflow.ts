@@ -535,12 +535,20 @@ export function getSplitOverrides(side: SplitSide, original: Patient): Partial<P
     qtyInf1: "0",
     qtyInf2: "0",
     pumpQty: "0",
+    // IP / Infusion / Cartridge auth → Not Serving (this profile is CGM only).
     ipAuthResultIndex: NOT_SERVING_INDEX.authResult,
     ipAuthResult: "Not Serving",
     infusionSetAuthResultIndex: NOT_SERVING_INDEX.authResult,
     infusionSetAuthResult: "Not Serving",
     cartridgeAuthResultIndex: NOT_SERVING_INDEX.authResult,
     cartridgeAuthResult: "Not Serving",
+    // CGM Auth / Sensors Auth → explicitly preserve original values (this
+    // profile IS the CGM order, so those auths still apply). Stored on the
+    // overlay so refetch can't accidentally blank them.
+    cgmAuthResultIndex: original.cgmAuthResultIndex,
+    cgmAuthResult: original.cgmAuthResult,
+    sensorsAuthResultIndex: original.sensorsAuthResultIndex,
+    sensorsAuthResult: original.sensorsAuthResult,
     servingIndex: SERVING_CGM,
     serving: "CGM",
     subscriptionTypeIndex: SUBSCRIPTION_SENSORS,

@@ -287,21 +287,45 @@ export async function writeDate(itemId: string, columnId: string, date: string):
 }
 
 /**
+ * Rename an item by writing to its "name" column.
+ */
+export async function renameItem(itemId: string, name: string): Promise<void> {
+  const query = `
+    mutation ($boardId: ID!, $itemId: ID!, $value: JSON!) {
+      change_column_value(board_id: $boardId, item_id: $itemId, column_id: "name", value: $value) { id }
+    }
+  `;
+  await gql(query, {
+    boardId: BOARD_ID,
+    itemId,
+    value: JSON.stringify(name),
+  });
+}
+
+/**
  * Duplicate an item on the same board. Returns the new item's id.
  * Used by the Split Order feature to clone a patient into a second
  * profile that the user can edit independently before submitting.
+ *
+ * Monday's duplicate_item appends "(copy)" to the new item's name; if
+ * `keepOriginalName` is provided, we rename it back immediately so the
+ * sidebar shows two identical names.
  */
-export async function duplicateItem(itemId: string): Promise<string> {
+export async function duplicateItem(itemId: string, keepOriginalName?: string): Promise<string> {
   const query = `
     mutation ($boardId: ID!, $itemId: ID!) {
-      duplicate_item(board_id: $boardId, item_id: $itemId, with_updates: false) { id }
+      duplicate_item(board_id: $boardId, item_id: $itemId, with_updates: false) { id name }
     }
   `;
-  const data = await gql<{ duplicate_item: { id: string } }>(query, {
+  const data = await gql<{ duplicate_item: { id: string; name: string } }>(query, {
     boardId: BOARD_ID,
     itemId,
   });
-  return data.duplicate_item.id;
+  const newId = data.duplicate_item.id;
+  if (keepOriginalName && data.duplicate_item.name !== keepOriginalName) {
+    await renameItem(newId, keepOriginalName);
+  }
+  return newId;
 }
 
 /**

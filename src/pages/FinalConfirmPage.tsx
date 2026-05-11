@@ -119,7 +119,8 @@ const FinalConfirmPage = () => {
     const originalSide: SplitSide = determineOriginalSide(selected);
     const otherSide: SplitSide = originalSide === "supplies" ? "sensors" : "supplies";
     try {
-      const newId = await duplicateItem(selected.id);
+      // Pass the original name so the new item doesn't keep Monday's "(copy)" suffix.
+      const newId = await duplicateItem(selected.id, selected.name);
 
       // Apply overrides + _splitCreated flag to the existing (original) patient.
       const originalOverrides = { ...getSplitOverrides(originalSide, selected), _splitCreated: true };
