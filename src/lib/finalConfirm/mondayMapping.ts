@@ -89,17 +89,17 @@ export function mondayItemToPatient(item: MondayItem): Patient {
     orderHandling: cv(item, COL.orderHandling)?.text ?? "",
     orderHandlingIndex: parseIndex(cv(item, COL.orderHandling)?.value ?? null),
 
-    // SoS & Order Dates — derive SoS from whether an order date is populated
-    orderDateMonitor: cv(item, COL.orderDate.monitor)?.text ?? "",
-    orderDateSensors: cv(item, COL.orderDate.sensors)?.text ?? "",
-    orderDateIp: cv(item, COL.orderDate.insulin_pump)?.text ?? "",
-    orderDateInfusionSet: cv(item, COL.orderDate.infusion_set)?.text ?? "",
-    orderDateCartridge: cv(item, COL.orderDate.cartridge)?.text ?? "",
-    sosMonitor: (cv(item, COL.orderDate.monitor)?.text ?? "") ? "Not Clear" : "",
-    sosSensors: (cv(item, COL.orderDate.sensors)?.text ?? "") ? "Not Clear" : "",
-    sosIp: (cv(item, COL.orderDate.insulin_pump)?.text ?? "") ? "Not Clear" : "",
-    sosInfusionSet: (cv(item, COL.orderDate.infusion_set)?.text ?? "") ? "Not Clear" : "",
-    sosCartridge: (cv(item, COL.orderDate.cartridge)?.text ?? "") ? "Not Clear" : "",
+    // SoS & Last Bill Dates — derive SoS from whether a last-bill date is populated
+    lastBillDateMonitor: cv(item, COL.lastBillDate.monitor)?.text ?? "",
+    lastBillDateSensors: cv(item, COL.lastBillDate.sensors)?.text ?? "",
+    lastBillDateIp: cv(item, COL.lastBillDate.insulin_pump)?.text ?? "",
+    lastBillDateInfusionSet: cv(item, COL.lastBillDate.infusion_set)?.text ?? "",
+    lastBillDateCartridge: cv(item, COL.lastBillDate.cartridge)?.text ?? "",
+    sosMonitor: (cv(item, COL.lastBillDate.monitor)?.text ?? "") ? "Not Clear" : "",
+    sosSensors: (cv(item, COL.lastBillDate.sensors)?.text ?? "") ? "Not Clear" : "",
+    sosIp: (cv(item, COL.lastBillDate.insulin_pump)?.text ?? "") ? "Not Clear" : "",
+    sosInfusionSet: (cv(item, COL.lastBillDate.infusion_set)?.text ?? "") ? "Not Clear" : "",
+    sosCartridge: (cv(item, COL.lastBillDate.cartridge)?.text ?? "") ? "Not Clear" : "",
     // Calculated next order dates (read-only)
     nextOrderDateIp: cv(item, COL.nextOrderDate.insulin_pump)?.text ?? "",
     nextOrderDateSensors: cv(item, COL.nextOrderDate.sensors)?.text ?? "",

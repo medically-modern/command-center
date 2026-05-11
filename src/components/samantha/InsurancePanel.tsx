@@ -431,7 +431,7 @@ function CodeCard({ meta, resolved, state, universalDone, onChange }: CardProps)
           </label>
           <Select
             value={sos || "__none__"}
-            onValueChange={(v) => { const newSos = (v === "__none__" ? "" : v) as SosChoice; onChange(newSos === "not-clear" ? { sos: newSos } : { sos: newSos, orderDate: "" }); }}
+            onValueChange={(v) => { const newSos = (v === "__none__" ? "" : v) as SosChoice; onChange(newSos === "not-clear" ? { sos: newSos } : { sos: newSos, lastBillDate: "" }); }}
           >
             <SelectTrigger
               className={cn(
@@ -482,8 +482,8 @@ function CodeCard({ meta, resolved, state, universalDone, onChange }: CardProps)
           </p>
           <Input
             type="date"
-            value={state.orderDate ?? ""}
-            onChange={(e) => onChange({ orderDate: e.target.value })}
+            value={state.lastBillDate ?? ""}
+            onChange={(e) => onChange({ lastBillDate: e.target.value })}
             className="max-w-xs h-9 bg-background border-warning/30 focus-visible:ring-warning/40"
           />
         </div>

@@ -278,20 +278,20 @@ export function mondayItemToPatient(item: MondayItem): Patient {
     codes[codeId]!.sos = "skip";
   }
 
-  // Per-product Order Date — hydrated from the 5 Order Date date columns.
-  const ORDER_DATE_COLS: Record<ProductId, string> = {
-    monitor: COL.orderDate.monitor,
-    sensors: COL.orderDate.sensors,
-    insulin_pump: COL.orderDate.insulin_pump,
-    infusion_set: COL.orderDate.infusion_set,
-    cartridge: COL.orderDate.cartridge,
+  // Per-product Last Bill Date — hydrated from the 5 Last Bill Date columns.
+  const LAST_BILL_DATE_COLS: Record<ProductId, string> = {
+    monitor: COL.lastBillDate.monitor,
+    sensors: COL.lastBillDate.sensors,
+    insulin_pump: COL.lastBillDate.insulin_pump,
+    infusion_set: COL.lastBillDate.infusion_set,
+    cartridge: COL.lastBillDate.cartridge,
   };
   for (const pk of PRODUCT_KEYS) {
     const codeId = PRODUCT_KEY_TO_CODE[pk];
-    const dateText = cv(ORDER_DATE_COLS[pk])?.text;
+    const dateText = cv(LAST_BILL_DATE_COLS[pk])?.text;
     if (dateText) {
       if (!codes[codeId]) codes[codeId] = { status: "pending" } as ProductCodeState;
-      codes[codeId]!.orderDate = dateText;
+      codes[codeId]!.lastBillDate = dateText;
     }
   }
 

@@ -789,8 +789,8 @@ export function PatientInfoCard({ patient, onFieldChange }: Props) {
               onChange={(v) => onFieldChange("nextOrderDateIp", v)}
               colorCode
             />
-            {patient.orderDateIp && (
-              <p className="text-[10px] text-muted-foreground pl-10">IP Last Bill: {formatMDY(patient.orderDateIp)}</p>
+            {patient.lastBillDateIp && (
+              <p className="text-[10px] text-muted-foreground pl-10">IP Last Bill: {formatMDY(patient.lastBillDateIp)}</p>
             )}
           </div>
           <div className="space-y-1">
@@ -801,10 +801,10 @@ export function PatientInfoCard({ patient, onFieldChange }: Props) {
               onChange={(v) => onFieldChange("nextOrderDateSensors", v)}
               colorCode
             />
-            {(patient.orderDateSensors || patient.orderDateMonitor) && (
+            {(patient.lastBillDateSensors || patient.lastBillDateMonitor) && (
               <div className="text-[10px] text-muted-foreground pl-10 space-y-0.5">
-                {patient.orderDateSensors && <p>Sensors Last Bill: {formatMDY(patient.orderDateSensors)}</p>}
-                {patient.orderDateMonitor && <p>CGM Last Bill: {formatMDY(patient.orderDateMonitor)}</p>}
+                {patient.lastBillDateSensors && <p>Sensors Last Bill: {formatMDY(patient.lastBillDateSensors)}</p>}
+                {patient.lastBillDateMonitor && <p>CGM Last Bill: {formatMDY(patient.lastBillDateMonitor)}</p>}
               </div>
             )}
           </div>
@@ -816,10 +816,10 @@ export function PatientInfoCard({ patient, onFieldChange }: Props) {
               onChange={(v) => onFieldChange("nextOrderDateSupplies", v)}
               colorCode
             />
-            {(patient.orderDateCartridge || patient.orderDateInfusionSet) && (
+            {(patient.lastBillDateCartridge || patient.lastBillDateInfusionSet) && (
               <div className="text-[10px] text-muted-foreground pl-10 space-y-0.5">
-                {patient.orderDateCartridge && <p>Cartridge Last Bill: {formatMDY(patient.orderDateCartridge)}</p>}
-                {patient.orderDateInfusionSet && <p>Infusion Set Last Bill: {formatMDY(patient.orderDateInfusionSet)}</p>}
+                {patient.lastBillDateCartridge && <p>Cartridge Last Bill: {formatMDY(patient.lastBillDateCartridge)}</p>}
+                {patient.lastBillDateInfusionSet && <p>Infusion Set Last Bill: {formatMDY(patient.lastBillDateInfusionSet)}</p>}
               </div>
             )}
           </div>

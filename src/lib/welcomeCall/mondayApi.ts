@@ -69,13 +69,12 @@ export const COL = {
   oopMax: "text_mm1xdtj7",
   oopMaxRemaining: "text_mm1xx5f",
 
-  // Order dates (read-only)
-  cgmOrderDate: "date_mm33vqa0",
-  sensorsOrderDate: "date_mm33jsyt",
-  ipOrderDate: "date_mm33kmz4",
-  infusionSetOrderDate: "date_mm33mw14",
-  cartridgeOrderDate: "date_mm33rd8n",
-  suppliesOrderDate: "date_mm324s6q",
+  // Last bill dates (read-only)
+  cgmLastBillDate: "date_mm33vqa0",
+  sensorsLastBillDate: "date_mm33jsyt",
+  ipLastBillDate: "date_mm33kmz4",
+  infusionSetLastBillDate: "date_mm33mw14",
+  cartridgeLastBillDate: "date_mm33rd8n",
   // Next order dates (read-only)
   ipNextOrderDate: "date_mm356crn",
   sensorsNextOrderDate: "date_mm35bdf8",
@@ -99,8 +98,8 @@ export const READ_COLUMN_IDS = [
   COL.cgmAuthResult, COL.sensorsAuthResult, COL.ipAuthResult,
   COL.infusionSetAuthResult, COL.cartridgeAuthResult,
   COL.deductible, COL.deductibleRemaining, COL.oopMax, COL.oopMaxRemaining,
-  COL.cgmOrderDate, COL.sensorsOrderDate, COL.ipOrderDate,
-  COL.infusionSetOrderDate, COL.cartridgeOrderDate, COL.suppliesOrderDate,
+  COL.cgmLastBillDate, COL.sensorsLastBillDate, COL.ipLastBillDate,
+  COL.infusionSetLastBillDate, COL.cartridgeLastBillDate,
   COL.ipNextOrderDate, COL.sensorsNextOrderDate, COL.suppliesNextOrderDate,
 ];
 

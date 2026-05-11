@@ -331,8 +331,8 @@ export interface ProductCodeState {
   sosRecheck?: SosChoice;
   /** Original Monday auth result label — populated when reading from auth groups, used for read-only display */
   _mondayAuthLabel?: string;
-  /** Order date — only meaningful when SoS = "not-clear". YYYY-MM-DD. */
-  orderDate?: string;
+  /** Last bill date — only meaningful when SoS = "not-clear". YYYY-MM-DD. */
+  lastBillDate?: string;
 }
 
 export type UniversalChoice = "" | "confirmed" | "not-confirmed";
@@ -549,17 +549,17 @@ export function computeNextOrderDates(
   const cartridgeState = ins.codes["cartridges"];
 
   // IP Next Order Date = pump last bill + 4 years (1461 days)
-  const ipNextOrderDate = pumpState?.orderDate
-    ? addDaysToDate(pumpState.orderDate, 365 * 4)
+  const ipNextOrderDate = pumpState?.lastBillDate
+    ? addDaysToDate(pumpState.lastBillDate, 365 * 4)
     : "";
 
   // Sensors Next Order Date = sensors last bill + 90 days
-  const sensorsNextOrderDate = sensorsState?.orderDate
-    ? addDaysToDate(sensorsState.orderDate, 90)
+  const sensorsNextOrderDate = sensorsState?.lastBillDate
+    ? addDaysToDate(sensorsState.lastBillDate, 90)
     : "";
 
   // Supplies Next Order Date = max(infusion, cartridge) + 90d (or 60d if Medicaid)
-  const suppliesLastBill = laterDate(infusionState?.orderDate, cartridgeState?.orderDate);
+  const suppliesLastBill = laterDate(infusionState?.lastBillDate, cartridgeState?.lastBillDate);
   const isMedicaid =
     (primaryInsurance ?? "").toLowerCase().includes("medicaid") ||
     (secondaryInsurance ?? "").toLowerCase().includes("medicaid");

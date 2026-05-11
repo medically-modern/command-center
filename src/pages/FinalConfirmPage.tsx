@@ -5,23 +5,29 @@
 import confetti from "canvas-confetti";
 import { useEffect, useMemo, useState } from "react";
 import { useMondayPatients } from "@/hooks/finalConfirm/useMondayPatients";
-import type { Patient } from "@/lib/finalConfirm/workflow";
-import { validatePatientForSend } from "@/lib/finalConfirm/workflow";
+import type { Patient, SplitSide } from "@/lib/finalConfirm/workflow";
+import {
+  validatePatientForSend,
+  determineOriginalSide,
+  getSplitOverrides,
+} from "@/lib/finalConfirm/workflow";
 import { PatientInfoCard } from "@/components/finalConfirm/PatientInfoCard";
 import { NotesPanel } from "@/components/finalConfirm/NotesPanel";
 import { PatientsSidebar } from "@/components/finalConfirm/PatientsSidebar";
 import { SendToMondayButton } from "@/components/finalConfirm/SendToMondayButton";
+import { SplitOrderButton } from "@/components/finalConfirm/SplitOrderButton";
 import { EscalateButton } from "@/components/finalConfirm/EscalateButton";
 import { Button } from "@/components/ui/button";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { RotateCcw, ShieldCheck, ArrowLeft } from "lucide-react";
 import { toast } from "sonner";
 import { sendPatientToMonday } from "@/lib/finalConfirm/mondayWrite";
+import { duplicateItem } from "@/lib/finalConfirm/mondayApi";
 import { useNavigate } from "react-router-dom";
 
 const FinalConfirmPage = () => {
   const navigate = useNavigate();
-  const { patients, loading, error, refetch, update, clearOverlay } = useMondayPatients();
+  const { patients, loading, error, refetch, update, clearOverlay, addPatient } = useMondayPatients();
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -70,11 +76,11 @@ const FinalConfirmPage = () => {
       sosIp: "",
       sosInfusionSet: "",
       sosCartridge: "",
-      orderDateMonitor: "",
-      orderDateSensors: "",
-      orderDateIp: "",
-      orderDateInfusionSet: "",
-      orderDateCartridge: "",
+      lastBillDateMonitor: "",
+      lastBillDateSensors: "",
+      lastBillDateIp: "",
+      lastBillDateInfusionSet: "",
+      lastBillDateCartridge: "",
       escalated: false,
     } as Partial<Patient>);
     toast.success("Cleared local edits — refetching from Monday");
@@ -94,6 +100,49 @@ const FinalConfirmPage = () => {
         description: e instanceof Error ? e.message : String(e),
       });
       throw e;
+    }
+  };
+
+  /**
+   * Split the selected patient into two profiles (Supplies + Sensors).
+   * 1. Duplicate the Monday item via API → get the new item's id.
+   * 2. Apply the "original side" overrides to the existing item (local only).
+   * 3. Inject the new duplicate into local state with the opposite side's
+   *    overrides applied (also local only).
+   * 4. Background refetch reconciles with Monday in ~30s; user can edit and
+   *    Submit each profile independently in the meantime.
+   *
+   * No column writes happen here — those happen per profile on Submit.
+   */
+  const handleSplit = async () => {
+    if (!selected) return;
+    const originalSide: SplitSide = determineOriginalSide(selected);
+    const otherSide: SplitSide = originalSide === "supplies" ? "sensors" : "supplies";
+    try {
+      const newId = await duplicateItem(selected.id);
+
+      // Apply overrides to the existing (original) patient.
+      const originalOverrides = getSplitOverrides(originalSide, selected);
+      update(selected.id, originalOverrides);
+
+      // Build the duplicate patient locally (clone of original + opposite-side overrides).
+      const otherOverrides = getSplitOverrides(otherSide, selected);
+      const duplicate: Patient = {
+        ...selected,
+        ...otherOverrides,
+        id: newId,
+        lastUpdated: new Date().toISOString(),
+      };
+      addPatient(duplicate, otherOverrides);
+
+      toast.success(
+        `Split into 2 profiles — this becomes the ${originalSide === "supplies" ? "Supplies" : "Sensors"} profile. ` +
+          `Review the ${otherSide === "supplies" ? "Supplies" : "Sensors"} profile in the sidebar.`,
+      );
+    } catch (e) {
+      toast.error("Split failed", {
+        description: e instanceof Error ? e.message : String(e),
+      });
     }
   };
 
@@ -162,6 +211,7 @@ const FinalConfirmPage = () => {
                     notes={selected.notes}
                     onNotesChange={(v) => update(selected.id, { notes: v })}
                   />
+                  <SplitOrderButton patient={selected} onSplit={handleSplit} />
                   <EscalateButton
                     escalated={selected.escalated}
                     onToggle={toggleEscalate}

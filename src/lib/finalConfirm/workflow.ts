@@ -81,11 +81,11 @@ export interface Patient {
   sosIp: string;
   sosInfusionSet: string;
   sosCartridge: string;
-  orderDateMonitor: string;    // YYYY-MM-DD or ""
-  orderDateSensors: string;
-  orderDateIp: string;
-  orderDateInfusionSet: string;
-  orderDateCartridge: string;
+  lastBillDateMonitor: string;    // YYYY-MM-DD or ""
+  lastBillDateSensors: string;
+  lastBillDateIp: string;
+  lastBillDateInfusionSet: string;
+  lastBillDateCartridge: string;
   // Calculated next order dates (read-only display)
   nextOrderDateIp: string;
   nextOrderDateSensors: string;
@@ -375,4 +375,168 @@ export function formatDateMDY(raw: string): string {
 /** No fields are required — user can send at any time */
 export function validatePatientForSend(_p: Patient): { valid: boolean; errors: string[] } {
   return { valid: true, errors: [] };
+}
+
+/* ─── Split Order Helpers ───────────────────────────────────────
+ *
+ * A patient becomes "split eligible" when their order can plausibly
+ * ship in two distinct shipments — one for IP/supplies, one for CGM/
+ * sensors. The user presses Split Order, we duplicate the Monday item,
+ * and apply opposite "Not Serving" overrides to each copy.
+ *
+ * The two halves are: SUPPLIES side (IP + infusion sets + cartridges)
+ * and SENSORS side (CGM monitor + sensors).
+ */
+
+export type SplitSide = "supplies" | "sensors";
+
+/** Status index for "Not Serving" on each column that supports it. */
+const NOT_SERVING_INDEX = {
+  cgmCoveragePath: 2,
+  ipCoveragePath: 7,
+  pumpType: 3,
+  cgmType: 9,
+  infusionSet: 101,
+  authResult: 7,
+} as const;
+
+const ORDER_HANDLING_SEPARATE = 0;
+const SUBSCRIPTION_SENSORS = 0;
+const SUBSCRIPTION_SUPPLIES = 2;
+const SERVING_INSULIN_PUMP = 0;
+const SERVING_SUPPLIES_ONLY = 1;
+const SERVING_CGM = 2;
+
+/**
+ * The "supplies side" date is the earliest non-blank of IP and Supplies
+ * next-order-dates (both belong on the supplies half of the split).
+ */
+function suppliesSideDate(p: Patient): string {
+  const dates = [p.nextOrderDateIp, p.nextOrderDateSupplies].filter((d) => !!d);
+  if (dates.length === 0) return "";
+  return dates.reduce((a, b) => (a <= b ? a : b));
+}
+
+/**
+ * Returns true when the patient's order can be split into two profiles.
+ * Eligibility:
+ *  - The supplies-side date differs from the sensors-side date (both populated), OR
+ *  - Order Handling is explicitly "Separate".
+ */
+export function isSplitEligible(p: Patient): boolean {
+  if (p.orderHandlingIndex === ORDER_HANDLING_SEPARATE) return true;
+  const sup = suppliesSideDate(p);
+  const sen = p.nextOrderDateSensors;
+  return !!sup && !!sen && sup !== sen;
+}
+
+/**
+ * Determines which side keeps the original Monday item. Convention:
+ * the side with the EARLIER next-order-date is the original (because
+ * its order is happening sooner). If dates are equal/blank, default to
+ * supplies as the original.
+ */
+export function determineOriginalSide(p: Patient): SplitSide {
+  const sup = suppliesSideDate(p);
+  const sen = p.nextOrderDateSensors;
+  if (sup && sen && sup !== sen) return sup < sen ? "supplies" : "sensors";
+  return "supplies";
+}
+
+/**
+ * Helpful label for the user describing the reason the button is enabled
+ * (or disabled). Returned as a short hint to render below the button.
+ */
+export function describeSplitEligibility(p: Patient): string {
+  if (!isSplitEligible(p)) {
+    return "Split is available when Sensors and Supplies next order dates differ, or when Order Handling is Separate.";
+  }
+  if (p.orderHandlingIndex === ORDER_HANDLING_SEPARATE) {
+    return "Order Handling is set to Separate.";
+  }
+  const sup = suppliesSideDate(p);
+  const sen = p.nextOrderDateSensors;
+  return `Sensors (${formatDateMDY(sen)}) and Supplies (${formatDateMDY(sup)}) next order dates differ.`;
+}
+
+/**
+ * Returns a partial Patient overlay representing the field changes for
+ * one side of a split. Apply via `update(patient.id, getSplitOverrides(...))`.
+ *
+ * - "supplies" side: zero out everything sensor/CGM-related.
+ * - "sensors"  side: zero out everything pump/supply-related.
+ *
+ * Order Handling is forced to "Separate" on BOTH sides — this is the
+ * visual signal that the item is half of a split.
+ */
+export function getSplitOverrides(side: SplitSide, original: Patient): Partial<Patient> {
+  if (side === "supplies") {
+    // Original Serving "Insulin Pump + CGM" (3) → "Insulin Pump" (0)
+    // Original Serving "Supplies + CGM" (4)   → "Supplies Only" (1)
+    // Anything else → keep "Insulin Pump" as a safe default.
+    let servingIdx = SERVING_INSULIN_PUMP;
+    let servingLabel = "Insulin Pump";
+    if (original.servingIndex === 4) {
+      servingIdx = SERVING_SUPPLIES_ONLY;
+      servingLabel = "Supplies Only";
+    } else if (original.servingIndex === 0 || original.servingIndex === 1) {
+      // Already pump/supplies-only — keep as is.
+      servingIdx = original.servingIndex;
+      servingLabel = original.serving;
+    }
+    return {
+      cgmCoveragePathIndex: NOT_SERVING_INDEX.cgmCoveragePath,
+      cgmCoveragePath: "Not Serving",
+      cgmTypeIndex: NOT_SERVING_INDEX.cgmType,
+      cgmType: "Not Serving",
+      cgmAuthResultIndex: NOT_SERVING_INDEX.authResult,
+      cgmAuthResult: "Not Serving",
+      sensorsAuthResultIndex: NOT_SERVING_INDEX.authResult,
+      sensorsAuthResult: "Not Serving",
+      servingIndex: servingIdx,
+      serving: servingLabel,
+      subscriptionTypeIndex: SUBSCRIPTION_SUPPLIES,
+      subscriptionType: "Supplies",
+      orderHandlingIndex: ORDER_HANDLING_SEPARATE,
+      orderHandling: "Separate",
+      monitorQty: "0",
+      // Clear the sensor-side dates entirely on the supplies-side item.
+      lastBillDateSensors: "",
+      lastBillDateMonitor: "",
+      nextOrderDateSensors: "",
+    };
+  }
+
+  // sensors side
+  return {
+    ipCoveragePathIndex: NOT_SERVING_INDEX.ipCoveragePath,
+    ipCoveragePath: "Not Serving",
+    pumpTypeIndex: NOT_SERVING_INDEX.pumpType,
+    pumpType: "Not Serving",
+    infusionSet1Index: NOT_SERVING_INDEX.infusionSet,
+    infusionSet1: "Not Serving",
+    infusionSet2Index: NOT_SERVING_INDEX.infusionSet,
+    infusionSet2: "Not Serving",
+    qtyInf1: "0",
+    qtyInf2: "0",
+    pumpQty: "0",
+    ipAuthResultIndex: NOT_SERVING_INDEX.authResult,
+    ipAuthResult: "Not Serving",
+    infusionSetAuthResultIndex: NOT_SERVING_INDEX.authResult,
+    infusionSetAuthResult: "Not Serving",
+    cartridgeAuthResultIndex: NOT_SERVING_INDEX.authResult,
+    cartridgeAuthResult: "Not Serving",
+    servingIndex: SERVING_CGM,
+    serving: "CGM",
+    subscriptionTypeIndex: SUBSCRIPTION_SENSORS,
+    subscriptionType: "Sensors",
+    orderHandlingIndex: ORDER_HANDLING_SEPARATE,
+    orderHandling: "Separate",
+    // Clear the pump/supplies-side dates entirely on the sensors-side item.
+    lastBillDateIp: "",
+    lastBillDateInfusionSet: "",
+    lastBillDateCartridge: "",
+    nextOrderDateIp: "",
+    nextOrderDateSupplies: "",
+  };
 }

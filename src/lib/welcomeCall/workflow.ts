@@ -60,13 +60,12 @@ export interface Patient {
   deductibleRemaining: string;
   oopMax: string;
   oopMaxRemaining: string;
-  // Order dates (read-only)
-  cgmOrderDate: string;
-  sensorsOrderDate: string;
-  ipOrderDate: string;
-  infusionSetOrderDate: string;
-  cartridgeOrderDate: string;
-  suppliesOrderDate: string;
+  // Last bill dates (read-only)
+  cgmLastBillDate: string;
+  sensorsLastBillDate: string;
+  ipLastBillDate: string;
+  infusionSetLastBillDate: string;
+  cartridgeLastBillDate: string;
   // Next order dates (read-only)
   ipNextOrderDate: string;
   sensorsNextOrderDate: string;

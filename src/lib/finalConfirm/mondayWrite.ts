@@ -116,15 +116,15 @@ export async function sendPatientToMonday(p: Patient): Promise<void> {
   if (typeof p.notes === "string" && p.notes.trim() !== "")
     tasks.push({ label: "Notes", columnId: COL.notes, fn: () => writeLongText(p.id, COL.notes, p.notes) });
 
-  // ─── Order Dates (always write current value) ────────────
-  const orderDateEntries: { label: string; dateVal: string; colId: string }[] = [
-    { label: "CGM Monitor Order Date", dateVal: p.orderDateMonitor, colId: COL.orderDate.monitor },
-    { label: "Sensors Order Date", dateVal: p.orderDateSensors, colId: COL.orderDate.sensors },
-    { label: "IP Order Date", dateVal: p.orderDateIp, colId: COL.orderDate.insulin_pump },
-    { label: "Infusion Set Order Date", dateVal: p.orderDateInfusionSet, colId: COL.orderDate.infusion_set },
-    { label: "Cartridge Order Date", dateVal: p.orderDateCartridge, colId: COL.orderDate.cartridge },
+  // ─── Last Bill Dates (always write current value) ────────────
+  const lastBillDateEntries: { label: string; dateVal: string; colId: string }[] = [
+    { label: "CGM Last Bill Date", dateVal: p.lastBillDateMonitor, colId: COL.lastBillDate.monitor },
+    { label: "Sensors Last Bill Date", dateVal: p.lastBillDateSensors, colId: COL.lastBillDate.sensors },
+    { label: "IP Last Bill Date", dateVal: p.lastBillDateIp, colId: COL.lastBillDate.insulin_pump },
+    { label: "Infusion Set Last Bill Date", dateVal: p.lastBillDateInfusionSet, colId: COL.lastBillDate.infusion_set },
+    { label: "Cartridge Last Bill Date", dateVal: p.lastBillDateCartridge, colId: COL.lastBillDate.cartridge },
   ];
-  for (const entry of orderDateEntries) {
+  for (const entry of lastBillDateEntries) {
     tasks.push({ label: entry.label, columnId: entry.colId, fn: () => writeDate(p.id, entry.colId, entry.dateVal) });
   }
 

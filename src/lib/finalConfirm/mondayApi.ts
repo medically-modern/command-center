@@ -78,8 +78,8 @@ export const COL = {
   escalation: "color_mm1x7997",
   escalationReason: "dropdown_mm2fhcd6",
 
-  // Per-product Order Date columns (date — populated when SoS = Not Clear)
-  orderDate: {
+  // Per-product Last Bill Date columns (date — populated when SoS = Not Clear)
+  lastBillDate: {
     monitor: "date_mm33vqa0",
     sensors: "date_mm33jsyt",
     insulin_pump: "date_mm33kmz4",
@@ -113,8 +113,8 @@ export const READ_COLUMN_IDS = [
   COL.cgmAuthResult, COL.sensorsAuthResult, COL.ipAuthResult,
   COL.infusionSetAuthResult, COL.cartridgeAuthResult,
   COL.notes,
-  COL.orderDate.monitor, COL.orderDate.sensors, COL.orderDate.insulin_pump,
-  COL.orderDate.infusion_set, COL.orderDate.cartridge,
+  COL.lastBillDate.monitor, COL.lastBillDate.sensors, COL.lastBillDate.insulin_pump,
+  COL.lastBillDate.infusion_set, COL.lastBillDate.cartridge,
   COL.nextOrderDate.insulin_pump, COL.nextOrderDate.sensors, COL.nextOrderDate.supplies,
 ];
 
@@ -284,6 +284,24 @@ export async function writeDate(itemId: string, columnId: string, date: string):
     columnId,
     value: date ? JSON.stringify({ date }) : JSON.stringify({}),
   });
+}
+
+/**
+ * Duplicate an item on the same board. Returns the new item's id.
+ * Used by the Split Order feature to clone a patient into a second
+ * profile that the user can edit independently before submitting.
+ */
+export async function duplicateItem(itemId: string): Promise<string> {
+  const query = `
+    mutation ($boardId: ID!, $itemId: ID!) {
+      duplicate_item(board_id: $boardId, item_id: $itemId, with_updates: false) { id }
+    }
+  `;
+  const data = await gql<{ duplicate_item: { id: string } }>(query, {
+    boardId: BOARD_ID,
+    itemId,
+  });
+  return data.duplicate_item.id;
 }
 
 /**

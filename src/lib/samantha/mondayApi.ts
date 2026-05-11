@@ -117,8 +117,8 @@ export const COL = {
     cartridge: "numeric_mm2w1df3",
   },
 
-  // Per-product Order Date columns (date — populated when SoS = Not Clear)
-  orderDate: {
+  // Per-product Last Bill Date columns (date — populated when SoS = Not Clear)
+  lastBillDate: {
     monitor: "date_mm33h1qv",
     sensors: "date_mm332rhq",
     insulin_pump: "date_mm33qnew",
@@ -165,12 +165,12 @@ export const READ_COLUMN_IDS = [
   // recorded on Benefits — Not Clear products and Skip-deferred products).
   COL.notClearProducts,
   COL.skipSosProducts,
-  // Per-product Order Date (populated when SoS = Not Clear on Benefits)
-  COL.orderDate.monitor,
-  COL.orderDate.sensors,
-  COL.orderDate.insulin_pump,
-  COL.orderDate.infusion_set,
-  COL.orderDate.cartridge,
+  // Per-product Last Bill Date (populated when SoS = Not Clear on Benefits)
+  COL.lastBillDate.monitor,
+  COL.lastBillDate.sensors,
+  COL.lastBillDate.insulin_pump,
+  COL.lastBillDate.infusion_set,
+  COL.lastBillDate.cartridge,
   // Follow Up
   COL.followUp,
   COL.followUpDate,

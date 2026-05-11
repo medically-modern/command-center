@@ -228,23 +228,23 @@ export async function sendPatientToMonday(p: Patient, context: "benefits" | "sub
     fn: () => writeDropdownIds(p.id, COL.skipSosProducts, skipIds),
   });
 
-  // ----- Per-product Order Date (date — when SoS = Not Clear) -----
+  // ----- Per-product Last Bill Date (date — when SoS = Not Clear) -----
   for (const { cid, state } of entries) {
     const productId = PRODUCT_CODE_TO_PRODUCT_ID[cid];
-    const orderDateCol = COL.orderDate[productId];
+    const lastBillDateCol = COL.lastBillDate[productId];
     const eSos = effectiveSos({ cid, state, isMedicaidSupply: false });
-    if (eSos === "not-clear" && state?.orderDate) {
+    if (eSos === "not-clear" && state?.lastBillDate) {
       tasks.push({
-        label: `Order Date: ${productId}`,
-        columnId: orderDateCol,
-        fn: () => writeDate(p.id, orderDateCol, state.orderDate!),
+        label: `Last Bill Date: ${productId}`,
+        columnId: lastBillDateCol,
+        fn: () => writeDate(p.id, lastBillDateCol, state.lastBillDate!),
       });
     } else {
-      // Clear order date when SoS is no longer not-clear
+      // Clear last bill date when SoS is no longer not-clear
       tasks.push({
-        label: `Order Date (clear): ${productId}`,
-        columnId: orderDateCol,
-        fn: () => writeDate(p.id, orderDateCol, ""),
+        label: `Last Bill Date (clear): ${productId}`,
+        columnId: lastBillDateCol,
+        fn: () => writeDate(p.id, lastBillDateCol, ""),
       });
     }
   }

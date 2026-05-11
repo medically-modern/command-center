@@ -67,5 +67,27 @@ export function useMondayPatients() {
     overlayRef.current.delete(id);
   }, []);
 
-  return { patients, loading, error, refetch, update, clearOverlay };
+  /**
+   * Insert a patient into local state, storing the overlay so the next
+   * refetch preserves the local edits. Used by Split Order to add the
+   * newly-duplicated Monday item to the sidebar immediately, before the
+   * background poll picks it up.
+   */
+  const addPatient = useCallback((patient: Patient, overlay?: Partial<Patient>) => {
+    if (overlay) {
+      overlayRef.current.set(patient.id, {
+        ...(overlayRef.current.get(patient.id) ?? {}),
+        ...overlay,
+      });
+    }
+    setPatients((prev) => {
+      // Avoid duplicate inserts if the patient is already present.
+      if (prev.some((p) => p.id === patient.id)) {
+        return prev.map((p) => (p.id === patient.id ? { ...p, ...(overlay ?? {}) } : p));
+      }
+      return [...prev, patient];
+    });
+  }, []);
+
+  return { patients, loading, error, refetch, update, clearOverlay, addPatient };
 }
