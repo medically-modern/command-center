@@ -228,19 +228,20 @@ export async function sendPatientToMonday(p: Patient, context: "benefits" | "sub
     fn: () => writeDropdownIds(p.id, COL.skipSosProducts, skipIds),
   });
 
-  // ----- Per-product Last Bill Date (date — when SoS = Not Clear) -----
+  // ----- Per-product Last Bill Date (date — when SoS = Not Clear OR Auth = No Auth Needed) -----
   for (const { cid, state } of entries) {
     const productId = PRODUCT_CODE_TO_PRODUCT_ID[cid];
     const lastBillDateCol = COL.lastBillDate[productId];
     const eSos = effectiveSos({ cid, state, isMedicaidSupply: false });
-    if (eSos === "not-clear" && state?.lastBillDate) {
+    const noAuthNeeded = state?.authOutstandingResult === "no-auth-needed";
+    if ((eSos === "not-clear" || noAuthNeeded) && state?.lastBillDate) {
       tasks.push({
         label: `Last Bill Date: ${productId}`,
         columnId: lastBillDateCol,
         fn: () => writeDate(p.id, lastBillDateCol, state.lastBillDate!),
       });
     } else {
-      // Clear last bill date when SoS is no longer not-clear
+      // Clear last bill date when neither condition applies
       tasks.push({
         label: `Last Bill Date (clear): ${productId}`,
         columnId: lastBillDateCol,

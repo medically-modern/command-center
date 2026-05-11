@@ -17,7 +17,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Package, Repeat, Send, Inbox, ShieldCheck } from "lucide-react";
+import { Package, Repeat, Send, Inbox, ShieldCheck, CalendarDays } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ClinicalsDownloadButton } from "./ClinicalsDownloadButton";
 import { FinalClinicalsUpload } from "./FinalClinicalsUpload";
@@ -311,6 +311,23 @@ function ProductAuthBlock({ meta, resolved, state, onChange, primaryInsurance }:
                     <SelectItem value="not-clear">Not Clear</SelectItem>
                   </SelectContent>
                 </Select>
+              </div>
+            )}
+            {noAuthNeeded && (
+              <div className="sm:col-span-5 rounded-md border border-warning/40 bg-warning/5 p-3">
+                <label className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-wider text-warning-foreground/80 mb-1.5">
+                  <CalendarDays className="h-3.5 w-3.5" />
+                  {meta.name} Last Bill Date
+                </label>
+                <p className="text-[11px] text-muted-foreground mb-2">
+                  {meta.name} last bill date
+                </p>
+                <Input
+                  type="date"
+                  value={state.lastBillDate ?? ""}
+                  onChange={(e) => onChange({ lastBillDate: e.target.value })}
+                  className="max-w-xs h-9 bg-background border-warning/30 focus-visible:ring-warning/40"
+                />
               </div>
             )}
             <div className="sm:col-span-5">
