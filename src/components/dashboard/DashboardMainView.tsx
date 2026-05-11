@@ -76,13 +76,15 @@ export function DashboardMainView({ selectedUser, assignments, getRolesForUser, 
               const count = roleCounts[role.id] ?? 0;
               const pct = maxCount > 0 ? (count / maxCount) * 100 : 0;
               const hasRoute = role.route && role.id !== "authDenied";
+              const routeTarget = role.id === "systemMgmt" ? "/system-mgmt?tab=escalations" : role.route;
+              const countLabel = role.id === "systemMgmt" ? "escalation" : "patient";
 
               return (
                 <button
                   key={role.id}
                   className={cn("w-full text-left group", hasRoute ? "cursor-pointer" : "cursor-default")}
                   onClick={() => {
-                    if (hasRoute) navigate(role.route);
+                    if (hasRoute) navigate(routeTarget);
                   }}
                   title={hasRoute ? `Open ${role.label}` : `${role.label} (coming soon)`}
                 >
@@ -92,7 +94,7 @@ export function DashboardMainView({ selectedUser, assignments, getRolesForUser, 
                       {role.label}
                     </span>
                     <span className="text-sm text-muted-foreground tabular-nums">
-                      {countsLoading ? "…" : count} patient{count !== 1 ? "s" : ""}
+                      {countsLoading ? "…" : count} {countLabel}{count !== 1 ? "s" : ""}
                       {hasRoute && (
                         <ExternalLink className="w-3.5 h-3.5 inline ml-1.5 opacity-0 group-hover:opacity-60 transition-opacity" />
                       )}

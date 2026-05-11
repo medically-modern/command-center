@@ -8,7 +8,7 @@
  * (E) Remove-escalation button per patient
  */
 import { useState, useMemo, useRef, useCallback } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   useSystemPatients,
   searchPatients,
@@ -38,10 +38,12 @@ type Tab = "search" | "escalations";
 
 const SystemMgmtPage = () => {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { patients, escalated, completionMap, loading, error, refetch, removeEscalation } =
     useSystemPatients();
 
-  const [activeTab, setActiveTab] = useState<Tab>("search");
+  const initialTab = searchParams.get("tab") === "escalations" ? "escalations" : "search";
+  const [activeTab, setActiveTab] = useState<Tab>(initialTab);
   const [query, setQuery] = useState("");
   const [removingId, setRemovingId] = useState<string | null>(null);
   const [chartSelection, setChartSelection] = useState<SystemPatient[] | null>(null);
