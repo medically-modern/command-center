@@ -502,11 +502,14 @@ export function getSplitOverrides(side: SplitSide, original: Patient): Partial<P
       cgmAuthResult: "Not Serving",
       sensorsAuthResultIndex: NOT_SERVING_INDEX.authResult,
       sensorsAuthResult: "Not Serving",
-      monitorQty: "0",
+      // Clear (not zero) — Monday automations gated on "is empty" only fire
+      // when the cell is cleared, not when it holds 0.
+      monitorQty: "",
       lastBillDateSensors: "",
       lastBillDateMonitor: "",
       nextOrderDateSensors: "",
       // ── Pump/supplies-side fields → explicitly preserve from original
+      //    (this profile IS the supplies order, so these keep the originals)
       //    Monday's duplicate_item doesn't always copy status-column
       //    indexes reliably; pinning them to the overlay guarantees the
       //    UI shows the right value after a refetch.
@@ -548,9 +551,11 @@ export function getSplitOverrides(side: SplitSide, original: Patient): Partial<P
     infusionSet1: "Not Serving",
     infusionSet2Index: NOT_SERVING_INDEX.infusionSet,
     infusionSet2: "Not Serving",
-    qtyInf1: "0",
-    qtyInf2: "0",
-    pumpQty: "0",
+    // Clear (not zero) — Monday automations gated on "is empty" only fire
+    // when the cell is cleared, not when it holds 0.
+    qtyInf1: "",
+    qtyInf2: "",
+    pumpQty: "",
     ipAuthResultIndex: NOT_SERVING_INDEX.authResult,
     ipAuthResult: "Not Serving",
     infusionSetAuthResultIndex: NOT_SERVING_INDEX.authResult,

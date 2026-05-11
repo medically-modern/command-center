@@ -236,9 +236,11 @@ export async function writeText(itemId: string, columnId: string, text: string):
 }
 
 /**
- * Write a number column.
+ * Write a number column. Pass `""` (empty string) to clear the cell on Monday
+ * (which is distinct from writing 0 — automations gated on "is empty" only
+ * fire for cleared cells, not for cells holding 0).
  */
-export async function writeNumber(itemId: string, columnId: string, num: number): Promise<void> {
+export async function writeNumber(itemId: string, columnId: string, num: number | ""): Promise<void> {
   const query = `
     mutation ($boardId: ID!, $itemId: ID!, $columnId: String!, $value: JSON!) {
       change_column_value(board_id: $boardId, item_id: $itemId, column_id: $columnId, value: $value) { id }
@@ -248,7 +250,7 @@ export async function writeNumber(itemId: string, columnId: string, num: number)
     boardId: BOARD_ID,
     itemId,
     columnId,
-    value: JSON.stringify(String(num)),
+    value: num === "" ? JSON.stringify("") : JSON.stringify(String(num)),
   });
 }
 

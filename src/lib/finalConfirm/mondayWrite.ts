@@ -137,20 +137,35 @@ export async function sendPatientToMonday(p: Patient): Promise<void> {
   if (p.infusionSet1Index !== null)
     tasks.push({ label: "Infusion Set 1", columnId: COL.infusionSet1, fn: () => writeStatusIndex(p.id, COL.infusionSet1, p.infusionSet1Index!) });
 
-  if (p.qtyInf1 !== "")
-    tasks.push({ label: "Infusion Set 1 Qty", columnId: COL.qtyInf1, fn: () => writeNumber(p.id, COL.qtyInf1, Number(p.qtyInf1)) });
+  // Always write number cells — empty string clears the cell on Monday
+  // (necessary for Split Order, where Pump Qty / Qty Inf 1/2 are cleared so
+  // automations gated on "is empty" can fire).
+  tasks.push({
+    label: "Infusion Set 1 Qty",
+    columnId: COL.qtyInf1,
+    fn: () => writeNumber(p.id, COL.qtyInf1, p.qtyInf1 === "" ? "" : Number(p.qtyInf1)),
+  });
 
   if (p.infusionSet2Index !== null)
     tasks.push({ label: "Infusion Set 2", columnId: COL.infusionSet2, fn: () => writeStatusIndex(p.id, COL.infusionSet2, p.infusionSet2Index!) });
 
-  if (p.qtyInf2 !== "")
-    tasks.push({ label: "Infusion Set 2 Qty", columnId: COL.qtyInf2, fn: () => writeNumber(p.id, COL.qtyInf2, Number(p.qtyInf2)) });
+  tasks.push({
+    label: "Infusion Set 2 Qty",
+    columnId: COL.qtyInf2,
+    fn: () => writeNumber(p.id, COL.qtyInf2, p.qtyInf2 === "" ? "" : Number(p.qtyInf2)),
+  });
 
-  if (p.monitorQty !== "")
-    tasks.push({ label: "Monitor Qty", columnId: COL.monitorQty, fn: () => writeNumber(p.id, COL.monitorQty, Number(p.monitorQty)) });
+  tasks.push({
+    label: "Monitor Qty",
+    columnId: COL.monitorQty,
+    fn: () => writeNumber(p.id, COL.monitorQty, p.monitorQty === "" ? "" : Number(p.monitorQty)),
+  });
 
-  if (p.pumpQty !== "")
-    tasks.push({ label: "Pump Qty", columnId: COL.pumpQty, fn: () => writeNumber(p.id, COL.pumpQty, Number(p.pumpQty)) });
+  tasks.push({
+    label: "Pump Qty",
+    columnId: COL.pumpQty,
+    fn: () => writeNumber(p.id, COL.pumpQty, p.pumpQty === "" ? "" : Number(p.pumpQty)),
+  });
 
   if (p.orderHandlingIndex !== null)
     tasks.push({ label: "Order Handling", columnId: COL.orderHandling, fn: () => writeStatusIndex(p.id, COL.orderHandling, p.orderHandlingIndex!) });
@@ -185,10 +200,13 @@ export async function sendPatientToMonday(p: Patient): Promise<void> {
   if (p.escalated)
     tasks.push({ label: "Escalation", columnId: COL.escalation, fn: () => writeStatusIndex(p.id, COL.escalation, 0) });
 
-  // ─── Stage Advancer → Completed ──────────────────────────
-  tasks.push({ label: "Stage Advancer", columnId: COL.stageAdvancer, fn: () => writeStatusIndex(p.id, COL.stageAdvancer, STAGE_ADVANCER_COMPLETED) });
-
-  // ---- Execute all writes in parallel with retries ----
+  // ---- Execute all column writes in parallel with retries.
+  //      Stage Advancer is intentionally NOT in this batch — it must land
+  //      AFTER every other write so Monday's automations (which trigger on
+  //      Stage Advancer = Completed) evaluate the post-Send column state.
+  //      Without this ordering, an automation gated on e.g. "Subscription
+  //      Type is Sensors" can read the pre-Send value when Stage Advancer
+  //      changes, and no automation matches.
   const results = await Promise.all(tasks.map(executeWithRetry));
   const failures = results.filter((r): r is string => r !== null);
 
@@ -203,5 +221,19 @@ export async function sendPatientToMonday(p: Patient): Promise<void> {
     throw new Error(
       `${failures.length} column(s) failed after retries. Check "Josh Debug" column. Failed: ${failures.map((f) => f.split(":")[0]).join(", ")}`,
     );
+  }
+
+  // Brief settle so Monday has fully indexed the column writes before the
+  // automation-triggering Stage Advancer change lands.
+  await new Promise((r) => setTimeout(r, 750));
+
+  // ─── Stage Advancer → Completed (runs LAST) ──────────────
+  const stageErr = await executeWithRetry({
+    label: "Stage Advancer",
+    columnId: COL.stageAdvancer,
+    fn: () => writeStatusIndex(p.id, COL.stageAdvancer, STAGE_ADVANCER_COMPLETED),
+  });
+  if (stageErr) {
+    throw new Error(`Stage Advancer failed after retries: ${stageErr}`);
   }
 }
