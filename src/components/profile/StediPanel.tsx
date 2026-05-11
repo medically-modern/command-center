@@ -449,14 +449,18 @@ export function StediPanel({ patient, onRefresh, onUpdate, onNext, onRemoveOverl
         </Card>
       )}
 
-      {/* Step B: Stedi Results (only show if Stedi succeeded) */}
-      {hasStediData && (
+      {/* Step B: Stedi Results (show after any Stedi run — success or failure) */}
+      {stediIsComplete && (
         <>
           {/* Always-show results */}
           <Card className="shadow-card">
             <CardHeader className="pb-3">
               <CardTitle className="text-base flex items-center gap-2">
-                <CheckCircle2 className="h-4 w-4 text-green-500" />
+                {isStediFailed ? (
+                  <AlertTriangle className="h-4 w-4 text-red-500" />
+                ) : (
+                  <CheckCircle2 className="h-4 w-4 text-green-500" />
+                )}
                 Eligibility Results
               </CardTitle>
             </CardHeader>
@@ -622,8 +626,8 @@ export function StediPanel({ patient, onRefresh, onUpdate, onNext, onRemoveOverl
         </>
       )}
 
-      {/* Step 3: Primary + Secondary Insurance (hidden until Stedi has run) */}
-      {hasStediData && (
+      {/* Step 3: Primary + Secondary Insurance (shown after any Stedi run) */}
+      {stediIsComplete && (
       <Card className="shadow-card">
         <CardHeader className="pb-3">
           <p className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground font-semibold">Step 3</p>
