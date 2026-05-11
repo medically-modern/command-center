@@ -19,7 +19,7 @@ import { SplitOrderButton } from "@/components/finalConfirm/SplitOrderButton";
 import { EscalateButton } from "@/components/finalConfirm/EscalateButton";
 import { Button } from "@/components/ui/button";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
-import { RotateCcw, ShieldCheck, ArrowLeft } from "lucide-react";
+import { RotateCcw, ShieldCheck, ArrowLeft, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
 import { sendPatientToMonday } from "@/lib/finalConfirm/mondayWrite";
 import { duplicateItem } from "@/lib/finalConfirm/mondayApi";
@@ -33,6 +33,27 @@ const FinalConfirmPage = () => {
   useEffect(() => {
     if (!selectedId && patients.length > 0) setSelectedId(patients[0].id);
   }, [patients, selectedId]);
+
+  // Any patient with _splitCreated has an unsubmitted local split.
+  const unsubmittedSplits = useMemo(
+    () => patients.filter((p) => p._splitCreated === true),
+    [patients],
+  );
+
+  // Warn the user if they try to refresh or close the tab while a split is
+  // still local-only. The split overlay isn't persisted; refreshing wipes it
+  // and the duplicate Monday item is left without its Not-Serving overrides.
+  useEffect(() => {
+    if (unsubmittedSplits.length === 0) return;
+    const handler = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      // Some browsers ignore the custom message but still show a generic prompt.
+      e.returnValue = "You have unsaved split changes. Submit both profiles first.";
+      return e.returnValue;
+    };
+    window.addEventListener("beforeunload", handler);
+    return () => window.removeEventListener("beforeunload", handler);
+  }, [unsubmittedSplits.length]);
 
   const selected: Patient | undefined = useMemo(
     () => patients.find((p) => p.id === selectedId),
@@ -196,6 +217,19 @@ const FinalConfirmPage = () => {
               </div>
             </div>
           </header>
+
+          {unsubmittedSplits.length > 0 && (
+            <div className="sticky top-0 z-30 bg-amber-100 border-b-2 border-amber-400 px-6 py-2.5 flex items-center gap-3 shadow-sm">
+              <AlertTriangle className="h-5 w-5 text-amber-700 flex-shrink-0" />
+              <p className="text-sm text-amber-900 flex-1">
+                <span className="font-bold">
+                  {unsubmittedSplits.length} unsaved split{unsubmittedSplits.length === 1 ? "" : "s"} —
+                </span>{" "}
+                Submit each profile to Monday before refreshing or closing the tab.
+                Refreshing now will lose the split changes.
+              </p>
+            </div>
+          )}
 
           <main className="flex-1 px-6 py-6 overflow-y-auto">
             <section className="max-w-5xl mx-auto space-y-5">
