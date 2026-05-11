@@ -353,6 +353,10 @@ export async function sendPatientToMonday(p: Patient, context: "benefits" | "sub
       (e) => e.state?.sos === "skip" && e.state?.sosRecheck === "not-clear",
     );
     const isProductResolved = (e: typeof entries[number]) => {
+      // Products that were auth=not-required on Benefits never appear on
+      // the Auth Outstanding UI, so they have no authOutstandingResult to
+      // fill in. They're already resolved — no auth work needed.
+      if (e.state?.auth === "not-required") return true;
       const r = e.state?.authOutstandingResult;
       if (r === "auth-valid") return true;
       if (r === "no-auth-needed") {
