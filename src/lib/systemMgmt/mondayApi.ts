@@ -122,6 +122,7 @@ export const BOARDS: BoardDef[] = [
     activeGroups: [
       { id: "group_mm1wvq8p", title: "Welcome Call",               roleRoute: "/welcome-call" },
       { id: "group_mm2x8jtj", title: "Final Profile Confirmation", roleRoute: "/final-confirm" },
+      { id: "group_mm1x5c0",  title: "Escalation",                 roleRoute: "" },
       { id: "group_mm1x5s5d", title: "Completed",                  roleRoute: "", isCompleted: true },
     ],
     escalationColId: "color_mm1x7997",
