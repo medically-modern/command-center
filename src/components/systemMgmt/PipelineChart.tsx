@@ -182,41 +182,36 @@ export function PipelineChart({ patients, onSegmentClick }: PipelineChartProps) 
       {/* Chart area */}
       <div className="relative">
         {/* Bars */}
-        <div className="flex items-end gap-1.5 min-h-[200px] pt-4 pb-0">
+        <div className="flex items-end gap-2" style={{ height: "220px" }}>
           {columns.map((col, colIdx) => {
-            const heightPct = (col.total / maxTotal) * 100;
+            const barHeight = Math.max((col.total / maxTotal) * 200, 8);
             // Build stacked segments (bottom to top: least urgent → most urgent)
             const allBuckets = [...DAY_BUCKETS, UNKNOWN_BUCKET];
             const segments: {
               bucket: DayBucket;
               patients: SystemPatient[];
-              heightPct: number;
             }[] = [];
 
             for (const bucket of allBuckets) {
               const pts = col.buckets.get(bucket.label) ?? [];
               if (pts.length === 0) continue;
-              segments.push({
-                bucket,
-                patients: pts,
-                heightPct: (pts.length / col.total) * heightPct,
-              });
+              segments.push({ bucket, patients: pts });
             }
 
             return (
               <div
                 key={`${col.boardId}-${col.pipelineStage}`}
-                className="flex-1 flex flex-col items-stretch min-w-[40px]"
+                className="flex-1 flex flex-col justify-end items-stretch min-w-[48px]"
               >
                 {/* Count label */}
-                <div className="text-center text-[10px] font-medium text-muted-foreground mb-1">
+                <div className="text-center text-xs font-semibold text-foreground mb-1">
                   {col.total}
                 </div>
 
                 {/* Stacked bar */}
                 <div
                   className="flex flex-col-reverse rounded-t-md overflow-hidden"
-                  style={{ height: `${Math.max(heightPct, 4)}%`, minHeight: col.total > 0 ? "16px" : "0" }}
+                  style={{ height: `${barHeight}px` }}
                 >
                   {segments.map((seg) => (
                     <div
@@ -226,12 +221,13 @@ export function PipelineChart({ patients, onSegmentClick }: PipelineChartProps) 
                         hover &&
                           (hover.groupIdx !== colIdx ||
                             hover.bucketLabel !== seg.bucket.label)
-                          ? "opacity-50"
-                          : "opacity-100 hover:opacity-90",
+                          ? "opacity-40"
+                          : "opacity-100 hover:brightness-110",
                       )}
                       style={{
                         backgroundColor: seg.bucket.color,
                         flexGrow: seg.patients.length,
+                        minHeight: "4px",
                       }}
                       onMouseEnter={(e) => {
                         const rect = e.currentTarget.getBoundingClientRect();
@@ -249,8 +245,8 @@ export function PipelineChart({ patients, onSegmentClick }: PipelineChartProps) 
                 </div>
 
                 {/* Group label */}
-                <div className="text-center mt-1.5 px-0.5">
-                  <div className="text-[10px] font-medium text-foreground leading-tight truncate">
+                <div className="text-center mt-2 px-0.5">
+                  <div className="text-[11px] font-medium text-foreground leading-tight truncate">
                     {col.pipelineStage}
                   </div>
                 </div>
