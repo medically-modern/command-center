@@ -21,6 +21,7 @@ export const ROLES: RoleConfig[] = [
   { id: "finalConfirm",   label: "Final Profile Confirmation", color: "bg-lime-500", icon: "ShieldCheck", route: "/final-confirm" },
   { id: "subscription",   label: "Subscription",       color: "bg-rose-500",    icon: "RefreshCw",      route: "/subscription"     },
   { id: "authDenied",      label: "Auth Denied",        color: "bg-red-500",     icon: "XCircle",        route: "/auth-denied"      },
+  { id: "systemMgmt",     label: "System Management",  color: "bg-slate-700",   icon: "Settings2",      route: "/system-mgmt"      },
 ];
 
 export const USERS = [
@@ -50,4 +51,5 @@ export const DEFAULT_ASSIGNMENTS: RoleAssignments = {
   finalConfirm:    [],
   subscription:    [],
   authDenied:      [],
+  systemMgmt:      [],
 };
