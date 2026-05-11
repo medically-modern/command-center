@@ -27,8 +27,8 @@ import { duplicateItem, writeStatusIndex, writeDate, COL } from "@/lib/finalConf
 // Stage Advancer label index 0 = "Review Profile" — the stage that lands an
 // item in the Final Profile Confirmation group on Monday.
 const STAGE_ADVANCER_REVIEW_PROFILE = 0;
-// Split column label index 0 = "Split" (per the Monday board column the user set up).
-const SPLIT_FLAG_INDEX = 0;
+// Split column label index 1 = "Split" (per the Monday board column the user set up).
+const SPLIT_FLAG_INDEX = 1;
 import { useNavigate } from "react-router-dom";
 
 const FinalConfirmPage = () => {
