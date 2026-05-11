@@ -321,9 +321,15 @@ export function PatientInfoCard({ patient, onFieldChange }: Props) {
     <div className="space-y-4">
       {/* Patient name + phone header */}
       <Card className="p-4 flex items-center justify-between gap-4">
-        <div>
+        <div className="flex-1 min-w-0">
           <p className="text-xs uppercase tracking-wider text-muted-foreground font-semibold mb-1">Patient Name</p>
-          <p className="text-lg font-semibold">{patient.name}</p>
+          <input
+            type="text"
+            value={patient.name}
+            onChange={(e) => onFieldChange("name", e.target.value)}
+            className="text-lg font-semibold w-full bg-transparent border-b border-transparent hover:border-border focus:border-primary focus:outline-none transition-colors px-0.5 py-0.5"
+            placeholder="Patient name"
+          />
         </div>
         {patient.phone && (
           <div className="text-right">

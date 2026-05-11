@@ -126,8 +126,14 @@ const FinalConfirmPage = () => {
       const originalOverrides = { ...getSplitOverrides(originalSide, selected), _splitCreated: true };
       update(selected.id, originalOverrides);
 
-      // Build the duplicate patient locally (clone of original + opposite-side overrides).
-      const otherOverrides = { ...getSplitOverrides(otherSide, selected), _splitCreated: true };
+      // Build the duplicate patient locally (clone of original + opposite-side
+      // overrides). Force the name to the original so the sidebar stays clean
+      // even if Monday's rename is briefly out of sync with our refetch.
+      const otherOverrides = {
+        ...getSplitOverrides(otherSide, selected),
+        _splitCreated: true,
+        name: selected.name,
+      };
       const duplicate: Patient = {
         ...selected,
         ...otherOverrides,

@@ -1,4 +1,4 @@
-import { writeStatusIndex, writeLongText, writeText, writeNumber, writeLocation, writeDate, COL } from "./mondayApi";
+import { writeStatusIndex, writeLongText, writeText, writeNumber, writeLocation, writeDate, renameItem, COL } from "./mondayApi";
 import type { Patient } from "./workflow";
 
 // Stage Advancer: index 1 = Completed (green)
@@ -40,6 +40,15 @@ async function executeWithRetry(task: WriteTask): Promise<string | null> {
  */
 export async function sendPatientToMonday(p: Patient): Promise<void> {
   const tasks: WriteTask[] = [];
+
+  // ─── Item name (always write — cheap no-op if unchanged) ──
+  if (typeof p.name === "string" && p.name.trim() !== "") {
+    tasks.push({
+      label: "Patient Name",
+      columnId: "name",
+      fn: () => renameItem(p.id, p.name.trim()),
+    });
+  }
 
   // ─── Demographics edits ───────────────────────────────────
   if (p.phoneEdited !== null && p.phoneEdited !== "") {

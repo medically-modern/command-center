@@ -287,18 +287,20 @@ export async function writeDate(itemId: string, columnId: string, date: string):
 }
 
 /**
- * Rename an item by writing to its "name" column.
+ * Rename an item. Monday's "name" column requires `change_simple_column_value`
+ * with a plain string — `change_column_value` with JSON-stringified values
+ * silently no-ops on the name column.
  */
 export async function renameItem(itemId: string, name: string): Promise<void> {
   const query = `
-    mutation ($boardId: ID!, $itemId: ID!, $value: JSON!) {
-      change_column_value(board_id: $boardId, item_id: $itemId, column_id: "name", value: $value) { id }
+    mutation ($boardId: ID!, $itemId: ID!, $value: String!) {
+      change_simple_column_value(board_id: $boardId, item_id: $itemId, column_id: "name", value: $value) { id name }
     }
   `;
   await gql(query, {
     boardId: BOARD_ID,
     itemId,
-    value: JSON.stringify(name),
+    value: name,
   });
 }
 
