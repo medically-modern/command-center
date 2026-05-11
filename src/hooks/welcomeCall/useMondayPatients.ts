@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Patient } from "@/lib/welcomeCall/workflow";
-import { fetchGroupItems, hasToken } from "@/lib/welcomeCall/mondayApi";
+import { fetchGroupItems, fetchItemById, hasToken } from "@/lib/welcomeCall/mondayApi";
 import { mondayItemToPatient } from "@/lib/welcomeCall/mondayMapping";
 
 const POLL_MS = 30_000;
 
-export function useMondayPatients() {
+export function useMondayPatients(injectedPatientId?: string | null) {
   const [patients, setPatients] = useState<Patient[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -35,6 +35,18 @@ export function useMondayPatients() {
         const o = overlayRef.current.get(p.id);
         return o ? { ...p, ...o } : p;
       });
+
+      if (injectedPatientId && !merged.some((p) => p.id === injectedPatientId)) {
+        try {
+          const item = await fetchItemById(injectedPatientId);
+          if (item) {
+            const injected = mondayItemToPatient(item);
+            const o = overlayRef.current.get(injected.id);
+            merged.unshift(o ? { ...injected, ...o } : injected);
+          }
+        } catch { /* ignore */ }
+      }
+
       setPatients(merged);
     } catch (e) {
       if (mountedRef.current)

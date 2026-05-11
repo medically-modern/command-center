@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Patient } from "@/lib/masheke/workflow";
-import { fetchGroupItems, GROUPS, hasToken } from "@/lib/masheke/mondayApi";
+import { fetchGroupItems, fetchItemById, GROUPS, hasToken } from "@/lib/masheke/mondayApi";
 import { mondayItemToPatient } from "@/lib/masheke/mondayMapping";
 
 const POLL_MS = 30_000;
@@ -31,7 +31,7 @@ function matchesTab(stageAdvancer: string | undefined, tab: TabKey): boolean {
   return stageAdvancer === SUB_STAGE_FILTER[tab];
 }
 
-export function useMondayPatients(activeTab: TabKey = "evaluate") {
+export function useMondayPatients(activeTab: TabKey = "evaluate", injectedPatientId?: string | null) {
   const [patients, setPatients] = useState<Patient[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -64,6 +64,19 @@ export function useMondayPatients(activeTab: TabKey = "evaluate") {
         const o = overlayRef.current.get(p.id);
         return o ? { ...p, ...o } : p;
       });
+
+      // Inject deep-linked patient if not in this group/stage (e.g. from Escalations)
+      if (injectedPatientId && !merged.some((p) => p.id === injectedPatientId)) {
+        try {
+          const item = await fetchItemById(injectedPatientId);
+          if (item) {
+            const injected = mondayItemToPatient(item);
+            const o = overlayRef.current.get(injected.id);
+            merged.unshift(o ? { ...injected, ...o } : injected);
+          }
+        } catch { /* ignore */ }
+      }
+
       setPatients(merged);
     } catch (e) {
       if (mountedRef.current)

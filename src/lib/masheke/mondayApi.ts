@@ -227,6 +227,24 @@ export async function fetchGroupItems(groupId: string = GROUPS.medicalNecessity)
   return data.boards?.[0]?.groups?.[0]?.items_page?.items ?? [];
 }
 
+
+/** Fetch a single item by ID regardless of group (for cross-group deep-links). */
+export async function fetchItemById(itemId: string): Promise<MondayItem | null> {
+  const query = `
+    query ($itemId: [ID!]!, $cols: [String!]) {
+      items(ids: $itemId) {
+        id
+        name
+        column_values(ids: $cols) { id text value }
+      }
+    }
+  `;
+  const data = await gql<{
+    items: MondayItem[];
+  }>(query, { itemId: [itemId], cols: READ_COLUMN_IDS });
+  return data.items?.[0] ?? null;
+}
+
 // ---- Read helpers ----
 
 /**

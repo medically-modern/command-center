@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Patient } from "@/lib/profile/workflow";
-import { fetchGroupItems, hasToken } from "@/lib/profile/mondayApi";
+import { fetchGroupItems, fetchItemById, hasToken } from "@/lib/profile/mondayApi";
 import { mondayItemToPatient } from "@/lib/profile/mondayMapping";
 
 const POLL_MS = 15_000;
 
-export function useMondayPatients() {
+export function useMondayPatients(injectedPatientId?: string | null) {
   const [patients, setPatients] = useState<Patient[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -37,7 +37,19 @@ export function useMondayPatients() {
       if (!mountedRef.current) return;
       const safeItems = Array.isArray(items) ? items : [];
       const ps = safeItems.map(mondayItemToPatient);
-      setPatients(applyOverlays(ps));
+      const merged = applyOverlays(ps);
+
+      if (injectedPatientId && !merged.some((p) => p.id === injectedPatientId)) {
+        try {
+          const item = await fetchItemById(injectedPatientId);
+          if (item) {
+            const injected = mondayItemToPatient(item);
+            merged.unshift(injected);
+          }
+        } catch { /* ignore */ }
+      }
+
+      setPatients(merged);
     } catch (e) {
       if (mountedRef.current)
         setError(e instanceof Error ? e.message : "Failed to load patients from Monday");

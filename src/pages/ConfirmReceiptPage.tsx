@@ -19,7 +19,7 @@ const ConfirmReceiptPage = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const isEscalated = searchParams.get("escalated") === "1";
-  const { patients, loading, error, refetch, update, clearOverlay } = useMondayPatients("confirmReceipt");
+  const { patients, loading, error, refetch, update, clearOverlay } = useMondayPatients("confirmReceipt", searchParams.get("patientId"));
   const [selectedId, setSelectedId] = useState<string | null>(
     searchParams.get("patientId") ?? null,
   );

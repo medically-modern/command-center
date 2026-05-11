@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Patient, ProductCodeId, ProductCodeState } from "@/lib/samantha/workflow";
-import { fetchGroupItems, GROUPS, hasToken } from "@/lib/samantha/mondayApi";
+import { fetchGroupItems, fetchItemById, GROUPS, hasToken } from "@/lib/samantha/mondayApi";
 import { mondayItemToPatient } from "@/lib/samantha/mondayMapping";
 
 /**
@@ -42,7 +42,7 @@ const POLL_MS = 30_000;
 
 export type SidebarGroup = "benefits" | "submitAuth" | "authOutstanding";
 
-export function useMondayPatients(activeGroup: SidebarGroup = "benefits") {
+export function useMondayPatients(activeGroup: SidebarGroup = "benefits", injectedPatientId?: string | null) {
   const [patients, setPatients] = useState<Patient[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -70,6 +70,19 @@ export function useMondayPatients(activeGroup: SidebarGroup = "benefits") {
       const safeItems = Array.isArray(items) ? items : [];
       const ps = safeItems.map(mondayItemToPatient);
       const merged = ps.map((p) => applyOverlay(p, overlayRef.current.get(p.id)));
+
+      // If a specific patient was deep-linked but isn't in this group
+      // (e.g. they're in the Escalations group), fetch them individually.
+      if (injectedPatientId && !merged.some((p) => p.id === injectedPatientId)) {
+        try {
+          const item = await fetchItemById(injectedPatientId);
+          if (item) {
+            const injected = mondayItemToPatient(item);
+            merged.unshift(applyOverlay(injected, overlayRef.current.get(injected.id)));
+          }
+        } catch { /* ignore — patient may not be on this board */ }
+      }
+
       setPatients(merged);
     } catch (e) {
       if (mountedRef.current)
