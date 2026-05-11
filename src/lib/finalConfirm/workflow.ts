@@ -413,27 +413,20 @@ const SERVING_SUPPLIES_ONLY = 1;
 const SERVING_CGM = 2;
 
 /**
- * The "supplies side" date is the earliest non-blank of IP and Supplies
- * next-order-dates (both belong on the supplies half of the split).
- */
-function suppliesSideDate(p: Patient): string {
-  const dates = [p.nextOrderDateIp, p.nextOrderDateSupplies].filter((d) => !!d);
-  if (dates.length === 0) return "";
-  return dates.reduce((a, b) => (a <= b ? a : b));
-}
-
-/**
  * Returns true when the patient's order can be split into two profiles.
  * Eligibility requires BOTH:
  *  - Order Handling is "Separate", AND
- *  - The supplies-side date differs from the sensors-side date (both populated).
+ *  - Supplies Next Order Date differs from Sensors Next Order Date (both populated).
+ *
+ * IP Next Order Date is not part of this check — IP is on a 4-year cycle and
+ * always rides along on the supplies side after the split.
  *
  * After a split, the sensor-side dates on the supplies profile are cleared,
  * which fails the date-difference half of the rule and prevents re-splitting.
  */
 export function isSplitEligible(p: Patient): boolean {
   if (p.orderHandlingIndex !== ORDER_HANDLING_SEPARATE) return false;
-  const sup = suppliesSideDate(p);
+  const sup = p.nextOrderDateSupplies;
   const sen = p.nextOrderDateSensors;
   return !!sup && !!sen && sup !== sen;
 }
@@ -445,7 +438,7 @@ export function isSplitEligible(p: Patient): boolean {
  * supplies as the original.
  */
 export function determineOriginalSide(p: Patient): SplitSide {
-  const sup = suppliesSideDate(p);
+  const sup = p.nextOrderDateSupplies;
   const sen = p.nextOrderDateSensors;
   if (sup && sen && sup !== sen) return sup < sen ? "supplies" : "sensors";
   return "supplies";
@@ -457,7 +450,7 @@ export function determineOriginalSide(p: Patient): SplitSide {
  */
 export function describeSplitEligibility(p: Patient): string {
   const isSeparate = p.orderHandlingIndex === ORDER_HANDLING_SEPARATE;
-  const sup = suppliesSideDate(p);
+  const sup = p.nextOrderDateSupplies;
   const sen = p.nextOrderDateSensors;
   const datesDiffer = !!sup && !!sen && sup !== sen;
 
