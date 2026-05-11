@@ -19,6 +19,7 @@ export const ROLES: RoleConfig[] = [
   { id: "authOutstanding", label: "Auth Outstanding",   color: "bg-orange-500",  icon: "Clock",          route: "/auth-outstanding" },
   { id: "welcomeCall",    label: "Welcome Call",     color: "bg-teal-500",    icon: "Phone",          route: "/welcome-call"     },
   { id: "finalConfirm",   label: "Final Profile Confirmation", color: "bg-lime-500", icon: "ShieldCheck", route: "/final-confirm" },
+  { id: "systemMgmt",    label: "System Management", color: "bg-slate-700",   icon: "Settings2",      route: "/system-mgmt"  },
   { id: "authDenied",      label: "Auth Denied",        color: "bg-red-500",     icon: "XCircle",        route: "/auth-denied"      },
 ];
 
@@ -47,5 +48,6 @@ export const DEFAULT_ASSIGNMENTS: RoleAssignments = {
   authOutstanding: [],
   welcomeCall:     [],
   finalConfirm:    [],
+  systemMgmt:      [],
   authDenied:      [],
 };
