@@ -399,12 +399,11 @@ function CodeCard({ meta, resolved, state, universalDone, onChange }: CardProps)
             onValueChange={(v) => {
               const next = (v === "__none__" ? "" : v) as AuthChoice;
               const patch: Partial<ProductCodeState> = { auth: next };
-              // SoS = Skip is only meaningful when auth = required; if the
-              // agent flips auth to not-required (or unselected) while sos
-              // is Skip, reset the SoS so they have to re-pick Clear /
-              // Not Clear.
-              if (next !== "required" && sos === "skip") {
-                patch.sos = "";
+              // When auth = not-required, auto-default SoS to Skip so the
+              // agent can defer the SoS check. They can still override to
+              // Clear or Not Clear.
+              if (next === "not-required" && sos !== "clear" && sos !== "not-clear") {
+                patch.sos = "skip";
               }
               onChange(patch);
             }}
@@ -447,12 +446,7 @@ function CodeCard({ meta, resolved, state, universalDone, onChange }: CardProps)
               <SelectItem value="__none__">— Not selected —</SelectItem>
               <SelectItem value="clear">Clear</SelectItem>
               <SelectItem value="not-clear">Not Clear</SelectItem>
-              {/* Skip is only valid when this product needs an auth — if
-                  the auth comes back as No Auth Needed on Auth Outstanding,
-                  the agent revisits SoS there. */}
-              {auth === "required" && (
-                <SelectItem value="skip">Skip (defer until auth resolved)</SelectItem>
-              )}
+              <SelectItem value="skip">Skip (defer until auth resolved)</SelectItem>
             </SelectContent>
           </Select>
           {(() => {
