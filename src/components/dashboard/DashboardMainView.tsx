@@ -76,7 +76,7 @@ export function DashboardMainView({ selectedUser, assignments, getRolesForUser, 
               const count = roleCounts[role.id] ?? 0;
               const pct = maxCount > 0 ? (count / maxCount) * 100 : 0;
               const hasRoute = role.route && role.id !== "authDenied";
-              const routeTarget = role.id === "systemMgmt" ? "/system-mgmt?tab=escalations" : role.route;
+              const routeTarget = role.route;
               const countLabel = role.id === "systemMgmt" ? "escalation" : "patient";
 
               return (
