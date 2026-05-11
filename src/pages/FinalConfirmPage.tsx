@@ -29,12 +29,16 @@ import { duplicateItem, writeStatusIndex, writeDate, COL } from "@/lib/finalConf
 const STAGE_ADVANCER_REVIEW_PROFILE = 0;
 // Split column label index 1 = "Split" (per the Monday board column the user set up).
 const SPLIT_FLAG_INDEX = 1;
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 
 const FinalConfirmPage = () => {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const isEscalated = searchParams.get("escalated") === "1";
   const { patients, loading, error, refetch, update, clearOverlay, addPatient } = useMondayPatients();
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(
+    searchParams.get("patientId") ?? null,
+  );
 
   useEffect(() => {
     if (!selectedId && patients.length > 0) setSelectedId(patients[0].id);
@@ -217,7 +221,7 @@ const FinalConfirmPage = () => {
         />
 
         <div className="flex-1 flex flex-col min-w-0">
-          <header className="bg-gradient-navy text-navy-foreground border-b border-sidebar-border">
+          <header className={`${isEscalated ? "bg-red-700" : "bg-gradient-navy"} text-navy-foreground border-b border-sidebar-border`}>
             <div className="px-6 py-5 flex items-center justify-between gap-4 flex-wrap">
               <div className="flex items-center gap-3">
                 <SidebarTrigger className="text-navy-foreground hover:bg-white/10" />

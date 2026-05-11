@@ -24,12 +24,16 @@ import { resolveHcpcs } from "@/lib/samantha/hcpcRules";
 import { toast } from "sonner";
 import { sendPatientToMonday } from "@/lib/samantha/mondayWrite";
 import { FollowUpModal } from "@/components/samantha/FollowUpModal";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 
 const ChaseBenefitsPage = () => {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const isEscalated = searchParams.get("escalated") === "1";
   const { patients, loading, error, refetch, update, clearOverlay } = useMondayPatients("benefits");
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(
+    searchParams.get("patientId") ?? null,
+  );
   const [followUpOpen, setFollowUpOpen] = useState(false);
 
   useEffect(() => {
@@ -105,7 +109,7 @@ const ChaseBenefitsPage = () => {
         />
 
         <div className="flex-1 flex flex-col min-w-0">
-          <header className="bg-gradient-navy text-navy-foreground border-b border-sidebar-border">
+          <header className={`${isEscalated ? "bg-red-700" : "bg-gradient-navy"} text-navy-foreground border-b border-sidebar-border`}>
             <div className="px-6 py-5 flex items-center justify-between gap-4 flex-wrap">
               <div className="flex items-center gap-3">
                 <SidebarTrigger className="text-navy-foreground hover:bg-white/10" />

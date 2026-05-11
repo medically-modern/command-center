@@ -58,8 +58,10 @@ const SystemMgmtPage = () => {
     return map;
   }, [escalated]);
 
-  const handlePatientClick = (patient: SystemPatient) => {
-    navigate(`${patient.roleRoute}?patientId=${patient.id}`);
+  const handlePatientClick = (patient: SystemPatient, fromEscalation = false) => {
+    const params = new URLSearchParams({ patientId: patient.id });
+    if (fromEscalation || patient.escalated) params.set("escalated", "1");
+    navigate(`${patient.roleRoute}?${params.toString()}`);
   };
 
   const handleRemoveEscalation = async (patient: SystemPatient) => {
@@ -289,7 +291,7 @@ function EscalationView({
   removingId,
 }: {
   escalatedByStage: Map<string, SystemPatient[]>;
-  onPatientClick: (p: SystemPatient) => void;
+  onPatientClick: (p: SystemPatient, fromEscalation?: boolean) => void;
   onRemoveEscalation: (p: SystemPatient) => void;
   removingId: string | null;
 }) {
@@ -324,7 +326,7 @@ function EscalationView({
                 className="flex items-center gap-3 px-4 py-3 hover:bg-muted/30 transition-colors"
               >
                 <button
-                  onClick={() => onPatientClick(p)}
+                  onClick={() => onPatientClick(p, true)}
                   className="flex-1 flex items-center gap-3 text-left min-w-0"
                 >
                   <div className="w-8 h-8 rounded-full bg-red-100 dark:bg-red-900/40 flex items-center justify-center text-red-600 dark:text-red-400 font-bold text-xs shrink-0">
