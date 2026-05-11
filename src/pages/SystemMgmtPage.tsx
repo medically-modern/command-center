@@ -40,6 +40,19 @@ const SystemMgmtPage = () => {
   const [activeTab, setActiveTab] = useState<Tab>("search");
   const [query, setQuery] = useState("");
   const [removingId, setRemovingId] = useState<string | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
+
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    try {
+      await refetch();
+      toast.success("Refreshed all boards");
+    } catch {
+      toast.error("Refresh failed");
+    } finally {
+      setRefreshing(false);
+    }
+  };
 
   // Search results
   const searchResults = useMemo(
@@ -59,6 +72,12 @@ const SystemMgmtPage = () => {
   }, [escalated]);
 
   const handlePatientClick = (patient: SystemPatient, fromEscalation = false) => {
+    if (!patient.hasPage) {
+      toast.info(`${patient.pipelineStage} doesn't have a dedicated page yet`, {
+        description: `${patient.name} is on the ${patient.boardName}`,
+      });
+      return;
+    }
     const params = new URLSearchParams({ patientId: patient.id });
     if (fromEscalation || patient.escalated) params.set("escalated", "1");
     navigate(`${patient.roleRoute}?${params.toString()}`);
@@ -108,10 +127,11 @@ const SystemMgmtPage = () => {
               </div>
             )}
             <Button
-              onClick={refetch}
+              onClick={handleRefresh}
+              disabled={refreshing}
               className="gap-2 bg-white text-navy hover:bg-white/90 shadow-elevate"
             >
-              <RotateCcw className="h-4 w-4" /> Refresh
+              {refreshing ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCcw className="h-4 w-4" />} Refresh
             </Button>
           </div>
         </div>
@@ -140,7 +160,7 @@ const SystemMgmtPage = () => {
           {loading && patients.length === 0 ? (
             <LoadingState />
           ) : error ? (
-            <ErrorState error={error} onRetry={refetch} />
+            <ErrorState error={error} onRetry={handleRefresh} />
           ) : activeTab === "search" ? (
             <SearchView
               query={query}
@@ -338,7 +358,11 @@ function EscalationView({
                       {p.phone || "No phone"} · {p.pipelineStage}
                     </div>
                   </div>
-                  <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0 ml-auto" />
+                  {p.hasPage ? (
+                    <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0 ml-auto" />
+                  ) : (
+                    <span className="text-[10px] text-muted-foreground shrink-0 ml-auto">No page</span>
+                  )}
                 </button>
                 <Button
                   variant="outline"
@@ -413,7 +437,11 @@ function PatientRow({
         </div>
         <div className="text-xs font-medium text-primary">{patient.pipelineStage}</div>
       </div>
-      <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0" />
+      {patient.hasPage ? (
+        <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0" />
+      ) : (
+        <span className="text-[10px] text-muted-foreground shrink-0">No page</span>
+      )}
     </button>
   );
 }

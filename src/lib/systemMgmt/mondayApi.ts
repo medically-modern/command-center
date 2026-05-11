@@ -72,9 +72,9 @@ export const BOARDS: BoardDef[] = [
     boardId: 18407459988,
     boardName: "Subscription Board",
     activeGroups: [
-      { id: "topics", title: "Subscriptions", roleRoute: "/" },
+      { id: "topics", title: "Subscriptions", roleRoute: "" },
     ],
-    escalationColId: "color_mm2n237s",
+    escalationColId: null, // "Auth Escalation Management" is NOT a pipeline escalation
     phoneColId: "phone_mkp0q3cw",
     stageAdvancerColId: null,
   },
@@ -105,7 +105,7 @@ export const BOARDS: BoardDef[] = [
       { id: "group_mm1xr3q3", title: "Benefits",         roleRoute: "/benefits" },
       { id: "group_mm1x1416", title: "Submit Auth",       roleRoute: "/submit-auth" },
       { id: "group_mm2v6d1z", title: "Auth Outstanding",  roleRoute: "/auth-outstanding" },
-      { id: "group_mm316hg2", title: "Auth Denied",       roleRoute: "/auth-denied" },
+      { id: "group_mm316hg2", title: "Auth Denied",       roleRoute: "" },
     ],
     escalationColId: "color_mm2vsh2f",
     phoneColId: "phone_mm1x44yk",
@@ -142,6 +142,8 @@ export interface SystemPatient {
   escalated: boolean;
   /** Raw escalation text (e.g. "Escalation Required") */
   escalationText: string;
+  /** Whether this patient's role has a dedicated page to navigate to */
+  hasPage: boolean;
 }
 
 // ── Fetch all patients across boards ─────────────────────────
@@ -221,6 +223,7 @@ function mapToSystemPatient(item: RawItem, board: BoardDef): SystemPatient {
     pipelineStage,
     escalated,
     escalationText,
+    hasPage: roleRoute !== "",
   };
 }
 
