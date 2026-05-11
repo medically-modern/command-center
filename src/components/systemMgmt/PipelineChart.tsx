@@ -134,10 +134,6 @@ export function PipelineChart({ patients, onSegmentClick }: PipelineChartProps) 
     [columns],
   );
 
-  if (columns.length === 0) {
-    return null;
-  }
-
   // Group columns by board for bracket rendering
   const boardGroups = useMemo(() => {
     const groups: { board: (typeof BOARD_ORDER)[0]; startIdx: number; count: number }[] = [];
@@ -159,6 +155,10 @@ export function PipelineChart({ patients, onSegmentClick }: PipelineChartProps) 
     if (!col) return [];
     return col.buckets.get(hover.bucketLabel) ?? [];
   }, [hover, columns]);
+
+  if (columns.length === 0) {
+    return null;
+  }
 
   return (
     <div className="rounded-xl border bg-card shadow-card p-5 space-y-3">
