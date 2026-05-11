@@ -13,7 +13,6 @@ import { ServingPanel } from "@/components/profile/ServingPanel";
 import { PatientsSidebar } from "@/components/profile/PatientsSidebar";
 import { PatientProfileCard } from "@/components/profile/PatientProfileCard";
 import { ReferralEmailPanel } from "@/components/profile/ReferralEmailPanel";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { ClipboardCheck, Send, AlertTriangle, Loader2, ArrowLeft } from "lucide-react";
@@ -25,7 +24,6 @@ const ProfilePage = () => {
   const { patients, loading, error, refetch, updateLocal, clearOverlay, removeOverlayKeys } = useMondayPatients();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
-  const [activeTab, setActiveTab] = useState<"stedi" | "serving" | "doctor">("stedi");
   const [clinicLabels, setClinicLabels] = useState<{ id: number; name: string }[]>([]);
   const [selectedClinicId, setSelectedClinicId] = useState<number | null>(null);
   const [referralEmailOpen, setReferralEmailOpen] = useState(false);
@@ -101,7 +99,6 @@ const ProfilePage = () => {
           onSelect={(id) => {
             setSelectedId(id);
             setSelectedClinicId(null);
-            setActiveTab("stedi");
           }}
           loading={loading}
           error={error}
@@ -156,67 +153,56 @@ const ProfilePage = () => {
                     onToggleReferralEmail={() => setReferralEmailOpen((o) => !o)}
                   />
 
-                  <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as "stedi" | "serving" | "doctor")} className="space-y-5">
-                    <TabsList className="grid w-full max-w-md grid-cols-3 mx-auto">
-                      <TabsTrigger value="stedi">1. Stedi</TabsTrigger>
-                      <TabsTrigger value="serving">2. Serving</TabsTrigger>
-                      <TabsTrigger value="doctor">3. Doctor</TabsTrigger>
-                    </TabsList>
+                  {/* 1. Serving */}
+                  <ServingPanel patient={selected} onUpdate={handleUpdate} />
 
-                    <TabsContent value="stedi" className="mt-0">
-                      <StediPanel
-                        patient={selected}
-                        onRefresh={refetch}
-                        onUpdate={handleUpdate}
-                        onNext={() => setActiveTab("serving")}
-                        onRemoveOverlayKeys={(keys) =>
-                          selected && removeOverlayKeys(selected.id, keys)
-                        }
-                      />
-                    </TabsContent>
+                  {/* 2. Stedi */}
+                  <StediPanel
+                    patient={selected}
+                    onRefresh={refetch}
+                    onUpdate={handleUpdate}
+                    onRemoveOverlayKeys={(keys) =>
+                      selected && removeOverlayKeys(selected.id, keys)
+                    }
+                  />
 
-                    <TabsContent value="serving" className="mt-0">
-                      <ServingPanel patient={selected} onUpdate={handleUpdate} onNext={() => setActiveTab("doctor")} />
-                    </TabsContent>
+                  {/* 3. Doctor */}
+                  <DoctorPanel
+                    patient={selected}
+                    onUpdate={handleUpdate}
+                    clinicLabels={clinicLabels}
+                    onClinicSelect={handleClinicSelect}
+                    onClinicCreate={handleClinicCreate}
+                  />
 
-                    <TabsContent value="doctor" className="mt-0 space-y-5">
-                      <DoctorPanel
-                        patient={selected}
-                        onUpdate={handleUpdate}
-                        clinicLabels={clinicLabels}
-                        onClinicSelect={handleClinicSelect}
-                        onClinicCreate={handleClinicCreate}
-                      />
-
-                      <div className="rounded-xl bg-card border shadow-card p-5">
-                        <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
-                          <div className="text-sm text-muted-foreground">
-                            <p className="font-medium text-foreground">Ready to send off?</p>
-                            <p className="text-xs">All edits will be saved to Monday when you submit.</p>
-                          </div>
-                          <div className="flex gap-3">
-                            <Button
-                              variant="outline"
-                              onClick={() => handleSubmit("needsInfo")}
-                              disabled={submitting}
-                              className="gap-2 border-blue-300 text-blue-700 hover:bg-purple-100 hover:text-blue-700"
-                            >
-                              {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <AlertTriangle className="h-4 w-4" />}
-                              Need More Info
-                            </Button>
-                            <Button
-                              onClick={() => handleSubmit("advance")}
-                              disabled={submitting}
-                              className="gap-2 bg-green-600 hover:bg-green-700 text-white shadow-elevate"
-                            >
-                              {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-                              Advance to MN
-                            </Button>
-                          </div>
-                        </div>
+                  {/* Submit */}
+                  <div className="rounded-xl bg-card border shadow-card p-5">
+                    <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+                      <div className="text-sm text-muted-foreground">
+                        <p className="font-medium text-foreground">Ready to send off?</p>
+                        <p className="text-xs">All edits will be saved to Monday when you submit.</p>
                       </div>
-                    </TabsContent>
-                  </Tabs>
+                      <div className="flex gap-3">
+                        <Button
+                          variant="outline"
+                          onClick={() => handleSubmit("needsInfo")}
+                          disabled={submitting}
+                          className="gap-2 border-blue-300 text-blue-700 hover:bg-purple-100 hover:text-blue-700"
+                        >
+                          {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <AlertTriangle className="h-4 w-4" />}
+                          Need More Info
+                        </Button>
+                        <Button
+                          onClick={() => handleSubmit("advance")}
+                          disabled={submitting}
+                          className="gap-2 bg-green-600 hover:bg-green-700 text-white shadow-elevate"
+                        >
+                          {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                          Advance to MN
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
                 </>
               )}
             </section>
