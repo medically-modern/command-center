@@ -11,8 +11,8 @@ import {
   CGM_COVERAGE_PATH_OPTIONS,
   IP_COVERAGE_PATH_OPTIONS,
   CLINICALS_METHOD_OPTIONS,
-  REFERRAL_TYPE_OPTIONS,
-  REFERRAL_SOURCE_OPTIONS,
+  // REFERRAL_TYPE_OPTIONS, // read-only display, no select needed
+  // REFERRAL_SOURCE_OPTIONS,
   INFUSION_SET_1_OPTIONS,
   INFUSION_SET_2_OPTIONS,
   SUBSCRIPTION_TYPE_OPTIONS,
@@ -50,7 +50,6 @@ import {
   Package,
   Heart,
   ShieldCheck,
-  CalendarDays,
 } from "lucide-react";
 
 interface Props {
@@ -91,83 +90,6 @@ function EditableTextField({
       </div>
     </div>
   );
-}
-
-function EditableDateField({
-  icon,
-  label,
-  value,
-  placeholder,
-  onChange,
-  colorCode,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  value: string;
-  placeholder?: string;
-  onChange: (v: string) => void;
-  colorCode?: boolean;
-}) {
-  // value is YYYY-MM-DD internally, display as MM/DD/YYYY
-  const displayVal = (() => {
-    const m = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-    if (!m) return value;
-    return `${m[2]}/${m[3]}/${m[1]}`;
-  })();
-
-  // Parse user input back to YYYY-MM-DD when they type MM/DD/YYYY
-  const handleChange = (raw: string) => {
-    const m = raw.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
-    if (m) {
-      onChange(`${m[3]}-${m[1]}-${m[2]}`);
-    } else {
-      onChange(raw);
-    }
-  };
-
-  const isEmpty = !value;
-
-  // Color coding for next order dates
-  let isReady = false;
-  if (colorCode && value) {
-    const m = value.match(/^(\d{4})-(\d{2})-(\d{2})/);
-    if (m) {
-      const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
-      const today = new Date(); today.setHours(0,0,0,0);
-      isReady = d <= today;
-    }
-  }
-
-  const iconBg = colorCode && value
-    ? (isReady ? "bg-green-100 text-green-600" : "bg-red-100 text-red-600")
-    : (isEmpty ? "bg-red-100 dark:bg-red-900/30 text-red-500" : "bg-muted text-muted-foreground");
-
-  const textColor = colorCode && value
-    ? (isReady ? "text-green-600" : "text-red-600")
-    : "";
-
-  return (
-    <div className={cn("flex items-start gap-2 min-w-0 rounded-lg p-1.5 -m-1.5 transition-colors", !colorCode && isEmpty && "bg-red-50 dark:bg-red-950/20 ring-1 ring-red-200 dark:ring-red-800/40")}>
-      <div className={cn("h-8 w-8 rounded-md flex items-center justify-center shrink-0", iconBg)}>
-        {icon}
-      </div>
-      <div className="min-w-0 flex-1">
-        <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1">{label}</p>
-        <Input
-          className={cn("h-8 text-sm", textColor, !colorCode && isEmpty && "border-red-300 dark:border-red-700")}
-          value={displayVal}
-          onChange={(e) => handleChange(e.target.value)}
-          placeholder={placeholder ?? "MM/DD/YYYY"}
-        />
-      </div>
-    </div>
-  );
-}
-
-function formatMDY(raw: string): string {
-  const m = raw.match(/^(\d{4})-(\d{2})-(\d{2})/);
-  if (!m) return raw;
-  return `${m[2]}/${m[3]}/${m[1]}`;
 }
 
 function SelectField({
@@ -321,15 +243,9 @@ export function PatientInfoCard({ patient, onFieldChange }: Props) {
     <div className="space-y-4">
       {/* Patient name + phone header */}
       <Card className="p-4 flex items-center justify-between gap-4">
-        <div className="flex-1 min-w-0">
+        <div>
           <p className="text-xs uppercase tracking-wider text-muted-foreground font-semibold mb-1">Patient Name</p>
-          <input
-            type="text"
-            value={patient.name}
-            onChange={(e) => onFieldChange("name", e.target.value)}
-            className="text-lg font-semibold w-full bg-transparent border-b border-transparent hover:border-border focus:border-primary focus:outline-none transition-colors px-0.5 py-0.5"
-            placeholder="Patient name"
-          />
+          <p className="text-lg font-semibold">{patient.name}</p>
         </div>
         {patient.phone && (
           <div className="text-right">
@@ -374,6 +290,25 @@ export function PatientInfoCard({ patient, onFieldChange }: Props) {
             value={patient.gender}
             onChange={(index) => onFieldChange("genderIndex", index)}
           />
+          {/* Referral fields — read-only display */}
+          <div className="flex items-start gap-2 min-w-0 rounded-lg p-1.5 -m-1.5">
+            <div className="h-8 w-8 rounded-md flex items-center justify-center shrink-0 bg-muted text-muted-foreground">
+              <UserRound className="h-4 w-4" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1">Referral Type</p>
+              <p className="text-sm h-8 flex items-center">{patient.referralType || <span className="text-muted-foreground italic">—</span>}</p>
+            </div>
+          </div>
+          <div className="flex items-start gap-2 min-w-0 rounded-lg p-1.5 -m-1.5">
+            <div className="h-8 w-8 rounded-md flex items-center justify-center shrink-0 bg-muted text-muted-foreground">
+              <UserRound className="h-4 w-4" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1">Referral Source</p>
+              <p className="text-sm h-8 flex items-center">{patient.referralSource || <span className="text-muted-foreground italic">—</span>}</p>
+            </div>
+          </div>
         </div>
         {/* Address — full width with Google autocomplete */}
         {(() => {
@@ -567,7 +502,7 @@ export function PatientInfoCard({ patient, onFieldChange }: Props) {
                 if (opt) onFieldChange("ipCoveragePath", opt.label);
               }}
             />
-            <EditableDateField
+            <EditableTextField
               icon={<Stethoscope className="h-4 w-4" />}
               label="MR Expiry Date"
               value={patient.mrExpiryDate}
@@ -778,57 +713,6 @@ export function PatientInfoCard({ patient, onFieldChange }: Props) {
               if (opt) onFieldChange("cartridgeAuthResult", opt.label);
             }}
           />
-        </div>
-      </Card>
-
-      {/* Subscription and Logistics — Next Order Dates + Last Bill Date notes */}
-      <Card className="p-4 space-y-4">
-        <p className="text-xs uppercase tracking-wider text-muted-foreground font-semibold flex items-center gap-2">
-          <CalendarDays className="h-3.5 w-3.5" /> Subscription and Logistics
-        </p>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <div className="space-y-1">
-            <EditableDateField
-              icon={<CalendarDays className="h-4 w-4" />}
-              label="IP Next Order Date"
-              value={patient.nextOrderDateIp}
-              onChange={(v) => onFieldChange("nextOrderDateIp", v)}
-              colorCode
-            />
-            {patient.lastBillDateIp && (
-              <p className="text-[10px] text-muted-foreground pl-10">IP Last Bill: {formatMDY(patient.lastBillDateIp)}</p>
-            )}
-          </div>
-          <div className="space-y-1">
-            <EditableDateField
-              icon={<CalendarDays className="h-4 w-4" />}
-              label="Supplies Next Order Date"
-              value={patient.nextOrderDateSupplies}
-              onChange={(v) => onFieldChange("nextOrderDateSupplies", v)}
-              colorCode
-            />
-            {(patient.lastBillDateCartridge || patient.lastBillDateInfusionSet) && (
-              <div className="text-[10px] text-muted-foreground pl-10 space-y-0.5">
-                {patient.lastBillDateCartridge && <p>Cartridge Last Bill: {formatMDY(patient.lastBillDateCartridge)}</p>}
-                {patient.lastBillDateInfusionSet && <p>Infusion Set Last Bill: {formatMDY(patient.lastBillDateInfusionSet)}</p>}
-              </div>
-            )}
-          </div>
-          <div className="space-y-1">
-            <EditableDateField
-              icon={<CalendarDays className="h-4 w-4" />}
-              label="Sensors Next Order Date"
-              value={patient.nextOrderDateSensors}
-              onChange={(v) => onFieldChange("nextOrderDateSensors", v)}
-              colorCode
-            />
-            {(patient.lastBillDateSensors || patient.lastBillDateMonitor) && (
-              <div className="text-[10px] text-muted-foreground pl-10 space-y-0.5">
-                {patient.lastBillDateSensors && <p>Sensors Last Bill: {formatMDY(patient.lastBillDateSensors)}</p>}
-                {patient.lastBillDateMonitor && <p>CGM Last Bill: {formatMDY(patient.lastBillDateMonitor)}</p>}
-              </div>
-            )}
-          </div>
         </div>
       </Card>
     </div>
