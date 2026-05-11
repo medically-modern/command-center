@@ -22,7 +22,12 @@ import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { RotateCcw, ShieldCheck, ArrowLeft, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
 import { sendPatientToMonday } from "@/lib/finalConfirm/mondayWrite";
-import { duplicateItem } from "@/lib/finalConfirm/mondayApi";
+import { duplicateItem, writeStatusIndex, writeDate, COL } from "@/lib/finalConfirm/mondayApi";
+
+// Stage Advancer label index 7 = "Welcome Call" (per the board's status settings).
+const STAGE_ADVANCER_WELCOME_CALL = 7;
+// Split column label index 0 = "Split" (per the Monday board column the user set up).
+const SPLIT_FLAG_INDEX = 0;
 import { useNavigate } from "react-router-dom";
 
 const FinalConfirmPage = () => {
@@ -143,17 +148,40 @@ const FinalConfirmPage = () => {
       // Pass the original name so the new item doesn't keep Monday's "(copy)" suffix.
       const newId = await duplicateItem(selected.id, selected.name);
 
+      // Immediately mark the new item as a split duplicate so Monday's
+      // "new item created" automation can gate on `Split is not Split` and
+      // skip resetting Stage Advancer / Days Since on this item.
+      // Best-effort: if these fail, the user's overlay state still works
+      // for the current session — but the duplicate may show wrong stage
+      // values until the next Submit re-writes them.
+      try {
+        await Promise.all([
+          writeStatusIndex(newId, COL.split, SPLIT_FLAG_INDEX),
+          // Defensive: Monday's new-item automation might fire faster than
+          // our Split write. Set the same values explicitly so even if the
+          // automation reset them, we overwrite back to the desired state.
+          writeStatusIndex(newId, COL.stageAdvancer, STAGE_ADVANCER_WELCOME_CALL),
+          selected.dateOfStageStart
+            ? writeDate(newId, COL.dateOfStageStart, selected.dateOfStageStart)
+            : Promise.resolve(),
+        ]);
+      } catch (err) {
+        console.warn("[split] post-duplicate Monday writes partially failed:", err);
+      }
+
       // Apply overrides + _splitCreated flag to the existing (original) patient.
       const originalOverrides = { ...getSplitOverrides(originalSide, selected), _splitCreated: true };
       update(selected.id, originalOverrides);
 
       // Build the duplicate patient locally (clone of original + opposite-side
-      // overrides). Force the name to the original so the sidebar stays clean
-      // even if Monday's rename is briefly out of sync with our refetch.
+      // overrides). Force the name + dateOfStageStart to the original so the
+      // sidebar and Days Since stay in sync even if Monday's writes are
+      // briefly out of date relative to our local view.
       const otherOverrides = {
         ...getSplitOverrides(otherSide, selected),
         _splitCreated: true,
         name: selected.name,
+        dateOfStageStart: selected.dateOfStageStart,
       };
       const duplicate: Patient = {
         ...selected,

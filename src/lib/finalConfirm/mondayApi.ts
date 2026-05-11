@@ -75,8 +75,13 @@ export const COL = {
 
   // Stage/Escalation
   stageAdvancer: "color_mm1ws96t",
+  dateOfStageStart: "date_mm1w6jeq",
   escalation: "color_mm1x7997",
   escalationReason: "dropdown_mm2fhcd6",
+
+  // Split flag — set on the duplicate after duplicate_item so Monday's
+  // "new item created" automation can gate itself with `Split is not Split`.
+  split: "color_mm381bgy",
 
   // Per-product Last Bill Date columns (date — populated when SoS = Not Clear)
   lastBillDate: {
@@ -116,6 +121,7 @@ export const READ_COLUMN_IDS = [
   COL.lastBillDate.monitor, COL.lastBillDate.sensors, COL.lastBillDate.insulin_pump,
   COL.lastBillDate.infusion_set, COL.lastBillDate.cartridge,
   COL.nextOrderDate.insulin_pump, COL.nextOrderDate.sensors, COL.nextOrderDate.supplies,
+  COL.dateOfStageStart,
 ];
 
 export interface MondayColumnValue {

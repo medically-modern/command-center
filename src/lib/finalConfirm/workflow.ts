@@ -124,6 +124,9 @@ export interface Patient {
   // Metadata
   receivedAt: string;
   lastUpdated: string;
+  /** Date the current stage started (YYYY-MM-DD). Used to copy onto split
+   *  duplicates so Days Since Stage Started matches the original. */
+  dateOfStageStart: string;
 }
 
 /* ─── Status dropdown options (from Monday column settings) ─── */

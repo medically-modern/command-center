@@ -132,5 +132,6 @@ export function mondayItemToPatient(item: MondayItem): Patient {
 
     receivedAt: new Date().toISOString(),
     lastUpdated: new Date().toISOString(),
+    dateOfStageStart: cv(item, COL.dateOfStageStart)?.text ?? "",
   };
 }
