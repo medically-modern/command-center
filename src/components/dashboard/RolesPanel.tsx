@@ -15,6 +15,7 @@ import {
   XCircle,
   ShieldCheck,
   Settings2,
+  RefreshCw,
   ChevronRight,
   Check,
 } from "lucide-react";
@@ -32,6 +33,7 @@ const ICON_MAP: Record<string, React.FC<{ className?: string }>> = {
   XCircle,
   ShieldCheck,
   Settings2,
+  RefreshCw,
 };
 
 interface Props {

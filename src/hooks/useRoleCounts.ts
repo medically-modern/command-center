@@ -5,6 +5,7 @@
  * Masheke board (18406060017): 1 group, filtered by Stage Advancer → Evaluate, Send Request, Confirm Receipt, Chase Clinicals
  * Welcome Call board (18410804557): welcomeCall group
  * Profile board (18406352652): intake group
+ * Subscription board (18407459988): Subscriptions group
  */
 import { useEffect, useState, useCallback } from "react";
 import { fetchGroupItems as fetchSamanthaGroup, GROUPS as SAM_GROUPS, hasToken as samHasToken } from "@/lib/samantha/mondayApi";
@@ -18,6 +19,8 @@ const WC_GROUP_ID = "group_mm1wvq8p";
 const FINAL_CONFIRM_GROUP_ID = "group_mm2x8jtj";
 const PROFILE_BOARD_ID = 18406352652;
 const PROFILE_GROUP_ID = "group_mm1xf2jb";
+const SUB_BOARD_ID = 18407459988;
+const SUB_GROUP_ID = "topics";
 
 function getMondayToken(): string {
   return (import.meta.env.VITE_MONDAY_API_TOKEN as string | undefined) ?? "";
@@ -161,6 +164,9 @@ export function useRoleCounts() {
 
       // Profile board
       next.profile = await fetchBoardGroupCount(PROFILE_BOARD_ID, PROFILE_GROUP_ID);
+
+      // Subscription board
+      next.subscription = await fetchBoardGroupCount(SUB_BOARD_ID, SUB_GROUP_ID);
     } catch (e) {
       console.error("Failed to fetch role counts:", e);
     }
