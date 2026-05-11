@@ -121,9 +121,17 @@ const ProfilePage = () => {
                 </div>
                 <div>
                   <p className="text-[10px] uppercase tracking-[0.2em] opacity-70">Medically Modern · Profile Tool</p>
-                  <h1 className="text-xl font-semibold">
-                    {selected ? selected.name : "Profile Send Off"}
-                  </h1>
+                  <div className="flex items-center gap-3">
+                    <h1 className="text-xl font-semibold">
+                      {selected ? selected.name : "Profile Send Off"}
+                    </h1>
+                    {selected?.alreadyInSystem?.toLowerCase() === "yes" && (
+                      <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-md bg-red-600 text-white text-xs font-semibold uppercase tracking-wide shadow-sm">
+                        <AlertTriangle className="h-3.5 w-3.5" />
+                        Already In System
+                      </span>
+                    )}
+                  </div>
                 </div>
               </div>
             </div>
