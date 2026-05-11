@@ -7,7 +7,7 @@
  * (D) Escalation panel shows all escalated profiles grouped by stage
  * (E) Remove-escalation button per patient
  */
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   useSystemPatients,
@@ -28,6 +28,8 @@ import {
   Loader2,
   Database,
   CheckCircle2,
+  FileText,
+  X,
 } from "lucide-react";
 import { toast } from "sonner";
 import { PipelineChart } from "@/components/systemMgmt/PipelineChart";
@@ -295,8 +297,11 @@ function SearchView({
   chartSelectionActive: boolean;
   onClearChartSelection: () => void;
 }) {
+  const [notesPatient, setNotesPatient] = useState<SystemPatient | null>(null);
+
   return (
-    <div className="space-y-4">
+    <div className="relative flex gap-4">
+    <div className={cn("space-y-4 transition-all", notesPatient ? "flex-1 min-w-0" : "w-full")}>
       <div className="relative">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
         <Input
@@ -343,10 +348,22 @@ function SearchView({
             {results.length} result{results.length !== 1 ? "s" : ""}
           </p>
           {results.map((p) => (
-            <PatientRow key={`${p.boardId}-${p.id}`} patient={p} onClick={() => onPatientClick(p)} completedStages={completionMap.get(p.name.trim().toLowerCase()) ?? []} />
+            <PatientRow
+              key={`${p.boardId}-${p.id}`}
+              patient={p}
+              onClick={() => onPatientClick(p)}
+              completedStages={completionMap.get(p.name.trim().toLowerCase()) ?? []}
+              onNotesClick={(pt) => setNotesPatient((prev) => prev?.id === pt.id ? null : pt)}
+            />
           ))}
         </div>
       )}
+    </div>
+
+    {/* Notes side panel */}
+    {notesPatient && (
+      <NotesPanel patient={notesPatient} onClose={() => setNotesPatient(null)} />
+    )}
     </div>
   );
 }
@@ -442,6 +459,72 @@ function EscalationView({
   );
 }
 
+
+// ── Notes Side Panel ─────────────────────────────────────────
+
+function NotesPanel({
+  patient,
+  onClose,
+}: {
+  patient: SystemPatient;
+  onClose: () => void;
+}) {
+  // Split notes into entries by date-like patterns (MM/DD/YYYY or similar)
+  const noteEntries = useMemo(() => {
+    if (!patient.notes) return [];
+    const text = patient.notes.trim();
+    // Try to split on date patterns like "05/06/2026" or "4/30/2026"
+    const parts = text.split(/(?=\d{1,2}\/\d{1,2}\/\d{4})/);
+    return parts.filter((p) => p.trim().length > 0);
+  }, [patient.notes]);
+
+  return (
+    <div className="w-[380px] shrink-0 rounded-xl border bg-card shadow-card overflow-hidden flex flex-col max-h-[calc(100vh-220px)] sticky top-6">
+      {/* Header */}
+      <div className="flex items-center gap-3 px-4 py-3 border-b bg-muted/30">
+        <FileText className="w-4 h-4 text-primary shrink-0" />
+        <div className="flex-1 min-w-0">
+          <div className="text-sm font-semibold truncate">{patient.name}</div>
+          <div className="text-[10px] text-muted-foreground">
+            {patient.boardName} · {patient.pipelineStage}
+          </div>
+        </div>
+        <button
+          onClick={onClose}
+          className="p-1.5 rounded-md hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
+        >
+          <X className="w-4 h-4" />
+        </button>
+      </div>
+
+      {/* Notes content */}
+      <div className="flex-1 overflow-y-auto p-4 space-y-3">
+        {noteEntries.length === 0 ? (
+          <p className="text-sm text-muted-foreground text-center py-6">
+            No notes available.
+          </p>
+        ) : noteEntries.length === 1 ? (
+          <div className="text-sm text-foreground leading-relaxed whitespace-pre-wrap">
+            {noteEntries[0]}
+          </div>
+        ) : (
+          noteEntries.map((entry, i) => (
+            <div
+              key={i}
+              className={cn(
+                "text-sm text-foreground leading-relaxed whitespace-pre-wrap",
+                i < noteEntries.length - 1 && "pb-3 border-b border-border",
+              )}
+            >
+              {entry.trim()}
+            </div>
+          ))
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ── Patient Row (search results) ─────────────────────────────
 
 function CompletionBadges({ stages }: { stages: string[] }) {
@@ -465,63 +548,111 @@ function PatientRow({
   patient,
   onClick,
   completedStages,
+  onNotesClick,
 }: {
   patient: SystemPatient;
   onClick: () => void;
   completedStages: string[];
+  onNotesClick?: (p: SystemPatient) => void;
 }) {
+  const [showTooltip, setShowTooltip] = useState(false);
+  const tooltipTimeout = useRef<ReturnType<typeof setTimeout>>();
+
+  const recentNote = useMemo(() => {
+    if (!patient.notes) return null;
+    // Take first ~150 chars as the "most recent" preview
+    const text = patient.notes.trim();
+    return text.length > 150 ? text.slice(0, 150) + "…" : text;
+  }, [patient.notes]);
+
   return (
-    <button
-      onClick={onClick}
+    <div
       className={cn(
         "w-full flex items-center gap-3 px-4 py-3 rounded-lg border bg-card shadow-sm hover:shadow-md hover:border-primary/30 transition-all text-left",
         patient.escalated && "border-red-300 bg-red-50/50 dark:bg-red-950/20",
       )}
     >
-      <div
-        className={cn(
-          "w-9 h-9 rounded-full flex items-center justify-center font-bold text-xs shrink-0",
-          patient.escalated
-            ? "bg-red-100 dark:bg-red-900/40 text-red-600 dark:text-red-400"
-            : "bg-primary/10 text-primary",
-        )}
-      >
-        {patient.name[0]}
-      </div>
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2">
-          <span className="text-sm font-medium truncate">{patient.name}</span>
-          {patient.escalated && (
-            <span className="shrink-0 inline-flex items-center gap-1 bg-red-100 dark:bg-red-900/50 text-red-600 dark:text-red-400 text-[10px] font-semibold px-1.5 py-0.5 rounded">
-              <AlertTriangle className="w-2.5 h-2.5" />
-              ESCALATED
-            </span>
+      <button onClick={onClick} className="flex-1 flex items-center gap-3 min-w-0">
+        <div
+          className={cn(
+            "w-9 h-9 rounded-full flex items-center justify-center font-bold text-xs shrink-0",
+            patient.escalated
+              ? "bg-red-100 dark:bg-red-900/40 text-red-600 dark:text-red-400"
+              : "bg-primary/10 text-primary",
+          )}
+        >
+          {patient.name[0]}
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-medium truncate">{patient.name}</span>
+            {patient.escalated && (
+              <span className="shrink-0 inline-flex items-center gap-1 bg-red-100 dark:bg-red-900/50 text-red-600 dark:text-red-400 text-[10px] font-semibold px-1.5 py-0.5 rounded">
+                <AlertTriangle className="w-2.5 h-2.5" />
+                ESCALATED
+              </span>
+            )}
+          </div>
+          <div className="text-xs text-muted-foreground truncate">
+            {patient.phone || "No phone"} · {patient.boardName} · {patient.pipelineStage}
+          </div>
+          <CompletionBadges stages={completedStages} />
+        </div>
+        <div className="shrink-0 text-right">
+          <div className="text-[10px] uppercase tracking-wider text-muted-foreground">
+            {patient.boardName}
+          </div>
+          <div className="text-xs font-medium text-primary">{patient.pipelineStage}</div>
+          {patient.daysSinceStage && (
+            <div className="text-[10px] text-muted-foreground">{patient.daysSinceStage}</div>
           )}
         </div>
-        <div className="text-xs text-muted-foreground truncate">
-          {patient.phone || "No phone"} · {patient.boardName} · {patient.pipelineStage}
+      </button>
+
+      {/* Notes button with hover tooltip */}
+      {patient.notes && onNotesClick && (
+        <div className="relative shrink-0">
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onNotesClick(patient);
+            }}
+            onMouseEnter={() => {
+              clearTimeout(tooltipTimeout.current);
+              tooltipTimeout.current = setTimeout(() => setShowTooltip(true), 300);
+            }}
+            onMouseLeave={() => {
+              clearTimeout(tooltipTimeout.current);
+              setShowTooltip(false);
+            }}
+            className="p-2 rounded-md hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
+            title="View notes"
+          >
+            <FileText className="w-4 h-4" />
+          </button>
+
+          {/* Hover tooltip */}
+          {showTooltip && recentNote && (
+            <div className="absolute right-0 bottom-full mb-2 z-50 w-72 bg-popover border border-border rounded-lg shadow-lg p-3 pointer-events-none">
+              <div className="text-[10px] font-semibold text-muted-foreground mb-1 uppercase tracking-wider">
+                Latest Notes
+              </div>
+              <div className="text-xs text-foreground leading-relaxed whitespace-pre-wrap">
+                {recentNote}
+              </div>
+              <div className="text-[10px] text-muted-foreground mt-2 pt-1 border-t border-border">
+                Click to view all notes
+              </div>
+            </div>
+          )}
         </div>
-        {patient.notes && (
-          <div className="text-[11px] text-muted-foreground/80 mt-0.5 line-clamp-2 italic">
-            {patient.notes.length > 120 ? patient.notes.slice(0, 120) + "…" : patient.notes}
-          </div>
-        )}
-        <CompletionBadges stages={completedStages} />
-      </div>
-      <div className="shrink-0 text-right">
-        <div className="text-[10px] uppercase tracking-wider text-muted-foreground">
-          {patient.boardName}
-        </div>
-        <div className="text-xs font-medium text-primary">{patient.pipelineStage}</div>
-        {patient.daysSinceStage && (
-          <div className="text-[10px] text-muted-foreground">{patient.daysSinceStage}</div>
-        )}
-      </div>
+      )}
+
       {patient.hasPage ? (
         <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0" />
       ) : (
         <span className="text-[10px] text-muted-foreground shrink-0">No page</span>
       )}
-    </button>
+    </div>
   );
 }
