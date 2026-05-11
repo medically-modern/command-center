@@ -6,6 +6,7 @@ import { useEffect, useState, useCallback, useMemo } from "react";
 import {
   fetchAllPatients,
   removeEscalation as apiRemoveEscalation,
+  buildCompletionMap,
   type SystemPatient,
 } from "@/lib/systemMgmt/mondayApi";
 
@@ -34,9 +35,15 @@ export function useSystemPatients() {
     return () => clearInterval(interval);
   }, [refetch]);
 
-  /** All patients with an active escalation */
+  /** All patients with an active escalation (exclude completed) */
   const escalated = useMemo(
-    () => patients.filter((p) => p.escalated),
+    () => patients.filter((p) => p.escalated && !p.isCompleted),
+    [patients],
+  );
+
+  /** Map of lowercase patient name → list of completed board labels */
+  const completionMap = useMemo(
+    () => buildCompletionMap(patients),
     [patients],
   );
 
@@ -55,7 +62,7 @@ export function useSystemPatients() {
     [],
   );
 
-  return { patients, escalated, loading, error, refetch, removeEscalation };
+  return { patients, escalated, completionMap, loading, error, refetch, removeEscalation };
 }
 
 // ── Fuzzy search helper ──────────────────────────────────────

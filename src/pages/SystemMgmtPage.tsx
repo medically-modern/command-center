@@ -27,6 +27,7 @@ import {
   XCircle,
   Loader2,
   Database,
+  CheckCircle2,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -34,7 +35,7 @@ type Tab = "search" | "escalations";
 
 const SystemMgmtPage = () => {
   const navigate = useNavigate();
-  const { patients, escalated, loading, error, refetch, removeEscalation } =
+  const { patients, escalated, completionMap, loading, error, refetch, removeEscalation } =
     useSystemPatients();
 
   const [activeTab, setActiveTab] = useState<Tab>("search");
@@ -168,6 +169,7 @@ const SystemMgmtPage = () => {
               results={searchResults}
               totalCount={patients.length}
               onPatientClick={handlePatientClick}
+              completionMap={completionMap}
             />
           ) : (
             <EscalationView
@@ -175,6 +177,7 @@ const SystemMgmtPage = () => {
               onPatientClick={handlePatientClick}
               onRemoveEscalation={handleRemoveEscalation}
               removingId={removingId}
+              completionMap={completionMap}
             />
           )}
         </div>
@@ -248,12 +251,14 @@ function SearchView({
   results,
   totalCount,
   onPatientClick,
+  completionMap,
 }: {
   query: string;
   onQueryChange: (q: string) => void;
   results: SystemPatient[];
   totalCount: number;
   onPatientClick: (p: SystemPatient) => void;
+  completionMap: Map<string, string[]>;
 }) {
   return (
     <div className="space-y-4">
@@ -285,7 +290,7 @@ function SearchView({
             {results.length} result{results.length !== 1 ? "s" : ""}
           </p>
           {results.map((p) => (
-            <PatientRow key={`${p.boardId}-${p.id}`} patient={p} onClick={() => onPatientClick(p)} />
+            <PatientRow key={`${p.boardId}-${p.id}`} patient={p} onClick={() => onPatientClick(p)} completedStages={completionMap.get(p.name.trim().toLowerCase()) ?? []} />
           ))}
         </div>
       )}
@@ -309,11 +314,13 @@ function EscalationView({
   onPatientClick,
   onRemoveEscalation,
   removingId,
+  completionMap,
 }: {
   escalatedByStage: Map<string, SystemPatient[]>;
   onPatientClick: (p: SystemPatient, fromEscalation?: boolean) => void;
   onRemoveEscalation: (p: SystemPatient) => void;
   removingId: string | null;
+  completionMap: Map<string, string[]>;
 }) {
   if (escalatedByStage.size === 0) {
     return (
@@ -357,6 +364,7 @@ function EscalationView({
                     <div className="text-xs text-muted-foreground truncate">
                       {p.phone || "No phone"} · {p.pipelineStage}
                     </div>
+                    <CompletionBadges stages={completionMap.get(p.name.trim().toLowerCase()) ?? []} />
                   </div>
                   {p.hasPage ? (
                     <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0 ml-auto" />
@@ -392,12 +400,31 @@ function EscalationView({
 
 // ── Patient Row (search results) ─────────────────────────────
 
+function CompletionBadges({ stages }: { stages: string[] }) {
+  if (stages.length === 0) return null;
+  return (
+    <div className="flex flex-wrap gap-1 mt-1">
+      {stages.map((s) => (
+        <span
+          key={s}
+          className="inline-flex items-center gap-0.5 bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-400 text-[10px] font-medium px-1.5 py-0.5 rounded"
+        >
+          <CheckCircle2 className="w-2.5 h-2.5" />
+          {s}
+        </span>
+      ))}
+    </div>
+  );
+}
+
 function PatientRow({
   patient,
   onClick,
+  completedStages,
 }: {
   patient: SystemPatient;
   onClick: () => void;
+  completedStages: string[];
 }) {
   return (
     <button
@@ -430,6 +457,7 @@ function PatientRow({
         <div className="text-xs text-muted-foreground truncate">
           {patient.phone || "No phone"} · {patient.boardName} · {patient.pipelineStage}
         </div>
+        <CompletionBadges stages={completedStages} />
       </div>
       <div className="shrink-0 text-right">
         <div className="text-[10px] uppercase tracking-wider text-muted-foreground">

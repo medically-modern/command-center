@@ -47,7 +47,7 @@ export interface BoardDef {
   boardId: number;
   boardName: string;
   /** Active groups to query (skip Completed/Stuck/Escalation groups) */
-  activeGroups: { id: string; title: string; roleRoute: string }[];
+  activeGroups: { id: string; title: string; roleRoute: string; isCompleted?: boolean }[];
   /** Column ID for escalation status (null = board has no escalation) */
   escalationColId: string | null;
   /** Column ID for phone */
@@ -83,6 +83,7 @@ export const BOARDS: BoardDef[] = [
     boardName: "Profile Send Off",
     activeGroups: [
       { id: "group_mm1xf2jb", title: "Intake", roleRoute: "/profile" },
+      { id: "group_mm1y57sz", title: "Completed", roleRoute: "", isCompleted: true },
     ],
     escalationColId: null, // No escalation column
     phoneColId: "phone_mm1x44yk",
@@ -93,6 +94,7 @@ export const BOARDS: BoardDef[] = [
     boardName: "Medical Evaluation",
     activeGroups: [
       { id: "group_mm1xf2jb", title: "Medical Necessity", roleRoute: "/evaluate" },
+      { id: "group_mm1x5q4e", title: "Completed", roleRoute: "", isCompleted: true },
     ],
     escalationColId: "color_mm1x7997",
     phoneColId: "phone_mm1x44yk",
@@ -106,6 +108,8 @@ export const BOARDS: BoardDef[] = [
       { id: "group_mm1x1416", title: "Submit Auth",       roleRoute: "/submit-auth" },
       { id: "group_mm2v6d1z", title: "Auth Outstanding",  roleRoute: "/auth-outstanding" },
       { id: "group_mm316hg2", title: "Auth Denied",       roleRoute: "" },
+      { id: "group_mm2vg9gn", title: "Escalations",       roleRoute: "" },
+      { id: "group_mm2vw3c0", title: "Completed",         roleRoute: "", isCompleted: true },
     ],
     escalationColId: "color_mm2vsh2f",
     phoneColId: "phone_mm1x44yk",
@@ -117,6 +121,7 @@ export const BOARDS: BoardDef[] = [
     activeGroups: [
       { id: "group_mm1wvq8p", title: "Welcome Call",               roleRoute: "/welcome-call" },
       { id: "group_mm2x8jtj", title: "Final Profile Confirmation", roleRoute: "/final-confirm" },
+      { id: "group_mm1x5s5d", title: "Completed",                  roleRoute: "", isCompleted: true },
     ],
     escalationColId: "color_mm1x7997",
     phoneColId: "phone_mm1x44yk",
@@ -144,6 +149,8 @@ export interface SystemPatient {
   escalationText: string;
   /** Whether this patient's role has a dedicated page to navigate to */
   hasPage: boolean;
+  /** Whether this patient is in a Completed group */
+  isCompleted: boolean;
 }
 
 // ── Fetch all patients across boards ─────────────────────────
@@ -201,6 +208,7 @@ function mapToSystemPatient(item: RawItem, board: BoardDef): SystemPatient {
   const groupDef = board.activeGroups.find((g) => g.id === item.group.id);
   let pipelineStage = groupDef?.title ?? item.group.title;
   let roleRoute = groupDef?.roleRoute ?? "/";
+  const isCompleted = groupDef?.isCompleted ?? false;
 
   // For masheke, sub-route by Stage Advancer
   if (board.stageAdvancerColId) {
@@ -223,7 +231,8 @@ function mapToSystemPatient(item: RawItem, board: BoardDef): SystemPatient {
     pipelineStage,
     escalated,
     escalationText,
-    hasPage: roleRoute !== "",
+    hasPage: roleRoute !== "" && !isCompleted,
+    isCompleted,
   };
 }
 
@@ -255,4 +264,34 @@ export async function removeEscalation(
   await gql(
     `mutation { change_column_value(item_id: ${patient.id}, board_id: ${patient.boardId}, column_id: "${board.escalationColId}", value: ${JSON.stringify(value)}) { id } }`,
   );
+}
+
+
+// ── Completion map helper ────────────────────────────────────
+
+/** Short labels for each board's completed stage */
+const BOARD_COMPLETION_LABELS: Record<number, string> = {
+  18406352652: "Profile",
+  18406060017: "MN",
+  18410601299: "Insurance",
+  18410804557: "Welcome Call",
+};
+
+/**
+ * Build a map of patient name → list of completed board labels.
+ * Used to show completion badges on search results.
+ */
+export function buildCompletionMap(
+  patients: SystemPatient[],
+): Map<string, string[]> {
+  const map = new Map<string, string[]>();
+  for (const p of patients) {
+    if (!p.isCompleted) continue;
+    const label = BOARD_COMPLETION_LABELS[p.boardId] ?? p.boardName;
+    const key = p.name.trim().toLowerCase();
+    if (!map.has(key)) map.set(key, []);
+    const arr = map.get(key)!;
+    if (!arr.includes(label)) arr.push(label);
+  }
+  return map;
 }
