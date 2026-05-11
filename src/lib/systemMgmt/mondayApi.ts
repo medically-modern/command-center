@@ -97,7 +97,7 @@ export const BOARDS: BoardDef[] = [
     boardId: 18407459988,
     boardName: "Subscription Board",
     activeGroups: [
-      { id: "topics", title: "Subscriptions", roleRoute: "" },
+      { id: "topics", title: "Subscriptions", roleRoute: "/subscription" },
     ],
     escalationColId: null,
     phoneColId: "phone_mkp0q3cw",
