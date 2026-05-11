@@ -17,8 +17,8 @@ const ProfilePage = lazy(() => import("./pages/ProfilePage"));
 const SubmitAuthPage = lazy(() => import("./pages/SubmitAuthPage"));
 const AuthOutstandingPage = lazy(() => import("./pages/AuthOutstandingPage"));
 
-// System Management
-const SystemMgmtPage = lazy(() => import("./pages/SystemMgmtPage"));
+// Subscription Board
+const SubscriptionPage = lazy(() => import("./pages/SubscriptionPage"));
 
 // Final Profile Confirmation (pre-check before Monday automations)
 const FinalConfirmPage = lazy(() => import("./pages/FinalConfirmPage"));
@@ -52,8 +52,8 @@ const App = () => (
           <Route path="/profile" element={<ProfilePage />} />
           <Route path="/submit-auth" element={<SubmitAuthPage />} />
           <Route path="/auth-outstanding" element={<AuthOutstandingPage />} />
+          <Route path="/subscription" element={<SubscriptionPage />} />
           <Route path="/final-confirm" element={<FinalConfirmPage />} />
-          <Route path="/system-mgmt" element={<SystemMgmtPage />} />
           <Route path="*" element={<Index />} />
         </Routes>
       </Suspense>
