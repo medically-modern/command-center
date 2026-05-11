@@ -54,6 +54,10 @@ export interface BoardDef {
   phoneColId: string;
   /** Column ID for Stage Advancer (used by masheke to sub-route) */
   stageAdvancerColId: string | null;
+  /** Column ID for "Days Since Stage Started" status */
+  daysSinceStageColId: string | null;
+  /** Column ID for notes (long_text or text) */
+  notesColId: string | null;
 }
 
 /**
@@ -95,9 +99,11 @@ export const BOARDS: BoardDef[] = [
     activeGroups: [
       { id: "topics", title: "Subscriptions", roleRoute: "" },
     ],
-    escalationColId: null, // "Auth Escalation Management" is NOT a pipeline escalation
+    escalationColId: null,
     phoneColId: "phone_mkp0q3cw",
     stageAdvancerColId: null,
+    daysSinceStageColId: null,
+    notesColId: null,
   },
   {
     boardId: 18406352652,
@@ -106,9 +112,11 @@ export const BOARDS: BoardDef[] = [
       { id: "group_mm1xf2jb", title: "Intake", roleRoute: "/profile" },
       { id: "group_mm1y57sz", title: "Completed", roleRoute: "", isCompleted: true },
     ],
-    escalationColId: null, // No escalation column
+    escalationColId: null,
     phoneColId: "phone_mm1x44yk",
     stageAdvancerColId: null,
+    daysSinceStageColId: null,
+    notesColId: "text_mm389fs",
   },
   {
     boardId: 18406060017,
@@ -121,6 +129,8 @@ export const BOARDS: BoardDef[] = [
     escalationColId: "color_mm1x7997",
     phoneColId: "phone_mm1x44yk",
     stageAdvancerColId: "color_mm1wyr92",
+    daysSinceStageColId: "color_mm1wwm05",
+    notesColId: "long_text_mm27zjt2",
   },
   {
     boardId: 18410601299,
@@ -136,6 +146,8 @@ export const BOARDS: BoardDef[] = [
     escalationColId: "color_mm2vsh2f",
     phoneColId: "phone_mm1x44yk",
     stageAdvancerColId: "color_mm1ws96t",
+    daysSinceStageColId: "color_mm1wwm05",
+    notesColId: "long_text_mm2ffsme",
   },
   {
     boardId: 18410804557,
@@ -149,6 +161,8 @@ export const BOARDS: BoardDef[] = [
     escalationColId: "color_mm1x7997",
     phoneColId: "phone_mm1x44yk",
     stageAdvancerColId: "color_mm1ws96t",
+    daysSinceStageColId: "color_mm1wwm05",
+    notesColId: "long_text_mm2ffsme",
   },
 ];
 
@@ -174,6 +188,12 @@ export interface SystemPatient {
   hasPage: boolean;
   /** Whether this patient is in a Completed group */
   isCompleted: boolean;
+  /** "Days Since Stage Started" label, e.g. "0–2 Days", "30+ Days" */
+  daysSinceStage: string;
+  /** Most recent notes text */
+  notes: string;
+  /** Whether this patient is in an Escalation group */
+  isInEscalationGroup: boolean;
 }
 
 // ── Fetch all patients across boards ─────────────────────────
@@ -190,6 +210,8 @@ async function fetchBoardItems(board: BoardDef): Promise<SystemPatient[]> {
   const colIds = [board.phoneColId];
   if (board.escalationColId) colIds.push(board.escalationColId);
   if (board.stageAdvancerColId) colIds.push(board.stageAdvancerColId);
+  if (board.daysSinceStageColId) colIds.push(board.daysSinceStageColId);
+  if (board.notesColId) colIds.push(board.notesColId);
 
   const compareValue = JSON.stringify(groupIds);
   const query = `
@@ -220,6 +242,14 @@ function mapToSystemPatient(item: RawItem, board: BoardDef): SystemPatient {
     item.column_values.find((c) => c.id === id)?.text ?? "";
 
   const phone = colVal(board.phoneColId);
+  const daysSinceStage = board.daysSinceStageColId
+    ? colVal(board.daysSinceStageColId)
+    : "";
+  const notesRaw = board.notesColId
+    ? colVal(board.notesColId)
+    : "";
+  // Strip HTML tags from long_text columns
+  const notes = notesRaw.replace(/<[^>]*>/g, "").trim();
   const escalationText = board.escalationColId
     ? colVal(board.escalationColId)
     : "";
@@ -232,6 +262,8 @@ function mapToSystemPatient(item: RawItem, board: BoardDef): SystemPatient {
   let pipelineStage = groupDef?.title ?? item.group.title;
   let roleRoute = groupDef?.roleRoute ?? "/";
   const isCompleted = groupDef?.isCompleted ?? false;
+  const isInEscalationGroup = !isCompleted && (groupDef?.roleRoute === "") && 
+    (groupDef?.title?.toLowerCase().includes("escalat") ?? false);
 
   // Use Stage Advancer to determine sub-route and pipeline stage.
   // This is critical for escalation/completed groups where the group
@@ -264,6 +296,9 @@ function mapToSystemPatient(item: RawItem, board: BoardDef): SystemPatient {
     escalationText,
     hasPage: roleRoute !== "" && !isCompleted,
     isCompleted,
+    daysSinceStage,
+    notes,
+    isInEscalationGroup,
   };
 }
 

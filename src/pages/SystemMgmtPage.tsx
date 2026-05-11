@@ -30,6 +30,7 @@ import {
   CheckCircle2,
 } from "lucide-react";
 import { toast } from "sonner";
+import { PipelineChart } from "@/components/systemMgmt/PipelineChart";
 
 type Tab = "search" | "escalations";
 
@@ -41,7 +42,19 @@ const SystemMgmtPage = () => {
   const [activeTab, setActiveTab] = useState<Tab>("search");
   const [query, setQuery] = useState("");
   const [removingId, setRemovingId] = useState<string | null>(null);
+  const [chartSelection, setChartSelection] = useState<SystemPatient[] | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+
+  const handleChartSegmentClick = (segmentPatients: SystemPatient[]) => {
+    setChartSelection(segmentPatients);
+    setQuery(""); // clear search text so chart selection shows
+  };
+
+  // When user starts typing, clear chart selection
+  const handleQueryChange = (q: string) => {
+    setQuery(q);
+    if (q.trim()) setChartSelection(null);
+  };
 
   const handleRefresh = async () => {
     setRefreshing(true);
@@ -60,6 +73,16 @@ const SystemMgmtPage = () => {
     () => searchPatients(patients, query),
     [patients, query],
   );
+
+  // Effective results: chart selection takes priority, then search
+  const displayResults = chartSelection ?? (query.trim() ? searchResults : []);
+
+  // Patients to show in the chart (filtered by search when typing)
+  const chartPatients = useMemo(() => {
+    if (!query.trim()) return patients;
+    // Filter chart to only show matching patients
+    return searchPatients(patients, query);
+  }, [patients, query]);
 
   // Escalated grouped by pipeline stage
   const escalatedByStage = useMemo(() => {
@@ -165,11 +188,15 @@ const SystemMgmtPage = () => {
           ) : activeTab === "search" ? (
             <SearchView
               query={query}
-              onQueryChange={setQuery}
-              results={searchResults}
+              onQueryChange={handleQueryChange}
+              results={displayResults}
               totalCount={patients.length}
               onPatientClick={handlePatientClick}
               completionMap={completionMap}
+              chartPatients={chartPatients}
+              onChartSegmentClick={handleChartSegmentClick}
+              chartSelectionActive={chartSelection !== null}
+              onClearChartSelection={() => setChartSelection(null)}
             />
           ) : (
             <EscalationView
@@ -252,6 +279,10 @@ function SearchView({
   totalCount,
   onPatientClick,
   completionMap,
+  chartPatients,
+  onChartSegmentClick,
+  chartSelectionActive,
+  onClearChartSelection,
 }: {
   query: string;
   onQueryChange: (q: string) => void;
@@ -259,6 +290,10 @@ function SearchView({
   totalCount: number;
   onPatientClick: (p: SystemPatient) => void;
   completionMap: Map<string, string[]>;
+  chartPatients: SystemPatient[];
+  onChartSegmentClick: (patients: SystemPatient[]) => void;
+  chartSelectionActive: boolean;
+  onClearChartSelection: () => void;
 }) {
   return (
     <div className="space-y-4">
@@ -276,10 +311,28 @@ function SearchView({
         </span>
       </div>
 
+      {/* Pipeline chart — always visible, filters with search */}
+      <PipelineChart patients={chartPatients} onSegmentClick={onChartSegmentClick} />
+
+      {/* Chart selection banner */}
+      {chartSelectionActive && (
+        <div className="flex items-center gap-2 px-3 py-2 bg-primary/10 rounded-lg border border-primary/20">
+          <span className="text-xs text-primary font-medium">
+            Showing {results.length} patient{results.length !== 1 ? "s" : ""} from chart selection
+          </span>
+          <button
+            onClick={onClearChartSelection}
+            className="ml-auto text-xs text-primary hover:text-primary/80 underline"
+          >
+            Clear
+          </button>
+        </div>
+      )}
+
       {query.trim() && results.length === 0 && (
         <div className="rounded-xl bg-card border shadow-card p-10 text-center">
           <p className="text-sm text-muted-foreground">
-            No patients found matching "{query}"
+            No patients found matching &ldquo;{query}&rdquo;
           </p>
         </div>
       )}
@@ -292,15 +345,6 @@ function SearchView({
           {results.map((p) => (
             <PatientRow key={`${p.boardId}-${p.id}`} patient={p} onClick={() => onPatientClick(p)} completedStages={completionMap.get(p.name.trim().toLowerCase()) ?? []} />
           ))}
-        </div>
-      )}
-
-      {!query.trim() && (
-        <div className="rounded-xl bg-card border shadow-card p-10 text-center space-y-2">
-          <Database className="w-8 h-8 text-muted-foreground/40 mx-auto" />
-          <p className="text-sm text-muted-foreground">
-            Type a name or phone number to search across all pipeline boards.
-          </p>
         </div>
       )}
     </div>
@@ -457,6 +501,11 @@ function PatientRow({
         <div className="text-xs text-muted-foreground truncate">
           {patient.phone || "No phone"} · {patient.boardName} · {patient.pipelineStage}
         </div>
+        {patient.notes && (
+          <div className="text-[11px] text-muted-foreground/80 mt-0.5 line-clamp-2 italic">
+            {patient.notes.length > 120 ? patient.notes.slice(0, 120) + "…" : patient.notes}
+          </div>
+        )}
         <CompletionBadges stages={completedStages} />
       </div>
       <div className="shrink-0 text-right">
@@ -464,6 +513,9 @@ function PatientRow({
           {patient.boardName}
         </div>
         <div className="text-xs font-medium text-primary">{patient.pipelineStage}</div>
+        {patient.daysSinceStage && (
+          <div className="text-[10px] text-muted-foreground">{patient.daysSinceStage}</div>
+        )}
       </div>
       {patient.hasPage ? (
         <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0" />
