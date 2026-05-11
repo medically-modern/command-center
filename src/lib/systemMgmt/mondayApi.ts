@@ -94,7 +94,8 @@ export const BOARDS: BoardDef[] = [
     boardName: "Medical Evaluation",
     activeGroups: [
       { id: "group_mm1xf2jb", title: "Medical Necessity", roleRoute: "/evaluate" },
-      { id: "group_mm1x5q4e", title: "Completed", roleRoute: "", isCompleted: true },
+      { id: "group_mm33pdpm", title: "Escalations",       roleRoute: "" },
+      { id: "group_mm1x5q4e", title: "Completed",         roleRoute: "", isCompleted: true },
     ],
     escalationColId: "color_mm1x7997",
     phoneColId: "phone_mm1x44yk",
