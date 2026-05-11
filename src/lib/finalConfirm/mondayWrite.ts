@@ -97,6 +97,40 @@ export async function sendPatientToMonday(p: Patient): Promise<void> {
     tasks.push({ label: "Member ID 2", columnId: COL.memberId2, fn: () => writeText(p.id, COL.memberId2, p.memberId2Edited!) });
 
   // ─── Product / Order edits ────────────────────────────────
+  // Serving + Pump/CGM Type + Coverage Paths are written on every Send so
+  // Split Order's "Not Serving" overrides land on Monday. For a non-split
+  // submit, these are no-ops (writing the value already on Monday).
+  if (p.servingIndex !== null)
+    tasks.push({ label: "Serving", columnId: COL.serving, fn: () => writeStatusIndex(p.id, COL.serving, p.servingIndex!) });
+
+  if (p.pumpTypeIndex !== null)
+    tasks.push({ label: "Pump Type", columnId: COL.pumpType, fn: () => writeStatusIndex(p.id, COL.pumpType, p.pumpTypeIndex!) });
+
+  if (p.cgmTypeIndex !== null)
+    tasks.push({ label: "CGM Type", columnId: COL.cgmType, fn: () => writeStatusIndex(p.id, COL.cgmType, p.cgmTypeIndex!) });
+
+  if (p.cgmCoveragePathIndex !== null)
+    tasks.push({ label: "CGM Coverage Path", columnId: COL.cgmCoveragePath, fn: () => writeStatusIndex(p.id, COL.cgmCoveragePath, p.cgmCoveragePathIndex!) });
+
+  if (p.ipCoveragePathIndex !== null)
+    tasks.push({ label: "IP Coverage Path", columnId: COL.ipCoveragePath, fn: () => writeStatusIndex(p.id, COL.ipCoveragePath, p.ipCoveragePathIndex!) });
+
+  // Auth Results — same reasoning. Split sets some to Not Serving (index 7).
+  if (p.cgmAuthResultIndex !== null)
+    tasks.push({ label: "CGM Auth Result", columnId: COL.cgmAuthResult, fn: () => writeStatusIndex(p.id, COL.cgmAuthResult, p.cgmAuthResultIndex!) });
+
+  if (p.sensorsAuthResultIndex !== null)
+    tasks.push({ label: "Sensors Auth Result", columnId: COL.sensorsAuthResult, fn: () => writeStatusIndex(p.id, COL.sensorsAuthResult, p.sensorsAuthResultIndex!) });
+
+  if (p.ipAuthResultIndex !== null)
+    tasks.push({ label: "IP Auth Result", columnId: COL.ipAuthResult, fn: () => writeStatusIndex(p.id, COL.ipAuthResult, p.ipAuthResultIndex!) });
+
+  if (p.infusionSetAuthResultIndex !== null)
+    tasks.push({ label: "Infusion Set Auth Result", columnId: COL.infusionSetAuthResult, fn: () => writeStatusIndex(p.id, COL.infusionSetAuthResult, p.infusionSetAuthResultIndex!) });
+
+  if (p.cartridgeAuthResultIndex !== null)
+    tasks.push({ label: "Cartridge Auth Result", columnId: COL.cartridgeAuthResult, fn: () => writeStatusIndex(p.id, COL.cartridgeAuthResult, p.cartridgeAuthResultIndex!) });
+
   if (p.subscriptionTypeIndex !== null)
     tasks.push({ label: "Subscription Type", columnId: COL.subscriptionType, fn: () => writeStatusIndex(p.id, COL.subscriptionType, p.subscriptionTypeIndex!) });
 
