@@ -350,9 +350,11 @@ function SearchView({
       {results.length > 0 && (
         <div className="space-y-1.5">
           <p className="text-xs text-muted-foreground px-1">
-            {results.length} result{results.length !== 1 ? "s" : ""}
+            {results.length > 50
+              ? `Showing 50 of ${results.length} results — refine your search`
+              : `${results.length} result${results.length !== 1 ? "s" : ""}`}
           </p>
-          {results.map((p) => (
+          {results.slice(0, 50).map((p) => (
             <PatientRow
               key={`${p.boardId}-${p.id}`}
               patient={p}
@@ -580,7 +582,7 @@ function PatientRow({
               : "bg-primary/10 text-primary",
           )}
         >
-          {patient.name[0]}
+          {patient.name?.[0] ?? "?"}
         </div>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">

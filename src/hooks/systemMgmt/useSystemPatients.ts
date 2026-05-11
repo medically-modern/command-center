@@ -107,10 +107,10 @@ export function searchPatients(
       const normalizedPhone = normalizePhone(p.phone);
       if (normalizedPhone.includes(normalizedQuery)) return true;
     }
-    // Name match: fuzzy
-    if (fuzzyMatch(trimmed, p.name)) return true;
-    // Exact substring fallback
+    // Exact substring match (works for any length)
     if (p.name.toLowerCase().includes(trimmed.toLowerCase())) return true;
+    // Fuzzy match only for queries with 3+ chars (avoids matching everything on 1-2 chars)
+    if (trimmed.length >= 3 && fuzzyMatch(trimmed, p.name)) return true;
     return false;
   });
 }
