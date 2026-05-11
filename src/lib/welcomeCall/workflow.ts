@@ -49,6 +49,9 @@ export interface Patient {
   orderHandlingIndex: number | null;
   // Call attempts
   callAttempts: string;
+  // Follow up
+  followUp: string;
+  followUpDate: string;
   // Auth Results (read-only)
   cgmAuthResult: string;
   sensorsAuthResult: string;

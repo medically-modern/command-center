@@ -74,6 +74,8 @@ export function mondayItemToPatient(item: MondayItem): Patient {
     orderHandling: txt(COL.orderHandling),
     orderHandlingIndex: statusIndex(COL.orderHandling),
     callAttempts: txt(COL.callAttempts),
+    followUp: txt(COL.followUp),
+    followUpDate: txt(COL.followUpDate),
     cgmAuthResult: txt(COL.cgmAuthResult),
     sensorsAuthResult: txt(COL.sensorsAuthResult),
     ipAuthResult: txt(COL.ipAuthResult),

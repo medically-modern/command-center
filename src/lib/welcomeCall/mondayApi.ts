@@ -80,6 +80,10 @@ export const COL = {
   sensorsNextOrderDate: "date_mm35bdf8",
   suppliesNextOrderDate: "date_mm351tva",
 
+  // Follow Up
+  followUp: "color_mm38w2tk",
+  followUpDate: "date_mm38a7k7",
+
   // Stage
   stageAdvancer: "color_mm1ws96t",
   escalation: "color_mm1x7997",
@@ -101,6 +105,7 @@ export const READ_COLUMN_IDS = [
   COL.cgmLastBillDate, COL.sensorsLastBillDate, COL.ipLastBillDate,
   COL.infusionSetLastBillDate, COL.cartridgeLastBillDate,
   COL.ipNextOrderDate, COL.sensorsNextOrderDate, COL.suppliesNextOrderDate,
+  COL.followUp, COL.followUpDate,
 ];
 
 export interface MondayColumnValue {
@@ -268,6 +273,57 @@ export async function writeLocation(itemId: string, columnId: string, address: s
     itemId,
     columnId,
     value: JSON.stringify({ address, lat, lng }),
+  });
+}
+
+/**
+ * Write a date column (YYYY-MM-DD).
+ */
+export async function writeDate(itemId: string, columnId: string, date: string): Promise<void> {
+  const query = `
+    mutation ($boardId: ID!, $itemId: ID!, $columnId: String!, $value: JSON!) {
+      change_column_value(board_id: $boardId, item_id: $itemId, column_id: $columnId, value: $value) { id }
+    }
+  `;
+  await gql(query, {
+    boardId: BOARD_ID,
+    itemId,
+    columnId,
+    value: JSON.stringify({ date }),
+  });
+}
+
+/**
+ * Clear a status column (set to empty / no label).
+ */
+export async function clearStatusColumn(itemId: string, columnId: string): Promise<void> {
+  const query = `
+    mutation ($boardId: ID!, $itemId: ID!, $columnId: String!, $value: JSON!) {
+      change_column_value(board_id: $boardId, item_id: $itemId, column_id: $columnId, value: $value) { id }
+    }
+  `;
+  await gql(query, {
+    boardId: BOARD_ID,
+    itemId,
+    columnId,
+    value: JSON.stringify({}),
+  });
+}
+
+/**
+ * Clear a date column.
+ */
+export async function clearDateColumn(itemId: string, columnId: string): Promise<void> {
+  const query = `
+    mutation ($boardId: ID!, $itemId: ID!, $columnId: String!, $value: JSON!) {
+      change_column_value(board_id: $boardId, item_id: $itemId, column_id: $columnId, value: $value) { id }
+    }
+  `;
+  await gql(query, {
+    boardId: BOARD_ID,
+    itemId,
+    columnId,
+    value: JSON.stringify({}),
   });
 }
 

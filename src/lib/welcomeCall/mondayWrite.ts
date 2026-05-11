@@ -1,4 +1,4 @@
-import { writeStatusIndex, writeNumber, writeLocation, writeText, writeLongText, COL } from "./mondayApi";
+import { writeStatusIndex, writeNumber, writeLocation, writeText, writeLongText, writeDate, COL } from "./mondayApi";
 import type { Patient } from "./workflow";
 
 const MAX_RETRIES = 2;
@@ -201,4 +201,18 @@ export async function sendNotesToMonday(itemId: string, notes: string): Promise<
  */
 export async function sendCallAttemptsToMonday(itemId: string, count: number): Promise<void> {
   await writeText(itemId, COL.callAttempts, String(count));
+}
+
+/** Follow-up index — "Done" label at index 1 is used as our Follow-up marker. */
+export const FOLLOW_UP_STATUS_INDEX = 1;
+
+/**
+ * Mark a patient for follow up: set Follow Up status + Follow Up Date.
+ * Called from CallAttemptsCounter when +1 is clicked.
+ */
+export async function sendFollowUpToMonday(itemId: string, date: string): Promise<void> {
+  await Promise.all([
+    writeStatusIndex(itemId, COL.followUp, FOLLOW_UP_STATUS_INDEX),
+    writeDate(itemId, COL.followUpDate, date),
+  ]);
 }

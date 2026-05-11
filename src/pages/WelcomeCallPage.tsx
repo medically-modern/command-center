@@ -153,6 +153,7 @@ const WelcomeCallPage = () => {
                     itemId={selected.id}
                     callAttempts={selected.callAttempts}
                     onUpdate={(v) => update(selected.id, { callAttempts: v })}
+                    onFollowUp={refetch}
                   />
                 )}
                 {selected && <ClinicalsDownloadButton itemId={selected.id} />}
