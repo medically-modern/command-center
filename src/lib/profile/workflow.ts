@@ -20,6 +20,13 @@ export interface Patient {
   alreadyInSystem: string;
   moveToOnboarding: string;
 
+  // ── Notes ──
+  notes: string;
+
+  // ── Follow Up ──
+  followUp: string;
+  followUpDate: string;
+
   // ── Stedi ──
   runStediEligibility: string;
   stediEligibilityActive: string;

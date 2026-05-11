@@ -95,6 +95,13 @@ export const COL = {
   dateOfIntake: "date_mm1wf43j",
   patientAddress: "location_mm1xhw17",
 
+  // ── Notes ──
+  notes: "text_mm389fs",
+
+  // ── Follow Up ──
+  followUp: "color_mm3822qq",
+  followUpDate: "date_mm3874an",
+
   // ── Status / Workflow ──
   alreadyInSystem: "color_mm2xe7r8",
   moveToOnboarding: "color_mm1zmeb3",
@@ -134,6 +141,8 @@ export const READ_COLUMN_IDS: string[] = [
   COL.referralType, COL.referralSource, COL.pumpType, COL.cgmType,
   COL.requestType, COL.cgmCrossSell, COL.serving,
   COL.insulinPumpCoveragePath, COL.cgmCoveragePath,
+  // Notes + Follow Up
+  COL.notes, COL.followUp, COL.followUpDate,
 ];
 
 export interface MondayColumnValue {
@@ -222,6 +231,26 @@ export async function clearStatusColumn(itemId: string, columnId: string): Promi
     }
   `;
   await gql(query, { boardId: BOARD_ID, itemId, columnId, value: "" });
+}
+
+/** Write a date column (YYYY-MM-DD). */
+export async function writeDate(itemId: string, columnId: string, date: string): Promise<void> {
+  const query = `
+    mutation ($boardId: ID!, $itemId: ID!, $columnId: String!, $value: JSON!) {
+      change_column_value(board_id: $boardId, item_id: $itemId, column_id: $columnId, value: $value) { id }
+    }
+  `;
+  await gql(query, { boardId: BOARD_ID, itemId, columnId, value: JSON.stringify({ date }) });
+}
+
+/** Clear a date column (set it back to no value / blank). */
+export async function clearDateColumn(itemId: string, columnId: string): Promise<void> {
+  const query = `
+    mutation ($boardId: ID!, $itemId: ID!, $columnId: String!, $value: JSON!) {
+      change_column_value(board_id: $boardId, item_id: $itemId, column_id: $columnId, value: $value) { id }
+    }
+  `;
+  await gql(query, { boardId: BOARD_ID, itemId, columnId, value: JSON.stringify({}) });
 }
 
 /** Write a text column. */

@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState, useCallback } from "react";
 import { useMondayPatients } from "@/hooks/profile/useMondayPatients";
 import { fetchClinicLabels, createClinicLabel } from "@/lib/profile/mondayApi";
 import { sendPatientToMonday } from "@/lib/profile/mondayWrite";
+import { writeText, COL } from "@/lib/profile/mondayApi";
 import type { Patient } from "@/lib/profile/workflow";
 import { hasValidZip } from "@/lib/profile/workflow";
 import { StediPanel } from "@/components/profile/StediPanel";
@@ -13,9 +14,11 @@ import { ServingPanel } from "@/components/profile/ServingPanel";
 import { PatientsSidebar } from "@/components/profile/PatientsSidebar";
 import { PatientProfileCard } from "@/components/profile/PatientProfileCard";
 import { ReferralEmailPanel } from "@/components/profile/ReferralEmailPanel";
+import { NotesPanel } from "@/components/profile/NotesPanel";
+import { FollowUpModal } from "@/components/profile/FollowUpModal";
 import { Button } from "@/components/ui/button";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
-import { ClipboardCheck, Send, AlertTriangle, Loader2, ArrowLeft } from "lucide-react";
+import { ClipboardCheck, Send, AlertTriangle, Loader2, ArrowLeft, Clock } from "lucide-react";
 import { toast } from "sonner";
 import { useNavigate } from "react-router-dom";
 
@@ -27,6 +30,7 @@ const ProfilePage = () => {
   const [clinicLabels, setClinicLabels] = useState<{ id: number; name: string }[]>([]);
   const [selectedClinicId, setSelectedClinicId] = useState<number | null>(null);
   const [referralEmailOpen, setReferralEmailOpen] = useState(false);
+  const [followUpOpen, setFollowUpOpen] = useState(false);
 
   useEffect(() => {
     fetchClinicLabels().then(setClinicLabels).catch(console.error);
@@ -130,6 +134,15 @@ const ProfilePage = () => {
                     )}
                   </div>
                 </div>
+                {selected && (
+                  <Button
+                    onClick={() => setFollowUpOpen(true)}
+                    variant="ghost"
+                    className="gap-2 text-navy-foreground hover:bg-white/10"
+                  >
+                    <Clock className="h-4 w-4" /> Follow Up
+                  </Button>
+                )}
               </div>
             </div>
           </header>
@@ -173,6 +186,22 @@ const ProfilePage = () => {
                     clinicLabels={clinicLabels}
                     onClinicSelect={handleClinicSelect}
                     onClinicCreate={handleClinicCreate}
+                  />
+
+                  {/* 4. Notes */}
+                  <NotesPanel
+                    notes={selected.notes}
+                    onNotesChange={(v) => updateLocal(selected.id, { notes: v })}
+                    onSaveToMonday={(v) => writeText(selected.id, COL.notes, v)}
+                  />
+
+                  {/* Follow Up Modal */}
+                  <FollowUpModal
+                    open={followUpOpen}
+                    onOpenChange={setFollowUpOpen}
+                    patientId={selected.id}
+                    patientName={selected.name}
+                    onSuccess={refetch}
                   />
 
                   {/* Submit */}

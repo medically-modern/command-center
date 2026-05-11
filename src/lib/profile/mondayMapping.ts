@@ -62,6 +62,13 @@ export function mondayItemToPatient(item: MondayItem): Patient {
     stediGender: col(item, COL.stediGender),
     stediMedicaidId: col(item, COL.stediMedicaidId),
 
+    // Notes
+    notes: col(item, COL.notes),
+
+    // Follow Up
+    followUp: col(item, COL.followUp),
+    followUpDate: col(item, COL.followUpDate),
+
     // Insurance
     primaryInsurance: col(item, COL.primaryInsurance),
     generalInsurance: col(item, COL.generalInsurance),
@@ -186,6 +193,11 @@ export const RUN_STEDI_INDEX: Record<string, number> = {
 export const ALREADY_IN_SYSTEM_INDEX: Record<string, number> = {
   "Yes": 0, "No": 1,
 };
+
+// Follow Up status indices
+export const FOLLOW_UP_INDEX = {
+  followUp: 1,
+} as const;
 
 export const MOVE_TO_ONBOARDING_INDEX: Record<string, number> = {
   "Already Serving": 0, "Advance to MN": 1, "Send Back To Referral": 2, "Need More Info.": 3,

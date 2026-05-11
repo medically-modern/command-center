@@ -1,3 +1,4 @@
+import { useState } from "react";
 import {
   Sidebar,
   SidebarContent,
@@ -11,9 +12,17 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
-import { Loader2, RefreshCw, User, AlertCircle } from "lucide-react";
+import { Clock, Loader2, RefreshCw, User, AlertCircle, Undo2 } from "lucide-react";
 import type { Patient } from "@/lib/profile/workflow";
 import { cn } from "@/lib/utils";
+import { toast } from "sonner";
+import { clearStatusColumn, clearDateColumn, COL } from "@/lib/profile/mondayApi";
+
+/** Convert YYYY-MM-DD → MM/DD/YYYY */
+function fmtDate(iso: string): string {
+  const [y, m, d] = iso.split("-");
+  return `${m}/${d}/${y}`;
+}
 
 interface Props {
   patients: Patient[];
@@ -28,13 +37,18 @@ export function PatientsSidebar({ patients, selectedId, onSelect, loading, error
   const { state } = useSidebar();
   const collapsed = state === "collapsed";
 
+  // Split patients into active vs follow-up
+  // "Done" is the text Monday returns for status index 1 (our follow-up marker)
+  const activePatients = patients.filter((p) => p.followUp !== "Done");
+  const followUpPatients = patients.filter((p) => p.followUp === "Done");
+
   return (
     <Sidebar collapsible="icon">
       <SidebarHeader className="border-b px-3 py-3">
         <div className="flex items-center justify-between gap-2">
           {!collapsed && (
             <div className="min-w-0">
-              <p className="text-[10px] uppercase tracking-[0.18em] text-muted-foreground">Monday · Patients</p>
+              <p className="text-[10px] uppercase tracking-[0.18em] text-muted-foreground">Monday · Profile</p>
               <p className="text-sm font-semibold truncate">Patients ({patients.length})</p>
             </div>
           )}
@@ -59,11 +73,16 @@ export function PatientsSidebar({ patients, selectedId, onSelect, loading, error
           </div>
         )}
 
+        {/* Active patients */}
         <SidebarGroup>
-          {!collapsed && <SidebarGroupLabel>Patients</SidebarGroupLabel>}
+          {!collapsed && (
+            <SidebarGroupLabel className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
+              Active ({activePatients.length})
+            </SidebarGroupLabel>
+          )}
           <SidebarGroupContent>
             <SidebarMenu>
-              {patients.map((p) => (
+              {activePatients.map((p) => (
                 <SidebarMenuItem key={p.id}>
                   <SidebarMenuButton
                     isActive={selectedId === p.id}
@@ -85,13 +104,85 @@ export function PatientsSidebar({ patients, selectedId, onSelect, loading, error
                   </SidebarMenuButton>
                 </SidebarMenuItem>
               ))}
-              {!loading && patients.length === 0 && !error && !collapsed && (
-                <p className="px-3 py-4 text-xs text-muted-foreground">No patients found.</p>
+              {!loading && activePatients.length === 0 && !error && !collapsed && (
+                <p className="px-3 py-4 text-xs text-muted-foreground">No active patients.</p>
               )}
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
+
+        {/* Follow Up section */}
+        {followUpPatients.length > 0 && !collapsed && (
+          <SidebarGroup>
+            <SidebarGroupLabel className="text-[10px] uppercase tracking-wider text-blue-500 font-semibold flex items-center gap-1.5">
+              <Clock className="h-3 w-3" />
+              Follow Up ({followUpPatients.length})
+            </SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu>
+                {followUpPatients.map((p) => (
+                  <SidebarMenuItem key={p.id}>
+                    <div className="flex items-center gap-1 w-full">
+                      <SidebarMenuButton
+                        isActive={selectedId === p.id}
+                        onClick={() => onSelect(p.id)}
+                        className={cn(
+                          "flex-1 flex items-start gap-2 py-2 h-auto opacity-60",
+                          selectedId === p.id && "bg-sidebar-accent opacity-100",
+                        )}
+                      >
+                        <Clock className="h-4 w-4 mt-0.5 shrink-0 text-blue-400" />
+                        <div className="min-w-0 text-left">
+                          <p className="text-sm font-medium truncate">{p.name}</p>
+                          <p className="text-[11px] text-blue-400 truncate">
+                            Until {p.followUpDate ? fmtDate(p.followUpDate) : "—"}
+                          </p>
+                        </div>
+                      </SidebarMenuButton>
+                      <ClearFollowUpButton patientId={p.id} patientName={p.name} onSuccess={onRefresh} />
+                    </div>
+                  </SidebarMenuItem>
+                ))}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        )}
       </SidebarContent>
     </Sidebar>
+  );
+}
+
+/** Small button to clear Follow Up status + date on Monday */
+function ClearFollowUpButton({ patientId, patientName, onSuccess }: { patientId: string; patientName: string; onSuccess: () => void }) {
+  const [sending, setSending] = useState(false);
+
+  const handleClear = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setSending(true);
+    try {
+      await Promise.all([
+        clearStatusColumn(patientId, COL.followUp),
+        clearDateColumn(patientId, COL.followUpDate),
+      ]);
+      toast.success(`${patientName} returned to active`);
+      onSuccess();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      toast.error(`Failed to clear follow up: ${msg}`);
+    } finally {
+      setSending(false);
+    }
+  };
+
+  return (
+    <button
+      onClick={handleClear}
+      disabled={sending}
+      className="shrink-0 flex items-center gap-1 px-2 py-1 rounded text-[10px] font-medium text-blue-700 bg-blue-50 border border-blue-200 hover:bg-blue-100 transition-colors disabled:opacity-50"
+      title={`Clear follow up for ${patientName}`}
+    >
+      {sending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Undo2 className="h-3 w-3" />}
+      Active
+    </button>
   );
 }
