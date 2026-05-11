@@ -182,9 +182,9 @@ export function PipelineChart({ patients, onSegmentClick }: PipelineChartProps) 
       {/* Chart area */}
       <div className="relative">
         {/* Bars */}
-        <div className="flex items-end gap-2" style={{ height: "220px" }}>
+        <div className="flex items-end gap-2" style={{ height: "360px" }}>
           {columns.map((col, colIdx) => {
-            const barHeight = Math.max((col.total / maxTotal) * 200, 8);
+            const barHeight = Math.max((col.total / maxTotal) * 320, 12);
             // Build stacked segments (bottom to top: least urgent → most urgent)
             const allBuckets = [...DAY_BUCKETS, UNKNOWN_BUCKET];
             const segments: {
@@ -201,7 +201,7 @@ export function PipelineChart({ patients, onSegmentClick }: PipelineChartProps) 
             return (
               <div
                 key={`${col.boardId}-${col.pipelineStage}`}
-                className="flex-1 flex flex-col justify-end items-stretch min-w-[48px]"
+                className="flex-1 flex flex-col justify-end items-stretch min-w-[56px]"
               >
                 {/* Count label */}
                 <div className="text-center text-xs font-semibold text-foreground mb-1">
