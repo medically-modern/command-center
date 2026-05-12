@@ -70,6 +70,15 @@ export const COL = {
   infusionSetAuthResult: "color_mm1xr2j1",
   cartridgeAuthResult: "color_mm1xybvt",
 
+  // Auth Details (read-only — ID, Start, End, Units per product)
+  authDetail: {
+    monitor:      { id: "text_mm1w1d5p",    start: "date_mm1wj1bz",  end: "date_mm1whebp",  units: "numeric_mm2w5jdp" },
+    sensors:      { id: "text_mm1x8tdp",    start: "date_mm1x929",   end: "date_mm1xvnqb",  units: "numeric_mm2wgfrb" },
+    insulin_pump: { id: "text_mm1xmj8x",    start: "date_mm1xxbkz",  end: "date_mm1x2q3",   units: "numeric_mm2wayp9" },
+    infusion_set: { id: "text_mm1xf6ht",    start: "date_mm1xrk1c",  end: "date_mm1xj3wp",  units: "numeric_mm2wh4ph" },
+    cartridge:    { id: "text_mm1xs6s8",    start: "date_mm1xp0vm",  end: "date_mm1xznf9",  units: "numeric_mm2wcgkc" },
+  },
+
   // Notes (editable — append)
   notes: "long_text_mm2ffsme",
 
@@ -117,6 +126,12 @@ export const READ_COLUMN_IDS = [
   COL.orderHandling,
   COL.cgmAuthResult, COL.sensorsAuthResult, COL.ipAuthResult,
   COL.infusionSetAuthResult, COL.cartridgeAuthResult,
+  // Auth details (ID, start, end, units)
+  COL.authDetail.monitor.id, COL.authDetail.monitor.start, COL.authDetail.monitor.end, COL.authDetail.monitor.units,
+  COL.authDetail.sensors.id, COL.authDetail.sensors.start, COL.authDetail.sensors.end, COL.authDetail.sensors.units,
+  COL.authDetail.insulin_pump.id, COL.authDetail.insulin_pump.start, COL.authDetail.insulin_pump.end, COL.authDetail.insulin_pump.units,
+  COL.authDetail.infusion_set.id, COL.authDetail.infusion_set.start, COL.authDetail.infusion_set.end, COL.authDetail.infusion_set.units,
+  COL.authDetail.cartridge.id, COL.authDetail.cartridge.start, COL.authDetail.cartridge.end, COL.authDetail.cartridge.units,
   COL.notes,
   COL.lastBillDate.monitor, COL.lastBillDate.sensors, COL.lastBillDate.insulin_pump,
   COL.lastBillDate.infusion_set, COL.lastBillDate.cartridge,
@@ -338,6 +353,34 @@ export async function duplicateItem(itemId: string, keepOriginalName?: string): 
   return newId;
 }
 
+// ── Files / Assets ───────────────────────────────────────────────────
+
+export interface MondayAsset {
+  id: string;
+  name: string;
+  url: string;
+  public_url: string;
+}
+
+/** Fetch every file asset attached to a board item. */
+export async function fetchItemAssets(itemId: string): Promise<MondayAsset[]> {
+  const query = `
+    query ($boardId: ID!, $itemId: ID!) {
+      boards(ids: [$boardId]) {
+        items_page(limit: 1, query_params: { ids: [$itemId] }) {
+          items {
+            assets(assets_source: all) { id name url public_url }
+          }
+        }
+      }
+    }
+  `;
+  const data = await gql<{
+    boards: { items_page: { items: { assets: MondayAsset[] }[] } }[];
+  }>(query, { boardId: BOARD_ID, itemId });
+  return data.boards?.[0]?.items_page?.items?.[0]?.assets ?? [];
+}
+
 /**
  * Move item to the Escalation group.
  */
@@ -352,20 +395,3 @@ export async function moveToEscalation(itemId: string): Promise<void> {
     groupId: GROUPS.escalation,
   });
 }
-/** Fetch a single item by ID regardless of group (for cross-group deep-links). */
-export async function fetchItemById(itemId: string): Promise<MondayItem | null> {
-  const query = `
-    query ($itemId: [ID!]!, $cols: [String!]) {
-      items(ids: $itemId) {
-        id
-        name
-        column_values(ids: $cols) { id text value }
-      }
-    }
-  `;
-  const data = await gql<{
-    items: MondayItem[];
-  }>(query, { itemId: [itemId], cols: READ_COLUMN_IDS });
-  return data.items?.[0] ?? null;
-}
-

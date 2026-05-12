@@ -103,6 +103,28 @@ export interface Patient {
   cartridgeAuthResult: string;
   cartridgeAuthResultIndex: number | null;
 
+  // Auth Details (read-only — ID, Start, End, Units per product)
+  monitorAuthId: string;
+  monitorAuthStart: string;
+  monitorAuthEnd: string;
+  monitorAuthUnits: string;
+  sensorsAuthId: string;
+  sensorsAuthStart: string;
+  sensorsAuthEnd: string;
+  sensorsAuthUnits: string;
+  ipAuthId: string;
+  ipAuthStart: string;
+  ipAuthEnd: string;
+  ipAuthUnits: string;
+  infusionSetAuthId: string;
+  infusionSetAuthStart: string;
+  infusionSetAuthEnd: string;
+  infusionSetAuthUnits: string;
+  cartridgeAuthId: string;
+  cartridgeAuthStart: string;
+  cartridgeAuthEnd: string;
+  cartridgeAuthUnits: string;
+
   // Notes
   notes: string;
 

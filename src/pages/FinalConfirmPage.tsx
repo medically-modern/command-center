@@ -17,6 +17,7 @@ import { PatientsSidebar } from "@/components/finalConfirm/PatientsSidebar";
 import { SendToMondayButton } from "@/components/finalConfirm/SendToMondayButton";
 import { SplitOrderButton } from "@/components/finalConfirm/SplitOrderButton";
 import { EscalateButton } from "@/components/finalConfirm/EscalateButton";
+import { ClinicalsDownloadButton } from "@/components/finalConfirm/ClinicalsDownloadButton";
 import { Button } from "@/components/ui/button";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { RotateCcw, ShieldCheck, ArrowLeft, AlertTriangle } from "lucide-react";
@@ -29,16 +30,12 @@ import { duplicateItem, writeStatusIndex, writeDate, COL } from "@/lib/finalConf
 const STAGE_ADVANCER_REVIEW_PROFILE = 0;
 // Split column label index 1 = "Split" (per the Monday board column the user set up).
 const SPLIT_FLAG_INDEX = 1;
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 
 const FinalConfirmPage = () => {
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
-  const isEscalated = searchParams.get("escalated") === "1";
-  const { patients, loading, error, refetch, update, clearOverlay, addPatient } = useMondayPatients(searchParams.get("patientId"));
-  const [selectedId, setSelectedId] = useState<string | null>(
-    searchParams.get("patientId") ?? null,
-  );
+  const { patients, loading, error, refetch, update, clearOverlay, addPatient } = useMondayPatients();
+  const [selectedId, setSelectedId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!selectedId && patients.length > 0) setSelectedId(patients[0].id);
@@ -221,8 +218,8 @@ const FinalConfirmPage = () => {
         />
 
         <div className="flex-1 flex flex-col min-w-0">
-          <header className={`${isEscalated ? "bg-red-700" : "bg-gradient-navy"} text-navy-foreground border-b border-sidebar-border`}>
-            <div className="px-3 sm:px-6 py-5 flex items-center justify-between gap-4 flex-wrap">
+          <header className="bg-gradient-navy text-navy-foreground border-b border-sidebar-border">
+            <div className="px-6 py-5 flex items-center justify-between gap-4 flex-wrap">
               <div className="flex items-center gap-3">
                 <SidebarTrigger className="text-navy-foreground hover:bg-white/10" />
                 <button
@@ -241,6 +238,7 @@ const FinalConfirmPage = () => {
                 </div>
               </div>
               <div className="flex items-center gap-2">
+                {selected && <ClinicalsDownloadButton itemId={selected.id} />}
                 <Button
                   onClick={resetForNewPatient}
                   disabled={!selected}
@@ -253,7 +251,7 @@ const FinalConfirmPage = () => {
           </header>
 
           {unsubmittedSplits.length > 0 && (
-            <div className="sticky top-0 z-30 bg-amber-100 border-b-2 border-amber-400 px-3 sm:px-6 py-2.5 flex items-center gap-3 shadow-sm">
+            <div className="sticky top-0 z-30 bg-amber-100 border-b-2 border-amber-400 px-6 py-2.5 flex items-center gap-3 shadow-sm">
               <AlertTriangle className="h-5 w-5 text-amber-700 flex-shrink-0" />
               <p className="text-sm text-amber-900 flex-1">
                 <span className="font-bold">
@@ -265,8 +263,8 @@ const FinalConfirmPage = () => {
             </div>
           )}
 
-          <main className="flex-1 px-3 sm:px-6 py-6 overflow-y-auto">
-            <section className="max-w-5xl xl:max-w-7xl 2xl:max-w-[1800px] mx-auto space-y-5">
+          <main className="flex-1 px-6 py-6 overflow-y-auto">
+            <section className="max-w-5xl mx-auto space-y-5">
               {!selected && (
                 <div className="rounded-xl bg-card border shadow-card p-10 text-center">
                   <p className="text-sm text-muted-foreground">

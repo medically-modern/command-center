@@ -16,7 +16,6 @@ import {
   INFUSION_SET_1_OPTIONS,
   INFUSION_SET_2_OPTIONS,
   SUBSCRIPTION_TYPE_OPTIONS,
-  ORDER_HANDLING_OPTIONS,
   AUTH_RESULT_OPTIONS,
   formatPhone,
   formatDateMDY,
@@ -225,6 +224,49 @@ function InfusionSetPair({
           placeholder="0"
         />
       </div>
+    </div>
+  );
+}
+
+/** Auth detail sub-fields shown under each auth result when data exists */
+function AuthDetailBlock({
+  authId,
+  authStart,
+  authEnd,
+  authUnits,
+}: {
+  authId: string;
+  authStart: string;
+  authEnd: string;
+  authUnits: string;
+}) {
+  if (!authId && !authStart && !authEnd && !authUnits) return null;
+  return (
+    <div className="mt-2 pl-10 grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+      {authId && (
+        <div>
+          <span className="text-muted-foreground">Auth ID:</span>{" "}
+          <span className="font-medium">{authId}</span>
+        </div>
+      )}
+      {authUnits && (
+        <div>
+          <span className="text-muted-foreground">Units:</span>{" "}
+          <span className="font-medium">{authUnits}</span>
+        </div>
+      )}
+      {authStart && (
+        <div>
+          <span className="text-muted-foreground">Start:</span>{" "}
+          <span className="font-medium">{formatDateMDY(authStart)}</span>
+        </div>
+      )}
+      {authEnd && (
+        <div>
+          <span className="text-muted-foreground">End:</span>{" "}
+          <span className="font-medium">{formatDateMDY(authEnd)}</span>
+        </div>
+      )}
     </div>
   );
 }
@@ -600,7 +642,7 @@ export function PatientInfoCard({ patient, onFieldChange }: Props) {
 
         <div className="h-px bg-border" />
 
-        {/* Subscription + Order Handling */}
+        {/* Subscription Type */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <SelectField
             label="Subscription Type"
@@ -610,16 +652,6 @@ export function PatientInfoCard({ patient, onFieldChange }: Props) {
               onFieldChange("subscriptionTypeIndex", index);
               const opt = SUBSCRIPTION_TYPE_OPTIONS.find((o) => o.index === index);
               if (opt) onFieldChange("subscriptionType", opt.label);
-            }}
-          />
-          <SelectField
-            label="Order Handling"
-            options={ORDER_HANDLING_OPTIONS}
-            value={patient.orderHandling}
-            onChange={(index) => {
-              onFieldChange("orderHandlingIndex", index);
-              const opt = ORDER_HANDLING_OPTIONS.find((o) => o.index === index);
-              if (opt) onFieldChange("orderHandling", opt.label);
             }}
           />
         </div>
@@ -690,67 +722,107 @@ export function PatientInfoCard({ patient, onFieldChange }: Props) {
           </>
         )}
       </Card>
-      {/* Auth Results */}
+      {/* Auth Results + Details */}
       <Card className="p-4 space-y-4">
         <p className="text-xs uppercase tracking-wider text-muted-foreground font-semibold flex items-center gap-2">
           <ShieldCheck className="h-3.5 w-3.5" /> Auth Results
         </p>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          <SelectField
-            label="CGM Auth"
-            icon={<ShieldCheck className="h-4 w-4" />}
-            options={AUTH_RESULT_OPTIONS}
-            value={patient.cgmAuthResult}
-            onChange={(index) => {
-              onFieldChange("cgmAuthResultIndex", index);
-              const opt = AUTH_RESULT_OPTIONS.find((o) => o.index === index);
-              if (opt) onFieldChange("cgmAuthResult", opt.label);
-            }}
-          />
-          <SelectField
-            label="Sensors Auth"
-            icon={<ShieldCheck className="h-4 w-4" />}
-            options={AUTH_RESULT_OPTIONS}
-            value={patient.sensorsAuthResult}
-            onChange={(index) => {
-              onFieldChange("sensorsAuthResultIndex", index);
-              const opt = AUTH_RESULT_OPTIONS.find((o) => o.index === index);
-              if (opt) onFieldChange("sensorsAuthResult", opt.label);
-            }}
-          />
-          <SelectField
-            label="IP Auth"
-            icon={<ShieldCheck className="h-4 w-4" />}
-            options={AUTH_RESULT_OPTIONS}
-            value={patient.ipAuthResult}
-            onChange={(index) => {
-              onFieldChange("ipAuthResultIndex", index);
-              const opt = AUTH_RESULT_OPTIONS.find((o) => o.index === index);
-              if (opt) onFieldChange("ipAuthResult", opt.label);
-            }}
-          />
-          <SelectField
-            label="Infusion Set Auth"
-            icon={<ShieldCheck className="h-4 w-4" />}
-            options={AUTH_RESULT_OPTIONS}
-            value={patient.infusionSetAuthResult}
-            onChange={(index) => {
-              onFieldChange("infusionSetAuthResultIndex", index);
-              const opt = AUTH_RESULT_OPTIONS.find((o) => o.index === index);
-              if (opt) onFieldChange("infusionSetAuthResult", opt.label);
-            }}
-          />
-          <SelectField
-            label="Cartridge Auth"
-            icon={<ShieldCheck className="h-4 w-4" />}
-            options={AUTH_RESULT_OPTIONS}
-            value={patient.cartridgeAuthResult}
-            onChange={(index) => {
-              onFieldChange("cartridgeAuthResultIndex", index);
-              const opt = AUTH_RESULT_OPTIONS.find((o) => o.index === index);
-              if (opt) onFieldChange("cartridgeAuthResult", opt.label);
-            }}
-          />
+          <div>
+            <SelectField
+              label="CGM Auth"
+              icon={<ShieldCheck className="h-4 w-4" />}
+              options={AUTH_RESULT_OPTIONS}
+              value={patient.cgmAuthResult}
+              onChange={(index) => {
+                onFieldChange("cgmAuthResultIndex", index);
+                const opt = AUTH_RESULT_OPTIONS.find((o) => o.index === index);
+                if (opt) onFieldChange("cgmAuthResult", opt.label);
+              }}
+            />
+            <AuthDetailBlock
+              authId={patient.monitorAuthId}
+              authStart={patient.monitorAuthStart}
+              authEnd={patient.monitorAuthEnd}
+              authUnits={patient.monitorAuthUnits}
+            />
+          </div>
+          <div>
+            <SelectField
+              label="Sensors Auth"
+              icon={<ShieldCheck className="h-4 w-4" />}
+              options={AUTH_RESULT_OPTIONS}
+              value={patient.sensorsAuthResult}
+              onChange={(index) => {
+                onFieldChange("sensorsAuthResultIndex", index);
+                const opt = AUTH_RESULT_OPTIONS.find((o) => o.index === index);
+                if (opt) onFieldChange("sensorsAuthResult", opt.label);
+              }}
+            />
+            <AuthDetailBlock
+              authId={patient.sensorsAuthId}
+              authStart={patient.sensorsAuthStart}
+              authEnd={patient.sensorsAuthEnd}
+              authUnits={patient.sensorsAuthUnits}
+            />
+          </div>
+          <div>
+            <SelectField
+              label="IP Auth"
+              icon={<ShieldCheck className="h-4 w-4" />}
+              options={AUTH_RESULT_OPTIONS}
+              value={patient.ipAuthResult}
+              onChange={(index) => {
+                onFieldChange("ipAuthResultIndex", index);
+                const opt = AUTH_RESULT_OPTIONS.find((o) => o.index === index);
+                if (opt) onFieldChange("ipAuthResult", opt.label);
+              }}
+            />
+            <AuthDetailBlock
+              authId={patient.ipAuthId}
+              authStart={patient.ipAuthStart}
+              authEnd={patient.ipAuthEnd}
+              authUnits={patient.ipAuthUnits}
+            />
+          </div>
+          <div>
+            <SelectField
+              label="Infusion Set Auth"
+              icon={<ShieldCheck className="h-4 w-4" />}
+              options={AUTH_RESULT_OPTIONS}
+              value={patient.infusionSetAuthResult}
+              onChange={(index) => {
+                onFieldChange("infusionSetAuthResultIndex", index);
+                const opt = AUTH_RESULT_OPTIONS.find((o) => o.index === index);
+                if (opt) onFieldChange("infusionSetAuthResult", opt.label);
+              }}
+            />
+            <AuthDetailBlock
+              authId={patient.infusionSetAuthId}
+              authStart={patient.infusionSetAuthStart}
+              authEnd={patient.infusionSetAuthEnd}
+              authUnits={patient.infusionSetAuthUnits}
+            />
+          </div>
+          <div>
+            <SelectField
+              label="Cartridge Auth"
+              icon={<ShieldCheck className="h-4 w-4" />}
+              options={AUTH_RESULT_OPTIONS}
+              value={patient.cartridgeAuthResult}
+              onChange={(index) => {
+                onFieldChange("cartridgeAuthResultIndex", index);
+                const opt = AUTH_RESULT_OPTIONS.find((o) => o.index === index);
+                if (opt) onFieldChange("cartridgeAuthResult", opt.label);
+              }}
+            />
+            <AuthDetailBlock
+              authId={patient.cartridgeAuthId}
+              authStart={patient.cartridgeAuthStart}
+              authEnd={patient.cartridgeAuthEnd}
+              authUnits={patient.cartridgeAuthUnits}
+            />
+          </div>
         </div>
       </Card>
 

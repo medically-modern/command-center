@@ -117,6 +117,28 @@ export function mondayItemToPatient(item: MondayItem): Patient {
     cartridgeAuthResult: cv(item, COL.cartridgeAuthResult)?.text ?? "",
     cartridgeAuthResultIndex: parseIndex(cv(item, COL.cartridgeAuthResult)?.value ?? null),
 
+    // Auth Details
+    monitorAuthId: cv(item, COL.authDetail.monitor.id)?.text ?? "",
+    monitorAuthStart: cv(item, COL.authDetail.monitor.start)?.text ?? "",
+    monitorAuthEnd: cv(item, COL.authDetail.monitor.end)?.text ?? "",
+    monitorAuthUnits: cv(item, COL.authDetail.monitor.units)?.text ?? "",
+    sensorsAuthId: cv(item, COL.authDetail.sensors.id)?.text ?? "",
+    sensorsAuthStart: cv(item, COL.authDetail.sensors.start)?.text ?? "",
+    sensorsAuthEnd: cv(item, COL.authDetail.sensors.end)?.text ?? "",
+    sensorsAuthUnits: cv(item, COL.authDetail.sensors.units)?.text ?? "",
+    ipAuthId: cv(item, COL.authDetail.insulin_pump.id)?.text ?? "",
+    ipAuthStart: cv(item, COL.authDetail.insulin_pump.start)?.text ?? "",
+    ipAuthEnd: cv(item, COL.authDetail.insulin_pump.end)?.text ?? "",
+    ipAuthUnits: cv(item, COL.authDetail.insulin_pump.units)?.text ?? "",
+    infusionSetAuthId: cv(item, COL.authDetail.infusion_set.id)?.text ?? "",
+    infusionSetAuthStart: cv(item, COL.authDetail.infusion_set.start)?.text ?? "",
+    infusionSetAuthEnd: cv(item, COL.authDetail.infusion_set.end)?.text ?? "",
+    infusionSetAuthUnits: cv(item, COL.authDetail.infusion_set.units)?.text ?? "",
+    cartridgeAuthId: cv(item, COL.authDetail.cartridge.id)?.text ?? "",
+    cartridgeAuthStart: cv(item, COL.authDetail.cartridge.start)?.text ?? "",
+    cartridgeAuthEnd: cv(item, COL.authDetail.cartridge.end)?.text ?? "",
+    cartridgeAuthUnits: cv(item, COL.authDetail.cartridge.units)?.text ?? "",
+
     // Notes
     notes: cv(item, COL.notes)?.text ?? "",
 
