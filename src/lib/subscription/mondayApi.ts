@@ -217,11 +217,15 @@ async function gql<T>(query: string, variables: Record<string, unknown> = {}): P
 
 // ── Public queries ───────────────────────────────────────────────────
 
-export async function fetchGroupItems(groupId: string = GROUPS.subscriptions): Promise<MondayItem[]> {
+export async function fetchGroupItems(
+  groupId: string = GROUPS.subscriptions,
+  onMore?: (items: MondayItem[]) => void,
+): Promise<MondayItem[]> {
+  const PAGE = 200;
   const query = `
     query ($boardId: ID!, $cols: [String!]) {
       boards(ids: [$boardId]) {
-        items_page(limit: 200, query_params: { rules: [{ column_id: "group", compare_value: ${JSON.stringify([groupId])} }] }) {
+        items_page(limit: ${PAGE}, query_params: { rules: [{ column_id: "group", compare_value: ${JSON.stringify([groupId])} }] }) {
           items {
             id
             name
@@ -231,11 +235,35 @@ export async function fetchGroupItems(groupId: string = GROUPS.subscriptions): P
       }
     }
   `;
-  const data = await gql<{ boards: { items_page: { items: MondayItem[] } }[] }>(query, {
+  const data = await gql<{ boards: { items_page: { cursor: string | null; items: MondayItem[] } }[] }>(query, {
     boardId: BOARD_ID,
     cols: READ_COLUMN_IDS,
   });
-  return data.boards?.[0]?.items_page?.items ?? [];
+  const firstPage = data.boards?.[0]?.items_page?.items ?? [];
+  let cursor = data.boards?.[0]?.items_page?.cursor ?? null;
+
+  if (cursor && onMore) {
+    (async () => {
+      while (cursor) {
+        try {
+          const nextQuery = `
+            query ($cursor: String!, $cols: [String!]) {
+              next_items_page(limit: ${PAGE}, cursor: $cursor) {
+                cursor
+                items { id name column_values(ids: $cols) { id text value } }
+              }
+            }
+          `;
+          const next = await gql<{ next_items_page: { cursor: string | null; items: MondayItem[] } }>(nextQuery, { cursor, cols: READ_COLUMN_IDS });
+          const items = next.next_items_page?.items ?? [];
+          cursor = next.next_items_page?.cursor ?? null;
+          if (items.length > 0) onMore(items);
+        } catch (e) { console.error("[fetchGroupItems] pagination error", e); break; }
+      }
+    })();
+  }
+
+  return firstPage;
 }
 
 /** Fetch a single item by ID regardless of group. */

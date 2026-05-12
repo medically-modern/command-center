@@ -86,7 +86,16 @@ export function useMondayPatients(activeTab: TabKey = "evaluate", injectedPatien
     try {
       // Always pull from the single MN group, then filter by sub-stage
       const [items, escalationItems] = await Promise.all([
-        fetchGroupItems(GROUPS.medicalNecessity),
+        fetchGroupItems(GROUPS.medicalNecessity, (moreItems) => {
+          if (!mountedRef.current) return;
+          const morePats = moreItems.map(mondayItemToPatient)
+            .filter((p) => matchesTab(p.subStage, activeTab))
+            .map((p) => {
+              const o = overlayRef.current.get(p.id);
+              return o ? { ...p, ...o } : p;
+            });
+          if (morePats.length > 0) setPatients((prev) => [...prev, ...morePats]);
+        }),
         fetchGroupItems(GROUPS.escalations),
       ]);
       if (!mountedRef.current) return;

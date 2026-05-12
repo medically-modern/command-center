@@ -275,11 +275,15 @@ async function gql<T>(query: string, variables: Record<string, unknown> = {}): P
   return json.data as T;
 }
 
-export async function fetchGroupItems(groupId: string = GROUPS.benefits): Promise<MondayItem[]> {
+export async function fetchGroupItems(
+  groupId: string = GROUPS.benefits,
+  onMore?: (items: MondayItem[]) => void,
+): Promise<MondayItem[]> {
+  const PAGE = 200;
   const query = `
     query ($boardId: ID!, $cols: [String!]) {
       boards(ids: [$boardId]) {
-        items_page(limit: 100, query_params: { rules: [{ column_id: "group", compare_value: ${JSON.stringify([groupId])} }] }) {
+        items_page(limit: ${PAGE}, query_params: { rules: [{ column_id: "group", compare_value: ${JSON.stringify([groupId])} }] }) {
           items {
             id
             name
@@ -290,11 +294,35 @@ export async function fetchGroupItems(groupId: string = GROUPS.benefits): Promis
     }
   `;
   const cols = AUTH_GROUP_IDS.has(groupId) ? AUTH_READ_COLUMN_IDS : READ_COLUMN_IDS;
-  const data = await gql<{ boards: { items_page: { items: MondayItem[] } }[] }>(query, {
+  const data = await gql<{ boards: { items_page: { cursor: string | null; items: MondayItem[] } }[] }>(query, {
     boardId: BOARD_ID,
     cols,
   });
-  return data.boards?.[0]?.items_page?.items ?? [];
+  const firstPage = data.boards?.[0]?.items_page?.items ?? [];
+  let cursor = data.boards?.[0]?.items_page?.cursor ?? null;
+
+  if (cursor && onMore) {
+    (async () => {
+      while (cursor) {
+        try {
+          const nextQuery = `
+            query ($cursor: String!, $cols: [String!]) {
+              next_items_page(limit: ${PAGE}, cursor: $cursor) {
+                cursor
+                items { id name column_values(ids: $cols) { id text value } }
+              }
+            }
+          `;
+          const next = await gql<{ next_items_page: { cursor: string | null; items: MondayItem[] } }>(nextQuery, { cursor, cols });
+          const items = next.next_items_page?.items ?? [];
+          cursor = next.next_items_page?.cursor ?? null;
+          if (items.length > 0) onMore(items);
+        } catch (e) { console.error("[fetchGroupItems] pagination error", e); break; }
+      }
+    })();
+  }
+
+  return firstPage;
 }
 
 /**
@@ -414,7 +442,8 @@ export async function fetchItemAssets(itemId: string): Promise<MondayAsset[]> {
   const query = `
     query ($boardId: ID!, $itemId: ID!) {
       boards(ids: [$boardId]) {
-        items_page(limit: 1, query_params: { ids: [$itemId] }) {
+        items_page(limit: ${PAGE}, query_params: { ids: [$itemId] }) {
+          cursor
           items {
             assets(assets_source: all) { id name url public_url }
           }

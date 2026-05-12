@@ -33,7 +33,11 @@ export function useMondayPatients(injectedPatientId?: string | null) {
       setError(null);
     }
     try {
-      const items = await fetchGroupItems();
+      const items = await fetchGroupItems(undefined, (moreItems) => {
+        if (!mountedRef.current) return;
+        const morePats = applyOverlays(moreItems.map(mondayItemToPatient));
+        setPatients((prev) => [...prev, ...morePats]);
+      });
       if (!mountedRef.current) return;
       const safeItems = Array.isArray(items) ? items : [];
       const ps = safeItems.map(mondayItemToPatient);

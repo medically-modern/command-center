@@ -100,7 +100,11 @@ export function useMondayPatients(activeGroup: SidebarGroup = "benefits", inject
       const groupId = GROUPS[activeGroup];
       // Fetch active group + escalations group in parallel
       const [items, escalationItems] = await Promise.all([
-        fetchGroupItems(groupId),
+        fetchGroupItems(groupId, (moreItems) => {
+          if (!mountedRef.current) return;
+          const morePats = moreItems.map(mondayItemToPatient).map((p) => applyOverlay(p, overlayRef.current.get(p.id)));
+          setPatients((prev) => [...prev, ...morePats]);
+        }),
         fetchGroupItems(GROUPS.escalations),
       ]);
       if (!mountedRef.current) return;

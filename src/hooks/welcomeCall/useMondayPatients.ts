@@ -61,7 +61,14 @@ export function useMondayPatients(injectedPatientId?: string | null) {
     }
     try {
       const [items, escalationItems] = await Promise.all([
-        fetchGroupItems(),
+        fetchGroupItems(undefined, (moreItems) => {
+          if (!mountedRef.current) return;
+          const morePats = moreItems.map(mondayItemToPatient).map((p) => {
+            const o = overlayRef.current.get(p.id);
+            return o ? { ...p, ...o } : p;
+          });
+          setPatients((prev) => [...prev, ...morePats]);
+        }),
         fetchGroupItems(GROUPS.escalation),
       ]);
       if (!mountedRef.current) return;
