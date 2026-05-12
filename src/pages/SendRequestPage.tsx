@@ -50,7 +50,7 @@ const SendRequestPage = () => {
         <PatientsSidebar patients={patients} selectedId={selectedId} onSelect={setSelectedId} loading={loading} error={error} onRefresh={refetch} activeTab="sendRequest" />
         <div className="flex-1 flex flex-col min-w-0">
           <header className={`${isEscalated ? "bg-red-700" : "bg-gradient-navy"} text-navy-foreground border-b border-sidebar-border`}>
-            <div className="px-6 py-5 flex items-center justify-between gap-4 flex-wrap">
+            <div className="px-3 sm:px-6 py-5 flex items-center justify-between gap-4 flex-wrap">
               <div className="flex items-center gap-3">
                 <SidebarTrigger className="text-navy-foreground hover:bg-white/10" />
                 <button onClick={() => navigate("/?tab=dashboard")} className="p-1.5 rounded-md hover:bg-white/10 transition-colors">
@@ -79,7 +79,7 @@ const SendRequestPage = () => {
             </div>
           </header>
 
-          <main className="flex-1 px-6 py-6">
+          <main className="flex-1 px-3 sm:px-6 py-6">
             <section className="max-w-5xl xl:max-w-7xl 2xl:max-w-[1800px] mx-auto space-y-5">
               {!selected && (
                 <div className="rounded-xl bg-card border shadow-card p-10 text-center">

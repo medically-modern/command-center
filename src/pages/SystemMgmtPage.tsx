@@ -134,7 +134,7 @@ const SystemMgmtPage = () => {
       )}
       {/* Header */}
       <header className="bg-gradient-navy text-navy-foreground border-b border-sidebar-border">
-        <div className="px-6 py-5 flex items-center justify-between gap-4 flex-wrap">
+        <div className="px-3 sm:px-6 py-5 flex items-center justify-between gap-4 flex-wrap">
           <div className="flex items-center gap-3">
             <button
               onClick={() => navigate("/?tab=dashboard")}
@@ -170,7 +170,7 @@ const SystemMgmtPage = () => {
         </div>
 
         {/* Tab bar */}
-        <div className="px-6 flex gap-0">
+        <div className="px-3 sm:px-6 flex gap-0">
           <TabBtn
             active={activeTab === "search"}
             onClick={() => setActiveTab("search")}
@@ -188,7 +188,7 @@ const SystemMgmtPage = () => {
       </header>
 
       {/* Content */}
-      <main className={cn("flex-1 px-6 py-6 overflow-y-auto transition-[margin] duration-300", notesPatient ? "mr-[400px]" : "mr-0")}>
+      <main className={cn("flex-1 px-3 sm:px-6 py-6 overflow-y-auto transition-[margin] duration-300", notesPatient ? "mr-[400px]" : "mr-0")}>
         <div className="max-w-4xl xl:max-w-6xl 2xl:max-w-7xl mx-auto">
           {loading && patients.length === 0 ? (
             <LoadingState />
