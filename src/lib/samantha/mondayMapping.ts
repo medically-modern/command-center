@@ -49,6 +49,15 @@ export const STAGE_INDEX = {
   complete: 7,
 } as const;
 
+
+/** Stage Advancer text → SidebarGroup key.
+ *  Used to assign escalated patients (in the Escalations Monday group)
+ *  to the correct sidebar view. */
+export const STAGE_TEXT_TO_GROUP: Record<string, "benefits" | "submitAuth" | "authOutstanding"> = {
+  "Benefits / SoS": "benefits",
+  "Submit Auth.": "submitAuth",
+  "Auth. Outstanding": "authOutstanding",
+};
 // "Not Clear Products" dropdown option ids (per Monday board config)
 export const NOT_CLEAR_PRODUCT_ID: Record<ProductCodeId, number> = {
   pump: 1,
@@ -301,6 +310,7 @@ export function mondayItemToPatient(item: MondayItem): Patient {
   // unset → off.
   const escalationText = cv(COL.escalation)?.text?.trim();
   const escalated = escalationText === "Escalation Required";
+  const stageAdvancerText = cv(COL.stageAdvancer)?.text?.trim() ?? "";
 
   // Days Since Stage Started — status column with index-based ordering
   const daysSinceStage = cv(COL.daysSinceStage)?.text ?? "";
@@ -350,6 +360,7 @@ export function mondayItemToPatient(item: MondayItem): Patient {
     dvsStatus: dvsStatus || undefined,
     claimsStatus: claimsStatus || undefined,
     escalated,
+    stageAdvancerText,
     daysSinceStage: daysSinceStage || undefined,
     daysSinceStageIndex,
     followUp: followUpText,

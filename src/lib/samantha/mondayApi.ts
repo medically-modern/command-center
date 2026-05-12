@@ -159,6 +159,8 @@ export const READ_COLUMN_IDS = [
   COL.doctorFax,
   COL.clinicalsMethod,
   COL.clinicName,
+  // Stage Advancer — needed to determine which view an escalated patient belongs to.
+  COL.stageAdvancer,
   // Escalation column hydrates the Escalate-button toggle on all 3 pages.
   COL.escalation,
   // Per-product SoS state (read on every page so the agent sees what was

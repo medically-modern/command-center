@@ -419,6 +419,8 @@ export interface Patient {
   /** Claims Status label from Monday (e.g. "Claims Paid", "Claims Denied") */
   claimsStatus?: string;
   escalated?: boolean;
+  /** Stage Advancer text from Monday — used to determine sidebar view for escalated patients. */
+  stageAdvancerText?: string;
   /** Trigger DVS — set when Medicaid + supplies serving. Written to
    *  Monday's "Trigger DVS -TEST" column on Send to Monday. */
   triggerDvs?: boolean;

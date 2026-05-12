@@ -52,7 +52,10 @@ export function useMondayPatients(activeTab: TabKey = "evaluate", injectedPatien
     }
     try {
       // Always pull from the single MN group, then filter by sub-stage
-      const items = await fetchGroupItems(GROUPS.medicalNecessity);
+      const [items, escalationItems] = await Promise.all([
+        fetchGroupItems(GROUPS.medicalNecessity),
+        fetchGroupItems(GROUPS.escalations),
+      ]);
       if (!mountedRef.current) return;
       const safeItems = Array.isArray(items) ? items : [];
       const allPatients = safeItems.map(mondayItemToPatient);

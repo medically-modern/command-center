@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Patient, ProductCodeId, ProductCodeState } from "@/lib/samantha/workflow";
 import { fetchGroupItems, fetchItemById, GROUPS, hasToken } from "@/lib/samantha/mondayApi";
-import { mondayItemToPatient } from "@/lib/samantha/mondayMapping";
+import { mondayItemToPatient, STAGE_TEXT_TO_GROUP } from "@/lib/samantha/mondayMapping";
 
 /**
  * Apply the local-edit overlay on top of a freshly-fetched patient.
@@ -65,11 +65,30 @@ export function useMondayPatients(activeGroup: SidebarGroup = "benefits", inject
     }
     try {
       const groupId = GROUPS[activeGroup];
-      const items = await fetchGroupItems(groupId);
+      // Fetch active group + escalations group in parallel
+      const [items, escalationItems] = await Promise.all([
+        fetchGroupItems(groupId),
+        fetchGroupItems(GROUPS.escalations),
+      ]);
       if (!mountedRef.current) return;
       const safeItems = Array.isArray(items) ? items : [];
       const ps = safeItems.map(mondayItemToPatient);
       const merged = ps.map((p) => applyOverlay(p, overlayRef.current.get(p.id)));
+
+      // Merge in escalated patients whose Stage Advancer matches this view
+      const safeEscItems = Array.isArray(escalationItems) ? escalationItems : [];
+      const escPatients = safeEscItems
+        .map(mondayItemToPatient)
+        .filter((p) => {
+          const mappedGroup = STAGE_TEXT_TO_GROUP[p.stageAdvancerText ?? ""];
+          return mappedGroup === activeGroup;
+        })
+        .map((p) => ({ ...p, escalated: true })); // ensure flag is set
+      for (const ep of escPatients) {
+        if (!merged.some((m) => m.id === ep.id)) {
+          merged.push(applyOverlay(ep, overlayRef.current.get(ep.id)));
+        }
+      }
 
       // If a specific patient was deep-linked but isn't in this group
       // (e.g. they're in the Escalations group), fetch them individually.
@@ -80,7 +99,7 @@ export function useMondayPatients(activeGroup: SidebarGroup = "benefits", inject
             const injected = mondayItemToPatient(item);
             merged.unshift(applyOverlay(injected, overlayRef.current.get(injected.id)));
           }
-        } catch { /* ignore — patient may not be on this board */ }
+        } catch { /* ignore \u2014 patient may not be on this board */ }
       }
 
       setPatients(merged);
