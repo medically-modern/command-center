@@ -169,7 +169,7 @@ const WelcomeCallPage = () => {
           </header>
 
           <main className="flex-1 px-6 py-6 overflow-y-auto">
-            <section className="max-w-5xl mx-auto space-y-5">
+            <section className="max-w-5xl xl:max-w-7xl 2xl:max-w-[1800px] mx-auto space-y-5">
               {!selected && (
                 <div className="rounded-xl bg-card border shadow-card p-10 text-center">
                   <p className="text-sm text-muted-foreground">

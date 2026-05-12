@@ -71,7 +71,7 @@ const Index = () => {
           />
         ) : (
           <div className="flex-1 overflow-y-auto p-8">
-            <div className="max-w-3xl mx-auto space-y-6">
+            <div className="max-w-3xl xl:max-w-5xl 2xl:max-w-6xl mx-auto space-y-6">
               <div>
                 <h2 className="text-xl font-semibold text-foreground">Role Assignments</h2>
                 <p className="text-sm text-muted-foreground mt-1">

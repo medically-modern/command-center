@@ -67,7 +67,7 @@ export function DashboardMainView({ selectedUser, assignments, getRolesForUser, 
             </p>
           </div>
         ) : (
-          <div className="max-w-3xl space-y-5">
+          <div className="max-w-3xl xl:max-w-5xl 2xl:max-w-6xl space-y-5">
             <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wider">
               Patients by Role
             </h3>
