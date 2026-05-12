@@ -199,6 +199,7 @@ export async function fetchGroupItems(
     query ($boardId: ID!, $cols: [String!]) {
       boards(ids: [$boardId]) {
         items_page(limit: ${PAGE}, query_params: { rules: [{ column_id: "group", compare_value: ${JSON.stringify([groupId])} }] }) {
+          cursor
           items {
             id
             name
