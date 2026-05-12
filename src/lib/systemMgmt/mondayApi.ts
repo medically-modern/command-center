@@ -334,6 +334,84 @@ function mapToSystemPatient(item: RawItem, board: BoardDef): SystemPatient {
   };
 }
 
+// ── Auth Denied origin lookup via activity log ──────────────
+
+/** Insurance board constants for Auth Denied origin detection */
+const INSURANCE_BOARD_ID = 18410601299;
+const AUTH_DENIED_GROUP_ID = "group_mm316hg2";
+const INSURANCE_STAGE_COL = "color_mm1ws96t";
+
+interface ActivityLog {
+  data: string;
+}
+
+/**
+ * For patients in the Auth Denied group whose Stage Advancer reads "Auth Denied",
+ * fetch the activity log to find the *previous* Stage Advancer value — i.e. which
+ * stage they were actually in before being moved to Auth Denied.
+ *
+ * Only queries the Insurance board and only for Auth Denied items, so it adds at
+ * most one extra API call.
+ */
+async function patchAuthDeniedOrigins(patients: SystemPatient[]): Promise<void> {
+  const authDeniedPatients = patients.filter(
+    (p) =>
+      p.boardId === INSURANCE_BOARD_ID &&
+      p.groupId === AUTH_DENIED_GROUP_ID &&
+      p.pipelineStage.includes("from Auth Denied"),
+  );
+  if (authDeniedPatients.length === 0) return;
+
+  // Fetch activity logs for the stage advancer column on these items in one call
+  const itemIds = authDeniedPatients.map((p) => p.id);
+  const data = await gql<{
+    boards: { activity_logs: ActivityLog[] }[];
+  }>(
+    `query ($bid: ID!) {
+      boards(ids: [$bid]) {
+        activity_logs(limit: 500, column_ids: ["${INSURANCE_STAGE_COL}"], item_ids: [${itemIds.join(",")}]) {
+          data
+        }
+      }
+    }`,
+    { bid: INSURANCE_BOARD_ID },
+  );
+
+  const logs = data.boards?.[0]?.activity_logs ?? [];
+
+  // For each Auth Denied patient, walk the logs to find the stage value
+  // immediately *before* it was set to "Auth Denied".
+  for (const patient of authDeniedPatients) {
+    let previousStage: string | null = null;
+    for (const log of logs) {
+      try {
+        const d = JSON.parse(log.data);
+        const itemId = String(d.pulse_id ?? d.item_id ?? "");
+        if (itemId !== patient.id) continue;
+        const currLabel = d.value?.label?.text ?? "";
+        const prevLabel = d.previous_value?.label?.text ?? "";
+        // Find the log entry where stage changed TO "Auth Denied"
+        if (currLabel === "Auth Denied" && prevLabel && prevLabel !== "Auth Denied") {
+          previousStage = prevLabel;
+          break;
+        }
+      } catch {
+        // skip malformed log entries
+      }
+    }
+
+    if (previousStage) {
+      patient.pipelineStage = `Auth Denied (from ${previousStage})`;
+      // Also update the route to point to the origin stage's page
+      const routeMap = STAGE_ROUTE_MAPS[INSURANCE_BOARD_ID] ?? {};
+      if (routeMap[previousStage]) {
+        patient.roleRoute = routeMap[previousStage];
+        patient.hasPage = true;
+      }
+    }
+  }
+}
+
 /**
  * Fetch all active patients across all 5 boards.
  * Returns a flat array of SystemPatient objects.
@@ -341,7 +419,10 @@ function mapToSystemPatient(item: RawItem, board: BoardDef): SystemPatient {
 export async function fetchAllPatients(): Promise<SystemPatient[]> {
   if (!hasToken()) return [];
   const results = await Promise.all(BOARDS.map(fetchBoardItems));
-  return results.flat();
+  const patients = results.flat();
+  // Patch Auth Denied patients with their real origin stage from activity logs
+  await patchAuthDeniedOrigins(patients);
+  return patients;
 }
 
 
