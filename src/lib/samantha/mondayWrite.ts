@@ -336,21 +336,13 @@ export async function sendPatientToMonday(p: Patient, context: "benefits" | "sub
   } else if (context === "authOutstanding") {
     // Auth Outstanding outcome rules (priority order):
     //   1. ANY product denied                → Stage = Auth Denied + Escalation Required
-    //   2. ANY skipped product's recheck = Not Clear
-    //                                          → Stage = Benefits / SoS + Escalation Required
-    //                                            (mirrors Benefits-page Not Clear behavior)
-    //   3. ALL served products fully resolved → Stage = Complete
-    //      (auth-valid is resolved; no-auth-needed is resolved unless
-    //       the product was sos=skip on Benefits, in which case its
-    //       sosRecheck must be Clear to count as resolved)
-    //   4. Otherwise (partial — some product
-    //      missing a result, or skipped recheck still unset)
-    //                                          → leave Stage Advancer alone
+    //   2. ALL served products fully resolved → Stage = Complete
+    //      (auth-valid or no-auth-needed count as resolved regardless
+    //       of SoS status — SoS Not Clear does NOT block completion)
+    //   3. Otherwise (partial — some product
+    //      missing a result)                 → leave Stage Advancer alone
     const anyDenied = entries.some(
       (e) => e.state?.authOutstandingResult === "denied",
-    );
-    const anyRecheckNotClear = entries.some(
-      (e) => e.state?.sos === "skip" && e.state?.sosRecheck === "not-clear",
     );
     const isProductResolved = (e: typeof entries[number]) => {
       // Products that were auth=not-required on Benefits never appear on
@@ -359,15 +351,7 @@ export async function sendPatientToMonday(p: Patient, context: "benefits" | "sub
       if (e.state?.auth === "not-required") return true;
       const r = e.state?.authOutstandingResult;
       if (r === "auth-valid") return true;
-      if (r === "no-auth-needed") {
-        // If this product was sos=skip on Benefits, the recheck must be
-        // Clear to count as resolved. Not Clear is handled by the
-        // anyRecheckNotClear branch above; unset means still pending.
-        if (e.state?.sos === "skip") {
-          return e.state?.sosRecheck === "clear";
-        }
-        return true;
-      }
+      if (r === "no-auth-needed") return true;
       return false;
     };
     const allResolved =
@@ -376,7 +360,6 @@ export async function sendPatientToMonday(p: Patient, context: "benefits" | "sub
     // Diagnostic — verify the rule sees the right per-product results.
     console.log("[mondayWrite] authOutstanding rule:", {
       anyDenied,
-      anyRecheckNotClear,
       allResolved,
       manualEscalate,
       results: entries.map((e) => ({
@@ -390,9 +373,6 @@ export async function sendPatientToMonday(p: Patient, context: "benefits" | "sub
     if (anyDenied) {
       stageWriteIndex = STAGE_INDEX.authDenied;
       escalationDecision = "required"; // forced by denial regardless of toggle
-    } else if (anyRecheckNotClear) {
-      stageWriteIndex = STAGE_INDEX.benefitsSos;
-      escalationDecision = "required"; // recheck Not Clear escalates
     } else if (allResolved) {
       stageWriteIndex = STAGE_INDEX.complete;
       // escalation follows manualEscalate (already set above)
