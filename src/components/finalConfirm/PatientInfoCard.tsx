@@ -268,6 +268,7 @@ export function PatientInfoCard({ patient, onFieldChange }: Props) {
   };
 
   // Infusion set validation: if serving requires supplies, infusion set 1 must be selected with qty
+  const isCgmOnly = patient.serving === "CGM";
   const servingRequiresInfusion = ["Insulin Pump", "Supplies Only", "Supplies + CGM", "Insulin Pump + CGM"].includes(patient.serving);
   const infSet1Missing = servingRequiresInfusion && !patient.infusionSet1;
   const infQty1Missing = servingRequiresInfusion && (!patient.qtyInf1 || patient.qtyInf1 === "0");
@@ -623,67 +624,71 @@ export function PatientInfoCard({ patient, onFieldChange }: Props) {
           />
         </div>
 
-        <div className="h-px bg-border" />
+        {!isCgmOnly && (
+          <>
+            <div className="h-px bg-border" />
 
-        {/* Infusion Sets — visually paired with their quantities */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <div className="space-y-1">
-            <InfusionSetPair
-              setLabel="Infusion Set 1"
-              setOptions={INFUSION_SET_1_OPTIONS}
-              setVal={patient.infusionSet1}
-              qtyVal={patient.qtyInf1}
-              onSetChange={(index) => {
-                onFieldChange("infusionSet1Index", index);
-                const opt = INFUSION_SET_1_OPTIONS.find((o) => o.index === index);
-                if (opt) onFieldChange("infusionSet1", opt.label);
-              }}
-              onQtyChange={(v) => onFieldChange("qtyInf1", v)}
-              hasError={infSet1Missing || infQty1Missing}
-            />
-            {servingRequiresInfusion && (infSet1Missing || infQty1Missing) && (
-              <p className="text-[11px] text-red-500 font-medium">
-                {infSet1Missing ? "Infusion set required for this serving type" : "Quantity required"}
-              </p>
-            )}
-          </div>
-          <InfusionSetPair
-            setLabel="Infusion Set 2"
-            setOptions={INFUSION_SET_2_OPTIONS}
-            setVal={patient.infusionSet2}
-            qtyVal={patient.qtyInf2}
-            onSetChange={(index) => {
-              onFieldChange("infusionSet2Index", index);
-              const opt = INFUSION_SET_2_OPTIONS.find((o) => o.index === index);
-              if (opt) onFieldChange("infusionSet2", opt.label);
-            }}
-            onQtyChange={(v) => onFieldChange("qtyInf2", v)}
-          />
-        </div>
+            {/* Infusion Sets — visually paired with their quantities */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="space-y-1">
+                <InfusionSetPair
+                  setLabel="Infusion Set 1"
+                  setOptions={INFUSION_SET_1_OPTIONS}
+                  setVal={patient.infusionSet1}
+                  qtyVal={patient.qtyInf1}
+                  onSetChange={(index) => {
+                    onFieldChange("infusionSet1Index", index);
+                    const opt = INFUSION_SET_1_OPTIONS.find((o) => o.index === index);
+                    if (opt) onFieldChange("infusionSet1", opt.label);
+                  }}
+                  onQtyChange={(v) => onFieldChange("qtyInf1", v)}
+                  hasError={infSet1Missing || infQty1Missing}
+                />
+                {servingRequiresInfusion && (infSet1Missing || infQty1Missing) && (
+                  <p className="text-[11px] text-red-500 font-medium">
+                    {infSet1Missing ? "Infusion set required for this serving type" : "Quantity required"}
+                  </p>
+                )}
+              </div>
+              <InfusionSetPair
+                setLabel="Infusion Set 2"
+                setOptions={INFUSION_SET_2_OPTIONS}
+                setVal={patient.infusionSet2}
+                qtyVal={patient.qtyInf2}
+                onSetChange={(index) => {
+                  onFieldChange("infusionSet2Index", index);
+                  const opt = INFUSION_SET_2_OPTIONS.find((o) => o.index === index);
+                  if (opt) onFieldChange("infusionSet2", opt.label);
+                }}
+                onQtyChange={(v) => onFieldChange("qtyInf2", v)}
+              />
+            </div>
 
-        {/* Monitor + Pump quantities */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-          <div>
-            <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1">Monitor Qty</p>
-            <Input
-              className="h-8 text-sm"
-              type="number"
-              value={patient.monitorQty}
-              onChange={(e) => onFieldChange("monitorQty", e.target.value)}
-              placeholder="0"
-            />
-          </div>
-          <div>
-            <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1">Pump Qty</p>
-            <Input
-              className="h-8 text-sm"
-              type="number"
-              value={patient.pumpQty}
-              onChange={(e) => onFieldChange("pumpQty", e.target.value)}
-              placeholder="0"
-            />
-          </div>
-        </div>
+            {/* Monitor + Pump quantities */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+              <div>
+                <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1">Monitor Qty</p>
+                <Input
+                  className="h-8 text-sm"
+                  type="number"
+                  value={patient.monitorQty}
+                  onChange={(e) => onFieldChange("monitorQty", e.target.value)}
+                  placeholder="0"
+                />
+              </div>
+              <div>
+                <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1">Pump Qty</p>
+                <Input
+                  className="h-8 text-sm"
+                  type="number"
+                  value={patient.pumpQty}
+                  onChange={(e) => onFieldChange("pumpQty", e.target.value)}
+                  placeholder="0"
+                />
+              </div>
+            </div>
+          </>
+        )}
       </Card>
       {/* Auth Results */}
       <Card className="p-4 space-y-4">
