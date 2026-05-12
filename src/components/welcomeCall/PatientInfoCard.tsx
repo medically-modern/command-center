@@ -316,10 +316,9 @@ export function PatientInfoCard({ patient, onFieldChange }: Props) {
           <div className="grid grid-cols-2 gap-3">
             <Field label="Deductible" value={patient.deductible} />
             <Field label="Deductible Remaining" value={patient.deductibleRemaining} />
-            <Field label="OOP Max" value={patient.oopMax} />
-            <Field label="OOP Max Remaining" value={patient.oopMaxRemaining} />
+            <Field label="Coinsurance %" value={patient.stediCoinsurance} />
           </div>
-          {!patient.deductible && !patient.deductibleRemaining && !patient.oopMax && !patient.oopMaxRemaining && (
+          {!patient.deductible && !patient.deductibleRemaining && !patient.stediCoinsurance && (
             <p className="text-sm text-muted-foreground italic">No benefits data yet.</p>
           )}
         </Card>

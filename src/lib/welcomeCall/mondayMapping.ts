@@ -85,6 +85,7 @@ export function mondayItemToPatient(item: MondayItem): Patient {
     deductibleRemaining: txt(COL.deductibleRemaining),
     oopMax: txt(COL.oopMax),
     oopMaxRemaining: txt(COL.oopMaxRemaining),
+    stediCoinsurance: txt(COL.stediCoinsurance),
     cgmLastBillDate: txt(COL.cgmLastBillDate),
     sensorsLastBillDate: txt(COL.sensorsLastBillDate),
     ipLastBillDate: txt(COL.ipLastBillDate),

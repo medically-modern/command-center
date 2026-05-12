@@ -63,6 +63,7 @@ export interface Patient {
   deductibleRemaining: string;
   oopMax: string;
   oopMaxRemaining: string;
+  stediCoinsurance: string;
   // Last bill dates (read-only)
   cgmLastBillDate: string;
   sensorsLastBillDate: string;
