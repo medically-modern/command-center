@@ -19,6 +19,7 @@ import {
   ORDER_HANDLING_OPTIONS,
   AUTH_RESULT_OPTIONS,
   formatPhone,
+  formatDateMDY,
 } from "@/lib/finalConfirm/workflow";
 import { AddressAutocomplete, type AddressResult } from "@/components/finalConfirm/AddressAutocomplete";
 import { Card } from "@/components/ui/card";
@@ -50,6 +51,7 @@ import {
   Package,
   Heart,
   ShieldCheck,
+  CalendarDays,
 } from "lucide-react";
 
 interface Props {
@@ -223,6 +225,37 @@ function InfusionSetPair({
           placeholder="0"
         />
       </div>
+    </div>
+  );
+}
+
+/** Read-only date field — renders formatted MM/DD/YYYY or hides if empty */
+function DateDisplayField({ label, dateStr }: { label: string; dateStr: string }) {
+  if (!dateStr) return null;
+  const formatted = formatDateMDY(dateStr);
+  if (!formatted) return null;
+  return (
+    <div>
+      <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">{label}</p>
+      <p className="text-sm font-medium">{formatted}</p>
+    </div>
+  );
+}
+
+/** Next order date — green if ready to order (today or past), red if future */
+function NextOrderDateField({ label, dateStr }: { label: string; dateStr: string }) {
+  if (!dateStr) return null;
+  const match = dateStr.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!match) return null;
+  const d = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const isReady = d <= today;
+  const formatted = `${String(d.getMonth() + 1).padStart(2, "0")}/${String(d.getDate()).padStart(2, "0")}/${d.getFullYear()}`;
+  return (
+    <div>
+      <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">{label}</p>
+      <p className={`text-sm font-medium ${isReady ? "text-green-600" : "text-red-600"}`}>{formatted}</p>
     </div>
   );
 }
@@ -715,6 +748,36 @@ export function PatientInfoCard({ patient, onFieldChange }: Props) {
           />
         </div>
       </Card>
+
+      {/* Last Bill Dates */}
+      {(patient.lastBillDateMonitor || patient.lastBillDateSensors || patient.lastBillDateIp || patient.lastBillDateInfusionSet || patient.lastBillDateCartridge) && (
+        <Card className="p-4 space-y-4">
+          <p className="text-xs uppercase tracking-wider text-muted-foreground font-semibold flex items-center gap-2">
+            <CalendarDays className="h-3.5 w-3.5" /> Last Bill Dates
+          </p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            <DateDisplayField label="CGM Last Bill Date" dateStr={patient.lastBillDateMonitor} />
+            <DateDisplayField label="Sensors Last Bill Date" dateStr={patient.lastBillDateSensors} />
+            <DateDisplayField label="IP Last Bill Date" dateStr={patient.lastBillDateIp} />
+            <DateDisplayField label="Infusion Set Last Bill Date" dateStr={patient.lastBillDateInfusionSet} />
+            <DateDisplayField label="Cartridge Last Bill Date" dateStr={patient.lastBillDateCartridge} />
+          </div>
+        </Card>
+      )}
+
+      {/* Next Order Dates (calculated) */}
+      {(patient.nextOrderDateIp || patient.nextOrderDateSensors || patient.nextOrderDateSupplies) && (
+        <Card className="p-4 space-y-4">
+          <p className="text-xs uppercase tracking-wider text-muted-foreground font-semibold flex items-center gap-2">
+            <CalendarDays className="h-3.5 w-3.5" /> Calculated Next Order Dates
+          </p>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <NextOrderDateField label="IP Next Order Date" dateStr={patient.nextOrderDateIp} />
+            <NextOrderDateField label="Sensors Next Order Date" dateStr={patient.nextOrderDateSensors} />
+            <NextOrderDateField label="Supplies Next Order Date" dateStr={patient.nextOrderDateSupplies} />
+          </div>
+        </Card>
+      )}
     </div>
   );
 }
