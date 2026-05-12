@@ -90,83 +90,7 @@ export function AuthOutstandingPanel({ patient, onCodeChange, onNotesChange }: P
       )}
 
 
-      {/* Same or Similar — editable per product, same options as Benefits */}
-      {dropdownsReady && visibleResolved.length > 0 && (
-        <div className="rounded-xl border-2 border-border bg-muted/10 p-4">
-          <div className="flex items-start gap-3 mb-3">
-            <div className="min-w-0">
-              <h3 className="text-sm font-semibold">Same or Similar Status</h3>
-              <p className="text-xs text-muted-foreground mt-0.5">
-                Set SoS status for each product. Same options as the Benefits tab.
-              </p>
-            </div>
-          </div>
-          <div className="space-y-3">
-            {visibleResolved.map((r) => {
-              const codeId = PRODUCT_TO_CODE_ID[r.product];
-              const meta = PRODUCT_CODES.find((c) => c.id === codeId);
-              if (!meta) return null;
-              const state = ins.codes[codeId] ?? { status: "pending" as const };
-              const sos: SosChoice = state.sos ?? "";
-              return (
-                <div key={`sos-${codeId}`} className="rounded-lg border bg-background p-3">
-                  <div className="flex items-center justify-between gap-3 mb-2">
-                    <h4 className="text-sm font-semibold">{meta.name}</h4>
-                    <span className="text-[10px] font-mono text-muted-foreground">
-                      HCPCS · {r.hcpc}
-                    </span>
-                  </div>
-                  <div>
-                    <label className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-                      Same or Similar
-                    </label>
-                    <Select
-                      value={sos || "__none__"}
-                      onValueChange={(v) => {
-                        const newSos = (v === "__none__" ? "" : v) as SosChoice;
-                        onCodeChange(codeId, newSos === "not-clear" ? { sos: newSos } : { sos: newSos, lastBillDate: "" });
-                      }}
-                    >
-                      <SelectTrigger
-                        className={cn(
-                          "mt-1 h-9 font-medium",
-                          sos === "not-clear" && "bg-warning/15 border-warning/50 text-warning-foreground",
-                          sos === "clear" && "bg-success/10 border-success/40 text-success",
-                          sos === "skip" && "bg-sky-50 border-sky-300 text-sky-800 dark:bg-sky-950/40 dark:border-sky-800 dark:text-sky-200",
-                        )}
-                      >
-                        <SelectValue placeholder="Select SoS status…" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="__none__">— Not selected —</SelectItem>
-                        <SelectItem value="clear">Clear</SelectItem>
-                        <SelectItem value="not-clear">Not Clear</SelectItem>
-                        <SelectItem value="skip">Skip (defer until auth resolved)</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  {sos === "not-clear" && (
-                    <div className="mt-3 rounded-lg border border-warning/40 bg-warning/5 p-3">
-                      <label className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-wider text-warning-foreground/80 mb-1.5">
-                        <CalendarDays className="h-3.5 w-3.5" />
-                        {meta.name} Last Bill Date
-                      </label>
-                      <Input
-                        type="date"
-                        value={state.lastBillDate ?? ""}
-                        onChange={(e) => onCodeChange(codeId, { lastBillDate: e.target.value })}
-                        className="max-w-xs h-9 bg-background border-warning/30 focus-visible:ring-warning/40"
-                      />
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
-
-      {dropdownsReady && authRequired.length === 0 && (
+            {dropdownsReady && authRequired.length === 0 && (
         <div className="rounded-lg border border-dashed bg-muted/20 p-8 text-center">
           <p className="text-sm text-muted-foreground">
             No products with auth required found.
@@ -318,6 +242,48 @@ function ProductAuthBlock({ meta, resolved, state, onChange, primaryInsurance }:
             const unitsPlaceholder = unitsPlaceholderByProduct[resolved.product] ?? "";
             return (
           <div className="grid grid-cols-1 sm:grid-cols-5 gap-3">
+            {/* Same or Similar — editable, same options as Benefits */}
+            <div className="sm:col-span-5">
+              <FieldLabel>Same or Similar</FieldLabel>
+              <Select
+                value={(state.sos as string) || "__none__"}
+                onValueChange={(v) => {
+                  const newSos = (v === "__none__" ? "" : v) as "clear" | "not-clear" | "skip" | "";
+                  onChange(newSos === "not-clear" ? { sos: newSos } : { sos: newSos, lastBillDate: "" });
+                }}
+              >
+                <SelectTrigger
+                  className={cn(
+                    "mt-1 h-9 font-medium",
+                    state.sos === "not-clear" && "bg-warning/15 border-warning/50 text-warning-foreground",
+                    state.sos === "clear" && "bg-success/10 border-success/40 text-success",
+                    state.sos === "skip" && "bg-sky-50 border-sky-300 text-sky-800 dark:bg-sky-950/40 dark:border-sky-800 dark:text-sky-200",
+                  )}
+                >
+                  <SelectValue placeholder="Select SoS status…" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none__">— Not selected —</SelectItem>
+                  <SelectItem value="clear">Clear</SelectItem>
+                  <SelectItem value="not-clear">Not Clear</SelectItem>
+                  <SelectItem value="skip">Skip (defer until auth resolved)</SelectItem>
+                </SelectContent>
+              </Select>
+              {state.sos === "not-clear" && (
+                <div className="mt-3 rounded-lg border border-warning/40 bg-warning/5 p-3">
+                  <label className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-wider text-warning-foreground/80 mb-1.5">
+                    <CalendarDays className="h-3.5 w-3.5" />
+                    {meta.name} Last Bill Date
+                  </label>
+                  <Input
+                    type="date"
+                    value={state.lastBillDate ?? ""}
+                    onChange={(e) => onChange({ lastBillDate: e.target.value })}
+                    className="max-w-xs h-9 bg-background border-warning/30 focus-visible:ring-warning/40"
+                  />
+                </div>
+              )}
+            </div>
             <div className="sm:col-span-5">
               <FieldLabel>Auth Result</FieldLabel>
               <Select
