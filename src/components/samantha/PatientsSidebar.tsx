@@ -12,7 +12,7 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
-import { Clock, Loader2, RefreshCw, Undo2, User, AlertCircle, ArrowDownAZ } from "lucide-react";
+import { AlertTriangle, Clock, Loader2, RefreshCw, Undo2, User, AlertCircle, ArrowDownAZ } from "lucide-react";
 import type { Patient } from "@/lib/samantha/workflow";
 import type { SidebarGroup as SidebarGroupType } from "@/hooks/samantha/useMondayPatients";
 import { cn } from "@/lib/utils";
@@ -104,9 +104,10 @@ export function PatientsSidebar({ patients, selectedId, onSelect, loading, error
 
   const activeLabel = GROUP_LABELS[activeGroup];
 
-  // Split patients into active vs follow-up
-  const activePatients = patients.filter((p) => p.followUp !== "Follow Up");
-  const followUpPatients = patients.filter((p) => p.followUp === "Follow Up");
+  // Split patients into active vs follow-up vs escalated
+  const escalatedPatients = patients.filter((p) => p.escalated && p.followUp !== "Follow Up");
+  const activePatients = patients.filter((p) => !p.escalated && p.followUp !== "Follow Up");
+  const followUpPatients = patients.filter((p) => p.followUp === "Follow Up" && !p.escalated);
 
   const grouped = useMemo(() => groupByInsurance(activePatients), [activePatients]);
 
@@ -271,6 +272,42 @@ export function PatientsSidebar({ patients, selectedId, onSelect, loading, error
                       </SidebarMenuButton>
                       <ClearFollowUpButton patientId={p.id} patientName={p.name} onSuccess={onRefresh} />
                     </div>
+                  </SidebarMenuItem>
+                ))}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        )}
+
+        {/* ── Escalated section (all views) ── */}
+        {escalatedPatients.length > 0 && !collapsed && (
+          <SidebarGroup>
+            <SidebarGroupLabel className="text-[10px] uppercase tracking-wider text-red-500 font-semibold flex items-center gap-1.5">
+              <AlertTriangle className="h-3 w-3" />
+              Escalated ({escalatedPatients.length})
+            </SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu>
+                {escalatedPatients.map((p) => (
+                  <SidebarMenuItem key={p.id}>
+                    <SidebarMenuButton
+                      isActive={selectedId === p.id}
+                      onClick={() => onSelect(p.id)}
+                      className={cn(
+                        "flex items-start gap-2 py-2 h-auto opacity-60",
+                        selectedId === p.id && "bg-sidebar-accent opacity-100",
+                      )}
+                    >
+                      <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0 text-red-400" />
+                      {!collapsed && (
+                        <div className="min-w-0 text-left">
+                          <p className="text-sm font-medium truncate">{p.name}</p>
+                          <p className="text-[11px] text-red-400 truncate">
+                            Escalation Required
+                          </p>
+                        </div>
+                      )}
+                    </SidebarMenuButton>
                   </SidebarMenuItem>
                 ))}
               </SidebarMenu>

@@ -12,7 +12,7 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
-import { Ban, CalendarCheck, Clock, Loader2, RefreshCw, User, AlertCircle, Search, X, Undo2 } from "lucide-react";
+import { AlertTriangle, Ban, CalendarCheck, Clock, Loader2, RefreshCw, User, AlertCircle, Search, X, Undo2 } from "lucide-react";
 import type { Patient } from "@/lib/masheke/workflow";
 import type { TabKey } from "@/hooks/masheke/useMondayPatients";
 import { cn } from "@/lib/utils";
@@ -108,10 +108,11 @@ export function PatientsSidebar({ patients, selectedId, onSelect, loading, error
   const [searchQuery, setSearchQuery] = useState("");
   const [sendingBack, setSendingBack] = useState<string | null>(null);
 
-  // Split patients into active vs blocked vs follow-up
-  const activePatients = patients.filter((p) => p.blocked !== "Blocked" && p.followUp !== "Follow up");
+  // Split patients into active vs blocked vs follow-up vs escalated
+  const escalatedPatients = patients.filter((p) => p.escalation === "Escalation Required" && p.blocked !== "Blocked" && p.followUp !== "Follow up");
+  const activePatients = patients.filter((p) => p.escalation !== "Escalation Required" && p.blocked !== "Blocked" && p.followUp !== "Follow up");
   const blockedPatients = patients.filter((p) => p.blocked === "Blocked");
-  const followUpPatients = patients.filter((p) => p.followUp === "Follow up" && p.blocked !== "Blocked");
+  const followUpPatients = patients.filter((p) => p.followUp === "Follow up" && p.blocked !== "Blocked" && p.escalation !== "Escalation Required");
 
   // Always use Eastern Time so all users see the same "today" regardless of their local timezone
   const etParts = new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());

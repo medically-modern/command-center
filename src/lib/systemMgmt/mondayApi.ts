@@ -92,6 +92,33 @@ const STAGE_ROUTE_MAPS: Record<number, Record<string, string>> = {
   18410804557: WELCOME_CALL_STAGE_ROUTES,
 };
 
+
+/**
+ * Stage Advancer text → Monday group ID, per board.
+ * Used during de-escalation to move the patient back to the correct group.
+ */
+const STAGE_GROUP_MAPS: Record<number, Record<string, string>> = {
+  // Medical Evaluation board
+  18406060017: {
+    "Evaluate MN":     "group_mm1xf2jb",  // Medical Necessity
+    "Send Request":    "group_mm1xf2jb",  // same group, sub-stage routing
+    "Confirm Receipt": "group_mm1xf2jb",
+    "Chase Clinicals": "group_mm1xf2jb",
+  },
+  // Insurance board
+  18410601299: {
+    "Benefits / SoS":    "group_mm1xr3q3",
+    "Submit Auth.":      "group_mm1x1416",
+    "Auth. Outstanding": "group_mm2v6d1z",
+    "Auth Denied":       "group_mm316hg2",
+  },
+  // Welcome Call board
+  18410804557: {
+    "Welcome Call":    "group_mm1wvq8p",
+    "Review Profile":  "group_mm1wvq8p",
+  },
+};
+
 export const BOARDS: BoardDef[] = [
   {
     boardId: 18407459988,
@@ -194,6 +221,8 @@ export interface SystemPatient {
   notes: string;
   /** Whether this patient is in an Escalation group */
   isInEscalationGroup: boolean;
+  /** Raw Stage Advancer text from Monday (e.g. "Benefits / SoS") */
+  stageAdvancerText: string;
 }
 
 // ── Fetch all patients across boards ─────────────────────────
@@ -268,8 +297,10 @@ function mapToSystemPatient(item: RawItem, board: BoardDef): SystemPatient {
   // Use Stage Advancer to determine sub-route and pipeline stage.
   // This is critical for escalation/completed groups where the group
   // itself doesn't tell us which stage the patient was in.
+  let stageAdvancerText = "";
   if (board.stageAdvancerColId) {
     const stageText = colVal(board.stageAdvancerColId);
+    stageAdvancerText = stageText;
     const routeMap = STAGE_ROUTE_MAPS[board.boardId] ?? {};
     if (stageText && routeMap[stageText]) {
       roleRoute = routeMap[stageText];
@@ -299,6 +330,7 @@ function mapToSystemPatient(item: RawItem, board: BoardDef): SystemPatient {
     daysSinceStage,
     notes,
     isInEscalationGroup,
+    stageAdvancerText,
   };
 }
 
@@ -312,13 +344,24 @@ export async function fetchAllPatients(): Promise<SystemPatient[]> {
   return results.flat();
 }
 
+
+/**
+ * Move an item to a different group on the same board.
+ */
+async function moveItemToGroup(itemId: string, groupId: string): Promise<void> {
+  await gql(
+    `mutation ($itemId: ID!, $groupId: String!) { move_item_to_group(item_id: $itemId, group_id: $groupId) { id } }`,
+    { itemId, groupId },
+  );
+}
+
 // ── Escalation write ─────────────────────────────────────────
 
 /**
  * Remove escalation from a patient (set escalation column to blank/Done).
  */
 export async function removeEscalation(
-  patient: Pick<SystemPatient, "id" | "boardId">,
+  patient: Pick<SystemPatient, "id" | "boardId" | "groupId" | "isInEscalationGroup"> & { stageAdvancerText?: string },
 ): Promise<void> {
   const board = BOARDS.find((b) => b.boardId === patient.boardId);
   if (!board?.escalationColId) {
@@ -330,6 +373,17 @@ export async function removeEscalation(
   await gql(
     `mutation { change_column_value(item_id: ${patient.id}, board_id: ${patient.boardId}, column_id: "${board.escalationColId}", value: ${JSON.stringify(value)}) { id } }`,
   );
+
+  // If patient is currently in an Escalation group, move them back to the
+  // group they were in when escalated. The Stage Advancer column tells us
+  // which bucket they came from.
+  if (patient.isInEscalationGroup && patient.stageAdvancerText) {
+    const groupMap = STAGE_GROUP_MAPS[patient.boardId];
+    const targetGroup = groupMap?.[patient.stageAdvancerText];
+    if (targetGroup) {
+      await moveItemToGroup(patient.id, targetGroup);
+    }
+  }
 }
 
 

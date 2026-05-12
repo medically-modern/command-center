@@ -12,7 +12,7 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
-import { Clock, Loader2, RefreshCw, User, AlertCircle, Undo2 } from "lucide-react";
+import { AlertTriangle, Clock, Loader2, RefreshCw, User, AlertCircle, Undo2 } from "lucide-react";
 import type { Patient } from "@/lib/welcomeCall/workflow";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
@@ -39,8 +39,9 @@ export function PatientsSidebar({ patients, selectedId, onSelect, loading, error
 
   // Split patients into active vs follow-up
   // "Done" is the text Monday returns for status index 1 (our follow-up marker)
-  const activePatients = patients.filter((p) => p.followUp !== "Done");
-  const followUpPatients = patients.filter((p) => p.followUp === "Done");
+  const escalatedPatients = patients.filter((p) => p.escalated && p.followUp !== "Done");
+  const activePatients = patients.filter((p) => !p.escalated && p.followUp !== "Done");
+  const followUpPatients = patients.filter((p) => p.followUp === "Done" && !p.escalated);
 
   return (
     <Sidebar collapsible="icon">
