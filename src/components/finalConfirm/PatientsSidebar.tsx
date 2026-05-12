@@ -12,7 +12,7 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
-import { Loader2, RefreshCw, User, AlertCircle } from "lucide-react";
+import { Loader2, RefreshCw, User, AlertCircle, Search, X} from "lucide-react";
 import type { Patient } from "@/lib/finalConfirm/workflow";
 import { cn } from "@/lib/utils";
 
@@ -27,6 +27,12 @@ interface Props {
 
 export function PatientsSidebar({ patients, selectedId, onSelect, loading, error, onRefresh }: Props) {
   const { state } = useSidebar();
+  const [searchQuery, setSearchQuery] = useState("");
+
+  const filteredBySearch = searchQuery.trim()
+    ? patients.filter((p) => p.name.toLowerCase().includes(searchQuery.trim().toLowerCase()))
+    : patients;
+
   const collapsed = state === "collapsed";
 
   return (
@@ -42,6 +48,27 @@ export function PatientsSidebar({ patients, selectedId, onSelect, loading, error
             {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
           </Button>
         </div>
+      
+        {!collapsed && (
+          <div className="relative mt-2">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search patients…"
+              className="w-full pl-8 pr-8 py-1.5 rounded-md border border-border bg-white text-gray-900 text-sm placeholder:text-gray-400 focus:outline-none focus:ring-1 focus:ring-ring"
+            />
+            {searchQuery && (
+              <button
+                onClick={() => setSearchQuery("")}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            )}
+          </div>
+        )}
       </SidebarHeader>
       <SidebarContent>
         {error && (
@@ -53,10 +80,10 @@ export function PatientsSidebar({ patients, selectedId, onSelect, loading, error
           </div>
         )}
         <SidebarGroup>
-          <SidebarGroupLabel>Patients ({patients.length})</SidebarGroupLabel>
+          <SidebarGroupLabel>Patients ({filteredBySearch.length})</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
-              {patients.map((p) => (
+              {filteredBySearch.map((p) => (
                 <SidebarMenuItem key={p.id}>
                   <SidebarMenuButton
                     isActive={selectedId === p.id}
@@ -78,7 +105,7 @@ export function PatientsSidebar({ patients, selectedId, onSelect, loading, error
                   </SidebarMenuButton>
                 </SidebarMenuItem>
               ))}
-              {!loading && patients.length === 0 && (
+              {!loading && filteredBySearch.length === 0 && (
                 <p className="text-xs text-muted-foreground px-3 py-4 text-center">
                   No patients in Final Profile Confirmation group.
                 </p>

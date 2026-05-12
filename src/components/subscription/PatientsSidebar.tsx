@@ -1,3 +1,4 @@
+import { useState } from "react";
 import {
   Sidebar,
   SidebarContent,
@@ -11,7 +12,7 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
-import { Loader2, RefreshCw, User, AlertCircle, Pause, XCircle } from "lucide-react";
+import { Loader2, RefreshCw, User, AlertCircle, Pause, XCircle, Search, X } from "lucide-react";
 import type { Patient } from "@/lib/subscription/workflow";
 import { cn } from "@/lib/utils";
 
@@ -33,12 +34,18 @@ function StatusBadge({ status }: { status: string }) {
 
 export function PatientsSidebar({ patients, selectedId, onSelect, loading, error, onRefresh }: Props) {
   const { state } = useSidebar();
+  const [searchQuery, setSearchQuery] = useState("");
+
+  const filteredBySearch = searchQuery.trim()
+    ? patients.filter((p) => p.name.toLowerCase().includes(searchQuery.trim().toLowerCase()))
+    : patients;
+
   const collapsed = state === "collapsed";
 
-  const active = patients.filter((p) => p.status === "Active");
-  const paused = patients.filter((p) => p.status === "Paused");
-  const dead = patients.filter((p) => p.status === "Dead");
-  const other = patients.filter((p) => p.status !== "Active" && p.status !== "Paused" && p.status !== "Dead");
+  const active = filteredBySearch.filter((p) => p.status === "Active");
+  const paused = filteredBySearch.filter((p) => p.status === "Paused");
+  const dead = filteredBySearch.filter((p) => p.status === "Dead");
+  const other = filteredBySearch.filter((p) => p.status !== "Active" && p.status !== "Paused" && p.status !== "Dead");
 
   const renderGroup = (label: string, list: Patient[], icon?: React.ReactNode) => {
     if (list.length === 0) return null;
@@ -106,6 +113,27 @@ export function PatientsSidebar({ patients, selectedId, onSelect, loading, error
             {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
           </Button>
         </div>
+      
+        {!collapsed && (
+          <div className="relative mt-2">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search patients…"
+              className="w-full pl-8 pr-8 py-1.5 rounded-md border border-border bg-white text-gray-900 text-sm placeholder:text-gray-400 focus:outline-none focus:ring-1 focus:ring-ring"
+            />
+            {searchQuery && (
+              <button
+                onClick={() => setSearchQuery("")}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            )}
+          </div>
+        )}
       </SidebarHeader>
 
       <SidebarContent>

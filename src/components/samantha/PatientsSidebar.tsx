@@ -12,7 +12,7 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
-import { AlertTriangle, Clock, Loader2, RefreshCw, Undo2, User, AlertCircle, ArrowDownAZ } from "lucide-react";
+import { AlertTriangle, Clock, Loader2, RefreshCw, Undo2, User, AlertCircle, ArrowDownAZ, Search, X} from "lucide-react";
 import type { Patient } from "@/lib/samantha/workflow";
 import type { SidebarGroup as SidebarGroupType } from "@/hooks/samantha/useMondayPatients";
 import { cn } from "@/lib/utils";
@@ -99,15 +99,21 @@ interface Props {
 
 export function PatientsSidebar({ patients, selectedId, onSelect, loading, error, onRefresh, activeGroup, onGroupChange, showGroupTabs = false }: Props) {
   const { state } = useSidebar();
+  const [searchQuery, setSearchQuery] = useState("");
+
+  const filteredBySearch = searchQuery.trim()
+    ? patients.filter((p) => p.name.toLowerCase().includes(searchQuery.trim().toLowerCase()))
+    : patients;
+
   const collapsed = state === "collapsed";
   const [groupByIns, setGroupByIns] = useState(false);
 
   const activeLabel = GROUP_LABELS[activeGroup];
 
   // Split patients into active vs follow-up vs escalated
-  const escalatedPatients = patients.filter((p) => p.escalated && p.followUp !== "Follow Up");
-  const activePatients = patients.filter((p) => !p.escalated && p.followUp !== "Follow Up");
-  const followUpPatients = patients.filter((p) => p.followUp === "Follow Up" && !p.escalated);
+  const escalatedPatients = filteredBySearch.filter((p) => p.escalated && p.followUp !== "Follow Up");
+  const activePatients = filteredBySearch.filter((p) => !p.escalated && p.followUp !== "Follow Up");
+  const followUpPatients = filteredBySearch.filter((p) => p.followUp === "Follow Up" && !p.escalated);
 
   const grouped = useMemo(() => groupByInsurance(activePatients), [activePatients]);
 
@@ -204,6 +210,27 @@ export function PatientsSidebar({ patients, selectedId, onSelect, loading, error
                 {tab.label}
               </button>
             ))}
+          </div>
+        )}
+      
+        {!collapsed && (
+          <div className="relative mt-2">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search patients…"
+              className="w-full pl-8 pr-8 py-1.5 rounded-md border border-border bg-white text-gray-900 text-sm placeholder:text-gray-400 focus:outline-none focus:ring-1 focus:ring-ring"
+            />
+            {searchQuery && (
+              <button
+                onClick={() => setSearchQuery("")}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            )}
           </div>
         )}
       </SidebarHeader>

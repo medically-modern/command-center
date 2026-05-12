@@ -12,7 +12,7 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
-import { Clock, Loader2, RefreshCw, User, AlertCircle, Undo2 } from "lucide-react";
+import { Clock, Loader2, RefreshCw, User, AlertCircle, Undo2, Search, X} from "lucide-react";
 import type { Patient } from "@/lib/profile/workflow";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
@@ -35,12 +35,18 @@ interface Props {
 
 export function PatientsSidebar({ patients, selectedId, onSelect, loading, error, onRefresh }: Props) {
   const { state } = useSidebar();
+  const [searchQuery, setSearchQuery] = useState("");
+
+  const filteredBySearch = searchQuery.trim()
+    ? patients.filter((p) => p.name.toLowerCase().includes(searchQuery.trim().toLowerCase()))
+    : patients;
+
   const collapsed = state === "collapsed";
 
   // Split patients into active vs follow-up
   // "Done" is the text Monday returns for status index 1 (our follow-up marker)
-  const activePatients = patients.filter((p) => p.followUp !== "Done");
-  const followUpPatients = patients.filter((p) => p.followUp === "Done");
+  const activePatients = filteredBySearch.filter((p) => p.followUp !== "Done");
+  const followUpPatients = filteredBySearch.filter((p) => p.followUp === "Done");
 
   return (
     <Sidebar collapsible="icon">
@@ -63,6 +69,27 @@ export function PatientsSidebar({ patients, selectedId, onSelect, loading, error
             {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
           </Button>
         </div>
+      
+        {!collapsed && (
+          <div className="relative mt-2">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search patients…"
+              className="w-full pl-8 pr-8 py-1.5 rounded-md border border-border bg-white text-gray-900 text-sm placeholder:text-gray-400 focus:outline-none focus:ring-1 focus:ring-ring"
+            />
+            {searchQuery && (
+              <button
+                onClick={() => setSearchQuery("")}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            )}
+          </div>
+        )}
       </SidebarHeader>
 
       <SidebarContent>
