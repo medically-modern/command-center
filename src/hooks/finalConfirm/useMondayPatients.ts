@@ -4,12 +4,47 @@ import { fetchGroupItems, fetchItemById, hasToken } from "@/lib/finalConfirm/mon
 import { mondayItemToPatient } from "@/lib/finalConfirm/mondayMapping";
 
 const POLL_MS = 30_000;
+const LS_KEY = "fc-overlays";
+
+/** Read all saved overlays from localStorage. */
+function loadOverlays(): Map<string, Partial<Patient>> {
+  try {
+    const raw = localStorage.getItem(LS_KEY);
+    if (!raw) return new Map();
+    const obj = JSON.parse(raw) as Record<string, Partial<Patient>>;
+    return new Map(Object.entries(obj));
+  } catch {
+    return new Map();
+  }
+}
+
+/** Persist the full overlay map to localStorage. */
+function persistOverlays(map: Map<string, Partial<Patient>>): void {
+  try {
+    const obj: Record<string, Partial<Patient>> = {};
+    map.forEach((v, k) => { obj[k] = v; });
+    localStorage.setItem(LS_KEY, JSON.stringify(obj));
+  } catch {
+    // Storage full or unavailable — silently ignore.
+  }
+}
+
+/** Remove one patient's overlay from localStorage. */
+function removeOverlay(id: string): void {
+  try {
+    const map = loadOverlays();
+    map.delete(id);
+    persistOverlays(map);
+  } catch {
+    // ignore
+  }
+}
 
 export function useMondayPatients(injectedPatientId?: string | null) {
   const [patients, setPatients] = useState<Patient[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const overlayRef = useRef<Map<string, Partial<Patient>>>(new Map());
+  const overlayRef = useRef<Map<string, Partial<Patient>>>(loadOverlays());
   const mountedRef = useRef(true);
 
   const refetch = useCallback(async () => {
@@ -33,19 +68,23 @@ export function useMondayPatients(injectedPatientId?: string | null) {
         const o = overlayRef.current.get(p.id);
         return o ? { ...p, ...o } : p;
       });
+      setPatients(merged);
 
+      // If a patientId was injected (deep-link), fetch that item if not already present
       if (injectedPatientId && !merged.some((p) => p.id === injectedPatientId)) {
         try {
           const item = await fetchItemById(injectedPatientId);
-          if (item) {
+          if (item && mountedRef.current) {
             const injected = mondayItemToPatient(item);
-            const o = overlayRef.current.get(injected.id);
-            merged.unshift(o ? { ...injected, ...o } : injected);
+            setPatients((prev) => {
+              if (prev.some((p) => p.id === injected.id)) return prev;
+              return [...prev, injected];
+            });
           }
-        } catch { /* ignore */ }
+        } catch (e) {
+          console.warn("[useMondayPatients] failed to fetch injected patient", e);
+        }
       }
-
-      setPatients(merged);
     } catch (e) {
       if (mountedRef.current)
         setError(e instanceof Error ? e.message : "Failed to load patients from Monday");
@@ -77,6 +116,23 @@ export function useMondayPatients(injectedPatientId?: string | null) {
 
   const clearOverlay = useCallback((id: string) => {
     overlayRef.current.delete(id);
+    removeOverlay(id);
+  }, []);
+
+  /** Persist the current overlay for a patient to localStorage. */
+  const saveOverlay = useCallback((id: string) => {
+    const overlay = overlayRef.current.get(id);
+    if (overlay) {
+      const saved = loadOverlays();
+      saved.set(id, overlay);
+      persistOverlays(saved);
+    }
+  }, []);
+
+  /** Returns true if the patient has a non-empty overlay (unsaved local edits). */
+  const hasOverlay = useCallback((id: string) => {
+    const overlay = overlayRef.current.get(id);
+    return !!overlay && Object.keys(overlay).length > 0;
   }, []);
 
   /**
@@ -101,5 +157,5 @@ export function useMondayPatients(injectedPatientId?: string | null) {
     });
   }, []);
 
-  return { patients, loading, error, refetch, update, clearOverlay, addPatient };
+  return { patients, loading, error, refetch, update, clearOverlay, saveOverlay, hasOverlay, addPatient };
 }
