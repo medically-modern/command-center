@@ -14,7 +14,7 @@ import { EscalateButton } from "@/components/subscription/EscalateButton";
 import { NotesPanel } from "@/components/subscription/NotesPanel";
 import { Button } from "@/components/ui/button";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
-import { RotateCcw, RefreshCw, ArrowLeft } from "lucide-react";
+import { RotateCcw, RefreshCw, ArrowLeft, Save } from "lucide-react";
 import { toast } from "sonner";
 import { sendPatientToMonday, sendNotesToMonday } from "@/lib/subscription/mondayWrite";
 import { validatePatientForSend } from "@/lib/subscription/workflow";
@@ -24,7 +24,7 @@ const SubscriptionPage = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const isEscalated = searchParams.get("escalated") === "1";
-  const { patients, loading, error, refetch, update, clearOverlay } = useMondayPatients(searchParams.get("patientId"));
+  const { patients, loading, error, refetch, update, clearOverlay, saveOverlay, hasOverlay } = useMondayPatients(searchParams.get("patientId"));
   const [selectedId, setSelectedId] = useState<string | null>(
     searchParams.get("patientId") ?? null,
   );
@@ -90,7 +90,7 @@ const SubscriptionPage = () => {
 
         <div className="flex-1 flex flex-col min-w-0">
           <header className={`${isEscalated ? "bg-red-700" : "bg-gradient-navy"} text-navy-foreground border-b border-sidebar-border`}>
-            <div className="px-3 sm:px-6 py-5 flex items-center justify-between gap-4 flex-wrap">
+            <div className="px-6 py-5 flex items-center justify-between gap-4 flex-wrap">
               <div className="flex items-center gap-3">
                 <SidebarTrigger className="text-navy-foreground hover:bg-white/10" />
                 <button onClick={() => navigate("/?tab=dashboard")} className="p-1.5 rounded-md hover:bg-white/10 transition-colors">
@@ -106,6 +106,17 @@ const SubscriptionPage = () => {
                 </div>
               </div>
               <div className="flex items-center gap-2">
+                <Button
+                  onClick={() => {
+                    if (!selected) return;
+                    saveOverlay(selected.id);
+                    toast.success("Progress saved — you can leave and come back");
+                  }}
+                  disabled={!selected || !hasOverlay(selected.id)}
+                  className="gap-2 bg-emerald-600 text-white hover:bg-emerald-700 shadow-elevate"
+                >
+                  <Save className="h-4 w-4" /> Save
+                </Button>
                 <Button onClick={resetForNewPatient} disabled={!selected} className="gap-2 bg-white text-navy hover:bg-white/90 shadow-elevate">
                   <RotateCcw className="h-4 w-4" /> Reset
                 </Button>
@@ -113,8 +124,8 @@ const SubscriptionPage = () => {
             </div>
           </header>
 
-          <main className="flex-1 px-3 sm:px-6 py-6 overflow-y-auto">
-            <section className="max-w-6xl xl:max-w-7xl 2xl:max-w-[1800px] mx-auto space-y-5">
+          <main className="flex-1 px-6 py-6 overflow-y-auto">
+            <section className="max-w-6xl mx-auto space-y-5">
               {!selected && (
                 <div className="rounded-xl bg-card border shadow-card p-10 text-center">
                   <p className="text-sm text-muted-foreground">

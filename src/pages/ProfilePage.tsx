@@ -18,7 +18,7 @@ import { NotesPanel } from "@/components/profile/NotesPanel";
 import { FollowUpModal } from "@/components/profile/FollowUpModal";
 import { Button } from "@/components/ui/button";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
-import { ClipboardCheck, Send, AlertTriangle, Loader2, ArrowLeft, Clock } from "lucide-react";
+import { ClipboardCheck, Send, AlertTriangle, Loader2, ArrowLeft, Clock , Save} from "lucide-react";
 import { toast } from "sonner";
 import { useNavigate, useSearchParams } from "react-router-dom";
 
@@ -26,7 +26,7 @@ const ProfilePage = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const isEscalated = searchParams.get("escalated") === "1";
-  const { patients, loading, error, refetch, updateLocal, clearOverlay, removeOverlayKeys } = useMondayPatients(searchParams.get("patientId"));
+  const { patients, loading, error, refetch, updateLocal, clearOverlay, removeOverlayKeys , saveOverlay, hasOverlay } = useMondayPatients(searchParams.get("patientId"));
   const [selectedId, setSelectedId] = useState<string | null>(
     searchParams.get("patientId") ?? null,
   );

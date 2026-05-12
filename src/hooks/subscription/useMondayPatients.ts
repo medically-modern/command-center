@@ -4,12 +4,31 @@ import { fetchGroupItems, fetchItemById, hasToken } from "@/lib/subscription/mon
 import { mondayItemToPatient } from "@/lib/subscription/mondayMapping";
 
 const POLL_MS = 30_000;
+const LS_KEY = "sub-overlays";
+
+function loadOverlays(): Map<string, Partial<Patient>> {
+  try {
+    const raw = localStorage.getItem(LS_KEY);
+    if (!raw) return new Map();
+    return new Map(Object.entries(JSON.parse(raw) as Record<string, Partial<Patient>>));
+  } catch { return new Map(); }
+}
+function persistOverlays(map: Map<string, Partial<Patient>>): void {
+  try {
+    const obj: Record<string, Partial<Patient>> = {};
+    map.forEach((v, k) => { obj[k] = v; });
+    localStorage.setItem(LS_KEY, JSON.stringify(obj));
+  } catch { /* ignore */ }
+}
+function removeOverlayFromStorage(id: string): void {
+  try { const m = loadOverlays(); m.delete(id); persistOverlays(m); } catch { /* ignore */ }
+}
 
 export function useMondayPatients(injectedPatientId?: string | null) {
   const [patients, setPatients] = useState<Patient[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const overlayRef = useRef<Map<string, Partial<Patient>>>(new Map());
+  const overlayRef = useRef<Map<string, Partial<Patient>>>(loadOverlays());
   const mountedRef = useRef(true);
 
   const refetch = useCallback(async () => {
@@ -77,7 +96,18 @@ export function useMondayPatients(injectedPatientId?: string | null) {
 
   const clearOverlay = useCallback((id: string) => {
     overlayRef.current.delete(id);
+    removeOverlayFromStorage(id);
   }, []);
 
-  return { patients, loading, error, refetch, update, clearOverlay };
+  const saveOverlay = useCallback((id: string) => {
+    const overlay = overlayRef.current.get(id);
+    if (overlay) { const m = loadOverlays(); m.set(id, overlay); persistOverlays(m); }
+  }, []);
+
+  const hasOverlay = useCallback((id: string) => {
+    const o = overlayRef.current.get(id);
+    return !!o && Object.keys(o).length > 0;
+  }, []);
+
+  return { patients, loading, error, refetch, update, clearOverlay, saveOverlay, hasOverlay };
 }

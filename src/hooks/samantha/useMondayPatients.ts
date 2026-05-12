@@ -40,6 +40,39 @@ function applyOverlay(p: Patient, o: Partial<Patient> | undefined): Patient {
 
 const POLL_MS = 30_000;
 
+const LS_KEY = "sam-overlays";
+
+function loadOverlays(): Map<string, Partial<Patient>> {
+  try {
+    const raw = localStorage.getItem(LS_KEY);
+    if (!raw) return new Map();
+    const obj = JSON.parse(raw) as Record<string, Partial<Patient>>;
+    return new Map(Object.entries(obj));
+  } catch {
+    return new Map();
+  }
+}
+
+function persistOverlays(map: Map<string, Partial<Patient>>): void {
+  try {
+    const obj: Record<string, Partial<Patient>> = {};
+    map.forEach((v, k) => { obj[k] = v; });
+    localStorage.setItem(LS_KEY, JSON.stringify(obj));
+  } catch {
+    // Storage full or unavailable
+  }
+}
+
+function removeOverlay(id: string): void {
+  try {
+    const map = loadOverlays();
+    map.delete(id);
+    persistOverlays(map);
+  } catch {
+    // ignore
+  }
+}
+
 export type SidebarGroup = "benefits" | "submitAuth" | "authOutstanding";
 
 export function useMondayPatients(activeGroup: SidebarGroup = "benefits", injectedPatientId?: string | null) {
@@ -47,7 +80,7 @@ export function useMondayPatients(activeGroup: SidebarGroup = "benefits", inject
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   // local-session overlay so UI edits persist without re-fetching from Monday
-  const overlayRef = useRef<Map<string, Partial<Patient>>>(new Map());
+  const overlayRef = useRef<Map<string, Partial<Patient>>>(loadOverlays());
 
   const mountedRef = useRef(true);
 
@@ -136,7 +169,24 @@ export function useMondayPatients(activeGroup: SidebarGroup = "benefits", inject
 
   const clearOverlay = useCallback((id: string) => {
     overlayRef.current.delete(id);
+    removeOverlay(id);
   }, []);
 
-  return { patients, loading, error, refetch, update, clearOverlay };
+
+  const saveOverlay = useCallback((id: string) => {
+    const overlay = overlayRef.current.get(id);
+    if (overlay) {
+      const saved = loadOverlays();
+      saved.set(id, overlay);
+      persistOverlays(saved);
+    }
+  }, []);
+
+  const hasOverlay = useCallback((id: string) => {
+    const overlay = overlayRef.current.get(id);
+    return !!overlay && Object.keys(overlay).length > 0;
+  }, []);
+
+
+  return { patients, loading, error, refetch, update, clearOverlay, saveOverlay, hasOverlay };
 }

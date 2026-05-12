@@ -105,5 +105,21 @@ export function useMondayPatients(injectedPatientId?: string | null) {
     [],
   );
 
-  return { patients, loading, error, refetch, updateLocal, clearOverlay, removeOverlayKeys };
+
+  const saveOverlay = useCallback((id: string) => {
+    const overlay = overlayRef.current.get(id);
+    if (overlay) {
+      const saved = loadOverlays();
+      saved.set(id, overlay);
+      persistOverlays(saved);
+    }
+  }, []);
+
+  const hasOverlay = useCallback((id: string) => {
+    const overlay = overlayRef.current.get(id);
+    return !!overlay && Object.keys(overlay).length > 0;
+  }, []);
+
+
+  return { patients, loading, error, refetch, updateLocal, clearOverlay, removeOverlayKeys, saveOverlay, hasOverlay };
 }

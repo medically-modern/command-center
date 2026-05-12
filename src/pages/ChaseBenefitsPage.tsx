@@ -19,7 +19,7 @@ import { SendToMondayButton } from "@/components/samantha/SendToMondayButton";
 import { Button } from "@/components/ui/button";
 import { EscalateButton } from "@/components/samantha/EscalateButton";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
-import { RotateCcw, Stethoscope, ArrowLeft, Zap, Clock } from "lucide-react";
+import { RotateCcw, Stethoscope, ArrowLeft, Zap, Clock , Save} from "lucide-react";
 import { resolveHcpcs } from "@/lib/samantha/hcpcRules";
 import { toast } from "sonner";
 import { sendPatientToMonday } from "@/lib/samantha/mondayWrite";
@@ -30,7 +30,7 @@ const ChaseBenefitsPage = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const isEscalated = searchParams.get("escalated") === "1";
-  const { patients, loading, error, refetch, update, clearOverlay } = useMondayPatients("benefits", searchParams.get("patientId"));
+  const { patients, loading, error, refetch, update, clearOverlay , saveOverlay, hasOverlay } = useMondayPatients("benefits", searchParams.get("patientId"));
   const [selectedId, setSelectedId] = useState<string | null>(
     searchParams.get("patientId") ?? null,
   );
@@ -127,6 +127,17 @@ const ChaseBenefitsPage = () => {
               <div className="flex items-center gap-2">
                 <Button onClick={() => setFollowUpOpen(true)} disabled={!selected} className="gap-2 bg-white/90 text-blue-700 hover:bg-white shadow-elevate">
                   <Clock className="h-4 w-4" /> Follow Up
+                </Button>
+                <Button
+                  onClick={() => {
+                    if (!selected) return;
+                    saveOverlay(selected.id);
+                    toast.success("Progress saved — you can leave and come back");
+                  }}
+                  disabled={!selected || !hasOverlay(selected.id)}
+                  className="gap-2 bg-emerald-600 text-white hover:bg-emerald-700 shadow-elevate"
+                >
+                  <Save className="h-4 w-4" /> Save
                 </Button>
                 <Button onClick={resetForNewPatient} disabled={!selected} className="gap-2 bg-white text-navy hover:bg-white/90 shadow-elevate">
                   <RotateCcw className="h-4 w-4" /> Reset

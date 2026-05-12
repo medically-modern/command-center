@@ -10,7 +10,7 @@ import { PatientProfileCard } from "@/components/masheke/PatientProfileCard";
 import { ReferralEmailPanel } from "@/components/masheke/ReferralEmailPanel";
 import { Button } from "@/components/ui/button";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
-import { RotateCcw, Stethoscope, ArrowLeft, Mail, Ban } from "lucide-react";
+import { RotateCcw, Stethoscope, ArrowLeft, Mail, Ban , Save} from "lucide-react";
 import { toast } from "sonner";
 import { clearEvalState } from "@/lib/masheke/evalState";
 import { useNavigate, useSearchParams } from "react-router-dom";
@@ -20,7 +20,7 @@ const EvaluatePage = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const isEscalated = searchParams.get("escalated") === "1";
-  const { patients, loading, error, refetch, update, clearOverlay } = useMondayPatients("evaluate", searchParams.get("patientId"));
+  const { patients, loading, error, refetch, update, clearOverlay , saveOverlay, hasOverlay } = useMondayPatients("evaluate", searchParams.get("patientId"));
   const [selectedId, setSelectedId] = useState<string | null>(
     searchParams.get("patientId") ?? null,
   );
@@ -85,6 +85,17 @@ const EvaluatePage = () => {
                 >
                   <Mail className="h-4 w-4" />
                   {referralEmailOpen ? "Hide Referral Email" : "See Referral Email"}
+                </Button>
+                <Button
+                  onClick={() => {
+                    if (!selected) return;
+                    saveOverlay(selected.id);
+                    toast.success("Progress saved — you can leave and come back");
+                  }}
+                  disabled={!selected || !hasOverlay(selected.id)}
+                  className="gap-2 bg-emerald-600 text-white hover:bg-emerald-700 shadow-elevate"
+                >
+                  <Save className="h-4 w-4" /> Save
                 </Button>
                 <Button onClick={resetForNewPatient} disabled={!selected} className="gap-2 bg-white text-navy hover:bg-white/90 shadow-elevate">
                   <RotateCcw className="h-4 w-4" /> Reset
