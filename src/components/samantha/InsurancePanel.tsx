@@ -399,10 +399,9 @@ function CodeCard({ meta, resolved, state, universalDone, onChange }: CardProps)
             onValueChange={(v) => {
               const next = (v === "__none__" ? "" : v) as AuthChoice;
               const patch: Partial<ProductCodeState> = { auth: next };
-              // When auth = not-required, auto-default SoS to Skip so the
-              // agent can defer the SoS check. They can still override to
-              // Clear or Not Clear.
-              if (next === "not-required" && sos !== "clear" && sos !== "not-clear") {
+              // When auth = not-required, auto-select SoS to Skip.
+              // The user can still override to Clear or Not Clear.
+              if (next === "not-required") {
                 patch.sos = "skip";
               }
               onChange(patch);
