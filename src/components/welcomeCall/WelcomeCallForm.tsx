@@ -5,7 +5,6 @@ import {
   INFUSION_SET_1_OPTIONS,
   INFUSION_SET_2_OPTIONS,
   SUBSCRIPTION_TYPE_OPTIONS,
-  ORDER_HANDLING_OPTIONS,
   servingIncludesCgm,
   PUMP_TYPE_OPTIONS,
   servingIncludesPump,
@@ -172,9 +171,6 @@ export function WelcomeCallForm({ patient, onFieldChange, onSendWelcomeCallText 
 
   const showCgm = cgmOverride !== null ? cgmOverride : defaultShowCgm;
   const showPump = pumpOverride !== null ? pumpOverride : defaultShowPump;
-
-  // Order handling only visible when subscription type = "Sensors & Supplies" (index 1)
-  const showOrderHandling = patient.subscriptionTypeIndex === 1;
 
   return (
     <div className="space-y-5">
@@ -440,32 +436,6 @@ export function WelcomeCallForm({ patient, onFieldChange, onSendWelcomeCallText 
             })()}
           </div>
 
-          {/* Order Handling — only if subscription type is Sensors & Supplies */}
-          {showOrderHandling && (
-            <div>
-              <label className="text-xs uppercase tracking-wider text-muted-foreground font-semibold block mb-2">
-                Order Handling
-              </label>
-              <Select
-                value={patient.orderHandlingIndex !== null ? String(patient.orderHandlingIndex) : ""}
-                onValueChange={(value) => {
-                  const option = ORDER_HANDLING_OPTIONS.find((o) => String(o.index) === value);
-                  handleSelectChange("orderHandling", option?.label || "", option?.index ?? null);
-                }}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select option" />
-                </SelectTrigger>
-                <SelectContent>
-                  {ORDER_HANDLING_OPTIONS.map((opt) => (
-                    <SelectItem key={opt.index} value={String(opt.index)}>
-                      {opt.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          )}
         </div>
 
         {/* Address — full width */}
