@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import {
   Sidebar,
   SidebarContent,
@@ -12,17 +12,32 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
-import { Clock, Loader2, RefreshCw, User, AlertCircle, Undo2, Search, X} from "lucide-react";
+import { Clock, Loader2, RefreshCw, User, AlertCircle, Undo2, Search, X, ChevronRight } from "lucide-react";
 import type { Patient } from "@/lib/profile/workflow";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { clearStatusColumn, clearDateColumn, COL } from "@/lib/profile/mondayApi";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
 
 /** Convert YYYY-MM-DD → MM/DD/YYYY */
 function fmtDate(iso: string): string {
   const [y, m, d] = iso.split("-");
   return `${m}/${d}/${y}`;
 }
+
+/** Stable ordering for referral source groups */
+const SOURCE_ORDER = [
+  "Tandem",
+  "Beta Bionics",
+  "CareCentrix",
+  "Doctor",
+  "Patient",
+  "Solace Advocates",
+];
 
 interface Props {
   patients: Patient[];
@@ -44,9 +59,43 @@ export function PatientsSidebar({ patients, selectedId, onSelect, loading, error
   const collapsed = state === "collapsed";
 
   // Split patients into active vs follow-up
-  // "Done" is the text Monday returns for status index 1 (our follow-up marker)
   const activePatients = filteredBySearch.filter((p) => p.followUp !== "Done");
   const followUpPatients = filteredBySearch.filter((p) => p.followUp === "Done");
+
+  // Group active patients by referral source
+  const groupedBySource = useMemo(() => {
+    const groups: Record<string, Patient[]> = {};
+    for (const p of activePatients) {
+      const src = p.referralSource?.trim() || "Unknown";
+      if (!groups[src]) groups[src] = [];
+      groups[src].push(p);
+    }
+    // Sort groups: known sources first in SOURCE_ORDER, then unknown/other alphabetically
+    const sorted: { source: string; patients: Patient[] }[] = [];
+    for (const src of SOURCE_ORDER) {
+      if (groups[src]) {
+        sorted.push({ source: src, patients: groups[src] });
+        delete groups[src];
+      }
+    }
+    // Remaining groups (unknown or new sources) sorted alphabetically
+    for (const src of Object.keys(groups).sort()) {
+      sorted.push({ source: src, patients: groups[src] });
+    }
+    return sorted;
+  }, [activePatients]);
+
+  // Track which groups are collapsed (all open by default)
+  const [closedGroups, setClosedGroups] = useState<Set<string>>(new Set());
+
+  const toggleGroup = (source: string) => {
+    setClosedGroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(source)) next.delete(source);
+      else next.add(source);
+      return next;
+    });
+  };
 
   return (
     <Sidebar collapsible="icon">
@@ -69,7 +118,7 @@ export function PatientsSidebar({ patients, selectedId, onSelect, loading, error
             {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
           </Button>
         </div>
-      
+
         {!collapsed && (
           <div className="relative mt-2">
             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
@@ -100,43 +149,60 @@ export function PatientsSidebar({ patients, selectedId, onSelect, loading, error
           </div>
         )}
 
-        {/* Active patients */}
-        <SidebarGroup>
-          {!collapsed && (
-            <SidebarGroupLabel className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
-              Active ({activePatients.length})
-            </SidebarGroupLabel>
-          )}
-          <SidebarGroupContent>
-            <SidebarMenu>
-              {activePatients.map((p) => (
-                <SidebarMenuItem key={p.id}>
-                  <SidebarMenuButton
-                    isActive={selectedId === p.id}
-                    onClick={() => onSelect(p.id)}
-                    className={cn(
-                      "flex items-start gap-2 py-2 h-auto",
-                      selectedId === p.id && "bg-sidebar-accent",
-                    )}
-                  >
-                    <User className="h-4 w-4 mt-0.5 shrink-0" />
-                    {!collapsed && (
-                      <div className="min-w-0 text-left">
-                        <p className="text-sm font-medium truncate">{p.name}</p>
-                        <p className="text-[11px] text-muted-foreground truncate">
-                          {p.dateOfIntake || "—"}
-                        </p>
-                      </div>
-                    )}
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              ))}
-              {!loading && activePatients.length === 0 && !error && !collapsed && (
-                <p className="px-3 py-4 text-xs text-muted-foreground">No active patients.</p>
+        {/* Active patients grouped by referral source */}
+        {groupedBySource.map(({ source, patients: groupPatients }) => (
+          <Collapsible
+            key={source}
+            open={!closedGroups.has(source)}
+            onOpenChange={() => toggleGroup(source)}
+          >
+            <SidebarGroup>
+              {!collapsed && (
+                <CollapsibleTrigger asChild>
+                  <SidebarGroupLabel className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold cursor-pointer hover:text-foreground transition-colors flex items-center gap-1.5">
+                    <ChevronRight className={cn(
+                      "h-3 w-3 transition-transform duration-200",
+                      !closedGroups.has(source) && "rotate-90",
+                    )} />
+                    {source} ({groupPatients.length})
+                  </SidebarGroupLabel>
+                </CollapsibleTrigger>
               )}
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
+              <CollapsibleContent>
+                <SidebarGroupContent>
+                  <SidebarMenu>
+                    {groupPatients.map((p) => (
+                      <SidebarMenuItem key={p.id}>
+                        <SidebarMenuButton
+                          isActive={selectedId === p.id}
+                          onClick={() => onSelect(p.id)}
+                          className={cn(
+                            "flex items-start gap-2 py-2 h-auto",
+                            selectedId === p.id && "bg-sidebar-accent",
+                          )}
+                        >
+                          <User className="h-4 w-4 mt-0.5 shrink-0" />
+                          {!collapsed && (
+                            <div className="min-w-0 text-left">
+                              <p className="text-sm font-medium truncate">{p.name}</p>
+                              <p className="text-[11px] text-muted-foreground truncate">
+                                {p.dateOfIntake || "—"}
+                              </p>
+                            </div>
+                          )}
+                        </SidebarMenuButton>
+                      </SidebarMenuItem>
+                    ))}
+                  </SidebarMenu>
+                </SidebarGroupContent>
+              </CollapsibleContent>
+            </SidebarGroup>
+          </Collapsible>
+        ))}
+
+        {!loading && activePatients.length === 0 && !error && !collapsed && (
+          <p className="px-3 py-4 text-xs text-muted-foreground">No active patients.</p>
+        )}
 
         {/* Follow Up section */}
         {followUpPatients.length > 0 && !collapsed && (

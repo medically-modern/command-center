@@ -240,6 +240,16 @@ export async function fetchGroupItems(
   return firstPage;
 }
 
+/** Move an item to a different group on the same board. */
+export async function moveItemToGroup(itemId: string, groupId: string): Promise<void> {
+  const query = `
+    mutation ($itemId: ID!, $groupId: String!) {
+      move_item_to_group(item_id: $itemId, group_id: $groupId) { id }
+    }
+  `;
+  await gql(query, { itemId, groupId });
+}
+
 /** Write a status column by index. */
 export async function writeStatusIndex(itemId: string, columnId: string, index: number): Promise<void> {
   const query = `

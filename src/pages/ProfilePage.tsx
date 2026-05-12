@@ -3,7 +3,7 @@
  */
 import { useEffect, useMemo, useState, useCallback } from "react";
 import { useMondayPatients } from "@/hooks/profile/useMondayPatients";
-import { fetchClinicLabels, createClinicLabel } from "@/lib/profile/mondayApi";
+import { fetchClinicLabels, createClinicLabel, moveItemToGroup, GROUPS } from "@/lib/profile/mondayApi";
 import { sendPatientToMonday } from "@/lib/profile/mondayWrite";
 import { writeText, COL } from "@/lib/profile/mondayApi";
 import type { Patient } from "@/lib/profile/workflow";
@@ -18,7 +18,7 @@ import { NotesPanel } from "@/components/profile/NotesPanel";
 import { FollowUpModal } from "@/components/profile/FollowUpModal";
 import { Button } from "@/components/ui/button";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
-import { ClipboardCheck, Send, AlertTriangle, Loader2, ArrowLeft, Clock , Save} from "lucide-react";
+import { ClipboardCheck, Send, AlertTriangle, Loader2, ArrowLeft, Clock, Save, Ban } from "lucide-react";
 import { toast } from "sonner";
 import { useNavigate, useSearchParams } from "react-router-dom";
 
@@ -35,6 +35,7 @@ const ProfilePage = () => {
   const [selectedClinicId, setSelectedClinicId] = useState<number | null>(null);
   const [referralEmailOpen, setReferralEmailOpen] = useState(false);
   const [followUpOpen, setFollowUpOpen] = useState(false);
+  const [stuckSending, setStuckSending] = useState(false);
 
   useEffect(() => {
     fetchClinicLabels().then(setClinicLabels).catch(console.error);
@@ -95,6 +96,25 @@ const ProfilePage = () => {
       });
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const handleStuck = async () => {
+    if (!selected) return;
+    setStuckSending(true);
+    try {
+      await moveItemToGroup(selected.id, GROUPS.stuck);
+      toast.success(`${selected.name} moved to Stuck`);
+      // Select next patient or clear selection
+      const remaining = patients.filter((p) => p.id !== selected.id);
+      setSelectedId(remaining.length > 0 ? remaining[0].id : null);
+      setTimeout(refetch, 1500);
+    } catch (e) {
+      toast.error("Failed to move to Stuck", {
+        description: e instanceof Error ? e.message : String(e),
+      });
+    } finally {
+      setStuckSending(false);
     }
   };
 
@@ -218,8 +238,17 @@ const ProfilePage = () => {
                       <div className="flex gap-3">
                         <Button
                           variant="outline"
+                          onClick={handleStuck}
+                          disabled={stuckSending || submitting}
+                          className="gap-2 border-orange-300 text-orange-700 hover:bg-orange-100 hover:text-orange-800"
+                        >
+                          {stuckSending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Ban className="h-4 w-4" />}
+                          Stuck
+                        </Button>
+                        <Button
+                          variant="outline"
                           onClick={() => handleSubmit("needsInfo")}
-                          disabled={submitting}
+                          disabled={submitting || stuckSending}
                           className="gap-2 border-blue-300 text-blue-700 hover:bg-purple-100 hover:text-blue-700"
                         >
                           {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <AlertTriangle className="h-4 w-4" />}
@@ -227,7 +256,7 @@ const ProfilePage = () => {
                         </Button>
                         <Button
                           onClick={() => handleSubmit("advance")}
-                          disabled={submitting}
+                          disabled={submitting || stuckSending}
                           className="gap-2 bg-green-600 hover:bg-green-700 text-white shadow-elevate"
                         >
                           {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
