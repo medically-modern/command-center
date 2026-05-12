@@ -317,8 +317,9 @@ export function PatientInfoCard({ patient, onFieldChange }: Props) {
             <Field label="Deductible" value={patient.deductible} />
             <Field label="Deductible Remaining" value={patient.deductibleRemaining} />
             <Field label="Coinsurance %" value={patient.stediCoinsurance} />
+            <Field label="OOP Max Remaining" value={patient.oopMaxRemaining} />
           </div>
-          {!patient.deductible && !patient.deductibleRemaining && !patient.stediCoinsurance && (
+          {!patient.deductible && !patient.deductibleRemaining && !patient.stediCoinsurance && !patient.oopMaxRemaining && (
             <p className="text-sm text-muted-foreground italic">No benefits data yet.</p>
           )}
         </Card>
