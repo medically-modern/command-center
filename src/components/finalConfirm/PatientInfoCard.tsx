@@ -360,9 +360,13 @@ export function PatientInfoCard({ patient, onFieldChange }: Props) {
     <div className="space-y-4">
       {/* Patient name + phone header */}
       <Card className="p-4 flex items-center justify-between gap-4">
-        <div>
-          <p className="text-xs uppercase tracking-wider text-muted-foreground font-semibold mb-1">Patient Name</p>
-          <p className="text-lg font-semibold">{patient.name}</p>
+        <div className="flex-1 min-w-0">
+          <EditableTextField
+            label="Patient Name"
+            value={patient.name}
+            onChange={(v) => onFieldChange("name", v)}
+            icon={<User className="h-4 w-4" />}
+          />
         </div>
         {patient.phone && (
           <div className="text-right">
@@ -405,7 +409,11 @@ export function PatientInfoCard({ patient, onFieldChange }: Props) {
             icon={<User className="h-4 w-4" />}
             options={GENDER_OPTIONS}
             value={patient.gender}
-            onChange={(index) => onFieldChange("genderIndex", index)}
+            onChange={(index) => {
+              onFieldChange("genderIndex", index);
+              const opt = GENDER_OPTIONS.find((o) => o.index === index);
+              if (opt) onFieldChange("gender", opt.label);
+            }}
           />
           {/* Referral fields — read-only display */}
           <div className="flex items-start gap-2 min-w-0 rounded-lg p-1.5 -m-1.5">
@@ -584,7 +592,7 @@ export function PatientInfoCard({ patient, onFieldChange }: Props) {
             const clinicAddr = patient.clinicAddressEdited ?? patient.clinicAddress;
             const isEmpty = !clinicAddr;
             return (
-              <div className={cn("flex items-start gap-2 min-w-0 rounded-lg p-1.5 -m-1.5 transition-colors", isEmpty && "bg-red-50 dark:bg-red-950/20 ring-1 ring-red-200 dark:ring-red-800/40")}>
+              <div className={cn("flex items-start gap-2 min-w-0 rounded-lg p-1.5 mt-2 transition-colors", isEmpty && "bg-red-50 dark:bg-red-950/20 ring-1 ring-red-200 dark:ring-red-800/40")}>
                 <div className={cn("h-8 w-8 rounded-md flex items-center justify-center shrink-0", isEmpty ? "bg-red-100 dark:bg-red-900/30 text-red-500" : "bg-muted text-muted-foreground")}>
                   <MapPin className="h-4 w-4" />
                 </div>
