@@ -285,29 +285,41 @@ export function WelcomeCallForm({ patient, onFieldChange, onSendWelcomeCallText 
             )}
           </div>
 
-          {/* Pump Type — editable dropdown */}
-          <div className="mb-5">
-            <label className="text-xs uppercase tracking-wider text-muted-foreground font-semibold block mb-1">
-              Pump Type
-            </label>
-            <Select
-              value={patient.pumpTypeIndex !== null ? String(patient.pumpTypeIndex) : ""}
-              onValueChange={(value) => {
-                const option = PUMP_TYPE_OPTIONS.find((o) => String(o.index) === value);
-                handleSelectChange("pumpType", option?.label || "", option?.index ?? null);
-              }}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Select pump type" />
-              </SelectTrigger>
-              <SelectContent>
-                {PUMP_TYPE_OPTIONS.map((opt) => (
-                  <SelectItem key={opt.index} value={String(opt.index)}>
-                    {opt.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+          {/* Pump Type + Pump Qty */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 mb-5">
+            <div>
+              <label className="text-xs uppercase tracking-wider text-muted-foreground font-semibold block mb-1">
+                Pump Type
+              </label>
+              <Select
+                value={patient.pumpTypeIndex !== null ? String(patient.pumpTypeIndex) : ""}
+                onValueChange={(value) => {
+                  const option = PUMP_TYPE_OPTIONS.find((o) => String(o.index) === value);
+                  handleSelectChange("pumpType", option?.label || "", option?.index ?? null);
+                }}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select pump type" />
+                </SelectTrigger>
+                <SelectContent>
+                  {PUMP_TYPE_OPTIONS.map((opt) => (
+                    <SelectItem key={opt.index} value={String(opt.index)}>
+                      {opt.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div>
+              <label className="text-xs uppercase tracking-wider text-muted-foreground font-semibold block mb-1">
+                Pump Qty
+              </label>
+              <QtySelect
+                value={patient.pumpQty}
+                onChange={(val) => onFieldChange("pumpQty", val)}
+              />
+            </div>
           </div>
 
           {/* Infusion Set pairs */}

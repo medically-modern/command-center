@@ -100,6 +100,14 @@ export async function sendPatientToMonday(p: Patient): Promise<void> {
     tasks.push({ label: "Address", columnId: COL.address, fn: () => writeLocation(p.id, COL.address, p.addressEdited!, lat, lng) });
   }
 
+  // Next order dates (only if edited)
+  if (p.ipNextOrderDateEdited !== null && p.ipNextOrderDateEdited !== "")
+    tasks.push({ label: "IP Next Order Date", columnId: COL.ipNextOrderDate, fn: () => writeDate(p.id, COL.ipNextOrderDate, p.ipNextOrderDateEdited!) });
+  if (p.sensorsNextOrderDateEdited !== null && p.sensorsNextOrderDateEdited !== "")
+    tasks.push({ label: "Sensors Next Order Date", columnId: COL.sensorsNextOrderDate, fn: () => writeDate(p.id, COL.sensorsNextOrderDate, p.sensorsNextOrderDateEdited!) });
+  if (p.suppliesNextOrderDateEdited !== null && p.suppliesNextOrderDateEdited !== "")
+    tasks.push({ label: "Supplies Next Order Date", columnId: COL.suppliesNextOrderDate, fn: () => writeDate(p.id, COL.suppliesNextOrderDate, p.suppliesNextOrderDateEdited!) });
+
   // Notes
   if (typeof p.notes === "string" && p.notes.trim() !== "") {
     tasks.push({ label: "Notes", columnId: COL.notes, fn: () => writeLongText(p.id, COL.notes, p.notes) });

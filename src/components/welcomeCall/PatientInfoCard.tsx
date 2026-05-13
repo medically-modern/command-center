@@ -75,24 +75,64 @@ function OrderDateField({ label, dateStr }: { label: string; dateStr: string }) 
   );
 }
 
-function NextOrderDateField({ label, dateStr }: { label: string; dateStr: string }) {
-  if (!dateStr) return null;
-  const match = dateStr.match(/^(\d{4})-(\d{2})-(\d{2})/);
+function NextOrderDateField({
+  label,
+  dateStr,
+  editedDateStr,
+  editedField,
+  onFieldChange,
+}: {
+  label: string;
+  dateStr: string;
+  editedDateStr?: string | null;
+  editedField?: keyof Patient;
+  onFieldChange?: (field: keyof Patient, value: string | number | null) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const effectiveDate = editedDateStr ?? dateStr;
+  if (!effectiveDate) return null;
+  const match = effectiveDate.match(/^(\d{4})-(\d{2})-(\d{2})/);
   if (!match) return null;
   const d = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
   const today = new Date();
   today.setHours(0, 0, 0, 0);
-  // Green if today or earlier (ready to order), red if future (not yet)
   const isReady = d <= today;
   const formatted = `${String(d.getMonth() + 1).padStart(2, "0")}/${String(d.getDate()).padStart(2, "0")}/${d.getFullYear()}`;
+  const isEdited = editedDateStr !== null && editedDateStr !== undefined && editedDateStr !== dateStr;
+
   return (
     <div>
       <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
         {label}
       </p>
-      <p className={`text-sm font-medium ${isReady ? "text-green-600" : "text-red-600"}`}>
-        {formatted}
-      </p>
+      {editing && editedField && onFieldChange ? (
+        <Input
+          type="date"
+          className="h-8 text-sm w-44"
+          value={editedDateStr ?? dateStr}
+          onChange={(e) => onFieldChange(editedField, e.target.value)}
+          onBlur={() => setEditing(false)}
+          autoFocus
+        />
+      ) : (
+        <div className="flex items-center gap-1.5">
+          <p className={`text-sm font-medium ${isReady ? "text-green-600" : "text-red-600"}`}>
+            {formatted}
+          </p>
+          {editedField && onFieldChange && (
+            <button
+              onClick={() => setEditing(true)}
+              className="p-0.5 rounded hover:bg-muted/60 text-muted-foreground hover:text-foreground transition-colors"
+              title={`Edit ${label}`}
+            >
+              <Pencil className="h-3 w-3" />
+            </button>
+          )}
+        </div>
+      )}
+      {isEdited && (
+        <p className="text-[10px] text-amber-600 mt-0.5">edited</p>
+      )}
     </div>
   );
 }
@@ -295,16 +335,35 @@ export function PatientInfoCard({ patient, onFieldChange }: Props) {
         </Card>
       </div>
 
-      {/* Subscription & Logistics — Next Order Dates */}
-      {(patient.ipNextOrderDate || patient.sensorsNextOrderDate || patient.suppliesNextOrderDate) && (
+      {/* Subscription & Logistics — Next Order Dates (editable) */}
+      {(patient.ipNextOrderDate || patient.sensorsNextOrderDate || patient.suppliesNextOrderDate ||
+        patient.ipNextOrderDateEdited || patient.sensorsNextOrderDateEdited || patient.suppliesNextOrderDateEdited) && (
         <Card className="p-4">
           <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-3">
             Subscription and Logistics
           </p>
           <div className="grid grid-cols-3 gap-3">
-            <NextOrderDateField label="IP Next Order Date" dateStr={patient.ipNextOrderDate} />
-            <NextOrderDateField label="Sensors Next Order Date" dateStr={patient.sensorsNextOrderDate} />
-            <NextOrderDateField label="Supplies Next Order Date" dateStr={patient.suppliesNextOrderDate} />
+            <NextOrderDateField
+              label="IP Next Order Date"
+              dateStr={patient.ipNextOrderDate}
+              editedDateStr={patient.ipNextOrderDateEdited}
+              editedField="ipNextOrderDateEdited"
+              onFieldChange={onFieldChange}
+            />
+            <NextOrderDateField
+              label="Sensors Next Order Date"
+              dateStr={patient.sensorsNextOrderDate}
+              editedDateStr={patient.sensorsNextOrderDateEdited}
+              editedField="sensorsNextOrderDateEdited"
+              onFieldChange={onFieldChange}
+            />
+            <NextOrderDateField
+              label="Supplies Next Order Date"
+              dateStr={patient.suppliesNextOrderDate}
+              editedDateStr={patient.suppliesNextOrderDateEdited}
+              editedField="suppliesNextOrderDateEdited"
+              onFieldChange={onFieldChange}
+            />
           </div>
         </Card>
       )}

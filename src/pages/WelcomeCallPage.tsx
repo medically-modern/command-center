@@ -83,6 +83,9 @@ const WelcomeCallPage = () => {
       addressEdited: null,
       addressLat: null,
       addressLng: null,
+      ipNextOrderDateEdited: null,
+      sensorsNextOrderDateEdited: null,
+      suppliesNextOrderDateEdited: null,
       escalated: false,
     } as Partial<Patient>);
     toast.success("Cleared local edits — refetching from Monday");

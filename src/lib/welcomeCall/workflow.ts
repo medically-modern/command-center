@@ -70,10 +70,14 @@ export interface Patient {
   ipLastBillDate: string;
   infusionSetLastBillDate: string;
   cartridgeLastBillDate: string;
-  // Next order dates (read-only)
+  // Next order dates
   ipNextOrderDate: string;
   sensorsNextOrderDate: string;
   suppliesNextOrderDate: string;
+  // Editable order date overrides (YYYY-MM-DD or null if untouched)
+  ipNextOrderDateEdited: string | null;
+  sensorsNextOrderDateEdited: string | null;
+  suppliesNextOrderDateEdited: string | null;
   // End-of-call decision: index 1 = Advance, index 2 = Don't Advance
   advanceDecision: string;
   advanceDecisionIndex: number | null;
