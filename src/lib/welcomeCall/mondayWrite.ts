@@ -1,4 +1,4 @@
-import { writeStatusIndex, writeNumber, writeLocation, writeText, writeLongText, writeDate, COL } from "./mondayApi";
+import { writeStatusIndex, writeNumber, writeLocation, writeText, writeLongText, writeDate, writePhone, COL } from "./mondayApi";
 import type { Patient } from "./workflow";
 
 const MAX_RETRIES = 2;
@@ -38,25 +38,7 @@ export async function sendPatientToMonday(p: Patient): Promise<void> {
     tasks.push({
       label: "Phone",
       columnId: COL.phone,
-      fn: () => fetch("https://api.monday.com/v2", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: (import.meta.env.VITE_MONDAY_API_TOKEN as string) ?? "",
-          "API-Version": "2024-10",
-        },
-        body: JSON.stringify({
-          query: `mutation ($boardId: ID!, $itemId: ID!, $columnId: String!, $value: JSON!) {
-            change_column_value(board_id: $boardId, item_id: $itemId, column_id: $columnId, value: $value) { id }
-          }`,
-          variables: {
-            boardId: 18410804557,
-            itemId: p.id,
-            columnId: COL.phone,
-            value: JSON.stringify({ phone: p.phoneEdited, countryShortName: "US" }),
-          },
-        }),
-      }),
+      fn: () => writePhone(p.id, COL.phone, p.phoneEdited!),
     });
   }
 

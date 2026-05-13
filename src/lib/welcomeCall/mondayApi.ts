@@ -324,6 +324,23 @@ export async function writeDate(itemId: string, columnId: string, date: string):
 }
 
 /**
+ * Write a phone column.
+ */
+export async function writePhone(itemId: string, columnId: string, phone: string, countryShortName = "US"): Promise<void> {
+  const query = `
+    mutation ($boardId: ID!, $itemId: ID!, $columnId: String!, $value: JSON!) {
+      change_column_value(board_id: $boardId, item_id: $itemId, column_id: $columnId, value: $value) { id }
+    }
+  `;
+  await gql(query, {
+    boardId: BOARD_ID,
+    itemId,
+    columnId,
+    value: JSON.stringify({ phone, countryShortName }),
+  });
+}
+
+/**
  * Clear a status column (set to empty / no label).
  */
 export async function clearStatusColumn(itemId: string, columnId: string): Promise<void> {
