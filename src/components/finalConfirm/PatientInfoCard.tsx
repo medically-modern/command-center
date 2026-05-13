@@ -16,6 +16,7 @@ import {
   INFUSION_SET_1_OPTIONS,
   INFUSION_SET_2_OPTIONS,
   SUBSCRIPTION_TYPE_OPTIONS,
+  ORDER_HANDLING_OPTIONS,
   AUTH_RESULT_OPTIONS,
   formatPhone,
   formatDateMDY,
@@ -701,7 +702,7 @@ export function PatientInfoCard({ patient, onFieldChange }: Props) {
 
         <div className="h-px bg-border" />
 
-        {/* Subscription Type */}
+        {/* Subscription + Order Handling */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <SelectField
             label="Subscription Type"
@@ -711,6 +712,16 @@ export function PatientInfoCard({ patient, onFieldChange }: Props) {
               onFieldChange("subscriptionTypeIndex", index);
               const opt = SUBSCRIPTION_TYPE_OPTIONS.find((o) => o.index === index);
               if (opt) onFieldChange("subscriptionType", opt.label);
+            }}
+          />
+          <SelectField
+            label="Order Handling"
+            options={ORDER_HANDLING_OPTIONS}
+            value={patient.orderHandling}
+            onChange={(index) => {
+              onFieldChange("orderHandlingIndex", index);
+              const opt = ORDER_HANDLING_OPTIONS.find((o) => o.index === index);
+              if (opt) onFieldChange("orderHandling", opt.label);
             }}
           />
         </div>
