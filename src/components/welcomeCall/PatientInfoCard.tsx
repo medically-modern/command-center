@@ -149,18 +149,16 @@ function PhoneField({
   onFieldChange?: (field: keyof Patient, value: string | number | null) => void;
   onSavePhone?: (phone: string) => Promise<void>;
 }) {
-  const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
-  const displayPhone = phoneEdited ?? phone;
-  const isEdited = phoneEdited !== null && phoneEdited !== phone;
+  const currentValue = phoneEdited ?? phone;
 
   if (!phone && !phoneEdited) return null;
 
   const handleSave = async () => {
-    if (!isEdited || !onSavePhone || !phoneEdited) return;
+    if (!currentValue || !onSavePhone) return;
     setSaving(true);
     try {
-      await onSavePhone(phoneEdited);
+      await onSavePhone(currentValue);
     } finally {
       setSaving(false);
     }
@@ -171,44 +169,24 @@ function PhoneField({
       <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1">
         Phone
       </p>
-      {editing ? (
+      <div className="flex items-center justify-end gap-1.5">
         <Input
-          className="h-9 text-sm font-semibold w-44 ml-auto"
-          value={phoneEdited ?? phone}
+          className="h-9 text-sm font-semibold w-44"
+          value={currentValue}
           onChange={(e) => onFieldChange?.("phoneEdited", e.target.value)}
-          onBlur={() => setEditing(false)}
-          autoFocus
           placeholder="(555) 555-5555"
         />
-      ) : (
-        <div className="flex items-center justify-end gap-1.5">
-          <a href={`tel:${displayPhone}`} className="text-lg font-semibold text-primary hover:underline">
-            {formatPhone(displayPhone)}
-          </a>
-          <button
-            onClick={() => setEditing(true)}
-            className="p-1 rounded hover:bg-muted/60 text-muted-foreground hover:text-foreground transition-colors"
-            title="Edit phone number"
-          >
-            <Pencil className="h-3.5 w-3.5" />
-          </button>
-          {isEdited && (
-            <button
-              onClick={handleSave}
-              disabled={saving}
-              className="p-1 rounded bg-emerald-100 hover:bg-emerald-200 text-emerald-700 border border-emerald-300 transition-colors disabled:opacity-50"
-              title="Save phone to Monday"
-            >
-              {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
-            </button>
-          )}
-        </div>
-      )}
+        <button
+          onClick={handleSave}
+          disabled={saving}
+          className="p-1.5 rounded bg-emerald-100 hover:bg-emerald-200 text-emerald-700 border border-emerald-300 transition-colors disabled:opacity-50"
+          title="Save phone to Monday"
+        >
+          {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+        </button>
+      </div>
       {saving && (
         <p className="text-[10px] text-blue-600 mt-0.5">saving to Monday…</p>
-      )}
-      {!saving && isEdited && (
-        <p className="text-[10px] text-amber-600 mt-0.5">edited</p>
       )}
     </div>
   );
