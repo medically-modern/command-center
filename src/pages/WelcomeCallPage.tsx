@@ -18,7 +18,7 @@ import { Button } from "@/components/ui/button";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { RotateCcw, ClipboardCheck, ArrowLeft , Save} from "lucide-react";
 import { toast } from "sonner";
-import { sendPatientToMonday, sendWelcomeCallTextToMonday, sendNotesToMonday } from "@/lib/welcomeCall/mondayWrite";
+import { sendPatientToMonday, sendWelcomeCallTextToMonday, sendNotesToMonday, sendPhoneToMonday } from "@/lib/welcomeCall/mondayWrite";
 import { validatePatientForSend } from "@/lib/welcomeCall/workflow";
 import { useNavigate, useSearchParams } from "react-router-dom";
 
@@ -194,7 +194,11 @@ const WelcomeCallPage = () => {
 
               {selected && (
                 <>
-                  <PatientInfoCard patient={selected} onFieldChange={handleFieldChange} />
+                  <PatientInfoCard
+                    patient={selected}
+                    onFieldChange={handleFieldChange}
+                    onSavePhone={(phone) => sendPhoneToMonday(selected.id, phone)}
+                  />
                   <WelcomeCallForm patient={selected} onFieldChange={handleFieldChange} onSendWelcomeCallText={handleSendWelcomeCallText} />
                   <NotesPanel
                     notes={selected.notes}

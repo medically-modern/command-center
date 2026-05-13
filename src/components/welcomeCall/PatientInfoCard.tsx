@@ -3,7 +3,7 @@ import type { Patient } from "@/lib/welcomeCall/workflow";
 import { SECONDARY_INSURANCE_OPTIONS, formatPhone, formatDateMDY, isCrossSell } from "@/lib/welcomeCall/workflow";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Pencil } from "lucide-react";
+import { Pencil, Check, Loader2 } from "lucide-react";
 import {
   Select,
   SelectContent,
@@ -15,6 +15,7 @@ import {
 interface Props {
   patient: Patient;
   onFieldChange?: (field: keyof Patient, value: string | number | null) => void;
+  onSavePhone?: (phone: string) => Promise<void>;
 }
 
 function Field({ label, value }: { label: string; value: string }) {
@@ -141,15 +142,29 @@ function PhoneField({
   phone,
   phoneEdited,
   onFieldChange,
+  onSavePhone,
 }: {
   phone: string;
   phoneEdited: string | null;
   onFieldChange?: (field: keyof Patient, value: string | number | null) => void;
+  onSavePhone?: (phone: string) => Promise<void>;
 }) {
   const [editing, setEditing] = useState(false);
+  const [saving, setSaving] = useState(false);
   const displayPhone = phoneEdited ?? phone;
+  const isEdited = phoneEdited !== null && phoneEdited !== phone;
 
   if (!phone && !phoneEdited) return null;
+
+  const handleSave = async () => {
+    if (!isEdited || !onSavePhone || !phoneEdited) return;
+    setSaving(true);
+    try {
+      await onSavePhone(phoneEdited);
+    } finally {
+      setSaving(false);
+    }
+  };
 
   return (
     <div className="text-right">
@@ -177,16 +192,29 @@ function PhoneField({
           >
             <Pencil className="h-3.5 w-3.5" />
           </button>
+          {isEdited && (
+            <button
+              onClick={handleSave}
+              disabled={saving}
+              className="p-1 rounded bg-emerald-100 hover:bg-emerald-200 text-emerald-700 border border-emerald-300 transition-colors disabled:opacity-50"
+              title="Save phone to Monday"
+            >
+              {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
+            </button>
+          )}
         </div>
       )}
-      {phoneEdited !== null && phoneEdited !== phone && (
+      {saving && (
+        <p className="text-[10px] text-blue-600 mt-0.5">saving to Monday…</p>
+      )}
+      {!saving && isEdited && (
         <p className="text-[10px] text-amber-600 mt-0.5">edited</p>
       )}
     </div>
   );
 }
 
-export function PatientInfoCard({ patient, onFieldChange }: Props) {
+export function PatientInfoCard({ patient, onFieldChange, onSavePhone }: Props) {
   const hasSecondaryInsurance = !!patient.secondaryInsurance && patient.secondaryInsurance !== "";
   const hasMemberId2 = !!patient.memberId2 && patient.memberId2 !== "";
 
@@ -223,6 +251,7 @@ export function PatientInfoCard({ patient, onFieldChange }: Props) {
           phone={patient.phone}
           phoneEdited={patient.phoneEdited}
           onFieldChange={onFieldChange}
+          onSavePhone={onSavePhone}
         />
       </Card>
 

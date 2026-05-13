@@ -180,6 +180,13 @@ export async function sendWelcomeCallTextToMonday(p: Patient): Promise<void> {
 }
 
 /**
+ * Immediately push phone to Monday (called on check-mark press).
+ */
+export async function sendPhoneToMonday(itemId: string, phone: string): Promise<void> {
+  await writePhone(itemId, COL.phone, phone);
+}
+
+/**
  * Immediately push notes to Monday (called on Add press).
  */
 export async function sendNotesToMonday(itemId: string, notes: string): Promise<void> {
