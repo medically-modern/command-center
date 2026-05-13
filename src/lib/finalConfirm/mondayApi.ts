@@ -38,6 +38,7 @@ export const COL = {
   doctorFax: "email_mm1xdzcj",
   clinicName: "dropdown_mm1xbvas",
   clinicalsMethod: "color_mm1xw7y5",
+  clinicAddress: "location_mm1xjnfv",
 
   // Medical Necessity (read-only display)
   diagnosis: "color_mm1wf7rv",
@@ -117,7 +118,7 @@ export const READ_COLUMN_IDS = [
   COL.primaryInsurance, COL.memberId1, COL.secondaryInsurance, COL.memberId2,
   COL.deductible, COL.deductibleRemaining, COL.oopMax, COL.oopMaxRemaining,
   COL.doctorName, COL.doctorNpi, COL.doctorPhone, COL.doctorEmail,
-  COL.doctorFax, COL.clinicName, COL.clinicalsMethod,
+  COL.doctorFax, COL.clinicName, COL.clinicalsMethod, COL.clinicAddress,
   COL.diagnosis, COL.cgmCoveragePath, COL.ipCoveragePath, COL.mrExpiryDate,
   COL.serving, COL.pumpType, COL.cgmType, COL.requestType,
   COL.referralType, COL.referralSource,
@@ -339,6 +340,60 @@ export async function writeDate(itemId: string, columnId: string, date: string):
 }
 
 /**
+ * Write a phone column.
+ * Monday phone columns expect: {"phone": "12125551234", "countryShortName": "US"}
+ */
+export async function writePhone(itemId: string, columnId: string, phone: string, countryShortName = "US"): Promise<void> {
+  const query = `
+    mutation ($boardId: ID!, $itemId: ID!, $columnId: String!, $value: JSON!) {
+      change_column_value(board_id: $boardId, item_id: $itemId, column_id: $columnId, value: $value) { id }
+    }
+  `;
+  await gql(query, {
+    boardId: BOARD_ID,
+    itemId,
+    columnId,
+    value: JSON.stringify({ phone, countryShortName }),
+  });
+}
+
+/**
+ * Write an email column.
+ * Monday email columns expect: {"text": "a@b.com", "email": "a@b.com"}
+ */
+export async function writeEmail(itemId: string, columnId: string, email: string): Promise<void> {
+  const query = `
+    mutation ($boardId: ID!, $itemId: ID!, $columnId: String!, $value: JSON!) {
+      change_column_value(board_id: $boardId, item_id: $itemId, column_id: $columnId, value: $value) { id }
+    }
+  `;
+  await gql(query, {
+    boardId: BOARD_ID,
+    itemId,
+    columnId,
+    value: JSON.stringify({ text: email, email }),
+  });
+}
+
+/**
+ * Write a dropdown column by option IDs.
+ * Monday dropdown columns expect: {"ids": [10]}
+ */
+export async function writeDropdownIds(itemId: string, columnId: string, ids: number[]): Promise<void> {
+  const query = `
+    mutation ($boardId: ID!, $itemId: ID!, $columnId: String!, $value: JSON!) {
+      change_column_value(board_id: $boardId, item_id: $itemId, column_id: $columnId, value: $value) { id }
+    }
+  `;
+  await gql(query, {
+    boardId: BOARD_ID,
+    itemId,
+    columnId,
+    value: JSON.stringify({ ids }),
+  });
+}
+
+/**
  * Rename an item. Monday's "name" column requires `change_simple_column_value`
  * with a plain string — `change_column_value` with JSON-stringified values
  * silently no-ops on the name column.
@@ -396,7 +451,7 @@ export async function fetchItemAssets(itemId: string): Promise<MondayAsset[]> {
   const query = `
     query ($boardId: ID!, $itemId: ID!) {
       boards(ids: [$boardId]) {
-        items_page(limit: ${PAGE}, query_params: { ids: [$itemId] }) {
+        items_page(limit: 1, query_params: { ids: [$itemId] }) {
           cursor
           items {
             assets(assets_source: all) { id name url public_url }

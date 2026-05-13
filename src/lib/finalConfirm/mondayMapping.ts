@@ -51,6 +51,10 @@ export function mondayItemToPatient(item: MondayItem): Patient {
     clinicName: cv(item, COL.clinicName)?.text ?? "",
     clinicalsMethod: cv(item, COL.clinicalsMethod)?.text ?? "",
     clinicalsMethodIndex: parseIndex(cv(item, COL.clinicalsMethod)?.value ?? null),
+    clinicAddress: cv(item, COL.clinicAddress)?.text ?? "",
+    clinicAddressEdited: null,
+    clinicAddressLat: null,
+    clinicAddressLng: null,
 
     // Medical Necessity
     diagnosis: cv(item, COL.diagnosis)?.text ?? "",

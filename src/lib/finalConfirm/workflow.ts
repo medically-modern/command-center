@@ -37,6 +37,10 @@ export interface Patient {
   clinicName: string;
   clinicalsMethod: string;
   clinicalsMethodIndex: number | null;
+  clinicAddress: string;
+  clinicAddressEdited: string | null;
+  clinicAddressLat: number | null;
+  clinicAddressLng: number | null;
 
   // Medical Necessity
   diagnosis: string;
@@ -368,6 +372,48 @@ export const ORDER_HANDLING_OPTIONS = [
 export const SOS_OPTIONS = [
   { index: 0, label: "Clear" },
   { index: 1, label: "Not Clear" },
+];
+
+/** Clinic Name is a dropdown column — these IDs come from the board settings,
+ *  NOT from status index numbers. Used for writing back via writeDropdownIds. */
+export const CLINIC_NAME_OPTIONS = [
+  { id: 1, label: "SUNY Upstate Pediatric - Joslin Diabetes Center" },
+  { id: 2, label: "LAKEWOOD MEDICAL ASSOCIATES" },
+  { id: 3, label: "Joslin Pediatric Educators" },
+  { id: 4, label: "SUNY Upstate Pediatric Joslin Diabetes Center" },
+  { id: 5, label: "NYU PEDIATRIC DIABETES CENTER" },
+  { id: 6, label: "Albany Med Health System - AMC 220 Washington Community Endocrinology" },
+  { id: 7, label: "NewYork-Presbyterian - Weill Greenberg Center" },
+  { id: 8, label: "Diabetes and Endocrine Associates of Bridgewater Update Facility" },
+  { id: 9, label: "Guthrie Endocrinology" },
+  { id: 10, label: "NewYork-Presbyterian - Naomi Berrie Diabetes Center" },
+  { id: 11, label: "ST. PETER'S HEALTH PARTNERS - ALBANY OFFICE" },
+  { id: 12, label: "Upstate Medical University" },
+  { id: 13, label: "NYU Langone - ACGC Endo 3rd FL" },
+  { id: 14, label: "SUNY Upstate Joslin Diabetes Center" },
+  { id: 15, label: "AMHS- SHMG Endocrinology" },
+  { id: 16, label: "The Office Don Zwickler, MD" },
+  { id: 17, label: "NYU Langone Great Neck" },
+  { id: 18, label: "UPMC" },
+  { id: 19, label: "Children's Hospital at Montefiore" },
+  { id: 20, label: "RRH Diabetes and Endocrinology - Ridgeway Update Facility" },
+  { id: 21, label: "Catholic Health Ronkonkoma" },
+  { id: 22, label: "Grandview Medical Group" },
+  { id: 23, label: "Montefiore - Medical ArtsPavillion" },
+  { id: 24, label: "Mount St Marys Health Center" },
+  { id: 25, label: "RRH Diabetes and" },
+  { id: 26, label: "Endocrinology -" },
+  { id: 27, label: "Ridgeway" },
+  { id: 28, label: "NYU Langone" },
+  { id: 29, label: "Primary Care of Western New York" },
+  { id: 30, label: "Metropolitan Hospital Endocrinology" },
+  { id: 31, label: "CVPH Endocrinology" },
+  { id: 32, label: "Edward Condon Medical" },
+  { id: 33, label: "Albany Med Health  System - 22 New  Scotland Division of  Pediatric Endocrinology" },
+  { id: 34, label: "Catholic Health Ambulatory Care at West Babylon" },
+  { id: 35, label: "NYU Diabetes and Endocrinology Associates" },
+  { id: 36, label: "OPTUM Fishkill Westage Endocrinology" },
+  { id: 37, label: "Atlantic Medical Group Endocrinology" },
 ];
 
 export const AUTH_RESULT_OPTIONS = [

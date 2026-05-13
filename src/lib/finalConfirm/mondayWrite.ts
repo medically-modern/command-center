@@ -1,7 +1,8 @@
-import { writeStatusIndex, writeLongText, writeText, writeNumber, writeLocation, writeDate, renameItem, COL } from "./mondayApi";
+import { writeStatusIndex, writeLongText, writeText, writeNumber, writeLocation, writeDate, writePhone, writeEmail, writeDropdownIds, renameItem, COL } from "./mondayApi";
 import type { Patient } from "./workflow";
+import { CLINIC_NAME_OPTIONS } from "./workflow";
 
-// Stage Advancer: index 1 = Completed (green)
+// Stage Advancer: index 4 = Completed
 const STAGE_ADVANCER_COMPLETED = 4;
 
 const MAX_RETRIES = 2;
@@ -51,50 +52,98 @@ export async function sendPatientToMonday(p: Patient): Promise<void> {
   }
 
   // ─── Demographics edits ───────────────────────────────────
-  if (p.phoneEdited !== null && p.phoneEdited !== "") {
-    tasks.push({
-      label: "Phone",
-      columnId: COL.phone,
-      fn: () => fetch("https://api.monday.com/v2", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: (import.meta.env.VITE_MONDAY_API_TOKEN as string) ?? "",
-          "API-Version": "2024-10",
-        },
-        body: JSON.stringify({
-          query: `mutation ($boardId: ID!, $itemId: ID!, $columnId: String!, $value: JSON!) {
-            change_column_value(board_id: $boardId, item_id: $itemId, column_id: $columnId, value: $value) { id }
-          }`,
-          variables: {
-            boardId: 18410804557,
-            itemId: p.id,
-            columnId: COL.phone,
-            value: JSON.stringify({ phone: p.phoneEdited, countryShortName: "US" }),
-          },
-        }),
-      }),
-    });
-  }
+  // DOB (text column)
+  tasks.push({ label: "DOB", columnId: COL.dob, fn: () => writeText(p.id, COL.dob, p.dob) });
 
+  // Phone (phone column — needs {phone, countryShortName} JSON)
+  if (p.phoneEdited !== null && p.phoneEdited !== "")
+    tasks.push({ label: "Phone", columnId: COL.phone, fn: () => writePhone(p.id, COL.phone, p.phoneEdited!) });
+
+  // Email (text column — patient email is stored as plain text, not email type)
   if (p.emailEdited !== null && p.emailEdited !== "")
     tasks.push({ label: "Email", columnId: COL.email, fn: () => writeText(p.id, COL.email, p.emailEdited!) });
 
+  // Address (location column — needs {address, lat, lng} JSON)
   if (p.addressEdited !== null && p.addressEdited !== "") {
     const lat = p.addressLat ?? 0;
     const lng = p.addressLng ?? 0;
     tasks.push({ label: "Address", columnId: COL.address, fn: () => writeLocation(p.id, COL.address, p.addressEdited!, lat, lng) });
   }
 
+  // Gender (status column)
   if (p.genderIndex !== null)
     tasks.push({ label: "Gender", columnId: COL.gender, fn: () => writeStatusIndex(p.id, COL.gender, p.genderIndex!) });
 
   // ─── Insurance edits ──────────────────────────────────────
+  // Primary Insurance (status column)
+  if (p.primaryInsuranceIndex !== null)
+    tasks.push({ label: "Primary Insurance", columnId: COL.primaryInsurance, fn: () => writeStatusIndex(p.id, COL.primaryInsurance, p.primaryInsuranceIndex!) });
+
+  // Member ID 1 (text column)
+  tasks.push({ label: "Member ID 1", columnId: COL.memberId1, fn: () => writeText(p.id, COL.memberId1, p.memberId1) });
+
+  // Secondary Insurance (status column)
   if (p.secondaryInsuranceEdited !== null && p.secondaryInsuranceIndex !== null)
     tasks.push({ label: "Secondary Insurance", columnId: COL.secondaryInsurance, fn: () => writeStatusIndex(p.id, COL.secondaryInsurance, p.secondaryInsuranceIndex!) });
 
+  // Member ID 2 (text column)
   if (p.memberId2Edited !== null && p.memberId2Edited !== "")
     tasks.push({ label: "Member ID 2", columnId: COL.memberId2, fn: () => writeText(p.id, COL.memberId2, p.memberId2Edited!) });
+
+  // Deductible fields (all text columns)
+  tasks.push({ label: "Deductible", columnId: COL.deductible, fn: () => writeText(p.id, COL.deductible, p.deductible) });
+  tasks.push({ label: "Deductible Remaining", columnId: COL.deductibleRemaining, fn: () => writeText(p.id, COL.deductibleRemaining, p.deductibleRemaining) });
+  tasks.push({ label: "OOP Max", columnId: COL.oopMax, fn: () => writeText(p.id, COL.oopMax, p.oopMax) });
+  tasks.push({ label: "OOP Max Remaining", columnId: COL.oopMaxRemaining, fn: () => writeText(p.id, COL.oopMaxRemaining, p.oopMaxRemaining) });
+
+  // ─── Doctor edits ────────────────────────────────────────
+  // Doctor Name (text column)
+  tasks.push({ label: "Doctor Name", columnId: COL.doctorName, fn: () => writeText(p.id, COL.doctorName, p.doctorName) });
+
+  // Doctor NPI (text column)
+  tasks.push({ label: "Doctor NPI", columnId: COL.doctorNpi, fn: () => writeText(p.id, COL.doctorNpi, p.doctorNpi) });
+
+  // Doctor Phone (phone column — needs {phone, countryShortName} JSON)
+  if (p.doctorPhone)
+    tasks.push({ label: "Doctor Phone", columnId: COL.doctorPhone, fn: () => writePhone(p.id, COL.doctorPhone, p.doctorPhone) });
+
+  // Doctor Email (email column — needs {text, email} JSON)
+  if (p.doctorEmail)
+    tasks.push({ label: "Doctor Email", columnId: COL.doctorEmail, fn: () => writeEmail(p.id, COL.doctorEmail, p.doctorEmail) });
+
+  // Doctor Fax (email column — Monday stores fax as email type, needs {text, email} JSON)
+  if (p.doctorFax)
+    tasks.push({ label: "Doctor Fax", columnId: COL.doctorFax, fn: () => writeEmail(p.id, COL.doctorFax, p.doctorFax) });
+
+  // Clinicals Method (status column)
+  if (p.clinicalsMethodIndex !== null)
+    tasks.push({ label: "Clinicals Method", columnId: COL.clinicalsMethod, fn: () => writeStatusIndex(p.id, COL.clinicalsMethod, p.clinicalsMethodIndex!) });
+
+  // Clinic Name (dropdown column — needs {ids: [id]} JSON, look up by label)
+  if (p.clinicName) {
+    const clinicOpt = CLINIC_NAME_OPTIONS.find((o) => o.label === p.clinicName);
+    if (clinicOpt)
+      tasks.push({ label: "Clinic Name", columnId: COL.clinicName, fn: () => writeDropdownIds(p.id, COL.clinicName, [clinicOpt.id]) });
+  }
+
+  // Clinic Address (location column — needs {address, lat, lng} JSON)
+  if (p.clinicAddressEdited !== null && p.clinicAddressEdited !== "") {
+    const clat = p.clinicAddressLat ?? 0;
+    const clng = p.clinicAddressLng ?? 0;
+    tasks.push({ label: "Clinic Address", columnId: COL.clinicAddress, fn: () => writeLocation(p.id, COL.clinicAddress, p.clinicAddressEdited!, clat, clng) });
+  }
+
+  // ─── Medical Necessity edits ─────────────────────────────
+  // Diagnosis (status column)
+  if (p.diagnosisIndex !== null)
+    tasks.push({ label: "Diagnosis", columnId: COL.diagnosis, fn: () => writeStatusIndex(p.id, COL.diagnosis, p.diagnosisIndex!) });
+
+  // MR Expiry Date (date column — needs {date: "YYYY-MM-DD"} JSON)
+  tasks.push({ label: "MR Expiry Date", columnId: COL.mrExpiryDate, fn: () => writeDate(p.id, COL.mrExpiryDate, p.mrExpiryDate) });
+
+  // Request Type (status column)
+  if (p.requestTypeIndex !== null)
+    tasks.push({ label: "Request Type", columnId: COL.requestType, fn: () => writeStatusIndex(p.id, COL.requestType, p.requestTypeIndex!) });
 
   // ─── Product / Order edits ────────────────────────────────
   // Serving + Pump/CGM Type + Coverage Paths are written on every Send so

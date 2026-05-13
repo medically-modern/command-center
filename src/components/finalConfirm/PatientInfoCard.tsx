@@ -271,33 +271,66 @@ function AuthDetailBlock({
   );
 }
 
-/** Read-only date field — renders formatted MM/DD/YYYY or hides if empty */
-function DateDisplayField({ label, dateStr }: { label: string; dateStr: string }) {
-  if (!dateStr) return null;
-  const formatted = formatDateMDY(dateStr);
-  if (!formatted) return null;
+/** Editable date field — always renders; highlights empty as missing.
+ *  Stores value as YYYY-MM-DD internally. */
+function EditableDateField({
+  label,
+  dateStr,
+  onChange,
+}: {
+  label: string;
+  dateStr: string;
+  onChange: (v: string) => void;
+}) {
+  const isEmpty = !dateStr;
   return (
-    <div>
-      <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">{label}</p>
-      <p className="text-sm font-medium">{formatted}</p>
+    <div className={cn("rounded-lg p-1.5 -m-1.5 transition-colors", isEmpty && "bg-red-50 dark:bg-red-950/20 ring-1 ring-red-200 dark:ring-red-800/40")}>
+      <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1">{label}</p>
+      <Input
+        type="date"
+        className={cn("h-8 text-sm", isEmpty && "border-red-300 dark:border-red-700")}
+        value={dateStr}
+        onChange={(e) => onChange(e.target.value)}
+      />
     </div>
   );
 }
 
-/** Next order date — green if ready to order (today or past), red if future */
-function NextOrderDateField({ label, dateStr }: { label: string; dateStr: string }) {
-  if (!dateStr) return null;
-  const match = dateStr.match(/^(\d{4})-(\d{2})-(\d{2})/);
-  if (!match) return null;
-  const d = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const isReady = d <= today;
-  const formatted = `${String(d.getMonth() + 1).padStart(2, "0")}/${String(d.getDate()).padStart(2, "0")}/${d.getFullYear()}`;
+/** Editable next-order date — always renders; green if ready (today or past),
+ *  red if future, red outline if empty. */
+function EditableNextOrderDateField({
+  label,
+  dateStr,
+  onChange,
+}: {
+  label: string;
+  dateStr: string;
+  onChange: (v: string) => void;
+}) {
+  const isEmpty = !dateStr;
+  let colorClass = "";
+  if (dateStr) {
+    const match = dateStr.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (match) {
+      const d = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      colorClass = d <= today ? "ring-green-300 bg-green-50 dark:bg-green-950/20" : "";
+    }
+  }
   return (
-    <div>
-      <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">{label}</p>
-      <p className={`text-sm font-medium ${isReady ? "text-green-600" : "text-red-600"}`}>{formatted}</p>
+    <div className={cn(
+      "rounded-lg p-1.5 -m-1.5 transition-colors",
+      isEmpty && "bg-red-50 dark:bg-red-950/20 ring-1 ring-red-200 dark:ring-red-800/40",
+      !isEmpty && colorClass && `ring-1 ${colorClass}`,
+    )}>
+      <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1">{label}</p>
+      <Input
+        type="date"
+        className={cn("h-8 text-sm", isEmpty && "border-red-300 dark:border-red-700")}
+        value={dateStr}
+        onChange={(e) => onChange(e.target.value)}
+      />
     </div>
   );
 }
@@ -307,6 +340,12 @@ export function PatientInfoCard({ patient, onFieldChange }: Props) {
     onFieldChange("addressEdited", result.address);
     onFieldChange("addressLat", result.lat);
     onFieldChange("addressLng", result.lng);
+  };
+
+  const handleClinicAddressChange = (result: AddressResult) => {
+    onFieldChange("clinicAddressEdited", result.address);
+    onFieldChange("clinicAddressLat", result.lat);
+    onFieldChange("clinicAddressLng", result.lng);
   };
 
   // Infusion set validation: if serving requires supplies, infusion set 1 must be selected with qty
@@ -538,6 +577,26 @@ export function PatientInfoCard({ patient, onFieldChange }: Props) {
               onChange={(v) => onFieldChange("clinicName", v)}
             />
           </div>
+          {/* Clinic Address — full width with Google autocomplete */}
+          {(() => {
+            const clinicAddr = patient.clinicAddressEdited ?? patient.clinicAddress;
+            const isEmpty = !clinicAddr;
+            return (
+              <div className={cn("flex items-start gap-2 min-w-0 rounded-lg p-1.5 -m-1.5 transition-colors", isEmpty && "bg-red-50 dark:bg-red-950/20 ring-1 ring-red-200 dark:ring-red-800/40")}>
+                <div className={cn("h-8 w-8 rounded-md flex items-center justify-center shrink-0", isEmpty ? "bg-red-100 dark:bg-red-900/30 text-red-500" : "bg-muted text-muted-foreground")}>
+                  <MapPin className="h-4 w-4" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1">Clinic Address</p>
+                  <AddressAutocomplete
+                    value={clinicAddr}
+                    onChange={handleClinicAddressChange}
+                    placeholder="Start typing clinic address…"
+                  />
+                </div>
+              </div>
+            );
+          })()}
         </CollapsibleSection>
       </Card>
 
@@ -826,35 +885,31 @@ export function PatientInfoCard({ patient, onFieldChange }: Props) {
         </div>
       </Card>
 
-      {/* Last Bill Dates */}
-      {(patient.lastBillDateMonitor || patient.lastBillDateSensors || patient.lastBillDateIp || patient.lastBillDateInfusionSet || patient.lastBillDateCartridge) && (
-        <Card className="p-4 space-y-4">
-          <p className="text-xs uppercase tracking-wider text-muted-foreground font-semibold flex items-center gap-2">
-            <CalendarDays className="h-3.5 w-3.5" /> Last Bill Dates
-          </p>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            <DateDisplayField label="CGM Last Bill Date" dateStr={patient.lastBillDateMonitor} />
-            <DateDisplayField label="Sensors Last Bill Date" dateStr={patient.lastBillDateSensors} />
-            <DateDisplayField label="IP Last Bill Date" dateStr={patient.lastBillDateIp} />
-            <DateDisplayField label="Infusion Set Last Bill Date" dateStr={patient.lastBillDateInfusionSet} />
-            <DateDisplayField label="Cartridge Last Bill Date" dateStr={patient.lastBillDateCartridge} />
-          </div>
-        </Card>
-      )}
+      {/* Last Bill Dates — always visible so user knows what needs filling */}
+      <Card className="p-4 space-y-4">
+        <p className="text-xs uppercase tracking-wider text-muted-foreground font-semibold flex items-center gap-2">
+          <CalendarDays className="h-3.5 w-3.5" /> Last Bill Dates
+        </p>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          <EditableDateField label="CGM Last Bill Date" dateStr={patient.lastBillDateMonitor} onChange={(v) => onFieldChange("lastBillDateMonitor", v)} />
+          <EditableDateField label="Sensors Last Bill Date" dateStr={patient.lastBillDateSensors} onChange={(v) => onFieldChange("lastBillDateSensors", v)} />
+          <EditableDateField label="IP Last Bill Date" dateStr={patient.lastBillDateIp} onChange={(v) => onFieldChange("lastBillDateIp", v)} />
+          <EditableDateField label="Infusion Set Last Bill Date" dateStr={patient.lastBillDateInfusionSet} onChange={(v) => onFieldChange("lastBillDateInfusionSet", v)} />
+          <EditableDateField label="Cartridge Last Bill Date" dateStr={patient.lastBillDateCartridge} onChange={(v) => onFieldChange("lastBillDateCartridge", v)} />
+        </div>
+      </Card>
 
-      {/* Next Order Dates (calculated) */}
-      {(patient.nextOrderDateIp || patient.nextOrderDateSensors || patient.nextOrderDateSupplies) && (
-        <Card className="p-4 space-y-4">
-          <p className="text-xs uppercase tracking-wider text-muted-foreground font-semibold flex items-center gap-2">
-            <CalendarDays className="h-3.5 w-3.5" /> Calculated Next Order Dates
-          </p>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <NextOrderDateField label="IP Next Order Date" dateStr={patient.nextOrderDateIp} />
-            <NextOrderDateField label="Sensors Next Order Date" dateStr={patient.nextOrderDateSensors} />
-            <NextOrderDateField label="Supplies Next Order Date" dateStr={patient.nextOrderDateSupplies} />
-          </div>
-        </Card>
-      )}
+      {/* Next Order Dates — always visible, editable, green=ready red=future */}
+      <Card className="p-4 space-y-4">
+        <p className="text-xs uppercase tracking-wider text-muted-foreground font-semibold flex items-center gap-2">
+          <CalendarDays className="h-3.5 w-3.5" /> Next Order Dates
+        </p>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <EditableNextOrderDateField label="IP Next Order Date" dateStr={patient.nextOrderDateIp} onChange={(v) => onFieldChange("nextOrderDateIp", v)} />
+          <EditableNextOrderDateField label="Sensors Next Order Date" dateStr={patient.nextOrderDateSensors} onChange={(v) => onFieldChange("nextOrderDateSensors", v)} />
+          <EditableNextOrderDateField label="Supplies Next Order Date" dateStr={patient.nextOrderDateSupplies} onChange={(v) => onFieldChange("nextOrderDateSupplies", v)} />
+        </div>
+      </Card>
     </div>
   );
 }
