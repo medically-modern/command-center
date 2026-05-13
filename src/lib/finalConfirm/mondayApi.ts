@@ -109,6 +109,10 @@ export const COL = {
     supplies: "date_mm351tva",
   },
 
+  // Claim Paid Amounts (read-only)
+  a4230Claim: "text_mm28a3xt",
+  a4232Claim: "text_mm282cy5",
+
   // Debug
   joshDebug: "text_mm35b391",
 } as const;
@@ -138,6 +142,8 @@ export const READ_COLUMN_IDS = [
   COL.lastBillDate.infusion_set, COL.lastBillDate.cartridge,
   COL.nextOrderDate.insulin_pump, COL.nextOrderDate.sensors, COL.nextOrderDate.supplies,
   COL.dateOfStageStart,
+  // Claim Paid Amounts
+  COL.a4230Claim, COL.a4232Claim,
 ];
 
 export interface MondayColumnValue {

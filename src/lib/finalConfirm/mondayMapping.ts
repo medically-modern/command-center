@@ -143,6 +143,10 @@ export function mondayItemToPatient(item: MondayItem): Patient {
     cartridgeAuthEnd: cv(item, COL.authDetail.cartridge.end)?.text ?? "",
     cartridgeAuthUnits: cv(item, COL.authDetail.cartridge.units)?.text ?? "",
 
+    // Claim Paid Amounts (read-only)
+    a4230Claim: cv(item, COL.a4230Claim)?.text ?? "",
+    a4232Claim: cv(item, COL.a4232Claim)?.text ?? "",
+
     // Notes
     notes: cv(item, COL.notes)?.text ?? "",
 

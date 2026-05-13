@@ -52,6 +52,7 @@ import {
   Heart,
   ShieldCheck,
   CalendarDays,
+  DollarSign,
 } from "lucide-react";
 
 interface Props {
@@ -895,6 +896,29 @@ export function PatientInfoCard({ patient, onFieldChange }: Props) {
           </div>
         </div>
       </Card>
+
+      {/* Claim Paid Amounts (read-only — shown when values exist) */}
+      {(patient.a4230Claim || patient.a4232Claim) && (
+        <Card className="p-4 space-y-4">
+          <p className="text-xs uppercase tracking-wider text-muted-foreground font-semibold flex items-center gap-2">
+            <DollarSign className="h-3.5 w-3.5" /> Claim Paid Amounts
+          </p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {patient.a4230Claim && (
+              <div className="flex items-center gap-3 rounded-lg border px-4 py-3 bg-muted/30">
+                <span className="text-xs font-medium text-muted-foreground w-28">A4230 Claim</span>
+                <span className="text-sm font-semibold">{patient.a4230Claim}</span>
+              </div>
+            )}
+            {patient.a4232Claim && (
+              <div className="flex items-center gap-3 rounded-lg border px-4 py-3 bg-muted/30">
+                <span className="text-xs font-medium text-muted-foreground w-28">A4232 Claim</span>
+                <span className="text-sm font-semibold">{patient.a4232Claim}</span>
+              </div>
+            )}
+          </div>
+        </Card>
+      )}
 
       {/* Last Bill Dates — always visible so user knows what needs filling */}
       <Card className="p-4 space-y-4">

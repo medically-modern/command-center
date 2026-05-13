@@ -129,6 +129,10 @@ export interface Patient {
   cartridgeAuthEnd: string;
   cartridgeAuthUnits: string;
 
+  // Claim Paid Amounts (read-only)
+  a4230Claim: string;
+  a4232Claim: string;
+
   // Notes
   notes: string;
 
