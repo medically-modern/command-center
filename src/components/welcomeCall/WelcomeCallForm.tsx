@@ -315,10 +315,17 @@ export function WelcomeCallForm({ patient, onFieldChange, onSendWelcomeCallText 
               <label className="text-xs uppercase tracking-wider text-muted-foreground font-semibold block mb-1">
                 Pump Qty
               </label>
-              <QtySelect
-                value={patient.pumpQty}
-                onChange={(val) => onFieldChange("pumpQty", val)}
-              />
+              <div className="flex items-center gap-3 h-10">
+                <Switch
+                  checked={patient.pumpQty === "1"}
+                  onCheckedChange={(checked) =>
+                    onFieldChange("pumpQty", checked ? "1" : "0")
+                  }
+                />
+                <span className="text-sm font-medium">
+                  {patient.pumpQty === "1" ? "1 — Yes" : "0 — No"}
+                </span>
+              </div>
             </div>
           </div>
 
