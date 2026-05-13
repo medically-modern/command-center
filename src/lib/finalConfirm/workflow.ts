@@ -164,6 +164,7 @@ export interface Patient {
 export const GENDER_OPTIONS = [
   { index: 0, label: "Male" },
   { index: 1, label: "Female" },
+  { index: 2, label: "Unknown" },
 ];
 
 export const PRIMARY_INSURANCE_OPTIONS = [
@@ -193,6 +194,7 @@ export const PRIMARY_INSURANCE_OPTIONS = [
   { index: 105, label: "Anthem BCBS Commercial" },
   { index: 106, label: "Anthem BCBS Medicare" },
   { index: 107, label: "Fidelis Commercial" },
+  { index: 108, label: "Fidelis Medicare" },
   { index: 109, label: "Anthem BCBS Low-Cost (JLJ)" },
   { index: 110, label: "Fidelis CHP" },
 ];

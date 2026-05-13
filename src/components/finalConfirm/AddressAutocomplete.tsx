@@ -92,6 +92,17 @@ export function AddressAutocomplete({ value, onChange, placeholder }: Props) {
   // Keep the ref current so event listeners always call the latest onChange
   useEffect(() => { onChangeRef.current = onChange; }, [onChange]);
 
+  // Sync the input value when the value prop changes from outside (e.g. switching patients).
+  // defaultValue only sets the initial value on mount — if React reuses this component
+  // for a different patient, the input keeps showing the old address without this.
+  const prevValueRef = useRef(value);
+  useEffect(() => {
+    if (value !== prevValueRef.current && inputRef.current) {
+      inputRef.current.value = value;
+      prevValueRef.current = value;
+    }
+  }, [value]);
+
   useEffect(() => {
     loadGooglePlaces()
       .then(() => setReady(true))
