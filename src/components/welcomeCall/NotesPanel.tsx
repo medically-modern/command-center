@@ -52,8 +52,8 @@ export function NotesPanel({ notes, onNotesChange, onSaveToMonday }: Props) {
         <p className="text-xs uppercase tracking-wider text-muted-foreground font-semibold flex items-center gap-2">
           <MessageSquare className="h-3.5 w-3.5" /> Notes
         </p>
-        <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => setEditing(!editing)}>
-          {editing ? "Done" : "Edit"}
+        <Button variant="ghost" size="sm" className="h-7 text-xs" disabled={saving} onClick={async () => { if (editing && onSaveToMonday) { setSaving(true); try { await onSaveToMonday(notes); toast.success("Notes saved to Monday"); } catch (e) { toast.error("Failed to save notes", { description: e instanceof Error ? e.message : String(e) }); } finally { setSaving(false); } } setEditing(!editing); }}>
+          {editing ? (saving ? "Saving…" : "Done") : "Edit"}
         </Button>
       </div>
 

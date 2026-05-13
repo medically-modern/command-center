@@ -23,7 +23,7 @@ import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { RotateCcw, ShieldCheck, ArrowLeft, AlertTriangle, Save } from "lucide-react";
 import { toast } from "sonner";
 import { sendPatientToMonday } from "@/lib/finalConfirm/mondayWrite";
-import { duplicateItem, writeStatusIndex, writeDate, COL } from "@/lib/finalConfirm/mondayApi";
+import { duplicateItem, writeStatusIndex, writeDate, writeLongText, COL } from "@/lib/finalConfirm/mondayApi";
 
 // Stage Advancer label index 0 = "Review Profile" — the stage that lands an
 // item in the Final Profile Confirmation group on Monday.
@@ -302,6 +302,7 @@ const FinalConfirmPage = () => {
                   <NotesPanel
                     notes={selected.notes}
                     onNotesChange={(v) => update(selected.id, { notes: v })}
+                    onSaveToMonday={(v) => writeLongText(selected.id, COL.notes, v)}
                   />
                   <EscalateButton
                     escalated={selected.escalated}
