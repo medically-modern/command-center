@@ -3,7 +3,8 @@ import type { Patient } from "@/lib/welcomeCall/workflow";
 import { SECONDARY_INSURANCE_OPTIONS, formatPhone, formatDateMDY, isCrossSell } from "@/lib/welcomeCall/workflow";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Pencil, Check, Loader2 } from "lucide-react";
+import { Pencil, Check, Loader2, X } from "lucide-react";
+import { toast } from "sonner";
 import {
   Select,
   SelectContent,
@@ -149,19 +150,32 @@ function PhoneField({
   onFieldChange?: (field: keyof Patient, value: string | number | null) => void;
   onSavePhone?: (phone: string) => Promise<void>;
 }) {
+  const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
-  const currentValue = phoneEdited ?? phone;
+  const displayPhone = phoneEdited ?? phone;
 
   if (!phone && !phoneEdited) return null;
 
   const handleSave = async () => {
-    if (!currentValue || !onSavePhone) return;
+    const val = phoneEdited ?? phone;
+    if (!val || !onSavePhone) return;
     setSaving(true);
     try {
-      await onSavePhone(currentValue);
+      await onSavePhone(val);
+      toast.success(`Phone updated to ${formatPhone(val)}`);
+      setEditing(false);
+    } catch (e) {
+      toast.error("Failed to update phone", {
+        description: e instanceof Error ? e.message : String(e),
+      });
     } finally {
       setSaving(false);
     }
+  };
+
+  const handleCancel = () => {
+    onFieldChange?.("phoneEdited", null);
+    setEditing(false);
   };
 
   return (
@@ -169,24 +183,45 @@ function PhoneField({
       <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1">
         Phone
       </p>
-      <div className="flex items-center justify-end gap-1.5">
-        <Input
-          className="h-9 text-sm font-semibold w-44"
-          value={currentValue}
-          onChange={(e) => onFieldChange?.("phoneEdited", e.target.value)}
-          placeholder="(555) 555-5555"
-        />
-        <button
-          onClick={handleSave}
-          disabled={saving}
-          className="p-1.5 rounded bg-emerald-100 hover:bg-emerald-200 text-emerald-700 border border-emerald-300 transition-colors disabled:opacity-50"
-          title="Save phone to Monday"
-        >
-          {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
-        </button>
-      </div>
-      {saving && (
-        <p className="text-[10px] text-blue-600 mt-0.5">saving to Monday…</p>
+      {editing ? (
+        <div className="flex items-center justify-end gap-1.5">
+          <Input
+            className="h-9 text-sm font-semibold w-44"
+            value={phoneEdited ?? phone}
+            onChange={(e) => onFieldChange?.("phoneEdited", e.target.value)}
+            autoFocus
+            placeholder="(555) 555-5555"
+          />
+          <button
+            onClick={handleSave}
+            disabled={saving}
+            className="p-1.5 rounded bg-emerald-100 hover:bg-emerald-200 text-emerald-700 border border-emerald-300 transition-colors disabled:opacity-50"
+            title="Save phone to Monday"
+          >
+            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+          </button>
+          <button
+            onClick={handleCancel}
+            disabled={saving}
+            className="p-1.5 rounded hover:bg-muted/60 text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
+            title="Cancel"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+      ) : (
+        <div className="flex items-center justify-end gap-1.5">
+          <a href={`tel:${displayPhone}`} className="text-lg font-semibold text-primary hover:underline">
+            {formatPhone(displayPhone)}
+          </a>
+          <button
+            onClick={() => setEditing(true)}
+            className="p-1 rounded hover:bg-muted/60 text-muted-foreground hover:text-foreground transition-colors"
+            title="Edit phone number"
+          >
+            <Pencil className="h-3.5 w-3.5" />
+          </button>
+        </div>
       )}
     </div>
   );
