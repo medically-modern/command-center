@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Patient } from "@/lib/masheke/workflow";
 import { fetchGroupItems, fetchItemById, GROUPS, hasToken } from "@/lib/masheke/mondayApi";
+// Note: GROUPS import kept for GROUPS.medicalNecessity
 import { mondayItemToPatient } from "@/lib/masheke/mondayMapping";
 
 const POLL_MS = 30_000;
@@ -84,9 +85,8 @@ export function useMondayPatients(activeTab: TabKey = "evaluate", injectedPatien
       setError(null);
     }
     try {
-      // Always pull from the single MN group, then filter by sub-stage
-      const [items, escalationItems] = await Promise.all([
-        fetchGroupItems(GROUPS.medicalNecessity, (moreItems) => {
+      // Pull from the single MN group, then filter by sub-stage
+      const items = await fetchGroupItems(GROUPS.medicalNecessity, (moreItems) => {
           if (!mountedRef.current) return;
           const morePats = moreItems.map(mondayItemToPatient)
             .filter((p) => matchesTab(p.subStage, activeTab))
@@ -95,9 +95,7 @@ export function useMondayPatients(activeTab: TabKey = "evaluate", injectedPatien
               return o ? { ...p, ...o } : p;
             });
           if (morePats.length > 0) setPatients((prev) => [...prev, ...morePats]);
-        }),
-        fetchGroupItems(GROUPS.escalations),
-      ]);
+        });
       if (!mountedRef.current) return;
       const safeItems = Array.isArray(items) ? items : [];
       const allPatients = safeItems.map(mondayItemToPatient);

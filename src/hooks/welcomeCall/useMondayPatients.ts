@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Patient } from "@/lib/welcomeCall/workflow";
-import { fetchGroupItems, fetchItemById, GROUPS, hasToken } from "@/lib/welcomeCall/mondayApi";
+import { fetchGroupItems, fetchItemById, hasToken } from "@/lib/welcomeCall/mondayApi";
 import { mondayItemToPatient } from "@/lib/welcomeCall/mondayMapping";
 
 const POLL_MS = 30_000;
@@ -60,17 +60,14 @@ export function useMondayPatients(injectedPatientId?: string | null) {
       setError(null);
     }
     try {
-      const [items, escalationItems] = await Promise.all([
-        fetchGroupItems(undefined, (moreItems) => {
+      const items = await fetchGroupItems(undefined, (moreItems) => {
           if (!mountedRef.current) return;
           const morePats = moreItems.map(mondayItemToPatient).map((p) => {
             const o = overlayRef.current.get(p.id);
             return o ? { ...p, ...o } : p;
           });
           setPatients((prev) => [...prev, ...morePats]);
-        }),
-        fetchGroupItems(GROUPS.escalation),
-      ]);
+        });
       if (!mountedRef.current) return;
       const safeItems = Array.isArray(items) ? items : [];
       const ps = safeItems.map(mondayItemToPatient);
@@ -78,19 +75,6 @@ export function useMondayPatients(injectedPatientId?: string | null) {
         const o = overlayRef.current.get(p.id);
         return o ? { ...p, ...o } : p;
       });
-
-      // Merge in escalated patients from the Escalation group
-      const safeEscItems = Array.isArray(escalationItems) ? escalationItems : [];
-      const escPatients = safeEscItems.map(mondayItemToPatient).map((p) => ({
-        ...p,
-        escalated: true,
-      }));
-      for (const ep of escPatients) {
-        if (!merged.some((m) => m.id === ep.id)) {
-          const o = overlayRef.current.get(ep.id);
-          merged.push(o ? { ...ep, ...o } : ep);
-        }
-      }
 
       if (injectedPatientId && !merged.some((p) => p.id === injectedPatientId)) {
         try {

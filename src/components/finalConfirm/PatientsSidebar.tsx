@@ -12,7 +12,7 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
-import { Loader2, RefreshCw, User, AlertCircle, Search, X} from "lucide-react";
+import { AlertTriangle, Loader2, RefreshCw, User, AlertCircle, Search, X} from "lucide-react";
 import type { Patient } from "@/lib/finalConfirm/workflow";
 import { cn } from "@/lib/utils";
 
@@ -80,10 +80,10 @@ export function PatientsSidebar({ patients, selectedId, onSelect, loading, error
           </div>
         )}
         <SidebarGroup>
-          <SidebarGroupLabel>Patients ({filteredBySearch.length})</SidebarGroupLabel>
+          <SidebarGroupLabel>Active ({filteredBySearch.filter((p) => !p.escalated).length})</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
-              {filteredBySearch.map((p) => (
+              {filteredBySearch.filter((p) => !p.escalated).map((p) => (
                 <SidebarMenuItem key={p.id}>
                   <SidebarMenuButton
                     isActive={selectedId === p.id}
@@ -105,7 +105,7 @@ export function PatientsSidebar({ patients, selectedId, onSelect, loading, error
                   </SidebarMenuButton>
                 </SidebarMenuItem>
               ))}
-              {!loading && filteredBySearch.length === 0 && (
+              {!loading && filteredBySearch.filter((p) => !p.escalated).length === 0 && (
                 <p className="text-xs text-muted-foreground px-3 py-4 text-center">
                   No patients in Final Profile Confirmation group.
                 </p>
@@ -113,6 +113,42 @@ export function PatientsSidebar({ patients, selectedId, onSelect, loading, error
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
+
+        {/* Escalated section */}
+        {filteredBySearch.filter((p) => p.escalated).length > 0 && !collapsed && (
+          <SidebarGroup>
+            <SidebarGroupLabel className="text-[10px] uppercase tracking-wider text-red-500 font-semibold flex items-center gap-1.5">
+              <AlertTriangle className="h-3 w-3" />
+              Escalated ({filteredBySearch.filter((p) => p.escalated).length})
+            </SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu>
+                {filteredBySearch.filter((p) => p.escalated).map((p) => (
+                  <SidebarMenuItem key={p.id}>
+                    <SidebarMenuButton
+                      isActive={selectedId === p.id}
+                      onClick={() => onSelect(p.id)}
+                      className={cn(
+                        "flex items-start gap-2 py-2 h-auto opacity-60",
+                        selectedId === p.id && "bg-sidebar-accent opacity-100",
+                      )}
+                    >
+                      <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0 text-red-400" />
+                      {!collapsed && (
+                        <div className="min-w-0 text-left">
+                          <p className="text-sm font-medium truncate">{p.name}</p>
+                          <p className="text-[11px] text-red-400 truncate">
+                            Escalation Required
+                          </p>
+                        </div>
+                      )}
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                ))}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        )}
       </SidebarContent>
     </Sidebar>
   );

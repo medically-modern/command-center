@@ -6,7 +6,6 @@ const BOARD_ID = "18406060017";
 
 export const GROUPS = {
   medicalNecessity: "group_mm1xf2jb",
-  escalations: "group_mm33pdpm",
 } as const;
 
 export const COL = {

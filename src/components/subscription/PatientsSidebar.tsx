@@ -12,7 +12,7 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
-import { Loader2, RefreshCw, User, AlertCircle, Pause, XCircle, Search, X } from "lucide-react";
+import { AlertTriangle, Loader2, RefreshCw, User, AlertCircle, Pause, XCircle, Search, X } from "lucide-react";
 import type { Patient } from "@/lib/subscription/workflow";
 import { cn } from "@/lib/utils";
 
@@ -42,10 +42,12 @@ export function PatientsSidebar({ patients, selectedId, onSelect, loading, error
 
   const collapsed = state === "collapsed";
 
-  const active = filteredBySearch.filter((p) => p.status === "Active");
-  const paused = filteredBySearch.filter((p) => p.status === "Paused");
-  const dead = filteredBySearch.filter((p) => p.status === "Dead");
-  const other = filteredBySearch.filter((p) => p.status !== "Active" && p.status !== "Paused" && p.status !== "Dead");
+  const escalatedPatients = filteredBySearch.filter((p) => p.escalated);
+  const nonEscalated = filteredBySearch.filter((p) => !p.escalated);
+  const active = nonEscalated.filter((p) => p.status === "Active");
+  const paused = nonEscalated.filter((p) => p.status === "Paused");
+  const dead = nonEscalated.filter((p) => p.status === "Dead");
+  const other = nonEscalated.filter((p) => p.status !== "Active" && p.status !== "Paused" && p.status !== "Dead");
 
   const renderGroup = (label: string, list: Patient[], icon?: React.ReactNode) => {
     if (list.length === 0) return null;
@@ -148,6 +150,42 @@ export function PatientsSidebar({ patients, selectedId, onSelect, loading, error
         {renderGroup("Paused", paused, <Pause className="h-3 w-3 text-amber-500" />)}
         {renderGroup("Dead", dead, <XCircle className="h-3 w-3 text-red-500" />)}
         {renderGroup("Other", other)}
+
+        {/* Escalated section */}
+        {escalatedPatients.length > 0 && !collapsed && (
+          <SidebarGroup>
+            <SidebarGroupLabel className="text-[10px] uppercase tracking-wider text-red-500 font-semibold flex items-center gap-1.5">
+              <AlertTriangle className="h-3 w-3" />
+              Escalated ({escalatedPatients.length})
+            </SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu>
+                {escalatedPatients.map((p) => (
+                  <SidebarMenuItem key={p.id}>
+                    <SidebarMenuButton
+                      isActive={selectedId === p.id}
+                      onClick={() => onSelect(p.id)}
+                      className={cn(
+                        "flex items-start gap-2 py-2 h-auto opacity-60",
+                        selectedId === p.id && "bg-sidebar-accent opacity-100",
+                      )}
+                    >
+                      <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0 text-red-400" />
+                      {!collapsed && (
+                        <div className="min-w-0 text-left">
+                          <p className="text-sm font-medium truncate">{p.name}</p>
+                          <p className="text-[11px] text-red-400 truncate">
+                            Escalation Required
+                          </p>
+                        </div>
+                      )}
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                ))}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        )}
 
         {!loading && patients.length === 0 && !error && !collapsed && (
           <p className="px-3 py-4 text-xs text-muted-foreground">No patients found.</p>

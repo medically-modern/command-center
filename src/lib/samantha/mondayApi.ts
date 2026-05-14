@@ -10,7 +10,6 @@ export const GROUPS = {
   benefits: "group_mm1xr3q3",
   submitAuth: "group_mm1x1416",
   authOutstanding: "group_mm2v6d1z",
-  escalations: "group_mm2vg9gn",
   complete: "group_mm2vw3c0",
 } as const;
 

@@ -3,7 +3,7 @@
  * across groups/boards, color-coded by "Days Since Stage Started".
  *
  * Only shows Medical Evaluation, Insurance, and Welcome Call boards.
- * Excludes escalation and completed groups.
+ * Excludes completed groups.
  * Filters in sync with the search bar.
  * Hover → tooltip with patient names. Click → populates search results.
  */
@@ -87,12 +87,11 @@ export function PipelineChart({ patients, onSegmentClick }: PipelineChartProps) 
 
   // Build grouped columns from patients
   const columns = useMemo(() => {
-    // Filter to chart-eligible, non-escalation, non-completed, active patients
+    // Filter to chart-eligible, non-completed, active patients
     const eligible = patients.filter(
       (p) =>
         CHART_BOARD_IDS.has(p.boardId) &&
-        !p.isCompleted &&
-        !p.isInEscalationGroup,
+        !p.isCompleted,
     );
 
     // Group by boardId + pipelineStage

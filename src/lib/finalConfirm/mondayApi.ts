@@ -8,7 +8,6 @@ export const BOARD_ID = 18410804557;
 
 export const GROUPS = {
   finalProfileConfirmation: "group_mm2x8jtj",
-  escalation: "group_mm1x5c0",
 } as const;
 
 // Column IDs for the fields this role reads + edits
@@ -470,21 +469,6 @@ export async function fetchItemAssets(itemId: string): Promise<MondayAsset[]> {
     boards: { items_page: { items: { assets: MondayAsset[] }[] } }[];
   }>(query, { boardId: BOARD_ID, itemId });
   return data.boards?.[0]?.items_page?.items?.[0]?.assets ?? [];
-}
-
-/**
- * Move item to the Escalation group.
- */
-export async function moveToEscalation(itemId: string): Promise<void> {
-  const query = `
-    mutation ($itemId: ID!, $groupId: String!) {
-      move_item_to_group(item_id: $itemId, group_id: $groupId) { id }
-    }
-  `;
-  await gql(query, {
-    itemId,
-    groupId: GROUPS.escalation,
-  });
 }
 
 /** Fetch a single item by ID regardless of group (for cross-group deep-links). */
