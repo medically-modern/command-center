@@ -112,7 +112,7 @@ export function PatientsSidebar({ patients, selectedId, onSelect, loading, error
             disabled={loading}
             title="Refresh from Monday"
           >
-            {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+            <RefreshCw className={cn("h-4 w-4", loading && "animate-spin")} />
           </Button>
         </div>
       

@@ -45,7 +45,7 @@ export function PatientsSidebar({ patients, selectedId, onSelect, loading, error
             </span>
           )}
           <Button variant="ghost" size="icon" onClick={onRefresh} className="h-7 w-7" disabled={loading}>
-            {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+            <RefreshCw className={cn("h-3.5 w-3.5", loading && "animate-spin")} />
           </Button>
         </div>
       
