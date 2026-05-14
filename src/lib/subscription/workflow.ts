@@ -173,6 +173,7 @@ export const ORDER_TYPE_OPTIONS = [
 export const SENSORS_TYPE_OPTIONS = [
   { index: 6, label: "FreeStyle Libre 3 Plus" },
   { index: 0, label: "FreeStyle Libre 2 Plus" },
+  { index: 2, label: "FreeStyle Libre 2 Plus" },
   { index: 7, label: "FreeStyle Libre 14-Day" },
   { index: 4, label: "Dexcom G7" },
   { index: 8, label: "Dexcom G7 15-Day" },
