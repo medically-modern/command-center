@@ -190,11 +190,13 @@ async function gql<T>(query: string, variables: Record<string, unknown> = {}): P
   return json.data as T;
 }
 
+const PAGE = 200;
+
 export async function fetchGroupItems(
   groupId: string = GROUPS.intake,
   onMore?: (items: MondayItem[]) => void,
 ): Promise<MondayItem[]> {
-  const PAGE = 200;
+
   const query = `
     query ($boardId: ID!, $cols: [String!]) {
       boards(ids: [$boardId]) {
