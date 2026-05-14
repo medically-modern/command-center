@@ -111,17 +111,13 @@ export function useMondayPatients(injectedPatientId?: string | null) {
   );
 
 
-  const saveOverlay = useCallback((id: string) => {
-    const overlay = overlayRef.current.get(id);
-    if (overlay) {
-      const saved = loadOverlays();
-      saved.set(id, overlay);
-      persistOverlays(saved);
-    }
+  /** No-op for profile — overlays are in-memory only (no localStorage). */
+  const saveOverlay = useCallback((_id: string) => {
+    // Profile overlays live only in overlayRef; nothing to persist.
   }, []);
 
   const hasOverlay = useCallback((id: string) => {
-    const overlay = overlayRef.current.get(id);
+    const overlay = overlayRef.current[id];
     return !!overlay && Object.keys(overlay).length > 0;
   }, []);
 
