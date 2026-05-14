@@ -1,44 +1,55 @@
 {
   "profile": [
-    "Janelle"
+    "Janelle",
+    "Corey"
   ],
   "evaluate": [
     "Masheke",
-    "Brandon"
+    "Brandon",
+    "Corey"
   ],
   "sendRequest": [
     "Masheke",
-    "Brandon"
+    "Brandon",
+    "Corey"
   ],
   "confirmReceipt": [
     "Masheke",
-    "Brandon"
+    "Brandon",
+    "Corey"
   ],
   "chaseBenefits": [
     "Masheke",
-    "Brandon"
+    "Brandon",
+    "Corey"
   ],
   "benefits": [
     "Samantha",
-    "Brandon"
+    "Brandon",
+    "Corey"
   ],
   "submitAuth": [
     "Samantha",
-    "Brandon"
+    "Brandon",
+    "Corey"
   ],
   "authOutstanding": [
     "Samantha",
-    "Brandon"
+    "Brandon",
+    "Corey"
   ],
   "welcomeCall": [
     "Corey",
     "Brandon",
     "Janelle"
   ],
-  "authDenied": [],
+  "authDenied": [
+    "Corey"
+  ],
   "finalConfirm": [
     "Brandon",
-    "Janelle"
+    "Janelle",
+    "Corey"
   ],
   "systemMgmt": [
     "Josh",
