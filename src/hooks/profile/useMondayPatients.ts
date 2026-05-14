@@ -20,7 +20,7 @@ export function useMondayPatients(injectedPatientId?: string | null) {
     return base.map((p) => (ov[p.id] ? { ...p, ...ov[p.id] } : p));
   }, []);
 
-  const refetch = useCallback(async () => {
+  const refetch = useCallback(async (silent = false) => {
     if (!hasToken()) {
       if (mountedRef.current) {
         setError("VITE_MONDAY_API_TOKEN is not set. Add it in your project env vars and rebuild.");
@@ -28,16 +28,17 @@ export function useMondayPatients(injectedPatientId?: string | null) {
       }
       return;
     }
-    if (mountedRef.current) {
+    if (mountedRef.current && !silent) {
       setLoading(true);
       setError(null);
     }
     try {
-      const items = await fetchGroupItems(undefined, (moreItems) => {
+      const onPage = silent ? undefined : (moreItems: import("@/lib/profile/mondayApi").MondayItem[]) => {
         if (!mountedRef.current) return;
         const morePats = applyOverlays(moreItems.map(mondayItemToPatient));
         setPatients((prev) => [...prev, ...morePats]);
-      });
+      };
+      const items = await fetchGroupItems(undefined, onPage);
       if (!mountedRef.current) return;
       const safeItems = Array.isArray(items) ? items : [];
       const ps = safeItems.map(mondayItemToPatient);
@@ -65,7 +66,7 @@ export function useMondayPatients(injectedPatientId?: string | null) {
   useEffect(() => {
     mountedRef.current = true;
     refetch();
-    const id = setInterval(refetch, POLL_MS);
+    const id = setInterval(() => refetch(true), POLL_MS);
     return () => {
       mountedRef.current = false;
       clearInterval(id);

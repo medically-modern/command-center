@@ -84,7 +84,7 @@ export function useMondayPatients(activeGroup: SidebarGroup = "benefits", inject
 
   const mountedRef = useRef(true);
 
-  const refetch = useCallback(async () => {
+  const refetch = useCallback(async (silent = false) => {
     if (!hasToken()) {
       if (mountedRef.current) {
         setError("VITE_MONDAY_API_TOKEN is not set. Add it in your project env vars and rebuild.");
@@ -92,18 +92,19 @@ export function useMondayPatients(activeGroup: SidebarGroup = "benefits", inject
       }
       return;
     }
-    if (mountedRef.current) {
+    if (mountedRef.current && !silent) {
       setLoading(true);
       setError(null);
     }
     try {
       const groupId = GROUPS[activeGroup];
-      // Fetch patients from the active group
-      const items = await fetchGroupItems(groupId, (moreItems) => {
+      // On background polls, skip streaming callback to avoid duplicating the list
+      const onPage = silent ? undefined : (moreItems: import("@/lib/samantha/mondayApi").MondayItem[]) => {
           if (!mountedRef.current) return;
           const morePats = moreItems.map(mondayItemToPatient).map((p) => applyOverlay(p, overlayRef.current.get(p.id)));
           setPatients((prev) => [...prev, ...morePats]);
-        });
+        };
+      const items = await fetchGroupItems(groupId, onPage);
       if (!mountedRef.current) return;
       const safeItems = Array.isArray(items) ? items : [];
       const ps = safeItems.map(mondayItemToPatient);
@@ -132,7 +133,7 @@ export function useMondayPatients(activeGroup: SidebarGroup = "benefits", inject
   useEffect(() => {
     mountedRef.current = true;
     refetch();
-    const id = setInterval(refetch, POLL_MS);
+    const id = setInterval(() => refetch(true), POLL_MS);
     return () => {
       mountedRef.current = false;
       clearInterval(id);

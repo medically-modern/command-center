@@ -72,7 +72,7 @@ export function useMondayPatients(activeTab: TabKey = "evaluate", injectedPatien
   const overlayRef = useRef<Map<string, Partial<Patient>>>(loadOverlays());
   const mountedRef = useRef(true);
 
-  const refetch = useCallback(async () => {
+  const refetch = useCallback(async (silent = false) => {
     if (!hasToken()) {
       if (mountedRef.current) {
         setError("VITE_MONDAY_API_TOKEN is not set. Add it in your project env vars and rebuild.");
@@ -80,13 +80,13 @@ export function useMondayPatients(activeTab: TabKey = "evaluate", injectedPatien
       }
       return;
     }
-    if (mountedRef.current) {
+    if (mountedRef.current && !silent) {
       setLoading(true);
       setError(null);
     }
     try {
-      // Pull from the single MN group, then filter by sub-stage
-      const items = await fetchGroupItems(GROUPS.medicalNecessity, (moreItems) => {
+      // On background polls, skip streaming callback to avoid duplicating the list
+      const onPage = silent ? undefined : (moreItems: import("@/lib/masheke/mondayApi").MondayItem[]) => {
           if (!mountedRef.current) return;
           const morePats = moreItems.map(mondayItemToPatient)
             .filter((p) => matchesTab(p.subStage, activeTab))
@@ -95,7 +95,8 @@ export function useMondayPatients(activeTab: TabKey = "evaluate", injectedPatien
               return o ? { ...p, ...o } : p;
             });
           if (morePats.length > 0) setPatients((prev) => [...prev, ...morePats]);
-        });
+        };
+      const items = await fetchGroupItems(GROUPS.medicalNecessity, onPage);
       if (!mountedRef.current) return;
       const safeItems = Array.isArray(items) ? items : [];
       const allPatients = safeItems.map(mondayItemToPatient);
@@ -132,7 +133,7 @@ export function useMondayPatients(activeTab: TabKey = "evaluate", injectedPatien
   useEffect(() => {
     mountedRef.current = true;
     refetch();
-    const id = setInterval(refetch, POLL_MS);
+    const id = setInterval(() => refetch(true), POLL_MS);
     return () => {
       mountedRef.current = false;
       clearInterval(id);

@@ -30,8 +30,9 @@ export function useMondayPatients(injectedPatientId?: string | null) {
   const [error, setError] = useState<string | null>(null);
   const overlayRef = useRef<Map<string, Partial<Patient>>>(loadOverlays());
   const mountedRef = useRef(true);
+  const isFirstLoadRef = useRef(true);
 
-  const refetch = useCallback(async () => {
+  const refetch = useCallback(async (silent = false) => {
     if (!hasToken()) {
       if (mountedRef.current) {
         setError("VITE_MONDAY_API_TOKEN is not set. Add it in your project env vars and rebuild.");
@@ -39,19 +40,22 @@ export function useMondayPatients(injectedPatientId?: string | null) {
       }
       return;
     }
-    if (mountedRef.current) {
+    // Only show loading spinner on first load or manual refresh
+    if (mountedRef.current && !silent) {
       setLoading(true);
       setError(null);
     }
     try {
-      const items = await fetchGroupItems(undefined, (moreItems) => {
+      // On background polls, skip the streaming callback to avoid duplicating the list
+      const onPage = silent ? undefined : (moreItems: import("@/lib/subscription/mondayApi").MondayItem[]) => {
         if (!mountedRef.current) return;
         const morePats = moreItems.map(mondayItemToPatient).map((p) => {
           const o = overlayRef.current.get(p.id);
           return o ? { ...p, ...o } : p;
         });
         setPatients((prev) => [...prev, ...morePats]);
-      });
+      };
+      const items = await fetchGroupItems(undefined, onPage);
       if (!mountedRef.current) return;
       const safeItems = Array.isArray(items) ? items : [];
       const ps = safeItems.map(mondayItemToPatient);
@@ -77,13 +81,14 @@ export function useMondayPatients(injectedPatientId?: string | null) {
         setError(e instanceof Error ? e.message : "Failed to load patients from Monday");
     } finally {
       if (mountedRef.current) setLoading(false);
+      isFirstLoadRef.current = false;
     }
   }, []);
 
   useEffect(() => {
     mountedRef.current = true;
     refetch();
-    const id = setInterval(refetch, POLL_MS);
+    const id = setInterval(() => refetch(true), POLL_MS);
     return () => {
       mountedRef.current = false;
       clearInterval(id);
