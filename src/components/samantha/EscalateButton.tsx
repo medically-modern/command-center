@@ -18,7 +18,7 @@ interface Props {
 
 export function EscalateButton({ escalated, onToggle, disabled }: Props) {
   return (
-    <div className="flex justify-center">
+    <div className="flex flex-col items-center gap-1.5">
       <Button
         onClick={onToggle}
         disabled={disabled}
@@ -32,6 +32,11 @@ export function EscalateButton({ escalated, onToggle, disabled }: Props) {
         <AlertTriangle className="h-4 w-4" />
         {escalated ? "Escalation Required" : "Escalate"}
       </Button>
+      {escalated && (
+        <p className="text-[11px] text-red-500">
+          Please include the reason for escalation in the Notes tab.
+        </p>
+      )}
     </div>
   );
 }
