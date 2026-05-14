@@ -179,28 +179,29 @@ export async function fetchGroupItems(
   const firstPage = data.boards?.[0]?.items_page?.items ?? [];
   let cursor = data.boards?.[0]?.items_page?.cursor ?? null;
 
-  if (cursor && onMore) {
-    (async () => {
-      while (cursor) {
-        try {
-          const nextQuery = `
-            query ($cursor: String!, $cols: [String!]) {
-              next_items_page(limit: ${PAGE}, cursor: $cursor) {
-                cursor
-                items { id name column_values(ids: $cols) { id text value } }
-              }
-            }
-          `;
-          const next = await gql<{ next_items_page: { cursor: string | null; items: MondayItem[] } }>(nextQuery, { cursor, cols: READ_COLUMN_IDS });
-          const items = next.next_items_page?.items ?? [];
-          cursor = next.next_items_page?.cursor ?? null;
-          if (items.length > 0) onMore(items);
-        } catch (e) { console.error("[fetchGroupItems] pagination error", e); break; }
+  const allItems: MondayItem[] = [...firstPage];
+
+  while (cursor) {
+    try {
+      const nextQuery = `
+        query ($cursor: String!, $cols: [String!]) {
+          next_items_page(limit: ${PAGE}, cursor: $cursor) {
+            cursor
+            items { id name column_values(ids: $cols) { id text value } }
+          }
+        }
+      `;
+      const next = await gql<{ next_items_page: { cursor: string | null; items: MondayItem[] } }>(nextQuery, { cursor, cols: READ_COLUMN_IDS });
+      const items = next.next_items_page?.items ?? [];
+      cursor = next.next_items_page?.cursor ?? null;
+      if (items.length > 0) {
+        allItems.push(...items);
+        if (onMore) onMore(items);
       }
-    })();
+    } catch (e) { console.error("[fetchGroupItems] pagination error", e); break; }
   }
 
-  return firstPage;
+  return allItems;
 }
 
 /**
