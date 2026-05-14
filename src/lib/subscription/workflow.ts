@@ -147,6 +147,7 @@ export const DAYS_TO_ORDER_OPTIONS = [
   { index: 15, label: "Pause" },
   { index: 13, label: "Stopped Serving" },
   { index: 14, label: "Not Serving" },
+  { index: 17, label: "Order Day Arrived" },
 ];
 
 export const ORDERING_CYCLE_OPTIONS = [
@@ -193,38 +194,55 @@ export const SUPPLIES_TYPE_OPTIONS = [
 
 export const INFUSION_SET_1_OPTIONS = [
   { index: 6, label: 'AutoSoft XC 6mm 23"' },
+  { index: 107, label: 'AutoSoft XC 6mm 23"' },
   { index: 17, label: 'AutoSoft XC 6mm 32"' },
+  { index: 108, label: 'AutoSoft XC 6mm 32"' },
   { index: 11, label: 'AutoSoft XC 6mm 43"' },
+  { index: 110, label: 'AutoSoft XC 6mm 43"' },
   { index: 7, label: 'AutoSoft XC 6mm 5"' },
+  { index: 151, label: 'AutoSoft XC 6mm 5"' },
   { index: 0, label: 'AutoSoft XC 9mm 23"' },
+  { index: 153, label: 'AutoSoft XC 9mm 23"' },
+  { index: 16, label: 'AutoSoft XC 9mm 43"' },
   { index: 8, label: 'AutoSoft 90 6mm 23"' },
+  { index: 106, label: 'AutoSoft 90 6mm 23"' },
   { index: 13, label: 'AutoSoft 90 6mm 43"' },
   { index: 4, label: 'AutoSoft 90 9mm 23"' },
   { index: 15, label: 'AutoSoft 90 9mm 43"' },
   { index: 9, label: 'AutoSoft 30 13mm 23"' },
+  { index: 105, label: 'AutoSoft 30 13mm 23"' },
+  { index: 103, label: 'AutoSoft 30 13mm 43"' },
   { index: 10, label: 'TruSteel 6mm 23"' },
+  { index: 154, label: 'TruSteel 6mm 23"' },
   { index: 2, label: 'TruSteel 6mm 32"' },
+  { index: 155, label: 'TruSteel 6mm 32"' },
   { index: 3, label: 'TruSteel 8mm 23"' },
   { index: 18, label: 'TruSteel 8mm 32"' },
   { index: 14, label: 'VariSoft 13mm 23"' },
+  { index: 109, label: 'VariSoft 13mm 23"' },
   { index: 12, label: 'VariSoft 13mm 32"' },
   { index: 1, label: 'VariSoft 17mm 23"' },
   { index: 19, label: 'Contact 6mm 23"' },
   { index: 101, label: 'Inset 6mm 23"' },
+  { index: 102, label: 'Luer 6mm 32"' },
   { index: 152, label: 'Mio Advance Clear 9mm 23"' },
   { index: 104, label: "Not Serving" },
 ];
 
 export const INFUSION_SET_2_OPTIONS = [
   { index: 4, label: 'AutoSoft XC 6mm 23"' },
+  { index: 14, label: 'AutoSoft XC 6mm 23"' },
   { index: 11, label: 'AutoSoft XC 6mm 32"' },
   { index: 0, label: 'AutoSoft XC 6mm 43"' },
   { index: 2, label: 'AutoSoft XC 6mm 5"' },
   { index: 6, label: 'AutoSoft XC 9mm 23"' },
   { index: 9, label: 'AutoSoft 90 6mm 23"' },
+  { index: 15, label: 'AutoSoft 90 6mm 23"' },
   { index: 3, label: 'AutoSoft 90 6mm 43"' },
   { index: 7, label: 'AutoSoft 90 9mm 23"' },
+  { index: 8, label: 'VariSoft 13mm 32"' },
   { index: 10, label: 'AutoSoft 30 13mm 23"' },
+  { index: 13, label: 'AutoSoft 30 13mm 23"' },
   { index: 1, label: 'TruSteel 6mm 23"' },
   { index: 12, label: "Not Serving" },
 ];
@@ -247,8 +265,13 @@ export const PRIMARY_INSURANCE_OPTIONS = [
   { index: 4, label: "United Medicaid" },
   { index: 104, label: "United Medicare" },
   { index: 16, label: "Wellcare" },
+  { index: 19, label: "BCBS Wyoming" },
   { index: 101, label: "Midlands Choice" },
   { index: 103, label: "Magnacare" },
+  { index: 105, label: "BCBS TN" },
+  { index: 7, label: "Fidelis Low-Cost" },
+  { index: 8, label: "Anthem BCBS Medicaid (JLJ)" },
+  { index: 9, label: "Anthem BCBS Low-Cost (JLJ)" },
 ];
 
 export const SECONDARY_INSURANCE_OPTIONS = [
@@ -288,11 +311,14 @@ export const DEAD_REASON_OPTIONS = [
 export const PAUSE_REASON_OPTIONS = [
   { id: 1, label: "Collect new insurance" },
   { id: 2, label: "Has enough supplies" },
-  { id: 3, label: "Hasn't opened pump yet" },
+  { id: 3, label: "Hasn't received pump yet" },
   { id: 4, label: "No confirmation" },
   { id: 5, label: "Last claim denied" },
   { id: 6, label: "Need new auth" },
   { id: 7, label: "Patient needs dr appt" },
+  { id: 8, label: "Still owes last invoice" },
+  { id: 9, label: "Other supplier has auth" },
+  { id: 10, label: "OOP too expensive" },
 ];
 
 export const FAX_PARACHUTE_OPTIONS = [
