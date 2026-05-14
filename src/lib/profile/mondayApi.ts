@@ -196,7 +196,6 @@ export async function fetchGroupItems(
   groupId: string = GROUPS.intake,
   onMore?: (items: MondayItem[]) => void,
 ): Promise<MondayItem[]> {
-
   const query = `
     query ($boardId: ID!, $cols: [String!]) {
       boards(ids: [$boardId]) {

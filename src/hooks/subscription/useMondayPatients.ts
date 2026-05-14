@@ -5,6 +5,23 @@ import { mondayItemToPatient } from "@/lib/subscription/mondayMapping";
 
 const POLL_MS = 30_000;
 const LS_KEY = "sub-overlays";
+const LS_CACHE_KEY = "sub-patients-cache";
+
+// ── Patient cache (instant load on return visits) ──
+
+function loadCachedPatients(): Patient[] {
+  try {
+    const raw = localStorage.getItem(LS_CACHE_KEY);
+    if (!raw) return [];
+    return JSON.parse(raw) as Patient[];
+  } catch { return []; }
+}
+
+function persistPatientCache(patients: Patient[]): void {
+  try {
+    localStorage.setItem(LS_CACHE_KEY, JSON.stringify(patients));
+  } catch { /* quota exceeded or private browsing — ignore */ }
+}
 
 function loadOverlays(): Map<string, Partial<Patient>> {
   try {
@@ -25,8 +42,8 @@ function removeOverlayFromStorage(id: string): void {
 }
 
 export function useMondayPatients(injectedPatientId?: string | null) {
-  const [patients, setPatients] = useState<Patient[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [patients, setPatients] = useState<Patient[]>(loadCachedPatients);
+  const [loading, setLoading] = useState(() => loadCachedPatients().length === 0);
   const [error, setError] = useState<string | null>(null);
   const overlayRef = useRef<Map<string, Partial<Patient>>>(loadOverlays());
   const mountedRef = useRef(true);
@@ -68,6 +85,7 @@ export function useMondayPatients(injectedPatientId?: string | null) {
       }
 
       setPatients(merged);
+      persistPatientCache(merged);
     } catch (e) {
       if (mountedRef.current)
         setError(e instanceof Error ? e.message : "Failed to load patients from Monday");
