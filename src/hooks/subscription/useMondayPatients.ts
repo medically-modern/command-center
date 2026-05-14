@@ -1,4 +1,3 @@
-import { flushSync } from "react-dom";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Patient } from "@/lib/subscription/workflow";
 import { fetchGroupItems, fetchItemById, hasToken } from "@/lib/subscription/mondayApi";
@@ -33,8 +32,8 @@ export function useMondayPatients(injectedPatientId?: string | null) {
   const mountedRef = useRef(true);
   const isFirstLoadRef = useRef(true);
 
-  const refetch = useCallback(async (silent = false) => {
-    console.error("[REFETCH] called, silent=", silent, "mounted=", mountedRef.current);
+  const refetch = useCallback(async (maybeSilent: unknown = false) => {
+    const silent = maybeSilent === true;
     if (!hasToken()) {
       if (mountedRef.current) {
         setError("VITE_MONDAY_API_TOKEN is not set. Add it in your project env vars and rebuild.");
@@ -44,14 +43,11 @@ export function useMondayPatients(injectedPatientId?: string | null) {
     }
     // Only show loading spinner on first load or manual refresh
     if (mountedRef.current && !silent) {
-      console.error("[REFETCH] about to setLoading(true)");
-      flushSync(() => { setLoading(true); setError(null); });
-      console.error("[REFETCH] setLoading(true) done");
+      setLoading(true);
+      setError(null);
     }
     try {
-      console.error("[REFETCH] starting fetchGroupItems");
       const items = await fetchGroupItems(undefined);
-      console.error("[REFETCH] fetchGroupItems returned", items?.length, "items");
       if (!mountedRef.current) return;
       const safeItems = Array.isArray(items) ? items : [];
       const ps = safeItems.map(mondayItemToPatient);
@@ -76,7 +72,6 @@ export function useMondayPatients(injectedPatientId?: string | null) {
       if (mountedRef.current)
         setError(e instanceof Error ? e.message : "Failed to load patients from Monday");
     } finally {
-      console.error("[REFETCH] finally block, setting loading false, silent=", silent);
       if (mountedRef.current && !silent) setLoading(false);
       isFirstLoadRef.current = false;
     }

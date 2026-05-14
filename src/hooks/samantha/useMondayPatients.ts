@@ -1,4 +1,3 @@
-import { flushSync } from "react-dom";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Patient, ProductCodeId, ProductCodeState } from "@/lib/samantha/workflow";
 import { fetchGroupItems, fetchItemById, GROUPS, hasToken } from "@/lib/samantha/mondayApi";
@@ -85,7 +84,8 @@ export function useMondayPatients(activeGroup: SidebarGroup = "benefits", inject
 
   const mountedRef = useRef(true);
 
-  const refetch = useCallback(async (silent = false) => {
+  const refetch = useCallback(async (maybeSilent: unknown = false) => {
+    const silent = maybeSilent === true;
     if (!hasToken()) {
       if (mountedRef.current) {
         setError("VITE_MONDAY_API_TOKEN is not set. Add it in your project env vars and rebuild.");
@@ -94,7 +94,8 @@ export function useMondayPatients(activeGroup: SidebarGroup = "benefits", inject
       return;
     }
     if (mountedRef.current && !silent) {
-      flushSync(() => { setLoading(true); setError(null); });
+      setLoading(true);
+      setError(null);
     }
     try {
       const groupId = GROUPS[activeGroup];

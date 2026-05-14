@@ -1,4 +1,3 @@
-import { flushSync } from "react-dom";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Patient } from "@/lib/finalConfirm/workflow";
 import { fetchGroupItems, fetchItemById, hasToken } from "@/lib/finalConfirm/mondayApi";
@@ -48,7 +47,8 @@ export function useMondayPatients(injectedPatientId?: string | null) {
   const overlayRef = useRef<Map<string, Partial<Patient>>>(loadOverlays());
   const mountedRef = useRef(true);
 
-  const refetch = useCallback(async (silent = false) => {
+  const refetch = useCallback(async (maybeSilent: unknown = false) => {
+    const silent = maybeSilent === true;
     if (!hasToken()) {
       if (mountedRef.current) {
         setError("VITE_MONDAY_API_TOKEN is not set. Add it in your project env vars and rebuild.");
@@ -57,7 +57,8 @@ export function useMondayPatients(injectedPatientId?: string | null) {
       return;
     }
     if (mountedRef.current && !silent) {
-      flushSync(() => { setLoading(true); setError(null); });
+      setLoading(true);
+      setError(null);
     }
     try {
       const items = await fetchGroupItems(undefined);

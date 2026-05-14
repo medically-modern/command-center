@@ -1,4 +1,3 @@
-import { flushSync } from "react-dom";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Patient } from "@/lib/masheke/workflow";
 import { fetchGroupItems, fetchItemById, GROUPS, hasToken } from "@/lib/masheke/mondayApi";
@@ -73,7 +72,8 @@ export function useMondayPatients(activeTab: TabKey = "evaluate", injectedPatien
   const overlayRef = useRef<Map<string, Partial<Patient>>>(loadOverlays());
   const mountedRef = useRef(true);
 
-  const refetch = useCallback(async (silent = false) => {
+  const refetch = useCallback(async (maybeSilent: unknown = false) => {
+    const silent = maybeSilent === true;
     if (!hasToken()) {
       if (mountedRef.current) {
         setError("VITE_MONDAY_API_TOKEN is not set. Add it in your project env vars and rebuild.");
@@ -82,7 +82,8 @@ export function useMondayPatients(activeTab: TabKey = "evaluate", injectedPatien
       return;
     }
     if (mountedRef.current && !silent) {
-      flushSync(() => { setLoading(true); setError(null); });
+      setLoading(true);
+      setError(null);
     }
     try {
       const items = await fetchGroupItems(GROUPS.medicalNecessity);
