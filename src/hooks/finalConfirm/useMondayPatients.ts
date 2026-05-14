@@ -1,3 +1,4 @@
+import { flushSync } from "react-dom";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Patient } from "@/lib/finalConfirm/workflow";
 import { fetchGroupItems, fetchItemById, hasToken } from "@/lib/finalConfirm/mondayApi";
@@ -56,8 +57,7 @@ export function useMondayPatients(injectedPatientId?: string | null) {
       return;
     }
     if (mountedRef.current && !silent) {
-      setLoading(true);
-      setError(null);
+      flushSync(() => { setLoading(true); setError(null); });
     }
     try {
       const items = await fetchGroupItems(undefined);

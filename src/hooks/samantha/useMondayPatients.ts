@@ -1,3 +1,4 @@
+import { flushSync } from "react-dom";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Patient, ProductCodeId, ProductCodeState } from "@/lib/samantha/workflow";
 import { fetchGroupItems, fetchItemById, GROUPS, hasToken } from "@/lib/samantha/mondayApi";
@@ -93,8 +94,7 @@ export function useMondayPatients(activeGroup: SidebarGroup = "benefits", inject
       return;
     }
     if (mountedRef.current && !silent) {
-      setLoading(true);
-      setError(null);
+      flushSync(() => { setLoading(true); setError(null); });
     }
     try {
       const groupId = GROUPS[activeGroup];

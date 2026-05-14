@@ -1,3 +1,4 @@
+import { flushSync } from "react-dom";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Patient } from "@/lib/masheke/workflow";
 import { fetchGroupItems, fetchItemById, GROUPS, hasToken } from "@/lib/masheke/mondayApi";
@@ -81,8 +82,7 @@ export function useMondayPatients(activeTab: TabKey = "evaluate", injectedPatien
       return;
     }
     if (mountedRef.current && !silent) {
-      setLoading(true);
-      setError(null);
+      flushSync(() => { setLoading(true); setError(null); });
     }
     try {
       const items = await fetchGroupItems(GROUPS.medicalNecessity);

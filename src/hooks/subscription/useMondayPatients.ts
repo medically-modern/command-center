@@ -1,3 +1,4 @@
+import { flushSync } from "react-dom";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Patient } from "@/lib/subscription/workflow";
 import { fetchGroupItems, fetchItemById, hasToken } from "@/lib/subscription/mondayApi";
@@ -42,8 +43,7 @@ export function useMondayPatients(injectedPatientId?: string | null) {
     }
     // Only show loading spinner on first load or manual refresh
     if (mountedRef.current && !silent) {
-      setLoading(true);
-      setError(null);
+      flushSync(() => { setLoading(true); setError(null); });
     }
     try {
       const items = await fetchGroupItems(undefined);
