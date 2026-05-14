@@ -60,15 +60,7 @@ export function useMondayPatients(injectedPatientId?: string | null) {
       setError(null);
     }
     try {
-      const onPage = silent ? undefined : (moreItems: import("@/lib/welcomeCall/mondayApi").MondayItem[]) => {
-          if (!mountedRef.current) return;
-          const morePats = moreItems.map(mondayItemToPatient).map((p) => {
-            const o = overlayRef.current.get(p.id);
-            return o ? { ...p, ...o } : p;
-          });
-          setPatients((prev) => [...prev, ...morePats]);
-        };
-      const items = await fetchGroupItems(undefined, onPage);
+      const items = await fetchGroupItems(undefined);
       if (!mountedRef.current) return;
       const safeItems = Array.isArray(items) ? items : [];
       const ps = safeItems.map(mondayItemToPatient);

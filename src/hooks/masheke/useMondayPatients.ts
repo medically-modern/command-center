@@ -85,18 +85,7 @@ export function useMondayPatients(activeTab: TabKey = "evaluate", injectedPatien
       setError(null);
     }
     try {
-      // On background polls, skip streaming callback to avoid duplicating the list
-      const onPage = silent ? undefined : (moreItems: import("@/lib/masheke/mondayApi").MondayItem[]) => {
-          if (!mountedRef.current) return;
-          const morePats = moreItems.map(mondayItemToPatient)
-            .filter((p) => matchesTab(p.subStage, activeTab))
-            .map((p) => {
-              const o = overlayRef.current.get(p.id);
-              return o ? { ...p, ...o } : p;
-            });
-          if (morePats.length > 0) setPatients((prev) => [...prev, ...morePats]);
-        };
-      const items = await fetchGroupItems(GROUPS.medicalNecessity, onPage);
+      const items = await fetchGroupItems(GROUPS.medicalNecessity);
       if (!mountedRef.current) return;
       const safeItems = Array.isArray(items) ? items : [];
       const allPatients = safeItems.map(mondayItemToPatient);

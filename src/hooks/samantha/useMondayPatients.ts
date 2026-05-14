@@ -98,13 +98,7 @@ export function useMondayPatients(activeGroup: SidebarGroup = "benefits", inject
     }
     try {
       const groupId = GROUPS[activeGroup];
-      // On background polls, skip streaming callback to avoid duplicating the list
-      const onPage = silent ? undefined : (moreItems: import("@/lib/samantha/mondayApi").MondayItem[]) => {
-          if (!mountedRef.current) return;
-          const morePats = moreItems.map(mondayItemToPatient).map((p) => applyOverlay(p, overlayRef.current.get(p.id)));
-          setPatients((prev) => [...prev, ...morePats]);
-        };
-      const items = await fetchGroupItems(groupId, onPage);
+      const items = await fetchGroupItems(groupId);
       if (!mountedRef.current) return;
       const safeItems = Array.isArray(items) ? items : [];
       const ps = safeItems.map(mondayItemToPatient);
