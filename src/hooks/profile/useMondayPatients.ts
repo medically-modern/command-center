@@ -54,7 +54,7 @@ export function useMondayPatients(injectedPatientId?: string | null) {
       if (mountedRef.current)
         setError(e instanceof Error ? e.message : "Failed to load patients from Monday");
     } finally {
-      if (mountedRef.current) setLoading(false);
+      if (mountedRef.current && !silent) setLoading(false);
     }
   }, [applyOverlays]);
 
