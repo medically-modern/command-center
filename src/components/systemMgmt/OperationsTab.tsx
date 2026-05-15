@@ -2,15 +2,16 @@
  * OperationsTab — global daily burndown for all roles.
  *
  * Shows every role's patient count movement during 9 AM – 5 PM ET.
- * Baseline snapshots at first load after 9 AM ET each day.
- * After 5 PM ET the view freezes as "end of day" summary.
+ * Baseline priority:
+ * 1. Server baseline (public/data/baseline.json) from GitHub Actions cron
+ * 2. localStorage fallback (ops-burndown-snapshot)
  *
- * Uses useRoleCounts hook for live data, separate localStorage key
- * from the per-user DailyBurndown.
+ * After 5 PM ET the view freezes as "end of day" summary.
  */
 import { useEffect, useState, useRef, useMemo } from "react";
 import { ROLES } from "@/lib/config";
 import { useRoleCounts, type RoleCounts } from "@/hooks/useRoleCounts";
+import { useServerBaseline } from "@/hooks/useServerBaseline";
 import { cn } from "@/lib/utils";
 import {
   TrendingDown,
@@ -24,6 +25,8 @@ import {
   Sun,
   Moon,
   Sunrise,
+  Server,
+  HardDrive,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
@@ -63,7 +66,7 @@ function getTimeWindow(): TimeWindow {
   return "during";
 }
 
-/* ── localStorage snapshot ────────────────────────────────── */
+/* ── localStorage snapshot (fallback) ─────────────────────── */
 
 const LS_KEY = "ops-burndown-snapshot";
 
@@ -71,6 +74,7 @@ interface Snapshot {
   dateKey: string;
   counts: RoleCounts;
   takenAt: string;
+  source?: "server" | "local";
 }
 
 function loadSnapshot(): Snapshot | null {
@@ -88,12 +92,11 @@ function saveSnapshot(counts: RoleCounts): Snapshot {
     dateKey: getEasternDateKey(),
     counts: { ...counts },
     takenAt: new Date().toISOString(),
+    source: "local",
   };
   try {
     localStorage.setItem(LS_KEY, JSON.stringify(snap));
-  } catch {
-    /* ignore */
-  }
+  } catch { /* ignore */ }
   return snap;
 }
 
@@ -127,6 +130,7 @@ function hexToRgba(hex: string, alpha: number): string {
 export function OperationsTab() {
   const navigate = useNavigate();
   const { counts: roleCounts, loading: countsLoading } = useRoleCounts();
+  const { baseline: serverBaseline, loading: serverLoading } = useServerBaseline();
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
   const [animateIn, setAnimateIn] = useState(false);
   const [timeWindow, setTimeWindow] = useState<TimeWindow>(getTimeWindow);
@@ -138,31 +142,40 @@ export function OperationsTab() {
     return () => clearInterval(interval);
   }, []);
 
-  // Manage snapshot
+  // Resolve baseline: server first, then localStorage
   useEffect(() => {
-    if (countsLoading || initializedRef.current) return;
+    if (countsLoading || serverLoading || initializedRef.current) return;
     const hasData = Object.values(roleCounts).some((v) => v > 0);
     if (!hasData) return;
 
     initializedRef.current = true;
     const todayKey = getEasternDateKey();
-    const existing = loadSnapshot();
 
-    if (existing && existing.dateKey === todayKey) {
-      setSnapshot(existing);
-    } else if (timeWindow !== "before") {
-      // New day + within or after business hours → snapshot
-      const newSnap = saveSnapshot(roleCounts);
-      setSnapshot(newSnap);
+    // 1. Try server baseline for today
+    if (serverBaseline && serverBaseline.dateKey === todayKey) {
+      setSnapshot({
+        dateKey: serverBaseline.dateKey,
+        counts: serverBaseline.counts,
+        takenAt: serverBaseline.takenAt,
+        source: "server",
+      });
+    } else {
+      // 2. Fall back to localStorage
+      const existing = loadSnapshot();
+      if (existing && existing.dateKey === todayKey) {
+        setSnapshot(existing);
+      } else if (timeWindow !== "before") {
+        const newSnap = saveSnapshot(roleCounts);
+        setSnapshot(newSnap);
+      }
     }
-    // If before 9 AM and no snapshot for today, we wait
 
     requestAnimationFrame(() => {
       requestAnimationFrame(() => setAnimateIn(true));
     });
-  }, [roleCounts, countsLoading, timeWindow]);
+  }, [roleCounts, countsLoading, serverBaseline, serverLoading, timeWindow]);
 
-  // All roles (exclude authDenied which has no real data)
+  // All roles (exclude authDenied)
   const allRoles = ROLES.filter((r) => r.id !== "authDenied");
 
   const barData = useMemo(() => {
@@ -175,14 +188,12 @@ export function OperationsTab() {
         const full = Math.max(baseline, current);
         return { role, baseline, current, delta, full };
       })
-      .filter((d) => d.full > 0 || d.baseline > 0); // hide roles with no patients at all
+      .filter((d) => d.full > 0 || d.baseline > 0);
   }, [allRoles, snapshot, roleCounts]);
 
-  // Sqrt scale
   const sqrtScale = (v: number) => Math.sqrt(Math.max(v, 0));
   const maxSqrt = Math.max(...barData.map((d) => sqrtScale(d.full)), 1);
 
-  // Summary stats
   const totalProcessed = barData
     .filter((d) => d.delta < 0)
     .reduce((sum, d) => sum + Math.abs(d.delta), 0);
@@ -201,7 +212,9 @@ export function OperationsTab() {
       })
     : "";
 
-  // Before 9 AM — show waiting state
+  const isServerSource = snapshot?.source === "server";
+
+  // Before 9 AM — show waiting state (only if no server baseline for today)
   if (timeWindow === "before" && !snapshot) {
     return (
       <div className="rounded-xl bg-card border shadow-card p-16 text-center space-y-4">
@@ -210,7 +223,7 @@ export function OperationsTab() {
           Operations tracking starts at 9:00 AM ET
         </h3>
         <p className="text-sm text-muted-foreground max-w-md mx-auto">
-          The daily baseline will be captured at the first load after 9 AM.
+          The daily baseline is captured automatically by the server at 9 AM.
           Check back then to see your team's progress throughout the day.
         </p>
         <p className="text-xs text-muted-foreground">
@@ -220,9 +233,8 @@ export function OperationsTab() {
     );
   }
 
-  // Loading state
   if (!snapshot || barData.length === 0) {
-    if (countsLoading) {
+    if (countsLoading || serverLoading) {
       return (
         <div className="rounded-xl bg-card border shadow-card p-16 text-center space-y-3">
           <Clock className="w-8 h-8 animate-pulse mx-auto text-primary" />
@@ -262,8 +274,15 @@ export function OperationsTab() {
             <Sun className="w-4 h-4 text-amber-500" />
             Daily operations
           </h3>
-          <p className="text-xs text-muted-foreground mt-0.5">
-            Baseline: {snapshotTime} ET · {isAfterHours ? "Closed" : `Live: ${getEasternTimeStr()} ET`}
+          <p className="text-xs text-muted-foreground mt-0.5 flex items-center gap-1">
+            {isServerSource ? (
+              <Server className="w-3 h-3 inline" />
+            ) : (
+              <HardDrive className="w-3 h-3 inline" />
+            )}
+            Baseline: {snapshotTime} ET
+            {isServerSource ? " (server)" : " (local)"}
+            {" · "}{isAfterHours ? "Closed" : `Live: ${getEasternTimeStr()} ET`}
             {" · "}{totalPatients} total patients
           </p>
         </div>
@@ -353,7 +372,7 @@ export function OperationsTab() {
         </div>
       </div>
 
-      {/* Burndown bars — all roles */}
+      {/* Burndown bars */}
       <div className="space-y-2.5">
         {barData.map((d, i) => {
           const hex = COLOR_MAP[d.role.color] ?? "#6366f1";
@@ -382,7 +401,6 @@ export function OperationsTab() {
               }}
               title={hasRoute ? `Open ${d.role.label}` : d.role.label}
             >
-              {/* Label row */}
               <div className="flex items-center justify-between mb-1">
                 <span className="text-sm font-medium text-foreground flex items-center gap-2">
                   <div
@@ -425,7 +443,6 @@ export function OperationsTab() {
                 </div>
               </div>
 
-              {/* Bar */}
               <div className="relative h-7 w-full rounded-md overflow-hidden bg-muted/30">
                 <div
                   className="absolute inset-y-0 left-0 rounded-md transition-all duration-700 ease-out"

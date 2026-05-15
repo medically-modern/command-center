@@ -1,13 +1,17 @@
 /**
  * DailyBurndown — shows start-of-day vs. current patient counts per role.
  *
- * At first load each day (Eastern time), snapshots current counts to localStorage.
+ * Baseline priority:
+ * 1. Server baseline (public/data/baseline.json) — written by GitHub Actions at 9 AM ET
+ * 2. localStorage fallback — captured on first browser load if server baseline unavailable
+ *
  * Every subsequent load compares live counts against that baseline, showing
  * progress (bars shrinking) and incoming work (bars growing).
  */
 import { useEffect, useState, useRef, useMemo } from "react";
 import { ROLES, type RoleConfig } from "@/lib/config";
 import type { RoleCounts } from "@/hooks/useRoleCounts";
+import { useServerBaseline } from "@/hooks/useServerBaseline";
 import { cn } from "@/lib/utils";
 import {
   TrendingDown,
@@ -18,26 +22,26 @@ import {
   ArrowDown,
   ArrowUp,
   ExternalLink,
+  Server,
+  HardDrive,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
-/* ── localStorage helpers ─────────────────────────────────── */
+/* ── localStorage helpers (fallback) ──────────────────────── */
 
 const LS_KEY = "daily-burndown-snapshot";
 
 interface Snapshot {
-  /** YYYY-MM-DD in Eastern time */
   dateKey: string;
-  /** roleId → count at snapshot time */
   counts: RoleCounts;
-  /** ISO timestamp of when the snapshot was taken */
   takenAt: string;
+  source?: "server" | "local";
 }
 
 function getEasternDateKey(): string {
   return new Date().toLocaleDateString("en-CA", {
     timeZone: "America/New_York",
-  }); // YYYY-MM-DD
+  });
 }
 
 function getEasternTimeStr(): string {
@@ -64,12 +68,11 @@ function saveSnapshot(counts: RoleCounts): Snapshot {
     dateKey: getEasternDateKey(),
     counts: { ...counts },
     takenAt: new Date().toISOString(),
+    source: "local",
   };
   try {
     localStorage.setItem(LS_KEY, JSON.stringify(snap));
-  } catch {
-    /* ignore */
-  }
+  } catch { /* ignore */ }
   return snap;
 }
 
@@ -78,11 +81,9 @@ function saveSnapshot(counts: RoleCounts): Snapshot {
 interface Props {
   roleCounts: RoleCounts;
   countsLoading: boolean;
-  /** Which role IDs to show (the user's assigned roles) */
   visibleRoleIds: string[];
 }
 
-// Hex colors that match the Tailwind classes on RoleConfig.color
 const COLOR_MAP: Record<string, string> = {
   "bg-blue-500": "#3b82f6",
   "bg-violet-500": "#8b5cf6",
@@ -112,37 +113,44 @@ export function DailyBurndown({
   visibleRoleIds,
 }: Props) {
   const navigate = useNavigate();
+  const { baseline: serverBaseline, loading: serverLoading } = useServerBaseline();
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
   const [animateIn, setAnimateIn] = useState(false);
   const initializedRef = useRef(false);
 
-  // On mount / when counts arrive, manage snapshot
+  // Resolve baseline: prefer server, fall back to localStorage
   useEffect(() => {
-    if (countsLoading || initializedRef.current) return;
-    // Only snapshot once we actually have data
+    if (countsLoading || serverLoading || initializedRef.current) return;
     const hasData = Object.values(roleCounts).some((v) => v > 0);
     if (!hasData) return;
 
     initializedRef.current = true;
     const todayKey = getEasternDateKey();
-    const existing = loadSnapshot();
 
-    if (existing && existing.dateKey === todayKey) {
-      // Same day — use existing snapshot as baseline
-      setSnapshot(existing);
+    // 1. Try server baseline for today
+    if (serverBaseline && serverBaseline.dateKey === todayKey) {
+      setSnapshot({
+        dateKey: serverBaseline.dateKey,
+        counts: serverBaseline.counts,
+        takenAt: serverBaseline.takenAt,
+        source: "server",
+      });
     } else {
-      // New day or no snapshot — take a fresh one
-      const newSnap = saveSnapshot(roleCounts);
-      setSnapshot(newSnap);
+      // 2. Fall back to localStorage
+      const existing = loadSnapshot();
+      if (existing && existing.dateKey === todayKey) {
+        setSnapshot(existing);
+      } else {
+        const newSnap = saveSnapshot(roleCounts);
+        setSnapshot(newSnap);
+      }
     }
 
-    // Trigger entrance animation
     requestAnimationFrame(() => {
       requestAnimationFrame(() => setAnimateIn(true));
     });
-  }, [roleCounts, countsLoading]);
+  }, [roleCounts, countsLoading, serverBaseline, serverLoading]);
 
-  // Compute bar data
   const roles = ROLES.filter((r) => visibleRoleIds.includes(r.id));
 
   const barData = useMemo(() => {
@@ -151,19 +159,14 @@ export function DailyBurndown({
       const baseline = snapshot.counts[role.id] ?? 0;
       const current = roleCounts[role.id] ?? 0;
       const delta = current - baseline;
-      // "full" is the max of baseline and current — bars can grow
       const full = Math.max(baseline, current);
       return { role, baseline, current, delta, full };
     });
   }, [roles, snapshot, roleCounts]);
 
-  // Square-root scale: compresses outliers so large values (e.g. 500)
-  // don't crush smaller bars (e.g. 5-21) into invisible slivers.
-  // sqrt(500)≈22, sqrt(21)≈4.6 → ratio 4.8x instead of 24x with linear.
   const sqrtScale = (v: number) => Math.sqrt(Math.max(v, 0));
   const maxSqrt = Math.max(...barData.map((d) => sqrtScale(d.full)), 1);
 
-  // Summary stats
   const totalProcessed = barData
     .filter((d) => d.delta < 0)
     .reduce((sum, d) => sum + Math.abs(d.delta), 0);
@@ -181,8 +184,10 @@ export function DailyBurndown({
       })
     : "";
 
+  const isServerSource = snapshot?.source === "server";
+
   if (!snapshot || barData.length === 0) {
-    if (countsLoading) {
+    if (countsLoading || serverLoading) {
       return (
         <div className="flex items-center justify-center py-12 text-muted-foreground text-sm gap-2">
           <Clock className="w-4 h-4 animate-pulse" />
@@ -201,8 +206,15 @@ export function DailyBurndown({
           <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wider">
             Today's Progress
           </h3>
-          <p className="text-xs text-muted-foreground/60 mt-0.5">
-            Baseline set at {snapshotTime} ET · Live at {getEasternTimeStr()} ET
+          <p className="text-xs text-muted-foreground/60 mt-0.5 flex items-center gap-1">
+            {isServerSource ? (
+              <Server className="w-3 h-3 inline" />
+            ) : (
+              <HardDrive className="w-3 h-3 inline" />
+            )}
+            Baseline: {snapshotTime} ET
+            {isServerSource ? " (server)" : " (local)"}
+            {" · "}Live: {getEasternTimeStr()} ET
           </p>
         </div>
         <div className="flex items-center gap-4 text-xs text-muted-foreground">
@@ -307,13 +319,8 @@ export function DailyBurndown({
               onClick={() => {
                 if (hasRoute) navigate(d.role.route);
               }}
-              title={
-                hasRoute
-                  ? `Open ${d.role.label}`
-                  : `${d.role.label}`
-              }
+              title={hasRoute ? `Open ${d.role.label}` : d.role.label}
             >
-              {/* Label row */}
               <div className="flex items-center justify-between mb-1.5">
                 <span className="text-sm font-medium text-foreground flex items-center gap-2">
                   <div
@@ -328,7 +335,6 @@ export function DailyBurndown({
                   )}
                 </span>
                 <div className="flex items-center gap-2">
-                  {/* Baseline → Current */}
                   <span className="text-xs text-muted-foreground tabular-nums">
                     {d.baseline}
                   </span>
@@ -336,7 +342,6 @@ export function DailyBurndown({
                   <span className="text-sm font-semibold text-foreground tabular-nums">
                     {countsLoading ? "…" : d.current}
                   </span>
-                  {/* Delta badge */}
                   {d.delta !== 0 && (
                     <span
                       className={cn(
@@ -358,9 +363,7 @@ export function DailyBurndown({
                 </div>
               </div>
 
-              {/* Bar */}
               <div className="relative h-8 w-full rounded-lg overflow-hidden bg-muted/30">
-                {/* Ghost bar — baseline or "full" extent */}
                 <div
                   className="absolute inset-y-0 left-0 rounded-lg transition-all duration-700 ease-out"
                   style={{
@@ -369,7 +372,6 @@ export function DailyBurndown({
                     transitionDelay: `${i * 60}ms`,
                   }}
                 />
-                {/* Solid bar — current count */}
                 <div
                   className="absolute inset-y-0 left-0 rounded-lg transition-all duration-1000 ease-out"
                   style={{
@@ -378,13 +380,10 @@ export function DailyBurndown({
                     transitionDelay: `${i * 60 + 200}ms`,
                   }}
                 />
-                {/* Subtle shimmer on the solid bar edge */}
                 <div
                   className="absolute inset-y-0 rounded-lg transition-all duration-1000 ease-out opacity-30"
                   style={{
-                    left: animateIn
-                      ? `calc(${currentPct}% - 8px)`
-                      : "0%",
+                    left: animateIn ? `calc(${currentPct}% - 8px)` : "0%",
                     width: "8px",
                     background: `linear-gradient(90deg, transparent, ${hexToRgba(hex, 0.5)})`,
                     transitionDelay: `${i * 60 + 200}ms`,
@@ -396,7 +395,7 @@ export function DailyBurndown({
         })}
       </div>
 
-      {/* Footer hint */}
+      {/* Footer */}
       <div className="flex items-center gap-6 pt-1 text-xs text-muted-foreground/60">
         <span className="flex items-center gap-1">
           <Zap className="w-3 h-3" />
