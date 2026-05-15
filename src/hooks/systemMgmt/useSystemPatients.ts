@@ -1,8 +1,11 @@
 /**
  * Hook that fetches all patients across every board and provides
  * search + escalation filtering.
+ *
+ * Uses localStorage cache for instant page load on return visits —
+ * cached data is shown immediately, then silently refreshed from Monday.
  */
-import { useEffect, useState, useCallback, useMemo } from "react";
+import { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import {
   fetchAllPatients,
   removeEscalation as apiRemoveEscalation,
@@ -11,28 +14,59 @@ import {
 } from "@/lib/systemMgmt/mondayApi";
 
 const POLL_MS = 90_000; // refresh every 90s
+const LS_CACHE_KEY = "sysmgmt-patients-cache";
+
+// ── Patient cache (instant load on return visits) ──
+
+function loadCachedPatients(): SystemPatient[] {
+  try {
+    const raw = localStorage.getItem(LS_CACHE_KEY);
+    if (!raw) return [];
+    return JSON.parse(raw) as SystemPatient[];
+  } catch { return []; }
+}
+
+function persistPatientCache(patients: SystemPatient[]): void {
+  try {
+    localStorage.setItem(LS_CACHE_KEY, JSON.stringify(patients));
+  } catch { /* quota exceeded or private browsing — ignore */ }
+}
 
 export function useSystemPatients() {
-  const [patients, setPatients] = useState<SystemPatient[]>([]);
-  const [loading, setLoading] = useState(true);
+  const cachedRef = useRef(loadCachedPatients());
+  const [patients, setPatients] = useState<SystemPatient[]>(cachedRef.current);
+  const [loading, setLoading] = useState(cachedRef.current.length === 0);
   const [error, setError] = useState<string | null>(null);
+  const mountedRef = useRef(true);
 
-  const refetch = useCallback(async () => {
+  const refetch = useCallback(async (silent = false) => {
+    if (mountedRef.current && !silent) {
+      setLoading(true);
+      setError(null);
+    }
     try {
       const all = await fetchAllPatients();
+      if (!mountedRef.current) return;
       setPatients(all);
+      persistPatientCache(all);
       setError(null);
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      if (mountedRef.current)
+        setError(e instanceof Error ? e.message : String(e));
     } finally {
-      setLoading(false);
+      if (mountedRef.current && !silent) setLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    refetch();
-    const interval = setInterval(refetch, POLL_MS);
-    return () => clearInterval(interval);
+    mountedRef.current = true;
+    // If we have cached patients, fetch silently (no spinner)
+    refetch(cachedRef.current.length > 0);
+    const interval = setInterval(() => refetch(true), POLL_MS);
+    return () => {
+      mountedRef.current = false;
+      clearInterval(interval);
+    };
   }, [refetch]);
 
   /** All patients with an active escalation (exclude completed) */
