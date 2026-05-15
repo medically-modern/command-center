@@ -519,7 +519,7 @@ function NotesPanel({
   patient: SystemPatient;
   onClose: () => void;
 }) {
-  const noteEntries = useMemo(() => parseNoteEntries(patient.notes), [patient.notes]);
+  const noteEntries = useMemo(() => parseNoteEntriesNewestFirst(patient.notes), [patient.notes]);
 
   return (
     <div className="fixed top-0 right-0 w-[400px] h-screen border-l bg-card shadow-2xl flex flex-col z-40">
@@ -638,6 +638,11 @@ function parseNoteEntries(notes: string): { header: string; body: string }[] {
   return [{ header: "", body: text }];
 }
 
+/** Reverse so most recent (last in Monday text) comes first */
+function parseNoteEntriesNewestFirst(notes: string): { header: string; body: string }[] {
+  return parseNoteEntries(notes).reverse();
+}
+
 function PatientRow({
   patient,
   onClick,
@@ -654,7 +659,7 @@ function PatientRow({
   const [showNotesTooltip, setShowNotesTooltip] = useState(false);
   const notesTooltipTimeout = useRef<ReturnType<typeof setTimeout>>();
 
-  const noteEntries = useMemo(() => parseNoteEntries(patient.notes), [patient.notes]);
+  const noteEntries = useMemo(() => parseNoteEntriesNewestFirst(patient.notes), [patient.notes]);
   const mostRecent = noteEntries[0] ?? null;
   const recentThree = noteEntries.slice(0, 3);
 
@@ -715,7 +720,7 @@ function PatientRow({
               {mostRecent.header && (
                 <div className="text-[10px] text-primary font-semibold mb-0.5 truncate">{mostRecent.header}</div>
               )}
-              <div className="text-sm text-foreground leading-snug line-clamp-2">
+              <div className="text-sm text-foreground leading-snug whitespace-pre-wrap">
                 {mostRecent.body}
               </div>
             </>

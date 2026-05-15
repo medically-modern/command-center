@@ -654,18 +654,24 @@ export function PipelineChart({ patients, onSegmentClick }: PipelineChartProps) 
                   )}
                 </div>
 
-                {/* Stage label */}
+                {/* Stage label — clickable to filter */}
                 <div
                   className="text-center mt-2 px-0.5"
                   style={{ opacity: 0, animation: `barEnter 0.35s ${SMOOTH_EASE} ${stagger + 150}ms both` }}
                 >
-                  <div className={cn(
-                    "font-medium text-foreground leading-tight truncate",
-                    focusMode ? "text-xs" : "text-[11px]",
-                    dimmed && "text-muted-foreground",
-                  )}>
+                  <button
+                    onClick={() => {
+                      const allPts = Array.from(col.buckets.values()).flat();
+                      onSegmentClick(allPts);
+                    }}
+                    className={cn(
+                      "font-medium leading-tight truncate cursor-pointer transition-colors hover:text-blue-600 dark:hover:text-blue-400",
+                      focusMode ? "text-xs" : "text-[11px]",
+                      dimmed ? "text-muted-foreground" : "text-foreground",
+                    )}
+                  >
                     {col.pipelineStage}
-                  </div>
+                  </button>
                   {/* In attention mode, show overdue count under label */}
                   {attentionNeeded && col.overdueCount > 0 && (
                     <div className="text-[10px] text-red-500 font-semibold mt-0.5">
