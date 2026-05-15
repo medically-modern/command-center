@@ -522,7 +522,7 @@ export async function fetchItemAssets(itemId: string): Promise<MondayAsset[]> {
   const query = `
     query ($boardId: ID!, $itemId: ID!) {
       boards(ids: [$boardId]) {
-        items_page(limit: 1, query_params: { ids: [$itemId] }) {
+        items_page(limit: ${PAGE}, query_params: { ids: [$itemId] }) {
           cursor
           items {
             assets(assets_source: all) { id name url public_url }
