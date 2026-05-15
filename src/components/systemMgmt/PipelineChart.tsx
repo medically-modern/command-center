@@ -8,14 +8,15 @@
  *
  * Features:
  *   - Group filter dropdown (upper-left) with animated show/hide
- *   - Total Patients counter (dead center)
+ *   - Total Patients inline next to title
  *   - Hover → tooltip with patient names
  *   - Click → populates search results
+ *   - Fluid CSS-driven animations with staggered entrance and spring easing
  */
-import { useMemo, useState, useRef, useEffect } from "react";
+import { useMemo, useState, useRef, useEffect, useCallback } from "react";
 import type { SystemPatient } from "@/lib/systemMgmt/mondayApi";
 import { cn } from "@/lib/utils";
-import { Filter, ChevronDown, Users } from "lucide-react";
+import { Filter, ChevronDown } from "lucide-react";
 
 // ── Day-range buckets using Monday's actual status labels + colors ────
 
@@ -47,29 +48,24 @@ function getBucket(daysSinceStage: string): DayBucket {
   return found ?? UNKNOWN_BUCKET;
 }
 
+// ── Spring-like easing ──────────────────────────────────────
+// cubic-bezier that overshoots slightly then settles — feels physical
+const SPRING_EASE = "cubic-bezier(0.34, 1.56, 0.64, 1)";
+const SMOOTH_EASE = "cubic-bezier(0.4, 0, 0.2, 1)";
+
 // ── Pipeline group definitions ──────────────────────────────
 
 export interface PipelineGroupDef {
   id: string;
   label: string;
   color: string;
-  /** Board IDs that contribute patients to this group */
   boardIds: number[];
-  /** Ordered stage labels expected in this group (for ordering columns) */
   stageOrder: string[];
-  /**
-   * Filter function: given a patient, does it belong to this group?
-   * Defaults to boardId membership if not provided.
-   */
   match?: (p: SystemPatient) => boolean;
 }
 
-/** Chart-eligible board IDs */
 const CHART_BOARD_IDS = new Set([
-  18406352652, // Profile Send Off
-  18406060017, // Medical Evaluation
-  18410601299, // Insurance
-  18410804557, // Welcome Call
+  18406352652, 18406060017, 18410601299, 18410804557,
 ]);
 
 export const PIPELINE_GROUPS: PipelineGroupDef[] = [
@@ -122,7 +118,6 @@ interface GroupColumn {
   boardName: string;
   groupTitle: string;
   pipelineStage: string;
-  /** Pipeline group this column belongs to */
   pipelineGroupId: string;
   buckets: Map<string, SystemPatient[]>;
   total: number;
@@ -133,6 +128,77 @@ interface HoverState {
   bucketLabel: string;
   x: number;
   y: number;
+}
+
+// ── Inline keyframes (injected once) ────────────────────────
+
+let stylesInjected = false;
+function injectAnimationStyles() {
+  if (stylesInjected) return;
+  stylesInjected = true;
+  const style = document.createElement("style");
+  style.textContent = `
+    @keyframes barEnter {
+      0% {
+        opacity: 0;
+        transform: scaleY(0) translateY(20px);
+      }
+      60% {
+        opacity: 1;
+        transform: scaleY(1.04) translateY(-2px);
+      }
+      100% {
+        opacity: 1;
+        transform: scaleY(1) translateY(0);
+      }
+    }
+    @keyframes barExit {
+      0% {
+        opacity: 1;
+        transform: scaleX(1);
+        max-width: 200px;
+      }
+      100% {
+        opacity: 0;
+        transform: scaleX(0);
+        max-width: 0;
+        padding: 0;
+        margin: 0;
+        gap: 0;
+        min-width: 0;
+      }
+    }
+    @keyframes countPop {
+      0% { transform: scale(1); }
+      40% { transform: scale(1.25); }
+      100% { transform: scale(1); }
+    }
+    @keyframes bracketSlide {
+      0% {
+        opacity: 0;
+        transform: translateY(8px);
+      }
+      100% {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+    .pipeline-bar-enter {
+      animation: barEnter 0.5s ${SPRING_EASE} both;
+      transform-origin: bottom center;
+    }
+    .pipeline-bar-exit {
+      animation: barExit 0.35s ${SMOOTH_EASE} both;
+      overflow: hidden;
+    }
+    .pipeline-count-pop {
+      animation: countPop 0.4s ${SPRING_EASE};
+    }
+    .pipeline-bracket-enter {
+      animation: bracketSlide 0.4s ${SMOOTH_EASE} both;
+    }
+  `;
+  document.head.appendChild(style);
 }
 
 // ── Component ────────────────────────────────────────────────
@@ -148,6 +214,13 @@ export function PipelineChart({ patients, onSegmentClick }: PipelineChartProps) 
   const [filterOpen, setFilterOpen] = useState(false);
   const filterRef = useRef<HTMLDivElement>(null);
 
+  // Track previous filter to drive enter/exit animations
+  const [prevFilter, setPrevFilter] = useState<string>("all");
+  const [animKey, setAnimKey] = useState(0);
+
+  // Inject keyframe styles on mount
+  useEffect(() => injectAnimationStyles(), []);
+
   // Close filter dropdown on outside click
   useEffect(() => {
     const handleClick = (e: MouseEvent) => {
@@ -159,26 +232,27 @@ export function PipelineChart({ patients, onSegmentClick }: PipelineChartProps) 
     return () => document.removeEventListener("mousedown", handleClick);
   }, []);
 
-  // Helper: get pipeline group for a patient
+  const handleFilterChange = useCallback((newFilter: string) => {
+    setPrevFilter(activeFilter);
+    setActiveFilter(newFilter);
+    setAnimKey((k) => k + 1);
+    setFilterOpen(false);
+  }, [activeFilter]);
+
   const getGroup = (p: SystemPatient): PipelineGroupDef | undefined =>
     PIPELINE_GROUPS.find((g) => g.match?.(p));
 
-  // Build grouped columns from patients
+  // Build grouped columns
   const columns = useMemo(() => {
     const eligible = patients.filter(
       (p) => CHART_BOARD_IDS.has(p.boardId) && !p.isCompleted,
     );
 
     const groupMap = new Map<string, GroupColumn>();
-
     for (const p of eligible) {
       const pg = getGroup(p);
       if (!pg) continue;
-
-      // Normalize stage label for Profile board
-      const stageLabel =
-        p.boardId === 18406352652 ? "Profile Checklist" : p.pipelineStage;
-
+      const stageLabel = p.boardId === 18406352652 ? "Profile Checklist" : p.pipelineStage;
       const key = `${pg.id}::${stageLabel}`;
       if (!groupMap.has(key)) {
         groupMap.set(key, {
@@ -198,41 +272,23 @@ export function PipelineChart({ patients, onSegmentClick }: PipelineChartProps) 
       col.total++;
     }
 
-    // Sort: by pipeline group order, then by stage order within group
     const groupIdx = new Map(PIPELINE_GROUPS.map((g, i) => [g.id, i]));
-    const cols = Array.from(groupMap.values()).sort((a, b) => {
+    return Array.from(groupMap.values()).sort((a, b) => {
       const ai = groupIdx.get(a.pipelineGroupId) ?? 99;
       const bi = groupIdx.get(b.pipelineGroupId) ?? 99;
       if (ai !== bi) return ai - bi;
-
-      // Within the same group, use stageOrder
       const group = PIPELINE_GROUPS.find((g) => g.id === a.pipelineGroupId);
       if (group) {
         const aStageIdx = group.stageOrder.indexOf(a.pipelineStage);
         const bStageIdx = group.stageOrder.indexOf(b.pipelineStage);
-        // Auth Denied variants: match by startsWith
-        const aIdx =
-          aStageIdx >= 0
-            ? aStageIdx
-            : group.stageOrder.findIndex((s) =>
-                a.pipelineStage.startsWith(s),
-              );
-        const bIdx =
-          bStageIdx >= 0
-            ? bStageIdx
-            : group.stageOrder.findIndex((s) =>
-                b.pipelineStage.startsWith(s),
-              );
+        const aIdx = aStageIdx >= 0 ? aStageIdx : group.stageOrder.findIndex((s) => a.pipelineStage.startsWith(s));
+        const bIdx = bStageIdx >= 0 ? bStageIdx : group.stageOrder.findIndex((s) => b.pipelineStage.startsWith(s));
         return (aIdx >= 0 ? aIdx : 99) - (bIdx >= 0 ? bIdx : 99);
       }
-
       return a.pipelineStage.localeCompare(b.pipelineStage);
     });
-
-    return cols;
   }, [patients]);
 
-  // Filtered columns based on active filter
   const filteredColumns = useMemo(() => {
     if (activeFilter === "all") return columns;
     return columns.filter((c) => c.pipelineGroupId === activeFilter);
@@ -243,31 +299,21 @@ export function PipelineChart({ patients, onSegmentClick }: PipelineChartProps) 
     [filteredColumns],
   );
 
-  // Total patients across visible bars
   const totalPatients = useMemo(
     () => filteredColumns.reduce((sum, c) => sum + c.total, 0),
     [filteredColumns],
   );
 
-  // Group filtered columns by pipeline group for bracket rendering
   const pipelineGroupBrackets = useMemo(() => {
-    const brackets: {
-      group: PipelineGroupDef;
-      count: number;
-    }[] = [];
+    const brackets: { group: PipelineGroupDef; count: number }[] = [];
     for (const pg of PIPELINE_GROUPS) {
       if (activeFilter !== "all" && pg.id !== activeFilter) continue;
-      const count = filteredColumns.filter(
-        (c) => c.pipelineGroupId === pg.id,
-      ).length;
-      if (count > 0) {
-        brackets.push({ group: pg, count });
-      }
+      const count = filteredColumns.filter((c) => c.pipelineGroupId === pg.id).length;
+      if (count > 0) brackets.push({ group: pg, count });
     }
     return brackets;
   }, [filteredColumns, activeFilter]);
 
-  // Hovered segment patients
   const hoveredPatients = useMemo(() => {
     if (!hover) return [];
     const col = filteredColumns[hover.groupIdx];
@@ -275,18 +321,16 @@ export function PipelineChart({ patients, onSegmentClick }: PipelineChartProps) 
     return col.buckets.get(hover.bucketLabel) ?? [];
   }, [hover, filteredColumns]);
 
-  // Active filter label
   const activeFilterLabel = useMemo(() => {
     if (activeFilter === "all") return "All Groups";
     return PIPELINE_GROUPS.find((g) => g.id === activeFilter)?.label ?? "All Groups";
   }, [activeFilter]);
 
-  if (columns.length === 0) {
-    return null;
-  }
+  if (columns.length === 0) return null;
 
   return (
     <div className="rounded-xl border bg-card shadow-card p-5 space-y-3">
+      {/* ── Header row ── */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
           {/* Group filter dropdown */}
@@ -294,7 +338,7 @@ export function PipelineChart({ patients, onSegmentClick }: PipelineChartProps) 
             <button
               onClick={() => setFilterOpen((o) => !o)}
               className={cn(
-                "flex items-center gap-2 px-3 py-1.5 rounded-lg border text-xs font-medium transition-all",
+                "flex items-center gap-2 px-3 py-1.5 rounded-lg border text-xs font-medium transition-all duration-200",
                 activeFilter !== "all"
                   ? "bg-primary/10 border-primary/30 text-primary"
                   : "bg-muted/50 border-border text-foreground hover:bg-muted",
@@ -304,7 +348,7 @@ export function PipelineChart({ patients, onSegmentClick }: PipelineChartProps) 
               {activeFilterLabel}
               <ChevronDown
                 className={cn(
-                  "w-3 h-3 transition-transform",
+                  "w-3 h-3 transition-transform duration-200",
                   filterOpen && "rotate-180",
                 )}
               />
@@ -313,10 +357,7 @@ export function PipelineChart({ patients, onSegmentClick }: PipelineChartProps) 
             {filterOpen && (
               <div className="absolute left-0 top-full mt-1 z-50 w-56 bg-popover border border-border rounded-lg shadow-lg py-1 animate-in fade-in slide-in-from-top-1 duration-150">
                 <button
-                  onClick={() => {
-                    setActiveFilter("all");
-                    setFilterOpen(false);
-                  }}
+                  onClick={() => handleFilterChange("all")}
                   className={cn(
                     "w-full text-left px-3 py-2 text-xs hover:bg-muted/50 transition-colors flex items-center gap-2",
                     activeFilter === "all" && "bg-primary/10 text-primary font-semibold",
@@ -326,30 +367,19 @@ export function PipelineChart({ patients, onSegmentClick }: PipelineChartProps) 
                   All Groups
                 </button>
                 {PIPELINE_GROUPS.map((pg) => {
-                  const groupCount = columns.filter(
-                    (c) => c.pipelineGroupId === pg.id,
-                  ).reduce((s, c) => s + c.total, 0);
+                  const groupCount = columns.filter((c) => c.pipelineGroupId === pg.id).reduce((s, c) => s + c.total, 0);
                   return (
                     <button
                       key={pg.id}
-                      onClick={() => {
-                        setActiveFilter(pg.id);
-                        setFilterOpen(false);
-                      }}
+                      onClick={() => handleFilterChange(pg.id)}
                       className={cn(
                         "w-full text-left px-3 py-2 text-xs hover:bg-muted/50 transition-colors flex items-center gap-2",
-                        activeFilter === pg.id &&
-                          "bg-primary/10 text-primary font-semibold",
+                        activeFilter === pg.id && "bg-primary/10 text-primary font-semibold",
                       )}
                     >
-                      <div
-                        className="w-2.5 h-2.5 rounded-sm"
-                        style={{ backgroundColor: pg.color }}
-                      />
+                      <div className="w-2.5 h-2.5 rounded-sm" style={{ backgroundColor: pg.color }} />
                       {pg.label}
-                      <span className="ml-auto text-[10px] text-muted-foreground">
-                        {groupCount}
-                      </span>
+                      <span className="ml-auto text-[10px] text-muted-foreground">{groupCount}</span>
                     </button>
                   );
                 })}
@@ -360,83 +390,85 @@ export function PipelineChart({ patients, onSegmentClick }: PipelineChartProps) 
           <h3 className="text-sm font-semibold text-foreground">
             Pipeline Overview
           </h3>
+
+          {/* Total patients — inline separator + count */}
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <span className="text-border">|</span>
+            <span
+              key={`total-${animKey}`}
+              className="font-bold text-foreground tabular-nums pipeline-count-pop"
+            >
+              {totalPatients}
+            </span>
+            <span className="text-xs">patients</span>
+          </div>
         </div>
+
+        {/* Day-bucket legend */}
         <div className="flex items-center gap-3 flex-wrap">
           {DAY_BUCKETS.map((b) => (
             <div key={b.label} className="flex items-center gap-1">
-              <div
-                className="w-2.5 h-2.5 rounded-sm"
-                style={{ backgroundColor: b.color }}
-              />
-              <span className="text-[10px] text-muted-foreground">
-                {b.label}
-              </span>
+              <div className="w-2.5 h-2.5 rounded-sm" style={{ backgroundColor: b.color }} />
+              <span className="text-[10px] text-muted-foreground">{b.label}</span>
             </div>
           ))}
         </div>
       </div>
 
-      {/* Chart area */}
+      {/* ── Chart area ── */}
       <div className="relative">
-        {/* Total Patients — dead center */}
-        <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-10">
-          <div className="flex flex-col items-center gap-0.5 bg-card/80 backdrop-blur-sm px-4 py-2 rounded-xl border border-border/50 shadow-sm">
-            <Users className="w-4 h-4 text-muted-foreground" />
-            <span className="text-2xl font-bold text-foreground tabular-nums">
-              {totalPatients}
-            </span>
-            <span className="text-[10px] uppercase tracking-widest text-muted-foreground font-semibold">
-              Total Patients
-            </span>
-          </div>
-        </div>
-
         {/* Bars */}
         <div
-          className="flex items-end gap-2 transition-all duration-500 ease-in-out"
+          key={`bars-${animKey}`}
+          className="flex items-end gap-2"
           style={{ height: "360px" }}
         >
           {filteredColumns.map((col, colIdx) => {
             const barHeight = Math.max((col.total / maxTotal) * 320, 12);
             const allBuckets = [...DAY_BUCKETS, UNKNOWN_BUCKET];
-            const segments: {
-              bucket: DayBucket;
-              patients: SystemPatient[];
-            }[] = [];
-
+            const segments: { bucket: DayBucket; patients: SystemPatient[] }[] = [];
             for (const bucket of allBuckets) {
               const pts = col.buckets.get(bucket.label) ?? [];
-              if (pts.length === 0) continue;
-              segments.push({ bucket, patients: pts });
+              if (pts.length > 0) segments.push({ bucket, patients: pts });
             }
+
+            // Staggered entrance delay per bar
+            const staggerDelay = colIdx * 60;
 
             return (
               <div
                 key={`${col.pipelineGroupId}-${col.pipelineStage}`}
-                className="flex-1 flex flex-col justify-end items-stretch min-w-[56px] transition-all duration-500 ease-in-out"
+                className="flex-1 flex flex-col justify-end items-stretch min-w-[56px] pipeline-bar-enter"
                 style={{
-                  opacity: 1,
-                  transform: "scaleX(1)",
+                  animationDelay: `${staggerDelay}ms`,
                 }}
               >
                 {/* Count label */}
-                <div className="text-center text-xs font-semibold text-foreground mb-1">
+                <div
+                  className="text-center text-xs font-semibold text-foreground mb-1"
+                  style={{
+                    opacity: 0,
+                    animation: `barEnter 0.4s ${SPRING_EASE} ${staggerDelay + 200}ms both`,
+                  }}
+                >
                   {col.total}
                 </div>
 
                 {/* Stacked bar */}
                 <div
-                  className="flex flex-col-reverse rounded-t-md overflow-hidden transition-all duration-500 ease-in-out"
-                  style={{ height: `${barHeight}px` }}
+                  className="flex flex-col-reverse rounded-t-md overflow-hidden"
+                  style={{
+                    height: `${barHeight}px`,
+                    transition: `height 0.6s ${SMOOTH_EASE}`,
+                  }}
                 >
-                  {segments.map((seg) => (
+                  {segments.map((seg, segIdx) => (
                     <div
                       key={seg.bucket.label}
                       className={cn(
-                        "w-full cursor-pointer transition-opacity duration-200",
+                        "w-full cursor-pointer",
                         hover &&
-                          (hover.groupIdx !== colIdx ||
-                            hover.bucketLabel !== seg.bucket.label)
+                          (hover.groupIdx !== colIdx || hover.bucketLabel !== seg.bucket.label)
                           ? "opacity-40"
                           : "opacity-100 hover:brightness-110",
                       )}
@@ -444,10 +476,10 @@ export function PipelineChart({ patients, onSegmentClick }: PipelineChartProps) 
                         backgroundColor: seg.bucket.color,
                         flexGrow: seg.patients.length,
                         minHeight: "4px",
+                        transition: `opacity 0.2s ease, flex-grow 0.5s ${SMOOTH_EASE}`,
                       }}
                       onMouseEnter={(e) => {
-                        const rect =
-                          e.currentTarget.getBoundingClientRect();
+                        const rect = e.currentTarget.getBoundingClientRect();
                         setHover({
                           groupIdx: colIdx,
                           bucketLabel: seg.bucket.label,
@@ -462,7 +494,13 @@ export function PipelineChart({ patients, onSegmentClick }: PipelineChartProps) 
                 </div>
 
                 {/* Stage label */}
-                <div className="text-center mt-2 px-0.5">
+                <div
+                  className="text-center mt-2 px-0.5"
+                  style={{
+                    opacity: 0,
+                    animation: `barEnter 0.35s ${SMOOTH_EASE} ${staggerDelay + 150}ms both`,
+                  }}
+                >
                   <div className="text-[11px] font-medium text-foreground leading-tight truncate">
                     {col.pipelineStage}
                   </div>
@@ -473,15 +511,22 @@ export function PipelineChart({ patients, onSegmentClick }: PipelineChartProps) 
         </div>
 
         {/* Pipeline group brackets */}
-        <div className="flex gap-1.5 mt-1 border-t border-border pt-2 transition-all duration-500 ease-in-out">
-          {pipelineGroupBrackets.map(({ group, count }) => {
+        <div
+          key={`brackets-${animKey}`}
+          className="flex gap-1.5 mt-1 border-t border-border pt-2"
+        >
+          {pipelineGroupBrackets.map(({ group, count }, bIdx) => {
             const totalCols = filteredColumns.length;
             const widthPct = (count / totalCols) * 100;
             return (
               <div
                 key={group.id}
-                className="text-center transition-all duration-500 ease-in-out"
-                style={{ width: `${widthPct}%` }}
+                className="text-center pipeline-bracket-enter"
+                style={{
+                  width: `${widthPct}%`,
+                  animationDelay: `${bIdx * 80 + 300}ms`,
+                  transition: `width 0.6s ${SMOOTH_EASE}`,
+                }}
               >
                 <div
                   className="h-0.5 rounded-full mx-2"
@@ -506,21 +551,19 @@ export function PipelineChart({ patients, onSegmentClick }: PipelineChartProps) 
               left: `${hover.x}px`,
               top: `${hover.y - 8}px`,
               transform: "translate(-50%, -100%)",
+              animation: `barEnter 0.15s ${SMOOTH_EASE} both`,
             }}
           >
             <div className="flex items-center gap-2 mb-2">
               <div
                 className="w-3 h-3 rounded-sm"
-                style={{
-                  backgroundColor: getBucket(hover.bucketLabel).color,
-                }}
+                style={{ backgroundColor: getBucket(hover.bucketLabel).color }}
               />
               <span className="text-xs font-semibold text-foreground">
                 {hover.bucketLabel}
               </span>
               <span className="text-[10px] text-muted-foreground ml-auto">
-                {hoveredPatients.length} patient
-                {hoveredPatients.length !== 1 ? "s" : ""}
+                {hoveredPatients.length} patient{hoveredPatients.length !== 1 ? "s" : ""}
               </span>
             </div>
             <div className="space-y-1 max-h-[160px] overflow-y-auto">
