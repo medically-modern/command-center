@@ -136,43 +136,64 @@ function injectStyles() {
   const s = document.createElement("style");
   s.textContent = `
     @keyframes barEnter {
-      0%  { opacity:0; transform:scaleY(0) translateY(20px); }
-      60% { opacity:1; transform:scaleY(1.04) translateY(-2px); }
-      100%{ opacity:1; transform:scaleY(1) translateY(0); }
+      0%   { opacity:0; transform:translate3d(0,12px,0) scaleY(0.3); }
+      100% { opacity:1; transform:translate3d(0,0,0) scaleY(1); }
     }
     @keyframes countPop {
-      0%  { transform:scale(1); }
-      40% { transform:scale(1.25); }
-      100%{ transform:scale(1); }
+      0%   { transform:scale(1); }
+      50%  { transform:scale(1.18); }
+      100% { transform:scale(1); }
     }
     @keyframes bracketSlide {
-      0%  { opacity:0; transform:translateY(8px); }
-      100%{ opacity:1; transform:translateY(0); }
+      0%   { opacity:0; transform:translate3d(0,6px,0); }
+      100% { opacity:1; transform:translate3d(0,0,0); }
     }
     @keyframes pulseGlow {
-      0%,100% { box-shadow: 0 0 0 0 rgba(239,68,68,0.4); }
-      50%     { box-shadow: 0 0 12px 4px rgba(239,68,68,0.25); }
+      0%,100% { box-shadow: 0 0 0 0 rgba(239,68,68,0.35); }
+      50%     { box-shadow: 0 0 10px 3px rgba(239,68,68,0.2); }
     }
     @keyframes focusRing {
       0%,100% { box-shadow: 0 0 0 2px rgba(99,102,241,0.5); }
       50%     { box-shadow: 0 0 0 4px rgba(99,102,241,0.3); }
     }
     @keyframes kbBarSlide {
-      0%  { opacity:0; transform:translateY(8px); }
-      100%{ opacity:1; transform:translateY(0); }
+      0%   { opacity:0; transform:translate3d(0,6px,0); }
+      100% { opacity:1; transform:translate3d(0,0,0); }
+    }
+    @keyframes enterFlash {
+      0%   { background-color: rgba(99,102,241,0); }
+      30%  { background-color: rgba(99,102,241,0.15); }
+      100% { background-color: rgba(99,102,241,0); }
     }
     .pl-bar-enter {
-      animation: barEnter 0.5s ${SPRING_EASE} both;
+      animation: barEnter 0.45s ${SMOOTH_EASE} both;
       transform-origin: bottom center;
+      will-change: transform, opacity;
+      backface-visibility: hidden;
     }
-    .pl-count-pop { animation: countPop 0.4s ${SPRING_EASE}; }
-    .pl-bracket-enter { animation: bracketSlide 0.4s ${SMOOTH_EASE} both; }
+    .pl-count-pop {
+      animation: countPop 0.35s ${SMOOTH_EASE};
+      will-change: transform;
+    }
+    .pl-bracket-enter {
+      animation: bracketSlide 0.35s ${SMOOTH_EASE} both;
+      will-change: transform, opacity;
+    }
     .pl-overdue-pulse { animation: pulseGlow 2s ease-in-out infinite; }
     .pl-kb-focus {
       animation: focusRing 1.5s ease-in-out infinite;
       border-radius: 6px;
     }
-    .pl-kb-bar-enter { animation: kbBarSlide 0.3s ${SMOOTH_EASE} both; }
+    .pl-kb-bar-enter {
+      animation: kbBarSlide 0.25s ${SMOOTH_EASE} both;
+      will-change: transform, opacity;
+    }
+    .pl-enter-flash { animation: enterFlash 0.4s ease-out; }
+    .pl-gpu {
+      will-change: transform, opacity;
+      backface-visibility: hidden;
+      transform: translate3d(0,0,0);
+    }
   `;
   document.head.appendChild(s);
 }
@@ -306,20 +327,34 @@ export function PipelineChart({ patients, onSegmentClick }: PipelineChartProps) 
 
   // ── Keyboard navigation ──────────────────────────────────
 
+  // Blur any text input when keyboard nav is turned on so keys aren't swallowed
+  useEffect(() => {
+    if (keyboardNav) {
+      const active = document.activeElement;
+      if (active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement) {
+        active.blur();
+      }
+    }
+  }, [keyboardNav]);
+
   useEffect(() => {
     if (!keyboardNav) return;
     const handler = (e: KeyboardEvent) => {
+      // Don't intercept if user is typing in an input
+      const tag = (e.target as HTMLElement)?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA") return;
+
       const len = filteredColumns.length;
       if (!len) return;
 
       switch (e.key) {
         case "ArrowRight":
           e.preventDefault();
-          setFocusedIdx((i) => (i < len - 1 ? i + 1 : 0));
+          setFocusedIdx((i) => (i < 0 ? 0 : i < len - 1 ? i + 1 : 0));
           break;
         case "ArrowLeft":
           e.preventDefault();
-          setFocusedIdx((i) => (i > 0 ? i - 1 : len - 1));
+          setFocusedIdx((i) => (i <= 0 ? len - 1 : i - 1));
           break;
         case "Enter": {
           e.preventDefault();
@@ -327,6 +362,18 @@ export function PipelineChart({ patients, onSegmentClick }: PipelineChartProps) 
             const col = filteredColumns[focusedIdx];
             const allPatients = Array.from(col.buckets.values()).flat();
             onSegmentClick(allPatients);
+            // Flash the focused bar
+            const barEl = chartRef.current?.querySelectorAll("[data-bar-idx]")?.[focusedIdx] as HTMLElement | undefined;
+            if (barEl) {
+              barEl.classList.remove("pl-enter-flash");
+              void barEl.offsetWidth; // force reflow to restart animation
+              barEl.classList.add("pl-enter-flash");
+            }
+            // Scroll results into view after a tick
+            requestAnimationFrame(() => {
+              const results = chartRef.current?.parentElement?.querySelector("[data-chart-results]");
+              if (results) results.scrollIntoView({ behavior: "smooth", block: "nearest" });
+            });
           }
           break;
         }
@@ -484,7 +531,7 @@ export function PipelineChart({ patients, onSegmentClick }: PipelineChartProps) 
         {!focusMode && (
           <div className="flex items-center gap-3 flex-wrap transition-opacity duration-300">
             {DAY_BUCKETS.map((b) => (
-              <div key={b.label} className={cn("flex items-center gap-1 transition-opacity duration-200", attentionNeeded && !OVERDUE_BUCKETS.has(b.label) && "opacity-30")}>
+              <div key={b.label} className="flex items-center gap-1">
                 <div className="w-2.5 h-2.5 rounded-sm" style={{ backgroundColor: b.color }} />
                 <span className="text-[10px] text-muted-foreground">{b.label}</span>
               </div>
@@ -508,14 +555,15 @@ export function PipelineChart({ patients, onSegmentClick }: PipelineChartProps) 
             return (
               <div
                 key={`${col.pipelineGroupId}-${col.pipelineStage}`}
+                data-bar-idx={colIdx}
                 className={cn(
-                  "flex-1 flex flex-col justify-end items-stretch pl-bar-enter",
+                  "flex-1 flex flex-col justify-end items-stretch pl-bar-enter pl-gpu",
                   focusMode ? "min-w-[72px]" : "min-w-[56px]",
                   focused && "pl-kb-focus",
                 )}
                 style={{
                   animationDelay: `${stagger}ms`,
-                  transition: `opacity 0.4s ${SMOOTH_EASE}`,
+                  transition: `opacity 0.35s ${SMOOTH_EASE}`,
                   opacity: dimmed ? 0.25 : 1,
                 }}
               >
@@ -547,7 +595,9 @@ export function PipelineChart({ patients, onSegmentClick }: PipelineChartProps) 
                   )}
                   style={{
                     height: `${barHeight}px`,
-                    transition: `height 0.6s ${SMOOTH_EASE}`,
+                    transition: `height 0.5s ${SMOOTH_EASE}`,
+                    willChange: "height",
+                    contain: "layout style",
                   }}
                 >
                   {focusMode ? (
@@ -588,7 +638,9 @@ export function PipelineChart({ patients, onSegmentClick }: PipelineChartProps) 
                             backgroundColor: bucket.color,
                             flexGrow: pts.length,
                             minHeight: "4px",
-                            transition: `opacity 0.2s ease, flex-grow 0.5s ${SMOOTH_EASE}`,
+                            transition: `opacity 0.2s ease, flex-grow 0.4s ${SMOOTH_EASE}`,
+                            willChange: "opacity, flex-grow",
+                            backfaceVisibility: "hidden" as const,
                           }}
                           onMouseEnter={(e) => {
                             const rect = e.currentTarget.getBoundingClientRect();

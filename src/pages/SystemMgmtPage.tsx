@@ -329,7 +329,7 @@ function SearchView({
 
       {/* Chart selection banner */}
       {chartSelectionActive && (
-        <div className="flex items-center gap-2 px-3 py-2 bg-primary/10 rounded-lg border border-primary/20">
+        <div data-chart-results className="flex items-center gap-2 px-3 py-2 bg-primary/10 rounded-lg border border-primary/20">
           <span className="text-xs text-primary font-medium">
             Showing {results.length} patient{results.length !== 1 ? "s" : ""} from chart selection
           </span>
