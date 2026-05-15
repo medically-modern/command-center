@@ -18,7 +18,7 @@ import type { TabKey } from "@/hooks/masheke/useMondayPatients";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { writeStatusIndex, clearStatusColumn, clearDateColumn, COL } from "@/lib/masheke/mondayApi";
-import { SUB_STAGE_INDEX } from "@/lib/masheke/mondayMapping";
+import { SUB_STAGE_INDEX, ADVANCER_2C_INDEX } from "@/lib/masheke/mondayMapping";
 
 /** Convert YYYY-MM-DD → MM/DD/YYYY */
 function fmtDate(iso: string): string {
@@ -108,11 +108,12 @@ export function PatientsSidebar({ patients, selectedId, onSelect, loading, error
   const [searchQuery, setSearchQuery] = useState("");
   const [sendingBack, setSendingBack] = useState<string | null>(null);
 
-  // Split patients into active vs blocked vs follow-up vs escalated
-  const escalatedPatients = patients.filter((p) => p.escalation === "Escalation Required" && p.blocked !== "Blocked" && p.followUp !== "Follow up");
-  const activePatients = patients.filter((p) => p.escalation !== "Escalation Required" && p.blocked !== "Blocked" && p.followUp !== "Follow up");
+  // Split patients into active vs blocked vs follow-up vs escalated vs stuck
+  const stuckPatients = patients.filter((p) => p.advancer2c === "Stuck" && p.blocked !== "Blocked");
+  const escalatedPatients = patients.filter((p) => p.escalation === "Escalation Required" && p.blocked !== "Blocked" && p.followUp !== "Follow up" && p.advancer2c !== "Stuck");
+  const activePatients = patients.filter((p) => p.escalation !== "Escalation Required" && p.blocked !== "Blocked" && p.followUp !== "Follow up" && p.advancer2c !== "Stuck");
   const blockedPatients = patients.filter((p) => p.blocked === "Blocked");
-  const followUpPatients = patients.filter((p) => p.followUp === "Follow up" && p.blocked !== "Blocked" && p.escalation !== "Escalation Required");
+  const followUpPatients = patients.filter((p) => p.followUp === "Follow up" && p.blocked !== "Blocked" && p.escalation !== "Escalation Required" && p.advancer2c !== "Stuck");
 
   // Always use Eastern Time so all users see the same "today" regardless of their local timezone
   const etParts = new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
@@ -343,6 +344,43 @@ export function PatientsSidebar({ patients, selectedId, onSelect, loading, error
           </SidebarGroup>
         )}
 
+        {/* ── Stuck section (all tabs) ── */}
+        {stuckPatients.length > 0 && !collapsed && (
+          <SidebarGroup>
+            <SidebarGroupLabel className="text-[10px] uppercase tracking-wider text-amber-500 font-semibold flex items-center gap-1.5">
+              <AlertTriangle className="h-3 w-3" />
+              Stuck ({stuckPatients.length})
+            </SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu>
+                {stuckPatients.map((p) => (
+                  <SidebarMenuItem key={p.id}>
+                    <div className="flex items-center gap-1 w-full">
+                      <SidebarMenuButton
+                        isActive={selectedId === p.id}
+                        onClick={() => onSelect(p.id)}
+                        className={cn(
+                          "flex-1 flex items-start gap-2 py-2 h-auto opacity-60",
+                          selectedId === p.id && "bg-sidebar-accent opacity-100",
+                        )}
+                      >
+                        <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0 text-amber-400" />
+                        <div className="min-w-0 text-left">
+                          <p className="text-sm font-medium truncate">{p.name}</p>
+                          <p className="text-[11px] text-amber-400 truncate">
+                            {p.serving || "—"}
+                          </p>
+                        </div>
+                      </SidebarMenuButton>
+                      <UnstuckButton patientId={p.id} patientName={p.name} onSuccess={onRefresh} />
+                    </div>
+                  </SidebarMenuItem>
+                ))}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        )}
+
         {/* ── Follow Up section (all tabs) ── */}
         {followUpPatients.length > 0 && !collapsed && (
           <SidebarGroup>
@@ -417,6 +455,39 @@ function UnblockButton({ patientId, patientName, onSuccess }: { patientId: strin
     >
       {sending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Undo2 className="h-3 w-3" />}
       Un-Block
+    </button>
+  );
+}
+
+
+/** Small button to clear Stuck status (Advancer 2C) on Monday */
+function UnstuckButton({ patientId, patientName, onSuccess }: { patientId: string; patientName: string; onSuccess: () => void }) {
+  const [sending, setSending] = useState(false);
+
+  const handleUnstuck = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setSending(true);
+    try {
+      await clearStatusColumn(patientId, COL.advancer2c);
+      toast.success(`${patientName} returned to active`);
+      onSuccess();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      toast.error(`Failed to unstick: ${msg}`);
+    } finally {
+      setSending(false);
+    }
+  };
+
+  return (
+    <button
+      onClick={handleUnstuck}
+      disabled={sending}
+      className="shrink-0 flex items-center gap-1 px-2 py-1 rounded text-[10px] font-medium text-amber-700 bg-amber-50 border border-amber-200 hover:bg-amber-100 transition-colors disabled:opacity-50"
+      title={`Unstick ${patientName}`}
+    >
+      {sending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Undo2 className="h-3 w-3" />}
+      Unstick
     </button>
   );
 }

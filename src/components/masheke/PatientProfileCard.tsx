@@ -147,6 +147,13 @@ export function PatientProfileCard({
           label="Member ID"
           value={patient.memberId1 ?? ""}
         />
+        {patient.memberId2 && (
+          <Field
+            icon={<IdCard className="h-4 w-4" />}
+            label="Member ID 2"
+            value={patient.memberId2}
+          />
+        )}
         <Field
           icon={<Phone className="h-4 w-4" />}
           label="Phone"

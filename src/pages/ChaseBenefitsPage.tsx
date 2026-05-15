@@ -20,6 +20,7 @@ import { Button } from "@/components/ui/button";
 import { EscalateButton } from "@/components/samantha/EscalateButton";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { RotateCcw, Stethoscope, ArrowLeft, Zap, Clock , Save} from "lucide-react";
+import { ClinicalsDownloadButton } from "@/components/samantha/ClinicalsDownloadButton";
 import { resolveHcpcs } from "@/lib/samantha/hcpcRules";
 import { toast } from "sonner";
 import { sendPatientToMonday } from "@/lib/samantha/mondayWrite";
@@ -127,6 +128,7 @@ const ChaseBenefitsPage = () => {
                 </div>
               </div>
               <div className="flex items-center gap-2">
+                {selected && <ClinicalsDownloadButton itemId={selected.id} />}
                 <Button onClick={() => setFollowUpOpen(true)} disabled={!selected} className="gap-2 bg-white/90 text-blue-700 hover:bg-white shadow-elevate">
                   <Clock className="h-4 w-4" /> Follow Up
                 </Button>

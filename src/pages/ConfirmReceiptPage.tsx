@@ -9,11 +9,12 @@ import { PatientsSidebar } from "@/components/masheke/PatientsSidebar";
 import { PatientProfileCard } from "@/components/masheke/PatientProfileCard";
 import { Button } from "@/components/ui/button";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
-import { RotateCcw, Stethoscope, ArrowLeft, Ban , Save} from "lucide-react";
+import { RotateCcw, Stethoscope, ArrowLeft, Ban, Save, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
 import { clearEvalState } from "@/lib/masheke/evalState";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { BlockedModal } from "@/components/masheke/BlockedModal";
+import { StuckModal } from "@/components/masheke/StuckModal";
 import { useBackNavigation } from "@/hooks/useBackNavigation";
 
 const ConfirmReceiptPage = () => {
@@ -27,6 +28,7 @@ const ConfirmReceiptPage = () => {
   );
   const [resetVersion, setResetVersion] = useState(0);
   const [blockedModalOpen, setBlockedModalOpen] = useState(false);
+  const [stuckModalOpen, setStuckModalOpen] = useState(false);
 
   useEffect(() => {
     if (!selectedId && patients.length > 0) setSelectedId(patients[0].id);
@@ -73,6 +75,13 @@ const ConfirmReceiptPage = () => {
               </div>
               <div className="flex items-center gap-2">
                 <Button
+                  onClick={() => setStuckModalOpen(true)}
+                  disabled={!selected}
+                  className="gap-2 bg-amber-600 hover:bg-amber-700 text-white shadow-elevate"
+                >
+                  <AlertTriangle className="h-4 w-4" /> Stuck
+                </Button>
+                <Button
                   onClick={() => setBlockedModalOpen(true)}
                   disabled={!selected}
                   className="gap-2 bg-red-600 hover:bg-red-700 text-white shadow-elevate"
@@ -116,13 +125,22 @@ const ConfirmReceiptPage = () => {
       </div>
 
       {selected && (
-        <BlockedModal
-          open={blockedModalOpen}
-          onOpenChange={setBlockedModalOpen}
-          patientId={selected.id}
-          patientName={selected.name}
-          onSuccess={refetch}
-        />
+        <>
+          <BlockedModal
+            open={blockedModalOpen}
+            onOpenChange={setBlockedModalOpen}
+            patientId={selected.id}
+            patientName={selected.name}
+            onSuccess={refetch}
+          />
+          <StuckModal
+            open={stuckModalOpen}
+            onOpenChange={setStuckModalOpen}
+            patientId={selected.id}
+            patientName={selected.name}
+            onSuccess={refetch}
+          />
+        </>
       )}
     </SidebarProvider>
   );
