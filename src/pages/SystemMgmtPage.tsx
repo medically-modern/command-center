@@ -702,7 +702,7 @@ function PatientRow({
             )}
           </div>
           <div
-            className="mt-1 inline-flex items-center px-3 py-1 rounded-md text-white text-sm font-bold shadow-sm"
+            className="mt-0.5 inline-flex items-center px-2 py-0.5 rounded-full text-white text-[10px] font-semibold leading-none"
             style={{ backgroundColor: getDayBucketColor(patient.daysSinceStage) }}
           >
             {patient.daysSinceStage || "Unknown"}
