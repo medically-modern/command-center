@@ -540,12 +540,17 @@ function NotesPanel({
         </button>
       </div>
 
-      {/* Notes content */}
+      {/* Notes content — shows ALL notes, parsed or raw */}
       <div className="flex-1 overflow-y-auto px-5 py-4 space-y-3">
-        {noteEntries.length === 0 ? (
+        {!patient.notes?.trim() ? (
           <p className="text-sm text-muted-foreground text-center py-6">
             No notes available.
           </p>
+        ) : noteEntries.length === 0 ? (
+          /* Fallback: raw text if parser returns nothing */
+          <div className="text-sm text-foreground leading-relaxed whitespace-pre-wrap">
+            {patient.notes}
+          </div>
         ) : (
           noteEntries.map((entry, i) => (
             <div
@@ -587,20 +592,50 @@ function CompletionBadges({ stages }: { stages: string[] }) {
   );
 }
 
-/** Parse notes into individual entries split by [Date, Time] headers */
+/**
+ * Parse notes into individual entries.
+ * Handles bracketed headers like [May 14, 2026, 12:04 PM] and also
+ * date-like patterns (MM/DD/YYYY) or plain paragraphs for older notes.
+ */
 function parseNoteEntries(notes: string): { header: string; body: string }[] {
   if (!notes) return [];
   const text = notes.trim();
-  // Split on bracketed date headers like [May 14, 2026, 12:04 PM]
-  const parts = text.split(/(?=\[[A-Z][a-z]+ \d{1,2}, \d{4},? \d{1,2}:\d{2}\s*(?:AM|PM)?\])/i);
-  return parts
-    .filter((p) => p.trim().length > 0)
-    .map((entry) => {
-      const headerMatch = entry.match(/^\[([^\]]+)\]/);
-      const header = headerMatch ? headerMatch[1] : "";
-      const body = headerMatch ? entry.slice(headerMatch[0].length).trim() : entry.trim();
-      return { header, body };
-    });
+
+  // Try splitting on bracketed date headers first: [May 14, 2026, 12:04 PM]
+  const bracketParts = text.split(/(?=\[[^\]]*\d{4}[^\]]*\])/);
+  if (bracketParts.length > 1 || /^\[[^\]]*\d{4}[^\]]*\]/.test(text)) {
+    const entries = bracketParts
+      .filter((p) => p.trim().length > 0)
+      .map((entry) => {
+        const headerMatch = entry.match(/^\[([^\]]+)\]/);
+        const header = headerMatch ? headerMatch[1].trim() : "";
+        const body = headerMatch ? entry.slice(headerMatch[0].length).trim() : entry.trim();
+        return { header, body };
+      });
+    if (entries.length > 0) return entries;
+  }
+
+  // Fallback: try splitting on date patterns like MM/DD/YYYY or YYYY-MM-DD
+  const dateParts = text.split(/(?=(?:\d{1,2}\/\d{1,2}\/\d{4}|\d{4}-\d{2}-\d{2}))/);
+  if (dateParts.length > 1) {
+    return dateParts
+      .filter((p) => p.trim().length > 0)
+      .map((entry) => {
+        const dateMatch = entry.match(/^(\d{1,2}\/\d{1,2}\/\d{4}|\d{4}-\d{2}-\d{2})/);
+        const header = dateMatch ? dateMatch[1] : "";
+        const body = dateMatch ? entry.slice(dateMatch[0].length).trim() : entry.trim();
+        return { header, body };
+      });
+  }
+
+  // Final fallback: split on double newlines as separate entries
+  const paragraphs = text.split(/\n\s*\n/).filter((p) => p.trim().length > 0);
+  if (paragraphs.length > 1) {
+    return paragraphs.map((p) => ({ header: "", body: p.trim() }));
+  }
+
+  // Single block of text
+  return [{ header: "", body: text }];
 }
 
 function PatientRow({
@@ -626,11 +661,12 @@ function PatientRow({
   return (
     <div
       className={cn(
-        "w-full flex items-center gap-3 px-4 py-3 rounded-lg border bg-card shadow-sm hover:shadow-md hover:border-primary/30 transition-all text-left",
+        "w-full flex items-stretch gap-0 rounded-lg border bg-card shadow-sm hover:shadow-md hover:border-primary/30 transition-all text-left",
         patient.escalated && "border-red-300 bg-red-50/50 dark:bg-red-950/20",
       )}
     >
-      <button onClick={onClick} className="flex-1 flex items-center gap-3 min-w-0">
+      {/* Left: avatar + name + meta — clickable to navigate */}
+      <button onClick={onClick} className="flex items-center gap-3 px-4 py-3 min-w-0 shrink-0 w-[280px]">
         <div
           className={cn(
             "w-9 h-9 rounded-full flex items-center justify-center font-bold text-xs shrink-0",
@@ -647,111 +683,99 @@ function PatientRow({
             {patient.escalated && (
               <span className="shrink-0 inline-flex items-center gap-1 bg-red-100 dark:bg-red-900/50 text-red-600 dark:text-red-400 text-[10px] font-semibold px-1.5 py-0.5 rounded">
                 <AlertTriangle className="w-2.5 h-2.5" />
-                ESCALATED
+                ESC
               </span>
             )}
           </div>
           <div className="text-xs text-muted-foreground truncate">
-            {patient.phone || "No phone"} · {patient.boardName} ·{" "}
-            <span
-              onClick={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                onStageClick?.(patient.pipelineStage);
-              }}
-              className="cursor-pointer hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
-            >
-              {patient.pipelineStage}
-            </span>
+            {patient.phone || "No phone"} · {patient.boardName}
           </div>
           <CompletionBadges stages={completedStages} />
         </div>
-        <div className="shrink-0 text-right">
-          <div className="text-[10px] uppercase tracking-wider text-muted-foreground">
-            {patient.boardName}
-          </div>
-          <div
-            onClick={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              onStageClick?.(patient.pipelineStage);
-            }}
-            className="text-xs font-medium text-primary cursor-pointer hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
-          >
-            {patient.pipelineStage}
-          </div>
-          {patient.daysSinceStage && (
-            <div className="text-[10px] text-muted-foreground">{patient.daysSinceStage}</div>
-          )}
-        </div>
       </button>
 
-      {/* Inline notes area — shows most recent note, hover for 3, click for sidebar */}
-      {onNotesClick && (
-        <div className="relative shrink-0 max-w-[220px]">
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              onNotesClick(patient);
-            }}
-            onMouseEnter={() => {
-              if (recentThree.length > 0) {
-                clearTimeout(notesTooltipTimeout.current);
-                notesTooltipTimeout.current = setTimeout(() => setShowNotesTooltip(true), 300);
-              }
-            }}
-            onMouseLeave={() => {
-              clearTimeout(notesTooltipTimeout.current);
-              setShowNotesTooltip(false);
-            }}
-            className="flex items-center gap-2 px-2 py-1.5 rounded-md hover:bg-muted transition-colors text-left min-w-0"
-          >
-            <FileText className="w-4 h-4 text-muted-foreground shrink-0" />
-            {mostRecent ? (
-              <div className="min-w-0">
-                {mostRecent.header && (
-                  <div className="text-[10px] text-muted-foreground font-medium truncate">{mostRecent.header}</div>
-                )}
-                <div className="text-[11px] text-foreground truncate leading-snug max-w-[180px]">
-                  {mostRecent.body.length > 80 ? mostRecent.body.slice(0, 80) + "…" : mostRecent.body}
-                </div>
+      {/* Center: notes preview — large, uses available space. Click opens sidebar. */}
+      <div
+        className="relative flex-1 border-l border-r border-border min-w-0 cursor-pointer hover:bg-muted/30 transition-colors"
+        onClick={() => onNotesClick?.(patient)}
+        onMouseEnter={() => {
+          if (recentThree.length > 0) {
+            clearTimeout(notesTooltipTimeout.current);
+            notesTooltipTimeout.current = setTimeout(() => setShowNotesTooltip(true), 400);
+          }
+        }}
+        onMouseLeave={() => {
+          clearTimeout(notesTooltipTimeout.current);
+          setShowNotesTooltip(false);
+        }}
+      >
+        <div className="px-4 py-3 h-full flex flex-col justify-center min-w-0">
+          {mostRecent ? (
+            <>
+              {mostRecent.header && (
+                <div className="text-[10px] text-primary font-semibold mb-0.5 truncate">{mostRecent.header}</div>
+              )}
+              <div className="text-sm text-foreground leading-snug line-clamp-2">
+                {mostRecent.body}
               </div>
-            ) : (
-              <span className="text-[11px] text-muted-foreground italic">No notes</span>
-            )}
-          </button>
-
-          {/* Hover tooltip — 3 most recent notes */}
-          {showNotesTooltip && recentThree.length > 0 && (
-            <div className="absolute right-0 bottom-full mb-2 z-50 w-80 bg-popover border border-border rounded-lg shadow-lg p-3 pointer-events-none">
-              <div className="text-[10px] font-semibold text-muted-foreground mb-2 uppercase tracking-wider">
-                Recent Notes ({noteEntries.length} total)
-              </div>
-              <div className="space-y-2">
-                {recentThree.map((entry, i) => (
-                  <div key={i} className={cn(i < recentThree.length - 1 && "pb-2 border-b border-border")}>
-                    {entry.header && (
-                      <div className="text-[10px] text-primary font-semibold mb-0.5">{entry.header}</div>
-                    )}
-                    <div className="text-xs text-foreground leading-relaxed whitespace-pre-wrap">
-                      {entry.body.length > 200 ? entry.body.slice(0, 200) + "…" : entry.body}
-                    </div>
-                  </div>
-                ))}
-              </div>
-              <div className="text-[10px] text-muted-foreground mt-2 pt-1 border-t border-border">
-                Click to view all notes
-              </div>
-            </div>
+            </>
+          ) : (
+            <span className="text-sm text-muted-foreground italic">No notes</span>
           )}
         </div>
-      )}
 
-      {patient.hasPage ? (
-        <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0" />
-      ) : (
-        <span className="text-[10px] text-muted-foreground shrink-0">No page</span>
-      )}
+        {/* Hover tooltip — 3 most recent notes */}
+        {showNotesTooltip && recentThree.length > 0 && (
+          <div className="absolute left-4 bottom-full mb-2 z-50 w-96 bg-popover border border-border rounded-lg shadow-lg p-4 pointer-events-none">
+            <div className="text-[10px] font-semibold text-muted-foreground mb-2 uppercase tracking-wider">
+              Recent Notes ({noteEntries.length} total)
+            </div>
+            <div className="space-y-2.5">
+              {recentThree.map((entry, i) => (
+                <div key={i} className={cn(i < recentThree.length - 1 && "pb-2.5 border-b border-border")}>
+                  {entry.header && (
+                    <div className="text-[10px] text-primary font-semibold mb-0.5">{entry.header}</div>
+                  )}
+                  <div className="text-xs text-foreground leading-relaxed whitespace-pre-wrap">
+                    {entry.body.length > 250 ? entry.body.slice(0, 250) + "…" : entry.body}
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="text-[10px] text-muted-foreground mt-2 pt-1 border-t border-border">
+              Click to view all notes
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Right: stage (clickable) + days */}
+      <div className="shrink-0 w-[160px] flex flex-col items-end justify-center px-4 py-3 gap-0.5">
+        <div className="text-[10px] uppercase tracking-wider text-muted-foreground">
+          {patient.boardName}
+        </div>
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onStageClick?.(patient.pipelineStage);
+          }}
+          className="text-xs font-medium text-primary hover:text-blue-600 dark:hover:text-blue-400 transition-colors text-right"
+        >
+          {patient.pipelineStage}
+        </button>
+        {patient.daysSinceStage && (
+          <div className="text-[10px] text-muted-foreground">{patient.daysSinceStage}</div>
+        )}
+      </div>
+
+      {/* Arrow */}
+      <button onClick={onClick} className="shrink-0 flex items-center px-2 hover:bg-muted/30 transition-colors rounded-r-lg">
+        {patient.hasPage ? (
+          <ChevronRight className="w-4 h-4 text-muted-foreground" />
+        ) : (
+          <span className="text-[10px] text-muted-foreground">No page</span>
+        )}
+      </button>
     </div>
   );
 }
