@@ -157,7 +157,11 @@ export function DailyBurndown({
     });
   }, [roles, snapshot, roleCounts]);
 
-  const maxFull = Math.max(...barData.map((d) => d.full), 1);
+  // Square-root scale: compresses outliers so large values (e.g. 500)
+  // don't crush smaller bars (e.g. 5-21) into invisible slivers.
+  // sqrt(500)≈22, sqrt(21)≈4.6 → ratio 4.8x instead of 24x with linear.
+  const sqrtScale = (v: number) => Math.sqrt(Math.max(v, 0));
+  const maxSqrt = Math.max(...barData.map((d) => sqrtScale(d.full)), 1);
 
   // Summary stats
   const totalProcessed = barData
@@ -283,11 +287,11 @@ export function DailyBurndown({
         {barData.map((d, i) => {
           const hex = COLOR_MAP[d.role.color] ?? "#6366f1";
           const ghostPct =
-            maxFull > 0 ? Math.max((d.full / maxFull) * 100, 4) : 0;
+            maxSqrt > 0 ? Math.max((sqrtScale(d.full) / maxSqrt) * 100, 4) : 0;
           const currentPct =
-            maxFull > 0
+            maxSqrt > 0
               ? Math.max(
-                  (d.current / maxFull) * 100,
+                  (sqrtScale(d.current) / maxSqrt) * 100,
                   d.current > 0 ? 4 : 0
                 )
               : 0;

@@ -1,1 +1,0 @@
-import{i as o,h as e,r as c}from"./index-B8wGIyfS.js";function g(){const[t]=o(),s=e(),a=t.get("from")==="system-mgmt"?"/system-mgmt":"/?tab=dashboard",r=c.useCallback(()=>{s(a)},[s,a]);return{backTarget:a,goBack:r}}export{g as u};
