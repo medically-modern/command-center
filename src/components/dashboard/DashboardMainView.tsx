@@ -1,9 +1,9 @@
 import { ROLES, USERS, type UserName } from "@/lib/config";
 import type { RoleAssignments } from "@/lib/config";
 import { cn } from "@/lib/utils";
-import { BarChart3, ExternalLink, LayoutDashboard, Loader2 } from "lucide-react";
-import { useNavigate } from "react-router-dom";
+import { BarChart3, LayoutDashboard, Loader2 } from "lucide-react";
 import type { RoleCounts } from "@/hooks/useRoleCounts";
+import { DailyBurndown } from "./DailyBurndown";
 
 interface Props {
   selectedUser: UserName | null;
@@ -14,7 +14,6 @@ interface Props {
 }
 
 export function DashboardMainView({ selectedUser, assignments, getRolesForUser, roleCounts, countsLoading }: Props) {
-  const navigate = useNavigate();
 
   if (!selectedUser) {
     return (
@@ -35,7 +34,6 @@ export function DashboardMainView({ selectedUser, assignments, getRolesForUser, 
 
   const roleIds = getRolesForUser(selectedUser);
   const assignedRoles = ROLES.filter((r) => roleIds.includes(r.id));
-  const maxCount = Math.max(...assignedRoles.map((r) => roleCounts[r.id] ?? 0), 1);
 
   return (
     <div className="flex-1 flex flex-col overflow-y-auto">
@@ -67,53 +65,12 @@ export function DashboardMainView({ selectedUser, assignments, getRolesForUser, 
             </p>
           </div>
         ) : (
-          <div className="max-w-3xl xl:max-w-5xl 2xl:max-w-6xl space-y-5">
-            <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wider">
-              Patients by Role
-            </h3>
-
-            {assignedRoles.map((role) => {
-              const count = roleCounts[role.id] ?? 0;
-              const pct = maxCount > 0 ? (count / maxCount) * 100 : 0;
-              const hasRoute = role.route && role.id !== "authDenied";
-              const routeTarget = role.route;
-              const countLabel = role.id === "systemMgmt" ? "escalation" : "patient";
-
-              return (
-                <button
-                  key={role.id}
-                  className={cn("w-full text-left group", hasRoute ? "cursor-pointer" : "cursor-default")}
-                  onClick={() => {
-                    if (hasRoute) navigate(routeTarget);
-                  }}
-                  title={hasRoute ? `Open ${role.label}` : `${role.label} (coming soon)`}
-                >
-                  <div className="flex items-center justify-between mb-1.5">
-                    <span className="text-sm font-medium text-foreground flex items-center gap-2">
-                      <div className={cn("w-3 h-3 rounded-full shrink-0", role.color)} />
-                      {role.label}
-                    </span>
-                    <span className="text-sm text-muted-foreground tabular-nums">
-                      {countsLoading ? "…" : count} {countLabel}{count !== 1 ? "s" : ""}
-                      {hasRoute && (
-                        <ExternalLink className="w-3.5 h-3.5 inline ml-1.5 opacity-0 group-hover:opacity-60 transition-opacity" />
-                      )}
-                    </span>
-                  </div>
-                  <div className="h-9 w-full bg-muted rounded-lg overflow-hidden relative">
-                    <div
-                      className={cn("h-full rounded-lg transition-all duration-500", role.color)}
-                      style={{ width: `${Math.max(pct, count > 0 ? 4 : 0)}%` }}
-                    />
-                  </div>
-                </button>
-              );
-            })}
-
-            <div className="flex items-center gap-6 pt-4 text-xs text-muted-foreground">
-              <span>Bar width = patient count in that stage</span>
-              <span className="ml-auto">Click a bar to open that role&rsquo;s dashboard</span>
-            </div>
+          <div className="max-w-3xl xl:max-w-5xl 2xl:max-w-6xl">
+            <DailyBurndown
+              roleCounts={roleCounts}
+              countsLoading={countsLoading}
+              visibleRoleIds={roleIds}
+            />
           </div>
         )}
       </div>

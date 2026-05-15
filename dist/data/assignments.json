@@ -6,32 +6,38 @@
   "evaluate": [
     "Masheke",
     "Brandon",
-    "Corey"
+    "Corey",
+    "Janelle"
   ],
   "sendRequest": [
     "Masheke",
     "Brandon",
-    "Corey"
+    "Corey",
+    "Janelle"
   ],
   "confirmReceipt": [
     "Masheke",
     "Brandon",
-    "Corey"
+    "Corey",
+    "Janelle"
   ],
   "chaseBenefits": [
     "Masheke",
     "Brandon",
-    "Corey"
+    "Corey",
+    "Janelle"
   ],
   "benefits": [
     "Samantha",
     "Brandon",
-    "Corey"
+    "Corey",
+    "Janelle"
   ],
   "submitAuth": [
     "Samantha",
     "Brandon",
-    "Corey"
+    "Corey",
+    "Janelle"
   ],
   "authOutstanding": [
     "Samantha",
@@ -58,6 +64,7 @@
     "Janelle"
   ],
   "subscription": [
-    "Josh"
+    "Josh",
+    "Janelle"
   ]
 }
