@@ -42,8 +42,9 @@ function removeOverlayFromStorage(id: string): void {
 }
 
 export function useMondayPatients(injectedPatientId?: string | null) {
-  const [patients, setPatients] = useState<Patient[]>(loadCachedPatients);
-  const [loading, setLoading] = useState(() => loadCachedPatients().length === 0);
+  const cachedRef = useRef(loadCachedPatients());
+  const [patients, setPatients] = useState<Patient[]>(cachedRef.current);
+  const [loading, setLoading] = useState(cachedRef.current.length === 0);
   const [error, setError] = useState<string | null>(null);
   const overlayRef = useRef<Map<string, Partial<Patient>>>(loadOverlays());
   const mountedRef = useRef(true);
@@ -97,7 +98,8 @@ export function useMondayPatients(injectedPatientId?: string | null) {
 
   useEffect(() => {
     mountedRef.current = true;
-    refetch();
+    // If we have cached patients, fetch silently in the background (no spinner)
+    refetch(cachedRef.current.length > 0);
     const id = setInterval(() => refetch(true), POLL_MS);
     return () => {
       mountedRef.current = false;

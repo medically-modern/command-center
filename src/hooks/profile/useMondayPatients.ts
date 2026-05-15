@@ -4,10 +4,26 @@ import { fetchGroupItems, fetchItemById, hasToken } from "@/lib/profile/mondayAp
 import { mondayItemToPatient } from "@/lib/profile/mondayMapping";
 
 const POLL_MS = 15_000;
+const LS_CACHE_KEY = "prof-patients-cache";
+
+function loadCachedPatients(): Patient[] {
+  try {
+    const raw = localStorage.getItem(LS_CACHE_KEY);
+    if (!raw) return [];
+    return JSON.parse(raw) as Patient[];
+  } catch { return []; }
+}
+
+function persistPatientCache(patients: Patient[]): void {
+  try {
+    localStorage.setItem(LS_CACHE_KEY, JSON.stringify(patients));
+  } catch { /* ignore */ }
+}
 
 export function useMondayPatients(injectedPatientId?: string | null) {
-  const [patients, setPatients] = useState<Patient[]>([]);
-  const [loading, setLoading] = useState(true);
+  const cachedRef = useRef(loadCachedPatients());
+  const [patients, setPatients] = useState<Patient[]>(cachedRef.current);
+  const [loading, setLoading] = useState(cachedRef.current.length === 0);
   const [error, setError] = useState<string | null>(null);
   const mountedRef = useRef(true);
 
@@ -51,6 +67,7 @@ export function useMondayPatients(injectedPatientId?: string | null) {
       }
 
       setPatients(merged);
+      persistPatientCache(merged);
     } catch (e) {
       if (mountedRef.current)
         setError(e instanceof Error ? e.message : "Failed to load patients from Monday");
@@ -61,7 +78,7 @@ export function useMondayPatients(injectedPatientId?: string | null) {
 
   useEffect(() => {
     mountedRef.current = true;
-    refetch();
+    refetch(cachedRef.current.length > 0);
     const id = setInterval(() => refetch(true), POLL_MS);
     return () => {
       mountedRef.current = false;

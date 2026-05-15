@@ -5,6 +5,21 @@ import { mondayItemToPatient } from "@/lib/finalConfirm/mondayMapping";
 
 const POLL_MS = 30_000;
 const LS_KEY = "fc-overlays";
+const LS_CACHE_KEY = "fc-patients-cache";
+
+function loadCachedPatients(): Patient[] {
+  try {
+    const raw = localStorage.getItem(LS_CACHE_KEY);
+    if (!raw) return [];
+    return JSON.parse(raw) as Patient[];
+  } catch { return []; }
+}
+
+function persistPatientCache(patients: Patient[]): void {
+  try {
+    localStorage.setItem(LS_CACHE_KEY, JSON.stringify(patients));
+  } catch { /* ignore */ }
+}
 
 /** Read all saved overlays from localStorage. */
 function loadOverlays(): Map<string, Partial<Patient>> {
@@ -41,8 +56,9 @@ function removeOverlay(id: string): void {
 }
 
 export function useMondayPatients(injectedPatientId?: string | null) {
-  const [patients, setPatients] = useState<Patient[]>([]);
-  const [loading, setLoading] = useState(true);
+  const cachedRef = useRef(loadCachedPatients());
+  const [patients, setPatients] = useState<Patient[]>(cachedRef.current);
+  const [loading, setLoading] = useState(cachedRef.current.length === 0);
   const [error, setError] = useState<string | null>(null);
   const overlayRef = useRef<Map<string, Partial<Patient>>>(loadOverlays());
   const mountedRef = useRef(true);
@@ -70,6 +86,7 @@ export function useMondayPatients(injectedPatientId?: string | null) {
         return o ? { ...p, ...o } : p;
       });
       setPatients(merged);
+      persistPatientCache(merged);
 
       // If a patientId was injected (deep-link), fetch that item if not already present
       if (injectedPatientId && !merged.some((p) => p.id === injectedPatientId)) {
@@ -96,7 +113,7 @@ export function useMondayPatients(injectedPatientId?: string | null) {
 
   useEffect(() => {
     mountedRef.current = true;
-    refetch();
+    refetch(cachedRef.current.length > 0);
     const id = setInterval(() => refetch(true), POLL_MS);
     return () => {
       mountedRef.current = false;
