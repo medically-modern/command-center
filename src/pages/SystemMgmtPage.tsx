@@ -27,14 +27,16 @@ import {
   XCircle,
   Loader2,
   Database,
+  Activity,
   CheckCircle2,
   FileText,
   X,
 } from "lucide-react";
 import { toast } from "sonner";
 import { PipelineChart, DAY_BUCKETS } from "@/components/systemMgmt/PipelineChart";
+import { OperationsTab } from "@/components/systemMgmt/OperationsTab";
 
-type Tab = "search" | "escalations";
+type Tab = "search" | "escalations" | "operations";
 
 const SystemMgmtPage = () => {
   const navigate = useNavigate();
@@ -42,7 +44,8 @@ const SystemMgmtPage = () => {
   const { patients, escalated, completionMap, loading, error, refetch, removeEscalation } =
     useSystemPatients();
 
-  const initialTab = searchParams.get("tab") === "escalations" ? "escalations" : "search";
+  const tabParam = searchParams.get("tab");
+  const initialTab: Tab = tabParam === "escalations" ? "escalations" : tabParam === "operations" ? "operations" : "search";
   const [activeTab, setActiveTab] = useState<Tab>(initialTab);
   const [query, setQuery] = useState("");
   const [removingId, setRemovingId] = useState<string | null>(null);
@@ -206,6 +209,12 @@ const SystemMgmtPage = () => {
             label={`Escalations${escalated.length ? ` (${escalated.length})` : ""}`}
             alert={escalated.length > 0}
           />
+          <TabBtn
+            active={activeTab === "operations"}
+            onClick={() => setActiveTab("operations")}
+            icon={<Activity className="w-4 h-4" />}
+            label="Operations"
+          />
         </div>
       </header>
 
@@ -216,6 +225,8 @@ const SystemMgmtPage = () => {
             <LoadingState />
           ) : error ? (
             <ErrorState error={error} onRetry={handleRefresh} />
+          ) : activeTab === "operations" ? (
+            <OperationsTab />
           ) : activeTab === "search" ? (
             <SearchView
               query={query}
