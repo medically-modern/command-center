@@ -137,14 +137,26 @@ export function DoctorPanel({ patient, onUpdate, clinicLabels, onClinicSelect, o
             />
           </div>
 
-          {/* Doctor Fax */}
+          {/* Doctor Fax — required when clinicals method is Fax */}
           <div className="space-y-1.5">
-            <Label>Doctor Fax (@rcfax)</Label>
+            <Label className="flex items-center gap-1.5">
+              Doctor Fax (@rcfax)
+              {patient.clinicalsMethod === "Fax" && !patient.doctorFax?.trim() && (
+                <span className="text-red-500 text-xs">* required for fax</span>
+              )}
+            </Label>
             <Input
               type="email"
               value={patient.doctorFax}
               onChange={(e) => onUpdate({ doctorFax: e.target.value })}
               placeholder="fax@rcfax.com"
+              className={
+                patient.clinicalsMethod === "Fax"
+                  ? patient.doctorFax?.trim()
+                    ? "border-green-400 ring-1 ring-green-200"
+                    : "border-red-400 ring-1 ring-red-200"
+                  : ""
+              }
             />
           </div>
 

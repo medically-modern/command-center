@@ -26,14 +26,23 @@ interface StatusFieldConfig {
   indexMap: Record<string, number>;
 }
 
-function StatusSelect({ value, config, onChange, hint }: {
-  value: string; config: StatusFieldConfig; onChange: (v: string) => void; hint?: string;
+function StatusSelect({ value, config, onChange, hint, required }: {
+  value: string; config: StatusFieldConfig; onChange: (v: string) => void; hint?: string; required?: boolean;
 }) {
+  const isFilled = !!value && value !== "Select…";
+  const borderClass = required
+    ? isFilled
+      ? "border-green-400 ring-1 ring-green-200"
+      : "border-red-400 ring-1 ring-red-200"
+    : "";
   return (
     <div className="space-y-1.5">
-      <Label>{config.label}</Label>
+      <Label className="flex items-center gap-1.5">
+        {config.label}
+        {required && !isFilled && <span className="text-red-500 text-xs">*</span>}
+      </Label>
       <Select value={value || undefined} onValueChange={onChange}>
-        <SelectTrigger><SelectValue placeholder="Select…" /></SelectTrigger>
+        <SelectTrigger className={borderClass}><SelectValue placeholder="Select…" /></SelectTrigger>
         <SelectContent>
           {Object.keys(config.indexMap).map((l) => (
             <SelectItem key={l} value={l}>{l}</SelectItem>
@@ -229,6 +238,7 @@ export function ServingPanel({ patient, onUpdate, onNext }: Props) {
               value={patient.serving}
               config={{ field: "serving", label: "Serving", indexMap: SERVING_INDEX }}
               onChange={(v) => onUpdate({ serving: v })}
+              required
             />
             <StatusSelect
               value={patient.pumpType}
@@ -256,12 +266,14 @@ export function ServingPanel({ patient, onUpdate, onNext }: Props) {
               value={patient.insulinPumpCoveragePath}
               config={{ field: "insulinPumpCoveragePath", label: "Insulin Pump Coverage Path", indexMap: INSULIN_PUMP_COVERAGE_PATH_INDEX }}
               onChange={(v) => onUpdate({ insulinPumpCoveragePath: v })}
+              required
             />
             <StatusSelect
               value={patient.cgmCoveragePath}
               config={{ field: "cgmCoveragePath", label: "CGM Coverage Path", indexMap: CGM_COVERAGE_PATH_INDEX }}
               onChange={(v) => onUpdate({ cgmCoveragePath: v })}
               hint={cgmCoveragePathHint}
+              required
             />
           </div>
         </CardContent>

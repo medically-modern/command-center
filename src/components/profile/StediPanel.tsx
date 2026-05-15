@@ -372,6 +372,73 @@ export function StediPanel({ patient, onRefresh, onUpdate, onNext, onRemoveOverl
             </div>
           </div>
 
+          {/* Primary + Secondary Insurance (was Step 3 — always visible) */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+            <div className="space-y-1.5">
+              <Label>Primary Insurance</Label>
+              <Popover open={primaryOpen} onOpenChange={setPrimaryOpen}>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    role="combobox"
+                    aria-expanded={primaryOpen}
+                    className="w-full justify-between font-normal"
+                  >
+                    {patient.primaryInsurance || <span className="text-muted-foreground">Select insurance…</span>}
+                    <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="p-0 w-[var(--radix-popover-trigger-width)] max-h-[420px]" align="start">
+                  <Command>
+                    <CommandInput placeholder="Search insurance…" />
+                    <CommandList>
+                      <CommandEmpty>No insurance matches.</CommandEmpty>
+                      {groupPrimaryInsuranceLabels().map(({ group, labels }) => (
+                        <CommandGroup key={group} heading={group}>
+                          {labels.map((label) => (
+                            <CommandItem
+                              key={label}
+                              value={label}
+                              onSelect={(v) => {
+                                onUpdate({ primaryInsurance: v });
+                                setPrimaryOpen(false);
+                              }}
+                            >
+                              <Check
+                                className={cn(
+                                  "mr-2 h-4 w-4",
+                                  patient.primaryInsurance === label ? "opacity-100" : "opacity-0",
+                                )}
+                              />
+                              {label}
+                            </CommandItem>
+                          ))}
+                        </CommandGroup>
+                      ))}
+                    </CommandList>
+                  </Command>
+                </PopoverContent>
+              </Popover>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label>Secondary Insurance</Label>
+              <Select
+                value={patient.secondaryInsurance || undefined}
+                onValueChange={(v) => onUpdate({ secondaryInsurance: v })}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select…" />
+                </SelectTrigger>
+                <SelectContent>
+                  {Object.keys(SECONDARY_INSURANCE_INDEX).map((label) => (
+                    <SelectItem key={label} value={label}>{label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
           {/* Fix Profile + Run Stedi buttons */}
           <div className="flex flex-wrap items-center gap-3">
             <Button
@@ -472,11 +539,19 @@ export function StediPanel({ patient, onRefresh, onUpdate, onNext, onRemoveOverl
         </Card>
       )}
 
-      {/* Step B: Stedi Results (show after any Stedi run — success or failure) */}
-      {stediIsComplete && (
-        <>
+      {/* Eligibility Results — always visible (empty state when no Stedi data) */}
+      <Card className="shadow-card">
+        {!stediIsComplete && (
+          <CardContent className="pt-5 pb-4">
+            <p className="text-sm text-muted-foreground text-center py-4">
+              Run a Stedi check above to see eligibility results
+            </p>
+          </CardContent>
+        )}
+        {stediIsComplete && (
+          <>
           {/* Always-show results */}
-          <Card className="shadow-card">
+          <Card className="shadow-none border-0">
             <CardHeader className="pb-3">
               <CardTitle className="text-base flex items-center gap-2">
                 {isStediFailed ? (
@@ -646,85 +721,9 @@ export function StediPanel({ patient, onRefresh, onUpdate, onNext, onRemoveOverl
               </details>
             </CardContent>
           </Card>
-        </>
-      )}
-
-      {/* Step 3: Primary + Secondary Insurance (shown after any Stedi run) */}
-      {stediIsComplete && (
-      <Card className="shadow-card">
-        <CardHeader className="pb-3">
-          <p className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground font-semibold">Step 3</p>
-          <CardTitle className="text-base">Enter Primary &amp; Secondary Insurance</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-            <div className="space-y-1.5">
-              <Label>Primary Insurance</Label>
-              <Popover open={primaryOpen} onOpenChange={setPrimaryOpen}>
-                <PopoverTrigger asChild>
-                  <Button
-                    variant="outline"
-                    role="combobox"
-                    aria-expanded={primaryOpen}
-                    className="w-full justify-between font-normal"
-                  >
-                    {patient.primaryInsurance || <span className="text-muted-foreground">Select insurance…</span>}
-                    <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="p-0 w-[var(--radix-popover-trigger-width)] max-h-[420px]" align="start">
-                  <Command>
-                    <CommandInput placeholder="Search insurance…" />
-                    <CommandList>
-                      <CommandEmpty>No insurance matches.</CommandEmpty>
-                      {groupPrimaryInsuranceLabels().map(({ group, labels }) => (
-                        <CommandGroup key={group} heading={group}>
-                          {labels.map((label) => (
-                            <CommandItem
-                              key={label}
-                              value={label}
-                              onSelect={(v) => {
-                                onUpdate({ primaryInsurance: v });
-                                setPrimaryOpen(false);
-                              }}
-                            >
-                              <Check
-                                className={cn(
-                                  "mr-2 h-4 w-4",
-                                  patient.primaryInsurance === label ? "opacity-100" : "opacity-0",
-                                )}
-                              />
-                              {label}
-                            </CommandItem>
-                          ))}
-                        </CommandGroup>
-                      ))}
-                    </CommandList>
-                  </Command>
-                </PopoverContent>
-              </Popover>
-            </div>
-
-            <div className="space-y-1.5">
-              <Label>Secondary Insurance</Label>
-              <Select
-                value={patient.secondaryInsurance || undefined}
-                onValueChange={(v) => onUpdate({ secondaryInsurance: v })}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select…" />
-                </SelectTrigger>
-                <SelectContent>
-                  {Object.keys(SECONDARY_INSURANCE_INDEX).map((label) => (
-                    <SelectItem key={label} value={label}>{label}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-        </CardContent>
+          </>
+        )}
       </Card>
-      )}
 
       {/* Next button → Serving tab */}
       {onNext && (
