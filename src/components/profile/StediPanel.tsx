@@ -334,8 +334,8 @@ export function StediPanel({ patient, onRefresh, onUpdate, onNext, onRemoveOverl
           </div>
         </CardHeader>
         <CardContent className="space-y-5">
-          {/* General Insurance + Member IDs */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+          {/* General Insurance + Member IDs + Stedi button */}
+          <div className="grid grid-cols-1 md:grid-cols-[1fr_140px_140px_auto] gap-4 items-end">
             <div className="space-y-1.5">
               <Label>General Insurance <span className="text-red-400">*</span></Label>
               <Select
@@ -358,7 +358,7 @@ export function StediPanel({ patient, onRefresh, onUpdate, onNext, onRemoveOverl
               <Input
                 value={patient.memberId1}
                 onChange={(e) => onUpdate({ memberId1: e.target.value })}
-                placeholder="Enter member ID…"
+                placeholder="Member ID…"
               />
             </div>
 
@@ -367,12 +367,74 @@ export function StediPanel({ patient, onRefresh, onUpdate, onNext, onRemoveOverl
               <Input
                 value={patient.memberId2}
                 onChange={(e) => onUpdate({ memberId2: e.target.value })}
-                placeholder="Enter member ID…"
+                placeholder="Member ID…"
               />
+            </div>
+
+            <div className="flex items-center gap-2">
+              <Button
+                onClick={handleFixProfile}
+                disabled={syncing || !profileDirty}
+                variant={profileDirty ? "default" : "outline"}
+                size="sm"
+                className={
+                  profileDirty
+                    ? "gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white shadow-elevate"
+                    : "gap-1.5 opacity-70"
+                }
+              >
+                {syncing ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : profileDirty ? (
+                  <Save className="h-3.5 w-3.5" />
+                ) : (
+                  <CheckCheck className="h-3.5 w-3.5 text-green-600" />
+                )}
+                {syncing
+                  ? "Saving…"
+                  : profileDirty
+                  ? "Fix Profile"
+                  : "Synced"}
+              </Button>
+
+              <Button
+                onClick={handleRunStedi}
+                disabled={running || !canRunStedi}
+                size="sm"
+                className="gap-1.5 bg-gradient-primary shadow-elevate"
+              >
+                {running ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Play className="h-3.5 w-3.5" />}
+                {running ? "Running…" : "Run Stedi"}
+              </Button>
+
+              {isStediFailed && (
+                <Badge variant="destructive">Failed</Badge>
+              )}
+              {hasStediData && patient.stediEligibilityActive && (
+                <Badge variant={isActive ? "default" : "destructive"} className={isActive ? "bg-green-600" : ""}>
+                  {isActive ? "Active" : patient.stediEligibilityActive}
+                </Badge>
+              )}
             </div>
           </div>
 
-          {/* Primary + Secondary Insurance (was Step 3 — always visible) */}
+          {profileDirty && (
+            <p className="text-xs text-amber-600 flex items-center gap-1 -mt-3">
+              <AlertTriangle className="h-3.5 w-3.5" />
+              Save profile changes before running Stedi
+            </p>
+          )}
+          {!profileDirty && !prereqsFilled && (
+            <p className="text-xs text-muted-foreground flex items-center gap-1 -mt-3">
+              <AlertTriangle className="h-3.5 w-3.5 text-amber-500" />
+              Fill in Name, DOB, General Insurance, and Member ID 1 first
+            </p>
+          )}
+
+          {/* Separator */}
+          <div className="border-t border-border" />
+
+          {/* Primary + Secondary Insurance */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
             <div className="space-y-1.5">
               <Label className="flex items-center gap-1.5">
@@ -445,63 +507,6 @@ export function StediPanel({ patient, onRefresh, onUpdate, onNext, onRemoveOverl
                 </SelectContent>
               </Select>
             </div>
-          </div>
-
-          {/* Fix Profile + Run Stedi buttons */}
-          <div className="flex flex-wrap items-center gap-3">
-            <Button
-              onClick={handleFixProfile}
-              disabled={syncing || !profileDirty}
-              variant={profileDirty ? "default" : "outline"}
-              className={
-                profileDirty
-                  ? "gap-2 bg-emerald-600 hover:bg-emerald-700 text-white shadow-elevate"
-                  : "gap-2 opacity-70"
-              }
-            >
-              {syncing ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : profileDirty ? (
-                <Save className="h-4 w-4" />
-              ) : (
-                <CheckCheck className="h-4 w-4 text-green-600" />
-              )}
-              {syncing
-                ? "Saving…"
-                : profileDirty
-                ? "Fix Profile Before Stedi Check"
-                : "Profile Synced"}
-            </Button>
-
-            <Button
-              onClick={handleRunStedi}
-              disabled={running || !canRunStedi}
-              className="gap-2 bg-gradient-primary shadow-elevate"
-            >
-              {running ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
-              {running ? "Running…" : "Run Stedi Check"}
-            </Button>
-
-            {profileDirty && (
-              <p className="text-xs text-amber-600 flex items-center gap-1">
-                <AlertTriangle className="h-3.5 w-3.5" />
-                Save profile changes before running Stedi
-              </p>
-            )}
-            {!profileDirty && !prereqsFilled && (
-              <p className="text-xs text-muted-foreground flex items-center gap-1">
-                <AlertTriangle className="h-3.5 w-3.5 text-amber-500" />
-                Fill in Name, DOB, General Insurance, and Member ID 1 first
-              </p>
-            )}
-            {isStediFailed && (
-              <Badge variant="destructive">Eligibility Check Failed</Badge>
-            )}
-            {hasStediData && patient.stediEligibilityActive && (
-              <Badge variant={isActive ? "default" : "destructive"} className={isActive ? "bg-green-600" : ""}>
-                {isActive ? "Active" : patient.stediEligibilityActive}
-              </Badge>
-            )}
           </div>
         </CardContent>
       </Card>
