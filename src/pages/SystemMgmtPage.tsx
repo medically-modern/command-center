@@ -32,7 +32,7 @@ import {
   X,
 } from "lucide-react";
 import { toast } from "sonner";
-import { PipelineChart } from "@/components/systemMgmt/PipelineChart";
+import { PipelineChart, DAY_BUCKETS } from "@/components/systemMgmt/PipelineChart";
 
 type Tab = "search" | "escalations";
 
@@ -593,6 +593,15 @@ function CompletionBadges({ stages }: { stages: string[] }) {
 }
 
 /**
+ * Get the color for a patient's daysSinceStage bucket (matches chart colors).
+ */
+const UNKNOWN_COLOR = "#c4c4c4";
+function getDayBucketColor(daysSinceStage: string): string {
+  const bucket = DAY_BUCKETS.find((b) => b.label === daysSinceStage);
+  return bucket?.color ?? UNKNOWN_COLOR;
+}
+
+/**
  * Parse notes into individual entries.
  * Handles bracketed headers like [May 14, 2026, 12:04 PM] and also
  * date-like patterns (MM/DD/YYYY) or plain paragraphs for older notes.
@@ -692,8 +701,11 @@ function PatientRow({
               </span>
             )}
           </div>
-          <div className="text-xs text-muted-foreground truncate">
-            {patient.phone || "No phone"} · {patient.boardName}
+          <div
+            className="mt-1 inline-flex items-center px-3 py-1 rounded-md text-white text-sm font-bold shadow-sm"
+            style={{ backgroundColor: getDayBucketColor(patient.daysSinceStage) }}
+          >
+            {patient.daysSinceStage || "Unknown"}
           </div>
           <CompletionBadges stages={completedStages} />
         </div>
