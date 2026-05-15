@@ -375,14 +375,22 @@ export function StediPanel({ patient, onRefresh, onUpdate, onNext, onRemoveOverl
           {/* Primary + Secondary Insurance (was Step 3 — always visible) */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
             <div className="space-y-1.5">
-              <Label>Primary Insurance</Label>
+              <Label className="flex items-center gap-1.5">
+                Primary Insurance
+                {!patient.primaryInsurance && <span className="text-red-500 text-xs">*</span>}
+              </Label>
               <Popover open={primaryOpen} onOpenChange={setPrimaryOpen}>
                 <PopoverTrigger asChild>
                   <Button
                     variant="outline"
                     role="combobox"
                     aria-expanded={primaryOpen}
-                    className="w-full justify-between font-normal"
+                    className={cn(
+                      "w-full justify-between font-normal",
+                      patient.primaryInsurance
+                        ? "border-green-400 ring-1 ring-green-200"
+                        : "border-red-400 ring-1 ring-red-200",
+                    )}
                   >
                     {patient.primaryInsurance || <span className="text-muted-foreground">Select insurance…</span>}
                     <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />

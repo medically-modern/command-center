@@ -159,7 +159,7 @@ export function PatientsSidebar({ patients, selectedId, onSelect, loading, error
             <SidebarGroup>
               {!collapsed && (
                 <CollapsibleTrigger asChild>
-                  <SidebarGroupLabel className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold cursor-pointer hover:text-foreground transition-colors flex items-center gap-1.5">
+                  <SidebarGroupLabel className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold cursor-pointer hover:text-sidebar-foreground transition-colors flex items-center gap-1.5">
                     <ChevronRight className={cn(
                       "h-3 w-3 transition-transform duration-200",
                       !closedGroups.has(source) && "rotate-90",

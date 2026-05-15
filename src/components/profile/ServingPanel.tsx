@@ -211,6 +211,7 @@ export function ServingPanel({ patient, onUpdate, onNext }: Props) {
             config={{ field: "cgmCrossSell", label: "Cross-Sell Status", indexMap: CGM_CROSS_SELL_INDEX }}
             onChange={(v) => onUpdate({ cgmCrossSell: v })}
             hint={xsellHint ?? undefined}
+            required
           />
 
           {crossSellStatus === "Evaluate" && !primaryIns && (
