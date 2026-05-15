@@ -679,11 +679,11 @@ function PatientRow({
         patient.escalated && "border-red-300 bg-red-50/50 dark:bg-red-950/20",
       )}
     >
-      {/* Left: avatar + name + meta — clickable to navigate */}
-      <button onClick={onClick} className="flex items-center gap-3 px-4 py-3 min-w-0 shrink-0 w-[280px]">
+      {/* Left: avatar + name + days badge + completion — clickable to navigate */}
+      <button onClick={onClick} className="flex gap-3 px-4 py-3 min-w-0 shrink-0 w-[260px]">
         <div
           className={cn(
-            "w-9 h-9 rounded-full flex items-center justify-center font-bold text-xs shrink-0",
+            "w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs shrink-0 mt-0.5",
             patient.escalated
               ? "bg-red-100 dark:bg-red-900/40 text-red-600 dark:text-red-400"
               : "bg-primary/10 text-primary",
@@ -691,22 +691,22 @@ function PatientRow({
         >
           {patient.name?.[0] ?? "?"}
         </div>
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2">
-            <span className="text-sm font-medium truncate">{patient.name}</span>
+        <div className="flex-1 min-w-0 flex flex-col gap-1">
+          <div className="flex items-center gap-1.5">
+            <span className="text-sm font-semibold truncate leading-tight">{patient.name}</span>
             {patient.escalated && (
-              <span className="shrink-0 inline-flex items-center gap-1 bg-red-100 dark:bg-red-900/50 text-red-600 dark:text-red-400 text-[10px] font-semibold px-1.5 py-0.5 rounded">
+              <span className="shrink-0 inline-flex items-center gap-0.5 bg-red-100 dark:bg-red-900/50 text-red-600 dark:text-red-400 text-[9px] font-bold px-1.5 py-0.5 rounded">
                 <AlertTriangle className="w-2.5 h-2.5" />
                 ESC
               </span>
             )}
           </div>
-          <div
-            className="mt-0.5 inline-flex items-center px-2 py-0.5 rounded-full text-white text-[10px] font-semibold leading-none"
+          <span
+            className="self-start inline-flex items-center px-2 py-0.5 rounded text-white text-[10px] font-bold leading-none tracking-wide"
             style={{ backgroundColor: getDayBucketColor(patient.daysSinceStage) }}
           >
             {patient.daysSinceStage || "Unknown"}
-          </div>
+          </span>
           <CompletionBadges stages={completedStages} />
         </div>
       </button>
