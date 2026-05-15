@@ -1,13 +1,16 @@
 /**
  * Fetches patient counts for each role from all 4 Monday boards.
  *
+ * Uses localStorage cache for instant page load on return visits —
+ * cached counts are shown immediately, then silently refreshed from Monday.
+ *
  * Samantha board (18410601299): 3 groups → Benefits, Submit Auth, Auth Outstanding
  * Masheke board (18406060017): 1 group, filtered by Stage Advancer → Evaluate, Send Request, Confirm Receipt, Chase Clinicals
  * Welcome Call board (18410804557): welcomeCall group
  * Profile board (18406352652): intake group
  * Subscription board (18407459988): Subscriptions group
  */
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { fetchGroupItems as fetchSamanthaGroup, GROUPS as SAM_GROUPS, hasToken as samHasToken } from "@/lib/samantha/mondayApi";
 import { fetchGroupItems as fetchMashekeGroup, GROUPS as MESH_GROUPS, hasToken as meshHasToken } from "@/lib/masheke/mondayApi";
 
@@ -57,6 +60,24 @@ export interface RoleCounts {
   [roleId: string]: number;
 }
 
+// ── Count cache (instant load on return visits) ──
+
+const LS_COUNTS_KEY = "role-counts-cache";
+
+function loadCachedCounts(): RoleCounts {
+  try {
+    const raw = localStorage.getItem(LS_COUNTS_KEY);
+    if (!raw) return {};
+    return JSON.parse(raw) as RoleCounts;
+  } catch { return {}; }
+}
+
+function persistCountsCache(counts: RoleCounts): void {
+  try {
+    localStorage.setItem(LS_COUNTS_KEY, JSON.stringify(counts));
+  } catch { /* quota exceeded or private browsing — ignore */ }
+}
+
 // Stage Advancer values that map to masheke tabs
 const MASHEKE_STAGE_MAP: Record<string, string> = {
   "Evaluate MN": "evaluate",
@@ -68,10 +89,15 @@ const MASHEKE_STAGE_MAP: Record<string, string> = {
 const POLL_MS = 60_000;
 
 export function useRoleCounts() {
-  const [counts, setCounts] = useState<RoleCounts>({});
-  const [loading, setLoading] = useState(true);
+  const cachedRef = useRef(loadCachedCounts());
+  const [counts, setCounts] = useState<RoleCounts>(cachedRef.current);
+  const [loading, setLoading] = useState(Object.keys(cachedRef.current).length === 0);
+  const mountedRef = useRef(true);
 
-  const fetchCounts = useCallback(async () => {
+  const fetchCounts = useCallback(async (silent = false) => {
+    if (mountedRef.current && !silent) {
+      setLoading(true);
+    }
     const next: RoleCounts = {};
 
     try {
@@ -181,14 +207,21 @@ export function useRoleCounts() {
       console.error("Failed to fetch role counts:", e);
     }
 
+    if (!mountedRef.current) return;
     setCounts(next);
-    setLoading(false);
+    persistCountsCache(next);
+    if (!silent) setLoading(false);
   }, []);
 
   useEffect(() => {
-    fetchCounts();
-    const interval = setInterval(fetchCounts, POLL_MS);
-    return () => clearInterval(interval);
+    mountedRef.current = true;
+    // If we have cached counts, fetch silently (no spinner)
+    fetchCounts(Object.keys(cachedRef.current).length > 0);
+    const interval = setInterval(() => fetchCounts(true), POLL_MS);
+    return () => {
+      mountedRef.current = false;
+      clearInterval(interval);
+    };
   }, [fetchCounts]);
 
   return { counts, loading, refetch: fetchCounts };
