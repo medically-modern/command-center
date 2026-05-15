@@ -114,19 +114,11 @@ export function useMondayPatients(activeGroup: SidebarGroup = "benefits", inject
     }
     try {
       const groupId = GROUPS[activeGroup];
-      // Fetch the active group AND the escalations group in parallel
-      const [items, escItems] = await Promise.all([
-        fetchGroupItems(groupId),
-        fetchGroupItems(GROUPS.escalations).catch(() => [] as any[]),
-      ]);
+      const items = await fetchGroupItems(groupId);
       if (!mountedRef.current) return;
       const safeItems = Array.isArray(items) ? items : [];
       const ps = safeItems.map(mondayItemToPatient);
-      // Mark escalation-group patients and merge them in
-      const safeEsc = Array.isArray(escItems) ? escItems : [];
-      const escPs = safeEsc.map((item: any) => ({ ...mondayItemToPatient(item), escalated: true }));
-      const allPs = [...ps, ...escPs];
-      const merged = allPs.map((p) => applyOverlay(p, overlayRef.current.get(p.id)));
+      const merged = ps.map((p) => applyOverlay(p, overlayRef.current.get(p.id)));
 
       // If a specific patient was deep-linked but isn't in this group, fetch individually.
       if (injectedPatientId && !merged.some((p) => p.id === injectedPatientId)) {
