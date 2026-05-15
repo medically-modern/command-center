@@ -64,6 +64,7 @@ const SubmitAuthPage = () => {
     if (!selected) return;
     try {
       await sendPatientToMonday(selected, "submitAuth");
+      clearOverlay(selected.id);
       toast.success("Sent to Monday");
     } catch (e) {
       toast.error("Send to Monday failed", { description: e instanceof Error ? e.message : String(e) });

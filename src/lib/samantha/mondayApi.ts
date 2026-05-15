@@ -626,7 +626,7 @@ export async function writeLocation(
 }
 
 /** Fetch a single item by ID regardless of group (for cross-group deep-links). */
-export async function fetchItemById(itemId: string): Promise<MondayItem | null> {
+export async function fetchItemById(itemId: string, useAuthColumns?: boolean): Promise<MondayItem | null> {
   const query = `
     query ($itemId: [ID!]!, $cols: [String!]) {
       items(ids: $itemId) {
@@ -638,7 +638,7 @@ export async function fetchItemById(itemId: string): Promise<MondayItem | null> 
   `;
   const data = await gql<{
     items: MondayItem[];
-  }>(query, { itemId: [itemId], cols: READ_COLUMN_IDS });
+  }>(query, { itemId: [itemId], cols: useAuthColumns ? AUTH_READ_COLUMN_IDS : READ_COLUMN_IDS });
   return data.items?.[0] ?? null;
 }
 

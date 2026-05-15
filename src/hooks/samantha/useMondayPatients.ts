@@ -123,7 +123,8 @@ export function useMondayPatients(activeGroup: SidebarGroup = "benefits", inject
       // If a specific patient was deep-linked but isn't in this group, fetch individually.
       if (injectedPatientId && !merged.some((p) => p.id === injectedPatientId)) {
         try {
-          const item = await fetchItemById(injectedPatientId);
+          const useAuth = activeGroup === "authOutstanding";
+          const item = await fetchItemById(injectedPatientId, useAuth);
           if (item) {
             const injected = mondayItemToPatient(item);
             merged.unshift(applyOverlay(injected, overlayRef.current.get(injected.id)));

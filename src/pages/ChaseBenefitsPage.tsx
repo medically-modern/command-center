@@ -91,6 +91,7 @@ const ChaseBenefitsPage = () => {
     if (benefitsMissing.length > 0) return;
     try {
       await sendPatientToMonday(selected, "benefits");
+      clearOverlay(selected.id);
       toast.success("Sent to Monday");
     } catch (e) {
       toast.error("Send to Monday failed", { description: e instanceof Error ? e.message : String(e) });
