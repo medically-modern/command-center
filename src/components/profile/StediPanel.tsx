@@ -539,190 +539,176 @@ export function StediPanel({ patient, onRefresh, onUpdate, onNext, onRemoveOverl
         </Card>
       )}
 
-      {/* Eligibility Results — always visible (empty state when no Stedi data) */}
+      {/* Eligibility Results — always visible */}
       <Card className="shadow-card">
-        {!stediIsComplete && (
-          <CardContent className="pt-5 pb-4">
-            <p className="text-sm text-muted-foreground text-center py-4">
-              Run a Stedi check above to see eligibility results
-            </p>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base flex items-center gap-2">
+            {isStediFailed ? (
+              <AlertTriangle className="h-4 w-4 text-red-500" />
+            ) : stediIsComplete ? (
+              <CheckCircle2 className="h-4 w-4 text-green-500" />
+            ) : null}
+            Eligibility Results
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6">
+            {ALWAYS_FIELDS.map(({ key, label }) => (
+              <ResultRow
+                key={key}
+                label={label}
+                value={patient[key] as string}
+                isError={key === "stediErrorDescription"}
+                alwaysShow
+              />
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Medicare-only fields */}
+      {isMedicare && (
+        <Card className="shadow-card border-blue-200">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base">Medicare Details</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6">
+              {MEDICARE_FIELDS.map(({ key, label }) => (
+                <ResultRow key={key} label={label} value={patient[key] as string} alwaysShow />
+              ))}
+            </div>
           </CardContent>
-        )}
-        {stediIsComplete && (
-          <>
-          {/* Always-show results */}
-          <Card className="shadow-none border-0">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-base flex items-center gap-2">
-                {isStediFailed ? (
-                  <AlertTriangle className="h-4 w-4 text-red-500" />
-                ) : (
-                  <CheckCircle2 className="h-4 w-4 text-green-500" />
-                )}
-                Eligibility Results
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6">
-                {ALWAYS_FIELDS.map(({ key, label, alwaysShow }) => (
-                  <ResultRow
-                    key={key}
-                    label={label}
-                    value={patient[key] as string}
-                    isError={key === "stediErrorDescription"}
-                    alwaysShow={alwaysShow}
-                  />
-                ))}
-              </div>
-            </CardContent>
-          </Card>
+        </Card>
+      )}
 
-          {/* Medicare-only fields */}
-          {isMedicare && (
-            <Card className="shadow-card border-blue-200">
-              <CardHeader className="pb-3">
-                <CardTitle className="text-base">Medicare Details</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6">
-                  {MEDICARE_FIELDS.map(({ key, label }) => (
-                    <ResultRow key={key} label={label} value={patient[key] as string} />
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-          )}
+      {/* Medicaid-only fields */}
+      {isMedicaid && (
+        <Card className="shadow-card border-purple-200">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base">Medicaid Details</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6">
+              {MEDICAID_FIELDS.map(({ key, label }) => (
+                <ResultRow key={key} label={label} value={patient[key] as string} alwaysShow />
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
-          {/* Medicaid-only fields */}
-          {isMedicaid && (
-            <Card className="shadow-card border-purple-200">
-              <CardHeader className="pb-3">
-                <CardTitle className="text-base">Medicaid Details</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6">
-                  {MEDICAID_FIELDS.map(({ key, label }) => (
-                    <ResultRow key={key} label={label} value={patient[key] as string} />
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-          )}
-
-          {/* Cost Sharing section */}
-          <Card className="shadow-card">
-            <CardHeader className="pb-3">
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div>
-                  <p className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground font-semibold">Step 2</p>
-                  <CardTitle className="text-base">Verify Cost Sharing Info</CardTitle>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    Defaults pulled from {costSharingMode === "family" ? "family" : "individual"} amounts. All values are editable.
-                  </p>
-                </div>
-                <ToggleGroup
-                  type="single"
-                  value={costSharingMode}
-                  onValueChange={(v) => v && setCostSharingMode(v as "individual" | "family")}
-                  size="sm"
-                  variant="outline"
-                  className="self-start"
-                >
-                  <ToggleGroupItem value="individual" className="h-8 px-3 text-xs">Use Individual</ToggleGroupItem>
-                  <ToggleGroupItem value="family" className="h-8 px-3 text-xs">Use Family</ToggleGroupItem>
-                </ToggleGroup>
-              </div>
-            </CardHeader>
-            <CardContent className="space-y-5">
-              {/* Editable working values — default source switches with the toggle */}
-              {(() => {
-                const isFamily = costSharingMode === "family";
-                const defaultDeductible = isFamily ? patient.stediFamilyDeductible : patient.stediIndividualDeductible;
-                const defaultDeductibleRem = isFamily ? patient.stediFamilyDeductibleRemaining : patient.stediIndividualDeductibleRemaining;
-                const defaultOopMax = isFamily ? patient.stediFamilyOopMax : patient.stediIndividualOopMax;
-                const defaultOopMaxRem = isFamily ? patient.stediFamilyOopMaxRemaining : patient.stediIndividualOopMaxRemaining;
-                return (
-                  <div className="space-y-5">
-                    {/* Pair 1: Co-insurance + Co-pay */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div className="space-y-1.5">
-                        <Label>Co-insurance</Label>
-                        <PercentInput
-                          value={patient.workingCoinsurance || patient.stediCoinsurance}
-                          onChange={(v) => onUpdate({ workingCoinsurance: v })}
-                        />
-                      </div>
-                      <div className="space-y-1.5">
-                        <Label>Co-pay</Label>
-                        <CurrencyInput
-                          value={patient.stediCopay}
-                          onChange={(v) => onUpdate({ stediCopay: v })}
-                        />
-                      </div>
-                    </div>
-
-                    {/* Pair 2: Deductible + Deductible Remaining */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div className="space-y-1.5">
-                        <Label>Deductible</Label>
-                        <CurrencyInput
-                          value={patient.workingDeductible || defaultDeductible}
-                          onChange={(v) => onUpdate({ workingDeductible: v })}
-                        />
-                      </div>
-                      <div className="space-y-1.5">
-                        <Label>Deductible Remaining</Label>
-                        <CurrencyInput
-                          value={patient.workingDeductibleRemaining || defaultDeductibleRem}
-                          onChange={(v) => onUpdate({ workingDeductibleRemaining: v })}
-                        />
-                      </div>
-                    </div>
-
-                    {/* Pair 3: OOP Max + OOP Max Remaining */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div className="space-y-1.5">
-                        <Label>OOP Max</Label>
-                        <CurrencyInput
-                          value={patient.workingOopMax || defaultOopMax}
-                          onChange={(v) => onUpdate({ workingOopMax: v })}
-                        />
-                      </div>
-                      <div className="space-y-1.5">
-                        <Label>OOP Max Remaining</Label>
-                        <CurrencyInput
-                          value={patient.workingOopMaxRemaining || defaultOopMaxRem}
-                          onChange={(v) => onUpdate({ workingOopMaxRemaining: v })}
-                        />
-                      </div>
-                    </div>
+      {/* Cost Sharing section — always visible */}
+      <Card className="shadow-card">
+        <CardHeader className="pb-3">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <p className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground font-semibold">Step 2</p>
+              <CardTitle className="text-base">Verify Cost Sharing Info</CardTitle>
+              <p className="text-xs text-muted-foreground mt-1">
+                Defaults pulled from {costSharingMode === "family" ? "family" : "individual"} amounts. All values are editable.
+              </p>
+            </div>
+            <ToggleGroup
+              type="single"
+              value={costSharingMode}
+              onValueChange={(v) => v && setCostSharingMode(v as "individual" | "family")}
+              size="sm"
+              variant="outline"
+              className="self-start"
+            >
+              <ToggleGroupItem value="individual" className="h-8 px-3 text-xs">Use Individual</ToggleGroupItem>
+              <ToggleGroupItem value="family" className="h-8 px-3 text-xs">Use Family</ToggleGroupItem>
+            </ToggleGroup>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-5">
+          {/* Editable working values — default source switches with the toggle */}
+          {(() => {
+            const isFamily = costSharingMode === "family";
+            const defaultDeductible = isFamily ? patient.stediFamilyDeductible : patient.stediIndividualDeductible;
+            const defaultDeductibleRem = isFamily ? patient.stediFamilyDeductibleRemaining : patient.stediIndividualDeductibleRemaining;
+            const defaultOopMax = isFamily ? patient.stediFamilyOopMax : patient.stediIndividualOopMax;
+            const defaultOopMaxRem = isFamily ? patient.stediFamilyOopMaxRemaining : patient.stediIndividualOopMaxRemaining;
+            return (
+              <div className="space-y-5">
+                {/* Pair 1: Co-insurance + Co-pay */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-1.5">
+                    <Label>Co-insurance</Label>
+                    <PercentInput
+                      value={patient.workingCoinsurance || patient.stediCoinsurance}
+                      onChange={(v) => onUpdate({ workingCoinsurance: v })}
+                    />
                   </div>
-                );
-              })()}
-
-              {/* Reference: Individual vs Family (read-only) */}
-              <details className="group">
-                <summary className="text-xs text-muted-foreground cursor-pointer hover:text-foreground">
-                  Show individual &amp; family breakdown
-                </summary>
-                <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-1 text-sm">
-                  <div className="font-medium text-xs uppercase tracking-wider text-muted-foreground pt-2 col-span-full">Individual</div>
-                  <ResultRow label="Deductible" value={fmtCurrency(patient.stediIndividualDeductible)} />
-                  <ResultRow label="Deductible Remaining" value={fmtCurrency(patient.stediIndividualDeductibleRemaining)} />
-                  <ResultRow label="OOP Max" value={fmtCurrency(patient.stediIndividualOopMax)} />
-                  <ResultRow label="OOP Max Remaining" value={fmtCurrency(patient.stediIndividualOopMaxRemaining)} />
-
-                  <div className="font-medium text-xs uppercase tracking-wider text-muted-foreground pt-2 col-span-full">Family</div>
-                  <ResultRow label="Deductible" value={fmtCurrency(patient.stediFamilyDeductible)} />
-                  <ResultRow label="Deductible Remaining" value={fmtCurrency(patient.stediFamilyDeductibleRemaining)} />
-                  <ResultRow label="OOP Max" value={fmtCurrency(patient.stediFamilyOopMax)} />
-                  <ResultRow label="OOP Max Remaining" value={fmtCurrency(patient.stediFamilyOopMaxRemaining)} />
+                  <div className="space-y-1.5">
+                    <Label>Co-pay</Label>
+                    <CurrencyInput
+                      value={patient.stediCopay}
+                      onChange={(v) => onUpdate({ stediCopay: v })}
+                    />
+                  </div>
                 </div>
-              </details>
-            </CardContent>
-          </Card>
-          </>
-        )}
+
+                {/* Pair 2: Deductible + Deductible Remaining */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-1.5">
+                    <Label>Deductible</Label>
+                    <CurrencyInput
+                      value={patient.workingDeductible || defaultDeductible}
+                      onChange={(v) => onUpdate({ workingDeductible: v })}
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>Deductible Remaining</Label>
+                    <CurrencyInput
+                      value={patient.workingDeductibleRemaining || defaultDeductibleRem}
+                      onChange={(v) => onUpdate({ workingDeductibleRemaining: v })}
+                    />
+                  </div>
+                </div>
+
+                {/* Pair 3: OOP Max + OOP Max Remaining */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-1.5">
+                    <Label>OOP Max</Label>
+                    <CurrencyInput
+                      value={patient.workingOopMax || defaultOopMax}
+                      onChange={(v) => onUpdate({ workingOopMax: v })}
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>OOP Max Remaining</Label>
+                    <CurrencyInput
+                      value={patient.workingOopMaxRemaining || defaultOopMaxRem}
+                      onChange={(v) => onUpdate({ workingOopMaxRemaining: v })}
+                    />
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
+
+          {/* Reference: Individual vs Family (read-only) */}
+          <details className="group">
+            <summary className="text-xs text-muted-foreground cursor-pointer hover:text-foreground">
+              Show individual &amp; family breakdown
+            </summary>
+            <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-1 text-sm">
+              <div className="font-medium text-xs uppercase tracking-wider text-muted-foreground pt-2 col-span-full">Individual</div>
+              <ResultRow label="Deductible" value={fmtCurrency(patient.stediIndividualDeductible)} />
+              <ResultRow label="Deductible Remaining" value={fmtCurrency(patient.stediIndividualDeductibleRemaining)} />
+              <ResultRow label="OOP Max" value={fmtCurrency(patient.stediIndividualOopMax)} />
+              <ResultRow label="OOP Max Remaining" value={fmtCurrency(patient.stediIndividualOopMaxRemaining)} />
+
+              <div className="font-medium text-xs uppercase tracking-wider text-muted-foreground pt-2 col-span-full">Family</div>
+              <ResultRow label="Deductible" value={fmtCurrency(patient.stediFamilyDeductible)} />
+              <ResultRow label="Deductible Remaining" value={fmtCurrency(patient.stediFamilyDeductibleRemaining)} />
+              <ResultRow label="OOP Max" value={fmtCurrency(patient.stediFamilyOopMax)} />
+              <ResultRow label="OOP Max Remaining" value={fmtCurrency(patient.stediFamilyOopMaxRemaining)} />
+            </div>
+          </details>
+        </CardContent>
       </Card>
 
       {/* Next button → Serving tab */}
