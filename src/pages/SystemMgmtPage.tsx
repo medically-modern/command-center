@@ -49,16 +49,24 @@ const SystemMgmtPage = () => {
   const [chartSelection, setChartSelection] = useState<SystemPatient[] | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [notesPatient, setNotesPatient] = useState<SystemPatient | null>(null);
+  const [stageFilter, setStageFilter] = useState<string | null>(null);
 
   const handleChartSegmentClick = (segmentPatients: SystemPatient[]) => {
     setChartSelection(segmentPatients);
+    setStageFilter(null);
     setQuery(""); // clear search text so chart selection shows
   };
 
-  // When user starts typing, clear chart selection
+  // When user starts typing, clear chart/stage selection
   const handleQueryChange = (q: string) => {
     setQuery(q);
-    if (q.trim()) setChartSelection(null);
+    if (q.trim()) { setChartSelection(null); setStageFilter(null); }
+  };
+
+  const handleStageClick = (stage: string) => {
+    setStageFilter((prev) => (prev === stage ? null : stage));
+    setChartSelection(null);
+    setQuery("");
   };
 
   const handleRefresh = async () => {
@@ -79,8 +87,21 @@ const SystemMgmtPage = () => {
     [patients, query],
   );
 
-  // Effective results: chart selection takes priority, then search
-  const displayResults = chartSelection ?? (query.trim() ? searchResults : []);
+  // Stage filter results — sorted by longest days in pipeline first
+  const stageResults = useMemo(() => {
+    if (!stageFilter) return null;
+    const dayOrder: Record<string, number> = {
+      "30+ Days": 30, "21-29 Days": 21, "16-20 Days": 16,
+      "13-15 Days": 13, "9–12 Days": 9, "6–8 Days": 6,
+      "3–5 Days": 3, "0–2 Days": 0, "Unknown": -1,
+    };
+    return patients
+      .filter((p) => p.pipelineStage === stageFilter)
+      .sort((a, b) => (dayOrder[b.daysSinceStage] ?? -1) - (dayOrder[a.daysSinceStage] ?? -1));
+  }, [patients, stageFilter]);
+
+  // Effective results: stage filter > chart selection > search
+  const displayResults = stageResults ?? chartSelection ?? (query.trim() ? searchResults : []);
 
   // Patients to show in the chart (filtered by search when typing)
   const chartPatients = useMemo(() => {
@@ -208,6 +229,9 @@ const SystemMgmtPage = () => {
               chartSelectionActive={chartSelection !== null}
               onClearChartSelection={() => setChartSelection(null)}
               onNotesClick={(p) => setNotesPatient((prev) => prev?.id === p.id ? null : p)}
+              onStageClick={handleStageClick}
+              stageFilter={stageFilter}
+              onClearStageFilter={() => setStageFilter(null)}
             />
           ) : (
             <EscalationView
@@ -295,6 +319,9 @@ function SearchView({
   chartSelectionActive,
   onClearChartSelection,
   onNotesClick,
+  onStageClick,
+  stageFilter,
+  onClearStageFilter,
 }: {
   query: string;
   onQueryChange: (q: string) => void;
@@ -307,6 +334,9 @@ function SearchView({
   chartSelectionActive: boolean;
   onClearChartSelection: () => void;
   onNotesClick: (p: SystemPatient) => void;
+  onStageClick: (stage: string) => void;
+  stageFilter: string | null;
+  onClearStageFilter: () => void;
 }) {
   return (
     <div className="space-y-4">
@@ -342,6 +372,21 @@ function SearchView({
         </div>
       )}
 
+      {/* Stage filter banner */}
+      {stageFilter && (
+        <div data-chart-results className="flex items-center gap-2 px-3 py-2 bg-blue-50 dark:bg-blue-950/30 rounded-lg border border-blue-200 dark:border-blue-800">
+          <span className="text-xs text-blue-700 dark:text-blue-300 font-medium">
+            Showing {results.length} patient{results.length !== 1 ? "s" : ""} in &ldquo;{stageFilter}&rdquo; — sorted by longest in pipeline
+          </span>
+          <button
+            onClick={onClearStageFilter}
+            className="ml-auto text-xs text-blue-600 dark:text-blue-400 hover:text-blue-500 underline"
+          >
+            Clear
+          </button>
+        </div>
+      )}
+
       {query.trim() && results.length === 0 && (
         <div className="rounded-xl bg-card border shadow-card p-10 text-center">
           <p className="text-sm text-muted-foreground">
@@ -364,6 +409,7 @@ function SearchView({
               onClick={() => onPatientClick(p)}
               completedStages={completionMap.get(p.name.trim().toLowerCase()) ?? []}
               onNotesClick={onNotesClick}
+              onStageClick={onStageClick}
             />
           ))}
         </div>
@@ -473,14 +519,7 @@ function NotesPanel({
   patient: SystemPatient;
   onClose: () => void;
 }) {
-  // Split notes into entries by date-like patterns (MM/DD/YYYY or similar)
-  const noteEntries = useMemo(() => {
-    if (!patient.notes) return [];
-    const text = patient.notes.trim();
-    // Try to split on date patterns like "05/06/2026" or "4/30/2026"
-    const parts = text.split(/(?=\d{1,2}\/\d{1,2}\/\d{4})/);
-    return parts.filter((p) => p.trim().length > 0);
-  }, [patient.notes]);
+  const noteEntries = useMemo(() => parseNoteEntries(patient.notes), [patient.notes]);
 
   return (
     <div className="fixed top-0 right-0 w-[400px] h-screen border-l bg-card shadow-2xl flex flex-col z-40">
@@ -490,7 +529,7 @@ function NotesPanel({
         <div className="flex-1 min-w-0">
           <div className="text-sm font-semibold truncate">{patient.name}</div>
           <div className="text-[10px] text-muted-foreground">
-            {patient.boardName} · {patient.pipelineStage}
+            {patient.boardName} · {patient.pipelineStage} · {noteEntries.length} note{noteEntries.length !== 1 ? "s" : ""}
           </div>
         </div>
         <button
@@ -507,20 +546,20 @@ function NotesPanel({
           <p className="text-sm text-muted-foreground text-center py-6">
             No notes available.
           </p>
-        ) : noteEntries.length === 1 ? (
-          <div className="text-sm text-foreground leading-relaxed whitespace-pre-wrap">
-            {noteEntries[0]}
-          </div>
         ) : (
           noteEntries.map((entry, i) => (
             <div
               key={i}
               className={cn(
-                "text-sm text-foreground leading-relaxed whitespace-pre-wrap",
                 i < noteEntries.length - 1 && "pb-3 border-b border-border",
               )}
             >
-              {entry.trim()}
+              {entry.header && (
+                <div className="text-xs text-primary font-semibold mb-1">{entry.header}</div>
+              )}
+              <div className="text-sm text-foreground leading-relaxed whitespace-pre-wrap">
+                {entry.body}
+              </div>
             </div>
           ))
         )}
@@ -548,26 +587,41 @@ function CompletionBadges({ stages }: { stages: string[] }) {
   );
 }
 
+/** Parse notes into individual entries split by [Date, Time] headers */
+function parseNoteEntries(notes: string): { header: string; body: string }[] {
+  if (!notes) return [];
+  const text = notes.trim();
+  // Split on bracketed date headers like [May 14, 2026, 12:04 PM]
+  const parts = text.split(/(?=\[[A-Z][a-z]+ \d{1,2}, \d{4},? \d{1,2}:\d{2}\s*(?:AM|PM)?\])/i);
+  return parts
+    .filter((p) => p.trim().length > 0)
+    .map((entry) => {
+      const headerMatch = entry.match(/^\[([^\]]+)\]/);
+      const header = headerMatch ? headerMatch[1] : "";
+      const body = headerMatch ? entry.slice(headerMatch[0].length).trim() : entry.trim();
+      return { header, body };
+    });
+}
+
 function PatientRow({
   patient,
   onClick,
   completedStages,
   onNotesClick,
+  onStageClick,
 }: {
   patient: SystemPatient;
   onClick: () => void;
   completedStages: string[];
   onNotesClick?: (p: SystemPatient) => void;
+  onStageClick?: (stage: string) => void;
 }) {
-  const [showTooltip, setShowTooltip] = useState(false);
-  const tooltipTimeout = useRef<ReturnType<typeof setTimeout>>();
+  const [showNotesTooltip, setShowNotesTooltip] = useState(false);
+  const notesTooltipTimeout = useRef<ReturnType<typeof setTimeout>>();
 
-  const recentNote = useMemo(() => {
-    if (!patient.notes) return null;
-    // Take first ~150 chars as the "most recent" preview
-    const text = patient.notes.trim();
-    return text.length > 150 ? text.slice(0, 150) + "…" : text;
-  }, [patient.notes]);
+  const noteEntries = useMemo(() => parseNoteEntries(patient.notes), [patient.notes]);
+  const mostRecent = noteEntries[0] ?? null;
+  const recentThree = noteEntries.slice(0, 3);
 
   return (
     <div
@@ -598,7 +652,17 @@ function PatientRow({
             )}
           </div>
           <div className="text-xs text-muted-foreground truncate">
-            {patient.phone || "No phone"} · {patient.boardName} · {patient.pipelineStage}
+            {patient.phone || "No phone"} · {patient.boardName} ·{" "}
+            <span
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                onStageClick?.(patient.pipelineStage);
+              }}
+              className="cursor-pointer hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
+            >
+              {patient.pipelineStage}
+            </span>
           </div>
           <CompletionBadges stages={completedStages} />
         </div>
@@ -606,43 +670,74 @@ function PatientRow({
           <div className="text-[10px] uppercase tracking-wider text-muted-foreground">
             {patient.boardName}
           </div>
-          <div className="text-xs font-medium text-primary">{patient.pipelineStage}</div>
+          <div
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              onStageClick?.(patient.pipelineStage);
+            }}
+            className="text-xs font-medium text-primary cursor-pointer hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
+          >
+            {patient.pipelineStage}
+          </div>
           {patient.daysSinceStage && (
             <div className="text-[10px] text-muted-foreground">{patient.daysSinceStage}</div>
           )}
         </div>
       </button>
 
-      {/* Notes button with hover tooltip */}
-      {patient.notes && onNotesClick && (
-        <div className="relative shrink-0">
+      {/* Inline notes area — shows most recent note, hover for 3, click for sidebar */}
+      {onNotesClick && (
+        <div className="relative shrink-0 max-w-[220px]">
           <button
             onClick={(e) => {
               e.stopPropagation();
               onNotesClick(patient);
             }}
             onMouseEnter={() => {
-              clearTimeout(tooltipTimeout.current);
-              tooltipTimeout.current = setTimeout(() => setShowTooltip(true), 300);
+              if (recentThree.length > 0) {
+                clearTimeout(notesTooltipTimeout.current);
+                notesTooltipTimeout.current = setTimeout(() => setShowNotesTooltip(true), 300);
+              }
             }}
             onMouseLeave={() => {
-              clearTimeout(tooltipTimeout.current);
-              setShowTooltip(false);
+              clearTimeout(notesTooltipTimeout.current);
+              setShowNotesTooltip(false);
             }}
-            className="p-2 rounded-md hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
-            title="View notes"
+            className="flex items-center gap-2 px-2 py-1.5 rounded-md hover:bg-muted transition-colors text-left min-w-0"
           >
-            <FileText className="w-4 h-4" />
+            <FileText className="w-4 h-4 text-muted-foreground shrink-0" />
+            {mostRecent ? (
+              <div className="min-w-0">
+                {mostRecent.header && (
+                  <div className="text-[10px] text-muted-foreground font-medium truncate">{mostRecent.header}</div>
+                )}
+                <div className="text-[11px] text-foreground truncate leading-snug max-w-[180px]">
+                  {mostRecent.body.length > 80 ? mostRecent.body.slice(0, 80) + "…" : mostRecent.body}
+                </div>
+              </div>
+            ) : (
+              <span className="text-[11px] text-muted-foreground italic">No notes</span>
+            )}
           </button>
 
-          {/* Hover tooltip */}
-          {showTooltip && recentNote && (
-            <div className="absolute right-0 bottom-full mb-2 z-50 w-72 bg-popover border border-border rounded-lg shadow-lg p-3 pointer-events-none">
-              <div className="text-[10px] font-semibold text-muted-foreground mb-1 uppercase tracking-wider">
-                Latest Notes
+          {/* Hover tooltip — 3 most recent notes */}
+          {showNotesTooltip && recentThree.length > 0 && (
+            <div className="absolute right-0 bottom-full mb-2 z-50 w-80 bg-popover border border-border rounded-lg shadow-lg p-3 pointer-events-none">
+              <div className="text-[10px] font-semibold text-muted-foreground mb-2 uppercase tracking-wider">
+                Recent Notes ({noteEntries.length} total)
               </div>
-              <div className="text-xs text-foreground leading-relaxed whitespace-pre-wrap">
-                {recentNote}
+              <div className="space-y-2">
+                {recentThree.map((entry, i) => (
+                  <div key={i} className={cn(i < recentThree.length - 1 && "pb-2 border-b border-border")}>
+                    {entry.header && (
+                      <div className="text-[10px] text-primary font-semibold mb-0.5">{entry.header}</div>
+                    )}
+                    <div className="text-xs text-foreground leading-relaxed whitespace-pre-wrap">
+                      {entry.body.length > 200 ? entry.body.slice(0, 200) + "…" : entry.body}
+                    </div>
+                  </div>
+                ))}
               </div>
               <div className="text-[10px] text-muted-foreground mt-2 pt-1 border-t border-border">
                 Click to view all notes
