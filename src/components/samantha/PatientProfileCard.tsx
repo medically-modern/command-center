@@ -277,6 +277,12 @@ export function PatientProfileCard({ patient, onUpdate }: Props) {
             <Field icon={<IdCard className="h-4 w-4" />} label="Member ID 2" value={patient.memberId2 ?? ""} />
           )
         )}
+
+        <Field
+          icon={<Stethoscope className="h-4 w-4" />}
+          label="Referral Source"
+          value={patient.referralSource ?? ""}
+        />
       </div>
 
       {/* Doctor info — collapsible */}

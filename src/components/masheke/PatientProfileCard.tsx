@@ -184,6 +184,11 @@ export function PatientProfileCard({
                 value={patient.referralType ?? ""}
               />
               <Field
+                icon={<Stethoscope className="h-4 w-4" />}
+                label="Referral Source"
+                value={patient.referralSource ?? ""}
+              />
+              <Field
                 icon={<Send className="h-4 w-4" />}
                 label="Request Type"
                 value={patient.requestType ?? ""}

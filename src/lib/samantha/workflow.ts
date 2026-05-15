@@ -411,6 +411,7 @@ export interface Patient {
   secondaryInsurance?: string;
   memberId1?: string;
   memberId2?: string;
+  referralSource?: string;
   patientPhone?: string;
   patientAddress?: string;
   pumpBrand?: string;

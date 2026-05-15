@@ -33,6 +33,7 @@ export const COL = {
   claimsStatus: "color_mm284z0b",
   memberId1: "text_mm1x2qk2",
   memberId2: "text_mm1xaccx",
+  referralSource: "color_mm1w5wxr",
 
   // Universal write columns
   activeNetwork: "color_mm2vhwan",
@@ -150,6 +151,7 @@ export const READ_COLUMN_IDS = [
   COL.pumpBrand,
   COL.memberId1,
   COL.memberId2,
+  COL.referralSource,
   COL.callReferenceNotes,
   COL.doctorName,
   COL.doctorPhone,

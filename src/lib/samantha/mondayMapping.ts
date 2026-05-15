@@ -187,6 +187,7 @@ export function mondayItemToPatient(item: MondayItem): Patient {
   const notes = cv(COL.callReferenceNotes)?.text ?? "";
   const memberId1 = cv(COL.memberId1)?.text ?? "";
   const memberId2 = cv(COL.memberId2)?.text ?? "";
+  const referralSource = cv(COL.referralSource)?.text ?? "";
   const diagnosis = cv(COL.diagnosis)?.text ?? "";
   const patientPhone = cv(COL.patientPhone)?.text ?? "";
   const patientAddress = cv(COL.patientAddress)?.text ?? "";
@@ -354,6 +355,7 @@ export function mondayItemToPatient(item: MondayItem): Patient {
     secondaryInsurance,
     memberId1,
     memberId2,
+    referralSource: referralSource || undefined,
     patientPhone,
     patientAddress,
     pumpBrand,
