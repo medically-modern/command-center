@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { useMondayFiles } from "@/hooks/masheke/useMondayFiles";
 import {
   COL,
+  buildDoctorWriteTasks,
   clearStatusColumn,
   deleteFileFromColumn,
   deleteSingleFileFromColumn,
@@ -289,6 +290,8 @@ export function SendRequestPanel({ patient, resetVersion = 0, onUpdate }: Props)
         run: () => writeStatusIndex(patient.id, COL.escalation, ESCALATION_INDEX.required),
       });
     }
+    // Persist any doctor-field edits made on the profile card
+    tasks.push(...buildDoctorWriteTasks(patient));
     const results = await Promise.allSettled(tasks.map((t) => t.run()));
     const failures: string[] = [];
     results.forEach((r, i) => {

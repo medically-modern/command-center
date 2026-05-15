@@ -10,6 +10,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { useMondayFiles } from "@/hooks/masheke/useMondayFiles";
 import {
   COL,
+  buildDoctorWriteTasks,
   hasToken,
   writeDate,
   writeLongText,
@@ -140,6 +141,9 @@ export function ConfirmReceiptPanel({ patient, onUpdate }: Props) {
             : `Attempt ${attempt} saved`,
         );
       }
+      // Persist any doctor-field edits made on the profile card
+      const docTasks = buildDoctorWriteTasks(patient);
+      if (docTasks.length) await Promise.all(docTasks.map((t) => t.run()));
       // Write escalation if toggled
       if (escalatedRef.current) {
         await writeStatusIndex(patient.id, COL.escalation, ESCALATION_INDEX.required);

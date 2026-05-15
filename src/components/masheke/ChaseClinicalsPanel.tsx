@@ -10,6 +10,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { useMondayFiles } from "@/hooks/masheke/useMondayFiles";
 import {
   COL,
+  buildDoctorWriteTasks,
   hasToken,
   writeDate,
   writeLongText,
@@ -144,6 +145,9 @@ export function ChaseClinicalsPanel({ patient, onUpdate }: Props) {
             : `Attempt ${attempt} saved`,
         );
       }
+      // Persist any doctor-field edits made on the profile card
+      const docTasks = buildDoctorWriteTasks(patient);
+      if (docTasks.length) await Promise.all(docTasks.map((t) => t.run()));
       setName("");
       setConfirmed(null);
       setNextAction("");
