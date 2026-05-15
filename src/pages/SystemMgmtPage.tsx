@@ -109,6 +109,7 @@ const SystemMgmtPage = () => {
     }
     const params = new URLSearchParams({ patientId: patient.id });
     if (fromEscalation || patient.escalated) params.set("escalated", "1");
+    params.set("from", "system-mgmt");
     navigate(`${patient.roleRoute}?${params.toString()}`);
   };
 

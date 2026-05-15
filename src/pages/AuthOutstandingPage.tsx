@@ -21,6 +21,7 @@ import { toast } from "sonner";
 import { sendPatientToMonday } from "@/lib/samantha/mondayWrite";
 import { FollowUpModal } from "@/components/samantha/FollowUpModal";
 import { useNavigate, useSearchParams } from "react-router-dom";
+import { useBackNavigation } from "@/hooks/useBackNavigation";
 
 
 /* ── DVS + Claims Status Visual ─────────────────────────────────── */
@@ -61,6 +62,7 @@ function DvsClaimsVisual({ dvsStatus, claimsStatus }: { dvsStatus?: string; clai
 
 const AuthOutstandingPage = () => {
   const navigate = useNavigate();
+  const { goBack } = useBackNavigation();
   const [searchParams] = useSearchParams();
   const isEscalated = searchParams.get("escalated") === "1";
   const { patients, loading, error, refetch, update, clearOverlay , saveOverlay, hasOverlay } = useMondayPatients("authOutstanding", searchParams.get("patientId"));
@@ -115,7 +117,7 @@ const AuthOutstandingPage = () => {
             <div className="px-3 sm:px-6 py-5 flex items-center justify-between gap-4 flex-wrap">
               <div className="flex items-center gap-3">
                 <SidebarTrigger className="text-navy-foreground hover:bg-white/10" />
-                <button onClick={() => navigate("/?tab=dashboard")} className="p-1.5 rounded-md hover:bg-white/10 transition-colors">
+                <button onClick={() => goBack()} className="p-1.5 rounded-md hover:bg-white/10 transition-colors">
                   <ArrowLeft className="h-5 w-5" />
                 </button>
                 <div className="h-10 w-10 rounded-lg bg-gradient-primary flex items-center justify-center shadow-elevate">
