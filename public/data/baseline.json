@@ -1,18 +1,18 @@
 {
-  "dateKey": "2026-05-15",
+  "dateKey": "2026-05-18",
   "counts": {
-    "benefits": 21,
+    "benefits": 14,
     "submitAuth": 5,
-    "authOutstanding": 11,
+    "authOutstanding": 13,
     "evaluate": 1,
-    "sendRequest": 4,
+    "sendRequest": 3,
     "confirmReceipt": 8,
     "chaseBenefits": 21,
-    "welcomeCall": 14,
-    "finalConfirm": 2,
-    "profile": 11,
+    "welcomeCall": 20,
+    "finalConfirm": 3,
+    "profile": 16,
     "subscription": 500
   },
-  "takenAt": "2026-05-15T19:36:09.940Z",
+  "takenAt": "2026-05-18T16:16:39.225Z",
   "source": "github-actions"
 }
