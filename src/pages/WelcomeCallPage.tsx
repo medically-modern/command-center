@@ -14,9 +14,10 @@ import { EscalateButton } from "@/components/welcomeCall/EscalateButton";
 import { NotesPanel } from "@/components/welcomeCall/NotesPanel";
 import { ClinicalsDownloadButton } from "@/components/welcomeCall/ClinicalsDownloadButton";
 import { CallAttemptsCounter } from "@/components/welcomeCall/CallAttemptsCounter";
+import { FollowUpModal } from "@/components/welcomeCall/FollowUpModal";
 import { Button } from "@/components/ui/button";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
-import { RotateCcw, ClipboardCheck, ArrowLeft , Save} from "lucide-react";
+import { RotateCcw, ClipboardCheck, ArrowLeft, Save, Clock } from "lucide-react";
 import { toast } from "sonner";
 import { sendPatientToMonday, sendWelcomeCallTextToMonday, sendNotesToMonday, sendPhoneToMonday } from "@/lib/welcomeCall/mondayWrite";
 import { validatePatientForSend } from "@/lib/welcomeCall/workflow";
@@ -29,6 +30,7 @@ const WelcomeCallPage = () => {
   const [searchParams] = useSearchParams();
   const isEscalated = searchParams.get("escalated") === "1";
   const { patients, loading, error, refetch, update, clearOverlay , saveOverlay, hasOverlay } = useMondayPatients(searchParams.get("patientId"));
+  const [followUpOpen, setFollowUpOpen] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(
     searchParams.get("patientId") ?? null,
   );
@@ -166,6 +168,9 @@ const WelcomeCallPage = () => {
                   />
                 )}
                 {selected && <ClinicalsDownloadButton itemId={selected.id} />}
+                <Button onClick={() => setFollowUpOpen(true)} disabled={!selected} className="gap-2 bg-white/90 text-blue-700 hover:bg-white shadow-elevate">
+                  <Clock className="h-4 w-4" /> Follow Up
+                </Button>
                 <Button
                   onClick={() => {
                     if (!selected) return;
@@ -216,6 +221,15 @@ const WelcomeCallPage = () => {
           </main>
         </div>
       </div>
+      {selected && (
+        <FollowUpModal
+          open={followUpOpen}
+          onOpenChange={setFollowUpOpen}
+          patientId={selected.id}
+          patientName={selected.name}
+          onSuccess={refetch}
+        />
+      )}
     </SidebarProvider>
   );
 };
