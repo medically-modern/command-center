@@ -204,6 +204,7 @@ interface RawItem {
 }
 
 async function fetchBoardItems(board: BoardDef): Promise<SystemPatient[]> {
+  const PAGE = 500;
   const groupIds = board.activeGroups.map((g) => g.id);
   const colIds = [board.phoneColId];
   if (board.escalationColId) colIds.push(board.escalationColId);
@@ -215,7 +216,8 @@ async function fetchBoardItems(board: BoardDef): Promise<SystemPatient[]> {
   const query = `
     query ($bid: ID!, $cols: [String!]) {
       boards(ids: [$bid]) {
-        items_page(limit: 500, query_params: { rules: [{ column_id: "group", compare_value: ${compareValue} }] }) {
+        items_page(limit: ${PAGE}, query_params: { rules: [{ column_id: "group", compare_value: ${compareValue} }] }) {
+          cursor
           items {
             id
             name
@@ -228,11 +230,34 @@ async function fetchBoardItems(board: BoardDef): Promise<SystemPatient[]> {
   `;
 
   const data = await gql<{
-    boards: { items_page: { items: RawItem[] } }[];
+    boards: { items_page: { cursor: string | null; items: RawItem[] } }[];
   }>(query, { bid: board.boardId, cols: colIds });
 
-  const items = data.boards?.[0]?.items_page?.items ?? [];
-  return items.map((item) => mapToSystemPatient(item, board));
+  const firstPage = data.boards?.[0]?.items_page?.items ?? [];
+  let cursor = data.boards?.[0]?.items_page?.cursor ?? null;
+  const allItems: RawItem[] = [...firstPage];
+
+  while (cursor) {
+    try {
+      const nextQuery = `
+        query ($cursor: String!, $cols: [String!]) {
+          next_items_page(limit: ${PAGE}, cursor: $cursor) {
+            cursor
+            items { id name group { id title } column_values(ids: $cols) { id text value } }
+          }
+        }
+      `;
+      const next = await gql<{ next_items_page: { cursor: string | null; items: RawItem[] } }>(nextQuery, { cursor, cols: colIds });
+      const items = next.next_items_page?.items ?? [];
+      cursor = next.next_items_page?.cursor ?? null;
+      if (items.length > 0) allItems.push(...items);
+    } catch (e) {
+      console.error("[fetchBoardItems] pagination error", e);
+      break;
+    }
+  }
+
+  return allItems.map((item) => mapToSystemPatient(item, board));
 }
 
 function mapToSystemPatient(item: RawItem, board: BoardDef): SystemPatient {
