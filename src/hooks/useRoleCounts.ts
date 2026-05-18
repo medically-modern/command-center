@@ -30,13 +30,17 @@ function getMondayToken(): string {
 }
 
 async function fetchBoardGroupCount(boardId: number, groupId: string): Promise<number> {
+  const PAGE = 500;
   const token = getMondayToken();
   if (!token) return 0;
   const compareValue = JSON.stringify([groupId]);
+
+  // First page
   const query = `
     query ($bid: ID!) {
       boards(ids: [$bid]) {
-        items_page(limit: 500, query_params: { rules: [{ column_id: "group", compare_value: ${compareValue} }] }) {
+        items_page(limit: ${PAGE}, query_params: { rules: [{ column_id: "group", compare_value: ${compareValue} }] }) {
+          cursor
           items { id }
         }
       }
@@ -49,8 +53,34 @@ async function fetchBoardGroupCount(boardId: number, groupId: string): Promise<n
       body: JSON.stringify({ query, variables: { bid: boardId } }),
     });
     const json = await res.json();
-    const items = json?.data?.boards?.[0]?.items_page?.items;
-    return Array.isArray(items) ? items.length : 0;
+    const page = json?.data?.boards?.[0]?.items_page;
+    const firstItems = Array.isArray(page?.items) ? page.items : [];
+    let total = firstItems.length;
+    let cursor: string | null = page?.cursor ?? null;
+
+    // Follow cursor pages
+    while (cursor) {
+      const nextQuery = `
+        query ($cursor: String!) {
+          next_items_page(limit: ${PAGE}, cursor: $cursor) {
+            cursor
+            items { id }
+          }
+        }
+      `;
+      const nextRes = await fetch("https://api.monday.com/v2", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: token },
+        body: JSON.stringify({ query: nextQuery, variables: { cursor } }),
+      });
+      const nextJson = await nextRes.json();
+      const nextPage = nextJson?.data?.next_items_page;
+      const nextItems = Array.isArray(nextPage?.items) ? nextPage.items : [];
+      total += nextItems.length;
+      cursor = nextPage?.cursor ?? null;
+    }
+
+    return total;
   } catch {
     return 0;
   }
