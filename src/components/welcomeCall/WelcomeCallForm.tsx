@@ -478,6 +478,7 @@ export function WelcomeCallForm({ patient, onFieldChange, onSendWelcomeCallText 
               Update Address
             </label>
             <AddressAutocomplete
+              key={patient.id}
               value={patient.addressEdited ?? ""}
               onChange={(result: AddressResult) => {
                 onFieldChange("addressEdited", result.address);
