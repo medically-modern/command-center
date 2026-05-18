@@ -6,6 +6,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useMondayPatients } from "@/hooks/welcomeCall/useMondayPatients";
 import type { Patient } from "@/lib/welcomeCall/workflow";
 import { PatientInfoCard } from "@/components/welcomeCall/PatientInfoCard";
+import { OopEstimateCard } from "@/components/welcomeCall/OopEstimateCard";
 import { WelcomeCallForm } from "@/components/welcomeCall/WelcomeCallForm";
 import { ReviewPanel } from "@/components/welcomeCall/ReviewPanel";
 import { PatientsSidebar } from "@/components/welcomeCall/PatientsSidebar";
@@ -206,6 +207,7 @@ const WelcomeCallPage = () => {
                     onFieldChange={handleFieldChange}
                     onSavePhone={(phone) => sendPhoneToMonday(selected.id, phone)}
                   />
+                  <OopEstimateCard patient={selected} />
                   <WelcomeCallForm patient={selected} onFieldChange={handleFieldChange} onSendWelcomeCallText={handleSendWelcomeCallText} />
                   <NotesPanel
                     notes={selected.notes}
