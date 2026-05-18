@@ -16,7 +16,7 @@ import {
   type ResolvedProduct,
 } from "@/lib/samantha/hcpcRules";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
+import { NotesPanel } from "@/components/samantha/NotesPanel";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Package, Repeat, Send, Inbox, ShieldCheck, CalendarDays } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -27,6 +27,7 @@ interface Props {
   patient: Patient;
   onCodeChange: (codeId: ProductCodeId, patch: Partial<ProductCodeState>) => void;
   onNotesChange: (v: string) => void;
+  onSaveNotesToMonday?: (notes: string) => Promise<void>;
 }
 
 const PRODUCT_TO_CODE_ID: Record<ProductId, ProductCodeId> = {
@@ -37,7 +38,7 @@ const PRODUCT_TO_CODE_ID: Record<ProductId, ProductCodeId> = {
   cartridge: "cartridges",
 };
 
-export function AuthOutstandingPanel({ patient, onCodeChange, onNotesChange }: Props) {
+export function AuthOutstandingPanel({ patient, onCodeChange, onNotesChange, onSaveNotesToMonday }: Props) {
   const ins = patient.insurance ?? EMPTY_INSURANCE;
   const serving = patient.serving || "";
   const primaryInsurance = patient.primaryInsurance || "";
@@ -122,21 +123,13 @@ export function AuthOutstandingPanel({ patient, onCodeChange, onNotesChange }: P
       {/* Notes — same Call Reference Notes column as Benefits + Submit Auth.
           Carries the running log forward so anything Samantha logs at the
           outstanding-auth step lands in the same place. */}
-      <div className="rounded-lg border bg-muted/20 p-4 space-y-2">
-        <div>
-          <h3 className="text-sm font-semibold">Reference Notes</h3>
-          <p className="text-[11px] text-muted-foreground">
-            Carries over from Benefits + Submit Auth. Add anything from approval / denial follow-up.
-          </p>
-        </div>
-        <Textarea
-          value={patient.notes}
-          onChange={(e) => onNotesChange(e.target.value)}
-          rows={5}
-          placeholder="Approval / denial details, rep names, follow-up actions…"
-          className="bg-background"
-        />
-      </div>
+      <NotesPanel
+        notes={patient.notes}
+        onNotesChange={onNotesChange}
+        onSaveToMonday={onSaveNotesToMonday}
+        description="Carries over from Benefits + Submit Auth. Add anything from approval / denial follow-up."
+        placeholder="Approval / denial details, rep names, follow-up actions…"
+      />
     </section>
   );
 }

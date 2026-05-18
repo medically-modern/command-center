@@ -26,7 +26,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
+import { NotesPanel } from "@/components/samantha/NotesPanel";
 import { AlertTriangle, CalendarDays, CheckCircle2, Clock, ShieldCheck, ShieldAlert, Repeat, Package, XCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useEffect, useMemo } from "react";
@@ -36,6 +36,7 @@ interface Props {
   onUniversalChange: (id: string, value: UniversalChoice) => void;
   onCodeChange: (codeId: ProductCodeId, patch: Partial<ProductCodeState>) => void;
   onNotesChange: (v: string) => void;
+  onSaveNotesToMonday?: (notes: string) => Promise<void>;
 }
 
 // Map resolver ProductId → existing ProductCodeId used for state tracking
@@ -59,6 +60,7 @@ export function InsurancePanel({
   onUniversalChange,
   onCodeChange,
   onNotesChange,
+  onSaveNotesToMonday,
 }: Props) {
   const ins = patient.insurance ?? EMPTY_INSURANCE;
   const universalDone = Object.values(ins.universal).every((v) => v === "confirmed");
@@ -232,21 +234,13 @@ export function InsurancePanel({
       </StepSection>
 
       {/* Reference Notes */}
-      <div className="rounded-lg border bg-muted/20 p-4 space-y-2">
-        <div>
-          <h3 className="text-sm font-semibold">Reference Notes</h3>
-          <p className="text-[11px] text-muted-foreground">
-            Shared notes across Benefits, Submit Auth, and Auth Outstanding.
-          </p>
-        </div>
-        <Textarea
-          value={patient.notes}
-          onChange={(e) => onNotesChange(e.target.value)}
-          rows={5}
-          placeholder="Reference notes..."
-          className="bg-background"
-        />
-      </div>
+      <NotesPanel
+        notes={patient.notes}
+        onNotesChange={onNotesChange}
+        onSaveToMonday={onSaveNotesToMonday}
+        description="Shared notes across Benefits, Submit Auth, and Auth Outstanding."
+        placeholder="Reference notes..."
+      />
 
       {/* Monday output */}
       {dropdownsReady && (

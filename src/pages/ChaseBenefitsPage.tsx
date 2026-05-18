@@ -24,6 +24,7 @@ import { ClinicalsDownloadButton } from "@/components/samantha/ClinicalsDownload
 import { resolveHcpcs } from "@/lib/samantha/hcpcRules";
 import { toast } from "sonner";
 import { sendPatientToMonday } from "@/lib/samantha/mondayWrite";
+import { writeLongText, COL } from "@/lib/samantha/mondayApi";
 import { FollowUpModal } from "@/components/samantha/FollowUpModal";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useBackNavigation } from "@/hooks/useBackNavigation";
@@ -170,6 +171,7 @@ const ChaseBenefitsPage = () => {
                     onUniversalChange={onUniversalChange}
                     onCodeChange={updateCode}
                     onNotesChange={(v) => update(selected.id, { notes: v })}
+                    onSaveNotesToMonday={(v) => writeLongText(selected.id, COL.callReferenceNotes, v)}
                   />
 
                   <div className="rounded-xl bg-card border shadow-card p-5">
