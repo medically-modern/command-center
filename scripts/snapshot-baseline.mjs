@@ -3,8 +3,11 @@
  *
  * Fetches patient counts from all Monday.com boards and writes
  * public/data/baseline.json.  Designed to run in GitHub Actions
- * at 9 AM ET every weekday so the SPA has an authoritative
+ * early morning ET every weekday so the SPA has an authoritative
  * start-of-day snapshot that doesn't depend on a browser being open.
+ *
+ * Uses cursor-based pagination so boards with 500+ items are counted
+ * accurately.
  *
  * Env: MONDAY_API_TOKEN
  */
@@ -16,6 +19,8 @@ if (!TOKEN) {
   console.error("MONDAY_API_TOKEN is not set — aborting");
   process.exit(1);
 }
+
+const PAGE = 500;
 
 /* ── Board / group constants (mirrors useRoleCounts.ts) ──── */
 
@@ -63,42 +68,88 @@ async function gql(query, variables = {}) {
   return json.data;
 }
 
-/* ── Count fetchers ───────────────────────────────────────── */
+/* ── Count fetchers (with cursor pagination) ─────────────── */
 
 async function countGroup(boardId, groupId) {
   const compareValue = JSON.stringify([groupId]);
+
+  // First page
   const query = `
     query ($bid: ID!) {
       boards(ids: [$bid]) {
-        items_page(limit: 500, query_params: {
+        items_page(limit: ${PAGE}, query_params: {
           rules: [{ column_id: "group", compare_value: ${compareValue} }]
-        }) { items { id } }
+        }) {
+          cursor
+          items { id }
+        }
       }
     }`;
   const data = await gql(query, { bid: boardId });
-  return data?.boards?.[0]?.items_page?.items?.length ?? 0;
+  const page = data?.boards?.[0]?.items_page;
+  let total = page?.items?.length ?? 0;
+  let cursor = page?.cursor ?? null;
+
+  // Follow cursor pages
+  while (cursor) {
+    const nextQuery = `
+      query ($cursor: String!) {
+        next_items_page(limit: ${PAGE}, cursor: $cursor) {
+          cursor
+          items { id }
+        }
+      }`;
+    const next = await gql(nextQuery, { cursor });
+    const nextItems = next?.next_items_page?.items ?? [];
+    total += nextItems.length;
+    cursor = next?.next_items_page?.cursor ?? null;
+  }
+
+  return total;
 }
 
 async function countMashekeStages() {
-  // Fetch all items in Medical Necessity group, read Stage Advancer
+  const compareValue = JSON.stringify([MESH_GROUP]);
+
+  // First page — use board-level items_page with group filter (same pattern as countGroup)
   const query = `
     query ($bid: ID!, $cols: [String!]) {
       boards(ids: [$bid]) {
-        groups(ids: ["${MESH_GROUP}"]) {
-          items_page(limit: 500) {
-            items {
-              id
-              column_values(ids: $cols) { id text }
-            }
+        items_page(limit: ${PAGE}, query_params: {
+          rules: [{ column_id: "group", compare_value: ${compareValue} }]
+        }) {
+          cursor
+          items {
+            id
+            column_values(ids: $cols) { id text }
           }
         }
       }
     }`;
   const data = await gql(query, { bid: MESH_BOARD, cols: [STAGE_COL] });
-  const items = data?.boards?.[0]?.groups?.[0]?.items_page?.items ?? [];
+  const page = data?.boards?.[0]?.items_page;
+  const allItems = [...(page?.items ?? [])];
+  let cursor = page?.cursor ?? null;
+
+  while (cursor) {
+    const nextQuery = `
+      query ($cursor: String!, $cols: [String!]) {
+        next_items_page(limit: ${PAGE}, cursor: $cursor) {
+          cursor
+          items {
+            id
+            column_values(ids: $cols) { id text }
+          }
+        }
+      }`;
+    const next = await gql(nextQuery, { cursor, cols: [STAGE_COL] });
+    const nextItems = next?.next_items_page?.items ?? [];
+    allItems.push(...nextItems);
+    cursor = next?.next_items_page?.cursor ?? null;
+  }
 
   const counts = { evaluate: 0, sendRequest: 0, confirmReceipt: 0, chaseBenefits: 0 };
-  for (const item of items) {
+  for (const item of allItems) {
     const stageText = item.column_values?.find((c) => c.id === STAGE_COL)?.text ?? "";
     const roleId = STAGE_MAP[stageText];
     if (roleId && roleId in counts) counts[roleId]++;

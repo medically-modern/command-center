@@ -1,15 +1,13 @@
 name: Daily Baseline Snapshot
-
 on:
   schedule:
-    # Run at 13:00 and 14:00 UTC to cover both EDT (UTC-4) and EST (UTC-5)
-    # The script itself checks for 9 AM Eastern and no-ops if already snapshotted
-    - cron: '0 13,14 * * 1-5'
+    # Run at 07:00 and 08:00 UTC to cover both EDT (UTC-4) and EST (UTC-5)
+    # Targets 3 AM Eastern — even with GH Actions delay, fires well before 9 AM
+    # The script itself checks for today's date and no-ops if already snapshotted
+    - cron: '0 7,8 * * 1-5'
   workflow_dispatch: # Manual trigger for testing
-
 permissions:
   contents: write
-
 jobs:
   snapshot:
     runs-on: ubuntu-latest
@@ -17,16 +15,13 @@ jobs:
       - uses: actions/checkout@v4
         with:
           token: ${{ secrets.GH_PAT }}
-
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-
       - name: Generate baseline snapshot
         env:
           MONDAY_API_TOKEN: ${{ secrets.VITE_MONDAY_API_TOKEN }}
         run: node scripts/snapshot-baseline.mjs
-
       - name: Commit and push if changed
         run: |
           git config user.name "github-actions[bot]"
