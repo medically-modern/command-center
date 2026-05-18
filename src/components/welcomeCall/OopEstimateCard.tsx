@@ -49,9 +49,8 @@ function SummaryRow({ label, value, bold, highlight }: {
 export function OopEstimateCard({ patient, infusionSets }: Props) {
   const result = useMemo(() => {
     // Parse infusion sets from the welcome call form if available
-    const sets = infusionSets
-      ?? (parseInt(patient.qtyInf1 || "0", 10) + parseInt(patient.qtyInf2 || "0", 10))
-      || 3; // default 3 sets
+    const parsedSets = parseInt(patient.qtyInf1 || "0", 10) + parseInt(patient.qtyInf2 || "0", 10);
+    const sets = infusionSets ?? (parsedSets > 0 ? parsedSets : 3);
 
     return estimateOop({
       primaryInsurance: patient.primaryInsurance,
