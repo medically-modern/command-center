@@ -54,6 +54,7 @@ export function OopEstimateCard({ patient, infusionSets }: Props) {
 
     return estimateOop({
       primaryInsurance: patient.primaryInsurance,
+      secondaryInsurance: patient.secondaryInsurance,
       serving: patient.serving,
       infusionSets: sets,
       deductibleRemaining: patient.deductibleRemaining,
@@ -62,6 +63,7 @@ export function OopEstimateCard({ patient, infusionSets }: Props) {
     });
   }, [
     patient.primaryInsurance,
+    patient.secondaryInsurance,
     patient.serving,
     patient.qtyInf1,
     patient.qtyInf2,
@@ -125,7 +127,13 @@ export function OopEstimateCard({ patient, infusionSets }: Props) {
       <div className="border-t border-muted pt-2 space-y-0.5">
         <SummaryRow label="Total Allowed" value={fmt(est.totalAllowed)} bold />
 
-        {hasBenefitsData ? (
+        {est.medicaidCovers ? (
+          <div className="border-t border-muted mt-1 pt-1.5">
+            <SummaryRow label="Patient Owes" value="$0.00" bold highlight="green" />
+            <SummaryRow label="Insurance Pays" value={fmt(est.insurancePays)} highlight="green" />
+            <p className="text-xs text-green-700 mt-1">{est.medicaidNote}</p>
+          </div>
+        ) : hasBenefitsData ? (
           <>
             {est.appliedDeductible > 0 && (
               <SummaryRow

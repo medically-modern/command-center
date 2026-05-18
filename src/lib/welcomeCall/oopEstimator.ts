@@ -10,7 +10,8 @@
  * for Medicare-style supplies, 1 pump, 1 monitor).
  *
  * Coinsurance overrides (insurance_rules.py) are applied here so
- * United Medicare = 0%, Medicare A&B = 0%, Humana = 0% just work.
+ * Humana = 0% just works. Medicare/United Medicare use real Stedi coinsurance
+ * unless secondary is Medicaid (then $0 OOP).
  */
 
 // ─── Rate Schedule (source: claim_assumptions.py PAYER_RATE_SCHEDULE) ────────
@@ -66,11 +67,37 @@ const SUPPLIES_ROUTE_TO_MEDICAID = new Set([
   "Fidelis Medicaid", "Anthem BCBS Medicaid (JLJ)", "Medicaid",
 ]);
 
+// ─── Secondary Medicaid detection ────────────────────────────────────────────
+// When secondary insurance is any Medicaid variant, Medicaid covers the
+// patient's remaining balance (deductible + coinsurance). Patient OOP = $0.
+
+function isSecondaryMedicaid(secondary: string): boolean {
+  if (!secondary) return false;
+  const s = secondary.toLowerCase();
+  return s.includes("medicaid");
+}
+
+// ─── Primary Medicaid detection ──────────────────────────────────────────────
+// When primary IS a Medicaid plan (filing code MC in claim_assumptions.py),
+// patient OOP = $0. Includes managed Medicaid (Fidelis Low-Cost, Wellcare, etc.)
+
+const PRIMARY_MEDICAID_LABELS = new Set([
+  "Fidelis Medicaid",
+  "Fidelis Low-Cost",
+  "Anthem BCBS Medicaid (JLJ)",
+  "Anthem BCBS Low-Cost (JLJ)",
+  "Wellcare",
+  "Medicaid",
+  "United Medicaid",
+]);
+
 // ─── Coinsurance overrides (source: insurance_rules.py) ──────────────────────
+// NOTE: Removed Medicare A&B and United Medicare from blanket 0% override.
+// Those were a shortcut assuming dual-eligible (Medicaid secondary). Now we
+// check secondary explicitly. If no Medicaid secondary, Medicare patients
+// use real Stedi coinsurance (typically 20% for Part B DME).
 
 const COINSURANCE_OVERRIDES: Record<string, number> = {
-  "United Medicare": 0,
-  "Medicare A&B": 0,
   "Humana": 0,
 };
 
@@ -96,6 +123,10 @@ export interface OopEstimate {
   oopMaxRemaining: number | null;
   patientOwes: number;
   insurancePays: number;
+  /** True when Medicaid (primary or secondary) covers the patient's balance */
+  medicaidCovers: boolean;
+  /** Explanation when Medicaid covers (e.g. "Secondary NY Medicaid covers remaining balance") */
+  medicaidNote: string;
 }
 
 export interface OopEstimateError {
@@ -109,6 +140,8 @@ export type OopResult = OopEstimate | OopEstimateError;
 
 export interface OopInputs {
   primaryInsurance: string;
+  /** Secondary insurance label from Monday (e.g. "NY Medicaid", "Medicare Supplement") */
+  secondaryInsurance: string;
   /** "serving" from the welcome call board — determines which products */
   serving: string;
   /** Number of infusion sets (Inf Qty 1 + Inf Qty 2). Default 3 if unknown. */
@@ -252,9 +285,34 @@ export function estimateOop(inputs: OopInputs): OopResult {
     return { ok: false, reason: `No rates available for "${primaryInsurance}" with serving "${serving}"` };
   }
 
-  // --- OOP Math ---
   const totalAllowed = round2(lines.reduce((sum, l) => sum + l.allowed, 0));
 
+  // --- Medicaid check: primary Medicaid plan OR secondary Medicaid → $0 OOP ---
+  const isPrimaryMedicaid = PRIMARY_MEDICAID_LABELS.has(primaryInsurance);
+  const hasSecondaryMedicaid = isSecondaryMedicaid(inputs.secondaryInsurance);
+
+  if (isPrimaryMedicaid || hasSecondaryMedicaid) {
+    const note = isPrimaryMedicaid
+      ? `${primaryInsurance} is a Medicaid plan — no patient cost share`
+      : `Secondary ${inputs.secondaryInsurance} covers remaining balance`;
+    return {
+      ok: true,
+      lines,
+      totalAllowed,
+      appliedDeductible: 0,
+      postDeductible: totalAllowed,
+      coinsurancePct: 0,
+      patientCoinsurance: 0,
+      patientOwesRaw: 0,
+      oopMaxRemaining: null,
+      patientOwes: 0,
+      insurancePays: totalAllowed,
+      medicaidCovers: true,
+      medicaidNote: note,
+    };
+  }
+
+  // --- OOP Math (non-Medicaid) ---
   const deductibleRemaining = parseNumber(inputs.deductibleRemaining) ?? 0;
   const coinsurancePct = resolveCoinsurance(primaryInsurance, inputs.stediCoinsurance);
   const oopMaxRaw = parseNumber(inputs.oopMaxRemaining);
@@ -281,6 +339,8 @@ export function estimateOop(inputs: OopInputs): OopResult {
     patientOwesRaw,
     patientOwes,
     insurancePays,
+    medicaidCovers: false,
+    medicaidNote: "",
   };
 }
 
