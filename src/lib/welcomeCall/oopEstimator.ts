@@ -62,6 +62,12 @@ const MEDICARE_STYLE_INFUSION_PAYERS = new Set([
   "United Medicare", "Wellcare", "Humana", "Cigna", "Midlands Choice",
 ]);
 
+// Aetna uses Group C codes (A4231/A4232) — same units as commercial (sets×10)
+// but different infusion HCPC than Group A (A4230). Matches backend SUPPLY_HCPC_MAP.
+const AETNA_STYLE_PAYERS = new Set([
+  "Aetna Commercial", "Aetna Medicare",
+]);
+
 // Medicaid supplies split — these payers bill supplies under "Medicaid" rates
 const SUPPLIES_ROUTE_TO_MEDICAID = new Set([
   "Fidelis Medicaid", "Anthem BCBS Medicaid (JLJ)", "Medicaid",
@@ -190,10 +196,25 @@ function servingToProducts(serving: string): { hasCgm: boolean; hasPump: boolean
   return { hasCgm, hasPump, hasSupplies };
 }
 
+// ─── Label aliases (source: financial_estimate_service.py) ───────────────────
+// Monday board status columns sometimes use variant spellings. Normalize to
+// the canonical labels used in PAYER_RATE_SCHEDULE.
+
+const PRIMARY_INSURANCE_ALIASES: Record<string, string> = {
+  "Magnacare": "MagnaCare",
+  "BCBS Wyoming": "BCBS WY",
+};
+
+function canonicalize(label: string): string {
+  const trimmed = (label || "").trim();
+  return PRIMARY_INSURANCE_ALIASES[trimmed] ?? trimmed;
+}
+
 // ─── Main estimator ──────────────────────────────────────────────────────────
 
 export function estimateOop(inputs: OopInputs): OopResult {
-  const { primaryInsurance, serving, infusionSets = 3 } = inputs;
+  const { serving, infusionSets = 3 } = inputs;
+  const primaryInsurance = canonicalize(inputs.primaryInsurance);
 
   if (!primaryInsurance) {
     return { ok: false, reason: "Missing primary insurance" };
@@ -255,9 +276,11 @@ export function estimateOop(inputs: OopInputs): OopResult {
 
     if (suppliesRates) {
       const isMedicareStyle = MEDICARE_STYLE_INFUSION_PAYERS.has(suppliesPayer);
+      const isAetnaStyle = AETNA_STYLE_PAYERS.has(suppliesPayer);
       const infusionUnits = isMedicareStyle ? 13 : infusionSets * 10;
       const cartridgeUnits = isMedicareStyle ? 30 : infusionSets * 10;
-      const infusionCode = isMedicareStyle ? "A4224" : "A4230";
+      // Group B: A4224/A4225 (Medicare), Group C: A4231/A4232 (Aetna), Group A: A4230/A4232 (commercial)
+      const infusionCode = isMedicareStyle ? "A4224" : isAetnaStyle ? "A4231" : "A4230";
       const cartridgeCode = isMedicareStyle ? "A4225" : "A4232";
 
       if (suppliesRates.infusion_rate !== null) {
