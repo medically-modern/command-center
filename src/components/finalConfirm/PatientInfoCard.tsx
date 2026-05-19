@@ -716,8 +716,34 @@ export function PatientInfoCard({ patient, onFieldChange }: Props) {
 
         <div className="h-px bg-border" />
 
-        {/* Subscription Type */}
+        {/* Monitor Qty (left) + Pump Qty (right) — always visible */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
+            <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1">Monitor Qty</p>
+            <Input
+              className="h-8 text-sm"
+              type="number"
+              value={patient.monitorQty}
+              onChange={(e) => onFieldChange("monitorQty", e.target.value)}
+              placeholder="0"
+            />
+          </div>
+          <div>
+            <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1">Pump Qty</p>
+            <Input
+              className="h-8 text-sm"
+              type="number"
+              value={patient.pumpQty}
+              onChange={(e) => onFieldChange("pumpQty", e.target.value)}
+              placeholder="0"
+            />
+          </div>
+        </div>
+
+        <div className="h-px bg-border" />
+
+        {/* Subscription Type — centered */}
+        <div className="max-w-md mx-auto">
           <SelectField
             label="Subscription Type"
             options={SUBSCRIPTION_TYPE_OPTIONS}
@@ -778,30 +804,6 @@ export function PatientInfoCard({ patient, onFieldChange }: Props) {
             </div>
           </>
         )}
-
-        {/* Monitor + Pump quantities — always visible */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-          <div>
-            <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1">Monitor Qty</p>
-            <Input
-              className="h-8 text-sm"
-              type="number"
-              value={patient.monitorQty}
-              onChange={(e) => onFieldChange("monitorQty", e.target.value)}
-              placeholder="0"
-            />
-          </div>
-          <div>
-            <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1">Pump Qty</p>
-            <Input
-              className="h-8 text-sm"
-              type="number"
-              value={patient.pumpQty}
-              onChange={(e) => onFieldChange("pumpQty", e.target.value)}
-              placeholder="0"
-            />
-          </div>
-        </div>
       </Card>
       {/* Auth Results + Details */}
       <Card className="p-4 space-y-4">
