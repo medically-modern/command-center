@@ -67,6 +67,7 @@ function EditableTextField({
   editedValue,
   placeholder,
   onChange,
+  suppressWarning,
 }: {
   icon: React.ReactNode;
   label: string;
@@ -74,18 +75,20 @@ function EditableTextField({
   editedValue?: string | null;
   placeholder?: string;
   onChange: (v: string) => void;
+  suppressWarning?: boolean;
 }) {
   const displayValue = editedValue !== undefined && editedValue !== null ? editedValue : value;
   const isEmpty = !displayValue;
+  const showWarning = isEmpty && !suppressWarning;
   return (
-    <div className={cn("flex items-start gap-2 min-w-0 rounded-lg p-1.5 -m-1.5 transition-colors", isEmpty && "bg-red-50 dark:bg-red-950/20 ring-1 ring-red-200 dark:ring-red-800/40")}>
-      <div className={cn("h-8 w-8 rounded-md flex items-center justify-center shrink-0", isEmpty ? "bg-red-100 dark:bg-red-900/30 text-red-500" : "bg-muted text-muted-foreground")}>
+    <div className={cn("flex items-start gap-2 min-w-0 rounded-lg p-1.5 -m-1.5 transition-colors", showWarning && "bg-red-50 dark:bg-red-950/20 ring-1 ring-red-200 dark:ring-red-800/40")}>
+      <div className={cn("h-8 w-8 rounded-md flex items-center justify-center shrink-0", showWarning ? "bg-red-100 dark:bg-red-900/30 text-red-500" : "bg-muted text-muted-foreground")}>
         {icon}
       </div>
       <div className="min-w-0 flex-1">
         <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1">{label}</p>
         <Input
-          className={cn("h-8 text-sm", isEmpty && "border-red-300 dark:border-red-700")}
+          className={cn("h-8 text-sm", showWarning && "border-red-300 dark:border-red-700")}
           value={displayValue}
           onChange={(e) => onChange(e.target.value)}
           placeholder={placeholder ?? `Enter ${label.toLowerCase()}`}
@@ -403,6 +406,7 @@ export function PatientInfoCard({ patient, onFieldChange }: Props) {
             value={patient.email}
             editedValue={patient.emailEdited}
             onChange={(v) => onFieldChange("emailEdited", v)}
+            suppressWarning
           />
           <SelectField
             label="Gender"
@@ -504,6 +508,7 @@ export function PatientInfoCard({ patient, onFieldChange }: Props) {
             editedValue={patient.memberId2Edited}
             placeholder="Enter member ID"
             onChange={(v) => onFieldChange("memberId2Edited", v)}
+            suppressWarning={(patient.secondaryInsuranceEdited ?? patient.secondaryInsurance) === "None" || !(patient.secondaryInsuranceEdited ?? patient.secondaryInsurance)}
           />
         </div>
         <div className="h-px bg-border" />
@@ -568,6 +573,7 @@ export function PatientInfoCard({ patient, onFieldChange }: Props) {
               label="Fax"
               value={patient.doctorFax}
               onChange={(v) => onFieldChange("doctorFax", v)}
+              suppressWarning={patient.clinicalsMethod === "Parachute"}
             />
             <SelectField
               label="Clinicals Method"
@@ -721,6 +727,13 @@ export function PatientInfoCard({ patient, onFieldChange }: Props) {
               onFieldChange("subscriptionTypeIndex", index);
               const opt = SUBSCRIPTION_TYPE_OPTIONS.find((o) => o.index === index);
               if (opt) onFieldChange("subscriptionType", opt.label);
+              // When "Sensors" is selected, auto-set infusion sets to "Not Serving"
+              if (opt && opt.label === "Sensors") {
+                onFieldChange("infusionSet1Index", 101);
+                onFieldChange("infusionSet1", "Not Serving");
+                onFieldChange("infusionSet2Index", 101);
+                onFieldChange("infusionSet2", "Not Serving");
+              }
             }}
           />
           <SelectField
@@ -774,32 +787,32 @@ export function PatientInfoCard({ patient, onFieldChange }: Props) {
                 onQtyChange={(v) => onFieldChange("qtyInf2", v)}
               />
             </div>
-
-            {/* Monitor + Pump quantities */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-              <div>
-                <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1">Monitor Qty</p>
-                <Input
-                  className="h-8 text-sm"
-                  type="number"
-                  value={patient.monitorQty}
-                  onChange={(e) => onFieldChange("monitorQty", e.target.value)}
-                  placeholder="0"
-                />
-              </div>
-              <div>
-                <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1">Pump Qty</p>
-                <Input
-                  className="h-8 text-sm"
-                  type="number"
-                  value={patient.pumpQty}
-                  onChange={(e) => onFieldChange("pumpQty", e.target.value)}
-                  placeholder="0"
-                />
-              </div>
-            </div>
           </>
         )}
+
+        {/* Monitor + Pump quantities — always visible */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+          <div>
+            <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1">Monitor Qty</p>
+            <Input
+              className="h-8 text-sm"
+              type="number"
+              value={patient.monitorQty}
+              onChange={(e) => onFieldChange("monitorQty", e.target.value)}
+              placeholder="0"
+            />
+          </div>
+          <div>
+            <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1">Pump Qty</p>
+            <Input
+              className="h-8 text-sm"
+              type="number"
+              value={patient.pumpQty}
+              onChange={(e) => onFieldChange("pumpQty", e.target.value)}
+              placeholder="0"
+            />
+          </div>
+        </div>
       </Card>
       {/* Auth Results + Details */}
       <Card className="p-4 space-y-4">
