@@ -18,6 +18,9 @@ export interface Patient {
   memberId2: string;
   // Read-only product/referral
   serving: string;
+  servingIndex: number | null;
+  servingEdited: string | null;
+  servingIndexEdited: number | null;
   pumpType: string;
   pumpTypeIndex: number | null;
   cgmType: string;
@@ -173,6 +176,14 @@ export const CGM_TYPE_OPTIONS = [
   { index: 9, label: 'Not Serving' },
 ];
 
+export const SERVING_OPTIONS = [
+  { index: 0, label: 'Insulin Pump' },
+  { index: 1, label: 'Supplies Only' },
+  { index: 2, label: 'CGM' },
+  { index: 3, label: 'Insulin Pump + CGM' },
+  { index: 4, label: 'Supplies + CGM' },
+];
+
 export const SECONDARY_INSURANCE_OPTIONS = [
   { index: 0, label: 'None' },
   { index: 1, label: 'NY Medicaid' },
@@ -287,14 +298,15 @@ export function validatePatientForSend(p: Patient): { valid: boolean; errors: st
   }
 
   // CGM fields required if serving includes CGM
-  if (servingIncludesCgm(p.serving)) {
+  const effectiveServing = p.servingEdited ?? p.serving;
+  if (servingIncludesCgm(effectiveServing)) {
     if (p.cgmTypeIndex === null) {
       errors.push('CGM Type is required (serving includes CGM)');
     }
   }
 
   // Pump/Infusion fields required if serving includes pump/supplies
-  if (servingIncludesPump(p.serving)) {
+  if (servingIncludesPump(effectiveServing)) {
     // Infusion set 1 — required unless qty is 0
     const qty1 = Number(p.qtyInf1) || 0;
     if (qty1 > 0 && p.infusionSet1Index === null) {

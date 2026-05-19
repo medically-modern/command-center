@@ -65,6 +65,8 @@ const WelcomeCallPage = () => {
     clearOverlay(selected.id);
     update(selected.id, {
       cgmTypeIndex: null,
+      servingEdited: null,
+      servingIndexEdited: null,
       secondaryInsuranceEdited: null,
       secondaryInsuranceIndex: null,
       memberId2Edited: null,

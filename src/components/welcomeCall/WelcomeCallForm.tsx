@@ -157,8 +157,9 @@ export function WelcomeCallForm({ patient, onFieldChange, onSendWelcomeCallText 
   };
 
   // Section visibility based on serving — with user override toggles
-  const defaultShowCgm = servingIncludesCgm(patient.serving);
-  const defaultShowPump = servingIncludesPump(patient.serving);
+  const effectiveServing = patient.servingEdited ?? patient.serving;
+  const defaultShowCgm = servingIncludesCgm(effectiveServing);
+  const defaultShowPump = servingIncludesPump(effectiveServing);
 
   const [cgmOverride, setCgmOverride] = useState<boolean | null>(null);
   const [pumpOverride, setPumpOverride] = useState<boolean | null>(null);

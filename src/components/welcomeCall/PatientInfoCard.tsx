@@ -1,6 +1,6 @@
 import { useState } from "react";
 import type { Patient } from "@/lib/welcomeCall/workflow";
-import { SECONDARY_INSURANCE_OPTIONS, formatPhone, formatDateMDY, isCrossSell } from "@/lib/welcomeCall/workflow";
+import { SECONDARY_INSURANCE_OPTIONS, SERVING_OPTIONS, formatPhone, formatDateMDY, isCrossSell } from "@/lib/welcomeCall/workflow";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Pencil, Check, Loader2, X } from "lucide-react";
@@ -275,23 +275,43 @@ export function PatientInfoCard({ patient, onFieldChange, onSavePhone }: Props) 
             <Field label="Referral Source" value={patient.referralSource} />
             <Field label="Doctor Name" value={patient.doctorName} />
             <Field label="Request Type" value={patient.requestType} />
-            {patient.serving ? (
-              <div>
-                <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
-                  Serving
-                </p>
-                <div className="flex items-center gap-2 flex-wrap">
-                  <p className="text-sm font-medium" title={patient.serving}>
-                    {patient.serving}
-                  </p>
-                  {isCrossSell(patient) && (
-                    <span className="inline-flex items-center rounded-full bg-amber-100 text-amber-800 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider border border-amber-300">
-                      Cross Sell
-                    </span>
-                  )}
-                </div>
-              </div>
-            ) : null}
+            <div>
+              <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1">
+                Serving
+              </p>
+              <Select
+                value={
+                  patient.servingIndexEdited !== null
+                    ? String(patient.servingIndexEdited)
+                    : patient.servingIndex !== null
+                      ? String(patient.servingIndex)
+                      : ""
+                }
+                onValueChange={(value) => {
+                  const option = SERVING_OPTIONS.find((o) => String(o.index) === value);
+                  if (onFieldChange && option) {
+                    onFieldChange("servingEdited", option.label);
+                    onFieldChange("servingIndexEdited" as keyof Patient, option.index);
+                  }
+                }}
+              >
+                <SelectTrigger className="h-8 text-sm">
+                  <SelectValue placeholder="Select serving" />
+                </SelectTrigger>
+                <SelectContent>
+                  {SERVING_OPTIONS.map((opt) => (
+                    <SelectItem key={opt.index} value={String(opt.index)}>
+                      {opt.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {isCrossSell({ serving: patient.servingEdited ?? patient.serving, requestType: patient.requestType }) && (
+                <span className="inline-flex items-center rounded-full bg-amber-100 text-amber-800 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider border border-amber-300 mt-1">
+                  Cross Sell
+                </span>
+              )}
+            </div>
           </div>
         </Card>
 

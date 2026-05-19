@@ -42,6 +42,10 @@ export async function sendPatientToMonday(p: Patient): Promise<void> {
     });
   }
 
+  // Serving override
+  if (p.servingIndexEdited !== null)
+    tasks.push({ label: "Serving", columnId: COL.serving, fn: () => writeStatusIndex(p.id, COL.serving, p.servingIndexEdited!) });
+
   // CGM Type override
   if (p.cgmTypeIndex !== null)
     tasks.push({ label: "CGM Type", columnId: COL.cgmType, fn: () => writeStatusIndex(p.id, COL.cgmType, p.cgmTypeIndex!) });
@@ -133,6 +137,10 @@ export async function sendPatientToMonday(p: Patient): Promise<void> {
  */
 export async function sendWelcomeCallTextToMonday(p: Patient): Promise<void> {
   const tasks: Promise<unknown>[] = [];
+
+  // Serving override
+  if (p.servingIndexEdited !== null)
+    tasks.push(writeStatusIndex(p.id, COL.serving, p.servingIndexEdited));
 
   // CGM Type
   if (p.cgmTypeIndex !== null)

@@ -17,6 +17,11 @@ function ReviewRow({ label, value, filled }: { label: string; value: string; fil
 export function ReviewPanel({ patient }: Props) {
   // Track which fields have values
   const filledFields: [string, string, boolean][] = [
+    [
+      "Serving",
+      patient.servingEdited || patient.serving,
+      !!(patient.servingEdited || patient.serving),
+    ],
     ["CGM Type", patient.cgmType, !!patient.cgmType],
     ["Monitor Qty", patient.monitorQty, !!patient.monitorQty],
     ["Infusion Set 1", patient.infusionSet1, !!patient.infusionSet1],
