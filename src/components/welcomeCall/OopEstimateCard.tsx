@@ -18,22 +18,37 @@ function fmt(n: number): string {
 interface DisplayLine {
   product: string;
   allowed: number;
-  insurancePaid: number;
-  deductible: number;
-  coinsurance: number;
-  patientOwes: number;
+  insurancePaid: number | null;
+  deductible: number | null;
+  coinsurance: number | null;
+  patientOwes: number | null;
 }
 
 /**
  * Distribute deductible and coinsurance across line items proportionally
  * by their allowed amount. This is purely for display — the totals remain
  * identical to the estimator output.
+ *
+ * When costs can't be calculated (missing data), all cost fields are null.
  */
 function distributePerLine(
   lines: OopLineItem[],
   est: OopEstimate,
 ): DisplayLine[] {
   const total = est.totalAllowed;
+
+  // If we can't calculate costs, return nulls for all cost columns
+  if (!est.canCalculateCosts) {
+    return lines.map((l) => ({
+      product: l.product,
+      allowed: l.allowed,
+      insurancePaid: null,
+      deductible: null,
+      coinsurance: null,
+      patientOwes: null,
+    }));
+  }
+
   if (total === 0) {
     return lines.map((l) => ({
       product: l.product,
@@ -59,7 +74,7 @@ function distributePerLine(
 
   // Distribute deductible + coinsurance proportionally
   // If OOP max capped the total, scale coinsurance proportionally
-  const oopScale = est.patientOwesRaw > 0 ? est.patientOwes / est.patientOwesRaw : 1;
+  const oopScale = (est.patientOwesRaw ?? 0) > 0 ? (est.patientOwes ?? 0) / (est.patientOwesRaw ?? 1) : 1;
 
   const result: DisplayLine[] = [];
   let runningDed = 0;
@@ -73,18 +88,18 @@ function distributePerLine(
     // Distribute deductible
     let lineDed: number;
     if (isLast) {
-      lineDed = round2(est.appliedDeductible - runningDed);
+      lineDed = round2((est.appliedDeductible ?? 0) - runningDed);
     } else {
-      lineDed = round2(est.appliedDeductible * proportion);
+      lineDed = round2((est.appliedDeductible ?? 0) * proportion);
       runningDed += lineDed;
     }
 
     // Distribute coinsurance
     let lineCoins: number;
     if (isLast) {
-      lineCoins = round2(est.patientCoinsurance - runningCoins);
+      lineCoins = round2((est.patientCoinsurance ?? 0) - runningCoins);
     } else {
-      lineCoins = round2(est.patientCoinsurance * proportion);
+      lineCoins = round2((est.patientCoinsurance ?? 0) * proportion);
       runningCoins += lineCoins;
     }
 
@@ -110,6 +125,18 @@ function round2(n: number): number {
 }
 
 const DASH = "—";
+
+/** Format a nullable number — returns dash if null */
+function fmtOrDash(n: number | null): string {
+  return n !== null ? fmt(n) : DASH;
+}
+
+// Per-field warning messages
+const FIELD_WARNINGS: Record<string, string> = {
+  deductible: "Deductible remaining is missing — cannot calculate deductible portion",
+  coinsurance: "Coinsurance % is missing — cannot calculate co-ins/copay portion",
+  oopMax: "OOP max remaining is missing — patient total is not capped",
+};
 
 export function OopEstimateCard({ patient, infusionSets }: Props) {
   const result = useMemo(() => {
@@ -153,30 +180,20 @@ export function OopEstimateCard({ patient, infusionSets }: Props) {
   const est = result as OopEstimate;
   const displayLines = distributePerLine(est.lines, est);
   const hasMissing = est.missingFields.length > 0 && !est.medicaidCovers;
+  const costsUnknown = !est.canCalculateCosts && !est.medicaidCovers;
 
-  // Totals for the footer row
-  const totals = {
-    allowed: est.totalAllowed,
-    insurancePaid: est.insurancePays,
-    deductible: est.appliedDeductible,
-    coinsurance: est.patientCoinsurance,
-    patientOwes: est.patientOwes,
-  };
+  // Color for patient owes — only when we have a real number
+  const patientOwesColor = est.patientOwes === null
+    ? "text-muted-foreground"
+    : est.patientOwes === 0
+      ? "text-green-600"
+      : est.patientOwes > 500
+        ? "text-red-600"
+        : "text-blue-600";
 
-  const patientOwesColor = est.patientOwes === 0
-    ? "text-green-600"
-    : est.patientOwes > 500
-      ? "text-red-600"
-      : "text-blue-600";
-
+  // When costs are unknown but OOP max warning applies, use amber for the asterisk case
+  const headerOwesColor = costsUnknown ? "text-amber-600" : hasMissing ? "text-amber-600" : patientOwesColor;
   const insPaidColor = "text-green-600";
-
-  // Build per-field warning messages
-  const FIELD_WARNINGS: Record<string, string> = {
-    deductible: "Deductible remaining is missing — deductible amount defaulted to $0",
-    coinsurance: "Coinsurance % is missing — co-ins/copay amount defaulted to 0%",
-    oopMax: "OOP max remaining is missing — patient total is not capped",
-  };
 
   return (
     <Card className="p-4 space-y-3">
@@ -189,15 +206,15 @@ export function OopEstimateCard({ patient, infusionSets }: Props) {
           <div className="flex items-center gap-1.5 text-sm">
             <span>Allowed <span className="font-semibold tabular-nums">{fmt(est.totalAllowed)}</span></span>
             <span className="text-muted-foreground mx-0.5">&minus;</span>
-            <span>Ins. paid <span className={`font-semibold tabular-nums ${insPaidColor}`}>{fmt(est.insurancePays)}</span></span>
+            <span>Ins. paid <span className={`font-semibold tabular-nums ${est.insurancePays !== null ? insPaidColor : "text-muted-foreground"}`}>{fmtOrDash(est.insurancePays)}</span></span>
             <span className="text-muted-foreground mx-0.5">=</span>
             <span className="text-base font-bold tabular-nums">
-              Patient owes <span className={hasMissing ? "text-amber-600" : patientOwesColor}>{fmt(est.patientOwes)}{hasMissing && " *"}</span>
+              Patient owes <span className={headerOwesColor}>{fmtOrDash(est.patientOwes)}{hasMissing && est.patientOwes !== null && " *"}</span>
             </span>
           </div>
-          {!est.medicaidCovers && (
+          {est.canCalculateCosts && !est.medicaidCovers && (
             <p className="text-xs text-muted-foreground mt-0.5">
-              Ded. {fmt(est.appliedDeductible)} · Co-ins/Copay {fmt(est.patientCoinsurance)}
+              Ded. {fmt(est.appliedDeductible!)} · Co-ins/Copay {fmt(est.patientCoinsurance!)}
             </p>
           )}
           {est.medicaidCovers && (
@@ -224,21 +241,43 @@ export function OopEstimateCard({ patient, infusionSets }: Props) {
               <tr key={line.product} className="border-b border-muted/40 last:border-0">
                 <td className="py-2 pr-3 text-sm font-medium">{line.product}</td>
                 <td className="py-2 pr-3 text-sm text-right tabular-nums">{fmt(line.allowed)}</td>
-                <td className={`py-2 pr-3 text-sm text-right tabular-nums ${insPaidColor}`}>{fmt(line.insurancePaid)}</td>
-                <td className="py-2 pr-3 text-sm text-right tabular-nums">{fmt(line.deductible)}</td>
-                <td className="py-2 pr-3 text-sm text-right tabular-nums">{fmt(line.coinsurance)}</td>
-                <td className={`py-2 text-sm text-right tabular-nums font-medium ${hasMissing ? "text-amber-600" : patientOwesColor}`}>{fmt(line.patientOwes)}</td>
+                {line.insurancePaid !== null ? (
+                  <>
+                    <td className={`py-2 pr-3 text-sm text-right tabular-nums ${insPaidColor}`}>{fmt(line.insurancePaid)}</td>
+                    <td className="py-2 pr-3 text-sm text-right tabular-nums">{fmt(line.deductible!)}</td>
+                    <td className="py-2 pr-3 text-sm text-right tabular-nums">{fmt(line.coinsurance!)}</td>
+                    <td className={`py-2 text-sm text-right tabular-nums font-medium ${hasMissing ? "text-amber-600" : patientOwesColor}`}>{fmt(line.patientOwes!)}</td>
+                  </>
+                ) : (
+                  <>
+                    <td className="py-2 pr-3 text-sm text-right text-muted-foreground">{DASH}</td>
+                    <td className="py-2 pr-3 text-sm text-right text-muted-foreground">{DASH}</td>
+                    <td className="py-2 pr-3 text-sm text-right text-muted-foreground">{DASH}</td>
+                    <td className="py-2 text-sm text-right text-muted-foreground">{DASH}</td>
+                  </>
+                )}
               </tr>
             ))}
           </tbody>
           <tfoot>
             <tr className="border-t-2 border-muted">
               <td className="pt-2 pr-3 text-sm font-semibold">Total</td>
-              <td className="pt-2 pr-3 text-sm text-right tabular-nums font-semibold">{fmt(totals.allowed)}</td>
-              <td className={`pt-2 pr-3 text-sm text-right tabular-nums font-semibold ${insPaidColor}`}>{fmt(totals.insurancePaid)}</td>
-              <td className="pt-2 pr-3 text-sm text-right tabular-nums font-semibold">{fmt(totals.deductible)}</td>
-              <td className="pt-2 pr-3 text-sm text-right tabular-nums font-semibold">{fmt(totals.coinsurance)}</td>
-              <td className={`pt-2 text-sm text-right tabular-nums font-bold ${hasMissing ? "text-amber-600" : patientOwesColor}`}>{fmt(totals.patientOwes)}</td>
+              <td className="pt-2 pr-3 text-sm text-right tabular-nums font-semibold">{fmt(est.totalAllowed)}</td>
+              {est.insurancePays !== null ? (
+                <>
+                  <td className={`pt-2 pr-3 text-sm text-right tabular-nums font-semibold ${insPaidColor}`}>{fmt(est.insurancePays)}</td>
+                  <td className="pt-2 pr-3 text-sm text-right tabular-nums font-semibold">{fmt(est.appliedDeductible!)}</td>
+                  <td className="pt-2 pr-3 text-sm text-right tabular-nums font-semibold">{fmt(est.patientCoinsurance!)}</td>
+                  <td className={`pt-2 text-sm text-right tabular-nums font-bold ${hasMissing ? "text-amber-600" : patientOwesColor}`}>{fmt(est.patientOwes!)}</td>
+                </>
+              ) : (
+                <>
+                  <td className="pt-2 pr-3 text-sm text-right text-muted-foreground font-semibold">{DASH}</td>
+                  <td className="pt-2 pr-3 text-sm text-right text-muted-foreground font-semibold">{DASH}</td>
+                  <td className="pt-2 pr-3 text-sm text-right text-muted-foreground font-semibold">{DASH}</td>
+                  <td className="pt-2 text-sm text-right text-amber-600 font-bold">{DASH}</td>
+                </>
+              )}
             </tr>
           </tfoot>
         </table>
@@ -252,7 +291,7 @@ export function OopEstimateCard({ patient, infusionSets }: Props) {
               ⚠ {FIELD_WARNINGS[field]}
             </p>
           ))}
-          {est.missingFields.length === 3 && (
+          {costsUnknown && (
             <p className="text-xs text-amber-600 font-semibold">
               Run Stedi eligibility to get accurate cost estimates
             </p>

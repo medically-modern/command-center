@@ -121,21 +121,24 @@ export interface OopEstimate {
   ok: true;
   lines: OopLineItem[];
   totalAllowed: number;
-  appliedDeductible: number;
-  postDeductible: number;
-  coinsurancePct: number;
-  patientCoinsurance: number;
-  patientOwesRaw: number;
+  /** null when deductible remaining is missing — NEVER defaults to 0 */
+  appliedDeductible: number | null;
+  postDeductible: number | null;
+  /** null when coinsurance data is missing (and no payer override) */
+  coinsurancePct: number | null;
+  patientCoinsurance: number | null;
+  patientOwesRaw: number | null;
   oopMaxRemaining: number | null;
-  patientOwes: number;
-  insurancePays: number;
+  /** null when deductible or coinsurance is missing — cannot be computed */
+  patientOwes: number | null;
+  /** null when patient owes is null */
+  insurancePays: number | null;
   /** True when Medicaid (primary or secondary) covers the patient's balance */
   medicaidCovers: boolean;
   /** Explanation when Medicaid covers (e.g. "Secondary NY Medicaid covers remaining balance") */
   medicaidNote: string;
-  /** False when deductible + coinsurance data is missing (Stedi not yet run).
-   *  Patient cost fields are unreliable in this state — UI should show "unknown". */
-  benefitsKnown: boolean;
+  /** True when we have ALL data needed to compute patient costs */
+  canCalculateCosts: boolean;
   /** Which of the 3 benefits fields are missing — drives granular UI warnings */
   missingFields: string[];
 }
@@ -337,7 +340,7 @@ export function estimateOop(inputs: OopInputs): OopResult {
       insurancePays: totalAllowed,
       medicaidCovers: true,
       medicaidNote: note,
-      benefitsKnown: true,
+      canCalculateCosts: true,
       missingFields: [],
     };
   }
@@ -350,19 +353,44 @@ export function estimateOop(inputs: OopInputs): OopResult {
   const parsedCoinsurance = parseNumber(inputs.stediCoinsurance);
   const oopMaxRaw = parseNumber(inputs.oopMaxRemaining);
 
-  // Benefits are "known" if we have at least deductible + coinsurance data
-  // (either from Stedi or from a payer-level override).
-  const benefitsKnown = (parsedDeductible !== null || parsedCoinsurance !== null || hasCoinsuranceOverride);
-
   // Track which specific fields are missing for granular UI warnings
   const missingFields: string[] = [];
   if (parsedDeductible === null) missingFields.push("deductible");
   if (parsedCoinsurance === null && !hasCoinsuranceOverride) missingFields.push("coinsurance");
   if (oopMaxRaw === null) missingFields.push("oopMax");
 
-  const deductibleRemaining = parsedDeductible ?? 0;
-  const coinsurancePct = resolveCoinsurance(primaryInsurance, inputs.stediCoinsurance);
+  // Can we compute patient costs? Need BOTH deductible AND coinsurance.
+  // Missing ≠ zero. If either is absent, cost fields stay null.
+  const hasDeductible = parsedDeductible !== null;
+  const hasCoinsurance = parsedCoinsurance !== null || hasCoinsuranceOverride;
+  const canCalculateCosts = hasDeductible && hasCoinsurance;
+
   const oopMaxRemaining = oopMaxRaw !== null ? oopMaxRaw : null;
+
+  if (!canCalculateCosts) {
+    // Cannot compute — return nulls for all cost fields
+    return {
+      ok: true,
+      lines,
+      totalAllowed,
+      appliedDeductible: null,
+      postDeductible: null,
+      coinsurancePct: hasCoinsurance ? resolveCoinsurance(primaryInsurance, inputs.stediCoinsurance) : null,
+      patientCoinsurance: null,
+      patientOwesRaw: null,
+      oopMaxRemaining,
+      patientOwes: null,
+      insurancePays: null,
+      medicaidCovers: false,
+      medicaidNote: "",
+      canCalculateCosts: false,
+      missingFields,
+    };
+  }
+
+  // Both deductible and coinsurance are known — safe to compute
+  const deductibleRemaining = parsedDeductible!;
+  const coinsurancePct = resolveCoinsurance(primaryInsurance, inputs.stediCoinsurance);
 
   const appliedDeductible = round2(Math.min(totalAllowed, Math.max(0, deductibleRemaining)));
   const postDeductible = round2(totalAllowed - appliedDeductible);
@@ -387,7 +415,7 @@ export function estimateOop(inputs: OopInputs): OopResult {
     insurancePays,
     medicaidCovers: false,
     medicaidNote: "",
-    benefitsKnown,
+    canCalculateCosts: true,
     missingFields,
   };
 }
