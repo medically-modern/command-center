@@ -133,6 +133,9 @@ export interface OopEstimate {
   medicaidCovers: boolean;
   /** Explanation when Medicaid covers (e.g. "Secondary NY Medicaid covers remaining balance") */
   medicaidNote: string;
+  /** False when deductible + coinsurance data is missing (Stedi not yet run).
+   *  Patient cost fields are unreliable in this state — UI should show "unknown". */
+  benefitsKnown: boolean;
 }
 
 export interface OopEstimateError {
@@ -332,13 +335,24 @@ export function estimateOop(inputs: OopInputs): OopResult {
       insurancePays: totalAllowed,
       medicaidCovers: true,
       medicaidNote: note,
+      benefitsKnown: true,
     };
   }
 
   // --- OOP Math (non-Medicaid) ---
-  const deductibleRemaining = parseNumber(inputs.deductibleRemaining) ?? 0;
-  const coinsurancePct = resolveCoinsurance(primaryInsurance, inputs.stediCoinsurance);
+  // Check for coinsurance override first — if the payer has a hard override
+  // (e.g. Humana = 0%), we know the coinsurance even without Stedi.
+  const hasCoinsuranceOverride = COINSURANCE_OVERRIDES[primaryInsurance] !== undefined;
+  const parsedDeductible = parseNumber(inputs.deductibleRemaining);
+  const parsedCoinsurance = parseNumber(inputs.stediCoinsurance);
   const oopMaxRaw = parseNumber(inputs.oopMaxRemaining);
+
+  // Benefits are "known" if we have at least deductible + coinsurance data
+  // (either from Stedi or from a payer-level override).
+  const benefitsKnown = (parsedDeductible !== null || parsedCoinsurance !== null || hasCoinsuranceOverride);
+
+  const deductibleRemaining = parsedDeductible ?? 0;
+  const coinsurancePct = resolveCoinsurance(primaryInsurance, inputs.stediCoinsurance);
   const oopMaxRemaining = oopMaxRaw !== null ? oopMaxRaw : null;
 
   const appliedDeductible = round2(Math.min(totalAllowed, Math.max(0, deductibleRemaining)));
@@ -364,6 +378,7 @@ export function estimateOop(inputs: OopInputs): OopResult {
     insurancePays,
     medicaidCovers: false,
     medicaidNote: "",
+    benefitsKnown,
   };
 }
 

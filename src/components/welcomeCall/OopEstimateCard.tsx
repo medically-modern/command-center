@@ -58,8 +58,6 @@ function distributePerLine(
   }
 
   // Distribute deductible + coinsurance proportionally
-  let deductiblePool = est.appliedDeductible;
-  let coinsurancePool = est.patientCoinsurance;
   // If OOP max capped the total, scale coinsurance proportionally
   const oopScale = est.patientOwesRaw > 0 ? est.patientOwes / est.patientOwesRaw : 1;
 
@@ -111,6 +109,8 @@ function round2(n: number): number {
   return Math.round(n * 100) / 100;
 }
 
+const DASH = "—";
+
 export function OopEstimateCard({ patient, infusionSets }: Props) {
   const result = useMemo(() => {
     const parsedSets = parseInt(patient.qtyInf1 || "0", 10) + parseInt(patient.qtyInf2 || "0", 10);
@@ -152,7 +152,7 @@ export function OopEstimateCard({ patient, infusionSets }: Props) {
 
   const est = result as OopEstimate;
   const displayLines = distributePerLine(est.lines, est);
-  const hasBenefitsData = patient.deductibleRemaining || patient.stediCoinsurance || patient.oopMaxRemaining;
+  const unknown = !est.benefitsKnown && !est.medicaidCovers;
 
   // Totals for the footer row
   const totals = {
@@ -179,22 +179,41 @@ export function OopEstimateCard({ patient, infusionSets }: Props) {
           OOP Estimate (Per Fill)
         </p>
         <div className="text-right">
-          <div className="flex items-center gap-1.5 text-sm">
-            <span>Allowed <span className="font-semibold tabular-nums">{fmt(est.totalAllowed)}</span></span>
-            <span className="text-muted-foreground mx-0.5">&minus;</span>
-            <span>Ins. paid <span className={`font-semibold tabular-nums ${insPaidColor}`}>{fmt(est.insurancePays)}</span></span>
-            <span className="text-muted-foreground mx-0.5">=</span>
-            <span className="text-base font-bold tabular-nums">
-              Patient owes <span className={patientOwesColor}>{fmt(est.patientOwes)}</span>
-            </span>
-          </div>
-          {!est.medicaidCovers && hasBenefitsData && (
-            <p className="text-xs text-muted-foreground mt-0.5">
-              Ded. {fmt(est.appliedDeductible)} · Co-ins/Copay {fmt(est.patientCoinsurance)}
-            </p>
-          )}
-          {est.medicaidCovers && (
-            <p className="text-xs text-green-600 mt-0.5">{est.medicaidNote}</p>
+          {unknown ? (
+            <>
+              <div className="flex items-center gap-1.5 text-sm">
+                <span>Allowed <span className="font-semibold tabular-nums">{fmt(est.totalAllowed)}</span></span>
+                <span className="text-muted-foreground mx-0.5">&minus;</span>
+                <span>Ins. paid <span className="font-semibold tabular-nums text-muted-foreground">{DASH}</span></span>
+                <span className="text-muted-foreground mx-0.5">=</span>
+                <span className="text-base font-bold tabular-nums">
+                  Patient owes <span className="text-amber-600">{DASH}</span>
+                </span>
+              </div>
+              <p className="text-xs text-amber-600 font-medium mt-0.5">
+                No benefits data — run Stedi eligibility first
+              </p>
+            </>
+          ) : (
+            <>
+              <div className="flex items-center gap-1.5 text-sm">
+                <span>Allowed <span className="font-semibold tabular-nums">{fmt(est.totalAllowed)}</span></span>
+                <span className="text-muted-foreground mx-0.5">&minus;</span>
+                <span>Ins. paid <span className={`font-semibold tabular-nums ${insPaidColor}`}>{fmt(est.insurancePays)}</span></span>
+                <span className="text-muted-foreground mx-0.5">=</span>
+                <span className="text-base font-bold tabular-nums">
+                  Patient owes <span className={patientOwesColor}>{fmt(est.patientOwes)}</span>
+                </span>
+              </div>
+              {!est.medicaidCovers && est.benefitsKnown && (
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Ded. {fmt(est.appliedDeductible)} · Co-ins/Copay {fmt(est.patientCoinsurance)}
+                </p>
+              )}
+              {est.medicaidCovers && (
+                <p className="text-xs text-green-600 mt-0.5">{est.medicaidNote}</p>
+              )}
+            </>
           )}
         </div>
       </div>
@@ -217,10 +236,21 @@ export function OopEstimateCard({ patient, infusionSets }: Props) {
               <tr key={line.product} className="border-b border-muted/40 last:border-0">
                 <td className="py-2 pr-3 text-sm font-medium">{line.product}</td>
                 <td className="py-2 pr-3 text-sm text-right tabular-nums">{fmt(line.allowed)}</td>
-                <td className={`py-2 pr-3 text-sm text-right tabular-nums ${insPaidColor}`}>{fmt(line.insurancePaid)}</td>
-                <td className="py-2 pr-3 text-sm text-right tabular-nums">{fmt(line.deductible)}</td>
-                <td className="py-2 pr-3 text-sm text-right tabular-nums">{fmt(line.coinsurance)}</td>
-                <td className={`py-2 text-sm text-right tabular-nums font-medium ${patientOwesColor}`}>{fmt(line.patientOwes)}</td>
+                {unknown ? (
+                  <>
+                    <td className="py-2 pr-3 text-sm text-right text-muted-foreground">{DASH}</td>
+                    <td className="py-2 pr-3 text-sm text-right text-muted-foreground">{DASH}</td>
+                    <td className="py-2 pr-3 text-sm text-right text-muted-foreground">{DASH}</td>
+                    <td className="py-2 text-sm text-right text-muted-foreground">{DASH}</td>
+                  </>
+                ) : (
+                  <>
+                    <td className={`py-2 pr-3 text-sm text-right tabular-nums ${insPaidColor}`}>{fmt(line.insurancePaid)}</td>
+                    <td className="py-2 pr-3 text-sm text-right tabular-nums">{fmt(line.deductible)}</td>
+                    <td className="py-2 pr-3 text-sm text-right tabular-nums">{fmt(line.coinsurance)}</td>
+                    <td className={`py-2 text-sm text-right tabular-nums font-medium ${patientOwesColor}`}>{fmt(line.patientOwes)}</td>
+                  </>
+                )}
               </tr>
             ))}
           </tbody>
@@ -228,21 +258,25 @@ export function OopEstimateCard({ patient, infusionSets }: Props) {
             <tr className="border-t-2 border-muted">
               <td className="pt-2 pr-3 text-sm font-semibold">Total</td>
               <td className="pt-2 pr-3 text-sm text-right tabular-nums font-semibold">{fmt(totals.allowed)}</td>
-              <td className={`pt-2 pr-3 text-sm text-right tabular-nums font-semibold ${insPaidColor}`}>{fmt(totals.insurancePaid)}</td>
-              <td className="pt-2 pr-3 text-sm text-right tabular-nums font-semibold">{fmt(totals.deductible)}</td>
-              <td className="pt-2 pr-3 text-sm text-right tabular-nums font-semibold">{fmt(totals.coinsurance)}</td>
-              <td className={`pt-2 text-sm text-right tabular-nums font-bold ${patientOwesColor}`}>{fmt(totals.patientOwes)}</td>
+              {unknown ? (
+                <>
+                  <td className="pt-2 pr-3 text-sm text-right text-muted-foreground font-semibold">{DASH}</td>
+                  <td className="pt-2 pr-3 text-sm text-right text-muted-foreground font-semibold">{DASH}</td>
+                  <td className="pt-2 pr-3 text-sm text-right text-muted-foreground font-semibold">{DASH}</td>
+                  <td className="pt-2 text-sm text-right text-amber-600 font-bold">{DASH}</td>
+                </>
+              ) : (
+                <>
+                  <td className={`pt-2 pr-3 text-sm text-right tabular-nums font-semibold ${insPaidColor}`}>{fmt(totals.insurancePaid)}</td>
+                  <td className="pt-2 pr-3 text-sm text-right tabular-nums font-semibold">{fmt(totals.deductible)}</td>
+                  <td className="pt-2 pr-3 text-sm text-right tabular-nums font-semibold">{fmt(totals.coinsurance)}</td>
+                  <td className={`pt-2 text-sm text-right tabular-nums font-bold ${patientOwesColor}`}>{fmt(totals.patientOwes)}</td>
+                </>
+              )}
             </tr>
           </tfoot>
         </table>
       </div>
-
-      {/* Stedi prompt when no benefits data */}
-      {!est.medicaidCovers && !hasBenefitsData && (
-        <p className="text-xs text-muted-foreground italic">
-          Run Stedi eligibility to see deductible/coinsurance breakdown.
-        </p>
-      )}
     </Card>
   );
 }
