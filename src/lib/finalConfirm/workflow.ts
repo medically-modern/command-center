@@ -491,9 +491,8 @@ const SERVING_CGM = 2;
 
 /**
  * Returns true when the patient's order can be split into two profiles.
- * Eligibility requires BOTH:
- *  - Order Handling is "Separate", AND
- *  - Supplies Next Order Date differs from Sensors Next Order Date (both populated).
+ * Eligibility requires Supplies Next Order Date to differ from Sensors
+ * Next Order Date (both must be populated).
  *
  * IP Next Order Date is not part of this check — IP is on a 4-year cycle and
  * always rides along on the supplies side after the split.
@@ -502,7 +501,6 @@ const SERVING_CGM = 2;
  * which fails the date-difference half of the rule and prevents re-splitting.
  */
 export function isSplitEligible(p: Patient): boolean {
-  if (p.orderHandlingIndex !== ORDER_HANDLING_SEPARATE) return false;
   const sup = p.nextOrderDateSupplies;
   const sen = p.nextOrderDateSensors;
   return !!sup && !!sen && sup !== sen;
@@ -526,21 +524,20 @@ export function determineOriginalSide(p: Patient): SplitSide {
  * (or disabled). Returned as a short hint to render below the button.
  */
 export function describeSplitEligibility(p: Patient): string {
-  const isSeparate = p.orderHandlingIndex === ORDER_HANDLING_SEPARATE;
   const sup = p.nextOrderDateSupplies;
   const sen = p.nextOrderDateSensors;
   const datesDiffer = !!sup && !!sen && sup !== sen;
 
-  if (isSeparate && datesDiffer) {
-    return `Order Handling is Separate and Sensors (${formatDateMDY(sen)}) vs Supplies (${formatDateMDY(sup)}) next order dates differ.`;
+  if (datesDiffer) {
+    return `Sensors (${formatDateMDY(sen)}) vs Supplies (${formatDateMDY(sup)}) next order dates differ — split is available.`;
   }
-  if (!isSeparate && !datesDiffer) {
-    return "Split requires Order Handling = Separate AND Sensors/Supplies next order dates to differ.";
+  if (!sup && !sen) {
+    return "Both Sensors and Supplies next order dates must be set (and differ) to enable Split.";
   }
-  if (!isSeparate) {
-    return "Set Order Handling to Separate to enable Split.";
+  if (!sup || !sen) {
+    return "Both Sensors and Supplies next order dates must be populated to enable Split.";
   }
-  // dates don't differ
+  // dates are the same
   return "Sensors and Supplies next order dates must differ to enable Split.";
 }
 
