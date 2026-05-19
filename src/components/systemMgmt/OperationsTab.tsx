@@ -10,7 +10,7 @@
  */
 import { useEffect, useState, useRef, useMemo } from "react";
 import { ROLES } from "@/lib/config";
-import { useRoleCounts, type RoleCounts } from "@/hooks/useRoleCounts";
+import { useRoleCounts, type RoleCounts, type RolePatientIds } from "@/hooks/useRoleCounts";
 import { useServerBaseline } from "@/hooks/useServerBaseline";
 import { cn } from "@/lib/utils";
 import {
@@ -73,6 +73,7 @@ const LS_KEY = "ops-burndown-snapshot";
 interface Snapshot {
   dateKey: string;
   counts: RoleCounts;
+  patientIds?: RolePatientIds;
   takenAt: string;
   source?: "server" | "local";
 }
@@ -87,10 +88,11 @@ function loadSnapshot(): Snapshot | null {
   }
 }
 
-function saveSnapshot(counts: RoleCounts): Snapshot {
+function saveSnapshot(counts: RoleCounts, pIds?: RolePatientIds): Snapshot {
   const snap: Snapshot = {
     dateKey: getEasternDateKey(),
     counts: { ...counts },
+    patientIds: pIds ? { ...pIds } : undefined,
     takenAt: new Date().toISOString(),
     source: "local",
   };
@@ -129,7 +131,7 @@ function hexToRgba(hex: string, alpha: number): string {
 
 export function OperationsTab() {
   const navigate = useNavigate();
-  const { counts: roleCounts, loading: countsLoading } = useRoleCounts();
+  const { counts: roleCounts, patientIds: currentPatientIds, loading: countsLoading } = useRoleCounts();
   const { baseline: serverBaseline, loading: serverLoading } = useServerBaseline();
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
   const [animateIn, setAnimateIn] = useState(false);
@@ -156,6 +158,7 @@ export function OperationsTab() {
       setSnapshot({
         dateKey: serverBaseline.dateKey,
         counts: serverBaseline.counts,
+        patientIds: serverBaseline.patientIds,
         takenAt: serverBaseline.takenAt,
         source: "server",
       });
@@ -165,7 +168,7 @@ export function OperationsTab() {
       if (existing && existing.dateKey === todayKey) {
         setSnapshot(existing);
       } else if (timeWindow !== "before") {
-        const newSnap = saveSnapshot(roleCounts);
+        const newSnap = saveSnapshot(roleCounts, currentPatientIds);
         setSnapshot(newSnap);
       }
     }
@@ -178,6 +181,9 @@ export function OperationsTab() {
   // All roles (exclude authDenied)
   const allRoles = ROLES.filter((r) => r.id !== "authDenied");
 
+  /** Can we do ID-level movement tracking? */
+  const hasIdTracking = !!(snapshot?.patientIds && Object.keys(currentPatientIds).length > 0);
+
   const barData = useMemo(() => {
     if (!snapshot) return [];
     return allRoles
@@ -186,20 +192,34 @@ export function OperationsTab() {
         const current = roleCounts[role.id] ?? 0;
         const delta = current - baseline;
         const full = Math.max(baseline, current);
-        return { role, baseline, current, delta, full };
+
+        // Compute actual in/out using patient IDs when available
+        let inCount = 0;
+        let outCount = 0;
+        const baselineIds = snapshot.patientIds?.[role.id];
+        const currentIds = currentPatientIds[role.id];
+
+        if (baselineIds && currentIds) {
+          const baseSet = new Set(baselineIds);
+          const currSet = new Set(currentIds);
+          inCount = currentIds.filter((id) => !baseSet.has(id)).length;
+          outCount = baselineIds.filter((id) => !currSet.has(id)).length;
+        } else {
+          // Fallback: estimate from net delta
+          if (delta > 0) inCount = delta;
+          else if (delta < 0) outCount = Math.abs(delta);
+        }
+
+        return { role, baseline, current, delta, full, inCount, outCount };
       })
       .filter((d) => d.full > 0 || d.baseline > 0);
-  }, [allRoles, snapshot, roleCounts]);
+  }, [allRoles, snapshot, roleCounts, currentPatientIds]);
 
   const sqrtScale = (v: number) => Math.sqrt(Math.max(v, 0));
   const maxSqrt = Math.max(...barData.map((d) => sqrtScale(d.full)), 1);
 
-  const totalProcessed = barData
-    .filter((d) => d.delta < 0)
-    .reduce((sum, d) => sum + Math.abs(d.delta), 0);
-  const totalIncoming = barData
-    .filter((d) => d.delta > 0)
-    .reduce((sum, d) => sum + d.delta, 0);
+  const totalProcessed = barData.reduce((sum, d) => sum + d.outCount, 0);
+  const totalIncoming = barData.reduce((sum, d) => sum + d.inCount, 0);
   const netChange = barData.reduce((sum, d) => sum + d.delta, 0);
   const totalPatients = barData.reduce((sum, d) => sum + d.current, 0);
 
@@ -422,20 +442,20 @@ export function OperationsTab() {
                   <span className="text-sm font-semibold text-foreground tabular-nums">
                     {countsLoading ? "…" : d.current}
                   </span>
-                  {d.delta !== 0 && (
-                    <span
-                      className={cn(
-                        "text-xs font-medium px-1.5 py-0.5 rounded-md tabular-nums",
-                        d.delta < 0
-                          ? "text-emerald-600 dark:text-emerald-400 bg-emerald-500/10"
-                          : "text-amber-600 dark:text-amber-400 bg-amber-500/10",
+                  {(d.inCount > 0 || d.outCount > 0) ? (
+                    <span className="flex items-center gap-1">
+                      {d.inCount > 0 && (
+                        <span className="text-xs font-medium px-1.5 py-0.5 rounded-md tabular-nums text-amber-600 dark:text-amber-400 bg-amber-500/10">
+                          +{d.inCount}
+                        </span>
                       )}
-                    >
-                      {d.delta > 0 ? "+" : ""}
-                      {d.delta}
+                      {d.outCount > 0 && (
+                        <span className="text-xs font-medium px-1.5 py-0.5 rounded-md tabular-nums text-emerald-600 dark:text-emerald-400 bg-emerald-500/10">
+                          -{d.outCount}
+                        </span>
+                      )}
                     </span>
-                  )}
-                  {d.delta === 0 && (
+                  ) : (
                     <span className="text-xs text-muted-foreground/40 px-1.5 py-0.5">
                       —
                     </span>

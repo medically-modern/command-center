@@ -29,10 +29,10 @@ function getMondayToken(): string {
   return (import.meta.env.VITE_MONDAY_API_TOKEN as string | undefined) ?? "";
 }
 
-async function fetchBoardGroupCount(boardId: number, groupId: string): Promise<number> {
+async function fetchBoardGroupIds(boardId: number, groupId: string): Promise<string[]> {
   const PAGE = 500;
   const token = getMondayToken();
-  if (!token) return 0;
+  if (!token) return [];
   const compareValue = JSON.stringify([groupId]);
 
   // First page
@@ -55,7 +55,7 @@ async function fetchBoardGroupCount(boardId: number, groupId: string): Promise<n
     const json = await res.json();
     const page = json?.data?.boards?.[0]?.items_page;
     const firstItems = Array.isArray(page?.items) ? page.items : [];
-    let total = firstItems.length;
+    const ids: string[] = firstItems.map((i: any) => String(i.id));
     let cursor: string | null = page?.cursor ?? null;
 
     // Follow cursor pages
@@ -76,18 +76,23 @@ async function fetchBoardGroupCount(boardId: number, groupId: string): Promise<n
       const nextJson = await nextRes.json();
       const nextPage = nextJson?.data?.next_items_page;
       const nextItems = Array.isArray(nextPage?.items) ? nextPage.items : [];
-      total += nextItems.length;
+      ids.push(...nextItems.map((i: any) => String(i.id)));
       cursor = nextPage?.cursor ?? null;
     }
 
-    return total;
+    return ids;
   } catch {
-    return 0;
+    return [];
   }
 }
 
 export interface RoleCounts {
   [roleId: string]: number;
+}
+
+/** Patient IDs per role — used for movement tracking */
+export interface RolePatientIds {
+  [roleId: string]: string[];
 }
 
 // ── Count cache (instant load on return visits) ──
@@ -121,6 +126,7 @@ const POLL_MS = 60_000;
 export function useRoleCounts() {
   const cachedRef = useRef(loadCachedCounts());
   const [counts, setCounts] = useState<RoleCounts>(cachedRef.current);
+  const [patientIds, setPatientIds] = useState<RolePatientIds>({});
   const [loading, setLoading] = useState(Object.keys(cachedRef.current).length === 0);
   const mountedRef = useRef(true);
 
@@ -129,6 +135,7 @@ export function useRoleCounts() {
       setLoading(true);
     }
     const next: RoleCounts = {};
+    const nextIds: RolePatientIds = {};
 
     try {
       // Samantha board — each group is a separate fetch
@@ -183,9 +190,15 @@ export function useRoleCounts() {
         // But we built ChasebenefitsPage from Samantha's Benefits tab — that's wrong per Josh's correction.
         //
         // For now, count what we have:
-        next.benefits = Array.isArray(benefits) ? benefits.length : 0;
-        next.submitAuth = Array.isArray(submitAuth) ? submitAuth.length : 0;
-        next.authOutstanding = Array.isArray(authOutstanding) ? authOutstanding.length : 0;
+        const bArr = Array.isArray(benefits) ? benefits : [];
+        const sArr = Array.isArray(submitAuth) ? submitAuth : [];
+        const aArr = Array.isArray(authOutstanding) ? authOutstanding : [];
+        next.benefits = bArr.length;
+        next.submitAuth = sArr.length;
+        next.authOutstanding = aArr.length;
+        nextIds.benefits = bArr.map((i: any) => String(i.id));
+        nextIds.submitAuth = sArr.map((i: any) => String(i.id));
+        nextIds.authOutstanding = aArr.map((i: any) => String(i.id));
       }
 
       // Masheke board — single group, filter by Stage Advancer
@@ -193,11 +206,15 @@ export function useRoleCounts() {
         const items = await fetchMashekeGroup(MESH_GROUPS.medicalNecessity).catch(() => []);
         const safeItems = Array.isArray(items) ? items : [];
 
-        // Initialize masheke role counts
+        // Initialize masheke role counts + IDs
         next.evaluate = 0;
         next.sendRequest = 0;
         next.confirmReceipt = 0;
         next.chaseBenefits = 0;
+        nextIds.evaluate = [];
+        nextIds.sendRequest = [];
+        nextIds.confirmReceipt = [];
+        nextIds.chaseBenefits = [];
 
         for (const item of safeItems) {
           // Find Stage Advancer column value
@@ -208,21 +225,30 @@ export function useRoleCounts() {
           const roleId = MASHEKE_STAGE_MAP[stageText];
           if (roleId && roleId in next) {
             next[roleId]++;
+            nextIds[roleId].push(String(item.id));
           }
         }
       }
 
       // Welcome Call board
-      next.welcomeCall = await fetchBoardGroupCount(WC_BOARD_ID, WC_GROUP_ID);
+      const wcIds = await fetchBoardGroupIds(WC_BOARD_ID, WC_GROUP_ID);
+      next.welcomeCall = wcIds.length;
+      nextIds.welcomeCall = wcIds;
 
       // Final Profile Confirmation (same board, different group)
-      next.finalConfirm = await fetchBoardGroupCount(WC_BOARD_ID, FINAL_CONFIRM_GROUP_ID);
+      const fcIds = await fetchBoardGroupIds(WC_BOARD_ID, FINAL_CONFIRM_GROUP_ID);
+      next.finalConfirm = fcIds.length;
+      nextIds.finalConfirm = fcIds;
 
       // Profile board
-      next.profile = await fetchBoardGroupCount(PROFILE_BOARD_ID, PROFILE_GROUP_ID);
+      const profIds = await fetchBoardGroupIds(PROFILE_BOARD_ID, PROFILE_GROUP_ID);
+      next.profile = profIds.length;
+      nextIds.profile = profIds;
 
       // Subscription board
-      next.subscription = await fetchBoardGroupCount(SUB_BOARD_ID, SUB_GROUP_ID);
+      const subIds = await fetchBoardGroupIds(SUB_BOARD_ID, SUB_GROUP_ID);
+      next.subscription = subIds.length;
+      nextIds.subscription = subIds;
 
       // System Management — count escalations across all boards
       // We import fetchAllPatients lazily to avoid circular deps
@@ -239,6 +265,7 @@ export function useRoleCounts() {
 
     if (!mountedRef.current) return;
     setCounts(next);
+    setPatientIds(nextIds);
     persistCountsCache(next);
     if (!silent) setLoading(false);
   }, []);
@@ -254,5 +281,5 @@ export function useRoleCounts() {
     };
   }, [fetchCounts]);
 
-  return { counts, loading, refetch: fetchCounts };
+  return { counts, patientIds, loading, refetch: fetchCounts };
 }

@@ -70,6 +70,7 @@ async function gql(query, variables = {}) {
 
 /* ── Count fetchers (with cursor pagination) ─────────────── */
 
+/** Returns { count, ids } for a board group */
 async function countGroup(boardId, groupId) {
   const compareValue = JSON.stringify([groupId]);
 
@@ -87,7 +88,7 @@ async function countGroup(boardId, groupId) {
     }`;
   const data = await gql(query, { bid: boardId });
   const page = data?.boards?.[0]?.items_page;
-  let total = page?.items?.length ?? 0;
+  const ids = (page?.items ?? []).map(i => String(i.id));
   let cursor = page?.cursor ?? null;
 
   // Follow cursor pages
@@ -101,11 +102,11 @@ async function countGroup(boardId, groupId) {
       }`;
     const next = await gql(nextQuery, { cursor });
     const nextItems = next?.next_items_page?.items ?? [];
-    total += nextItems.length;
+    ids.push(...nextItems.map(i => String(i.id)));
     cursor = next?.next_items_page?.cursor ?? null;
   }
 
-  return total;
+  return { count: ids.length, ids };
 }
 
 async function countMashekeStages() {
@@ -149,12 +150,16 @@ async function countMashekeStages() {
   }
 
   const counts = { evaluate: 0, sendRequest: 0, confirmReceipt: 0, chaseBenefits: 0 };
+  const ids = { evaluate: [], sendRequest: [], confirmReceipt: [], chaseBenefits: [] };
   for (const item of allItems) {
     const stageText = item.column_values?.find((c) => c.id === STAGE_COL)?.text ?? "";
     const roleId = STAGE_MAP[stageText];
-    if (roleId && roleId in counts) counts[roleId]++;
+    if (roleId && roleId in counts) {
+      counts[roleId]++;
+      ids[roleId].push(String(item.id));
+    }
   }
-  return counts;
+  return { counts, ids };
 }
 
 /* ── Main ─────────────────────────────────────────────────── */
@@ -163,11 +168,11 @@ async function main() {
   console.log("Fetching patient counts from Monday.com…");
 
   const [
-    benefits, submitAuth, authOutstanding,
-    mashekeCounts,
-    welcomeCall, finalConfirm,
-    profile,
-    subscription,
+    benefitsResult, submitAuthResult, authOutstandingResult,
+    mashekeResult,
+    welcomeCallResult, finalConfirmResult,
+    profileResult,
+    subscriptionResult,
   ] = await Promise.all([
     countGroup(SAM_BOARD, SAM_GROUPS.benefits),
     countGroup(SAM_BOARD, SAM_GROUPS.submitAuth),
@@ -180,14 +185,25 @@ async function main() {
   ]);
 
   const counts = {
-    benefits,
-    submitAuth,
-    authOutstanding,
-    ...mashekeCounts,
-    welcomeCall,
-    finalConfirm,
-    profile,
-    subscription,
+    benefits: benefitsResult.count,
+    submitAuth: submitAuthResult.count,
+    authOutstanding: authOutstandingResult.count,
+    ...mashekeResult.counts,
+    welcomeCall: welcomeCallResult.count,
+    finalConfirm: finalConfirmResult.count,
+    profile: profileResult.count,
+    subscription: subscriptionResult.count,
+  };
+
+  const patientIds = {
+    benefits: benefitsResult.ids,
+    submitAuth: submitAuthResult.ids,
+    authOutstanding: authOutstandingResult.ids,
+    ...mashekeResult.ids,
+    welcomeCall: welcomeCallResult.ids,
+    finalConfirm: finalConfirmResult.ids,
+    profile: profileResult.ids,
+    subscription: subscriptionResult.ids,
   };
 
   // Eastern date/time
@@ -203,6 +219,7 @@ async function main() {
   const baseline = {
     dateKey: easternDate,
     counts,
+    patientIds,
     takenAt: now.toISOString(),
     source: "github-actions",
   };

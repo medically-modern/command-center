@@ -13,6 +13,7 @@ import type { RoleCounts } from "@/hooks/useRoleCounts";
 export interface ServerBaseline {
   dateKey: string;        // YYYY-MM-DD Eastern
   counts: RoleCounts;
+  patientIds?: Record<string, string[]>;  // patient IDs per role for movement tracking
   takenAt: string;        // ISO timestamp
   source: "github-actions";
 }
