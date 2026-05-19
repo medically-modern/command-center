@@ -18,9 +18,20 @@ import { CallAttemptsCounter } from "@/components/welcomeCall/CallAttemptsCounte
 import { FollowUpModal } from "@/components/welcomeCall/FollowUpModal";
 import { Button } from "@/components/ui/button";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
-import { RotateCcw, ClipboardCheck, ArrowLeft, Save, Clock } from "lucide-react";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { RotateCcw, ClipboardCheck, ArrowLeft, Save, Clock, OctagonX } from "lucide-react";
 import { toast } from "sonner";
 import { sendPatientToMonday, sendWelcomeCallTextToMonday, sendNotesToMonday, sendPhoneToMonday } from "@/lib/welcomeCall/mondayWrite";
+import { writeStatusIndex, COL } from "@/lib/welcomeCall/mondayApi";
 import { validatePatientForSend } from "@/lib/welcomeCall/workflow";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useBackNavigation } from "@/hooks/useBackNavigation";
@@ -32,6 +43,8 @@ const WelcomeCallPage = () => {
   const isEscalated = searchParams.get("escalated") === "1";
   const { patients, loading, error, refetch, update, clearOverlay , saveOverlay, hasOverlay } = useMondayPatients(searchParams.get("patientId"));
   const [followUpOpen, setFollowUpOpen] = useState(false);
+  const [stuckOpen, setStuckOpen] = useState(false);
+  const [stuckSending, setStuckSending] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(
     searchParams.get("patientId") ?? null,
   );
@@ -133,6 +146,23 @@ const WelcomeCallPage = () => {
     }
   };
 
+  const handleStuck = async () => {
+    if (!selected) return;
+    setStuckSending(true);
+    try {
+      await writeStatusIndex(selected.id, COL.stageAdvancer, 2);
+      toast.success(`${selected.name} marked as Stuck`);
+      setStuckOpen(false);
+      refetch();
+    } catch (e) {
+      toast.error("Failed to mark as Stuck", {
+        description: e instanceof Error ? e.message : String(e),
+      });
+    } finally {
+      setStuckSending(false);
+    }
+  };
+
   return (
     <SidebarProvider>
       <div className="min-h-screen flex w-full bg-gradient-subtle">
@@ -171,6 +201,9 @@ const WelcomeCallPage = () => {
                   />
                 )}
                 {selected && <ClinicalsDownloadButton itemId={selected.id} />}
+                <Button onClick={() => setStuckOpen(true)} disabled={!selected} className="gap-2 bg-red-600 text-white hover:bg-red-700 shadow-elevate">
+                  <OctagonX className="h-4 w-4" /> Stuck
+                </Button>
                 <Button onClick={() => setFollowUpOpen(true)} disabled={!selected} className="gap-2 bg-white/90 text-blue-700 hover:bg-white shadow-elevate">
                   <Clock className="h-4 w-4" /> Follow Up
                 </Button>
@@ -234,6 +267,27 @@ const WelcomeCallPage = () => {
           onSuccess={refetch}
         />
       )}
+      <AlertDialog open={stuckOpen} onOpenChange={setStuckOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Mark this patient as stuck?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will immediately set Stage Advancer to <span className="font-semibold">Stuck / Don't Proceed</span> for{" "}
+              {selected?.name ?? "this patient"} on Monday.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={stuckSending}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleStuck}
+              disabled={stuckSending}
+              className="bg-red-600 hover:bg-red-700 text-white"
+            >
+              {stuckSending ? "Sending…" : "Yes, mark as Stuck"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </SidebarProvider>
   );
 };
