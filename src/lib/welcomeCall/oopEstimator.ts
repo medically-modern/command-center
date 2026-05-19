@@ -136,6 +136,8 @@ export interface OopEstimate {
   /** False when deductible + coinsurance data is missing (Stedi not yet run).
    *  Patient cost fields are unreliable in this state — UI should show "unknown". */
   benefitsKnown: boolean;
+  /** Which of the 3 benefits fields are missing — drives granular UI warnings */
+  missingFields: string[];
 }
 
 export interface OopEstimateError {
@@ -336,6 +338,7 @@ export function estimateOop(inputs: OopInputs): OopResult {
       medicaidCovers: true,
       medicaidNote: note,
       benefitsKnown: true,
+      missingFields: [],
     };
   }
 
@@ -350,6 +353,12 @@ export function estimateOop(inputs: OopInputs): OopResult {
   // Benefits are "known" if we have at least deductible + coinsurance data
   // (either from Stedi or from a payer-level override).
   const benefitsKnown = (parsedDeductible !== null || parsedCoinsurance !== null || hasCoinsuranceOverride);
+
+  // Track which specific fields are missing for granular UI warnings
+  const missingFields: string[] = [];
+  if (parsedDeductible === null) missingFields.push("deductible");
+  if (parsedCoinsurance === null && !hasCoinsuranceOverride) missingFields.push("coinsurance");
+  if (oopMaxRaw === null) missingFields.push("oopMax");
 
   const deductibleRemaining = parsedDeductible ?? 0;
   const coinsurancePct = resolveCoinsurance(primaryInsurance, inputs.stediCoinsurance);
@@ -379,6 +388,7 @@ export function estimateOop(inputs: OopInputs): OopResult {
     medicaidCovers: false,
     medicaidNote: "",
     benefitsKnown,
+    missingFields,
   };
 }
 
