@@ -231,6 +231,12 @@ export function PatientInfoCard({ patient, onFieldChange, onSavePhone }: Props) 
   const hasSecondaryInsurance = !!patient.secondaryInsurance && patient.secondaryInsurance !== "";
   const hasMemberId2 = !!patient.memberId2 && patient.memberId2 !== "";
 
+  // QMB warning: Medicare A&B + Stedi says QMB YES + no secondary filled out
+  const isMedicareAB = patient.primaryInsurance === "Medicare A&B";
+  const qmbYes = (patient.stediQmb || "").trim().toUpperCase() === "YES";
+  const secondaryMissing = !hasSecondaryInsurance && !patient.secondaryInsuranceEdited;
+  const showQmbWarning = isMedicareAB && qmbYes && secondaryMissing;
+
   return (
     <div className="space-y-4">
       {/* Patient name + DOB + phone + intake date */}
@@ -370,6 +376,11 @@ export function PatientInfoCard({ patient, onFieldChange, onSavePhone }: Props) 
                     ))}
                   </SelectContent>
                 </Select>
+                {showQmbWarning && (
+                  <p className="text-xs text-red-600 font-semibold mt-1.5">
+                    Stedi believes this patient has a Medicaid Secondary. Ask patient if they have a secondary.
+                  </p>
+                )}
               </div>
             )}
 

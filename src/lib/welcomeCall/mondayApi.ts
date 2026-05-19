@@ -68,6 +68,7 @@ export const COL = {
   oopMax: "text_mm1xdtj7",
   oopMaxRemaining: "text_mm1xx5f",
   stediCoinsurance: "text_mm391jq8",
+  stediQmb: "text_mm2wms12",
 
   // Last bill dates (read-only)
   cgmLastBillDate: "date_mm33vqa0",
@@ -101,7 +102,7 @@ export const READ_COLUMN_IDS = [
   COL.callAttempts,
   COL.cgmAuthResult, COL.sensorsAuthResult, COL.ipAuthResult,
   COL.infusionSetAuthResult, COL.cartridgeAuthResult,
-  COL.deductible, COL.deductibleRemaining, COL.oopMax, COL.oopMaxRemaining, COL.stediCoinsurance,
+  COL.deductible, COL.deductibleRemaining, COL.oopMax, COL.oopMaxRemaining, COL.stediCoinsurance, COL.stediQmb,
   COL.cgmLastBillDate, COL.sensorsLastBillDate, COL.ipLastBillDate,
   COL.infusionSetLastBillDate, COL.cartridgeLastBillDate,
   COL.ipNextOrderDate, COL.sensorsNextOrderDate, COL.suppliesNextOrderDate,
