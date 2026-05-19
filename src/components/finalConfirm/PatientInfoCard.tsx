@@ -630,6 +630,12 @@ export function PatientInfoCard({ patient, onFieldChange }: Props) {
                 if (opt) onFieldChange("diagnosis", opt.label);
               }}
             />
+            <EditableTextField
+              icon={<Stethoscope className="h-4 w-4" />}
+              label="MR Expiry Date"
+              value={patient.mrExpiryDate}
+              onChange={(v) => onFieldChange("mrExpiryDate", v)}
+            />
             <SelectField
               label="CGM Coverage Path"
               icon={<Activity className="h-4 w-4" />}
@@ -651,12 +657,6 @@ export function PatientInfoCard({ patient, onFieldChange }: Props) {
                 const opt = IP_COVERAGE_PATH_OPTIONS.find((o) => o.index === index);
                 if (opt) onFieldChange("ipCoveragePath", opt.label);
               }}
-            />
-            <EditableTextField
-              icon={<Stethoscope className="h-4 w-4" />}
-              label="MR Expiry Date"
-              value={patient.mrExpiryDate}
-              onChange={(v) => onFieldChange("mrExpiryDate", v)}
             />
           </div>
         </CollapsibleSection>
@@ -680,14 +680,14 @@ export function PatientInfoCard({ patient, onFieldChange }: Props) {
             }}
           />
           <SelectField
-            label="Pump Type"
+            label="Request Type"
             icon={<Package className="h-4 w-4" />}
-            options={PUMP_TYPE_OPTIONS}
-            value={patient.pumpType}
+            options={REQUEST_TYPE_OPTIONS}
+            value={patient.requestType}
             onChange={(index) => {
-              onFieldChange("pumpTypeIndex", index);
-              const opt = PUMP_TYPE_OPTIONS.find((o) => o.index === index);
-              if (opt) onFieldChange("pumpType", opt.label);
+              onFieldChange("requestTypeIndex", index);
+              const opt = REQUEST_TYPE_OPTIONS.find((o) => o.index === index);
+              if (opt) onFieldChange("requestType", opt.label);
             }}
           />
           <SelectField
@@ -702,14 +702,14 @@ export function PatientInfoCard({ patient, onFieldChange }: Props) {
             }}
           />
           <SelectField
-            label="Request Type"
+            label="Pump Type"
             icon={<Package className="h-4 w-4" />}
-            options={REQUEST_TYPE_OPTIONS}
-            value={patient.requestType}
+            options={PUMP_TYPE_OPTIONS}
+            value={patient.pumpType}
             onChange={(index) => {
-              onFieldChange("requestTypeIndex", index);
-              const opt = REQUEST_TYPE_OPTIONS.find((o) => o.index === index);
-              if (opt) onFieldChange("requestType", opt.label);
+              onFieldChange("pumpTypeIndex", index);
+              const opt = PUMP_TYPE_OPTIONS.find((o) => o.index === index);
+              if (opt) onFieldChange("pumpType", opt.label);
             }}
           />
         </div>
@@ -808,101 +808,107 @@ export function PatientInfoCard({ patient, onFieldChange }: Props) {
         <p className="text-xs uppercase tracking-wider text-muted-foreground font-semibold flex items-center gap-2">
           <ShieldCheck className="h-3.5 w-3.5" /> Auth Results
         </p>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          <div>
-            <SelectField
-              label="CGM Auth"
-              icon={<ShieldCheck className="h-4 w-4" />}
-              options={AUTH_RESULT_OPTIONS}
-              value={patient.cgmAuthResult}
-              onChange={(index) => {
-                onFieldChange("cgmAuthResultIndex", index);
-                const opt = AUTH_RESULT_OPTIONS.find((o) => o.index === index);
-                if (opt) onFieldChange("cgmAuthResult", opt.label);
-              }}
-            />
-            <AuthDetailBlock
-              authId={patient.monitorAuthId}
-              authStart={patient.monitorAuthStart}
-              authEnd={patient.monitorAuthEnd}
-              authUnits={patient.monitorAuthUnits}
-            />
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          {/* Left column — CGM side */}
+          <div className="space-y-4">
+            <div>
+              <SelectField
+                label="CGM Auth"
+                icon={<ShieldCheck className="h-4 w-4" />}
+                options={AUTH_RESULT_OPTIONS}
+                value={patient.cgmAuthResult}
+                onChange={(index) => {
+                  onFieldChange("cgmAuthResultIndex", index);
+                  const opt = AUTH_RESULT_OPTIONS.find((o) => o.index === index);
+                  if (opt) onFieldChange("cgmAuthResult", opt.label);
+                }}
+              />
+              <AuthDetailBlock
+                authId={patient.monitorAuthId}
+                authStart={patient.monitorAuthStart}
+                authEnd={patient.monitorAuthEnd}
+                authUnits={patient.monitorAuthUnits}
+              />
+            </div>
+            <div>
+              <SelectField
+                label="Sensors Auth"
+                icon={<ShieldCheck className="h-4 w-4" />}
+                options={AUTH_RESULT_OPTIONS}
+                value={patient.sensorsAuthResult}
+                onChange={(index) => {
+                  onFieldChange("sensorsAuthResultIndex", index);
+                  const opt = AUTH_RESULT_OPTIONS.find((o) => o.index === index);
+                  if (opt) onFieldChange("sensorsAuthResult", opt.label);
+                }}
+              />
+              <AuthDetailBlock
+                authId={patient.sensorsAuthId}
+                authStart={patient.sensorsAuthStart}
+                authEnd={patient.sensorsAuthEnd}
+                authUnits={patient.sensorsAuthUnits}
+              />
+            </div>
           </div>
-          <div>
-            <SelectField
-              label="Sensors Auth"
-              icon={<ShieldCheck className="h-4 w-4" />}
-              options={AUTH_RESULT_OPTIONS}
-              value={patient.sensorsAuthResult}
-              onChange={(index) => {
-                onFieldChange("sensorsAuthResultIndex", index);
-                const opt = AUTH_RESULT_OPTIONS.find((o) => o.index === index);
-                if (opt) onFieldChange("sensorsAuthResult", opt.label);
-              }}
-            />
-            <AuthDetailBlock
-              authId={patient.sensorsAuthId}
-              authStart={patient.sensorsAuthStart}
-              authEnd={patient.sensorsAuthEnd}
-              authUnits={patient.sensorsAuthUnits}
-            />
-          </div>
-          <div>
-            <SelectField
-              label="IP Auth"
-              icon={<ShieldCheck className="h-4 w-4" />}
-              options={AUTH_RESULT_OPTIONS}
-              value={patient.ipAuthResult}
-              onChange={(index) => {
-                onFieldChange("ipAuthResultIndex", index);
-                const opt = AUTH_RESULT_OPTIONS.find((o) => o.index === index);
-                if (opt) onFieldChange("ipAuthResult", opt.label);
-              }}
-            />
-            <AuthDetailBlock
-              authId={patient.ipAuthId}
-              authStart={patient.ipAuthStart}
-              authEnd={patient.ipAuthEnd}
-              authUnits={patient.ipAuthUnits}
-            />
-          </div>
-          <div>
-            <SelectField
-              label="Infusion Set Auth"
-              icon={<ShieldCheck className="h-4 w-4" />}
-              options={AUTH_RESULT_OPTIONS}
-              value={patient.infusionSetAuthResult}
-              onChange={(index) => {
-                onFieldChange("infusionSetAuthResultIndex", index);
-                const opt = AUTH_RESULT_OPTIONS.find((o) => o.index === index);
-                if (opt) onFieldChange("infusionSetAuthResult", opt.label);
-              }}
-            />
-            <AuthDetailBlock
-              authId={patient.infusionSetAuthId}
-              authStart={patient.infusionSetAuthStart}
-              authEnd={patient.infusionSetAuthEnd}
-              authUnits={patient.infusionSetAuthUnits}
-            />
-          </div>
-          <div>
-            <SelectField
-              label="Cartridge Auth"
-              icon={<ShieldCheck className="h-4 w-4" />}
-              options={AUTH_RESULT_OPTIONS}
-              value={patient.cartridgeAuthResult}
-              onChange={(index) => {
-                onFieldChange("cartridgeAuthResultIndex", index);
-                const opt = AUTH_RESULT_OPTIONS.find((o) => o.index === index);
-                if (opt) onFieldChange("cartridgeAuthResult", opt.label);
-              }}
-            />
-            <AuthDetailBlock
-              authId={patient.cartridgeAuthId}
-              authStart={patient.cartridgeAuthStart}
-              authEnd={patient.cartridgeAuthEnd}
-              authUnits={patient.cartridgeAuthUnits}
-            />
+          {/* Right column — Pump side */}
+          <div className="space-y-4">
+            <div>
+              <SelectField
+                label="IP Auth"
+                icon={<ShieldCheck className="h-4 w-4" />}
+                options={AUTH_RESULT_OPTIONS}
+                value={patient.ipAuthResult}
+                onChange={(index) => {
+                  onFieldChange("ipAuthResultIndex", index);
+                  const opt = AUTH_RESULT_OPTIONS.find((o) => o.index === index);
+                  if (opt) onFieldChange("ipAuthResult", opt.label);
+                }}
+              />
+              <AuthDetailBlock
+                authId={patient.ipAuthId}
+                authStart={patient.ipAuthStart}
+                authEnd={patient.ipAuthEnd}
+                authUnits={patient.ipAuthUnits}
+              />
+            </div>
+            <div>
+              <SelectField
+                label="Infusion Set Auth"
+                icon={<ShieldCheck className="h-4 w-4" />}
+                options={AUTH_RESULT_OPTIONS}
+                value={patient.infusionSetAuthResult}
+                onChange={(index) => {
+                  onFieldChange("infusionSetAuthResultIndex", index);
+                  const opt = AUTH_RESULT_OPTIONS.find((o) => o.index === index);
+                  if (opt) onFieldChange("infusionSetAuthResult", opt.label);
+                }}
+              />
+              <AuthDetailBlock
+                authId={patient.infusionSetAuthId}
+                authStart={patient.infusionSetAuthStart}
+                authEnd={patient.infusionSetAuthEnd}
+                authUnits={patient.infusionSetAuthUnits}
+              />
+            </div>
+            <div>
+              <SelectField
+                label="Cartridge Auth"
+                icon={<ShieldCheck className="h-4 w-4" />}
+                options={AUTH_RESULT_OPTIONS}
+                value={patient.cartridgeAuthResult}
+                onChange={(index) => {
+                  onFieldChange("cartridgeAuthResultIndex", index);
+                  const opt = AUTH_RESULT_OPTIONS.find((o) => o.index === index);
+                  if (opt) onFieldChange("cartridgeAuthResult", opt.label);
+                }}
+              />
+              <AuthDetailBlock
+                authId={patient.cartridgeAuthId}
+                authStart={patient.cartridgeAuthStart}
+                authEnd={patient.cartridgeAuthEnd}
+                authUnits={patient.cartridgeAuthUnits}
+              />
+            </div>
           </div>
         </div>
       </Card>
@@ -935,12 +941,18 @@ export function PatientInfoCard({ patient, onFieldChange }: Props) {
         <p className="text-xs uppercase tracking-wider text-muted-foreground font-semibold flex items-center gap-2">
           <CalendarDays className="h-3.5 w-3.5" /> Last Bill Dates
         </p>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          <EditableDateField label="CGM Last Bill Date" dateStr={patient.lastBillDateMonitor} onChange={(v) => onFieldChange("lastBillDateMonitor", v)} />
-          <EditableDateField label="Sensors Last Bill Date" dateStr={patient.lastBillDateSensors} onChange={(v) => onFieldChange("lastBillDateSensors", v)} />
-          <EditableDateField label="IP Last Bill Date" dateStr={patient.lastBillDateIp} onChange={(v) => onFieldChange("lastBillDateIp", v)} />
-          <EditableDateField label="Infusion Set Last Bill Date" dateStr={patient.lastBillDateInfusionSet} onChange={(v) => onFieldChange("lastBillDateInfusionSet", v)} />
-          <EditableDateField label="Cartridge Last Bill Date" dateStr={patient.lastBillDateCartridge} onChange={(v) => onFieldChange("lastBillDateCartridge", v)} />
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          {/* Left column — CGM side */}
+          <div className="space-y-4">
+            <EditableDateField label="CGM Last Bill Date" dateStr={patient.lastBillDateMonitor} onChange={(v) => onFieldChange("lastBillDateMonitor", v)} />
+            <EditableDateField label="Sensors Last Bill Date" dateStr={patient.lastBillDateSensors} onChange={(v) => onFieldChange("lastBillDateSensors", v)} />
+          </div>
+          {/* Right column — Pump side */}
+          <div className="space-y-4">
+            <EditableDateField label="IP Last Bill Date" dateStr={patient.lastBillDateIp} onChange={(v) => onFieldChange("lastBillDateIp", v)} />
+            <EditableDateField label="Infusion Set Last Bill Date" dateStr={patient.lastBillDateInfusionSet} onChange={(v) => onFieldChange("lastBillDateInfusionSet", v)} />
+            <EditableDateField label="Cartridge Last Bill Date" dateStr={patient.lastBillDateCartridge} onChange={(v) => onFieldChange("lastBillDateCartridge", v)} />
+          </div>
         </div>
       </Card>
 
@@ -950,8 +962,8 @@ export function PatientInfoCard({ patient, onFieldChange }: Props) {
           <CalendarDays className="h-3.5 w-3.5" /> Next Order Dates
         </p>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <EditableNextOrderDateField label="IP Next Order Date" dateStr={patient.nextOrderDateIp} onChange={(v) => onFieldChange("nextOrderDateIp", v)} />
           <EditableNextOrderDateField label="Sensors Next Order Date" dateStr={patient.nextOrderDateSensors} onChange={(v) => onFieldChange("nextOrderDateSensors", v)} />
+          <EditableNextOrderDateField label="IP Next Order Date" dateStr={patient.nextOrderDateIp} onChange={(v) => onFieldChange("nextOrderDateIp", v)} />
           <EditableNextOrderDateField label="Supplies Next Order Date" dateStr={patient.nextOrderDateSupplies} onChange={(v) => onFieldChange("nextOrderDateSupplies", v)} />
         </div>
       </Card>
