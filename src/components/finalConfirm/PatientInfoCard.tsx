@@ -301,15 +301,17 @@ function EditableDateField({
 }
 
 /** Editable next-order date — always renders; green if ready (today or past),
- *  red if future, red outline if empty. */
+ *  red outline if empty and active. Faded when not active (product not being ordered). */
 function EditableNextOrderDateField({
   label,
   dateStr,
   onChange,
+  active = true,
 }: {
   label: string;
   dateStr: string;
   onChange: (v: string) => void;
+  active?: boolean;
 }) {
   const isEmpty = !dateStr;
   let colorClass = "";
@@ -322,16 +324,18 @@ function EditableNextOrderDateField({
       colorClass = d <= today ? "ring-green-300 bg-green-50 dark:bg-green-950/20" : "";
     }
   }
+  const showWarning = isEmpty && active;
   return (
     <div className={cn(
       "rounded-lg p-1.5 -m-1.5 transition-colors",
-      isEmpty && "bg-red-50 dark:bg-red-950/20 ring-1 ring-red-200 dark:ring-red-800/40",
-      !isEmpty && colorClass && `ring-1 ${colorClass}`,
+      !active && "opacity-40",
+      showWarning && "bg-red-50 dark:bg-red-950/20 ring-1 ring-red-200 dark:ring-red-800/40",
+      !isEmpty && colorClass && active && `ring-1 ${colorClass}`,
     )}>
       <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1">{label}</p>
       <Input
         type="date"
-        className={cn("h-8 text-sm", isEmpty && "border-red-300 dark:border-red-700")}
+        className={cn("h-8 text-sm", showWarning && "border-red-300 dark:border-red-700")}
         value={dateStr}
         onChange={(e) => onChange(e.target.value)}
       />
@@ -351,6 +355,11 @@ export function PatientInfoCard({ patient, onFieldChange }: Props) {
     onFieldChange("clinicAddressLat", result.lat);
     onFieldChange("clinicAddressLng", result.lng);
   };
+
+  // Subscription-aware helpers for next order date styling
+  const subType = patient.subscriptionType;
+  const sensorsActive = subType === "Sensors" || subType === "Sensors & Supplies";
+  const suppliesActive = subType === "Supplies" || subType === "Sensors & Supplies";
 
   // Infusion set validation: if serving requires supplies, infusion set 1 must be selected with qty
   const isCgmOnly = patient.serving === "CGM";
@@ -974,9 +983,9 @@ export function PatientInfoCard({ patient, onFieldChange }: Props) {
           <CalendarDays className="h-3.5 w-3.5" /> Next Order Dates
         </p>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <EditableNextOrderDateField label="Sensors Next Order Date" dateStr={patient.nextOrderDateSensors} onChange={(v) => onFieldChange("nextOrderDateSensors", v)} />
-          <EditableNextOrderDateField label="IP Next Order Date" dateStr={patient.nextOrderDateIp} onChange={(v) => onFieldChange("nextOrderDateIp", v)} />
-          <EditableNextOrderDateField label="Supplies Next Order Date" dateStr={patient.nextOrderDateSupplies} onChange={(v) => onFieldChange("nextOrderDateSupplies", v)} />
+          <EditableNextOrderDateField label="Sensors Next Order Date" dateStr={patient.nextOrderDateSensors} onChange={(v) => onFieldChange("nextOrderDateSensors", v)} active={sensorsActive} />
+          <EditableNextOrderDateField label="IP Next Order Date" dateStr={patient.nextOrderDateIp} onChange={(v) => onFieldChange("nextOrderDateIp", v)} active={suppliesActive} />
+          <EditableNextOrderDateField label="Supplies Next Order Date" dateStr={patient.nextOrderDateSupplies} onChange={(v) => onFieldChange("nextOrderDateSupplies", v)} active={suppliesActive} />
         </div>
       </Card>
     </div>
