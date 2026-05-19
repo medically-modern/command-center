@@ -2,7 +2,7 @@ import { useMemo } from "react";
 import { Card } from "@/components/ui/card";
 import type { Patient } from "@/lib/welcomeCall/workflow";
 import { estimateOop } from "@/lib/welcomeCall/oopEstimator";
-import type { OopEstimate } from "@/lib/welcomeCall/oopEstimator";
+import type { OopEstimate, OopLineItem } from "@/lib/welcomeCall/oopEstimator";
 
 interface Props {
   patient: Patient;
@@ -14,41 +14,105 @@ function fmt(n: number): string {
   return n.toLocaleString("en-US", { style: "currency", currency: "USD" });
 }
 
-function LineRow({ label, hcpc, units, rate, allowed }: {
-  label: string; hcpc: string; units: number; rate: number; allowed: number;
-}) {
-  return (
-    <tr className="border-b border-muted/40 last:border-0">
-      <td className="py-1.5 pr-3 text-sm">{label}</td>
-      <td className="py-1.5 pr-3 text-xs text-muted-foreground font-mono">{hcpc}</td>
-      <td className="py-1.5 pr-3 text-sm text-right tabular-nums">{units}</td>
-      <td className="py-1.5 pr-3 text-sm text-right tabular-nums">{fmt(rate)}</td>
-      <td className="py-1.5 text-sm text-right tabular-nums font-medium">{fmt(allowed)}</td>
-    </tr>
-  );
+/** Per-line display row with distributed deductible + coinsurance */
+interface DisplayLine {
+  product: string;
+  allowed: number;
+  insurancePaid: number;
+  deductible: number;
+  coinsurance: number;
+  patientOwes: number;
 }
 
-function SummaryRow({ label, value, bold, highlight }: {
-  label: string; value: string; bold?: boolean; highlight?: "green" | "amber" | "red";
-}) {
-  const colorCls = highlight === "green"
-    ? "text-green-700"
-    : highlight === "amber"
-      ? "text-amber-700"
-      : highlight === "red"
-        ? "text-red-700"
-        : "";
-  return (
-    <div className="flex justify-between items-center py-1">
-      <span className={`text-sm ${bold ? "font-semibold" : "text-muted-foreground"}`}>{label}</span>
-      <span className={`text-sm tabular-nums ${bold ? "font-semibold" : ""} ${colorCls}`}>{value}</span>
-    </div>
-  );
+/**
+ * Distribute deductible and coinsurance across line items proportionally
+ * by their allowed amount. This is purely for display — the totals remain
+ * identical to the estimator output.
+ */
+function distributePerLine(
+  lines: OopLineItem[],
+  est: OopEstimate,
+): DisplayLine[] {
+  const total = est.totalAllowed;
+  if (total === 0) {
+    return lines.map((l) => ({
+      product: l.product,
+      allowed: l.allowed,
+      insurancePaid: 0,
+      deductible: 0,
+      coinsurance: 0,
+      patientOwes: 0,
+    }));
+  }
+
+  // Medicaid: insurance pays everything
+  if (est.medicaidCovers) {
+    return lines.map((l) => ({
+      product: l.product,
+      allowed: l.allowed,
+      insurancePaid: l.allowed,
+      deductible: 0,
+      coinsurance: 0,
+      patientOwes: 0,
+    }));
+  }
+
+  // Distribute deductible + coinsurance proportionally
+  let deductiblePool = est.appliedDeductible;
+  let coinsurancePool = est.patientCoinsurance;
+  // If OOP max capped the total, scale coinsurance proportionally
+  const oopScale = est.patientOwesRaw > 0 ? est.patientOwes / est.patientOwesRaw : 1;
+
+  const result: DisplayLine[] = [];
+  let runningDed = 0;
+  let runningCoins = 0;
+
+  for (let i = 0; i < lines.length; i++) {
+    const l = lines[i];
+    const proportion = l.allowed / total;
+    const isLast = i === lines.length - 1;
+
+    // Distribute deductible
+    let lineDed: number;
+    if (isLast) {
+      lineDed = round2(est.appliedDeductible - runningDed);
+    } else {
+      lineDed = round2(est.appliedDeductible * proportion);
+      runningDed += lineDed;
+    }
+
+    // Distribute coinsurance
+    let lineCoins: number;
+    if (isLast) {
+      lineCoins = round2(est.patientCoinsurance - runningCoins);
+    } else {
+      lineCoins = round2(est.patientCoinsurance * proportion);
+      runningCoins += lineCoins;
+    }
+
+    // Apply OOP max scaling if applicable
+    const linePatientOwes = round2((lineDed + lineCoins) * oopScale);
+    const lineInsPaid = round2(l.allowed - linePatientOwes);
+
+    result.push({
+      product: l.product,
+      allowed: l.allowed,
+      insurancePaid: Math.max(0, lineInsPaid),
+      deductible: lineDed,
+      coinsurance: lineCoins,
+      patientOwes: linePatientOwes,
+    });
+  }
+
+  return result;
+}
+
+function round2(n: number): number {
+  return Math.round(n * 100) / 100;
 }
 
 export function OopEstimateCard({ patient, infusionSets }: Props) {
   const result = useMemo(() => {
-    // Parse infusion sets from the welcome call form if available
     const parsedSets = parseInt(patient.qtyInf1 || "0", 10) + parseInt(patient.qtyInf2 || "0", 10);
     const sets = infusionSets ?? (parsedSets > 0 ? parsedSets : 3);
 
@@ -75,7 +139,6 @@ export function OopEstimateCard({ patient, infusionSets }: Props) {
 
   // Don't render if we can't estimate (missing insurance, no rates, no serving)
   if (!result.ok) {
-    // Only show the card with an explanation if we have insurance but hit a rate gap
     if (!patient.primaryInsurance || !patient.serving) return null;
     return (
       <Card className="p-4">
@@ -88,90 +151,98 @@ export function OopEstimateCard({ patient, infusionSets }: Props) {
   }
 
   const est = result as OopEstimate;
+  const displayLines = distributePerLine(est.lines, est);
   const hasBenefitsData = patient.deductibleRemaining || patient.stediCoinsurance || patient.oopMaxRemaining;
 
+  // Totals for the footer row
+  const totals = {
+    allowed: est.totalAllowed,
+    insurancePaid: est.insurancePays,
+    deductible: est.appliedDeductible,
+    coinsurance: est.patientCoinsurance,
+    patientOwes: est.patientOwes,
+  };
+
+  const patientOwesColor = est.patientOwes === 0
+    ? "text-green-600"
+    : est.patientOwes > 500
+      ? "text-red-600"
+      : "text-blue-600";
+
+  const insPaidColor = "text-green-600";
+
   return (
-    <Card className="p-4">
-      <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-3">
-        OOP Estimate (Per Fill)
-      </p>
+    <Card className="p-4 space-y-3">
+      {/* Header: summary line */}
+      <div className="flex items-start justify-between gap-4 flex-wrap">
+        <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
+          OOP Estimate (Per Fill)
+        </p>
+        <div className="text-right">
+          <div className="flex items-center gap-1.5 text-sm">
+            <span>Allowed <span className="font-semibold tabular-nums">{fmt(est.totalAllowed)}</span></span>
+            <span className="text-muted-foreground mx-0.5">&minus;</span>
+            <span>Ins. paid <span className={`font-semibold tabular-nums ${insPaidColor}`}>{fmt(est.insurancePays)}</span></span>
+            <span className="text-muted-foreground mx-0.5">=</span>
+            <span className="text-base font-bold tabular-nums">
+              Patient owes <span className={patientOwesColor}>{fmt(est.patientOwes)}</span>
+            </span>
+          </div>
+          {!est.medicaidCovers && hasBenefitsData && (
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Ded. {fmt(est.appliedDeductible)} · Co-ins/Copay {fmt(est.patientCoinsurance)}
+            </p>
+          )}
+          {est.medicaidCovers && (
+            <p className="text-xs text-green-600 mt-0.5">{est.medicaidNote}</p>
+          )}
+        </div>
+      </div>
 
       {/* Line items table */}
-      <div className="overflow-x-auto mb-3">
+      <div className="overflow-x-auto">
         <table className="w-full text-left">
           <thead>
-            <tr className="border-b border-muted">
-              <th className="pb-1.5 pr-3 text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Product</th>
-              <th className="pb-1.5 pr-3 text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">HCPC</th>
-              <th className="pb-1.5 pr-3 text-[10px] uppercase tracking-wider text-muted-foreground font-semibold text-right">Units</th>
-              <th className="pb-1.5 pr-3 text-[10px] uppercase tracking-wider text-muted-foreground font-semibold text-right">Rate</th>
-              <th className="pb-1.5 text-[10px] uppercase tracking-wider text-muted-foreground font-semibold text-right">Allowed</th>
+            <tr className="border-b-2 border-muted">
+              <th className="pb-2 pr-3 text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Item</th>
+              <th className="pb-2 pr-3 text-[10px] uppercase tracking-wider text-muted-foreground font-semibold text-right">Allowed</th>
+              <th className="pb-2 pr-3 text-[10px] uppercase tracking-wider text-muted-foreground font-semibold text-right">Ins. Paid</th>
+              <th className="pb-2 pr-3 text-[10px] uppercase tracking-wider text-muted-foreground font-semibold text-right">Deductible</th>
+              <th className="pb-2 pr-3 text-[10px] uppercase tracking-wider text-muted-foreground font-semibold text-right">Co-ins / Copay</th>
+              <th className="pb-2 text-[10px] uppercase tracking-wider text-muted-foreground font-semibold text-right">Patient Owes</th>
             </tr>
           </thead>
           <tbody>
-            {est.lines.map((line) => (
-              <LineRow
-                key={`${line.hcpc}-${line.product}`}
-                label={line.product}
-                hcpc={line.hcpc}
-                units={line.units}
-                rate={line.rate}
-                allowed={line.allowed}
-              />
+            {displayLines.map((line) => (
+              <tr key={line.product} className="border-b border-muted/40 last:border-0">
+                <td className="py-2 pr-3 text-sm font-medium">{line.product}</td>
+                <td className="py-2 pr-3 text-sm text-right tabular-nums">{fmt(line.allowed)}</td>
+                <td className={`py-2 pr-3 text-sm text-right tabular-nums ${insPaidColor}`}>{fmt(line.insurancePaid)}</td>
+                <td className="py-2 pr-3 text-sm text-right tabular-nums">{fmt(line.deductible)}</td>
+                <td className="py-2 pr-3 text-sm text-right tabular-nums">{fmt(line.coinsurance)}</td>
+                <td className={`py-2 text-sm text-right tabular-nums font-medium ${patientOwesColor}`}>{fmt(line.patientOwes)}</td>
+              </tr>
             ))}
           </tbody>
+          <tfoot>
+            <tr className="border-t-2 border-muted">
+              <td className="pt-2 pr-3 text-sm font-semibold">Total</td>
+              <td className="pt-2 pr-3 text-sm text-right tabular-nums font-semibold">{fmt(totals.allowed)}</td>
+              <td className={`pt-2 pr-3 text-sm text-right tabular-nums font-semibold ${insPaidColor}`}>{fmt(totals.insurancePaid)}</td>
+              <td className="pt-2 pr-3 text-sm text-right tabular-nums font-semibold">{fmt(totals.deductible)}</td>
+              <td className="pt-2 pr-3 text-sm text-right tabular-nums font-semibold">{fmt(totals.coinsurance)}</td>
+              <td className={`pt-2 text-sm text-right tabular-nums font-bold ${patientOwesColor}`}>{fmt(totals.patientOwes)}</td>
+            </tr>
+          </tfoot>
         </table>
       </div>
 
-      {/* Divider */}
-      <div className="border-t border-muted pt-2 space-y-0.5">
-        <SummaryRow label="Total Allowed" value={fmt(est.totalAllowed)} bold />
-
-        {est.medicaidCovers ? (
-          <div className="border-t border-muted mt-1 pt-1.5">
-            <SummaryRow label="Patient Owes" value="$0.00" bold highlight="green" />
-            <SummaryRow label="Insurance Pays" value={fmt(est.insurancePays)} highlight="green" />
-            <p className="text-xs text-green-700 mt-1">{est.medicaidNote}</p>
-          </div>
-        ) : hasBenefitsData ? (
-          <>
-            {est.appliedDeductible > 0 && (
-              <SummaryRow
-                label={`Deductible Applied (of ${fmt(parseFloat(patient.deductibleRemaining?.replace(/[$,]/g, "") || "0"))} remaining)`}
-                value={fmt(est.appliedDeductible)}
-              />
-            )}
-            <SummaryRow
-              label={`Coinsurance (${est.coinsurancePct}%)`}
-              value={fmt(est.patientCoinsurance)}
-            />
-            {est.oopMaxRemaining !== null && est.patientOwesRaw > est.oopMaxRemaining && (
-              <SummaryRow
-                label="OOP Max Cap Applied"
-                value={fmt(est.oopMaxRemaining)}
-                highlight="amber"
-              />
-            )}
-            <div className="border-t border-muted mt-1 pt-1.5">
-              <SummaryRow
-                label="Patient Owes"
-                value={fmt(est.patientOwes)}
-                bold
-                highlight={est.patientOwes === 0 ? "green" : est.patientOwes > 500 ? "red" : "amber"}
-              />
-              <SummaryRow
-                label="Insurance Pays"
-                value={fmt(est.insurancePays)}
-                highlight="green"
-              />
-            </div>
-          </>
-        ) : (
-          <p className="text-xs text-muted-foreground italic mt-1">
-            Run Stedi eligibility to see deductible/coinsurance breakdown.
-          </p>
-        )}
-      </div>
+      {/* Stedi prompt when no benefits data */}
+      {!est.medicaidCovers && !hasBenefitsData && (
+        <p className="text-xs text-muted-foreground italic">
+          Run Stedi eligibility to see deductible/coinsurance breakdown.
+        </p>
+      )}
     </Card>
   );
 }
