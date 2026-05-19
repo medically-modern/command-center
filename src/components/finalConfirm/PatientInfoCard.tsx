@@ -718,25 +718,35 @@ export function PatientInfoCard({ patient, onFieldChange }: Props) {
 
         {/* Monitor Qty (left) + Pump Qty (right) — always visible */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <div>
-            <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1">Monitor Qty</p>
-            <Input
-              className="h-8 text-sm"
-              type="number"
-              value={patient.monitorQty}
-              onChange={(e) => onFieldChange("monitorQty", e.target.value)}
-              placeholder="0"
-            />
+          <div className="flex items-start gap-2 min-w-0 rounded-lg p-1.5 -m-1.5">
+            <div className="h-8 w-8 rounded-md flex items-center justify-center shrink-0 bg-muted text-muted-foreground">
+              <Package className="h-4 w-4" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1">Monitor Qty</p>
+              <Input
+                className="h-8 text-sm"
+                type="number"
+                value={patient.monitorQty}
+                onChange={(e) => onFieldChange("monitorQty", e.target.value)}
+                placeholder="0"
+              />
+            </div>
           </div>
-          <div>
-            <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1">Pump Qty</p>
-            <Input
-              className="h-8 text-sm"
-              type="number"
-              value={patient.pumpQty}
-              onChange={(e) => onFieldChange("pumpQty", e.target.value)}
-              placeholder="0"
-            />
+          <div className="flex items-start gap-2 min-w-0 rounded-lg p-1.5 -m-1.5">
+            <div className="h-8 w-8 rounded-md flex items-center justify-center shrink-0 bg-muted text-muted-foreground">
+              <Package className="h-4 w-4" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1">Pump Qty</p>
+              <Input
+                className="h-8 text-sm"
+                type="number"
+                value={patient.pumpQty}
+                onChange={(e) => onFieldChange("pumpQty", e.target.value)}
+                placeholder="0"
+              />
+            </div>
           </div>
         </div>
 
