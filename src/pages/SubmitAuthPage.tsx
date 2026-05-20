@@ -16,7 +16,8 @@ import { SendToMondayButton } from "@/components/samantha/SendToMondayButton";
 import { Button } from "@/components/ui/button";
 import { EscalateButton } from "@/components/samantha/EscalateButton";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
-import { RotateCcw, Stethoscope, ArrowLeft, Clock , Save} from "lucide-react";
+import { RotateCcw, Stethoscope, ArrowLeft, Clock, Save, Zap } from "lucide-react";
+import { resolveHcpcs } from "@/lib/samantha/hcpcRules";
 import { toast } from "sonner";
 import { sendPatientToMonday } from "@/lib/samantha/mondayWrite";
 import { writeLongText, COL } from "@/lib/samantha/mondayApi";
@@ -60,6 +61,18 @@ const SubmitAuthPage = () => {
     toast.success("Cleared local edits — refetching from Monday");
     refetch();
   };
+
+  // Show "Trigger DVS" when Medicaid appears in either insurance AND
+  // the serving includes supplies (infusion sets / cartridges).
+  const showTriggerDvs = useMemo(() => {
+    if (!selected) return false;
+    const pri = (selected.primaryInsurance ?? "").toLowerCase();
+    const sec = (selected.secondaryInsurance ?? "").toLowerCase();
+    const hasMedicaid = pri.includes("medicaid") || sec.includes("medicaid");
+    if (!hasMedicaid) return false;
+    const resolved = resolveHcpcs(selected.primaryInsurance || null, selected.serving || null, selected.secondaryInsurance ?? null);
+    return resolved.some((r) => r.product === "infusion_set" || r.product === "cartridge");
+  }, [selected?.primaryInsurance, selected?.secondaryInsurance, selected?.serving]);
 
   const handleSend = async () => {
     if (!selected) return;
@@ -130,6 +143,24 @@ const SubmitAuthPage = () => {
                     escalated={!!selected.escalated}
                     onToggle={() => update(selected.id, { escalated: !selected.escalated })}
                   />
+
+                  {showTriggerDvs && (
+                    <div className="flex justify-center">
+                      <Button
+                        onClick={() => update(selected.id, { triggerDvs: !selected.triggerDvs })}
+                        variant="outline"
+                        className={
+                          selected.triggerDvs
+                            ? "gap-2 bg-blue-100 hover:bg-blue-200 !text-blue-700 border-blue-400 shadow-md"
+                            : "gap-2 border-blue-300 !text-blue-600 hover:bg-blue-50"
+                        }
+                      >
+                        <Zap className="h-4 w-4" />
+                        {selected.triggerDvs ? "DVS Triggered" : "Trigger DVS"}
+                      </Button>
+                    </div>
+                  )}
+
                   <SendToMondayButton onSend={handleSend} disabled={!selected} />
                 </>
               )}
