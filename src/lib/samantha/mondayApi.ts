@@ -616,7 +616,8 @@ export async function writeLocation(
       change_column_value(board_id: $boardId, item_id: $itemId, column_id: $columnId, value: $value) { id }
     }
   `;
-  const val = address ? { address, lat, lng } : {};
+  if (!address) return; // no-op: writing {} to a location column creates a phantom
+  const val = { address, lat, lng };
   await gql(query, {
     boardId: BOARD_ID,
     itemId,

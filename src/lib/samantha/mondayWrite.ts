@@ -750,7 +750,7 @@ export async function sendPatientToMonday(p: Patient, context: "benefits" | "sub
     });
   }
   // Patient Address (location column)
-  if (p.patientAddress !== undefined) {
+  if (p.patientAddress) {
     tasks.push({
       label: 'Patient Address',
       columnId: COL.patientAddress,
