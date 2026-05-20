@@ -33,6 +33,7 @@ import {
 import { useState } from "react";
 import { cn } from "@/lib/utils";
 import {
+  AlertTriangle,
   ChevronDown,
   ChevronRight,
   User,
@@ -246,29 +247,35 @@ function AuthDetailBlock({
 }) {
   if (!authId && !authStart && !authEnd && !authUnits) return null;
   return (
-    <div className="mt-2 pl-10 grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+    <div className="mt-2 pl-10 space-y-1.5 text-xs">
+      {/* Auth ID row — full width */}
       {authId && (
         <div>
           <span className="text-muted-foreground">Auth ID:</span>{" "}
-          <span className="font-medium">{authId}</span>
+          <span className="font-semibold font-mono">{authId}</span>
+        </div>
+      )}
+      {/* Start + End side by side */}
+      {(authStart || authEnd) && (
+        <div className="flex items-center gap-4">
+          {authStart && (
+            <div>
+              <span className="text-muted-foreground">Start:</span>{" "}
+              <span className="font-medium">{formatDateMDY(authStart)}</span>
+            </div>
+          )}
+          {authEnd && (
+            <div>
+              <span className="text-muted-foreground">End:</span>{" "}
+              <span className="font-medium">{formatDateMDY(authEnd)}</span>
+            </div>
+          )}
         </div>
       )}
       {authUnits && (
         <div>
           <span className="text-muted-foreground">Units:</span>{" "}
           <span className="font-medium">{authUnits}</span>
-        </div>
-      )}
-      {authStart && (
-        <div>
-          <span className="text-muted-foreground">Start:</span>{" "}
-          <span className="font-medium">{formatDateMDY(authStart)}</span>
-        </div>
-      )}
-      {authEnd && (
-        <div>
-          <span className="text-muted-foreground">End:</span>{" "}
-          <span className="font-medium">{formatDateMDY(authEnd)}</span>
         </div>
       )}
     </div>
@@ -454,7 +461,6 @@ export function PatientInfoCard({ patient, onFieldChange }: Props) {
           const hasZip = zipPattern.test(addr);
           const isAllCaps = addr.length > 3 && addr === addr.toUpperCase() && addr.match(new RegExp("[A-Z]"));
           const hasError = addr ? (!hasZip || isAllCaps) : !addr;
-          const errorMsg = !addr ? null : isAllCaps ? "Address should not be all uppercase" : !hasZip ? "Zip code is missing" : null;
           return (
             <div className={cn("flex items-start gap-2 min-w-0 rounded-lg p-1.5 -m-1.5 transition-colors", hasError && "bg-red-50 dark:bg-red-950/20 ring-1 ring-red-200 dark:ring-red-800/40")}>
               <div className={cn("h-8 w-8 rounded-md flex items-center justify-center shrink-0", hasError ? "bg-red-100 dark:bg-red-900/30 text-red-500" : "bg-muted text-muted-foreground")}>
@@ -467,8 +473,14 @@ export function PatientInfoCard({ patient, onFieldChange }: Props) {
                   onChange={handleAddressChange}
                   placeholder="Start typing address\u2026"
                 />
-                {errorMsg && (
-                  <p className="text-[11px] text-red-500 font-medium mt-1">{errorMsg}</p>
+                {addr && isAllCaps && (
+                  <div className="mt-1.5 rounded-md bg-red-600 text-white px-3 py-1.5 text-xs font-bold flex items-center gap-2">
+                    <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+                    Address is in ALL CAPS \u2014 must be re-entered with correct formatting
+                  </div>
+                )}
+                {addr && !isAllCaps && !hasZip && (
+                  <p className="text-[11px] text-red-500 font-medium mt-1">Zip code is missing</p>
                 )}
               </div>
             </div>
