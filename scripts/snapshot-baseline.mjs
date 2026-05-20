@@ -51,6 +51,13 @@ const PROF_GROUP  = "group_mm1xf2jb";
 const SUB_BOARD   = 18407459988;
 const SUB_GROUP   = "topics";
 
+/* Boards with escalation columns — used for systemMgmt count */
+const ESCALATION_BOARDS = [
+  { boardId: 18406060017, colId: "color_mm1x7997", groups: ["group_mm1xf2jb"] },                    // Medical Evaluation
+  { boardId: 18410601299, colId: "color_mm2vsh2f", groups: ["group_mm1xr3q3", "group_mm1x1416", "group_mm2v6d1z", "group_mm316hg2"] }, // Insurance
+  { boardId: 18410804557, colId: "color_mm1x7997", groups: ["group_mm1wvq8p", "group_mm2x8jtj"] },  // Welcome Call
+];
+
 /* ── Monday GraphQL helper ────────────────────────────────── */
 
 async function gql(query, variables = {}) {
@@ -162,6 +169,54 @@ async function countMashekeStages() {
   return { counts, ids };
 }
 
+/**
+ * Count escalated patients across all boards that have an escalation column.
+ * Mirrors the logic in useRoleCounts.ts → fetchAllPatients().filter(p => p.escalated).
+ */
+async function countEscalations() {
+  let total = 0;
+  for (const { boardId, colId, groups } of ESCALATION_BOARDS) {
+    const compareValue = JSON.stringify(groups);
+    const query = `
+      query ($bid: ID!, $cols: [String!]) {
+        boards(ids: [$bid]) {
+          items_page(limit: ${PAGE}, query_params: {
+            rules: [{ column_id: "group", compare_value: ${compareValue} }]
+          }) {
+            cursor
+            items { id column_values(ids: $cols) { id text } }
+          }
+        }
+      }`;
+    const data = await gql(query, { bid: boardId, cols: [colId] });
+    const page = data?.boards?.[0]?.items_page;
+    const allItems = [...(page?.items ?? [])];
+    let cursor = page?.cursor ?? null;
+
+    while (cursor) {
+      const nextQuery = `
+        query ($cursor: String!, $cols: [String!]) {
+          next_items_page(limit: ${PAGE}, cursor: $cursor) {
+            cursor
+            items { id column_values(ids: $cols) { id text } }
+          }
+        }`;
+      const next = await gql(nextQuery, { cursor, cols: [colId] });
+      const nextItems = next?.next_items_page?.items ?? [];
+      allItems.push(...nextItems);
+      cursor = next?.next_items_page?.cursor ?? null;
+    }
+
+    for (const item of allItems) {
+      const txt = item.column_values?.find((c) => c.id === colId)?.text ?? "";
+      if (txt === "Escalation Required" || txt === "Escalate") {
+        total++;
+      }
+    }
+  }
+  return total;
+}
+
 /* ── Main ─────────────────────────────────────────────────── */
 
 async function main() {
@@ -173,6 +228,7 @@ async function main() {
     welcomeCallResult, finalConfirmResult,
     profileResult,
     subscriptionResult,
+    systemMgmtCount,
   ] = await Promise.all([
     countGroup(SAM_BOARD, SAM_GROUPS.benefits),
     countGroup(SAM_BOARD, SAM_GROUPS.submitAuth),
@@ -182,6 +238,7 @@ async function main() {
     countGroup(WC_BOARD, FC_GROUP),
     countGroup(PROF_BOARD, PROF_GROUP),
     countGroup(SUB_BOARD, SUB_GROUP),
+    countEscalations(),
   ]);
 
   const counts = {
@@ -193,6 +250,7 @@ async function main() {
     finalConfirm: finalConfirmResult.count,
     profile: profileResult.count,
     subscription: subscriptionResult.count,
+    systemMgmt: systemMgmtCount,
   };
 
   const patientIds = {
