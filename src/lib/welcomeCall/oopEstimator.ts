@@ -41,7 +41,7 @@ export const PAYER_RATE_SCHEDULE: Record<string, PayerRates> = {
   "Aetna Commercial": { pump_rate: 1597.0, infusion_rate: 23.51, cartridge_rate: 0.92, monitor_rate: 191.17, sensor_rate: 173.41 },
   "Aetna Medicare": { pump_rate: 1597.0, infusion_rate: 23.51, cartridge_rate: 0.92, monitor_rate: 191.17, sensor_rate: 201.77 },
   "Wellcare": { pump_rate: null, infusion_rate: null, cartridge_rate: null, monitor_rate: 241.97, sensor_rate: 229.13 },
-  "Humana": { pump_rate: 5431.0, infusion_rate: 25.19, cartridge_rate: 3.38, monitor_rate: 295.36, sensor_rate: 317.97 },
+  "Humana": { pump_rate: 5431.0, infusion_rate: 16.37, cartridge_rate: 2.20, monitor_rate: 295.36, sensor_rate: 317.97 },
   "Cigna": { pump_rate: 4200.0, infusion_rate: 17.75, cartridge_rate: 2.36, monitor_rate: 214.05, sensor_rate: 170.42 },
   "Midlands Choice": { pump_rate: 5644.0, infusion_rate: 31.68, cartridge_rate: 3.96, monitor_rate: 331.40, sensor_rate: 349.77 },
   "Horizon BCBS": { pump_rate: 4300.0, infusion_rate: 10.90, cartridge_rate: 3.10, monitor_rate: 480.0, sensor_rate: 445.0 },
@@ -108,8 +108,13 @@ const ZERO_OOP_PAYERS = new Set([
 // use real Stedi coinsurance (typically 20% for Part B DME).
 
 const COINSURANCE_OVERRIDES: Record<string, number> = {
-  "Humana": 0,
+  // Humana removed — now handled per-product (0% CGM, Stedi% pump/supplies)
 };
+
+// ─── Humana split coinsurance ───────────────────────────────────────────────
+// CGM products (monitor + sensors) = 0% coinsurance
+// Pump and supply products = real Stedi coinsurance
+const HUMANA_CGM_PRODUCTS = new Set(["CGM Monitor", "CGM Sensors"]);
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -378,16 +383,20 @@ export function estimateOop(inputs: OopInputs): OopResult {
   const parsedCoinsurance = parseNumber(inputs.stediCoinsurance);
   const oopMaxRaw = parseNumber(inputs.oopMaxRemaining);
 
+  // Humana CGM-only: coinsurance is known (0%) even without Stedi data.
+  const isHumanaCgmOnly = primaryInsurance === "Humana" &&
+    lines.every((l) => HUMANA_CGM_PRODUCTS.has(l.product));
+
   // Track which specific fields are missing for granular UI warnings
   const missingFields: string[] = [];
   if (parsedDeductible === null) missingFields.push("deductible");
-  if (parsedCoinsurance === null && !hasCoinsuranceOverride) missingFields.push("coinsurance");
+  if (parsedCoinsurance === null && !hasCoinsuranceOverride && !isHumanaCgmOnly) missingFields.push("coinsurance");
   if (oopMaxRaw === null) missingFields.push("oopMax");
 
   // Can we compute patient costs? Need BOTH deductible AND coinsurance.
   // Missing ≠ zero. If either is absent, cost fields stay null.
   const hasDeductible = parsedDeductible !== null;
-  const hasCoinsurance = parsedCoinsurance !== null || hasCoinsuranceOverride;
+  const hasCoinsurance = parsedCoinsurance !== null || hasCoinsuranceOverride || isHumanaCgmOnly;
   const canCalculateCosts = hasDeductible && hasCoinsurance;
 
   const oopMaxRemaining = oopMaxRaw !== null ? oopMaxRaw : null;
@@ -419,7 +428,34 @@ export function estimateOop(inputs: OopInputs): OopResult {
 
   const appliedDeductible = round2(Math.min(totalAllowed, Math.max(0, deductibleRemaining)));
   const postDeductible = round2(totalAllowed - appliedDeductible);
-  const patientCoinsurance = round2(postDeductible * (coinsurancePct / 100));
+
+  // ─── Humana split coinsurance ─────────────────────────────────────────
+  // CGM products (monitor + sensors) = 0% coinsurance
+  // Pump and supply products = real Stedi coinsurance %
+  // All other payers use the single coinsurancePct for everything.
+  let patientCoinsurance: number;
+  if (primaryInsurance === "Humana") {
+    const cgmAllowed = lines
+      .filter((l) => HUMANA_CGM_PRODUCTS.has(l.product))
+      .reduce((sum, l) => sum + l.allowed, 0);
+    const nonCgmAllowed = totalAllowed - cgmAllowed;
+
+    // Deductible is applied proportionally — figure out post-ded for each bucket
+    const cgmProportion = totalAllowed > 0 ? cgmAllowed / totalAllowed : 0;
+    const cgmDed = round2(appliedDeductible * cgmProportion);
+    const nonCgmDed = round2(appliedDeductible - cgmDed);
+
+    const cgmPostDed = round2(cgmAllowed - cgmDed);
+    const nonCgmPostDed = round2(nonCgmAllowed - nonCgmDed);
+
+    // CGM: 0% coinsurance, Pump/Supplies: Stedi %
+    const cgmCoins = 0;
+    const nonCgmCoins = round2(nonCgmPostDed * (coinsurancePct / 100));
+    patientCoinsurance = round2(cgmCoins + nonCgmCoins);
+  } else {
+    patientCoinsurance = round2(postDeductible * (coinsurancePct / 100));
+  }
+
   const patientOwesRaw = round2(appliedDeductible + patientCoinsurance);
   const patientOwes = oopMaxRemaining !== null
     ? round2(Math.min(patientOwesRaw, Math.max(0, oopMaxRemaining)))
