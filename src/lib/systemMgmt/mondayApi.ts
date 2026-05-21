@@ -446,6 +446,32 @@ export async function removeEscalation(
 }
 
 
+// ── Stage advancer write ────────────────────────────────────
+
+/**
+ * Write a new Stage Advancer value for a patient on a given board.
+ * Uses label-based write so we don't need to know the index.
+ */
+export async function writeStageAdvancer(
+  patient: Pick<SystemPatient, "id" | "boardId">,
+  newStageLabel: string,
+): Promise<void> {
+  const board = BOARDS.find((b) => b.boardId === patient.boardId);
+  if (!board?.stageAdvancerColId) {
+    throw new Error("This board has no Stage Advancer column");
+  }
+  const value = JSON.stringify({ label: newStageLabel });
+  await gql(
+    `mutation { change_column_value(item_id: ${patient.id}, board_id: ${patient.boardId}, column_id: "${board.stageAdvancerColId}", value: ${JSON.stringify(value)}) { id } }`,
+  );
+}
+
+/** Valid stage labels per board for the Stage Manager */
+export const STAGE_OPTIONS: Record<number, string[]> = {
+  18406060017: ["Evaluate MN", "Send Request", "Confirm Receipt", "Chase Clinicals"],
+  18410601299: ["Benefits / SoS", "Submit Auth.", "Auth. Outstanding", "Auth Denied"],
+};
+
 // ── Completion map helper ────────────────────────────────────
 
 /** Short labels for each board's completed stage */

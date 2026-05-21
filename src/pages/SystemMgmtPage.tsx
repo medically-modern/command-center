@@ -14,6 +14,7 @@ import {
   searchPatients,
 } from "@/hooks/systemMgmt/useSystemPatients";
 import type { SystemPatient } from "@/lib/systemMgmt/mondayApi";
+import { writeStageAdvancer, STAGE_OPTIONS } from "@/lib/systemMgmt/mondayApi";
 import { EscalationDetailModal } from "@/components/shared/EscalationDetailModal";
 import { parseEscalation } from "@/lib/shared/escalation";
 import { Button } from "@/components/ui/button";
@@ -33,12 +34,13 @@ import {
   CheckCircle2,
   FileText,
   X,
+  ArrowRightLeft,
 } from "lucide-react";
 import { toast } from "sonner";
 import { PipelineChart, DAY_BUCKETS } from "@/components/systemMgmt/PipelineChart";
 import { OperationsTab } from "@/components/systemMgmt/OperationsTab";
 
-type Tab = "search" | "escalations" | "operations";
+type Tab = "search" | "escalations" | "operations" | "stageManager";
 
 const SystemMgmtPage = () => {
   const navigate = useNavigate();
@@ -47,7 +49,7 @@ const SystemMgmtPage = () => {
     useSystemPatients();
 
   const tabParam = searchParams.get("tab");
-  const initialTab: Tab = tabParam === "escalations" ? "escalations" : tabParam === "operations" ? "operations" : "search";
+  const initialTab: Tab = tabParam === "escalations" ? "escalations" : tabParam === "operations" ? "operations" : tabParam === "stageManager" ? "stageManager" : "search";
   const [activeTab, setActiveTab] = useState<Tab>(initialTab);
   const [query, setQuery] = useState("");
   const [removingId, setRemovingId] = useState<string | null>(null);
@@ -214,6 +216,12 @@ const SystemMgmtPage = () => {
             alert={escalated.length > 0}
           />
           <TabBtn
+            active={activeTab === "stageManager"}
+            onClick={() => setActiveTab("stageManager")}
+            icon={<ArrowRightLeft className="w-4 h-4" />}
+            label="Stage Manager"
+          />
+          <TabBtn
             active={activeTab === "operations"}
             onClick={() => setActiveTab("operations")}
             icon={<Activity className="w-4 h-4" />}
@@ -229,6 +237,8 @@ const SystemMgmtPage = () => {
             <LoadingState />
           ) : error ? (
             <ErrorState error={error} onRetry={handleRefresh} />
+          ) : activeTab === "stageManager" ? (
+            <StageManagerView patients={patients} onMoved={refetch} />
           ) : activeTab === "operations" ? (
             <OperationsTab />
           ) : activeTab === "search" ? (
@@ -606,6 +616,225 @@ function NotesPanel({
           ))
         )}
       </div>
+    </div>
+  );
+}
+
+// ── Stage Manager View ──────────────────────────────────────
+
+const MOVABLE_BOARD_IDS = new Set([18406060017, 18410601299]);
+
+function StageManagerView({
+  patients,
+  onMoved,
+}: {
+  patients: SystemPatient[];
+  onMoved: () => void;
+}) {
+  const [query, setQuery] = useState("");
+  const [selected, setSelected] = useState<SystemPatient | null>(null);
+  const [targetStage, setTargetStage] = useState<string | null>(null);
+  const [moving, setMoving] = useState(false);
+  const [lastMoved, setLastMoved] = useState<{ name: string; from: string; to: string } | null>(null);
+
+  // Only show patients from Med Eval and Insurance boards
+  const movablePatients = useMemo(
+    () => patients.filter((p) => MOVABLE_BOARD_IDS.has(p.boardId) && !p.isCompleted),
+    [patients],
+  );
+
+  const results = useMemo(() => {
+    if (!query.trim()) return [];
+    return searchPatients(movablePatients, query);
+  }, [movablePatients, query]);
+
+  const stageOptions = selected ? (STAGE_OPTIONS[selected.boardId] ?? []) : [];
+
+  const handleSelect = (p: SystemPatient) => {
+    setSelected(p);
+    setTargetStage(null);
+  };
+
+  const handleMove = async () => {
+    if (!selected || !targetStage) return;
+    setMoving(true);
+    try {
+      await writeStageAdvancer(selected, targetStage);
+      const fromStage = selected.pipelineStage;
+      setLastMoved({ name: selected.name, from: fromStage, to: targetStage });
+      toast.success(`Moved ${selected.name} → ${targetStage}`);
+      setSelected(null);
+      setTargetStage(null);
+      setQuery("");
+      onMoved();
+    } catch (e) {
+      toast.error("Move failed", {
+        description: e instanceof Error ? e.message : String(e),
+      });
+    } finally {
+      setMoving(false);
+    }
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="rounded-xl bg-card border shadow-card p-5 space-y-1">
+        <h2 className="text-sm font-semibold flex items-center gap-2">
+          <ArrowRightLeft className="w-4 h-4 text-primary" />
+          Stage Manager
+        </h2>
+        <p className="text-xs text-muted-foreground">
+          Search for a patient on the Medical Evaluation or Insurance board, then move them to a different stage.
+        </p>
+      </div>
+
+      {/* Success banner */}
+      {lastMoved && (
+        <div className="flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3">
+          <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+          <span className="text-sm text-emerald-800">
+            <strong>{lastMoved.name}</strong> moved from <strong>{lastMoved.from}</strong> → <strong>{lastMoved.to}</strong>
+          </span>
+          <button onClick={() => setLastMoved(null)} className="ml-auto text-emerald-600 hover:text-emerald-800">
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
+
+      {/* Search */}
+      <div className="relative">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+        <Input
+          placeholder="Search by patient name or phone…"
+          value={query}
+          onChange={(e) => { setQuery(e.target.value); if (selected) setSelected(null); }}
+          className="pl-10 h-12 text-base"
+          autoFocus
+        />
+        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">
+          {movablePatients.length} patients
+        </span>
+      </div>
+
+      {/* Search results */}
+      {!selected && query.trim() && results.length === 0 && (
+        <div className="rounded-xl bg-card border shadow-card p-8 text-center">
+          <p className="text-sm text-muted-foreground">No patients found matching &ldquo;{query}&rdquo;</p>
+        </div>
+      )}
+
+      {!selected && results.length > 0 && (
+        <div className="rounded-xl bg-card border shadow-card overflow-hidden divide-y">
+          <div className="px-4 py-2 bg-muted/30">
+            <p className="text-xs text-muted-foreground">{results.length} result{results.length !== 1 ? "s" : ""} — click to select</p>
+          </div>
+          {results.slice(0, 30).map((p) => (
+            <button
+              key={`${p.boardId}-${p.id}`}
+              onClick={() => handleSelect(p)}
+              className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-muted/30 transition-colors"
+            >
+              <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold text-xs shrink-0">
+                {p.name?.[0] ?? "?"}
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="text-sm font-medium truncate">{p.name}</div>
+                <div className="text-xs text-muted-foreground">{p.phone || "No phone"}</div>
+              </div>
+              <div className="text-right shrink-0">
+                <div className="text-[10px] uppercase tracking-wider text-muted-foreground">{p.boardName}</div>
+                <div className="text-xs font-medium text-primary">{p.pipelineStage}</div>
+              </div>
+              <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0" />
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* Selected patient — move UI */}
+      {selected && (
+        <div className="rounded-xl bg-card border-2 border-primary/30 shadow-card overflow-hidden">
+          <div className="bg-primary/5 px-5 py-4 border-b flex items-center gap-3">
+            <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold text-sm shrink-0">
+              {selected.name?.[0] ?? "?"}
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="text-base font-semibold truncate">{selected.name}</div>
+              <div className="text-xs text-muted-foreground">{selected.phone || "No phone"} · {selected.boardName}</div>
+            </div>
+            <Button variant="ghost" size="sm" onClick={() => { setSelected(null); setTargetStage(null); }} className="text-xs gap-1">
+              <X className="w-3 h-3" /> Change
+            </Button>
+          </div>
+
+          <div className="p-5 space-y-4">
+            {/* Current stage */}
+            <div>
+              <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1.5">Current Stage</p>
+              <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-md border bg-muted/30 text-sm font-medium">
+                <Database className="w-3.5 h-3.5 text-muted-foreground" />
+                {selected.pipelineStage}
+              </div>
+            </div>
+
+            {/* Target stage picker */}
+            <div>
+              <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-2">Move To</p>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                {stageOptions.map((stage) => {
+                  const isCurrent = stage === selected.pipelineStage || stage === selected.stageAdvancerText;
+                  const isSelected = stage === targetStage;
+                  return (
+                    <button
+                      key={stage}
+                      onClick={() => setTargetStage(isSelected ? null : stage)}
+                      disabled={isCurrent}
+                      className={cn(
+                        "rounded-lg border-2 px-3 py-3 text-sm font-medium transition-colors text-center",
+                        isCurrent
+                          ? "border-muted bg-muted/30 text-muted-foreground cursor-not-allowed opacity-50"
+                          : isSelected
+                            ? "border-primary bg-primary/10 text-primary"
+                            : "border-border bg-background hover:bg-primary/5 hover:border-primary/40",
+                      )}
+                    >
+                      {stage}
+                      {isCurrent && <span className="block text-[10px] mt-0.5 text-muted-foreground">(current)</span>}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Move button */}
+            <div className="flex items-center justify-end gap-3 pt-2">
+              {targetStage && (
+                <p className="text-xs text-muted-foreground">
+                  {selected.pipelineStage} → <strong className="text-primary">{targetStage}</strong>
+                </p>
+              )}
+              <Button
+                size="lg"
+                onClick={handleMove}
+                disabled={!targetStage || moving}
+                className="gap-2 bg-primary hover:bg-primary/90 text-white shadow-elevate min-w-[160px] justify-center"
+              >
+                {moving ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Moving…
+                  </>
+                ) : (
+                  <>
+                    <ArrowRightLeft className="w-4 h-4" />
+                    Move Patient
+                  </>
+                )}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
