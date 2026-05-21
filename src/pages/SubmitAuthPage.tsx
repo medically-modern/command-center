@@ -16,7 +16,7 @@ import { SendToMondayButton } from "@/components/samantha/SendToMondayButton";
 import { Button } from "@/components/ui/button";
 import { EscalateButton } from "@/components/samantha/EscalateButton";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
-import { RotateCcw, Stethoscope, ArrowLeft, Clock, Save, Zap } from "lucide-react";
+import { RotateCcw, Stethoscope, ArrowLeft, Clock, Save, Zap, AlertTriangle } from "lucide-react";
 import { resolveHcpcs } from "@/lib/samantha/hcpcRules";
 import { toast } from "sonner";
 import { sendPatientToMonday } from "@/lib/samantha/mondayWrite";
@@ -24,6 +24,54 @@ import { writeLongText, COL } from "@/lib/samantha/mondayApi";
 import { FollowUpModal } from "@/components/samantha/FollowUpModal";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useBackNavigation } from "@/hooks/useBackNavigation";
+
+const CARECENTRIX_MODIFIERS: { hcpc: string; modifiers: string }[] = [
+  { hcpc: "A4230", modifiers: "NU SC" },
+  { hcpc: "A4232", modifiers: "NU SC" },
+  { hcpc: "A4239", modifiers: "NU" },
+  { hcpc: "E2103", modifiers: "NU" },
+  { hcpc: "E0784", modifiers: "NU" },
+];
+
+function CarecentrixModifierNote() {
+  const [showTable, setShowTable] = useState(false);
+  return (
+    <div className="rounded-xl bg-card border border-red-200 shadow-card p-4">
+      <div className="flex items-center gap-3">
+        <AlertTriangle className="h-5 w-5 text-red-600 flex-shrink-0" />
+        <p className="text-sm text-red-600 font-semibold">
+          Check Modifiers for carecentrix here.
+        </p>
+        <button
+          onMouseEnter={() => setShowTable(true)}
+          onMouseLeave={() => setShowTable(false)}
+          onClick={() => setShowTable((v) => !v)}
+          className="ml-2 px-3 py-1 text-xs font-medium rounded-md border border-red-300 bg-red-50 text-red-700 hover:bg-red-100 transition-colors"
+        >
+          View Modifiers
+        </button>
+      </div>
+      {showTable && (
+        <table className="mt-3 ml-8 text-sm">
+          <thead>
+            <tr className="border-b border-muted">
+              <th className="pr-6 pb-1 text-left text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">HCPC</th>
+              <th className="pb-1 text-left text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Modifiers</th>
+            </tr>
+          </thead>
+          <tbody>
+            {CARECENTRIX_MODIFIERS.map((row) => (
+              <tr key={row.hcpc} className="border-b border-muted/40 last:border-0">
+                <td className="pr-6 py-1 font-mono font-medium">{row.hcpc}</td>
+                <td className="py-1 font-mono">{row.modifiers}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </div>
+  );
+}
 
 const SubmitAuthPage = () => {
   const navigate = useNavigate();
@@ -138,6 +186,9 @@ const SubmitAuthPage = () => {
               {selected && (
                 <>
                   <PatientProfileCard patient={selected} onUpdate={(p) => update(selected.id, p)} />
+                  {(selected.referralSource || "").toLowerCase().includes("carecentrix") && (
+                    <CarecentrixModifierNote />
+                  )}
                   <AuthorizationsPanel patient={selected} onCodeChange={updateCode} onNotesChange={(v) => update(selected.id, { notes: v })} onSaveNotesToMonday={(v) => writeLongText(selected.id, COL.callReferenceNotes, v)} />
                   <EscalateButton
                     escalated={!!selected.escalated}
