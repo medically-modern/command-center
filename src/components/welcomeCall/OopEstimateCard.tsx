@@ -230,11 +230,18 @@ export function OopEstimateCard({ patient, infusionSets }: Props) {
               Patient owes <span className={headerOwesColor}>{fmtOrDash(est.patientOwes)}{hasMissing && est.patientOwes !== null && " *"}</span>
             </span>
           </div>
-          {est.canCalculateCosts && !est.medicaidCovers && (
-            <p className="text-xs text-muted-foreground mt-0.5">
-              Ded. {fmt(est.appliedDeductible!)} · Co-ins/Copay {fmt(est.patientCoinsurance!)}
-            </p>
-          )}
+          {est.canCalculateCosts && !est.medicaidCovers && (() => {
+            const oopMaxHit = est.patientOwes !== null && est.patientOwesRaw !== null && est.patientOwes < est.patientOwesRaw;
+            const displayCoins = oopMaxHit
+              ? Math.max(0, est.patientOwes! - est.appliedDeductible!)
+              : est.patientCoinsurance!;
+            return (
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Ded. {fmt(est.appliedDeductible!)} · Co-ins/Copay {fmt(displayCoins)}
+                {oopMaxHit && <span className="ml-1.5 text-amber-600 font-semibold">OOP Max Hit</span>}
+              </p>
+            );
+          })()}
           {est.medicaidCovers && (
             <p className="text-xs text-green-600 mt-0.5">{est.medicaidNote}</p>
           )}
