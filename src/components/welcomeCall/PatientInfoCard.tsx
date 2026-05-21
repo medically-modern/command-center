@@ -251,10 +251,12 @@ export function PatientInfoCard({ patient, onFieldChange, onSavePhone, onSaveSec
   const hasSecondaryInsurance = !!patient.secondaryInsurance && patient.secondaryInsurance !== "";
   const hasMemberId2 = !!patient.memberId2 && patient.memberId2 !== "";
 
-  // Medicare A&B warning: always warn if secondary is empty
+  // Medicare A&B warnings when secondary is empty
   const isMedicareAB = patient.primaryInsurance === "Medicare A&B";
   const secondaryMissing = !hasSecondaryInsurance && !patient.secondaryInsuranceEdited;
   const showMedicareSecondaryWarning = isMedicareAB && secondaryMissing;
+  const qmbYes = (patient.stediQmb || "").trim().toUpperCase() === "YES";
+  const showQmbWarning = isMedicareAB && qmbYes && secondaryMissing;
 
   return (
     <div className="space-y-4">
@@ -406,6 +408,11 @@ export function PatientInfoCard({ patient, onFieldChange, onSavePhone, onSaveSec
                 {showMedicareSecondaryWarning && (
                   <p className="text-xs text-red-600 font-semibold mt-1.5">
                     Patient likely has a secondary insurance, ask on welcome call.
+                  </p>
+                )}
+                {showQmbWarning && (
+                  <p className="text-xs text-red-600 font-semibold mt-1">
+                    Stedi QMB returned YES — patient very likely has a secondary supplement plan.
                   </p>
                 )}
               </div>
