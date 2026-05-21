@@ -104,15 +104,17 @@ function SelectField({
   options,
   value,
   onChange,
+  suppressWarning,
 }: {
   label: string;
   icon?: React.ReactNode;
   options: { index: number; label: string }[];
   value: string;
   onChange: (index: number, label: string) => void;
+  suppressWarning?: boolean;
 }) {
   const selectedOpt = options.find((o) => o.label === value);
-  const isEmpty = !value;
+  const isEmpty = !value && !suppressWarning;
   const selectContent = (
     <div className={icon ? "min-w-0 flex-1" : ""}>
       <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1">{label}</p>
@@ -569,31 +571,35 @@ export function PatientInfoCard({ patient, onFieldChange }: Props) {
               label="Doctor Name"
               value={patient.doctorName}
               onChange={(v) => onFieldChange("doctorName", v)}
+              suppressWarning
             />
             <EditableTextField
               icon={<Hash className="h-4 w-4" />}
               label="NPI"
               value={patient.doctorNpi}
               onChange={(v) => onFieldChange("doctorNpi", v)}
+              suppressWarning
             />
             <EditableTextField
               icon={<Phone className="h-4 w-4" />}
               label="Doctor Phone"
               value={patient.doctorPhone}
               onChange={(v) => onFieldChange("doctorPhone", v)}
+              suppressWarning
             />
             <EditableTextField
               icon={<Mail className="h-4 w-4" />}
               label="Doctor Email"
               value={patient.doctorEmail}
               onChange={(v) => onFieldChange("doctorEmail", v)}
+              suppressWarning
             />
             <EditableTextField
               icon={<Send className="h-4 w-4" />}
               label="Fax"
               value={patient.doctorFax}
               onChange={(v) => onFieldChange("doctorFax", v)}
-              suppressWarning={patient.clinicalsMethod === "Parachute"}
+              suppressWarning
             />
             <SelectField
               label="Clinicals Method"
@@ -605,21 +611,22 @@ export function PatientInfoCard({ patient, onFieldChange }: Props) {
                 const opt = CLINICALS_METHOD_OPTIONS.find((o) => o.index === index);
                 if (opt) onFieldChange("clinicalsMethod", opt.label);
               }}
+              suppressWarning
             />
             <EditableTextField
               icon={<Building2 className="h-4 w-4" />}
               label="Clinic"
               value={patient.clinicName}
               onChange={(v) => onFieldChange("clinicName", v)}
+              suppressWarning
             />
           </div>
           {/* Clinic Address — full width with Google autocomplete */}
           {(() => {
             const clinicAddr = patient.clinicAddressEdited ?? patient.clinicAddress;
-            const isEmpty = !clinicAddr;
             return (
-              <div className={cn("flex items-start gap-2 min-w-0 rounded-lg p-1.5 mt-2 transition-colors", isEmpty && "bg-red-50 dark:bg-red-950/20 ring-1 ring-red-200 dark:ring-red-800/40")}>
-                <div className={cn("h-8 w-8 rounded-md flex items-center justify-center shrink-0", isEmpty ? "bg-red-100 dark:bg-red-900/30 text-red-500" : "bg-muted text-muted-foreground")}>
+              <div className="flex items-start gap-2 min-w-0 rounded-lg p-1.5 mt-2 transition-colors">
+                <div className="h-8 w-8 rounded-md flex items-center justify-center shrink-0 bg-muted text-muted-foreground">
                   <MapPin className="h-4 w-4" />
                 </div>
                 <div className="min-w-0 flex-1">
