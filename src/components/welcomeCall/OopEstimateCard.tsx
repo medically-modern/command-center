@@ -139,7 +139,10 @@ const FIELD_WARNINGS: Record<string, string> = {
 };
 
 export function OopEstimateCard({ patient, infusionSets }: Props) {
+  const isCarecentrix = (patient.primaryInsurance || "").toLowerCase().includes("carecentrix");
+
   const result = useMemo(() => {
+    if (isCarecentrix) return null;
     const parsedSets = parseInt(patient.qtyInf1 || "0", 10) + parseInt(patient.qtyInf2 || "0", 10);
     const sets = infusionSets ?? (parsedSets > 0 ? parsedSets : 3);
 
@@ -153,6 +156,7 @@ export function OopEstimateCard({ patient, infusionSets }: Props) {
       oopMaxRemaining: patient.oopMaxRemaining,
     });
   }, [
+    isCarecentrix,
     patient.primaryInsurance,
     patient.secondaryInsurance,
     patient.serving,
@@ -164,15 +168,29 @@ export function OopEstimateCard({ patient, infusionSets }: Props) {
     infusionSets,
   ]);
 
+  // CareCentrix: replace entire OOP calculator with a note
+  if (isCarecentrix) {
+    return (
+      <Card className="p-4">
+        <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-2">
+          OOP Estimate (Per Fill)
+        </p>
+        <p className="text-sm text-amber-600 font-medium">
+          Carecentrix patients have to contact carecentrix directly for their OOP costs.
+        </p>
+      </Card>
+    );
+  }
+
   // Don't render if we can't estimate (missing insurance, no rates, no serving)
-  if (!result.ok) {
+  if (!result || !result.ok) {
     if (!patient.primaryInsurance || !patient.serving) return null;
     return (
       <Card className="p-4">
         <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-2">
           OOP Estimate (Per Fill)
         </p>
-        <p className="text-sm text-muted-foreground italic">{result.reason}</p>
+        <p className="text-sm text-muted-foreground italic">{result && "reason" in result ? result.reason : "Unable to estimate"}</p>
       </Card>
     );
   }

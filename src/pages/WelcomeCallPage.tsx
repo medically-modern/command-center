@@ -30,7 +30,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { RotateCcw, ClipboardCheck, ArrowLeft, Save, Clock, OctagonX } from "lucide-react";
 import { toast } from "sonner";
-import { sendPatientToMonday, sendWelcomeCallTextToMonday, sendNotesToMonday, sendPhoneToMonday } from "@/lib/welcomeCall/mondayWrite";
+import { sendPatientToMonday, sendWelcomeCallTextToMonday, sendNotesToMonday, sendPhoneToMonday, sendSecondaryInsuranceToMonday } from "@/lib/welcomeCall/mondayWrite";
 import { writeStatusIndex, COL } from "@/lib/welcomeCall/mondayApi";
 import { validatePatientForSend } from "@/lib/welcomeCall/workflow";
 import { useNavigate, useSearchParams } from "react-router-dom";
@@ -241,6 +241,7 @@ const WelcomeCallPage = () => {
                     patient={selected}
                     onFieldChange={handleFieldChange}
                     onSavePhone={(phone) => sendPhoneToMonday(selected.id, phone)}
+                    onSaveSecondaryInsurance={(_label, index) => sendSecondaryInsuranceToMonday(selected.id, index)}
                   />
                   <OopEstimateCard patient={selected} />
                   <WelcomeCallForm patient={selected} onFieldChange={handleFieldChange} onSendWelcomeCallText={handleSendWelcomeCallText} />

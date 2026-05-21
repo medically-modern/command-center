@@ -195,6 +195,13 @@ export async function sendPhoneToMonday(itemId: string, phone: string): Promise<
 }
 
 /**
+ * Immediately push secondary insurance to Monday (called when dropdown changes).
+ */
+export async function sendSecondaryInsuranceToMonday(itemId: string, statusIndex: number): Promise<void> {
+  await writeStatusIndex(itemId, COL.secondaryInsurance, statusIndex);
+}
+
+/**
  * Immediately push notes to Monday (called on Add press).
  */
 export async function sendNotesToMonday(itemId: string, notes: string): Promise<void> {

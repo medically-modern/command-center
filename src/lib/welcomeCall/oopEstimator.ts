@@ -89,12 +89,16 @@ function isSecondaryMedicaid(secondary: string): boolean {
 
 const PRIMARY_MEDICAID_LABELS = new Set([
   "Fidelis Medicaid",
-  "Fidelis Low-Cost",
   "Anthem BCBS Medicaid (JLJ)",
   "Anthem BCBS Low-Cost (JLJ)",
   "Wellcare",
   "Medicaid",
   "United Medicaid",
+]);
+
+// Medicare A&B: patient always pays $0 OOP (MM bills Medicare directly)
+const ZERO_OOP_PAYERS = new Set([
+  "Medicare A&B",
 ]);
 
 // ─── Coinsurance overrides (source: insurance_rules.py) ──────────────────────
@@ -340,6 +344,27 @@ export function estimateOop(inputs: OopInputs): OopResult {
       insurancePays: totalAllowed,
       medicaidCovers: true,
       medicaidNote: note,
+      canCalculateCosts: true,
+      missingFields: [],
+    };
+  }
+
+  // Medicare A&B (and other zero-OOP payers): patient always pays $0
+  if (ZERO_OOP_PAYERS.has(primaryInsurance)) {
+    return {
+      ok: true,
+      lines,
+      totalAllowed,
+      appliedDeductible: 0,
+      postDeductible: totalAllowed,
+      coinsurancePct: 0,
+      patientCoinsurance: 0,
+      patientOwesRaw: 0,
+      oopMaxRemaining: null,
+      patientOwes: 0,
+      insurancePays: totalAllowed,
+      medicaidCovers: true,
+      medicaidNote: `${primaryInsurance} — no patient cost share`,
       canCalculateCosts: true,
       missingFields: [],
     };

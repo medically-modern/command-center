@@ -17,6 +17,7 @@ interface Props {
   patient: Patient;
   onFieldChange?: (field: keyof Patient, value: string | number | null) => void;
   onSavePhone?: (phone: string) => Promise<void>;
+  onSaveSecondaryInsurance?: (label: string, index: number) => Promise<void>;
 }
 
 /** Prefix a raw value with $ for display (e.g. "1500" → "$1,500"). No-op if empty. */
@@ -246,15 +247,14 @@ function PhoneField({
   );
 }
 
-export function PatientInfoCard({ patient, onFieldChange, onSavePhone }: Props) {
+export function PatientInfoCard({ patient, onFieldChange, onSavePhone, onSaveSecondaryInsurance }: Props) {
   const hasSecondaryInsurance = !!patient.secondaryInsurance && patient.secondaryInsurance !== "";
   const hasMemberId2 = !!patient.memberId2 && patient.memberId2 !== "";
 
-  // QMB warning: Medicare A&B + Stedi says QMB YES + no secondary filled out
+  // Medicare A&B warning: always warn if secondary is empty
   const isMedicareAB = patient.primaryInsurance === "Medicare A&B";
-  const qmbYes = (patient.stediQmb || "").trim().toUpperCase() === "YES";
   const secondaryMissing = !hasSecondaryInsurance && !patient.secondaryInsuranceEdited;
-  const showQmbWarning = isMedicareAB && qmbYes && secondaryMissing;
+  const showMedicareSecondaryWarning = isMedicareAB && secondaryMissing;
 
   return (
     <div className="space-y-4">
@@ -378,9 +378,17 @@ export function PatientInfoCard({ patient, onFieldChange, onSavePhone }: Props) 
                     const option = SECONDARY_INSURANCE_OPTIONS.find(
                       (o) => String(o.index) === value
                     );
-                    if (onFieldChange && option) {
-                      onFieldChange("secondaryInsuranceEdited", option.label);
-                      onFieldChange("secondaryInsuranceIndex", option.index);
+                    if (option) {
+                      onFieldChange?.("secondaryInsuranceEdited", option.label);
+                      onFieldChange?.("secondaryInsuranceIndex", option.index);
+                      // Immediately write to Monday
+                      onSaveSecondaryInsurance?.(option.label, option.index).then(() => {
+                        toast.success(`Secondary insurance updated to ${option.label}`);
+                      }).catch((err) => {
+                        toast.error("Failed to save secondary insurance to Monday", {
+                          description: err instanceof Error ? err.message : String(err),
+                        });
+                      });
                     }
                   }}
                 >
@@ -395,9 +403,9 @@ export function PatientInfoCard({ patient, onFieldChange, onSavePhone }: Props) 
                     ))}
                   </SelectContent>
                 </Select>
-                {showQmbWarning && (
+                {showMedicareSecondaryWarning && (
                   <p className="text-xs text-red-600 font-semibold mt-1.5">
-                    Stedi believes this patient has a Medicaid Secondary. Ask patient if they have a secondary.
+                    Patient likely has a secondary insurance, ask on welcome call.
                   </p>
                 )}
               </div>
