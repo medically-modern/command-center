@@ -106,7 +106,7 @@ const SendRequestPage = () => {
               {selected && (
                 <>
                   <PatientProfileCard patient={selected} defaultDoctorOpen />
-                  <SendRequestPanel patient={selected} resetVersion={resetVersion} onUpdate={(patch) => update(selected.id, patch)} />
+                  <SendRequestPanel patient={selected} resetVersion={resetVersion} onUpdate={(patch) => update(selected.id, patch)} onOpenForm={() => setEscalationModalOpen(true)} />
                 </>
               )}
             </section>

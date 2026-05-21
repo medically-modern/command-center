@@ -120,7 +120,7 @@ const EvaluatePage = () => {
               {selected && (
                 <>
                   <PatientProfileCard patient={selected} onDoctorEdit={(patch) => update(selected.id, patch)} />
-                  <EvaluatePanel patient={selected} resetVersion={resetVersion} onUpdate={(patch) => update(selected.id, patch)} />
+                  <EvaluatePanel patient={selected} resetVersion={resetVersion} onUpdate={(patch) => update(selected.id, patch)} onOpenForm={() => setEscalationModalOpen(true)} />
                 </>
               )}
             </section>
