@@ -284,15 +284,27 @@ export function PatientProfileCard({ patient, onUpdate }: Props) {
           value={patient.referralSource ?? ""}
         />
 
-        {patient.referralSource === "CareCentrix" && (
-          <EditableField
-            icon={<IdCard className="h-4 w-4" />}
-            label="Carecentrix Intake I.D."
-            value={patient.carecentrixIntakeId ?? ""}
-            onChange={(v) => patch({ carecentrixIntakeId: v })}
-            placeholder="Enter Carecentrix Intake I.D."
-          />
-        )}
+        {patient.referralSource === "CareCentrix" && (() => {
+          const isEmpty = !patient.carecentrixIntakeId;
+          return (
+            <div className={`flex items-start gap-2 min-w-0 rounded-lg p-1.5 -m-1.5 transition-colors ${isEmpty ? "bg-red-50 dark:bg-red-950/20 ring-1 ring-red-200 dark:ring-red-800/40" : ""}`}>
+              <div className={`h-8 w-8 rounded-md flex items-center justify-center shrink-0 mt-1 ${isEmpty ? "bg-red-100 dark:bg-red-900/30 text-red-500" : "bg-muted text-muted-foreground"}`}>
+                <IdCard className="h-4 w-4" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
+                  Carecentrix Intake I.D.
+                </p>
+                <Input
+                  value={patient.carecentrixIntakeId ?? ""}
+                  onChange={(e) => patch({ carecentrixIntakeId: e.target.value })}
+                  placeholder="Enter Carecentrix Intake I.D."
+                  className={`h-7 text-sm mt-0.5 ${isEmpty ? "border-red-300 dark:border-red-700" : ""}`}
+                />
+              </div>
+            </div>
+          );
+        })()}
       </div>
 
       {/* Doctor info — collapsible */}
