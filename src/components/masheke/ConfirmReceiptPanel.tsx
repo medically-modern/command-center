@@ -548,6 +548,7 @@ function SaveBar({
   onSave,
   escalated,
   onToggleEscalate,
+  onOpenForm,
 }: {
   attemptNumber: number;
   confirmed: "yes" | "no" | null;
@@ -556,6 +557,7 @@ function SaveBar({
   onSave: () => void;
   escalated: boolean;
   onToggleEscalate: () => void;
+  onOpenForm?: () => void;
 }) {
   let hint = "Pick Yes or No to enable save.";
   if (confirmed === "yes") hint = "Saves the confirmation, advances to Chase Clinicals.";

@@ -110,7 +110,7 @@ function formatDate(iso?: string): string {
   return d.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
 }
 
-export function EvaluatePanel({ patient, resetVersion = 0, onUpdate }: Props) {
+export function EvaluatePanel({ patient, resetVersion = 0, onUpdate, onOpenForm }: Props) {
   const [state, setState] = useState<EvalState>(() => {
     const stored = loadEvalState(patient.id);
     return Object.keys(stored).length > 0 ? stored : seedEvalStateFromPatient(patient);
@@ -1419,6 +1419,7 @@ interface ValiditySummaryProps {
   patient: Patient;
   escalated: boolean;
   onToggleEscalate: () => void;
+  onOpenForm?: () => void;
 }
 
 function ValiditySummary({
@@ -1432,6 +1433,7 @@ function ValiditySummary({
   patient,
   escalated,
   onToggleEscalate,
+  onOpenForm,
 }: ValiditySummaryProps) {
   const missingFields = getMissingRequiredFields(state, showCgm, showIp);
   const blocked = missingFields.length > 0;

@@ -60,7 +60,7 @@ interface Props {
 // Main panel
 // =====================================================================
 
-export function SendRequestPanel({ patient, resetVersion = 0, onUpdate }: Props) {
+export function SendRequestPanel({ patient, resetVersion = 0, onUpdate, onOpenForm }: Props) {
   const [state, setState] = useState<EvalState>(() => loadEvalState(patient.id));
 
   useEffect(() => {
@@ -420,6 +420,7 @@ export function SendRequestPanel({ patient, resetVersion = 0, onUpdate }: Props)
         onMarkComplete={handleMarkComplete}
         escalated={escalated}
         onToggleEscalate={() => setEscalated((v) => { const nv = !v; escalatedRef.current = nv; return nv; })}
+        onOpenForm={onOpenForm}
         attachments={[
           { label: "MN Request Letter", count: mondayFiles.mnRequestLetter.length, required: true },
           // Script template rows only show when this patient is being
@@ -993,6 +994,7 @@ function SendActionCard({
   attachments,
   escalated,
   onToggleEscalate,
+  onOpenForm,
 }: {
   patient: Patient;
   sending: boolean;
@@ -1002,6 +1004,7 @@ function SendActionCard({
   attachments: Attachment[];
   escalated: boolean;
   onToggleEscalate: () => void;
+  onOpenForm?: () => void;
 }) {
   const method = patient.clinicalsMethod ?? "Fax";
   const alreadySent = !!patient.requestSentAt;
@@ -1118,6 +1121,7 @@ function SendActionCard({
             <EscalateButton
               escalated={escalated}
               onToggle={onToggleEscalate}
+              onOpenForm={onOpenForm}
               disabled={completing}
             />
             <Button
