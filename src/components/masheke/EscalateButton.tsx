@@ -1,7 +1,7 @@
 /**
  * EscalateButton — when onOpenForm is provided, clicking opens the
- * escalation form modal. Falls back to simple toggle if onOpenForm
- * is not provided (backward compat).
+ * escalation form modal AND toggles local state. Falls back to simple
+ * toggle if onOpenForm is not provided (backward compat).
  */
 import { AlertTriangle, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -10,13 +10,15 @@ interface Props {
   escalated: boolean;
   onToggle: () => void;
   disabled?: boolean;
-  /** If provided, clicking Escalate opens the form modal instead of toggling */
+  /** If provided, clicking Escalate opens the form modal instead of just toggling */
   onOpenForm?: () => void;
 }
 
 export function EscalateButton({ escalated, onToggle, disabled, onOpenForm }: Props) {
   const handleClick = () => {
     if (onOpenForm && !escalated) {
+      // Open the form — also toggle local state so the button reflects "Escalated"
+      onToggle();
       onOpenForm();
     } else {
       onToggle();
