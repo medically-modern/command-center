@@ -133,6 +133,10 @@ export async function sendPatientToMonday(p: Patient): Promise<void> {
     tasks.push({ label: "Clinic Address", columnId: COL.clinicAddress, fn: () => writeLocation(p.id, COL.clinicAddress, p.clinicAddressEdited!, clat, clng) });
   }
 
+  // Carecentrix Intake ID (text column — only when referral source is CareCentrix)
+  if (p.carecentrixIntakeId)
+    tasks.push({ label: "Carecentrix Intake ID", columnId: COL.carecentrixIntakeId, fn: () => writeText(p.id, COL.carecentrixIntakeId, p.carecentrixIntakeId) });
+
   // ─── Medical Necessity edits ─────────────────────────────
   // Diagnosis (status column)
   if (p.diagnosisIndex !== null)

@@ -52,6 +52,7 @@ export const COL = {
   requestType: "color_mm1w1978",
   referralType: "color_mm1wm4n4",
   referralSource: "color_mm1w5wxr",
+  carecentrixIntakeId: "text_mm2wnhx",
 
   // Welcome Call / Order (editable)
   subscriptionType: "color_mm1xbqth",
@@ -124,7 +125,7 @@ export const READ_COLUMN_IDS = [
   COL.doctorFax, COL.clinicName, COL.clinicalsMethod, COL.clinicAddress,
   COL.diagnosis, COL.cgmCoveragePath, COL.ipCoveragePath, COL.mrExpiryDate,
   COL.serving, COL.pumpType, COL.cgmType, COL.requestType,
-  COL.referralType, COL.referralSource,
+  COL.referralType, COL.referralSource, COL.carecentrixIntakeId,
   COL.subscriptionType, COL.infusionSet1, COL.qtyInf1,
   COL.infusionSet2, COL.qtyInf2, COL.monitorQty, COL.pumpQty,
   COL.orderHandling,

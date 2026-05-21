@@ -143,6 +143,7 @@ export function mondayItemToPatient(item: MondayItem): Patient {
     deadReason: dropdownText(COL.deadReason),
     pauseReason: dropdownText(COL.pauseReason),
     referral: dropdownText(COL.referral),
+    carecentrixIntakeId: txt(COL.carecentrixIntakeId),
     denialReason: txt(COL.denialReason),
 
     // Stedi

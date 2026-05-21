@@ -560,6 +560,18 @@ export function PatientInfoCard({ patient, onFieldChange }: Props) {
             onChange={(v) => onFieldChange("oopMaxRemaining", v)}
           />
         </div>
+        {patient.referralSource === "CareCentrix" && (
+          <>
+            <div className="h-px bg-border" />
+            <EditableTextField
+              icon={<IdCard className="h-4 w-4" />}
+              label="Carecentrix Intake I.D."
+              value={patient.carecentrixIntakeId}
+              onChange={(v) => onFieldChange("carecentrixIntakeId", v)}
+              suppressWarning
+            />
+          </>
+        )}
       </Card>
 
       {/* Doctor Info */}

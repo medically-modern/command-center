@@ -97,6 +97,7 @@ export interface Patient {
   deadReason: string;
   pauseReason: string;
   referral: string;
+  carecentrixIntakeId: string;
   denialReason: string;
 
   // Stedi

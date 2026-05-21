@@ -78,6 +78,7 @@ export function mondayItemToPatient(item: MondayItem): Patient {
     referralTypeIndex: parseIndex(cv(item, COL.referralType)?.value ?? null),
     referralSource: cv(item, COL.referralSource)?.text ?? "",
     referralSourceIndex: parseIndex(cv(item, COL.referralSource)?.value ?? null),
+    carecentrixIntakeId: cv(item, COL.carecentrixIntakeId)?.text ?? "",
 
     // Welcome Call / Order
     subscriptionType: cv(item, COL.subscriptionType)?.text ?? "",

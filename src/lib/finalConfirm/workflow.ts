@@ -64,6 +64,7 @@ export interface Patient {
   referralTypeIndex: number | null;
   referralSource: string;
   referralSourceIndex: number | null;
+  carecentrixIntakeId: string;
 
   // Welcome Call / Order
   subscriptionType: string;

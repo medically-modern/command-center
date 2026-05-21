@@ -94,6 +94,7 @@ export const COL = {
   deadReason: "dropdown_mm27mdkh",
   pauseReason: "dropdown_mm2v3gfy",
   referral: "dropdown_mkwz8zp4",
+  carecentrixIntakeId: "text_mm3j6c1a",
   itemId: "pulse_id_mm2medsk",
 
   // Auth Escalation Management
@@ -156,7 +157,7 @@ export const READ_COLUMN_IDS = [
   COL.doctor, COL.npi, COL.doctorAddress, COL.doctorPhone, COL.doctorFax,
   COL.faxParachute,
   // Other
-  COL.orderCount, COL.deadReason, COL.pauseReason, COL.referral,
+  COL.orderCount, COL.deadReason, COL.pauseReason, COL.referral, COL.carecentrixIntakeId,
   // Stedi
   COL.stediActive, COL.stediDedRemaining, COL.insuranceChange, COL.priorAuthReq,
   COL.primaryClaimPaid,

@@ -162,6 +162,9 @@ export function PatientInfoCard({ patient, onFieldChange }: Props) {
             <Field label="Gender" value={patient.gender} />
             <Field label="Address" value={patient.address} />
             <Field label="Referral" value={patient.referral} />
+            {patient.carecentrixIntakeId && (
+              <Field label="Carecentrix Intake I.D." value={patient.carecentrixIntakeId} />
+            )}
             <Field label="Order Count" value={patient.orderCount} />
           </div>
         </Card>
