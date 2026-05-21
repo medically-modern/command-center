@@ -283,6 +283,16 @@ export function PatientProfileCard({ patient, onUpdate }: Props) {
           label="Referral Source"
           value={patient.referralSource ?? ""}
         />
+
+        {patient.referralSource === "CareCentrix" && (
+          <EditableField
+            icon={<IdCard className="h-4 w-4" />}
+            label="Carecentrix Intake I.D."
+            value={patient.carecentrixIntakeId ?? ""}
+            onChange={(v) => patch({ carecentrixIntakeId: v })}
+            placeholder="Enter Carecentrix Intake I.D."
+          />
+        )}
       </div>
 
       {/* Doctor info — collapsible */}

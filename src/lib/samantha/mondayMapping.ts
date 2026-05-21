@@ -356,6 +356,7 @@ export function mondayItemToPatient(item: MondayItem): Patient {
     memberId1,
     memberId2,
     referralSource: referralSource || undefined,
+    carecentrixIntakeId: cv(COL.carecentrixIntakeId)?.text || undefined,
     patientPhone,
     patientAddress,
     pumpBrand,

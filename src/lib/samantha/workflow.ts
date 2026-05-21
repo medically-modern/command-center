@@ -412,6 +412,7 @@ export interface Patient {
   memberId1?: string;
   memberId2?: string;
   referralSource?: string;
+  carecentrixIntakeId?: string;
   patientPhone?: string;
   patientAddress?: string;
   pumpBrand?: string;

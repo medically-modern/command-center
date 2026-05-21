@@ -563,9 +563,18 @@ export async function sendPatientToMonday(p: Patient, context: "benefits" | "sub
   }
 
   // ----- Carecentrix Intake ID (single shared text column) -----
+  // Top-level patient field (entered from profile card)
+  if (p.carecentrixIntakeId) {
+    tasks.push({
+      label: "Carecentrix Intake ID (profile)",
+      columnId: COL.carecentrixIntakeId,
+      fn: () => writeText(p.id, COL.carecentrixIntakeId, p.carecentrixIntakeId!),
+    });
+  }
+  // Per-product code fallback (from checklist steps)
   const allCodeStates = Object.values(ins.codes).filter(Boolean) as ProductCodeState[];
   const intakeId = allCodeStates.map((s) => s.intakeId).find((v) => !!v);
-  if (intakeId) {
+  if (intakeId && !p.carecentrixIntakeId) {
     tasks.push({
       label: "Carecentrix Intake ID",
       columnId: COL.carecentrixIntakeId,
