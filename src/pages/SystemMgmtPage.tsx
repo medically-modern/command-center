@@ -636,6 +636,7 @@ function StageManagerView({
   const [targetStage, setTargetStage] = useState<string | null>(null);
   const [moving, setMoving] = useState(false);
   const [lastMoved, setLastMoved] = useState<{ name: string; from: string; to: string } | null>(null);
+  const [chartSelection, setChartSelection] = useState<SystemPatient[] | null>(null);
 
   // Only show patients from Med Eval and Insurance boards
   const movablePatients = useMemo(
@@ -643,10 +644,20 @@ function StageManagerView({
     [patients],
   );
 
-  const results = useMemo(() => {
+  const searchResults = useMemo(() => {
     if (!query.trim()) return [];
     return searchPatients(movablePatients, query);
   }, [movablePatients, query]);
+
+  // Effective results: chart selection > search
+  const results = chartSelection ?? searchResults;
+
+  const handleChartSegmentClick = (segmentPatients: SystemPatient[]) => {
+    setChartSelection(segmentPatients);
+    setQuery("");
+    setSelected(null);
+    setTargetStage(null);
+  };
 
   const stageOptions = selected ? (STAGE_OPTIONS[selected.boardId] ?? []) : [];
 
@@ -688,6 +699,24 @@ function StageManagerView({
         </p>
       </div>
 
+      {/* Pipeline chart — Med Eval + Insurance only */}
+      <PipelineChart patients={movablePatients} onSegmentClick={handleChartSegmentClick} />
+
+      {/* Chart selection banner */}
+      {chartSelection && (
+        <div className="flex items-center gap-2 px-3 py-2 bg-primary/10 rounded-lg border border-primary/20">
+          <span className="text-xs text-primary font-medium">
+            Showing {chartSelection.length} patient{chartSelection.length !== 1 ? "s" : ""} from chart selection
+          </span>
+          <button
+            onClick={() => setChartSelection(null)}
+            className="ml-auto text-xs text-primary hover:text-primary/80 underline"
+          >
+            Clear
+          </button>
+        </div>
+      )}
+
       {/* Success banner */}
       {lastMoved && (
         <div className="flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3">
@@ -707,7 +736,7 @@ function StageManagerView({
         <Input
           placeholder="Search by patient name or phone…"
           value={query}
-          onChange={(e) => { setQuery(e.target.value); if (selected) setSelected(null); }}
+          onChange={(e) => { setQuery(e.target.value); if (selected) setSelected(null); if (e.target.value.trim()) setChartSelection(null); }}
           className="pl-10 h-12 text-base"
           autoFocus
         />
@@ -717,7 +746,7 @@ function StageManagerView({
       </div>
 
       {/* Search results */}
-      {!selected && query.trim() && results.length === 0 && (
+      {!selected && query.trim() && !chartSelection && results.length === 0 && (
         <div className="rounded-xl bg-card border shadow-card p-8 text-center">
           <p className="text-sm text-muted-foreground">No patients found matching &ldquo;{query}&rdquo;</p>
         </div>
