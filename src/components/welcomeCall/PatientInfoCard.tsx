@@ -19,6 +19,25 @@ interface Props {
   onSavePhone?: (phone: string) => Promise<void>;
 }
 
+/** Prefix a raw value with $ for display (e.g. "1500" → "$1,500"). No-op if empty. */
+function fmtDollar(raw: string): string {
+  if (!raw) return "";
+  const cleaned = raw.replace(/[$,\s]/g, "");
+  const n = parseFloat(cleaned);
+  if (isNaN(n)) return raw; // fallback to original if unparseable
+  return n.toLocaleString("en-US", { style: "currency", currency: "USD" });
+}
+
+/** Display coinsurance: convert decimal (e.g. "0.2") to "20%", or append % if already whole. */
+function fmtCoinsurance(raw: string): string {
+  if (!raw) return "";
+  const cleaned = raw.replace(/[%,\s]/g, "");
+  const n = parseFloat(cleaned);
+  if (isNaN(n)) return raw;
+  const pct = n < 1 ? n * 100 : n;
+  return `${pct}%`;
+}
+
 function Field({ label, value }: { label: string; value: string }) {
   if (!value) return null;
   return (
@@ -446,10 +465,10 @@ export function PatientInfoCard({ patient, onFieldChange, onSavePhone }: Props) 
         <Card className="p-4">
           <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-3">Benefits</p>
           <div className="grid grid-cols-2 gap-3">
-            <Field label="Deductible" value={patient.deductible} />
-            <Field label="Deductible Remaining" value={patient.deductibleRemaining} />
-            <Field label="Coinsurance %" value={patient.stediCoinsurance} />
-            <Field label="OOP Max Remaining" value={patient.oopMaxRemaining} />
+            <Field label="Deductible" value={fmtDollar(patient.deductible)} />
+            <Field label="Deductible Remaining" value={fmtDollar(patient.deductibleRemaining)} />
+            <Field label="Coinsurance %" value={fmtCoinsurance(patient.stediCoinsurance)} />
+            <Field label="OOP Max Remaining" value={fmtDollar(patient.oopMaxRemaining)} />
           </div>
           {!patient.deductible && !patient.deductibleRemaining && !patient.stediCoinsurance && !patient.oopMaxRemaining && (
             <p className="text-sm text-muted-foreground italic">No benefits data yet.</p>
