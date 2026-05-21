@@ -115,13 +115,24 @@ const SendRequestPage = () => {
       </div>
 
       {selected && (
-        <BlockedModal
-          open={blockedModalOpen}
-          onOpenChange={setBlockedModalOpen}
-          patientId={selected.id}
-          patientName={selected.name}
-          onSuccess={refetch}
-        />
+        <>
+          <BlockedModal
+            open={blockedModalOpen}
+            onOpenChange={setBlockedModalOpen}
+            patientId={selected.id}
+            patientName={selected.name}
+            onSuccess={refetch}
+          />
+          <EscalationFormModal
+            open={escalationModalOpen}
+            onOpenChange={setEscalationModalOpen}
+            patientId={selected.id}
+            patientName={selected.name}
+            writeEscalationStatus={async (id) => { await writeStatusIndex(id, COL.escalation, ESCALATION_INDEX.required); }}
+            writeEscalationNotes={async (id, text) => { await writeLongText(id, COL.escalationNotes, text); }}
+            onSuccess={refetch}
+          />
+        </>
       )}
     </SidebarProvider>
   );

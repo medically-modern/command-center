@@ -54,6 +54,7 @@ interface Props {
   patient: Patient;
   /** Bumped by parent on Reset — forces local state reload. */
   resetVersion?: number;
+  onOpenForm?: () => void;
 }
 
 // =====================================================================
