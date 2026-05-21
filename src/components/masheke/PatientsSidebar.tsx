@@ -381,6 +381,43 @@ export function PatientsSidebar({ patients, selectedId, onSelect, loading, error
           </SidebarGroup>
         )}
 
+        {/* ── Escalated section (all tabs) ── */}
+        {escalatedPatients.length > 0 && !collapsed && (
+          <SidebarGroup>
+            <SidebarGroupLabel className="text-[10px] uppercase tracking-wider text-red-500 font-semibold flex items-center gap-1.5">
+              <AlertTriangle className="h-3 w-3" />
+              Escalated ({escalatedPatients.length})
+            </SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu>
+                {escalatedPatients.map((p) => (
+                  <SidebarMenuItem key={p.id}>
+                    <div className="flex items-center gap-1 w-full">
+                      <SidebarMenuButton
+                        isActive={selectedId === p.id}
+                        onClick={() => onSelect(p.id)}
+                        className={cn(
+                          "flex-1 flex items-start gap-2 py-2 h-auto opacity-60",
+                          selectedId === p.id && "bg-sidebar-accent opacity-100",
+                        )}
+                      >
+                        <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0 text-red-400" />
+                        <div className="min-w-0 text-left">
+                          <p className="text-sm font-medium truncate">{p.name}</p>
+                          <p className="text-[11px] text-red-400 truncate">
+                            Escalation Required
+                          </p>
+                        </div>
+                      </SidebarMenuButton>
+                      <ClearEscalationButton patientId={p.id} patientName={p.name} onSuccess={onRefresh} />
+                    </div>
+                  </SidebarMenuItem>
+                ))}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        )}
+
         {/* ── Follow Up section (all tabs) ── */}
         {followUpPatients.length > 0 && !collapsed && (
           <SidebarGroup>
@@ -521,6 +558,39 @@ function ClearFollowUpButton({ patientId, patientName, onSuccess }: { patientId:
       disabled={sending}
       className="shrink-0 flex items-center gap-1 px-2 py-1 rounded text-[10px] font-medium text-blue-700 bg-blue-50 border border-blue-200 hover:bg-blue-100 transition-colors disabled:opacity-50"
       title={`Clear follow up for ${patientName}`}
+    >
+      {sending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Undo2 className="h-3 w-3" />}
+      Active
+    </button>
+  );
+}
+
+
+/** Small button to clear Escalation status on Monday */
+function ClearEscalationButton({ patientId, patientName, onSuccess }: { patientId: string; patientName: string; onSuccess: () => void }) {
+  const [sending, setSending] = useState(false);
+
+  const handleClear = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setSending(true);
+    try {
+      await clearStatusColumn(patientId, COL.escalation);
+      toast.success(`${patientName} returned to active`);
+      onSuccess();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      toast.error(`Failed to clear escalation: ${msg}`);
+    } finally {
+      setSending(false);
+    }
+  };
+
+  return (
+    <button
+      onClick={handleClear}
+      disabled={sending}
+      className="shrink-0 flex items-center gap-1 px-2 py-1 rounded text-[10px] font-medium text-emerald-700 bg-emerald-50 border border-emerald-200 hover:bg-emerald-100 transition-colors disabled:opacity-50"
+      title={`Clear escalation for ${patientName}`}
     >
       {sending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Undo2 className="h-3 w-3" />}
       Active
