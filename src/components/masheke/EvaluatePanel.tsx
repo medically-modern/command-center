@@ -92,6 +92,7 @@ interface Props {
   /** Bumped by parent when Reset is pressed — forces local state to reload. */
   resetVersion?: number;
   onUpdate: (patch: Partial<Patient>) => void;
+  onOpenForm?: () => void;
 }
 
 // Compute "today + N months" — used for MR Expiry Date
@@ -600,6 +601,7 @@ export function EvaluatePanel({ patient, resetVersion = 0, onUpdate }: Props) {
         patient={patient}
         escalated={escalated}
         onToggleEscalate={() => setEscalated((v) => { const nv = !v; escalatedRef.current = nv; return nv; })}
+        onOpenForm={onOpenForm}
       />
     </div>
   );
@@ -1498,6 +1500,7 @@ function ValiditySummary({
         <EscalateButton
           escalated={escalated}
           onToggle={onToggleEscalate}
+          onOpenForm={onOpenForm}
           disabled={sending}
         />
         <Button

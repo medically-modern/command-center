@@ -3,6 +3,7 @@ import type { Patient } from "@/lib/masheke/workflow";
 import { NotesPanel } from "@/components/masheke/NotesPanel";
 import { WhatsNeededCard } from "@/components/masheke/WhatsNeededCard";
 import { EscalateButton } from "@/components/masheke/EscalateButton";
+import { EscalationFormModal } from "@/components/shared/EscalationFormModal";
 import { etNow } from "@/lib/masheke/etDate";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -40,6 +41,7 @@ import {
 interface Props {
   patient: Patient;
   onUpdate: (patch: Partial<Patient>) => void;
+  onOpenForm?: () => void;
 }
 
 // =====================================================================
@@ -49,7 +51,7 @@ interface Props {
 // and (after the 3rd No) flips the Escalation column.
 // =====================================================================
 
-export function ChaseClinicalsPanel({ patient, onUpdate }: Props) {
+export function ChaseClinicalsPanel({ patient, onUpdate, onOpenForm }: Props) {
   const mondayFiles = useMondayFiles(patient.id);
   const [saving, setSaving] = useState(false);
   const [escalated, setEscalated] = useState(false);
@@ -201,6 +203,7 @@ export function ChaseClinicalsPanel({ patient, onUpdate }: Props) {
           onSave={handleSave}
           escalated={escalated}
           onToggleEscalate={() => setEscalated((v) => { const nv = !v; escalatedRef.current = nv; return nv; })}
+          onOpenForm={onOpenForm}
         />
       )}
     </div>
@@ -580,6 +583,7 @@ function SaveBar({
   onSave,
   escalated,
   onToggleEscalate,
+  onOpenForm,
 }: {
   attemptNumber: number;
   confirmed: "yes" | "no" | "parachute-message" | null;
@@ -588,6 +592,7 @@ function SaveBar({
   onSave: () => void;
   escalated: boolean;
   onToggleEscalate: () => void;
+  onOpenForm?: () => void;
 }) {
   let hint = "Pick an option above to enable save.";
   if (confirmed === "yes") hint = "Saves the chase recipient and advances to Completed.";
@@ -605,6 +610,7 @@ function SaveBar({
         <EscalateButton
           escalated={escalated}
           onToggle={onToggleEscalate}
+          onOpenForm={onOpenForm}
           disabled={saving}
         />
         <Button

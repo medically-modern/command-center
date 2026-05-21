@@ -50,6 +50,7 @@ export const COL = {
 
   // Escalation + stage flow
   escalation: "color_mm2vsh2f",
+  escalationNotes: "long_text_mm3jrssp",
   stageAdvancer: "color_mm1ws96t",
   notClearProducts: "dropdown_mm2vez5a",
   /** Products whose SoS check was deferred at intake. Populated when an
@@ -164,6 +165,7 @@ export const READ_COLUMN_IDS = [
   COL.stageAdvancer,
   // Escalation column hydrates the Escalate-button toggle on all 3 pages.
   COL.escalation,
+  COL.escalationNotes,
   // Per-product SoS state (read on every page so the agent sees what was
   // recorded on Benefits — Not Clear products and Skip-deferred products).
   COL.notClearProducts,

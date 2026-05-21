@@ -31,7 +31,8 @@ import {
 import { RotateCcw, ClipboardCheck, ArrowLeft, Save, Clock, OctagonX } from "lucide-react";
 import { toast } from "sonner";
 import { sendPatientToMonday, sendWelcomeCallTextToMonday, sendNotesToMonday, sendPhoneToMonday, sendSecondaryInsuranceToMonday } from "@/lib/welcomeCall/mondayWrite";
-import { writeStatusIndex, COL } from "@/lib/welcomeCall/mondayApi";
+import { writeStatusIndex, writeLongText, COL } from "@/lib/welcomeCall/mondayApi";
+import { EscalationFormModal } from "@/components/shared/EscalationFormModal";
 import { validatePatientForSend } from "@/lib/welcomeCall/workflow";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useBackNavigation } from "@/hooks/useBackNavigation";
@@ -41,6 +42,7 @@ const WelcomeCallPage = () => {
   const { goBack } = useBackNavigation();
   const [searchParams] = useSearchParams();
   const isEscalated = searchParams.get("escalated") === "1";
+  const [escalationModalOpen, setEscalationModalOpen] = useState(false);
   const { patients, loading, error, refetch, update, clearOverlay , saveOverlay, hasOverlay } = useMondayPatients(searchParams.get("patientId"));
   const [followUpOpen, setFollowUpOpen] = useState(false);
   const [stuckOpen, setStuckOpen] = useState(false);
@@ -251,7 +253,7 @@ const WelcomeCallPage = () => {
                     onSaveToMonday={(v) => sendNotesToMonday(selected.id, v)}
                   />
                   <ReviewPanel patient={selected} />
-                  <EscalateButton escalated={selected.escalated} onToggle={toggleEscalate} disabled={!selected} />
+                  <EscalateButton escalated={selected.escalated} onToggle={toggleEscalate} disabled={!selected} onOpenForm={() => setEscalationModalOpen(true)} />
                   <SendToMondayButton onSend={handleSend} disabled={!selected || !validation.valid} validationErrors={validation.errors} />
                 </>
               )}
@@ -289,6 +291,17 @@ const WelcomeCallPage = () => {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+    {selected && (
+        <EscalationFormModal
+          open={escalationModalOpen}
+          onOpenChange={setEscalationModalOpen}
+          patientId={selected.id}
+          patientName={selected.name}
+          writeEscalationStatus={async (id) => { await writeStatusIndex(id, COL.escalation, 0); }}
+          writeEscalationNotes={async (id, text) => { await writeLongText(id, COL.escalationNotes, text); }}
+          onSuccess={refetch}
+        />
+      )}
     </SidebarProvider>
   );
 };

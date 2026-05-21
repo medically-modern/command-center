@@ -24,6 +24,7 @@ import { RotateCcw, ShieldCheck, ArrowLeft, AlertTriangle, Save } from "lucide-r
 import { toast } from "sonner";
 import { sendPatientToMonday } from "@/lib/finalConfirm/mondayWrite";
 import { duplicateItem, writeStatusIndex, writeDate, writeLongText, COL } from "@/lib/finalConfirm/mondayApi";
+import { EscalationFormModal } from "@/components/shared/EscalationFormModal";
 
 // Stage Advancer label index 0 = "Review Profile" — the stage that lands an
 // item in the Final Profile Confirmation group on Monday.
@@ -38,6 +39,7 @@ const FinalConfirmPage = () => {
   const { goBack } = useBackNavigation();
   const [searchParams] = useSearchParams();
   const isEscalated = searchParams.get("escalated") === "1";
+  const [escalationModalOpen, setEscalationModalOpen] = useState(false);
   const { patients, loading, error, refetch, update, clearOverlay, saveOverlay, hasOverlay, addPatient } = useMondayPatients(searchParams.get("patientId"));
   const [selectedId, setSelectedId] = useState<string | null>(
     searchParams.get("patientId") ?? null,
@@ -310,6 +312,7 @@ const FinalConfirmPage = () => {
                     escalated={selected.escalated}
                     onToggle={toggleEscalate}
                     disabled={!selected}
+                    onOpenForm={() => setEscalationModalOpen(true)}
                   />
                   <SendToMondayButton
                     onSend={handleSend}
@@ -322,6 +325,17 @@ const FinalConfirmPage = () => {
           </main>
         </div>
       </div>
+    {selected && (
+        <EscalationFormModal
+          open={escalationModalOpen}
+          onOpenChange={setEscalationModalOpen}
+          patientId={selected.id}
+          patientName={selected.name}
+          writeEscalationStatus={async (id) => { await writeStatusIndex(id, COL.escalation, 0); }}
+          writeEscalationNotes={async (id, text) => { await writeLongText(id, COL.escalationNotes, text); }}
+          onSuccess={refetch}
+        />
+      )}
     </SidebarProvider>
   );
 };

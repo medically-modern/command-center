@@ -14,6 +14,8 @@ import {
   searchPatients,
 } from "@/hooks/systemMgmt/useSystemPatients";
 import type { SystemPatient } from "@/lib/systemMgmt/mondayApi";
+import { EscalationDetailModal } from "@/components/shared/EscalationDetailModal";
+import { parseEscalation } from "@/lib/shared/escalation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
@@ -49,6 +51,7 @@ const SystemMgmtPage = () => {
   const [activeTab, setActiveTab] = useState<Tab>(initialTab);
   const [query, setQuery] = useState("");
   const [removingId, setRemovingId] = useState<string | null>(null);
+  const [detailPatient, setDetailPatient] = useState<SystemPatient | null>(null);
   const [chartSelection, setChartSelection] = useState<SystemPatient[] | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [notesPatient, setNotesPatient] = useState<SystemPatient | null>(null);
@@ -251,11 +254,18 @@ const SystemMgmtPage = () => {
               onRemoveEscalation={handleRemoveEscalation}
               removingId={removingId}
               completionMap={completionMap}
+              onViewDetails={(p) => setDetailPatient(p)}
             />
           )}
         </div>
       </main>
     </div>
+    <EscalationDetailModal
+      open={!!detailPatient}
+      onOpenChange={(open) => { if (!open) setDetailPatient(null); }}
+      patientName={detailPatient?.name ?? ""}
+      data={parseEscalation(detailPatient?.escalationNotes)}
+    />
   );
 };
 
@@ -437,12 +447,14 @@ function EscalationView({
   onRemoveEscalation,
   removingId,
   completionMap,
+  onViewDetails,
 }: {
   escalatedByStage: Map<string, SystemPatient[]>;
   onPatientClick: (p: SystemPatient, fromEscalation?: boolean) => void;
   onRemoveEscalation: (p: SystemPatient) => void;
   removingId: string | null;
   completionMap: Map<string, string[]>;
+  onViewDetails: (p: SystemPatient) => void;
 }) {
   if (escalatedByStage.size === 0) {
     return (
@@ -494,6 +506,18 @@ function EscalationView({
                     <span className="text-[10px] text-muted-foreground shrink-0 ml-auto">No page</span>
                   )}
                 </button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onViewDetails(p);
+                  }}
+                  className="shrink-0 gap-1.5 text-xs border-blue-300 text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950/30"
+                >
+                  <FileText className="w-3 h-3" />
+                  Details
+                </Button>
                 <Button
                   variant="outline"
                   size="sm"

@@ -88,6 +88,7 @@ export const COL = {
   // Stage
   stageAdvancer: "color_mm1ws96t",
   escalation: "color_mm1x7997",
+  escalationNotes: "long_text_mm3jgh1y",
 } as const;
 
 export const READ_COLUMN_IDS = [
@@ -107,6 +108,7 @@ export const READ_COLUMN_IDS = [
   COL.infusionSetLastBillDate, COL.cartridgeLastBillDate,
   COL.ipNextOrderDate, COL.sensorsNextOrderDate, COL.suppliesNextOrderDate,
   COL.followUp, COL.followUpDate,
+  COL.escalationNotes,
 ];
 
 export interface MondayColumnValue {

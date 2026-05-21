@@ -40,13 +40,14 @@ import {
 interface Props {
   patient: Patient;
   onUpdate: (patch: Partial<Patient>) => void;
+  onOpenForm?: () => void;
 }
 
 // =====================================================================
 // Main panel
 // =====================================================================
 
-export function ConfirmReceiptPanel({ patient, onUpdate }: Props) {
+export function ConfirmReceiptPanel({ patient, onUpdate, onOpenForm }: Props) {
   const mondayFiles = useMondayFiles(patient.id);
   const [saving, setSaving] = useState(false);
   const [escalated, setEscalated] = useState(false);
@@ -197,6 +198,7 @@ export function ConfirmReceiptPanel({ patient, onUpdate }: Props) {
           onSave={handleSave}
           escalated={escalated}
           onToggleEscalate={() => setEscalated((v) => { const nv = !v; escalatedRef.current = nv; return nv; })}
+          onOpenForm={onOpenForm}
         />
       )}
     </div>
@@ -565,6 +567,7 @@ function SaveBar({
         <EscalateButton
           escalated={escalated}
           onToggle={onToggleEscalate}
+          onOpenForm={onOpenForm}
           disabled={saving}
         />
         <Button

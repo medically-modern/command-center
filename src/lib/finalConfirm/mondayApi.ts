@@ -87,6 +87,7 @@ export const COL = {
   stageAdvancer: "color_mm1ws96t",
   dateOfStageStart: "date_mm1w6jeq",
   escalation: "color_mm1x7997",
+  escalationNotes: "long_text_mm3jgh1y",
   escalationReason: "dropdown_mm2fhcd6",
 
   // Split flag — set on the duplicate after duplicate_item so Monday's
@@ -144,6 +145,7 @@ export const READ_COLUMN_IDS = [
   COL.dateOfStageStart,
   // Claim Paid Amounts
   COL.a4230Claim, COL.a4232Claim,
+  COL.escalationNotes,
 ];
 
 export interface MondayColumnValue {

@@ -20,7 +20,9 @@ import { RotateCcw, Stethoscope, ArrowLeft, Clock, Save, Zap, AlertTriangle } fr
 import { resolveHcpcs } from "@/lib/samantha/hcpcRules";
 import { toast } from "sonner";
 import { sendPatientToMonday } from "@/lib/samantha/mondayWrite";
-import { writeLongText, COL } from "@/lib/samantha/mondayApi";
+import { writeLongText, writeStatusIndex, COL } from "@/lib/samantha/mondayApi";
+import { EscalationFormModal } from "@/components/shared/EscalationFormModal";
+import { ESCALATION_INDEX } from "@/lib/samantha/mondayMapping";
 import { FollowUpModal } from "@/components/samantha/FollowUpModal";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useBackNavigation } from "@/hooks/useBackNavigation";
@@ -78,6 +80,7 @@ const SubmitAuthPage = () => {
   const { goBack } = useBackNavigation();
   const [searchParams] = useSearchParams();
   const isEscalated = searchParams.get("escalated") === "1";
+  const [escalationModalOpen, setEscalationModalOpen] = useState(false);
   const { patients, loading, error, refetch, update, clearOverlay , saveOverlay, hasOverlay } = useMondayPatients("submitAuth", searchParams.get("patientId"));
   const [selectedId, setSelectedId] = useState<string | null>(
     searchParams.get("patientId") ?? null,
@@ -193,6 +196,7 @@ const SubmitAuthPage = () => {
                   <EscalateButton
                     escalated={!!selected.escalated}
                     onToggle={() => update(selected.id, { escalated: !selected.escalated })}
+                    onOpenForm={() => setEscalationModalOpen(true)}
                   />
 
                   {showTriggerDvs && (
@@ -226,6 +230,17 @@ const SubmitAuthPage = () => {
           onOpenChange={setFollowUpOpen}
           patientId={selected.id}
           patientName={selected.name}
+          onSuccess={refetch}
+        />
+      )}
+    {selected && (
+        <EscalationFormModal
+          open={escalationModalOpen}
+          onOpenChange={setEscalationModalOpen}
+          patientId={selected.id}
+          patientName={selected.name}
+          writeEscalationStatus={async (id) => { await writeStatusIndex(id, COL.escalation, ESCALATION_INDEX.required); }}
+          writeEscalationNotes={async (id, text) => { await writeLongText(id, COL.escalationNotes, text); }}
           onSuccess={refetch}
         />
       )}

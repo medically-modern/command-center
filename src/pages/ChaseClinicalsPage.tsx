@@ -15,6 +15,9 @@ import { toast } from "sonner";
 import { clearEvalState } from "@/lib/masheke/evalState";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { BlockedModal } from "@/components/masheke/BlockedModal";
+import { EscalationFormModal } from "@/components/shared/EscalationFormModal";
+import { writeStatusIndex, writeLongText, COL } from "@/lib/masheke/mondayApi";
+import { ESCALATION_INDEX } from "@/lib/masheke/mondayMapping";
 import { FollowUpModal } from "@/components/masheke/FollowUpModal";
 import { useBackNavigation } from "@/hooks/useBackNavigation";
 
@@ -29,6 +32,7 @@ const ChaseClinicalsPage = () => {
   );
   const [resetVersion, setResetVersion] = useState(0);
   const [blockedModalOpen, setBlockedModalOpen] = useState(false);
+  const [escalationModalOpen, setEscalationModalOpen] = useState(false);
   const [followUpModalOpen, setFollowUpModalOpen] = useState(false);
 
   useEffect(() => {
@@ -117,7 +121,7 @@ const ChaseClinicalsPage = () => {
               {selected && (
                 <>
                   <PatientProfileCard patient={selected} lockDoctorOpen onDoctorEdit={(patch) => update(selected.id, patch)} />
-                  <ChaseClinicalsPanel patient={selected} onUpdate={onUpdate} />
+                  <ChaseClinicalsPanel patient={selected} onUpdate={onUpdate} onOpenForm={() => setEscalationModalOpen(true)} />
                 </>
               )}
             </section>
@@ -132,6 +136,15 @@ const ChaseClinicalsPage = () => {
             onOpenChange={setBlockedModalOpen}
             patientId={selected.id}
             patientName={selected.name}
+            onSuccess={refetch}
+          />
+          <EscalationFormModal
+            open={escalationModalOpen}
+            onOpenChange={setEscalationModalOpen}
+            patientId={selected.id}
+            patientName={selected.name}
+            writeEscalationStatus={async (id) => { await writeStatusIndex(id, COL.escalation, ESCALATION_INDEX.required); }}
+            writeEscalationNotes={async (id, text) => { await writeLongText(id, COL.escalationNotes, text); }}
             onSuccess={refetch}
           />
           <FollowUpModal

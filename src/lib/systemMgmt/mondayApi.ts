@@ -50,6 +50,8 @@ export interface BoardDef {
   activeGroups: { id: string; title: string; roleRoute: string; isCompleted?: boolean }[];
   /** Column ID for escalation status (null = board has no escalation) */
   escalationColId: string | null;
+  /** Column ID for escalation notes long_text (null = board has no escalation notes) */
+  escalationNotesColId: string | null;
   /** Column ID for phone */
   phoneColId: string;
   /** Column ID for Stage Advancer (used by masheke to sub-route) */
@@ -101,6 +103,7 @@ export const BOARDS: BoardDef[] = [
       { id: "topics", title: "Subscriptions", roleRoute: "/subscription" },
     ],
     escalationColId: null,
+    escalationNotesColId: null,
     phoneColId: "phone_mkp0q3cw",
     stageAdvancerColId: null,
     daysSinceStageColId: null,
@@ -114,6 +117,7 @@ export const BOARDS: BoardDef[] = [
       { id: "group_mm1y57sz", title: "Completed", roleRoute: "", isCompleted: true },
     ],
     escalationColId: null,
+    escalationNotesColId: null,
     phoneColId: "phone_mm1x44yk",
     stageAdvancerColId: null,
     daysSinceStageColId: null,
@@ -127,6 +131,7 @@ export const BOARDS: BoardDef[] = [
       { id: "group_mm1x5q4e", title: "Completed",         roleRoute: "", isCompleted: true },
     ],
     escalationColId: "color_mm1x7997",
+    escalationNotesColId: "long_text_mm3j43qk",
     phoneColId: "phone_mm1x44yk",
     stageAdvancerColId: "color_mm1wyr92",
     daysSinceStageColId: "color_mm1wwm05",
@@ -143,6 +148,7 @@ export const BOARDS: BoardDef[] = [
       { id: "group_mm2vw3c0", title: "Completed",         roleRoute: "", isCompleted: true },
     ],
     escalationColId: "color_mm2vsh2f",
+    escalationNotesColId: "long_text_mm3jrssp",
     phoneColId: "phone_mm1x44yk",
     stageAdvancerColId: "color_mm1ws96t",
     daysSinceStageColId: "color_mm1wwm05",
@@ -157,6 +163,7 @@ export const BOARDS: BoardDef[] = [
       { id: "group_mm1x5s5d", title: "Completed",                  roleRoute: "", isCompleted: true },
     ],
     escalationColId: "color_mm1x7997",
+    escalationNotesColId: "long_text_mm3jgh1y",
     phoneColId: "phone_mm1x44yk",
     stageAdvancerColId: "color_mm1ws96t",
     daysSinceStageColId: "color_mm1wwm05",
@@ -182,6 +189,8 @@ export interface SystemPatient {
   escalated: boolean;
   /** Raw escalation text (e.g. "Escalation Required") */
   escalationText: string;
+  /** Raw escalation notes text (from the dedicated long_text column) */
+  escalationNotes: string;
   /** Whether this patient's role has a dedicated page to navigate to */
   hasPage: boolean;
   /** Whether this patient is in a Completed group */
@@ -208,6 +217,7 @@ async function fetchBoardItems(board: BoardDef): Promise<SystemPatient[]> {
   const groupIds = board.activeGroups.map((g) => g.id);
   const colIds = [board.phoneColId];
   if (board.escalationColId) colIds.push(board.escalationColId);
+  if (board.escalationNotesColId) colIds.push(board.escalationNotesColId);
   if (board.stageAdvancerColId) colIds.push(board.stageAdvancerColId);
   if (board.daysSinceStageColId) colIds.push(board.daysSinceStageColId);
   if (board.notesColId) colIds.push(board.notesColId);
@@ -276,6 +286,9 @@ function mapToSystemPatient(item: RawItem, board: BoardDef): SystemPatient {
   const escalationText = board.escalationColId
     ? colVal(board.escalationColId)
     : "";
+  const escalationNotes = board.escalationNotesColId
+    ? colVal(board.escalationNotesColId)
+    : "";
   const escalated =
     escalationText === "Escalation Required" ||
     escalationText === "Escalate";
@@ -310,6 +323,7 @@ function mapToSystemPatient(item: RawItem, board: BoardDef): SystemPatient {
     pipelineStage,
     escalated,
     escalationText,
+    escalationNotes,
     hasPage: roleRoute !== "" && !isCompleted,
     isCompleted,
     daysSinceStage,

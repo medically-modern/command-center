@@ -1,8 +1,7 @@
 /**
- * EscalateButton — local toggle that flips between "Escalate" and
- * "Escalated".  Does NOT write to Monday on its own — the parent
- * panel checks `escalated` and includes the write in the batched
- * Send-to-Monday / Save-Attempt call.
+ * EscalateButton — when onOpenForm is provided, clicking opens the
+ * escalation form modal. Falls back to simple toggle if onOpenForm
+ * is not provided (backward compat).
  */
 import { AlertTriangle, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -11,13 +10,23 @@ interface Props {
   escalated: boolean;
   onToggle: () => void;
   disabled?: boolean;
+  /** If provided, clicking Escalate opens the form modal instead of toggling */
+  onOpenForm?: () => void;
 }
 
-export function EscalateButton({ escalated, onToggle, disabled }: Props) {
+export function EscalateButton({ escalated, onToggle, disabled, onOpenForm }: Props) {
+  const handleClick = () => {
+    if (onOpenForm && !escalated) {
+      onOpenForm();
+    } else {
+      onToggle();
+    }
+  };
+
   return (
     <div className="flex flex-col items-center gap-1.5">
       <Button
-        onClick={onToggle}
+        onClick={handleClick}
         disabled={disabled}
         size="lg"
         variant="outline"
@@ -41,7 +50,7 @@ export function EscalateButton({ escalated, onToggle, disabled }: Props) {
       </Button>
       {escalated && (
         <p className="text-[11px] text-red-500">
-          Please include the reason for escalation in the Notes tab.
+          Escalation form submitted.
         </p>
       )}
     </div>

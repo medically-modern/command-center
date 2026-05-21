@@ -15,6 +15,9 @@ import { toast } from "sonner";
 import { clearEvalState } from "@/lib/masheke/evalState";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { BlockedModal } from "@/components/masheke/BlockedModal";
+import { EscalationFormModal } from "@/components/shared/EscalationFormModal";
+import { writeStatusIndex, writeLongText, COL } from "@/lib/masheke/mondayApi";
+import { ESCALATION_INDEX } from "@/lib/masheke/mondayMapping";
 import { useBackNavigation } from "@/hooks/useBackNavigation";
 
 const EvaluatePage = () => {
@@ -29,6 +32,7 @@ const EvaluatePage = () => {
   const [resetVersion, setResetVersion] = useState(0);
   const [referralEmailOpen, setReferralEmailOpen] = useState(false);
   const [blockedModalOpen, setBlockedModalOpen] = useState(false);
+  const [escalationModalOpen, setEscalationModalOpen] = useState(false);
 
   useEffect(() => {
     if (!selectedId && patients.length > 0) setSelectedId(patients[0].id);

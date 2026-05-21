@@ -103,6 +103,7 @@ export const COL = {
   mnAttempts: "color_mm1wz0vg",
   nextActionDate: "date_mm1wadgs",
   escalation: "color_mm1x7997",
+  escalationNotes: "long_text_mm3j43qk",
 
   // Advancers
   advancer2a: "color_mm1w73jx",
@@ -151,6 +152,7 @@ export const READ_COLUMN_IDS: string[] = [
   COL.receiptConfirmedName, COL.receiptConfirmedDate, COL.chaseRecipientName,
   COL.mnAttempts, COL.nextActionDate,
   COL.escalation,
+  COL.escalationNotes,
   // Advancers
   COL.advancer2a, COL.advancer2b, COL.advancer2c, COL.advancer2d,
   // Blocked
