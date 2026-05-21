@@ -155,6 +155,7 @@ const SystemMgmtPage = () => {
   };
 
   return (
+    <>
     <div className="min-h-screen flex flex-col bg-gradient-subtle">
       {/* Fixed notes panel on right edge */}
       {notesPatient && (
@@ -266,6 +267,7 @@ const SystemMgmtPage = () => {
       patientName={detailPatient?.name ?? ""}
       data={parseEscalation(detailPatient?.escalationNotes)}
     />
+    </>
   );
 };
 
