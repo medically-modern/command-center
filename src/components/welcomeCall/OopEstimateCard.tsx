@@ -139,7 +139,7 @@ const FIELD_WARNINGS: Record<string, string> = {
 };
 
 export function OopEstimateCard({ patient, infusionSets }: Props) {
-  const isCarecentrix = (patient.primaryInsurance || "").toLowerCase().includes("carecentrix");
+  const isCarecentrix = (patient.referralSource || "").toLowerCase().includes("carecentrix");
 
   const result = useMemo(() => {
     if (isCarecentrix) return null;
