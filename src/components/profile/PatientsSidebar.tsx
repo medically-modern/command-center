@@ -46,9 +46,10 @@ interface Props {
   loading: boolean;
   error: string | null;
   onRefresh: () => void;
+  hasOverlay?: (id: string) => boolean;
 }
 
-export function PatientsSidebar({ patients, selectedId, onSelect, loading, error, onRefresh }: Props) {
+export function PatientsSidebar({ patients, selectedId, onSelect, loading, error, onRefresh, hasOverlay }: Props) {
   const { state } = useSidebar();
   const [searchQuery, setSearchQuery] = useState("");
 
@@ -183,8 +184,13 @@ export function PatientsSidebar({ patients, selectedId, onSelect, loading, error
                         >
                           <User className="h-4 w-4 mt-0.5 shrink-0" />
                           {!collapsed && (
-                            <div className="min-w-0 text-left">
-                              <p className="text-sm font-medium truncate">{p.name}</p>
+                            <div className="min-w-0 text-left flex-1">
+                              <div className="flex items-center gap-1.5">
+                                <p className="text-sm font-medium truncate">{p.name}</p>
+                                {hasOverlay?.(p.id) && (
+                                  <span className="h-2 w-2 rounded-full bg-amber-400 shrink-0" title="Unsaved edits" />
+                                )}
+                              </div>
                               <p className="text-[11px] text-muted-foreground truncate">
                                 {p.dateOfIntake || "—"}
                               </p>
@@ -225,8 +231,13 @@ export function PatientsSidebar({ patients, selectedId, onSelect, loading, error
                         )}
                       >
                         <Clock className="h-4 w-4 mt-0.5 shrink-0 text-blue-400" />
-                        <div className="min-w-0 text-left">
-                          <p className="text-sm font-medium truncate">{p.name}</p>
+                        <div className="min-w-0 text-left flex-1">
+                          <div className="flex items-center gap-1.5">
+                            <p className="text-sm font-medium truncate">{p.name}</p>
+                            {hasOverlay?.(p.id) && (
+                              <span className="h-2 w-2 rounded-full bg-amber-400 shrink-0" title="Unsaved edits" />
+                            )}
+                          </div>
                           <p className="text-[11px] text-blue-400 truncate">
                             Until {p.followUpDate ? fmtDate(p.followUpDate) : "—"}
                           </p>

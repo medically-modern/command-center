@@ -5,6 +5,35 @@ import { mondayItemToPatient } from "@/lib/profile/mondayMapping";
 
 const POLL_MS = 15_000;
 const LS_CACHE_KEY = "prof-patients-cache";
+const LS_OVERLAY_KEY = "prof-overlays";
+
+function loadOverlays(): Record<string, Partial<Patient>> {
+  try {
+    const raw = localStorage.getItem(LS_OVERLAY_KEY);
+    if (!raw) return {};
+    return JSON.parse(raw) as Record<string, Partial<Patient>>;
+  } catch {
+    return {};
+  }
+}
+
+function persistOverlays(overlays: Record<string, Partial<Patient>>): void {
+  try {
+    localStorage.setItem(LS_OVERLAY_KEY, JSON.stringify(overlays));
+  } catch {
+    // Storage full or unavailable
+  }
+}
+
+function removePersistedOverlay(id: string): void {
+  try {
+    const overlays = loadOverlays();
+    delete overlays[id];
+    persistOverlays(overlays);
+  } catch {
+    // ignore
+  }
+}
 
 function loadCachedPatients(): Patient[] {
   try {
@@ -29,7 +58,8 @@ export function useMondayPatients(injectedPatientId?: string | null) {
 
   // Overlay: local edits keyed by patient id → partial patient.
   // These survive re-fetches so polling doesn't clobber in-progress edits.
-  const overlayRef = useRef<Record<string, Partial<Patient>>>({});
+  // Initialized from localStorage so saved progress persists across navigation.
+  const overlayRef = useRef<Record<string, Partial<Patient>>>(loadOverlays());
 
   const applyOverlays = useCallback((base: Patient[]): Patient[] => {
     const ov = overlayRef.current;
@@ -102,6 +132,7 @@ export function useMondayPatients(injectedPatientId?: string | null) {
    */
   const clearOverlay = useCallback((id: string) => {
     delete overlayRef.current[id];
+    removePersistedOverlay(id);
   }, []);
 
   /**
@@ -124,9 +155,15 @@ export function useMondayPatients(injectedPatientId?: string | null) {
   );
 
 
-  /** No-op for profile — overlays are in-memory only (no localStorage). */
-  const saveOverlay = useCallback((_id: string) => {
-    // Profile overlays live only in overlayRef; nothing to persist.
+  /** Persist the current overlay for a patient to localStorage so edits
+   *  survive page navigation and browser refreshes. */
+  const saveOverlay = useCallback((id: string) => {
+    const overlay = overlayRef.current[id];
+    if (overlay) {
+      const saved = loadOverlays();
+      saved[id] = overlay;
+      persistOverlays(saved);
+    }
   }, []);
 
   const hasOverlay = useCallback((id: string) => {

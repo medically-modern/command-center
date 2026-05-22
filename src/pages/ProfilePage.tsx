@@ -38,6 +38,7 @@ const ProfilePage = () => {
   const [referralEmailOpen, setReferralEmailOpen] = useState(false);
   const [followUpOpen, setFollowUpOpen] = useState(false);
   const [stuckSending, setStuckSending] = useState(false);
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     fetchClinicLabels().then(setClinicLabels).catch(console.error);
@@ -75,6 +76,23 @@ const ProfilePage = () => {
       });
     }
   }, [selected, updateLocal]);
+
+  const handleSave = useCallback(() => {
+    if (!selected) return;
+    setSaving(true);
+    try {
+      saveOverlay(selected.id);
+      toast.success(`Progress saved for ${selected.name}`, {
+        description: "Your edits are saved locally — you can navigate away and come back.",
+      });
+    } catch (e) {
+      toast.error("Failed to save progress", {
+        description: e instanceof Error ? e.message : String(e),
+      });
+    } finally {
+      setSaving(false);
+    }
+  }, [selected, saveOverlay]);
 
   const handleSubmit = async (action: "advance" | "needsInfo") => {
     if (!selected) return;
@@ -133,6 +151,7 @@ const ProfilePage = () => {
           loading={loading}
           error={error}
           onRefresh={refetch}
+          hasOverlay={hasOverlay}
         />
 
         <div className="flex-1 flex flex-col min-w-0">
@@ -161,13 +180,23 @@ const ProfilePage = () => {
                   </div>
                 </div>
                 {selected && (
-                  <Button
-                    onClick={() => setFollowUpOpen(true)}
-                    variant="ghost"
-                    className="gap-2 text-navy-foreground hover:bg-white/10"
-                  >
-                    <Clock className="h-4 w-4" /> Follow Up
-                  </Button>
+                  <>
+                    <Button
+                      onClick={() => setFollowUpOpen(true)}
+                      variant="ghost"
+                      className="gap-2 text-navy-foreground hover:bg-white/10"
+                    >
+                      <Clock className="h-4 w-4" /> Follow Up
+                    </Button>
+                    <Button
+                      onClick={handleSave}
+                      disabled={saving || !hasOverlay(selected.id)}
+                      className="gap-2 bg-emerald-600 text-white hover:bg-emerald-700 shadow-elevate"
+                    >
+                      {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                      Save
+                    </Button>
+                  </>
                 )}
               </div>
             </div>
