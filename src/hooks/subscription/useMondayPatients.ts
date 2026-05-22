@@ -108,12 +108,11 @@ export function useMondayPatients(injectedPatientId?: string | null) {
   }, [refetch]);
 
   const update = useCallback((id: string, patch: Partial<Patient>) => {
+    overlayRef.current.set(id, { ...(overlayRef.current.get(id) ?? {}), ...patch });
     setPatients((prev) =>
       prev.map((p) => {
         if (p.id !== id) return p;
-        const merged = { ...p, ...patch, lastUpdated: new Date().toISOString() };
-        overlayRef.current.set(id, { ...(overlayRef.current.get(id) ?? {}), ...patch });
-        return merged;
+        return { ...p, ...patch, lastUpdated: new Date().toISOString() };
       }),
     );
   }, []);
