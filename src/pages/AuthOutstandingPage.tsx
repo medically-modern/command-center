@@ -145,14 +145,17 @@ const AuthOutstandingPage = () => {
     if (!selected) return;
     // Only mark infusion sets and cartridges — NOT pump or CGM products.
     // The pump may go through a different insurance and has its own auth flow.
+    // Batch both updates into a single update() call so they don't overwrite each other.
+    const ins = selected.insurance ?? EMPTY_INSURANCE;
     const supplyCodeIds: ProductCodeId[] = ["infusion-sets", "cartridges"];
+    let updatedCodes = { ...ins.codes };
     for (const codeId of supplyCodeIds) {
-      const ins = selected.insurance ?? EMPTY_INSURANCE;
-      const state = ins.codes[codeId];
-      // Skip products not being served
+      const state = updatedCodes[codeId];
       if (state?._mondayAuthLabel?.toLowerCase() === "not serving") continue;
-      updateCode(codeId, { authOutstandingResult: "auth-valid" });
+      const prev = updatedCodes[codeId] ?? { status: "pending" as const };
+      updatedCodes[codeId] = { ...prev, authOutstandingResult: "auth-valid" };
     }
+    update(selected.id, { insurance: { ...ins, codes: updatedCodes } });
     toast.success("Supplies marked as Auth Valid — hit Send to Monday to complete");
   };
 
@@ -246,21 +249,43 @@ const AuthOutstandingPage = () => {
                   )}
 
                   {showClaimsPaid && (
-                    <div className="flex justify-center">
-                      <Button
-                        onClick={handleClaimsPaidComplete}
-                        disabled={suppliesAlreadyMarked}
-                        className={
-                          suppliesAlreadyMarked
-                            ? "gap-2 bg-emerald-100 !text-emerald-700 border-emerald-400 shadow-md cursor-default"
-                            : "gap-2 bg-emerald-600 hover:bg-emerald-700 text-white shadow-elevate"
-                        }
-                      >
-                        <CheckCircle2 className="h-4 w-4" />
-                        {suppliesAlreadyMarked
-                          ? "Supplies Marked Complete"
-                          : "Claims Paid — Mark Supplies Complete"}
-                      </Button>
+                    <div
+                      className={
+                        suppliesAlreadyMarked
+                          ? "rounded-xl border-2 border-emerald-400 bg-emerald-50 dark:bg-emerald-950/30 p-5 text-center transition-all duration-300"
+                          : "rounded-xl border-2 border-emerald-500/50 bg-gradient-to-r from-emerald-50 to-teal-50 dark:from-emerald-950/20 dark:to-teal-950/20 p-5 text-center transition-all duration-300"
+                      }
+                    >
+                      {suppliesAlreadyMarked ? (
+                        <div className="flex flex-col items-center gap-2">
+                          <div className="h-10 w-10 rounded-full bg-emerald-500 flex items-center justify-center shadow-md">
+                            <CheckCircle2 className="h-5 w-5 text-white" />
+                          </div>
+                          <p className="text-sm font-semibold text-emerald-700 dark:text-emerald-300">
+                            Supplies Marked Complete
+                          </p>
+                          <p className="text-xs text-emerald-600/70 dark:text-emerald-400/70">
+                            Hit Send to Monday to finalize
+                          </p>
+                        </div>
+                      ) : (
+                        <>
+                          <p className="text-xs uppercase tracking-wider text-emerald-700/70 dark:text-emerald-300/70 mb-3">
+                            DVS Verified · Claims Paid
+                          </p>
+                          <Button
+                            onClick={handleClaimsPaidComplete}
+                            size="lg"
+                            className="gap-2 bg-emerald-600 hover:bg-emerald-700 text-white shadow-elevate px-8 py-3 text-base transition-transform active:scale-95"
+                          >
+                            <CheckCircle2 className="h-5 w-5" />
+                            Mark Supplies Complete
+                          </Button>
+                          <p className="text-[11px] text-muted-foreground mt-2">
+                            Sets infusion sets &amp; cartridges to Auth Valid. Pump auth is handled separately.
+                          </p>
+                        </>
+                      )}
                     </div>
                   )}
 
