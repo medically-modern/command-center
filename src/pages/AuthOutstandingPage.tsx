@@ -16,7 +16,7 @@ import { SendToMondayButton } from "@/components/samantha/SendToMondayButton";
 import { Button } from "@/components/ui/button";
 import { EscalateButton } from "@/components/samantha/EscalateButton";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
-import { RotateCcw, Stethoscope, ArrowLeft, Clock, Save, Zap } from "lucide-react";
+import { RotateCcw, Stethoscope, ArrowLeft, Clock, Save, Zap, CheckCircle2 } from "lucide-react";
 import { resolveHcpcs } from "@/lib/samantha/hcpcRules";
 import { toast } from "sonner";
 import { sendPatientToMonday } from "@/lib/samantha/mondayWrite";
@@ -114,6 +114,48 @@ const AuthOutstandingPage = () => {
     return resolved.some((r) => r.product === "infusion_set" || r.product === "cartridge");
   }, [selected?.primaryInsurance, selected?.secondaryInsurance, selected?.serving]);
 
+  // Show "Claims Paid — Mark Complete" when DVS succeeded and claims are paid.
+  // Only applies to Medicaid patients with supplies (infusion sets / cartridges).
+  const showClaimsPaid = useMemo(() => {
+    if (!selected) return false;
+    return (
+      selected.claimsStatus === "Claims Paid" &&
+      selected.dvsStatus === "Success"
+    );
+  }, [selected?.claimsStatus, selected?.dvsStatus]);
+
+  // Whether the supplies have already been marked auth-valid via the button.
+  const suppliesAlreadyMarked = useMemo(() => {
+    if (!selected) return false;
+    const ins = selected.insurance ?? EMPTY_INSURANCE;
+    const infState = ins.codes["infusion-sets"];
+    const cartState = ins.codes["cartridges"];
+    // Both must be auth-valid (or the product isn't served, indicated
+    // by _mondayAuthLabel). Consider "marked" if every served supply is resolved.
+    const infResolved =
+      infState?._mondayAuthLabel?.toLowerCase() === "not serving" ||
+      infState?.authOutstandingResult === "auth-valid";
+    const cartResolved =
+      cartState?._mondayAuthLabel?.toLowerCase() === "not serving" ||
+      cartState?.authOutstandingResult === "auth-valid";
+    return !!infResolved && !!cartResolved;
+  }, [selected?.insurance]);
+
+  const handleClaimsPaidComplete = () => {
+    if (!selected) return;
+    // Only mark infusion sets and cartridges — NOT pump or CGM products.
+    // The pump may go through a different insurance and has its own auth flow.
+    const supplyCodeIds: ProductCodeId[] = ["infusion-sets", "cartridges"];
+    for (const codeId of supplyCodeIds) {
+      const ins = selected.insurance ?? EMPTY_INSURANCE;
+      const state = ins.codes[codeId];
+      // Skip products not being served
+      if (state?._mondayAuthLabel?.toLowerCase() === "not serving") continue;
+      updateCode(codeId, { authOutstandingResult: "auth-valid" });
+    }
+    toast.success("Supplies marked as Auth Valid — hit Send to Monday to complete");
+  };
+
   const handleSend = async () => {
     if (!selected) return;
     try {
@@ -199,6 +241,25 @@ const AuthOutstandingPage = () => {
                       >
                         <Zap className="h-4 w-4" />
                         {selected.triggerDvs ? "DVS Triggered" : "Trigger DVS"}
+                      </Button>
+                    </div>
+                  )}
+
+                  {showClaimsPaid && (
+                    <div className="flex justify-center">
+                      <Button
+                        onClick={handleClaimsPaidComplete}
+                        disabled={suppliesAlreadyMarked}
+                        className={
+                          suppliesAlreadyMarked
+                            ? "gap-2 bg-emerald-100 !text-emerald-700 border-emerald-400 shadow-md cursor-default"
+                            : "gap-2 bg-emerald-600 hover:bg-emerald-700 text-white shadow-elevate"
+                        }
+                      >
+                        <CheckCircle2 className="h-4 w-4" />
+                        {suppliesAlreadyMarked
+                          ? "Supplies Marked Complete"
+                          : "Claims Paid — Mark Supplies Complete"}
                       </Button>
                     </div>
                   )}
