@@ -38,7 +38,7 @@ export function PatientProfileCard({
   return (
     <div className="rounded-xl bg-card border shadow-card p-5">
       <div className="flex items-center justify-between mb-4">
-        <p className="text-xs uppercase tracking-wider text-muted-foreground font-semibold">Patient Profile</p>
+        <p className="text-lg font-bold text-emerald-700">Patient Demographics</p>
         <div className="flex items-center gap-2">
           {onToggleReferralEmail && (
             <Button
@@ -77,7 +77,7 @@ export function PatientProfileCard({
             value={patient.name}
             onChange={(e) => onUpdate({ name: e.target.value })}
             placeholder="Patient name"
-            className="h-9"
+            className="h-9 border-red-400 ring-1 ring-red-200"
           />
         </div>
 
@@ -92,7 +92,7 @@ export function PatientProfileCard({
             onBlur={handleDobBlur}
             placeholder="MM/DD/YYYY"
             inputMode="numeric"
-            className="h-9"
+            className="h-9 border-red-400 ring-1 ring-red-200"
           />
         </div>
 
@@ -105,7 +105,7 @@ export function PatientProfileCard({
             value={patient.ptPhone}
             onChange={(e) => handlePhoneChange(e.target.value)}
             placeholder="(xxx) xxx-xxxx"
-            className="h-9"
+            className="h-9 border-red-400 ring-1 ring-red-200"
           />
         </div>
 
@@ -132,7 +132,7 @@ export function PatientProfileCard({
             value={patient.gender || "_blank"}
             onValueChange={(v) => onUpdate({ gender: v === "_blank" ? "" : v })}
           >
-            <SelectTrigger className="h-9">
+            <SelectTrigger className="h-9 border-red-400 ring-1 ring-red-200">
               <SelectValue placeholder="Select…" />
             </SelectTrigger>
             <SelectContent>

@@ -214,6 +214,7 @@ const ProfilePage = () => {
 
               {selected && (
                 <>
+                  {/* 1. Patient Demographics */}
                   <PatientProfileCard
                     patient={selected}
                     onUpdate={handleUpdate}
@@ -221,10 +222,10 @@ const ProfilePage = () => {
                     onToggleReferralEmail={() => setReferralEmailOpen((o) => !o)}
                   />
 
-                  {/* 1. Serving */}
-                  <ServingPanel patient={selected} onUpdate={handleUpdate} />
+                  {/* 2. Referral — rendered via ServingPanel (referral-only mode) */}
+                  <ServingPanel patient={selected} onUpdate={handleUpdate} hideReferral={false} referralOnly />
 
-                  {/* 2. Stedi */}
+                  {/* 3. Benefits — Stedi */}
                   <StediPanel
                     patient={selected}
                     onRefresh={refetch}
@@ -234,7 +235,10 @@ const ProfilePage = () => {
                     }
                   />
 
-                  {/* 3. Doctor */}
+                  {/* 4. Request, Cross-Sell, Serving, Coverage (no referral) */}
+                  <ServingPanel patient={selected} onUpdate={handleUpdate} hideReferral />
+
+                  {/* 5. Doctor */}
                   <DoctorPanel
                     patient={selected}
                     onUpdate={handleUpdate}
@@ -243,7 +247,7 @@ const ProfilePage = () => {
                     onClinicCreate={handleClinicCreate}
                   />
 
-                  {/* 4. Notes */}
+                  {/* 5. Notes */}
                   <NotesPanel
                     notes={selected.notes}
                     onNotesChange={(v) => updateLocal(selected.id, { notes: v })}

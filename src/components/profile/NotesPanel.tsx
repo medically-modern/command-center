@@ -49,8 +49,8 @@ export function NotesPanel({ notes, onNotesChange, onSaveToMonday }: Props) {
   return (
     <Card className="p-4 space-y-3">
       <div className="flex items-center justify-between">
-        <p className="text-xs uppercase tracking-wider text-muted-foreground font-semibold flex items-center gap-2">
-          <MessageSquare className="h-3.5 w-3.5" /> Profile Send Off Notes
+        <p className="text-lg font-bold text-emerald-700 flex items-center gap-2">
+          <MessageSquare className="h-4 w-4" /> Notes &amp; Additional Information
         </p>
         <Button variant="ghost" size="sm" className="h-7 text-xs" disabled={saving} onClick={async () => { if (editing && onSaveToMonday) { setSaving(true); try { await onSaveToMonday(notes); toast.success("Notes saved to Monday"); } catch (e) { toast.error("Failed to save notes", { description: e instanceof Error ? e.message : String(e) }); } finally { setSaving(false); } } setEditing(!editing); }}>
           {editing ? (saving ? "Saving…" : "Done") : "Edit"}

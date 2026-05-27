@@ -328,7 +328,7 @@ export function StediPanel({ patient, onRefresh, onUpdate, onNext, onRemoveOverl
           <div className="flex items-start justify-between gap-3 flex-wrap">
             <div>
               <p className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground font-semibold">Step 1</p>
-              <CardTitle className="text-lg">Run Stedi Check</CardTitle>
+              <CardTitle className="text-lg font-bold text-emerald-700">Benefits Information — Run Stedi Check</CardTitle>
             </div>
             <ClinicalsDownloadButton itemId={patient.id} />
           </div>
