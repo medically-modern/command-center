@@ -120,6 +120,8 @@ export interface Patient {
   doctorEdited: string | null;
   npiEdited: string | null;
   doctorAddressEdited: string | null;
+  doctorAddressLat: number | null;
+  doctorAddressLng: number | null;
   doctorPhoneEdited: string | null;
   doctorFaxEdited: string | null;
   primaryInsuranceEdited: number | null;   // status index override

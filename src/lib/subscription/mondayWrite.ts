@@ -119,7 +119,7 @@ export async function sendPatientToMonday(p: Patient): Promise<void> {
 
   // Doctor Address
   if (p.doctorAddressEdited !== null)
-    tasks.push({ label: "Doctor Address", columnId: COL.doctorAddress, fn: () => writeLocation(p.id, COL.doctorAddress, p.doctorAddressEdited!, 0, 0) });
+    tasks.push({ label: "Doctor Address", columnId: COL.doctorAddress, fn: () => writeLocation(p.id, COL.doctorAddress, p.doctorAddressEdited!, p.doctorAddressLat ?? 0, p.doctorAddressLng ?? 0) });
 
   // Doctor Phone
   if (p.doctorPhoneEdited !== null && p.doctorPhoneEdited !== "")

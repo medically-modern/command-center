@@ -166,6 +166,8 @@ export function mondayItemToPatient(item: MondayItem): Patient {
     doctorEdited: null,
     npiEdited: null,
     doctorAddressEdited: null,
+    doctorAddressLat: null,
+    doctorAddressLng: null,
     doctorPhoneEdited: null,
     doctorFaxEdited: null,
     primaryInsuranceEdited: null,

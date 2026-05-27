@@ -10,6 +10,8 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { Pencil } from "lucide-react";
+import { AddressAutocomplete } from "@/components/welcomeCall/AddressAutocomplete";
+import type { AddressResult } from "@/components/welcomeCall/AddressAutocomplete";
 
 interface Props {
   patient: Patient;
@@ -261,14 +263,20 @@ export function PatientInfoCard({ patient, onFieldChange }: Props) {
           <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-3">Demographics</p>
           <div className="grid grid-cols-2 gap-3">
             <Field label="Gender" value={patient.gender} />
-            <EditableField
-              label="Address"
-              value={patient.address}
-              editedValue={patient.addressEdited}
-              editedField="addressEdited"
-              onFieldChange={onFieldChange}
-              placeholder="123 Main St, City, ST 12345"
-            />
+            <div className="col-span-2">
+              <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1">Address</p>
+              <AddressAutocomplete
+                key={`addr-${patient.id}`}
+                value={patient.addressEdited ?? patient.address}
+                onChange={(result: AddressResult) => {
+                  onFieldChange?.("addressEdited", result.address);
+                  onFieldChange?.("addressLat" as keyof Patient, result.lat);
+                  onFieldChange?.("addressLng" as keyof Patient, result.lng);
+                }}
+                placeholder="Search for address..."
+              />
+              {patient.addressEdited !== null && patient.addressEdited !== patient.address && <p className="text-[10px] text-amber-600 mt-0.5">edited</p>}
+            </div>
             <Field label="Referral" value={patient.referral} />
             {patient.carecentrixIntakeId && (
               <Field label="Carecentrix Intake I.D." value={patient.carecentrixIntakeId} />
@@ -387,14 +395,20 @@ export function PatientInfoCard({ patient, onFieldChange }: Props) {
               editedField="npiEdited"
               onFieldChange={onFieldChange}
             />
-            <EditableField
-              label="Doctor Address"
-              value={patient.doctorAddress}
-              editedValue={patient.doctorAddressEdited}
-              editedField="doctorAddressEdited"
-              onFieldChange={onFieldChange}
-              placeholder="123 Medical Dr, City, ST 12345"
-            />
+            <div className="col-span-2">
+              <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1">Doctor Address</p>
+              <AddressAutocomplete
+                key={`docaddr-${patient.id}`}
+                value={patient.doctorAddressEdited ?? patient.doctorAddress}
+                onChange={(result: AddressResult) => {
+                  onFieldChange?.("doctorAddressEdited", result.address);
+                  onFieldChange?.("doctorAddressLat" as keyof Patient, result.lat);
+                  onFieldChange?.("doctorAddressLng" as keyof Patient, result.lng);
+                }}
+                placeholder="Search for doctor address..."
+              />
+              {patient.doctorAddressEdited !== null && patient.doctorAddressEdited !== patient.doctorAddress && <p className="text-[10px] text-amber-600 mt-0.5">edited</p>}
+            </div>
             <EditableField
               label="Doctor Phone"
               value={patient.doctorPhone ? formatPhone(patient.doctorPhone) : ""}
