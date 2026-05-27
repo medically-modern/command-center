@@ -173,7 +173,7 @@ export function mondayItemToPatient(item: MondayItem): Patient {
     primaryInsuranceEdited: null,
     secondaryInsuranceEdited: null,
     faxParachuteEdited: null,
-    notes: "",
+    notes: txt(COL.subscriptionNotes),
     escalated: false,
     receivedAt: new Date().toISOString(),
     lastUpdated: new Date().toISOString(),

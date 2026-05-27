@@ -155,8 +155,8 @@ export async function sendPatientToMonday(p: Patient): Promise<void> {
 }
 
 /**
- * Immediately push notes to Monday's denial reason long_text column.
+ * Immediately push notes to the Subscription Patient Notes column on Monday.
  */
 export async function sendNotesToMonday(itemId: string, notes: string): Promise<void> {
-  await writeLongText(itemId, COL.denialReason, notes);
+  await writeLongText(itemId, COL.subscriptionNotes, notes);
 }

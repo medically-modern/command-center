@@ -97,6 +97,9 @@ export const COL = {
   carecentrixIntakeId: "text_mm3j6c1a",
   itemId: "pulse_id_mm2medsk",
 
+  // Subscription Patient Notes
+  subscriptionNotes: "long_text_mm3rj7k7",
+
   // Auth Escalation Management
   authEscalation: "color_mm2n237s",
   triggerDvs: "color_mm2narpj",
@@ -165,6 +168,8 @@ export const READ_COLUMN_IDS = [
   COL.claimsStatus,
   // Denial
   COL.denialReason,
+  // Subscription Patient Notes
+  COL.subscriptionNotes,
 ];
 
 // ── Types ────────────────────────────────────────────────────────────
