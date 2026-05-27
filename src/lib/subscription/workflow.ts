@@ -52,6 +52,7 @@ export interface Patient {
   cgmCoverage: string;
   mr: string;
   mnExpiry: string;
+  visitDate: string;           // user-entered; +6 months → new mnExpiry on send
   diagnosis: string;
 
   // Prior Auth — Sensors

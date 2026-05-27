@@ -98,6 +98,7 @@ export function mondayItemToPatient(item: MondayItem): Patient {
     cgmCoverage: txt(COL.cgmCoverage),
     mr: txt(COL.mr),
     mnExpiry: txt(COL.mnExpiry),
+    visitDate: "",                       // local-only; not a Monday column
     diagnosis: txt(COL.diagnosis),
 
     // Prior Auth — Sensors

@@ -138,6 +138,14 @@ export async function sendPatientToMonday(p: Patient): Promise<void> {
   if (secInsIdx !== null)
     tasks.push({ label: "Secondary Insurance", columnId: COL.secondaryInsurance, fn: () => writeStatusIndex(p.id, COL.secondaryInsurance, secInsIdx!) });
 
+  // Visit Date → MN Expiry (+6 months)
+  if (p.visitDate) {
+    const d = new Date(p.visitDate + "T00:00:00");
+    d.setMonth(d.getMonth() + 6);
+    const newExpiry = d.toISOString().slice(0, 10); // YYYY-MM-DD
+    tasks.push({ label: "MN Expiry (from Visit Date)", columnId: COL.mnExpiry, fn: () => writeDate(p.id, COL.mnExpiry, newExpiry) });
+  }
+
   // Fax / Parachute
   const faxVal = p.faxParachuteEdited ?? p.faxParachute;
   if (faxVal)

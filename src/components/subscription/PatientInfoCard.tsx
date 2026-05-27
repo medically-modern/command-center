@@ -164,17 +164,48 @@ function EditableStatusSelect({
   );
 }
 
-/** Color-coded MR status */
-function MrField({ mr, expiry }: { mr: string; expiry: string }) {
+/** Color-coded MR status + Visit Date input */
+function MrField({ mr, expiry, visitDate, onFieldChange }: {
+  mr: string;
+  expiry: string;
+  visitDate: string;
+  onFieldChange?: (field: keyof Patient, value: string | number | null) => void;
+}) {
   if (!mr) return null;
   const isValid = mr === "MR Valid";
   const isExpired = mr === "MR Expired" || mr === "MR Invalid";
   const color = isValid ? "text-green-600" : isExpired ? "text-red-600" : "text-amber-600";
+
+  // Show the +6mo preview when user has entered a visit date
+  const previewExpiry = visitDate
+    ? (() => {
+        const d = new Date(visitDate + "T00:00:00");
+        d.setMonth(d.getMonth() + 6);
+        return formatDateMDY(d.toISOString().slice(0, 10));
+      })()
+    : null;
+
   return (
-    <div>
-      <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Medical Records</p>
-      <p className={`text-sm font-medium ${color}`}>{mr}</p>
-      {expiry && <p className="text-[10px] text-muted-foreground">Expires: {formatDateMDY(expiry)}</p>}
+    <div className="col-span-2">
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Medical Records</p>
+          <p className={`text-sm font-medium ${color}`}>{mr}</p>
+          {expiry && <p className="text-[10px] text-muted-foreground">Expires: {formatDateMDY(expiry)}</p>}
+        </div>
+        <div>
+          <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Visit Date</p>
+          <Input
+            type="date"
+            value={visitDate}
+            onChange={(e) => onFieldChange?.("visitDate", e.target.value)}
+            className="h-8 text-sm mt-0.5"
+          />
+          {previewExpiry && (
+            <p className="text-[10px] text-emerald-600 mt-0.5">New MN Expiry → {previewExpiry}</p>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
@@ -339,7 +370,7 @@ export function PatientInfoCard({ patient, onFieldChange }: Props) {
         <Card className="p-4">
           <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-3">Medical Necessity & Auth</p>
           <div className="grid grid-cols-2 gap-3">
-            <MrField mr={patient.mr} expiry={patient.mnExpiry} />
+            <MrField mr={patient.mr} expiry={patient.mnExpiry} visitDate={patient.visitDate} onFieldChange={onFieldChange} />
             <Field label="Diagnosis" value={patient.diagnosis} />
             <Field label="CGM Coverage" value={patient.cgmCoverage} />
             <AuthStatusField label="Sensors Auth" status={patient.sensorsAuthStatus} />
