@@ -12,6 +12,7 @@ import {
 import { Pencil } from "lucide-react";
 import { AddressAutocomplete } from "@/components/welcomeCall/AddressAutocomplete";
 import type { AddressResult } from "@/components/welcomeCall/AddressAutocomplete";
+import { MnDocsPanel } from "@/components/subscription/MnDocsPanel";
 
 interface Props {
   patient: Patient;
@@ -359,6 +360,7 @@ export function PatientInfoCard({ patient, onFieldChange }: Props) {
               {patient.suppliesEndAuth && <Field label="Supplies Auth End" value={formatDateMDY(patient.suppliesEndAuth)} />}
             </div>
           )}
+          <MnDocsPanel itemId={patient.id} />
         </Card>
       </div>
 

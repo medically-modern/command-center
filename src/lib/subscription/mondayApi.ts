@@ -378,3 +378,118 @@ export async function clearStatusColumn(itemId: string, columnId: string): Promi
   `;
   await gql(query, { boardId: BOARD_ID, itemId, columnId, value: JSON.stringify({}) });
 }
+
+// ── File asset helpers ──────────────────────────────────────────────
+
+export interface MondayAsset {
+  id: string;
+  name: string;
+  url: string;
+  public_url: string;
+}
+
+export interface MondayFileEntry {
+  assetId: string;
+  name: string;
+  url?: string;
+  public_url?: string;
+}
+
+export type ColumnFiles = Record<string, MondayFileEntry[]>;
+
+/** Fetch all assets attached to an item. */
+export async function fetchItemAssets(itemId: string): Promise<MondayAsset[]> {
+  const query = `
+    query ($itemId: [ID!]!) {
+      items(ids: $itemId) {
+        assets(assets_source: all) { id name url public_url }
+      }
+    }
+  `;
+  const data = await gql<{ items: { assets: MondayAsset[] }[] }>(query, { itemId: [itemId] });
+  return data.items?.[0]?.assets ?? [];
+}
+
+/**
+ * Fetch files from specific file columns, cross-referencing with assets
+ * to get download URLs.
+ */
+export async function fetchItemFileColumns(
+  itemId: string,
+  columnIds: string[],
+): Promise<ColumnFiles> {
+  if (columnIds.length === 0) return {};
+  const query = `
+    query ($itemId: [ID!]!, $columnIds: [String!]!) {
+      items(ids: $itemId) {
+        assets(assets_source: all) { id name url public_url }
+        column_values(ids: $columnIds) { id value }
+      }
+    }
+  `;
+  const data = await gql<{
+    items: { assets: MondayAsset[]; column_values: { id: string; value: string | null }[] }[];
+  }>(query, { itemId: [itemId], columnIds });
+  const item = data.items?.[0];
+  if (!item) return {};
+  const assetById = new Map<string, MondayAsset>();
+  for (const a of item.assets ?? []) assetById.set(String(a.id), a);
+
+  const out: ColumnFiles = {};
+  for (const cv of item.column_values ?? []) {
+    out[cv.id] = [];
+    if (!cv.value) continue;
+    try {
+      const parsed = JSON.parse(cv.value) as { files?: { name?: string; assetId?: number | string }[] };
+      for (const f of parsed.files ?? []) {
+        const assetId = String(f.assetId ?? "");
+        if (!assetId) continue;
+        const a = assetById.get(assetId);
+        out[cv.id].push({
+          assetId,
+          name: f.name ?? a?.name ?? "(unnamed)",
+          url: a?.url,
+          public_url: a?.public_url,
+        });
+      }
+    } catch { /* ignore malformed value */ }
+  }
+  return out;
+}
+
+/** Upload a file into a Monday file column via the Cloudflare proxy. */
+export async function uploadFileToColumn(
+  itemId: string,
+  columnId: string,
+  bytes: Uint8Array,
+  filename: string,
+  mimeType = "application/pdf",
+): Promise<void> {
+  const token = getToken();
+  if (!token) throw new Error("VITE_MONDAY_API_TOKEN is not set");
+
+  const query = `mutation ($file: File!) { add_file_to_column(item_id: ${itemId}, column_id: "${columnId}", file: $file) { id } }`;
+
+  const fd = new FormData();
+  fd.append("query", query);
+  fd.append("variables[file]", new Blob([bytes as BlobPart], { type: mimeType }), filename);
+
+  const proxyUrl =
+    (import.meta.env.VITE_MONDAY_FILE_PROXY_URL as string | undefined) ||
+    "https://monday-file-proxy.medicallymodern.workers.dev";
+
+  const res = await fetch(proxyUrl, {
+    method: "POST",
+    headers: { Authorization: token },
+    body: fd,
+  });
+  if (!res.ok) {
+    const txt = await res.text();
+    throw new Error(`File upload failed (${res.status}): ${txt}`);
+  }
+  let json: { errors?: unknown };
+  try { json = await res.json(); } catch { json = {}; }
+  if (json.errors) {
+    throw new Error(`Monday file upload error: ${JSON.stringify(json.errors)}`);
+  }
+}
