@@ -149,11 +149,15 @@ export function StediPanel({ patient, onRefresh, onUpdate, onNext, onRemoveOverl
   const profileDirty = !profilesEqual(snapshotProfile(patient), syncedRef.current.snapshot);
 
   // Prerequisites for Run Stedi button
+  // Use the synced snapshot as fallback — after a sync + refetch, Monday's
+  // status column text may arrive empty for a frame before the poll returns
+  // the updated label.
+  const snap = syncedRef.current.snapshot;
   const prereqsFilled = !!(
     patient.name.trim() &&
     patient.dob.trim() &&
-    patient.generalInsurance &&
-    patient.memberId1.trim()
+    (patient.generalInsurance || snap.generalInsurance) &&
+    (patient.memberId1.trim() || snap.memberId1.trim())
   );
   const canRunStedi = prereqsFilled && !profileDirty;
 
