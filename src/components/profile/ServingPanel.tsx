@@ -80,21 +80,38 @@ export function ServingPanel({ patient, onUpdate, onNext, hideReferral, referral
   const primaryIns = patient.primaryInsurance;
   const requestType = patient.requestType;
 
-  // Re-derive cross-sell whenever primary insurance changes.
-  // Skip the patient if Janelle has manually marked Already Serving CGM —
-  // that's a fact about the patient, not insurance-derived, and shouldn't
-  // be overwritten on insurance edits.
+  // Re-derive cross-sell whenever primary insurance OR request type changes.
+  // When request type is "Supplies Only" or "Insulin Pump" and insurance
+  // is eligible, auto-set cross-sell, CGM type, and CGM coverage path.
+  // Skip if Janelle has manually marked Already Serving CGM.
   useEffect(() => {
     if (!primaryIns) return;
     if (crossSellStatus === "Already Serving CGM") return;
 
     const eligible = canCrossSellCgm(primaryIns);
-    onUpdate({
-      cgmCrossSell: eligible ? "Cross-Sell" : "Couldn't Cross-Sell",
-      cgmType: eligible ? "Dexcom G7" : "Not Serving",
-      cgmCoveragePath: eligible ? "Insulin" : "Not Serving",
-    });
-  }, [primaryIns]); // eslint-disable-line react-hooks/exhaustive-deps
+    const isSuppliesOrPump = requestType === "Supplies Only" || requestType === "Insulin Pump";
+
+    if (eligible && isSuppliesOrPump) {
+      // Auto cross-sell: set everything
+      onUpdate({
+        cgmCrossSell: "Cross-Sell",
+        cgmType: "Dexcom G7",
+        cgmCoveragePath: "Insulin",
+      });
+    } else if (eligible) {
+      onUpdate({
+        cgmCrossSell: "Cross-Sell",
+        cgmType: "Dexcom G7",
+        cgmCoveragePath: "Insulin",
+      });
+    } else {
+      onUpdate({
+        cgmCrossSell: "Couldn't Cross-Sell",
+        cgmType: "Not Serving",
+        cgmCoveragePath: "Not Serving",
+      });
+    }
+  }, [primaryIns, requestType]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Auto-derive Serving from cross-sell + request type
   useEffect(() => {
@@ -223,6 +240,7 @@ export function ServingPanel({ patient, onUpdate, onNext, hideReferral, referral
               config={{ field: "cgmType", label: "CGM Type", indexMap: CGM_TYPE_INDEX }}
               onChange={(v) => onUpdate({ cgmType: v })}
               hint={cgmTypeHint}
+              required={isCrossSellEligible}
             />
           </div>
 

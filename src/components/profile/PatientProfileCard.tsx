@@ -77,7 +77,7 @@ export function PatientProfileCard({
             value={patient.name}
             onChange={(e) => onUpdate({ name: e.target.value })}
             placeholder="Patient name"
-            className="h-9 border-red-400 ring-1 ring-red-200"
+            className={`h-9 ${patient.name?.trim() ? "border-green-400 ring-1 ring-green-200" : "border-red-400 ring-1 ring-red-200"}`}
           />
         </div>
 
@@ -92,7 +92,7 @@ export function PatientProfileCard({
             onBlur={handleDobBlur}
             placeholder="MM/DD/YYYY"
             inputMode="numeric"
-            className="h-9 border-red-400 ring-1 ring-red-200"
+            className={`h-9 ${patient.dob?.trim() ? "border-green-400 ring-1 ring-green-200" : "border-red-400 ring-1 ring-red-200"}`}
           />
         </div>
 
@@ -105,7 +105,7 @@ export function PatientProfileCard({
             value={patient.ptPhone}
             onChange={(e) => handlePhoneChange(e.target.value)}
             placeholder="(xxx) xxx-xxxx"
-            className="h-9 border-red-400 ring-1 ring-red-200"
+            className={`h-9 ${patient.ptPhone?.trim() ? "border-green-400 ring-1 ring-green-200" : "border-red-400 ring-1 ring-red-200"}`}
           />
         </div>
 
@@ -132,7 +132,7 @@ export function PatientProfileCard({
             value={patient.gender || "_blank"}
             onValueChange={(v) => onUpdate({ gender: v === "_blank" ? "" : v })}
           >
-            <SelectTrigger className="h-9 border-red-400 ring-1 ring-red-200">
+            <SelectTrigger className={`h-9 ${patient.gender?.trim() ? "border-green-400 ring-1 ring-green-200" : "border-red-400 ring-1 ring-red-200"}`}>
               <SelectValue placeholder="Select…" />
             </SelectTrigger>
             <SelectContent>
