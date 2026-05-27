@@ -52,6 +52,11 @@ function DvsClaimsVisual({ dvsStatus, claimsStatus }: { dvsStatus?: string; clai
           <span className={`inline-block px-3 py-1 rounded-full text-xs font-medium ${statusColor(dvsStatus)}`}>
             {dvsStatus}
           </span>
+          {dvsStatus?.toLowerCase() === "mltc" && (
+            <p className="text-xs font-semibold text-red-600 mt-1.5">
+              MLTC requires auth for supplies, submit auth via fax.
+            </p>
+          )}
         </div>
         <div className="flex-1 rounded-lg border p-3 text-center space-y-1.5">
           <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Claim</p>
