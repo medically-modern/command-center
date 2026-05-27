@@ -352,6 +352,24 @@ export async function writeDropdownIds(itemId: string, columnId: string, ids: nu
   await gql(query, { boardId: BOARD_ID, itemId, columnId, value: JSON.stringify({ ids }) });
 }
 
+export async function writePhone(itemId: string, columnId: string, phone: string): Promise<void> {
+  const query = `
+    mutation ($boardId: ID!, $itemId: ID!, $columnId: String!, $value: JSON!) {
+      change_column_value(board_id: $boardId, item_id: $itemId, column_id: $columnId, value: $value) { id }
+    }
+  `;
+  await gql(query, { boardId: BOARD_ID, itemId, columnId, value: JSON.stringify({ phone, countryShortName: "US" }) });
+}
+
+export async function writeEmail(itemId: string, columnId: string, email: string): Promise<void> {
+  const query = `
+    mutation ($boardId: ID!, $itemId: ID!, $columnId: String!, $value: JSON!) {
+      change_column_value(board_id: $boardId, item_id: $itemId, column_id: $columnId, value: $value) { id }
+    }
+  `;
+  await gql(query, { boardId: BOARD_ID, itemId, columnId, value: JSON.stringify({ email, text: email }) });
+}
+
 export async function clearStatusColumn(itemId: string, columnId: string): Promise<void> {
   const query = `
     mutation ($boardId: ID!, $itemId: ID!, $columnId: String!, $value: JSON!) {

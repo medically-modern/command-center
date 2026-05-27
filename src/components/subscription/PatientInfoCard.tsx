@@ -1,8 +1,14 @@
 import { useState } from "react";
 import type { Patient } from "@/lib/subscription/workflow";
-import { formatPhone, formatDateMDY } from "@/lib/subscription/workflow";
+import {
+  formatPhone, formatDateMDY,
+  PRIMARY_INSURANCE_OPTIONS, SECONDARY_INSURANCE_OPTIONS, FAX_PARACHUTE_OPTIONS,
+} from "@/lib/subscription/workflow";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select";
 import { Pencil } from "lucide-react";
 
 interface Props {
@@ -56,6 +62,101 @@ function PhoneField({
         </div>
       )}
       {phoneEdited !== null && phoneEdited !== phone && <p className="text-[10px] text-amber-600 mt-0.5">edited</p>}
+    </div>
+  );
+}
+
+/** Inline-editable text field */
+function EditableField({
+  label,
+  value,
+  editedValue,
+  editedField,
+  onFieldChange,
+  placeholder,
+}: {
+  label: string;
+  value: string;
+  editedValue: string | null;
+  editedField: keyof Patient;
+  onFieldChange?: (field: keyof Patient, value: string | number | null) => void;
+  placeholder?: string;
+}) {
+  const [editing, setEditing] = useState(false);
+  const display = editedValue ?? value;
+
+  return (
+    <div>
+      <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1">{label}</p>
+      {editing ? (
+        <Input
+          className="h-8 text-sm"
+          value={editedValue ?? value}
+          onChange={(e) => onFieldChange?.(editedField, e.target.value)}
+          onBlur={() => setEditing(false)}
+          autoFocus
+          placeholder={placeholder ?? label}
+        />
+      ) : (
+        <div className="flex items-center gap-1.5 group">
+          <p className="text-sm font-medium truncate" title={display}>{display || "—"}</p>
+          {onFieldChange && (
+            <button onClick={() => { onFieldChange?.(editedField, editedValue ?? value); setEditing(true); }} className="p-0.5 rounded opacity-0 group-hover:opacity-100 hover:bg-muted/60 text-muted-foreground hover:text-foreground transition-all" title={`Edit ${label}`}>
+              <Pencil className="h-3 w-3" />
+            </button>
+          )}
+        </div>
+      )}
+      {editedValue !== null && editedValue !== value && <p className="text-[10px] text-amber-600 mt-0.5">edited</p>}
+    </div>
+  );
+}
+
+/** Inline-editable select for status-index fields */
+function EditableStatusSelect({
+  label,
+  options,
+  currentLabel,
+  editedIndex,
+  editedField,
+  onFieldChange,
+}: {
+  label: string;
+  options: { index: number; label: string }[];
+  currentLabel: string;
+  editedIndex: number | null;
+  editedField: keyof Patient;
+  onFieldChange?: (field: keyof Patient, value: string | number | null) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const displayLabel = editedIndex !== null ? (options.find((o) => o.index === editedIndex)?.label ?? currentLabel) : currentLabel;
+
+  return (
+    <div>
+      <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1">{label}</p>
+      {editing ? (
+        <Select
+          value={editedIndex !== null ? String(editedIndex) : ""}
+          onValueChange={(v) => { onFieldChange?.(editedField, Number(v)); setEditing(false); }}
+        >
+          <SelectTrigger className="h-8 text-sm"><SelectValue placeholder={`Select ${label}`} /></SelectTrigger>
+          <SelectContent>
+            {options.map((opt) => (
+              <SelectItem key={opt.index} value={String(opt.index)}>{opt.label}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      ) : (
+        <div className="flex items-center gap-1.5 group">
+          <p className="text-sm font-medium">{displayLabel || "—"}</p>
+          {onFieldChange && (
+            <button onClick={() => setEditing(true)} className="p-0.5 rounded opacity-0 group-hover:opacity-100 hover:bg-muted/60 text-muted-foreground hover:text-foreground transition-all" title={`Edit ${label}`}>
+              <Pencil className="h-3 w-3" />
+            </button>
+          )}
+        </div>
+      )}
+      {editedIndex !== null && <p className="text-[10px] text-amber-600 mt-0.5">edited</p>}
     </div>
   );
 }
@@ -160,7 +261,14 @@ export function PatientInfoCard({ patient, onFieldChange }: Props) {
           <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-3">Demographics</p>
           <div className="grid grid-cols-2 gap-3">
             <Field label="Gender" value={patient.gender} />
-            <Field label="Address" value={patient.address} />
+            <EditableField
+              label="Address"
+              value={patient.address}
+              editedValue={patient.addressEdited}
+              editedField="addressEdited"
+              onFieldChange={onFieldChange}
+              placeholder="123 Main St, City, ST 12345"
+            />
             <Field label="Referral" value={patient.referral} />
             {patient.carecentrixIntakeId && (
               <Field label="Carecentrix Intake I.D." value={patient.carecentrixIntakeId} />
@@ -173,10 +281,36 @@ export function PatientInfoCard({ patient, onFieldChange }: Props) {
         <Card className="p-4">
           <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-3">Insurance</p>
           <div className="grid grid-cols-2 gap-3">
-            <Field label="Primary Insurance" value={patient.primaryInsurance} />
-            <Field label="Member ID 1" value={patient.memberId1} />
-            <Field label="Secondary Insurance" value={patient.secondaryInsurance || "None"} />
-            <Field label="Member ID 2" value={patient.memberId2} />
+            <EditableStatusSelect
+              label="Primary Insurance"
+              options={PRIMARY_INSURANCE_OPTIONS}
+              currentLabel={patient.primaryInsurance}
+              editedIndex={patient.primaryInsuranceEdited}
+              editedField="primaryInsuranceEdited"
+              onFieldChange={onFieldChange}
+            />
+            <EditableField
+              label="Member ID 1"
+              value={patient.memberId1}
+              editedValue={patient.memberId1Edited}
+              editedField="memberId1Edited"
+              onFieldChange={onFieldChange}
+            />
+            <EditableStatusSelect
+              label="Secondary Insurance"
+              options={SECONDARY_INSURANCE_OPTIONS}
+              currentLabel={patient.secondaryInsurance || "None"}
+              editedIndex={patient.secondaryInsuranceEdited}
+              editedField="secondaryInsuranceEdited"
+              onFieldChange={onFieldChange}
+            />
+            <EditableField
+              label="Member ID 2"
+              value={patient.memberId2}
+              editedValue={patient.memberId2Edited}
+              editedField="memberId2Edited"
+              onFieldChange={onFieldChange}
+            />
           </div>
           {patient.stediActive && (
             <div className="mt-3 pt-3 border-t">
@@ -239,12 +373,63 @@ export function PatientInfoCard({ patient, onFieldChange }: Props) {
         <Card className="p-4">
           <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-3">Doctor Info</p>
           <div className="grid grid-cols-2 gap-3">
-            <Field label="Doctor" value={patient.doctor} />
-            <Field label="NPI" value={patient.npi} />
-            <Field label="Doctor Address" value={patient.doctorAddress} />
-            <Field label="Doctor Phone" value={patient.doctorPhone ? formatPhone(patient.doctorPhone) : ""} />
-            <Field label="Doctor Fax" value={patient.doctorFax} />
-            <Field label="Fax / Parachute" value={patient.faxParachute} />
+            <EditableField
+              label="Doctor"
+              value={patient.doctor}
+              editedValue={patient.doctorEdited}
+              editedField="doctorEdited"
+              onFieldChange={onFieldChange}
+            />
+            <EditableField
+              label="NPI"
+              value={patient.npi}
+              editedValue={patient.npiEdited}
+              editedField="npiEdited"
+              onFieldChange={onFieldChange}
+            />
+            <EditableField
+              label="Doctor Address"
+              value={patient.doctorAddress}
+              editedValue={patient.doctorAddressEdited}
+              editedField="doctorAddressEdited"
+              onFieldChange={onFieldChange}
+              placeholder="123 Medical Dr, City, ST 12345"
+            />
+            <EditableField
+              label="Doctor Phone"
+              value={patient.doctorPhone ? formatPhone(patient.doctorPhone) : ""}
+              editedValue={patient.doctorPhoneEdited}
+              editedField="doctorPhoneEdited"
+              onFieldChange={onFieldChange}
+              placeholder="(555) 555-5555"
+            />
+            <EditableField
+              label="Doctor Fax"
+              value={patient.doctorFax}
+              editedValue={patient.doctorFaxEdited}
+              editedField="doctorFaxEdited"
+              onFieldChange={onFieldChange}
+              placeholder="(555) 555-5555"
+            />
+            {(() => {
+              const faxDisplay = patient.faxParachuteEdited ?? patient.faxParachute;
+              const faxEditedIdx = patient.faxParachuteEdited !== null
+                ? FAX_PARACHUTE_OPTIONS.find((o) => o.label === patient.faxParachuteEdited)?.index ?? null
+                : null;
+              return (
+                <EditableStatusSelect
+                  label="Fax / Parachute"
+                  options={FAX_PARACHUTE_OPTIONS}
+                  currentLabel={faxDisplay || "—"}
+                  editedIndex={faxEditedIdx}
+                  editedField="faxParachuteEdited"
+                  onFieldChange={(field, value) => {
+                    const label = FAX_PARACHUTE_OPTIONS.find((o) => o.index === Number(value))?.label ?? "";
+                    onFieldChange?.(field, label);
+                  }}
+                />
+              );
+            })()}
           </div>
         </Card>
 

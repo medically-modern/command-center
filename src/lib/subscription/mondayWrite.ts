@@ -1,4 +1,4 @@
-import { writeStatusIndex, writeNumber, writeLocation, writeText, writeLongText, writeDate, writeDropdownIds, COL } from "./mondayApi";
+import { writeStatusIndex, writeNumber, writeLocation, writeText, writeLongText, writeDate, writeDropdownIds, writePhone, writeEmail, COL } from "./mondayApi";
 import type { Patient } from "./workflow";
 
 const MAX_RETRIES = 2;
@@ -33,9 +33,7 @@ async function executeWithRetry(task: WriteTask): Promise<string | null> {
 export async function sendPatientToMonday(p: Patient): Promise<void> {
   const tasks: WriteTask[] = [];
 
-  // Status
-  if (p.statusIndex !== null)
-    tasks.push({ label: "Status", columnId: COL.status, fn: () => writeStatusIndex(p.id, COL.status, p.statusIndex!) });
+  // Status — display-only, NOT sent to Monday
 
   // Ordering Cycle
   if (p.orderingCycleIndex !== null)
@@ -74,31 +72,8 @@ export async function sendPatientToMonday(p: Patient): Promise<void> {
     tasks.push({ label: "Next Order", columnId: COL.nextOrder, fn: () => writeDate(p.id, COL.nextOrder, p.nextOrder) });
 
   // Phone edit
-  if (p.phoneEdited !== null && p.phoneEdited !== "") {
-    tasks.push({
-      label: "Phone",
-      columnId: COL.phone,
-      fn: () => fetch("https://api.monday.com/v2", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: (import.meta.env.VITE_MONDAY_API_TOKEN as string) ?? "",
-          "API-Version": "2024-10",
-        },
-        body: JSON.stringify({
-          query: `mutation ($boardId: ID!, $itemId: ID!, $columnId: String!, $value: JSON!) {
-            change_column_value(board_id: $boardId, item_id: $itemId, column_id: $columnId, value: $value) { id }
-          }`,
-          variables: {
-            boardId: 18407459988,
-            itemId: p.id,
-            columnId: COL.phone,
-            value: JSON.stringify({ phone: p.phoneEdited, countryShortName: "US" }),
-          },
-        }),
-      }),
-    });
-  }
+  if (p.phoneEdited !== null && p.phoneEdited !== "")
+    tasks.push({ label: "Phone", columnId: COL.phone, fn: () => writePhone(p.id, COL.phone, p.phoneEdited!) });
 
   // Address edit
   if (p.addressEdited !== null) {
@@ -133,15 +108,40 @@ export async function sendPatientToMonday(p: Patient): Promise<void> {
   if (p.cartridgeAuthId)
     tasks.push({ label: "Cartridge Auth ID", columnId: COL.cartridgeAuthId, fn: () => writeText(p.id, COL.cartridgeAuthId, p.cartridgeAuthId) });
 
-  // Doctor
-  if (p.doctor)
-    tasks.push({ label: "Doctor", columnId: COL.doctor, fn: () => writeText(p.id, COL.doctor, p.doctor) });
-  if (p.npi)
-    tasks.push({ label: "NPI", columnId: COL.npi, fn: () => writeText(p.id, COL.npi, p.npi) });
+  // Doctor (use edited override if present, else base value)
+  const doctorVal = p.doctorEdited ?? p.doctor;
+  if (doctorVal)
+    tasks.push({ label: "Doctor", columnId: COL.doctor, fn: () => writeText(p.id, COL.doctor, doctorVal) });
+
+  const npiVal = p.npiEdited ?? p.npi;
+  if (npiVal)
+    tasks.push({ label: "NPI", columnId: COL.npi, fn: () => writeText(p.id, COL.npi, npiVal) });
+
+  // Doctor Address
+  if (p.doctorAddressEdited !== null)
+    tasks.push({ label: "Doctor Address", columnId: COL.doctorAddress, fn: () => writeLocation(p.id, COL.doctorAddress, p.doctorAddressEdited!, 0, 0) });
+
+  // Doctor Phone
+  if (p.doctorPhoneEdited !== null && p.doctorPhoneEdited !== "")
+    tasks.push({ label: "Doctor Phone", columnId: COL.doctorPhone, fn: () => writePhone(p.id, COL.doctorPhone, p.doctorPhoneEdited!) });
+
+  // Doctor Fax (email column type)
+  if (p.doctorFaxEdited !== null && p.doctorFaxEdited !== "")
+    tasks.push({ label: "Doctor Fax", columnId: COL.doctorFax, fn: () => writeEmail(p.id, COL.doctorFax, p.doctorFaxEdited!) });
+
+  // Primary Insurance
+  if (p.primaryInsuranceEdited !== null)
+    tasks.push({ label: "Primary Insurance", columnId: COL.primaryInsurance, fn: () => writeStatusIndex(p.id, COL.primaryInsurance, p.primaryInsuranceEdited!) });
+
+  // Secondary Insurance (use edited override if present)
+  const secInsIdx = p.secondaryInsuranceEdited ?? p.secondaryInsuranceIndex;
+  if (secInsIdx !== null)
+    tasks.push({ label: "Secondary Insurance", columnId: COL.secondaryInsurance, fn: () => writeStatusIndex(p.id, COL.secondaryInsurance, secInsIdx!) });
 
   // Fax / Parachute
-  if (p.faxParachute)
-    tasks.push({ label: "Fax/Parachute", columnId: COL.faxParachute, fn: () => writeStatusIndex(p.id, COL.faxParachute, p.faxParachute === "Parachute" ? 1 : 0) });
+  const faxVal = p.faxParachuteEdited ?? p.faxParachute;
+  if (faxVal)
+    tasks.push({ label: "Fax/Parachute", columnId: COL.faxParachute, fn: () => writeStatusIndex(p.id, COL.faxParachute, faxVal === "Parachute" ? 1 : 0) });
 
   // ---- Execute all writes in parallel with retries ----
   const results = await Promise.all(tasks.map(executeWithRetry));

@@ -110,13 +110,21 @@ export interface Patient {
   // Claims
   claimsStatus: string;
 
-  // Local UI state
+  // Local UI state — edited overrides (null = not edited)
   phoneEdited: string | null;
   addressEdited: string | null;
   addressLat: number | null;
   addressLng: number | null;
   memberId1Edited: string | null;
   memberId2Edited: string | null;
+  doctorEdited: string | null;
+  npiEdited: string | null;
+  doctorAddressEdited: string | null;
+  doctorPhoneEdited: string | null;
+  doctorFaxEdited: string | null;
+  primaryInsuranceEdited: number | null;   // status index override
+  secondaryInsuranceEdited: number | null; // status index override
+  faxParachuteEdited: string | null;
   notes: string;
   escalated: boolean;
   receivedAt: string;
@@ -377,9 +385,7 @@ export function subscriptionIncludesSupplies(sub: string): boolean {
 export function validatePatientForSend(p: Patient): { valid: boolean; errors: string[] } {
   const errors: string[] = [];
 
-  if (p.statusIndex === null) {
-    errors.push("Status is required");
-  }
+  // Status is display-only — NOT required for send
 
   if (p.subscriptionIndex === null) {
     errors.push("Subscription type is required");
@@ -387,16 +393,6 @@ export function validatePatientForSend(p: Patient): { valid: boolean; errors: st
 
   if (p.orderingCycleIndex === null) {
     errors.push("Ordering Cycle is required");
-  }
-
-  // If status is Paused, require pause reason
-  if (p.statusIndex === 0 && !p.pauseReason) {
-    errors.push("Pause Reason is required when status is Paused");
-  }
-
-  // If status is Dead, require dead reason
-  if (p.statusIndex === 2 && !p.deadReason) {
-    errors.push("Dead Reason is required when status is Dead");
   }
 
   return { valid: errors.length === 0, errors };

@@ -1,6 +1,5 @@
 import type { Patient } from "@/lib/subscription/workflow";
 import {
-  STATUS_OPTIONS,
   ORDERING_CYCLE_OPTIONS,
   SUBSCRIPTION_OPTIONS,
   ORDER_TYPE_OPTIONS,
@@ -8,8 +7,6 @@ import {
   SUPPLIES_TYPE_OPTIONS,
   INFUSION_SET_1_OPTIONS,
   INFUSION_SET_2_OPTIONS,
-  PAUSE_REASON_OPTIONS,
-  DEAD_REASON_OPTIONS,
 } from "@/lib/subscription/workflow";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -54,50 +51,14 @@ function StatusSelect({
   );
 }
 
-function DropdownSelect({
-  label,
-  options,
-  value,
-  onChange,
-}: {
-  label: string;
-  options: { id: number; label: string }[];
-  value: string;
-  onChange: (label: string) => void;
-}) {
-  return (
-    <div>
-      <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1">{label}</p>
-      <Select value={value || ""} onValueChange={onChange}>
-        <SelectTrigger className="h-9 text-sm">
-          <SelectValue placeholder={`Select ${label.toLowerCase()}`} />
-        </SelectTrigger>
-        <SelectContent>
-          {options.map((opt) => (
-            <SelectItem key={opt.id} value={opt.label}>{opt.label}</SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
-    </div>
-  );
-}
 
 export function SubscriptionForm({ patient, onFieldChange }: Props) {
   return (
     <div className="space-y-4">
-      {/* Status & Cycle Controls */}
+      {/* Cycle Controls (Status is display-only in PatientInfoCard) */}
       <Card className="p-4">
-        <p className="text-xs uppercase tracking-wider text-muted-foreground font-semibold mb-3">Status & Cycle</p>
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-          <StatusSelect
-            label="Status"
-            options={STATUS_OPTIONS}
-            value={patient.statusIndex}
-            onChange={(idx) => {
-              onFieldChange("statusIndex", idx);
-              onFieldChange("status", STATUS_OPTIONS.find((o) => o.index === idx)?.label ?? "");
-            }}
-          />
+        <p className="text-xs uppercase tracking-wider text-muted-foreground font-semibold mb-3">Cycle Controls</p>
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
           <StatusSelect
             label="Ordering Cycle"
             options={ORDERING_CYCLE_OPTIONS}
@@ -126,28 +87,6 @@ export function SubscriptionForm({ patient, onFieldChange }: Props) {
             }}
           />
         </div>
-
-        {/* Conditional: Pause / Dead reason */}
-        {patient.statusIndex === 0 && (
-          <div className="mt-4 p-3 rounded-md bg-amber-50 border border-amber-200">
-            <DropdownSelect
-              label="Pause Reason"
-              options={PAUSE_REASON_OPTIONS}
-              value={patient.pauseReason}
-              onChange={(label) => onFieldChange("pauseReason", label)}
-            />
-          </div>
-        )}
-        {patient.statusIndex === 2 && (
-          <div className="mt-4 p-3 rounded-md bg-red-50 border border-red-200">
-            <DropdownSelect
-              label="Dead Reason"
-              options={DEAD_REASON_OPTIONS}
-              value={patient.deadReason}
-              onChange={(label) => onFieldChange("deadReason", label)}
-            />
-          </div>
-        )}
       </Card>
 
       {/* Next Order Date */}
