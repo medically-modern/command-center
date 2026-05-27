@@ -10,6 +10,7 @@ export const GROUPS = {
 
 export const COL = {
   // Demographics (read)
+  gender: "color_mm1x1bdg",
   dob: "text_mm1xvxst",
   phone: "phone_mm1x44yk",
   address: "location_mm1xhw17",
@@ -125,7 +126,7 @@ export const COL = {
 
 // Columns to read on load — keep small to avoid 503
 export const READ_COLUMN_IDS: string[] = [
-  COL.dob, COL.phone, COL.address, COL.primaryInsurance, COL.memberId1, COL.memberId2,
+  COL.gender, COL.dob, COL.phone, COL.address, COL.primaryInsurance, COL.memberId1, COL.memberId2,
   COL.serving, COL.referralType, COL.referralSource,
   COL.pumpType, COL.cgmType, COL.requestType,
   COL.ipCoveragePath, COL.cgmCoveragePath,

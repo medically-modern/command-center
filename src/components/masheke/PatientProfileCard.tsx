@@ -17,6 +17,8 @@ import {
   Send,
   Pencil,
   Check,
+  AlertTriangle,
+  Clock,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 
@@ -137,6 +139,7 @@ export function PatientProfileCard({
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         <Field icon={<User className="h-4 w-4" />} label="Name" value={patient.name} />
         <Field icon={<CalendarDays className="h-4 w-4" />} label="DOB" value={patient.dob} />
+        <Field icon={<User className="h-4 w-4" />} label="Gender" value={patient.gender ?? ""} />
         <Field
           icon={<ShieldCheck className="h-4 w-4" />}
           label="Primary Insurance"
@@ -237,6 +240,29 @@ export function PatientProfileCard({
           </>
         );
       })()}
+
+      {/* OOW Date + Malfunction — only show if either value exists */}
+      {(patient.oowDate || patient.malfunction) && (
+        <>
+          <div className="h-px bg-border" />
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            {patient.oowDate && (
+              <Field
+                icon={<Clock className="h-4 w-4" />}
+                label="OOW Date"
+                value={patient.oowDate}
+              />
+            )}
+            {patient.malfunction && (
+              <Field
+                icon={<AlertTriangle className="h-4 w-4" />}
+                label="Malfunction Reason"
+                value={patient.malfunction}
+              />
+            )}
+          </div>
+        </>
+      )}
 
       {/* Doctor info — collapsible by default, locked open on Chase Clinicals.
          Pencil icon toggles inline editing (local overlay only).
