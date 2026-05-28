@@ -1,0 +1,11 @@
+{
+  "name": "baseline-cron",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "start": "node index.mjs"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
