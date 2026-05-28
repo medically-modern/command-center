@@ -14,10 +14,6 @@ import { useRoleCounts, type RoleCounts, type RolePatientIds } from "@/hooks/use
 import { useServerBaseline } from "@/hooks/useServerBaseline";
 import { cn } from "@/lib/utils";
 import {
-  TrendingDown,
-  TrendingUp,
-  Minus,
-  Clock,
   Zap,
   ArrowDown,
   ArrowUp,
@@ -27,6 +23,7 @@ import {
   Sunrise,
   Server,
   HardDrive,
+  Clock,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
@@ -220,7 +217,6 @@ export function OperationsTab() {
 
   const totalProcessed = barData.reduce((sum, d) => sum + d.outCount, 0);
   const totalIncoming = barData.reduce((sum, d) => sum + d.inCount, 0);
-  const netChange = barData.reduce((sum, d) => sum + d.delta, 0);
   const totalPatients = barData.reduce((sum, d) => sum + d.current, 0);
 
   const snapshotTime = snapshot
@@ -319,7 +315,7 @@ export function OperationsTab() {
       </div>
 
       {/* Summary cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 gap-3">
         <div className="rounded-lg bg-emerald-500/10 border border-emerald-500/20 px-4 py-3">
           <div className="flex items-center gap-1.5 text-xs text-emerald-600 dark:text-emerald-400 font-medium mb-1">
             <ArrowDown className="w-3.5 h-3.5" />
@@ -336,58 +332,6 @@ export function OperationsTab() {
           </div>
           <span className="text-2xl font-semibold text-amber-600 dark:text-amber-400 tabular-nums">
             {totalIncoming}
-          </span>
-        </div>
-        <div
-          className={cn(
-            "rounded-lg px-4 py-3 border",
-            netChange < 0
-              ? "bg-emerald-500/10 border-emerald-500/20"
-              : netChange > 0
-                ? "bg-amber-500/10 border-amber-500/20"
-                : "bg-muted/50 border-border",
-          )}
-        >
-          <div
-            className={cn(
-              "flex items-center gap-1.5 text-xs font-medium mb-1",
-              netChange < 0
-                ? "text-emerald-600 dark:text-emerald-400"
-                : netChange > 0
-                  ? "text-amber-600 dark:text-amber-400"
-                  : "text-muted-foreground",
-            )}
-          >
-            {netChange < 0 ? (
-              <TrendingDown className="w-3.5 h-3.5" />
-            ) : netChange > 0 ? (
-              <TrendingUp className="w-3.5 h-3.5" />
-            ) : (
-              <Minus className="w-3.5 h-3.5" />
-            )}
-            Net change
-          </div>
-          <span
-            className={cn(
-              "text-2xl font-semibold tabular-nums",
-              netChange < 0
-                ? "text-emerald-600 dark:text-emerald-400"
-                : netChange > 0
-                  ? "text-amber-600 dark:text-amber-400"
-                  : "text-muted-foreground",
-            )}
-          >
-            {netChange > 0 ? "+" : ""}
-            {netChange}
-          </span>
-        </div>
-        <div className="rounded-lg bg-primary/5 border border-primary/10 px-4 py-3">
-          <div className="flex items-center gap-1.5 text-xs text-primary font-medium mb-1">
-            <Clock className="w-3.5 h-3.5" />
-            Business hours
-          </div>
-          <span className="text-lg font-semibold text-primary tabular-nums">
-            9a – 5p ET
           </span>
         </div>
       </div>
