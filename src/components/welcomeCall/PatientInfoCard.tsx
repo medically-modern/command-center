@@ -475,20 +475,11 @@ export function PatientInfoCard({ patient, onFieldChange, onSavePhone, onSaveSec
 
         <Card className="p-4">
           <div className="grid grid-cols-2 gap-3">
-            {/* Primary Insurance — read-only with pencil to edit */}
-            <EditablePrimaryInsurance
-              value={patient.primaryInsurance}
-              editedIndex={patient.primaryInsuranceIndexEdited}
-              currentIndex={patient.primaryInsuranceIndex}
-              onFieldChange={onFieldChange}
-            />
+            {/* Primary Insurance — read-only */}
+            <Field label="Primary Insurance" value={patient.primaryInsurance} />
 
-            {/* Member ID 1 — read-only with pencil to edit */}
-            <EditableMemberId1
-              value={patient.memberId1}
-              editedValue={patient.memberId1Edited}
-              onFieldChange={onFieldChange}
-            />
+            {/* Member ID 1 — read-only */}
+            <Field label="Member ID 1" value={patient.memberId1} />
 
             {/* Secondary Insurance — always editable dropdown */}
             <div>
