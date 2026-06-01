@@ -5,7 +5,8 @@
 // still fail after retries are logged to the "Josh Debug" column so
 // nothing is silently lost.
 
-import { writeStatusIndex, writeLongText, writeDropdownIds, writeText, writeDate, writeNumber, writeItemName, writePhone, writeEmail, writeSimpleValue, writeLocation, COL } from "./mondayApi";
+import { writeStatusIndex, writeLongText, writeDropdownIds, writeText, writeDate, writeNumber, writeItemName, writePhone, writeEmail, writeSimpleValue, writeLocation, readColumnTexts, COL } from "./mondayApi";
+import { executeWritesWithVerification } from "../shared/verifiedWrite";
 import { resolveHcpcs, isAutoFilledMedicaidSupply, PRIMARY_INSURANCE_INDEX, SECONDARY_INSURANCE_INDEX } from "./hcpcRules";
 import type { PrimaryInsurance } from "./hcpcRules";
 import {
@@ -29,6 +30,9 @@ interface WriteTask {
   label: string;
   columnId: string;
   fn: () => Promise<unknown>;
+  /** Expected text value after the write. Used for read-back verification
+   *  before the stage advancer is written. */
+  expectedText?: string;
 }
 
 /**
@@ -165,12 +169,14 @@ export async function sendPatientToMonday(p: Patient, context: "benefits" | "sub
           label: `Auth result: ${productId}`,
           columnId: authColumnId,
           fn: () => writeStatusIndex(p.id, authColumnId, AUTH_RESULT_INDEX.submitted),
+          expectedText: "Submitted",
         });
       } else {
         tasks.push({
           label: `Auth result: ${productId}`,
           columnId: authColumnId,
           fn: () => writeStatusIndex(p.id, authColumnId, AUTH_RESULT_INDEX.required),
+          expectedText: "Required",
         });
       }
     } else if (state.auth === "not-required" && context !== "submitAuth" && context !== "authOutstanding") {
@@ -194,6 +200,7 @@ export async function sendPatientToMonday(p: Patient, context: "benefits" | "sub
           label: `Auth result: ${prodKey} (not serving)`,
           columnId: COL.authResult[prodKey],
           fn: () => writeStatusIndex(p.id, COL.authResult[prodKey], AUTH_RESULT_INDEX.notServing),
+          expectedText: "Not Serving",
         });
       }
     }
@@ -533,6 +540,7 @@ export async function sendPatientToMonday(p: Patient, context: "benefits" | "sub
         label: `Auth result: ${productId}`,
         columnId: authColumnId,
         fn: () => writeStatusIndex(p.id, authColumnId, resultIndex),
+        expectedText: state.authOutstandingResult === "auth-valid" ? "Auth Valid" : state.authOutstandingResult === "no-auth-needed" ? "No Auth Needed" : "Denied",
       });
 
       // No Auth Needed → also blank out the per-product auth detail
@@ -799,33 +807,20 @@ export async function sendPatientToMonday(p: Patient, context: "benefits" | "sub
     });
   }
 
-  // ----- Execute all writes in parallel, each with independent retries -----
-  // IMPORTANT: Stage Advancer must be written LAST. The Monday automation
-  // triggers on Stage Advancer = "Complete" and copies the item to the
-  // Welcome Call board. If auth fields haven't finished writing yet, the
-  // copy gets stale "Submitted" values instead of the final auth results.
-  const stageTask = tasks.find((t) => t.columnId === COL.stageAdvancer);
-  const otherTasks = tasks.filter((t) => t.columnId !== COL.stageAdvancer);
-
-  // Phase 1: write everything except Stage Advancer
-  const otherResults = await Promise.all(otherTasks.map(executeWithRetry));
-
-  // Phase 2: write Stage Advancer after all other columns have landed
-  const stageResults = stageTask ? [await executeWithRetry(stageTask)] : [];
-
-  const results = [...otherResults, ...stageResults];
-  const failures = results.filter((r): r is string => r !== null);
+  // ----- Execute writes with read-back verification -----
+  // Monday automations trigger on Stage Advancer changes and copy the
+  // item to other boards. All data columns must be fully indexed before
+  // that trigger fires — otherwise the copy gets stale values.
+  const failures = await executeWritesWithVerification({
+    itemId: p.id,
+    tasks,
+    stageColumnId: COL.stageAdvancer,
+    executeWithRetry,
+    readColumns: readColumnTexts,
+    writeDebug: (id, msg) => writeText(id, COL.joshDebug, msg),
+  });
 
   if (failures.length > 0) {
-    // Log failures to Josh Debug column (best-effort, no retry on this one)
-    const timestamp = new Date().toISOString().slice(0, 19).replace("T", " ");
-    const debugMsg = `[${timestamp}] ${failures.length} write(s) failed:\n${failures.join("\n")}`;
-    try {
-      await writeText(p.id, COL.joshDebug, debugMsg);
-    } catch {
-      console.error("[mondayWrite] Could not write to Josh Debug column:", debugMsg);
-    }
-
     const succeeded = tasks.length - failures.length;
     throw new Error(
       `${failures.length} column(s) failed after retries (${succeeded} succeeded). Check "Josh Debug" column. Failed: ${failures.map((f) => f.split(":")[0]).join(", ")}`,

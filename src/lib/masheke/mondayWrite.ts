@@ -1,6 +1,7 @@
 // Batch writer for Medical Necessity "Send to Monday"
 
-import { writeStatusIndex, writeText, writeLongText, writeDate, COL } from "./mondayApi";
+import { writeStatusIndex, writeText, writeLongText, writeDate, readColumnTexts, COL } from "./mondayApi";
+import { executeWritesWithVerification } from "../shared/verifiedWrite";
 import { etNow } from "./etDate";
 import {
   SUB_STAGE_INDEX,
@@ -31,6 +32,7 @@ interface WriteTask {
   label: string;
   columnId: string;
   fn: () => Promise<unknown>;
+  expectedText?: string;
 }
 
 async function executeWithRetry(task: WriteTask): Promise<string | null> {
@@ -214,18 +216,24 @@ export async function sendPatientToMonday(
     });
   }
 
-  // ---- Execute all writes in parallel ----
-  const results = await Promise.all(tasks.map(executeWithRetry));
-  const failures = results.filter((r): r is string => r !== null);
+  // ---- Execute with read-back verification before advancing stage ----
+  // Both the advancer columns and subStage trigger Monday automations,
+  // so they must be written after all data columns are verified.
+  const stageColumnIds = [
+    COL.advancer2a, COL.advancer2b, COL.advancer2c, COL.advancer2d,
+    COL.subStage,
+  ];
+
+  const failures = await executeWritesWithVerification({
+    itemId: p.id,
+    tasks,
+    stageColumnId: stageColumnIds,
+    executeWithRetry,
+    readColumns: readColumnTexts,
+    writeDebug: (id, msg) => writeText(id, COL.joshDebug, msg),
+  });
 
   if (failures.length > 0) {
-    const timestamp = etNow().toISOString().slice(0, 19).replace("T", " ");
-    const debugMsg = `[${timestamp}] ${failures.length} write(s) failed:\n${failures.join("\n")}`;
-    try {
-      await writeText(p.id, COL.joshDebug, debugMsg);
-    } catch {
-      console.error("[mondayWrite] Could not write debug:", debugMsg);
-    }
     throw new Error(
       `${failures.length} column(s) failed after retries. Check debug column.`,
     );

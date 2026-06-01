@@ -1,4 +1,5 @@
-import { writeStatusIndex, writeNumber, writeLocation, writeText, writeLongText, writeDate, writePhone, COL } from "./mondayApi";
+import { writeStatusIndex, writeNumber, writeLocation, writeText, writeLongText, writeDate, writePhone, readColumnTexts, COL } from "./mondayApi";
+import { executeWritesWithVerification } from "../shared/verifiedWrite";
 import type { Patient } from "./workflow";
 
 const MAX_RETRIES = 2;
@@ -8,6 +9,7 @@ interface WriteTask {
   label: string;
   columnId: string;
   fn: () => Promise<unknown>;
+  expectedText?: string;
 }
 
 async function executeWithRetry(task: WriteTask): Promise<string | null> {
@@ -115,18 +117,17 @@ export async function sendPatientToMonday(p: Patient): Promise<void> {
   // Stage advancer — Review Profile
   tasks.push({ label: "Stage Advancer", columnId: COL.stageAdvancer, fn: () => writeStatusIndex(p.id, COL.stageAdvancer, 0) });
 
-  // ---- Execute all writes in parallel with retries ----
-  const results = await Promise.all(tasks.map(executeWithRetry));
-  const failures = results.filter((r): r is string => r !== null);
+  // ---- Execute with read-back verification before advancing stage ----
+  const failures = await executeWritesWithVerification({
+    itemId: p.id,
+    tasks,
+    stageColumnId: COL.stageAdvancer,
+    executeWithRetry,
+    readColumns: readColumnTexts,
+    writeDebug: (id, msg) => writeText(id, COL.joshDebug, msg),
+  });
 
   if (failures.length > 0) {
-    const timestamp = new Date().toISOString().slice(0, 19).replace("T", " ");
-    const debugMsg = `[${timestamp}] WC: ${failures.length} write(s) failed:\n${failures.join("\n")}`;
-    try {
-      await writeText(p.id, COL.joshDebug, debugMsg);
-    } catch {
-      console.error("[mondayWrite:welcomeCall] Could not write to Josh Debug column:", debugMsg);
-    }
     throw new Error(
       `${failures.length} column(s) failed after retries. Check "Josh Debug" column. Failed: ${failures.map((f) => f.split(":")[0]).join(", ")}`,
     );

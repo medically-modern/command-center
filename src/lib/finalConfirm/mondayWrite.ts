@@ -1,4 +1,5 @@
-import { writeStatusIndex, writeLongText, writeText, writeNumber, writeLocation, writeDate, writePhone, writeEmail, writeDropdownIds, renameItem, COL } from "./mondayApi";
+import { writeStatusIndex, writeLongText, writeText, writeNumber, writeLocation, writeDate, writePhone, writeEmail, writeDropdownIds, renameItem, readColumnTexts, COL } from "./mondayApi";
+import { executeWritesWithVerification } from "../shared/verifiedWrite";
 import type { Patient } from "./workflow";
 import { CLINIC_NAME_OPTIONS } from "./workflow";
 
@@ -12,6 +13,7 @@ interface WriteTask {
   label: string;
   columnId: string;
   fn: () => Promise<unknown>;
+  expectedText?: string;
 }
 
 async function executeWithRetry(task: WriteTask): Promise<string | null> {
@@ -253,40 +255,26 @@ export async function sendPatientToMonday(p: Patient): Promise<void> {
   if (p.escalated)
     tasks.push({ label: "Escalation", columnId: COL.escalation, fn: () => writeStatusIndex(p.id, COL.escalation, 0) });
 
-  // ---- Execute all column writes in parallel with retries.
-  //      Stage Advancer is intentionally NOT in this batch — it must land
-  //      AFTER every other write so Monday's automations (which trigger on
-  //      Stage Advancer = Completed) evaluate the post-Send column state.
-  //      Without this ordering, an automation gated on e.g. "Subscription
-  //      Type is Sensors" can read the pre-Send value when Stage Advancer
-  //      changes, and no automation matches.
-  const results = await Promise.all(tasks.map(executeWithRetry));
-  const failures = results.filter((r): r is string => r !== null);
-
-  if (failures.length > 0) {
-    const timestamp = new Date().toISOString().slice(0, 19).replace("T", " ");
-    const debugMsg = `[${timestamp}] FC: ${failures.length} write(s) failed:\n${failures.join("\n")}`;
-    try {
-      await writeText(p.id, COL.joshDebug, debugMsg);
-    } catch {
-      console.error("[mondayWrite:finalConfirm] Could not write to Josh Debug column:", debugMsg);
-    }
-    throw new Error(
-      `${failures.length} column(s) failed after retries. Check "Josh Debug" column. Failed: ${failures.map((f) => f.split(":")[0]).join(", ")}`,
-    );
-  }
-
-  // Brief settle so Monday has fully indexed the column writes before the
-  // automation-triggering Stage Advancer change lands.
-  await new Promise((r) => setTimeout(r, 750));
-
-  // ─── Stage Advancer → Completed (runs LAST) ──────────────
-  const stageErr = await executeWithRetry({
+  // ─── Stage Advancer (added to tasks — verified write handles ordering) ───
+  tasks.push({
     label: "Stage Advancer",
     columnId: COL.stageAdvancer,
     fn: () => writeStatusIndex(p.id, COL.stageAdvancer, STAGE_ADVANCER_COMPLETED),
   });
-  if (stageErr) {
-    throw new Error(`Stage Advancer failed after retries: ${stageErr}`);
+
+  // ---- Execute with read-back verification before advancing stage ----
+  const failures = await executeWritesWithVerification({
+    itemId: p.id,
+    tasks,
+    stageColumnId: COL.stageAdvancer,
+    executeWithRetry,
+    readColumns: readColumnTexts,
+    writeDebug: (id, msg) => writeText(id, COL.joshDebug, msg),
+  });
+
+  if (failures.length > 0) {
+    throw new Error(
+      `${failures.length} column(s) failed after retries. Check "Josh Debug" column. Failed: ${failures.map((f) => f.split(":")[0]).join(", ")}`,
+    );
   }
 }

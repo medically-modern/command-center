@@ -491,3 +491,20 @@ export async function fetchItemById(itemId: string): Promise<MondayItem | null> 
   }>(query, { itemId: [itemId], cols: READ_COLUMN_IDS });
   return data.items?.[0] ?? null;
 }
+
+/** Read arbitrary column text values for a single item (used by write verification). */
+export async function readColumnTexts(
+  itemId: string,
+  columnIds: string[],
+): Promise<{ id: string; text: string | null }[]> {
+  const query = `
+    query ($ids: [ID!]!, $cols: [String!]) {
+      items(ids: $ids) { column_values(ids: $cols) { id text } }
+    }
+  `;
+  const data = await gql<{ items: { column_values: { id: string; text: string | null }[] }[] }>(
+    query,
+    { ids: [itemId], cols: columnIds },
+  );
+  return data.items?.[0]?.column_values ?? [];
+}

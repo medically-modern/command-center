@@ -702,3 +702,20 @@ export async function createUpdate(itemId: string, body: string): Promise<void> 
   await gql(query, { itemId, body });
 }
 
+
+/** Read arbitrary column text values for a single item (used by write verification). */
+export async function readColumnTexts(
+  itemId: string,
+  columnIds: string[],
+): Promise<{ id: string; text: string | null }[]> {
+  const query = `
+    query ($ids: [ID!]!, $cols: [String!]) {
+      items(ids: $ids) { column_values(ids: $cols) { id text } }
+    }
+  `;
+  const data = await gql<{ items: { column_values: { id: string; text: string | null }[] }[] }>(
+    query,
+    { ids: [itemId], cols: columnIds },
+  );
+  return data.items?.[0]?.column_values ?? [];
+}
