@@ -60,31 +60,6 @@ function Field({
           {value || "—"}
         </p>
 
-      {/* Profile Intake Notes Modal */}
-      {notesOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center">
-          <div className="absolute inset-0 bg-black/50" onClick={() => setNotesOpen(false)} />
-          <div className="relative bg-card border rounded-xl shadow-xl w-full max-w-lg mx-4 max-h-[80vh] flex flex-col">
-            <div className="flex items-center justify-between p-4 border-b">
-              <h3 className="font-semibold text-sm">Profile Intake Notes</h3>
-              <button
-                onClick={() => setNotesOpen(false)}
-                className="h-7 w-7 rounded-md flex items-center justify-center hover:bg-muted transition-colors"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-            <div className="p-4 overflow-y-auto">
-              {patient.profileSendOffNotes ? (
-                <p className="text-sm whitespace-pre-wrap">{patient.profileSendOffNotes}</p>
-              ) : (
-                <p className="text-sm text-muted-foreground italic">No intake notes recorded.</p>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-
       </div>
     </div>
   );
@@ -397,6 +372,32 @@ export function PatientProfileCard({
           </div>
         )}
       </div>
+
+      {/* Profile Intake Notes Modal */}
+      {notesOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div className="absolute inset-0 bg-black/50" onClick={() => setNotesOpen(false)} />
+          <div className="relative bg-card border rounded-xl shadow-xl w-full max-w-lg mx-4 max-h-[80vh] flex flex-col">
+            <div className="flex items-center justify-between p-4 border-b">
+              <h3 className="font-semibold text-sm">Profile Intake Notes</h3>
+              <button
+                onClick={() => setNotesOpen(false)}
+                className="h-7 w-7 rounded-md flex items-center justify-center hover:bg-muted transition-colors"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="p-4 overflow-y-auto">
+              {patient.profileSendOffNotes ? (
+                <p className="text-sm whitespace-pre-wrap">{patient.profileSendOffNotes}</p>
+              ) : (
+                <p className="text-sm text-muted-foreground italic">No intake notes recorded.</p>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }
