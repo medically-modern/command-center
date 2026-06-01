@@ -18,6 +18,7 @@ import {
   Send,
   MapPin,
   Cpu,
+  FileText,
   Pencil,
   X,
 } from "lucide-react";
@@ -52,6 +53,32 @@ function Field({
         <p className="text-sm font-medium truncate" title={value || "—"}>
           {value || "—"}
         </p>
+
+      {/* Profile Intake Notes Modal */}
+      {notesOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div className="absolute inset-0 bg-black/50" onClick={() => setNotesOpen(false)} />
+          <div className="relative bg-card border rounded-xl shadow-xl w-full max-w-lg mx-4 max-h-[80vh] flex flex-col">
+            <div className="flex items-center justify-between p-4 border-b">
+              <h3 className="font-semibold text-sm">Profile Intake Notes</h3>
+              <button
+                onClick={() => setNotesOpen(false)}
+                className="h-7 w-7 rounded-md flex items-center justify-center hover:bg-muted transition-colors"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="p-4 overflow-y-auto">
+              {patient.profileSendOffNotes ? (
+                <p className="text-sm whitespace-pre-wrap">{patient.profileSendOffNotes}</p>
+              ) : (
+                <p className="text-sm text-muted-foreground italic">No intake notes recorded.</p>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       </div>
     </div>
   );
@@ -114,6 +141,7 @@ export function PatientProfileCard({ patient, onUpdate }: Props) {
   const hasMember2 = !!patient.memberId2 && patient.memberId2.trim().length > 0;
   const [doctorOpen, setDoctorOpen] = useState(false);
   const [editing, setEditing] = useState(false);
+  const [notesOpen, setNotesOpen] = useState(false);
 
   const canEdit = !!onUpdate;
   const hasPumpOrSupplies = !!(
@@ -138,6 +166,14 @@ export function PatientProfileCard({ patient, onUpdate }: Props) {
         <p className="text-xs uppercase tracking-wider text-muted-foreground">
           Patient Profile
         </p>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setNotesOpen(true)}
+            className="flex items-center gap-1.5 text-xs font-medium text-primary hover:text-primary/80 bg-primary/10 hover:bg-primary/15 px-3 py-1.5 rounded-lg transition-colors"
+          >
+            <FileText className="h-3.5 w-3.5" />
+            Profile Intake Notes
+          </button>
         {canEdit && (
           <button
             onClick={toggleEdit}
@@ -151,6 +187,7 @@ export function PatientProfileCard({ patient, onUpdate }: Props) {
             {editing ? <X className="h-4 w-4" /> : <Pencil className="h-4 w-4" />}
           </button>
         )}
+        </div>
       </div>
 
       {/* Row 1 */}

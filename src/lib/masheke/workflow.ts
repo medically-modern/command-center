@@ -110,6 +110,8 @@ export interface Patient {
   followUpDate?: string;
 
   // Notes
+  // Profile Send Off Notes
+  profileSendOffNotes?: string;
   notes: string;
   lastUpdated?: string;
 }

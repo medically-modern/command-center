@@ -397,6 +397,8 @@ export interface Patient {
   chaseStep: number;
   faxPhase: 1 | 2;
   accountability?: AccountabilityLog;
+  // Profile Send Off Notes
+  profileSendOffNotes?: string;
   notes: string;
   receivedAt: string; // ISO
   lastUpdated: string; // ISO

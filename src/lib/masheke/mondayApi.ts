@@ -122,6 +122,9 @@ export const COL = {
 
   // Debug
   joshDebug: "text_mm356n2y",
+
+  // Profile Send Off Notes (mirrored from Profile Send Off Board)
+  profileSendOffNotes: "text_mm3xdze1",
 } as const;
 
 // Columns to read on load — keep small to avoid 503
@@ -160,6 +163,7 @@ export const READ_COLUMN_IDS: string[] = [
   COL.blocked, COL.blockedDate,
   // Follow Up
   COL.followUp, COL.followUpDate,
+  COL.profileSendOffNotes,
 ];
 
 export interface MondayColumnValue {
