@@ -53,6 +53,14 @@ export function ClinicalsDownloadButton({ itemId }: Props) {
       }
 
       // Download each file via its public_url
+      // ── FIX (2026-06-01): Cross-origin blob download ──────────────────
+      // BEFORE: Used link.href = asset.public_url with link.download attribute.
+      // This FAILED because browsers ignore the `download` attribute on cross-origin
+      // URLs (Monday CDN). The browser would open/navigate instead of downloading,
+      // and the pop-up blocker would kill every file after the first one.
+      // FIX: Fetch each file as a blob first, creating a same-origin blob URL,
+      // then trigger download from that. Falls back to window.open on fetch failure.
+      // ──────────────────────────────────────────────────────────────────────
       for (const asset of assets) {
         try {
           const resp = await fetch(asset.public_url, { mode: "cors" });

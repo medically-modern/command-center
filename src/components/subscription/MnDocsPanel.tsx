@@ -64,6 +64,13 @@ export function MnDocsPanel({ itemId }: Props) {
   useEffect(() => { fetchFiles(); }, [fetchFiles]);
 
   // ── Download a single file ──
+  // ── FIX (2026-06-01): Cross-origin blob download ──────────────────
+  // BEFORE: Used link.href = url with link.download attribute directly on
+  // Monday CDN URLs. Browsers ignore `download` on cross-origin URLs, so
+  // files would open in a new tab instead of downloading.
+  // FIX: Fetch as blob first to create a same-origin blob URL, then trigger
+  // download from that. Falls back to window.open on fetch failure.
+  // ──────────────────────────────────────────────────────────────────────
   const handleDownload = async (file: MondayFileEntry) => {
     const url = file.public_url || file.url;
     if (!url) {
