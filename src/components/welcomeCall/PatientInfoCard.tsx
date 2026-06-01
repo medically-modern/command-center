@@ -355,54 +355,11 @@ export function PatientInfoCard({ patient, onFieldChange, onSavePhone, onSaveSec
 
         <Card className="p-4">
           <div className="grid grid-cols-2 gap-3">
-            {/* Primary Insurance — always editable dropdown */}
-            <div>
-              <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1">
-                Primary Insurance
-              </p>
-              <Select
-                value={
-                  patient.primaryInsuranceIndexEdited !== null
-                    ? String(patient.primaryInsuranceIndexEdited)
-                    : patient.primaryInsuranceIndex !== null
-                      ? String(patient.primaryInsuranceIndex)
-                      : ""
-                }
-                onValueChange={(value) => {
-                  const option = PRIMARY_INSURANCE_OPTIONS.find((o) => String(o.index) === value);
-                  if (option && onFieldChange) {
-                    onFieldChange("primaryInsuranceEdited", option.label);
-                    onFieldChange("primaryInsuranceIndexEdited" as keyof Patient, option.index);
-                  }
-                }}
-              >
-                <SelectTrigger className="h-8 text-sm">
-                  <SelectValue placeholder="Select insurance" />
-                </SelectTrigger>
-                <SelectContent>
-                  {PRIMARY_INSURANCE_OPTIONS.map((opt) => (
-                    <SelectItem key={opt.index} value={String(opt.index)}>
-                      {opt.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+            {/* Primary Insurance — read-only */}
+            <Field label="Primary Insurance" value={patient.primaryInsurance} />
 
-            {/* Member ID 1 — always editable text input */}
-            <div>
-              <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1">
-                Member ID 1
-              </p>
-              <Input
-                className="h-8 text-sm"
-                value={patient.memberId1Edited ?? patient.memberId1}
-                onChange={(e) => {
-                  onFieldChange?.("memberId1Edited", e.target.value);
-                }}
-                placeholder="Enter member ID"
-              />
-            </div>
+            {/* Member ID 1 — read-only */}
+            <Field label="Member ID 1" value={patient.memberId1} />
 
             {/* Secondary Insurance — always editable dropdown */}
             <div>
