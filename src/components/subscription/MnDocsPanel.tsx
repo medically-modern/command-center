@@ -64,21 +64,29 @@ export function MnDocsPanel({ itemId }: Props) {
   useEffect(() => { fetchFiles(); }, [fetchFiles]);
 
   // ── Download a single file ──
-  const handleDownload = (file: MondayFileEntry) => {
+  const handleDownload = async (file: MondayFileEntry) => {
     const url = file.public_url || file.url;
     if (!url) {
       toast.error(`No download URL for "${file.name}"`);
       return;
     }
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = file.name;
-    link.target = "_blank";
-    link.rel = "noopener noreferrer";
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    toast.success(`Downloading "${file.name}"`);
+    try {
+      const resp = await fetch(url, { mode: "cors" });
+      const blob = await resp.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = blobUrl;
+      link.download = file.name;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(blobUrl);
+      toast.success(`Downloading "${file.name}"`);
+    } catch {
+      // fallback: open in new tab
+      window.open(url, "_blank");
+      toast.success(`Opening "${file.name}" in new tab`);
+    }
   };
 
   // ── Upload files ──

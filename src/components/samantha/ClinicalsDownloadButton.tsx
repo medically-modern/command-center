@@ -54,18 +54,23 @@ export function ClinicalsDownloadButton({ itemId }: Props) {
 
       // Download each file via its public_url
       for (const asset of assets) {
-        const link = document.createElement("a");
-        link.href = asset.public_url;
-        link.download = asset.name;
-        link.target = "_blank";
-        link.rel = "noopener noreferrer";
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-
-        // Small delay between downloads to avoid browser blocking
+        try {
+          const resp = await fetch(asset.public_url, { mode: "cors" });
+          const blob = await resp.blob();
+          const blobUrl = URL.createObjectURL(blob);
+          const link = document.createElement("a");
+          link.href = blobUrl;
+          link.download = asset.name;
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+          URL.revokeObjectURL(blobUrl);
+        } catch {
+          // fallback: open in new tab
+          window.open(asset.public_url, "_blank");
+        }
         if (assets.length > 1) {
-          await new Promise((r) => setTimeout(r, 300));
+          await new Promise((r) => setTimeout(r, 400));
         }
       }
 
