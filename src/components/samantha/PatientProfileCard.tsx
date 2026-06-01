@@ -1,6 +1,15 @@
 import { useState } from "react";
 import type { Patient } from "@/lib/samantha/workflow";
+import { PRIMARY_INSURANCE_OPTIONS } from "@/lib/samantha/hcpcRules";
+import type { PrimaryInsurance } from "@/lib/samantha/hcpcRules";
 import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   CalendarDays,
   IdCard,
@@ -248,12 +257,32 @@ export function PatientProfileCard({ patient, onUpdate }: Props) {
 
       {/* Row 2 */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-        {/* Primary Insurance — always read-only */}
-        <Field
-          icon={<ShieldCheck className="h-4 w-4" />}
-          label="Primary Insurance"
-          value={patient.primaryInsurance ?? ""}
-        />
+        {/* Primary Insurance — editable dropdown */}
+        <div className="flex items-start gap-2 min-w-0">
+          <div className="h-8 w-8 rounded-md bg-muted flex items-center justify-center text-muted-foreground shrink-0 mt-1">
+            <ShieldCheck className="h-4 w-4" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
+              Primary Insurance
+            </p>
+            <Select
+              value={patient.primaryInsurance ?? ""}
+              onValueChange={(v) => patch({ primaryInsurance: v as PrimaryInsurance })}
+            >
+              <SelectTrigger className="h-7 text-sm mt-0.5">
+                <SelectValue placeholder="Select insurance" />
+              </SelectTrigger>
+              <SelectContent>
+                {PRIMARY_INSURANCE_OPTIONS.map((opt) => (
+                  <SelectItem key={opt} value={opt}>
+                    {opt}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
 
         {editing ? (
           <EditableField

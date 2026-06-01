@@ -254,6 +254,40 @@ export const PRIMARY_INSURANCE_OPTIONS: PrimaryInsurance[] = [
   "Cigna", "Humana", "Wellcare", "Midlands Choice", "MagnaCare", "UMR", "Oregon Care",
 ];
 
+/** Monday status-column index for each Primary Insurance label. */
+export const PRIMARY_INSURANCE_INDEX: Record<PrimaryInsurance, number> = {
+  "BCBS TN": 0,
+  "BCBS FL": 1,
+  "BCBS WY": 2,
+  "MagnaCare": 3,
+  "Oregon Care": 4,
+  "UMR": 6,
+  "United Healthcare Commercial": 7,
+  "Medicare A&B": 8,
+  "NYSHIP": 9,
+  "United Commercial": 10,
+  "United Medicare": 11,
+  "United Medicaid": 12,
+  "Aetna Commercial": 13,
+  "Aetna Medicare": 14,
+  "Wellcare": 15,
+  "Humana": 16,
+  "Cigna": 17,
+  "Medicaid": 18,
+  "Midlands Choice": 19,
+  "Horizon BCBS": 101,
+  "Fidelis Low-Cost": 102,
+  "Fidelis Medicaid": 103,
+  "Anthem BCBS Medicaid (JLJ)": 104,
+  "Anthem BCBS Commercial": 105,
+  "Anthem BCBS Medicare": 106,
+  "Fidelis Commercial": 107,
+  "Fidelis Medicare": 108,
+  "Anthem BCBS Low-Cost (JLJ)": 109,
+  "Fidelis CHP": 110,
+  "United Low-Cost": 10,  // maps to United Commercial on the board
+} as Record<PrimaryInsurance, number>;
+
 export const SERVING_OPTIONS: Serving[] = [
   "Supplies Only",
   "CGM",

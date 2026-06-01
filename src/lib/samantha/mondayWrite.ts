@@ -6,7 +6,8 @@
 // nothing is silently lost.
 
 import { writeStatusIndex, writeLongText, writeDropdownIds, writeText, writeDate, writeNumber, writeItemName, writePhone, writeEmail, writeSimpleValue, writeLocation, COL } from "./mondayApi";
-import { resolveHcpcs, isAutoFilledMedicaidSupply } from "./hcpcRules";
+import { resolveHcpcs, isAutoFilledMedicaidSupply, PRIMARY_INSURANCE_INDEX } from "./hcpcRules";
+import type { PrimaryInsurance } from "./hcpcRules";
 import {
   AUTH_RESULT_INDEX,
   AUTH_METHOD_OPTION_ID,
@@ -674,6 +675,17 @@ export async function sendPatientToMonday(p: Patient, context: "benefits" | "sub
       columnId: COL.dob,
       fn: () => writeText(p.id, COL.dob, p.dob),
     });
+  }
+  // Primary Insurance (status column)
+  if (p.primaryInsurance) {
+    const idx = PRIMARY_INSURANCE_INDEX[p.primaryInsurance as PrimaryInsurance];
+    if (idx !== undefined) {
+      tasks.push({
+        label: 'Primary Insurance',
+        columnId: COL.primaryInsurance,
+        fn: () => writeStatusIndex(p.id, COL.primaryInsurance, idx),
+      });
+    }
   }
   // Member IDs (text columns)
   if (p.memberId1 !== undefined) {
