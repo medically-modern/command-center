@@ -1166,6 +1166,9 @@ function FileUploadCard({
   onAddRaw,
   onRemove,
 }: FileUploadCardProps) {
+  const hasActiveUpload = (trackedFiles ?? []).some(
+    (f) => f.status === "uploading" || f.status === "confirming",
+  );
   const [isDragOver, setIsDragOver] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [downloading, setDownloading] = useState(false);
@@ -1244,7 +1247,28 @@ function FileUploadCard({
     : `Download all (${mondayFiles.length})`;
 
   return (
-    <div className="rounded-lg border bg-muted/20 p-3 h-full flex flex-col gap-2 min-h-[200px]">
+    <div
+      className={`rounded-lg p-3 h-full flex flex-col gap-2 min-h-[200px] relative overflow-hidden transition-all duration-300 ${
+        hasActiveUpload
+          ? "border-2 border-red-500 bg-red-50/30 animate-[pulse-border_1.5s_ease-in-out_infinite]"
+          : "border bg-muted/20"
+      }`}
+      style={hasActiveUpload ? {
+        animation: "pulse-border 1.5s ease-in-out infinite",
+      } : undefined}
+    >
+      {/* Flashing upload overlay */}
+      {hasActiveUpload && (
+        <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-red-600/90 rounded-lg animate-[flash-red_1s_ease-in-out_infinite]">
+          <Loader2 className="h-10 w-10 text-white animate-spin mb-2" />
+          <p className="text-white text-sm font-bold uppercase tracking-wider">
+            Uploading to Monday…
+          </p>
+          <p className="text-red-200 text-xs mt-1">
+            Do not advance — waiting for server confirmation
+          </p>
+        </div>
+      )}
       {/* Header */}
       <div className="flex items-center justify-between gap-2">
         <p className="text-xs uppercase tracking-wider text-muted-foreground">{label}</p>
