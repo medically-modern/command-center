@@ -139,6 +139,9 @@ export const COL = {
 
   // Debug / error logging
   joshDebug: "text_mm2w1qn4",
+
+  // Profile Send Off Notes (mirrored from Profile Send Off Board)
+  profileSendOffNotes: "text_mm3xfw5a",
 } as const;
 
 export const READ_COLUMN_IDS = [
@@ -177,6 +180,7 @@ export const READ_COLUMN_IDS = [
   COL.lastBillDate.infusion_set,
   COL.lastBillDate.cartridge,
   // Follow Up
+    COL.profileSendOffNotes,
   COL.followUp,
   COL.followUpDate,
 ];

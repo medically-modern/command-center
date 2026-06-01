@@ -135,6 +135,7 @@ export function mondayItemToPatient(item: MondayItem): Patient {
     followUp: col(item, "color_mm35v6a0") || undefined,
     followUpDate: col(item, "date_mm35kbkj") || undefined,
     blockedDate: col(item, "date_mm33vqkm") || undefined,
+    profileSendOffNotes: col(item, "text_mm3xdze1") || undefined,
     notes: "",
   };
 }

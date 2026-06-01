@@ -345,6 +345,7 @@ export function mondayItemToPatient(item: MondayItem): Patient {
     pathwayChecks: {},
     chaseStep: 0,
     faxPhase: 1,
+    profileSendOffNotes: cv(COL.profileSendOffNotes)?.text || undefined,
     notes,
     receivedAt: new Date().toISOString(),
     lastUpdated: new Date().toISOString(),
