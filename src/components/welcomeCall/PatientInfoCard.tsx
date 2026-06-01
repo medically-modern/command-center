@@ -1,6 +1,6 @@
 import { useState } from "react";
 import type { Patient } from "@/lib/welcomeCall/workflow";
-import { SECONDARY_INSURANCE_OPTIONS, SERVING_OPTIONS, formatPhone, formatDateMDY, isCrossSell } from "@/lib/welcomeCall/workflow";
+import { SECONDARY_INSURANCE_OPTIONS, PRIMARY_INSURANCE_OPTIONS, SERVING_OPTIONS, formatPhone, formatDateMDY, isCrossSell } from "@/lib/welcomeCall/workflow";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Pencil, Check, Loader2, X } from "lucide-react";
@@ -355,89 +355,123 @@ export function PatientInfoCard({ patient, onFieldChange, onSavePhone, onSaveSec
 
         <Card className="p-4">
           <div className="grid grid-cols-2 gap-3">
-            <Field label="Primary Insurance" value={patient.primaryInsurance} />
-            <Field label="Member ID 1" value={patient.memberId1} />
+            {/* Primary Insurance — always editable dropdown */}
+            <div>
+              <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1">
+                Primary Insurance
+              </p>
+              <Select
+                value={
+                  patient.primaryInsuranceIndexEdited !== null
+                    ? String(patient.primaryInsuranceIndexEdited)
+                    : patient.primaryInsuranceIndex !== null
+                      ? String(patient.primaryInsuranceIndex)
+                      : ""
+                }
+                onValueChange={(value) => {
+                  const option = PRIMARY_INSURANCE_OPTIONS.find((o) => String(o.index) === value);
+                  if (option && onFieldChange) {
+                    onFieldChange("primaryInsuranceEdited", option.label);
+                    onFieldChange("primaryInsuranceIndexEdited" as keyof Patient, option.index);
+                  }
+                }}
+              >
+                <SelectTrigger className="h-8 text-sm">
+                  <SelectValue placeholder="Select insurance" />
+                </SelectTrigger>
+                <SelectContent>
+                  {PRIMARY_INSURANCE_OPTIONS.map((opt) => (
+                    <SelectItem key={opt.index} value={String(opt.index)}>
+                      {opt.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
 
-            {/* Secondary Insurance: read-only if present, editable dropdown if empty */}
-            {hasSecondaryInsurance ? (
-              <Field label="Secondary Insurance" value={patient.secondaryInsurance} />
-            ) : (
-              <div>
-                <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1">
-                  Secondary Insurance
-                </p>
-                <Select
-                  value={
-                    patient.secondaryInsuranceEdited !== null
+            {/* Member ID 1 — always editable text input */}
+            <div>
+              <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1">
+                Member ID 1
+              </p>
+              <Input
+                className="h-8 text-sm"
+                value={patient.memberId1Edited ?? patient.memberId1}
+                onChange={(e) => {
+                  onFieldChange?.("memberId1Edited", e.target.value);
+                }}
+                placeholder="Enter member ID"
+              />
+            </div>
+
+            {/* Secondary Insurance — always editable dropdown */}
+            <div>
+              <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1">
+                Secondary Insurance
+              </p>
+              <Select
+                value={
+                  patient.secondaryInsuranceEdited !== null
+                    ? String(
+                        SECONDARY_INSURANCE_OPTIONS.find(
+                          (o) => o.label === patient.secondaryInsuranceEdited
+                        )?.index ?? ""
+                      )
+                    : hasSecondaryInsurance
                       ? String(
                           SECONDARY_INSURANCE_OPTIONS.find(
-                            (o) => o.label === patient.secondaryInsuranceEdited
+                            (o) => o.label === patient.secondaryInsurance
                           )?.index ?? ""
                         )
                       : ""
+                }
+                onValueChange={(value) => {
+                  const option = SECONDARY_INSURANCE_OPTIONS.find(
+                    (o) => String(o.index) === value
+                  );
+                  if (option) {
+                    onFieldChange?.("secondaryInsuranceEdited", option.label);
+                    onFieldChange?.("secondaryInsuranceIndex", option.index);
                   }
-                  onValueChange={(value) => {
-                    const option = SECONDARY_INSURANCE_OPTIONS.find(
-                      (o) => String(o.index) === value
-                    );
-                    if (option) {
-                      onFieldChange?.("secondaryInsuranceEdited", option.label);
-                      onFieldChange?.("secondaryInsuranceIndex", option.index);
-                      // Immediately write to Monday
-                      onSaveSecondaryInsurance?.(option.label, option.index).then(() => {
-                        toast.success(`Secondary insurance updated to ${option.label}`);
-                      }).catch((err) => {
-                        toast.error("Failed to save secondary insurance to Monday", {
-                          description: err instanceof Error ? err.message : String(err),
-                        });
-                      });
-                    }
-                  }}
-                >
-                  <SelectTrigger className="h-8 text-sm">
-                    <SelectValue placeholder="Select insurance" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {SECONDARY_INSURANCE_OPTIONS.map((opt) => (
-                      <SelectItem key={opt.index} value={String(opt.index)}>
-                        {opt.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                {showMedicareSecondaryWarning && (
-                  <p className="text-xs text-red-600 font-semibold mt-1.5">
-                    Patient likely has a secondary insurance, ask on welcome call.
-                  </p>
-                )}
-                {showQmbWarning && (
-                  <p className="text-xs text-red-600 font-semibold mt-1">
-                    Stedi QMB returned YES — patient very likely has a secondary supplement plan.
-                  </p>
-                )}
-              </div>
-            )}
-
-            {/* Member ID 2: read-only if present, editable text input if empty */}
-            {hasMemberId2 ? (
-              <Field label="Member ID 2" value={patient.memberId2} />
-            ) : (
-              <div>
-                <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1">
-                  Member ID 2
+                }}
+              >
+                <SelectTrigger className="h-8 text-sm">
+                  <SelectValue placeholder="Select insurance" />
+                </SelectTrigger>
+                <SelectContent>
+                  {SECONDARY_INSURANCE_OPTIONS.map((opt) => (
+                    <SelectItem key={opt.index} value={String(opt.index)}>
+                      {opt.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {showMedicareSecondaryWarning && (
+                <p className="text-xs text-red-600 font-semibold mt-1.5">
+                  Patient likely has a secondary insurance, ask on welcome call.
                 </p>
-                <Input
-                  className="h-8 text-sm"
-                  value={patient.memberId2Edited ?? ""}
-                  onChange={(e) => {
-                    if (onFieldChange) {
-                      onFieldChange("memberId2Edited", e.target.value);
-                    }
-                  }}
-                  placeholder="Enter member ID"
-                />
-              </div>
-            )}
+              )}
+              {showQmbWarning && (
+                <p className="text-xs text-red-600 font-semibold mt-1">
+                  Stedi QMB returned YES — patient very likely has a secondary supplement plan.
+                </p>
+              )}
+            </div>
+
+            {/* Member ID 2 — always editable text input */}
+            <div>
+              <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1">
+                Member ID 2
+              </p>
+              <Input
+                className="h-8 text-sm"
+                value={patient.memberId2Edited ?? patient.memberId2}
+                onChange={(e) => {
+                  onFieldChange?.("memberId2Edited", e.target.value);
+                }}
+                placeholder="Enter member ID"
+              />
+            </div>
           </div>
         </Card>
       </div>

@@ -54,6 +54,14 @@ export async function sendPatientToMonday(p: Patient): Promise<void> {
   if (p.pumpTypeIndex !== null)
     tasks.push({ label: "Pump Type", columnId: COL.pumpType, fn: () => writeStatusIndex(p.id, COL.pumpType, p.pumpTypeIndex!) });
 
+  // Primary Insurance (only if edited)
+  if (p.primaryInsuranceIndexEdited !== null)
+    tasks.push({ label: "Primary Insurance", columnId: COL.primaryInsurance, fn: () => writeStatusIndex(p.id, COL.primaryInsurance, p.primaryInsuranceIndexEdited!) });
+
+  // Member ID 1 (only if edited)
+  if (p.memberId1Edited !== null && p.memberId1Edited !== "")
+    tasks.push({ label: "Member ID 1", columnId: COL.memberId1, fn: () => writeText(p.id, COL.memberId1, p.memberId1Edited!) });
+
   // Secondary Insurance (only if edited)
   if (p.secondaryInsuranceEdited !== null && p.secondaryInsuranceIndex !== null)
     tasks.push({ label: "Secondary Insurance", columnId: COL.secondaryInsurance, fn: () => writeStatusIndex(p.id, COL.secondaryInsurance, p.secondaryInsuranceIndex!) });
@@ -165,6 +173,12 @@ export async function sendWelcomeCallTextToMonday(p: Patient): Promise<void> {
     tasks.push(writeStatusIndex(p.id, COL.subscriptionType, p.subscriptionTypeIndex));
   if (p.orderHandlingIndex !== null)
     tasks.push(writeStatusIndex(p.id, COL.orderHandling, p.orderHandlingIndex));
+
+  // Primary insurance & Member ID 1 (only if locally edited)
+  if (p.primaryInsuranceIndexEdited !== null)
+    tasks.push(writeStatusIndex(p.id, COL.primaryInsurance, p.primaryInsuranceIndexEdited));
+  if (p.memberId1Edited !== null && p.memberId1Edited !== "")
+    tasks.push(writeText(p.id, COL.memberId1, p.memberId1Edited));
 
   // Secondary insurance & Member ID 2 (only if locally edited)
   if (p.secondaryInsuranceEdited !== null && p.secondaryInsuranceIndex !== null)

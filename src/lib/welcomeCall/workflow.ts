@@ -11,9 +11,13 @@ export interface Patient {
   email: string;
   address: string;
   gender: string;
-  // Read-only insurance
+  // Insurance (editable)
   primaryInsurance: string;
+  primaryInsuranceIndex: number | null;
+  primaryInsuranceEdited: string | null;
+  primaryInsuranceIndexEdited: number | null;
   memberId1: string;
+  memberId1Edited: string | null;
   secondaryInsurance: string;
   memberId2: string;
   // Read-only product/referral
@@ -189,6 +193,38 @@ export const SECONDARY_INSURANCE_OPTIONS = [
   { index: 0, label: 'None' },
   { index: 1, label: 'NY Medicaid' },
   { index: 2, label: 'Medicare Supplement' },
+];
+
+export const PRIMARY_INSURANCE_OPTIONS = [
+  { index: 0, label: 'BCBS TN' },
+  { index: 1, label: 'BCBS FL' },
+  { index: 2, label: 'BCBS WY' },
+  { index: 3, label: 'MagnaCare' },
+  { index: 4, label: 'Oregon Care' },
+  { index: 6, label: 'UMR' },
+  { index: 7, label: 'United Healthcare Commercial' },
+  { index: 8, label: 'Medicare A&B' },
+  { index: 9, label: 'NYSHIP' },
+  { index: 10, label: 'United Commercial' },
+  { index: 11, label: 'United Medicare' },
+  { index: 12, label: 'United Medicaid' },
+  { index: 13, label: 'Aetna Commercial' },
+  { index: 14, label: 'Aetna Medicare' },
+  { index: 15, label: 'Wellcare' },
+  { index: 16, label: 'Humana' },
+  { index: 17, label: 'Cigna' },
+  { index: 18, label: 'Medicaid' },
+  { index: 19, label: 'Midlands Choice' },
+  { index: 101, label: 'Horizon BCBS' },
+  { index: 102, label: 'Fidelis Low-Cost' },
+  { index: 103, label: 'Fidelis Medicaid' },
+  { index: 104, label: 'Anthem BCBS Medicaid (JLJ)' },
+  { index: 105, label: 'Anthem BCBS Commercial' },
+  { index: 106, label: 'Anthem BCBS Medicare' },
+  { index: 107, label: 'Fidelis Commercial' },
+  { index: 108, label: 'Fidelis Medicare' },
+  { index: 109, label: 'Anthem BCBS Low-Cost (JLJ)' },
+  { index: 110, label: 'Fidelis CHP' },
 ];
 
 /* ─── Serving-based visibility helpers ─── */
