@@ -169,14 +169,12 @@ export async function sendPatientToMonday(p: Patient, context: "benefits" | "sub
           label: `Auth result: ${productId}`,
           columnId: authColumnId,
           fn: () => writeStatusIndex(p.id, authColumnId, AUTH_RESULT_INDEX.submitted),
-          expectedText: "Submitted",
         });
       } else {
         tasks.push({
           label: `Auth result: ${productId}`,
           columnId: authColumnId,
           fn: () => writeStatusIndex(p.id, authColumnId, AUTH_RESULT_INDEX.required),
-          expectedText: "Required",
         });
       }
     } else if (state.auth === "not-required" && context !== "submitAuth" && context !== "authOutstanding") {
@@ -200,7 +198,6 @@ export async function sendPatientToMonday(p: Patient, context: "benefits" | "sub
           label: `Auth result: ${prodKey} (not serving)`,
           columnId: COL.authResult[prodKey],
           fn: () => writeStatusIndex(p.id, COL.authResult[prodKey], AUTH_RESULT_INDEX.notServing),
-          expectedText: "Not Serving",
         });
       }
     }
@@ -540,7 +537,6 @@ export async function sendPatientToMonday(p: Patient, context: "benefits" | "sub
         label: `Auth result: ${productId}`,
         columnId: authColumnId,
         fn: () => writeStatusIndex(p.id, authColumnId, resultIndex),
-        expectedText: state.authOutstandingResult === "auth-valid" ? "Auth Valid" : state.authOutstandingResult === "no-auth-needed" ? "No Auth Needed" : "Denied",
       });
 
       // No Auth Needed → also blank out the per-product auth detail

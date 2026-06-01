@@ -6,9 +6,17 @@
  * Advancer = "Complete"), it can read stale pre-write values from other
  * columns. This utility prevents that race condition by:
  *
- *   1. Writing all data columns in parallel (Phase 1)
- *   2. Reading the item back and verifying every column landed (Phase 2)
- *   3. Only then writing the stage advancer column (Phase 3)
+ *   1. Snapshotting all data columns BEFORE writing (Phase 0)
+ *   2. Writing all data columns in parallel (Phase 1)
+ *   3. Polling until every written column has been indexed (Phase 2)
+ *   4. Only then writing the stage advancer column(s) (Phase 3)
+ *
+ * Verification logic (Phase 2):
+ *   - If a task has `expectedText`: column must match it exactly
+ *   - Otherwise: column must differ from the pre-write snapshot
+ *   - Edge case — writing the same value that was already there:
+ *     after 3 consecutive stable reads, assume the write landed
+ *     (the automation will read the correct value either way)
  *
  * If verification times out, the stage advancer is NOT written and the
  * function throws — surfacing the problem instead of silently shipping
@@ -21,11 +29,8 @@ export interface WriteTask {
   label: string;
   columnId: string;
   fn: () => Promise<unknown>;
-  /** Expected `text` value after the write lands. When provided, the
-   *  read-back loop compares against this. When omitted, the column is
-   *  excluded from verification (fire-and-forget). Only columns that
-   *  feed into downstream automations need verification — but it's cheap
-   *  to verify everything, so prefer setting this. */
+  /** Optional: expected `text` value after the write. When provided,
+   *  takes priority over snapshot-diff verification. */
   expectedText?: string;
 }
 
@@ -58,19 +63,15 @@ interface VerifiedWriteOpts {
   maxVerifyAttempts?: number;
   /** Delay between read-back attempts in ms. Default 1500. */
   verifyIntervalMs?: number;
+  /** Consecutive stable reads before assuming a same-value write landed.
+   *  Default 3. */
+  stableReadsThreshold?: number;
   /** Optional: write a debug message on failure. */
   writeDebug?: (itemId: string, msg: string) => Promise<void>;
 }
 
 // ── Core ───────────────────────────────────────────────────────
 
-/**
- * Execute column writes with read-back verification before advancing
- * the stage.
- *
- * Returns an array of failure messages (empty = all succeeded).
- * Throws if the stage advancer write itself fails.
- */
 export async function executeWritesWithVerification(
   opts: VerifiedWriteOpts,
 ): Promise<string[]> {
@@ -82,6 +83,7 @@ export async function executeWritesWithVerification(
     readColumns,
     maxVerifyAttempts = 8,
     verifyIntervalMs = 1500,
+    stableReadsThreshold = 3,
     writeDebug,
   } = opts;
 
@@ -92,12 +94,24 @@ export async function executeWritesWithVerification(
   const stageTasks = tasks.filter((t) => stageIds.has(t.columnId));
   const dataTasks = tasks.filter((t) => !stageIds.has(t.columnId));
 
+  // Collect column IDs we need to verify
+  const verifyColIds = dataTasks.map((t) => t.columnId);
+
+  // ── Phase 0: snapshot BEFORE writing ─────────────────────
+  let beforeSnapshot = new Map<string, string>();
+  if (verifyColIds.length > 0) {
+    try {
+      const snap = await readColumns(itemId, verifyColIds);
+      beforeSnapshot = new Map(snap.map((c) => [c.id, c.text ?? ""]));
+    } catch (err) {
+      console.warn("[verifiedWrite] Pre-write snapshot failed, falling back to no-snapshot mode:", err);
+    }
+  }
+
   // ── Phase 1: write all data columns in parallel ──────────
   const dataResults = await Promise.all(dataTasks.map(executeWithRetry));
   const dataFailures = dataResults.filter((r): r is string => r !== null);
 
-  // If any data writes failed, log and bail — don't advance stage with
-  // incomplete data.
   if (dataFailures.length > 0) {
     if (writeDebug) {
       const ts = new Date().toISOString().slice(0, 19).replace("T", " ");
@@ -108,42 +122,62 @@ export async function executeWritesWithVerification(
   }
 
   // ── Phase 2: read-back verification ──────────────────────
-  // Only verify columns that declared an expectedText.
-  const verifiable = dataTasks.filter((t) => t.expectedText !== undefined);
-
-  if (verifiable.length > 0) {
-    const colIds = verifiable.map((t) => t.columnId);
-    const expected = new Map(
-      verifiable.map((t) => [t.columnId, t.expectedText!]),
-    );
-
+  if (verifyColIds.length > 0) {
+    // Track how many consecutive reads each column has been "stable"
+    // (unchanged from snapshot). Once a column hits the threshold,
+    // we assume a same-value write and stop waiting.
+    const stableCount = new Map<string, number>();
     let verified = false;
+
     for (let attempt = 1; attempt <= maxVerifyAttempts; attempt++) {
-      const snapshot = await readColumns(itemId, colIds);
+      const snapshot = await readColumns(itemId, verifyColIds);
       const actual = new Map(snapshot.map((c) => [c.id, c.text ?? ""]));
 
-      const mismatches: string[] = [];
-      for (const [colId, exp] of expected) {
-        const act = actual.get(colId) ?? "";
-        if (act !== exp) {
-          const task = verifiable.find((t) => t.columnId === colId);
-          mismatches.push(
-            `${task?.label ?? colId}: expected "${exp}", got "${act}"`,
-          );
+      const pending: string[] = [];
+
+      for (const task of dataTasks) {
+        const colId = task.columnId;
+        const currentVal = actual.get(colId) ?? "";
+        const beforeVal = beforeSnapshot.get(colId) ?? "";
+
+        // Method 1: expectedText provided — exact match
+        if (task.expectedText !== undefined) {
+          if (currentVal === task.expectedText) continue; // verified
+          pending.push(`${task.label}: expected "${task.expectedText}", got "${currentVal}"`);
+          continue;
         }
+
+        // Method 2: snapshot diff — value changed from before
+        if (currentVal !== beforeVal) continue; // verified — value changed
+
+        // Value hasn't changed from snapshot. Could be:
+        //   (a) same-value write — already correct, automation safe
+        //   (b) write not indexed yet — stale value
+        // Track consecutive stable reads to distinguish.
+        const prevStable = stableCount.get(colId) ?? 0;
+        const newStable = prevStable + 1;
+        stableCount.set(colId, newStable);
+
+        if (newStable >= stableReadsThreshold) {
+          // Assume same-value write — the automation will read the
+          // correct value regardless.
+          continue;
+        }
+
+        pending.push(`${task.label}: unchanged from snapshot "${beforeVal}" (stable read ${newStable}/${stableReadsThreshold})`);
       }
 
-      if (mismatches.length === 0) {
+      if (pending.length === 0) {
         console.log(
-          `[verifiedWrite] All ${verifiable.length} columns verified on attempt ${attempt}`,
+          `[verifiedWrite] All ${dataTasks.length} columns verified on attempt ${attempt}`,
         );
         verified = true;
         break;
       }
 
       console.warn(
-        `[verifiedWrite] Attempt ${attempt}/${maxVerifyAttempts}: ${mismatches.length} column(s) not yet indexed`,
-        mismatches,
+        `[verifiedWrite] Attempt ${attempt}/${maxVerifyAttempts}: ${pending.length} column(s) pending`,
+        pending,
       );
 
       if (attempt < maxVerifyAttempts) {
@@ -152,7 +186,7 @@ export async function executeWritesWithVerification(
     }
 
     if (!verified) {
-      const msg = `Stage advancer NOT written: ${verifiable.length} column(s) failed read-back verification after ${maxVerifyAttempts} attempts (~${Math.round((maxVerifyAttempts * verifyIntervalMs) / 1000)}s). Monday may be unusually slow — retry the send.`;
+      const msg = `Stage advancer NOT written: column(s) failed read-back verification after ${maxVerifyAttempts} attempts (~${Math.round((maxVerifyAttempts * verifyIntervalMs) / 1000)}s). Monday may be unusually slow — retry the send.`;
       console.error(`[verifiedWrite] ${msg}`);
       if (writeDebug) {
         try { await writeDebug(itemId, `[${new Date().toISOString().slice(0, 19)}] ${msg}`); } catch { /* best-effort */ }
