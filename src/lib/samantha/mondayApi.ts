@@ -142,6 +142,8 @@ export const COL = {
 
   // Profile Send Off Notes (mirrored from Profile Send Off Board)
   profileSendOffNotes: "text_mm3xfw5a",
+  // MN Workflow Notes
+  mnWorkflowNotes: "text_mm3xbvss",
 } as const;
 
 export const READ_COLUMN_IDS = [
@@ -181,6 +183,7 @@ export const READ_COLUMN_IDS = [
   COL.lastBillDate.cartridge,
   // Follow Up
     COL.profileSendOffNotes,
+    COL.mnWorkflowNotes,
   COL.followUp,
   COL.followUpDate,
 ];

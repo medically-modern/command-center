@@ -399,6 +399,8 @@ export interface Patient {
   accountability?: AccountabilityLog;
   // Profile Send Off Notes
   profileSendOffNotes?: string;
+  // MN Workflow Notes
+  mnWorkflowNotes?: string;
   notes: string;
   receivedAt: string; // ISO
   lastUpdated: string; // ISO
