@@ -1,3 +1,4 @@
+import { useImmediateFileUpload, type TrackedFile } from "@/hooks/masheke/useImmediateFileUpload";
 import { useEffect, useMemo, useState, useCallback, useRef, type DragEvent } from "react";
 import type { Patient } from "@/lib/masheke/workflow";
 import { StatusSelect } from "./StatusSelect";
@@ -83,6 +84,8 @@ import {
   Download,
   ExternalLink,
   Loader2,
+  CheckCircle2,
+  XCircle,
   Plus,
   Send,
 } from "lucide-react";
@@ -121,6 +124,11 @@ export function EvaluatePanel({ patient, resetVersion = 0, onUpdate, onOpenForm 
   // so handleSendToMonday can upload them to Monday.
   const pendingFilesRef = useRef<Record<string, File[]>>({ clinicalFiles: [], finalClinicalFiles: [] });
 
+  // Immediate file upload — uploads on drop, blocks Send until confirmed
+  const clinicalUpload = useImmediateFileUpload();
+  const finalClinicalUpload = useImmediateFileUpload();
+  const filesUploading = clinicalUpload.busy || finalClinicalUpload.busy;
+
   // Reload state when patient changes OR when parent triggers a Reset.
   useEffect(() => {
     const stored = loadEvalState(patient.id);
@@ -128,6 +136,8 @@ export function EvaluatePanel({ patient, resetVersion = 0, onUpdate, onOpenForm 
     else setState(seedEvalStateFromPatient(patient));
     // Clear pending file blobs on reset / patient switch
     pendingFilesRef.current = { clinicalFiles: [], finalClinicalFiles: [] };
+    clinicalUpload.reset();
+    finalClinicalUpload.reset();
     // Re-run when patient.id changes or resetVersion bumps. We intentionally
     // don't depend on `patient` (the whole object) since useMondayPatients
     // creates a new reference on every poll which would re-seed unnecessarily.
@@ -411,27 +421,8 @@ export function EvaluatePanel({ patient, resetVersion = 0, onUpdate, onOpenForm 
     // Doctor fields (from pencil-edit overlay)
     tasks.push(...buildDoctorWriteTasks(patient));
 
-    // Upload pending clinical files & final clinical files to Monday
-    const pendingClinical = pendingFilesRef.current.clinicalFiles ?? [];
-    for (const file of pendingClinical) {
-      tasks.push({
-        label: `Upload Clinical: ${file.name}`,
-        run: async () => {
-          const bytes = new Uint8Array(await file.arrayBuffer());
-          await uploadFileToColumn(patient.id, COL.clinicalFiles, bytes, file.name, file.type || "application/octet-stream");
-        },
-      });
-    }
-    const pendingFinal = pendingFilesRef.current.finalClinicalFiles ?? [];
-    for (const file of pendingFinal) {
-      tasks.push({
-        label: `Upload Final Clinical: ${file.name}`,
-        run: async () => {
-          const bytes = new Uint8Array(await file.arrayBuffer());
-          await uploadFileToColumn(patient.id, COL.finalClinicals, bytes, file.name, file.type || "application/octet-stream");
-        },
-      });
-    }
+    // File uploads are now handled immediately on drop via useImmediateFileUpload.
+    // They are confirmed server-side before Send is enabled — no batch upload needed.
     // Escalation — only written when the toggle is active
     if (escalatedRef.current) {
       tasks.push({
@@ -449,8 +440,6 @@ export function EvaluatePanel({ patient, resetVersion = 0, onUpdate, onOpenForm 
     setSending(false);
     if (failures.length === 0) {
       toast.success(`Sent ${tasks.length} fields to Monday`);
-      // Clear pending file blobs after successful upload
-      pendingFilesRef.current = { clinicalFiles: [], finalClinicalFiles: [] };
       setEscalated(false); escalatedRef.current = false;
     } else {
       toast.error(`${failures.length} write(s) failed`, {
@@ -553,12 +542,15 @@ export function EvaluatePanel({ patient, resetVersion = 0, onUpdate, onOpenForm 
             files={state.clinicalFiles ?? []}
             mondayFiles={mondayFiles.clinicalFiles}
             mondayLoading={mondayFiles.loading}
+            trackedFiles={clinicalUpload.files}
             onAdd={(files) => update("clinicalFiles", [...(state.clinicalFiles ?? []), ...files])}
-            onAddRaw={(rawFiles) => { pendingFilesRef.current.clinicalFiles = [...pendingFilesRef.current.clinicalFiles, ...rawFiles]; }}
+            onAddRaw={(rawFiles) => {
+              // Upload immediately to Monday instead of batching
+              clinicalUpload.upload(patient.id, COL.clinicalFiles, rawFiles);
+            }}
             onRemove={(idx) => {
               const next = [...(state.clinicalFiles ?? [])];
               next.splice(idx, 1);
-              pendingFilesRef.current.clinicalFiles.splice(idx, 1);
               update("clinicalFiles", next);
             }}
           />
@@ -567,15 +559,17 @@ export function EvaluatePanel({ patient, resetVersion = 0, onUpdate, onOpenForm 
             files={state.finalClinicalFiles ?? []}
             mondayFiles={mondayFiles.finalClinicals}
             mondayLoading={mondayFiles.loading}
+            trackedFiles={finalClinicalUpload.files}
             onAdd={(files) =>
               update("finalClinicalFiles", [...(state.finalClinicalFiles ?? []), ...files])
             }
-            onAddRaw={(rawFiles) => { pendingFilesRef.current.finalClinicalFiles = [...pendingFilesRef.current.finalClinicalFiles, ...rawFiles]; }
-            }
+            onAddRaw={(rawFiles) => {
+              // Upload immediately to Monday instead of batching
+              finalClinicalUpload.upload(patient.id, COL.finalClinicals, rawFiles);
+            }}
             onRemove={(idx) => {
               const next = [...(state.finalClinicalFiles ?? [])];
               next.splice(idx, 1);
-              pendingFilesRef.current.finalClinicalFiles.splice(idx, 1);
               update("finalClinicalFiles", next);
             }}
           />
@@ -602,6 +596,7 @@ export function EvaluatePanel({ patient, resetVersion = 0, onUpdate, onOpenForm 
         escalated={escalated}
         onToggleEscalate={() => setEscalated((v) => { const nv = !v; escalatedRef.current = nv; return nv; })}
         onOpenForm={onOpenForm}
+        filesUploading={filesUploading}
       />
     </div>
   );
@@ -1155,6 +1150,7 @@ interface FileUploadCardProps {
   files: LocalFile[];
   mondayFiles: MondayFileEntry[];
   mondayLoading: boolean;
+  trackedFiles?: TrackedFile[];
   onAdd: (files: LocalFile[]) => void;
   onAddRaw?: (files: File[]) => void;
   onRemove: (idx: number) => void;
@@ -1165,6 +1161,7 @@ function FileUploadCard({
   files,
   mondayFiles,
   mondayLoading,
+  trackedFiles,
   onAdd,
   onAddRaw,
   onRemove,
@@ -1338,7 +1335,7 @@ function FileUploadCard({
         <p className="text-xs text-muted-foreground">
           Drop files here or <span className="underline">browse</span>
         </p>
-        <p className="text-[10px] text-muted-foreground">(local preview — uploads to Monday wired up later)</p>
+        <p className="text-[10px] text-muted-foreground">(uploads to Monday immediately on drop)</p>
         <input
           type="file"
           multiple
@@ -1420,6 +1417,7 @@ interface ValiditySummaryProps {
   escalated: boolean;
   onToggleEscalate: () => void;
   onOpenForm?: () => void;
+  filesUploading?: boolean;
 }
 
 function ValiditySummary({
@@ -1434,6 +1432,7 @@ function ValiditySummary({
   escalated,
   onToggleEscalate,
   onOpenForm,
+  filesUploading,
 }: ValiditySummaryProps) {
   const missingFields = getMissingRequiredFields(state, showCgm, showIp);
   const blocked = missingFields.length > 0;
@@ -1499,6 +1498,19 @@ function ValiditySummary({
             </div>
           </div>
         )}
+        {filesUploading && (
+          <div className="flex items-start gap-2 rounded-lg border-2 border-red-400 bg-red-50 px-3 py-2 max-w-sm animate-pulse">
+            <Loader2 className="h-4 w-4 text-red-600 shrink-0 mt-0.5 animate-spin" />
+            <div>
+              <p className="text-xs font-bold text-red-800 uppercase tracking-wide">
+                Files uploading to Monday
+              </p>
+              <p className="text-[11px] text-red-700 mt-0.5">
+                Do NOT advance until upload is confirmed
+              </p>
+            </div>
+          </div>
+        )}
         <EscalateButton
           escalated={escalated}
           onToggle={onToggleEscalate}
@@ -1508,7 +1520,7 @@ function ValiditySummary({
         <Button
           size="lg"
           onClick={onSendToMonday}
-          disabled={sending || blocked}
+          disabled={sending || blocked || filesUploading}
           className="gap-2 bg-emerald-600 hover:bg-emerald-700 text-white shadow-elevate"
         >
           {sending ? (
