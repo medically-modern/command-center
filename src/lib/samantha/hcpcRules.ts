@@ -288,6 +288,14 @@ export const PRIMARY_INSURANCE_INDEX: Record<PrimaryInsurance, number> = {
   "United Low-Cost": 10,  // maps to United Commercial on the board
 } as Record<PrimaryInsurance, number>;
 
+export const SECONDARY_INSURANCE_OPTIONS_SAMANTHA = ["None", "NY Medicaid", "Medicare Supplement"];
+
+export const SECONDARY_INSURANCE_INDEX: Record<string, number> = {
+  "None": 0,
+  "NY Medicaid": 1,
+  "Medicare Supplement": 2,
+};
+
 export const SERVING_OPTIONS: Serving[] = [
   "Supplies Only",
   "CGM",
