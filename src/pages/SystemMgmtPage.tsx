@@ -493,16 +493,31 @@ function EscalationView({
             </span>
           </div>
           <div className="divide-y divide-border">
-            {pts.map((p) => (
+            {pts.map((p) => {
+              const esc = parseEscalation(p.escalationNotes);
+              const urgency = esc?.urgency ?? "Medium";
+              const rowBg = {
+                Low:    "bg-gray-50 dark:bg-gray-900/30 border-l-4 border-l-gray-400",
+                Medium: "bg-yellow-50 dark:bg-yellow-950/20 border-l-4 border-l-yellow-400",
+                High:   "bg-orange-50 dark:bg-orange-950/20 border-l-4 border-l-orange-400",
+                Urgent: "bg-red-50 dark:bg-red-950/25 border-l-4 border-l-red-500",
+              }[urgency];
+              const avatarBg = {
+                Low:    "bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200",
+                Medium: "bg-yellow-200 dark:bg-yellow-800/60 text-yellow-800 dark:text-yellow-200",
+                High:   "bg-orange-200 dark:bg-orange-800/60 text-orange-800 dark:text-orange-200",
+                Urgent: "bg-red-200 dark:bg-red-800/60 text-red-800 dark:text-red-200",
+              }[urgency];
+              return (
               <div
                 key={`${p.boardId}-${p.id}`}
-                className="flex items-center gap-3 px-4 py-3 hover:bg-muted/30 transition-colors"
+                className={`flex items-center gap-3 px-4 py-3 transition-colors hover:brightness-95 dark:hover:brightness-110 ${rowBg}`}
               >
                 <button
                   onClick={() => onPatientClick(p, true)}
                   className="flex-1 flex items-center gap-3 text-left min-w-0"
                 >
-                  <div className="w-8 h-8 rounded-full bg-red-100 dark:bg-red-900/40 flex items-center justify-center text-red-600 dark:text-red-400 font-bold text-xs shrink-0">
+                  <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs shrink-0 ${avatarBg}`}>
                     {p.name[0]}
                   </div>
                   <div className="min-w-0">
@@ -548,7 +563,7 @@ function EscalationView({
                   Remove
                 </Button>
               </div>
-            ))}
+              ); })}
           </div>
         </div>
       ))}
