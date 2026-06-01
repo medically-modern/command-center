@@ -53,6 +53,126 @@ function Field({ label, value }: { label: string; value: string }) {
   );
 }
 
+/** Primary Insurance — pencil icon toggles to dropdown */
+function EditablePrimaryInsurance({
+  value,
+  editedIndex,
+  currentIndex,
+  onFieldChange,
+}: {
+  value: string;
+  editedIndex: number | null;
+  currentIndex: number | null;
+  onFieldChange?: (field: keyof Patient, value: string | number | null) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const displayValue = editedIndex !== null
+    ? PRIMARY_INSURANCE_OPTIONS.find((o) => o.index === editedIndex)?.label ?? value
+    : value;
+
+  return (
+    <div>
+      <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
+        Primary Insurance
+      </p>
+      {editing && onFieldChange ? (
+        <Select
+          value={
+            editedIndex !== null
+              ? String(editedIndex)
+              : currentIndex !== null
+                ? String(currentIndex)
+                : ""
+          }
+          onValueChange={(v) => {
+            const option = PRIMARY_INSURANCE_OPTIONS.find((o) => String(o.index) === v);
+            if (option) {
+              onFieldChange("primaryInsuranceEdited", option.label);
+              onFieldChange("primaryInsuranceIndexEdited" as keyof Patient, option.index);
+            }
+            setEditing(false);
+          }}
+        >
+          <SelectTrigger className="h-8 text-sm" autoFocus>
+            <SelectValue placeholder="Select insurance" />
+          </SelectTrigger>
+          <SelectContent>
+            {PRIMARY_INSURANCE_OPTIONS.map((opt) => (
+              <SelectItem key={opt.index} value={String(opt.index)}>
+                {opt.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      ) : (
+        <div className="flex items-center gap-1.5">
+          <p className="text-sm font-medium" title={displayValue}>{displayValue || "—"}</p>
+          {onFieldChange && (
+            <button
+              onClick={() => setEditing(true)}
+              className="p-0.5 rounded hover:bg-muted/60 text-muted-foreground hover:text-foreground transition-colors"
+              title="Edit Primary Insurance"
+            >
+              <Pencil className="h-3 w-3" />
+            </button>
+          )}
+        </div>
+      )}
+      {editedIndex !== null && (
+        <p className="text-[10px] text-amber-600 mt-0.5">edited</p>
+      )}
+    </div>
+  );
+}
+
+/** Member ID 1 — pencil icon toggles to text input */
+function EditableMemberId1({
+  value,
+  editedValue,
+  onFieldChange,
+}: {
+  value: string;
+  editedValue: string | null;
+  onFieldChange?: (field: keyof Patient, value: string | number | null) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const displayValue = editedValue ?? value;
+
+  return (
+    <div>
+      <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
+        Member ID 1
+      </p>
+      {editing && onFieldChange ? (
+        <Input
+          className="h-8 text-sm"
+          value={editedValue ?? value}
+          onChange={(e) => onFieldChange("memberId1Edited", e.target.value)}
+          onBlur={() => setEditing(false)}
+          autoFocus
+          placeholder="Enter member ID"
+        />
+      ) : (
+        <div className="flex items-center gap-1.5">
+          <p className="text-sm font-medium" title={displayValue}>{displayValue || "—"}</p>
+          {onFieldChange && (
+            <button
+              onClick={() => setEditing(true)}
+              className="p-0.5 rounded hover:bg-muted/60 text-muted-foreground hover:text-foreground transition-colors"
+              title="Edit Member ID 1"
+            >
+              <Pencil className="h-3 w-3" />
+            </button>
+          )}
+        </div>
+      )}
+      {editedValue !== null && editedValue !== "" && editedValue !== value && (
+        <p className="text-[10px] text-amber-600 mt-0.5">edited</p>
+      )}
+    </div>
+  );
+}
+
 /** Add 90 days to a YYYY-MM-DD date string and return formatted + whether it's past. */
 function addDaysAndFormat(dateStr: string, days: number): { formatted: string; isPast: boolean } | null {
   if (!dateStr) return null;
@@ -355,11 +475,20 @@ export function PatientInfoCard({ patient, onFieldChange, onSavePhone, onSaveSec
 
         <Card className="p-4">
           <div className="grid grid-cols-2 gap-3">
-            {/* Primary Insurance — read-only */}
-            <Field label="Primary Insurance" value={patient.primaryInsurance} />
+            {/* Primary Insurance — read-only with pencil to edit */}
+            <EditablePrimaryInsurance
+              value={patient.primaryInsurance}
+              editedIndex={patient.primaryInsuranceIndexEdited}
+              currentIndex={patient.primaryInsuranceIndex}
+              onFieldChange={onFieldChange}
+            />
 
-            {/* Member ID 1 — read-only */}
-            <Field label="Member ID 1" value={patient.memberId1} />
+            {/* Member ID 1 — read-only with pencil to edit */}
+            <EditableMemberId1
+              value={patient.memberId1}
+              editedValue={patient.memberId1Edited}
+              onFieldChange={onFieldChange}
+            />
 
             {/* Secondary Insurance — always editable dropdown */}
             <div>
