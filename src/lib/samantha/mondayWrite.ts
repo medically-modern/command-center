@@ -800,7 +800,20 @@ export async function sendPatientToMonday(p: Patient, context: "benefits" | "sub
   }
 
   // ----- Execute all writes in parallel, each with independent retries -----
-  const results = await Promise.all(tasks.map(executeWithRetry));
+  // IMPORTANT: Stage Advancer must be written LAST. The Monday automation
+  // triggers on Stage Advancer = "Complete" and copies the item to the
+  // Welcome Call board. If auth fields haven't finished writing yet, the
+  // copy gets stale "Submitted" values instead of the final auth results.
+  const stageTask = tasks.find((t) => t.columnId === COL.stageAdvancer);
+  const otherTasks = tasks.filter((t) => t.columnId !== COL.stageAdvancer);
+
+  // Phase 1: write everything except Stage Advancer
+  const otherResults = await Promise.all(otherTasks.map(executeWithRetry));
+
+  // Phase 2: write Stage Advancer after all other columns have landed
+  const stageResults = stageTask ? [await executeWithRetry(stageTask)] : [];
+
+  const results = [...otherResults, ...stageResults];
   const failures = results.filter((r): r is string => r !== null);
 
   if (failures.length > 0) {
