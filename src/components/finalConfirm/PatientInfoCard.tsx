@@ -124,6 +124,7 @@ function SelectField({
   value,
   onChange,
   suppressWarning,
+  disabled,
 }: {
   label: string;
   icon?: React.ReactNode;
@@ -131,11 +132,12 @@ function SelectField({
   value: string;
   onChange: (index: number, label: string) => void;
   suppressWarning?: boolean;
+  disabled?: boolean;
 }) {
   const selectedOpt = options.find((o) => o.label === value);
-  const isEmpty = !value && !suppressWarning;
+  const isEmpty = !value && !suppressWarning && !disabled;
   const selectContent = (
-    <div className={icon ? "min-w-0 flex-1" : ""}>
+    <div className={cn(icon ? "min-w-0 flex-1" : "", disabled && "opacity-40 pointer-events-none")}>
       <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1">{label}</p>
       <Select
         value={selectedOpt ? String(selectedOpt.index) : ""}
@@ -143,6 +145,7 @@ function SelectField({
           const opt = options.find((o) => String(o.index) === v);
           if (opt) onChange(opt.index, opt.label);
         }}
+        disabled={disabled}
       >
         <SelectTrigger className={cn("h-8 text-sm", isEmpty && "border-red-300 dark:border-red-700")}>
           <SelectValue placeholder={`Select ${label.toLowerCase()}`} />
@@ -926,6 +929,8 @@ export function PatientInfoCard({ patient, onFieldChange }: Props) {
               const opt = PUMP_TYPE_OPTIONS.find((o) => o.index === index);
               if (opt) onFieldChange("pumpType", opt.label);
             }}
+            disabled={patient.serving === "CGM"}
+            suppressWarning={patient.serving === "CGM"}
           />
         </div>
 
