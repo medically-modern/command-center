@@ -58,6 +58,7 @@ import {
   clearStatusColumn,
   clearDateColumn,
   deleteFileFromColumn,
+  deleteSingleFileFromColumn,
   fetchStatusLabels,
   hasToken,
   writeDate,
@@ -543,6 +544,9 @@ export function EvaluatePanel({ patient, resetVersion = 0, onUpdate, onOpenForm 
             mondayFiles={mondayFiles.clinicalFiles}
             mondayLoading={mondayFiles.loading}
             trackedFiles={clinicalUpload.files}
+            itemId={patient.id}
+            columnId={COL.clinicalFiles}
+            onRefetch={mondayFiles.refetch}
             onAdd={(files) => update("clinicalFiles", [...(state.clinicalFiles ?? []), ...files])}
             onAddRaw={(rawFiles) => {
               // Upload immediately to Monday instead of batching
@@ -560,6 +564,9 @@ export function EvaluatePanel({ patient, resetVersion = 0, onUpdate, onOpenForm 
             mondayFiles={mondayFiles.finalClinicals}
             mondayLoading={mondayFiles.loading}
             trackedFiles={finalClinicalUpload.files}
+            itemId={patient.id}
+            columnId={COL.finalClinicals}
+            onRefetch={mondayFiles.refetch}
             onAdd={(files) =>
               update("finalClinicalFiles", [...(state.finalClinicalFiles ?? []), ...files])
             }
@@ -1151,6 +1158,9 @@ interface FileUploadCardProps {
   mondayFiles: MondayFileEntry[];
   mondayLoading: boolean;
   trackedFiles?: TrackedFile[];
+  itemId: string;
+  columnId: string;
+  onRefetch: () => Promise<void>;
   onAdd: (files: LocalFile[]) => void;
   onAddRaw?: (files: File[]) => void;
   onRemove: (idx: number) => void;
@@ -1162,6 +1172,9 @@ function FileUploadCard({
   mondayFiles,
   mondayLoading,
   trackedFiles,
+  itemId,
+  columnId,
+  onRefetch,
   onAdd,
   onAddRaw,
   onRemove,
@@ -1172,6 +1185,26 @@ function FileUploadCard({
   const [isDragOver, setIsDragOver] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [downloading, setDownloading] = useState(false);
+  const [deletingAssetId, setDeletingAssetId] = useState<string | null>(null);
+
+  const handleDeleteMondayFile = async (target: MondayFileEntry) => {
+    if (!confirm(`Delete "${target.name}" from Monday? This cannot be undone.`)) return;
+    setDeletingAssetId(target.assetId);
+    try {
+      const keepFiles = mondayFiles
+        .filter((f) => f.assetId !== target.assetId)
+        .map((f) => ({ name: f.name, url: f.public_url || f.url }));
+      await deleteSingleFileFromColumn(itemId, columnId, keepFiles);
+      toast.success(`Deleted "${target.name}" from Monday`);
+      await onRefetch();
+    } catch (e) {
+      toast.error("Delete failed", {
+        description: e instanceof Error ? e.message : String(e),
+      });
+    } finally {
+      setDeletingAssetId(null);
+    }
+  };
 
   const toggleSelect = (assetId: string) => {
     setSelected((prev) => {
@@ -1331,7 +1364,23 @@ function FileUploadCard({
                     )}
                   </div>
                   <FileText className="h-3 w-3 shrink-0" />
-                  <span className="truncate font-medium">{f.name}</span>
+                  <span className="truncate font-medium flex-1">{f.name}</span>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleDeleteMondayFile(f);
+                    }}
+                    disabled={deletingAssetId === f.assetId}
+                    className="shrink-0 p-0.5 rounded hover:bg-red-100 text-muted-foreground hover:text-red-600 transition-colors disabled:opacity-50"
+                    aria-label={`Delete ${f.name}`}
+                    title="Delete from Monday"
+                  >
+                    {deletingAssetId === f.assetId ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <Trash2 className="h-3.5 w-3.5" />
+                    )}
+                  </button>
                 </li>
               );
             })}
