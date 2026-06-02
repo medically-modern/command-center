@@ -265,15 +265,24 @@ export async function writeStatusIndex(itemId: string, columnId: string, index: 
 }
 
 /**
- * Write a status column by label string. If the label doesn't exist on
- * the column yet, Monday auto-creates it as a new permanent status.
+ * Write a status column by label string.
+ * When `createIfMissing` is true, Monday will auto-create the label as
+ * a new permanent status if it doesn't already exist on the column.
+ * Only enable this for columns where new values are expected (e.g. Diagnosis).
  */
-export async function writeStatusLabel(itemId: string, columnId: string, label: string): Promise<void> {
-  const query = `
-    mutation ($boardId: ID!, $itemId: ID!, $columnId: String!, $value: JSON!) {
-      change_column_value(board_id: $boardId, item_id: $itemId, column_id: $columnId, value: $value) { id }
-    }
-  `;
+export async function writeStatusLabel(
+  itemId: string,
+  columnId: string,
+  label: string,
+  createIfMissing = false,
+): Promise<void> {
+  const query = createIfMissing
+    ? `mutation ($boardId: ID!, $itemId: ID!, $columnId: String!, $value: JSON!) {
+        change_column_value(board_id: $boardId, item_id: $itemId, column_id: $columnId, value: $value, create_labels_if_missing: true) { id }
+      }`
+    : `mutation ($boardId: ID!, $itemId: ID!, $columnId: String!, $value: JSON!) {
+        change_column_value(board_id: $boardId, item_id: $itemId, column_id: $columnId, value: $value) { id }
+      }`;
   await gql(query, {
     boardId: BOARD_ID,
     itemId,

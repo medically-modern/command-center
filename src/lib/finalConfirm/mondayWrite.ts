@@ -141,9 +141,10 @@ export async function sendPatientToMonday(p: Patient): Promise<void> {
     tasks.push({ label: "Carecentrix Intake ID", columnId: COL.carecentrixIntakeId, fn: () => writeText(p.id, COL.carecentrixIntakeId, p.carecentrixIntakeId) });
 
   // ─── Medical Necessity edits ─────────────────────────────
-  // Diagnosis (status column — written by label so custom codes auto-create)
+  // Diagnosis (status column — written by label; createIfMissing=true so
+  // custom ICD-10 codes become permanent statuses on Monday)
   if (p.diagnosis)
-    tasks.push({ label: "Diagnosis", columnId: COL.diagnosis, fn: () => writeStatusLabel(p.id, COL.diagnosis, p.diagnosis) });
+    tasks.push({ label: "Diagnosis", columnId: COL.diagnosis, fn: () => writeStatusLabel(p.id, COL.diagnosis, p.diagnosis, true) });
 
   // MR Expiry Date (date column — needs {date: "YYYY-MM-DD"} JSON)
   tasks.push({ label: "MR Expiry Date", columnId: COL.mrExpiryDate, fn: () => writeDate(p.id, COL.mrExpiryDate, p.mrExpiryDate) });
