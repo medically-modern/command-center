@@ -36,12 +36,12 @@
   "submitAuth": [
     "Samantha",
     "Brandon",
-    "Corey",
-    "Janelle"
+    "Corey"
   ],
   "authOutstanding": [
     "Brandon",
-    "Corey"
+    "Corey",
+    "Samantha"
   ],
   "welcomeCall": [
     "Corey",
@@ -64,6 +64,7 @@
   ],
   "subscription": [
     "Josh",
-    "Janelle"
+    "Janelle",
+    "Masheke"
   ]
 }

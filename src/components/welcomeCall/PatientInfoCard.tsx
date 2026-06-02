@@ -258,7 +258,7 @@ function SmartNextOrderField({
   const computed = computeNextOrder(lastBillDates);
   const hasLastBill = lastBillDates.some(Boolean);
   // Priority: edited > Monday value > computed
-  const effectiveDate = editedDate ?? mondayDate || computed;
+  const effectiveDate = editedDate ?? (mondayDate || computed);
 
   // Pre-populate the edited field with the computed value on first render
   // if there's no Monday value and no edit yet
