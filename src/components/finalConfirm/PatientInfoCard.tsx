@@ -20,9 +20,24 @@ import {
   formatPhone,
   formatDateMDY,
 } from "@/lib/finalConfirm/workflow";
+import { hasToken, fetchStatusLabels, COL } from "@/lib/finalConfirm/mondayApi";
 import { AddressAutocomplete, type AddressResult } from "@/components/finalConfirm/AddressAutocomplete";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command";
 import {
   Select,
   SelectContent,
@@ -30,12 +45,16 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { cn } from "@/lib/utils";
 import {
   AlertTriangle,
+  Check,
+  ChevronsUpDown,
   ChevronDown,
   ChevronRight,
+  Plus,
+  X,
   User,
   Phone,
   Mail,
@@ -348,6 +367,145 @@ function EditableNextOrderDateField({
         value={dateStr}
         onChange={(e) => onChange(e.target.value)}
       />
+    </div>
+  );
+}
+
+/** Diagnosis combobox — shows hardcoded favorites + live Monday labels,
+ *  and lets the user add a new ICD-10 code that becomes a permanent status. */
+function DiagnosisCombobox({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange: (label: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [newCode, setNewCode] = useState("");
+  const [customCodes, setCustomCodes] = useState<string[]>([]);
+  const [mondayLabels, setMondayLabels] = useState<string[] | null>(null);
+
+  // Fetch live diagnosis labels from Monday on first open
+  useEffect(() => {
+    if (!open || mondayLabels !== null) return;
+    if (!hasToken()) return;
+    fetchStatusLabels(COL.diagnosis)
+      .then((labels) => setMondayLabels(labels))
+      .catch(() => setMondayLabels([]));
+  }, [open, mondayLabels]);
+
+  const favorites = DIAGNOSIS_OPTIONS.map((o) => o.label);
+  const allCodes = useMemo(() => {
+    const set = new Set<string>(favorites);
+    for (const c of mondayLabels ?? []) set.add(c);
+    for (const c of customCodes) set.add(c);
+    return [...set];
+  }, [mondayLabels, customCodes]);
+  const otherCodes = allCodes.filter((c) => !favorites.includes(c)).sort();
+
+  const handleAddCode = () => {
+    const code = newCode.trim().toUpperCase();
+    if (!code) return;
+    if (!allCodes.includes(code)) setCustomCodes((prev) => [...prev, code]);
+    onChange(code);
+    setNewCode("");
+    setOpen(false);
+  };
+
+  const isEmpty = !value;
+  const itemClass =
+    "text-xs cursor-pointer text-foreground data-[selected=true]:bg-emerald-100 data-[selected=true]:text-emerald-900 aria-selected:bg-emerald-100 aria-selected:text-emerald-900";
+
+  const renderItem = (code: string) => (
+    <CommandItem
+      key={code}
+      value={code}
+      onSelect={() => {
+        onChange(code === value ? "" : code);
+        setOpen(false);
+      }}
+      className={itemClass}
+    >
+      <Check className={cn("mr-2 h-3 w-3", value === code ? "opacity-100" : "opacity-0")} />
+      {code}
+    </CommandItem>
+  );
+
+  return (
+    <div className={cn("flex items-start gap-2 min-w-0 rounded-lg p-1.5 -m-1.5 transition-colors", isEmpty && "bg-red-50 dark:bg-red-950/20 ring-1 ring-red-200 dark:ring-red-800/40")}>
+      <div className={cn("h-8 w-8 rounded-md flex items-center justify-center shrink-0", isEmpty ? "bg-red-100 dark:bg-red-900/30 text-red-500" : "bg-muted text-muted-foreground")}>
+        <Heart className="h-4 w-4" />
+      </div>
+      <div className="min-w-0 flex-1">
+        <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1">Diagnosis</p>
+        <Popover open={open} onOpenChange={setOpen}>
+          <PopoverTrigger asChild>
+            <Button
+              variant="outline"
+              role="combobox"
+              aria-expanded={open}
+              className={cn(
+                "w-full h-8 px-3 text-xs font-medium justify-between",
+                value
+                  ? "border-emerald-300 bg-emerald-50 text-emerald-900 hover:bg-emerald-50/80 hover:text-emerald-900"
+                  : isEmpty
+                    ? "border-red-300 dark:border-red-700"
+                    : "border-muted",
+              )}
+            >
+              {value || "Select diagnosis…"}
+              <ChevronsUpDown className="h-3 w-3 opacity-50 shrink-0" />
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent className="w-[300px] p-0" align="start">
+            <Command>
+              <CommandInput placeholder="Search ICD-10…" className="h-9" />
+              <CommandList>
+                <CommandEmpty>
+                  <span className="text-xs text-muted-foreground">No matching code — add it below.</span>
+                </CommandEmpty>
+                <CommandGroup>
+                  <CommandItem
+                    key="__none__"
+                    value="(none)"
+                    onSelect={() => { onChange(""); setOpen(false); }}
+                    className={itemClass + " text-muted-foreground italic"}
+                  >
+                    <X className="mr-2 h-3 w-3" />
+                    (none)
+                  </CommandItem>
+                </CommandGroup>
+                <CommandGroup heading="Common">
+                  {favorites.map(renderItem)}
+                </CommandGroup>
+                {otherCodes.length > 0 && (
+                  <CommandGroup heading="All Codes">
+                    {otherCodes.map(renderItem)}
+                  </CommandGroup>
+                )}
+              </CommandList>
+            </Command>
+            <div className="border-t px-2 py-2 flex items-center gap-2">
+              <input
+                value={newCode}
+                onChange={(e) => setNewCode(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); handleAddCode(); } }}
+                placeholder="New ICD-10 code…"
+                className="flex-1 h-7 px-2 text-xs border rounded-md bg-background focus:outline-none focus:ring-1 focus:ring-emerald-400"
+              />
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-7 px-2 text-xs gap-1"
+                disabled={!newCode.trim()}
+                onClick={handleAddCode}
+              >
+                <Plus className="h-3 w-3" /> Add
+              </Button>
+            </div>
+          </PopoverContent>
+        </Popover>
+      </div>
     </div>
   );
 }
@@ -678,15 +836,12 @@ export function PatientInfoCard({ patient, onFieldChange }: Props) {
       <Card className="p-4 space-y-4">
         <CollapsibleSection title="Medical Necessity" defaultOpen>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <SelectField
-              label="Diagnosis"
-              icon={<Heart className="h-4 w-4" />}
-              options={DIAGNOSIS_OPTIONS}
+            <DiagnosisCombobox
               value={patient.diagnosis}
-              onChange={(index) => {
-                onFieldChange("diagnosisIndex", index);
-                const opt = DIAGNOSIS_OPTIONS.find((o) => o.index === index);
-                if (opt) onFieldChange("diagnosis", opt.label);
+              onChange={(label) => {
+                onFieldChange("diagnosis", label);
+                const opt = DIAGNOSIS_OPTIONS.find((o) => o.label === label);
+                onFieldChange("diagnosisIndex", opt ? opt.index : null);
               }}
             />
             <EditableTextField

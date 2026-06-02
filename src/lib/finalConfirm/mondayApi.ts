@@ -265,6 +265,49 @@ export async function writeStatusIndex(itemId: string, columnId: string, index: 
 }
 
 /**
+ * Write a status column by label string. If the label doesn't exist on
+ * the column yet, Monday auto-creates it as a new permanent status.
+ */
+export async function writeStatusLabel(itemId: string, columnId: string, label: string): Promise<void> {
+  const query = `
+    mutation ($boardId: ID!, $itemId: ID!, $columnId: String!, $value: JSON!) {
+      change_column_value(board_id: $boardId, item_id: $itemId, column_id: $columnId, value: $value) { id }
+    }
+  `;
+  await gql(query, {
+    boardId: BOARD_ID,
+    itemId,
+    columnId,
+    value: JSON.stringify({ label }),
+  });
+}
+
+/**
+ * Fetch every label string currently defined on a status column.
+ * Used to populate comboboxes with live data from Monday.
+ */
+export async function fetchStatusLabels(columnId: string): Promise<string[]> {
+  const query = `
+    query ($boardId: [ID!]!) {
+      boards(ids: $boardId) {
+        columns(ids: ["${columnId}"]) {
+          settings_str
+        }
+      }
+    }
+  `;
+  const data = await gql<{
+    boards: { columns: { settings_str: string }[] }[];
+  }>(query, { boardId: BOARD_ID });
+  const raw = data.boards?.[0]?.columns?.[0]?.settings_str ?? "{}";
+  const settings = JSON.parse(raw);
+  const labels: Record<string, { label?: string }> = settings.labels ?? {};
+  return Object.values(labels)
+    .map((v) => (typeof v === "string" ? v : v.label ?? ""))
+    .filter(Boolean);
+}
+
+/**
  * Write a long_text column.
  */
 export async function writeLongText(itemId: string, columnId: string, text: string): Promise<void> {
