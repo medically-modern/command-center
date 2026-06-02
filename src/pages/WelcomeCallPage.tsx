@@ -5,7 +5,7 @@ import confetti from "canvas-confetti";
 import { useEffect, useMemo, useState } from "react";
 import { useMondayPatients } from "@/hooks/welcomeCall/useMondayPatients";
 import type { Patient } from "@/lib/welcomeCall/workflow";
-import { PatientInfoCard } from "@/components/welcomeCall/PatientInfoCard";
+import { PatientInfoCard, NextOrderDatesCard } from "@/components/welcomeCall/PatientInfoCard";
 import { OopEstimateCard } from "@/components/welcomeCall/OopEstimateCard";
 import { WelcomeCallForm } from "@/components/welcomeCall/WelcomeCallForm";
 import { ReviewPanel } from "@/components/welcomeCall/ReviewPanel";
@@ -250,6 +250,7 @@ const WelcomeCallPage = () => {
                   />
                   <OopEstimateCard patient={selected} />
                   <WelcomeCallForm patient={selected} onFieldChange={handleFieldChange} onSendWelcomeCallText={handleSendWelcomeCallText} />
+                  <NextOrderDatesCard patient={selected} onFieldChange={handleFieldChange} />
                   <NotesPanel
                     notes={selected.notes}
                     onNotesChange={(v) => update(selected.id, { notes: v })}

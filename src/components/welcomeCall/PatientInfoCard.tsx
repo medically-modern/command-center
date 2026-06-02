@@ -651,39 +651,6 @@ export function PatientInfoCard({ patient, onFieldChange, onSavePhone, onSaveSec
         </Card>
       </div>
 
-      {/* Next Order Dates — always visible, pre-populated from last bill + 90 days or today */}
-      <Card className="p-4">
-        <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-3 flex items-center gap-2">
-          <CalendarDays className="h-3.5 w-3.5" /> Next Order Dates
-        </p>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-          <SmartNextOrderField
-            label="Sensors Next Order Date"
-            lastBillDates={[patient.sensorsLastBillDate, patient.cgmLastBillDate]}
-            mondayDate={patient.sensorsNextOrderDate}
-            editedDate={patient.sensorsNextOrderDateEdited}
-            editedField="sensorsNextOrderDateEdited"
-            onFieldChange={onFieldChange}
-          />
-          <SmartNextOrderField
-            label="IP Next Order Date"
-            lastBillDates={[patient.ipLastBillDate]}
-            mondayDate={patient.ipNextOrderDate}
-            editedDate={patient.ipNextOrderDateEdited}
-            editedField="ipNextOrderDateEdited"
-            onFieldChange={onFieldChange}
-          />
-          <SmartNextOrderField
-            label="Supplies Next Order Date"
-            lastBillDates={[patient.infusionSetLastBillDate, patient.cartridgeLastBillDate]}
-            mondayDate={patient.suppliesNextOrderDate}
-            editedDate={patient.suppliesNextOrderDateEdited}
-            editedField="suppliesNextOrderDateEdited"
-            onFieldChange={onFieldChange}
-          />
-        </div>
-      </Card>
-
       {/* Row 2: Benefits + Auth Results */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <Card className="p-4">
@@ -713,5 +680,48 @@ export function PatientInfoCard({ patient, onFieldChange, onSavePhone, onSaveSec
         )}
       </div>
     </div>
+  );
+}
+
+/** Standalone Next Order Dates card — rendered separately in the page layout. */
+export function NextOrderDatesCard({
+  patient,
+  onFieldChange,
+}: {
+  patient: Patient;
+  onFieldChange?: (field: keyof Patient, value: string | number | null) => void;
+}) {
+  return (
+    <Card className="p-4">
+      <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-3 flex items-center gap-2">
+        <CalendarDays className="h-3.5 w-3.5" /> Next Order Dates
+      </p>
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <SmartNextOrderField
+          label="Sensors Next Order Date"
+          lastBillDates={[patient.sensorsLastBillDate, patient.cgmLastBillDate]}
+          mondayDate={patient.sensorsNextOrderDate}
+          editedDate={patient.sensorsNextOrderDateEdited}
+          editedField="sensorsNextOrderDateEdited"
+          onFieldChange={onFieldChange}
+        />
+        <SmartNextOrderField
+          label="IP Next Order Date"
+          lastBillDates={[patient.ipLastBillDate]}
+          mondayDate={patient.ipNextOrderDate}
+          editedDate={patient.ipNextOrderDateEdited}
+          editedField="ipNextOrderDateEdited"
+          onFieldChange={onFieldChange}
+        />
+        <SmartNextOrderField
+          label="Supplies Next Order Date"
+          lastBillDates={[patient.infusionSetLastBillDate, patient.cartridgeLastBillDate]}
+          mondayDate={patient.suppliesNextOrderDate}
+          editedDate={patient.suppliesNextOrderDateEdited}
+          editedField="suppliesNextOrderDateEdited"
+          onFieldChange={onFieldChange}
+        />
+      </div>
+    </Card>
   );
 }
