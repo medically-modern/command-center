@@ -260,10 +260,11 @@ function SmartNextOrderField({
   // Priority: edited > Monday value > computed
   const effectiveDate = editedDate ?? (mondayDate || computed);
 
-  // Pre-populate the edited field with the computed value on first render
-  // if there's no Monday value and no edit yet
+  // Always pre-populate the edited field with the computed value on first
+  // render: last bill + 90 days if a bill date exists, otherwise today.
+  // This ensures empty last-bill products default to today's date.
   useEffect(() => {
-    if (!mondayDate && editedDate === null && onFieldChange) {
+    if (editedDate === null && onFieldChange) {
       onFieldChange(editedField, computed);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
