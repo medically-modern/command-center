@@ -1,9 +1,10 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { Patient } from "@/lib/welcomeCall/workflow";
 import { SECONDARY_INSURANCE_OPTIONS, PRIMARY_INSURANCE_OPTIONS, SERVING_OPTIONS, formatPhone, formatDateMDY, isCrossSell } from "@/lib/welcomeCall/workflow";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Pencil, Check, Loader2, X } from "lucide-react";
+import { AlertTriangle, CalendarDays, CheckCircle2, Pencil, Check, Loader2, X } from "lucide-react";
+import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import {
   Select,
@@ -213,6 +214,102 @@ function OrderDateField({ label, dateStr }: { label: string; dateStr: string }) 
       <p className="text-sm font-medium">
         {formatted}
       </p>
+    </div>
+  );
+}
+
+/** Compute next order date from last bill dates: latest bill + 90 days, or today if none. */
+function computeNextOrder(lastBillDates: string[]): string {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const todayStr = today.toISOString().slice(0, 10);
+
+  const dates = lastBillDates
+    .filter(Boolean)
+    .map((d) => {
+      const m = d.match(/^(\d{4})-(\d{2})-(\d{2})/);
+      return m ? new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])) : null;
+    })
+    .filter((d): d is Date => d !== null);
+
+  if (dates.length === 0) return todayStr;
+
+  // Use the latest last bill date
+  const latest = dates.reduce((a, b) => (a > b ? a : b));
+  latest.setDate(latest.getDate() + 90);
+  return latest.toISOString().slice(0, 10);
+}
+
+function SmartNextOrderField({
+  label,
+  lastBillDates,
+  mondayDate,
+  editedDate,
+  editedField,
+  onFieldChange,
+}: {
+  label: string;
+  lastBillDates: string[];
+  mondayDate: string;
+  editedDate: string | null;
+  editedField: keyof Patient;
+  onFieldChange?: (field: keyof Patient, value: string | number | null) => void;
+}) {
+  const computed = computeNextOrder(lastBillDates);
+  const hasLastBill = lastBillDates.some(Boolean);
+  // Priority: edited > Monday value > computed
+  const effectiveDate = editedDate ?? mondayDate || computed;
+
+  // Pre-populate the edited field with the computed value on first render
+  // if there's no Monday value and no edit yet
+  useEffect(() => {
+    if (!mondayDate && editedDate === null && onFieldChange) {
+      onFieldChange(editedField, computed);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const match = effectiveDate.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  let isPast = false;
+  let formatted = effectiveDate;
+  if (match) {
+    const d = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+    isPast = d <= today;
+    formatted = `${String(d.getMonth() + 1).padStart(2, "0")}/${String(d.getDate()).padStart(2, "0")}/${d.getFullYear()}`;
+  }
+
+  return (
+    <div className={cn(
+      "rounded-lg border p-3 space-y-2",
+      isPast ? "border-green-300 bg-green-50" : "border-red-300 bg-red-50",
+    )}>
+      <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">{label}</p>
+      <Input
+        type="date"
+        className="h-8 text-sm"
+        value={editedDate ?? effectiveDate}
+        onChange={(e) => onFieldChange?.(editedField, e.target.value)}
+      />
+      {isPast ? (
+        <div className="flex items-center gap-1.5">
+          <CheckCircle2 className="h-3.5 w-3.5 text-green-600 shrink-0" />
+          <p className="text-[11px] font-medium text-green-700">
+            Past bill date no longer an issue
+          </p>
+        </div>
+      ) : (
+        <div className="flex items-start gap-1.5">
+          <AlertTriangle className="h-3.5 w-3.5 text-red-600 shrink-0 mt-0.5" />
+          <p className="text-[11px] font-bold text-red-700">
+            SOS — patient has to wait to get supplies till this date
+          </p>
+        </div>
+      )}
+      {!hasLastBill && (
+        <p className="text-[10px] text-muted-foreground italic">No last bill date — defaulted to today</p>
+      )}
     </div>
   );
 }
@@ -553,38 +650,38 @@ export function PatientInfoCard({ patient, onFieldChange, onSavePhone, onSaveSec
         </Card>
       </div>
 
-      {/* Subscription & Logistics — Next Order Dates (editable) */}
-      {(patient.ipNextOrderDate || patient.sensorsNextOrderDate || patient.suppliesNextOrderDate ||
-        patient.ipNextOrderDateEdited || patient.sensorsNextOrderDateEdited || patient.suppliesNextOrderDateEdited) && (
-        <Card className="p-4">
-          <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-3">
-            Subscription and Logistics
-          </p>
-          <div className="grid grid-cols-3 gap-3">
-            <NextOrderDateField
-              label="IP Next Order Date"
-              dateStr={patient.ipNextOrderDate}
-              editedDateStr={patient.ipNextOrderDateEdited}
-              editedField="ipNextOrderDateEdited"
-              onFieldChange={onFieldChange}
-            />
-            <NextOrderDateField
-              label="Sensors Next Order Date"
-              dateStr={patient.sensorsNextOrderDate}
-              editedDateStr={patient.sensorsNextOrderDateEdited}
-              editedField="sensorsNextOrderDateEdited"
-              onFieldChange={onFieldChange}
-            />
-            <NextOrderDateField
-              label="Supplies Next Order Date"
-              dateStr={patient.suppliesNextOrderDate}
-              editedDateStr={patient.suppliesNextOrderDateEdited}
-              editedField="suppliesNextOrderDateEdited"
-              onFieldChange={onFieldChange}
-            />
-          </div>
-        </Card>
-      )}
+      {/* Next Order Dates — always visible, pre-populated from last bill + 90 days or today */}
+      <Card className="p-4">
+        <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-3 flex items-center gap-2">
+          <CalendarDays className="h-3.5 w-3.5" /> Next Order Dates
+        </p>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <SmartNextOrderField
+            label="Sensors Next Order Date"
+            lastBillDates={[patient.sensorsLastBillDate, patient.cgmLastBillDate]}
+            mondayDate={patient.sensorsNextOrderDate}
+            editedDate={patient.sensorsNextOrderDateEdited}
+            editedField="sensorsNextOrderDateEdited"
+            onFieldChange={onFieldChange}
+          />
+          <SmartNextOrderField
+            label="IP Next Order Date"
+            lastBillDates={[patient.ipLastBillDate]}
+            mondayDate={patient.ipNextOrderDate}
+            editedDate={patient.ipNextOrderDateEdited}
+            editedField="ipNextOrderDateEdited"
+            onFieldChange={onFieldChange}
+          />
+          <SmartNextOrderField
+            label="Supplies Next Order Date"
+            lastBillDates={[patient.infusionSetLastBillDate, patient.cartridgeLastBillDate]}
+            mondayDate={patient.suppliesNextOrderDate}
+            editedDate={patient.suppliesNextOrderDateEdited}
+            editedField="suppliesNextOrderDateEdited"
+            onFieldChange={onFieldChange}
+          />
+        </div>
+      </Card>
 
       {/* Row 2: Benefits + Auth Results */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
