@@ -7,7 +7,6 @@ import {
   PUMP_TYPE_OPTIONS,
   CGM_TYPE_OPTIONS,
   REQUEST_TYPE_OPTIONS,
-  DIAGNOSIS_OPTIONS,
   CGM_COVERAGE_PATH_OPTIONS,
   IP_COVERAGE_PATH_OPTIONS,
   CLINICALS_METHOD_OPTIONS,
@@ -20,7 +19,7 @@ import {
   formatPhone,
   formatDateMDY,
 } from "@/lib/finalConfirm/workflow";
-import { hasToken, fetchStatusLabels, COL } from "@/lib/finalConfirm/mondayApi";
+import { hasToken, fetchStatusOptions, COL } from "@/lib/finalConfirm/mondayApi";
 import { AddressAutocomplete, type AddressResult } from "@/components/finalConfirm/AddressAutocomplete";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -374,43 +373,50 @@ function EditableNextOrderDateField({
   );
 }
 
-/** Diagnosis combobox — shows hardcoded favorites + live Monday labels,
- *  and lets the user add a new ICD-10 code that becomes a permanent status. */
+/** Diagnosis combobox — fully dynamic from Monday's column settings.
+ *  Fetches all labels + indexes live, and lets the user add new ICD-10 codes. */
 function DiagnosisCombobox({
   value,
   onChange,
 }: {
   value: string;
-  onChange: (label: string) => void;
+  onChange: (label: string, index: number | null) => void;
 }) {
   const [open, setOpen] = useState(false);
   const [newCode, setNewCode] = useState("");
   const [customCodes, setCustomCodes] = useState<string[]>([]);
-  const [mondayLabels, setMondayLabels] = useState<string[] | null>(null);
+  const [mondayOptions, setMondayOptions] = useState<
+    { index: number; label: string }[] | null
+  >(null);
 
-  // Fetch live diagnosis labels from Monday on first open
+  // Fetch live diagnosis options (label + index) from Monday on first open
   useEffect(() => {
-    if (!open || mondayLabels !== null) return;
+    if (!open || mondayOptions !== null) return;
     if (!hasToken()) return;
-    fetchStatusLabels(COL.diagnosis)
-      .then((labels) => setMondayLabels(labels))
-      .catch(() => setMondayLabels([]));
-  }, [open, mondayLabels]);
+    fetchStatusOptions(COL.diagnosis)
+      .then((opts) => setMondayOptions(opts))
+      .catch(() => setMondayOptions([]));
+  }, [open, mondayOptions]);
 
-  const favorites = DIAGNOSIS_OPTIONS.map((o) => o.label);
+  const mondayLabels = useMemo(
+    () => (mondayOptions ?? []).map((o) => o.label),
+    [mondayOptions],
+  );
+
   const allCodes = useMemo(() => {
-    const set = new Set<string>(favorites);
-    for (const c of mondayLabels ?? []) set.add(c);
+    const set = new Set<string>(mondayLabels);
     for (const c of customCodes) set.add(c);
-    return [...set];
+    return [...set].sort();
   }, [mondayLabels, customCodes]);
-  const otherCodes = allCodes.filter((c) => !favorites.includes(c)).sort();
+
+  const findIndex = (label: string): number | null =>
+    mondayOptions?.find((o) => o.label === label)?.index ?? null;
 
   const handleAddCode = () => {
     const code = newCode.trim().toUpperCase();
     if (!code) return;
     if (!allCodes.includes(code)) setCustomCodes((prev) => [...prev, code]);
-    onChange(code);
+    onChange(code, findIndex(code));
     setNewCode("");
     setOpen(false);
   };
@@ -424,7 +430,7 @@ function DiagnosisCombobox({
       key={code}
       value={code}
       onSelect={() => {
-        onChange(code === value ? "" : code);
+        onChange(code === value ? "" : code, code === value ? null : findIndex(code));
         setOpen(false);
       }}
       className={itemClass}
@@ -471,21 +477,16 @@ function DiagnosisCombobox({
                   <CommandItem
                     key="__none__"
                     value="(none)"
-                    onSelect={() => { onChange(""); setOpen(false); }}
+                    onSelect={() => { onChange("", null); setOpen(false); }}
                     className={itemClass + " text-muted-foreground italic"}
                   >
                     <X className="mr-2 h-3 w-3" />
                     (none)
                   </CommandItem>
                 </CommandGroup>
-                <CommandGroup heading="Common">
-                  {favorites.map(renderItem)}
+                <CommandGroup heading="Diagnosis Codes">
+                  {allCodes.map(renderItem)}
                 </CommandGroup>
-                {otherCodes.length > 0 && (
-                  <CommandGroup heading="All Codes">
-                    {otherCodes.map(renderItem)}
-                  </CommandGroup>
-                )}
               </CommandList>
             </Command>
             <div className="border-t px-2 py-2 flex items-center gap-2">
@@ -841,10 +842,9 @@ export function PatientInfoCard({ patient, onFieldChange }: Props) {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <DiagnosisCombobox
               value={patient.diagnosis}
-              onChange={(label) => {
+              onChange={(label, index) => {
                 onFieldChange("diagnosis", label);
-                const opt = DIAGNOSIS_OPTIONS.find((o) => o.label === label);
-                onFieldChange("diagnosisIndex", opt ? opt.index : null);
+                onFieldChange("diagnosisIndex", index);
               }}
             />
             <EditableTextField

@@ -26,8 +26,6 @@ import {
   CGM_COVERAGE_OPTS,
   LMN_OPTS,
   IP_PATH_OPTS,
-  DIAGNOSIS_FAVORITES,
-  DIAGNOSIS_OTHER,
 } from "@/lib/masheke/fieldOptions";
 import {
   IP_PATH_FIELDS,
@@ -59,7 +57,7 @@ import {
   clearDateColumn,
   deleteFileFromColumn,
   deleteSingleFileFromColumn,
-  fetchStatusLabels,
+  fetchStatusOptions,
   hasToken,
   writeDate,
   writeDropdownLabels,
@@ -838,28 +836,28 @@ function DiagnosisField({ value, onChange }: DiagnosisFieldProps) {
   const [open, setOpen] = useState(false);
   const [newCode, setNewCode] = useState("");
   const [customCodes, setCustomCodes] = useState<string[]>([]);
-  const [mondayLabels, setMondayLabels] = useState<string[] | null>(null);
+  const [mondayOptions, setMondayOptions] = useState<
+    { index: number; label: string }[] | null
+  >(null);
 
-  // Fetch live diagnosis labels from Monday on first open
+  // Fetch live diagnosis options from Monday on first open
   useEffect(() => {
-    if (!open || mondayLabels !== null) return;
+    if (!open || mondayOptions !== null) return;
     if (!hasToken()) return;
-    fetchStatusLabels(COL.diagnosis)
-      .then((labels) => setMondayLabels(labels))
-      .catch(() => setMondayLabels([]));
-  }, [open, mondayLabels]);
+    fetchStatusOptions(COL.diagnosis)
+      .then((opts) => setMondayOptions(opts))
+      .catch(() => setMondayOptions([]));
+  }, [open, mondayOptions]);
 
-  // Merge: hardcoded favorites + Monday labels + custom codes, deduplicated
+  // All codes from Monday + custom, sorted, excluding non-ICD placeholders
   const allCodes = useMemo(() => {
-    const set = new Set<string>(DIAGNOSIS_FAVORITES);
-    for (const c of mondayLabels ?? []) set.add(c);
-    for (const c of DIAGNOSIS_OTHER) set.add(c);
+    const mondayLabels = (mondayOptions ?? [])
+      .map((o) => o.label)
+      .filter((l) => l !== "Evaluate" && l !== "Collect");
+    const set = new Set<string>(mondayLabels);
     for (const c of customCodes) set.add(c);
-    return [...set];
-  }, [mondayLabels, customCodes]);
-
-  const favorites = DIAGNOSIS_FAVORITES;
-  const otherCodes = allCodes.filter((c) => !favorites.includes(c)).sort();
+    return [...set].sort();
+  }, [mondayOptions, customCodes]);
 
   const handleAddCode = () => {
     const code = newCode.trim().toUpperCase();
@@ -936,11 +934,8 @@ function DiagnosisField({ value, onChange }: DiagnosisFieldProps) {
                   (none)
                 </CommandItem>
               </CommandGroup>
-              <CommandGroup heading="Favorites">
-                {favorites.map(renderItem)}
-              </CommandGroup>
-              <CommandGroup heading="All Codes">
-                {otherCodes.map(renderItem)}
+              <CommandGroup heading="Diagnosis Codes">
+                {allCodes.map(renderItem)}
               </CommandGroup>
             </CommandList>
           </Command>

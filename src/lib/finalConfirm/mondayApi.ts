@@ -317,6 +317,37 @@ export async function fetchStatusLabels(columnId: string): Promise<string[]> {
 }
 
 /**
+ * Fetch every {index, label} pair currently defined on a status column.
+ * Returns the full mapping so the UI can resolve indexes without a hardcoded list.
+ */
+export async function fetchStatusOptions(
+  columnId: string,
+): Promise<{ index: number; label: string }[]> {
+  const query = `
+    query ($boardId: [ID!]!) {
+      boards(ids: $boardId) {
+        columns(ids: ["${columnId}"]) {
+          settings_str
+        }
+      }
+    }
+  `;
+  const data = await gql<{
+    boards: { columns: { settings_str: string }[] }[];
+  }>(query, { boardId: BOARD_ID });
+  const raw = data.boards?.[0]?.columns?.[0]?.settings_str ?? "{}";
+  const settings = JSON.parse(raw);
+  const labels: Record<string, string | { label?: string }> =
+    settings.labels ?? {};
+  return Object.entries(labels)
+    .map(([key, v]) => ({
+      index: Number(key),
+      label: typeof v === "string" ? v : v.label ?? "",
+    }))
+    .filter((o) => o.label && !Number.isNaN(o.index));
+}
+
+/**
  * Write a long_text column.
  */
 export async function writeLongText(itemId: string, columnId: string, text: string): Promise<void> {
