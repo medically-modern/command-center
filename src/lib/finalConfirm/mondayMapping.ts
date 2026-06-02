@@ -37,8 +37,10 @@ export function mondayItemToPatient(item: MondayItem): Patient {
     secondaryInsuranceEdited: null,
     memberId2: cv(item, COL.memberId2)?.text ?? "",
     memberId2Edited: null,
+    planName: cv(item, COL.planName)?.text ?? "",
     deductible: cv(item, COL.deductible)?.text ?? "",
     deductibleRemaining: cv(item, COL.deductibleRemaining)?.text ?? "",
+    coInsurance: cv(item, COL.coInsurance)?.text ?? "",
     oopMax: cv(item, COL.oopMax)?.text ?? "",
     oopMaxRemaining: cv(item, COL.oopMaxRemaining)?.text ?? "",
 

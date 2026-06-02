@@ -23,8 +23,10 @@ export interface Patient {
   secondaryInsuranceEdited: string | null;
   memberId2: string;
   memberId2Edited: string | null;
+  planName: string;
   deductible: string;
   deductibleRemaining: string;
+  coInsurance: string;
   oopMax: string;
   oopMaxRemaining: string;
 

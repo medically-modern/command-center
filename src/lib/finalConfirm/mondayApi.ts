@@ -24,8 +24,10 @@ export const COL = {
   memberId1: "text_mm1x2qk2",
   secondaryInsurance: "color_mm241kqp",
   memberId2: "text_mm1xaccx",
+  planName: "dropdown_mm2wrzrk",
   deductible: "text_mm1xkbqc",
   deductibleRemaining: "text_mm1xdzxw",
+  coInsurance: "text_mm391jq8",
   oopMax: "text_mm1xdtj7",
   oopMaxRemaining: "text_mm1xx5f",
 
@@ -121,7 +123,8 @@ export const COL = {
 export const READ_COLUMN_IDS = [
   COL.dob, COL.phone, COL.email, COL.address, COL.gender,
   COL.primaryInsurance, COL.memberId1, COL.secondaryInsurance, COL.memberId2,
-  COL.deductible, COL.deductibleRemaining, COL.oopMax, COL.oopMaxRemaining,
+  COL.planName, COL.deductible, COL.deductibleRemaining, COL.coInsurance,
+  COL.oopMax, COL.oopMaxRemaining,
   COL.doctorName, COL.doctorNpi, COL.doctorPhone, COL.doctorEmail,
   COL.doctorFax, COL.clinicName, COL.clinicalsMethod, COL.clinicAddress,
   COL.diagnosis, COL.cgmCoveragePath, COL.ipCoveragePath, COL.mrExpiryDate,

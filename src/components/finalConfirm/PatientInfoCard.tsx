@@ -533,8 +533,20 @@ export function PatientInfoCard({ patient, onFieldChange }: Props) {
             suppressWarning={(patient.secondaryInsuranceEdited ?? patient.secondaryInsurance) === "None" || !(patient.secondaryInsuranceEdited ?? patient.secondaryInsurance)}
           />
         </div>
+        {/* Plan Name — read-only from Monday dropdown */}
+        {patient.planName && (
+          <div className="flex items-start gap-2 min-w-0 rounded-lg p-1.5 -m-1.5">
+            <div className="h-8 w-8 rounded-md flex items-center justify-center shrink-0 bg-muted text-muted-foreground">
+              <Shield className="h-4 w-4" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1">Plan Name</p>
+              <p className="text-sm h-8 flex items-center font-medium">{patient.planName}</p>
+            </div>
+          </div>
+        )}
         <div className="h-px bg-border" />
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">
           <EditableTextField
             icon={<Activity className="h-4 w-4" />}
             label="Deductible"
@@ -546,6 +558,13 @@ export function PatientInfoCard({ patient, onFieldChange }: Props) {
             label="Ded. Remaining"
             value={patient.deductibleRemaining}
             onChange={(v) => onFieldChange("deductibleRemaining", v)}
+          />
+          <EditableTextField
+            icon={<Activity className="h-4 w-4" />}
+            label="Co-Ins %"
+            value={patient.coInsurance}
+            onChange={(v) => onFieldChange("coInsurance", v)}
+            suppressWarning
           />
           <EditableTextField
             icon={<Activity className="h-4 w-4" />}
@@ -686,6 +705,7 @@ export function PatientInfoCard({ patient, onFieldChange }: Props) {
                 const opt = CGM_COVERAGE_PATH_OPTIONS.find((o) => o.index === index);
                 if (opt) onFieldChange("cgmCoveragePath", opt.label);
               }}
+              suppressWarning={patient.subscriptionType === "Supplies"}
             />
             <SelectField
               label="IP Coverage Path"
@@ -1015,7 +1035,7 @@ export function PatientInfoCard({ patient, onFieldChange }: Props) {
         </p>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <EditableNextOrderDateField label="Sensors Next Order Date" dateStr={patient.nextOrderDateSensors} onChange={(v) => onFieldChange("nextOrderDateSensors", v)} active={sensorsActive} />
-          <EditableNextOrderDateField label="IP Next Order Date" dateStr={patient.nextOrderDateIp} onChange={(v) => onFieldChange("nextOrderDateIp", v)} active={suppliesActive} />
+          <EditableNextOrderDateField label="IP Next Order Date" dateStr={patient.nextOrderDateIp} onChange={(v) => onFieldChange("nextOrderDateIp", v)} active={patient.pumpQty === "1"} />
           <EditableNextOrderDateField label="Supplies Next Order Date" dateStr={patient.nextOrderDateSupplies} onChange={(v) => onFieldChange("nextOrderDateSupplies", v)} active={suppliesActive} />
         </div>
       </Card>

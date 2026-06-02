@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { FolderDown, Loader2 } from "lucide-react";
+import { AlertTriangle, FolderDown, Loader2 } from "lucide-react";
 import { fetchItemAssets } from "@/lib/finalConfirm/mondayApi";
 import { toast } from "sonner";
 
@@ -89,22 +89,29 @@ export function ClinicalsDownloadButton({ itemId }: Props) {
   };
 
   const showCount = fileCount !== null;
+  const noFiles = fileCount === 0;
 
   return (
-    <Button
-      variant="outline"
-      size="sm"
-      onClick={handleDownload}
-      disabled={loading || countLoading}
-      className="gap-2 h-9 bg-sky-50 hover:bg-sky-100 border-sky-300 !text-sky-800 hover:!text-sky-900 dark:bg-sky-950/40 dark:hover:bg-sky-950/60 dark:border-sky-800 dark:!text-sky-200 dark:hover:!text-sky-100"
-    >
-      {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <FolderDown className="h-4 w-4" />}
-      Download Clinicals
-      {showCount && (
-        <span className="ml-1 inline-flex items-center justify-center min-w-[1.25rem] px-1.5 py-0.5 rounded-full bg-sky-200/70 dark:bg-sky-800/70 text-sky-900 dark:text-sky-100 text-[10px] font-semibold leading-none">
-          {fileCount}
-        </span>
-      )}
-    </Button>
+    <div className="flex items-center gap-2">
+      <Button
+        variant="outline"
+        size="sm"
+        onClick={handleDownload}
+        disabled={loading || countLoading}
+        className={
+          noFiles
+            ? "gap-2 h-9 bg-red-50 hover:bg-red-100 border-red-400 !text-red-800 hover:!text-red-900 dark:bg-red-950/40 dark:hover:bg-red-950/60 dark:border-red-800 dark:!text-red-200 dark:hover:!text-red-100"
+            : "gap-2 h-9 bg-sky-50 hover:bg-sky-100 border-sky-300 !text-sky-800 hover:!text-sky-900 dark:bg-sky-950/40 dark:hover:bg-sky-950/60 dark:border-sky-800 dark:!text-sky-200 dark:hover:!text-sky-100"
+        }
+      >
+        {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : noFiles ? <AlertTriangle className="h-4 w-4" /> : <FolderDown className="h-4 w-4" />}
+        {noFiles ? "No Clinicals" : "Download Clinicals"}
+        {showCount && !noFiles && (
+          <span className="ml-1 inline-flex items-center justify-center min-w-[1.25rem] px-1.5 py-0.5 rounded-full bg-sky-200/70 dark:bg-sky-800/70 text-sky-900 dark:text-sky-100 text-[10px] font-semibold leading-none">
+            {fileCount}
+          </span>
+        )}
+      </Button>
+    </div>
   );
 }

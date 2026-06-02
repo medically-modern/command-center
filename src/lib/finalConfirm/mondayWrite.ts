@@ -95,6 +95,7 @@ export async function sendPatientToMonday(p: Patient): Promise<void> {
   // Deductible fields (all text columns)
   tasks.push({ label: "Deductible", columnId: COL.deductible, fn: () => writeText(p.id, COL.deductible, p.deductible) });
   tasks.push({ label: "Deductible Remaining", columnId: COL.deductibleRemaining, fn: () => writeText(p.id, COL.deductibleRemaining, p.deductibleRemaining) });
+  tasks.push({ label: "Co-Insurance %", columnId: COL.coInsurance, fn: () => writeText(p.id, COL.coInsurance, p.coInsurance) });
   tasks.push({ label: "OOP Max", columnId: COL.oopMax, fn: () => writeText(p.id, COL.oopMax, p.oopMax) });
   tasks.push({ label: "OOP Max Remaining", columnId: COL.oopMaxRemaining, fn: () => writeText(p.id, COL.oopMaxRemaining, p.oopMaxRemaining) });
 
