@@ -75,6 +75,7 @@ export const COL = {
   doctorFax: "email_mm1xdzcj",
   clinicName: "dropdown_mm1xbvas",
   clinicAddress: "location_mm1xjnfv",
+  prescriberRequirements: "text_mm3y53qn",
 
   // ── Serving / Product ──
   referralType: "color_mm1wm4n4",
@@ -136,7 +137,7 @@ export const READ_COLUMN_IDS: string[] = [
   // Doctor
   COL.doctorStatus, COL.doctorName, COL.doctorPhone, COL.doctorNpi,
   COL.clinicalsMethod, COL.doctorEmail, COL.doctorFax, COL.clinicName,
-  COL.clinicAddress,
+  COL.clinicAddress, COL.prescriberRequirements,
   // Serving
   COL.referralType, COL.referralSource, COL.pumpType, COL.cgmType,
   COL.requestType, COL.cgmCrossSell, COL.serving,

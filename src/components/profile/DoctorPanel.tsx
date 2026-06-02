@@ -63,6 +63,15 @@ export function DoctorPanel({ patient, onUpdate, clinicLabels, onClinicSelect, o
         <CardTitle className="text-lg font-bold text-emerald-700">Prescribing Provider &amp; Clinic Information</CardTitle>
       </CardHeader>
       <CardContent className="space-y-5">
+        {patient.prescriberRequirements?.trim() && (
+          <div className="rounded-md border border-amber-300 bg-amber-50 px-4 py-3">
+            <p className="text-sm font-semibold text-amber-800 mb-1 flex items-center gap-1.5">
+              <AlertTriangle className="h-4 w-4" />
+              Prescriber Requirements
+            </p>
+            <p className="text-sm text-amber-900 whitespace-pre-wrap">{patient.prescriberRequirements}</p>
+          </div>
+        )}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
           {/* Doctor Status */}
           <div className="space-y-1.5">

@@ -95,6 +95,7 @@ export function mondayItemToPatient(item: MondayItem): Patient {
     clinicAddress: col(item, COL.clinicAddress),
     clinicAddressLat: null,
     clinicAddressLng: null,
+    prescriberRequirements: col(item, COL.prescriberRequirements),
 
     // Serving / Product
     referralType: col(item, COL.referralType),

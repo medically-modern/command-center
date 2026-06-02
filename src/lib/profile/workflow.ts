@@ -84,6 +84,7 @@ export interface Patient {
   clinicAddress: string;
   clinicAddressLat: number | null;
   clinicAddressLng: number | null;
+  prescriberRequirements: string;
 
   // ── Serving / Product ──
   referralType: string;
