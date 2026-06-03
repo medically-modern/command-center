@@ -134,6 +134,11 @@ export const COL = {
     supplies: "date_mm35da3j",        // Supplies Next Order Date = max(infusion, cartridge) + 90d (or 60d if Medicaid)
   },
 
+  // Never Billed attestation columns (Medicare A&B special case)
+  // TODO: Replace with actual Monday column IDs after creating the columns
+  neverBilledIsCar: "color_PLACEHOLDER_neverBilledIsCar",  // "Never billed IS/Car"
+  neverBilledCgm: "color_PLACEHOLDER_neverBilledCgm",      // "Never billed CGM"
+
   // Days Since Stage Started (status — used for Auth Outstanding sorting)
   daysSinceStage: "color_mm1wwm05",
 
@@ -186,6 +191,9 @@ export const READ_COLUMN_IDS = [
     COL.mnWorkflowNotes,
   COL.followUp,
   COL.followUpDate,
+  // Never Billed (Medicare A&B)
+  COL.neverBilledIsCar,
+  COL.neverBilledCgm,
 ];
 
 /** Extended read columns for auth groups — includes auth results + universal statuses */

@@ -175,6 +175,10 @@ const ChaseBenefitsPage = () => {
                     onCodeChange={updateCode}
                     onNotesChange={(v) => update(selected.id, { notes: v })}
                     onSaveNotesToMonday={(v) => writeLongText(selected.id, COL.callReferenceNotes, v)}
+                    onNeverBilledChange={(field, value) => {
+                      const ins = selected.insurance ?? EMPTY_INSURANCE;
+                      update(selected.id, { insurance: { ...ins, [field]: value } });
+                    }}
                   />
 
                   <div className="rounded-xl bg-card border shadow-card p-5">

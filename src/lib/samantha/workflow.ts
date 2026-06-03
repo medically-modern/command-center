@@ -340,6 +340,10 @@ export type UniversalChoice = "" | "confirmed" | "not-confirmed";
 export interface InsuranceState {
   universal: Record<UniversalCheck["id"], UniversalChoice>;
   codes: Partial<Record<ProductCodeId, ProductCodeState>>;
+  /** Medicare A&B: agent confirmed E0784/A4224/A4225 never billed for patient */
+  neverBilledIsCar?: boolean;
+  /** Medicare A&B: agent confirmed A4239/A4238/E2103 never billed for patient */
+  neverBilledCgm?: boolean;
 }
 
 export const EMPTY_INSURANCE: InsuranceState = {

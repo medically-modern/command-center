@@ -13,6 +13,7 @@ import {
   AUTH_RESULT_INDEX,
   AUTH_METHOD_OPTION_ID,
   ESCALATION_INDEX,
+  NEVER_BILLED_INDEX,
   NOT_CLEAR_PRODUCT_ID,
   PRODUCT_CODE_TO_PRODUCT_ID,
   TRIGGER_DVS_INDEX,
@@ -416,6 +417,22 @@ export async function sendPatientToMonday(p: Patient, context: "benefits" | "sub
       ),
   });
   console.log(`[mondayWrite] Stage = ${stageWriteIndex ?? "(no change)"}, Escalation = ${escalationDecision}`);
+
+  // ----- Never Billed attestations (Medicare A&B) -----
+  if (ins.neverBilledIsCar) {
+    tasks.push({
+      label: "Never billed IS/Car",
+      columnId: COL.neverBilledIsCar,
+      fn: () => writeStatusIndex(p.id, COL.neverBilledIsCar, NEVER_BILLED_INDEX.neverBilled),
+    });
+  }
+  if (ins.neverBilledCgm) {
+    tasks.push({
+      label: "Never billed CGM",
+      columnId: COL.neverBilledCgm,
+      fn: () => writeStatusIndex(p.id, COL.neverBilledCgm, NEVER_BILLED_INDEX.neverBilled),
+    });
+  }
 
   // ----- Trigger DVS (Medicaid + supplies) -----
   // Only write when the agent toggled the button on the Benefits page.

@@ -37,6 +37,7 @@ interface Props {
   onCodeChange: (codeId: ProductCodeId, patch: Partial<ProductCodeState>) => void;
   onNotesChange: (v: string) => void;
   onSaveNotesToMonday?: (notes: string) => Promise<void>;
+  onNeverBilledChange?: (field: "neverBilledIsCar" | "neverBilledCgm", value: boolean) => void;
 }
 
 // Map resolver ProductId → existing ProductCodeId used for state tracking
@@ -61,6 +62,7 @@ export function InsurancePanel({
   onCodeChange,
   onNotesChange,
   onSaveNotesToMonday,
+  onNeverBilledChange,
 }: Props) {
   const ins = patient.insurance ?? EMPTY_INSURANCE;
   const universalDone = Object.values(ins.universal).every((v) => v === "confirmed");
@@ -232,6 +234,78 @@ export function InsurancePanel({
           </div>
         )}
       </StepSection>
+
+      {/* Medicare A&B · Never Billed attestation boxes */}
+      {primaryInsurance === "Medicare A&B" && (() => {
+        const isState = ins.codes["infusion-sets"];
+        const cartState = ins.codes["cartridges"];
+        const showIsCar = isState?.sos === "clear" && cartState?.sos === "clear";
+        const cgmState = ins.codes["cgm-sensors"];
+        const showCgm = cgmState?.sos === "clear";
+        if (!showIsCar && !showCgm) return null;
+        return (
+          <div className="space-y-3">
+            {showIsCar && (
+              <div className={cn(
+                "rounded-xl border-2 p-4 transition-colors",
+                ins.neverBilledIsCar
+                  ? "border-success/40 bg-success/5"
+                  : "border-amber-400/60 bg-amber-50/50 dark:bg-amber-950/20",
+              )}>
+                <div className="flex items-start gap-3">
+                  <Checkbox
+                    id="never-billed-is-car"
+                    checked={!!ins.neverBilledIsCar}
+                    onCheckedChange={(v) => onNeverBilledChange?.("neverBilledIsCar", !!v)}
+                    className="mt-0.5"
+                  />
+                  <label htmlFor="never-billed-is-car" className="cursor-pointer">
+                    <p className="text-sm font-semibold">E0784, A4224, and A4225 has never been billed for the patient</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      Medicare A&B requires confirmation that infusion sets and cartridges have never been billed.
+                    </p>
+                  </label>
+                </div>
+                {ins.neverBilledIsCar && (
+                  <div className="mt-2 ml-7 flex items-center gap-1.5">
+                    <CheckCircle2 className="h-3.5 w-3.5 text-success" />
+                    <span className="text-xs font-medium text-success">Confirmed</span>
+                  </div>
+                )}
+              </div>
+            )}
+            {showCgm && (
+              <div className={cn(
+                "rounded-xl border-2 p-4 transition-colors",
+                ins.neverBilledCgm
+                  ? "border-success/40 bg-success/5"
+                  : "border-amber-400/60 bg-amber-50/50 dark:bg-amber-950/20",
+              )}>
+                <div className="flex items-start gap-3">
+                  <Checkbox
+                    id="never-billed-cgm"
+                    checked={!!ins.neverBilledCgm}
+                    onCheckedChange={(v) => onNeverBilledChange?.("neverBilledCgm", !!v)}
+                    className="mt-0.5"
+                  />
+                  <label htmlFor="never-billed-cgm" className="cursor-pointer">
+                    <p className="text-sm font-semibold">A4239, A4238, or E2103 has never been billed for the patient</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      Medicare A&B requires confirmation that CGM codes have never been billed.
+                    </p>
+                  </label>
+                </div>
+                {ins.neverBilledCgm && (
+                  <div className="mt-2 ml-7 flex items-center gap-1.5">
+                    <CheckCircle2 className="h-3.5 w-3.5 text-success" />
+                    <span className="text-xs font-medium text-success">Confirmed</span>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        );
+      })()}
 
       {/* Reference Notes */}
       <NotesPanel
@@ -622,6 +696,23 @@ function deriveMondayColumns(patient: Patient, resolved: ResolvedProduct[]) {
   };
 }
 
+/** Derive the Never Billed Monday columns for the preview. */
+function deriveNeverBilledColumns(patient: Patient) {
+  const ins = patient.insurance ?? EMPTY_INSURANCE;
+  const isMedicareAB = patient.primaryInsurance === "Medicare A&B";
+  const isState = ins.codes["infusion-sets"];
+  const cartState = ins.codes["cartridges"];
+  const cgmState = ins.codes["cgm-sensors"];
+  const showIsCar = isMedicareAB && isState?.sos === "clear" && cartState?.sos === "clear";
+  const showCgm = isMedicareAB && cgmState?.sos === "clear";
+  return {
+    showIsCar,
+    showCgm,
+    neverBilledIsCar: showIsCar && !!ins.neverBilledIsCar ? "Never Billed" : showIsCar ? "—" : null,
+    neverBilledCgm: showCgm && !!ins.neverBilledCgm ? "Never Billed" : showCgm ? "—" : null,
+  };
+}
+
 // Monday auth-result column labels per product
 const PRODUCT_AUTH_COLUMN: Record<ProductId, string> = {
   monitor: "CGM auth result",
@@ -633,7 +724,7 @@ const PRODUCT_AUTH_COLUMN: Record<ProductId, string> = {
 
 const ALL_AUTH_PRODUCTS: ProductId[] = ["monitor", "sensors", "insulin_pump", "infusion_set", "cartridge"];
 
-const GOOD_VALUES = new Set(["Active/In-network", "Yes", "No Auths Required", "All Clear", "Complete"]);
+const GOOD_VALUES = new Set(["Active/In-network", "Yes", "No Auths Required", "All Clear", "Complete", "Never Billed"]);
 const WARN_VALUES = new Set(["Stuck", "Partial / No", "Auths Required", "Partial / Not Clear", "Authorization", "Benefits / SoS"]);
 const BAD_VALUES = new Set(["Escalation Required"]);
 const SKIP_VALUES = new Set(["Skip"]);
@@ -657,6 +748,7 @@ function MondayOutput({
   nextOrderDates: import("@/lib/samantha/workflow").NextOrderDates;
 }) {
   const cols = deriveMondayColumns(patient, resolved);
+  const nb = deriveNeverBilledColumns(patient);
   const ins = patient.insurance ?? EMPTY_INSURANCE;
 
   const rows: { key: string; label: string; value: string }[] = [
@@ -676,6 +768,12 @@ function MondayOutput({
       : []),
     ...(nextOrderDates.suppliesNextOrderDate
       ? [{ key: "nod-supplies", label: "Supplies Next Order Date", value: formatDateDisplay(nextOrderDates.suppliesNextOrderDate) }]
+      : []),
+    ...(nb.neverBilledIsCar !== null
+      ? [{ key: "nb-iscar", label: "Never billed IS/Car", value: nb.neverBilledIsCar }]
+      : []),
+    ...(nb.neverBilledCgm !== null
+      ? [{ key: "nb-cgm", label: "Never billed CGM", value: nb.neverBilledCgm }]
       : []),
   ];
 

@@ -39,6 +39,12 @@ export const FOLLOW_UP_INDEX = {
   followUp: 1,
 } as const;
 
+// Never Billed status indices (Medicare A&B special case)
+// TODO: Verify index matches the Monday board status option for "Never Billed"
+export const NEVER_BILLED_INDEX = {
+  neverBilled: 1,
+} as const;
+
 // Stage Advancer indices
 export const STAGE_INDEX = {
   authDenied: 0,
@@ -321,6 +327,12 @@ export function mondayItemToPatient(item: MondayItem): Patient {
     try { daysSinceStageIndex = JSON.parse(daysSinceRaw).index; } catch { /* ignore */ }
   }
 
+  // Never Billed attestations (Medicare A&B)
+  const neverBilledIsCarText = cv(COL.neverBilledIsCar)?.text?.trim().toLowerCase() ?? "";
+  const neverBilledCgmText = cv(COL.neverBilledCgm)?.text?.trim().toLowerCase() ?? "";
+  const neverBilledIsCar = neverBilledIsCarText === "never billed";
+  const neverBilledCgm = neverBilledCgmText === "never billed";
+
   // Follow Up — mirrors Blocked on the Evaluate board
   const followUpText = cv(COL.followUp)?.text?.trim() ?? "";
   const followUpDate = cv(COL.followUpDate)?.text ?? "";
@@ -377,6 +389,8 @@ export function mondayItemToPatient(item: MondayItem): Patient {
         "dme-benefits": dmeBenefits,
       },
       codes,
+      neverBilledIsCar,
+      neverBilledCgm,
     } as InsuranceState,
   };
 }
