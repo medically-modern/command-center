@@ -85,6 +85,10 @@ export const COL = {
   followUp: "color_mm38w2tk",
   followUpDate: "date_mm38a7k7",
 
+  // Never Billed (Medicare A&B — mirrored from Samantha board)
+  neverBilledIsCar: "color_mm3zn2qy",
+  neverBilledCgm: "color_mm3z8rw0",
+
   // Stage
   stageAdvancer: "color_mm1ws96t",
   escalation: "color_mm1x7997",
@@ -109,6 +113,7 @@ export const READ_COLUMN_IDS = [
   COL.ipNextOrderDate, COL.sensorsNextOrderDate, COL.suppliesNextOrderDate,
   COL.followUp, COL.followUpDate,
   COL.escalationNotes,
+  COL.neverBilledIsCar, COL.neverBilledCgm,
 ];
 
 export interface MondayColumnValue {

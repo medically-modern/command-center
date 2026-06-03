@@ -96,6 +96,9 @@ export interface Patient {
   escalated: boolean;
   receivedAt: string;
   lastUpdated: string;
+  // Never Billed attestations (read-only, mirrored from Samantha board)
+  neverBilledIsCar: boolean;
+  neverBilledCgm: boolean;
 }
 
 export const INFUSION_SET_1_OPTIONS = [

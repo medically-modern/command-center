@@ -117,6 +117,8 @@ export function mondayItemToPatient(item: MondayItem): Patient {
     escalated: false,
     receivedAt: new Date().toISOString(),
     lastUpdated: new Date().toISOString(),
+    neverBilledIsCar: !!txt(COL.neverBilledIsCar),
+    neverBilledCgm: !!txt(COL.neverBilledCgm),
   };
 }
 

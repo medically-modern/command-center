@@ -36,7 +36,7 @@ import {
   CommandList,
 } from "@/components/ui/command";
 import { AddressAutocomplete, type AddressResult } from "@/components/welcomeCall/AddressAutocomplete";
-import { Check, ChevronsUpDown, MessageSquare, Eye, EyeOff } from "lucide-react";
+import { Check, ChevronsUpDown, MessageSquare, Eye, EyeOff, AlertTriangle } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface Props {
@@ -248,6 +248,12 @@ export function WelcomeCallForm({ patient, onFieldChange, onSendWelcomeCallText 
                   {patient.monitorQty === "1" ? "1 — Yes" : "0 — No"}
                 </span>
               </div>
+              {patient.neverBilledCgm && (
+                <div className="mt-2 flex items-center gap-1.5 rounded-md border border-blue-300 bg-blue-50 dark:bg-blue-950/30 px-2.5 py-1.5">
+                  <AlertTriangle className="h-3.5 w-3.5 text-blue-600 shrink-0" />
+                  <span className="text-xs font-medium text-blue-700 dark:text-blue-300">Monitor has never been billed</span>
+                </div>
+              )}
             </div>
           </div>
         </Card>
@@ -327,6 +333,12 @@ export function WelcomeCallForm({ patient, onFieldChange, onSendWelcomeCallText 
                   {patient.pumpQty === "1" ? "1 — Yes" : "0 — No"}
                 </span>
               </div>
+              {patient.neverBilledIsCar && (
+                <div className="mt-2 flex items-center gap-1.5 rounded-md border border-blue-300 bg-blue-50 dark:bg-blue-950/30 px-2.5 py-1.5">
+                  <AlertTriangle className="h-3.5 w-3.5 text-blue-600 shrink-0" />
+                  <span className="text-xs font-medium text-blue-700 dark:text-blue-300">Never billed, add to notes</span>
+                </div>
+              )}
             </div>
           </div>
 
