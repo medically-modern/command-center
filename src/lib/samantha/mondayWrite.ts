@@ -422,14 +422,14 @@ export async function sendPatientToMonday(p: Patient, context: "benefits" | "sub
     tasks.push({
       label: "Never billed IS/Car",
       columnId: COL.neverBilledIsCar,
-      fn: () => writeSimpleValue(p.id, COL.neverBilledIsCar, "Never Billed"),
+      fn: () => writeStatusIndex(p.id, COL.neverBilledIsCar, 0),
     });
   }
   if (ins.neverBilledCgm) {
     tasks.push({
       label: "Never billed CGM",
       columnId: COL.neverBilledCgm,
-      fn: () => writeSimpleValue(p.id, COL.neverBilledCgm, "Never Billed"),
+      fn: () => writeStatusIndex(p.id, COL.neverBilledCgm, 0),
     });
   }
 
