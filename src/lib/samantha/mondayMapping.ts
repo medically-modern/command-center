@@ -39,11 +39,6 @@ export const FOLLOW_UP_INDEX = {
   followUp: 1,
 } as const;
 
-// Never Billed status indices (Medicare A&B special case)
-// TODO: Verify index matches the Monday board status option for "Never Billed"
-export const NEVER_BILLED_INDEX = {
-  neverBilled: 1,
-} as const;
 
 // Stage Advancer indices
 export const STAGE_INDEX = {

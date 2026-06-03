@@ -135,9 +135,8 @@ export const COL = {
   },
 
   // Never Billed attestation columns (Medicare A&B special case)
-  // TODO: Replace with actual Monday column IDs after creating the columns
-  neverBilledIsCar: "color_PLACEHOLDER_neverBilledIsCar",  // "Never billed IS/Car"
-  neverBilledCgm: "color_PLACEHOLDER_neverBilledCgm",      // "Never billed CGM"
+  neverBilledIsCar: "color_mm3zjyya",  // "Never billed IS/Car"
+  neverBilledCgm: "color_mm3zg2pn",    // "Never billed CGM"
 
   // Days Since Stage Started (status — used for Auth Outstanding sorting)
   daysSinceStage: "color_mm1wwm05",
