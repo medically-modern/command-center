@@ -23,6 +23,9 @@ const SubscriptionPage = lazy(() => import("./pages/SubscriptionPage"));
 // Final Profile Confirmation (pre-check before Monday automations)
 const FinalConfirmPage = lazy(() => import("./pages/FinalConfirmPage"));
 
+// Patient Questions (read-only inbox)
+const PatientQuestionsPage = lazy(() => import("./pages/PatientQuestionsPage"));
+
 // System Management
 const SystemMgmtPage = lazy(() => import("./pages/SystemMgmtPage"));
 
@@ -57,6 +60,7 @@ const App = () => (
           <Route path="/auth-outstanding" element={<AuthOutstandingPage />} />
           <Route path="/subscription" element={<SubscriptionPage />} />
           <Route path="/final-confirm" element={<FinalConfirmPage />} />
+          <Route path="/patient-questions" element={<PatientQuestionsPage />} />
           <Route path="/system-mgmt" element={<SystemMgmtPage />} />
           <Route path="*" element={<Index />} />
         </Routes>

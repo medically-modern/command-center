@@ -16,6 +16,7 @@ import {
   ShieldCheck,
   Settings2,
   RefreshCw,
+  MessageCircleQuestion,
   ChevronRight,
   Check,
 } from "lucide-react";
@@ -34,6 +35,7 @@ const ICON_MAP: Record<string, React.FC<{ className?: string }>> = {
   ShieldCheck,
   Settings2,
   RefreshCw,
+  MessageCircleQuestion,
 };
 
 interface Props {

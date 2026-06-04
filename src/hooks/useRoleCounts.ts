@@ -250,6 +250,14 @@ export function useRoleCounts() {
       next.subscription = subIds.length;
       nextIds.subscription = subIds;
 
+      // Patient Questions — count from both boards
+      try {
+        const { fetchPatientQuestionsCount } = await import("@/lib/patientQuestions/mondayApi");
+        next.patientQuestions = await fetchPatientQuestionsCount();
+      } catch {
+        next.patientQuestions = 0;
+      }
+
       // System Management — count escalations across all boards
       // We import fetchAllPatients lazily to avoid circular deps
       try {
