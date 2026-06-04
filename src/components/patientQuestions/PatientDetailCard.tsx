@@ -3,7 +3,7 @@
  * Mimics the Subscription PatientInfoCard layout.
  * Message is the hero element at the top.
  */
-import { MessageCircle, ExternalLink, Phone } from "lucide-react";
+import { MessageCircle, Phone } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import type { PatientQuestion } from "@/lib/patientQuestions/types";
 import { cn } from "@/lib/utils";
@@ -68,8 +68,6 @@ function DaysToOrderField({ value }: { value: string }) {
 // ── Main component ──
 
 export function PatientDetailCard({ patient }: Props) {
-  const mondayUrl = `https://medicallymodern-force.monday.com/boards/${patient.boardId}/pulses/${patient.id}`;
-
   return (
     <div className="space-y-4">
       {/* ═══ HERO: Patient Message ═══ */}
@@ -125,15 +123,6 @@ export function PatientDetailCard({ patient }: Props) {
             </a>
           </div>
         )}
-        <a
-          href={mondayUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="flex items-center gap-1.5 text-xs text-primary hover:underline shrink-0"
-        >
-          <ExternalLink className="h-3.5 w-3.5" />
-          View in Monday
-        </a>
       </Card>
 
       {/* ═══ Subscription-source detail ═══ */}
