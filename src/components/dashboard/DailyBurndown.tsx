@@ -14,9 +14,6 @@ import type { RoleCounts } from "@/hooks/useRoleCounts";
 import { useServerBaseline } from "@/hooks/useServerBaseline";
 import { cn } from "@/lib/utils";
 import {
-  TrendingDown,
-  TrendingUp,
-  Minus,
   Clock,
   Zap,
   ArrowDown,
@@ -173,7 +170,6 @@ export function DailyBurndown({
   const totalIncoming = barData
     .filter((d) => d.delta > 0)
     .reduce((sum, d) => sum + d.delta, 0);
-  const netChange = barData.reduce((sum, d) => sum + d.delta, 0);
 
   const snapshotTime = snapshot
     ? new Date(snapshot.takenAt).toLocaleTimeString("en-US", {
@@ -247,49 +243,6 @@ export function DailyBurndown({
           </div>
           <span className="text-2xl font-semibold text-amber-600 dark:text-amber-400 tabular-nums">
             {totalIncoming}
-          </span>
-        </div>
-        <div
-          className={cn(
-            "rounded-lg px-4 py-3 border",
-            netChange < 0
-              ? "bg-emerald-500/10 border-emerald-500/20"
-              : netChange > 0
-                ? "bg-amber-500/10 border-amber-500/20"
-                : "bg-muted/50 border-border"
-          )}
-        >
-          <div
-            className={cn(
-              "flex items-center gap-1.5 text-xs font-medium mb-1",
-              netChange < 0
-                ? "text-emerald-600 dark:text-emerald-400"
-                : netChange > 0
-                  ? "text-amber-600 dark:text-amber-400"
-                  : "text-muted-foreground"
-            )}
-          >
-            {netChange < 0 ? (
-              <TrendingDown className="w-3.5 h-3.5" />
-            ) : netChange > 0 ? (
-              <TrendingUp className="w-3.5 h-3.5" />
-            ) : (
-              <Minus className="w-3.5 h-3.5" />
-            )}
-            Net change
-          </div>
-          <span
-            className={cn(
-              "text-2xl font-semibold tabular-nums",
-              netChange < 0
-                ? "text-emerald-600 dark:text-emerald-400"
-                : netChange > 0
-                  ? "text-amber-600 dark:text-amber-400"
-                  : "text-muted-foreground"
-            )}
-          >
-            {netChange > 0 ? "+" : ""}
-            {netChange}
           </span>
         </div>
       </div>
