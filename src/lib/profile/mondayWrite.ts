@@ -1,12 +1,17 @@
 /**
  * Batch write — all local edits are sent to Monday on submit.
  * Only triggerStediRun fires immediately.
+ *
+ * The "Move to Onboarding" column is treated as a stage advancer:
+ * all data columns are written and verified BEFORE it fires, so
+ * Monday automations always read up-to-date values.
  */
 import {
   writeStatusIndex, writeText, writePhone, writeEmail, writeNumber,
   writeLocation, writeItemName, writeDropdownIds, writeDropdownLabels,
-  fetchItem, clearStatusColumn, COL,
+  fetchItem, clearStatusColumn, readColumnTexts, COL,
 } from "./mondayApi";
+import { executeWritesWithVerification } from "../shared/verifiedWrite";
 import type { Patient } from "./workflow";
 import { phoneDigits } from "./workflow";
 import {
@@ -16,6 +21,36 @@ import {
   CGM_CROSS_SELL_INDEX, SERVING_INDEX, INSULIN_PUMP_COVERAGE_PATH_INDEX,
   CGM_COVERAGE_PATH_INDEX, GENDER_INDEX, MOVE_TO_ONBOARDING_INDEX,
 } from "./mondayMapping";
+
+const MAX_RETRIES = 2;
+const RETRY_DELAY_MS = 800;
+
+interface WriteTask {
+  label: string;
+  columnId: string;
+  fn: () => Promise<unknown>;
+  expectedText?: string;
+}
+
+async function executeWithRetry(task: WriteTask): Promise<string | null> {
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    try {
+      await task.fn();
+      return null;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.warn(
+        `[mondayWrite:profile] ${task.label} (${task.columnId}) failed attempt ${attempt + 1}/${MAX_RETRIES + 1}: ${msg}`,
+      );
+      if (attempt < MAX_RETRIES) {
+        await new Promise((r) => setTimeout(r, RETRY_DELAY_MS * (attempt + 1)));
+      } else {
+        return `${task.label} (${task.columnId}): ${msg}`;
+      }
+    }
+  }
+  return null;
+}
 
 /**
  * Trigger a Stedi eligibility run.
@@ -43,20 +78,31 @@ export async function triggerStediRun(itemId: string): Promise<void> {
 
 // ── Helpers ──
 
-function statusTask(
-  itemId: string, colId: string, label: string, indexMap: Record<string, number>,
-): Promise<void> | null {
-  if (!label) return null; // skip empty labels
-  const idx = indexMap[label];
+/** Push a status WriteTask into the tasks array (skips empty labels / unknown mappings). */
+function statusWriteTask(
+  tasks: WriteTask[],
+  itemId: string,
+  taskLabel: string,
+  colId: string,
+  statusLabel: string,
+  indexMap: Record<string, number>,
+): void {
+  if (!statusLabel) return;
+  const idx = indexMap[statusLabel];
   if (idx === undefined) {
-    console.warn(`No index found for status label "${label}" in column ${colId}`);
-    return null;
+    console.warn(`No index found for status label "${statusLabel}" in column ${colId}`);
+    return;
   }
-  return writeStatusIndex(itemId, colId, idx);
+  tasks.push({ label: taskLabel, columnId: colId, fn: () => writeStatusIndex(itemId, colId, idx) });
 }
 
 /**
  * Send all patient data to Monday in one batch.
+ *
+ * Uses verified writes: all data columns are written and polled for
+ * indexing BEFORE the "Move to Onboarding" column fires, so any Monday
+ * automation triggered by that status change reads up-to-date values.
+ *
  * @param p The local patient state to write
  * @param onboardingAction "advance" or "needsInfo"
  * @param clinicLabelId If a clinic was selected from dropdown, pass its numeric id
@@ -66,89 +112,96 @@ export async function sendPatientToMonday(
   onboardingAction: "advance" | "needsInfo",
   clinicLabelId: number | null,
 ): Promise<void> {
-  const tasks: (Promise<void> | null)[] = [];
+  const tasks: WriteTask[] = [];
 
   // ── Name ──
-  tasks.push(writeItemName(p.id, p.name));
+  tasks.push({ label: "Name", columnId: "name", fn: () => writeItemName(p.id, p.name) });
 
   // ── Demographics ──
-  tasks.push(writeText(p.id, COL.dob, p.dob));
-  if (p.ptPhone) tasks.push(writePhone(p.id, COL.ptPhone, phoneDigits(p.ptPhone)));
-  if (p.email) tasks.push(writeText(p.id, COL.email, p.email));
-  tasks.push(statusTask(p.id, COL.gender, p.gender, GENDER_INDEX));
-  if (p.patientAddress) tasks.push(writeLocation(p.id, COL.patientAddress, p.patientAddress, p.patientAddressLat ?? 0, p.patientAddressLng ?? 0));
+  tasks.push({ label: "DOB", columnId: COL.dob, fn: () => writeText(p.id, COL.dob, p.dob) });
+  if (p.ptPhone) tasks.push({ label: "Phone", columnId: COL.ptPhone, fn: () => writePhone(p.id, COL.ptPhone, phoneDigits(p.ptPhone)) });
+  if (p.email) tasks.push({ label: "Email", columnId: COL.email, fn: () => writeText(p.id, COL.email, p.email) });
+  statusWriteTask(tasks, p.id, "Gender", COL.gender, p.gender, GENDER_INDEX);
+  if (p.patientAddress) tasks.push({ label: "Patient Address", columnId: COL.patientAddress, fn: () => writeLocation(p.id, COL.patientAddress, p.patientAddress, p.patientAddressLat ?? 0, p.patientAddressLng ?? 0) });
 
   // ── Insurance ──
-  tasks.push(statusTask(p.id, COL.generalInsurance, p.generalInsurance, GENERAL_INSURANCE_INDEX));
-  tasks.push(statusTask(p.id, COL.primaryInsurance, p.primaryInsurance, PRIMARY_INSURANCE_INDEX));
-  tasks.push(statusTask(p.id, COL.secondaryInsurance, p.secondaryInsurance, SECONDARY_INSURANCE_INDEX));
-  if (p.memberId1) tasks.push(writeText(p.id, COL.memberId1, p.memberId1));
-  if (p.memberId2) tasks.push(writeText(p.id, COL.memberId2, p.memberId2));
+  statusWriteTask(tasks, p.id, "General Insurance", COL.generalInsurance, p.generalInsurance, GENERAL_INSURANCE_INDEX);
+  statusWriteTask(tasks, p.id, "Primary Insurance", COL.primaryInsurance, p.primaryInsurance, PRIMARY_INSURANCE_INDEX);
+  statusWriteTask(tasks, p.id, "Secondary Insurance", COL.secondaryInsurance, p.secondaryInsurance, SECONDARY_INSURANCE_INDEX);
+  if (p.memberId1) tasks.push({ label: "Member ID 1", columnId: COL.memberId1, fn: () => writeText(p.id, COL.memberId1, p.memberId1) });
+  if (p.memberId2) tasks.push({ label: "Member ID 2", columnId: COL.memberId2, fn: () => writeText(p.id, COL.memberId2, p.memberId2) });
 
   // ── Working cost-sharing (numeric) ──
-  // Working cost-sharing: fall back to stedi individual values if user hasn't edited
   const wCoins = p.workingCoinsurance || p.stediCoinsurance;
   const wDeduct = p.workingDeductible || p.stediIndividualDeductible;
   const wDeductRem = p.workingDeductibleRemaining || p.stediIndividualDeductibleRemaining;
   const wOop = p.workingOopMax || p.stediIndividualOopMax;
   const wOopRem = p.workingOopMaxRemaining || p.stediIndividualOopMaxRemaining;
-  if (wCoins) tasks.push(writeNumber(p.id, COL.workingCoinsurance, wCoins));
-  if (wDeduct) tasks.push(writeNumber(p.id, COL.workingDeductible, wDeduct));
-  if (wDeductRem) tasks.push(writeNumber(p.id, COL.workingDeductibleRemaining, wDeductRem));
-  if (wOop) tasks.push(writeNumber(p.id, COL.workingOopMax, wOop));
-  if (wOopRem) tasks.push(writeNumber(p.id, COL.workingOopMaxRemaining, wOopRem));
+  if (wCoins) tasks.push({ label: "Working Coinsurance", columnId: COL.workingCoinsurance, fn: () => writeNumber(p.id, COL.workingCoinsurance, wCoins) });
+  if (wDeduct) tasks.push({ label: "Working Deductible", columnId: COL.workingDeductible, fn: () => writeNumber(p.id, COL.workingDeductible, wDeduct) });
+  if (wDeductRem) tasks.push({ label: "Working Deductible Rem", columnId: COL.workingDeductibleRemaining, fn: () => writeNumber(p.id, COL.workingDeductibleRemaining, wDeductRem) });
+  if (wOop) tasks.push({ label: "Working OOP Max", columnId: COL.workingOopMax, fn: () => writeNumber(p.id, COL.workingOopMax, wOop) });
+  if (wOopRem) tasks.push({ label: "Working OOP Max Rem", columnId: COL.workingOopMaxRemaining, fn: () => writeNumber(p.id, COL.workingOopMaxRemaining, wOopRem) });
 
   // ── Doctor ──
-  tasks.push(statusTask(p.id, COL.doctorStatus, p.doctorStatus, DOCTOR_STATUS_INDEX));
-  if (p.doctorName) tasks.push(writeText(p.id, COL.doctorName, p.doctorName));
-  if (p.doctorPhone) tasks.push(writePhone(p.id, COL.doctorPhone, phoneDigits(p.doctorPhone)));
-  if (p.doctorNpi) tasks.push(writeText(p.id, COL.doctorNpi, p.doctorNpi));
-  tasks.push(statusTask(p.id, COL.clinicalsMethod, p.clinicalsMethod, CLINICALS_METHOD_INDEX));
-  if (p.doctorEmail) tasks.push(writeEmail(p.id, COL.doctorEmail, p.doctorEmail));
-  if (p.doctorFax) tasks.push(writeEmail(p.id, COL.doctorFax, p.doctorFax));
+  statusWriteTask(tasks, p.id, "Doctor Status", COL.doctorStatus, p.doctorStatus, DOCTOR_STATUS_INDEX);
+  if (p.doctorName) tasks.push({ label: "Doctor Name", columnId: COL.doctorName, fn: () => writeText(p.id, COL.doctorName, p.doctorName) });
+  if (p.doctorPhone) tasks.push({ label: "Doctor Phone", columnId: COL.doctorPhone, fn: () => writePhone(p.id, COL.doctorPhone, phoneDigits(p.doctorPhone)) });
+  if (p.doctorNpi) tasks.push({ label: "Doctor NPI", columnId: COL.doctorNpi, fn: () => writeText(p.id, COL.doctorNpi, p.doctorNpi) });
+  statusWriteTask(tasks, p.id, "Clinicals Method", COL.clinicalsMethod, p.clinicalsMethod, CLINICALS_METHOD_INDEX);
+  if (p.doctorEmail) tasks.push({ label: "Doctor Email", columnId: COL.doctorEmail, fn: () => writeEmail(p.id, COL.doctorEmail, p.doctorEmail) });
+  if (p.doctorFax) tasks.push({ label: "Doctor Fax", columnId: COL.doctorFax, fn: () => writeEmail(p.id, COL.doctorFax, p.doctorFax) });
   if (clinicLabelId !== null) {
-    tasks.push(writeDropdownIds(p.id, COL.clinicName, [clinicLabelId]));
+    tasks.push({ label: "Clinic Name", columnId: COL.clinicName, fn: () => writeDropdownIds(p.id, COL.clinicName, [clinicLabelId]) });
   }
-  if (p.clinicAddress) tasks.push(writeLocation(p.id, COL.clinicAddress, p.clinicAddress, p.clinicAddressLat ?? 0, p.clinicAddressLng ?? 0));
+  if (p.clinicAddress) tasks.push({ label: "Clinic Address", columnId: COL.clinicAddress, fn: () => writeLocation(p.id, COL.clinicAddress, p.clinicAddress, p.clinicAddressLat ?? 0, p.clinicAddressLng ?? 0) });
 
   // ── Insurance Plan (copied from Stedi plan name) ──
-  // Stedi resolves the patient's specific plan during eligibility check
-  // (e.g. "Fidelis Care Silver"). Copy it into the Insurance Plan
-  // dropdown so downstream auth flows have the granular plan, not just
-  // the carrier. Auto-creates the label on Monday if it's a new plan
-  // we haven't seen before.
   if (p.stediPlanName?.trim()) {
-    tasks.push(writeDropdownLabels(p.id, COL.insurancePlan, [p.stediPlanName.trim()]));
+    tasks.push({ label: "Insurance Plan", columnId: COL.insurancePlan, fn: () => writeDropdownLabels(p.id, COL.insurancePlan, [p.stediPlanName.trim()]) });
   }
 
   // ── Active / Not Active (derived from Stedi Eligibility Active) ──
-  // stediEligibilityActive is text "Yes" / "No" from Stedi. Map to the
-  // Active/Not-Active status column: "Yes" → Active (index 0),
-  // "No" → Not Active (index 1). Anything else → don't write.
   const activeText = p.stediEligibilityActive?.toLowerCase().trim();
   if (activeText === "yes") {
-    tasks.push(writeStatusIndex(p.id, COL.activeNotActive, 0));
+    tasks.push({ label: "Active/Not Active", columnId: COL.activeNotActive, fn: () => writeStatusIndex(p.id, COL.activeNotActive, 0) });
   } else if (activeText === "no") {
-    tasks.push(writeStatusIndex(p.id, COL.activeNotActive, 1));
+    tasks.push({ label: "Active/Not Active", columnId: COL.activeNotActive, fn: () => writeStatusIndex(p.id, COL.activeNotActive, 1) });
   }
 
   // ── Serving / Product ──
-  tasks.push(statusTask(p.id, COL.referralType, p.referralType, REFERRAL_TYPE_INDEX));
-  tasks.push(statusTask(p.id, COL.referralSource, p.referralSource, REFERRAL_SOURCE_INDEX));
-  tasks.push(statusTask(p.id, COL.requestType, p.requestType, REQUEST_TYPE_INDEX));
-  tasks.push(statusTask(p.id, COL.cgmCrossSell, p.cgmCrossSell, CGM_CROSS_SELL_INDEX));
-  tasks.push(statusTask(p.id, COL.serving, p.serving, SERVING_INDEX));
-  tasks.push(statusTask(p.id, COL.pumpType, p.pumpType, PUMP_TYPE_INDEX));
-  tasks.push(statusTask(p.id, COL.cgmType, p.cgmType, CGM_TYPE_INDEX));
-  tasks.push(statusTask(p.id, COL.insulinPumpCoveragePath, p.insulinPumpCoveragePath, INSULIN_PUMP_COVERAGE_PATH_INDEX));
-  tasks.push(statusTask(p.id, COL.cgmCoveragePath, p.cgmCoveragePath, CGM_COVERAGE_PATH_INDEX));
+  statusWriteTask(tasks, p.id, "Referral Type", COL.referralType, p.referralType, REFERRAL_TYPE_INDEX);
+  statusWriteTask(tasks, p.id, "Referral Source", COL.referralSource, p.referralSource, REFERRAL_SOURCE_INDEX);
+  statusWriteTask(tasks, p.id, "Request Type", COL.requestType, p.requestType, REQUEST_TYPE_INDEX);
+  statusWriteTask(tasks, p.id, "CGM Cross-Sell", COL.cgmCrossSell, p.cgmCrossSell, CGM_CROSS_SELL_INDEX);
+  statusWriteTask(tasks, p.id, "Serving", COL.serving, p.serving, SERVING_INDEX);
+  statusWriteTask(tasks, p.id, "Pump Type", COL.pumpType, p.pumpType, PUMP_TYPE_INDEX);
+  statusWriteTask(tasks, p.id, "CGM Type", COL.cgmType, p.cgmType, CGM_TYPE_INDEX);
+  statusWriteTask(tasks, p.id, "IP Coverage Path", COL.insulinPumpCoveragePath, p.insulinPumpCoveragePath, INSULIN_PUMP_COVERAGE_PATH_INDEX);
+  statusWriteTask(tasks, p.id, "CGM Coverage Path", COL.cgmCoveragePath, p.cgmCoveragePath, CGM_COVERAGE_PATH_INDEX);
 
-  // ── Move to Onboarding ──
+  // ── Move to Onboarding (stage advancer — written LAST after verification) ──
   const onboardingLabel = onboardingAction === "advance" ? "Advance to MN" : "Need More Info.";
-  tasks.push(statusTask(p.id, COL.moveToOnboarding, onboardingLabel, MOVE_TO_ONBOARDING_INDEX));
+  const onboardingIdx = MOVE_TO_ONBOARDING_INDEX[onboardingLabel];
+  if (onboardingIdx !== undefined) {
+    tasks.push({ label: "Move to Onboarding", columnId: COL.moveToOnboarding, fn: () => writeStatusIndex(p.id, COL.moveToOnboarding, onboardingIdx) });
+  }
 
-  // Fire all writes in parallel (filter out nulls)
-  await Promise.all(tasks.filter(Boolean));
+  // ---- Execute with read-back verification before advancing stage ----
+  const failures = await executeWritesWithVerification({
+    itemId: p.id,
+    tasks,
+    stageColumnId: COL.moveToOnboarding,
+    executeWithRetry,
+    readColumns: readColumnTexts,
+    writeDebug: (id, msg) => writeText(id, COL.joshDebug, msg),
+  });
+
+  if (failures.length > 0) {
+    throw new Error(
+      `${failures.length} column(s) failed after retries. Failed: ${failures.map((f) => f.split(":")[0]).join(", ")}`,
+    );
+  }
 }
 
 
@@ -163,6 +216,16 @@ export async function sendPatientToMonday(
  * Member ID 1, Member ID 2 in parallel.
  */
 export async function writePatientProfile(p: Patient): Promise<void> {
+  /** Simple status write for pre-Stedi sync (no stage advancer involved). */
+  const statusPromise = (
+    itemId: string, colId: string, label: string, indexMap: Record<string, number>,
+  ): Promise<void> | null => {
+    if (!label) return null;
+    const idx = indexMap[label];
+    if (idx === undefined) return null;
+    return writeStatusIndex(itemId, colId, idx);
+  };
+
   const tasks: (Promise<void> | null)[] = [];
 
   // Name
@@ -172,11 +235,11 @@ export async function writePatientProfile(p: Patient): Promise<void> {
   tasks.push(writeText(p.id, COL.dob, p.dob));
   if (p.ptPhone) tasks.push(writePhone(p.id, COL.ptPhone, phoneDigits(p.ptPhone)));
   if (p.email) tasks.push(writeText(p.id, COL.email, p.email));
-  tasks.push(statusTask(p.id, COL.gender, p.gender, GENDER_INDEX));
+  tasks.push(statusPromise(p.id, COL.gender, p.gender, GENDER_INDEX));
   if (p.patientAddress) tasks.push(writeLocation(p.id, COL.patientAddress, p.patientAddress, p.patientAddressLat ?? 0, p.patientAddressLng ?? 0));
 
   // Insurance
-  tasks.push(statusTask(p.id, COL.generalInsurance, p.generalInsurance, GENERAL_INSURANCE_INDEX));
+  tasks.push(statusPromise(p.id, COL.generalInsurance, p.generalInsurance, GENERAL_INSURANCE_INDEX));
   if (p.memberId1) tasks.push(writeText(p.id, COL.memberId1, p.memberId1));
   if (p.memberId2) tasks.push(writeText(p.id, COL.memberId2, p.memberId2));
 

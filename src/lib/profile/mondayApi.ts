@@ -106,6 +106,9 @@ export const COL = {
   // ── Status / Workflow ──
   alreadyInSystem: "color_mm2xe7r8",
   moveToOnboarding: "color_mm1zmeb3",
+
+  // ── Debug ──
+  joshDebug: "text_mm2nfwjs",
 } as const;
 
 // Only fetch columns we need to READ for display. Write-only columns omitted.
@@ -536,6 +539,23 @@ export async function fetchItemAssets(itemId: string): Promise<MondayAsset[]> {
     boards: { items_page: { items: { assets: MondayAsset[] }[] } }[];
   }>(query, { boardId: BOARD_ID, itemId });
   return data.boards?.[0]?.items_page?.items?.[0]?.assets ?? [];
+}
+
+/** Read arbitrary column text values for a single item (used by write verification). */
+export async function readColumnTexts(
+  itemId: string,
+  columnIds: string[],
+): Promise<{ id: string; text: string | null }[]> {
+  const query = `
+    query ($ids: [ID!]!, $cols: [String!]) {
+      items(ids: $ids) { column_values(ids: $cols) { id text } }
+    }
+  `;
+  const data = await gql<{ items: { column_values: { id: string; text: string | null }[] }[] }>(
+    query,
+    { ids: [itemId], cols: columnIds },
+  );
+  return data.items?.[0]?.column_values ?? [];
 }
 
 /** Fetch a single item by ID regardless of group (for cross-group deep-links). */
