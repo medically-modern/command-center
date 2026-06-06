@@ -48,6 +48,7 @@ export function PatientsSidebar({ patients, selectedId, onSelect, loading, error
   const escalatedPatients = filteredBySearch.filter((p) => p.escalated && p.followUp !== "Done");
   const activePatients = filteredBySearch.filter((p) => !p.escalated && p.followUp !== "Done");
   const followUpPatients = filteredBySearch.filter((p) => p.followUp === "Done" && !p.escalated);
+  const bothPatients = filteredBySearch.filter((p) => p.escalated && p.followUp === "Done");
 
   return (
     <Sidebar collapsible="icon">
@@ -204,6 +205,43 @@ export function PatientsSidebar({ patients, selectedId, onSelect, loading, error
                           <p className="text-sm font-medium truncate">{p.name}</p>
                           <p className="text-[11px] text-blue-400 truncate">
                             Until {p.followUpDate ? fmtDate(p.followUpDate) : "—"}
+                          </p>
+                        </div>
+                      </SidebarMenuButton>
+                      <ClearFollowUpButton patientId={p.id} patientName={p.name} onSuccess={onRefresh} />
+                    </div>
+                  </SidebarMenuItem>
+                ))}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        )}
+
+        {/* ── Escalated + Follow Up (both statuses) ── */}
+        {bothPatients.length > 0 && !collapsed && (
+          <SidebarGroup>
+            <SidebarGroupLabel className="text-[10px] uppercase tracking-wider text-amber-500 font-semibold flex items-center gap-1.5">
+              <AlertTriangle className="h-3 w-3" />
+              Escalated + Follow Up ({bothPatients.length})
+            </SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu>
+                {bothPatients.map((p) => (
+                  <SidebarMenuItem key={p.id}>
+                    <div className="flex items-center gap-1 w-full">
+                      <SidebarMenuButton
+                        isActive={selectedId === p.id}
+                        onClick={() => onSelect(p.id)}
+                        className={cn(
+                          "flex-1 flex items-start gap-2 py-2 h-auto opacity-60",
+                          selectedId === p.id && "bg-sidebar-accent opacity-100",
+                        )}
+                      >
+                        <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0 text-amber-400" />
+                        <div className="min-w-0 text-left">
+                          <p className="text-sm font-medium truncate">{p.name}</p>
+                          <p className="text-[10px] text-amber-400 truncate">
+                            Escalated \u00b7 Follow up {p.followUpDate ? fmtDate(p.followUpDate) : ""}
                           </p>
                         </div>
                       </SidebarMenuButton>

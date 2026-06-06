@@ -108,12 +108,13 @@ export function PatientsSidebar({ patients, selectedId, onSelect, loading, error
   const [searchQuery, setSearchQuery] = useState("");
   const [sendingBack, setSendingBack] = useState<string | null>(null);
 
-  // Split patients into active vs blocked vs follow-up vs escalated vs stuck
+  // Split patients into active vs blocked vs follow-up vs escalated vs stuck vs both
   const stuckPatients = patients.filter((p) => p.advancer2c === "Stuck" && p.blocked !== "Blocked");
   const escalatedPatients = patients.filter((p) => p.escalation === "Escalation Required" && p.blocked !== "Blocked" && p.followUp !== "Follow up" && p.advancer2c !== "Stuck");
   const activePatients = patients.filter((p) => p.escalation !== "Escalation Required" && p.blocked !== "Blocked" && p.followUp !== "Follow up" && p.advancer2c !== "Stuck");
   const blockedPatients = patients.filter((p) => p.blocked === "Blocked");
   const followUpPatients = patients.filter((p) => p.followUp === "Follow up" && p.blocked !== "Blocked" && p.escalation !== "Escalation Required" && p.advancer2c !== "Stuck");
+  const bothPatients = patients.filter((p) => p.escalation === "Escalation Required" && p.followUp === "Follow up" && p.blocked !== "Blocked" && p.advancer2c !== "Stuck");
 
   // Always use Eastern Time so all users see the same "today" regardless of their local timezone
   const etParts = new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
@@ -443,6 +444,43 @@ export function PatientsSidebar({ patients, selectedId, onSelect, loading, error
                           <p className="text-sm font-medium truncate">{p.name}</p>
                           <p className="text-[11px] text-blue-400 truncate">
                             Until {p.followUpDate ? fmtDate(p.followUpDate) : "\u2014"}
+                          </p>
+                        </div>
+                      </SidebarMenuButton>
+                      <ClearFollowUpButton patientId={p.id} patientName={p.name} onSuccess={onRefresh} />
+                    </div>
+                  </SidebarMenuItem>
+                ))}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        )}
+
+        {/* ── Escalated + Follow Up (both statuses) ── */}
+        {bothPatients.length > 0 && !collapsed && (
+          <SidebarGroup>
+            <SidebarGroupLabel className="text-[10px] uppercase tracking-wider text-amber-500 font-semibold flex items-center gap-1.5">
+              <AlertTriangle className="h-3 w-3" />
+              Escalated + Follow Up ({bothPatients.length})
+            </SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu>
+                {bothPatients.map((p) => (
+                  <SidebarMenuItem key={p.id}>
+                    <div className="flex items-center gap-1 w-full">
+                      <SidebarMenuButton
+                        isActive={selectedId === p.id}
+                        onClick={() => onSelect(p.id)}
+                        className={cn(
+                          "flex-1 flex items-start gap-2 py-2 h-auto opacity-60",
+                          selectedId === p.id && "bg-sidebar-accent opacity-100",
+                        )}
+                      >
+                        <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0 text-amber-400" />
+                        <div className="min-w-0 text-left">
+                          <p className="text-sm font-medium truncate">{p.name}</p>
+                          <p className="text-[10px] text-amber-400 truncate">
+                            Escalated \u00b7 Follow up {p.followUpDate ? fmtDate(p.followUpDate) : ""}
                           </p>
                         </div>
                       </SidebarMenuButton>
