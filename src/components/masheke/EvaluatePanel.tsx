@@ -537,14 +537,16 @@ export function EvaluatePanel({ patient, resetVersion = 0, onUpdate, onOpenForm 
           onChange={(v) => setDiagnosis(v)}
         />
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3 mt-4">
-          <DateField
-            label="Last Visit Date"
-            value={state.lastVisitDate}
-            onChange={(v) => setLastVisitDate(v)}
-          />
-          <MrExpiryField lastVisit={state.lastVisitDate} />
-        </div>
+        {state.mrReceived === "Yes" && (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3 mt-4">
+            <DateField
+              label="Last Visit Date"
+              value={state.lastVisitDate}
+              onChange={(v) => setLastVisitDate(v)}
+            />
+            <MrExpiryField lastVisit={state.lastVisitDate} />
+          </div>
+        )}
       </SectionCard>
 
       {/* CGM block */}
