@@ -332,61 +332,65 @@ function DrilldownTable({ chart, patients, bucket, onClose }: DrilldownTableProp
                 <th className="text-left px-4 py-2 font-medium text-muted-foreground whitespace-nowrap">
                   Name
                 </th>
-                {chart.drilldownCols.map((col) => (
-                  <th
-                    key={col.colId}
-                    className="text-left px-4 py-2 font-medium text-muted-foreground whitespace-nowrap"
-                  >
-                    {col.label}
-                  </th>
-                ))}
+                <th className="text-left px-4 py-2 font-medium text-muted-foreground whitespace-nowrap">
+                  Days in Stage
+                </th>
+                {chart.drilldownCols
+                  .filter((c) => c.label !== "Days in Stage")
+                  .map((col) => (
+                    <th
+                      key={col.colId}
+                      className="text-left px-4 py-2 font-medium text-muted-foreground whitespace-nowrap"
+                    >
+                      {col.label}
+                    </th>
+                  ))}
               </tr>
             </thead>
             <tbody>
-              {filtered.map((patient, idx) => (
-                <tr
-                  key={patient.id}
-                  className={cn(
-                    "border-b border-border/50 hover:bg-muted/50 transition-colors",
-                    idx % 2 === 1 && "bg-muted/20",
-                  )}
-                >
-                  <td className="px-4 py-2 font-medium text-foreground whitespace-nowrap">
-                    {patient.name}
-                  </td>
-                  {chart.drilldownCols.map((col) => {
-                    const value = patient.cols[col.colId] ?? "";
-                    const isDaysCol = col.colId === daysInStageColId;
-                    const bucketColor =
-                      isDaysCol && patient.dayBucket !== "Unknown"
-                        ? DAY_BUCKET_COLORS[patient.dayBucket]
-                        : undefined;
-
-                    return (
-                      <td
-                        key={col.colId}
-                        className={cn(
-                          "px-4 py-2 text-foreground/80 whitespace-nowrap",
-                        )}
+              {filtered.map((patient, idx) => {
+                const bucketColor =
+                  patient.dayBucket !== "Unknown"
+                    ? DAY_BUCKET_COLORS[patient.dayBucket]
+                    : "#888888";
+                return (
+                  <tr
+                    key={patient.id}
+                    className={cn(
+                      "border-b border-border/50 hover:bg-muted/50 transition-colors",
+                      idx % 2 === 1 && "bg-muted/20",
+                    )}
+                  >
+                    <td className="px-4 py-2 font-medium text-foreground whitespace-nowrap">
+                      {patient.name}
+                    </td>
+                    <td className="px-4 py-2 whitespace-nowrap">
+                      <span
+                        className="inline-block px-2.5 py-1 rounded text-xs font-bold"
+                        style={{
+                          backgroundColor: `${bucketColor}20`,
+                          color: bucketColor,
+                        }}
                       >
-                        {bucketColor ? (
-                          <span
-                            className="inline-block px-2 py-0.5 rounded text-xs font-medium"
-                            style={{
-                              backgroundColor: `${bucketColor}20`,
-                              color: bucketColor,
-                            }}
+                        {patient.dayBucket}
+                      </span>
+                    </td>
+                    {chart.drilldownCols
+                      .filter((c) => c.label !== "Days in Stage")
+                      .map((col) => {
+                        const value = patient.cols[col.colId] ?? "";
+                        return (
+                          <td
+                            key={col.colId}
+                            className="px-4 py-2 text-foreground/80 whitespace-nowrap"
                           >
-                            {value || patient.dayBucket}
-                          </span>
-                        ) : (
-                          <span className="text-sm">{value || "—"}</span>
-                        )}
-                      </td>
-                    );
-                  })}
-                </tr>
-              ))}
+                            <span className="text-sm">{value || "—"}</span>
+                          </td>
+                        );
+                      })}
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
