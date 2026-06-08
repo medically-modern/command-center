@@ -124,6 +124,13 @@ export function seedEvalStateFromPatient(patient: Patient): EvalState {
   else if (patient.mrsClinicals === "Collect") seed.mrReceived = "No";
   if (patient.lastVisit) seed.lastVisitDate = patient.lastVisit;
   if (patient.mnEvalNotes) seed.notes = patient.mnEvalNotes;
+  // Script Received
+  if (patient.cgmScriptReceived === "Yes" || patient.cgmScriptReceived === "No") {
+    seed.cgmScriptReceived = patient.cgmScriptReceived as YesNo;
+  }
+  if (patient.ipScriptReceived === "Yes" || patient.ipScriptReceived === "No") {
+    seed.ipScriptReceived = patient.ipScriptReceived as YesNo;
+  }
   return seed;
 }
 

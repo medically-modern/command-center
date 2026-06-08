@@ -42,9 +42,11 @@ export interface Patient {
 
   // Clinical eval checklist
   cgmScript?: string;
+  cgmScriptReceived?: string;
   hypoLanguage?: string;
   insulinLanguage?: string;
   ipScript?: string;
+  ipScriptReceived?: string;
   diabetesEducation?: string;
   threeInjections?: string;
   cgmUse?: string;

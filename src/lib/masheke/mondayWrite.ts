@@ -86,9 +86,11 @@ export async function sendPatientToMonday(
   if (context === "evaluate") {
     // Clinical eval checklist statuses
     pushStatus(tasks, p.id, "CGM Script", COL.cgmScript, p.cgmScript, STANDARD_EVAL);
+    pushStatus(tasks, p.id, "CGM Script Received", COL.cgmScriptReceived, p.cgmScriptReceived, YES_NO_MONDAY_OPTS);
     pushStatus(tasks, p.id, "Hypo Language", COL.hypoLanguage, p.hypoLanguage, LANGUAGE_OPTS);
     pushStatus(tasks, p.id, "Insulin Language", COL.insulinLanguage, p.insulinLanguage, LANGUAGE_OPTS);
     pushStatus(tasks, p.id, "IP Script", COL.ipScript, p.ipScript, STANDARD_EVAL);
+    pushStatus(tasks, p.id, "IP Script Received", COL.ipScriptReceived, p.ipScriptReceived, YES_NO_MONDAY_OPTS);
     pushStatus(tasks, p.id, "Diabetes Education", COL.diabetesEducation, p.diabetesEducation, STANDARD_EVAL);
     pushStatus(tasks, p.id, "3+ Injections", COL.threeInjections, p.threeInjections, STANDARD_EVAL);
     pushStatus(tasks, p.id, "CGM Use", COL.cgmUse, p.cgmUse, STANDARD_EVAL);

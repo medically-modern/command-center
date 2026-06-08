@@ -47,9 +47,11 @@ export const COL = {
 
   // Clinical eval checklist
   cgmScript: "color_mm1w8mp1",
+  cgmScriptReceived: "color_mm44h0fx",
   hypoLanguage: "color_mm1whggs",
   insulinLanguage: "color_mm1wgrst",
   ipScript: "color_mm1wsbk5",
+  ipScriptReceived: "color_mm44chc8",
   diabetesEducation: "color_mm1wjsyq",
   threeInjections: "color_mm1wj1v8",
   cgmUse: "color_mm1wgpek",
@@ -139,7 +141,7 @@ export const READ_COLUMN_IDS: string[] = [
   COL.daysSinceIntake, COL.daysSinceStageStart,
   COL.dateOfIntake, COL.dateOfStageStart,
   // Eval checklist
-  COL.cgmScript, COL.hypoLanguage, COL.insulinLanguage, COL.ipScript,
+  COL.cgmScript, COL.cgmScriptReceived, COL.hypoLanguage, COL.insulinLanguage, COL.ipScript, COL.ipScriptReceived,
   COL.diabetesEducation, COL.threeInjections, COL.cgmUse, COL.bloodSugarIssues,
   COL.lmn, COL.oowDate, COL.malfunction, COL.diagnosis,
   // MRs

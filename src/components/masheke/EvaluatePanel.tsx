@@ -330,6 +330,19 @@ export function EvaluatePanel({ patient, resetVersion = 0, onUpdate, onOpenForm 
         run: () => clearStatusColumn(patient.id, COL.diagnosis),
       });
     }
+    // Script Received columns
+    if (state.cgmScriptReceived) {
+      tasks.push({
+        label: "CGM Script Received",
+        run: () => writeStatusLabel(patient.id, COL.cgmScriptReceived, state.cgmScriptReceived!),
+      });
+    }
+    if (state.ipScriptReceived) {
+      tasks.push({
+        label: "IP Script Received",
+        run: () => writeStatusLabel(patient.id, COL.ipScriptReceived, state.ipScriptReceived!),
+      });
+    }
     const mrLabel =
       state.mrReceived === "Yes" ? "MR Received" : state.mrReceived === "No" ? "Collect" : null;
     if (mrLabel) {

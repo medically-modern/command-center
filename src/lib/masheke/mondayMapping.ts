@@ -90,9 +90,11 @@ export function mondayItemToPatient(item: MondayItem): Patient {
     dateOfStageStart: col(item, "date_mm1w6jeq") || undefined,
     // Eval checklist
     cgmScript: col(item, "color_mm1w8mp1") || undefined,
+    cgmScriptReceived: col(item, "color_mm44h0fx") || undefined,
     hypoLanguage: col(item, "color_mm1whggs") || undefined,
     insulinLanguage: col(item, "color_mm1wgrst") || undefined,
     ipScript: col(item, "color_mm1wsbk5") || undefined,
+    ipScriptReceived: col(item, "color_mm44chc8") || undefined,
     diabetesEducation: col(item, "color_mm1wjsyq") || undefined,
     threeInjections: col(item, "color_mm1wj1v8") || undefined,
     cgmUse: col(item, "color_mm1wgpek") || undefined,

@@ -118,6 +118,11 @@ export const YES_NO_OPTS: StatusOption[] = [
   { label: "No", index: 1 },
 ];
 
+export const YES_NO_MONDAY_OPTS: StatusOption[] = [
+  { label: "Yes", index: 0 },
+  { label: "No", index: 1 },
+];
+
 export const CGM_COVERAGE_OPTS: StatusOption[] = [
   { label: "Insulin", index: 0 },
   { label: "Hypo", index: 1 },
