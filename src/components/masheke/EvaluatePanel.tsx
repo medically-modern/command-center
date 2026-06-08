@@ -460,6 +460,8 @@ export function EvaluatePanel({ patient, resetVersion = 0, onUpdate, onOpenForm 
     }
   }, [patient, state, preview, showCgm, showIp]);
 
+  const anyYes = state.cgmScriptReceived === "Yes" || state.ipScriptReceived === "Yes" || state.mrReceived === "Yes";
+
   return (
     <div className="space-y-4">
       {/* Banner: Serving forces a path */}
@@ -523,6 +525,7 @@ export function EvaluatePanel({ patient, resetVersion = 0, onUpdate, onOpenForm 
         </div>
       )}
 
+      {anyYes && (<>
       {/* Diagnosis & Clinicals — top section */}
       <SectionCard
         title="Diagnosis & Clinicals"
@@ -623,6 +626,7 @@ export function EvaluatePanel({ patient, resetVersion = 0, onUpdate, onOpenForm 
           />
         </div>
       </SectionCard>
+      </>)}
 
       {/* Notes */}
       <NotesPanel
@@ -1549,14 +1553,7 @@ function ValiditySummary({
   const blocked = missingFields.length > 0;
   return (
     <section className="rounded-xl bg-card border shadow-card p-5 space-y-4">
-      <div>
-        <p className="text-xs uppercase tracking-wider text-muted-foreground">
-          Monday Preview
-        </p>
-        <p className="text-[11px] text-muted-foreground/80 mt-0.5">
-          Review the values below, then press Send to Monday.
-        </p>
-      </div>
+
 
       {/* Section pills + MN status */}
       <div className="flex items-center gap-2 flex-wrap">
@@ -1586,12 +1583,7 @@ function ValiditySummary({
         </div>
       )}
 
-      <div>
-        <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-2">
-          Monday Columns
-        </p>
-        <MondayPreviewPanel preview={preview} />
-      </div>
+
 
       <div className="flex items-center justify-end gap-3 pt-1">
         {blocked && (
