@@ -464,7 +464,7 @@ export function EvaluatePanel({ patient, resetVersion = 0, onUpdate, onOpenForm 
   const anyYes = state.cgmScriptReceived === "Yes" || state.ipScriptReceived === "Yes" || state.mrReceived === "Yes";
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-5">
       {/* Banner: Serving forces a path */}
       {!showCgm && !showIp && (
         <div className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
@@ -474,7 +474,7 @@ export function EvaluatePanel({ patient, resetVersion = 0, onUpdate, onOpenForm 
 
       {/* ── Quick-check cards ─────────────────────────────── */}
       {/* ── Received? row ──────────────────────────────── */}
-      <div className="flex justify-center gap-3 flex-wrap">
+      <div className="flex justify-center gap-4 flex-wrap">
         {showCgm && (
           <QuickCard
             label="CGM Script Received?"
@@ -504,7 +504,7 @@ export function EvaluatePanel({ patient, resetVersion = 0, onUpdate, onOpenForm 
 
       {/* ── Valid / Invalid row (only when received = Yes) ─ */}
       {(state.cgmScriptReceived === "Yes" || state.ipScriptReceived === "Yes") && (
-        <div className="flex justify-center gap-3 flex-wrap">
+        <div className="flex justify-center gap-4 flex-wrap">
           {showCgm && state.cgmScriptReceived === "Yes" && (
             <QuickCard
               label="CGM Script"
@@ -669,9 +669,9 @@ interface SectionCardProps {
 
 function SectionCard({ title, status, children }: SectionCardProps) {
   return (
-    <div className="rounded-xl bg-card border shadow-card p-5">
-      <div className="flex items-center justify-between mb-3">
-        <p className="text-xs uppercase tracking-wider text-muted-foreground">{title}</p>
+    <div className="rounded-xl bg-card border shadow-card p-6">
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="font-heading text-base font-semibold text-foreground">{title}</h3>
         {status === true && (
           <span className="inline-flex items-center gap-1 text-xs font-medium text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-full px-2 py-0.5">
             <Check className="h-3 w-3" /> Complete
@@ -1833,16 +1833,16 @@ function QuickCard({
   optionB?: string;
 }) {
   return (
-    <div className="rounded-xl border bg-card shadow-sm p-4 space-y-3 min-w-[180px]">
-      <p className="text-sm font-semibold text-foreground text-center">{label}</p>
-      <div className="flex gap-2">
+    <div className="rounded-xl border bg-card shadow-sm p-5 space-y-4 min-w-[220px]">
+      <p className="font-heading text-base font-semibold text-foreground text-center">{label}</p>
+      <div className="flex gap-3">
         <button
           onClick={() => onChange(optionA)}
           className={cn(
-            "flex-1 py-2.5 rounded-lg text-sm font-medium transition-colors border",
+            "flex-1 py-3.5 rounded-xl text-base font-semibold transition-all border-2",
             value === optionA
-              ? "bg-emerald-500 text-white border-emerald-600"
-              : "bg-muted/30 text-muted-foreground border-border hover:bg-muted/50",
+              ? "bg-emerald-500 text-white border-emerald-600 shadow-md"
+              : "bg-muted/20 text-muted-foreground border-border hover:bg-muted/40",
           )}
         >
           {optionA}
@@ -1850,10 +1850,10 @@ function QuickCard({
         <button
           onClick={() => onChange(optionB)}
           className={cn(
-            "flex-1 py-2.5 rounded-lg text-sm font-medium transition-colors border",
+            "flex-1 py-3.5 rounded-xl text-base font-semibold transition-all border-2",
             value === optionB
-              ? "bg-red-500 text-white border-red-600"
-              : "bg-muted/30 text-muted-foreground border-border hover:bg-muted/50",
+              ? "bg-red-500 text-white border-red-600 shadow-md"
+              : "bg-muted/20 text-muted-foreground border-border hover:bg-muted/40",
           )}
         >
           {optionB}

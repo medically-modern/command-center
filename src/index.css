@@ -2,6 +2,17 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Global heading typography — Outfit for all headings */
+h1, h2, h3, h4, h5, h6,
+.font-heading {
+  font-family: 'Outfit', 'Inter', system-ui, sans-serif;
+  letter-spacing: -0.01em;
+}
+
+h1 { font-size: 1.75rem; font-weight: 700; }
+h2 { font-size: 1.375rem; font-weight: 600; }
+h3 { font-size: 1.125rem; font-weight: 600; }
+
 /* Medically Modern · Masheke Dashboard — Clinical Calm design system */
 
 @layer base {
