@@ -472,53 +472,7 @@ export function EvaluatePanel({ patient, resetVersion = 0, onUpdate, onOpenForm 
         </div>
       )}
 
-      {/* ── Scripts ────────────────────────────────────────── */}
-      <SectionCard title="Scripts">
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-4">
-          {showCgm && (
-            <div className="space-y-4">
-              <ToggleField
-                label="CGM Script Received?"
-                value={state.cgmScriptReceived}
-                onChange={(v) => {
-                  update("cgmScriptReceived", v as YesNo);
-                  if (v === "No") update("cgmScriptValid", undefined);
-                }}
-              />
-              {state.cgmScriptReceived === "Yes" && (
-                <ToggleField
-                  label="CGM Script"
-                  optionA="Valid"
-                  optionB="Invalid"
-                  value={state.cgmScriptValid}
-                  onChange={(v) => update("cgmScriptValid", v as ValidInvalid)}
-                />
-              )}
-            </div>
-          )}
-          {showIp && (
-            <div className="space-y-4">
-              <ToggleField
-                label="IP Script Received?"
-                value={state.ipScriptReceived}
-                onChange={(v) => {
-                  update("ipScriptReceived", v as YesNo);
-                  if (v === "No") update("ipScriptValid", undefined);
-                }}
-              />
-              {state.ipScriptReceived === "Yes" && (
-                <ToggleField
-                  label="Insulin Pump Script"
-                  optionA="Valid"
-                  optionB="Invalid"
-                  value={state.ipScriptValid}
-                  onChange={(v) => update("ipScriptValid", v as ValidInvalid)}
-                />
-              )}
-            </div>
-          )}
-        </div>
-      </SectionCard>
+
 
       {/* ── Clinicals & Diagnosis ───────────────────────── */}
       <SectionCard title="Clinicals & Diagnosis" status={validity.sections.diagnosis.valid && validity.sections.mr.valid}>
@@ -553,12 +507,31 @@ export function EvaluatePanel({ patient, resetVersion = 0, onUpdate, onOpenForm 
           title="CGM"
           status={validity.sections.cgm.shown ? validity.sections.cgm.valid : null}
         >
-          <StatusSelect
-            label="CGM Coverage Path"
-            value={state.cgmCoveragePath}
-            options={CGM_COVERAGE_OPTS}
-            onChange={(v) => setCgmCoveragePath(v as CgmCoveragePath)}
-          />
+          <div className="space-y-4">
+            <ToggleField
+              label="Script Received?"
+              value={state.cgmScriptReceived}
+              onChange={(v) => {
+                update("cgmScriptReceived", v as YesNo);
+                if (v === "No") update("cgmScriptValid", undefined);
+              }}
+            />
+            {state.cgmScriptReceived === "Yes" && (
+              <ToggleField
+                label="Script Valid?"
+                optionA="Valid"
+                optionB="Invalid"
+                value={state.cgmScriptValid}
+                onChange={(v) => update("cgmScriptValid", v as ValidInvalid)}
+              />
+            )}
+            <StatusSelect
+              label="CGM Coverage Path"
+              value={state.cgmCoveragePath}
+              options={CGM_COVERAGE_OPTS}
+              onChange={(v) => setCgmCoveragePath(v as CgmCoveragePath)}
+            />
+          </div>
         </SectionCard>
       )}
 
@@ -568,15 +541,34 @@ export function EvaluatePanel({ patient, resetVersion = 0, onUpdate, onOpenForm 
           title="Insulin Pump"
           status={validity.sections.ip.shown ? validity.sections.ip.valid : null}
         >
-          <StatusSelect
-            label="Insulin Pump Coverage Path"
-            value={state.ipCoveragePath}
-            options={IP_PATH_OPTS}
-            onChange={(v) => setIpCoveragePath(v as IpPath)}
-          />
-          {state.ipCoveragePath && (
-            <IpCriteria state={state} patient={patient} update={update} />
-          )}
+          <div className="space-y-4">
+            <ToggleField
+              label="Script Received?"
+              value={state.ipScriptReceived}
+              onChange={(v) => {
+                update("ipScriptReceived", v as YesNo);
+                if (v === "No") update("ipScriptValid", undefined);
+              }}
+            />
+            {state.ipScriptReceived === "Yes" && (
+              <ToggleField
+                label="Script Valid?"
+                optionA="Valid"
+                optionB="Invalid"
+                value={state.ipScriptValid}
+                onChange={(v) => update("ipScriptValid", v as ValidInvalid)}
+              />
+            )}
+            <StatusSelect
+              label="Insulin Pump Coverage Path"
+              value={state.ipCoveragePath}
+              options={IP_PATH_OPTS}
+              onChange={(v) => setIpCoveragePath(v as IpPath)}
+            />
+            {state.ipCoveragePath && (
+              <IpCriteria state={state} patient={patient} update={update} />
+            )}
+          </div>
         </SectionCard>
       )}
 
