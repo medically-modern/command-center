@@ -79,6 +79,8 @@ export interface ChartDef {
   boardId: number;
   /** Column IDs to display in drill-down table, with display labels */
   drilldownCols: { colId: string; label: string }[];
+  /** Optional column ID for a notes/long-text field shown via icon popover */
+  notesColId?: string;
 }
 
 // ── Chart definitions (12 charts) ───────────────────────────────────────
@@ -89,6 +91,7 @@ export const CHART_DEFS: ChartDef[] = [
     id: "dtc-partial-leads",
     title: "DtC Partial Leads",
     boardId: 18392794310,
+    notesColId: "long_text_mkzmxx3t",
     drilldownCols: [
       { colId: "date_mm1ftf0f", label: "Intake Date" },
       { colId: "text_mm2me552", label: "Last Seen" },
@@ -103,6 +106,7 @@ export const CHART_DEFS: ChartDef[] = [
     id: "dtc-raw-intake",
     title: "DtC Raw Intake Data",
     boardId: 18392794310,
+    notesColId: "long_text_mkzmxx3t",
     drilldownCols: [
       { colId: "date_mm1ftf0f", label: "Intake Date" },
       { colId: "color_mkywv02j", label: "Referral Source" },
@@ -118,6 +122,7 @@ export const CHART_DEFS: ChartDef[] = [
     id: "profile-send-off",
     title: "Profile Send Off",
     boardId: 18406352652,
+    notesColId: "text_mm389fs",
     drilldownCols: [
       { colId: "date_mm1wf43j", label: "Intake Date" },
       { colId: "color_mm1w5wxr", label: "Referral Source" },
@@ -134,6 +139,7 @@ export const CHART_DEFS: ChartDef[] = [
     id: "evaluate",
     title: "Evaluate",
     boardId: 18406060017,
+    notesColId: "long_text_mm27zjt2",
     drilldownCols: [
       { colId: "color_mm1wwm05", label: "Days in Stage" },
       { colId: "color_mm1w1cm9", label: "Serving" },
@@ -150,6 +156,7 @@ export const CHART_DEFS: ChartDef[] = [
     id: "send-request",
     title: "Send Request",
     boardId: 18406060017,
+    notesColId: "long_text_mm27zjt2",
     drilldownCols: [
       { colId: "color_mm1wwm05", label: "Days in Stage" },
       { colId: "color_mm1w1cm9", label: "Serving" },
@@ -164,6 +171,7 @@ export const CHART_DEFS: ChartDef[] = [
     id: "confirm-receipt",
     title: "Confirm Receipt",
     boardId: 18406060017,
+    notesColId: "long_text_mm2ytsxp",
     drilldownCols: [
       { colId: "color_mm1wwm05", label: "Days in Stage" },
       { colId: "color_mm1w1cm9", label: "Serving" },
@@ -178,6 +186,7 @@ export const CHART_DEFS: ChartDef[] = [
     id: "chase-clinicals",
     title: "Chase Clinicals",
     boardId: 18406060017,
+    notesColId: "long_text_mm2ytsxp",
     drilldownCols: [
       { colId: "color_mm1wwm05", label: "Days in Stage" },
       { colId: "color_mm1w1cm9", label: "Serving" },
@@ -194,6 +203,7 @@ export const CHART_DEFS: ChartDef[] = [
     id: "benefits",
     title: "Benefits",
     boardId: 18410601299,
+    notesColId: "long_text_mm2ffsme",
     drilldownCols: [
       { colId: "color_mm1wwm05", label: "Days in Stage" },
       { colId: "color_mm1w1cm9", label: "Serving" },
@@ -208,6 +218,7 @@ export const CHART_DEFS: ChartDef[] = [
     id: "submit-auth",
     title: "Submit Auth",
     boardId: 18410601299,
+    notesColId: "long_text_mm2ffsme",
     drilldownCols: [
       { colId: "color_mm1wwm05", label: "Days in Stage" },
       { colId: "color_mm1w1cm9", label: "Serving" },
@@ -222,6 +233,7 @@ export const CHART_DEFS: ChartDef[] = [
     id: "auth-outstanding",
     title: "Auth Outstanding",
     boardId: 18410601299,
+    notesColId: "long_text_mm2ffsme",
     drilldownCols: [
       { colId: "color_mm1wwm05", label: "Days in Stage" },
       { colId: "color_mm1w1cm9", label: "Serving" },
@@ -235,6 +247,7 @@ export const CHART_DEFS: ChartDef[] = [
     id: "auth-denial",
     title: "Auth Denial",
     boardId: 18410601299,
+    notesColId: "long_text_mm3jrssp",
     drilldownCols: [
       { colId: "color_mm1wwm05", label: "Days in Stage" },
       { colId: "date_mm27ha6a", label: "First Denied" },
@@ -250,6 +263,7 @@ export const CHART_DEFS: ChartDef[] = [
     id: "welcome-call",
     title: "Welcome Call",
     boardId: 18410804557,
+    notesColId: "long_text_mm2ffsme",
     drilldownCols: [
       { colId: "color_mm1wwm05", label: "Days in Stage" },
       { colId: "color_mm1w1cm9", label: "Serving" },
@@ -333,6 +347,7 @@ function columnsForBoard(boardId: number): string[] {
   for (const chart of CHART_DEFS) {
     if (chart.boardId !== boardId) continue;
     for (const dc of chart.drilldownCols) set.add(dc.colId);
+    if (chart.notesColId) set.add(chart.notesColId);
   }
 
   // Always include the stage-advancer column if present

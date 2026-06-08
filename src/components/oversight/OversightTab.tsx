@@ -16,7 +16,7 @@ import {
   type ChartDef,
   type DayBucketLabel,
 } from "@/lib/oversight/oversightApi";
-import { Loader2, BarChart3, X, ExternalLink } from "lucide-react";
+import { Loader2, BarChart3, X, ExternalLink, StickyNote } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
@@ -235,14 +235,22 @@ function DrilldownModal({
   onPatientClick,
   hasRoute,
 }: DrilldownModalProps) {
+  const [notesOpenId, setNotesOpenId] = useState<string | null>(null);
+
   // Close on Escape
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
+      if (e.key === "Escape") {
+        if (notesOpenId) {
+          setNotesOpenId(null);
+        } else {
+          onClose();
+        }
+      }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [onClose]);
+  }, [onClose, notesOpenId]);
 
   const filtered = useMemo(() => {
     const list =
@@ -358,6 +366,11 @@ function DrilldownModal({
                         {col.label}
                       </th>
                     ))}
+                  {chart.notesColId && (
+                    <th className="px-3 py-2 font-medium text-muted-foreground whitespace-nowrap text-center w-12">
+                      Notes
+                    </th>
+                  )}
                 </tr>
               </thead>
               <tbody>
@@ -408,6 +421,52 @@ function DrilldownModal({
                             </td>
                           );
                         })}
+                      {chart.notesColId && (() => {
+                        const noteText = patient.cols[chart.notesColId!] ?? "";
+                        const hasNote = noteText.trim().length > 0;
+                        const isOpen = notesOpenId === patient.id;
+                        return (
+                          <td className="px-3 py-2 text-center relative">
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setNotesOpenId(isOpen ? null : patient.id);
+                              }}
+                              className={cn(
+                                "p-1 rounded transition-colors",
+                                hasNote
+                                  ? "text-blue-500 hover:bg-blue-500/10"
+                                  : "text-muted-foreground/30 cursor-default",
+                              )}
+                              disabled={!hasNote}
+                              title={hasNote ? "View notes" : "No notes"}
+                            >
+                              <StickyNote className="h-4 w-4" />
+                            </button>
+                            {isOpen && hasNote && (
+                              <div
+                                className="absolute right-0 top-full mt-1 z-50 w-80 max-h-60 overflow-y-auto rounded-lg border bg-popover p-3 shadow-lg text-left"
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                <div className="flex items-center justify-between mb-2">
+                                  <span className="text-xs font-semibold text-muted-foreground">
+                                    {patient.name}
+                                  </span>
+                                  <button
+                                    onClick={() => setNotesOpenId(null)}
+                                    className="p-0.5 rounded hover:bg-muted text-muted-foreground"
+                                  >
+                                    <X className="h-3 w-3" />
+                                  </button>
+                                </div>
+                                <p className="text-sm text-foreground whitespace-pre-wrap break-words">
+                                  {noteText}
+                                </p>
+                              </div>
+                            )}
+                          </td>
+                        );
+                      })()}
                     </tr>
                   );
                 })}
