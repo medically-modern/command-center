@@ -508,23 +508,25 @@ export function EvaluatePanel({ patient, resetVersion = 0, onUpdate, onOpenForm 
           status={validity.sections.cgm.shown ? validity.sections.cgm.valid : null}
         >
           <div className="space-y-4">
-            <ToggleField
-              label="Script Received?"
-              value={state.cgmScriptReceived}
-              onChange={(v) => {
-                update("cgmScriptReceived", v as YesNo);
-                if (v === "No") update("cgmScriptValid", undefined);
-              }}
-            />
-            {state.cgmScriptReceived === "Yes" && (
+            <div className="flex items-end gap-6">
               <ToggleField
-                label="Script Valid?"
-                optionA="Valid"
-                optionB="Invalid"
-                value={state.cgmScriptValid}
-                onChange={(v) => update("cgmScriptValid", v as ValidInvalid)}
+                label="Script Received?"
+                value={state.cgmScriptReceived}
+                onChange={(v) => {
+                  update("cgmScriptReceived", v as YesNo);
+                  if (v === "No") update("cgmScriptValid", undefined);
+                }}
               />
-            )}
+              {state.cgmScriptReceived === "Yes" && (
+                <ToggleField
+                  label="Script Valid?"
+                  optionA="Valid"
+                  optionB="Invalid"
+                  value={state.cgmScriptValid}
+                  onChange={(v) => update("cgmScriptValid", v as ValidInvalid)}
+                />
+              )}
+            </div>
             <StatusSelect
               label="CGM Coverage Path"
               value={state.cgmCoveragePath}
@@ -542,23 +544,25 @@ export function EvaluatePanel({ patient, resetVersion = 0, onUpdate, onOpenForm 
           status={validity.sections.ip.shown ? validity.sections.ip.valid : null}
         >
           <div className="space-y-4">
-            <ToggleField
-              label="Script Received?"
-              value={state.ipScriptReceived}
-              onChange={(v) => {
-                update("ipScriptReceived", v as YesNo);
-                if (v === "No") update("ipScriptValid", undefined);
-              }}
-            />
-            {state.ipScriptReceived === "Yes" && (
+            <div className="flex items-end gap-6">
               <ToggleField
-                label="Script Valid?"
-                optionA="Valid"
-                optionB="Invalid"
-                value={state.ipScriptValid}
-                onChange={(v) => update("ipScriptValid", v as ValidInvalid)}
+                label="Script Received?"
+                value={state.ipScriptReceived}
+                onChange={(v) => {
+                  update("ipScriptReceived", v as YesNo);
+                  if (v === "No") update("ipScriptValid", undefined);
+                }}
               />
-            )}
+              {state.ipScriptReceived === "Yes" && (
+                <ToggleField
+                  label="Script Valid?"
+                  optionA="Valid"
+                  optionB="Invalid"
+                  value={state.ipScriptValid}
+                  onChange={(v) => update("ipScriptValid", v as ValidInvalid)}
+                />
+              )}
+            </div>
             <StatusSelect
               label="Insulin Pump Coverage Path"
               value={state.ipCoveragePath}
