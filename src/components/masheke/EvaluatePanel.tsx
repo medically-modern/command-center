@@ -457,7 +457,7 @@ export function EvaluatePanel({ patient, resetVersion = 0, onUpdate, onOpenForm 
       )}
 
       {/* ── Quick-check cards ─────────────────────────────── */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+      <div className="flex justify-center gap-3 flex-wrap">
         {showCgm && (
           <QuickCard
             label="CGM Script?"
@@ -484,18 +484,10 @@ export function EvaluatePanel({ patient, resetVersion = 0, onUpdate, onOpenForm 
         title="Diagnosis & Clinicals"
         status={validity.sections.diagnosis.valid && validity.sections.mr.valid}
       >
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2">
-          <DiagnosisField
-            value={state.diagnosis}
-            onChange={(v) => setDiagnosis(v)}
-          />
-          <StatusSelect
-            label="MRs Received"
-            value={state.mrReceived}
-            options={YES_NO_OPTS}
-            onChange={(v) => setMrReceived(v as YesNo)}
-          />
-        </div>
+        <DiagnosisField
+          value={state.diagnosis}
+          onChange={(v) => setDiagnosis(v)}
+        />
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3 mt-4">
           <DateField
