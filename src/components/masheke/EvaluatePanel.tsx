@@ -1498,14 +1498,11 @@ function getMissingRequiredFields(
 ): string[] {
   const missing: string[] = [];
 
-  // MRs Received — always required
-  if (state.mrReceived === undefined) missing.push("MRs Received");
+  // CGM Script — only required if CGM is shown AND script was received
+  if (showCgm && state.cgmScriptReceived === "Yes" && state.cgmScriptValid === undefined) missing.push("CGM Script Valid/Invalid");
 
-  // CGM Script — only if CGM block is shown
-  if (showCgm && state.cgmScriptValid === undefined) missing.push("CGM Script");
-
-  // IP Script — only if IP block is shown
-  if (showIp && state.ipScriptValid === undefined) missing.push("Insulin Pump Script");
+  // IP Script — only required if IP is shown AND script was received
+  if (showIp && state.ipScriptReceived === "Yes" && state.ipScriptValid === undefined) missing.push("Insulin Pump Script Valid/Invalid");
 
   // IP criteria fields — only if an IP coverage path is selected and those fields are shown
   if (state.ipCoveragePath) {
