@@ -487,20 +487,6 @@ export default function OversightTab() {
     return seen.size;
   }, [data]);
 
-  const expandedChartDef = useMemo(
-    () =>
-      expandedChart
-        ? CHART_DEFS.find((c) => c.id === expandedChart) ?? null
-        : null,
-    [expandedChart],
-  );
-
-  const expandedPatients = useMemo(
-    () =>
-      expandedChart && data ? data.get(expandedChart) ?? [] : [],
-    [expandedChart, data],
-  );
-
   // ── Render ────────────────────────────────────────────────────
 
   if (loading && !data) {
@@ -550,36 +536,34 @@ export default function OversightTab() {
         )}
       </div>
 
-      {/* Chart stack — full width, one per row */}
+      {/* Chart stack — full width, one per row, drill-down inline */}
       <div className="flex flex-col gap-4">
         {CHART_DEFS.map((chart) => {
           const patients = data?.get(chart.id) ?? [];
+          const isExpanded = expandedChart === chart.id;
           return (
-            <StageChart
-              key={chart.id}
-              chart={chart}
-              patients={patients}
-              isExpanded={expandedChart === chart.id}
-              selectedBucket={
-                expandedChart === chart.id ? selectedBucket : null
-              }
-              onBarClick={(bucket) => handleBarClick(chart.id, bucket)}
-              onClose={handleClose}
-            />
+            <div key={chart.id}>
+              <StageChart
+                chart={chart}
+                patients={patients}
+                isExpanded={isExpanded}
+                selectedBucket={isExpanded ? selectedBucket : null}
+                onBarClick={(bucket) => handleBarClick(chart.id, bucket)}
+                onClose={handleClose}
+              />
+              {isExpanded && selectedBucket && (
+                <DrilldownTable
+                  key={`${chart.id}-${selectedBucket}`}
+                  chart={chart}
+                  patients={patients}
+                  bucket={selectedBucket}
+                  onClose={handleClose}
+                />
+              )}
+            </div>
           );
         })}
       </div>
-
-      {/* Drill-down table (full width below grid) */}
-      {expandedChartDef && selectedBucket && (
-        <DrilldownTable
-          key={`${expandedChartDef.id}-${selectedBucket}`}
-          chart={expandedChartDef}
-          patients={expandedPatients}
-          bucket={selectedBucket}
-          onClose={handleClose}
-        />
-      )}
     </div>
   );
 }
