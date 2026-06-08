@@ -87,6 +87,7 @@ import {
   XCircle,
   Plus,
   Send,
+  ChevronRight,
 } from "lucide-react";
 
 interface Props {
@@ -1549,11 +1550,11 @@ function ValiditySummary({
   onOpenForm,
   filesUploading,
 }: ValiditySummaryProps) {
+  const [previewOpen, setPreviewOpen] = useState(false);
   const missingFields = getMissingRequiredFields(state, showCgm, showIp);
   const blocked = missingFields.length > 0;
   return (
     <section className="rounded-xl bg-card border shadow-card p-5 space-y-4">
-
 
       {/* Section pills + MN status */}
       <div className="flex items-center gap-2 flex-wrap">
@@ -1584,6 +1585,21 @@ function ValiditySummary({
       )}
 
 
+
+      {/* Collapsible Monday Preview */}
+      <button
+        type="button"
+        onClick={() => setPreviewOpen((v) => !v)}
+        className="flex items-center gap-1.5 text-[11px] text-muted-foreground hover:text-foreground transition-colors"
+      >
+        <ChevronRight className={cn("w-3.5 h-3.5 transition-transform", previewOpen && "rotate-90")} />
+        Monday Preview
+      </button>
+      {previewOpen && (
+        <div className="rounded-lg border bg-muted/20 p-3">
+          <MondayPreviewPanel preview={preview} />
+        </div>
+      )}
 
       <div className="flex items-center justify-end gap-3 pt-1">
         {blocked && (
