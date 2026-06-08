@@ -196,57 +196,6 @@ export function DailyBurndown({
 
   return (
     <div className="space-y-6">
-      {/* Section header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wider">
-            Today's Progress
-          </h3>
-          <p className="text-xs text-muted-foreground/60 mt-0.5 flex items-center gap-1">
-            {isServerSource ? (
-              <Server className="w-3 h-3 inline" />
-            ) : (
-              <HardDrive className="w-3 h-3 inline" />
-            )}
-            Baseline: {snapshotTime} ET
-            {isServerSource ? " (server)" : " (local)"}
-            {" · "}Live: {getEasternTimeStr()} ET
-          </p>
-        </div>
-        <div className="flex items-center gap-4 text-xs text-muted-foreground">
-          <span className="flex items-center gap-1.5">
-            <span className="w-3 h-1.5 rounded-full bg-muted-foreground/15" />
-            Start of day
-          </span>
-          <span className="flex items-center gap-1.5">
-            <span className="w-3 h-1.5 rounded-full bg-primary" />
-            Current
-          </span>
-        </div>
-      </div>
-
-      {/* Summary cards */}
-      <div className="grid grid-cols-3 gap-3">
-        <div className="rounded-lg bg-emerald-500/10 border border-emerald-500/20 px-4 py-3">
-          <div className="flex items-center gap-1.5 text-xs text-emerald-600 dark:text-emerald-400 font-medium mb-1">
-            <ArrowDown className="w-3.5 h-3.5" />
-            Processed out
-          </div>
-          <span className="text-2xl font-semibold text-emerald-600 dark:text-emerald-400 tabular-nums">
-            {totalProcessed}
-          </span>
-        </div>
-        <div className="rounded-lg bg-amber-500/10 border border-amber-500/20 px-4 py-3">
-          <div className="flex items-center gap-1.5 text-xs text-amber-600 dark:text-amber-400 font-medium mb-1">
-            <ArrowUp className="w-3.5 h-3.5" />
-            Incoming
-          </div>
-          <span className="text-2xl font-semibold text-amber-600 dark:text-amber-400 tabular-nums">
-            {totalIncoming}
-          </span>
-        </div>
-      </div>
-
       {/* Burndown bars */}
       <div className="space-y-3">
         {barData.map((d, i) => {

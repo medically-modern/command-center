@@ -314,28 +314,6 @@ export function OperationsTab() {
         </div>
       </div>
 
-      {/* Summary cards */}
-      <div className="grid grid-cols-2 gap-3">
-        <div className="rounded-lg bg-emerald-500/10 border border-emerald-500/20 px-4 py-3">
-          <div className="flex items-center gap-1.5 text-xs text-emerald-600 dark:text-emerald-400 font-medium mb-1">
-            <ArrowDown className="w-3.5 h-3.5" />
-            Processed out
-          </div>
-          <span className="text-2xl font-semibold text-emerald-600 dark:text-emerald-400 tabular-nums">
-            {totalProcessed}
-          </span>
-        </div>
-        <div className="rounded-lg bg-amber-500/10 border border-amber-500/20 px-4 py-3">
-          <div className="flex items-center gap-1.5 text-xs text-amber-600 dark:text-amber-400 font-medium mb-1">
-            <ArrowUp className="w-3.5 h-3.5" />
-            Incoming
-          </div>
-          <span className="text-2xl font-semibold text-amber-600 dark:text-amber-400 tabular-nums">
-            {totalIncoming}
-          </span>
-        </div>
-      </div>
-
       {/* Burndown bars */}
       <div className="space-y-2.5">
         {barData.map((d, i) => {
