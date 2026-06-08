@@ -472,81 +472,78 @@ export function EvaluatePanel({ patient, resetVersion = 0, onUpdate, onOpenForm 
         </div>
       )}
 
-      {/* ── Scripts + Clinicals — side by side ────────────── */}
-      <div className={cn("grid gap-5", showCgm && showIp ? "grid-cols-2" : "grid-cols-1")}>
-        {showCgm && (
-          <div className="space-y-3">
-            <QuickCheck
-              label="CGM Script Received?"
-              value={state.cgmScriptReceived}
-              onChange={(v) => {
-                update("cgmScriptReceived", v as YesNo);
-                if (v === "No") update("cgmScriptValid", undefined);
-              }}
-            />
-            {state.cgmScriptReceived === "Yes" && (
-              <QuickCheck
-                label="CGM Script"
-                optionA="Valid"
-                optionB="Invalid"
-                value={state.cgmScriptValid}
-                onChange={(v) => update("cgmScriptValid", v as ValidInvalid)}
+      {/* ── Scripts ────────────────────────────────────────── */}
+      <SectionCard title="Scripts">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-4">
+          {showCgm && (
+            <div className="space-y-4">
+              <ToggleField
+                label="CGM Script Received?"
+                value={state.cgmScriptReceived}
+                onChange={(v) => {
+                  update("cgmScriptReceived", v as YesNo);
+                  if (v === "No") update("cgmScriptValid", undefined);
+                }}
               />
-            )}
-          </div>
-        )}
-        {showIp && (
-          <div className="space-y-3">
-            <QuickCheck
-              label="IP Script Received?"
-              value={state.ipScriptReceived}
-              onChange={(v) => {
-                update("ipScriptReceived", v as YesNo);
-                if (v === "No") update("ipScriptValid", undefined);
-              }}
-            />
-            {state.ipScriptReceived === "Yes" && (
-              <QuickCheck
-                label="Insulin Pump Script"
-                optionA="Valid"
-                optionB="Invalid"
-                value={state.ipScriptValid}
-                onChange={(v) => update("ipScriptValid", v as ValidInvalid)}
+              {state.cgmScriptReceived === "Yes" && (
+                <ToggleField
+                  label="CGM Script"
+                  optionA="Valid"
+                  optionB="Invalid"
+                  value={state.cgmScriptValid}
+                  onChange={(v) => update("cgmScriptValid", v as ValidInvalid)}
+                />
+              )}
+            </div>
+          )}
+          {showIp && (
+            <div className="space-y-4">
+              <ToggleField
+                label="IP Script Received?"
+                value={state.ipScriptReceived}
+                onChange={(v) => {
+                  update("ipScriptReceived", v as YesNo);
+                  if (v === "No") update("ipScriptValid", undefined);
+                }}
               />
-            )}
-          </div>
-        )}
-      </div>
+              {state.ipScriptReceived === "Yes" && (
+                <ToggleField
+                  label="Insulin Pump Script"
+                  optionA="Valid"
+                  optionB="Invalid"
+                  value={state.ipScriptValid}
+                  onChange={(v) => update("ipScriptValid", v as ValidInvalid)}
+                />
+              )}
+            </div>
+          )}
+        </div>
+      </SectionCard>
 
-      {/* ── Clinicals + Diagnosis ────────────────────────── */}
-      <div className="grid grid-cols-2 gap-5">
-        <div className="space-y-3">
-          <QuickCheck
+      {/* ── Clinicals & Diagnosis ───────────────────────── */}
+      <SectionCard title="Clinicals & Diagnosis" status={validity.sections.diagnosis.valid && validity.sections.mr.valid}>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-4">
+          <ToggleField
             label="Clinicals Received?"
             value={state.mrReceived}
             onChange={(v) => setMrReceived(v as YesNo)}
           />
-          {state.mrReceived === "Yes" && (
-            <div className="space-y-3">
-              <DateField
-                label="Last Visit Date"
-                value={state.lastVisitDate}
-                onChange={(v) => setLastVisitDate(v)}
-              />
-              <MrExpiryField lastVisit={state.lastVisitDate} />
-            </div>
-          )}
+          <DiagnosisField
+            value={state.diagnosis}
+            onChange={(v) => setDiagnosis(v)}
+          />
         </div>
-        <div className="space-y-3">
-          <div className="rounded-xl border bg-card p-4">
-            <p className="text-sm font-medium text-muted-foreground mb-2">Diagnosis</p>
-            <DiagnosisField
-              value={state.diagnosis}
-              onChange={(v) => setDiagnosis(v)}
+        {state.mrReceived === "Yes" && (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-4 mt-4 pt-4 border-t border-border">
+            <DateField
+              label="Last Visit Date"
+              value={state.lastVisitDate}
+              onChange={(v) => setLastVisitDate(v)}
             />
+            <MrExpiryField lastVisit={state.lastVisitDate} />
           </div>
-        </div>
-      </div>
+        )}
+      </SectionCard>
 
       {anyYes && (<>
 
@@ -1816,8 +1813,8 @@ function SectionPill({
   );
 }
 
-/* ── Inline yes/no (or valid/invalid) toggle ─────────────── */
-function QuickCheck({
+/* ── Segmented toggle field (industry-standard pill selector) ── */
+function ToggleField({
   label,
   value,
   onChange,
@@ -1831,16 +1828,16 @@ function QuickCheck({
   optionB?: string;
 }) {
   return (
-    <div className="rounded-xl border bg-card p-4">
-      <p className="text-sm font-medium text-muted-foreground mb-3">{label}</p>
-      <div className="flex gap-2">
+    <div>
+      <p className="text-sm font-medium text-muted-foreground mb-1.5">{label}</p>
+      <div className="inline-flex rounded-lg border border-border bg-muted/30 p-0.5">
         <button
           onClick={() => onChange(optionA)}
           className={cn(
-            "flex-1 py-2.5 rounded-lg text-sm font-semibold transition-all border",
+            "px-5 py-2 rounded-md text-sm font-medium transition-all",
             value === optionA
-              ? "bg-emerald-500 text-white border-emerald-600 shadow-sm"
-              : "bg-muted/20 text-muted-foreground border-border hover:bg-muted/40",
+              ? "bg-emerald-500 text-white shadow-sm"
+              : "text-muted-foreground hover:text-foreground",
           )}
         >
           {optionA}
@@ -1848,10 +1845,10 @@ function QuickCheck({
         <button
           onClick={() => onChange(optionB)}
           className={cn(
-            "flex-1 py-2.5 rounded-lg text-sm font-semibold transition-all border",
+            "px-5 py-2 rounded-md text-sm font-medium transition-all",
             value === optionB
-              ? "bg-red-500 text-white border-red-600 shadow-sm"
-              : "bg-muted/20 text-muted-foreground border-border hover:bg-muted/40",
+              ? "bg-red-500 text-white shadow-sm"
+              : "text-muted-foreground hover:text-foreground",
           )}
         >
           {optionB}
