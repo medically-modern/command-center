@@ -474,19 +474,65 @@ export function EvaluatePanel({ patient, resetVersion = 0, onUpdate, onOpenForm 
 
 
 
-      {/* ── Clinicals & Diagnosis ───────────────────────── */}
-      <SectionCard title="Clinicals & Diagnosis" status={validity.sections.diagnosis.valid && validity.sections.mr.valid}>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-4">
+      {/* ── Quick Check ────────────────────────────────── */}
+      <SectionCard title="Quick Check">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
+          {showCgm && (
+            <div className="space-y-3">
+              <ToggleField
+                label="CGM Script Received?"
+                value={state.cgmScriptReceived}
+                onChange={(v) => {
+                  update("cgmScriptReceived", v as YesNo);
+                  if (v === "No") update("cgmScriptValid", undefined);
+                }}
+              />
+              {state.cgmScriptReceived === "Yes" && (
+                <ToggleField
+                  label="Valid?"
+                  optionA="Valid"
+                  optionB="Invalid"
+                  value={state.cgmScriptValid}
+                  onChange={(v) => update("cgmScriptValid", v as ValidInvalid)}
+                />
+              )}
+            </div>
+          )}
+          {showIp && (
+            <div className="space-y-3">
+              <ToggleField
+                label="IP Script Received?"
+                value={state.ipScriptReceived}
+                onChange={(v) => {
+                  update("ipScriptReceived", v as YesNo);
+                  if (v === "No") update("ipScriptValid", undefined);
+                }}
+              />
+              {state.ipScriptReceived === "Yes" && (
+                <ToggleField
+                  label="Valid?"
+                  optionA="Valid"
+                  optionB="Invalid"
+                  value={state.ipScriptValid}
+                  onChange={(v) => update("ipScriptValid", v as ValidInvalid)}
+                />
+              )}
+            </div>
+          )}
           <ToggleField
             label="Clinicals Received?"
             value={state.mrReceived}
             onChange={(v) => setMrReceived(v as YesNo)}
           />
-          <DiagnosisField
-            value={state.diagnosis}
-            onChange={(v) => setDiagnosis(v)}
-          />
         </div>
+      </SectionCard>
+
+      {/* ── Diagnosis & Clinicals ───────────────────────── */}
+      <SectionCard title="Diagnosis & Clinicals" status={validity.sections.diagnosis.valid && validity.sections.mr.valid}>
+        <DiagnosisField
+          value={state.diagnosis}
+          onChange={(v) => setDiagnosis(v)}
+        />
         {state.mrReceived === "Yes" && (
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-4 mt-4 pt-4 border-t border-border">
             <DateField
@@ -507,33 +553,12 @@ export function EvaluatePanel({ patient, resetVersion = 0, onUpdate, onOpenForm 
           title="CGM"
           status={validity.sections.cgm.shown ? validity.sections.cgm.valid : null}
         >
-          <div className="space-y-4">
-            <div className="flex items-end gap-6">
-              <ToggleField
-                label="Script Received?"
-                value={state.cgmScriptReceived}
-                onChange={(v) => {
-                  update("cgmScriptReceived", v as YesNo);
-                  if (v === "No") update("cgmScriptValid", undefined);
-                }}
-              />
-              {state.cgmScriptReceived === "Yes" && (
-                <ToggleField
-                  label="Script Valid?"
-                  optionA="Valid"
-                  optionB="Invalid"
-                  value={state.cgmScriptValid}
-                  onChange={(v) => update("cgmScriptValid", v as ValidInvalid)}
-                />
-              )}
-            </div>
-            <StatusSelect
-              label="CGM Coverage Path"
-              value={state.cgmCoveragePath}
-              options={CGM_COVERAGE_OPTS}
-              onChange={(v) => setCgmCoveragePath(v as CgmCoveragePath)}
-            />
-          </div>
+          <StatusSelect
+            label="CGM Coverage Path"
+            value={state.cgmCoveragePath}
+            options={CGM_COVERAGE_OPTS}
+            onChange={(v) => setCgmCoveragePath(v as CgmCoveragePath)}
+          />
         </SectionCard>
       )}
 
@@ -544,25 +569,6 @@ export function EvaluatePanel({ patient, resetVersion = 0, onUpdate, onOpenForm 
           status={validity.sections.ip.shown ? validity.sections.ip.valid : null}
         >
           <div className="space-y-4">
-            <div className="flex items-end gap-6">
-              <ToggleField
-                label="Script Received?"
-                value={state.ipScriptReceived}
-                onChange={(v) => {
-                  update("ipScriptReceived", v as YesNo);
-                  if (v === "No") update("ipScriptValid", undefined);
-                }}
-              />
-              {state.ipScriptReceived === "Yes" && (
-                <ToggleField
-                  label="Script Valid?"
-                  optionA="Valid"
-                  optionB="Invalid"
-                  value={state.ipScriptValid}
-                  onChange={(v) => update("ipScriptValid", v as ValidInvalid)}
-                />
-              )}
-            </div>
             <StatusSelect
               label="Insulin Pump Coverage Path"
               value={state.ipCoveragePath}
@@ -1826,11 +1832,11 @@ function ToggleField({
   return (
     <div>
       <p className="text-sm font-medium text-muted-foreground mb-1.5">{label}</p>
-      <div className="inline-flex rounded-lg border border-border bg-muted/30 p-0.5">
+      <div className="flex rounded-lg border border-border bg-muted/30 p-0.5 w-full max-w-[280px]">
         <button
           onClick={() => onChange(optionA)}
           className={cn(
-            "px-5 py-2 rounded-md text-sm font-medium transition-all",
+            "flex-1 py-2.5 rounded-md text-sm font-medium transition-all",
             value === optionA
               ? "bg-emerald-500 text-white shadow-sm"
               : "text-muted-foreground hover:text-foreground",
@@ -1841,7 +1847,7 @@ function ToggleField({
         <button
           onClick={() => onChange(optionB)}
           className={cn(
-            "px-5 py-2 rounded-md text-sm font-medium transition-all",
+            "flex-1 py-2.5 rounded-md text-sm font-medium transition-all",
             value === optionB
               ? "bg-red-500 text-white shadow-sm"
               : "text-muted-foreground hover:text-foreground",
