@@ -34,8 +34,8 @@ const Index = () => {
         </header>
 
         <div className="flex border-b border-border">
-          <TabButton active={activeTab === "roles"} onClick={() => setActiveTab("roles")} icon={<Shield className="w-4 h-4" />} label="Roles" />
-          <TabButton active={activeTab === "dashboard"} onClick={() => setActiveTab("dashboard")} icon={<LayoutDashboard className="w-4 h-4" />} label="Dashboard" />
+          <TabButton active={activeTab === "roles"} onClick={() => setActiveTab("roles")} icon={<Shield className="w-4 h-4" />} label="Roles Assignment" />
+          <TabButton active={activeTab === "dashboard"} onClick={() => setActiveTab("dashboard")} icon={<LayoutDashboard className="w-4 h-4" />} label="Processors" />
         </div>
 
         <div className="flex-1 overflow-y-auto p-4">
