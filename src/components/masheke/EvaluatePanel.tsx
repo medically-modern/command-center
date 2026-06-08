@@ -472,59 +472,60 @@ export function EvaluatePanel({ patient, resetVersion = 0, onUpdate, onOpenForm 
         </div>
       )}
 
-      {/* ── Quick-check cards ─────────────────────────────── */}
-      {/* ── Received? row ──────────────────────────────── */}
-      <div className="flex justify-center gap-4 flex-wrap">
+      {/* ── Quick-check cards (full-width, stacked) ─────── */}
+      <div className="space-y-3">
         {showCgm && (
-          <QuickCard
-            label="CGM Script Received?"
-            value={state.cgmScriptReceived}
-            onChange={(v) => {
-              update("cgmScriptReceived", v as YesNo);
-              if (v === "No") update("cgmScriptValid", undefined);
-            }}
-          />
+          <div className="space-y-2">
+            <QuickCard
+              label="CGM Script Received?"
+              value={state.cgmScriptReceived}
+              onChange={(v) => {
+                update("cgmScriptReceived", v as YesNo);
+                if (v === "No") update("cgmScriptValid", undefined);
+              }}
+            />
+            {state.cgmScriptReceived === "Yes" && (
+              <QuickCard
+                label="CGM Script"
+                optionA="Valid"
+                optionB="Invalid"
+                value={state.cgmScriptValid}
+                onChange={(v) => update("cgmScriptValid", v as ValidInvalid)}
+              />
+            )}
+          </div>
         )}
         {showIp && (
-          <QuickCard
-            label="Insulin Pump Script Received?"
-            value={state.ipScriptReceived}
-            onChange={(v) => {
-              update("ipScriptReceived", v as YesNo);
-              if (v === "No") update("ipScriptValid", undefined);
-            }}
-          />
+          <div className="space-y-2">
+            <QuickCard
+              label="Insulin Pump Script Received?"
+              value={state.ipScriptReceived}
+              onChange={(v) => {
+                update("ipScriptReceived", v as YesNo);
+                if (v === "No") update("ipScriptValid", undefined);
+              }}
+            />
+            {state.ipScriptReceived === "Yes" && (
+              <QuickCard
+                label="Insulin Pump Script"
+                optionA="Valid"
+                optionB="Invalid"
+                value={state.ipScriptValid}
+                onChange={(v) => update("ipScriptValid", v as ValidInvalid)}
+              />
+            )}
+          </div>
         )}
+      </div>
+
+      {/* ── Clinicals ────────────────────────────────────── */}
+      <SectionCard title="Clinicals">
         <QuickCard
-          label="Clinicals?"
+          label="Clinicals Received?"
           value={state.mrReceived}
           onChange={(v) => setMrReceived(v as YesNo)}
         />
-      </div>
-
-      {/* ── Valid / Invalid row (only when received = Yes) ─ */}
-      {(state.cgmScriptReceived === "Yes" || state.ipScriptReceived === "Yes") && (
-        <div className="flex justify-center gap-4 flex-wrap">
-          {showCgm && state.cgmScriptReceived === "Yes" && (
-            <QuickCard
-              label="CGM Script"
-              optionA="Valid"
-              optionB="Invalid"
-              value={state.cgmScriptValid}
-              onChange={(v) => update("cgmScriptValid", v as ValidInvalid)}
-            />
-          )}
-          {showIp && state.ipScriptReceived === "Yes" && (
-            <QuickCard
-              label="Insulin Pump Script"
-              optionA="Valid"
-              optionB="Invalid"
-              value={state.ipScriptValid}
-              onChange={(v) => update("ipScriptValid", v as ValidInvalid)}
-            />
-          )}
-        </div>
-      )}
+      </SectionCard>
 
       {/* Diagnosis — always visible */}
       <SectionCard
@@ -1839,13 +1840,13 @@ function QuickCard({
   optionB?: string;
 }) {
   return (
-    <div className="rounded-xl border bg-card shadow-sm p-5 space-y-4 min-w-[220px]">
-      <p className="font-heading text-base font-semibold text-foreground text-center">{label}</p>
+    <div className="rounded-xl border bg-card shadow-sm p-6 space-y-4 w-full">
+      <p className="font-heading text-lg font-semibold text-foreground text-center">{label}</p>
       <div className="flex gap-3">
         <button
           onClick={() => onChange(optionA)}
           className={cn(
-            "flex-1 py-3.5 rounded-xl text-base font-semibold transition-all border-2",
+            "flex-1 py-4 rounded-xl text-lg font-semibold transition-all border-2",
             value === optionA
               ? "bg-emerald-500 text-white border-emerald-600 shadow-md"
               : "bg-muted/20 text-muted-foreground border-border hover:bg-muted/40",
@@ -1856,7 +1857,7 @@ function QuickCard({
         <button
           onClick={() => onChange(optionB)}
           className={cn(
-            "flex-1 py-3.5 rounded-xl text-base font-semibold transition-all border-2",
+            "flex-1 py-4 rounded-xl text-lg font-semibold transition-all border-2",
             value === optionB
               ? "bg-red-500 text-white border-red-600 shadow-md"
               : "bg-muted/20 text-muted-foreground border-border hover:bg-muted/40",
