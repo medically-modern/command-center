@@ -457,19 +457,26 @@ export function EvaluatePanel({ patient, resetVersion = 0, onUpdate, onOpenForm 
       )}
 
       {/* ── Quick-check cards ─────────────────────────────── */}
+      {/* ── Received? row ──────────────────────────────── */}
       <div className="flex justify-center gap-3 flex-wrap">
         {showCgm && (
           <QuickCard
-            label="CGM Script?"
-            value={state.cgmScriptValid === "Valid" ? "Yes" : state.cgmScriptValid === "Invalid" ? "No" : undefined}
-            onChange={(v) => update("cgmScriptValid", v === "Yes" ? "Valid" as ValidInvalid : "Invalid" as ValidInvalid)}
+            label="CGM Script Received?"
+            value={state.cgmScriptReceived}
+            onChange={(v) => {
+              update("cgmScriptReceived", v as YesNo);
+              if (v === "No") update("cgmScriptValid", undefined);
+            }}
           />
         )}
         {showIp && (
           <QuickCard
-            label="Insulin Pump Script?"
-            value={state.ipScriptValid === "Valid" ? "Yes" : state.ipScriptValid === "Invalid" ? "No" : undefined}
-            onChange={(v) => update("ipScriptValid", v === "Yes" ? "Valid" as ValidInvalid : "Invalid" as ValidInvalid)}
+            label="Insulin Pump Script Received?"
+            value={state.ipScriptReceived}
+            onChange={(v) => {
+              update("ipScriptReceived", v as YesNo);
+              if (v === "No") update("ipScriptValid", undefined);
+            }}
           />
         )}
         <QuickCard
@@ -478,6 +485,30 @@ export function EvaluatePanel({ patient, resetVersion = 0, onUpdate, onOpenForm 
           onChange={(v) => setMrReceived(v as YesNo)}
         />
       </div>
+
+      {/* ── Valid / Invalid row (only when received = Yes) ─ */}
+      {(state.cgmScriptReceived === "Yes" || state.ipScriptReceived === "Yes") && (
+        <div className="flex justify-center gap-3 flex-wrap">
+          {showCgm && state.cgmScriptReceived === "Yes" && (
+            <QuickCard
+              label="CGM Script"
+              optionA="Valid"
+              optionB="Invalid"
+              value={state.cgmScriptValid}
+              onChange={(v) => update("cgmScriptValid", v as ValidInvalid)}
+            />
+          )}
+          {showIp && state.ipScriptReceived === "Yes" && (
+            <QuickCard
+              label="Insulin Pump Script"
+              optionA="Valid"
+              optionB="Invalid"
+              value={state.ipScriptValid}
+              onChange={(v) => update("ipScriptValid", v as ValidInvalid)}
+            />
+          )}
+        </div>
+      )}
 
       {/* Diagnosis & Clinicals — top section */}
       <SectionCard
@@ -1764,41 +1795,45 @@ function SectionPill({
   );
 }
 
-/* ── Quick-check card (big Yes / No toggle) ──────────────── */
+/* ── Quick-check card (big toggle) ────────────────────────── */
 function QuickCard({
   label,
   value,
   onChange,
+  optionA = "Yes",
+  optionB = "No",
 }: {
   label: string;
   value?: string;
-  onChange: (v: "Yes" | "No") => void;
+  onChange: (v: string) => void;
+  optionA?: string;
+  optionB?: string;
 }) {
   return (
-    <div className="rounded-xl border bg-card shadow-sm p-4 space-y-3">
-      <p className="text-sm font-semibold text-foreground">{label}</p>
+    <div className="rounded-xl border bg-card shadow-sm p-4 space-y-3 min-w-[180px]">
+      <p className="text-sm font-semibold text-foreground text-center">{label}</p>
       <div className="flex gap-2">
         <button
-          onClick={() => onChange("Yes")}
+          onClick={() => onChange(optionA)}
           className={cn(
             "flex-1 py-2.5 rounded-lg text-sm font-medium transition-colors border",
-            value === "Yes"
+            value === optionA
               ? "bg-emerald-500 text-white border-emerald-600"
               : "bg-muted/30 text-muted-foreground border-border hover:bg-muted/50",
           )}
         >
-          Yes
+          {optionA}
         </button>
         <button
-          onClick={() => onChange("No")}
+          onClick={() => onChange(optionB)}
           className={cn(
             "flex-1 py-2.5 rounded-lg text-sm font-medium transition-colors border",
-            value === "No"
+            value === optionB
               ? "bg-red-500 text-white border-red-600"
               : "bg-muted/30 text-muted-foreground border-border hover:bg-muted/50",
           )}
         >
-          No
+          {optionB}
         </button>
       </div>
     </div>

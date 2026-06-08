@@ -19,11 +19,13 @@ export interface LocalFile {
 
 export interface EvalState {
   // CGM block
+  cgmScriptReceived?: YesNo;
   cgmScriptValid?: ValidInvalid;
   cgmCoveragePath?: CgmCoveragePath;
   generateCgmScript?: string; // "Generate" (or blank)
 
   // IP block
+  ipScriptReceived?: YesNo;
   ipCoveragePath?: IpPath;
   ipScriptValid?: ValidInvalid;
   generateIpScript?: string; // "Generate" (or blank)
