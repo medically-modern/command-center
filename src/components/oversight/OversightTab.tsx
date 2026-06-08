@@ -347,30 +347,28 @@ function DrilldownModal({
           </div>
         ) : (
           <div className="flex-1 overflow-y-auto min-h-0">
-            <table className="w-full text-sm">
+            <table className="w-full table-fixed text-xs">
               <thead className="sticky top-0 bg-card z-10">
                 <tr className="border-b">
-                  <th className="text-left px-4 py-2 font-medium text-muted-foreground whitespace-nowrap">
+                  {chart.notesColId && (
+                    <th className="w-8 px-1 py-1.5" />
+                  )}
+                  <th className="text-left px-2 py-1.5 font-medium text-muted-foreground truncate">
                     Name
                   </th>
-                  <th className="text-left px-4 py-2 font-medium text-muted-foreground whitespace-nowrap">
-                    Days in Stage
+                  <th className="text-left px-2 py-1.5 font-medium text-muted-foreground w-20">
+                    Days
                   </th>
                   {chart.drilldownCols
                     .filter((c) => c.label !== "Days in Stage")
                     .map((col) => (
                       <th
                         key={col.colId}
-                        className="text-left px-4 py-2 font-medium text-muted-foreground whitespace-nowrap"
+                        className="text-left px-2 py-1.5 font-medium text-muted-foreground truncate"
                       >
                         {col.label}
                       </th>
                     ))}
-                  {chart.notesColId && (
-                    <th className="px-3 py-2 font-medium text-muted-foreground whitespace-nowrap text-center w-12">
-                      Notes
-                    </th>
-                  )}
                 </tr>
               </thead>
               <tbody>
@@ -389,17 +387,41 @@ function DrilldownModal({
                         hasRoute && "cursor-pointer",
                       )}
                     >
-                      <td className="px-4 py-2 font-medium text-foreground whitespace-nowrap">
-                        <span className="flex items-center gap-1.5">
+                      {chart.notesColId && (() => {
+                        const noteText = patient.cols[chart.notesColId!] ?? "";
+                        const hasNote = noteText.trim().length > 0;
+                        return (
+                          <td className="px-1 py-1 text-center w-8">
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                if (hasNote) setNotesOpenId(patient.id);
+                              }}
+                              className={cn(
+                                "p-0.5 rounded transition-colors",
+                                hasNote
+                                  ? "text-blue-500 hover:bg-blue-500/10"
+                                  : "text-muted-foreground/20 cursor-default",
+                              )}
+                              disabled={!hasNote}
+                              title={hasNote ? "View notes" : "No notes"}
+                            >
+                              <StickyNote className="h-3.5 w-3.5" />
+                            </button>
+                          </td>
+                        );
+                      })()}
+                      <td className="px-2 py-1 font-medium text-foreground truncate">
+                        <span className="flex items-center gap-1">
                           {patient.name}
                           {hasRoute && (
-                            <ExternalLink className="h-3 w-3 text-blue-400" />
+                            <ExternalLink className="h-3 w-3 text-blue-400 shrink-0" />
                           )}
                         </span>
                       </td>
-                      <td className="px-4 py-2 whitespace-nowrap">
+                      <td className="px-2 py-1 w-20">
                         <span
-                          className="inline-block px-2.5 py-1 rounded text-xs font-bold"
+                          className="inline-block px-1.5 py-0.5 rounded text-[10px] font-bold"
                           style={{
                             backgroundColor: `${bucketColor}20`,
                             color: bucketColor,
@@ -415,58 +437,12 @@ function DrilldownModal({
                           return (
                             <td
                               key={col.colId}
-                              className="px-4 py-2 text-foreground/80 whitespace-nowrap"
+                              className="px-2 py-1 text-foreground/80 truncate"
                             >
-                              <span className="text-sm">{value || "—"}</span>
+                              {value || "—"}
                             </td>
                           );
                         })}
-                      {chart.notesColId && (() => {
-                        const noteText = patient.cols[chart.notesColId!] ?? "";
-                        const hasNote = noteText.trim().length > 0;
-                        const isOpen = notesOpenId === patient.id;
-                        return (
-                          <td className="px-3 py-2 text-center relative">
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setNotesOpenId(isOpen ? null : patient.id);
-                              }}
-                              className={cn(
-                                "p-1 rounded transition-colors",
-                                hasNote
-                                  ? "text-blue-500 hover:bg-blue-500/10"
-                                  : "text-muted-foreground/30 cursor-default",
-                              )}
-                              disabled={!hasNote}
-                              title={hasNote ? "View notes" : "No notes"}
-                            >
-                              <StickyNote className="h-4 w-4" />
-                            </button>
-                            {isOpen && hasNote && (
-                              <div
-                                className="absolute right-0 top-full mt-1 z-50 w-80 max-h-60 overflow-y-auto rounded-lg border bg-popover p-3 shadow-lg text-left"
-                                onClick={(e) => e.stopPropagation()}
-                              >
-                                <div className="flex items-center justify-between mb-2">
-                                  <span className="text-xs font-semibold text-muted-foreground">
-                                    {patient.name}
-                                  </span>
-                                  <button
-                                    onClick={() => setNotesOpenId(null)}
-                                    className="p-0.5 rounded hover:bg-muted text-muted-foreground"
-                                  >
-                                    <X className="h-3 w-3" />
-                                  </button>
-                                </div>
-                                <p className="text-sm text-foreground whitespace-pre-wrap break-words">
-                                  {noteText}
-                                </p>
-                              </div>
-                            )}
-                          </td>
-                        );
-                      })()}
                     </tr>
                   );
                 })}
@@ -475,6 +451,44 @@ function DrilldownModal({
           </div>
         )}
       </div>
+
+      {/* ── Notes popup (centered overlay) ── */}
+      {notesOpenId && (() => {
+        const pt = filtered.find((p) => p.id === notesOpenId) ?? patients.find((p) => p.id === notesOpenId);
+        const noteText = pt && chart.notesColId ? pt.cols[chart.notesColId] ?? "" : "";
+        if (!pt || !noteText) return null;
+        return (
+          <div
+            className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40"
+            onClick={() => setNotesOpenId(null)}
+          >
+            <div
+              className="bg-card border border-border rounded-xl shadow-2xl w-[500px] max-h-[70vh] flex flex-col animate-in zoom-in-95 fade-in duration-150"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between px-4 py-3 border-b shrink-0">
+                <div className="flex items-center gap-2 min-w-0">
+                  <StickyNote className="h-4 w-4 text-blue-500 shrink-0" />
+                  <h4 className="text-sm font-semibold text-foreground truncate">
+                    {pt.name}
+                  </h4>
+                </div>
+                <button
+                  onClick={() => setNotesOpenId(null)}
+                  className="p-1 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+              <div className="flex-1 overflow-y-auto px-4 py-3 min-h-0">
+                <p className="text-sm text-foreground whitespace-pre-wrap break-words leading-relaxed">
+                  {noteText}
+                </p>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }
