@@ -16,8 +16,27 @@ import {
   type ChartDef,
   type DayBucketLabel,
 } from "@/lib/oversight/oversightApi";
-import { Loader2, BarChart3, X } from "lucide-react";
+import { Loader2, BarChart3, X, ExternalLink } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useNavigate } from "react-router-dom";
+import { toast } from "sonner";
+
+// ── Chart ID → Command Center route mapping ──────────────────────────────
+
+const CHART_ROUTES: Record<string, string | null> = {
+  "dtc-partial-leads": null,        // no CC view
+  "dtc-raw-intake": null,           // no CC view
+  "profile-send-off": "/profile",
+  "evaluate": "/evaluate",
+  "send-request": "/send-request",
+  "confirm-receipt": "/confirm-receipt",
+  "chase-clinicals": "/chase-benefits",
+  "benefits": "/benefits",
+  "submit-auth": "/submit-auth",
+  "auth-outstanding": "/auth-outstanding",
+  "auth-denial": null,              // no CC view yet
+  "welcome-call": "/welcome-call",
+};
 
 // ── Constants ──────────────────────────────────────────────────────────────
 
@@ -203,6 +222,8 @@ interface DrilldownModalProps {
   bucket: DayBucketLabel | "all";
   onBucketChange: (bucket: DayBucketLabel | "all") => void;
   onClose: () => void;
+  onPatientClick: (patientId: string) => void;
+  hasRoute: boolean;
 }
 
 function DrilldownModal({
@@ -211,6 +232,8 @@ function DrilldownModal({
   bucket,
   onBucketChange,
   onClose,
+  onPatientClick,
+  hasRoute,
 }: DrilldownModalProps) {
   // Close on Escape
   useEffect(() => {
@@ -346,13 +369,20 @@ function DrilldownModal({
                   return (
                     <tr
                       key={patient.id}
+                      onClick={() => hasRoute && onPatientClick(patient.id)}
                       className={cn(
                         "border-b border-border/50 hover:bg-muted/50 transition-colors",
                         idx % 2 === 1 && "bg-muted/20",
+                        hasRoute && "cursor-pointer",
                       )}
                     >
                       <td className="px-4 py-2 font-medium text-foreground whitespace-nowrap">
-                        {patient.name}
+                        <span className="flex items-center gap-1.5">
+                          {patient.name}
+                          {hasRoute && (
+                            <ExternalLink className="h-3 w-3 text-blue-400" />
+                          )}
+                        </span>
                       </td>
                       <td className="px-4 py-2 whitespace-nowrap">
                         <span
@@ -393,6 +423,7 @@ function DrilldownModal({
 // ── Main component ─────────────────────────────────────────────────────────
 
 export default function OversightTab() {
+  const navigate = useNavigate();
   const cachedRef = useRef(loadCache());
   const [data, setData] = useState<Map<string, OversightPatient[]> | null>(
     cachedRef.current,
@@ -463,6 +494,21 @@ export default function OversightTab() {
   const handleBucketChange = useCallback((bucket: DayBucketLabel | "all") => {
     setSelectedBucket(bucket);
   }, []);
+
+  const handlePatientClick = useCallback(
+    (patientId: string) => {
+      if (!expandedChart) return;
+      const route = CHART_ROUTES[expandedChart];
+      if (!route) {
+        toast.info("This stage doesn't have a dedicated page yet");
+        return;
+      }
+      const params = new URLSearchParams({ patientId });
+      params.set("from", "system-mgmt");
+      navigate(`${route}?${params.toString()}`);
+    },
+    [expandedChart, navigate],
+  );
 
   // ── Derived values ────────────────────────────────────────────
 
@@ -560,6 +606,8 @@ export default function OversightTab() {
           bucket={selectedBucket}
           onBucketChange={handleBucketChange}
           onClose={handleClose}
+          onPatientClick={handlePatientClick}
+          hasRoute={CHART_ROUTES[expandedChart!] !== null}
         />
       )}
     </div>
