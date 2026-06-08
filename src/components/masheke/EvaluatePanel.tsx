@@ -472,11 +472,11 @@ export function EvaluatePanel({ patient, resetVersion = 0, onUpdate, onOpenForm 
         </div>
       )}
 
-      {/* ── Quick-check cards (full-width, stacked) ─────── */}
-      <div className="space-y-3">
+      {/* ── Scripts + Clinicals — side by side ────────────── */}
+      <div className={cn("grid gap-5", showCgm && showIp ? "grid-cols-2" : "grid-cols-1")}>
         {showCgm && (
-          <div className="space-y-2">
-            <QuickCard
+          <div className="space-y-3">
+            <QuickCheck
               label="CGM Script Received?"
               value={state.cgmScriptReceived}
               onChange={(v) => {
@@ -485,7 +485,7 @@ export function EvaluatePanel({ patient, resetVersion = 0, onUpdate, onOpenForm 
               }}
             />
             {state.cgmScriptReceived === "Yes" && (
-              <QuickCard
+              <QuickCheck
                 label="CGM Script"
                 optionA="Valid"
                 optionB="Invalid"
@@ -496,9 +496,9 @@ export function EvaluatePanel({ patient, resetVersion = 0, onUpdate, onOpenForm 
           </div>
         )}
         {showIp && (
-          <div className="space-y-2">
-            <QuickCard
-              label="Insulin Pump Script Received?"
+          <div className="space-y-3">
+            <QuickCheck
+              label="IP Script Received?"
               value={state.ipScriptReceived}
               onChange={(v) => {
                 update("ipScriptReceived", v as YesNo);
@@ -506,7 +506,7 @@ export function EvaluatePanel({ patient, resetVersion = 0, onUpdate, onOpenForm 
               }}
             />
             {state.ipScriptReceived === "Yes" && (
-              <QuickCard
+              <QuickCheck
                 label="Insulin Pump Script"
                 optionA="Valid"
                 optionB="Invalid"
@@ -518,23 +518,16 @@ export function EvaluatePanel({ patient, resetVersion = 0, onUpdate, onOpenForm 
         )}
       </div>
 
-      {/* ── Clinicals + Diagnosis (combined) ────────────── */}
-      <SectionCard
-        title="Clinicals & Diagnosis"
-        status={validity.sections.diagnosis.valid && validity.sections.mr.valid}
-      >
-        <div className="space-y-5">
-          <QuickCard
+      {/* ── Clinicals + Diagnosis ────────────────────────── */}
+      <div className="grid grid-cols-2 gap-5">
+        <div className="space-y-3">
+          <QuickCheck
             label="Clinicals Received?"
             value={state.mrReceived}
             onChange={(v) => setMrReceived(v as YesNo)}
           />
-          <DiagnosisField
-            value={state.diagnosis}
-            onChange={(v) => setDiagnosis(v)}
-          />
           {state.mrReceived === "Yes" && (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3">
+            <div className="space-y-3">
               <DateField
                 label="Last Visit Date"
                 value={state.lastVisitDate}
@@ -544,7 +537,16 @@ export function EvaluatePanel({ patient, resetVersion = 0, onUpdate, onOpenForm 
             </div>
           )}
         </div>
-      </SectionCard>
+        <div className="space-y-3">
+          <div className="rounded-xl border bg-card p-4">
+            <p className="text-sm font-medium text-muted-foreground mb-2">Diagnosis</p>
+            <DiagnosisField
+              value={state.diagnosis}
+              onChange={(v) => setDiagnosis(v)}
+            />
+          </div>
+        </div>
+      </div>
 
       {anyYes && (<>
 
@@ -1814,8 +1816,8 @@ function SectionPill({
   );
 }
 
-/* ── Quick-check card (big toggle) ────────────────────────── */
-function QuickCard({
+/* ── Inline yes/no (or valid/invalid) toggle ─────────────── */
+function QuickCheck({
   label,
   value,
   onChange,
@@ -1829,15 +1831,15 @@ function QuickCard({
   optionB?: string;
 }) {
   return (
-    <div className="rounded-xl border bg-card shadow-sm p-6 space-y-4 w-full">
-      <p className="font-heading text-lg font-semibold text-foreground text-center">{label}</p>
-      <div className="flex gap-3">
+    <div className="rounded-xl border bg-card p-4">
+      <p className="text-sm font-medium text-muted-foreground mb-3">{label}</p>
+      <div className="flex gap-2">
         <button
           onClick={() => onChange(optionA)}
           className={cn(
-            "flex-1 py-4 rounded-xl text-lg font-semibold transition-all border-2",
+            "flex-1 py-2.5 rounded-lg text-sm font-semibold transition-all border",
             value === optionA
-              ? "bg-emerald-500 text-white border-emerald-600 shadow-md"
+              ? "bg-emerald-500 text-white border-emerald-600 shadow-sm"
               : "bg-muted/20 text-muted-foreground border-border hover:bg-muted/40",
           )}
         >
@@ -1846,9 +1848,9 @@ function QuickCard({
         <button
           onClick={() => onChange(optionB)}
           className={cn(
-            "flex-1 py-4 rounded-xl text-lg font-semibold transition-all border-2",
+            "flex-1 py-2.5 rounded-lg text-sm font-semibold transition-all border",
             value === optionB
-              ? "bg-red-500 text-white border-red-600 shadow-md"
+              ? "bg-red-500 text-white border-red-600 shadow-sm"
               : "bg-muted/20 text-muted-foreground border-border hover:bg-muted/40",
           )}
         >
