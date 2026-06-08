@@ -518,43 +518,35 @@ export function EvaluatePanel({ patient, resetVersion = 0, onUpdate, onOpenForm 
         )}
       </div>
 
-      {/* ── Clinicals ────────────────────────────────────── */}
-      <SectionCard title="Clinicals">
-        <QuickCard
-          label="Clinicals Received?"
-          value={state.mrReceived}
-          onChange={(v) => setMrReceived(v as YesNo)}
-        />
-      </SectionCard>
-
-      {/* Diagnosis — always visible */}
+      {/* ── Clinicals + Diagnosis (combined) ────────────── */}
       <SectionCard
-        title="Diagnosis"
-        status={validity.sections.diagnosis.valid}
+        title="Clinicals & Diagnosis"
+        status={validity.sections.diagnosis.valid && validity.sections.mr.valid}
       >
-        <DiagnosisField
-          value={state.diagnosis}
-          onChange={(v) => setDiagnosis(v)}
-        />
+        <div className="space-y-5">
+          <QuickCard
+            label="Clinicals Received?"
+            value={state.mrReceived}
+            onChange={(v) => setMrReceived(v as YesNo)}
+          />
+          <DiagnosisField
+            value={state.diagnosis}
+            onChange={(v) => setDiagnosis(v)}
+          />
+          {state.mrReceived === "Yes" && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3">
+              <DateField
+                label="Last Visit Date"
+                value={state.lastVisitDate}
+                onChange={(v) => setLastVisitDate(v)}
+              />
+              <MrExpiryField lastVisit={state.lastVisitDate} />
+            </div>
+          )}
+        </div>
       </SectionCard>
 
       {anyYes && (<>
-      {/* Clinicals details — only when something is Yes */}
-      {state.mrReceived === "Yes" && (
-        <SectionCard
-          title="Clinicals"
-          status={validity.sections.mr.valid}
-        >
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3">
-            <DateField
-              label="Last Visit Date"
-              value={state.lastVisitDate}
-              onChange={(v) => setLastVisitDate(v)}
-            />
-            <MrExpiryField lastVisit={state.lastVisitDate} />
-          </div>
-        </SectionCard>
-      )}
 
       {/* CGM block */}
       {showCgm && (
