@@ -31,6 +31,7 @@ import {
   Loader2,
   Database,
   Activity,
+  BarChart3,
   CheckCircle2,
   FileText,
   X,
@@ -39,8 +40,9 @@ import {
 import { toast } from "sonner";
 import { PipelineChart, DAY_BUCKETS } from "@/components/systemMgmt/PipelineChart";
 import { OperationsTab } from "@/components/systemMgmt/OperationsTab";
+import OversightTab from "@/components/oversight/OversightTab";
 
-type Tab = "search" | "escalations" | "operations" | "stageManager";
+type Tab = "search" | "escalations" | "operations" | "stageManager" | "oversight";
 
 const SystemMgmtPage = () => {
   const navigate = useNavigate();
@@ -49,7 +51,7 @@ const SystemMgmtPage = () => {
     useSystemPatients();
 
   const tabParam = searchParams.get("tab");
-  const initialTab: Tab = tabParam === "escalations" ? "escalations" : tabParam === "operations" ? "operations" : tabParam === "stageManager" ? "stageManager" : "search";
+  const initialTab: Tab = tabParam === "escalations" ? "escalations" : tabParam === "operations" ? "operations" : tabParam === "stageManager" ? "stageManager" : tabParam === "oversight" ? "oversight" : "search";
   const [activeTab, setActiveTab] = useState<Tab>(initialTab);
   const [query, setQuery] = useState("");
   const [removingId, setRemovingId] = useState<string | null>(null);
@@ -227,6 +229,12 @@ const SystemMgmtPage = () => {
             icon={<Activity className="w-4 h-4" />}
             label="Operations"
           />
+          <TabBtn
+            active={activeTab === "oversight"}
+            onClick={() => setActiveTab("oversight")}
+            icon={<BarChart3 className="w-4 h-4" />}
+            label="Oversight"
+          />
         </div>
       </header>
 
@@ -241,6 +249,8 @@ const SystemMgmtPage = () => {
             <StageManagerView patients={patients} onMoved={refetch} />
           ) : activeTab === "operations" ? (
             <OperationsTab />
+          ) : activeTab === "oversight" ? (
+            <OversightTab />
           ) : activeTab === "search" ? (
             <SearchView
               query={query}
