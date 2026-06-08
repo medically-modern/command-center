@@ -456,6 +456,29 @@ export function EvaluatePanel({ patient, resetVersion = 0, onUpdate, onOpenForm 
         </div>
       )}
 
+      {/* ── Quick-check cards ─────────────────────────────── */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        {showCgm && (
+          <QuickCard
+            label="CGM Script?"
+            value={state.cgmScriptValid === "Valid" ? "Yes" : state.cgmScriptValid === "Invalid" ? "No" : undefined}
+            onChange={(v) => update("cgmScriptValid", v === "Yes" ? "Valid" as ValidInvalid : "Invalid" as ValidInvalid)}
+          />
+        )}
+        {showIp && (
+          <QuickCard
+            label="Insulin Pump Script?"
+            value={state.ipScriptValid === "Valid" ? "Yes" : state.ipScriptValid === "Invalid" ? "No" : undefined}
+            onChange={(v) => update("ipScriptValid", v === "Yes" ? "Valid" as ValidInvalid : "Invalid" as ValidInvalid)}
+          />
+        )}
+        <QuickCard
+          label="Clinicals?"
+          value={state.mrReceived}
+          onChange={(v) => setMrReceived(v as YesNo)}
+        />
+      </div>
+
       {/* Diagnosis & Clinicals — top section */}
       <SectionCard
         title="Diagnosis & Clinicals"
@@ -490,20 +513,12 @@ export function EvaluatePanel({ patient, resetVersion = 0, onUpdate, onOpenForm 
           title="CGM"
           status={validity.sections.cgm.shown ? validity.sections.cgm.valid : null}
         >
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6">
-            <StatusSelect
-              label="CGM Script"
-              value={state.cgmScriptValid}
-              options={VALID_INVALID_OPTS}
-              onChange={(v) => update("cgmScriptValid", v as ValidInvalid)}
-            />
-            <StatusSelect
-              label="CGM Coverage Path"
-              value={state.cgmCoveragePath}
-              options={CGM_COVERAGE_OPTS}
-              onChange={(v) => setCgmCoveragePath(v as CgmCoveragePath)}
-            />
-          </div>
+          <StatusSelect
+            label="CGM Coverage Path"
+            value={state.cgmCoveragePath}
+            options={CGM_COVERAGE_OPTS}
+            onChange={(v) => setCgmCoveragePath(v as CgmCoveragePath)}
+          />
         </SectionCard>
       )}
 
@@ -513,20 +528,12 @@ export function EvaluatePanel({ patient, resetVersion = 0, onUpdate, onOpenForm 
           title="Insulin Pump"
           status={validity.sections.ip.shown ? validity.sections.ip.valid : null}
         >
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 mb-2">
-            <StatusSelect
-              label="Insulin Pump Script"
-              value={state.ipScriptValid}
-              options={VALID_INVALID_OPTS}
-              onChange={(v) => update("ipScriptValid", v as ValidInvalid)}
-            />
-            <StatusSelect
-              label="Insulin Pump Coverage Path"
-              value={state.ipCoveragePath}
-              options={IP_PATH_OPTS}
-              onChange={(v) => setIpCoveragePath(v as IpPath)}
-            />
-          </div>
+          <StatusSelect
+            label="Insulin Pump Coverage Path"
+            value={state.ipCoveragePath}
+            options={IP_PATH_OPTS}
+            onChange={(v) => setIpCoveragePath(v as IpPath)}
+          />
           {state.ipCoveragePath && (
             <IpCriteria state={state} patient={patient} update={update} />
           )}
@@ -1762,5 +1769,46 @@ function SectionPill({
     <span className="inline-flex items-center gap-1 text-xs font-medium text-red-700 bg-red-50 border border-red-200 rounded-full px-2 py-0.5">
       <X className="h-3 w-3" /> {label}
     </span>
+  );
+}
+
+/* ── Quick-check card (big Yes / No toggle) ──────────────── */
+function QuickCard({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value?: string;
+  onChange: (v: "Yes" | "No") => void;
+}) {
+  return (
+    <div className="rounded-xl border bg-card shadow-sm p-4 space-y-3">
+      <p className="text-sm font-semibold text-foreground">{label}</p>
+      <div className="flex gap-2">
+        <button
+          onClick={() => onChange("Yes")}
+          className={cn(
+            "flex-1 py-2.5 rounded-lg text-sm font-medium transition-colors border",
+            value === "Yes"
+              ? "bg-emerald-500 text-white border-emerald-600"
+              : "bg-muted/30 text-muted-foreground border-border hover:bg-muted/50",
+          )}
+        >
+          Yes
+        </button>
+        <button
+          onClick={() => onChange("No")}
+          className={cn(
+            "flex-1 py-2.5 rounded-lg text-sm font-medium transition-colors border",
+            value === "No"
+              ? "bg-red-500 text-white border-red-600"
+              : "bg-muted/30 text-muted-foreground border-border hover:bg-muted/50",
+          )}
+        >
+          No
+        </button>
+      </div>
+    </div>
   );
 }

@@ -111,7 +111,6 @@ export function labelToIndex(options: StatusOption[], label: string): number | u
 export const VALID_INVALID_OPTS: StatusOption[] = [
   { label: "Valid", index: 0 },
   { label: "Invalid", index: 1 },
-  { label: "Missing", index: 2 },
 ];
 
 export const YES_NO_OPTS: StatusOption[] = [
