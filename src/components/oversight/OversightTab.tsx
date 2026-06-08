@@ -81,9 +81,10 @@ interface StageChartProps {
   chart: ChartDef;
   patients: OversightPatient[];
   onChartClick: () => void;
+  onBarClick: (bucket: DayBucketLabel) => void;
 }
 
-function StageChart({ chart, patients, onChartClick }: StageChartProps) {
+function StageChart({ chart, patients, onChartClick, onBarClick }: StageChartProps) {
   const bucketCounts = useMemo(() => {
     const counts: Record<DayBucketLabel, number> = {} as Record<
       DayBucketLabel,
@@ -110,37 +111,46 @@ function StageChart({ chart, patients, onChartClick }: StageChartProps) {
   );
 
   return (
-    <button
-      onClick={onChartClick}
+    <div
       className={cn(
         "rounded-lg border bg-card shadow-sm p-3 transition-all duration-200",
-        "text-left w-full cursor-pointer",
+        "text-left w-full",
         "border-border hover:border-blue-400/60 hover:shadow-md hover:ring-1 hover:ring-blue-400/20",
       )}
     >
-      {/* Header */}
-      <div className="flex items-center justify-between mb-2">
+      {/* Header — clickable to show all patients */}
+      <button
+        onClick={onChartClick}
+        className="flex items-center justify-between mb-2 w-full text-left group cursor-pointer"
+      >
         <div className="flex items-center gap-1.5 min-w-0">
-          <BarChart3 className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-          <h3 className="text-xs font-semibold text-foreground truncate">
+          <BarChart3 className="h-4 w-4 text-muted-foreground shrink-0" />
+          <h3 className="text-sm font-bold text-foreground truncate group-hover:text-blue-500 transition-colors">
             {chart.title}
           </h3>
         </div>
-        <span className="text-sm font-bold text-foreground tabular-nums ml-2 shrink-0">
+        <span className="text-lg font-bold text-foreground tabular-nums ml-2 shrink-0">
           {totalCount}
         </span>
-      </div>
+      </button>
 
-      {/* Bar chart — compact height */}
+      {/* Bar chart — compact height, each bar clickable */}
       <div className="flex items-end gap-[3px] h-[100px]">
         {DAY_BUCKET_LABELS.map((label) => {
           const count = counts[label];
           const heightPct = count > 0 ? (count / maxCount) * 100 : 0;
 
           return (
-            <div
+            <button
               key={label}
-              className="flex-1 flex flex-col items-center justify-end h-full"
+              onClick={(e) => {
+                e.stopPropagation();
+                if (count > 0) onBarClick(label);
+              }}
+              className={cn(
+                "flex-1 flex flex-col items-center justify-end h-full",
+                count > 0 ? "cursor-pointer" : "cursor-default",
+              )}
               title={`${label}: ${count} patients`}
             >
               {/* Count above bar */}
@@ -154,7 +164,8 @@ function StageChart({ chart, patients, onChartClick }: StageChartProps) {
               <div className="w-full flex items-end justify-center flex-1">
                 <div
                   className={cn(
-                    "w-full rounded-t-sm transition-all duration-500 ease-out",
+                    "w-full rounded-t-sm transition-all duration-300 ease-out",
+                    count > 0 && "hover:opacity-80 hover:ring-1 hover:ring-foreground/30",
                     count === 0 && "invisible",
                   )}
                   style={{
@@ -169,7 +180,7 @@ function StageChart({ chart, patients, onChartClick }: StageChartProps) {
               <span className="text-[7px] mt-1 text-muted-foreground whitespace-nowrap">
                 {BUCKET_SHORT_LABELS[label]}
               </span>
-            </div>
+            </button>
           );
         })}
       </div>
@@ -180,7 +191,7 @@ function StageChart({ chart, patients, onChartClick }: StageChartProps) {
           +{unknownCount} unknown
         </p>
       )}
-    </button>
+    </div>
   );
 }
 
@@ -439,6 +450,11 @@ export default function OversightTab() {
     setSelectedBucket("all");
   }, []);
 
+  const handleBarClick = useCallback((chartId: string, bucket: DayBucketLabel) => {
+    setExpandedChart(chartId);
+    setSelectedBucket(bucket);
+  }, []);
+
   const handleClose = useCallback(() => {
     setExpandedChart(null);
     setSelectedBucket("all");
@@ -498,13 +514,13 @@ export default function OversightTab() {
 
   return (
     <div className="space-y-3">
-      {/* Header — compact */}
+      {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <h2 className="text-lg font-bold text-foreground">
+          <h2 className="text-2xl font-bold text-foreground">
             Pipeline Oversight
           </h2>
-          <span className="text-xs text-muted-foreground tabular-nums">
+          <span className="text-sm text-muted-foreground tabular-nums">
             {totalPatients} total patients
           </span>
         </div>
@@ -530,6 +546,7 @@ export default function OversightTab() {
               chart={chart}
               patients={patients}
               onChartClick={() => handleChartClick(chart.id)}
+              onBarClick={(bucket) => handleBarClick(chart.id, bucket)}
             />
           );
         })}
