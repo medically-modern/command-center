@@ -526,19 +526,25 @@ export function EvaluatePanel({ patient, resetVersion = 0, onUpdate, onOpenForm 
         </div>
       )}
 
-      {anyYes && (<>
-      {/* Diagnosis & Clinicals — top section */}
+      {/* Diagnosis — always visible */}
       <SectionCard
-        title="Diagnosis & Clinicals"
-        status={validity.sections.diagnosis.valid && validity.sections.mr.valid}
+        title="Diagnosis"
+        status={validity.sections.diagnosis.valid}
       >
         <DiagnosisField
           value={state.diagnosis}
           onChange={(v) => setDiagnosis(v)}
         />
+      </SectionCard>
 
-        {state.mrReceived === "Yes" && (
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3 mt-4">
+      {anyYes && (<>
+      {/* Clinicals details — only when something is Yes */}
+      {state.mrReceived === "Yes" && (
+        <SectionCard
+          title="Clinicals"
+          status={validity.sections.mr.valid}
+        >
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3">
             <DateField
               label="Last Visit Date"
               value={state.lastVisitDate}
@@ -546,8 +552,8 @@ export function EvaluatePanel({ patient, resetVersion = 0, onUpdate, onOpenForm 
             />
             <MrExpiryField lastVisit={state.lastVisitDate} />
           </div>
-        )}
-      </SectionCard>
+        </SectionCard>
+      )}
 
       {/* CGM block */}
       {showCgm && (
