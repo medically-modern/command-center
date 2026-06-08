@@ -31,6 +31,7 @@ export interface Patient {
   cgmTypeIndex: number | null;       // editable override
   requestType: string;
   doctorName: string;
+  doctorNpi: string;
   referralSource: string;            // NEW: tandem, patient, doctor, etc.
   referralReceivedDate: string;      // NEW: date column
   diagnosis: string;

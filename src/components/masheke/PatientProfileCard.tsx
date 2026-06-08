@@ -23,6 +23,7 @@ import {
   X,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
+import { DoctorNotesPanel } from "@/components/shared/DoctorNotesPanel";
 
 interface Props {
   patient: Patient;
@@ -369,6 +370,13 @@ export function PatientProfileCard({
               onChange={(v) => onDoctorEdit?.({ clinicName: v })}
               className="sm:col-span-2"
             />
+          </div>
+        )}
+
+        {/* Doctor-level notes from the Doctor Database */}
+        {(doctorOpen || lockDoctorOpen) && patient.doctorNpi && (
+          <div className="mt-3">
+            <DoctorNotesPanel doctorNpi={patient.doctorNpi} doctorName={patient.doctorName} compact />
           </div>
         )}
       </div>

@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { DOCTOR_STATUS_INDEX, CLINICALS_METHOD_INDEX } from "@/lib/profile/mondayMapping";
+import { DoctorNotesPanel } from "@/components/shared/DoctorNotesPanel";
 import { AlertTriangle, Plus, Search } from "lucide-react";
 
 interface Props {
@@ -253,6 +254,9 @@ export function DoctorPanel({ patient, onUpdate, clinicLabels, onClinicSelect, o
             />
           </div>
         </div>
+
+        {/* Doctor-level notes from the Doctor Database */}
+        <DoctorNotesPanel doctorNpi={patient.doctorNpi} doctorName={patient.doctorName} />
       </CardContent>
     </Card>
   );

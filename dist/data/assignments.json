@@ -34,9 +34,9 @@
     "Janelle"
   ],
   "submitAuth": [
-    "Samantha",
     "Brandon",
-    "Corey"
+    "Corey",
+    "Samantha"
   ],
   "authOutstanding": [
     "Brandon",
@@ -66,5 +66,8 @@
     "Josh",
     "Janelle",
     "Masheke"
+  ],
+  "patientQuestions": [
+    "Josh"
   ]
 }

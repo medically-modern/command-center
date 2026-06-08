@@ -31,6 +31,7 @@ import {
   Pencil,
   X,
 } from "lucide-react";
+import { DoctorNotesPanel } from "@/components/shared/DoctorNotesPanel";
 
 interface Props {
   patient: Patient;
@@ -474,6 +475,13 @@ export function PatientProfileCard({ patient, onUpdate }: Props) {
               onChange={(v) => patch({ clinicName: v })}
               className="sm:col-span-2"
             />
+          </div>
+        )}
+
+        {/* Doctor-level notes from the Doctor Database */}
+        {doctorOpen && patient.doctorNpi && (
+          <div className="mt-3">
+            <DoctorNotesPanel doctorNpi={patient.doctorNpi} doctorName={patient.doctorName} compact />
           </div>
         )}
       </div>

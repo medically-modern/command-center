@@ -72,6 +72,7 @@ import {
   CalendarDays,
   DollarSign,
 } from "lucide-react";
+import { DoctorNotesPanel } from "@/components/shared/DoctorNotesPanel";
 
 interface Props {
   patient: Patient;
@@ -834,6 +835,11 @@ export function PatientInfoCard({ patient, onFieldChange }: Props) {
             );
           })()}
         </CollapsibleSection>
+
+        {/* Doctor-level notes from the Doctor Database */}
+        {patient.doctorNpi && (
+          <DoctorNotesPanel doctorNpi={patient.doctorNpi} doctorName={patient.doctorName} compact />
+        )}
       </Card>
 
       {/* Medical Necessity */}

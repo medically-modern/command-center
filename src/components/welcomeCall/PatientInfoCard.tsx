@@ -13,6 +13,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { DoctorNotesPanel } from "@/components/shared/DoctorNotesPanel";
 
 interface Props {
   patient: Patient;
@@ -558,6 +559,13 @@ export function PatientInfoCard({ patient, onFieldChange, onSavePhone, onSaveSec
               )}
             </div>
           </div>
+
+          {/* Doctor-level notes from the Doctor Database */}
+          {patient.doctorNpi && (
+            <div className="mt-3">
+              <DoctorNotesPanel doctorNpi={patient.doctorNpi} doctorName={patient.doctorName} compact />
+            </div>
+          )}
         </Card>
 
         <Card className="p-4">
