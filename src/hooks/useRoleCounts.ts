@@ -263,6 +263,10 @@ export function useRoleCounts() {
       next.subscription = subIds.length;
       nextIds.subscription = subIds;
 
+      // Update Clinicals (same board as subscription)
+      next.updateClinicals = subIds.length;
+      nextIds.updateClinicals = [...subIds];
+
       // Patient Questions — count from both boards
       try {
         const { fetchPatientQuestionsCount } = await import("@/lib/patientQuestions/mondayApi");

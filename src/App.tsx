@@ -20,6 +20,9 @@ const AuthOutstandingPage = lazy(() => import("./pages/AuthOutstandingPage"));
 // Subscription Board
 const SubscriptionPage = lazy(() => import("./pages/SubscriptionPage"));
 
+// Update Clinicals (simplified clinicals upload view)
+const UpdateClinicalsPage = lazy(() => import("./pages/UpdateClinicalsPage"));
+
 // Final Profile Confirmation (pre-check before Monday automations)
 const FinalConfirmPage = lazy(() => import("./pages/FinalConfirmPage"));
 
@@ -59,6 +62,7 @@ const App = () => (
           <Route path="/submit-auth" element={<SubmitAuthPage />} />
           <Route path="/auth-outstanding" element={<AuthOutstandingPage />} />
           <Route path="/subscription" element={<SubscriptionPage />} />
+          <Route path="/update-clinicals" element={<UpdateClinicalsPage />} />
           <Route path="/final-confirm" element={<FinalConfirmPage />} />
           <Route path="/patient-questions" element={<PatientQuestionsPage />} />
           <Route path="/system-mgmt" element={<SystemMgmtPage />} />
