@@ -91,6 +91,7 @@ import {
   Circle,
 } from "lucide-react";
 import { StepSection } from "@/components/shared/StepSection";
+import { getServingAccent } from "@/lib/masheke/servingTheme";
 
 interface Props {
   patient: Patient;
@@ -116,6 +117,7 @@ function formatDate(iso?: string): string {
 }
 
 export function EvaluatePanel({ patient, resetVersion = 0, onUpdate, onOpenForm }: Props) {
+  const accent = getServingAccent(patient.serving);
   const [state, setState] = useState<EvalState>(() => {
     const stored = loadEvalState(patient.id);
     return Object.keys(stored).length > 0 ? stored : seedEvalStateFromPatient(patient);
@@ -477,7 +479,7 @@ export function EvaluatePanel({ patient, resetVersion = 0, onUpdate, onOpenForm 
 
 
       {/* ── Quick Check ────────────────────────────────── */}
-      <StepSection step={1} title="Quick Check">
+      <StepSection accent={accent} step={1} title="Quick Check">
         <div className="divide-y divide-border rounded-xl border border-border bg-card overflow-hidden">
           {/* CGM Script row */}
           {showCgm && (
@@ -657,6 +659,7 @@ export function EvaluatePanel({ patient, resetVersion = 0, onUpdate, onOpenForm 
 
       {/* ── Diagnosis & Clinicals ───────────────────────── */}
       <StepSection
+        accent={accent}
         step={2}
         title="Diagnosis & Clinicals"
         rightAccessory={validity.sections.diagnosis.valid && validity.sections.mr.valid ? (
@@ -686,6 +689,7 @@ export function EvaluatePanel({ patient, resetVersion = 0, onUpdate, onOpenForm 
       {/* CGM block */}
       {showCgm && (
         <StepSection
+          accent={accent}
           step={3}
           title="CGM"
           rightAccessory={validity.sections.cgm.shown ? (
@@ -710,6 +714,7 @@ export function EvaluatePanel({ patient, resetVersion = 0, onUpdate, onOpenForm 
       {/* IP block */}
       {showIp && (
         <StepSection
+          accent={accent}
           step={showCgm ? 4 : 3}
           title="Insulin Pump"
           rightAccessory={validity.sections.ip.shown ? (
@@ -737,7 +742,7 @@ export function EvaluatePanel({ patient, resetVersion = 0, onUpdate, onOpenForm 
       )}
 
       {/* Clinical files (uploads) */}
-      <StepSection step={4} title="Clinical Files">
+      <StepSection accent={accent} step={4} title="Clinical Files">
         <SectionCard>
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           <FileUploadCard

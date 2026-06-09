@@ -37,6 +37,7 @@ import {
   XCircle,
 } from "lucide-react";
 import { StepSection } from "@/components/shared/StepSection";
+import { getServingAccent } from "@/lib/masheke/servingTheme";
 
 interface Props {
   patient: Patient;
@@ -49,6 +50,7 @@ interface Props {
 // =====================================================================
 
 export function ConfirmReceiptPanel({ patient, onUpdate, onOpenForm }: Props) {
+  const accent = getServingAccent(patient.serving);
   const mondayFiles = useMondayFiles(patient.id);
   const [saving, setSaving] = useState(false);
   const [escalated, setEscalated] = useState(false);
@@ -166,7 +168,7 @@ export function ConfirmReceiptPanel({ patient, onUpdate, onOpenForm }: Props) {
 
   return (
     <div className="space-y-6">
-      <StepSection accent="teal" step={1} title="Review Status" hint="Banners, files, and attempt history">
+      <StepSection accent={accent} step={1} title="Review Status" hint="Banners, files, and attempt history">
         <div className="space-y-6">
           <MethodBanner patient={patient} />
           <RequestSentBanner patient={patient} />
@@ -176,7 +178,7 @@ export function ConfirmReceiptPanel({ patient, onUpdate, onOpenForm }: Props) {
         </div>
       </StepSection>
 
-      <StepSection accent="teal" step={2} title="Log Attempt" hint="Record the call outcome">
+      <StepSection accent={accent} step={2} title="Log Attempt" hint="Record the call outcome">
         {isEscalated ? (
           <EscalatedCard />
         ) : (
@@ -193,7 +195,7 @@ export function ConfirmReceiptPanel({ patient, onUpdate, onOpenForm }: Props) {
         )}
       </StepSection>
 
-      <StepSection accent="teal" step={3} title="Notes & Save" hint="Add notes and submit">
+      <StepSection accent={accent} step={3} title="Notes & Save" hint="Add notes and submit">
         <div className="space-y-6">
           <NotesPanel
             notes={patient.mnEvalNotes ?? ""}

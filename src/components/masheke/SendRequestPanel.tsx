@@ -49,6 +49,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { StepSection } from "@/components/shared/StepSection";
+import { getServingAccent } from "@/lib/masheke/servingTheme";
 
 interface Props {
   onUpdate: (patch: Partial<Patient>) => void;
@@ -63,6 +64,7 @@ interface Props {
 // =====================================================================
 
 export function SendRequestPanel({ patient, resetVersion = 0, onUpdate, onOpenForm }: Props) {
+  const accent = getServingAccent(patient.serving);
   const [state, setState] = useState<EvalState>(() => loadEvalState(patient.id));
 
   useEffect(() => {
@@ -344,7 +346,7 @@ export function SendRequestPanel({ patient, resetVersion = 0, onUpdate, onOpenFo
 
   return (
     <div className="space-y-6">
-      <StepSection accent="teal" step={1} title="Review Documents" hint="Method, what's needed, and clinical files">
+      <StepSection accent={accent} step={1} title="Review Documents" hint="Method, what's needed, and clinical files">
         <div className="space-y-6">
           <MethodBanner patient={patient} />
           <WhatsNeededCard patient={patient} />
@@ -355,7 +357,7 @@ export function SendRequestPanel({ patient, resetVersion = 0, onUpdate, onOpenFo
         </div>
       </StepSection>
 
-      <StepSection accent="teal" step={2} title="Generate Scripts" hint="Trigger DocExport and MN Request Letter">
+      <StepSection accent={accent} step={2} title="Generate Scripts" hint="Trigger DocExport and MN Request Letter">
         <div className="space-y-6">
           {isParachute && (
             <CollapsibleHeader
@@ -409,7 +411,7 @@ export function SendRequestPanel({ patient, resetVersion = 0, onUpdate, onOpenFo
         </div>
       </StepSection>
 
-      <StepSection accent="teal" step={3} title="Send Request" hint="Send via fax/email/parachute, then mark complete">
+      <StepSection accent={accent} step={3} title="Send Request" hint="Send via fax/email/parachute, then mark complete">
         <div className="space-y-6">
           <NotesPanel
             notes={patient.mnEvalNotes ?? ""}
