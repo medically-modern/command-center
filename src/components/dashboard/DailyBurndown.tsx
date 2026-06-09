@@ -16,11 +16,7 @@ import { cn } from "@/lib/utils";
 import {
   Clock,
   Zap,
-  ArrowDown,
-  ArrowUp,
   ExternalLink,
-  Server,
-  HardDrive,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
@@ -162,25 +158,7 @@ export function DailyBurndown({
   }, [roles, snapshot, roleCounts]);
 
   const sqrtScale = (v: number) => Math.sqrt(Math.max(v, 0));
-  const maxSqrt = Math.max(...barData.map((d) => sqrtScale(d.full)), 1);
-
-  const totalProcessed = barData
-    .filter((d) => d.delta < 0)
-    .reduce((sum, d) => sum + Math.abs(d.delta), 0);
-  const totalIncoming = barData
-    .filter((d) => d.delta > 0)
-    .reduce((sum, d) => sum + d.delta, 0);
-
-  const snapshotTime = snapshot
-    ? new Date(snapshot.takenAt).toLocaleTimeString("en-US", {
-        timeZone: "America/New_York",
-        hour: "numeric",
-        minute: "2-digit",
-        hour12: true,
-      })
-    : "";
-
-  const isServerSource = snapshot?.source === "server";
+  const maxSqrt = Math.max(...barData.map((d) => sqrtScale(d.current)), 1);
 
   if (!snapshot || barData.length === 0) {
     if (countsLoading || serverLoading) {
@@ -200,8 +178,6 @@ export function DailyBurndown({
       <div className="space-y-3">
         {barData.map((d, i) => {
           const hex = COLOR_MAP[d.role.color] ?? "#6366f1";
-          const ghostPct =
-            maxSqrt > 0 ? Math.max((sqrtScale(d.full) / maxSqrt) * 100, 4) : 0;
           const currentPct =
             maxSqrt > 0
               ? Math.max(
@@ -236,58 +212,17 @@ export function DailyBurndown({
                     <ExternalLink className="w-3 h-3 opacity-0 group-hover:opacity-40 transition-opacity" />
                   )}
                 </span>
-                <div className="flex items-center gap-2">
-                  <span className="text-xs text-muted-foreground tabular-nums">
-                    {d.baseline}
-                  </span>
-                  <span className="text-xs text-muted-foreground/50">→</span>
-                  <span className="text-sm font-semibold text-foreground tabular-nums">
-                    {countsLoading ? "…" : d.current}
-                  </span>
-                  {d.delta !== 0 && (
-                    <span
-                      className={cn(
-                        "text-xs font-medium px-1.5 py-0.5 rounded-md tabular-nums",
-                        d.delta < 0
-                          ? "text-emerald-600 dark:text-emerald-400 bg-emerald-500/10"
-                          : "text-amber-600 dark:text-amber-400 bg-amber-500/10"
-                      )}
-                    >
-                      {d.delta > 0 ? "+" : ""}
-                      {d.delta}
-                    </span>
-                  )}
-                  {d.delta === 0 && (
-                    <span className="text-xs text-muted-foreground/40 px-1.5 py-0.5">
-                      —
-                    </span>
-                  )}
-                </div>
+                <span className="text-sm font-semibold text-foreground tabular-nums">
+                  {countsLoading ? "…" : d.current}
+                </span>
               </div>
 
               <div className="relative h-8 w-full rounded-lg overflow-hidden bg-muted/30">
-                <div
-                  className="absolute inset-y-0 left-0 rounded-lg transition-all duration-700 ease-out"
-                  style={{
-                    width: animateIn ? `${ghostPct}%` : "0%",
-                    background: hexToRgba(hex, 0.12),
-                    transitionDelay: `${i * 60}ms`,
-                  }}
-                />
                 <div
                   className="absolute inset-y-0 left-0 rounded-lg transition-all duration-1000 ease-out"
                   style={{
                     width: animateIn ? `${currentPct}%` : "0%",
                     background: `linear-gradient(90deg, ${hex}, ${hexToRgba(hex, 0.75)})`,
-                    transitionDelay: `${i * 60 + 200}ms`,
-                  }}
-                />
-                <div
-                  className="absolute inset-y-0 rounded-lg transition-all duration-1000 ease-out opacity-30"
-                  style={{
-                    left: animateIn ? `calc(${currentPct}% - 8px)` : "0%",
-                    width: "8px",
-                    background: `linear-gradient(90deg, transparent, ${hexToRgba(hex, 0.5)})`,
                     transitionDelay: `${i * 60 + 200}ms`,
                   }}
                 />
