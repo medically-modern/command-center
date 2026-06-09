@@ -86,13 +86,14 @@ export function PatientsSidebar({ patients, selectedId, onSelect, loading, error
   const [pendingOpen, setPendingOpen] = useState(false);
   // const [filteredOpen, setFilteredOpen] = useState(false);
 
-  // -- Blocked / Stuck / Escalated / Follow-up filtering commented out for now --
+  // -- Blocked / Stuck / Follow-up filtering commented out for now --
   // const stuckPatients = patients.filter((p) => p.advancer2c === "Stuck" && p.blocked !== "Blocked");
-  // const escalatedPatients = patients.filter((p) => p.escalation === "Escalation Required" && p.blocked !== "Blocked" && p.followUp !== "Follow up" && p.advancer2c !== "Stuck");
   // const blockedPatients = patients.filter((p) => p.blocked === "Blocked");
   // const followUpPatients = patients.filter((p) => p.followUp === "Follow up" && p.blocked !== "Blocked" && p.escalation !== "Escalation Required" && p.advancer2c !== "Stuck");
   // const bothPatients = patients.filter((p) => p.escalation === "Escalation Required" && p.followUp === "Follow up" && p.blocked !== "Blocked" && p.advancer2c !== "Stuck");
-  const activePatients = patients;
+
+  // Escalated patients are hidden from the active view (accessible via System Management)
+  const activePatients = patients.filter((p) => p.escalation !== "Escalation Required");
 
   // Always use Eastern Time so all users see the same "today" regardless of their local timezone
   const etParts = new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
@@ -192,7 +193,7 @@ export function PatientsSidebar({ patients, selectedId, onSelect, loading, error
             </SidebarGroupContent>
           </SidebarGroup>
 
-        {/* ── Pending section (confirmReceipt tab only) ── */}
+        {/* ── Pending section — hidden from role view, functional via System Management ──
         {pendingPatients.length > 0 && !collapsed && (
           <SidebarGroup>
             <SidebarGroupLabel
@@ -232,6 +233,7 @@ export function PatientsSidebar({ patients, selectedId, onSelect, loading, error
             )}
           </SidebarGroup>
         )}
+        */}
 
         {/* ── Filtered patients (Blocked/Stuck/Escalated/FollowUp) — commented out for now ──
         {(() => {
