@@ -254,7 +254,6 @@ export function PipelineChart({ patients, onSegmentClick }: PipelineChartProps) 
   // ── Data pipeline ────────────────────────────────────────
 
   const columns = useMemo(() => {
-    const todayStr = new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
     const eligible = patients.filter((p) => CHART_BOARD_IDS.has(p.boardId) && !p.isCompleted);
     const map = new Map<string, GroupColumn>();
 
@@ -262,12 +261,6 @@ export function PipelineChart({ patients, onSegmentClick }: PipelineChartProps) 
       const pg = getGroup(p);
       if (!pg) continue;
       const stageLabel = p.boardId === 18406352652 ? "Profile Checklist" : p.pipelineStage;
-
-      // Exclude "pending" patients: Confirm Receipt patients with a future nextActionDate
-      if (stageLabel === "Confirm Receipt" && p.nextActionDate) {
-        const nad = p.nextActionDate.slice(0, 10);
-        if (nad > todayStr) continue;
-      }
 
       const key = `${pg.id}::${stageLabel}`;
       if (!map.has(key)) {
