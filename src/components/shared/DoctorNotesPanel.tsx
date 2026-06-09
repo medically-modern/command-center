@@ -21,26 +21,38 @@ export function DoctorNotesPanel({ doctorNpi, doctorName, compact = false }: Pro
   const [newNote, setNewNote] = useState("");
   const [editing, setEditing] = useState(false);
   const [editText, setEditText] = useState("");
+  const [fetchError, setFetchError] = useState(false);
   const lastNpi = useRef("");
+  const retryCount = useRef(0);
 
-  const fetchDoctor = useCallback(async (npi: string) => {
-    if (!npi?.trim()) { setDoctor(null); return; }
+  const fetchDoctor = useCallback(async (npi: string, retry = 0) => {
+    if (!npi?.trim()) { setDoctor(null); setFetchError(false); return; }
     setLoading(true);
+    setFetchError(false);
     try {
       const rec = await findDoctorByNpi(npi);
       setDoctor(rec);
       if (rec) setEditText(rec.notes);
+      retryCount.current = 0;
     } catch (e) {
       console.error("Doctor DB lookup failed", e);
+      // Retry up to 2 times with increasing delay (rate-limit recovery)
+      if (retry < 2) {
+        retryCount.current = retry + 1;
+        setTimeout(() => fetchDoctor(npi, retry + 1), (retry + 1) * 2000);
+        return; // stay in loading state
+      }
       setDoctor(null);
+      setFetchError(true);
     } finally {
-      setLoading(false);
+      if (retry >= 2 || retryCount.current === 0) setLoading(false);
     }
   }, []);
 
   useEffect(() => {
     if (doctorNpi !== lastNpi.current) {
       lastNpi.current = doctorNpi;
+      retryCount.current = 0;
       setEditing(false);
       setNewNote("");
       fetchDoctor(doctorNpi);
@@ -144,11 +156,22 @@ export function DoctorNotesPanel({ doctorNpi, doctorName, compact = false }: Pro
         </div>
       )}
 
-      {/* No match */}
+      {/* No match or error */}
       {!loading && !doctor && (
-        <p className="text-xs text-muted-foreground italic py-1">
-          No doctor found in database for NPI {doctorNpi}.
-        </p>
+        fetchError ? (
+          <div className="flex items-center gap-2 py-1">
+            <p className="text-xs text-amber-600 italic">
+              Failed to look up NPI {doctorNpi} — Monday may be busy.
+            </p>
+            <Button variant="ghost" size="sm" className="h-6 px-2 text-xs" onClick={() => fetchDoctor(doctorNpi)}>
+              Retry
+            </Button>
+          </div>
+        ) : (
+          <p className="text-xs text-muted-foreground italic py-1">
+            No doctor found in database for NPI {doctorNpi}.
+          </p>
+        )
       )}
 
       {/* Notes display / edit */}
