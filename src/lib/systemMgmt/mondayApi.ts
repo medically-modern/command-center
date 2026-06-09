@@ -60,6 +60,8 @@ export interface BoardDef {
   daysSinceStageColId: string | null;
   /** Column ID for notes (long_text or text) */
   notesColId: string | null;
+  /** Column ID for Next Action Date (date column, null = board has none) */
+  nextActionDateColId: string | null;
 }
 
 /**
@@ -108,6 +110,7 @@ export const BOARDS: BoardDef[] = [
     stageAdvancerColId: null,
     daysSinceStageColId: null,
     notesColId: null,
+    nextActionDateColId: null,
   },
   {
     boardId: 18406352652,
@@ -122,6 +125,7 @@ export const BOARDS: BoardDef[] = [
     stageAdvancerColId: null,
     daysSinceStageColId: null,
     notesColId: "text_mm389fs",
+    nextActionDateColId: null,
   },
   {
     boardId: 18406060017,
@@ -136,6 +140,7 @@ export const BOARDS: BoardDef[] = [
     stageAdvancerColId: "color_mm1wyr92",
     daysSinceStageColId: "color_mm1wwm05",
     notesColId: "long_text_mm27zjt2",
+    nextActionDateColId: "date_mm1wadgs",
   },
   {
     boardId: 18410601299,
@@ -153,6 +158,7 @@ export const BOARDS: BoardDef[] = [
     stageAdvancerColId: "color_mm1ws96t",
     daysSinceStageColId: "color_mm1wwm05",
     notesColId: "long_text_mm2ffsme",
+    nextActionDateColId: null,
   },
   {
     boardId: 18410804557,
@@ -168,6 +174,7 @@ export const BOARDS: BoardDef[] = [
     stageAdvancerColId: "color_mm1ws96t",
     daysSinceStageColId: "color_mm1wwm05",
     notesColId: "long_text_mm2ffsme",
+    nextActionDateColId: null,
   },
 ];
 
@@ -201,6 +208,8 @@ export interface SystemPatient {
   notes: string;
   /** Raw Stage Advancer text from Monday (e.g. "Benefits / SoS") */
   stageAdvancerText: string;
+  /** Next Action Date (ISO date string, empty if not set) */
+  nextActionDate: string;
 }
 
 // ── Fetch all patients across boards ─────────────────────────
@@ -221,6 +230,7 @@ async function fetchBoardItems(board: BoardDef): Promise<SystemPatient[]> {
   if (board.stageAdvancerColId) colIds.push(board.stageAdvancerColId);
   if (board.daysSinceStageColId) colIds.push(board.daysSinceStageColId);
   if (board.notesColId) colIds.push(board.notesColId);
+  if (board.nextActionDateColId) colIds.push(board.nextActionDateColId);
 
   const compareValue = JSON.stringify(groupIds);
   const query = `
@@ -299,6 +309,10 @@ function mapToSystemPatient(item: RawItem, board: BoardDef): SystemPatient {
   let roleRoute = groupDef?.roleRoute ?? "/";
   const isCompleted = groupDef?.isCompleted ?? false;
 
+  const nextActionDate = board.nextActionDateColId
+    ? colVal(board.nextActionDateColId)
+    : "";
+
   // Use Stage Advancer to determine sub-route and pipeline stage.
   let stageAdvancerText = "";
   if (board.stageAdvancerColId) {
@@ -329,6 +343,7 @@ function mapToSystemPatient(item: RawItem, board: BoardDef): SystemPatient {
     daysSinceStage,
     notes,
     stageAdvancerText,
+    nextActionDate,
   };
 }
 
