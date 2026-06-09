@@ -110,9 +110,8 @@ const PANEL_ACCENTS: Record<ServingKey, { details: PanelAccent; doctor: PanelAcc
 function CgmIcon({ className }: { className?: string }) {
   return (
     <svg className={className} viewBox="0 0 36 36" fill="none" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
-      <circle cx="18" cy="18" r="7" stroke="currentColor" />
-      <path d="M18 11v-3M18 28v-3M11 18h-3M28 18h-3" stroke="currentColor" />
-      <circle cx="18" cy="18" r="2.5" fill="currentColor" />
+      <circle cx="18" cy="18" r="8" stroke="currentColor" />
+      <circle cx="18" cy="18" r="3" fill="currentColor" />
     </svg>
   );
 }
@@ -139,8 +138,7 @@ function PumpCgmIcon({ className }: { className?: string }) {
       </g>
       <g className="text-violet-400">
         <circle cx="26" cy="20" r="5" stroke="currentColor" />
-        <circle cx="26" cy="20" r="1.5" fill="currentColor" />
-        <path d="M26 15v-2M26 27v-2M21 20h-1M32 20h-1" stroke="currentColor" />
+        <circle cx="26" cy="20" r="1.8" fill="currentColor" />
       </g>
     </svg>
   );
@@ -167,7 +165,6 @@ function SuppliesCgmIcon({ className }: { className?: string }) {
       <g className="text-rose-400">
         <circle cx="28" cy="18" r="4.5" stroke="currentColor" />
         <circle cx="28" cy="18" r="1.5" fill="currentColor" />
-        <path d="M28 13.5v-1.5M28 24v-1.5" stroke="currentColor" />
       </g>
     </svg>
   );
@@ -195,10 +192,14 @@ function IconServing({ className }: { className?: string }) {
 
 function DefaultServingIcon({ className }: { className?: string }) {
   return (
-    <svg className={className} viewBox="0 0 20 20" fill="none" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
-      <circle cx="10" cy="6" r="4" stroke="currentColor" />
-      <path d="M10 10v4M8 18c0-2.2 0.9-4 2-4s2 1.8 2 4" stroke="currentColor" />
-      <path d="M6 14h8" stroke="currentColor" />
+    <svg className={className} viewBox="0 0 36 36" fill="none" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="8" r="4" stroke="currentColor" />
+      <path d="M12 12v6" stroke="currentColor" />
+      <path d="M12 18a6 6 0 0012 0" stroke="currentColor" />
+      <path d="M24 18v-6" stroke="currentColor" />
+      <circle cx="24" cy="9.5" r="2.5" stroke="currentColor" />
+      <circle cx="12" cy="26" r="2" fill="currentColor" />
+      <path d="M12 20v4" stroke="currentColor" />
     </svg>
   );
 }
@@ -276,9 +277,8 @@ function IconRequestType({ className }: { className?: string }) {
 function IconCgmType({ className }: { className?: string }) {
   return (
     <svg className={className} viewBox="0 0 20 20" fill="none" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
-      <circle cx="10" cy="10" r="5.5" stroke="currentColor" />
-      <path d="M10 4.5v-2M10 17.5v-2M4.5 10h-2M17.5 10h-2" stroke="currentColor" />
-      <circle cx="10" cy="10" r="1.8" fill="currentColor" />
+      <circle cx="10" cy="10" r="6" stroke="currentColor" />
+      <circle cx="10" cy="10" r="2" fill="currentColor" />
     </svg>
   );
 }
@@ -320,9 +320,12 @@ function IconMalfunction({ className }: { className?: string }) {
 function IconDoctorName({ className }: { className?: string }) {
   return (
     <svg className={className} viewBox="0 0 20 20" fill="none" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
-      <circle cx="10" cy="6.5" r="3.5" stroke="currentColor" />
-      <path d="M3 18c0-3.9 3.1-7 7-7s7 3.1 7 7" stroke="currentColor" />
-      <path d="M14 8v4M12 10h4" stroke="currentColor" />
+      <circle cx="10" cy="5.5" r="3" stroke="currentColor" />
+      <path d="M4 17c0-3.3 2.7-6 6-6s6 2.7 6 6" stroke="currentColor" />
+      <path d="M7 11.5c-1.5.5-2 1.5-2 2.5" stroke="currentColor" />
+      <path d="M13 11.5c1.5.5 2 1.5 2 2.5" stroke="currentColor" />
+      <path d="M7 11.5c0 2 1.2 3 3 3s3-1 3-3" stroke="currentColor" />
+      <circle cx="10" cy="15.5" r="1" fill="currentColor" />
     </svg>
   );
 }
@@ -330,9 +333,11 @@ function IconDoctorName({ className }: { className?: string }) {
 function IconClinicalsMethod({ className }: { className?: string }) {
   return (
     <svg className={className} viewBox="0 0 20 20" fill="none" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M2 4l8 5 8-5" stroke="currentColor" />
-      <rect x="2" y="4" width="16" height="12" rx="2" stroke="currentColor" />
-      <path d="M13 10l3.5 3.5" stroke="currentColor" />
+      <rect x="3" y="6" width="14" height="11" rx="2" stroke="currentColor" />
+      <path d="M3 6l3-3h8l3 3" stroke="currentColor" />
+      <path d="M10 6v4" stroke="currentColor" />
+      <circle cx="10" cy="10" r="0.8" fill="currentColor" />
+      <line x1="3" y1="13" x2="17" y2="13" stroke="currentColor" />
     </svg>
   );
 }
