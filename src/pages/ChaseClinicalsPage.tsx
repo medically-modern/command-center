@@ -138,7 +138,7 @@ const ChaseClinicalsPage = () => {
             patientName={selected.name}
             onSuccess={refetch}
           />
-          <EscalationFormModal
+          {/* <EscalationFormModal
             open={escalationModalOpen}
             onOpenChange={setEscalationModalOpen}
             patientId={selected.id}
@@ -146,7 +146,7 @@ const ChaseClinicalsPage = () => {
             writeEscalationStatus={async (id) => { await writeStatusIndex(id, COL.escalation, ESCALATION_INDEX.required); }}
             writeEscalationNotes={async (id, text) => { await writeLongText(id, COL.escalationNotes, text); }}
             onSuccess={refetch}
-          />
+          /> */}
           <FollowUpModal
             open={followUpModalOpen}
             onOpenChange={setFollowUpModalOpen}

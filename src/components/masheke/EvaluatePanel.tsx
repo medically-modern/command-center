@@ -1629,12 +1629,12 @@ function ValiditySummary({
             </div>
           </div>
         )}
-        <EscalateButton
+        {/* <EscalateButton
           escalated={escalated}
           onToggle={onToggleEscalate}
           onOpenForm={onOpenForm}
           disabled={sending}
-        />
+        /> */}
         <Button
           size="lg"
           onClick={onSendToMonday}

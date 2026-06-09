@@ -1119,12 +1119,12 @@ function SendActionCard({
           subtitle="Click after the request has been sent — moves the patient to the next stage on Monday."
         >
           <div className="flex items-center gap-3">
-            <EscalateButton
+            {/* <EscalateButton
               escalated={escalated}
               onToggle={onToggleEscalate}
               onOpenForm={onOpenForm}
               disabled={completing}
-            />
+            /> */}
             <Button
               size="lg"
               onClick={onMarkComplete}

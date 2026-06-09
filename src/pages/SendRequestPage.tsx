@@ -123,7 +123,7 @@ const SendRequestPage = () => {
             patientName={selected.name}
             onSuccess={refetch}
           />
-          <EscalationFormModal
+          {/* <EscalationFormModal
             open={escalationModalOpen}
             onOpenChange={setEscalationModalOpen}
             patientId={selected.id}
@@ -131,7 +131,7 @@ const SendRequestPage = () => {
             writeEscalationStatus={async (id) => { await writeStatusIndex(id, COL.escalation, ESCALATION_INDEX.required); }}
             writeEscalationNotes={async (id, text) => { await writeLongText(id, COL.escalationNotes, text); }}
             onSuccess={refetch}
-          />
+          /> */}
         </>
       )}
     </SidebarProvider>

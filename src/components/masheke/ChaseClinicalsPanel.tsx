@@ -607,12 +607,12 @@ function SaveBar({
   return (
     <div className="flex flex-col items-center gap-2 pt-1">
       <div className="flex items-center gap-3">
-        <EscalateButton
+        {/* <EscalateButton
           escalated={escalated}
           onToggle={onToggleEscalate}
           onOpenForm={onOpenForm}
           disabled={saving}
-        />
+        /> */}
         <Button
           size="lg"
           onClick={onSave}

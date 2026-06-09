@@ -137,7 +137,7 @@ const ConfirmReceiptPage = () => {
             patientName={selected.name}
             onSuccess={refetch}
           />
-          <EscalationFormModal
+          {/* <EscalationFormModal
             open={escalationModalOpen}
             onOpenChange={setEscalationModalOpen}
             patientId={selected.id}
@@ -145,7 +145,7 @@ const ConfirmReceiptPage = () => {
             writeEscalationStatus={async (id) => { await writeStatusIndex(id, COL.escalation, ESCALATION_INDEX.required); }}
             writeEscalationNotes={async (id, text) => { await writeLongText(id, COL.escalationNotes, text); }}
             onSuccess={refetch}
-          />
+          /> */}
           <StuckModal
             open={stuckModalOpen}
             onOpenChange={setStuckModalOpen}
