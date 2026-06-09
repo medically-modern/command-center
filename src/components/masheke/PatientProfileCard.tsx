@@ -1,6 +1,7 @@
 import { useState } from "react";
 import type { Patient } from "@/lib/masheke/workflow";
 import {
+  Stethoscope,
   Phone,
   Pencil,
   Check,
@@ -191,17 +192,7 @@ function IconServing({ className }: { className?: string }) {
 }
 
 function DefaultServingIcon({ className }: { className?: string }) {
-  return (
-    <svg className={className} viewBox="0 0 36 36" fill="none" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
-      <circle cx="12" cy="8" r="4" stroke="currentColor" />
-      <path d="M12 12v6" stroke="currentColor" />
-      <path d="M12 18a6 6 0 0012 0" stroke="currentColor" />
-      <path d="M24 18v-6" stroke="currentColor" />
-      <circle cx="24" cy="9.5" r="2.5" stroke="currentColor" />
-      <circle cx="12" cy="26" r="2" fill="currentColor" />
-      <path d="M12 20v4" stroke="currentColor" />
-    </svg>
-  );
+  return <Stethoscope className={className} />;
 }
 
 function ServingIcon({ serving, className }: { serving?: string | null; className?: string }) {
