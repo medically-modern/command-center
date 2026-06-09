@@ -229,10 +229,14 @@ export function useRoleCounts() {
             const colText = (id: string) => item.column_values?.find((c: any) => c.id === id)?.text ?? "";
 
             // Only count "active" patients — exclude any in a filter bucket
-            const nad = colText("date_mm1wadgs").slice(0, 10);
-            if (nad && nad > todayStr) continue; // pending
+            // Pending (future nextActionDate) only applies to confirmReceipt & chase,
+            // matching the sidebar which only shows a Pending folder for those tabs.
+            if (roleId === "confirmReceipt" || roleId === "chaseBenefits") {
+              const nad = colText("date_mm1wadgs").slice(0, 10);
+              if (nad && nad > todayStr) continue; // pending
+            }
 
-            if (colText("color_mm1x7997") === "Escalation Required" || colText("color_mm1x7997") === "Escalate") continue; // escalated
+            if (colText("color_mm1x7997") === "Escalation Required") continue; // escalated
             if (colText("color_mm33ppgw") === "Blocked") continue; // blocked
             if (colText("color_mm1wf98t") === "Stuck") continue; // stuck
             if (colText("color_mm35v6a0") === "Follow up") continue; // follow-up
