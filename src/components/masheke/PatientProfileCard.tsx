@@ -65,10 +65,10 @@ const SERVING_COLORS: Record<ServingKey, ServingColors> = {
     label: "Insulin pump",
   },
   ipcgm: {
-    iconBg: "bg-emerald-100", iconBorder: "border-emerald-300",
-    tagBg: "bg-emerald-200", tagText: "text-emerald-900",
-    fieldBg: "bg-emerald-50", fieldBorder: "border-emerald-300",
-    fieldVal: "text-emerald-900", fieldLbl: "text-emerald-700",
+    iconBg: "bg-violet-100", iconBorder: "border-violet-300",
+    tagBg: "bg-violet-200", tagText: "text-violet-900",
+    fieldBg: "bg-violet-50", fieldBorder: "border-violet-300",
+    fieldVal: "text-violet-900", fieldLbl: "text-violet-700",
     label: "Pump + CGM",
   },
   supplies: {
@@ -79,10 +79,10 @@ const SERVING_COLORS: Record<ServingKey, ServingColors> = {
     label: "Supplies only",
   },
   supplcgm: {
-    iconBg: "bg-amber-100", iconBorder: "border-amber-300",
-    tagBg: "bg-amber-200", tagText: "text-amber-900",
-    fieldBg: "bg-amber-50", fieldBorder: "border-amber-300",
-    fieldVal: "text-amber-900", fieldLbl: "text-amber-700",
+    iconBg: "bg-rose-100", iconBorder: "border-rose-300",
+    tagBg: "bg-rose-200", tagText: "text-rose-900",
+    fieldBg: "bg-rose-50", fieldBorder: "border-rose-300",
+    fieldVal: "text-rose-900", fieldLbl: "text-rose-700",
     label: "Supplies + CGM",
   },
   default: {
@@ -106,14 +106,14 @@ function getServingKey(serving?: string | null): ServingKey {
 }
 
 /** Map serving type → accent colors for the two CollapsiblePanels */
-type PanelAccent = "blue" | "teal" | "violet" | "amber" | "emerald" | "slate";
+type PanelAccent = "blue" | "teal" | "violet" | "amber" | "emerald" | "rose" | "purple" | "slate";
 const PANEL_ACCENTS: Record<ServingKey, { details: PanelAccent; doctor: PanelAccent }> = {
-  cgm:      { details: "emerald", doctor: "teal" },
-  ip:       { details: "blue",    doctor: "violet" },
-  ipcgm:    { details: "emerald", doctor: "blue" },
-  supplies: { details: "amber",   doctor: "slate" },
-  supplcgm: { details: "amber",   doctor: "emerald" },
-  default:  { details: "slate",   doctor: "slate" },
+  cgm:      { details: "emerald", doctor: "purple" },
+  ip:       { details: "blue",    doctor: "purple" },
+  ipcgm:    { details: "violet",  doctor: "purple" },
+  supplies: { details: "amber",   doctor: "purple" },
+  supplcgm: { details: "rose",    doctor: "purple" },
+  default:  { details: "slate",   doctor: "purple" },
 };
 
 /* ── SVG icons per serving type ───────────────────────────── */
@@ -142,13 +142,13 @@ function PumpIcon({ className }: { className?: string }) {
 function PumpCgmIcon({ className }: { className?: string }) {
   return (
     <svg className={className} viewBox="0 0 36 36" fill="none" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
-      <g className="text-blue-600">
+      <g className="text-violet-600">
         <rect x="6" y="12" rx="2" width="12" height="16" stroke="currentColor" />
         <line x1="9" y1="16" x2="15" y2="16" stroke="currentColor" />
         <circle cx="12" cy="22" r="1.5" stroke="currentColor" />
         <path d="M12 12v-3h4" stroke="currentColor" />
       </g>
-      <g className="text-emerald-600">
+      <g className="text-violet-400">
         <circle cx="26" cy="20" r="5" stroke="currentColor" />
         <circle cx="26" cy="20" r="1.5" fill="currentColor" />
         <path d="M26 15v-2M26 27v-2M21 20h-1M32 20h-1" stroke="currentColor" />
@@ -170,12 +170,12 @@ function SuppliesIcon({ className }: { className?: string }) {
 function SuppliesCgmIcon({ className }: { className?: string }) {
   return (
     <svg className={className} viewBox="0 0 36 36" fill="none" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
-      <g className="text-amber-600">
+      <g className="text-rose-600">
         <path d="M4 16l8-4 8 4-8 4z" stroke="currentColor" />
         <path d="M4 16v7l8 4 8-4v-7" stroke="currentColor" />
         <path d="M12 20v7" stroke="currentColor" />
       </g>
-      <g className="text-emerald-600">
+      <g className="text-rose-400">
         <circle cx="28" cy="18" r="4.5" stroke="currentColor" />
         <circle cx="28" cy="18" r="1.5" fill="currentColor" />
         <path d="M28 13.5v-1.5M28 24v-1.5" stroke="currentColor" />

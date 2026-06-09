@@ -7,7 +7,7 @@ interface CollapsiblePanelProps {
   defaultOpen?: boolean;
   children: ReactNode;
   badge?: string | number;
-  accent?: "blue" | "teal" | "violet" | "amber" | "emerald" | "slate";
+  accent?: "blue" | "teal" | "violet" | "amber" | "emerald" | "rose" | "purple" | "slate";
 }
 
 const accentStyles: Record<string, { border: string; headerBg: string; chevron: string }> = {
@@ -16,6 +16,8 @@ const accentStyles: Record<string, { border: string; headerBg: string; chevron: 
   violet:  { border: "border-l-violet-400",  headerBg: "bg-violet-50/50",  chevron: "text-violet-400" },
   amber:   { border: "border-l-amber-400",   headerBg: "bg-amber-50/50",   chevron: "text-amber-400" },
   emerald: { border: "border-l-emerald-400", headerBg: "bg-emerald-50/50", chevron: "text-emerald-400" },
+  rose:    { border: "border-l-rose-400",    headerBg: "bg-rose-50/50",    chevron: "text-rose-400" },
+  purple:  { border: "border-l-purple-400",  headerBg: "bg-purple-50/50",  chevron: "text-purple-400" },
   slate:   { border: "border-l-slate-300",   headerBg: "bg-muted/20",      chevron: "text-muted-foreground" },
 };
 
