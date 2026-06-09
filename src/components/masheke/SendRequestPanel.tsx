@@ -48,6 +48,7 @@ import {
   ChevronRight,
   Trash2,
 } from "lucide-react";
+import { StepSection } from "@/components/shared/StepSection";
 
 interface Props {
   onUpdate: (patch: Partial<Patient>) => void;
@@ -342,100 +343,103 @@ export function SendRequestPanel({ patient, resetVersion = 0, onUpdate, onOpenFo
   }, [isParachute]);
 
   return (
-    <div className="space-y-4">
-      <MethodBanner patient={patient} />
-
-      <WhatsNeededCard patient={patient} />
-
-      <ClinicalFilesCard
-        files={mondayFiles.clinicalFiles}
-        loading={mondayFiles.loading}
-      />
-
-      {/* Parachute: the GenerateScripts / RequestLetter / OptionalFax cards
-         live behind a chevron. Mark every card in the group with a left
-         indigo accent so it's obvious which boxes are part of the
-         drop-down vs the always-visible cards above and below.
-         Fax / Email: cards are always visible, no group accent. */}
-      {isParachute && (
-        <CollapsibleHeader
-          title="Generate Scripts & MN Request Letter"
-          open={showAdvanced}
-          onToggle={() => setShowAdvanced((o) => !o)}
-          hint="Not needed for Parachute requests. Open to view if sending request by fax as well."
-          grouped
-        />
-      )}
-      {(!isParachute || showAdvanced) && (
-        <>
-          <GenerateScriptsCard
-            showCgm={showCgmGenerate}
-            showIp={showIpGenerate}
-            cgmIsGenerating={cgmIsGenerating}
-            ipIsGenerating={ipIsGenerating}
-            cgmFiles={mondayFiles.cgmTemplate}
-            ipFiles={mondayFiles.ipTemplate}
+    <div className="space-y-6">
+      <StepSection accent="teal" step={1} title="Review Documents" hint="Method, what's needed, and clinical files">
+        <div className="space-y-6">
+          <MethodBanner patient={patient} />
+          <WhatsNeededCard patient={patient} />
+          <ClinicalFilesCard
+            files={mondayFiles.clinicalFiles}
             loading={mondayFiles.loading}
-            cgmMissing={cgmMissing}
-            ipMissing={ipMissing}
-            onGenerateCgm={() => handleGenerateCgm("Generate")}
-            onCancelCgm={() => handleGenerateCgm(undefined)}
-            onGenerateIp={() => handleGenerateIp("Generate")}
-            onCancelIp={() => handleGenerateIp(undefined)}
-            onDeleteCgm={handleDeleteCgmFile}
-            onDeleteIp={handleDeleteIpFile}
-            grouped={isParachute}
           />
+        </div>
+      </StepSection>
 
-          <RequestLetterCard
-            files={mondayFiles.mnRequestLetter}
-            loading={mondayFiles.loading}
-            generating={generatingLetter}
-            onGenerate={handleGenerateMnRequestLetter}
-            onDelete={handleDeleteMnRequestLetterFile}
-            grouped={isParachute}
-          />
-
+      <StepSection accent="teal" step={2} title="Generate Scripts" hint="Trigger DocExport and MN Request Letter">
+        <div className="space-y-6">
           {isParachute && (
-            <OptionalFaxCard
-              patient={patient}
-              sending={sending}
-              onSend={handleSend}
-              mnRequestLetterCount={mondayFiles.mnRequestLetter.length}
+            <CollapsibleHeader
+              title="Generate Scripts & MN Request Letter"
+              open={showAdvanced}
+              onToggle={() => setShowAdvanced((o) => !o)}
+              hint="Not needed for Parachute requests. Open to view if sending request by fax as well."
+              grouped
             />
           )}
-        </>
-      )}
+          {(!isParachute || showAdvanced) && (
+            <>
+              <GenerateScriptsCard
+                showCgm={showCgmGenerate}
+                showIp={showIpGenerate}
+                cgmIsGenerating={cgmIsGenerating}
+                ipIsGenerating={ipIsGenerating}
+                cgmFiles={mondayFiles.cgmTemplate}
+                ipFiles={mondayFiles.ipTemplate}
+                loading={mondayFiles.loading}
+                cgmMissing={cgmMissing}
+                ipMissing={ipMissing}
+                onGenerateCgm={() => handleGenerateCgm("Generate")}
+                onCancelCgm={() => handleGenerateCgm(undefined)}
+                onGenerateIp={() => handleGenerateIp("Generate")}
+                onCancelIp={() => handleGenerateIp(undefined)}
+                onDeleteCgm={handleDeleteCgmFile}
+                onDeleteIp={handleDeleteIpFile}
+                grouped={isParachute}
+              />
 
-      <NotesPanel
-        notes={patient.mnEvalNotes ?? ""}
-        onNotesChange={(v) => onUpdate({ mnEvalNotes: v })}
-        onSaveToMonday={(v) => writeLongText(patient.id, COL.mnEvalNotes, v)}
-        profileSendOffNotes={patient.profileSendOffNotes}
-      />
+              <RequestLetterCard
+                files={mondayFiles.mnRequestLetter}
+                loading={mondayFiles.loading}
+                generating={generatingLetter}
+                onGenerate={handleGenerateMnRequestLetter}
+                onDelete={handleDeleteMnRequestLetterFile}
+                grouped={isParachute}
+              />
 
-      <SendActionCard
-        patient={patient}
-        sending={sending}
-        completing={completing}
-        onSend={handleSend}
-        onMarkComplete={handleMarkComplete}
-        escalated={escalated}
-        onToggleEscalate={() => setEscalated((v) => { const nv = !v; escalatedRef.current = nv; return nv; })}
-        onOpenForm={onOpenForm}
-        attachments={[
-          { label: "MN Request Letter", count: mondayFiles.mnRequestLetter.length, required: true },
-          // Script template rows only show when this patient is being
-          // served that product — otherwise the row is meaningless.
-          ...(showCgmGenerate
-            ? [{ label: "CGM Script Template", count: mondayFiles.cgmTemplate.length }]
-            : []),
-          ...(showIpGenerate
-            ? [{ label: "Insulin Pump Script Template", count: mondayFiles.ipTemplate.length }]
-            : []),
-          { label: "Clinical Files", count: mondayFiles.clinicalFiles.length },
-        ]}
-      />
+              {isParachute && (
+                <OptionalFaxCard
+                  patient={patient}
+                  sending={sending}
+                  onSend={handleSend}
+                  mnRequestLetterCount={mondayFiles.mnRequestLetter.length}
+                />
+              )}
+            </>
+          )}
+        </div>
+      </StepSection>
+
+      <StepSection accent="teal" step={3} title="Send Request" hint="Send via fax/email/parachute, then mark complete">
+        <div className="space-y-6">
+          <NotesPanel
+            notes={patient.mnEvalNotes ?? ""}
+            onNotesChange={(v) => onUpdate({ mnEvalNotes: v })}
+            onSaveToMonday={(v) => writeLongText(patient.id, COL.mnEvalNotes, v)}
+            profileSendOffNotes={patient.profileSendOffNotes}
+          />
+
+          <SendActionCard
+            patient={patient}
+            sending={sending}
+            completing={completing}
+            onSend={handleSend}
+            onMarkComplete={handleMarkComplete}
+            escalated={escalated}
+            onToggleEscalate={() => setEscalated((v) => { const nv = !v; escalatedRef.current = nv; return nv; })}
+            onOpenForm={onOpenForm}
+            attachments={[
+              { label: "MN Request Letter", count: mondayFiles.mnRequestLetter.length, required: true },
+              ...(showCgmGenerate
+                ? [{ label: "CGM Script Template", count: mondayFiles.cgmTemplate.length }]
+                : []),
+              ...(showIpGenerate
+                ? [{ label: "Insulin Pump Script Template", count: mondayFiles.ipTemplate.length }]
+                : []),
+              { label: "Clinical Files", count: mondayFiles.clinicalFiles.length },
+            ]}
+          />
+        </div>
+      </StepSection>
     </div>
   );
 }

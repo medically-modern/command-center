@@ -88,7 +88,9 @@ import {
   Plus,
   Send,
   ChevronRight,
+  Circle,
 } from "lucide-react";
+import { StepSection } from "@/components/shared/StepSection";
 
 interface Props {
   patient: Patient;
@@ -475,115 +477,268 @@ export function EvaluatePanel({ patient, resetVersion = 0, onUpdate, onOpenForm 
 
 
       {/* ── Quick Check ────────────────────────────────── */}
-      <SectionCard title="Quick Check">
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
+      <StepSection step={1} title="Quick Check">
+        <div className="divide-y divide-border rounded-xl border border-border bg-card overflow-hidden">
+          {/* CGM Script row */}
           {showCgm && (
-            <div className="space-y-3">
-              <ToggleField
-                label="CGM Script Received?"
-                value={state.cgmScriptReceived}
-                onChange={(v) => {
-                  update("cgmScriptReceived", v as YesNo);
-                  if (v === "No") update("cgmScriptValid", undefined);
-                }}
-              />
-              {state.cgmScriptReceived === "Yes" && (
-                <ToggleField
-                  label="Valid?"
-                  optionA="Valid"
-                  optionB="Invalid"
-                  value={state.cgmScriptValid}
-                  onChange={(v) => update("cgmScriptValid", v as ValidInvalid)}
-                />
-              )}
+            <div className="flex items-center gap-4 px-5 py-4 hover:bg-muted/30 transition-colors">
+              <div className="shrink-0">
+                {state.cgmScriptReceived === "Yes" ? (
+                  <CheckCircle2 className="h-6 w-6 text-emerald-500" />
+                ) : state.cgmScriptReceived === "No" ? (
+                  <XCircle className="h-6 w-6 text-red-400" />
+                ) : (
+                  <Circle className="h-6 w-6 text-muted-foreground/40" />
+                )}
+              </div>
+              <span className="text-sm font-medium text-foreground min-w-[140px]">CGM Script</span>
+              <div className="flex items-center gap-2 ml-auto">
+                <button
+                  onClick={() => { if (state.cgmScriptReceived === "Yes") { update("cgmScriptReceived", undefined); update("cgmScriptValid", undefined); } else { update("cgmScriptReceived", "Yes" as YesNo); } }}
+                  className={cn(
+                    "px-3 py-1.5 rounded-full text-xs font-medium border transition-all",
+                    state.cgmScriptReceived === "Yes"
+                      ? "bg-emerald-100 text-emerald-700 border-emerald-300"
+                      : "bg-muted/50 text-muted-foreground border-border hover:border-emerald-300 hover:text-emerald-600"
+                  )}
+                >
+                  Received
+                </button>
+                <button
+                  onClick={() => { if (state.cgmScriptReceived === "No") { update("cgmScriptReceived", undefined); } else { update("cgmScriptReceived", "No" as YesNo); update("cgmScriptValid", undefined); } }}
+                  className={cn(
+                    "px-3 py-1.5 rounded-full text-xs font-medium border transition-all",
+                    state.cgmScriptReceived === "No"
+                      ? "bg-red-100 text-red-700 border-red-300"
+                      : "bg-muted/50 text-muted-foreground border-border hover:border-red-300 hover:text-red-600"
+                  )}
+                >
+                  Not Received
+                </button>
+                {state.cgmScriptReceived === "Yes" && (
+                  <>
+                    <div className="w-px h-5 bg-border mx-1" />
+                    <button
+                      onClick={() => update("cgmScriptValid", state.cgmScriptValid === "Valid" ? undefined : "Valid" as ValidInvalid)}
+                      className={cn(
+                        "px-3 py-1.5 rounded-full text-xs font-medium border transition-all",
+                        state.cgmScriptValid === "Valid"
+                          ? "bg-emerald-100 text-emerald-700 border-emerald-300"
+                          : "bg-muted/50 text-muted-foreground border-border hover:border-emerald-300"
+                      )}
+                    >
+                      Valid
+                    </button>
+                    <button
+                      onClick={() => update("cgmScriptValid", state.cgmScriptValid === "Invalid" ? undefined : "Invalid" as ValidInvalid)}
+                      className={cn(
+                        "px-3 py-1.5 rounded-full text-xs font-medium border transition-all",
+                        state.cgmScriptValid === "Invalid"
+                          ? "bg-red-100 text-red-700 border-red-300"
+                          : "bg-muted/50 text-muted-foreground border-border hover:border-red-300"
+                      )}
+                    >
+                      Invalid
+                    </button>
+                  </>
+                )}
+              </div>
             </div>
           )}
+
+          {/* IP Script row */}
           {showIp && (
-            <div className="space-y-3">
-              <ToggleField
-                label="IP Script Received?"
-                value={state.ipScriptReceived}
-                onChange={(v) => {
-                  update("ipScriptReceived", v as YesNo);
-                  if (v === "No") update("ipScriptValid", undefined);
-                }}
-              />
-              {state.ipScriptReceived === "Yes" && (
-                <ToggleField
-                  label="Valid?"
-                  optionA="Valid"
-                  optionB="Invalid"
-                  value={state.ipScriptValid}
-                  onChange={(v) => update("ipScriptValid", v as ValidInvalid)}
-                />
-              )}
+            <div className="flex items-center gap-4 px-5 py-4 hover:bg-muted/30 transition-colors">
+              <div className="shrink-0">
+                {state.ipScriptReceived === "Yes" ? (
+                  <CheckCircle2 className="h-6 w-6 text-emerald-500" />
+                ) : state.ipScriptReceived === "No" ? (
+                  <XCircle className="h-6 w-6 text-red-400" />
+                ) : (
+                  <Circle className="h-6 w-6 text-muted-foreground/40" />
+                )}
+              </div>
+              <span className="text-sm font-medium text-foreground min-w-[140px]">IP Script</span>
+              <div className="flex items-center gap-2 ml-auto">
+                <button
+                  onClick={() => { if (state.ipScriptReceived === "Yes") { update("ipScriptReceived", undefined); update("ipScriptValid", undefined); } else { update("ipScriptReceived", "Yes" as YesNo); } }}
+                  className={cn(
+                    "px-3 py-1.5 rounded-full text-xs font-medium border transition-all",
+                    state.ipScriptReceived === "Yes"
+                      ? "bg-emerald-100 text-emerald-700 border-emerald-300"
+                      : "bg-muted/50 text-muted-foreground border-border hover:border-emerald-300 hover:text-emerald-600"
+                  )}
+                >
+                  Received
+                </button>
+                <button
+                  onClick={() => { if (state.ipScriptReceived === "No") { update("ipScriptReceived", undefined); } else { update("ipScriptReceived", "No" as YesNo); update("ipScriptValid", undefined); } }}
+                  className={cn(
+                    "px-3 py-1.5 rounded-full text-xs font-medium border transition-all",
+                    state.ipScriptReceived === "No"
+                      ? "bg-red-100 text-red-700 border-red-300"
+                      : "bg-muted/50 text-muted-foreground border-border hover:border-red-300 hover:text-red-600"
+                  )}
+                >
+                  Not Received
+                </button>
+                {state.ipScriptReceived === "Yes" && (
+                  <>
+                    <div className="w-px h-5 bg-border mx-1" />
+                    <button
+                      onClick={() => update("ipScriptValid", state.ipScriptValid === "Valid" ? undefined : "Valid" as ValidInvalid)}
+                      className={cn(
+                        "px-3 py-1.5 rounded-full text-xs font-medium border transition-all",
+                        state.ipScriptValid === "Valid"
+                          ? "bg-emerald-100 text-emerald-700 border-emerald-300"
+                          : "bg-muted/50 text-muted-foreground border-border hover:border-emerald-300"
+                      )}
+                    >
+                      Valid
+                    </button>
+                    <button
+                      onClick={() => update("ipScriptValid", state.ipScriptValid === "Invalid" ? undefined : "Invalid" as ValidInvalid)}
+                      className={cn(
+                        "px-3 py-1.5 rounded-full text-xs font-medium border transition-all",
+                        state.ipScriptValid === "Invalid"
+                          ? "bg-red-100 text-red-700 border-red-300"
+                          : "bg-muted/50 text-muted-foreground border-border hover:border-red-300"
+                      )}
+                    >
+                      Invalid
+                    </button>
+                  </>
+                )}
+              </div>
             </div>
           )}
-          <ToggleField
-            label="Clinicals Received?"
-            value={state.mrReceived}
-            onChange={(v) => setMrReceived(v as YesNo)}
-          />
+
+          {/* Clinicals row */}
+          <div className="flex items-center gap-4 px-5 py-4 hover:bg-muted/30 transition-colors">
+            <div className="shrink-0">
+              {state.mrReceived === "Yes" ? (
+                <CheckCircle2 className="h-6 w-6 text-emerald-500" />
+              ) : state.mrReceived === "No" ? (
+                <XCircle className="h-6 w-6 text-red-400" />
+              ) : (
+                <Circle className="h-6 w-6 text-muted-foreground/40" />
+              )}
+            </div>
+            <span className="text-sm font-medium text-foreground min-w-[140px]">Clinicals</span>
+            <div className="flex items-center gap-2 ml-auto">
+              <button
+                onClick={() => setMrReceived(state.mrReceived === "Yes" ? undefined as unknown as YesNo : "Yes" as YesNo)}
+                className={cn(
+                  "px-3 py-1.5 rounded-full text-xs font-medium border transition-all",
+                  state.mrReceived === "Yes"
+                    ? "bg-emerald-100 text-emerald-700 border-emerald-300"
+                    : "bg-muted/50 text-muted-foreground border-border hover:border-emerald-300 hover:text-emerald-600"
+                )}
+              >
+                Received
+              </button>
+              <button
+                onClick={() => setMrReceived(state.mrReceived === "No" ? undefined as unknown as YesNo : "No" as YesNo)}
+                className={cn(
+                  "px-3 py-1.5 rounded-full text-xs font-medium border transition-all",
+                  state.mrReceived === "No"
+                    ? "bg-red-100 text-red-700 border-red-300"
+                    : "bg-muted/50 text-muted-foreground border-border hover:border-red-300 hover:text-red-600"
+                )}
+              >
+                Not Received
+              </button>
+            </div>
+          </div>
         </div>
-      </SectionCard>
+      </StepSection>
 
       {anyYes && (<>
 
       {/* ── Diagnosis & Clinicals ───────────────────────── */}
-      <SectionCard title="Diagnosis & Clinicals" status={validity.sections.diagnosis.valid && validity.sections.mr.valid}>
-        <DiagnosisField
-          value={state.diagnosis}
-          onChange={(v) => setDiagnosis(v)}
-        />
-        {state.mrReceived === "Yes" && (
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-4 mt-4 pt-4 border-t border-border">
-            <DateField
-              label="Last Visit Date"
-              value={state.lastVisitDate}
-              onChange={(v) => setLastVisitDate(v)}
-            />
-            <MrExpiryField lastVisit={state.lastVisitDate} />
-          </div>
-        )}
-      </SectionCard>
+      <StepSection
+        step={2}
+        title="Diagnosis & Clinicals"
+        rightAccessory={validity.sections.diagnosis.valid && validity.sections.mr.valid ? (
+          <span className="inline-flex items-center gap-1 text-xs font-medium text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-full px-2 py-0.5"><Check className="h-3 w-3" /> Complete</span>
+        ) : validity.sections.diagnosis.valid === false || validity.sections.mr.valid === false ? (
+          <span className="inline-flex items-center gap-1 text-xs font-medium text-red-700 bg-red-50 border border-red-200 rounded-full px-2 py-0.5"><X className="h-3 w-3" /> Incomplete</span>
+        ) : null}
+      >
+        <SectionCard>
+          <DiagnosisField
+            value={state.diagnosis}
+            onChange={(v) => setDiagnosis(v)}
+          />
+          {state.mrReceived === "Yes" && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-4 mt-4 pt-4 border-t border-border">
+              <DateField
+                label="Last Visit Date"
+                value={state.lastVisitDate}
+                onChange={(v) => setLastVisitDate(v)}
+              />
+              <MrExpiryField lastVisit={state.lastVisitDate} />
+            </div>
+          )}
+        </SectionCard>
+      </StepSection>
 
       {/* CGM block */}
       {showCgm && (
-        <SectionCard
+        <StepSection
+          step={3}
           title="CGM"
-          status={validity.sections.cgm.shown ? validity.sections.cgm.valid : null}
+          rightAccessory={validity.sections.cgm.shown ? (
+            validity.sections.cgm.valid ? (
+              <span className="inline-flex items-center gap-1 text-xs font-medium text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-full px-2 py-0.5"><Check className="h-3 w-3" /> Complete</span>
+            ) : validity.sections.cgm.valid === false ? (
+              <span className="inline-flex items-center gap-1 text-xs font-medium text-red-700 bg-red-50 border border-red-200 rounded-full px-2 py-0.5"><X className="h-3 w-3" /> Incomplete</span>
+            ) : null
+          ) : null}
         >
-          <StatusSelect
-            label="CGM Coverage Path"
-            value={state.cgmCoveragePath}
-            options={CGM_COVERAGE_OPTS}
-            onChange={(v) => setCgmCoveragePath(v as CgmCoveragePath)}
-          />
-        </SectionCard>
+          <SectionCard>
+            <StatusSelect
+              label="CGM Coverage Path"
+              value={state.cgmCoveragePath}
+              options={CGM_COVERAGE_OPTS}
+              onChange={(v) => setCgmCoveragePath(v as CgmCoveragePath)}
+            />
+          </SectionCard>
+        </StepSection>
       )}
 
       {/* IP block */}
       {showIp && (
-        <SectionCard
+        <StepSection
+          step={showCgm ? 4 : 3}
           title="Insulin Pump"
-          status={validity.sections.ip.shown ? validity.sections.ip.valid : null}
+          rightAccessory={validity.sections.ip.shown ? (
+            validity.sections.ip.valid ? (
+              <span className="inline-flex items-center gap-1 text-xs font-medium text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-full px-2 py-0.5"><Check className="h-3 w-3" /> Complete</span>
+            ) : validity.sections.ip.valid === false ? (
+              <span className="inline-flex items-center gap-1 text-xs font-medium text-red-700 bg-red-50 border border-red-200 rounded-full px-2 py-0.5"><X className="h-3 w-3" /> Incomplete</span>
+            ) : null
+          ) : null}
         >
-          <div className="space-y-4">
-            <StatusSelect
-              label="Insulin Pump Coverage Path"
-              value={state.ipCoveragePath}
-              options={IP_PATH_OPTS}
-              onChange={(v) => setIpCoveragePath(v as IpPath)}
-            />
-            {state.ipCoveragePath && (
-              <IpCriteria state={state} patient={patient} update={update} />
-            )}
-          </div>
-        </SectionCard>
+          <SectionCard>
+            <div className="space-y-4">
+              <StatusSelect
+                label="Insulin Pump Coverage Path"
+                value={state.ipCoveragePath}
+                options={IP_PATH_OPTS}
+                onChange={(v) => setIpCoveragePath(v as IpPath)}
+              />
+              {state.ipCoveragePath && (
+                <IpCriteria state={state} patient={patient} update={update} />
+              )}
+            </div>
+          </SectionCard>
+        </StepSection>
       )}
 
       {/* Clinical files (uploads) */}
-      <SectionCard title="Clinical Files">
+      <StepSection step={4} title="Clinical Files">
+        <SectionCard>
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           <FileUploadCard
             label="Clinical Files"
@@ -628,7 +783,8 @@ export function EvaluatePanel({ patient, resetVersion = 0, onUpdate, onOpenForm 
             }}
           />
         </div>
-      </SectionCard>
+        </SectionCard>
+      </StepSection>
       </>)}
 
       {/* Notes */}
@@ -663,7 +819,7 @@ export function EvaluatePanel({ patient, resetVersion = 0, onUpdate, onOpenForm 
 // =====================================================================
 
 interface SectionCardProps {
-  title: string;
+  title?: string;
   status?: boolean | null; // true=valid, false=invalid, null=N/A, undefined=no badge
   children: React.ReactNode;
 }
@@ -671,19 +827,21 @@ interface SectionCardProps {
 function SectionCard({ title, status, children }: SectionCardProps) {
   return (
     <div className="rounded-xl bg-card border shadow-card p-6">
-      <div className="flex items-center justify-between mb-4">
-        <h3 className="font-heading text-base font-semibold text-foreground">{title}</h3>
-        {status === true && (
-          <span className="inline-flex items-center gap-1 text-xs font-medium text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-full px-2 py-0.5">
-            <Check className="h-3 w-3" /> Complete
-          </span>
-        )}
-        {status === false && (
-          <span className="inline-flex items-center gap-1 text-xs font-medium text-red-700 bg-red-50 border border-red-200 rounded-full px-2 py-0.5">
-            <X className="h-3 w-3" /> Incomplete
-          </span>
-        )}
-      </div>
+      {(title || status === true || status === false) && (
+        <div className="flex items-center justify-between mb-4">
+          {title && <h3 className="font-heading text-base font-semibold text-foreground">{title}</h3>}
+          {status === true && (
+            <span className="inline-flex items-center gap-1 text-xs font-medium text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-full px-2 py-0.5">
+              <Check className="h-3 w-3" /> Complete
+            </span>
+          )}
+          {status === false && (
+            <span className="inline-flex items-center gap-1 text-xs font-medium text-red-700 bg-red-50 border border-red-200 rounded-full px-2 py-0.5">
+              <X className="h-3 w-3" /> Incomplete
+            </span>
+          )}
+        </div>
+      )}
       {children}
     </div>
   );
