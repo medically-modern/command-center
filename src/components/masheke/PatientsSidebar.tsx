@@ -84,15 +84,15 @@ export function PatientsSidebar({ patients, selectedId, onSelect, loading, error
 
   const [todayOnly, setTodayOnly] = useState(false);
   const [pendingOpen, setPendingOpen] = useState(false);
-  const [filteredOpen, setFilteredOpen] = useState(false);
+  // const [filteredOpen, setFilteredOpen] = useState(false);
 
-  // Split patients into active vs blocked vs follow-up vs escalated vs stuck vs both
-  const stuckPatients = patients.filter((p) => p.advancer2c === "Stuck" && p.blocked !== "Blocked");
-  const escalatedPatients = patients.filter((p) => p.escalation === "Escalation Required" && p.blocked !== "Blocked" && p.followUp !== "Follow up" && p.advancer2c !== "Stuck");
-  const activePatients = patients.filter((p) => p.escalation !== "Escalation Required" && p.blocked !== "Blocked" && p.followUp !== "Follow up" && p.advancer2c !== "Stuck");
-  const blockedPatients = patients.filter((p) => p.blocked === "Blocked");
-  const followUpPatients = patients.filter((p) => p.followUp === "Follow up" && p.blocked !== "Blocked" && p.escalation !== "Escalation Required" && p.advancer2c !== "Stuck");
-  const bothPatients = patients.filter((p) => p.escalation === "Escalation Required" && p.followUp === "Follow up" && p.blocked !== "Blocked" && p.advancer2c !== "Stuck");
+  // -- Blocked / Stuck / Escalated / Follow-up filtering commented out for now --
+  // const stuckPatients = patients.filter((p) => p.advancer2c === "Stuck" && p.blocked !== "Blocked");
+  // const escalatedPatients = patients.filter((p) => p.escalation === "Escalation Required" && p.blocked !== "Blocked" && p.followUp !== "Follow up" && p.advancer2c !== "Stuck");
+  // const blockedPatients = patients.filter((p) => p.blocked === "Blocked");
+  // const followUpPatients = patients.filter((p) => p.followUp === "Follow up" && p.blocked !== "Blocked" && p.escalation !== "Escalation Required" && p.advancer2c !== "Stuck");
+  // const bothPatients = patients.filter((p) => p.escalation === "Escalation Required" && p.followUp === "Follow up" && p.blocked !== "Blocked" && p.advancer2c !== "Stuck");
+  const activePatients = patients;
 
   // Always use Eastern Time so all users see the same "today" regardless of their local timezone
   const etParts = new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
@@ -233,7 +233,7 @@ export function PatientsSidebar({ patients, selectedId, onSelect, loading, error
           </SidebarGroup>
         )}
 
-        {/* ── Filtered patients (collapsible folder) ── */}
+        {/* ── Filtered patients (Blocked/Stuck/Escalated/FollowUp) — commented out for now ──
         {(() => {
           const allFiltered = [
             ...blockedPatients.map((p) => ({ p, tag: `Blocked · ${p.blockedDate ? fmtDate(p.blockedDate) : "—"}`, tagColor: "text-red-400", icon: Ban, action: (id: string, name: string) => <UnblockButton patientId={id} patientName={name} onSuccess={onRefresh} /> })),
@@ -283,6 +283,7 @@ export function PatientsSidebar({ patients, selectedId, onSelect, loading, error
             </SidebarGroup>
           );
         })()}
+        */}
       </SidebarContent>
 
     </Sidebar>
