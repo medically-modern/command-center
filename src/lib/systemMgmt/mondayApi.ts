@@ -458,6 +458,15 @@ export async function removeEscalation(
   await gql(
     `mutation { change_column_value(item_id: ${patient.id}, board_id: ${patient.boardId}, column_id: "${board.escalationColId}", value: ${JSON.stringify(value)}) { id } }`,
   );
+
+  // Also set next action date to today so the patient appears in active view
+  if (board.nextActionDateColId) {
+    const today = new Date().toLocaleDateString("en-CA"); // YYYY-MM-DD
+    const dateValue = JSON.stringify({ date: today });
+    await gql(
+      `mutation { change_column_value(item_id: ${patient.id}, board_id: ${patient.boardId}, column_id: "${board.nextActionDateColId}", value: ${JSON.stringify(dateValue)}) { id } }`,
+    );
+  }
 }
 
 
