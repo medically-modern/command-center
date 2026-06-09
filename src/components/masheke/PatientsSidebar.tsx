@@ -168,8 +168,9 @@ export function PatientsSidebar({ patients, selectedId, onSelect, loading, error
           </div>
         )}
 
-        {/* ── Active patients (flat list, same for all tabs) ── */}
-        <SidebarGroup>
+        {/* ── Toggle: Active patients OR Scheduled patients ── */}
+        {!showScheduled ? (
+          <SidebarGroup>
             <SidebarGroupContent>
               <SidebarMenu>
                 {activeNowPatients.map((p) => {
@@ -194,9 +195,7 @@ export function PatientsSidebar({ patients, selectedId, onSelect, loading, error
               </SidebarMenu>
             </SidebarGroupContent>
           </SidebarGroup>
-
-        {/* ── Scheduled (future next-action-date) — toggled via header button ── */}
-        {showScheduled && pendingPatients.length > 0 && !collapsed && (
+        ) : (
           <SidebarGroup>
             <SidebarGroupLabel className="text-[10px] uppercase tracking-wider text-violet-500 font-semibold flex items-center gap-1.5">
               <FolderClock className="h-3 w-3" />
@@ -210,8 +209,8 @@ export function PatientsSidebar({ patients, selectedId, onSelect, loading, error
                       isActive={selectedId === p.id}
                       onClick={() => onSelect(p.id)}
                       className={cn(
-                        "flex items-start gap-2 py-2 h-auto opacity-60",
-                        selectedId === p.id && "bg-sidebar-accent opacity-100",
+                        "flex items-start gap-2 py-2 h-auto",
+                        selectedId === p.id && "bg-sidebar-accent",
                       )}
                     >
                       <FolderClock className="h-4 w-4 mt-0.5 shrink-0 text-violet-400" />
@@ -225,6 +224,9 @@ export function PatientsSidebar({ patients, selectedId, onSelect, loading, error
                     </SidebarMenuButton>
                   </SidebarMenuItem>
                 ))}
+                {pendingPatients.length === 0 && !collapsed && (
+                  <p className="px-3 py-4 text-xs text-muted-foreground">No scheduled patients.</p>
+                )}
               </SidebarMenu>
             </SidebarGroupContent>
           </SidebarGroup>
