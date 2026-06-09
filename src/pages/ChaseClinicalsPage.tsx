@@ -79,20 +79,20 @@ const ChaseClinicalsPage = () => {
                 </div>
               </div>
               <div className="flex items-center gap-2">
-                <Button
+                {/* <Button
                   onClick={() => setFollowUpModalOpen(true)}
                   disabled={!selected}
                   className="gap-2 bg-blue-600 hover:bg-blue-700 text-white shadow-elevate"
                 >
                   <Clock className="h-4 w-4" /> Follow Up
-                </Button>
-                <Button
+                </Button> */}
+                {/* <Button
                   onClick={() => setBlockedModalOpen(true)}
                   disabled={!selected}
                   className="gap-2 bg-red-600 hover:bg-red-700 text-white shadow-elevate"
                 >
                   <Ban className="h-4 w-4" /> Blocked
-                </Button>
+                </Button> */}
                 <Button
                   onClick={() => {
                     if (!selected) return;
@@ -131,13 +131,13 @@ const ChaseClinicalsPage = () => {
 
       {selected && (
         <>
-          <BlockedModal
+          {/* <BlockedModal
             open={blockedModalOpen}
             onOpenChange={setBlockedModalOpen}
             patientId={selected.id}
             patientName={selected.name}
             onSuccess={refetch}
-          />
+          /> */}
           {/* <EscalationFormModal
             open={escalationModalOpen}
             onOpenChange={setEscalationModalOpen}
@@ -147,13 +147,13 @@ const ChaseClinicalsPage = () => {
             writeEscalationNotes={async (id, text) => { await writeLongText(id, COL.escalationNotes, text); }}
             onSuccess={refetch}
           /> */}
-          <FollowUpModal
+          {/* <FollowUpModal
             open={followUpModalOpen}
             onOpenChange={setFollowUpModalOpen}
             patientId={selected.id}
             patientName={selected.name}
             onSuccess={refetch}
-          />
+          /> */}
         </>
       )}
     </SidebarProvider>

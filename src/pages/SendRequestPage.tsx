@@ -71,13 +71,13 @@ const SendRequestPage = () => {
                 </div>
               </div>
               <div className="flex items-center gap-2">
-                <Button
+                {/* <Button
                   onClick={() => setBlockedModalOpen(true)}
                   disabled={!selected}
                   className="gap-2 bg-red-600 hover:bg-red-700 text-white shadow-elevate"
                 >
                   <Ban className="h-4 w-4" /> Blocked
-                </Button>
+                </Button> */}
                 <Button
                   onClick={() => {
                     if (!selected) return;
@@ -116,13 +116,13 @@ const SendRequestPage = () => {
 
       {selected && (
         <>
-          <BlockedModal
+          {/* <BlockedModal
             open={blockedModalOpen}
             onOpenChange={setBlockedModalOpen}
             patientId={selected.id}
             patientName={selected.name}
             onSuccess={refetch}
-          />
+          /> */}
           {/* <EscalationFormModal
             open={escalationModalOpen}
             onOpenChange={setEscalationModalOpen}
