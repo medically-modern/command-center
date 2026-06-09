@@ -264,6 +264,7 @@ const SystemMgmtPage = () => {
               chartSelectionActive={chartSelection !== null}
               onClearChartSelection={() => setChartSelection(null)}
               onNotesClick={(p) => setNotesPatient((prev) => prev?.id === p.id ? null : p)}
+              onEscalationClick={(p) => setDetailPatient(p)}
               onStageClick={handleStageClick}
               stageFilter={stageFilter}
               onClearStageFilter={() => setStageFilter(null)}
@@ -362,6 +363,7 @@ function SearchView({
   chartSelectionActive,
   onClearChartSelection,
   onNotesClick,
+  onEscalationClick,
   onStageClick,
   stageFilter,
   onClearStageFilter,
@@ -377,6 +379,7 @@ function SearchView({
   chartSelectionActive: boolean;
   onClearChartSelection: () => void;
   onNotesClick: (p: SystemPatient) => void;
+  onEscalationClick: (p: SystemPatient) => void;
   onStageClick: (stage: string) => void;
   stageFilter: string | null;
   onClearStageFilter: () => void;
@@ -452,6 +455,7 @@ function SearchView({
               onClick={() => onPatientClick(p)}
               completedStages={completionMap.get(p.name.trim().toLowerCase()) ?? []}
               onNotesClick={onNotesClick}
+              onEscalationClick={onEscalationClick}
               onStageClick={onStageClick}
             />
           ))}
@@ -977,12 +981,14 @@ function PatientRow({
   onClick,
   completedStages,
   onNotesClick,
+  onEscalationClick,
   onStageClick,
 }: {
   patient: SystemPatient;
   onClick: () => void;
   completedStages: string[];
   onNotesClick?: (p: SystemPatient) => void;
+  onEscalationClick?: (p: SystemPatient) => void;
   onStageClick?: (stage: string) => void;
 }) {
   const [showNotesTooltip, setShowNotesTooltip] = useState(false);
@@ -1031,10 +1037,13 @@ function PatientRow({
         </div>
       </button>
 
-      {/* Center: notes preview — large, uses available space. Click opens sidebar. */}
+      {/* Center: notes preview — large, uses available space. Click opens sidebar (or escalation form for escalated patients). */}
       <div
-        className="relative flex-1 border-l border-r border-border min-w-0 cursor-pointer hover:bg-muted/30 transition-colors"
-        onClick={() => onNotesClick?.(patient)}
+        className={cn(
+          "relative flex-1 border-l border-r border-border min-w-0 cursor-pointer transition-colors",
+          patient.escalated ? "hover:bg-red-100/50 dark:hover:bg-red-950/30" : "hover:bg-muted/30",
+        )}
+        onClick={() => patient.escalated ? onEscalationClick?.(patient) : onNotesClick?.(patient)}
         onMouseEnter={() => {
           if (recentThree.length > 0) {
             clearTimeout(notesTooltipTimeout.current);
@@ -1047,7 +1056,14 @@ function PatientRow({
         }}
       >
         <div className="px-4 py-3 h-full flex flex-col justify-center min-w-0">
-          {mostRecent ? (
+          {patient.escalated ? (
+            <div className="flex items-center gap-2">
+              <AlertTriangle className="h-4 w-4 text-red-500 shrink-0" />
+              <span className="text-sm font-medium text-red-600 dark:text-red-400">
+                View Escalation Form
+              </span>
+            </div>
+          ) : mostRecent ? (
             <>
               {mostRecent.header && (
                 <div className="text-[10px] text-primary font-semibold mb-0.5 truncate">{mostRecent.header}</div>
@@ -1061,8 +1077,8 @@ function PatientRow({
           )}
         </div>
 
-        {/* Hover tooltip — 3 most recent notes */}
-        {showNotesTooltip && recentThree.length > 0 && (
+        {/* Hover tooltip — 3 most recent notes (only for non-escalated) */}
+        {showNotesTooltip && !patient.escalated && recentThree.length > 0 && (
           <div className="absolute left-4 bottom-full mb-2 z-50 w-96 bg-popover border border-border rounded-lg shadow-lg p-4 pointer-events-none">
             <div className="text-[10px] font-semibold text-muted-foreground mb-2 uppercase tracking-wider">
               Recent Notes ({noteEntries.length} total)
