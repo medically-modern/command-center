@@ -38,11 +38,14 @@ function PatientRow({
   isActive,
   collapsed,
   onSelect,
+  overdue,
 }: {
   patient: Patient;
   isActive: boolean;
   collapsed: boolean;
   onSelect: (id: string) => void;
+  /** Show a red dot next to the name when the next-action date is past due */
+  overdue?: boolean;
 }) {
   return (
     <SidebarMenuItem>
@@ -54,7 +57,12 @@ function PatientRow({
           isActive && "bg-sidebar-accent",
         )}
       >
-        <User className="h-4 w-4 mt-0.5 shrink-0" />
+        <div className="relative shrink-0">
+          <User className="h-4 w-4 mt-0.5" />
+          {overdue && (
+            <span className="absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full bg-red-500" />
+          )}
+        </div>
         {!collapsed && (
           <div className="min-w-0 text-left">
             <p className="text-sm font-medium truncate">{patient.name}</p>
@@ -83,7 +91,7 @@ export function PatientsSidebar({ patients, selectedId, onSelect, loading, error
   const collapsed = state === "collapsed";
 
   const [todayOnly, setTodayOnly] = useState(false);
-  const [pendingOpen, setPendingOpen] = useState(false);
+  const [showScheduled, setShowScheduled] = useState(false);
   // const [filteredOpen, setFilteredOpen] = useState(false);
 
   // -- Blocked / Stuck / Follow-up filtering commented out for now --
@@ -132,6 +140,17 @@ export function PatientsSidebar({ patients, selectedId, onSelect, loading, error
             </div>
           )}
           <div className="flex items-center gap-1 shrink-0">
+            {hasPending && pendingPatients.length > 0 && !collapsed && (
+              <Button
+                variant={showScheduled ? "default" : "ghost"}
+                size="icon"
+                className={cn("h-7 w-7", showScheduled && "bg-violet-600 hover:bg-violet-700 text-white")}
+                onClick={() => setShowScheduled((v) => !v)}
+                title={showScheduled ? "Hide scheduled patients" : `Show scheduled patients (${pendingPatients.length})`}
+              >
+                <FolderClock className="h-4 w-4" />
+              </Button>
+            )}
             {activeTab === "chase" && !collapsed && (
               <Button
                 variant={todayOnly ? "default" : "ghost"}
@@ -175,15 +194,20 @@ export function PatientsSidebar({ patients, selectedId, onSelect, loading, error
             )}
             <SidebarGroupContent>
               <SidebarMenu>
-                {todayPatients.map((p) => (
-                  <PatientRow
-                    key={p.id}
-                    patient={p}
-                    isActive={selectedId === p.id}
-                    collapsed={collapsed}
-                    onSelect={onSelect}
-                  />
-                ))}
+                {todayPatients.map((p) => {
+                  const nad = p.nextActionDate?.slice(0, 10);
+                  const isOverdue = hasPending && !!nad && nad < todayStr;
+                  return (
+                    <PatientRow
+                      key={p.id}
+                      patient={p}
+                      isActive={selectedId === p.id}
+                      collapsed={collapsed}
+                      onSelect={onSelect}
+                      overdue={isOverdue}
+                    />
+                  );
+                })}
                 {!loading && todayPatients.length === 0 && !error && !collapsed && (
                   <p className="px-3 py-4 text-xs text-muted-foreground">
                     {todayOnly ? "No patients with action date today." : `No patients in ${activeLabel}.`}
@@ -193,47 +217,40 @@ export function PatientsSidebar({ patients, selectedId, onSelect, loading, error
             </SidebarGroupContent>
           </SidebarGroup>
 
-        {/* ── Pending section — hidden from role view, functional via System Management ──
-        {pendingPatients.length > 0 && !collapsed && (
+        {/* ── Scheduled (future next-action-date) — toggled via header button ── */}
+        {showScheduled && pendingPatients.length > 0 && !collapsed && (
           <SidebarGroup>
-            <SidebarGroupLabel
-              className="text-[10px] uppercase tracking-wider text-violet-500 font-semibold flex items-center gap-1.5 cursor-pointer select-none"
-              onClick={() => setPendingOpen((v) => !v)}
-            >
+            <SidebarGroupLabel className="text-[10px] uppercase tracking-wider text-violet-500 font-semibold flex items-center gap-1.5">
               <FolderClock className="h-3 w-3" />
-              Pending ({pendingPatients.length})
-              <ChevronRight className={cn("h-3 w-3 ml-auto transition-transform", pendingOpen && "rotate-90")} />
+              Scheduled ({pendingPatients.length})
             </SidebarGroupLabel>
-            {pendingOpen && (
-              <SidebarGroupContent>
-                <SidebarMenu>
-                  {pendingPatients.map((p) => (
-                    <SidebarMenuItem key={p.id}>
-                      <SidebarMenuButton
-                        isActive={selectedId === p.id}
-                        onClick={() => onSelect(p.id)}
-                        className={cn(
-                          "flex items-start gap-2 py-2 h-auto opacity-60",
-                          selectedId === p.id && "bg-sidebar-accent opacity-100",
-                        )}
-                      >
-                        <FolderClock className="h-4 w-4 mt-0.5 shrink-0 text-violet-400" />
-                        <div className="min-w-0 text-left">
-                          <p className="text-sm font-medium truncate">{p.name}</p>
-                          <p className="text-[11px] text-violet-400 truncate">
-                            Next: {p.nextActionDate ? fmtDate(p.nextActionDate) : "—"}
-                            {p.mnAttempts ? ` · ${p.mnAttempts}` : ""}
-                          </p>
-                        </div>
-                      </SidebarMenuButton>
-                    </SidebarMenuItem>
-                  ))}
-                </SidebarMenu>
-              </SidebarGroupContent>
-            )}
+            <SidebarGroupContent>
+              <SidebarMenu>
+                {pendingPatients.map((p) => (
+                  <SidebarMenuItem key={p.id}>
+                    <SidebarMenuButton
+                      isActive={selectedId === p.id}
+                      onClick={() => onSelect(p.id)}
+                      className={cn(
+                        "flex items-start gap-2 py-2 h-auto opacity-60",
+                        selectedId === p.id && "bg-sidebar-accent opacity-100",
+                      )}
+                    >
+                      <FolderClock className="h-4 w-4 mt-0.5 shrink-0 text-violet-400" />
+                      <div className="min-w-0 text-left">
+                        <p className="text-sm font-medium truncate">{p.name}</p>
+                        <p className="text-[11px] text-violet-400 truncate">
+                          Next: {p.nextActionDate ? fmtDate(p.nextActionDate) : "—"}
+                          {p.mnAttempts ? ` · ${p.mnAttempts}` : ""}
+                        </p>
+                      </div>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                ))}
+              </SidebarMenu>
+            </SidebarGroupContent>
           </SidebarGroup>
         )}
-        */}
 
         {/* ── Filtered patients (Blocked/Stuck/Escalated/FollowUp) — commented out for now ──
         {(() => {
