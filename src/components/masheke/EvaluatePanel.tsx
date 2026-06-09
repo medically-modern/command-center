@@ -636,6 +636,7 @@ export function EvaluatePanel({ patient, resetVersion = 0, onUpdate, onOpenForm 
         notes={patient.mnEvalNotes ?? ""}
         onNotesChange={(v) => onUpdate({ mnEvalNotes: v })}
         onSaveToMonday={(v) => writeLongText(patient.id, COL.mnEvalNotes, v)}
+        profileSendOffNotes={patient.profileSendOffNotes}
       />
 
       {/* Sticky validity / preview footer */}

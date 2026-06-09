@@ -411,6 +411,7 @@ export function SendRequestPanel({ patient, resetVersion = 0, onUpdate, onOpenFo
         notes={patient.mnEvalNotes ?? ""}
         onNotesChange={(v) => onUpdate({ mnEvalNotes: v })}
         onSaveToMonday={(v) => writeLongText(patient.id, COL.mnEvalNotes, v)}
+        profileSendOffNotes={patient.profileSendOffNotes}
       />
 
       <SendActionCard
