@@ -15,8 +15,6 @@ import {
   Check,
   AlertTriangle,
   Clock,
-  FileText,
-  X,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { DoctorNotesPanel } from "@/components/shared/DoctorNotesPanel";
@@ -302,7 +300,6 @@ export function PatientProfileCard({
   lockDoctorOpen = false,
   onDoctorEdit,
 }: Props) {
-  const [notesOpen, setNotesOpen] = useState(false);
   const [editingDoctor, setEditingDoctor] = useState(false);
   const canEdit = !!onDoctorEdit;
 
@@ -374,14 +371,7 @@ export function PatientProfileCard({
           </div>
         </div>
 
-        {/* Intake notes button */}
-        <button
-          onClick={() => setNotesOpen(true)}
-          className="flex items-center gap-1.5 text-xs font-medium text-amber-700 bg-amber-50 hover:bg-amber-100 border border-amber-200 px-3.5 py-2 rounded-lg transition-colors shrink-0"
-        >
-          <FileText className="h-4 w-4" />
-          Intake notes
-        </button>
+
       </div>
 
       {/* ── Accent fields row: Insurance, Member ID, Serving ── */}
@@ -566,30 +556,7 @@ export function PatientProfileCard({
         </CollapsiblePanel>
       </div>
 
-      {/* Profile Intake Notes Modal */}
-      {notesOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center">
-          <div className="absolute inset-0 bg-black/50" onClick={() => setNotesOpen(false)} />
-          <div className="relative bg-card border rounded-xl shadow-xl w-full max-w-lg mx-4 max-h-[80vh] flex flex-col">
-            <div className="flex items-center justify-between p-4 border-b">
-              <h3 className="font-semibold text-sm">Profile Intake Notes</h3>
-              <button
-                onClick={() => setNotesOpen(false)}
-                className="h-7 w-7 rounded-md flex items-center justify-center hover:bg-muted transition-colors"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-            <div className="p-4 overflow-y-auto">
-              {patient.profileSendOffNotes ? (
-                <p className="text-sm whitespace-pre-wrap">{patient.profileSendOffNotes}</p>
-              ) : (
-                <p className="text-sm text-muted-foreground italic">No intake notes recorded.</p>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
+
     </div>
   );
 }
