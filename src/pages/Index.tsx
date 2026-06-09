@@ -34,7 +34,7 @@ const Index = () => {
         </header>
 
         <div className="flex border-b border-border">
-          <TabButton active={activeTab === "roles"} onClick={() => setActiveTab("roles")} icon={<Shield className="w-4 h-4" />} label="Roles Assignment" />
+          <TabButton active={activeTab === "roles"} onClick={() => setActiveTab("roles")} icon={<Shield className="w-4 h-4" />} label="Managers" />
           <TabButton active={activeTab === "dashboard"} onClick={() => setActiveTab("dashboard")} icon={<LayoutDashboard className="w-4 h-4" />} label="Processors" />
         </div>
 
@@ -73,7 +73,7 @@ const Index = () => {
           <div className="flex-1 overflow-y-auto p-8">
             <div className="max-w-3xl xl:max-w-5xl 2xl:max-w-6xl mx-auto space-y-6">
               <div>
-                <h2 className="text-xl font-semibold text-foreground">Role Assignments</h2>
+                <h2 className="text-xl font-semibold text-foreground">Managers</h2>
                 <p className="text-sm text-muted-foreground mt-1">
                   Assign team members to each role. Changes sync across all devices.
                 </p>
