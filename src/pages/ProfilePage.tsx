@@ -7,7 +7,7 @@ import { fetchClinicLabels, createClinicLabel, moveItemToGroup, GROUPS } from "@
 import { sendPatientToMonday } from "@/lib/profile/mondayWrite";
 import { writeText, COL } from "@/lib/profile/mondayApi";
 import type { Patient } from "@/lib/profile/workflow";
-import { hasValidZip } from "@/lib/profile/workflow";
+import { hasValidZip, canCrossSellCgm } from "@/lib/profile/workflow";
 import { StediPanel } from "@/components/profile/StediPanel";
 import { DoctorPanel } from "@/components/profile/DoctorPanel";
 import { ServingPanel } from "@/components/profile/ServingPanel";
@@ -52,6 +52,29 @@ const ProfilePage = () => {
     () => patients.find((p) => p.id === selectedId),
     [patients, selectedId],
   );
+
+  // Required-field validation — blocks "Advance to MN" when any red field is empty
+  const missingRequired = useMemo(() => {
+    if (!selected) return [];
+    const missing: string[] = [];
+    // Demographics
+    if (!selected.name?.trim()) missing.push("Name");
+    if (!selected.dob?.trim()) missing.push("DOB");
+    if (!selected.ptPhone?.trim()) missing.push("Phone");
+    if (!selected.gender?.trim()) missing.push("Gender");
+    // Serving / Coverage
+    if (!selected.serving?.trim()) missing.push("Serving");
+    if (!selected.cgmCrossSell?.trim()) missing.push("Cross-Sell Status");
+    if (!selected.insulinPumpCoveragePath?.trim()) missing.push("IP Coverage Path");
+    if (!selected.cgmCoveragePath?.trim()) missing.push("CGM Coverage Path");
+    // CGM Type required when cross-sell eligible
+    if (canCrossSellCgm(selected.primaryInsurance) && !selected.cgmType?.trim()) missing.push("CGM Type");
+    // Doctor Fax required when clinicals method is Fax
+    if (selected.clinicalsMethod === "Fax" && !selected.doctorFax?.trim()) missing.push("Doctor Fax");
+    return missing;
+  }, [selected]);
+
+  const canSubmit = missingRequired.length === 0;
 
   const handleUpdate = useCallback((patch: Partial<Patient>) => {
     if (!selected) return;
@@ -265,6 +288,11 @@ const ProfilePage = () => {
 
                   {/* Submit */}
                   <div className="rounded-xl bg-card border shadow-card p-5">
+                    {!canSubmit && (
+                      <div className="mb-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+                        Missing required fields: {missingRequired.join(", ")}
+                      </div>
+                    )}
                     <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
                       <div className="text-sm text-muted-foreground">
                         <p className="font-medium text-foreground">Ready to send off?</p>
@@ -291,8 +319,9 @@ const ProfilePage = () => {
                         </Button>
                         <Button
                           onClick={() => handleSubmit("advance")}
-                          disabled={submitting || stuckSending}
-                          className="gap-2 bg-green-600 hover:bg-green-700 text-white shadow-elevate"
+                          disabled={submitting || stuckSending || !canSubmit}
+                          title={!canSubmit ? `Missing: ${missingRequired.join(", ")}` : undefined}
+                          className="gap-2 bg-green-600 hover:bg-green-700 text-white shadow-elevate disabled:opacity-50"
                         >
                           {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
                           Advance to MN
