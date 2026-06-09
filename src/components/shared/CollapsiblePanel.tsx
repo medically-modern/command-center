@@ -39,7 +39,10 @@ export function CollapsiblePanel({
       <button
         type="button"
         onClick={() => setIsOpen((v) => !v)}
-        className="w-full flex items-center gap-4 px-6 py-4 text-left transition-colors hover:bg-muted/40 cursor-pointer bg-muted/20 border-b border-sidebar-border"
+        className={cn(
+          "w-full flex items-center gap-4 px-6 py-4 text-left transition-colors hover:bg-muted/40 cursor-pointer bg-muted/20",
+          isOpen && "border-b border-sidebar-border",
+        )}
       >
         <ChevronDown
           className={cn(
