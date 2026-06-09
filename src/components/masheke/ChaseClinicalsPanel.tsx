@@ -143,7 +143,7 @@ export function ChaseClinicalsPanel({ patient, onUpdate, onOpenForm }: Props) {
         });
         toast.success(
           nextSlot === "Escalate"
-            ? `Attempt ${attempt} saved — escalated for human review`
+            ? `Attempt ${attempt} saved — escalated`
             : `Attempt ${attempt} saved`,
         );
       }
