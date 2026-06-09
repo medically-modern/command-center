@@ -188,6 +188,7 @@ export function ConfirmReceiptPanel({ patient, onUpdate, onOpenForm }: Props) {
         notes={patient.mnEvalNotes ?? ""}
         onNotesChange={(v) => onUpdate({ mnEvalNotes: v })}
         onSaveToMonday={(v) => writeLongText(patient.id, COL.mnEvalNotes, v)}
+        notePrefix={currentAttempt ? `C.R. Attempt ${currentAttempt}` : undefined}
       />
       {!isEscalated && (
         <SaveBar

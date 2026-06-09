@@ -9,9 +9,11 @@ interface Props {
   notes: string;
   onNotesChange: (notes: string) => void;
   onSaveToMonday?: (notes: string) => Promise<void>;
+  /** Optional prefix inserted after timestamp, e.g. "C.R. Attempt 1" */
+  notePrefix?: string;
 }
 
-export function NotesPanel({ notes, onNotesChange, onSaveToMonday }: Props) {
+export function NotesPanel({ notes, onNotesChange, onSaveToMonday, notePrefix }: Props) {
   const [newNote, setNewNote] = useState("");
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -25,9 +27,10 @@ export function NotesPanel({ notes, onNotesChange, onSaveToMonday }: Props) {
       hour: "numeric",
       minute: "2-digit",
     });
+    const prefix = notePrefix ? `${notePrefix}: ` : "";
     const appended = notes
-      ? `${notes}\n\n[${timestamp}] ${newNote.trim()}`
-      : `[${timestamp}] ${newNote.trim()}`;
+      ? `${notes}\n\n[${timestamp}] ${prefix}${newNote.trim()}`
+      : `[${timestamp}] ${prefix}${newNote.trim()}`;
     onNotesChange(appended);
     setNewNote("");
 
