@@ -644,7 +644,7 @@ function EscalationView({
                     e.stopPropagation();
                     onRemoveEscalation(p);
                   }}
-                  className="shrink-0 gap-1.5 text-xs border-red-300 text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30"
+                  className="shrink-0 gap-1.5 text-xs border-amber-300 text-amber-600 hover:bg-amber-100 hover:border-amber-400 dark:hover:bg-amber-950/40 transition-colors"
                 >
                   {removingId === p.id ? (
                     <Loader2 className="w-3 h-3 animate-spin" />
@@ -659,7 +659,7 @@ function EscalationView({
                       e.stopPropagation();
                       onMarkStuck(p);
                     }}
-                    className="shrink-0 w-7 h-7 rounded-full border border-muted-foreground/30 flex items-center justify-center text-muted-foreground hover:bg-muted/50 hover:text-foreground transition-colors"
+                    className="shrink-0 w-7 h-7 rounded-full border border-red-300 flex items-center justify-center text-red-500 hover:bg-red-100 hover:border-red-400 hover:text-red-700 dark:hover:bg-red-950/40 transition-colors"
                     title="Mark as Stuck"
                   >
                     <Ban className="w-3.5 h-3.5" />
