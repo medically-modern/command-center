@@ -594,6 +594,12 @@ function SaveBar({
         </Button>
       </div>
       <p className="text-[11px] text-muted-foreground">{hint}</p>
+      {attemptNumber === 3 && confirmed === "no" && (
+        <p className="text-xs font-semibold text-amber-600 flex items-center gap-1.5">
+          <AlertTriangle className="h-3.5 w-3.5" />
+          Note: This action will escalate this patient to a supervisor.
+        </p>
+      )}
     </div>
   );
 }
