@@ -216,7 +216,7 @@ export function useRoleCounts() {
         nextIds.confirmReceipt = [];
         nextIds.chaseBenefits = [];
 
-        const todayStr = new Date().toISOString().slice(0, 10);
+        const todayStr = new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
 
         for (const item of safeItems) {
           // Find Stage Advancer column value

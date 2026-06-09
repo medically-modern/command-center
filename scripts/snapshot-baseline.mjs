@@ -34,6 +34,8 @@ const SAM_GROUPS  = {
 const MESH_BOARD  = 18406060017;
 const MESH_GROUP  = "group_mm1xf2jb";   // 2. Medical Necessity
 const STAGE_COL   = "color_mm1wyr92";    // Stage Advancer
+const NAD_COL     = "date_mm1wadgs";     // Next Action Date
+const ESC_COL     = "color_mm1x7997";    // Escalation status
 const STAGE_MAP   = {
   "Evaluate MN":    "evaluate",
   "Send Request":   "sendRequest",
@@ -134,7 +136,8 @@ async function countMashekeStages() {
         }
       }
     }`;
-  const data = await gql(query, { bid: MESH_BOARD, cols: [STAGE_COL] });
+  const colIds = [STAGE_COL, NAD_COL, ESC_COL];
+  const data = await gql(query, { bid: MESH_BOARD, cols: colIds });
   const page = data?.boards?.[0]?.items_page;
   const allItems = [...(page?.items ?? [])];
   let cursor = page?.cursor ?? null;
@@ -150,11 +153,14 @@ async function countMashekeStages() {
           }
         }
       }`;
-    const next = await gql(nextQuery, { cursor, cols: [STAGE_COL] });
+    const next = await gql(nextQuery, { cursor, cols: colIds });
     const nextItems = next?.next_items_page?.items ?? [];
     allItems.push(...nextItems);
     cursor = next?.next_items_page?.cursor ?? null;
   }
+
+  // Eastern date for pending comparison
+  const todayStr = new Date().toLocaleDateString("en-CA", { timeZone: "America/New_York" });
 
   const counts = { evaluate: 0, sendRequest: 0, confirmReceipt: 0, chaseBenefits: 0 };
   const ids = { evaluate: [], sendRequest: [], confirmReceipt: [], chaseBenefits: [] };
@@ -162,6 +168,13 @@ async function countMashekeStages() {
     const stageText = item.column_values?.find((c) => c.id === STAGE_COL)?.text ?? "";
     const roleId = STAGE_MAP[stageText];
     if (roleId && roleId in counts) {
+      // Only count active patients — exclude pending (future nextActionDate) and stuck (escalated)
+      const nad = (item.column_values?.find((c) => c.id === NAD_COL)?.text ?? "").slice(0, 10);
+      if (nad && nad > todayStr) continue; // pending
+
+      const escText = item.column_values?.find((c) => c.id === ESC_COL)?.text ?? "";
+      if (escText === "Escalation Required" || escText === "Escalate") continue; // stuck
+
       counts[roleId]++;
       ids[roleId].push(String(item.id));
     }

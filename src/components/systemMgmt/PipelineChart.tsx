@@ -254,7 +254,7 @@ export function PipelineChart({ patients, onSegmentClick }: PipelineChartProps) 
   // ── Data pipeline ────────────────────────────────────────
 
   const columns = useMemo(() => {
-    const todayStr = new Date().toISOString().slice(0, 10);
+    const todayStr = new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
     const eligible = patients.filter((p) => CHART_BOARD_IDS.has(p.boardId) && !p.isCompleted);
     const map = new Map<string, GroupColumn>();
 
