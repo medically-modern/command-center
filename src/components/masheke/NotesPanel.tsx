@@ -62,7 +62,7 @@ export function NotesPanel({ notes, onNotesChange, onSaveToMonday, notePrefix, p
           {profileSendOffNotes !== undefined && (
             <button
               onClick={() => setIntakeNotesOpen(true)}
-              className="flex items-center gap-1.5 text-xs font-medium text-primary hover:text-primary/80 bg-primary/10 hover:bg-primary/15 px-3 py-1.5 rounded-lg transition-colors"
+              className="flex items-center gap-1.5 text-xs font-medium text-amber-700 hover:text-amber-800 bg-amber-100 hover:bg-amber-200 border border-amber-300 px-3 py-1.5 rounded-lg transition-colors"
             >
               <FileText className="h-3.5 w-3.5" />
               Profile Intake Notes
