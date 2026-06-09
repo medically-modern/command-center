@@ -105,6 +105,17 @@ function getServingKey(serving?: string | null): ServingKey {
   }
 }
 
+/** Map serving type → accent colors for the two CollapsiblePanels */
+type PanelAccent = "blue" | "teal" | "violet" | "amber" | "emerald" | "slate";
+const PANEL_ACCENTS: Record<ServingKey, { details: PanelAccent; doctor: PanelAccent }> = {
+  cgm:      { details: "emerald", doctor: "teal" },
+  ip:       { details: "blue",    doctor: "violet" },
+  ipcgm:    { details: "emerald", doctor: "blue" },
+  supplies: { details: "amber",   doctor: "slate" },
+  supplcgm: { details: "amber",   doctor: "emerald" },
+  default:  { details: "slate",   doctor: "slate" },
+};
+
 /* ── SVG icons per serving type ───────────────────────────── */
 
 function CgmIcon({ className }: { className?: string }) {
@@ -305,6 +316,7 @@ export function PatientProfileCard({
 
   const sk = getServingKey(patient.serving);
   const colors = SERVING_COLORS[sk];
+  const panelAccents = PANEL_ACCENTS[sk];
 
   const editButton = canEdit ? (
     <button
@@ -398,7 +410,7 @@ export function PatientProfileCard({
 
       {/* ── More Details collapsible ── */}
       <div className="px-6 pb-5">
-        <CollapsiblePanel accent="teal" title="More Details" defaultOpen={defaultDoctorOpen || lockDoctorOpen}>
+        <CollapsiblePanel accent={panelAccents.details} title="More Details" defaultOpen={defaultDoctorOpen || lockDoctorOpen}>
           <div className="space-y-4">
             {/* Address + Member ID 2 */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -490,7 +502,7 @@ export function PatientProfileCard({
             )}
 
             {/* Doctor Info — nested collapsible */}
-            <CollapsiblePanel accent="slate" title="Doctor Info" defaultOpen={defaultDoctorOpen || lockDoctorOpen}>
+            <CollapsiblePanel accent={panelAccents.doctor} title="Doctor Info" defaultOpen={defaultDoctorOpen || lockDoctorOpen}>
               <div className="space-y-3">
                 {editButton && (
                   <div className="flex justify-end">{editButton}</div>
