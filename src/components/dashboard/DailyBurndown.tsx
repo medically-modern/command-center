@@ -164,18 +164,6 @@ export function DailyBurndown({
   const sqrtScale = (v: number) => Math.sqrt(Math.max(v, 0));
   const maxSqrt = Math.max(...barData.map((d) => sqrtScale(d.current)), 1);
 
-  if (!snapshot || barData.length === 0) {
-    if (countsLoading || serverLoading) {
-      return (
-        <div className="flex items-center justify-center py-12 text-muted-foreground text-sm gap-2">
-          <Clock className="w-4 h-4 animate-pulse" />
-          Loading daily progress...
-        </div>
-      );
-    }
-    return null;
-  }
-
   /* Fire confetti scoped to a bar's bounding rect */
   const fireBarConfetti = useCallback((el: HTMLElement) => {
     const rect = el.getBoundingClientRect();
@@ -194,6 +182,18 @@ export function DailyBurndown({
 
   /* Track which bars already celebrated so confetti fires once */
   const celebratedRef = useRef<Set<string>>(new Set());
+
+  if (!snapshot || barData.length === 0) {
+    if (countsLoading || serverLoading) {
+      return (
+        <div className="flex items-center justify-center py-12 text-muted-foreground text-sm gap-2">
+          <Clock className="w-4 h-4 animate-pulse" />
+          Loading daily progress...
+        </div>
+      );
+    }
+    return null;
+  }
 
   return (
     <div className="space-y-6">
