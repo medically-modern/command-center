@@ -267,73 +267,69 @@ export function PatientProfileCard({
             </>
           )}
 
-          {/* Doctor Info */}
-          <div className="border-t pt-3">
-            <div className="flex items-center justify-between mb-3">
-              <p className="text-xs uppercase tracking-wider text-muted-foreground">
-                Doctor Info
-              </p>
-              {editButton}
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-              <EditableField
-                icon={<UserRound className="h-4 w-4" />}
-                label="Doctor Name"
-                value={patient.doctorName ?? ""}
-                editing={editingDoctor}
-                onChange={(v) => onDoctorEdit?.({ doctorName: v })}
-              />
-              <Field
-                icon={<Send className="h-4 w-4" />}
-                label="Clinicals Method"
-                value={patient.clinicalsMethod ?? ""}
-              />
-              <EditableField
-                icon={<Hash className="h-4 w-4" />}
-                label="NPI"
-                value={patient.doctorNpi ?? ""}
-                editing={editingDoctor}
-                onChange={(v) => onDoctorEdit?.({ doctorNpi: v })}
-              />
-              <EditableField
-                icon={<Phone className="h-4 w-4" />}
-                label="Phone"
-                value={patient.doctorPhone ?? ""}
-                editing={editingDoctor}
-                onChange={(v) => onDoctorEdit?.({ doctorPhone: v })}
-              />
-              <EditableField
-                icon={<Mail className="h-4 w-4" />}
-                label="Fax"
-                value={patient.doctorFax ?? ""}
-                editing={editingDoctor}
-                onChange={(v) => onDoctorEdit?.({ doctorFax: v })}
-              />
-              <EditableField
-                icon={<Mail className="h-4 w-4" />}
-                label="Email"
-                value={patient.doctorEmail ?? ""}
-                editing={editingDoctor}
-                onChange={(v) => onDoctorEdit?.({ doctorEmail: v })}
-              />
-              <EditableField
-                icon={<Building2 className="h-4 w-4" />}
-                label="Clinic"
-                value={patient.clinicName ?? ""}
-                editing={editingDoctor}
-                onChange={(v) => onDoctorEdit?.({ clinicName: v })}
-                className="sm:col-span-2"
-              />
-            </div>
-
-            {/* Doctor-level notes from the Doctor Database */}
-            {patient.doctorNpi && (
-              <div className="mt-3">
-                <DoctorNotesPanel doctorNpi={patient.doctorNpi} doctorName={patient.doctorName} compact />
+          {/* Doctor Info — nested collapsible */}
+          <CollapsiblePanel accent="slate" title="Doctor Info" defaultOpen={defaultDoctorOpen || lockDoctorOpen}>
+            <div className="space-y-3">
+              {editButton && (
+                <div className="flex justify-end">{editButton}</div>
+              )}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                <EditableField
+                  icon={<UserRound className="h-4 w-4" />}
+                  label="Doctor Name"
+                  value={patient.doctorName ?? ""}
+                  editing={editingDoctor}
+                  onChange={(v) => onDoctorEdit?.({ doctorName: v })}
+                />
+                <Field
+                  icon={<Send className="h-4 w-4" />}
+                  label="Clinicals Method"
+                  value={patient.clinicalsMethod ?? ""}
+                />
+                <EditableField
+                  icon={<Hash className="h-4 w-4" />}
+                  label="NPI"
+                  value={patient.doctorNpi ?? ""}
+                  editing={editingDoctor}
+                  onChange={(v) => onDoctorEdit?.({ doctorNpi: v })}
+                />
+                <EditableField
+                  icon={<Phone className="h-4 w-4" />}
+                  label="Phone"
+                  value={patient.doctorPhone ?? ""}
+                  editing={editingDoctor}
+                  onChange={(v) => onDoctorEdit?.({ doctorPhone: v })}
+                />
+                <EditableField
+                  icon={<Mail className="h-4 w-4" />}
+                  label="Fax"
+                  value={patient.doctorFax ?? ""}
+                  editing={editingDoctor}
+                  onChange={(v) => onDoctorEdit?.({ doctorFax: v })}
+                />
+                <EditableField
+                  icon={<Mail className="h-4 w-4" />}
+                  label="Email"
+                  value={patient.doctorEmail ?? ""}
+                  editing={editingDoctor}
+                  onChange={(v) => onDoctorEdit?.({ doctorEmail: v })}
+                />
+                <EditableField
+                  icon={<Building2 className="h-4 w-4" />}
+                  label="Clinic"
+                  value={patient.clinicName ?? ""}
+                  editing={editingDoctor}
+                  onChange={(v) => onDoctorEdit?.({ clinicName: v })}
+                  className="sm:col-span-2"
+                />
               </div>
-            )}
-          </div>
+
+              {/* Doctor-level notes from the Doctor Database */}
+              {patient.doctorNpi && (
+                <DoctorNotesPanel doctorNpi={patient.doctorNpi} doctorName={patient.doctorName} compact />
+              )}
+            </div>
+          </CollapsiblePanel>
         </div>
       </CollapsiblePanel>
 
