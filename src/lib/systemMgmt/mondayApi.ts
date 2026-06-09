@@ -496,6 +496,13 @@ export const STAGE_OPTIONS: Record<number, string[]> = {
   18410601299: ["Benefits / SoS", "Submit Auth.", "Auth. Outstanding", "Auth Denied"],
 };
 
+/** "Stuck" label per board (differs between boards) */
+export const STUCK_LABELS: Record<number, string> = {
+  18406060017: "Stuck",
+  18410601299: "Stuck / Don't Proceed",
+  18410804557: "Stuck / Don't Proceed",
+};
+
 // ── Completion map helper ────────────────────────────────────
 
 /** Short labels for each board's completed stage */

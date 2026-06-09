@@ -14,7 +14,7 @@ import {
   searchPatients,
 } from "@/hooks/systemMgmt/useSystemPatients";
 import type { SystemPatient } from "@/lib/systemMgmt/mondayApi";
-import { writeStageAdvancer, STAGE_OPTIONS } from "@/lib/systemMgmt/mondayApi";
+import { writeStageAdvancer, STAGE_OPTIONS, STUCK_LABELS } from "@/lib/systemMgmt/mondayApi";
 import { EscalationDetailModal } from "@/components/shared/EscalationDetailModal";
 import {
   Dialog,
@@ -44,6 +44,7 @@ import {
   ArrowRightLeft,
   Clock,
   MessageSquare,
+  Ban,
 } from "lucide-react";
 import { toast } from "sonner";
 import { PipelineChart, DAY_BUCKETS } from "@/components/systemMgmt/PipelineChart";
@@ -164,6 +165,33 @@ const SystemMgmtPage = () => {
       });
     } finally {
       setRemovingId(null);
+    }
+  };
+
+  // Stuck confirmation
+  const [stuckConfirmPatient, setStuckConfirmPatient] = useState<SystemPatient | null>(null);
+  const [stuckSending, setStuckSending] = useState(false);
+
+  const handleMarkStuck = async () => {
+    if (!stuckConfirmPatient) return;
+    const label = STUCK_LABELS[stuckConfirmPatient.boardId];
+    if (!label) {
+      toast.error("This board doesn't have a Stuck status");
+      setStuckConfirmPatient(null);
+      return;
+    }
+    setStuckSending(true);
+    try {
+      await writeStageAdvancer(stuckConfirmPatient, label);
+      toast.success(`${stuckConfirmPatient.name} marked as Stuck`);
+      setStuckConfirmPatient(null);
+      refetch();
+    } catch (e) {
+      toast.error("Failed to mark stuck", {
+        description: e instanceof Error ? e.message : String(e),
+      });
+    } finally {
+      setStuckSending(false);
     }
   };
 
@@ -293,6 +321,7 @@ const SystemMgmtPage = () => {
                   setDetailPatient(p);
                 }
               }}
+              onMarkStuck={(p) => setStuckConfirmPatient(p)}
             />
           )}
         </div>
@@ -309,6 +338,31 @@ const SystemMgmtPage = () => {
       onOpenChange={(open) => { if (!open) setAttemptNotesPatient(null); }}
       patient={attemptNotesPatient}
     />
+    {/* Stuck confirmation popup */}
+    <Dialog open={!!stuckConfirmPatient} onOpenChange={(open) => { if (!open) setStuckConfirmPatient(null); }}>
+      <DialogContent className="sm:max-w-sm">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Ban className="h-5 w-5 text-muted-foreground" />
+            Mark this patient as stuck?
+          </DialogTitle>
+        </DialogHeader>
+        <p className="text-sm text-muted-foreground">
+          <strong>{stuckConfirmPatient?.name}</strong> will be moved to Stuck and removed from the active queue.
+        </p>
+        <div className="flex justify-end pt-2">
+          <Button
+            onClick={handleMarkStuck}
+            disabled={stuckSending}
+            size="sm"
+            className="gap-2"
+          >
+            {stuckSending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Ban className="h-3.5 w-3.5" />}
+            Yes
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
     </>
   );
 };
@@ -495,6 +549,7 @@ function EscalationView({
   removingId,
   completionMap,
   onViewDetails,
+  onMarkStuck,
 }: {
   escalatedByStage: Map<string, SystemPatient[]>;
   onPatientClick: (p: SystemPatient, fromEscalation?: boolean) => void;
@@ -502,6 +557,7 @@ function EscalationView({
   removingId: string | null;
   completionMap: Map<string, string[]>;
   onViewDetails: (p: SystemPatient) => void;
+  onMarkStuck: (p: SystemPatient) => void;
 }) {
   if (escalatedByStage.size === 0) {
     return (
@@ -597,6 +653,18 @@ function EscalationView({
                   )}
                   Remove
                 </Button>
+                {STUCK_LABELS[p.boardId] && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onMarkStuck(p);
+                    }}
+                    className="shrink-0 w-7 h-7 rounded-full border border-muted-foreground/30 flex items-center justify-center text-muted-foreground hover:bg-muted/50 hover:text-foreground transition-colors"
+                    title="Mark as Stuck"
+                  >
+                    <Ban className="w-3.5 h-3.5" />
+                  </button>
+                )}
               </div>
               ); })}
           </div>
