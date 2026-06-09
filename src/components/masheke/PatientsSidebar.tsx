@@ -108,6 +108,11 @@ export function PatientsSidebar({ patients, selectedId, onSelect, loading, error
   const [searchQuery, setSearchQuery] = useState("");
   const [sendingBack, setSendingBack] = useState<string | null>(null);
   const [pendingOpen, setPendingOpen] = useState(false);
+  const [stageOpenMap, setStageOpenMap] = useState<Record<string, boolean>>({});
+  const [filteredOpen, setFilteredOpen] = useState(false);
+
+  const toggleStageFolder = (stage: string) =>
+    setStageOpenMap((prev) => ({ ...prev, [stage]: !prev[stage] }));
 
   // Split patients into active vs blocked vs follow-up vs escalated vs stuck vs both
   const stuckPatients = patients.filter((p) => p.advancer2c === "Stuck" && p.blocked !== "Blocked");
@@ -268,26 +273,63 @@ export function PatientsSidebar({ patients, selectedId, onSelect, loading, error
               {EVALUATE_GROUP_ORDER.map((stage) => {
                 const inStage = activePatients.filter((p) => (p.subStage ?? "") === stage);
                 if (inStage.length === 0) return null;
+                const isEvalStage = stage === "Evaluate MN";
+                const isOpen = !!stageOpenMap[stage];
+
+                // Evaluate MN stays flat (always visible), others are collapsible
+                if (isEvalStage) {
+                  return (
+                    <SidebarGroup key={stage}>
+                      {!collapsed && (
+                        <SidebarGroupLabel className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
+                          {stage} ({inStage.length})
+                        </SidebarGroupLabel>
+                      )}
+                      <SidebarGroupContent>
+                        <SidebarMenu>
+                          {inStage.map((p) => (
+                            <PatientRow
+                              key={p.id}
+                              patient={p}
+                              isActive={selectedId === p.id}
+                              collapsed={collapsed}
+                              onSelect={onSelect}
+                            />
+                          ))}
+                        </SidebarMenu>
+                      </SidebarGroupContent>
+                    </SidebarGroup>
+                  );
+                }
+
+                // Collapsible folder for non-Evaluate stages
                 return (
                   <SidebarGroup key={stage}>
                     {!collapsed && (
-                      <SidebarGroupLabel className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
+                      <SidebarGroupLabel
+                        className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold flex items-center gap-1.5 cursor-pointer select-none"
+                        onClick={() => toggleStageFolder(stage)}
+                      >
+                        <FolderClock className="h-3 w-3" />
                         {stage} ({inStage.length})
+                        <ChevronRight className={cn("h-3 w-3 ml-auto transition-transform", isOpen && "rotate-90")} />
                       </SidebarGroupLabel>
                     )}
-                    <SidebarGroupContent>
-                      <SidebarMenu>
-                        {inStage.map((p) => (
-                          <PatientRow
-                            key={p.id}
-                            patient={p}
-                            isActive={selectedId === p.id}
-                            collapsed={collapsed}
-                            onSelect={onSelect}
-                          />
-                        ))}
-                      </SidebarMenu>
-                    </SidebarGroupContent>
+                    {isOpen && (
+                      <SidebarGroupContent>
+                        <SidebarMenu>
+                          {inStage.map((p) => (
+                            <PatientRow
+                              key={p.id}
+                              patient={p}
+                              isActive={selectedId === p.id}
+                              collapsed={collapsed}
+                              onSelect={onSelect}
+                            />
+                          ))}
+                        </SidebarMenu>
+                      </SidebarGroupContent>
+                    )}
                   </SidebarGroup>
                 );
               })}
@@ -365,190 +407,56 @@ export function PatientsSidebar({ patients, selectedId, onSelect, loading, error
           </SidebarGroup>
         )}
 
-        {/* ── Blocked section (all tabs) ── */}
-        {blockedPatients.length > 0 && !collapsed && (
-          <SidebarGroup>
-            <SidebarGroupLabel className="text-[10px] uppercase tracking-wider text-red-500 font-semibold flex items-center gap-1.5">
-              <Ban className="h-3 w-3" />
-              Blocked ({blockedPatients.length})
-            </SidebarGroupLabel>
-            <SidebarGroupContent>
-              <SidebarMenu>
-                {blockedPatients.map((p) => (
-                  <SidebarMenuItem key={p.id}>
-                    <div className="flex items-center gap-1 w-full">
-                      <SidebarMenuButton
-                        isActive={selectedId === p.id}
-                        onClick={() => onSelect(p.id)}
-                        className={cn(
-                          "flex-1 flex items-start gap-2 py-2 h-auto opacity-60",
-                          selectedId === p.id && "bg-sidebar-accent opacity-100",
-                        )}
-                      >
-                        <Ban className="h-4 w-4 mt-0.5 shrink-0 text-red-400" />
-                        <div className="min-w-0 text-left">
-                          <p className="text-sm font-medium truncate">{p.name}</p>
-                          <p className="text-[11px] text-red-400 truncate">
-                            Until {p.blockedDate ? fmtDate(p.blockedDate) : "—"}
-                          </p>
+        {/* ── Filtered patients (collapsible folder) ── */}
+        {(() => {
+          const allFiltered = [
+            ...blockedPatients.map((p) => ({ p, tag: `Blocked · ${p.blockedDate ? fmtDate(p.blockedDate) : "—"}`, tagColor: "text-red-400", icon: Ban, action: (id: string, name: string) => <UnblockButton patientId={id} patientName={name} onSuccess={onRefresh} /> })),
+            ...stuckPatients.map((p) => ({ p, tag: "Stuck", tagColor: "text-amber-400", icon: AlertTriangle, action: (id: string, name: string) => <UnstuckButton patientId={id} patientName={name} onSuccess={onRefresh} /> })),
+            ...escalatedPatients.map((p) => ({ p, tag: "Escalated", tagColor: "text-red-400", icon: AlertTriangle, action: (id: string, name: string) => <ClearEscalationButton patientId={id} patientName={name} onSuccess={onRefresh} /> })),
+            ...followUpPatients.map((p) => ({ p, tag: `Follow Up · ${p.followUpDate ? fmtDate(p.followUpDate) : "—"}`, tagColor: "text-blue-400", icon: Clock, action: (id: string, name: string) => <ClearFollowUpButton patientId={id} patientName={name} onSuccess={onRefresh} /> })),
+            ...bothPatients.map((p) => ({ p, tag: `Escalated · Follow Up ${p.followUpDate ? fmtDate(p.followUpDate) : ""}`, tagColor: "text-amber-400", icon: AlertTriangle, action: (id: string, name: string) => <ClearFollowUpButton patientId={id} patientName={name} onSuccess={onRefresh} /> })),
+          ];
+          if (allFiltered.length === 0 || collapsed) return null;
+          return (
+            <SidebarGroup>
+              <SidebarGroupLabel
+                className="text-[10px] uppercase tracking-wider text-orange-500 font-semibold flex items-center gap-1.5 cursor-pointer select-none"
+                onClick={() => setFilteredOpen((v) => !v)}
+              >
+                <Ban className="h-3 w-3" />
+                Filtered ({allFiltered.length})
+                <ChevronRight className={cn("h-3 w-3 ml-auto transition-transform", filteredOpen && "rotate-90")} />
+              </SidebarGroupLabel>
+              {filteredOpen && (
+                <SidebarGroupContent>
+                  <SidebarMenu>
+                    {allFiltered.map(({ p, tag, tagColor, icon: Icon, action }) => (
+                      <SidebarMenuItem key={p.id}>
+                        <div className="flex items-center gap-1 w-full">
+                          <SidebarMenuButton
+                            isActive={selectedId === p.id}
+                            onClick={() => onSelect(p.id)}
+                            className={cn(
+                              "flex-1 flex items-start gap-2 py-2 h-auto opacity-60",
+                              selectedId === p.id && "bg-sidebar-accent opacity-100",
+                            )}
+                          >
+                            <Icon className={cn("h-4 w-4 mt-0.5 shrink-0", tagColor)} />
+                            <div className="min-w-0 text-left">
+                              <p className="text-sm font-medium truncate">{p.name}</p>
+                              <p className={cn("text-[11px] truncate", tagColor)}>{tag}</p>
+                            </div>
+                          </SidebarMenuButton>
+                          {action(p.id, p.name)}
                         </div>
-                      </SidebarMenuButton>
-                      <UnblockButton patientId={p.id} patientName={p.name} onSuccess={onRefresh} />
-                    </div>
-                  </SidebarMenuItem>
-                ))}
-              </SidebarMenu>
-            </SidebarGroupContent>
-          </SidebarGroup>
-        )}
-
-        {/* ── Stuck section (all tabs) ── */}
-        {stuckPatients.length > 0 && !collapsed && (
-          <SidebarGroup>
-            <SidebarGroupLabel className="text-[10px] uppercase tracking-wider text-amber-500 font-semibold flex items-center gap-1.5">
-              <AlertTriangle className="h-3 w-3" />
-              Stuck ({stuckPatients.length})
-            </SidebarGroupLabel>
-            <SidebarGroupContent>
-              <SidebarMenu>
-                {stuckPatients.map((p) => (
-                  <SidebarMenuItem key={p.id}>
-                    <div className="flex items-center gap-1 w-full">
-                      <SidebarMenuButton
-                        isActive={selectedId === p.id}
-                        onClick={() => onSelect(p.id)}
-                        className={cn(
-                          "flex-1 flex items-start gap-2 py-2 h-auto opacity-60",
-                          selectedId === p.id && "bg-sidebar-accent opacity-100",
-                        )}
-                      >
-                        <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0 text-amber-400" />
-                        <div className="min-w-0 text-left">
-                          <p className="text-sm font-medium truncate">{p.name}</p>
-                          <p className="text-[11px] text-amber-400 truncate">
-                            {p.serving || "—"}
-                          </p>
-                        </div>
-                      </SidebarMenuButton>
-                      <UnstuckButton patientId={p.id} patientName={p.name} onSuccess={onRefresh} />
-                    </div>
-                  </SidebarMenuItem>
-                ))}
-              </SidebarMenu>
-            </SidebarGroupContent>
-          </SidebarGroup>
-        )}
-
-        {/* ── Escalated section (all tabs) ── */}
-        {escalatedPatients.length > 0 && !collapsed && (
-          <SidebarGroup>
-            <SidebarGroupLabel className="text-[10px] uppercase tracking-wider text-red-500 font-semibold flex items-center gap-1.5">
-              <AlertTriangle className="h-3 w-3" />
-              Escalated ({escalatedPatients.length})
-            </SidebarGroupLabel>
-            <SidebarGroupContent>
-              <SidebarMenu>
-                {escalatedPatients.map((p) => (
-                  <SidebarMenuItem key={p.id}>
-                    <div className="flex items-center gap-1 w-full">
-                      <SidebarMenuButton
-                        isActive={selectedId === p.id}
-                        onClick={() => onSelect(p.id)}
-                        className={cn(
-                          "flex-1 flex items-start gap-2 py-2 h-auto opacity-60",
-                          selectedId === p.id && "bg-sidebar-accent opacity-100",
-                        )}
-                      >
-                        <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0 text-red-400" />
-                        <div className="min-w-0 text-left">
-                          <p className="text-sm font-medium truncate">{p.name}</p>
-                          <p className="text-[11px] text-red-400 truncate">
-                            Escalation Required
-                          </p>
-                        </div>
-                      </SidebarMenuButton>
-                      <ClearEscalationButton patientId={p.id} patientName={p.name} onSuccess={onRefresh} />
-                    </div>
-                  </SidebarMenuItem>
-                ))}
-              </SidebarMenu>
-            </SidebarGroupContent>
-          </SidebarGroup>
-        )}
-
-        {/* ── Follow Up section (all tabs) ── */}
-        {followUpPatients.length > 0 && !collapsed && (
-          <SidebarGroup>
-            <SidebarGroupLabel className="text-[10px] uppercase tracking-wider text-blue-500 font-semibold flex items-center gap-1.5">
-              <Clock className="h-3 w-3" />
-              Follow Up ({followUpPatients.length})
-            </SidebarGroupLabel>
-            <SidebarGroupContent>
-              <SidebarMenu>
-                {followUpPatients.map((p) => (
-                  <SidebarMenuItem key={p.id}>
-                    <div className="flex items-center gap-1 w-full">
-                      <SidebarMenuButton
-                        isActive={selectedId === p.id}
-                        onClick={() => onSelect(p.id)}
-                        className={cn(
-                          "flex-1 flex items-start gap-2 py-2 h-auto opacity-60",
-                          selectedId === p.id && "bg-sidebar-accent opacity-100",
-                        )}
-                      >
-                        <Clock className="h-4 w-4 mt-0.5 shrink-0 text-blue-400" />
-                        <div className="min-w-0 text-left">
-                          <p className="text-sm font-medium truncate">{p.name}</p>
-                          <p className="text-[11px] text-blue-400 truncate">
-                            Until {p.followUpDate ? fmtDate(p.followUpDate) : "\u2014"}
-                          </p>
-                        </div>
-                      </SidebarMenuButton>
-                      <ClearFollowUpButton patientId={p.id} patientName={p.name} onSuccess={onRefresh} />
-                    </div>
-                  </SidebarMenuItem>
-                ))}
-              </SidebarMenu>
-            </SidebarGroupContent>
-          </SidebarGroup>
-        )}
-
-        {/* ── Escalated + Follow Up (both statuses) ── */}
-        {bothPatients.length > 0 && !collapsed && (
-          <SidebarGroup>
-            <SidebarGroupLabel className="text-[10px] uppercase tracking-wider text-amber-500 font-semibold flex items-center gap-1.5">
-              <AlertTriangle className="h-3 w-3" />
-              Escalated + Follow Up ({bothPatients.length})
-            </SidebarGroupLabel>
-            <SidebarGroupContent>
-              <SidebarMenu>
-                {bothPatients.map((p) => (
-                  <SidebarMenuItem key={p.id}>
-                    <div className="flex items-center gap-1 w-full">
-                      <SidebarMenuButton
-                        isActive={selectedId === p.id}
-                        onClick={() => onSelect(p.id)}
-                        className={cn(
-                          "flex-1 flex items-start gap-2 py-2 h-auto opacity-60",
-                          selectedId === p.id && "bg-sidebar-accent opacity-100",
-                        )}
-                      >
-                        <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0 text-amber-400" />
-                        <div className="min-w-0 text-left">
-                          <p className="text-sm font-medium truncate">{p.name}</p>
-                          <p className="text-[10px] text-amber-400 truncate">
-                            Escalated \u00b7 Follow up {p.followUpDate ? fmtDate(p.followUpDate) : ""}
-                          </p>
-                        </div>
-                      </SidebarMenuButton>
-                      <ClearFollowUpButton patientId={p.id} patientName={p.name} onSuccess={onRefresh} />
-                    </div>
-                  </SidebarMenuItem>
-                ))}
-              </SidebarMenu>
-            </SidebarGroupContent>
-          </SidebarGroup>
-        )}
+                      </SidebarMenuItem>
+                    ))}
+                  </SidebarMenu>
+                </SidebarGroupContent>
+              )}
+            </SidebarGroup>
+          );
+        })()}
       </SidebarContent>
 
     </Sidebar>

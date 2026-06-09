@@ -8,7 +8,8 @@
  * Every subsequent load compares live counts against that baseline, showing
  * progress (bars shrinking) and incoming work (bars growing).
  */
-import { useEffect, useState, useRef, useMemo } from "react";
+import { useEffect, useState, useRef, useMemo, useCallback } from "react";
+import confetti from "canvas-confetti";
 import { ROLES, type RoleConfig } from "@/lib/config";
 import type { RoleCounts } from "@/hooks/useRoleCounts";
 import { useServerBaseline } from "@/hooks/useServerBaseline";
@@ -17,6 +18,7 @@ import {
   Clock,
   Zap,
   ExternalLink,
+  PartyPopper,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
@@ -91,6 +93,8 @@ const COLOR_MAP: Record<string, string> = {
   "bg-rose-500": "#f43f5e",
   "bg-red-500": "#ef4444",
   "bg-slate-700": "#334155",
+  "bg-fuchsia-500": "#d946ef",
+  "bg-sky-500": "#0ea5e9",
 };
 
 function hexToRgba(hex: string, alpha: number): string {
@@ -172,6 +176,25 @@ export function DailyBurndown({
     return null;
   }
 
+  /* Fire confetti scoped to a bar's bounding rect */
+  const fireBarConfetti = useCallback((el: HTMLElement) => {
+    const rect = el.getBoundingClientRect();
+    const x = (rect.left + rect.width / 2) / window.innerWidth;
+    const y = (rect.top + rect.height / 2) / window.innerHeight;
+    confetti({
+      particleCount: 40,
+      spread: 60,
+      startVelocity: 18,
+      gravity: 0.8,
+      ticks: 80,
+      origin: { x, y },
+      colors: ["#10b981", "#34d399", "#6ee7b7", "#a7f3d0"],
+    });
+  }, []);
+
+  /* Track which bars already celebrated so confetti fires once */
+  const celebratedRef = useRef<Set<string>>(new Set());
+
   return (
     <div className="space-y-6">
       {/* Burndown bars */}
@@ -186,6 +209,7 @@ export function DailyBurndown({
                 )
               : 0;
           const hasRoute = d.role.route && d.role.id !== "authDenied";
+          const isDone = !countsLoading && d.current === 0;
 
           return (
             <button
@@ -212,20 +236,43 @@ export function DailyBurndown({
                     <ExternalLink className="w-3 h-3 opacity-0 group-hover:opacity-40 transition-opacity" />
                   )}
                 </span>
-                <span className="text-sm font-semibold text-foreground tabular-nums">
-                  {countsLoading ? "…" : d.current}
-                </span>
+                {isDone ? (
+                  <span className="text-sm font-bold text-emerald-500 flex items-center gap-1.5">
+                    <PartyPopper className="h-3.5 w-3.5" />
+                    Done!
+                  </span>
+                ) : (
+                  <span className="text-sm font-semibold text-foreground tabular-nums">
+                    {countsLoading ? "…" : d.current}
+                  </span>
+                )}
               </div>
 
-              <div className="relative h-8 w-full rounded-lg overflow-hidden bg-muted/30">
-                <div
-                  className="absolute inset-y-0 left-0 rounded-lg transition-all duration-1000 ease-out"
-                  style={{
-                    width: animateIn ? `${currentPct}%` : "0%",
-                    background: `linear-gradient(90deg, ${hex}, ${hexToRgba(hex, 0.75)})`,
-                    transitionDelay: `${i * 60 + 200}ms`,
-                  }}
-                />
+              <div
+                className="relative h-8 w-full rounded-lg overflow-hidden bg-muted/30"
+                ref={(el) => {
+                  if (isDone && animateIn && el && !celebratedRef.current.has(d.role.id)) {
+                    celebratedRef.current.add(d.role.id);
+                    requestAnimationFrame(() => fireBarConfetti(el));
+                  }
+                }}
+              >
+                {isDone ? (
+                  /* Celebration shimmer */
+                  <div
+                    className="absolute inset-0 rounded-lg animate-pulse"
+                    style={{ background: "linear-gradient(90deg, rgba(16,185,129,0.08), rgba(52,211,153,0.15), rgba(16,185,129,0.08))" }}
+                  />
+                ) : (
+                  <div
+                    className="absolute inset-y-0 left-0 rounded-lg transition-all duration-1000 ease-out"
+                    style={{
+                      width: animateIn ? `${currentPct}%` : "0%",
+                      background: `linear-gradient(90deg, ${hex}, ${hexToRgba(hex, 0.75)})`,
+                      transitionDelay: `${i * 60 + 200}ms`,
+                    }}
+                  />
+                )}
               </div>
             </button>
           );
