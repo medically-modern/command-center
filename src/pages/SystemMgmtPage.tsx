@@ -631,7 +631,7 @@ function EscalationView({
                     e.stopPropagation();
                     onViewDetails(p);
                   }}
-                  className="shrink-0 gap-1.5 text-xs border-blue-300 text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950/30"
+                  className="shrink-0 gap-1.5 text-xs border-blue-300 text-blue-600 hover:bg-blue-100 hover:text-blue-800 hover:border-blue-400 dark:hover:bg-blue-950/30 dark:hover:text-blue-300 transition-colors"
                 >
                   <FileText className="w-3 h-3" />
                   Details
@@ -644,7 +644,7 @@ function EscalationView({
                     e.stopPropagation();
                     onRemoveEscalation(p);
                   }}
-                  className="shrink-0 gap-1.5 text-xs border-amber-300 text-amber-600 hover:bg-amber-100 hover:border-amber-400 dark:hover:bg-amber-950/40 transition-colors"
+                  className="shrink-0 gap-1.5 text-xs border-amber-300 text-amber-600 hover:bg-amber-100 hover:text-amber-800 hover:border-amber-400 dark:hover:bg-amber-950/40 dark:hover:text-amber-300 transition-colors"
                 >
                   {removingId === p.id ? (
                     <Loader2 className="w-3 h-3 animate-spin" />
