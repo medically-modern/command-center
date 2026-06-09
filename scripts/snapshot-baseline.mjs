@@ -36,6 +36,9 @@ const MESH_GROUP  = "group_mm1xf2jb";   // 2. Medical Necessity
 const STAGE_COL   = "color_mm1wyr92";    // Stage Advancer
 const NAD_COL     = "date_mm1wadgs";     // Next Action Date
 const ESC_COL     = "color_mm1x7997";    // Escalation status
+const BLOCKED_COL = "color_mm33ppgw";    // Blocked status
+const STUCK_COL   = "color_mm1wf98t";    // Stuck (Advancer 2C)
+const FOLLOWUP_COL= "color_mm35v6a0";    // Follow up status
 const STAGE_MAP   = {
   "Evaluate MN":    "evaluate",
   "Send Request":   "sendRequest",
@@ -136,7 +139,7 @@ async function countMashekeStages() {
         }
       }
     }`;
-  const colIds = [STAGE_COL, NAD_COL, ESC_COL];
+  const colIds = [STAGE_COL, NAD_COL, ESC_COL, BLOCKED_COL, STUCK_COL, FOLLOWUP_COL];
   const data = await gql(query, { bid: MESH_BOARD, cols: colIds });
   const page = data?.boards?.[0]?.items_page;
   const allItems = [...(page?.items ?? [])];
@@ -168,12 +171,17 @@ async function countMashekeStages() {
     const stageText = item.column_values?.find((c) => c.id === STAGE_COL)?.text ?? "";
     const roleId = STAGE_MAP[stageText];
     if (roleId && roleId in counts) {
-      // Only count active patients — exclude pending (future nextActionDate) and stuck (escalated)
-      const nad = (item.column_values?.find((c) => c.id === NAD_COL)?.text ?? "").slice(0, 10);
+      // Only count active patients — exclude any in a filter bucket
+      const colText = (id) => item.column_values?.find((c) => c.id === id)?.text ?? "";
+
+      const nad = colText(NAD_COL).slice(0, 10);
       if (nad && nad > todayStr) continue; // pending
 
-      const escText = item.column_values?.find((c) => c.id === ESC_COL)?.text ?? "";
-      if (escText === "Escalation Required" || escText === "Escalate") continue; // stuck
+      const escText = colText(ESC_COL);
+      if (escText === "Escalation Required" || escText === "Escalate") continue; // escalated
+      if (colText(BLOCKED_COL) === "Blocked") continue; // blocked
+      if (colText(STUCK_COL) === "Stuck") continue; // stuck
+      if (colText(FOLLOWUP_COL) === "Follow up") continue; // follow-up
 
       counts[roleId]++;
       ids[roleId].push(String(item.id));
