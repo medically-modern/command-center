@@ -47,7 +47,7 @@ export interface DoctorRecord {
 export async function findDoctorByNpi(npi: string): Promise<DoctorRecord | null> {
   if (!npi?.trim()) return null;
 
-  const query = `query ($board: [ID!]!, $cols: [ItemsByColumnValuesQuery!]!) {
+  const query = `query ($board: ID!, $cols: [ItemsPageByColumnValuesQuery!]!) {
     items_page_by_column_values(board_id: $board, limit: 1, columns: $cols) {
       items {
         id
