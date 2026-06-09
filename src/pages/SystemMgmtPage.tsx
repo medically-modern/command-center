@@ -16,6 +16,12 @@ import {
 import type { SystemPatient } from "@/lib/systemMgmt/mondayApi";
 import { writeStageAdvancer, STAGE_OPTIONS } from "@/lib/systemMgmt/mondayApi";
 import { EscalationDetailModal } from "@/components/shared/EscalationDetailModal";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { parseEscalation } from "@/lib/shared/escalation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -36,6 +42,8 @@ import {
   FileText,
   X,
   ArrowRightLeft,
+  Clock,
+  MessageSquare,
 } from "lucide-react";
 import { toast } from "sonner";
 import { PipelineChart, DAY_BUCKETS } from "@/components/systemMgmt/PipelineChart";
@@ -59,6 +67,7 @@ const SystemMgmtPage = () => {
   const [chartSelection, setChartSelection] = useState<SystemPatient[] | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [notesPatient, setNotesPatient] = useState<SystemPatient | null>(null);
+  const [attemptNotesPatient, setAttemptNotesPatient] = useState<SystemPatient | null>(null);
   const [stageFilter, setStageFilter] = useState<string | null>(null);
 
   const handleChartSegmentClick = (segmentPatients: SystemPatient[]) => {
@@ -264,6 +273,7 @@ const SystemMgmtPage = () => {
               chartSelectionActive={chartSelection !== null}
               onClearChartSelection={() => setChartSelection(null)}
               onNotesClick={(p) => setNotesPatient((prev) => prev?.id === p.id ? null : p)}
+              onEscalationClick={(p) => setDetailPatient(p)}
               onStageClick={handleStageClick}
               stageFilter={stageFilter}
               onClearStageFilter={() => setStageFilter(null)}
@@ -275,7 +285,14 @@ const SystemMgmtPage = () => {
               onRemoveEscalation={handleRemoveEscalation}
               removingId={removingId}
               completionMap={completionMap}
-              onViewDetails={(p) => setDetailPatient(p)}
+              onViewDetails={(p) => {
+                const isAttemptStage = p.pipelineStage === "Chase Clinicals" || p.pipelineStage === "Confirm Receipt";
+                if (isAttemptStage) {
+                  setAttemptNotesPatient(p);
+                } else {
+                  setDetailPatient(p);
+                }
+              }}
             />
           )}
         </div>
@@ -286,6 +303,11 @@ const SystemMgmtPage = () => {
       onOpenChange={(open) => { if (!open) setDetailPatient(null); }}
       patientName={detailPatient?.name ?? ""}
       data={parseEscalation(detailPatient?.escalationNotes)}
+    />
+    <AttemptNotesModal
+      open={!!attemptNotesPatient}
+      onOpenChange={(open) => { if (!open) setAttemptNotesPatient(null); }}
+      patient={attemptNotesPatient}
     />
     </>
   );
@@ -362,6 +384,7 @@ function SearchView({
   chartSelectionActive,
   onClearChartSelection,
   onNotesClick,
+  onEscalationClick,
   onStageClick,
   stageFilter,
   onClearStageFilter,
@@ -377,6 +400,7 @@ function SearchView({
   chartSelectionActive: boolean;
   onClearChartSelection: () => void;
   onNotesClick: (p: SystemPatient) => void;
+  onEscalationClick: (p: SystemPatient) => void;
   onStageClick: (stage: string) => void;
   stageFilter: string | null;
   onClearStageFilter: () => void;
@@ -452,6 +476,7 @@ function SearchView({
               onClick={() => onPatientClick(p)}
               completedStages={completionMap.get(p.name.trim().toLowerCase()) ?? []}
               onNotesClick={onNotesClick}
+              onEscalationClick={onEscalationClick}
               onStageClick={onStageClick}
             />
           ))}
@@ -977,12 +1002,14 @@ function PatientRow({
   onClick,
   completedStages,
   onNotesClick,
+  onEscalationClick,
   onStageClick,
 }: {
   patient: SystemPatient;
   onClick: () => void;
   completedStages: string[];
   onNotesClick?: (p: SystemPatient) => void;
+  onEscalationClick?: (p: SystemPatient) => void;
   onStageClick?: (stage: string) => void;
 }) {
   const [showNotesTooltip, setShowNotesTooltip] = useState(false);
@@ -1031,10 +1058,13 @@ function PatientRow({
         </div>
       </button>
 
-      {/* Center: notes preview — large, uses available space. Click opens sidebar. */}
+      {/* Center: notes preview — large, uses available space. Click opens sidebar (or escalation form for escalated patients). */}
       <div
-        className="relative flex-1 border-l border-r border-border min-w-0 cursor-pointer hover:bg-muted/30 transition-colors"
-        onClick={() => onNotesClick?.(patient)}
+        className={cn(
+          "relative flex-1 border-l border-r border-border min-w-0 cursor-pointer transition-colors",
+          patient.escalated ? "hover:bg-red-100/50 dark:hover:bg-red-950/30" : "hover:bg-muted/30",
+        )}
+        onClick={() => patient.escalated ? onEscalationClick?.(patient) : onNotesClick?.(patient)}
         onMouseEnter={() => {
           if (recentThree.length > 0) {
             clearTimeout(notesTooltipTimeout.current);
@@ -1047,7 +1077,14 @@ function PatientRow({
         }}
       >
         <div className="px-4 py-3 h-full flex flex-col justify-center min-w-0">
-          {mostRecent ? (
+          {patient.escalated ? (
+            <div className="flex items-center gap-2">
+              <AlertTriangle className="h-4 w-4 text-red-500 shrink-0" />
+              <span className="text-sm font-medium text-red-600 dark:text-red-400">
+                View Escalation Form
+              </span>
+            </div>
+          ) : mostRecent ? (
             <>
               {mostRecent.header && (
                 <div className="text-[10px] text-primary font-semibold mb-0.5 truncate">{mostRecent.header}</div>
@@ -1061,8 +1098,8 @@ function PatientRow({
           )}
         </div>
 
-        {/* Hover tooltip — 3 most recent notes */}
-        {showNotesTooltip && recentThree.length > 0 && (
+        {/* Hover tooltip — 3 most recent notes (only for non-escalated) */}
+        {showNotesTooltip && !patient.escalated && recentThree.length > 0 && (
           <div className="absolute left-4 bottom-full mb-2 z-50 w-96 bg-popover border border-border rounded-lg shadow-lg p-4 pointer-events-none">
             <div className="text-[10px] font-semibold text-muted-foreground mb-2 uppercase tracking-wider">
               Recent Notes ({noteEntries.length} total)
@@ -1114,5 +1151,89 @@ function PatientRow({
         )}
       </button>
     </div>
+  );
+}
+
+// ── Attempt Notes Modal (Chase Clinicals / Confirm Receipt) ──
+
+const ATTEMPT_PREFIXES = ["C.C. Attempt", "C.R. Attempt", "S.R. Attempt"];
+
+function parseAttemptNotes(notes: string): { timestamp: string; label: string; body: string }[] {
+  if (!notes) return [];
+  const entries = parseNoteEntries(notes);
+  return entries
+    .filter((e) => ATTEMPT_PREFIXES.some((pfx) => e.body.startsWith(pfx)))
+    .map((e) => {
+      const colonIdx = e.body.indexOf(":");
+      const label = colonIdx > -1 ? e.body.slice(0, colonIdx).trim() : e.body.trim();
+      const body = colonIdx > -1 ? e.body.slice(colonIdx + 1).trim() : "";
+      return { timestamp: e.header, label, body };
+    });
+}
+
+function AttemptNotesModal({
+  open,
+  onOpenChange,
+  patient,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  patient: SystemPatient | null;
+}) {
+  const attempts = useMemo(
+    () => (patient ? parseAttemptNotes(patient.notes) : []),
+    [patient],
+  );
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <MessageSquare className="h-5 w-5 text-amber-500" />
+            Attempt History — {patient?.name ?? ""}
+          </DialogTitle>
+        </DialogHeader>
+
+        <div className="space-y-3 pt-1">
+          <div className="text-xs text-muted-foreground">
+            {patient?.pipelineStage} · {attempts.length} attempt{attempts.length !== 1 ? "s" : ""} logged
+          </div>
+
+          {attempts.length === 0 ? (
+            <div className="rounded-lg border bg-muted/30 p-6 text-center">
+              <p className="text-sm text-muted-foreground">
+                No attempt notes found for this patient.
+              </p>
+            </div>
+          ) : (
+            attempts.map((attempt, i) => (
+              <div
+                key={i}
+                className={cn(
+                  "rounded-lg border p-4 space-y-1.5",
+                  i === attempts.length - 1
+                    ? "bg-red-50/50 dark:bg-red-950/20 border-red-200 dark:border-red-800"
+                    : "bg-muted/30",
+                )}
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-sm font-semibold">{attempt.label}</span>
+                  {attempt.timestamp && (
+                    <span className="text-xs text-muted-foreground flex items-center gap-1 shrink-0">
+                      <Clock className="h-3 w-3" />
+                      {attempt.timestamp}
+                    </span>
+                  )}
+                </div>
+                <p className="text-sm whitespace-pre-wrap">
+                  {attempt.body || <span className="text-muted-foreground italic">No notes recorded</span>}
+                </p>
+              </div>
+            ))
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }
