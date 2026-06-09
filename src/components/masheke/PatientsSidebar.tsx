@@ -121,14 +121,15 @@ export function PatientsSidebar({ patients, selectedId, onSelect, loading, error
   const etParts = new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
   const todayStr = etParts; // "YYYY-MM-DD" in ET
 
-  // For confirm-receipt tab: patients with a future nextActionDate go to Pending
-  const pendingPatients = activeTab === "confirmReceipt"
+  // For confirm-receipt and chase tabs: patients with a future nextActionDate go to Pending
+  const hasPending = activeTab === "confirmReceipt" || activeTab === "chase";
+  const pendingPatients = hasPending
     ? activePatients.filter((p) => {
         const nad = p.nextActionDate?.slice(0, 10);
         return nad && nad > todayStr;
       })
     : [];
-  const activeNowPatients = activeTab === "confirmReceipt"
+  const activeNowPatients = hasPending
     ? activePatients.filter((p) => {
         const nad = p.nextActionDate?.slice(0, 10);
         return !nad || nad <= todayStr;
