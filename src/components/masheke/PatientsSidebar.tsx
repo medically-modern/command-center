@@ -12,7 +12,7 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
-import { AlertTriangle, Ban, CalendarCheck, ChevronRight, Clock, FolderClock, Loader2, RefreshCw, User, AlertCircle, Undo2 } from "lucide-react";
+import { AlertTriangle, Ban, ChevronRight, Clock, FolderClock, Loader2, RefreshCw, User, AlertCircle, Undo2 } from "lucide-react";
 import type { Patient } from "@/lib/masheke/workflow";
 import type { TabKey } from "@/hooks/masheke/useMondayPatients";
 import { cn } from "@/lib/utils";
@@ -90,7 +90,6 @@ export function PatientsSidebar({ patients, selectedId, onSelect, loading, error
   const { state } = useSidebar();
   const collapsed = state === "collapsed";
 
-  const [todayOnly, setTodayOnly] = useState(false);
   const [showScheduled, setShowScheduled] = useState(false);
   // const [filteredOpen, setFilteredOpen] = useState(false);
 
@@ -122,11 +121,6 @@ export function PatientsSidebar({ patients, selectedId, onSelect, loading, error
       })
     : activePatients;
 
-  // For chase tab: split into "action today" vs rest
-  const todayPatients = activeTab === "chase" && todayOnly
-    ? activeNowPatients.filter((p) => p.nextActionDate?.slice(0, 10) === todayStr)
-    : activeNowPatients;
-
   const activeLabel = TAB_LABELS[activeTab];
 
   return (
@@ -149,17 +143,6 @@ export function PatientsSidebar({ patients, selectedId, onSelect, loading, error
                 title={showScheduled ? "Hide scheduled patients" : `Show scheduled patients (${pendingPatients.length})`}
               >
                 <FolderClock className="h-4 w-4" />
-              </Button>
-            )}
-            {activeTab === "chase" && !collapsed && (
-              <Button
-                variant={todayOnly ? "default" : "ghost"}
-                size="icon"
-                className={cn("h-7 w-7", todayOnly && "bg-emerald-600 hover:bg-emerald-700 text-white")}
-                onClick={() => setTodayOnly((v) => !v)}
-                title={todayOnly ? "Showing today's actions — click to show all" : "Filter to today's action dates"}
-              >
-                <CalendarCheck className="h-4 w-4" />
               </Button>
             )}
             <Button
@@ -187,14 +170,9 @@ export function PatientsSidebar({ patients, selectedId, onSelect, loading, error
 
         {/* ── Active patients (flat list, same for all tabs) ── */}
         <SidebarGroup>
-            {activeTab === "chase" && todayOnly && !collapsed && (
-              <SidebarGroupLabel className="text-[10px] uppercase tracking-wider text-emerald-600 font-semibold">
-                Action Today ({todayPatients.length})
-              </SidebarGroupLabel>
-            )}
             <SidebarGroupContent>
               <SidebarMenu>
-                {todayPatients.map((p) => {
+                {activeNowPatients.map((p) => {
                   const nad = p.nextActionDate?.slice(0, 10);
                   const isOverdue = hasPending && !!nad && nad < todayStr;
                   return (
@@ -208,9 +186,9 @@ export function PatientsSidebar({ patients, selectedId, onSelect, loading, error
                     />
                   );
                 })}
-                {!loading && todayPatients.length === 0 && !error && !collapsed && (
+                {!loading && activeNowPatients.length === 0 && !error && !collapsed && (
                   <p className="px-3 py-4 text-xs text-muted-foreground">
-                    {todayOnly ? "No patients with action date today." : `No patients in ${activeLabel}.`}
+                    {`No patients in ${activeLabel}.`}
                   </p>
                 )}
               </SidebarMenu>
