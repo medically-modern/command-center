@@ -12,13 +12,12 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
-import { AlertTriangle, Ban, CalendarCheck, ChevronRight, Clock, FolderClock, Loader2, RefreshCw, User, AlertCircle, Search, X, Undo2 } from "lucide-react";
+import { AlertTriangle, Ban, CalendarCheck, ChevronRight, Clock, FolderClock, Loader2, RefreshCw, User, AlertCircle, Undo2 } from "lucide-react";
 import type { Patient } from "@/lib/masheke/workflow";
 import type { TabKey } from "@/hooks/masheke/useMondayPatients";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
-import { writeStatusIndex, clearStatusColumn, clearDateColumn, COL } from "@/lib/masheke/mondayApi";
-import { SUB_STAGE_INDEX, ADVANCER_2C_INDEX } from "@/lib/masheke/mondayMapping";
+import { clearStatusColumn, clearDateColumn, COL } from "@/lib/masheke/mondayApi";
 
 /** Convert YYYY-MM-DD → MM/DD/YYYY */
 function fmtDate(iso: string): string {
@@ -33,28 +32,17 @@ const TAB_LABELS: Record<TabKey, string> = {
   chase: "Chase",
 };
 
-// Order of stage groups inside the Evaluate tab sidebar
-const EVALUATE_GROUP_ORDER = [
-  "Evaluate MN",
-  "Send Request",
-  "Confirm Receipt",
-  "Chase Clinicals",
-] as const;
 
 function PatientRow({
   patient,
   isActive,
   collapsed,
   onSelect,
-  showSendBack,
-  onSendBack,
 }: {
   patient: Patient;
   isActive: boolean;
   collapsed: boolean;
   onSelect: (id: string) => void;
-  showSendBack?: boolean;
-  onSendBack?: (id: string) => void;
 }) {
   return (
     <SidebarMenuItem>
@@ -76,16 +64,6 @@ function PatientRow({
           </div>
         )}
       </SidebarMenuButton>
-      {showSendBack && !collapsed && onSendBack && (
-        <button
-          onClick={(e) => { e.stopPropagation(); onSendBack(patient.id); }}
-          className="mx-2 mb-1 flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-[11px] font-medium bg-amber-500/15 text-amber-700 hover:bg-amber-500/25 transition-colors"
-          title="Move this patient back to the Evaluate stage"
-        >
-          <Undo2 className="h-3 w-3" />
-          Send back to Evaluate
-        </button>
-      )}
     </SidebarMenuItem>
   );
 }
@@ -105,14 +83,8 @@ export function PatientsSidebar({ patients, selectedId, onSelect, loading, error
   const collapsed = state === "collapsed";
 
   const [todayOnly, setTodayOnly] = useState(false);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [sendingBack, setSendingBack] = useState<string | null>(null);
   const [pendingOpen, setPendingOpen] = useState(false);
-  const [stageOpenMap, setStageOpenMap] = useState<Record<string, boolean>>({});
   const [filteredOpen, setFilteredOpen] = useState(false);
-
-  const toggleStageFolder = (stage: string) =>
-    setStageOpenMap((prev) => ({ ...prev, [stage]: !prev[stage] }));
 
   // Split patients into active vs blocked vs follow-up vs escalated vs stuck vs both
   const stuckPatients = patients.filter((p) => p.advancer2c === "Stuck" && p.blocked !== "Blocked");
@@ -147,26 +119,6 @@ export function PatientsSidebar({ patients, selectedId, onSelect, loading, error
     : activeNowPatients;
 
   const activeLabel = TAB_LABELS[activeTab];
-
-  // Search filtering (only on Evaluate tab)
-  const isSearching = activeTab === "evaluate" && searchQuery.trim().length > 0;
-  const searchResults = isSearching
-    ? patients.filter((p) => p.name.toLowerCase().includes(searchQuery.trim().toLowerCase()))
-    : [];
-
-  const handleSendBackToEvaluate = async (patientId: string) => {
-    setSendingBack(patientId);
-    try {
-      await writeStatusIndex(patientId, COL.subStage, SUB_STAGE_INDEX.evaluate);
-      // Refresh data after writing
-      onRefresh();
-      setSearchQuery("");
-    } catch (err) {
-      console.error("[PatientsSidebar] Failed to send back to Evaluate:", err);
-    } finally {
-      setSendingBack(null);
-    }
-  };
 
   return (
     <Sidebar collapsible="icon">
@@ -203,27 +155,6 @@ export function PatientsSidebar({ patients, selectedId, onSelect, loading, error
           </div>
         </div>
 
-        {/* Search bar — only on Evaluate tab */}
-        {activeTab === "evaluate" && !collapsed && (
-          <div className="relative mt-2">
-            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search patients…"
-              className="w-full pl-8 pr-8 py-1.5 rounded-md border border-border bg-white text-gray-900 text-sm placeholder:text-gray-400 focus:outline-none focus:ring-1 focus:ring-ring"
-            />
-            {searchQuery && (
-              <button
-                onClick={() => setSearchQuery("")}
-                className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-              >
-                <X className="h-3.5 w-3.5" />
-              </button>
-            )}
-          </div>
-        )}
       </SidebarHeader>
 
       <SidebarContent>
@@ -234,112 +165,8 @@ export function PatientsSidebar({ patients, selectedId, onSelect, loading, error
           </div>
         )}
 
-        {activeTab === "evaluate" ? (
-          isSearching ? (
-            /* ── Search results (flat list) ── */
-            <SidebarGroup>
-              {!collapsed && (
-                <SidebarGroupLabel className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
-                  Search Results ({searchResults.length})
-                </SidebarGroupLabel>
-              )}
-              <SidebarGroupContent>
-                <SidebarMenu>
-                  {searchResults.map((p) => (
-                    <PatientRow
-                      key={p.id}
-                      patient={p}
-                      isActive={selectedId === p.id}
-                      collapsed={collapsed}
-                      onSelect={onSelect}
-                      showSendBack={p.subStage !== "Evaluate MN" && sendingBack !== p.id}
-                      onSendBack={handleSendBackToEvaluate}
-                    />
-                  ))}
-                  {searchResults.length === 0 && !collapsed && (
-                    <p className="px-3 py-4 text-xs text-muted-foreground">No patients matching "{searchQuery}"</p>
-                  )}
-                  {sendingBack && !collapsed && (
-                    <div className="px-3 py-2 flex items-center gap-2 text-xs text-muted-foreground">
-                      <Loader2 className="h-3 w-3 animate-spin" /> Sending back to Evaluate…
-                    </div>
-                  )}
-                </SidebarMenu>
-              </SidebarGroupContent>
-            </SidebarGroup>
-          ) : (
-            /* ── Normal grouped view ── */
-            <>
-              {EVALUATE_GROUP_ORDER.map((stage) => {
-                const inStage = activePatients.filter((p) => (p.subStage ?? "") === stage);
-                if (inStage.length === 0) return null;
-                const isEvalStage = stage === "Evaluate MN";
-                const isOpen = !!stageOpenMap[stage];
-
-                // Evaluate MN stays flat (always visible), others are collapsible
-                if (isEvalStage) {
-                  return (
-                    <SidebarGroup key={stage}>
-                      {!collapsed && (
-                        <SidebarGroupLabel className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
-                          {stage} ({inStage.length})
-                        </SidebarGroupLabel>
-                      )}
-                      <SidebarGroupContent>
-                        <SidebarMenu>
-                          {inStage.map((p) => (
-                            <PatientRow
-                              key={p.id}
-                              patient={p}
-                              isActive={selectedId === p.id}
-                              collapsed={collapsed}
-                              onSelect={onSelect}
-                            />
-                          ))}
-                        </SidebarMenu>
-                      </SidebarGroupContent>
-                    </SidebarGroup>
-                  );
-                }
-
-                // Collapsible folder for non-Evaluate stages
-                return (
-                  <SidebarGroup key={stage}>
-                    {!collapsed && (
-                      <SidebarGroupLabel
-                        className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold flex items-center gap-1.5 cursor-pointer select-none"
-                        onClick={() => toggleStageFolder(stage)}
-                      >
-                        <FolderClock className="h-3 w-3" />
-                        {stage} ({inStage.length})
-                        <ChevronRight className={cn("h-3 w-3 ml-auto transition-transform", isOpen && "rotate-90")} />
-                      </SidebarGroupLabel>
-                    )}
-                    {isOpen && (
-                      <SidebarGroupContent>
-                        <SidebarMenu>
-                          {inStage.map((p) => (
-                            <PatientRow
-                              key={p.id}
-                              patient={p}
-                              isActive={selectedId === p.id}
-                              collapsed={collapsed}
-                              onSelect={onSelect}
-                            />
-                          ))}
-                        </SidebarMenu>
-                      </SidebarGroupContent>
-                    )}
-                  </SidebarGroup>
-                );
-              })}
-              {!loading && activePatients.length === 0 && !error && !collapsed && (
-                <p className="px-3 py-4 text-xs text-muted-foreground">No patients in any MN stage.</p>
-              )}
-            </>
-          )
-        ) : (
-          <SidebarGroup>
+        {/* ── Active patients (flat list, same for all tabs) ── */}
+        <SidebarGroup>
             {activeTab === "chase" && todayOnly && !collapsed && (
               <SidebarGroupLabel className="text-[10px] uppercase tracking-wider text-emerald-600 font-semibold">
                 Action Today ({todayPatients.length})
@@ -364,7 +191,6 @@ export function PatientsSidebar({ patients, selectedId, onSelect, loading, error
               </SidebarMenu>
             </SidebarGroupContent>
           </SidebarGroup>
-        )}
 
         {/* ── Pending section (confirmReceipt tab only) ── */}
         {pendingPatients.length > 0 && !collapsed && (

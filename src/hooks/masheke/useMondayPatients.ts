@@ -63,19 +63,10 @@ const SUB_STAGE_FILTER: Record<TabKey, string> = {
   chase: "Chase Clinicals",
 };
 
-// Evaluate tab is special: it shows patients in any of the four MN stages
-// (Evaluate MN, Send Request, Confirm Receipt, Chase Clinicals) and groups them
-// by stage in the sidebar. The other three tabs are scoped to their own stage only.
-const EVALUATE_VISIBLE_STAGES: ReadonlySet<string> = new Set([
-  "Evaluate MN",
-  "Send Request",
-  "Confirm Receipt",
-  "Chase Clinicals",
-]);
-
+// Every tab — including Evaluate — now shows only its own stage.
+// Deep-linked patients (via ?patientId=) are injected individually below.
 function matchesTab(stageAdvancer: string | undefined, tab: TabKey): boolean {
   if (!stageAdvancer) return false;
-  if (tab === "evaluate") return EVALUATE_VISIBLE_STAGES.has(stageAdvancer);
   return stageAdvancer === SUB_STAGE_FILTER[tab];
 }
 
