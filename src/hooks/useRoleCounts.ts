@@ -226,17 +226,14 @@ export function useRoleCounts() {
           const stageText = stageCol?.text ?? "";
           const roleId = MASHEKE_STAGE_MAP[stageText];
           if (roleId && roleId in next) {
-            // For Confirm Receipt, only count "active" patients:
-            // exclude pending (future nextActionDate) and stuck (escalated)
-            if (roleId === "confirmReceipt") {
-              const nadCol = item.column_values?.find((c: any) => c.id === "date_mm1wadgs");
-              const nad = (nadCol?.text ?? "").slice(0, 10);
-              if (nad && nad > todayStr) continue; // pending
+            // Only count "active" patients — exclude pending (future nextActionDate) and stuck (escalated)
+            const nadCol = item.column_values?.find((c: any) => c.id === "date_mm1wadgs");
+            const nad = (nadCol?.text ?? "").slice(0, 10);
+            if (nad && nad > todayStr) continue; // pending
 
-              const escCol = item.column_values?.find((c: any) => c.id === "color_mm1x7997");
-              const escText = escCol?.text ?? "";
-              if (escText === "Escalation Required" || escText === "Escalate") continue; // stuck
-            }
+            const escCol = item.column_values?.find((c: any) => c.id === "color_mm1x7997");
+            const escText = escCol?.text ?? "";
+            if (escText === "Escalation Required" || escText === "Escalate") continue; // stuck
             next[roleId]++;
             nextIds[roleId].push(String(item.id));
           }
