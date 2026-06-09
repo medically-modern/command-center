@@ -68,7 +68,7 @@ export function DoctorPanel({ patient, onUpdate, clinicLabels, onClinicSelect, o
           <div className="rounded-md border border-blue-300 bg-blue-50 px-4 py-3">
             <p className="text-sm font-semibold text-blue-800 flex items-center gap-1.5">
               <AlertTriangle className="h-4 w-4" />
-              Note: Doctor data for this patient might be inaccurate. Call phone number to confirm doctor information.
+              Note: Doctor data for this patient might be inaccurate. Call doctor phone number to confirm doctor information.
             </p>
           </div>
         )}
