@@ -12,7 +12,7 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
-import { AlertTriangle, Ban, CalendarCheck, Clock, Loader2, RefreshCw, User, AlertCircle, Search, X, Undo2 } from "lucide-react";
+import { AlertTriangle, Ban, CalendarCheck, ChevronRight, Clock, FolderClock, Loader2, RefreshCw, User, AlertCircle, Search, X, Undo2 } from "lucide-react";
 import type { Patient } from "@/lib/masheke/workflow";
 import type { TabKey } from "@/hooks/masheke/useMondayPatients";
 import { cn } from "@/lib/utils";
@@ -107,6 +107,7 @@ export function PatientsSidebar({ patients, selectedId, onSelect, loading, error
   const [todayOnly, setTodayOnly] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [sendingBack, setSendingBack] = useState<string | null>(null);
+  const [pendingOpen, setPendingOpen] = useState(false);
 
   // Split patients into active vs blocked vs follow-up vs escalated vs stuck vs both
   const stuckPatients = patients.filter((p) => p.advancer2c === "Stuck" && p.blocked !== "Blocked");
@@ -120,10 +121,24 @@ export function PatientsSidebar({ patients, selectedId, onSelect, loading, error
   const etParts = new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
   const todayStr = etParts; // "YYYY-MM-DD" in ET
 
+  // For confirm-receipt tab: patients with a future nextActionDate go to Pending
+  const pendingPatients = activeTab === "confirmReceipt"
+    ? activePatients.filter((p) => {
+        const nad = p.nextActionDate?.slice(0, 10);
+        return nad && nad > todayStr;
+      })
+    : [];
+  const activeNowPatients = activeTab === "confirmReceipt"
+    ? activePatients.filter((p) => {
+        const nad = p.nextActionDate?.slice(0, 10);
+        return !nad || nad <= todayStr;
+      })
+    : activePatients;
+
   // For chase tab: split into "action today" vs rest
   const todayPatients = activeTab === "chase" && todayOnly
-    ? activePatients.filter((p) => p.nextActionDate?.slice(0, 10) === todayStr)
-    : activePatients;
+    ? activeNowPatients.filter((p) => p.nextActionDate?.slice(0, 10) === todayStr)
+    : activeNowPatients;
 
   const activeLabel = TAB_LABELS[activeTab];
 
@@ -305,6 +320,47 @@ export function PatientsSidebar({ patients, selectedId, onSelect, loading, error
                 )}
               </SidebarMenu>
             </SidebarGroupContent>
+          </SidebarGroup>
+        )}
+
+        {/* ── Pending section (confirmReceipt tab only) ── */}
+        {pendingPatients.length > 0 && !collapsed && (
+          <SidebarGroup>
+            <SidebarGroupLabel
+              className="text-[10px] uppercase tracking-wider text-violet-500 font-semibold flex items-center gap-1.5 cursor-pointer select-none"
+              onClick={() => setPendingOpen((v) => !v)}
+            >
+              <FolderClock className="h-3 w-3" />
+              Pending ({pendingPatients.length})
+              <ChevronRight className={cn("h-3 w-3 ml-auto transition-transform", pendingOpen && "rotate-90")} />
+            </SidebarGroupLabel>
+            {pendingOpen && (
+              <SidebarGroupContent>
+                <SidebarMenu>
+                  {pendingPatients.map((p) => (
+                    <SidebarMenuItem key={p.id}>
+                      <SidebarMenuButton
+                        isActive={selectedId === p.id}
+                        onClick={() => onSelect(p.id)}
+                        className={cn(
+                          "flex items-start gap-2 py-2 h-auto opacity-60",
+                          selectedId === p.id && "bg-sidebar-accent opacity-100",
+                        )}
+                      >
+                        <FolderClock className="h-4 w-4 mt-0.5 shrink-0 text-violet-400" />
+                        <div className="min-w-0 text-left">
+                          <p className="text-sm font-medium truncate">{p.name}</p>
+                          <p className="text-[11px] text-violet-400 truncate">
+                            Next: {p.nextActionDate ? fmtDate(p.nextActionDate) : "—"}
+                            {p.mnAttempts ? ` · ${p.mnAttempts}` : ""}
+                          </p>
+                        </div>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  ))}
+                </SidebarMenu>
+              </SidebarGroupContent>
+            )}
           </SidebarGroup>
         )}
 
