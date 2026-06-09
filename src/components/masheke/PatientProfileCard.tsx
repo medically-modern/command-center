@@ -1,8 +1,6 @@
 import { useState } from "react";
 import type { Patient } from "@/lib/masheke/workflow";
 import {
-  Stethoscope,
-  ShieldCheck,
   Phone,
   Pencil,
   Check,
@@ -175,8 +173,34 @@ function SuppliesCgmIcon({ className }: { className?: string }) {
   );
 }
 
+function IconInsurance({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 20 20" fill="none" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M10 2L3 5v4c0 5 3 8.5 7 10 4-1.5 7-5 7-10V5L10 2z" stroke="currentColor" />
+      <path d="M7 10l2 2 4-4" stroke="currentColor" />
+    </svg>
+  );
+}
+
+function IconServing({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 20 20" fill="none" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="10" cy="8" r="6" stroke="currentColor" />
+      <path d="M10 5v3l2 1.5" stroke="currentColor" />
+      <path d="M6 16h8" stroke="currentColor" />
+      <path d="M7 18h6" stroke="currentColor" />
+    </svg>
+  );
+}
+
 function DefaultServingIcon({ className }: { className?: string }) {
-  return <Stethoscope className={className} />;
+  return (
+    <svg className={className} viewBox="0 0 20 20" fill="none" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="10" cy="6" r="4" stroke="currentColor" />
+      <path d="M10 10v4M8 18c0-2.2 0.9-4 2-4s2 1.8 2 4" stroke="currentColor" />
+      <path d="M6 14h8" stroke="currentColor" />
+    </svg>
+  );
 }
 
 function ServingIcon({ serving, className }: { serving?: string | null; className?: string }) {
@@ -555,19 +579,19 @@ export function PatientProfileCard({
       {/* ── Accent fields row: Insurance, Member ID, Serving ── */}
       <div className="grid grid-cols-3 gap-2 px-6 pb-5">
         <AccentField
-          icon={<ShieldCheck className="h-4 w-4" />}
+          icon={<IconInsurance className="h-4 w-4" />}
           label="Insurance"
           value={patient.primaryInsurance ?? ""}
           colors={colors}
         />
         <AccentField
-          icon={<IdCard className="h-4 w-4" />}
+          icon={<IconMemberId className="h-4 w-4" />}
           label="Member ID"
           value={patient.memberId1 ?? ""}
           colors={colors}
         />
         <AccentField
-          icon={<Stethoscope className="h-4 w-4" />}
+          icon={<IconServing className="h-4 w-4" />}
           label="Serving"
           value={patient.serving ?? ""}
           colors={colors}
