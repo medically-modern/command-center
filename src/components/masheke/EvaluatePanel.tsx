@@ -527,6 +527,8 @@ export function EvaluatePanel({ patient, resetVersion = 0, onUpdate, onOpenForm 
         </div>
       </SectionCard>
 
+      {anyYes && (<>
+
       {/* ── Diagnosis & Clinicals ───────────────────────── */}
       <SectionCard title="Diagnosis & Clinicals" status={validity.sections.diagnosis.valid && validity.sections.mr.valid}>
         <DiagnosisField
@@ -544,8 +546,6 @@ export function EvaluatePanel({ patient, resetVersion = 0, onUpdate, onOpenForm 
           </div>
         )}
       </SectionCard>
-
-      {anyYes && (<>
 
       {/* CGM block */}
       {showCgm && (
