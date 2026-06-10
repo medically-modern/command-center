@@ -12,9 +12,13 @@ interface Props {
   doctorName?: string;
   /** Compact mode — smaller text, less padding (for use inside collapsible panels). */
   compact?: boolean;
+  /** Flush mode — no card border/background; header styled like the
+   *  surrounding field labels so the panel blends into a details grid.
+   *  Functionality is identical. */
+  flush?: boolean;
 }
 
-export function DoctorNotesPanel({ doctorNpi, doctorName, compact = false }: Props) {
+export function DoctorNotesPanel({ doctorNpi, doctorName, compact = false, flush = false }: Props) {
   const [doctor, setDoctor] = useState<DoctorRecord | null>(null);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -112,19 +116,29 @@ export function DoctorNotesPanel({ doctorNpi, doctorName, compact = false }: Pro
       : "Doctor Notes";
 
   return (
-    <div className={`border rounded-lg ${compact ? "p-3" : "p-4"} space-y-2 bg-card`}>
+    <div
+      className={
+        flush
+          ? "space-y-2"
+          : `border rounded-lg ${compact ? "p-3" : "p-4"} space-y-2 bg-card`
+      }
+    >
       {/* Header (click to expand/collapse) */}
       <div className="flex items-center justify-between gap-2">
         <button
           type="button"
           onClick={() => setOpen((v) => !v)}
-          className={`${compact ? "text-xs" : "text-sm"} font-semibold text-emerald-700 flex items-center gap-1.5 truncate min-w-0 hover:opacity-80 transition-opacity`}
+          className={
+            flush
+              ? "text-xs font-medium uppercase tracking-wide text-muted-foreground flex items-center gap-1.5 truncate min-w-0 hover:text-foreground transition-colors"
+              : `${compact ? "text-xs" : "text-sm"} font-semibold text-emerald-700 flex items-center gap-1.5 truncate min-w-0 hover:opacity-80 transition-opacity`
+          }
           title={open ? "Collapse doctor notes" : "Expand doctor notes"}
         >
           <ChevronRight
-            className={`${compact ? "h-3.5 w-3.5" : "h-4 w-4"} shrink-0 transition-transform ${open ? "rotate-90" : ""}`}
+            className={`${compact || flush ? "h-3.5 w-3.5" : "h-4 w-4"} shrink-0 transition-transform ${open ? "rotate-90" : ""}`}
           />
-          <Stethoscope className={`${compact ? "h-3.5 w-3.5" : "h-4 w-4"} shrink-0`} />
+          <Stethoscope className={`${compact || flush ? "h-3.5 w-3.5" : "h-4 w-4"} shrink-0`} />
           <span className="truncate">{headerLabel}</span>
           {!open && doctor?.notes && (
             <span className="ml-1 shrink-0 rounded-full bg-emerald-100 text-emerald-700 text-[10px] px-1.5 py-0.5 font-medium">

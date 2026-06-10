@@ -648,6 +648,7 @@ export function PatientProfileCard({
                   doctorNpi={patient.doctorNpi}
                   doctorName={patient.doctorName}
                   compact
+                  flush
                 />
               </div>
             )}
