@@ -5,9 +5,11 @@
  *   - Parachute: gender / member id / devices / coverage paths / OOW /
  *     malfunction / patient address / doctor contact / clinic address
  *   - Fax & Email: devices / doctor contact / clinic / clinic address
- * Read-only — doctor edits live on the method hero in SendRequestPanel.
+ * Doctor info (editable) + doctor notes live in the DoctorSection at
+ * the bottom of the card.
  */
 import type { Patient } from "@/lib/masheke/workflow";
+import { DoctorSection } from "@/components/masheke/mmKit";
 
 function formatPhone(raw?: string): string {
   if (!raw) return "—";
@@ -40,10 +42,15 @@ function Field({ label, value, span2 }: { label: string; value?: string; span2?:
   );
 }
 
-export function SendRequestHeaderCard({ patient }: { patient: Patient }) {
+export function SendRequestHeaderCard({
+  patient,
+  onDoctorEdit,
+}: {
+  patient: Patient;
+  onDoctorEdit?: (patch: Partial<Patient>) => void;
+}) {
   const method = patient.clinicalsMethod ?? "Fax";
   const isParachute = method === "Parachute";
-  const isEmail = method === "Email";
 
   return (
     <section
@@ -104,30 +111,24 @@ export function SendRequestHeaderCard({ patient }: { patient: Patient }) {
             <Field label="Malfunction Reason" value={patient.malfunction} />
           </div>
           <div className="mt-5 border-t pt-5 grid grid-cols-2 lg:grid-cols-4 gap-5" style={{ borderColor: "var(--mm-card-border)" }}>
-            <Field label="Patient Address" value={patient.address} />
-            <Field label="Doctor Phone" value={formatPhone(patient.doctorPhone)} />
-            <Field label="Doctor Fax" value={patient.doctorFax} />
-            <Field label="Clinic Address" value={patient.clinicAddress} />
+            <Field label="Patient Address" value={patient.address} span2 />
+            <Field label="Patient Phone" value={formatPhone(patient.phone)} />
           </div>
         </>
       ) : (
-        <>
-          <div className="mt-5 border-t pt-5 grid grid-cols-2 lg:grid-cols-4 gap-5" style={{ borderColor: "var(--mm-card-border)" }}>
-            <Field label="CGM" value={patient.cgmType} />
-            <Field label="Pump" value={patient.pumpType} />
-            <Field label="Doctor Phone" value={formatPhone(patient.doctorPhone)} />
-            {isEmail ? (
-              <Field label="Doctor Email" value={patient.doctorEmail} />
-            ) : (
-              <Field label="Doctor Fax" value={patient.doctorFax} />
-            )}
-          </div>
-          <div className="mt-5 border-t pt-5 grid grid-cols-2 lg:grid-cols-4 gap-5" style={{ borderColor: "var(--mm-card-border)" }}>
-            <Field label="Clinic" value={patient.clinicName} span2 />
-            <Field label="Clinic Address" value={patient.clinicAddress} span2 />
-          </div>
-        </>
+        <div className="mt-5 border-t pt-5 grid grid-cols-2 lg:grid-cols-4 gap-5" style={{ borderColor: "var(--mm-card-border)" }}>
+          <Field label="CGM" value={patient.cgmType} />
+          <Field label="Pump" value={patient.pumpType} />
+          <Field label="Patient Address" value={patient.address} span2 />
+        </div>
       )}
+
+      {/* doctor info + notes — editable, persists on Mark as Complete */}
+      <DoctorSection
+        patient={patient}
+        onDoctorEdit={onDoctorEdit}
+        editHint="Edits are saved to Monday when you Mark as Complete (or via the Save button above)."
+      />
     </section>
   );
 }

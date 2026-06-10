@@ -4,9 +4,11 @@
  * White card, 4px teal top border, bold name, three info groups, then
  * always-visible detail rows: devices + doctor contact / coverage paths
  * + OOW + malfunction / patient address + phone.
- * Read-only — doctor edits live on the method hero.
+ * Doctor info (editable) + doctor notes live in the DoctorSection at
+ * the bottom of the card.
  */
 import type { Patient } from "@/lib/masheke/workflow";
+import { DoctorSection } from "@/components/masheke/mmKit";
 
 /** Format raw phone digits into (xxx)-xxx-xxxx or +1 (xxx)-xxx-xxxx
  *  (same format as PatientProfileCard). */
@@ -41,7 +43,13 @@ function Field({ label, value, span2 }: { label: string; value?: string; span2?:
   );
 }
 
-export function ConfirmReceiptHeaderCard({ patient }: { patient: Patient }) {
+export function ConfirmReceiptHeaderCard({
+  patient,
+  onDoctorEdit,
+}: {
+  patient: Patient;
+  onDoctorEdit?: (patch: Partial<Patient>) => void;
+}) {
   return (
     <section
       className="rounded-2xl bg-card border p-6 shadow-sm border-t-4"
@@ -91,8 +99,6 @@ export function ConfirmReceiptHeaderCard({ patient }: { patient: Patient }) {
       <div className="mt-5 border-t pt-5 grid grid-cols-2 lg:grid-cols-4 gap-5" style={{ borderColor: "var(--mm-card-border)" }}>
         <Field label="CGM" value={patient.cgmType} />
         <Field label="Pump" value={patient.pumpType} />
-        <Field label="Doctor Fax" value={patient.doctorFax} />
-        <Field label="Doctor Email" value={patient.doctorEmail} />
       </div>
       <div className="mt-5 border-t pt-5 grid grid-cols-2 lg:grid-cols-4 gap-5" style={{ borderColor: "var(--mm-card-border)" }}>
         <Field label="CGM Coverage Path" value={patient.cgmCoveragePath} />
@@ -104,6 +110,13 @@ export function ConfirmReceiptHeaderCard({ patient }: { patient: Patient }) {
         <Field label="Patient Address" value={patient.address} span2 />
         <Field label="Patient Phone" value={formatPhone(patient.phone)} />
       </div>
+
+      {/* doctor info + notes — editable, persists on Save Attempt */}
+      <DoctorSection
+        patient={patient}
+        onDoctorEdit={onDoctorEdit}
+        editHint="Edits are saved to Monday when you Save Attempt."
+      />
     </section>
   );
 }

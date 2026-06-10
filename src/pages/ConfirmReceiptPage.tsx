@@ -119,7 +119,7 @@ const ConfirmReceiptPage = () => {
               )}
               {selected && (
                 <>
-                  <ConfirmReceiptHeaderCard patient={selected} />
+                  <ConfirmReceiptHeaderCard patient={selected} onDoctorEdit={(patch) => update(selected.id, patch)} />
                   <ConfirmReceiptPanel patient={selected} onUpdate={onUpdate} onOpenForm={() => setEscalationModalOpen(true)} />
                 </>
               )}

@@ -24,8 +24,10 @@ import {
   buildDoctorWriteTasks,
   hasToken,
   writeDate,
+  writeDateTime,
   writeLongText,
   writeStatusIndex,
+  writeStatusLabel,
   writeText,
 } from "@/lib/masheke/mondayApi";
 import {
@@ -49,6 +51,7 @@ import {
   MethodHero,
   MmStep,
   MnStatusChip,
+  SentChip,
 } from "@/components/masheke/mmKit";
 
 interface Props {
@@ -79,6 +82,9 @@ export function ConfirmReceiptPanel({ patient, onUpdate }: Props) {
   // step shows the confirmed banner (no Monday read — the patient leaves
   // this stage on the next refetch anyway).
   const [justConfirmed, setJustConfirmed] = useState<{ who: string; ts: string } | null>(null);
+  // Re-send state (step 2) — session-only chip after a successful send.
+  const [resending, setResending] = useState(false);
+  const [resentNow, setResentNow] = useState(false);
 
   // Reset form when patient changes
   useEffect(() => {
@@ -88,6 +94,7 @@ export function ConfirmReceiptPanel({ patient, onUpdate }: Props) {
     setNoteAdded(false);
     setPendingNoteText("");
     setJustConfirmed(null);
+    setResentNow(false);
   }, [patient.id]);
 
   // Default Next Action Date based on the picked outcome:
@@ -198,6 +205,42 @@ export function ConfirmReceiptPanel({ patient, onUpdate }: Props) {
   const method = patient.clinicalsMethod ?? "—";
   const isEmail = method === "Email";
   const recipient = isEmail ? patient.doctorEmail : patient.doctorFax;
+  const mnLetterPresent = mondayFiles.mnRequestLetter.length > 0;
+
+  // Re-send the request — identical writes to Send Request's Send action:
+  // flip the Send Request trigger column (Monday's automation re-dispatches
+  // the files via Supermail) and stamp Request Sent At.
+  async function handleResend() {
+    if (!hasToken()) {
+      toast.error("Monday token not configured");
+      return;
+    }
+    setResending(true);
+    try {
+      try {
+        await writeStatusLabel(patient.id, COL.sendRequestTrigger, "Send");
+      } catch (e) {
+        throw new Error(`[1/2 trigger Send Request] ${e instanceof Error ? e.message : String(e)}`);
+      }
+      try {
+        await writeDateTime(patient.id, COL.requestSentAt);
+      } catch (e) {
+        throw new Error(`[2/2 Request Sent At] ${e instanceof Error ? e.message : String(e)}`);
+      }
+      setResentNow(true);
+      toast.success(
+        isEmail
+          ? "Request sent — email dispatched via Supermail"
+          : "Request sent — fax dispatched via Supermail",
+      );
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      console.error("[Re-send] failed", msg);
+      toast.error("Send failed", { description: msg });
+    } finally {
+      setResending(false);
+    }
+  }
 
   const showCgm =
     patient.serving === "CGM" ||
@@ -224,8 +267,6 @@ export function ConfirmReceiptPanel({ patient, onUpdate }: Props) {
               : "(no doctor fax on file)"
         }
         right={<CallBox phone={patient.doctorPhone} />}
-        editHint="Edits are saved to Monday when you Save Attempt."
-        onDoctorEdit={onUpdate}
       />
 
       {/* ── Attempt context hero ── */}
@@ -292,33 +333,49 @@ export function ConfirmReceiptPanel({ patient, onUpdate }: Props) {
         </div>
       </MmStep>
 
-      {/* ── Step 2 — Re-send the Fax (visual only — button not wired) ── */}
+      {/* ── Step 2 — Re-send the Fax/Email — same writes as Send Request's
+            Send action (trigger column + Request Sent At stamp). ── */}
       <MmStep num={2} title={isEmail ? "Re-send the Email" : "Re-send the Fax"}>
         <div
           className="flex items-center gap-4 rounded-xl border px-5 py-4 flex-wrap"
           style={{ borderColor: "var(--mm-card-border)" }}
         >
-          <div className="flex-1 min-w-0">
+          <div className="flex-1 min-w-0 flex items-center gap-3 flex-wrap">
             <div className="text-[1.05rem] font-bold leading-snug">
               {recipient
                 ? `Send ${isEmail ? "Email" : "Fax"} to ${recipient}`
                 : `Send ${isEmail ? "Email" : "Fax"}`}
             </div>
-            {!recipient && (
-              <div className="text-sm text-muted-foreground mt-0.5">
-                ({isEmail ? "no doctor email on file" : "no doctor fax on file"})
-              </div>
-            )}
+            {resentNow && <SentChip />}
           </div>
+          {!recipient && (
+            <div className="text-sm text-muted-foreground w-full -mt-2">
+              ({isEmail ? "no doctor email on file" : "no doctor fax on file"})
+            </div>
+          )}
           <Button
-            disabled
-            title="Coming soon"
-            className="gap-2 text-white shadow-sm bg-[oklch(0.85_0.01_200)] cursor-not-allowed"
+            onClick={handleResend}
+            disabled={resending || !mnLetterPresent}
+            className="gap-2 text-white shadow-sm bg-[color:var(--mm-green)] hover:bg-[oklch(0.56_0.10_175)] disabled:bg-[oklch(0.85_0.01_200)]"
           >
-            <SendIcon />
-            Send {isEmail ? "Email" : "Fax"}
+            {resending ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Sending…
+              </>
+            ) : (
+              <>
+                <SendIcon />
+                Send {isEmail ? "Email" : "Fax"}
+              </>
+            )}
           </Button>
         </div>
+        {!mnLetterPresent && (
+          <p className="text-sm text-muted-foreground mt-2">
+            MN Request Letter missing on Monday — Send is blocked. Generate it on the Send Request tab first.
+          </p>
+        )}
       </MmStep>
 
       {/* ── Step 3 — Call Notes ── */}
@@ -387,7 +444,7 @@ export function ConfirmReceiptPanel({ patient, onUpdate }: Props) {
               <AlertTriangle className="h-5 w-5 shrink-0" style={{ color: "var(--mm-rose)" }} />
               <div>
                 <p className="text-base font-bold" style={{ color: "var(--mm-rose)" }}>
-                  Escalated — awaiting human review
+                  Escalated
                 </p>
                 <p className="text-sm text-muted-foreground">
                   All 3 confirm-receipt attempts came back unsuccessful. Notes are still editable above.

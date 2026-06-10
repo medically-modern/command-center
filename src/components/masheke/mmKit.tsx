@@ -6,6 +6,7 @@
 import { useState } from "react";
 import type { Patient } from "@/lib/masheke/workflow";
 import { Input } from "@/components/ui/input";
+import { DoctorNotesPanel } from "@/components/shared/DoctorNotesPanel";
 import {
   AlertTriangle,
   Check,
@@ -182,6 +183,148 @@ function HeroField({
       <Input value={value ?? ""} onChange={(e) => onChange(e.target.value)} className="h-9 text-sm" />
     </div>
   );
+}
+
+// =====================================================================
+// Doctor section — editable doctor fields + doctor notes, appended to
+// the bottom of the patient header cards (Send Request / Confirm
+// Receipt). Same persistence model as the profile card: edits go to
+// the local overlay via onDoctorEdit and are written to Monday by the
+// page's existing save action (Mark as Complete / Save Attempt).
+// =====================================================================
+
+export function DoctorSection({
+  patient,
+  onDoctorEdit,
+  editHint,
+}: {
+  patient: Patient;
+  onDoctorEdit?: (patch: Partial<Patient>) => void;
+  /** Shown while editing — describes when edits persist to Monday. */
+  editHint?: string;
+}) {
+  const [editing, setEditing] = useState(false);
+
+  return (
+    <div className="mt-5 border-t pt-5" style={{ borderColor: "var(--mm-card-border)" }}>
+      <div className="flex items-center justify-between gap-3 mb-3">
+        <p className="text-sm font-medium uppercase tracking-wide text-muted-foreground">Doctor</p>
+        {onDoctorEdit && (
+          <button
+            onClick={() => setEditing((e) => !e)}
+            className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors px-2 py-1 rounded-md hover:bg-muted"
+            title={editing ? "Done editing" : "Edit doctor info"}
+          >
+            {editing ? <Check className="h-3.5 w-3.5" /> : <Pencil className="h-3.5 w-3.5" />}
+            <span>{editing ? "Done" : "Edit"}</span>
+          </button>
+        )}
+      </div>
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-x-5 gap-y-4">
+        <DocField
+          label="Doctor"
+          value={patient.doctorName ?? ""}
+          editing={editing}
+          onChange={(v) => onDoctorEdit?.({ doctorName: v })}
+        />
+        <DocField
+          label="NPI"
+          value={patient.doctorNpi ?? ""}
+          editing={editing}
+          onChange={(v) => onDoctorEdit?.({ doctorNpi: v })}
+        />
+        <DocField
+          label="Phone"
+          value={editing ? patient.doctorPhone ?? "" : formatPhone(patient.doctorPhone ?? "")}
+          editing={editing}
+          onChange={(v) => onDoctorEdit?.({ doctorPhone: v })}
+        />
+        <DocField
+          label="Fax"
+          value={patient.doctorFax ?? ""}
+          editing={editing}
+          onChange={(v) => onDoctorEdit?.({ doctorFax: v })}
+        />
+        <DocField
+          label="Email"
+          value={patient.doctorEmail ?? ""}
+          editing={editing}
+          onChange={(v) => onDoctorEdit?.({ doctorEmail: v })}
+        />
+        <DocField
+          label="Clinic"
+          value={patient.clinicName ?? ""}
+          editing={editing}
+          onChange={(v) => onDoctorEdit?.({ clinicName: v })}
+        />
+        {/* Clinic Address has no Monday write task — read-only. */}
+        <DocField label="Clinic Address" value={patient.clinicAddress ?? ""} editing={false} />
+        {/* Doctor-level notes from the Doctor Database — same component
+            as the Evaluate profile card. */}
+        {patient.doctorNpi && (
+          <div className="min-w-0">
+            <DoctorNotesPanel
+              doctorNpi={patient.doctorNpi}
+              doctorName={patient.doctorName}
+              compact
+              flush
+            />
+          </div>
+        )}
+      </div>
+      {editing && editHint && (
+        <p className="text-xs text-muted-foreground mt-3">{editHint}</p>
+      )}
+    </div>
+  );
+}
+
+function DocField({
+  label,
+  value,
+  editing,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  editing: boolean;
+  onChange?: (v: string) => void;
+}) {
+  if (!editing) {
+    return (
+      <div className="min-w-0">
+        <p className="text-sm font-medium uppercase tracking-wide text-muted-foreground">{label}</p>
+        <p className="mt-1 text-lg font-semibold truncate" title={value || "—"}>
+          {value || "—"}
+        </p>
+      </div>
+    );
+  }
+  return (
+    <div className="min-w-0">
+      <p className="text-sm font-medium uppercase tracking-wide text-muted-foreground mb-1">{label}</p>
+      <Input
+        className="h-9 text-[15px]"
+        value={value}
+        onChange={(e) => onChange?.(e.target.value)}
+        placeholder={`Enter ${label.toLowerCase()}`}
+      />
+    </div>
+  );
+}
+
+/** Format raw phone digits into (xxx)-xxx-xxxx or +1 (xxx)-xxx-xxxx
+ *  (same format as PatientProfileCard). */
+export function formatPhone(raw?: string): string {
+  if (!raw) return "—";
+  const digits = raw.replace(/\D/g, "");
+  if (digits.length === 10) {
+    return `(${digits.slice(0, 3)})-${digits.slice(3, 6)}-${digits.slice(6)}`;
+  }
+  if (digits.length === 11 && digits.startsWith("1")) {
+    return `+1 (${digits.slice(1, 4)})-${digits.slice(4, 7)}-${digits.slice(7)}`;
+  }
+  return raw;
 }
 
 // =====================================================================

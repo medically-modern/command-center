@@ -408,7 +408,7 @@ export function SendRequestPanel({ patient, resetVersion = 0, onUpdate }: Props)
 
   return (
     <div className="flex flex-col gap-6">
-      <MethodHero patient={patient} method={method} onDoctorEdit={onUpdate} />
+      <MethodHero patient={patient} method={method} />
 
       {/* ── Step 1 — What we're still missing ── */}
       <MmStep
