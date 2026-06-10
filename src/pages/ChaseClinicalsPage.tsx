@@ -7,7 +7,7 @@ import { useMondayPatients } from "@/hooks/masheke/useMondayPatients";
 import type { Patient } from "@/lib/masheke/workflow";
 import { ChaseClinicalsPanel } from "@/components/masheke/ChaseClinicalsPanel";
 import { PatientsSidebar } from "@/components/masheke/PatientsSidebar";
-import { PatientProfileCard } from "@/components/masheke/PatientProfileCard";
+import { ConfirmReceiptHeaderCard } from "@/components/masheke/ConfirmReceiptHeaderCard";
 import { Button } from "@/components/ui/button";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { RotateCcw, Stethoscope, ArrowLeft, Ban, Clock , Save} from "lucide-react";
@@ -120,7 +120,7 @@ const ChaseClinicalsPage = () => {
               )}
               {selected && (
                 <>
-                  <PatientProfileCard patient={selected} lockDoctorOpen onDoctorEdit={(patch) => update(selected.id, patch)} />
+                  <ConfirmReceiptHeaderCard patient={selected} onDoctorEdit={(patch) => update(selected.id, patch)} />
                   <ChaseClinicalsPanel patient={selected} onUpdate={onUpdate} onOpenForm={() => setEscalationModalOpen(true)} />
                 </>
               )}
