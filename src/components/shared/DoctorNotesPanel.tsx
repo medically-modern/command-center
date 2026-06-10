@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
-import { Stethoscope, Plus, Loader2, RefreshCw } from "lucide-react";
+import { Stethoscope, Plus, Loader2, RefreshCw, ChevronRight } from "lucide-react";
 import { toast } from "sonner";
 import { findDoctorByNpi, saveDoctorNotes, type DoctorRecord } from "@/lib/shared/doctorDb";
 
@@ -22,6 +22,7 @@ export function DoctorNotesPanel({ doctorNpi, doctorName, compact = false }: Pro
   const [editing, setEditing] = useState(false);
   const [editText, setEditText] = useState("");
   const [fetchError, setFetchError] = useState(false);
+  const [open, setOpen] = useState(false);
   const lastNpi = useRef("");
   const retryCount = useRef(0);
 
@@ -112,52 +113,67 @@ export function DoctorNotesPanel({ doctorNpi, doctorName, compact = false }: Pro
 
   return (
     <div className={`border rounded-lg ${compact ? "p-3" : "p-4"} space-y-2 bg-card`}>
-      {/* Header */}
+      {/* Header (click to expand/collapse) */}
       <div className="flex items-center justify-between gap-2">
-        <p className={`${compact ? "text-xs" : "text-sm"} font-semibold text-emerald-700 flex items-center gap-1.5 truncate`}>
-          <Stethoscope className={compact ? "h-3.5 w-3.5" : "h-4 w-4"} />
-          {headerLabel}
-        </p>
-        <div className="flex items-center gap-1 shrink-0">
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-6 px-2 text-xs"
-            onClick={() => fetchDoctor(doctorNpi)}
-            disabled={loading}
-          >
-            <RefreshCw className={`h-3 w-3 ${loading ? "animate-spin" : ""}`} />
-          </Button>
-          {doctor && (
+        <button
+          type="button"
+          onClick={() => setOpen((v) => !v)}
+          className={`${compact ? "text-xs" : "text-sm"} font-semibold text-emerald-700 flex items-center gap-1.5 truncate min-w-0 hover:opacity-80 transition-opacity`}
+          title={open ? "Collapse doctor notes" : "Expand doctor notes"}
+        >
+          <ChevronRight
+            className={`${compact ? "h-3.5 w-3.5" : "h-4 w-4"} shrink-0 transition-transform ${open ? "rotate-90" : ""}`}
+          />
+          <Stethoscope className={`${compact ? "h-3.5 w-3.5" : "h-4 w-4"} shrink-0`} />
+          <span className="truncate">{headerLabel}</span>
+          {!open && doctor?.notes && (
+            <span className="ml-1 shrink-0 rounded-full bg-emerald-100 text-emerald-700 text-[10px] px-1.5 py-0.5 font-medium">
+              notes
+            </span>
+          )}
+        </button>
+        {open && (
+          <div className="flex items-center gap-1 shrink-0">
             <Button
               variant="ghost"
               size="sm"
               className="h-6 px-2 text-xs"
-              disabled={saving}
-              onClick={() => {
-                if (editing) {
-                  handleEditSave();
-                } else {
-                  setEditText(doctor.notes);
-                  setEditing(true);
-                }
-              }}
+              onClick={() => fetchDoctor(doctorNpi)}
+              disabled={loading}
             >
-              {editing ? (saving ? "Saving…" : "Done") : "Edit"}
+              <RefreshCw className={`h-3 w-3 ${loading ? "animate-spin" : ""}`} />
             </Button>
-          )}
-        </div>
+            {doctor && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-6 px-2 text-xs"
+                disabled={saving}
+                onClick={() => {
+                  if (editing) {
+                    handleEditSave();
+                  } else {
+                    setEditText(doctor.notes);
+                    setEditing(true);
+                  }
+                }}
+              >
+                {editing ? (saving ? "Saving…" : "Done") : "Edit"}
+              </Button>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Loading state */}
-      {loading && (
+      {open && loading && (
         <div className="flex items-center gap-2 text-xs text-muted-foreground py-2">
           <Loader2 className="h-3 w-3 animate-spin" /> Looking up doctor…
         </div>
       )}
 
       {/* No match or error */}
-      {!loading && !doctor && (
+      {open && !loading && !doctor && (
         fetchError ? (
           <div className="flex items-center gap-2 py-1">
             <p className="text-xs text-amber-600 italic">
@@ -175,7 +191,7 @@ export function DoctorNotesPanel({ doctorNpi, doctorName, compact = false }: Pro
       )}
 
       {/* Notes display / edit */}
-      {!loading && doctor && (
+      {open && !loading && doctor && (
         <>
           {editing ? (
             <Textarea
