@@ -45,6 +45,7 @@ export const COL = {
   stediPlanName: "text_mm1xdcet",
   stediGender: "dropdown_mm30thnj",
   stediMedicaidId: "text_mm31e5se",
+  stediHomePlan: "dropdown_mm457xy2",
 
   // Plan Name flows from Stedi → Insurance Plan dropdown on Submit
   insurancePlan: "dropdown_mm1y2x75",
@@ -130,7 +131,7 @@ export const READ_COLUMN_IDS: string[] = [
   COL.stediFamilyOopMax, COL.stediFamilyOopMaxRemaining,
   COL.stediPlanBeginDate, COL.stediErrorDescription,
   COL.stediSecondaryMedicaidId,
-  COL.stediGender, COL.stediMedicaidId,
+  COL.stediGender, COL.stediMedicaidId, COL.stediHomePlan,
   // Insurance
   COL.primaryInsurance, COL.generalInsurance, COL.memberId1, COL.memberId2,
   COL.secondaryInsurance,

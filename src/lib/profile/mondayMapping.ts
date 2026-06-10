@@ -61,6 +61,7 @@ export function mondayItemToPatient(item: MondayItem): Patient {
     stediPlanName: col(item, COL.stediPlanName),
     stediGender: col(item, COL.stediGender),
     stediMedicaidId: col(item, COL.stediMedicaidId),
+    stediHomePlan: col(item, COL.stediHomePlan),
 
     // Notes
     notes: col(item, COL.notes),
@@ -125,10 +126,13 @@ export const PRIMARY_INSURANCE_INDEX: Record<string, number> = {
 };
 
 export const GENERAL_INSURANCE_INDEX: Record<string, number> = {
-  "Anthem BCBS": 0, "Aetna": 1, "Cigna": 2, "Fidelis": 3, "Medicare A&B": 4,
+  // "Anthem / BCBS" replaced the old "Horizon BCBS" (15) and "Anthem BCBS"
+  // labels — front-end rename only, still writes index 0 to the same
+  // General Insurance column (Monday label 0 = "Anthem / BCBS").
+  "Anthem / BCBS": 0, "Aetna": 1, "Cigna": 2, "Fidelis": 3, "Medicare A&B": 4,
   "Medicaid": 6, "NYSHIP Empire": 7, "UMR": 8, "Wellcare": 9,
   "United Healthcare": 10, "Humana": 11, "MagnaCare": 12, "Midlands Choice": 13,
-  "Stedi": 14, "Horizon BCBS": 15,
+  "Stedi": 14,
 };
 
 export const SECONDARY_INSURANCE_INDEX: Record<string, number> = {

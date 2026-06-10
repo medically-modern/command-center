@@ -64,11 +64,11 @@ export function DoctorPanel({ patient, onUpdate, clinicLabels, onClinicSelect, o
         <CardTitle className="text-lg font-bold text-emerald-700">Prescribing Provider &amp; Clinic Information</CardTitle>
       </CardHeader>
       <CardContent className="space-y-5">
-        {patient.referralSource === "Patient" && patient.doctorStatus === "New" && (
-          <div className="rounded-md border border-blue-300 bg-blue-50 px-4 py-3">
-            <p className="text-sm font-semibold text-blue-800 flex items-center gap-1.5">
+        {patient.doctorStatus === "New" && (
+          <div className="rounded-md border border-amber-300 bg-amber-50 px-4 py-3">
+            <p className="text-sm font-semibold text-amber-800 flex items-center gap-1.5">
               <AlertTriangle className="h-4 w-4" />
-              Note: Doctor data for this patient might be inaccurate. Call doctor phone number to confirm doctor information.
+              New doctor — the info below is suggested from the referral. Please confirm all doctor information (name, NPI, phone, email, fax) is accurate before sending off.
             </p>
           </div>
         )}

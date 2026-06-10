@@ -7,7 +7,7 @@ import { fetchClinicLabels, createClinicLabel, moveItemToGroup, GROUPS } from "@
 import { sendPatientToMonday } from "@/lib/profile/mondayWrite";
 import { writeText, COL } from "@/lib/profile/mondayApi";
 import type { Patient } from "@/lib/profile/workflow";
-import { hasValidZip, canCrossSellCgm } from "@/lib/profile/workflow";
+import { hasValidZip } from "@/lib/profile/workflow";
 import { StediPanel } from "@/components/profile/StediPanel";
 import { DoctorPanel } from "@/components/profile/DoctorPanel";
 import { ServingPanel } from "@/components/profile/ServingPanel";
@@ -62,13 +62,16 @@ const ProfilePage = () => {
     if (!selected.dob?.trim()) missing.push("DOB");
     if (!selected.ptPhone?.trim()) missing.push("Phone");
     if (!selected.gender?.trim()) missing.push("Gender");
+    // Insurance
+    if (!selected.primaryInsurance?.trim()) missing.push("Primary Insurance");
     // Serving / Coverage
     if (!selected.serving?.trim()) missing.push("Serving");
     if (!selected.cgmCrossSell?.trim()) missing.push("Cross-Sell Status");
     if (!selected.insulinPumpCoveragePath?.trim()) missing.push("IP Coverage Path");
     if (!selected.cgmCoveragePath?.trim()) missing.push("CGM Coverage Path");
-    // CGM Type required when cross-sell eligible
-    if (canCrossSellCgm(selected.primaryInsurance) && !selected.cgmType?.trim()) missing.push("CGM Type");
+    // Devices — always required ("Not Serving" is a valid selection)
+    if (!selected.pumpType?.trim()) missing.push("Pump Type");
+    if (!selected.cgmType?.trim()) missing.push("CGM Type");
     // Doctor Fax required when clinicals method is Fax
     if (selected.clinicalsMethod === "Fax" && !selected.doctorFax?.trim()) missing.push("Doctor Fax");
     return missing;

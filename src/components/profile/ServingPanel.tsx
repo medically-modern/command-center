@@ -234,13 +234,14 @@ export function ServingPanel({ patient, onUpdate, onNext, hideReferral, referral
               value={patient.pumpType}
               config={{ field: "pumpType", label: "Pump Type", indexMap: PUMP_TYPE_INDEX }}
               onChange={(v) => onUpdate({ pumpType: v })}
+              required
             />
             <StatusSelect
               value={patient.cgmType}
               config={{ field: "cgmType", label: "CGM Type", indexMap: CGM_TYPE_INDEX }}
               onChange={(v) => onUpdate({ cgmType: v })}
               hint={cgmTypeHint}
-              required={isCrossSellEligible}
+              required
             />
           </div>
 

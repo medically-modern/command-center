@@ -57,6 +57,7 @@ export interface Patient {
   stediPlanName: string;
   stediGender: string;
   stediMedicaidId: string;
+  stediHomePlan: string;
 
   // ── Insurance ──
   primaryInsurance: string;

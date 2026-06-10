@@ -64,6 +64,7 @@ const ALWAYS_FIELDS: { key: keyof Patient; label: string; alwaysShow?: boolean }
   { key: "stediCoverageType", label: "Coverage Type" },
   { key: "stediPayerName", label: "Payer Name" },
   { key: "stediPlanName", label: "Plan Name" },
+  { key: "stediHomePlan", label: "Home Plan" },
   { key: "stediGender", label: "Gender", alwaysShow: true },
   { key: "stediInNetwork", label: "In Network?" },
   { key: "stediPriorAuthRequired", label: "Prior Auth Required?" },
@@ -259,6 +260,7 @@ export function StediPanel({ patient, onRefresh, onUpdate, onNext, onRemoveOverl
       "stediSecondaryMedicaidId",
       "stediGender",
       "stediMedicaidId",
+      "stediHomePlan",
     ]);
     try {
       await triggerStediRun(patient.id);
