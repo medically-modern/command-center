@@ -60,12 +60,15 @@ export function ConfirmReceiptPanel({ patient, onUpdate, onOpenForm }: Props) {
   const [name, setName] = useState("");
   const [confirmed, setConfirmed] = useState<"yes" | "no" | null>(null);
   const [nextAction, setNextAction] = useState<string>("");
+  // Save is blocked until the rep adds at least one note for this attempt.
+  const [noteAdded, setNoteAdded] = useState(false);
 
   // Reset form when patient changes
   useEffect(() => {
     setName("");
     setConfirmed(null);
     setNextAction("");
+    setNoteAdded(false);
   }, [patient.id]);
 
   // Default Next Action Date based on the picked outcome:
@@ -100,8 +103,9 @@ export function ConfirmReceiptPanel({ patient, onUpdate, onOpenForm }: Props) {
   }, [patient.confirmAttempt1, patient.confirmAttempt2, patient.confirmAttempt3]);
 
   // Name field is never required — agents sometimes don't catch a
-  // name. Save only needs a selected outcome.
-  const canSave = !!confirmed && !saving && !isEscalated;
+  // name. Save needs a selected outcome AND at least one note added
+  // for this attempt.
+  const canSave = !!confirmed && noteAdded && !saving && !isEscalated;
 
   async function handleSave() {
     if (!canSave) return;
@@ -157,6 +161,7 @@ export function ConfirmReceiptPanel({ patient, onUpdate, onOpenForm }: Props) {
       setName("");
       setConfirmed(null);
       setNextAction("");
+      setNoteAdded(false);
     } catch (e) {
       toast.error("Save failed", {
         description: e instanceof Error ? e.message : String(e),
@@ -201,13 +206,15 @@ export function ConfirmReceiptPanel({ patient, onUpdate, onOpenForm }: Props) {
             notes={patient.mnEvalNotes ?? ""}
             onNotesChange={(v) => onUpdate({ mnEvalNotes: v })}
             onSaveToMonday={(v) => writeLongText(patient.id, COL.mnEvalNotes, v)}
-            notePrefix={currentAttempt ? `C.R. Attempt ${currentAttempt}` : undefined}
+            notePrefix={currentAttempt ? `Confirm Receipt Attempt ${currentAttempt}` : undefined}
             profileSendOffNotes={patient.profileSendOffNotes}
+            onNoteAdded={() => setNoteAdded(true)}
           />
           {!isEscalated && (
             <SaveBar
               attemptNumber={currentAttempt ?? 1}
               confirmed={confirmed}
+              noteAdded={noteAdded}
               canSave={canSave}
               saving={saving}
               onSave={handleSave}
@@ -519,22 +526,9 @@ function ActiveAttemptCard({
           </div>
         </div>
 
-        {/* Next action date — always visible. Pre-populated to today
-            + 2 weekdays. Only written to Monday on a No save. */}
-        <div>
-          <label className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-            Next action date
-          </label>
-          <p className="text-[11px] text-muted-foreground mt-0.5">
-            Defaults to the next weekday. Adjust if the office asked for a different callback.
-          </p>
-          <Input
-            type="date"
-            value={nextAction}
-            onChange={(e) => onNextActionChange(e.target.value)}
-            className="mt-1 h-9 bg-background w-full sm:w-56"
-          />
-        </div>
+        {/* Next action date — UI removed per Josh (June 2026). The logic is
+            unchanged: nextAction is still auto-computed (No → next weekday,
+            Yes → +2 weekdays) and written to Monday on a No save. */}
       </div>
     </section>
   );
@@ -560,6 +554,7 @@ function EscalatedCard() {
 function SaveBar({
   attemptNumber,
   confirmed,
+  noteAdded,
   canSave,
   saving,
   onSave,
@@ -569,6 +564,7 @@ function SaveBar({
 }: {
   attemptNumber: number;
   confirmed: "yes" | "no" | null;
+  noteAdded: boolean;
   canSave: boolean;
   saving: boolean;
   onSave: () => void;
@@ -577,7 +573,8 @@ function SaveBar({
   onOpenForm?: () => void;
 }) {
   let hint = "Pick Yes or No to enable save.";
-  if (confirmed === "yes") hint = "Saves the confirmation, advances to Chase Clinicals.";
+  if (confirmed && !noteAdded) hint = "Add at least one note above to enable save.";
+  else if (confirmed === "yes") hint = "Saves the confirmation, advances to Chase Clinicals.";
   else if (confirmed === "no" && attemptNumber < 3) hint = `Logs Attempt ${attemptNumber} as unsuccessful and schedules the next callback.`;
   else if (confirmed === "no" && attemptNumber === 3) hint = "Logs Attempt 3 as unsuccessful and flags Escalation Required.";
   return (

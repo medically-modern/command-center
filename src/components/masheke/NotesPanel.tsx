@@ -9,13 +9,43 @@ interface Props {
   notes: string;
   onNotesChange: (notes: string) => void;
   onSaveToMonday?: (notes: string) => Promise<void>;
-  /** Optional prefix inserted after timestamp, e.g. "C.R. Attempt 1" */
+  /** Optional prefix inserted after timestamp, e.g. "Confirm Receipt Attempt 1" */
   notePrefix?: string;
   /** Profile intake notes (read-only) — renders a view button next to the header */
   profileSendOffNotes?: string;
+  /** Called after a note is successfully appended (and saved to Monday when
+   *  onSaveToMonday is provided). Used by panels that require ≥1 note before
+   *  allowing a save/send. */
+  onNoteAdded?: () => void;
 }
 
-export function NotesPanel({ notes, onNotesChange, onSaveToMonday, notePrefix, profileSendOffNotes }: Props) {
+/** Bold the "<Stage> Attempt N:" label inside a note line so attempt notes
+ *  stand out from regular notes. Handles both full names and legacy
+ *  abbreviations (C.R. / C.C. / S.R.). */
+const ATTEMPT_LABEL_REGEX =
+  /^(\[[^\]]*\]\s*)((?:Confirm Receipt|Chase Clinicals|Send Request|C\.R\.|C\.C\.|S\.R\.) Attempt \d+:)([\s\S]*)$/;
+
+function renderNoteLines(notes: string): React.ReactNode {
+  return notes.split("\n").map((line, i) => {
+    const m = line.match(ATTEMPT_LABEL_REGEX);
+    return (
+      <span key={i}>
+        {i > 0 && "\n"}
+        {m ? (
+          <>
+            {m[1]}
+            <strong className="font-bold">{m[2]}</strong>
+            {m[3]}
+          </>
+        ) : (
+          line
+        )}
+      </span>
+    );
+  });
+}
+
+export function NotesPanel({ notes, onNotesChange, onSaveToMonday, notePrefix, profileSendOffNotes, onNoteAdded }: Props) {
   const [newNote, setNewNote] = useState("");
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -42,6 +72,7 @@ export function NotesPanel({ notes, onNotesChange, onSaveToMonday, notePrefix, p
       try {
         await onSaveToMonday(appended);
         toast.success("Note saved to Monday");
+        onNoteAdded?.();
       } catch (e) {
         toast.error("Failed to save note", {
           description: e instanceof Error ? e.message : String(e),
@@ -49,6 +80,8 @@ export function NotesPanel({ notes, onNotesChange, onSaveToMonday, notePrefix, p
       } finally {
         setSaving(false);
       }
+    } else {
+      onNoteAdded?.();
     }
   };
 
@@ -107,7 +140,7 @@ export function NotesPanel({ notes, onNotesChange, onSaveToMonday, notePrefix, p
       ) : (
         <div className="bg-muted/50 rounded-md p-3 min-h-[60px] max-h-[200px] overflow-y-auto">
           {notes ? (
-            <pre className="text-sm whitespace-pre-wrap font-sans text-foreground">{notes}</pre>
+            <pre className="text-sm whitespace-pre-wrap font-sans text-foreground">{renderNoteLines(notes)}</pre>
           ) : (
             <p className="text-sm text-muted-foreground italic">No notes yet.</p>
           )}

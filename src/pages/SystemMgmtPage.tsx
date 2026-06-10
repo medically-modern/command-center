@@ -1224,7 +1224,15 @@ function PatientRow({
 
 // ── Attempt Notes Modal (Chase Clinicals / Confirm Receipt) ──
 
-const ATTEMPT_PREFIXES = ["C.C. Attempt", "C.R. Attempt", "S.R. Attempt"];
+// Full stage names (current) + legacy abbreviations (old notes still on Monday)
+const ATTEMPT_PREFIXES = [
+  "Chase Clinicals Attempt",
+  "Confirm Receipt Attempt",
+  "Send Request Attempt",
+  "C.C. Attempt",
+  "C.R. Attempt",
+  "S.R. Attempt",
+];
 
 function parseAttemptNotes(notes: string): { timestamp: string; label: string; body: string }[] {
   if (!notes) return [];

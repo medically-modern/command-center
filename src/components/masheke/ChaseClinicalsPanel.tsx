@@ -206,7 +206,7 @@ export function ChaseClinicalsPanel({ patient, onUpdate, onOpenForm }: Props) {
             notes={patient.mnEvalNotes ?? ""}
             onNotesChange={(v) => onUpdate({ mnEvalNotes: v })}
             onSaveToMonday={(v) => writeLongText(patient.id, COL.mnEvalNotes, v)}
-            notePrefix={currentAttempt ? `C.C. Attempt ${currentAttempt}` : undefined}
+            notePrefix={currentAttempt ? `Chase Clinicals Attempt ${currentAttempt}` : undefined}
             profileSendOffNotes={patient.profileSendOffNotes}
           />
           {!isEscalated && (
