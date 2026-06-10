@@ -639,8 +639,8 @@ export function PatientProfileCard({
                 onChange={(v) => onDoctorEdit?.({ clinicName: v })}
               />
               {/* Doctor-level notes from the Doctor Database — a grid cell
-                  like the other fields, open by default so notes are
-                  directly viewable. */}
+                  like the other fields. Collapsed = notes preview; expanding
+                  reveals the editor + Add button. */}
               {patient.doctorNpi && (
                 <div className="min-w-0">
                   <DoctorNotesPanel
@@ -648,7 +648,6 @@ export function PatientProfileCard({
                     doctorName={patient.doctorName}
                     compact
                     flush
-                    defaultOpen
                   />
                 </div>
               )}

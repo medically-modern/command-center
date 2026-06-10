@@ -111,11 +111,14 @@ export function DoctorNotesPanel({ doctorNpi, doctorName, compact = false, flush
     }
   };
 
-  const headerLabel = doctor
-    ? `Doctor Notes — ${doctor.name}`
-    : doctorName
-      ? `Doctor Notes — ${doctorName}`
-      : "Doctor Notes";
+  // Flush mode sits next to the Doctor field, so the name would be redundant.
+  const headerLabel = flush
+    ? "Doctor Notes"
+    : doctor
+      ? `Doctor Notes — ${doctor.name}`
+      : doctorName
+        ? `Doctor Notes — ${doctorName}`
+        : "Doctor Notes";
 
   return (
     <div
@@ -180,6 +183,25 @@ export function DoctorNotesPanel({ doctorNpi, doctorName, compact = false, flush
           </div>
         )}
       </div>
+
+      {/* Collapsed preview (flush mode) — notes are directly viewable;
+          expanding reveals the editor, refresh and Add controls. */}
+      {flush && !open && !loading && (
+        doctor?.notes ? (
+          <button
+            type="button"
+            onClick={() => setOpen(true)}
+            title="Click to expand and add notes"
+            className="block w-full text-left"
+          >
+            <p className="text-xs whitespace-pre-wrap text-foreground/80 [display:-webkit-box] [-webkit-line-clamp:3] [-webkit-box-orient:vertical] overflow-hidden">
+              {doctor.notes}
+            </p>
+          </button>
+        ) : (
+          <p className="text-xs text-muted-foreground italic">No doctor notes yet.</p>
+        )
+      )}
 
       {/* Loading state */}
       {open && loading && (
