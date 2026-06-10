@@ -26,8 +26,11 @@ const Index = () => {
 
   const showDashboards =
     activeTab === "dashboard" || (activeTab === "roles" && managersSub === "dashboards");
-  // Processors → just the processors; Managers › Dashboards → everyone.
-  const visibleUsers = activeTab === "dashboard" ? PROCESSOR_USERS : [...USERS];
+  // Processors → just the processors; Managers › Dashboards → everyone else.
+  const visibleUsers =
+    activeTab === "dashboard"
+      ? PROCESSOR_USERS
+      : USERS.filter((u) => !PROCESSOR_USERS.includes(u));
 
   return (
     <div className="min-h-screen bg-gradient-subtle flex">
