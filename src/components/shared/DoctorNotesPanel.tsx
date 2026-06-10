@@ -16,9 +16,11 @@ interface Props {
    *  surrounding field labels so the panel blends into a details grid.
    *  Functionality is identical. */
   flush?: boolean;
+  /** Start expanded so the notes are directly viewable. */
+  defaultOpen?: boolean;
 }
 
-export function DoctorNotesPanel({ doctorNpi, doctorName, compact = false, flush = false }: Props) {
+export function DoctorNotesPanel({ doctorNpi, doctorName, compact = false, flush = false, defaultOpen = false }: Props) {
   const [doctor, setDoctor] = useState<DoctorRecord | null>(null);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -26,7 +28,7 @@ export function DoctorNotesPanel({ doctorNpi, doctorName, compact = false, flush
   const [editing, setEditing] = useState(false);
   const [editText, setEditText] = useState("");
   const [fetchError, setFetchError] = useState(false);
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(defaultOpen);
   const lastNpi = useRef("");
   const retryCount = useRef(0);
 

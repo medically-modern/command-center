@@ -637,21 +637,22 @@ export function PatientProfileCard({
                 value={patient.clinicName ?? ""}
                 editing={editingDoctor}
                 onChange={(v) => onDoctorEdit?.({ clinicName: v })}
-                className="col-span-2"
               />
+              {/* Doctor-level notes from the Doctor Database — a grid cell
+                  like the other fields, open by default so notes are
+                  directly viewable. */}
+              {patient.doctorNpi && (
+                <div className="min-w-0">
+                  <DoctorNotesPanel
+                    doctorNpi={patient.doctorNpi}
+                    doctorName={patient.doctorName}
+                    compact
+                    flush
+                    defaultOpen
+                  />
+                </div>
+              )}
             </div>
-
-            {/* Doctor-level notes from the Doctor Database */}
-            {patient.doctorNpi && (
-              <div className="mt-4">
-                <DoctorNotesPanel
-                  doctorNpi={patient.doctorNpi}
-                  doctorName={patient.doctorName}
-                  compact
-                  flush
-                />
-              </div>
-            )}
           </div>
         </div>
       )}
