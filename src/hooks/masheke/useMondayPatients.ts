@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Patient } from "@/lib/masheke/workflow";
-import { fetchGroupItems, fetchItemById, GROUPS, hasToken } from "@/lib/masheke/mondayApi";
+import { fetchGroupItems, fetchItemById, writeDate, COL, GROUPS, hasToken } from "@/lib/masheke/mondayApi";
 // Note: GROUPS import kept for GROUPS.medicalNecessity
 import { mondayItemToPatient } from "@/lib/masheke/mondayMapping";
+import { etToday } from "@/lib/masheke/etDate";
 
 const POLL_MS = 30_000;
 const LS_KEY = "mash-overlays";
@@ -77,6 +78,8 @@ export function useMondayPatients(activeTab: TabKey = "evaluate", injectedPatien
   const [error, setError] = useState<string | null>(null);
   const overlayRef = useRef<Map<string, Partial<Patient>>>(loadOverlays());
   const mountedRef = useRef(true);
+  // Patients we've already stamped with a Next Action Date this session.
+  const stampedRef = useRef<Set<string>>(new Set());
 
   const refetch = useCallback(async (maybeSilent: unknown = false) => {
     const silent = maybeSilent === true;
@@ -96,6 +99,29 @@ export function useMondayPatients(activeTab: TabKey = "evaluate", injectedPatien
       if (!mountedRef.current) return;
       const safeItems = Array.isArray(items) ? items : [];
       const allPatients = safeItems.map(mondayItemToPatient);
+
+      // ── Next Action Date backfill ──
+      // Every patient in an active stage must have a Next Action Date (the
+      // sidebar filters on NAD + sub-stage). New arrivals from Profile Send
+      // Off land without one (the Profile board has no NAD column), so the
+      // first masheke page to see them stamps NAD = today on Monday.
+      // stampedRef prevents re-writing the same patient every poll.
+      const todayStr = etToday();
+      const activeStages = new Set(Object.values(SUB_STAGE_FILTER));
+      for (const p of allPatients) {
+        if (
+          !p.nextActionDate &&
+          p.subStage &&
+          activeStages.has(p.subStage) &&
+          !stampedRef.current.has(p.id)
+        ) {
+          stampedRef.current.add(p.id);
+          p.nextActionDate = todayStr; // reflect locally right away
+          writeDate(p.id, COL.nextActionDate, todayStr).catch(() => {
+            stampedRef.current.delete(p.id); // retry on next poll
+          });
+        }
+      }
 
       // Filter to patients whose Stage Advancer matches this tab
       const filtered = allPatients.filter((p) => matchesTab(p.subStage, activeTab));

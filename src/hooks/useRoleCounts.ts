@@ -230,15 +230,13 @@ export function useRoleCounts() {
 
             // Count must equal the sidebar's ACTIVE view exactly:
             //   - exclude escalated (hidden from sidebar active list)
-            //   - exclude scheduled (future nextActionDate) for the tabs that
-            //     have a Scheduled folder (Confirm Receipt & Chase)
+            //   - exclude scheduled (future nextActionDate) — applies to ALL
+            //     four masheke tabs; blank or past/today counts as active
             // Blocked / Stuck / Follow-up are NOT excluded — the sidebar
             // currently shows those in the active list (its filter buckets
             // are commented out), and this count mirrors the sidebar.
-            if (roleId === "confirmReceipt" || roleId === "chaseBenefits") {
-              const nad = colText("date_mm1wadgs").slice(0, 10);
-              if (nad && nad > todayStr) continue; // scheduled
-            }
+            const nad = colText("date_mm1wadgs").slice(0, 10);
+            if (nad && nad > todayStr) continue; // scheduled
 
             if (colText("color_mm1x7997") === "Escalation Required") continue; // escalated
 

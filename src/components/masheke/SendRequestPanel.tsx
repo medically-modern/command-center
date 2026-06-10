@@ -257,6 +257,15 @@ export function SendRequestPanel({ patient, resetVersion = 0, onUpdate, onOpenFo
     }
   }, [patient]);
 
+  // Notes gate — Mark as Complete requires ≥1 note added this session, and is
+  // blocked while typed-but-unadded text sits in the note box.
+  const [noteAdded, setNoteAdded] = useState(false);
+  const [pendingNoteText, setPendingNoteText] = useState("");
+  useEffect(() => {
+    setNoteAdded(false);
+    setPendingNoteText("");
+  }, [patient.id]);
+
   // ---- Mark as Complete: advance stage. ----
   const [completing, setCompleting] = useState(false);
   const [escalated, setEscalated] = useState(false);
@@ -427,12 +436,17 @@ export function SendRequestPanel({ patient, resetVersion = 0, onUpdate, onOpenFo
             onNotesChange={(v) => onUpdate({ mnEvalNotes: v })}
             onSaveToMonday={(v) => writeLongText(patient.id, COL.mnEvalNotes, v)}
             profileSendOffNotes={patient.profileSendOffNotes}
+            notePrefix="Send Request"
+            onNoteAdded={() => setNoteAdded(true)}
+            onPendingTextChange={setPendingNoteText}
           />
 
           <SendActionCard
             patient={patient}
             sending={sending}
             completing={completing}
+            noteAdded={noteAdded}
+            pendingNoteText={pendingNoteText}
             onSend={handleSend}
             onMarkComplete={handleMarkComplete}
             escalated={escalated}
@@ -1006,6 +1020,8 @@ function SendActionCard({
   patient,
   sending,
   completing,
+  noteAdded = true,
+  pendingNoteText = "",
   onSend,
   onMarkComplete,
   attachments,
@@ -1016,6 +1032,8 @@ function SendActionCard({
   patient: Patient;
   sending: boolean;
   completing: boolean;
+  noteAdded?: boolean;
+  pendingNoteText?: string;
   onSend: () => void;
   onMarkComplete: () => void;
   attachments: Attachment[];
@@ -1023,6 +1041,8 @@ function SendActionCard({
   onToggleEscalate: () => void;
   onOpenForm?: () => void;
 }) {
+  const hasPendingNote = pendingNoteText.trim().length > 0;
+  const noteBlocked = !noteAdded || hasPendingNote;
   const method = patient.clinicalsMethod ?? "Fax";
   const alreadySent = !!patient.requestSentAt;
   const sentDate = formatDate(patient.requestSentAt);
@@ -1141,10 +1161,17 @@ function SendActionCard({
               onOpenForm={onOpenForm}
               disabled={completing}
             /> */}
+            {noteBlocked && (
+              <span className="text-xs font-medium" style={{ color: "var(--mm-rose)" }}>
+                {hasPendingNote
+                  ? "Press Add on your note before marking complete"
+                  : "Add at least one note above to mark complete"}
+              </span>
+            )}
             <Button
               size="lg"
               onClick={onMarkComplete}
-              disabled={completing}
+              disabled={completing || noteBlocked}
               className="gap-2 bg-emerald-600 hover:bg-emerald-700 text-white shadow-elevate"
             >
               {completing ? (

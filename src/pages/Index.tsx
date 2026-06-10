@@ -10,14 +10,24 @@ import { USERS, type UserName } from "@/lib/config";
 import { useRoleCounts } from "@/hooks/useRoleCounts";
 
 type Tab = "roles" | "dashboard";
+type ManagersSubTab = "assignments" | "dashboards";
+
+/** Processors tab shows only the two processing roles' users. */
+const PROCESSOR_USERS: UserName[] = ["Masheke", "Samantha"];
 
 const Index = () => {
   const [searchParams] = useSearchParams();
   const initialTab = searchParams.get("tab") === "dashboard" ? "dashboard" : "roles";
   const [activeTab, setActiveTab] = useState<Tab>(initialTab);
+  const [managersSub, setManagersSub] = useState<ManagersSubTab>("assignments");
   const [selectedUser, setSelectedUser] = useState<UserName | null>(null);
   const { assignments, toggle, getRolesForUser } = useAssignments();
   const { counts, loading: countsLoading } = useRoleCounts();
+
+  const showDashboards =
+    activeTab === "dashboard" || (activeTab === "roles" && managersSub === "dashboards");
+  // Processors → just the processors; Managers › Dashboards → everyone.
+  const visibleUsers = activeTab === "dashboard" ? PROCESSOR_USERS : [...USERS];
 
   return (
     <div className="min-h-screen bg-gradient-subtle flex">
@@ -38,11 +48,32 @@ const Index = () => {
           <TabButton active={activeTab === "dashboard"} onClick={() => setActiveTab("dashboard")} icon={<LayoutDashboard className="w-4 h-4" />} label="Processors" />
         </div>
 
+        {/* Managers sub-tabs */}
+        {activeTab === "roles" && (
+          <div className="flex gap-1 px-4 pt-3">
+            <SubTabButton
+              active={managersSub === "assignments"}
+              onClick={() => setManagersSub("assignments")}
+              label="Role Assignments"
+            />
+            <SubTabButton
+              active={managersSub === "dashboards"}
+              onClick={() => setManagersSub("dashboards")}
+              label="Dashboards"
+            />
+          </div>
+        )}
+
         <div className="flex-1 overflow-y-auto p-4">
-          {activeTab === "dashboard" && (
-            <UserList selectedUser={selectedUser} onSelect={setSelectedUser} getRolesForUser={getRolesForUser} />
+          {showDashboards && (
+            <UserList
+              users={visibleUsers}
+              selectedUser={selectedUser}
+              onSelect={setSelectedUser}
+              getRolesForUser={getRolesForUser}
+            />
           )}
-          {activeTab === "roles" && (
+          {activeTab === "roles" && managersSub === "assignments" && (
             <div className="text-center py-8 space-y-3">
               <div className="mx-auto w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center">
                 <Shield className="w-6 h-6 text-primary" />
@@ -61,7 +92,7 @@ const Index = () => {
 
       {/* ── Main content area ────────────────────────────────── */}
       <div className="flex-1 flex flex-col min-w-0">
-        {activeTab === "dashboard" ? (
+        {showDashboards ? (
           <DashboardMainView
             selectedUser={selectedUser}
             assignments={assignments}
@@ -87,11 +118,11 @@ const Index = () => {
   );
 };
 
-function UserList({ selectedUser, onSelect, getRolesForUser }: { selectedUser: UserName | null; onSelect: (user: UserName) => void; getRolesForUser: (user: UserName) => string[] }) {
+function UserList({ users, selectedUser, onSelect, getRolesForUser }: { users: UserName[]; selectedUser: UserName | null; onSelect: (user: UserName) => void; getRolesForUser: (user: UserName) => string[] }) {
   return (
     <div className="space-y-1.5">
       <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3">Team Members</p>
-      {USERS.map((user) => {
+      {users.map((user) => {
         const roleIds = getRolesForUser(user);
         const active = selectedUser === user;
         return (
@@ -114,6 +145,22 @@ function UserList({ selectedUser, onSelect, getRolesForUser }: { selectedUser: U
         );
       })}
     </div>
+  );
+}
+
+function SubTabButton({ active, onClick, label }: { active: boolean; onClick: () => void; label: string }) {
+  return (
+    <button
+      onClick={onClick}
+      className={cn(
+        "flex-1 py-1.5 px-2 rounded-md text-xs font-medium transition-colors",
+        active
+          ? "bg-primary/10 text-primary border border-primary/20"
+          : "text-muted-foreground hover:text-foreground hover:bg-muted/50 border border-transparent",
+      )}
+    >
+      {label}
+    </button>
   );
 }
 

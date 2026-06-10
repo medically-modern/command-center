@@ -137,6 +137,11 @@ export function EvaluatePanel({ patient, resetVersion = 0, onUpdate, onOpenForm 
     return Object.keys(stored).length > 0 ? stored : seedEvalStateFromPatient(patient);
   });
 
+  // Notes gate — Send to Monday requires ≥1 note added this session, and is
+  // blocked while typed-but-unadded text sits in the note box.
+  const [noteAdded, setNoteAdded] = useState(false);
+  const [pendingNoteText, setPendingNoteText] = useState("");
+
   // Map of pending File objects keyed by column ("clinicalFiles" | "finalClinicalFiles").
   // FileUploadCard stores only metadata in EvalState; the actual blobs live here
   // so handleSendToMonday can upload them to Monday.
@@ -156,6 +161,8 @@ export function EvaluatePanel({ patient, resetVersion = 0, onUpdate, onOpenForm 
     pendingFilesRef.current = { clinicalFiles: [], finalClinicalFiles: [] };
     clinicalUpload.reset();
     finalClinicalUpload.reset();
+    setNoteAdded(false);
+    setPendingNoteText("");
     // Re-run when patient.id changes or resetVersion bumps. We intentionally
     // don't depend on `patient` (the whole object) since useMondayPatients
     // creates a new reference on every poll which would re-seed unnecessarily.
@@ -665,6 +672,8 @@ export function EvaluatePanel({ patient, resetVersion = 0, onUpdate, onOpenForm 
               <div className="flex-1">
                 <FileUploadCard
                   label="Initial File Collection"
+                  hideLabel
+                  tone={validity.established ? "gray" : "green"}
                   files={state.clinicalFiles ?? []}
                   mondayFiles={mondayFiles.clinicalFiles}
                   mondayLoading={mondayFiles.loading}
@@ -696,6 +705,8 @@ export function EvaluatePanel({ patient, resetVersion = 0, onUpdate, onOpenForm 
                 {validity.established ? (
                   <FileUploadCard
                     label="Final Clinicals"
+                    hideLabel
+                    tone="green"
                     files={state.finalClinicalFiles ?? []}
                     mondayFiles={mondayFiles.finalClinicals}
                     mondayLoading={mondayFiles.loading}
@@ -730,6 +741,8 @@ export function EvaluatePanel({ patient, resetVersion = 0, onUpdate, onOpenForm 
         onNotesChange={(v) => onUpdate({ mnEvalNotes: v })}
         onSaveToMonday={(v) => writeLongText(patient.id, COL.mnEvalNotes, v)}
         profileSendOffNotes={patient.profileSendOffNotes}
+        onNoteAdded={() => setNoteAdded(true)}
+        onPendingTextChange={setPendingNoteText}
       />
 
       {/* Sticky validity / preview footer */}
@@ -739,6 +752,8 @@ export function EvaluatePanel({ patient, resetVersion = 0, onUpdate, onOpenForm 
         onSendToMonday={handleSendToMonday}
         sending={sending}
         sendErrors={sendErrors}
+        noteAdded={noteAdded}
+        pendingNoteText={pendingNoteText}
         state={state}
         showCgm={showCgm}
         showIp={showIp}
@@ -1282,6 +1297,10 @@ function MondayScriptViewer({
 
 interface FileUploadCardProps {
   label: string;
+  /** Hide the in-card label text (when the section already renders a title above). */
+  hideLabel?: boolean;
+  /** "green" = the active column to upload into (mint wash); "gray" = de-emphasized. */
+  tone?: "green" | "gray";
   files: LocalFile[];
   mondayFiles: MondayFileEntry[];
   mondayLoading: boolean;
@@ -1296,6 +1315,8 @@ interface FileUploadCardProps {
 
 function FileUploadCard({
   label,
+  hideLabel,
+  tone,
   files,
   mondayFiles,
   mondayLoading,
@@ -1412,11 +1433,17 @@ function FileUploadCard({
       className={`rounded-lg p-3 h-full flex flex-col gap-2 min-h-[200px] relative overflow-hidden transition-all duration-300 ${
         hasActiveUpload
           ? "border-2 border-red-500 bg-red-50/30 animate-[pulse-border_1.5s_ease-in-out_infinite]"
-          : "border bg-muted/20"
+          : tone === "gray"
+            ? "border bg-muted/40"
+            : "border bg-muted/20"
       }`}
-      style={hasActiveUpload ? {
-        animation: "pulse-border 1.5s ease-in-out infinite",
-      } : undefined}
+      style={
+        hasActiveUpload
+          ? { animation: "pulse-border 1.5s ease-in-out infinite" }
+          : tone === "green"
+            ? { background: "var(--mm-mint)", borderColor: "var(--mm-mint-ring)" }
+            : undefined
+      }
     >
       {/* Flashing upload overlay */}
       {hasActiveUpload && (
@@ -1431,8 +1458,8 @@ function FileUploadCard({
         </div>
       )}
       {/* Header */}
-      <div className="flex items-center justify-between gap-2">
-        <p className="text-xs uppercase tracking-wider text-muted-foreground">{label}</p>
+      <div className={`flex items-center gap-2 ${hideLabel ? "justify-end" : "justify-between"}`}>
+        {!hideLabel && <p className="text-xs uppercase tracking-wider text-muted-foreground">{label}</p>}
         <Button
           variant="outline"
           size="sm"
@@ -1624,6 +1651,8 @@ interface ValiditySummaryProps {
   onSendToMonday: () => void;
   sending: boolean;
   sendErrors?: string[];
+  noteAdded?: boolean;
+  pendingNoteText?: string;
   state: EvalState;
   showCgm: boolean;
   showIp: boolean;
@@ -1640,6 +1669,8 @@ function ValiditySummary({
   onSendToMonday,
   sending,
   sendErrors = [],
+  noteAdded = true,
+  pendingNoteText = "",
   state,
   showCgm,
   showIp,
@@ -1651,7 +1682,9 @@ function ValiditySummary({
 }: ValiditySummaryProps) {
   const [previewOpen, setPreviewOpen] = useState(false);
   const missingFields = getMissingRequiredFields(state, showCgm, showIp);
-  const blocked = missingFields.length > 0;
+  const hasPendingNote = pendingNoteText.trim().length > 0;
+  const noteBlocked = !noteAdded || hasPendingNote;
+  const blocked = missingFields.length > 0 || noteBlocked;
   return (
     <section className="rounded-xl bg-card border shadow-card p-5 space-y-4">
 
@@ -1732,7 +1765,7 @@ function ValiditySummary({
       )}
 
       <div className="flex items-center justify-end gap-3 pt-1">
-        {blocked && (
+        {missingFields.length > 0 && (
           <span
             className="text-xs font-medium self-center text-right"
             style={{ color: "var(--mm-rose)" }}
@@ -1741,6 +1774,13 @@ function ValiditySummary({
             {missingFields.length} required field{missingFields.length > 1 ? "s" : ""} remaining:{" "}
             {missingFields.slice(0, 4).join(", ")}
             {missingFields.length > 4 ? "…" : ""}
+          </span>
+        )}
+        {noteBlocked && (
+          <span className="text-xs font-medium self-center text-right" style={{ color: "var(--mm-rose)" }}>
+            {hasPendingNote
+              ? "Press Add on your note before sending"
+              : "Add at least one MN Workflow note to send"}
           </span>
         )}
         {filesUploading && (

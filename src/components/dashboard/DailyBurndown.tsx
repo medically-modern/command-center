@@ -300,35 +300,26 @@ export function DailyBurndown({
             const hex = COLOR_MAP[role.color] ?? "#d946ef";
             const count = roleCounts[role.id] ?? 0;
             return (
-              <button
-                key={role.id}
-                onClick={() => role.route && navigate(role.route)}
-                title={`Open ${role.label}`}
-                className="w-full text-left group flex items-center gap-3 rounded-lg border-2 border-dashed px-4 py-3 transition-colors hover:bg-muted/30"
-                style={{ borderColor: hexToRgba(hex, 0.45) }}
-              >
-                <span
-                  className="grid place-items-center h-8 w-8 rounded-full shrink-0"
-                  style={{ background: hexToRgba(hex, 0.12), color: hex }}
+              <div key={role.id} className="flex items-center gap-3">
+                <button
+                  onClick={() => role.route && navigate(role.route)}
+                  title={`Open ${role.label}`}
+                  className="inline-flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-opacity hover:opacity-90"
+                  style={{ background: hex }}
                 >
                   <Zap className="w-4 h-4" />
+                  {role.label}
+                  {count > 0 && (
+                    <span className="inline-flex items-center justify-center min-w-[1.5rem] h-6 px-1.5 rounded-full bg-white/25 text-xs font-bold tabular-nums">
+                      {countsLoading ? "…" : count}
+                    </span>
+                  )}
+                  <ExternalLink className="w-3.5 h-3.5 opacity-70" />
+                </button>
+                <span className="text-[11px] text-muted-foreground">
+                  As-needed task — can apply to any patient, not a queue to clear
                 </span>
-                <span className="min-w-0">
-                  <span className="text-sm font-medium text-foreground flex items-center gap-2">
-                    {role.label}
-                    <ExternalLink className="w-3 h-3 opacity-0 group-hover:opacity-40 transition-opacity" />
-                  </span>
-                  <span className="block text-[11px] text-muted-foreground">
-                    As-needed task — can apply to any patient, not a queue to clear
-                  </span>
-                </span>
-                <span
-                  className="ml-auto shrink-0 inline-flex items-center justify-center min-w-[2rem] h-7 px-2 rounded-full text-sm font-bold tabular-nums"
-                  style={{ background: hexToRgba(hex, 0.12), color: hex }}
-                >
-                  {countsLoading ? "…" : count}
-                </span>
-              </button>
+              </div>
             );
           })}
         </div>

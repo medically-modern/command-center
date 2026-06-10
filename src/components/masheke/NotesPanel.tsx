@@ -17,13 +17,16 @@ interface Props {
    *  onSaveToMonday is provided). Used by panels that require ≥1 note before
    *  allowing a save/send. */
   onNoteAdded?: () => void;
+  /** Reports the current un-added text in the "Add a note…" box. Panels use
+   *  this to block save/send while typed text hasn't been added yet. */
+  onPendingTextChange?: (text: string) => void;
 }
 
 /** Bold the "<Stage> Attempt N:" label inside a note line so attempt notes
  *  stand out from regular notes. Handles both full names and legacy
  *  abbreviations (C.R. / C.C. / S.R.). */
 const ATTEMPT_LABEL_REGEX =
-  /^(\[[^\]]*\]\s*)((?:Confirm Receipt|Chase Clinicals|Send Request|C\.R\.|C\.C\.|S\.R\.) Attempt \d+:)([\s\S]*)$/;
+  /^(\[[^\]]*\]\s*)((?:Confirm Receipt|Chase Clinicals|Send Request|C\.R\.|C\.C\.|S\.R\.)(?: Attempt \d+)?:)([\s\S]*)$/;
 
 function renderNoteLines(notes: string): React.ReactNode {
   return notes.split("\n").map((line, i) => {
@@ -45,8 +48,12 @@ function renderNoteLines(notes: string): React.ReactNode {
   });
 }
 
-export function NotesPanel({ notes, onNotesChange, onSaveToMonday, notePrefix, profileSendOffNotes, onNoteAdded }: Props) {
+export function NotesPanel({ notes, onNotesChange, onSaveToMonday, notePrefix, profileSendOffNotes, onNoteAdded, onPendingTextChange }: Props) {
   const [newNote, setNewNote] = useState("");
+  const setNewNoteAndReport = (v: string) => {
+    setNewNote(v);
+    onPendingTextChange?.(v);
+  };
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [intakeNotesOpen, setIntakeNotesOpen] = useState(false);
@@ -65,7 +72,7 @@ export function NotesPanel({ notes, onNotesChange, onSaveToMonday, notePrefix, p
       ? `${notes}\n\n[${timestamp}] ${prefix}${newNote.trim()}`
       : `[${timestamp}] ${prefix}${newNote.trim()}`;
     onNotesChange(appended);
-    setNewNote("");
+    setNewNoteAndReport("");
 
     if (onSaveToMonday) {
       setSaving(true);
@@ -151,7 +158,7 @@ export function NotesPanel({ notes, onNotesChange, onSaveToMonday, notePrefix, p
       <div className="flex gap-2">
         <Textarea
           value={newNote}
-          onChange={(e) => setNewNote(e.target.value)}
+          onChange={(e) => setNewNoteAndReport(e.target.value)}
           rows={2}
           className="text-sm flex-1"
           placeholder="Add a note…"

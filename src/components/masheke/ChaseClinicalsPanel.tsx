@@ -63,8 +63,10 @@ export function ChaseClinicalsPanel({ patient, onUpdate, onOpenForm }: Props) {
   const [name, setName] = useState("");
   const [confirmed, setConfirmed] = useState<"yes" | "no" | "parachute-message" | null>(null);
   const [nextAction, setNextAction] = useState<string>("");
-  // Save is blocked until the rep adds at least one note for this attempt.
+  // Save is blocked until the rep adds at least one note for this attempt,
+  // and while typed-but-unadded text sits in the note box.
   const [noteAdded, setNoteAdded] = useState(false);
+  const [pendingNoteText, setPendingNoteText] = useState("");
 
   const isParachute = patient.clinicalsMethod === "Parachute";
 
@@ -73,6 +75,7 @@ export function ChaseClinicalsPanel({ patient, onUpdate, onOpenForm }: Props) {
     setConfirmed(null);
     setNextAction("");
     setNoteAdded(false);
+    setPendingNoteText("");
   }, [patient.id]);
 
   // Default Next Action Date based on which option is selected:
@@ -106,8 +109,9 @@ export function ChaseClinicalsPanel({ patient, onUpdate, onOpenForm }: Props) {
   // Name field is never required — agents sometimes don't catch a
   // name on the call, and the Parachute message path has no human at
   // all. Save needs a selected outcome AND at least one note added
-  // for this attempt.
-  const canSave = !!confirmed && noteAdded && !saving && !isEscalated;
+  // for this attempt (with no un-added text left in the note box).
+  const hasPendingNote = pendingNoteText.trim().length > 0;
+  const canSave = !!confirmed && noteAdded && !hasPendingNote && !saving && !isEscalated;
 
   async function handleSave() {
     if (!canSave) return;
@@ -214,12 +218,14 @@ export function ChaseClinicalsPanel({ patient, onUpdate, onOpenForm }: Props) {
             notePrefix={currentAttempt ? `Chase Clinicals Attempt ${currentAttempt}` : undefined}
             profileSendOffNotes={patient.profileSendOffNotes}
             onNoteAdded={() => setNoteAdded(true)}
+            onPendingTextChange={setPendingNoteText}
           />
           {!isEscalated && (
             <SaveBar
               attemptNumber={currentAttempt ?? 1}
               confirmed={confirmed}
               noteAdded={noteAdded}
+              hasPendingNote={hasPendingNote}
               canSave={canSave}
               saving={saving}
               onSave={handleSave}
@@ -603,6 +609,7 @@ function SaveBar({
   attemptNumber,
   confirmed,
   noteAdded,
+  hasPendingNote = false,
   canSave,
   saving,
   onSave,
@@ -613,6 +620,7 @@ function SaveBar({
   attemptNumber: number;
   confirmed: "yes" | "no" | "parachute-message" | null;
   noteAdded: boolean;
+  hasPendingNote?: boolean;
   canSave: boolean;
   saving: boolean;
   onSave: () => void;
@@ -621,7 +629,8 @@ function SaveBar({
   onOpenForm?: () => void;
 }) {
   let hint = "Pick an option above to enable save.";
-  if (confirmed && !noteAdded) hint = "Add at least one note above to enable save.";
+  if (confirmed && hasPendingNote) hint = "Press Add on your note before saving.";
+  else if (confirmed && !noteAdded) hint = "Add at least one note above to enable save.";
   else if (confirmed === "yes") hint = "Saves the chase recipient and advances to Completed.";
   else if (confirmed === "no" && attemptNumber < 3)
     hint = `Logs Attempt ${attemptNumber} as unsuccessful and schedules the next callback.`;

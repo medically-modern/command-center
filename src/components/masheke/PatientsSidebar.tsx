@@ -106,8 +106,10 @@ export function PatientsSidebar({ patients, selectedId, onSelect, loading, error
   const etParts = new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
   const todayStr = etParts; // "YYYY-MM-DD" in ET
 
-  // For confirm-receipt and chase tabs: patients with a future nextActionDate go to Pending
-  const hasPending = activeTab === "confirmReceipt" || activeTab === "chase";
+  // ALL tabs: the filter is always Next Action Date + sub-stage. Patients
+  // with a future nextActionDate go to the Scheduled folder; blank or
+  // past/today = active.
+  const hasPending = true;
   const pendingPatients = hasPending
     ? activePatients.filter((p) => {
         const nad = p.nextActionDate?.slice(0, 10);

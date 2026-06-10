@@ -5,6 +5,7 @@ import {
   Phone,
   Pencil,
   Check,
+  ChevronDown,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { DoctorNotesPanel } from "@/components/shared/DoctorNotesPanel";
@@ -526,240 +527,173 @@ export function PatientProfileCard({
     patient.serving === "Supplies + CGM";
   const both = showCgmType && showPumpType;
 
+  const [detailsOpen, setDetailsOpen] = useState(defaultDoctorOpen || lockDoctorOpen);
+  const showDetails = lockDoctorOpen || detailsOpen;
+
   return (
-    <div className="rounded-xl bg-card border shadow-card overflow-hidden">
-      {/* ── Hero row: icon + name + intake notes ── */}
-      <div className="flex items-center gap-5 px-6 py-5">
-        {/* Serving icon */}
-        <div
-          className={cn(
-            "w-20 h-20 rounded-xl border-[1.5px] flex items-center justify-center shrink-0",
-            colors.iconBg,
-            colors.iconBorder,
-          )}
+    <div
+      className="rounded-2xl bg-card border shadow-card p-6"
+      style={{ borderTopWidth: 4, borderTopColor: "var(--mm-teal)" }}
+    >
+      {/* ── Eyebrow + name + DOB · phone (prototype header) ── */}
+      <p className="text-sm font-medium uppercase tracking-wide text-muted-foreground">Patient</p>
+      <h1 className="text-3xl font-black tracking-tight mt-0.5 truncate" title={patient.name}>
+        {patient.name}
+      </h1>
+      <p className="mt-1 text-lg text-muted-foreground">
+        DOB {patient.dob || "—"}
+        {patient.gender ? ` · ${patient.gender}` : ""}
+        {patient.phone ? ` · ${formatPhone(patient.phone)}` : ""}
+      </p>
+
+      {/* ── Three grouped boxes — all gray, no serving colors ── */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mt-5">
+        <div className="rounded-xl border bg-muted/30 p-4">
+          <div className="grid grid-cols-2 gap-3">
+            <HVal label="Request" value={patient.requestType ?? ""} />
+            <HVal label="Serving" value={patient.serving ?? ""} />
+          </div>
+        </div>
+        <div className="rounded-xl border bg-muted/30 p-4">
+          <div className="grid grid-cols-2 gap-3">
+            <HVal label="Referral Type" value={patient.referralType ?? ""} />
+            <HVal label="Referral Source" value={patient.referralSource ?? ""} />
+          </div>
+        </div>
+        <div className="rounded-xl border bg-muted/30 p-4">
+          <HVal label="Primary Insurance" value={patient.primaryInsurance ?? ""} />
+        </div>
+      </div>
+
+      {/* ── Single inline toggle (no nested drawers) ── */}
+      {!lockDoctorOpen && (
+        <button
+          type="button"
+          onClick={() => setDetailsOpen((v) => !v)}
+          aria-expanded={showDetails}
+          className="mt-5 inline-flex items-center gap-1.5 text-lg font-semibold text-[color:var(--mm-teal)] hover:opacity-80 transition-opacity"
         >
-          <ServingIcon serving={patient.serving} className="h-12 w-12" />
-        </div>
+          <ChevronDown
+            className={cn("h-5 w-5 transition-transform", showDetails && "rotate-180")}
+          />
+          {showDetails ? "Hide details" : "Show member info, address, devices & doctor"}
+        </button>
+      )}
 
-        {/* Name + subtitle */}
-        <div className="flex-1 min-w-0">
-          <p className="text-[22px] font-medium leading-tight truncate">{patient.name}</p>
-          <div className="flex items-center gap-2.5 mt-1.5 flex-wrap">
-            <span
-              className={cn(
-                "text-[13px] font-medium px-3.5 py-1 rounded-full",
-                colors.tagBg,
-                colors.tagText,
-              )}
-            >
-              {patient.serving ?? "Unknown"}
-            </span>
-            <span className="text-sm text-muted-foreground">{patient.gender ?? ""}</span>
-            <span className="text-[10px] text-muted-foreground/50">&middot;</span>
-            <span className="text-sm text-muted-foreground">{patient.dob}</span>
-            {patient.phone && (
-              <>
-                <span className="text-[10px] text-muted-foreground/50">&middot;</span>
-                <span className="text-sm text-muted-foreground flex items-center gap-1">
-                  <Phone className="h-3.5 w-3.5" />
-                  {formatPhone(patient.phone)}
-                </span>
-              </>
+      {showDetails && (
+        <div className="mt-5 border-t pt-5 space-y-5">
+          {/* Member info, address, devices */}
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-x-5 gap-y-4">
+            <HVal label="Member ID" value={patient.memberId1 ?? ""} />
+            <HVal label="Address" value={patient.address ?? ""} className="col-span-2" />
+            {patient.memberId2 ? (
+              <HVal label="Member ID 2" value={patient.memberId2} />
+            ) : (
+              <span className="hidden lg:block" />
             )}
+            <HVal label="CGM" value={patient.cgmType ?? ""} />
+            <HVal label="Pump" value={patient.pumpType ?? ""} />
+            {patient.oowDate && <HVal label="OOW Date" value={patient.oowDate} />}
+            {patient.malfunction && <HVal label="Malfunction" value={patient.malfunction} />}
           </div>
-        </div>
 
-
-      </div>
-
-      {/* ── Accent fields row: Insurance, Member ID, Serving ── */}
-      <div className="grid grid-cols-3 gap-2 px-6 pb-5">
-        <AccentField
-          icon={<IconInsurance className="h-4 w-4" />}
-          label="Insurance"
-          value={patient.primaryInsurance ?? ""}
-          colors={colors}
-        />
-        <AccentField
-          icon={<IconReferralType className="h-4 w-4" />}
-          label="Referral"
-          value={[patient.referralType, patient.referralSource].filter(Boolean).join(" · ")}
-          colors={colors}
-        />
-        <AccentField
-          icon={<IconServing className="h-4 w-4" />}
-          label="Serving"
-          value={patient.serving ?? ""}
-          colors={colors}
-        />
-      </div>
-
-      {/* ── More Details collapsible ── */}
-      <div className="px-6 pb-5">
-        <CollapsiblePanel accent={panelAccents.details} title="More Details" defaultOpen={defaultDoctorOpen || lockDoctorOpen}>
-          <div className="space-y-4">
-            {/* Address + Member ID 2 */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              <Field
-                icon={<IconAddress className="h-5 w-5" />}
-                label="Address"
-                value={patient.address ?? ""}
-                className="sm:col-span-2"
+          {/* Doctor block — part of the SAME drawer (no nested drawer) */}
+          <div className="border-t pt-5">
+            {editButton && <div className="flex justify-end -mt-2 mb-1">{editButton}</div>}
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-x-5 gap-y-4">
+              <EditableHVal
+                label="Doctor"
+                value={patient.doctorName ?? ""}
+                editing={editingDoctor}
+                onChange={(v) => onDoctorEdit?.({ doctorName: v })}
               />
-              <Field
-                icon={<IconMemberId className="h-5 w-5" />}
-                label="Member ID"
-                value={patient.memberId1 ?? ""}
+              <EditableHVal
+                label="Phone"
+                value={patient.doctorPhone ?? ""}
+                editing={editingDoctor}
+                onChange={(v) => onDoctorEdit?.({ doctorPhone: v })}
               />
-              {patient.memberId2 && (
-                <Field
-                  icon={<IconMemberId className="h-5 w-5" />}
-                  label="Member ID 2"
-                  value={patient.memberId2}
-                />
-              )}
+              <EditableHVal
+                label="NPI"
+                value={patient.doctorNpi ?? ""}
+                editing={editingDoctor}
+                onChange={(v) => onDoctorEdit?.({ doctorNpi: v })}
+              />
+              <HVal label="Method" value={patient.clinicalsMethod ?? ""} />
+              <EditableHVal
+                label="Fax"
+                value={patient.doctorFax ?? ""}
+                editing={editingDoctor}
+                onChange={(v) => onDoctorEdit?.({ doctorFax: v })}
+              />
+              <EditableHVal
+                label="Email"
+                value={patient.doctorEmail ?? ""}
+                editing={editingDoctor}
+                onChange={(v) => onDoctorEdit?.({ doctorEmail: v })}
+              />
+              <EditableHVal
+                label="Clinic"
+                value={patient.clinicName ?? ""}
+                editing={editingDoctor}
+                onChange={(v) => onDoctorEdit?.({ clinicName: v })}
+                className="col-span-2"
+              />
             </div>
 
-            <div className="h-px bg-border" />
-
-            {/* Referral + Request + Equipment */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-              <Field
-                icon={<IconReferralType className="h-5 w-5" />}
-                label="Referral Type"
-                value={patient.referralType ?? ""}
-              />
-              <Field
-                icon={<IconReferralSource className="h-5 w-5" />}
-                label="Referral Source"
-                value={patient.referralSource ?? ""}
-              />
-              <Field
-                icon={<IconRequestType className="h-5 w-5" />}
-                label="Request Type"
-                value={patient.requestType ?? ""}
-              />
-              {!both && showCgmType && (
-                <Field
-                  icon={<IconCgmType className="h-5 w-5" />}
-                  label="CGM Type"
-                  value={patient.cgmType ?? ""}
-                />
-              )}
-              {!both && showPumpType && (
-                <Field
-                  icon={<IconPumpType className="h-5 w-5" />}
-                  label="Pump Type"
-                  value={patient.pumpType ?? ""}
-                />
-              )}
-            </div>
-            {both && (
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                <Field
-                  icon={<IconCgmType className="h-5 w-5" />}
-                  label="CGM Type"
-                  value={patient.cgmType ?? ""}
-                />
-                <Field
-                  icon={<IconPumpType className="h-5 w-5" />}
-                  label="Pump Type"
-                  value={patient.pumpType ?? ""}
+            {/* Doctor-level notes from the Doctor Database */}
+            {patient.doctorNpi && (
+              <div className="mt-4">
+                <DoctorNotesPanel
+                  doctorNpi={patient.doctorNpi}
+                  doctorName={patient.doctorName}
+                  compact
                 />
               </div>
             )}
-
-            {/* OOW Date + Malfunction */}
-            {(patient.oowDate || patient.malfunction) && (
-              <>
-                <div className="h-px bg-border" />
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                  {patient.oowDate && (
-                    <Field
-                      icon={<IconOowDate className="h-5 w-5" />}
-                      label="OOW Date"
-                      value={patient.oowDate}
-                    />
-                  )}
-                  {patient.malfunction && (
-                    <Field
-                      icon={<IconMalfunction className="h-5 w-5" />}
-                      label="Malfunction Reason"
-                      value={patient.malfunction}
-                    />
-                  )}
-                </div>
-              </>
-            )}
-
-            {/* Doctor Info — nested collapsible */}
-            <CollapsiblePanel accent={panelAccents.doctor} title="Doctor Info" defaultOpen={defaultDoctorOpen || lockDoctorOpen}>
-              <div className="space-y-3">
-                {editButton && (
-                  <div className="flex justify-end">{editButton}</div>
-                )}
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                  <EditableField
-                    icon={<IconDoctorName className="h-5 w-5" />}
-                    label="Doctor Name"
-                    value={patient.doctorName ?? ""}
-                    editing={editingDoctor}
-                    onChange={(v) => onDoctorEdit?.({ doctorName: v })}
-                  />
-                  <Field
-                    icon={<IconClinicalsMethod className="h-5 w-5" />}
-                    label="Clinicals Method"
-                    value={patient.clinicalsMethod ?? ""}
-                  />
-                  <EditableField
-                    icon={<IconNpi className="h-5 w-5" />}
-                    label="NPI"
-                    value={patient.doctorNpi ?? ""}
-                    editing={editingDoctor}
-                    onChange={(v) => onDoctorEdit?.({ doctorNpi: v })}
-                  />
-                  <EditableField
-                    icon={<IconPhone className="h-5 w-5" />}
-                    label="Phone"
-                    value={patient.doctorPhone ?? ""}
-                    editing={editingDoctor}
-                    onChange={(v) => onDoctorEdit?.({ doctorPhone: v })}
-                  />
-                  <EditableField
-                    icon={<IconFax className="h-5 w-5" />}
-                    label="Fax"
-                    value={patient.doctorFax ?? ""}
-                    editing={editingDoctor}
-                    onChange={(v) => onDoctorEdit?.({ doctorFax: v })}
-                  />
-                  <EditableField
-                    icon={<IconEmail className="h-5 w-5" />}
-                    label="Email"
-                    value={patient.doctorEmail ?? ""}
-                    editing={editingDoctor}
-                    onChange={(v) => onDoctorEdit?.({ doctorEmail: v })}
-                  />
-                  <EditableField
-                    icon={<IconClinic className="h-5 w-5" />}
-                    label="Clinic"
-                    value={patient.clinicName ?? ""}
-                    editing={editingDoctor}
-                    onChange={(v) => onDoctorEdit?.({ clinicName: v })}
-                    className="sm:col-span-2"
-                  />
-                </div>
-
-                {/* Doctor-level notes from the Doctor Database */}
-                {patient.doctorNpi && (
-                  <DoctorNotesPanel doctorNpi={patient.doctorNpi} doctorName={patient.doctorName} compact />
-                )}
-              </div>
-            </CollapsiblePanel>
           </div>
-        </CollapsiblePanel>
-      </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
+/* ── Prototype-style header value (eyebrow label + value, no icon) ── */
 
+function HVal({ label, value, className }: { label: string; value: string; className?: string }) {
+  return (
+    <div className={cn("min-w-0", className)}>
+      <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{label}</p>
+      <p className="mt-0.5 text-lg font-semibold truncate" title={value || "—"}>
+        {value || "—"}
+      </p>
+    </div>
+  );
+}
+
+function EditableHVal({
+  label,
+  value,
+  editing,
+  onChange,
+  className,
+}: {
+  label: string;
+  value: string;
+  editing: boolean;
+  onChange?: (v: string) => void;
+  className?: string;
+}) {
+  if (!editing) return <HVal label={label} value={value} className={className} />;
+  return (
+    <div className={cn("min-w-0", className)}>
+      <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-0.5">{label}</p>
+      <Input
+        className="h-8 text-[15px]"
+        value={value}
+        onChange={(e) => onChange?.(e.target.value)}
+        placeholder={`Enter ${label.toLowerCase()}`}
+      />
     </div>
   );
 }
