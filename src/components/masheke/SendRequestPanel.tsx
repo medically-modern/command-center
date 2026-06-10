@@ -287,6 +287,15 @@ export function SendRequestPanel({ patient, resetVersion = 0, onUpdate, onOpenFo
         label: `Next Action Date → ${nextAction}`,
         run: () => writeDate(patient.id, COL.nextActionDate, nextAction),
       });
+    } else {
+      // → Confirm Receipt: action is due immediately, so Next Action Date =
+      // today (ET) — the patient shows in Confirm Receipt's active list
+      // instead of having an empty date.
+      const nextAction = toIsoDate(etNow());
+      tasks.push({
+        label: `Next Action Date → ${nextAction}`,
+        run: () => writeDate(patient.id, COL.nextActionDate, nextAction),
+      });
     }
     if (escalatedRef.current) {
       tasks.push({

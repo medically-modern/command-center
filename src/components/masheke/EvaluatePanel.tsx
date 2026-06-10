@@ -78,6 +78,7 @@ import {
   type MondayFileEntry,
 } from "@/lib/masheke/mondayApi";
 import { GEN_SCRIPT_STATUS, ESCALATION_INDEX } from "@/lib/masheke/mondayMapping";
+import { etToday } from "@/lib/masheke/etDate";
 import { EscalateButton } from "@/components/masheke/EscalateButton";
 import { toast } from "sonner";
 import {
@@ -484,6 +485,12 @@ export function EvaluatePanel({ patient, resetVersion = 0, onUpdate, onOpenForm 
     tasks.push({
       label: `Stage Advancer → ${nextStage}`,
       run: () => writeStatusLabel(patient.id, COL.subStage, nextStage),
+    });
+    // Next Action Date → today (ET) — the patient lands in the next tab's
+    // active list immediately instead of an empty/scheduled state.
+    tasks.push({
+      label: "Next Action Date → today",
+      run: () => writeDate(patient.id, COL.nextActionDate, etToday()),
     });
 
     // Doctor fields (from pencil-edit overlay)
