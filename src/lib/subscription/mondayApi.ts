@@ -386,6 +386,41 @@ export async function clearStatusColumn(itemId: string, columnId: string): Promi
 
 // ── File asset helpers ──────────────────────────────────────────────
 
+/** Clear ALL files from a file column. */
+export async function deleteFileFromColumn(itemId: string, columnId: string): Promise<void> {
+  const query = `
+    mutation ($boardId: ID!, $itemId: ID!, $columnId: String!) {
+      change_column_value(board_id: $boardId, item_id: $itemId, column_id: $columnId, value: "{\\"clear_all\\": true}") { id }
+    }
+  `;
+  await gql(query, { boardId: BOARD_ID, itemId, columnId });
+}
+
+/**
+ * Delete ONE file from a file column. Monday has no single-file delete, so we
+ * download every file we want to keep, clear the column, then re-upload the
+ * kept files in order. Same pattern as the masheke board's helper.
+ */
+export async function deleteSingleFileFromColumn(
+  itemId: string,
+  columnId: string,
+  keepFiles: { name: string; url: string }[],
+): Promise<void> {
+  const kept: { name: string; bytes: Uint8Array }[] = [];
+  for (const f of keepFiles) {
+    const res = await fetch(f.url);
+    if (!res.ok) {
+      throw new Error(`Failed to download "${f.name}" before delete (${res.status}). Aborted.`);
+    }
+    const buf = await res.arrayBuffer();
+    kept.push({ name: f.name, bytes: new Uint8Array(buf) });
+  }
+  await deleteFileFromColumn(itemId, columnId);
+  for (const k of kept) {
+    await uploadFileToColumn(itemId, columnId, k.bytes, k.name);
+  }
+}
+
 export interface MondayAsset {
   id: string;
   name: string;

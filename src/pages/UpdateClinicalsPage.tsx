@@ -3,13 +3,16 @@
  * Reads from the same Subscription board (18407459988) but shows only
  * patient identity + MN Docs upload panel.
  */
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useMondayPatients } from "@/hooks/subscription/useMondayPatients";
 import type { Patient } from "@/lib/subscription/workflow";
 import { formatDateMDY } from "@/lib/subscription/workflow";
 import { MnDocsPanel } from "@/components/subscription/MnDocsPanel";
+import { COL, writeDate } from "@/lib/subscription/mondayApi";
+import { toast } from "sonner";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import {
   Sidebar,
@@ -23,7 +26,7 @@ import {
   SidebarMenuItem,
   useSidebar,
 } from "@/components/ui/sidebar";
-import { ArrowLeft, FileUp, Loader2, RefreshCw, Search, User, X } from "lucide-react";
+import { ArrowLeft, CalendarDays, FileUp, Loader2, RefreshCw, Search, User, X } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { cn } from "@/lib/utils";
 
@@ -153,6 +156,71 @@ function ClinicalsSidebar({
   );
 }
 
+/* ── Visit Date updater — same logic as the Subscription role:
+      MN Expiry = Visit Date + 6 months. ─────────────────────── */
+
+function VisitDateCard({ patient, onSaved }: { patient: Patient; onSaved: () => void }) {
+  const [visitDate, setVisitDate] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  const previewExpiry = useMemo(() => {
+    if (!visitDate) return null;
+    const d = new Date(visitDate + "T00:00:00");
+    d.setMonth(d.getMonth() + 6);
+    return d.toISOString().slice(0, 10);
+  }, [visitDate]);
+
+  const handleSave = async () => {
+    if (!visitDate || !previewExpiry) return;
+    setSaving(true);
+    try {
+      await writeDate(patient.id, COL.mnExpiry, previewExpiry);
+      toast.success(`MN Expiry updated to ${formatDateMDY(previewExpiry)}`);
+      setVisitDate("");
+      onSaved();
+    } catch (e) {
+      toast.error("Failed to update MN Expiry", {
+        description: e instanceof Error ? e.message : String(e),
+      });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Card className="p-5 border-l-4 border-l-fuchsia-500">
+      <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1 flex items-center gap-1.5">
+        <CalendarDays className="h-3.5 w-3.5" />
+        Update Visit Date
+      </p>
+      <p className="text-[11px] text-muted-foreground mb-3">
+        Enter the most recent appointment / visit date — MN Expiry is set to that date + 6 months.
+      </p>
+      <div className="flex items-end gap-3 flex-wrap">
+        <div>
+          <Input
+            type="date"
+            value={visitDate}
+            onChange={(e) => setVisitDate(e.target.value)}
+            className="h-9 w-48 bg-background"
+          />
+          <p className="text-[11px] text-muted-foreground mt-1 h-4">
+            {previewExpiry ? `New MN Expiry: ${formatDateMDY(previewExpiry)}` : ""}
+          </p>
+        </div>
+        <Button
+          onClick={handleSave}
+          disabled={!visitDate || saving}
+          className="h-9 gap-2 bg-fuchsia-600 hover:bg-fuchsia-700 text-white mb-5"
+        >
+          {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <CalendarDays className="h-4 w-4" />}
+          {saving ? "Saving…" : "Save Visit Date"}
+        </Button>
+      </div>
+    </Card>
+  );
+}
+
 /* ── Simplified Patient Card ────────────────────────────────── */
 
 function PatientClinicalsCard({ patient }: { patient: Patient }) {
@@ -211,16 +279,21 @@ function PatientClinicalsCard({ patient }: { patient: Patient }) {
 const UpdateClinicalsPage = () => {
   const navigate = useNavigate();
   const { patients, loading, error, refetch } = useMondayPatients();
+  // No auto-select — the page opens to a patient search so the user
+  // explicitly picks who they're updating.
   const [selectedId, setSelectedId] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!selectedId && patients.length > 0) setSelectedId(patients[0].id);
-  }, [patients, selectedId]);
+  const [mainSearch, setMainSearch] = useState("");
 
   const selected: Patient | undefined = useMemo(
     () => patients.find((p) => p.id === selectedId),
     [patients, selectedId]
   );
+
+  const searchResults = useMemo(() => {
+    const q = mainSearch.trim().toLowerCase();
+    if (!q) return [];
+    return patients.filter((p) => p.name.toLowerCase().includes(q)).slice(0, 25);
+  }, [patients, mainSearch]);
 
   return (
     <SidebarProvider>
@@ -262,18 +335,73 @@ const UpdateClinicalsPage = () => {
           <main className="flex-1 px-6 py-6 overflow-y-auto">
             <section className="max-w-3xl mx-auto space-y-5">
               {!selected && (
-                <div className="rounded-xl bg-card border shadow-card p-10 text-center">
-                  <p className="text-sm text-muted-foreground">
-                    {loading
-                      ? "Loading patients from Monday…"
-                      : error
-                        ? error
-                        : "Select a patient from the sidebar to begin."}
+                <div className="rounded-xl bg-card border shadow-card p-8">
+                  <p className="text-base font-semibold mb-1">Find a patient</p>
+                  <p className="text-sm text-muted-foreground mb-4">
+                    Search any patient to update their clinical docs or visit date.
                   </p>
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                    <input
+                      type="text"
+                      autoFocus
+                      value={mainSearch}
+                      onChange={(e) => setMainSearch(e.target.value)}
+                      placeholder="Search patients by name…"
+                      className="w-full pl-10 pr-4 h-11 rounded-lg border border-border bg-background text-base focus:outline-none focus:ring-2 focus:ring-fuchsia-400"
+                    />
+                  </div>
+                  {loading && patients.length === 0 ? (
+                    <p className="flex items-center gap-2 text-sm text-muted-foreground mt-4">
+                      <Loader2 className="h-4 w-4 animate-spin" /> Loading patients from Monday…
+                    </p>
+                  ) : error ? (
+                    <p className="text-sm text-destructive mt-4">{error}</p>
+                  ) : mainSearch.trim() ? (
+                    searchResults.length > 0 ? (
+                      <ul className="mt-3 divide-y divide-border rounded-lg border border-border overflow-hidden">
+                        {searchResults.map((p) => (
+                          <li key={p.id}>
+                            <button
+                              onClick={() => {
+                                setSelectedId(p.id);
+                                setMainSearch("");
+                              }}
+                              className="w-full flex items-center gap-3 px-4 py-2.5 text-left hover:bg-muted/50 transition-colors"
+                            >
+                              <User className="h-4 w-4 text-muted-foreground shrink-0" />
+                              <span className="text-sm font-medium flex-1 truncate">{p.name}</span>
+                              <span className="text-xs text-muted-foreground shrink-0">
+                                {p.dob || ""}
+                              </span>
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <p className="text-sm text-muted-foreground mt-4">
+                        No patients match “{mainSearch.trim()}”.
+                      </p>
+                    )
+                  ) : null}
                 </div>
               )}
 
-              {selected && <PatientClinicalsCard patient={selected} />}
+              {selected && (
+                <>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setSelectedId(null)}
+                    className="gap-1.5 text-xs -mb-2"
+                  >
+                    <Search className="h-3.5 w-3.5" />
+                    Search another patient
+                  </Button>
+                  <PatientClinicalsCard patient={selected} />
+                  <VisitDateCard patient={selected} onSaved={refetch} />
+                </>
+              )}
             </section>
           </main>
         </div>

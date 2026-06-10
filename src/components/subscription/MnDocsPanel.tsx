@@ -11,6 +11,7 @@ import {
   COL,
   fetchItemFileColumns,
   uploadFileToColumn,
+  deleteSingleFileFromColumn,
   type MondayFileEntry,
 } from "@/lib/subscription/mondayApi";
 
@@ -45,6 +46,7 @@ export function MnDocsPanel({ itemId }: Props) {
   const [files, setFiles] = useState<MondayFileEntry[]>([]);
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [deletingAssetId, setDeletingAssetId] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState(false);
   const inputRef = useRef<HTMLInputElement | null>(null);
 
@@ -93,6 +95,26 @@ export function MnDocsPanel({ itemId }: Props) {
       // fallback: open in new tab
       window.open(url, "_blank");
       toast.success(`Opening "${file.name}" in new tab`);
+    }
+  };
+
+  // ── Delete a single file (in case the wrong one was uploaded) ──
+  const handleDelete = async (target: MondayFileEntry) => {
+    if (!confirm(`Delete "${target.name}" from Monday? This cannot be undone.`)) return;
+    setDeletingAssetId(target.assetId);
+    try {
+      const keepFiles = files
+        .filter((f) => f.assetId !== target.assetId)
+        .map((f) => ({ name: f.name, url: f.public_url || f.url || "" }));
+      await deleteSingleFileFromColumn(itemId, COL.mnDocs, keepFiles);
+      toast.success(`Deleted "${target.name}"`);
+      await fetchFiles();
+    } catch (e) {
+      toast.error("Delete failed", {
+        description: e instanceof Error ? e.message : String(e),
+      });
+    } finally {
+      setDeletingAssetId(null);
     }
   };
 
@@ -167,6 +189,20 @@ export function MnDocsPanel({ itemId }: Props) {
                 title={`Download ${f.name}`}
               >
                 <Download className="h-3.5 w-3.5" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 w-7 p-0 opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-red-600 hover:bg-red-50"
+                onClick={() => handleDelete(f)}
+                disabled={deletingAssetId !== null}
+                title={`Delete ${f.name} from Monday`}
+              >
+                {deletingAssetId === f.assetId ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Trash2 className="h-3.5 w-3.5" />
+                )}
               </Button>
             </li>
           ))}
