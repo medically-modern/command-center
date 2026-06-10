@@ -609,7 +609,11 @@ export function PatientProfileCard({
               />
               <EditableHVal
                 label="Phone"
-                value={patient.doctorPhone ?? ""}
+                value={
+                  editingDoctor
+                    ? patient.doctorPhone ?? ""
+                    : formatPhone(patient.doctorPhone ?? "")
+                }
                 editing={editingDoctor}
                 onChange={(v) => onDoctorEdit?.({ doctorPhone: v })}
               />

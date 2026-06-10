@@ -211,7 +211,7 @@ function VisitDateCard({ patient, onSaved }: { patient: Patient; onSaved: () => 
         <Button
           onClick={handleSave}
           disabled={!visitDate || saving}
-          className="h-9 gap-2 bg-fuchsia-600 hover:bg-fuchsia-700 text-white mb-5"
+          className="h-9 gap-2 bg-blue-600 hover:bg-blue-700 text-white mb-5"
         >
           {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <CalendarDays className="h-4 w-4" />}
           {saving ? "Saving…" : "Save Visit Date"}
