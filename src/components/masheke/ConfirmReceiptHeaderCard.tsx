@@ -4,11 +4,14 @@
  * White card, 4px teal top border, bold name, three info groups, then
  * always-visible detail rows: devices + doctor contact / coverage paths
  * + OOW + malfunction / patient address + phone.
- * Doctor info (editable) + doctor notes live in the DoctorSection at
- * the bottom of the card.
+ * Layout unchanged from the mockup — the Edit toggle reveals the
+ * doctor edit grid below the rows, and a Doctor Notes cell (Doctor
+ * Database, by NPI) sits in the last row.
  */
+import { useState } from "react";
 import type { Patient } from "@/lib/masheke/workflow";
-import { DoctorSection } from "@/components/masheke/mmKit";
+import { DoctorEditGrid, EditToggle } from "@/components/masheke/mmKit";
+import { DoctorNotesPanel } from "@/components/shared/DoctorNotesPanel";
 
 /** Format raw phone digits into (xxx)-xxx-xxxx or +1 (xxx)-xxx-xxxx
  *  (same format as PatientProfileCard). */
@@ -50,12 +53,17 @@ export function ConfirmReceiptHeaderCard({
   patient: Patient;
   onDoctorEdit?: (patch: Partial<Patient>) => void;
 }) {
+  const [editing, setEditing] = useState(false);
+
   return (
     <section
       className="rounded-2xl bg-card border p-6 shadow-sm border-t-4"
       style={{ borderColor: "var(--mm-card-border)", borderTopColor: "var(--mm-teal)" }}
     >
-      <p className="text-sm font-medium uppercase tracking-wide text-muted-foreground">Patient</p>
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-sm font-medium uppercase tracking-wide text-muted-foreground">Patient</p>
+        {onDoctorEdit && <EditToggle editing={editing} onToggle={() => setEditing((e) => !e)} />}
+      </div>
       <h1 className="text-3xl font-black tracking-tight">{patient.name}</h1>
       <p className="mt-1 text-lg text-muted-foreground">
         DOB {dash(patient.dob)}
@@ -99,6 +107,8 @@ export function ConfirmReceiptHeaderCard({
       <div className="mt-5 border-t pt-5 grid grid-cols-2 lg:grid-cols-4 gap-5" style={{ borderColor: "var(--mm-card-border)" }}>
         <Field label="CGM" value={patient.cgmType} />
         <Field label="Pump" value={patient.pumpType} />
+        <Field label="Doctor Fax" value={patient.doctorFax} />
+        <Field label="Doctor Email" value={patient.doctorEmail} />
       </div>
       <div className="mt-5 border-t pt-5 grid grid-cols-2 lg:grid-cols-4 gap-5" style={{ borderColor: "var(--mm-card-border)" }}>
         <Field label="CGM Coverage Path" value={patient.cgmCoveragePath} />
@@ -109,14 +119,27 @@ export function ConfirmReceiptHeaderCard({
       <div className="mt-5 border-t pt-5 grid grid-cols-2 lg:grid-cols-4 gap-5" style={{ borderColor: "var(--mm-card-border)" }}>
         <Field label="Patient Address" value={patient.address} span2 />
         <Field label="Patient Phone" value={formatPhone(patient.phone)} />
+        {/* the one addition — doctor notes from the Doctor Database */}
+        {patient.doctorNpi && (
+          <div className="min-w-0">
+            <DoctorNotesPanel
+              doctorNpi={patient.doctorNpi}
+              doctorName={patient.doctorName}
+              compact
+              flush
+            />
+          </div>
+        )}
       </div>
 
-      {/* doctor info + notes — editable, persists on Save Attempt */}
-      <DoctorSection
-        patient={patient}
-        onDoctorEdit={onDoctorEdit}
-        editHint="Edits are saved to Monday when you Save Attempt."
-      />
+      {/* edit grid — revealed by the Edit toggle, display rows untouched */}
+      {onDoctorEdit && editing && (
+        <DoctorEditGrid
+          patient={patient}
+          onDoctorEdit={onDoctorEdit}
+          editHint="Edits are saved to Monday when you Save Attempt."
+        />
+      )}
     </section>
   );
 }
