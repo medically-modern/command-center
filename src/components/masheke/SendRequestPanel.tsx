@@ -26,7 +26,6 @@ import type { Patient } from "@/lib/masheke/workflow";
 import { NotesPanel } from "@/components/masheke/NotesPanel";
 import { etNow } from "@/lib/masheke/etDate";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { useMondayFiles } from "@/hooks/masheke/useMondayFiles";
 import {
   COL,
@@ -55,15 +54,21 @@ import { toast } from "sonner";
 import {
   Check,
   X,
-  XCircle,
   Loader2,
   FileText,
   Send,
   Mail,
-  AlertTriangle,
-  Trash2,
-  Pencil,
 } from "lucide-react";
+import {
+  AskForList,
+  ExtIcon,
+  FileList,
+  LoadingRow,
+  MethodHero,
+  MmStep,
+  MnStatusChip,
+  SentChip,
+} from "@/components/masheke/mmKit";
 
 interface Props {
   onUpdate: (patch: Partial<Patient>) => void;
@@ -403,7 +408,7 @@ export function SendRequestPanel({ patient, resetVersion = 0, onUpdate }: Props)
 
   return (
     <div className="flex flex-col gap-6">
-      <MethodHero patient={patient} onDoctorEdit={onUpdate} />
+      <MethodHero patient={patient} method={method} onDoctorEdit={onUpdate} />
 
       {/* ── Step 1 — What we're still missing ── */}
       <MmStep
@@ -644,285 +649,8 @@ export function SendRequestPanel({ patient, resetVersion = 0, onUpdate }: Props)
 }
 
 // =====================================================================
-// Method hero — badge + "Request goes to" + doctor edit
+// Send-request-specific sub-components
 // =====================================================================
-
-function MethodHero({
-  patient,
-  onDoctorEdit,
-}: {
-  patient: Patient;
-  onDoctorEdit: (patch: Partial<Patient>) => void;
-}) {
-  const method = patient.clinicalsMethod ?? "Fax";
-  const isParachute = method === "Parachute";
-  const [editOpen, setEditOpen] = useState(false);
-
-  const whereParts: string[] = [patient.clinicName || "—"];
-  if (method === "Fax" && patient.doctorFax) whereParts.push(`Fax: ${patient.doctorFax}`);
-  if (method === "Email" && patient.doctorEmail) whereParts.push(`Email: ${patient.doctorEmail}`);
-
-  return (
-    <section
-      className="rounded-2xl bg-card border border-l-4 p-6 shadow-sm"
-      style={{ borderColor: "var(--mm-card-border)", borderLeftColor: "var(--mm-green)" }}
-    >
-      <div className="flex items-center gap-5 flex-wrap">
-        <div
-          className="inline-flex items-center gap-2.5 rounded-xl px-5 py-3.5 text-white text-xl font-extrabold tracking-tight shrink-0"
-          style={{ background: isParachute ? "var(--mm-green)" : "var(--mm-teal)" }}
-        >
-          {isParachute ? <ChuteIcon /> : method === "Email" ? <Mail className="h-[22px] w-[22px]" /> : <FaxIcon />}
-          {method}
-        </div>
-        <div className="min-w-0">
-          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-            Request goes to
-          </p>
-          <p className="text-xl font-bold mt-0.5">
-            {patient.doctorName || "—"}{" "}
-            <span className="font-medium text-muted-foreground">· NPI {patient.doctorNpi || "—"}</span>
-          </p>
-          <p className="text-base text-muted-foreground">{whereParts.join(" · ")}</p>
-        </div>
-        <button
-          onClick={() => setEditOpen((o) => !o)}
-          className="ml-auto shrink-0 inline-flex items-center gap-1.5 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors underline underline-offset-4"
-          title="Edit doctor info"
-        >
-          <Pencil className="h-3.5 w-3.5" />
-          {editOpen ? "Done" : "Edit"}
-        </button>
-      </div>
-
-      {editOpen && (
-        <div
-          className="mt-5 border-t pt-5 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4"
-          style={{ borderColor: "var(--mm-card-border)" }}
-        >
-          <HeroField label="Doctor Name" value={patient.doctorName} onChange={(v) => onDoctorEdit({ doctorName: v })} />
-          <HeroField label="Doctor NPI" value={patient.doctorNpi} onChange={(v) => onDoctorEdit({ doctorNpi: v })} />
-          <HeroField label="Doctor Phone" value={patient.doctorPhone} onChange={(v) => onDoctorEdit({ doctorPhone: v })} />
-          <HeroField label="Doctor Fax" value={patient.doctorFax} onChange={(v) => onDoctorEdit({ doctorFax: v })} />
-          <HeroField label="Doctor Email" value={patient.doctorEmail} onChange={(v) => onDoctorEdit({ doctorEmail: v })} />
-          <HeroField label="Clinic Name" value={patient.clinicName} onChange={(v) => onDoctorEdit({ clinicName: v })} />
-          <p className="sm:col-span-2 lg:col-span-3 text-xs text-muted-foreground">
-            Edits are saved to Monday when you Mark as Complete (or via the Save button above).
-          </p>
-        </div>
-      )}
-    </section>
-  );
-}
-
-function HeroField({
-  label,
-  value,
-  onChange,
-}: {
-  label: string;
-  value?: string;
-  onChange: (v: string) => void;
-}) {
-  return (
-    <div>
-      <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-1">{label}</p>
-      <Input value={value ?? ""} onChange={(e) => onChange(e.target.value)} className="h-9 text-sm" />
-    </div>
-  );
-}
-
-// =====================================================================
-// Step shell + shared sub-components
-// =====================================================================
-
-/** Step card — white, 1px border, 4px left border in mm-green, numbered
- *  36px circle (green-12% bg, teal text, mint ring). */
-function MmStep({
-  num,
-  title,
-  sub,
-  rightAccessory,
-  children,
-}: {
-  num: number;
-  title: string;
-  sub?: string;
-  rightAccessory?: React.ReactNode;
-  children: React.ReactNode;
-}) {
-  return (
-    <section
-      className="rounded-2xl bg-card border border-l-4 p-6 shadow-sm"
-      style={{ borderColor: "var(--mm-card-border)", borderLeftColor: "var(--mm-green)" }}
-    >
-      <header className="flex items-center justify-between gap-3 mb-5">
-        <div className="flex items-center gap-3 min-w-0">
-          <span
-            className="grid place-items-center h-9 w-9 rounded-full text-base font-bold shrink-0"
-            style={{
-              background: "var(--mm-green-12)",
-              color: "var(--mm-teal)",
-              boxShadow: "inset 0 0 0 1px var(--mm-mint-ring)",
-            }}
-          >
-            {num}
-          </span>
-          <div className="min-w-0">
-            <h2 className="text-xl font-bold tracking-tight truncate">{title}</h2>
-            {sub && <p className="text-sm text-muted-foreground mt-0.5">{sub}</p>}
-          </div>
-        </div>
-        {rightAccessory}
-      </header>
-      {children}
-    </section>
-  );
-}
-
-function MnStatusChip({ established }: { established: boolean }) {
-  return established ? (
-    <span
-      className="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold shrink-0 text-[color:var(--mm-teal)] shadow-[inset_0_0_0_1px_var(--mm-mint-ring)]"
-      style={{ background: "var(--mm-mint)" }}
-    >
-      <Check className="h-3.5 w-3.5" />
-      Medical Necessity: Established
-    </span>
-  ) : (
-    <span
-      className="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold shrink-0 border"
-      style={{
-        background: "var(--mm-rose-soft)",
-        color: "var(--mm-rose)",
-        borderColor: "oklch(0.62 0.13 18 / 0.35)",
-      }}
-    >
-      <AlertTriangle className="h-3.5 w-3.5" />
-      Medical Necessity: Not Established
-    </span>
-  );
-}
-
-/** Consolidated "ask the doctor for" rows (from the Evaluate tab roll-up). */
-function AskForList({ patient }: { patient: Patient }) {
-  const established = patient.medicalNecessity === "Established";
-  const asks = splitDropdownText(patient.mnRequestConsolidated);
-  const allClean = established && asks.length === 0;
-
-  if (allClean) {
-    return (
-      <p className="text-sm text-muted-foreground italic">
-        No outstanding reasons — patient is ready.
-      </p>
-    );
-  }
-  if (asks.length === 0) {
-    return (
-      <p className="text-sm text-amber-700 italic">
-        MN is not established but no consolidated ask list yet — go back to the
-        Evaluate tab and Send to Monday so the new column populates.
-      </p>
-    );
-  }
-  return (
-    <div className="flex flex-col gap-3">
-      {asks.map((a) => (
-        <div
-          key={a}
-          className="flex items-center gap-3.5 rounded-[10px] border px-4 py-3.5"
-          style={{
-            background: "var(--mm-rose-soft)",
-            borderColor: "oklch(0.62 0.13 18 / 0.35)",
-          }}
-        >
-          <XCircle className="h-5 w-5 shrink-0" style={{ color: "var(--mm-rose)" }} />
-          <span className="text-[1.05rem] font-bold leading-snug">{a}</span>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function LoadingRow() {
-  return (
-    <div
-      className="flex items-center gap-2 px-4 h-10 rounded-[10px] border border-dashed bg-muted/20 text-sm text-muted-foreground"
-      style={{ borderColor: "var(--mm-card-border)" }}
-    >
-      <Loader2 className="h-3.5 w-3.5 animate-spin" /> Loading…
-    </div>
-  );
-}
-
-/** Mint file rows with View (Google viewer) and optional Delete. */
-function FileList({
-  files,
-  onDelete,
-  deleteLabel,
-}: {
-  files: MondayFileEntry[];
-  /** Delete the specific file by asset id. Omit for view-only rows. */
-  onDelete?: (assetId: string) => void | Promise<void>;
-  deleteLabel?: string;
-}) {
-  const [deletingId, setDeletingId] = useState<string | null>(null);
-
-  const handleDelete = async (file: MondayFileEntry) => {
-    if (!onDelete) return;
-    if (!window.confirm(`Delete "${file.name}" from Monday? This can't be undone.`)) {
-      return;
-    }
-    setDeletingId(file.assetId);
-    try {
-      await onDelete(file.assetId);
-    } finally {
-      setDeletingId(null);
-    }
-  };
-
-  if (files.length === 0) return null;
-
-  return (
-    <div className="flex flex-col gap-2.5">
-      {files.map((f) => {
-        const url = f.public_url || f.url;
-        return (
-          <div
-            key={f.assetId}
-            className="flex items-center gap-3 rounded-[10px] border px-4 py-3"
-            style={{ background: "var(--mm-mint)", borderColor: "var(--mm-mint-ring)" }}
-          >
-            <FileText className="h-[18px] w-[18px] shrink-0 text-[color:var(--mm-teal)]" />
-            <span className="flex-1 min-w-0 truncate text-[0.95rem] font-semibold">{f.name}</span>
-            <button
-              disabled={!url}
-              onClick={() => url && openInGoogleViewer(url)}
-              className="text-sm font-semibold shrink-0 text-[color:var(--mm-teal)] hover:underline underline-offset-4 disabled:opacity-50 disabled:no-underline disabled:cursor-not-allowed"
-            >
-              View
-            </button>
-            {onDelete && (
-              <button
-                onClick={() => handleDelete(f)}
-                disabled={deletingId !== null}
-                title={`Delete "${f.name}" from Monday`}
-                className="shrink-0 p-1.5 rounded-md text-red-600 hover:bg-red-50 hover:text-red-700 disabled:opacity-50 transition-colors"
-                aria-label={`Delete ${deleteLabel ?? f.name}`}
-              >
-                {deletingId === f.assetId ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <Trash2 className="h-4 w-4" />
-                )}
-              </button>
-            )}
-          </div>
-        );
-      })}
-    </div>
-  );
-}
 
 /** Outline-teal generate button (mockup .gen-btn). */
 function GenBtn({
@@ -1004,63 +732,9 @@ function ActionRow({
   );
 }
 
-function SentChip() {
-  return (
-    <span
-      className="inline-flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-sm font-semibold text-[color:var(--mm-teal)] shadow-[inset_0_0_0_1px_var(--mm-mint-ring)]"
-      style={{ background: "oklch(0.94 0.02 175 / 0.7)" }}
-    >
-      <Check className="h-4 w-4" />
-      Request Sent
-    </span>
-  );
-}
-
-// =====================================================================
-// Icons (from mockup)
-// =====================================================================
-
-function ChuteIcon() {
-  return (
-    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M12 2a9 9 0 0 1 9 9H3a9 9 0 0 1 9-9z" />
-      <path d="M3 11l9 11 9-11" />
-      <path d="M12 22V11" />
-    </svg>
-  );
-}
-
-function FaxIcon() {
-  return (
-    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <polyline points="6 9 6 2 18 2 18 9" />
-      <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" />
-      <rect x="6" y="14" width="12" height="8" />
-    </svg>
-  );
-}
-
-function ExtIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
-      <polyline points="15 3 21 3 21 9" />
-      <line x1="10" y1="14" x2="21" y2="3" />
-    </svg>
-  );
-}
-
 // =====================================================================
 // Helpers
 // =====================================================================
-
-function splitDropdownText(text?: string): string[] {
-  if (!text) return [];
-  return text
-    .split(/,\s*/)
-    .map((s) => s.trim())
-    .filter(Boolean);
-}
 
 function formatDate(iso?: string): string | null {
   if (!iso) return null;
@@ -1101,10 +775,4 @@ function toIsoDate(d: Date): string {
   const m = String(d.getMonth() + 1).padStart(2, "0");
   const day = String(d.getDate()).padStart(2, "0");
   return `${y}-${m}-${day}`;
-}
-
-/** Open a Monday file URL in Google Docs Viewer (no download). */
-function openInGoogleViewer(url: string) {
-  const viewerUrl = `https://docs.google.com/gview?url=${encodeURIComponent(url)}&embedded=true`;
-  window.open(viewerUrl, "_blank");
 }

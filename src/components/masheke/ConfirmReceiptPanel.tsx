@@ -1,12 +1,23 @@
-import { useEffect, useMemo, useState , useRef } from "react";
+/**
+ * ConfirmReceiptPanel — Confirm Receipt redesign (June 2026 mockup
+ * confirm-receipt-redesign.html). Visual layer only — ALL existing
+ * logic is preserved:
+ *   - Attempt slot (1/2/3) comes from Monday's MN Attempts column;
+ *     "Escalate" means no more attempts.
+ *   - Yes → stamps confirmed name/date, resets MN Attempts, advances
+ *     stage to Chase Clinicals, next action +2 business days.
+ *   - No → writes "Name — date" into the attempt column, bumps MN
+ *     Attempts, 3rd failure flags Escalation Required, otherwise writes
+ *     the auto-computed next action date (No → next weekday).
+ *   - Save requires an outcome AND ≥1 note added this session (no
+ *     typed-but-unadded note text), and persists doctor-field edits.
+ */
+import { useEffect, useMemo, useState, useRef } from "react";
 import type { Patient } from "@/lib/masheke/workflow";
 import { NotesPanel } from "@/components/masheke/NotesPanel";
-import { WhatsNeededCard } from "@/components/masheke/WhatsNeededCard";
-import { EscalateButton } from "@/components/masheke/EscalateButton";
 import { etNow } from "@/lib/masheke/etDate";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
 import { useMondayFiles } from "@/hooks/masheke/useMondayFiles";
 import {
   COL,
@@ -16,7 +27,6 @@ import {
   writeLongText,
   writeStatusIndex,
   writeText,
-  type MondayFileEntry,
 } from "@/lib/masheke/mondayApi";
 import {
   ESCALATION_INDEX,
@@ -28,16 +38,18 @@ import {
   AlertTriangle,
   Check,
   CheckCircle2,
-  ExternalLink,
-  FileText,
   Loader2,
-  Mail,
-  PhoneCall,
-  Send,
-  XCircle,
+  Phone,
+  X,
 } from "lucide-react";
-import { StepSection } from "@/components/shared/StepSection";
-import { getServingAccent } from "@/lib/masheke/servingTheme";
+import {
+  AskForList,
+  FileList,
+  LoadingRow,
+  MethodHero,
+  MmStep,
+  MnStatusChip,
+} from "@/components/masheke/mmKit";
 
 interface Props {
   patient: Patient;
@@ -49,8 +61,7 @@ interface Props {
 // Main panel
 // =====================================================================
 
-export function ConfirmReceiptPanel({ patient, onUpdate, onOpenForm }: Props) {
-  const accent = getServingAccent(patient.serving);
+export function ConfirmReceiptPanel({ patient, onUpdate }: Props) {
   const mondayFiles = useMondayFiles(patient.id);
   const [saving, setSaving] = useState(false);
   const [escalated, setEscalated] = useState(false);
@@ -64,6 +75,10 @@ export function ConfirmReceiptPanel({ patient, onUpdate, onOpenForm }: Props) {
   // and while typed-but-unadded text sits in the note box.
   const [noteAdded, setNoteAdded] = useState(false);
   const [pendingNoteText, setPendingNoteText] = useState("");
+  // Session-only display state: set after a successful Yes save so the
+  // step shows the confirmed banner (no Monday read — the patient leaves
+  // this stage on the next refetch anyway).
+  const [justConfirmed, setJustConfirmed] = useState<{ who: string; ts: string } | null>(null);
 
   // Reset form when patient changes
   useEffect(() => {
@@ -72,6 +87,7 @@ export function ConfirmReceiptPanel({ patient, onUpdate, onOpenForm }: Props) {
     setNextAction("");
     setNoteAdded(false);
     setPendingNoteText("");
+    setJustConfirmed(null);
   }, [patient.id]);
 
   // Default Next Action Date based on the picked outcome:
@@ -122,6 +138,10 @@ export function ConfirmReceiptPanel({ patient, onUpdate, onOpenForm }: Props) {
       if (confirmed === "yes") {
         await saveYes(patient, name.trim());
         toast.success("Receipt confirmed — moved to Chase Clinicals");
+        setJustConfirmed({
+          who: name.trim(),
+          ts: formatDateShort(etNow()),
+        });
         onUpdate({
           receiptConfirmedName: name.trim(),
           receiptConfirmedDate: formatDateInput(etNow()),
@@ -153,7 +173,7 @@ export function ConfirmReceiptPanel({ patient, onUpdate, onOpenForm }: Props) {
             : `Attempt ${attempt} saved`,
         );
       }
-      // Persist any doctor-field edits made on the profile card
+      // Persist any doctor-field edits made on the method hero
       const docTasks = buildDoctorWriteTasks(patient);
       if (docTasks.length) await Promise.all(docTasks.map((t) => t.run()));
       // Write escalation if toggled
@@ -175,68 +195,283 @@ export function ConfirmReceiptPanel({ patient, onUpdate, onOpenForm }: Props) {
     }
   }
 
+  const method = patient.clinicalsMethod ?? "—";
+  const isEmail = method === "Email";
+  const recipient = isEmail ? patient.doctorEmail : patient.doctorFax;
+
+  const showCgm =
+    patient.serving === "CGM" ||
+    patient.serving === "Insulin Pump + CGM" ||
+    patient.serving === "Supplies + CGM";
+  const showIp = patient.serving !== "CGM";
+
+  const isLastAttempt = currentAttempt === 3;
+
   return (
-    <div className="space-y-6">
-      <StepSection accent={accent} step={1} title="Review Status" hint="Banners, files, and attempt history">
-        <div className="space-y-6">
-          <MethodBanner patient={patient} />
-          <RequestSentBanner patient={patient} />
-          <WhatsNeededCard patient={patient} />
-          <FilesPanel files={mondayFiles} />
-          {history.length > 0 && <HistoryCard history={history} />}
-        </div>
-      </StepSection>
+    <div className="flex flex-col gap-6">
+      {/* ── Method hero — who to call to confirm ── */}
+      <MethodHero
+        patient={patient}
+        method={method}
+        label="Confirm receipt with"
+        where={
+          isEmail
+            ? patient.doctorEmail
+              ? `Emailed to ${patient.doctorEmail}`
+              : "(no doctor email on file)"
+            : patient.doctorFax
+              ? `Faxed to ${patient.doctorFax}`
+              : "(no doctor fax on file)"
+        }
+        right={<CallBox phone={patient.doctorPhone} />}
+        editHint="Edits are saved to Monday when you Save Attempt."
+        onDoctorEdit={onUpdate}
+      />
 
-      <StepSection accent={accent} step={2} title="Log Attempt" hint="Record the call outcome">
-        {isEscalated ? (
-          <EscalatedCard />
+      {/* ── Attempt context hero ── */}
+      <AttemptHero
+        justConfirmed={!!justConfirmed}
+        isEscalated={isEscalated}
+        attempt={currentAttempt ?? 3}
+      />
+
+      {/* ── Step 1 — Review the Request ── */}
+      <MmStep
+        num={1}
+        title="Review the Request"
+        rightAccessory={<MnStatusChip established={patient.medicalNecessity === "Established"} />}
+      >
+        <RequestSentBanner patient={patient} />
+
+        <h4 className="text-[1.05rem] font-bold tracking-tight mb-2.5 mt-4">Ask the doctor for</h4>
+        <AskForList patient={patient} />
+
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 items-start mt-5">
+          <div>
+            <h4 className="text-[1.05rem] font-bold tracking-tight">Script Templates</h4>
+            <FilesLabel>CGM Template</FilesLabel>
+            {!showCgm ? (
+              <NotApplicable>— Not Serving</NotApplicable>
+            ) : mondayFiles.loading && mondayFiles.cgmTemplate.length === 0 ? (
+              <LoadingRow />
+            ) : mondayFiles.cgmTemplate.length === 0 ? (
+              <NotApplicable>— None on Monday</NotApplicable>
+            ) : (
+              <FileList files={mondayFiles.cgmTemplate} onView={openDirect} />
+            )}
+            <FilesLabel className="mt-3.5">IP Template</FilesLabel>
+            {!showIp ? (
+              <NotApplicable>— Not Serving</NotApplicable>
+            ) : mondayFiles.loading && mondayFiles.ipTemplate.length === 0 ? (
+              <LoadingRow />
+            ) : mondayFiles.ipTemplate.length === 0 ? (
+              <NotApplicable>— None on Monday</NotApplicable>
+            ) : (
+              <FileList files={mondayFiles.ipTemplate} onView={openDirect} />
+            )}
+          </div>
+          <div>
+            <h4 className="text-[1.05rem] font-bold tracking-tight">Other Files</h4>
+            <FilesLabel>MN Request Letter</FilesLabel>
+            {mondayFiles.loading && mondayFiles.mnRequestLetter.length === 0 ? (
+              <LoadingRow />
+            ) : mondayFiles.mnRequestLetter.length === 0 ? (
+              <NotApplicable>— None on Monday</NotApplicable>
+            ) : (
+              <FileList files={mondayFiles.mnRequestLetter} onView={openDirect} />
+            )}
+            <FilesLabel className="mt-3.5">From Clinicals</FilesLabel>
+            {mondayFiles.loading && mondayFiles.clinicalFiles.length === 0 ? (
+              <LoadingRow />
+            ) : mondayFiles.clinicalFiles.length === 0 ? (
+              <NotApplicable>— None on Monday</NotApplicable>
+            ) : (
+              <FileList files={mondayFiles.clinicalFiles} onView={openDirect} />
+            )}
+          </div>
+        </div>
+      </MmStep>
+
+      {/* ── Step 2 — Re-send the Fax (visual only — button not wired) ── */}
+      <MmStep num={2} title={isEmail ? "Re-send the Email" : "Re-send the Fax"}>
+        <div
+          className="flex items-center gap-4 rounded-xl border px-5 py-4 flex-wrap"
+          style={{ borderColor: "var(--mm-card-border)" }}
+        >
+          <div className="flex-1 min-w-0">
+            <div className="text-[1.05rem] font-bold leading-snug">
+              {recipient
+                ? `Send ${isEmail ? "Email" : "Fax"} to ${recipient}`
+                : `Send ${isEmail ? "Email" : "Fax"}`}
+            </div>
+            {!recipient && (
+              <div className="text-sm text-muted-foreground mt-0.5">
+                ({isEmail ? "no doctor email on file" : "no doctor fax on file"})
+              </div>
+            )}
+          </div>
+          <Button
+            disabled
+            title="Coming soon"
+            className="gap-2 text-white shadow-sm bg-[oklch(0.85_0.01_200)] cursor-not-allowed"
+          >
+            <SendIcon />
+            Send {isEmail ? "Email" : "Fax"}
+          </Button>
+        </div>
+      </MmStep>
+
+      {/* ── Step 3 — Call Notes ── */}
+      <MmStep num={3} title="Call Notes">
+        <NotesPanel
+          variant="mm-inline"
+          notes={patient.mnEvalNotes ?? ""}
+          onNotesChange={(v) => onUpdate({ mnEvalNotes: v })}
+          onSaveToMonday={(v) => writeLongText(patient.id, COL.mnEvalNotes, v)}
+          notePrefix={currentAttempt ? `Confirm Receipt Attempt ${currentAttempt}` : undefined}
+          profileSendOffNotes={patient.profileSendOffNotes}
+          onNoteAdded={() => setNoteAdded(true)}
+          onPendingTextChange={setPendingNoteText}
+        />
+      </MmStep>
+
+      {/* ── Step 4 — Confirm Receipt? ── */}
+      <MmStep
+        num={4}
+        title="Confirm Receipt?"
+        sub={
+          justConfirmed || isEscalated
+            ? undefined
+            : isLastAttempt
+              ? "Final attempt — if not confirmed, the patient will be flagged for escalation."
+              : "Call the doctor's office to confirm receipt."
+        }
+        rightAccessory={
+          justConfirmed ? (
+            <span
+              className="inline-flex items-center gap-2 rounded-lg px-5 py-2.5 text-sm font-semibold text-[color:var(--mm-teal)] shadow-[inset_0_0_0_1px_var(--mm-mint-ring)]"
+              style={{ background: "var(--mm-mint)" }}
+            >
+              <Check className="h-4 w-4" /> Confirmed
+            </span>
+          ) : undefined
+        }
+      >
+        {justConfirmed ? (
+          <>
+            <div
+              className="flex items-center gap-3 rounded-xl border px-4.5 py-4"
+              style={{ background: "var(--mm-mint)", borderColor: "var(--mm-mint-ring)" }}
+            >
+              <CheckCircle2 className="h-[22px] w-[22px] shrink-0" style={{ color: "var(--mm-green)" }} />
+              <div>
+                <p className="text-base font-bold text-[color:var(--mm-teal)]">
+                  Receipt confirmed{justConfirmed.who ? ` by ${justConfirmed.who}` : ""} · {justConfirmed.ts}
+                </p>
+                <p className="text-sm text-muted-foreground">
+                  Patient advances to the next stage on Monday.
+                </p>
+              </div>
+            </div>
+            <HistRows history={history} confirmedRow={justConfirmed} />
+          </>
+        ) : isEscalated ? (
+          <>
+            <div
+              className="flex items-center gap-3 rounded-xl border px-4.5 py-4"
+              style={{
+                background: "var(--mm-rose-soft)",
+                borderColor: "oklch(0.62 0.13 18 / 0.35)",
+              }}
+            >
+              <AlertTriangle className="h-5 w-5 shrink-0" style={{ color: "var(--mm-rose)" }} />
+              <div>
+                <p className="text-base font-bold" style={{ color: "var(--mm-rose)" }}>
+                  Escalated — awaiting human review
+                </p>
+                <p className="text-sm text-muted-foreground">
+                  All 3 confirm-receipt attempts came back unsuccessful. Notes are still editable above.
+                </p>
+              </div>
+            </div>
+            <HistRows history={history} />
+          </>
         ) : (
-          <ActiveAttemptCard
-            attemptNumber={currentAttempt ?? 1}
-            totalAttempts={3}
-            name={name}
-            onNameChange={setName}
-            confirmed={confirmed}
-            onConfirmedChange={setConfirmed}
-            nextAction={nextAction}
-            onNextActionChange={setNextAction}
-          />
-        )}
-      </StepSection>
-
-      <StepSection accent={accent} step={3} title="Notes & Save" hint="Add notes and submit">
-        <div className="space-y-6">
-          <NotesPanel
-            notes={patient.mnEvalNotes ?? ""}
-            onNotesChange={(v) => onUpdate({ mnEvalNotes: v })}
-            onSaveToMonday={(v) => writeLongText(patient.id, COL.mnEvalNotes, v)}
-            notePrefix={currentAttempt ? `Confirm Receipt Attempt ${currentAttempt}` : undefined}
-            profileSendOffNotes={patient.profileSendOffNotes}
-            onNoteAdded={() => setNoteAdded(true)}
-            onPendingTextChange={setPendingNoteText}
-          />
-          {!isEscalated && (
-            <SaveBar
-              attemptNumber={currentAttempt ?? 1}
-              confirmed={confirmed}
-              noteAdded={noteAdded}
-              hasPendingNote={hasPendingNote}
-              canSave={canSave}
-              saving={saving}
-              onSave={handleSave}
-              escalated={escalated}
-              onToggleEscalate={() => setEscalated((v) => { const nv = !v; escalatedRef.current = nv; return nv; })}
-              onOpenForm={onOpenForm}
+          <>
+            <FilesLabel className="mt-0">Who answered the call?</FilesLabel>
+            <Input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="Name and title (e.g. Donna, Records)"
+              className="h-[42px] bg-background"
             />
-          )}
-        </div>
-      </StepSection>
+
+            <FilesLabel>
+              Did they confirm receipt?{" "}
+              <span className="font-bold" style={{ color: "var(--mm-rose)" }}>*</span>
+            </FilesLabel>
+            <div className="flex gap-2.5 w-full">
+              <SegBtn
+                tone="g"
+                selected={confirmed === "yes"}
+                onClick={() => setConfirmed(confirmed === "yes" ? null : "yes")}
+              >
+                <Check className="h-4 w-4" /> Yes — confirmed
+              </SegBtn>
+              <SegBtn
+                tone="r"
+                selected={confirmed === "no"}
+                onClick={() => setConfirmed(confirmed === "no" ? null : "no")}
+              >
+                <X className="h-4 w-4" /> No — not yet
+              </SegBtn>
+            </div>
+
+            <HistRows history={history} />
+
+            <div className="flex flex-col items-center gap-2 mt-5">
+              <Button
+                size="lg"
+                onClick={handleSave}
+                disabled={!canSave}
+                className="gap-2 text-white shadow-sm min-w-[200px] justify-center bg-[color:var(--mm-green)] hover:bg-[oklch(0.56_0.10_175)] disabled:bg-[oklch(0.85_0.01_200)]"
+              >
+                {saving ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Saving…
+                  </>
+                ) : (
+                  <>
+                    <Check className="h-4 w-4" />
+                    Save Attempt
+                  </>
+                )}
+              </Button>
+              <p className="text-xs text-muted-foreground">
+                {saveHint({
+                  confirmed,
+                  hasPendingNote,
+                  noteAdded,
+                  attemptNumber: currentAttempt ?? 1,
+                })}
+              </p>
+              {currentAttempt === 3 && confirmed === "no" && (
+                <p className="text-xs font-semibold text-amber-600 flex items-center gap-1.5">
+                  <AlertTriangle className="h-3.5 w-3.5" />
+                  Note: This action will escalate this patient to a supervisor.
+                </p>
+              )}
+            </div>
+          </>
+        )}
+      </MmStep>
     </div>
   );
 }
 
 // =====================================================================
-// Save handlers
+// Save handlers (unchanged)
 // =====================================================================
 
 async function saveYes(patient: Patient, name: string) {
@@ -291,342 +526,202 @@ async function saveNo({
 }
 
 // =====================================================================
-// Sub-cards
+// Sub-components
 // =====================================================================
 
-function MethodBanner({ patient }: { patient: Patient }) {
-  const method = patient.clinicalsMethod ?? "—";
-  let className = "bg-muted text-muted-foreground border-muted";
-  let hint = "";
-  if (method === "Fax") {
-    className = "bg-sky-100 text-sky-900 border-sky-300";
-    hint = patient.doctorFax ? `→ ${patient.doctorFax}` : "(no doctor fax on file)";
-  } else if (method === "Parachute") {
-    className = "bg-indigo-100 text-indigo-900 border-indigo-300";
-  } else if (method === "Email") {
-    className = "bg-teal-100 text-teal-900 border-teal-300";
-    hint = patient.doctorEmail ? `→ ${patient.doctorEmail}` : "(no doctor email on file)";
-  }
+/** Big attempt-context line between the hero and step 1. */
+function AttemptHero({
+  justConfirmed,
+  isEscalated,
+  attempt,
+}: {
+  justConfirmed: boolean;
+  isEscalated: boolean;
+  attempt: number;
+}) {
   return (
-    <section
-      className={`rounded-xl border-2 shadow-card px-5 py-4 flex items-center gap-3 flex-wrap ${className}`}
-    >
-      <Send className="h-5 w-5 shrink-0" />
-      <div className="min-w-0">
-        <p className="text-[10px] uppercase tracking-wider opacity-70">Clinicals Method</p>
-        <p className="text-lg font-semibold leading-tight">{method}</p>
-      </div>
-      {hint && <span className="text-xs opacity-80 ml-auto truncate">{hint}</span>}
-    </section>
-  );
-}
-
-
-function RequestSentBanner({ patient }: { patient: Patient }) {
-  const sent = patient.requestSentAt;
-  if (!sent) {
-    return (
-      <section className="rounded-xl border bg-amber-50 border-amber-200 px-5 py-3 flex items-center gap-3">
-        <AlertTriangle className="h-4 w-4 text-amber-700 shrink-0" />
-        <div>
-          <p className="text-sm font-semibold text-amber-900">No Request Sent date on file</p>
-          <p className="text-[11px] text-amber-800">
-            Confirm the request actually went out before calling — the column is blank on Monday.
-          </p>
-        </div>
-      </section>
-    );
-  }
-  const formatted = formatSent(sent);
-  return (
-    <section className="rounded-xl border bg-emerald-50 border-emerald-200 px-5 py-3 flex items-center gap-3">
-      <CheckCircle2 className="h-4 w-4 text-emerald-700 shrink-0" />
-      <div className="min-w-0">
-        <p className="text-sm font-semibold text-emerald-900">Request sent</p>
-        <p className="text-[11px] text-emerald-800">
-          {formatted} — confirm with the doctor's office that they received the fax / email below.
-        </p>
-      </div>
-    </section>
-  );
-}
-
-function FilesPanel({ files }: { files: ReturnType<typeof useMondayFiles> }) {
-  // The agent should be able to see exactly which files were sent so they
-  // can describe them on the call.
-  const groups: { label: string; entries: MondayFileEntry[] }[] = [
-    { label: "MN Request Letter", entries: files.mnRequestLetter },
-    { label: "CGM Script Template", entries: files.cgmTemplate },
-    { label: "Insulin Pump Script Template", entries: files.ipTemplate },
-    { label: "Clinical Files", entries: files.clinicalFiles },
-  ];
-  const flat = groups.flatMap((g) =>
-    g.entries.map((f) => ({ group: g.label, file: f })),
-  );
-
-  return (
-    <section className="rounded-xl bg-card border shadow-card p-5 space-y-3">
-      <div>
-        <p className="text-xs uppercase tracking-wider text-muted-foreground">
-          Files attached to this request
-        </p>
-        <p className="text-[11px] text-muted-foreground/80 mt-0.5">
-          Open any of these in a new tab to confirm what the doctor's office should have on file.
-        </p>
-      </div>
-
-      {files.loading && flat.length === 0 ? (
-        <div className="flex items-center gap-2 px-3 h-9 rounded-md border border-dashed bg-muted/20 text-xs text-muted-foreground">
-          <Loader2 className="h-3 w-3 animate-spin" /> Loading…
-        </div>
-      ) : flat.length === 0 ? (
-        <p className="text-xs text-muted-foreground italic">
-          No files found on the patient's row in Monday.
-        </p>
+    <div className="flex items-baseline gap-3.5 px-1 -mb-2">
+      {justConfirmed ? (
+        <span className="text-[2rem] font-black tracking-tight" style={{ color: "var(--mm-green)" }}>
+          ✓ Receipt Confirmed
+        </span>
+      ) : isEscalated ? (
+        <span className="text-[2rem] font-black tracking-tight" style={{ color: "var(--mm-rose)" }}>
+          3 Attempts — Not Confirmed
+        </span>
       ) : (
-        <div className="space-y-1">
-          {flat.map(({ group, file }) => {
-            const url = file.public_url || file.url;
-            return (
-              <div
-                key={file.assetId}
-                className="flex items-center justify-between gap-2 px-3 h-9 rounded-md border bg-emerald-50 border-emerald-200"
-              >
-                <span className="flex items-center gap-2 truncate text-xs text-emerald-900">
-                  <FileText className="h-3 w-3 shrink-0" />
-                  <span className="text-[10px] uppercase tracking-wider text-emerald-700/70 mr-1">
-                    {group}
-                  </span>
-                  <span className="truncate font-medium">{file.name}</span>
-                </span>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  disabled={!url}
-                  onClick={() => url && window.open(url, "_blank")}
-                  className="h-7 px-2 text-[11px] gap-1 shrink-0"
-                >
-                  <ExternalLink className="h-3 w-3" /> View
-                </Button>
-              </div>
-            );
-          })}
-        </div>
-      )}
-    </section>
-  );
-}
-
-function HistoryCard({ history }: { history: AttemptChip[] }) {
-  return (
-    <section className="rounded-xl bg-card border shadow-card p-5 space-y-2">
-      <p className="text-xs uppercase tracking-wider text-muted-foreground">
-        Previous attempts
-      </p>
-      <ul className="space-y-1">
-        {history.map((h) => (
-          <li
-            key={h.raw}
-            className="flex items-center gap-2 text-xs px-3 py-1.5 rounded-md border bg-muted/30"
-          >
-            <XCircle className="h-3.5 w-3.5 text-rose-600 shrink-0" />
-            <span className="font-semibold">Attempt {h.attempt}:</span>
-            <span>{h.name}</span>
-            <span className="text-muted-foreground ml-auto">{h.date}</span>
-          </li>
-        ))}
-      </ul>
-    </section>
-  );
-}
-
-function ActiveAttemptCard({
-  attemptNumber,
-  totalAttempts,
-  name,
-  onNameChange,
-  confirmed,
-  onConfirmedChange,
-  nextAction,
-  onNextActionChange,
-}: {
-  attemptNumber: number;
-  totalAttempts: number;
-  name: string;
-  onNameChange: (v: string) => void;
-  confirmed: "yes" | "no" | null;
-  onConfirmedChange: (v: "yes" | "no" | null) => void;
-  nextAction: string;
-  onNextActionChange: (v: string) => void;
-}) {
-  const isLastAttempt = attemptNumber === totalAttempts;
-  // Click-again-to-deselect, same as the Chase panel.
-  const toggle = (v: "yes" | "no") => {
-    onConfirmedChange(confirmed === v ? null : v);
-  };
-  return (
-    <section className="rounded-xl bg-card border shadow-card overflow-hidden">
-      <div className="px-5 py-3 border-b bg-muted/30 flex items-center gap-3 flex-wrap">
-        <PhoneCall className="h-4 w-4 text-muted-foreground" />
-        <div className="min-w-0">
-          <h3 className="text-sm font-semibold leading-tight">
-            Attempt {attemptNumber} of {totalAttempts}
-          </h3>
-          <p className="text-[11px] text-muted-foreground mt-0.5">
-            {isLastAttempt
-              ? "Final attempt — if not confirmed, the patient will be flagged for escalation."
-              : "Call the doctor's office to confirm receipt."}
-          </p>
-        </div>
-        {isLastAttempt && (
-          <span className="ml-auto inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded-full bg-rose-100 text-rose-700 border border-rose-200">
-            <AlertTriangle className="h-3 w-3" /> Last attempt
+        <>
+          <span className="text-[2rem] font-black tracking-tight text-[color:var(--mm-teal)]">
+            Attempt {attempt}
           </span>
-        )}
-      </div>
-
-      <div className="p-5 space-y-4">
-        {/* Name */}
-        <div>
-          <label className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-            Who answered the call?
-          </label>
-          <Input
-            value={name}
-            onChange={(e) => onNameChange(e.target.value)}
-            placeholder="Name and title (e.g. Donna, Records)"
-            className="mt-1 h-9 bg-background"
-          />
-        </div>
-
-        {/* Yes / No */}
-        <div>
-          <label className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-            Did they confirm receipt?
-          </label>
-          <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-2">
-            <button
-              type="button"
-              onClick={() => toggle("yes")}
-              className={`rounded-lg border-2 px-4 py-3 flex items-center gap-2 text-sm font-semibold transition-colors text-left ${
-                confirmed === "yes"
-                  ? "border-emerald-500 bg-emerald-50 text-emerald-900"
-                  : "border-border bg-background hover:bg-emerald-50/50 hover:border-emerald-300"
-              }`}
-            >
-              <Check className="h-4 w-4 text-emerald-600" />
-              <span>Yes — confirmed</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => toggle("no")}
-              className={`rounded-lg border-2 px-4 py-3 flex items-center gap-2 text-sm font-semibold transition-colors text-left ${
-                confirmed === "no"
-                  ? "border-rose-500 bg-rose-50 text-rose-900"
-                  : "border-border bg-background hover:bg-rose-50/50 hover:border-rose-300"
-              }`}
-            >
-              <XCircle className="h-4 w-4 text-rose-600" />
-              <span>No — not yet</span>
-            </button>
-          </div>
-        </div>
-
-        {/* Next action date — UI removed per Josh (June 2026). The logic is
-            unchanged: nextAction is still auto-computed (No → next weekday,
-            Yes → +2 weekdays) and written to Monday on a No save. */}
-      </div>
-    </section>
-  );
-}
-
-function EscalatedCard() {
-  return (
-    <section className="rounded-xl border-2 border-rose-300 bg-rose-50 p-5 flex items-start gap-3">
-      <AlertTriangle className="h-5 w-5 text-rose-600 shrink-0 mt-0.5" />
-      <div>
-        <h3 className="text-sm font-semibold text-rose-900">
-          Escalated — awaiting human review
-        </h3>
-        <p className="text-[11px] text-rose-800 mt-0.5">
-          All 3 confirm-receipt attempts came back unsuccessful. Notes are still editable below.
-        </p>
-      </div>
-    </section>
-  );
-}
-
-
-function SaveBar({
-  attemptNumber,
-  confirmed,
-  noteAdded,
-  hasPendingNote = false,
-  canSave,
-  saving,
-  onSave,
-  escalated,
-  onToggleEscalate,
-  onOpenForm,
-}: {
-  attemptNumber: number;
-  confirmed: "yes" | "no" | null;
-  noteAdded: boolean;
-  hasPendingNote?: boolean;
-  canSave: boolean;
-  saving: boolean;
-  onSave: () => void;
-  escalated: boolean;
-  onToggleEscalate: () => void;
-  onOpenForm?: () => void;
-}) {
-  let hint = "Pick Yes or No to enable save.";
-  if (confirmed && hasPendingNote) hint = "Press Add on your note before saving.";
-  else if (confirmed && !noteAdded) hint = "Add at least one note above to enable save.";
-  else if (confirmed === "yes") hint = "Saves the confirmation, advances to Chase Clinicals.";
-  else if (confirmed === "no" && attemptNumber < 3) hint = `Logs Attempt ${attemptNumber} as unsuccessful and schedules the next callback.`;
-  else if (confirmed === "no" && attemptNumber === 3) hint = "Logs Attempt 3 as unsuccessful and flags Escalation Required.";
-  return (
-    <div className="flex flex-col items-center gap-2 pt-1">
-      <div className="flex items-center gap-3">
-        {/* <EscalateButton
-          escalated={escalated}
-          onToggle={onToggleEscalate}
-          onOpenForm={onOpenForm}
-          disabled={saving}
-        /> */}
-        <Button
-          size="lg"
-          onClick={onSave}
-          disabled={!canSave}
-          className="gap-2 bg-teal-600 hover:bg-teal-700 text-white shadow-elevate min-w-[200px] justify-center"
-        >
-          {saving ? (
-            <>
-              <Loader2 className="h-4 w-4 animate-spin" />
-              Saving…
-            </>
-          ) : (
-            <>
-              <Mail className="h-4 w-4" />
-              Save Attempt
-            </>
-          )}
-        </Button>
-      </div>
-      <p className="text-[11px] text-muted-foreground">{hint}</p>
-      {attemptNumber === 3 && confirmed === "no" && (
-        <p className="text-xs font-semibold text-amber-600 flex items-center gap-1.5">
-          <AlertTriangle className="h-3.5 w-3.5" />
-          Note: This action will escalate this patient to a supervisor.
-        </p>
+          <span className="text-xl font-semibold text-muted-foreground">of 3</span>
+        </>
       )}
     </div>
   );
 }
 
+/** Right-side "Call" box on the method hero. */
+function CallBox({ phone }: { phone?: string }) {
+  return (
+    <div className="text-right">
+      <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground flex items-center justify-end gap-1.5">
+        <Phone className="h-3.5 w-3.5" /> Call
+      </p>
+      <p className="text-xl font-extrabold mt-0.5 text-[color:var(--mm-teal)]">
+        {formatPhoneDisplay(phone)}
+      </p>
+    </div>
+  );
+}
+
+/** "Request sent" context banner — kept from the previous design so the
+ *  agent knows whether the request actually went out before calling. */
+function RequestSentBanner({ patient }: { patient: Patient }) {
+  const sent = patient.requestSentAt;
+  if (!sent) {
+    return (
+      <div
+        className="flex items-center gap-3 rounded-xl border px-4 py-3"
+        style={{ background: "var(--mm-rose-soft)", borderColor: "oklch(0.62 0.13 18 / 0.35)" }}
+      >
+        <AlertTriangle className="h-4 w-4 shrink-0" style={{ color: "var(--mm-rose)" }} />
+        <div>
+          <p className="text-sm font-bold" style={{ color: "var(--mm-rose)" }}>
+            No Request Sent date on file
+          </p>
+          <p className="text-xs text-muted-foreground">
+            Confirm the request actually went out before calling — the column is blank on Monday.
+          </p>
+        </div>
+      </div>
+    );
+  }
+  return (
+    <div
+      className="flex items-center gap-3 rounded-xl border px-4 py-3"
+      style={{ background: "var(--mm-mint)", borderColor: "var(--mm-mint-ring)" }}
+    >
+      <CheckCircle2 className="h-4 w-4 shrink-0" style={{ color: "var(--mm-green)" }} />
+      <div>
+        <p className="text-sm font-bold text-[color:var(--mm-teal)]">Request sent</p>
+        <p className="text-xs text-muted-foreground">
+          {formatSent(sent)} — confirm with the doctor's office that they received the {patient.clinicalsMethod === "Email" ? "email" : "fax"} below.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+/** Attempt history rows (mockup .hist-row). Saved attempts from Monday
+ *  are always unsuccessful ("Not confirmed") — the Yes path writes the
+ *  confirmed name/date columns instead. A session-local confirmed row
+ *  is appended after a Yes save. */
+function HistRows({
+  history,
+  confirmedRow,
+}: {
+  history: AttemptChip[];
+  confirmedRow?: { who: string; ts: string } | null;
+}) {
+  if (history.length === 0 && !confirmedRow) return null;
+  return (
+    <div className="mt-2.5">
+      {history.map((h) => (
+        <div
+          key={h.raw}
+          className="flex items-center gap-3.5 rounded-[10px] border px-4 py-3 mt-2.5 text-sm flex-wrap"
+          style={{ borderColor: "var(--mm-card-border)" }}
+        >
+          <span className="font-extrabold shrink-0 text-[color:var(--mm-teal)]">Attempt {h.attempt}</span>
+          <span className="text-muted-foreground shrink-0">{h.date}</span>
+          <span className="font-semibold">{h.name}</span>
+          <span className="ml-auto font-bold shrink-0" style={{ color: "var(--mm-rose)" }}>
+            Not confirmed
+          </span>
+        </div>
+      ))}
+      {confirmedRow && (
+        <div
+          className="flex items-center gap-3.5 rounded-[10px] border px-4 py-3 mt-2.5 text-sm flex-wrap"
+          style={{ borderColor: "var(--mm-card-border)" }}
+        >
+          <span className="font-extrabold shrink-0 text-[color:var(--mm-teal)]">Confirmed</span>
+          <span className="text-muted-foreground shrink-0">{confirmedRow.ts}</span>
+          <span className="font-semibold">{confirmedRow.who || "—"}</span>
+          <span className="ml-auto font-bold shrink-0" style={{ color: "var(--mm-green)" }}>
+            Confirmed
+          </span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Segmented Yes/No button (mockup .seg). Click again to deselect. */
+function SegBtn({
+  tone,
+  selected,
+  onClick,
+  children,
+}: {
+  tone: "g" | "r";
+  selected: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  const color = tone === "g" ? "var(--mm-green)" : "var(--mm-rose)";
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="flex-1 inline-flex items-center justify-center gap-2 rounded-lg px-4 py-3 text-[0.95rem] font-semibold border-2 transition-all"
+      style={
+        selected
+          ? { borderColor: "transparent", background: color, color: "#fff", boxShadow: "0 1px 2px 0 rgb(0 0 0 / .05)" }
+          : { borderColor: "var(--mm-card-border)", background: "var(--background)", color: "var(--muted-foreground)" }
+      }
+      onMouseEnter={(e) => {
+        if (!selected) {
+          e.currentTarget.style.color = color;
+          e.currentTarget.style.borderColor = color;
+        }
+      }}
+      onMouseLeave={(e) => {
+        if (!selected) {
+          e.currentTarget.style.color = "var(--muted-foreground)";
+          e.currentTarget.style.borderColor = "var(--mm-card-border)";
+        }
+      }}
+    >
+      {children}
+    </button>
+  );
+}
+
+function FilesLabel({ children, className }: { children: React.ReactNode; className?: string }) {
+  return (
+    <p className={`text-xs font-medium uppercase tracking-wide text-muted-foreground mt-[18px] mb-2 ${className ?? ""}`}>
+      {children}
+    </p>
+  );
+}
+
+function NotApplicable({ children }: { children: React.ReactNode }) {
+  return <p className="text-sm text-muted-foreground px-0.5 py-1">{children}</p>;
+}
+
+function SendIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <line x1="22" y1="2" x2="11" y2="13" />
+      <polygon points="22 2 15 22 11 13 2 9 22 2" />
+    </svg>
+  );
+}
+
 // =====================================================================
-// Helpers
+// Helpers (unchanged)
 // =====================================================================
 
 interface AttemptChip {
@@ -692,4 +787,44 @@ function formatSent(iso: string): string {
     hour: "numeric",
     minute: "2-digit",
   }) + " ET";
+}
+
+/** Format raw phone digits for the Call box (same as profile card). */
+function formatPhoneDisplay(raw?: string): string {
+  if (!raw) return "—";
+  const digits = raw.replace(/\D/g, "");
+  if (digits.length === 10) {
+    return `(${digits.slice(0, 3)})-${digits.slice(3, 6)}-${digits.slice(6)}`;
+  }
+  if (digits.length === 11 && digits.startsWith("1")) {
+    return `+1 (${digits.slice(1, 4)})-${digits.slice(4, 7)}-${digits.slice(7)}`;
+  }
+  return raw;
+}
+
+/** Save-area hint — same strings as the previous design. */
+function saveHint({
+  confirmed,
+  hasPendingNote,
+  noteAdded,
+  attemptNumber,
+}: {
+  confirmed: "yes" | "no" | null;
+  hasPendingNote: boolean;
+  noteAdded: boolean;
+  attemptNumber: number;
+}): string {
+  let hint = "Pick Yes or No to enable save.";
+  if (confirmed && hasPendingNote) hint = "Press Add on your note before saving.";
+  else if (confirmed && !noteAdded) hint = "Add at least one note above to enable save.";
+  else if (confirmed === "yes") hint = "Saves the confirmation, advances to Chase Clinicals.";
+  else if (confirmed === "no" && attemptNumber < 3) hint = `Logs Attempt ${attemptNumber} as unsuccessful and schedules the next callback.`;
+  else if (confirmed === "no" && attemptNumber === 3) hint = "Logs Attempt 3 as unsuccessful and flags Escalation Required.";
+  return hint;
+}
+
+/** Open a Monday file URL directly in a new tab (Confirm Receipt's
+ *  existing behavior — unlike Send Request's Google viewer). */
+function openDirect(url: string) {
+  window.open(url, "_blank");
 }
