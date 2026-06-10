@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { DOCTOR_STATUS_INDEX, CLINICALS_METHOD_INDEX } from "@/lib/profile/mondayMapping";
 import { DoctorNotesPanel } from "@/components/shared/DoctorNotesPanel";
+import { toast } from "sonner";
 import { ParachuteLookupPanel } from "@/components/profile/ParachuteLookupPanel";
 import { AlertTriangle, Plus, Search } from "lucide-react";
 
@@ -279,9 +280,17 @@ export function DoctorPanel({ patient, onUpdate, clinicLabels, onClinicSelect, o
         <ParachuteLookupPanel
           defaultTerm={patient.doctorName}
           phoneHint={patient.doctorPhone}
-          onPick={(d) =>
-            onUpdate({ doctorName: `${d.first_name} ${d.last_name}`, doctorNpi: d.npi })
-          }
+          onPick={(d) => {
+            const method = d.doctor_contact === "parachute" ? "Parachute" : "Fax";
+            onUpdate({
+              doctorName: `${d.first_name} ${d.last_name}`,
+              doctorNpi: d.npi,
+              clinicalsMethod: method,
+            });
+            toast.success(
+              `Doctor filled: ${d.first_name} ${d.last_name} — NPI ${d.npi}, method ${method}`
+            );
+          }}
         />
       </CardContent>
     </Card>

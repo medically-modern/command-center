@@ -136,7 +136,15 @@ export function ParachuteLookupPanel({ defaultTerm = "", phoneHint = "", onPick 
     const sigs = d.signature_count;
     const isParachute = d.doctor_contact === "parachute";
     return (
-      <div key={d.doctor_id} className="px-3 py-2 hover:bg-accent/50 transition-colors">
+      <div
+        key={d.doctor_id}
+        role="button"
+        tabIndex={0}
+        title="Click to fill doctor name, NPI and clinicals method into the form"
+        onClick={() => onPick?.(d)}
+        onKeyDown={(e) => e.key === "Enter" && onPick?.(d)}
+        className="px-3 py-2 hover:bg-accent/50 transition-colors cursor-pointer"
+      >
         <div className="flex items-baseline justify-between gap-3">
           <p className="text-sm truncate min-w-0">
             <span className="font-semibold">
@@ -162,17 +170,6 @@ export function ParachuteLookupPanel({ defaultTerm = "", phoneHint = "", onPick 
             >
               {isParachute ? "Parachute" : "Fax"}
             </span>
-            {onPick && (
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-6 px-2 text-xs"
-                title="Fill doctor name + NPI into the form"
-                onClick={() => onPick(d)}
-              >
-                Use
-              </Button>
-            )}
           </div>
         </div>
       </div>
