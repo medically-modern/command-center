@@ -278,6 +278,7 @@ export function DoctorPanel({ patient, onUpdate, clinicLabels, onClinicSelect, o
         {/* Parachute Health doctor lookup — signed-order counts & contact verdict */}
         <ParachuteLookupPanel
           defaultTerm={patient.doctorName}
+          phoneHint={patient.doctorPhone}
           onPick={(d) =>
             onUpdate({ doctorName: `${d.first_name} ${d.last_name}`, doctorNpi: d.npi })
           }

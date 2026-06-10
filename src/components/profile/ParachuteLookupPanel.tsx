@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef } from "react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { ChevronRight, Loader2, PenLine, Search } from "lucide-react";
+import { ChevronRight, Loader2, MapPin, PenLine, Search } from "lucide-react";
+import { phoneToState } from "@/lib/profile/areaCodeState";
 
 /**
  * Parachute Health doctor lookup.
@@ -63,11 +64,14 @@ function Highlight({ text, term }: { text: string; term: string }) {
 interface Props {
   /** Prefill the search box (e.g. the patient's doctor name). */
   defaultTerm?: string;
+  /** Doctor phone from the form — its area code maps to a state, and
+   *  doctors in that state are floated to the top of the results. */
+  phoneHint?: string;
   /** Called when the user clicks "Use" on a result row. */
   onPick?: (doc: ParachuteDoctor) => void;
 }
 
-export function ParachuteLookupPanel({ defaultTerm = "", onPick }: Props) {
+export function ParachuteLookupPanel({ defaultTerm = "", phoneHint = "", onPick }: Props) {
   const [open, setOpen] = useState(false);
   const [term, setTerm] = useState(defaultTerm);
   const [data, setData] = useState<SearchResponse | null>(null);
@@ -116,6 +120,64 @@ export function ParachuteLookupPanel({ defaultTerm = "", onPick }: Props) {
   }, [open]);
 
   const results = data?.results ?? [];
+
+  // Area code from the form's doctor phone → state; matching-state doctors first
+  const phoneState = phoneToState(phoneHint);
+  const stateMatches = phoneState
+    ? results.filter((d) => d.state?.toUpperCase() === phoneState.state)
+    : [];
+  const otherResults = phoneState
+    ? results.filter((d) => d.state?.toUpperCase() !== phoneState.state)
+    : results;
+
+  const renderRow = (d: ParachuteDoctor) => {
+    const name = `${d.first_name} ${d.last_name}`;
+    const specialty = specialtyOf(d);
+    const sigs = d.signature_count;
+    const isParachute = d.doctor_contact === "parachute";
+    return (
+      <div key={d.doctor_id} className="px-3 py-2 hover:bg-accent/50 transition-colors">
+        <div className="flex items-baseline justify-between gap-3">
+          <p className="text-sm truncate min-w-0">
+            <span className="font-semibold">
+              <Highlight text={name} term={term} />
+            </span>
+            <span className="text-muted-foreground"> – {d.npi}</span>
+          </p>
+          <p className="text-xs text-muted-foreground whitespace-nowrap shrink-0">
+            {d.city}, {d.state}
+          </p>
+        </div>
+        <div className="flex items-center justify-between gap-3 mt-0.5">
+          <p className="text-xs text-muted-foreground truncate min-w-0">
+            {specialty ? `${specialty}, ` : ""}
+            {sigs} signed order{sigs === 1 ? "" : "s"}
+          </p>
+          <div className="flex items-center gap-1.5 shrink-0">
+            <span
+              title={`${sigs} signed orders · threshold ${data?.threshold ?? 15}`}
+              className={`rounded-full text-[10px] px-2 py-0.5 font-semibold ${
+                isParachute ? "bg-emerald-100 text-emerald-700" : "bg-sky-100 text-sky-700"
+              }`}
+            >
+              {isParachute ? "Parachute" : "Fax"}
+            </span>
+            {onPick && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-6 px-2 text-xs"
+                title="Fill doctor name + NPI into the form"
+                onClick={() => onPick(d)}
+              >
+                Use
+              </Button>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  };
 
   return (
     <div className="border rounded-lg p-4 space-y-2 bg-card">
@@ -177,57 +239,35 @@ export function ParachuteLookupPanel({ defaultTerm = "", onPick }: Props) {
             </p>
           )}
 
-          {/* Results */}
+          {/* Results — matching-state doctors first */}
           {results.length > 0 && (
-            <div className="border rounded-md divide-y max-h-72 overflow-y-auto">
-              {results.map((d) => {
-                const name = `${d.first_name} ${d.last_name}`;
-                const specialty = specialtyOf(d);
-                const sigs = d.signature_count;
-                const isParachute = d.doctor_contact === "parachute";
-                return (
-                  <div key={d.doctor_id} className="px-3 py-2 hover:bg-accent/50 transition-colors">
-                    <div className="flex items-baseline justify-between gap-3">
-                      <p className="text-sm truncate min-w-0">
-                        <span className="font-semibold">
-                          <Highlight text={name} term={term} />
-                        </span>
-                        <span className="text-muted-foreground"> – {d.npi}</span>
-                      </p>
-                      <p className="text-xs text-muted-foreground whitespace-nowrap shrink-0">
-                        {d.city}, {d.state}
-                      </p>
-                    </div>
-                    <div className="flex items-center justify-between gap-3 mt-0.5">
-                      <p className="text-xs text-muted-foreground truncate min-w-0">
-                        {specialty ? `${specialty}, ` : ""}
-                        {sigs} signed order{sigs === 1 ? "" : "s"}
-                      </p>
-                      <div className="flex items-center gap-1.5 shrink-0">
-                        <span
-                          title={`${sigs} signed orders · threshold ${data?.threshold ?? 15}`}
-                          className={`rounded-full text-[10px] px-2 py-0.5 font-semibold ${
-                            isParachute ? "bg-emerald-100 text-emerald-700" : "bg-sky-100 text-sky-700"
-                          }`}
-                        >
-                          {isParachute ? "Parachute" : "Fax"}
-                        </span>
-                        {onPick && (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-6 px-2 text-xs"
-                            title="Fill doctor name + NPI into the form"
-                            onClick={() => onPick(d)}
-                          >
-                            Use
-                          </Button>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
+            <div className="border rounded-md max-h-72 overflow-y-auto">
+              {phoneState && stateMatches.length > 0 && (
+                <div className="sticky top-0 bg-emerald-50 border-b px-3 py-1 flex items-center gap-1.5">
+                  <MapPin className="h-3 w-3 text-emerald-700" />
+                  <p className="text-[11px] font-semibold text-emerald-700">
+                    {phoneState.state} — matches phone area code ({phoneState.areaCode})
+                  </p>
+                </div>
+              )}
+              {phoneState && stateMatches.length === 0 && (
+                <div className="border-b px-3 py-1">
+                  <p className="text-[11px] text-muted-foreground italic">
+                    No {phoneState.state} doctors (phone area code {phoneState.areaCode})
+                  </p>
+                </div>
+              )}
+              <div className="divide-y">
+                {stateMatches.map((d) => renderRow(d))}
+              </div>
+              {phoneState && stateMatches.length > 0 && otherResults.length > 0 && (
+                <div className="border-y bg-muted/50 px-3 py-1">
+                  <p className="text-[11px] font-medium text-muted-foreground">Other states</p>
+                </div>
+              )}
+              <div className="divide-y">
+                {otherResults.map((d) => renderRow(d))}
+              </div>
             </div>
           )}
 
