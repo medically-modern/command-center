@@ -36,6 +36,7 @@ export const COL = {
   doctorEmail: "email_mm1x6fq5",
   doctorFax: "email_mm1xdzcj",
   clinicName: "dropdown_mm1xbvas",
+  clinicAddress: "location_mm1xjnfv",
 
   // Pipeline tracking
   masterStage: "color_mm1ws96t",
@@ -136,7 +137,7 @@ export const READ_COLUMN_IDS: string[] = [
   COL.pumpType, COL.cgmType, COL.requestType,
   COL.ipCoveragePath, COL.cgmCoveragePath,
   COL.doctorName, COL.doctorNpi, COL.clinicalsMethod,
-  COL.doctorPhone, COL.doctorEmail, COL.doctorFax, COL.clinicName,
+  COL.doctorPhone, COL.doctorEmail, COL.doctorFax, COL.clinicName, COL.clinicAddress,
   COL.masterStage, COL.subStage,
   COL.daysSinceIntake, COL.daysSinceStageStart,
   COL.dateOfIntake, COL.dateOfStageStart,

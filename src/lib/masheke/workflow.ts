@@ -31,6 +31,7 @@ export interface Patient {
   doctorEmail?: string;
   doctorFax?: string;
   clinicName?: string;
+  clinicAddress?: string;
 
   // Pipeline tracking
   masterStage?: string;

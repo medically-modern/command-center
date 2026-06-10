@@ -82,6 +82,7 @@ export function mondayItemToPatient(item: MondayItem): Patient {
     doctorEmail: col(item, "email_mm1x6fq5") || undefined,
     doctorFax: col(item, "email_mm1xdzcj") || undefined,
     clinicName: col(item, "dropdown_mm1xbvas") || undefined,
+    clinicAddress: col(item, "location_mm1xjnfv") || undefined,
     masterStage: col(item, "color_mm1ws96t") || undefined,
     subStage: col(item, "color_mm1wyr92") || undefined,
     daysSinceIntake: col(item, "color_mm1xwabn") || undefined,

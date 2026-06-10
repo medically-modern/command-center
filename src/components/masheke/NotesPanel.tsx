@@ -20,6 +20,11 @@ interface Props {
   /** Reports the current un-added text in the "Add a note…" box. Panels use
    *  this to block save/send while typed text hasn't been added yet. */
   onPendingTextChange?: (text: string) => void;
+  /** Visual variant. "default" = classic card (Confirm Receipt / Chase).
+   *  "mm" = Send Request redesign white card; "mm-inline" = same but as a
+   *  muted inset box (used inside the Parachute Send & Complete step).
+   *  Logic is identical across variants. */
+  variant?: "default" | "mm" | "mm-inline";
 }
 
 /** Bold the "<Stage> Attempt N:" label inside a note line so attempt notes
@@ -28,27 +33,29 @@ interface Props {
 const ATTEMPT_LABEL_REGEX =
   /^(\[[^\]]*\]\s*)((?:Confirm Receipt|Chase Clinicals|Send Request|C\.R\.|C\.C\.|S\.R\.)(?: Attempt \d+)?:)([\s\S]*)$/;
 
-function renderNoteLines(notes: string): React.ReactNode {
-  return notes.split("\n").map((line, i) => {
-    const m = line.match(ATTEMPT_LABEL_REGEX);
-    return (
-      <span key={i}>
-        {i > 0 && "\n"}
-        {m ? (
-          <>
-            {m[1]}
-            <strong className="font-bold">{m[2]}</strong>
-            {m[3]}
-          </>
-        ) : (
-          line
-        )}
-      </span>
-    );
-  });
+function renderNoteLine(line: string): React.ReactNode {
+  const m = line.match(ATTEMPT_LABEL_REGEX);
+  return m ? (
+    <>
+      {m[1]}
+      <strong className="font-bold">{m[2]}</strong>
+      {m[3]}
+    </>
+  ) : (
+    line
+  );
 }
 
-export function NotesPanel({ notes, onNotesChange, onSaveToMonday, notePrefix, profileSendOffNotes, onNoteAdded, onPendingTextChange }: Props) {
+function renderNoteLines(notes: string): React.ReactNode {
+  return notes.split("\n").map((line, i) => (
+    <span key={i}>
+      {i > 0 && "\n"}
+      {renderNoteLine(line)}
+    </span>
+  ));
+}
+
+export function NotesPanel({ notes, onNotesChange, onSaveToMonday, notePrefix, profileSendOffNotes, onNoteAdded, onPendingTextChange, variant = "default" }: Props) {
   const [newNote, setNewNote] = useState("");
   const setNewNoteAndReport = (v: string) => {
     setNewNote(v);
@@ -91,6 +98,129 @@ export function NotesPanel({ notes, onNotesChange, onSaveToMonday, notePrefix, p
       onNoteAdded?.();
     }
   };
+
+  const intakeModal = intakeNotesOpen ? (
+    <div className="fixed inset-0 z-50 flex items-center justify-center">
+      <div className="absolute inset-0 bg-black/50" onClick={() => setIntakeNotesOpen(false)} />
+      <div className="relative bg-card border rounded-xl shadow-xl w-full max-w-lg mx-4 max-h-[80vh] flex flex-col">
+        <div className="flex items-center justify-between p-4 border-b">
+          <h3 className="font-semibold text-sm">Profile Intake Notes</h3>
+          <button
+            onClick={() => setIntakeNotesOpen(false)}
+            className="h-7 w-7 rounded-md flex items-center justify-center hover:bg-muted transition-colors"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+        <div className="p-4 overflow-y-auto">
+          {profileSendOffNotes ? (
+            <p className="text-sm whitespace-pre-wrap">{profileSendOffNotes}</p>
+          ) : (
+            <p className="text-sm text-muted-foreground italic">No intake notes recorded.</p>
+          )}
+        </div>
+      </div>
+    </div>
+  ) : null;
+
+  // ── Send Request redesign variant (June 2026 mockups) ──
+  if (variant === "mm" || variant === "mm-inline") {
+    const noteLines = notes.split("\n").map((l) => l.trim()).filter(Boolean);
+    return (
+      <section
+        className={
+          variant === "mm"
+            ? "rounded-2xl bg-card border p-5 shadow-sm"
+            : "rounded-xl border bg-muted/20 px-5 py-4"
+        }
+        style={{ borderColor: "var(--mm-card-border)" }}
+      >
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <p
+              className="text-xs uppercase tracking-wide font-bold flex items-center gap-2"
+              style={{ color: "var(--mm-teal)" }}
+            >
+              <MessageSquare className="h-[18px] w-[18px]" /> MN Workflow Notes
+            </p>
+            {profileSendOffNotes !== undefined && (
+              <button
+                onClick={() => setIntakeNotesOpen(true)}
+                className="flex items-center gap-1.5 text-xs font-medium text-amber-700 hover:text-amber-800 bg-amber-100 hover:bg-amber-200 border border-amber-300 px-3 py-1.5 rounded-lg transition-colors"
+              >
+                <FileText className="h-3.5 w-3.5" />
+                Profile Intake Notes
+              </button>
+            )}
+          </div>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-7 text-xs"
+            disabled={saving}
+            onClick={async () => {
+              if (editing && onSaveToMonday) {
+                setSaving(true);
+                try {
+                  await onSaveToMonday(notes);
+                  toast.success("Notes saved to Monday");
+                } catch (e) {
+                  toast.error("Failed to save notes", {
+                    description: e instanceof Error ? e.message : String(e),
+                  });
+                } finally {
+                  setSaving(false);
+                }
+              }
+              setEditing(!editing);
+            }}
+          >
+            {editing ? (saving ? "Saving…" : "Done") : "Edit"}
+          </Button>
+        </div>
+
+        {editing ? (
+          <Textarea
+            value={notes}
+            onChange={(e) => onNotesChange(e.target.value)}
+            rows={6}
+            className="text-sm font-mono mt-2"
+            placeholder="No notes yet."
+          />
+        ) : noteLines.length > 0 ? (
+          <div className="max-h-[220px] overflow-y-auto">
+            {noteLines.map((line, i) => (
+              <div key={i} className="text-sm bg-muted/40 rounded-lg px-3.5 py-2.5 mt-2 whitespace-pre-wrap">
+                {renderNoteLine(line)}
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="text-sm text-muted-foreground italic mt-2">No notes yet.</p>
+        )}
+
+        <div className="flex gap-2.5 items-start mt-3">
+          <Textarea
+            value={newNote}
+            onChange={(e) => setNewNoteAndReport(e.target.value)}
+            rows={2}
+            className="text-sm flex-1 rounded-lg"
+            placeholder="Add a note..."
+          />
+          <Button
+            onClick={handleAppend}
+            disabled={!newNote.trim() || saving}
+            className="self-start gap-1 text-white shadow-sm bg-[color:var(--mm-green)] hover:bg-[oklch(0.56_0.10_175)] disabled:bg-[oklch(0.85_0.01_200)]"
+          >
+            {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
+            {saving ? "Saving" : "Add"}
+          </Button>
+        </div>
+
+        {intakeModal}
+      </section>
+    );
+  }
 
   return (
     <section className="rounded-xl bg-card border shadow-card p-5 space-y-3">
@@ -175,29 +305,7 @@ export function NotesPanel({ notes, onNotesChange, onSaveToMonday, notePrefix, p
       </div>
 
       {/* Profile Intake Notes Modal */}
-      {intakeNotesOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center">
-          <div className="absolute inset-0 bg-black/50" onClick={() => setIntakeNotesOpen(false)} />
-          <div className="relative bg-card border rounded-xl shadow-xl w-full max-w-lg mx-4 max-h-[80vh] flex flex-col">
-            <div className="flex items-center justify-between p-4 border-b">
-              <h3 className="font-semibold text-sm">Profile Intake Notes</h3>
-              <button
-                onClick={() => setIntakeNotesOpen(false)}
-                className="h-7 w-7 rounded-md flex items-center justify-center hover:bg-muted transition-colors"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-            <div className="p-4 overflow-y-auto">
-              {profileSendOffNotes ? (
-                <p className="text-sm whitespace-pre-wrap">{profileSendOffNotes}</p>
-              ) : (
-                <p className="text-sm text-muted-foreground italic">No intake notes recorded.</p>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
+      {intakeModal}
     </section>
   );
 }

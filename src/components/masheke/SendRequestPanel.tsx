@@ -1,3 +1,21 @@
+/**
+ * SendRequestPanel — Send Request redesign (June 2026 mockups).
+ *
+ * Visual layer rebuilt to match send-request-fax.html / send-request-parachute.html.
+ * ALL existing logic is preserved:
+ *   - Generate triggers write Monday's Generate status column, poll files
+ *     every 2s while generating, support cancel, and auto-clear when Monday
+ *     flips the column.
+ *   - MN Request Letter is generated client-side (PDF) and uploaded to its
+ *     Monday file column. (Re-enabled — was "Coming soon".)
+ *   - Send flips the Send Request trigger column + stamps Request Sent At;
+ *     Monday's automation dispatches via Supermail. Send stays gated on the
+ *     MN Request Letter file existing on Monday.
+ *   - Mark as Complete requires ≥1 note added this session (and no
+ *     typed-but-unadded note text), advances the stage (Parachute → Chase
+ *     Clinicals +2 business days; otherwise → Confirm Receipt, due today),
+ *     and persists doctor-field edits.
+ */
 import {
   useEffect,
   useState,
@@ -6,10 +24,9 @@ import {
 } from "react";
 import type { Patient } from "@/lib/masheke/workflow";
 import { NotesPanel } from "@/components/masheke/NotesPanel";
-import { WhatsNeededCard } from "@/components/masheke/WhatsNeededCard";
-import { EscalateButton } from "@/components/masheke/EscalateButton";
 import { etNow } from "@/lib/masheke/etDate";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { useMondayFiles } from "@/hooks/masheke/useMondayFiles";
 import {
   COL,
@@ -38,18 +55,15 @@ import { toast } from "sonner";
 import {
   Check,
   X,
+  XCircle,
   Loader2,
   FileText,
-  ExternalLink,
   Send,
   Mail,
   AlertTriangle,
-  ChevronDown,
-  ChevronRight,
   Trash2,
+  Pencil,
 } from "lucide-react";
-import { StepSection } from "@/components/shared/StepSection";
-import { getServingAccent } from "@/lib/masheke/servingTheme";
 
 interface Props {
   onUpdate: (patch: Partial<Patient>) => void;
@@ -63,8 +77,7 @@ interface Props {
 // Main panel
 // =====================================================================
 
-export function SendRequestPanel({ patient, resetVersion = 0, onUpdate, onOpenForm }: Props) {
-  const accent = getServingAccent(patient.serving);
+export function SendRequestPanel({ patient, resetVersion = 0, onUpdate }: Props) {
   const [state, setState] = useState<EvalState>(() => loadEvalState(patient.id));
 
   useEffect(() => {
@@ -225,6 +238,7 @@ export function SendRequestPanel({ patient, resetVersion = 0, onUpdate, onOpenFo
   //      outbound fax/email. We just flip the trigger column and stamp
   //      the Request Sent At column.
   const [sending, setSending] = useState(false);
+  const [sentNow, setSentNow] = useState(false);
   const handleSend = useCallback(async () => {
     if (!hasToken()) {
       toast.error("Monday token not configured");
@@ -243,6 +257,7 @@ export function SendRequestPanel({ patient, resetVersion = 0, onUpdate, onOpenFo
       } catch (e) {
         throw new Error(`[2/2 Request Sent At] ${e instanceof Error ? e.message : String(e)}`);
       }
+      setSentNow(true);
       toast.success(
         method === "Email"
           ? "Request sent — email dispatched via Supermail"
@@ -266,9 +281,17 @@ export function SendRequestPanel({ patient, resetVersion = 0, onUpdate, onOpenFo
     setPendingNoteText("");
   }, [patient.id]);
 
+  // Local action-state for the new step UI (session-only, no Monday writes).
+  const [portalOpened, setPortalOpened] = useState(false);
+  const [completed, setCompleted] = useState(false);
+  useEffect(() => {
+    setPortalOpened(false);
+    setCompleted(false);
+    setSentNow(false);
+  }, [patient.id, resetVersion]);
+
   // ---- Mark as Complete: advance stage. ----
   const [completing, setCompleting] = useState(false);
-  const [escalated, setEscalated] = useState(false);
   const escalatedRef = useRef(false);
   const handleMarkComplete = useCallback(async () => {
     if (!hasToken()) {
@@ -312,7 +335,7 @@ export function SendRequestPanel({ patient, resetVersion = 0, onUpdate, onOpenFo
         run: () => writeStatusIndex(patient.id, COL.escalation, ESCALATION_INDEX.required),
       });
     }
-    // Persist any doctor-field edits made on the profile card
+    // Persist any doctor-field edits made on the method hero
     tasks.push(...buildDoctorWriteTasks(patient));
     const results = await Promise.allSettled(tasks.map((t) => t.run()));
     const failures: string[] = [];
@@ -326,7 +349,8 @@ export function SendRequestPanel({ patient, resetVersion = 0, onUpdate, onOpenFo
     setCompleting(false);
     if (failures.length === 0) {
       toast.success(`Marked complete — moved to ${nextStage}`);
-      setEscalated(false); escalatedRef.current = false;
+      setCompleted(true);
+      escalatedRef.current = false;
     } else {
       toast.error(`${failures.length} write(s) failed`, {
         description: failures.slice(0, 3).join("\n"),
@@ -354,481 +378,493 @@ export function SendRequestPanel({ patient, resetVersion = 0, onUpdate, onOpenFo
   const cgmMissing = missingForScript("cgm");
   const ipMissing = missingForScript("ip");
 
-  const isParachute = patient.clinicalsMethod === "Parachute";
-  const [showAdvanced, setShowAdvanced] = useState(!isParachute);
+  const method = patient.clinicalsMethod ?? "Fax";
+  const isParachute = method === "Parachute";
+  const isFaxOrEmail = method === "Fax" || method === "Email";
+  const mnLetterPresent = mondayFiles.mnRequestLetter.length > 0;
 
-  // Reset reveal state when method changes
-  useEffect(() => {
-    setShowAdvanced(!isParachute);
-  }, [isParachute]);
+  const hasPendingNote = pendingNoteText.trim().length > 0;
+  const noteBlocked = !noteAdded || hasPendingNote;
 
-  return (
-    <div className="space-y-6">
-      <StepSection accent={accent} step={1} title="Review Documents" hint="Method, what's needed, and clinical files">
-        <div className="space-y-6">
-          <MethodBanner patient={patient} />
-          <WhatsNeededCard patient={patient} />
-          <ClinicalFilesCard
-            files={mondayFiles.clinicalFiles}
-            loading={mondayFiles.loading}
-          />
-        </div>
-      </StepSection>
-
-      <StepSection accent={accent} step={2} title="Generate Scripts" hint="Trigger DocExport and MN Request Letter">
-        <div className="space-y-6">
-          {isParachute && (
-            <CollapsibleHeader
-              title="Generate Scripts & MN Request Letter"
-              open={showAdvanced}
-              onToggle={() => setShowAdvanced((o) => !o)}
-              hint="Not needed for Parachute requests. Open to view if sending request by fax as well."
-              grouped
-            />
-          )}
-          {(!isParachute || showAdvanced) && (
-            <>
-              <GenerateScriptsCard
-                showCgm={showCgmGenerate}
-                showIp={showIpGenerate}
-                cgmIsGenerating={cgmIsGenerating}
-                ipIsGenerating={ipIsGenerating}
-                cgmFiles={mondayFiles.cgmTemplate}
-                ipFiles={mondayFiles.ipTemplate}
-                loading={mondayFiles.loading}
-                cgmMissing={cgmMissing}
-                ipMissing={ipMissing}
-                onGenerateCgm={() => handleGenerateCgm("Generate")}
-                onCancelCgm={() => handleGenerateCgm(undefined)}
-                onGenerateIp={() => handleGenerateIp("Generate")}
-                onCancelIp={() => handleGenerateIp(undefined)}
-                onDeleteCgm={handleDeleteCgmFile}
-                onDeleteIp={handleDeleteIpFile}
-                grouped={isParachute}
-              />
-
-              <RequestLetterCard
-                files={mondayFiles.mnRequestLetter}
-                loading={mondayFiles.loading}
-                generating={generatingLetter}
-                onGenerate={handleGenerateMnRequestLetter}
-                onDelete={handleDeleteMnRequestLetterFile}
-                grouped={isParachute}
-              />
-
-              {isParachute && (
-                <OptionalFaxCard
-                  patient={patient}
-                  sending={sending}
-                  onSend={handleSend}
-                  mnRequestLetterCount={mondayFiles.mnRequestLetter.length}
-                />
-              )}
-            </>
-          )}
-        </div>
-      </StepSection>
-
-      <StepSection accent={accent} step={3} title="Send Request" hint="Send via fax/email/parachute, then mark complete">
-        <div className="space-y-6">
-          <NotesPanel
-            notes={patient.mnEvalNotes ?? ""}
-            onNotesChange={(v) => onUpdate({ mnEvalNotes: v })}
-            onSaveToMonday={(v) => writeLongText(patient.id, COL.mnEvalNotes, v)}
-            profileSendOffNotes={patient.profileSendOffNotes}
-            notePrefix="Send Request"
-            onNoteAdded={() => setNoteAdded(true)}
-            onPendingTextChange={setPendingNoteText}
-          />
-
-          <SendActionCard
-            patient={patient}
-            sending={sending}
-            completing={completing}
-            noteAdded={noteAdded}
-            pendingNoteText={pendingNoteText}
-            onSend={handleSend}
-            onMarkComplete={handleMarkComplete}
-            escalated={escalated}
-            onToggleEscalate={() => setEscalated((v) => { const nv = !v; escalatedRef.current = nv; return nv; })}
-            onOpenForm={onOpenForm}
-            attachments={[
-              { label: "MN Request Letter", count: mondayFiles.mnRequestLetter.length, required: true },
-              ...(showCgmGenerate
-                ? [{ label: "CGM Script Template", count: mondayFiles.cgmTemplate.length }]
-                : []),
-              ...(showIpGenerate
-                ? [{ label: "Insulin Pump Script Template", count: mondayFiles.ipTemplate.length }]
-                : []),
-              { label: "Clinical Files", count: mondayFiles.clinicalFiles.length },
-            ]}
-          />
-        </div>
-      </StepSection>
-    </div>
+  const notesPanel = (variant: "mm" | "mm-inline") => (
+    <NotesPanel
+      variant={variant}
+      notes={patient.mnEvalNotes ?? ""}
+      onNotesChange={(v) => onUpdate({ mnEvalNotes: v })}
+      onSaveToMonday={(v) => writeLongText(patient.id, COL.mnEvalNotes, v)}
+      profileSendOffNotes={patient.profileSendOffNotes}
+      notePrefix="Send Request"
+      onNoteAdded={() => setNoteAdded(true)}
+      onPendingTextChange={setPendingNoteText}
+    />
   );
-}
 
-// =====================================================================
-// Sub-cards
-// =====================================================================
-
-function MethodBanner({ patient }: { patient: Patient }) {
-  const method = patient.clinicalsMethod ?? "—";
-  let className = "bg-muted text-muted-foreground border-muted";
-  let hint = "";
-  if (method === "Fax") {
-    className = "bg-sky-100 text-sky-900 border-sky-300";
-    hint = patient.doctorFax ? `→ ${patient.doctorFax}` : "(no doctor fax on file)";
-  } else if (method === "Parachute") {
-    className = "bg-indigo-100 text-indigo-900 border-indigo-300";
-  } else if (method === "Email") {
-    className = "bg-teal-100 text-teal-900 border-teal-300";
-    hint = patient.doctorEmail ? `→ ${patient.doctorEmail}` : "(no doctor email on file)";
-  }
+  const sendStepNum = isParachute ? 2 : 3;
 
   return (
-    <section
-      className={`rounded-xl border-2 shadow-card px-5 py-4 flex items-center gap-3 flex-wrap ${className}`}
-    >
-      <Send className="h-5 w-5 shrink-0" />
-      <div className="min-w-0">
-        <p className="text-[10px] uppercase tracking-wider opacity-70">Clinicals Method</p>
-        <p className="text-lg font-semibold leading-tight">{method}</p>
-      </div>
-      {hint && <span className="text-xs opacity-80 ml-auto truncate">{hint}</span>}
-    </section>
-  );
-}
+    <div className="flex flex-col gap-6">
+      <MethodHero patient={patient} onDoctorEdit={onUpdate} />
 
-function ClinicalFilesCard({
-  files,
-  loading,
-}: {
-  files: MondayFileEntry[];
-  loading: boolean;
-}) {
-  return (
-    <section className="rounded-xl bg-card border shadow-card p-5 space-y-3">
-      <div>
-        <p className="text-xs uppercase tracking-wider text-muted-foreground">
-          Clinical Files
-        </p>
-        <p className="text-[11px] text-muted-foreground/80 mt-0.5">
-          Read from Monday — these will be attached automatically when you send the request.
-        </p>
-      </div>
-
-      {loading && files.length === 0 ? (
-        <div className="flex items-center gap-2 px-3 h-9 rounded-md border border-dashed bg-muted/20 text-xs text-muted-foreground">
-          <Loader2 className="h-3 w-3 animate-spin" /> Loading…
-        </div>
-      ) : files.length === 0 ? (
-        <p className="text-xs text-muted-foreground italic">
-          No clinical files attached on Monday.
-        </p>
-      ) : (
-        <div className="space-y-1">
-          {files.map((f) => (
-            <div
-              key={f.assetId}
-              className="flex items-center justify-between gap-2 px-3 h-9 rounded-md border bg-emerald-50 border-emerald-200"
-            >
-              <span className="flex items-center gap-2 truncate text-xs text-emerald-900">
-                <FileText className="h-3 w-3 shrink-0" />
-                <span className="truncate font-medium">{f.name}</span>
-              </span>
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={!f.public_url && !f.url}
-                onClick={() => {
-                  const u = f.public_url || f.url;
-                  if (u) openInGoogleViewer(u);
-                }}
-                className="h-7 px-2 text-[11px] gap-1 shrink-0"
-              >
-                <ExternalLink className="h-3 w-3" /> View
-              </Button>
-            </div>
-          ))}
-        </div>
-      )}
-    </section>
-  );
-}
-
-function OptionalFaxCard({
-  patient,
-  sending,
-  onSend,
-  mnRequestLetterCount,
-}: {
-  patient: Patient;
-  sending: boolean;
-  onSend: () => void;
-  mnRequestLetterCount: number;
-}) {
-  const hasLetter = mnRequestLetterCount > 0;
-  const disabled = sending || !patient.doctorFax || !hasLetter;
-  return (
-    <section className="rounded-xl border border-dashed bg-muted/20 border-l-4 border-l-indigo-300 p-4 flex items-center justify-between gap-3 flex-wrap">
-      <div className="min-w-0">
-        <p className="text-xs uppercase tracking-wider text-muted-foreground">
-          Optional — Also send by Fax
-        </p>
-        <p className="text-[11px] text-muted-foreground/80 mt-0.5">
-          Triggers Monday to dispatch the files above via Supermail, in addition to Parachute.
-        </p>
-        {patient.doctorFax ? (
-          <p className="text-xs font-mono text-foreground/80 mt-1">
-            → {patient.doctorFax}
-          </p>
-        ) : (
-          <p className="text-xs text-amber-700 mt-1">
-            (no doctor fax on file)
-          </p>
-        )}
-        {!hasLetter && patient.doctorFax && (
-          <p className="text-xs text-rose-700 mt-1">
-            Generate the MN Request Letter above first.
-          </p>
-        )}
-      </div>
-      <Button
-        variant="outline"
-        size="sm"
-        onClick={onSend}
-        disabled={disabled}
-        className="gap-2"
+      {/* ── Step 1 — What we're still missing ── */}
+      <MmStep
+        num={1}
+        title="What we're still missing"
+        rightAccessory={<MnStatusChip established={patient.medicalNecessity === "Established"} />}
       >
-        {sending ? (
-          <>
-            <Loader2 className="h-4 w-4 animate-spin" />
-            Sending…
-          </>
-        ) : (
-          <>
-            <Mail className="h-4 w-4" />
-            Send via Fax
-          </>
-        )}
-      </Button>
-    </section>
-  );
-}
-
-function CollapsibleHeader({
-  title,
-  open,
-  onToggle,
-  hint,
-  grouped,
-}: {
-  title: string;
-  open: boolean;
-  onToggle: () => void;
-  hint?: string;
-  grouped?: boolean;
-}) {
-  return (
-    <button
-      onClick={onToggle}
-      className={`w-full rounded-xl bg-card border shadow-card px-5 py-3 flex items-center justify-between gap-3 hover:bg-muted/40 transition-colors text-left ${
-        grouped ? "border-l-4 border-l-indigo-300" : ""
-      }`}
-    >
-      <span className="flex items-center gap-2 text-xs uppercase tracking-wider text-muted-foreground">
-        {open ? (
-          <ChevronDown className="h-3 w-3" />
-        ) : (
-          <ChevronRight className="h-3 w-3" />
-        )}
-        {title}
-      </span>
-      {hint && !open && (
-        <span className="text-[11px] text-muted-foreground/70 normal-case truncate">
-          {hint}
-        </span>
-      )}
-    </button>
-  );
-}
-
-function ReasonRow({ label, reasons }: { label: string; reasons: string[] }) {
-  const labelClass =
-    "text-[11px] uppercase tracking-wider text-muted-foreground w-[110px] shrink-0 whitespace-nowrap";
-  if (reasons.length === 0) {
-    return (
-      <div className="flex items-center gap-3 min-h-[24px]">
-        <span className={labelClass}>{label}</span>
-        <span className="text-[11px] text-muted-foreground/60 italic">none</span>
-      </div>
-    );
-  }
-  return (
-    <div className="flex items-center gap-3 flex-wrap min-h-[24px]">
-      <span className={labelClass}>{label}</span>
-      <div className="flex flex-wrap gap-1">
-        {reasons.map((r) => (
-          <span
-            key={r}
-            className="inline-flex items-center gap-1 text-[11px] font-medium text-red-700 bg-red-50 border border-red-200 rounded-full px-2 py-0.5"
-          >
-            <X className="h-3 w-3" /> {r}
-          </span>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-interface GenerateScriptsCardProps {
-  showCgm: boolean;
-  showIp: boolean;
-  cgmIsGenerating: boolean;
-  ipIsGenerating: boolean;
-  cgmFiles: MondayFileEntry[];
-  ipFiles: MondayFileEntry[];
-  loading: boolean;
-  cgmMissing: string[];
-  ipMissing: string[];
-  onGenerateCgm: () => void;
-  onCancelCgm: () => void;
-  onGenerateIp: () => void;
-  onCancelIp: () => void;
-  onDeleteCgm: (assetId: string) => void | Promise<void>;
-  onDeleteIp: (assetId: string) => void | Promise<void>;
-  /** When true, render with a left accent line marking it as part of
-   *  the Parachute drop-down group. */
-  grouped?: boolean;
-}
-
-function GenerateScriptsCard(props: GenerateScriptsCardProps) {
-  if (!props.showCgm && !props.showIp) return null;
-  return (
-    <section
-      className={`rounded-xl bg-card border shadow-card p-5 space-y-3 ${
-        props.grouped ? "border-l-4 border-l-indigo-300" : ""
-      }`}
-    >
-      <div>
-        <p className="text-xs uppercase tracking-wider text-muted-foreground">
-          Generate Scripts
-        </p>
-        <p className="text-[11px] text-muted-foreground/80 mt-0.5">
-          Trigger Monday&apos;s DocExport to produce a prescription script the doctor can sign.
-        </p>
-      </div>
-      <div className="space-y-2">
-        {props.showCgm && (
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 items-center">
-            <ToggleRow
-              label="Generate CGM Script"
-              isGenerating={props.cgmIsGenerating}
-              missing={props.cgmMissing}
-              onGenerate={props.onGenerateCgm}
-              onCancel={props.onCancelCgm}
-            />
-            <ScriptViewer
-              label="CGM script template"
-              files={props.cgmFiles}
-              loading={props.loading}
-              onDelete={props.onDeleteCgm}
-            />
-          </div>
-        )}
-        {props.showIp && (
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 items-center">
-            <ToggleRow
-              label="Generate Insulin Pump Script"
-              isGenerating={props.ipIsGenerating}
-              missing={props.ipMissing}
-              onGenerate={props.onGenerateIp}
-              onCancel={props.onCancelIp}
-            />
-            <ScriptViewer
-              label="Insulin Pump script template"
-              files={props.ipFiles}
-              loading={props.loading}
-              onDelete={props.onDeleteIp}
-            />
-          </div>
-        )}
-      </div>
-    </section>
-  );
-}
-
-function ToggleRow({
-  label,
-  isGenerating,
-  missing,
-  onGenerate,
-  onCancel,
-}: {
-  label: string;
-  isGenerating: boolean;
-  missing: string[];
-  onGenerate: () => void;
-  onCancel: () => void;
-}) {
-  const disabled = missing.length > 0;
-  return (
-    <div className="flex items-start justify-between gap-3 py-1.5 px-2 rounded-md hover:bg-muted/50">
-      <span className="text-sm text-muted-foreground whitespace-nowrap pt-1.5">
-        {label}
-      </span>
-      {isGenerating ? (
-        <div className="flex items-center gap-1">
-          <span className="inline-flex items-center gap-1 h-8 px-3 text-xs font-medium rounded-md border border-amber-300 bg-amber-50 text-amber-900">
-            <Loader2 className="h-3 w-3 animate-spin" />
-            Generating…
-          </span>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={onCancel}
-            className="h-8 px-2 text-xs"
-            title="Cancel"
-          >
-            <X className="h-3 w-3" />
-          </Button>
+        <AskForList patient={patient} />
+        <div className="mt-5">
+          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-2">
+            Clinical files on hand — attached automatically
+          </p>
+          {mondayFiles.loading && mondayFiles.clinicalFiles.length === 0 ? (
+            <LoadingRow />
+          ) : mondayFiles.clinicalFiles.length === 0 ? (
+            <p className="text-sm text-muted-foreground italic">
+              No clinical files attached on Monday.
+            </p>
+          ) : (
+            <FileList files={mondayFiles.clinicalFiles} />
+          )}
         </div>
-      ) : (
-        <div className="flex flex-col items-end gap-1">
-          <Button
-            size="sm"
-            onClick={onGenerate}
-            disabled={disabled}
-            className="h-8 px-3 text-xs gap-1 bg-emerald-600 hover:bg-emerald-700 text-white disabled:bg-muted disabled:text-muted-foreground"
-          >
-            <FileText className="h-3 w-3" />
-            Generate
-          </Button>
-          {disabled && (
-            <span className="inline-flex items-center gap-1 text-[10px] text-red-700 bg-red-50 border border-red-200 rounded px-1.5 py-0.5 max-w-[260px] text-right">
-              <AlertTriangle className="h-2.5 w-2.5 shrink-0" />
-              Missing: {missing.join(", ")}
+      </MmStep>
+
+      {/* ── Step 2 — Generate Scripts (fax/email only; Parachute skips it) ── */}
+      {!isParachute && (
+        <MmStep
+          num={2}
+          title="Generate Scripts"
+          sub={`Generate the documents to include in the ${method === "Email" ? "email" : "fax"}.`}
+        >
+          <div className="flex flex-wrap gap-3">
+            {showCgmGenerate &&
+              (cgmIsGenerating ? (
+                <GeneratingChip label="Generating CGM Script…" onCancel={() => handleGenerateCgm(undefined)} />
+              ) : (
+                <GenBtn
+                  label={mondayFiles.cgmTemplate.length > 0 ? "Regenerate CGM Script" : "Generate CGM Script"}
+                  disabled={cgmMissing.length > 0}
+                  onClick={() => handleGenerateCgm("Generate")}
+                />
+              ))}
+            {showIpGenerate &&
+              (ipIsGenerating ? (
+                <GeneratingChip label="Generating IP Script…" onCancel={() => handleGenerateIp(undefined)} />
+              ) : (
+                <GenBtn
+                  label={mondayFiles.ipTemplate.length > 0 ? "Regenerate IP Script" : "Generate IP Script"}
+                  disabled={ipMissing.length > 0}
+                  onClick={() => handleGenerateIp("Generate")}
+                />
+              ))}
+            <GenBtn
+              label={
+                generatingLetter
+                  ? "Generating…"
+                  : mnLetterPresent
+                    ? "Regenerate MN Request Letter"
+                    : "Generate MN Request Letter"
+              }
+              disabled={generatingLetter}
+              spinner={generatingLetter}
+              onClick={handleGenerateMnRequestLetter}
+            />
+          </div>
+
+          {showCgmGenerate && cgmMissing.length > 0 && (
+            <p className="text-sm font-semibold mt-2.5" style={{ color: "var(--mm-rose)" }}>
+              Cannot generate CGM Script — missing: {cgmMissing.join(", ")}
+            </p>
+          )}
+          {showIpGenerate && ipMissing.length > 0 && (
+            <p className="text-sm font-semibold mt-2.5" style={{ color: "var(--mm-rose)" }}>
+              Cannot generate IP Script — missing: {ipMissing.join(", ")}
+            </p>
+          )}
+
+          {(mondayFiles.loading &&
+            mondayFiles.cgmTemplate.length + mondayFiles.ipTemplate.length + mondayFiles.mnRequestLetter.length === 0) ? (
+            <div className="mt-4">
+              <LoadingRow />
+            </div>
+          ) : (
+            (mondayFiles.cgmTemplate.length > 0 ||
+              mondayFiles.ipTemplate.length > 0 ||
+              mondayFiles.mnRequestLetter.length > 0) && (
+              <div className="mt-4 flex flex-col gap-2.5">
+                <FileList files={mondayFiles.cgmTemplate} onDelete={handleDeleteCgmFile} deleteLabel="CGM script template" />
+                <FileList files={mondayFiles.ipTemplate} onDelete={handleDeleteIpFile} deleteLabel="Insulin Pump script template" />
+                <FileList files={mondayFiles.mnRequestLetter} onDelete={handleDeleteMnRequestLetterFile} deleteLabel="MN Request Letter" />
+              </div>
+            )
+          )}
+        </MmStep>
+      )}
+
+      {/* ── Notes — standalone card for fax/email (Parachute has it inline) ── */}
+      {!isParachute && notesPanel("mm")}
+
+      {/* ── Send & Complete ── */}
+      <MmStep num={sendStepNum} title="Send & Complete">
+        {/* sent status header */}
+        <div className="flex items-center gap-3 flex-wrap -mt-1 mb-4">
+          {patient.requestSentAt ? (
+            <>
+              <span className="text-sm text-muted-foreground">
+                Last sent <b className="text-foreground">{formatDate(patient.requestSentAt)}</b>
+              </span>
+              <SentChip />
+            </>
+          ) : (
+            <span
+              className="inline-flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-sm font-medium text-muted-foreground bg-background border"
+              style={{ borderColor: "var(--mm-card-border)" }}
+            >
+              Not sent yet
             </span>
           )}
         </div>
-      )}
+
+        {/* action 1 — send (fax/email) or open portal (parachute) */}
+        {isFaxOrEmail && (
+          <>
+            <ActionRow
+              num={1}
+              done={sentNow}
+              title={
+                (method === "Fax" && patient.doctorFax)
+                  ? `Send Fax to ${patient.doctorFax}`
+                  : (method === "Email" && patient.doctorEmail)
+                    ? `Send Email to ${patient.doctorEmail}`
+                    : `Send ${method}`
+              }
+              sub={
+                (method === "Fax" && !patient.doctorFax)
+                  ? "(no doctor fax on file)"
+                  : (method === "Email" && !patient.doctorEmail)
+                    ? "(no doctor email on file)"
+                    : "Sends generated documents + clinical files via Supermail."
+              }
+            >
+              <Button
+                onClick={handleSend}
+                disabled={sending || !mnLetterPresent}
+                className="gap-2 text-white shadow-sm bg-[color:var(--mm-green)] hover:bg-[oklch(0.56_0.10_175)] disabled:bg-[oklch(0.85_0.01_200)]"
+              >
+                {sending ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Sending…
+                  </>
+                ) : (
+                  <>
+                    {method === "Email" ? <Mail className="h-4 w-4" /> : <Send className="h-4 w-4" />}
+                    Send {method}
+                  </>
+                )}
+              </Button>
+            </ActionRow>
+            {!mnLetterPresent && (
+              <p className="text-sm text-muted-foreground mt-2 ml-12">
+                Generate the MN Request Letter first (step above).
+              </p>
+            )}
+          </>
+        )}
+        {isParachute && (
+          <ActionRow num={1} done={portalOpened} title="Open the Parachute portal">
+            <a
+              href={PARACHUTE_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={() => setPortalOpened(true)}
+              className="inline-flex items-center gap-2 h-10 px-4 rounded-lg bg-background text-sm font-semibold transition-colors text-[color:var(--mm-teal)] shadow-[inset_0_0_0_1.5px_var(--mm-teal)] hover:bg-[oklch(0.36_0.04_200_/_0.06)]"
+            >
+              <ExtIcon />
+              Open Parachute Portal
+            </a>
+          </ActionRow>
+        )}
+
+        {/* Parachute keeps notes inline between the two actions */}
+        {isParachute && <div className="my-3">{notesPanel("mm-inline")}</div>}
+
+        {/* action 2 — mark as complete */}
+        <div className={isParachute ? "" : "mt-3"}>
+          <ActionRow
+            num={2}
+            done={completed}
+            title="Mark as Complete"
+            sub={
+              completed
+                ? "Done — patient moved to the next stage on Monday."
+                : "Click after the request has been sent — advances the patient to the next stage on Monday."
+            }
+          >
+            <div className="flex flex-col items-end gap-1.5">
+              {!completed && noteBlocked && (
+                <span className="text-xs font-medium text-right" style={{ color: "var(--mm-rose)" }}>
+                  {hasPendingNote
+                    ? "Press Add on your note before marking complete"
+                    : "Add at least one note above to mark complete"}
+                </span>
+              )}
+              {completed ? (
+                <span
+                  className="inline-flex items-center gap-2 rounded-lg px-5 py-2.5 text-sm font-semibold text-[color:var(--mm-teal)] shadow-[inset_0_0_0_1px_var(--mm-mint-ring)]"
+                  style={{ background: "var(--mm-mint)" }}
+                >
+                  <Check className="h-4 w-4" /> Completed
+                </span>
+              ) : (
+                <Button
+                  size="lg"
+                  onClick={handleMarkComplete}
+                  disabled={completing || noteBlocked}
+                  className="gap-2 text-white shadow-sm bg-[color:var(--mm-green)] hover:bg-[oklch(0.56_0.10_175)] disabled:bg-[oklch(0.85_0.01_200)]"
+                >
+                  {completing ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Marking…
+                    </>
+                  ) : (
+                    <>
+                      <Check className="h-4 w-4" />
+                      Mark as Complete
+                    </>
+                  )}
+                </Button>
+              )}
+            </div>
+          </ActionRow>
+        </div>
+      </MmStep>
     </div>
   );
 }
 
-function ScriptViewer({
+// =====================================================================
+// Method hero — badge + "Request goes to" + doctor edit
+// =====================================================================
+
+function MethodHero({
+  patient,
+  onDoctorEdit,
+}: {
+  patient: Patient;
+  onDoctorEdit: (patch: Partial<Patient>) => void;
+}) {
+  const method = patient.clinicalsMethod ?? "Fax";
+  const isParachute = method === "Parachute";
+  const [editOpen, setEditOpen] = useState(false);
+
+  const whereParts: string[] = [patient.clinicName || "—"];
+  if (method === "Fax" && patient.doctorFax) whereParts.push(`Fax: ${patient.doctorFax}`);
+  if (method === "Email" && patient.doctorEmail) whereParts.push(`Email: ${patient.doctorEmail}`);
+
+  return (
+    <section
+      className="rounded-2xl bg-card border border-l-4 p-6 shadow-sm"
+      style={{ borderColor: "var(--mm-card-border)", borderLeftColor: "var(--mm-green)" }}
+    >
+      <div className="flex items-center gap-5 flex-wrap">
+        <div
+          className="inline-flex items-center gap-2.5 rounded-xl px-5 py-3.5 text-white text-xl font-extrabold tracking-tight shrink-0"
+          style={{ background: isParachute ? "var(--mm-green)" : "var(--mm-teal)" }}
+        >
+          {isParachute ? <ChuteIcon /> : method === "Email" ? <Mail className="h-[22px] w-[22px]" /> : <FaxIcon />}
+          {method}
+        </div>
+        <div className="min-w-0">
+          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            Request goes to
+          </p>
+          <p className="text-xl font-bold mt-0.5">
+            {patient.doctorName || "—"}{" "}
+            <span className="font-medium text-muted-foreground">· NPI {patient.doctorNpi || "—"}</span>
+          </p>
+          <p className="text-base text-muted-foreground">{whereParts.join(" · ")}</p>
+        </div>
+        <button
+          onClick={() => setEditOpen((o) => !o)}
+          className="ml-auto shrink-0 inline-flex items-center gap-1.5 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors underline underline-offset-4"
+          title="Edit doctor info"
+        >
+          <Pencil className="h-3.5 w-3.5" />
+          {editOpen ? "Done" : "Edit"}
+        </button>
+      </div>
+
+      {editOpen && (
+        <div
+          className="mt-5 border-t pt-5 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4"
+          style={{ borderColor: "var(--mm-card-border)" }}
+        >
+          <HeroField label="Doctor Name" value={patient.doctorName} onChange={(v) => onDoctorEdit({ doctorName: v })} />
+          <HeroField label="Doctor NPI" value={patient.doctorNpi} onChange={(v) => onDoctorEdit({ doctorNpi: v })} />
+          <HeroField label="Doctor Phone" value={patient.doctorPhone} onChange={(v) => onDoctorEdit({ doctorPhone: v })} />
+          <HeroField label="Doctor Fax" value={patient.doctorFax} onChange={(v) => onDoctorEdit({ doctorFax: v })} />
+          <HeroField label="Doctor Email" value={patient.doctorEmail} onChange={(v) => onDoctorEdit({ doctorEmail: v })} />
+          <HeroField label="Clinic Name" value={patient.clinicName} onChange={(v) => onDoctorEdit({ clinicName: v })} />
+          <p className="sm:col-span-2 lg:col-span-3 text-xs text-muted-foreground">
+            Edits are saved to Monday when you Mark as Complete (or via the Save button above).
+          </p>
+        </div>
+      )}
+    </section>
+  );
+}
+
+function HeroField({
   label,
-  files,
-  loading,
-  onDelete,
+  value,
+  onChange,
 }: {
   label: string;
+  value?: string;
+  onChange: (v: string) => void;
+}) {
+  return (
+    <div>
+      <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-1">{label}</p>
+      <Input value={value ?? ""} onChange={(e) => onChange(e.target.value)} className="h-9 text-sm" />
+    </div>
+  );
+}
+
+// =====================================================================
+// Step shell + shared sub-components
+// =====================================================================
+
+/** Step card — white, 1px border, 4px left border in mm-green, numbered
+ *  36px circle (green-12% bg, teal text, mint ring). */
+function MmStep({
+  num,
+  title,
+  sub,
+  rightAccessory,
+  children,
+}: {
+  num: number;
+  title: string;
+  sub?: string;
+  rightAccessory?: React.ReactNode;
+  children: React.ReactNode;
+}) {
+  return (
+    <section
+      className="rounded-2xl bg-card border border-l-4 p-6 shadow-sm"
+      style={{ borderColor: "var(--mm-card-border)", borderLeftColor: "var(--mm-green)" }}
+    >
+      <header className="flex items-center justify-between gap-3 mb-5">
+        <div className="flex items-center gap-3 min-w-0">
+          <span
+            className="grid place-items-center h-9 w-9 rounded-full text-base font-bold shrink-0"
+            style={{
+              background: "var(--mm-green-12)",
+              color: "var(--mm-teal)",
+              boxShadow: "inset 0 0 0 1px var(--mm-mint-ring)",
+            }}
+          >
+            {num}
+          </span>
+          <div className="min-w-0">
+            <h2 className="text-xl font-bold tracking-tight truncate">{title}</h2>
+            {sub && <p className="text-sm text-muted-foreground mt-0.5">{sub}</p>}
+          </div>
+        </div>
+        {rightAccessory}
+      </header>
+      {children}
+    </section>
+  );
+}
+
+function MnStatusChip({ established }: { established: boolean }) {
+  return established ? (
+    <span
+      className="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold shrink-0 text-[color:var(--mm-teal)] shadow-[inset_0_0_0_1px_var(--mm-mint-ring)]"
+      style={{ background: "var(--mm-mint)" }}
+    >
+      <Check className="h-3.5 w-3.5" />
+      Medical Necessity: Established
+    </span>
+  ) : (
+    <span
+      className="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold shrink-0 border"
+      style={{
+        background: "var(--mm-rose-soft)",
+        color: "var(--mm-rose)",
+        borderColor: "oklch(0.62 0.13 18 / 0.35)",
+      }}
+    >
+      <AlertTriangle className="h-3.5 w-3.5" />
+      Medical Necessity: Not Established
+    </span>
+  );
+}
+
+/** Consolidated "ask the doctor for" rows (from the Evaluate tab roll-up). */
+function AskForList({ patient }: { patient: Patient }) {
+  const established = patient.medicalNecessity === "Established";
+  const asks = splitDropdownText(patient.mnRequestConsolidated);
+  const allClean = established && asks.length === 0;
+
+  if (allClean) {
+    return (
+      <p className="text-sm text-muted-foreground italic">
+        No outstanding reasons — patient is ready.
+      </p>
+    );
+  }
+  if (asks.length === 0) {
+    return (
+      <p className="text-sm text-amber-700 italic">
+        MN is not established but no consolidated ask list yet — go back to the
+        Evaluate tab and Send to Monday so the new column populates.
+      </p>
+    );
+  }
+  return (
+    <div className="flex flex-col gap-3">
+      {asks.map((a) => (
+        <div
+          key={a}
+          className="flex items-center gap-3.5 rounded-[10px] border px-4 py-3.5"
+          style={{
+            background: "var(--mm-rose-soft)",
+            borderColor: "oklch(0.62 0.13 18 / 0.35)",
+          }}
+        >
+          <XCircle className="h-5 w-5 shrink-0" style={{ color: "var(--mm-rose)" }} />
+          <span className="text-[1.05rem] font-bold leading-snug">{a}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function LoadingRow() {
+  return (
+    <div
+      className="flex items-center gap-2 px-4 h-10 rounded-[10px] border border-dashed bg-muted/20 text-sm text-muted-foreground"
+      style={{ borderColor: "var(--mm-card-border)" }}
+    >
+      <Loader2 className="h-3.5 w-3.5 animate-spin" /> Loading…
+    </div>
+  );
+}
+
+/** Mint file rows with View (Google viewer) and optional Delete. */
+function FileList({
+  files,
+  onDelete,
+  deleteLabel,
+}: {
   files: MondayFileEntry[];
-  loading: boolean;
-  /** Delete the specific file by asset id. */
+  /** Delete the specific file by asset id. Omit for view-only rows. */
   onDelete?: (assetId: string) => void | Promise<void>;
+  deleteLabel?: string;
 }) {
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
@@ -845,140 +881,186 @@ function ScriptViewer({
     }
   };
 
-  if (loading && files.length === 0) {
-    return (
-      <div className="flex items-center justify-between gap-2 px-3 h-9 rounded-md border border-dashed bg-muted/20 text-xs text-muted-foreground">
-        <span className="flex items-center gap-2">
-          <Loader2 className="h-3 w-3 animate-spin" /> Loading…
-        </span>
-      </div>
-    );
-  }
-  if (files.length === 0) {
-    return (
-      <div className="flex items-center justify-between gap-2 px-3 h-9 rounded-md border border-dashed bg-muted/20 text-xs text-muted-foreground">
-        <span className="flex items-center gap-2">
-          <FileText className="h-3 w-3" />
-          No {label} found
-        </span>
-        <Button variant="ghost" size="sm" disabled className="h-7 px-2 text-[11px]">
-          View
-        </Button>
-      </div>
-    );
-  }
+  if (files.length === 0) return null;
+
   return (
-    <div className="space-y-1">
-      {files.map((f) => (
-        <div
-          key={f.assetId}
-          className="flex items-center justify-between gap-2 px-3 h-9 rounded-md border bg-emerald-50 border-emerald-200"
-        >
-          <span className="flex items-center gap-2 truncate text-xs text-emerald-900">
-            <FileText className="h-3 w-3 shrink-0" />
-            <span className="truncate font-medium">{f.name}</span>
-          </span>
-          <div className="flex items-center gap-1 shrink-0">
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={!f.public_url && !f.url}
-              onClick={() => {
-                const u = f.public_url || f.url;
-                if (u) openInGoogleViewer(u);
-              }}
-              className="h-7 px-2 text-[11px] gap-1"
+    <div className="flex flex-col gap-2.5">
+      {files.map((f) => {
+        const url = f.public_url || f.url;
+        return (
+          <div
+            key={f.assetId}
+            className="flex items-center gap-3 rounded-[10px] border px-4 py-3"
+            style={{ background: "var(--mm-mint)", borderColor: "var(--mm-mint-ring)" }}
+          >
+            <FileText className="h-[18px] w-[18px] shrink-0 text-[color:var(--mm-teal)]" />
+            <span className="flex-1 min-w-0 truncate text-[0.95rem] font-semibold">{f.name}</span>
+            <button
+              disabled={!url}
+              onClick={() => url && openInGoogleViewer(url)}
+              className="text-sm font-semibold shrink-0 text-[color:var(--mm-teal)] hover:underline underline-offset-4 disabled:opacity-50 disabled:no-underline disabled:cursor-not-allowed"
             >
-              <ExternalLink className="h-3 w-3" /> View
-            </Button>
+              View
+            </button>
             {onDelete && (
-              <Button
-                variant="ghost"
-                size="sm"
+              <button
                 onClick={() => handleDelete(f)}
                 disabled={deletingId !== null}
                 title={`Delete "${f.name}" from Monday`}
-                className="h-7 px-2 text-[11px] text-red-600 hover:bg-red-50 hover:text-red-700"
+                className="shrink-0 p-1.5 rounded-md text-red-600 hover:bg-red-50 hover:text-red-700 disabled:opacity-50 transition-colors"
+                aria-label={`Delete ${deleteLabel ?? f.name}`}
               >
                 {deletingId === f.assetId ? (
-                  <Loader2 className="h-3 w-3 animate-spin" />
+                  <Loader2 className="h-4 w-4 animate-spin" />
                 ) : (
-                  <Trash2 className="h-3 w-3" />
+                  <Trash2 className="h-4 w-4" />
                 )}
-              </Button>
+              </button>
             )}
           </div>
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }
 
-function RequestLetterCard({
-  files,
-  loading,
-  generating,
-  onGenerate,
-  onDelete,
-  grouped,
+/** Outline-teal generate button (mockup .gen-btn). */
+function GenBtn({
+  label,
+  disabled,
+  spinner,
+  onClick,
 }: {
-  files: MondayFileEntry[];
-  loading: boolean;
-  generating: boolean;
-  onGenerate: () => void | Promise<void>;
-  onDelete: (assetId: string) => void | Promise<void>;
-  grouped?: boolean;
+  label: string;
+  disabled?: boolean;
+  spinner?: boolean;
+  onClick: () => void;
 }) {
-  const hasLetter = files.length > 0;
   return (
-    <section
-      className={`rounded-xl bg-card border shadow-card p-5 space-y-3 ${
-        grouped ? "border-l-4 border-l-indigo-300" : ""
-      }`}
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      className="inline-flex items-center gap-2 rounded-lg px-[18px] py-2.5 text-sm font-semibold transition-colors text-[color:var(--mm-teal)] shadow-[inset_0_0_0_1.5px_var(--mm-teal)] hover:bg-[oklch(0.36_0.04_200_/_0.06)] disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent"
     >
-      <div className="flex items-start justify-between gap-3 flex-wrap">
-        <div className="min-w-0">
-          <p className="text-xs uppercase tracking-wider text-muted-foreground">
-            MN Request Letter
-          </p>
-          <p className="text-[11px] text-muted-foreground/80 mt-0.5">
-            Generated from the data above — patient name, situation, and check marks
-            are filled in automatically. Uploads to Monday so it&apos;s attached when
-            you send the request.
-          </p>
-        </div>
-        {/* Fixed min-width so the button doesn't jump from "Generate" to
-           "Generating…" when its label changes. */}
-        <Button
-          size="sm"
-          disabled
-          title="Coming soon"
-          className="h-8 gap-1 text-xs bg-gray-400 text-white min-w-[120px] justify-center cursor-not-allowed opacity-60"
-        >
-          {generating ? (
-            <>
-              <Loader2 className="h-3 w-3 animate-spin" />
-              Generating…
-            </>
-          ) : (
-            <>
-              <FileText className="h-3 w-3" />
-              {hasLetter ? "Regenerate" : "Generate"}
-            </>
-          )}
-        </Button>
-      </div>
-
-      <ScriptViewer
-        label="MN Request Letter"
-        files={files}
-        loading={loading}
-        onDelete={onDelete}
-      />
-    </section>
+      {spinner ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileText className="h-4 w-4" />}
+      {label}
+    </button>
   );
 }
 
+/** Amber "Generating…" chip with a cancel ✕ (preserves the cancel flow). */
+function GeneratingChip({ label, onCancel }: { label: string; onCancel: () => void }) {
+  return (
+    <div className="inline-flex items-center gap-1.5">
+      <span className="inline-flex items-center gap-2 rounded-lg border border-amber-300 bg-amber-50 text-amber-900 px-4 py-2.5 text-sm font-semibold">
+        <Loader2 className="h-4 w-4 animate-spin" />
+        {label}
+      </span>
+      <button
+        onClick={onCancel}
+        title="Cancel"
+        className="p-2 rounded-lg border bg-background hover:bg-muted transition-colors"
+        style={{ borderColor: "var(--mm-card-border)" }}
+      >
+        <X className="h-3.5 w-3.5" />
+      </button>
+    </div>
+  );
+}
+
+/** Numbered action row inside Send & Complete (mockup .action-row). */
+function ActionRow({
+  num,
+  done,
+  title,
+  sub,
+  children,
+}: {
+  num: number;
+  done?: boolean;
+  title: string;
+  sub?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div
+      className="flex items-center gap-4 rounded-xl border px-5 py-4 flex-wrap"
+      style={{ borderColor: "var(--mm-card-border)" }}
+    >
+      <span
+        className={`grid place-items-center h-7 w-7 rounded-full text-sm font-bold shrink-0 ${
+          done ? "text-white" : "bg-muted/70 text-muted-foreground"
+        }`}
+        style={done ? { background: "var(--mm-green)" } : undefined}
+      >
+        {done ? <Check className="h-4 w-4" /> : num}
+      </span>
+      <div className="flex-1 min-w-0">
+        <div className="text-[1.05rem] font-bold leading-snug">{title}</div>
+        {sub && <div className="text-sm text-muted-foreground mt-0.5">{sub}</div>}
+      </div>
+      {children}
+    </div>
+  );
+}
+
+function SentChip() {
+  return (
+    <span
+      className="inline-flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-sm font-semibold text-[color:var(--mm-teal)] shadow-[inset_0_0_0_1px_var(--mm-mint-ring)]"
+      style={{ background: "oklch(0.94 0.02 175 / 0.7)" }}
+    >
+      <Check className="h-4 w-4" />
+      Request Sent
+    </span>
+  );
+}
+
+// =====================================================================
+// Icons (from mockup)
+// =====================================================================
+
+function ChuteIcon() {
+  return (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 2a9 9 0 0 1 9 9H3a9 9 0 0 1 9-9z" />
+      <path d="M3 11l9 11 9-11" />
+      <path d="M12 22V11" />
+    </svg>
+  );
+}
+
+function FaxIcon() {
+  return (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <polyline points="6 9 6 2 18 2 18 9" />
+      <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" />
+      <rect x="6" y="14" width="12" height="8" />
+    </svg>
+  );
+}
+
+function ExtIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+      <polyline points="15 3 21 3 21 9" />
+      <line x1="10" y1="14" x2="21" y2="3" />
+    </svg>
+  );
+}
+
+// =====================================================================
+// Helpers
+// =====================================================================
+
+function splitDropdownText(text?: string): string[] {
+  if (!text) return [];
+  return text
+    .split(/,\s*/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
 
 function formatDate(iso?: string): string | null {
   if (!iso) return null;
@@ -999,278 +1081,7 @@ function formatDate(iso?: string): string | null {
   return `${formatted} ET`;
 }
 
-function daysSince(iso?: string): number | null {
-  if (!iso) return null;
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return null;
-  const ms = Date.now() - d.getTime();
-  return Math.floor(ms / (1000 * 60 * 60 * 24));
-}
-
 const PARACHUTE_URL = "https://dme.parachutehealth.com/u/r/BGP3-YIEG1-Z8-SL/dashboard";
-
-interface Attachment {
-  label: string;
-  count: number;
-  /** When true, the file MUST be present before Send is enabled. */
-  required?: boolean;
-}
-
-function SendActionCard({
-  patient,
-  sending,
-  completing,
-  noteAdded = true,
-  pendingNoteText = "",
-  onSend,
-  onMarkComplete,
-  attachments,
-  escalated,
-  onToggleEscalate,
-  onOpenForm,
-}: {
-  patient: Patient;
-  sending: boolean;
-  completing: boolean;
-  noteAdded?: boolean;
-  pendingNoteText?: string;
-  onSend: () => void;
-  onMarkComplete: () => void;
-  attachments: Attachment[];
-  escalated: boolean;
-  onToggleEscalate: () => void;
-  onOpenForm?: () => void;
-}) {
-  const hasPendingNote = pendingNoteText.trim().length > 0;
-  const noteBlocked = !noteAdded || hasPendingNote;
-  const method = patient.clinicalsMethod ?? "Fax";
-  const alreadySent = !!patient.requestSentAt;
-  const sentDate = formatDate(patient.requestSentAt);
-  const sentDays = daysSince(patient.requestSentAt);
-  const isParachute = method === "Parachute";
-  const isFaxOrEmail = method === "Fax" || method === "Email";
-
-  const recipient =
-    method === "Fax" && patient.doctorFax
-      ? patient.doctorFax
-      : method === "Email" && patient.doctorEmail
-        ? patient.doctorEmail
-        : null;
-
-  // Send is gated on every required attachment being present (today
-  // that's just the MN Request Letter). Optional attachments may be 0.
-  const allRequiredPresent = attachments.every(
-    (a) => !a.required || a.count > 0,
-  );
-  const mnRequestLetterPresent = allRequiredPresent;
-
-  return (
-    <section className="rounded-xl bg-card border shadow-card overflow-hidden">
-      {/* Header — title + sent status grouped together */}
-      <div className="flex items-center justify-between gap-4 flex-wrap px-6 py-4 border-b bg-muted/30">
-        <div className="min-w-0">
-          <h3 className="text-sm font-semibold leading-tight">Send Request</h3>
-          {sentDate ? (
-            <p className="text-xs text-muted-foreground mt-1">
-              Last sent <span className="font-medium text-foreground">{sentDate}</span>
-              {sentDays !== null && sentDays >= 0 && (
-                <span className="text-muted-foreground/70">
-                  {" · "}
-                  {sentDays === 0 ? "today" : `${sentDays} day${sentDays === 1 ? "" : "s"} ago`}
-                </span>
-              )}
-            </p>
-          ) : (
-            <p className="text-xs text-muted-foreground mt-1">
-              Two-step flow — send the request, then advance the stage.
-            </p>
-          )}
-        </div>
-        {alreadySent ? (
-          <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-700 bg-emerald-50 border border-emerald-300 rounded-full px-3 py-1 shrink-0">
-            <Check className="h-3.5 w-3.5" />
-            Request Sent
-          </span>
-        ) : (
-          <span className="inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground bg-background border rounded-full px-3 py-1 shrink-0">
-            Not sent yet
-          </span>
-        )}
-      </div>
-
-      {/* Two numbered step subsections — same visual pattern as the
-         Insurance Panel Step 1/2/3 layout, so the eye reads top→bottom. */}
-      <div className="px-6 py-5 space-y-4">
-        {isFaxOrEmail && <AttachmentSummary attachments={attachments} />}
-
-        <StepBlock
-          number={1}
-          title="Send the request"
-          subtitle={
-            isParachute
-              ? "Open the Parachute portal in a new tab and submit the request there."
-              : recipient
-                ? `Dispatches the files above to ${recipient} via Supermail.`
-                : method === "Fax"
-                  ? "(no doctor fax on file)"
-                  : method === "Email"
-                    ? "(no doctor email on file)"
-                    : ""
-          }
-        >
-          {isFaxOrEmail ? (
-            <Button
-              onClick={onSend}
-              disabled={sending || !mnRequestLetterPresent}
-              className="gap-2 bg-teal-600 hover:bg-teal-700 text-white"
-            >
-              {sending ? (
-                <>
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  Sending…
-                </>
-              ) : (
-                <>
-                  <Mail className="h-4 w-4" />
-                  Send via {method}
-                </>
-              )}
-            </Button>
-          ) : isParachute ? (
-            <a
-              href={PARACHUTE_URL}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-2 h-10 px-4 rounded-md bg-teal-600 hover:bg-teal-700 text-white text-sm font-medium transition-colors"
-            >
-              <ExternalLink className="h-4 w-4" />
-              Open Parachute Portal
-            </a>
-          ) : null}
-        </StepBlock>
-
-        <StepBlock
-          number={2}
-          title="Advance the stage"
-          subtitle="Click after the request has been sent — moves the patient to the next stage on Monday."
-        >
-          <div className="flex items-center gap-3">
-            {/* <EscalateButton
-              escalated={escalated}
-              onToggle={onToggleEscalate}
-              onOpenForm={onOpenForm}
-              disabled={completing}
-            /> */}
-            {noteBlocked && (
-              <span className="text-xs font-medium" style={{ color: "var(--mm-rose)" }}>
-                {hasPendingNote
-                  ? "Press Add on your note before marking complete"
-                  : "Add at least one note above to mark complete"}
-              </span>
-            )}
-            <Button
-              size="lg"
-              onClick={onMarkComplete}
-              disabled={completing || noteBlocked}
-              className="gap-2 bg-emerald-600 hover:bg-emerald-700 text-white shadow-elevate"
-            >
-              {completing ? (
-                <>
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  Marking…
-                </>
-              ) : (
-                <>
-                  <Check className="h-4 w-4" />
-                  Mark as Complete
-                </>
-              )}
-            </Button>
-          </div>
-        </StepBlock>
-      </div>
-    </section>
-  );
-}
-
-function StepBlock({
-  number,
-  title,
-  subtitle,
-  children,
-}: {
-  number: number;
-  title: string;
-  subtitle?: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className="rounded-lg border bg-background/60 px-5 py-4">
-      <div className="flex items-start gap-4">
-        <div className="h-8 w-8 rounded-full border-2 border-border bg-background flex items-center justify-center text-sm font-bold shrink-0">
-          {number}
-        </div>
-        <div className="min-w-0 flex-1 space-y-3">
-          <div>
-            <p className="text-sm font-semibold leading-snug">{title}</p>
-            {subtitle && (
-              <p className="text-xs text-muted-foreground leading-relaxed mt-1">
-                {subtitle}
-              </p>
-            )}
-          </div>
-          <div>{children}</div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function AttachmentSummary({ attachments }: { attachments: Attachment[] }) {
-  // Tells Samantha exactly what Monday's automation will attach when she
-  // hits Send — pulled live from the file columns shown above. Required
-  // rows missing a file render in red so the gating reason is obvious.
-  return (
-    <div className="rounded-lg border bg-muted/30 px-4 py-3">
-      <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-        Will attach when sent
-      </p>
-      <ul className="mt-1.5 space-y-0.5">
-        {attachments.map((a) => {
-          const blocked = a.required && a.count === 0;
-          return (
-            <li
-              key={a.label}
-              className={`flex items-center gap-2 text-xs ${
-                blocked ? "text-rose-700" : "text-foreground"
-              }`}
-            >
-              {blocked ? (
-                <AlertTriangle className="h-3 w-3 shrink-0" />
-              ) : a.count > 0 ? (
-                <Check className="h-3 w-3 shrink-0 text-emerald-600" />
-              ) : (
-                <span className="h-3 w-3 shrink-0 rounded-full border border-muted-foreground/40" />
-              )}
-              <span className="font-medium">{a.label}</span>
-              <span className="text-muted-foreground">
-                {a.count > 0
-                  ? `· ${a.count} file${a.count === 1 ? "" : "s"}`
-                  : a.required
-                    ? "· required, missing"
-                    : "· none"}
-              </span>
-            </li>
-          );
-        })}
-      </ul>
-    </div>
-  );
-}
-
-// =====================================================================
-// Helpers
-// =====================================================================
 
 /** Add N business days (Mon–Fri) to a date. */
 function addBusinessDays(from: Date, days: number): Date {
@@ -1297,5 +1108,3 @@ function openInGoogleViewer(url: string) {
   const viewerUrl = `https://docs.google.com/gview?url=${encodeURIComponent(url)}&embedded=true`;
   window.open(viewerUrl, "_blank");
 }
-
-
