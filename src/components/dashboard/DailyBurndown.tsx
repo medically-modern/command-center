@@ -148,7 +148,17 @@ export function DailyBurndown({
     });
   }, [roleCounts, countsLoading, serverBaseline, serverLoading]);
 
-  const roles = ROLES.filter((r) => visibleRoleIds.includes(r.id));
+  // Ad-hoc TASK roles — not a queue the processor "burns down" but work that
+  // can land on any patient at any time. Rendered as a task tile below the
+  // bars instead of a burndown bar.
+  const TASK_ROLE_IDS = new Set(["updateClinicals"]);
+
+  const roles = ROLES.filter(
+    (r) => visibleRoleIds.includes(r.id) && !TASK_ROLE_IDS.has(r.id),
+  );
+  const taskRoles = ROLES.filter(
+    (r) => visibleRoleIds.includes(r.id) && TASK_ROLE_IDS.has(r.id),
+  );
 
   const barData = useMemo(() => {
     if (!snapshot) return [];
@@ -183,7 +193,7 @@ export function DailyBurndown({
   /* Track which bars already celebrated so confetti fires once */
   const celebratedRef = useRef<Set<string>>(new Set());
 
-  if (!snapshot || barData.length === 0) {
+  if (!snapshot || (barData.length === 0 && taskRoles.length === 0)) {
     if (countsLoading || serverLoading) {
       return (
         <div className="flex items-center justify-center py-12 text-muted-foreground text-sm gap-2">
@@ -278,6 +288,51 @@ export function DailyBurndown({
           );
         })}
       </div>
+
+      {/* Ad-hoc task tiles — distinct from the burndown bars: these aren't
+          queues to empty, they're tasks that can hit any patient anytime. */}
+      {taskRoles.length > 0 && (
+        <div className="space-y-2">
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/70">
+            Ad-hoc tasks
+          </p>
+          {taskRoles.map((role) => {
+            const hex = COLOR_MAP[role.color] ?? "#d946ef";
+            const count = roleCounts[role.id] ?? 0;
+            return (
+              <button
+                key={role.id}
+                onClick={() => role.route && navigate(role.route)}
+                title={`Open ${role.label}`}
+                className="w-full text-left group flex items-center gap-3 rounded-lg border-2 border-dashed px-4 py-3 transition-colors hover:bg-muted/30"
+                style={{ borderColor: hexToRgba(hex, 0.45) }}
+              >
+                <span
+                  className="grid place-items-center h-8 w-8 rounded-full shrink-0"
+                  style={{ background: hexToRgba(hex, 0.12), color: hex }}
+                >
+                  <Zap className="w-4 h-4" />
+                </span>
+                <span className="min-w-0">
+                  <span className="text-sm font-medium text-foreground flex items-center gap-2">
+                    {role.label}
+                    <ExternalLink className="w-3 h-3 opacity-0 group-hover:opacity-40 transition-opacity" />
+                  </span>
+                  <span className="block text-[11px] text-muted-foreground">
+                    As-needed task — can apply to any patient, not a queue to clear
+                  </span>
+                </span>
+                <span
+                  className="ml-auto shrink-0 inline-flex items-center justify-center min-w-[2rem] h-7 px-2 rounded-full text-sm font-bold tabular-nums"
+                  style={{ background: hexToRgba(hex, 0.12), color: hex }}
+                >
+                  {countsLoading ? "…" : count}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      )}
 
       {/* Footer */}
       <div className="flex items-center gap-6 pt-1 text-xs text-muted-foreground/60">
