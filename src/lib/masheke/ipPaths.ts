@@ -10,6 +10,7 @@ export const IP_PATHS = [
   "OOW Pump",
   "Omnipod Switch",
   "IW New Insurance",
+  "Not Serving",
 ] as const;
 
 export type IpPath = (typeof IP_PATHS)[number];
@@ -82,6 +83,18 @@ export const IP_PATH_FIELDS: Record<IpPath, IpPathConfig> = {
     show3Injections: true,
     showCgmUse: true,
     showBsIssues: true,
+    showLmn: false,
+    showOow: false,
+    showOowOnScript: false,
+    showMalfunction: false,
+  },
+  // Rep explicitly marks the product as not served — no requirements, and
+  // deriveValidity treats the IP section as N/A.
+  "Not Serving": {
+    showEducation: false,
+    show3Injections: false,
+    showCgmUse: false,
+    showBsIssues: false,
     showLmn: false,
     showOow: false,
     showOowOnScript: false,

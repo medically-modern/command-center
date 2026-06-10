@@ -8,7 +8,7 @@ import type { Patient } from "./workflow";
 
 export type ValidInvalid = "Valid" | "Invalid" | "Missing";
 export type YesNo = "Yes" | "No";
-export type CgmCoveragePath = "Insulin" | "Hypo" | "Hypo Invalid" | "Missing";
+export type CgmCoveragePath = "Insulin" | "Hypo" | "Hypo Invalid" | "Missing" | "Not Serving";
 export type LmnStatus = "Yes & Valid" | "Yes, but Invalid" | "No";
 
 export interface LocalFile {
@@ -189,13 +189,18 @@ export interface ValidityResult {
   };
 }
 
-/** Compute MR Expiry Date (Last Visit + 6 months) and whether it's still valid (after today). */
+/** Compute MR Expiry Date (Last Visit + 6 months, clamped to month-end so
+ *  e.g. Mar 31 → Sep 30) and whether it's still valid (after today). */
 export function getMrExpiry(lastVisit?: string): { expiry: Date | null; expired: boolean } {
   if (!lastVisit) return { expiry: null, expired: false };
   const d = new Date(lastVisit);
   if (Number.isNaN(d.getTime())) return { expiry: null, expired: false };
   const expiry = new Date(d);
+  const day = expiry.getDate();
   expiry.setMonth(expiry.getMonth() + 6);
+  // Month-end clamp: if the day rolled over (Mar 31 + 6mo → Oct 1), snap back
+  // to the last day of the intended month (Sep 30).
+  if (expiry.getDate() !== day) expiry.setDate(0);
   return { expiry, expired: expiry.getTime() <= Date.now() };
 }
 
@@ -209,9 +214,14 @@ export function deriveValidity(
   const ipReasons: string[] = [];
   const generalReasons: string[] = [];
 
+  // Rep explicitly marked a product "Not Serving" via its coverage path —
+  // that product is treated as N/A: it neither blocks MN nor adds reasons.
+  const cgmNotServing = state.cgmCoveragePath === "Not Serving";
+  const ipNotServing = state.ipCoveragePath === "Not Serving";
+
   // ---- CGM section ----
   let cgmValid = true;
-  if (showCgm) {
+  if (showCgm && !cgmNotServing) {
     if (state.cgmScriptValid !== "Valid") {
       cgmValid = false;
       // "Missing" stays its own bucket; everything else (Invalid + unset) → invalid.
@@ -229,7 +239,7 @@ export function deriveValidity(
 
   // ---- IP section ----
   let ipValid = true;
-  if (showIp) {
+  if (showIp && !ipNotServing) {
     if (!state.ipCoveragePath) {
       ipValid = false;
       ipReasons.push("Insulin Pump Coverage Path missing");
@@ -308,8 +318,10 @@ export function deriveValidity(
     ipReasons,
     generalReasons,
     sections: {
-      cgm: { shown: showCgm, valid: cgmValid },
-      ip: { shown: showIp, valid: ipValid },
+      // "Not Serving" selected → section reads as not-shown (N/A chip, no
+      // blocking, and buildMondayPreview writes "Not Serving" for the path).
+      cgm: { shown: showCgm && !cgmNotServing, valid: cgmValid },
+      ip: { shown: showIp && !ipNotServing, valid: ipValid },
       diagnosis: { valid: diagnosisValid },
       mr: { valid: mrValid },
     },

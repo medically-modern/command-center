@@ -581,9 +581,9 @@ export function PatientProfileCard({
           colors={colors}
         />
         <AccentField
-          icon={<IconMemberId className="h-4 w-4" />}
-          label="Member ID"
-          value={patient.memberId1 ?? ""}
+          icon={<IconReferralType className="h-4 w-4" />}
+          label="Referral"
+          value={[patient.referralType, patient.referralSource].filter(Boolean).join(" · ")}
           colors={colors}
         />
         <AccentField
@@ -605,6 +605,11 @@ export function PatientProfileCard({
                 label="Address"
                 value={patient.address ?? ""}
                 className="sm:col-span-2"
+              />
+              <Field
+                icon={<IconMemberId className="h-5 w-5" />}
+                label="Member ID"
+                value={patient.memberId1 ?? ""}
               />
               {patient.memberId2 && (
                 <Field

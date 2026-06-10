@@ -128,6 +128,7 @@ export const CGM_COVERAGE_OPTS: StatusOption[] = [
   { label: "Hypo", index: 1 },
   { label: "Hypo Invalid", index: 3 },
   { label: "Missing", index: 7 },
+  { label: "Not Serving", index: 2 },
 ];
 
 export const LMN_OPTS: StatusOption[] = [
@@ -144,6 +145,7 @@ export const IP_PATH_OPTS: StatusOption[] = [
   { label: "OOW Pump", index: 3 },
   { label: "Omnipod Switch", index: 4 },
   { label: "IW New Insurance", index: 5 },
+  { label: "Not Serving", index: 7 },
 ];
 
 // Most-used ICD-10 codes — pinned to the top of the diagnosis combobox

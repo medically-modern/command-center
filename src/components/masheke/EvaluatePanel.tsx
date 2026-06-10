@@ -1,10 +1,18 @@
 import { useImmediateFileUpload, type TrackedFile } from "@/hooks/masheke/useImmediateFileUpload";
 import { useEffect, useMemo, useState, useCallback, useRef, type DragEvent } from "react";
 import type { Patient } from "@/lib/masheke/workflow";
-import { StatusSelect } from "./StatusSelect";
+import { StatusSelect, type StatusOption } from "./StatusSelect";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   Popover,
   PopoverContent,
@@ -26,6 +34,7 @@ import {
   CGM_COVERAGE_OPTS,
   LMN_OPTS,
   IP_PATH_OPTS,
+  DIAGNOSIS_FAVORITES,
 } from "@/lib/masheke/fieldOptions";
 import {
   IP_PATH_FIELDS,
@@ -89,6 +98,10 @@ import {
   Send,
   ChevronRight,
   Circle,
+  Activity,
+  Syringe,
+  ClipboardList,
+  Lock,
 } from "lucide-react";
 import { StepSection } from "@/components/shared/StepSection";
 import { getServingAccent } from "@/lib/masheke/servingTheme";
@@ -266,14 +279,29 @@ export function EvaluatePanel({ patient, resetVersion = 0, onUpdate, onOpenForm 
     [update],
   );
 
+  // Effective state for validity / preview: a script whose switch is off (or
+  // never touched) reads as "Missing" downstream — this produces the
+  // "Script missing" MN reason AND the script ask in MN Request Consolidated,
+  // matching the redesign rule that the received switch is always an answer.
+  const effState = useMemo<EvalState>(
+    () => ({
+      ...state,
+      cgmScriptValid:
+        showCgm && state.cgmScriptReceived !== "Yes" ? "Missing" : state.cgmScriptValid,
+      ipScriptValid:
+        showIp && state.ipScriptReceived !== "Yes" ? "Missing" : state.ipScriptValid,
+    }),
+    [state, showCgm, showIp],
+  );
+
   const validity = useMemo(
-    () => deriveValidity(state, patient, showCgm, showIp),
-    [state, patient, showCgm, showIp],
+    () => deriveValidity(effState, patient, showCgm, showIp),
+    [effState, patient, showCgm, showIp],
   );
 
   const preview = useMemo(
-    () => buildMondayPreview(state, validity, patient),
-    [state, validity, patient],
+    () => buildMondayPreview(effState, validity, patient),
+    [effState, validity, patient],
   );
 
   // Send to Monday — batched write of every column the rep has edited locally.
@@ -289,23 +317,31 @@ export function EvaluatePanel({ patient, resetVersion = 0, onUpdate, onOpenForm 
     setSending(true);
     const tasks: { label: string; run: () => Promise<unknown> }[] = [];
 
+    const clinReceived = state.mrReceived === "Yes";
+    const cgmReceived = state.cgmScriptReceived === "Yes";
+    const ipReceived = state.ipScriptReceived === "Yes";
+
     // Insulin Pump Coverage Path — write "Not Serving" if the patient isn't
-    // being served IP at all; otherwise write the rep's selection (or clear).
+    // being served IP at all; if the IP script was received, write the rep's
+    // selection (or clear). If the script was NOT received the section was
+    // hidden, so leave Monday's column untouched rather than clobbering it.
     if (!showIp) {
       tasks.push({
         label: "IP Coverage Path",
         run: () => writeStatusLabel(patient.id, COL.ipCoveragePath, "Not Serving"),
       });
-    } else if (state.ipCoveragePath) {
-      tasks.push({
-        label: "IP Coverage Path",
-        run: () => writeStatusLabel(patient.id, COL.ipCoveragePath, state.ipCoveragePath!),
-      });
-    } else {
-      tasks.push({
-        label: "IP Coverage Path",
-        run: () => clearStatusColumn(patient.id, COL.ipCoveragePath),
-      });
+    } else if (ipReceived) {
+      if (state.ipCoveragePath) {
+        tasks.push({
+          label: "IP Coverage Path",
+          run: () => writeStatusLabel(patient.id, COL.ipCoveragePath, state.ipCoveragePath!),
+        });
+      } else {
+        tasks.push({
+          label: "IP Coverage Path",
+          run: () => clearStatusColumn(patient.id, COL.ipCoveragePath),
+        });
+      }
     }
     // CGM Coverage Path — same pattern.
     if (!showCgm) {
@@ -313,71 +349,77 @@ export function EvaluatePanel({ patient, resetVersion = 0, onUpdate, onOpenForm 
         label: "CGM Coverage Path",
         run: () => writeStatusLabel(patient.id, COL.cgmCoveragePath, "Not Serving"),
       });
-    } else if (state.cgmCoveragePath) {
-      tasks.push({
-        label: "CGM Coverage Path",
-        run: () => writeStatusLabel(patient.id, COL.cgmCoveragePath, state.cgmCoveragePath!),
-      });
-    } else {
-      tasks.push({
-        label: "CGM Coverage Path",
-        run: () => clearStatusColumn(patient.id, COL.cgmCoveragePath),
-      });
+    } else if (cgmReceived) {
+      if (state.cgmCoveragePath) {
+        tasks.push({
+          label: "CGM Coverage Path",
+          run: () => writeStatusLabel(patient.id, COL.cgmCoveragePath, state.cgmCoveragePath!),
+        });
+      } else {
+        tasks.push({
+          label: "CGM Coverage Path",
+          run: () => clearStatusColumn(patient.id, COL.cgmCoveragePath),
+        });
+      }
     }
-    if (state.diagnosis) {
-      tasks.push({
-        label: "Diagnosis",
-        run: () => writeStatusLabel(patient.id, COL.diagnosis, state.diagnosis!),
-      });
-    } else {
-      tasks.push({
-        label: "Diagnosis",
-        run: () => clearStatusColumn(patient.id, COL.diagnosis),
-      });
+    // Diagnosis / Last Visit / MR Expiry — only synced while the Clinicals
+    // section is visible (Clinicals received). When hidden, leave Monday
+    // untouched.
+    if (clinReceived) {
+      if (state.diagnosis) {
+        tasks.push({
+          label: "Diagnosis",
+          run: () => writeStatusLabel(patient.id, COL.diagnosis, state.diagnosis!),
+        });
+      } else {
+        tasks.push({
+          label: "Diagnosis",
+          run: () => clearStatusColumn(patient.id, COL.diagnosis),
+        });
+      }
     }
-    // Script Received columns
-    if (state.cgmScriptReceived) {
+    // Script Received columns — the switch is always an answer: off = "No".
+    if (showCgm) {
       tasks.push({
         label: "CGM Script Received",
-        run: () => writeStatusLabel(patient.id, COL.cgmScriptReceived, state.cgmScriptReceived!),
+        run: () => writeStatusLabel(patient.id, COL.cgmScriptReceived, cgmReceived ? "Yes" : "No"),
       });
     }
-    if (state.ipScriptReceived) {
+    if (showIp) {
       tasks.push({
         label: "IP Script Received",
-        run: () => writeStatusLabel(patient.id, COL.ipScriptReceived, state.ipScriptReceived!),
+        run: () => writeStatusLabel(patient.id, COL.ipScriptReceived, ipReceived ? "Yes" : "No"),
       });
     }
-    const mrLabel =
-      state.mrReceived === "Yes" ? "MR Received" : state.mrReceived === "No" ? "Collect" : null;
-    if (mrLabel) {
-      tasks.push({
-        label: "MRs / Clinicals",
-        run: () => writeStatusLabel(patient.id, COL.mrsClinicals, mrLabel),
-      });
-    }
-    if (state.lastVisitDate) {
-      tasks.push({
-        label: "Last Visit Date",
-        run: () => writeDate(patient.id, COL.lastVisit, state.lastVisitDate!),
-      });
-    } else {
-      tasks.push({
-        label: "Last Visit Date (clear)",
-        run: () => clearDateColumn(patient.id, COL.lastVisit),
-      });
-    }
-    const { expiry } = getMrExpiry(state.lastVisitDate);
-    if (expiry) {
-      tasks.push({
-        label: "MR Expiry Date",
-        run: () => writeDate(patient.id, COL.mrExpiryDate, expiry.toISOString().slice(0, 10)),
-      });
-    } else {
-      tasks.push({
-        label: "MR Expiry Date (clear)",
-        run: () => clearDateColumn(patient.id, COL.mrExpiryDate),
-      });
+    // MRs / Clinicals — switch is always an answer: off = "Collect".
+    tasks.push({
+      label: "MRs / Clinicals",
+      run: () => writeStatusLabel(patient.id, COL.mrsClinicals, clinReceived ? "MR Received" : "Collect"),
+    });
+    if (clinReceived) {
+      if (state.lastVisitDate) {
+        tasks.push({
+          label: "Last Visit Date",
+          run: () => writeDate(patient.id, COL.lastVisit, state.lastVisitDate!),
+        });
+      } else {
+        tasks.push({
+          label: "Last Visit Date (clear)",
+          run: () => clearDateColumn(patient.id, COL.lastVisit),
+        });
+      }
+      const { expiry } = getMrExpiry(state.lastVisitDate);
+      if (expiry) {
+        tasks.push({
+          label: "MR Expiry Date",
+          run: () => writeDate(patient.id, COL.mrExpiryDate, expiry.toISOString().slice(0, 10)),
+        });
+      } else {
+        tasks.push({
+          label: "MR Expiry Date (clear)",
+          run: () => clearDateColumn(patient.id, COL.mrExpiryDate),
+        });
+      }
     }
     tasks.push({
       label: "Medical Necessity",
@@ -465,10 +507,20 @@ export function EvaluatePanel({ patient, resetVersion = 0, onUpdate, onOpenForm 
     }
   }, [patient, state, preview, showCgm, showIp]);
 
-  const anyYes = state.cgmScriptReceived === "Yes" || state.ipScriptReceived === "Yes" || state.mrReceived === "Yes";
+  // ── Redesign visibility rules (strict, per-document) ──
+  // Each script strictly controls only its own coverage section; Clinicals
+  // controls Diagnosis & Clinicals AND Clinical Files. Step numbers renumber
+  // dynamically based on what's visible.
+  const cgmOn = showCgm && state.cgmScriptReceived === "Yes";
+  const ipOn = showIp && state.ipScriptReceived === "Yes";
+  const clinOn = state.mrReceived === "Yes";
+  let stepCounter = 1;
+  const diagStepNum = clinOn ? ++stepCounter : 0;
+  const pathStepNum = cgmOn || ipOn ? ++stepCounter : 0;
+  const filesStepNum = clinOn ? ++stepCounter : 0;
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-6">
       {/* Banner: Serving forces a path */}
       {!showCgm && !showIp && (
         <div className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
@@ -478,319 +530,181 @@ export function EvaluatePanel({ patient, resetVersion = 0, onUpdate, onOpenForm 
 
 
 
-      {/* ── Quick Check ────────────────────────────────── */}
-      <StepSection accent={accent} step={1} title="Quick Check">
-        <div className="divide-y divide-border rounded-xl border border-border bg-card overflow-hidden">
-          {/* CGM Script row */}
+      {/* ── Step 1 · Script / Clinicals Received? ──────── */}
+      <MmStep num={1} title="Script / Clinicals Received?">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
           {showCgm && (
-            <div className="flex items-center gap-4 px-5 py-4 hover:bg-muted/30 transition-colors">
-              <div className="shrink-0">
-                {state.cgmScriptReceived === "Yes" ? (
-                  <CheckCircle2 className="h-6 w-6 text-emerald-500" />
-                ) : state.cgmScriptReceived === "No" ? (
-                  <XCircle className="h-6 w-6 text-red-400" />
-                ) : (
-                  <Circle className="h-6 w-6 text-muted-foreground/40" />
-                )}
-              </div>
-              <span className="text-sm font-medium text-foreground min-w-[140px]">CGM Script</span>
-              <div className="flex items-center gap-2 ml-auto">
-                <button
-                  onClick={() => { if (state.cgmScriptReceived === "Yes") { update("cgmScriptReceived", undefined); update("cgmScriptValid", undefined); } else { update("cgmScriptReceived", "Yes" as YesNo); } }}
-                  className={cn(
-                    "px-3 py-1.5 rounded-full text-xs font-medium border transition-all",
-                    state.cgmScriptReceived === "Yes"
-                      ? "bg-emerald-100 text-emerald-700 border-emerald-300"
-                      : "bg-muted/50 text-muted-foreground border-border hover:border-emerald-300 hover:text-emerald-600"
-                  )}
-                >
-                  Received
-                </button>
-                <button
-                  onClick={() => { if (state.cgmScriptReceived === "No") { update("cgmScriptReceived", undefined); } else { update("cgmScriptReceived", "No" as YesNo); update("cgmScriptValid", undefined); } }}
-                  className={cn(
-                    "px-3 py-1.5 rounded-full text-xs font-medium border transition-all",
-                    state.cgmScriptReceived === "No"
-                      ? "bg-red-100 text-red-700 border-red-300"
-                      : "bg-muted/50 text-muted-foreground border-border hover:border-red-300 hover:text-red-600"
-                  )}
-                >
-                  Not Received
-                </button>
-                {state.cgmScriptReceived === "Yes" && (
-                  <>
-                    <div className="w-px h-5 bg-border mx-1" />
-                    <button
-                      onClick={() => update("cgmScriptValid", state.cgmScriptValid === "Valid" ? undefined : "Valid" as ValidInvalid)}
-                      className={cn(
-                        "px-3 py-1.5 rounded-full text-xs font-medium border transition-all",
-                        state.cgmScriptValid === "Valid"
-                          ? "bg-emerald-100 text-emerald-700 border-emerald-300"
-                          : "bg-muted/50 text-muted-foreground border-border hover:border-emerald-300"
-                      )}
-                    >
-                      Valid
-                    </button>
-                    <button
-                      onClick={() => update("cgmScriptValid", state.cgmScriptValid === "Invalid" ? undefined : "Invalid" as ValidInvalid)}
-                      className={cn(
-                        "px-3 py-1.5 rounded-full text-xs font-medium border transition-all",
-                        state.cgmScriptValid === "Invalid"
-                          ? "bg-red-100 text-red-700 border-red-300"
-                          : "bg-muted/50 text-muted-foreground border-border hover:border-red-300"
-                      )}
-                    >
-                      Invalid
-                    </button>
-                  </>
-                )}
-              </div>
-            </div>
+            <DocCard
+              title="CGM Script"
+              received={state.cgmScriptReceived === "Yes"}
+              fullWidth={!showIp}
+              showValidity
+              validity={
+                state.cgmScriptValid === "Valid"
+                  ? true
+                  : state.cgmScriptValid === "Invalid"
+                    ? false
+                    : null
+              }
+              onToggle={(on) => {
+                update("cgmScriptReceived", (on ? "Yes" : "No") as YesNo);
+                update("cgmScriptValid", undefined);
+              }}
+              onValidity={(v) => update("cgmScriptValid", (v ? "Valid" : "Invalid") as ValidInvalid)}
+            />
           )}
-
-          {/* IP Script row */}
           {showIp && (
-            <div className="flex items-center gap-4 px-5 py-4 hover:bg-muted/30 transition-colors">
-              <div className="shrink-0">
-                {state.ipScriptReceived === "Yes" ? (
-                  <CheckCircle2 className="h-6 w-6 text-emerald-500" />
-                ) : state.ipScriptReceived === "No" ? (
-                  <XCircle className="h-6 w-6 text-red-400" />
-                ) : (
-                  <Circle className="h-6 w-6 text-muted-foreground/40" />
-                )}
-              </div>
-              <span className="text-sm font-medium text-foreground min-w-[140px]">IP Script</span>
-              <div className="flex items-center gap-2 ml-auto">
-                <button
-                  onClick={() => { if (state.ipScriptReceived === "Yes") { update("ipScriptReceived", undefined); update("ipScriptValid", undefined); } else { update("ipScriptReceived", "Yes" as YesNo); } }}
-                  className={cn(
-                    "px-3 py-1.5 rounded-full text-xs font-medium border transition-all",
-                    state.ipScriptReceived === "Yes"
-                      ? "bg-emerald-100 text-emerald-700 border-emerald-300"
-                      : "bg-muted/50 text-muted-foreground border-border hover:border-emerald-300 hover:text-emerald-600"
-                  )}
-                >
-                  Received
-                </button>
-                <button
-                  onClick={() => { if (state.ipScriptReceived === "No") { update("ipScriptReceived", undefined); } else { update("ipScriptReceived", "No" as YesNo); update("ipScriptValid", undefined); } }}
-                  className={cn(
-                    "px-3 py-1.5 rounded-full text-xs font-medium border transition-all",
-                    state.ipScriptReceived === "No"
-                      ? "bg-red-100 text-red-700 border-red-300"
-                      : "bg-muted/50 text-muted-foreground border-border hover:border-red-300 hover:text-red-600"
-                  )}
-                >
-                  Not Received
-                </button>
-                {state.ipScriptReceived === "Yes" && (
-                  <>
-                    <div className="w-px h-5 bg-border mx-1" />
-                    <button
-                      onClick={() => update("ipScriptValid", state.ipScriptValid === "Valid" ? undefined : "Valid" as ValidInvalid)}
-                      className={cn(
-                        "px-3 py-1.5 rounded-full text-xs font-medium border transition-all",
-                        state.ipScriptValid === "Valid"
-                          ? "bg-emerald-100 text-emerald-700 border-emerald-300"
-                          : "bg-muted/50 text-muted-foreground border-border hover:border-emerald-300"
-                      )}
-                    >
-                      Valid
-                    </button>
-                    <button
-                      onClick={() => update("ipScriptValid", state.ipScriptValid === "Invalid" ? undefined : "Invalid" as ValidInvalid)}
-                      className={cn(
-                        "px-3 py-1.5 rounded-full text-xs font-medium border transition-all",
-                        state.ipScriptValid === "Invalid"
-                          ? "bg-red-100 text-red-700 border-red-300"
-                          : "bg-muted/50 text-muted-foreground border-border hover:border-red-300"
-                      )}
-                    >
-                      Invalid
-                    </button>
-                  </>
-                )}
-              </div>
-            </div>
+            <DocCard
+              title="IP Script"
+              received={state.ipScriptReceived === "Yes"}
+              fullWidth={!showCgm}
+              showValidity
+              validity={
+                state.ipScriptValid === "Valid"
+                  ? true
+                  : state.ipScriptValid === "Invalid"
+                    ? false
+                    : null
+              }
+              onToggle={(on) => {
+                update("ipScriptReceived", (on ? "Yes" : "No") as YesNo);
+                update("ipScriptValid", undefined);
+              }}
+              onValidity={(v) => update("ipScriptValid", (v ? "Valid" : "Invalid") as ValidInvalid)}
+            />
           )}
-
-          {/* Clinicals row */}
-          <div className="flex items-center gap-4 px-5 py-4 hover:bg-muted/30 transition-colors">
-            <div className="shrink-0">
-              {state.mrReceived === "Yes" ? (
-                <CheckCircle2 className="h-6 w-6 text-emerald-500" />
-              ) : state.mrReceived === "No" ? (
-                <XCircle className="h-6 w-6 text-red-400" />
-              ) : (
-                <Circle className="h-6 w-6 text-muted-foreground/40" />
-              )}
-            </div>
-            <span className="text-sm font-medium text-foreground min-w-[140px]">Clinicals</span>
-            <div className="flex items-center gap-2 ml-auto">
-              <button
-                onClick={() => setMrReceived(state.mrReceived === "Yes" ? undefined as unknown as YesNo : "Yes" as YesNo)}
-                className={cn(
-                  "px-3 py-1.5 rounded-full text-xs font-medium border transition-all",
-                  state.mrReceived === "Yes"
-                    ? "bg-emerald-100 text-emerald-700 border-emerald-300"
-                    : "bg-muted/50 text-muted-foreground border-border hover:border-emerald-300 hover:text-emerald-600"
-                )}
-              >
-                Received
-              </button>
-              <button
-                onClick={() => setMrReceived(state.mrReceived === "No" ? undefined as unknown as YesNo : "No" as YesNo)}
-                className={cn(
-                  "px-3 py-1.5 rounded-full text-xs font-medium border transition-all",
-                  state.mrReceived === "No"
-                    ? "bg-red-100 text-red-700 border-red-300"
-                    : "bg-muted/50 text-muted-foreground border-border hover:border-red-300 hover:text-red-600"
-                )}
-              >
-                Not Received
-              </button>
-            </div>
-          </div>
-        </div>
-      </StepSection>
-
-      {anyYes && (<>
-
-      {/* ── Diagnosis & Clinicals ───────────────────────── */}
-      <StepSection
-        accent={accent}
-        step={2}
-        title="Diagnosis & Clinicals"
-        rightAccessory={validity.sections.diagnosis.valid && validity.sections.mr.valid ? (
-          <span className="inline-flex items-center gap-1 text-xs font-medium text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-full px-2 py-0.5"><Check className="h-3 w-3" /> Complete</span>
-        ) : validity.sections.diagnosis.valid === false || validity.sections.mr.valid === false ? (
-          <span className="inline-flex items-center gap-1 text-xs font-medium text-red-700 bg-red-50 border border-red-200 rounded-full px-2 py-0.5"><X className="h-3 w-3" /> Incomplete</span>
-        ) : null}
-      >
-        <SectionCard>
-          <DiagnosisField
-            value={state.diagnosis}
-            onChange={(v) => setDiagnosis(v)}
+          <DocCard
+            title="Clinicals"
+            received={state.mrReceived === "Yes"}
+            fullWidth
+            onToggle={(on) => setMrReceived((on ? "Yes" : "No") as YesNo)}
           />
-          {state.mrReceived === "Yes" && (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-4 mt-4 pt-4 border-t border-border">
-              <DateField
-                label="Last Visit Date"
-                value={state.lastVisitDate}
-                onChange={(v) => setLastVisitDate(v)}
-              />
+        </div>
+      </MmStep>
+
+
+      {/* ── Diagnosis & Clinicals — visible only when Clinicals received ── */}
+      {clinOn && (
+        <MmStep num={diagStepNum} title="Diagnosis & Clinicals">
+          <SubCard icon={<ClipboardList className="h-4 w-4" />} title="Clinical Details">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-x-6 gap-y-4 items-start">
+              <DiagnosisField value={state.diagnosis} onChange={(v) => setDiagnosis(v)} />
+              <LastVisitField value={state.lastVisitDate} onChange={(v) => setLastVisitDate(v)} />
               <MrExpiryField lastVisit={state.lastVisitDate} />
             </div>
-          )}
-        </SectionCard>
-      </StepSection>
-
-      {/* CGM block */}
-      {showCgm && (
-        <StepSection
-          accent={accent}
-          step={3}
-          title="CGM"
-          rightAccessory={validity.sections.cgm.shown ? (
-            validity.sections.cgm.valid ? (
-              <span className="inline-flex items-center gap-1 text-xs font-medium text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-full px-2 py-0.5"><Check className="h-3 w-3" /> Complete</span>
-            ) : validity.sections.cgm.valid === false ? (
-              <span className="inline-flex items-center gap-1 text-xs font-medium text-red-700 bg-red-50 border border-red-200 rounded-full px-2 py-0.5"><X className="h-3 w-3" /> Incomplete</span>
-            ) : null
-          ) : null}
-        >
-          <SectionCard>
-            <StatusSelect
-              label="CGM Coverage Path"
-              value={state.cgmCoveragePath}
-              options={CGM_COVERAGE_OPTS}
-              onChange={(v) => setCgmCoveragePath(v as CgmCoveragePath)}
-            />
-          </SectionCard>
-        </StepSection>
+          </SubCard>
+        </MmStep>
       )}
 
-      {/* IP block */}
-      {showIp && (
-        <StepSection
-          accent={accent}
-          step={showCgm ? 4 : 3}
-          title="Insulin Pump"
-          rightAccessory={validity.sections.ip.shown ? (
-            validity.sections.ip.valid ? (
-              <span className="inline-flex items-center gap-1 text-xs font-medium text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-full px-2 py-0.5"><Check className="h-3 w-3" /> Complete</span>
-            ) : validity.sections.ip.valid === false ? (
-              <span className="inline-flex items-center gap-1 text-xs font-medium text-red-700 bg-red-50 border border-red-200 rounded-full px-2 py-0.5"><X className="h-3 w-3" /> Incomplete</span>
-            ) : null
-          ) : null}
+      {/* ── Coverage paths — each script strictly controls its own section ── */}
+      {(cgmOn || ipOn) && (
+        <MmStep
+          num={pathStepNum}
+          title={cgmOn && ipOn ? "CGM & Insulin Pump" : cgmOn ? "CGM" : "Insulin Pump"}
         >
-          <SectionCard>
-            <div className="space-y-4">
-              <StatusSelect
-                label="Insulin Pump Coverage Path"
-                value={state.ipCoveragePath}
-                options={IP_PATH_OPTS}
-                onChange={(v) => setIpCoveragePath(v as IpPath)}
-              />
-              {state.ipCoveragePath && (
-                <IpCriteria state={state} patient={patient} update={update} />
-              )}
+          <div
+            className={cn(
+              "grid gap-5 items-start",
+              cgmOn && ipOn ? "grid-cols-1 lg:grid-cols-2" : "grid-cols-1",
+            )}
+          >
+            {cgmOn && (
+              <SubCard icon={<Activity className="h-4 w-4" />} title="CGM Coverage Path">
+                <PathSelect
+                  value={state.cgmCoveragePath}
+                  options={CGM_COVERAGE_OPTS}
+                  onChange={(v) => setCgmCoveragePath(v as CgmCoveragePath)}
+                  missing={!state.cgmCoveragePath}
+                />
+              </SubCard>
+            )}
+            {ipOn && (
+              <SubCard icon={<Syringe className="h-4 w-4" />} title="Insulin Pump Coverage Path">
+                <div className="space-y-4">
+                  <PathSelect
+                    value={state.ipCoveragePath}
+                    options={IP_PATH_OPTS}
+                    onChange={(v) => setIpCoveragePath(v as IpPath)}
+                    missing={!state.ipCoveragePath}
+                  />
+                  <IpCriteria state={state} patient={patient} update={update} />
+                </div>
+              </SubCard>
+            )}
+          </div>
+        </MmStep>
+      )}
+
+      {/* ── Clinical Files — visible only when Clinicals received ── */}
+      {clinOn && (
+        <MmStep num={filesStepNum} title="Clinical Files">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 items-stretch">
+            <div className="flex flex-col">
+              <h4 className="text-base font-bold tracking-tight">Initial File Collection</h4>
+              <p className="text-sm text-muted-foreground mb-3">
+                All clinical documents gathered during collection
+              </p>
+              <div className="flex-1">
+                <FileUploadCard
+                  label="Initial File Collection"
+                  files={state.clinicalFiles ?? []}
+                  mondayFiles={mondayFiles.clinicalFiles}
+                  mondayLoading={mondayFiles.loading}
+                  trackedFiles={clinicalUpload.files}
+                  itemId={patient.id}
+                  columnId={COL.clinicalFiles}
+                  onRefetch={mondayFiles.refetch}
+                  onAdd={(files) => update("clinicalFiles", [...(state.clinicalFiles ?? []), ...files])}
+                  onAddRaw={(rawFiles) => {
+                    clinicalUpload.upload(patient.id, COL.clinicalFiles, rawFiles);
+                  }}
+                  onRemove={(idx) => {
+                    const next = [...(state.clinicalFiles ?? [])];
+                    next.splice(idx, 1);
+                    update("clinicalFiles", next);
+                  }}
+                />
+              </div>
             </div>
-          </SectionCard>
-        </StepSection>
+            <div className="flex flex-col">
+              <h4 className="text-base font-bold tracking-tight">
+                Final Clinicals{" "}
+                <span className="font-medium text-muted-foreground">(Single File)</span>
+              </h4>
+              <p className="text-sm text-muted-foreground mb-3">
+                The one combined, finalized clinical package
+              </p>
+              <div className="flex-1">
+                {validity.established ? (
+                  <FileUploadCard
+                    label="Final Clinicals"
+                    files={state.finalClinicalFiles ?? []}
+                    mondayFiles={mondayFiles.finalClinicals}
+                    mondayLoading={mondayFiles.loading}
+                    trackedFiles={finalClinicalUpload.files}
+                    itemId={patient.id}
+                    columnId={COL.finalClinicals}
+                    onRefetch={mondayFiles.refetch}
+                    onAdd={(files) =>
+                      update("finalClinicalFiles", [...(state.finalClinicalFiles ?? []), ...files])
+                    }
+                    onAddRaw={(rawFiles) => {
+                      finalClinicalUpload.upload(patient.id, COL.finalClinicals, rawFiles);
+                    }}
+                    onRemove={(idx) => {
+                      const next = [...(state.finalClinicalFiles ?? [])];
+                      next.splice(idx, 1);
+                      update("finalClinicalFiles", next);
+                    }}
+                  />
+                ) : (
+                  <LockedDropzone />
+                )}
+              </div>
+            </div>
+          </div>
+        </MmStep>
       )}
-
-      {/* Clinical files (uploads) */}
-      <StepSection accent={accent} step={4} title="Clinical Files">
-        <SectionCard>
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          <FileUploadCard
-            label="Clinical Files"
-            files={state.clinicalFiles ?? []}
-            mondayFiles={mondayFiles.clinicalFiles}
-            mondayLoading={mondayFiles.loading}
-            trackedFiles={clinicalUpload.files}
-            itemId={patient.id}
-            columnId={COL.clinicalFiles}
-            onRefetch={mondayFiles.refetch}
-            onAdd={(files) => update("clinicalFiles", [...(state.clinicalFiles ?? []), ...files])}
-            onAddRaw={(rawFiles) => {
-              // Upload immediately to Monday instead of batching
-              clinicalUpload.upload(patient.id, COL.clinicalFiles, rawFiles);
-            }}
-            onRemove={(idx) => {
-              const next = [...(state.clinicalFiles ?? [])];
-              next.splice(idx, 1);
-              update("clinicalFiles", next);
-            }}
-          />
-          <FileUploadCard
-            label="Final Clinical Files"
-            files={state.finalClinicalFiles ?? []}
-            mondayFiles={mondayFiles.finalClinicals}
-            mondayLoading={mondayFiles.loading}
-            trackedFiles={finalClinicalUpload.files}
-            itemId={patient.id}
-            columnId={COL.finalClinicals}
-            onRefetch={mondayFiles.refetch}
-            onAdd={(files) =>
-              update("finalClinicalFiles", [...(state.finalClinicalFiles ?? []), ...files])
-            }
-            onAddRaw={(rawFiles) => {
-              // Upload immediately to Monday instead of batching
-              finalClinicalUpload.upload(patient.id, COL.finalClinicals, rawFiles);
-            }}
-            onRemove={(idx) => {
-              const next = [...(state.finalClinicalFiles ?? [])];
-              next.splice(idx, 1);
-              update("finalClinicalFiles", next);
-            }}
-          />
-        </div>
-        </SectionCard>
-      </StepSection>
-      </>)}
 
       {/* Notes */}
       <NotesPanel
@@ -859,7 +773,7 @@ interface IpCriteriaProps {
 }
 
 function IpCriteria({ state, patient, update }: IpCriteriaProps) {
-  if (!state.ipCoveragePath) return null;
+  if (!state.ipCoveragePath || state.ipCoveragePath === "Not Serving") return null;
   const cfg = IP_PATH_FIELDS[state.ipCoveragePath];
 
   // Nothing else to show for Supplies Only
@@ -877,115 +791,84 @@ function IpCriteria({ state, patient, update }: IpCriteriaProps) {
   const oowCheck = isOowDateValid(state.oowDate, patient.primaryInsurance);
 
   return (
-    <div className="mt-3 pt-3 border-t border-dashed">
-      <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-2">
-        Criteria for {state.ipCoveragePath}
+    <div>
+      <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-2">
+        Requirements — all required
       </p>
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6">
+      <div className="flex flex-col gap-2.5">
         {cfg.showEducation && (
-          <StatusSelect
-            label="Diabetes Education"
-            value={state.diabetesEducation}
-            options={YES_NO_OPTS}
-            onChange={(v) => update("diabetesEducation", v as YesNo)}
-          />
+          <ReqRow label="Diabetes Education" missing={state.diabetesEducation === undefined}>
+            <PillPair
+              value={state.diabetesEducation}
+              onChange={(v) => update("diabetesEducation", v)}
+            />
+          </ReqRow>
         )}
         {cfg.show3Injections && (
-          <StatusSelect
-            label="3+ Injections / day"
-            value={state.threeInjections}
-            options={YES_NO_OPTS}
-            onChange={(v) => update("threeInjections", v as YesNo)}
-          />
+          <ReqRow label="3+ Injections / Day" missing={state.threeInjections === undefined}>
+            <PillPair
+              value={state.threeInjections}
+              onChange={(v) => update("threeInjections", v)}
+            />
+          </ReqRow>
         )}
         {cfg.showCgmUse && (
-          <StatusSelect
-            label="CGM Use"
-            value={state.cgmUse}
-            options={YES_NO_OPTS}
-            onChange={(v) => update("cgmUse", v as YesNo)}
-          />
+          <ReqRow label="CGM Use" missing={state.cgmUse === undefined}>
+            <PillPair value={state.cgmUse} onChange={(v) => update("cgmUse", v)} />
+          </ReqRow>
         )}
         {cfg.showBsIssues && (
-          <StatusSelect
-            label="Blood Sugar Issues"
-            value={state.bloodSugarIssues}
-            options={YES_NO_OPTS}
-            onChange={(v) => update("bloodSugarIssues", v as YesNo)}
-          />
+          <ReqRow label="Blood Sugar Issues" missing={state.bloodSugarIssues === undefined}>
+            <PillPair
+              value={state.bloodSugarIssues}
+              onChange={(v) => update("bloodSugarIssues", v)}
+            />
+          </ReqRow>
         )}
         {cfg.showLmn && (
-          <StatusSelect
-            label="Letter of MN on file"
-            value={state.lmn}
-            options={LMN_OPTS}
-            onChange={(v) => update("lmn", v as LmnStatus)}
-          />
+          <ReqRow label="Letter of MN on File" missing={state.lmn === undefined}>
+            <LmnPills value={state.lmn} onChange={(v) => update("lmn", v)} />
+          </ReqRow>
+        )}
+        {cfg.showOow && (
+          <ReqRow
+            label="OOW Date"
+            missing={!state.oowDate || (oowCheck !== null && !oowCheck.valid)}
+            hint={
+              oowCheck === null ? undefined : oowCheck.valid ? (
+                <p className="text-xs mt-0.5 text-[color:var(--mm-teal)]">
+                  Out of warranty {formatOowDiff(oowCheck.diffDays)} ago
+                </p>
+              ) : (
+                <p className="text-xs mt-0.5 text-[color:var(--mm-rose)]">
+                  Date is in the future — pump still under warranty (OOW in{" "}
+                  {formatOowDiff(oowCheck.diffDays)})
+                </p>
+              )
+            }
+          >
+            <Input
+              type="date"
+              value={state.oowDate ?? ""}
+              onChange={(e) => update("oowDate", e.target.value || undefined)}
+              className="w-[170px] h-9 text-sm shrink-0"
+            />
+          </ReqRow>
+        )}
+        {cfg.showOowOnScript && (
+          <ReqRow label="OOW on Script" missing={state.oowDateOnScript === undefined}>
+            <PillPair
+              value={state.oowDateOnScript}
+              onChange={(v) => update("oowDateOnScript", v)}
+            />
+          </ReqRow>
         )}
         {cfg.showMalfunction && (
-          <StatusSelect
-            label="Malfunction"
-            value={state.malfunction}
-            options={YES_NO_OPTS}
-            onChange={(v) => update("malfunction", v as YesNo)}
-          />
+          <ReqRow label="Malfunction" missing={state.malfunction === undefined}>
+            <PillPair value={state.malfunction} onChange={(v) => update("malfunction", v)} />
+          </ReqRow>
         )}
       </div>
-
-      {cfg.showOow && (
-        <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2 items-end">
-          <div className="space-y-1.5 px-2">
-            <Label className="text-xs text-muted-foreground">OOW Date</Label>
-            <div className="flex items-center gap-2">
-              <Input
-                type="date"
-                value={state.oowDate ?? ""}
-                onChange={(e) => update("oowDate", e.target.value)}
-                className="text-sm h-9"
-              />
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => update("oowDate", undefined)}
-                disabled={!state.oowDate}
-                className="h-9 px-2 text-xs gap-1"
-                title="Mark as not provided"
-              >
-                <X className="h-3 w-3" /> Clear
-              </Button>
-            </div>
-          </div>
-          <div className="flex items-center gap-2 pb-1">
-            {oowCheck === null ? (
-              <span className="inline-flex items-center gap-1 text-xs font-medium text-red-700 bg-red-50 border border-red-200 rounded-full px-2 py-0.5">
-                <X className="h-3 w-3" />
-                Not provided
-              </span>
-            ) : oowCheck.valid ? (
-              <span className="inline-flex items-center gap-1 text-xs font-medium text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-full px-2 py-0.5">
-                <Check className="h-3 w-3" />
-                Out of warranty {formatOowDiff(oowCheck.diffDays)} ago
-              </span>
-            ) : (
-              <span className="inline-flex items-center gap-1 text-xs font-medium text-red-700 bg-red-50 border border-red-200 rounded-full px-2 py-0.5">
-                <X className="h-3 w-3" />
-                Still under warranty — OOW in {formatOowDiff(oowCheck.diffDays)}
-              </span>
-            )}
-          </div>
-        </div>
-      )}
-
-      {cfg.showOowOnScript && (
-        <div className="mt-1 grid grid-cols-1 sm:grid-cols-2 gap-x-6">
-          <StatusSelect
-            label="OOW Date on Script?"
-            value={state.oowDateOnScript}
-            options={YES_NO_OPTS}
-            onChange={(v) => update("oowDateOnScript", v as YesNo)}
-          />
-        </div>
-      )}
     </div>
   );
 }
@@ -1013,8 +896,10 @@ function DateField({ label, value, onChange }: DateFieldProps) {
 function MrExpiryField({ lastVisit }: { lastVisit?: string }) {
   const { expiry, expired } = getMrExpiry(lastVisit);
   return (
-    <div className="space-y-1.5 px-2">
-      <Label className="text-xs text-muted-foreground">MR Expiry Date</Label>
+    <div className="space-y-1.5">
+      <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+        MR Expiry Date
+      </p>
       <div
         className={cn(
           "text-sm h-9 flex items-center justify-between px-3 rounded-md border",
@@ -1030,12 +915,12 @@ function MrExpiryField({ lastVisit }: { lastVisit?: string }) {
           </span>
         )}
       </div>
-      <p className="text-[10px] text-muted-foreground">
+      <p className={cn("text-xs", expired ? "text-[color:var(--mm-rose)]" : "text-muted-foreground")}>
         {lastVisit
           ? expired
-            ? "Re-collect MR — last visit was over 6 months ago"
-            : "auto: Last Visit + 6 months"
-          : "set Last Visit first"}
+            ? "Expired — medical records are older than 6 months"
+            : "Auto-set: Last Visit + 6 months"
+          : "Auto-set: Last Visit + 6 months"}
       </p>
     </div>
   );
@@ -1107,9 +992,19 @@ function DiagnosisField({ value, onChange }: DiagnosisFieldProps) {
       {code}
     </CommandItem>
   );
+  const favorites = DIAGNOSIS_FAVORITES.filter((c) => allCodes.includes(c));
+  const otherCodes = allCodes.filter((c) => !DIAGNOSIS_FAVORITES.includes(c));
+
   return (
-    <div className="flex items-center justify-between gap-3 py-1.5 px-2 rounded-md hover:bg-muted/50">
-      <span className="text-sm text-muted-foreground whitespace-nowrap">Diagnosis</span>
+    <div className="space-y-1.5">
+      <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+        Diagnosis <span className="font-bold text-[color:var(--mm-rose)]">*</span>
+        {!value && (
+          <span className="ml-1 normal-case tracking-normal text-[color:var(--mm-rose)]">
+            — required
+          </span>
+        )}
+      </p>
       <Popover open={open} onOpenChange={setOpen}>
         <PopoverTrigger asChild>
           <Button
@@ -1117,13 +1012,13 @@ function DiagnosisField({ value, onChange }: DiagnosisFieldProps) {
             role="combobox"
             aria-expanded={open}
             className={cn(
-              "w-[160px] h-8 px-3 text-xs font-medium justify-between",
+              "w-full h-9 px-3 text-sm font-medium justify-between",
               value
                 ? "border-emerald-300 bg-emerald-50 text-emerald-900 hover:bg-emerald-50/80 hover:text-emerald-900"
-                : "border-muted",
+                : "border-muted text-muted-foreground",
             )}
           >
-            {value || "—"}
+            {value || "Select diagnosis"}
             <ChevronsUpDown className="h-3 w-3 opacity-50 shrink-0" />
           </Button>
         </PopoverTrigger>
@@ -1148,8 +1043,13 @@ function DiagnosisField({ value, onChange }: DiagnosisFieldProps) {
                   (none)
                 </CommandItem>
               </CommandGroup>
-              <CommandGroup heading="Diagnosis Codes">
-                {allCodes.map(renderItem)}
+              {favorites.length > 0 && (
+                <CommandGroup heading="★ Most Common">
+                  {favorites.map(renderItem)}
+                </CommandGroup>
+              )}
+              <CommandGroup heading="All Diagnoses">
+                {otherCodes.map(renderItem)}
               </CommandGroup>
             </CommandList>
           </Command>
@@ -1655,30 +1555,45 @@ function FileUploadCard({
   );
 }
 
-/** Returns the list of required field labels that are visible but not yet filled in. */
+/** Returns the list of required field labels that are visible but not yet
+ *  filled in. Strict gate (redesign §9): Send is disabled until EVERY visible
+ *  required field is answered. Answered-but-failing (e.g. requirement = No)
+ *  does NOT block — Not Established outcomes still sync. */
 function getMissingRequiredFields(
   state: EvalState,
   showCgm: boolean,
   showIp: boolean,
 ): string[] {
   const missing: string[] = [];
+  const cgmOn = showCgm && state.cgmScriptReceived === "Yes";
+  const ipOn = showIp && state.ipScriptReceived === "Yes";
 
-  // CGM Script — only required if CGM is shown AND script was received
-  if (showCgm && state.cgmScriptReceived === "Yes" && state.cgmScriptValid === undefined) missing.push("CGM Script Valid/Invalid");
+  // Validity — required for any received script
+  if (cgmOn && state.cgmScriptValid === undefined) missing.push("CGM Script validity");
+  if (ipOn && state.ipScriptValid === undefined) missing.push("IP Script validity");
 
-  // IP Script — only required if IP is shown AND script was received
-  if (showIp && state.ipScriptReceived === "Yes" && state.ipScriptValid === undefined) missing.push("Insulin Pump Script Valid/Invalid");
+  // Diagnosis & Last Visit — required when Clinicals received
+  if (state.mrReceived === "Yes") {
+    if (!state.diagnosis) missing.push("Diagnosis");
+    if (!state.lastVisitDate) missing.push("Last Visit Date");
+  }
 
-  // IP criteria fields — only if an IP coverage path is selected and those fields are shown
-  if (state.ipCoveragePath) {
-    const cfg = IP_PATH_FIELDS[state.ipCoveragePath];
-    if (cfg.showMalfunction && state.malfunction === undefined) missing.push("Malfunction");
-    // OOW Date is optional — not required for sync
-    if (cfg.showOowOnScript && state.oowDateOnScript === undefined) missing.push("OOW Date on Script?");
-    if (cfg.showEducation && state.diabetesEducation === undefined) missing.push("Diabetes Education");
-    if (cfg.showCgmUse && state.cgmUse === undefined) missing.push("CGM Use");
-    if (cfg.show3Injections && state.threeInjections === undefined) missing.push("3+ Injections / day");
-    if (cfg.showBsIssues && state.bloodSugarIssues === undefined) missing.push("Blood Sugar Issues");
+  // Coverage paths — required per visible section
+  if (cgmOn && !state.cgmCoveragePath) missing.push("CGM Coverage Path");
+  if (ipOn) {
+    if (!state.ipCoveragePath) {
+      missing.push("Insulin Pump Coverage Path");
+    } else {
+      const cfg = IP_PATH_FIELDS[state.ipCoveragePath];
+      if (cfg.showEducation && state.diabetesEducation === undefined) missing.push("Diabetes Education");
+      if (cfg.show3Injections && state.threeInjections === undefined) missing.push("3+ Injections / Day");
+      if (cfg.showCgmUse && state.cgmUse === undefined) missing.push("CGM Use");
+      if (cfg.showBsIssues && state.bloodSugarIssues === undefined) missing.push("Blood Sugar Issues");
+      if (cfg.showLmn && state.lmn === undefined) missing.push("Letter of MN on File");
+      if (cfg.showOow && !state.oowDate) missing.push("OOW Date");
+      if (cfg.showOowOnScript && state.oowDateOnScript === undefined) missing.push("OOW on Script");
+      if (cfg.showMalfunction && state.malfunction === undefined) missing.push("Malfunction");
+    }
   }
 
   return missing;
@@ -1719,31 +1634,35 @@ function ValiditySummary({
   return (
     <section className="rounded-xl bg-card border shadow-card p-5 space-y-4">
 
-      {/* Section pills + MN status */}
-      <div className="flex items-center gap-2 flex-wrap">
-        <SectionPill
+      {/* Outcome chips + MN status */}
+      <div className="flex items-center gap-2.5 flex-wrap">
+        <OutcomeChip
           label="General"
-          status={{
-            shown: true,
-            valid: validity.sections.diagnosis.valid && validity.sections.mr.valid,
-          }}
+          state={validity.sections.diagnosis.valid && validity.sections.mr.valid ? "ok" : "bad"}
         />
-        <SectionPill label="Insulin Pump" status={validity.sections.ip} />
-        <SectionPill label="CGM" status={validity.sections.cgm} />
-        <span className="text-sm ml-1">
-          →{" "}
-          {validity.established ? (
-            <strong className="text-emerald-700">Medical Necessity: Established</strong>
-          ) : (
-            <strong className="text-red-700">Not Established</strong>
-          )}
+        <OutcomeChip
+          label="CGM"
+          state={!validity.sections.cgm.shown ? "na" : validity.sections.cgm.valid ? "ok" : "bad"}
+        />
+        <OutcomeChip
+          label="Insulin Pump"
+          state={!validity.sections.ip.shown ? "na" : validity.sections.ip.valid ? "ok" : "bad"}
+        />
+        <span className="text-muted-foreground">→</span>
+        <span
+          className="text-lg font-extrabold tracking-tight"
+          style={{ color: validity.established ? "var(--mm-teal)" : "var(--mm-rose)" }}
+        >
+          Medical Necessity {validity.established ? "Established" : "Not Established"}
         </span>
       </div>
 
       {!validity.established && validity.reasons.length > 0 && (
-        <div className="text-xs text-muted-foreground border-l-2 border-red-200 pl-3 py-1">
-          <span className="font-medium text-foreground">Reasons:</span>{" "}
-          {validity.reasons.join(" · ")}
+        <div
+          className="rounded-lg px-3.5 py-2.5 text-sm"
+          style={{ background: "var(--mm-rose-soft)", color: "oklch(0.5 0.12 18)" }}
+        >
+          <b style={{ color: "var(--mm-rose)" }}>Reasons:</b> {validity.reasons.join(" · ")}
         </div>
       )}
 
@@ -1766,19 +1685,15 @@ function ValiditySummary({
 
       <div className="flex items-center justify-end gap-3 pt-1">
         {blocked && (
-          <div className="flex items-start gap-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 max-w-sm">
-            <AlertTriangle className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
-            <div>
-              <p className="text-xs font-semibold text-amber-800">
-                Complete these fields to submit
-              </p>
-              <ul className="mt-1 space-y-0.5">
-                {missingFields.map((f) => (
-                  <li key={f} className="text-[11px] text-amber-700">• {f}</li>
-                ))}
-              </ul>
-            </div>
-          </div>
+          <span
+            className="text-xs font-medium self-center text-right"
+            style={{ color: "var(--mm-rose)" }}
+            title={missingFields.join(", ")}
+          >
+            {missingFields.length} required field{missingFields.length > 1 ? "s" : ""} remaining:{" "}
+            {missingFields.slice(0, 4).join(", ")}
+            {missingFields.length > 4 ? "…" : ""}
+          </span>
         )}
         {filesUploading && (
           <div className="flex items-start gap-2 rounded-lg border-2 border-red-400 bg-red-50 px-3 py-2 max-w-sm animate-pulse">
@@ -1803,7 +1718,7 @@ function ValiditySummary({
           size="lg"
           onClick={onSendToMonday}
           disabled={sending || blocked || filesUploading}
-          className="gap-2 bg-emerald-600 hover:bg-emerald-700 text-white shadow-elevate"
+          className="gap-2 text-white shadow-elevate bg-[color:var(--mm-green)] hover:bg-[oklch(0.56_0.10_175)] disabled:bg-[oklch(0.85_0.01_200)]"
         >
           {sending ? (
             <>
@@ -2021,5 +1936,420 @@ function ToggleField({
         </button>
       </div>
     </div>
+  );
+}
+
+// =====================================================================
+// Redesign components (Evaluate v2 — Brandon, June 2026)
+// =====================================================================
+
+function todayIso(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
+/** Step card — white, 1px border, 4px left border in mm-green, numbered
+ *  36px circle (green-12% bg, teal text, mint ring). */
+function MmStep({
+  num,
+  title,
+  rightAccessory,
+  children,
+}: {
+  num: number;
+  title: string;
+  rightAccessory?: React.ReactNode;
+  children: React.ReactNode;
+}) {
+  return (
+    <section
+      className="rounded-2xl bg-card border border-l-4 p-6 shadow-sm"
+      style={{ borderColor: "var(--mm-card-border)", borderLeftColor: "var(--mm-green)" }}
+    >
+      <header className="flex items-center justify-between gap-3 mb-5">
+        <div className="flex items-center gap-3 min-w-0">
+          <span
+            className="grid place-items-center h-9 w-9 rounded-full text-base font-bold shrink-0"
+            style={{
+              background: "var(--mm-green-12)",
+              color: "var(--mm-teal)",
+              boxShadow: "inset 0 0 0 1px var(--mm-mint-ring)",
+            }}
+          >
+            {num}
+          </span>
+          <h2 className="text-xl font-bold tracking-tight truncate">{title}</h2>
+        </div>
+        {rightAccessory}
+      </header>
+      {children}
+    </section>
+  );
+}
+
+/** Inner subcard with teal icon + title. */
+function SubCard({
+  icon,
+  title,
+  children,
+}: {
+  icon: React.ReactNode;
+  title: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div
+      className="rounded-xl border bg-card p-5 shadow-sm"
+      style={{ borderColor: "var(--mm-card-border)" }}
+    >
+      <div className="flex items-center gap-2 mb-3">
+        <span className="text-[color:var(--mm-teal)]">{icon}</span>
+        <h3 className="text-base font-bold tracking-tight">{title}</h3>
+      </div>
+      {children}
+    </div>
+  );
+}
+
+/** Segmented Valid/Invalid button. Hover tint only applies to UNSELECTED
+ *  buttons; selected stays solid while hovered. */
+function SegBtn({
+  selected,
+  tone,
+  onClick,
+  children,
+}: {
+  selected: boolean;
+  tone: "green" | "rose";
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  const green = tone === "green";
+  return (
+    <button
+      type="button"
+      role="radio"
+      aria-checked={selected}
+      onClick={onClick}
+      className={cn(
+        "flex-1 px-4 py-2.5 rounded-md text-sm font-semibold border-2 transition-all",
+        selected
+          ? green
+            ? "border-transparent bg-[color:var(--mm-green)] text-white shadow-sm"
+            : "border-transparent bg-[color:var(--mm-rose)] text-white shadow-sm"
+          : green
+            ? "border-border bg-background text-muted-foreground hover:text-[color:var(--mm-teal)] hover:border-[color:var(--mm-green)] hover:bg-[color:var(--mm-green-12)]"
+            : "border-border bg-background text-muted-foreground hover:text-[color:var(--mm-rose)] hover:border-[color:var(--mm-rose)] hover:bg-[color:var(--mm-rose-12)]",
+      )}
+    >
+      {children}
+    </button>
+  );
+}
+
+/** Step-1 document card: title + Received/Not received + switch; mint wash
+ *  when received; optional Valid/Invalid segmented control for scripts. */
+function DocCard({
+  title,
+  received,
+  fullWidth,
+  showValidity,
+  validity = null,
+  onToggle,
+  onValidity,
+}: {
+  title: string;
+  received: boolean;
+  fullWidth?: boolean;
+  showValidity?: boolean;
+  /** true = Valid, false = Invalid, null = unanswered */
+  validity?: boolean | null;
+  onToggle: (on: boolean) => void;
+  onValidity?: (valid: boolean) => void;
+}) {
+  return (
+    <div
+      className={cn(
+        "rounded-xl border p-5 shadow-sm transition-colors",
+        fullWidth && "md:col-span-2",
+        !received && "bg-muted/30",
+      )}
+      style={
+        received
+          ? { background: "var(--mm-mint)", borderColor: "var(--mm-mint-ring)" }
+          : { borderColor: "var(--mm-card-border)" }
+      }
+    >
+      <div className="flex items-center gap-4">
+        {received ? (
+          <CheckCircle2 className="h-6 w-6 shrink-0 text-[color:var(--mm-teal)]" />
+        ) : (
+          <FileText className="h-6 w-6 shrink-0 text-muted-foreground" />
+        )}
+        <div className="flex-1 min-w-0">
+          <button
+            type="button"
+            onClick={() => onToggle(!received)}
+            className="text-lg font-bold leading-tight text-left"
+          >
+            {title}
+          </button>
+          <p className="text-sm text-muted-foreground mt-0.5">
+            {received ? "Received" : "Not received"}
+          </p>
+        </div>
+        <Switch
+          checked={received}
+          onCheckedChange={onToggle}
+          className="data-[state=checked]:bg-[color:var(--mm-green)]"
+          aria-label={`Mark ${title} as received`}
+        />
+      </div>
+      {showValidity && received && (
+        <div className="mt-4">
+          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-2">
+            Validity <span className="font-bold text-[color:var(--mm-rose)]">*</span>
+            {validity === null && (
+              <span className="ml-1 normal-case tracking-normal text-[color:var(--mm-rose)]">
+                — required
+              </span>
+            )}
+          </p>
+          <div className="flex gap-2" role="radiogroup" aria-label={`${title} validity`}>
+            <SegBtn selected={validity === true} tone="green" onClick={() => onValidity?.(true)}>
+              Valid
+            </SegBtn>
+            <SegBtn selected={validity === false} tone="rose" onClick={() => onValidity?.(false)}>
+              Invalid
+            </SegBtn>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Full-width coverage-path select. */
+function PathSelect({
+  value,
+  options,
+  onChange,
+  missing,
+}: {
+  value?: string;
+  options: StatusOption[];
+  onChange: (label: string) => void;
+  missing?: boolean;
+}) {
+  return (
+    <div>
+      <Select value={value ?? ""} onValueChange={onChange}>
+        <SelectTrigger
+          className="w-full h-10 text-sm"
+          style={missing ? { borderColor: "oklch(0.62 0.13 18 / 0.45)" } : undefined}
+        >
+          <SelectValue placeholder="Select coverage path" />
+        </SelectTrigger>
+        <SelectContent>
+          {options.map((o) => (
+            <SelectItem key={o.index} value={o.label} className="text-sm">
+              {o.label}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+      {missing && (
+        <p className="text-xs mt-1 text-[color:var(--mm-rose)]">Required</p>
+      )}
+    </div>
+  );
+}
+
+/** Bordered requirement row — label + * left, control right. Unanswered
+ *  rows get a rose-tinted border. */
+function ReqRow({
+  label,
+  missing,
+  hint,
+  children,
+}: {
+  label: string;
+  missing: boolean;
+  hint?: React.ReactNode;
+  children: React.ReactNode;
+}) {
+  return (
+    <div
+      className="flex items-center justify-between gap-3 rounded-lg border px-4 py-3 bg-card"
+      style={{
+        borderColor: missing ? "oklch(0.62 0.13 18 / 0.45)" : "var(--mm-card-border)",
+      }}
+    >
+      <div className="min-w-0">
+        <span className="text-sm font-medium">
+          {label} <span className="font-bold text-[color:var(--mm-rose)]">*</span>
+        </span>
+        {hint}
+      </div>
+      {children}
+    </div>
+  );
+}
+
+/** No/Yes pill-pair capsule — No fills rose, Yes fills green, unselected
+ *  muted in a gray capsule. */
+function PillPair({
+  value,
+  onChange,
+}: {
+  value?: YesNo;
+  onChange: (v: YesNo) => void;
+}) {
+  return (
+    <span
+      className="inline-flex items-center gap-0.5 rounded-full bg-muted/70 p-[3px] shrink-0"
+      role="radiogroup"
+    >
+      <button
+        type="button"
+        role="radio"
+        aria-checked={value === "No"}
+        onClick={() => onChange("No")}
+        className={cn(
+          "text-xs font-semibold px-3.5 py-1.5 rounded-full transition-all",
+          value === "No"
+            ? "bg-[color:var(--mm-rose)] text-white shadow-sm"
+            : "text-muted-foreground hover:text-foreground",
+        )}
+      >
+        No
+      </button>
+      <button
+        type="button"
+        role="radio"
+        aria-checked={value === "Yes"}
+        onClick={() => onChange("Yes")}
+        className={cn(
+          "text-xs font-semibold px-3.5 py-1.5 rounded-full transition-all",
+          value === "Yes"
+            ? "bg-[color:var(--mm-green)] text-white shadow-sm"
+            : "text-muted-foreground hover:text-foreground",
+        )}
+      >
+        Yes
+      </button>
+    </span>
+  );
+}
+
+/** Letter-of-MN pill trio — keeps Monday's three labels (No / Yes, but
+ *  Invalid / Yes & Valid) so the "Updated LMN" ask survives downstream. */
+function LmnPills({
+  value,
+  onChange,
+}: {
+  value?: LmnStatus;
+  onChange: (v: LmnStatus) => void;
+}) {
+  const opts: { label: LmnStatus; cls: string }[] = [
+    { label: "No", cls: "bg-[color:var(--mm-rose)] text-white shadow-sm" },
+    { label: "Yes, but Invalid", cls: "bg-amber-500 text-white shadow-sm" },
+    { label: "Yes & Valid", cls: "bg-[color:var(--mm-green)] text-white shadow-sm" },
+  ];
+  return (
+    <span
+      className="inline-flex items-center gap-0.5 rounded-full bg-muted/70 p-[3px] shrink-0 flex-wrap justify-end"
+      role="radiogroup"
+    >
+      {opts.map((o) => (
+        <button
+          key={o.label}
+          type="button"
+          role="radio"
+          aria-checked={value === o.label}
+          onClick={() => onChange(o.label)}
+          className={cn(
+            "text-xs font-semibold px-3 py-1.5 rounded-full transition-all whitespace-nowrap",
+            value === o.label ? o.cls : "text-muted-foreground hover:text-foreground",
+          )}
+        >
+          {o.label}
+        </button>
+      ))}
+    </span>
+  );
+}
+
+/** Last Visit Date — required when Clinicals received; cannot be in the future. */
+function LastVisitField({
+  value,
+  onChange,
+}: {
+  value?: string;
+  onChange: (v: string) => void;
+}) {
+  const future = !!value && value > todayIso();
+  return (
+    <div className="space-y-1.5">
+      <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+        Last Visit Date <span className="font-bold text-[color:var(--mm-rose)]">*</span>
+      </p>
+      <Input
+        type="date"
+        value={value ?? ""}
+        max={todayIso()}
+        onChange={(e) => onChange(e.target.value)}
+        className="text-sm h-9"
+      />
+      {!value ? (
+        <p className="text-xs text-[color:var(--mm-rose)]">Required when Clinicals received</p>
+      ) : future ? (
+        <p className="text-xs text-[color:var(--mm-rose)]">Cannot be after today</p>
+      ) : null}
+    </div>
+  );
+}
+
+/** Locked Final-Clinicals dropzone — unlocks live when MN is Established. */
+function LockedDropzone() {
+  return (
+    <div className="h-full min-h-[200px] rounded-xl border-2 border-dashed border-border bg-muted/40 flex flex-col items-center justify-center gap-1.5 text-muted-foreground p-6 text-center cursor-not-allowed">
+      <Lock className="h-5 w-5" />
+      <p className="text-sm font-medium">Locked</p>
+      <p className="text-xs">available once Medical Necessity is Established</p>
+    </div>
+  );
+}
+
+/** Outcome chip — ✓ mint / ✕ rose / ○ N/A gray. */
+function OutcomeChip({ label, state }: { label: string; state: "ok" | "bad" | "na" }) {
+  if (state === "na") {
+    return (
+      <span className="inline-flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-sm font-semibold bg-muted/60 text-muted-foreground">
+        ○ {label} N/A
+      </span>
+    );
+  }
+  return state === "ok" ? (
+    <span
+      className="inline-flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-sm font-semibold"
+      style={{
+        background: "oklch(0.94 0.02 175 / 0.7)",
+        color: "var(--mm-teal)",
+        boxShadow: "inset 0 0 0 1px var(--mm-mint-ring)",
+      }}
+    >
+      ✓ {label}
+    </span>
+  ) : (
+    <span
+      className="inline-flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-sm font-semibold"
+      style={{
+        background: "var(--mm-rose-soft)",
+        color: "var(--mm-rose)",
+        boxShadow: "inset 0 0 0 1px oklch(0.62 0.13 18 / 0.3)",
+      }}
+    >
+      ✕ {label}
+    </span>
   );
 }
