@@ -374,27 +374,38 @@ export async function clearStatusColumn(itemId: string, columnId: string): Promi
   await gql(`mutation { change_simple_column_value(item_id: ${itemId}, board_id: ${BOARD_ID}, column_id: "${columnId}", value: ${value}) { id } }`);
 }
 
-/** Set a status column by label (auto-creates the label if missing). */
+/** Set a status column by label.
+ *
+ *  By default this is STRICT: if the label doesn't exist on the column the
+ *  write fails (and the caller should surface the error) instead of silently
+ *  creating a new label on the board. Pass `createLabelsIfMissing = true`
+ *  only where new labels are intentional (Diagnosis ICD-10 codes). */
 export async function writeStatusLabel(
   itemId: string,
   columnId: string,
   label: string,
+  createLabelsIfMissing = false,
 ): Promise<void> {
   const value = JSON.stringify({ label });
   await gql(
-    `mutation { change_column_value(item_id: ${itemId}, board_id: ${BOARD_ID}, column_id: "${columnId}", value: ${JSON.stringify(value)}, create_labels_if_missing: true) { id } }`,
+    `mutation { change_column_value(item_id: ${itemId}, board_id: ${BOARD_ID}, column_id: "${columnId}", value: ${JSON.stringify(value)}, create_labels_if_missing: ${createLabelsIfMissing}) { id } }`,
   );
 }
 
-/** Set a multi-select dropdown column by an array of labels. */
+/** Set a multi-select dropdown column by an array of labels.
+ *
+ *  STRICT by default — unknown labels make the write fail rather than being
+ *  auto-created. Pass `createLabelsIfMissing = true` only for columns where
+ *  dynamic labels are intentional (MN Request Consolidated's dated OOW ask). */
 export async function writeDropdownLabels(
   itemId: string,
   columnId: string,
   labels: string[],
+  createLabelsIfMissing = false,
 ): Promise<void> {
   const value = JSON.stringify({ labels });
   await gql(
-    `mutation { change_column_value(item_id: ${itemId}, board_id: ${BOARD_ID}, column_id: "${columnId}", value: ${JSON.stringify(value)}, create_labels_if_missing: true) { id } }`,
+    `mutation { change_column_value(item_id: ${itemId}, board_id: ${BOARD_ID}, column_id: "${columnId}", value: ${JSON.stringify(value)}, create_labels_if_missing: ${createLabelsIfMissing}) { id } }`,
   );
 }
 

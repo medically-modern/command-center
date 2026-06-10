@@ -307,6 +307,9 @@ export function EvaluatePanel({ patient, resetVersion = 0, onUpdate, onOpenForm 
   // Send to Monday — batched write of every column the rep has edited locally.
   // Generate Script triggers and template deletes are immediate elsewhere.
   const [sending, setSending] = useState(false);
+  // Per-field write failures from the last Send — shown persistently in the
+  // outcome card (not just a transient toast).
+  const [sendErrors, setSendErrors] = useState<string[]>([]);
   const [escalated, setEscalated] = useState(false);
   const escalatedRef = useRef(false);
   const handleSendToMonday = useCallback(async () => {
@@ -315,6 +318,7 @@ export function EvaluatePanel({ patient, resetVersion = 0, onUpdate, onOpenForm 
       return;
     }
     setSending(true);
+    setSendErrors([]);
     const tasks: { label: string; run: () => Promise<unknown> }[] = [];
 
     const clinReceived = state.mrReceived === "Yes";
@@ -369,7 +373,9 @@ export function EvaluatePanel({ patient, resetVersion = 0, onUpdate, onOpenForm 
       if (state.diagnosis) {
         tasks.push({
           label: "Diagnosis",
-          run: () => writeStatusLabel(patient.id, COL.diagnosis, state.diagnosis!),
+          // Diagnosis is the ONLY status column allowed to create new labels
+          // (reps can add new ICD-10 codes).
+          run: () => writeStatusLabel(patient.id, COL.diagnosis, state.diagnosis!, true),
         });
       } else {
         tasks.push({
@@ -457,11 +463,14 @@ export function EvaluatePanel({ patient, resetVersion = 0, onUpdate, onOpenForm 
     // for downstream consumers.
     tasks.push({
       label: "MN Request Consolidated",
+      // Allowed to create labels: the OOW ask embeds a patient-specific date
+      // ("Add OOW date of MM/DD/YYYY to the script") so it's dynamic by design.
       run: () =>
         writeDropdownLabels(
           patient.id,
           COL.mnRequestConsolidated,
           preview.mnRequestConsolidated,
+          true,
         ),
     });
     tasks.push({
@@ -501,8 +510,10 @@ export function EvaluatePanel({ patient, resetVersion = 0, onUpdate, onOpenForm 
       toast.success(`Sent ${tasks.length} fields to Monday`);
       setEscalated(false); escalatedRef.current = false;
     } else {
-      toast.error(`${failures.length} write(s) failed`, {
+      setSendErrors(failures);
+      toast.error(`${failures.length} write(s) failed — see details below`, {
         description: failures.slice(0, 3).join("\n"),
+        duration: 10000,
       });
     }
   }, [patient, state, preview, showCgm, showIp]);
@@ -720,6 +731,7 @@ export function EvaluatePanel({ patient, resetVersion = 0, onUpdate, onOpenForm 
         preview={preview}
         onSendToMonday={handleSendToMonday}
         sending={sending}
+        sendErrors={sendErrors}
         state={state}
         showCgm={showCgm}
         showIp={showIp}
@@ -1604,6 +1616,7 @@ interface ValiditySummaryProps {
   preview: ReturnType<typeof buildMondayPreview>;
   onSendToMonday: () => void;
   sending: boolean;
+  sendErrors?: string[];
   state: EvalState;
   showCgm: boolean;
   showIp: boolean;
@@ -1619,6 +1632,7 @@ function ValiditySummary({
   preview,
   onSendToMonday,
   sending,
+  sendErrors = [],
   state,
   showCgm,
   showIp,
@@ -1663,6 +1677,33 @@ function ValiditySummary({
           style={{ background: "var(--mm-rose-soft)", color: "oklch(0.5 0.12 18)" }}
         >
           <b style={{ color: "var(--mm-rose)" }}>Reasons:</b> {validity.reasons.join(" · ")}
+        </div>
+      )}
+
+      {/* Per-field Monday write failures from the last Send — persistent
+          until the next Send attempt. */}
+      {sendErrors.length > 0 && (
+        <div
+          className="rounded-lg border-2 px-3.5 py-2.5 text-sm"
+          style={{
+            background: "var(--mm-rose-soft)",
+            borderColor: "var(--mm-rose)",
+            color: "oklch(0.5 0.12 18)",
+          }}
+        >
+          <p className="font-bold flex items-center gap-1.5" style={{ color: "var(--mm-rose)" }}>
+            <AlertTriangle className="h-4 w-4" />
+            {sendErrors.length} field{sendErrors.length > 1 ? "s" : ""} failed to write to Monday
+          </p>
+          <ul className="mt-1.5 space-y-0.5">
+            {sendErrors.map((e) => (
+              <li key={e} className="text-xs break-words">• {e}</li>
+            ))}
+          </ul>
+          <p className="text-xs mt-1.5 italic">
+            Other fields were written. Fix the issue (e.g. a label that doesn't exist on the
+            Monday board) and press Send again.
+          </p>
         </div>
       )}
 
