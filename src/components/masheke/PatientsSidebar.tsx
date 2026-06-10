@@ -130,7 +130,8 @@ export function PatientsSidebar({ patients, selectedId, onSelect, loading, error
           {!collapsed && (
             <div className="min-w-0">
               <p className="text-[10px] uppercase tracking-[0.18em] text-muted-foreground">Monday · {activeLabel}</p>
-              <p className="text-sm font-semibold truncate">Patients ({patients.length})</p>
+              {/* Count = ACTIVE view only (excludes escalated + scheduled) */}
+              <p className="text-sm font-semibold truncate">Patients ({activeNowPatients.length})</p>
             </div>
           )}
           <div className="flex items-center gap-1 shrink-0">

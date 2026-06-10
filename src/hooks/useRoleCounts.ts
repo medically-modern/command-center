@@ -228,18 +228,19 @@ export function useRoleCounts() {
           if (roleId && roleId in next) {
             const colText = (id: string) => item.column_values?.find((c: any) => c.id === id)?.text ?? "";
 
-            // Only count "active" patients — exclude any in a filter bucket
-            // Pending (future nextActionDate) only applies to confirmReceipt & chase,
-            // matching the sidebar which only shows a Pending folder for those tabs.
+            // Count must equal the sidebar's ACTIVE view exactly:
+            //   - exclude escalated (hidden from sidebar active list)
+            //   - exclude scheduled (future nextActionDate) for the tabs that
+            //     have a Scheduled folder (Confirm Receipt & Chase)
+            // Blocked / Stuck / Follow-up are NOT excluded — the sidebar
+            // currently shows those in the active list (its filter buckets
+            // are commented out), and this count mirrors the sidebar.
             if (roleId === "confirmReceipt" || roleId === "chaseBenefits") {
               const nad = colText("date_mm1wadgs").slice(0, 10);
-              if (nad && nad > todayStr) continue; // pending
+              if (nad && nad > todayStr) continue; // scheduled
             }
 
             if (colText("color_mm1x7997") === "Escalation Required") continue; // escalated
-            if (colText("color_mm33ppgw") === "Blocked") continue; // blocked
-            if (colText("color_mm1wf98t") === "Stuck") continue; // stuck
-            if (colText("color_mm35v6a0") === "Follow up") continue; // follow-up
 
             next[roleId]++;
             nextIds[roleId].push(String(item.id));
