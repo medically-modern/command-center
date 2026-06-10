@@ -95,9 +95,11 @@ interface Props {
   activeGroup: SidebarGroupType;
   onGroupChange?: (group: SidebarGroupType) => void;
   showGroupTabs?: boolean;
+  /** Manager view (?manager=1): list ONLY escalated patients. */
+  managerMode?: boolean;
 }
 
-export function PatientsSidebar({ patients, selectedId, onSelect, loading, error, onRefresh, activeGroup, onGroupChange, showGroupTabs = false }: Props) {
+export function PatientsSidebar({ patients, selectedId, onSelect, loading, error, onRefresh, activeGroup, onGroupChange, showGroupTabs = false, managerMode = false }: Props) {
   const { state } = useSidebar();
   const [searchQuery, setSearchQuery] = useState("");
 
@@ -110,11 +112,21 @@ export function PatientsSidebar({ patients, selectedId, onSelect, loading, error
 
   const activeLabel = GROUP_LABELS[activeGroup];
 
-  // Split patients into active vs follow-up vs escalated vs both
-  const escalatedPatients = filteredBySearch.filter((p) => p.escalated && p.followUp !== "Follow Up");
-  const activePatients = filteredBySearch.filter((p) => !p.escalated && p.followUp !== "Follow Up");
-  const followUpPatients = filteredBySearch.filter((p) => p.followUp === "Follow Up" && !p.escalated);
-  const bothPatients = filteredBySearch.filter((p) => p.escalated && p.followUp === "Follow Up");
+  // Split patients into active vs follow-up vs escalated vs both.
+  // Manager view: the main list IS the escalated list — the separate
+  // escalated/follow-up sections are hidden.
+  const escalatedPatients = managerMode
+    ? []
+    : filteredBySearch.filter((p) => p.escalated && p.followUp !== "Follow Up");
+  const activePatients = managerMode
+    ? filteredBySearch.filter((p) => p.escalated)
+    : filteredBySearch.filter((p) => !p.escalated && p.followUp !== "Follow Up");
+  const followUpPatients = managerMode
+    ? []
+    : filteredBySearch.filter((p) => p.followUp === "Follow Up" && !p.escalated);
+  const bothPatients = managerMode
+    ? []
+    : filteredBySearch.filter((p) => p.escalated && p.followUp === "Follow Up");
 
   const grouped = useMemo(() => groupByInsurance(activePatients), [activePatients]);
 
@@ -167,7 +179,9 @@ export function PatientsSidebar({ patients, selectedId, onSelect, loading, error
           {!collapsed && (
             <div className="min-w-0">
               <p className="text-[10px] uppercase tracking-[0.18em] text-muted-foreground">Monday · {activeLabel}</p>
-              <p className="text-sm font-semibold truncate">Patients ({patients.length})</p>
+              <p className={cn("text-sm font-semibold truncate", managerMode && "text-red-500")}>
+                {managerMode ? `Escalated (${activePatients.length})` : `Patients (${patients.length})`}
+              </p>
             </div>
           )}
           <div className="flex items-center gap-1 shrink-0">
@@ -263,7 +277,9 @@ export function PatientsSidebar({ patients, selectedId, onSelect, loading, error
               <SidebarMenu>
                 {sortedPatients.map(renderPatient)}
                 {!loading && activePatients.length === 0 && !error && !collapsed && (
-                  <p className="px-3 py-4 text-xs text-muted-foreground">No patients in {activeLabel} group.</p>
+                  <p className="px-3 py-4 text-xs text-muted-foreground">
+                    {managerMode ? `No escalated patients in ${activeLabel} group.` : `No patients in ${activeLabel} group.`}
+                  </p>
                 )}
               </SidebarMenu>
             </SidebarGroupContent>

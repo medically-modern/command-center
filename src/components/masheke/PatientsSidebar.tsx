@@ -84,9 +84,11 @@ interface Props {
   error: string | null;
   onRefresh: () => void;
   activeTab: TabKey;
+  /** Manager view (?manager=1): list ONLY escalated patients, no scheduled split. */
+  managerMode?: boolean;
 }
 
-export function PatientsSidebar({ patients, selectedId, onSelect, loading, error, onRefresh, activeTab }: Props) {
+export function PatientsSidebar({ patients, selectedId, onSelect, loading, error, onRefresh, activeTab, managerMode = false }: Props) {
   const { state } = useSidebar();
   const collapsed = state === "collapsed";
 
@@ -99,8 +101,12 @@ export function PatientsSidebar({ patients, selectedId, onSelect, loading, error
   // const followUpPatients = patients.filter((p) => p.followUp === "Follow up" && p.blocked !== "Blocked" && p.escalation !== "Escalation Required" && p.advancer2c !== "Stuck");
   // const bothPatients = patients.filter((p) => p.escalation === "Escalation Required" && p.followUp === "Follow up" && p.blocked !== "Blocked" && p.advancer2c !== "Stuck");
 
-  // Escalated patients are hidden from the active view (accessible via System Management)
-  const activePatients = patients.filter((p) => p.escalation !== "Escalation Required");
+  // Processor view: escalated patients are hidden from the active view
+  // (accessible via System Management).
+  // Manager view: the INVERSE — only escalated patients are listed.
+  const activePatients = managerMode
+    ? patients.filter((p) => p.escalation === "Escalation Required")
+    : patients.filter((p) => p.escalation !== "Escalation Required");
 
   // Always use Eastern Time so all users see the same "today" regardless of their local timezone
   const etParts = new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
@@ -108,8 +114,9 @@ export function PatientsSidebar({ patients, selectedId, onSelect, loading, error
 
   // ALL tabs: the filter is always Next Action Date + sub-stage. Patients
   // with a future nextActionDate go to the Scheduled folder; blank or
-  // past/today = active.
-  const hasPending = true;
+  // past/today = active. Manager view skips the split — every escalated
+  // patient shows regardless of schedule.
+  const hasPending = !managerMode;
   const pendingPatients = hasPending
     ? activePatients.filter((p) => {
         const nad = p.nextActionDate?.slice(0, 10);
@@ -132,8 +139,11 @@ export function PatientsSidebar({ patients, selectedId, onSelect, loading, error
           {!collapsed && (
             <div className="min-w-0">
               <p className="text-[10px] uppercase tracking-[0.18em] text-muted-foreground">Monday · {activeLabel}</p>
-              {/* Count = ACTIVE view only (excludes escalated + scheduled) */}
-              <p className="text-sm font-semibold truncate">Patients ({activeNowPatients.length})</p>
+              {/* Count = ACTIVE view only (excludes escalated + scheduled);
+                  manager view counts escalated patients instead */}
+              <p className={cn("text-sm font-semibold truncate", managerMode && "text-red-500")}>
+                {managerMode ? `Escalated (${activeNowPatients.length})` : `Patients (${activeNowPatients.length})`}
+              </p>
             </div>
           )}
           <div className="flex items-center gap-1 shrink-0">
@@ -192,7 +202,9 @@ export function PatientsSidebar({ patients, selectedId, onSelect, loading, error
                 })}
                 {!loading && activeNowPatients.length === 0 && !error && !collapsed && (
                   <p className="px-3 py-4 text-xs text-muted-foreground">
-                    {`No patients in ${activeLabel}.`}
+                    {managerMode
+                      ? `No escalated patients in ${activeLabel}.`
+                      : `No patients in ${activeLabel}.`}
                   </p>
                 )}
               </SidebarMenu>

@@ -19,6 +19,8 @@ import {
   Zap,
   ExternalLink,
   PartyPopper,
+  CheckCircle2,
+  ShieldAlert,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
@@ -77,6 +79,12 @@ interface Props {
   roleCounts: RoleCounts;
   countsLoading: boolean;
   visibleRoleIds: string[];
+  /**
+   * Manager mode: counts are escalated-patients-only. Skips the daily
+   * baseline machinery entirely (no server baseline, no localStorage
+   * snapshot writes) and links into role pages with ?manager=1.
+   */
+  managerMode?: boolean;
 }
 
 const COLOR_MAP: Record<string, string> = {
@@ -108,6 +116,7 @@ export function DailyBurndown({
   roleCounts,
   countsLoading,
   visibleRoleIds,
+  managerMode = false,
 }: Props) {
   const navigate = useNavigate();
   const { baseline: serverBaseline, loading: serverLoading } = useServerBaseline();
@@ -117,7 +126,27 @@ export function DailyBurndown({
 
   // Resolve baseline: prefer server, fall back to localStorage
   useEffect(() => {
-    if (countsLoading || serverLoading || initializedRef.current) return;
+    if (initializedRef.current) return;
+
+    // Manager mode: no baseline concept — bars are live escalated counts.
+    // Never write the localStorage snapshot here (it belongs to the
+    // processor burndown), and an all-zero day is meaningful (all clear).
+    if (managerMode) {
+      if (countsLoading) return;
+      initializedRef.current = true;
+      setSnapshot({
+        dateKey: getEasternDateKey(),
+        counts: {},
+        takenAt: new Date().toISOString(),
+        source: "local",
+      });
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => setAnimateIn(true));
+      });
+      return;
+    }
+
+    if (countsLoading || serverLoading) return;
     const hasData = Object.values(roleCounts).some((v) => v > 0);
     if (!hasData) return;
 
@@ -146,7 +175,7 @@ export function DailyBurndown({
     requestAnimationFrame(() => {
       requestAnimationFrame(() => setAnimateIn(true));
     });
-  }, [roleCounts, countsLoading, serverBaseline, serverLoading]);
+  }, [roleCounts, countsLoading, serverBaseline, serverLoading, managerMode]);
 
   // Ad-hoc TASK roles — not a queue the processor "burns down" but work that
   // can land on any patient at any time. Rendered as a task tile below the
@@ -205,8 +234,42 @@ export function DailyBurndown({
     return null;
   }
 
+  const allClear =
+    managerMode &&
+    !countsLoading &&
+    barData.every((d) => d.current === 0) &&
+    taskRoles.every((r) => (roleCounts[r.id] ?? 0) === 0);
+
   return (
     <div className="space-y-6">
+      {/* Manager mode banner */}
+      {managerMode && (
+        <div
+          className={cn(
+            "flex items-center gap-3 rounded-xl border px-4 py-3",
+            allClear
+              ? "border-emerald-500/30 bg-emerald-500/5"
+              : "border-red-500/25 bg-red-500/5",
+          )}
+        >
+          {allClear ? (
+            <CheckCircle2 className="w-5 h-5 text-emerald-500 shrink-0" />
+          ) : (
+            <ShieldAlert className="w-5 h-5 text-red-500 shrink-0" />
+          )}
+          <div>
+            <p className={cn("text-sm font-bold", allClear ? "text-emerald-600" : "text-red-600")}>
+              {allClear ? "All clear — no escalated patients" : "Escalated patients only"}
+            </p>
+            <p className="text-xs text-muted-foreground">
+              {allClear
+                ? "Nothing in these roles is flagged for escalation right now."
+                : "Bars show patients flagged for escalation in each role — not the full queue."}
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* Burndown bars */}
       <div className="space-y-3">
         {barData.map((d, i) => {
@@ -229,7 +292,8 @@ export function DailyBurndown({
                 hasRoute ? "cursor-pointer" : "cursor-default"
               )}
               onClick={() => {
-                if (hasRoute) navigate(d.role.route);
+                if (hasRoute)
+                  navigate(managerMode ? `${d.role.route}?manager=1` : d.role.route);
               }}
               title={hasRoute ? `Open ${d.role.label}` : d.role.label}
             >
@@ -248,8 +312,17 @@ export function DailyBurndown({
                 </span>
                 {isDone ? (
                   <span className="text-sm font-bold text-emerald-500 flex items-center gap-1.5">
-                    <PartyPopper className="h-3.5 w-3.5" />
-                    Done!
+                    {managerMode ? (
+                      <>
+                        <CheckCircle2 className="h-3.5 w-3.5" />
+                        Clear
+                      </>
+                    ) : (
+                      <>
+                        <PartyPopper className="h-3.5 w-3.5" />
+                        Done!
+                      </>
+                    )}
                   </span>
                 ) : (
                   <span className="text-sm font-semibold text-foreground tabular-nums">
@@ -261,7 +334,7 @@ export function DailyBurndown({
               <div
                 className="relative h-8 w-full rounded-lg overflow-hidden bg-muted/30"
                 ref={(el) => {
-                  if (isDone && animateIn && el && !celebratedRef.current.has(d.role.id)) {
+                  if (!managerMode && isDone && animateIn && el && !celebratedRef.current.has(d.role.id)) {
                     celebratedRef.current.add(d.role.id);
                     requestAnimationFrame(() => fireBarConfetti(el));
                   }
@@ -301,7 +374,10 @@ export function DailyBurndown({
             return (
               <div key={role.id} className="flex items-center gap-3">
                 <button
-                  onClick={() => role.route && navigate(role.route)}
+                  onClick={() =>
+                    role.route &&
+                    navigate(managerMode ? `${role.route}?manager=1` : role.route)
+                  }
                   title={`Open ${role.label}`}
                   className="inline-flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-opacity hover:opacity-90"
                   style={{ background: "var(--mm-teal, #3f5c63)" }}
@@ -331,7 +407,9 @@ export function DailyBurndown({
           Refreshes every 60s
         </span>
         <span className="ml-auto">
-          Click a bar to open that role's dashboard
+          {managerMode
+            ? "Click a bar to open that role's escalated patients"
+            : "Click a bar to open that role's dashboard"}
         </span>
       </div>
     </div>

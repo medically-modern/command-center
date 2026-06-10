@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import {
   AlertTriangle,
   Check,
+  ChevronDown,
   FileText,
   Loader2,
   Mail,
@@ -23,26 +24,41 @@ import type { MondayFileEntry } from "@/lib/masheke/mondayApi";
 // =====================================================================
 
 /** Step card — white, 1px border, 4px left border in mm-green, numbered
- *  36px circle (green-12% bg, teal text, mint ring). */
+ *  36px circle (green-12% bg, teal text, mint ring).
+ *
+ *  Pass `collapsible` to make the whole header a toggle (chevron on the
+ *  right); `defaultOpen={false}` starts it collapsed — used by the
+ *  manager views to tuck "Review the Request" behind a dropdown. */
 export function MmStep({
   num,
   title,
   sub,
   rightAccessory,
   children,
+  collapsible = false,
+  defaultOpen = true,
 }: {
   num: number;
   title: string;
   sub?: string;
   rightAccessory?: React.ReactNode;
   children: React.ReactNode;
+  collapsible?: boolean;
+  defaultOpen?: boolean;
 }) {
+  const [open, setOpen] = useState(defaultOpen);
+  const expanded = !collapsible || open;
   return (
     <section
       className="rounded-2xl bg-card border border-l-4 p-6 shadow-sm"
       style={{ borderColor: "var(--mm-card-border)", borderLeftColor: "var(--mm-green)" }}
     >
-      <header className="flex items-center justify-between gap-3 mb-5 flex-wrap">
+      <header
+        className={`flex items-center justify-between gap-3 flex-wrap ${expanded ? "mb-5" : "mb-0"} ${collapsible ? "cursor-pointer select-none" : ""}`}
+        onClick={collapsible ? () => setOpen((v) => !v) : undefined}
+        aria-expanded={collapsible ? open : undefined}
+        role={collapsible ? "button" : undefined}
+      >
         <div className="flex items-center gap-3 min-w-0">
           <span
             className="grid place-items-center h-9 w-9 rounded-full text-base font-bold shrink-0"
@@ -56,12 +72,19 @@ export function MmStep({
           </span>
           <div className="min-w-0">
             <h2 className="text-xl font-bold tracking-tight truncate">{title}</h2>
-            {sub && <p className="text-sm text-muted-foreground mt-0.5">{sub}</p>}
+            {sub && expanded && <p className="text-sm text-muted-foreground mt-0.5">{sub}</p>}
           </div>
         </div>
-        {rightAccessory}
+        <div className="flex items-center gap-3">
+          {rightAccessory}
+          {collapsible && (
+            <ChevronDown
+              className={`h-[22px] w-[22px] text-muted-foreground transition-transform ${open ? "rotate-180" : ""}`}
+            />
+          )}
+        </div>
       </header>
-      {children}
+      {expanded && children}
     </section>
   );
 }

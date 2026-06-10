@@ -59,6 +59,8 @@ interface Props {
   patient: Patient;
   onUpdate: (patch: Partial<Patient>) => void;
   onOpenForm?: () => void;
+  /** Manager view: "Review the Request" starts as a collapsed dropdown. */
+  managerMode?: boolean;
 }
 
 // =====================================================================
@@ -68,7 +70,7 @@ interface Props {
 // and (after the 3rd No) flips the Escalation column.
 // =====================================================================
 
-export function ChaseClinicalsPanel({ patient, onUpdate }: Props) {
+export function ChaseClinicalsPanel({ patient, onUpdate, managerMode = false }: Props) {
   const mondayFiles = useMondayFiles(patient.id);
   const [saving, setSaving] = useState(false);
   const [escalated, setEscalated] = useState(false);
@@ -240,11 +242,13 @@ export function ChaseClinicalsPanel({ patient, onUpdate }: Props) {
         receiptDate={patient.receiptConfirmedDate}
       />
 
-      {/* ── Step 1 — Review the Request ── */}
+      {/* ── Step 1 — Review the Request (collapsed dropdown in manager view) ── */}
       <MmStep
         num={1}
         title="Review the Request"
         rightAccessory={<MnStatusChip established={patient.medicalNecessity === "Established"} />}
+        collapsible={managerMode}
+        defaultOpen={!managerMode}
       >
         {!patient.receiptConfirmedDate && !patient.receiptConfirmedName && (
           <div

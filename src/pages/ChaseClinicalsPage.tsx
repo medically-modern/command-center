@@ -26,6 +26,9 @@ const ChaseClinicalsPage = () => {
   const { goBack } = useBackNavigation();
   const [searchParams] = useSearchParams();
   const isEscalated = searchParams.get("escalated") === "1";
+  // Manager view (?manager=1): sidebar lists ONLY escalated patients and
+  // the panel tucks "Review the Request" behind a collapsed dropdown.
+  const isManager = searchParams.get("manager") === "1";
   const { patients, loading, error, refetch, update, clearOverlay , saveOverlay, hasOverlay } = useMondayPatients("chase", searchParams.get("patientId"));
   const [selectedId, setSelectedId] = useState<string | null>(
     searchParams.get("patientId") ?? null,
@@ -61,7 +64,7 @@ const ChaseClinicalsPage = () => {
   return (
     <SidebarProvider>
       <div className="min-h-screen flex w-full bg-gradient-subtle">
-        <PatientsSidebar patients={patients} selectedId={selectedId} onSelect={setSelectedId} loading={loading} error={error} onRefresh={refetch} activeTab="chase" />
+        <PatientsSidebar patients={patients} selectedId={selectedId} onSelect={setSelectedId} loading={loading} error={error} onRefresh={refetch} activeTab="chase" managerMode={isManager} />
         <div className="flex-1 flex flex-col min-w-0">
           <header className={`${isEscalated ? "bg-red-700" : "bg-gradient-navy"} text-navy-foreground border-b border-sidebar-border`}>
             <div className="px-3 sm:px-6 py-5 flex items-center justify-between gap-4 flex-wrap">
@@ -75,7 +78,14 @@ const ChaseClinicalsPage = () => {
                 </div>
                 <div>
                   <p className="text-[10px] uppercase tracking-[0.2em] opacity-70">Medically Modern</p>
-                  <h1 className="text-2xl font-bold">Chase Clinicals</h1>{selected && <p className="text-sm opacity-80 mt-0.5">{selected.name}</p>}
+                  <h1 className="text-2xl font-bold flex items-center gap-2.5">
+                    Chase Clinicals
+                    {isManager && (
+                      <span className="text-[11px] font-semibold uppercase tracking-wider bg-white/15 border border-white/25 rounded-full px-2.5 py-0.5">
+                        Manager · Escalated
+                      </span>
+                    )}
+                  </h1>{selected && <p className="text-sm opacity-80 mt-0.5">{selected.name}</p>}
                 </div>
               </div>
               <div className="flex items-center gap-2">
@@ -121,7 +131,7 @@ const ChaseClinicalsPage = () => {
               {selected && (
                 <>
                   <ConfirmReceiptHeaderCard patient={selected} onDoctorEdit={(patch) => update(selected.id, patch)} />
-                  <ChaseClinicalsPanel patient={selected} onUpdate={onUpdate} onOpenForm={() => setEscalationModalOpen(true)} />
+                  <ChaseClinicalsPanel patient={selected} onUpdate={onUpdate} onOpenForm={() => setEscalationModalOpen(true)} managerMode={isManager} />
                 </>
               )}
             </section>

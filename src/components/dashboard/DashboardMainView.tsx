@@ -11,9 +11,11 @@ interface Props {
   getRolesForUser: (user: UserName) => string[];
   roleCounts: RoleCounts;
   countsLoading: boolean;
+  /** Managers › Dashboards: counts/bars reflect ESCALATED patients only */
+  managerMode?: boolean;
 }
 
-export function DashboardMainView({ selectedUser, assignments, getRolesForUser, roleCounts, countsLoading }: Props) {
+export function DashboardMainView({ selectedUser, assignments, getRolesForUser, roleCounts, countsLoading, managerMode = false }: Props) {
 
   if (!selectedUser) {
     return (
@@ -24,8 +26,9 @@ export function DashboardMainView({ selectedUser, assignments, getRolesForUser, 
           </div>
           <h2 className="text-xl font-semibold text-foreground">Dashboard</h2>
           <p className="text-sm text-muted-foreground leading-relaxed">
-            Select a team member from the sidebar to view their assigned roles
-            and workload.
+            {managerMode
+              ? "Select a team member from the sidebar to view escalated patients in their assigned roles."
+              : "Select a team member from the sidebar to view their assigned roles and workload."}
           </p>
         </div>
       </div>
@@ -50,6 +53,11 @@ export function DashboardMainView({ selectedUser, assignments, getRolesForUser, 
               : `${assignedRoles.length} role${assignedRoles.length !== 1 ? "s" : ""} assigned`}
           </p>
         </div>
+        {managerMode && (
+          <span className="ml-2 inline-flex items-center gap-1.5 rounded-full bg-red-500/10 text-red-600 border border-red-500/20 px-3 py-1 text-xs font-semibold">
+            Escalated patients only
+          </span>
+        )}
         {countsLoading && <Loader2 className="w-4 h-4 animate-spin text-muted-foreground ml-auto" />}
       </div>
 
@@ -70,6 +78,7 @@ export function DashboardMainView({ selectedUser, assignments, getRolesForUser, 
               roleCounts={roleCounts}
               countsLoading={countsLoading}
               visibleRoleIds={roleIds}
+              managerMode={managerMode}
             />
           </div>
         )}

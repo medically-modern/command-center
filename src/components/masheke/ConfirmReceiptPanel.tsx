@@ -58,13 +58,15 @@ interface Props {
   patient: Patient;
   onUpdate: (patch: Partial<Patient>) => void;
   onOpenForm?: () => void;
+  /** Manager view: "Review the Request" starts as a collapsed dropdown. */
+  managerMode?: boolean;
 }
 
 // =====================================================================
 // Main panel
 // =====================================================================
 
-export function ConfirmReceiptPanel({ patient, onUpdate }: Props) {
+export function ConfirmReceiptPanel({ patient, onUpdate, managerMode = false }: Props) {
   const mondayFiles = useMondayFiles(patient.id);
   const [saving, setSaving] = useState(false);
   const [escalated, setEscalated] = useState(false);
@@ -276,11 +278,13 @@ export function ConfirmReceiptPanel({ patient, onUpdate }: Props) {
         attempt={currentAttempt ?? 3}
       />
 
-      {/* ── Step 1 — Review the Request ── */}
+      {/* ── Step 1 — Review the Request (collapsed dropdown in manager view) ── */}
       <MmStep
         num={1}
         title="Review the Request"
         rightAccessory={<MnStatusChip established={patient.medicalNecessity === "Established"} />}
+        collapsible={managerMode}
+        defaultOpen={!managerMode}
       >
         <RequestSentBanner patient={patient} />
 

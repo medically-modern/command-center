@@ -31,9 +31,11 @@ interface Props {
   loading: boolean;
   error: string | null;
   onRefresh: () => void;
+  /** Manager view (?manager=1): list ONLY escalated patients. */
+  managerMode?: boolean;
 }
 
-export function PatientsSidebar({ patients, selectedId, onSelect, loading, error, onRefresh }: Props) {
+export function PatientsSidebar({ patients, selectedId, onSelect, loading, error, onRefresh, managerMode = false }: Props) {
   const { state } = useSidebar();
   const [searchQuery, setSearchQuery] = useState("");
 
@@ -45,10 +47,13 @@ export function PatientsSidebar({ patients, selectedId, onSelect, loading, error
 
   // Split patients into active vs follow-up
   // "Done" is the text Monday returns for status index 1 (our follow-up marker)
-  const escalatedPatients = filteredBySearch.filter((p) => p.escalated && p.followUp !== "Done");
-  const activePatients = filteredBySearch.filter((p) => !p.escalated && p.followUp !== "Done");
-  const followUpPatients = filteredBySearch.filter((p) => p.followUp === "Done" && !p.escalated);
-  const bothPatients = filteredBySearch.filter((p) => p.escalated && p.followUp === "Done");
+  // Manager view: the main list IS the escalated list; other sections hide.
+  const escalatedPatients = managerMode ? [] : filteredBySearch.filter((p) => p.escalated && p.followUp !== "Done");
+  const activePatients = managerMode
+    ? filteredBySearch.filter((p) => p.escalated)
+    : filteredBySearch.filter((p) => !p.escalated && p.followUp !== "Done");
+  const followUpPatients = managerMode ? [] : filteredBySearch.filter((p) => p.followUp === "Done" && !p.escalated);
+  const bothPatients = managerMode ? [] : filteredBySearch.filter((p) => p.escalated && p.followUp === "Done");
 
   return (
     <Sidebar collapsible="icon">
@@ -59,7 +64,9 @@ export function PatientsSidebar({ patients, selectedId, onSelect, loading, error
               <p className="text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
                 Monday · Welcome Call
               </p>
-              <p className="text-sm font-semibold truncate">Patients ({patients.length})</p>
+              <p className={cn("text-sm font-semibold truncate", managerMode && "text-red-500")}>
+                {managerMode ? `Escalated (${activePatients.length})` : `Patients (${patients.length})`}
+              </p>
             </div>
           )}
           <Button

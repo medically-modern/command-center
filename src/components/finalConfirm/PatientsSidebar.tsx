@@ -23,15 +23,24 @@ interface Props {
   loading: boolean;
   error: string | null;
   onRefresh: () => void;
+  /** Manager view (?manager=1): list ONLY escalated patients. */
+  managerMode?: boolean;
 }
 
-export function PatientsSidebar({ patients, selectedId, onSelect, loading, error, onRefresh }: Props) {
+export function PatientsSidebar({ patients, selectedId, onSelect, loading, error, onRefresh, managerMode = false }: Props) {
   const { state } = useSidebar();
   const [searchQuery, setSearchQuery] = useState("");
 
   const filteredBySearch = searchQuery.trim()
     ? patients.filter((p) => p.name.toLowerCase().includes(searchQuery.trim().toLowerCase()))
     : patients;
+
+  // Manager view: main list shows ONLY escalated patients; the separate
+  // escalated section is hidden (it would duplicate the list).
+  const mainPatients = managerMode
+    ? filteredBySearch.filter((p) => p.escalated)
+    : filteredBySearch.filter((p) => !p.escalated);
+  const escalatedSection = managerMode ? [] : filteredBySearch.filter((p) => p.escalated);
 
   const collapsed = state === "collapsed";
 
@@ -80,10 +89,12 @@ export function PatientsSidebar({ patients, selectedId, onSelect, loading, error
           </div>
         )}
         <SidebarGroup>
-          <SidebarGroupLabel>Active ({filteredBySearch.filter((p) => !p.escalated).length})</SidebarGroupLabel>
+          <SidebarGroupLabel className={cn(managerMode && "text-red-500 font-semibold")}>
+            {managerMode ? `Escalated (${mainPatients.length})` : `Active (${mainPatients.length})`}
+          </SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
-              {filteredBySearch.filter((p) => !p.escalated).map((p) => (
+              {mainPatients.map((p) => (
                 <SidebarMenuItem key={p.id}>
                   <SidebarMenuButton
                     isActive={selectedId === p.id}
@@ -105,17 +116,19 @@ export function PatientsSidebar({ patients, selectedId, onSelect, loading, error
                   </SidebarMenuButton>
                 </SidebarMenuItem>
               ))}
-              {!loading && filteredBySearch.filter((p) => !p.escalated).length === 0 && (
+              {!loading && mainPatients.length === 0 && (
                 <p className="text-xs text-muted-foreground px-3 py-4 text-center">
-                  No patients in Final Profile Confirmation group.
+                  {managerMode
+                    ? "No escalated patients in Final Profile Confirmation group."
+                    : "No patients in Final Profile Confirmation group."}
                 </p>
               )}
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
 
-        {/* Escalated section */}
-        {filteredBySearch.filter((p) => p.escalated).length > 0 && !collapsed && (
+        {/* Escalated section (hidden in manager view — main list covers it) */}
+        {escalatedSection.length > 0 && !collapsed && (
           <SidebarGroup>
             <SidebarGroupLabel className="text-[10px] uppercase tracking-wider text-red-500 font-semibold flex items-center gap-1.5">
               <AlertTriangle className="h-3 w-3" />

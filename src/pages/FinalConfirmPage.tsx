@@ -39,6 +39,7 @@ const FinalConfirmPage = () => {
   const { goBack } = useBackNavigation();
   const [searchParams] = useSearchParams();
   const isEscalated = searchParams.get("escalated") === "1";
+  const isManager = searchParams.get("manager") === "1";
   const [escalationModalOpen, setEscalationModalOpen] = useState(false);
   const { patients, loading, error, refetch, update, clearOverlay, saveOverlay, hasOverlay, addPatient } = useMondayPatients(searchParams.get("patientId"));
   const [selectedId, setSelectedId] = useState<string | null>(
@@ -226,6 +227,7 @@ const FinalConfirmPage = () => {
           loading={loading}
           error={error}
           onRefresh={refetch}
+          managerMode={isManager}
         />
 
         <div className="flex-1 flex flex-col min-w-0">

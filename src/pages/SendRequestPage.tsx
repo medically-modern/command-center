@@ -24,6 +24,7 @@ const SendRequestPage = () => {
   const { goBack } = useBackNavigation();
   const [searchParams] = useSearchParams();
   const isEscalated = searchParams.get("escalated") === "1";
+  const isManager = searchParams.get("manager") === "1";
   const { patients, loading, error, refetch, update, clearOverlay , saveOverlay, hasOverlay } = useMondayPatients("sendRequest", searchParams.get("patientId"));
   const [selectedId, setSelectedId] = useState<string | null>(
     searchParams.get("patientId") ?? null,
@@ -53,7 +54,7 @@ const SendRequestPage = () => {
   return (
     <SidebarProvider>
       <div className="min-h-screen flex w-full bg-gradient-subtle">
-        <PatientsSidebar patients={patients} selectedId={selectedId} onSelect={setSelectedId} loading={loading} error={error} onRefresh={refetch} activeTab="sendRequest" />
+        <PatientsSidebar patients={patients} selectedId={selectedId} onSelect={setSelectedId} loading={loading} error={error} onRefresh={refetch} activeTab="sendRequest" managerMode={isManager} />
         <div className="flex-1 flex flex-col min-w-0">
           <header className={`${isEscalated ? "bg-red-700" : "bg-gradient-navy"} text-navy-foreground border-b border-sidebar-border`}>
             <div className="px-3 sm:px-6 py-5 flex items-center justify-between gap-4 flex-wrap">

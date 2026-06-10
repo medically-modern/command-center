@@ -8,6 +8,7 @@ import { cn } from "@/lib/utils";
 import { Shield, LayoutDashboard, Stethoscope } from "lucide-react";
 import { USERS, type UserName } from "@/lib/config";
 import { useRoleCounts } from "@/hooks/useRoleCounts";
+import { useEscalatedCounts } from "@/hooks/useEscalatedCounts";
 
 type Tab = "roles" | "dashboard";
 type ManagersSubTab = "assignments" | "dashboards";
@@ -26,6 +27,9 @@ const Index = () => {
 
   const showDashboards =
     activeTab === "dashboard" || (activeTab === "roles" && managersSub === "dashboards");
+  // Managers › Dashboards = escalations-only view of each role
+  const managerMode = activeTab === "roles" && managersSub === "dashboards";
+  const { counts: escCounts, loading: escLoading } = useEscalatedCounts(managerMode);
   // Processors → just the processors; Managers › Dashboards → everyone else.
   const visibleUsers =
     activeTab === "dashboard"
@@ -100,8 +104,9 @@ const Index = () => {
             selectedUser={selectedUser}
             assignments={assignments}
             getRolesForUser={getRolesForUser}
-            roleCounts={counts}
-            countsLoading={countsLoading}
+            roleCounts={managerMode ? escCounts : counts}
+            countsLoading={managerMode ? escLoading : countsLoading}
+            managerMode={managerMode}
           />
         ) : (
           <div className="flex-1 overflow-y-auto p-8">
