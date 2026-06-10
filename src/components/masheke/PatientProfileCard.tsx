@@ -642,6 +642,7 @@ export function PatientProfileCard({
                 editing={editingDoctor}
                 onChange={(v) => onDoctorEdit?.({ clinicName: v })}
               />
+              <HVal label="Clinic Address" value={patient.clinicAddress ?? ""} />
               {/* Doctor-level notes from the Doctor Database — a grid cell
                   like the other fields. Collapsed = notes preview; expanding
                   reveals the editor + Add button. */}

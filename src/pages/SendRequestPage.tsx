@@ -6,7 +6,7 @@ import { useMondayPatients } from "@/hooks/masheke/useMondayPatients";
 import type { Patient } from "@/lib/masheke/workflow";
 import { SendRequestPanel } from "@/components/masheke/SendRequestPanel";
 import { PatientsSidebar } from "@/components/masheke/PatientsSidebar";
-import { SendRequestHeaderCard } from "@/components/masheke/SendRequestHeaderCard";
+import { PatientProfileCard } from "@/components/masheke/PatientProfileCard";
 import { Button } from "@/components/ui/button";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { RotateCcw, Stethoscope, ArrowLeft, Ban , Save} from "lucide-react";
@@ -105,7 +105,7 @@ const SendRequestPage = () => {
               )}
               {selected && (
                 <>
-                  <SendRequestHeaderCard patient={selected} />
+                  <PatientProfileCard patient={selected} onDoctorEdit={(patch) => update(selected.id, patch)} />
                   <SendRequestPanel patient={selected} resetVersion={resetVersion} onUpdate={(patch) => update(selected.id, patch)} onOpenForm={() => setEscalationModalOpen(true)} />
                 </>
               )}
