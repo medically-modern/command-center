@@ -452,14 +452,14 @@ function EditableField({
   );
 }
 
-/** Format raw phone digits into (555)555-5555 or +1 (555)555-5555 */
+/** Format raw phone digits into (xxx)-xxx-xxxx or +1 (xxx)-xxx-xxxx */
 function formatPhone(raw: string): string {
   const digits = raw.replace(/\D/g, "");
   if (digits.length === 10) {
-    return `(${digits.slice(0, 3)})${digits.slice(3, 6)}-${digits.slice(6)}`;
+    return `(${digits.slice(0, 3)})-${digits.slice(3, 6)}-${digits.slice(6)}`;
   }
   if (digits.length === 11 && digits.startsWith("1")) {
-    return `+1 (${digits.slice(1, 4)})${digits.slice(4, 7)}-${digits.slice(7)}`;
+    return `+1 (${digits.slice(1, 4)})-${digits.slice(4, 7)}-${digits.slice(7)}`;
   }
   return raw;
 }

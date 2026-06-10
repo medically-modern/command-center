@@ -297,7 +297,6 @@ export function DailyBurndown({
             Ad-hoc tasks
           </p>
           {taskRoles.map((role) => {
-            const hex = COLOR_MAP[role.color] ?? "#d946ef";
             const count = roleCounts[role.id] ?? 0;
             return (
               <div key={role.id} className="flex items-center gap-3">
@@ -305,7 +304,7 @@ export function DailyBurndown({
                   onClick={() => role.route && navigate(role.route)}
                   title={`Open ${role.label}`}
                   className="inline-flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-opacity hover:opacity-90"
-                  style={{ background: hex }}
+                  style={{ background: "var(--mm-teal, #3f5c63)" }}
                 >
                   <Zap className="w-4 h-4" />
                   {role.label}

@@ -1492,24 +1492,26 @@ function FileUploadCard({
               {selected.size === mondayFiles.length ? "Deselect all" : "Select all"}
             </button>
           )}
-          <ul className="space-y-1">
+          <ul className="space-y-2">
             {mondayFiles.map((f) => {
               const isSelected = selected.has(f.assetId);
+              const url = f.public_url || f.url;
               return (
                 <li
                   key={f.assetId}
                   onClick={() => toggleSelect(f.assetId)}
-                  className={`flex items-center gap-2 text-xs rounded px-2 py-1.5 cursor-pointer transition-colors ${
-                    isSelected
-                      ? "bg-emerald-100 border-2 border-emerald-400 text-emerald-900"
-                      : "bg-emerald-50 border border-emerald-200 text-emerald-900 hover:bg-emerald-100"
-                  }`}
+                  className="flex items-center gap-3 text-sm rounded-[10px] px-4 py-3 cursor-pointer transition-shadow border"
+                  style={{
+                    background: "var(--mm-mint)",
+                    borderColor: "var(--mm-mint-ring)",
+                    boxShadow: isSelected ? "inset 0 0 0 1.5px var(--mm-green)" : undefined,
+                  }}
                 >
                   <div
                     className={`h-4 w-4 rounded border flex items-center justify-center shrink-0 transition-colors ${
                       isSelected
-                        ? "bg-emerald-600 border-emerald-600"
-                        : "border-emerald-300 bg-white"
+                        ? "bg-[color:var(--mm-green)] border-[color:var(--mm-green)]"
+                        : "border-[color:var(--mm-mint-ring)] bg-white"
                     }`}
                   >
                     {isSelected && (
@@ -1518,8 +1520,20 @@ function FileUploadCard({
                       </svg>
                     )}
                   </div>
-                  <FileText className="h-3 w-3 shrink-0" />
-                  <span className="truncate font-medium flex-1">{f.name}</span>
+                  <FileText className="h-4 w-4 shrink-0 text-[color:var(--mm-teal)]" />
+                  <span className="truncate font-semibold flex-1">{f.name}</span>
+                  {url && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        window.open(url, "_blank");
+                      }}
+                      className="shrink-0 text-xs font-semibold text-[color:var(--mm-teal)] hover:underline"
+                      title={`View ${f.name}`}
+                    >
+                      View
+                    </button>
+                  )}
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
