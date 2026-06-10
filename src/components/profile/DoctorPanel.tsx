@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { DOCTOR_STATUS_INDEX, CLINICALS_METHOD_INDEX } from "@/lib/profile/mondayMapping";
 import { DoctorNotesPanel } from "@/components/shared/DoctorNotesPanel";
+import { ParachuteLookupPanel } from "@/components/profile/ParachuteLookupPanel";
 import { AlertTriangle, Plus, Search } from "lucide-react";
 
 interface Props {
@@ -273,6 +274,14 @@ export function DoctorPanel({ patient, onUpdate, clinicLabels, onClinicSelect, o
 
         {/* Doctor-level notes from the Doctor Database */}
         <DoctorNotesPanel doctorNpi={patient.doctorNpi} doctorName={patient.doctorName} />
+
+        {/* Parachute Health doctor lookup — signed-order counts & contact verdict */}
+        <ParachuteLookupPanel
+          defaultTerm={patient.doctorName}
+          onPick={(d) =>
+            onUpdate({ doctorName: `${d.first_name} ${d.last_name}`, doctorNpi: d.npi })
+          }
+        />
       </CardContent>
     </Card>
   );
