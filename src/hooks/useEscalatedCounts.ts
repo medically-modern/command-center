@@ -39,13 +39,18 @@ function persistCache(counts: RoleCounts): void {
   }
 }
 
+// True once any escalated-counts fetch completed during THIS page load —
+// survives in-app navigation, resets on hard reload (see useRoleCounts).
+let fetchedThisSession = false;
+
 export function useEscalatedCounts(enabled: boolean) {
   const cachedRef = useRef(loadCache());
   const [counts, setCounts] = useState<RoleCounts>(cachedRef.current);
   const [patientIds, setPatientIds] = useState<RolePatientIds>({});
-  // loading stays true until the FIRST fetch of this mount completes —
-  // cached counts must not render as live (stale zeros showed as "Clear").
-  const [loading, setLoading] = useState(true);
+  // Loading is true only until the first fetch of this PAGE LOAD completes —
+  // stale localStorage zeros must not render as "Clear" after a hard reload,
+  // but in-app returns to the dashboard reuse session values instantly.
+  const [loading, setLoading] = useState(!fetchedThisSession);
   const mountedRef = useRef(true);
 
   const fetchCounts = useCallback(async (silent = false) => {
@@ -83,14 +88,16 @@ export function useEscalatedCounts(enabled: boolean) {
     setCounts(next);
     setPatientIds(nextIds);
     persistCache(next);
+    fetchedThisSession = true;
     setLoading(false);
   }, []);
 
   useEffect(() => {
     mountedRef.current = true;
     if (!enabled) return;
-    // First fetch non-silent → UI shows loading until real numbers arrive.
-    fetchCounts(false);
+    // First fetch of a page load is non-silent; in-session remounts and 60s
+    // polls refresh silently.
+    fetchCounts(fetchedThisSession);
     const interval = setInterval(() => fetchCounts(true), POLL_MS);
     return () => {
       mountedRef.current = false;

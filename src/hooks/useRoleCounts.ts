@@ -123,14 +123,21 @@ const MASHEKE_STAGE_MAP: Record<string, string> = {
 
 const POLL_MS = 60_000;
 
+// True once any fetch has completed during THIS page load (module scope, so
+// it survives in-app navigation but resets on a hard reload). Returning to
+// the dashboard shows cached values instantly with a silent refresh; only a
+// hard reload shows the loading skeleton.
+let fetchedThisSession = false;
+
 export function useRoleCounts() {
   const cachedRef = useRef(loadCachedCounts());
   const [counts, setCounts] = useState<RoleCounts>(cachedRef.current);
   const [patientIds, setPatientIds] = useState<RolePatientIds>({});
-  // loading stays true until the FIRST fetch of this mount completes.
-  // Cached counts are kept as state for continuity, but are never presented
-  // as live data — stale zeros used to render as "Done!" on reload.
-  const [loading, setLoading] = useState(true);
+  // Loading is true only until the first fetch of this PAGE LOAD completes.
+  // In-app remounts (navigating back to the dashboard) reuse session values
+  // instantly; a hard reload starts fresh so stale localStorage zeros never
+  // render as "Done!".
+  const [loading, setLoading] = useState(!fetchedThisSession);
   const mountedRef = useRef(true);
 
   const fetchCounts = useCallback(async (silent = false) => {
@@ -291,14 +298,16 @@ export function useRoleCounts() {
     setCounts(next);
     setPatientIds(nextIds);
     persistCountsCache(next);
+    fetchedThisSession = true;
     if (!silent) setLoading(false);
   }, []);
 
   useEffect(() => {
     mountedRef.current = true;
-    // First fetch is always non-silent so the UI shows a loading state
-    // until real numbers arrive; 60s polls refresh silently after that.
-    fetchCounts(false);
+    // First fetch of a page load is non-silent (skeleton shows until real
+    // numbers arrive). Remounts within the session refresh silently; 60s
+    // polls are always silent.
+    fetchCounts(fetchedThisSession);
     const interval = setInterval(() => fetchCounts(true), POLL_MS);
     return () => {
       mountedRef.current = false;

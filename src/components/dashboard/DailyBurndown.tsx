@@ -232,12 +232,27 @@ export function DailyBurndown({
           <div className="space-y-3">
             {roles.map((role, i) => {
               const hex = COLOR_MAP[role.color] ?? "#6366f1";
+              const hasRoute = role.route && role.id !== "authDenied";
               return (
-                <div key={role.id}>
+                <button
+                  key={role.id}
+                  className={cn(
+                    "w-full text-left group",
+                    hasRoute ? "cursor-pointer" : "cursor-default",
+                  )}
+                  onClick={() => {
+                    if (hasRoute)
+                      navigate(managerMode ? `${role.route}?manager=1` : role.route);
+                  }}
+                  title={hasRoute ? `Open ${role.label}` : role.label}
+                >
                   <div className="flex items-center justify-between mb-1.5">
                     <span className="text-sm font-medium text-foreground flex items-center gap-2">
                       <div className={cn("w-2.5 h-2.5 rounded-full shrink-0", role.color)} />
                       {role.label}
+                      {hasRoute && (
+                        <ExternalLink className="w-3 h-3 opacity-0 group-hover:opacity-40 transition-opacity" />
+                      )}
                     </span>
                     <span className="text-sm font-semibold text-muted-foreground tabular-nums">…</span>
                   </div>
@@ -250,7 +265,7 @@ export function DailyBurndown({
                       }}
                     />
                   </div>
-                </div>
+                </button>
               );
             })}
           </div>
