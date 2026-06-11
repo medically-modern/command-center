@@ -406,14 +406,13 @@ export async function deleteSingleFileFromColumn(
   columnId: string,
   keepFiles: { name: string; url: string }[],
 ): Promise<void> {
+  // Monday's S3 asset URLs are CORS-blocked in browsers — go through
+  // fetchAssetBytes (direct fetch -> worker proxy fallback). Nothing is
+  // cleared unless EVERY kept file downloads successfully.
   const kept: { name: string; bytes: Uint8Array }[] = [];
   for (const f of keepFiles) {
-    const res = await fetch(f.url);
-    if (!res.ok) {
-      throw new Error(`Failed to download "${f.name}" before delete (${res.status}). Aborted.`);
-    }
-    const buf = await res.arrayBuffer();
-    kept.push({ name: f.name, bytes: new Uint8Array(buf) });
+    const bytes = await fetchAssetBytes(f.url, f.name);
+    kept.push({ name: f.name, bytes });
   }
   await deleteFileFromColumn(itemId, columnId);
   for (const k of kept) {

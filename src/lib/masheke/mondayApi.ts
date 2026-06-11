@@ -509,14 +509,21 @@ export interface MondayFileEntry {
 
 export type ColumnFiles = Record<string, MondayFileEntry[]>;
 
-/** Upload a file (PDF, image, etc.) into a Monday file column. */
+import { FILE_PROXY_URL, fetchAssetBytes } from "@/lib/shared/mondayAssets";
+export { fetchAssetBytes };
+
+/**
+ * Upload a file (PDF, image, etc.) into a Monday file column.
+ * Returns the new asset id when Monday provides one (used to confirm the
+ * upload landed without relying on filename matching).
+ */
 export async function uploadFileToColumn(
   itemId: string,
   columnId: string,
   bytes: Uint8Array,
   filename: string,
   mimeType = "application/pdf",
-): Promise<void> {
+): Promise<string | null> {
   const token = getToken();
   if (!token) throw new Error("VITE_MONDAY_API_TOKEN is not set");
 
@@ -526,15 +533,9 @@ export async function uploadFileToColumn(
   fd.append("query", query);
   fd.append("variables[file]", new Blob([bytes as BlobPart], { type: mimeType }), filename);
 
-  // Monday's /v2/file endpoint doesn't return CORS headers, so we relay
-  // through our Cloudflare Worker (worker/src/index.js).
-  const proxyUrl =
-    (import.meta.env.VITE_MONDAY_FILE_PROXY_URL as string | undefined) ||
-    "https://monday-file-proxy.medicallymodern.workers.dev";
-
   let res: Response;
   try {
-    res = await fetch(proxyUrl, {
+    res = await fetch(FILE_PROXY_URL, {
       method: "POST",
       headers: { Authorization: token },
       body: fd,
@@ -548,7 +549,7 @@ export async function uploadFileToColumn(
     const txt = await res.text();
     throw new Error(`File upload failed (${res.status}): ${txt}`);
   }
-  let json: { errors?: unknown };
+  let json: { errors?: unknown; data?: { add_file_to_column?: { id?: string | number } } };
   try {
     json = await res.json();
   } catch {
@@ -557,6 +558,8 @@ export async function uploadFileToColumn(
   if (json.errors) {
     throw new Error(`Monday file upload error: ${JSON.stringify(json.errors)}`);
   }
+  const assetId = json.data?.add_file_to_column?.id;
+  return assetId != null ? String(assetId) : null;
 }
 
 /** Removes ALL files from a single file column on a single item. */
@@ -593,18 +596,13 @@ export async function deleteSingleFileFromColumn(
   keepFiles: { name: string; url: string }[],
 ): Promise<void> {
   // 1) Pull the bytes of every file we want to keep before clearing.
-  //    public_url is preferred but private url works too — both serve
-  //    Monday-CDN-hosted assets with permissive CORS.
+  //    Monday's S3 asset URLs are CORS-blocked in browsers, so this goes
+  //    through fetchAssetBytes (direct fetch → worker proxy fallback).
+  //    Nothing is cleared unless EVERY kept file downloads successfully.
   const kept: { name: string; bytes: Uint8Array }[] = [];
   for (const f of keepFiles) {
-    const res = await fetch(f.url);
-    if (!res.ok) {
-      throw new Error(
-        `Failed to download "${f.name}" before delete (${res.status}). Aborted.`,
-      );
-    }
-    const buf = await res.arrayBuffer();
-    kept.push({ name: f.name, bytes: new Uint8Array(buf) });
+    const bytes = await fetchAssetBytes(f.url, f.name);
+    kept.push({ name: f.name, bytes });
   }
 
   // 2) Clear the column.

@@ -66,6 +66,7 @@ import {
   clearDateColumn,
   deleteFileFromColumn,
   deleteSingleFileFromColumn,
+  fetchAssetBytes,
   fetchStatusOptions,
   hasToken,
   writeDate,
@@ -1256,8 +1257,8 @@ function MondayScriptViewer({
                 const u = f.public_url || f.url;
                 if (!u) return;
                 try {
-                  const resp = await fetch(u, { mode: "cors" });
-                  const blob = await resp.blob();
+                  const bytes = await fetchAssetBytes(u, f.name);
+                  const blob = new Blob([bytes as BlobPart]);
                   const blobUrl = URL.createObjectURL(blob);
                   const a = document.createElement("a");
                   a.href = blobUrl;
@@ -1393,8 +1394,8 @@ function FileUploadCard({
     const url = f.public_url || f.url;
     if (!url) return;
     try {
-      const resp = await fetch(url, { mode: "cors" });
-      const blob = await resp.blob();
+      const bytes = await fetchAssetBytes(url, f.name);
+      const blob = new Blob([bytes as BlobPart]);
       const blobUrl = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = blobUrl;

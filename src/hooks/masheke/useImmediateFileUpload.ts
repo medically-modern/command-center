@@ -61,16 +61,33 @@ export function useImmediateFileUpload(): UseImmediateFileUploadReturn {
     syncState(next);
   };
 
-  /** Poll Monday until the file appears in the column's asset list. */
+  /**
+   * Fallback confirmation when the upload response didn't include an asset
+   * id: poll Monday until the file appears in the column's asset list.
+   * Names are normalized (URL-decoded, trimmed, case-insensitive) because
+   * Monday normalizes filenames server-side — an exact-match compare left
+   * successfully uploaded files spinning forever (e.g. "%20" vs spaces).
+   */
   const confirmFile = useCallback(
     async (itemId: string, columnId: string, fileName: string) => {
+      const norm = (s: string) => {
+        let d = s;
+        try {
+          d = decodeURIComponent(s);
+        } catch {
+          /* not URL-encoded — use as-is */
+        }
+        return d.trim().toLowerCase();
+      };
+      const target = norm(fileName);
+
       updateFile(fileName, { status: "confirming" });
       for (let i = 0; i < MAX_POLLS; i++) {
         await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
         try {
           const cols: ColumnFiles = await fetchItemFileColumns(itemId, [columnId]);
           const entries = cols[columnId] ?? [];
-          if (entries.some((e) => e.name === fileName)) {
+          if (entries.some((e) => norm(e.name) === target)) {
             updateFile(fileName, { status: "confirmed" });
             return;
           }
@@ -101,15 +118,21 @@ export function useImmediateFileUpload(): UseImmediateFileUploadReturn {
         rawFiles.map(async (file) => {
           try {
             const bytes = new Uint8Array(await file.arrayBuffer());
-            await uploadFileToColumn(
+            const assetId = await uploadFileToColumn(
               itemId,
               columnId,
               bytes,
               file.name,
               file.type || "application/octet-stream",
             );
-            // Upload call returned — start polling for confirmation.
-            confirmFile(itemId, columnId, file.name);
+            if (assetId) {
+              // Monday returned the new asset id — the file is confirmed
+              // server-side, no polling needed.
+              updateFile(file.name, { status: "confirmed" });
+            } else {
+              // No id in the response — fall back to polling the column.
+              confirmFile(itemId, columnId, file.name);
+            }
           } catch (err) {
             const msg = err instanceof Error ? err.message : String(err);
             updateFile(file.name, { status: "error", error: msg });
