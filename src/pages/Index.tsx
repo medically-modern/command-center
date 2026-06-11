@@ -1,4 +1,3 @@
-import { useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useAssignments } from "@/lib/assignmentsStore";
 import { RolesPanel } from "@/components/dashboard/RolesPanel";
@@ -17,11 +16,18 @@ type ManagersSubTab = "assignments" | "dashboards";
 const PROCESSOR_USERS: UserName[] = ["Masheke", "Samantha"];
 
 const Index = () => {
-  const [searchParams] = useSearchParams();
-  const initialTab = searchParams.get("tab") === "dashboard" ? "dashboard" : "roles";
-  const [activeTab, setActiveTab] = useState<Tab>(initialTab);
-  const [managersSub, setManagersSub] = useState<ManagersSubTab>("assignments");
-  const [selectedUser, setSelectedUser] = useState<UserName | null>(null);
+  /**
+   * View state (tab / sub-tab / selected user) lives in the URL so that:
+   * 1. role pages' back navigation restores the EXACT prior screen
+   *    (e.g. /?tab=roles&sub=dashboards&user=Janelle), and
+   * 2. a browser refresh keeps you where you were.
+   * All writes use { replace: true } so clicking around the sidebar never
+   * stacks history entries — "back" from a role page is always one step.
+   */
+  const [searchParams, setSearchParams] = useSearchParams();
+  const activeTab: Tab = searchParams.get("tab") === "dashboard" ? "dashboard" : "roles";
+  const managersSub: ManagersSubTab =
+    searchParams.get("sub") === "dashboards" ? "dashboards" : "assignments";
   const { assignments, toggle, getRolesForUser } = useAssignments();
   const { counts, loading: countsLoading } = useRoleCounts();
 
@@ -35,6 +41,40 @@ const Index = () => {
     activeTab === "dashboard"
       ? PROCESSOR_USERS
       : USERS.filter((u) => !PROCESSOR_USERS.includes(u));
+
+  // Selected user comes from the URL; ignore names that don't belong to the
+  // active tab's list (e.g. a processor name while on the Managers tab).
+  const userParam = searchParams.get("user");
+  const selectedUser: UserName | null =
+    userParam && visibleUsers.includes(userParam as UserName)
+      ? (userParam as UserName)
+      : null;
+
+  const updateView = (patch: { tab?: Tab; sub?: ManagersSubTab; user?: UserName | null }) => {
+    const next = new URLSearchParams(searchParams);
+    const tab = patch.tab ?? activeTab;
+    next.set("tab", tab);
+    if (tab === "roles") {
+      next.set("sub", patch.sub ?? managersSub);
+    } else {
+      next.delete("sub");
+    }
+    const user = patch.user !== undefined ? patch.user : selectedUser;
+    // Changing tabs switches user lists, so a carried-over selection never
+    // applies — drop it unless this patch explicitly sets one.
+    if (patch.tab && patch.tab !== activeTab && patch.user === undefined) {
+      next.delete("user");
+    } else if (user) {
+      next.set("user", user);
+    } else {
+      next.delete("user");
+    }
+    setSearchParams(next, { replace: true });
+  };
+
+  const setActiveTab = (tab: Tab) => updateView({ tab });
+  const setManagersSub = (sub: ManagersSubTab) => updateView({ sub });
+  const setSelectedUser = (user: UserName) => updateView({ user });
 
   return (
     <div className="min-h-screen bg-gradient-subtle flex">

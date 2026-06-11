@@ -391,9 +391,6 @@ export function DailyBurndown({
                   )}
                   <ExternalLink className="w-3.5 h-3.5 opacity-70" />
                 </button>
-                <span className="text-[11px] text-muted-foreground">
-                  As-needed task — can apply to any patient, not a queue to clear
-                </span>
               </div>
             );
           })}

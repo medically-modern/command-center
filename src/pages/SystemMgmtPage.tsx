@@ -55,13 +55,31 @@ type Tab = "search" | "escalations" | "operations" | "stageManager" | "oversight
 
 const SystemMgmtPage = () => {
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
+
+  /** History-first back: return to the exact prior screen (e.g. a manager's
+   *  dashboard). Fallback for deep links: the manager Dashboards view, since
+   *  System Management is only reachable from the manager dashboards header. */
+  const goBack = () => {
+    const state = window.history.state as { idx?: number } | null;
+    if (typeof state?.idx === "number" && state.idx > 0) navigate(-1);
+    else navigate("/?tab=roles&sub=dashboards");
+  };
+  const [searchParams, setSearchParams] = useSearchParams();
   const { patients, escalated, completionMap, loading, error, refetch, removeEscalation } =
     useSystemPatients();
 
   const tabParam = searchParams.get("tab");
   const initialTab: Tab = tabParam === "escalations" ? "escalations" : tabParam === "operations" ? "operations" : tabParam === "stageManager" ? "stageManager" : tabParam === "oversight" ? "oversight" : "search";
   const [activeTab, setActiveTab] = useState<Tab>(initialTab);
+
+  /** Switch tab AND mirror it into the URL (replace, no history entry) so
+   *  that backing out of a role page returns to this exact tab. */
+  const selectTab = (tab: Tab) => {
+    setActiveTab(tab);
+    const next = new URLSearchParams(searchParams);
+    next.set("tab", tab);
+    setSearchParams(next, { replace: true });
+  };
   const [query, setQuery] = useState("");
   const [removingId, setRemovingId] = useState<string | null>(null);
   const [detailPatient, setDetailPatient] = useState<SystemPatient | null>(null);
@@ -207,7 +225,7 @@ const SystemMgmtPage = () => {
         <div className="px-3 sm:px-6 py-5 flex items-center justify-between gap-4 flex-wrap">
           <div className="flex items-center gap-3">
             <button
-              onClick={() => navigate("/?tab=dashboard")}
+              onClick={goBack}
               className="p-1.5 rounded-md hover:bg-white/10 transition-colors"
             >
               <ArrowLeft className="h-5 w-5" />
@@ -243,32 +261,32 @@ const SystemMgmtPage = () => {
         <div className="px-3 sm:px-6 flex gap-0">
           <TabBtn
             active={activeTab === "search"}
-            onClick={() => setActiveTab("search")}
+            onClick={() => selectTab("search")}
             icon={<Search className="w-4 h-4" />}
             label="Search"
           />
           <TabBtn
             active={activeTab === "escalations"}
-            onClick={() => setActiveTab("escalations")}
+            onClick={() => selectTab("escalations")}
             icon={<AlertTriangle className="w-4 h-4" />}
             label={`Escalations${escalated.length ? ` (${escalated.length})` : ""}`}
             alert={escalated.length > 0}
           />
           <TabBtn
             active={activeTab === "stageManager"}
-            onClick={() => setActiveTab("stageManager")}
+            onClick={() => selectTab("stageManager")}
             icon={<ArrowRightLeft className="w-4 h-4" />}
             label="Stage Manager"
           />
           <TabBtn
             active={activeTab === "operations"}
-            onClick={() => setActiveTab("operations")}
+            onClick={() => selectTab("operations")}
             icon={<Activity className="w-4 h-4" />}
             label="Operations"
           />
           <TabBtn
             active={activeTab === "oversight"}
-            onClick={() => setActiveTab("oversight")}
+            onClick={() => selectTab("oversight")}
             icon={<BarChart3 className="w-4 h-4" />}
             label="Oversight"
           />

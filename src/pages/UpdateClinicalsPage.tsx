@@ -27,7 +27,7 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 import { ArrowLeft, CalendarDays, FileUp, Loader2, RefreshCw, Search, User, X } from "lucide-react";
-import { useNavigate } from "react-router-dom";
+import { useBackNavigation } from "@/hooks/useBackNavigation";
 import { cn } from "@/lib/utils";
 
 /* ── Simplified Sidebar ─────────────────────────────────────── */
@@ -277,7 +277,7 @@ function PatientClinicalsCard({ patient }: { patient: Patient }) {
 /* ── Page ────────────────────────────────────────────────────── */
 
 const UpdateClinicalsPage = () => {
-  const navigate = useNavigate();
+  const { goBack } = useBackNavigation();
   const { patients, loading, error, refetch } = useMondayPatients();
   // No auto-select — the page opens to a patient search so the user
   // explicitly picks who they're updating.
@@ -312,7 +312,7 @@ const UpdateClinicalsPage = () => {
             <div className="px-6 py-5 flex items-center gap-3">
               <SidebarTrigger className="text-navy-foreground hover:bg-white/10" />
               <button
-                onClick={() => navigate("/?tab=dashboard")}
+                onClick={() => goBack()}
                 className="p-1.5 rounded-md hover:bg-white/10 transition-colors"
               >
                 <ArrowLeft className="h-5 w-5" />

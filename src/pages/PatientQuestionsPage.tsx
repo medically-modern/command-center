@@ -10,10 +10,10 @@ import { PatientsSidebar } from "@/components/patientQuestions/PatientsSidebar";
 import { PatientDetailCard } from "@/components/patientQuestions/PatientDetailCard";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { ArrowLeft, MessageCircleQuestion } from "lucide-react";
-import { useNavigate } from "react-router-dom";
+import { useBackNavigation } from "@/hooks/useBackNavigation";
 
 const PatientQuestionsPage = () => {
-  const navigate = useNavigate();
+  const { goBack } = useBackNavigation();
   const { patients, loading, error, refetch } = useMondayPatients();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"all" | "subscription" | "claims">("all");
@@ -60,7 +60,7 @@ const PatientQuestionsPage = () => {
               <div className="flex items-center gap-3">
                 <SidebarTrigger className="text-navy-foreground hover:bg-white/10" />
                 <button
-                  onClick={() => navigate("/?tab=dashboard")}
+                  onClick={() => goBack()}
                   className="p-1.5 rounded-md hover:bg-white/10 transition-colors"
                 >
                   <ArrowLeft className="h-5 w-5" />

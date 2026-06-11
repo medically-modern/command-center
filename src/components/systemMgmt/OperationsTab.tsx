@@ -339,7 +339,7 @@ export function OperationsTab() {
                 hasRoute ? "cursor-pointer" : "cursor-default",
               )}
               onClick={() => {
-                if (hasRoute) navigate(d.role.route);
+                if (hasRoute) navigate(`${d.role.route}?from=system-mgmt`);
               }}
               title={hasRoute ? `Open ${d.role.label}` : d.role.label}
             >
