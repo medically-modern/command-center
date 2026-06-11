@@ -1,6 +1,8 @@
 // Monday.com GraphQL client for the Subscription Board.
 // Board 18407459988 — "Subscription Board - Updated"
 
+import { fetchAssetBytes } from "@/lib/shared/mondayAssets";
+
 const MONDAY_API_URL = "https://api.monday.com/v2";
 const MONDAY_API_VERSION = "2024-10";
 
