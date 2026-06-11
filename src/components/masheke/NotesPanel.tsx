@@ -31,7 +31,7 @@ interface Props {
  *  stand out from regular notes. Handles both full names and legacy
  *  abbreviations (C.R. / C.C. / S.R.). */
 const ATTEMPT_LABEL_REGEX =
-  /^(\[[^\]]*\]\s*)((?:Confirm Receipt|Chase Clinicals|Send Request|C\.R\.|C\.C\.|S\.R\.)(?: Attempt \d+)?:)([\s\S]*)$/;
+  /^(\[[^\]]*\]\s*)((?:Confirm Receipt|Chase Clinicals|Send Request|Evaluate|C\.R\.|C\.C\.|S\.R\.)(?: Attempt \d+)?:)([\s\S]*)$/;
 
 function renderNoteLine(line: string): React.ReactNode {
   const m = line.match(ATTEMPT_LABEL_REGEX);

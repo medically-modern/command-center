@@ -744,6 +744,7 @@ export function EvaluatePanel({ patient, resetVersion = 0, onUpdate, onOpenForm 
         profileSendOffNotes={patient.profileSendOffNotes}
         onNoteAdded={() => setNoteAdded(true)}
         onPendingTextChange={setPendingNoteText}
+        notePrefix="Evaluate"
       />
 
       {/* Sticky validity / preview footer */}
