@@ -74,22 +74,26 @@ export function DoctorNotesPanel({ doctorNpi, doctorName, compact = false, flush
   // with a hint instead of hiding the capability entirely. It activates as
   // soon as an NPI is entered.
   if (!doctorNpi?.trim()) {
+    if (flush) {
+      // Grid-cell style — matches the HVal fields around it.
+      return (
+        <div className="min-w-0">
+          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            Doctor Notes
+          </p>
+          <p
+            className="mt-0.5 text-lg font-semibold truncate text-muted-foreground/50"
+            title="Enter the doctor's NPI to view or add doctor notes."
+          >
+            —
+          </p>
+        </div>
+      );
+    }
     return (
-      <div
-        className={
-          flush
-            ? "space-y-1"
-            : `border rounded-lg ${compact ? "p-3" : "p-4"} space-y-1 bg-card`
-        }
-      >
-        <p
-          className={
-            flush
-              ? "text-xs font-medium uppercase tracking-wide text-muted-foreground flex items-center gap-1.5"
-              : `${compact ? "text-xs" : "text-sm"} font-semibold text-emerald-700 flex items-center gap-1.5`
-          }
-        >
-          <Stethoscope className={`${compact || flush ? "h-3.5 w-3.5" : "h-4 w-4"} shrink-0`} />
+      <div className={`border rounded-lg ${compact ? "p-3" : "p-4"} space-y-1 bg-card`}>
+        <p className={`${compact ? "text-xs" : "text-sm"} font-semibold text-emerald-700 flex items-center gap-1.5`}>
+          <Stethoscope className={`${compact ? "h-3.5 w-3.5" : "h-4 w-4"} shrink-0`} />
           Doctor Notes
         </p>
         <p className="text-xs text-muted-foreground italic">
@@ -141,6 +145,33 @@ export function DoctorNotesPanel({ doctorNpi, doctorName, compact = false, flush
       setSaving(false);
     }
   };
+
+  // Collapsed flush mode renders as a plain grid cell — identical styling to
+  // the HVal fields around it (uppercase label, value underneath). Clicking
+  // anywhere in the cell expands into the full notes editor.
+  if (flush && !open) {
+    return (
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        title="Click to view or add doctor notes"
+        className="block w-full min-w-0 text-left group"
+      >
+        <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground group-hover:text-foreground transition-colors">
+          Doctor Notes
+        </p>
+        {loading ? (
+          <p className="mt-0.5 text-sm text-muted-foreground">Loading…</p>
+        ) : doctor?.notes ? (
+          <p className="mt-0.5 text-sm font-medium text-foreground whitespace-pre-wrap [display:-webkit-box] [-webkit-line-clamp:3] [-webkit-box-orient:vertical] overflow-hidden">
+            {doctor.notes}
+          </p>
+        ) : (
+          <p className="mt-0.5 text-lg font-semibold truncate text-muted-foreground/50">—</p>
+        )}
+      </button>
+    );
+  }
 
   // Flush mode sits next to the Doctor field, so the name would be redundant.
   const headerLabel = flush
@@ -214,25 +245,6 @@ export function DoctorNotesPanel({ doctorNpi, doctorName, compact = false, flush
           </div>
         )}
       </div>
-
-      {/* Collapsed preview (flush mode) — notes are directly viewable;
-          expanding reveals the editor, refresh and Add controls. */}
-      {flush && !open && !loading && (
-        doctor?.notes ? (
-          <button
-            type="button"
-            onClick={() => setOpen(true)}
-            title="Click to expand and add notes"
-            className="block w-full text-left"
-          >
-            <p className="text-xs whitespace-pre-wrap text-foreground/80 [display:-webkit-box] [-webkit-line-clamp:3] [-webkit-box-orient:vertical] overflow-hidden">
-              {doctor.notes}
-            </p>
-          </button>
-        ) : (
-          <p className="text-xs text-muted-foreground italic">No doctor notes yet.</p>
-        )
-      )}
 
       {/* Loading state */}
       {open && loading && (
