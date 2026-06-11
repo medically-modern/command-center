@@ -57,16 +57,47 @@ export function DoctorNotesPanel({ doctorNpi, doctorName, compact = false, flush
   }, []);
 
   useEffect(() => {
-    if (doctorNpi !== lastNpi.current) {
+    if (doctorNpi === lastNpi.current) return;
+    // Debounced: on pages where the NPI is being typed into a form (e.g.
+    // Profile Checklist), don't fire a Doctor DB lookup per keystroke.
+    const t = setTimeout(() => {
       lastNpi.current = doctorNpi;
       retryCount.current = 0;
       setEditing(false);
       setNewNote("");
       fetchDoctor(doctorNpi);
-    }
+    }, 500);
+    return () => clearTimeout(t);
   }, [doctorNpi, fetchDoctor]);
 
-  if (!doctorNpi?.trim()) return null;
+  // No NPI yet (common at the Profile/intake stage): keep the panel visible
+  // with a hint instead of hiding the capability entirely. It activates as
+  // soon as an NPI is entered.
+  if (!doctorNpi?.trim()) {
+    return (
+      <div
+        className={
+          flush
+            ? "space-y-1"
+            : `border rounded-lg ${compact ? "p-3" : "p-4"} space-y-1 bg-card`
+        }
+      >
+        <p
+          className={
+            flush
+              ? "text-xs font-medium uppercase tracking-wide text-muted-foreground flex items-center gap-1.5"
+              : `${compact ? "text-xs" : "text-sm"} font-semibold text-emerald-700 flex items-center gap-1.5`
+          }
+        >
+          <Stethoscope className={`${compact || flush ? "h-3.5 w-3.5" : "h-4 w-4"} shrink-0`} />
+          Doctor Notes
+        </p>
+        <p className="text-xs text-muted-foreground italic">
+          Enter the doctor's NPI to view or add doctor notes.
+        </p>
+      </div>
+    );
+  }
 
   const handleAppend = async () => {
     if (!newNote.trim() || !doctor) return;
