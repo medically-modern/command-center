@@ -4,6 +4,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { MR_OPTS, MN_ATTEMPTS_OPTS } from "@/lib/masheke/fieldOptions";
+import { clampToBusinessDay } from "@/lib/masheke/etDate";
 
 interface Props {
   patient: Patient;
@@ -60,7 +61,7 @@ export function ReceiptChasePanel({ patient, mode, onUpdate }: Props) {
               <Input
                 type="date"
                 value={patient.nextActionDate ?? ""}
-                onChange={(e) => onUpdate({ nextActionDate: e.target.value })}
+                onChange={(e) => onUpdate({ nextActionDate: clampToBusinessDay(e.target.value) })}
                 className="text-sm"
               />
             </div>

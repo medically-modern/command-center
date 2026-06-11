@@ -2,7 +2,7 @@
 
 import { writeStatusIndex, writeText, writeLongText, writeDate, readColumnTexts, COL } from "./mondayApi";
 import { executeWritesWithVerification } from "../shared/verifiedWrite";
-import { etNow } from "./etDate";
+import { etNow, clampToBusinessDay } from "./etDate";
 import {
   SUB_STAGE_INDEX,
   ADVANCER_2A_INDEX,
@@ -193,7 +193,8 @@ export async function sendPatientToMonday(
       tasks.push({
         label: "Next Action Date",
         columnId: COL.nextActionDate,
-        fn: () => writeDate(p.id, COL.nextActionDate, p.nextActionDate!),
+        // Clamped: a Next Action Date must never land on a weekend.
+        fn: () => writeDate(p.id, COL.nextActionDate, clampToBusinessDay(p.nextActionDate!)),
       });
     }
     if (p.chaseRecipientName) {

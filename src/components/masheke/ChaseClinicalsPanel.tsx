@@ -18,7 +18,7 @@
 import { useEffect, useMemo, useState, useRef } from "react";
 import type { Patient } from "@/lib/masheke/workflow";
 import { NotesPanel } from "@/components/masheke/NotesPanel";
-import { etNow } from "@/lib/masheke/etDate";
+import { etNow, clampToBusinessDay } from "@/lib/masheke/etDate";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useMondayFiles } from "@/hooks/masheke/useMondayFiles";
@@ -154,19 +154,22 @@ export function ChaseClinicalsPanel({ patient, onUpdate, managerMode = false }: 
             ? formatAttemptValue("Parachute message", etNow())
             : formatAttemptValue(name.trim(), etNow());
         const nextSlot = nextMnAttempt(attempt);
+        // Never schedule a next action on a weekend, no matter how the
+        // date was produced.
+        const safeNextAction = clampToBusinessDay(nextAction);
         await saveNo({
           patient,
           attempt,
           value,
           nextSlot,
-          nextActionDateInput: nextAction,
+          nextActionDateInput: safeNextAction,
         });
         const fieldKey =
           attempt === 1 ? "chaseAttempt1" : attempt === 2 ? "chaseAttempt2" : "chaseAttempt3";
         onUpdate({
           [fieldKey]: value,
           mnAttempts: nextSlot,
-          nextActionDate: nextAction,
+          nextActionDate: safeNextAction,
           escalation: nextSlot === "Escalate" ? "Escalation Required" : patient.escalation,
         });
         toast.success(
