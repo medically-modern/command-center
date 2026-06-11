@@ -127,7 +127,10 @@ export function useRoleCounts() {
   const cachedRef = useRef(loadCachedCounts());
   const [counts, setCounts] = useState<RoleCounts>(cachedRef.current);
   const [patientIds, setPatientIds] = useState<RolePatientIds>({});
-  const [loading, setLoading] = useState(Object.keys(cachedRef.current).length === 0);
+  // loading stays true until the FIRST fetch of this mount completes.
+  // Cached counts are kept as state for continuity, but are never presented
+  // as live data — stale zeros used to render as "Done!" on reload.
+  const [loading, setLoading] = useState(true);
   const mountedRef = useRef(true);
 
   const fetchCounts = useCallback(async (silent = false) => {
@@ -293,8 +296,9 @@ export function useRoleCounts() {
 
   useEffect(() => {
     mountedRef.current = true;
-    // If we have cached counts, fetch silently (no spinner)
-    fetchCounts(Object.keys(cachedRef.current).length > 0);
+    // First fetch is always non-silent so the UI shows a loading state
+    // until real numbers arrive; 60s polls refresh silently after that.
+    fetchCounts(false);
     const interval = setInterval(() => fetchCounts(true), POLL_MS);
     return () => {
       mountedRef.current = false;

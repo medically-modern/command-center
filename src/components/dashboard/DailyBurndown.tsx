@@ -224,10 +224,67 @@ export function DailyBurndown({
 
   if (!snapshot || (barData.length === 0 && taskRoles.length === 0)) {
     if (countsLoading || serverLoading) {
+      // Skeleton bars: while live counts are being fetched, show a shimmer
+      // animation per role instead of numbers (stale cached zeros used to
+      // briefly render as "Done!" here).
       return (
-        <div className="flex items-center justify-center py-12 text-muted-foreground text-sm gap-2">
-          <Clock className="w-4 h-4 animate-pulse" />
-          Loading daily progress...
+        <div className="space-y-6">
+          <div className="space-y-3">
+            {roles.map((role, i) => {
+              const hex = COLOR_MAP[role.color] ?? "#6366f1";
+              return (
+                <div key={role.id}>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <span className="text-sm font-medium text-foreground flex items-center gap-2">
+                      <div className={cn("w-2.5 h-2.5 rounded-full shrink-0", role.color)} />
+                      {role.label}
+                    </span>
+                    <span className="text-sm font-semibold text-muted-foreground tabular-nums">…</span>
+                  </div>
+                  <div className="relative h-8 w-full rounded-lg overflow-hidden bg-muted/30">
+                    <div
+                      className="absolute inset-y-0 w-1/3 burndown-shimmer"
+                      style={{
+                        background: `linear-gradient(90deg, transparent, ${hexToRgba(hex, 0.35)}, transparent)`,
+                        animationDelay: `${i * 120}ms`,
+                      }}
+                    />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          {taskRoles.length > 0 && (
+            <div className="space-y-2">
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/70">
+                Ad-hoc tasks
+              </p>
+              {taskRoles.map((role) => (
+                <div key={role.id} className="flex items-center gap-3">
+                  <button
+                    onClick={() =>
+                      role.route &&
+                      navigate(managerMode ? `${role.route}?manager=1` : role.route)
+                    }
+                    title={`Open ${role.label}`}
+                    className="inline-flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-opacity hover:opacity-90"
+                    style={{ background: "var(--mm-teal, #3f5c63)" }}
+                  >
+                    <Zap className="w-4 h-4" />
+                    {role.label}
+                    <span className="inline-flex items-center justify-center min-w-[1.5rem] h-6 px-1.5 rounded-full bg-white/25 text-xs font-bold tabular-nums">
+                      …
+                    </span>
+                    <ExternalLink className="w-3.5 h-3.5 opacity-70" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+          <div className="flex items-center gap-2 pt-1 text-xs text-muted-foreground/60">
+            <Clock className="w-3 h-3 animate-pulse" />
+            Pulling live counts…
+          </div>
         </div>
       );
     }

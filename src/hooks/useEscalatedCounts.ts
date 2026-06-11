@@ -43,9 +43,9 @@ export function useEscalatedCounts(enabled: boolean) {
   const cachedRef = useRef(loadCache());
   const [counts, setCounts] = useState<RoleCounts>(cachedRef.current);
   const [patientIds, setPatientIds] = useState<RolePatientIds>({});
-  const [loading, setLoading] = useState(
-    Object.keys(cachedRef.current).length === 0,
-  );
+  // loading stays true until the FIRST fetch of this mount completes —
+  // cached counts must not render as live (stale zeros showed as "Clear").
+  const [loading, setLoading] = useState(true);
   const mountedRef = useRef(true);
 
   const fetchCounts = useCallback(async (silent = false) => {
@@ -89,7 +89,8 @@ export function useEscalatedCounts(enabled: boolean) {
   useEffect(() => {
     mountedRef.current = true;
     if (!enabled) return;
-    fetchCounts(Object.keys(cachedRef.current).length > 0);
+    // First fetch non-silent → UI shows loading until real numbers arrive.
+    fetchCounts(false);
     const interval = setInterval(() => fetchCounts(true), POLL_MS);
     return () => {
       mountedRef.current = false;
