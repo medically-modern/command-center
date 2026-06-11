@@ -119,6 +119,10 @@ export function ConfirmReceiptPanel({ patient, onUpdate, managerMode = false }: 
   }, [patient.mnAttempts]);
 
   const isEscalated = currentAttempt === null;
+  // Managers work the escalated queue — the lock that hides the action UI
+  // for escalated patients must NOT apply in manager mode, otherwise a
+  // manager can never confirm/advance or send updates to Monday.
+  const locked = isEscalated && !managerMode;
 
   // Build history from the 3 per-attempt text columns. Only attempts
   // that have been saved (column has a value) appear here.
@@ -134,7 +138,7 @@ export function ConfirmReceiptPanel({ patient, onUpdate, managerMode = false }: 
   // name. Save needs a selected outcome AND at least one note added
   // for this attempt (with no un-added text left in the note box).
   const hasPendingNote = pendingNoteText.trim().length > 0;
-  const canSave = !!confirmed && noteAdded && !hasPendingNote && !saving && !isEscalated;
+  const canSave = !!confirmed && noteAdded && !hasPendingNote && !saving && !locked;
 
   async function handleSave() {
     if (!canSave) return;
@@ -146,6 +150,12 @@ export function ConfirmReceiptPanel({ patient, onUpdate, managerMode = false }: 
     try {
       if (confirmed === "yes") {
         await saveYes(patient, name.trim());
+        if (isEscalated) {
+          // Manager resolved the escalation by confirming receipt — clear
+          // the flag so the patient doesn't stay in escalated lists.
+          await writeStatusIndex(patient.id, COL.escalation, ESCALATION_INDEX.done);
+          onUpdate({ escalation: "Done" });
+        }
         toast.success("Receipt confirmed — moved to Chase Clinicals");
         setJustConfirmed({
           who: name.trim(),
@@ -156,6 +166,14 @@ export function ConfirmReceiptPanel({ patient, onUpdate, managerMode = false }: 
           receiptConfirmedDate: formatDateInput(etNow()),
           subStage: "Chase Clinicals",
         });
+      } else if (isEscalated) {
+        // Manager follow-up on an escalated patient: all 3 attempt slots are
+        // used, so just set the next action date (weekend-clamped). Notes
+        // were already saved by the notes panel. Patient stays escalated.
+        const safeNextAction = clampToBusinessDay(nextAction);
+        await writeDate(patient.id, COL.nextActionDate, safeNextAction);
+        onUpdate({ nextActionDate: safeNextAction });
+        toast.success("Follow-up saved — patient remains escalated");
       } else {
         const attempt = currentAttempt ?? 1;
         const value = formatAttemptValue(name.trim(), etNow());
@@ -404,7 +422,7 @@ export function ConfirmReceiptPanel({ patient, onUpdate, managerMode = false }: 
         num={4}
         title="Confirm Receipt?"
         sub={
-          justConfirmed || isEscalated
+          justConfirmed || locked
             ? undefined
             : isLastAttempt
               ? "Final attempt — if not confirmed, the patient will be flagged for escalation."
@@ -439,7 +457,7 @@ export function ConfirmReceiptPanel({ patient, onUpdate, managerMode = false }: 
             </div>
             <HistRows history={history} confirmedRow={justConfirmed} />
           </>
-        ) : isEscalated ? (
+        ) : locked ? (
           <>
             <div
               className="flex items-center gap-3 rounded-xl border px-4.5 py-4"
@@ -462,6 +480,15 @@ export function ConfirmReceiptPanel({ patient, onUpdate, managerMode = false }: 
           </>
         ) : (
           <>
+            {isEscalated && managerMode && (
+              <div className="flex items-center gap-2 rounded-lg border border-amber-300 bg-amber-50 px-3.5 py-2.5 mb-1">
+                <AlertTriangle className="h-4 w-4 shrink-0 text-amber-600" />
+                <p className="text-xs text-amber-800">
+                  <span className="font-bold">Manager override</span> — all 3 attempts used.
+                  "Yes" advances the patient and clears the escalation; "No" just sets the next action date.
+                </p>
+              </div>
+            )}
             <FilesLabel className="mt-0">Who answered the call?</FilesLabel>
             <Input
               value={name}
