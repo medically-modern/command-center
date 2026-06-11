@@ -1,7 +1,8 @@
 import { ROLES, USERS, type UserName } from "@/lib/config";
 import type { RoleAssignments } from "@/lib/config";
 import { cn } from "@/lib/utils";
-import { BarChart3, LayoutDashboard, Loader2 } from "lucide-react";
+import { BarChart3, Eye, LayoutDashboard, Loader2 } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 import type { RoleCounts } from "@/hooks/useRoleCounts";
 import { DailyBurndown } from "./DailyBurndown";
 
@@ -16,6 +17,7 @@ interface Props {
 }
 
 export function DashboardMainView({ selectedUser, assignments, getRolesForUser, roleCounts, countsLoading, managerMode = false }: Props) {
+  const navigate = useNavigate();
 
   if (!selectedUser) {
     return (
@@ -58,7 +60,19 @@ export function DashboardMainView({ selectedUser, assignments, getRolesForUser, 
             Escalated patients only
           </span>
         )}
-        {countsLoading && <Loader2 className="w-4 h-4 animate-spin text-muted-foreground ml-auto" />}
+        <div className="ml-auto flex items-center gap-3">
+          {countsLoading && <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />}
+          {managerMode && (
+            <button
+              onClick={() => navigate("/system-mgmt")}
+              title="Open System Management"
+              className="inline-flex items-center gap-2 rounded-lg bg-slate-700 hover:bg-slate-600 text-white px-4 py-2 text-sm font-semibold shadow-sm transition-colors"
+            >
+              <Eye className="w-4 h-4" />
+              System Management
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Content */}

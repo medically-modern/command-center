@@ -278,15 +278,8 @@ export function useRoleCounts() {
         next.patientQuestions = 0;
       }
 
-      // System Management — count escalations across all boards
-      // We import fetchAllPatients lazily to avoid circular deps
-      try {
-        const { fetchAllPatients } = await import("@/lib/systemMgmt/mondayApi");
-        const allPatients = await fetchAllPatients();
-        next.systemMgmt = allPatients.filter((p) => p.escalated).length;
-      } catch {
-        next.systemMgmt = 0;
-      }
+      // System Management is no longer a dashboard role (header button only),
+      // so the escalation-count fetch that used to live here was removed.
     } catch (e) {
       console.error("Failed to fetch role counts:", e);
     }

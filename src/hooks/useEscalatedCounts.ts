@@ -73,10 +73,8 @@ export function useEscalatedCounts(enabled: boolean) {
         nextIds[roleId].push(p.id);
       }
 
-      // System Management bar = total escalations across the pipeline.
-      next.systemMgmt = patients.filter(
-        (p) => p.escalated && !p.isCompleted,
-      ).length;
+      // System Management is no longer a dashboard role (header button only),
+      // so no pipeline-wide escalation total is computed here.
     } catch (e) {
       console.error("Failed to fetch escalated counts:", e);
     }

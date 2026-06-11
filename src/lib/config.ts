@@ -23,7 +23,8 @@ export const ROLES: RoleConfig[] = [
   { id: "updateClinicals", label: "Update Clinicals",   color: "bg-fuchsia-500", icon: "FileUp",         route: "/update-clinicals" },
   { id: "authDenied",      label: "Auth Denied",        color: "bg-red-500",     icon: "XCircle",        route: "/auth-denied"      },
   { id: "patientQuestions", label: "Patient Questions", color: "bg-sky-500",     icon: "MessageCircleQuestion", route: "/patient-questions" },
-  { id: "systemMgmt",     label: "System Management",  color: "bg-slate-700",   icon: "Settings2",      route: "/system-mgmt"      },
+  // systemMgmt intentionally NOT in ROLES — System Management is accessed via
+  // the oversight button in the manager dashboards header, not role assignment.
 ];
 
 export const USERS = [
@@ -55,5 +56,4 @@ export const DEFAULT_ASSIGNMENTS: RoleAssignments = {
   updateClinicals: [],
   authDenied:      [],
   patientQuestions: [],
-  systemMgmt:      [],
 };

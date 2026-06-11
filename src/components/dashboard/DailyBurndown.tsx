@@ -180,7 +180,7 @@ export function DailyBurndown({
   // Ad-hoc TASK roles — not a queue the processor "burns down" but work that
   // can land on any patient at any time. Rendered as a task tile below the
   // bars instead of a burndown bar.
-  const TASK_ROLE_IDS = new Set(["updateClinicals"]);
+  const TASK_ROLE_IDS = new Set(["updateClinicals", "subscription"]);
 
   const roles = ROLES.filter(
     (r) => visibleRoleIds.includes(r.id) && !TASK_ROLE_IDS.has(r.id),
