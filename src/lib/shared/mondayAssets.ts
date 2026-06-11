@@ -9,7 +9,7 @@
 
 export const FILE_PROXY_URL =
   (import.meta.env.VITE_MONDAY_FILE_PROXY_URL as string | undefined) ||
-  "https://monday-file-proxy.medicallymodern.workers.dev";
+  "https://monday-file-proxy.medically-modern.workers.dev";
 
 /**
  * Download a Monday asset's bytes. Tries a direct fetch first (in case the

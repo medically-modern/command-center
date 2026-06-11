@@ -506,7 +506,7 @@ export async function uploadFileToColumn(
 
   const proxyUrl =
     (import.meta.env.VITE_MONDAY_FILE_PROXY_URL as string | undefined) ||
-    "https://monday-file-proxy.medicallymodern.workers.dev";
+    "https://monday-file-proxy.medically-modern.workers.dev";
 
   let res: Response;
   try {
