@@ -11,8 +11,10 @@
  * Subscription board (18407459988): Subscriptions group
  */
 import { useEffect, useState, useCallback, useRef } from "react";
-import { fetchGroupItems as fetchSamanthaGroup, GROUPS as SAM_GROUPS, hasToken as samHasToken } from "@/lib/samantha/mondayApi";
-import { fetchGroupItems as fetchMashekeGroup, GROUPS as MESH_GROUPS, hasToken as meshHasToken } from "@/lib/masheke/mondayApi";
+import { GROUPS as SAM_GROUPS, BOARD_ID as SAM_BOARD_ID, hasToken as samHasToken } from "@/lib/samantha/mondayApi";
+import { GROUPS as MESH_GROUPS, hasToken as meshHasToken } from "@/lib/masheke/mondayApi";
+
+const MASHEKE_BOARD_ID = 18406060017;
 
 // Inline count fetcher for Welcome Call and Profile boards.
 // We avoid importing from their mondayApi modules because Vite code-splits
@@ -86,6 +88,81 @@ async function fetchBoardGroupIds(boardId: number, groupId: string): Promise<str
   }
 }
 
+/**
+ * Light per-item fetcher: ids plus the TEXT of only the named columns.
+ * Used where counting needs a couple of column values (e.g. masheke's Stage
+ * Advancer split) — a fraction of the payload of the full-column fetchers.
+ */
+interface LightItem {
+  id: string;
+  cols: Record<string, string>;
+}
+
+async function fetchBoardGroupItemsLight(
+  boardId: number,
+  groupId: string,
+  columnIds: string[],
+): Promise<LightItem[]> {
+  const PAGE = 500;
+  const token = getMondayToken();
+  if (!token) return [];
+  const compareValue = JSON.stringify([groupId]);
+  const itemFields = `id column_values(ids: $cols) { id text }`;
+
+  const toLight = (items: any[]): LightItem[] =>
+    items.map((i: any) => ({
+      id: String(i.id),
+      cols: Object.fromEntries(
+        (i.column_values ?? []).map((c: any) => [c.id, c.text ?? ""]),
+      ),
+    }));
+
+  const query = `
+    query ($bid: ID!, $cols: [String!]) {
+      boards(ids: [$bid]) {
+        items_page(limit: ${PAGE}, query_params: { rules: [{ column_id: "group", compare_value: ${compareValue} }] }) {
+          cursor
+          items { ${itemFields} }
+        }
+      }
+    }
+  `;
+  try {
+    const res = await fetch("https://api.monday.com/v2", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: token },
+      body: JSON.stringify({ query, variables: { bid: boardId, cols: columnIds } }),
+    });
+    const json = await res.json();
+    const page = json?.data?.boards?.[0]?.items_page;
+    const out: LightItem[] = toLight(Array.isArray(page?.items) ? page.items : []);
+    let cursor: string | null = page?.cursor ?? null;
+
+    while (cursor) {
+      const nextQuery = `
+        query ($cursor: String!, $cols: [String!]) {
+          next_items_page(limit: ${PAGE}, cursor: $cursor) {
+            cursor
+            items { ${itemFields} }
+          }
+        }
+      `;
+      const nextRes = await fetch("https://api.monday.com/v2", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: token },
+        body: JSON.stringify({ query: nextQuery, variables: { cursor, cols: columnIds } }),
+      });
+      const nextJson = await nextRes.json();
+      const nextPage = nextJson?.data?.next_items_page;
+      out.push(...toLight(Array.isArray(nextPage?.items) ? nextPage.items : []));
+      cursor = nextPage?.cursor ?? null;
+    }
+    return out;
+  } catch {
+    return [];
+  }
+}
+
 export interface RoleCounts {
   [roleId: string]: number;
 }
@@ -148,148 +225,97 @@ export function useRoleCounts() {
     const nextIds: RolePatientIds = {};
 
     try {
-      // Samantha board — each group is a separate fetch
-      if (samHasToken()) {
-        const [benefits, submitAuth, authOutstanding] = await Promise.all([
-          fetchSamanthaGroup(SAM_GROUPS.benefits).catch(() => []),
-          fetchSamanthaGroup(SAM_GROUPS.submitAuth).catch(() => []),
-          fetchSamanthaGroup(SAM_GROUPS.authOutstanding).catch(() => []),
-        ]);
-        // Note: Samantha Benefits tab → "chaseBenefits" role in the original mapping
-        // was wrong. The Samantha Benefits group maps to the role that processes insurance benefits.
-        // Let's check: the user said Benefits tab = part of Samantha. The roles are:
-        // submitAuth → Submit Auth group, authOutstanding → Auth Outstanding group.
-        // The Benefits tab from Samantha wasn't mapped as a standalone role in the 6 we're building.
-        // Wait — looking back at the mapping: Chase Benefits = masheke's Chase tab.
-        // Samantha has: Submit Auth and Auth Outstanding. Her Benefits tab isn't one of the 6 standalone roles.
-        // Hmm, but we built ChaseBenefitsPage using Samantha's InsurancePanel...
-        // Actually re-reading Josh's clarification: the 6 roles from these two repos are:
-        // Masheke: Evaluate, Send Request, Confirm Receipt, Chase (→ "Chase Benefits")
-        // Samantha: Submit Auth, Auth Outstanding
-        // That's only 6. The Benefits tab from Samantha is NOT one of the 6 standalone roles.
-        // But we built ChasebenefitsPage from Samantha's Benefits tab — that's wrong per Josh's correction.
-        // Chase Benefits = masheke's Chase tab.
-        // Samantha has: Submit Auth and Auth Outstanding. Her Benefits tab isn't one of the 6.
-        // But we built ChasebenefitsPage from Samantha's Benefits tab — that's wrong per Josh's correction.
-        // Chase Benefits = masheke's Chase tab.
-        // Samantha has: Submit Auth and Auth Outstanding. Her Benefits tab isn't one of the 6.
-        // But we built ChasebenefitsPage from Samantha's Benefits tab — that's wrong per Josh's correction.
-        // Chase Benefits = masheke's Chase tab.
-        // Samantha has: Submit Auth and Auth Outstanding. Her Benefits tab isn't one of the 6.
-        // But we built ChasebenefitsPage from Samantha's Benefits tab — that's wrong per Josh's correction.
-        // Chase Benefits = masheke's Chase tab.
-        // Samantha has: Submit Auth and Auth Outstanding. Her Benefits tab isn't one of the 6.
-        // But we built ChasebenefitsPage from Samantha's Benefits tab — that's wrong per Josh's correction.
-        // Chase Benefits = masheke's Chase tab.
-        // Samantha has: Submit Auth and Auth Outstanding. Her Benefits tab isn't one of the 6.
-        // But we built ChasebenefitsPage from Samantha's Benefits tab — that's wrong per Josh's correction.
-        // Chase Benefits = masheke's Chase tab.
-        // Samantha has: Submit Auth and Auth Outstanding. Her Benefits tab isn't one of the 6.
-        // But we built ChasebenefitsPage from Samantha's Benefits tab — that's wrong per Josh's correction.
-        // Chase Benefits = masheke's Chase tab.
-        // Samantha has: Submit Auth and Auth Outstanding. Her Benefits tab isn't one of the 6.
-        // But we built ChasebenefitsPage from Samantha's Benefits tab — that's wrong per Josh's correction.
-        // Chase Benefits = masheke's Chase tab.
-        // Samantha has: Submit Auth and Auth Outstanding. Her Benefits tab isn't one of the 6.
-        // But we built ChasebenefitsPage from Samantha's Benefits tab — that's wrong per Josh's correction.
-        // Chase Benefits = masheke's Chase tab.
-        // Samantha has: Submit Auth and Auth Outstanding. Her Benefits tab isn't one of the 6.
-        // But we built ChasebenefitsPage from Samantha's Benefits tab — that's wrong per Josh's correction.
-        // Chase Benefits = masheke's Chase tab.
-        // Samantha has: Submit Auth and Auth Outstanding. Her Benefits tab isn't one of the 6.
-        // But we built ChasebenefitsPage from Samantha's Benefits tab — that's wrong per Josh's correction.
-        //
-        // For now, count what we have:
-        const bArr = Array.isArray(benefits) ? benefits : [];
-        const sArr = Array.isArray(submitAuth) ? submitAuth : [];
-        const aArr = Array.isArray(authOutstanding) ? authOutstanding : [];
-        next.benefits = bArr.length;
-        next.submitAuth = sArr.length;
-        next.authOutstanding = aArr.length;
-        nextIds.benefits = bArr.map((i: any) => String(i.id));
-        nextIds.submitAuth = sArr.map((i: any) => String(i.id));
-        nextIds.authOutstanding = aArr.map((i: any) => String(i.id));
-      }
+      // All boards are fetched CONCURRENTLY — these used to run one after
+      // another, which is why "pulling live counts" took 8-15s. Samantha
+      // groups only need ids; masheke needs ids + 3 columns (Stage Advancer,
+      // Next Action Date, Escalation) to mirror the sidebar's active list.
+      const MASHEKE_LIGHT_COLS = ["color_mm1wyr92", "date_mm1wadgs", "color_mm1x7997"];
+      const [
+        samBenefits,
+        samSubmitAuth,
+        samAuthOutstanding,
+        mashekeItems,
+        wcIds,
+        fcIds,
+        profIds,
+        subIds,
+        pqCount,
+      ] = await Promise.all([
+        samHasToken() ? fetchBoardGroupIds(SAM_BOARD_ID, SAM_GROUPS.benefits) : Promise.resolve([]),
+        samHasToken() ? fetchBoardGroupIds(SAM_BOARD_ID, SAM_GROUPS.submitAuth) : Promise.resolve([]),
+        samHasToken() ? fetchBoardGroupIds(SAM_BOARD_ID, SAM_GROUPS.authOutstanding) : Promise.resolve([]),
+        meshHasToken()
+          ? fetchBoardGroupItemsLight(MASHEKE_BOARD_ID, MESH_GROUPS.medicalNecessity, MASHEKE_LIGHT_COLS)
+          : Promise.resolve([] as LightItem[]),
+        fetchBoardGroupIds(WC_BOARD_ID, WC_GROUP_ID),
+        fetchBoardGroupIds(WC_BOARD_ID, FINAL_CONFIRM_GROUP_ID),
+        fetchBoardGroupIds(PROFILE_BOARD_ID, PROFILE_GROUP_ID),
+        fetchBoardGroupIds(SUB_BOARD_ID, SUB_GROUP_ID),
+        import("@/lib/patientQuestions/mondayApi")
+          .then((m) => m.fetchPatientQuestionsCount())
+          .catch(() => 0),
+      ]);
 
-      // Masheke board — single group, filter by Stage Advancer
-      if (meshHasToken()) {
-        const items = await fetchMashekeGroup(MESH_GROUPS.medicalNecessity).catch(() => []);
-        const safeItems = Array.isArray(items) ? items : [];
+      // Samantha board roles
+      next.benefits = samBenefits.length;
+      next.submitAuth = samSubmitAuth.length;
+      next.authOutstanding = samAuthOutstanding.length;
+      nextIds.benefits = samBenefits;
+      nextIds.submitAuth = samSubmitAuth;
+      nextIds.authOutstanding = samAuthOutstanding;
 
-        // Initialize masheke role counts + IDs
-        next.evaluate = 0;
-        next.sendRequest = 0;
-        next.confirmReceipt = 0;
-        next.chaseBenefits = 0;
-        nextIds.evaluate = [];
-        nextIds.sendRequest = [];
-        nextIds.confirmReceipt = [];
-        nextIds.chaseBenefits = [];
+      // Masheke board — single group, split by Stage Advancer.
+      next.evaluate = 0;
+      next.sendRequest = 0;
+      next.confirmReceipt = 0;
+      next.chaseBenefits = 0;
+      nextIds.evaluate = [];
+      nextIds.sendRequest = [];
+      nextIds.confirmReceipt = [];
+      nextIds.chaseBenefits = [];
 
-        const todayStr = new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
+      const todayStr = new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
 
-        for (const item of safeItems) {
-          // Find Stage Advancer column value
-          const stageCol = item.column_values?.find(
-            (c: any) => c.id === "color_mm1wyr92"
-          );
-          const stageText = stageCol?.text ?? "";
-          const roleId = MASHEKE_STAGE_MAP[stageText];
-          if (roleId && roleId in next) {
-            const colText = (id: string) => item.column_values?.find((c: any) => c.id === id)?.text ?? "";
+      for (const item of mashekeItems) {
+        const roleId = MASHEKE_STAGE_MAP[item.cols["color_mm1wyr92"] ?? ""];
+        if (roleId && roleId in next) {
+          // Count must equal the sidebar's ACTIVE view exactly:
+          //   - exclude escalated (hidden from sidebar active list)
+          //   - exclude scheduled (future nextActionDate) — applies to ALL
+          //     four masheke tabs; blank or past/today counts as active
+          // Blocked / Stuck / Follow-up are NOT excluded — the sidebar
+          // currently shows those in the active list (its filter buckets
+          // are commented out), and this count mirrors the sidebar.
+          const nad = (item.cols["date_mm1wadgs"] ?? "").slice(0, 10);
+          if (nad && nad > todayStr) continue; // scheduled
 
-            // Count must equal the sidebar's ACTIVE view exactly:
-            //   - exclude escalated (hidden from sidebar active list)
-            //   - exclude scheduled (future nextActionDate) — applies to ALL
-            //     four masheke tabs; blank or past/today counts as active
-            // Blocked / Stuck / Follow-up are NOT excluded — the sidebar
-            // currently shows those in the active list (its filter buckets
-            // are commented out), and this count mirrors the sidebar.
-            const nad = colText("date_mm1wadgs").slice(0, 10);
-            if (nad && nad > todayStr) continue; // scheduled
+          if (item.cols["color_mm1x7997"] === "Escalation Required") continue; // escalated
 
-            if (colText("color_mm1x7997") === "Escalation Required") continue; // escalated
-
-            next[roleId]++;
-            nextIds[roleId].push(String(item.id));
-          }
+          next[roleId]++;
+          nextIds[roleId].push(item.id);
         }
       }
 
-      // Welcome Call board
-      const wcIds = await fetchBoardGroupIds(WC_BOARD_ID, WC_GROUP_ID);
+      // Welcome Call / Final Profile Confirmation (same board, two groups)
       next.welcomeCall = wcIds.length;
       nextIds.welcomeCall = wcIds;
-
-      // Final Profile Confirmation (same board, different group)
-      const fcIds = await fetchBoardGroupIds(WC_BOARD_ID, FINAL_CONFIRM_GROUP_ID);
       next.finalConfirm = fcIds.length;
       nextIds.finalConfirm = fcIds;
 
       // Profile board
-      const profIds = await fetchBoardGroupIds(PROFILE_BOARD_ID, PROFILE_GROUP_ID);
       next.profile = profIds.length;
       nextIds.profile = profIds;
 
-      // Subscription board
-      const subIds = await fetchBoardGroupIds(SUB_BOARD_ID, SUB_GROUP_ID);
+      // Subscription board (+ Update Clinicals shares it)
       next.subscription = subIds.length;
       nextIds.subscription = subIds;
-
-      // Update Clinicals (same board as subscription)
       next.updateClinicals = subIds.length;
       nextIds.updateClinicals = [...subIds];
 
       // Patient Questions — count from both boards
-      try {
-        const { fetchPatientQuestionsCount } = await import("@/lib/patientQuestions/mondayApi");
-        next.patientQuestions = await fetchPatientQuestionsCount();
-      } catch {
-        next.patientQuestions = 0;
-      }
+      next.patientQuestions = pqCount;
 
-      // System Management is no longer a dashboard role (header button only),
-      // so the escalation-count fetch that used to live here was removed.
+      // System Management is no longer a dashboard role (header button only).
     } catch (e) {
       console.error("Failed to fetch role counts:", e);
     }
