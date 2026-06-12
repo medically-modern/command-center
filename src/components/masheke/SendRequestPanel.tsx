@@ -553,10 +553,11 @@ export function SendRequestPanel({ patient, resetVersion = 0, onUpdate }: Props)
                     : "Sends generated documents + clinical files via Supermail."
               }
             >
-              {/* Fax sending temporarily disabled — coming soon */}
+              {/* Fax sending temporarily disabled — coming soon.
+                  MN-letter gate relaxed while letter generation is paused. */}
               <Button
                 onClick={handleSend}
-                disabled={sending || !mnLetterPresent || method === "Fax"}
+                disabled={sending || method === "Fax"}
                 title={method === "Fax" ? "Fax sending is coming soon" : undefined}
                 className="gap-2 text-white shadow-sm bg-[color:var(--mm-green)] hover:bg-[oklch(0.56_0.10_175)] disabled:bg-[oklch(0.85_0.01_200)]"
               >
@@ -573,11 +574,6 @@ export function SendRequestPanel({ patient, resetVersion = 0, onUpdate }: Props)
                 )}
               </Button>
             </ActionRow>
-            {!mnLetterPresent && method !== "Fax" && (
-              <p className="text-sm text-muted-foreground mt-2 ml-12">
-                Generate the MN Request Letter first (step above).
-              </p>
-            )}
           </>
         )}
         {isParachute && (
