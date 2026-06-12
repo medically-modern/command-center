@@ -12,7 +12,7 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
-import { AlertTriangle, Ban, ChevronRight, Clock, FolderClock, Loader2, PhoneCall, RefreshCw, User, AlertCircle, Undo2 } from "lucide-react";
+import { AlertTriangle, Ban, ChevronRight, Clock, FolderClock, Loader2, RefreshCw, User, AlertCircle, Undo2 } from "lucide-react";
 import type { Patient } from "@/lib/masheke/workflow";
 import type { TabKey } from "@/hooks/masheke/useMondayPatients";
 import { cn } from "@/lib/utils";
@@ -86,19 +86,11 @@ interface Props {
   activeTab: TabKey;
   /** Manager view (?manager=1): list ONLY escalated patients, no scheduled split. */
   managerMode?: boolean;
-  /** Evaluate only — read-only "Chase Clinicals" viewer folder. These patients
-   *  are NOT part of `patients`: they never count toward the header total or
-   *  the active list. The folder just lets an evaluator open a chase-stage
-   *  patient in the Evaluate UI (e.g. to upload clinicals that arrived) —
-   *  Evaluate's Send to Monday is the only way out of Medical Necessity. */
-  chaseViewerPatients?: Patient[];
 }
 
-export function PatientsSidebar({ patients, selectedId, onSelect, loading, error, onRefresh, activeTab, managerMode = false, chaseViewerPatients }: Props) {
+export function PatientsSidebar({ patients, selectedId, onSelect, loading, error, onRefresh, activeTab, managerMode = false }: Props) {
   const { state } = useSidebar();
   const collapsed = state === "collapsed";
-  // Chase Clinicals viewer folder (Evaluate) — collapsed by default.
-  const [chaseFolderOpen, setChaseFolderOpen] = useState(false);
 
   const [showScheduled, setShowScheduled] = useState(false);
   // const [filteredOpen, setFilteredOpen] = useState(false);
@@ -263,53 +255,11 @@ export function PatientsSidebar({ patients, selectedId, onSelect, loading, error
           </SidebarGroup>
         )}
 
-        {/* ── Chase Clinicals viewer folder (Evaluate only) ──
-            Read-only browse list of patients sitting in the Chase Clinicals
-            stage. Deliberately EXCLUDED from the header count and the active
-            list above — it exists so an evaluator can open a chase patient in
-            the Evaluate UI (e.g. to upload clinicals that just arrived) and
-            advance them via Send to Monday, the ONLY exit from Medical
-            Necessity. Pattern mirrors the commented-out "Filtered patients"
-            folders below. */}
-        {!collapsed && !managerMode && (chaseViewerPatients?.length ?? 0) > 0 && (
-          <SidebarGroup>
-            <SidebarGroupLabel
-              className="text-[10px] uppercase tracking-wider text-amber-600 font-semibold flex items-center gap-1.5 cursor-pointer select-none"
-              onClick={() => setChaseFolderOpen((v) => !v)}
-            >
-              <PhoneCall className="h-3 w-3" />
-              Chase Clinicals ({chaseViewerPatients!.length})
-              <ChevronRight className={cn("h-3 w-3 ml-auto transition-transform", chaseFolderOpen && "rotate-90")} />
-            </SidebarGroupLabel>
-            {chaseFolderOpen && (
-              <SidebarGroupContent>
-                <SidebarMenu>
-                  {chaseViewerPatients!.map((p) => (
-                    <SidebarMenuItem key={p.id}>
-                      <SidebarMenuButton
-                        isActive={selectedId === p.id}
-                        onClick={() => onSelect(p.id)}
-                        className={cn(
-                          "flex items-start gap-2 py-2 h-auto opacity-70",
-                          selectedId === p.id && "bg-sidebar-accent opacity-100",
-                        )}
-                      >
-                        <PhoneCall className="h-4 w-4 mt-0.5 shrink-0 text-amber-500" />
-                        <div className="min-w-0 text-left">
-                          <p className="text-sm font-medium truncate">{p.name}</p>
-                          <p className="text-[11px] text-amber-600/80 truncate">
-                            {p.clinicalsMethod === "Parachute" ? "Parachute" : "Fax"} ·{" "}
-                            {p.serving || "—"}
-                          </p>
-                        </div>
-                      </SidebarMenuButton>
-                    </SidebarMenuItem>
-                  ))}
-                </SidebarMenu>
-              </SidebarGroupContent>
-            )}
-          </SidebarGroup>
-        )}
+        {/* ── Chase Clinicals viewer folder — REMOVED June 2026 ──
+            Update Clinicals' Submit now flips Stage Advancer back to
+            "Evaluate MN", so chase patients return to the main Evaluate
+            bucket on their own once clinicals are added. Restore from git
+            history if a browse-only folder is ever needed again. */}
 
         {/* ── Filtered patients (Blocked/Stuck/Escalated/FollowUp) — commented out for now ──
         {(() => {

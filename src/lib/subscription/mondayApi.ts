@@ -56,6 +56,8 @@ export const COL = {
   cgmCoverage: "color_mm2cmgqe",
   mr: "color_mktyr8xg",
   mnExpiry: "date_mkp09gra",
+  // MN Update — status flipped to "Done" (index 1) by Update Clinicals' Submit
+  mnUpdate: "color_mm4890ez",
   diagnosis: "color_mkxrxv9w",
   mnDocs: "file_mkp0vm0a",
 

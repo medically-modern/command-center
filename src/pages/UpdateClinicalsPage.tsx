@@ -13,14 +13,15 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useMondayPatients } from "@/hooks/subscription/useMondayPatients";
 import { formatDateMDY } from "@/lib/subscription/workflow";
 import { MnDocsPanel } from "@/components/subscription/MnDocsPanel";
-import { COL, writeDate } from "@/lib/subscription/mondayApi";
+import { COL, writeDate, writeStatusIndex } from "@/lib/subscription/mondayApi";
 // Medical Necessity (masheke) board — second patient source
 import {
   COL as MN_COL,
   fetchGroupItems as mnFetchGroupItems,
-  writeDate as mnWriteDate,
+  writeStatusIndex as mnWriteStatusIndex,
   hasToken as mnHasToken,
 } from "@/lib/masheke/mondayApi";
+import { SUB_STAGE_INDEX as MN_SUB_STAGE_INDEX } from "@/lib/masheke/mondayMapping";
 import { mondayItemToPatient as mnItemToPatient } from "@/lib/masheke/mondayMapping";
 import { toast } from "sonner";
 import { Card } from "@/components/ui/card";
@@ -39,7 +40,7 @@ import {
   SidebarMenuItem,
   useSidebar,
 } from "@/components/ui/sidebar";
-import { ArrowLeft, CalendarDays, FileUp, Loader2, RefreshCw, Search, User, X } from "lucide-react";
+import { ArrowLeft, CalendarDays, CheckCircle2, FileUp, Loader2, RefreshCw, Search, User, X } from "lucide-react";
 import { useBackNavigation } from "@/hooks/useBackNavigation";
 import { cn } from "@/lib/utils";
 
@@ -237,13 +238,9 @@ function ClinicalsSidebar({
   );
 }
 
-/* ── Visit Date updater — DISABLED June 2026 ──
-   Commented out per request; uncomment this block and its render in the
-   page body to restore. Writes: subscription board → mnExpiry; MN board →
-   lastVisit + mrExpiryDate (+6 months).
-
-/ * ── Visit Date updater — same logic as the Subscription role:
-      MN Expiry = Visit Date + 6 months. ─────────────────────── * /
+/* ── Visit Date updater — SUBSCRIPTION BOARD ONLY ──
+      MN Expiry (date_mkp09gra) = Visit Date + 6 months. Restored June 2026;
+      only rendered for subscription rows. ─────────────────── */
 
 function VisitDateCard({ patient, onSaved }: { patient: ClinicalsRow; onSaved: () => void }) {
   const [visitDate, setVisitDate] = useState("");
@@ -260,14 +257,7 @@ function VisitDateCard({ patient, onSaved }: { patient: ClinicalsRow; onSaved: (
     if (!visitDate || !previewExpiry) return;
     setSaving(true);
     try {
-      if (patient.board === "mn") {
-        // Medical Necessity board: stamp the visit date AND the derived
-        // MR Expiry (visit + 6 months) — same pair Evaluate writes.
-        await mnWriteDate(patient.id, MN_COL.lastVisit, visitDate);
-        await mnWriteDate(patient.id, MN_COL.mrExpiryDate, previewExpiry);
-      } else {
-        await writeDate(patient.id, COL.mnExpiry, previewExpiry);
-      }
+      await writeDate(patient.id, COL.mnExpiry, previewExpiry);
       toast.success(`MN Expiry updated to ${formatDateMDY(previewExpiry)}`);
       setVisitDate("");
       onSaved();
@@ -313,7 +303,59 @@ function VisitDateCard({ patient, onSaved }: { patient: ClinicalsRow; onSaved: (
     </Card>
   );
 }
-*/
+
+/* ── Submit — board-specific finalize action ──────────────────
+      Subscription board: flips "MN Update" (color_mm4890ez) → Done.
+      Medical Necessity board: flips Stage Advancer → "Evaluate MN",
+      whatever stage the patient is currently in — the patient lands
+      back in Evaluate's main bucket for re-evaluation. ────────── */
+
+function SubmitCard({ patient, onDone }: { patient: ClinicalsRow; onDone: () => void }) {
+  const [submitting, setSubmitting] = useState(false);
+  const isMn = patient.board === "mn";
+
+  const handleSubmit = async () => {
+    setSubmitting(true);
+    try {
+      if (isMn) {
+        await mnWriteStatusIndex(patient.id, MN_COL.subStage, MN_SUB_STAGE_INDEX.evaluate);
+        toast.success(`${patient.name} sent back to Evaluate`);
+      } else {
+        await writeStatusIndex(patient.id, COL.mnUpdate, 1); // MN Update → Done
+        toast.success("Submitted — MN Update marked Done");
+      }
+      onDone();
+    } catch (e) {
+      toast.error("Submit failed", {
+        description: e instanceof Error ? e.message : String(e),
+      });
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <Card className="p-5 border-l-4 border-l-emerald-500">
+      <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1 flex items-center gap-1.5">
+        <CheckCircle2 className="h-3.5 w-3.5" />
+        Submit
+      </p>
+      <p className="text-[11px] text-muted-foreground mb-3">
+        {isMn
+          ? "Submitting sends this patient back to Evaluate — their Stage Advancer is set to \"Evaluate MN\" no matter which stage they're in now."
+          : "Marks MN Update as Done on the Subscription board once the new clinicals (and visit date) are in."}
+      </p>
+      <Button
+        onClick={handleSubmit}
+        disabled={submitting}
+        className="h-10 gap-2 bg-emerald-600 hover:bg-emerald-700 text-white min-w-[160px]"
+      >
+        {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
+        {submitting ? "Submitting…" : isMn ? "Submit — back to Evaluate" : "Submit"}
+      </Button>
+    </Card>
+  );
+}
 
 /* ── Simplified Patient Card ────────────────────────────────── */
 
@@ -541,10 +583,17 @@ const UpdateClinicalsPage = () => {
                     Search another patient
                   </Button>
                   <PatientClinicalsCard patient={selected} />
-                  {/* Visit Date updater — disabled for now (June 2026).
-                      Uncomment to restore:
-                  <VisitDateCard patient={selected} onSaved={refetch} />
-                  */}
+                  {/* Visit date — Subscription board only */}
+                  {selected.board === "subscription" && (
+                    <VisitDateCard patient={selected} onSaved={refetch} />
+                  )}
+                  <SubmitCard
+                    patient={selected}
+                    onDone={() => {
+                      setSelectedId(null);
+                      refetch();
+                    }}
+                  />
                 </>
               )}
             </section>
