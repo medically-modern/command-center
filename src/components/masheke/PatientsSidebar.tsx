@@ -95,6 +95,14 @@ export function PatientsSidebar({ patients, selectedId, onSelect, loading, error
   const [showScheduled, setShowScheduled] = useState(false);
   // const [filteredOpen, setFilteredOpen] = useState(false);
 
+  // ── Scheduled patients folder DISABLED on Confirm Receipt + Chase for now ──
+  // The filter button (FolderClock, sidebar header) and the Scheduled list are
+  // hidden on these two roles. Future-dated patients remain filtered OUT of
+  // the active list (the date split below still applies) — they're just not
+  // browsable here. Remove `hideScheduledFolder` to restore the old behavior.
+  const hideScheduledFolder = activeTab === "confirmReceipt" || activeTab === "chase";
+  const scheduledOpen = showScheduled && !hideScheduledFolder;
+
   // -- Blocked / Stuck / Follow-up filtering commented out for now --
   // const stuckPatients = patients.filter((p) => p.advancer2c === "Stuck" && p.blocked !== "Blocked");
   // const blockedPatients = patients.filter((p) => p.blocked === "Blocked");
@@ -147,7 +155,7 @@ export function PatientsSidebar({ patients, selectedId, onSelect, loading, error
             </div>
           )}
           <div className="flex items-center gap-1 shrink-0">
-            {hasPending && pendingPatients.length > 0 && !collapsed && (
+            {hasPending && pendingPatients.length > 0 && !collapsed && !hideScheduledFolder && (
               <Button
                 variant={showScheduled ? "default" : "ghost"}
                 size="icon"
@@ -182,7 +190,7 @@ export function PatientsSidebar({ patients, selectedId, onSelect, loading, error
         )}
 
         {/* ── Toggle: Active patients OR Scheduled patients ── */}
-        {!showScheduled ? (
+        {!scheduledOpen ? (
           <SidebarGroup>
             <SidebarGroupContent>
               <SidebarMenu>

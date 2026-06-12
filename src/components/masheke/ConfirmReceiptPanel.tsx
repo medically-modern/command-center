@@ -228,7 +228,7 @@ export function ConfirmReceiptPanel({ patient, onUpdate, managerMode = false }: 
   const method = patient.clinicalsMethod ?? "—";
   const isEmail = method === "Email";
   const recipient = isEmail ? patient.doctorEmail : patient.doctorFax;
-  const mnLetterPresent = mondayFiles.mnRequestLetter.length > 0;
+  // const mnLetterPresent = mondayFiles.mnRequestLetter.length > 0; // (unused while fax re-send is paused)
 
   // Re-send the request — identical writes to Send Request's Send action:
   // flip the Send Request trigger column (Monday's automation re-dispatches
@@ -389,9 +389,12 @@ export function ConfirmReceiptPanel({ patient, onUpdate, managerMode = false }: 
               ({isEmail ? "no doctor email on file" : "no doctor fax on file"})
             </div>
           )}
+          {/* Fax re-send temporarily disabled — coming soon. Email re-sends stay
+              enabled; MN-letter gate relaxed while letter generation is paused. */}
           <Button
             onClick={handleResend}
-            disabled={resending || !mnLetterPresent}
+            disabled={resending || !isEmail}
+            title={!isEmail ? "Fax sending is coming soon" : undefined}
             className="gap-2 text-white shadow-sm bg-[color:var(--mm-green)] hover:bg-[oklch(0.56_0.10_175)] disabled:bg-[oklch(0.85_0.01_200)]"
           >
             {resending ? (
@@ -407,9 +410,9 @@ export function ConfirmReceiptPanel({ patient, onUpdate, managerMode = false }: 
             )}
           </Button>
         </div>
-        {!mnLetterPresent && (
+        {!isEmail && (
           <p className="text-sm text-muted-foreground mt-2">
-            MN Request Letter missing on Monday — Send is blocked. Generate it on the Send Request tab first.
+            Fax sending is coming soon.
           </p>
         )}
       </MmStep>
