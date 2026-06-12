@@ -39,11 +39,14 @@ const ESC_COL     = "color_mm1x7997";    // Escalation status
 const BLOCKED_COL = "color_mm33ppgw";    // Blocked status
 const STUCK_COL   = "color_mm1wf98t";    // Stuck (Advancer 2C)
 const FOLLOWUP_COL= "color_mm35v6a0";    // Follow up status
+const METHOD_COL  = "color_mm1xw7y5";    // Clinicals Method (chase fax/parachute split)
 const STAGE_MAP   = {
   "Evaluate MN":    "evaluate",
   "Send Request":   "sendRequest",
   "Confirm Receipt":"confirmReceipt",
-  "Chase Clinicals":"chaseBenefits",
+  // Chase split June 2026 — resolved to chaseFax / chaseParachute by
+  // Clinicals Method below; chaseBenefits kept as the combined legacy total.
+  "Chase Clinicals":"chase",
 };
 
 const WC_BOARD    = 18410804557;
@@ -139,7 +142,7 @@ async function countMashekeStages() {
         }
       }
     }`;
-  const colIds = [STAGE_COL, NAD_COL, ESC_COL, BLOCKED_COL, STUCK_COL, FOLLOWUP_COL];
+  const colIds = [STAGE_COL, NAD_COL, ESC_COL, BLOCKED_COL, STUCK_COL, FOLLOWUP_COL, METHOD_COL];
   const data = await gql(query, { bid: MESH_BOARD, cols: colIds });
   const page = data?.boards?.[0]?.items_page;
   const allItems = [...(page?.items ?? [])];
@@ -165,11 +168,15 @@ async function countMashekeStages() {
   // Eastern date for pending comparison
   const todayStr = new Date().toLocaleDateString("en-CA", { timeZone: "America/New_York" });
 
-  const counts = { evaluate: 0, sendRequest: 0, confirmReceipt: 0, chaseBenefits: 0 };
-  const ids = { evaluate: [], sendRequest: [], confirmReceipt: [], chaseBenefits: [] };
+  const counts = { evaluate: 0, sendRequest: 0, confirmReceipt: 0, chaseFax: 0, chaseParachute: 0, chaseBenefits: 0 };
+  const ids = { evaluate: [], sendRequest: [], confirmReceipt: [], chaseFax: [], chaseParachute: [], chaseBenefits: [] };
   for (const item of allItems) {
     const stageText = item.column_values?.find((c) => c.id === STAGE_COL)?.text ?? "";
-    const roleId = STAGE_MAP[stageText];
+    let roleId = STAGE_MAP[stageText];
+    if (roleId === "chase") {
+      const method = item.column_values?.find((c) => c.id === METHOD_COL)?.text ?? "";
+      roleId = method === "Parachute" ? "chaseParachute" : "chaseFax";
+    }
     if (roleId && roleId in counts) {
       // Only count active patients — exclude any in a filter bucket
       const colText = (id) => item.column_values?.find((c) => c.id === id)?.text ?? "";
@@ -185,6 +192,10 @@ async function countMashekeStages() {
 
       counts[roleId]++;
       ids[roleId].push(String(item.id));
+      if (roleId === "chaseFax" || roleId === "chaseParachute") {
+        counts.chaseBenefits++;
+        ids.chaseBenefits.push(String(item.id));
+      }
     }
   }
   return { counts, ids };
