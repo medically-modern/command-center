@@ -12,8 +12,10 @@ import { useEscalatedCounts } from "@/hooks/useEscalatedCounts";
 type Tab = "roles" | "dashboard";
 type ManagersSubTab = "assignments" | "dashboards";
 
-/** Processors tab shows only the two processing roles' users. */
-const PROCESSOR_USERS: UserName[] = ["Masheke", "Samantha"];
+/** Users shown on the Processors tab. Everyone in USERS who is NOT listed
+ *  here appears under Managers instead — when adding a new processor, add
+ *  them to USERS (config.ts) AND to this list. */
+const PROCESSOR_USERS: UserName[] = ["Masheke", "Samantha", "Maddie"];
 
 const Index = () => {
   /**

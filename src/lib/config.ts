@@ -36,6 +36,7 @@ export const USERS = [
   "Masheke",
   "Samantha",
   "Janelle",
+  "Maddie",
 ] as const;
 
 export type UserName = (typeof USERS)[number];
