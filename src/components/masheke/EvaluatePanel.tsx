@@ -81,6 +81,7 @@ import {
 import { GEN_SCRIPT_STATUS, ESCALATION_INDEX } from "@/lib/masheke/mondayMapping";
 import { etToday } from "@/lib/masheke/etDate";
 import { EscalateButton } from "@/components/masheke/EscalateButton";
+import { openFileViewer } from "@/components/shared/FileViewerModal";
 import { toast } from "sonner";
 import {
   Check,
@@ -126,9 +127,13 @@ function plusMonths(iso: string, months: number): string {
 
 function formatDate(iso?: string): string {
   if (!iso) return "—";
+  // Format YYYY-MM-DD directly (no Date parsing — avoids UTC off-by-one) → MM/DD/YYYY,
+  // matching the native <input type="date"> display used for Last Visit Date.
+  const m = iso.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (m) return `${m[2]}/${m[3]}/${m[1]}`;
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return iso;
-  return d.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+  return d.toLocaleDateString("en-US", { month: "2-digit", day: "2-digit", year: "numeric" });
 }
 
 export function EvaluatePanel({ patient, resetVersion = 0, onUpdate, onOpenForm }: Props) {
@@ -1243,8 +1248,7 @@ function MondayScriptViewer({
               onClick={() => {
                 const u = f.public_url || f.url;
                 if (!u) return;
-                const viewerUrl = `https://docs.google.com/gview?url=${encodeURIComponent(u)}&embedded=true`;
-                window.open(viewerUrl, "_blank");
+                openFileViewer({ url: u, name: f.name });
               }}
               className="h-7 px-2 text-[11px] gap-1"
             >
@@ -1528,7 +1532,7 @@ function FileUploadCard({
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
-                        window.open(url, "_blank");
+                        openFileViewer({ url, name: f.name });
                       }}
                       className="shrink-0 text-xs font-semibold text-[color:var(--mm-teal)] hover:underline"
                       title={`View ${f.name}`}
@@ -1968,9 +1972,7 @@ function ReasonsRow({ label, reasons }: { label: string; reasons: string[] }) {
 
 function formatPreviewDate(iso?: string): string | undefined {
   if (!iso) return undefined;
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return iso;
-  return d.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+  return formatDate(iso);
 }
 
 function SectionPill({

@@ -18,6 +18,7 @@ import {
   XCircle,
 } from "lucide-react";
 import type { MondayFileEntry } from "@/lib/masheke/mondayApi";
+import { openFileViewer } from "@/components/shared/FileViewerModal";
 
 // =====================================================================
 // Step shell
@@ -369,7 +370,7 @@ export interface TaggedFile {
 }
 
 /** Mint file rows with View and optional Delete.
- *  `onView` defaults to the Google Docs viewer (no download). */
+ *  `onView` defaults to the in-app file viewer modal (PDF/image, rotate + zoom). */
 export function FileList({
   files,
   tagged,
@@ -381,7 +382,7 @@ export function FileList({
   tagged?: TaggedFile[];
   onDelete?: (assetId: string) => void | Promise<void>;
   deleteLabel?: string;
-  onView?: (url: string) => void;
+  onView?: (url: string, name?: string) => void;
 }) {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const rows: TaggedFile[] =
@@ -401,7 +402,8 @@ export function FileList({
   };
 
   if (rows.length === 0) return null;
-  const view = onView ?? openInGoogleViewer;
+  const view =
+    onView ?? ((url: string, name?: string) => openFileViewer({ url, name }));
 
   return (
     <div className="flex flex-col gap-2.5">
@@ -422,7 +424,7 @@ export function FileList({
             <span className="flex-1 min-w-0 truncate text-[0.95rem] font-semibold">{f.name}</span>
             <button
               disabled={!url}
-              onClick={() => url && view(url)}
+              onClick={() => url && view(url, f.name)}
               className="text-sm font-semibold shrink-0 text-[color:var(--mm-teal)] hover:underline underline-offset-4 disabled:opacity-50 disabled:no-underline disabled:cursor-not-allowed"
             >
               View

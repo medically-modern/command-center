@@ -323,7 +323,7 @@ export function ConfirmReceiptPanel({ patient, onUpdate, managerMode = false }: 
             ) : mondayFiles.cgmTemplate.length === 0 ? (
               <NotApplicable>— None on Monday</NotApplicable>
             ) : (
-              <FileList files={mondayFiles.cgmTemplate} onView={openDirect} />
+              <FileList files={mondayFiles.cgmTemplate} />
             )}
             <FilesLabel className="mt-3.5">IP Template</FilesLabel>
             {!showIp ? (
@@ -333,7 +333,7 @@ export function ConfirmReceiptPanel({ patient, onUpdate, managerMode = false }: 
             ) : mondayFiles.ipTemplate.length === 0 ? (
               <NotApplicable>— None on Monday</NotApplicable>
             ) : (
-              <FileList files={mondayFiles.ipTemplate} onView={openDirect} />
+              <FileList files={mondayFiles.ipTemplate} />
             )}
           </div>
           <div>
@@ -344,7 +344,7 @@ export function ConfirmReceiptPanel({ patient, onUpdate, managerMode = false }: 
             ) : mondayFiles.mnRequestLetter.length === 0 ? (
               <NotApplicable>— None on Monday</NotApplicable>
             ) : (
-              <FileList files={mondayFiles.mnRequestLetter} onView={openDirect} />
+              <FileList files={mondayFiles.mnRequestLetter} />
             )}
             <FilesLabel className="mt-3.5">From Clinicals</FilesLabel>
             {mondayFiles.loading && mondayFiles.clinicalFiles.length === 0 ? (
@@ -352,7 +352,7 @@ export function ConfirmReceiptPanel({ patient, onUpdate, managerMode = false }: 
             ) : mondayFiles.clinicalFiles.length === 0 ? (
               <NotApplicable>— None on Monday</NotApplicable>
             ) : (
-              <FileList files={mondayFiles.clinicalFiles} onView={openDirect} />
+              <FileList files={mondayFiles.clinicalFiles} />
             )}
           </div>
         </div>
@@ -916,6 +916,3 @@ function saveHint({
 
 /** Open a Monday file URL directly in a new tab (Confirm Receipt's
  *  existing behavior — unlike Send Request's Google viewer). */
-function openDirect(url: string) {
-  window.open(url, "_blank");
-}

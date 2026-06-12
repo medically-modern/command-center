@@ -3,6 +3,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { lazy, Suspense } from "react";
 import Index from "./pages/Index";
+import { FileViewerHost } from "./components/shared/FileViewerModal";
 
 // Masheke board roles (4)
 const EvaluatePage = lazy(() => import("./pages/EvaluatePage"));
@@ -48,6 +49,7 @@ const basename = import.meta.env.BASE_URL?.replace(/\/$/, "") || "";
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <Toaster position="top-right" />
+    <FileViewerHost />
     <BrowserRouter basename={basename}>
       <Suspense fallback={<Loading />}>
         <Routes>
