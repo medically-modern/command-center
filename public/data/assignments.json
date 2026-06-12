@@ -67,10 +67,10 @@
     "Masheke"
   ],
   "chaseFax": [
+    "Masheke",
     "Brandon",
     "Corey",
-    "Janelle",
-    "Maddie"
+    "Janelle"
   ],
   "chaseParachute": [
     "Masheke",
@@ -78,7 +78,5 @@
     "Corey",
     "Janelle"
   ],
-  "chaseBenefits": [
-    "Masheke"
-  ]
+  "fax": []
 }

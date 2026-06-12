@@ -19,6 +19,7 @@ import {
   MessageCircleQuestion,
   ChevronRight,
   Check,
+  Printer,
 } from "lucide-react";
 
 const ICON_MAP: Record<string, React.FC<{ className?: string }>> = {
@@ -36,6 +37,7 @@ const ICON_MAP: Record<string, React.FC<{ className?: string }>> = {
   Settings2,
   RefreshCw,
   MessageCircleQuestion,
+  Printer,
 };
 
 interface Props {

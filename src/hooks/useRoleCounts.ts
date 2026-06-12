@@ -352,6 +352,18 @@ export function useRoleCounts() {
           .catch(() => 0);
         merge({ patientQuestions: pqCount }, {});
       })(),
+
+      // FAX — unread fax count from RingCentral. On API failure we simply
+      // don't merge, keeping the previous/cached number instead of showing
+      // a misleading 0 ("Done!").
+      (async () => {
+        try {
+          const n = await import("@/lib/fax/ringcentralApi").then((m) => m.fetchUnreadFaxCount());
+          merge({ fax: n }, {});
+        } catch (e) {
+          console.error("RingCentral fax count failed:", e);
+        }
+      })(),
     ];
 
     await Promise.allSettled(tasks);

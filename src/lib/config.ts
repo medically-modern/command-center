@@ -25,6 +25,9 @@ export const ROLES: RoleConfig[] = [
   { id: "updateClinicals", label: "Update Clinicals",   color: "bg-fuchsia-500", icon: "FileUp",         route: "/update-clinicals" },
   { id: "authDenied",      label: "Auth Denied",        color: "bg-red-500",     icon: "XCircle",        route: "/auth-denied"      },
   { id: "patientQuestions", label: "Patient Questions", color: "bg-sky-500",     icon: "MessageCircleQuestion", route: "/patient-questions" },
+  // FAX — count-only role: bar shows RingCentral unread faxes (0 → Done!).
+  // No route on purpose: the card is not clickable.
+  { id: "fax",             label: "FAX",                color: "bg-orange-600",  icon: "Printer",        route: ""                  },
   // systemMgmt intentionally NOT in ROLES — System Management is accessed via
   // the oversight button in the manager dashboards header, not role assignment.
 ];
@@ -60,4 +63,5 @@ export const DEFAULT_ASSIGNMENTS: RoleAssignments = {
   updateClinicals: [],
   authDenied:      [],
   patientQuestions: [],
+  fax:             [],
 };
