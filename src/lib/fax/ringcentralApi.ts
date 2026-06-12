@@ -95,7 +95,7 @@ async function getAccessToken(): Promise<string> {
 export async function fetchUnreadFaxCount(): Promise<number> {
   const url =
     `${RC_SERVER}/restapi/v1.0/account/~/extension/~/message-store` +
-    `?messageType=Fax&readStatus=Unread&availability=Alive&perPage=1`;
+    `?messageType=Fax&readStatus=Unread&availability=Alive&direction=Inbound&perPage=1`;
 
   const call = async (token: string) =>
     fetch(url, { headers: { Authorization: `Bearer ${token}` } });
