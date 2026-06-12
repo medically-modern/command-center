@@ -95,6 +95,47 @@ export function clearEvalState(patientId: string): void {
 }
 
 /**
+ * Fields whose source of truth is a Monday column. When local draft state and
+ * Monday disagree, MONDAY ALWAYS WINS — including when Monday is blank (a
+ * cleared column clears the local draft too). Fields NOT listed here exist
+ * only in the Evaluate form (script validity, OOW details, IP requirement
+ * answers, …) and keep their local draft values between sessions.
+ */
+const MONDAY_BACKED_FIELDS = [
+  "ipCoveragePath",
+  "cgmCoveragePath",
+  "diagnosis",
+  "mrReceived",
+  "lastVisitDate",
+  "notes",
+  "cgmScriptReceived",
+  "ipScriptReceived",
+] as const satisfies readonly (keyof EvalState)[];
+
+/**
+ * Load the Evaluate form state for a patient with Monday as the source of
+ * truth: start from the localStorage draft (if any), then overwrite every
+ * Monday-backed field with Monday's current value. This closes the staleness
+ * trap where an old browser session (e.g. a test run with coverage path =
+ * "OOW Pump") kept overriding corrected Monday data.
+ */
+export function loadEvalStateForPatient(patient: Patient): EvalState {
+  const monday = seedEvalStateFromPatient(patient);
+  const stored = loadEvalState(patient.id);
+  if (Object.keys(stored).length === 0) return monday;
+  const merged: EvalState = { ...stored };
+  for (const field of MONDAY_BACKED_FIELDS) {
+    const v = monday[field];
+    if (v !== undefined) {
+      (merged as Record<string, unknown>)[field] = v;
+    } else {
+      delete (merged as Record<string, unknown>)[field];
+    }
+  }
+  return merged;
+}
+
+/**
  * Build an EvalState from the patient's current Monday columns. Used as the
  * initial form state when nothing is in localStorage, and after Reset.
  */

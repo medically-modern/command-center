@@ -44,9 +44,8 @@ import {
   type IpPath,
 } from "@/lib/masheke/ipPaths";
 import {
-  loadEvalState,
+  loadEvalStateForPatient,
   saveEvalState,
-  seedEvalStateFromPatient,
   isOowDateValid,
   formatOowDiff,
   getMrExpiry,
@@ -138,10 +137,9 @@ function formatDate(iso?: string): string {
 
 export function EvaluatePanel({ patient, resetVersion = 0, onUpdate, onOpenForm }: Props) {
   const accent = getServingAccent(patient.serving);
-  const [state, setState] = useState<EvalState>(() => {
-    const stored = loadEvalState(patient.id);
-    return Object.keys(stored).length > 0 ? stored : seedEvalStateFromPatient(patient);
-  });
+  // Monday is the source of truth: local drafts are merged UNDER Monday's
+  // current column values (loadEvalStateForPatient), never over them.
+  const [state, setState] = useState<EvalState>(() => loadEvalStateForPatient(patient));
 
   // Notes gate — Send to Monday requires ≥1 note added this session, and is
   // blocked while typed-but-unadded text sits in the note box.
@@ -159,10 +157,9 @@ export function EvaluatePanel({ patient, resetVersion = 0, onUpdate, onOpenForm 
   const filesUploading = clinicalUpload.busy || finalClinicalUpload.busy;
 
   // Reload state when patient changes OR when parent triggers a Reset.
+  // Monday-backed fields always come from Monday (see loadEvalStateForPatient).
   useEffect(() => {
-    const stored = loadEvalState(patient.id);
-    if (Object.keys(stored).length > 0) setState(stored);
-    else setState(seedEvalStateFromPatient(patient));
+    setState(loadEvalStateForPatient(patient));
     // Clear pending file blobs on reset / patient switch
     pendingFilesRef.current = { clinicalFiles: [], finalClinicalFiles: [] };
     clinicalUpload.reset();

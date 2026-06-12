@@ -44,7 +44,7 @@ import {
 } from "@/lib/masheke/mondayApi";
 import { GEN_SCRIPT_STATUS } from "@/lib/masheke/mondayMapping";
 import {
-  loadEvalState,
+  loadEvalStateForPatient,
   saveEvalState,
   type EvalState,
 } from "@/lib/masheke/evalState";
@@ -83,10 +83,11 @@ interface Props {
 // =====================================================================
 
 export function SendRequestPanel({ patient, resetVersion = 0, onUpdate }: Props) {
-  const [state, setState] = useState<EvalState>(() => loadEvalState(patient.id));
+  const [state, setState] = useState<EvalState>(() => loadEvalStateForPatient(patient));
 
   useEffect(() => {
-    setState(loadEvalState(patient.id));
+    setState(loadEvalStateForPatient(patient));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [patient.id, resetVersion]);
 
   useEffect(() => {
