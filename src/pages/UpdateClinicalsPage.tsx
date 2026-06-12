@@ -1,14 +1,27 @@
 /**
  * Update Clinicals — simplified view for uploading new clinical documents.
- * Reads from the same Subscription board (18407459988) but shows only
- * patient identity + MN Docs upload panel.
+ *
+ * Pulls patients from BOTH boards (June 2026):
+ *   - Subscription board (18407459988) — all patients, labeled with their
+ *     subscription status (Active / Paused / …)
+ *   - Medical Necessity board (18406060017) — all patients EXCEPT the
+ *     Completed stage, labeled with their Stage Advancer value
+ * Each row shows a "board · stage" label so the user knows where the
+ * patient lives. Uploads + visit-date writes target the right board.
  */
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useMondayPatients } from "@/hooks/subscription/useMondayPatients";
-import type { Patient } from "@/lib/subscription/workflow";
 import { formatDateMDY } from "@/lib/subscription/workflow";
 import { MnDocsPanel } from "@/components/subscription/MnDocsPanel";
 import { COL, writeDate } from "@/lib/subscription/mondayApi";
+// Medical Necessity (masheke) board — second patient source
+import {
+  COL as MN_COL,
+  fetchGroupItems as mnFetchGroupItems,
+  writeDate as mnWriteDate,
+  hasToken as mnHasToken,
+} from "@/lib/masheke/mondayApi";
+import { mondayItemToPatient as mnItemToPatient } from "@/lib/masheke/mondayMapping";
 import { toast } from "sonner";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -30,6 +43,67 @@ import { ArrowLeft, CalendarDays, FileUp, Loader2, RefreshCw, Search, User, X } 
 import { useBackNavigation } from "@/hooks/useBackNavigation";
 import { cn } from "@/lib/utils";
 
+/* ── Unified patient row (both boards) ──────────────────────── */
+
+export interface ClinicalsRow {
+  id: string;
+  name: string;
+  dob?: string;
+  board: "subscription" | "mn";
+  /** Short board label shown to the user. */
+  boardLabel: "Subscription" | "Med Necessity";
+  /** Stage on that board — subscription status (Active/Paused/…) or the
+   *  MN board's Stage Advancer (Evaluate MN / Send Request / …). */
+  stage: string;
+  mr?: string;
+  mnExpiry?: string;
+}
+
+/** Patients from the Medical Necessity board, EXCLUDING the Completed
+ *  stage. Light inline hook — the masheke useMondayPatients hook is
+ *  tab-scoped, and Update Clinicals needs every active MN patient. */
+function useMnBoardRows() {
+  const [rows, setRows] = useState<ClinicalsRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const refetch = useCallback(async () => {
+    if (!mnHasToken()) {
+      setError("VITE_MONDAY_API_TOKEN is not set.");
+      setLoading(false);
+      return;
+    }
+    setLoading(true);
+    setError(null);
+    try {
+      const items = await mnFetchGroupItems();
+      const mapped = (Array.isArray(items) ? items : [])
+        .map(mnItemToPatient)
+        // "excluding the completed stage" — Completed patients are done with
+        // Medical Necessity and shouldn't be offered here.
+        .filter((p) => (p.subStage ?? "") !== "Completed")
+        .map<ClinicalsRow>((p) => ({
+          id: p.id,
+          name: p.name,
+          dob: p.dob || undefined,
+          board: "mn",
+          boardLabel: "Med Necessity",
+          stage: p.subStage || "—",
+          mr: p.mrsClinicals || undefined,
+          mnExpiry: p.mrExpiryDate || undefined,
+        }));
+      setRows(mapped);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to load MN board patients");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+  useEffect(() => {
+    refetch();
+  }, [refetch]);
+  return { rows, loading, error, refetch };
+}
+
 /* ── Simplified Sidebar ─────────────────────────────────────── */
 
 function ClinicalsSidebar({
@@ -40,7 +114,7 @@ function ClinicalsSidebar({
   error,
   onRefresh,
 }: {
-  patients: Patient[];
+  patients: ClinicalsRow[];
   selectedId: string | null;
   onSelect: (id: string) => void;
   loading: boolean;
@@ -134,8 +208,15 @@ function ClinicalsSidebar({
                     {!collapsed && (
                       <div className="min-w-0 text-left">
                         <p className="text-sm font-medium truncate">{p.name}</p>
-                        <p className="text-[11px] text-muted-foreground truncate">
-                          {p.mr || "—"}
+                        {/* board · stage label so the user knows where this
+                            patient lives (Subscription vs Medical Necessity) */}
+                        <p
+                          className={cn(
+                            "text-[11px] truncate font-medium",
+                            p.board === "mn" ? "text-violet-500" : "text-teal-600",
+                          )}
+                        >
+                          {p.boardLabel} · {p.stage}
                         </p>
                       </div>
                     )}
@@ -159,7 +240,7 @@ function ClinicalsSidebar({
 /* ── Visit Date updater — same logic as the Subscription role:
       MN Expiry = Visit Date + 6 months. ─────────────────────── */
 
-function VisitDateCard({ patient, onSaved }: { patient: Patient; onSaved: () => void }) {
+function VisitDateCard({ patient, onSaved }: { patient: ClinicalsRow; onSaved: () => void }) {
   const [visitDate, setVisitDate] = useState("");
   const [saving, setSaving] = useState(false);
 
@@ -174,7 +255,14 @@ function VisitDateCard({ patient, onSaved }: { patient: Patient; onSaved: () => 
     if (!visitDate || !previewExpiry) return;
     setSaving(true);
     try {
-      await writeDate(patient.id, COL.mnExpiry, previewExpiry);
+      if (patient.board === "mn") {
+        // Medical Necessity board: stamp the visit date AND the derived
+        // MR Expiry (visit + 6 months) — same pair Evaluate writes.
+        await mnWriteDate(patient.id, MN_COL.lastVisit, visitDate);
+        await mnWriteDate(patient.id, MN_COL.mrExpiryDate, previewExpiry);
+      } else {
+        await writeDate(patient.id, COL.mnExpiry, previewExpiry);
+      }
       toast.success(`MN Expiry updated to ${formatDateMDY(previewExpiry)}`);
       setVisitDate("");
       onSaved();
@@ -223,8 +311,10 @@ function VisitDateCard({ patient, onSaved }: { patient: Patient; onSaved: () => 
 
 /* ── Simplified Patient Card ────────────────────────────────── */
 
-function PatientClinicalsCard({ patient }: { patient: Patient }) {
-  const isValid = patient.mr === "MR Valid";
+function PatientClinicalsCard({ patient }: { patient: ClinicalsRow }) {
+  // Subscription board: MR Valid / MR Expired / MR Invalid.
+  // MN board: MR Received / Collect.
+  const isValid = patient.mr === "MR Valid" || patient.mr === "MR Received";
   const isExpired =
     patient.mr === "MR Expired" || patient.mr === "MR Invalid";
   const mrColor = isValid
@@ -242,6 +332,17 @@ function PatientClinicalsCard({ patient }: { patient: Patient }) {
             Patient Name
           </p>
           <p className="text-lg font-semibold">{patient.name}</p>
+          {/* board · stage badge */}
+          <span
+            className={cn(
+              "inline-block mt-1 text-[11px] font-semibold rounded-full px-2.5 py-0.5 border",
+              patient.board === "mn"
+                ? "text-violet-700 bg-violet-50 border-violet-200"
+                : "text-teal-700 bg-teal-50 border-teal-200",
+            )}
+          >
+            {patient.boardLabel} · {patient.stage}
+          </span>
         </div>
         {patient.dob && (
           <div className="text-center">
@@ -266,9 +367,9 @@ function PatientClinicalsCard({ patient }: { patient: Patient }) {
         )}
       </Card>
 
-      {/* Upload Clinicals — the main action */}
+      {/* Upload Clinicals — the main action (column + board picked by row) */}
       <Card className="p-5 border-l-4 border-l-fuchsia-500">
-        <MnDocsPanel itemId={patient.id} />
+        <MnDocsPanel itemId={patient.id} board={patient.board} />
       </Card>
     </div>
   );
@@ -278,13 +379,38 @@ function PatientClinicalsCard({ patient }: { patient: Patient }) {
 
 const UpdateClinicalsPage = () => {
   const { goBack } = useBackNavigation();
-  const { patients, loading, error, refetch } = useMondayPatients();
+  // Subscription board (all patients) + Medical Necessity board (everything
+  // except Completed) — merged into one searchable list with board labels.
+  const { patients: subPatients, loading: subLoading, error: subError, refetch: refetchSub } = useMondayPatients();
+  const { rows: mnRows, loading: mnLoading, error: mnError, refetch: refetchMn } = useMnBoardRows();
+
+  const patients = useMemo<ClinicalsRow[]>(() => {
+    const subRows = subPatients.map<ClinicalsRow>((p) => ({
+      id: p.id,
+      name: p.name,
+      dob: p.dob || undefined,
+      board: "subscription",
+      boardLabel: "Subscription",
+      stage: p.status || "—",
+      mr: p.mr || undefined,
+      mnExpiry: p.mnExpiry || undefined,
+    }));
+    return [...subRows, ...mnRows].sort((a, b) => a.name.localeCompare(b.name));
+  }, [subPatients, mnRows]);
+
+  const loading = subLoading || mnLoading;
+  const error = subError && mnError ? `${subError} / ${mnError}` : subError || mnError;
+  const refetch = useCallback(() => {
+    refetchSub();
+    refetchMn();
+  }, [refetchSub, refetchMn]);
+
   // No auto-select — the page opens to a patient search so the user
   // explicitly picks who they're updating.
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [mainSearch, setMainSearch] = useState("");
 
-  const selected: Patient | undefined = useMemo(
+  const selected: ClinicalsRow | undefined = useMemo(
     () => patients.find((p) => p.id === selectedId),
     [patients, selectedId]
   );
@@ -371,6 +497,16 @@ const UpdateClinicalsPage = () => {
                             >
                               <User className="h-4 w-4 text-muted-foreground shrink-0" />
                               <span className="text-sm font-medium flex-1 truncate">{p.name}</span>
+                              <span
+                                className={cn(
+                                  "text-[11px] font-semibold shrink-0 rounded-full px-2 py-0.5 border",
+                                  p.board === "mn"
+                                    ? "text-violet-700 bg-violet-50 border-violet-200"
+                                    : "text-teal-700 bg-teal-50 border-teal-200",
+                                )}
+                              >
+                                {p.boardLabel} · {p.stage}
+                              </span>
                               <span className="text-xs text-muted-foreground shrink-0">
                                 {p.dob || ""}
                               </span>

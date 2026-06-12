@@ -326,10 +326,9 @@ export function SendRequestPanel({ patient, resetVersion = 0, onUpdate }: Props)
         run: () => writeDate(patient.id, COL.nextActionDate, nextAction),
       });
     } else {
-      // → Confirm Receipt: action is due immediately, so Next Action Date =
-      // today (ET) — the patient shows in Confirm Receipt's active list
-      // instead of having an empty date.
-      const nextAction = toIsoDate(etNow());
+      // → Confirm Receipt: Next Action Date = +1 business day (the fax/email
+      // needs a day to land before the receipt call makes sense).
+      const nextAction = toIsoDate(addBusinessDays(etNow(), 1));
       tasks.push({
         label: `Next Action Date → ${nextAction}`,
         run: () => writeDate(patient.id, COL.nextActionDate, nextAction),

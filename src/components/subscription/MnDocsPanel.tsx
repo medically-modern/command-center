@@ -14,9 +14,21 @@ import {
   deleteSingleFileFromColumn,
   type MondayFileEntry,
 } from "@/lib/subscription/mondayApi";
+// Medical Necessity (masheke) board equivalents — Update Clinicals serves
+// patients from BOTH boards, and column ids / board-scoped mutations differ.
+import {
+  COL as MN_COL,
+  fetchItemFileColumns as mnFetchItemFileColumns,
+  uploadFileToColumn as mnUploadFileToColumn,
+  deleteSingleFileFromColumn as mnDeleteSingleFileFromColumn,
+} from "@/lib/masheke/mondayApi";
 
 interface Props {
   itemId: string;
+  /** Which board the item lives on. "subscription" (default) → mnDocs column
+   *  on the Subscription board; "mn" → clinicalFiles column on the Medical
+   *  Necessity board. */
+  board?: "subscription" | "mn";
 }
 
 const ACCEPTED_MIME_FALLBACK = "application/octet-stream";
@@ -42,7 +54,9 @@ function fileIcon(name: string) {
   return "text-muted-foreground";
 }
 
-export function MnDocsPanel({ itemId }: Props) {
+export function MnDocsPanel({ itemId, board = "subscription" }: Props) {
+  const isMn = board === "mn";
+  const fileColumnId = isMn ? MN_COL.clinicalFiles : COL.mnDocs;
   const [files, setFiles] = useState<MondayFileEntry[]>([]);
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -54,14 +68,16 @@ export function MnDocsPanel({ itemId }: Props) {
     if (!itemId) return;
     setLoading(true);
     try {
-      const cols = await fetchItemFileColumns(itemId, [COL.mnDocs]);
-      setFiles(cols[COL.mnDocs] ?? []);
+      const cols = isMn
+        ? ((await mnFetchItemFileColumns(itemId, [fileColumnId])) as Record<string, MondayFileEntry[]>)
+        : await fetchItemFileColumns(itemId, [fileColumnId]);
+      setFiles(cols[fileColumnId] ?? []);
     } catch (e) {
       console.error("[MnDocsPanel] fetch failed", e);
     } finally {
       setLoading(false);
     }
-  }, [itemId]);
+  }, [itemId, isMn, fileColumnId]);
 
   useEffect(() => { fetchFiles(); }, [fetchFiles]);
 
@@ -106,7 +122,8 @@ export function MnDocsPanel({ itemId }: Props) {
       const keepFiles = files
         .filter((f) => f.assetId !== target.assetId)
         .map((f) => ({ name: f.name, url: f.public_url || f.url || "" }));
-      await deleteSingleFileFromColumn(itemId, COL.mnDocs, keepFiles);
+      if (isMn) await mnDeleteSingleFileFromColumn(itemId, fileColumnId, keepFiles);
+      else await deleteSingleFileFromColumn(itemId, fileColumnId, keepFiles);
       toast.success(`Deleted "${target.name}"`);
       await fetchFiles();
     } catch (e) {
@@ -129,13 +146,23 @@ export function MnDocsPanel({ itemId }: Props) {
     for (const file of list) {
       try {
         const buf = await file.arrayBuffer();
-        await uploadFileToColumn(
-          itemId,
-          COL.mnDocs,
-          new Uint8Array(buf),
-          file.name,
-          inferMimeType(file),
-        );
+        if (isMn) {
+          await mnUploadFileToColumn(
+            itemId,
+            fileColumnId,
+            new Uint8Array(buf),
+            file.name,
+            inferMimeType(file),
+          );
+        } else {
+          await uploadFileToColumn(
+            itemId,
+            fileColumnId,
+            new Uint8Array(buf),
+            file.name,
+            inferMimeType(file),
+          );
+        }
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
         console.error(`[MnDocsPanel] upload failed for ${file.name}:`, msg);
