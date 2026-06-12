@@ -461,18 +461,21 @@ export function SendRequestPanel({ patient, resetVersion = 0, onUpdate }: Props)
                   onClick={() => handleGenerateIp("Generate")}
                 />
               ))}
-            <GenBtn
-              label={
-                generatingLetter
-                  ? "Generating…"
-                  : mnLetterPresent
-                    ? "Regenerate MN Request Letter"
-                    : "Generate MN Request Letter"
-              }
-              disabled={generatingLetter}
-              spinner={generatingLetter}
-              onClick={handleGenerateMnRequestLetter}
-            />
+            {/* MN Request Letter generation temporarily disabled — coming soon */}
+            <span title="MN Request Letter generation is coming soon">
+              <GenBtn
+                label={
+                  generatingLetter
+                    ? "Generating…"
+                    : mnLetterPresent
+                      ? "Regenerate MN Request Letter (coming soon)"
+                      : "Generate MN Request Letter (coming soon)"
+                }
+                disabled
+                spinner={generatingLetter}
+                onClick={handleGenerateMnRequestLetter}
+              />
+            </span>
           </div>
 
           {showCgmGenerate && cgmMissing.length > 0 && (
@@ -543,16 +546,18 @@ export function SendRequestPanel({ patient, resetVersion = 0, onUpdate }: Props)
                     : `Send ${method}`
               }
               sub={
-                (method === "Fax" && !patient.doctorFax)
-                  ? "(no doctor fax on file)"
+                method === "Fax"
+                  ? "Fax sending is coming soon."
                   : (method === "Email" && !patient.doctorEmail)
                     ? "(no doctor email on file)"
                     : "Sends generated documents + clinical files via Supermail."
               }
             >
+              {/* Fax sending temporarily disabled — coming soon */}
               <Button
                 onClick={handleSend}
-                disabled={sending || !mnLetterPresent}
+                disabled={sending || !mnLetterPresent || method === "Fax"}
+                title={method === "Fax" ? "Fax sending is coming soon" : undefined}
                 className="gap-2 text-white shadow-sm bg-[color:var(--mm-green)] hover:bg-[oklch(0.56_0.10_175)] disabled:bg-[oklch(0.85_0.01_200)]"
               >
                 {sending ? (
@@ -568,7 +573,7 @@ export function SendRequestPanel({ patient, resetVersion = 0, onUpdate }: Props)
                 )}
               </Button>
             </ActionRow>
-            {!mnLetterPresent && (
+            {!mnLetterPresent && method !== "Fax" && (
               <p className="text-sm text-muted-foreground mt-2 ml-12">
                 Generate the MN Request Letter first (step above).
               </p>
