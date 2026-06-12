@@ -237,8 +237,13 @@ function ClinicalsSidebar({
   );
 }
 
-/* ── Visit Date updater — same logic as the Subscription role:
-      MN Expiry = Visit Date + 6 months. ─────────────────────── */
+/* ── Visit Date updater — DISABLED June 2026 ──
+   Commented out per request; uncomment this block and its render in the
+   page body to restore. Writes: subscription board → mnExpiry; MN board →
+   lastVisit + mrExpiryDate (+6 months).
+
+/ * ── Visit Date updater — same logic as the Subscription role:
+      MN Expiry = Visit Date + 6 months. ─────────────────────── * /
 
 function VisitDateCard({ patient, onSaved }: { patient: ClinicalsRow; onSaved: () => void }) {
   const [visitDate, setVisitDate] = useState("");
@@ -308,6 +313,7 @@ function VisitDateCard({ patient, onSaved }: { patient: ClinicalsRow; onSaved: (
     </Card>
   );
 }
+*/
 
 /* ── Simplified Patient Card ────────────────────────────────── */
 
@@ -535,7 +541,10 @@ const UpdateClinicalsPage = () => {
                     Search another patient
                   </Button>
                   <PatientClinicalsCard patient={selected} />
+                  {/* Visit Date updater — disabled for now (June 2026).
+                      Uncomment to restore:
                   <VisitDateCard patient={selected} onSaved={refetch} />
+                  */}
                 </>
               )}
             </section>
