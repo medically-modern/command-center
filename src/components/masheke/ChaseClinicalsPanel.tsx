@@ -354,7 +354,7 @@ export function ChaseClinicalsPanel({ patient, onUpdate, managerMode = false }: 
           notes={patient.mnEvalNotes ?? ""}
           onNotesChange={(v) => onUpdate({ mnEvalNotes: v })}
           onSaveToMonday={(v) => writeLongText(patient.id, COL.mnEvalNotes, v)}
-          notePrefix={currentAttempt ? `Chase Clinicals Attempt ${currentAttempt}` : undefined}
+          notePrefix={managerMode ? "Chase Clinicals Escalated" : currentAttempt ? `Chase Clinicals Attempt ${currentAttempt}` : undefined}
           profileSendOffNotes={patient.profileSendOffNotes}
           onNoteAdded={() => setNoteAdded(true)}
           onPendingTextChange={setPendingNoteText}
@@ -708,7 +708,8 @@ function parseAttemptValue(attempt: number, raw: string): AttemptChip {
 }
 
 function formatAttemptValue(name: string, date: Date): string {
-  const datePart = formatDateShort(date);
+  // Date + timestamp (ET) — e.g. "Donna — 6/12/26, 2:33 PM"
+  const datePart = formatDateTimeShort(date);
   return name ? `${name} — ${datePart}` : datePart;
 }
 
@@ -738,6 +739,15 @@ function formatDateInput(d: Date): string {
 
 function formatDateShort(d: Date): string {
   return `${d.getMonth() + 1}/${d.getDate()}/${String(d.getFullYear()).slice(-2)}`;
+}
+
+/** "6/12/26, 2:33 PM" — expects a Date whose components are already ET (etNow). */
+function formatDateTimeShort(d: Date): string {
+  const h24 = d.getHours();
+  const ampm = h24 >= 12 ? "PM" : "AM";
+  const h = h24 % 12 || 12;
+  const mins = String(d.getMinutes()).padStart(2, "0");
+  return `${formatDateShort(d)}, ${h}:${mins} ${ampm}`;
 }
 
 function formatDateLong(iso: string): string {
