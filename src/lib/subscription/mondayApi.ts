@@ -56,8 +56,10 @@ export const COL = {
   cgmCoverage: "color_mm2cmgqe",
   mr: "color_mktyr8xg",
   mnExpiry: "date_mkp09gra",
-  // MN Update — status flipped to "Done" (index 1) by Update Clinicals' Submit
-  mnUpdate: "color_mm4890ez",
+  // MN Update — append-only TEXT log of clinical update submissions
+  // (date/time ET), written by Update Clinicals' Submit. Replaced the old
+  // "Done" status column color_mm4890ez (June 2026).
+  mnUpdate: "text_mm48gn5w",
   diagnosis: "color_mkxrxv9w",
   mnDocs: "file_mkp0vm0a",
 
@@ -305,6 +307,21 @@ export async function writeStatusIndex(itemId: string, columnId: string, index: 
     }
   `;
   await gql(query, { boardId: BOARD_ID, itemId, columnId, value: JSON.stringify({ index }) });
+}
+
+/** Read a single column's display text for one item (e.g. the MN Update log
+ *  before appending a new entry). Returns "" when the column is empty. */
+export async function fetchItemColumnText(itemId: string, columnId: string): Promise<string> {
+  const query = `
+    query ($itemId: [ID!], $cols: [String!]) {
+      items(ids: $itemId) { column_values(ids: $cols) { id text } }
+    }
+  `;
+  const data = await gql<{ items: { column_values: { id: string; text: string | null }[] }[] }>(
+    query,
+    { itemId: [itemId], cols: [columnId] },
+  );
+  return data.items?.[0]?.column_values?.[0]?.text ?? "";
 }
 
 export async function writeText(itemId: string, columnId: string, text: string): Promise<void> {

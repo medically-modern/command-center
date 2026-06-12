@@ -13,7 +13,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useMondayPatients } from "@/hooks/subscription/useMondayPatients";
 import { formatDateMDY } from "@/lib/subscription/workflow";
 import { MnDocsPanel } from "@/components/subscription/MnDocsPanel";
-import { COL, writeDate, writeStatusIndex } from "@/lib/subscription/mondayApi";
+import { COL, writeDate, writeText, fetchItemColumnText } from "@/lib/subscription/mondayApi";
 // Medical Necessity (masheke) board — second patient source
 import {
   COL as MN_COL,
@@ -305,10 +305,26 @@ function VisitDateCard({ patient, onSaved }: { patient: ClinicalsRow; onSaved: (
 }
 
 /* ── Submit — board-specific finalize action ──────────────────
-      Subscription board: flips "MN Update" (color_mm4890ez) → Done.
+      Subscription board: appends "MM/DD/YYYY, h:mm AM/PM ET" to the
+      MN Update TEXT column (text_mm48gn5w) — an append-only log, one
+      entry per submission.
       Medical Necessity board: flips Stage Advancer → "Evaluate MN",
       whatever stage the patient is currently in — the patient lands
       back in Evaluate's main bucket for re-evaluation. ────────── */
+
+/** "06/12/2026, 2:41 PM ET" — submission stamp for the MN Update log. */
+function mnUpdateStamp(): string {
+  const fmt = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/New_York",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  });
+  return `${fmt.format(new Date())} ET`;
+}
 
 function SubmitCard({ patient, onDone }: { patient: ClinicalsRow; onDone: () => void }) {
   const [submitting, setSubmitting] = useState(false);
@@ -321,8 +337,11 @@ function SubmitCard({ patient, onDone }: { patient: ClinicalsRow; onDone: () => 
         await mnWriteStatusIndex(patient.id, MN_COL.subStage, MN_SUB_STAGE_INDEX.evaluate);
         toast.success(`${patient.name} sent back to Evaluate`);
       } else {
-        await writeStatusIndex(patient.id, COL.mnUpdate, 1); // MN Update → Done
-        toast.success("Submitted — MN Update marked Done");
+        // Append this submission to the MN Update log (never overwrite).
+        const existing = (await fetchItemColumnText(patient.id, COL.mnUpdate)).trim();
+        const next = existing ? `${existing}; ${mnUpdateStamp()}` : mnUpdateStamp();
+        await writeText(patient.id, COL.mnUpdate, next);
+        toast.success("Submitted — update logged to MN Update");
       }
       onDone();
     } catch (e) {
@@ -343,7 +362,7 @@ function SubmitCard({ patient, onDone }: { patient: ClinicalsRow; onDone: () => 
       <p className="text-[11px] text-muted-foreground mb-3">
         {isMn
           ? "Submitting sends this patient back to Evaluate — their Stage Advancer is set to \"Evaluate MN\" no matter which stage they're in now."
-          : "Marks MN Update as Done on the Subscription board once the new clinicals (and visit date) are in."}
+          : "Logs this update (date + time) to the MN Update column on the Subscription board — entries append, nothing is overwritten."}
       </p>
       <Button
         onClick={handleSubmit}
