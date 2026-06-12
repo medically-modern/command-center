@@ -290,9 +290,15 @@ export function ChaseClinicalsPanel({ patient, onUpdate, managerMode = false }: 
         <h4 className="text-[1.05rem] font-bold tracking-tight mb-2.5">Ask the doctor for</h4>
         <AskForList patient={patient} />
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 items-start mt-5">
-          <div>
-            <h4 className="text-[1.05rem] font-bold tracking-tight">Script Templates</h4>
+        {/* Fixed 2×2 grid — slots are placed by grid row, so the two columns
+            always stay horizontally aligned no matter how much content each
+            slot holds (matches Confirm Receipt). */}
+        <div className="grid grid-cols-2 gap-x-5 mt-5 items-start">
+          <h4 className="text-[1.05rem] font-bold tracking-tight">Script Templates</h4>
+          <h4 className="text-[1.05rem] font-bold tracking-tight">Other Files</h4>
+
+          {/* row 1: CGM Template | MN Request Letter */}
+          <div className="min-h-[88px]">
             <FilesLabel>CGM Template</FilesLabel>
             {!showCgm ? (
               <NotApplicable>— Not Serving</NotApplicable>
@@ -303,7 +309,21 @@ export function ChaseClinicalsPanel({ patient, onUpdate, managerMode = false }: 
             ) : (
               <FileList files={mondayFiles.cgmTemplate} />
             )}
-            <FilesLabel className="mt-3.5">IP Template</FilesLabel>
+          </div>
+          <div className="min-h-[88px]">
+            <FilesLabel>MN Request Letter</FilesLabel>
+            {mondayFiles.loading && mondayFiles.mnRequestLetter.length === 0 ? (
+              <LoadingRow />
+            ) : mondayFiles.mnRequestLetter.length === 0 ? (
+              <NotApplicable>— None on Monday</NotApplicable>
+            ) : (
+              <FileList files={mondayFiles.mnRequestLetter} />
+            )}
+          </div>
+
+          {/* row 2: IP Template | From Clinicals */}
+          <div className="min-h-[88px]">
+            <FilesLabel>IP Template</FilesLabel>
             {!showIp ? (
               <NotApplicable>— Not Serving</NotApplicable>
             ) : mondayFiles.loading && mondayFiles.ipTemplate.length === 0 ? (
@@ -314,17 +334,8 @@ export function ChaseClinicalsPanel({ patient, onUpdate, managerMode = false }: 
               <FileList files={mondayFiles.ipTemplate} />
             )}
           </div>
-          <div>
-            <h4 className="text-[1.05rem] font-bold tracking-tight">Other Files</h4>
-            <FilesLabel>MN Request Letter</FilesLabel>
-            {mondayFiles.loading && mondayFiles.mnRequestLetter.length === 0 ? (
-              <LoadingRow />
-            ) : mondayFiles.mnRequestLetter.length === 0 ? (
-              <NotApplicable>— None on Monday</NotApplicable>
-            ) : (
-              <FileList files={mondayFiles.mnRequestLetter} />
-            )}
-            <FilesLabel className="mt-3.5">From Clinicals</FilesLabel>
+          <div className="min-h-[88px]">
+            <FilesLabel>From Clinicals</FilesLabel>
             {mondayFiles.loading && mondayFiles.clinicalFiles.length === 0 ? (
               <LoadingRow />
             ) : mondayFiles.clinicalFiles.length === 0 ? (
