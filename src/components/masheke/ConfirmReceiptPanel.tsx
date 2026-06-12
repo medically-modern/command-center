@@ -588,8 +588,8 @@ async function saveYes(patient: Patient, name: string) {
   await writeDate(patient.id, COL.receiptConfirmedDate, today);
   await writeStatusIndex(patient.id, COL.mnAttempts, MN_ATTEMPTS_INDEX.attempt1);
   await writeStatusIndex(patient.id, COL.subStage, SUB_STAGE_INDEX.chase);
-  // Next action date — 2 business days from now.
-  const nextAction = formatDateInput(addBusinessDays(etNow(), 2));
+  // Entry into Chase Clinicals → +3 business days (matches chase cadence)
+  const nextAction = formatDateInput(addBusinessDays(etNow(), 3));
   await writeDate(patient.id, COL.nextActionDate, nextAction);
 }
 

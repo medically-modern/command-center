@@ -320,7 +320,8 @@ export function SendRequestPanel({ patient, resetVersion = 0, onUpdate }: Props)
       },
     ];
     if (isParachute) {
-      const nextAction = toIsoDate(addBusinessDays(etNow(), 2));
+      // Entry into Chase Clinicals → +3 business days (matches chase cadence)
+      const nextAction = toIsoDate(addBusinessDays(etNow(), 3));
       tasks.push({
         label: `Next Action Date → ${nextAction}`,
         run: () => writeDate(patient.id, COL.nextActionDate, nextAction),
@@ -515,20 +516,14 @@ export function SendRequestPanel({ patient, resetVersion = 0, onUpdate }: Props)
       <MmStep num={sendStepNum} title="Send & Complete">
         {/* sent status header */}
         <div className="flex items-center gap-3 flex-wrap -mt-1 mb-4">
-          {patient.requestSentAt ? (
+          {/* "Not sent yet" bubble removed (June 2026) — only show when sent */}
+          {patient.requestSentAt && (
             <>
               <span className="text-sm text-muted-foreground">
                 Last sent <b className="text-foreground">{formatDate(patient.requestSentAt)}</b>
               </span>
               <SentChip />
             </>
-          ) : (
-            <span
-              className="inline-flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-sm font-medium text-muted-foreground bg-background border"
-              style={{ borderColor: "var(--mm-card-border)" }}
-            >
-              Not sent yet
-            </span>
           )}
         </div>
 

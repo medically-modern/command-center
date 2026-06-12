@@ -4,8 +4,7 @@
  *   - "Chase Clinicals Completed" is the ONLY action. It logs the attempt
  *     ("Who answered — date, time" into the matching chaseAttempt column),
  *     bumps MN Attempts (3rd press flags Escalation Required), and moves
- *     the Next Action Date forward: FAX role +1 business day, PARACHUTE
- *     role +3 business days.
+ *     the Next Action Date forward 3 business days (both roles).
  *   - It NEVER advances the stage. Patients leave the Medical Necessity
  *     bucket ONLY via the Evaluate view (which has a read-only Chase
  *     Clinicals folder for opening these patients).
@@ -58,9 +57,9 @@ interface Props {
   onOpenForm?: () => void;
   /** Manager view: "Review the Request" starts as a collapsed dropdown. */
   managerMode?: boolean;
-  /** Which chase role this panel is rendered in. Drives the next-action bump
-   *  on Complete: "fax" = +1 business day, "parachute" = +3. Falls back to
-   *  the patient's own Clinicals Method when not provided (deep links). */
+  /** Which chase role this panel is rendered in (labels/copy only — both
+   *  roles bump the next action +3 business days). Falls back to the
+   *  patient's own Clinicals Method when not provided (deep links). */
   roleMethod?: "fax" | "parachute";
 }
 
@@ -68,7 +67,7 @@ interface Props {
 // Main panel — single-button flow. "Chase Clinicals Completed" logs the
 // attempt to the matching chaseAttempt{N} text column, bumps MN Attempts
 // (3rd press flips the Escalation column), and moves the next action date
-// (+1 business day fax / +3 parachute). Never advances the stage.
+// +3 business days. Never advances the stage.
 // =====================================================================
 
 export function ChaseClinicalsPanel({ patient, onUpdate, managerMode = false, roleMethod }: Props) {
@@ -85,9 +84,11 @@ export function ChaseClinicalsPanel({ patient, onUpdate, managerMode = false, ro
   const [pendingNoteText, setPendingNoteText] = useState("");
 
   const isParachute = patient.clinicalsMethod === "Parachute";
-  // FAX role bumps the next action +1 business day, PARACHUTE +3.
   const effectiveRole = roleMethod ?? (isParachute ? "parachute" : "fax");
-  const nadBumpDays = effectiveRole === "parachute" ? 3 : 1;
+  // Both chase roles bump the next action +3 business days on Complete
+  // (was fax +1 / parachute +3 — unified June 2026).
+  const nadBumpDays = 3;
+  void effectiveRole; // role kept for titles/labels elsewhere
 
   useEffect(() => {
     setName("");
@@ -96,9 +97,8 @@ export function ChaseClinicalsPanel({ patient, onUpdate, managerMode = false, ro
     setPendingNoteText("");
   }, [patient.id]);
 
-  // Default Next Action Date — role-driven: fax +1 business day, parachute
-  // +3 business days. The date input is not displayed but the computed value
-  // is written to Monday on Complete.
+  // Default Next Action Date — +3 business days (both roles). The date input
+  // is not displayed but the computed value is written to Monday on Complete.
   useEffect(() => {
     setNextAction(formatDateInput(addBusinessDays(etNow(), nadBumpDays)));
   }, [patient.id, nadBumpDays]);
@@ -149,8 +149,8 @@ export function ChaseClinicalsPanel({ patient, onUpdate, managerMode = false, ro
       } else {
         // Chase Clinicals Completed — logs the attempt (who answered +
         // date/time), bumps MN Attempts (3rd press flags Escalation
-        // Required), and moves the next action date (+1 business day fax /
-        // +3 parachute). NEVER advances the stage: patients leave Medical
+        // Required), and moves the next action date +3 business days.
+        // NEVER advances the stage: patients leave Medical
         // Necessity only via the Evaluate view.
         const attempt = currentAttempt ?? 1;
         const value = formatAttemptValue(name.trim(), etNow());
@@ -349,7 +349,7 @@ export function ChaseClinicalsPanel({ patient, onUpdate, managerMode = false, ro
               ? "Final attempt — completing this chase will flag the patient for escalation."
               : effectiveRole === "parachute"
                 ? "Chase via the Parachute portal (or a call), add a note, then mark completed — next action moves out 3 business days."
-                : "Call the doctor's office to chase the clinicals, add a note, then mark completed — next action moves out 1 business day."
+                : "Call the doctor's office to chase the clinicals, add a note, then mark completed — next action moves out 3 business days."
         }
       >
         {locked ? (

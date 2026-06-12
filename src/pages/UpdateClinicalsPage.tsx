@@ -13,12 +13,13 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useMondayPatients } from "@/hooks/subscription/useMondayPatients";
 import { formatDateMDY } from "@/lib/subscription/workflow";
 import { MnDocsPanel } from "@/components/subscription/MnDocsPanel";
-import { COL, writeDate, writeText, fetchItemColumnText } from "@/lib/subscription/mondayApi";
+import { COL, writeDate } from "@/lib/subscription/mondayApi";
 // Medical Necessity (masheke) board — second patient source
 import {
   COL as MN_COL,
   fetchGroupItems as mnFetchGroupItems,
   writeStatusIndex as mnWriteStatusIndex,
+  writeDate as mnWriteDate,
   hasToken as mnHasToken,
 } from "@/lib/masheke/mondayApi";
 import { SUB_STAGE_INDEX as MN_SUB_STAGE_INDEX } from "@/lib/masheke/mondayMapping";
@@ -304,45 +305,27 @@ function VisitDateCard({ patient, onSaved }: { patient: ClinicalsRow; onSaved: (
   );
 }
 
-/* ── Submit — board-specific finalize action ──────────────────
-      Subscription board: appends "MM/DD/YYYY, h:mm AM/PM ET" to the
-      MN Update TEXT column (text_mm48gn5w) — an append-only log, one
-      entry per submission.
-      Medical Necessity board: flips Stage Advancer → "Evaluate MN",
-      whatever stage the patient is currently in — the patient lands
-      back in Evaluate's main bucket for re-evaluation. ────────── */
-
-/** "06/12/2026, 2:41 PM ET" — submission stamp for the MN Update log. */
-function mnUpdateStamp(): string {
-  const fmt = new Intl.DateTimeFormat("en-US", {
-    timeZone: "America/New_York",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "numeric",
-    minute: "2-digit",
-    hour12: true,
-  });
-  return `${fmt.format(new Date())} ET`;
-}
+/* ── Submit — MEDICAL NECESSITY BOARD ONLY ────────────────────
+      Flips Stage Advancer → "Evaluate MN" (whatever stage the patient is
+      in now) AND stamps Next Action Date = today so the patient lands in
+      Evaluate's active list immediately. Subscription patients have no
+      Submit button (uploads + visit date are the whole flow). ── */
 
 function SubmitCard({ patient, onDone }: { patient: ClinicalsRow; onDone: () => void }) {
   const [submitting, setSubmitting] = useState(false);
-  const isMn = patient.board === "mn";
 
   const handleSubmit = async () => {
     setSubmitting(true);
     try {
-      if (isMn) {
-        await mnWriteStatusIndex(patient.id, MN_COL.subStage, MN_SUB_STAGE_INDEX.evaluate);
-        toast.success(`${patient.name} sent back to Evaluate`);
-      } else {
-        // Append this submission to the MN Update log (never overwrite).
-        const existing = (await fetchItemColumnText(patient.id, COL.mnUpdate)).trim();
-        const next = existing ? `${existing}; ${mnUpdateStamp()}` : mnUpdateStamp();
-        await writeText(patient.id, COL.mnUpdate, next);
-        toast.success("Submitted — update logged to MN Update");
-      }
+      const todayEt = new Intl.DateTimeFormat("en-CA", {
+        timeZone: "America/New_York",
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+      }).format(new Date());
+      await mnWriteStatusIndex(patient.id, MN_COL.subStage, MN_SUB_STAGE_INDEX.evaluate);
+      await mnWriteDate(patient.id, MN_COL.nextActionDate, todayEt);
+      toast.success(`${patient.name} sent back to Evaluate — due today`);
       onDone();
     } catch (e) {
       toast.error("Submit failed", {
@@ -360,9 +343,7 @@ function SubmitCard({ patient, onDone }: { patient: ClinicalsRow; onDone: () => 
         Submit
       </p>
       <p className="text-[11px] text-muted-foreground mb-3">
-        {isMn
-          ? "Submitting sends this patient back to Evaluate — their Stage Advancer is set to \"Evaluate MN\" no matter which stage they're in now."
-          : "Logs this update (date + time) to the MN Update column on the Subscription board — entries append, nothing is overwritten."}
+        Submitting sends this patient back to Evaluate — their Stage Advancer is set to "Evaluate MN" no matter which stage they're in now, and their next action date is set to today.
       </p>
       <Button
         onClick={handleSubmit}
@@ -370,7 +351,7 @@ function SubmitCard({ patient, onDone }: { patient: ClinicalsRow; onDone: () => 
         className="h-10 gap-2 bg-emerald-600 hover:bg-emerald-700 text-white min-w-[160px]"
       >
         {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
-        {submitting ? "Submitting…" : isMn ? "Submit — back to Evaluate" : "Submit"}
+        {submitting ? "Submitting…" : "Submit — back to Evaluate"}
       </Button>
     </Card>
   );
@@ -419,7 +400,8 @@ function PatientClinicalsCard({ patient }: { patient: ClinicalsRow }) {
             <p className="text-lg font-semibold">{patient.dob}</p>
           </div>
         )}
-        {patient.mr && (
+        {/* MR status block hidden for Medical Necessity patients (June 2026) */}
+        {patient.board === "subscription" && patient.mr && (
           <div className="text-center">
             <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1">
               Medical Records
@@ -606,13 +588,17 @@ const UpdateClinicalsPage = () => {
                   {selected.board === "subscription" && (
                     <VisitDateCard patient={selected} onSaved={refetch} />
                   )}
-                  <SubmitCard
-                    patient={selected}
-                    onDone={() => {
-                      setSelectedId(null);
-                      refetch();
-                    }}
-                  />
+                  {/* Submit — Medical Necessity patients only (subscription
+                      flow is complete once files + visit date are in) */}
+                  {selected.board === "mn" && (
+                    <SubmitCard
+                      patient={selected}
+                      onDone={() => {
+                        setSelectedId(null);
+                        refetch();
+                      }}
+                    />
+                  )}
                 </>
               )}
             </section>
