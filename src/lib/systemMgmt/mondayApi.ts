@@ -72,7 +72,7 @@ export const MASHEKE_STAGE_ROUTES: Record<string, string> = {
   "Evaluate MN":    "/evaluate",
   "Send Request":   "/send-request",
   "Confirm Receipt": "/confirm-receipt",
-  "Chase Clinicals": "/chase-benefits",
+  "Chase Clinicals": "/chase-fax", // chase split June 2026 — deep links keep working via ?patientId injection
 };
 
 /** Insurance board Stage Advancer → route */

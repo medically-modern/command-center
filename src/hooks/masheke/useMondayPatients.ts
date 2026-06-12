@@ -74,6 +74,9 @@ function matchesTab(stageAdvancer: string | undefined, tab: TabKey): boolean {
 export function useMondayPatients(activeTab: TabKey = "evaluate", injectedPatientId?: string | null) {
   const cachedRef = useRef(loadCachedPatients());
   const [patients, setPatients] = useState<Patient[]>(cachedRef.current);
+  // Patients currently in the Chase Clinicals stage — exposed separately for
+  // the Evaluate sidebar's read-only viewer folder (never affects counts).
+  const [chaseViewerPatients, setChaseViewerPatients] = useState<Patient[]>([]);
   const [loading, setLoading] = useState(cachedRef.current.length === 0);
   const [error, setError] = useState<string | null>(null);
   const overlayRef = useRef<Map<string, Partial<Patient>>>(loadOverlays());
@@ -131,6 +134,16 @@ export function useMondayPatients(activeTab: TabKey = "evaluate", injectedPatien
         return o ? { ...p, ...o } : p;
       });
 
+      // Chase Clinicals viewer list — used by the Evaluate sidebar's
+      // read-only "Chase Clinicals" folder. NOT part of `patients`, so it
+      // never affects tab counts or the active list.
+      const chase = allPatients
+        .filter((p) => p.subStage === "Chase Clinicals")
+        .map((p) => {
+          const o = overlayRef.current.get(p.id);
+          return o ? { ...p, ...o } : p;
+        });
+
       // Inject deep-linked patient if not in this group/stage (e.g. from Escalations)
       if (injectedPatientId && !merged.some((p) => p.id === injectedPatientId)) {
         try {
@@ -144,6 +157,7 @@ export function useMondayPatients(activeTab: TabKey = "evaluate", injectedPatien
       }
 
       setPatients(merged);
+      setChaseViewerPatients(chase);
       persistPatientCache(merged);
     } catch (e) {
       if (mountedRef.current)
@@ -166,6 +180,14 @@ export function useMondayPatients(activeTab: TabKey = "evaluate", injectedPatien
   const update = useCallback((id: string, patch: Partial<Patient>) => {
     overlayRef.current.set(id, { ...(overlayRef.current.get(id) ?? {}), ...patch });
     setPatients((prev) =>
+      prev.map((p) => {
+        if (p.id !== id) return p;
+        return { ...p, ...patch, lastUpdated: new Date().toISOString() };
+      }),
+    );
+    // Keep the Chase Clinicals viewer list in sync too (Evaluate can edit
+    // chase-stage patients opened from its sidebar folder).
+    setChaseViewerPatients((prev) =>
       prev.map((p) => {
         if (p.id !== id) return p;
         return { ...p, ...patch, lastUpdated: new Date().toISOString() };
@@ -194,5 +216,5 @@ export function useMondayPatients(activeTab: TabKey = "evaluate", injectedPatien
   }, []);
 
 
-  return { patients, loading, error, refetch, update, clearOverlay, saveOverlay, hasOverlay };
+  return { patients, chaseViewerPatients, loading, error, refetch, update, clearOverlay, saveOverlay, hasOverlay };
 }

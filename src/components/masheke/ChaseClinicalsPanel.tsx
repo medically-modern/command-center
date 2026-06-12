@@ -1,19 +1,19 @@
 /**
- * ChaseClinicalsPanel — Chase Clinicals redesign (June 2026 mockup
- * chase-clinicals-redesign.html). Visual layer only — ALL existing
- * logic is preserved:
+ * ChaseClinicalsPanel — Chase Clinicals (June 2026 single-button redesign).
+ *
+ *   - "Chase Clinicals Completed" is the ONLY action. It logs the attempt
+ *     ("Who answered — date, time" into the matching chaseAttempt column),
+ *     bumps MN Attempts (3rd press flags Escalation Required), and moves
+ *     the Next Action Date forward: FAX role +1 business day, PARACHUTE
+ *     role +3 business days.
+ *   - It NEVER advances the stage. Patients leave the Medical Necessity
+ *     bucket ONLY via the Evaluate view (which has a read-only Chase
+ *     Clinicals folder for opening these patients).
  *   - Attempt slot (1/2/3) from Monday's MN Attempts column; "Escalate"
- *     means no more attempts.
- *   - Yes → writes the chase recipient, advances Stage Advancer to
- *     Completed, next action +2 business days.
- *   - No / Parachute message → logs "Name — date" (or "Parachute
- *     message — date") into the matching chaseAttempt column, bumps MN
- *     Attempts, 3rd failure flags Escalation Required, otherwise writes
- *     the next action date.
- *   - Parachute patients get the "Sent message on Parachute" outreach
- *     option in addition to the call flow.
- *   - Save requires an outcome AND ≥1 note added this session (no
- *     typed-but-unadded note text), and persists doctor-field edits.
+ *     means no more attempts (manager view can still log follow-ups —
+ *     those only move the next action date).
+ *   - Completing requires ≥1 note added this session (no typed-but-unadded
+ *     note text), and persists doctor-field edits.
  */
 import { useEffect, useMemo, useState, useRef } from "react";
 import type { Patient } from "@/lib/masheke/workflow";
@@ -34,7 +34,6 @@ import {
 import {
   ESCALATION_INDEX,
   MN_ATTEMPTS_INDEX,
-  SUB_STAGE_INDEX,
 } from "@/lib/masheke/mondayMapping";
 import { toast } from "sonner";
 import {
@@ -43,8 +42,6 @@ import {
   CheckCircle2,
   Loader2,
   Phone,
-  Send,
-  X,
 } from "lucide-react";
 import {
   AskForList,
@@ -61,49 +58,50 @@ interface Props {
   onOpenForm?: () => void;
   /** Manager view: "Review the Request" starts as a collapsed dropdown. */
   managerMode?: boolean;
+  /** Which chase role this panel is rendered in. Drives the next-action bump
+   *  on Complete: "fax" = +1 business day, "parachute" = +3. Falls back to
+   *  the patient's own Clinicals Method when not provided (deep links). */
+  roleMethod?: "fax" | "parachute";
 }
 
 // =====================================================================
-// Main panel — mirrors ConfirmReceiptPanel for the Chase Clinicals stage.
-// On Yes, advances Stage Advancer to "Completed". On No, logs the
-// attempt to the matching chaseAttempt{N} text column, bumps MN Attempts,
-// and (after the 3rd No) flips the Escalation column.
+// Main panel — single-button flow. "Chase Clinicals Completed" logs the
+// attempt to the matching chaseAttempt{N} text column, bumps MN Attempts
+// (3rd press flips the Escalation column), and moves the next action date
+// (+1 business day fax / +3 parachute). Never advances the stage.
 // =====================================================================
 
-export function ChaseClinicalsPanel({ patient, onUpdate, managerMode = false }: Props) {
+export function ChaseClinicalsPanel({ patient, onUpdate, managerMode = false, roleMethod }: Props) {
   const mondayFiles = useMondayFiles(patient.id);
   const [saving, setSaving] = useState(false);
   const [escalated, setEscalated] = useState(false);
   const escalatedRef = useRef(false);
 
   const [name, setName] = useState("");
-  const [confirmed, setConfirmed] = useState<"yes" | "no" | "parachute-message" | null>(null);
   const [nextAction, setNextAction] = useState<string>("");
-  // Save is blocked until the rep adds at least one note for this attempt,
+  // Complete is blocked until the rep adds at least one note for this attempt,
   // and while typed-but-unadded text sits in the note box.
   const [noteAdded, setNoteAdded] = useState(false);
   const [pendingNoteText, setPendingNoteText] = useState("");
 
   const isParachute = patient.clinicalsMethod === "Parachute";
+  // FAX role bumps the next action +1 business day, PARACHUTE +3.
+  const effectiveRole = roleMethod ?? (isParachute ? "parachute" : "fax");
+  const nadBumpDays = effectiveRole === "parachute" ? 3 : 1;
 
   useEffect(() => {
     setName("");
-    setConfirmed(null);
     setNextAction("");
     setNoteAdded(false);
     setPendingNoteText("");
   }, [patient.id]);
 
-  // Default Next Action Date based on which option is selected:
-  //   No → next weekday (fast follow-up)
-  //   Yes / Parachute message / nothing → 2 weekdays
-  // Re-applies on patient change and on every confirmed change. The date
-  // input is no longer displayed (per the June 2026 redesign) but the
-  // computed value is still written to Monday on save, unchanged.
+  // Default Next Action Date — role-driven: fax +1 business day, parachute
+  // +3 business days. The date input is not displayed but the computed value
+  // is written to Monday on Complete.
   useEffect(() => {
-    const days = confirmed === "no" ? 1 : 2;
-    setNextAction(formatDateInput(addBusinessDays(etNow(), days)));
-  }, [patient.id, confirmed]);
+    setNextAction(formatDateInput(addBusinessDays(etNow(), nadBumpDays)));
+  }, [patient.id, nadBumpDays]);
 
   const currentAttempt = useMemo(() => {
     const v = (patient.mnAttempts || "").trim();
@@ -127,11 +125,10 @@ export function ChaseClinicalsPanel({ patient, onUpdate, managerMode = false }: 
   }, [patient.chaseAttempt1, patient.chaseAttempt2, patient.chaseAttempt3]);
 
   // Name field is never required — agents sometimes don't catch a
-  // name on the call, and the Parachute message path has no human at
-  // all. Save needs a selected outcome AND at least one note added
-  // for this attempt (with no un-added text left in the note box).
+  // name on the call. Complete needs at least one note added for this
+  // attempt (with no un-added text left in the note box).
   const hasPendingNote = pendingNoteText.trim().length > 0;
-  const canSave = !!confirmed && noteAdded && !hasPendingNote && !saving && !locked;
+  const canSave = noteAdded && !hasPendingNote && !saving && !locked;
 
   async function handleSave() {
     if (!canSave) return;
@@ -141,40 +138,27 @@ export function ChaseClinicalsPanel({ patient, onUpdate, managerMode = false }: 
     }
     setSaving(true);
     try {
-      if (confirmed === "yes") {
-        await saveYes(patient, name.trim());
-        if (isEscalated) {
-          // Manager resolved the escalation — clear the flag so the patient
-          // doesn't stay in escalated lists.
-          await writeStatusIndex(patient.id, COL.escalation, ESCALATION_INDEX.done);
-          onUpdate({ escalation: "Done" });
-        }
-        toast.success("Clinicals confirmed — moved to Completed");
-        onUpdate({
-          chaseRecipientName: name.trim(),
-          subStage: "Completed",
-        });
-      } else if (isEscalated) {
+      if (isEscalated) {
         // Manager follow-up on an escalated patient: all 3 attempt slots are
-        // used, so just set the next action date (weekend-clamped). Notes
+        // used, so just move the next action date (weekend-clamped). Notes
         // were already saved by the notes panel. Patient stays escalated.
         const safeNextAction = clampToBusinessDay(nextAction);
         await writeDate(patient.id, COL.nextActionDate, safeNextAction);
         onUpdate({ nextActionDate: safeNextAction });
         toast.success("Follow-up saved — patient remains escalated");
       } else {
+        // Chase Clinicals Completed — logs the attempt (who answered +
+        // date/time), bumps MN Attempts (3rd press flags Escalation
+        // Required), and moves the next action date (+1 business day fax /
+        // +3 parachute). NEVER advances the stage: patients leave Medical
+        // Necessity only via the Evaluate view.
         const attempt = currentAttempt ?? 1;
-        // For Parachute-message attempts, the column value records the
-        // outreach instead of a person's name.
-        const value =
-          confirmed === "parachute-message"
-            ? formatAttemptValue("Parachute message", etNow())
-            : formatAttemptValue(name.trim(), etNow());
+        const value = formatAttemptValue(name.trim(), etNow());
         const nextSlot = nextMnAttempt(attempt);
         // Never schedule a next action on a weekend, no matter how the
         // date was produced.
         const safeNextAction = clampToBusinessDay(nextAction);
-        await saveNo({
+        await saveAttempt({
           patient,
           attempt,
           value,
@@ -191,15 +175,14 @@ export function ChaseClinicalsPanel({ patient, onUpdate, managerMode = false }: 
         });
         toast.success(
           nextSlot === "Escalate"
-            ? `Attempt ${attempt} saved — escalated`
-            : `Attempt ${attempt} saved`,
+            ? `Chase completed — attempt ${attempt} logged, escalated`
+            : `Chase completed — attempt ${attempt} logged`,
         );
       }
       // Persist any doctor-field edits made on the header card
       const docTasks = buildDoctorWriteTasks(patient);
       if (docTasks.length) await Promise.all(docTasks.map((t) => t.run()));
       setName("");
-      setConfirmed(null);
       setNextAction("");
       setNoteAdded(false);
       // Write escalation if user toggled the Escalate button
@@ -226,12 +209,6 @@ export function ChaseClinicalsPanel({ patient, onUpdate, managerMode = false }: 
   const showIp = patient.serving !== "CGM";
 
   const isLastAttempt = currentAttempt === 3;
-
-  // Click-again-to-deselect: tapping the already-selected option clears
-  // the selection so the agent can switch paths or back out before save.
-  const toggle = (v: "yes" | "no" | "parachute-message") => {
-    setConfirmed(confirmed === v ? null : v);
-  };
 
   return (
     <div className="flex flex-col gap-6">
@@ -361,18 +338,18 @@ export function ChaseClinicalsPanel({ patient, onUpdate, managerMode = false }: 
         />
       </MmStep>
 
-      {/* ── Step 3 — Clinicals Sent? ── */}
+      {/* ── Step 3 — Complete the Chase (single-button flow) ── */}
       <MmStep
         num={3}
-        title="Clinicals Sent?"
+        title="Complete the Chase"
         sub={
           isEscalated
             ? undefined
             : isLastAttempt
-              ? "Final attempt — if clinicals aren't sent, the patient will be flagged for escalation."
-              : isParachute
-                ? "Either send a message through the Parachute portal or call the doctor's office — pick one."
-                : "Call the doctor's office to confirm the clinicals are sent."
+              ? "Final attempt — completing this chase will flag the patient for escalation."
+              : effectiveRole === "parachute"
+                ? "Chase via the Parachute portal (or a call), add a note, then mark completed — next action moves out 3 business days."
+                : "Call the doctor's office to chase the clinicals, add a note, then mark completed — next action moves out 1 business day."
         }
       >
         {locked ? (
@@ -403,61 +380,24 @@ export function ChaseClinicalsPanel({ patient, onUpdate, managerMode = false }: 
                 <AlertTriangle className="h-4 w-4 shrink-0 text-amber-600" />
                 <p className="text-xs text-amber-800">
                   <span className="font-bold">Manager override</span> — all 3 attempts used.
-                  "Yes" completes the patient and clears the escalation; "No" just sets the next action date.
+                  Completing just moves the next action date; the patient stays escalated.
                 </p>
               </div>
             )}
-            {/* Parachute mode shows BOTH options — agents either send a
-                message via the portal OR call the office. The Parachute
-                button is its own selectable mode (no name input); call
-                mode uses the existing name + Yes/No inputs. */}
-            {isParachute && (
-              <>
-                <FilesLabel className="mt-0">Outreach via Parachute</FilesLabel>
-                <button
-                  type="button"
-                  onClick={() => toggle("parachute-message")}
-                  className="w-full rounded-lg border-2 px-4 py-3 flex items-center gap-3 text-[0.95rem] font-semibold transition-all"
-                  style={
-                    confirmed === "parachute-message"
-                      ? { borderColor: "transparent", background: "var(--mm-green)", color: "#fff", boxShadow: "0 1px 2px 0 rgb(0 0 0 / .05)" }
-                      : { borderColor: "var(--mm-card-border)", background: "var(--background)", color: "var(--muted-foreground)" }
-                  }
-                >
-                  <Send className="h-4 w-4" />
-                  <span>Sent message on Parachute</span>
-                </button>
 
-                <div className="flex items-center gap-3 mt-4" role="separator" aria-label="or">
-                  <span className="flex-1 h-px" style={{ background: "var(--mm-card-border)" }} />
-                  <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                    or call instead
-                  </span>
-                  <span className="flex-1 h-px" style={{ background: "var(--mm-card-border)" }} />
-                </div>
-              </>
-            )}
+            {/* The old Yes/No outcome picker + "Sent message on Parachute"
+                option were removed (June 2026): "Chase Clinicals Completed"
+                is now the only action and never advances the stage — patients
+                leave Medical Necessity only via the Evaluate view. See git
+                history of this file for the previous outcome UI. */}
 
-            <FilesLabel className={isParachute ? undefined : "mt-0"}>Who answered the call?</FilesLabel>
+            <FilesLabel className="mt-0">Who answered the call?</FilesLabel>
             <Input
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="Name and title (e.g. Donna, Records)"
+              placeholder="Name and title (e.g. Donna, Records) — optional"
               className="h-[42px] bg-background"
             />
-
-            <FilesLabel>
-              Did they say they will send the clinicals?{" "}
-              <span className="font-bold" style={{ color: "var(--mm-rose)" }}>*</span>
-            </FilesLabel>
-            <div className="flex gap-2.5 w-full">
-              <SegBtn tone="g" selected={confirmed === "yes"} onClick={() => toggle("yes")}>
-                <Check className="h-4 w-4" /> Yes — will send
-              </SegBtn>
-              <SegBtn tone="r" selected={confirmed === "no"} onClick={() => toggle("no")}>
-                <X className="h-4 w-4" /> No — still pending
-              </SegBtn>
-            </div>
 
             <HistRows history={history} />
 
@@ -466,7 +406,7 @@ export function ChaseClinicalsPanel({ patient, onUpdate, managerMode = false }: 
                 size="lg"
                 onClick={handleSave}
                 disabled={!canSave}
-                className="gap-2 text-white shadow-sm min-w-[200px] justify-center bg-[color:var(--mm-green)] hover:bg-[oklch(0.56_0.10_175)] disabled:bg-[oklch(0.85_0.01_200)]"
+                className="gap-2 text-white shadow-sm min-w-[240px] justify-center bg-[color:var(--mm-green)] hover:bg-[oklch(0.56_0.10_175)] disabled:bg-[oklch(0.85_0.01_200)]"
               >
                 {saving ? (
                   <>
@@ -476,19 +416,20 @@ export function ChaseClinicalsPanel({ patient, onUpdate, managerMode = false }: 
                 ) : (
                   <>
                     <Check className="h-4 w-4" />
-                    Save Attempt
+                    Chase Clinicals Completed
                   </>
                 )}
               </Button>
               <p className="text-xs text-muted-foreground">
                 {saveHint({
-                  confirmed,
                   hasPendingNote,
                   noteAdded,
                   attemptNumber: currentAttempt ?? 1,
+                  isEscalated,
+                  bumpDays: nadBumpDays,
                 })}
               </p>
-              {currentAttempt === 3 && (confirmed === "no" || confirmed === "parachute-message") && (
+              {currentAttempt === 3 && (
                 <p className="text-xs font-semibold text-amber-600 flex items-center gap-1.5">
                   <AlertTriangle className="h-3.5 w-3.5" />
                   Note: This action will escalate this patient to a supervisor.
@@ -503,21 +444,23 @@ export function ChaseClinicalsPanel({ patient, onUpdate, managerMode = false }: 
 }
 
 // =====================================================================
-// Save handlers (unchanged)
+// Save handlers
 // =====================================================================
 
-async function saveYes(patient: Patient, name: string) {
-  // Yes path: write the chase recipient (the person who said the
-  // clinicals are on the way) and advance Stage Advancer to Completed.
-  // No date column for chase success — the stage advance is the signal.
-  await writeText(patient.id, COL.chaseRecipientName, name);
-  await writeStatusIndex(patient.id, COL.subStage, SUB_STAGE_INDEX.completed);
-  // Next action date — 2 business days from now.
-  const nextAction = formatDateInput(addBusinessDays(etNow(), 2));
-  await writeDate(patient.id, COL.nextActionDate, nextAction);
-}
+// saveYes — REMOVED June 2026. The old "Yes — will send" path wrote the
+// chase recipient and advanced Stage Advancer to Completed. Chase no longer
+// advances the stage: when clinicals actually arrive they're uploaded from
+// the Evaluate view (Chase Clinicals folder), and Evaluate's Send to Monday
+// is the ONLY thing that moves a patient out of Medical Necessity.
+//
+// async function saveYes(patient: Patient, name: string) {
+//   await writeText(patient.id, COL.chaseRecipientName, name);
+//   await writeStatusIndex(patient.id, COL.subStage, SUB_STAGE_INDEX.completed);
+//   const nextAction = formatDateInput(addBusinessDays(etNow(), 2));
+//   await writeDate(patient.id, COL.nextActionDate, nextAction);
+// }
 
-async function saveNo({
+async function saveAttempt({
   patient,
   attempt,
   value,
@@ -635,7 +578,9 @@ function HistRows({ history }: { history: AttemptChip[] }) {
   );
 }
 
-/** Segmented Yes/No button (mockup .seg). Click again to deselect. */
+/* SegBtn — unused since the June 2026 single-button redesign (old Yes/No
+   outcome picker). Restore from git history if outcome buttons return.
+  ** Segmented Yes/No button (mockup .seg). Click again to deselect. * /
 function SegBtn({
   tone,
   selected,
@@ -675,6 +620,7 @@ function SegBtn({
     </button>
   );
 }
+*/
 
 function FilesLabel({ children, className }: { children: React.ReactNode; className?: string }) {
   return (
@@ -751,10 +697,15 @@ function formatDateTimeShort(d: Date): string {
 }
 
 function formatDateLong(iso: string): string {
-  const d = new Date(iso);
+  // Parse date-only strings (YYYY-MM-DD) as LOCAL dates. new Date("2026-06-11")
+  // is UTC midnight, which rendered as the previous day ("Jun 10") in ET —
+  // the receipt-confirmed off-by-one bug.
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso.trim());
+  const d = m
+    ? new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]))
+    : new Date(iso);
   if (Number.isNaN(d.getTime())) return iso;
   return d.toLocaleDateString("en-US", {
-    timeZone: "America/New_York",
     month: "short",
     day: "numeric",
     year: "numeric",
@@ -774,31 +725,26 @@ function formatPhoneDisplay(raw?: string): string {
   return raw;
 }
 
-/** Save-area hint — same strings as the previous design. */
+/** Hint under the "Chase Clinicals Completed" button. */
 function saveHint({
-  confirmed,
   hasPendingNote,
   noteAdded,
   attemptNumber,
+  isEscalated,
+  bumpDays,
 }: {
-  confirmed: "yes" | "no" | "parachute-message" | null;
   hasPendingNote: boolean;
   noteAdded: boolean;
   attemptNumber: number;
+  isEscalated: boolean;
+  bumpDays: number;
 }): string {
-  let hint = "Pick an option above to enable save.";
-  if (confirmed && hasPendingNote) hint = "Press Add on your note before saving.";
-  else if (confirmed && !noteAdded) hint = "Add at least one note above to enable save.";
-  else if (confirmed === "yes") hint = "Saves the chase recipient and advances to Completed.";
-  else if (confirmed === "no" && attemptNumber < 3)
-    hint = `Logs Attempt ${attemptNumber} as unsuccessful and schedules the next callback.`;
-  else if (confirmed === "no" && attemptNumber === 3)
-    hint = "Logs Attempt 3 as unsuccessful and flags Escalation Required.";
-  else if (confirmed === "parachute-message" && attemptNumber < 3)
-    hint = `Logs the Parachute message as Attempt ${attemptNumber} and schedules the next outreach.`;
-  else if (confirmed === "parachute-message" && attemptNumber === 3)
-    hint = "Logs the Parachute message as Attempt 3 and flags Escalation Required.";
-  return hint;
+  if (hasPendingNote) return "Press Add on your note before completing.";
+  if (!noteAdded) return "Add at least one call note above to enable.";
+  if (isEscalated)
+    return `Moves the next action date out ${bumpDays} business day${bumpDays === 1 ? "" : "s"} — patient stays escalated.`;
+  if (attemptNumber === 3) return "Logs Attempt 3 and flags Escalation Required.";
+  return `Logs Attempt ${attemptNumber} and moves the next action date out ${bumpDays} business day${bumpDays === 1 ? "" : "s"}.`;
 }
 
 /** Open a Monday file URL directly in a new tab (existing behavior). */

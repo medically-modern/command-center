@@ -1,6 +1,11 @@
 /**
  * Chase Clinicals — standalone view of masheke-checklist's "Chase" tab.
- * Maps to "Chase Benefits" role in Command Center.
+ *
+ * Split into TWO roles (June 2026): FAX (/chase-fax — fax + email patients)
+ * and PARACHUTE (/chase-parachute — Parachute patients). Same page component,
+ * filtered by the `method` prop; the panel bumps the next action date +1
+ * business day for fax, +3 for parachute. Old /chase-benefits redirects to
+ * /chase-fax.
  */
 import { useEffect, useMemo, useState } from "react";
 import { useMondayPatients } from "@/hooks/masheke/useMondayPatients";
@@ -21,7 +26,13 @@ import { ESCALATION_INDEX } from "@/lib/masheke/mondayMapping";
 import { FollowUpModal } from "@/components/masheke/FollowUpModal";
 import { useBackNavigation } from "@/hooks/useBackNavigation";
 
-const ChaseClinicalsPage = () => {
+interface ChasePageProps {
+  /** Which chase role: "fax" (fax + email patients, +1 business day bump)
+   *  or "parachute" (Parachute patients, +3 business days). */
+  method: "fax" | "parachute";
+}
+
+const ChaseClinicalsPage = ({ method }: ChasePageProps) => {
   const navigate = useNavigate();
   const { goBack } = useBackNavigation();
   const [searchParams] = useSearchParams();
@@ -29,7 +40,21 @@ const ChaseClinicalsPage = () => {
   // Manager view (?manager=1): sidebar lists ONLY escalated patients and
   // the panel tucks "Review the Request" behind a collapsed dropdown.
   const isManager = searchParams.get("manager") === "1";
-  const { patients, loading, error, refetch, update, clearOverlay , saveOverlay, hasOverlay } = useMondayPatients("chase", searchParams.get("patientId"));
+  const { patients: allChasePatients, loading, error, refetch, update, clearOverlay , saveOverlay, hasOverlay } = useMondayPatients("chase", searchParams.get("patientId"));
+  // Role split: parachute role = Clinicals Method "Parachute"; fax role =
+  // everything else (Fax, Email, blank) so nobody falls through the cracks.
+  // Deep-linked patients (?patientId=) stay visible regardless of method.
+  const deepLinkedId = searchParams.get("patientId");
+  const patients = useMemo(
+    () =>
+      allChasePatients.filter((p) =>
+        p.id === deepLinkedId ||
+        (method === "parachute"
+          ? p.clinicalsMethod === "Parachute"
+          : p.clinicalsMethod !== "Parachute"),
+      ),
+    [allChasePatients, method, deepLinkedId],
+  );
   const [selectedId, setSelectedId] = useState<string | null>(
     searchParams.get("patientId") ?? null,
   );
@@ -79,7 +104,7 @@ const ChaseClinicalsPage = () => {
                 <div>
                   <p className="text-[10px] uppercase tracking-[0.2em] opacity-70">Medically Modern</p>
                   <h1 className="text-2xl font-bold flex items-center gap-2.5">
-                    Chase Clinicals
+                    Chase Clinicals — {method === "parachute" ? "Parachute" : "Fax"}
                     {isManager && (
                       <span className="text-[11px] font-semibold uppercase tracking-wider bg-white/15 border border-white/25 rounded-full px-2.5 py-0.5">
                         Manager · Escalated
@@ -131,7 +156,7 @@ const ChaseClinicalsPage = () => {
               {selected && (
                 <>
                   <ConfirmReceiptHeaderCard patient={selected} onDoctorEdit={(patch) => update(selected.id, patch)} />
-                  <ChaseClinicalsPanel patient={selected} onUpdate={onUpdate} onOpenForm={() => setEscalationModalOpen(true)} managerMode={isManager} />
+                  <ChaseClinicalsPanel patient={selected} onUpdate={onUpdate} onOpenForm={() => setEscalationModalOpen(true)} managerMode={isManager} roleMethod={method} />
                 </>
               )}
             </section>

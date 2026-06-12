@@ -1,6 +1,6 @@
 import { Toaster } from "sonner";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { lazy, Suspense } from "react";
 import Index from "./pages/Index";
 import { FileViewerHost } from "./components/shared/FileViewerModal";
@@ -46,6 +46,13 @@ const Loading = () => (
 
 const basename = import.meta.env.BASE_URL?.replace(/\/$/, "") || "";
 
+/** Old combined Chase Clinicals route → fax role, preserving query params
+ *  (?patientId=, ?manager=1, …) so existing deep links keep working. */
+const ChaseBenefitsRedirect = () => {
+  const location = useLocation();
+  return <Navigate to={`/chase-fax${location.search}`} replace />;
+};
+
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <Toaster position="top-right" />
@@ -57,7 +64,10 @@ const App = () => (
           <Route path="/evaluate" element={<EvaluatePage />} />
           <Route path="/send-request" element={<SendRequestPage />} />
           <Route path="/confirm-receipt" element={<ConfirmReceiptPage />} />
-          <Route path="/chase-benefits" element={<ChaseClinicalsPage />} />
+          {/* Chase Clinicals — two roles (June 2026): fax (+ email) and parachute */}
+          <Route path="/chase-fax" element={<ChaseClinicalsPage method="fax" />} />
+          <Route path="/chase-parachute" element={<ChaseClinicalsPage method="parachute" />} />
+          <Route path="/chase-benefits" element={<ChaseBenefitsRedirect />} />
           <Route path="/benefits" element={<BenefitsPage />} />
           <Route path="/welcome-call" element={<WelcomeCallPage />} />
           <Route path="/profile" element={<ProfilePage />} />

@@ -30,7 +30,7 @@ const CHART_ROUTES: Record<string, string | null> = {
   "evaluate": "/evaluate",
   "send-request": "/send-request",
   "confirm-receipt": "/confirm-receipt",
-  "chase-clinicals": "/chase-benefits",
+  "chase-clinicals": "/chase-fax", // chase split June 2026 — deep links land on the fax role (parachute patients still open via ?patientId injection)
   "benefits": "/benefits",
   "submit-auth": "/submit-auth",
   "auth-outstanding": "/auth-outstanding",

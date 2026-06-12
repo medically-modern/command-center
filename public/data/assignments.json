@@ -21,12 +21,6 @@
     "Corey",
     "Janelle"
   ],
-  "chaseBenefits": [
-    "Masheke",
-    "Brandon",
-    "Corey",
-    "Janelle"
-  ],
   "benefits": [
     "Samantha",
     "Brandon",
@@ -71,5 +65,17 @@
   ],
   "updateClinicals": [
     "Masheke"
+  ],
+  "chaseFax": [
+    "Masheke",
+    "Brandon",
+    "Corey",
+    "Janelle"
+  ],
+  "chaseParachute": [
+    "Masheke",
+    "Brandon",
+    "Corey",
+    "Janelle"
   ]
 }

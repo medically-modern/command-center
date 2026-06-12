@@ -26,7 +26,7 @@ const EvaluatePage = () => {
   const [searchParams] = useSearchParams();
   const isEscalated = searchParams.get("escalated") === "1";
   const isManager = searchParams.get("manager") === "1";
-  const { patients, loading, error, refetch, update, clearOverlay , saveOverlay, hasOverlay } = useMondayPatients("evaluate", searchParams.get("patientId"));
+  const { patients, chaseViewerPatients, loading, error, refetch, update, clearOverlay , saveOverlay, hasOverlay } = useMondayPatients("evaluate", searchParams.get("patientId"));
   const [selectedId, setSelectedId] = useState<string | null>(
     searchParams.get("patientId") ?? null,
   );
@@ -39,9 +39,14 @@ const EvaluatePage = () => {
     if (!selectedId && patients.length > 0) setSelectedId(patients[0].id);
   }, [patients, selectedId]);
 
+  // Selection can come from the active Evaluate list OR the read-only
+  // Chase Clinicals viewer folder in the sidebar (chase patients open in
+  // the same Evaluate UI; only Send to Monday moves them out of MN).
   const selected: Patient | undefined = useMemo(
-    () => patients.find((p) => p.id === selectedId),
-    [patients, selectedId],
+    () =>
+      patients.find((p) => p.id === selectedId) ??
+      chaseViewerPatients.find((p) => p.id === selectedId),
+    [patients, chaseViewerPatients, selectedId],
   );
 
   const resetForNewPatient = () => {
@@ -56,7 +61,7 @@ const EvaluatePage = () => {
   return (
     <SidebarProvider>
       <div className="min-h-screen flex w-full bg-gradient-subtle">
-        <PatientsSidebar patients={patients} selectedId={selectedId} onSelect={setSelectedId} loading={loading} error={error} onRefresh={refetch} activeTab="evaluate" managerMode={isManager} />
+        <PatientsSidebar patients={patients} selectedId={selectedId} onSelect={setSelectedId} loading={loading} error={error} onRefresh={refetch} activeTab="evaluate" managerMode={isManager} chaseViewerPatients={chaseViewerPatients} />
         <div className="flex-1 flex flex-col min-w-0">
           <header className={`${isEscalated ? "bg-red-700" : "bg-gradient-navy"} text-navy-foreground border-b border-sidebar-border`}>
             <div className="px-3 sm:px-6 py-5 flex items-center justify-between gap-4 flex-wrap">
