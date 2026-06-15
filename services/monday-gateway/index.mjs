@@ -140,6 +140,32 @@ function clientIp(req) {
   return req.socket?.remoteAddress || null;
 }
 
+// Best-effort id extraction: prefer variables, fall back to scanning the query
+// text (covers inline ids and short variable names like the app sometimes uses).
+function extractItemId(query, vars) {
+  const v = pick(vars, ["itemId", "item_id", "id", "i"]);
+  if (v) return v;
+  const q = String(query || "");
+  const m =
+    q.match(/\bitem_id\s*:\s*"?(\d{6,})/i) ||
+    q.match(/\bitemId\s*:\s*"?(\d{6,})/i) ||
+    q.match(/items?\s*\(\s*ids:\s*\[?\s*"?(\d{6,})/i);
+  return m ? m[1] : null;
+}
+function extractBoardId(query, vars) {
+  const v = pick(vars, ["boardId", "board_id", "bid", "b"]);
+  if (v) return v;
+  const m = String(query || "").match(/\bboard_id\s*:\s*"?(\d{6,})/i);
+  return m ? m[1] : null;
+}
+
+function esc(s) {
+  return String(s == null ? "" : s).replace(
+    /[&<>"]/g,
+    (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]),
+  );
+}
+
 async function logRequest(rec) {
   if (!pool || LOG_MODE === "off") return;
   if (LOG_MODE === "mutations" && rec.operation !== "mutation") return;
@@ -264,8 +290,8 @@ app.post("/gql", async (req, res) => {
     user_agent: req.headers["user-agent"] || null,
     operation: opType(query),
     operation_name: opName(query),
-    board_id: pick(variables, ["boardId", "board_id", "bid"]),
-    item_id: pick(variables, ["itemId", "item_id", "id"]),
+    board_id: extractBoardId(query, variables),
+    item_id: extractItemId(query, variables),
     query_text: query,
     variables: variables || null,
     monday_status: status,
@@ -273,6 +299,102 @@ app.post("/gql", async (req, res) => {
     ok: status >= 200 && status < 300 && !errors,
     duration_ms: duration,
   });
+});
+
+// ── /audit — key-protected log viewer (metadata only) ────────
+
+function auditDenied(req, res) {
+  const key = process.env.AUDIT_KEY || "";
+  if (!key) { res.status(503).send("AUDIT_KEY not configured"); return true; }
+  if (req.query.key !== key) {
+    res.status(401).send("Unauthorized — append ?key=YOUR_KEY to the URL");
+    return true;
+  }
+  if (!pool) { res.status(503).send("No database configured (DATABASE_URL unset)"); return true; }
+  return false;
+}
+
+async function fetchAudit(req) {
+  const limit = Math.min(parseInt(req.query.limit, 10) || 200, 2000);
+  const onlyWrites = req.query.all !== "1";
+  const where = onlyWrites ? "WHERE operation = 'mutation'" : "";
+  const r = await pool.query(
+    `SELECT created_at, actor, client_ip, operation, operation_name,
+            item_id, board_id, ok, monday_status, duration_ms
+     FROM gql_log ${where} ORDER BY created_at DESC LIMIT $1`,
+    [limit],
+  );
+  return { rows: r.rows, onlyWrites, limit };
+}
+
+function renderAudit(rows, opts) {
+  const k = encodeURIComponent(opts.key);
+  const body = rows
+    .map(
+      (r) => `<tr>
+      <td class="t">${esc(new Date(r.created_at).toISOString().replace("T", " ").slice(0, 19))}</td>
+      <td>${esc(r.actor || "—")}</td>
+      <td class="mono">${esc(r.client_ip || "—")}</td>
+      <td><span class="op ${r.operation === "mutation" ? "mut" : "qry"}">${esc(r.operation || "")}</span></td>
+      <td>${esc(r.operation_name || "—")}</td>
+      <td class="mono">${esc(r.item_id || "—")}</td>
+      <td class="mono">${esc(r.board_id || "—")}</td>
+      <td>${r.ok ? '<span class="ok">ok</span>' : '<span class="bad">FAIL</span>'}</td>
+      <td>${esc(r.monday_status || "")}</td>
+      <td class="num">${esc(r.duration_ms || "")}</td>
+    </tr>`,
+    )
+    .join("");
+  return `<!doctype html><html><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="refresh" content="30">
+<title>monday-gateway · audit</title>
+<style>
+ body{font:14px/1.45 -apple-system,Segoe UI,Roboto,sans-serif;margin:0;background:#0f1115;color:#e6e6e6}
+ header{padding:14px 18px;background:#171a21;border-bottom:1px solid #262b36;display:flex;gap:14px;align-items:center;flex-wrap:wrap}
+ h1{font-size:15px;margin:0;font-weight:600}
+ .pill{font-size:12px;color:#9aa4b2}
+ a.btn{color:#7cc4ff;text-decoration:none;font-size:13px;border:1px solid #2a3340;padding:4px 10px;border-radius:6px}
+ table{border-collapse:collapse;width:100%}
+ th,td{padding:7px 10px;border-bottom:1px solid #20242e;text-align:left;white-space:nowrap}
+ th{position:sticky;top:0;background:#11141a;color:#9aa4b2;font-weight:600;font-size:12px}
+ tr:hover td{background:#151922}
+ .mono{font-family:ui-monospace,Menlo,monospace;font-size:12px}
+ .t{color:#9aa4b2}.num{text-align:right}
+ .op{font-size:11px;padding:2px 6px;border-radius:4px}
+ .mut{background:#3a2540;color:#f0a6ff}.qry{background:#1f2a3a;color:#86b9ff}
+ .ok{color:#5ad17a}.bad{color:#ff6b6b;font-weight:700}
+</style></head><body>
+<header>
+ <h1>monday-gateway · audit log</h1>
+ <span class="pill">${rows.length} rows · ${opts.onlyWrites ? "writes only" : "all traffic"} · auto-refresh 30s</span>
+ <a class="btn" href="?key=${k}${opts.onlyWrites ? "&all=1" : ""}">${opts.onlyWrites ? "Show all traffic" : "Show writes only"}</a>
+ <a class="btn" href="/audit.json?key=${k}${opts.onlyWrites ? "" : "&all=1"}">JSON</a>
+</header>
+<table><thead><tr>
+ <th>time (UTC)</th><th>who</th><th>ip</th><th>op</th><th>name</th><th>item</th><th>board</th><th>ok</th><th>status</th><th>ms</th>
+</tr></thead><tbody>${body || '<tr><td colspan="10" style="padding:20px;color:#9aa4b2">No rows yet.</td></tr>'}</tbody></table>
+</body></html>`;
+}
+
+app.get("/audit", async (req, res) => {
+  if (auditDenied(req, res)) return;
+  try {
+    const { rows, onlyWrites, limit } = await fetchAudit(req);
+    res.type("html").send(renderAudit(rows, { rows, onlyWrites, limit, key: process.env.AUDIT_KEY }));
+  } catch (e) {
+    res.status(500).send("Query error: " + e.message);
+  }
+});
+
+app.get("/audit.json", async (req, res) => {
+  if (auditDenied(req, res)) return;
+  try {
+    const { rows } = await fetchAudit(req);
+    res.json(rows);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
 });
 
 ensureSchema().finally(() => {
