@@ -37,6 +37,7 @@
 import express from "express";
 import pkg from "pg";
 const { Pool } = pkg;
+import { registerSend } from "./send.mjs";
 
 const {
   MONDAY_API_TOKEN,
@@ -396,6 +397,9 @@ app.get("/audit.json", async (req, res) => {
     res.status(500).json({ error: e.message });
   }
 });
+
+// ── Phase 2: server-side transactional /send (durable, idempotent) ──
+registerSend({ app, pool, clientIp });
 
 ensureSchema().finally(() => {
   app.listen(PORT, () =>
