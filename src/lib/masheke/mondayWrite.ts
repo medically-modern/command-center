@@ -31,6 +31,7 @@ const RETRY_DELAY_MS = 800;
 interface WriteTask {
   label: string;
   columnId: string;
+  value?: unknown;
   fn: () => Promise<unknown>;
   expectedText?: string;
 }
@@ -70,6 +71,7 @@ function pushStatus(
   tasks.push({
     label,
     columnId,
+    value: { index: idx },
     fn: () => writeStatusIndex(itemId, columnId, idx),
   });
 }
@@ -106,6 +108,7 @@ export async function sendPatientToMonday(
       tasks.push({
         label: "MN Workflow Notes",
         columnId: COL.mnEvalNotes,
+        value: { text: p.mnEvalNotes },
         fn: () => writeLongText(p.id, COL.mnEvalNotes, p.mnEvalNotes!),
       });
     }
@@ -113,11 +116,13 @@ export async function sendPatientToMonday(
     tasks.push({
       label: "Advancer 2A",
       columnId: COL.advancer2a,
+      value: { index: ADVANCER_2A_INDEX.complete },
       fn: () => writeStatusIndex(p.id, COL.advancer2a, ADVANCER_2A_INDEX.complete),
     });
     tasks.push({
       label: "Sub-Stage → Send Request",
       columnId: COL.subStage,
+      value: { index: SUB_STAGE_INDEX.sendRequest },
       fn: () => writeStatusIndex(p.id, COL.subStage, SUB_STAGE_INDEX.sendRequest),
     });
   }
@@ -131,6 +136,7 @@ export async function sendPatientToMonday(
       tasks.push({
         label: "MN Workflow Notes",
         columnId: COL.mnEvalNotes,
+        value: { text: p.mnEvalNotes },
         fn: () => writeLongText(p.id, COL.mnEvalNotes, p.mnEvalNotes!),
       });
     }
@@ -138,11 +144,13 @@ export async function sendPatientToMonday(
     tasks.push({
       label: "Advancer 2B",
       columnId: COL.advancer2b,
+      value: { index: ADVANCER_2B_INDEX.complete },
       fn: () => writeStatusIndex(p.id, COL.advancer2b, ADVANCER_2B_INDEX.complete),
     });
     tasks.push({
       label: "Sub-Stage → Confirm Receipt",
       columnId: COL.subStage,
+      value: { index: SUB_STAGE_INDEX.confirmReceipt },
       fn: () => writeStatusIndex(p.id, COL.subStage, SUB_STAGE_INDEX.confirmReceipt),
     });
   }
@@ -155,6 +163,7 @@ export async function sendPatientToMonday(
       tasks.push({
         label: "Receipt Confirmed Date",
         columnId: COL.receiptConfirmedDate,
+        value: { date: p.receiptConfirmedDate },
         fn: () => writeDate(p.id, COL.receiptConfirmedDate, p.receiptConfirmedDate!),
       });
     }
@@ -162,6 +171,7 @@ export async function sendPatientToMonday(
       tasks.push({
         label: "Receipt Confirmed Name",
         columnId: COL.receiptConfirmedName,
+        value: p.receiptConfirmedName,
         fn: () => writeText(p.id, COL.receiptConfirmedName, p.receiptConfirmedName!),
       });
     }
@@ -169,6 +179,7 @@ export async function sendPatientToMonday(
       tasks.push({
         label: "MN Workflow Notes",
         columnId: COL.mnEvalNotes,
+        value: { text: p.mnEvalNotes },
         fn: () => writeLongText(p.id, COL.mnEvalNotes, p.mnEvalNotes!),
       });
     }
@@ -176,11 +187,13 @@ export async function sendPatientToMonday(
     tasks.push({
       label: "Advancer 2C",
       columnId: COL.advancer2c,
+      value: { index: ADVANCER_2C_INDEX.complete },
       fn: () => writeStatusIndex(p.id, COL.advancer2c, ADVANCER_2C_INDEX.complete),
     });
     tasks.push({
       label: "Sub-Stage → Chase",
       columnId: COL.subStage,
+      value: { index: SUB_STAGE_INDEX.chase },
       fn: () => writeStatusIndex(p.id, COL.subStage, SUB_STAGE_INDEX.chase),
     });
   }
@@ -193,6 +206,7 @@ export async function sendPatientToMonday(
       tasks.push({
         label: "Next Action Date",
         columnId: COL.nextActionDate,
+        value: { date: clampToBusinessDay(p.nextActionDate!) },
         // Clamped: a Next Action Date must never land on a weekend.
         fn: () => writeDate(p.id, COL.nextActionDate, clampToBusinessDay(p.nextActionDate!)),
       });
@@ -201,6 +215,7 @@ export async function sendPatientToMonday(
       tasks.push({
         label: "Chase Recipient Name",
         columnId: COL.chaseRecipientName,
+        value: p.chaseRecipientName,
         fn: () => writeText(p.id, COL.chaseRecipientName, p.chaseRecipientName!),
       });
     }
@@ -208,6 +223,7 @@ export async function sendPatientToMonday(
       tasks.push({
         label: "MN Workflow Notes",
         columnId: COL.mnEvalNotes,
+        value: { text: p.mnEvalNotes },
         fn: () => writeLongText(p.id, COL.mnEvalNotes, p.mnEvalNotes!),
       });
     }
@@ -215,6 +231,7 @@ export async function sendPatientToMonday(
     tasks.push({
       label: "Advancer 2D",
       columnId: COL.advancer2d,
+      value: { index: ADVANCER_2D_INDEX.complete },
       fn: () => writeStatusIndex(p.id, COL.advancer2d, ADVANCER_2D_INDEX.complete),
     });
   }
@@ -229,6 +246,8 @@ export async function sendPatientToMonday(
 
   const failures = await executeWritesWithVerification({
     itemId: p.id,
+    boardId: "18406060017",
+    label: `Masheke ${context} send`,
     tasks,
     stageColumnId: stageColumnIds,
     executeWithRetry,

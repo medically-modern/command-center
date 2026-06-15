@@ -25,10 +25,19 @@
 
 // ── Types ──────────────────────────────────────────────────────
 
+import { gatewaySendAvailable, submitSend } from "./gatewaySend";
+
 export interface WriteTask {
   label: string;
   columnId: string;
   fn: () => Promise<unknown>;
+  /** Raw Monday value for this column in change_multiple_column_values shape
+   *  ({ index } for status, { text } for long_text, { date } for date, a plain
+   *  string for text). When EVERY task in a send carries one AND the gateway is
+   *  configured, the whole transaction is handed to the server-side /send.
+   *  Optional, so flows adopt it incrementally; without it the client-side path
+   *  runs unchanged. */
+  value?: unknown;
   /** Optional: expected `text` value after the write. When provided,
    *  takes priority over snapshot-diff verification. */
   expectedText?: string;
@@ -48,6 +57,10 @@ export type ReadColumnsFn = (
 
 interface VerifiedWriteOpts {
   itemId: string;
+  /** Board id — required to engage the gateway /send fast path. */
+  boardId?: string;
+  /** Human label for the outbox/audit (e.g. "Evaluate send"). */
+  label?: string;
   /** All write tasks including the stage advancer. */
   tasks: WriteTask[];
   /** Column ID(s) of the stage advancer (or equivalent trigger columns).
@@ -85,7 +98,40 @@ export async function executeWritesWithVerification(
     verifyIntervalMs = 1500,
     stableReadsThreshold = 3,
     writeDebug,
+    boardId,
+    label,
   } = opts;
+
+  // ── Gateway fast path (Phase 2): hand the whole transaction to the durable,
+  // idempotent server-side /send. Engages only when the gateway is configured
+  // AND every task carries a raw `value`. ANY failure falls through to the
+  // client-side verified write below, so this is purely additive.
+  if (gatewaySendAvailable() && boardId && tasks.length > 0 && tasks.every((t) => t.value !== undefined)) {
+    try {
+      const stageSet = new Set(Array.isArray(stageColumnId) ? stageColumnId : [stageColumnId]);
+      const dataColumns: Record<string, unknown> = {};
+      const stageColumns: Record<string, unknown> = {};
+      const verify: { columnId: string; expectedText?: string }[] = [];
+      for (const t of tasks) {
+        if (stageSet.has(t.columnId)) stageColumns[t.columnId] = t.value;
+        else {
+          dataColumns[t.columnId] = t.value;
+          if (t.expectedText !== undefined) verify.push({ columnId: t.columnId, expectedText: t.expectedText });
+        }
+      }
+      let h = 5381;
+      const sig = JSON.stringify({ dataColumns, stageColumns });
+      for (let i = 0; i < sig.length; i++) h = ((h << 5) + h + sig.charCodeAt(i)) | 0;
+      const idempotencyKey = `${itemId}:${(h >>> 0).toString(36)}`;
+      await submitSend(
+        { itemId, boardId, dataColumns, stageColumns, verify, idempotencyKey, label },
+        { waitForDone: true },
+      );
+      return [];
+    } catch (err) {
+      console.warn("[verifiedWrite] gateway /send failed — falling back to client path:", err);
+    }
+  }
 
   // Split tasks — stage column(s) run last
   const stageIds = new Set(
