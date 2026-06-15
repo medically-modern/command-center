@@ -10,7 +10,7 @@
 
 import type { PatientQuestion } from "./types";
 
-import { MONDAY_API_URL } from "../shared/mondayEndpoint";
+import { MONDAY_API_URL, mondayIdentityHeaders } from "../shared/mondayEndpoint";
 const MONDAY_API_VERSION = "2024-10";
 
 // ── Board IDs ───────────────────────────────────────────────────────
@@ -134,7 +134,7 @@ async function gql<T>(query: string, variables: Record<string, unknown> = {}): P
   if (!token) throw new Error("VITE_MONDAY_API_TOKEN is not set");
   const res = await fetch(MONDAY_API_URL, {
     method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: token, "API-Version": MONDAY_API_VERSION },
+    headers: { "Content-Type": "application/json", Authorization: token, ...mondayIdentityHeaders(), "API-Version": MONDAY_API_VERSION },
     body: JSON.stringify({ query, variables }),
   });
   if (!res.ok) throw new Error(`Monday request failed (${res.status})`);

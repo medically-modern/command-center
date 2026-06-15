@@ -5,7 +5,7 @@
  * Every pipeline stage can call these helpers to show & edit doctor-level notes.
  */
 
-import { MONDAY_API_URL } from "./mondayEndpoint";
+import { MONDAY_API_URL, mondayIdentityHeaders } from "./mondayEndpoint";
 const MONDAY_API_VERSION = "2024-10";
 const DOCTOR_DB_BOARD = 18142847597;
 const COL_DOCTOR_NOTES = "long_text_mm44az6q";
@@ -23,6 +23,7 @@ async function gql<T>(query: string, variables: Record<string, unknown> = {}): P
     headers: {
       "Content-Type": "application/json",
       Authorization: token,
+      ...mondayIdentityHeaders(),
       "API-Version": MONDAY_API_VERSION,
     },
     body: JSON.stringify({ query, variables }),

@@ -5,7 +5,7 @@
  * detect escalation status, and determine pipeline stage.
  */
 
-import { MONDAY_API_URL } from "../shared/mondayEndpoint";
+import { MONDAY_API_URL, mondayIdentityHeaders } from "../shared/mondayEndpoint";
 const MONDAY_API_VERSION = "2024-10";
 
 function getToken(): string {
@@ -24,6 +24,7 @@ async function gql<T>(query: string, variables: Record<string, unknown> = {}): P
     headers: {
       "Content-Type": "application/json",
       Authorization: token,
+      ...mondayIdentityHeaders(),
       "API-Version": MONDAY_API_VERSION,
     },
     body: JSON.stringify({ query, variables }),

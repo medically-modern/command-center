@@ -17,6 +17,8 @@
  * cutover or rollback is a single switch instead of a sweep across modules.
  */
 
+import { getIdToken, getUser } from "./auth";
+
 const GATEWAY =
   (import.meta.env.VITE_MONDAY_GATEWAY_URL as string | undefined)?.replace(/\/+$/, "") || "";
 
@@ -38,6 +40,26 @@ export function mondayActor(): string {
   } catch {
     return "";
   }
+}
+
+/**
+ * Identity headers for a gateway request: WHO is making this call. In gateway
+ * mode, attaches the signed-in user's email (X-MM-User) and their Google ID
+ * token (X-MM-Auth, which the gateway verifies server-side). Falls back to the
+ * stored actor. Empty in direct mode.
+ *
+ * Spread `...mondayIdentityHeaders()` into every module's gql() headers so the
+ * audit log attributes EVERY write — inline notes, attempts, status saves —
+ * not just the main /send flow.
+ */
+export function mondayIdentityHeaders(): Record<string, string> {
+  if (!MONDAY_VIA_GATEWAY) return {};
+  const h: Record<string, string> = {};
+  const token = getIdToken();
+  if (token) h["X-MM-Auth"] = token;
+  const email = getUser()?.email || mondayActor();
+  if (email) h["X-MM-User"] = email;
+  return h;
 }
 
 /**

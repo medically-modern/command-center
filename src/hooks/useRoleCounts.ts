@@ -23,7 +23,7 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import { GROUPS as SAM_GROUPS, BOARD_ID as SAM_BOARD_ID, hasToken as samHasToken } from "@/lib/samantha/mondayApi";
 import { GROUPS as MESH_GROUPS, hasToken as meshHasToken } from "@/lib/masheke/mondayApi";
-import { MONDAY_API_URL } from "@/lib/shared/mondayEndpoint";
+import { MONDAY_API_URL, mondayIdentityHeaders } from "@/lib/shared/mondayEndpoint";
 
 const MASHEKE_BOARD_ID = 18406060017;
 
@@ -77,7 +77,7 @@ async function fetchBoardGroupIds(boardId: number, groupId: string): Promise<str
   try {
     const res = await fetch(MONDAY_API_URL, {
       method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: token },
+      headers: { "Content-Type": "application/json", Authorization: token, ...mondayIdentityHeaders() },
       body: JSON.stringify({ query, variables: { bid: boardId } }),
     });
     const json = await res.json();
@@ -98,7 +98,7 @@ async function fetchBoardGroupIds(boardId: number, groupId: string): Promise<str
       `;
       const nextRes = await fetch(MONDAY_API_URL, {
         method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: token },
+        headers: { "Content-Type": "application/json", Authorization: token, ...mondayIdentityHeaders() },
         body: JSON.stringify({ query: nextQuery, variables: { cursor } }),
       });
       const nextJson = await nextRes.json();
@@ -156,7 +156,7 @@ async function fetchBoardGroupItemsLight(
   try {
     const res = await fetch(MONDAY_API_URL, {
       method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: token },
+      headers: { "Content-Type": "application/json", Authorization: token, ...mondayIdentityHeaders() },
       body: JSON.stringify({ query, variables: { bid: boardId, cols: columnIds } }),
     });
     const json = await res.json();
@@ -175,7 +175,7 @@ async function fetchBoardGroupItemsLight(
       `;
       const nextRes = await fetch(MONDAY_API_URL, {
         method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: token },
+        headers: { "Content-Type": "application/json", Authorization: token, ...mondayIdentityHeaders() },
         body: JSON.stringify({ query: nextQuery, variables: { cursor, cols: columnIds } }),
       });
       const nextJson = await nextRes.json();
