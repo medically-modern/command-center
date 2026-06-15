@@ -4,6 +4,7 @@ import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-route
 import { lazy, Suspense } from "react";
 import Index from "./pages/Index";
 import { FileViewerHost } from "./components/shared/FileViewerModal";
+import AuthGate from "./components/AuthGate";
 
 // Masheke board roles (4)
 const EvaluatePage = lazy(() => import("./pages/EvaluatePage"));
@@ -54,6 +55,7 @@ const ChaseBenefitsRedirect = () => {
 };
 
 const App = () => (
+  <AuthGate>
   <QueryClientProvider client={queryClient}>
     <Toaster position="top-right" />
     <FileViewerHost />
@@ -83,6 +85,7 @@ const App = () => (
       </Suspense>
     </BrowserRouter>
   </QueryClientProvider>
+  </AuthGate>
 );
 
 export default App;

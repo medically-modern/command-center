@@ -14,6 +14,8 @@
  * 'scrubbed' marker); only failed jobs retain it for retry/debugging.
  */
 
+import { verifyGoogleToken, authEnforced } from "./auth.mjs";
+
 const MONDAY_URL = "https://api.monday.com/v2";
 const TOKEN = process.env.MONDAY_API_TOKEN;
 const VER = process.env.MONDAY_API_VERSION || "2024-10";
@@ -145,7 +147,11 @@ export function registerSend({ app, pool, clientIp }) {
     if (!itemId || !boardId) return res.status(400).json({ error: "itemId and boardId required" });
     if (!dataColumns && !stageColumns) return res.status(400).json({ error: "dataColumns or stageColumns required" });
 
-    const actor = req.headers["x-mm-user"] || b.actor || null;
+    const gUser = await verifyGoogleToken(req.headers["x-mm-auth"]);
+    if (authEnforced() && !gUser) {
+      return res.status(401).json({ error: "Authentication required — sign in with your @medicallymodern.com account." });
+    }
+    const actor = gUser?.email || req.headers["x-mm-user"] || b.actor || null;
     const ip = clientIp ? clientIp(req) : null;
     const payload = { itemId, boardId, dataColumns: dataColumns || {}, stageColumns: stageColumns || {}, verify: verify || [] };
 
@@ -185,6 +191,24 @@ export function registerSend({ app, pool, clientIp }) {
     } catch (e) { res.status(500).json({ error: e.message }); }
   });
 
+  // Mirror each completed/failed send into the audit log (gql_log) so the
+  // /audit page shows every send with its REAL, read-back-verified status
+  // (ok here means "re-read and confirmed in Monday", not just "200").
+  async function logSendToAudit(job, ok, ms) {
+    try {
+      const cols = { ...(job.payload?.dataColumns || {}), ...(job.payload?.stageColumns || {}) };
+      await pool.query(
+        `INSERT INTO gql_log (actor, client_ip, operation, operation_name, board_id, item_id, columns, ok, monday_status, duration_ms)
+         VALUES ($1,$2,'mutation','send',$3,$4,$5,$6,$7,$8)`,
+        [
+          job.actor, job.client_ip, job.board_id, job.item_id,
+          Object.keys(cols).length ? JSON.stringify(cols) : null,
+          ok, ok ? 200 : null, ms,
+        ],
+      );
+    } catch (e) { console.error("send→audit log failed:", e.message); }
+  }
+
   // Worker: claim one queued job at a time (SKIP LOCKED → safe across replicas)
   async function tick() {
     const claim = await pool.query(
@@ -194,8 +218,10 @@ export function registerSend({ app, pool, clientIp }) {
     );
     if (!claim.rows.length) return;
     const job = claim.rows[0];
+    const t0 = Date.now();
     try {
       const result = await executeSend(job.payload);
+      await logSendToAudit(job, true, Date.now() - t0); // verified-true row in the audit
       // scrub PHI from payload on success
       await pool.query(
         `UPDATE send_jobs SET status='done', result=$2, error=null, payload='{"scrubbed":true}'::jsonb, updated_at=now() WHERE id=$1`,
@@ -204,6 +230,7 @@ export function registerSend({ app, pool, clientIp }) {
       console.log(`send_job ${job.id} done (item ${job.item_id})`);
     } catch (e) {
       const failed = job.attempts >= MAX_JOB_ATTEMPTS;
+      if (failed) await logSendToAudit(job, false, Date.now() - t0); // FAIL row once retries exhausted
       await pool.query(
         `UPDATE send_jobs SET status=$2, error=$3, updated_at=now() WHERE id=$1`,
         [job.id, failed ? "failed" : "queued", String(e.message).slice(0, 500)],

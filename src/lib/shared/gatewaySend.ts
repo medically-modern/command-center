@@ -18,6 +18,7 @@
  */
 
 import { MONDAY_VIA_GATEWAY, mondayActor } from "./mondayEndpoint";
+import { getIdToken, getUser } from "./auth";
 
 const GATEWAY =
   (import.meta.env.VITE_MONDAY_GATEWAY_URL as string | undefined)?.replace(/\/+$/, "") || "";
@@ -59,7 +60,9 @@ export function outboxCount(): number {
 
 async function postSend(p: SendPayload): Promise<{ jobId: string | number; status: string }> {
   const headers: Record<string, string> = { "Content-Type": "application/json" };
-  const actor = mondayActor();
+  const idToken = getIdToken();
+  if (idToken) headers["X-MM-Auth"] = idToken;       // verified server-side → attributes the send
+  const actor = getUser()?.email || mondayActor();
   if (actor) headers["X-MM-User"] = actor;
   const res = await fetch(`${GATEWAY}/send`, { method: "POST", headers, body: JSON.stringify(p) });
   if (!res.ok) throw new Error(`/send HTTP ${res.status}`);

@@ -38,6 +38,7 @@ import express from "express";
 import pkg from "pg";
 const { Pool } = pkg;
 import { registerSend } from "./send.mjs";
+import { verifyGoogleToken, authEnforced } from "./auth.mjs";
 
 const {
   MONDAY_API_TOKEN,
@@ -274,6 +275,13 @@ app.post("/gql", async (req, res) => {
   const { query, variables } = req.body || {};
   if (!query) return res.status(400).json({ errors: [{ message: "Missing query" }] });
 
+  // Verify the Google token if present (attributes the request to a real user).
+  // Enforcement is applied on /send (where the SPA always sends the token).
+  // /gql is left non-blocking so reads + inline panel actions keep working
+  // until the per-board gql() calls are wired to send the token too.
+  const gUser = await verifyGoogleToken(req.headers["x-mm-auth"]);
+  const actor = gUser?.email || req.headers["x-mm-user"] || null;
+
   const started = Date.now();
   let status = 0;
   let text = "";
@@ -311,7 +319,7 @@ app.post("/gql", async (req, res) => {
 
   // Fire-and-forget audit log (never blocks or fails the client response).
   logRequest({
-    actor: req.headers["x-mm-user"] || null,
+    actor,
     client_ip: clientIp(req),
     origin: req.headers.origin || null,
     user_agent: req.headers["user-agent"] || null,
