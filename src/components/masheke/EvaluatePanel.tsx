@@ -57,6 +57,8 @@ import {
   type LmnStatus,
   type ValidInvalid,
   type YesNo,
+  type YesNoInvalid,
+  type Received4,
 } from "@/lib/masheke/evalState";
 import { useMondayFiles } from "@/hooks/masheke/useMondayFiles";
 import {
@@ -535,208 +537,400 @@ export function EvaluatePanel({ patient, resetVersion = 0, onUpdate, onOpenForm 
     }
   }, [patient, state, preview, showCgm, showIp]);
 
-  // ── Redesign visibility rules (strict, per-document) ──
-  // Each script strictly controls only its own coverage section; Clinicals
-  // controls Diagnosis & Clinicals AND Clinical Files. Step numbers renumber
-  // dynamically based on what's visible.
-  const cgmOn = showCgm && state.cgmScriptReceived === "Yes";
-  const ipOn = showIp && state.ipScriptReceived === "Yes";
-  const clinOn = state.mrReceived === "Yes";
-  let stepCounter = 1;
-  const diagStepNum = clinOn ? ++stepCounter : 0;
-  const pathStepNum = cgmOn || ipOn ? ++stepCounter : 0;
-  const filesStepNum = clinOn ? ++stepCounter : 0;
+  // ── Evaluate redesign (prototype) ──
+  // Display-only "Evaluate Attempt #N" counter. Josh wires the real trigger.
+  const [attempt] = useState(2);
+
+  // Map the new 4-state "Received?" controls onto the existing fields so the
+  // Monday send/validity logic keeps working.
+  const cgmReceivedVal: Received4 | undefined = !showCgm
+    ? "Not Serving"
+    : state.cgmCoveragePath === "Not Serving"
+      ? "Not Serving"
+      : state.cgmScriptReceived === "Yes"
+        ? state.cgmScriptValid === "Invalid"
+          ? "Invalid"
+          : "Yes"
+        : state.cgmScriptReceived === "No"
+          ? "No"
+          : undefined;
+  const ipReceivedVal: Received4 | undefined = !showIp
+    ? "Not Serving"
+    : state.ipCoveragePath === "Not Serving"
+      ? "Not Serving"
+      : state.ipScriptReceived === "Yes"
+        ? state.ipScriptValid === "Invalid"
+          ? "Invalid"
+          : "Yes"
+        : state.ipScriptReceived === "No"
+          ? "No"
+          : undefined;
+
+  const setCgmReceived = (v?: Received4) => {
+    if (!v) {
+      update("cgmScriptReceived", undefined);
+      update("cgmScriptValid", undefined);
+      if (state.cgmCoveragePath === "Not Serving") update("cgmCoveragePath", undefined);
+      return;
+    }
+    if (v === "Yes") {
+      update("cgmScriptReceived", "Yes");
+      update("cgmScriptValid", "Valid");
+      if (state.cgmCoveragePath === "Not Serving") update("cgmCoveragePath", undefined);
+    } else if (v === "Invalid") {
+      update("cgmScriptReceived", "Yes");
+      update("cgmScriptValid", "Invalid");
+      if (state.cgmCoveragePath === "Not Serving") update("cgmCoveragePath", undefined);
+    } else if (v === "No") {
+      update("cgmScriptReceived", "No");
+      update("cgmScriptValid", undefined);
+    } else {
+      update("cgmScriptReceived", "No");
+      update("cgmCoveragePath", "Not Serving");
+    }
+  };
+  const setIpReceived = (v?: Received4) => {
+    if (!v) {
+      update("ipScriptReceived", undefined);
+      update("ipScriptValid", undefined);
+      if (state.ipCoveragePath === "Not Serving") update("ipCoveragePath", undefined);
+      return;
+    }
+    if (v === "Yes") {
+      update("ipScriptReceived", "Yes");
+      update("ipScriptValid", "Valid");
+      if (state.ipCoveragePath === "Not Serving") update("ipCoveragePath", undefined);
+    } else if (v === "Invalid") {
+      update("ipScriptReceived", "Yes");
+      update("ipScriptValid", "Invalid");
+      if (state.ipCoveragePath === "Not Serving") update("ipCoveragePath", undefined);
+    } else if (v === "No") {
+      update("ipScriptReceived", "No");
+      update("ipScriptValid", undefined);
+    } else {
+      update("ipScriptReceived", "No");
+      update("ipCoveragePath", "Not Serving");
+    }
+  };
+  const setClinReceived = (v?: YesNoInvalid) => {
+    update("clinReceived3", v);
+    update("mrReceived", v === undefined ? undefined : v === "No" ? "No" : "Yes");
+  };
+
+  const cgmServed = showCgm && cgmReceivedVal !== "Not Serving";
+  const ipServed = showIp && ipReceivedVal !== "Not Serving";
+  // Coverage-path / language / evaluation answers are only *required* when the
+  // corresponding script was actually received ("Yes").
+  const cgmReqReq = cgmReceivedVal === "Yes";
+  const ipReqReq = ipReceivedVal === "Yes";
+
+  // Applicable IP language requirements for the chosen path.
+  const ipCfg =
+    state.ipCoveragePath && state.ipCoveragePath !== "Not Serving"
+      ? IP_PATH_FIELDS[state.ipCoveragePath]
+      : null;
+  const ipReqValues: YesNoInvalid[] = [];
+  if (ipCfg) {
+    if (ipCfg.showEducation) ipReqValues.push(state.ipEducationV ?? "No");
+    if (ipCfg.show3Injections) ipReqValues.push(state.ipThreeInjectionsV ?? "No");
+    if (ipCfg.showCgmUse) ipReqValues.push(state.ipCgmUseV ?? "No");
+    if (ipCfg.showBsIssues) ipReqValues.push(state.ipBsIssuesV ?? "No");
+    if (ipCfg.showLmn) ipReqValues.push(state.ipLmnV ?? "No");
+    if (ipCfg.showMalfunction) ipReqValues.push(state.ipMalfunctionV ?? "No");
+    if (ipCfg.showOowOnScript) ipReqValues.push(state.ipOowOnScriptV ?? "No");
+  }
+
+  // ── MN checklist (auto-derived from the fields above) ──
+  const cgmDocChecked = cgmServed && cgmReceivedVal === "Yes";
+  const ipDocChecked = ipServed && ipReceivedVal === "Yes";
+  const { expired: mrExpired } = getMrExpiry(state.lastVisitDate);
+  const clinDocChecked = state.clinReceived3 === "Yes" && !mrExpired;
+  const cgmLangChecked =
+    cgmServed &&
+    (state.cgmCoveragePath === "Insulin" || state.cgmCoveragePath === "Hypo") &&
+    state.cgmLanguage === "Yes";
+  const ipLangChecked = ipServed && !!ipCfg && ipReqValues.every((v) => v === "Yes");
+
+  const mnChecks: boolean[] = [clinDocChecked];
+  if (cgmServed) mnChecks.push(cgmDocChecked, cgmLangChecked);
+  if (ipServed) mnChecks.push(ipDocChecked, ipLangChecked);
+  const mnEstablished = mnChecks.every(Boolean);
+
+  const cgmLangLabel =
+    state.cgmCoveragePath === "Hypo" ? "Hypoglycemia Language" : "Insulin Language";
 
   return (
     <div className="space-y-6">
-      {/* Banner: Serving forces a path */}
+      {/* ── Evaluate Attempt counter ── */}
+      <div
+        className="rounded-2xl border border-l-4 px-6 py-4 shadow-sm"
+        style={{ borderColor: "var(--mm-card-border)", borderLeftColor: "var(--mm-green)" }}
+      >
+        <h2 className="text-xl font-bold tracking-tight">Evaluate Attempt #{attempt}</h2>
+      </div>
+
+      {/* Banner: nothing being served */}
       {!showCgm && !showIp && (
         <div className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
-          Serving is set to <strong>{patient.serving ?? "—"}</strong>. Neither CGM nor IP applies — add a Diagnosis & MR below.
+          Serving is set to <strong>{patient.serving ?? "—"}</strong>. Neither CGM nor IP applies — complete the Clinicals column below.
         </div>
       )}
 
+      {/* ── Initial Clinical Files — view / download ── */}
+      <MmStep num={1} title="Initial Clinical Files">
+        <p className="text-sm text-muted-foreground -mt-3 mb-4">
+          All clinical documents gathered during collection — view or download here
+        </p>
+        <FileUploadCard
+          label="Initial File Collection"
+          hideLabel
+          tone="green"
+          files={state.clinicalFiles ?? []}
+          mondayFiles={mondayFiles.clinicalFiles}
+          mondayLoading={mondayFiles.loading}
+          trackedFiles={clinicalUpload.files}
+          itemId={patient.id}
+          columnId={COL.clinicalFiles}
+          onRefetch={mondayFiles.refetch}
+          onAdd={(files) => update("clinicalFiles", [...(state.clinicalFiles ?? []), ...files])}
+          onAddRaw={(rawFiles) => {
+            clinicalUpload.upload(patient.id, COL.clinicalFiles, rawFiles);
+          }}
+          onRemove={(idx) => {
+            const next = [...(state.clinicalFiles ?? [])];
+            next.splice(idx, 1);
+            update("clinicalFiles", next);
+          }}
+        />
+      </MmStep>
 
+      {/* ── 3-column evaluation grid (always 3 columns) ── */}
+      <MmStep num={2} title="Script / Clinicals Evaluation">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 items-start">
+          {/* CGM */}
+          <ProductColumn title="CGM" icon={<Activity className="h-4 w-4" />} grayed={!showCgm}>
+            <RcvField
+              label="CGM Script Received?"
+              value={cgmReceivedVal}
+              onChange={(v) => setCgmReceived(v as Received4 | undefined)}
+              disabled={!showCgm}
+            />
+            {cgmServed && (
+              <>
+                <FieldBlock label="Coverage Path">
+                  <CgmPathSelect
+                    value={state.cgmCoveragePath}
+                    onChange={(v) => setCgmCoveragePath(v as CgmCoveragePath)}
+                    missing={cgmReqReq && !state.cgmCoveragePath}
+                  />
+                </FieldBlock>
+                {(state.cgmCoveragePath === "Insulin" || state.cgmCoveragePath === "Hypo") && (
+                  <ReqRow
+                    label={cgmLangLabel}
+                    required={cgmReqReq}
+                    missing={state.cgmLanguage === undefined}
+                  >
+                    <YniPills value={state.cgmLanguage} onChange={(v) => update("cgmLanguage", v)} />
+                  </ReqRow>
+                )}
+              </>
+            )}
+          </ProductColumn>
 
-      {/* ── Step 1 · Script / Clinicals Received? ──────── */}
-      <MmStep num={1} title="Script / Clinicals Received?">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-          {showCgm && (
-            <DocCard
-              title="CGM Script"
-              received={state.cgmScriptReceived === "Yes"}
-              fullWidth={!showIp}
-              showValidity
-              validity={
-                state.cgmScriptValid === "Valid"
-                  ? true
-                  : state.cgmScriptValid === "Invalid"
-                    ? false
-                    : null
-              }
-              onToggle={(on) => {
-                update("cgmScriptReceived", (on ? "Yes" : "No") as YesNo);
-                update("cgmScriptValid", undefined);
-              }}
-              onValidity={(v) => update("cgmScriptValid", (v ? "Valid" : "Invalid") as ValidInvalid)}
+          {/* Insulin Pump */}
+          <ProductColumn title="Insulin Pump" icon={<Syringe className="h-4 w-4" />} grayed={!showIp}>
+            <RcvField
+              label="IP Script Received?"
+              value={ipReceivedVal}
+              onChange={(v) => setIpReceived(v as Received4 | undefined)}
+              disabled={!showIp}
             />
-          )}
-          {showIp && (
-            <DocCard
-              title="IP Script"
-              received={state.ipScriptReceived === "Yes"}
-              fullWidth={!showCgm}
-              showValidity
-              validity={
-                state.ipScriptValid === "Valid"
-                  ? true
-                  : state.ipScriptValid === "Invalid"
-                    ? false
-                    : null
-              }
-              onToggle={(on) => {
-                update("ipScriptReceived", (on ? "Yes" : "No") as YesNo);
-                update("ipScriptValid", undefined);
-              }}
-              onValidity={(v) => update("ipScriptValid", (v ? "Valid" : "Invalid") as ValidInvalid)}
+            {ipServed && (
+              <>
+                <FieldBlock label="Coverage Path">
+                  <PathSelect
+                    value={state.ipCoveragePath}
+                    options={IP_PATH_OPTS.filter((o) => o.label !== "Not Serving")}
+                    onChange={(v) => setIpCoveragePath(v as IpPath)}
+                    missing={ipReqReq && !state.ipCoveragePath}
+                  />
+                </FieldBlock>
+                {ipCfg && ipReqValues.length > 0 && (
+                  <div className="flex flex-col gap-2.5">
+                    <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                      Language Requirements{ipReqReq ? " — all required" : ""}
+                    </p>
+                    {ipCfg.showEducation && (
+                      <ReqRow label="Diabetes Education" required={ipReqReq} missing={state.ipEducationV === undefined}>
+                        <YniPills
+                          value={state.ipEducationV}
+                          onChange={(v) => { update("ipEducationV", v); update("diabetesEducation", v === "Yes" ? "Yes" : "No"); }}
+                        />
+                      </ReqRow>
+                    )}
+                    {ipCfg.show3Injections && (
+                      <ReqRow label="3+ Injections / Day" required={ipReqReq} missing={state.ipThreeInjectionsV === undefined}>
+                        <YniPills
+                          value={state.ipThreeInjectionsV}
+                          onChange={(v) => { update("ipThreeInjectionsV", v); update("threeInjections", v === "Yes" ? "Yes" : "No"); }}
+                        />
+                      </ReqRow>
+                    )}
+                    {ipCfg.showCgmUse && (
+                      <ReqRow label="CGM Use" required={ipReqReq} missing={state.ipCgmUseV === undefined}>
+                        <YniPills
+                          value={state.ipCgmUseV}
+                          onChange={(v) => { update("ipCgmUseV", v); update("cgmUse", v === "Yes" ? "Yes" : "No"); }}
+                        />
+                      </ReqRow>
+                    )}
+                    {ipCfg.showBsIssues && (
+                      <ReqRow label="Blood Sugar Issues" required={ipReqReq} missing={state.ipBsIssuesV === undefined}>
+                        <YniPills
+                          value={state.ipBsIssuesV}
+                          onChange={(v) => { update("ipBsIssuesV", v); update("bloodSugarIssues", v === "Yes" ? "Yes" : "No"); }}
+                        />
+                      </ReqRow>
+                    )}
+                    {ipCfg.showLmn && (
+                      <ReqRow label="Letter of MN on File" required={ipReqReq} missing={state.ipLmnV === undefined}>
+                        <YniPills
+                          value={state.ipLmnV}
+                          onChange={(v) => { update("ipLmnV", v); update("lmn", v === "Yes" ? "Yes & Valid" : v === "Invalid" ? "Yes, but Invalid" : "No"); }}
+                        />
+                      </ReqRow>
+                    )}
+                    {ipCfg.showOow && (
+                      <ReqRow label="OOW Date" required={ipReqReq} missing={!state.oowDate}>
+                        <Input
+                          type="date"
+                          value={state.oowDate ?? ""}
+                          onChange={(e) => update("oowDate", e.target.value || undefined)}
+                          className="w-[150px] h-9 text-sm shrink-0"
+                        />
+                      </ReqRow>
+                    )}
+                    {ipCfg.showOowOnScript && (
+                      <ReqRow label="OOW on Script" required={ipReqReq} missing={state.ipOowOnScriptV === undefined}>
+                        <YniPills
+                          value={state.ipOowOnScriptV}
+                          onChange={(v) => { update("ipOowOnScriptV", v); update("oowDateOnScript", v === "Yes" ? "Yes" : "No"); }}
+                        />
+                      </ReqRow>
+                    )}
+                    {ipCfg.showMalfunction && (
+                      <ReqRow label="Malfunction" required={ipReqReq} missing={state.ipMalfunctionV === undefined}>
+                        <YniPills
+                          value={state.ipMalfunctionV}
+                          onChange={(v) => { update("ipMalfunctionV", v); update("malfunction", v === "Yes" ? "Yes" : "No"); }}
+                        />
+                      </ReqRow>
+                    )}
+                  </div>
+                )}
+              </>
+            )}
+          </ProductColumn>
+
+          {/* Clinicals */}
+          <ProductColumn title="Clinicals" icon={<ClipboardList className="h-4 w-4" />} grayed={false}>
+            <RcvField
+              label="Clinicals Received?"
+              value={state.clinReceived3}
+              onChange={(v) => setClinReceived(v as YesNoInvalid | undefined)}
+              includeNotServing={false}
             />
-          )}
-          <DocCard
-            title="Clinicals"
-            received={state.mrReceived === "Yes"}
-            fullWidth
-            onToggle={(on) => setMrReceived((on ? "Yes" : "No") as YesNo)}
-          />
+            {state.clinReceived3 !== "No" && (
+              <div className="flex flex-col gap-4">
+                <DiagnosisField
+                  value={state.diagnosis}
+                  onChange={(v) => setDiagnosis(v)}
+                  required={state.clinReceived3 === "Yes"}
+                />
+                <LastVisitField
+                  value={state.lastVisitDate}
+                  onChange={(v) => setLastVisitDate(v)}
+                  required={state.clinReceived3 === "Yes"}
+                />
+                <MrExpiryField lastVisit={state.lastVisitDate} />
+              </div>
+            )}
+          </ProductColumn>
         </div>
       </MmStep>
 
-
-      {/* ── Diagnosis & Clinicals — visible only when Clinicals received ── */}
-      {clinOn && (
-        <MmStep num={diagStepNum} title="Diagnosis & Clinicals">
-          <SubCard icon={<ClipboardList className="h-4 w-4" />} title="Clinical Details">
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-x-6 gap-y-4 items-start">
-              <DiagnosisField value={state.diagnosis} onChange={(v) => setDiagnosis(v)} />
-              <LastVisitField value={state.lastVisitDate} onChange={(v) => setLastVisitDate(v)} />
-              <MrExpiryField lastVisit={state.lastVisitDate} />
-            </div>
-          </SubCard>
-        </MmStep>
-      )}
-
-      {/* ── Coverage paths — each script strictly controls its own section ── */}
-      {(cgmOn || ipOn) && (
-        <MmStep
-          num={pathStepNum}
-          title={cgmOn && ipOn ? "CGM & Insulin Pump" : cgmOn ? "CGM" : "Insulin Pump"}
-        >
-          <div
-            className={cn(
-              "grid gap-5 items-start",
-              cgmOn && ipOn ? "grid-cols-1 lg:grid-cols-2" : "grid-cols-1",
-            )}
+      {/* ── Medical Necessity checklist ── */}
+      <section
+        className="rounded-2xl bg-card border border-l-4 p-6 shadow-sm"
+        style={{
+          borderColor: "var(--mm-card-border)",
+          borderLeftColor: mnEstablished ? "var(--mm-green)" : "var(--mm-rose)",
+        }}
+      >
+        <div className="mb-5">
+          <span
+            className="text-lg font-extrabold tracking-tight"
+            style={{ color: mnEstablished ? "var(--mm-teal)" : "var(--mm-rose)" }}
           >
-            {cgmOn && (
-              <SubCard icon={<Activity className="h-4 w-4" />} title="CGM Coverage Path">
-                <PathSelect
-                  value={state.cgmCoveragePath}
-                  options={CGM_COVERAGE_OPTS}
-                  onChange={(v) => setCgmCoveragePath(v as CgmCoveragePath)}
-                  missing={!state.cgmCoveragePath}
-                />
-              </SubCard>
-            )}
-            {ipOn && (
-              <SubCard icon={<Syringe className="h-4 w-4" />} title="Insulin Pump Coverage Path">
-                <div className="space-y-4">
-                  <PathSelect
-                    value={state.ipCoveragePath}
-                    options={IP_PATH_OPTS}
-                    onChange={(v) => setIpCoveragePath(v as IpPath)}
-                    missing={!state.ipCoveragePath}
-                  />
-                  <IpCriteria state={state} patient={patient} update={update} />
-                </div>
-              </SubCard>
-            )}
+            Medical Necessity {mnEstablished ? "Established" : "Not Established"}
+          </span>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+          <div>
+            <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground mb-2.5">
+              Documents
+            </p>
+            <div className="flex flex-col gap-2">
+              <MnRow label="Insulin Pump Script" state={!ipServed ? "na" : ipDocChecked ? "ok" : "bad"} />
+              <MnRow label="CGM Script" state={!cgmServed ? "na" : cgmDocChecked ? "ok" : "bad"} />
+              <MnRow label="Clinicals" state={clinDocChecked ? "ok" : "bad"} />
+            </div>
           </div>
-        </MmStep>
-      )}
+          <div>
+            <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground mb-2.5">
+              Language
+            </p>
+            <div className="flex flex-col gap-2">
+              <MnRow label="CGM Language" state={!cgmServed ? "na" : cgmLangChecked ? "ok" : "bad"} />
+              <MnRow label="Insulin Pump Language" state={!ipServed ? "na" : ipLangChecked ? "ok" : "bad"} />
+            </div>
+          </div>
+        </div>
+      </section>
 
-      {/* ── Clinical Files — visible only when Clinicals received ── */}
-      {clinOn && (
-        <MmStep num={filesStepNum} title="Clinical Files">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 items-stretch">
-            <div className="flex flex-col">
-              <h4 className="text-base font-bold tracking-tight">Initial File Collection</h4>
-              <p className="text-sm text-muted-foreground mb-3">
-                All clinical documents gathered during collection
-              </p>
-              <div className="flex-1">
-                <FileUploadCard
-                  label="Initial File Collection"
-                  hideLabel
-                  tone={validity.established ? "gray" : "green"}
-                  files={state.clinicalFiles ?? []}
-                  mondayFiles={mondayFiles.clinicalFiles}
-                  mondayLoading={mondayFiles.loading}
-                  trackedFiles={clinicalUpload.files}
-                  itemId={patient.id}
-                  columnId={COL.clinicalFiles}
-                  onRefetch={mondayFiles.refetch}
-                  onAdd={(files) => update("clinicalFiles", [...(state.clinicalFiles ?? []), ...files])}
-                  onAddRaw={(rawFiles) => {
-                    clinicalUpload.upload(patient.id, COL.clinicalFiles, rawFiles);
-                  }}
-                  onRemove={(idx) => {
-                    const next = [...(state.clinicalFiles ?? [])];
-                    next.splice(idx, 1);
-                    update("clinicalFiles", next);
-                  }}
-                />
-              </div>
-            </div>
-            <div className="flex flex-col">
-              <h4 className="text-base font-bold tracking-tight">
-                Final Clinicals{" "}
-                <span className="font-medium text-muted-foreground">(Single File)</span>
-              </h4>
-              <p className="text-sm text-muted-foreground mb-3">
-                The one combined, finalized clinical package
-              </p>
-              <div className="flex-1">
-                {validity.established ? (
-                  <FileUploadCard
-                    label="Final Clinicals"
-                    hideLabel
-                    tone="green"
-                    files={state.finalClinicalFiles ?? []}
-                    mondayFiles={mondayFiles.finalClinicals}
-                    mondayLoading={mondayFiles.loading}
-                    trackedFiles={finalClinicalUpload.files}
-                    itemId={patient.id}
-                    columnId={COL.finalClinicals}
-                    onRefetch={mondayFiles.refetch}
-                    onAdd={(files) =>
-                      update("finalClinicalFiles", [...(state.finalClinicalFiles ?? []), ...files])
-                    }
-                    onAddRaw={(rawFiles) => {
-                      finalClinicalUpload.upload(patient.id, COL.finalClinicals, rawFiles);
-                    }}
-                    onRemove={(idx) => {
-                      const next = [...(state.finalClinicalFiles ?? [])];
-                      next.splice(idx, 1);
-                      update("finalClinicalFiles", next);
-                    }}
-                  />
-                ) : (
-                  <LockedDropzone />
-                )}
-              </div>
-            </div>
-          </div>
-        </MmStep>
-      )}
+      {/* ── Final Clinicals — locked until MN Established ── */}
+      <MmStep num={3} title="Final Clinicals">
+        <p className="text-sm text-muted-foreground -mt-3 mb-4">
+          The one combined, finalized clinical package — unlocks when Medical Necessity is Established
+        </p>
+        {mnEstablished ? (
+          <FileUploadCard
+            label="Final Clinicals"
+            hideLabel
+            tone="green"
+            files={state.finalClinicalFiles ?? []}
+            mondayFiles={mondayFiles.finalClinicals}
+            mondayLoading={mondayFiles.loading}
+            trackedFiles={finalClinicalUpload.files}
+            itemId={patient.id}
+            columnId={COL.finalClinicals}
+            onRefetch={mondayFiles.refetch}
+            onAdd={(files) =>
+              update("finalClinicalFiles", [...(state.finalClinicalFiles ?? []), ...files])
+            }
+            onAddRaw={(rawFiles) => {
+              finalClinicalUpload.upload(patient.id, COL.finalClinicals, rawFiles);
+            }}
+            onRemove={(idx) => {
+              const next = [...(state.finalClinicalFiles ?? [])];
+              next.splice(idx, 1);
+              update("finalClinicalFiles", next);
+            }}
+          />
+        ) : (
+          <LockedDropzone />
+        )}
+      </MmStep>
 
       {/* Notes */}
       <NotesPanel
@@ -749,24 +943,43 @@ export function EvaluatePanel({ patient, resetVersion = 0, onUpdate, onOpenForm 
         notePrefix="Evaluate"
       />
 
-      {/* Sticky validity / preview footer */}
-      <ValiditySummary
-        validity={validity}
-        preview={preview}
-        onSendToMonday={handleSendToMonday}
-        sending={sending}
-        sendErrors={sendErrors}
-        noteAdded={noteAdded}
-        pendingNoteText={pendingNoteText}
-        state={state}
-        showCgm={showCgm}
-        showIp={showIp}
-        patient={patient}
-        escalated={escalated}
-        onToggleEscalate={() => setEscalated((v) => { const nv = !v; escalatedRef.current = nv; return nv; })}
-        onOpenForm={onOpenForm}
-        filesUploading={filesUploading}
-      />
+      {/* Send to Monday */}
+      <div className="flex flex-col items-end gap-3">
+        <Button
+          size="lg"
+          onClick={handleSendToMonday}
+          disabled={sending}
+          className="gap-2 text-white shadow-elevate bg-[color:var(--mm-green)] hover:bg-[oklch(0.56_0.10_175)] disabled:bg-[oklch(0.85_0.01_200)]"
+        >
+          {sending ? (
+            <>
+              <Loader2 className="h-4 w-4 animate-spin" />
+              Sending…
+            </>
+          ) : (
+            <>
+              <Send className="h-4 w-4" />
+              Send to Monday
+            </>
+          )}
+        </Button>
+        {sendErrors.length > 0 && (
+          <div
+            className="w-full rounded-lg border-2 px-3.5 py-2.5 text-sm"
+            style={{ background: "var(--mm-rose-soft)", borderColor: "var(--mm-rose)", color: "oklch(0.5 0.12 18)" }}
+          >
+            <p className="font-bold flex items-center gap-1.5" style={{ color: "var(--mm-rose)" }}>
+              <AlertTriangle className="h-4 w-4" />
+              {sendErrors.length} field{sendErrors.length > 1 ? "s" : ""} failed to write to Monday
+            </p>
+            <ul className="mt-1.5 space-y-0.5">
+              {sendErrors.map((e) => (
+                <li key={e} className="text-xs break-words">• {e}</li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -967,9 +1180,10 @@ function MrExpiryField({ lastVisit }: { lastVisit?: string }) {
 interface DiagnosisFieldProps {
   value?: string;
   onChange: (v: string) => void;
+  required?: boolean;
 }
 
-function DiagnosisField({ value, onChange }: DiagnosisFieldProps) {
+function DiagnosisField({ value, onChange, required = true }: DiagnosisFieldProps) {
   const [open, setOpen] = useState(false);
   const [newCode, setNewCode] = useState("");
   const [customCodes, setCustomCodes] = useState<string[]>([]);
@@ -1036,8 +1250,9 @@ function DiagnosisField({ value, onChange }: DiagnosisFieldProps) {
   return (
     <div className="space-y-1.5">
       <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-        Diagnosis <span className="font-bold text-[color:var(--mm-rose)]">*</span>
-        {!value && (
+        Diagnosis
+        {required && <span className="font-bold text-[color:var(--mm-rose)]"> *</span>}
+        {required && !value && (
           <span className="ml-1 normal-case tracking-normal text-[color:var(--mm-rose)]">
             — required
           </span>
@@ -2052,6 +2267,212 @@ function todayIso(): string {
 
 /** Step card — white, 1px border, 4px left border in mm-green, numbered
  *  36px circle (green-12% bg, teal text, mint ring). */
+/** Evaluate-redesign: one product column (CGM / Insulin Pump / Clinicals).
+ *  Always rendered; `grayed` dims + disables the box when not served. */
+function ProductColumn({
+  title,
+  icon,
+  grayed,
+  children,
+}: {
+  title: string;
+  icon: React.ReactNode;
+  grayed: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <div
+      className={cn(
+        "rounded-xl border bg-card p-5 shadow-sm transition-opacity",
+        grayed && "opacity-55",
+      )}
+      style={{ borderColor: "var(--mm-card-border)" }}
+      aria-disabled={grayed}
+    >
+      <div className="flex items-center justify-between gap-2 mb-4">
+        <div className="flex items-center gap-2 min-w-0">
+          <span className="text-[color:var(--mm-teal)]">{icon}</span>
+          <h3 className="text-base font-bold tracking-tight truncate">{title}</h3>
+        </div>
+        {grayed && (
+          <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground bg-muted/70 rounded-full px-2 py-0.5 shrink-0">
+            Not Serving
+          </span>
+        )}
+      </div>
+      <div className={cn("flex flex-col gap-4", grayed && "pointer-events-none")}>{children}</div>
+    </div>
+  );
+}
+
+/** Evaluate-redesign: the "Received?" segmented control (4-state for CGM/IP,
+ *  3-state for Clinicals when includeNotServing is false). */
+function RcvField({
+  label,
+  value,
+  onChange,
+  includeNotServing = true,
+  disabled = false,
+}: {
+  label: string;
+  value?: string;
+  onChange: (v: string | undefined) => void;
+  includeNotServing?: boolean;
+  disabled?: boolean;
+}) {
+  const opts: { label: string; sel: string }[] = [
+    { label: "Yes", sel: "border-transparent bg-[color:var(--mm-green)] text-white shadow-sm" },
+    { label: "No", sel: "border-transparent bg-[color:var(--mm-rose)] text-white shadow-sm" },
+    { label: "Invalid", sel: "border-transparent bg-amber-500 text-white shadow-sm" },
+    ...(includeNotServing
+      ? [{ label: "Not Serving", sel: "border-transparent bg-slate-500 text-white shadow-sm" }]
+      : []),
+  ];
+  return (
+    <div>
+      <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-2">
+        {label} <span className="font-bold text-[color:var(--mm-rose)]">*</span>
+        {value === undefined && !disabled && (
+          <span className="ml-1 normal-case tracking-normal text-[color:var(--mm-rose)]">— required</span>
+        )}
+      </p>
+      <div className="flex gap-2 flex-wrap" role="radiogroup" aria-label={label}>
+        {opts.map((o) => {
+          const selected = value === o.label;
+          return (
+            <button
+              key={o.label}
+              type="button"
+              role="radio"
+              aria-checked={selected}
+              disabled={disabled}
+              onClick={() => onChange(selected ? undefined : o.label)}
+              className={cn(
+                "flex-1 min-w-[64px] px-2.5 py-2 rounded-md text-xs font-semibold border-2 transition-all",
+                selected
+                  ? o.sel
+                  : "border-border bg-background text-muted-foreground hover:text-foreground hover:border-[color:var(--mm-green)]",
+                disabled && "cursor-not-allowed",
+              )}
+            >
+              {o.label}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/** Small labeled wrapper used inside a product column. */
+function FieldBlock({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="space-y-1.5">
+      <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{label}</p>
+      {children}
+    </div>
+  );
+}
+
+/** Yes / No / Invalid tri-pill for language requirements. */
+function YniPills({
+  value,
+  onChange,
+}: {
+  value?: YesNoInvalid;
+  onChange: (v: YesNoInvalid | undefined) => void;
+}) {
+  const opts: { label: YesNoInvalid; cls: string }[] = [
+    { label: "Yes", cls: "bg-[color:var(--mm-green)] text-white shadow-sm" },
+    { label: "No", cls: "bg-[color:var(--mm-rose)] text-white shadow-sm" },
+    { label: "Invalid", cls: "bg-amber-500 text-white shadow-sm" },
+  ];
+  return (
+    <span
+      className="inline-flex items-center gap-0.5 rounded-full bg-muted/70 p-[3px] shrink-0"
+      role="radiogroup"
+    >
+      {opts.map((o) => (
+        <button
+          key={o.label}
+          type="button"
+          role="radio"
+          aria-checked={value === o.label}
+          onClick={() => onChange(value === o.label ? undefined : o.label)}
+          className={cn(
+            "text-xs font-semibold px-3 py-1.5 rounded-full transition-all whitespace-nowrap",
+            value === o.label ? o.cls : "text-muted-foreground hover:text-foreground",
+          )}
+        >
+          {o.label}
+        </button>
+      ))}
+    </span>
+  );
+}
+
+/** MN checklist row — ✓ ok / ✕ bad / N/A. */
+function MnRow({ label, state }: { label: string; state: "ok" | "bad" | "na" }) {
+  return (
+    <div
+      className="flex items-center justify-between gap-3 rounded-lg border px-3.5 py-2.5 bg-card"
+      style={{ borderColor: "var(--mm-card-border)" }}
+    >
+      <span className={cn("text-sm font-medium", state === "na" && "text-muted-foreground")}>
+        {label}
+      </span>
+      {state === "ok" ? (
+        <span className="inline-flex items-center gap-1 text-xs font-semibold" style={{ color: "var(--mm-teal)" }}>
+          <Check className="h-4 w-4" /> Yes
+        </span>
+      ) : state === "na" ? (
+        <span className="text-xs font-semibold text-muted-foreground">N/A</span>
+      ) : (
+        <span className="inline-flex items-center gap-1 text-xs font-semibold" style={{ color: "var(--mm-rose)" }}>
+          <X className="h-4 w-4" /> No
+        </span>
+      )}
+    </div>
+  );
+}
+
+/** CGM coverage path select — Insulin / Hypoglycemia / Not Serving.
+ *  Stores Monday's underlying values ("Insulin" | "Hypo" | "Not Serving"). */
+function CgmPathSelect({
+  value,
+  onChange,
+  missing,
+}: {
+  value?: string;
+  onChange: (v: string) => void;
+  missing?: boolean;
+}) {
+  const opts = [
+    { v: "Insulin", l: "Insulin" },
+    { v: "Hypo", l: "Hypoglycemia" },
+  ];
+  return (
+    <div>
+      <Select value={value ?? ""} onValueChange={onChange}>
+        <SelectTrigger
+          className="w-full h-10 text-sm"
+          style={missing ? { borderColor: "oklch(0.62 0.13 18 / 0.45)" } : undefined}
+        >
+          <SelectValue placeholder="Select coverage path" />
+        </SelectTrigger>
+        <SelectContent>
+          {opts.map((o) => (
+            <SelectItem key={o.v} value={o.v} className="text-sm">
+              {o.l}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+      {missing && <p className="text-xs mt-1 text-[color:var(--mm-rose)]">Required</p>}
+    </div>
+  );
+}
+
 function MmStep({
   num,
   title,
@@ -2273,23 +2694,27 @@ function ReqRow({
   label,
   missing,
   hint,
+  required = true,
   children,
 }: {
   label: string;
   missing: boolean;
   hint?: React.ReactNode;
+  required?: boolean;
   children: React.ReactNode;
 }) {
+  const showMissing = missing && required;
   return (
     <div
       className="flex items-center justify-between gap-3 rounded-lg border px-4 py-3 bg-card"
       style={{
-        borderColor: missing ? "oklch(0.62 0.13 18 / 0.45)" : "var(--mm-card-border)",
+        borderColor: showMissing ? "oklch(0.62 0.13 18 / 0.45)" : "var(--mm-card-border)",
       }}
     >
       <div className="min-w-0">
         <span className="text-sm font-medium">
-          {label} <span className="font-bold text-[color:var(--mm-rose)]">*</span>
+          {label}
+          {required && <span className="font-bold text-[color:var(--mm-rose)]"> *</span>}
         </span>
         {hint}
       </div>
@@ -2386,15 +2811,18 @@ function LmnPills({
 function LastVisitField({
   value,
   onChange,
+  required = true,
 }: {
   value?: string;
   onChange: (v: string) => void;
+  required?: boolean;
 }) {
   const future = !!value && value > todayIso();
   return (
     <div className="space-y-1.5">
       <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-        Last Visit Date <span className="font-bold text-[color:var(--mm-rose)]">*</span>
+        Last Visit Date
+        {required && <span className="font-bold text-[color:var(--mm-rose)]"> *</span>}
       </p>
       <Input
         type="date"
@@ -2403,7 +2831,7 @@ function LastVisitField({
         onChange={(e) => onChange(e.target.value)}
         className="text-sm h-9"
       />
-      {!value ? (
+      {required && !value ? (
         <p className="text-xs text-[color:var(--mm-rose)]">Required when Clinicals received</p>
       ) : future ? (
         <p className="text-xs text-[color:var(--mm-rose)]">Cannot be after today</p>

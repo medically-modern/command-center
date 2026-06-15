@@ -8,6 +8,10 @@ import type { Patient } from "./workflow";
 
 export type ValidInvalid = "Valid" | "Invalid" | "Missing";
 export type YesNo = "Yes" | "No";
+/** Evaluate-redesign tri-state used by the new per-product controls. */
+export type YesNoInvalid = "Yes" | "No" | "Invalid";
+/** Evaluate-redesign 4-state "Received?" used by CGM / IP columns. */
+export type Received4 = "Yes" | "No" | "Invalid" | "Not Serving";
 export type CgmCoveragePath = "Insulin" | "Hypo" | "Hypo Invalid" | "Missing" | "Not Serving";
 export type LmnStatus = "Yes & Valid" | "Yes, but Invalid" | "No";
 
@@ -47,6 +51,20 @@ export interface EvalState {
   clinicalFiles?: LocalFile[];
   finalClinicalFiles?: LocalFile[];
   mrReceived?: YesNo;
+
+  // ── Evaluate redesign (prototype) — UI-only tri-state fields ──
+  // These drive the new 3-column layout + MN checklist. Legacy fields above
+  // (cgmScriptReceived, diabetesEducation, …) are kept in sync so the existing
+  // Monday send/validity logic still works.
+  clinReceived3?: YesNoInvalid; // Clinicals Received? Yes / No / Invalid
+  cgmLanguage?: YesNoInvalid; // the single CGM language answer (Insulin or Hypo)
+  ipEducationV?: YesNoInvalid;
+  ipThreeInjectionsV?: YesNoInvalid;
+  ipCgmUseV?: YesNoInvalid;
+  ipBsIssuesV?: YesNoInvalid;
+  ipLmnV?: YesNoInvalid;
+  ipMalfunctionV?: YesNoInvalid;
+  ipOowOnScriptV?: YesNoInvalid;
 
   // Notes
   notes?: string;
