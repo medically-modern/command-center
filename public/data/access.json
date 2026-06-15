@@ -1,4 +1,6 @@
 {
-  "managers": [],
+  "managers": [
+    "josh@medicallymodern.com"
+  ],
   "processors": {}
 }
