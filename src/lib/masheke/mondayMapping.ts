@@ -89,6 +89,7 @@ export function mondayItemToPatient(item: MondayItem): Patient {
     daysSinceStageStart: col(item, "color_mm1wwm05") || undefined,
     dateOfIntake: col(item, "date_mm1wf43j") || undefined,
     dateOfStageStart: col(item, "date_mm1w6jeq") || undefined,
+    evaluationCounter: col(item, "numeric_mm4bhjc8") || undefined,
     // Eval checklist
     cgmScript: col(item, "color_mm1w8mp1") || undefined,
     cgmScriptReceived: col(item, "color_mm44h0fx") || undefined,

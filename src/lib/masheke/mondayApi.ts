@@ -28,6 +28,9 @@ export const COL = {
   ipCoveragePath: "color_mm1w5xn1",
   cgmCoveragePath: "color_mm1w7e5q",
 
+  // Evaluate attempt counter (read-only; Monday automation increments it)
+  evaluationCounter: "numeric_mm4bhjc8",
+
   // Doctor
   doctorName: "text_mm1x46et",
   doctorPhone: "phone_mm1xz8c0",
@@ -141,6 +144,7 @@ export const READ_COLUMN_IDS: string[] = [
   COL.masterStage, COL.subStage,
   COL.daysSinceIntake, COL.daysSinceStageStart,
   COL.dateOfIntake, COL.dateOfStageStart,
+  COL.evaluationCounter,
   // Eval checklist
   COL.cgmScript, COL.cgmScriptReceived, COL.hypoLanguage, COL.insulinLanguage, COL.ipScript, COL.ipScriptReceived,
   COL.diabetesEducation, COL.threeInjections, COL.cgmUse, COL.bloodSugarIssues,

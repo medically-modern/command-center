@@ -538,8 +538,13 @@ export function EvaluatePanel({ patient, resetVersion = 0, onUpdate, onOpenForm 
   }, [patient, state, preview, showCgm, showIp]);
 
   // ── Evaluate redesign (prototype) ──
-  // Display-only "Evaluate Attempt #N" counter. Josh wires the real trigger.
-  const [attempt] = useState(2);
+  // "Evaluate Attempt #N" — read-only. The value is incremented by a Monday
+  // automation; we just read the Evaluation Counter column (numeric_mm4bhjc8).
+  // Fallback to 1 when the column is empty / not yet set.
+  const attempt = (() => {
+    const n = parseInt(patient.evaluationCounter ?? "", 10);
+    return Number.isFinite(n) && n > 0 ? n : 1;
+  })();
 
   // Map the new 4-state "Received?" controls onto the existing fields so the
   // Monday send/validity logic keeps working.

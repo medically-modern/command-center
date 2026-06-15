@@ -41,6 +41,8 @@ export interface Patient {
   dateOfIntake?: string;
   dateOfStageStart?: string;
 
+  // Evaluate attempt counter — read-only; incremented by a Monday automation
+  evaluationCounter?: string;
   // Clinical eval checklist
   cgmScript?: string;
   cgmScriptReceived?: string;
