@@ -239,7 +239,7 @@ app.use((req, res, next) => {
   res.set("Vary", "Origin");
   res.set(
     "Access-Control-Allow-Headers",
-    "Content-Type, Authorization, API-Version, X-MM-User, X-MM-Key",
+    "Content-Type, Authorization, API-Version, X-MM-User, X-MM-Auth, X-MM-Key",
   );
   res.set("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
   res.set("Access-Control-Max-Age", "86400");
