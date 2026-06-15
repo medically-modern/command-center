@@ -100,6 +100,7 @@ CREATE INDEX IF NOT EXISTS gql_log_created_at_idx ON gql_log (created_at DESC);
 CREATE INDEX IF NOT EXISTS gql_log_operation_idx  ON gql_log (operation);
 CREATE INDEX IF NOT EXISTS gql_log_item_idx       ON gql_log (item_id);
 CREATE INDEX IF NOT EXISTS gql_log_actor_idx      ON gql_log (actor);
+ALTER TABLE gql_log ADD COLUMN IF NOT EXISTS columns JSONB;  -- {colId: value} a mutation wrote (note: patient values = PHI)
 
 -- Convenience view: the writes people actually audit.
 CREATE OR REPLACE VIEW gql_writes AS
@@ -160,6 +161,30 @@ function extractBoardId(query, vars) {
   return m ? m[1] : null;
 }
 
+// Extract the column writes from a mutation as { columnId: value }. The app
+// builds inline mutations (value JSON inline, not variables), so parse the text.
+function extractColumns(query) {
+  const q = String(query || "");
+  const out = {};
+  // change_multiple_column_values(column_values: "{...json...}")
+  const multi = q.match(/column_values:\s*("(?:[^"\\]|\\.)*")/);
+  if (multi) {
+    try { Object.assign(out, JSON.parse(JSON.parse(multi[1]))); } catch { /* ignore */ }
+  }
+  // change_(simple_)column_value(column_id: "X", value: <"json" | literal>)
+  const col = q.match(/column_id:\s*"([^"]+)"/);
+  if (col) {
+    let val = null;
+    const vm = q.match(/value:\s*("(?:[^"\\]|\\.)*")/);
+    if (vm) {
+      try { val = JSON.parse(JSON.parse(vm[1])); }     // double-encoded JSON string
+      catch { try { val = JSON.parse(vm[1]); } catch { val = vm[1]; } }
+    }
+    out[col[1]] = val;
+  }
+  return Object.keys(out).length ? out : null;
+}
+
 function esc(s) {
   return String(s == null ? "" : s).replace(
     /[&<>"]/g,
@@ -175,8 +200,8 @@ async function logRequest(rec) {
       `INSERT INTO gql_log
          (actor, client_ip, origin, user_agent, operation, operation_name,
           board_id, item_id, query_text, variables,
-          monday_status, monday_errors, ok, duration_ms)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
+          monday_status, monday_errors, ok, duration_ms, columns)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`,
       [
         rec.actor,
         rec.client_ip,
@@ -192,6 +217,7 @@ async function logRequest(rec) {
         rec.monday_errors,
         rec.ok,
         rec.duration_ms,
+        rec.columns ? JSON.stringify(rec.columns) : null,
       ],
     );
   } catch (e) {
@@ -293,6 +319,7 @@ app.post("/gql", async (req, res) => {
     operation_name: opName(query),
     board_id: extractBoardId(query, variables),
     item_id: extractItemId(query, variables),
+    columns: opType(query) === "mutation" ? extractColumns(query) : null,
     query_text: query,
     variables: variables || null,
     monday_status: status,
@@ -302,7 +329,60 @@ app.post("/gql", async (req, res) => {
   });
 });
 
-// ── /audit — key-protected log viewer (metadata only) ────────
+// ── /audit — key-protected log viewer ───────────────────────
+
+/* Resolve ids → human labels for the audit view, using the server-side token.
+ * Item names are fetched per render; column titles are cached (they're stable). */
+async function callMondayRead(query) {
+  try {
+    const r = await fetch(MONDAY_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: MONDAY_API_TOKEN, "API-Version": MONDAY_API_VERSION },
+      body: JSON.stringify({ query }),
+    });
+    const j = await r.json();
+    return j?.data || null;
+  } catch { return null; }
+}
+
+async function resolveItemNames(itemIds) {
+  const out = new Map();
+  const ids = itemIds.filter(Boolean).slice(0, 200);
+  if (!ids.length) return out;
+  const data = await callMondayRead(`query { items(ids: [${ids.join(",")}]) { id name } }`);
+  for (const it of data?.items || []) out.set(String(it.id), it.name);
+  return out;
+}
+
+const titleCache = new Map(); // `${boardId}:${colId}` -> column title
+async function resolveColumnTitles(pairs) {
+  const byBoard = new Map();
+  for (const [b, c] of pairs) {
+    if (titleCache.has(`${b}:${c}`)) continue;
+    if (!byBoard.has(b)) byBoard.set(b, new Set());
+    byBoard.get(b).add(c);
+  }
+  for (const [b, cols] of byBoard) {
+    const data = await callMondayRead(`query { boards(ids: [${b}]) { columns { id title } } }`);
+    for (const col of data?.boards?.[0]?.columns || []) titleCache.set(`${b}:${col.id}`, col.title);
+    for (const c of cols) if (!titleCache.has(`${b}:${c}`)) titleCache.set(`${b}:${c}`, c); // give up → show id
+  }
+  return titleCache;
+}
+
+/** Render a written column value compactly. */
+function fmtColVal(v) {
+  if (v == null) return "";
+  if (typeof v === "string") return v;
+  if (typeof v === "object") {
+    if ("text" in v) return String(v.text);
+    if ("date" in v) return String(v.date);
+    if ("label" in v) return String(v.label);
+    if ("index" in v) return "index " + v.index;
+    return JSON.stringify(v);
+  }
+  return String(v);
+}
 
 function auditDenied(req, res) {
   const key = process.env.AUDIT_KEY || "";
@@ -321,7 +401,7 @@ async function fetchAudit(req) {
   const where = onlyWrites ? "WHERE operation = 'mutation'" : "";
   const r = await pool.query(
     `SELECT created_at, actor, client_ip, operation, operation_name,
-            item_id, board_id, ok, monday_status, duration_ms
+            item_id, board_id, ok, monday_status, duration_ms, columns
      FROM gql_log ${where} ORDER BY created_at DESC LIMIT $1`,
     [limit],
   );
@@ -330,21 +410,32 @@ async function fetchAudit(req) {
 
 function renderAudit(rows, opts) {
   const k = encodeURIComponent(opts.key);
+  const names = opts.names || new Map();
+  const titles = opts.titles || new Map();
   const body = rows
-    .map(
-      (r) => `<tr>
+    .map((r) => {
+      const nm = names.get(String(r.item_id));
+      const first = nm ? esc(nm.split(/\s+/)[0]) : "—";
+      let cols = "—";
+      if (r.columns && typeof r.columns === "object") {
+        const parts = Object.entries(r.columns).map(([c, v]) => {
+          const t = titles.get(`${r.board_id}:${c}`) || c;
+          return `<span class="kv"><b>${esc(t)}</b>: ${esc(fmtColVal(v))}</span>`;
+        });
+        if (parts.length) cols = parts.join(" ");
+      }
+      return `<tr>
       <td class="t">${esc(new Date(r.created_at).toISOString().replace("T", " ").slice(0, 19))}</td>
       <td>${esc(r.actor || "—")}</td>
+      <td><b>${first}</b></td>
       <td class="mono">${esc(r.client_ip || "—")}</td>
       <td><span class="op ${r.operation === "mutation" ? "mut" : "qry"}">${esc(r.operation || "")}</span></td>
-      <td>${esc(r.operation_name || "—")}</td>
       <td class="mono">${esc(r.item_id || "—")}</td>
-      <td class="mono">${esc(r.board_id || "—")}</td>
+      <td class="cols">${cols}</td>
       <td>${r.ok ? '<span class="ok">ok</span>' : '<span class="bad">FAIL</span>'}</td>
-      <td>${esc(r.monday_status || "")}</td>
       <td class="num">${esc(r.duration_ms || "")}</td>
-    </tr>`,
-    )
+    </tr>`;
+    })
     .join("");
   return `<!doctype html><html><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
@@ -357,7 +448,7 @@ function renderAudit(rows, opts) {
  .pill{font-size:12px;color:#9aa4b2}
  a.btn{color:#7cc4ff;text-decoration:none;font-size:13px;border:1px solid #2a3340;padding:4px 10px;border-radius:6px}
  table{border-collapse:collapse;width:100%}
- th,td{padding:7px 10px;border-bottom:1px solid #20242e;text-align:left;white-space:nowrap}
+ th,td{padding:7px 10px;border-bottom:1px solid #20242e;text-align:left;vertical-align:top;white-space:nowrap}
  th{position:sticky;top:0;background:#11141a;color:#9aa4b2;font-weight:600;font-size:12px}
  tr:hover td{background:#151922}
  .mono{font-family:ui-monospace,Menlo,monospace;font-size:12px}
@@ -365,6 +456,9 @@ function renderAudit(rows, opts) {
  .op{font-size:11px;padding:2px 6px;border-radius:4px}
  .mut{background:#3a2540;color:#f0a6ff}.qry{background:#1f2a3a;color:#86b9ff}
  .ok{color:#5ad17a}.bad{color:#ff6b6b;font-weight:700}
+ .cols{white-space:normal;max-width:560px}
+ .kv{display:inline-block;background:#1a1f29;border:1px solid #262c38;border-radius:4px;padding:1px 6px;margin:1px 2px;font-size:12px}
+ .kv b{color:#9fd0ff;font-weight:600}
 </style></head><body>
 <header>
  <h1>monday-gateway · audit log</h1>
@@ -373,8 +467,8 @@ function renderAudit(rows, opts) {
  <a class="btn" href="/audit.json?key=${k}${opts.onlyWrites ? "" : "&all=1"}">JSON</a>
 </header>
 <table><thead><tr>
- <th>time (UTC)</th><th>who</th><th>ip</th><th>op</th><th>name</th><th>item</th><th>board</th><th>ok</th><th>status</th><th>ms</th>
-</tr></thead><tbody>${body || '<tr><td colspan="10" style="padding:20px;color:#9aa4b2">No rows yet.</td></tr>'}</tbody></table>
+ <th>time (UTC)</th><th>who</th><th>patient</th><th>ip</th><th>op</th><th>item</th><th>columns written → value</th><th>ok</th><th>ms</th>
+</tr></thead><tbody>${body || '<tr><td colspan="9" style="padding:20px;color:#9aa4b2">No rows yet.</td></tr>'}</tbody></table>
 </body></html>`;
 }
 
@@ -382,7 +476,11 @@ app.get("/audit", async (req, res) => {
   if (auditDenied(req, res)) return;
   try {
     const { rows, onlyWrites, limit } = await fetchAudit(req);
-    res.type("html").send(renderAudit(rows, { rows, onlyWrites, limit, key: process.env.AUDIT_KEY }));
+    const names = await resolveItemNames([...new Set(rows.map((r) => r.item_id).filter(Boolean))]);
+    const pairs = [];
+    for (const r of rows) if (r.board_id && r.columns) for (const c of Object.keys(r.columns)) pairs.push([r.board_id, c]);
+    const titles = await resolveColumnTitles(pairs);
+    res.type("html").send(renderAudit(rows, { onlyWrites, limit, key: process.env.AUDIT_KEY, names, titles }));
   } catch (e) {
     res.status(500).send("Query error: " + e.message);
   }
