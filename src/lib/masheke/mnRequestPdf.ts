@@ -792,6 +792,7 @@ export async function generateMnRequestPdf(patient: Patient): Promise<Uint8Array
         ...splitReasons(patient.generalMnInvalidReasons),
         ...splitReasons(patient.cgmMnInvalidReasons),
         ...splitReasons(patient.ipMnInvalidReasons),
+        ...splitReasons(patient.ipMnNoReasons),
       ];
 
   if (blocks.length === 0 && allReasons.length > 0) {

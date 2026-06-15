@@ -46,6 +46,7 @@ export interface Patient {
   // Clinical eval checklist
   cgmScript?: string;
   cgmScriptReceived?: string;
+  cgmLanguage?: string;
   hypoLanguage?: string;
   insulinLanguage?: string;
   ipScript?: string;
@@ -70,6 +71,7 @@ export interface Patient {
   generalMnInvalidReasons?: string;
   cgmMnInvalidReasons?: string;
   ipMnInvalidReasons?: string;
+  ipMnNoReasons?: string;
   /** Doctor-facing rolled-up ask list (the consolidated dropdown that
    *  replaces the 3 raw reason dropdowns end-to-end). */
   mnRequestConsolidated?: string;

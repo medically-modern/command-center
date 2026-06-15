@@ -93,6 +93,7 @@ export function mondayItemToPatient(item: MondayItem): Patient {
     // Eval checklist
     cgmScript: col(item, "color_mm1w8mp1") || undefined,
     cgmScriptReceived: col(item, "color_mm44h0fx") || undefined,
+    cgmLanguage: col(item, "color_mm4bb5sm") || undefined,
     hypoLanguage: col(item, "color_mm1whggs") || undefined,
     insulinLanguage: col(item, "color_mm1wgrst") || undefined,
     ipScript: col(item, "color_mm1wsbk5") || undefined,
@@ -113,6 +114,7 @@ export function mondayItemToPatient(item: MondayItem): Patient {
     generalMnInvalidReasons: col(item, "dropdown_mm2xppn8") || undefined,
     cgmMnInvalidReasons: col(item, "dropdown_mm2xncfh") || undefined,
     ipMnInvalidReasons: col(item, "dropdown_mm2xgg2y") || undefined,
+    ipMnNoReasons: col(item, "dropdown_mm4bwxpv") || undefined,
     mnRequestConsolidated: col(item, "dropdown_mm2yd3a2") || undefined,
     requestSentAt: col(item, "date_mm2yg8x8") || undefined,
     generateCgmScript: col(item, "color_mm1w2ey") || undefined,

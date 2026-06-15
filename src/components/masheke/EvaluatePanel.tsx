@@ -146,6 +146,7 @@ export function EvaluatePanel({ patient, resetVersion = 0, onUpdate, onOpenForm 
   // Notes gate — Send to Monday requires ≥1 note added this session, and is
   // blocked while typed-but-unadded text sits in the note box.
   const [noteAdded, setNoteAdded] = useState(false);
+  const [previewOpen, setPreviewOpen] = useState(false);
   const [pendingNoteText, setPendingNoteText] = useState("");
 
   // Map of pending File objects keyed by column ("clinicalFiles" | "finalClinicalFiles").
@@ -379,6 +380,26 @@ export function EvaluatePanel({ patient, resetVersion = 0, onUpdate, onOpenForm 
         });
       }
     }
+    // CGM Language — written when CGM is served, the script was received, and a
+    // real coverage path (Insulin/Hypo) is set. Captures the Yes/No/Invalid
+    // answer in its own column (color_mm4bb5sm); also gates MN.
+    if (
+      showCgm &&
+      cgmReceived &&
+      (state.cgmCoveragePath === "Insulin" || state.cgmCoveragePath === "Hypo")
+    ) {
+      if (state.cgmLanguage) {
+        tasks.push({
+          label: "CGM Language",
+          run: () => writeStatusLabel(patient.id, COL.cgmLanguage, state.cgmLanguage!),
+        });
+      } else {
+        tasks.push({
+          label: "CGM Language (clear)",
+          run: () => clearStatusColumn(patient.id, COL.cgmLanguage),
+        });
+      }
+    }
     // Diagnosis / Last Visit / MR Expiry — only synced while the Clinicals
     // section is visible (Clinicals received). When hidden, leave Monday
     // untouched.
@@ -460,6 +481,7 @@ export function EvaluatePanel({ patient, resetVersion = 0, onUpdate, onOpenForm 
           patient.id,
           COL.cgmMnInvalidReasons,
           preview.cgmMnInvalidReasons,
+          true,
         ),
     });
     tasks.push({
@@ -469,6 +491,15 @@ export function EvaluatePanel({ patient, resetVersion = 0, onUpdate, onOpenForm 
           patient.id,
           COL.ipMnInvalidReasons,
           preview.ipMnInvalidReasons,
+        ),
+    });
+    tasks.push({
+      label: "Insulin Pump MN No Reasons",
+      run: () =>
+        writeDropdownLabels(
+          patient.id,
+          COL.ipMnNoReasons,
+          preview.ipMnNoReasons,
         ),
     });
     // Consolidated, doctor-facing ask list — drives the Send Request UI
@@ -656,10 +687,25 @@ export function EvaluatePanel({ patient, resetVersion = 0, onUpdate, onOpenForm 
     state.cgmLanguage === "Yes";
   const ipLangChecked = ipServed && !!ipCfg && ipReqValues.every((v) => v === "Yes");
 
-  const mnChecks: boolean[] = [clinDocChecked];
-  if (cgmServed) mnChecks.push(cgmDocChecked, cgmLangChecked);
-  if (ipServed) mnChecks.push(ipDocChecked, ipLangChecked);
-  const mnEstablished = mnChecks.every(Boolean);
+  // OOW date validity — drives the inline hint on the OOW Date row.
+  const oowCheck = isOowDateValid(state.oowDate, patient.primaryInsurance);
+
+  // MN established = the single source of truth (deriveValidity), which now
+  // includes the CGM Language gate. The per-row checklist below is a visual
+  // indicator; this headline + the Final Clinicals unlock follow deriveValidity.
+  const mnEstablished = validity.established;
+
+  // ── Send guardrails (restored) — block Send until every visible required
+  // field is filled and an MN Workflow note is added; also block mid-upload. ──
+  const sendMissingFields = getMissingRequiredFields(state, showCgm, showIp);
+  const sendHasPendingNote = pendingNoteText.trim().length > 0;
+  const sendNoteBlocked = !noteAdded || sendHasPendingNote;
+  const sendBlock = {
+    missingFields: sendMissingFields,
+    hasPendingNote: sendHasPendingNote,
+    noteBlocked: sendNoteBlocked,
+    blocked: sendMissingFields.length > 0 || sendNoteBlocked,
+  };
 
   const cgmLangLabel =
     state.cgmCoveragePath === "Hypo" ? "Hypoglycemia Language" : "Insulin Language";
@@ -806,7 +852,23 @@ export function EvaluatePanel({ patient, resetVersion = 0, onUpdate, onOpenForm 
                       </ReqRow>
                     )}
                     {ipCfg.showOow && (
-                      <ReqRow label="OOW Date" required={ipReqReq} missing={!state.oowDate}>
+                      <ReqRow
+                        label="OOW Date"
+                        required={ipReqReq}
+                        missing={!state.oowDate || (oowCheck !== null && !oowCheck.valid)}
+                        hint={
+                          oowCheck === null ? undefined : oowCheck.valid ? (
+                            <p className="text-xs mt-0.5 text-[color:var(--mm-teal)]">
+                              Out of warranty {formatOowDiff(oowCheck.diffDays)} ago
+                            </p>
+                          ) : (
+                            <p className="text-xs mt-0.5 text-[color:var(--mm-rose)]">
+                              Date is in the future — pump still under warranty (OOW in{" "}
+                              {formatOowDiff(oowCheck.diffDays)})
+                            </p>
+                          )
+                        }
+                      >
                         <Input
                           type="date"
                           value={state.oowDate ?? ""}
@@ -950,10 +1012,57 @@ export function EvaluatePanel({ patient, resetVersion = 0, onUpdate, onOpenForm 
 
       {/* Send to Monday */}
       <div className="flex flex-col items-end gap-3">
+        {/* Collapsible Monday Preview — exactly what will be written on Send */}
+        <button
+          type="button"
+          onClick={() => setPreviewOpen((v) => !v)}
+          className="self-start flex items-center gap-1.5 text-[11px] text-muted-foreground hover:text-foreground transition-colors"
+        >
+          <ChevronRight className={cn("w-3.5 h-3.5 transition-transform", previewOpen && "rotate-90")} />
+          Monday Preview
+        </button>
+        {previewOpen && (
+          <div className="w-full rounded-lg border bg-muted/20 p-3">
+            <MondayPreviewPanel preview={preview} />
+          </div>
+        )}
+
+        {/* Guardrail messages (restored) */}
+        {sendBlock.missingFields.length > 0 && (
+          <span
+            className="text-xs font-medium text-right"
+            style={{ color: "var(--mm-rose)" }}
+            title={sendBlock.missingFields.join(", ")}
+          >
+            {sendBlock.missingFields.length} required field{sendBlock.missingFields.length > 1 ? "s" : ""} remaining:{" "}
+            {sendBlock.missingFields.slice(0, 4).join(", ")}
+            {sendBlock.missingFields.length > 4 ? "…" : ""}
+          </span>
+        )}
+        {sendBlock.noteBlocked && (
+          <span className="text-xs font-medium text-right" style={{ color: "var(--mm-rose)" }}>
+            {sendBlock.hasPendingNote
+              ? "Press Add on your note before sending"
+              : "Add at least one MN Workflow note to send"}
+          </span>
+        )}
+        {filesUploading && (
+          <div className="flex items-start gap-2 rounded-lg border-2 border-red-400 bg-red-50 px-3 py-2 max-w-sm animate-pulse">
+            <Loader2 className="h-4 w-4 text-red-600 shrink-0 mt-0.5 animate-spin" />
+            <div>
+              <p className="text-xs font-bold text-red-800 uppercase tracking-wide">
+                Files uploading to Monday
+              </p>
+              <p className="text-[11px] text-red-700 mt-0.5">
+                Do NOT advance until upload is confirmed
+              </p>
+            </div>
+          </div>
+        )}
         <Button
           size="lg"
           onClick={handleSendToMonday}
-          disabled={sending}
+          disabled={sending || sendBlock.blocked || filesUploading}
           className="gap-2 text-white shadow-elevate bg-[color:var(--mm-green)] hover:bg-[oklch(0.56_0.10_175)] disabled:bg-[oklch(0.85_0.01_200)]"
         >
           {sending ? (
@@ -968,6 +1077,12 @@ export function EvaluatePanel({ patient, resetVersion = 0, onUpdate, onOpenForm 
             </>
           )}
         </Button>
+        {sendBlock.blocked && (
+          <p className="text-xs text-muted-foreground text-right max-w-md">
+            Every visible evaluation field must be filled out — even if the answer is No or Invalid —
+            and at least one MN Workflow note added, before syncing to Monday.
+          </p>
+        )}
         {sendErrors.length > 0 && (
           <div
             className="w-full rounded-lg border-2 px-3.5 py-2.5 text-sm"
@@ -1848,22 +1963,40 @@ function getMissingRequiredFields(
   showIp: boolean,
 ): string[] {
   const missing: string[] = [];
-  const cgmOn = showCgm && state.cgmScriptReceived === "Yes";
-  const ipOn = showIp && state.ipScriptReceived === "Yes";
 
-  // Validity — required for any received script
-  if (cgmOn && state.cgmScriptValid === undefined) missing.push("CGM Script validity");
-  if (ipOn && state.ipScriptValid === undefined) missing.push("IP Script validity");
+  // "Received?" must be answered for every visible product (matches the
+  // required markers on the new 4-state controls). "Not Serving" (set via the
+  // coverage path) counts as answered.
+  const cgmServedHere = showCgm && state.cgmCoveragePath !== "Not Serving";
+  const ipServedHere = showIp && state.ipCoveragePath !== "Not Serving";
+  if (cgmServedHere && state.cgmScriptReceived === undefined) missing.push("CGM Script Received?");
+  if (ipServedHere && state.ipScriptReceived === undefined) missing.push("IP Script Received?");
+  if (state.clinReceived3 === undefined) missing.push("Clinicals Received?");
 
-  // Diagnosis & Last Visit — required when Clinicals received
-  if (state.mrReceived === "Yes") {
+  // Coverage-path / requirement / language answers are required only when the
+  // script was received AND valid (Received? = "Yes") — matching the on-page
+  // asterisks (an "Invalid" script makes the rest optional).
+  const cgmYes = showCgm && state.cgmScriptReceived === "Yes" && state.cgmScriptValid !== "Invalid";
+  const ipYes = showIp && state.ipScriptReceived === "Yes" && state.ipScriptValid !== "Invalid";
+
+  // Diagnosis & Last Visit — required when Clinicals received = Yes
+  if (state.clinReceived3 === "Yes") {
     if (!state.diagnosis) missing.push("Diagnosis");
     if (!state.lastVisitDate) missing.push("Last Visit Date");
   }
 
-  // Coverage paths — required per visible section
-  if (cgmOn && !state.cgmCoveragePath) missing.push("CGM Coverage Path");
-  if (ipOn) {
+  // CGM coverage path + language
+  if (cgmYes && !state.cgmCoveragePath) missing.push("CGM Coverage Path");
+  if (
+    cgmYes &&
+    (state.cgmCoveragePath === "Insulin" || state.cgmCoveragePath === "Hypo") &&
+    state.cgmLanguage === undefined
+  ) {
+    missing.push("CGM Language");
+  }
+
+  // IP coverage path + per-path requirements
+  if (ipYes) {
     if (!state.ipCoveragePath) {
       missing.push("Insulin Pump Coverage Path");
     } else {
@@ -2087,6 +2220,7 @@ function MondayPreviewPanel({ preview }: { preview: ReturnType<typeof buildMonda
           <ReasonsRow label="General MN Invalid Reasons" reasons={preview.generalMnInvalidReasons} />
           <ReasonsRow label="CGM MN Invalid Reasons" reasons={preview.cgmMnInvalidReasons} />
           <ReasonsRow label="Insulin Pump MN Invalid Reasons" reasons={preview.ipMnInvalidReasons} />
+          <ReasonsRow label="Insulin Pump MN No Reasons" reasons={preview.ipMnNoReasons} />
           {preview.generateCgmScript && (
             <ColRow label="Generate CGM Script" value={preview.generateCgmScript} />
           )}
