@@ -1,6 +1,15 @@
 {
   "managers": [
-    "josh@medicallymodern.com"
+    "temp-admin@medicallymodern.com"
   ],
-  "processors": {}
+  "processors": {
+    "josh@medicallymodern.com": {
+      "name": "Josh (processor test)",
+      "roles": [
+        "evaluate",
+        "sendRequest",
+        "confirmReceipt"
+      ]
+    }
+  }
 }
