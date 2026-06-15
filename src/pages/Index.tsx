@@ -1,10 +1,12 @@
-import { useSearchParams } from "react-router-dom";
+import { useSearchParams, useNavigate } from "react-router-dom";
 import { useAssignments } from "@/lib/assignmentsStore";
+import { useAccessContext } from "@/components/AccessProvider";
+import ProcessorView from "@/pages/ProcessorView";
 import { RolesPanel } from "@/components/dashboard/RolesPanel";
 import { DashboardMainView } from "@/components/dashboard/DashboardMainView";
 import { ThemePickerButton } from "@/components/ThemePicker";
 import { cn } from "@/lib/utils";
-import { Shield, LayoutDashboard, Stethoscope } from "lucide-react";
+import { Shield, LayoutDashboard, Stethoscope, KeyRound } from "lucide-react";
 import { USERS, type UserName } from "@/lib/config";
 import { useRoleCounts } from "@/hooks/useRoleCounts";
 import { useEscalatedCounts } from "@/hooks/useEscalatedCounts";
@@ -27,6 +29,8 @@ const Index = () => {
    * stacks history entries — "back" from a role page is always one step.
    */
   const [searchParams, setSearchParams] = useSearchParams();
+  const navigate = useNavigate();
+  const { access, email } = useAccessContext();
   const activeTab: Tab = searchParams.get("tab") === "dashboard" ? "dashboard" : "roles";
   const managersSub: ManagersSubTab =
     searchParams.get("sub") === "dashboards" ? "dashboards" : "assignments";
@@ -77,6 +81,11 @@ const Index = () => {
   const setActiveTab = (tab: Tab) => updateView({ tab });
   const setManagersSub = (sub: ManagersSubTab) => updateView({ sub });
   const setSelectedUser = (user: UserName) => updateView({ user });
+
+  // Processors get a stripped, no-sidebar view of only their assigned bars.
+  if (access.type === "processor") {
+    return <ProcessorView profile={access.profile} email={email} />;
+  }
 
   return (
     <div className="min-h-screen bg-gradient-subtle flex">
@@ -134,7 +143,14 @@ const Index = () => {
           )}
         </div>
 
-        <div className="border-t border-border p-3">
+        <div className="border-t border-border p-3 space-y-2">
+          <button
+            onClick={() => navigate("/access")}
+            className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-muted-foreground hover:bg-muted/50 hover:text-foreground transition-colors"
+            title="Assign manager / processor views per email"
+          >
+            <KeyRound className="w-4 h-4" /> Manage Access
+          </button>
           <ThemePickerButton />
         </div>
       </aside>

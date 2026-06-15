@@ -5,6 +5,7 @@ import { lazy, Suspense } from "react";
 import Index from "./pages/Index";
 import { FileViewerHost } from "./components/shared/FileViewerModal";
 import AuthGate from "./components/AuthGate";
+import AccessProvider from "./components/AccessProvider";
 
 // Masheke board roles (4)
 const EvaluatePage = lazy(() => import("./pages/EvaluatePage"));
@@ -34,6 +35,9 @@ const PatientQuestionsPage = lazy(() => import("./pages/PatientQuestionsPage"));
 // System Management
 const SystemMgmtPage = lazy(() => import("./pages/SystemMgmtPage"));
 
+// Access management (managers only)
+const AccessAdminPage = lazy(() => import("./pages/AccessAdminPage"));
+
 const queryClient = new QueryClient();
 
 const Loading = () => (
@@ -56,6 +60,7 @@ const ChaseBenefitsRedirect = () => {
 
 const App = () => (
   <AuthGate>
+  <AccessProvider>
   <QueryClientProvider client={queryClient}>
     <Toaster position="top-right" />
     <FileViewerHost />
@@ -80,11 +85,13 @@ const App = () => (
           <Route path="/final-confirm" element={<FinalConfirmPage />} />
           <Route path="/patient-questions" element={<PatientQuestionsPage />} />
           <Route path="/system-mgmt" element={<SystemMgmtPage />} />
+          <Route path="/access" element={<AccessAdminPage />} />
           <Route path="*" element={<Index />} />
         </Routes>
       </Suspense>
     </BrowserRouter>
   </QueryClientProvider>
+  </AccessProvider>
   </AuthGate>
 );
 
