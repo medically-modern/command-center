@@ -491,6 +491,7 @@ export function EvaluatePanel({ patient, resetVersion = 0, onUpdate, onOpenForm 
           patient.id,
           COL.ipMnInvalidReasons,
           preview.ipMnInvalidReasons,
+          true,
         ),
     });
     tasks.push({
@@ -500,6 +501,7 @@ export function EvaluatePanel({ patient, resetVersion = 0, onUpdate, onOpenForm 
           patient.id,
           COL.ipMnNoReasons,
           preview.ipMnNoReasons,
+          true,
         ),
     });
     // Consolidated, doctor-facing ask list — drives the Send Request UI

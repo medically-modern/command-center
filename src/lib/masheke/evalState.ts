@@ -283,9 +283,11 @@ export function deriveValidity(
   const ipInvalidReasons: string[] = [];
   const ipNoReasons: string[] = [];
   const generalReasons: string[] = [];
-  // Route an IP reason by the tri-state answer: "Invalid" → invalid bucket
-  // (dropdown_mm2xgg2y); "No"/missing → no bucket (dropdown_mm4bwxpv).
-  const ipRoute = (reason: string, answer?: YesNoInvalid): void => {
+  // Build a selection-aware label ("<Field> Invalid" when the answer is
+  // "Invalid", "<Field> Missing" for "No"/unset) and route it: Invalid →
+  // invalid bucket (dropdown_mm2xgg2y); else → no bucket (dropdown_mm4bwxpv).
+  const ipRoute = (field: string, answer?: YesNoInvalid): void => {
+    const reason = `${field} ${answer === "Invalid" ? "Invalid" : "Missing"}`;
     if (answer === "Invalid") ipInvalidReasons.push(reason);
     else ipNoReasons.push(reason);
   };
@@ -316,8 +318,9 @@ export function deriveValidity(
     if (state.cgmCoveragePath === "Insulin" || state.cgmCoveragePath === "Hypo") {
       if (state.cgmLanguage !== "Yes") {
         cgmValid = false;
+        const cgmLangName = state.cgmCoveragePath === "Hypo" ? "Hypoglycemia" : "Insulin";
         cgmReasons.push(
-          state.cgmLanguage === "Invalid" ? "CGM Language invalid" : "CGM Language missing",
+          `${cgmLangName} Language ${state.cgmLanguage === "Invalid" ? "Invalid" : "Missing"}`,
         );
       }
     }
@@ -328,56 +331,56 @@ export function deriveValidity(
   if (showIp && !ipNotServing) {
     if (!state.ipCoveragePath) {
       ipValid = false;
-      ipNoReasons.push("Insulin Pump Coverage Path missing");
+      ipNoReasons.push("Insulin Pump Coverage Path Missing");
     } else {
       const cfg = IP_PATH_FIELDS[state.ipCoveragePath];
       if (state.ipScriptValid !== "Valid") {
         ipValid = false;
-        if (state.ipScriptValid === "Missing") ipNoReasons.push("Insulin Pump Script missing");
-        else ipInvalidReasons.push("Insulin Pump Script invalid");
+        if (state.ipScriptValid === "Missing") ipNoReasons.push("Insulin Pump Script Missing");
+        else ipInvalidReasons.push("Insulin Pump Script Invalid");
       }
       if (cfg.showEducation && state.diabetesEducation !== "Yes") {
         ipValid = false;
-        ipRoute("Diabetes Education invalid", state.ipEducationV);
+        ipRoute("Diabetes Education", state.ipEducationV);
       }
       if (cfg.show3Injections && state.threeInjections !== "Yes") {
         ipValid = false;
-        ipRoute("3+ Injections invalid", state.ipThreeInjectionsV);
+        ipRoute("3+ Injections", state.ipThreeInjectionsV);
       }
       if (cfg.showCgmUse && state.cgmUse !== "Yes") {
         ipValid = false;
-        ipRoute("CGM Use invalid", state.ipCgmUseV);
+        ipRoute("CGM Use", state.ipCgmUseV);
       }
       if (cfg.showBsIssues && state.bloodSugarIssues !== "Yes") {
         ipValid = false;
-        ipRoute("Blood Sugar Issues invalid", state.ipBsIssuesV);
+        ipRoute("Blood Sugar Issues", state.ipBsIssuesV);
       }
       if (cfg.showLmn) {
         if (state.lmn === "No" || state.lmn === undefined) {
           ipValid = false;
-          ipNoReasons.push("Letter of MN missing");
+          ipNoReasons.push("Letter of MN Missing");
         } else if (state.lmn === "Yes, but Invalid") {
           ipValid = false;
-          ipInvalidReasons.push("Letter of MN invalid");
+          ipInvalidReasons.push("Letter of MN Invalid");
         }
       }
       if (cfg.showOow) {
         const oow = isOowDateValid(state.oowDate, patient.primaryInsurance);
         if (!oow) {
           ipValid = false;
-          ipNoReasons.push("OOW Date missing");
+          ipNoReasons.push("OOW Date Missing");
         } else if (!oow.valid) {
           ipValid = false;
           ipNoReasons.push("Pump still under warranty");
         } else if (cfg.showOowOnScript && state.oowDateOnScript !== "Yes") {
           // Date is known and old enough — but not yet on the script.
           ipValid = false;
-          ipRoute("OOW Date not on script", state.ipOowOnScriptV);
+          ipRoute("OOW on Script", state.ipOowOnScriptV);
         }
       }
       if (cfg.showMalfunction && state.malfunction !== "Yes") {
         ipValid = false;
-        ipRoute("Malfunction missing", state.ipMalfunctionV);
+        ipRoute("Malfunction", state.ipMalfunctionV);
       }
     }
   }
