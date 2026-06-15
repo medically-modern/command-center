@@ -5,7 +5,7 @@
  * Every pipeline stage can call these helpers to show & edit doctor-level notes.
  */
 
-const MONDAY_API_URL = "https://api.monday.com/v2";
+import { MONDAY_API_URL } from "./mondayEndpoint";
 const MONDAY_API_VERSION = "2024-10";
 const DOCTOR_DB_BOARD = 18142847597;
 const COL_DOCTOR_NOTES = "long_text_mm44az6q";

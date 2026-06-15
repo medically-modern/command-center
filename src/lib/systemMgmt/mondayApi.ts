@@ -5,7 +5,7 @@
  * detect escalation status, and determine pipeline stage.
  */
 
-const MONDAY_API_URL = "https://api.monday.com/v2";
+import { MONDAY_API_URL } from "../shared/mondayEndpoint";
 const MONDAY_API_VERSION = "2024-10";
 
 function getToken(): string {
