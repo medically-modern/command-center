@@ -42,17 +42,17 @@ function norm(e: string): string {
   return (e || "").trim().toLowerCase();
 }
 
-function isEmpty(cfg: AccessConfig): boolean {
-  return (
-    (!cfg.managers || cfg.managers.length === 0) &&
-    (!cfg.processors || Object.keys(cfg.processors).length === 0)
-  );
+/** Bootstrap window: until at least one MANAGER exists, everyone is treated as
+ *  a manager — so the first admin can sign in and configure, and adding
+ *  processors alone can never lock the admin out. */
+function noManagers(cfg: AccessConfig): boolean {
+  return !cfg.managers || cfg.managers.length === 0;
 }
 
 /** Resolve what a given email is allowed to see. */
 export function resolveAccess(email: string, cfg: AccessConfig): Access {
   const e = norm(email);
-  if (isEmpty(cfg)) return { type: "manager" }; // bootstrap — first admin sets things up
+  if (noManagers(cfg)) return { type: "manager" }; // bootstrap — first admin sets things up
   if ((cfg.managers || []).some((m) => norm(m) === e)) return { type: "manager" };
   const procKey = Object.keys(cfg.processors || {}).find((k) => norm(k) === e);
   if (procKey) return { type: "processor", profile: cfg.processors[procKey] };

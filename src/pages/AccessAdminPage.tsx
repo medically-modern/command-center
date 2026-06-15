@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAccessContext } from "@/components/AccessProvider";
 import { ROLES } from "@/lib/config";
@@ -13,6 +13,19 @@ export default function AccessAdminPage() {
     useAccessContext();
   const [email, setEmail] = useState("");
   const [name, setName] = useState("");
+
+  // Self-lockout guard: whoever is managing access is made an explicit manager
+  // on open, so adding others (or a wrong first manager) can never lock them out.
+  useEffect(() => {
+    if (
+      access.type === "manager" &&
+      me &&
+      !config.managers.some((m) => m.trim().toLowerCase() === me.trim().toLowerCase())
+    ) {
+      addManager(me);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   if (access.type !== "manager") {
     return (
