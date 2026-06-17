@@ -9,7 +9,8 @@
     "masheke@medicallymodern.com": {
       "name": "masheke",
       "roles": [
-        "evaluate"
+        "evaluate",
+        "sendRequest"
       ]
     }
   }
