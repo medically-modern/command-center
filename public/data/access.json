@@ -11,7 +11,8 @@
       "roles": [
         "evaluate",
         "sendRequest",
-        "chaseParachute"
+        "chaseParachute",
+        "chaseFax"
       ]
     }
   }
