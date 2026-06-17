@@ -14,7 +14,8 @@
         "chaseParachute",
         "chaseFax",
         "updateClinicals",
-        "fax"
+        "fax",
+        "confirmReceipt"
       ]
     }
   }
