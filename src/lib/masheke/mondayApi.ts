@@ -41,6 +41,8 @@ export const COL = {
   doctorFax: "email_mm1xdzcj",
   clinicName: "dropdown_mm1xbvas",
   clinicAddress: "location_mm1xjnfv",
+  prescriberRequirements: "text_mm4b45rh",
+  patientEmail: "text_mm1xc140",
 
   // Pipeline tracking
   masterStage: "color_mm1ws96t",
@@ -92,6 +94,8 @@ export const COL = {
   // Send Request → Supermail
   mnRequestLetter: "file_mm2yydbc",
   sendRequestTrigger: "color_mm2y7t2x",
+  /** Editable request/courtesy-fax message body (written on Send/Re-send). */
+  requestBody: "long_text_mm4cnw52",
 
   // Confirm Receipt / Chase
   confirmChaseNotes: "long_text_mm2ytsxp",
@@ -143,6 +147,8 @@ export const READ_COLUMN_IDS: string[] = [
   COL.ipCoveragePath, COL.cgmCoveragePath,
   COL.doctorName, COL.doctorNpi, COL.clinicalsMethod,
   COL.doctorPhone, COL.doctorEmail, COL.doctorFax, COL.clinicName, COL.clinicAddress,
+  COL.prescriberRequirements,
+  COL.patientEmail,
   COL.masterStage, COL.subStage,
   COL.daysSinceIntake, COL.daysSinceStageStart,
   COL.dateOfIntake, COL.dateOfStageStart,
@@ -156,6 +162,7 @@ export const READ_COLUMN_IDS: string[] = [
   COL.generalMnInvalidReasons, COL.cgmMnInvalidReasons, COL.ipMnInvalidReasons, COL.ipMnNoReasons,
   COL.mnRequestConsolidated,
   COL.requestSentAt,
+  COL.requestBody,
   // Scripts
   COL.generateCgmScript, COL.generateIpScript,
   // Receipt / Chase

@@ -46,8 +46,18 @@ import { GEN_SCRIPT_STATUS } from "@/lib/masheke/mondayMapping";
 import {
   loadEvalStateForPatient,
   saveEvalState,
+  computeMnChecklist,
   type EvalState,
+  type MnChecklist,
+  type MnItem,
+  type MnLangItem,
+  type MnState,
 } from "@/lib/masheke/evalState";
+import { shouldShowCgmBlock, shouldShowIpBlock } from "@/lib/masheke/ipPaths";
+import { MissingChecklist } from "@/components/masheke/MissingChecklist";
+import { PreviousActivityCard } from "@/components/masheke/PreviousActivityCard";
+import { MethodBar } from "@/components/masheke/MethodBar";
+import { buildRequestTemplate, titleCase } from "@/lib/masheke/requestTemplate";
 import { generateMnRequestPdf } from "@/lib/masheke/mnRequestPdf";
 import { ESCALATION_INDEX } from "@/lib/masheke/mondayMapping";
 import { toast } from "sonner";
@@ -58,6 +68,14 @@ import {
   FileText,
   Send,
   Mail,
+  Info,
+  Printer,
+  Phone,
+  Globe,
+  AlertTriangle,
+  ChevronRight,
+  Upload,
+  Plus,
 } from "lucide-react";
 import {
   AskForList,
@@ -69,6 +87,7 @@ import {
   MnStatusChip,
   SentChip,
 } from "@/components/masheke/mmKit";
+import { DoctorNotesPanel } from "@/components/shared/DoctorNotesPanel";
 
 interface Props {
   onUpdate: (patch: Partial<Patient>) => void;
@@ -84,6 +103,9 @@ interface Props {
 
 export function SendRequestPanel({ patient, resetVersion = 0, onUpdate }: Props) {
   const [state, setState] = useState<EvalState>(() => loadEvalStateForPatient(patient));
+  const showCgm = shouldShowCgmBlock(patient.serving);
+  const showIp = shouldShowIpBlock(patient.serving);
+  const mnChecklist = computeMnChecklist(state, showCgm, showIp);
 
   useEffect(() => {
     setState(loadEvalStateForPatient(patient));
@@ -245,7 +267,7 @@ export function SendRequestPanel({ patient, resetVersion = 0, onUpdate }: Props)
   //      the Request Sent At column.
   const [sending, setSending] = useState(false);
   const [sentNow, setSentNow] = useState(false);
-  const handleSend = useCallback(async () => {
+  const handleSend = useCallback(async (bodyText?: string) => {
     if (!hasToken()) {
       toast.error("Monday token not configured");
       return;
@@ -253,15 +275,26 @@ export function SendRequestPanel({ patient, resetVersion = 0, onUpdate }: Props)
     const method = patient.clinicalsMethod ?? "Fax";
     setSending(true);
     try {
-      try {
-        await writeStatusLabel(patient.id, COL.sendRequestTrigger, "Send");
-      } catch (e) {
-        throw new Error(`[1/2 trigger Send Request] ${e instanceof Error ? e.message : String(e)}`);
+      // Write the Request Message + Sent At FIRST, then flip the Supermail
+      // trigger LAST. Supermail fires on the trigger, so writing the body and
+      // timestamp first guarantees it never reads a stale/empty Request Message.
+      if (bodyText != null) {
+        try {
+          await writeLongText(patient.id, COL.requestBody, bodyText);
+          onUpdate({ requestBody: bodyText });
+        } catch (e) {
+          throw new Error(`[1/3 Request Body] ${e instanceof Error ? e.message : String(e)}`);
+        }
       }
       try {
         await writeDateTime(patient.id, COL.requestSentAt);
       } catch (e) {
-        throw new Error(`[2/2 Request Sent At] ${e instanceof Error ? e.message : String(e)}`);
+        throw new Error(`[2/3 Request Sent At] ${e instanceof Error ? e.message : String(e)}`);
+      }
+      try {
+        await writeStatusLabel(patient.id, COL.sendRequestTrigger, "Send");
+      } catch (e) {
+        throw new Error(`[3/3 trigger Send Request] ${e instanceof Error ? e.message : String(e)}`);
       }
       setSentNow(true);
       toast.success(
@@ -276,7 +309,7 @@ export function SendRequestPanel({ patient, resetVersion = 0, onUpdate }: Props)
     } finally {
       setSending(false);
     }
-  }, [patient]);
+  }, [patient, onUpdate]);
 
   // Notes gate — Mark as Complete requires ≥1 note added this session, and is
   // blocked while typed-but-unadded text sits in the note box.
@@ -290,6 +323,8 @@ export function SendRequestPanel({ patient, resetVersion = 0, onUpdate }: Props)
   // Local action-state for the new step UI (session-only, no Monday writes).
   const [portalOpened, setPortalOpened] = useState(false);
   const [completed, setCompleted] = useState(false);
+  // Attempt counter — pulled from Monday's Evaluation Counter column.
+  const attempt = Number(patient.evaluationCounter) || 1;
   useEffect(() => {
     setPortalOpened(false);
     setCompleted(false);
@@ -406,21 +441,76 @@ export function SendRequestPanel({ patient, resetVersion = 0, onUpdate }: Props)
   );
 
   const sendStepNum = isParachute ? 2 : 3;
+  void sendStepNum;
+
+  const handleAddNote = (text: string) => {
+    const stamp = new Date().toLocaleString("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+    });
+    const entry = `[${stamp}] ${text}`;
+    const next = patient.mnEvalNotes ? `${patient.mnEvalNotes}\n\n${entry}` : entry;
+    onUpdate({ mnEvalNotes: next });
+    void writeLongText(patient.id, COL.mnEvalNotes, next).catch(() => {});
+  };
+
+  const generateScriptsBlock = (
+    <>
+      <div className="flex flex-wrap gap-3">
+        {showCgmGenerate &&
+          (cgmIsGenerating ? (
+            <GeneratingChip label="Generating CGM Script…" onCancel={() => handleGenerateCgm(undefined)} />
+          ) : (
+            <GenBtn
+              label={mondayFiles.cgmTemplate.length > 0 ? "Regenerate CGM Script" : "Generate CGM Script"}
+              disabled={cgmMissing.length > 0}
+              onClick={() => handleGenerateCgm("Generate")}
+            />
+          ))}
+        {showIpGenerate &&
+          (ipIsGenerating ? (
+            <GeneratingChip label="Generating IP Script…" onCancel={() => handleGenerateIp(undefined)} />
+          ) : (
+            <GenBtn
+              label={mondayFiles.ipTemplate.length > 0 ? "Regenerate Insulin Pump Script" : "Generate Insulin Pump Script"}
+              disabled={ipMissing.length > 0}
+              onClick={() => handleGenerateIp("Generate")}
+            />
+          ))}
+      </div>
+      {showCgmGenerate && cgmMissing.length > 0 && (
+        <p className="text-sm font-semibold mt-2.5" style={{ color: "var(--mm-rose)" }}>
+          Cannot generate CGM Script — missing: {cgmMissing.join(", ")}
+        </p>
+      )}
+      {showIpGenerate && ipMissing.length > 0 && (
+        <p className="text-sm font-semibold mt-2.5" style={{ color: "var(--mm-rose)" }}>
+          Cannot generate Insulin Pump Script — missing: {ipMissing.join(", ")}
+        </p>
+      )}
+      {(mondayFiles.cgmTemplate.length > 0 || mondayFiles.ipTemplate.length > 0) && (
+        <div className="mt-4 flex flex-col gap-2.5">
+          <FileList files={mondayFiles.cgmTemplate} onDelete={handleDeleteCgmFile} deleteLabel="CGM script template" />
+          <FileList files={mondayFiles.ipTemplate} onDelete={handleDeleteIpFile} deleteLabel="Insulin Pump script template" />
+        </div>
+      )}
+    </>
+  );
 
   return (
     <div className="flex flex-col gap-6">
-      <MethodHero patient={patient} method={method} />
+      {/* ── Cross-stage attempt + activity context (shared with Confirm Receipt) ── */}
+      <PreviousActivityCard title={`Send Request Attempt #${attempt}`} patient={patient} />
 
       {/* ── Step 1 — What we're still missing ── */}
-      <MmStep
-        num={1}
-        title="What we're still missing"
-        rightAccessory={<MnStatusChip established={patient.medicalNecessity === "Established"} />}
-      >
-        <AskForList patient={patient} />
+      <MmStep num={1} title="What we're still missing">
+        <MissingChecklist checklist={mnChecklist} />
         <div className="mt-5">
           <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-2">
-            Clinical files on hand — attached automatically
+            Clinical files on hand
           </p>
           {mondayFiles.loading && mondayFiles.clinicalFiles.length === 0 ? (
             <LoadingRow />
@@ -434,211 +524,31 @@ export function SendRequestPanel({ patient, resetVersion = 0, onUpdate }: Props)
         </div>
       </MmStep>
 
-      {/* ── Step 2 — Generate Scripts (fax/email only; Parachute skips it) ── */}
+      {/* ── Step 2 — Method of Communication ── */}
+      <MmStep num={2} title="Method of Communication">
+        <MethodComms patient={patient} method={method} />
+      </MmStep>
+
+      {/* ── Step 3 — Generate Scripts (fax/email; for Parachute it sits inside the Send drawer) ── */}
       {!isParachute && (
-        <MmStep
-          num={2}
-          title="Generate Scripts"
-          sub={`Generate the documents to include in the ${method === "Email" ? "email" : "fax"}.`}
-        >
-          <div className="flex flex-wrap gap-3">
-            {showCgmGenerate &&
-              (cgmIsGenerating ? (
-                <GeneratingChip label="Generating CGM Script…" onCancel={() => handleGenerateCgm(undefined)} />
-              ) : (
-                <GenBtn
-                  label={mondayFiles.cgmTemplate.length > 0 ? "Regenerate CGM Script" : "Generate CGM Script"}
-                  disabled={cgmMissing.length > 0}
-                  onClick={() => handleGenerateCgm("Generate")}
-                />
-              ))}
-            {showIpGenerate &&
-              (ipIsGenerating ? (
-                <GeneratingChip label="Generating IP Script…" onCancel={() => handleGenerateIp(undefined)} />
-              ) : (
-                <GenBtn
-                  label={mondayFiles.ipTemplate.length > 0 ? "Regenerate IP Script" : "Generate IP Script"}
-                  disabled={ipMissing.length > 0}
-                  onClick={() => handleGenerateIp("Generate")}
-                />
-              ))}
-            {/* MN Request Letter generation temporarily disabled — coming soon */}
-            <span title="MN Request Letter generation is coming soon">
-              <GenBtn
-                label={
-                  generatingLetter
-                    ? "Generating…"
-                    : mnLetterPresent
-                      ? "Regenerate MN Request Letter (coming soon)"
-                      : "Generate MN Request Letter (coming soon)"
-                }
-                disabled
-                spinner={generatingLetter}
-                onClick={handleGenerateMnRequestLetter}
-              />
-            </span>
-          </div>
-
-          {showCgmGenerate && cgmMissing.length > 0 && (
-            <p className="text-sm font-semibold mt-2.5" style={{ color: "var(--mm-rose)" }}>
-              Cannot generate CGM Script — missing: {cgmMissing.join(", ")}
-            </p>
-          )}
-          {showIpGenerate && ipMissing.length > 0 && (
-            <p className="text-sm font-semibold mt-2.5" style={{ color: "var(--mm-rose)" }}>
-              Cannot generate IP Script — missing: {ipMissing.join(", ")}
-            </p>
-          )}
-
-          {(mondayFiles.loading &&
-            mondayFiles.cgmTemplate.length + mondayFiles.ipTemplate.length + mondayFiles.mnRequestLetter.length === 0) ? (
-            <div className="mt-4">
-              <LoadingRow />
-            </div>
-          ) : (
-            (mondayFiles.cgmTemplate.length > 0 ||
-              mondayFiles.ipTemplate.length > 0 ||
-              mondayFiles.mnRequestLetter.length > 0) && (
-              <div className="mt-4 flex flex-col gap-2.5">
-                <FileList files={mondayFiles.cgmTemplate} onDelete={handleDeleteCgmFile} deleteLabel="CGM script template" />
-                <FileList files={mondayFiles.ipTemplate} onDelete={handleDeleteIpFile} deleteLabel="Insulin Pump script template" />
-                <FileList files={mondayFiles.mnRequestLetter} onDelete={handleDeleteMnRequestLetterFile} deleteLabel="MN Request Letter" />
-              </div>
-            )
-          )}
+        <MmStep num={3} title="Generate Scripts">
+          {generateScriptsBlock}
         </MmStep>
       )}
 
-      {/* ── Notes — standalone card for fax/email (Parachute has it inline) ── */}
-      {!isParachute && notesPanel("mm")}
-
-      {/* ── Send & Complete ── */}
-      <MmStep num={sendStepNum} title="Send & Complete">
-        {/* sent status header */}
-        <div className="flex items-center gap-3 flex-wrap -mt-1 mb-4">
-          {/* "Not sent yet" bubble removed (June 2026) — only show when sent */}
-          {patient.requestSentAt && (
-            <>
-              <span className="text-sm text-muted-foreground">
-                Last sent <b className="text-foreground">{formatDate(patient.requestSentAt)}</b>
-              </span>
-              <SentChip />
-            </>
-          )}
-        </div>
-
-        {/* action 1 — send (fax/email) or open portal (parachute) */}
-        {isFaxOrEmail && (
-          <>
-            <ActionRow
-              num={1}
-              done={sentNow}
-              title={
-                (method === "Fax" && patient.doctorFax)
-                  ? `Send Fax to ${patient.doctorFax}`
-                  : (method === "Email" && patient.doctorEmail)
-                    ? `Send Email to ${patient.doctorEmail}`
-                    : `Send ${method}`
-              }
-              sub={
-                method === "Fax"
-                  ? "Fax sending is coming soon."
-                  : (method === "Email" && !patient.doctorEmail)
-                    ? "(no doctor email on file)"
-                    : "Sends generated documents + clinical files via Supermail."
-              }
-            >
-              {/* Fax sending temporarily disabled — coming soon.
-                  MN-letter gate relaxed while letter generation is paused. */}
-              <Button
-                onClick={handleSend}
-                disabled={sending || method === "Fax"}
-                title={method === "Fax" ? "Fax sending is coming soon" : undefined}
-                className="gap-2 text-white shadow-sm bg-[color:var(--mm-green)] hover:bg-[oklch(0.56_0.10_175)] disabled:bg-[oklch(0.85_0.01_200)]"
-              >
-                {sending ? (
-                  <>
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    Sending…
-                  </>
-                ) : (
-                  <>
-                    {method === "Email" ? <Mail className="h-4 w-4" /> : <Send className="h-4 w-4" />}
-                    Send {method}
-                  </>
-                )}
-              </Button>
-            </ActionRow>
-          </>
-        )}
-        {isParachute && (
-          <ActionRow num={1} done={portalOpened} title="Open the Parachute portal">
-            <a
-              href={PARACHUTE_URL}
-              target="_blank"
-              rel="noopener noreferrer"
-              onClick={() => setPortalOpened(true)}
-              className="inline-flex items-center gap-2 h-10 px-4 rounded-lg bg-background text-sm font-semibold transition-colors text-[color:var(--mm-teal)] shadow-[inset_0_0_0_1.5px_var(--mm-teal)] hover:bg-[oklch(0.36_0.04_200_/_0.06)]"
-            >
-              <ExtIcon />
-              Open Parachute Portal
-            </a>
-          </ActionRow>
-        )}
-
-        {/* Parachute keeps notes inline between the two actions */}
-        {isParachute && <div className="my-3">{notesPanel("mm-inline")}</div>}
-
-        {/* action 2 — mark as complete */}
-        <div className={isParachute ? "" : "mt-3"}>
-          <ActionRow
-            num={2}
-            done={completed}
-            title="Mark as Complete"
-            sub={
-              completed
-                ? "Done — patient moved to the next stage on Monday."
-                : "Click after the request has been sent — advances the patient to the next stage on Monday."
-            }
-          >
-            <div className="flex flex-col items-end gap-1.5">
-              {!completed && noteBlocked && (
-                <span className="text-xs font-medium text-right" style={{ color: "var(--mm-rose)" }}>
-                  {hasPendingNote
-                    ? "Press Add on your note before marking complete"
-                    : "Add at least one note above to mark complete"}
-                </span>
-              )}
-              {completed ? (
-                <span
-                  className="inline-flex items-center gap-2 rounded-lg px-5 py-2.5 text-sm font-semibold text-[color:var(--mm-teal)] shadow-[inset_0_0_0_1px_var(--mm-mint-ring)]"
-                  style={{ background: "var(--mm-mint)" }}
-                >
-                  <Check className="h-4 w-4" /> Completed
-                </span>
-              ) : (
-                <Button
-                  size="lg"
-                  onClick={handleMarkComplete}
-                  disabled={completing || noteBlocked}
-                  className="gap-2 text-white shadow-sm bg-[color:var(--mm-green)] hover:bg-[oklch(0.56_0.10_175)] disabled:bg-[oklch(0.85_0.01_200)]"
-                >
-                  {completing ? (
-                    <>
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                      Marking…
-                    </>
-                  ) : (
-                    <>
-                      <Check className="h-4 w-4" />
-                      Mark as Complete
-                    </>
-                  )}
-                </Button>
-              )}
-            </div>
-          </ActionRow>
-        </div>
+      {/* ── Step 4 — Send the Request ── */}
+      <MmStep num={isParachute ? 3 : 4} title="Send the Request">
+        <SendRequestComposer
+          key={`${patient.id}:${resetVersion}`}
+          patient={patient}
+          checklist={mnChecklist}
+          attempt={attempt}
+          method={method}
+          sending={sending}
+          onSend={handleSend}
+          onAddNote={handleAddNote}
+          generateSlot={isParachute ? generateScriptsBlock : undefined}
+        />
       </MmStep>
     </div>
   );
@@ -647,6 +557,707 @@ export function SendRequestPanel({ patient, resetVersion = 0, onUpdate }: Props)
 // =====================================================================
 // Send-request-specific sub-components
 // =====================================================================
+
+/** Plain-language bullet phrasing for each requirement (bold lead + tail). */
+const BULLETS: Record<string, { lead: string; rest: string }> = {
+  "3+ Injections / Day": { lead: "≥3 daily insulin injections", rest: "(insulin-dependence)" },
+  "Diabetes Education": { lead: "Diabetes education", rest: "provided / documented" },
+  "CGM Use": { lead: "Current CGM use", rest: "documented" },
+  "Blood Sugar Issues": { lead: "Blood-sugar management difficulty", rest: "noted" },
+  "Letter of MN on File": { lead: "Letter of medical necessity", rest: "signed & on file" },
+  "OOW Date": { lead: "Out-of-warranty date", rest: "" },
+  "OOW on Script": { lead: "OOW date", rest: "written on the script" },
+  Malfunction: { lead: "Non-repairable malfunction", rest: "reason" },
+};
+function bulletFor(label: string): { lead: string; rest: string } {
+  return BULLETS[label] ?? { lead: label.replace(" Language", " language"), rest: "in the note" };
+}
+
+// Pump model → manufacturer, for the partner line + loop-in chip.
+const PUMP_MFR: Record<string, string> = {
+  iLet: "Beta Bionics",
+  Omnipod: "Insulet",
+  "Omnipod 5": "Insulet",
+  "t:slim": "Tandem",
+  "t:slim X2": "Tandem",
+  Mobi: "Tandem",
+  Tandem: "Tandem",
+};
+
+function ProvField({ label, value }: { label: string; value?: string }) {
+  return (
+    <div>
+      <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{label}</p>
+      <p className="text-sm font-bold mt-0.5">{value || "—"}</p>
+    </div>
+  );
+}
+
+/** Format a phone number as (xxx)-xxx-xxxx. */
+function formatPhone(raw?: string): string {
+  if (!raw) return "—";
+  const d = raw.replace(/\D/g, "");
+  if (d.length === 10) return `(${d.slice(0, 3)})-${d.slice(3, 6)}-${d.slice(6)}`;
+  if (d.length === 11 && d[0] === "1") return `(${d.slice(1, 4)})-${d.slice(4, 7)}-${d.slice(7)}`;
+  return raw;
+}
+
+
+/** Method badge (Fax / Email / Parachute) for the top bar. Parachute links out. */
+function MethodBadge({ method }: { method: string }) {
+  const isFax = method === "Fax";
+  const isEmail = method === "Email";
+  const isParachute = method === "Parachute";
+  const known = isFax || isEmail || isParachute;
+  const cls = `inline-flex items-center gap-2 rounded-xl px-5 py-3.5 text-xl font-extrabold tracking-tight shrink-0 ${
+    known ? "text-white" : "bg-muted text-muted-foreground"
+  }`;
+  const style = known ? { background: isParachute ? "var(--mm-green)" : "var(--mm-teal)" } : undefined;
+  const inner = (
+    <>
+      {isEmail ? <Mail className="h-[22px] w-[22px]" /> : isFax ? <Printer className="h-[22px] w-[22px]" /> : isParachute ? <Globe className="h-[22px] w-[22px]" /> : null}
+      {method}
+    </>
+  );
+  if (isParachute) {
+    return (
+      <a
+        href="https://www.parachutehealth.com/"
+        target="_blank"
+        rel="noopener noreferrer"
+        className={`${cls} hover:opacity-90 transition-opacity`}
+        style={style}
+        title="Open Parachute Health"
+      >
+        {inner}
+      </a>
+    );
+  }
+  return (
+    <span className={cls} style={style}>
+      {inner}
+    </span>
+  );
+}
+
+/** A titled outreach section card. */
+function OutreachCard({ title, badge, children }: { title: string; badge?: string; children: React.ReactNode }) {
+  return (
+    <div className="rounded-xl border p-5" style={{ borderColor: "var(--mm-card-border)" }}>
+      <div className="flex items-center gap-2 mb-3">
+        <h4 className="text-base font-bold tracking-tight">{title}</h4>
+        {badge && (
+          <span
+            className="rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider"
+            style={{ background: "oklch(0.94 0.02 175 / 0.7)", color: "var(--mm-teal)" }}
+          >
+            {badge}
+          </span>
+        )}
+      </div>
+      {children}
+    </div>
+  );
+}
+
+/** Method of Communication — minimal top bar (method + doctor) then three
+ *  outreach paths: Provider, Referral, Patient. No duplicated info. */
+function MethodComms({ patient, method }: { patient: Patient; method: string }) {
+  return (
+    <div className="space-y-4">
+      {/* Top bar — just the method + doctor name (shared with Confirm Receipt) */}
+      <MethodBar patient={patient} method={method} />
+
+      {/* 1 — Provider Outreach (primary path) */}
+      <OutreachCard title="Provider Outreach">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-x-6 gap-y-4">
+          <ProvField label="Fax" value={patient.doctorFax} />
+          <ProvField label="Email" value={patient.doctorEmail} />
+          <ProvField label="Phone" value={formatPhone(patient.doctorPhone)} />
+        </div>
+        <p className="mt-3 text-xs text-muted-foreground">
+          Clinic: <span className="font-semibold text-foreground">{patient.clinicName || "—"}</span>
+          {"   ·   "}Address: <span className="font-semibold text-foreground">{patient.clinicAddress || "—"}</span>
+        </p>
+
+        {/* Prescriber requirements — amber when present, plain row when empty */}
+        {patient.prescriberRequirements?.trim() ? (
+          <div className="mt-4 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3">
+            <p className="text-sm font-semibold text-amber-800 mb-1 flex items-center gap-1.5">
+              <AlertTriangle className="h-4 w-4" /> Prescriber Requirements
+            </p>
+            <p className="text-sm text-amber-900 whitespace-pre-wrap">{patient.prescriberRequirements}</p>
+          </div>
+        ) : (
+          <div className="mt-4 border-t pt-3 flex items-center gap-2" style={{ borderColor: "var(--mm-card-border)" }}>
+            <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+              Prescriber Requirements
+            </span>
+            <span className="text-sm font-bold">—</span>
+          </div>
+        )}
+
+        {patient.doctorNpi && (
+          <div className="mt-4 border-t pt-3" style={{ borderColor: "var(--mm-card-border)" }}>
+            <DoctorNotesPanel doctorNpi={patient.doctorNpi} doctorName={patient.doctorName} compact flush />
+          </div>
+        )}
+      </OutreachCard>
+
+      {/* 2 & 3 — Referral + Patient Outreach, side by side */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <OutreachCard title="Referral Outreach">
+          <ProvField label="Referral Source" value={patient.referralSource} />
+        </OutreachCard>
+        <OutreachCard title="Patient Outreach">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-4">
+            <ProvField label="Phone" value={formatPhone(patient.phone)} />
+            <ProvField label="Email" value={patient.patientEmail} />
+          </div>
+        </OutreachCard>
+      </div>
+    </div>
+  );
+}
+
+/** Selectable channel card for the Method of Communication section. */
+function ChannelCard({
+  icon,
+  label,
+  value,
+  selected,
+  onSelect,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  value?: string;
+  selected: boolean;
+  onSelect: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onSelect}
+      className="text-left rounded-xl border-2 p-4 transition-colors"
+      style={
+        selected
+          ? { borderColor: "var(--mm-teal)", background: "oklch(0.94 0.02 175 / 0.4)" }
+          : { borderColor: "var(--mm-card-border)" }
+      }
+    >
+      <span
+        className="grid place-items-center h-9 w-9 rounded-lg mb-2"
+        style={
+          selected
+            ? { background: "var(--mm-teal)", color: "#fff" }
+            : { background: "oklch(0.95 0.005 260)", color: "var(--mm-muted-foreground, #64748b)" }
+        }
+      >
+        {icon}
+      </span>
+      <div className="text-sm font-bold">{label}</div>
+      <div className="text-xs text-muted-foreground mt-0.5 break-all">{value || "—"}</div>
+    </button>
+  );
+}
+
+/** Loop-in support chip (toggleable). */
+function LoopChip({ label, on, onToggle }: { label: string; on: boolean; onToggle: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold border-2 transition-colors"
+      style={
+        on
+          ? { borderColor: "var(--mm-teal)", color: "var(--mm-teal)", background: "oklch(0.94 0.02 175 / 0.4)" }
+          : { borderColor: "var(--mm-card-border)" }
+      }
+    >
+      {on && <Check className="h-3.5 w-3.5" />}
+      {label}
+    </button>
+  );
+}
+
+/** Section 2 — how to reach the provider + who to loop in. */
+function MethodOfCommunication({
+  patient,
+  channel,
+  onChannel,
+  loopIns,
+  onToggleLoop,
+}: {
+  patient: Patient;
+  channel: string;
+  onChannel: (c: string) => void;
+  loopIns: string[];
+  onToggleLoop: (l: string) => void;
+}) {
+  const preferred = patient.clinicalsMethod ?? "Fax";
+  const mfr = PUMP_MFR[patient.pumpType ?? ""] ?? patient.pumpType;
+  const loopOptions = [
+    "Clinical Educator (CDE)",
+    mfr ? `Manufacturer rep · ${mfr}` : "Manufacturer rep",
+    "Masheke (MN)",
+  ];
+  const channels = [
+    { key: "Fax", icon: <Printer className="h-4 w-4" />, label: "Fax", value: patient.doctorFax },
+    { key: "Portal", icon: <Globe className="h-4 w-4" />, label: "Provider Portal", value: "Portal · linked" },
+    { key: "Email", icon: <Mail className="h-4 w-4" />, label: "E-fax / Email", value: patient.doctorEmail },
+    { key: "Phone", icon: <Phone className="h-4 w-4" />, label: "Phone", value: patient.doctorPhone },
+  ];
+  return (
+    <div className="space-y-5">
+      <div className="flex flex-wrap gap-x-10 gap-y-3 border-b pb-4" style={{ borderColor: "var(--mm-card-border)" }}>
+        <ProvField label="Provider" value={patient.doctorName} />
+        <ProvField label="NPI" value={patient.doctorNpi} />
+        <ProvField label="Preferred" value={preferred} />
+      </div>
+      <div>
+        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-3">
+          How to reach this provider
+        </p>
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          {channels.map((c) => (
+            <ChannelCard
+              key={c.key}
+              icon={c.icon}
+              label={c.label}
+              value={c.value}
+              selected={channel === c.key}
+              onSelect={() => onChannel(c.key)}
+            />
+          ))}
+        </div>
+      </div>
+      <div>
+        <p className="text-sm text-muted-foreground mb-2">
+          Because this is a <b className="text-foreground">language / education</b> ask, loop in support if helpful:
+        </p>
+        <div className="flex flex-wrap gap-2">
+          {loopOptions.map((l) => (
+            <LoopChip key={l} label={l} on={loopIns.includes(l)} onToggle={() => onToggleLoop(l)} />
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** Gmail-style recipient field — each address becomes a removable pill. */
+function RecipientChips({ recipients, onChange }: { recipients: string[]; onChange: (r: string[]) => void }) {
+  const [input, setInput] = useState("");
+  const add = (raw: string) => {
+    const v = raw.trim().replace(/[,;]+$/, "").trim();
+    if (v && !recipients.includes(v)) onChange([...recipients, v]);
+    setInput("");
+  };
+  return (
+    <div
+      className="flex flex-wrap items-center gap-1.5 rounded-xl border p-2 min-h-[44px]"
+      style={{ borderColor: "var(--mm-card-border)" }}
+    >
+      {recipients.map((r) => (
+        <span
+          key={r}
+          className="inline-flex items-center gap-1.5 rounded-full pl-1 pr-2 py-0.5 text-sm"
+          style={{ background: "oklch(0.94 0.02 175 / 0.6)", color: "var(--mm-teal)" }}
+        >
+          <span
+            className="grid place-items-center h-5 w-5 rounded-full text-[10px] font-bold text-white"
+            style={{ background: "var(--mm-teal)" }}
+          >
+            {r[0]?.toUpperCase()}
+          </span>
+          {r}
+          <button
+            type="button"
+            onClick={() => onChange(recipients.filter((x) => x !== r))}
+            className="hover:opacity-70"
+            aria-label={`Remove ${r}`}
+          >
+            <X className="h-3 w-3" />
+          </button>
+        </span>
+      ))}
+      <input
+        value={input}
+        onChange={(e) => setInput(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === "," || e.key === ";") {
+            e.preventDefault();
+            add(input);
+          } else if (e.key === "Backspace" && !input && recipients.length) {
+            onChange(recipients.slice(0, -1));
+          }
+        }}
+        onBlur={() => add(input)}
+        placeholder={recipients.length ? "" : "Recipient(s)"}
+        className="flex-1 min-w-[120px] bg-transparent text-sm p-1 focus:outline-none"
+      />
+    </div>
+  );
+}
+
+/** Section 3 — auto-filled request template + notes + send footer. */
+function SendRequestComposer({
+  patient,
+  checklist,
+  attempt,
+  method,
+  sending,
+  onSend,
+  onAddNote,
+  generateSlot,
+}: {
+  patient: Patient;
+  checklist: MnChecklist;
+  attempt: number;
+  method: string;
+  sending: boolean;
+  onSend: (body: string) => void;
+  onAddNote: (text: string) => void;
+  generateSlot?: React.ReactNode;
+}) {
+  // The template derives live from the current checklist until the rep edits
+  // it; once they type, their draft takes over. Falls back to the saved
+  // column value (requestBody) so a previously approved message reloads.
+  const generated = buildRequestTemplate(patient, checklist);
+  const [draft, setDraft] = useState<string | null>(null);
+  const body = draft ?? patient.requestBody ?? generated;
+  const [notes, setNotes] = useState("");
+  const chanValue =
+    method === "Email" ? patient.doctorEmail : method === "Fax" ? patient.doctorFax : patient.doctorPhone;
+  const [recipients, setRecipients] = useState<string[]>([]);
+  const [subject, setSubject] = useState(`Medical necessity documentation — ${titleCase(patient.name || "")}`);
+  const isParachute = method === "Parachute";
+  const [open, setOpen] = useState(!isParachute);
+  const [files, setFiles] = useState<File[]>([]);
+  const [warned, setWarned] = useState(false);
+  // Almost every request should carry an attachment — warn once before sending.
+  const trySend = () => {
+    if (!isParachute && files.length === 0 && !warned) {
+      setWarned(true);
+      return;
+    }
+    onSend(body);
+  };
+  return (
+    <div className="space-y-5">
+      {isParachute && (
+        <button
+          type="button"
+          onClick={() => setOpen((o) => !o)}
+          className="inline-flex items-center gap-1.5 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+        >
+          <ChevronRight className={`h-4 w-4 transition-transform ${open ? "rotate-90" : ""}`} />
+          {open ? "Hide request template" : "Show request template (optional for Parachute)"}
+        </button>
+      )}
+      {open && (
+        <>
+      {generateSlot && (
+        <div className="rounded-2xl border p-5" style={{ borderColor: "var(--mm-card-border)" }}>
+          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-3">Generate Scripts</p>
+          {generateSlot}
+        </div>
+      )}
+      <div className="rounded-2xl border p-5 space-y-5" style={{ borderColor: "var(--mm-card-border)" }}>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">To</p>
+          <RecipientChips recipients={recipients} onChange={setRecipients} />
+        </div>
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">Subject</p>
+          <input
+            value={subject}
+            onChange={(e) => setSubject(e.target.value)}
+            className="w-full rounded-xl border p-3 text-sm focus:outline-none"
+            style={{ borderColor: "var(--mm-card-border)" }}
+          />
+        </div>
+      </div>
+      <div>
+        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">
+          Request template — auto-filled, edit before sending
+        </p>
+        <textarea
+          value={body}
+          onChange={(e) => setDraft(e.target.value)}
+          rows={9}
+          className="w-full rounded-xl border p-4 text-sm leading-relaxed resize-y focus:outline-none"
+          style={{ borderColor: "var(--mm-card-border)" }}
+        />
+      </div>
+      <div>
+        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">
+          Attachments — sent with the request
+        </p>
+        <label
+          className="flex items-center gap-2 cursor-pointer rounded-xl border border-dashed p-4 text-sm text-muted-foreground hover:bg-muted/30"
+          style={{ borderColor: "var(--mm-card-border)" }}
+        >
+          <Upload className="h-4 w-4 shrink-0" />
+          <span>Click to add files</span>
+          <input
+            type="file"
+            multiple
+            className="hidden"
+            onChange={(e) => setFiles((prev) => [...prev, ...Array.from(e.target.files ?? [])])}
+          />
+        </label>
+        {files.length > 0 && (
+          <ul className="mt-2 space-y-1">
+            {files.map((f, i) => (
+              <li
+                key={`${f.name}-${i}`}
+                className="flex items-center justify-between gap-2 rounded-lg border px-3 py-2 text-sm"
+                style={{ borderColor: "var(--mm-card-border)" }}
+              >
+                <span className="flex items-center gap-2 min-w-0">
+                  <FileText className="h-4 w-4 shrink-0 text-muted-foreground" />
+                  <span className="truncate">{f.name}</span>
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setFiles(files.filter((_, j) => j !== i))}
+                  className="hover:opacity-70"
+                  aria-label={`Remove ${f.name}`}
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+      </div>
+        </>
+      )}
+
+      {/* Notes — always visible (rep still logs notes after a Parachute send) */}
+      <div className="rounded-2xl border p-5" style={{ borderColor: "var(--mm-card-border)" }}>
+        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">
+          Notes — anything else the team should know <span className="normal-case font-normal">(optional)</span>
+        </p>
+        <textarea
+          value={notes}
+          onChange={(e) => setNotes(e.target.value)}
+          rows={3}
+          placeholder="e.g. Also emailed the nurse separately to flag the exact language we need."
+          className="w-full rounded-xl border p-4 text-sm resize-y focus:outline-none"
+          style={{ borderColor: "var(--mm-card-border)" }}
+        />
+        <div className="mt-2 flex justify-end">
+          <Button
+            size="sm"
+            disabled={!notes.trim()}
+            onClick={() => {
+              onAddNote(notes.trim());
+              setNotes("");
+            }}
+            className="gap-1.5 text-white bg-[color:var(--mm-green)] hover:bg-[oklch(0.56_0.10_175)] disabled:bg-[oklch(0.85_0.01_200)]"
+          >
+            <Plus className="h-4 w-4" /> Add note
+          </Button>
+        </div>
+        {(() => {
+          const noteItems = [
+            { label: "MN Workflow", text: patient.mnEvalNotes },
+            { label: "Confirm Receipt", text: patient.confirmReceiptNotes },
+            { label: "Chase Clinicals", text: patient.confirmChaseNotes },
+            { label: "Intake", text: patient.profileSendOffNotes },
+          ].filter((n) => n.text?.trim());
+          if (!noteItems.length) return null;
+          return (
+            <div className="mt-3 rounded-xl border bg-muted/30 p-4" style={{ borderColor: "var(--mm-card-border)" }}>
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-2">
+                Notes on file
+              </p>
+              <div className="space-y-2.5">
+                {noteItems.map((n) => (
+                  <div key={n.label}>
+                    <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{n.label}</p>
+                    <p className="text-sm whitespace-pre-wrap">{n.text}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          );
+        })()}
+      </div>
+
+      {!isParachute && files.length === 0 && (
+        <div
+          className="flex items-center gap-2 rounded-lg border px-3 py-2 text-sm"
+          style={{ background: "oklch(0.98 0.03 95)", borderColor: "oklch(0.85 0.08 85)", color: "oklch(0.5 0.08 70)" }}
+        >
+          <AlertTriangle className="h-4 w-4 shrink-0" style={{ color: "oklch(0.62 0.13 70)" }} />
+          {warned
+            ? "No attachment detected — press “Send request” again to send without one."
+            : "No attachment added yet — most requests should include the signed script."}
+        </div>
+      )}
+      <div className="flex items-center justify-between gap-3 flex-wrap border-t pt-4" style={{ borderColor: "var(--mm-card-border)" }}>
+        <span />
+        <div className="flex items-center gap-3">
+          <Button
+            onClick={trySend}
+            disabled={sending}
+            className="gap-2 text-white shadow-sm bg-[color:var(--mm-green)] hover:bg-[oklch(0.56_0.10_175)] disabled:bg-[oklch(0.85_0.01_200)]"
+          >
+            {sending ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" /> Sending…
+              </>
+            ) : (
+              <>
+                <Send className="h-4 w-4" /> Send request
+              </>
+            )}
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+type CardMode = "complete" | "docs" | "language";
+interface DeviceCard {
+  name: string;
+  model?: string;
+  coverageType?: string;
+  scriptOk: boolean;
+  clinicalsOk: boolean;
+  languageOk: boolean;
+  mode: CardMode;
+  docNeeds: string[]; // whole documents still missing
+  bullets: { lead: string; rest: string }[]; // specific note language missing
+}
+
+function buildDeviceCard(
+  name: string,
+  model: string | undefined,
+  coverageType: string | undefined,
+  scriptOk: boolean,
+  clinicalsOk: boolean,
+  lang: MnLangItem,
+): DeviceCard {
+  const languageOk = lang.state === "ok";
+  const docsMissing = !scriptOk || !clinicalsOk;
+
+  const docNeeds: string[] = [];
+  if (!scriptOk) docNeeds.push(`${name} Script`);
+  if (!clinicalsOk) docNeeds.push("Medical Records");
+
+  // Only drill into specific note language once the documents are in hand.
+  const bullets: { lead: string; rest: string }[] = [];
+  if (!docsMissing && !languageOk) {
+    const subs = lang.subItems.filter((s) => s.state !== "ok");
+    if (subs.length === 0) bullets.push(bulletFor(`${name} Language`));
+    else for (const s of subs) bullets.push(bulletFor(s.label));
+  }
+
+  const mode: CardMode = scriptOk && clinicalsOk && languageOk ? "complete" : docsMissing ? "docs" : "language";
+  return { name, model, coverageType, scriptOk, clinicalsOk, languageOk, mode, docNeeds, bullets };
+}
+
+function DeviceRequestCard({ card }: { card: DeviceCard }) {
+  // Color by mode so "missing documents" vs "missing language" reads at a glance.
+  const tone =
+    card.mode === "complete"
+      ? { bg: "var(--mm-mint)", border: "var(--mm-mint-ring)", badge: "var(--mm-green)", label: "Complete — nothing to request" }
+      : card.mode === "docs"
+        ? { bg: "var(--mm-rose-soft)", border: "oklch(0.62 0.13 18 / 0.3)", badge: "var(--mm-rose)", label: "Missing documents" }
+        : { bg: "oklch(0.98 0.03 95)", border: "oklch(0.85 0.08 85)", badge: "oklch(0.62 0.13 70)", label: "Missing language" };
+
+  return (
+    <div className="rounded-xl border p-5" style={{ background: tone.bg, borderColor: tone.border }}>
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <div className="flex items-center gap-2 flex-wrap">
+          <h4 className="text-lg font-bold tracking-tight">{card.name}</h4>
+          {card.model && (
+            <span className="rounded-md bg-card/70 border px-2 py-0.5 text-xs font-medium text-muted-foreground" style={{ borderColor: "var(--mm-card-border)" }}>
+              {card.model}
+            </span>
+          )}
+          {card.coverageType && (
+            <span
+              className="rounded-full px-2.5 py-0.5 text-xs font-bold"
+              style={{ background: "oklch(0.94 0.02 175 / 0.7)", color: "var(--mm-teal)", boxShadow: "inset 0 0 0 1px var(--mm-mint-ring)" }}
+            >
+              {card.coverageType}
+            </span>
+          )}
+        </div>
+        <span
+          className="inline-flex items-center rounded-full px-3 py-1 text-[11px] font-bold uppercase tracking-wider text-white"
+          style={{ background: tone.badge }}
+        >
+          {tone.label}
+        </span>
+      </div>
+
+      {/* What we already have vs still need, at a glance */}
+      <div className="flex flex-wrap gap-2 mt-3">
+        <StatusChip label="Script" ok={card.scriptOk} />
+        <StatusChip label="Clinicals" ok={card.clinicalsOk} />
+        <StatusChip label="Language" ok={card.languageOk} />
+      </div>
+
+      {/* Missing whole documents — name them, don't drill into language yet. */}
+      {card.mode === "docs" && (
+        <ul className="mt-3 space-y-1.5">
+          {card.docNeeds.map((d) => (
+            <li key={d} className="text-sm flex gap-2 items-start">
+              <FileText className="h-4 w-4 mt-0.5 shrink-0 text-[color:var(--mm-rose)]" />
+              <span className="font-semibold text-[color:var(--mm-rose)]">{d}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {/* Docs in hand — list the exact sentences the note must carry. */}
+      {card.mode === "language" && (
+        <div className="mt-3">
+          <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+            Note needs to say:
+          </p>
+          <ul className="mt-2 space-y-1">
+            {card.bullets.map((b) => (
+              <li key={b.lead} className="text-sm flex gap-2">
+                <span className="mt-1.5 h-1 w-1 rounded-full shrink-0" style={{ background: "oklch(0.62 0.13 70)" }} />
+                <span>
+                  <b style={{ color: "oklch(0.5 0.1 70)" }}>{b.lead}</b>
+                  {b.rest ? ` ${b.rest}` : ""}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Small ✓/✗ status chip — shows what we already have vs still need. */
+function StatusChip({ label, ok }: { label: string; ok: boolean }) {
+  return (
+    <span
+      className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-semibold"
+      style={
+        ok
+          ? { background: "oklch(0.94 0.02 175 / 0.8)", color: "var(--mm-teal)" }
+          : { background: "var(--mm-rose-soft)", color: "var(--mm-rose)" }
+      }
+    >
+      {ok ? <Check className="h-3.5 w-3.5" /> : <X className="h-3.5 w-3.5" />}
+      {label}
+    </span>
+  );
+}
 
 /** Outline-teal generate button (mockup .gen-btn). */
 function GenBtn({
@@ -692,64 +1303,7 @@ function GeneratingChip({ label, onCancel }: { label: string; onCancel: () => vo
   );
 }
 
-/** Numbered action row inside Send & Complete (mockup .action-row). */
-function ActionRow({
-  num,
-  done,
-  title,
-  sub,
-  children,
-}: {
-  num: number;
-  done?: boolean;
-  title: string;
-  sub?: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <div
-      className="flex items-center gap-4 rounded-xl border px-5 py-4 flex-wrap"
-      style={{ borderColor: "var(--mm-card-border)" }}
-    >
-      <span
-        className={`grid place-items-center h-7 w-7 rounded-full text-sm font-bold shrink-0 ${
-          done ? "text-white" : "bg-muted/70 text-muted-foreground"
-        }`}
-        style={done ? { background: "var(--mm-green)" } : undefined}
-      >
-        {done ? <Check className="h-4 w-4" /> : num}
-      </span>
-      <div className="flex-1 min-w-0">
-        <div className="text-[1.05rem] font-bold leading-snug">{title}</div>
-        {sub && <div className="text-sm text-muted-foreground mt-0.5">{sub}</div>}
-      </div>
-      {children}
-    </div>
-  );
-}
 
-// =====================================================================
-// Helpers
-// =====================================================================
-
-function formatDate(iso?: string): string | null {
-  if (!iso) return null;
-  // Monday's text for a date+time column comes back like "2026-05-01 14:30:00 UTC"
-  // — strip a trailing " UTC" so Date can parse the ISO-ish string.
-  const cleaned = iso.replace(/\s+UTC$/, "Z").replace(" ", "T");
-  const d = new Date(cleaned);
-  if (Number.isNaN(d.getTime())) return iso;
-  // Always render in Eastern Time and tag the suffix so the rep sees the tz.
-  const formatted = d.toLocaleString("en-US", {
-    timeZone: "America/New_York",
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  });
-  return `${formatted} ET`;
-}
 
 const PARACHUTE_URL = "https://dme.parachutehealth.com/u/r/BGP3-YIEG1-Z8-SL/dashboard";
 

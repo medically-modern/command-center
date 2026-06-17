@@ -10,8 +10,9 @@
  * Database, by NPI) sits at the bottom.
  */
 import { useState } from "react";
+import { ChevronRight } from "lucide-react";
 import type { Patient } from "@/lib/masheke/workflow";
-import { DoctorEditGrid, EditToggle } from "@/components/masheke/mmKit";
+import { DoctorEditGrid, EditToggle, DaysInStagePill, PatientContact } from "@/components/masheke/mmKit";
 import { DoctorNotesPanel } from "@/components/shared/DoctorNotesPanel";
 
 function formatPhone(raw?: string): string {
@@ -48,14 +49,25 @@ function Field({ label, value, span2 }: { label: string; value?: string; span2?:
 export function SendRequestHeaderCard({
   patient,
   onDoctorEdit,
+  editHint = "Edits are saved to Monday when you Mark as Complete (or via the Save button above).",
+  fullDetails = false,
 }: {
   patient: Patient;
   onDoctorEdit?: (patch: Partial<Patient>) => void;
+  /** Footnote under the doctor edit grid describing when edits persist.
+   *  Confirm Receipt passes its own ("Save Attempt") wording. */
+  editHint?: string;
+  /** Always render the comprehensive detail rows (gender, member id, coverage
+   *  paths, OOW, malfunction, patient address, clinic) regardless of method.
+   *  Confirm Receipt uses this so its drawer matches Send Request's. */
+  fullDetails?: boolean;
 }) {
   const method = patient.clinicalsMethod ?? "Fax";
   const isParachute = method === "Parachute";
+  const showFull = isParachute || fullDetails;
   const isEmail = method === "Email";
   const [editing, setEditing] = useState(false);
+  const [expanded, setExpanded] = useState(false);
 
   return (
     <section
@@ -64,14 +76,26 @@ export function SendRequestHeaderCard({
     >
       <div className="flex items-center justify-between gap-3">
         <p className="text-sm font-medium uppercase tracking-wide text-muted-foreground">Patient</p>
-        {onDoctorEdit && <EditToggle editing={editing} onToggle={() => setEditing((e) => !e)} />}
+        <button
+          type="button"
+          onClick={() => setExpanded((e) => !e)}
+          aria-expanded={expanded}
+          className="inline-flex items-center gap-1.5 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+        >
+          <ChevronRight className={`h-4 w-4 transition-transform ${expanded ? "rotate-90" : ""}`} />
+          {expanded ? "Hide details" : "Show details"}
+        </button>
       </div>
-      <h1 className="text-3xl font-black tracking-tight">{patient.name}</h1>
-      <p className="mt-1 text-lg text-muted-foreground">
-        DOB {dash(patient.dob)} · {formatPhone(patient.phone)}
-      </p>
+      <div className="flex items-start justify-between gap-3">
+        <h1 className="text-3xl font-black tracking-tight">{patient.name}</h1>
+        <DaysInStagePill value={patient.daysSinceStageStart} />
+      </div>
+      <div className="mt-2 flex items-center gap-3 flex-wrap">
+        <span className="text-lg text-muted-foreground">DOB {dash(patient.dob)}</span>
+        <PatientContact phone={patient.phone} />
+      </div>
 
-      {/* three info groups */}
+      {/* three info groups — always visible (outside the drawer) */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mt-5">
         <div className="border rounded-xl bg-muted/30 p-4" style={{ borderColor: "var(--mm-card-border)" }}>
           <div className="grid grid-cols-2 gap-3">
@@ -103,8 +127,16 @@ export function SendRequestHeaderCard({
         </div>
       </div>
 
+      {expanded && (
+        <>
+          {onDoctorEdit && (
+            <div className="flex justify-end mt-4">
+              <EditToggle editing={editing} onToggle={() => setEditing((e) => !e)} />
+            </div>
+          )}
+
       {/* per-method detail rows */}
-      {isParachute ? (
+      {showFull ? (
         <>
           <div className="mt-5 border-t pt-5 grid grid-cols-2 lg:grid-cols-4 gap-5" style={{ borderColor: "var(--mm-card-border)" }}>
             <Field label="Gender" value={patient.gender} />
@@ -163,8 +195,10 @@ export function SendRequestHeaderCard({
         <DoctorEditGrid
           patient={patient}
           onDoctorEdit={onDoctorEdit}
-          editHint="Edits are saved to Monday when you Mark as Complete (or via the Save button above)."
+          editHint={editHint}
         />
+      )}
+        </>
       )}
     </section>
   );

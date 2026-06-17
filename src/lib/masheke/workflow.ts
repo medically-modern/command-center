@@ -8,6 +8,8 @@ export interface Patient {
   gender?: string;
   dob: string;
   phone?: string;
+  /** Patient email (text_mm1xc140) — patient outreach on Send Request. */
+  patientEmail?: string;
   address?: string;
   memberId1?: string;
   memberId2?: string;
@@ -32,6 +34,8 @@ export interface Patient {
   doctorFax?: string;
   clinicName?: string;
   clinicAddress?: string;
+  /** Doctor-database note on what this prescriber requires to send a request. */
+  prescriberRequirements?: string;
 
   // Pipeline tracking
   masterStage?: string;
@@ -76,6 +80,8 @@ export interface Patient {
    *  replaces the 3 raw reason dropdowns end-to-end). */
   mnRequestConsolidated?: string;
   requestSentAt?: string;
+  /** Editable courtesy-fax / request message body (saved on Send/Re-send). */
+  requestBody?: string;
 
   // Script generation
   generateCgmScript?: string;

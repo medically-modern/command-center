@@ -13,7 +13,9 @@ import {
   FileText,
   Loader2,
   Mail,
+  MessageSquare,
   Pencil,
+  Phone,
   Trash2,
   XCircle,
 } from "lucide-react";
@@ -501,4 +503,57 @@ export function splitDropdownText(text?: string): string[] {
 export function openInGoogleViewer(url: string) {
   const viewerUrl = `https://docs.google.com/gview?url=${encodeURIComponent(url)}&embedded=true`;
   window.open(viewerUrl, "_blank");
+}
+
+/** Format raw phone digits as (xxx)-xxx-xxxx / +1 (xxx)-xxx-xxxx. */
+function formatPhoneNice(raw?: string): string {
+  if (!raw) return "—";
+  const d = raw.replace(/\D/g, "");
+  if (d.length === 10) return `(${d.slice(0, 3)})-${d.slice(3, 6)}-${d.slice(6)}`;
+  if (d.length === 11 && d[0] === "1") return `+1 (${d.slice(1, 4)})-${d.slice(4, 7)}-${d.slice(7)}`;
+  return raw;
+}
+
+/** Days-in-stage pill — shown right-aligned with the patient name, with a
+ *  "Days in Stage:" label in front. */
+export function DaysInStagePill({ value }: { value?: string }) {
+  if (!value) return null;
+  return (
+    <span className="inline-flex items-center gap-2 shrink-0">
+      <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+        Days in Stage:
+      </span>
+      <span
+        className="inline-flex items-center rounded-full px-3 py-1 text-xs font-bold uppercase tracking-wider text-[color:var(--mm-teal)] shadow-[inset_0_0_0_1px_var(--mm-mint-ring)]"
+        style={{ background: "var(--mm-mint)" }}
+      >
+        {value}
+      </span>
+    </span>
+  );
+}
+
+/** Patient phone shown as a Call button (with the number) + a Text button.
+ *  Uses tel:/sms: so the rep's device handles it. */
+export function PatientContact({ phone }: { phone?: string }) {
+  const tel = (phone ?? "").replace(/[^\d+]/g, "");
+  if (!tel) return <span className="text-base text-muted-foreground">No phone on file</span>;
+  const display = formatPhoneNice(phone);
+  return (
+    <span className="inline-flex items-center gap-2">
+      <a
+        href={`tel:${tel}`}
+        className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-bold text-white shadow-sm transition-opacity hover:opacity-90 bg-[color:var(--mm-teal)]"
+      >
+        <Phone className="h-3.5 w-3.5 shrink-0" /> {display}
+      </a>
+      <a
+        href={`sms:${tel}`}
+        className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-semibold text-[color:var(--mm-teal)] transition-colors hover:bg-muted/40"
+        style={{ boxShadow: "inset 0 0 0 1px var(--mm-card-border)" }}
+      >
+        <MessageSquare className="h-3.5 w-3.5 shrink-0" /> Text
+      </a>
+    </span>
+  );
 }
