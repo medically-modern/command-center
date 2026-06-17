@@ -7,7 +7,7 @@
   ],
   "processors": {
     "masheke@medicallymodern.com": {
-      "name": "asheke",
+      "name": "Masheke",
       "roles": [
         "evaluate",
         "sendRequest",
