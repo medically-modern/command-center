@@ -8,9 +8,7 @@
   "processors": {
     "masheke@medicallymodern.com": {
       "name": "masheke",
-      "roles": [
-        "confirmReceipt"
-      ]
+      "roles": []
     }
   }
 }
