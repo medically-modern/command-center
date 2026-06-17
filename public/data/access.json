@@ -28,7 +28,9 @@
     },
     "madeline@medicallymodern.com": {
       "name": "madeline",
-      "roles": []
+      "roles": [
+        "chaseFax"
+      ]
     }
   }
 }
