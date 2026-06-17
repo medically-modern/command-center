@@ -42,7 +42,8 @@ import {
   writeStatusLabel,
   type MondayFileEntry,
 } from "@/lib/masheke/mondayApi";
-import { sendRequestVerified } from "@/lib/masheke/mondayWrite";
+import { FILE_PROXY_URL } from "@/lib/shared/mondayAssets";
+import { getIdToken } from "@/lib/shared/auth";
 import { GEN_SCRIPT_STATUS } from "@/lib/masheke/mondayMapping";
 import {
   loadEvalStateForPatient,
@@ -268,34 +269,75 @@ export function SendRequestPanel({ patient, resetVersion = 0, onUpdate }: Props)
   //      the Request Sent At column.
   const [sending, setSending] = useState(false);
   const [sentNow, setSentNow] = useState(false);
-  const handleSend = useCallback(async (bodyText?: string) => {
-    if (!hasToken()) {
-      toast.error("Monday token not configured");
-      return;
-    }
-    const method = patient.clinicalsMethod ?? "Fax";
-    setSending(true);
-    try {
-      // Verified send: write Request Message + Request Sent At, read them back
-      // to confirm Monday indexed them, and ONLY THEN flip the Send Request
-      // trigger (which fires SuperMail). If verification fails, the trigger is
-      // not flipped and this throws — SuperMail never sends a stale/empty body.
-      await sendRequestVerified(patient, bodyText);
-      if (bodyText != null) onUpdate({ requestBody: bodyText });
-      setSentNow(true);
-      toast.success(
-        method === "Email"
-          ? "Request sent — email dispatched via Supermail"
-          : "Request sent — fax dispatched via Supermail",
-      );
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      console.error("[Send] failed", msg);
-      toast.error("Send failed", { description: msg });
-    } finally {
-      setSending(false);
-    }
-  }, [patient, onUpdate]);
+  const handleSend = useCallback(
+    async (payload: { recipients: string[]; subject: string; body: string; files: File[] }) => {
+      const { recipients, subject, body, files } = payload;
+      const idToken = getIdToken();
+      if (!idToken) {
+        toast.error("Sign in with your medicallymodern.com account to send.");
+        return;
+      }
+      // Normalize recipients: anything with "@" is sent as-is (email, or an
+      // already-formatted @rcfax address); a bare number becomes
+      // <digits>@rcfax.com (RingCentral turns that into a fax).
+      const to = recipients
+        .map((r) => r.trim())
+        .filter(Boolean)
+        .map((r) => (r.includes("@") ? r : `${r.replace(/\D/g, "")}@rcfax.com`))
+        .filter((r) => r !== "@rcfax.com");
+      if (!to.length) {
+        toast.error("Add at least one recipient.");
+        return;
+      }
+      setSending(true);
+      try {
+        const fd = new FormData();
+        fd.append("recipients", JSON.stringify(to));
+        fd.append("subject", subject || "");
+        fd.append("body", body || "");
+        for (const f of files) fd.append("files", f);
+        const res = await fetch(`${FILE_PROXY_URL}/send-message`, {
+          method: "POST",
+          headers: { "X-MM-Auth": idToken },
+          body: fd,
+        });
+        const data = (await res.json().catch(() => ({}))) as {
+          ok?: boolean;
+          sender?: string;
+          results?: { to: string; ok: boolean; error?: string | null }[];
+          error?: string;
+        };
+        if (!res.ok || !data.ok) {
+          const failed = (data.results || []).filter((r) => !r.ok);
+          throw new Error(
+            failed.length
+              ? failed.map((r) => `${r.to}: ${r.error || "failed"}`).join("; ")
+              : data.error || `HTTP ${res.status}`,
+          );
+        }
+        // Record what was sent to Monday (body + timestamp). Recipients will be
+        // written too once the "Sent To" column exists (add COL.sentTo).
+        try {
+          await writeLongText(patient.id, COL.requestBody, body);
+          await writeDateTime(patient.id, COL.requestSentAt);
+          onUpdate({ requestBody: body });
+        } catch (recErr) {
+          console.warn("[Send] sent OK but Monday record failed:", recErr);
+        }
+        setSentNow(true);
+        toast.success(
+          `Sent to ${to.length} recipient${to.length > 1 ? "s" : ""}${data.sender ? " from " + data.sender : ""}`,
+        );
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        console.error("[Send] failed", msg);
+        toast.error("Send failed", { description: msg });
+      } finally {
+        setSending(false);
+      }
+    },
+    [patient, onUpdate],
+  );
 
   // Notes gate — Mark as Complete requires ≥1 note added this session, and is
   // blocked while typed-but-unadded text sits in the note box.
@@ -847,7 +889,7 @@ function SendRequestComposer({
   attempt: number;
   method: string;
   sending: boolean;
-  onSend: (body: string) => void;
+  onSend: (payload: { recipients: string[]; subject: string; body: string; files: File[] }) => void;
   onAddNote: (text: string) => void;
   generateSlot?: React.ReactNode;
 }) {
@@ -860,6 +902,13 @@ function SendRequestComposer({
   const [notes, setNotes] = useState("");
   const chanValue =
     method === "Email" ? patient.doctorEmail : method === "Fax" ? patient.doctorFax : patient.doctorPhone;
+  const [recipients, setRecipients] = useState<string[]>(chanValue ? [chanValue] : []);
+  const [recipInput, setRecipInput] = useState("");
+  const addRecipient = (raw: string) => {
+    const v = raw.trim().replace(/[,;]+$/, "").trim();
+    setRecipients((prev) => (v && !prev.includes(v) ? [...prev, v] : prev));
+    setRecipInput("");
+  };
   const [subject, setSubject] = useState(`Medical necessity documentation — ${titleCase(patient.name || "")}`);
   const isParachute = method === "Parachute";
   const [open, setOpen] = useState(!isParachute);
@@ -871,7 +920,8 @@ function SendRequestComposer({
       setWarned(true);
       return;
     }
-    onSend(body);
+    const finalRecipients = recipInput.trim() ? [...recipients, recipInput.trim()] : recipients;
+    onSend({ recipients: finalRecipients, subject, body, files });
   };
   return (
     <div className="space-y-5">
@@ -897,25 +947,46 @@ function SendRequestComposer({
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div>
           <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">To</p>
-          {/* Read-only mirror of the real recipient: Doctor Email when method is
-              Email, Doctor Fax (@rcfax) when Fax. Reads live from Monday, so any
-              change to those columns is reflected here. Not editable by design —
-              the recipient is governed by Clinicals Method + the Doctor contact. */}
-          <input
-            value={chanValue || ""}
-            readOnly
-            aria-readonly="true"
-            placeholder={
-              method === "Email"
-                ? "No Doctor Email on file"
-                : method === "Fax"
-                ? "No Doctor Fax (@rcfax) on file"
-                : "No address on file"
-            }
-            title={`Recipient is set automatically from Clinicals Method = ${method}. Change the Doctor ${method === "Email" ? "Email" : "Fax"} in Monday to update it.`}
-            className="w-full rounded-xl border p-3 text-sm bg-muted/40 text-muted-foreground cursor-not-allowed focus:outline-none"
+          {/* Editable — this is the send source of truth. Emails or fax numbers
+              (a bare number is sent as <number>@rcfax.com). Prefilled from the
+              Doctor contact for the current method; the rep can add/remove. */}
+          <div
+            className="flex flex-wrap items-center gap-1.5 rounded-xl border p-2 min-h-[44px]"
             style={{ borderColor: "var(--mm-card-border)" }}
-          />
+          >
+            {recipients.map((r) => (
+              <span
+                key={r}
+                className="inline-flex items-center gap-1.5 rounded-full pl-2.5 pr-1.5 py-0.5 text-sm"
+                style={{ background: "oklch(0.94 0.02 175 / 0.6)", color: "var(--mm-teal)" }}
+              >
+                {r}
+                <button
+                  type="button"
+                  onClick={() => setRecipients(recipients.filter((x) => x !== r))}
+                  className="hover:opacity-70"
+                  aria-label={`Remove ${r}`}
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </span>
+            ))}
+            <input
+              value={recipInput}
+              onChange={(e) => setRecipInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === "," || e.key === ";") {
+                  e.preventDefault();
+                  addRecipient(recipInput);
+                } else if (e.key === "Backspace" && !recipInput && recipients.length) {
+                  setRecipients(recipients.slice(0, -1));
+                }
+              }}
+              onBlur={() => addRecipient(recipInput)}
+              placeholder={recipients.length ? "" : "Email or fax number"}
+              className="flex-1 min-w-[140px] bg-transparent text-sm p-1 focus:outline-none"
+            />
+          </div>
         </div>
         <div>
           <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">Subject</p>
