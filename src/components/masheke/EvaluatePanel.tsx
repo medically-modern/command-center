@@ -50,6 +50,7 @@ import {
   formatOowDiff,
   getMrExpiry,
   deriveValidity,
+  bannerMnEstablished,
   buildMondayPreview,
   type EvalState,
   type LocalFile,
@@ -493,7 +494,9 @@ export function EvaluatePanel({ patient, resetVersion = 0, onUpdate, onOpenForm 
     // Advance the Stage Advancer based on MN outcome:
     //   Established     → Completed (skip Send Request entirely)
     //   Not Established → Send Request
-    const nextStage = validity.established ? "Completed" : "Send Request";
+    // Route on the SAME MN signal the rep sees in the Step-2 banner
+    // (bannerMnEstablished), not deriveValidity — so the screen and the submit agree.
+    const nextStage = bannerMnEstablished(state, showCgm, showIp) ? "Completed" : "Send Request";
     tasks.push({
       label: `Stage Advancer → ${nextStage}`,
       run: () => writeStatusLabel(patient.id, COL.subStage, nextStage),
@@ -651,10 +654,8 @@ export function EvaluatePanel({ patient, resetVersion = 0, onUpdate, onOpenForm 
     state.cgmLanguage === "Yes";
   const ipLangChecked = ipServed && !!ipCfg && ipReqValues.every((v) => v === "Yes");
 
-  const mnChecks: boolean[] = [clinDocChecked];
-  if (cgmServed) mnChecks.push(cgmDocChecked, cgmLangChecked);
-  if (ipServed) mnChecks.push(ipDocChecked, ipLangChecked);
-  const mnEstablished = mnChecks.every(Boolean);
+  // Single source of truth for the banner AND the submit routing.
+  const mnEstablished = bannerMnEstablished(state, showCgm, showIp);
 
   const cgmLangLabel =
     state.cgmCoveragePath === "Hypo" ? "Hypoglycemia Language" : "Insulin Language";

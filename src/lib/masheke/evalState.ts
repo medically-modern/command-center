@@ -766,3 +766,64 @@ export function computeMnChecklist(
 
   return { established, documents, language, mr };
 }
+
+/**
+ * MN "Established" exactly as shown by the Evaluate Step-2 banner (the green
+ * "Medical Necessity Established" headline + Final Clinicals unlock). This is
+ * the SINGLE source of truth for stage routing on submit:
+ *   established → "Completed" (skip Send Request)
+ *   not         → "Send Request"
+ *
+ * It mirrors the banner's checklist (received scripts + per-path IP language
+ * requirements + CGM language + clinicals within MR expiry) — deliberately NOT
+ * deriveValidity, so what the rep sees is what the submit does.
+ */
+export function bannerMnEstablished(state: EvalState, showCgm: boolean, showIp: boolean): boolean {
+  const cgmReceivedVal: Received4 | undefined = !showCgm
+    ? "Not Serving"
+    : state.cgmCoveragePath === "Not Serving"
+      ? "Not Serving"
+      : state.cgmScriptReceived === "Yes"
+        ? state.cgmScriptValid === "Invalid" ? "Invalid" : "Yes"
+        : state.cgmScriptReceived === "No" ? "No" : undefined;
+  const ipReceivedVal: Received4 | undefined = !showIp
+    ? "Not Serving"
+    : state.ipCoveragePath === "Not Serving"
+      ? "Not Serving"
+      : state.ipScriptReceived === "Yes"
+        ? state.ipScriptValid === "Invalid" ? "Invalid" : "Yes"
+        : state.ipScriptReceived === "No" ? "No" : undefined;
+
+  const cgmServed = showCgm && cgmReceivedVal !== "Not Serving";
+  const ipServed = showIp && ipReceivedVal !== "Not Serving";
+
+  const ipCfg =
+    state.ipCoveragePath && state.ipCoveragePath !== "Not Serving"
+      ? IP_PATH_FIELDS[state.ipCoveragePath]
+      : null;
+  const ipReqValues: YesNoInvalid[] = [];
+  if (ipCfg) {
+    if (ipCfg.showEducation) ipReqValues.push(state.ipEducationV ?? "No");
+    if (ipCfg.show3Injections) ipReqValues.push(state.ipThreeInjectionsV ?? "No");
+    if (ipCfg.showCgmUse) ipReqValues.push(state.ipCgmUseV ?? "No");
+    if (ipCfg.showBsIssues) ipReqValues.push(state.ipBsIssuesV ?? "No");
+    if (ipCfg.showLmn) ipReqValues.push(state.ipLmnV ?? "No");
+    if (ipCfg.showMalfunction) ipReqValues.push(state.ipMalfunctionV ?? "No");
+    if (ipCfg.showOowOnScript) ipReqValues.push(state.ipOowOnScriptV ?? "No");
+  }
+
+  const cgmDocChecked = cgmServed && cgmReceivedVal === "Yes";
+  const ipDocChecked = ipServed && ipReceivedVal === "Yes";
+  const { expired: mrExpired } = getMrExpiry(state.lastVisitDate);
+  const clinDocChecked = state.clinReceived3 === "Yes" && !mrExpired;
+  const cgmLangChecked =
+    cgmServed &&
+    (state.cgmCoveragePath === "Insulin" || state.cgmCoveragePath === "Hypo") &&
+    state.cgmLanguage === "Yes";
+  const ipLangChecked = ipServed && !!ipCfg && ipReqValues.every((v) => v === "Yes");
+
+  const mnChecks: boolean[] = [clinDocChecked];
+  if (cgmServed) mnChecks.push(cgmDocChecked, cgmLangChecked);
+  if (ipServed) mnChecks.push(ipDocChecked, ipLangChecked);
+  return mnChecks.every(Boolean);
+}
