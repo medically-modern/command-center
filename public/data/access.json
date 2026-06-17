@@ -13,7 +13,8 @@
         "sendRequest",
         "chaseParachute",
         "chaseFax",
-        "updateClinicals"
+        "updateClinicals",
+        "fax"
       ]
     }
   }
