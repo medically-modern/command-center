@@ -23,7 +23,8 @@
       "roles": [
         "benefits",
         "submitAuth",
-        "authOutstanding"
+        "authOutstanding",
+        "profile"
       ]
     },
     "madeline@medicallymodern.com": {
