@@ -17,6 +17,10 @@
         "fax",
         "confirmReceipt"
       ]
+    },
+    "samantha@medicallymodern.com": {
+      "name": "samantha",
+      "roles": []
     }
   }
 }
