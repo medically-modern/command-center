@@ -5,5 +5,10 @@
     "corey@medicallymodern.com",
     "janelle@medicallymodern.com"
   ],
-  "processors": {}
+  "processors": {
+    "masheke@medicallymodern.com": {
+      "name": "masheke",
+      "roles": []
+    }
+  }
 }
