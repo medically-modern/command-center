@@ -1,6 +1,6 @@
 // Batch writer for Medical Necessity "Send to Monday"
 
-import { writeStatusIndex, writeText, writeLongText, writeDate, readColumnTexts, COL } from "./mondayApi";
+import { writeStatusIndex, writeText, writeLongText, writeDate, writeDateTime, writeStatusLabel, readColumnTexts, COL } from "./mondayApi";
 import { executeWritesWithVerification } from "../shared/verifiedWrite";
 import { etNow, clampToBusinessDay } from "./etDate";
 import {
@@ -258,6 +258,66 @@ export async function sendPatientToMonday(
   if (failures.length > 0) {
     throw new Error(
       `${failures.length} column(s) failed after retries. Check debug column.`,
+    );
+  }
+}
+
+
+/**
+ * Send Request — verified trigger.
+ *
+ * Writes the Request Message + Request Sent At FIRST, reads them back to
+ * confirm Monday has indexed them, and ONLY THEN flips the Send Request
+ * trigger column (which fires the SuperMail send). If the data columns can't
+ * be verified, the trigger is NOT flipped and this throws — so SuperMail can
+ * never dispatch off a stale or empty Request Message.
+ *
+ * Mirrors the stage-advancer pattern: the trigger is the "stage column",
+ * written last only after read-back verification of the data columns.
+ */
+export async function sendRequestVerified(
+  p: Patient,
+  bodyText?: string,
+): Promise<void> {
+  const tasks: WriteTask[] = [];
+
+  if (bodyText != null) {
+    tasks.push({
+      label: "Request Message",
+      columnId: COL.requestBody,
+      fn: () => writeLongText(p.id, COL.requestBody, bodyText),
+    });
+  }
+
+  tasks.push({
+    label: "Request Sent At",
+    columnId: COL.requestSentAt,
+    // Dynamic timestamp — verified by snapshot-diff (changes on every send).
+    fn: () => writeDateTime(p.id, COL.requestSentAt),
+  });
+
+  // Trigger LAST — written only after the data columns above are read-back
+  // confirmed. Flipping this is what fires the SuperMail automation.
+  tasks.push({
+    label: "Send Request trigger",
+    columnId: COL.sendRequestTrigger,
+    fn: () => writeStatusLabel(p.id, COL.sendRequestTrigger, "Send"),
+  });
+
+  const failures = await executeWritesWithVerification({
+    itemId: p.id,
+    boardId: "18406060017",
+    label: "Send Request",
+    tasks,
+    stageColumnId: COL.sendRequestTrigger,
+    executeWithRetry,
+    readColumns: readColumnTexts,
+    writeDebug: (id, msg) => writeText(id, COL.joshDebug, msg),
+  });
+
+  if (failures.length > 0) {
+    throw new Error(
+      `${failures.length} column(s) failed before the trigger — Send Request NOT triggered. Check the Josh Debug column.`,
     );
   }
 }

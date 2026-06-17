@@ -42,6 +42,7 @@ import {
   writeStatusLabel,
   type MondayFileEntry,
 } from "@/lib/masheke/mondayApi";
+import { sendRequestVerified } from "@/lib/masheke/mondayWrite";
 import { GEN_SCRIPT_STATUS } from "@/lib/masheke/mondayMapping";
 import {
   loadEvalStateForPatient,
@@ -275,27 +276,12 @@ export function SendRequestPanel({ patient, resetVersion = 0, onUpdate }: Props)
     const method = patient.clinicalsMethod ?? "Fax";
     setSending(true);
     try {
-      // Write the Request Message + Sent At FIRST, then flip the Supermail
-      // trigger LAST. Supermail fires on the trigger, so writing the body and
-      // timestamp first guarantees it never reads a stale/empty Request Message.
-      if (bodyText != null) {
-        try {
-          await writeLongText(patient.id, COL.requestBody, bodyText);
-          onUpdate({ requestBody: bodyText });
-        } catch (e) {
-          throw new Error(`[1/3 Request Body] ${e instanceof Error ? e.message : String(e)}`);
-        }
-      }
-      try {
-        await writeDateTime(patient.id, COL.requestSentAt);
-      } catch (e) {
-        throw new Error(`[2/3 Request Sent At] ${e instanceof Error ? e.message : String(e)}`);
-      }
-      try {
-        await writeStatusLabel(patient.id, COL.sendRequestTrigger, "Send");
-      } catch (e) {
-        throw new Error(`[3/3 trigger Send Request] ${e instanceof Error ? e.message : String(e)}`);
-      }
+      // Verified send: write Request Message + Request Sent At, read them back
+      // to confirm Monday indexed them, and ONLY THEN flip the Send Request
+      // trigger (which fires SuperMail). If verification fails, the trigger is
+      // not flipped and this throws — SuperMail never sends a stale/empty body.
+      await sendRequestVerified(patient, bodyText);
+      if (bodyText != null) onUpdate({ requestBody: bodyText });
       setSentNow(true);
       toast.success(
         method === "Email"
