@@ -31,37 +31,3 @@ export const ROLES: RoleConfig[] = [
   // systemMgmt intentionally NOT in ROLES — System Management is accessed via
   // the oversight button in the manager dashboards header, not role assignment.
 ];
-
-export const USERS = [
-  "Corey",
-  "Brandon",
-  "Josh",
-  "Masheke",
-  "Samantha",
-  "Janelle",
-  "Maddie",
-] as const;
-
-export type UserName = (typeof USERS)[number];
-
-/** roleId → list of assigned user names */
-export type RoleAssignments = Record<string, UserName[]>;
-
-export const DEFAULT_ASSIGNMENTS: RoleAssignments = {
-  profile:         [],
-  evaluate:        [],
-  sendRequest:     [],
-  confirmReceipt:  [],
-  chaseFax:        [],
-  chaseParachute:  [],
-  benefits:        [],
-  submitAuth:      [],
-  authOutstanding: [],
-  welcomeCall:     [],
-  finalConfirm:    [],
-  subscription:    [],
-  updateClinicals: [],
-  authDenied:      [],
-  patientQuestions: [],
-  fax:             [],
-};

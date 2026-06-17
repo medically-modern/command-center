@@ -1,25 +1,22 @@
-import { ROLES, USERS, type UserName } from "@/lib/config";
-import type { RoleAssignments } from "@/lib/config";
-import { cn } from "@/lib/utils";
+import { ROLES } from "@/lib/config";
+import type { Person } from "@/lib/people";
 import { BarChart3, Eye, LayoutDashboard, Loader2 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import type { RoleCounts } from "@/hooks/useRoleCounts";
 import { DailyBurndown } from "./DailyBurndown";
 
 interface Props {
-  selectedUser: UserName | null;
-  assignments: RoleAssignments;
-  getRolesForUser: (user: UserName) => string[];
+  person: Person | null;
   roleCounts: RoleCounts;
   countsLoading: boolean;
   /** Managers › Dashboards: counts/bars reflect ESCALATED patients only */
   managerMode?: boolean;
 }
 
-export function DashboardMainView({ selectedUser, assignments, getRolesForUser, roleCounts, countsLoading, managerMode = false }: Props) {
+export function DashboardMainView({ person, roleCounts, countsLoading, managerMode = false }: Props) {
   const navigate = useNavigate();
 
-  if (!selectedUser) {
+  if (!person) {
     return (
       <div className="flex-1 flex items-center justify-center p-8">
         <div className="text-center space-y-4 max-w-md">
@@ -37,7 +34,7 @@ export function DashboardMainView({ selectedUser, assignments, getRolesForUser, 
     );
   }
 
-  const roleIds = getRolesForUser(selectedUser);
+  const roleIds = person.roleIds;
   const assignedRoles = ROLES.filter((r) => roleIds.includes(r.id));
 
   return (
@@ -45,14 +42,16 @@ export function DashboardMainView({ selectedUser, assignments, getRolesForUser, 
       {/* Header bar */}
       <div className="border-b border-border bg-card px-8 py-5 flex items-center gap-4">
         <div className="w-12 h-12 rounded-full bg-gradient-primary flex items-center justify-center text-white font-bold text-lg shrink-0">
-          {selectedUser[0]}
+          {person.name[0]}
         </div>
         <div>
-          <h2 className="text-lg font-semibold text-foreground">{selectedUser}</h2>
+          <h2 className="text-lg font-semibold text-foreground">{person.name}</h2>
           <p className="text-sm text-muted-foreground">
-            {assignedRoles.length === 0
-              ? "No roles assigned"
-              : `${assignedRoles.length} role${assignedRoles.length !== 1 ? "s" : ""} assigned`}
+            {person.isManager
+              ? "Manager — full access"
+              : assignedRoles.length === 0
+                ? "No roles assigned"
+                : `${assignedRoles.length} role${assignedRoles.length !== 1 ? "s" : ""} assigned`}
           </p>
         </div>
         {managerMode && (
@@ -82,8 +81,8 @@ export function DashboardMainView({ selectedUser, assignments, getRolesForUser, 
             <BarChart3 className="w-12 h-12 mx-auto mb-4 opacity-30" />
             <p className="text-base font-medium mb-1">No roles assigned</p>
             <p className="text-sm">
-              Switch to the <span className="font-medium text-primary">Roles</span> tab
-              to assign roles to {selectedUser}.
+              Use <span className="font-medium text-primary">Manage Access</span> to
+              choose which queues {person.name} sees.
             </p>
           </div>
         ) : (

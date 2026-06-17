@@ -1,6 +1,6 @@
 /**
  * Per-email access control, persisted to the repo (public/data/access.json)
- * via the GitHub Contents API — same pattern as assignmentsStore, so it syncs
+ * via the GitHub Contents API (same cross-device sync pattern as the rest), so it syncs
  * across devices.
  *
  * Model:

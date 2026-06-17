@@ -1,86 +1,64 @@
 import { useSearchParams, useNavigate } from "react-router-dom";
-import { useAssignments } from "@/lib/assignmentsStore";
 import { useAccessContext } from "@/components/AccessProvider";
 import ProcessorView from "@/pages/ProcessorView";
-import { RolesPanel } from "@/components/dashboard/RolesPanel";
 import { DashboardMainView } from "@/components/dashboard/DashboardMainView";
 import { ThemePickerButton } from "@/components/ThemePicker";
 import { cn } from "@/lib/utils";
 import { Shield, LayoutDashboard, Stethoscope, KeyRound } from "lucide-react";
-import { USERS, type UserName } from "@/lib/config";
+import { managerPeople, processorPeople, type Person } from "@/lib/people";
 import { useRoleCounts } from "@/hooks/useRoleCounts";
 import { useEscalatedCounts } from "@/hooks/useEscalatedCounts";
 
-type Tab = "roles" | "dashboard";
-type ManagersSubTab = "assignments" | "dashboards";
-
-/** Users shown on the Processors tab. Everyone in USERS who is NOT listed
- *  here appears under Managers instead — when adding a new processor, add
- *  them to USERS (config.ts) AND to this list. */
-const PROCESSOR_USERS: UserName[] = ["Masheke", "Samantha", "Maddie"];
+type Tab = "managers" | "processors";
 
 const Index = () => {
   /**
-   * View state (tab / sub-tab / selected user) lives in the URL so that:
-   * 1. role pages' back navigation restores the EXACT prior screen
-   *    (e.g. /?tab=roles&sub=dashboards&user=Janelle), and
-   * 2. a browser refresh keeps you where you were.
-   * All writes use { replace: true } so clicking around the sidebar never
-   * stacks history entries — "back" from a role page is always one step.
+   * View state (tab / selected person) lives in the URL so role pages' back
+   * navigation restores the exact prior screen and refresh keeps you in place.
+   * The selected-person key is the email local part (no full email in the URL).
+   * All writes use { replace: true } so sidebar clicks never stack history.
+   *
+   * People come entirely from the access list (access.json): managers (full
+   * access — all role bars) and processors (only their checked bars). Edit who
+   * has which role on the Manage Access page.
    */
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
-  const { access, email } = useAccessContext();
-  const activeTab: Tab = searchParams.get("tab") === "dashboard" ? "dashboard" : "roles";
-  const managersSub: ManagersSubTab =
-    searchParams.get("sub") === "dashboards" ? "dashboards" : "assignments";
-  const { assignments, toggle, getRolesForUser } = useAssignments();
+  const { access, email, config } = useAccessContext();
+
+  const activeTab: Tab = searchParams.get("tab") === "processors" ? "processors" : "managers";
+  // Managers tab = escalation oversight (everything); Processors tab = live counts.
+  const managerMode = activeTab === "managers";
+
   const { counts, loading: countsLoading } = useRoleCounts();
-
-  const showDashboards =
-    activeTab === "dashboard" || (activeTab === "roles" && managersSub === "dashboards");
-  // Managers › Dashboards = escalations-only view of each role
-  const managerMode = activeTab === "roles" && managersSub === "dashboards";
   const { counts: escCounts, loading: escLoading } = useEscalatedCounts(managerMode);
-  // Processors → just the processors; Managers › Dashboards → everyone else.
-  const visibleUsers =
-    activeTab === "dashboard"
-      ? PROCESSOR_USERS
-      : USERS.filter((u) => !PROCESSOR_USERS.includes(u));
 
-  // Selected user comes from the URL; ignore names that don't belong to the
-  // active tab's list (e.g. a processor name while on the Managers tab).
+  const managers = managerPeople(config);
+  const processors = processorPeople(config);
+  const visiblePeople = activeTab === "processors" ? processors : managers;
+
   const userParam = searchParams.get("user");
-  const selectedUser: UserName | null =
-    userParam && visibleUsers.includes(userParam as UserName)
-      ? (userParam as UserName)
-      : null;
+  const selectedPerson: Person | null =
+    (userParam && visiblePeople.find((p) => p.key === userParam)) || null;
 
-  const updateView = (patch: { tab?: Tab; sub?: ManagersSubTab; user?: UserName | null }) => {
+  const updateView = (patch: { tab?: Tab; user?: string | null }) => {
     const next = new URLSearchParams(searchParams);
     const tab = patch.tab ?? activeTab;
     next.set("tab", tab);
-    if (tab === "roles") {
-      next.set("sub", patch.sub ?? managersSub);
-    } else {
-      next.delete("sub");
-    }
-    const user = patch.user !== undefined ? patch.user : selectedUser;
-    // Changing tabs switches user lists, so a carried-over selection never
+    // Changing tabs switches people lists, so a carried-over selection never
     // applies — drop it unless this patch explicitly sets one.
     if (patch.tab && patch.tab !== activeTab && patch.user === undefined) {
       next.delete("user");
-    } else if (user) {
-      next.set("user", user);
     } else {
-      next.delete("user");
+      const user = patch.user !== undefined ? patch.user : selectedPerson?.key ?? null;
+      if (user) next.set("user", user);
+      else next.delete("user");
     }
     setSearchParams(next, { replace: true });
   };
 
   const setActiveTab = (tab: Tab) => updateView({ tab });
-  const setManagersSub = (sub: ManagersSubTab) => updateView({ sub });
-  const setSelectedUser = (user: UserName) => updateView({ user });
+  const setSelectedKey = (key: string) => updateView({ user: key });
 
   // Processors get a stripped, no-sidebar view of only their assigned bars.
   if (access.type === "processor") {
@@ -102,52 +80,24 @@ const Index = () => {
         </header>
 
         <div className="flex border-b border-border">
-          <TabButton active={activeTab === "roles"} onClick={() => setActiveTab("roles")} icon={<Shield className="w-4 h-4" />} label="Managers" />
-          <TabButton active={activeTab === "dashboard"} onClick={() => setActiveTab("dashboard")} icon={<LayoutDashboard className="w-4 h-4" />} label="Processors" />
+          <TabButton active={activeTab === "managers"} onClick={() => setActiveTab("managers")} icon={<Shield className="w-4 h-4" />} label="Managers" />
+          <TabButton active={activeTab === "processors"} onClick={() => setActiveTab("processors")} icon={<LayoutDashboard className="w-4 h-4" />} label="Processors" />
         </div>
 
-        {/* Managers sub-tabs */}
-        {activeTab === "roles" && (
-          <div className="flex gap-1 px-4 pt-3">
-            <SubTabButton
-              active={managersSub === "assignments"}
-              onClick={() => setManagersSub("assignments")}
-              label="Role Assignments"
-            />
-            <SubTabButton
-              active={managersSub === "dashboards"}
-              onClick={() => setManagersSub("dashboards")}
-              label="Dashboards"
-            />
-          </div>
-        )}
-
         <div className="flex-1 overflow-y-auto p-4">
-          {showDashboards && (
-            <UserList
-              users={visibleUsers}
-              selectedUser={selectedUser}
-              onSelect={setSelectedUser}
-              getRolesForUser={getRolesForUser}
-            />
-          )}
-          {activeTab === "roles" && managersSub === "assignments" && (
-            <div className="text-center py-8 space-y-3">
-              <div className="mx-auto w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center">
-                <Shield className="w-6 h-6 text-primary" />
-              </div>
-              <p className="text-sm text-muted-foreground">
-                Manage role assignments in the main panel.
-              </p>
-            </div>
-          )}
+          <UserList
+            people={visiblePeople}
+            selectedKey={selectedPerson?.key ?? null}
+            onSelect={setSelectedKey}
+            emptyLabel={activeTab === "processors" ? "No processors yet." : "No managers yet."}
+          />
         </div>
 
         <div className="border-t border-border p-3 space-y-2">
           <button
             onClick={() => navigate("/access")}
             className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-muted-foreground hover:bg-muted/50 hover:text-foreground transition-colors"
-            title="Assign manager / processor views per email"
+            title="Add people and choose which role bars each one sees"
           >
             <KeyRound className="w-4 h-4" /> Manage Access
           </button>
@@ -157,76 +107,51 @@ const Index = () => {
 
       {/* ── Main content area ────────────────────────────────── */}
       <div className="flex-1 flex flex-col min-w-0">
-        {showDashboards ? (
-          <DashboardMainView
-            selectedUser={selectedUser}
-            assignments={assignments}
-            getRolesForUser={getRolesForUser}
-            roleCounts={managerMode ? escCounts : counts}
-            countsLoading={managerMode ? escLoading : countsLoading}
-            managerMode={managerMode}
-          />
-        ) : (
-          <div className="flex-1 overflow-y-auto p-8">
-            <div className="max-w-3xl xl:max-w-5xl 2xl:max-w-6xl mx-auto space-y-6">
-              <div>
-                <h2 className="text-xl font-semibold text-foreground">Managers</h2>
-                <p className="text-sm text-muted-foreground mt-1">
-                  Assign team members to each role. Changes sync across all devices.
-                </p>
-              </div>
-              <RolesPanel assignments={assignments} onToggle={toggle} />
-            </div>
-          </div>
-        )}
+        <DashboardMainView
+          person={selectedPerson}
+          roleCounts={managerMode ? escCounts : counts}
+          countsLoading={managerMode ? escLoading : countsLoading}
+          managerMode={managerMode}
+        />
       </div>
     </div>
   );
 };
 
-function UserList({ users, selectedUser, onSelect, getRolesForUser }: { users: UserName[]; selectedUser: UserName | null; onSelect: (user: UserName) => void; getRolesForUser: (user: UserName) => string[] }) {
+function UserList({ people, selectedKey, onSelect, emptyLabel }: { people: Person[]; selectedKey: string | null; onSelect: (key: string) => void; emptyLabel: string }) {
+  if (people.length === 0) {
+    return <p className="text-sm text-muted-foreground px-1 py-2">{emptyLabel}</p>;
+  }
   return (
     <div className="space-y-1.5">
       <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3">Team Members</p>
-      {users.map((user) => {
-        const roleIds = getRolesForUser(user);
-        const active = selectedUser === user;
+      {people.map((person) => {
+        const active = selectedKey === person.key;
+        const roleNote = person.isManager
+          ? "Full access"
+          : person.roleIds.length === 0
+            ? "No roles"
+            : `${person.roleIds.length} role${person.roleIds.length > 1 ? "s" : ""}`;
         return (
           <button
-            key={user}
-            onClick={() => onSelect(user)}
+            key={person.key}
+            onClick={() => onSelect(person.key)}
             className={cn(
               "w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors",
               active ? "bg-primary/10 text-primary font-medium border border-primary/20" : "hover:bg-muted/50 text-foreground border border-transparent",
             )}
           >
             <div className={cn("w-8 h-8 rounded-full flex items-center justify-center text-white font-bold text-xs shrink-0", active ? "bg-primary" : "bg-gradient-primary")}>
-              {user[0]}
+              {person.name[0]}
             </div>
             <div className="flex-1 text-left">
-              <div className="text-sm">{user}</div>
-              <div className="text-[11px] text-muted-foreground">{roleIds.length === 0 ? "No roles" : `${roleIds.length} role${roleIds.length > 1 ? "s" : ""}`}</div>
+              <div className="text-sm">{person.name}</div>
+              <div className="text-[11px] text-muted-foreground">{roleNote}</div>
             </div>
           </button>
         );
       })}
     </div>
-  );
-}
-
-function SubTabButton({ active, onClick, label }: { active: boolean; onClick: () => void; label: string }) {
-  return (
-    <button
-      onClick={onClick}
-      className={cn(
-        "flex-1 py-1.5 px-2 rounded-md text-xs font-medium transition-colors",
-        active
-          ? "bg-primary/10 text-primary border border-primary/20"
-          : "text-muted-foreground hover:text-foreground hover:bg-muted/50 border border-transparent",
-      )}
-    >
-      {label}
-    </button>
   );
 }
 
