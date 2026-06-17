@@ -8,7 +8,9 @@
   "processors": {
     "masheke@medicallymodern.com": {
       "name": "masheke",
-      "roles": []
+      "roles": [
+        "evaluate"
+      ]
     }
   }
 }
