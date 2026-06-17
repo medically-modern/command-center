@@ -21,7 +21,8 @@
     "samantha@medicallymodern.com": {
       "name": "samantha",
       "roles": [
-        "benefits"
+        "benefits",
+        "submitAuth"
       ]
     }
   }
