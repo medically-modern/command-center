@@ -22,7 +22,8 @@
       "name": "samantha",
       "roles": [
         "benefits",
-        "submitAuth"
+        "submitAuth",
+        "authOutstanding"
       ]
     }
   }
