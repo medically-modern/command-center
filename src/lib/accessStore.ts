@@ -15,8 +15,9 @@
  * user out.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
+import { dataRepo } from "./shared/dataRepo";
 
-const REPO = "medically-modern/command-center-test";
+const REPO = dataRepo(); // per-deployment: test→test repo, prod→prod repo (sync-safe)
 const FILE_PATH = "public/data/access.json";
 const BRANCH = "main";
 const PAT = import.meta.env.VITE_GITHUB_PAT as string | undefined;
