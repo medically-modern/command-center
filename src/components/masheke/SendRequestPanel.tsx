@@ -315,19 +315,34 @@ export function SendRequestPanel({ patient, resetVersion = 0, onUpdate }: Props)
               : data.error || `HTTP ${res.status}`,
           );
         }
-        // Record what was sent to Monday (body + timestamp). Recipients will be
-        // written too once the "Sent To" column exists (add COL.sentTo).
+        // Send succeeded → record what was sent AND auto-advance the stage.
+        // (This only runs on a confirmed success; a failed send throws above and
+        // never reaches here, so a failure leaves the item exactly where it is.)
+        // Parachute skips Confirm Receipt (handled in the portal) → Chase Clinicals.
+        const isParachute = patient.clinicalsMethod === "Parachute";
+        const nextStage = isParachute ? "Chase Clinicals" : "Confirm Receipt";
+        setSentNow(true);
         try {
           await writeLongText(patient.id, COL.requestBody, body);
           await writeDateTime(patient.id, COL.requestSentAt);
+          // Advance: flip the Stage Advancer + set the next action date
+          // (+1 business day into Confirm Receipt; +3 into Chase for Parachute).
+          await writeStatusLabel(patient.id, COL.subStage, nextStage);
+          await writeDate(
+            patient.id,
+            COL.nextActionDate,
+            toIsoDate(addBusinessDays(etNow(), isParachute ? 3 : 1)),
+          );
           onUpdate({ requestBody: body });
-        } catch (recErr) {
-          console.warn("[Send] sent OK but Monday record failed:", recErr);
+          toast.success(
+            `Sent to ${to.length} recipient${to.length > 1 ? "s" : ""}${data.sender ? " from " + data.sender : ""} — moved to ${nextStage}`,
+          );
+        } catch (advErr) {
+          console.warn("[Send] sent OK but Monday update/advance failed:", advErr);
+          toast.error("Sent, but couldn't advance the stage", {
+            description: `Move this item to ${nextStage} manually. (${advErr instanceof Error ? advErr.message : String(advErr)})`,
+          });
         }
-        setSentNow(true);
-        toast.success(
-          `Sent to ${to.length} recipient${to.length > 1 ? "s" : ""}${data.sender ? " from " + data.sender : ""}`,
-        );
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
         console.error("[Send] failed", msg);
