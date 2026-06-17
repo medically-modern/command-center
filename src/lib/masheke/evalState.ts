@@ -128,7 +128,6 @@ const MONDAY_BACKED_FIELDS = [
   "notes",
   "cgmScriptReceived",
   "ipScriptReceived",
-  "cgmLanguage",
 ] as const satisfies readonly (keyof EvalState)[];
 
 /**
@@ -191,13 +190,6 @@ export function seedEvalStateFromPatient(patient: Patient): EvalState {
   if (patient.ipScriptReceived === "Yes" || patient.ipScriptReceived === "No") {
     seed.ipScriptReceived = patient.ipScriptReceived as YesNo;
   }
-  if (
-    patient.cgmLanguage === "Yes" ||
-    patient.cgmLanguage === "No" ||
-    patient.cgmLanguage === "Invalid"
-  ) {
-    seed.cgmLanguage = patient.cgmLanguage as YesNoInvalid;
-  }
   return seed;
 }
 
@@ -246,9 +238,7 @@ export interface ValidityResult {
   established: boolean;
   reasons: string[]; // combined human-readable list (all reasons)
   cgmReasons: string[]; // CGM-block-specific only
-  ipReasons: string[]; // IP-block-specific only (invalid + no, combined)
-  ipInvalidReasons: string[]; // answer was "Invalid" → dropdown_mm2xgg2y
-  ipNoReasons: string[]; // answer was "No"/missing → dropdown_mm4bwxpv
+  ipReasons: string[]; // IP-block-specific only
   generalReasons: string[]; // shared (diagnosis, MR received, last visit, expiry)
   sections: {
     cgm: { shown: boolean; valid: boolean };
@@ -280,17 +270,8 @@ export function deriveValidity(
   showIp: boolean,
 ): ValidityResult {
   const cgmReasons: string[] = [];
-  const ipInvalidReasons: string[] = [];
-  const ipNoReasons: string[] = [];
+  const ipReasons: string[] = [];
   const generalReasons: string[] = [];
-  // Build a selection-aware label ("<Field> Invalid" when the answer is
-  // "Invalid", "<Field> Missing" for "No"/unset) and route it: Invalid →
-  // invalid bucket (dropdown_mm2xgg2y); else → no bucket (dropdown_mm4bwxpv).
-  const ipRoute = (field: string, answer?: YesNoInvalid): void => {
-    const reason = `${field} ${answer === "Invalid" ? "Invalid" : "Missing"}`;
-    if (answer === "Invalid") ipInvalidReasons.push(reason);
-    else ipNoReasons.push(reason);
-  };
 
   // Rep explicitly marked a product "Not Serving" via its coverage path —
   // that product is treated as N/A: it neither blocks MN nor adds reasons.
@@ -313,17 +294,6 @@ export function deriveValidity(
       cgmValid = false;
       cgmReasons.push("CGM Coverage Path invalid");
     }
-    // CGM Language — required once a real coverage path (Insulin/Hypo) is set.
-    // Folds the new CGM Language control into MN (must be "Yes").
-    if (state.cgmCoveragePath === "Insulin" || state.cgmCoveragePath === "Hypo") {
-      if (state.cgmLanguage !== "Yes") {
-        cgmValid = false;
-        const cgmLangName = state.cgmCoveragePath === "Hypo" ? "Hypoglycemia" : "Insulin";
-        cgmReasons.push(
-          `${cgmLangName} Language ${state.cgmLanguage === "Invalid" ? "Invalid" : "Missing"}`,
-        );
-      }
-    }
   }
 
   // ---- IP section ----
@@ -331,60 +301,59 @@ export function deriveValidity(
   if (showIp && !ipNotServing) {
     if (!state.ipCoveragePath) {
       ipValid = false;
-      ipNoReasons.push("Insulin Pump Coverage Path Missing");
+      ipReasons.push("Insulin Pump Coverage Path missing");
     } else {
       const cfg = IP_PATH_FIELDS[state.ipCoveragePath];
       if (state.ipScriptValid !== "Valid") {
         ipValid = false;
-        if (state.ipScriptValid === "Missing") ipNoReasons.push("Insulin Pump Script Missing");
-        else ipInvalidReasons.push("Insulin Pump Script Invalid");
+        if (state.ipScriptValid === "Missing") ipReasons.push("Insulin Pump Script missing");
+        else ipReasons.push("Insulin Pump Script invalid");
       }
       if (cfg.showEducation && state.diabetesEducation !== "Yes") {
         ipValid = false;
-        ipRoute("Diabetes Education", state.ipEducationV);
+        ipReasons.push("Diabetes Education invalid");
       }
       if (cfg.show3Injections && state.threeInjections !== "Yes") {
         ipValid = false;
-        ipRoute("3+ Injections", state.ipThreeInjectionsV);
+        ipReasons.push("3+ Injections invalid");
       }
       if (cfg.showCgmUse && state.cgmUse !== "Yes") {
         ipValid = false;
-        ipRoute("CGM Use", state.ipCgmUseV);
+        ipReasons.push("CGM Use invalid");
       }
       if (cfg.showBsIssues && state.bloodSugarIssues !== "Yes") {
         ipValid = false;
-        ipRoute("Blood Sugar Issues", state.ipBsIssuesV);
+        ipReasons.push("Blood Sugar Issues invalid");
       }
       if (cfg.showLmn) {
         if (state.lmn === "No" || state.lmn === undefined) {
           ipValid = false;
-          ipNoReasons.push("Letter of MN Missing");
+          ipReasons.push("Letter of MN missing");
         } else if (state.lmn === "Yes, but Invalid") {
           ipValid = false;
-          ipInvalidReasons.push("Letter of MN Invalid");
+          ipReasons.push("Letter of MN invalid");
         }
       }
       if (cfg.showOow) {
         const oow = isOowDateValid(state.oowDate, patient.primaryInsurance);
         if (!oow) {
           ipValid = false;
-          ipNoReasons.push("OOW Date Missing");
+          ipReasons.push("OOW Date missing");
         } else if (!oow.valid) {
           ipValid = false;
-          ipNoReasons.push("Pump still under warranty");
+          ipReasons.push("Pump still under warranty");
         } else if (cfg.showOowOnScript && state.oowDateOnScript !== "Yes") {
           // Date is known and old enough — but not yet on the script.
           ipValid = false;
-          ipRoute("OOW on Script", state.ipOowOnScriptV);
+          ipReasons.push("OOW Date not on script");
         }
       }
       if (cfg.showMalfunction && state.malfunction !== "Yes") {
         ipValid = false;
-        ipRoute("Malfunction", state.ipMalfunctionV);
+        ipReasons.push("Malfunction missing");
       }
     }
   }
-  const ipReasons = [...ipInvalidReasons, ...ipNoReasons];
 
   // ---- Diagnosis ----
   const diagnosisValid = !!state.diagnosis && state.diagnosis !== "Evaluate";
@@ -406,8 +375,6 @@ export function deriveValidity(
     reasons: [...cgmReasons, ...ipReasons, ...generalReasons],
     cgmReasons,
     ipReasons,
-    ipInvalidReasons,
-    ipNoReasons,
     generalReasons,
     sections: {
       // "Not Serving" selected → section reads as not-shown (N/A chip, no
@@ -470,13 +437,6 @@ export function computeDoctorAskList(
       state.cgmCoveragePath !== "Hypo"
     ) {
       asks.push("Hypoglycemia language");
-    } else if (
-      showCgm &&
-      (state.cgmCoveragePath === "Insulin" || state.cgmCoveragePath === "Hypo") &&
-      state.cgmLanguage !== "Yes"
-    ) {
-      // Path is set but CGM Language says the records lack valid language.
-      asks.push(state.cgmCoveragePath === "Hypo" ? "Hypoglycemia language" : "Insulin language");
     }
 
     // IP-path-driven record requirements
@@ -587,7 +547,6 @@ export interface MondayPreview {
   generalMnInvalidReasons: string[];
   cgmMnInvalidReasons: string[];
   ipMnInvalidReasons: string[];
-  ipMnNoReasons: string[];
   /** Consolidated, doctor-facing ask list — what the agent reads on the call.
    *  Drives the MN Request Consolidated dropdown column on Monday and the
    *  MN Request Letter PDF body. */
@@ -624,10 +583,186 @@ export function buildMondayPreview(
     medicalNecessity: validity.established ? "Established" : "Not Established",
     generalMnInvalidReasons: validity.generalReasons,
     cgmMnInvalidReasons: validity.sections.cgm.shown ? validity.cgmReasons : [],
-    ipMnInvalidReasons: validity.sections.ip.shown ? validity.ipInvalidReasons : [],
-    ipMnNoReasons: validity.sections.ip.shown ? validity.ipNoReasons : [],
+    ipMnInvalidReasons: validity.sections.ip.shown ? validity.ipReasons : [],
     mnRequestConsolidated: consolidated,
     generateCgmScript: state.generateCgmScript,
     generateIpScript: state.generateIpScript,
   };
+}
+
+// ---- MN checklist (Documents / Language, with language sub-bullets) ----
+//
+// Auto-derived from the Evaluate answers; shared by the Evaluate footer and the
+// Send Request "What we're still missing" section so both stay in sync.
+
+/** ok = have & valid, invalid = present but invalid/expired, missing = absent,
+ *  na = product not served. */
+export type MnState = "ok" | "invalid" | "missing" | "na";
+export interface MnItem {
+  label: string;
+  state: MnState;
+}
+export interface MnLangItem extends MnItem {
+  /** Specific requirement bullets behind this language item. */
+  subItems: MnItem[];
+  /** Coverage path label for this product (e.g. "Insulin", "1st Pump <6M Diagnosed"). */
+  coverage?: string;
+}
+export interface MnChecklist {
+  established: boolean;
+  documents: MnItem[];
+  language: MnLangItem[];
+  /** Medical-records detail for the shared records card. Coverage language,
+   *  visit date, and diagnosis all come from the medical records. */
+  mr: {
+    received: boolean;
+    lastVisit?: string;
+    expiry?: string;
+    expired: boolean;
+    diagnosis?: string;
+    diagnosisOk: boolean;
+  };
+}
+
+function deriveReceived4(
+  showProduct: boolean,
+  scriptReceived: YesNo | undefined,
+  scriptValid: ValidInvalid | undefined,
+  coveragePath: string | undefined,
+): Received4 | undefined {
+  if (!showProduct) return "Not Serving";
+  if (coveragePath === "Not Serving") return "Not Serving";
+  if (scriptReceived === "Yes") return scriptValid === "Invalid" ? "Invalid" : "Yes";
+  if (scriptReceived === "No") return "No";
+  return undefined;
+}
+
+export function computeMnChecklist(
+  state: EvalState,
+  showCgm: boolean,
+  showIp: boolean,
+): MnChecklist {
+  const cgmReceived = deriveReceived4(
+    showCgm,
+    state.cgmScriptReceived,
+    state.cgmScriptValid,
+    state.cgmCoveragePath,
+  );
+  const ipReceived = deriveReceived4(
+    showIp,
+    state.ipScriptReceived,
+    state.ipScriptValid,
+    state.ipCoveragePath,
+  );
+  const cgmServed = showCgm && cgmReceived !== "Not Serving";
+  const ipServed = showIp && ipReceived !== "Not Serving";
+  const { expiry, expired } = getMrExpiry(state.lastVisitDate);
+
+  // Map a Yes/No/Invalid answer (or a received script) to a tri-state.
+  const yni = (v: YesNoInvalid | undefined): MnState =>
+    v === "Yes" ? "ok" : v === "Invalid" ? "invalid" : "missing";
+  const scriptState = (served: boolean, r: Received4 | undefined): MnState =>
+    !served ? "na" : r === "Yes" ? "ok" : r === "Invalid" ? "invalid" : "missing";
+  // Roll a set of sub-items up: any missing → missing, else any invalid → invalid, else ok.
+  const agg = (subs: MnItem[]): MnState =>
+    subs.some((s) => s.state === "missing")
+      ? "missing"
+      : subs.some((s) => s.state === "invalid")
+        ? "invalid"
+        : "ok";
+
+  // We "have" records if Clinicals was received OR a visit date is on file.
+  // Records that exist but are expired read as invalid → "Updated Medical Records".
+  const haveRecords = state.clinReceived3 === "Yes" || !!state.lastVisitDate;
+  const clinState: MnState =
+    state.clinReceived3 === "Invalid"
+      ? "invalid"
+      : !haveRecords
+        ? "missing"
+        : expired
+          ? "invalid"
+          : "ok";
+
+  const documents: MnItem[] = [
+    { label: "Insulin Pump Script", state: scriptState(ipServed, ipReceived) },
+    { label: "CGM Script", state: scriptState(cgmServed, cgmReceived) },
+    { label: "Clinicals", state: clinState },
+  ];
+
+  // CGM language — a single bullet (Insulin or Hypoglycemia language)
+  const cgmSubs: MnItem[] = [];
+  if (cgmServed && (state.cgmCoveragePath === "Insulin" || state.cgmCoveragePath === "Hypo")) {
+    cgmSubs.push({
+      label: state.cgmCoveragePath === "Hypo" ? "Hypoglycemia Language" : "Insulin Language",
+      state: yni(state.cgmLanguage),
+    });
+  }
+  const cgmLangState: MnState = !cgmServed ? "na" : cgmSubs.length === 0 ? "missing" : agg(cgmSubs);
+
+  // IP language — per-path requirement bullets
+  const ipSubs: MnItem[] = [];
+  const cfg =
+    state.ipCoveragePath && state.ipCoveragePath !== "Not Serving"
+      ? IP_PATH_FIELDS[state.ipCoveragePath]
+      : null;
+  if (ipServed && cfg) {
+    const add = (cond: boolean, label: string, v: YesNoInvalid | undefined) => {
+      if (cond) ipSubs.push({ label, state: yni(v) });
+    };
+    add(cfg.showEducation, "Diabetes Education", state.ipEducationV);
+    add(cfg.show3Injections, "3+ Injections / Day", state.ipThreeInjectionsV);
+    add(cfg.showCgmUse, "CGM Use", state.ipCgmUseV);
+    add(cfg.showBsIssues, "Blood Sugar Issues", state.ipBsIssuesV);
+    add(cfg.showLmn, "Letter of MN on File", state.ipLmnV);
+    // OOW Date implies it must be on the script — one combined item.
+    if (cfg.showOow)
+      ipSubs.push({
+        label: "OOW Date",
+        state: state.oowDate && (!cfg.showOowOnScript || state.ipOowOnScriptV === "Yes") ? "ok" : "missing",
+      });
+    add(cfg.showMalfunction, "Malfunction", state.ipMalfunctionV);
+  }
+  const ipLangState: MnState = !ipServed
+    ? "na"
+    : !cfg
+      ? "missing"
+      : ipSubs.length === 0
+        // A coverage path with no language requirements (e.g. "Supplies Only")
+        // has nothing to satisfy — mark it not-applicable rather than "ok", so
+        // it doesn't render a misleading green "valid" check.
+        ? "na"
+        : agg(ipSubs);
+
+  const cgmCoverage = cgmServed
+    ? state.cgmCoveragePath === "Hypo"
+      ? "Hypoglycemia"
+      : state.cgmCoveragePath === "Insulin"
+        ? "Insulin"
+        : undefined
+    : undefined;
+  const ipCoverage =
+    ipServed && state.ipCoveragePath && state.ipCoveragePath !== "Not Serving"
+      ? state.ipCoveragePath
+      : undefined;
+
+  const language: MnLangItem[] = [
+    { label: "CGM Language", state: cgmLangState, subItems: cgmSubs, coverage: cgmCoverage },
+    { label: "Insulin Pump Language", state: ipLangState, subItems: ipSubs, coverage: ipCoverage },
+  ];
+
+  const applicable = [...documents, ...language]
+    .map((i) => i.state)
+    .filter((s) => s !== "na");
+  const established = applicable.length > 0 && applicable.every((s) => s === "ok");
+
+  const mr = {
+    received: state.clinReceived3 === "Yes",
+    lastVisit: state.lastVisitDate,
+    expiry: expiry ? expiry.toISOString().slice(0, 10) : undefined,
+    expired,
+    diagnosis: state.diagnosis,
+    diagnosisOk: !!state.diagnosis && state.diagnosis !== "Evaluate",
+  };
+
+  return { established, documents, language, mr };
 }

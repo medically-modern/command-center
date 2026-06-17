@@ -146,7 +146,6 @@ export function EvaluatePanel({ patient, resetVersion = 0, onUpdate, onOpenForm 
   // Notes gate — Send to Monday requires ≥1 note added this session, and is
   // blocked while typed-but-unadded text sits in the note box.
   const [noteAdded, setNoteAdded] = useState(false);
-  const [previewOpen, setPreviewOpen] = useState(false);
   const [pendingNoteText, setPendingNoteText] = useState("");
 
   // Map of pending File objects keyed by column ("clinicalFiles" | "finalClinicalFiles").
@@ -380,26 +379,6 @@ export function EvaluatePanel({ patient, resetVersion = 0, onUpdate, onOpenForm 
         });
       }
     }
-    // CGM Language — written when CGM is served, the script was received, and a
-    // real coverage path (Insulin/Hypo) is set. Captures the Yes/No/Invalid
-    // answer in its own column (color_mm4bb5sm); also gates MN.
-    if (
-      showCgm &&
-      cgmReceived &&
-      (state.cgmCoveragePath === "Insulin" || state.cgmCoveragePath === "Hypo")
-    ) {
-      if (state.cgmLanguage) {
-        tasks.push({
-          label: "CGM Language",
-          run: () => writeStatusLabel(patient.id, COL.cgmLanguage, state.cgmLanguage!),
-        });
-      } else {
-        tasks.push({
-          label: "CGM Language (clear)",
-          run: () => clearStatusColumn(patient.id, COL.cgmLanguage),
-        });
-      }
-    }
     // Diagnosis / Last Visit / MR Expiry — only synced while the Clinicals
     // section is visible (Clinicals received). When hidden, leave Monday
     // untouched.
@@ -481,7 +460,6 @@ export function EvaluatePanel({ patient, resetVersion = 0, onUpdate, onOpenForm 
           patient.id,
           COL.cgmMnInvalidReasons,
           preview.cgmMnInvalidReasons,
-          true,
         ),
     });
     tasks.push({
@@ -491,17 +469,6 @@ export function EvaluatePanel({ patient, resetVersion = 0, onUpdate, onOpenForm 
           patient.id,
           COL.ipMnInvalidReasons,
           preview.ipMnInvalidReasons,
-          true,
-        ),
-    });
-    tasks.push({
-      label: "Insulin Pump MN No Reasons",
-      run: () =>
-        writeDropdownLabels(
-          patient.id,
-          COL.ipMnNoReasons,
-          preview.ipMnNoReasons,
-          true,
         ),
     });
     // Consolidated, doctor-facing ask list — drives the Send Request UI
@@ -571,13 +538,8 @@ export function EvaluatePanel({ patient, resetVersion = 0, onUpdate, onOpenForm 
   }, [patient, state, preview, showCgm, showIp]);
 
   // ── Evaluate redesign (prototype) ──
-  // "Evaluate Attempt #N" — read-only. The value is incremented by a Monday
-  // automation; we just read the Evaluation Counter column (numeric_mm4bhjc8).
-  // Fallback to 1 when the column is empty / not yet set.
-  const attempt = (() => {
-    const n = parseInt(patient.evaluationCounter ?? "", 10);
-    return Number.isFinite(n) && n > 0 ? n : 1;
-  })();
+  // Attempt counter — pulled from Monday's Evaluation Counter column.
+  const attempt = patient.evaluationCounter ?? 1;
 
   // Map the new 4-state "Received?" controls onto the existing fields so the
   // Monday send/validity logic keeps working.
@@ -689,25 +651,10 @@ export function EvaluatePanel({ patient, resetVersion = 0, onUpdate, onOpenForm 
     state.cgmLanguage === "Yes";
   const ipLangChecked = ipServed && !!ipCfg && ipReqValues.every((v) => v === "Yes");
 
-  // OOW date validity — drives the inline hint on the OOW Date row.
-  const oowCheck = isOowDateValid(state.oowDate, patient.primaryInsurance);
-
-  // MN established = the single source of truth (deriveValidity), which now
-  // includes the CGM Language gate. The per-row checklist below is a visual
-  // indicator; this headline + the Final Clinicals unlock follow deriveValidity.
-  const mnEstablished = validity.established;
-
-  // ── Send guardrails (restored) — block Send until every visible required
-  // field is filled and an MN Workflow note is added; also block mid-upload. ──
-  const sendMissingFields = getMissingRequiredFields(state, showCgm, showIp);
-  const sendHasPendingNote = pendingNoteText.trim().length > 0;
-  const sendNoteBlocked = !noteAdded || sendHasPendingNote;
-  const sendBlock = {
-    missingFields: sendMissingFields,
-    hasPendingNote: sendHasPendingNote,
-    noteBlocked: sendNoteBlocked,
-    blocked: sendMissingFields.length > 0 || sendNoteBlocked,
-  };
+  const mnChecks: boolean[] = [clinDocChecked];
+  if (cgmServed) mnChecks.push(cgmDocChecked, cgmLangChecked);
+  if (ipServed) mnChecks.push(ipDocChecked, ipLangChecked);
+  const mnEstablished = mnChecks.every(Boolean);
 
   const cgmLangLabel =
     state.cgmCoveragePath === "Hypo" ? "Hypoglycemia Language" : "Insulin Language";
@@ -854,23 +801,7 @@ export function EvaluatePanel({ patient, resetVersion = 0, onUpdate, onOpenForm 
                       </ReqRow>
                     )}
                     {ipCfg.showOow && (
-                      <ReqRow
-                        label="OOW Date"
-                        required={ipReqReq}
-                        missing={!state.oowDate || (oowCheck !== null && !oowCheck.valid)}
-                        hint={
-                          oowCheck === null ? undefined : oowCheck.valid ? (
-                            <p className="text-xs mt-0.5 text-[color:var(--mm-teal)]">
-                              Out of warranty {formatOowDiff(oowCheck.diffDays)} ago
-                            </p>
-                          ) : (
-                            <p className="text-xs mt-0.5 text-[color:var(--mm-rose)]">
-                              Date is in the future — pump still under warranty (OOW in{" "}
-                              {formatOowDiff(oowCheck.diffDays)})
-                            </p>
-                          )
-                        }
-                      >
+                      <ReqRow label="OOW Date" required={ipReqReq} missing={!state.oowDate}>
                         <Input
                           type="date"
                           value={state.oowDate ?? ""}
@@ -908,6 +839,7 @@ export function EvaluatePanel({ patient, resetVersion = 0, onUpdate, onOpenForm 
               value={state.clinReceived3}
               onChange={(v) => setClinReceived(v as YesNoInvalid | undefined)}
               includeNotServing={false}
+              includeInvalid={false}
             />
             {state.clinReceived3 !== "No" && (
               <div className="flex flex-col gap-4">
@@ -926,25 +858,29 @@ export function EvaluatePanel({ patient, resetVersion = 0, onUpdate, onOpenForm 
             )}
           </ProductColumn>
         </div>
-      </MmStep>
 
-      {/* ── Medical Necessity checklist ── */}
-      <section
-        className="rounded-2xl bg-card border border-l-4 p-6 shadow-sm"
-        style={{
-          borderColor: "var(--mm-card-border)",
-          borderLeftColor: mnEstablished ? "var(--mm-green)" : "var(--mm-rose)",
-        }}
-      >
-        <div className="mb-5">
+        {/* ── Medical Necessity result — a banner + checklist, part of Step 2 ── */}
+        <div
+          className="mt-6 flex items-center gap-2.5 rounded-xl px-4 py-3"
+          style={
+            mnEstablished
+              ? { background: "var(--mm-mint)", boxShadow: "inset 0 0 0 1px var(--mm-mint-ring)" }
+              : { background: "var(--mm-rose-soft)", boxShadow: "inset 0 0 0 1px oklch(0.62 0.13 18 / 0.35)" }
+          }
+        >
+          {mnEstablished ? (
+            <Check className="h-5 w-5 shrink-0" style={{ color: "var(--mm-green)" }} />
+          ) : (
+            <AlertTriangle className="h-5 w-5 shrink-0" style={{ color: "var(--mm-rose)" }} />
+          )}
           <span
-            className="text-lg font-extrabold tracking-tight"
+            className="text-base font-bold"
             style={{ color: mnEstablished ? "var(--mm-teal)" : "var(--mm-rose)" }}
           >
             Medical Necessity {mnEstablished ? "Established" : "Not Established"}
           </span>
         </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 mt-4">
           <div>
             <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground mb-2.5">
               Documents
@@ -965,7 +901,7 @@ export function EvaluatePanel({ patient, resetVersion = 0, onUpdate, onOpenForm 
             </div>
           </div>
         </div>
-      </section>
+      </MmStep>
 
       {/* ── Final Clinicals — locked until MN Established ── */}
       <MmStep num={3} title="Final Clinicals">
@@ -1014,77 +950,24 @@ export function EvaluatePanel({ patient, resetVersion = 0, onUpdate, onOpenForm 
 
       {/* Send to Monday */}
       <div className="flex flex-col items-end gap-3">
-        {/* Collapsible Monday Preview — exactly what will be written on Send */}
-        <button
-          type="button"
-          onClick={() => setPreviewOpen((v) => !v)}
-          className="self-start flex items-center gap-1.5 text-[11px] text-muted-foreground hover:text-foreground transition-colors"
-        >
-          <ChevronRight className={cn("w-3.5 h-3.5 transition-transform", previewOpen && "rotate-90")} />
-          Monday Preview
-        </button>
-        {previewOpen && (
-          <div className="w-full rounded-lg border bg-muted/20 p-3">
-            <MondayPreviewPanel preview={preview} />
-          </div>
-        )}
-
-        {/* Guardrail messages (restored) */}
-        {sendBlock.missingFields.length > 0 && (
-          <span
-            className="text-xs font-medium text-right"
-            style={{ color: "var(--mm-rose)" }}
-            title={sendBlock.missingFields.join(", ")}
-          >
-            {sendBlock.missingFields.length} required field{sendBlock.missingFields.length > 1 ? "s" : ""} remaining:{" "}
-            {sendBlock.missingFields.slice(0, 4).join(", ")}
-            {sendBlock.missingFields.length > 4 ? "…" : ""}
-          </span>
-        )}
-        {sendBlock.noteBlocked && (
-          <span className="text-xs font-medium text-right" style={{ color: "var(--mm-rose)" }}>
-            {sendBlock.hasPendingNote
-              ? "Press Add on your note before sending"
-              : "Add at least one MN Workflow note to send"}
-          </span>
-        )}
-        {filesUploading && (
-          <div className="flex items-start gap-2 rounded-lg border-2 border-red-400 bg-red-50 px-3 py-2 max-w-sm animate-pulse">
-            <Loader2 className="h-4 w-4 text-red-600 shrink-0 mt-0.5 animate-spin" />
-            <div>
-              <p className="text-xs font-bold text-red-800 uppercase tracking-wide">
-                Files uploading to Monday
-              </p>
-              <p className="text-[11px] text-red-700 mt-0.5">
-                Do NOT advance until upload is confirmed
-              </p>
-            </div>
-          </div>
-        )}
         <Button
           size="lg"
           onClick={handleSendToMonday}
-          disabled={sending || sendBlock.blocked || filesUploading}
+          disabled={sending}
           className="gap-2 text-white shadow-elevate bg-[color:var(--mm-green)] hover:bg-[oklch(0.56_0.10_175)] disabled:bg-[oklch(0.85_0.01_200)]"
         >
           {sending ? (
             <>
               <Loader2 className="h-4 w-4 animate-spin" />
-              Sending…
+              Saving…
             </>
           ) : (
             <>
-              <Send className="h-4 w-4" />
-              Send to Monday
+              <Check className="h-4 w-4" />
+              Completed Evaluation
             </>
           )}
         </Button>
-        {sendBlock.blocked && (
-          <p className="text-xs text-muted-foreground text-right max-w-md">
-            Every visible evaluation field must be filled out — even if the answer is No or Invalid —
-            and at least one MN Workflow note added, before syncing to Monday.
-          </p>
-        )}
         {sendErrors.length > 0 && (
           <div
             className="w-full rounded-lg border-2 px-3.5 py-2.5 text-sm"
@@ -1965,40 +1848,22 @@ function getMissingRequiredFields(
   showIp: boolean,
 ): string[] {
   const missing: string[] = [];
+  const cgmOn = showCgm && state.cgmScriptReceived === "Yes";
+  const ipOn = showIp && state.ipScriptReceived === "Yes";
 
-  // "Received?" must be answered for every visible product (matches the
-  // required markers on the new 4-state controls). "Not Serving" (set via the
-  // coverage path) counts as answered.
-  const cgmServedHere = showCgm && state.cgmCoveragePath !== "Not Serving";
-  const ipServedHere = showIp && state.ipCoveragePath !== "Not Serving";
-  if (cgmServedHere && state.cgmScriptReceived === undefined) missing.push("CGM Script Received?");
-  if (ipServedHere && state.ipScriptReceived === undefined) missing.push("IP Script Received?");
-  if (state.clinReceived3 === undefined) missing.push("Clinicals Received?");
+  // Validity — required for any received script
+  if (cgmOn && state.cgmScriptValid === undefined) missing.push("CGM Script validity");
+  if (ipOn && state.ipScriptValid === undefined) missing.push("IP Script validity");
 
-  // Coverage-path / requirement / language answers are required only when the
-  // script was received AND valid (Received? = "Yes") — matching the on-page
-  // asterisks (an "Invalid" script makes the rest optional).
-  const cgmYes = showCgm && state.cgmScriptReceived === "Yes" && state.cgmScriptValid !== "Invalid";
-  const ipYes = showIp && state.ipScriptReceived === "Yes" && state.ipScriptValid !== "Invalid";
-
-  // Diagnosis & Last Visit — required when Clinicals received = Yes
-  if (state.clinReceived3 === "Yes") {
+  // Diagnosis & Last Visit — required when Clinicals received
+  if (state.mrReceived === "Yes") {
     if (!state.diagnosis) missing.push("Diagnosis");
     if (!state.lastVisitDate) missing.push("Last Visit Date");
   }
 
-  // CGM coverage path + language
-  if (cgmYes && !state.cgmCoveragePath) missing.push("CGM Coverage Path");
-  if (
-    cgmYes &&
-    (state.cgmCoveragePath === "Insulin" || state.cgmCoveragePath === "Hypo") &&
-    state.cgmLanguage === undefined
-  ) {
-    missing.push("CGM Language");
-  }
-
-  // IP coverage path + per-path requirements
-  if (ipYes) {
+  // Coverage paths — required per visible section
+  if (cgmOn && !state.cgmCoveragePath) missing.push("CGM Coverage Path");
+  if (ipOn) {
     if (!state.ipCoveragePath) {
       missing.push("Insulin Pump Coverage Path");
     } else {
@@ -2183,12 +2048,12 @@ function ValiditySummary({
           {sending ? (
             <>
               <Loader2 className="h-4 w-4 animate-spin" />
-              Sending…
+              Saving…
             </>
           ) : (
             <>
-              <Send className="h-4 w-4" />
-              Send to Monday
+              <Check className="h-4 w-4" />
+              Completed Evaluation
             </>
           )}
         </Button>
@@ -2222,7 +2087,6 @@ function MondayPreviewPanel({ preview }: { preview: ReturnType<typeof buildMonda
           <ReasonsRow label="General MN Invalid Reasons" reasons={preview.generalMnInvalidReasons} />
           <ReasonsRow label="CGM MN Invalid Reasons" reasons={preview.cgmMnInvalidReasons} />
           <ReasonsRow label="Insulin Pump MN Invalid Reasons" reasons={preview.ipMnInvalidReasons} />
-          <ReasonsRow label="Insulin Pump MN No Reasons" reasons={preview.ipMnNoReasons} />
           {preview.generateCgmScript && (
             <ColRow label="Generate CGM Script" value={preview.generateCgmScript} />
           )}
@@ -2453,18 +2317,22 @@ function RcvField({
   value,
   onChange,
   includeNotServing = true,
+  includeInvalid = true,
   disabled = false,
 }: {
   label: string;
   value?: string;
   onChange: (v: string | undefined) => void;
   includeNotServing?: boolean;
+  includeInvalid?: boolean;
   disabled?: boolean;
 }) {
   const opts: { label: string; sel: string }[] = [
     { label: "Yes", sel: "border-transparent bg-[color:var(--mm-green)] text-white shadow-sm" },
     { label: "No", sel: "border-transparent bg-[color:var(--mm-rose)] text-white shadow-sm" },
-    { label: "Invalid", sel: "border-transparent bg-amber-500 text-white shadow-sm" },
+    ...(includeInvalid
+      ? [{ label: "Invalid", sel: "border-transparent bg-amber-500 text-white shadow-sm" }]
+      : []),
     ...(includeNotServing
       ? [{ label: "Not Serving", sel: "border-transparent bg-slate-500 text-white shadow-sm" }]
       : []),
@@ -2552,22 +2420,21 @@ function YniPills({
   );
 }
 
-/** MN checklist row — ✓ ok / ✕ bad / N/A. */
+/** MN checklist row — ✓ ok / ✕ bad. N/A items are hidden entirely. The bar
+ *  border is green for Yes, red for No (in addition to the check/x). */
 function MnRow({ label, state }: { label: string; state: "ok" | "bad" | "na" }) {
+  if (state === "na") return null;
+  const borderColor = state === "ok" ? "var(--mm-green)" : "var(--mm-rose)";
   return (
     <div
-      className="flex items-center justify-between gap-3 rounded-lg border px-3.5 py-2.5 bg-card"
-      style={{ borderColor: "var(--mm-card-border)" }}
+      className="flex items-center justify-between gap-3 rounded-lg border-2 px-3.5 py-2.5 bg-card"
+      style={{ borderColor }}
     >
-      <span className={cn("text-sm font-medium", state === "na" && "text-muted-foreground")}>
-        {label}
-      </span>
+      <span className="text-sm font-medium">{label}</span>
       {state === "ok" ? (
         <span className="inline-flex items-center gap-1 text-xs font-semibold" style={{ color: "var(--mm-teal)" }}>
           <Check className="h-4 w-4" /> Yes
         </span>
-      ) : state === "na" ? (
-        <span className="text-xs font-semibold text-muted-foreground">N/A</span>
       ) : (
         <span className="inline-flex items-center gap-1 text-xs font-semibold" style={{ color: "var(--mm-rose)" }}>
           <X className="h-4 w-4" /> No
