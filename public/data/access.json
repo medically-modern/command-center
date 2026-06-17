@@ -29,7 +29,8 @@
     "madeline@medicallymodern.com": {
       "name": "madeline",
       "roles": [
-        "chaseFax"
+        "chaseFax",
+        "evaluate"
       ]
     }
   }
