@@ -10,7 +10,8 @@
       "name": "masheke",
       "roles": [
         "evaluate",
-        "sendRequest"
+        "sendRequest",
+        "authOutstanding"
       ]
     }
   }
