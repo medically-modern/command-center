@@ -12,7 +12,8 @@
         "evaluate",
         "sendRequest",
         "chaseParachute",
-        "chaseFax"
+        "chaseFax",
+        "updateClinicals"
       ]
     }
   }
