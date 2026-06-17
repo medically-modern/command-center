@@ -275,41 +275,43 @@ export async function sendPatientToMonday(
  * Mirrors the stage-advancer pattern: the trigger is the "stage column",
  * written last only after read-back verification of the data columns.
  */
-export async function sendRequestVerified(
+export async function recordAndAdvanceVerified(
   p: Patient,
-  bodyText?: string,
+  opts: { body: string; nextStage: string; nextActionDate: string },
 ): Promise<void> {
-  const tasks: WriteTask[] = [];
-
-  if (bodyText != null) {
-    tasks.push({
+  // Same guarantee as every other send: write ALL data columns first, read them
+  // back to confirm Monday indexed them, and ONLY THEN flip the Stage Advancer
+  // (subStage) — the single write that moves the item. If verification fails the
+  // advancer is never written and this throws, so the item does not move.
+  const tasks: WriteTask[] = [
+    {
       label: "Request Message",
       columnId: COL.requestBody,
-      fn: () => writeLongText(p.id, COL.requestBody, bodyText),
-    });
-  }
-
-  tasks.push({
-    label: "Request Sent At",
-    columnId: COL.requestSentAt,
-    // Dynamic timestamp — verified by snapshot-diff (changes on every send).
-    fn: () => writeDateTime(p.id, COL.requestSentAt),
-  });
-
-  // Trigger LAST — written only after the data columns above are read-back
-  // confirmed. Flipping this is what fires the SuperMail automation.
-  tasks.push({
-    label: "Send Request trigger",
-    columnId: COL.sendRequestTrigger,
-    fn: () => writeStatusLabel(p.id, COL.sendRequestTrigger, "Send"),
-  });
+      fn: () => writeLongText(p.id, COL.requestBody, opts.body),
+    },
+    {
+      label: "Request Sent At",
+      columnId: COL.requestSentAt,
+      fn: () => writeDateTime(p.id, COL.requestSentAt),
+    },
+    {
+      label: "Next Action Date",
+      columnId: COL.nextActionDate,
+      fn: () => writeDate(p.id, COL.nextActionDate, opts.nextActionDate),
+    },
+    {
+      label: `Stage Advancer → ${opts.nextStage}`,
+      columnId: COL.subStage,
+      fn: () => writeStatusLabel(p.id, COL.subStage, opts.nextStage),
+    },
+  ];
 
   const failures = await executeWritesWithVerification({
     itemId: p.id,
     boardId: "18406060017",
-    label: "Send Request",
+    label: "Send Request → advance",
     tasks,
-    stageColumnId: COL.sendRequestTrigger,
+    stageColumnId: COL.subStage,
     executeWithRetry,
     readColumns: readColumnTexts,
     writeDebug: (id, msg) => writeText(id, COL.joshDebug, msg),
@@ -317,7 +319,7 @@ export async function sendRequestVerified(
 
   if (failures.length > 0) {
     throw new Error(
-      `${failures.length} column(s) failed before the trigger — Send Request NOT triggered. Check the Josh Debug column.`,
+      `${failures.length} column(s) failed verification — item NOT moved. Check the Josh Debug column.`,
     );
   }
 }

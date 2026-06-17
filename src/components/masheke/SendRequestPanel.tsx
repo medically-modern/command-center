@@ -44,6 +44,7 @@ import {
 } from "@/lib/masheke/mondayApi";
 import { FILE_PROXY_URL } from "@/lib/shared/mondayAssets";
 import { getIdToken } from "@/lib/shared/auth";
+import { recordAndAdvanceVerified } from "@/lib/masheke/mondayWrite";
 import { GEN_SCRIPT_STATUS } from "@/lib/masheke/mondayMapping";
 import {
   loadEvalStateForPatient,
@@ -323,16 +324,14 @@ export function SendRequestPanel({ patient, resetVersion = 0, onUpdate }: Props)
         const nextStage = isParachute ? "Chase Clinicals" : "Confirm Receipt";
         setSentNow(true);
         try {
-          await writeLongText(patient.id, COL.requestBody, body);
-          await writeDateTime(patient.id, COL.requestSentAt);
-          // Advance: flip the Stage Advancer + set the next action date
-          // (+1 business day into Confirm Receipt; +3 into Chase for Parachute).
-          await writeStatusLabel(patient.id, COL.subStage, nextStage);
-          await writeDate(
-            patient.id,
-            COL.nextActionDate,
-            toIsoDate(addBusinessDays(etNow(), isParachute ? 3 : 1)),
-          );
+          // Verified write: every data column is written AND read-back confirmed
+          // before the Stage Advancer flips (same guarantee the other sends use).
+          // If verification fails it throws and the item does not move.
+          await recordAndAdvanceVerified(patient, {
+            body,
+            nextStage,
+            nextActionDate: toIsoDate(addBusinessDays(etNow(), isParachute ? 3 : 1)),
+          });
           onUpdate({ requestBody: body });
           toast.success(
             `Sent to ${to.length} recipient${to.length > 1 ? "s" : ""}${data.sender ? " from " + data.sender : ""} — moved to ${nextStage}`,
