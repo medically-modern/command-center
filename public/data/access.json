@@ -1,6 +1,7 @@
 {
   "managers": [
-    "josh@medicallymodern.com"
+    "josh@medicallymodern.com",
+    "brandon@medicallymodern.com"
   ],
   "processors": {}
 }
