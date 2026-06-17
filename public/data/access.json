@@ -25,6 +25,10 @@
         "submitAuth",
         "authOutstanding"
       ]
+    },
+    "madeline@medicallymodern.com": {
+      "name": "madeline",
+      "roles": []
     }
   }
 }
