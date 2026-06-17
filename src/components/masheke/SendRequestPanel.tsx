@@ -831,61 +831,6 @@ function MethodOfCommunication({
   );
 }
 
-/** Gmail-style recipient field — each address becomes a removable pill. */
-function RecipientChips({ recipients, onChange }: { recipients: string[]; onChange: (r: string[]) => void }) {
-  const [input, setInput] = useState("");
-  const add = (raw: string) => {
-    const v = raw.trim().replace(/[,;]+$/, "").trim();
-    if (v && !recipients.includes(v)) onChange([...recipients, v]);
-    setInput("");
-  };
-  return (
-    <div
-      className="flex flex-wrap items-center gap-1.5 rounded-xl border p-2 min-h-[44px]"
-      style={{ borderColor: "var(--mm-card-border)" }}
-    >
-      {recipients.map((r) => (
-        <span
-          key={r}
-          className="inline-flex items-center gap-1.5 rounded-full pl-1 pr-2 py-0.5 text-sm"
-          style={{ background: "oklch(0.94 0.02 175 / 0.6)", color: "var(--mm-teal)" }}
-        >
-          <span
-            className="grid place-items-center h-5 w-5 rounded-full text-[10px] font-bold text-white"
-            style={{ background: "var(--mm-teal)" }}
-          >
-            {r[0]?.toUpperCase()}
-          </span>
-          {r}
-          <button
-            type="button"
-            onClick={() => onChange(recipients.filter((x) => x !== r))}
-            className="hover:opacity-70"
-            aria-label={`Remove ${r}`}
-          >
-            <X className="h-3 w-3" />
-          </button>
-        </span>
-      ))}
-      <input
-        value={input}
-        onChange={(e) => setInput(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === "Enter" || e.key === "," || e.key === ";") {
-            e.preventDefault();
-            add(input);
-          } else if (e.key === "Backspace" && !input && recipients.length) {
-            onChange(recipients.slice(0, -1));
-          }
-        }}
-        onBlur={() => add(input)}
-        placeholder={recipients.length ? "" : "Recipient(s)"}
-        className="flex-1 min-w-[120px] bg-transparent text-sm p-1 focus:outline-none"
-      />
-    </div>
-  );
-}
-
 /** Section 3 — auto-filled request template + notes + send footer. */
 function SendRequestComposer({
   patient,
@@ -915,7 +860,6 @@ function SendRequestComposer({
   const [notes, setNotes] = useState("");
   const chanValue =
     method === "Email" ? patient.doctorEmail : method === "Fax" ? patient.doctorFax : patient.doctorPhone;
-  const [recipients, setRecipients] = useState<string[]>([]);
   const [subject, setSubject] = useState(`Medical necessity documentation — ${titleCase(patient.name || "")}`);
   const isParachute = method === "Parachute";
   const [open, setOpen] = useState(!isParachute);
@@ -953,7 +897,25 @@ function SendRequestComposer({
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div>
           <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">To</p>
-          <RecipientChips recipients={recipients} onChange={setRecipients} />
+          {/* Read-only mirror of the real recipient: Doctor Email when method is
+              Email, Doctor Fax (@rcfax) when Fax. Reads live from Monday, so any
+              change to those columns is reflected here. Not editable by design —
+              the recipient is governed by Clinicals Method + the Doctor contact. */}
+          <input
+            value={chanValue || ""}
+            readOnly
+            aria-readonly="true"
+            placeholder={
+              method === "Email"
+                ? "No Doctor Email on file"
+                : method === "Fax"
+                ? "No Doctor Fax (@rcfax) on file"
+                : "No address on file"
+            }
+            title={`Recipient is set automatically from Clinicals Method = ${method}. Change the Doctor ${method === "Email" ? "Email" : "Fax"} in Monday to update it.`}
+            className="w-full rounded-xl border p-3 text-sm bg-muted/40 text-muted-foreground cursor-not-allowed focus:outline-none"
+            style={{ borderColor: "var(--mm-card-border)" }}
+          />
         </div>
         <div>
           <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">Subject</p>
