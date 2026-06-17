@@ -1130,7 +1130,7 @@ function SendRequestComposer({
           <AlertTriangle className="h-4 w-4 shrink-0" style={{ color: "oklch(0.62 0.13 70)" }} />
           {warned
             ? "No attachment detected — press “Send request” again to send without one."
-            : "No attachment added yet — most requests should include the signed script."}
+            : "No attachment added yet — most requests should include a script template."}
         </div>
       )}
       <div className="flex items-center justify-between gap-3 flex-wrap border-t pt-4" style={{ borderColor: "var(--mm-card-border)" }}>
