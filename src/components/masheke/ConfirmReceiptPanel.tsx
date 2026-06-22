@@ -14,7 +14,6 @@
  */
 import { useEffect, useMemo, useState, useRef } from "react";
 import type { Patient } from "@/lib/masheke/workflow";
-import { NotesPanel } from "@/components/masheke/NotesPanel";
 import { etNow, clampToBusinessDay } from "@/lib/masheke/etDate";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -27,11 +26,12 @@ import {
   writeDateTime,
   writeLongText,
   writeStatusIndex,
-  writeStatusLabel,
   writeText,
 } from "@/lib/masheke/mondayApi";
 import { runVerifiedSend } from "@/lib/masheke/mondayWrite";
 import type { WriteTask } from "@/lib/shared/verifiedWrite";
+import { FILE_PROXY_URL, fetchAssetBytes } from "@/lib/shared/mondayAssets";
+import { getIdToken } from "@/lib/shared/auth";
 import {
   ESCALATION_INDEX,
   MN_ATTEMPTS_INDEX,
@@ -42,8 +42,11 @@ import {
   AlertTriangle,
   Check,
   CheckCircle2,
+  ChevronRight,
+  FileText,
   Loader2,
   Phone,
+  Plus,
   X,
 } from "lucide-react";
 import {
@@ -54,7 +57,15 @@ import {
   MmStep,
   MnStatusChip,
   SentChip,
+  type TaggedFile,
 } from "@/components/masheke/mmKit";
+import { MissingChecklist } from "@/components/masheke/MissingChecklist";
+import { MethodBar } from "@/components/masheke/MethodBar";
+import { ActivityRow, formatActivityDate } from "@/components/masheke/PreviousActivityCard";
+import { openFileViewer } from "@/components/shared/FileViewerModal";
+import { buildRequestTemplate, titleCase } from "@/lib/masheke/requestTemplate";
+import { loadEvalStateForPatient, computeMnChecklist } from "@/lib/masheke/evalState";
+import { shouldShowCgmBlock, shouldShowIpBlock } from "@/lib/masheke/ipPaths";
 
 interface Props {
   patient: Patient;
@@ -70,36 +81,59 @@ interface Props {
 
 export function ConfirmReceiptPanel({ patient, onUpdate, managerMode = false }: Props) {
   const mondayFiles = useMondayFiles(patient.id);
+
+  // "What we're still missing" + courtesy-fax message body are derived from
+  // the same eval output Send Request uses, so both stages stay in sync.
+  const mnChecklist = useMemo(() => {
+    const evalState = loadEvalStateForPatient(patient);
+    return computeMnChecklist(
+      evalState,
+      shouldShowCgmBlock(patient.serving),
+      shouldShowIpBlock(patient.serving),
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [patient.id, patient.serving, patient.medicalNecessity, patient.mnRequestConsolidated]);
   const [saving, setSaving] = useState(false);
   const [escalated, setEscalated] = useState(false);
   const escalatedRef = useRef(false);
 
-  // Active-attempt form state — name + yes/no + (if no) next action date
-  const [name, setName] = useState("");
+  // Active-attempt form state — outcome + the single per-attempt note +
+  // (if no) next action date. The note (who they spoke to / what was said)
+  // is saved into the attempt's own column, NOT the MN workflow notes.
   const [confirmed, setConfirmed] = useState<"yes" | "no" | null>(null);
   const [nextAction, setNextAction] = useState<string>("");
-  // Save is blocked until the rep adds at least one note for this attempt,
-  // and while typed-but-unadded text sits in the note box.
-  const [noteAdded, setNoteAdded] = useState(false);
-  const [pendingNoteText, setPendingNoteText] = useState("");
+  // One free-text note per attempt. Required on "Not Confirmed"; optional
+  // (but prompted with an example) on "Confirmed".
+  const [attemptNote, setAttemptNote] = useState("");
   // Session-only display state: set after a successful Yes save so the
   // step shows the confirmed banner (no Monday read — the patient leaves
   // this stage on the next refetch anyway).
-  const [justConfirmed, setJustConfirmed] = useState<{ who: string; ts: string } | null>(null);
+  const [justConfirmed, setJustConfirmed] = useState<{ note: string; ts: string } | null>(null);
   // Re-send state (step 2) — session-only chip after a successful send.
   const [resending, setResending] = useState(false);
   const [resentNow, setResentNow] = useState(false);
+  // For a "Not Confirmed" outcome, the rep must re-send the fax before saving.
+  const [faxResent, setFaxResent] = useState(false);
+  // Editable courtesy-fax message. null until the rep edits — until then we
+  // show the saved column value (if any) or the freshly generated template.
+  const [messageDraft, setMessageDraft] = useState<string | null>(null);
 
   // Reset form when patient changes
   useEffect(() => {
-    setName("");
     setConfirmed(null);
     setNextAction("");
-    setNoteAdded(false);
-    setPendingNoteText("");
+    setAttemptNote("");
     setJustConfirmed(null);
     setResentNow(false);
+    setFaxResent(false);
+    setMessageDraft(null);
   }, [patient.id]);
+
+  // Re-selecting an outcome clears the "must re-send" gate — switching away
+  // from "Not Confirmed" and back requires a fresh re-send.
+  useEffect(() => {
+    if (confirmed !== "no") setFaxResent(false);
+  }, [confirmed]);
 
   // Default Next Action Date based on the picked outcome:
   //   No  → next weekday (fast follow-up after a confirmed-receipt no)
@@ -136,11 +170,23 @@ export function ConfirmReceiptPanel({ patient, onUpdate, managerMode = false }: 
     return out;
   }, [patient.confirmAttempt1, patient.confirmAttempt2, patient.confirmAttempt3]);
 
-  // Name field is never required — agents sometimes don't catch a
-  // name. Save needs a selected outcome AND at least one note added
-  // for this attempt (with no un-added text left in the note box).
-  const hasPendingNote = pendingNoteText.trim().length > 0;
-  const canSave = !!confirmed && noteAdded && !hasPendingNote && !saving && !locked;
+  // The round to display/save as active — the first un-logged slot (1..3).
+  // Derived from logged attempts so it stays correct even when Monday's MN
+  // Attempts counter lags the per-attempt columns.
+  const activeAttempt = isEscalated ? 3 : Math.min(history.length + 1, 3);
+
+  // A note is required ONLY when receipt was not confirmed (the rep must
+  // explain what happened); a confirmed receipt can save without a note but
+  // is prompted to capture who confirmed. "Not Confirmed" must also re-send
+  // the fax before it can be saved.
+  const hasNote = attemptNote.trim().length > 0;
+  // Re-sending the fax on a "Not Confirmed" attempt is strongly recommended
+  // but no longer hard-required — Save asks for confirmation instead.
+  const canSave =
+    !!confirmed &&
+    (confirmed !== "no" || hasNote) &&
+    !saving &&
+    !locked;
 
   async function handleSave() {
     if (!canSave) return;
@@ -148,10 +194,19 @@ export function ConfirmReceiptPanel({ patient, onUpdate, managerMode = false }: 
       toast.error("Monday token not configured");
       return;
     }
+    // Not Confirmed without a fresh fax re-send — warn before saving.
+    if (confirmed === "no" && !faxResent) {
+      const ok = window.confirm(
+        `You haven't re-sent the ${isEmail ? "email" : "fax"} on this attempt. The office may still be missing the request. Save the attempt anyway?`,
+      );
+      if (!ok) return;
+    }
     setSaving(true);
     try {
       if (confirmed === "yes") {
-        await saveYes(patient, name.trim());
+        const slot = activeAttempt;
+        const value = formatAttemptValue("confirmed", attemptNote.trim(), etNow());
+        await saveYes(patient, slot, value);
         if (isEscalated) {
           // Manager resolved the escalation by confirming receipt — clear
           // the flag so the patient doesn't stay in escalated lists.
@@ -160,12 +215,13 @@ export function ConfirmReceiptPanel({ patient, onUpdate, managerMode = false }: 
         }
         toast.success("Receipt confirmed — moved to Chase Clinicals");
         setJustConfirmed({
-          who: name.trim(),
+          note: attemptNote.trim(),
           ts: formatDateShort(etNow()),
         });
+        const fieldKey =
+          slot === 1 ? "confirmAttempt1" : slot === 2 ? "confirmAttempt2" : "confirmAttempt3";
         onUpdate({
-          receiptConfirmedName: name.trim(),
-          receiptConfirmedDate: formatDateInput(etNow()),
+          [fieldKey]: value,
           subStage: "Chase Clinicals",
         });
       } else if (isEscalated) {
@@ -185,7 +241,7 @@ export function ConfirmReceiptPanel({ patient, onUpdate, managerMode = false }: 
         toast.success("Follow-up saved — patient remains escalated");
       } else {
         const attempt = currentAttempt ?? 1;
-        const value = formatAttemptValue(name.trim(), etNow());
+        const value = formatAttemptValue("not_confirmed", attemptNote.trim(), etNow());
         const nextSlot = nextMnAttempt(attempt);
         // Never schedule a next action on a weekend, no matter how the
         // date was produced.
@@ -221,10 +277,9 @@ export function ConfirmReceiptPanel({ patient, onUpdate, managerMode = false }: 
         setEscalated(false); escalatedRef.current = false;
       }
       // Reset form for next attempt (or clear if patient is leaving the tab)
-      setName("");
       setConfirmed(null);
       setNextAction("");
-      setNoteAdded(false);
+      setAttemptNote("");
     } catch (e) {
       toast.error("Save failed", {
         description: e instanceof Error ? e.message : String(e),
@@ -239,36 +294,94 @@ export function ConfirmReceiptPanel({ patient, onUpdate, managerMode = false }: 
   const recipient = isEmail ? patient.doctorEmail : patient.doctorFax;
   // const mnLetterPresent = mondayFiles.mnRequestLetter.length > 0; // (unused while fax re-send is paused)
 
+  // The message that will be sent — the rep's edit, else the saved column
+  // value, else a freshly generated template.
+  const currentMessage =
+    messageDraft ?? patient.requestBody ?? buildRequestTemplate(patient, mnChecklist);
+
   // Re-send the request — identical writes to Send Request's Send action:
   // flip the Send Request trigger column (Monday's automation re-dispatches
-  // the files via Supermail) and stamp Request Sent At.
-  async function handleResend() {
+  // the files via Supermail), save the approved message body, and stamp
+  // Request Sent At.
+  async function handleResend(): Promise<boolean> {
     if (!hasToken()) {
       toast.error("Monday token not configured");
-      return;
+      return false;
+    }
+    const idToken = getIdToken();
+    if (!idToken) {
+      toast.error("Sign in with your medicallymodern.com account to send.");
+      return false;
+    }
+    if (!recipient) {
+      toast.error(`No doctor ${isEmail ? "email" : "fax"} on file.`);
+      return false;
     }
     setResending(true);
     try {
-      try {
-        await writeStatusLabel(patient.id, COL.sendRequestTrigger, "Send");
-      } catch (e) {
-        throw new Error(`[1/2 trigger Send Request] ${e instanceof Error ? e.message : String(e)}`);
+      // Send the SAME way Send Request does: POST recipient + subject + message
+      // + the Monday request files to the worker /send-message (RingCentral),
+      // not the dormant trigger column. A bare fax number becomes
+      // <digits>@rcfax.com (RingCentral turns that into a fax).
+      const to = recipient.includes("@") ? recipient : `${recipient.replace(/\D/g, "")}@rcfax.com`;
+      const packet = [
+        ...(showCgm ? mondayFiles.cgmTemplate : []),
+        ...(showIp ? mondayFiles.ipTemplate : []),
+        ...mondayFiles.mnRequestLetter,
+        ...mondayFiles.clinicalFiles,
+      ];
+      const files: File[] = [];
+      for (const f of packet) {
+        const url = f.public_url || f.url;
+        if (!url) continue;
+        const bytes = await fetchAssetBytes(url, f.name);
+        files.push(new File([bytes as BlobPart], f.name));
       }
-      try {
-        await writeDateTime(patient.id, COL.requestSentAt);
-      } catch (e) {
-        throw new Error(`[2/2 Request Sent At] ${e instanceof Error ? e.message : String(e)}`);
+      const fd = new FormData();
+      fd.append("recipients", JSON.stringify([to]));
+      fd.append("subject", `Medical necessity documentation — ${titleCase(patient.name || "")}`);
+      fd.append("body", currentMessage);
+      for (const f of files) fd.append("files", f);
+      const res = await fetch(`${FILE_PROXY_URL}/send-message`, {
+        method: "POST",
+        headers: { "X-MM-Auth": idToken },
+        body: fd,
+      });
+      const data = (await res.json().catch(() => ({}))) as {
+        ok?: boolean;
+        sender?: string;
+        results?: { to: string; ok: boolean; error?: string | null }[];
+        error?: string;
+      };
+      if (!res.ok || !data.ok) {
+        const failed = (data.results || []).filter((r) => !r.ok);
+        throw new Error(
+          failed.length
+            ? failed.map((r) => `${r.to}: ${r.error || "failed"}`).join("; ")
+            : data.error || `HTTP ${res.status}`,
+        );
       }
+      // Save the approved message body + stamp Request Sent At — verified /send.
+      const sentAt = new Date();
+      const sentIso = sentAt.toISOString();
+      await runVerifiedSend({
+        itemId: patient.id,
+        label: "Confirm Receipt → courtesy re-send",
+        stageColumnId: [],
+        tasks: [
+          { label: "Request Body", columnId: COL.requestBody, value: { text: currentMessage }, fn: () => writeLongText(patient.id, COL.requestBody, currentMessage) },
+          { label: "Request Sent At", columnId: COL.requestSentAt, value: { date: sentIso.slice(0, 10), time: sentIso.slice(11, 19) }, fn: () => writeDateTime(patient.id, COL.requestSentAt, sentAt) },
+        ],
+      });
+      onUpdate({ requestBody: currentMessage, requestSentAt: sentIso });
       setResentNow(true);
-      toast.success(
-        isEmail
-          ? "Request sent — email dispatched via Supermail"
-          : "Request sent — fax dispatched via Supermail",
-      );
+      toast.success(isEmail ? "Email sent via RingCentral" : "Fax sent via RingCentral");
+      return true;
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       console.error("[Re-send] failed", msg);
       toast.error("Send failed", { description: msg });
+      return false;
     } finally {
       setResending(false);
     }
@@ -282,174 +395,110 @@ export function ConfirmReceiptPanel({ patient, onUpdate, managerMode = false }: 
 
   const isLastAttempt = currentAttempt === 3;
 
+  // Provider-ask round (same counter Send Request shows) for the page header.
+  const cycle = patient.evaluationCounter ?? 1;
+
   return (
     <div className="flex flex-col gap-6">
-      {/* ── Method hero — who to call to confirm ── */}
-      <MethodHero
-        patient={patient}
-        method={method}
-        label="Confirm receipt with"
-        where={
-          isEmail
-            ? patient.doctorEmail
-              ? `Emailed to ${patient.doctorEmail}`
-              : "(no doctor email on file)"
-            : patient.doctorFax
-              ? `Faxed to ${patient.doctorFax}`
-              : "(no doctor fax on file)"
-        }
-        right={<CallBox phone={patient.doctorPhone} />}
-      />
-
-      {/* ── Attempt context hero ── */}
-      <AttemptHero
-        justConfirmed={!!justConfirmed}
-        isEscalated={isEscalated}
-        attempt={currentAttempt ?? 3}
-      />
-
-      {/* ── Step 1 — Review the Request (collapsed dropdown in manager view) ── */}
-      <MmStep
-        num={1}
-        title="Review the Request"
-        rightAccessory={<MnStatusChip established={patient.medicalNecessity === "Established"} />}
-        collapsible={managerMode}
-        defaultOpen={!managerMode}
+      {/* Round header — which provider-ask cycle this is (from the counter). */}
+      <div
+        className="rounded-2xl border border-l-4 px-6 py-4 shadow-sm"
+        style={{ borderColor: "var(--mm-card-border)", borderLeftColor: "var(--mm-green)" }}
       >
-        <RequestSentBanner patient={patient} />
+        <h2 className="text-xl font-bold tracking-tight">Confirm Receipt #{cycle}</h2>
+      </div>
 
-        <h4 className="text-[1.05rem] font-bold tracking-tight mb-2.5 mt-4">Ask the doctor for</h4>
-        <AskForList patient={patient} />
-
-        {/* Fixed 2×2 grid — slots are placed by grid row, so the two columns
-            always stay horizontally aligned no matter how much content each
-            slot holds (e.g. From Clinicals never drifts above IP Template). */}
-        <div className="grid grid-cols-2 gap-x-5 mt-5 items-start">
-          <h4 className="text-[1.05rem] font-bold tracking-tight">Script Templates</h4>
-          <h4 className="text-[1.05rem] font-bold tracking-tight">Other Files</h4>
-
-          {/* row 1: CGM Template | MN Request Letter */}
-          <div className="min-h-[88px]">
-            <FilesLabel>CGM Template</FilesLabel>
-            {!showCgm ? (
-              <NotApplicable>— Not Serving</NotApplicable>
-            ) : mondayFiles.loading && mondayFiles.cgmTemplate.length === 0 ? (
-              <LoadingRow />
-            ) : mondayFiles.cgmTemplate.length === 0 ? (
-              <NotApplicable>— None on Monday</NotApplicable>
-            ) : (
-              <FileList files={mondayFiles.cgmTemplate} />
-            )}
-          </div>
-          <div className="min-h-[88px]">
-            <FilesLabel>MN Request Letter</FilesLabel>
-            {mondayFiles.loading && mondayFiles.mnRequestLetter.length === 0 ? (
-              <LoadingRow />
-            ) : mondayFiles.mnRequestLetter.length === 0 ? (
-              <NotApplicable>— None on Monday</NotApplicable>
-            ) : (
-              <FileList files={mondayFiles.mnRequestLetter} />
-            )}
-          </div>
-
-          {/* row 2: IP Template | From Clinicals */}
-          <div className="min-h-[88px]">
-            <FilesLabel>IP Template</FilesLabel>
-            {!showIp ? (
-              <NotApplicable>— Not Serving</NotApplicable>
-            ) : mondayFiles.loading && mondayFiles.ipTemplate.length === 0 ? (
-              <LoadingRow />
-            ) : mondayFiles.ipTemplate.length === 0 ? (
-              <NotApplicable>— None on Monday</NotApplicable>
-            ) : (
-              <FileList files={mondayFiles.ipTemplate} />
-            )}
-          </div>
-          <div className="min-h-[88px]">
-            <FilesLabel>From Clinicals</FilesLabel>
-            {mondayFiles.loading && mondayFiles.clinicalFiles.length === 0 ? (
-              <LoadingRow />
-            ) : mondayFiles.clinicalFiles.length === 0 ? (
-              <NotApplicable>— None on Monday</NotApplicable>
-            ) : (
-              <FileList files={mondayFiles.clinicalFiles} />
-            )}
-          </div>
-        </div>
-      </MmStep>
-
-      {/* ── Step 2 — Re-send the Fax/Email — same writes as Send Request's
-            Send action (trigger column + Request Sent At stamp). ── */}
-      <MmStep num={2} title={isEmail ? "Re-send the Email" : "Re-send the Fax"}>
-        <div
-          className="flex items-center gap-4 rounded-xl border px-5 py-4 flex-wrap"
-          style={{ borderColor: "var(--mm-card-border)" }}
-        >
-          <div className="flex-1 min-w-0 flex items-center gap-3 flex-wrap">
-            <div className="text-[1.05rem] font-bold leading-snug">
-              {recipient
-                ? `Send ${isEmail ? "Email" : "Fax"} to ${recipient}`
-                : `Send ${isEmail ? "Email" : "Fax"}`}
-            </div>
-            {resentNow && <SentChip />}
-          </div>
-          {!recipient && (
-            <div className="text-sm text-muted-foreground w-full -mt-2">
-              ({isEmail ? "no doctor email on file" : "no doctor fax on file"})
-            </div>
-          )}
-          {/* Fax re-send temporarily disabled — coming soon. Email re-sends stay
-              enabled; MN-letter gate relaxed while letter generation is paused. */}
-          <Button
-            onClick={handleResend}
-            disabled={resending || !isEmail}
-            title={!isEmail ? "Fax sending is coming soon" : undefined}
-            className="gap-2 text-white shadow-sm bg-[color:var(--mm-green)] hover:bg-[oklch(0.56_0.10_175)] disabled:bg-[oklch(0.85_0.01_200)]"
-          >
-            {resending ? (
-              <>
-                <Loader2 className="h-4 w-4 animate-spin" />
-                Sending…
-              </>
-            ) : (
-              <>
-                <SendIcon />
-                Send {isEmail ? "Email" : "Fax"}
-              </>
-            )}
-          </Button>
-        </div>
-        {!isEmail && (
-          <p className="text-sm text-muted-foreground mt-2">
-            Fax sending is coming soon.
-          </p>
-        )}
-      </MmStep>
-
-      {/* ── Step 3 — Call Notes ── */}
-      <MmStep num={3} title="Call Notes">
-        <NotesPanel
-          variant="mm-inline"
-          notes={patient.mnEvalNotes ?? ""}
-          onNotesChange={(v) => onUpdate({ mnEvalNotes: v })}
-          onSaveToMonday={(v) => writeLongText(patient.id, COL.mnEvalNotes, v)}
-          notePrefix={managerMode ? "Confirm Receipt Escalated" : currentAttempt ? `Confirm Receipt Attempt ${currentAttempt}` : undefined}
-          profileSendOffNotes={patient.profileSendOffNotes}
-          onNoteAdded={() => setNoteAdded(true)}
-          onPendingTextChange={setPendingNoteText}
+      {/* ── Step 1 — Send the Courtesy Fax (first action) — recipient, a
+            tight attachment list, a delivered timestamp, and a one-press
+            re-send. The written message lives in a collapsible drawer. ── */}
+      <MmStep num={1} title={isEmail ? "Send the Courtesy Email" : "Send the Courtesy Fax"}>
+        <CourtesyFax
+          key={patient.id}
+          isEmail={isEmail}
+          recipient={recipient}
+          files={[
+            ...(showCgm ? mondayFiles.cgmTemplate.map((f) => ({ file: f, tag: "CGM" })) : []),
+            ...(showIp ? mondayFiles.ipTemplate.map((f) => ({ file: f, tag: "IP" })) : []),
+            ...mondayFiles.mnRequestLetter.map((f) => ({ file: f, tag: "MN" })),
+            ...mondayFiles.clinicalFiles.map((f) => ({ file: f, tag: "Clinical" })),
+          ]}
+          filesLoading={mondayFiles.loading}
+          messageBody={currentMessage}
+          onMessageChange={setMessageDraft}
+          sentAt={patient.requestSentAt}
+          resending={resending}
+          resentNow={resentNow}
+          onResend={handleResend}
         />
       </MmStep>
 
-      {/* ── Step 4 — Confirm Receipt? ── */}
+      {/* ── Step 2 — Review Context & Attempt History (collapsed dropdown in
+            manager view) ── */}
       <MmStep
-        num={4}
-        title="Confirm Receipt?"
+        num={2}
+        title="Review Context & Attempt History"
+        collapsible={managerMode}
+        defaultOpen={!managerMode}
+      >
+        {/* Referral source — quick context for the call */}
+        <div
+          className="flex items-center gap-2.5 rounded-xl border px-4 py-2.5 mb-5"
+          style={{ borderColor: "var(--mm-card-border)" }}
+        >
+          <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+            Referral Source
+          </span>
+          <span className="text-sm font-bold">{patient.referralSource || "—"}</span>
+        </div>
+
+        {/* What we're still missing — identical to Send Request */}
+        <h4 className="text-[1.05rem] font-bold tracking-tight mb-2.5">What we're still missing</h4>
+        <MissingChecklist checklist={mnChecklist} />
+
+        {/* Attempt history — always three cards, status per round */}
+        <h4 className="text-[1.05rem] font-bold tracking-tight mb-2.5 mt-6">
+          Attempt {activeAttempt} of 3
+        </h4>
+        <AttemptCards
+          history={history}
+          isEscalated={isEscalated}
+          justConfirmed={justConfirmed}
+        />
+
+        {/* Other activity — the non-confirm-receipt rounds */}
+        <h4 className="text-[1.05rem] font-bold tracking-tight mb-2.5 mt-6">Other activity</h4>
+        <OtherActivity patient={patient} />
+
+        {/* MN Workflow Notes — READ-ONLY here. Confirm Receipt never writes to
+            these; on re-evaluation a prior round's attempt notes get folded in,
+            so the rep can read the running history without editing it. */}
+        {patient.mnEvalNotes?.trim() && (
+          <>
+            <h4 className="text-[1.05rem] font-bold tracking-tight mb-2.5 mt-6">
+              MN Workflow Notes{" "}
+              <span className="text-xs font-medium text-muted-foreground">(read-only)</span>
+            </h4>
+            <div
+              className="rounded-xl border px-4 py-3 text-sm leading-relaxed whitespace-pre-wrap text-muted-foreground bg-muted/30 max-h-64 overflow-y-auto"
+              style={{ borderColor: "var(--mm-card-border)" }}
+            >
+              {patient.mnEvalNotes}
+            </div>
+          </>
+        )}
+      </MmStep>
+
+      {/* ── Step 3 — Call & Confirm Receipt — who to call (method + phone),
+            call notes, and the receipt outcome, all in one step. ── */}
+      <MmStep
+        num={3}
+        title="Call & Confirm Receipt"
         sub={
           justConfirmed || locked
             ? undefined
             : isLastAttempt
               ? "Final attempt — if not confirmed, the patient will be flagged for escalation."
-              : "Call the doctor's office to confirm receipt."
+              : undefined
         }
         rightAccessory={
           justConfirmed ? (
@@ -462,6 +511,21 @@ export function ConfirmReceiptPanel({ patient, onUpdate, managerMode = false }: 
           ) : undefined
         }
       >
+        {/* Who to call — doctor name + a call button for the office */}
+        <div
+          className="flex items-center gap-4 rounded-2xl border border-l-4 p-5"
+          style={{ borderColor: "var(--mm-card-border)", borderLeftColor: "var(--mm-green)" }}
+        >
+          <p className="text-xl font-bold tracking-tight min-w-0 truncate">
+            {doctorDisplayName(patient.doctorName)}
+          </p>
+          <div className="ml-auto shrink-0">
+            <CallBox phone={patient.doctorPhone} />
+          </div>
+        </div>
+
+        {/* Outcome */}
+        <div className="mt-5">
         {justConfirmed ? (
           <>
             <div
@@ -471,14 +535,13 @@ export function ConfirmReceiptPanel({ patient, onUpdate, managerMode = false }: 
               <CheckCircle2 className="h-[22px] w-[22px] shrink-0" style={{ color: "var(--mm-green)" }} />
               <div>
                 <p className="text-base font-bold text-[color:var(--mm-teal)]">
-                  Receipt confirmed{justConfirmed.who ? ` by ${justConfirmed.who}` : ""} · {justConfirmed.ts}
+                  Receipt confirmed · {justConfirmed.ts}
                 </p>
                 <p className="text-sm text-muted-foreground">
                   Patient advances to the next stage on Monday.
                 </p>
               </div>
             </div>
-            <HistRows history={history} confirmedRow={justConfirmed} />
           </>
         ) : locked ? (
           <>
@@ -499,7 +562,6 @@ export function ConfirmReceiptPanel({ patient, onUpdate, managerMode = false }: 
                 </p>
               </div>
             </div>
-            <HistRows history={history} />
           </>
         ) : (
           <>
@@ -512,15 +574,7 @@ export function ConfirmReceiptPanel({ patient, onUpdate, managerMode = false }: 
                 </p>
               </div>
             )}
-            <FilesLabel className="mt-0">Who answered the call?</FilesLabel>
-            <Input
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="Name and title (e.g. Donna, Records)"
-              className="h-[42px] bg-background"
-            />
-
-            <FilesLabel>
+            <FilesLabel className="mt-0">
               Did they confirm receipt?{" "}
               <span className="font-bold" style={{ color: "var(--mm-rose)" }}>*</span>
             </FilesLabel>
@@ -530,18 +584,87 @@ export function ConfirmReceiptPanel({ patient, onUpdate, managerMode = false }: 
                 selected={confirmed === "yes"}
                 onClick={() => setConfirmed(confirmed === "yes" ? null : "yes")}
               >
-                <Check className="h-4 w-4" /> Yes — confirmed
+                <Check className="h-4 w-4" /> Confirmed
               </SegBtn>
               <SegBtn
                 tone="r"
                 selected={confirmed === "no"}
                 onClick={() => setConfirmed(confirmed === "no" ? null : "no")}
               >
-                <X className="h-4 w-4" /> No — not yet
+                <X className="h-4 w-4" /> Not Confirmed
               </SegBtn>
             </div>
 
-            <HistRows history={history} />
+            {confirmed && (
+              <>
+                <FilesLabel>
+                  {confirmed === "yes" ? "Confirmation note — who confirmed & what they said" : "What happened on this attempt?"}
+                  {confirmed === "no" && (
+                    <span className="font-bold" style={{ color: "var(--mm-rose)" }}> *</span>
+                  )}
+                </FilesLabel>
+                <textarea
+                  value={attemptNote}
+                  onChange={(e) => setAttemptNote(e.target.value)}
+                  rows={3}
+                  placeholder={
+                    confirmed === "yes"
+                      ? "Name, title, and what they said — e.g. Donna, Records Coordinator: confirmed all 4 pages received, will fax chart notes by Friday"
+                      : "Who you spoke to and what happened — e.g. Left voicemail with front desk; records dept out until Monday"
+                  }
+                  className="w-full rounded-xl border px-4 py-3 text-sm leading-relaxed bg-background resize-y focus:outline-none placeholder:text-muted-foreground/50"
+                  style={{ borderColor: "var(--mm-card-border)" }}
+                />
+              </>
+            )}
+
+            {confirmed === "no" && (
+              <div
+                className="mt-3 rounded-xl border px-4 py-3.5"
+                style={{ borderColor: "var(--mm-card-border)" }}
+              >
+                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-2">
+                  Re-send the {isEmail ? "email" : "fax"} <span className="normal-case font-semibold text-[color:var(--mm-rose)]">— Important</span>
+                </p>
+                <div className="flex items-center gap-2.5 flex-wrap">
+                  <Input
+                    value={recipient ?? ""}
+                    onChange={(e) =>
+                      onUpdate(isEmail ? { doctorEmail: e.target.value } : { doctorFax: e.target.value })
+                    }
+                    placeholder={isEmail ? "doctor email" : "fax number"}
+                    className="h-[42px] bg-background flex-1 min-w-[220px]"
+                  />
+                  <Button
+                    onClick={async () => {
+                      const ok = await handleResend();
+                      if (ok) setFaxResent(true);
+                    }}
+                    disabled={resending || !recipient || faxResent}
+                    className="gap-2 text-white shadow-sm bg-[color:var(--mm-green)] hover:bg-[oklch(0.56_0.10_175)] disabled:bg-[oklch(0.85_0.01_200)]"
+                  >
+                    {resending ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin" /> Sending…
+                      </>
+                    ) : faxResent ? (
+                      <>
+                        <Check className="h-4 w-4" /> Re-sent
+                      </>
+                    ) : (
+                      <>
+                        <SendIcon /> Re-send {isEmail ? "Email" : "Fax"}
+                      </>
+                    )}
+                  </Button>
+                </div>
+                {faxResent && (
+                  <p className="text-xs mt-2 font-semibold" style={{ color: "var(--mm-green)" }}>
+                    Fax re-sent — you're good to save this attempt.
+                  </p>
+                )}
+              </div>
+            )}
 
             <div className="flex flex-col items-center gap-2 mt-5">
               <Button
@@ -565,8 +688,8 @@ export function ConfirmReceiptPanel({ patient, onUpdate, managerMode = false }: 
               <p className="text-xs text-muted-foreground">
                 {saveHint({
                   confirmed,
-                  hasPendingNote,
-                  noteAdded,
+                  hasNote,
+                  faxResent,
                   attemptNumber: currentAttempt ?? 1,
                 })}
               </p>
@@ -579,6 +702,7 @@ export function ConfirmReceiptPanel({ patient, onUpdate, managerMode = false }: 
             </div>
           </>
         )}
+        </div>
       </MmStep>
     </div>
   );
@@ -588,17 +712,24 @@ export function ConfirmReceiptPanel({ patient, onUpdate, managerMode = false }: 
 // Save handlers (unchanged)
 // =====================================================================
 
-async function saveYes(patient: Patient, name: string) {
-  // Yes path: stamp success columns, reset MN Attempts to "Attempt 1" (the
-  // column is shared across stages so Chase starts fresh), set the +3 business
-  // day chase cadence, and advance the stage LAST. Verified write → gateway
-  // /send when available: the data columns are read-back confirmed before
-  // subStage flips, so the stage never moves on a half-written record.
-  const today = formatDateInput(etNow());
+async function saveYes(patient: Patient, slot: number, attemptValue: string) {
+  // Yes path: log the confirmation note in the active attempt column (so the
+  // effort + confirmed date/time show on Chase), advance stage. Also reset MN
+  // Attempts back to "Attempt 1" so the Chase Clinicals tab starts fresh (the
+  // column is shared across stages). The "who confirmed" and the confirmed
+  // date/time now both live inside the attempt note, so we no longer write the
+  // separate Receipt Confirmed Name / Date columns.
+  const columnId =
+    slot === 1 ? COL.confirmAttempt1 : slot === 2 ? COL.confirmAttempt2 : COL.confirmAttempt3;
   // Entry into Chase Clinicals → +3 business days (matches chase cadence)
   const nextAction = formatDateInput(addBusinessDays(etNow(), 3));
+  // KEEP OUR BACKEND: still stamp the structured Receipt Confirmed Date so any
+  // Monday automation / report / oversight keyed on it keeps working (the "who"
+  // also lives in the attempt note per Brandon's model). Verified write →
+  // gateway /send: data columns are read-back confirmed BEFORE the stage flips.
+  const today = formatDateInput(etNow());
   const tasks: WriteTask[] = [
-    { label: "Receipt Confirmed Name", columnId: COL.receiptConfirmedName, value: name, fn: () => writeText(patient.id, COL.receiptConfirmedName, name) },
+    { label: `Confirm Attempt ${slot}`, columnId, value: attemptValue, expectedText: attemptValue, fn: () => writeText(patient.id, columnId, attemptValue) },
     { label: "Receipt Confirmed Date", columnId: COL.receiptConfirmedDate, value: { date: today }, fn: () => writeDate(patient.id, COL.receiptConfirmedDate, today) },
     { label: "MN Attempts → Attempt 1", columnId: COL.mnAttempts, value: { index: MN_ATTEMPTS_INDEX.attempt1 }, fn: () => writeStatusIndex(patient.id, COL.mnAttempts, MN_ATTEMPTS_INDEX.attempt1) },
     { label: "Next Action Date", columnId: COL.nextActionDate, value: { date: nextAction }, fn: () => writeDate(patient.id, COL.nextActionDate, nextAction) },
@@ -606,7 +737,7 @@ async function saveYes(patient: Patient, name: string) {
   ];
   await runVerifiedSend({
     itemId: patient.id,
-    label: "Confirm Receipt → Yes (advance to Chase)",
+    label: "Confirm Receipt → Confirmed (advance to Chase)",
     tasks,
     stageColumnId: COL.subStage,
   });
@@ -625,10 +756,9 @@ async function saveNo({
   nextSlot: "Attempt 2" | "Attempt 3" | "Escalate";
   nextActionDateInput: string;
 }) {
-  // The attempt's "Name — date" string is a DATA column (read-back verified) so
-  // it's indexed BEFORE MN Attempts / Escalation flip — those are the columns
-  // managers and Monday automations key on, so they must land last. Verified
-  // write → gateway /send when available.
+  // The attempt note is a DATA column (read-back verified) so it lands BEFORE
+  // MN Attempts / Escalation flip (managers + automations key on those).
+  // Verified write → gateway /send when available.
   const columnId =
     attempt === 1
       ? COL.confirmAttempt1
@@ -653,61 +783,342 @@ async function saveNo({
   } else if (nextActionDateInput) {
     tasks.push({ label: "Next Action Date", columnId: COL.nextActionDate, value: { date: nextActionDateInput }, fn: () => writeDate(patient.id, COL.nextActionDate, nextActionDateInput) });
   }
-  await runVerifiedSend({
-    itemId: patient.id,
-    label: `Confirm Receipt → Attempt ${attempt} (${nextSlot})`,
-    tasks,
-    stageColumnId,
-  });
+  await runVerifiedSend({ itemId: patient.id, label: `Confirm Receipt → Attempt ${attempt} (${nextSlot})`, tasks, stageColumnId });
 }
 
 // =====================================================================
 // Sub-components
 // =====================================================================
 
-/** Big attempt-context line between the hero and step 1. */
-function AttemptHero({
-  justConfirmed,
-  isEscalated,
-  attempt,
+/** Step 1 courtesy-fax — recipient + delivered timestamp + one-press re-send,
+ *  a tight attachment list, and the written message tucked into a drawer. */
+function CourtesyFax({
+  isEmail,
+  recipient,
+  files,
+  filesLoading,
+  messageBody,
+  onMessageChange,
+  sentAt,
+  resending,
+  resentNow,
+  onResend,
 }: {
-  justConfirmed: boolean;
-  isEscalated: boolean;
-  attempt: number;
+  isEmail: boolean;
+  recipient?: string;
+  files: TaggedFile[];
+  filesLoading: boolean;
+  messageBody: string;
+  onMessageChange: (v: string) => void;
+  sentAt?: string;
+  resending: boolean;
+  resentNow: boolean;
+  onResend: () => void;
 }) {
+  const channel = isEmail ? "Email" : "Fax";
+  const [showMsg, setShowMsg] = useState(false);
+  // Per-send file curation (session only): files the rep added for this fax,
+  // and Monday files they removed from this fax. Removing here never touches
+  // the Monday files column — it just drops the file from what's sent.
+  const [addedFiles, setAddedFiles] = useState<File[]>([]);
+  const [excluded, setExcluded] = useState<Set<string>>(() => new Set<string>());
+  const sendFiles = files.filter((f) => !excluded.has(f.file.assetId));
+  const removeMondayFile = (assetId: string) =>
+    setExcluded((prev) => new Set(prev).add(assetId));
+  const removeAddedFile = (idx: number) =>
+    setAddedFiles((prev) => prev.filter((_, i) => i !== idx));
   return (
-    <div className="flex items-baseline gap-3.5 px-1 -mb-2">
-      {justConfirmed ? (
-        <span className="text-[2rem] font-black tracking-tight" style={{ color: "var(--mm-green)" }}>
-          ✓ Receipt Confirmed
+    <div className="flex flex-col gap-3">
+      {/* Recipient · delivered · re-send — all on one compact row */}
+      <div
+        className="flex items-center gap-3 rounded-xl border px-4 py-2.5 flex-wrap"
+        style={{ borderColor: "var(--mm-card-border)" }}
+      >
+        <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">To</span>
+        <span className="text-[0.95rem] font-bold">
+          {recipient || `(no doctor ${isEmail ? "email" : "fax"} on file)`}
         </span>
-      ) : isEscalated ? (
-        <span className="text-[2rem] font-black tracking-tight" style={{ color: "var(--mm-rose)" }}>
-          3 Attempts — Not Confirmed
-        </span>
+        {resentNow ? (
+          <DeliveredChip label="Re-sent just now" />
+        ) : sentAt ? (
+          <DeliveredChip label={`Delivered · ${formatSent(sentAt)}`} />
+        ) : null}
+        <Button
+          onClick={onResend}
+          disabled={resending || !recipient}
+          className="ml-auto gap-2 text-white shadow-sm bg-[color:var(--mm-green)] hover:bg-[oklch(0.56_0.10_175)] disabled:bg-[oklch(0.85_0.01_200)]"
+        >
+          {resending ? (
+            <>
+              <Loader2 className="h-4 w-4 animate-spin" />
+              Sending…
+            </>
+          ) : (
+            <>
+              <SendIcon />
+              Re-send {channel}
+            </>
+          )}
+        </Button>
+      </div>
+
+      {/* Attachments — the files that will be sent. Each can be removed from
+          this fax (✕) without deleting it from the Monday files column. */}
+      {filesLoading && files.length === 0 ? (
+        <LoadingRow />
+      ) : sendFiles.length === 0 && addedFiles.length === 0 ? (
+        <p className="text-sm text-muted-foreground">No files attached.</p>
       ) : (
-        <>
-          <span className="text-[2rem] font-black tracking-tight text-[color:var(--mm-teal)]">
-            Attempt {attempt}
-          </span>
-          <span className="text-xl font-semibold text-muted-foreground">of 3</span>
-        </>
+        <div className="flex flex-wrap gap-1.5">
+          {sendFiles.map(({ file: f, tag }) => {
+            const url = f.public_url || f.url;
+            return (
+              <span
+                key={f.assetId}
+                className="inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-medium"
+                style={{ borderColor: "var(--mm-card-border)" }}
+              >
+                <FileText className="h-3.5 w-3.5 shrink-0 text-[color:var(--mm-teal)]" />
+                <button
+                  type="button"
+                  disabled={!url}
+                  onClick={() => url && openFileViewer({ url, name: f.name })}
+                  title={f.name}
+                  className="max-w-[200px] truncate hover:underline disabled:no-underline disabled:opacity-50"
+                >
+                  {f.name}
+                </button>
+                {tag && (
+                  <span className="text-[10px] uppercase tracking-wider text-muted-foreground">{tag}</span>
+                )}
+                <button
+                  type="button"
+                  onClick={() => removeMondayFile(f.assetId)}
+                  title="Remove from this fax (kept on Monday)"
+                  className="shrink-0 text-muted-foreground hover:text-[color:var(--mm-rose)]"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </span>
+            );
+          })}
+          {addedFiles.map((f, i) => (
+            <span
+              key={`added-${i}-${f.name}`}
+              className="inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-medium"
+              style={{ borderColor: "var(--mm-mint-ring)", background: "var(--mm-mint)" }}
+            >
+              <FileText className="h-3.5 w-3.5 shrink-0 text-[color:var(--mm-teal)]" />
+              <span className="max-w-[200px] truncate">{f.name}</span>
+              <span className="text-[10px] uppercase tracking-wider text-[color:var(--mm-teal)]">New</span>
+              <button
+                type="button"
+                onClick={() => removeAddedFile(i)}
+                title="Remove from this fax"
+                className="shrink-0 text-muted-foreground hover:text-[color:var(--mm-rose)]"
+              >
+                <X className="h-3 w-3" />
+              </button>
+            </span>
+          ))}
+        </div>
       )}
+
+      {/* Written message — collapsible, editable drawer + add-files control. */}
+      <div>
+        <button
+          type="button"
+          onClick={() => setShowMsg((o) => !o)}
+          className="inline-flex items-center gap-1.5 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+        >
+          <ChevronRight className={`h-4 w-4 transition-transform ${showMsg ? "rotate-90" : ""}`} />
+          {showMsg ? "Hide message" : "Edit message"}
+        </button>
+        {showMsg && (
+          <>
+            <textarea
+              value={messageBody}
+              onChange={(e) => onMessageChange(e.target.value)}
+              rows={10}
+              className="mt-2 w-full whitespace-pre-wrap rounded-xl border px-4 py-3 text-sm leading-relaxed font-sans bg-background resize-y focus:outline-none"
+              style={{ borderColor: "var(--mm-card-border)" }}
+            />
+            <label
+              className="mt-2 inline-flex items-center gap-2 cursor-pointer rounded-lg border border-dashed px-3 py-2 text-sm text-muted-foreground hover:bg-muted/30"
+              style={{ borderColor: "var(--mm-card-border)" }}
+            >
+              <Plus className="h-4 w-4 shrink-0" /> Add files to this fax
+              <input
+                type="file"
+                multiple
+                className="hidden"
+                onChange={(e) => {
+                  const picked = Array.from(e.target.files ?? []);
+                  if (picked.length) setAddedFiles((prev) => [...prev, ...picked]);
+                  e.target.value = "";
+                }}
+              />
+            </label>
+          </>
+        )}
+      </div>
     </div>
   );
 }
 
-/** Right-side "Call" box on the method hero. */
-function CallBox({ phone }: { phone?: string }) {
+/** Small mint "delivered/sent" chip with a timestamp. */
+function DeliveredChip({ label }: { label: string }) {
   return (
-    <div className="text-right">
-      <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground flex items-center justify-end gap-1.5">
-        <Phone className="h-3.5 w-3.5" /> Call
-      </p>
-      <p className="text-xl font-extrabold mt-0.5 text-[color:var(--mm-teal)]">
-        {formatPhoneDisplay(phone)}
-      </p>
+    <span
+      className="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold text-[color:var(--mm-teal)] shadow-[inset_0_0_0_1px_var(--mm-mint-ring)]"
+      style={{ background: "var(--mm-mint)" }}
+    >
+      <CheckCircle2 className="h-3.5 w-3.5" /> {label}
+    </span>
+  );
+}
+
+/** Confirm-receipt attempts — always three cards, status per round
+ *  (Corey's mockup). Worked attempts show "Not confirmed", the active round
+ *  "In progress", future rounds "Scheduled" (3rd flags escalation). */
+function AttemptCards({
+  history,
+  isEscalated,
+  justConfirmed,
+}: {
+  history: AttemptChip[];
+  isEscalated: boolean;
+  justConfirmed: { note: string; ts: string } | null;
+}) {
+  // The active round is the first slot that hasn't been logged yet — derived
+  // from the logged attempts so it's correct even if Monday's MN Attempts
+  // counter is out of sync with the per-attempt columns.
+  const doneSlots = new Set(history.map((h) => h.attempt));
+  const activeSlot = [1, 2, 3].find((n) => !doneSlots.has(n)) ?? null;
+  const cards = [1, 2, 3].map((n) => {
+    const h = history.find((x) => x.attempt === n);
+    if (justConfirmed && activeSlot === n && !h) {
+      return {
+        n,
+        status: "confirmed" as const,
+        date: justConfirmed.ts,
+        desc: justConfirmed.note,
+      };
+    }
+    if (h) {
+      // Show only the actual note logged on the attempt column — the outcome
+      // pill already conveys confirmed / not confirmed.
+      return {
+        n,
+        status: h.outcome === "confirmed" ? ("confirmed" as const) : ("not_confirmed" as const),
+        date: h.date || "—",
+        desc: h.note,
+      };
+    }
+    if (!isEscalated && activeSlot === n) {
+      return { n, status: "in_progress" as const, date: "Today", desc: "" };
+    }
+    return {
+      n,
+      status: "scheduled" as const,
+      date: "—",
+      desc: "",
+    };
+  });
+  return (
+    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+      {cards.map((c) => (
+        <AttemptCard key={c.n} {...c} />
+      ))}
     </div>
+  );
+}
+
+function AttemptCard({
+  n,
+  status,
+  date,
+  desc,
+}: {
+  n: number;
+  status: "confirmed" | "not_confirmed" | "in_progress" | "scheduled";
+  date: string;
+  desc: string;
+}) {
+  // Status shown by a bold colored border. The current round (in progress /
+  // just confirmed) is bright white and fully opaque; every other round is
+  // grayed + dimmed so it's obvious which attempt you're on.
+  const cfg = {
+    confirmed: { border: "var(--mm-green)", width: 2, current: true, pillColor: "var(--mm-green)", label: "Confirmed" },
+    not_confirmed: { border: "var(--mm-rose)", width: 2, current: false, pillColor: "var(--mm-rose)", label: "Not confirmed" },
+    in_progress: { border: "var(--mm-teal)", width: 2, current: true, pillColor: "var(--mm-teal)", label: "In progress" },
+    scheduled: { border: "var(--mm-card-border)", width: 1, current: false, pillColor: "var(--muted-foreground)", label: "" },
+  }[status];
+  return (
+    <div
+      className={`rounded-xl p-3.5 ${cfg.current ? "bg-card" : "bg-muted/50"}`}
+      style={{
+        border: `${cfg.width}px solid ${cfg.border}`,
+        opacity: cfg.current ? 1 : 0.6,
+        ...(cfg.current ? { boxShadow: "0 1px 2px rgba(15,31,36,.06)" } : {}),
+      }}
+    >
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+          Attempt {n}
+        </span>
+        {cfg.label && (
+          <span
+            className="rounded-full bg-background px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider"
+            style={{ color: cfg.pillColor }}
+          >
+            {cfg.label}
+          </span>
+        )}
+      </div>
+      <p className="text-sm font-bold mt-2">{date}</p>
+      {desc && <p className="text-xs text-muted-foreground mt-0.5 leading-snug">{desc}</p>}
+    </div>
+  );
+}
+
+/** Non-confirm-receipt activity (Send Request + Chase Clinicals) as compact
+ *  rows. The Send Request line carries the fax/email it went to. */
+function OtherActivity({ patient }: { patient: Patient }) {
+  const method = patient.clinicalsMethod ?? "Fax";
+  const dest = method === "Email" ? patient.doctorEmail : method === "Fax" ? patient.doctorFax : undefined;
+  const sendItems = patient.requestSentAt
+    ? [`${formatActivityDate(patient.requestSentAt)} · ${method}${dest ? ` · ${dest}` : ""}`]
+    : [];
+  const chaseItems = [patient.chaseAttempt1, patient.chaseAttempt2, patient.chaseAttempt3].filter(Boolean) as string[];
+  return (
+    <div className="space-y-2.5">
+      <ActivityRow label="Send Request" items={sendItems} />
+      <ActivityRow label="Chase Clinicals" items={chaseItems} />
+    </div>
+  );
+}
+
+/** "Dr. {name}" — prefixes "Dr." unless the name already has it. */
+function doctorDisplayName(name?: string): string {
+  const n = (name ?? "").trim();
+  if (!n) return "—";
+  return /^dr\.?\s/i.test(n) ? n : `Dr. ${n}`;
+}
+
+/** Right-side "Call" button on the method bar — a tel: link styled as a
+ *  button so the rep can click to dial. */
+function CallBox({ phone }: { phone?: string }) {
+  const display = formatPhoneDisplay(phone);
+  const tel = (phone ?? "").replace(/[^\d+]/g, "");
+  return (
+    <a
+      href={tel ? `tel:${tel}` : undefined}
+      className="inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-base font-bold text-white shadow-sm transition-opacity hover:opacity-90 bg-[color:var(--mm-teal)] aria-disabled:opacity-50"
+      aria-disabled={!tel}
+    >
+      <Phone className="h-4 w-4 shrink-0" /> Call {display}
+    </a>
   );
 }
 
@@ -771,7 +1182,7 @@ function HistRows({
         >
           <span className="font-extrabold shrink-0 text-[color:var(--mm-teal)]">Attempt {h.attempt}</span>
           <span className="text-muted-foreground shrink-0">{h.date}</span>
-          <span className="font-semibold">{h.name}</span>
+          <span className="font-semibold">{h.note}</span>
           <span className="ml-auto font-bold shrink-0" style={{ color: "var(--mm-rose)" }}>
             Not confirmed
           </span>
@@ -862,24 +1273,35 @@ function SendIcon() {
 
 interface AttemptChip {
   attempt: number;
-  name: string;
   date: string;
+  outcome: "confirmed" | "not_confirmed";
+  note: string;
   raw: string;
 }
 
-// Format used for the per-attempt text columns: "Donna — 5/1/26".
-const VALUE_REGEX = /^(.+?)\s+—\s+(.+)$/;
-
+/** Per-attempt text column format:
+ *    "6/12/26, 2:33 PM · Not confirmed · Donna, front desk — left VM"
+ *  Older rows used "Name — date"; we still parse those so legacy history
+ *  keeps rendering. */
 function parseAttemptValue(attempt: number, raw: string): AttemptChip {
-  const m = raw.match(VALUE_REGEX);
-  if (!m) return { attempt, name: raw, date: "", raw };
-  return { attempt, name: m[1], date: m[2], raw };
+  const parts = raw.split(" · ");
+  if (parts.length >= 2) {
+    const [date, outcomeRaw, ...rest] = parts;
+    const outcome = /^confirmed/i.test(outcomeRaw.trim()) ? "confirmed" : "not_confirmed";
+    return { attempt, date: date.trim(), outcome, note: rest.join(" · ").trim(), raw };
+  }
+  // Legacy "Name — date"
+  const m = raw.match(/^(.+?)\s+—\s+(.+)$/);
+  if (m) return { attempt, date: m[2], outcome: "not_confirmed", note: m[1], raw };
+  return { attempt, date: "", outcome: "not_confirmed", note: raw, raw };
 }
 
-function formatAttemptValue(name: string, date: Date): string {
-  // Date + timestamp (ET) — e.g. "Donna — 6/12/26, 2:33 PM"
+function formatAttemptValue(outcome: "confirmed" | "not_confirmed", note: string, date: Date): string {
+  // "6/12/26, 2:33 PM · Not confirmed · {note}" — note omitted if empty.
   const datePart = formatDateTimeShort(date);
-  return name ? `${name} — ${datePart}` : datePart;
+  const label = outcome === "confirmed" ? "Confirmed" : "Not confirmed";
+  const n = note.trim();
+  return n ? `${datePart} · ${label} · ${n}` : `${datePart} · ${label}`;
 }
 
 function nextMnAttempt(currentAttempt: number): "Attempt 2" | "Attempt 3" | "Escalate" {
@@ -948,25 +1370,24 @@ function formatPhoneDisplay(raw?: string): string {
   return raw;
 }
 
-/** Save-area hint — same strings as the previous design. */
+/** Save-area hint. */
 function saveHint({
   confirmed,
-  hasPendingNote,
-  noteAdded,
+  hasNote,
+  faxResent,
   attemptNumber,
 }: {
   confirmed: "yes" | "no" | null;
-  hasPendingNote: boolean;
-  noteAdded: boolean;
+  hasNote: boolean;
+  faxResent: boolean;
   attemptNumber: number;
 }): string {
-  let hint = "Pick Yes or No to enable save.";
-  if (confirmed && hasPendingNote) hint = "Press Add on your note before saving.";
-  else if (confirmed && !noteAdded) hint = "Add at least one note above to enable save.";
-  else if (confirmed === "yes") hint = "Saves the confirmation, advances to Chase Clinicals.";
-  else if (confirmed === "no" && attemptNumber < 3) hint = `Logs Attempt ${attemptNumber} as unsuccessful and schedules the next callback.`;
-  else if (confirmed === "no" && attemptNumber === 3) hint = "Logs Attempt 3 as unsuccessful and flags Escalation Required.";
-  return hint;
+  if (!confirmed) return "Pick Confirmed or Not Confirmed to enable save.";
+  if (confirmed === "no" && !hasNote) return "Add a note explaining what happened to enable save.";
+  if (confirmed === "yes") return "Saves the confirmation, advances to Chase Clinicals.";
+  if (confirmed === "no" && attemptNumber === 3) return "Logs Attempt 3 as unsuccessful and flags Escalation Required.";
+  if (confirmed === "no" && !faxResent) return "Tip: re-send the fax before saving so the office gets it again.";
+  return "";
 }
 
 /** Open a Monday file URL directly in a new tab (Confirm Receipt's

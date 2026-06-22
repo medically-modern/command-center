@@ -1,106 +1,119 @@
 /**
- * ChaseClinicalsPanel — Chase Clinicals (June 2026 single-button redesign).
+ * ChaseClinicalsPanel — Chase Clinicals (June 2026 redesign, mirrors the new
+ * Confirm Receipt layout). Two steps:
  *
- *   - "Chase Clinicals Completed" is the ONLY action. It logs the attempt
- *     ("Who answered — date, time" into the matching chaseAttempt column),
- *     bumps MN Attempts (3rd press flags Escalation Required), and moves
- *     the Next Action Date forward 3 business days (both roles).
- *   - It NEVER advances the stage. Patients leave the Medical Necessity
- *     bucket ONLY via the Evaluate view (which has a read-only Chase
- *     Clinicals folder for opening these patients).
- *   - Attempt slot (1/2/3) from Monday's MN Attempts column; "Escalate"
- *     means no more attempts (manager view can still log follow-ups —
- *     those only move the next action date).
+ *   1. Review Context & Attempt History — referral source + the prior-stage
+ *      receipt-confirmed chip, "What we're still missing" (identical to Send
+ *      Request / Confirm Receipt), the chase attempts as three cards ("Still
+ *      pending" instead of "Not confirmed"), and other activity (Send Request
+ *      + Confirm Receipt).
+ *   2. Call & Complete the Chase — doctor name + a call button, call notes, and
+ *      the single "Chase Clinicals Completed" action.
+ *
+ * Logic is unchanged from the prior single-button chase:
+ *   - "Chase Clinicals Completed" logs the attempt ("Who answered — date,
+ *     time" into the matching chaseAttempt column), bumps MN Attempts (3rd
+ *     press flags Escalation Required), and moves the Next Action Date forward
+ *     3 business days. It NEVER advances the stage — patients leave Medical
+ *     Necessity only via the Evaluate view.
+ *   - Attempt slot (1/2/3) from Monday's MN Attempts column; the displayed
+ *     active attempt is derived from the logged attempts so it stays correct
+ *     even if the counter lags.
  *   - Completing requires ≥1 note added this session (no typed-but-unadded
  *     note text), and persists doctor-field edits.
  */
 import { useEffect, useMemo, useState, useRef } from "react";
 import type { Patient } from "@/lib/masheke/workflow";
-import { NotesPanel } from "@/components/masheke/NotesPanel";
 import { etNow, clampToBusinessDay } from "@/lib/masheke/etDate";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useMondayFiles } from "@/hooks/masheke/useMondayFiles";
+import { buildRequestTemplate, titleCase } from "@/lib/masheke/requestTemplate";
+import { openFileViewer } from "@/components/shared/FileViewerModal";
 import {
   COL,
   buildDoctorWriteTasks,
   hasToken,
   writeDate,
+  writeDateTime,
   writeLongText,
   writeStatusIndex,
   writeText,
 } from "@/lib/masheke/mondayApi";
 import { runVerifiedSend } from "@/lib/masheke/mondayWrite";
 import type { WriteTask } from "@/lib/shared/verifiedWrite";
-import {
-  ESCALATION_INDEX,
-  MN_ATTEMPTS_INDEX,
-} from "@/lib/masheke/mondayMapping";
+import { FILE_PROXY_URL, fetchAssetBytes } from "@/lib/shared/mondayAssets";
+import { getIdToken } from "@/lib/shared/auth";
+import { ESCALATION_INDEX, MN_ATTEMPTS_INDEX } from "@/lib/masheke/mondayMapping";
 import { toast } from "sonner";
-import {
-  AlertTriangle,
-  Check,
-  CheckCircle2,
-  Loader2,
-  Phone,
-} from "lucide-react";
-import {
-  AskForList,
-  FileList,
-  LoadingRow,
-  MethodHero,
-  MmStep,
-  MnStatusChip,
-} from "@/components/masheke/mmKit";
+import { AlertTriangle, Check, CheckCircle2, ChevronRight, FileText, Loader2, Phone, Send } from "lucide-react";
+import { MmStep } from "@/components/masheke/mmKit";
+import { MissingChecklist } from "@/components/masheke/MissingChecklist";
+import { MethodBar } from "@/components/masheke/MethodBar";
+import { ActivityRow, formatActivityDate } from "@/components/masheke/PreviousActivityCard";
+import { loadEvalStateForPatient, computeMnChecklist } from "@/lib/masheke/evalState";
+import { shouldShowCgmBlock, shouldShowIpBlock } from "@/lib/masheke/ipPaths";
 
 interface Props {
   patient: Patient;
   onUpdate: (patch: Partial<Patient>) => void;
   onOpenForm?: () => void;
-  /** Manager view: "Review the Request" starts as a collapsed dropdown. */
+  /** Manager view: "Review Context" starts as a collapsed dropdown. */
   managerMode?: boolean;
   /** Which chase role this panel is rendered in (labels/copy only — both
-   *  roles bump the next action +3 business days). Falls back to the
-   *  patient's own Clinicals Method when not provided (deep links). */
+   *  roles bump the next action +3 business days). */
   roleMethod?: "fax" | "parachute";
 }
 
 // =====================================================================
-// Main panel — single-button flow. "Chase Clinicals Completed" logs the
-// attempt to the matching chaseAttempt{N} text column, bumps MN Attempts
-// (3rd press flips the Escalation column), and moves the next action date
-// +3 business days. Never advances the stage.
+// Main panel
 // =====================================================================
 
 export function ChaseClinicalsPanel({ patient, onUpdate, managerMode = false, roleMethod }: Props) {
-  const mondayFiles = useMondayFiles(patient.id);
   const [saving, setSaving] = useState(false);
   const [escalated, setEscalated] = useState(false);
   const escalatedRef = useRef(false);
 
-  const [name, setName] = useState("");
   const [nextAction, setNextAction] = useState<string>("");
-  // Complete is blocked until the rep adds at least one note for this attempt,
-  // and while typed-but-unadded text sits in the note box.
-  const [noteAdded, setNoteAdded] = useState(false);
-  const [pendingNoteText, setPendingNoteText] = useState("");
+  // One free-text note per chase attempt — who you reached + what happened.
+  // Saved into the attempt's own column, NOT the MN workflow notes.
+  const [attemptNote, setAttemptNote] = useState("");
+  // Optional re-send (fax role only) — session-only chip after a send.
+  const [resending, setResending] = useState(false);
+  const [resentNow, setResentNow] = useState(false);
+  // Re-send drawer (view files + message) + editable message body.
+  const [showResendDrawer, setShowResendDrawer] = useState(false);
+  const [messageDraft, setMessageDraft] = useState<string | null>(null);
+  const mondayFiles = useMondayFiles(patient.id);
+
+  // "What we're still missing" — same eval output Send Request / Confirm
+  // Receipt use, so all three stages show an identical picture.
+  const mnChecklist = useMemo(() => {
+    const evalState = loadEvalStateForPatient(patient);
+    return computeMnChecklist(
+      evalState,
+      shouldShowCgmBlock(patient.serving),
+      shouldShowIpBlock(patient.serving),
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [patient.id, patient.serving, patient.medicalNecessity, patient.mnRequestConsolidated]);
 
   const isParachute = patient.clinicalsMethod === "Parachute";
   const effectiveRole = roleMethod ?? (isParachute ? "parachute" : "fax");
-  // Both chase roles bump the next action +3 business days on Complete
-  // (was fax +1 / parachute +3 — unified June 2026).
+  // Both chase roles bump the next action +3 business days on Complete.
   const nadBumpDays = 3;
   void effectiveRole; // role kept for titles/labels elsewhere
 
   useEffect(() => {
-    setName("");
     setNextAction("");
-    setNoteAdded(false);
-    setPendingNoteText("");
+    setAttemptNote("");
+    setResentNow(false);
+    setShowResendDrawer(false);
+    setMessageDraft(null);
   }, [patient.id]);
 
-  // Default Next Action Date — +3 business days (both roles). The date input
-  // is not displayed but the computed value is written to Monday on Complete.
+  // Default Next Action Date — +3 business days (both roles). Not displayed,
+  // but the computed value is written to Monday on Complete.
   useEffect(() => {
     setNextAction(formatDateInput(addBusinessDays(etNow(), nadBumpDays)));
   }, [patient.id, nadBumpDays]);
@@ -114,8 +127,7 @@ export function ChaseClinicalsPanel({ patient, onUpdate, managerMode = false, ro
   }, [patient.mnAttempts]);
 
   const isEscalated = currentAttempt === null;
-  // Managers work the escalated queue — don't lock the action UI for them,
-  // otherwise a manager can never confirm/advance or send updates to Monday.
+  // Managers work the escalated queue — don't lock the action UI for them.
   const locked = isEscalated && !managerMode;
 
   const history = useMemo<AttemptChip[]>(() => {
@@ -126,11 +138,29 @@ export function ChaseClinicalsPanel({ patient, onUpdate, managerMode = false, ro
     return out;
   }, [patient.chaseAttempt1, patient.chaseAttempt2, patient.chaseAttempt3]);
 
-  // Name field is never required — agents sometimes don't catch a
-  // name on the call. Complete needs at least one note added for this
-  // attempt (with no un-added text left in the note box).
-  const hasPendingNote = pendingNoteText.trim().length > 0;
-  const canSave = noteAdded && !hasPendingNote && !saving && !locked;
+  // The Confirm Receipt attempt that actually confirmed receipt — surfaced at
+  // the top so the chase rep sees who/what without hunting. Parsed from the
+  // confirm attempt columns ("datetime · Confirmed · note").
+  const confirmedAttempt = useMemo(() => {
+    for (const raw of [patient.confirmAttempt1, patient.confirmAttempt2, patient.confirmAttempt3]) {
+      if (!raw) continue;
+      const parts = raw.split(" · ");
+      if (parts.length >= 2 && /^confirmed/i.test(parts[1].trim())) {
+        return { date: parts[0].trim(), note: parts.slice(2).join(" · ").trim() };
+      }
+    }
+    return null;
+  }, [patient.confirmAttempt1, patient.confirmAttempt2, patient.confirmAttempt3]);
+
+  // Completing a chase requires a note describing the attempt. It's saved into
+  // the attempt's own column (not the MN workflow notes).
+  const hasNote = attemptNote.trim().length > 0;
+  const canSave = hasNote && !saving && !locked;
+
+  // Displayed active round — first un-logged slot (1..3), derived from the
+  // logged attempts so it stays correct even if MN Attempts lags.
+  const activeAttempt = isEscalated ? 3 : Math.min(history.length + 1, 3);
+  const isLastAttempt = currentAttempt === 3;
 
   async function handleSave() {
     if (!canSave) return;
@@ -141,9 +171,8 @@ export function ChaseClinicalsPanel({ patient, onUpdate, managerMode = false, ro
     setSaving(true);
     try {
       if (isEscalated) {
-        // Manager follow-up on an escalated patient: all 3 attempt slots are
-        // used, so just move the next action date (weekend-clamped). Notes
-        // were already saved by the notes panel. Patient stays escalated.
+        // Manager follow-up on an escalated patient: all 3 slots used, so just
+        // move the next action date (weekend-clamped). Patient stays escalated.
         const safeNextAction = clampToBusinessDay(nextAction);
         await runVerifiedSend({
           itemId: patient.id,
@@ -156,16 +185,12 @@ export function ChaseClinicalsPanel({ patient, onUpdate, managerMode = false, ro
         onUpdate({ nextActionDate: safeNextAction });
         toast.success("Follow-up saved — patient remains escalated");
       } else {
-        // Chase Clinicals Completed — logs the attempt (who answered +
-        // date/time), bumps MN Attempts (3rd press flags Escalation
-        // Required), and moves the next action date +3 business days.
-        // NEVER advances the stage: patients leave Medical
-        // Necessity only via the Evaluate view.
+        // Chase Clinicals Completed — logs the attempt, bumps MN Attempts
+        // (3rd press flags Escalation Required), and moves the next action
+        // date +3 business days. NEVER advances the stage.
         const attempt = currentAttempt ?? 1;
-        const value = formatAttemptValue(name.trim(), etNow());
+        const value = formatAttemptValue(attemptNote.trim(), etNow());
         const nextSlot = nextMnAttempt(attempt);
-        // Never schedule a next action on a weekend, no matter how the
-        // date was produced.
         const safeNextAction = clampToBusinessDay(nextAction);
         await saveAttempt({
           patient,
@@ -191,13 +216,12 @@ export function ChaseClinicalsPanel({ patient, onUpdate, managerMode = false, ro
       // Persist any doctor-field edits made on the header card
       const docTasks = buildDoctorWriteTasks(patient);
       if (docTasks.length) await Promise.all(docTasks.map((t) => t.run()));
-      setName("");
       setNextAction("");
-      setNoteAdded(false);
-      // Write escalation if user toggled the Escalate button
+      setAttemptNote("");
       if (escalatedRef.current) {
         await writeStatusIndex(patient.id, COL.escalation, ESCALATION_INDEX.required);
-        setEscalated(false); escalatedRef.current = false;
+        setEscalated(false);
+        escalatedRef.current = false;
       }
     } catch (e) {
       toast.error("Save failed", {
@@ -210,6 +234,7 @@ export function ChaseClinicalsPanel({ patient, onUpdate, managerMode = false, ro
 
   const method = patient.clinicalsMethod ?? "—";
   const isEmail = method === "Email";
+  const recipient = isEmail ? patient.doctorEmail : patient.doctorFax;
 
   const showCgm =
     patient.serving === "CGM" ||
@@ -217,158 +242,209 @@ export function ChaseClinicalsPanel({ patient, onUpdate, managerMode = false, ro
     patient.serving === "Supplies + CGM";
   const showIp = patient.serving !== "CGM";
 
-  const isLastAttempt = currentAttempt === 3;
+  // Files that will go out with the re-send (same columns Send Request attaches).
+  const resendFiles = [
+    ...(showCgm ? mondayFiles.cgmTemplate.map((f) => ({ file: f, tag: "CGM" })) : []),
+    ...(showIp ? mondayFiles.ipTemplate.map((f) => ({ file: f, tag: "IP" })) : []),
+    ...mondayFiles.mnRequestLetter.map((f) => ({ file: f, tag: "MN" })),
+    ...mondayFiles.clinicalFiles.map((f) => ({ file: f, tag: "Clinical" })),
+  ];
+
+  // The message that goes out — the rep's edit, else the saved column value,
+  // else a freshly generated template.
+  const currentMessage =
+    messageDraft ?? patient.requestBody ?? buildRequestTemplate(patient, mnChecklist);
+
+  // Optional re-send (fax role only) — same writes as Send Request's Send:
+  // persist the (possibly edited) recipient + message, flip the trigger column
+  // so Monday re-dispatches via Supermail, and stamp Request Sent At.
+  async function handleResend() {
+    if (!hasToken()) {
+      toast.error("Monday token not configured");
+      return;
+    }
+    const idToken = getIdToken();
+    if (!idToken) {
+      toast.error("Sign in with your medicallymodern.com account to send.");
+      return;
+    }
+    if (!recipient) {
+      toast.error(`No doctor ${isEmail ? "email" : "fax"} on file.`);
+      return;
+    }
+    setResending(true);
+    try {
+      // Send the SAME way Send Request does: POST recipient + subject + message
+      // + the Monday request files to the worker /send-message (RingCentral),
+      // not the dormant trigger column.
+      const to = recipient.includes("@") ? recipient : `${recipient.replace(/\D/g, "")}@rcfax.com`;
+      const files: File[] = [];
+      for (const { file: f } of resendFiles) {
+        const url = f.public_url || f.url;
+        if (!url) continue;
+        const bytes = await fetchAssetBytes(url, f.name);
+        files.push(new File([bytes as BlobPart], f.name));
+      }
+      const fd = new FormData();
+      fd.append("recipients", JSON.stringify([to]));
+      fd.append("subject", `Medical necessity documentation — ${titleCase(patient.name || "")}`);
+      fd.append("body", currentMessage);
+      for (const f of files) fd.append("files", f);
+      const res = await fetch(`${FILE_PROXY_URL}/send-message`, {
+        method: "POST",
+        headers: { "X-MM-Auth": idToken },
+        body: fd,
+      });
+      const data = (await res.json().catch(() => ({}))) as {
+        ok?: boolean;
+        results?: { to: string; ok: boolean; error?: string | null }[];
+        error?: string;
+      };
+      if (!res.ok || !data.ok) {
+        const failed = (data.results || []).filter((r) => !r.ok);
+        throw new Error(
+          failed.length
+            ? failed.map((r) => `${r.to}: ${r.error || "failed"}`).join("; ")
+            : data.error || `HTTP ${res.status}`,
+        );
+      }
+      const sentAt = new Date();
+      const sentIso = sentAt.toISOString();
+      await runVerifiedSend({
+        itemId: patient.id,
+        label: "Chase → courtesy re-send",
+        stageColumnId: [],
+        tasks: [
+          { label: "Request Body", columnId: COL.requestBody, value: { text: currentMessage }, fn: () => writeLongText(patient.id, COL.requestBody, currentMessage) },
+          { label: "Request Sent At", columnId: COL.requestSentAt, value: { date: sentIso.slice(0, 10), time: sentIso.slice(11, 19) }, fn: () => writeDateTime(patient.id, COL.requestSentAt, sentAt) },
+        ],
+      });
+      onUpdate({ requestBody: currentMessage, requestSentAt: sentIso });
+      setResentNow(true);
+      toast.success(isEmail ? "Email sent via RingCentral" : "Fax sent via RingCentral");
+    } catch (e) {
+      toast.error("Send failed", { description: e instanceof Error ? e.message : String(e) });
+    } finally {
+      setResending(false);
+    }
+  }
 
   return (
     <div className="flex flex-col gap-6">
-      {/* ── Method hero — who to chase ── */}
-      <MethodHero
-        patient={patient}
-        method={method}
-        label="Chase clinicals with"
-        where={
-          method === "Fax"
-            ? patient.doctorFax
-              ? `Faxed to ${patient.doctorFax}`
-              : "(no doctor fax on file)"
-            : isEmail
-              ? patient.doctorEmail
-                ? `Emailed to ${patient.doctorEmail}`
-                : "(no doctor email on file)"
-              : undefined
-        }
-        right={<CallBox phone={patient.doctorPhone} />}
-      />
-
-      {/* ── Attempt context hero ── */}
-      <AttemptHero
-        isEscalated={isEscalated}
-        attempt={currentAttempt ?? 3}
-        receiptName={patient.receiptConfirmedName}
-        receiptDate={patient.receiptConfirmedDate}
-      />
-
-      {/* ── Step 1 — Review the Request (collapsed dropdown in manager view) ── */}
+      {/* ── Step 1 — Review Context & Attempt History ── */}
       <MmStep
         num={1}
-        title="Review the Request"
-        rightAccessory={<MnStatusChip established={patient.medicalNecessity === "Established"} />}
+        title="Review Context & Attempt History"
         collapsible={managerMode}
         defaultOpen={!managerMode}
       >
-        {!patient.receiptConfirmedDate && !patient.receiptConfirmedName && (
+        {/* Referral source + the confirming attempt surfaced from Confirm Receipt */}
+        <div className="mb-5 space-y-2.5">
           <div
-            className="flex items-center gap-3 rounded-xl border px-4 py-3 mb-4"
-            style={{ background: "var(--mm-rose-soft)", borderColor: "oklch(0.62 0.13 18 / 0.35)" }}
+            className="inline-flex items-center gap-2.5 rounded-xl border px-4 py-2.5"
+            style={{ borderColor: "var(--mm-card-border)" }}
           >
-            <AlertTriangle className="h-4 w-4 shrink-0" style={{ color: "var(--mm-rose)" }} />
-            <div>
-              <p className="text-sm font-bold" style={{ color: "var(--mm-rose)" }}>
-                No receipt-confirmed details on file
-              </p>
-              <p className="text-xs text-muted-foreground">
-                Receipt Confirmed Name + Date are blank on Monday — re-check the prior step before calling.
-              </p>
+            <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+              Referral Source
+            </span>
+            <span className="text-sm font-bold">{patient.referralSource || "—"}</span>
+          </div>
+          {confirmedAttempt && (
+            <div
+              className="flex items-start gap-2.5 rounded-xl border px-4 py-3"
+              style={{ background: "var(--mm-mint)", borderColor: "var(--mm-mint-ring)" }}
+            >
+              <CheckCircle2 className="h-4 w-4 shrink-0 mt-0.5" style={{ color: "var(--mm-green)" }} />
+              <div>
+                <p className="text-sm font-bold text-[color:var(--mm-teal)]">
+                  Receipt confirmed{confirmedAttempt.date ? ` · ${confirmedAttempt.date}` : ""}
+                </p>
+                {confirmedAttempt.note && (
+                  <p className="text-sm text-muted-foreground mt-0.5">{confirmedAttempt.note}</p>
+                )}
+              </div>
             </div>
+          )}
+        </div>
+
+        {/* What we're still missing — identical to Send Request / Confirm Receipt */}
+        <h4 className="text-[1.05rem] font-bold tracking-tight mb-2.5">What we're still missing</h4>
+        <MissingChecklist checklist={mnChecklist} />
+
+        {/* STEP A — Review what it took to confirm receipt (read-only). In its
+            own tinted container so it reads as reference, not the work to do. */}
+        {[patient.confirmAttempt1, patient.confirmAttempt2, patient.confirmAttempt3].some(Boolean) && (
+          <div
+            className="rounded-2xl border bg-muted/40 p-4 mt-6"
+            style={{ borderColor: "var(--mm-card-border)" }}
+          >
+            <h4 className="text-[1.05rem] font-bold tracking-tight mb-3">
+              Confirm Receipt — prior attempts
+            </h4>
+            <ConfirmReceiptAttemptsView patient={patient} />
           </div>
         )}
 
-        <h4 className="text-[1.05rem] font-bold tracking-tight mb-2.5">Ask the doctor for</h4>
-        <AskForList patient={patient} />
+        {/* STEP B — The current chase rounds (logged in Step 2 below). */}
+        <h4 className="text-[1.05rem] font-bold tracking-tight mt-7 mb-2.5">
+          Chase Clinicals — Attempt {activeAttempt} of 3
+        </h4>
+        <AttemptCards history={history} isEscalated={isEscalated} />
 
-        {/* Fixed 2×2 grid — slots are placed by grid row, so the two columns
-            always stay horizontally aligned no matter how much content each
-            slot holds (matches Confirm Receipt). */}
-        <div className="grid grid-cols-2 gap-x-5 mt-5 items-start">
-          <h4 className="text-[1.05rem] font-bold tracking-tight">Script Templates</h4>
-          <h4 className="text-[1.05rem] font-bold tracking-tight">Other Files</h4>
+        {/* Other activity — the earlier stages */}
+        <h4 className="text-[1.05rem] font-bold tracking-tight mb-2.5 mt-6">Other activity</h4>
+        <OtherActivity patient={patient} />
 
-          {/* row 1: CGM Template | MN Request Letter */}
-          <div className="min-h-[88px]">
-            <FilesLabel>CGM Template</FilesLabel>
-            {!showCgm ? (
-              <NotApplicable>— Not Serving</NotApplicable>
-            ) : mondayFiles.loading && mondayFiles.cgmTemplate.length === 0 ? (
-              <LoadingRow />
-            ) : mondayFiles.cgmTemplate.length === 0 ? (
-              <NotApplicable>— None on Monday</NotApplicable>
-            ) : (
-              <FileList files={mondayFiles.cgmTemplate} />
-            )}
-          </div>
-          <div className="min-h-[88px]">
-            <FilesLabel>MN Request Letter</FilesLabel>
-            {mondayFiles.loading && mondayFiles.mnRequestLetter.length === 0 ? (
-              <LoadingRow />
-            ) : mondayFiles.mnRequestLetter.length === 0 ? (
-              <NotApplicable>— None on Monday</NotApplicable>
-            ) : (
-              <FileList files={mondayFiles.mnRequestLetter} />
-            )}
-          </div>
-
-          {/* row 2: IP Template | From Clinicals */}
-          <div className="min-h-[88px]">
-            <FilesLabel>IP Template</FilesLabel>
-            {!showIp ? (
-              <NotApplicable>— Not Serving</NotApplicable>
-            ) : mondayFiles.loading && mondayFiles.ipTemplate.length === 0 ? (
-              <LoadingRow />
-            ) : mondayFiles.ipTemplate.length === 0 ? (
-              <NotApplicable>— None on Monday</NotApplicable>
-            ) : (
-              <FileList files={mondayFiles.ipTemplate} />
-            )}
-          </div>
-          <div className="min-h-[88px]">
-            <FilesLabel>From Clinicals</FilesLabel>
-            {mondayFiles.loading && mondayFiles.clinicalFiles.length === 0 ? (
-              <LoadingRow />
-            ) : mondayFiles.clinicalFiles.length === 0 ? (
-              <NotApplicable>— None on Monday</NotApplicable>
-            ) : (
-              <FileList files={mondayFiles.clinicalFiles} />
-            )}
-          </div>
-        </div>
+        {/* MN Workflow Notes — READ-ONLY here. Chase never writes to these; a
+            prior round's attempt notes get folded in on re-evaluation, so the
+            rep can read the running history without editing it. */}
+        {patient.mnEvalNotes?.trim() && (
+          <>
+            <h4 className="text-[1.05rem] font-bold tracking-tight mb-2.5 mt-6">
+              MN Workflow Notes{" "}
+              <span className="text-xs font-medium text-muted-foreground">(read-only)</span>
+            </h4>
+            <div
+              className="rounded-xl border px-4 py-3 text-sm leading-relaxed whitespace-pre-wrap text-muted-foreground bg-muted/30 max-h-64 overflow-y-auto"
+              style={{ borderColor: "var(--mm-card-border)" }}
+            >
+              {patient.mnEvalNotes}
+            </div>
+          </>
+        )}
       </MmStep>
 
-      {/* ── Step 2 — Call Notes ── */}
-      <MmStep num={2} title="Call Notes">
-        <NotesPanel
-          variant="mm-inline"
-          notes={patient.mnEvalNotes ?? ""}
-          onNotesChange={(v) => onUpdate({ mnEvalNotes: v })}
-          onSaveToMonday={(v) => writeLongText(patient.id, COL.mnEvalNotes, v)}
-          notePrefix={managerMode ? "Chase Clinicals Escalated" : currentAttempt ? `Chase Clinicals Attempt ${currentAttempt}` : undefined}
-          profileSendOffNotes={patient.profileSendOffNotes}
-          onNoteAdded={() => setNoteAdded(true)}
-          onPendingTextChange={setPendingNoteText}
-        />
-      </MmStep>
-
-      {/* ── Step 3 — Complete the Chase (single-button flow) ── */}
+      {/* ── Step 2 — Call & Complete the Chase ── */}
       <MmStep
-        num={3}
-        title="Complete the Chase"
+        num={2}
+        title="Call & Complete the Chase"
         sub={
           isEscalated
             ? undefined
             : isLastAttempt
               ? "Final attempt — completing this chase will flag the patient for escalation."
-              : effectiveRole === "parachute"
-                ? "Chase via the Parachute portal (or a call), add a note, then mark completed — next action moves out 3 business days."
-                : "Call the doctor's office to chase the clinicals, add a note, then mark completed — next action moves out 3 business days."
+              : undefined
         }
       >
-        {locked ? (
-          <>
+        {/* Who to call — doctor name + a call button for the office */}
+        <div
+          className="flex items-center gap-4 rounded-2xl border border-l-4 p-5"
+          style={{ borderColor: "var(--mm-card-border)", borderLeftColor: "var(--mm-green)" }}
+        >
+          <p className="text-xl font-bold tracking-tight min-w-0 truncate">
+            {doctorDisplayName(patient.doctorName)}
+          </p>
+          <div className="ml-auto shrink-0">
+            <CallBox phone={patient.doctorPhone} />
+          </div>
+        </div>
+
+        {/* Complete */}
+        <div className="mt-5">
+          {locked ? (
             <div
               className="flex items-center gap-3 rounded-xl border px-4.5 py-4"
-              style={{
-                background: "var(--mm-rose-soft)",
-                borderColor: "oklch(0.62 0.13 18 / 0.35)",
-              }}
+              style={{ background: "var(--mm-rose-soft)", borderColor: "oklch(0.62 0.13 18 / 0.35)" }}
             >
               <AlertTriangle className="h-5 w-5 shrink-0" style={{ color: "var(--mm-rose)" }} />
               <div>
@@ -380,94 +456,183 @@ export function ChaseClinicalsPanel({ patient, onUpdate, managerMode = false, ro
                 </p>
               </div>
             </div>
-            <HistRows history={history} />
-          </>
-        ) : (
-          <>
-            {isEscalated && managerMode && (
-              <div className="flex items-center gap-2 rounded-lg border border-amber-300 bg-amber-50 px-3.5 py-2.5 mb-1">
-                <AlertTriangle className="h-4 w-4 shrink-0 text-amber-600" />
-                <p className="text-xs text-amber-800">
-                  <span className="font-bold">Manager override</span> — all 3 attempts used.
-                  Completing just moves the next action date; the patient stays escalated.
-                </p>
-              </div>
-            )}
-
-            {/* The old Yes/No outcome picker + "Sent message on Parachute"
-                option were removed (June 2026): "Chase Clinicals Completed"
-                is now the only action and never advances the stage — patients
-                leave Medical Necessity only via the Evaluate view. See git
-                history of this file for the previous outcome UI. */}
-
-            <FilesLabel className="mt-0">Who answered the call?</FilesLabel>
-            <Input
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="Name and title (e.g. Donna, Records) — optional"
-              className="h-[42px] bg-background"
-            />
-
-            <HistRows history={history} />
-
-            <div className="flex flex-col items-center gap-2 mt-5">
-              <Button
-                size="lg"
-                onClick={handleSave}
-                disabled={!canSave}
-                className="gap-2 text-white shadow-sm min-w-[240px] justify-center bg-[color:var(--mm-green)] hover:bg-[oklch(0.56_0.10_175)] disabled:bg-[oklch(0.85_0.01_200)]"
-              >
-                {saving ? (
-                  <>
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    Saving…
-                  </>
-                ) : (
-                  <>
-                    <Check className="h-4 w-4" />
-                    Chase Clinicals Completed
-                  </>
-                )}
-              </Button>
-              <p className="text-xs text-muted-foreground">
-                {saveHint({
-                  hasPendingNote,
-                  noteAdded,
-                  attemptNumber: currentAttempt ?? 1,
-                  isEscalated,
-                  bumpDays: nadBumpDays,
-                })}
-              </p>
-              {currentAttempt === 3 && (
-                <p className="text-xs font-semibold text-amber-600 flex items-center gap-1.5">
-                  <AlertTriangle className="h-3.5 w-3.5" />
-                  Note: This action will escalate this patient to a supervisor.
-                </p>
+          ) : (
+            <>
+              {isEscalated && managerMode && (
+                <div className="flex items-center gap-2 rounded-lg border border-amber-300 bg-amber-50 px-3.5 py-2.5 mb-1">
+                  <AlertTriangle className="h-4 w-4 shrink-0 text-amber-600" />
+                  <p className="text-xs text-amber-800">
+                    <span className="font-bold">Manager override</span> — all 3 attempts used.
+                    Completing just moves the next action date; the patient stays escalated.
+                  </p>
+                </div>
               )}
-            </div>
-          </>
-        )}
+
+              <FilesLabel className="mt-0">
+                What happened on this attempt?{" "}
+                <span className="font-bold" style={{ color: "var(--mm-rose)" }}>*</span>
+              </FilesLabel>
+              <textarea
+                value={attemptNote}
+                onChange={(e) => setAttemptNote(e.target.value)}
+                rows={3}
+                placeholder="Who you reached and what they said — e.g. Spoke with Maria in records; chart notes being pulled, will fax by Thursday"
+                className="w-full rounded-xl border px-4 py-3 text-sm leading-relaxed bg-background resize-y focus:outline-none placeholder:text-muted-foreground/50"
+                style={{ borderColor: "var(--mm-card-border)" }}
+              />
+
+              {/* Optional re-send (fax role only) — re-fax the request while chasing */}
+              {effectiveRole === "fax" && (
+                <div
+                  className="mt-4 rounded-xl border px-4 py-3.5"
+                  style={{ borderColor: "var(--mm-card-border)" }}
+                >
+                  <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-2">
+                    Re-send the {isEmail ? "email" : "fax"}{" "}
+                    <span className="normal-case font-normal">(optional)</span>
+                  </p>
+                  <div className="flex items-center gap-2.5 flex-wrap">
+                    <Input
+                      value={recipient ?? ""}
+                      onChange={(e) =>
+                        onUpdate(isEmail ? { doctorEmail: e.target.value } : { doctorFax: e.target.value })
+                      }
+                      placeholder={isEmail ? "doctor email" : "fax number"}
+                      className="h-[42px] bg-background flex-1 min-w-[220px]"
+                    />
+                    <Button
+                      onClick={handleResend}
+                      disabled={resending || !recipient}
+                      className="gap-2 text-white shadow-sm bg-[color:var(--mm-green)] hover:bg-[oklch(0.56_0.10_175)] disabled:bg-[oklch(0.85_0.01_200)]"
+                    >
+                      {resending ? (
+                        <>
+                          <Loader2 className="h-4 w-4 animate-spin" /> Sending…
+                        </>
+                      ) : resentNow ? (
+                        <>
+                          <Check className="h-4 w-4" /> Re-sent
+                        </>
+                      ) : (
+                        <>
+                          <Send className="h-4 w-4" /> Re-send {isEmail ? "Email" : "Fax"}
+                        </>
+                      )}
+                    </Button>
+                  </div>
+                  {resentNow && (
+                    <p className="text-xs mt-2 font-semibold" style={{ color: "var(--mm-green)" }}>
+                      {isEmail ? "Email" : "Fax"} re-sent.
+                    </p>
+                  )}
+
+                  {/* Drawer — view the files + message that go out */}
+                  <button
+                    type="button"
+                    onClick={() => setShowResendDrawer((o) => !o)}
+                    className="mt-3 inline-flex items-center gap-1.5 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+                  >
+                    <ChevronRight className={`h-4 w-4 transition-transform ${showResendDrawer ? "rotate-90" : ""}`} />
+                    {showResendDrawer ? "Hide files & message" : "View files & message"}
+                  </button>
+                  {showResendDrawer && (
+                    <div className="mt-3 flex flex-col gap-3">
+                      {/* Files being sent */}
+                      <div>
+                        <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">
+                          Documents being sent
+                        </p>
+                        {mondayFiles.loading && resendFiles.length === 0 ? (
+                          <p className="text-sm text-muted-foreground">Loading…</p>
+                        ) : resendFiles.length === 0 ? (
+                          <p className="text-sm text-muted-foreground">No files attached on Monday.</p>
+                        ) : (
+                          <div className="flex flex-wrap gap-1.5">
+                            {resendFiles.map(({ file: f, tag }) => {
+                              const url = f.public_url || f.url;
+                              return (
+                                <button
+                                  key={f.assetId}
+                                  type="button"
+                                  disabled={!url}
+                                  onClick={() => url && openFileViewer({ url, name: f.name })}
+                                  title={f.name}
+                                  className="inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-medium hover:bg-muted/40 disabled:opacity-50"
+                                  style={{ borderColor: "var(--mm-card-border)" }}
+                                >
+                                  <FileText className="h-3.5 w-3.5 shrink-0 text-[color:var(--mm-teal)]" />
+                                  <span className="max-w-[220px] truncate">{f.name}</span>
+                                  <span className="text-[10px] uppercase tracking-wider text-muted-foreground">{tag}</span>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Editable message — saved on re-send */}
+                      <div>
+                        <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">
+                          Message
+                        </p>
+                        <textarea
+                          value={currentMessage}
+                          onChange={(e) => setMessageDraft(e.target.value)}
+                          rows={9}
+                          className="w-full whitespace-pre-wrap rounded-xl border px-4 py-3 text-sm leading-relaxed font-sans bg-background resize-y focus:outline-none"
+                          style={{ borderColor: "var(--mm-card-border)" }}
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              <div className="flex flex-col items-center gap-2 mt-5">
+                <Button
+                  size="lg"
+                  onClick={handleSave}
+                  disabled={!canSave}
+                  className="gap-2 text-white shadow-sm min-w-[240px] justify-center bg-[color:var(--mm-green)] hover:bg-[oklch(0.56_0.10_175)] disabled:bg-[oklch(0.85_0.01_200)]"
+                >
+                  {saving ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Saving…
+                    </>
+                  ) : (
+                    <>
+                      <Check className="h-4 w-4" />
+                      Chase Clinicals Completed
+                    </>
+                  )}
+                </Button>
+                <p className="text-xs text-muted-foreground">
+                  {saveHint({
+                    hasNote,
+                    attemptNumber: currentAttempt ?? 1,
+                    isEscalated,
+                    bumpDays: nadBumpDays,
+                  })}
+                </p>
+                {currentAttempt === 3 && (
+                  <p className="text-xs font-semibold text-amber-600 flex items-center gap-1.5">
+                    <AlertTriangle className="h-3.5 w-3.5" />
+                    Note: This action will escalate this patient to a supervisor.
+                  </p>
+                )}
+              </div>
+            </>
+          )}
+        </div>
       </MmStep>
     </div>
   );
 }
 
 // =====================================================================
-// Save handlers
+// Save handler (unchanged)
 // =====================================================================
-
-// saveYes — REMOVED June 2026. The old "Yes — will send" path wrote the
-// chase recipient and advanced Stage Advancer to Completed. Chase no longer
-// advances the stage: when clinicals actually arrive they're uploaded from
-// the Evaluate view (Chase Clinicals folder), and Evaluate's Send to Monday
-// is the ONLY thing that moves a patient out of Medical Necessity.
-//
-// async function saveYes(patient: Patient, name: string) {
-//   await writeText(patient.id, COL.chaseRecipientName, name);
-//   await writeStatusIndex(patient.id, COL.subStage, SUB_STAGE_INDEX.completed);
-//   const nextAction = formatDateInput(addBusinessDays(etNow(), 2));
-//   await writeDate(patient.id, COL.nextActionDate, nextAction);
-// }
 
 async function saveAttempt({
   patient,
@@ -482,15 +647,11 @@ async function saveAttempt({
   nextSlot: "Attempt 2" | "Attempt 3" | "Escalate";
   nextActionDateInput: string;
 }) {
-  // Attempt log TEXT is a DATA column (read-back verified) so it's indexed
-  // BEFORE MN Attempts / Escalation flip (managers + automations key on those).
-  // Verified write → gateway /send when available. Never advances the stage.
+  // The attempt note is a DATA column (read-back verified) so it lands BEFORE
+  // MN Attempts / Escalation flip (managers + automations key on those).
+  // Verified write → gateway /send. NEVER advances the stage.
   const columnId =
-    attempt === 1
-      ? COL.chaseAttempt1
-      : attempt === 2
-        ? COL.chaseAttempt2
-        : COL.chaseAttempt3;
+    attempt === 1 ? COL.chaseAttempt1 : attempt === 2 ? COL.chaseAttempt2 : COL.chaseAttempt3;
   const mnIdx =
     nextSlot === "Attempt 2"
       ? MN_ATTEMPTS_INDEX.attempt2
@@ -509,141 +670,183 @@ async function saveAttempt({
   } else if (nextActionDateInput) {
     tasks.push({ label: "Next Action Date", columnId: COL.nextActionDate, value: { date: nextActionDateInput }, fn: () => writeDate(patient.id, COL.nextActionDate, nextActionDateInput) });
   }
-  await runVerifiedSend({
-    itemId: patient.id,
-    label: `Chase Clinicals → Attempt ${attempt} (${nextSlot})`,
-    tasks,
-    stageColumnId,
-  });
+  await runVerifiedSend({ itemId: patient.id, label: `Chase Clinicals → Attempt ${attempt} (${nextSlot})`, tasks, stageColumnId });
 }
 
 // =====================================================================
 // Sub-components
 // =====================================================================
 
-/** Big attempt-context line between the hero and step 1. Includes the
- *  receipt-confirmed context chip from the prior stage when on file. */
-function AttemptHero({
-  isEscalated,
-  attempt,
-  receiptName,
-  receiptDate,
-}: {
-  isEscalated: boolean;
-  attempt: number;
-  receiptName?: string;
-  receiptDate?: string;
-}) {
+/** Chase attempts — always three cards. Logged attempts are "Still pending"
+ *  (the chase didn't return clinicals yet); the active round is "In progress"
+ *  and future rounds are "Scheduled". */
+function AttemptCards({ history, isEscalated }: { history: AttemptChip[]; isEscalated: boolean }) {
+  const doneSlots = new Set(history.map((h) => h.attempt));
+  const activeSlot = [1, 2, 3].find((n) => !doneSlots.has(n)) ?? null;
+  const cards = [1, 2, 3].map((n) => {
+    const h = history.find((x) => x.attempt === n);
+    if (h) {
+      // Show only what's actually logged on Monday — the timestamp and the
+      // note (if any). No fabricated status text.
+      return { n, status: "logged" as const, date: h.date || "—", desc: h.note };
+    }
+    if (!isEscalated && activeSlot === n) {
+      return { n, status: "in_progress" as const, date: "Today", desc: "" };
+    }
+    return { n, status: "scheduled" as const, date: "—", desc: "" };
+  });
   return (
-    <div className="flex items-baseline gap-3.5 px-1 -mb-2 flex-wrap">
-      {isEscalated ? (
-        <span className="text-[2rem] font-black tracking-tight" style={{ color: "var(--mm-rose)" }}>
-          3 Attempts — Clinicals Still Pending
-        </span>
-      ) : (
-        <>
-          <span className="text-[2rem] font-black tracking-tight text-[color:var(--mm-teal)]">
-            Attempt {attempt}
-          </span>
-          <span className="text-xl font-semibold text-muted-foreground">of 3</span>
-          {(receiptName || receiptDate) && (
-            <span
-              className="inline-flex items-center gap-2 rounded-full px-3.5 py-1.5 text-sm font-semibold self-center text-[color:var(--mm-teal)] shadow-[inset_0_0_0_1px_var(--mm-mint-ring)]"
-              style={{ background: "oklch(0.94 0.02 175 / 0.7)" }}
-            >
-              <CheckCircle2 className="h-4 w-4" style={{ color: "var(--mm-green)" }} />
-              {receiptName ? `${receiptName} confirmed receipt` : "Confirmed receipt"}
-              {receiptDate ? ` on ${formatDateLong(receiptDate)}` : ""}
-            </span>
-          )}
-        </>
-      )}
-    </div>
-  );
-}
-
-/** Right-side "Call" box on the method hero. */
-function CallBox({ phone }: { phone?: string }) {
-  return (
-    <div className="text-right">
-      <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground flex items-center justify-end gap-1.5">
-        <Phone className="h-3.5 w-3.5" /> Call
-      </p>
-      <p className="text-xl font-extrabold mt-0.5 text-[color:var(--mm-teal)]">
-        {formatPhoneDisplay(phone)}
-      </p>
-    </div>
-  );
-}
-
-/** Attempt history rows. Saved chase attempts are always unsuccessful
- *  ("Still pending") — the Yes path writes the chase recipient column
- *  and advances the stage instead of logging an attempt. */
-function HistRows({ history }: { history: AttemptChip[] }) {
-  if (history.length === 0) return null;
-  return (
-    <div className="mt-2.5">
-      {history.map((h) => (
-        <div
-          key={h.raw}
-          className="flex items-center gap-3.5 rounded-[10px] border px-4 py-3 mt-2.5 text-sm flex-wrap"
-          style={{ borderColor: "var(--mm-card-border)" }}
-        >
-          <span className="font-extrabold shrink-0 text-[color:var(--mm-teal)]">Attempt {h.attempt}</span>
-          <span className="text-muted-foreground shrink-0">{h.date}</span>
-          <span className="font-semibold">{h.name}</span>
-          <span className="ml-auto font-bold shrink-0" style={{ color: "var(--mm-rose)" }}>
-            Still pending
-          </span>
-        </div>
+    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+      {cards.map((c) => (
+        <AttemptCard key={c.n} {...c} />
       ))}
     </div>
   );
 }
 
-/* SegBtn — unused since the June 2026 single-button redesign (old Yes/No
-   outcome picker). Restore from git history if outcome buttons return.
-  ** Segmented Yes/No button (mockup .seg). Click again to deselect. * /
-function SegBtn({
-  tone,
-  selected,
-  onClick,
-  children,
+function AttemptCard({
+  n,
+  status,
+  date,
+  desc,
 }: {
-  tone: "g" | "r";
-  selected: boolean;
-  onClick: () => void;
-  children: React.ReactNode;
+  n: number;
+  status: "logged" | "in_progress" | "scheduled";
+  date: string;
+  desc: string;
 }) {
-  const color = tone === "g" ? "var(--mm-green)" : "var(--mm-rose)";
+  // The current round is bright white + fully opaque; every other round is
+  // grayed + dimmed so it's obvious which attempt you're on.
+  const cfg = {
+    logged: { border: "var(--mm-card-border)", width: 1, current: false, pillColor: "var(--muted-foreground)", label: "Logged" },
+    in_progress: { border: "var(--mm-teal)", width: 2, current: true, pillColor: "var(--mm-teal)", label: "In progress" },
+    scheduled: { border: "var(--mm-card-border)", width: 1, current: false, pillColor: "var(--muted-foreground)", label: "" },
+  }[status];
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="flex-1 inline-flex items-center justify-center gap-2 rounded-lg px-4 py-3 text-[0.95rem] font-semibold border-2 transition-all"
-      style={
-        selected
-          ? { borderColor: "transparent", background: color, color: "#fff", boxShadow: "0 1px 2px 0 rgb(0 0 0 / .05)" }
-          : { borderColor: "var(--mm-card-border)", background: "var(--background)", color: "var(--muted-foreground)" }
-      }
-      onMouseEnter={(e) => {
-        if (!selected) {
-          e.currentTarget.style.color = color;
-          e.currentTarget.style.borderColor = color;
-        }
-      }}
-      onMouseLeave={(e) => {
-        if (!selected) {
-          e.currentTarget.style.color = "var(--muted-foreground)";
-          e.currentTarget.style.borderColor = "var(--mm-card-border)";
-        }
+    <div
+      className={`rounded-xl p-3.5 ${cfg.current ? "bg-card" : "bg-muted/50"}`}
+      style={{
+        border: `${cfg.width}px solid ${cfg.border}`,
+        opacity: cfg.current ? 1 : 0.6,
+        ...(cfg.current ? { boxShadow: "0 1px 2px rgba(15,31,36,.06)" } : {}),
       }}
     >
-      {children}
-    </button>
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+          Attempt {n}
+        </span>
+        {cfg.label && (
+          <span
+            className="rounded-full bg-background px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider"
+            style={{ color: cfg.pillColor }}
+          >
+            {cfg.label}
+          </span>
+        )}
+      </div>
+      <p className="text-sm font-bold mt-2">{date}</p>
+      {desc && <p className="text-xs text-muted-foreground mt-0.5 leading-snug">{desc}</p>}
+    </div>
   );
 }
-*/
+
+/** Non-chase activity (Send Request) as compact rows. Confirm Receipt attempts
+ *  get their own view-only cards above, so they're not duplicated here. */
+function OtherActivity({ patient }: { patient: Patient }) {
+  const method = patient.clinicalsMethod ?? "Fax";
+  const dest = method === "Email" ? patient.doctorEmail : method === "Fax" ? patient.doctorFax : undefined;
+  const sendItems = patient.requestSentAt
+    ? [`${formatActivityDate(patient.requestSentAt)} · ${method}${dest ? ` · ${dest}` : ""}`]
+    : [];
+  return (
+    <div className="space-y-2.5">
+      <ActivityRow label="Send Request" items={sendItems} />
+    </div>
+  );
+}
+
+/** Read-only Confirm Receipt attempts (1–3) shown on the Chase page. Parses the
+ *  per-attempt column "datetime · Confirmed|Not confirmed · note". Non-clickable. */
+function ConfirmReceiptAttemptsView({ patient }: { patient: Patient }) {
+  const raws = [patient.confirmAttempt1, patient.confirmAttempt2, patient.confirmAttempt3];
+  return (
+    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+      {[1, 2, 3].map((n) => (
+        <ConfirmAttemptCard key={n} n={n} raw={raws[n - 1]} />
+      ))}
+    </div>
+  );
+}
+
+function ConfirmAttemptCard({ n, raw }: { n: number; raw?: string }) {
+  if (!raw) {
+    return (
+      <div
+        className="rounded-lg p-3 bg-background/60"
+        style={{ border: "1px dashed var(--mm-card-border)", opacity: 0.7 }}
+      >
+        <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+          Attempt {n}
+        </span>
+        <p className="text-sm font-bold mt-1.5 text-muted-foreground">—</p>
+      </div>
+    );
+  }
+  const parts = raw.split(" · ");
+  const date = parts[0]?.trim() ?? "";
+  const outcomeRaw = parts[1]?.trim() ?? "";
+  const confirmed = /^confirmed/i.test(outcomeRaw);
+  // If the value has no outcome segment (legacy "name — date"), treat as note.
+  const hasOutcome = parts.length >= 2;
+  const note = hasOutcome ? parts.slice(2).join(" · ").trim() : raw;
+  const color = confirmed ? "var(--mm-green)" : "var(--mm-rose)";
+  // Flat reference style (1px neutral border + a small colored outcome dot/pill)
+  // so these read clearly as read-only history, distinct from the bold-bordered
+  // active chase cards.
+  return (
+    <div
+      className="rounded-lg p-3 bg-background"
+      style={{ border: "1px solid var(--mm-card-border)" }}
+    >
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+          Attempt {n}
+        </span>
+        {hasOutcome && (
+          <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider" style={{ color }}>
+            <span className="h-1.5 w-1.5 rounded-full" style={{ background: color }} />
+            {confirmed ? "Confirmed" : "Not confirmed"}
+          </span>
+        )}
+      </div>
+      <p className="text-sm font-bold mt-1.5">{date || "—"}</p>
+      {note && <p className="text-xs text-muted-foreground mt-0.5 leading-snug">{note}</p>}
+    </div>
+  );
+}
+
+/** "Dr. {name}" — prefixes "Dr." unless the name already has it. */
+function doctorDisplayName(name?: string): string {
+  const n = (name ?? "").trim();
+  if (!n) return "—";
+  return /^dr\.?\s/i.test(n) ? n : `Dr. ${n}`;
+}
+
+/** Right-side "Call" button on the method bar — a tel: link styled as a
+ *  button so the rep can click to dial. */
+function CallBox({ phone }: { phone?: string }) {
+  const display = formatPhoneDisplay(phone);
+  const tel = (phone ?? "").replace(/[^\d+]/g, "");
+  return (
+    <a
+      href={tel ? `tel:${tel}` : undefined}
+      className="inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-base font-bold text-white shadow-sm transition-opacity hover:opacity-90 bg-[color:var(--mm-teal)] aria-disabled:opacity-50"
+      aria-disabled={!tel}
+    >
+      <Phone className="h-4 w-4 shrink-0" /> Call {display}
+    </a>
+  );
+}
 
 function FilesLabel({ children, className }: { children: React.ReactNode; className?: string }) {
   return (
@@ -653,33 +856,37 @@ function FilesLabel({ children, className }: { children: React.ReactNode; classN
   );
 }
 
-function NotApplicable({ children }: { children: React.ReactNode }) {
-  return <p className="text-sm text-muted-foreground px-0.5 py-1">{children}</p>;
-}
-
 // =====================================================================
-// Helpers (unchanged)
+// Helpers
 // =====================================================================
 
 interface AttemptChip {
   attempt: number;
-  name: string;
   date: string;
+  note: string;
   raw: string;
 }
 
-const VALUE_REGEX = /^(.+?)\s+—\s+(.+)$/;
-
+/** Chase per-attempt column format: "6/12/26, 2:33 PM · {note}".
+ *  Older rows used "Name — date"; parse those too so legacy history renders. */
 function parseAttemptValue(attempt: number, raw: string): AttemptChip {
-  const m = raw.match(VALUE_REGEX);
-  if (!m) return { attempt, name: raw, date: "", raw };
-  return { attempt, name: m[1], date: m[2], raw };
+  const parts = raw.split(" · ");
+  if (parts.length >= 2) {
+    const [date, ...rest] = parts;
+    return { attempt, date: date.trim(), note: rest.join(" · ").trim(), raw };
+  }
+  const m = raw.match(/^(.+?)\s+—\s+(.+)$/);
+  if (m) return { attempt, date: m[2], note: m[1], raw };
+  // Bare value (legacy attempts logged without a note) — it's the timestamp,
+  // so put it on top with no note (date-on-top, note-below format).
+  return { attempt, date: raw, note: "", raw };
 }
 
-function formatAttemptValue(name: string, date: Date): string {
-  // Date + timestamp (ET) — e.g. "Donna — 6/12/26, 2:33 PM"
+function formatAttemptValue(note: string, date: Date): string {
+  // "6/12/26, 2:33 PM · {note}" — note omitted if empty.
   const datePart = formatDateTimeShort(date);
-  return name ? `${name} — ${datePart}` : datePart;
+  const n = note.trim();
+  return n ? `${datePart} · ${n}` : datePart;
 }
 
 function nextMnAttempt(currentAttempt: number): "Attempt 2" | "Attempt 3" | "Escalate" {
@@ -720,22 +927,14 @@ function formatDateTimeShort(d: Date): string {
 }
 
 function formatDateLong(iso: string): string {
-  // Parse date-only strings (YYYY-MM-DD) as LOCAL dates. new Date("2026-06-11")
-  // is UTC midnight, which rendered as the previous day ("Jun 10") in ET —
-  // the receipt-confirmed off-by-one bug.
+  // Parse date-only strings (YYYY-MM-DD) as LOCAL dates to avoid an off-by-one.
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso.trim());
-  const d = m
-    ? new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]))
-    : new Date(iso);
+  const d = m ? new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])) : new Date(iso);
   if (Number.isNaN(d.getTime())) return iso;
-  return d.toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  });
+  return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 }
 
-/** Format raw phone digits for the Call box (same as profile card). */
+/** Format raw phone digits for the Call button. */
 function formatPhoneDisplay(raw?: string): string {
   if (!raw) return "—";
   const digits = raw.replace(/\D/g, "");
@@ -750,24 +949,19 @@ function formatPhoneDisplay(raw?: string): string {
 
 /** Hint under the "Chase Clinicals Completed" button. */
 function saveHint({
-  hasPendingNote,
-  noteAdded,
+  hasNote,
   attemptNumber,
   isEscalated,
   bumpDays,
 }: {
-  hasPendingNote: boolean;
-  noteAdded: boolean;
+  hasNote: boolean;
   attemptNumber: number;
   isEscalated: boolean;
   bumpDays: number;
 }): string {
-  if (hasPendingNote) return "Press Add on your note before completing.";
-  if (!noteAdded) return "Add at least one call note above to enable.";
+  if (!hasNote) return "Add a note about this attempt to enable.";
   if (isEscalated)
     return `Moves the next action date out ${bumpDays} business day${bumpDays === 1 ? "" : "s"} — patient stays escalated.`;
   if (attemptNumber === 3) return "Logs Attempt 3 and flags Escalation Required.";
   return `Logs Attempt ${attemptNumber} and moves the next action date out ${bumpDays} business day${bumpDays === 1 ? "" : "s"}.`;
 }
-
-/** Open a Monday file URL directly in a new tab (existing behavior). */

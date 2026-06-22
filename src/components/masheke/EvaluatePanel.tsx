@@ -76,6 +76,7 @@ import {
   writeLongText,
   writeStatusIndex,
   writeStatusLabel,
+  writeText,
   buildDoctorWriteTasks,
   uploadFileToColumn,
   type MondayFileEntry,
@@ -401,12 +402,38 @@ export function EvaluatePanel({ patient, resetVersion = 0, onUpdate, onOpenForm 
     // MN Request Letter PDF. Allowed to create labels: the OOW ask embeds a
     // patient-specific date so it's dynamic by design.
     pushDropdown("MN Request Consolidated", COL.mnRequestConsolidated, preview.mnRequestConsolidated, true);
+    // Re-eval rollup (ATOMIC + verified): fold any leftover Confirm Receipt /
+    // Chase attempt notes from a PRIOR cycle into the permanent MN Workflow
+    // Notes history, then blank the six attempt columns so the next cycle's
+    // cards start clean. Both the append and the clears ride this one verified
+    // /send mutation (change_multiple_column_values is all-or-nothing), so a
+    // note can NEVER be lost — unlike a parallel append-then-clear.
+    const leftoverConfirm = [patient.confirmAttempt1, patient.confirmAttempt2, patient.confirmAttempt3]
+      .map((s, i) => (s ? `Attempt ${i + 1}: ${s}` : null))
+      .filter(Boolean) as string[];
+    const leftoverChase = [patient.chaseAttempt1, patient.chaseAttempt2, patient.chaseAttempt3]
+      .map((s, i) => (s ? `Attempt ${i + 1}: ${s}` : null))
+      .filter(Boolean) as string[];
+    const hasLeftover = leftoverConfirm.length > 0 || leftoverChase.length > 0;
+    let mergedNotes = patient.mnEvalNotes ?? "";
+    if (leftoverConfirm.length)
+      mergedNotes += `${mergedNotes ? "\n\n" : ""}--- Confirm Receipt notes (cycle thru ${etToday()}) ---\n${leftoverConfirm.join("\n")}`;
+    if (leftoverChase.length)
+      mergedNotes += `${mergedNotes ? "\n\n" : ""}--- Chase Clinicals notes (cycle thru ${etToday()}) ---\n${leftoverChase.join("\n")}`;
     tasks.push({
       label: "MN Workflow Notes",
       columnId: COL.mnEvalNotes,
-      value: { text: patient.mnEvalNotes ?? "" },
-      fn: () => writeLongText(patient.id, COL.mnEvalNotes, patient.mnEvalNotes ?? ""),
+      value: { text: mergedNotes },
+      fn: () => writeLongText(patient.id, COL.mnEvalNotes, mergedNotes),
     });
+    if (hasLeftover) {
+      for (const col of [
+        COL.confirmAttempt1, COL.confirmAttempt2, COL.confirmAttempt3,
+        COL.chaseAttempt1, COL.chaseAttempt2, COL.chaseAttempt3,
+      ]) {
+        tasks.push({ label: `Clear ${col}`, columnId: col, value: "", expectedText: "", fn: () => writeText(patient.id, col, "") });
+      }
+    }
     // Next Action Date → today (ET) — the patient lands in the next tab's active
     // list immediately instead of an empty/scheduled state.
     pushDate("Next Action Date → today", COL.nextActionDate, etToday());
@@ -449,6 +476,14 @@ export function EvaluatePanel({ patient, resetVersion = 0, onUpdate, onOpenForm 
       setSending(false);
       toast.success(`Sent to Monday — moved to ${nextStage}`);
       setEscalated(false); escalatedRef.current = false;
+      // Reflect the rolled-up notes + cleared attempt columns locally.
+      if (hasLeftover) {
+        onUpdate({
+          mnEvalNotes: mergedNotes,
+          confirmAttempt1: undefined, confirmAttempt2: undefined, confirmAttempt3: undefined,
+          chaseAttempt1: undefined, chaseAttempt2: undefined, chaseAttempt3: undefined,
+        });
+      }
     } catch (e) {
       setSending(false);
       const msg = e instanceof Error ? e.message : String(e);

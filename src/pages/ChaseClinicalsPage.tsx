@@ -12,7 +12,7 @@ import { useMondayPatients } from "@/hooks/masheke/useMondayPatients";
 import type { Patient } from "@/lib/masheke/workflow";
 import { ChaseClinicalsPanel } from "@/components/masheke/ChaseClinicalsPanel";
 import { PatientsSidebar } from "@/components/masheke/PatientsSidebar";
-import { ConfirmReceiptHeaderCard } from "@/components/masheke/ConfirmReceiptHeaderCard";
+import { SendRequestHeaderCard } from "@/components/masheke/SendRequestHeaderCard";
 import { Button } from "@/components/ui/button";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { RotateCcw, Stethoscope, ArrowLeft, Ban, Clock , Save} from "lucide-react";
@@ -155,7 +155,12 @@ const ChaseClinicalsPage = ({ method }: ChasePageProps) => {
               )}
               {selected && (
                 <>
-                  <ConfirmReceiptHeaderCard patient={selected} onDoctorEdit={(patch) => update(selected.id, patch)} />
+                  <SendRequestHeaderCard
+                    patient={selected}
+                    onDoctorEdit={(patch) => update(selected.id, patch)}
+                    editHint="Edits are saved to Monday when you complete the chase (or via the Save button above)."
+                    fullDetails
+                  />
                   <ChaseClinicalsPanel patient={selected} onUpdate={onUpdate} onOpenForm={() => setEscalationModalOpen(true)} managerMode={isManager} roleMethod={method} />
                 </>
               )}
