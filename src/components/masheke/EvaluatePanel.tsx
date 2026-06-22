@@ -80,6 +80,8 @@ import {
   uploadFileToColumn,
   type MondayFileEntry,
 } from "@/lib/masheke/mondayApi";
+import { runVerifiedSend } from "@/lib/masheke/mondayWrite";
+import type { WriteTask } from "@/lib/shared/verifiedWrite";
 import { GEN_SCRIPT_STATUS, ESCALATION_INDEX } from "@/lib/masheke/mondayMapping";
 import { etToday } from "@/lib/masheke/etDate";
 import { EscalateButton } from "@/components/masheke/EscalateButton";
@@ -333,208 +335,126 @@ export function EvaluatePanel({ patient, resetVersion = 0, onUpdate, onOpenForm 
     }
     setSending(true);
     setSendErrors([]);
-    const tasks: { label: string; run: () => Promise<unknown> }[] = [];
+    const tasks: WriteTask[] = [];
 
     const clinReceived = state.mrReceived === "Yes";
     const cgmReceived = state.cgmScriptReceived === "Yes";
     const ipReceived = state.ipScriptReceived === "Yes";
+
+    // Each task carries BOTH a raw `value` (used by the gateway /send fast path)
+    // and an `fn` (the client-side fallback) so the two stay in lockstep. Clears
+    // assert expectedText "" so a clear that didn't take fails verification
+    // (instead of falsely passing as an unchanged column).
+    const pushLabel = (label: string, columnId: string, labelValue: string, createLabels = false) =>
+      tasks.push({ label, columnId, value: { label: labelValue }, expectedText: labelValue, fn: () => writeStatusLabel(patient.id, columnId, labelValue, createLabels) });
+    const pushClearStatus = (label: string, columnId: string) =>
+      tasks.push({ label, columnId, value: null, expectedText: "", fn: () => clearStatusColumn(patient.id, columnId) });
+    const pushClearDate = (label: string, columnId: string) =>
+      tasks.push({ label, columnId, value: null, expectedText: "", fn: () => clearDateColumn(patient.id, columnId) });
+    const pushDate = (label: string, columnId: string, date: string) =>
+      tasks.push({ label, columnId, value: { date }, fn: () => writeDate(patient.id, columnId, date) });
+    const pushDropdown = (label: string, columnId: string, labels: string[], createLabels = false) =>
+      tasks.push({ label, columnId, value: { labels }, fn: () => writeDropdownLabels(patient.id, columnId, labels, createLabels) });
 
     // Insulin Pump Coverage Path — write "Not Serving" if the patient isn't
     // being served IP at all; if the IP script was received, write the rep's
     // selection (or clear). If the script was NOT received the section was
     // hidden, so leave Monday's column untouched rather than clobbering it.
     if (!showIp) {
-      tasks.push({
-        label: "IP Coverage Path",
-        run: () => writeStatusLabel(patient.id, COL.ipCoveragePath, "Not Serving"),
-      });
+      pushLabel("IP Coverage Path", COL.ipCoveragePath, "Not Serving");
     } else if (ipReceived) {
-      if (state.ipCoveragePath) {
-        tasks.push({
-          label: "IP Coverage Path",
-          run: () => writeStatusLabel(patient.id, COL.ipCoveragePath, state.ipCoveragePath!),
-        });
-      } else {
-        tasks.push({
-          label: "IP Coverage Path",
-          run: () => clearStatusColumn(patient.id, COL.ipCoveragePath),
-        });
-      }
+      if (state.ipCoveragePath) pushLabel("IP Coverage Path", COL.ipCoveragePath, state.ipCoveragePath);
+      else pushClearStatus("IP Coverage Path", COL.ipCoveragePath);
     }
     // CGM Coverage Path — same pattern.
     if (!showCgm) {
-      tasks.push({
-        label: "CGM Coverage Path",
-        run: () => writeStatusLabel(patient.id, COL.cgmCoveragePath, "Not Serving"),
-      });
+      pushLabel("CGM Coverage Path", COL.cgmCoveragePath, "Not Serving");
     } else if (cgmReceived) {
-      if (state.cgmCoveragePath) {
-        tasks.push({
-          label: "CGM Coverage Path",
-          run: () => writeStatusLabel(patient.id, COL.cgmCoveragePath, state.cgmCoveragePath!),
-        });
-      } else {
-        tasks.push({
-          label: "CGM Coverage Path",
-          run: () => clearStatusColumn(patient.id, COL.cgmCoveragePath),
-        });
-      }
+      if (state.cgmCoveragePath) pushLabel("CGM Coverage Path", COL.cgmCoveragePath, state.cgmCoveragePath);
+      else pushClearStatus("CGM Coverage Path", COL.cgmCoveragePath);
     }
     // Diagnosis / Last Visit / MR Expiry — only synced while the Clinicals
-    // section is visible (Clinicals received). When hidden, leave Monday
-    // untouched.
+    // section is visible (Clinicals received). When hidden, leave Monday untouched.
     if (clinReceived) {
-      if (state.diagnosis) {
-        tasks.push({
-          label: "Diagnosis",
-          // Diagnosis is the ONLY status column allowed to create new labels
-          // (reps can add new ICD-10 codes).
-          run: () => writeStatusLabel(patient.id, COL.diagnosis, state.diagnosis!, true),
-        });
-      } else {
-        tasks.push({
-          label: "Diagnosis",
-          run: () => clearStatusColumn(patient.id, COL.diagnosis),
-        });
-      }
+      // Diagnosis is the ONLY status column allowed to create new labels (reps
+      // can add new ICD-10 codes) — createLabelsIfMissing on the /send below.
+      if (state.diagnosis) pushLabel("Diagnosis", COL.diagnosis, state.diagnosis, true);
+      else pushClearStatus("Diagnosis", COL.diagnosis);
     }
     // Script Received columns — the switch is always an answer: off = "No".
-    if (showCgm) {
-      tasks.push({
-        label: "CGM Script Received",
-        run: () => writeStatusLabel(patient.id, COL.cgmScriptReceived, cgmReceived ? "Yes" : "No"),
-      });
-    }
-    if (showIp) {
-      tasks.push({
-        label: "IP Script Received",
-        run: () => writeStatusLabel(patient.id, COL.ipScriptReceived, ipReceived ? "Yes" : "No"),
-      });
-    }
+    if (showCgm) pushLabel("CGM Script Received", COL.cgmScriptReceived, cgmReceived ? "Yes" : "No");
+    if (showIp) pushLabel("IP Script Received", COL.ipScriptReceived, ipReceived ? "Yes" : "No");
     // MRs / Clinicals — switch is always an answer: off = "Collect".
-    tasks.push({
-      label: "MRs / Clinicals",
-      run: () => writeStatusLabel(patient.id, COL.mrsClinicals, clinReceived ? "MR Received" : "Collect"),
-    });
+    pushLabel("MRs / Clinicals", COL.mrsClinicals, clinReceived ? "MR Received" : "Collect");
     if (clinReceived) {
-      if (state.lastVisitDate) {
-        tasks.push({
-          label: "Last Visit Date",
-          run: () => writeDate(patient.id, COL.lastVisit, state.lastVisitDate!),
-        });
-      } else {
-        tasks.push({
-          label: "Last Visit Date (clear)",
-          run: () => clearDateColumn(patient.id, COL.lastVisit),
-        });
-      }
+      if (state.lastVisitDate) pushDate("Last Visit Date", COL.lastVisit, state.lastVisitDate);
+      else pushClearDate("Last Visit Date (clear)", COL.lastVisit);
       const { expiry } = getMrExpiry(state.lastVisitDate);
-      if (expiry) {
-        tasks.push({
-          label: "MR Expiry Date",
-          run: () => writeDate(patient.id, COL.mrExpiryDate, expiry.toISOString().slice(0, 10)),
-        });
-      } else {
-        tasks.push({
-          label: "MR Expiry Date (clear)",
-          run: () => clearDateColumn(patient.id, COL.mrExpiryDate),
-        });
-      }
+      if (expiry) pushDate("MR Expiry Date", COL.mrExpiryDate, expiry.toISOString().slice(0, 10));
+      else pushClearDate("MR Expiry Date (clear)", COL.mrExpiryDate);
     }
-    tasks.push({
-      label: "Medical Necessity",
-      run: () => writeStatusLabel(patient.id, COL.medicalNecessity, preview.medicalNecessity),
-    });
-    tasks.push({
-      label: "General MN Invalid Reasons",
-      run: () =>
-        writeDropdownLabels(
-          patient.id,
-          COL.generalMnInvalidReasons,
-          preview.generalMnInvalidReasons,
-        ),
-    });
-    tasks.push({
-      label: "CGM MN Invalid Reasons",
-      run: () =>
-        writeDropdownLabels(
-          patient.id,
-          COL.cgmMnInvalidReasons,
-          preview.cgmMnInvalidReasons,
-        ),
-    });
-    tasks.push({
-      label: "Insulin Pump MN Invalid Reasons",
-      run: () =>
-        writeDropdownLabels(
-          patient.id,
-          COL.ipMnInvalidReasons,
-          preview.ipMnInvalidReasons,
-        ),
-    });
-    // Consolidated, doctor-facing ask list — drives the Send Request UI
-    // and the MN Request Letter PDF. Replaces the 3 raw reason dropdowns
-    // for downstream consumers.
-    tasks.push({
-      label: "MN Request Consolidated",
-      // Allowed to create labels: the OOW ask embeds a patient-specific date
-      // ("Add OOW date of MM/DD/YYYY to the script") so it's dynamic by design.
-      run: () =>
-        writeDropdownLabels(
-          patient.id,
-          COL.mnRequestConsolidated,
-          preview.mnRequestConsolidated,
-          true,
-        ),
-    });
+    pushLabel("Medical Necessity", COL.medicalNecessity, preview.medicalNecessity);
+    pushDropdown("General MN Invalid Reasons", COL.generalMnInvalidReasons, preview.generalMnInvalidReasons);
+    pushDropdown("CGM MN Invalid Reasons", COL.cgmMnInvalidReasons, preview.cgmMnInvalidReasons);
+    pushDropdown("Insulin Pump MN Invalid Reasons", COL.ipMnInvalidReasons, preview.ipMnInvalidReasons);
+    // Consolidated, doctor-facing ask list — drives the Send Request UI and the
+    // MN Request Letter PDF. Allowed to create labels: the OOW ask embeds a
+    // patient-specific date so it's dynamic by design.
+    pushDropdown("MN Request Consolidated", COL.mnRequestConsolidated, preview.mnRequestConsolidated, true);
     tasks.push({
       label: "MN Workflow Notes",
-      run: () => writeLongText(patient.id, COL.mnEvalNotes, patient.mnEvalNotes ?? ""),
+      columnId: COL.mnEvalNotes,
+      value: { text: patient.mnEvalNotes ?? "" },
+      fn: () => writeLongText(patient.id, COL.mnEvalNotes, patient.mnEvalNotes ?? ""),
     });
-    // Advance the Stage Advancer based on MN outcome:
-    //   Established     → Completed (skip Send Request entirely)
-    //   Not Established → Send Request
-    // Route on the SAME MN signal the rep sees in the Step-2 banner
-    // (bannerMnEstablished), not deriveValidity — so the screen and the submit agree.
-    const nextStage = bannerMnEstablished(state, showCgm, showIp) ? "Completed" : "Send Request";
-    tasks.push({
-      label: `Stage Advancer → ${nextStage}`,
-      run: () => writeStatusLabel(patient.id, COL.subStage, nextStage),
-    });
-    // Next Action Date → today (ET) — the patient lands in the next tab's
-    // active list immediately instead of an empty/scheduled state.
-    tasks.push({
-      label: "Next Action Date → today",
-      run: () => writeDate(patient.id, COL.nextActionDate, etToday()),
-    });
-
-    // Doctor fields (from pencil-edit overlay)
-    tasks.push(...buildDoctorWriteTasks(patient));
-
-    // File uploads are now handled immediately on drop via useImmediateFileUpload.
-    // They are confirmed server-side before Send is enabled — no batch upload needed.
-    // Escalation — only written when the toggle is active
+    // Next Action Date → today (ET) — the patient lands in the next tab's active
+    // list immediately instead of an empty/scheduled state.
+    pushDate("Next Action Date → today", COL.nextActionDate, etToday());
+    // Escalation — only written when the toggle is active.
     if (escalatedRef.current) {
       tasks.push({
         label: "Escalation → Required",
-        run: () => writeStatusIndex(patient.id, COL.escalation, ESCALATION_INDEX.required),
+        columnId: COL.escalation,
+        value: { index: ESCALATION_INDEX.required },
+        fn: () => writeStatusIndex(patient.id, COL.escalation, ESCALATION_INDEX.required),
       });
     }
-    const results = await Promise.allSettled(tasks.map((t) => t.run()));
-    const failures: string[] = [];
-    results.forEach((r, i) => {
-      if (r.status === "rejected") {
-        failures.push(`${tasks[i].label}: ${r.reason instanceof Error ? r.reason.message : String(r.reason)}`);
-      }
+    // Stage Advancer LAST (the automation trigger). Established → Completed
+    // (skip Send Request); Not Established → Send Request. Routed on the SAME
+    // banner signal the rep sees so screen and submit agree.
+    const nextStage = bannerMnEstablished(state, showCgm, showIp) ? "Completed" : "Send Request";
+    tasks.push({
+      label: `Stage Advancer → ${nextStage}`,
+      columnId: COL.subStage,
+      value: { label: nextStage },
+      expectedText: nextStage,
+      fn: () => writeStatusLabel(patient.id, COL.subStage, nextStage),
     });
-    setSending(false);
-    if (failures.length === 0) {
-      toast.success(`Sent ${tasks.length} fields to Monday`);
+
+    try {
+      // Verified write → gateway /send when available. createLabelsIfMissing so
+      // Diagnosis + the dynamic consolidated ask can add labels server-side.
+      // Every data column is read-back confirmed before the Stage Advancer flips
+      // (file uploads are already confirmed on drop, so none are batched here).
+      await runVerifiedSend({
+        itemId: patient.id,
+        label: `Evaluate → ${nextStage}`,
+        tasks,
+        stageColumnId: COL.subStage,
+        createLabelsIfMissing: true,
+      });
+      // Doctor-field edits (pencil overlay) persist as a separate, non-stage write.
+      const docTasks = buildDoctorWriteTasks(patient);
+      if (docTasks.length) await Promise.all(docTasks.map((t) => t.run()));
+      setSending(false);
+      toast.success(`Sent to Monday — moved to ${nextStage}`);
       setEscalated(false); escalatedRef.current = false;
-    } else {
-      setSendErrors(failures);
-      toast.error(`${failures.length} write(s) failed — see details below`, {
-        description: failures.slice(0, 3).join("\n"),
+    } catch (e) {
+      setSending(false);
+      const msg = e instanceof Error ? e.message : String(e);
+      setSendErrors([msg]);
+      toast.error("Send failed — stage not advanced", {
+        description: msg,
         duration: 10000,
       });
     }

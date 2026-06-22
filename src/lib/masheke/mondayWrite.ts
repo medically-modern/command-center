@@ -56,6 +56,42 @@ async function executeWithRetry(task: WriteTask): Promise<string | null> {
   return null;
 }
 
+const BOARD_ID = "18406060017";
+
+/**
+ * Run a Medical-Necessity write batch through the verified writer. When the
+ * gateway is configured AND every task carries a raw `value`, this hands the
+ * whole transaction to the server-side /send fast path (durable + idempotent:
+ * snapshot → write data → read-back verify → stage columns LAST). Otherwise it
+ * runs the same sequence client-side. Throws if any column fails so callers can
+ * surface the error and NOT report success to the rep.
+ *
+ * To engage /send, EVERY task must carry a raw `value` (change_multiple_column_values
+ * shape). `stageColumnId` names the trigger/advancer column(s) written last.
+ */
+export async function runVerifiedSend(opts: {
+  itemId: string;
+  tasks: WriteTask[];
+  stageColumnId: string | string[];
+  createLabelsIfMissing?: boolean;
+  label?: string;
+}): Promise<void> {
+  const failures = await executeWritesWithVerification({
+    itemId: opts.itemId,
+    boardId: BOARD_ID,
+    label: opts.label,
+    tasks: opts.tasks,
+    stageColumnId: opts.stageColumnId,
+    executeWithRetry,
+    readColumns: readColumnTexts,
+    createLabelsIfMissing: opts.createLabelsIfMissing,
+    writeDebug: (id, msg) => writeText(id, COL.joshDebug, msg),
+  });
+  if (failures.length > 0) {
+    throw new Error(`${failures.length} column(s) failed verification: ${failures.join("; ")}`);
+  }
+}
+
 /** Push a status field if it has a value and we can resolve the index. */
 function pushStatus(
   tasks: WriteTask[],
@@ -283,25 +319,32 @@ export async function recordAndAdvanceVerified(
   // back to confirm Monday indexed them, and ONLY THEN flip the Stage Advancer
   // (subStage) — the single write that moves the item. If verification fails the
   // advancer is never written and this throws, so the item does not move.
+  // Stamp Request Sent At once so the raw `value` (used by /send) matches the fn.
+  const sentAt = new Date();
+  const sentIso = sentAt.toISOString();
   const tasks: WriteTask[] = [
     {
       label: "Request Message",
       columnId: COL.requestBody,
+      value: { text: opts.body },
       fn: () => writeLongText(p.id, COL.requestBody, opts.body),
     },
     {
       label: "Request Sent At",
       columnId: COL.requestSentAt,
-      fn: () => writeDateTime(p.id, COL.requestSentAt),
+      value: { date: sentIso.slice(0, 10), time: sentIso.slice(11, 19) },
+      fn: () => writeDateTime(p.id, COL.requestSentAt, sentAt),
     },
     {
       label: "Next Action Date",
       columnId: COL.nextActionDate,
+      value: { date: opts.nextActionDate },
       fn: () => writeDate(p.id, COL.nextActionDate, opts.nextActionDate),
     },
     {
       label: `Stage Advancer → ${opts.nextStage}`,
       columnId: COL.subStage,
+      value: { label: opts.nextStage },
       fn: () => writeStatusLabel(p.id, COL.subStage, opts.nextStage),
     },
   ];

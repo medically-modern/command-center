@@ -30,6 +30,8 @@ import {
   writeStatusLabel,
   writeText,
 } from "@/lib/masheke/mondayApi";
+import { runVerifiedSend } from "@/lib/masheke/mondayWrite";
+import type { WriteTask } from "@/lib/shared/verifiedWrite";
 import {
   ESCALATION_INDEX,
   MN_ATTEMPTS_INDEX,
@@ -171,7 +173,14 @@ export function ConfirmReceiptPanel({ patient, onUpdate, managerMode = false }: 
         // used, so just set the next action date (weekend-clamped). Notes
         // were already saved by the notes panel. Patient stays escalated.
         const safeNextAction = clampToBusinessDay(nextAction);
-        await writeDate(patient.id, COL.nextActionDate, safeNextAction);
+        await runVerifiedSend({
+          itemId: patient.id,
+          label: "Confirm Receipt → escalated follow-up",
+          stageColumnId: [],
+          tasks: [
+            { label: "Next Action Date", columnId: COL.nextActionDate, value: { date: safeNextAction }, fn: () => writeDate(patient.id, COL.nextActionDate, safeNextAction) },
+          ],
+        });
         onUpdate({ nextActionDate: safeNextAction });
         toast.success("Follow-up saved — patient remains escalated");
       } else {
@@ -580,17 +589,27 @@ export function ConfirmReceiptPanel({ patient, onUpdate, managerMode = false }: 
 // =====================================================================
 
 async function saveYes(patient: Patient, name: string) {
-  // Yes path: stamp success columns + advance stage. Also reset
-  // MN Attempts back to "Attempt 1" so the Chase Clinicals tab starts
-  // fresh (the column is shared across stages).
+  // Yes path: stamp success columns, reset MN Attempts to "Attempt 1" (the
+  // column is shared across stages so Chase starts fresh), set the +3 business
+  // day chase cadence, and advance the stage LAST. Verified write → gateway
+  // /send when available: the data columns are read-back confirmed before
+  // subStage flips, so the stage never moves on a half-written record.
   const today = formatDateInput(etNow());
-  await writeText(patient.id, COL.receiptConfirmedName, name);
-  await writeDate(patient.id, COL.receiptConfirmedDate, today);
-  await writeStatusIndex(patient.id, COL.mnAttempts, MN_ATTEMPTS_INDEX.attempt1);
-  await writeStatusIndex(patient.id, COL.subStage, SUB_STAGE_INDEX.chase);
   // Entry into Chase Clinicals → +3 business days (matches chase cadence)
   const nextAction = formatDateInput(addBusinessDays(etNow(), 3));
-  await writeDate(patient.id, COL.nextActionDate, nextAction);
+  const tasks: WriteTask[] = [
+    { label: "Receipt Confirmed Name", columnId: COL.receiptConfirmedName, value: name, fn: () => writeText(patient.id, COL.receiptConfirmedName, name) },
+    { label: "Receipt Confirmed Date", columnId: COL.receiptConfirmedDate, value: { date: today }, fn: () => writeDate(patient.id, COL.receiptConfirmedDate, today) },
+    { label: "MN Attempts → Attempt 1", columnId: COL.mnAttempts, value: { index: MN_ATTEMPTS_INDEX.attempt1 }, fn: () => writeStatusIndex(patient.id, COL.mnAttempts, MN_ATTEMPTS_INDEX.attempt1) },
+    { label: "Next Action Date", columnId: COL.nextActionDate, value: { date: nextAction }, fn: () => writeDate(patient.id, COL.nextActionDate, nextAction) },
+    { label: "Sub-Stage → Chase Clinicals", columnId: COL.subStage, value: { index: SUB_STAGE_INDEX.chase }, fn: () => writeStatusIndex(patient.id, COL.subStage, SUB_STAGE_INDEX.chase) },
+  ];
+  await runVerifiedSend({
+    itemId: patient.id,
+    label: "Confirm Receipt → Yes (advance to Chase)",
+    tasks,
+    stageColumnId: COL.subStage,
+  });
 }
 
 async function saveNo({
@@ -606,28 +625,40 @@ async function saveNo({
   nextSlot: "Attempt 2" | "Attempt 3" | "Escalate";
   nextActionDateInput: string;
 }) {
-  // 1) Write the attempt's "Name — date" string into the matching column.
+  // The attempt's "Name — date" string is a DATA column (read-back verified) so
+  // it's indexed BEFORE MN Attempts / Escalation flip — those are the columns
+  // managers and Monday automations key on, so they must land last. Verified
+  // write → gateway /send when available.
   const columnId =
     attempt === 1
       ? COL.confirmAttempt1
       : attempt === 2
         ? COL.confirmAttempt2
         : COL.confirmAttempt3;
-  await writeText(patient.id, columnId, value);
-  // 2) Bump MN Attempts.
   const mnIdx =
     nextSlot === "Attempt 2"
       ? MN_ATTEMPTS_INDEX.attempt2
       : nextSlot === "Attempt 3"
         ? MN_ATTEMPTS_INDEX.attempt3
         : MN_ATTEMPTS_INDEX.escalate;
-  await writeStatusIndex(patient.id, COL.mnAttempts, mnIdx);
-  // 3) Either set escalation flag (if 3rd failure) or write next action date.
-  if (nextSlot === "Escalate") {
-    await writeStatusIndex(patient.id, COL.escalation, ESCALATION_INDEX.required);
+  const escalate = nextSlot === "Escalate";
+  const tasks: WriteTask[] = [
+    { label: `Confirm Attempt ${attempt}`, columnId, value, expectedText: value, fn: () => writeText(patient.id, columnId, value) },
+    { label: `MN Attempts → ${nextSlot}`, columnId: COL.mnAttempts, value: { index: mnIdx }, fn: () => writeStatusIndex(patient.id, COL.mnAttempts, mnIdx) },
+  ];
+  const stageColumnId: string[] = [COL.mnAttempts];
+  if (escalate) {
+    tasks.push({ label: "Escalation → Required", columnId: COL.escalation, value: { index: ESCALATION_INDEX.required }, fn: () => writeStatusIndex(patient.id, COL.escalation, ESCALATION_INDEX.required) });
+    stageColumnId.push(COL.escalation);
   } else if (nextActionDateInput) {
-    await writeDate(patient.id, COL.nextActionDate, nextActionDateInput);
+    tasks.push({ label: "Next Action Date", columnId: COL.nextActionDate, value: { date: nextActionDateInput }, fn: () => writeDate(patient.id, COL.nextActionDate, nextActionDateInput) });
   }
+  await runVerifiedSend({
+    itemId: patient.id,
+    label: `Confirm Receipt → Attempt ${attempt} (${nextSlot})`,
+    tasks,
+    stageColumnId,
+  });
 }
 
 // =====================================================================

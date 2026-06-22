@@ -32,6 +32,9 @@ export interface SendPayload {
   verify?: { columnId: string; expectedText?: string }[];
   idempotencyKey: string;
   label?: string;
+  /** When true, the gateway writes columns with create_labels_if_missing
+   *  (used by flows that legitimately add labels, e.g. Evaluate). */
+  createLabelsIfMissing?: boolean;
 }
 
 export type SendOutcome = "done" | "submitted" | "queued-offline";

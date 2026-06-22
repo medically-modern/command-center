@@ -44,7 +44,8 @@ import {
 } from "@/lib/masheke/mondayApi";
 import { FILE_PROXY_URL } from "@/lib/shared/mondayAssets";
 import { getIdToken } from "@/lib/shared/auth";
-import { recordAndAdvanceVerified } from "@/lib/masheke/mondayWrite";
+import { recordAndAdvanceVerified, runVerifiedSend } from "@/lib/masheke/mondayWrite";
+import type { WriteTask } from "@/lib/shared/verifiedWrite";
 import { GEN_SCRIPT_STATUS } from "@/lib/masheke/mondayMapping";
 import {
   loadEvalStateForPatient,
@@ -386,58 +387,62 @@ export function SendRequestPanel({ patient, resetVersion = 0, onUpdate }: Props)
     // Parachute skips Confirm Receipt (rep handles receipt-confirmation in the
     // Parachute portal directly), so we route straight to Chase Clinicals.
     const nextStage = isParachute ? "Chase Clinicals" : "Confirm Receipt";
-    const tasks: { label: string; run: () => Promise<unknown> }[] = [
+    // → Confirm Receipt: +1 business day (fax/email needs a day to land before
+    // the receipt call). Parachute → Chase Clinicals: +3 business days.
+    const nextAction = toIsoDate(addBusinessDays(etNow(), isParachute ? 3 : 1));
+    const sentAt = new Date();
+    const sentIso = sentAt.toISOString();
+    const tasks: WriteTask[] = [
       {
         label: "Request Sent At",
-        run: () => writeDateTime(patient.id, COL.requestSentAt),
+        columnId: COL.requestSentAt,
+        value: { date: sentIso.slice(0, 10), time: sentIso.slice(11, 19) },
+        fn: () => writeDateTime(patient.id, COL.requestSentAt, sentAt),
+      },
+      {
+        label: `Next Action Date → ${nextAction}`,
+        columnId: COL.nextActionDate,
+        value: { date: nextAction },
+        fn: () => writeDate(patient.id, COL.nextActionDate, nextAction),
       },
       {
         label: `Stage Advancer → ${nextStage}`,
-        run: () => writeStatusLabel(patient.id, COL.subStage, nextStage),
+        columnId: COL.subStage,
+        value: { label: nextStage },
+        fn: () => writeStatusLabel(patient.id, COL.subStage, nextStage),
       },
     ];
-    if (isParachute) {
-      // Entry into Chase Clinicals → +3 business days (matches chase cadence)
-      const nextAction = toIsoDate(addBusinessDays(etNow(), 3));
-      tasks.push({
-        label: `Next Action Date → ${nextAction}`,
-        run: () => writeDate(patient.id, COL.nextActionDate, nextAction),
-      });
-    } else {
-      // → Confirm Receipt: Next Action Date = +1 business day (the fax/email
-      // needs a day to land before the receipt call makes sense).
-      const nextAction = toIsoDate(addBusinessDays(etNow(), 1));
-      tasks.push({
-        label: `Next Action Date → ${nextAction}`,
-        run: () => writeDate(patient.id, COL.nextActionDate, nextAction),
-      });
-    }
     if (escalatedRef.current) {
       tasks.push({
         label: "Escalation → Required",
-        run: () => writeStatusIndex(patient.id, COL.escalation, ESCALATION_INDEX.required),
+        columnId: COL.escalation,
+        value: { index: ESCALATION_INDEX.required },
+        fn: () => writeStatusIndex(patient.id, COL.escalation, ESCALATION_INDEX.required),
       });
     }
-    // Persist any doctor-field edits made on the method hero
-    tasks.push(...buildDoctorWriteTasks(patient));
-    const results = await Promise.allSettled(tasks.map((t) => t.run()));
-    const failures: string[] = [];
-    results.forEach((r, i) => {
-      if (r.status === "rejected") {
-        failures.push(
-          `${tasks[i].label}: ${r.reason instanceof Error ? r.reason.message : String(r.reason)}`,
-        );
-      }
-    });
-    setCompleting(false);
-    if (failures.length === 0) {
+    try {
+      // Verified write → gateway /send when available: every data column is
+      // read-back confirmed before the Stage Advancer flips, so the item never
+      // advances on a half-written record. Throws (no false success) on failure.
+      await runVerifiedSend({
+        itemId: patient.id,
+        label: `Send Request → Mark Complete (${nextStage})`,
+        tasks,
+        stageColumnId: COL.subStage,
+      });
+      // Doctor-field edits persist as a separate (non-stage) write so a strict
+      // clinic-label miss can never block the stage advance.
+      const docTasks = buildDoctorWriteTasks(patient);
+      if (docTasks.length) await Promise.all(docTasks.map((t) => t.run()));
       toast.success(`Marked complete — moved to ${nextStage}`);
       setCompleted(true);
       escalatedRef.current = false;
-    } else {
-      toast.error(`${failures.length} write(s) failed`, {
-        description: failures.slice(0, 3).join("\n"),
+    } catch (e) {
+      toast.error("Mark complete failed", {
+        description: e instanceof Error ? e.message : String(e),
       });
+    } finally {
+      setCompleting(false);
     }
   }, [patient]);
 

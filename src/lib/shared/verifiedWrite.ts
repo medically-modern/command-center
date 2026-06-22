@@ -81,6 +81,11 @@ interface VerifiedWriteOpts {
   stableReadsThreshold?: number;
   /** Optional: write a debug message on failure. */
   writeDebug?: (itemId: string, msg: string) => Promise<void>;
+  /** Forwarded to the gateway /send so specific flows (e.g. Evaluate's
+   *  Diagnosis + consolidated ask) can create new labels server-side. The
+   *  client-side fallback path creates labels via each task's own `fn`, so this
+   *  only affects the gateway fast path. */
+  createLabelsIfMissing?: boolean;
 }
 
 // ── Core ───────────────────────────────────────────────────────
@@ -100,6 +105,7 @@ export async function executeWritesWithVerification(
     writeDebug,
     boardId,
     label,
+    createLabelsIfMissing,
   } = opts;
 
   // ── Gateway fast path (Phase 2): hand the whole transaction to the durable,
@@ -124,7 +130,7 @@ export async function executeWritesWithVerification(
       for (let i = 0; i < sig.length; i++) h = ((h << 5) + h + sig.charCodeAt(i)) | 0;
       const idempotencyKey = `${itemId}:${(h >>> 0).toString(36)}`;
       await submitSend(
-        { itemId, boardId, dataColumns, stageColumns, verify, idempotencyKey, label },
+        { itemId, boardId, dataColumns, stageColumns, verify, idempotencyKey, label, createLabelsIfMissing },
         { waitForDone: true },
       );
       return [];

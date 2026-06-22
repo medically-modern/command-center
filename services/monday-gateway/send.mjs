@@ -60,16 +60,20 @@ async function readColumnTexts(itemId, colIds) {
   return new Map(cvs.map((c) => [c.id, c.text ?? ""]));
 }
 
-function writeMultiple(itemId, boardId, valuesObj) {
+function writeMultiple(itemId, boardId, valuesObj, createLabels = false) {
+  // create_labels_if_missing lets specific flows (e.g. Evaluate's Diagnosis +
+  // consolidated ask) create new status/dropdown labels server-side. OFF by
+  // default so every other column stays strict — a typo'd label fails instead
+  // of silently creating board junk.
   return callMonday(
-    `mutation($item:ID!,$board:ID!,$vals:JSON!){change_multiple_column_values(item_id:$item,board_id:$board,column_values:$vals){id}}`,
+    `mutation($item:ID!,$board:ID!,$vals:JSON!){change_multiple_column_values(item_id:$item,board_id:$board,column_values:$vals,create_labels_if_missing:${createLabels ? "true" : "false"}){id}}`,
     { item: String(itemId), board: String(boardId), vals: JSON.stringify(valuesObj) },
   );
 }
 
 /** snapshot → write data → verify read-back → write stage. Throws on verify timeout. */
 async function executeSend(payload) {
-  const { itemId, boardId, dataColumns = {}, stageColumns = {}, verify = [] } = payload;
+  const { itemId, boardId, dataColumns = {}, stageColumns = {}, verify = [], createLabelsIfMissing = false } = payload;
   if (!itemId || !boardId) throw new Error("itemId and boardId are required");
   const dataIds = Object.keys(dataColumns);
   const stageIds = Object.keys(stageColumns);
@@ -79,7 +83,7 @@ async function executeSend(payload) {
   if (dataIds.length) { try { before = await readColumnTexts(itemId, dataIds); } catch { /* best-effort */ } }
 
   // Phase 1: write data columns (one mutation, retried)
-  if (dataIds.length) await withRetry(() => writeMultiple(itemId, boardId, dataColumns));
+  if (dataIds.length) await withRetry(() => writeMultiple(itemId, boardId, dataColumns, createLabelsIfMissing));
 
   // Phase 2: read-back verification
   if (dataIds.length) {
@@ -105,7 +109,7 @@ async function executeSend(payload) {
   }
 
   // Phase 3: stage advancer(s) last
-  if (stageIds.length) await withRetry(() => writeMultiple(itemId, boardId, stageColumns));
+  if (stageIds.length) await withRetry(() => writeMultiple(itemId, boardId, stageColumns, createLabelsIfMissing));
 
   return { verifiedColumns: dataIds, stageColumns: stageIds, at: new Date().toISOString() };
 }
@@ -143,7 +147,7 @@ export function registerSend({ app, pool, clientIp }) {
   // POST /send — enqueue (idempotent on idempotencyKey), return fast
   app.post("/send", async (req, res) => {
     const b = req.body || {};
-    const { itemId, boardId, dataColumns, stageColumns, verify, idempotencyKey } = b;
+    const { itemId, boardId, dataColumns, stageColumns, verify, idempotencyKey, createLabelsIfMissing } = b;
     if (!itemId || !boardId) return res.status(400).json({ error: "itemId and boardId required" });
     if (!dataColumns && !stageColumns) return res.status(400).json({ error: "dataColumns or stageColumns required" });
 
@@ -153,7 +157,7 @@ export function registerSend({ app, pool, clientIp }) {
     }
     const actor = gUser?.email || req.headers["x-mm-user"] || b.actor || null;
     const ip = clientIp ? clientIp(req) : null;
-    const payload = { itemId, boardId, dataColumns: dataColumns || {}, stageColumns: stageColumns || {}, verify: verify || [] };
+    const payload = { itemId, boardId, dataColumns: dataColumns || {}, stageColumns: stageColumns || {}, verify: verify || [], createLabelsIfMissing: !!createLabelsIfMissing };
 
     try {
       if (idempotencyKey) {
