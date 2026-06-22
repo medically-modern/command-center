@@ -928,7 +928,7 @@ function SendRequestComposer({
     setRecipients((prev) => (v && !prev.includes(v) ? [...prev, v] : prev));
     setRecipInput("");
   };
-  const [subject, setSubject] = useState(`Medical necessity documentation — ${titleCase(patient.name || "")}`);
+  const [subject, setSubject] = useState(`Medical necessity documentation for ${titleCase(patient.name || "")}`);
   const isParachute = method === "Parachute";
   const [open, setOpen] = useState(!isParachute);
   const [files, setFiles] = useState<File[]>([]);

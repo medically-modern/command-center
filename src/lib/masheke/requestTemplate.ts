@@ -1,9 +1,9 @@
 /**
- * requestTemplate — builds the doctor-facing request body from the eval
+ * requestTemplate - builds the doctor-facing request body from the eval
  * output. Shared by Send Request (editable composer) and Confirm Receipt
  * (read-only courtesy-fax preview) so both render the exact same message.
  *
- * Extracted verbatim from SendRequestPanel.tsx (June 2026) — logic unchanged.
+ * Extracted verbatim from SendRequestPanel.tsx (June 2026) - logic unchanged.
  */
 import type { Patient } from "@/lib/masheke/workflow";
 import type { MnChecklist } from "@/lib/masheke/evalState";
@@ -31,18 +31,18 @@ function joinAnd(arr: string[]): string {
 
 /** Example "simple language" the provider can put in the chart, per requirement. */
 const SIMPLE_LANG: Record<string, string> = {
-  Diagnosis: "“Patient has been diagnosed with diabetes for 6+ months”",
-  "Insulin Language": "“Patient is insulin-treated”",
-  "Hypoglycemia Language": "“Patient experiences hypoglycemia”",
-  "Diabetes Education": "“Patient completed a comprehensive diabetes education program”",
-  "3+ Injections / Day": "“Patient injects insulin 3+ times per day with frequent self-adjustments”",
-  "CGM Use": "“Patient uses a Dexcom / FreeStyle Libre daily”",
-  "Blood Sugar Issues": "“Patient experiences recurring hypoglycemia despite adhering to the treatment plan”",
-  "Letter of MN on File": "Signed LMN explaining why pump therapy is medically necessary now and why delay would be unsafe — reach out if you'd like a draft",
+  Diagnosis: "\"Patient has been diagnosed with diabetes for 6+ months\"",
+  "Insulin Language": "\"Patient is insulin-treated\"",
+  "Hypoglycemia Language": "\"Patient experiences hypoglycemia\"",
+  "Diabetes Education": "\"Patient completed a comprehensive diabetes education program\"",
+  "3+ Injections / Day": "\"Patient injects insulin 3+ times per day with frequent self-adjustments\"",
+  "CGM Use": "\"Patient uses a Dexcom / FreeStyle Libre daily\"",
+  "Blood Sugar Issues": "\"Patient experiences recurring hypoglycemia despite adhering to the treatment plan\"",
+  "Letter of MN on File": "Signed LMN explaining why pump therapy is medically necessary now and why delay would be unsafe - reach out if you'd like a draft",
   "OOW Date": "Out-of-warranty date must be included on the script",
   "OOW on Script": "Out-of-warranty date must be included on the script",
   Malfunction:
-    "Non-repairable malfunction reason on the script — e.g. “cracked/broken screen” or “battery is depleted,” AND “pump cannot be repaired or replaced”",
+    "Non-repairable malfunction reason on the script - e.g. \"cracked/broken screen\" or \"battery is depleted,\" AND \"pump cannot be repaired or replaced\"",
 };
 
 /** Auto-fill the doctor-facing request body from the eval output. */
@@ -67,7 +67,7 @@ export function buildRequestTemplate(patient: Patient, checklist: MnChecklist): 
     (p) => p.toLowerCase() === (patient.referralSource ?? "").trim().toLowerCase(),
   );
 
-  // Cross-sell: request was for a pump (not CGM) but we're also serving CGM —
+  // Cross-sell: request was for a pump (not CGM) but we're also serving CGM -
   // the pump is primary; the CGM script rides along ("full bundle").
   const reqType = patient.requestType ?? "";
   const cgmCrossSell = /pump/i.test(reqType) && !/cgm/i.test(reqType) && cgmServed;
@@ -78,18 +78,18 @@ export function buildRequestTemplate(patient: Patient, checklist: MnChecklist): 
   const recordsNeed =
     clin === "missing" ? "medical records" : clin === "invalid" ? "updated medical records from the last 6 months" : null;
 
-  // Specific in-records language/diagnosis — only once records are on file & current.
+  // Specific in-records language/diagnosis - only once records are on file & current.
   const specifics: string[] = [];
   if (clin === "ok") {
-    if (!checklist.mr.diagnosisOk) specifics.push(`Diagnosis — ${SIMPLE_LANG["Diagnosis"]}`);
+    if (!checklist.mr.diagnosisOk) specifics.push(`Diagnosis - ${SIMPLE_LANG["Diagnosis"]}`);
     for (const l of checklist.language) {
       for (const s of l.subItems) {
-        if (s.state !== "ok") specifics.push(`${s.label} — ${SIMPLE_LANG[s.label] ?? "include in the chart note"}`);
+        if (s.state !== "ok") specifics.push(`${s.label} - ${SIMPLE_LANG[s.label] ?? "include in the chart note"}`);
       }
     }
   }
 
-  // Serving line — cross-sell mentions only the primary (pump).
+  // Serving line - cross-sell mentions only the primary (pump).
   const servingProducts = cgmCrossSell
     ? pumpPhrase ?? "diabetes supplies"
     : joinAnd([pumpPhrase, cgmPhrase].filter(Boolean) as string[]) || "diabetes supplies";
@@ -114,11 +114,11 @@ export function buildRequestTemplate(patient: Patient, checklist: MnChecklist): 
     if (specifics.length) {
       para = `${para ? para + " " : ""}Additionally, insurance requires specific language included in the medical records (example chart language in quotes):`;
       lines.push(para);
-      for (const s of specifics) lines.push(`• ${s}`);
+      for (const s of specifics) lines.push(`- ${s}`);
     } else if (para) {
       lines.push(para);
     } else {
-      lines.push("Everything is on file — no further documentation needed. Thank you!");
+      lines.push("Everything is on file - no further documentation needed. Thank you!");
     }
   } else {
     // Standard dynamic sentence.
@@ -131,9 +131,9 @@ export function buildRequestTemplate(patient: Patient, checklist: MnChecklist): 
     if (phrases.length) {
       const tail = specifics.length ? " (example chart language in quotes):" : ".";
       lines.push(`To establish medical necessity, we still need ${joinAnd(phrases)}${tail}`);
-      for (const s of specifics) lines.push(`• ${s}`);
+      for (const s of specifics) lines.push(`- ${s}`);
     } else {
-      lines.push("Everything is on file — no further documentation needed. Thank you!");
+      lines.push("Everything is on file - no further documentation needed. Thank you!");
     }
   }
 
@@ -183,7 +183,7 @@ export function buildTalkTrack(patient: Patient, checklist: MnChecklist): string
 
   const greeting = `"Hi, this is Medically Modern confirming you received our fax for ${name}.`;
   if (!missing.length) {
-    return `${greeting} Everything we need looks complete — just confirming it came through."`;
+    return `${greeting} Everything we need looks complete - just confirming it came through."`;
   }
   return `${greeting} We're still missing the following, and it should be on the cover page: ${joinAnd(missing)}."`;
 }

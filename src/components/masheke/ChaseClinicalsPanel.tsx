@@ -287,7 +287,7 @@ export function ChaseClinicalsPanel({ patient, onUpdate, managerMode = false, ro
       }
       const fd = new FormData();
       fd.append("recipients", JSON.stringify([to]));
-      fd.append("subject", `Medical necessity documentation — ${titleCase(patient.name || "")}`);
+      fd.append("subject", `Medical necessity documentation for ${titleCase(patient.name || "")}`);
       fd.append("body", currentMessage);
       for (const f of files) fd.append("files", f);
       const res = await fetch(`${FILE_PROXY_URL}/send-message`, {
