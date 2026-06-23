@@ -43,6 +43,7 @@ import {
   Check,
   CheckCircle2,
   ChevronRight,
+  Clock,
   FileText,
   Loader2,
   Phone,
@@ -1014,18 +1015,25 @@ function FaxStatusChip({ stage, at, sentAt }: { stage: FaxStage; at?: string; se
       </span>
     );
   }
-  const submitted = stage === "submitted";
+  if (stage === "submitted") {
+    // RC has accepted the fax and it's in transit — no issues. Static (no
+    // spinner/pulse) so the rep knows it's safely handed off and can move on.
+    return (
+      <span
+        className="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold"
+        style={{ background: "oklch(0.95 0.05 240)", color: "oklch(0.45 0.13 250)", boxShadow: "inset 0 0 0 1px oklch(0.80 0.08 250)" }}
+      >
+        <Clock className="h-3.5 w-3.5" /> Submitted · {formatSent(at || sentAt || "")}
+      </span>
+    );
+  }
+  // processing — still waiting for RC to register the fax; keep it animated.
   return (
     <span
       className="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold animate-pulse"
-      style={
-        submitted
-          ? { background: "oklch(0.95 0.05 240)", color: "oklch(0.45 0.13 250)", boxShadow: "inset 0 0 0 1px oklch(0.80 0.08 250)" }
-          : { background: "oklch(0.97 0.04 85)", color: "oklch(0.48 0.10 70)", boxShadow: "inset 0 0 0 1px oklch(0.82 0.10 80)" }
-      }
+      style={{ background: "oklch(0.97 0.04 85)", color: "oklch(0.48 0.10 70)", boxShadow: "inset 0 0 0 1px oklch(0.82 0.10 80)" }}
     >
-      <Loader2 className="h-3.5 w-3.5 animate-spin" />
-      {submitted ? `Submitted · ${formatSent(at || sentAt || "")}` : `Processing · ${formatSent(sentAt || "")}`}
+      <Loader2 className="h-3.5 w-3.5 animate-spin" /> Processing · {formatSent(sentAt || "")}
     </span>
   );
 }

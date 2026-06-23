@@ -81,30 +81,66 @@ function bytesToBase64(buf) {
   return btoa(bin);
 }
 const foldB64 = (s) => s.replace(/(.{76})/g, "$1\r\n");
-const encHeader = (s) => String(s).replace(/[\r\n]+/g, " ").trim();
+/** String → base64 of its UTF-8 bytes (keeps non-ASCII intact in headers/bodies). */
+const strB64 = (s) => bytesToBase64(new TextEncoder().encode(String(s ?? "")).buffer);
+/** Address headers (From/To): strip CR/LF only — must stay a valid addr-spec. */
+const cleanAddr = (s) => String(s ?? "").replace(/[\r\n]+/g, " ").trim();
+/** Text headers (Subject): RFC 2047 encoded-word when non-ASCII, else plain.
+ *  Without this a UTF-8 em-dash / smart quote in the subject renders as mojibake. */
+const encHeader = (s) => {
+  const str = String(s ?? "").replace(/[\r\n]+/g, " ").trim();
+  // eslint-disable-next-line no-control-regex
+  return /[^\x00-\x7F]/.test(str) ? `=?UTF-8?B?${strB64(str)}?=` : str;
+};
+const htmlEscape = (s) =>
+  String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+/** Plain body → clean HTML: blank lines become paragraphs, single newlines <br>.
+ *  Long lines reflow naturally (no forced wrapping). */
+function bodyToHtml(body) {
+  const paras = htmlEscape(body || "")
+    .split(/\r?\n\r?\n/)
+    .map((p) => `<p style="margin:0 0 12px;">${p.replace(/\r?\n/g, "<br>")}</p>`)
+    .join("");
+  return (
+    '<!doctype html><html><body style="margin:0;padding:0;">' +
+    '<div style="font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:1.5;color:#1a1a1a;">' +
+    paras +
+    "</div></body></html>"
+  );
+}
+/** multipart/alternative body part (UTF-8 plain + HTML, both base64). */
+function altPart(body) {
+  const alt = "alt_" + Math.random().toString(36).slice(2);
+  return [
+    `Content-Type: multipart/alternative; boundary="${alt}"`,
+    "",
+    `--${alt}`,
+    'Content-Type: text/plain; charset="UTF-8"',
+    "Content-Transfer-Encoding: base64",
+    "",
+    foldB64(strB64(body || "")),
+    `--${alt}`,
+    'Content-Type: text/html; charset="UTF-8"',
+    "Content-Transfer-Encoding: base64",
+    "",
+    foldB64(strB64(bodyToHtml(body || ""))),
+    `--${alt}--`,
+  ];
+}
 
-/** Build an RFC-822 message (text body + optional base64 attachments). */
+/** Build an RFC-822 message — HTML+text body, optional base64 attachments. */
 function buildMime({ from, to, subject, body, attachments }) {
-  const L = [];
-  L.push(`From: ${encHeader(from)}`);
-  L.push(`To: ${encHeader(to)}`);
-  L.push(`Subject: ${encHeader(subject)}`);
-  L.push("MIME-Version: 1.0");
+  const headers = [
+    `From: ${cleanAddr(from)}`,
+    `To: ${cleanAddr(to)}`,
+    `Subject: ${encHeader(subject)}`,
+    "MIME-Version: 1.0",
+  ];
   if (!attachments.length) {
-    L.push('Content-Type: text/plain; charset="UTF-8"');
-    L.push("Content-Transfer-Encoding: 7bit");
-    L.push("");
-    L.push(body || "");
-    return L.join("\r\n");
+    return [...headers, ...altPart(body)].join("\r\n");
   }
   const b = "mm_" + Math.random().toString(36).slice(2);
-  L.push(`Content-Type: multipart/mixed; boundary="${b}"`);
-  L.push("");
-  L.push(`--${b}`);
-  L.push('Content-Type: text/plain; charset="UTF-8"');
-  L.push("Content-Transfer-Encoding: 7bit");
-  L.push("");
-  L.push(body || "");
+  const L = [...headers, `Content-Type: multipart/mixed; boundary="${b}"`, "", `--${b}`, ...altPart(body), ""];
   for (const a of attachments) {
     L.push(`--${b}`);
     L.push(`Content-Type: ${a.type || "application/octet-stream"}; name="${a.name}"`);
