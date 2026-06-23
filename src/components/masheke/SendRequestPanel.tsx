@@ -933,6 +933,7 @@ function SendRequestComposer({
   const [open, setOpen] = useState(!isParachute);
   const [files, setFiles] = useState<File[]>([]);
   const [warned, setWarned] = useState(false);
+  const [dragOver, setDragOver] = useState(false);
   // Almost every request should carry an attachment — warn once before sending.
   const trySend = () => {
     if (!isParachute && files.length === 0 && !warned) {
@@ -1034,11 +1035,24 @@ function SendRequestComposer({
           Attachments — sent with the request
         </p>
         <label
-          className="flex items-center gap-2 cursor-pointer rounded-xl border border-dashed p-4 text-sm text-muted-foreground hover:bg-muted/30"
-          style={{ borderColor: "var(--mm-card-border)" }}
+          onDragOver={(e) => {
+            e.preventDefault();
+            setDragOver(true);
+          }}
+          onDragLeave={() => setDragOver(false)}
+          onDrop={(e) => {
+            e.preventDefault();
+            setDragOver(false);
+            const dropped = Array.from(e.dataTransfer?.files ?? []);
+            if (dropped.length) setFiles((prev) => [...prev, ...dropped]);
+          }}
+          className={`flex items-center gap-2 cursor-pointer rounded-xl border border-dashed p-4 text-sm transition-colors ${
+            dragOver ? "text-foreground bg-emerald-50" : "text-muted-foreground hover:bg-muted/30"
+          }`}
+          style={{ borderColor: dragOver ? "var(--mm-green)" : "var(--mm-card-border)" }}
         >
           <Upload className="h-4 w-4 shrink-0" />
-          <span>Click to add files</span>
+          <span>{dragOver ? "Drop files to attach" : "Click to add files or drag & drop"}</span>
           <input
             type="file"
             multiple
