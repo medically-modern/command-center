@@ -128,6 +128,25 @@ const MONDAY_BACKED_FIELDS = [
   "notes",
   "cgmScriptReceived",
   "ipScriptReceived",
+  // IP requirement answers + their legacy mirrors — reconstructed from Monday's
+  // reason dropdowns so the board (not the browser cache) is the source of truth.
+  "ipEducationV",
+  "ipThreeInjectionsV",
+  "ipCgmUseV",
+  "ipBsIssuesV",
+  "ipLmnV",
+  "ipMalfunctionV",
+  "diabetesEducation",
+  "threeInjections",
+  "cgmUse",
+  "bloodSugarIssues",
+  "lmn",
+  "malfunction",
+  // Script validity (Invalid) + CGM Language + clinicals received.
+  "ipScriptValid",
+  "cgmScriptValid",
+  "cgmLanguage",
+  "clinReceived3",
 ] as const satisfies readonly (keyof EvalState)[];
 
 /**
@@ -190,6 +209,10 @@ export function seedEvalStateFromPatient(patient: Patient): EvalState {
   if (patient.ipScriptReceived === "Yes" || patient.ipScriptReceived === "No") {
     seed.ipScriptReceived = patient.ipScriptReceived as YesNo;
   }
+  // Reconstruct the IP requirement answers (+ CGM Language / clinicals / script
+  // validity) from Monday so the form and Send Request read the board, not the
+  // browser cache. Monday is the source of truth.
+  Object.assign(seed, seedRequirementsFromMonday(patient));
   return seed;
 }
 
@@ -826,4 +849,139 @@ export function bannerMnEstablished(state: EvalState, showCgm: boolean, showIp: 
   if (cgmServed) mnChecks.push(cgmDocChecked, cgmLangChecked);
   if (ipServed) mnChecks.push(ipDocChecked, ipLangChecked);
   return mnChecks.every(Boolean);
+}
+
+// =====================================================================
+// Monday round-trip for IP requirement answers (Option A — June 2026)
+//
+// The board has NO per-requirement columns. The rep's Yes/No/Invalid answers are
+// stored in two existing dropdowns on board 18406060017:
+//   • "IP MN Invalid Reasons" (dropdown_mm2xgg2y) — items marked Invalid
+//   • "IP MN No Reasons"      (dropdown_mm4bwxpv) — items marked No (= Missing)
+// CGM Language has its own Yes/No/Invalid column; CGM/IP script "Invalid" rides
+// the CGM/IP invalid-reason dropdowns. This block is the SINGLE source of truth
+// for the label strings — used both when writing to Monday (computeIpReasonLists)
+// and when seeding back (seedRequirementsFromMonday) — so the rep's exact answer
+// round-trips and the board, not the browser cache, is authoritative.
+//
+// Labels MUST match the board exactly (casing included) or a duplicate is made.
+// Verified live against board 18406060017 on 2026-06-23. The board has no
+// "Malfunction invalid" label, so a Malfunction marked Invalid is stored as
+// Missing (round-trips as "No"); every other requirement preserves Yes/No/Invalid.
+
+type ReqLabel = { invalid: string | null; missing: string };
+const IP_REQ_LABELS = {
+  education: { invalid: "Diabetes Education invalid", missing: "Diabetes Education Missing" },
+  injections: { invalid: "3+ Injections invalid", missing: "3+ Injections Missing" },
+  cgmUse: { invalid: "CGM Use invalid", missing: "CGM Use Missing" },
+  bloodSugar: { invalid: "Blood Sugar Issues invalid", missing: "Blood Sugar Issues Missing" },
+  lmn: { invalid: "Letter of MN invalid", missing: "Letter of MN missing" },
+  malfunction: { invalid: null, missing: "Malfunction Missing" },
+} satisfies Record<string, ReqLabel>;
+const IP_SCRIPT_INVALID_LABEL = "Insulin Pump Script invalid";
+const CGM_SCRIPT_INVALID_LABEL = "CGM Script invalid";
+
+/** Build the two IP reason dropdown lists from the rep's 3-state answers.
+ *  invalid → "IP MN Invalid Reasons"; missing (No) → "IP MN No Reasons". */
+export function computeIpReasonLists(
+  state: EvalState,
+  showIp: boolean,
+): { invalid: string[]; missing: string[] } {
+  const invalid: string[] = [];
+  const missing: string[] = [];
+  const path = state.ipCoveragePath;
+  if (!showIp || !path || path === "Not Serving") return { invalid, missing };
+  const cfg = IP_PATH_FIELDS[path];
+  if (!cfg) return { invalid, missing };
+  const add = (applies: boolean, v: YesNoInvalid | undefined, labels: ReqLabel) => {
+    if (!applies) return;
+    const val = v ?? "No"; // an unanswered required item counts as Missing
+    if (val === "Yes") return;
+    if (val === "Invalid" && labels.invalid) invalid.push(labels.invalid);
+    else missing.push(labels.missing); // No, or Invalid with no board label
+  };
+  add(cfg.showEducation, state.ipEducationV, IP_REQ_LABELS.education);
+  add(cfg.show3Injections, state.ipThreeInjectionsV, IP_REQ_LABELS.injections);
+  add(cfg.showCgmUse, state.ipCgmUseV, IP_REQ_LABELS.cgmUse);
+  add(cfg.showBsIssues, state.ipBsIssuesV, IP_REQ_LABELS.bloodSugar);
+  add(cfg.showLmn, state.ipLmnV, IP_REQ_LABELS.lmn);
+  add(cfg.showMalfunction, state.ipMalfunctionV, IP_REQ_LABELS.malfunction);
+  // IP Script received-but-Invalid (the not-received case lives on the
+  // "IP Script Received" column, so it isn't duplicated here).
+  if (state.ipScriptReceived === "Yes" && state.ipScriptValid === "Invalid") {
+    invalid.push(IP_SCRIPT_INVALID_LABEL);
+  }
+  return { invalid, missing };
+}
+
+function splitDropdown(text?: string): string[] {
+  return text ? text.split(",").map((s) => s.trim()).filter(Boolean) : [];
+}
+
+/** Reconstruct the rep's 3-state answers (and their legacy mirrors) from the
+ *  Monday reason dropdowns + the CGM Language / MRs columns. Inverse of
+ *  computeIpReasonLists, so reading from Monday reproduces exactly what the rep
+ *  entered — including No (Missing) vs Invalid. */
+export function seedRequirementsFromMonday(patient: Patient): Partial<EvalState> {
+  const out: Partial<EvalState> = {};
+  const ipInvalid = splitDropdown(patient.ipMnInvalidReasons);
+  const ipNo = splitDropdown(patient.ipMnNoReasons);
+  const cgmInvalid = splitDropdown(patient.cgmMnInvalidReasons);
+  // "Has this patient been evaluated at least once?" When yes, an applicable
+  // requirement absent from both reason lists means it was met (Yes). When no
+  // (a fresh patient), absence means unanswered — leave it undefined so we never
+  // show a false "Yes".
+  const evaluated = !!(patient.medicalNecessity && patient.medicalNecessity.trim());
+
+  const path =
+    patient.ipCoveragePath && patient.ipCoveragePath !== "Not Serving"
+      ? (patient.ipCoveragePath as IpPath)
+      : undefined;
+  const cfg = path ? IP_PATH_FIELDS[path] ?? null : null;
+
+  const recon = (applies: boolean, labels: ReqLabel): YesNoInvalid | undefined => {
+    if (!applies) return undefined;
+    if (labels.invalid && (ipInvalid.includes(labels.invalid) || ipNo.includes(labels.invalid)))
+      return "Invalid";
+    if (ipNo.includes(labels.missing) || ipInvalid.includes(labels.missing)) return "No";
+    return evaluated ? "Yes" : undefined;
+  };
+
+  if (cfg) {
+    const setReq = (vField: keyof EvalState, applies: boolean, labels: ReqLabel) => {
+      const v = recon(applies, labels);
+      if (v !== undefined) (out as Record<string, unknown>)[vField] = v;
+    };
+    setReq("ipEducationV", cfg.showEducation, IP_REQ_LABELS.education);
+    setReq("ipThreeInjectionsV", cfg.show3Injections, IP_REQ_LABELS.injections);
+    setReq("ipCgmUseV", cfg.showCgmUse, IP_REQ_LABELS.cgmUse);
+    setReq("ipBsIssuesV", cfg.showBsIssues, IP_REQ_LABELS.bloodSugar);
+    setReq("ipLmnV", cfg.showLmn, IP_REQ_LABELS.lmn);
+    setReq("ipMalfunctionV", cfg.showMalfunction, IP_REQ_LABELS.malfunction);
+
+    // Keep the legacy 2-state mirrors in sync (deriveValidity / the consolidated
+    // ask list read them if recomputed on the Evaluate screen after a reload).
+    if (out.ipEducationV !== undefined) out.diabetesEducation = out.ipEducationV === "Yes" ? "Yes" : "No";
+    if (out.ipThreeInjectionsV !== undefined) out.threeInjections = out.ipThreeInjectionsV === "Yes" ? "Yes" : "No";
+    if (out.ipCgmUseV !== undefined) out.cgmUse = out.ipCgmUseV === "Yes" ? "Yes" : "No";
+    if (out.ipBsIssuesV !== undefined) out.bloodSugarIssues = out.ipBsIssuesV === "Yes" ? "Yes" : "No";
+    if (out.ipMalfunctionV !== undefined) out.malfunction = out.ipMalfunctionV === "Yes" ? "Yes" : "No";
+    if (out.ipLmnV !== undefined)
+      out.lmn = out.ipLmnV === "Yes" ? "Yes & Valid" : out.ipLmnV === "Invalid" ? "Yes, but Invalid" : "No";
+  }
+
+  // IP / CGM script "Invalid" validity (received state stays on its own column).
+  if (ipInvalid.includes(IP_SCRIPT_INVALID_LABEL) || ipNo.includes(IP_SCRIPT_INVALID_LABEL))
+    out.ipScriptValid = "Invalid";
+  if (cgmInvalid.includes(CGM_SCRIPT_INVALID_LABEL)) out.cgmScriptValid = "Invalid";
+
+  // CGM Language — its own Yes/No/Invalid column (color_mm4bb5sm).
+  if (patient.cgmLanguage === "Yes" || patient.cgmLanguage === "No" || patient.cgmLanguage === "Invalid")
+    out.cgmLanguage = patient.cgmLanguage;
+
+  // Clinicals received — the MRs / Clinicals column (MR Received / Collect).
+  if (patient.mrsClinicals === "MR Received") out.clinReceived3 = "Yes";
+  else if (patient.mrsClinicals === "Collect") out.clinReceived3 = "No";
+
+  return out;
 }

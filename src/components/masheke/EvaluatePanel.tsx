@@ -52,6 +52,7 @@ import {
   deriveValidity,
   bannerMnEstablished,
   buildMondayPreview,
+  computeIpReasonLists,
   type EvalState,
   type LocalFile,
   type CgmCoveragePath,
@@ -407,7 +408,13 @@ export function EvaluatePanel({ patient, resetVersion = 0, onUpdate, onOpenForm 
     pushLabel("Medical Necessity", COL.medicalNecessity, preview.medicalNecessity);
     pushDropdown("General MN Invalid Reasons", COL.generalMnInvalidReasons, preview.generalMnInvalidReasons);
     pushDropdown("CGM MN Invalid Reasons", COL.cgmMnInvalidReasons, preview.cgmMnInvalidReasons);
-    pushDropdown("Insulin Pump MN Invalid Reasons", COL.ipMnInvalidReasons, preview.ipMnInvalidReasons);
+    // IP requirement answers, split by the rep's EXACT state so No (= Missing)
+    // and Invalid round-trip faithfully (Option A): Invalid → "IP MN Invalid
+    // Reasons", No/Missing → "IP MN No Reasons". createLabels is a backstop; the
+    // board already has these labels. Both are read back by seedRequirementsFromMonday.
+    const ipReasonLists = computeIpReasonLists(effState, showIp);
+    pushDropdown("IP MN Invalid Reasons", COL.ipMnInvalidReasons, ipReasonLists.invalid, true);
+    pushDropdown("IP MN No Reasons", COL.ipMnNoReasons, ipReasonLists.missing, true);
     // Consolidated, doctor-facing ask list — drives the Send Request UI and the
     // MN Request Letter PDF. Allowed to create labels: the OOW ask embeds a
     // patient-specific date so it's dynamic by design.
