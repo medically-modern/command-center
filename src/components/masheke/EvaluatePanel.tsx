@@ -374,6 +374,16 @@ export function EvaluatePanel({ patient, resetVersion = 0, onUpdate, onOpenForm 
       if (state.cgmCoveragePath) pushLabel("CGM Coverage Path", COL.cgmCoveragePath, state.cgmCoveragePath);
       else pushClearStatus("CGM Coverage Path", COL.cgmCoveragePath);
     }
+    // CGM Language — Yes/No/Invalid on color_mm4bb5sm. Only synced when CGM is
+    // served + script received and a language-bearing coverage path (Insulin or
+    // Hypo) is chosen — that's exactly when the rep sees the language pill. The
+    // board's labels are Invalid/Yes/No, matching state.cgmLanguage 1:1, so no
+    // label creation is needed; clear when the section is visible but unanswered,
+    // and leave Monday untouched otherwise.
+    if (showCgm && cgmReceived && (state.cgmCoveragePath === "Insulin" || state.cgmCoveragePath === "Hypo")) {
+      if (state.cgmLanguage) pushLabel("CGM Language", COL.cgmLanguage, state.cgmLanguage);
+      else pushClearStatus("CGM Language", COL.cgmLanguage);
+    }
     // Diagnosis / Last Visit / MR Expiry — only synced while the Clinicals
     // section is visible (Clinicals received). When hidden, leave Monday untouched.
     if (clinReceived) {
