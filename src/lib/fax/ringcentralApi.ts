@@ -182,3 +182,47 @@ export async function fetchOutboundFaxStatus(
     id: rec.id,
   };
 }
+
+const RC_SMS_FROM = (import.meta.env.VITE_RC_SMS_FROM as string | undefined) || "+13475037148";
+
+function toE164(raw: string): string {
+  const d = (raw || "").replace(/\D/g, "");
+  if (d.length === 11 && d.startsWith("1")) return "+" + d;
+  if (d.length === 10) return "+1" + d;
+  return (raw || "").trim().startsWith("+") ? (raw || "").trim() : d ? "+" + d : "";
+}
+
+/** Send an SMS via RingCentral from the MM SMS number — replaces the old sms:
+ *  link that opened iMessage. Client-side (same JWT auth as the fax reads; the
+ *  OAuth app carries the SMS scope). Throws with RingCentral's message on error. */
+export async function sendSms(to: string, text: string): Promise<void> {
+  const toNum = toE164(to);
+  if (!toNum) throw new Error("No valid recipient number");
+  if (!text.trim()) throw new Error("Message is empty");
+  const body = JSON.stringify({
+    from: { phoneNumber: RC_SMS_FROM },
+    to: [{ phoneNumber: toNum }],
+    text: text.trim(),
+  });
+  const call = (token: string) =>
+    fetch(`${RC_SERVER}/restapi/v1.0/account/~/extension/~/sms`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body,
+    });
+  let res = await call(await getAccessToken());
+  if (res.status === 401) {
+    clearCachedToken();
+    res = await call(await getAccessToken());
+  }
+  if (!res.ok) {
+    let msg = `RingCentral SMS failed (${res.status})`;
+    try {
+      const e = (await res.json()) as { message?: string; errors?: Array<{ message?: string }> };
+      msg = e.errors?.[0]?.message || e.message || msg;
+    } catch {
+      /* keep default */
+    }
+    throw new Error(msg);
+  }
+}

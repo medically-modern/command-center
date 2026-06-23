@@ -16,11 +16,17 @@ import {
   MessageSquare,
   Pencil,
   Phone,
+  Send,
   Trash2,
   XCircle,
 } from "lucide-react";
 import type { MondayFileEntry } from "@/lib/masheke/mondayApi";
 import { openFileViewer } from "@/components/shared/FileViewerModal";
+import { Button } from "@/components/ui/button";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Textarea } from "@/components/ui/textarea";
+import { toast } from "sonner";
+import { sendSms } from "@/lib/fax/ringcentralApi";
 
 // =====================================================================
 // Step shell
@@ -547,13 +553,65 @@ export function PatientContact({ phone }: { phone?: string }) {
       >
         <Phone className="h-3.5 w-3.5 shrink-0" /> {display}
       </a>
-      <a
-        href={`sms:${tel}`}
-        className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-semibold text-[color:var(--mm-teal)] transition-colors hover:bg-muted/40"
-        style={{ boxShadow: "inset 0 0 0 1px var(--mm-card-border)" }}
-      >
-        <MessageSquare className="h-3.5 w-3.5 shrink-0" /> Text
-      </a>
+      <TextCompose tel={tel} display={display} />
     </span>
+  );
+}
+
+/** "Text" → compose + send via RingCentral SMS (from the MM SMS number), instead
+ *  of the OS sms: handler (which opened iMessage on Macs). */
+function TextCompose({ tel, display }: { tel: string; display: string }) {
+  const [open, setOpen] = useState(false);
+  const [msg, setMsg] = useState("");
+  const [sending, setSending] = useState(false);
+  const send = async () => {
+    if (!msg.trim()) return;
+    setSending(true);
+    try {
+      await sendSms(tel, msg.trim());
+      toast.success(`Text sent to ${display} via RingCentral`);
+      setMsg("");
+      setOpen(false);
+    } catch (e) {
+      toast.error("Couldn't send text", { description: e instanceof Error ? e.message : String(e) });
+    } finally {
+      setSending(false);
+    }
+  };
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-semibold text-[color:var(--mm-teal)] transition-colors hover:bg-muted/40"
+          style={{ boxShadow: "inset 0 0 0 1px var(--mm-card-border)" }}
+        >
+          <MessageSquare className="h-3.5 w-3.5 shrink-0" /> Text
+        </button>
+      </PopoverTrigger>
+      <PopoverContent align="start" className="w-72 p-3 space-y-2">
+        <p className="text-xs text-muted-foreground">
+          Text <span className="font-semibold text-foreground">{display}</span> via RingCentral
+        </p>
+        <Textarea
+          value={msg}
+          onChange={(e) => setMsg(e.target.value)}
+          rows={3}
+          placeholder="Type your message…"
+          className="text-sm"
+          autoFocus
+        />
+        <div className="flex justify-end">
+          <Button
+            size="sm"
+            onClick={send}
+            disabled={!msg.trim() || sending}
+            className="gap-1.5 text-white bg-[color:var(--mm-teal)] hover:opacity-90 disabled:opacity-50"
+          >
+            {sending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />} Send
+          </Button>
+        </div>
+      </PopoverContent>
+    </Popover>
   );
 }
