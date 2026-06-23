@@ -4,6 +4,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { MessageSquare, Plus, Loader2, FileText, X } from "lucide-react";
 import { toast } from "sonner";
 import { etNow } from "@/lib/masheke/etDate";
+import { userInitials } from "@/lib/shared/auth";
 
 interface Props {
   notes: string;
@@ -75,9 +76,9 @@ export function NotesPanel({ notes, onNotesChange, onSaveToMonday, notePrefix, p
       minute: "2-digit",
     });
     const prefix = notePrefix ? `${notePrefix}: ` : "";
-    const appended = notes
-      ? `${notes}\n\n[${timestamp}] ${prefix}${newNote.trim()}`
-      : `[${timestamp}] ${prefix}${newNote.trim()}`;
+    const initials = userInitials();
+    const entry = `[${timestamp}] ${prefix}${newNote.trim()}${initials ? ` —${initials}` : ""}`;
+    const appended = notes ? `${notes}\n\n${entry}` : entry;
     onNotesChange(appended);
     setNewNoteAndReport("");
 

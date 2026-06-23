@@ -5,8 +5,9 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { Button } from "@/components/ui/button";
-import { Settings } from "lucide-react";
+import { Settings, LogOut } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { authRequired, signOut, getUser } from "@/lib/shared/auth";
 
 const THEMES = [
   { id: "default", label: "Clinical Blue", swatch: "bg-blue-600" },
@@ -103,6 +104,22 @@ function ThemeList({ theme, setTheme }: { theme: string; setTheme: (t: string) =
           </button>
         ))}
       </div>
+      {authRequired() && (
+        <>
+          <div className="my-2 border-t border-border" />
+          {getUser()?.email && (
+            <p className="text-[10px] text-muted-foreground px-1 mb-1 truncate" title={getUser()!.email}>
+              {getUser()!.email}
+            </p>
+          )}
+          <button
+            onClick={signOut}
+            className="flex items-center gap-2 w-full rounded-md px-2 py-1.5 text-xs text-left transition-colors hover:bg-muted text-muted-foreground hover:text-foreground"
+          >
+            <LogOut className="h-3.5 w-3.5 shrink-0" /> Sign out
+          </button>
+        </>
+      )}
     </>
   );
 }

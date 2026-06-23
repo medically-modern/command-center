@@ -99,6 +99,17 @@ export function getIdToken(): string | null {
 export function isAuthed(): boolean {
   return !!getUser();
 }
+/** Initials of the signed-in user, from their Google display name (e.g.
+ *  "Josh Hoffman" → "JH"). Empty when signed out. Read straight from the
+ *  session so comments don't have to compute/store it each time. */
+export function userInitials(): string {
+  const name = (getUser()?.name || "").trim();
+  if (!name) return "";
+  const parts = name.split(/\s+/).filter(Boolean);
+  if (!parts.length) return "";
+  const raw = parts.length >= 2 ? parts[0][0] + parts[parts.length - 1][0] : parts[0].slice(0, 2);
+  return raw.toUpperCase();
+}
 export function signOut(): void {
   current = null;
   store(null);

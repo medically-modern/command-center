@@ -43,7 +43,7 @@ import {
   type MondayFileEntry,
 } from "@/lib/masheke/mondayApi";
 import { FILE_PROXY_URL } from "@/lib/shared/mondayAssets";
-import { getIdToken } from "@/lib/shared/auth";
+import { getIdToken, userInitials } from "@/lib/shared/auth";
 import { recordAndAdvanceVerified, runVerifiedSend } from "@/lib/masheke/mondayWrite";
 import type { WriteTask } from "@/lib/shared/verifiedWrite";
 import { GEN_SCRIPT_STATUS } from "@/lib/masheke/mondayMapping";
@@ -498,7 +498,8 @@ export function SendRequestPanel({ patient, resetVersion = 0, onUpdate }: Props)
       hour: "numeric",
       minute: "2-digit",
     });
-    const entry = `[${stamp}] Send Request: ${text}`;
+    const initials = userInitials();
+    const entry = `[${stamp}] Send Request: ${text}${initials ? ` —${initials}` : ""}`;
     const next = patient.mnEvalNotes ? `${patient.mnEvalNotes}\n\n${entry}` : entry;
     onUpdate({ mnEvalNotes: next });
     void writeLongText(patient.id, COL.mnEvalNotes, next).catch(() => {});
