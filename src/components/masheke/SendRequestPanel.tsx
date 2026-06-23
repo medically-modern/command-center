@@ -594,6 +594,8 @@ export function SendRequestPanel({ patient, resetVersion = 0, onUpdate }: Props)
           sending={sending}
           onSend={handleSend}
           onAddNote={handleAddNote}
+          onMarkComplete={handleMarkComplete}
+          completing={completing}
           generateSlot={isParachute ? generateScriptsBlock : undefined}
         />
       </MmStep>
@@ -901,6 +903,8 @@ function SendRequestComposer({
   sending,
   onSend,
   onAddNote,
+  onMarkComplete,
+  completing,
   generateSlot,
 }: {
   patient: Patient;
@@ -910,6 +914,8 @@ function SendRequestComposer({
   sending: boolean;
   onSend: (payload: { recipients: string[]; subject: string; body: string; files: File[] }) => void;
   onAddNote: (text: string) => void;
+  onMarkComplete: () => void;
+  completing: boolean;
   generateSlot?: React.ReactNode;
 }) {
   // The template derives live from the current checklist until the rep edits
@@ -1086,6 +1092,24 @@ function SendRequestComposer({
         )}
       </div>
       </div>
+      {/* Parachute: the actual fax/email send lives INSIDE the optional template
+          (rarely used — the portal usually delivers the request). Advancing the
+          stage is the always-visible "Request Sent" button below. */}
+      {isParachute && (
+        <div className="flex justify-end">
+          <Button onClick={trySend} disabled={sending} variant="outline" className="gap-2">
+            {sending ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" /> Sending…
+              </>
+            ) : (
+              <>
+                <Send className="h-4 w-4" /> Send Fax/Email
+              </>
+            )}
+          </Button>
+        </div>
+      )}
         </>
       )}
 
@@ -1155,21 +1179,41 @@ function SendRequestComposer({
       <div className="flex items-center justify-between gap-3 flex-wrap border-t pt-4" style={{ borderColor: "var(--mm-card-border)" }}>
         <span />
         <div className="flex items-center gap-3">
-          <Button
-            onClick={trySend}
-            disabled={sending}
-            className="gap-2 text-white shadow-sm bg-[color:var(--mm-green)] hover:bg-[oklch(0.56_0.10_175)] disabled:bg-[oklch(0.85_0.01_200)]"
-          >
-            {sending ? (
-              <>
-                <Loader2 className="h-4 w-4 animate-spin" /> Sending…
-              </>
-            ) : (
-              <>
-                <Send className="h-4 w-4" /> Send request
-              </>
-            )}
-          </Button>
+          {isParachute ? (
+            // Primary action for Parachute — advances the stage no matter what
+            // (the fax/email above is optional and rarely used).
+            <Button
+              onClick={onMarkComplete}
+              disabled={completing}
+              className="gap-2 text-white shadow-sm bg-[color:var(--mm-green)] hover:bg-[oklch(0.56_0.10_175)] disabled:bg-[oklch(0.85_0.01_200)]"
+            >
+              {completing ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" /> Saving…
+                </>
+              ) : (
+                <>
+                  <Check className="h-4 w-4" /> Request Sent
+                </>
+              )}
+            </Button>
+          ) : (
+            <Button
+              onClick={trySend}
+              disabled={sending}
+              className="gap-2 text-white shadow-sm bg-[color:var(--mm-green)] hover:bg-[oklch(0.56_0.10_175)] disabled:bg-[oklch(0.85_0.01_200)]"
+            >
+              {sending ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" /> Sending…
+                </>
+              ) : (
+                <>
+                  <Send className="h-4 w-4" /> Send request
+                </>
+              )}
+            </Button>
+          )}
         </div>
       </div>
     </div>
