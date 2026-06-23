@@ -33,7 +33,7 @@ interface Props {
 const ATTEMPT_LABEL_REGEX =
   /^(\[[^\]]*\]\s*)((?:Confirm Receipt|Chase Clinicals|Send Request|Evaluate|C\.R\.|C\.C\.|S\.R\.)(?: Attempt \d+)?:)([\s\S]*)$/;
 
-function renderNoteLine(line: string): React.ReactNode {
+export function renderNoteLine(line: string): React.ReactNode {
   const m = line.match(ATTEMPT_LABEL_REGEX);
   return m ? (
     <>
@@ -46,7 +46,7 @@ function renderNoteLine(line: string): React.ReactNode {
   );
 }
 
-function renderNoteLines(notes: string): React.ReactNode {
+export function renderNoteLines(notes: string): React.ReactNode {
   return notes.split("\n").map((line, i) => (
     <span key={i}>
       {i > 0 && "\n"}

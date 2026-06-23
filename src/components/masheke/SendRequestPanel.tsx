@@ -23,7 +23,7 @@ import {
   useRef,
 } from "react";
 import type { Patient } from "@/lib/masheke/workflow";
-import { NotesPanel } from "@/components/masheke/NotesPanel";
+import { NotesPanel, renderNoteLines } from "@/components/masheke/NotesPanel";
 import { etNow } from "@/lib/masheke/etDate";
 import { Button } from "@/components/ui/button";
 import { useMondayFiles } from "@/hooks/masheke/useMondayFiles";
@@ -498,7 +498,7 @@ export function SendRequestPanel({ patient, resetVersion = 0, onUpdate }: Props)
       hour: "numeric",
       minute: "2-digit",
     });
-    const entry = `[${stamp}] ${text}`;
+    const entry = `[${stamp}] Send Request: ${text}`;
     const next = patient.mnEvalNotes ? `${patient.mnEvalNotes}\n\n${entry}` : entry;
     onUpdate({ mnEvalNotes: next });
     void writeLongText(patient.id, COL.mnEvalNotes, next).catch(() => {});
@@ -1132,7 +1132,7 @@ function SendRequestComposer({
                 {noteItems.map((n) => (
                   <div key={n.label}>
                     <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{n.label}</p>
-                    <p className="text-sm whitespace-pre-wrap">{n.text}</p>
+                    <p className="text-sm whitespace-pre-wrap">{renderNoteLines(n.text || "")}</p>
                   </div>
                 ))}
               </div>
