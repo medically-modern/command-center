@@ -1,0 +1,31 @@
+name: Deploy Worker
+
+# Auto-deploys the Cloudflare Worker (worker/) on push to main when worker code
+# changes — mirrors how the site auto-deploys to Pages. Manual runs are allowed
+# via the "Run workflow" button (workflow_dispatch).
+#
+# One-time setup: add a repo secret CLOUDFLARE_API_TOKEN created from the
+# "Edit Cloudflare Workers" token template (Cloudflare → My Profile → API Tokens).
+# Worker SECRETS (GMAIL_*, etc.) are NOT touched by deploys — they persist.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "worker/**"
+      - ".github/workflows/deploy-worker.yml"
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Deploy worker
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          workingDirectory: worker
