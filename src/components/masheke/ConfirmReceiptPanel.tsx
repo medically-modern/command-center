@@ -840,7 +840,7 @@ function CourtesyFax({
         </span>
         {resentNow ? (
           <DeliveredChip label="Re-sent just now" />
-        ) : sentAt ? (
+        ) : sentAt && isSentToday(sentAt) ? (
           <DeliveredChip label={`Delivered · ${formatSent(sentAt)}`} />
         ) : null}
         <Button
@@ -1339,6 +1339,18 @@ function formatDateTimeShort(d: Date): string {
   const h = h24 % 12 || 12;
   const mins = String(d.getMinutes()).padStart(2, "0");
   return `${formatDateShort(d)}, ${h}:${mins} ${ampm}`;
+}
+
+/** True when an ET-rendered Monday timestamp is today's ET date. The "Delivered"
+ *  chip only shows for a same-day send; older sends are covered by attempt history. */
+function isSentToday(iso?: string): boolean {
+  if (!iso) return false;
+  const cleaned = iso.replace(/\s+UTC$/, "Z").replace(" ", "T");
+  const d = new Date(cleaned);
+  if (Number.isNaN(d.getTime())) return false;
+  const etDate = (x: Date) =>
+    x.toLocaleDateString("en-US", { timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit" });
+  return etDate(d) === etDate(new Date());
 }
 
 function formatSent(iso: string): string {
