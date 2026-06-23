@@ -137,11 +137,15 @@ export async function fetchOutboundFaxStatus(
 ): Promise<OutboundFaxStatus | null> {
   const last10 = (s: string) => (s || "").replace(/\D/g, "").slice(-10);
   const want = last10(toNumber || "");
-  if (want.length < 10 || !sinceIso) return null;
-  const since = new Date(sinceIso.replace(/\s+UTC$/, "Z").replace(" ", "T"));
-  if (Number.isNaN(since.getTime())) return null;
-  // Look back a few minutes for clock skew between our stamp and RingCentral's.
-  const dateFrom = new Date(since.getTime() - 5 * 60_000).toISOString();
+  if (want.length < 10) return null;
+  // The window is based on real UTC "now", NOT the stored send time. Monday
+  // returns requestSentAt as a TIMEZONE-NAIVE local (ET) string (e.g.
+  // "2026-06-23 17:21"), so new Date() on it is hours off in a non-ET browser —
+  // which previously pushed the window past the fax's creationTime and left the
+  // pill stuck on "Processing". We poll within minutes of sending, so the most
+  // recent outbound fax to this recipient in the last 12h is the one we sent.
+  void sinceIso;
+  const dateFrom = new Date(Date.now() - 12 * 60 * 60_000).toISOString();
   const url =
     `${RC_SERVER}/restapi/v1.0/account/~/extension/~/message-store` +
     `?messageType=Fax&direction=Outbound&dateFrom=${encodeURIComponent(dateFrom)}&perPage=50`;
@@ -165,8 +169,8 @@ export async function fetchOutboundFaxStatus(
   };
   const rec = (json.records ?? [])
     .filter((r) => (r.to ?? []).some((t) => last10(t.phoneNumber || "") === want))
-    .filter((r) => !!r.creationTime && new Date(r.creationTime!).getTime() >= since.getTime() - 5 * 60_000)
-    .sort((a, b) => new Date(a.creationTime!).getTime() - new Date(b.creationTime!).getTime())[0];
+    .filter((r) => !!r.creationTime)
+    .sort((a, b) => new Date(b.creationTime!).getTime() - new Date(a.creationTime!).getTime())[0]; // most recent
   if (!rec) return null;
 
   const raw = rec.messageStatus || "";
