@@ -48,6 +48,7 @@ import {
   Phone,
   Plus,
   X,
+  XCircle,
 } from "lucide-react";
 import {
   AskForList,
@@ -59,6 +60,7 @@ import {
   SentChip,
   type TaggedFile,
 } from "@/components/masheke/mmKit";
+import { useFaxStatus, type FaxStage } from "@/hooks/masheke/useFaxStatus";
 import { MissingChecklist } from "@/components/masheke/MissingChecklist";
 import { MethodBar } from "@/components/masheke/MethodBar";
 import { ActivityRow, formatActivityDate } from "@/components/masheke/PreviousActivityCard";
@@ -827,6 +829,10 @@ function CourtesyFax({
     setExcluded((prev) => new Set(prev).add(assetId));
   const removeAddedFile = (idx: number) =>
     setAddedFiles((prev) => prev.filter((_, i) => i !== idx));
+  // Live RingCentral fax status (fax only, same-day only). Polls RC's message
+  // store for the real Queued → Sent (or Failed) status of this send.
+  const faxActive = !isEmail && !!sentAt && isSentToday(sentAt);
+  const faxStatus = useFaxStatus(recipient, sentAt, faxActive);
   return (
     <div className="flex flex-col gap-3">
       {/* Recipient · delivered · re-send — all on one compact row */}
@@ -838,7 +844,13 @@ function CourtesyFax({
         <span className="text-[0.95rem] font-bold">
           {recipient || `(no doctor ${isEmail ? "email" : "fax"} on file)`}
         </span>
-        {resentNow ? (
+        {!isEmail ? (
+          faxStatus ? (
+            <FaxStatusChip stage={faxStatus.stage} at={faxStatus.at} sentAt={sentAt} />
+          ) : resentNow ? (
+            <DeliveredChip label="Re-sent just now" />
+          ) : null
+        ) : resentNow ? (
           <DeliveredChip label="Re-sent just now" />
         ) : sentAt && isSentToday(sentAt) ? (
           <DeliveredChip label={`Delivered · ${formatSent(sentAt)}`} />
@@ -974,6 +986,46 @@ function DeliveredChip({ label }: { label: string }) {
       style={{ background: "var(--mm-mint)" }}
     >
       <CheckCircle2 className="h-3.5 w-3.5" /> {label}
+    </span>
+  );
+}
+
+/** Live RingCentral fax-status pill. Animated (spinner + pulse) while the fax is
+ *  in flight (processing → queued), then settles to "Sent · <time>" (✓ mint) or
+ *  "Fax failed" (✗ rose). Mirrors RingCentral's real Queued/Sent status. */
+function FaxStatusChip({ stage, at, sentAt }: { stage: FaxStage; at?: string; sentAt?: string }) {
+  if (stage === "sent") {
+    return (
+      <span
+        className="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold text-[color:var(--mm-teal)] shadow-[inset_0_0_0_1px_var(--mm-mint-ring)]"
+        style={{ background: "var(--mm-mint)" }}
+      >
+        <CheckCircle2 className="h-3.5 w-3.5" /> Sent · {formatSent(at || sentAt || "")}
+      </span>
+    );
+  }
+  if (stage === "failed") {
+    return (
+      <span
+        className="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold"
+        style={{ background: "var(--mm-rose-soft)", color: "var(--mm-rose)", boxShadow: "inset 0 0 0 1px oklch(0.62 0.13 18 / 0.35)" }}
+      >
+        <XCircle className="h-3.5 w-3.5" /> Fax failed{at ? ` · ${formatSent(at)}` : ""} — re-send
+      </span>
+    );
+  }
+  const queued = stage === "queued";
+  return (
+    <span
+      className="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold animate-pulse"
+      style={
+        queued
+          ? { background: "oklch(0.95 0.05 240)", color: "oklch(0.45 0.13 250)", boxShadow: "inset 0 0 0 1px oklch(0.80 0.08 250)" }
+          : { background: "oklch(0.97 0.04 85)", color: "oklch(0.48 0.10 70)", boxShadow: "inset 0 0 0 1px oklch(0.82 0.10 80)" }
+      }
+    >
+      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+      {queued ? `Queued · ${formatSent(at || sentAt || "")}` : `Processing · ${formatSent(sentAt || "")}`}
     </span>
   );
 }

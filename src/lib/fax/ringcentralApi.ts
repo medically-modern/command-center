@@ -114,3 +114,71 @@ export async function fetchUnreadFaxCount(): Promise<number> {
   };
   return json.paging?.totalElements ?? json.records?.length ?? 0;
 }
+
+export type FaxStatus = "Queued" | "Sent" | "Failed";
+export interface OutboundFaxStatus {
+  status: FaxStatus;
+  /** When RC queued the fax (ISO). */
+  creationTime: string;
+  /** When the status last changed — i.e. when it became Sent (ISO). */
+  lastModifiedTime: string;
+  id: number;
+}
+
+/** Real status of the outbound fax we sent to `toNumber` at/around `sinceIso`.
+ *  Our faxes go email → <number>@rcfax.com → RingCentral, which lands them in
+ *  this extension's message store as an Outbound Fax, so we can read the true
+ *  Queued → Sent (or SendingFailed) status without changing how we send.
+ *  Returns null when RC hasn't registered the fax yet (caller treats as
+ *  "processing"). Matches by recipient (last 10 digits) + send time. */
+export async function fetchOutboundFaxStatus(
+  toNumber: string | undefined,
+  sinceIso: string | undefined,
+): Promise<OutboundFaxStatus | null> {
+  const last10 = (s: string) => (s || "").replace(/\D/g, "").slice(-10);
+  const want = last10(toNumber || "");
+  if (want.length < 10 || !sinceIso) return null;
+  const since = new Date(sinceIso.replace(/\s+UTC$/, "Z").replace(" ", "T"));
+  if (Number.isNaN(since.getTime())) return null;
+  // Look back a few minutes for clock skew between our stamp and RingCentral's.
+  const dateFrom = new Date(since.getTime() - 5 * 60_000).toISOString();
+  const url =
+    `${RC_SERVER}/restapi/v1.0/account/~/extension/~/message-store` +
+    `?messageType=Fax&direction=Outbound&dateFrom=${encodeURIComponent(dateFrom)}&perPage=50`;
+
+  const call = (token: string) => fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+  let res = await call(await getAccessToken());
+  if (res.status === 401) {
+    clearCachedToken();
+    res = await call(await getAccessToken());
+  }
+  if (!res.ok) throw new Error(`RingCentral fax status failed (${res.status})`);
+
+  const json = (await res.json()) as {
+    records?: Array<{
+      id: number;
+      messageStatus?: string;
+      creationTime?: string;
+      lastModifiedTime?: string;
+      to?: Array<{ phoneNumber?: string }>;
+    }>;
+  };
+  const rec = (json.records ?? [])
+    .filter((r) => (r.to ?? []).some((t) => last10(t.phoneNumber || "") === want))
+    .filter((r) => !!r.creationTime && new Date(r.creationTime!).getTime() >= since.getTime() - 5 * 60_000)
+    .sort((a, b) => new Date(a.creationTime!).getTime() - new Date(b.creationTime!).getTime())[0];
+  if (!rec) return null;
+
+  const raw = rec.messageStatus || "";
+  const status: FaxStatus = /sent|delivered/i.test(raw)
+    ? "Sent"
+    : /fail|error/i.test(raw)
+      ? "Failed"
+      : "Queued";
+  return {
+    status,
+    creationTime: rec.creationTime || sinceIso,
+    lastModifiedTime: rec.lastModifiedTime || rec.creationTime || sinceIso,
+    id: rec.id,
+  };
+}
