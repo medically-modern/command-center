@@ -31,7 +31,7 @@ import {
 import { runVerifiedSend } from "@/lib/masheke/mondayWrite";
 import type { WriteTask } from "@/lib/shared/verifiedWrite";
 import { FILE_PROXY_URL, fetchAssetBytes } from "@/lib/shared/mondayAssets";
-import { getIdToken } from "@/lib/shared/auth";
+import { getIdToken, userInitials } from "@/lib/shared/auth";
 import {
   ESCALATION_INDEX,
   MN_ATTEMPTS_INDEX,
@@ -1014,18 +1014,18 @@ function FaxStatusChip({ stage, at, sentAt }: { stage: FaxStage; at?: string; se
       </span>
     );
   }
-  const queued = stage === "queued";
+  const submitted = stage === "submitted";
   return (
     <span
       className="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold animate-pulse"
       style={
-        queued
+        submitted
           ? { background: "oklch(0.95 0.05 240)", color: "oklch(0.45 0.13 250)", boxShadow: "inset 0 0 0 1px oklch(0.80 0.08 250)" }
           : { background: "oklch(0.97 0.04 85)", color: "oklch(0.48 0.10 70)", boxShadow: "inset 0 0 0 1px oklch(0.82 0.10 80)" }
       }
     >
       <Loader2 className="h-3.5 w-3.5 animate-spin" />
-      {queued ? `Queued · ${formatSent(at || sentAt || "")}` : `Processing · ${formatSent(sentAt || "")}`}
+      {submitted ? `Submitted · ${formatSent(at || sentAt || "")}` : `Processing · ${formatSent(sentAt || "")}`}
     </span>
   );
 }
@@ -1353,7 +1353,9 @@ function formatAttemptValue(outcome: "confirmed" | "not_confirmed", note: string
   const datePart = formatDateTimeShort(date);
   const label = outcome === "confirmed" ? "Confirmed" : "Not confirmed";
   const n = note.trim();
-  return n ? `${datePart} · ${label} · ${n}` : `${datePart} · ${label}`;
+  const ini = userInitials();
+  const sfx = ini ? ` —${ini}` : "";
+  return (n ? `${datePart} · ${label} · ${n}` : `${datePart} · ${label}`) + sfx;
 }
 
 function nextMnAttempt(currentAttempt: number): "Attempt 2" | "Attempt 3" | "Escalate" {

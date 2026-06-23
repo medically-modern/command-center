@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { fetchOutboundFaxStatus } from "@/lib/fax/ringcentralApi";
 
-export type FaxStage = "processing" | "queued" | "sent" | "failed";
+export type FaxStage = "processing" | "submitted" | "sent" | "failed";
 export interface FaxStatusState {
   stage: FaxStage;
   /** RingCentral timestamp for the current stage (creationTime when queued,
@@ -10,7 +10,8 @@ export interface FaxStatusState {
 }
 
 const POLL_MS = 12_000;
-const MAX_POLLS = 30; // ~6 minutes, then stop polling (keeps the last state shown)
+const FAST_POLL_MS = 5_000; // poll faster early to shrink the "processing" gap before RC registers the fax
+const MAX_POLLS = 40; // a few minutes, then stop polling (keeps the last state shown)
 
 /** Live RingCentral status of the outbound fax to `recipient` sent at
  *  `sentAtIso`: processing → queued → sent (or failed), updating without a
@@ -50,7 +51,9 @@ export function useFaxStatus(
           setState({ stage: "failed", at: r.lastModifiedTime });
           terminal = true;
         } else {
-          setState({ stage: "queued", at: r.creationTime });
+          // RC messageStatus "Queued" is shown as "Submitted" in RC's own UI
+          // (and matches Brandon's stage name).
+          setState({ stage: "submitted", at: r.creationTime });
         }
       } catch {
         // Transient network/RC hiccup — keep the last state and keep polling.

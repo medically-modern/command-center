@@ -41,6 +41,7 @@ import {
   writeText,
 } from "@/lib/masheke/mondayApi";
 import { runVerifiedSend } from "@/lib/masheke/mondayWrite";
+import { userInitials } from "@/lib/shared/auth";
 import type { WriteTask } from "@/lib/shared/verifiedWrite";
 import { FILE_PROXY_URL, fetchAssetBytes } from "@/lib/shared/mondayAssets";
 import { getIdToken } from "@/lib/shared/auth";
@@ -886,7 +887,9 @@ function formatAttemptValue(note: string, date: Date): string {
   // "6/12/26, 2:33 PM · {note}" — note omitted if empty.
   const datePart = formatDateTimeShort(date);
   const n = note.trim();
-  return n ? `${datePart} · ${n}` : datePart;
+  const ini = userInitials();
+  const sfx = ini ? ` —${ini}` : "";
+  return (n ? `${datePart} · ${n}` : datePart) + sfx;
 }
 
 function nextMnAttempt(currentAttempt: number): "Attempt 2" | "Attempt 3" | "Escalate" {
