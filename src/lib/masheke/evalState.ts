@@ -147,6 +147,10 @@ const MONDAY_BACKED_FIELDS = [
   "cgmScriptValid",
   "cgmLanguage",
   "clinReceived3",
+  // OOW (OOW Pump path) — date + on-script answer + legacy mirror.
+  "oowDate",
+  "ipOowOnScriptV",
+  "oowDateOnScript",
 ] as const satisfies readonly (keyof EvalState)[];
 
 /**
@@ -876,10 +880,14 @@ const IP_REQ_LABELS = {
   cgmUse: { invalid: "CGM Use invalid", missing: "CGM Use Missing" },
   bloodSugar: { invalid: "Blood Sugar Issues invalid", missing: "Blood Sugar Issues Missing" },
   lmn: { invalid: "Letter of MN invalid", missing: "Letter of MN missing" },
-  malfunction: { invalid: null, missing: "Malfunction Missing" },
+  malfunction: { invalid: "Malfunction invalid", missing: "Malfunction Missing" },
 } satisfies Record<string, ReqLabel>;
 const IP_SCRIPT_INVALID_LABEL = "Insulin Pump Script invalid";
 const CGM_SCRIPT_INVALID_LABEL = "CGM Script invalid";
+// OOW "on script?" answer (OOW Pump path). The OOW date itself lives in its own
+// date column (COL.oowDateValue); only the Yes/No/Invalid answer goes here.
+const OOW_ON_SCRIPT_MISSING_LABEL = "OOW Date not on script"; // No
+const OOW_ON_SCRIPT_INVALID_LABEL = "OOW Date on script invalid"; // Invalid (created on first use)
 
 /** Build the two IP reason dropdown lists from the rep's 3-state answers.
  *  invalid → "IP MN Invalid Reasons"; missing (No) → "IP MN No Reasons". */
@@ -906,12 +914,38 @@ export function computeIpReasonLists(
   add(cfg.showBsIssues, state.ipBsIssuesV, IP_REQ_LABELS.bloodSugar);
   add(cfg.showLmn, state.ipLmnV, IP_REQ_LABELS.lmn);
   add(cfg.showMalfunction, state.ipMalfunctionV, IP_REQ_LABELS.malfunction);
+  // OOW-on-script (OOW Pump path). The OOW date itself rides its own date
+  // column; only the Yes/No/Invalid "on script?" answer goes in the dropdowns.
+  if (cfg.showOowOnScript) {
+    const oow = state.ipOowOnScriptV ?? "No";
+    if (oow === "Invalid") invalid.push(OOW_ON_SCRIPT_INVALID_LABEL);
+    else if (oow === "No") missing.push(OOW_ON_SCRIPT_MISSING_LABEL);
+  }
   // IP Script received-but-Invalid (the not-received case lives on the
   // "IP Script Received" column, so it isn't duplicated here).
   if (state.ipScriptReceived === "Yes" && state.ipScriptValid === "Invalid") {
     invalid.push(IP_SCRIPT_INVALID_LABEL);
   }
   return { invalid, missing };
+}
+
+/** Build CGM MN Invalid Reasons from the rep's CGM answers (canonical board
+ *  labels) so the dropdown reflects the UI and round-trips. CGM has a single
+ *  dropdown (no separate "No" column); CGM coverage path + CGM Language also
+ *  live in their own columns, which stay the source of truth on read-back. */
+export function computeCgmInvalidReasons(state: EvalState, showCgm: boolean): string[] {
+  const out: string[] = [];
+  if (!showCgm || state.cgmCoveragePath === "Not Serving") return out;
+  // CGM Script
+  if (state.cgmScriptReceived === "Yes" && state.cgmScriptValid === "Invalid") out.push("CGM Script invalid");
+  else if (state.cgmScriptReceived === "No") out.push("CGM Script missing");
+  // CGM Coverage Path
+  if (state.cgmCoveragePath === "Hypo Invalid") out.push("CGM Coverage Path invalid");
+  else if (state.cgmScriptReceived === "Yes" && (!state.cgmCoveragePath || state.cgmCoveragePath === "Missing"))
+    out.push("CGM Coverage Path missing");
+  // CGM Language (also its own Yes/No/Invalid column)
+  if (state.cgmLanguage === "Invalid") out.push("CGM Language invalid");
+  return out;
 }
 
 function splitDropdown(text?: string): string[] {
@@ -958,6 +992,15 @@ export function seedRequirementsFromMonday(patient: Patient): Partial<EvalState>
     setReq("ipBsIssuesV", cfg.showBsIssues, IP_REQ_LABELS.bloodSugar);
     setReq("ipLmnV", cfg.showLmn, IP_REQ_LABELS.lmn);
     setReq("ipMalfunctionV", cfg.showMalfunction, IP_REQ_LABELS.malfunction);
+    if (cfg.showOowOnScript) {
+      if (ipInvalid.includes(OOW_ON_SCRIPT_INVALID_LABEL) || ipNo.includes(OOW_ON_SCRIPT_INVALID_LABEL))
+        out.ipOowOnScriptV = "Invalid";
+      else if (ipNo.includes(OOW_ON_SCRIPT_MISSING_LABEL) || ipInvalid.includes(OOW_ON_SCRIPT_MISSING_LABEL))
+        out.ipOowOnScriptV = "No";
+      else if (evaluated) out.ipOowOnScriptV = "Yes";
+      if (out.ipOowOnScriptV !== undefined)
+        out.oowDateOnScript = out.ipOowOnScriptV === "Yes" ? "Yes" : "No";
+    }
 
     // Keep the legacy 2-state mirrors in sync (deriveValidity / the consolidated
     // ask list read them if recomputed on the Evaluate screen after a reload).
@@ -982,6 +1025,9 @@ export function seedRequirementsFromMonday(patient: Patient): Partial<EvalState>
   // Clinicals received — the MRs / Clinicals column (MR Received / Collect).
   if (patient.mrsClinicals === "MR Received") out.clinReceived3 = "Yes";
   else if (patient.mrsClinicals === "Collect") out.clinReceived3 = "No";
+
+  // OOW date — its own date column (OOW Pump path).
+  if (patient.oowDateValue) out.oowDate = patient.oowDateValue;
 
   return out;
 }

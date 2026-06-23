@@ -106,6 +106,7 @@ export function mondayItemToPatient(item: MondayItem): Patient {
     bloodSugarIssues: col(item, "color_mm1wpcrd") || undefined,
     lmn: col(item, "color_mm1wdcsf") || undefined,
     oowDate: col(item, "color_mm1wmv5c") || undefined,
+    oowDateValue: col(item, "date_mm4kyfte") || undefined,
     malfunction: col(item, "color_mm1wp4e9") || undefined,
     diagnosis: col(item, "color_mm1wf7rv") || undefined,
     mrsClinicals: col(item, "color_mm1y8rv8") || undefined,

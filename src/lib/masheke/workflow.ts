@@ -61,6 +61,8 @@ export interface Patient {
   bloodSugarIssues?: string;
   lmn?: string;
   oowDate?: string;
+  /** OOW date (date_mm4kyfte) — actual out-of-warranty date for the OOW Pump path. */
+  oowDateValue?: string;
   malfunction?: string;
   diagnosis?: string;
 

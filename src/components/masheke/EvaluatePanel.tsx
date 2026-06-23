@@ -53,6 +53,7 @@ import {
   bannerMnEstablished,
   buildMondayPreview,
   computeIpReasonLists,
+  computeCgmInvalidReasons,
   type EvalState,
   type LocalFile,
   type CgmCoveragePath,
@@ -407,7 +408,10 @@ export function EvaluatePanel({ patient, resetVersion = 0, onUpdate, onOpenForm 
     }
     pushLabel("Medical Necessity", COL.medicalNecessity, preview.medicalNecessity);
     pushDropdown("General MN Invalid Reasons", COL.generalMnInvalidReasons, preview.generalMnInvalidReasons);
-    pushDropdown("CGM MN Invalid Reasons", COL.cgmMnInvalidReasons, preview.cgmMnInvalidReasons);
+    // CGM MN Invalid Reasons — reflect the rep's exact CGM answers (script /
+    // coverage path / language), canonical board labels, so it stays in sync and
+    // round-trips. createLabels backstops "CGM Language invalid".
+    pushDropdown("CGM MN Invalid Reasons", COL.cgmMnInvalidReasons, computeCgmInvalidReasons(effState, showCgm), true);
     // IP requirement answers, split by the rep's EXACT state so No (= Missing)
     // and Invalid round-trip faithfully (Option A): Invalid → "IP MN Invalid
     // Reasons", No/Missing → "IP MN No Reasons". createLabels is a backstop; the
@@ -415,6 +419,16 @@ export function EvaluatePanel({ patient, resetVersion = 0, onUpdate, onOpenForm 
     const ipReasonLists = computeIpReasonLists(effState, showIp);
     pushDropdown("IP MN Invalid Reasons", COL.ipMnInvalidReasons, ipReasonLists.invalid, true);
     pushDropdown("IP MN No Reasons", COL.ipMnNoReasons, ipReasonLists.missing, true);
+    // OOW date (OOW Pump path) → its own date column so it round-trips from
+    // Monday instead of cache. The "on script?" Yes/No/Invalid answer rides the
+    // IP reason dropdowns above (handled in computeIpReasonLists).
+    if (showIp && state.ipCoveragePath && state.ipCoveragePath !== "Not Serving") {
+      const oowCfg = IP_PATH_FIELDS[state.ipCoveragePath as IpPath];
+      if (oowCfg?.showOow) {
+        if (state.oowDate) pushDate("OOW Date", COL.oowDateValue, state.oowDate);
+        else pushClearDate("OOW Date (clear)", COL.oowDateValue);
+      }
+    }
     // Consolidated, doctor-facing ask list — drives the Send Request UI and the
     // MN Request Letter PDF. Allowed to create labels: the OOW ask embeds a
     // patient-specific date so it's dynamic by design.

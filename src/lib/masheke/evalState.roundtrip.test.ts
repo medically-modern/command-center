@@ -5,6 +5,7 @@
 import { describe, it, expect } from "vitest";
 import {
   computeIpReasonLists,
+  computeCgmInvalidReasons,
   seedRequirementsFromMonday,
   seedEvalStateFromPatient,
   computeMnChecklist,
@@ -120,5 +121,96 @@ describe("full round-trip — Send Request checklist from Monday == from cache",
     // The two must agree — that's the whole point of "Monday as source of truth".
     expect(fromMonday.documents).toEqual(fromCache.documents);
     expect(fromMonday.language).toEqual(fromCache.language);
+  });
+});
+
+describe("Malfunction invalid (new board label)", () => {
+  it("stores Malfunction=Invalid faithfully and reads it back", () => {
+    const state: EvalState = {
+      ipCoveragePath: "Omnipod Switch",
+      ipScriptReceived: "Yes",
+      ipScriptValid: "Valid",
+      ipEducationV: "Yes",
+      ipThreeInjectionsV: "Yes",
+      ipCgmUseV: "Yes",
+      ipBsIssuesV: "Yes",
+      ipMalfunctionV: "Invalid",
+    };
+    const { invalid } = computeIpReasonLists(state, true);
+    expect(invalid).toContain("Malfunction invalid"); // no longer downgraded to Missing
+    const seeded = seedRequirementsFromMonday(
+      basePatient({ ipCoveragePath: "Omnipod Switch", ipMnInvalidReasons: invalid.join(", ") }),
+    );
+    expect(seeded.ipMalfunctionV).toBe("Invalid");
+  });
+});
+
+describe("OOW round-trip (date column + on-script reasons)", () => {
+  it("round-trips the OOW date and on-script = No (→ IP MN No Reasons)", () => {
+    const state: EvalState = {
+      ipCoveragePath: "OOW Pump",
+      ipScriptReceived: "Yes",
+      ipScriptValid: "Valid",
+      oowDate: "2020-01-01",
+      ipOowOnScriptV: "No",
+      ipMalfunctionV: "Yes",
+    };
+    const { invalid, missing } = computeIpReasonLists(state, true);
+    expect(missing).toContain("OOW Date not on script"); // No -> Missing -> No Reasons
+    expect(invalid).not.toContain("OOW Date not on script");
+    const seeded = seedRequirementsFromMonday(
+      basePatient({
+        ipCoveragePath: "OOW Pump",
+        oowDateValue: "2020-01-01",
+        ipMnInvalidReasons: invalid.join(", "),
+        ipMnNoReasons: missing.join(", "),
+      }),
+    );
+    expect(seeded.oowDate).toBe("2020-01-01");
+    expect(seeded.ipOowOnScriptV).toBe("No");
+  });
+
+  it("round-trips on-script = Invalid (→ IP MN Invalid Reasons)", () => {
+    const state: EvalState = {
+      ipCoveragePath: "OOW Pump",
+      ipScriptReceived: "Yes",
+      ipScriptValid: "Valid",
+      oowDate: "2020-01-01",
+      ipOowOnScriptV: "Invalid",
+      ipMalfunctionV: "Yes",
+    };
+    const { invalid } = computeIpReasonLists(state, true);
+    expect(invalid).toContain("OOW Date on script invalid");
+    const seeded = seedRequirementsFromMonday(
+      basePatient({ ipCoveragePath: "OOW Pump", ipMnInvalidReasons: invalid.join(", ") }),
+    );
+    expect(seeded.ipOowOnScriptV).toBe("Invalid");
+  });
+});
+
+describe("CGM MN Invalid Reasons — UI ↔ Monday sync", () => {
+  it("reflects CGM Script Invalid + CGM Language Invalid and reads them back", () => {
+    const state: EvalState = {
+      cgmCoveragePath: "Hypo",
+      cgmScriptReceived: "Yes",
+      cgmScriptValid: "Invalid",
+      cgmLanguage: "Invalid",
+    };
+    const reasons = computeCgmInvalidReasons(state, true);
+    expect(reasons).toContain("CGM Script invalid");
+    expect(reasons).toContain("CGM Language invalid");
+
+    const seeded = seedRequirementsFromMonday(
+      basePatient({
+        serving: "CGM",
+        ipCoveragePath: undefined,
+        cgmScriptReceived: "Yes",
+        cgmCoveragePath: "Hypo",
+        cgmLanguage: "Invalid",
+        cgmMnInvalidReasons: reasons.join(", "),
+      }),
+    );
+    expect(seeded.cgmScriptValid).toBe("Invalid"); // from the reasons dropdown
+    expect(seeded.cgmLanguage).toBe("Invalid"); // from its own column
   });
 });

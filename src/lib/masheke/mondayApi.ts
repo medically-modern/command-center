@@ -65,6 +65,8 @@ export const COL = {
   bloodSugarIssues: "color_mm1wpcrd",
   lmn: "color_mm1wdcsf",
   oowDate: "color_mm1wmv5c",
+  /** OOW date — real date column (created 2026-06-23) for the OOW Pump path. */
+  oowDateValue: "date_mm4kyfte",
   malfunction: "color_mm1wp4e9",
   diagnosis: "color_mm1wf7rv",
 
@@ -156,7 +158,7 @@ export const READ_COLUMN_IDS: string[] = [
   // Eval checklist
   COL.cgmScript, COL.cgmScriptReceived, COL.cgmLanguage, COL.hypoLanguage, COL.insulinLanguage, COL.ipScript, COL.ipScriptReceived,
   COL.diabetesEducation, COL.threeInjections, COL.cgmUse, COL.bloodSugarIssues,
-  COL.lmn, COL.oowDate, COL.malfunction, COL.diagnosis,
+  COL.lmn, COL.oowDate, COL.oowDateValue, COL.malfunction, COL.diagnosis,
   // MRs
   COL.mrsClinicals, COL.lastVisit, COL.mrExpiryDate, COL.medicalNecessity, COL.mnEvalNotes,
   COL.generalMnInvalidReasons, COL.cgmMnInvalidReasons, COL.ipMnInvalidReasons, COL.ipMnNoReasons,
