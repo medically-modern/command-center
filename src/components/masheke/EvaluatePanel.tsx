@@ -54,6 +54,8 @@ import {
   buildMondayPreview,
   computeIpReasonLists,
   computeCgmInvalidReasons,
+  buildScriptCoverageWrites,
+  type ScriptCoverageField,
   type EvalState,
   type LocalFile,
   type CgmCoveragePath,
@@ -359,32 +361,18 @@ export function EvaluatePanel({ patient, resetVersion = 0, onUpdate, onOpenForm 
     const pushDropdown = (label: string, columnId: string, labels: string[], createLabels = false) =>
       tasks.push({ label, columnId, value: { labels }, fn: () => writeDropdownLabels(patient.id, columnId, labels, createLabels) });
 
-    // Insulin Pump Coverage Path — write "Not Serving" if the patient isn't
-    // being served IP at all; if the IP script was received, write the rep's
-    // selection (or clear). If the script was NOT received the section was
-    // hidden, so leave Monday's column untouched rather than clobbering it.
-    if (!showIp) {
-      pushLabel("IP Coverage Path", COL.ipCoveragePath, "Not Serving");
-    } else if (ipReceived) {
-      if (state.ipCoveragePath) pushLabel("IP Coverage Path", COL.ipCoveragePath, state.ipCoveragePath);
-      else pushClearStatus("IP Coverage Path", COL.ipCoveragePath);
-    }
-    // CGM Coverage Path — same pattern.
-    if (!showCgm) {
-      pushLabel("CGM Coverage Path", COL.cgmCoveragePath, "Not Serving");
-    } else if (cgmReceived) {
-      if (state.cgmCoveragePath) pushLabel("CGM Coverage Path", COL.cgmCoveragePath, state.cgmCoveragePath);
-      else pushClearStatus("CGM Coverage Path", COL.cgmCoveragePath);
-    }
-    // CGM Language — Yes/No/Invalid on color_mm4bb5sm. Only synced when CGM is
-    // served + script received and a language-bearing coverage path (Insulin or
-    // Hypo) is chosen — that's exactly when the rep sees the language pill. The
-    // board's labels are Invalid/Yes/No, matching state.cgmLanguage 1:1, so no
-    // label creation is needed; clear when the section is visible but unanswered,
-    // and leave Monday untouched otherwise.
-    if (showCgm && cgmReceived && (state.cgmCoveragePath === "Insulin" || state.cgmCoveragePath === "Hypo")) {
-      if (state.cgmLanguage) pushLabel("CGM Language", COL.cgmLanguage, state.cgmLanguage);
-      else pushClearStatus("CGM Language", COL.cgmLanguage);
+    // Coverage paths + CGM Language — every selection persists (saved whenever the
+    // product is served; "Not Serving" only when greyed/not served). Single source
+    // of truth in buildScriptCoverageWrites so the write matches the read-back.
+    const COVERAGE_WRITE_META: Record<ScriptCoverageField, { col: string; label: string }> = {
+      ipCoveragePath: { col: COL.ipCoveragePath, label: "IP Coverage Path" },
+      cgmCoveragePath: { col: COL.cgmCoveragePath, label: "CGM Coverage Path" },
+      cgmLanguage: { col: COL.cgmLanguage, label: "CGM Language" },
+    };
+    for (const cw of buildScriptCoverageWrites(state, showCgm, showIp)) {
+      const meta = COVERAGE_WRITE_META[cw.field];
+      if (cw.value === null) pushClearStatus(meta.label, meta.col);
+      else pushLabel(meta.label, meta.col, cw.value);
     }
     // Diagnosis / Last Visit / MR Expiry — only synced while the Clinicals
     // section is visible (Clinicals received). When hidden, leave Monday untouched.

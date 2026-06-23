@@ -185,6 +185,8 @@ export function seedEvalStateFromPatient(patient: Patient): EvalState {
   // IP / CGM Coverage Path — only seed if Monday has a non-"Not Serving" value
   // since "Not Serving" is auto-derived from Serving on send and isn't a path
   // the rep can pick from the dropdown.
+  // Coverage paths. "Not Serving" is handled by the serving-driven greying (showCgm
+  // /showIp), so it isn't seeded here.
   if (patient.ipCoveragePath && patient.ipCoveragePath !== "Not Serving") {
     seed.ipCoveragePath = patient.ipCoveragePath as EvalState["ipCoveragePath"];
   }
@@ -946,6 +948,32 @@ export function computeCgmInvalidReasons(state: EvalState, showCgm: boolean): st
   // CGM Language (also its own Yes/No/Invalid column)
   if (state.cgmLanguage === "Invalid") out.push("CGM Language invalid");
   return out;
+}
+
+/** Coverage-path + CGM-Language status-column writes for the Script/Clinicals
+ *  Evaluation step. Pure + the single source of truth so EVERY selection saves
+ *  and round-trips — crucially "Not Serving" (written as the coverage path, not
+ *  dropped), and the path/language persist whenever the section applies, not only
+ *  when the script was received. `value: null` means clear the column. */
+export type ScriptCoverageField = "ipCoveragePath" | "cgmCoveragePath" | "cgmLanguage";
+export function buildScriptCoverageWrites(
+  state: EvalState,
+  showCgm: boolean,
+  showIp: boolean,
+): { field: ScriptCoverageField; value: string | null }[] {
+  const writes: { field: ScriptCoverageField; value: string | null }[] = [];
+  // "Not Serving" is the greyed/not-served case (driven by `serving`); when the
+  // product IS served, persist whatever the rep selected (or clear) — regardless
+  // of whether the script was received, so received=No + a coverage path still saves.
+  writes.push({ field: "ipCoveragePath", value: showIp ? state.ipCoveragePath ?? null : "Not Serving" });
+  writes.push({ field: "cgmCoveragePath", value: showCgm ? state.cgmCoveragePath ?? null : "Not Serving" });
+  // CGM Language only applies to a language-bearing path; cleared otherwise so it
+  // never goes stale (when CGM is shown at all).
+  if (showCgm) {
+    const langPath = state.cgmCoveragePath === "Insulin" || state.cgmCoveragePath === "Hypo";
+    writes.push({ field: "cgmLanguage", value: langPath ? state.cgmLanguage ?? null : null });
+  }
+  return writes;
 }
 
 function splitDropdown(text?: string): string[] {
