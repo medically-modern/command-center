@@ -457,15 +457,17 @@ export function computeDoctorAskList(
     // MR is on file and current — surface specific record-level gaps as
     // their own rows.
 
-    // CGM coverage path:
-    //   - Insulin or Hypo → records have the right language → no ask
-    //   - Hypo Invalid, Missing, or unset → ask for hypoglycemia language
-    if (
-      showCgm &&
-      state.cgmCoveragePath !== "Insulin" &&
-      state.cgmCoveragePath !== "Hypo"
-    ) {
-      asks.push("Hypoglycemia language");
+    // CGM language — ask when CGM is served but the language isn't confirmed
+    // present in the records (cgmLanguage !== "Yes"). Wording follows the path:
+    // Insulin path → "Insulin language", Hypo path → "Hypoglycemia language".
+    if (showCgm && state.cgmCoveragePath && state.cgmCoveragePath !== "Not Serving") {
+      const langConfirmed =
+        (state.cgmCoveragePath === "Insulin" || state.cgmCoveragePath === "Hypo") &&
+        state.cgmLanguage === "Yes";
+      if (!langConfirmed) {
+        const hypo = state.cgmCoveragePath === "Hypo" || state.cgmCoveragePath === "Hypo Invalid";
+        asks.push(hypo ? "Hypoglycemia language" : "Insulin language");
+      }
     }
 
     // IP-path-driven record requirements
@@ -1041,10 +1043,15 @@ export function seedRequirementsFromMonday(patient: Patient): Partial<EvalState>
       out.lmn = out.ipLmnV === "Yes" ? "Yes & Valid" : out.ipLmnV === "Invalid" ? "Yes, but Invalid" : "No";
   }
 
-  // IP / CGM script "Invalid" validity (received state stays on its own column).
+  // IP / CGM script validity. Invalid comes from the reason dropdown; a received
+  // script that ISN'T flagged invalid is Valid — important so the doctor-ask
+  // builder (which gates OOW/malfunction asks on script === "Valid") fires on
+  // read-back. Received state itself lives on its own Yes/No column.
   if (ipInvalid.includes(IP_SCRIPT_INVALID_LABEL) || ipNo.includes(IP_SCRIPT_INVALID_LABEL))
     out.ipScriptValid = "Invalid";
+  else if (patient.ipScriptReceived === "Yes") out.ipScriptValid = "Valid";
   if (cgmInvalid.includes(CGM_SCRIPT_INVALID_LABEL)) out.cgmScriptValid = "Invalid";
+  else if (patient.cgmScriptReceived === "Yes") out.cgmScriptValid = "Valid";
 
   // CGM Language — its own Yes/No/Invalid column (color_mm4bb5sm).
   if (patient.cgmLanguage === "Yes" || patient.cgmLanguage === "No" || patient.cgmLanguage === "Invalid")

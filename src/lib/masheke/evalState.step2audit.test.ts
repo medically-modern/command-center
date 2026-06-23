@@ -7,6 +7,7 @@ import {
   buildScriptCoverageWrites,
   seedEvalStateFromPatient,
   computeMnChecklist,
+  computeDoctorAskList,
   type EvalState,
   type MnState,
 } from "./evalState";
@@ -199,5 +200,29 @@ describe("B — Medical Records read-back: every selection", () => {
   it("Clinicals received but expired (>6 months) → Clinicals invalid", () => {
     const cl = checklist({ mrsClinicals: "MR Received", lastVisit: "2020-01-01" }, false, true);
     expect(docState(cl, "Clinicals")).toBe("invalid");
+  });
+});
+
+describe("MN Request Consolidated regenerates on read-back (the Brandon 1 case)", () => {
+  it("OOW Pump reloaded from Monday yields the OOW + malfunction + CGM language asks", () => {
+    const patient = basePatient({
+      cgmScriptReceived: "Yes",
+      ipScriptReceived: "Yes",
+      cgmCoveragePath: "Insulin",
+      ipCoveragePath: "OOW Pump",
+      cgmLanguage: "No",
+      ipMnNoReasons: "Malfunction Missing, OOW Date not on script",
+      oowDateValue: "2020-12-12",
+      mrsClinicals: "MR Received",
+      lastVisit: recentVisit(),
+      diagnosis: "E10.65",
+    });
+    const seeded = seedEvalStateFromPatient(patient);
+    // received-but-not-invalid script restores as Valid so the asks fire
+    expect(seeded.ipScriptValid).toBe("Valid");
+    const asks = computeDoctorAskList(seeded, patient, true, true);
+    expect(asks).toContain("Insulin language");
+    expect(asks).toContain("Non-repairable malfunction reason");
+    expect(asks.some((a) => a.startsWith("Add OOW date of"))).toBe(true);
   });
 });
