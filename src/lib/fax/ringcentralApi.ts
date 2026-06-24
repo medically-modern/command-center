@@ -310,11 +310,25 @@ export interface InboundFax {
   contentType: string;
 }
 
-/** List inbound faxes from the RingCentral message store (newest first). */
-export async function fetchInboundFaxes(perPage = 50): Promise<InboundFax[]> {
+export interface FaxPage {
+  faxes: InboundFax[];
+  hasMore: boolean;
+  total: number;
+}
+
+/** List inbound faxes (newest first), paginated. RingCentral's message store
+ *  defaults to ~the last 24h when no dateFrom is given (why only ~today showed),
+ *  so we explicitly look back `sinceDays` (default 180) and page through. */
+export async function fetchInboundFaxes(
+  opts: { page?: number; perPage?: number; sinceDays?: number } = {},
+): Promise<FaxPage> {
+  const page = opts.page ?? 1;
+  const perPage = opts.perPage ?? 50;
+  const sinceDays = opts.sinceDays ?? 180;
+  const dateFrom = new Date(Date.now() - sinceDays * 24 * 60 * 60_000).toISOString();
   const url =
     `${RC_SERVER}/restapi/v1.0/account/~/extension/~/message-store` +
-    `?messageType=Fax&direction=Inbound&perPage=${perPage}`;
+    `?messageType=Fax&direction=Inbound&perPage=${perPage}&page=${page}&dateFrom=${encodeURIComponent(dateFrom)}`;
   const call = (token: string) => fetch(url, { headers: { Authorization: `Bearer ${token}` } });
   let res = await call(await getAccessToken());
   if (res.status === 401) {
@@ -332,8 +346,9 @@ export async function fetchInboundFaxes(perPage = 50): Promise<InboundFax[]> {
       from?: { phoneNumber?: string; name?: string; location?: string };
       attachments?: Array<{ uri?: string; contentType?: string }>;
     }>;
+    paging?: { totalElements?: number };
   };
-  return (json.records ?? [])
+  const faxes = (json.records ?? [])
     .map((r) => ({
       id: r.id,
       fromNumber: r.from?.phoneNumber ?? "",
@@ -346,6 +361,25 @@ export async function fetchInboundFaxes(perPage = 50): Promise<InboundFax[]> {
       contentType: r.attachments?.[0]?.contentType ?? "application/pdf",
     }))
     .sort((a, b) => new Date(b.creationTime).getTime() - new Date(a.creationTime).getTime());
+  const total = json.paging?.totalElements ?? faxes.length;
+  return { faxes, hasMore: page * perPage < total, total };
+}
+
+/** Mark a fax Read or Unread in the RingCentral message store. */
+export async function setFaxRead(id: number, read: boolean): Promise<void> {
+  const url = `${RC_SERVER}/restapi/v1.0/account/~/extension/~/message-store/${id}`;
+  const call = (token: string) =>
+    fetch(url, {
+      method: "PUT",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ readStatus: read ? "Read" : "Unread" }),
+    });
+  let res = await call(await getAccessToken());
+  if (res.status === 401) {
+    clearCachedToken();
+    res = await call(await getAccessToken());
+  }
+  if (!res.ok) throw new Error(`RingCentral mark ${read ? "read" : "unread"} failed (${res.status})`);
 }
 
 /** Download a fax's PDF (auth required) and return a blob: URL for in-app

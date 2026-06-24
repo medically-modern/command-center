@@ -14,7 +14,6 @@ import { ROLES, type RoleConfig } from "@/lib/config";
 import type { RoleCounts } from "@/hooks/useRoleCounts";
 import { filterQuery } from "@/lib/roleView";
 import type { RoleFilter } from "@/lib/accessStore";
-import { openFaxInbox } from "@/components/shared/FaxInbox";
 import { useServerBaseline } from "@/hooks/useServerBaseline";
 import { cn } from "@/lib/utils";
 import {
@@ -218,7 +217,7 @@ export function DailyBurndown({
   // The FAX bar has no route — clicking it opens the in-app Fax Inbox.
   const barClickable = (id: string, route: string) => id === "fax" || (!!route && id !== "authDenied");
   const openBar = (id: string, route: string) => {
-    if (id === "fax") return openFaxInbox();
+    if (id === "fax") return navigate("/fax-inbox");
     if (route && id !== "authDenied") navigate(linkFor(id, route));
   };
 

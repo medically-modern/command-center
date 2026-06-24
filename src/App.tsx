@@ -4,7 +4,6 @@ import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-route
 import { lazy, Suspense } from "react";
 import Index from "./pages/Index";
 import { FileViewerHost } from "./components/shared/FileViewerModal";
-import { FaxInboxHost } from "./components/shared/FaxInbox";
 import AuthGate from "./components/AuthGate";
 import AccessProvider from "./components/AccessProvider";
 
@@ -42,6 +41,9 @@ const AccessAdminPage = lazy(() => import("./pages/AccessAdminPage"));
 // Oversight (full-screen managers grid)
 const OversightPage = lazy(() => import("./pages/OversightPage"));
 
+// Fax Inbox (RingCentral inbound faxes)
+const FaxInboxPage = lazy(() => import("./pages/FaxInboxPage"));
+
 const queryClient = new QueryClient();
 
 const Loading = () => (
@@ -68,7 +70,6 @@ const App = () => (
   <QueryClientProvider client={queryClient}>
     <Toaster position="top-right" />
     <FileViewerHost />
-    <FaxInboxHost />
     <BrowserRouter basename={basename}>
       <Suspense fallback={<Loading />}>
         <Routes>
@@ -92,6 +93,7 @@ const App = () => (
           <Route path="/system-mgmt" element={<SystemMgmtPage />} />
           <Route path="/access" element={<AccessAdminPage />} />
           <Route path="/oversight" element={<OversightPage />} />
+          <Route path="/fax-inbox" element={<FaxInboxPage />} />
           <Route path="*" element={<Index />} />
         </Routes>
       </Suspense>
