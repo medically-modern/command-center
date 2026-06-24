@@ -14,7 +14,7 @@
  * 'scrubbed' marker); only failed jobs retain it for retry/debugging.
  */
 
-import { verifyGoogleToken, authEnforced } from "./auth.mjs";
+import { verifyGoogleToken } from "./auth.mjs";
 
 const MONDAY_URL = "https://api.monday.com/v2";
 const TOKEN = process.env.MONDAY_API_TOKEN;
@@ -151,10 +151,12 @@ export function registerSend({ app, pool, clientIp }) {
     if (!itemId || !boardId) return res.status(400).json({ error: "itemId and boardId required" });
     if (!dataColumns && !stageColumns) return res.status(400).json({ error: "dataColumns or stageColumns required" });
 
+    // Auth is enforced once, at the website's Google sign-in gate — not on every
+    // send. We still verify the token WHEN PRESENT so a fresh sign-in attributes
+    // the write to a verified email; a stale or absent token no longer blocks the
+    // write (it falls back to the X-MM-User email), matching the non-blocking
+    // /gql path. See project_access_gate / monday-gateway-service memory.
     const gUser = await verifyGoogleToken(req.headers["x-mm-auth"]);
-    if (authEnforced() && !gUser) {
-      return res.status(401).json({ error: "Authentication required — sign in with your @medicallymodern.com account." });
-    }
     const actor = gUser?.email || req.headers["x-mm-user"] || b.actor || null;
     const ip = clientIp ? clientIp(req) : null;
     const payload = { itemId, boardId, dataColumns: dataColumns || {}, stageColumns: stageColumns || {}, verify: verify || [], createLabelsIfMissing: !!createLabelsIfMissing };
