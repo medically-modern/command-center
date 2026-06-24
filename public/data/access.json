@@ -33,7 +33,8 @@
     "janelle@medicallymodern.com": {
       "name": "Janelle",
       "roles": [
-        "profile"
+        "profile",
+        "confirmReceipt"
       ]
     }
   }
