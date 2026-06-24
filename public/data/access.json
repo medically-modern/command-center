@@ -20,7 +20,7 @@
         "evaluate": 2,
         "sendRequest": 3,
         "chaseParachute": 4,
-        "updateClinicals": 5
+        "updateClinicals": 2
       }
     },
     "samantha@medicallymodern.com": {
