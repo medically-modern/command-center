@@ -19,7 +19,8 @@
         "fax": 1,
         "evaluate": 2,
         "sendRequest": 3,
-        "chaseParachute": 4
+        "chaseParachute": 4,
+        "updateClinicals": 5
       }
     },
     "samantha@medicallymodern.com": {
