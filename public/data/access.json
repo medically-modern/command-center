@@ -2,8 +2,7 @@
   "managers": [
     "josh@medicallymodern.com",
     "brandon@medicallymodern.com",
-    "corey@medicallymodern.com",
-    "janelle@medicallymodern.com"
+    "corey@medicallymodern.com"
   ],
   "processors": {
     "masheke@medicallymodern.com": {
@@ -30,6 +29,10 @@
         "chaseFax",
         "confirmReceipt"
       ]
+    },
+    "janelle@medicallymodern.com": {
+      "name": "Janelle",
+      "roles": []
     }
   }
 }
