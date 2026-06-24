@@ -18,7 +18,7 @@
       "roleOrder": {
         "fax": 1,
         "evaluate": 3,
-        "sendRequest": 3,
+        "sendRequest": 4,
         "chaseParachute": 4,
         "updateClinicals": 2
       }
