@@ -5,60 +5,35 @@ import { DashboardMainView } from "@/components/dashboard/DashboardMainView";
 import { ThemePickerButton } from "@/components/ThemePicker";
 import { cn } from "@/lib/utils";
 import { Shield, LayoutDashboard, Stethoscope, KeyRound } from "lucide-react";
-import { managerPeople, processorPeople, type Person } from "@/lib/people";
-import { useRoleCounts } from "@/hooks/useRoleCounts";
-import { useEscalatedCounts } from "@/hooks/useEscalatedCounts";
-
-type Tab = "managers" | "processors";
+import { processorPeople, type Person } from "@/lib/people";
 
 const Index = () => {
   /**
-   * View state (tab / selected person) lives in the URL so role pages' back
-   * navigation restores the exact prior screen and refresh keeps you in place.
-   * The selected-person key is the email local part (no full email in the URL).
-   * All writes use { replace: true } so sidebar clicks never stack history.
+   * Manager landing. The roster lists processors (including dual
+   * manager+processors); selecting one shows their assigned-role workload with
+   * that person's per-role filters + SOP order. "Managers" opens the
+   * full-screen Oversight grid (/oversight). Managers themselves are configured
+   * on the Manage Access page, not listed here.
    *
-   * People come entirely from the access list (access.json): managers (full
-   * access — all role bars) and processors (only their checked bars). Edit who
-   * has which role on the Manage Access page.
+   * The selected-person key (email local part) lives in the URL so role pages'
+   * back navigation restores the exact prior screen.
    */
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
   const { access, email, config } = useAccessContext();
 
-  const activeTab: Tab = searchParams.get("tab") === "processors" ? "processors" : "managers";
-  // Managers tab = escalation oversight (everything); Processors tab = live counts.
-  const managerMode = activeTab === "managers";
-
-  const { counts, loading: countsLoading } = useRoleCounts();
-  const { counts: escCounts, loading: escLoading } = useEscalatedCounts(managerMode);
-
-  const managers = managerPeople(config);
-  const processors = processorPeople(config);
-  const visiblePeople = activeTab === "processors" ? processors : managers;
+  const visiblePeople = processorPeople(config);
 
   const userParam = searchParams.get("user");
   const selectedPerson: Person | null =
     (userParam && visiblePeople.find((p) => p.key === userParam)) || null;
 
-  const updateView = (patch: { tab?: Tab; user?: string | null }) => {
+  const setSelectedKey = (key: string) => {
     const next = new URLSearchParams(searchParams);
-    const tab = patch.tab ?? activeTab;
-    next.set("tab", tab);
-    // Changing tabs switches people lists, so a carried-over selection never
-    // applies — drop it unless this patch explicitly sets one.
-    if (patch.tab && patch.tab !== activeTab && patch.user === undefined) {
-      next.delete("user");
-    } else {
-      const user = patch.user !== undefined ? patch.user : selectedPerson?.key ?? null;
-      if (user) next.set("user", user);
-      else next.delete("user");
-    }
+    if (key) next.set("user", key);
+    else next.delete("user");
     setSearchParams(next, { replace: true });
   };
-
-  const setActiveTab = (tab: Tab) => updateView({ tab });
-  const setSelectedKey = (key: string) => updateView({ user: key });
 
   // Processors get a stripped, no-sidebar view of only their assigned bars.
   if (access.type === "processor") {
@@ -80,8 +55,9 @@ const Index = () => {
         </header>
 
         <div className="flex border-b border-border">
-          <TabButton active={activeTab === "managers"} onClick={() => setActiveTab("managers")} icon={<Shield className="w-4 h-4" />} label="Managers" />
-          <TabButton active={activeTab === "processors"} onClick={() => setActiveTab("processors")} icon={<LayoutDashboard className="w-4 h-4" />} label="Processors" />
+          {/* "Managers" opens the full-screen Oversight grid. */}
+          <TabButton active={false} onClick={() => navigate("/oversight")} icon={<Shield className="w-4 h-4" />} label="Managers" />
+          <TabButton active onClick={() => {}} icon={<LayoutDashboard className="w-4 h-4" />} label="Processors" />
         </div>
 
         <div className="flex-1 overflow-y-auto p-4">
@@ -89,7 +65,7 @@ const Index = () => {
             people={visiblePeople}
             selectedKey={selectedPerson?.key ?? null}
             onSelect={setSelectedKey}
-            emptyLabel={activeTab === "processors" ? "No processors yet." : "No managers yet."}
+            emptyLabel="No processors yet."
           />
         </div>
 
@@ -107,12 +83,7 @@ const Index = () => {
 
       {/* ── Main content area ────────────────────────────────── */}
       <div className="flex-1 flex flex-col min-w-0">
-        <DashboardMainView
-          person={selectedPerson}
-          roleCounts={managerMode ? escCounts : counts}
-          countsLoading={managerMode ? escLoading : countsLoading}
-          managerMode={managerMode}
-        />
+        <DashboardMainView person={selectedPerson} />
       </div>
     </div>
   );
@@ -127,11 +98,14 @@ function UserList({ people, selectedKey, onSelect, emptyLabel }: { people: Perso
       <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3">Team Members</p>
       {people.map((person) => {
         const active = selectedKey === person.key;
+        const n = person.roleIds.length;
         const roleNote = person.isManager
-          ? "Full access"
-          : person.roleIds.length === 0
+          ? n > 0
+            ? `Manager · ${n} role${n > 1 ? "s" : ""}`
+            : "Full access"
+          : n === 0
             ? "No roles"
-            : `${person.roleIds.length} role${person.roleIds.length > 1 ? "s" : ""}`;
+            : `${n} role${n > 1 ? "s" : ""}`;
         return (
           <button
             key={person.key}
@@ -145,7 +119,10 @@ function UserList({ people, selectedKey, onSelect, emptyLabel }: { people: Perso
               {person.name[0]}
             </div>
             <div className="flex-1 text-left">
-              <div className="text-sm">{person.name}</div>
+              <div className="text-sm flex items-center gap-1.5">
+                {person.name}
+                {person.isManager && <Shield className="w-3 h-3 text-amber-500" aria-label="Also a manager" />}
+              </div>
               <div className="text-[11px] text-muted-foreground">{roleNote}</div>
             </div>
           </button>

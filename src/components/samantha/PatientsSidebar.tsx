@@ -18,6 +18,8 @@ import type { SidebarGroup as SidebarGroupType } from "@/hooks/samantha/useMonda
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { clearStatusColumn, COL } from "@/lib/samantha/mondayApi";
+import { useSearchParams } from "react-router-dom";
+import { viewFilterFromParams } from "@/lib/roleView";
 
 const AUTH_TABS: { key: SidebarGroupType; label: string }[] = [
   { key: "submitAuth", label: "Submit Auth" },
@@ -99,9 +101,17 @@ interface Props {
   managerMode?: boolean;
 }
 
-export function PatientsSidebar({ patients, selectedId, onSelect, loading, error, onRefresh, activeGroup, onGroupChange, showGroupTabs = false, managerMode = false }: Props) {
+export function PatientsSidebar({ patients, selectedId, onSelect, loading, error, onRefresh, activeGroup, onGroupChange, showGroupTabs = false }: Props) {
   const { state } = useSidebar();
   const [searchQuery, setSearchQuery] = useState("");
+
+  // 3-way filter from the URL. `managerMode` (escalated-only) is kept as an
+  // alias for the existing labels.
+  const [sp] = useSearchParams();
+  const viewFilter = viewFilterFromParams(sp);
+  const escalatedOnly = viewFilter === "escalated";
+  const includeEscalated = viewFilter !== "nonEscalated";
+  const managerMode = escalatedOnly;
 
   const filteredBySearch = searchQuery.trim()
     ? patients.filter((p) => p.name.toLowerCase().includes(searchQuery.trim().toLowerCase()))
@@ -115,16 +125,18 @@ export function PatientsSidebar({ patients, selectedId, onSelect, loading, error
   // Split patients into active vs follow-up vs escalated vs both.
   // Manager view: the main list IS the escalated list — the separate
   // escalated/follow-up sections are hidden.
-  const escalatedPatients = managerMode
+  // escalated-only → just escalated; non-escalated → hide the escalated/both
+  // sections; all → show everything.
+  const escalatedPatients = escalatedOnly || !includeEscalated
     ? []
     : filteredBySearch.filter((p) => p.escalated && p.followUp !== "Follow Up");
-  const activePatients = managerMode
+  const activePatients = escalatedOnly
     ? filteredBySearch.filter((p) => p.escalated)
     : filteredBySearch.filter((p) => !p.escalated && p.followUp !== "Follow Up");
-  const followUpPatients = managerMode
+  const followUpPatients = escalatedOnly
     ? []
     : filteredBySearch.filter((p) => p.followUp === "Follow Up" && !p.escalated);
-  const bothPatients = managerMode
+  const bothPatients = escalatedOnly || !includeEscalated
     ? []
     : filteredBySearch.filter((p) => p.escalated && p.followUp === "Follow Up");
 

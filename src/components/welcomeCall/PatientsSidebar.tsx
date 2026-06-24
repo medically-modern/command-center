@@ -17,6 +17,8 @@ import type { Patient } from "@/lib/welcomeCall/workflow";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { clearStatusColumn, clearDateColumn, COL } from "@/lib/welcomeCall/mondayApi";
+import { useSearchParams } from "react-router-dom";
+import { viewFilterFromParams } from "@/lib/roleView";
 
 /** Convert YYYY-MM-DD → MM/DD/YYYY */
 function fmtDate(iso: string): string {
@@ -35,7 +37,7 @@ interface Props {
   managerMode?: boolean;
 }
 
-export function PatientsSidebar({ patients, selectedId, onSelect, loading, error, onRefresh, managerMode = false }: Props) {
+export function PatientsSidebar({ patients, selectedId, onSelect, loading, error, onRefresh }: Props) {
   const { state } = useSidebar();
   const [searchQuery, setSearchQuery] = useState("");
 
@@ -45,15 +47,21 @@ export function PatientsSidebar({ patients, selectedId, onSelect, loading, error
 
   const collapsed = state === "collapsed";
 
+  const [sp] = useSearchParams();
+  const viewFilter = viewFilterFromParams(sp);
+  const escalatedOnly = viewFilter === "escalated";
+  const includeEscalated = viewFilter !== "nonEscalated";
+  const managerMode = escalatedOnly;
+
   // Split patients into active vs follow-up
   // "Done" is the text Monday returns for status index 1 (our follow-up marker)
   // Manager view: the main list IS the escalated list; other sections hide.
-  const escalatedPatients = managerMode ? [] : filteredBySearch.filter((p) => p.escalated && p.followUp !== "Done");
-  const activePatients = managerMode
+  const escalatedPatients = escalatedOnly || !includeEscalated ? [] : filteredBySearch.filter((p) => p.escalated && p.followUp !== "Done");
+  const activePatients = escalatedOnly
     ? filteredBySearch.filter((p) => p.escalated)
     : filteredBySearch.filter((p) => !p.escalated && p.followUp !== "Done");
-  const followUpPatients = managerMode ? [] : filteredBySearch.filter((p) => p.followUp === "Done" && !p.escalated);
-  const bothPatients = managerMode ? [] : filteredBySearch.filter((p) => p.escalated && p.followUp === "Done");
+  const followUpPatients = escalatedOnly ? [] : filteredBySearch.filter((p) => p.followUp === "Done" && !p.escalated);
+  const bothPatients = escalatedOnly || !includeEscalated ? [] : filteredBySearch.filter((p) => p.escalated && p.followUp === "Done");
 
   return (
     <Sidebar collapsible="icon">

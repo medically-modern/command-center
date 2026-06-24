@@ -15,6 +15,8 @@ import { Button } from "@/components/ui/button";
 import { AlertTriangle, Loader2, RefreshCw, User, AlertCircle, Search, X} from "lucide-react";
 import type { Patient } from "@/lib/finalConfirm/workflow";
 import { cn } from "@/lib/utils";
+import { useSearchParams } from "react-router-dom";
+import { viewFilterFromParams } from "@/lib/roleView";
 
 interface Props {
   patients: Patient[];
@@ -27,7 +29,7 @@ interface Props {
   managerMode?: boolean;
 }
 
-export function PatientsSidebar({ patients, selectedId, onSelect, loading, error, onRefresh, managerMode = false }: Props) {
+export function PatientsSidebar({ patients, selectedId, onSelect, loading, error, onRefresh }: Props) {
   const { state } = useSidebar();
   const [searchQuery, setSearchQuery] = useState("");
 
@@ -35,12 +37,18 @@ export function PatientsSidebar({ patients, selectedId, onSelect, loading, error
     ? patients.filter((p) => p.name.toLowerCase().includes(searchQuery.trim().toLowerCase()))
     : patients;
 
-  // Manager view: main list shows ONLY escalated patients; the separate
-  // escalated section is hidden (it would duplicate the list).
-  const mainPatients = managerMode
+  const [sp] = useSearchParams();
+  const viewFilter = viewFilterFromParams(sp);
+  const escalatedOnly = viewFilter === "escalated";
+  const includeEscalated = viewFilter !== "nonEscalated";
+  const managerMode = escalatedOnly;
+
+  // escalated-only → main = escalated, no separate section; non-escalated →
+  // hide the escalated section; all → show it.
+  const mainPatients = escalatedOnly
     ? filteredBySearch.filter((p) => p.escalated)
     : filteredBySearch.filter((p) => !p.escalated);
-  const escalatedSection = managerMode ? [] : filteredBySearch.filter((p) => p.escalated);
+  const escalatedSection = escalatedOnly || !includeEscalated ? [] : filteredBySearch.filter((p) => p.escalated);
 
   const collapsed = state === "collapsed";
 

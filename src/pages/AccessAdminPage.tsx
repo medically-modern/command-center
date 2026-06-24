@@ -2,15 +2,35 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAccessContext } from "@/components/AccessProvider";
 import { ROLES } from "@/lib/config";
+import type { RoleFilter } from "@/lib/accessStore";
+import { roleFilterFor, roleOrderNumber } from "@/lib/roleView";
 import { cn } from "@/lib/utils";
 import { ArrowLeft, Shield, UserCog, X, Plus } from "lucide-react";
 
-/** Managers-only UI to assign each email a view: Manager (full) or
- *  Processor (only their assigned bars). Unlisted emails get no access. */
+/** Managers-only UI. Every person can be a Manager (full access), a Processor
+ *  (only their checked bars), or BOTH. Each assigned role carries a filter
+ *  (All / Non-escalated / Escalated) and an optional SOP order number. */
+const FILTER_OPTS: { value: RoleFilter; label: string }[] = [
+  { value: "nonEscalated", label: "Non-escalated" },
+  { value: "all", label: "All" },
+  { value: "escalated", label: "Escalated" },
+];
+
 export default function AccessAdminPage() {
   const navigate = useNavigate();
-  const { access, email: me, config, addManager, removeEmail, addProcessor, setProcessorName, toggleProcessorRole } =
-    useAccessContext();
+  const {
+    access,
+    email: me,
+    config,
+    addManager,
+    setManager,
+    removeEmail,
+    addProcessor,
+    setProcessorName,
+    toggleProcessorRole,
+    setRoleFilter,
+    setRoleOrder,
+  } = useAccessContext();
   const [email, setEmail] = useState("");
   const [name, setName] = useState("");
 
@@ -39,7 +59,11 @@ export default function AccessAdminPage() {
   }
 
   const norm = (e: string) => e.trim().toLowerCase();
-  const procEmails = Object.keys(config.processors);
+
+  // Unified people list: union of managers[] and processors{}.
+  const allEmails = Array.from(
+    new Set([...config.managers.map(norm), ...Object.keys(config.processors).map(norm)]),
+  ).sort();
 
   const onAddManager = () => {
     if (!norm(email)) return;
@@ -62,11 +86,13 @@ export default function AccessAdminPage() {
         </button>
         <div>
           <h1 className="text-lg font-semibold text-foreground">Access Management</h1>
-          <p className="text-xs text-muted-foreground">Assign each email a view. Changes sync across devices.</p>
+          <p className="text-xs text-muted-foreground">
+            Managers see everything. Processors see their checked bars — each with a filter and order. Changes sync across devices.
+          </p>
         </div>
       </header>
 
-      <main className="max-w-4xl mx-auto p-6 space-y-8">
+      <main className="max-w-5xl mx-auto p-6 space-y-8">
         {/* Add a person */}
         <section className="bg-card border border-border rounded-xl p-5 space-y-3">
           <h2 className="text-sm font-semibold text-foreground flex items-center gap-2">
@@ -92,72 +118,124 @@ export default function AccessAdminPage() {
               <UserCog className="w-4 h-4" /> Add as Processor
             </button>
           </div>
+          <p className="text-xs text-muted-foreground">
+            A person can be both — toggle <b>Manager</b> on their card and still assign them processor roles.
+          </p>
         </section>
 
-        {/* Managers */}
+        {/* People */}
         <section className="space-y-3">
           <h2 className="text-sm font-semibold text-foreground flex items-center gap-2">
-            <Shield className="w-4 h-4" /> Managers <span className="text-muted-foreground font-normal">— full access</span>
+            <UserCog className="w-4 h-4" /> People
           </h2>
-          {config.managers.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No managers yet.</p>
-          ) : (
-            <div className="flex flex-wrap gap-2">
-              {config.managers.map((m) => {
-                const isSelf = norm(m) === norm(me);
-                return (
-                  <span key={m} className="inline-flex items-center gap-2 rounded-full bg-card border border-border px-3 py-1.5 text-sm">
-                    {m}{isSelf && <span className="text-[10px] text-muted-foreground">(you)</span>}
-                    <button
-                      onClick={() => !isSelf && removeEmail(m)}
-                      disabled={isSelf}
-                      title={isSelf ? "You can't remove your own access" : "Remove"}
-                      className={cn("rounded p-0.5", isSelf ? "opacity-30 cursor-not-allowed" : "hover:bg-muted")}
-                    >
-                      <X className="w-3.5 h-3.5" />
-                    </button>
-                  </span>
-                );
-              })}
-            </div>
-          )}
-        </section>
-
-        {/* Processors */}
-        <section className="space-y-3">
-          <h2 className="text-sm font-semibold text-foreground flex items-center gap-2">
-            <UserCog className="w-4 h-4" /> Processors <span className="text-muted-foreground font-normal">— only the bars you check</span>
-          </h2>
-          {procEmails.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No processors yet. Add one above, then check which bars they see.</p>
+          {allEmails.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No one added yet. Add a person above.</p>
           ) : (
             <div className="space-y-4">
-              {procEmails.map((pe) => {
-                const p = config.processors[pe];
+              {allEmails.map((pe) => {
+                const isManager = config.managers.some((m) => norm(m) === pe);
+                const profile = config.processors[pe];
+                const roles = profile?.roles ?? [];
+                const isSelf = pe === norm(me);
                 return (
                   <div key={pe} className="bg-card border border-border rounded-xl p-4 space-y-3">
+                    {/* Header row */}
                     <div className="flex items-center gap-3 flex-wrap">
-                      <div className="font-medium text-sm">{pe}</div>
-                      <input
-                        value={p.name}
-                        onChange={(e) => setProcessorName(pe, e.target.value)}
-                        placeholder="Display name"
-                        className="w-40 rounded-lg border border-border bg-background px-2 py-1 text-sm"
-                      />
-                      <span className="text-xs text-muted-foreground">{p.roles.length} bar{p.roles.length !== 1 ? "s" : ""}</span>
-                      <button onClick={() => removeEmail(pe)} className="ml-auto inline-flex items-center gap-1 text-xs text-red-500 hover:text-red-600">
+                      <div className="font-medium text-sm">
+                        {pe}
+                        {isSelf && <span className="ml-1 text-[10px] text-muted-foreground">(you)</span>}
+                      </div>
+                      {profile ? (
+                        <input
+                          value={profile.name}
+                          onChange={(e) => setProcessorName(pe, e.target.value)}
+                          placeholder="Display name"
+                          className="w-40 rounded-lg border border-border bg-background px-2 py-1 text-sm"
+                        />
+                      ) : (
+                        <span className="text-xs text-muted-foreground">{pe.split("@")[0]}</span>
+                      )}
+
+                      {/* Manager toggle (full access) */}
+                      <label
+                        className={cn(
+                          "inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs",
+                          isSelf ? "opacity-60 cursor-not-allowed" : "cursor-pointer",
+                          isManager ? "border-amber-400/50 bg-amber-400/10 text-amber-600" : "border-border hover:bg-muted/40",
+                        )}
+                        title={isSelf ? "You can't remove your own manager access" : "Full access to the whole Command Center"}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={isManager}
+                          disabled={isSelf}
+                          onChange={() => setManager(pe, !isManager)}
+                          className="accent-amber-500"
+                        />
+                        <Shield className="w-3.5 h-3.5" /> Manager
+                      </label>
+
+                      <span className="text-xs text-muted-foreground">{roles.length} bar{roles.length !== 1 ? "s" : ""}</span>
+                      <button
+                        onClick={() => !isSelf && removeEmail(pe)}
+                        disabled={isSelf}
+                        className={cn(
+                          "ml-auto inline-flex items-center gap-1 text-xs",
+                          isSelf ? "text-muted-foreground/40 cursor-not-allowed" : "text-red-500 hover:text-red-600",
+                        )}
+                      >
                         <X className="w-3.5 h-3.5" /> Remove
                       </button>
                     </div>
-                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
+
+                    {/* Roles: checkbox + filter + SOP order */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
                       {ROLES.map((role) => {
-                        const on = p.roles.includes(role.id);
+                        const on = roles.includes(role.id);
                         return (
-                          <label key={role.id} className={cn("flex items-center gap-2 rounded-lg border px-2.5 py-1.5 text-sm cursor-pointer", on ? "border-primary/40 bg-primary/5" : "border-border hover:bg-muted/40")}>
-                            <input type="checkbox" checked={on} onChange={() => toggleProcessorRole(pe, role.id)} className="accent-primary" />
-                            <span className={cn("w-2 h-2 rounded-full shrink-0", role.color)} />
-                            <span className="truncate">{role.label}</span>
-                          </label>
+                          <div
+                            key={role.id}
+                            className={cn(
+                              "flex items-center gap-2 rounded-lg border px-2.5 py-1.5 text-sm",
+                              on ? "border-primary/40 bg-primary/5" : "border-border",
+                            )}
+                          >
+                            <label className="flex items-center gap-2 cursor-pointer flex-1 min-w-0">
+                              <input
+                                type="checkbox"
+                                checked={on}
+                                onChange={() => toggleProcessorRole(pe, role.id)}
+                                className="accent-primary"
+                              />
+                              <span className={cn("w-2 h-2 rounded-full shrink-0", role.color)} />
+                              <span className="truncate">{role.label}</span>
+                            </label>
+                            {on && (
+                              <>
+                                <select
+                                  value={roleFilterFor(profile, role.id)}
+                                  onChange={(e) => setRoleFilter(pe, role.id, e.target.value as RoleFilter)}
+                                  className="rounded border border-border bg-background px-1 py-0.5 text-[11px]"
+                                  title="Which patients this rep sees for this role"
+                                >
+                                  {FILTER_OPTS.map((o) => (
+                                    <option key={o.value} value={o.value}>{o.label}</option>
+                                  ))}
+                                </select>
+                                <input
+                                  type="number"
+                                  min={1}
+                                  value={roleOrderNumber(profile, role.id) ?? ""}
+                                  onChange={(e) =>
+                                    setRoleOrder(pe, role.id, e.target.value === "" ? null : parseInt(e.target.value, 10))
+                                  }
+                                  placeholder="#"
+                                  className="w-11 rounded border border-border bg-background px-1 py-0.5 text-[11px] tabular-nums"
+                                  title="SOP order (1 = first)"
+                                />
+                              </>
+                            )}
+                          </div>
                         );
                       })}
                     </div>

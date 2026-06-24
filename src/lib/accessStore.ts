@@ -24,9 +24,19 @@ const PAT = import.meta.env.VITE_GITHUB_PAT as string | undefined;
 const API_BASE = `https://api.github.com/repos/${REPO}/contents/${FILE_PATH}`;
 const POLL_INTERVAL = 10_000;
 
+/** Per-role escalation scope a processor sees for a given role.
+ *  "nonEscalated" = today's processor view (escalated hidden);
+ *  "escalated"    = only escalated (today's manager view);
+ *  "all"          = both. */
+export type RoleFilter = "all" | "nonEscalated" | "escalated";
+
 export interface ProcessorProfile {
   name: string;
   roles: string[];
+  /** Per-role filter. A role missing here defaults to "nonEscalated". */
+  roleFilters?: Record<string, RoleFilter>;
+  /** Per-role SOP order number (1,2,3…). Missing → falls back to config order. */
+  roleOrder?: Record<string, number>;
 }
 export interface AccessConfig {
   managers: string[];
@@ -144,14 +154,27 @@ export function useAccess() {
     });
   }, []);
 
+  /** Add to managers WITHOUT touching any processor profile — a person can be
+   *  both (manager view on login, still listed/assigned as a processor). */
   const addManager = useCallback((email: string) => {
     const e = norm(email);
     if (!e) return;
     mutate((prev) => {
-      const processors = { ...prev.processors };
-      delete processors[Object.keys(processors).find((k) => norm(k) === e) || ""];
       const managers = prev.managers.some((m) => norm(m) === e) ? prev.managers : [...prev.managers, e];
-      return { managers, processors };
+      return { ...prev, managers };
+    });
+  }, [mutate]);
+
+  /** Toggle the manager flag on/off without disturbing the processor profile. */
+  const setManager = useCallback((email: string, isManager: boolean) => {
+    const e = norm(email);
+    if (!e) return;
+    mutate((prev) => {
+      const has = prev.managers.some((m) => norm(m) === e);
+      let managers = prev.managers;
+      if (isManager && !has) managers = [...prev.managers, e];
+      else if (!isManager && has) managers = prev.managers.filter((m) => norm(m) !== e);
+      return { ...prev, managers };
     });
   }, [mutate]);
 
@@ -165,14 +188,14 @@ export function useAccess() {
     });
   }, [mutate]);
 
+  /** Add a processor profile WITHOUT removing a manager flag — supports dual. */
   const addProcessor = useCallback((email: string, name: string) => {
     const e = norm(email);
     if (!e) return;
     mutate((prev) => {
-      const managers = prev.managers.filter((m) => norm(m) !== e);
       const pk = Object.keys(prev.processors).find((k) => norm(k) === e) || e;
       return {
-        managers,
+        ...prev,
         processors: { ...prev.processors, [pk]: prev.processors[pk] ?? { name: name || e, roles: [] } },
       };
     });
@@ -187,16 +210,49 @@ export function useAccess() {
     });
   }, [mutate]);
 
+  /** Toggle a role on/off. Creates the processor profile if missing (so a pure
+   *  manager can be given roles and become dual). Removing a role also prunes
+   *  its filter/order so stale settings don't linger. */
   const toggleProcessorRole = useCallback((email: string, roleId: string) => {
+    const e = norm(email);
+    if (!e) return;
+    mutate((prev) => {
+      const pk = Object.keys(prev.processors).find((k) => norm(k) === e) || e;
+      const cur = prev.processors[pk] ?? { name: e.split("@")[0], roles: [] };
+      const had = cur.roles.includes(roleId);
+      const roles = had ? cur.roles.filter((r) => r !== roleId) : [...cur.roles, roleId];
+      const next: ProcessorProfile = { ...cur, roles };
+      if (had) {
+        if (cur.roleFilters) { const rf = { ...cur.roleFilters }; delete rf[roleId]; next.roleFilters = rf; }
+        if (cur.roleOrder) { const ro = { ...cur.roleOrder }; delete ro[roleId]; next.roleOrder = ro; }
+      }
+      return { ...prev, processors: { ...prev.processors, [pk]: next } };
+    });
+  }, [mutate]);
+
+  /** Set the escalation filter for one of a processor's roles. */
+  const setRoleFilter = useCallback((email: string, roleId: string, filter: RoleFilter) => {
     const e = norm(email);
     mutate((prev) => {
       const pk = Object.keys(prev.processors).find((k) => norm(k) === e);
       if (!pk) return prev;
       const cur = prev.processors[pk];
-      const roles = cur.roles.includes(roleId)
-        ? cur.roles.filter((r) => r !== roleId)
-        : [...cur.roles, roleId];
-      return { ...prev, processors: { ...prev.processors, [pk]: { ...cur, roles } } };
+      const roleFilters = { ...(cur.roleFilters ?? {}), [roleId]: filter };
+      return { ...prev, processors: { ...prev.processors, [pk]: { ...cur, roleFilters } } };
+    });
+  }, [mutate]);
+
+  /** Set (or clear, when null/NaN) the SOP order number for one role. */
+  const setRoleOrder = useCallback((email: string, roleId: string, order: number | null) => {
+    const e = norm(email);
+    mutate((prev) => {
+      const pk = Object.keys(prev.processors).find((k) => norm(k) === e);
+      if (!pk) return prev;
+      const cur = prev.processors[pk];
+      const roleOrder = { ...(cur.roleOrder ?? {}) };
+      if (order == null || Number.isNaN(order)) delete roleOrder[roleId];
+      else roleOrder[roleId] = order;
+      return { ...prev, processors: { ...prev.processors, [pk]: { ...cur, roleOrder } } };
     });
   }, [mutate]);
 
@@ -204,9 +260,12 @@ export function useAccess() {
     config,
     loading,
     addManager,
+    setManager,
     removeEmail,
     addProcessor,
     setProcessorName,
     toggleProcessorRole,
+    setRoleFilter,
+    setRoleOrder,
   };
 }

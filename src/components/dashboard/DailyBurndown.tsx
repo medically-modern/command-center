@@ -12,6 +12,8 @@ import { useEffect, useState, useRef, useMemo, useCallback } from "react";
 import confetti from "canvas-confetti";
 import { ROLES, type RoleConfig } from "@/lib/config";
 import type { RoleCounts } from "@/hooks/useRoleCounts";
+import { filterQuery } from "@/lib/roleView";
+import type { RoleFilter } from "@/lib/accessStore";
 import { useServerBaseline } from "@/hooks/useServerBaseline";
 import { cn } from "@/lib/utils";
 import {
@@ -85,6 +87,13 @@ interface Props {
    * snapshot writes) and links into role pages with ?manager=1.
    */
   managerMode?: boolean;
+  /** Explicit role order (orderedRoleIds(profile)). When provided, bars render
+   *  in this sequence and show their 1..N position number. */
+  order?: string[];
+  /** Per-role filter — builds each bar's role-page link and tells the page
+   *  which escalation scope to show. Defaults per role to escalated
+   *  (managerMode) or nonEscalated. */
+  roleFilters?: Record<string, RoleFilter>;
 }
 
 const COLOR_MAP: Record<string, string> = {
@@ -117,6 +126,8 @@ export function DailyBurndown({
   countsLoading,
   visibleRoleIds,
   managerMode = false,
+  order,
+  roleFilters,
 }: Props) {
   const navigate = useNavigate();
   const { baseline: serverBaseline, loading: serverLoading } = useServerBaseline();
@@ -182,12 +193,26 @@ export function DailyBurndown({
   // bars instead of a burndown bar.
   const TASK_ROLE_IDS = new Set(["updateClinicals", "subscription"]);
 
+  // When an explicit order is provided (processor SOP sequence), sort by it and
+  // show position numbers; otherwise keep canonical config order.
+  const numbered = !!order;
+  const bySequence = (a: RoleConfig, b: RoleConfig) =>
+    (order ? order.indexOf(a.id) : 0) - (order ? order.indexOf(b.id) : 0);
+
   const roles = ROLES.filter(
     (r) => visibleRoleIds.includes(r.id) && !TASK_ROLE_IDS.has(r.id),
   );
+  if (order) roles.sort(bySequence);
   const taskRoles = ROLES.filter(
     (r) => visibleRoleIds.includes(r.id) && TASK_ROLE_IDS.has(r.id),
   );
+  if (order) taskRoles.sort(bySequence);
+
+  // Role-page link honoring each role's filter (falls back to managerMode).
+  const linkFor = (id: string, route: string) => {
+    const f = roleFilters?.[id] ?? (managerMode ? "escalated" : "nonEscalated");
+    return `${route}${filterQuery(f)}`;
+  };
 
   const barData = useMemo(() => {
     if (!snapshot) return [];
@@ -242,12 +267,15 @@ export function DailyBurndown({
                   )}
                   onClick={() => {
                     if (hasRoute)
-                      navigate(managerMode ? `${role.route}?manager=1` : role.route);
+                      navigate(linkFor(role.id, role.route));
                   }}
                   title={hasRoute ? `Open ${role.label}` : role.label}
                 >
                   <div className="flex items-center justify-between mb-1.5">
                     <span className="text-sm font-medium text-foreground flex items-center gap-2">
+                      {numbered && (
+                        <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-muted text-[11px] font-bold text-muted-foreground tabular-nums shrink-0">{i + 1}</span>
+                      )}
                       <div className={cn("w-2.5 h-2.5 rounded-full shrink-0", role.color)} />
                       {role.label}
                       {hasRoute && (
@@ -279,7 +307,7 @@ export function DailyBurndown({
                   <button
                     onClick={() =>
                       role.route &&
-                      navigate(managerMode ? `${role.route}?manager=1` : role.route)
+                      navigate(linkFor(role.id, role.route))
                     }
                     title={`Open ${role.label}`}
                     className="inline-flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-opacity hover:opacity-90"
@@ -365,12 +393,15 @@ export function DailyBurndown({
               )}
               onClick={() => {
                 if (hasRoute)
-                  navigate(managerMode ? `${d.role.route}?manager=1` : d.role.route);
+                  navigate(linkFor(d.role.id, d.role.route));
               }}
               title={hasRoute ? `Open ${d.role.label}` : d.role.label}
             >
               <div className="flex items-center justify-between mb-1.5">
                 <span className="text-sm font-medium text-foreground flex items-center gap-2">
+                  {numbered && (
+                    <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-muted text-[11px] font-bold text-muted-foreground tabular-nums shrink-0">{i + 1}</span>
+                  )}
                   <div
                     className={cn(
                       "w-2.5 h-2.5 rounded-full shrink-0",
@@ -448,7 +479,7 @@ export function DailyBurndown({
                 <button
                   onClick={() =>
                     role.route &&
-                    navigate(managerMode ? `${role.route}?manager=1` : role.route)
+                    navigate(linkFor(role.id, role.route))
                   }
                   title={`Open ${role.label}`}
                   className="inline-flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-opacity hover:opacity-90"

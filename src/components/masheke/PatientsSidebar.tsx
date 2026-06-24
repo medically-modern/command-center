@@ -18,6 +18,8 @@ import type { TabKey } from "@/hooks/masheke/useMondayPatients";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { clearStatusColumn, clearDateColumn, COL } from "@/lib/masheke/mondayApi";
+import { useSearchParams } from "react-router-dom";
+import { viewFilterFromParams } from "@/lib/roleView";
 
 /** Convert YYYY-MM-DD → MM/DD/YYYY */
 function fmtDate(iso: string): string {
@@ -88,9 +90,19 @@ interface Props {
   managerMode?: boolean;
 }
 
-export function PatientsSidebar({ patients, selectedId, onSelect, loading, error, onRefresh, activeTab, managerMode = false }: Props) {
+export function PatientsSidebar({ patients, selectedId, onSelect, loading, error, onRefresh, activeTab }: Props) {
   const { state } = useSidebar();
   const collapsed = state === "collapsed";
+
+  // 3-way filter from the URL (?manager=1 = escalated, ?filter=all = all, else
+  // non-escalated). `managerMode` is kept as an alias for the escalated-only
+  // labels/scheduling below.
+  const [sp] = useSearchParams();
+  const viewFilter = viewFilterFromParams(sp);
+  const escalatedOnly = viewFilter === "escalated";
+  const includeEscalated = viewFilter !== "nonEscalated";
+  const includeNonEscalated = viewFilter !== "escalated";
+  const managerMode = escalatedOnly;
 
   const [showScheduled, setShowScheduled] = useState(false);
   // const [filteredOpen, setFilteredOpen] = useState(false);
@@ -112,9 +124,10 @@ export function PatientsSidebar({ patients, selectedId, onSelect, loading, error
   // Processor view: escalated patients are hidden from the active view
   // (accessible via System Management).
   // Manager view: the INVERSE — only escalated patients are listed.
-  const activePatients = managerMode
-    ? patients.filter((p) => p.escalation === "Escalation Required")
-    : patients.filter((p) => p.escalation !== "Escalation Required");
+  const activePatients = patients.filter((p) => {
+    const esc = p.escalation === "Escalation Required";
+    return esc ? includeEscalated : includeNonEscalated;
+  });
 
   // Always use Eastern Time so all users see the same "today" regardless of their local timezone
   const etParts = new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());

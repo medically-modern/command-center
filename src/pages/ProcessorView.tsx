@@ -1,12 +1,14 @@
-import { useRoleCounts } from "@/hooks/useRoleCounts";
+import { useFilteredRoleCounts } from "@/hooks/useFilteredRoleCounts";
 import { DailyBurndown } from "@/components/dashboard/DailyBurndown";
 import { signOut } from "@/lib/shared/auth";
 import type { ProcessorProfile } from "@/lib/accessStore";
+import { orderedRoleIds } from "@/lib/roleView";
 import { LogOut, Stethoscope } from "lucide-react";
 
 /** Stripped, no-sidebar view for a processor: only their assigned role bars. */
 export default function ProcessorView({ profile, email }: { profile: ProcessorProfile; email: string }) {
-  const { counts, loading } = useRoleCounts();
+  const { counts, loading } = useFilteredRoleCounts(profile);
+  const order = orderedRoleIds(profile);
   return (
     <div className="min-h-screen bg-gradient-subtle">
       <header className="bg-gradient-navy text-white px-6 py-4 flex items-center gap-3 shadow-lg">
@@ -39,7 +41,7 @@ export default function ProcessorView({ profile, email }: { profile: ProcessorPr
               No queues assigned yet — ask your manager to add some.
             </p>
           ) : (
-            <DailyBurndown roleCounts={counts} countsLoading={loading} visibleRoleIds={profile.roles} />
+            <DailyBurndown roleCounts={counts} countsLoading={loading} visibleRoleIds={profile.roles} order={order} roleFilters={profile.roleFilters} />
           )}
         </div>
       </main>

@@ -1,5 +1,5 @@
 import { createContext, useContext } from "react";
-import { useAccess, resolveAccess, type Access, type AccessConfig } from "@/lib/accessStore";
+import { useAccess, resolveAccess, type Access, type AccessConfig, type RoleFilter } from "@/lib/accessStore";
 import { authRequired, getUser, signOut } from "@/lib/shared/auth";
 import { Loader2, Lock, LogOut } from "lucide-react";
 
@@ -8,10 +8,13 @@ interface AccessCtxValue {
   email: string;
   config: AccessConfig;
   addManager: (email: string) => void;
+  setManager: (email: string, isManager: boolean) => void;
   removeEmail: (email: string) => void;
   addProcessor: (email: string, name: string) => void;
   setProcessorName: (email: string, name: string) => void;
   toggleProcessorRole: (email: string, roleId: string) => void;
+  setRoleFilter: (email: string, roleId: string, filter: RoleFilter) => void;
+  setRoleOrder: (email: string, roleId: string, order: number | null) => void;
 }
 
 const Ctx = createContext<AccessCtxValue | null>(null);
@@ -39,10 +42,13 @@ export default function AccessProvider({ children }: { children: React.ReactNode
     email,
     config: acc.config,
     addManager: acc.addManager,
+    setManager: acc.setManager,
     removeEmail: acc.removeEmail,
     addProcessor: acc.addProcessor,
     setProcessorName: acc.setProcessorName,
     toggleProcessorRole: acc.toggleProcessorRole,
+    setRoleFilter: acc.setRoleFilter,
+    setRoleOrder: acc.setRoleOrder,
   });
 
   if (!authRequired()) {

@@ -9,7 +9,7 @@
  * Roles are edited per-person on the Manage Access page (AccessAdminPage).
  */
 import { ROLES } from "./config";
-import type { AccessConfig } from "./accessStore";
+import type { AccessConfig, ProcessorProfile } from "./accessStore";
 
 export const ALL_ROLE_IDS: string[] = ROLES.map((r) => r.id);
 
@@ -22,6 +22,9 @@ export interface Person {
   /** Role bars this person sees (managers = all roles). */
   roleIds: string[];
   isManager: boolean;
+  /** The processor profile (per-role filters + order), when this person is a
+   *  processor. Undefined for pure managers. */
+  profile?: ProcessorProfile;
 }
 
 function norm(e: string): string {
@@ -50,11 +53,14 @@ export function managerPeople(cfg: AccessConfig): Person[] {
 }
 
 export function processorPeople(cfg: AccessConfig): Person[] {
+  const mgr = new Set((cfg.managers || []).map(norm));
   return Object.entries(cfg.processors || {}).map(([e, p]) => ({
     email: norm(e),
     key: norm(e).split("@")[0],
     name: (p?.name || "").trim() || prettyName(e),
     roleIds: p?.roles || [],
-    isManager: false,
+    // A dual person (also in managers[]) is flagged so the roster can badge them.
+    isManager: mgr.has(norm(e)),
+    profile: p,
   }));
 }

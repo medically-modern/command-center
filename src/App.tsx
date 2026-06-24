@@ -38,6 +38,9 @@ const SystemMgmtPage = lazy(() => import("./pages/SystemMgmtPage"));
 // Access management (managers only)
 const AccessAdminPage = lazy(() => import("./pages/AccessAdminPage"));
 
+// Oversight (full-screen managers grid)
+const OversightPage = lazy(() => import("./pages/OversightPage"));
+
 const queryClient = new QueryClient();
 
 const Loading = () => (
@@ -86,6 +89,7 @@ const App = () => (
           <Route path="/patient-questions" element={<PatientQuestionsPage />} />
           <Route path="/system-mgmt" element={<SystemMgmtPage />} />
           <Route path="/access" element={<AccessAdminPage />} />
+          <Route path="/oversight" element={<OversightPage />} />
           <Route path="*" element={<Index />} />
         </Routes>
       </Suspense>
