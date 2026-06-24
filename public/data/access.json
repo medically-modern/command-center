@@ -13,8 +13,7 @@
         "sendRequest",
         "chaseParachute",
         "updateClinicals",
-        "fax",
-        "confirmReceipt"
+        "fax"
       ]
     },
     "samantha@medicallymodern.com": {
