@@ -12,7 +12,6 @@
         "evaluate",
         "sendRequest",
         "chaseParachute",
-        "chaseFax",
         "updateClinicals",
         "fax",
         "confirmReceipt"
