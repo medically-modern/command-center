@@ -41,7 +41,8 @@
         "chaseParachute"
       ],
       "roleFilters": {
-        "profile": "escalated"
+        "profile": "escalated",
+        "sendRequest": "escalated"
       }
     },
     "josh@medicallymodern.com": {
