@@ -16,7 +16,8 @@
         "fax"
       ],
       "roleOrder": {
-        "fax": 1
+        "fax": 1,
+        "evaluate": 2
       }
     },
     "samantha@medicallymodern.com": {
