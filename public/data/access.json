@@ -44,7 +44,8 @@
         "profile": "escalated",
         "sendRequest": "escalated",
         "chaseFax": "escalated",
-        "confirmReceipt": "escalated"
+        "confirmReceipt": "escalated",
+        "chaseParachute": "escalated"
       }
     },
     "josh@medicallymodern.com": {
