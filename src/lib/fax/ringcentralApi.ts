@@ -291,3 +291,74 @@ export async function fetchSmsConversation(phone: string, perPage = 100): Promis
     }))
     .sort((a, b) => new Date(a.time).getTime() - new Date(b.time).getTime());
 }
+
+export interface InboundFax {
+  id: number;
+  /** Sender fax number (E.164). */
+  fromNumber: string;
+  /** Caller-ID / sending office name when RingCentral has it (often the
+   *  doctor office; sometimes "Possible spam call"). */
+  fromName: string;
+  /** Sender geographic location, when present. */
+  fromLocation: string;
+  /** ISO received time. */
+  creationTime: string;
+  pages: number;
+  read: boolean;
+  /** RC content URL for the fax PDF (needs the Bearer token to download). */
+  attachmentUri: string;
+  contentType: string;
+}
+
+/** List inbound faxes from the RingCentral message store (newest first). */
+export async function fetchInboundFaxes(perPage = 50): Promise<InboundFax[]> {
+  const url =
+    `${RC_SERVER}/restapi/v1.0/account/~/extension/~/message-store` +
+    `?messageType=Fax&direction=Inbound&perPage=${perPage}`;
+  const call = (token: string) => fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+  let res = await call(await getAccessToken());
+  if (res.status === 401) {
+    clearCachedToken();
+    res = await call(await getAccessToken());
+  }
+  if (!res.ok) throw new Error(`RingCentral fax inbox failed (${res.status})`);
+
+  const json = (await res.json()) as {
+    records?: Array<{
+      id: number;
+      creationTime?: string;
+      readStatus?: string;
+      faxPageCount?: number;
+      from?: { phoneNumber?: string; name?: string; location?: string };
+      attachments?: Array<{ uri?: string; contentType?: string }>;
+    }>;
+  };
+  return (json.records ?? [])
+    .map((r) => ({
+      id: r.id,
+      fromNumber: r.from?.phoneNumber ?? "",
+      fromName: (r.from?.name ?? "").trim(),
+      fromLocation: (r.from?.location ?? "").trim(),
+      creationTime: r.creationTime ?? "",
+      pages: r.faxPageCount ?? 0,
+      read: r.readStatus === "Read",
+      attachmentUri: r.attachments?.[0]?.uri ?? "",
+      contentType: r.attachments?.[0]?.contentType ?? "application/pdf",
+    }))
+    .sort((a, b) => new Date(b.creationTime).getTime() - new Date(a.creationTime).getTime());
+}
+
+/** Download a fax's PDF (auth required) and return a blob: URL for in-app
+ *  viewing/download. The caller should URL.revokeObjectURL when done. */
+export async function fetchFaxBlobUrl(attachmentUri: string): Promise<string> {
+  if (!attachmentUri) throw new Error("No fax document attached");
+  const call = (token: string) => fetch(attachmentUri, { headers: { Authorization: `Bearer ${token}` } });
+  let res = await call(await getAccessToken());
+  if (res.status === 401) {
+    clearCachedToken();
+    res = await call(await getAccessToken());
+  }
+  if (!res.ok) throw new Error(`RingCentral fax download failed (${res.status})`);
+  const blob = await res.blob();
+  return URL.createObjectURL(blob);
+}

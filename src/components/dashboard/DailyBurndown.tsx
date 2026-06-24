@@ -14,6 +14,7 @@ import { ROLES, type RoleConfig } from "@/lib/config";
 import type { RoleCounts } from "@/hooks/useRoleCounts";
 import { filterQuery } from "@/lib/roleView";
 import type { RoleFilter } from "@/lib/accessStore";
+import { openFaxInbox } from "@/components/shared/FaxInbox";
 import { useServerBaseline } from "@/hooks/useServerBaseline";
 import { cn } from "@/lib/utils";
 import {
@@ -214,6 +215,13 @@ export function DailyBurndown({
     return `${route}${filterQuery(f)}`;
   };
 
+  // The FAX bar has no route — clicking it opens the in-app Fax Inbox.
+  const barClickable = (id: string, route: string) => id === "fax" || (!!route && id !== "authDenied");
+  const openBar = (id: string, route: string) => {
+    if (id === "fax") return openFaxInbox();
+    if (route && id !== "authDenied") navigate(linkFor(id, route));
+  };
+
   const barData = useMemo(() => {
     if (!snapshot) return [];
     return roles.map((role) => {
@@ -257,7 +265,7 @@ export function DailyBurndown({
           <div className="space-y-3">
             {roles.map((role, i) => {
               const hex = COLOR_MAP[role.color] ?? "#6366f1";
-              const hasRoute = role.route && role.id !== "authDenied";
+              const hasRoute = barClickable(role.id, role.route);
               return (
                 <button
                   key={role.id}
@@ -266,8 +274,7 @@ export function DailyBurndown({
                     hasRoute ? "cursor-pointer" : "cursor-default",
                   )}
                   onClick={() => {
-                    if (hasRoute)
-                      navigate(linkFor(role.id, role.route));
+                    if (hasRoute) openBar(role.id, role.route);
                   }}
                   title={hasRoute ? `Open ${role.label}` : role.label}
                 >
@@ -381,7 +388,7 @@ export function DailyBurndown({
                   d.current > 0 ? 4 : 0
                 )
               : 0;
-          const hasRoute = d.role.route && d.role.id !== "authDenied";
+          const hasRoute = barClickable(d.role.id, d.role.route);
           const isDone = !countsLoading && d.current === 0;
 
           return (
@@ -392,8 +399,7 @@ export function DailyBurndown({
                 hasRoute ? "cursor-pointer" : "cursor-default"
               )}
               onClick={() => {
-                if (hasRoute)
-                  navigate(linkFor(d.role.id, d.role.route));
+                if (hasRoute) openBar(d.role.id, d.role.route);
               }}
               title={hasRoute ? `Open ${d.role.label}` : d.role.label}
             >

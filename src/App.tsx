@@ -4,6 +4,7 @@ import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-route
 import { lazy, Suspense } from "react";
 import Index from "./pages/Index";
 import { FileViewerHost } from "./components/shared/FileViewerModal";
+import { FaxInboxHost } from "./components/shared/FaxInbox";
 import AuthGate from "./components/AuthGate";
 import AccessProvider from "./components/AccessProvider";
 
@@ -67,6 +68,7 @@ const App = () => (
   <QueryClientProvider client={queryClient}>
     <Toaster position="top-right" />
     <FileViewerHost />
+    <FaxInboxHost />
     <BrowserRouter basename={basename}>
       <Suspense fallback={<Loading />}>
         <Routes>
