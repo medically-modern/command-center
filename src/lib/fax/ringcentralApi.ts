@@ -230,3 +230,64 @@ export async function sendSms(to: string, text: string): Promise<void> {
     throw new Error(msg);
   }
 }
+
+export interface SmsMessage {
+  id: number;
+  direction: "Inbound" | "Outbound";
+  /** Message body (RC stores SMS text in the message-store `subject` field). */
+  text: string;
+  /** ISO creation time. */
+  time: string;
+  from: string;
+  to: string;
+}
+
+/** Fetch the full SMS conversation with one phone number, oldest → newest (for
+ *  chat display). Same message-store endpoint + JWT auth as the fax reads. */
+export async function fetchSmsConversation(phone: string, perPage = 100): Promise<SmsMessage[]> {
+  const num = toE164(phone);
+  if (!num) return [];
+  const dateFrom = new Date(Date.now() - 365 * 24 * 60 * 60_000).toISOString();
+  const url =
+    `${RC_SERVER}/restapi/v1.0/account/~/extension/~/message-store` +
+    `?messageType=SMS&phoneNumber=${encodeURIComponent(num)}&dateFrom=${encodeURIComponent(dateFrom)}&perPage=${perPage}`;
+
+  const call = (token: string) => fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+  let res = await call(await getAccessToken());
+  if (res.status === 401) {
+    clearCachedToken();
+    res = await call(await getAccessToken());
+  }
+  if (!res.ok) throw new Error(`RingCentral SMS history failed (${res.status})`);
+
+  const json = (await res.json()) as {
+    records?: Array<{
+      id: number;
+      direction?: string;
+      subject?: string;
+      text?: string;
+      creationTime?: string;
+      from?: { phoneNumber?: string };
+      to?: Array<{ phoneNumber?: string }>;
+    }>;
+  };
+  const last10 = (s: string) => (s || "").replace(/\D/g, "").slice(-10);
+  const want = last10(num);
+  return (json.records ?? [])
+    // The phoneNumber filter is broad; keep only messages with this number on
+    // either side.
+    .filter(
+      (r) =>
+        last10(r.from?.phoneNumber || "") === want ||
+        (r.to ?? []).some((t) => last10(t.phoneNumber || "") === want),
+    )
+    .map((r) => ({
+      id: r.id,
+      direction: (r.direction === "Outbound" ? "Outbound" : "Inbound") as "Inbound" | "Outbound",
+      text: r.subject ?? r.text ?? "",
+      time: r.creationTime ?? "",
+      from: r.from?.phoneNumber ?? "",
+      to: (r.to ?? [])[0]?.phoneNumber ?? "",
+    }))
+    .sort((a, b) => new Date(a.time).getTime() - new Date(b.time).getTime());
+}

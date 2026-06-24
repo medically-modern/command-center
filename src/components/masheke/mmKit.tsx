@@ -3,7 +3,7 @@
  * (send-request / confirm-receipt mockup aesthetic). Pure presentation:
  * no Monday writes, no workflow logic.
  */
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import type { Patient } from "@/lib/masheke/workflow";
 import { Input } from "@/components/ui/input";
 import {
@@ -16,6 +16,7 @@ import {
   MessageSquare,
   Pencil,
   Phone,
+  RefreshCw,
   Send,
   Trash2,
   XCircle,
@@ -23,10 +24,11 @@ import {
 import type { MondayFileEntry } from "@/lib/masheke/mondayApi";
 import { openFileViewer } from "@/components/shared/FileViewerModal";
 import { Button } from "@/components/ui/button";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Textarea } from "@/components/ui/textarea";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { cn } from "@/lib/utils";
 import { toast } from "sonner";
-import { sendSms } from "@/lib/fax/ringcentralApi";
+import { sendSms, fetchSmsConversation, type SmsMessage } from "@/lib/fax/ringcentralApi";
 
 // =====================================================================
 // Step shell
@@ -558,29 +560,67 @@ export function PatientContact({ phone }: { phone?: string }) {
   );
 }
 
-/** "Text" → compose + send via RingCentral SMS (from the MM SMS number), instead
- *  of the OS sms: handler (which opened iMessage on Macs). */
+/** "Text" → opens the full SMS conversation (pulled from RingCentral) in a
+ *  scrollable pop-up, with a reply box at the bottom. Sending refreshes the
+ *  thread so the new message shows immediately. */
 function TextCompose({ tel, display }: { tel: string; display: string }) {
   const [open, setOpen] = useState(false);
   const [msg, setMsg] = useState("");
   const [sending, setSending] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const [messages, setMessages] = useState<SmsMessage[]>([]);
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  const load = async () => {
+    setLoading(true);
+    setErr(null);
+    try {
+      setMessages(await fetchSmsConversation(tel));
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Pull the conversation each time the pop-up opens.
+  useEffect(() => {
+    if (open) void load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
+
+  // Keep the newest message in view.
+  useEffect(() => {
+    if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+  }, [messages, loading]);
+
   const send = async () => {
     if (!msg.trim()) return;
     setSending(true);
     try {
       await sendSms(tel, msg.trim());
-      toast.success(`Text sent to ${display} via RingCentral`);
       setMsg("");
-      setOpen(false);
+      await load(); // refresh so the sent text appears in the thread
     } catch (e) {
       toast.error("Couldn't send text", { description: e instanceof Error ? e.message : String(e) });
     } finally {
       setSending(false);
     }
   };
+
+  const fmtTime = (iso: string) => {
+    if (!iso) return "";
+    try {
+      return new Date(iso).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+    } catch {
+      return "";
+    }
+  };
+
   return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
         <button
           type="button"
           className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-semibold text-[color:var(--mm-teal)] transition-colors hover:bg-muted/40"
@@ -588,30 +628,82 @@ function TextCompose({ tel, display }: { tel: string; display: string }) {
         >
           <MessageSquare className="h-3.5 w-3.5 shrink-0" /> Text
         </button>
-      </PopoverTrigger>
-      <PopoverContent align="start" className="w-72 p-3 space-y-2">
-        <p className="text-xs text-muted-foreground">
-          Text <span className="font-semibold text-foreground">{display}</span> via RingCentral
-        </p>
-        <Textarea
-          value={msg}
-          onChange={(e) => setMsg(e.target.value)}
-          rows={3}
-          placeholder="Type your message…"
-          className="text-sm"
-          autoFocus
-        />
-        <div className="flex justify-end">
-          <Button
-            size="sm"
-            onClick={send}
-            disabled={!msg.trim() || sending}
-            className="gap-1.5 text-white bg-[color:var(--mm-teal)] hover:opacity-90 disabled:opacity-50"
-          >
-            {sending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />} Send
-          </Button>
+      </DialogTrigger>
+      <DialogContent className="sm:max-w-lg p-0 gap-0 flex flex-col max-h-[80vh]">
+        <DialogHeader className="px-4 py-3 border-b">
+          <DialogTitle className="flex items-center gap-2 text-base">
+            <MessageSquare className="h-4 w-4 text-[color:var(--mm-teal)]" />
+            Text · {display}
+          </DialogTitle>
+        </DialogHeader>
+
+        {/* Conversation (scrollable) */}
+        <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-3 space-y-2 min-h-[220px] bg-muted/20">
+          {loading && messages.length === 0 ? (
+            <div className="flex items-center justify-center gap-2 py-10 text-sm text-muted-foreground">
+              <Loader2 className="h-4 w-4 animate-spin" /> Loading conversation…
+            </div>
+          ) : err ? (
+            <div className="flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
+              <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
+              <div>Couldn't load the conversation. {err}</div>
+            </div>
+          ) : messages.length === 0 ? (
+            <p className="py-10 text-center text-sm text-muted-foreground">No messages yet. Send the first text below.</p>
+          ) : (
+            messages.map((m) => {
+              const out = m.direction === "Outbound";
+              return (
+                <div key={m.id} className={cn("flex", out ? "justify-end" : "justify-start")}>
+                  <div
+                    className={cn(
+                      "max-w-[78%] rounded-2xl px-3 py-2 text-sm whitespace-pre-wrap break-words",
+                      out ? "bg-[color:var(--mm-teal)] text-white rounded-br-sm" : "bg-card border border-border rounded-bl-sm",
+                    )}
+                  >
+                    <div>{m.text}</div>
+                    <div className={cn("mt-1 text-[10px]", out ? "text-white/70" : "text-muted-foreground")}>{fmtTime(m.time)}</div>
+                  </div>
+                </div>
+              );
+            })
+          )}
         </div>
-      </PopoverContent>
-    </Popover>
+
+        {/* Reply box */}
+        <div className="space-y-2 border-t p-3">
+          <Textarea
+            value={msg}
+            onChange={(e) => setMsg(e.target.value)}
+            rows={2}
+            placeholder={`Reply to ${display}…`}
+            className="resize-none text-sm"
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+                e.preventDefault();
+                void send();
+              }
+            }}
+          />
+          <div className="flex items-center justify-between">
+            <button
+              onClick={() => void load()}
+              disabled={loading}
+              className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground disabled:opacity-50"
+            >
+              <RefreshCw className={cn("h-3 w-3", loading && "animate-spin")} /> Refresh
+            </button>
+            <Button
+              size="sm"
+              onClick={send}
+              disabled={!msg.trim() || sending}
+              className="gap-1.5 text-white bg-[color:var(--mm-teal)] hover:opacity-90 disabled:opacity-50"
+            >
+              {sending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />} Send
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }

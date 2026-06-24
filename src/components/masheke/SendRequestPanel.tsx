@@ -26,6 +26,7 @@ import type { Patient } from "@/lib/masheke/workflow";
 import { NotesPanel, renderNoteLines } from "@/components/masheke/NotesPanel";
 import { etNow } from "@/lib/masheke/etDate";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useMondayFiles } from "@/hooks/masheke/useMondayFiles";
 import {
   COL,
@@ -939,16 +940,20 @@ function SendRequestComposer({
   const isParachute = method === "Parachute";
   const [open, setOpen] = useState(!isParachute);
   const [files, setFiles] = useState<File[]>([]);
-  const [warned, setWarned] = useState(false);
+  const [showNoFile, setShowNoFile] = useState(false);
   const [dragOver, setDragOver] = useState(false);
-  // Almost every request should carry an attachment — warn once before sending.
-  const trySend = () => {
-    if (!isParachute && files.length === 0 && !warned) {
-      setWarned(true);
-      return;
-    }
+  const doSend = () => {
     const finalRecipients = recipInput.trim() ? [...recipients, recipInput.trim()] : recipients;
     onSend({ recipients: finalRecipients, subject, body, files });
+  };
+  // Almost every request should carry an attachment — a missing one pops a
+  // clear confirmation modal (instead of an easy-to-miss inline note).
+  const trySend = () => {
+    if (!isParachute && files.length === 0) {
+      setShowNoFile(true);
+      return;
+    }
+    doSend();
   };
   return (
     <div className="space-y-5">
@@ -1172,9 +1177,7 @@ function SendRequestComposer({
           style={{ background: "oklch(0.98 0.03 95)", borderColor: "oklch(0.85 0.08 85)", color: "oklch(0.5 0.08 70)" }}
         >
           <AlertTriangle className="h-4 w-4 shrink-0" style={{ color: "oklch(0.62 0.13 70)" }} />
-          {warned
-            ? "No attachment detected — press “Send request” again to send without one."
-            : "No attachment added yet — most requests should include a script template."}
+          No attachment added yet — most requests should include a script template.
         </div>
       )}
       <div className="flex items-center justify-between gap-3 flex-wrap border-t pt-4" style={{ borderColor: "var(--mm-card-border)" }}>
@@ -1217,6 +1220,36 @@ function SendRequestComposer({
           )}
         </div>
       </div>
+
+      {/* No-attachment confirmation — a clear modal instead of an easy-to-miss banner */}
+      <Dialog open={showNoFile} onOpenChange={setShowNoFile}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-amber-500" />
+              Send without an attachment?
+            </DialogTitle>
+            <DialogDescription>
+              No file is attached to this request. Most requests should include a script template or supporting
+              document. Send it anyway?
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2 sm:gap-2">
+            <Button variant="outline" onClick={() => setShowNoFile(false)}>
+              Go back &amp; attach
+            </Button>
+            <Button
+              onClick={() => {
+                setShowNoFile(false);
+                doSend();
+              }}
+              className="gap-2 text-white bg-amber-600 hover:bg-amber-700"
+            >
+              <Send className="h-4 w-4" /> Send without attachment
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
