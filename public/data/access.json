@@ -14,7 +14,10 @@
         "chaseParachute",
         "updateClinicals",
         "fax"
-      ]
+      ],
+      "roleOrder": {
+        "fax": 1
+      }
     },
     "samantha@medicallymodern.com": {
       "name": "Samantha",
