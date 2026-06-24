@@ -46,7 +46,9 @@
       "roles": [
         "evaluate"
       ],
-      "roleOrder": {},
+      "roleOrder": {
+        "evaluate": 1
+      },
       "roleFilters": {
         "evaluate": "escalated"
       }
