@@ -3,12 +3,19 @@
  *
  * Counts mirror each role page's ACTIVE sidebar view (not the raw group
  * size): escalated / follow-up / scheduled patients are excluded per the
- * same rules each sidebar applies.
+ * same rules each sidebar applies. The SAME light fetch also yields the
+ * per-role ESCALATED count (escalatedCounts), so the All/Escalated filters
+ * never need a separate heavy all-boards fetch.
  *
- * PERFORMANCE: each board is fetched independently and merged into state
- * AS IT ARRIVES — the dashboard fills in board-by-board instead of waiting
- * for the slowest board. Cached counts from localStorage render instantly
- * on reload, then refresh silently.
+ * PERFORMANCE:
+ *  - Pass `{ roleIds }` to fetch ONLY the boards those roles need (a processor
+ *    with 2 queues no longer triggers all ~10 board fetches). Omit for all.
+ *  - Each board is fetched independently and merged AS IT ARRIVES — the
+ *    dashboard fills in board-by-board instead of waiting for the slowest.
+ *  - The loading flag clears once the Monday role boards land; the RingCentral
+ *    fax count and Patient Questions finish in the background and never hold
+ *    the spinner.
+ *  - Cached counts from localStorage render instantly on reload, then refresh.
  *
  * Samantha board (18410601299): 3 groups → Benefits, Submit Auth, Auth Outstanding
  *   active = not escalated AND followUp !== "Follow Up"
@@ -52,6 +59,8 @@ const WC_ESC_COL = "color_mm1x7997";       // Escalation
 const WC_FOLLOWUP_COL = "color_mm38w2tk";  // Follow Up
 // Profile
 const PROF_FOLLOWUP_COL = "color_mm3822qq"; // Follow Up
+
+const ESC_REQUIRED = "Escalation Required";
 
 function getMondayToken(): string {
   return (import.meta.env.VITE_MONDAY_API_TOKEN as string | undefined) ?? "";
@@ -201,19 +210,24 @@ export interface RolePatientIds {
 // ── Count cache (instant load on return visits) ──
 
 const LS_COUNTS_KEY = "role-counts-cache";
+const LS_ESC_KEY = "role-esc-counts-cache";
 
-function loadCachedCounts(): RoleCounts {
+function loadCache(key: string): RoleCounts {
   try {
-    const raw = localStorage.getItem(LS_COUNTS_KEY);
+    const raw = localStorage.getItem(key);
     if (!raw) return {};
     return JSON.parse(raw) as RoleCounts;
-  } catch { return {}; }
+  } catch {
+    return {};
+  }
 }
 
-function persistCountsCache(counts: RoleCounts): void {
+function persistCache(key: string, counts: RoleCounts): void {
   try {
-    localStorage.setItem(LS_COUNTS_KEY, JSON.stringify(counts));
-  } catch { /* quota exceeded or private browsing — ignore */ }
+    localStorage.setItem(key, JSON.stringify(counts));
+  } catch {
+    /* quota exceeded or private browsing — ignore */
+  }
 }
 
 const POLL_MS = 60_000;
@@ -224,168 +238,197 @@ const POLL_MS = 60_000;
 // hard reload shows the loading skeleton.
 let fetchedThisSession = false;
 
-export function useRoleCounts() {
-  const cachedRef = useRef(loadCachedCounts());
+/**
+ * @param opts.roleIds When provided, fetch ONLY the boards needed for these
+ *   roles. Omit to fetch everything (e.g. the System Management Operations tab).
+ */
+export function useRoleCounts(opts?: { roleIds?: string[] }) {
+  const cachedRef = useRef(loadCache(LS_COUNTS_KEY));
+  const escCachedRef = useRef(loadCache(LS_ESC_KEY));
   const [counts, setCounts] = useState<RoleCounts>(cachedRef.current);
+  const [escalatedCounts, setEscalatedCounts] = useState<RoleCounts>(escCachedRef.current);
   const [patientIds, setPatientIds] = useState<RolePatientIds>({});
-  // Loading is true only until the first fetch of this PAGE LOAD completes.
-  // Counts still stream in progressively while loading (board by board).
   const [loading, setLoading] = useState(!fetchedThisSession);
   const mountedRef = useRef(true);
 
-  const fetchCounts = useCallback(async (silent = false) => {
-    if (mountedRef.current && !silent) {
-      setLoading(true);
-    }
+  // Keep the latest scope in a ref so the fetch callback stays stable; the
+  // effect below re-runs (refetch) whenever the scope key changes.
+  const roleIds = opts?.roleIds;
+  const roleKey = roleIds ? [...roleIds].sort().join(",") : "*ALL*";
+  const roleIdsRef = useRef<string[] | undefined>(roleIds);
+  roleIdsRef.current = roleIds;
 
-    // Merge one board's results into state the moment that board resolves —
-    // this is what makes the dashboard usable in ~1-2s instead of waiting
-    // ~10s+ for every board to finish.
-    const merge = (partialCounts: RoleCounts, partialIds: RolePatientIds) => {
+  const fetchCounts = useCallback(async (silent = false) => {
+    if (mountedRef.current && !silent) setLoading(true);
+
+    const need = (id: string) => !roleIdsRef.current || roleIdsRef.current.includes(id);
+    const needAny = (...ids: string[]) => ids.some(need);
+
+    // Merge one board's results as it resolves — non-escalated counts,
+    // escalated counts, and patient ids.
+    const merge = (pc: RoleCounts, pe: RoleCounts, pi: RolePatientIds) => {
       if (!mountedRef.current) return;
-      setCounts((prev) => {
-        const next = { ...prev, ...partialCounts };
-        persistCountsCache(next);
-        return next;
-      });
-      setPatientIds((prev) => ({ ...prev, ...partialIds }));
+      setCounts((prev) => { const next = { ...prev, ...pc }; persistCache(LS_COUNTS_KEY, next); return next; });
+      setEscalatedCounts((prev) => { const next = { ...prev, ...pe }; persistCache(LS_ESC_KEY, next); return next; });
+      if (Object.keys(pi).length) setPatientIds((prev) => ({ ...prev, ...pi }));
     };
 
     const todayStr = new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
 
-    // Samantha group → active count (not escalated, not follow-up), matching
-    // the samantha sidebar's main list.
+    // Samantha group → active (not escalated, not follow-up) + escalated.
     const samActive = async (groupId: string, roleId: string) => {
       if (!samHasToken()) return;
       const items = await fetchBoardGroupItemsLight(SAM_BOARD_ID, groupId, [SAM_ESC_COL, SAM_FOLLOWUP_COL]);
+      const escN = items.filter((i) => i.cols[SAM_ESC_COL] === ESC_REQUIRED).length;
       const active = items.filter(
-        (i) => i.cols[SAM_ESC_COL] !== "Escalation Required" && i.cols[SAM_FOLLOWUP_COL] !== "Follow Up",
+        (i) => i.cols[SAM_ESC_COL] !== ESC_REQUIRED && i.cols[SAM_FOLLOWUP_COL] !== "Follow Up",
       );
-      merge({ [roleId]: active.length }, { [roleId]: active.map((i) => i.id) });
+      merge({ [roleId]: active.length }, { [roleId]: escN }, { [roleId]: active.map((i) => i.id) });
     };
 
-    const tasks: Promise<void>[] = [
-      samActive(SAM_GROUPS.benefits, "benefits"),
-      samActive(SAM_GROUPS.submitAuth, "submitAuth"),
-      samActive(SAM_GROUPS.authOutstanding, "authOutstanding"),
+    // ── Board tasks (these gate the loading flag) ──
+    const boardTasks: Promise<void>[] = [];
 
-      // Masheke board — single group, split by Stage Advancer; chase further
-      // split by Clinicals Method (fax+email vs Parachute). Mirrors the
-      // masheke sidebar active list: exclude escalated + future-dated.
-      (async () => {
-        if (!meshHasToken()) return;
-        const items = await fetchBoardGroupItemsLight(
-          MASHEKE_BOARD_ID,
-          MESH_GROUPS.medicalNecessity,
-          [MESH_STAGE_COL, MESH_NAD_COL, MESH_ESC_COL, MESH_METHOD_COL],
-        );
-        const next: RoleCounts = {
-          evaluate: 0, sendRequest: 0, confirmReceipt: 0,
-          chaseFax: 0, chaseParachute: 0,
-          // legacy combined chase count — older cached clients / baselines
-          chaseBenefits: 0,
-        };
-        const nextIds: RolePatientIds = {
-          evaluate: [], sendRequest: [], confirmReceipt: [],
-          chaseFax: [], chaseParachute: [], chaseBenefits: [],
-        };
-        for (const item of items) {
-          const stage = item.cols[MESH_STAGE_COL] ?? "";
-          let roleId: string | null = null;
-          if (stage === "Evaluate MN") roleId = "evaluate";
-          else if (stage === "Send Request") roleId = "sendRequest";
-          else if (stage === "Confirm Receipt") roleId = "confirmReceipt";
-          else if (stage === "Chase Clinicals") {
-            roleId = item.cols[MESH_METHOD_COL] === "Parachute" ? "chaseParachute" : "chaseFax";
+    if (need("benefits")) boardTasks.push(samActive(SAM_GROUPS.benefits, "benefits"));
+    if (need("submitAuth")) boardTasks.push(samActive(SAM_GROUPS.submitAuth, "submitAuth"));
+    if (need("authOutstanding")) boardTasks.push(samActive(SAM_GROUPS.authOutstanding, "authOutstanding"));
+
+    if (needAny("evaluate", "sendRequest", "confirmReceipt", "chaseFax", "chaseParachute", "chaseBenefits")) {
+      boardTasks.push(
+        (async () => {
+          if (!meshHasToken()) return;
+          const items = await fetchBoardGroupItemsLight(
+            MASHEKE_BOARD_ID,
+            MESH_GROUPS.medicalNecessity,
+            [MESH_STAGE_COL, MESH_NAD_COL, MESH_ESC_COL, MESH_METHOD_COL],
+          );
+          const nc: RoleCounts = { evaluate: 0, sendRequest: 0, confirmReceipt: 0, chaseFax: 0, chaseParachute: 0, chaseBenefits: 0 };
+          const ec: RoleCounts = { evaluate: 0, sendRequest: 0, confirmReceipt: 0, chaseFax: 0, chaseParachute: 0, chaseBenefits: 0 };
+          const ids: RolePatientIds = { evaluate: [], sendRequest: [], confirmReceipt: [], chaseFax: [], chaseParachute: [], chaseBenefits: [] };
+          for (const item of items) {
+            const stage = item.cols[MESH_STAGE_COL] ?? "";
+            let roleId: string | null = null;
+            if (stage === "Evaluate MN") roleId = "evaluate";
+            else if (stage === "Send Request") roleId = "sendRequest";
+            else if (stage === "Confirm Receipt") roleId = "confirmReceipt";
+            else if (stage === "Chase Clinicals") roleId = item.cols[MESH_METHOD_COL] === "Parachute" ? "chaseParachute" : "chaseFax";
+            if (!roleId) continue;
+
+            const isChase = roleId === "chaseFax" || roleId === "chaseParachute";
+            if (item.cols[MESH_ESC_COL] === ESC_REQUIRED) {
+              ec[roleId]++;
+              if (isChase) ec.chaseBenefits++;
+              continue; // escalated → not in the non-escalated active list
+            }
+            const nad = (item.cols[MESH_NAD_COL] ?? "").slice(0, 10);
+            if (nad && nad > todayStr) continue; // scheduled (future)
+
+            nc[roleId]++;
+            ids[roleId].push(item.id);
+            if (isChase) {
+              nc.chaseBenefits++;
+              ids.chaseBenefits.push(item.id);
+            }
           }
-          if (!roleId) continue;
+          merge(nc, ec, ids);
+        })(),
+      );
+    }
 
-          const nad = (item.cols[MESH_NAD_COL] ?? "").slice(0, 10);
-          if (nad && nad > todayStr) continue; // scheduled (future)
-          if (item.cols[MESH_ESC_COL] === "Escalation Required") continue; // escalated
+    if (need("welcomeCall")) {
+      boardTasks.push(
+        (async () => {
+          const items = await fetchBoardGroupItemsLight(WC_BOARD_ID, WC_GROUP_ID, [WC_ESC_COL, WC_FOLLOWUP_COL]);
+          const escN = items.filter((i) => i.cols[WC_ESC_COL] === ESC_REQUIRED).length;
+          const active = items.filter(
+            (i) => i.cols[WC_ESC_COL] !== ESC_REQUIRED && i.cols[WC_FOLLOWUP_COL] !== "Done",
+          );
+          merge({ welcomeCall: active.length }, { welcomeCall: escN }, { welcomeCall: active.map((i) => i.id) });
+        })(),
+      );
+    }
 
-          next[roleId]++;
-          nextIds[roleId].push(item.id);
-          if (roleId === "chaseFax" || roleId === "chaseParachute") {
-            next.chaseBenefits++;
-            nextIds.chaseBenefits.push(item.id);
+    if (need("finalConfirm")) {
+      boardTasks.push(
+        (async () => {
+          const items = await fetchBoardGroupItemsLight(WC_BOARD_ID, FINAL_CONFIRM_GROUP_ID, [WC_ESC_COL]);
+          const escN = items.filter((i) => i.cols[WC_ESC_COL] === ESC_REQUIRED).length;
+          const active = items.filter((i) => i.cols[WC_ESC_COL] !== ESC_REQUIRED);
+          merge({ finalConfirm: active.length }, { finalConfirm: escN }, { finalConfirm: active.map((i) => i.id) });
+        })(),
+      );
+    }
+
+    if (need("profile")) {
+      boardTasks.push(
+        (async () => {
+          const items = await fetchBoardGroupItemsLight(PROFILE_BOARD_ID, PROFILE_GROUP_ID, [PROF_FOLLOWUP_COL]);
+          const active = items.filter((i) => i.cols[PROF_FOLLOWUP_COL] !== "Done");
+          merge({ profile: active.length }, { profile: 0 }, { profile: active.map((i) => i.id) });
+        })(),
+      );
+    }
+
+    if (needAny("subscription", "updateClinicals")) {
+      boardTasks.push(
+        (async () => {
+          const subIds = await fetchBoardGroupIds(SUB_BOARD_ID, SUB_GROUP_ID);
+          merge(
+            { subscription: subIds.length, updateClinicals: subIds.length },
+            { subscription: 0, updateClinicals: 0 },
+            { subscription: subIds, updateClinicals: [...subIds] },
+          );
+        })(),
+      );
+    }
+
+    // ── Side tasks: do NOT gate the spinner (RingCentral fax + Patient
+    // Questions can be slow/external; the role bars shouldn't wait on them). ──
+    const sideTasks: Promise<void>[] = [];
+
+    if (need("patientQuestions")) {
+      sideTasks.push(
+        (async () => {
+          const pqCount = await import("@/lib/patientQuestions/mondayApi")
+            .then((m) => m.fetchPatientQuestionsCount())
+            .catch(() => 0);
+          merge({ patientQuestions: pqCount }, { patientQuestions: 0 }, {});
+        })(),
+      );
+    }
+
+    if (need("fax")) {
+      sideTasks.push(
+        (async () => {
+          try {
+            const n = await import("@/lib/fax/ringcentralApi").then((m) => m.fetchUnreadFaxCount());
+            merge({ fax: n }, { fax: 0 }, {});
+          } catch (e) {
+            console.error("RingCentral fax count failed:", e);
           }
-        }
-        merge(next, nextIds);
-      })(),
+        })(),
+      );
+    }
 
-      // Welcome Call — active = not escalated, follow-up !== "Done"
-      (async () => {
-        const items = await fetchBoardGroupItemsLight(WC_BOARD_ID, WC_GROUP_ID, [WC_ESC_COL, WC_FOLLOWUP_COL]);
-        const active = items.filter(
-          (i) => i.cols[WC_ESC_COL] !== "Escalation Required" && i.cols[WC_FOLLOWUP_COL] !== "Done",
-        );
-        merge({ welcomeCall: active.length }, { welcomeCall: active.map((i) => i.id) });
-      })(),
-
-      // Final Profile Confirmation — active = not escalated
-      (async () => {
-        const items = await fetchBoardGroupItemsLight(WC_BOARD_ID, FINAL_CONFIRM_GROUP_ID, [WC_ESC_COL]);
-        const active = items.filter((i) => i.cols[WC_ESC_COL] !== "Escalation Required");
-        merge({ finalConfirm: active.length }, { finalConfirm: active.map((i) => i.id) });
-      })(),
-
-      // Profile — active = follow-up !== "Done"
-      (async () => {
-        const items = await fetchBoardGroupItemsLight(PROFILE_BOARD_ID, PROFILE_GROUP_ID, [PROF_FOLLOWUP_COL]);
-        const active = items.filter((i) => i.cols[PROF_FOLLOWUP_COL] !== "Done");
-        merge({ profile: active.length }, { profile: active.map((i) => i.id) });
-      })(),
-
-      // Subscription board (+ Update Clinicals shares it) — whole group
-      (async () => {
-        const subIds = await fetchBoardGroupIds(SUB_BOARD_ID, SUB_GROUP_ID);
-        merge(
-          { subscription: subIds.length, updateClinicals: subIds.length },
-          { subscription: subIds, updateClinicals: [...subIds] },
-        );
-      })(),
-
-      // Patient Questions — count from both boards
-      (async () => {
-        const pqCount = await import("@/lib/patientQuestions/mondayApi")
-          .then((m) => m.fetchPatientQuestionsCount())
-          .catch(() => 0);
-        merge({ patientQuestions: pqCount }, {});
-      })(),
-
-      // FAX — unread fax count from RingCentral. On API failure we simply
-      // don't merge, keeping the previous/cached number instead of showing
-      // a misleading 0 ("Done!").
-      (async () => {
-        try {
-          const n = await import("@/lib/fax/ringcentralApi").then((m) => m.fetchUnreadFaxCount());
-          merge({ fax: n }, {});
-        } catch (e) {
-          console.error("RingCentral fax count failed:", e);
-        }
-      })(),
-    ];
-
-    await Promise.allSettled(tasks);
-
+    await Promise.allSettled(boardTasks);
     if (!mountedRef.current) return;
     fetchedThisSession = true;
-    if (!silent) setLoading(false);
+    if (!silent) setLoading(false); // bars are ready — don't wait on fax/PQ
+    await Promise.allSettled(sideTasks); // finish in the background
   }, []);
 
   useEffect(() => {
     mountedRef.current = true;
-    // First fetch of a page load is non-silent (header spinner shows until
-    // all boards land — counts still stream in earlier). Remounts within the
-    // session refresh silently; 60s polls are always silent.
+    // Refetch on mount and whenever the role scope changes. First fetch of a
+    // page load is non-silent; in-session remounts/scope-changes and 60s polls
+    // refresh silently (cached values stay on screen).
     fetchCounts(fetchedThisSession);
     const interval = setInterval(() => fetchCounts(true), POLL_MS);
     return () => {
       mountedRef.current = false;
       clearInterval(interval);
     };
-  }, [fetchCounts]);
+  }, [fetchCounts, roleKey]);
 
-  return { counts, patientIds, loading, refetch: fetchCounts };
+  return { counts, escalatedCounts, patientIds, loading, refetch: fetchCounts };
 }

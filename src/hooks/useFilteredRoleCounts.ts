@@ -1,16 +1,15 @@
 /**
  * Per-role counts that honor each role's assigned filter (B):
- *   nonEscalated → live non-escalated count   (useRoleCounts)
- *   escalated    → escalated-only count        (useEscalatedCounts)
- *   all          → non-escalated + escalated   (sum; no overlap — the two
- *                  sources are mutually exclusive)
+ *   nonEscalated → live non-escalated count
+ *   escalated    → escalated-only count
+ *   all          → non-escalated + escalated   (sum; no overlap)
  *
- * Escalated counts (a heavier all-boards fetch) are only pulled when at least
- * one visible role actually needs them.
+ * Both the non-escalated and escalated counts now come from the SAME scoped
+ * useRoleCounts fetch (no separate all-boards fetch), and useRoleCounts only
+ * pulls the boards these roles need.
  */
 import { useMemo } from "react";
 import { useRoleCounts, type RoleCounts } from "./useRoleCounts";
-import { useEscalatedCounts } from "./useEscalatedCounts";
 import { roleFilterFor } from "@/lib/roleView";
 import type { ProcessorProfile } from "@/lib/accessStore";
 
@@ -18,15 +17,7 @@ type Profile = Pick<ProcessorProfile, "roles" | "roleFilters"> | null | undefine
 
 export function useFilteredRoleCounts(profile: Profile): { counts: RoleCounts; loading: boolean } {
   const roles = profile?.roles ?? [];
-
-  const needsEsc = roles.some((id) => {
-    const f = roleFilterFor(profile, id);
-    return f === "escalated" || f === "all";
-  });
-
-  // Hooks must run unconditionally; useEscalatedCounts gates its fetch on `enabled`.
-  const { counts: nonEsc, loading: nonEscLoading } = useRoleCounts();
-  const { counts: esc, loading: escLoading } = useEscalatedCounts(needsEsc);
+  const { counts: nonEsc, escalatedCounts: esc, loading } = useRoleCounts({ roleIds: roles });
 
   const counts = useMemo<RoleCounts>(() => {
     const out: RoleCounts = {};
@@ -40,6 +31,5 @@ export function useFilteredRoleCounts(profile: Profile): { counts: RoleCounts; l
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [roles.join(","), JSON.stringify(profile?.roleFilters ?? {}), nonEsc, esc]);
 
-  const loading = nonEscLoading || (needsEsc && escLoading);
   return { counts, loading };
 }
