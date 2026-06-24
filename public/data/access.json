@@ -40,6 +40,12 @@
         "sendRequest",
         "chaseParachute"
       ]
+    },
+    "josh@medicallymodern.com": {
+      "name": "josh",
+      "roles": [
+        "benefits"
+      ]
     }
   }
 }
