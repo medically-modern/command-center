@@ -18,7 +18,8 @@
       "roleOrder": {
         "fax": 1,
         "evaluate": 2,
-        "sendRequest": 3
+        "sendRequest": 3,
+        "chaseParachute": 4
       }
     },
     "samantha@medicallymodern.com": {
