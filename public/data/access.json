@@ -43,12 +43,8 @@
     },
     "josh@medicallymodern.com": {
       "name": "josh",
-      "roles": [
-        "benefits"
-      ],
-      "roleOrder": {
-        "benefits": 1
-      }
+      "roles": [],
+      "roleOrder": {}
     }
   }
 }
