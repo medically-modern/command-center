@@ -57,15 +57,9 @@
     },
     "josh@medicallymodern.com": {
       "name": "josh",
-      "roles": [
-        "evaluate"
-      ],
-      "roleOrder": {
-        "evaluate": 1
-      },
-      "roleFilters": {
-        "evaluate": "all"
-      }
+      "roles": [],
+      "roleOrder": {},
+      "roleFilters": {}
     }
   }
 }
