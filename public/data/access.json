@@ -36,7 +36,8 @@
         "profile",
         "confirmReceipt",
         "chaseFax",
-        "sendRequest"
+        "sendRequest",
+        "chaseParachute"
       ]
     }
   }
