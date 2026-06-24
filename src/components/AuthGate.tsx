@@ -34,11 +34,14 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
 }
 
 /**
- * Keeps the Google session alive so reps aren't kicked out ~hourly when the ID
- * token expires. Silently re-issues a fresh credential ~5 min before expiry (and
- * on window focus when close to expiry) via GIS auto-select. Best-effort and
- * additive: if a silent refresh can't happen, the session just expires as before
- * and the login screen returns — it never makes things worse.
+ * Keeps the Google ID token fresh in the background so gateway writes stay on
+ * the fast /send path. Silently re-issues a credential ~5 min before expiry,
+ * retries on a gentle cadence if a refresh can't land, and also refreshes on
+ * window focus. Purely additive: THE SIGNED-IN SESSION DOES NOT DEPEND ON THIS.
+ * If a refresh never happens the user stays signed in (the gate is the stored
+ * identity — see auth.ts) and writes still flow, because the gateway /send
+ * falls back to the client write path on a stale token. Only manual sign-out
+ * ends a session.
  */
 function SessionKeeper() {
   useEffect(() => {
@@ -71,7 +74,11 @@ function SessionKeeper() {
         // credential when the user's Google session is still alive.
         (window as unknown as { google: any }).google.accounts.id.prompt();
       } catch {
-        /* GIS unavailable — session will expire as before */
+        /* GIS unavailable — token just stays stale; the session is unaffected */
+      } finally {
+        // Re-arm regardless of outcome so the token keeps getting refreshed
+        // across a long working session. Never gates the app.
+        if (!cancelled) schedule();
       }
     };
 
@@ -80,8 +87,11 @@ function SessionKeeper() {
       const u = getUser();
       if (!u) return;
       const msLeft = u.exp * 1000 - Date.now();
-      // 5 min before expiry; min 30s out so we never loop tightly.
-      timer = setTimeout(() => void refresh(), Math.max(msLeft - 5 * 60_000, 30_000));
+      // Refresh ~5 min before expiry. If already inside that window (or past
+      // it), retry every ~4 min — keeps an actively-working rep on the fast
+      // /send path without tight-looping. This NEVER signs anyone out.
+      const next = msLeft > 5 * 60_000 ? msLeft - 5 * 60_000 : 4 * 60_000;
+      timer = setTimeout(() => void refresh(), next);
     }
 
     const onFocus = () => {

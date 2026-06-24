@@ -5,6 +5,15 @@
  * exactly as before, no login gate (so this is safe to ship before you've set
  * up the OAuth client). On sign-in we keep the Google ID token (a JWT) and send
  * it to the gateway, which verifies it server-side and attributes every write.
+ *
+ * SIGN-IN IS A GATE, NOT A TICKING TOKEN. Google ID tokens always expire ~1h
+ * after they're issued and that lifetime can't be extended. So we treat the
+ * stored IDENTITY as the session: once a valid @domain account signs in, it
+ * stays signed in until the user explicitly signs out. The ID token is kept
+ * only for best-effort gateway attribution and is refreshed in the background
+ * (see SessionKeeper in AuthGate.tsx); if a refresh can't happen the session is
+ * NOT dropped. Writes still flow — the gateway /send path falls back to the
+ * client write path when the token is stale (see verifiedWrite.ts).
  */
 
 const CLIENT_ID = (import.meta.env.VITE_GOOGLE_CLIENT_ID as string | undefined) || "";
@@ -44,7 +53,11 @@ function loadStored(): AuthUser | null {
     const raw = localStorage.getItem(LS_KEY);
     if (!raw) return null;
     const u = JSON.parse(raw) as AuthUser;
-    if (!u?.token || !u.exp || u.exp * 1000 < Date.now()) return null;
+    // The gate persists on IDENTITY, not on token freshness. As long as a valid
+    // @domain account has signed in on this device, keep them signed in — an
+    // expired ID token must never drop the session. (token/exp are still kept
+    // for best-effort gateway attribution + background refresh.)
+    if (!u?.email) return null;
     return u;
   } catch {
     return null;
@@ -87,11 +100,16 @@ export function handleCredential(idToken: string): boolean {
 }
 
 export function getUser(): AuthUser | null {
-  if (current && current.exp * 1000 < Date.now()) {
-    current = null;
-    store(null);
-  }
+  // No expiry check: the signed-in identity IS the gate and never lapses on its
+  // own — only signOut() (user-initiated) clears it. Token freshness is a
+  // separate concern handled by tokenIsFresh() / the background SessionKeeper.
   return current;
+}
+/** Whether the stored ID token is still within its ~1h validity window. The
+ *  session does NOT depend on this — it only tells callers whether the token
+ *  is currently usable for server-side verification (gateway attribution). */
+export function tokenIsFresh(): boolean {
+  return !!current?.token && current.exp * 1000 > Date.now();
 }
 export function getIdToken(): string | null {
   return getUser()?.token ?? null;
