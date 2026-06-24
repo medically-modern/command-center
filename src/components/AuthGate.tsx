@@ -7,7 +7,6 @@ import {
   handleCredential,
   googleClientId,
   authDomain,
-  getUser,
 } from "@/lib/shared/auth";
 
 /**
@@ -23,94 +22,20 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
   }, []);
 
   if (!authRequired()) return <>{children}</>;
-  if (authed)
-    return (
-      <>
-        <SessionKeeper />
-        {children}
-      </>
-    );
+  if (authed) return <>{children}</>;
   return <LoginScreen />;
 }
 
 /**
- * Keeps the Google ID token fresh in the background so gateway writes stay on
- * the fast /send path. Silently re-issues a credential ~5 min before expiry,
- * retries on a gentle cadence if a refresh can't land, and also refreshes on
- * window focus. Purely additive: THE SIGNED-IN SESSION DOES NOT DEPEND ON THIS.
- * If a refresh never happens the user stays signed in (the gate is the stored
- * identity — see auth.ts) and writes still flow, because the gateway /send
- * falls back to the client write path on a stale token. Only manual sign-out
+ * NOTE: there is intentionally NO background token refresh / SessionKeeper.
+ * The signed-in session is identity-based (see auth.ts) and never lapses on its
+ * own, and the gateway no longer requires a fresh token (/send enforcement was
+ * removed). A background `google.accounts.id.prompt()` only popped Google One
+ * Tap every few minutes — disruptive (especially with multiple Google accounts
+ * signed in) and of no real value. The ID token simply expires; gateway
+ * attribution falls back to the X-MM-User email header. Only manual sign-out
  * ends a session.
  */
-function SessionKeeper() {
-  useEffect(() => {
-    if (!authRequired()) return;
-    let cancelled = false;
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    let inited = false;
-
-    const ensureInit = async () => {
-      await loadGis();
-      if (cancelled || inited) return;
-      const g = (window as unknown as { google: any }).google;
-      g.accounts.id.initialize({
-        client_id: googleClientId(),
-        callback: (resp: { credential: string }) => {
-          if (handleCredential(resp.credential)) schedule();
-        },
-        hd: authDomain(),
-        auto_select: true,
-        cancel_on_tap_outside: false,
-      });
-      inited = true;
-    };
-
-    const refresh = async () => {
-      await ensureInit();
-      if (cancelled) return;
-      try {
-        // Silent re-sign-in (auto_select) — fires the callback with a fresh
-        // credential when the user's Google session is still alive.
-        (window as unknown as { google: any }).google.accounts.id.prompt();
-      } catch {
-        /* GIS unavailable — token just stays stale; the session is unaffected */
-      } finally {
-        // Re-arm regardless of outcome so the token keeps getting refreshed
-        // across a long working session. Never gates the app.
-        if (!cancelled) schedule();
-      }
-    };
-
-    function schedule() {
-      if (timer) clearTimeout(timer);
-      const u = getUser();
-      if (!u) return;
-      const msLeft = u.exp * 1000 - Date.now();
-      // Refresh ~5 min before expiry. If already inside that window (or past
-      // it), retry every ~4 min — keeps an actively-working rep on the fast
-      // /send path without tight-looping. This NEVER signs anyone out.
-      const next = msLeft > 5 * 60_000 ? msLeft - 5 * 60_000 : 4 * 60_000;
-      timer = setTimeout(() => void refresh(), next);
-    }
-
-    const onFocus = () => {
-      const u = getUser();
-      if (u && u.exp * 1000 - Date.now() < 10 * 60_000) void refresh();
-    };
-
-    void ensureInit().then(() => {
-      if (!cancelled) schedule();
-    });
-    window.addEventListener("focus", onFocus);
-    return () => {
-      cancelled = true;
-      if (timer) clearTimeout(timer);
-      window.removeEventListener("focus", onFocus);
-    };
-  }, []);
-  return null;
-}
 
 function LoginScreen() {
   const btn = useRef<HTMLDivElement>(null);
