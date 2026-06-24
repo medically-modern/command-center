@@ -95,14 +95,11 @@ export function PatientsSidebar({ patients, selectedId, onSelect, loading, error
   const collapsed = state === "collapsed";
 
   // 3-way filter from the URL (?manager=1 = escalated, ?filter=all = all, else
-  // non-escalated). `managerMode` is kept as an alias for the escalated-only
-  // labels/scheduling below.
+  // non-escalated). In "all" the sidebar splits non-escalated vs escalated.
   const [sp] = useSearchParams();
   const viewFilter = viewFilterFromParams(sp);
   const escalatedOnly = viewFilter === "escalated";
-  const includeEscalated = viewFilter !== "nonEscalated";
-  const includeNonEscalated = viewFilter !== "escalated";
-  const managerMode = escalatedOnly;
+  const splitAll = viewFilter === "all";
 
   const [showScheduled, setShowScheduled] = useState(false);
   // const [filteredOpen, setFilteredOpen] = useState(false);
@@ -121,35 +118,29 @@ export function PatientsSidebar({ patients, selectedId, onSelect, loading, error
   // const followUpPatients = patients.filter((p) => p.followUp === "Follow up" && p.blocked !== "Blocked" && p.escalation !== "Escalation Required" && p.advancer2c !== "Stuck");
   // const bothPatients = patients.filter((p) => p.escalation === "Escalation Required" && p.followUp === "Follow up" && p.blocked !== "Blocked" && p.advancer2c !== "Stuck");
 
-  // Processor view: escalated patients are hidden from the active view
-  // (accessible via System Management).
-  // Manager view: the INVERSE — only escalated patients are listed.
-  const activePatients = patients.filter((p) => {
-    const esc = p.escalation === "Escalation Required";
-    return esc ? includeEscalated : includeNonEscalated;
-  });
-
-  // Always use Eastern Time so all users see the same "today" regardless of their local timezone
+  // Always use Eastern Time so all users see the same "today".
   const etParts = new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
   const todayStr = etParts; // "YYYY-MM-DD" in ET
 
-  // ALL tabs: the filter is always Next Action Date + sub-stage. Patients
-  // with a future nextActionDate go to the Scheduled folder; blank or
-  // past/today = active. Manager view skips the split — every escalated
-  // patient shows regardless of schedule.
-  const hasPending = !managerMode;
-  const pendingPatients = hasPending
-    ? activePatients.filter((p) => {
-        const nad = p.nextActionDate?.slice(0, 10);
-        return nad && nad > todayStr;
-      })
-    : [];
-  const activeNowPatients = hasPending
-    ? activePatients.filter((p) => {
-        const nad = p.nextActionDate?.slice(0, 10);
-        return !nad || nad <= todayStr;
-      })
-    : activePatients;
+  const isEsc = (p: Patient) => p.escalation === "Escalation Required";
+  const escalatedList = patients.filter(isEsc);
+
+  // Non-escalated active list keeps the Next-Action-Date scheduling split
+  // (future-dated → scheduled folder). Escalated patients always show, no split.
+  const nonEsc = patients.filter((p) => !isEsc(p));
+  const pendingPatients = nonEsc.filter((p) => {
+    const nad = p.nextActionDate?.slice(0, 10);
+    return nad && nad > todayStr;
+  });
+  const nonEscNow = nonEsc.filter((p) => {
+    const nad = p.nextActionDate?.slice(0, 10);
+    return !nad || nad <= todayStr;
+  });
+  const hasPending = !escalatedOnly;
+
+  // Main list: escalated-only → the escalated list; otherwise the
+  // non-escalated active list. In "all" the escalated list renders below it.
+  const mainList = escalatedOnly ? escalatedList : nonEscNow;
 
   const activeLabel = TAB_LABELS[activeTab];
 
@@ -160,10 +151,12 @@ export function PatientsSidebar({ patients, selectedId, onSelect, loading, error
           {!collapsed && (
             <div className="min-w-0">
               <p className="text-[10px] uppercase tracking-[0.18em] text-muted-foreground">Monday · {activeLabel}</p>
-              {/* Count = ACTIVE view only (excludes escalated + scheduled);
-                  manager view counts escalated patients instead */}
-              <p className={cn("text-sm font-semibold truncate", managerMode && "text-red-500")}>
-                {managerMode ? `Escalated (${activeNowPatients.length})` : `Patients (${activeNowPatients.length})`}
+              <p className={cn("text-sm font-semibold truncate", escalatedOnly && "text-red-500")}>
+                {escalatedOnly
+                  ? `Escalated (${mainList.length})`
+                  : splitAll
+                    ? `Non-escalated (${mainList.length})`
+                    : `Patients (${mainList.length})`}
               </p>
             </div>
           )}
@@ -204,10 +197,16 @@ export function PatientsSidebar({ patients, selectedId, onSelect, loading, error
 
         {/* ── Toggle: Active patients OR Scheduled patients ── */}
         {!scheduledOpen ? (
+          <>
           <SidebarGroup>
+            {splitAll && (
+              <SidebarGroupLabel className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
+                Non-escalated patients
+              </SidebarGroupLabel>
+            )}
             <SidebarGroupContent>
               <SidebarMenu>
-                {activeNowPatients.map((p) => {
+                {mainList.map((p) => {
                   const nad = p.nextActionDate?.slice(0, 10);
                   const isOverdue = hasPending && !!nad && nad < todayStr;
                   return (
@@ -221,16 +220,42 @@ export function PatientsSidebar({ patients, selectedId, onSelect, loading, error
                     />
                   );
                 })}
-                {!loading && activeNowPatients.length === 0 && !error && !collapsed && (
+                {!loading && mainList.length === 0 && !error && !collapsed && (
                   <p className="px-3 py-4 text-xs text-muted-foreground">
-                    {managerMode
+                    {escalatedOnly
                       ? `No escalated patients in ${activeLabel}.`
-                      : `No patients in ${activeLabel}.`}
+                      : splitAll
+                        ? `No non-escalated patients in ${activeLabel}.`
+                        : `No patients in ${activeLabel}.`}
                   </p>
                 )}
               </SidebarMenu>
             </SidebarGroupContent>
           </SidebarGroup>
+
+          {/* Escalated patients — all view only, shown in red */}
+          {splitAll && escalatedList.length > 0 && !collapsed && (
+            <SidebarGroup>
+              <SidebarGroupLabel className="text-[10px] uppercase tracking-wider text-red-500 font-semibold flex items-center gap-1.5">
+                <AlertTriangle className="h-3 w-3" />
+                Escalated patients ({escalatedList.length})
+              </SidebarGroupLabel>
+              <SidebarGroupContent>
+                <SidebarMenu>
+                  {escalatedList.map((p) => (
+                    <PatientRow
+                      key={p.id}
+                      patient={p}
+                      isActive={selectedId === p.id}
+                      collapsed={collapsed}
+                      onSelect={onSelect}
+                    />
+                  ))}
+                </SidebarMenu>
+              </SidebarGroupContent>
+            </SidebarGroup>
+          )}
+          </>
         ) : (
           <SidebarGroup>
             <SidebarGroupLabel className="text-[10px] uppercase tracking-wider text-violet-500 font-semibold flex items-center gap-1.5">

@@ -155,7 +155,7 @@ const SubmitAuthPage = () => {
                 </div>
                 <div>
                   <p className="text-[10px] uppercase tracking-[0.2em] opacity-70">Medically Modern</p>
-                  <h1 className="text-2xl font-bold">Submit Auth</h1>{selected && <p className="text-sm opacity-80 mt-0.5">{selected.name}</p>}
+                  <h1 className="text-2xl font-bold">Submit Auth</h1>{selected && (<p className="text-sm opacity-80 mt-0.5 flex items-center gap-2">{selected.name}{selected.escalated && <span className="inline-flex items-center rounded-full bg-red-500 text-white text-[10px] font-bold uppercase tracking-wide px-2 py-0.5">Escalated</span>}</p>)}
                 </div>
               </div>
               <div className="flex items-center gap-2">
