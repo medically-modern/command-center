@@ -39,7 +39,10 @@
         "chaseFax",
         "sendRequest",
         "chaseParachute"
-      ]
+      ],
+      "roleFilters": {
+        "profile": "escalated"
+      }
     },
     "josh@medicallymodern.com": {
       "name": "josh",
