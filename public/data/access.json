@@ -43,7 +43,8 @@
       "roleFilters": {
         "profile": "escalated",
         "sendRequest": "escalated",
-        "chaseFax": "escalated"
+        "chaseFax": "escalated",
+        "confirmReceipt": "escalated"
       }
     },
     "josh@medicallymodern.com": {
