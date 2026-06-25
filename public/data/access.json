@@ -68,7 +68,8 @@
         "finalConfirm"
       ],
       "roleFilters": {
-        "profile": "all"
+        "profile": "all",
+        "finalConfirm": "all"
       }
     }
   }
