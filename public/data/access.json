@@ -60,6 +60,12 @@
       "roles": [],
       "roleOrder": {},
       "roleFilters": {}
+    },
+    "brandon@medicallymodern.com": {
+      "name": "brandon",
+      "roles": [
+        "profile"
+      ]
     }
   }
 }
