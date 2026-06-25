@@ -1,0 +1,288 @@
+# CLAUDE.md — Command Center architecture & orientation
+
+Internal "Command Center" (a.k.a. *Samantha Checklist*) for **Medically Modern**, a
+diabetes-supplies / DME provider. This is a **React + TypeScript SPA** whose backend
+of record is **Monday.com**. It is one frontend in a larger backend constellation
+(see [Backend ecosystem](#backend-ecosystem-railway)); this repo is *only* the SPA
+plus two small support services (a Cloudflare worker and a couple of Railway helpers).
+
+> **Read this first, then the three reference docs:**
+> [`BOARD_SCHEMA.md`](BOARD_SCHEMA.md) (Welcome Call board columns),
+> [`monday-integration-spec.md`](monday-integration-spec.md) (Samantha board + Send Request),
+> [`WRITE_RELIABILITY_AUDIT.md`](WRITE_RELIABILITY_AUDIT.md) (every UI→Monday write path, ranked by risk).
+
+---
+
+## 1. Mental model in one paragraph
+
+Each operational **role** (Evaluate, Benefits, Welcome Call, …) is a stage in a patient's
+journey. A role = one **page** + a **sidebar** of patients + **panels** that read/write
+**Monday.com columns**. The SPA does not own a database — Monday boards *are* the
+database. The app **reads** by polling Monday GraphQL and **writes** on nearly every user
+action. **Patients move between stages via Monday automations**, not the app: the app
+flips a "Stage Advancer" status column, and a board automation marks the item complete
+and moves it to the next group/board. The app's job is to gather/validate the data for a
+stage and then flip that advancer **last**, after confirming the data landed.
+
+---
+
+## 2. Tech stack & commands
+
+- **Vite 5** + **React 18** + **TypeScript**, SWC plugin. Router: `react-router-dom` v6.
+- UI: **shadcn/ui** (Radix primitives in `src/components/ui/*`, mostly stock) + **Tailwind**.
+- Data fetching: hand-rolled `gql()` per role module + `@tanstack/react-query` (lightly used).
+- PDF: `pdf-lib` + `pdfjs-dist`. Forms: `react-hook-form` + `zod`. Tests: **vitest** + Testing Library.
+
+```bash
+npm run dev        # vite dev server
+npm run build      # production build (base path set by CI, see §8)
+npm run lint       # eslint
+npm test           # vitest run   (unit tests: evalState round-trips, accessStore, roleView, auth)
+```
+
+There is **no CLAUDE-managed backend in this repo** beyond `worker/` and `services/`.
+The Python backends the SPA mirrors (financial estimate, DVS automations) live on Railway.
+
+---
+
+## 3. The boards (source of truth)
+
+| Board | ID | Roles / purpose |
+|---|---|---|
+| **DTC Intake** | `18392794310` | Top of funnel; "Send To Medical Necessity" group feeds the pipeline. Read-only here (oversight/system-mgmt). |
+| **Profile Send Off** | `18406352652` | `profile` role. Its own board (groups: *Intake → Parachute Example → Tests → Stuck → Completed*). **Not** the Welcome Call board. |
+| **Medical Evaluation** ("Masheke") | `18406060017` | `evaluate`, `sendRequest`, `confirmReceipt`, `chaseFax`, `chaseParachute`. Medical-necessity document collection. |
+| **Insurance** ("Samantha") | `18410601299` | `benefits`, `submitAuth`, `authOutstanding`, `authDenied`. Groups: Benefits, Submit Auth, Auth Outstanding, Auth Denied, Escalations, Complete/Stuck. |
+| **Welcome Call** | `18410804557` | `welcomeCall` + `finalConfirm` (two roles, same board, different groups). See `BOARD_SCHEMA.md`. |
+| **Subscription Board - Updated** | `18407459988` | `subscription` role + one source for Patient Questions. |
+| **Secondary Claims Board** | `18413019028` | Second source for Patient Questions inbox. |
+| **MM Doctor Database** | `18142847597` | NPI → doctor record + Doctor Notes (`shared/doctorDb.ts`). Separate from patient boards. |
+
+**Column IDs are the contract.** Every `lib/<role>/mondayMapping.ts` maps domain fields to
+Monday column IDs (`color_…`, `text_…`, `date_…`, `dropdown_…`). If a column is renamed on
+Monday the *title* changes but the *ID* doesn't, so reads keep working — but if a column is
+**deleted/recreated**, the ID changes and reads silently return empty. There is no schema
+validation; these IDs are institutional knowledge captured in the mapping files + the two
+schema docs.
+
+---
+
+## 4. Repo layout — the per-role convention
+
+Everything is sliced by role. For a role `X` you'll typically find a parallel set:
+
+```
+src/lib/X/        mondayApi.ts      gql() calls + board ID + column read/write primitives
+                  mondayMapping.ts  Monday columns  <->  domain Patient model
+                  mondayWrite.ts    the "Send to Monday" transaction (uses verifiedWrite)
+                  workflow.ts       Patient type + validation + derived state for role X
+src/components/X/  panels, cards, sidebar, modals for role X
+src/hooks/X/       useMondayPatients.ts (poll + local overlay), etc.
+src/pages/         XPage.tsx        wires hook + components together
+```
+
+Shared, cross-role code lives in `src/lib/shared/*`, `src/components/shared/*`,
+`src/components/ui/*` (shadcn), and root hooks `src/hooks/use*.ts`.
+
+`src/lib/config.ts` is the **role registry** (`ROLES[]`: id, label, color, icon, route).
+`fax` and `authDenied` are **count-only** roles with no clickable route (intentional —
+`DailyBurndown`/`OperationsTab` exclude them from navigation). `systemMgmt` is deliberately
+**not** in `ROLES` (reached via the Oversight button, not role assignment).
+
+---
+
+## 5. Core mechanisms (read these files to understand the app)
+
+### 5.1 Monday endpoint routing — `lib/shared/mondayEndpoint.ts`
+Single switch for *where* GraphQL goes:
+- `VITE_MONDAY_GATEWAY_URL` set → every `gql()` POSTs to `${gateway}/gql`; the gateway injects
+  the Monday token server-side and audits the request.
+- Unset → calls `api.monday.com` directly with the bundled `VITE_MONDAY_API_TOKEN`.
+- `mondayIdentityHeaders()` / `mondayAuthHeaders()` attach the signed-in user's Google token
+  (`X-MM-Auth`) + email (`X-MM-User`) for audit attribution. **In production the SPA is meant
+  to run through the gateway.**
+
+### 5.2 Verified write — `lib/shared/verifiedWrite.ts` (the most important utility)
+Monday returns `200` on a column write *before the value is indexed*, so an automation that
+triggers on a status change can read **stale sibling columns**. `executeWritesWithVerification`
+prevents this with a 4-phase protocol:
+1. **Snapshot** all data columns before writing.
+2. **Write** all data columns in parallel (with retry).
+3. **Verify** by polling read-back (≤8 tries, ~12s) until each column either matches
+   `expectedText` or differs from the snapshot (same-value writes confirmed via 3 stable reads).
+4. **Advance** — only now write the stage-advancer column(s).
+If verification times out it **throws and does NOT advance** — surfacing the problem instead
+of shipping stale data downstream.
+**Gateway fast path:** when the gateway is configured and every task carries a raw `value`, the
+whole transaction is handed to the durable server-side `POST /send` (idempotent), so the browser
+can close immediately. Any failure falls back to the client path — purely additive.
+
+The six main "Send to Monday" flows use this correctly. **Inline panel actions** (attempt saves,
+mark-complete, escalation modal, notes, Subscription's big write) historically bypassed it — see
+`WRITE_RELIABILITY_AUDIT.md` for the H1–H6 / M-series findings before touching those paths.
+
+### 5.3 Access control — `lib/accessStore.ts`, `lib/roleView.ts`, `lib/people.ts`
+- Persisted to **`public/data/access.json`** via the GitHub Contents API (bundled
+  `VITE_GITHUB_PAT`), polled every 10s, written with SHA-based optimistic concurrency.
+- Model: **managers** (see the full app + all role bars) vs **processors**
+  (`email → { name, roles[], roleFilters, roleOrder }` — see only assigned bars).
+- **Bootstrap:** while `managers[]` is empty, *everyone* is a manager (so the first admin can
+  configure without locking themselves out).
+- `roleView.ts` turns a processor profile into ordered/filtered role bars; per-role escalation
+  filter is `all | escalated | nonEscalated` (legacy `?manager=1` → escalated).
+- **`public/data/assignments.json` is legacy/dead** — nothing reads it; access.json is the
+  single source of truth. Safe to delete.
+
+### 5.4 Auth gate — `components/AuthGate.tsx`, `lib/shared/auth.ts`
+Google Identity Services sign-in, **active only when `VITE_GOOGLE_CLIENT_ID` is set**,
+domain-locked to `medicallymodern.com`. **Sign-in is a gate, not a ticking token:** the stored
+identity *is* the session and never lapses on its own — only explicit `signOut()` clears it. The
+1-hour Google ID token is kept only for best-effort gateway attribution and refreshed in the
+background (`SessionKeeper`); a stale token never drops the session or blocks writes.
+
+### 5.5 Files, email & fax — `worker/src/index.js` (Cloudflare) + `lib/fax/ringcentralApi.ts`
+The Cloudflare worker (`monday-file-proxy`) has three routes:
+- `GET /asset?url=` — proxy Monday asset downloads (CORS; allowlisted Monday hosts). Used by
+  `shared/mondayAssets.ts` and the `FileViewerModal` (pdf.js).
+- `POST /` — relay multipart **file uploads** to Monday's file API.
+- `POST /send-message` — send email **as the Gmail sender**, gated to signed-in
+  medicallymodern.com users. Recipients may be normal emails **or `<number>@rcfax.com`**, which
+  **RingCentral converts to a fax**. This is how Send Request dispatches fax/email.
+`ringcentralApi.ts` also reads the **unread-fax count** (FAX dashboard role) and the Fax Inbox.
+
+### 5.6 The Evaluate state machine — `lib/masheke/evalState.ts` (the densest domain logic)
+Local-only `EvalState` in localStorage, with **Monday as source of truth** for "Monday-backed"
+fields (Monday always wins on reload, even when blank). Produces: a validity rollup
+(`deriveValidity` / `bannerMnEstablished` — the latter is the single source of truth for stage
+routing on submit), a doctor-facing **ask list**, and an **MN checklist**.
+> **Gotcha — "Option A" encoding:** the board has *no* per-requirement columns, so the rep's
+> per-requirement **Yes/No/Invalid** answers are round-tripped through **two existing dropdown
+> columns** (`IP MN Invalid Reasons`, `IP MN No Reasons`) by **exact label-string match**.
+> Label strings (`IP_REQ_LABELS`, casing included) **must match the board exactly or Monday
+> silently creates a duplicate label**. Edit these only against the live board; the round-trip
+> tests (`evalState.roundtrip.test.ts`, `evalState.step2audit.test.ts`) guard it.
+
+### 5.7 OOP estimator — `lib/welcomeCall/oopEstimator.ts`
+Estimates patient out-of-pocket for the Welcome Call. **Mirrors backend Python** (`claim_assumptions.py`,
+`financial_estimate_service.py`, `insurance_rules.py`) that lives on Railway, **not in this repo**.
+`PAYER_RATE_SCHEDULE` and the Medicaid/Medicare/Humana special-cases are **hardcoded and must be
+hand-synced** with that backend — there is no automated check for drift. Eligibility inputs
+(deductible, coinsurance %, OOP max) come from **Stedi**, written into Monday by the
+`stedi-monday-integration` Railway service and read back by `StediPanel`.
+
+### 5.8 Burndown / baseline — `hooks/useServerBaseline.ts`, `components/dashboard/DailyBurndown.tsx`
+Daily "start-of-day" role counts are snapshotted to `public/data/baseline.json` by the
+`baseline-cron` Railway service (`services/baseline-cron`, also `scripts/snapshot-baseline.mjs`)
+and the `daily-baseline.yml` workflow. The burndown shows progress against today's baseline; if
+no baseline exists it bootstraps from live counts. Dates from Monday are **timezone-naive ET
+strings** — compare in ET, not via raw `new Date()` (see `ringcentralApi.ts` / cron comments).
+
+---
+
+## 6. Patient flow across boards (the big picture)
+
+```
+DTC Intake (18392794310)
+   │  "Send To Medical Necessity"
+   ▼
+Profile Send Off (18406352652)  ──profile role: complete demographics/insurance/doctor
+   ▼
+Welcome Call (18410804557)      ──welcomeCall → finalConfirm roles
+   ▼
+Medical Evaluation (18406060017)──evaluate → sendRequest → confirmReceipt → chase (fax|parachute)
+   ▼
+Insurance (18410601299)         ──benefits → submitAuth → authOutstanding (→ authDenied)
+   ▼
+Subscription (18407459988) / Claims boards  ──recurring orders, reconciliation
+```
+
+Movement between groups/boards is performed by **Monday automations** (e.g. "when Stage Advancer
+status changes → set status / move item to group", and a "when item created → set statuses + copy
+columns" automation on duplicated items). The SPA only flips the advancer; verify writes first.
+
+---
+
+## 7. Cross-cutting / manager views
+
+- **Oversight** (`/oversight`, `lib/oversight/oversightApi.ts`) and **System Management**
+  (`/system-mgmt`, `lib/systemMgmt/mondayApi.ts`) aggregate counts/pipeline across *all* boards
+  (hardcoded board + stage-advancer column IDs). `OperationsTab` + `PipelineChart` render burndown
+  and day-bucket distributions.
+- **Patient Questions** (`/patient-questions`) is a read-only inbox merging "patient message"
+  columns from the Subscription + Secondary Claims boards.
+- **Fax Inbox** (`/fax-inbox`) reads inbound faxes from RingCentral.
+- **Access admin** (`/access`, managers only) edits `access.json` (auto-saves per mutation).
+
+---
+
+## 8. Deployment reality
+
+- **Frontend:** GitHub Pages. `deploy.yml` sets Vite `--base=/<repo>/`, and `lib/shared/dataRepo.ts`
+  derives the data repo from that base path: **test build → `command-center-test` repo, prod build →
+  `command-center` repo**. This is why the data repo is computed, not hardcoded — `sync-from-test.yml`
+  force-pushes test's code over prod, so a hardcoded name would make prod write into the test repo.
+- **Gateway (`services/monday-gateway`)** runs on Railway as **`cmd ctr server`** with Postgres
+  **`cmd ctr db`**. Confirmed production config: **Google-auth enforcement ON** (`GOOGLE_CLIENT_ID`
+  set → `/send` requires a verified medicallymodern.com token), **`LOG_MODE=all` but
+  `LOG_PAYLOAD=false`** (every request audited, **no PHI** stored), audit viewer key-protected at
+  `/audit`. `services/monday-gateway/send.mjs` is the durable, idempotent `send_jobs` queue.
+- **Worker (`worker/`)** deploys via `deploy-worker.yml` / `npx wrangler deploy`.
+
+### Backend ecosystem (Railway)
+This SPA is one of many services. Others you'll hear referenced (all on Railway):
+`stedi-monday-integration` (eligibility → Monday), `josh-monday-automations` +
+`automate-dvs` / `automate-dvs-insurance` / `automate-dvs-subscriptions` (insurance/financial
+automation — the "Trigger DVS" column), `parachute-doctor-lookup` (Parachute clinicals/doctor
+lookup), `doctor-sync-webhook` / `auto-doctor-database-search` (Doctor Database sync),
+`mm-dtc-api` / `manufacturer-referral-webhook` (intake), `mm-patient-portal` /
+`reorder-patient-form` / `coins-form-payment` / `patient-intake-texts-backend` (patient-facing),
+`baseline-cron-CMD CTR-T` (burndown baseline). The OOP estimator and DVS columns are owned by
+these services; when their math changes, `oopEstimator.ts` must be updated to match.
+
+---
+
+## 9. Conventions & gotchas
+
+- **Verify before you advance.** Any new write that a Monday automation keys on must go through
+  `executeWritesWithVerification` with the trigger column as `stageColumnId`.
+- **Column IDs, not titles**, are the contract. Add new ones to `mondayMapping.ts` + the schema docs.
+- **Exact label strings** for status/dropdown writes (Evaluate "Option A", coverage paths, etc.) —
+  a casing mismatch creates duplicate board labels. Prefer index writes where possible.
+- **Monday dates are ET, timezone-naive.** Don't compare with a bare `new Date()` in a non-ET runtime.
+- **PHI everywhere.** Patient data is on every board. The gateway logs metadata only
+  (`LOG_PAYLOAD=false`); keep it that way. Don't write patient data to logs/artifacts/commits.
+- **Optimistic UI** in many panels marks state "saved" before Monday confirms; failures rely on a
+  toast. Don't assume a green UI means a durable write (esp. Subscription — see §10).
+
+---
+
+## 10. Known risks / open items (don't rediscover these)
+
+- **Secrets in the public bundle (direct mode):** `VITE_MONDAY_API_TOKEN`, `VITE_GITHUB_PAT`, and
+  **hardcoded RingCentral client-secret + a long-lived JWT** (`lib/fax/ringcentralApi.ts`) ship in
+  the JS bundle. The gateway moves the Monday token server-side, but full secret removal ("Phase 1b")
+  also requires the GitHub Pages build to stop bundling the token. **Treat the RingCentral
+  credential as exposed** and rotate it; consider proxying RC through a service too.
+- **Subscription send (`lib/subscription/mondayWrite.ts`)** writes ~20 columns with retry but **no
+  read-back verification** (audit **H6**); confetti fires even on partial failure.
+- **Inline write ordering** in SendRequest/ConfirmReceipt/Chase panels and the **Escalation modal**
+  (audit H1–H5, M2) can flip a trigger before sibling data is indexed.
+- **"Never billed" attestations** can't be un-set from the UI (code only writes when truthy).
+- **Split-order duplicate** (Final Confirm) races a Monday "new item created" automation; the code
+  re-writes flags "defensively" afterward (audit M6).
+- `README.md` points here; keep this file current as the architecture moves.
+
+---
+
+## 11. Where to look first for a given task
+
+| Task | Start here |
+|---|---|
+| A role's page behaves wrong | `src/pages/<Role>Page.tsx` → `hooks/<role>/useMondayPatients.ts` → `lib/<role>/workflow.ts` |
+| A value isn't saving to Monday | `lib/<role>/mondayWrite.ts` + `lib/shared/verifiedWrite.ts`; cross-check `mondayMapping.ts` column IDs |
+| Medical-necessity logic | `lib/masheke/evalState.ts` (+ ipPaths, requestTemplate, mnRequestPdf) |
+| Cost estimate wrong | `lib/welcomeCall/oopEstimator.ts` (sync vs Railway financial backend) |
+| Who can see what | `lib/accessStore.ts`, `lib/roleView.ts`, `components/AccessProvider.tsx` |
+| Files won't load / PDF viewer | `lib/shared/mondayAssets.ts`, `components/shared/FileViewerModal.tsx`, `worker/src/index.js` |
+| Fax/email send | `components/masheke/SendRequestPanel.tsx`, `worker/src/index.js`, `lib/fax/ringcentralApi.ts` |
+| Audit a write that "disappeared" | gateway `/audit` (Postgres `gql_log` / `send_jobs`) |
