@@ -48,7 +48,7 @@
         "chaseParachute"
       ],
       "roleFilters": {
-        "profile": "escalated",
+        "profile": "all",
         "sendRequest": "escalated",
         "chaseFax": "escalated",
         "confirmReceipt": "escalated",
