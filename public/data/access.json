@@ -64,7 +64,8 @@
     "brandon@medicallymodern.com": {
       "name": "brandon",
       "roles": [
-        "profile"
+        "profile",
+        "finalConfirm"
       ]
     }
   }
