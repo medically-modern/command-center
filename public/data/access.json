@@ -38,23 +38,6 @@
         "confirmReceipt"
       ]
     },
-    "janelle@medicallymodern.com": {
-      "name": "Janelle",
-      "roles": [
-        "profile",
-        "confirmReceipt",
-        "chaseFax",
-        "sendRequest",
-        "chaseParachute"
-      ],
-      "roleFilters": {
-        "profile": "all",
-        "sendRequest": "escalated",
-        "chaseFax": "escalated",
-        "confirmReceipt": "escalated",
-        "chaseParachute": "escalated"
-      }
-    },
     "josh@medicallymodern.com": {
       "name": "josh",
       "roles": [],

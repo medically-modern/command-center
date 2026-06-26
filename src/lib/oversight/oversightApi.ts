@@ -78,46 +78,16 @@ export interface ChartDef {
   id: string;
   title: string;
   boardId: number;
-  /** Column IDs to display in drill-down table, with display labels */
-  drilldownCols: { colId: string; label: string }[];
+  /** Column IDs to display in drill-down table, with display labels.
+   *  `pill: true` renders the value(s) as colored status pills. */
+  drilldownCols: { colId: string; label: string; pill?: boolean }[];
   /** Optional column ID for a notes/long-text field shown via icon popover */
   notesColId?: string;
 }
 
 // ── Chart definitions (12 charts) ───────────────────────────────────────
 
-export const CHART_DEFS: ChartDef[] = [
-  // ── Board 18392794310 (DtC) ──
-  {
-    id: "dtc-partial-leads",
-    title: "DtC Partial Leads",
-    boardId: 18392794310,
-    notesColId: "long_text_mkzmxx3t",
-    drilldownCols: [
-      { colId: "date_mm1ftf0f", label: "Intake Date" },
-      { colId: "text_mm2me552", label: "Last Seen" },
-      { colId: "color_mm2mjnhp", label: "Drop-off Page" },
-      { colId: "multi_selectemye8jl3", label: "Issue Facing" },
-      { colId: "dropdown_mm0adspd", label: "Uses Insulin?" },
-      { colId: "color_mm2kfyeg", label: "CGM Monitoring" },
-      { colId: "color_mm2kaes", label: "Pump Scenario" },
-    ],
-  },
-  {
-    id: "dtc-raw-intake",
-    title: "DtC Raw Intake Data",
-    boardId: 18392794310,
-    notesColId: "long_text_mkzmxx3t",
-    drilldownCols: [
-      { colId: "date_mm1ftf0f", label: "Intake Date" },
-      { colId: "color_mkywv02j", label: "Referral Source" },
-      { colId: "color_mky1a991", label: "Request" },
-      { colId: "color_mkzbynsv", label: "Intake Call" },
-      { colId: "rc_last_call_qjfe", label: "Last Call" },
-      { colId: "ring_central_xyyv", label: "Total Calls" },
-    ],
-  },
-
+const RAW_CHART_DEFS: ChartDef[] = [
   // ── Board 18406352652 (Profile Send Off) ──
   {
     id: "profile-send-off",
@@ -126,12 +96,13 @@ export const CHART_DEFS: ChartDef[] = [
     notesColId: "text_mm389fs",
     drilldownCols: [
       { colId: "date_mm1wf43j", label: "Intake Date" },
+      { colId: "color_mm1wwm05", label: "Days in Stage" },
       { colId: "color_mm1w5wxr", label: "Referral Source" },
-      { colId: "color_mm1w1cm9", label: "Serving" },
+      { colId: "color_mm1w1978", label: "Request" },
+      { colId: "color_mm24ap4j", label: "General Insurance" },
       { colId: "color_mm1xg10n", label: "Primary Insurance" },
+      { colId: "text_mm1x2qk2", label: "Member ID 1" },
       { colId: "color_mm1yeksx", label: "Run Stedi" },
-      { colId: "text_mm1xhymg", label: "Prior Auth Req?" },
-      { colId: "color_mm1zmeb3", label: "Move to Onboarding" },
     ],
   },
 
@@ -142,15 +113,15 @@ export const CHART_DEFS: ChartDef[] = [
     boardId: 18406060017,
     notesColId: "long_text_mm27zjt2",
     drilldownCols: [
+      { colId: "date_mm1wf43j", label: "Intake Date" },
       { colId: "color_mm1wwm05", label: "Days in Stage" },
+      { colId: "color_mm1w5wxr", label: "Referral Source" },
+      { colId: "color_mm1x157j", label: "Primary Insurance" },
       { colId: "color_mm1w1cm9", label: "Serving" },
-      { colId: "color_mm1wf7rv", label: "Diagnosis" },
+      { colId: "numeric_mm4bhjc8", label: "Evaluation Count" },
       { colId: "color_mm1y8rv8", label: "MRs / Clinicals" },
-      { colId: "date_mm1wb9br", label: "Last Visit" },
-      { colId: "date_mm1ymthz", label: "MR Expiry" },
-      { colId: "color_mm1w7e5q", label: "CGM Path" },
-      { colId: "color_mm1w5xn1", label: "IP Path" },
-      { colId: "color_mm1y6qrf", label: "Medical Necessity" },
+      { colId: "color_mm44h0fx", label: "CGM Script Received" },
+      { colId: "color_mm44chc8", label: "IP Script Received" },
     ],
   },
   {
@@ -159,13 +130,14 @@ export const CHART_DEFS: ChartDef[] = [
     boardId: 18406060017,
     notesColId: "long_text_mm27zjt2",
     drilldownCols: [
+      { colId: "date_mm1wf43j", label: "Intake Date" },
       { colId: "color_mm1wwm05", label: "Days in Stage" },
+      { colId: "color_mm1w5wxr", label: "Referral Source" },
+      { colId: "color_mm1x157j", label: "Primary Insurance" },
       { colId: "color_mm1w1cm9", label: "Serving" },
-      { colId: "color_mm1y6qrf", label: "Medical Necessity" },
+      { colId: "numeric_mm4bhjc8", label: "Evaluation Count" },
       { colId: "color_mm1xw7y5", label: "Clinicals Method" },
-      { colId: "text_mm1x46et", label: "Doctor Name" },
-      { colId: "email_mm1xdzcj", label: "Doctor Fax" },
-      { colId: "color_mm2y7t2x", label: "Send Request" },
+      { colId: "__requesting__", label: "Requesting" },
     ],
   },
   {
@@ -174,13 +146,18 @@ export const CHART_DEFS: ChartDef[] = [
     boardId: 18406060017,
     notesColId: "long_text_mm2ytsxp",
     drilldownCols: [
+      { colId: "date_mm1wf43j", label: "Intake Date" },
       { colId: "color_mm1wwm05", label: "Days in Stage" },
+      { colId: "color_mm1w5wxr", label: "Referral Source" },
+      { colId: "color_mm1x157j", label: "Primary Insurance" },
       { colId: "color_mm1w1cm9", label: "Serving" },
+      { colId: "numeric_mm4bhjc8", label: "Evaluation Count" },
       { colId: "date_mm2yg8x8", label: "Request Sent" },
-      { colId: "color_mm1xw7y5", label: "Clinicals Method" },
-      { colId: "text_mm1wj9at", label: "Confirmed By" },
-      { colId: "date_mm1wxpdk", label: "Confirmed Date" },
-      { colId: "date_mm1wadgs", label: "Next Action" },
+      { colId: "__requesting__", label: "Requesting" },
+      { colId: "color_mm1wz0vg", label: "MN Attempts" },
+      { colId: "text_mm2yd068", label: "Attempt 1 Log" },
+      { colId: "text_mm2y9h4a", label: "Attempt 2 Log" },
+      { colId: "text_mm2ymtsk", label: "Attempt 3 Log" },
     ],
   },
   {
@@ -189,12 +166,66 @@ export const CHART_DEFS: ChartDef[] = [
     boardId: 18406060017,
     notesColId: "long_text_mm2ytsxp",
     drilldownCols: [
+      { colId: "date_mm1wf43j", label: "Intake Date" },
       { colId: "color_mm1wwm05", label: "Days in Stage" },
+      { colId: "color_mm1w5wxr", label: "Referral Source" },
+      { colId: "color_mm1xw7y5", label: "Clinicals Method" },
+      { colId: "color_mm1x157j", label: "Primary Insurance" },
+      { colId: "color_mm1w1978", label: "Request Type" },
       { colId: "color_mm1w1cm9", label: "Serving" },
-      { colId: "date_mm1wxpdk", label: "Receipt Confirmed" },
+      { colId: "numeric_mm4bhjc8", label: "Evaluation Count" },
+      { colId: "date_mm2yg8x8", label: "Request Sent" },
+      { colId: "__requesting__", label: "Requesting" },
       { colId: "color_mm1wz0vg", label: "MN Attempts" },
-      { colId: "text_mm1wabj9", label: "Chase Recipient" },
-      { colId: "date_mm1ymthz", label: "MR Expiry" },
+      { colId: "text_mm2yhpjt", label: "Attempt 1 Log" },
+      { colId: "text_mm2yb3rv", label: "Attempt 2 Log" },
+      { colId: "text_mm2ybk06", label: "Attempt 3 Log" },
+      { colId: "date_mm1wadgs", label: "Next Action" },
+    ],
+  },
+
+  // ── Escalations (attempt 4+ / MN Attempts = "Escalate") — second row of the
+  //    Medical Evaluation stage. Same boards/columns as the parent charts. ──
+  {
+    id: "confirm-receipt-escalations",
+    title: "Confirm Receipt (Escalated)",
+    boardId: 18406060017,
+    notesColId: "long_text_mm2ytsxp",
+    drilldownCols: [
+      { colId: "date_mm1wf43j", label: "Intake Date" },
+      { colId: "color_mm1wwm05", label: "Days in Stage" },
+      { colId: "color_mm1w5wxr", label: "Referral Source" },
+      { colId: "color_mm1x157j", label: "Primary Insurance" },
+      { colId: "color_mm1w1cm9", label: "Serving" },
+      { colId: "numeric_mm4bhjc8", label: "Evaluation Count" },
+      { colId: "date_mm2yg8x8", label: "Request Sent" },
+      { colId: "__requesting__", label: "Requesting" },
+      { colId: "color_mm1wz0vg", label: "MN Attempts" },
+      { colId: "text_mm2yd068", label: "Attempt 1 Log" },
+      { colId: "text_mm2y9h4a", label: "Attempt 2 Log" },
+      { colId: "text_mm2ymtsk", label: "Attempt 3 Log" },
+    ],
+  },
+  {
+    id: "chase-clinicals-escalations",
+    title: "Chase Clinicals (Escalated)",
+    boardId: 18406060017,
+    notesColId: "long_text_mm2ytsxp",
+    drilldownCols: [
+      { colId: "date_mm1wf43j", label: "Intake Date" },
+      { colId: "color_mm1wwm05", label: "Days in Stage" },
+      { colId: "color_mm1w5wxr", label: "Referral Source" },
+      { colId: "color_mm1xw7y5", label: "Clinicals Method" },
+      { colId: "color_mm1x157j", label: "Primary Insurance" },
+      { colId: "color_mm1w1978", label: "Request Type" },
+      { colId: "color_mm1w1cm9", label: "Serving" },
+      { colId: "numeric_mm4bhjc8", label: "Evaluation Count" },
+      { colId: "date_mm2yg8x8", label: "Request Sent" },
+      { colId: "__requesting__", label: "Requesting" },
+      { colId: "color_mm1wz0vg", label: "MN Attempts" },
+      { colId: "text_mm2yhpjt", label: "Attempt 1 Log" },
+      { colId: "text_mm2yb3rv", label: "Attempt 2 Log" },
+      { colId: "text_mm2ybk06", label: "Attempt 3 Log" },
       { colId: "date_mm1wadgs", label: "Next Action" },
     ],
   },
@@ -206,13 +237,16 @@ export const CHART_DEFS: ChartDef[] = [
     boardId: 18410601299,
     notesColId: "long_text_mm2ffsme",
     drilldownCols: [
+      { colId: "date_mm1wf43j", label: "Intake Date" },
       { colId: "color_mm1wwm05", label: "Days in Stage" },
-      { colId: "color_mm1w1cm9", label: "Serving" },
+      { colId: "color_mm1w5wxr", label: "Referral Source" },
       { colId: "color_mm1x157j", label: "Primary Insurance" },
-      { colId: "color_mm2vhwan", label: "Active/Network" },
-      { colId: "color_mm2vt8xg", label: "DME Benefits" },
-      { colId: "color_mm2vemyy", label: "SoS" },
-      { colId: "color_mm2vg3ew", label: "Auth" },
+      { colId: "color_mm1w1cm9", label: "Serving" },
+      { colId: "color_mm2vhwan", label: "Active/Network", pill: true },
+      { colId: "color_mm2vt8xg", label: "DME Benefits", pill: true },
+      { colId: "color_mm2vg3ew", label: "Auth", pill: true },
+      { colId: "color_mm2vemyy", label: "SoS", pill: true },
+      { colId: "dropdown_mm2vez5a", label: "Not Clear Products", pill: true },
     ],
   },
   {
@@ -221,13 +255,16 @@ export const CHART_DEFS: ChartDef[] = [
     boardId: 18410601299,
     notesColId: "long_text_mm2ffsme",
     drilldownCols: [
+      { colId: "date_mm1wf43j", label: "Intake Date" },
       { colId: "color_mm1wwm05", label: "Days in Stage" },
-      { colId: "color_mm1w1cm9", label: "Serving" },
+      { colId: "color_mm1w5wxr", label: "Referral Source" },
       { colId: "color_mm1x157j", label: "Primary Insurance" },
+      { colId: "color_mm1w1cm9", label: "Serving" },
       { colId: "color_mm1wgjd1", label: "CGM Auth Result" },
+      { colId: "color_mm1x5c99", label: "Sensors Auth Result" },
       { colId: "color_mm1xnzmn", label: "IP Auth Result" },
-      { colId: "text_mm2wmc1z", label: "CGM Auth Submit Date" },
-      { colId: "text_mm2w72r6", label: "IP Auth Submit Date" },
+      { colId: "color_mm1xr2j1", label: "Infusion Set Auth Result" },
+      { colId: "color_mm1xybvt", label: "Cartridge Auth Result" },
     ],
   },
   {
@@ -236,12 +273,21 @@ export const CHART_DEFS: ChartDef[] = [
     boardId: 18410601299,
     notesColId: "long_text_mm2ffsme",
     drilldownCols: [
+      { colId: "date_mm1wf43j", label: "Intake Date" },
       { colId: "color_mm1wwm05", label: "Days in Stage" },
+      { colId: "color_mm1w5wxr", label: "Referral Source" },
+      { colId: "color_mm1x157j", label: "Primary Insurance" },
       { colId: "color_mm1w1cm9", label: "Serving" },
       { colId: "color_mm1wgjd1", label: "CGM Auth Result" },
+      { colId: "text_mm2wmc1z", label: "CGM Submitted" },
+      { colId: "color_mm1x5c99", label: "Sensors Auth Result" },
+      { colId: "text_mm2w85gd", label: "Sensors Submitted" },
       { colId: "color_mm1xnzmn", label: "IP Auth Result" },
-      { colId: "text_mm1w1d5p", label: "Monitor Auth ID" },
-      { colId: "text_mm1xmj8x", label: "IP Auth ID" },
+      { colId: "text_mm2w72r6", label: "IP Submitted" },
+      { colId: "color_mm1xr2j1", label: "Infusion Set Auth Result" },
+      { colId: "text_mm2wvnpx", label: "Infusion Set Submitted" },
+      { colId: "color_mm1xybvt", label: "Cartridge Auth Result" },
+      { colId: "text_mm2wth7t", label: "Cartridge Submitted" },
     ],
   },
   {
@@ -250,12 +296,21 @@ export const CHART_DEFS: ChartDef[] = [
     boardId: 18410601299,
     notesColId: "long_text_mm3jrssp",
     drilldownCols: [
+      { colId: "date_mm1wf43j", label: "Intake Date" },
       { colId: "color_mm1wwm05", label: "Days in Stage" },
-      { colId: "date_mm27ha6a", label: "First Denied" },
-      { colId: "long_text_mm27hjey", label: "Denial Reason" },
-      { colId: "numeric_mm27nexq", label: "Retry Count" },
-      { colId: "date_mm27krnc", label: "Retry Next Date" },
-      { colId: "color_mm2vsh2f", label: "Escalation" },
+      { colId: "color_mm1w5wxr", label: "Referral Source" },
+      { colId: "color_mm1x157j", label: "Primary Insurance" },
+      { colId: "color_mm1w1cm9", label: "Serving" },
+      { colId: "color_mm1wgjd1", label: "CGM Auth Result" },
+      { colId: "text_mm2wmc1z", label: "CGM Submitted" },
+      { colId: "color_mm1x5c99", label: "Sensors Auth Result" },
+      { colId: "text_mm2w85gd", label: "Sensors Submitted" },
+      { colId: "color_mm1xnzmn", label: "IP Auth Result" },
+      { colId: "text_mm2w72r6", label: "IP Submitted" },
+      { colId: "color_mm1xr2j1", label: "Infusion Set Auth Result" },
+      { colId: "text_mm2wvnpx", label: "Infusion Set Submitted" },
+      { colId: "color_mm1xybvt", label: "Cartridge Auth Result" },
+      { colId: "text_mm2wth7t", label: "Cartridge Submitted" },
     ],
   },
 
@@ -266,17 +321,156 @@ export const CHART_DEFS: ChartDef[] = [
     boardId: 18410804557,
     notesColId: "long_text_mm2ffsme",
     drilldownCols: [
+      { colId: "date_mm1wf43j", label: "Intake Date" },
       { colId: "color_mm1wwm05", label: "Days in Stage" },
+      { colId: "color_mm1w5wxr", label: "Referral Source" },
+      { colId: "color_mm1x157j", label: "Primary Insurance" },
       { colId: "color_mm1w1cm9", label: "Serving" },
-      { colId: "color_mm1xnzmn", label: "IP Auth Result" },
-      { colId: "color_mm1wgjd1", label: "CGM Auth Result" },
-      { colId: "color_mm1xbqth", label: "Subscription Type" },
-      { colId: "color_mm1xtqvv", label: "Welcome Call Text" },
-      { colId: "color_mm2776fg", label: "Order Handling" },
-      { colId: "color_mm301cpp", label: "Advance?" },
-      { colId: "phone_mm1x44yk", label: "Pt. Phone" },
+      { colId: "text_mm322fg9", label: "Call Attempts" },
     ],
   },
+  {
+    id: "profile-review",
+    title: "Profile Review",
+    boardId: 18410804557,
+    notesColId: "long_text_mm2ffsme",
+    drilldownCols: [
+      { colId: "date_mm1wf43j", label: "Intake Date" },
+      { colId: "color_mm1wwm05", label: "Days in Stage" },
+      { colId: "color_mm1w5wxr", label: "Referral Source" },
+      { colId: "color_mm1x157j", label: "Primary Insurance" },
+      { colId: "color_mm1w1cm9", label: "Serving" },
+    ],
+  },
+];
+
+// ── Always-on priority columns ──────────────────────────────────────────
+// Referral Source + Primary Insurance are the two fields that most affect how
+// a patient should be prioritized, so every drill-down leads with them (after
+// Days in Stage). Column IDs differ per board.
+const BOARD_PRIORITY_COLS: Record<
+  number,
+  { referral?: string; insurance?: string; referralType?: string }
+> = {
+  18392794310: { referral: "color_mkywv02j" },                                                         // DtC (no insurance captured at intake)
+  18406352652: { referral: "color_mm1w5wxr", insurance: "color_mm1xg10n", referralType: "color_mm1wm4n4" }, // Profile Send Off
+  18406060017: { referral: "color_mm1w5wxr", insurance: "color_mm1x157j", referralType: "color_mm1wm4n4" }, // Medical Necessity
+  18410601299: { referral: "color_mm1w5wxr", insurance: "color_mm1x157j", referralType: "color_mm1wm4n4" }, // Insurance / Auth
+  18410804557: { referral: "color_mm1w5wxr", insurance: "color_mm1x157j", referralType: "color_mm1wm4n4" }, // Welcome Call
+};
+
+/** Resolve the fields used by the priority score for a patient, regardless of
+ *  which board/columns the stage uses. Referral combines type + source so
+ *  "Doctor"/"Manufacturer" (type) and "CareCentrix" (source) both match. */
+export function scoringFields(p: OversightPatient): {
+  referral: string;
+  insurance: string;
+  bucket: DayBucketLabel | "Unknown";
+} {
+  const pri = BOARD_PRIORITY_COLS[p.boardId] ?? {};
+  // Score on the Referral TYPE status label (exact). Falls back to the referral
+  // source for boards without a type column (DtC — excluded from VIP anyway).
+  const refType = pri.referralType ? p.cols[pri.referralType] ?? "" : "";
+  const refSrc = pri.referral ? p.cols[pri.referral] ?? "" : "";
+  const insurance = pri.insurance ? p.cols[pri.insurance] ?? "" : "";
+  return { referral: (refType || refSrc).trim(), insurance, bucket: p.dayBucket };
+}
+
+/** Status-column label options for the priority editor, pulled live from Monday
+ *  (Referral Type + Primary Insurance on the Medical Necessity board). */
+export async function fetchPriorityOptions(): Promise<{
+  referralTypes: string[];
+  insurances: string[];
+}> {
+  const refTypeCol = "color_mm1wm4n4";
+  const insuranceCol = "color_mm1x157j";
+  const query = `query { boards(ids: 18406060017) { columns(ids: ["${refTypeCol}","${insuranceCol}"]) { id settings_str } } }`;
+  const data = await gql<{
+    boards: { columns: { id: string; settings_str: string }[] }[];
+  }>(query);
+  const cols = data.boards?.[0]?.columns ?? [];
+  const labelsOf = (id: string): string[] => {
+    const c = cols.find((x) => x.id === id);
+    if (!c) return [];
+    try {
+      const s = JSON.parse(c.settings_str) as { labels?: Record<string, string> };
+      return Object.values(s.labels ?? {}).filter(Boolean);
+    } catch {
+      return [];
+    }
+  };
+  return { referralTypes: labelsOf(refTypeCol), insurances: labelsOf(insuranceCol) };
+}
+
+/** Status label → hex color maps for the pill columns (Benefits board), pulled
+ *  from Monday so pills match the board's colors. Keyed by colId, then by the
+ *  lower-cased label. */
+export async function fetchPillColors(): Promise<Record<string, Record<string, string>>> {
+  const cols = ["color_mm2vhwan", "color_mm2vt8xg", "color_mm2vg3ew", "color_mm2vemyy"];
+  const query = `query { boards(ids: 18410601299) { columns(ids: ${JSON.stringify(cols)}) { id settings_str } } }`;
+  const data = await gql<{ boards: { columns: { id: string; settings_str: string }[] }[] }>(query);
+  const out: Record<string, Record<string, string>> = {};
+  for (const c of data.boards?.[0]?.columns ?? []) {
+    try {
+      const s = JSON.parse(c.settings_str) as {
+        labels?: Record<string, string>;
+        labels_colors?: Record<string, { color?: string }>;
+      };
+      const map: Record<string, string> = {};
+      for (const [idx, name] of Object.entries(s.labels ?? {})) {
+        const hex = s.labels_colors?.[idx]?.color;
+        if (name && hex) map[name.toLowerCase()] = hex;
+      }
+      out[c.id] = map;
+    } catch {
+      out[c.id] = {};
+    }
+  }
+  return out;
+}
+
+/** Guarantee Referral Source + Primary Insurance appear in every drill-down.
+ *  Column ORDER is left exactly as authored per chart — these are only appended
+ *  when a chart hasn't already listed them. The "Days in Stage" column is kept
+ *  in place (rendered as the day-bucket pill by the table). */
+function withPriorityCols(chart: ChartDef): ChartDef {
+  const pri = BOARD_PRIORITY_COLS[chart.boardId] ?? {};
+  const cols = [...chart.drilldownCols];
+  const has = (id?: string) => !!id && cols.some((c) => c.colId === id);
+  if (pri.referral && !has(pri.referral)) cols.push({ colId: pri.referral, label: "Referral Source" });
+  if (pri.insurance && !has(pri.insurance)) cols.push({ colId: pri.insurance, label: "Primary Insurance" });
+  return { ...chart, drilldownCols: cols };
+}
+
+export const CHART_DEFS: ChartDef[] = RAW_CHART_DEFS.map(withPriorityCols);
+
+// ── Section grouping (main view) ────────────────────────────────────────
+export interface OversightSection {
+  id: string;
+  title: string;
+  /** Chart IDs in display order. Unknown IDs are skipped gracefully. */
+  chartIds: string[];
+  /** Optional second row, rendered under a sub-heading (e.g. Escalations). */
+  secondaryTitle?: string;
+  secondaryChartIds?: string[];
+}
+
+export const OVERSIGHT_SECTIONS: OversightSection[] = [
+  { id: "intake", title: "Intake", chartIds: ["profile-send-off"] },
+  {
+    id: "medical-evaluation",
+    title: "Medical Evaluation",
+    chartIds: ["evaluate", "send-request", "confirm-receipt", "chase-clinicals"],
+    secondaryTitle: "Escalations · Attempt 4+",
+    secondaryChartIds: ["confirm-receipt-escalations", "chase-clinicals-escalations"],
+  },
+  {
+    id: "insurance",
+    title: "Insurance",
+    chartIds: ["benefits", "submit-auth", "auth-outstanding", "auth-denial"],
+  },
+  // "profile-review" chart not defined yet — needs a board/group; skipped until added.
+  { id: "welcome-call", title: "Welcome Call", chartIds: ["welcome-call", "profile-review"] },
 ];
 
 // ── Day-bucket derivation helpers ───────────────────────────────────────
@@ -317,11 +511,10 @@ function dateToBucket(dateStr: string): DayBucketLabel | "Unknown" {
 
 /** Which groups to fetch per board */
 const BOARD_GROUPS: Record<number, string[]> = {
-  18392794310: ["group_mm2mdqq2", "group_mkpehq9q"],
   18406352652: ["group_mm1xf2jb"],
   18406060017: ["group_mm1xf2jb"],
   18410601299: ["group_mm1xr3q3", "group_mm1x1416", "group_mm2v6d1z", "group_mm316hg2"],
-  18410804557: ["group_mm1wvq8p"],
+  18410804557: ["group_mm1wvq8p", "group_mm2x8jtj"],
 };
 
 /** Stage Advancer column IDs per board (used for sub-filtering within a board) */
@@ -351,6 +544,14 @@ function columnsForBoard(boardId: number): string[] {
     if (chart.notesColId) set.add(chart.notesColId);
   }
 
+  // Always include the priority-scoring columns (referral source/type + insurance)
+  const pri = BOARD_PRIORITY_COLS[boardId];
+  if (pri) {
+    if (pri.referral) set.add(pri.referral);
+    if (pri.insurance) set.add(pri.insurance);
+    if (pri.referralType) set.add(pri.referralType);
+  }
+
   // Always include the stage-advancer column if present
   const saCol = STAGE_ADVANCER_COL[boardId];
   if (saCol) set.add(saCol);
@@ -368,6 +569,17 @@ function columnsForBoard(boardId: number): string[] {
   // Board 18406352652 needs the intake date for day-bucket derivation
   if (boardId === 18406352652) {
     set.add("date_mm1wf43j");
+  }
+
+  // Medical Necessity board — the consolidated ask list feeds the "Requesting"
+  // pill summary (not shown as its own table column).
+  if (boardId === 18406060017) {
+    set.add("dropdown_mm2yd3a2"); // MN Request Consolidated
+  }
+
+  // Drop synthetic columns (e.g. "__requesting__") — they aren't real Monday ids.
+  for (const id of Array.from(set)) {
+    if (id.startsWith("__")) set.delete(id);
   }
 
   return Array.from(set);
@@ -520,23 +732,28 @@ interface ChartFilterStageAdvancer {
   type: "stageAdvancer";
   boardId: number;
   value: string;
+  /** Optional extra condition: a column must equal this value too (used for
+   *  the escalation charts — same stage AND MN Attempts = "Escalate"). */
+  andCol?: { colId: string; value: string };
 }
 
 type FilterRule = ChartFilter | ChartFilterStageAdvancer;
 
 const CHART_FILTERS: Record<string, FilterRule> = {
-  "dtc-partial-leads":  { type: "group", groupId: "group_mm2mdqq2" },
-  "dtc-raw-intake":     { type: "group", groupId: "group_mkpehq9q" },
   "profile-send-off":   { type: "group", groupId: "group_mm1xf2jb" },
   "evaluate":           { type: "stageAdvancer", boardId: 18406060017, value: "Evaluate MN" },
   "send-request":       { type: "stageAdvancer", boardId: 18406060017, value: "Send Request" },
   "confirm-receipt":    { type: "stageAdvancer", boardId: 18406060017, value: "Confirm Receipt" },
   "chase-clinicals":    { type: "stageAdvancer", boardId: 18406060017, value: "Chase Clinicals" },
+  // Escalations = same stage AND MN Attempts column = "Escalate" (attempt 4+).
+  "confirm-receipt-escalations": { type: "stageAdvancer", boardId: 18406060017, value: "Confirm Receipt", andCol: { colId: "color_mm1wz0vg", value: "Escalate" } },
+  "chase-clinicals-escalations": { type: "stageAdvancer", boardId: 18406060017, value: "Chase Clinicals", andCol: { colId: "color_mm1wz0vg", value: "Escalate" } },
   "benefits":           { type: "stageAdvancer", boardId: 18410601299, value: "Benefits / SoS" },
   "submit-auth":        { type: "stageAdvancer", boardId: 18410601299, value: "Submit Auth." },
   "auth-outstanding":   { type: "stageAdvancer", boardId: 18410601299, value: "Auth. Outstanding" },
   "auth-denial":        { type: "group", groupId: "group_mm316hg2" },
-  "welcome-call":       { type: "stageAdvancer", boardId: 18410804557, value: "Welcome Call" },
+  "welcome-call":       { type: "group", groupId: "group_mm1wvq8p" },
+  "profile-review":     { type: "group", groupId: "group_mm2x8jtj" },
 };
 
 function matchesFilter(patient: OversightPatient, rule: FilterRule): boolean {
@@ -547,7 +764,12 @@ function matchesFilter(patient: OversightPatient, rule: FilterRule): boolean {
   const saCol = STAGE_ADVANCER_COL[rule.boardId];
   if (!saCol) return false;
   const val = (patient.cols[saCol] ?? "").trim();
-  return val === rule.value;
+  if (val !== rule.value) return false;
+  // Optional secondary condition (escalation charts).
+  if (rule.andCol) {
+    return (patient.cols[rule.andCol.colId] ?? "").trim() === rule.andCol.value;
+  }
+  return true;
 }
 
 // ── Public fetch function ───────────────────────────────────────────────
