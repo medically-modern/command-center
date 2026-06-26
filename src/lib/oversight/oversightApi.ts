@@ -87,6 +87,26 @@ export interface ChartDef {
 
 // ── Chart definitions (12 charts) ───────────────────────────────────────
 
+/** Shared drill-down columns for the Chase Clinicals charts (Fax + Email&Parachute,
+ *  plus their escalated variants). */
+const CHASE_COLS: { colId: string; label: string; pill?: boolean }[] = [
+  { colId: "date_mm1wf43j", label: "Intake Date" },
+  { colId: "color_mm1wwm05", label: "Days in Stage" },
+  { colId: "color_mm1w5wxr", label: "Referral Source" },
+  { colId: "color_mm1xw7y5", label: "Clinicals Method" },
+  { colId: "color_mm1x157j", label: "Primary Insurance" },
+  { colId: "color_mm1w1978", label: "Request Type" },
+  { colId: "color_mm1w1cm9", label: "Serving" },
+  { colId: "numeric_mm4bhjc8", label: "Evaluation Count" },
+  { colId: "date_mm2yg8x8", label: "Request Sent" },
+  { colId: "__requesting__", label: "Requesting" },
+  { colId: "color_mm1wz0vg", label: "MN Attempts" },
+  { colId: "text_mm2yhpjt", label: "Attempt 1 Log" },
+  { colId: "text_mm2yb3rv", label: "Attempt 2 Log" },
+  { colId: "text_mm2ybk06", label: "Attempt 3 Log" },
+  { colId: "date_mm1wadgs", label: "Next Action" },
+];
+
 const RAW_CHART_DEFS: ChartDef[] = [
   // ── Board 18406352652 (Profile Send Off) ──
   {
@@ -161,27 +181,18 @@ const RAW_CHART_DEFS: ChartDef[] = [
     ],
   },
   {
-    id: "chase-clinicals",
-    title: "Chase Clinicals",
+    id: "chase-fax",
+    title: "Chase Clinicals — Fax",
     boardId: 18406060017,
     notesColId: "long_text_mm2ytsxp",
-    drilldownCols: [
-      { colId: "date_mm1wf43j", label: "Intake Date" },
-      { colId: "color_mm1wwm05", label: "Days in Stage" },
-      { colId: "color_mm1w5wxr", label: "Referral Source" },
-      { colId: "color_mm1xw7y5", label: "Clinicals Method" },
-      { colId: "color_mm1x157j", label: "Primary Insurance" },
-      { colId: "color_mm1w1978", label: "Request Type" },
-      { colId: "color_mm1w1cm9", label: "Serving" },
-      { colId: "numeric_mm4bhjc8", label: "Evaluation Count" },
-      { colId: "date_mm2yg8x8", label: "Request Sent" },
-      { colId: "__requesting__", label: "Requesting" },
-      { colId: "color_mm1wz0vg", label: "MN Attempts" },
-      { colId: "text_mm2yhpjt", label: "Attempt 1 Log" },
-      { colId: "text_mm2yb3rv", label: "Attempt 2 Log" },
-      { colId: "text_mm2ybk06", label: "Attempt 3 Log" },
-      { colId: "date_mm1wadgs", label: "Next Action" },
-    ],
+    drilldownCols: CHASE_COLS,
+  },
+  {
+    id: "chase-email-parachute",
+    title: "Chase Clinicals — Email & Parachute",
+    boardId: 18406060017,
+    notesColId: "long_text_mm2ytsxp",
+    drilldownCols: CHASE_COLS,
   },
 
   // ── Escalations (attempt 4+ / MN Attempts = "Escalate") — second row of the
@@ -207,27 +218,18 @@ const RAW_CHART_DEFS: ChartDef[] = [
     ],
   },
   {
-    id: "chase-clinicals-escalations",
-    title: "Chase Clinicals (Escalated)",
+    id: "chase-fax-escalations",
+    title: "Chase Clinicals — Fax (Escalated)",
     boardId: 18406060017,
     notesColId: "long_text_mm2ytsxp",
-    drilldownCols: [
-      { colId: "date_mm1wf43j", label: "Intake Date" },
-      { colId: "color_mm1wwm05", label: "Days in Stage" },
-      { colId: "color_mm1w5wxr", label: "Referral Source" },
-      { colId: "color_mm1xw7y5", label: "Clinicals Method" },
-      { colId: "color_mm1x157j", label: "Primary Insurance" },
-      { colId: "color_mm1w1978", label: "Request Type" },
-      { colId: "color_mm1w1cm9", label: "Serving" },
-      { colId: "numeric_mm4bhjc8", label: "Evaluation Count" },
-      { colId: "date_mm2yg8x8", label: "Request Sent" },
-      { colId: "__requesting__", label: "Requesting" },
-      { colId: "color_mm1wz0vg", label: "MN Attempts" },
-      { colId: "text_mm2yhpjt", label: "Attempt 1 Log" },
-      { colId: "text_mm2yb3rv", label: "Attempt 2 Log" },
-      { colId: "text_mm2ybk06", label: "Attempt 3 Log" },
-      { colId: "date_mm1wadgs", label: "Next Action" },
-    ],
+    drilldownCols: CHASE_COLS,
+  },
+  {
+    id: "chase-email-parachute-escalations",
+    title: "Chase Clinicals — Email & Parachute (Escalated)",
+    boardId: 18406060017,
+    notesColId: "long_text_mm2ytsxp",
+    drilldownCols: CHASE_COLS,
   },
 
   // ── Board 18410601299 (Insurance / Auth) ──
@@ -460,9 +462,9 @@ export const OVERSIGHT_SECTIONS: OversightSection[] = [
   {
     id: "medical-evaluation",
     title: "Medical Evaluation",
-    chartIds: ["evaluate", "send-request", "confirm-receipt", "chase-clinicals"],
+    chartIds: ["evaluate", "send-request", "confirm-receipt", "chase-fax", "chase-email-parachute"],
     secondaryTitle: "Escalations · Attempt 4+",
-    secondaryChartIds: ["confirm-receipt-escalations", "chase-clinicals-escalations"],
+    secondaryChartIds: ["confirm-receipt-escalations", "chase-fax-escalations", "chase-email-parachute-escalations"],
   },
   {
     id: "insurance",
@@ -732,9 +734,11 @@ interface ChartFilterStageAdvancer {
   type: "stageAdvancer";
   boardId: number;
   value: string;
-  /** Optional extra condition: a column must equal this value too (used for
-   *  the escalation charts — same stage AND MN Attempts = "Escalate"). */
-  andCol?: { colId: string; value: string };
+  /** Optional extra AND conditions on top of the stage. The column's text must
+   *  be (one of) `value` — or NOT one of it when `not` is true. Used for
+   *  escalations (MN Attempts = "Escalate") and the Chase method split
+   *  (Fax = NOT Email/Parachute, so blank counts as fax; Email & Parachute = either). */
+  andCols?: { colId: string; value: string | string[]; not?: boolean }[];
 }
 
 type FilterRule = ChartFilter | ChartFilterStageAdvancer;
@@ -744,10 +748,14 @@ const CHART_FILTERS: Record<string, FilterRule> = {
   "evaluate":           { type: "stageAdvancer", boardId: 18406060017, value: "Evaluate MN" },
   "send-request":       { type: "stageAdvancer", boardId: 18406060017, value: "Send Request" },
   "confirm-receipt":    { type: "stageAdvancer", boardId: 18406060017, value: "Confirm Receipt" },
-  "chase-clinicals":    { type: "stageAdvancer", boardId: 18406060017, value: "Chase Clinicals" },
+  // Chase Clinicals split by method: Fax (= NOT Email/Parachute, so a blank
+  // method still shows under Fax) vs Email & Parachute (either). Method col = color_mm1xw7y5.
+  "chase-fax":             { type: "stageAdvancer", boardId: 18406060017, value: "Chase Clinicals", andCols: [{ colId: "color_mm1xw7y5", value: ["Email", "Parachute"], not: true }] },
+  "chase-email-parachute": { type: "stageAdvancer", boardId: 18406060017, value: "Chase Clinicals", andCols: [{ colId: "color_mm1xw7y5", value: ["Email", "Parachute"] }] },
   // Escalations = same stage AND MN Attempts column = "Escalate" (attempt 4+).
-  "confirm-receipt-escalations": { type: "stageAdvancer", boardId: 18406060017, value: "Confirm Receipt", andCol: { colId: "color_mm1wz0vg", value: "Escalate" } },
-  "chase-clinicals-escalations": { type: "stageAdvancer", boardId: 18406060017, value: "Chase Clinicals", andCol: { colId: "color_mm1wz0vg", value: "Escalate" } },
+  "confirm-receipt-escalations":       { type: "stageAdvancer", boardId: 18406060017, value: "Confirm Receipt", andCols: [{ colId: "color_mm1wz0vg", value: "Escalate" }] },
+  "chase-fax-escalations":             { type: "stageAdvancer", boardId: 18406060017, value: "Chase Clinicals", andCols: [{ colId: "color_mm1xw7y5", value: ["Email", "Parachute"], not: true }, { colId: "color_mm1wz0vg", value: "Escalate" }] },
+  "chase-email-parachute-escalations": { type: "stageAdvancer", boardId: 18406060017, value: "Chase Clinicals", andCols: [{ colId: "color_mm1xw7y5", value: ["Email", "Parachute"] }, { colId: "color_mm1wz0vg", value: "Escalate" }] },
   "benefits":           { type: "stageAdvancer", boardId: 18410601299, value: "Benefits / SoS" },
   "submit-auth":        { type: "stageAdvancer", boardId: 18410601299, value: "Submit Auth." },
   "auth-outstanding":   { type: "stageAdvancer", boardId: 18410601299, value: "Auth. Outstanding" },
@@ -765,9 +773,11 @@ function matchesFilter(patient: OversightPatient, rule: FilterRule): boolean {
   if (!saCol) return false;
   const val = (patient.cols[saCol] ?? "").trim();
   if (val !== rule.value) return false;
-  // Optional secondary condition (escalation charts).
-  if (rule.andCol) {
-    return (patient.cols[rule.andCol.colId] ?? "").trim() === rule.andCol.value;
+  // Optional extra AND conditions (escalations, Chase method split).
+  for (const c of rule.andCols ?? []) {
+    const cell = (patient.cols[c.colId] ?? "").trim();
+    const inSet = Array.isArray(c.value) ? c.value.includes(cell) : cell === c.value;
+    if (c.not ? inSet : !inSet) return false;
   }
   return true;
 }

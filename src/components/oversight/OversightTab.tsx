@@ -21,6 +21,7 @@ import {
 } from "@/lib/oversight/oversightApi";
 import { Loader2, BarChart3, X, ExternalLink, StickyNote, Search, ArrowUp, ArrowDown, ArrowUpDown, Star, SlidersHorizontal, Plus, Trash2, RotateCcw } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
@@ -44,8 +45,12 @@ const CHART_ROUTES: Record<string, string | null> = {
   "send-request": "/send-request",
   "confirm-receipt": "/confirm-receipt",
   "confirm-receipt-escalations": "/confirm-receipt",
-  "chase-clinicals": "/chase-fax", // chase split June 2026 — deep links land on the fax role (parachute patients still open via ?patientId injection)
-  "chase-clinicals-escalations": "/chase-fax",
+  // Chase split by method: Fax → fax role page, Email & Parachute → parachute role page
+  // (patients still open via ?patientId injection regardless of the page's own filter).
+  "chase-fax": "/chase-fax",
+  "chase-email-parachute": "/chase-parachute",
+  "chase-fax-escalations": "/chase-fax",
+  "chase-email-parachute-escalations": "/chase-parachute",
   "benefits": "/benefits",
   "submit-auth": "/submit-auth",
   "auth-outstanding": "/auth-outstanding",
@@ -312,6 +317,20 @@ interface DrilldownModalProps {
 }
 
 /** Sortable table header cell. */
+/** Per-column width for the drill-down table. Attempt-log columns return "" so
+ *  they flex to fill the remaining space (the widest columns); everything else
+ *  gets a compact fixed width so there's no dead space between columns. */
+function colWidthClass(label: string): string {
+  if (/ Log$/.test(label)) return "";              // flex → widest, room for the note
+  if (label === "Evaluation Count") return "w-[54px]";
+  if (label === "Days in Stage") return "w-[74px]";
+  if (label === "Clinicals Method") return "w-[80px]";
+  if (label === "MN Attempts") return "w-[92px]";
+  if (/Date|Sent|Action|Intake/.test(label)) return "w-[88px]";
+  if (label === "Requesting") return "w-[112px]";
+  return "w-[104px]";                               // insurance, referral, request type, serving
+}
+
 function Th({
   label,
   dir,
@@ -558,6 +577,7 @@ function DrilldownModal({
           </div>
         ) : (
           <div className="flex-1 overflow-y-auto min-h-0">
+            <TooltipProvider delayDuration={150}>
             <table className="w-full table-fixed text-xs">
               <thead className="sticky top-0 bg-card z-10">
                 <tr className="border-b">
@@ -566,6 +586,7 @@ function DrilldownModal({
                   )}
                   <Th
                     label="Name"
+                    width="w-[150px]"
                     dir={sortKey === "name" ? sortDir : null}
                     onClick={() => setSort("name")}
                   />
@@ -573,6 +594,7 @@ function DrilldownModal({
                     <Th
                       key={col.colId}
                       label={col.label}
+                      width={colWidthClass(col.label)}
                       dir={sortKey === col.colId ? sortDir : null}
                       onClick={() => setSort(col.colId)}
                     />
@@ -651,21 +673,33 @@ function DrilldownModal({
                           );
                         }
                         if (/ Log$/.test(col.label)) {
-                          const raw = patient.cols[col.colId] ?? "";
-                          const ts = raw.split(" · ")[0] ?? "";
+                          const raw = (patient.cols[col.colId] ?? "").trim();
+                          if (!raw) {
+                            return (
+                              <td key={col.colId} className="px-2 py-1 text-muted-foreground">—</td>
+                            );
+                          }
+                          // Attempt log format: "datetime · outcome · note". Show the
+                          // timestamp + note preview inline (truncated to the column),
+                          // and the FULL note in a hover bubble.
+                          const [ts, ...restParts] = raw.split(" · ");
+                          const rest = restParts.join(" · ");
                           return (
-                            <td
-                              key={col.colId}
-                              className="px-2 py-1 text-foreground/80 truncate"
-                              title={raw || undefined}
-                            >
-                              {ts ? (
-                                <span className={raw.includes(" · ") ? "cursor-help underline decoration-dotted underline-offset-2" : ""}>
-                                  {ts}
-                                </span>
-                              ) : (
-                                "—"
-                              )}
+                            <td key={col.colId} className="px-2 py-1 text-foreground/80">
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <span className="block truncate cursor-help">
+                                    <span className="text-muted-foreground">{ts}</span>
+                                    {rest && <span> · {rest}</span>}
+                                  </span>
+                                </TooltipTrigger>
+                                <TooltipContent
+                                  side="top"
+                                  className="max-w-md whitespace-pre-wrap break-words text-xs leading-relaxed"
+                                >
+                                  {raw}
+                                </TooltipContent>
+                              </Tooltip>
                             </td>
                           );
                         }
@@ -736,6 +770,7 @@ function DrilldownModal({
                 })}
               </tbody>
             </table>
+            </TooltipProvider>
           </div>
         )}
       </div>
