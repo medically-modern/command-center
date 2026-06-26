@@ -13,9 +13,9 @@ export const ROLES: RoleConfig[] = [
   { id: "evaluate",        label: "Evaluate",           color: "bg-violet-500",  icon: "ClipboardCheck", route: "/evaluate"         },
   { id: "sendRequest",     label: "Send Request",       color: "bg-cyan-500",    icon: "Send",           route: "/send-request"     },
   { id: "confirmReceipt",  label: "Confirm Receipt",    color: "bg-emerald-500", icon: "CheckCircle",    route: "/confirm-receipt"  },
-  // Chase Clinicals split into two roles (June 2026): fax (+ email) and parachute
+  // Chase Clinicals split into two roles (June 2026): fax (Fax/blank) and Email & Parachute
   { id: "chaseFax",        label: "Chase Clinicals — Fax",       color: "bg-amber-500",  icon: "PhoneCall", route: "/chase-fax"       },
-  { id: "chaseParachute",  label: "Chase Clinicals — Parachute", color: "bg-amber-600",  icon: "Send",      route: "/chase-parachute" },
+  { id: "chaseParachute",  label: "Chase Clinicals — Email & Parachute", color: "bg-amber-600",  icon: "Send",      route: "/chase-parachute" },
   { id: "benefits",        label: "Benefits",           color: "bg-pink-500",    icon: "HeartPulse",     route: "/benefits"         },
   { id: "submitAuth",      label: "Submit Auth",        color: "bg-indigo-500",  icon: "FileCheck",      route: "/submit-auth"      },
   { id: "authOutstanding", label: "Auth Outstanding",   color: "bg-orange-500",  icon: "Clock",          route: "/auth-outstanding" },

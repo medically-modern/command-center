@@ -312,7 +312,7 @@ export function useRoleCounts(opts?: { roleIds?: string[] }) {
             if (stage === "Evaluate MN") roleId = "evaluate";
             else if (stage === "Send Request") roleId = "sendRequest";
             else if (stage === "Confirm Receipt") roleId = "confirmReceipt";
-            else if (stage === "Chase Clinicals") roleId = item.cols[MESH_METHOD_COL] === "Parachute" ? "chaseParachute" : "chaseFax";
+            else if (stage === "Chase Clinicals") { const cm = item.cols[MESH_METHOD_COL]; roleId = cm === "Parachute" || cm === "Email" ? "chaseParachute" : "chaseFax"; }
             if (!roleId) continue;
 
             const isChase = roleId === "chaseFax" || roleId === "chaseParachute";
