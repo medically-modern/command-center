@@ -48,7 +48,7 @@ import { getIdToken } from "@/lib/shared/auth";
 import { ESCALATION_INDEX, MN_ATTEMPTS_INDEX } from "@/lib/masheke/mondayMapping";
 import { toast } from "sonner";
 import { AlertTriangle, Check, CheckCircle2, ChevronRight, FileText, Loader2, Phone, Send } from "lucide-react";
-import { MmStep } from "@/components/masheke/mmKit";
+import { FileList, LoadingRow, MmStep } from "@/components/masheke/mmKit";
 import { MissingChecklist } from "@/components/masheke/MissingChecklist";
 import { MethodBar } from "@/components/masheke/MethodBar";
 import { ActivityRow, formatActivityDate } from "@/components/masheke/PreviousActivityCard";
@@ -371,6 +371,23 @@ export function ChaseClinicalsPanel({ patient, onUpdate, managerMode = false, ro
         {/* What we're still missing — identical to Send Request / Confirm Receipt */}
         <h4 className="text-[1.05rem] font-bold tracking-tight mb-2.5">What we're still missing</h4>
         <MissingChecklist checklist={mnChecklist} />
+
+        {/* Clinical files on hand — same section as Send Request, so the chase
+            rep can see/open what's already attached on Monday before calling. */}
+        <div className="mt-5">
+          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-2">
+            Clinical files on hand
+          </p>
+          {mondayFiles.loading && mondayFiles.clinicalFiles.length === 0 ? (
+            <LoadingRow />
+          ) : mondayFiles.clinicalFiles.length === 0 ? (
+            <p className="text-sm text-muted-foreground italic">
+              No clinical files attached on Monday.
+            </p>
+          ) : (
+            <FileList files={mondayFiles.clinicalFiles} />
+          )}
+        </div>
 
         {/* STEP A — Review what it took to confirm receipt (read-only). In its
             own tinted container so it reads as reference, not the work to do. */}

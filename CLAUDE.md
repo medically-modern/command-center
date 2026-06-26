@@ -192,6 +192,29 @@ and the `daily-baseline.yml` workflow. The burndown shows progress against today
 no baseline exists it bootstraps from live counts. Dates from Monday are **timezone-naive ET
 strings** — compare in ET, not via raw `new Date()` (see `ringcentralApi.ts` / cron comments).
 
+### 5.9 Chase Clinicals split — Fax vs "Email & Parachute" (don't merge Email back into Fax)
+The Confirm-Receipt→Chase step has **one Monday stage** ("Chase Clinicals" on the Masheke board)
+but is sliced into **two app roles** by the **Clinicals Method** status column
+**`color_mm1xw7y5`** (live labels: **`Fax` · `Parachute` · `Email`**, plus blank):
+- **`chaseFax`** (`/chase-fax`) — method **`Fax` or blank** (a missing method counts as fax so
+  nobody falls through the cracks).
+- **`chaseParachute`** (`/chase-parachute`, labelled **"Chase Clinicals — Email & Parachute"**) —
+  method **`Parachute` or `Email`**. **Email deliberately rides with Parachute** for queueing and
+  cadence, but it is still **sent by email** (the optional fax/email re-send box keys off the
+  panel's `roleMethod`, so Email patients in this role never see the fax re-send path).
+
+This grouping is applied in **three** places that must stay in agreement — if you "fix" one,
+fix all three (a future Claude keeps wanting to put Email back with Fax):
+1. **Role page** — `src/pages/ChaseClinicalsPage.tsx` (the `useMemo` patient filter + header label).
+2. **Role counts / bars** — `src/hooks/useRoleCounts.ts` ("Chase Clinicals" bucket → `cm === "Parachute" || cm === "Email" ? "chaseParachute" : "chaseFax"`).
+3. **Oversight charts** — `src/lib/oversight/oversightApi.ts` `CHART_FILTERS` (`chase-fax` = method NOT in
+   [Email, Parachute]; `chase-email-parachute` = method IN [Email, Parachute]; same split on the
+   Escalations · Attempt 4+ row, ANDed with MN Attempts `color_mm1wz0vg` = `Escalate`).
+
+**Cadence:** both chase roles bump the Next Action Date **+3 business days** on Complete
+(`ChaseClinicalsPanel.tsx` `nadBumpDays = 3`, unconditional — the old "+1 fax / +3 parachute" idea
+was never wired up). `config.ts` `chaseFax`/`chaseParachute` are the role registry entries.
+
 ---
 
 ## 6. Patient flow across boards (the big picture)
@@ -204,7 +227,7 @@ Profile Send Off (18406352652)  ──profile role: complete demographics/insura
    ▼
 Welcome Call (18410804557)      ──welcomeCall → finalConfirm roles
    ▼
-Medical Evaluation (18406060017)──evaluate → sendRequest → confirmReceipt → chase (fax|parachute)
+Medical Evaluation (18406060017)──evaluate → sendRequest → confirmReceipt → chase (fax | email+parachute)
    ▼
 Insurance (18410601299)         ──benefits → submitAuth → authOutstanding (→ authDenied)
    ▼
