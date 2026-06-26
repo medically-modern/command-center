@@ -247,9 +247,16 @@ export default {
         headers: request.headers.has("Authorization") ? { Authorization: request.headers.get("Authorization") } : {},
       });
       if (!upstream.ok) return new Response(`Upstream ${upstream.status}`, { status: upstream.status, headers: cors });
+      // Guard against S3 returning an AccessDenied / expired-URL XML body with a
+      // 200 status — passing that through as file bytes makes the viewer render
+      // a blank page. Surface it as an error instead.
+      const upstreamType = upstream.headers.get("Content-Type") || "application/octet-stream";
+      if (/xml|html/i.test(upstreamType)) {
+        return json({ error: "asset_unavailable", detail: "The file link appears to have expired." }, 502, cors);
+      }
       return new Response(upstream.body, {
         status: 200,
-        headers: { ...cors, "Content-Type": upstream.headers.get("Content-Type") || "application/octet-stream", "Cache-Control": "no-store" },
+        headers: { ...cors, "Content-Type": upstreamType, "Cache-Control": "no-store" },
       });
     }
 

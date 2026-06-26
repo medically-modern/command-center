@@ -11,7 +11,7 @@
  *   - Call openFileViewer({ url, name }) from any View button.
  */
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   Dialog,
   DialogContent,
@@ -334,6 +334,13 @@ interface PdfDocLike {
   }>;
 }
 
+/** Where pdf.js fetches its standard-14 fonts + CMaps. Defaults to a
+ *  version-pinned jsDelivr path (kept in lockstep with the bundled worker via
+ *  pdfjs.version below); set VITE_PDFJS_ASSETS_URL to a self-hosted copy of
+ *  pdfjs-dist's `standard_fonts/` + `cmaps/` dirs to avoid the CDN. */
+const PDFJS_ASSET_BASE =
+  (import.meta.env.VITE_PDFJS_ASSETS_URL as string | undefined)?.replace(/\/+$/, "") || "";
+
 let pdfjsPromise: Promise<typeof import("pdfjs-dist")> | null = null;
 
 /** Lazy-load pdf.js + its worker so the main bundle stays small. */
@@ -362,7 +369,7 @@ function PdfView({
   zoom: number;
   onPageCount: (n: number) => void;
 }) {
-  const containerRef = useRef<HTMLDivElement>(null);
+  const [containerEl, setContainerEl] = useState<HTMLDivElement | null>(null);
   const [doc, setDoc] = useState<PdfDocLike | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [rendering, setRendering] = useState(true);
@@ -376,8 +383,20 @@ function PdfView({
     loadPdfjs()
       .then((pdfjs) => {
         if (cancelled) return null;
+        // pdf.js needs the standard-14 fonts + CMaps to render PDFs whose fonts
+        // aren't embedded (common in faxed clinicals). Without them the page
+        // draws with invisible glyphs — a "blank" page — and only logs a console
+        // warning, so the error UI never fires. Pin the assets to the loaded
+        // pdf.js version so worker/API/assets always match.
+        const assetBase =
+          PDFJS_ASSET_BASE || `https://cdn.jsdelivr.net/npm/pdfjs-dist@${pdfjs.version}`;
         // pdf.js transfers the buffer to its worker — hand it a copy
-        const loadingTask = pdfjs.getDocument({ data: bytes.slice() });
+        const loadingTask = pdfjs.getDocument({
+          data: bytes.slice(),
+          cMapUrl: `${assetBase}/cmaps/`,
+          cMapPacked: true,
+          standardFontDataUrl: `${assetBase}/standard_fonts/`,
+        });
         task = loadingTask;
         return loadingTask.promise;
       })
@@ -398,9 +417,13 @@ function PdfView({
 
   // (Re-)render all pages when doc / rotation / zoom changes
   useEffect(() => {
-    if (!doc || !containerRef.current) return;
+    // Depend on the container *element* (via a callback ref → state) so this
+    // re-runs once the portaled+animated Dialog actually mounts the node. With
+    // a plain ref the effect could fire before mount, bail, and never re-run —
+    // leaving a stuck "Rendering…" pill over a blank area on slower machines.
+    if (!doc || !containerEl) return;
     let cancelled = false;
-    const container = containerRef.current;
+    const container = containerEl;
     setRendering(true);
 
     (async () => {
@@ -415,10 +438,12 @@ function PdfView({
           rotation: (getDefaultRotation(page) + rotation) % 360,
         });
         const canvas = document.createElement("canvas");
-        canvas.width = Math.floor(viewport.width * dpr);
-        canvas.height = Math.floor(viewport.height * dpr);
-        canvas.style.width = `${Math.floor(viewport.width)}px`;
-        canvas.style.height = `${Math.floor(viewport.height)}px`;
+        // Clamp to ≥1px: a degenerate page (0-width MediaBox) would floor to a
+        // 0×0 canvas that renders as blank with no error.
+        canvas.width = Math.max(1, Math.floor(viewport.width * dpr));
+        canvas.height = Math.max(1, Math.floor(viewport.height * dpr));
+        canvas.style.width = `${Math.max(1, Math.floor(viewport.width))}px`;
+        canvas.style.height = `${Math.max(1, Math.floor(viewport.height))}px`;
         canvas.className = "shadow-lg bg-white mx-auto block";
         const ctx = canvas.getContext("2d");
         if (!ctx) continue;
@@ -438,7 +463,7 @@ function PdfView({
     return () => {
       cancelled = true;
     };
-  }, [doc, rotation, zoom]);
+  }, [doc, rotation, zoom, containerEl]);
 
   if (loadError) {
     return (
@@ -457,7 +482,7 @@ function PdfView({
           </span>
         </div>
       )}
-      <div ref={containerRef} className="flex flex-col items-center gap-4 p-6" />
+      <div ref={setContainerEl} className="flex flex-col items-center gap-4 p-6" />
     </div>
   );
 }

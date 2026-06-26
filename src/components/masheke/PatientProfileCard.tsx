@@ -10,6 +10,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { DoctorNotesPanel } from "@/components/shared/DoctorNotesPanel";
 import { CollapsiblePanel } from "@/components/shared/CollapsiblePanel";
+import { PatientContact } from "@/components/masheke/mmKit";
 import { cn } from "@/lib/utils";
 
 interface Props {
@@ -540,11 +541,12 @@ export function PatientProfileCard({
       <h1 className="text-3xl font-black tracking-tight mt-0.5 truncate" title={patient.name}>
         {patient.name}
       </h1>
-      <p className="mt-1 text-lg text-muted-foreground">
-        DOB {patient.dob || "—"}
-        {patient.gender ? ` · ${patient.gender}` : ""}
-        {patient.phone ? ` · ${formatPhone(patient.phone)}` : ""}
-      </p>
+      <div className="mt-1 flex items-center gap-3 flex-wrap">
+        <span className="text-lg text-muted-foreground">
+          DOB {patient.dob || "—"}{patient.gender ? ` · ${patient.gender}` : ""}
+        </span>
+        <PatientContact phone={patient.phone} />
+      </div>
 
       {/* ── Three grouped boxes — all gray, no serving colors ── */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mt-5">

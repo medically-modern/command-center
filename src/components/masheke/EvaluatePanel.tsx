@@ -600,6 +600,11 @@ export function EvaluatePanel({ patient, resetVersion = 0, onUpdate, onOpenForm 
   // corresponding script was actually received ("Yes").
   const cgmReqReq = cgmReceivedVal === "Yes";
   const ipReqReq = ipReceivedVal === "Yes";
+  // Coverage path + language controls only appear once a script is in hand —
+  // received "Yes" or received-but-"Invalid". Hidden for "No"/unset, mirroring
+  // how the Clinicals detail only shows once Clinicals are received.
+  const cgmScriptInHand = cgmReceivedVal === "Yes" || cgmReceivedVal === "Invalid";
+  const ipScriptInHand = ipReceivedVal === "Yes" || ipReceivedVal === "Invalid";
 
   // Applicable IP language requirements for the chosen path.
   const ipCfg =
@@ -651,8 +656,8 @@ export function EvaluatePanel({ patient, resetVersion = 0, onUpdate, onOpenForm 
         </div>
       )}
 
-      {/* ── Initial Clinical Files — view / download ── */}
-      <MmStep num={1} title="Initial Clinical Files">
+      {/* ── Received Clinical Files — view / download ── */}
+      <MmStep num={1} title="Received Clinical Files">
         <p className="text-sm text-muted-foreground -mt-3 mb-4">
           All clinical documents gathered during collection — view or download here
         </p>
@@ -690,7 +695,7 @@ export function EvaluatePanel({ patient, resetVersion = 0, onUpdate, onOpenForm 
               onChange={(v) => setCgmReceived(v as Received4 | undefined)}
               disabled={!showCgm}
             />
-            {cgmServed && (
+            {cgmServed && cgmScriptInHand && (
               <>
                 <FieldBlock label="Coverage Path">
                   <CgmPathSelect
@@ -720,7 +725,7 @@ export function EvaluatePanel({ patient, resetVersion = 0, onUpdate, onOpenForm 
               onChange={(v) => setIpReceived(v as Received4 | undefined)}
               disabled={!showIp}
             />
-            {ipServed && (
+            {ipServed && ipScriptInHand && (
               <>
                 <FieldBlock label="Coverage Path">
                   <PathSelect
