@@ -211,9 +211,10 @@ fix all three (a future Claude keeps wanting to put Email back with Fax):
    [Email, Parachute]; `chase-email-parachute` = method IN [Email, Parachute]; same split on the
    Escalations · Attempt 4+ row, ANDed with MN Attempts `color_mm1wz0vg` = `Escalate`).
 
-**Cadence:** both chase roles bump the Next Action Date **+3 business days** on Complete
-(`ChaseClinicalsPanel.tsx` `nadBumpDays = 3`, unconditional — the old "+1 fax / +3 parachute" idea
-was never wired up). `config.ts` `chaseFax`/`chaseParachute` are the role registry entries.
+**Cadence:** on Complete the Next Action Date moves by **Clinicals Method** — **Email/Parachute
+push +3 business days, Fax (or blank) pushes +1** (`ChaseClinicalsPanel.tsx` `nadBumpDays`, keyed
+off `patient.clinicalsMethod` — not the page role — so a deep-linked patient keeps its own
+cadence). `config.ts` `chaseFax`/`chaseParachute` are the role registry entries.
 
 ---
 

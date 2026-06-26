@@ -4,8 +4,9 @@
  * Split into TWO roles (June 2026): FAX (/chase-fax — fax/blank patients) and
  * EMAIL & PARACHUTE (/chase-parachute — Parachute + Email patients). Same page
  * component, filtered by the `method` prop; the panel bumps the next action
- * date +3 business days (both roles). Email patients queue with Parachute but
- * are still sent by email. Old /chase-benefits redirects to /chase-fax.
+ * date by Clinicals Method (Email/Parachute +3 business days, Fax +1). Email
+ * patients queue with Parachute but are still sent by email. Old
+ * /chase-benefits redirects to /chase-fax.
  */
 import { useEffect, useMemo, useState } from "react";
 import { useMondayPatients } from "@/hooks/masheke/useMondayPatients";
@@ -28,7 +29,8 @@ import { useBackNavigation } from "@/hooks/useBackNavigation";
 
 interface ChasePageProps {
   /** Which chase role: "fax" (Fax/blank patients) or "parachute"
-   *  (Parachute + Email patients). Both bump +3 business days. */
+   *  (Parachute + Email patients). Next Action bump is by Clinicals Method:
+   *  Email/Parachute +3 business days, Fax +1. */
   method: "fax" | "parachute";
 }
 
