@@ -31,6 +31,7 @@ import { useEffect, useState, useCallback, useRef } from "react";
 import { GROUPS as SAM_GROUPS, BOARD_ID as SAM_BOARD_ID, hasToken as samHasToken } from "@/lib/samantha/mondayApi";
 import { GROUPS as MESH_GROUPS, hasToken as meshHasToken } from "@/lib/masheke/mondayApi";
 import { MONDAY_API_URL, mondayIdentityHeaders } from "@/lib/shared/mondayEndpoint";
+import { etToday } from "@/lib/masheke/etDate";
 
 const MASHEKE_BOARD_ID = 18406060017;
 
@@ -401,8 +402,15 @@ export function useRoleCounts(opts?: { roleIds?: string[] }) {
       sideTasks.push(
         (async () => {
           try {
-            const n = await import("@/lib/fax/ringcentralApi").then((m) => m.fetchUnreadFaxCount());
-            merge({ fax: n }, { fax: 0 }, {});
+            const live = await import("@/lib/fax/ringcentralApi").then((m) => m.fetchUnreadFaxCount());
+            // Reset-at-midnight latch (shared, global): once the inbox first hits
+            // zero today the bar stays "Done!" until ET midnight, even as new
+            // faxes arrive. Falls back to the live count if the shared state is
+            // unreachable, so faxes are never hidden by an outage.
+            const shown = await import("@/lib/fax/faxClearedState")
+              .then((m) => m.resolveFaxBurndownCount(live, etToday()))
+              .catch(() => live);
+            merge({ fax: shown }, { fax: 0 }, {});
           } catch (e) {
             console.error("RingCentral fax count failed:", e);
           }
