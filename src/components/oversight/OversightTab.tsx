@@ -904,6 +904,14 @@ export default function OversightTab() {
       }
       const params = new URLSearchParams({ patientId });
       params.set("from", "system-mgmt");
+      // Escalation charts open in MANAGER mode so the manager can actually move
+      // the escalated patient forward. The Confirm Receipt / Chase panels hide
+      // the Confirmed / Not Confirmed actions for escalated patients unless
+      // managerMode is on (?manager=1); ?escalated=1 styles the page as escalated.
+      if (expandedChart.endsWith("-escalations")) {
+        params.set("manager", "1");
+        params.set("escalated", "1");
+      }
       navigate(`${route}?${params.toString()}`);
     },
     [expandedChart, navigate],
