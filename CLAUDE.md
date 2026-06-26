@@ -150,6 +150,16 @@ The Cloudflare worker (`monday-file-proxy`) has three routes:
   **RingCentral converts to a fax**. This is how Send Request dispatches fax/email.
 `ringcentralApi.ts` also reads the **unread-fax count** (FAX dashboard role) and the Fax Inbox.
 
+**In-app file viewer** (`components/shared/FileViewerModal.tsx`): a "View" button calls
+`openFileViewer({url,name})`; bytes are fetched via `shared/mondayAssets.ts` `fetchAssetBytes`
+(direct CORS fetch → worker `/asset` proxy fallback) and PDFs render with **pdf.js** (`pdfjs-dist`,
+worker self-hosted via Vite `?url` — *not* a CDN, so API/worker versions can't drift).
+> **Gotcha — blank PDFs:** pdf.js needs `standardFontDataUrl` + `cMapUrl`, or PDFs whose fonts
+> aren't embedded (faxed clinicals!) render **blank** with only a console warning. These default to a
+> version-pinned jsDelivr path; set **`VITE_PDFJS_ASSETS_URL`** to self-host. `fetchAssetBytes` also
+> times out and **rejects XML/HTML error bodies** — an expired Monday signed URL returns an S3
+> `AccessDenied` body as a 200, which would otherwise render as a blank "file" instead of an error.
+
 ### 5.6 The Evaluate state machine — `lib/masheke/evalState.ts` (the densest domain logic)
 Local-only `EvalState` in localStorage, with **Monday as source of truth** for "Monday-backed"
 fields (Monday always wins on reload, even when blank). Produces: a validity rollup
@@ -161,6 +171,11 @@ routing on submit), a doctor-facing **ask list**, and an **MN checklist**.
 > Label strings (`IP_REQ_LABELS`, casing included) **must match the board exactly or Monday
 > silently creates a duplicate label**. Edit these only against the live board; the round-trip
 > tests (`evalState.roundtrip.test.ts`, `evalState.step2audit.test.ts`) guard it.
+
+> **Evaluate UI rule** (`components/masheke/EvaluatePanel.tsx`): the CGM/IP **Coverage Path +
+> Language** controls only render once that product's script is **Received (Yes) or Invalid**
+> (mirrors how Clinicals detail shows only on receipt). It's a pure render gate — already-saved
+> coverage/language still writes on send via `buildScriptCoverageWrites`.
 
 ### 5.7 OOP estimator — `lib/welcomeCall/oopEstimator.ts`
 Estimates patient out-of-pocket for the Welcome Call. **Mirrors backend Python** (`claim_assumptions.py`,
@@ -204,10 +219,20 @@ columns" automation on duplicated items). The SPA only flips the advancer; verif
 
 ## 7. Cross-cutting / manager views
 
-- **Oversight** (`/oversight`, `lib/oversight/oversightApi.ts`) and **System Management**
-  (`/system-mgmt`, `lib/systemMgmt/mondayApi.ts`) aggregate counts/pipeline across *all* boards
-  (hardcoded board + stage-advancer column IDs). `OperationsTab` + `PipelineChart` render burndown
-  and day-bucket distributions.
+- **Pipeline Oversight** (`/system-mgmt?tab=oversight`, `components/oversight/OversightTab.tsx` +
+  `lib/oversight/oversightApi.ts`) — the manager dashboard. A **stage dropdown** (Intake · Medical
+  Evaluation · Insurance · Welcome Call) renders one stage's charts at a time, bucketed by
+  days-in-stage. Medical Evaluation has an **"Escalations · Attempt 4+"** sub-row (Confirm Receipt /
+  Chase Clinicals filtered by **MN Attempts** `color_mm1wz0vg` = `"Escalate"` — the board has no
+  literal "Attempt 4" label, so "Escalate" *is* the 4+ state). `lib/oversight/priority.ts` adds
+  VIP/priority scoring (localStorage config). The open drill-down `{stage, chart, bucket}` is
+  **mirrored to the URL** so Back from a patient's agent page returns to the exact drill-down (see the
+  back-nav note in §9). **Keep oversight reads on the gateway:** `oversightApi.ts` must route through
+  `MONDAY_API_URL`/`mondayIdentityHeaders` from `shared/mondayEndpoint`, *not* hardcode
+  `api.monday.com` (a handoff once regressed this — reads would then bypass token-injection + audit).
+- **System Management** (`/system-mgmt`, `lib/systemMgmt/mondayApi.ts`) aggregates counts/pipeline
+  across *all* boards (hardcoded board + stage-advancer column IDs); `OperationsTab` + `PipelineChart`
+  render burndown and day-bucket distributions.
 - **Patient Questions** (`/patient-questions`) is a read-only inbox merging "patient message"
   columns from the Subscription + Secondary Claims boards.
 - **Fax Inbox** (`/fax-inbox`) reads inbound faxes from RingCentral.
@@ -253,6 +278,11 @@ these services; when their math changes, `oopEstimator.ts` must be updated to ma
   (`LOG_PAYLOAD=false`); keep it that way. Don't write patient data to logs/artifacts/commits.
 - **Optimistic UI** in many panels marks state "saved" before Monday confirms; failures rely on a
   toast. Don't assume a green UI means a durable write (esp. Subscription — see §10).
+- **Back-navigation is history-first** (`hooks/useBackNavigation.ts`): `goBack()` does `navigate(-1)`
+  when there's in-app history, else falls back via `?from=system-mgmt` (→ `/system-mgmt`) or
+  `?manager=1`. Manager views deep-link into role pages with `?from=system-mgmt`, so Back returns the
+  user to where they were (the oversight drill-down "feels seamless"). Don't swap it for a hardcoded
+  home route.
 
 ---
 
@@ -286,6 +316,7 @@ these services; when their math changes, `oopEstimator.ts` must be updated to ma
 | Files won't load / PDF viewer | `lib/shared/mondayAssets.ts`, `components/shared/FileViewerModal.tsx`, `worker/src/index.js` |
 | Fax/email send | `components/masheke/SendRequestPanel.tsx`, `worker/src/index.js`, `lib/fax/ringcentralApi.ts` |
 | Audit a write that "disappeared" | gateway `/audit` (Postgres `gql_log` / `send_jobs`) |
+| Manager pipeline / oversight charts | `components/oversight/OversightTab.tsx` + `lib/oversight/oversightApi.ts` (+ `priority.ts`); reached via `/system-mgmt?tab=oversight` |
 
 ---
 
