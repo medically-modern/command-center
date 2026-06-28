@@ -149,14 +149,21 @@ The Cloudflare worker (`monday-file-proxy`) has three routes:
   medicallymodern.com users. Recipients may be normal emails **or `<number>@rcfax.com`**, which
   **RingCentral converts to a fax**. This is how Send Request dispatches fax/email.
 `ringcentralApi.ts` also reads the **unread-fax count** (FAX dashboard role) and the Fax Inbox.
+> **Gotcha — fax count window:** RingCentral's message store defaults `dateFrom` to **~the last 24h**.
+> Both `fetchUnreadFaxCount` and `fetchInboundFaxes` must pass an explicit `dateFrom` (180-day lookback)
+> or unread faxes older than a day (e.g. over a weekend) silently drop out of the count.
 
 **In-app file viewer** (`components/shared/FileViewerModal.tsx`): a "View" button calls
 `openFileViewer({url,name})`; bytes are fetched via `shared/mondayAssets.ts` `fetchAssetBytes`
 (direct CORS fetch → worker `/asset` proxy fallback) and PDFs render with **pdf.js** (`pdfjs-dist`,
 worker self-hosted via Vite `?url` — *not* a CDN, so API/worker versions can't drift).
-> **Gotcha — blank PDFs:** pdf.js needs `standardFontDataUrl` + `cMapUrl`, or PDFs whose fonts
-> aren't embedded (faxed clinicals!) render **blank** with only a console warning. These default to a
-> version-pinned jsDelivr path; set **`VITE_PDFJS_ASSETS_URL`** to self-host. `fetchAssetBytes` also
+> **Gotcha — blank PDFs:** pdf.js needs `standardFontDataUrl` + `cMapUrl` **and `wasmUrl`**, or PDFs
+> render **blank** with only a console warning (the error UI never fires). Two distinct causes: fonts
+> aren't embedded (font glyphs invisible), **and/or** the page images are **JBIG2/JPEG2000 scans**
+> (faxed clinicals!) — pdf.js 5+ moved those decoders to **WASM**, so without `wasmUrl` it logs
+> `JBig2 failed to initialize` / `null/jbig2_nowasm_fallback.js` and the scan never paints. All three
+> URLs default to a version-pinned jsDelivr path (`cmaps/`, `standard_fonts/`, `wasm/`); set
+> **`VITE_PDFJS_ASSETS_URL`** to self-host (mirror all three dirs). `fetchAssetBytes` also
 > times out and **rejects XML/HTML error bodies** — an expired Monday signed URL returns an S3
 > `AccessDenied` body as a 200, which would otherwise render as a blank "file" instead of an error.
 

@@ -8,8 +8,8 @@
  *
  * The count is the JWT user's extension message store:
  *   GET /restapi/v1.0/account/~/extension/~/message-store
- *       ?messageType=Fax&readStatus=Unread&availability=Alive
- * → paging.totalElements
+ *       ?messageType=Fax&readStatus=Unread&availability=Alive&dateFrom=<180d ago>
+ * → paging.totalElements (dateFrom is required — the API defaults to ~24h)
  */
 
 const RC_SERVER =
@@ -93,9 +93,15 @@ async function getAccessToken(): Promise<string> {
 /** Number of unread faxes in the message store. Throws on failure —
  *  callers should keep the previous count rather than showing 0. */
 export async function fetchUnreadFaxCount(): Promise<number> {
+  // RingCentral's message store defaults to ~the last 24h when no dateFrom is
+  // given, so unread faxes older than a day (e.g. over a weekend) get dropped
+  // and the bar under-counts. Look back the same window as the Fax Inbox
+  // (fetchInboundFaxes, 180 days) so the count reflects every unread fax.
+  const dateFrom = new Date(Date.now() - 180 * 24 * 60 * 60_000).toISOString();
   const url =
     `${RC_SERVER}/restapi/v1.0/account/~/extension/~/message-store` +
-    `?messageType=Fax&readStatus=Unread&availability=Alive&direction=Inbound&perPage=1`;
+    `?messageType=Fax&readStatus=Unread&availability=Alive&direction=Inbound` +
+    `&dateFrom=${encodeURIComponent(dateFrom)}&perPage=1`;
 
   const call = async (token: string) =>
     fetch(url, { headers: { Authorization: `Bearer ${token}` } });

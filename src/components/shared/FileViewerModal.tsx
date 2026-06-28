@@ -334,10 +334,11 @@ interface PdfDocLike {
   }>;
 }
 
-/** Where pdf.js fetches its standard-14 fonts + CMaps. Defaults to a
- *  version-pinned jsDelivr path (kept in lockstep with the bundled worker via
- *  pdfjs.version below); set VITE_PDFJS_ASSETS_URL to a self-hosted copy of
- *  pdfjs-dist's `standard_fonts/` + `cmaps/` dirs to avoid the CDN. */
+/** Where pdf.js fetches its standard-14 fonts, CMaps, and image-decoder WASM.
+ *  Defaults to a version-pinned jsDelivr path (kept in lockstep with the bundled
+ *  worker via pdfjs.version below); set VITE_PDFJS_ASSETS_URL to a self-hosted
+ *  copy of pdfjs-dist's `standard_fonts/`, `cmaps/`, and `wasm/` dirs (the last
+ *  is needed for JBIG2/JPEG2000 scans) to avoid the CDN. */
 const PDFJS_ASSET_BASE =
   (import.meta.env.VITE_PDFJS_ASSETS_URL as string | undefined)?.replace(/\/+$/, "") || "";
 
@@ -396,6 +397,12 @@ function PdfView({
           cMapUrl: `${assetBase}/cmaps/`,
           cMapPacked: true,
           standardFontDataUrl: `${assetBase}/standard_fonts/`,
+          // JBIG2 / JPEG2000 image decoders moved to WASM in pdf.js 5+. Faxed
+          // clinicals are JBIG2-encoded scans, so without wasmUrl pdf.js can't
+          // initialize the decoder ("JBig2 failed to initialize") and every page
+          // renders blank — only a console warning fires, so the error UI never
+          // shows. Must end in "/"; same versioned base as cmaps/fonts.
+          wasmUrl: `${assetBase}/wasm/`,
         });
         task = loadingTask;
         return loadingTask.promise;
