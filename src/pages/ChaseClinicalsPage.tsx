@@ -163,7 +163,10 @@ const ChaseClinicalsPage = ({ method }: ChasePageProps) => {
                     onDoctorEdit={(patch) => update(selected.id, patch)}
                     editHint="Edits are saved to Monday when you complete the chase (or via the Save button above)."
                     fullDetails
-                    showClinicalsMethod={method === "parachute"}
+                    showClinicalsMethod={
+                      method === "parachute" &&
+                      (selected.clinicalsMethod === "Parachute" || selected.clinicalsMethod === "Email")
+                    }
                   />
                   <ChaseClinicalsPanel patient={selected} onUpdate={onUpdate} onOpenForm={() => setEscalationModalOpen(true)} managerMode={isManager} roleMethod={method} />
                 </>

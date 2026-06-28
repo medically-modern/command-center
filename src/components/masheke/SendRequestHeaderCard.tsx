@@ -140,6 +140,15 @@ export function SendRequestHeaderCard({
             </div>
           )}
 
+      {/* Clinicals Method — the doctor's send channel (Email vs Parachute),
+          surfaced for the Chase "Email & Parachute" role. Own row so it reads as
+          an explicit callout and keeps the doctor-contact group contiguous. */}
+      {showClinicalsMethod && (
+        <div className="mt-5 border-t pt-5 grid grid-cols-2 lg:grid-cols-4 gap-5" style={{ borderColor: "var(--mm-card-border)" }}>
+          <Field label="Clinicals Method" value={patient.clinicalsMethod} />
+        </div>
+      )}
+
       {/* per-method detail rows */}
       {showFull ? (
         <>
@@ -157,7 +166,6 @@ export function SendRequestHeaderCard({
           </div>
           <div className="mt-5 border-t pt-5 grid grid-cols-2 lg:grid-cols-4 gap-5" style={{ borderColor: "var(--mm-card-border)" }}>
             <Field label="Patient Address" value={patient.address} />
-            {showClinicalsMethod && <Field label="Clinicals Method" value={patient.clinicalsMethod} />}
             <Field label="Doctor Phone" value={formatPhone(patient.doctorPhone)} />
             <Field label="Doctor Fax" value={patient.doctorFax} />
             <Field label="Clinic Address" value={patient.clinicAddress} />
