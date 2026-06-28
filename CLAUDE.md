@@ -150,9 +150,9 @@ The Cloudflare worker (`monday-file-proxy`) has three routes:
 - `POST /` — relay multipart **file uploads** to Monday's file API.
 - `POST /send-message` — send email **as the Gmail sender**, gated to signed-in
   medicallymodern.com users. `verifyIdToken` **cryptographically verifies the caller's Google ID
-  token** (RS256 signature against Google's JWKS + issuer + domain + `iat` ≤ 30 days) and
-  **deliberately ignores `exp`** — so a stale 1-hour token still sends (no open relay, but no hourly
-  re-auth either). Set the worker var `GOOGLE_CLIENT_ID` to also pin the `aud` to this app.
+  token** (RS256 signature against Google's JWKS + issuer + domain) and **deliberately ignores both
+  `exp` and `iat`** — sign-in is the durable gate, so a stale token sends however old it is (no open
+  relay, but no re-auth either). Set the worker var `GOOGLE_CLIENT_ID` to also pin the `aud` to this app.
   Recipients may be normal emails **or `<number>@rcfax.com`**, which
   **RingCentral converts to a fax**. This is how Send Request dispatches fax/email.
 `ringcentralApi.ts` also reads the **unread-fax count** (FAX dashboard role) and the Fax Inbox.

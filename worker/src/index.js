@@ -158,10 +158,10 @@ function buildMime({ from, to, subject, body, attachments }) {
 // (that was making sends fail an hour into a shift). Instead we cryptographically
 // verify the token is a genuine, unmodified Google ID token for a verified
 // medicallymodern.com user — signature against Google's published JWKS + issuer
-// + (optional) audience + domain — and bound replay to tokens ISSUED within
-// MAX_TOKEN_AGE. That keeps /send-message from being an open relay while letting
-// a signed-in rep send for their whole session without re-authenticating.
-const MAX_TOKEN_AGE_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
+// + (optional) audience + domain. Neither `exp` nor `iat` is enforced: sign-in
+// itself is the durable gate, so a signed-in rep can send indefinitely without
+// re-authenticating, while a non-medicallymodern.com caller still can't (no open
+// relay).
 
 /** Google's RS256 signing keys (JWKS), cached per-isolate for an hour. */
 let _googleKeys = { keys: null, exp: 0 };
@@ -183,9 +183,9 @@ function b64urlToBytes(b64url) {
   return out;
 }
 
-/** Verify the caller's Google ID token (signature + issuer + domain; `exp`
- *  ignored, `iat` bounded). Returns their email if it's a verified
- *  medicallymodern.com user, else null. Prevents open relay. */
+/** Verify the caller's Google ID token (signature + issuer + domain; `exp` and
+ *  `iat` ignored). Returns their email if it's a verified medicallymodern.com
+ *  user, else null. Prevents open relay. */
 async function verifyIdToken(idToken, env) {
   if (!idToken) return null;
   try {
@@ -220,10 +220,8 @@ async function verifyIdToken(idToken, env) {
       (claims.hd === ALLOWED_SENDER_DOMAIN || email.endsWith("@" + ALLOWED_SENDER_DOMAIN));
     if (!domainOk) return null;
 
-    // 4) Ignore `exp`, but require the token was ISSUED recently (bounds replay).
-    const iatMs = Number(claims.iat || 0) * 1000;
-    if (!iatMs || Date.now() - iatMs > MAX_TOKEN_AGE_MS) return null;
-
+    // `exp` and `iat` are both intentionally ignored — sign-in is the durable
+    // gate, so a valid medicallymodern.com token sends however old it is.
     return email;
   } catch {
     return null;
