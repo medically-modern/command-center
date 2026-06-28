@@ -51,6 +51,7 @@ export function SendRequestHeaderCard({
   onDoctorEdit,
   editHint = "Edits are saved to Monday when you Mark as Complete (or via the Save button above).",
   fullDetails = false,
+  showClinicalsMethod = false,
 }: {
   patient: Patient;
   onDoctorEdit?: (patch: Partial<Patient>) => void;
@@ -61,6 +62,10 @@ export function SendRequestHeaderCard({
    *  paths, OOW, malfunction, patient address, clinic) regardless of method.
    *  Confirm Receipt uses this so its drawer matches Send Request's. */
   fullDetails?: boolean;
+  /** Surface the doctor's Clinicals Method (Fax/Email/Parachute) as a detail
+   *  field in the drawer. The Chase "Email & Parachute" role passes this so the
+   *  rep can see which channel this doctor uses (Email vs Parachute). */
+  showClinicalsMethod?: boolean;
 }) {
   const method = patient.clinicalsMethod ?? "Fax";
   const isParachute = method === "Parachute";
@@ -152,6 +157,7 @@ export function SendRequestHeaderCard({
           </div>
           <div className="mt-5 border-t pt-5 grid grid-cols-2 lg:grid-cols-4 gap-5" style={{ borderColor: "var(--mm-card-border)" }}>
             <Field label="Patient Address" value={patient.address} />
+            {showClinicalsMethod && <Field label="Clinicals Method" value={patient.clinicalsMethod} />}
             <Field label="Doctor Phone" value={formatPhone(patient.doctorPhone)} />
             <Field label="Doctor Fax" value={patient.doctorFax} />
             <Field label="Clinic Address" value={patient.clinicAddress} />
