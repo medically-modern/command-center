@@ -137,8 +137,11 @@ mark-complete, escalation modal, notes, Subscription's big write) historically b
 Google Identity Services sign-in, **active only when `VITE_GOOGLE_CLIENT_ID` is set**,
 domain-locked to `medicallymodern.com`. **Sign-in is a gate, not a ticking token:** the stored
 identity *is* the session and never lapses on its own — only explicit `signOut()` clears it. The
-1-hour Google ID token is kept only for best-effort gateway attribution and refreshed in the
-background (`SessionKeeper`); a stale token never drops the session or blocks writes.
+1-hour Google ID token is kept for best-effort gateway attribution; **there is NO background
+refresh** (AuthGate's `SessionKeeper` was removed — it only popped One Tap), so the token simply
+expires. Nothing blocks on its freshness: Monday writes fall back to the client path, and the
+worker `/send-message` verifies the token's **signature + domain, not its expiry** (so sends work
+all session — see §5.5). A stale token never drops the session or blocks a write/send.
 
 ### 5.5 Files, email & fax — `worker/src/index.js` (Cloudflare) + `lib/fax/ringcentralApi.ts`
 The Cloudflare worker (`monday-file-proxy`) has three routes:
@@ -146,7 +149,11 @@ The Cloudflare worker (`monday-file-proxy`) has three routes:
   `shared/mondayAssets.ts` and the `FileViewerModal` (pdf.js).
 - `POST /` — relay multipart **file uploads** to Monday's file API.
 - `POST /send-message` — send email **as the Gmail sender**, gated to signed-in
-  medicallymodern.com users. Recipients may be normal emails **or `<number>@rcfax.com`**, which
+  medicallymodern.com users. `verifyIdToken` **cryptographically verifies the caller's Google ID
+  token** (RS256 signature against Google's JWKS + issuer + domain + `iat` ≤ 30 days) and
+  **deliberately ignores `exp`** — so a stale 1-hour token still sends (no open relay, but no hourly
+  re-auth either). Set the worker var `GOOGLE_CLIENT_ID` to also pin the `aud` to this app.
+  Recipients may be normal emails **or `<number>@rcfax.com`**, which
   **RingCentral converts to a fax**. This is how Send Request dispatches fax/email.
 `ringcentralApi.ts` also reads the **unread-fax count** (FAX dashboard role) and the Fax Inbox.
 > **Gotcha — fax count window:** RingCentral's message store defaults `dateFrom` to **~the last 24h**.

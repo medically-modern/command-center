@@ -7,13 +7,15 @@
  * it to the gateway, which verifies it server-side and attributes every write.
  *
  * SIGN-IN IS A GATE, NOT A TICKING TOKEN. Google ID tokens always expire ~1h
- * after they're issued and that lifetime can't be extended. So we treat the
- * stored IDENTITY as the session: once a valid @domain account signs in, it
- * stays signed in until the user explicitly signs out. The ID token is kept
- * only for best-effort gateway attribution and is refreshed in the background
- * (see SessionKeeper in AuthGate.tsx); if a refresh can't happen the session is
- * NOT dropped. Writes still flow — the gateway /send path falls back to the
- * client write path when the token is stale (see verifiedWrite.ts).
+ * after they're issued, that lifetime can't be extended, and there is NO
+ * background refresh (see the note in AuthGate.tsx — it only popped One Tap). So
+ * we treat the stored IDENTITY as the session: once a valid @domain account
+ * signs in, it stays signed in until the user explicitly signs out. The (often
+ * expired) ID token is still sent for best-effort gateway attribution, but
+ * nothing blocks on its freshness: Monday writes fall back to the client path
+ * (verifiedWrite.ts), and the worker /send-message verifies the token's
+ * SIGNATURE + domain rather than its expiry (worker/src/index.js verifyIdToken),
+ * so a signed-in rep can send all session without re-authenticating.
  */
 
 const CLIENT_ID = (import.meta.env.VITE_GOOGLE_CLIENT_ID as string | undefined) || "";

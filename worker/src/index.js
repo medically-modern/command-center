@@ -153,19 +153,78 @@ function buildMime({ from, to, subject, body, attachments }) {
   return L.join("\r\n");
 }
 
-/** Verify the caller's Google ID token via tokeninfo; return their email if
- *  it's a verified medicallymodern.com user, else null. Prevents open relay. */
-async function verifyIdToken(idToken) {
+// Sign-in is the gate, NOT a ticking token. Google ID tokens expire ~1h after
+// issuance and the SPA no longer refreshes them, so we must NOT reject on `exp`
+// (that was making sends fail an hour into a shift). Instead we cryptographically
+// verify the token is a genuine, unmodified Google ID token for a verified
+// medicallymodern.com user — signature against Google's published JWKS + issuer
+// + (optional) audience + domain — and bound replay to tokens ISSUED within
+// MAX_TOKEN_AGE. That keeps /send-message from being an open relay while letting
+// a signed-in rep send for their whole session without re-authenticating.
+const MAX_TOKEN_AGE_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
+
+/** Google's RS256 signing keys (JWKS), cached per-isolate for an hour. */
+let _googleKeys = { keys: null, exp: 0 };
+async function getGoogleSigningKeys() {
+  if (_googleKeys.keys && Date.now() < _googleKeys.exp) return _googleKeys.keys;
+  const r = await fetch("https://www.googleapis.com/oauth2/v3/certs");
+  if (!r.ok) throw new Error("jwks fetch failed");
+  const { keys } = await r.json();
+  _googleKeys = { keys, exp: Date.now() + 60 * 60 * 1000 };
+  return keys;
+}
+
+function b64urlToBytes(b64url) {
+  const b64 = b64url.replace(/-/g, "+").replace(/_/g, "/");
+  const pad = b64.length % 4 ? "=".repeat(4 - (b64.length % 4)) : "";
+  const bin = atob(b64 + pad);
+  const out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out;
+}
+
+/** Verify the caller's Google ID token (signature + issuer + domain; `exp`
+ *  ignored, `iat` bounded). Returns their email if it's a verified
+ *  medicallymodern.com user, else null. Prevents open relay. */
+async function verifyIdToken(idToken, env) {
   if (!idToken) return null;
   try {
-    const r = await fetch("https://oauth2.googleapis.com/tokeninfo?id_token=" + encodeURIComponent(idToken));
-    if (!r.ok) return null;
-    const c = await r.json();
-    const email = String(c.email || "").toLowerCase();
-    const ok =
-      (c.email_verified === true || c.email_verified === "true") &&
-      (c.hd === ALLOWED_SENDER_DOMAIN || email.endsWith("@" + ALLOWED_SENDER_DOMAIN));
-    return ok ? email : null;
+    const [h, p, sig] = idToken.split(".");
+    if (!h || !p || !sig) return null;
+    const header = JSON.parse(new TextDecoder().decode(b64urlToBytes(h)));
+    const claims = JSON.parse(new TextDecoder().decode(b64urlToBytes(p)));
+
+    // 1) Signature must verify against Google's keys — proves it's a genuine,
+    //    unmodified Google-issued token (replaces the tokeninfo call, which
+    //    rejected anything past its 1h expiry).
+    const jwk = (await getGoogleSigningKeys()).find((k) => k.kid === header.kid);
+    if (!jwk) return null;
+    const key = await crypto.subtle.importKey(
+      "jwk", jwk, { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" }, false, ["verify"],
+    );
+    const ok = await crypto.subtle.verify(
+      "RSASSA-PKCS1-v1_5", key, b64urlToBytes(sig),
+      new TextEncoder().encode(`${h}.${p}`),
+    );
+    if (!ok) return null;
+
+    // 2) Issuer, and audience when GOOGLE_CLIENT_ID is configured on the worker
+    //    (tightens acceptance to tokens minted for *our* app).
+    if (claims.iss !== "accounts.google.com" && claims.iss !== "https://accounts.google.com") return null;
+    if (env && env.GOOGLE_CLIENT_ID && claims.aud !== env.GOOGLE_CLIENT_ID) return null;
+
+    // 3) Verified medicallymodern.com identity.
+    const email = String(claims.email || "").toLowerCase();
+    const domainOk =
+      (claims.email_verified === true || claims.email_verified === "true") &&
+      (claims.hd === ALLOWED_SENDER_DOMAIN || email.endsWith("@" + ALLOWED_SENDER_DOMAIN));
+    if (!domainOk) return null;
+
+    // 4) Ignore `exp`, but require the token was ISSUED recently (bounds replay).
+    const iatMs = Number(claims.iat || 0) * 1000;
+    if (!iatMs || Date.now() - iatMs > MAX_TOKEN_AGE_MS) return null;
+
+    return email;
   } catch {
     return null;
   }
@@ -179,7 +238,7 @@ export default {
 
     // ── POST /send-message — send email as GMAIL_SENDER via Gmail API ──
     if (request.method === "POST" && url.pathname === "/send-message") {
-      const actor = await verifyIdToken(request.headers.get("X-MM-Auth"));
+      const actor = await verifyIdToken(request.headers.get("X-MM-Auth"), env);
       if (!actor) {
         return json({ error: "Sign in with your medicallymodern.com account is required." }, 401, cors);
       }
