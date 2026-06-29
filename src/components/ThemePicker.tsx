@@ -60,7 +60,7 @@ export function SidebarThemePicker({ collapsed }: { collapsed: boolean }) {
 }
 
 /** Standalone variant — for pages without the SidebarProvider (e.g. Index). */
-export function ThemePickerButton() {
+export function ThemePickerButton({ className }: { className?: string }) {
   const { theme, setTheme } = useTheme();
   return (
     <Popover>
@@ -68,8 +68,8 @@ export function ThemePickerButton() {
         <Button
           variant="ghost"
           size="icon"
-          className="h-8 w-8 text-muted-foreground hover:text-foreground"
-          title="Theme"
+          className={cn("h-8 w-8 text-muted-foreground hover:text-foreground", className)}
+          title="Settings"
         >
           <Settings className="h-4 w-4" />
         </Button>
