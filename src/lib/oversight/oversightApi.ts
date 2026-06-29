@@ -506,7 +506,7 @@ export const OVERSIGHT_SECTIONS: OversightSection[] = [
     chartIds: ["evaluate", "send-request", "confirm-receipt", "chase-fax", "chase-email-parachute"],
     secondaryTitle: "Escalations · Attempt 4+",
     secondaryChartIds: ["confirm-receipt-escalations", "chase-fax-escalations", "chase-email-parachute-escalations"],
-    tertiaryTitle: "Escalations · 3rd+ Attempt",
+    tertiaryTitle: "Escalations · 3rd+ Round",
     tertiaryChartIds: [
       "evaluate-escalated-3rd",
       "send-request-escalated-3rd",
