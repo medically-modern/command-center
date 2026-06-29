@@ -6,7 +6,7 @@
  * Data is fetched from Monday.com via oversightApi, cached in localStorage
  * for instant reload, and polled every 90 seconds.
  */
-import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { Fragment, useState, useEffect, useCallback, useMemo, useRef } from "react";
 import {
   fetchOversightData,
   fetchPriorityOptions,
@@ -1079,20 +1079,28 @@ export default function OversightTab() {
         for (const c of charts) for (const p of data?.get(c.id) ?? []) seen.add(p.id);
         const sectionTotal = seen.size;
 
+        const renderChart = (chart: ChartDef) => (
+          <StageChart
+            chart={chart}
+            patients={data?.get(chart.id) ?? []}
+            priorityConfig={priorityConfig}
+            onChartClick={() => handleChartClick(chart.id)}
+            onBarClick={(bucket) => handleBarClick(chart.id, bucket)}
+          />
+        );
+
         const renderGrid = (list: ChartDef[]) => (
           <div className={cn("grid gap-4 grid-cols-1", list.length > 1 && "md:grid-cols-2")}>
             {list.map((chart) => (
-              <StageChart
-                key={chart.id}
-                chart={chart}
-                patients={data?.get(chart.id) ?? []}
-                priorityConfig={priorityConfig}
-                onChartClick={() => handleChartClick(chart.id)}
-                onBarClick={(bucket) => handleBarClick(chart.id, bucket)}
-              />
+              <Fragment key={chart.id}>{renderChart(chart)}</Fragment>
             ))}
           </div>
         );
+
+        // For each primary chart, its escalated counterpart is the chart whose id
+        // is `${chart.id}-escalations` (only Confirm Receipt / Chase have one).
+        const escFor = (chart: ChartDef) =>
+          secondaryCharts.find((s) => s.id === `${chart.id}-escalations`) ?? null;
 
         return (
           <section className="space-y-3">
@@ -1102,18 +1110,38 @@ export default function OversightTab() {
                 {sectionTotal} patient{sectionTotal !== 1 ? "s" : ""}
               </span>
             </div>
-            {renderGrid(charts)}
 
-            {secondaryCharts.length > 0 && (
-              <div className="space-y-3 pt-4">
-                <div className="flex items-center gap-2">
-                  <span className="text-xs font-bold uppercase tracking-[0.15em] text-amber-600">
+            {secondaryCharts.length > 0 ? (
+              // Paired layout: each original chart on the LEFT, its escalated
+              // counterpart on the RIGHT, split by a yellow line down the middle.
+              // Originals with no escalated counterpart leave the right side blank.
+              <div className="relative">
+                <div
+                  className="pointer-events-none absolute inset-y-0 left-1/2 -translate-x-1/2 w-0.5 bg-amber-300"
+                  aria-hidden
+                />
+                <div className="grid grid-cols-2 gap-x-12 gap-y-4">
+                  {/* Column headers */}
+                  <div className="text-xs font-bold uppercase tracking-[0.15em] text-muted-foreground">
+                    Active
+                  </div>
+                  <div className="text-xs font-bold uppercase tracking-[0.15em] text-amber-600">
                     {section.secondaryTitle ?? "Escalations"}
-                  </span>
-                  <span className="h-px flex-1 bg-amber-200" />
+                  </div>
+                  {/* One row per original chart: [original] | [escalated or blank] */}
+                  {charts.map((chart) => {
+                    const esc = escFor(chart);
+                    return (
+                      <Fragment key={chart.id}>
+                        <div>{renderChart(chart)}</div>
+                        <div>{esc ? renderChart(esc) : null}</div>
+                      </Fragment>
+                    );
+                  })}
                 </div>
-                {renderGrid(secondaryCharts)}
               </div>
+            ) : (
+              renderGrid(charts)
             )}
           </section>
         );
