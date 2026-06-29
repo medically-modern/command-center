@@ -304,10 +304,14 @@ sync** — and that *only committed code travels*:
   - **Cloudflare Worker secrets** (`GMAIL_*`) live on the shared worker, not the repo — but set them as
     **encrypted Secrets** (a `wrangler deploy` wipes plaintext *Variables* that aren't in `wrangler.toml`).
   - **Railway service env vars** — a separate system; sync never touches them.
-- **CLOBBERS prod's data files:** the force-push overwrites prod's committed `public/data/*.json`
-  (`access.json`, `baseline.json`, `fax-state.json`) with test's. **After every sync, re-verify prod's
-  `access.json`** (managers/processors) — prod's live access edits are replaced with test's snapshot.
-  `baseline.json`/`fax-state.json` self-heal (next cron / next ET midnight); `access.json` does **not**.
+- **PRESERVES prod's role assignments; CLOBBERS the other data files:** `sync-from-test.yml` now
+  overlays prod's **own** `access.json` (managers/processors) back onto test's tree before the
+  force-push and commits it, so **prod's roles are kept** — a processor with a role on prod but not on
+  test does **not** lose it. It preserves both `public/data/access.json` (the live source, read via the
+  Contents API) and `dist/data/access.json` (bundled copy). The force-push still overwrites prod's
+  `baseline.json`/`fax-state.json` with test's, but those **self-heal** (next cron / next ET midnight),
+  so no manual fixup is needed after a sync. (If you ever *want* test's access.json to win, edit the
+  `PRESERVE` list in the workflow.)
 - **Shared, environment-agnostic infra — one instance serves BOTH test and prod:** the Monday **gateway**
   (`cmd ctr server`), the Cloudflare **worker** (`monday-file-proxy`), every **Railway backend**, and the
   **Monday boards** themselves. So a fix to any of those covers both at once — and the gateway `/audit`

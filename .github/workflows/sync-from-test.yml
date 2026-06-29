@@ -11,8 +11,32 @@ jobs:
         env:
           GH_PAT: ${{ secrets.GH_PAT }}
         run: |
+          set -euo pipefail
           PAT=$(echo "$GH_PAT" | tr -d '[:space:]')
           git clone "https://x-access-token:${PAT}@github.com/medically-modern/command-center-test.git" source
           cd source
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git config user.name "github-actions[bot]"
           git remote add target "https://x-access-token:${PAT}@github.com/medically-modern/command-center.git"
+          git fetch target main
+
+          # ---- Preserve PROD's role assignments across the sync ----
+          # The sync force-pushes test's main over prod's, which would otherwise
+          # clobber prod's access.json (managers/processors role assignments).
+          # We overlay prod's CURRENT access.json onto test's tree and commit it,
+          # so the push keeps prod's roles untouched. Everything else still syncs
+          # from test. A processor who has a role on prod but not on test keeps
+          # their prod role. (dist/data/access.json is the bundled copy; the live
+          # app reads public/data/access.json — we keep both in sync to be safe.)
+          PRESERVE="public/data/access.json dist/data/access.json"
+          for f in $PRESERVE; do
+            if git cat-file -e "FETCH_HEAD:$f" 2>/dev/null; then
+              git checkout FETCH_HEAD -- "$f"
+              git add -- "$f"
+            fi
+          done
+          if ! git diff --cached --quiet; then
+            git commit -m "sync: keep prod role assignments (access.json); sync everything else from test"
+          fi
+
           git push target main --force
