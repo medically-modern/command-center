@@ -1,10 +1,9 @@
 import { useFilteredRoleCounts } from "@/hooks/useFilteredRoleCounts";
 import { DailyBurndown } from "@/components/dashboard/DailyBurndown";
-import { signOut } from "@/lib/shared/auth";
 import type { ProcessorProfile } from "@/lib/accessStore";
 import { orderedRoleIds } from "@/lib/roleView";
 import { ThemePickerButton } from "@/components/ThemePicker";
-import { LogOut, Stethoscope } from "lucide-react";
+import { Stethoscope } from "lucide-react";
 
 /** Stripped, no-sidebar view for a processor: only their assigned role bars. */
 export default function ProcessorView({ profile, email }: { profile: ProcessorProfile; email: string }) {
@@ -19,18 +18,6 @@ export default function ProcessorView({ profile, email }: { profile: ProcessorPr
         <div className="min-w-0">
           <h1 className="text-base font-bold tracking-tight">Command Center</h1>
           <p className="text-[11px] text-white/60 truncate">{profile.name || email}</p>
-        </div>
-        <div className="ml-auto flex items-center gap-1">
-          {/* Settings gear (theme + your email + sign out) — same one managers
-              have, so processors can re-sign-in if their session ever errors. */}
-          <ThemePickerButton className="text-white/75 hover:text-white hover:bg-white/10" />
-          <button
-            onClick={signOut}
-            className="inline-flex items-center gap-2 text-sm text-white/75 hover:text-white"
-            title="Sign out"
-          >
-            <LogOut className="w-4 h-4" /> Sign out
-          </button>
         </div>
       </header>
 
@@ -51,6 +38,12 @@ export default function ProcessorView({ profile, email }: { profile: ProcessorPr
           )}
         </div>
       </main>
+
+      {/* Settings gear — lower-left, identical to the manager view: click for
+          theme colors + the signed-in email + sign out. */}
+      <div className="fixed bottom-4 left-4 z-40">
+        <ThemePickerButton />
+      </div>
     </div>
   );
 }
