@@ -7,7 +7,7 @@
  * independently and neither blocks the other.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
-import { fetchUpdates, createUpdate, type MondayUpdate } from "@/lib/masheke/mondayApi";
+import { fetchReferralUpdates, createUpdate, type MondayUpdate } from "@/lib/masheke/mondayApi";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Separator } from "@/components/ui/separator";
@@ -17,10 +17,13 @@ import { toast } from "sonner";
 interface Props {
   itemId: string;
   patientName: string;
+  /** Patient DOB — tie-breaks same-name patients when resolving the Profile
+   *  Send Off item that actually carries the referral-email update. */
+  dob?: string;
   onClose: () => void;
 }
 
-export function ReferralEmailPanel({ itemId, patientName, onClose }: Props) {
+export function ReferralEmailPanel({ itemId, patientName, dob, onClose }: Props) {
   const [updates, setUpdates] = useState<MondayUpdate[]>([]);
   const [loading, setLoading] = useState(false);
   const [posting, setPosting] = useState(false);
@@ -30,7 +33,10 @@ export function ReferralEmailPanel({ itemId, patientName, onClose }: Props) {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const data = await fetchUpdates(itemId);
+      // The referral email lives on the Profile Send Off item, not this
+      // Medical Evaluation item (updates don't copy across when the new item
+      // is created), so resolve it by name + DOB.
+      const data = await fetchReferralUpdates(itemId, patientName, dob);
       setUpdates(data);
     } catch (e) {
       toast.error("Failed to load referral email", {
@@ -39,7 +45,7 @@ export function ReferralEmailPanel({ itemId, patientName, onClose }: Props) {
     } finally {
       setLoading(false);
     }
-  }, [itemId]);
+  }, [itemId, patientName, dob]);
 
   // Reload whenever the patient changes.
   useEffect(() => {

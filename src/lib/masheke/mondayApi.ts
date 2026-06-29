@@ -766,6 +766,78 @@ export async function createUpdate(itemId: string, body: string): Promise<void> 
   await gql(query, { itemId, body });
 }
 
+/** Profile Send Off board — where the inbound referral email lands as an
+ *  item update. The DOB column id is shared across boards (text_mm1xvxst). */
+const PROFILE_SEND_OFF_BOARD_ID = "18406352652";
+
+/**
+ * Referral-email updates for a Medical Evaluation patient.
+ *
+ * The manufacturer referral email is captured as a Monday *update* on the
+ * Profile Send Off item. When the patient advances to the Medical Evaluation
+ * board a brand-new item is created and Monday does NOT carry updates across,
+ * so the Evaluation item has none of its own — reading them directly always
+ * comes back empty. We therefore resolve the Profile item by name
+ * (disambiguated by DOB when more than one patient shares a name, so another
+ * patient's email can never leak) and return its updates, merged with any
+ * updates that happen to live on the Evaluation item itself (e.g. rep notes).
+ */
+export async function fetchReferralUpdates(
+  evalItemId: string,
+  patientName: string,
+  dob?: string,
+): Promise<MondayUpdate[]> {
+  const name = patientName.trim();
+  if (!name) return fetchUpdates(evalItemId);
+  const query = `
+    query ($evalIds: [ID!], $boardId: ID!, $name: [String]!) {
+      eval: items(ids: $evalIds) {
+        updates { id body created_at creator { name } }
+      }
+      profile: items_page_by_column_values(
+        board_id: $boardId
+        columns: [{ column_id: "name", column_values: $name }]
+        limit: 25
+      ) {
+        items {
+          id
+          column_values(ids: ["${COL.dob}"]) { id text }
+          updates { id body created_at creator { name } }
+        }
+      }
+    }
+  `;
+  const data = await gql<{
+    eval: { updates: MondayUpdate[] }[];
+    profile: {
+      items: {
+        id: string;
+        column_values: { id: string; text: string | null }[];
+        updates: MondayUpdate[];
+      }[];
+    };
+  }>(query, { evalIds: [evalItemId], boardId: PROFILE_SEND_OFF_BOARD_ID, name: [name] });
+
+  const evalUpdates = data.eval?.[0]?.updates ?? [];
+  let profileItems = data.profile?.items ?? [];
+  // Only when the name is ambiguous do we lean on DOB — a single match needs
+  // no tie-break, and filtering it out on a blank/mismatched DOB would hide a
+  // real email. With multiple same-name items we require the DOB to match.
+  if (profileItems.length > 1 && dob?.trim()) {
+    profileItems = profileItems.filter(
+      (it) => (it.column_values.find((c) => c.id === COL.dob)?.text ?? "").trim() === dob.trim(),
+    );
+  }
+  const profileUpdates = profileItems.flatMap((it) => it.updates ?? []);
+
+  // Merge + dedupe by id, newest first.
+  const byId = new Map<string, MondayUpdate>();
+  for (const u of [...evalUpdates, ...profileUpdates]) byId.set(u.id, u);
+  return [...byId.values()].sort(
+    (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+  );
+}
+
 
 /** Read arbitrary column text values for a single item (used by write verification). */
 export async function readColumnTexts(

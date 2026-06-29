@@ -50,6 +50,10 @@ export function buildRequestTemplate(patient: Patient, checklist: MnChecklist): 
   const docName = patient.doctorName?.trim() || "Provider";
   const lastName = titleCase(docName.replace(/^dr\.?\s*/i, "").split(/\s+/).pop() || docName);
   const patientName = titleCase(patient.name || "the patient");
+  // Patient DOB rides immediately after the name so the office can match the
+  // patient unambiguously (column is already MM/DD/YYYY text). Omitted when blank.
+  const dob = patient.dob?.trim();
+  const patientLabel = dob ? `${patientName} (DOB: ${dob})` : patientName;
   // Served products + states (a "Not Serving" model falls back to generic).
   const docState = (label: string) => checklist.documents.find((d) => d.label === label)?.state;
   const ipState = docState("Insulin Pump Script");
@@ -94,8 +98,8 @@ export function buildRequestTemplate(patient: Patient, checklist: MnChecklist): 
     ? pumpPhrase ?? "diabetes supplies"
     : joinAnd([pumpPhrase, cgmPhrase].filter(Boolean) as string[]) || "diabetes supplies";
   const servingLine = partner
-    ? `We are working with ${partner} to serve ${patientName} ${servingProducts}.`
-    : `We are serving ${patientName} with ${servingProducts}.`;
+    ? `We are working with ${partner} to serve ${patientLabel} ${servingProducts}.`
+    : `We are serving ${patientLabel} with ${servingProducts}.`;
 
   const lines: string[] = [];
   lines.push(`Hi Dr. ${lastName}'s office,`);

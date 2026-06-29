@@ -135,6 +135,7 @@ const EvaluatePage = () => {
           <ReferralEmailPanel
             itemId={selected.id}
             patientName={selected.name}
+            dob={selected.dob}
             onClose={() => setReferralEmailOpen(false)}
           />
         )}
