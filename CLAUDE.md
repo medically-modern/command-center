@@ -291,6 +291,33 @@ columns" automation on duplicated items). The SPA only flips the advancer; verif
   `/audit`. `services/monday-gateway/send.mjs` is the durable, idempotent `send_jobs` queue.
 - **Worker (`worker/`)** deploys via `deploy-worker.yml` / `npx wrangler deploy`.
 
+### Sync from Test Repo (`sync-from-test.yml`) — what carries over, what doesn't
+**This repo (`command-center-test`) is the source of truth; prod (`command-center`) is a mirror.** The
+manual *Sync from Test Repo* workflow is a literal **`git push <prod> main --force`**, so prod's `main`
+becomes a byte-for-byte copy of test's. Assume **anything you add to test WILL land in prod on the next
+sync** — and that *only committed code travels*:
+- **Carries over:** all committed **code** (`src/`, `worker/`, workflows, scripts). Nothing else.
+- **Does NOT carry over — you must set these in prod yourself (this is the one that bites):**
+  - **GitHub Actions secrets** — `CLOUDFLARE_API_TOKEN`, `GH_PAT`, and **every `VITE_*` build secret**.
+    Secrets are repo settings, not code. A new `VITE_*` you add to test builds **blank/broken in prod**
+    until you copy it into the prod repo's Actions secrets. Missing secret ⇒ silent prod breakage.
+  - **Cloudflare Worker secrets** (`GMAIL_*`) live on the shared worker, not the repo — but set them as
+    **encrypted Secrets** (a `wrangler deploy` wipes plaintext *Variables* that aren't in `wrangler.toml`).
+  - **Railway service env vars** — a separate system; sync never touches them.
+- **CLOBBERS prod's data files:** the force-push overwrites prod's committed `public/data/*.json`
+  (`access.json`, `baseline.json`, `fax-state.json`) with test's. **After every sync, re-verify prod's
+  `access.json`** (managers/processors) — prod's live access edits are replaced with test's snapshot.
+  `baseline.json`/`fax-state.json` self-heal (next cron / next ET midnight); `access.json` does **not**.
+- **Shared, environment-agnostic infra — one instance serves BOTH test and prod:** the Monday **gateway**
+  (`cmd ctr server`), the Cloudflare **worker** (`monday-file-proxy`), every **Railway backend**, and the
+  **Monday boards** themselves. So a fix to any of those covers both at once — and the gateway `/audit`
+  shows traffic from BOTH SPAs once prod's build has `VITE_MONDAY_GATEWAY_URL` set (a copied secret).
+- **Per-repo, self-handled:** `deploy.yml` (Pages; base path → data repo), `deploy-worker.yml`, and
+  `daily-baseline.yml` each run in whichever repo they live in — so prod snapshots its *own*
+  `baseline.json` to `command-center` via its own Action (the Railway `baseline-cron` is pinned to the
+  **test** repo via `GITHUB_REPO`, so it never touches prod). The bundled `VITE_GITHUB_PAT` / `GH_PAT`
+  **must have write access to BOTH repos** or prod's `access.json` + baseline writes silently fail.
+
 ### Backend ecosystem (Railway)
 This SPA is one of many services. Others you'll hear referenced (all on Railway):
 `stedi-monday-integration` (eligibility → Monday), `josh-monday-automations` +
