@@ -416,6 +416,17 @@ async function fetchAudit(req) {
   return { rows: r.rows, onlyWrites, limit };
 }
 
+/** Format a TIMESTAMPTZ as Eastern Time (auto-handles EDT/EST). */
+function fmtET(ts) {
+  const p = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/New_York", hourCycle: "h23",
+    year: "numeric", month: "2-digit", day: "2-digit",
+    hour: "2-digit", minute: "2-digit", second: "2-digit",
+  }).formatToParts(new Date(ts));
+  const g = (t) => p.find((x) => x.type === t)?.value ?? "";
+  return `${g("year")}-${g("month")}-${g("day")} ${g("hour")}:${g("minute")}:${g("second")}`;
+}
+
 function renderAudit(rows, opts) {
   const k = encodeURIComponent(opts.key);
   const names = opts.names || new Map();
@@ -433,7 +444,7 @@ function renderAudit(rows, opts) {
         if (parts.length) cols = parts.join(" ");
       }
       return `<tr>
-      <td class="t">${esc(new Date(r.created_at).toISOString().replace("T", " ").slice(0, 19))}</td>
+      <td class="t">${esc(fmtET(r.created_at))}</td>
       <td>${esc(r.actor || "—")}</td>
       <td><b>${first}</b></td>
       <td class="mono">${esc(r.client_ip || "—")}</td>
@@ -475,7 +486,7 @@ function renderAudit(rows, opts) {
  <a class="btn" href="/audit.json?key=${k}${opts.onlyWrites ? "" : "&all=1"}">JSON</a>
 </header>
 <table><thead><tr>
- <th>time (UTC)</th><th>who</th><th>patient</th><th>ip</th><th>op</th><th>item</th><th>columns written → value</th><th>ok</th><th>ms</th>
+ <th>time (ET)</th><th>who</th><th>patient</th><th>ip</th><th>op</th><th>item</th><th>columns written → value</th><th>ok</th><th>ms</th>
 </tr></thead><tbody>${body || '<tr><td colspan="9" style="padding:20px;color:#9aa4b2">No rows yet.</td></tr>'}</tbody></table>
 </body></html>`;
 }
