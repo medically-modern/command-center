@@ -78,6 +78,13 @@ export function useMondayPatients(activeTab: TabKey = "evaluate", injectedPatien
   // the Evaluate sidebar's read-only viewer folder (never affects counts).
   const [chaseViewerPatients, setChaseViewerPatients] = useState<Patient[]>([]);
   const [loading, setLoading] = useState(cachedRef.current.length === 0);
+  // Blocks the page (full-screen overlay) from mount until THIS role's first
+  // fetch lands. The localStorage cache is shared across all masheke roles, so a
+  // freshly-mounted role page would otherwise render the PREVIOUS role's patients
+  // — and let you click them — for the ~poll window before Monday responds.
+  // Unlike `loading`, this is always true on mount regardless of cache, and a
+  // background poll never re-raises it.
+  const [initialLoading, setInitialLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const overlayRef = useRef<Map<string, Partial<Patient>>>(loadOverlays());
   const mountedRef = useRef(true);
@@ -163,7 +170,12 @@ export function useMondayPatients(activeTab: TabKey = "evaluate", injectedPatien
       if (mountedRef.current)
         setError(e instanceof Error ? e.message : "Failed to load patients from Monday");
     } finally {
-      if (mountedRef.current && !silent) setLoading(false);
+      if (mountedRef.current) {
+        if (!silent) setLoading(false);
+        // First fetch for this role is done (even on error/silent) — lift the
+        // blocking overlay so the page never stays stuck.
+        setInitialLoading(false);
+      }
     }
   }, [activeTab]);
 
@@ -216,5 +228,5 @@ export function useMondayPatients(activeTab: TabKey = "evaluate", injectedPatien
   }, []);
 
 
-  return { patients, chaseViewerPatients, loading, error, refetch, update, clearOverlay, saveOverlay, hasOverlay };
+  return { patients, chaseViewerPatients, loading, initialLoading, error, refetch, update, clearOverlay, saveOverlay, hasOverlay };
 }

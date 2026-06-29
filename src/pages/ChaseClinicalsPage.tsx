@@ -22,6 +22,7 @@ import { clearEvalState } from "@/lib/masheke/evalState";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { BlockedModal } from "@/components/masheke/BlockedModal";
 import { EscalationFormModal } from "@/components/shared/EscalationFormModal";
+import { PageLoadingOverlay } from "@/components/shared/PageLoadingOverlay";
 import { writeStatusIndex, writeLongText, COL } from "@/lib/masheke/mondayApi";
 import { ESCALATION_INDEX } from "@/lib/masheke/mondayMapping";
 import { FollowUpModal } from "@/components/masheke/FollowUpModal";
@@ -42,7 +43,7 @@ const ChaseClinicalsPage = ({ method }: ChasePageProps) => {
   // Manager view (?manager=1): sidebar lists ONLY escalated patients and
   // the panel tucks "Review the Request" behind a collapsed dropdown.
   const isManager = searchParams.get("manager") === "1";
-  const { patients: allChasePatients, loading, error, refetch, update, clearOverlay , saveOverlay, hasOverlay } = useMondayPatients("chase", searchParams.get("patientId"));
+  const { patients: allChasePatients, loading, initialLoading, error, refetch, update, clearOverlay , saveOverlay, hasOverlay } = useMondayPatients("chase", searchParams.get("patientId"));
   // Role split: parachute role = Clinicals Method "Parachute" OR "Email"
   // (Email rides with Parachute for queueing/cadence but still SENDS by email);
   // fax role = everything else (Fax, blank) so nobody falls through the cracks.
@@ -91,6 +92,7 @@ const ChaseClinicalsPage = ({ method }: ChasePageProps) => {
 
   return (
     <SidebarProvider>
+      <PageLoadingOverlay show={initialLoading} />
       <div className="min-h-screen flex w-full bg-gradient-subtle">
         <PatientsSidebar patients={patients} selectedId={selectedId} onSelect={setSelectedId} loading={loading} error={error} onRefresh={refetch} activeTab="chase" managerMode={isManager} />
         <div className="flex-1 flex flex-col min-w-0">

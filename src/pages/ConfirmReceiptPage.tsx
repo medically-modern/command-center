@@ -15,6 +15,7 @@ import { clearEvalState } from "@/lib/masheke/evalState";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { BlockedModal } from "@/components/masheke/BlockedModal";
 import { EscalationFormModal } from "@/components/shared/EscalationFormModal";
+import { PageLoadingOverlay } from "@/components/shared/PageLoadingOverlay";
 import { writeStatusIndex, writeLongText, COL } from "@/lib/masheke/mondayApi";
 import { ESCALATION_INDEX } from "@/lib/masheke/mondayMapping";
 import { StuckModal } from "@/components/masheke/StuckModal";
@@ -28,7 +29,7 @@ const ConfirmReceiptPage = () => {
   // Manager view (?manager=1): sidebar lists ONLY escalated patients and
   // the panel tucks "Review the Request" behind a collapsed dropdown.
   const isManager = searchParams.get("manager") === "1";
-  const { patients, loading, error, refetch, update, clearOverlay , saveOverlay, hasOverlay } = useMondayPatients("confirmReceipt", searchParams.get("patientId"));
+  const { patients, loading, initialLoading, error, refetch, update, clearOverlay , saveOverlay, hasOverlay } = useMondayPatients("confirmReceipt", searchParams.get("patientId"));
   const [selectedId, setSelectedId] = useState<string | null>(
     searchParams.get("patientId") ?? null,
   );
@@ -62,6 +63,7 @@ const ConfirmReceiptPage = () => {
 
   return (
     <SidebarProvider>
+      <PageLoadingOverlay show={initialLoading} />
       <div className="min-h-screen flex w-full bg-gradient-subtle">
         <PatientsSidebar patients={patients} selectedId={selectedId} onSelect={setSelectedId} loading={loading} error={error} onRefresh={refetch} activeTab="confirmReceipt" managerMode={isManager} />
         <div className="flex-1 flex flex-col min-w-0">

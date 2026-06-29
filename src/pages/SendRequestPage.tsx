@@ -15,6 +15,7 @@ import { clearEvalState } from "@/lib/masheke/evalState";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { BlockedModal } from "@/components/masheke/BlockedModal";
 import { EscalationFormModal } from "@/components/shared/EscalationFormModal";
+import { PageLoadingOverlay } from "@/components/shared/PageLoadingOverlay";
 import { writeStatusIndex, writeLongText, COL } from "@/lib/masheke/mondayApi";
 import { ESCALATION_INDEX } from "@/lib/masheke/mondayMapping";
 import { useBackNavigation } from "@/hooks/useBackNavigation";
@@ -25,7 +26,7 @@ const SendRequestPage = () => {
   const [searchParams] = useSearchParams();
   const isEscalated = searchParams.get("escalated") === "1";
   const isManager = searchParams.get("manager") === "1";
-  const { patients, loading, error, refetch, update, clearOverlay , saveOverlay, hasOverlay } = useMondayPatients("sendRequest", searchParams.get("patientId"));
+  const { patients, loading, initialLoading, error, refetch, update, clearOverlay , saveOverlay, hasOverlay } = useMondayPatients("sendRequest", searchParams.get("patientId"));
   const [selectedId, setSelectedId] = useState<string | null>(
     searchParams.get("patientId") ?? null,
   );
@@ -53,6 +54,7 @@ const SendRequestPage = () => {
 
   return (
     <SidebarProvider>
+      <PageLoadingOverlay show={initialLoading} />
       <div className="min-h-screen flex w-full bg-gradient-subtle">
         <PatientsSidebar patients={patients} selectedId={selectedId} onSelect={setSelectedId} loading={loading} error={error} onRefresh={refetch} activeTab="sendRequest" managerMode={isManager} />
         <div className="flex-1 flex flex-col min-w-0">
