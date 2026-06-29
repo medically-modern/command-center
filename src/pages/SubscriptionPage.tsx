@@ -18,6 +18,7 @@ import { RotateCcw, RefreshCw, ArrowLeft, Save } from "lucide-react";
 import { toast } from "sonner";
 import { sendPatientToMonday, sendNotesToMonday } from "@/lib/subscription/mondayWrite";
 import { validatePatientForSend } from "@/lib/subscription/workflow";
+import { PageLoadingOverlay } from "@/components/shared/PageLoadingOverlay";
 import { useSearchParams } from "react-router-dom";
 import { useBackNavigation } from "@/hooks/useBackNavigation";
 
@@ -25,7 +26,7 @@ const SubscriptionPage = () => {
   const { goBack } = useBackNavigation();
   const [searchParams] = useSearchParams();
   const isEscalated = searchParams.get("escalated") === "1";
-  const { patients, loading, error, refetch, update, clearOverlay, saveOverlay, hasOverlay } = useMondayPatients(searchParams.get("patientId"));
+  const { patients, loading, initialLoading, error, refetch, update, clearOverlay, saveOverlay, hasOverlay } = useMondayPatients(searchParams.get("patientId"));
   const [selectedId, setSelectedId] = useState<string | null>(
     searchParams.get("patientId") ?? null,
   );
@@ -79,6 +80,7 @@ const SubscriptionPage = () => {
 
   return (
     <SidebarProvider>
+      <PageLoadingOverlay show={initialLoading} />
       <div className="min-h-screen flex w-full bg-gradient-subtle">
         <PatientsSidebar
           patients={patients}

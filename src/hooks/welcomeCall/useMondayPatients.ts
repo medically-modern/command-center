@@ -56,6 +56,11 @@ export function useMondayPatients(injectedPatientId?: string | null) {
   const cachedRef = useRef(loadCachedPatients());
   const [patients, setPatients] = useState<Patient[]>(cachedRef.current);
   const [loading, setLoading] = useState(cachedRef.current.length === 0);
+  // Blocks the page (full-screen overlay) from mount until this role's first
+  // fetch lands. Unlike `loading`, it's always true on mount regardless of the
+  // localStorage cache, and a background poll never re-raises it — so you can't
+  // click a stale cached list before fresh Monday data arrives.
+  const [initialLoading, setInitialLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   // local-session overlay so UI edits persist without re-fetching from Monday
   const overlayRef = useRef<Map<string, Partial<Patient>>>(loadOverlays());
@@ -102,7 +107,12 @@ export function useMondayPatients(injectedPatientId?: string | null) {
       if (mountedRef.current)
         setError(e instanceof Error ? e.message : "Failed to load patients from Monday");
     } finally {
-      if (mountedRef.current && !silent) setLoading(false);
+      if (mountedRef.current) {
+        if (!silent) setLoading(false);
+        // First fetch for this role is done (even on error/silent) — lift the
+        // blocking overlay so the page never stays stuck.
+        setInitialLoading(false);
+      }
     }
   }, []);
 
@@ -149,5 +159,5 @@ export function useMondayPatients(injectedPatientId?: string | null) {
   }, []);
 
 
-  return { patients, loading, error, refetch, update, clearOverlay, saveOverlay, hasOverlay };
+  return { patients, loading, initialLoading, error, refetch, update, clearOverlay, saveOverlay, hasOverlay };
 }

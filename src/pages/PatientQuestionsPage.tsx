@@ -9,12 +9,13 @@ import type { PatientQuestion } from "@/lib/patientQuestions/types";
 import { PatientsSidebar } from "@/components/patientQuestions/PatientsSidebar";
 import { PatientDetailCard } from "@/components/patientQuestions/PatientDetailCard";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
+import { PageLoadingOverlay } from "@/components/shared/PageLoadingOverlay";
 import { ArrowLeft, MessageCircleQuestion } from "lucide-react";
 import { useBackNavigation } from "@/hooks/useBackNavigation";
 
 const PatientQuestionsPage = () => {
   const { goBack } = useBackNavigation();
-  const { patients, loading, error, refetch } = useMondayPatients();
+  const { patients, loading, initialLoading, error, refetch } = useMondayPatients();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"all" | "subscription" | "claims">("all");
 
@@ -42,6 +43,7 @@ const PatientQuestionsPage = () => {
 
   return (
     <SidebarProvider>
+      <PageLoadingOverlay show={initialLoading} />
       <div className="min-h-screen flex w-full bg-gradient-subtle">
         <PatientsSidebar
           patients={patients}

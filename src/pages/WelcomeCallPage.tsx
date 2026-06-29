@@ -33,6 +33,7 @@ import { toast } from "sonner";
 import { sendPatientToMonday, sendWelcomeCallTextToMonday, sendNotesToMonday, sendPhoneToMonday, sendSecondaryInsuranceToMonday } from "@/lib/welcomeCall/mondayWrite";
 import { writeStatusIndex, writeLongText, COL } from "@/lib/welcomeCall/mondayApi";
 import { EscalationFormModal } from "@/components/shared/EscalationFormModal";
+import { PageLoadingOverlay } from "@/components/shared/PageLoadingOverlay";
 import { validatePatientForSend } from "@/lib/welcomeCall/workflow";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useBackNavigation } from "@/hooks/useBackNavigation";
@@ -44,7 +45,7 @@ const WelcomeCallPage = () => {
   const isEscalated = searchParams.get("escalated") === "1";
   const isManager = searchParams.get("manager") === "1";
   const [escalationModalOpen, setEscalationModalOpen] = useState(false);
-  const { patients, loading, error, refetch, update, clearOverlay , saveOverlay, hasOverlay } = useMondayPatients(searchParams.get("patientId"));
+  const { patients, loading, initialLoading, error, refetch, update, clearOverlay , saveOverlay, hasOverlay } = useMondayPatients(searchParams.get("patientId"));
   const [followUpOpen, setFollowUpOpen] = useState(false);
   const [stuckOpen, setStuckOpen] = useState(false);
   const [stuckSending, setStuckSending] = useState(false);
@@ -171,6 +172,7 @@ const WelcomeCallPage = () => {
 
   return (
     <SidebarProvider>
+      <PageLoadingOverlay show={initialLoading} />
       <div className="min-h-screen flex w-full bg-gradient-subtle">
         <PatientsSidebar
           patients={patients}

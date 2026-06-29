@@ -22,6 +22,7 @@ import { toast } from "sonner";
 import { sendPatientToMonday } from "@/lib/samantha/mondayWrite";
 import { writeLongText, writeStatusIndex, COL } from "@/lib/samantha/mondayApi";
 import { EscalationFormModal } from "@/components/shared/EscalationFormModal";
+import { PageLoadingOverlay } from "@/components/shared/PageLoadingOverlay";
 import { ESCALATION_INDEX } from "@/lib/samantha/mondayMapping";
 import { FollowUpModal } from "@/components/samantha/FollowUpModal";
 import { useNavigate, useSearchParams } from "react-router-dom";
@@ -82,7 +83,7 @@ const SubmitAuthPage = () => {
   const isEscalated = searchParams.get("escalated") === "1";
   const isManager = searchParams.get("manager") === "1";
   const [escalationModalOpen, setEscalationModalOpen] = useState(false);
-  const { patients, loading, error, refetch, update, clearOverlay , saveOverlay, hasOverlay } = useMondayPatients("submitAuth", searchParams.get("patientId"));
+  const { patients, loading, initialLoading, error, refetch, update, clearOverlay , saveOverlay, hasOverlay } = useMondayPatients("submitAuth", searchParams.get("patientId"));
   const [selectedId, setSelectedId] = useState<string | null>(
     searchParams.get("patientId") ?? null,
   );
@@ -140,6 +141,7 @@ const SubmitAuthPage = () => {
 
   return (
     <SidebarProvider>
+      <PageLoadingOverlay show={initialLoading} />
       <div className="min-h-screen flex w-full bg-gradient-subtle">
         <PatientsSidebar patients={patients} selectedId={selectedId} onSelect={setSelectedId} loading={loading} error={error} onRefresh={refetch} activeGroup="submitAuth" managerMode={isManager} />
         <div className="flex-1 flex flex-col min-w-0">

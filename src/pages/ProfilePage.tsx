@@ -18,6 +18,7 @@ import { NotesPanel } from "@/components/profile/NotesPanel";
 import { FollowUpModal } from "@/components/profile/FollowUpModal";
 import { Button } from "@/components/ui/button";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
+import { PageLoadingOverlay } from "@/components/shared/PageLoadingOverlay";
 import { ClipboardCheck, Send, AlertTriangle, Loader2, ArrowLeft, Clock, Save, Ban } from "lucide-react";
 import { toast } from "sonner";
 import { useNavigate, useSearchParams } from "react-router-dom";
@@ -28,7 +29,7 @@ const ProfilePage = () => {
   const { goBack } = useBackNavigation();
   const [searchParams] = useSearchParams();
   const isEscalated = searchParams.get("escalated") === "1";
-  const { patients, loading, error, refetch, updateLocal, clearOverlay, removeOverlayKeys , saveOverlay, hasOverlay } = useMondayPatients(searchParams.get("patientId"));
+  const { patients, loading, initialLoading, error, refetch, updateLocal, clearOverlay, removeOverlayKeys , saveOverlay, hasOverlay } = useMondayPatients(searchParams.get("patientId"));
   const [selectedId, setSelectedId] = useState<string | null>(
     searchParams.get("patientId") ?? null,
   );
@@ -166,6 +167,7 @@ const ProfilePage = () => {
 
   return (
     <SidebarProvider>
+      <PageLoadingOverlay show={initialLoading} />
       <div className="min-h-screen flex w-full bg-gradient-subtle">
         <PatientsSidebar
           patients={patients}

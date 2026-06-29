@@ -43,6 +43,7 @@ import {
 } from "@/components/ui/sidebar";
 import { ArrowLeft, CalendarDays, CheckCircle2, FileUp, Loader2, RefreshCw, Search, User, X } from "lucide-react";
 import { useBackNavigation } from "@/hooks/useBackNavigation";
+import { PageLoadingOverlay } from "@/components/shared/PageLoadingOverlay";
 import { cn } from "@/lib/utils";
 
 /* ── Unified patient row (both boards) ──────────────────────── */
@@ -430,7 +431,7 @@ const UpdateClinicalsPage = () => {
   const { goBack } = useBackNavigation();
   // Subscription board (all patients) + Medical Necessity board (everything
   // except Completed) — merged into one searchable list with board labels.
-  const { patients: subPatients, loading: subLoading, error: subError, refetch: refetchSub } = useMondayPatients();
+  const { patients: subPatients, loading: subLoading, initialLoading: subInitialLoading, error: subError, refetch: refetchSub } = useMondayPatients();
   const { rows: mnRows, loading: mnLoading, error: mnError, refetch: refetchMn } = useMnBoardRows();
 
   const patients = useMemo<ClinicalsRow[]>(() => {
@@ -472,6 +473,7 @@ const UpdateClinicalsPage = () => {
 
   return (
     <SidebarProvider>
+      <PageLoadingOverlay show={subInitialLoading} />
       <div className="min-h-screen flex w-full bg-gradient-subtle">
         <ClinicalsSidebar
           patients={patients}
