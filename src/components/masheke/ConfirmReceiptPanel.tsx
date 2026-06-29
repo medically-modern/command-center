@@ -120,6 +120,12 @@ export function ConfirmReceiptPanel({ patient, onUpdate, managerMode = false }: 
   // Editable courtesy-fax message. null until the rep edits — until then we
   // show the saved column value (if any) or the freshly generated template.
   const [messageDraft, setMessageDraft] = useState<string | null>(null);
+  // Per-send file curation (session only): Monday files the rep removed from
+  // THIS send (by assetId) and extra files they added. These drive the ACTUAL
+  // send (handleResend) — removing here drops the file from the fax/email but
+  // never touches the Monday files column; adding attaches a one-off file.
+  const [excludedAssetIds, setExcludedAssetIds] = useState<Set<string>>(() => new Set<string>());
+  const [addedFiles, setAddedFiles] = useState<File[]>([]);
 
   // Reset form when patient changes
   useEffect(() => {
@@ -130,6 +136,8 @@ export function ConfirmReceiptPanel({ patient, onUpdate, managerMode = false }: 
     setResentNow(false);
     setFaxResent(false);
     setMessageDraft(null);
+    setExcludedAssetIds(new Set());
+    setAddedFiles([]);
   }, [patient.id]);
 
   // Re-selecting an outcome clears the "must re-send" gate — switching away
@@ -327,19 +335,17 @@ export function ConfirmReceiptPanel({ patient, onUpdate, managerMode = false }: 
       // not the dormant trigger column. A bare fax number becomes
       // <digits>@rcfax.com (RingCentral turns that into a fax).
       const to = recipient.includes("@") ? recipient : `${recipient.replace(/\D/g, "")}@rcfax.com`;
-      const packet = [
-        ...(showCgm ? mondayFiles.cgmTemplate : []),
-        ...(showIp ? mondayFiles.ipTemplate : []),
-        ...mondayFiles.mnRequestLetter,
-        ...mondayFiles.clinicalFiles,
-      ];
+      // Send EXACTLY what the card shows: the Monday files the rep kept (the X
+      // removes them from `sendMondayFiles`, not just from view) plus any files
+      // the rep added for this send.
       const files: File[] = [];
-      for (const f of packet) {
+      for (const { file: f } of sendMondayFiles) {
         const url = f.public_url || f.url;
         if (!url) continue;
         const bytes = await fetchAssetBytes(url, f.name);
         files.push(new File([bytes as BlobPart], f.name));
       }
+      files.push(...addedFiles);
       const fd = new FormData();
       fd.append("recipients", JSON.stringify([to]));
       fd.append("subject", `Medical necessity documentation for ${titleCase(patient.name || "")}`);
@@ -396,6 +402,18 @@ export function ConfirmReceiptPanel({ patient, onUpdate, managerMode = false }: 
     patient.serving === "Supplies + CGM";
   const showIp = patient.serving !== "CGM";
 
+  // The Monday files auto-attached to the courtesy send (script templates + MN
+  // letter + clinicals), tagged for display. `sendMondayFiles` is that list
+  // minus anything the rep removed (X) for this send — the single source of
+  // truth for BOTH the attachment card and what handleResend actually sends.
+  const mondayAttachments: TaggedFile[] = [
+    ...(showCgm ? mondayFiles.cgmTemplate.map((f) => ({ file: f, tag: "CGM" })) : []),
+    ...(showIp ? mondayFiles.ipTemplate.map((f) => ({ file: f, tag: "IP" })) : []),
+    ...mondayFiles.mnRequestLetter.map((f) => ({ file: f, tag: "MN" })),
+    ...mondayFiles.clinicalFiles.map((f) => ({ file: f, tag: "Clinical" })),
+  ];
+  const sendMondayFiles = mondayAttachments.filter((f) => !excludedAssetIds.has(f.file.assetId));
+
   const isLastAttempt = currentAttempt === 3;
 
   // Provider-ask round (same counter Send Request shows) for the page header.
@@ -419,12 +437,16 @@ export function ConfirmReceiptPanel({ patient, onUpdate, managerMode = false }: 
           key={patient.id}
           isEmail={isEmail}
           recipient={recipient}
-          files={[
-            ...(showCgm ? mondayFiles.cgmTemplate.map((f) => ({ file: f, tag: "CGM" })) : []),
-            ...(showIp ? mondayFiles.ipTemplate.map((f) => ({ file: f, tag: "IP" })) : []),
-            ...mondayFiles.mnRequestLetter.map((f) => ({ file: f, tag: "MN" })),
-            ...mondayFiles.clinicalFiles.map((f) => ({ file: f, tag: "Clinical" })),
-          ]}
+          files={mondayAttachments}
+          excludedAssetIds={excludedAssetIds}
+          addedFiles={addedFiles}
+          onRemoveMondayFile={(assetId) =>
+            setExcludedAssetIds((prev) => new Set(prev).add(assetId))
+          }
+          onAddFiles={(picked) => setAddedFiles((prev) => [...prev, ...picked])}
+          onRemoveAddedFile={(idx) =>
+            setAddedFiles((prev) => prev.filter((_, i) => i !== idx))
+          }
           filesLoading={mondayFiles.loading}
           messageBody={currentMessage}
           onMessageChange={setMessageDraft}
@@ -799,6 +821,11 @@ function CourtesyFax({
   isEmail,
   recipient,
   files,
+  excludedAssetIds,
+  addedFiles,
+  onRemoveMondayFile,
+  onAddFiles,
+  onRemoveAddedFile,
   filesLoading,
   messageBody,
   onMessageChange,
@@ -810,6 +837,11 @@ function CourtesyFax({
   isEmail: boolean;
   recipient?: string;
   files: TaggedFile[];
+  excludedAssetIds: Set<string>;
+  addedFiles: File[];
+  onRemoveMondayFile: (assetId: string) => void;
+  onAddFiles: (files: File[]) => void;
+  onRemoveAddedFile: (idx: number) => void;
   filesLoading: boolean;
   messageBody: string;
   onMessageChange: (v: string) => void;
@@ -820,16 +852,12 @@ function CourtesyFax({
 }) {
   const channel = isEmail ? "Email" : "Fax";
   const [showMsg, setShowMsg] = useState(false);
-  // Per-send file curation (session only): files the rep added for this fax,
-  // and Monday files they removed from this fax. Removing here never touches
-  // the Monday files column — it just drops the file from what's sent.
-  const [addedFiles, setAddedFiles] = useState<File[]>([]);
-  const [excluded, setExcluded] = useState<Set<string>>(() => new Set<string>());
-  const sendFiles = files.filter((f) => !excluded.has(f.file.assetId));
-  const removeMondayFile = (assetId: string) =>
-    setExcluded((prev) => new Set(prev).add(assetId));
-  const removeAddedFile = (idx: number) =>
-    setAddedFiles((prev) => prev.filter((_, i) => i !== idx));
+  const [dragOver, setDragOver] = useState(false);
+  // The files that will actually be sent. Curation state lives in the parent so
+  // handleResend sends EXACTLY this list: Monday files the rep kept (an X drops
+  // the file from the send, not just from view — it never touches the Monday
+  // files column) plus any files the rep added for this send.
+  const sendFiles = files.filter((f) => !excludedAssetIds.has(f.file.assetId));
   // Live RingCentral fax status (fax only, same-day only). Polls RC's message
   // store for the real Queued → Sent (or Failed) status of this send.
   const faxActive = !isEmail && !!sentAt && isSentToday(sentAt);
@@ -906,8 +934,8 @@ function CourtesyFax({
                 )}
                 <button
                   type="button"
-                  onClick={() => removeMondayFile(f.assetId)}
-                  title="Remove from this fax (kept on Monday)"
+                  onClick={() => onRemoveMondayFile(f.assetId)}
+                  title={`Remove from this ${channel.toLowerCase()} (kept on Monday)`}
                   className="shrink-0 text-muted-foreground hover:text-[color:var(--mm-rose)]"
                 >
                   <X className="h-3 w-3" />
@@ -926,8 +954,8 @@ function CourtesyFax({
               <span className="text-[10px] uppercase tracking-wider text-[color:var(--mm-teal)]">New</span>
               <button
                 type="button"
-                onClick={() => removeAddedFile(i)}
-                title="Remove from this fax"
+                onClick={() => onRemoveAddedFile(i)}
+                title="Remove from this send"
                 className="shrink-0 text-muted-foreground hover:text-[color:var(--mm-rose)]"
               >
                 <X className="h-3 w-3" />
@@ -937,7 +965,44 @@ function CourtesyFax({
         </div>
       )}
 
-      {/* Written message — collapsible, editable drawer + add-files control. */}
+      {/* Add files to this send — click or drag & drop. Added files go out with
+          the fax/email and appear above tagged "New". */}
+      <label
+        onDragOver={(e) => {
+          e.preventDefault();
+          setDragOver(true);
+        }}
+        onDragLeave={() => setDragOver(false)}
+        onDrop={(e) => {
+          e.preventDefault();
+          setDragOver(false);
+          const dropped = Array.from(e.dataTransfer?.files ?? []);
+          if (dropped.length) onAddFiles(dropped);
+        }}
+        className={`flex items-center gap-2 cursor-pointer rounded-xl border border-dashed px-3 py-2.5 text-sm transition-colors ${
+          dragOver ? "text-foreground bg-emerald-50" : "text-muted-foreground hover:bg-muted/30"
+        }`}
+        style={{ borderColor: dragOver ? "var(--mm-green)" : "var(--mm-card-border)" }}
+      >
+        <Plus className="h-4 w-4 shrink-0" />
+        <span>
+          {dragOver
+            ? "Drop files to attach"
+            : `Add files to this ${channel.toLowerCase()} — click or drag & drop`}
+        </span>
+        <input
+          type="file"
+          multiple
+          className="hidden"
+          onChange={(e) => {
+            const picked = Array.from(e.target.files ?? []);
+            if (picked.length) onAddFiles(picked);
+            e.target.value = "";
+          }}
+        />
+      </label>
+
+      {/* Written message — collapsible, editable drawer. */}
       <div>
         <button
           type="button"
@@ -948,31 +1013,13 @@ function CourtesyFax({
           {showMsg ? "Hide message" : "Edit message"}
         </button>
         {showMsg && (
-          <>
-            <textarea
-              value={messageBody}
-              onChange={(e) => onMessageChange(e.target.value)}
-              rows={10}
-              className="mt-2 w-full whitespace-pre-wrap rounded-xl border px-4 py-3 text-sm leading-relaxed font-sans bg-background resize-y focus:outline-none"
-              style={{ borderColor: "var(--mm-card-border)" }}
-            />
-            <label
-              className="mt-2 inline-flex items-center gap-2 cursor-pointer rounded-lg border border-dashed px-3 py-2 text-sm text-muted-foreground hover:bg-muted/30"
-              style={{ borderColor: "var(--mm-card-border)" }}
-            >
-              <Plus className="h-4 w-4 shrink-0" /> Add files to this fax
-              <input
-                type="file"
-                multiple
-                className="hidden"
-                onChange={(e) => {
-                  const picked = Array.from(e.target.files ?? []);
-                  if (picked.length) setAddedFiles((prev) => [...prev, ...picked]);
-                  e.target.value = "";
-                }}
-              />
-            </label>
-          </>
+          <textarea
+            value={messageBody}
+            onChange={(e) => onMessageChange(e.target.value)}
+            rows={10}
+            className="mt-2 w-full whitespace-pre-wrap rounded-xl border px-4 py-3 text-sm leading-relaxed font-sans bg-background resize-y focus:outline-none"
+            style={{ borderColor: "var(--mm-card-border)" }}
+          />
         )}
       </div>
     </div>
