@@ -397,6 +397,33 @@ export async function writeDropdownIds(itemId: string, columnId: string, ids: nu
 }
 
 /**
+ * Write a dropdown column (multi-select) by an array of labels.
+ *
+ * Pass `createLabelsIfMissing = true` ONLY for open-vocabulary dropdowns
+ * (e.g. Clinic Name) where the source value may not already exist on this
+ * board — otherwise the write fails when the label doesn't exist. Leave it
+ * false (default) for fixed-vocab dropdowns so we never create duplicate labels.
+ */
+export async function writeDropdownLabels(
+  itemId: string,
+  columnId: string,
+  labels: string[],
+  createLabelsIfMissing = false,
+): Promise<void> {
+  const query = `
+    mutation ($boardId: ID!, $itemId: ID!, $columnId: String!, $value: JSON!) {
+      change_column_value(board_id: $boardId, item_id: $itemId, column_id: $columnId, value: $value, create_labels_if_missing: ${createLabelsIfMissing}) { id }
+    }
+  `;
+  await gql(query, {
+    boardId: BOARD_ID,
+    itemId,
+    columnId,
+    value: JSON.stringify({ labels }),
+  });
+}
+
+/**
  * Write a text column.
  */
 export async function writeText(itemId: string, columnId: string, text: string): Promise<void> {

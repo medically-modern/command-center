@@ -5,7 +5,7 @@
 // still fail after retries are logged to the "Josh Debug" column so
 // nothing is silently lost.
 
-import { writeStatusIndex, writeLongText, writeDropdownIds, writeText, writeDate, writeNumber, writeItemName, writePhone, writeEmail, writeSimpleValue, writeLocation, readColumnTexts, COL } from "./mondayApi";
+import { writeStatusIndex, writeLongText, writeDropdownIds, writeDropdownLabels, writeText, writeDate, writeNumber, writeItemName, writePhone, writeEmail, writeSimpleValue, writeLocation, readColumnTexts, COL } from "./mondayApi";
 import { executeWritesWithVerification } from "../shared/verifiedWrite";
 import { resolveHcpcs, isAutoFilledMedicaidSupply, PRIMARY_INSURANCE_INDEX, SECONDARY_INSURANCE_INDEX } from "./hcpcRules";
 import type { PrimaryInsurance } from "./hcpcRules";
@@ -785,12 +785,16 @@ export async function sendPatientToMonday(p: Patient, context: "benefits" | "sub
       fn: () => writeSimpleValue(p.id, COL.clinicalsMethod, p.clinicalsMethod!),
     });
   }
-  // Clinic Name (dropdown — write by label via simple value)
+  // Clinic Name (dropdown — write by label, creating the label if this board
+  // doesn't have it yet). Clinic names are an open vocabulary and the source
+  // board's label can differ slightly from the Insurance board's (e.g.
+  // "The Office Don Zwickler" vs "The Office Don Zwickler, MD"), which would
+  // otherwise reject the write and block the whole send.
   if (p.clinicName) {
     tasks.push({
       label: 'Clinic Name',
       columnId: COL.clinicName,
-      fn: () => writeSimpleValue(p.id, COL.clinicName, p.clinicName!),
+      fn: () => writeDropdownLabels(p.id, COL.clinicName, [p.clinicName!], true),
     });
   }
   // Patient Phone (phone column)
