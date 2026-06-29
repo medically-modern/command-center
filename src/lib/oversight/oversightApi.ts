@@ -107,6 +107,47 @@ const CHASE_COLS: { colId: string; label: string; pill?: boolean }[] = [
   { colId: "date_mm1wadgs", label: "Next Action" },
 ];
 
+/** Shared drill-down columns for the Evaluate chart + its escalated variant. */
+const EVALUATE_COLS: { colId: string; label: string; pill?: boolean }[] = [
+  { colId: "date_mm1wf43j", label: "Intake Date" },
+  { colId: "color_mm1wwm05", label: "Days in Stage" },
+  { colId: "color_mm1w5wxr", label: "Referral Source" },
+  { colId: "color_mm1x157j", label: "Primary Insurance" },
+  { colId: "color_mm1w1cm9", label: "Serving" },
+  { colId: "numeric_mm4bhjc8", label: "Evaluation Count" },
+  { colId: "color_mm1y8rv8", label: "MRs / Clinicals" },
+  { colId: "color_mm44h0fx", label: "CGM Script Received" },
+  { colId: "color_mm44chc8", label: "IP Script Received" },
+];
+
+/** Shared drill-down columns for the Send Request chart + its escalated variant. */
+const SEND_REQUEST_COLS: { colId: string; label: string; pill?: boolean }[] = [
+  { colId: "date_mm1wf43j", label: "Intake Date" },
+  { colId: "color_mm1wwm05", label: "Days in Stage" },
+  { colId: "color_mm1w5wxr", label: "Referral Source" },
+  { colId: "color_mm1x157j", label: "Primary Insurance" },
+  { colId: "color_mm1w1cm9", label: "Serving" },
+  { colId: "numeric_mm4bhjc8", label: "Evaluation Count" },
+  { colId: "color_mm1xw7y5", label: "Clinicals Method" },
+  { colId: "__requesting__", label: "Requesting" },
+];
+
+/** Shared drill-down columns for the Confirm Receipt chart + its escalated variants. */
+const CONFIRM_COLS: { colId: string; label: string; pill?: boolean }[] = [
+  { colId: "date_mm1wf43j", label: "Intake Date" },
+  { colId: "color_mm1wwm05", label: "Days in Stage" },
+  { colId: "color_mm1w5wxr", label: "Referral Source" },
+  { colId: "color_mm1x157j", label: "Primary Insurance" },
+  { colId: "color_mm1w1cm9", label: "Serving" },
+  { colId: "numeric_mm4bhjc8", label: "Evaluation Count" },
+  { colId: "date_mm2yg8x8", label: "Request Sent" },
+  { colId: "__requesting__", label: "Requesting" },
+  { colId: "color_mm1wz0vg", label: "MN Attempts" },
+  { colId: "text_mm2yd068", label: "Attempt 1 Log" },
+  { colId: "text_mm2y9h4a", label: "Attempt 2 Log" },
+  { colId: "text_mm2ymtsk", label: "Attempt 3 Log" },
+];
+
 const RAW_CHART_DEFS: ChartDef[] = [
   // ── Board 18406352652 (Profile Send Off) ──
   {
@@ -132,53 +173,21 @@ const RAW_CHART_DEFS: ChartDef[] = [
     title: "Evaluate",
     boardId: 18406060017,
     notesColId: "long_text_mm27zjt2",
-    drilldownCols: [
-      { colId: "date_mm1wf43j", label: "Intake Date" },
-      { colId: "color_mm1wwm05", label: "Days in Stage" },
-      { colId: "color_mm1w5wxr", label: "Referral Source" },
-      { colId: "color_mm1x157j", label: "Primary Insurance" },
-      { colId: "color_mm1w1cm9", label: "Serving" },
-      { colId: "numeric_mm4bhjc8", label: "Evaluation Count" },
-      { colId: "color_mm1y8rv8", label: "MRs / Clinicals" },
-      { colId: "color_mm44h0fx", label: "CGM Script Received" },
-      { colId: "color_mm44chc8", label: "IP Script Received" },
-    ],
+    drilldownCols: EVALUATE_COLS,
   },
   {
     id: "send-request",
     title: "Send Request",
     boardId: 18406060017,
     notesColId: "long_text_mm27zjt2",
-    drilldownCols: [
-      { colId: "date_mm1wf43j", label: "Intake Date" },
-      { colId: "color_mm1wwm05", label: "Days in Stage" },
-      { colId: "color_mm1w5wxr", label: "Referral Source" },
-      { colId: "color_mm1x157j", label: "Primary Insurance" },
-      { colId: "color_mm1w1cm9", label: "Serving" },
-      { colId: "numeric_mm4bhjc8", label: "Evaluation Count" },
-      { colId: "color_mm1xw7y5", label: "Clinicals Method" },
-      { colId: "__requesting__", label: "Requesting" },
-    ],
+    drilldownCols: SEND_REQUEST_COLS,
   },
   {
     id: "confirm-receipt",
     title: "Confirm Receipt",
     boardId: 18406060017,
     notesColId: "long_text_mm2ytsxp",
-    drilldownCols: [
-      { colId: "date_mm1wf43j", label: "Intake Date" },
-      { colId: "color_mm1wwm05", label: "Days in Stage" },
-      { colId: "color_mm1w5wxr", label: "Referral Source" },
-      { colId: "color_mm1x157j", label: "Primary Insurance" },
-      { colId: "color_mm1w1cm9", label: "Serving" },
-      { colId: "numeric_mm4bhjc8", label: "Evaluation Count" },
-      { colId: "date_mm2yg8x8", label: "Request Sent" },
-      { colId: "__requesting__", label: "Requesting" },
-      { colId: "color_mm1wz0vg", label: "MN Attempts" },
-      { colId: "text_mm2yd068", label: "Attempt 1 Log" },
-      { colId: "text_mm2y9h4a", label: "Attempt 2 Log" },
-      { colId: "text_mm2ymtsk", label: "Attempt 3 Log" },
-    ],
+    drilldownCols: CONFIRM_COLS,
   },
   {
     id: "chase-fax",
@@ -202,20 +211,7 @@ const RAW_CHART_DEFS: ChartDef[] = [
     title: "Confirm Receipt (Escalated)",
     boardId: 18406060017,
     notesColId: "long_text_mm2ytsxp",
-    drilldownCols: [
-      { colId: "date_mm1wf43j", label: "Intake Date" },
-      { colId: "color_mm1wwm05", label: "Days in Stage" },
-      { colId: "color_mm1w5wxr", label: "Referral Source" },
-      { colId: "color_mm1x157j", label: "Primary Insurance" },
-      { colId: "color_mm1w1cm9", label: "Serving" },
-      { colId: "numeric_mm4bhjc8", label: "Evaluation Count" },
-      { colId: "date_mm2yg8x8", label: "Request Sent" },
-      { colId: "__requesting__", label: "Requesting" },
-      { colId: "color_mm1wz0vg", label: "MN Attempts" },
-      { colId: "text_mm2yd068", label: "Attempt 1 Log" },
-      { colId: "text_mm2y9h4a", label: "Attempt 2 Log" },
-      { colId: "text_mm2ymtsk", label: "Attempt 3 Log" },
-    ],
+    drilldownCols: CONFIRM_COLS,
   },
   {
     id: "chase-fax-escalations",
@@ -227,6 +223,47 @@ const RAW_CHART_DEFS: ChartDef[] = [
   {
     id: "chase-email-parachute-escalations",
     title: "Chase Clinicals — Email & Parachute (Escalated)",
+    boardId: 18406060017,
+    notesColId: "long_text_mm2ytsxp",
+    drilldownCols: CHASE_COLS,
+  },
+
+  // ── 3rd-Attempt Escalations (Escalation Required + Evaluation Counter = 3) —
+  //    the third oversight column for the Medical Evaluation stage. A patient is
+  //    escalated on their 3rd Evaluate pass when MN still isn't established (see
+  //    EvaluatePanel). All five sub-stages get a chart since an escalated patient
+  //    can sit at any of them. Same boards/columns as the parent charts. ──
+  {
+    id: "evaluate-escalated-3rd",
+    title: "Evaluate (Escalated · 3rd)",
+    boardId: 18406060017,
+    notesColId: "long_text_mm27zjt2",
+    drilldownCols: EVALUATE_COLS,
+  },
+  {
+    id: "send-request-escalated-3rd",
+    title: "Send Request (Escalated · 3rd)",
+    boardId: 18406060017,
+    notesColId: "long_text_mm27zjt2",
+    drilldownCols: SEND_REQUEST_COLS,
+  },
+  {
+    id: "confirm-receipt-escalated-3rd",
+    title: "Confirm Receipt (Escalated · 3rd)",
+    boardId: 18406060017,
+    notesColId: "long_text_mm2ytsxp",
+    drilldownCols: CONFIRM_COLS,
+  },
+  {
+    id: "chase-fax-escalated-3rd",
+    title: "Chase Clinicals — Fax (Escalated · 3rd)",
+    boardId: 18406060017,
+    notesColId: "long_text_mm2ytsxp",
+    drilldownCols: CHASE_COLS,
+  },
+  {
+    id: "chase-email-parachute-escalated-3rd",
+    title: "Chase Clinicals — Email & Parachute (Escalated · 3rd)",
     boardId: 18406060017,
     notesColId: "long_text_mm2ytsxp",
     drilldownCols: CHASE_COLS,
@@ -455,6 +492,10 @@ export interface OversightSection {
   /** Optional second row, rendered under a sub-heading (e.g. Escalations). */
   secondaryTitle?: string;
   secondaryChartIds?: string[];
+  /** Optional third column (e.g. 3rd-Attempt Escalations), rendered to the right
+   *  of the secondary column behind another divider. */
+  tertiaryTitle?: string;
+  tertiaryChartIds?: string[];
 }
 
 export const OVERSIGHT_SECTIONS: OversightSection[] = [
@@ -465,6 +506,14 @@ export const OVERSIGHT_SECTIONS: OversightSection[] = [
     chartIds: ["evaluate", "send-request", "confirm-receipt", "chase-fax", "chase-email-parachute"],
     secondaryTitle: "Escalations · Attempt 4+",
     secondaryChartIds: ["confirm-receipt-escalations", "chase-fax-escalations", "chase-email-parachute-escalations"],
+    tertiaryTitle: "Escalations · 3rd+ Attempt",
+    tertiaryChartIds: [
+      "evaluate-escalated-3rd",
+      "send-request-escalated-3rd",
+      "confirm-receipt-escalated-3rd",
+      "chase-fax-escalated-3rd",
+      "chase-email-parachute-escalated-3rd",
+    ],
   },
   {
     id: "insurance",
@@ -574,9 +623,11 @@ function columnsForBoard(boardId: number): string[] {
   }
 
   // Medical Necessity board — the consolidated ask list feeds the "Requesting"
-  // pill summary (not shown as its own table column).
+  // pill summary (not shown as its own table column), and the Escalation status
+  // column backs the 3rd-Attempt escalation filters (not a drilldown column).
   if (boardId === 18406060017) {
     set.add("dropdown_mm2yd3a2"); // MN Request Consolidated
+    set.add("color_mm1x7997");    // Escalation status (3rd-attempt filter)
   }
 
   // Drop synthetic columns (e.g. "__requesting__") — they aren't real Monday ids.
@@ -735,10 +786,12 @@ interface ChartFilterStageAdvancer {
   boardId: number;
   value: string;
   /** Optional extra AND conditions on top of the stage. The column's text must
-   *  be (one of) `value` — or NOT one of it when `not` is true. Used for
-   *  escalations (MN Attempts = "Escalate") and the Chase method split
-   *  (Fax = NOT Email/Parachute, so blank counts as fax; Email & Parachute = either). */
-  andCols?: { colId: string; value: string | string[]; not?: boolean }[];
+   *  be (one of) `value` — or NOT one of it when `not` is true. Alternatively
+   *  `gte` does a numeric "column value >= N" test (used for Evaluation Counter
+   *  >= 3). Used for escalations (MN Attempts = "Escalate"), the Chase method
+   *  split (Fax = NOT Email/Parachute, so blank counts as fax; Email & Parachute
+   *  = either), and the 3rd+ Attempt escalation counter threshold. */
+  andCols?: { colId: string; value?: string | string[]; not?: boolean; gte?: number }[];
 }
 
 type FilterRule = ChartFilter | ChartFilterStageAdvancer;
@@ -756,6 +809,17 @@ const CHART_FILTERS: Record<string, FilterRule> = {
   "confirm-receipt-escalations":       { type: "stageAdvancer", boardId: 18406060017, value: "Confirm Receipt", andCols: [{ colId: "color_mm1wz0vg", value: "Escalate" }] },
   "chase-fax-escalations":             { type: "stageAdvancer", boardId: 18406060017, value: "Chase Clinicals", andCols: [{ colId: "color_mm1xw7y5", value: ["Email", "Parachute"], not: true }, { colId: "color_mm1wz0vg", value: "Escalate" }] },
   "chase-email-parachute-escalations": { type: "stageAdvancer", boardId: 18406060017, value: "Chase Clinicals", andCols: [{ colId: "color_mm1xw7y5", value: ["Email", "Parachute"] }, { colId: "color_mm1wz0vg", value: "Escalate" }] },
+  // 3rd+ Attempt escalations = same stage AND Escalation column = "Escalation
+  // Required" AND Evaluation Counter ≥ 3. The Evaluate SOP escalates at counter
+  // ≥ 3 and the patient stays in Evaluate MN, so the counter can keep climbing —
+  // the filter uses ≥ 3 (not == 3) to match the trigger and never drop an
+  // escalated patient. color_mm1x7997 = Escalation status; flag set by the
+  // Evaluate SOP (and by confirm/chase).
+  "evaluate-escalated-3rd":                { type: "stageAdvancer", boardId: 18406060017, value: "Evaluate MN",     andCols: [{ colId: "color_mm1x7997", value: "Escalation Required" }, { colId: "numeric_mm4bhjc8", gte: 3 }] },
+  "send-request-escalated-3rd":            { type: "stageAdvancer", boardId: 18406060017, value: "Send Request",    andCols: [{ colId: "color_mm1x7997", value: "Escalation Required" }, { colId: "numeric_mm4bhjc8", gte: 3 }] },
+  "confirm-receipt-escalated-3rd":         { type: "stageAdvancer", boardId: 18406060017, value: "Confirm Receipt", andCols: [{ colId: "color_mm1x7997", value: "Escalation Required" }, { colId: "numeric_mm4bhjc8", gte: 3 }] },
+  "chase-fax-escalated-3rd":               { type: "stageAdvancer", boardId: 18406060017, value: "Chase Clinicals", andCols: [{ colId: "color_mm1xw7y5", value: ["Email", "Parachute"], not: true }, { colId: "color_mm1x7997", value: "Escalation Required" }, { colId: "numeric_mm4bhjc8", gte: 3 }] },
+  "chase-email-parachute-escalated-3rd":   { type: "stageAdvancer", boardId: 18406060017, value: "Chase Clinicals", andCols: [{ colId: "color_mm1xw7y5", value: ["Email", "Parachute"] }, { colId: "color_mm1x7997", value: "Escalation Required" }, { colId: "numeric_mm4bhjc8", gte: 3 }] },
   "benefits":           { type: "stageAdvancer", boardId: 18410601299, value: "Benefits / SoS" },
   "submit-auth":        { type: "stageAdvancer", boardId: 18410601299, value: "Submit Auth." },
   "auth-outstanding":   { type: "stageAdvancer", boardId: 18410601299, value: "Auth. Outstanding" },
@@ -773,9 +837,16 @@ function matchesFilter(patient: OversightPatient, rule: FilterRule): boolean {
   if (!saCol) return false;
   const val = (patient.cols[saCol] ?? "").trim();
   if (val !== rule.value) return false;
-  // Optional extra AND conditions (escalations, Chase method split).
+  // Optional extra AND conditions (escalations, Chase method split, counter ≥ N).
   for (const c of rule.andCols ?? []) {
     const cell = (patient.cols[c.colId] ?? "").trim();
+    if (c.gte !== undefined) {
+      // Numeric threshold (e.g. Evaluation Counter ≥ 3). Non-numeric → fails.
+      const n = Number(cell);
+      const pass = Number.isFinite(n) && cell !== "" && n >= c.gte;
+      if (c.not ? pass : !pass) return false;
+      continue;
+    }
     const inSet = Array.isArray(c.value) ? c.value.includes(cell) : cell === c.value;
     if (c.not ? inSet : !inSet) return false;
   }

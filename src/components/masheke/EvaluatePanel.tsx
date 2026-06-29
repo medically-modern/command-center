@@ -456,8 +456,19 @@ export function EvaluatePanel({ patient, resetVersion = 0, onUpdate, onOpenForm 
     // Next Action Date → today (ET) — the patient lands in the next tab's active
     // list immediately instead of an empty/scheduled state.
     pushDate("Next Action Date → today", COL.nextActionDate, etToday());
-    // Escalation — only written when the toggle is active.
-    if (escalatedRef.current) {
+    // ── 3rd-attempt escalation SOP ──
+    // On the 3rd (or later) Evaluate pass, if Medical Necessity STILL isn't
+    // established, the patient is escalated instead of going back to Send
+    // Request: flag Escalation Required and DO NOT advance the stage, so the
+    // patient stays in Evaluate MN for a manager to work (the oversight
+    // "3rd Attempt" column). Established always completes; a not-yet-3rd pass
+    // still routes to Send Request.
+    const mnEstablishedNow = bannerMnEstablished(state, showCgm, showIp);
+    const attemptNum = Number(patient.evaluationCounter ?? 1) || 1;
+    const sopEscalate = !mnEstablishedNow && attemptNum >= 3;
+
+    // Escalation flag — written by the SOP above OR the manual toggle.
+    if (sopEscalate || escalatedRef.current) {
       tasks.push({
         label: "Escalation → Required",
         columnId: COL.escalation,
@@ -466,34 +477,39 @@ export function EvaluatePanel({ patient, resetVersion = 0, onUpdate, onOpenForm 
       });
     }
     // Stage Advancer LAST (the automation trigger). Established → Completed
-    // (skip Send Request); Not Established → Send Request. Routed on the SAME
-    // banner signal the rep sees so screen and submit agree.
-    const nextStage = bannerMnEstablished(state, showCgm, showIp) ? "Completed" : "Send Request";
-    tasks.push({
-      label: `Stage Advancer → ${nextStage}`,
-      columnId: COL.subStage,
-      value: { label: nextStage },
-      expectedText: nextStage,
-      fn: () => writeStatusLabel(patient.id, COL.subStage, nextStage),
-    });
+    // (skip Send Request); Not Established → Send Request — UNLESS the SOP
+    // escalation fired, in which case we don't advance (stay in Evaluate MN).
+    // Routed on the SAME banner signal the rep sees so screen and submit agree.
+    const nextStage = mnEstablishedNow ? "Completed" : sopEscalate ? null : "Send Request";
+    if (nextStage) {
+      tasks.push({
+        label: `Stage Advancer → ${nextStage}`,
+        columnId: COL.subStage,
+        value: { label: nextStage },
+        expectedText: nextStage,
+        fn: () => writeStatusLabel(patient.id, COL.subStage, nextStage),
+      });
+    }
 
     try {
       // Verified write → gateway /send when available. createLabelsIfMissing so
       // Diagnosis + the dynamic consolidated ask can add labels server-side.
-      // Every data column is read-back confirmed before the Stage Advancer flips
+      // Every data column is read-back confirmed before the trigger column flips
       // (file uploads are already confirmed on drop, so none are batched here).
+      // When escalating without advancing, the Escalation column is the trigger
+      // written last; otherwise the Stage Advancer is.
       await runVerifiedSend({
         itemId: patient.id,
-        label: `Evaluate → ${nextStage}`,
+        label: nextStage ? `Evaluate → ${nextStage}` : "Evaluate → Escalated",
         tasks,
-        stageColumnId: COL.subStage,
+        stageColumnId: nextStage ? COL.subStage : COL.escalation,
         createLabelsIfMissing: true,
       });
       // Doctor-field edits (pencil overlay) persist as a separate, non-stage write.
       const docTasks = buildDoctorWriteTasks(patient);
       if (docTasks.length) await Promise.all(docTasks.map((t) => t.run()));
       setSending(false);
-      toast.success(`Sent to Monday — moved to ${nextStage}`);
+      toast.success(nextStage ? `Sent to Monday — moved to ${nextStage}` : "Sent to Monday — patient escalated");
       setEscalated(false); escalatedRef.current = false;
       // Reflect the rolled-up notes + cleared attempt columns locally.
       if (hasLeftover) {
@@ -635,6 +651,11 @@ export function EvaluatePanel({ patient, resetVersion = 0, onUpdate, onOpenForm 
 
   // Single source of truth for the banner AND the submit routing.
   const mnEstablished = bannerMnEstablished(state, showCgm, showIp);
+
+  // 3rd-attempt escalation SOP: on the 3rd (or later) Evaluate pass with MN still
+  // not established, sending escalates the patient instead of advancing to Send
+  // Request — surface a warning by the Send button so the rep knows.
+  const willEscalate = !mnEstablished && (Number(patient.evaluationCounter ?? 1) || 1) >= 3;
 
   const cgmLangLabel =
     state.cgmCoveragePath === "Hypo" ? "Hypoglycemia Language" : "Insulin Language";
@@ -930,6 +951,14 @@ export function EvaluatePanel({ patient, resetVersion = 0, onUpdate, onOpenForm 
 
       {/* Send to Monday */}
       <div className="flex flex-col items-end gap-3">
+        {willEscalate && (
+          <div className="w-full flex items-center gap-2 rounded-lg border-2 border-red-500 bg-red-50 px-3.5 py-2.5">
+            <AlertTriangle className="h-5 w-5 shrink-0 text-red-600" />
+            <span className="text-sm font-bold text-red-600">
+              This is the third unsuccessful attempt — patient will be escalated.
+            </span>
+          </div>
+        )}
         <Button
           size="lg"
           onClick={handleSendToMonday}

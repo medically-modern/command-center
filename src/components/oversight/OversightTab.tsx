@@ -51,6 +51,12 @@ const CHART_ROUTES: Record<string, string | null> = {
   "chase-email-parachute": "/chase-parachute",
   "chase-fax-escalations": "/chase-fax",
   "chase-email-parachute-escalations": "/chase-parachute",
+  // 3rd-Attempt escalation charts — route like their base stage.
+  "evaluate-escalated-3rd": "/evaluate",
+  "send-request-escalated-3rd": "/send-request",
+  "confirm-receipt-escalated-3rd": "/confirm-receipt",
+  "chase-fax-escalated-3rd": "/chase-fax",
+  "chase-email-parachute-escalated-3rd": "/chase-parachute",
   "benefits": "/benefits",
   "submit-auth": "/submit-auth",
   "auth-outstanding": "/auth-outstanding",
@@ -62,6 +68,12 @@ const CHART_ROUTES: Record<string, string | null> = {
 
 const POLL_MS = 90_000;
 const LS_CACHE_KEY = "oversight-cache";
+
+// Three-column oversight layout (Active | Attempt 4+ | 3rd Attempt). Columns are
+// a fixed width so every chart keeps its size and the block scrolls horizontally
+// rather than shrinking the charts to fit. Gap matches the old 2-column gap-x-12.
+const OVERSIGHT_COL_W = 640; // px per chart column
+const OVERSIGHT_COL_GAP = 48; // px between columns
 
 // ── "Requesting" summary (Send Request / Confirm Receipt / Chase) ─────────
 // Derived from the MN Request Consolidated dropdown — the actual doctor-facing
@@ -943,7 +955,7 @@ export default function OversightTab() {
       // the escalated patient forward. The Confirm Receipt / Chase panels hide
       // the Confirmed / Not Confirmed actions for escalated patients unless
       // managerMode is on (?manager=1); ?escalated=1 styles the page as escalated.
-      if (expandedChart.endsWith("-escalations")) {
+      if (expandedChart.endsWith("-escalations") || expandedChart.endsWith("-escalated-3rd")) {
         params.set("manager", "1");
         params.set("escalated", "1");
       }
@@ -1073,6 +1085,9 @@ export default function OversightTab() {
         const secondaryCharts = section.secondaryChartIds
           ? resolve(section.secondaryChartIds)
           : [];
+        const tertiaryCharts = section.tertiaryChartIds
+          ? resolve(section.tertiaryChartIds)
+          : [];
 
         // Unique patients across this stage's primary charts.
         const seen = new Set<string>();
@@ -1097,10 +1112,24 @@ export default function OversightTab() {
           </div>
         );
 
-        // For each primary chart, its escalated counterpart is the chart whose id
-        // is `${chart.id}-escalations` (only Confirm Receipt / Chase have one).
+        // For each primary chart, its escalated counterparts are the charts whose
+        // ids are `${chart.id}-escalations` (Attempt 4+ — only Confirm Receipt /
+        // Chase have one) and `${chart.id}-escalated-3rd` (3rd Attempt — all five).
         const escFor = (chart: ChartDef) =>
           secondaryCharts.find((s) => s.id === `${chart.id}-escalations`) ?? null;
+        const tertFor = (chart: ChartDef) =>
+          tertiaryCharts.find((s) => s.id === `${chart.id}-escalated-3rd`) ?? null;
+
+        const colHeader = (label: string, amber = false) => (
+          <div
+            className={cn(
+              "text-xs font-bold uppercase tracking-[0.15em]",
+              amber ? "text-amber-600" : "text-muted-foreground",
+            )}
+          >
+            {label}
+          </div>
+        );
 
         return (
           <section className="space-y-3">
@@ -1111,7 +1140,50 @@ export default function OversightTab() {
               </span>
             </div>
 
-            {secondaryCharts.length > 0 ? (
+            {tertiaryCharts.length > 0 ? (
+              // Three-column layout: Active | Attempt 4+ escalations | 3rd-Attempt
+              // escalations. Each chart keeps its fixed size, so the block scrolls
+              // horizontally; two yellow dividers separate the three columns. Each
+              // row pairs an original chart with its escalation counterparts (blank
+              // where a stage has no counterpart in that column).
+              <div className="overflow-x-auto pb-2">
+                <div className="relative w-max">
+                  <div
+                    className="pointer-events-none absolute inset-y-0 w-0.5 bg-amber-300"
+                    style={{ left: OVERSIGHT_COL_W + OVERSIGHT_COL_GAP / 2 }}
+                    aria-hidden
+                  />
+                  <div
+                    className="pointer-events-none absolute inset-y-0 w-0.5 bg-amber-300"
+                    style={{ left: 2 * OVERSIGHT_COL_W + OVERSIGHT_COL_GAP * 1.5 }}
+                    aria-hidden
+                  />
+                  <div
+                    className="grid"
+                    style={{
+                      gridTemplateColumns: `repeat(3, ${OVERSIGHT_COL_W}px)`,
+                      columnGap: OVERSIGHT_COL_GAP,
+                      rowGap: 16,
+                    }}
+                  >
+                    {colHeader("Active")}
+                    {colHeader(section.secondaryTitle ?? "Escalations", true)}
+                    {colHeader(section.tertiaryTitle ?? "Escalations", true)}
+                    {charts.map((chart) => {
+                      const esc = escFor(chart);
+                      const ter = tertFor(chart);
+                      return (
+                        <Fragment key={chart.id}>
+                          <div>{renderChart(chart)}</div>
+                          <div>{esc ? renderChart(esc) : null}</div>
+                          <div>{ter ? renderChart(ter) : null}</div>
+                        </Fragment>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+            ) : secondaryCharts.length > 0 ? (
               // Paired layout: each original chart on the LEFT, its escalated
               // counterpart on the RIGHT, split by a yellow line down the middle.
               // Originals with no escalated counterpart leave the right side blank.
@@ -1121,14 +1193,8 @@ export default function OversightTab() {
                   aria-hidden
                 />
                 <div className="grid grid-cols-2 gap-x-12 gap-y-4">
-                  {/* Column headers */}
-                  <div className="text-xs font-bold uppercase tracking-[0.15em] text-muted-foreground">
-                    Active
-                  </div>
-                  <div className="text-xs font-bold uppercase tracking-[0.15em] text-amber-600">
-                    {section.secondaryTitle ?? "Escalations"}
-                  </div>
-                  {/* One row per original chart: [original] | [escalated or blank] */}
+                  {colHeader("Active")}
+                  {colHeader(section.secondaryTitle ?? "Escalations", true)}
                   {charts.map((chart) => {
                     const esc = escFor(chart);
                     return (
