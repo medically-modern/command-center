@@ -355,10 +355,17 @@ async function callMondayRead(query) {
 
 async function resolveItemNames(itemIds) {
   const out = new Map();
-  const ids = itemIds.filter(Boolean).slice(0, 200);
+  // Resolve up to 1000 distinct patient names per render, batched in chunks of
+  // 100 (Monday's items() query gets expensive/complex past that). Rows beyond
+  // this still display — they just show "—" for the patient name. The stored
+  // log is complete regardless; this only bounds the name lookup.
+  const ids = itemIds.filter(Boolean).slice(0, 1000);
   if (!ids.length) return out;
-  const data = await callMondayRead(`query { items(ids: [${ids.join(",")}]) { id name } }`);
-  for (const it of data?.items || []) out.set(String(it.id), it.name);
+  for (let i = 0; i < ids.length; i += 100) {
+    const chunk = ids.slice(i, i + 100);
+    const data = await callMondayRead(`query { items(ids: [${chunk.join(",")}]) { id name } }`);
+    for (const it of data?.items || []) out.set(String(it.id), it.name);
+  }
   return out;
 }
 
@@ -404,7 +411,10 @@ function auditDenied(req, res) {
 }
 
 async function fetchAudit(req) {
-  const limit = Math.min(parseInt(req.query.limit, 10) || 200, 2000);
+  // Every row is stored in Postgres forever (no pruning) — `limit` only bounds
+  // how many the viewer renders at once. Default 1000; cap 50000 so a stray
+  // ?limit= can't try to render the entire table into one HTML page.
+  const limit = Math.min(parseInt(req.query.limit, 10) || 1000, 50000);
   const onlyWrites = req.query.all !== "1";
   const where = onlyWrites ? "WHERE operation = 'mutation'" : "";
   const r = await pool.query(
@@ -456,9 +466,12 @@ function renderAudit(rows, opts) {
     </tr>`;
     })
     .join("");
+  // Only auto-refresh small views — re-running the query + name resolution
+  // every 30s for thousands of rows would hammer the DB and Monday.
+  const autoRefresh = (opts.limit || 0) <= 1000;
   return `<!doctype html><html><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<meta http-equiv="refresh" content="30">
+${autoRefresh ? '<meta http-equiv="refresh" content="30">' : ""}
 <title>monday-gateway · audit</title>
 <style>
  body{font:14px/1.45 -apple-system,Segoe UI,Roboto,sans-serif;margin:0;background:#0f1115;color:#e6e6e6}
@@ -466,6 +479,12 @@ function renderAudit(rows, opts) {
  h1{font-size:15px;margin:0;font-weight:600}
  .pill{font-size:12px;color:#9aa4b2}
  a.btn{color:#7cc4ff;text-decoration:none;font-size:13px;border:1px solid #2a3340;padding:4px 10px;border-radius:6px}
+ .rows{display:flex;gap:0;align-items:center}
+ .rows a{color:#9aa4b2;text-decoration:none;font-size:12px;border:1px solid #2a3340;border-right:0;padding:4px 9px}
+ .rows a:first-child{border-radius:6px 0 0 6px}
+ .rows a:last-child{border-right:1px solid #2a3340;border-radius:0 6px 6px 0}
+ .rows a.cur{background:#243043;color:#cfe6ff;font-weight:600}
+ .rows .lbl{border:0;color:#6b7484;padding-right:6px}
  table{border-collapse:collapse;width:100%}
  th,td{padding:7px 10px;border-bottom:1px solid #20242e;text-align:left;vertical-align:top;white-space:nowrap}
  th{position:sticky;top:0;background:#11141a;color:#9aa4b2;font-weight:600;font-size:12px}
@@ -481,9 +500,15 @@ function renderAudit(rows, opts) {
 </style></head><body>
 <header>
  <h1>monday-gateway · audit log</h1>
- <span class="pill">${rows.length} rows · ${opts.onlyWrites ? "writes only" : "all traffic"} · auto-refresh 30s</span>
- <a class="btn" href="?key=${k}${opts.onlyWrites ? "&all=1" : ""}">${opts.onlyWrites ? "Show all traffic" : "Show writes only"}</a>
- <a class="btn" href="/audit.json?key=${k}${opts.onlyWrites ? "" : "&all=1"}">JSON</a>
+ <span class="pill">${rows.length} rows shown · ${opts.onlyWrites ? "writes only" : "all traffic"} · ${autoRefresh ? "auto-refresh 30s" : "no auto-refresh"}</span>
+ <span class="rows">
+  <span class="lbl">show:</span>
+  ${[200, 1000, 5000, 20000, 50000]
+    .map((n) => `<a class="${opts.limit === n ? "cur" : ""}" href="?key=${k}&limit=${n}${opts.onlyWrites ? "" : "&all=1"}">${n >= 1000 ? n / 1000 + "k" : n}</a>`)
+    .join("")}
+ </span>
+ <a class="btn" href="?key=${k}&limit=${opts.limit}${opts.onlyWrites ? "&all=1" : ""}">${opts.onlyWrites ? "Show all traffic" : "Show writes only"}</a>
+ <a class="btn" href="/audit.json?key=${k}&limit=${opts.limit}${opts.onlyWrites ? "" : "&all=1"}">JSON</a>
 </header>
 <table><thead><tr>
  <th>time (ET)</th><th>who</th><th>patient</th><th>ip</th><th>op</th><th>item</th><th>columns written → value</th><th>ok</th><th>ms</th>
