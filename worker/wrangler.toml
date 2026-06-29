@@ -1,3 +1,7 @@
 name = "monday-file-proxy"
 main = "src/index.js"
 compatibility_date = "2026-06-01"
+# Cloudflare account that owns this worker. Not a secret (it's the subdomain in
+# the R2 endpoint / dashboard URLs); pinning it lets wrangler deploy straight to
+# the account instead of calling /memberships to discover it.
+account_id = "7899d60e6efec128afd67c558e88a0dc"
