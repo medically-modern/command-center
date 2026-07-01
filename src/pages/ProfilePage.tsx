@@ -15,8 +15,9 @@ import {
 } from "@/lib/profile/mondayApi";
 import {
   sendPatientToMonday, sendBackToPatientIntake, writePatientProfile,
-  verifyProfileWritten, writeOopEstimate, triggerStediRun,
+  verifyProfileWritten, writeOopEstimate, triggerStediRun, writeProfileNotes,
 } from "@/lib/profile/mondayWrite";
+import { NoteLog, stampNote } from "@/components/profile/NoteLog";
 import {
   suggestPrimary, suggestSecondary, buildSuggestionInputs, isCoverageActive,
 } from "@/lib/profile/primaryInsurance";
@@ -296,6 +297,17 @@ const ProfilePage = () => {
     toast.success("Progress saved — you can leave and come back");
   };
 
+  const handleAppendNote = useCallback(async (fullText: string) => {
+    if (!selected) return;
+    try {
+      await writeProfileNotes(selected.id, fullText);
+      updateLocal(selected.id, { notes: fullText });
+      toast.success("Note added");
+    } catch (e) {
+      toast.error("Failed to add note", { description: e instanceof Error ? e.message : String(e) });
+    }
+  }, [selected, updateLocal]);
+
   return (
     <SidebarProvider>
       <PageLoadingOverlay show={initialLoading} />
@@ -376,6 +388,7 @@ const ProfilePage = () => {
                 sendingBack={sendingBack}
                 onAdvance={handleAdvance}
                 onSendBack={handleSendBack}
+                onAddNote={handleAppendNote}
               />
             )}
           </main>
@@ -408,6 +421,7 @@ interface BodyProps {
   sendingBack: boolean;
   onAdvance: () => void;
   onSendBack: () => void;
+  onAddNote: (fullText: string) => Promise<void>;
 }
 
 function Field({ label, required, children, warn }: { label: string; required?: boolean; children: ReactNode; warn?: string }) {
@@ -739,7 +753,7 @@ function ProfileBody(p: BodyProps) {
             <div className="duo"><div className="leftcol" />
               <section className="card step-card">
                 <header className="step-head"><span className="step-num">5</span><h2>Notes</h2></header>
-                <textarea value={pt.notes} onChange={(e) => p.onUpdate({ notes: e.target.value })} style={{ minHeight: 90 }} placeholder="Notes…" />
+                <NotesComposer notes={pt.notes} onAppend={p.onAddNote} />
               </section>
             </div>
 
@@ -791,6 +805,28 @@ function ProfileBody(p: BodyProps) {
         </div>
       </div>
     </div>
+  );
+}
+
+/** Patient notes as an append-only log (date · stage bold, signed w/ initials),
+ *  mirroring the Evaluate role. Each add stamps + persists to Monday. */
+function NotesComposer({ notes, onAppend }: { notes: string; onAppend: (full: string) => Promise<void> }) {
+  const [draft, setDraft] = useState("");
+  const [adding, setAdding] = useState(false);
+  const add = async () => {
+    if (!draft.trim() || adding) return;
+    setAdding(true);
+    try { await onAppend(stampNote(notes, draft)); setDraft(""); }
+    finally { setAdding(false); }
+  };
+  return (
+    <>
+      {notes ? <NoteLog text={notes} /> : <span className="sugg-note">No notes yet.</span>}
+      <div className="note-add">
+        <textarea value={draft} onChange={(e) => setDraft(e.target.value)} placeholder="Add a note…" />
+        <button className="btn primary sm" onClick={add} disabled={!draft.trim() || adding}>{adding ? "Adding…" : "+ Add"}</button>
+      </div>
+    </>
   );
 }
 

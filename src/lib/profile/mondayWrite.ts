@@ -270,6 +270,14 @@ export async function writeBenefitsInputs(
 }
 
 /**
+ * Persist the patient Notes column immediately (append-log). Not a stage
+ * advancer, so a plain write is fine; also written on send-off via buildDataTasks.
+ */
+export async function writeProfileNotes(itemId: string, notes: string): Promise<void> {
+  await writeText(itemId, COL.notes, notes);
+}
+
+/**
  * Write the two OOP estimate columns (First-Order + Recurring). Triggered by
  * the "Calculate OOP Estimate" button after Serving is chosen; the UI then
  * reads the values back. Written in parallel; not a stage advancer.

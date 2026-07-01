@@ -8,29 +8,8 @@ import {
   searchDoctors, saveDoctorNotes, saveDoctorFollowers, saveDoctorLocation,
   createDoctorItem, type DoctorRecord, type OrderFollower,
 } from "@/lib/shared/doctorDb";
-import { etNow } from "@/lib/masheke/etDate";
-import { userInitials } from "@/lib/shared/auth";
+import { NoteLog, stampNote } from "@/components/profile/NoteLog";
 import { toast } from "sonner";
-
-const STAGE = "Profile Send-Off";
-
-/** Render a Doctor-Notes log: split into entries, bold the "[date time] Stage:"
- *  prefix of each (matching how Evaluate stamps notes). */
-function NoteLog({ text }: { text: string }) {
-  const entries = text.split(/\n\n+/).map((e) => e.trim()).filter(Boolean);
-  return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-      {entries.map((e, i) => {
-        const m = e.match(/^(\[[^\]]*\]\s*[^:]*:)\s*([\s\S]*)$/);
-        return (
-          <div key={i} className="note-entry" style={{ whiteSpace: "pre-wrap", lineHeight: 1.45 }}>
-            {m ? <><b style={{ color: "var(--mm-teal)" }}>{m[1]}</b> {m[2]}</> : e}
-          </div>
-        );
-      })}
-    </div>
-  );
-}
 
 /**
  * "Select Correct Provider" — mirrors the redesign prototype's step 4, wired to
@@ -260,10 +239,7 @@ export function DoctorSection({ patient: pt, onUpdate, clinicLabels, onClinicSel
   // Evaluate role uses) to the selected profile's Doctor Notes and save it.
   const addNote = async () => {
     if (!selectedItemId || !noteDraft.trim()) return;
-    const ts = etNow().toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" });
-    const inits = userInitials();
-    const entry = `[${ts}] ${STAGE}: ${noteDraft.trim()}${inits ? ` —${inits}` : ""}`;
-    const appended = notes ? `${notes}\n\n${entry}` : entry;
+    const appended = stampNote(notes, noteDraft);
     setAddingNote(true);
     try {
       await saveDoctorNotes(selectedItemId, appended);
