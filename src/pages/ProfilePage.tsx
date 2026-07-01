@@ -3,19 +3,19 @@
  * standard chrome (navy header + PatientsSidebar), with the stepped content
  * scoped under .pf-root (see ./profile/redesign.css).
  */
-import { useEffect, useMemo, useState, useCallback } from "react";
+import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import type { ReactNode } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useMondayPatients } from "@/hooks/profile/useMondayPatients";
 import type { Patient } from "@/lib/profile/workflow";
 import { hasValidZip, formatPhone, crossSellReason } from "@/lib/profile/workflow";
 import {
-  fetchClinicLabels, fetchItemAssets, fetchUpdates, createUpdate,
+  fetchClinicLabels, fetchItemAssets, fetchUpdates,
   type MondayAsset, type MondayUpdate,
 } from "@/lib/profile/mondayApi";
 import {
-  sendPatientToMonday, sendBackToPatientIntake, writeBenefitsInputs,
-  writeOopEstimate, triggerStediRun,
+  sendPatientToMonday, sendBackToPatientIntake, writePatientProfile,
+  verifyProfileWritten, writeOopEstimate, triggerStediRun,
 } from "@/lib/profile/mondayWrite";
 import {
   suggestPrimary, suggestSecondary, buildSuggestionInputs, isCoverageActive,
@@ -59,14 +59,19 @@ const ProfilePage = () => {
   const [searchParams] = useSearchParams();
   const {
     patients, loading, initialLoading, error, refetch,
-    updateLocal, clearOverlay, saveOverlay, hasOverlay,
+    updateLocal, clearOverlay, removeOverlayKeys, saveOverlay, hasOverlay,
   } = useMondayPatients(searchParams.get("patientId"));
 
   const [selectedId, setSelectedId] = useState<string | null>(searchParams.get("patientId") ?? null);
   const [submitting, setSubmitting] = useState(false);
   const [sendingBack, setSendingBack] = useState(false);
-  const [stediRunning, setStediRunning] = useState(false);
+  // Which patient a Stedi run is in-flight for (null = none). Kept per-patient
+  // so switching patients while a check polls doesn't leak the spinner.
+  const [stediRunningId, setStediRunningId] = useState<string | null>(null);
   const [calcOop, setCalcOop] = useState(false);
+  // Completion-signal values captured the instant Run is clicked, so the
+  // watcher below can tell a fresh Stedi result from a stale read-replica poll.
+  const stediRunSnapshotRef = useRef({ planName: "", errorDescription: "", eligibilityActive: "" });
   const [assets, setAssets] = useState<MondayAsset[]>([]);
   const [clinicLabels, setClinicLabels] = useState<{ id: number; name: string }[]>([]);
   const [selectedClinicId, setSelectedClinicId] = useState<number | null>(null);
@@ -92,6 +97,26 @@ const ProfilePage = () => {
   const suggestion = useMemo(() => selected ? suggestPrimary(buildSuggestionInputs(selected)) : null, [selected]);
   const secondarySuggestion = useMemo(() => selected ? suggestSecondary(buildSuggestionInputs(selected)) : "", [selected]);
   const stediActive = useMemo(() => selected ? isCoverageActive(buildSuggestionInputs(selected).stedi) : false, [selected]);
+
+  // A Stedi run is "in flight" for the selected patient only.
+  const stediRunning = !!selected && stediRunningId === selected.id;
+
+  // Watcher — clear the running state once Monday returns a NEW terminal
+  // signal (plan name / error / eligibility) that differs from the snapshot
+  // taken at Run-click time. A stale-read poll returning the previous run's
+  // value won't satisfy this, so the spinner stays up until the real result.
+  useEffect(() => {
+    if (!selected || stediRunningId !== selected.id) return;
+    const complete =
+      !!selected.stediPlanName || !!selected.stediErrorDescription || !!selected.stediEligibilityActive;
+    if (!complete) return;
+    const snap = stediRunSnapshotRef.current;
+    const isNew =
+      (selected.stediPlanName ?? "") !== snap.planName ||
+      (selected.stediErrorDescription ?? "") !== snap.errorDescription ||
+      (selected.stediEligibilityActive ?? "") !== snap.eligibilityActive;
+    if (isNew) setStediRunningId(null);
+  }, [selected, stediRunningId]);
 
   const checklist = useMemo(() => {
     if (!selected) return [] as { label: string; ok: boolean }[];
@@ -128,16 +153,69 @@ const ProfilePage = () => {
       toast.error("Fill in Name, DOB, General Insurance and Member ID first");
       return;
     }
-    setStediRunning(true);
+    const runId = selected.id;
+    const patient = selected;
+    // Snapshot the terminal signals as they are now (before we clear them) so
+    // the watcher can distinguish a fresh result from a stale read.
+    stediRunSnapshotRef.current = {
+      planName: patient.stediPlanName ?? "",
+      errorDescription: patient.stediErrorDescription ?? "",
+      eligibilityActive: patient.stediEligibilityActive ?? "",
+    };
+    setStediRunningId(runId);
+    // Clear the terminal signals locally so the "running" card shows and the
+    // prior result doesn't satisfy the completion check…
     onUpdate({ stediPlanName: "", stediErrorDescription: "", stediEligibilityActive: "" });
+    // …then drop the read-only Stedi keys from the overlay so the next poll
+    // renders Monday's freshly-written values instead of the blanks above.
+    removeOverlayKeys(runId, [
+      "stediPlanName", "stediErrorDescription", "stediEligibilityActive",
+      "stediPayerName", "stediPlanBeginDate", "stediCoverageType", "stediHomePlan",
+      "stediMedicaidId", "stediQmb", "stediCoinsurance",
+      "stediIndividualDeductibleRemaining", "stediIndividualOopMaxRemaining",
+    ]);
     try {
-      await writeBenefitsInputs(selected.id, selected.generalInsurance, workingId);
-      await triggerStediRun(selected.id);
-      toast.success("Stedi eligibility check triggered");
+      // Stedi reads Name, DOB, General Insurance and the working Member ID from
+      // Monday — so write the whole profile (incl. any edited name) and confirm
+      // it actually landed BEFORE firing the check.
+      await writePatientProfile(patient);
+      let verify = { ok: false, mismatches: ["not checked"] as string[] };
+      for (let attempt = 0; attempt < 3; attempt++) {
+        await new Promise((r) => setTimeout(r, 1500));
+        verify = await verifyProfileWritten(runId, {
+          name: patient.name,
+          dob: patient.dob,
+          generalInsurance: patient.generalInsurance,
+          workingMemberId: workingId,
+        });
+        if (verify.ok) break;
+      }
+      if (!verify.ok) {
+        setStediRunningId((cur) => (cur === runId ? null : cur));
+        toast.error("Profile didn't fully sync to Monday — Stedi not started", {
+          description: verify.mismatches.join(" · "),
+        });
+        return;
+      }
+      await triggerStediRun(runId);
+      toast.success("Profile saved — Stedi eligibility check triggered");
       [3000, 8000, 15000, 25000, 40000, 55000].forEach((ms) => setTimeout(() => refetch(true), ms));
+      // Hard stop at 65s — never spin forever.
+      setTimeout(() => {
+        setStediRunningId((cur) => {
+          if (cur === runId) {
+            toast.error("Stedi check timed out", {
+              description: "No results after 60 seconds. Check Monday for details.",
+            });
+            return null;
+          }
+          return cur;
+        });
+      }, 65000);
     } catch (e) {
-      toast.error("Failed to trigger Stedi run", { description: e instanceof Error ? e.message : String(e) });
-    } finally { setStediRunning(false); }
+      setStediRunningId((cur) => (cur === runId ? null : cur));
+      toast.error("Failed to run Stedi", { description: e instanceof Error ? e.message : String(e) });
+    }
   };
 
   const handleCalcOop = async () => {
@@ -332,12 +410,11 @@ function Field({ label, required, children, warn }: { label: string; required?: 
   );
 }
 
-/** Inline referral email / Monday updates, rendered in the rail below Files. */
+/** Inline referral email / Monday updates (read-only), rendered in the rail below Files. */
 function RailReferral({ patient }: { patient: Patient }) {
   const [open, setOpen] = useState(false);
   const [updates, setUpdates] = useState<MondayUpdate[]>([]);
   const [loading, setLoading] = useState(false);
-  const [draft, setDraft] = useState("");
 
   useEffect(() => {
     if (!open) return;
@@ -349,20 +426,6 @@ function RailReferral({ patient }: { patient: Patient }) {
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
   }, [open, patient.id]);
-
-  const addUpdate = async () => {
-    const text = draft.trim();
-    if (!text) return;
-    try {
-      await createUpdate(patient.id, text + "<br><br><i>-Profile Send-Off</i>");
-      setDraft("");
-      const u = await fetchUpdates(patient.id);
-      setUpdates(u);
-      toast.success("Update posted");
-    } catch (e) {
-      toast.error("Failed to post update", { description: e instanceof Error ? e.message : String(e) });
-    }
-  };
 
   return (
     <div className="rail-card">
@@ -391,10 +454,6 @@ function RailReferral({ patient }: { patient: Patient }) {
                 ))}
               </div>
             )}
-            <div className="note-add" style={{ marginTop: 10 }}>
-              <textarea value={draft} onChange={(e) => setDraft(e.target.value)} placeholder="Add an update…" style={{ minHeight: 52 }} />
-              <button className="btn primary sm" onClick={addUpdate}>+ Add</button>
-            </div>
           </div>
         )}
       </div>
@@ -407,6 +466,7 @@ function ProfileBody(p: BodyProps) {
   const serv = pt.serving || "";
   const cgm = servingIncludes(serv, "cgm");
   const ip = servingIncludes(serv, "insulin pump");
+  const stediComplete = !!(pt.stediPlanName || pt.stediEligibilityActive || pt.stediErrorDescription);
   const primaryApplicable = !!p.suggestion?.value && PRIMARY_LABELS.has(p.suggestion.value);
   const servingSuggestion = (() => {
     const req = pt.requestType || "";
@@ -501,11 +561,21 @@ function ProfileBody(p: BodyProps) {
                   <button className="btn primary" onClick={p.onRunStedi} disabled={p.stediRunning}>
                     {p.stediRunning ? "Running…" : "Run Stedi Check"}
                   </button>
-                  {pt.stediErrorDescription && !pt.stediPlanName && <span className="method-pill fax" style={{ background: "var(--mm-rose-soft)", color: "var(--mm-rose)" }}>Failed</span>}
-                  {pt.stediEligibilityActive && <span className={`method-pill ${p.stediActive ? "chute" : "fax"}`}>{p.stediActive ? "Active" : pt.stediEligibilityActive}</span>}
+                  {!p.stediRunning && pt.stediErrorDescription && !pt.stediPlanName && <span className="method-pill fax" style={{ background: "var(--mm-rose-soft)", color: "var(--mm-rose)" }}>Failed</span>}
+                  {!p.stediRunning && pt.stediEligibilityActive && <span className={`method-pill ${p.stediActive ? "chute" : "fax"}`}>{p.stediActive ? "Active" : pt.stediEligibilityActive}</span>}
                 </div>
 
-                {(pt.stediPlanName || pt.stediEligibilityActive || pt.stediErrorDescription) && (
+                {p.stediRunning && !stediComplete && (
+                  <div className="stedi-running">
+                    <span className="stedi-spinner" aria-hidden />
+                    <div>
+                      <div className="sr-title">Saving profile &amp; running eligibility check…</div>
+                      <div className="sugg-note">Name, insurance &amp; Member ID are written to Monday first, then Stedi runs. Results appear here (usually 5–15 seconds).</div>
+                    </div>
+                  </div>
+                )}
+
+                {!p.stediRunning && (pt.stediPlanName || pt.stediEligibilityActive || pt.stediErrorDescription) && (
                   <div className="res-grid">
                     <ResCell label="Active?" value={pt.stediEligibilityActive} bad={!!pt.stediEligibilityActive && !p.stediActive} />
                     <ResCell label="Payer Name" value={pt.stediPayerName} />
