@@ -45,16 +45,20 @@ interface LocForm {
 }
 const emptyForm: LocForm = { clinic: "", phone: "", address: "", addrLat: null, addrLng: null, fax: "", email: "", method: "Fax", name: "", npi: "" };
 
+/** A profile = a distinct name spelling + NPI. Doctors can exist under several
+ *  spellings (e.g. "JASON SLOANE" vs "JASON LOUIS SLOANE", same NPI) — the rep
+ *  picks the exact PROFILE, never an NPI-merged blend. */
+const profileKey = (r: { name: string; npi: string }) => `${norm(r.name)}|${r.npi}`;
+
 export function DoctorSection({ patient: pt, onUpdate, clinicLabels, onClinicSelect }: Props) {
-  // ── Doctor DB search ──
-  const [term, setTerm] = useState((pt.doctorNpi || pt.doctorName || "").trim());
+  // ── Doctor DB search — starts blank; the rep searches & picks explicitly ──
+  const [term, setTerm] = useState("");
   const [results, setResults] = useState<DoctorRecord[]>([]);
   const [searching, setSearching] = useState(false);
   const [open, setOpen] = useState(false);
-  const [selectedNpi, setSelectedNpi] = useState<string | null>(null);
+  const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
   const searchWrapRef = useRef<HTMLDivElement>(null);
-  const didInit = useRef(false);
 
   // ── Parachute order-count (per NPI) + name-search panel ──
   const [count, setCount] = useState<number | null>(null);
@@ -95,20 +99,6 @@ export function DoctorSection({ patient: pt, onUpdate, clinicLabels, onClinicSel
     return () => clearTimeout(id);
   }, [term, locMode]);
 
-  // On first mount, if the patient already has a doctor, load their profiles.
-  useEffect(() => {
-    if (didInit.current) return;
-    didInit.current = true;
-    const seed = (pt.doctorNpi || pt.doctorName || "").trim();
-    if (!seed) return;
-    searchDoctors(seed).then((recs) => {
-      setResults(recs);
-      const npi = (pt.doctorNpi || "").trim();
-      if (npi && recs.some((r) => r.npi === npi)) setSelectedNpi(npi);
-    }).catch(() => {});
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
   // Close the results dropdown on outside click.
   useEffect(() => {
     const h = (e: MouseEvent) => {
@@ -118,41 +108,44 @@ export function DoctorSection({ patient: pt, onUpdate, clinicLabels, onClinicSel
     return () => document.removeEventListener("mousedown", h);
   }, []);
 
-  // Distinct doctors for the dropdown (dedup by NPI, fall back to name).
+  // Dropdown entries — one per PROFILE (distinct name spelling + NPI). Two
+  // spellings under the same NPI are two separate, explicitly-selectable rows.
   const doctorGroups = useMemo(() => {
     const map = new Map<string, DoctorRecord[]>();
     for (const r of results) {
-      const key = r.npi || `name:${norm(r.name)}`;
+      const key = profileKey(r);
       const arr = map.get(key) ?? [];
       arr.push(r); map.set(key, arr);
     }
     return [...map.values()];
   }, [results]);
 
-  // Profiles (locations) for the currently-selected doctor.
+  // Locations for the currently-selected profile (same exact name + NPI).
   const profiles = useMemo(
-    () => (selectedNpi ? results.filter((r) => r.npi === selectedNpi) : []),
-    [results, selectedNpi],
+    () => (selectedKey ? results.filter((r) => profileKey(r) === selectedKey) : []),
+    [results, selectedKey],
   );
   const selectedDoctor = profiles[0] ?? null;
 
-  const selectDoctor = (npi: string) => {
+  const selectDoctor = (rec: DoctorRecord) => {
     setOpen(false);
-    setSelectedNpi(npi);
+    setSelectedKey(profileKey(rec));
     setSelectedItemId(null);
     setCount(null);
     setLocMode(null);
-    // Guarantee we have every profile for this NPI (a name search may have
-    // matched only some), then default the term to the doctor name.
-    searchDoctors(npi).then((recs) => {
-      if (recs.length) {
-        setResults((prev) => {
-          const others = prev.filter((r) => r.npi !== npi);
-          return [...others, ...recs];
-        });
-        setTerm(recs[0].name);
-      }
-    }).catch(() => {});
+    setTerm(rec.name);
+    // Make sure every item for this NPI is loaded (a partial name search may
+    // have missed some locations); other-name spellings stay separate groups.
+    if (rec.npi) {
+      searchDoctors(rec.npi).then((recs) => {
+        if (recs.length) {
+          setResults((prev) => {
+            const have = new Set(prev.map((r) => r.itemId));
+            return [...prev, ...recs.filter((r) => !have.has(r.itemId))];
+          });
+        }
+      }).catch(() => {});
+    }
   };
 
   const pickProfile = (rec: DoctorRecord) => {
@@ -179,7 +172,7 @@ export function DoctorSection({ patient: pt, onUpdate, clinicLabels, onClinicSel
 
   // ── Parachute ──
   const confirmCount = async () => {
-    const npi = selectedNpi || pt.doctorNpi;
+    const npi = selectedDoctor?.npi || pt.doctorNpi;
     if (!npi) { toast.error("Select a provider first"); return; }
     setCountLoading(true);
     try {
@@ -264,8 +257,9 @@ export function DoctorSection({ patient: pt, onUpdate, clinicLabels, onClinicSel
     setLocMode("add");
   };
   const openNewDoctor = () => {
+    // NPI intentionally left blank — the rep verifies and types it manually.
     setForm({
-      ...emptyForm, name: term || pt.doctorName, npi: pt.doctorNpi,
+      ...emptyForm, name: term || pt.doctorName, npi: "",
       phone: pt.doctorPhone, address: pt.clinicAddress, fax: pt.doctorFax,
       email: pt.doctorEmail, method: pt.clinicalsMethod || "Fax", clinic: pt.clinicName,
     });
@@ -306,13 +300,51 @@ export function DoctorSection({ patient: pt, onUpdate, clinicLabels, onClinicSel
       setLocMode(null);
       const recs = await searchDoctors(form.npi.trim());
       setResults((prev) => [...prev.filter((r) => r.npi !== form.npi.trim()), ...recs]);
-      setSelectedNpi(form.npi.trim());
+      setSelectedKey(profileKey({ name: form.name.trim(), npi: form.npi.trim() }));
     } catch (e) {
       toast.error("Failed to save to Doctor DB", { description: e instanceof Error ? e.message : String(e) });
     } finally { setSavingLoc(false); }
   };
 
   const lab: CSSProperties = { fontSize: ".72rem", fontWeight: 600, textTransform: "uppercase", letterSpacing: ".04em", color: "var(--muted-foreground)" };
+
+  const locFormBody = () => (
+    <>
+      <div className="flabel" style={{ marginBottom: 12 }}>
+        {locMode === "edit" ? "Edit this location — saves in place to the Doctor DB"
+          : locMode === "add" ? "New location — saved as another profile under the same NPI"
+          : "Add a new provider to the Doctor Database"}
+      </div>
+      <div className="fgrid">
+        {locMode === "new-doctor" && (
+          <>
+            <div><div className="flabel">Name <span className="req-star">*</span></div><input type="text" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></div>
+            <div><div className="flabel">NPI <span className="req-star">*</span></div><input type="text" value={form.npi} onChange={(e) => setForm({ ...form, npi: e.target.value })} /></div>
+          </>
+        )}
+        <div><div className="flabel">Clinic</div><input type="text" value={form.clinic} onChange={(e) => setForm({ ...form, clinic: e.target.value })} /></div>
+        <div><div className="flabel">Phone</div><input type="text" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} /></div>
+        <div className="full"><div className="flabel">Address {locMode !== "edit" && <span className="req-star">*</span>}</div>
+          <AddressAutocomplete value={form.address} className="pf-input" placeholder="Start typing address…"
+            onChange={(r) => setForm({ ...form, address: r.address, addrLat: r.lat || null, addrLng: r.lng || null })} />
+          {addressWarning(form.address) && <div className="fwarn">{addressWarning(form.address)}</div>}
+        </div>
+        <div><div className="flabel">Fax</div><input type="text" value={form.fax} onChange={(e) => setForm({ ...form, fax: e.target.value })} /></div>
+        <div><div className="flabel">Email</div><input type="text" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} /></div>
+        <div className="full"><div className="flabel">Method</div>
+          <select value={form.method} onChange={(e) => setForm({ ...form, method: e.target.value })}>
+            <option>Fax</option><option>Parachute</option><option>Email</option>
+          </select>
+        </div>
+      </div>
+      <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 14 }}>
+        <button className="btn secondary sm" onClick={() => setLocMode(null)}>Cancel</button>
+        <button className="btn primary sm" onClick={saveLoc} disabled={savingLoc}>
+          {savingLoc ? "Saving…" : locMode === "edit" ? "Save fix to Doctor DB" : locMode === "add" ? "Create new location" : "Add to Doctor DB"}
+        </button>
+      </div>
+    </>
+  );
 
   return (
     <>
@@ -342,7 +374,7 @@ export function DoctorSection({ patient: pt, onUpdate, clinicLabels, onClinicSel
             ) : doctorGroups.map((grp) => {
               const d = grp[0];
               return (
-                <div key={d.npi || d.itemId} className="res" onClick={() => selectDoctor(d.npi || "")}>
+                <div key={profileKey(d)} className="res" onClick={() => selectDoctor(d)}>
                   <div className="ri">{initials(d.name)}</div>
                   <div>
                     <div className="rn">{d.name}</div>
@@ -356,7 +388,7 @@ export function DoctorSection({ patient: pt, onUpdate, clinicLabels, onClinicSel
         )}
       </div>
 
-      {!selectedNpi && !locMode && !paraOpen && (
+      {!selectedKey && !locMode && !paraOpen && (
         <div id="doc-actions" style={{ marginTop: 12 }}>
           <button className="btn primary sm" onClick={openNewDoctor}>Add Doctor to Database</button>
         </div>
@@ -409,47 +441,17 @@ export function DoctorSection({ patient: pt, onUpdate, clinicLabels, onClinicSel
         </div>
       )}
 
-      {/* ── Location / add form ── */}
-      {locMode && (
+      {/* ── Location / add form (shared JSX; rendered inside the doctor card
+             for edit/add so the Parachute count & card stay visible, and
+             standalone only when adding a brand-new provider) ── */}
+      {locMode === "new-doctor" && (
         <div style={{ border: "1px solid var(--border)", borderRadius: 12, padding: 16, marginTop: 14, background: "oklch(0.985 0.003 247)" }}>
-          <div className="flabel" style={{ marginBottom: 12 }}>
-            {locMode === "edit" ? "Edit this location — saves in place to the Doctor DB"
-              : locMode === "add" ? "New location — saved as another profile under the same NPI"
-              : "Add a new provider to the Doctor Database"}
-          </div>
-          <div className="fgrid">
-            {locMode === "new-doctor" && (
-              <>
-                <div><div className="flabel">Name <span className="req-star">*</span></div><input type="text" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></div>
-                <div><div className="flabel">NPI <span className="req-star">*</span></div><input type="text" value={form.npi} onChange={(e) => setForm({ ...form, npi: e.target.value })} /></div>
-              </>
-            )}
-            <div><div className="flabel">Clinic</div><input type="text" value={form.clinic} onChange={(e) => setForm({ ...form, clinic: e.target.value })} /></div>
-            <div><div className="flabel">Phone</div><input type="text" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} /></div>
-            <div className="full"><div className="flabel">Address {locMode !== "edit" && <span className="req-star">*</span>}</div>
-              <AddressAutocomplete value={form.address} className="pf-input" placeholder="Start typing address…"
-                onChange={(r) => setForm({ ...form, address: r.address, addrLat: r.lat || null, addrLng: r.lng || null })} />
-              {addressWarning(form.address) && <div className="fwarn">{addressWarning(form.address)}</div>}
-            </div>
-            <div><div className="flabel">Fax</div><input type="text" value={form.fax} onChange={(e) => setForm({ ...form, fax: e.target.value })} /></div>
-            <div><div className="flabel">Email</div><input type="text" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} /></div>
-            <div className="full"><div className="flabel">Method</div>
-              <select value={form.method} onChange={(e) => setForm({ ...form, method: e.target.value })}>
-                <option>Fax</option><option>Parachute</option><option>Email</option>
-              </select>
-            </div>
-          </div>
-          <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 14 }}>
-            <button className="btn secondary sm" onClick={() => setLocMode(null)}>Cancel</button>
-            <button className="btn primary sm" onClick={saveLoc} disabled={savingLoc}>
-              {savingLoc ? "Saving…" : locMode === "edit" ? "Save fix to Doctor DB" : locMode === "add" ? "Create new location" : "Add to Doctor DB"}
-            </button>
-          </div>
+          {locFormBody()}
         </div>
       )}
 
       {/* ── Doctor card ── */}
-      {selectedNpi && selectedDoctor && !locMode && (
+      {selectedKey && selectedDoctor && locMode !== "new-doctor" && (
         <div className="doccard">
           <div className="doctop">
             <div className="di">{initials(selectedDoctor.name)}</div>
@@ -490,6 +492,13 @@ export function DoctorSection({ patient: pt, onUpdate, clinicLabels, onClinicSel
               <button className="btn secondary sm" onClick={openEditLoc} disabled={!selectedItemId}>Edit selected location</button>
               <button className="btn secondary sm" onClick={openAddLoc}>+ Add another location</button>
             </div>
+
+            {/* Edit/add form renders IN the card so the Parachute count stays visible */}
+            {(locMode === "edit" || locMode === "add") && (
+              <div style={{ border: "1px solid var(--border)", borderRadius: 12, padding: 16, marginTop: 14, background: "oklch(0.985 0.003 247)" }}>
+                {locFormBody()}
+              </div>
+            )}
 
             {/* Fax cross-check */}
             {pt.clinicalsMethod === "Fax" && !pt.doctorFax?.trim() && (
