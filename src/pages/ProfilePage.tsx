@@ -521,6 +521,9 @@ function ProfileBody(p: BodyProps) {
     if (derived && derived !== pt.serving) p.onUpdate({ serving: derived });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [crossSell, pt.requestType]);
+  // Advisory Serving chip (no auto-apply button) — what the cross-sell logic
+  // says we should be serving; hidden once Serving already matches.
+  const servingSuggestion = deriveServing(crossSell, pt.requestType || "") || pt.requestType || "";
   const xsellHint = (() => {
     const reason = crossSellReason(primaryIns);
     if (crossSell === "Cross-Sell" && reason === "eligible") return "Primary insurance is a non-Medicaid plan, so this patient is eligible for CGM cross-sell";
@@ -715,6 +718,12 @@ function ProfileBody(p: BodyProps) {
                   <header className="step-head"><span className="step-num">3</span><h2>Serving &amp; Coverage</h2></header>
                   <div className="fgrid">
                     <div className="full">
+                      {servingSuggestion && servingSuggestion !== serv && (
+                        <div className="sugg-line" style={{ marginBottom: 8 }}>
+                          <span className="sugg-lead2">Suggestion:</span>
+                          <span className="sugg-chip2">{servingSuggestion}</span>
+                        </div>
+                      )}
                       <Field label="Serving" required>
                         <select className={serv ? "filled" : "need"} value={serv} onChange={(e) => p.onUpdate({ serving: e.target.value })}>
                           <option value="" disabled hidden>Select what we're serving…</option>
