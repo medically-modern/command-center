@@ -63,6 +63,7 @@ export function DoctorSection({ patient: pt, onUpdate, clinicLabels, onClinicSel
   const [paraResults, setParaResults] = useState<ParaDoctor[]>([]);
   const [paraLoading, setParaLoading] = useState(false);
   const [paraSel, setParaSel] = useState<string | null>(null);
+  const [paraQuery, setParaQuery] = useState(""); // the term actually searched
 
   // ── Notes + followers (per selected profile) ──
   const [notes, setNotes] = useState("");
@@ -197,7 +198,8 @@ export function DoctorSection({ patient: pt, onUpdate, clinicLabels, onClinicSel
       const res = await fetch(`${PARACHUTE_API}/api/search?term=${encodeURIComponent(query)}`);
       const body = await res.json();
       setParaResults(body?.results ?? []);
-    } catch { setParaResults([]); }
+      setParaQuery(query);
+    } catch { setParaResults([]); setParaQuery(query); }
     finally { setParaLoading(false); }
   };
 
@@ -364,7 +366,11 @@ export function DoctorSection({ patient: pt, onUpdate, clinicLabels, onClinicSel
           </div>
           <div className="para-list">
             {paraLoading ? <div className="res-note">Searching…</div> :
-              paraResults.length === 0 ? <div className="res-note">No Parachute results.</div> : (
+              paraResults.length === 0 ? (
+                paraQuery
+                  ? <div className="res-note">Nothing came up on Parachute for <b>“{paraQuery}”</b> — no doctor matched that name or NPI.</div>
+                  : <div className="res-note">Type a name or NPI, then Search.</div>
+              ) : (
                 <>
                   {phoneState && paraStateMatches.length > 0 && (
                     <div style={geoHead}>📍 {phoneState.state} — matches phone area code ({phoneState.areaCode})</div>
