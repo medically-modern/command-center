@@ -198,6 +198,21 @@ export function hasValidZip(address: string): boolean {
 }
 
 /**
+ * Inline warning for an address field, or undefined when it looks fine.
+ * Flags: ZIP+4 ("12345-6789" — must be plain 5 digits), a missing/short zip,
+ * and ALL-CAPS addresses (should be retyped in normal casing).
+ */
+export function addressWarning(address: string): string | undefined {
+  const a = (address || "").trim();
+  if (!a) return undefined;
+  if (/\b\d{5}-\d{4}\b/.test(a)) return "Zip is in XXXXX-XXXX format — use the plain 5-digit zip";
+  if (!/\b\d{5}\b/.test(a)) return "Address must include a 5-digit zip code (XXXXX)";
+  const letters = a.replace(/[^a-zA-Z]/g, "");
+  if (letters.length >= 8 && letters === letters.toUpperCase()) return "Address is ALL CAPS — retype it in normal casing";
+  return undefined;
+}
+
+/**
  * Normalize a DOB to MM/DD/YYYY. Pads month and day to 2 digits.
  * Accepts 2-digit year shorthand: <30 → 20xx, otherwise 19xx.
  * Returns the input unchanged if it doesn't look like a date.

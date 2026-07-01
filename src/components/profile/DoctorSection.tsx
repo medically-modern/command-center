@@ -4,11 +4,11 @@ import type { Patient } from "@/lib/profile/workflow";
 import { formatPhone } from "@/lib/profile/workflow";
 import { AddressAutocomplete } from "@/components/profile/AddressAutocomplete";
 import { phoneToState } from "@/lib/profile/areaCodeState";
+import { addressWarning } from "@/lib/profile/workflow";
 import {
   searchDoctors, saveDoctorNotes, saveDoctorFollowers, saveDoctorLocation,
-  createDoctorItem, type DoctorRecord, type OrderFollower,
+  createDoctorItem, MAX_FOLLOWERS, type DoctorRecord, type OrderFollower,
 } from "@/lib/shared/doctorDb";
-import { NoteLog, stampNote } from "@/components/profile/NoteLog";
 import { toast } from "sonner";
 
 /**
@@ -68,8 +68,6 @@ export function DoctorSection({ patient: pt, onUpdate, clinicLabels, onClinicSel
 
   // ── Notes + followers (per selected profile) ──
   const [notes, setNotes] = useState("");
-  const [noteDraft, setNoteDraft] = useState("");
-  const [addingNote, setAddingNote] = useState(false);
   const [followers, setFollowers] = useState<OrderFollower[]>([]);
   const [editingInfo, setEditingInfo] = useState(false);
   const [savingInfo, setSavingInfo] = useState(false);
@@ -172,7 +170,7 @@ export function DoctorSection({ patient: pt, onUpdate, clinicLabels, onClinicSel
     const label = clinicLabels.find((c) => c.name === rec.clinic);
     if (label) onClinicSelect(label.id, label.name);
     else if (rec.clinic) onUpdate({ clinicName: rec.clinic });
-    setCount(null);
+    // Parachute count is per-NPI — keep it across location picks/edits.
   };
 
   const matchesReferral = (rec: DoctorRecord) =>
@@ -235,29 +233,18 @@ export function DoctorSection({ patient: pt, onUpdate, clinicLabels, onClinicSel
   const setFollower = (i: number, patch: Partial<OrderFollower>) => {
     setFollowers((prev) => { const n = [...prev]; n[i] = { name: "", email: "", ...n[i], ...patch }; return n; });
   };
-  // Append a timestamped, stage-stamped, initial-signed note (same format the
-  // Evaluate role uses) to the selected profile's Doctor Notes and save it.
-  const addNote = async () => {
-    if (!selectedItemId || !noteDraft.trim()) return;
-    const appended = stampNote(notes, noteDraft);
-    setAddingNote(true);
-    try {
-      await saveDoctorNotes(selectedItemId, appended);
-      setNotes(appended);
-      setNoteDraft("");
-      toast.success("Note added to Doctor DB");
-    } catch (e) {
-      toast.error("Failed to add note", { description: e instanceof Error ? e.message : String(e) });
-    } finally { setAddingNote(false); }
-  };
-
-  // Followers-only save (notes are append-only via addNote).
+  // Save notes + followers to the Doctor DB immediately. Doctor notes are a
+  // plain text blob (no timestamp/stage stamping — that's only for the
+  // patient's Step 5 notes).
   const saveInfo = async () => {
     if (!selectedItemId) { toast.error("Pick a location first"); return; }
     setSavingInfo(true);
     try {
-      await saveDoctorFollowers(selectedItemId, followers.filter((f) => f.name || f.email));
-      toast.success("Order followers saved");
+      await Promise.all([
+        saveDoctorNotes(selectedItemId, notes),
+        saveDoctorFollowers(selectedItemId, followers.filter((f) => f.name || f.email)),
+      ]);
+      toast.success("Doctor notes & order followers saved to Doctor DB");
       setEditingInfo(false);
     } catch (e) {
       toast.error("Failed to save to Doctor DB", { description: e instanceof Error ? e.message : String(e) });
@@ -442,6 +429,7 @@ export function DoctorSection({ patient: pt, onUpdate, clinicLabels, onClinicSel
             <div className="full"><div className="flabel">Address {locMode !== "edit" && <span className="req-star">*</span>}</div>
               <AddressAutocomplete value={form.address} className="pf-input" placeholder="Start typing address…"
                 onChange={(r) => setForm({ ...form, address: r.address, addrLat: r.lat || null, addrLng: r.lng || null })} />
+              {addressWarning(form.address) && <div className="fwarn">{addressWarning(form.address)}</div>}
             </div>
             <div><div className="flabel">Fax</div><input type="text" value={form.fax} onChange={(e) => setForm({ ...form, fax: e.target.value })} /></div>
             <div><div className="flabel">Email</div><input type="text" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} /></div>
@@ -479,7 +467,7 @@ export function DoctorSection({ patient: pt, onUpdate, clinicLabels, onClinicSel
             ) : (
               <div className={`cc-line ${count > THRESHOLD ? "ok" : "bad"}`}>
                 <span className={`cc-ic ${count > THRESHOLD ? "ok" : "bad"}`}>{count > THRESHOLD ? "✓" : "✗"}</span>
-                <span><b>{count} signed orders</b> on Parachute {count > THRESHOLD ? "→ contact via Parachute" : "→ Fax/Email"}</span>
+                <span><b>{count} signed orders</b> on Parachute</span>
               </div>
             )}
           </div>
@@ -522,21 +510,14 @@ export function DoctorSection({ patient: pt, onUpdate, clinicLabels, onClinicSel
               </div>
             )}
             <div style={{ opacity: selectedItemId ? 1 : 0.5, pointerEvents: selectedItemId ? "auto" : "none" }}>
-            {/* Doctor Notes — append-only log (date · stage bold, signed w/ initials) */}
-            <div style={{ marginBottom: 16 }}>
-              <div style={{ ...lab, marginBottom: 5 }}>Doctor Notes</div>
-              {notes ? <NoteLog text={notes} /> : <span className="sugg-note">None on file.</span>}
-              <div className="note-add">
-                <textarea value={noteDraft} onChange={(e) => setNoteDraft(e.target.value)} placeholder={selectedItemId ? "Add a note…" : "Select a location to add a note"} disabled={!selectedItemId} />
-                <button className="btn primary sm" onClick={addNote} disabled={!selectedItemId || !noteDraft.trim() || addingNote}>{addingNote ? "Adding…" : "+ Add"}</button>
-              </div>
-            </div>
-
-            {/* Order Followers — editable name/email pairs */}
-            <div>
-              <div style={{ ...lab, marginBottom: 5 }}>Order Followers</div>
-              {!editingInfo ? (
-                <>
+            {!editingInfo ? (
+              <>
+                <div style={{ marginBottom: 14 }}>
+                  <div style={{ ...lab, marginBottom: 5 }}>Doctor Notes</div>
+                  <div style={{ fontSize: ".88rem", lineHeight: 1.45, whiteSpace: "pre-wrap" }}>{notes || <span className="sugg-note">None on file.</span>}</div>
+                </div>
+                <div>
+                  <div style={{ ...lab, marginBottom: 5 }}>Order Followers</div>
                   {followers.filter((f) => f.name || f.email).length === 0 ? <span className="sugg-note">None on file.</span> : (
                     <ul style={{ margin: 0, paddingLeft: 18 }}>
                       {followers.filter((f) => f.name || f.email).map((f, i) => (
@@ -544,21 +525,24 @@ export function DoctorSection({ patient: pt, onUpdate, clinicLabels, onClinicSel
                       ))}
                     </ul>
                   )}
-                  <button className="btn secondary sm" style={{ marginTop: 10 }} onClick={() => setEditingInfo(true)} disabled={!selectedItemId} title={!selectedItemId ? "Pick a location first" : undefined}>Edit Followers</button>
-                </>
-              ) : (
-                <div className="fgrid">
-                  <div><div className="flabel">Order follower 1 (name)</div><input type="text" value={followers[0]?.name ?? ""} onChange={(e) => setFollower(0, { name: e.target.value })} /></div>
-                  <div><div className="flabel">Follower 1 email</div><input type="text" value={followers[0]?.email ?? ""} onChange={(e) => setFollower(0, { email: e.target.value })} /></div>
-                  <div><div className="flabel">Order follower 2 (name)</div><input type="text" value={followers[1]?.name ?? ""} onChange={(e) => setFollower(1, { name: e.target.value })} /></div>
-                  <div><div className="flabel">Follower 2 email</div><input type="text" value={followers[1]?.email ?? ""} onChange={(e) => setFollower(1, { email: e.target.value })} /></div>
-                  <div className="full" style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
-                    <button className="btn secondary sm" onClick={() => setEditingInfo(false)}>Cancel</button>
-                    <button className="btn primary sm" onClick={saveInfo} disabled={savingInfo}>{savingInfo ? "Saving…" : "Save to Doctor DB"}</button>
-                  </div>
                 </div>
-              )}
-            </div>
+                <button className="btn secondary sm" style={{ marginTop: 14 }} onClick={() => setEditingInfo(true)} disabled={!selectedItemId} title={!selectedItemId ? "Pick a location first" : undefined}>Edit Notes and Followers</button>
+              </>
+            ) : (
+              <div className="fgrid">
+                <div className="full"><div className="flabel">Doctor Notes</div><textarea rows={3} value={notes} onChange={(e) => setNotes(e.target.value)} /></div>
+                {Array.from({ length: MAX_FOLLOWERS }, (_, i) => (
+                  <div key={i} className="full" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+                    <div><div className="flabel">Order follower {i + 1} (name — optional)</div><input type="text" value={followers[i]?.name ?? ""} onChange={(e) => setFollower(i, { name: e.target.value })} /></div>
+                    <div><div className="flabel">Follower {i + 1} email</div><input type="text" value={followers[i]?.email ?? ""} onChange={(e) => setFollower(i, { email: e.target.value })} /></div>
+                  </div>
+                ))}
+                <div className="full" style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+                  <button className="btn secondary sm" onClick={() => setEditingInfo(false)}>Cancel</button>
+                  <button className="btn primary sm" onClick={saveInfo} disabled={savingInfo}>{savingInfo ? "Saving…" : "Save to Doctor DB"}</button>
+                </div>
+              </div>
+            )}
             </div>
           </div>
         </div>

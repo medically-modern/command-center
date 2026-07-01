@@ -11,10 +11,15 @@ const DOCTOR_DB_BOARD = 18142847597;
 const COL_DOCTOR_NOTES = "long_text_mm44az6q";
 const COL_NPI = "text_mkwhtqjb";
 // Order followers (Corey 9) — name + email pairs surfaced as mailto links.
-const COL_FOLLOWER1 = "text_mm1vp9qt";
-const COL_FOLLOWER1_EMAIL = "email_mm1vncc6";
-const COL_FOLLOWER2 = "text_mm1vw9d";
-const COL_FOLLOWER2_EMAIL = "email_mm1vsp3v";
+// Up to 5 followers; name is optional (email-only followers are fine).
+const FOLLOWER_COLS: { name: string; email: string }[] = [
+  { name: "text_mm1vp9qt", email: "email_mm1vncc6" },
+  { name: "text_mm1vw9d", email: "email_mm1vsp3v" },
+  { name: "text_mm4vj1fj", email: "email_mm4vea9t" },
+  { name: "text_mm4v441t", email: "email_mm4v6whb" },
+  { name: "text_mm4vhnws", email: "email_mm4vphes" },
+];
+export const MAX_FOLLOWERS = FOLLOWER_COLS.length;
 // Clinicals method ("MN Exchange?" status): Parachute / Fax / Email.
 const COL_METHOD = "color_mm1vr8rd";
 const METHOD_INDEX: Record<string, number> = { Parachute: 0, Fax: 1, Email: 2 };
@@ -26,9 +31,9 @@ const COL_SCRIPT_EMAIL = "email";
 const COL_CLINIC = "dropdown_mm1vd9fs";
 const READ_COLS = [
   COL_NPI, COL_DOCTOR_NOTES,
-  COL_FOLLOWER1, COL_FOLLOWER1_EMAIL, COL_FOLLOWER2, COL_FOLLOWER2_EMAIL,
+  ...FOLLOWER_COLS.flatMap((f) => [f.name, f.email]),
   COL_DOC_ADDRESS, COL_DOC_PHONE, COL_SCRIPT_FAX, COL_SCRIPT_EMAIL, COL_METHOD, COL_CLINIC,
-] as const;
+];
 
 function getToken(): string {
   return (import.meta.env.VITE_MONDAY_API_TOKEN as string | undefined) ?? "";
@@ -79,10 +84,11 @@ type DbItem = { id: string; name: string; column_values: { id: string; text: str
 function toRecord(item: DbItem): DoctorRecord {
   const colVal = (id: string) => item.column_values.find((c) => c.id === id)?.text ?? "";
   const followers: OrderFollower[] = [];
-  const f1 = colVal(COL_FOLLOWER1).trim();
-  const f2 = colVal(COL_FOLLOWER2).trim();
-  if (f1 || colVal(COL_FOLLOWER1_EMAIL)) followers.push({ name: f1, email: colVal(COL_FOLLOWER1_EMAIL) });
-  if (f2 || colVal(COL_FOLLOWER2_EMAIL)) followers.push({ name: f2, email: colVal(COL_FOLLOWER2_EMAIL) });
+  for (const fc of FOLLOWER_COLS) {
+    const name = colVal(fc.name).trim();
+    const email = colVal(fc.email).trim();
+    if (name || email) followers.push({ name, email });
+  }
   return {
     itemId: item.id,
     name: item.name,
@@ -209,11 +215,10 @@ export async function createDoctorItem(fields: {
   if (fields.email) cols[COL_SCRIPT_EMAIL] = { email: fields.email, text: fields.email };
   const mIdx = fields.method ? METHOD_INDEX[fields.method] : undefined;
   if (mIdx !== undefined) cols[COL_METHOD] = { index: mIdx };
-  const [f1, f2] = fields.followers ?? [];
-  if (f1?.name) cols[COL_FOLLOWER1] = f1.name;
-  if (f1?.email) cols[COL_FOLLOWER1_EMAIL] = { email: f1.email, text: f1.email };
-  if (f2?.name) cols[COL_FOLLOWER2] = f2.name;
-  if (f2?.email) cols[COL_FOLLOWER2_EMAIL] = { email: f2.email, text: f2.email };
+  (fields.followers ?? []).slice(0, FOLLOWER_COLS.length).forEach((f, i) => {
+    if (f?.name) cols[FOLLOWER_COLS[i].name] = f.name;
+    if (f?.email) cols[FOLLOWER_COLS[i].email] = { email: f.email, text: f.email };
+  });
   if (fields.notes) cols[COL_DOCTOR_NOTES] = { text: fields.notes };
 
   const query = `mutation ($board: ID!, $name: String!, $vals: JSON!) {
@@ -246,16 +251,16 @@ export async function saveDoctorNotes(itemId: string, notes: string): Promise<vo
 }
 
 /**
- * Write the two order-follower name/email pairs back to the Doctor DB item.
+ * Write the order-follower name/email pairs (up to 5) back to the Doctor DB
+ * item in one mutation. Name is optional — email-only followers are written.
  */
 export async function saveDoctorFollowers(itemId: string, followers: OrderFollower[]): Promise<void> {
-  const [f1, f2] = followers;
-  const cols: Record<string, unknown> = {
-    [COL_FOLLOWER1]: f1?.name ?? "",
-    [COL_FOLLOWER1_EMAIL]: f1?.email ? { email: f1.email, text: f1.email } : { email: "", text: "" },
-    [COL_FOLLOWER2]: f2?.name ?? "",
-    [COL_FOLLOWER2_EMAIL]: f2?.email ? { email: f2.email, text: f2.email } : { email: "", text: "" },
-  };
+  const cols: Record<string, unknown> = {};
+  FOLLOWER_COLS.forEach((fc, i) => {
+    const f = followers[i];
+    cols[fc.name] = f?.name ?? "";
+    cols[fc.email] = f?.email ? { email: f.email, text: f.email } : { email: "", text: "" };
+  });
   const query = `mutation ($item: ID!, $board: ID!, $vals: JSON!) {
     change_multiple_column_values(item_id: $item, board_id: $board, column_values: $vals) { id }
   }`;

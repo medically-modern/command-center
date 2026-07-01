@@ -140,8 +140,9 @@ export const GENERAL_INSURANCE_INDEX: Record<string, number> = {
   "Stedi": 14,
 };
 
+// Live board labels (checked 2026-07): 0=NY Medicaid, 1=Medicare Supplement, 3=None.
 export const SECONDARY_INSURANCE_INDEX: Record<string, number> = {
-  "NY Medicaid": 0, "Done": 1, "Stuck": 2, "None": 3,
+  "NY Medicaid": 0, "Medicare Supplement": 1, "None": 3,
 };
 
 export const DOCTOR_STATUS_INDEX: Record<string, number> = {

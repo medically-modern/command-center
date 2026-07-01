@@ -136,8 +136,14 @@ function midHasJLJ(memberId: string): boolean { return /JLJ/.test((memberId || "
 // DME carve-out watchlist — keyed on the home plan (extensible)
 const DME_CARVE_OUT_PLANS = [{ match: /michigan/i, label: "Blue Cross Blue Shield of Michigan", carveTo: "Northwood" }];
 
+/** NY Medicaid CIN format: 2 letters, 5 digits, 1 letter (e.g. AB12345C). */
+export function isNyMedicaidId(id: string): boolean {
+  return /^[A-Za-z]{2}\d{5}[A-Za-z]$/.test((id || "").trim());
+}
+/** A Medicaid ID only "counts" when it's in the NY Medicaid format — payers
+ *  sometimes return other identifiers in this field. */
 function medicaidIdPresent(s: StediSnapshot): boolean {
-  return !!(s.medid && s.medid !== "—");
+  return !!(s.medid && s.medid !== "—") && isNyMedicaidId(s.medid);
 }
 function pumpRequested(requestType: string): boolean { return /insulin pump/i.test(requestType || ""); }
 

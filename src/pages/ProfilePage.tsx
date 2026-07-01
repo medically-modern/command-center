@@ -8,7 +8,9 @@ import type { ReactNode } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useMondayPatients } from "@/hooks/profile/useMondayPatients";
 import type { Patient } from "@/lib/profile/workflow";
-import { hasValidZip, formatPhone, crossSellReason } from "@/lib/profile/workflow";
+import {
+  hasValidZip, formatPhone, crossSellReason, canCrossSellCgm, deriveServing, addressWarning,
+} from "@/lib/profile/workflow";
 import {
   fetchClinicLabels, fetchItemAssets, fetchUpdates,
   type MondayAsset, type MondayUpdate,
@@ -19,12 +21,12 @@ import {
 } from "@/lib/profile/mondayWrite";
 import { NoteLog, stampNote } from "@/components/profile/NoteLog";
 import {
-  suggestPrimary, suggestSecondary, buildSuggestionInputs, isCoverageActive,
+  suggestPrimary, suggestSecondary, buildSuggestionInputs, isCoverageActive, isNyMedicaidId,
 } from "@/lib/profile/primaryInsurance";
 import { computeFirstAndRecurring } from "@/lib/profile/oopEstimate";
 import {
   GENERAL_INSURANCE_INDEX, SECONDARY_INSURANCE_INDEX, GENDER_INDEX,
-  SERVING_INDEX, CGM_TYPE_INDEX, PUMP_TYPE_INDEX,
+  SERVING_INDEX, CGM_TYPE_INDEX, PUMP_TYPE_INDEX, CGM_CROSS_SELL_INDEX,
   CGM_COVERAGE_PATH_INDEX, INSULIN_PUMP_COVERAGE_PATH_INDEX,
   groupPrimaryInsuranceLabels,
 } from "@/lib/profile/mondayMapping";
@@ -119,15 +121,6 @@ const ProfilePage = () => {
     if (isNew) setStediRunningId(null);
   }, [selected, stediRunningId]);
 
-  // Once an eligibility result lands, default the advancing Member ID 1 to the
-  // Member ID that was actually run through Stedi (only when it's still blank).
-  useEffect(() => {
-    if (!selected) return;
-    const done = !!selected.stediPlanName || (selected.stediEligibilityActive || "").trim() !== "";
-    if (done && !selected.memberId1?.trim() && selected.workingMemberId?.trim()) {
-      updateLocal(selected.id, { memberId1: selected.workingMemberId.trim() });
-    }
-  }, [selected, updateLocal]);
 
   const checklist = useMemo(() => {
     if (!selected) return [] as { label: string; ok: boolean }[];
@@ -469,7 +462,7 @@ function RailReferral({ patient }: { patient: Patient }) {
             ) : updates.length === 0 ? (
               <p className="sugg-note">No referral email / updates on file.</p>
             ) : (
-              <div style={{ maxHeight: 360, overflow: "auto" }}>
+              <div style={{ maxHeight: "calc(100vh - 320px)", overflow: "auto" }}>
                 {updates.map((u) => (
                   <div key={u.id} className="note-entry">
                     <span className="ts">[{u.created_at ? new Date(u.created_at).toLocaleString() : ""}] {u.creator?.name || ""}</span>
@@ -491,7 +484,10 @@ function ProfileBody(p: BodyProps) {
   const cgm = servingIncludes(serv, "cgm");
   const ip = servingIncludes(serv, "insulin pump");
   const stediComplete = !!(pt.stediPlanName || pt.stediEligibilityActive || pt.stediErrorDescription);
+  const stediFailed = !!pt.stediErrorDescription && !pt.stediPlanName;
   const [readyOpen, setReadyOpen] = useState(false);
+  // Member ID 1 is always entered fresh by the rep (never auto-filled).
+  const [mid1Input, setMid1Input] = useState("");
   // Benefits Check inputs: patient self-referrals already carry insurance from
   // intake, so pre-fill General Insurance + Member ID for them; every other
   // referral source starts blank for fresh rep entry. Local state (ProfileBody
@@ -500,19 +496,45 @@ function ProfileBody(p: BodyProps) {
   const patientReferral = (pt.referralSource || "").trim().toLowerCase() === "patient";
   const [giInput, setGiInput] = useState(patientReferral ? pt.generalInsurance : "");
   const [midInput, setMidInput] = useState(patientReferral ? (pt.workingMemberId || pt.memberId1) : "");
-  const primaryApplicable = !!p.suggestion?.value && PRIMARY_LABELS.has(p.suggestion.value);
-  const servingSuggestion = (() => {
-    const req = pt.requestType || "";
-    if (/cgm/i.test(req)) return req;
-    if (crossSellReason(pt.primaryInsurance) === "eligible") {
-      return req === "Supplies Only" ? "Supplies + CGM" : req === "Insulin Pump" ? "Insulin Pump + CGM" : req;
+
+  // ── CGM cross-sell — same auto-derivation the original ServingPanel ran ──
+  // Re-derive whenever Primary Insurance or Request Type changes: eligible
+  // (non-Medicaid/United/Cigna) → Cross-Sell + default Dexcom G7 on the
+  // Insulin path; blocked → Couldn't Cross-Sell + Not Serving. Manual
+  // "Already Serving CGM" is respected and never overwritten.
+  const primaryIns = pt.primaryInsurance;
+  const crossSell = pt.cgmCrossSell;
+  useEffect(() => {
+    if (!primaryIns) return;
+    if (crossSell === "Already Serving CGM") return;
+    if (canCrossSellCgm(primaryIns)) {
+      if (crossSell !== "Cross-Sell") p.onUpdate({ cgmCrossSell: "Cross-Sell", cgmType: "Dexcom G7", cgmCoveragePath: "Insulin" });
+    } else if (crossSell !== "Couldn't Cross-Sell") {
+      p.onUpdate({ cgmCrossSell: "Couldn't Cross-Sell", cgmType: "Not Serving", cgmCoveragePath: "Not Serving" });
     }
-    return req;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [primaryIns, pt.requestType]);
+  // Auto-derive Serving from cross-sell + request type (original behavior).
+  useEffect(() => {
+    if (!crossSell || !pt.requestType) return;
+    const derived = deriveServing(crossSell, pt.requestType);
+    if (derived && derived !== pt.serving) p.onUpdate({ serving: derived });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [crossSell, pt.requestType]);
+  const xsellHint = (() => {
+    const reason = crossSellReason(primaryIns);
+    if (crossSell === "Cross-Sell" && reason === "eligible") return "Primary insurance is a non-Medicaid plan, so this patient is eligible for CGM cross-sell";
+    if (crossSell === "Couldn't Cross-Sell") {
+      if (reason === "medicaid") return "Primary insurance is a Medicaid plan";
+      if (reason === "united") return "Primary insurance is United, so we choose not to cross-sell United patients";
+      if (reason === "cigna") return "Primary insurance is Cigna, so we choose not to cross-sell Cigna patients";
+    }
+    return null;
   })();
 
   return (
     <div className="pf-root">
-      <div className="page" style={{ maxWidth: "104rem", paddingTop: 24 }}>
+      <div className="page" style={{ maxWidth: "none", paddingTop: 24 }}>
         <div className="layout">
           <div className="layout-head">
             <div className="dh lh-recv">What We Received</div>
@@ -564,7 +586,7 @@ function ProfileBody(p: BodyProps) {
                       {GENDER_OPTS.map((g) => <option key={g}>{g}</option>)}
                     </select>
                   </Field>
-                  <Field label="Address">
+                  <Field label="Address" warn={addressWarning(pt.patientAddress)}>
                     <AddressAutocomplete value={pt.patientAddress} className="pf-input"
                       onChange={(r) => p.onUpdate({ patientAddress: r.address, patientAddressLat: r.lat || null, patientAddressLng: r.lng || null })}
                       placeholder="Start typing address…" />
@@ -594,8 +616,6 @@ function ProfileBody(p: BodyProps) {
                   <button className="btn primary" onClick={p.onRunStedi} disabled={p.stediRunning}>
                     {p.stediRunning ? "Running…" : "Run Stedi Check"}
                   </button>
-                  {!p.stediRunning && pt.stediErrorDescription && !pt.stediPlanName && <span className="method-pill fax" style={{ background: "var(--mm-rose-soft)", color: "var(--mm-rose)" }}>Failed</span>}
-                  {!p.stediRunning && pt.stediEligibilityActive && <span className={`method-pill ${p.stediActive ? "chute" : "fax"}`}>{p.stediActive ? "Active" : pt.stediEligibilityActive}</span>}
                 </div>
 
                 {p.stediRunning && !stediComplete && (
@@ -608,8 +628,16 @@ function ProfileBody(p: BodyProps) {
                   </div>
                 )}
 
+                {/* Failure — show ONLY the failure banner, none of the outputs */}
+                {!p.stediRunning && stediFailed && (
+                  <div className="err-banner" style={{ marginTop: 16 }}>
+                    <div className="et">Possible Stedi error — please try again</div>
+                    <div className="ed">{pt.stediErrorDescription}</div>
+                  </div>
+                )}
+
                 {/* Eligibility results — live from Monday's Stedi columns */}
-                {!p.stediRunning && (pt.stediPlanName || pt.stediEligibilityActive || pt.stediErrorDescription) && (
+                {!p.stediRunning && !stediFailed && (pt.stediPlanName || pt.stediEligibilityActive) && (
                   <>
                     <div className="res-grid" style={{ gridTemplateColumns: "repeat(3,1fr)", marginTop: 16 }}>
                       <ResCell label="Active?" value={pt.stediEligibilityActive} bad={!!pt.stediEligibilityActive && !p.stediActive} />
@@ -620,23 +648,17 @@ function ProfileBody(p: BodyProps) {
                       <ResCell label="Coverage Type" value={pt.stediCoverageType} />
                       <ResCell label="Plan Name" value={pt.stediPlanName} />
                       <ResCell label="Home Plan" value={pt.stediHomePlan} />
-                      <ResCell label="Medicaid ID" value={pt.stediMedicaidId} />
+                      <ResCell label="Medicaid ID" value={isNyMedicaidId(pt.stediMedicaidId) ? pt.stediMedicaidId : ""} />
                       {pt.stediQmb && <ResCell label="QMB?" value={pt.stediQmb} />}
                     </div>
                   </>
                 )}
-                {!p.stediRunning && pt.stediErrorDescription && !pt.stediPlanName && (
-                  <div className="err-banner" style={{ marginTop: 16 }}>
-                    <div className="et">Eligibility check failed</div>
-                    <div className="ed">{pt.stediErrorDescription}</div>
-                  </div>
-                )}
 
                 {/* Cost Sharing — read-only, live from Monday */}
-                {!p.stediRunning && (pt.stediPlanName || pt.stediEligibilityActive) && <CostShare pt={pt} />}
+                {!p.stediRunning && !stediFailed && (pt.stediPlanName || pt.stediEligibilityActive) && <CostShare pt={pt} />}
 
                 {/* Enter correct insurance information */}
-                {!p.stediRunning && (pt.stediPlanName || pt.stediEligibilityActive) && (
+                {!p.stediRunning && !stediFailed && (pt.stediPlanName || pt.stediEligibilityActive) && (
                   <div id="post-stedi" style={{ marginTop: 22, border: "1.5px solid var(--amber-ring)", borderRadius: 12, background: "oklch(0.96 0.04 90 / 0.35)", padding: "18px 20px" }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
                       <span style={{ display: "grid", placeItems: "center", height: 26, width: 26, borderRadius: "50%", fontSize: ".8rem", fontWeight: 800, background: "var(--amber)", color: "#fff" }}>!</span>
@@ -650,14 +672,11 @@ function ProfileBody(p: BodyProps) {
                             <optgroup key={group} label={group}>{labels.map((l) => <option key={l}>{l}</option>)}</optgroup>
                           ))}
                         </select>
-                        <SuggestionInline
-                          sg={p.suggestion}
-                          showUse={!!p.suggestion?.value && primaryApplicable && pt.primaryInsurance !== p.suggestion.value}
-                          onUse={() => p.onUpdate({ primaryInsurance: p.suggestion!.value!, memberId1: (pt.workingMemberId || pt.memberId1).trim() })}
-                        />
+                        <SuggestionInline sg={p.suggestion} />
                       </Field>
                       <Field label="Member ID 1" required>
-                        <input type="text" value={pt.memberId1} onChange={(e) => p.onUpdate({ memberId1: e.target.value })} placeholder="Member ID…" />
+                        <input type="text" value={mid1Input}
+                          onChange={(e) => { setMid1Input(e.target.value); p.onUpdate({ memberId1: e.target.value }); }} placeholder="Member ID…" />
                       </Field>
                       <Field label="Secondary Insurance" required>
                         <select className={pt.secondaryInsurance ? "filled" : "need"} value={pt.secondaryInsurance} onChange={(e) => p.onUpdate({ secondaryInsurance: e.target.value })}>
@@ -668,9 +687,6 @@ function ProfileBody(p: BodyProps) {
                           <div className="sugg-line" style={{ marginTop: 8 }}>
                             <span className="sugg-lead2">Suggestion:</span>
                             <span className="sugg-chip2">{p.secondarySuggestion}</span>
-                            {pt.secondaryInsurance !== p.secondarySuggestion && (
-                              <button className="btn secondary sm" onClick={() => p.onUpdate({ secondaryInsurance: p.secondarySuggestion })}>Use</button>
-                            )}
                           </div>
                         )}
                       </Field>
@@ -690,6 +706,7 @@ function ProfileBody(p: BodyProps) {
                 <div className="kv">
                   <div className="f"><div className="k">Request Type</div><div className="v">{pt.requestType || "—"}</div></div>
                   <div className="f"><div className="k">CGM Type (provided)</div><div className="v">{pt.cgmType || "—"}</div></div>
+                  <div className="f"><div className="k">Pump Type (provided)</div><div className="v">{pt.pumpType || "—"}</div></div>
                   <div className="f full"><div className="k">Referral Source</div><div className="v">{pt.referralSource || "—"}</div></div>
                 </div>
               </section>
@@ -698,18 +715,30 @@ function ProfileBody(p: BodyProps) {
                   <header className="step-head"><span className="step-num">3</span><h2>Serving &amp; Coverage</h2></header>
                   <div className="fgrid">
                     <div className="full">
-                      {servingSuggestion && servingSuggestion !== serv && (
-                        <div className="sugg-line" style={{ marginBottom: 8 }}>
-                          <span className="sugg-lead2">Suggestion:</span>
-                          <span className="sugg-chip2">{servingSuggestion}</span>
-                          <button className="btn secondary sm" onClick={() => p.onUpdate({ serving: servingSuggestion })}>Use</button>
-                        </div>
-                      )}
                       <Field label="Serving" required>
                         <select className={serv ? "filled" : "need"} value={serv} onChange={(e) => p.onUpdate({ serving: e.target.value })}>
                           <option value="" disabled hidden>Select what we're serving…</option>
                           {SERVING_OPTS.map((l) => <option key={l}>{l}</option>)}
                         </select>
+                      </Field>
+                    </div>
+                    <div className="full">
+                      <Field label="CGM Cross-Sell Status" required>
+                        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                          <select style={{ flex: 1 }} className={crossSell ? "filled" : "need"} value={crossSell} onChange={(e) => p.onUpdate({ cgmCrossSell: e.target.value })}>
+                            <option value="" disabled hidden>Select…</option>
+                            {Object.keys(CGM_CROSS_SELL_INDEX).map((l) => <option key={l}>{l}</option>)}
+                          </select>
+                          {crossSell && (
+                            <span className={`method-pill ${crossSell === "Cross-Sell" ? "chute" : crossSell === "Couldn't Cross-Sell" ? "fax" : "mail"}`} style={{ marginTop: 0, flexShrink: 0 }}>
+                              {crossSell}
+                            </span>
+                          )}
+                        </div>
+                        {xsellHint && <div className="sugg-note" style={{ marginTop: 6 }}>{xsellHint}</div>}
+                        {crossSell === "Evaluate" && !primaryIns && (
+                          <div className="sugg-note" style={{ marginTop: 6 }}>Set Primary Insurance in Benefits Check to auto-evaluate cross-sell eligibility</div>
+                        )}
                       </Field>
                     </div>
                     {cgm && <Field label="CGM Type" required><select value={pt.cgmType} onChange={(e) => p.onUpdate({ cgmType: e.target.value })}><option value="" disabled hidden>Select…</option>{CGM_TYPE_OPTS.map((l) => <option key={l}>{l}</option>)}</select></Field>}
@@ -744,7 +773,6 @@ function ProfileBody(p: BodyProps) {
                 <div className="recv-title"><h3>Provided Doctor Info</h3></div>
                 <div className="kv">
                   <div className="f"><div className="k">Doctor Name</div><div className="v">{pt.doctorName || "—"}</div></div>
-                  <div className="f"><div className="k">NPI</div><div className="v">{pt.doctorNpi || "—"}</div></div>
                   <div className="f"><div className="k">Clinic Phone</div><div className="v">{pt.doctorPhone || "—"}</div></div>
                   <div className="f full"><div className="k">Clinic Address</div><div className="v">{pt.clinicAddress || "—"}</div></div>
                 </div>
@@ -850,14 +878,14 @@ function ResCell({ label, value, bad }: { label: string; value: string; bad?: bo
 /** Prototype's fmtPct/fmtUsd — display-only formatting of Stedi cost values. */
 function fmtPct(x: string): string {
   if (x == null || x === "") return "—";
-  const n = Number(String(x).replace(/[^0-9.\-]/g, ""));
+  const n = Number(String(x).replace(/[^0-9.-]/g, ""));
   if (isNaN(n)) return String(x);
   const p = n <= 1 ? n * 100 : n;
   return `${Math.round(p * 10) / 10}%`;
 }
 function fmtUsd(x: string): string {
   if (x == null || x === "") return "—";
-  const n = Number(String(x).replace(/[^0-9.\-]/g, ""));
+  const n = Number(String(x).replace(/[^0-9.-]/g, ""));
   if (isNaN(n)) return String(x);
   return "$" + n.toLocaleString("en-US", { maximumFractionDigits: 2 });
 }
@@ -888,11 +916,9 @@ function CostShare({ pt }: { pt: Patient }) {
 }
 
 /** Primary-insurance suggestion shown BELOW the Primary select (mirrors the
- *  prototype's #pins-suggest / suggestionCardHTML). "Use" applies the suggested
- *  primary AND copies the ran Member ID into Member ID 1. */
-function SuggestionInline({ sg, showUse, onUse }: {
-  sg: ReturnType<typeof suggestPrimary>; showUse: boolean; onUse: () => void;
-}) {
+ *  prototype's #pins-suggest / suggestionCardHTML). Advisory only — the rep
+ *  selects the insurance manually. */
+function SuggestionInline({ sg }: { sg: ReturnType<typeof suggestPrimary> }) {
   if (!sg) return null;
   const codes = (sg.warnings || []).map((w) => w.code);
   if (codes.includes("INACTIVE")) {
@@ -919,7 +945,6 @@ function SuggestionInline({ sg, showUse, onUse }: {
           <span className="sugg-lead2">Suggestion:</span>
           <span className="sugg-chip2">{sg.value}</span>
           {sg.pos === "11" && <span className="sugg-chip2 office">{sg.posReason || "POS 11"}</span>}
-          {showUse && <button className="btn secondary sm" onClick={onUse}>Use</button>}
         </div>
       ) : sg.reason ? (
         <div className="sugg-line" style={{ marginTop: 8 }}>
