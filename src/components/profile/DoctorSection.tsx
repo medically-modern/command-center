@@ -8,7 +8,29 @@ import {
   searchDoctors, saveDoctorNotes, saveDoctorFollowers, saveDoctorLocation,
   createDoctorItem, type DoctorRecord, type OrderFollower,
 } from "@/lib/shared/doctorDb";
+import { etNow } from "@/lib/masheke/etDate";
+import { userInitials } from "@/lib/shared/auth";
 import { toast } from "sonner";
+
+const STAGE = "Profile Send-Off";
+
+/** Render a Doctor-Notes log: split into entries, bold the "[date time] Stage:"
+ *  prefix of each (matching how Evaluate stamps notes). */
+function NoteLog({ text }: { text: string }) {
+  const entries = text.split(/\n\n+/).map((e) => e.trim()).filter(Boolean);
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+      {entries.map((e, i) => {
+        const m = e.match(/^(\[[^\]]*\]\s*[^:]*:)\s*([\s\S]*)$/);
+        return (
+          <div key={i} className="note-entry" style={{ whiteSpace: "pre-wrap", lineHeight: 1.45 }}>
+            {m ? <><b style={{ color: "var(--mm-teal)" }}>{m[1]}</b> {m[2]}</> : e}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
 
 /**
  * "Select Correct Provider" — mirrors the redesign prototype's step 4, wired to
@@ -67,6 +89,8 @@ export function DoctorSection({ patient: pt, onUpdate, clinicLabels, onClinicSel
 
   // ── Notes + followers (per selected profile) ──
   const [notes, setNotes] = useState("");
+  const [noteDraft, setNoteDraft] = useState("");
+  const [addingNote, setAddingNote] = useState(false);
   const [followers, setFollowers] = useState<OrderFollower[]>([]);
   const [editingInfo, setEditingInfo] = useState(false);
   const [savingInfo, setSavingInfo] = useState(false);
@@ -232,13 +256,32 @@ export function DoctorSection({ patient: pt, onUpdate, clinicLabels, onClinicSel
   const setFollower = (i: number, patch: Partial<OrderFollower>) => {
     setFollowers((prev) => { const n = [...prev]; n[i] = { name: "", email: "", ...n[i], ...patch }; return n; });
   };
+  // Append a timestamped, stage-stamped, initial-signed note (same format the
+  // Evaluate role uses) to the selected profile's Doctor Notes and save it.
+  const addNote = async () => {
+    if (!selectedItemId || !noteDraft.trim()) return;
+    const ts = etNow().toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" });
+    const inits = userInitials();
+    const entry = `[${ts}] ${STAGE}: ${noteDraft.trim()}${inits ? ` —${inits}` : ""}`;
+    const appended = notes ? `${notes}\n\n${entry}` : entry;
+    setAddingNote(true);
+    try {
+      await saveDoctorNotes(selectedItemId, appended);
+      setNotes(appended);
+      setNoteDraft("");
+      toast.success("Note added to Doctor DB");
+    } catch (e) {
+      toast.error("Failed to add note", { description: e instanceof Error ? e.message : String(e) });
+    } finally { setAddingNote(false); }
+  };
+
+  // Followers-only save (notes are append-only via addNote).
   const saveInfo = async () => {
     if (!selectedItemId) { toast.error("Pick a location first"); return; }
     setSavingInfo(true);
     try {
-      await saveDoctorNotes(selectedItemId, notes);
       await saveDoctorFollowers(selectedItemId, followers.filter((f) => f.name || f.email));
-      toast.success("Doctor notes & order followers saved");
+      toast.success("Order followers saved");
       setEditingInfo(false);
     } catch (e) {
       toast.error("Failed to save to Doctor DB", { description: e instanceof Error ? e.message : String(e) });
@@ -500,14 +543,21 @@ export function DoctorSection({ patient: pt, onUpdate, clinicLabels, onClinicSel
             {!selectedItemId && (
               <div className="sugg-note" style={{ marginBottom: 12, fontStyle: "italic" }}>Select a location above to view &amp; edit its notes and order followers.</div>
             )}
-            {!editingInfo ? (
-              <>
-                <div style={{ marginBottom: 14 }}>
-                  <div style={{ ...lab, marginBottom: 5 }}>Doctor Notes</div>
-                  <div style={{ fontSize: ".88rem", lineHeight: 1.45, whiteSpace: "pre-wrap" }}>{notes || <span className="sugg-note">None on file.</span>}</div>
-                </div>
-                <div>
-                  <div style={{ ...lab, marginBottom: 5 }}>Order Followers</div>
+            {/* Doctor Notes — append-only log (date · stage bold, signed w/ initials) */}
+            <div style={{ marginBottom: 16 }}>
+              <div style={{ ...lab, marginBottom: 5 }}>Doctor Notes</div>
+              {notes ? <NoteLog text={notes} /> : <span className="sugg-note">None on file.</span>}
+              <div className="note-add">
+                <textarea value={noteDraft} onChange={(e) => setNoteDraft(e.target.value)} placeholder={selectedItemId ? "Add a note…" : "Select a location to add a note"} disabled={!selectedItemId} />
+                <button className="btn primary sm" onClick={addNote} disabled={!selectedItemId || !noteDraft.trim() || addingNote}>{addingNote ? "Adding…" : "+ Add"}</button>
+              </div>
+            </div>
+
+            {/* Order Followers — editable name/email pairs */}
+            <div>
+              <div style={{ ...lab, marginBottom: 5 }}>Order Followers</div>
+              {!editingInfo ? (
+                <>
                   {followers.filter((f) => f.name || f.email).length === 0 ? <span className="sugg-note">None on file.</span> : (
                     <ul style={{ margin: 0, paddingLeft: 18 }}>
                       {followers.filter((f) => f.name || f.email).map((f, i) => (
@@ -515,22 +565,21 @@ export function DoctorSection({ patient: pt, onUpdate, clinicLabels, onClinicSel
                       ))}
                     </ul>
                   )}
+                  <button className="btn secondary sm" style={{ marginTop: 10 }} onClick={() => setEditingInfo(true)} disabled={!selectedItemId} title={!selectedItemId ? "Pick a location first" : undefined}>Edit Followers</button>
+                </>
+              ) : (
+                <div className="fgrid">
+                  <div><div className="flabel">Order follower 1 (name)</div><input type="text" value={followers[0]?.name ?? ""} onChange={(e) => setFollower(0, { name: e.target.value })} /></div>
+                  <div><div className="flabel">Follower 1 email</div><input type="text" value={followers[0]?.email ?? ""} onChange={(e) => setFollower(0, { email: e.target.value })} /></div>
+                  <div><div className="flabel">Order follower 2 (name)</div><input type="text" value={followers[1]?.name ?? ""} onChange={(e) => setFollower(1, { name: e.target.value })} /></div>
+                  <div><div className="flabel">Follower 2 email</div><input type="text" value={followers[1]?.email ?? ""} onChange={(e) => setFollower(1, { email: e.target.value })} /></div>
+                  <div className="full" style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+                    <button className="btn secondary sm" onClick={() => setEditingInfo(false)}>Cancel</button>
+                    <button className="btn primary sm" onClick={saveInfo} disabled={savingInfo}>{savingInfo ? "Saving…" : "Save to Doctor DB"}</button>
+                  </div>
                 </div>
-                <button className="btn secondary sm" style={{ marginTop: 14 }} onClick={() => setEditingInfo(true)} disabled={!selectedItemId} title={!selectedItemId ? "Pick a location first" : undefined}>Edit Notes and Followers</button>
-              </>
-            ) : (
-              <div className="fgrid">
-                <div className="full"><div className="flabel">Doctor Notes</div><textarea rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} /></div>
-                <div><div className="flabel">Order follower 1 (name)</div><input type="text" value={followers[0]?.name ?? ""} onChange={(e) => setFollower(0, { name: e.target.value })} /></div>
-                <div><div className="flabel">Follower 1 email</div><input type="text" value={followers[0]?.email ?? ""} onChange={(e) => setFollower(0, { email: e.target.value })} /></div>
-                <div><div className="flabel">Order follower 2 (name)</div><input type="text" value={followers[1]?.name ?? ""} onChange={(e) => setFollower(1, { name: e.target.value })} /></div>
-                <div><div className="flabel">Follower 2 email</div><input type="text" value={followers[1]?.email ?? ""} onChange={(e) => setFollower(1, { email: e.target.value })} /></div>
-                <div className="full" style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
-                  <button className="btn secondary sm" onClick={() => setEditingInfo(false)}>Cancel</button>
-                  <button className="btn primary sm" onClick={saveInfo} disabled={savingInfo}>{savingInfo ? "Saving…" : "Save to Doctor DB"}</button>
-                </div>
-              </div>
-            )}
+              )}
+            </div>
           </div>
         </div>
       )}

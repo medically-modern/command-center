@@ -564,7 +564,7 @@ function ProfileBody(p: BodyProps) {
                     </select>
                   </Field>
                   <Field label="Member ID" required>
-                    <input type="text" value={pt.workingMemberId}
+                    <input type="text" value={pt.workingMemberId || pt.memberId1}
                       onChange={(e) => p.onUpdate({ workingMemberId: e.target.value })} placeholder="Member ID…" />
                   </Field>
                 </div>
