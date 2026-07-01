@@ -143,6 +143,9 @@ function buildDataTasks(p: Patient, clinicLabelId: number | null): WriteTask[] {
   if (p.oopFirst?.trim()) tasks.push({ label: "OOP First-Order", columnId: COL.oopFirst, fn: () => writeText(p.id, COL.oopFirst, p.oopFirst) });
   if (p.oopRecurring?.trim()) tasks.push({ label: "OOP Recurring", columnId: COL.oopRecurring, fn: () => writeText(p.id, COL.oopRecurring, p.oopRecurring) });
 
+  // ── Notes (running log) — persisted on send-off so edits aren't overlay-only ──
+  if (p.notes?.trim()) tasks.push({ label: "Notes", columnId: COL.notes, fn: () => writeText(p.id, COL.notes, p.notes) });
+
   // ── Doctor ──
   statusWriteTask(tasks, p.id, "Doctor Status", COL.doctorStatus, p.doctorStatus, DOCTOR_STATUS_INDEX);
   if (p.doctorName) tasks.push({ label: "Doctor Name", columnId: COL.doctorName, fn: () => writeText(p.id, COL.doctorName, p.doctorName) });
