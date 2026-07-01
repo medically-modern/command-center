@@ -9,9 +9,11 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { DOCTOR_STATUS_INDEX, CLINICALS_METHOD_INDEX } from "@/lib/profile/mondayMapping";
 import { DoctorNotesPanel } from "@/components/shared/DoctorNotesPanel";
+import { DoctorFollowers } from "@/components/profile/DoctorFollowers";
+import { createDoctorItem } from "@/lib/shared/doctorDb";
 import { toast } from "sonner";
 import { ParachuteLookupPanel } from "@/components/profile/ParachuteLookupPanel";
-import { AlertTriangle, Plus, Search } from "lucide-react";
+import { AlertTriangle, Plus, Search, Loader2, DatabaseZap } from "lucide-react";
 
 interface Props {
   patient: Patient;
@@ -26,7 +28,34 @@ export function DoctorPanel({ patient, onUpdate, clinicLabels, onClinicSelect, o
   const [showClinicDropdown, setShowClinicDropdown] = useState(false);
   const [newClinicName, setNewClinicName] = useState("");
   const [showAddClinic, setShowAddClinic] = useState(false);
+  const [addingDoc, setAddingDoc] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
+
+  const handleAddToDatabase = async () => {
+    if (!patient.doctorName?.trim() || !patient.doctorNpi?.trim()) {
+      toast.error("Doctor Name and NPI are required to add to the database");
+      return;
+    }
+    setAddingDoc(true);
+    try {
+      await createDoctorItem({
+        name: patient.doctorName.trim(),
+        npi: patient.doctorNpi.trim(),
+        address: patient.clinicAddress,
+        phone: patient.doctorPhone,
+        fax: patient.doctorFax,
+        email: patient.doctorEmail,
+        method: patient.clinicalsMethod,
+      });
+      toast.success(`${patient.doctorName} added to the Doctor Database`);
+    } catch (e) {
+      toast.error("Failed to add provider to the database", {
+        description: e instanceof Error ? e.message : String(e),
+      });
+    } finally {
+      setAddingDoc(false);
+    }
+  };
 
   const zipValid = hasValidZip(patient.clinicAddress);
 
@@ -273,8 +302,25 @@ export function DoctorPanel({ patient, onUpdate, clinicLabels, onClinicSelect, o
           </div>
         </div>
 
-        {/* Doctor-level notes from the Doctor Database */}
+        {/* Add the entered provider to the Doctor Database (Corey 7) */}
+        <div className="flex justify-end">
+          <Button
+            variant="outline"
+            size="sm"
+            className="gap-1.5 border-emerald-300 text-emerald-700 hover:bg-emerald-50"
+            onClick={handleAddToDatabase}
+            disabled={addingDoc}
+          >
+            {addingDoc ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <DatabaseZap className="h-3.5 w-3.5" />}
+            Add Doctor to Database
+          </Button>
+        </div>
+
+        {/* Doctor-level notes from the Doctor Database (records contact — Option A) */}
         <DoctorNotesPanel doctorNpi={patient.doctorNpi} doctorName={patient.doctorName} />
+
+        {/* Order followers — clickable mailto links (Corey 9) */}
+        <DoctorFollowers doctorNpi={patient.doctorNpi} />
 
         {/* Parachute Health doctor lookup — signed-order counts & contact verdict */}
         <ParachuteLookupPanel
