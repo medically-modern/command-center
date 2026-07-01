@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties } from "react";
 import type { Patient } from "@/lib/profile/workflow";
+import { formatPhone } from "@/lib/profile/workflow";
 import { AddressAutocomplete } from "@/components/profile/AddressAutocomplete";
 import { phoneToState } from "@/lib/profile/areaCodeState";
 import {
@@ -451,7 +452,7 @@ export function DoctorSection({ patient: pt, onUpdate, clinicLabels, onClinicSel
                   {matchesReferral(r) && <span className="badge-ref">matches referral</span>}
                   <div className="lc">{r.clinic || "Clinic —"}</div>
                   <div className="la">{r.address || "No address on file"}</div>
-                  <div className="li">{r.phone || "No phone"}{r.fax ? ` · ${r.method === "Email" ? "Email" : "Fax"} ${r.fax}` : ""}</div>
+                  <div className="li">{r.phone ? formatPhone(r.phone) : "No phone"}{r.fax ? ` · ${r.method === "Email" ? "Email" : "Fax"} ${r.fax}` : ""}</div>
                   <div><span className={`method-pill ${r.method === "Parachute" ? "chute" : r.method === "Email" ? "mail" : "fax"}`}>Method: {r.method || "—"}</span></div>
                 </div>
               ))}

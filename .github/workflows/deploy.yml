@@ -10,9 +10,13 @@ permissions:
   pages: write
   id-token: write
 
+# Pages deployments must not cancel each other mid-publish: cancelling a
+# deploy-pages job in flight orphans a Pages deployment that keeps holding the
+# environment lock, wedging every later deploy. Queue them instead (GitHub's
+# own recommended setting for Pages).
 concurrency:
   group: pages
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   build:
