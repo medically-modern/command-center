@@ -500,7 +500,6 @@ function ProfileBody(p: BodyProps) {
   const patientReferral = (pt.referralSource || "").trim().toLowerCase() === "patient";
   const [giInput, setGiInput] = useState(patientReferral ? pt.generalInsurance : "");
   const [midInput, setMidInput] = useState(patientReferral ? (pt.workingMemberId || pt.memberId1) : "");
-  const [showMid1, setShowMid1] = useState(false);
   const primaryApplicable = !!p.suggestion?.value && PRIMARY_LABELS.has(p.suggestion.value);
   const servingSuggestion = (() => {
     const req = pt.requestType || "";
@@ -586,24 +585,10 @@ function ProfileBody(p: BodyProps) {
                       {GENERAL_INS_OPTS.map((l) => <option key={l}>{l}</option>)}
                     </select>
                   </Field>
-                  <div>
-                    <div className="flabel" style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                      <span>Member ID <span className="req-star">*</span></span>
-                      {pt.memberId1?.trim() && (
-                        <button type="button" onClick={() => setShowMid1((s) => !s)}
-                          style={{ marginLeft: "auto", fontSize: ".7rem", fontWeight: 500, color: "var(--muted-foreground)", background: "none", border: "none", cursor: "pointer", padding: 0 }}>
-                          {showMid1 ? "hide Member ID 1" : "show Member ID 1"}
-                        </button>
-                      )}
-                    </div>
+                  <Field label="Member ID" required>
                     <input type="text" value={midInput}
                       onChange={(e) => { setMidInput(e.target.value); p.onUpdate({ workingMemberId: e.target.value }); }} placeholder="Member ID…" />
-                    {showMid1 && pt.memberId1?.trim() && (
-                      <div style={{ fontSize: ".78rem", color: "var(--muted-foreground)", marginTop: 5 }}>
-                        Member ID 1: <span style={{ userSelect: "all", fontWeight: 600, color: "var(--foreground)" }}>{pt.memberId1}</span>
-                      </div>
-                    )}
-                  </div>
+                  </Field>
                 </div>
                 <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 16 }}>
                   <button className="btn primary" onClick={p.onRunStedi} disabled={p.stediRunning}>
