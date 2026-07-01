@@ -202,11 +202,29 @@ export function DoctorSection({ patient: pt, onUpdate, clinicLabels, onClinicSel
   };
 
   const phoneState = phoneToState(pt.doctorPhone);
-  const paraSorted = useMemo(() => [...paraResults].sort((a, b) => {
-    const am = phoneState && a.state?.toUpperCase() === phoneState.state ? 1 : 0;
-    const bm = phoneState && b.state?.toUpperCase() === phoneState.state ? 1 : 0;
-    return bm - am || b.signature_count - a.signature_count;
-  }), [paraResults, phoneState]);
+  // Area code from the doctor's phone → state; matching-state candidates are
+  // grouped at the top (with the "matches phone area code" header), the rest
+  // under "Other states" — same organization as the original panel.
+  const paraStateMatches = phoneState ? paraResults.filter((d) => d.state?.toUpperCase() === phoneState.state) : [];
+  const paraOthers = phoneState ? paraResults.filter((d) => d.state?.toUpperCase() !== phoneState.state) : paraResults;
+  const renderParaRow = (d: ParaDoctor) => {
+    const chute = d.signature_count > THRESHOLD;
+    const sel = paraSel === d.npi;
+    return (
+      <div key={d.doctor_id} className="para-row" style={sel ? { background: "oklch(0.973 0.011 175)" } : undefined} onClick={() => setParaSel(sel ? null : d.npi)}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontWeight: 700, fontSize: ".92rem" }}>{d.first_name} {d.last_name} <span style={{ fontWeight: 500, color: "var(--muted-foreground)" }}>– {d.npi}</span></div>
+          <div style={{ fontSize: ".8rem", color: "var(--muted-foreground)" }}>{d.credential ? d.credential + ", " : ""}{d.signature_count} signed order{d.signature_count === 1 ? "" : "s"}</div>
+        </div>
+        <div style={{ textAlign: "right", flexShrink: 0, marginLeft: 12 }}>
+          <div style={{ fontSize: ".8rem", color: "var(--muted-foreground)", marginBottom: 4 }}>{d.city}, {d.state}</div>
+          <span className={`method-pill ${chute ? "chute" : "fax"}`} style={{ marginTop: 0 }}>{chute ? "Parachute" : "Fax"}</span>
+        </div>
+      </div>
+    );
+  };
+  const geoHead: CSSProperties = { padding: "6px 12px", fontSize: ".72rem", fontWeight: 800, color: "var(--mm-teal)", background: "oklch(0.973 0.011 175)", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", gap: 6 };
+  const geoMuted: CSSProperties = { padding: "6px 12px", fontSize: ".72rem", fontWeight: 700, color: "var(--muted-foreground)", background: "var(--muted)", borderBottom: "1px solid var(--border)" };
 
   // ── Notes / followers save ──
   const setFollower = (i: number, patch: Partial<OrderFollower>) => {
@@ -346,23 +364,21 @@ export function DoctorSection({ patient: pt, onUpdate, clinicLabels, onClinicSel
           </div>
           <div className="para-list">
             {paraLoading ? <div className="res-note">Searching…</div> :
-              paraSorted.length === 0 ? <div className="res-note">No Parachute results.</div> :
-                paraSorted.map((d) => {
-                  const chute = d.signature_count > THRESHOLD;
-                  const sel = paraSel === d.npi;
-                  return (
-                    <div key={d.doctor_id} className="para-row" style={sel ? { background: "oklch(0.973 0.011 175)" } : undefined} onClick={() => setParaSel(sel ? null : d.npi)}>
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontWeight: 700, fontSize: ".92rem" }}>{d.first_name} {d.last_name} <span style={{ fontWeight: 500, color: "var(--muted-foreground)" }}>– {d.npi}</span></div>
-                        <div style={{ fontSize: ".8rem", color: "var(--muted-foreground)" }}>{d.credential ? d.credential + ", " : ""}{d.signature_count} signed order{d.signature_count === 1 ? "" : "s"}</div>
-                      </div>
-                      <div style={{ textAlign: "right", flexShrink: 0, marginLeft: 12 }}>
-                        <div style={{ fontSize: ".8rem", color: "var(--muted-foreground)", marginBottom: 4 }}>{d.city}, {d.state}</div>
-                        <span className={`method-pill ${chute ? "chute" : "fax"}`} style={{ marginTop: 0 }}>{chute ? "Parachute" : "Fax"}</span>
-                      </div>
-                    </div>
-                  );
-                })}
+              paraResults.length === 0 ? <div className="res-note">No Parachute results.</div> : (
+                <>
+                  {phoneState && paraStateMatches.length > 0 && (
+                    <div style={geoHead}>📍 {phoneState.state} — matches phone area code ({phoneState.areaCode})</div>
+                  )}
+                  {phoneState && paraStateMatches.length === 0 && (
+                    <div style={geoMuted}>No {phoneState.state} doctors (phone area code {phoneState.areaCode})</div>
+                  )}
+                  {paraStateMatches.map(renderParaRow)}
+                  {phoneState && paraStateMatches.length > 0 && paraOthers.length > 0 && (
+                    <div style={geoMuted}>Other states</div>
+                  )}
+                  {paraOthers.map(renderParaRow)}
+                </>
+              )}
           </div>
           <div className="para-foot" style={{ justifyContent: "flex-end" }}>
             <button className="btn primary sm" onClick={() => {
@@ -471,8 +487,13 @@ export function DoctorSection({ patient: pt, onUpdate, clinicLabels, onClinicSel
             )}
           </div>
 
-          {/* Doctor Notes + Order Followers (per selected profile) */}
-          <div style={{ margin: "16px 0", padding: "0 16px 16px" }}>
+          {/* Doctor Notes + Order Followers (per selected profile) — greyed
+              out until a location card is picked, since they read/write that
+              specific profile's Monday columns. */}
+          <div style={{ margin: "16px 0", padding: "0 16px 16px", opacity: selectedItemId ? 1 : 0.5, pointerEvents: selectedItemId ? "auto" : "none" }}>
+            {!selectedItemId && (
+              <div className="sugg-note" style={{ marginBottom: 12, fontStyle: "italic" }}>Select a location above to view &amp; edit its notes and order followers.</div>
+            )}
             {!editingInfo ? (
               <>
                 <div style={{ marginBottom: 14 }}>
