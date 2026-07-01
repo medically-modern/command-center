@@ -539,10 +539,13 @@ export function DoctorSection({ patient: pt, onUpdate, clinicLabels, onClinicSel
           {/* Doctor Notes + Order Followers (per selected profile) — greyed
               out until a location card is picked, since they read/write that
               specific profile's Monday columns. */}
-          <div style={{ margin: "16px 0", padding: "0 16px 16px", opacity: selectedItemId ? 1 : 0.5, pointerEvents: selectedItemId ? "auto" : "none" }}>
+          <div style={{ margin: "16px 0", padding: "0 16px 16px" }}>
             {!selectedItemId && (
-              <div className="sugg-note" style={{ marginBottom: 12, fontStyle: "italic" }}>Select a location above to view &amp; edit its notes and order followers.</div>
+              <div style={{ color: "var(--amber)", fontWeight: 700, fontSize: ".84rem", marginBottom: 12, display: "flex", alignItems: "center", gap: 7 }}>
+                <span style={{ fontSize: ".95rem" }}>⚠</span> Select a location above to view &amp; edit its notes and order followers.
+              </div>
             )}
+            <div style={{ opacity: selectedItemId ? 1 : 0.5, pointerEvents: selectedItemId ? "auto" : "none" }}>
             {/* Doctor Notes — append-only log (date · stage bold, signed w/ initials) */}
             <div style={{ marginBottom: 16 }}>
               <div style={{ ...lab, marginBottom: 5 }}>Doctor Notes</div>
@@ -579,6 +582,7 @@ export function DoctorSection({ patient: pt, onUpdate, clinicLabels, onClinicSel
                   </div>
                 </div>
               )}
+            </div>
             </div>
           </div>
         </div>
