@@ -63,6 +63,8 @@ export interface OrderFollower {
   email: string;
 }
 
+const normName = (s: string) => (s || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+
 export interface DoctorRecord {
   itemId: string;
   name: string;
@@ -109,15 +111,21 @@ function toRecord(item: DbItem): DoctorRecord {
  * matching item. A single doctor may have multiple items (profiles) — one per
  * clinic location — so the caller groups by NPI and shows each as a location.
  */
-export async function searchDoctors(query: string, limit = 30): Promise<DoctorRecord[]> {
+export async function searchDoctors(query: string, limit = 50): Promise<DoctorRecord[]> {
   const q = query.trim();
   if (!q) return [];
-  const gqlQuery = `query ($q: CompareValue!) {
+  // Token matching: every word must appear in the name (or the NPI), so
+  // "jason sloane" matches "JASON SLOANE" AND "JASON LOUIS SLOANE". Monday's
+  // contains_text is contiguous-substring only, so OR the tokens server-side
+  // for a broad candidate pull, then apply the every-token filter here.
+  const tokens = q.split(/\s+/).filter(Boolean);
+  const rules = [
+    ...tokens.map((t) => `{ column_id: "name", compare_value: ${JSON.stringify(t)}, operator: contains_text }`),
+    `{ column_id: "${COL_NPI}", compare_value: ${JSON.stringify(q)}, operator: contains_text }`,
+  ];
+  const gqlQuery = `query {
     boards(ids: ${DOCTOR_DB_BOARD}) {
-      items_page(limit: ${limit}, query_params: { operator: or, rules: [
-        { column_id: "name", compare_value: $q, operator: contains_text },
-        { column_id: "${COL_NPI}", compare_value: $q, operator: contains_text }
-      ]}) {
+      items_page(limit: ${limit}, query_params: { operator: or, rules: [${rules.join(", ")}] }) {
         items {
           id
           name
@@ -127,9 +135,12 @@ export async function searchDoctors(query: string, limit = 30): Promise<DoctorRe
     }
   }`;
   type Resp = { boards: { items_page: { items: DbItem[] } }[] };
-  const data = await gql<Resp>(gqlQuery, { q });
+  const data = await gql<Resp>(gqlQuery);
   const items = data.boards?.[0]?.items_page?.items ?? [];
-  return items.map(toRecord);
+  const normTokens = tokens.map(normName);
+  return items.map(toRecord).filter((r) =>
+    tokens.every((t, i) => normName(r.name).includes(normTokens[i]) || r.npi.includes(t)),
+  );
 }
 
 /**
