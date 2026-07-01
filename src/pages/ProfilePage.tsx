@@ -4,7 +4,7 @@
 import { useEffect, useMemo, useState, useCallback } from "react";
 import { useMondayPatients } from "@/hooks/profile/useMondayPatients";
 import { fetchClinicLabels, createClinicLabel, moveItemToGroup, GROUPS } from "@/lib/profile/mondayApi";
-import { sendPatientToMonday } from "@/lib/profile/mondayWrite";
+import { sendPatientToMonday, sendBackToPatientIntake } from "@/lib/profile/mondayWrite";
 import { writeText, COL } from "@/lib/profile/mondayApi";
 import type { Patient } from "@/lib/profile/workflow";
 import { hasValidZip } from "@/lib/profile/workflow";
@@ -129,12 +129,16 @@ const ProfilePage = () => {
     }
     setSubmitting(true);
     try {
-      await sendPatientToMonday(selected, action, selectedClinicId);
+      if (action === "advance") {
+        await sendPatientToMonday(selected, selectedClinicId);
+      } else {
+        await sendBackToPatientIntake(selected, selectedClinicId);
+      }
       clearOverlay(selected.id);
       toast.success(
         action === "advance"
           ? `${selected.name} advanced to MN`
-          : `${selected.name} marked as needs more info`,
+          : `${selected.name} sent back to Patient Intake`,
       );
       setTimeout(refetch, 1500);
     } catch (e) {
@@ -320,7 +324,7 @@ const ProfilePage = () => {
                           className="gap-2 border-blue-300 text-blue-700 hover:bg-purple-100 hover:text-blue-700"
                         >
                           {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <AlertTriangle className="h-4 w-4" />}
-                          Need More Info
+                          Send back to Patient Intake
                         </Button>
                         <Button
                           onClick={() => handleSubmit("advance")}

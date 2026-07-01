@@ -9,8 +9,9 @@
 import {
   writeStatusIndex, writeText, writePhone, writeEmail, writeNumber,
   writeLocation, writeItemName, writeDropdownIds, writeDropdownLabels,
-  fetchItem, clearStatusColumn, readColumnTexts, COL,
+  fetchItem, clearStatusColumn, readColumnTexts, moveItemToGroup, GROUPS, COL,
 } from "./mondayApi";
+import { GENERAL_INSURANCE_INDEX } from "./mondayMapping";
 import { executeWritesWithVerification } from "../shared/verifiedWrite";
 import type { Patient } from "./workflow";
 import { phoneDigits } from "./workflow";
@@ -97,21 +98,12 @@ function statusWriteTask(
 }
 
 /**
- * Send all patient data to Monday in one batch.
- *
- * Uses verified writes: all data columns are written and polled for
- * indexing BEFORE the "Move to Onboarding" column fires, so any Monday
- * automation triggered by that status change reads up-to-date values.
- *
- * @param p The local patient state to write
- * @param onboardingAction "advance" or "needsInfo"
- * @param clinicLabelId If a clinic was selected from dropdown, pass its numeric id
+ * Build every data-column write task for a patient (everything EXCEPT the
+ * "Move to Onboarding" stage advancer). Shared by the Advance path (which
+ * appends the advancer and verifies) and the Send-back-to-Patient-Intake path
+ * (which writes best-effort then moves groups).
  */
-export async function sendPatientToMonday(
-  p: Patient,
-  onboardingAction: "advance" | "needsInfo",
-  clinicLabelId: number | null,
-): Promise<void> {
+function buildDataTasks(p: Patient, clinicLabelId: number | null): WriteTask[] {
   const tasks: WriteTask[] = [];
 
   // ── Name ──
@@ -128,6 +120,10 @@ export async function sendPatientToMonday(
   statusWriteTask(tasks, p.id, "General Insurance", COL.generalInsurance, p.generalInsurance, GENERAL_INSURANCE_INDEX);
   statusWriteTask(tasks, p.id, "Primary Insurance", COL.primaryInsurance, p.primaryInsurance, PRIMARY_INSURANCE_INDEX);
   statusWriteTask(tasks, p.id, "Secondary Insurance", COL.secondaryInsurance, p.secondaryInsurance, SECONDARY_INSURANCE_INDEX);
+  // Working Member ID — the column the Stedi service reads (text_mm4t8gbq).
+  if (p.workingMemberId) tasks.push({ label: "Member ID (working)", columnId: COL.memberIdWorking, fn: () => writeText(p.id, COL.memberIdWorking, p.workingMemberId) });
+  // Member ID 1 — the final advancing ID (may override the working value for the
+  // Fidelis-supplies-only → NY Medicaid case).
   if (p.memberId1) tasks.push({ label: "Member ID 1", columnId: COL.memberId1, fn: () => writeText(p.id, COL.memberId1, p.memberId1) });
   if (p.memberId2) tasks.push({ label: "Member ID 2", columnId: COL.memberId2, fn: () => writeText(p.id, COL.memberId2, p.memberId2) });
 
@@ -142,6 +138,10 @@ export async function sendPatientToMonday(
   if (wDeductRem) tasks.push({ label: "Working Deductible Rem", columnId: COL.workingDeductibleRemaining, fn: () => writeNumber(p.id, COL.workingDeductibleRemaining, wDeductRem) });
   if (wOop) tasks.push({ label: "Working OOP Max", columnId: COL.workingOopMax, fn: () => writeNumber(p.id, COL.workingOopMax, wOop) });
   if (wOopRem) tasks.push({ label: "Working OOP Max Rem", columnId: COL.workingOopMaxRemaining, fn: () => writeNumber(p.id, COL.workingOopMaxRemaining, wOopRem) });
+
+  // ── OOP estimate (computed by the Calculate button; persisted on send-off too) ──
+  if (p.oopFirst?.trim()) tasks.push({ label: "OOP First-Order", columnId: COL.oopFirst, fn: () => writeText(p.id, COL.oopFirst, p.oopFirst) });
+  if (p.oopRecurring?.trim()) tasks.push({ label: "OOP Recurring", columnId: COL.oopRecurring, fn: () => writeText(p.id, COL.oopRecurring, p.oopRecurring) });
 
   // ── Doctor ──
   statusWriteTask(tasks, p.id, "Doctor Status", COL.doctorStatus, p.doctorStatus, DOCTOR_STATUS_INDEX);
@@ -180,9 +180,27 @@ export async function sendPatientToMonday(
   statusWriteTask(tasks, p.id, "IP Coverage Path", COL.insulinPumpCoveragePath, p.insulinPumpCoveragePath, INSULIN_PUMP_COVERAGE_PATH_INDEX);
   statusWriteTask(tasks, p.id, "CGM Coverage Path", COL.cgmCoveragePath, p.cgmCoveragePath, CGM_COVERAGE_PATH_INDEX);
 
+  return tasks;
+}
+
+/**
+ * Send all patient data to Monday and ADVANCE to Medical Necessity.
+ *
+ * Uses verified writes: all data columns are written and polled for
+ * indexing BEFORE the "Move to Onboarding" column fires "Advance to MN", so the
+ * Monday automation triggered by that status change reads up-to-date values.
+ *
+ * @param p The local patient state to write
+ * @param clinicLabelId If a clinic was selected from dropdown, pass its numeric id
+ */
+export async function sendPatientToMonday(
+  p: Patient,
+  clinicLabelId: number | null,
+): Promise<void> {
+  const tasks = buildDataTasks(p, clinicLabelId);
+
   // ── Move to Onboarding (stage advancer — written LAST after verification) ──
-  const onboardingLabel = onboardingAction === "advance" ? "Advance to MN" : "Need More Info.";
-  const onboardingIdx = MOVE_TO_ONBOARDING_INDEX[onboardingLabel];
+  const onboardingIdx = MOVE_TO_ONBOARDING_INDEX["Advance to MN"];
   if (onboardingIdx !== undefined) {
     tasks.push({ label: "Move to Onboarding", columnId: COL.moveToOnboarding, fn: () => writeStatusIndex(p.id, COL.moveToOnboarding, onboardingIdx) });
   }
@@ -202,6 +220,66 @@ export async function sendPatientToMonday(
       `${failures.length} column(s) failed after retries. Failed: ${failures.map((f) => f.split(":")[0]).join(", ")}`,
     );
   }
+}
+
+/**
+ * Send the patient BACK to the Patient Intake stage (the "still missing info"
+ * exit). Persists whatever the rep has entered (best-effort, with retry) so no
+ * work is lost, then moves the item to the Patient Intake group. This is a
+ * group move — NOT a "Move to Onboarding" status change — so no board
+ * automation keys on it and no read-back verification is required.
+ */
+export async function sendBackToPatientIntake(
+  p: Patient,
+  clinicLabelId: number | null,
+): Promise<void> {
+  const tasks = buildDataTasks(p, clinicLabelId);
+  const failures: string[] = [];
+  await Promise.all(
+    tasks.map(async (t) => {
+      const err = await executeWithRetry(t);
+      if (err) failures.push(err);
+    }),
+  );
+  // Move regardless of partial data failures — the rep is intentionally routing
+  // this back for more info; surfacing failures is best-effort via console.
+  if (failures.length > 0) {
+    console.warn(`[mondayWrite:profile] send-back partial failures: ${failures.map((f) => f.split(":")[0]).join(", ")}`);
+  }
+  await moveItemToGroup(p.id, GROUPS.patientIntake);
+}
+
+/**
+ * Pre-Stedi benefits inputs — General Insurance + working Member ID.
+ * Written immediately (before "Run Stedi") so the Stedi check reads the
+ * rep-entered values. Best-effort; not a stage advancer.
+ */
+export async function writeBenefitsInputs(
+  itemId: string,
+  generalInsurance: string,
+  workingMemberId: string,
+): Promise<void> {
+  const jobs: Promise<unknown>[] = [];
+  const gi = GENERAL_INSURANCE_INDEX[generalInsurance];
+  if (generalInsurance && gi !== undefined) jobs.push(writeStatusIndex(itemId, COL.generalInsurance, gi));
+  if (workingMemberId) jobs.push(writeText(itemId, COL.memberIdWorking, workingMemberId));
+  await Promise.all(jobs);
+}
+
+/**
+ * Write the two OOP estimate columns (First-Order + Recurring). Triggered by
+ * the "Calculate OOP Estimate" button after Serving is chosen; the UI then
+ * reads the values back. Written in parallel; not a stage advancer.
+ */
+export async function writeOopEstimate(
+  itemId: string,
+  first: string,
+  recurring: string,
+): Promise<void> {
+  await Promise.all([
+    writeText(itemId, COL.oopFirst, first),
+    writeText(itemId, COL.oopRecurring, recurring),
+  ]);
 }
 
 
