@@ -18,14 +18,16 @@ const COL_FOLLOWER2_EMAIL = "email_mm1vsp3v";
 // Clinicals method ("MN Exchange?" status): Parachute / Fax / Email.
 const COL_METHOD = "color_mm1vr8rd";
 const METHOD_INDEX: Record<string, number> = { Parachute: 0, Fax: 1, Email: 2 };
-// Contact fields for creating a new provider.
+// Contact fields for creating a new provider / a location profile.
 const COL_DOC_ADDRESS = "text_mkzc21ns";
 const COL_DOC_PHONE = "phone";
 const COL_SCRIPT_FAX = "email_mkwh2ywd";
 const COL_SCRIPT_EMAIL = "email";
+const COL_CLINIC = "dropdown_mm1vd9fs";
 const READ_COLS = [
   COL_NPI, COL_DOCTOR_NOTES,
   COL_FOLLOWER1, COL_FOLLOWER1_EMAIL, COL_FOLLOWER2, COL_FOLLOWER2_EMAIL,
+  COL_DOC_ADDRESS, COL_DOC_PHONE, COL_SCRIPT_FAX, COL_SCRIPT_EMAIL, COL_METHOD, COL_CLINIC,
 ] as const;
 
 function getToken(): string {
@@ -62,6 +64,14 @@ export interface DoctorRecord {
   npi: string;
   notes: string;
   followers: OrderFollower[];
+  /** Location/contact fields — a doctor may have several DB items (profiles),
+   *  each a distinct clinic location under the same name/NPI. */
+  clinic: string;
+  address: string;
+  phone: string;
+  fax: string;
+  email: string;
+  method: string;
 }
 
 type DbItem = { id: string; name: string; column_values: { id: string; text: string }[] };
@@ -79,7 +89,65 @@ function toRecord(item: DbItem): DoctorRecord {
     npi: colVal(COL_NPI),
     notes: colVal(COL_DOCTOR_NOTES),
     followers,
+    clinic: colVal(COL_CLINIC),
+    address: colVal(COL_DOC_ADDRESS),
+    phone: colVal(COL_DOC_PHONE),
+    fax: colVal(COL_SCRIPT_FAX),
+    email: colVal(COL_SCRIPT_EMAIL),
+    method: colVal(COL_METHOD),
   };
+}
+
+/**
+ * Search the Doctor Database by name OR NPI (contains-match), returning every
+ * matching item. A single doctor may have multiple items (profiles) — one per
+ * clinic location — so the caller groups by NPI and shows each as a location.
+ */
+export async function searchDoctors(query: string, limit = 30): Promise<DoctorRecord[]> {
+  const q = query.trim();
+  if (!q) return [];
+  const gqlQuery = `query ($q: CompareValue!) {
+    boards(ids: ${DOCTOR_DB_BOARD}) {
+      items_page(limit: ${limit}, query_params: { operator: or, rules: [
+        { column_id: "name", compare_value: $q, operator: contains_text },
+        { column_id: "${COL_NPI}", compare_value: $q, operator: contains_text }
+      ]}) {
+        items {
+          id
+          name
+          column_values(ids: [${READ_COLS.map((c) => `"${c}"`).join(", ")}]) { id text }
+        }
+      }
+    }
+  }`;
+  type Resp = { boards: { items_page: { items: DbItem[] } }[] };
+  const data = await gql<Resp>(gqlQuery, { q });
+  const items = data.boards?.[0]?.items_page?.items ?? [];
+  return items.map(toRecord);
+}
+
+/**
+ * Update the contact/location fields on an existing Doctor DB item (profile).
+ * Used by the "Edit selected location" action. Only the passed fields are
+ * written; clinic is written as a dropdown label (created if missing).
+ */
+export async function saveDoctorLocation(itemId: string, f: {
+  clinic?: string; address?: string; phone?: string; fax?: string; email?: string; method?: string;
+}): Promise<void> {
+  const cols: Record<string, unknown> = {};
+  if (f.clinic !== undefined) cols[COL_CLINIC] = f.clinic ? { labels: [f.clinic] } : { labels: [] };
+  if (f.address !== undefined) cols[COL_DOC_ADDRESS] = f.address;
+  if (f.phone !== undefined) {
+    const d = f.phone.replace(/\D/g, "").replace(/^1(?=\d{10}$)/, "");
+    cols[COL_DOC_PHONE] = { phone: d, countryShortName: "US" };
+  }
+  if (f.fax !== undefined) cols[COL_SCRIPT_FAX] = { email: f.fax, text: f.fax };
+  if (f.email !== undefined) cols[COL_SCRIPT_EMAIL] = { email: f.email, text: f.email };
+  if (f.method) { const idx = METHOD_INDEX[f.method]; if (idx !== undefined) cols[COL_METHOD] = { index: idx }; }
+  const query = `mutation ($item: ID!, $board: ID!, $vals: JSON!) {
+    change_multiple_column_values(item_id: $item, board_id: $board, column_values: $vals, create_labels_if_missing: true) { id }
+  }`;
+  await gql(query, { item: Number(itemId), board: DOCTOR_DB_BOARD, vals: JSON.stringify(cols) });
 }
 
 /**

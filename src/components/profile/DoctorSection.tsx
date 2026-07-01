@@ -1,18 +1,20 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import type { CSSProperties } from "react";
 import type { Patient } from "@/lib/profile/workflow";
 import { AddressAutocomplete } from "@/components/profile/AddressAutocomplete";
 import { phoneToState } from "@/lib/profile/areaCodeState";
 import {
-  findDoctorByNpi, saveDoctorNotes, saveDoctorFollowers, createDoctorItem,
-  type OrderFollower,
+  searchDoctors, saveDoctorNotes, saveDoctorFollowers, saveDoctorLocation,
+  createDoctorItem, type DoctorRecord, type OrderFollower,
 } from "@/lib/shared/doctorDb";
 import { toast } from "sonner";
 
 /**
- * "Select Correct Provider" — .pf-styled to mirror the redesign prototype's
- * step 4. Doctor fields + a doctor card with the Parachute order-count confirm,
- * and Doctor Notes + Order Followers integrated INTO the card (read/write the
- * real Doctor DB by NPI). Parachute name-search fills the fields.
+ * "Select Correct Provider" — mirrors the redesign prototype's step 4, wired to
+ * the real MM Doctor Database (board 18142847597):
+ *   search by name OR NPI → the doctor's profiles (each DB item = one clinic
+ *   location) render as a 2-wide grid → pick the location for THIS patient →
+ *   confirm Parachute order count, edit/add locations, edit notes & followers.
  */
 
 const PARACHUTE_API = "https://parachute-doctor-lookup-production.up.railway.app";
@@ -25,6 +27,7 @@ interface ParaDoctor {
 }
 
 const initials = (n: string) => (n || "").split(" ").map((w) => w[0]).join("").slice(0, 2).toUpperCase() || "+";
+const norm = (s: string) => (s || "").toLowerCase().replace(/[^a-z0-9]/g, "");
 
 interface Props {
   patient: Patient;
@@ -33,164 +36,321 @@ interface Props {
   onClinicSelect: (id: number, name: string) => void;
 }
 
-export function DoctorSection({ patient: pt, onUpdate, clinicLabels, onClinicSelect }: Props) {
-  // Doctor DB record (notes + followers) for the entered NPI.
-  const [dbItemId, setDbItemId] = useState<string | null>(null);
-  const [notes, setNotes] = useState("");
-  const [followers, setFollowers] = useState<OrderFollower[]>([]);
-  const [editingInfo, setEditingInfo] = useState(false);
-  const [savingInfo, setSavingInfo] = useState(false);
-  const [adding, setAdding] = useState(false);
+interface LocForm {
+  clinic: string; phone: string; address: string;
+  addrLat: number | null; addrLng: number | null;
+  fax: string; email: string; method: string; name: string; npi: string;
+}
+const emptyForm: LocForm = { clinic: "", phone: "", address: "", addrLat: null, addrLng: null, fax: "", email: "", method: "Fax", name: "", npi: "" };
 
-  // Parachute order-count (per NPI) + name search.
+export function DoctorSection({ patient: pt, onUpdate, clinicLabels, onClinicSelect }: Props) {
+  // ── Doctor DB search ──
+  const [term, setTerm] = useState((pt.doctorNpi || pt.doctorName || "").trim());
+  const [results, setResults] = useState<DoctorRecord[]>([]);
+  const [searching, setSearching] = useState(false);
+  const [open, setOpen] = useState(false);
+  const [selectedNpi, setSelectedNpi] = useState<string | null>(null);
+  const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
+  const searchWrapRef = useRef<HTMLDivElement>(null);
+  const didInit = useRef(false);
+
+  // ── Parachute order-count (per NPI) + name-search panel ──
   const [count, setCount] = useState<number | null>(null);
   const [countLoading, setCountLoading] = useState(false);
   const [paraOpen, setParaOpen] = useState(false);
   const [paraTerm, setParaTerm] = useState(pt.doctorName || "");
   const [paraResults, setParaResults] = useState<ParaDoctor[]>([]);
   const [paraLoading, setParaLoading] = useState(false);
+  const [paraSel, setParaSel] = useState<string | null>(null);
 
-  const npi = (pt.doctorNpi || "").trim();
+  // ── Notes + followers (per selected profile) ──
+  const [notes, setNotes] = useState("");
+  const [followers, setFollowers] = useState<OrderFollower[]>([]);
+  const [editingInfo, setEditingInfo] = useState(false);
+  const [savingInfo, setSavingInfo] = useState(false);
 
-  // Load the Doctor DB record (notes + followers) when NPI changes.
+  // ── Location add/edit form + manual add ──
+  const [locMode, setLocMode] = useState<"edit" | "add" | "new-doctor" | null>(null);
+  const [form, setForm] = useState<LocForm>(emptyForm);
+  const [savingLoc, setSavingLoc] = useState(false);
+
+  const runSearch = async (q: string) => {
+    const query = q.trim();
+    if (!query) { setResults([]); return; }
+    setSearching(true);
+    try {
+      setResults(await searchDoctors(query));
+    } catch {
+      setResults([]);
+    } finally { setSearching(false); }
+  };
+
+  // Debounced search as the rep types.
   useEffect(() => {
-    let cancelled = false;
-    setCount(null);
-    if (!npi) { setDbItemId(null); setNotes(""); setFollowers([]); return; }
-    findDoctorByNpi(npi).then((rec) => {
-      if (cancelled) return;
-      setDbItemId(rec?.itemId ?? null);
-      setNotes(rec?.notes ?? "");
-      setFollowers(rec?.followers ?? []);
-    }).catch(() => { if (!cancelled) { setDbItemId(null); setNotes(""); setFollowers([]); } });
-    return () => { cancelled = true; };
-  }, [npi]);
+    if (locMode) return;
+    const id = setTimeout(() => { runSearch(term); }, 300);
+    return () => clearTimeout(id);
+  }, [term, locMode]);
 
+  // On first mount, if the patient already has a doctor, load their profiles.
+  useEffect(() => {
+    if (didInit.current) return;
+    didInit.current = true;
+    const seed = (pt.doctorNpi || pt.doctorName || "").trim();
+    if (!seed) return;
+    searchDoctors(seed).then((recs) => {
+      setResults(recs);
+      const npi = (pt.doctorNpi || "").trim();
+      if (npi && recs.some((r) => r.npi === npi)) setSelectedNpi(npi);
+    }).catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Close the results dropdown on outside click.
+  useEffect(() => {
+    const h = (e: MouseEvent) => {
+      if (searchWrapRef.current && !searchWrapRef.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", h);
+    return () => document.removeEventListener("mousedown", h);
+  }, []);
+
+  // Distinct doctors for the dropdown (dedup by NPI, fall back to name).
+  const doctorGroups = useMemo(() => {
+    const map = new Map<string, DoctorRecord[]>();
+    for (const r of results) {
+      const key = r.npi || `name:${norm(r.name)}`;
+      const arr = map.get(key) ?? [];
+      arr.push(r); map.set(key, arr);
+    }
+    return [...map.values()];
+  }, [results]);
+
+  // Profiles (locations) for the currently-selected doctor.
+  const profiles = useMemo(
+    () => (selectedNpi ? results.filter((r) => r.npi === selectedNpi) : []),
+    [results, selectedNpi],
+  );
+  const selectedDoctor = profiles[0] ?? null;
+
+  const selectDoctor = (npi: string) => {
+    setOpen(false);
+    setSelectedNpi(npi);
+    setSelectedItemId(null);
+    setCount(null);
+    setLocMode(null);
+    // Guarantee we have every profile for this NPI (a name search may have
+    // matched only some), then default the term to the doctor name.
+    searchDoctors(npi).then((recs) => {
+      if (recs.length) {
+        setResults((prev) => {
+          const others = prev.filter((r) => r.npi !== npi);
+          return [...others, ...recs];
+        });
+        setTerm(recs[0].name);
+      }
+    }).catch(() => {});
+  };
+
+  const pickProfile = (rec: DoctorRecord) => {
+    setSelectedItemId(rec.itemId);
+    setNotes(rec.notes);
+    setFollowers(rec.followers);
+    onUpdate({
+      doctorName: rec.name, doctorNpi: rec.npi,
+      doctorPhone: rec.phone || pt.doctorPhone,
+      clinicAddress: rec.address || pt.clinicAddress,
+      clinicalsMethod: rec.method || pt.clinicalsMethod,
+      doctorFax: rec.fax || pt.doctorFax,
+      doctorEmail: rec.email || pt.doctorEmail,
+    });
+    const label = clinicLabels.find((c) => c.name === rec.clinic);
+    if (label) onClinicSelect(label.id, label.name);
+    else if (rec.clinic) onUpdate({ clinicName: rec.clinic });
+    setCount(null);
+  };
+
+  const matchesReferral = (rec: DoctorRecord) =>
+    (!!pt.clinicName && rec.clinic === pt.clinicName) ||
+    (!!pt.clinicAddress && !!rec.address && norm(rec.address) === norm(pt.clinicAddress));
+
+  // ── Parachute ──
   const confirmCount = async () => {
-    if (!npi) { toast.error("Enter an NPI first"); return; }
+    const npi = selectedNpi || pt.doctorNpi;
+    if (!npi) { toast.error("Select a provider first"); return; }
     setCountLoading(true);
     try {
       const res = await fetch(`${PARACHUTE_API}/api/search?term=${encodeURIComponent(npi)}`);
       const body = await res.json();
       const match = (body?.results ?? []).find((d: ParaDoctor) => d.npi === npi) ?? body?.results?.[0];
       setCount(match ? match.signature_count : 0);
-    } catch {
-      toast.error("Parachute lookup failed");
-    } finally { setCountLoading(false); }
+    } catch { toast.error("Parachute lookup failed"); }
+    finally { setCountLoading(false); }
   };
 
-  const runParaSearch = async (term: string) => {
-    const q = term.trim();
-    if (q.length < 2) return;
+  const runParaSearch = async (q: string) => {
+    const query = q.trim();
+    if (query.length < 2) return;
     setParaLoading(true);
     try {
-      const res = await fetch(`${PARACHUTE_API}/api/search?term=${encodeURIComponent(q)}`);
+      const res = await fetch(`${PARACHUTE_API}/api/search?term=${encodeURIComponent(query)}`);
       const body = await res.json();
       setParaResults(body?.results ?? []);
-    } catch {
-      setParaResults([]);
-    } finally { setParaLoading(false); }
+    } catch { setParaResults([]); }
+    finally { setParaLoading(false); }
   };
 
-  const pickPara = (d: ParaDoctor) => {
-    const method = d.doctor_contact === "parachute" ? "Parachute" : "Fax";
-    onUpdate({ doctorName: `${d.first_name} ${d.last_name}`, doctorNpi: d.npi, clinicalsMethod: method });
-    setParaOpen(false);
-    toast.success(`Doctor filled: ${d.first_name} ${d.last_name} — NPI ${d.npi}`);
-  };
+  const phoneState = phoneToState(pt.doctorPhone);
+  const paraSorted = useMemo(() => [...paraResults].sort((a, b) => {
+    const am = phoneState && a.state?.toUpperCase() === phoneState.state ? 1 : 0;
+    const bm = phoneState && b.state?.toUpperCase() === phoneState.state ? 1 : 0;
+    return bm - am || b.signature_count - a.signature_count;
+  }), [paraResults, phoneState]);
 
+  // ── Notes / followers save ──
+  const setFollower = (i: number, patch: Partial<OrderFollower>) => {
+    setFollowers((prev) => { const n = [...prev]; n[i] = { name: "", email: "", ...n[i], ...patch }; return n; });
+  };
   const saveInfo = async () => {
-    if (!dbItemId) { toast.error("Add the provider to the database first"); return; }
+    if (!selectedItemId) { toast.error("Pick a location first"); return; }
     setSavingInfo(true);
     try {
-      await saveDoctorNotes(dbItemId, notes);
-      await saveDoctorFollowers(dbItemId, followers.filter((f) => f.name || f.email));
-      toast.success("Records contact & order followers saved to Doctor DB");
+      await saveDoctorNotes(selectedItemId, notes);
+      await saveDoctorFollowers(selectedItemId, followers.filter((f) => f.name || f.email));
+      toast.success("Doctor notes & order followers saved");
       setEditingInfo(false);
     } catch (e) {
       toast.error("Failed to save to Doctor DB", { description: e instanceof Error ? e.message : String(e) });
     } finally { setSavingInfo(false); }
   };
 
-  const addToDb = async () => {
-    if (!pt.doctorName?.trim() || !npi) { toast.error("Doctor Name and NPI are required"); return; }
-    setAdding(true);
-    try {
-      const id = await createDoctorItem({
-        name: pt.doctorName.trim(), npi, address: pt.clinicAddress, phone: pt.doctorPhone,
-        fax: pt.doctorFax, email: pt.doctorEmail, method: pt.clinicalsMethod,
-        notes, followers: followers.filter((f) => f.name || f.email),
-      });
-      setDbItemId(id);
-      toast.success(`${pt.doctorName} added to the Doctor Database`);
-    } catch (e) {
-      toast.error("Failed to add provider", { description: e instanceof Error ? e.message : String(e) });
-    } finally { setAdding(false); }
+  // ── Location add / edit / new-doctor ──
+  const openEditLoc = () => {
+    const r = profiles.find((p) => p.itemId === selectedItemId);
+    if (!r) { toast.error("Pick a location first"); return; }
+    setForm({ clinic: r.clinic, phone: r.phone, address: r.address, addrLat: null, addrLng: null, fax: r.fax, email: r.email, method: r.method || "Fax", name: r.name, npi: r.npi });
+    setLocMode("edit");
   };
-
-  const setFollower = (i: number, patch: Partial<OrderFollower>) => {
-    setFollowers((prev) => {
-      const next = [...prev];
-      next[i] = { name: "", email: "", ...next[i], ...patch };
-      return next;
+  const openAddLoc = () => {
+    const d = selectedDoctor;
+    setForm({ ...emptyForm, name: d?.name ?? pt.doctorName, npi: d?.npi ?? pt.doctorNpi, method: "Fax" });
+    setLocMode("add");
+  };
+  const openNewDoctor = () => {
+    setForm({
+      ...emptyForm, name: term || pt.doctorName, npi: pt.doctorNpi,
+      phone: pt.doctorPhone, address: pt.clinicAddress, fax: pt.doctorFax,
+      email: pt.doctorEmail, method: pt.clinicalsMethod || "Fax", clinic: pt.clinicName,
     });
+    setLocMode("new-doctor");
   };
 
-  // Parachute results — patient-state matches first
-  const phoneState = phoneToState(pt.doctorPhone);
-  const sorted = [...paraResults].sort((a, b) => {
-    const am = phoneState && a.state?.toUpperCase() === phoneState.state ? 1 : 0;
-    const bm = phoneState && b.state?.toUpperCase() === phoneState.state ? 1 : 0;
-    return bm - am || b.signature_count - a.signature_count;
-  });
+  const saveLoc = async () => {
+    if (!form.name.trim() || !form.npi.trim()) { toast.error("Name and NPI are required"); return; }
+    if (locMode !== "edit" && !form.address.trim()) { toast.error("Address is required"); return; }
+    setSavingLoc(true);
+    try {
+      if (locMode === "edit" && selectedItemId) {
+        await saveDoctorLocation(selectedItemId, {
+          clinic: form.clinic, address: form.address, phone: form.phone,
+          fax: form.fax, email: form.email, method: form.method,
+        });
+        toast.success("Location updated in the Doctor Database");
+      } else {
+        const id = await createDoctorItem({
+          name: form.name.trim(), npi: form.npi.trim(), address: form.address,
+          phone: form.phone, fax: form.fax, email: form.email, method: form.method,
+        });
+        toast.success(locMode === "add" ? "New location added under this doctor" : `${form.name} added to the Doctor Database`);
+        setSelectedItemId(id);
+      }
+      // Reflect the chosen provider onto the patient record.
+      onUpdate({
+        doctorName: form.name.trim(), doctorNpi: form.npi.trim(),
+        doctorPhone: form.phone || pt.doctorPhone,
+        clinicAddress: form.address || pt.clinicAddress,
+        clinicalsMethod: form.method || pt.clinicalsMethod,
+        doctorFax: form.fax || pt.doctorFax,
+        doctorEmail: form.email || pt.doctorEmail,
+      });
+      const label = clinicLabels.find((c) => c.name === form.clinic);
+      if (label) onClinicSelect(label.id, label.name);
+      else if (form.clinic) onUpdate({ clinicName: form.clinic });
+      setLocMode(null);
+      const recs = await searchDoctors(form.npi.trim());
+      setResults((prev) => [...prev.filter((r) => r.npi !== form.npi.trim()), ...recs]);
+      setSelectedNpi(form.npi.trim());
+    } catch (e) {
+      toast.error("Failed to save to Doctor DB", { description: e instanceof Error ? e.message : String(e) });
+    } finally { setSavingLoc(false); }
+  };
+
+  const lab: CSSProperties = { fontSize: ".72rem", fontWeight: 600, textTransform: "uppercase", letterSpacing: ".04em", color: "var(--muted-foreground)" };
 
   return (
     <>
-      <div className="fgrid">
-        <div><div className="flabel">Doctor Name</div><input type="text" value={pt.doctorName} onChange={(e) => onUpdate({ doctorName: e.target.value })} /></div>
-        <div><div className="flabel">Doctor NPI</div><input type="text" value={pt.doctorNpi} onChange={(e) => onUpdate({ doctorNpi: e.target.value })} /></div>
-        <div><div className="flabel">Doctor Phone</div><input type="text" value={pt.doctorPhone} onChange={(e) => onUpdate({ doctorPhone: e.target.value })} /></div>
-        <div><div className="flabel">Clinicals Method</div>
-          <select value={pt.clinicalsMethod} onChange={(e) => onUpdate({ clinicalsMethod: e.target.value })}>
-            <option value="" disabled hidden>Select…</option><option>Fax</option><option>Parachute</option><option>Email</option>
-          </select>
+      {/* ── Search the doctor database ── */}
+      <div className="searchwrap" ref={searchWrapRef}>
+        <div className="flabel">Search the doctor database <span className="req-star">*</span></div>
+        <div className="searchrow">
+          <input
+            type="text" value={term} autoComplete="off"
+            onChange={(e) => { setTerm(e.target.value); setOpen(true); }}
+            onFocus={() => setOpen(true)}
+            placeholder="Type a name or NPI…"
+          />
+          <button type="button" className="para-tool" title="Check Parachute Database — signed-order counts"
+            onClick={() => { setParaOpen((o) => !o); if (!paraOpen) { setParaTerm(term || pt.doctorName); runParaSearch(term || pt.doctorName); } }}>
+            <span>Parachute</span>
+          </button>
         </div>
-        <div><div className="flabel">Doctor Email</div><input type="text" value={pt.doctorEmail} onChange={(e) => onUpdate({ doctorEmail: e.target.value })} /></div>
-        <div><div className="flabel">Doctor Fax (@rcfax) {pt.clinicalsMethod === "Fax" && !pt.doctorFax && <span className="req-star">*</span>}</div>
-          <input type="text" className={pt.clinicalsMethod === "Fax" && !pt.doctorFax ? "need" : ""} value={pt.doctorFax} onChange={(e) => onUpdate({ doctorFax: e.target.value })} />
-        </div>
-        <div><div className="flabel">Clinic Name</div>
-          <select value={pt.clinicName} onChange={(e) => { const l = clinicLabels.find((c) => c.name === e.target.value); if (l) onClinicSelect(l.id, l.name); }}>
-            <option value="" disabled hidden>Select clinic…</option>
-            {pt.clinicName && !clinicLabels.some((c) => c.name === pt.clinicName) && <option>{pt.clinicName}</option>}
-            {clinicLabels.map((c) => <option key={c.id}>{c.name}</option>)}
-          </select>
-        </div>
-        <div className="full"><div className="flabel">Clinic Address</div>
-          <AddressAutocomplete value={pt.clinicAddress} className="pf-input" onChange={(r) => onUpdate({ clinicAddress: r.address, clinicAddressLat: r.lat || null, clinicAddressLng: r.lng || null })} placeholder="Start typing clinic address…" />
-        </div>
+        {open && (
+          <div className="results open">
+            {searching ? (
+              <div className="res-note">Searching…</div>
+            ) : doctorGroups.length === 0 ? (
+              <div className="res-note">
+                No match in our database. <a href="#" style={{ color: "var(--mm-teal)", fontWeight: 700 }} onClick={(e) => { e.preventDefault(); setParaOpen(true); runParaSearch(term); }}>Check Parachute</a> or <a href="#" style={{ color: "var(--mm-teal)", fontWeight: 700 }} onClick={(e) => { e.preventDefault(); setOpen(false); openNewDoctor(); }}>add them directly</a>.
+              </div>
+            ) : doctorGroups.map((grp) => {
+              const d = grp[0];
+              return (
+                <div key={d.npi || d.itemId} className="res" onClick={() => selectDoctor(d.npi || "")}>
+                  <div className="ri">{initials(d.name)}</div>
+                  <div>
+                    <div className="rn">{d.name}</div>
+                    <div className="rm">NPI {d.npi || "—"}</div>
+                  </div>
+                  <span className="loc-chip">{grp.length > 1 ? `${grp.length} locations` : (d.clinic || d.address || "1 location")}</span>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
 
-      <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 12 }}>
-        <button className="para-tool" onClick={() => { setParaOpen((o) => !o); if (!paraOpen) runParaSearch(paraTerm); }}>{paraOpen ? "Hide Parachute" : "Check Parachute"}</button>
-        <button className="btn primary sm" onClick={addToDb} disabled={adding}>{adding ? "Adding…" : "Add Doctor to Database"}</button>
-      </div>
+      {!selectedNpi && !locMode && !paraOpen && (
+        <div id="doc-actions" style={{ marginTop: 12 }}>
+          <button className="btn primary sm" onClick={openNewDoctor}>Add Doctor to Database</button>
+        </div>
+      )}
 
-      {/* Parachute name search */}
+      {/* ── Parachute name-search panel ── */}
       {paraOpen && (
         <div className="para-panel">
           <div className="para-head"><span>Parachute Lookup</span><button className="para-close" onClick={() => setParaOpen(false)}>✕</button></div>
           <div className="para-bar">
-            <input value={paraTerm} onChange={(e) => { setParaTerm(e.target.value); }} onKeyDown={(e) => e.key === "Enter" && runParaSearch(paraTerm)} placeholder="Search doctor name or NPI…" />
+            <input value={paraTerm} onChange={(e) => setParaTerm(e.target.value)} onKeyDown={(e) => e.key === "Enter" && runParaSearch(paraTerm)} placeholder="Search doctor name or NPI…" />
             <button className="btn secondary sm" onClick={() => runParaSearch(paraTerm)}>Search</button>
           </div>
           <div className="para-list">
             {paraLoading ? <div className="res-note">Searching…</div> :
-              sorted.length === 0 ? <div className="res-note">No Parachute results.</div> :
-                sorted.map((d) => {
+              paraSorted.length === 0 ? <div className="res-note">No Parachute results.</div> :
+                paraSorted.map((d) => {
                   const chute = d.signature_count > THRESHOLD;
+                  const sel = paraSel === d.npi;
                   return (
-                    <div key={d.doctor_id} className="para-row" onClick={() => pickPara(d)}>
+                    <div key={d.doctor_id} className="para-row" style={sel ? { background: "oklch(0.973 0.011 175)" } : undefined} onClick={() => setParaSel(sel ? null : d.npi)}>
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ fontWeight: 700, fontSize: ".92rem" }}>{d.first_name} {d.last_name} <span style={{ fontWeight: 500, color: "var(--muted-foreground)" }}>– {d.npi}</span></div>
                         <div style={{ fontSize: ".8rem", color: "var(--muted-foreground)" }}>{d.credential ? d.credential + ", " : ""}{d.signature_count} signed order{d.signature_count === 1 ? "" : "s"}</div>
@@ -203,24 +363,75 @@ export function DoctorSection({ patient: pt, onUpdate, clinicLabels, onClinicSel
                   );
                 })}
           </div>
-          <div className="para-foot"><span>&gt;{THRESHOLD} signed orders → contact via Parachute, otherwise fax</span></div>
+          <div className="para-foot" style={{ justifyContent: "flex-end" }}>
+            <button className="btn primary sm" onClick={() => {
+              const cand = paraResults.find((d) => d.npi === paraSel);
+              setParaOpen(false);
+              setForm({
+                ...emptyForm,
+                name: cand ? `${cand.first_name} ${cand.last_name}` : (paraTerm || pt.doctorName),
+                npi: cand?.npi ?? pt.doctorNpi,
+                method: cand ? (cand.signature_count > THRESHOLD ? "Parachute" : "Fax") : "Fax",
+                address: pt.clinicAddress, phone: pt.doctorPhone,
+              });
+              setLocMode("new-doctor");
+            }}>Add Doctor to Database</button>
+          </div>
         </div>
       )}
 
-      {/* Doctor card — shown once a provider is entered */}
-      {pt.doctorName?.trim() && npi && (
+      {/* ── Location / add form ── */}
+      {locMode && (
+        <div style={{ border: "1px solid var(--border)", borderRadius: 12, padding: 16, marginTop: 14, background: "oklch(0.985 0.003 247)" }}>
+          <div className="flabel" style={{ marginBottom: 12 }}>
+            {locMode === "edit" ? "Edit this location — saves in place to the Doctor DB"
+              : locMode === "add" ? "New location — saved as another profile under the same NPI"
+              : "Add a new provider to the Doctor Database"}
+          </div>
+          <div className="fgrid">
+            {locMode === "new-doctor" && (
+              <>
+                <div><div className="flabel">Name <span className="req-star">*</span></div><input type="text" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></div>
+                <div><div className="flabel">NPI <span className="req-star">*</span></div><input type="text" value={form.npi} onChange={(e) => setForm({ ...form, npi: e.target.value })} /></div>
+              </>
+            )}
+            <div><div className="flabel">Clinic</div><input type="text" value={form.clinic} onChange={(e) => setForm({ ...form, clinic: e.target.value })} /></div>
+            <div><div className="flabel">Phone</div><input type="text" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} /></div>
+            <div className="full"><div className="flabel">Address {locMode !== "edit" && <span className="req-star">*</span>}</div>
+              <AddressAutocomplete value={form.address} className="pf-input" placeholder="Start typing address…"
+                onChange={(r) => setForm({ ...form, address: r.address, addrLat: r.lat || null, addrLng: r.lng || null })} />
+            </div>
+            <div><div className="flabel">Fax</div><input type="text" value={form.fax} onChange={(e) => setForm({ ...form, fax: e.target.value })} /></div>
+            <div><div className="flabel">Email</div><input type="text" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} /></div>
+            <div className="full"><div className="flabel">Method</div>
+              <select value={form.method} onChange={(e) => setForm({ ...form, method: e.target.value })}>
+                <option>Fax</option><option>Parachute</option><option>Email</option>
+              </select>
+            </div>
+          </div>
+          <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 14 }}>
+            <button className="btn secondary sm" onClick={() => setLocMode(null)}>Cancel</button>
+            <button className="btn primary sm" onClick={saveLoc} disabled={savingLoc}>
+              {savingLoc ? "Saving…" : locMode === "edit" ? "Save fix to Doctor DB" : locMode === "add" ? "Create new location" : "Add to Doctor DB"}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ── Doctor card ── */}
+      {selectedNpi && selectedDoctor && !locMode && (
         <div className="doccard">
           <div className="doctop">
-            <div className="di">{initials(pt.doctorName)}</div>
+            <div className="di">{initials(selectedDoctor.name)}</div>
             <div style={{ flex: 1 }}>
-              <div className="dn">{pt.doctorName} <span style={{ fontWeight: 500, color: "var(--muted-foreground)" }}>· NPI {npi}</span></div>
-              <div className="dm">{dbItemId ? "In Doctor Database" : "Not in database yet"}</div>
+              <div className="dn">{selectedDoctor.name} <span style={{ fontWeight: 500, color: "var(--muted-foreground)" }}>· NPI {selectedDoctor.npi}</span></div>
+              <div className="dm">{profiles.length > 1 ? `${profiles.length} locations on file` : "In Doctor Database"}</div>
             </div>
           </div>
 
-          {/* Parachute order-count confirm */}
+          {/* Parachute order-count confirm (per NPI) */}
           <div className="locwrap" style={{ borderBottom: "1px solid var(--border)", paddingBottom: 14 }}>
-            <div style={{ fontSize: ".72rem", fontWeight: 600, textTransform: "uppercase", letterSpacing: ".04em", color: "var(--muted-foreground)", marginBottom: 6 }}>Parachute lookup</div>
+            <div style={{ ...lab, marginBottom: 6 }}>Parachute lookup</div>
             {count === null ? (
               <button className="btn secondary sm" onClick={confirmCount} disabled={countLoading}>{countLoading ? "Checking…" : "Confirm Parachute Order Count"}</button>
             ) : (
@@ -231,23 +442,44 @@ export function DoctorSection({ patient: pt, onUpdate, clinicLabels, onClinicSel
             )}
           </div>
 
-          {/* Fax cross-check */}
-          {pt.clinicalsMethod === "Fax" && !pt.doctorFax?.trim() && (
-            <div className="locwrap" style={{ borderBottom: "1px solid var(--border)", paddingBottom: 14 }}>
-              <div className="err-banner"><div className="et">Method is Fax — no fax on file</div><div className="ed">Enter Doctor Fax above; it blocks send-off.</div></div>
+          {/* Pick the practice location — 2-wide grid of profiles */}
+          <div className="locwrap">
+            <div className="flabel">Pick the practice location for THIS patient <span className="req-star">*</span></div>
+            <div className="loc-grid">
+              {profiles.map((r) => (
+                <div key={r.itemId} className={`loc ${selectedItemId === r.itemId ? "sel" : ""}`} onClick={() => pickProfile(r)}>
+                  {matchesReferral(r) && <span className="badge-ref">matches referral</span>}
+                  <div className="lc">{r.clinic || "Clinic —"}</div>
+                  <div className="la">{r.address || "No address on file"}</div>
+                  <div className="li">{r.phone || "No phone"}{r.fax ? ` · ${r.method === "Email" ? "Email" : "Fax"} ${r.fax}` : ""}</div>
+                  <div><span className={`method-pill ${r.method === "Parachute" ? "chute" : r.method === "Email" ? "mail" : "fax"}`}>Method: {r.method || "—"}</span></div>
+                </div>
+              ))}
             </div>
-          )}
+            <div className="loc-actions">
+              <button className="btn secondary sm" onClick={openEditLoc} disabled={!selectedItemId}>Edit selected location</button>
+              <button className="btn secondary sm" onClick={openAddLoc}>+ Add another location</button>
+            </div>
 
-          {/* Doctor Notes + Order Followers — integrated, saved to Doctor DB */}
-          <div style={{ padding: "16px" }}>
+            {/* Fax cross-check */}
+            {pt.clinicalsMethod === "Fax" && !pt.doctorFax?.trim() && (
+              <div className="err-banner" style={{ marginTop: 12 }}>
+                <div className="et">Method is Fax — no fax on file</div>
+                <div className="ed">Add a fax to the selected location (Edit selected location); it blocks send-off.</div>
+              </div>
+            )}
+          </div>
+
+          {/* Doctor Notes + Order Followers (per selected profile) */}
+          <div style={{ margin: "16px 0", padding: "0 16px 16px" }}>
             {!editingInfo ? (
               <>
                 <div style={{ marginBottom: 14 }}>
-                  <div style={{ fontSize: ".72rem", fontWeight: 600, textTransform: "uppercase", letterSpacing: ".04em", color: "var(--muted-foreground)", marginBottom: 5 }}>Records Contact / Doctor Notes</div>
+                  <div style={{ ...lab, marginBottom: 5 }}>Doctor Notes</div>
                   <div style={{ fontSize: ".88rem", lineHeight: 1.45, whiteSpace: "pre-wrap" }}>{notes || <span className="sugg-note">None on file.</span>}</div>
                 </div>
                 <div>
-                  <div style={{ fontSize: ".72rem", fontWeight: 600, textTransform: "uppercase", letterSpacing: ".04em", color: "var(--muted-foreground)", marginBottom: 5 }}>Order Followers</div>
+                  <div style={{ ...lab, marginBottom: 5 }}>Order Followers</div>
                   {followers.filter((f) => f.name || f.email).length === 0 ? <span className="sugg-note">None on file.</span> : (
                     <ul style={{ margin: 0, paddingLeft: 18 }}>
                       {followers.filter((f) => f.name || f.email).map((f, i) => (
@@ -256,11 +488,11 @@ export function DoctorSection({ patient: pt, onUpdate, clinicLabels, onClinicSel
                     </ul>
                   )}
                 </div>
-                <button className="btn secondary sm" style={{ marginTop: 14 }} onClick={() => setEditingInfo(true)} disabled={!dbItemId} title={!dbItemId ? "Add the provider to the database first" : undefined}>Edit Notes &amp; Followers</button>
+                <button className="btn secondary sm" style={{ marginTop: 14 }} onClick={() => setEditingInfo(true)} disabled={!selectedItemId} title={!selectedItemId ? "Pick a location first" : undefined}>Edit Notes and Followers</button>
               </>
             ) : (
               <div className="fgrid">
-                <div className="full"><div className="flabel">Records Contact / Doctor Notes</div><textarea rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} /></div>
+                <div className="full"><div className="flabel">Doctor Notes</div><textarea rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} /></div>
                 <div><div className="flabel">Order follower 1 (name)</div><input type="text" value={followers[0]?.name ?? ""} onChange={(e) => setFollower(0, { name: e.target.value })} /></div>
                 <div><div className="flabel">Follower 1 email</div><input type="text" value={followers[0]?.email ?? ""} onChange={(e) => setFollower(0, { email: e.target.value })} /></div>
                 <div><div className="flabel">Order follower 2 (name)</div><input type="text" value={followers[1]?.name ?? ""} onChange={(e) => setFollower(1, { name: e.target.value })} /></div>
