@@ -66,6 +66,12 @@ export function useMondayPatients(injectedPatientId?: string | null) {
   // Initialized from localStorage so saved progress persists across navigation.
   const overlayRef = useRef<Record<string, Partial<Patient>>>(loadOverlays());
 
+  // "As received" snapshot: the FIRST pre-overlay Monday values seen for each
+  // patient this session. The left "What We Received" cards read from this so
+  // they keep showing the original intake data while the agent edits the
+  // right side (and even after Run Stedi writes corrections to Monday).
+  const receivedRef = useRef<Record<string, Patient>>({});
+
   const applyOverlays = useCallback((base: Patient[]): Patient[] => {
     const ov = overlayRef.current;
     return base.map((p) => (ov[p.id] ? { ...p, ...ov[p.id] } : p));
@@ -89,6 +95,9 @@ export function useMondayPatients(injectedPatientId?: string | null) {
       if (!mountedRef.current) return;
       const safeItems = Array.isArray(items) ? items : [];
       const ps = safeItems.map(mondayItemToPatient);
+      for (const base of ps) {
+        if (!receivedRef.current[base.id]) receivedRef.current[base.id] = base;
+      }
       const merged = applyOverlays(ps);
 
       if (injectedPatientId && !merged.some((p) => p.id === injectedPatientId)) {
@@ -96,6 +105,7 @@ export function useMondayPatients(injectedPatientId?: string | null) {
           const item = await fetchItemById(injectedPatientId);
           if (item) {
             const injected = mondayItemToPatient(item);
+            if (!receivedRef.current[injected.id]) receivedRef.current[injected.id] = injected;
             merged.unshift(injected);
           }
         } catch { /* ignore */ }
@@ -181,6 +191,8 @@ export function useMondayPatients(injectedPatientId?: string | null) {
     return !!overlay && Object.keys(overlay).length > 0;
   }, []);
 
+  /** The as-received (first-seen, pre-edit) Monday values for a patient. */
+  const getReceived = useCallback((id: string): Patient | undefined => receivedRef.current[id], []);
 
-  return { patients, loading, initialLoading, error, refetch, updateLocal, clearOverlay, removeOverlayKeys, saveOverlay, hasOverlay };
+  return { patients, loading, initialLoading, error, refetch, updateLocal, clearOverlay, removeOverlayKeys, saveOverlay, hasOverlay, getReceived };
 }

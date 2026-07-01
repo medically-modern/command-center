@@ -62,7 +62,7 @@ const ProfilePage = () => {
   const [searchParams] = useSearchParams();
   const {
     patients, loading, initialLoading, error, refetch,
-    updateLocal, clearOverlay, removeOverlayKeys, saveOverlay, hasOverlay,
+    updateLocal, clearOverlay, removeOverlayKeys, saveOverlay, hasOverlay, getReceived,
   } = useMondayPatients(searchParams.get("patientId"));
 
   const [selectedId, setSelectedId] = useState<string | null>(searchParams.get("patientId") ?? null);
@@ -362,6 +362,7 @@ const ProfilePage = () => {
               <ProfileBody
                 key={selected.id}
                 patient={selected}
+                received={getReceived(selected.id) ?? selected}
                 onUpdate={onUpdate}
                 assets={assets}
                 openAsset={openAsset}
@@ -395,6 +396,9 @@ const ProfilePage = () => {
 
 interface BodyProps {
   patient: Patient;
+  /** As-received snapshot (first-seen Monday values) — feeds the left
+   *  "What We Received" cards so they stay frozen while the right is edited. */
+  received: Patient;
   onUpdate: (patch: Partial<Patient>) => void;
   assets: MondayAsset[];
   openAsset: (a: MondayAsset) => void;
@@ -480,6 +484,7 @@ function RailReferral({ patient }: { patient: Patient }) {
 
 function ProfileBody(p: BodyProps) {
   const pt = p.patient;
+  const rcv = p.received; // frozen "as received" values for the left cards
   const serv = pt.serving || "";
   const cgm = servingIncludes(serv, "cgm");
   const ip = servingIncludes(serv, "insulin pump");
@@ -546,7 +551,7 @@ function ProfileBody(p: BodyProps) {
 
           {/* Left rail */}
           <aside className="leftrail">
-            <RailReferral patient={pt} />
+            <RailReferral patient={rcv} />
             <div className="rail-card">
               <div className="rail-head">📎 Files — click to preview</div>
               <div className="rail-files">
@@ -567,12 +572,12 @@ function ProfileBody(p: BodyProps) {
                 <section className="card recv-card">
                   <div className="recv-title"><h3>Patient Demographics</h3></div>
                   <div className="kv">
-                    <div className="f"><div className="k">Name</div><div className="v">{pt.name}</div></div>
-                    <div className="f"><div className="k">Date of Birth</div><div className="v">{pt.dob || "—"}</div></div>
-                    <div className="f"><div className="k">Phone</div><div className="v">{pt.ptPhone || "—"}</div></div>
-                    <div className="f"><div className="k">Email</div><div className="v">{pt.email || "—"}</div></div>
-                    <div className="f"><div className="k">Gender</div><div className="v">{pt.gender || "—"}</div></div>
-                    <div className="f full"><div className="k">Address</div><div className="v">{pt.patientAddress || "—"}</div></div>
+                    <div className="f"><div className="k">Name</div><div className="v">{rcv.name}</div></div>
+                    <div className="f"><div className="k">Date of Birth</div><div className="v">{rcv.dob || "—"}</div></div>
+                    <div className="f"><div className="k">Phone</div><div className="v">{rcv.ptPhone || "—"}</div></div>
+                    <div className="f"><div className="k">Email</div><div className="v">{rcv.email || "—"}</div></div>
+                    <div className="f"><div className="k">Gender</div><div className="v">{rcv.gender || "—"}</div></div>
+                    <div className="f full"><div className="k">Address</div><div className="v">{rcv.patientAddress || "—"}</div></div>
                   </div>
                 </section>
               </div>
@@ -707,10 +712,10 @@ function ProfileBody(p: BodyProps) {
               <section className="card recv-card">
                 <div className="recv-title"><h3>Initial Request</h3></div>
                 <div className="kv">
-                  <div className="f"><div className="k">Request Type</div><div className="v">{pt.requestType || "—"}</div></div>
-                  <div className="f"><div className="k">CGM Type (provided)</div><div className="v">{pt.cgmType || "—"}</div></div>
-                  <div className="f"><div className="k">Pump Type (provided)</div><div className="v">{pt.pumpType || "—"}</div></div>
-                  <div className="f full"><div className="k">Referral Source</div><div className="v">{pt.referralSource || "—"}</div></div>
+                  <div className="f"><div className="k">Request Type</div><div className="v">{rcv.requestType || "—"}</div></div>
+                  <div className="f"><div className="k">CGM Type (provided)</div><div className="v">{rcv.cgmType || "—"}</div></div>
+                  <div className="f"><div className="k">Pump Type (provided)</div><div className="v">{rcv.pumpType || "—"}</div></div>
+                  <div className="f full"><div className="k">Referral Source</div><div className="v">{rcv.referralSource || "—"}</div></div>
                 </div>
               </section>
               <div className="work-col">
@@ -781,9 +786,9 @@ function ProfileBody(p: BodyProps) {
               <section className="card recv-card">
                 <div className="recv-title"><h3>Provided Doctor Info</h3></div>
                 <div className="kv">
-                  <div className="f"><div className="k">Doctor Name</div><div className="v">{pt.doctorName || "—"}</div></div>
-                  <div className="f"><div className="k">Clinic Phone</div><div className="v">{pt.doctorPhone || "—"}</div></div>
-                  <div className="f full"><div className="k">Clinic Address</div><div className="v">{pt.clinicAddress || "—"}</div></div>
+                  <div className="f"><div className="k">Doctor Name</div><div className="v">{rcv.doctorName || "—"}</div></div>
+                  <div className="f"><div className="k">Clinic Phone</div><div className="v">{rcv.doctorPhone || "—"}</div></div>
+                  <div className="f full"><div className="k">Clinic Address</div><div className="v">{rcv.clinicAddress || "—"}</div></div>
                 </div>
               </section>
               <div className="work-col">
