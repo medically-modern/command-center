@@ -118,6 +118,16 @@ const ProfilePage = () => {
     if (isNew) setStediRunningId(null);
   }, [selected, stediRunningId]);
 
+  // Once an eligibility result lands, default the advancing Member ID 1 to the
+  // Member ID that was actually run through Stedi (only when it's still blank).
+  useEffect(() => {
+    if (!selected) return;
+    const done = !!selected.stediPlanName || (selected.stediEligibilityActive || "").trim() !== "";
+    if (done && !selected.memberId1?.trim() && selected.workingMemberId?.trim()) {
+      updateLocal(selected.id, { memberId1: selected.workingMemberId.trim() });
+    }
+  }, [selected, updateLocal]);
+
   const checklist = useMemo(() => {
     if (!selected) return [] as { label: string; ok: boolean }[];
     const serv = selected.serving || "";
@@ -575,38 +585,40 @@ function ProfileBody(p: BodyProps) {
                   </div>
                 )}
 
+                {/* Eligibility results — live from Monday's Stedi columns */}
                 {!p.stediRunning && (pt.stediPlanName || pt.stediEligibilityActive || pt.stediErrorDescription) && (
-                  <div className="res-grid">
-                    <ResCell label="Active?" value={pt.stediEligibilityActive} bad={!!pt.stediEligibilityActive && !p.stediActive} />
-                    <ResCell label="Payer Name" value={pt.stediPayerName} />
-                    <ResCell label="Plan Begin Date" value={pt.stediPlanBeginDate} />
-                    <ResCell label="Coverage Type" value={pt.stediCoverageType} />
-                    <ResCell label="Plan Name" value={pt.stediPlanName} />
-                    <ResCell label="Home Plan" value={pt.stediHomePlan} />
-                    <ResCell label="Medicaid ID" value={pt.stediMedicaidId} />
-                    <ResCell label="QMB?" value={pt.stediQmb} />
-                  </div>
+                  <>
+                    <div className="res-grid" style={{ gridTemplateColumns: "repeat(3,1fr)", marginTop: 16 }}>
+                      <ResCell label="Active?" value={pt.stediEligibilityActive} bad={!!pt.stediEligibilityActive && !p.stediActive} />
+                      <ResCell label="Payer Name" value={pt.stediPayerName} />
+                      <ResCell label="Plan Begin Date" value={pt.stediPlanBeginDate} />
+                    </div>
+                    <div className="res-grid" style={{ gridTemplateColumns: `repeat(${pt.stediQmb ? 5 : 4},1fr)`, marginTop: 10 }}>
+                      <ResCell label="Coverage Type" value={pt.stediCoverageType} />
+                      <ResCell label="Plan Name" value={pt.stediPlanName} />
+                      <ResCell label="Home Plan" value={pt.stediHomePlan} />
+                      <ResCell label="Medicaid ID" value={pt.stediMedicaidId} />
+                      {pt.stediQmb && <ResCell label="QMB?" value={pt.stediQmb} />}
+                    </div>
+                  </>
                 )}
-                {pt.stediErrorDescription && !pt.stediPlanName && (
+                {!p.stediRunning && pt.stediErrorDescription && !pt.stediPlanName && (
                   <div className="err-banner" style={{ marginTop: 16 }}>
                     <div className="et">Eligibility check failed</div>
                     <div className="ed">{pt.stediErrorDescription}</div>
                   </div>
                 )}
 
-                {(pt.stediPlanName || pt.stediEligibilityActive) && (
+                {/* Cost Sharing — read-only, live from Monday */}
+                {!p.stediRunning && (pt.stediPlanName || pt.stediEligibilityActive) && <CostShare pt={pt} />}
+
+                {/* Enter correct insurance information */}
+                {!p.stediRunning && (pt.stediPlanName || pt.stediEligibilityActive) && (
                   <div id="post-stedi" style={{ marginTop: 22, border: "1.5px solid var(--amber-ring)", borderRadius: 12, background: "oklch(0.96 0.04 90 / 0.35)", padding: "18px 20px" }}>
-                    {p.suggestion && (
-                      <div className="sugg-chip" style={{ marginTop: 0, marginBottom: 14, display: "flex", flexWrap: "wrap", gap: 8 }}>
-                        <b>Suggested from Stedi:</b>
-                        {p.suggestion.value ? <span className="sugg-chip2">{p.suggestion.value}</span> : <span className="sugg-note">{p.suggestion.reason || "Check the card"}</span>}
-                        {p.suggestion.value && primaryApplicable && pt.primaryInsurance !== p.suggestion.value && (
-                          <button className="btn secondary sm" onClick={() => p.onUpdate({ primaryInsurance: p.suggestion!.value! })}>Use</button>
-                        )}
-                        {p.secondarySuggestion && <span className="sugg-note">· secondary: {p.secondarySuggestion}
-                          {pt.secondaryInsurance !== p.secondarySuggestion && <button className="btn secondary sm" style={{ marginLeft: 6 }} onClick={() => p.onUpdate({ secondaryInsurance: p.secondarySuggestion })}>Use</button>}</span>}
-                      </div>
-                    )}
+                    <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
+                      <span style={{ display: "grid", placeItems: "center", height: 26, width: 26, borderRadius: "50%", fontSize: ".8rem", fontWeight: 800, background: "var(--amber)", color: "#fff" }}>!</span>
+                      <span style={{ fontSize: "1rem", fontWeight: 800, color: "oklch(0.4 0.1 75)" }}>Enter correct insurance information <span className="req-star">*</span></span>
+                    </div>
                     <div className="fgrid">
                       <Field label="Primary Insurance" required>
                         <select className={pt.primaryInsurance ? "filled" : "need"} value={pt.primaryInsurance} onChange={(e) => p.onUpdate({ primaryInsurance: e.target.value })}>
@@ -615,6 +627,11 @@ function ProfileBody(p: BodyProps) {
                             <optgroup key={group} label={group}>{labels.map((l) => <option key={l}>{l}</option>)}</optgroup>
                           ))}
                         </select>
+                        <SuggestionInline
+                          sg={p.suggestion}
+                          showUse={!!p.suggestion?.value && primaryApplicable && pt.primaryInsurance !== p.suggestion.value}
+                          onUse={() => p.onUpdate({ primaryInsurance: p.suggestion!.value!, memberId1: (pt.workingMemberId || pt.memberId1).trim() })}
+                        />
                       </Field>
                       <Field label="Member ID 1" required>
                         <input type="text" value={pt.memberId1} onChange={(e) => p.onUpdate({ memberId1: e.target.value })} placeholder="Member ID…" />
@@ -624,15 +641,19 @@ function ProfileBody(p: BodyProps) {
                           <option value="" disabled hidden>Select…</option>
                           {SECONDARY_OPTS.map((l) => <option key={l}>{l}</option>)}
                         </select>
+                        {p.secondarySuggestion && (
+                          <div className="sugg-line" style={{ marginTop: 8 }}>
+                            <span className="sugg-lead2">Suggestion:</span>
+                            <span className="sugg-chip2">{p.secondarySuggestion}</span>
+                            {pt.secondaryInsurance !== p.secondarySuggestion && (
+                              <button className="btn secondary sm" onClick={() => p.onUpdate({ secondaryInsurance: p.secondarySuggestion })}>Use</button>
+                            )}
+                          </div>
+                        )}
                       </Field>
                       <Field label={pt.secondaryInsurance === "NY Medicaid" ? "Member ID 2 (required)" : "Member ID 2"}>
-                        <input type="text" value={pt.memberId2} onChange={(e) => p.onUpdate({ memberId2: e.target.value })} placeholder="Member ID…" />
+                        <input type="text" value={pt.memberId2} onChange={(e) => p.onUpdate({ memberId2: e.target.value })} placeholder="Member ID… (optional)" />
                       </Field>
-                    </div>
-                    <div className="fgrid" style={{ marginTop: 14 }}>
-                      <Field label="Co-insurance %"><input type="text" value={pt.workingCoinsurance || pt.stediCoinsurance} onChange={(e) => p.onUpdate({ workingCoinsurance: e.target.value })} /></Field>
-                      <Field label="Deductible Remaining"><input type="text" value={pt.workingDeductibleRemaining || pt.stediIndividualDeductibleRemaining} onChange={(e) => p.onUpdate({ workingDeductibleRemaining: e.target.value })} /></Field>
-                      <Field label="OOP Max Remaining"><input type="text" value={pt.workingOopMaxRemaining || pt.stediIndividualOopMaxRemaining} onChange={(e) => p.onUpdate({ workingOopMaxRemaining: e.target.value })} /></Field>
                     </div>
                   </div>
                 )}
@@ -771,6 +792,96 @@ function ResCell({ label, value, bad }: { label: string; value: string; bad?: bo
       <div className="rl">{label}</div>
       <div className={`rv ${value ? "set" : ""} ${bad ? "bad" : ""}`}>{value || "—"}</div>
     </div>
+  );
+}
+
+/** Prototype's fmtPct/fmtUsd — display-only formatting of Stedi cost values. */
+function fmtPct(x: string): string {
+  if (x == null || x === "") return "—";
+  const n = Number(String(x).replace(/[^0-9.\-]/g, ""));
+  if (isNaN(n)) return String(x);
+  const p = n <= 1 ? n * 100 : n;
+  return `${Math.round(p * 10) / 10}%`;
+}
+function fmtUsd(x: string): string {
+  if (x == null || x === "") return "—";
+  const n = Number(String(x).replace(/[^0-9.\-]/g, ""));
+  if (isNaN(n)) return String(x);
+  return "$" + n.toLocaleString("en-US", { maximumFractionDigits: 2 });
+}
+
+/** Cost Sharing — read-only, live from Monday's Stedi columns, with an
+ *  Individual/Family toggle (mirrors the prototype's #cost-share block). */
+function CostShare({ pt }: { pt: Patient }) {
+  const [level, setLevel] = useState<"individual" | "family">("individual");
+  const ded = level === "family" ? pt.stediFamilyDeductibleRemaining : pt.stediIndividualDeductibleRemaining;
+  const oop = level === "family" ? pt.stediFamilyOopMaxRemaining : pt.stediIndividualOopMaxRemaining;
+  return (
+    <>
+      <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 20, flexWrap: "wrap" }}>
+        <span className="flabel" style={{ margin: 0 }}>Cost Sharing</span>
+        <span className="seg-mini">
+          <button className={level === "individual" ? "on" : ""} onClick={() => setLevel("individual")}>Individual</button>
+          <button className={level === "family" ? "on" : ""} onClick={() => setLevel("family")}>Family</button>
+        </span>
+      </div>
+      <div className="res-grid" style={{ marginTop: 12, gridTemplateColumns: "repeat(4,1fr)" }}>
+        <div className="rcell"><div className="rl">Co-insurance</div><div className="rv set">{fmtPct(pt.stediCoinsurance)}</div></div>
+        <div className="rcell"><div className="rl">Co-pay</div><div className="rv set">{fmtUsd(pt.stediCopay)}</div></div>
+        <div className="rcell"><div className="rl">Deductible Remaining</div><div className="rv set">{fmtUsd(ded)}</div></div>
+        <div className="rcell"><div className="rl">OOP Max Remaining</div><div className="rv set">{fmtUsd(oop)}</div></div>
+      </div>
+    </>
+  );
+}
+
+/** Primary-insurance suggestion shown BELOW the Primary select (mirrors the
+ *  prototype's #pins-suggest / suggestionCardHTML). "Use" applies the suggested
+ *  primary AND copies the ran Member ID into Member ID 1. */
+function SuggestionInline({ sg, showUse, onUse }: {
+  sg: ReturnType<typeof suggestPrimary>; showUse: boolean; onUse: () => void;
+}) {
+  if (!sg) return null;
+  const codes = (sg.warnings || []).map((w) => w.code);
+  if (codes.includes("INACTIVE")) {
+    return (
+      <div className="sugg-line" style={{ marginTop: 8 }}>
+        <span className="sugg-chip2" style={{ background: "#fdecef", color: "var(--mm-rose)", boxShadow: "inset 0 0 0 1px var(--mm-rose)" }}>No suggestion</span>
+        <span className="sugg-note" style={{ color: "var(--mm-rose)", fontWeight: 600 }}>coverage came back INACTIVE — verify before selecting a Primary Insurance</span>
+      </div>
+    );
+  }
+  if (!sg.value && codes.includes("ADDRESS_UNRESOLVED")) {
+    return (
+      <div className="sugg-line" style={{ marginTop: 8 }}>
+        <span className="sugg-chip2 muted">No suggestion</span>
+        <span className="sugg-note">patient address is missing</span>
+      </div>
+    );
+  }
+  const SKIP: Record<string, number> = { ADDRESS_UNRESOLVED: 1, POS_11: 1, OUT_OF_STATE: 1 };
+  return (
+    <>
+      {sg.value ? (
+        <div className="sugg-line" style={{ marginTop: 8 }}>
+          <span className="sugg-lead2">Suggestion:</span>
+          <span className="sugg-chip2">{sg.value}</span>
+          {sg.pos === "11" && <span className="sugg-chip2 office">{sg.posReason || "POS 11"}</span>}
+          {showUse && <button className="btn secondary sm" onClick={onUse}>Use</button>}
+        </div>
+      ) : sg.reason ? (
+        <div className="sugg-line" style={{ marginTop: 8 }}>
+          <span className="sugg-chip2 muted">Check card</span>
+          <span className="sugg-note">{sg.reason}</span>
+        </div>
+      ) : null}
+      {sg.alternatives?.length > 0 && (
+        <div className="sugg-line">{sg.alternatives.map((a) => <span key={a} className="sugg-chip2 alt2">{a}</span>)}</div>
+      )}
+      {(sg.warnings || []).filter((w) => !SKIP[w.code]).map((w, i) => (
+        <div key={i} className="sugg-caveat"><AlertTriangle className="h-3.5 w-3.5" />{w.message}</div>
+      ))}
+    </>
   );
 }
 
