@@ -497,6 +497,7 @@ function ProfileBody(p: BodyProps) {
   // blank per patient); the rep's entry still flows to Monday via onUpdate.
   const [giInput, setGiInput] = useState("");
   const [midInput, setMidInput] = useState("");
+  const [showMid1, setShowMid1] = useState(false);
   const primaryApplicable = !!p.suggestion?.value && PRIMARY_LABELS.has(p.suggestion.value);
   const servingSuggestion = (() => {
     const req = pt.requestType || "";
@@ -582,16 +583,24 @@ function ProfileBody(p: BodyProps) {
                       {GENERAL_INS_OPTS.map((l) => <option key={l}>{l}</option>)}
                     </select>
                   </Field>
-                  <Field label="Member ID" required>
+                  <div>
+                    <div className="flabel" style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <span>Member ID <span className="req-star">*</span></span>
+                      {pt.memberId1?.trim() && (
+                        <button type="button" onClick={() => setShowMid1((s) => !s)}
+                          style={{ marginLeft: "auto", fontSize: ".7rem", fontWeight: 500, color: "var(--muted-foreground)", background: "none", border: "none", cursor: "pointer", padding: 0 }}>
+                          {showMid1 ? "hide Member ID 1" : "show Member ID 1"}
+                        </button>
+                      )}
+                    </div>
                     <input type="text" value={midInput}
                       onChange={(e) => { setMidInput(e.target.value); p.onUpdate({ workingMemberId: e.target.value }); }} placeholder="Member ID…" />
-                    {pt.memberId1 && midInput !== pt.memberId1 && (
-                      <button className="btn secondary sm" style={{ marginTop: 6 }}
-                        onClick={() => { setMidInput(pt.memberId1); p.onUpdate({ workingMemberId: pt.memberId1 }); }}>
-                        Show Member ID 1
-                      </button>
+                    {showMid1 && pt.memberId1?.trim() && (
+                      <div style={{ fontSize: ".78rem", color: "var(--muted-foreground)", marginTop: 5 }}>
+                        Member ID 1: <span style={{ userSelect: "all", fontWeight: 600, color: "var(--foreground)" }}>{pt.memberId1}</span>
+                      </div>
                     )}
-                  </Field>
+                  </div>
                 </div>
                 <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 16 }}>
                   <button className="btn primary" onClick={p.onRunStedi} disabled={p.stediRunning}>

@@ -24,10 +24,11 @@ export function NoteLog({ text }: { text: string }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
       {entries.map((e, i) => {
-        const m = e.match(/^(\[[^\]]*\]\s*[^:]*:)\s*([\s\S]*)$/);
+        // Bold only the stage label ("Profile Send-Off:"), not the timestamp.
+        const m = e.match(/^(\[[^\]]*\])\s*([^:]*:)\s*([\s\S]*)$/);
         return (
           <div key={i} className="note-entry" style={{ whiteSpace: "pre-wrap", lineHeight: 1.45 }}>
-            {m ? <><b style={{ color: "var(--mm-teal)" }}>{m[1]}</b> {m[2]}</> : e}
+            {m ? <>{m[1]} <b style={{ color: "var(--mm-teal)" }}>{m[2]}</b> {m[3]}</> : e}
           </div>
         );
       })}
