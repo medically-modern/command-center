@@ -176,3 +176,20 @@ export async function saveDoctorNotes(itemId: string, notes: string): Promise<vo
     val: JSON.stringify({ text: notes }),
   });
 }
+
+/**
+ * Write the two order-follower name/email pairs back to the Doctor DB item.
+ */
+export async function saveDoctorFollowers(itemId: string, followers: OrderFollower[]): Promise<void> {
+  const [f1, f2] = followers;
+  const cols: Record<string, unknown> = {
+    [COL_FOLLOWER1]: f1?.name ?? "",
+    [COL_FOLLOWER1_EMAIL]: f1?.email ? { email: f1.email, text: f1.email } : { email: "", text: "" },
+    [COL_FOLLOWER2]: f2?.name ?? "",
+    [COL_FOLLOWER2_EMAIL]: f2?.email ? { email: f2.email, text: f2.email } : { email: "", text: "" },
+  };
+  const query = `mutation ($item: ID!, $board: ID!, $vals: JSON!) {
+    change_multiple_column_values(item_id: $item, board_id: $board, column_values: $vals) { id }
+  }`;
+  await gql(query, { item: Number(itemId), board: DOCTOR_DB_BOARD, vals: JSON.stringify(cols) });
+}

@@ -28,15 +28,12 @@ import {
   groupPrimaryInsuranceLabels,
 } from "@/lib/profile/mondayMapping";
 import { openFileViewer } from "@/components/shared/FileViewerModal";
-import { ParachuteLookupPanel } from "@/components/profile/ParachuteLookupPanel";
-import { DoctorFollowers } from "@/components/profile/DoctorFollowers";
-import { DoctorNotesPanel } from "@/components/shared/DoctorNotesPanel";
+import { DoctorSection } from "@/components/profile/DoctorSection";
 import { AddressAutocomplete } from "@/components/profile/AddressAutocomplete";
 import { PatientsSidebar } from "@/components/profile/PatientsSidebar";
 import { PageLoadingOverlay } from "@/components/shared/PageLoadingOverlay";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
-import { createDoctorItem } from "@/lib/shared/doctorDb";
 import { useBackNavigation } from "@/hooks/useBackNavigation";
 import { ClipboardCheck, ArrowLeft, Save, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
@@ -70,7 +67,6 @@ const ProfilePage = () => {
   const [sendingBack, setSendingBack] = useState(false);
   const [stediRunning, setStediRunning] = useState(false);
   const [calcOop, setCalcOop] = useState(false);
-  const [addingDoc, setAddingDoc] = useState(false);
   const [assets, setAssets] = useState<MondayAsset[]>([]);
   const [clinicLabels, setClinicLabels] = useState<{ id: number; name: string }[]>([]);
   const [selectedClinicId, setSelectedClinicId] = useState<number | null>(null);
@@ -201,25 +197,6 @@ const ProfilePage = () => {
     } finally { setSendingBack(false); }
   };
 
-  const handleAddDoctor = async () => {
-    if (!selected) return;
-    if (!selected.doctorName?.trim() || !selected.doctorNpi?.trim()) {
-      toast.error("Doctor Name and NPI are required");
-      return;
-    }
-    setAddingDoc(true);
-    try {
-      await createDoctorItem({
-        name: selected.doctorName.trim(), npi: selected.doctorNpi.trim(),
-        address: selected.clinicAddress, phone: selected.doctorPhone,
-        fax: selected.doctorFax, email: selected.doctorEmail, method: selected.clinicalsMethod,
-      });
-      toast.success(`${selected.doctorName} added to the Doctor Database`);
-    } catch (e) {
-      toast.error("Failed to add provider", { description: e instanceof Error ? e.message : String(e) });
-    } finally { setAddingDoc(false); }
-  };
-
   const openAsset = (a: MondayAsset) => {
     try { openFileViewer({ url: a.public_url || a.url, name: a.name }); }
     catch { toast.error("Could not open file"); }
@@ -304,8 +281,6 @@ const ProfilePage = () => {
                 onRunStedi={handleRunStedi}
                 calcOop={calcOop}
                 onCalcOop={handleCalcOop}
-                addingDoc={addingDoc}
-                onAddDoctor={handleAddDoctor}
                 checklist={checklist}
                 canSubmit={canSubmit}
                 missing={missing.map((m) => m.label)}
@@ -338,8 +313,6 @@ interface BodyProps {
   onRunStedi: () => void;
   calcOop: boolean;
   onCalcOop: () => void;
-  addingDoc: boolean;
-  onAddDoctor: () => void;
   checklist: { label: string; ok: boolean }[];
   canSubmit: boolean;
   missing: string[];
@@ -665,47 +638,7 @@ function ProfileBody(p: BodyProps) {
               <div className="work-col">
                 <section className="card step-card">
                   <header className="step-head"><span className="step-num">4</span><h2>Select Correct Provider</h2></header>
-                  <div className="fgrid">
-                    <Field label="Doctor Name"><input type="text" value={pt.doctorName} onChange={(e) => p.onUpdate({ doctorName: e.target.value })} /></Field>
-                    <Field label="Doctor NPI"><input type="text" value={pt.doctorNpi} onChange={(e) => p.onUpdate({ doctorNpi: e.target.value })} /></Field>
-                    <Field label="Doctor Phone"><input type="text" value={pt.doctorPhone} onChange={(e) => p.onUpdate({ doctorPhone: e.target.value })} /></Field>
-                    <Field label="Clinicals Method">
-                      <select value={pt.clinicalsMethod} onChange={(e) => p.onUpdate({ clinicalsMethod: e.target.value })}>
-                        <option value="" disabled hidden>Select…</option>
-                        <option>Fax</option><option>Parachute</option><option>Email</option>
-                      </select>
-                    </Field>
-                    <Field label="Doctor Email"><input type="text" value={pt.doctorEmail} onChange={(e) => p.onUpdate({ doctorEmail: e.target.value })} /></Field>
-                    <Field label={pt.clinicalsMethod === "Fax" ? "Doctor Fax (required)" : "Doctor Fax (@rcfax)"}>
-                      <input type="text" className={pt.clinicalsMethod === "Fax" && !pt.doctorFax ? "need" : ""} value={pt.doctorFax} onChange={(e) => p.onUpdate({ doctorFax: e.target.value })} />
-                    </Field>
-                    <Field label="Clinic Name">
-                      <select value={pt.clinicName} onChange={(e) => {
-                        const l = p.clinicLabels.find((c) => c.name === e.target.value);
-                        if (l) p.onClinicSelect(l.id, l.name);
-                      }}>
-                        <option value="" disabled hidden>Select clinic…</option>
-                        {pt.clinicName && !p.clinicLabels.some((c) => c.name === pt.clinicName) && <option>{pt.clinicName}</option>}
-                        {p.clinicLabels.map((c) => <option key={c.id}>{c.name}</option>)}
-                      </select>
-                    </Field>
-                    <div className="full"><Field label="Clinic Address">
-                      <AddressAutocomplete value={pt.clinicAddress} className="pf-input" onChange={(r) => p.onUpdate({ clinicAddress: r.address, clinicAddressLat: r.lat || null, clinicAddressLng: r.lng || null })} placeholder="Start typing clinic address…" />
-                    </Field></div>
-                  </div>
-                  <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 12 }}>
-                    <button className="btn secondary sm" onClick={p.onAddDoctor} disabled={p.addingDoc}>{p.addingDoc ? "Adding…" : "Add Doctor to Database"}</button>
-                  </div>
-                  <div style={{ marginTop: 14 }}><DoctorNotesPanel doctorNpi={pt.doctorNpi} doctorName={pt.doctorName} /></div>
-                  <div style={{ marginTop: 14 }}>
-                    <ParachuteLookupPanel defaultTerm={pt.doctorName} phoneHint={pt.doctorPhone}
-                      onPick={(d) => {
-                        const method = d.doctor_contact === "parachute" ? "Parachute" : "Fax";
-                        p.onUpdate({ doctorName: `${d.first_name} ${d.last_name}`, doctorNpi: d.npi, clinicalsMethod: method });
-                        toast.success(`Doctor filled: ${d.first_name} ${d.last_name} — NPI ${d.npi}`);
-                      }} />
-                  </div>
-                  <div style={{ marginTop: 14 }}><DoctorFollowers doctorNpi={pt.doctorNpi} /></div>
+                  <DoctorSection patient={pt} onUpdate={p.onUpdate} clinicLabels={p.clinicLabels} onClinicSelect={p.onClinicSelect} />
                 </section>
               </div>
             </div>
