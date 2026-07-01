@@ -7,8 +7,9 @@ const MONDAY_API_VERSION = "2024-10";
 export const BOARD_ID = 18406352652;
 
 export const GROUPS = {
+  // "Send back to Patient Intake" target — the upstream stage group (top of board).
+  patientIntake: "group_mm4vhqff",
   intake: "group_mm1xf2jb",
-  parachuteExample: "group_mm1x1416",
   tests: "group_mm1wvq8p",
   stuck: "group_mm1xyczx",
   completed: "group_mm1y57sz",
@@ -55,9 +56,18 @@ export const COL = {
   // ── Insurance ──
   primaryInsurance: "color_mm1xg10n",
   generalInsurance: "color_mm24ap4j",
+  // Working Member ID entered in Benefits Check — the column the Stedi service
+  // READS. Written before Run Stedi so the check uses the rep-entered value.
+  memberIdWorking: "text_mm4t8gbq",
+  // Final Member ID that advances (written on submit; overrides working value
+  // for the Fidelis-supplies-only → NY Medicaid case).
   memberId1: "text_mm1x2qk2",
   memberId2: "text_mm1xaccx",
   secondaryInsurance: "color_mm1zbrx0",
+
+  // ── OOP estimate (computed + written by the SPA on Calculate) ──
+  oopFirst: "text_mm4tvsk6",
+  oopRecurring: "text_mm4ttaa6",
 
   // ── Working cost-sharing (numeric, editable by user) ──
   workingCoinsurance: "numeric_mm1zzyph",
@@ -133,8 +143,10 @@ export const READ_COLUMN_IDS: string[] = [
   COL.stediSecondaryMedicaidId,
   COL.stediGender, COL.stediMedicaidId, COL.stediHomePlan,
   // Insurance
-  COL.primaryInsurance, COL.generalInsurance, COL.memberId1, COL.memberId2,
-  COL.secondaryInsurance,
+  COL.primaryInsurance, COL.generalInsurance, COL.memberIdWorking,
+  COL.memberId1, COL.memberId2, COL.secondaryInsurance,
+  // OOP estimate
+  COL.oopFirst, COL.oopRecurring,
   // Working cost-sharing
   COL.workingCoinsurance, COL.workingDeductible, COL.workingDeductibleRemaining,
   COL.workingOopMax, COL.workingOopMaxRemaining,

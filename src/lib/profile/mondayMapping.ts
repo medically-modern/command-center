@@ -73,9 +73,14 @@ export function mondayItemToPatient(item: MondayItem): Patient {
     // Insurance
     primaryInsurance: col(item, COL.primaryInsurance),
     generalInsurance: col(item, COL.generalInsurance),
+    workingMemberId: col(item, COL.memberIdWorking),
     memberId1: col(item, COL.memberId1),
     memberId2: col(item, COL.memberId2),
     secondaryInsurance: col(item, COL.secondaryInsurance),
+
+    // OOP estimate
+    oopFirst: col(item, COL.oopFirst),
+    oopRecurring: col(item, COL.oopRecurring),
 
     // Working cost-sharing
     workingCoinsurance: col(item, COL.workingCoinsurance),

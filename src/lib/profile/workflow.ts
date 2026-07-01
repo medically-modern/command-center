@@ -62,9 +62,15 @@ export interface Patient {
   // ── Insurance ──
   primaryInsurance: string;
   generalInsurance: string;
+  /** Working Member ID (Benefits Check) — the column Stedi reads (text_mm4t8gbq). */
+  workingMemberId: string;
   memberId1: string;
   memberId2: string;
   secondaryInsurance: string;
+
+  // ── OOP estimate (computed + written by the SPA) ──
+  oopFirst: string;
+  oopRecurring: string;
 
   // ── Working cost-sharing (editable by user, default from individual) ──
   workingCoinsurance: string;
