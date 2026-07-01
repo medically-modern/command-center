@@ -492,11 +492,14 @@ function ProfileBody(p: BodyProps) {
   const ip = servingIncludes(serv, "insulin pump");
   const stediComplete = !!(pt.stediPlanName || pt.stediEligibilityActive || pt.stediErrorDescription);
   const [readyOpen, setReadyOpen] = useState(false);
-  // Benefits Check inputs are entered fresh by the rep — never pre-filled from
-  // Monday. Local state (ProfileBody is keyed by patient id, so it resets to
-  // blank per patient); the rep's entry still flows to Monday via onUpdate.
-  const [giInput, setGiInput] = useState("");
-  const [midInput, setMidInput] = useState("");
+  // Benefits Check inputs: patient self-referrals already carry insurance from
+  // intake, so pre-fill General Insurance + Member ID for them; every other
+  // referral source starts blank for fresh rep entry. Local state (ProfileBody
+  // is keyed by patient id, so it resets per patient); the rep's entry still
+  // flows to Monday via onUpdate.
+  const patientReferral = (pt.referralSource || "").trim().toLowerCase() === "patient";
+  const [giInput, setGiInput] = useState(patientReferral ? pt.generalInsurance : "");
+  const [midInput, setMidInput] = useState(patientReferral ? (pt.workingMemberId || pt.memberId1) : "");
   const [showMid1, setShowMid1] = useState(false);
   const primaryApplicable = !!p.suggestion?.value && PRIMARY_LABELS.has(p.suggestion.value);
   const servingSuggestion = (() => {
