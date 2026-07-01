@@ -11,7 +11,7 @@ import { useSearchParams } from "react-router-dom";
 import type { ReactNode } from "react";
 import { useMondayPatients } from "@/hooks/profile/useMondayPatients";
 import type { Patient } from "@/lib/profile/workflow";
-import { hasValidZip, formatPhone } from "@/lib/profile/workflow";
+import { hasValidZip, formatPhone, crossSellReason } from "@/lib/profile/workflow";
 import { fetchClinicLabels, fetchItemAssets, type MondayAsset } from "@/lib/profile/mondayApi";
 import {
   sendPatientToMonday, sendBackToPatientIntake, writeBenefitsInputs,
@@ -30,6 +30,7 @@ import {
 import { openFileViewer } from "@/components/shared/FileViewerModal";
 import { ParachuteLookupPanel } from "@/components/profile/ParachuteLookupPanel";
 import { DoctorFollowers } from "@/components/profile/DoctorFollowers";
+import { DoctorNotesPanel } from "@/components/shared/DoctorNotesPanel";
 import { AddressAutocomplete } from "@/components/profile/AddressAutocomplete";
 import { ReferralEmailPanel } from "@/components/profile/ReferralEmailPanel";
 import { FollowUpModal } from "@/components/profile/FollowUpModal";
@@ -363,6 +364,15 @@ function ProfileBody(p: BodyProps) {
   const cgm = servingIncludes(serv, "cgm");
   const ip = servingIncludes(serv, "insulin pump");
   const primaryApplicable = !!p.suggestion?.value && PRIMARY_LABELS.has(p.suggestion.value);
+  // Advisory serving suggestion: base = requested product; add CGM when cross-sell eligible.
+  const servingSuggestion = (() => {
+    const req = pt.requestType || "";
+    if (/cgm/i.test(req)) return req;
+    if (crossSellReason(pt.primaryInsurance) === "eligible") {
+      return req === "Supplies Only" ? "Supplies + CGM" : req === "Insulin Pump" ? "Insulin Pump + CGM" : req;
+    }
+    return req;
+  })();
 
   return (
     <div className="page" style={{ maxWidth: "104rem" }}>
@@ -378,10 +388,17 @@ function ProfileBody(p: BodyProps) {
             <p className="ph-dob">DOB {pt.dob || "—"} · {pt.ptPhone || "—"}</p>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap", justifyContent: "flex-end" }}>
-            <button className="btn secondary sm" onClick={p.onReferral}>✉ See Referral Email</button>
-            <button className="btn secondary sm" onClick={p.onFollowUp}>◷ Follow Up</button>
-            <button className="btn primary sm" onClick={p.onSave} disabled={!p.hasOverlay}>Save</button>
-            {pt.alreadyInSystem?.toLowerCase() === "yes" && <span className="stage-chip" style={{ background: "var(--mm-rose-soft)", color: "var(--mm-rose)" }}>Already In System</span>}
+            <div className="hgroup" style={{ margin: 0 }}><div className="pair">
+              <div><div className="eyebrow">Referral Type</div><div className="hval">{pt.referralType || "—"}</div></div>
+              <div><div className="eyebrow">Referral Source</div><div className="hval">{pt.referralSource || "—"}</div></div>
+            </div></div>
+            <span className="stage-chip" style={pt.alreadyInSystem?.toLowerCase() === "yes" ? { background: "var(--mm-rose-soft)", color: "var(--mm-rose)" } : undefined}>
+              {pt.alreadyInSystem?.toLowerCase() === "yes" ? "Already In System" : "New Patient"}
+            </span>
+            <div style={{ display: "flex", gap: 8 }}>
+              <button className="btn secondary sm" onClick={p.onFollowUp}>◷ Follow Up</button>
+              <button className="btn primary sm" onClick={p.onSave} disabled={!p.hasOverlay}>Save</button>
+            </div>
           </div>
         </div>
       </section>
@@ -395,13 +412,10 @@ function ProfileBody(p: BodyProps) {
         {/* Left rail */}
         <aside className="leftrail">
           <div className="rail-card">
-            <div className="rail-head">✉ Referral</div>
+            <div className="rail-head">✉ Referral Email</div>
             <div className="rail-body">
-              <div className="kv">
-                <div className="f"><div className="k">Referral Type</div><div className="v">{pt.referralType || "—"}</div></div>
-                <div className="f"><div className="k">Referral Source</div><div className="v">{pt.referralSource || "—"}</div></div>
-              </div>
-              <button className="btn secondary sm" style={{ marginTop: 12 }} onClick={p.onReferral}>Open referral email / updates</button>
+              <p className="sugg-note" style={{ marginBottom: 10 }}>Referral thread &amp; updates for this patient.</p>
+              <button className="btn secondary sm" onClick={p.onReferral}>Open referral email / updates</button>
             </div>
           </div>
           <div className="rail-card">
@@ -562,6 +576,13 @@ function ProfileBody(p: BodyProps) {
                 <header className="step-head"><span className="step-num">3</span><h2>Serving &amp; Coverage</h2></header>
                 <div className="fgrid">
                   <div className="full">
+                    {servingSuggestion && servingSuggestion !== serv && (
+                      <div className="sugg-line" style={{ marginBottom: 8 }}>
+                        <span className="sugg-lead2">Suggestion:</span>
+                        <span className="sugg-chip2">{servingSuggestion}</span>
+                        <button className="btn secondary sm" onClick={() => p.onUpdate({ serving: servingSuggestion })}>Use</button>
+                      </div>
+                    )}
                     <Field label="Serving" required>
                       <select className={serv ? "filled" : "need"} value={serv} onChange={(e) => p.onUpdate({ serving: e.target.value })}>
                         <option value="" disabled hidden>Select what we're serving…</option>
@@ -583,7 +604,11 @@ function ProfileBody(p: BodyProps) {
                 )}
                 {(pt.oopFirst || pt.oopRecurring) && (
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginTop: 14 }}>
-                    <div className="rcell" style={{ background: "var(--mm-mint)", borderColor: "var(--mm-mint-ring)" }}><div className="rl">First Order</div><div className="rv set" style={{ fontSize: "1.4rem" }}>{pt.oopFirst || "—"}</div></div>
+                    <div className="rcell" style={{ background: "var(--mm-mint)", borderColor: "var(--mm-mint-ring)" }}>
+                      <div className="rl">First Order</div>
+                      <div className="rv set" style={{ fontSize: "1.4rem" }}>{pt.oopFirst || "—"}</div>
+                      {ip && <div className="rl" style={{ marginTop: 4, textTransform: "none", letterSpacing: 0, color: "var(--mm-teal)", fontWeight: 700 }}>Includes Pump</div>}
+                    </div>
                     <div className="rcell" style={{ background: "var(--mm-mint)", borderColor: "var(--mm-mint-ring)" }}><div className="rl">Recurring · 90-day</div><div className="rv set" style={{ fontSize: "1.4rem" }}>{pt.oopRecurring || "—"}</div></div>
                   </div>
                 )}
@@ -619,6 +644,16 @@ function ProfileBody(p: BodyProps) {
                   <Field label={pt.clinicalsMethod === "Fax" ? "Doctor Fax (required)" : "Doctor Fax (@rcfax)"}>
                     <input type="text" className={pt.clinicalsMethod === "Fax" && !pt.doctorFax ? "need" : ""} value={pt.doctorFax} onChange={(e) => p.onUpdate({ doctorFax: e.target.value })} />
                   </Field>
+                  <Field label="Clinic Name">
+                    <select value={pt.clinicName} onChange={(e) => {
+                      const l = p.clinicLabels.find((c) => c.name === e.target.value);
+                      if (l) p.onClinicSelect(l.id, l.name);
+                    }}>
+                      <option value="" disabled hidden>Select clinic…</option>
+                      {pt.clinicName && !p.clinicLabels.some((c) => c.name === pt.clinicName) && <option>{pt.clinicName}</option>}
+                      {p.clinicLabels.map((c) => <option key={c.id}>{c.name}</option>)}
+                    </select>
+                  </Field>
                   <div className="full"><Field label="Clinic Address">
                     <AddressAutocomplete value={pt.clinicAddress} onChange={(r) => p.onUpdate({ clinicAddress: r.address, clinicAddressLat: r.lat || null, clinicAddressLng: r.lng || null })} placeholder="Start typing clinic address…" className="" />
                   </Field></div>
@@ -626,6 +661,8 @@ function ProfileBody(p: BodyProps) {
                 <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 12 }}>
                   <button className="btn secondary sm" onClick={p.onAddDoctor} disabled={p.addingDoc}>{p.addingDoc ? "Adding…" : "Add Doctor to Database"}</button>
                 </div>
+                {/* Records contact / Doctor Notes (Option A) — reads + edits Doctor DB by NPI */}
+                <div style={{ marginTop: 14 }}><DoctorNotesPanel doctorNpi={pt.doctorNpi} doctorName={pt.doctorName} /></div>
                 <div style={{ marginTop: 14 }}>
                   <ParachuteLookupPanel defaultTerm={pt.doctorName} phoneHint={pt.doctorPhone}
                     onPick={(d) => {
@@ -660,6 +697,11 @@ function ProfileBody(p: BodyProps) {
                     <span className="ctag">{it.ok ? "ok" : "missing"}</span>
                   </div>
                 ))}
+              </div>
+              <div className="miss-pills">
+                {p.missing.length
+                  ? p.missing.map((m) => <span key={m} className="mp">{m}</span>)
+                  : <span className="mp green">Nothing outstanding — ready to advance</span>}
               </div>
               <div className="route-grid">
                 <div className={`route adv ${p.canSubmit ? "on" : ""}`}>
