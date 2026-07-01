@@ -15,6 +15,7 @@ import { PatientsSidebar } from "@/components/profile/PatientsSidebar";
 import { PatientProfileCard } from "@/components/profile/PatientProfileCard";
 import { ReferralEmailPanel } from "@/components/profile/ReferralEmailPanel";
 import { NotesPanel } from "@/components/profile/NotesPanel";
+import { OopCard } from "@/components/profile/OopCard";
 import { FollowUpModal } from "@/components/profile/FollowUpModal";
 import { Button } from "@/components/ui/button";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
@@ -54,7 +55,9 @@ const ProfilePage = () => {
     [patients, selectedId],
   );
 
-  // Required-field validation — blocks "Advance to MN" when any red field is empty
+  // Required-field validation — the redesign checklist. Blocks "Advance to MN"
+  // when any required field is missing. Device type + coverage path are required
+  // only for the product(s) actually being served.
   const missingRequired = useMemo(() => {
     if (!selected) return [];
     const missing: string[] = [];
@@ -65,14 +68,23 @@ const ProfilePage = () => {
     if (!selected.gender?.trim()) missing.push("Gender");
     // Insurance
     if (!selected.primaryInsurance?.trim()) missing.push("Primary Insurance");
-    // Serving / Coverage
+    if (!(selected.memberId1?.trim() || selected.workingMemberId?.trim())) missing.push("Member ID 1");
+    if (!selected.secondaryInsurance?.trim()) missing.push("Secondary Insurance");
+    // Member ID 2 is required only when the secondary is NY Medicaid
+    if (selected.secondaryInsurance === "NY Medicaid" && !selected.memberId2?.trim()) missing.push("Member ID 2");
+    // Benefits must have come back active
+    if ((selected.stediEligibilityActive || "").toLowerCase().trim() !== "yes") missing.push("Benefits verified active");
+    // Serving / Coverage — rep decision; device + path only for the served product
     if (!selected.serving?.trim()) missing.push("Serving");
-    if (!selected.cgmCrossSell?.trim()) missing.push("Cross-Sell Status");
-    if (!selected.insulinPumpCoveragePath?.trim()) missing.push("IP Coverage Path");
-    if (!selected.cgmCoveragePath?.trim()) missing.push("CGM Coverage Path");
-    // Devices — always required ("Not Serving" is a valid selection)
-    if (!selected.pumpType?.trim()) missing.push("Pump Type");
-    if (!selected.cgmType?.trim()) missing.push("CGM Type");
+    const serv = (selected.serving || "").toLowerCase();
+    if (serv.includes("cgm")) {
+      if (!selected.cgmType?.trim()) missing.push("CGM Type");
+      if (!selected.cgmCoveragePath?.trim()) missing.push("CGM Coverage Path");
+    }
+    if (serv.includes("insulin pump")) {
+      if (!selected.pumpType?.trim()) missing.push("Pump Type");
+      if (!selected.insulinPumpCoveragePath?.trim()) missing.push("IP Coverage Path");
+    }
     // Doctor Fax required when clinicals method is Fax
     if (selected.clinicalsMethod === "Fax" && !selected.doctorFax?.trim()) missing.push("Doctor Fax");
     return missing;
@@ -269,6 +281,9 @@ const ProfilePage = () => {
 
                   {/* 4. Request, Cross-Sell, Serving, Coverage (no referral) */}
                   <ServingPanel patient={selected} onUpdate={handleUpdate} hideReferral />
+
+                  {/* 4b. OOP estimate — compute + write after Serving is chosen */}
+                  <OopCard patient={selected} onUpdate={handleUpdate} />
 
                   {/* 5. Doctor */}
                   <DoctorPanel

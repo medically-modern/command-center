@@ -10,7 +10,8 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { cn } from "@/lib/utils";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
-import { triggerStediRun, writePatientProfile, verifyProfileWritten } from "@/lib/profile/mondayWrite";
+import { triggerStediRun, writePatientProfile, verifyProfileWritten, writeBenefitsInputs } from "@/lib/profile/mondayWrite";
+import { InsuranceSuggestions } from "./InsuranceSuggestions";
 import {
   GENERAL_INSURANCE_INDEX,
   PRIMARY_INSURANCE_INDEX,
@@ -185,7 +186,7 @@ export function StediPanel({ patient, onRefresh, onUpdate, onNext, onRemoveOverl
         name: patient.name,
         dob: patient.dob,
         generalInsurance: patient.generalInsurance,
-        memberId1: patient.memberId1,
+        workingMemberId: (patient.workingMemberId || patient.memberId1).trim(),
       });
       if (result.ok) {
         // Mark these values as the new "known in Monday" baseline
@@ -263,6 +264,13 @@ export function StediPanel({ patient, onRefresh, onUpdate, onNext, onRemoveOverl
       "stediHomePlan",
     ]);
     try {
+      // Ensure the Stedi-read columns (General Insurance + working Member ID
+      // text_mm4t8gbq) carry the rep-entered values before the check fires.
+      await writeBenefitsInputs(
+        patient.id,
+        patient.generalInsurance,
+        (patient.workingMemberId || patient.memberId1).trim(),
+      );
       await triggerStediRun(patient.id);
       toast.success("Stedi eligibility check triggered");
       // Poll for results — the watcher effect below clears
@@ -439,6 +447,9 @@ export function StediPanel({ patient, onRefresh, onUpdate, onNext, onRemoveOverl
 
           {/* Separator */}
           <div className="border-t border-border" />
+
+          {/* Advisory Primary/Secondary suggestions derived from the Stedi output */}
+          <InsuranceSuggestions patient={patient} onUpdate={onUpdate} />
 
           {/* Primary + Secondary Insurance */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-5">

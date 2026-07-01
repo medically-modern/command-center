@@ -1,7 +1,7 @@
 {
   "profile": [
-    "Janelle",
-    "Corey"
+    "Corey",
+    "Janelle"
   ],
   "evaluate": [
     "Masheke",
@@ -16,12 +16,6 @@
     "Janelle"
   ],
   "confirmReceipt": [
-    "Masheke",
-    "Brandon",
-    "Corey",
-    "Janelle"
-  ],
-  "chaseBenefits": [
     "Masheke",
     "Brandon",
     "Corey",
@@ -45,7 +39,6 @@
   ],
   "welcomeCall": [
     "Corey",
-    "Brandon",
     "Janelle"
   ],
   "authDenied": [
@@ -64,10 +57,31 @@
   ],
   "subscription": [
     "Josh",
-    "Janelle",
-    "Masheke"
+    "Janelle"
   ],
   "patientQuestions": [
+    "Janelle",
     "Josh"
+  ],
+  "updateClinicals": [
+    "Masheke"
+  ],
+  "chaseFax": [
+    "Brandon",
+    "Corey",
+    "Janelle",
+    "Maddie"
+  ],
+  "chaseParachute": [
+    "Masheke",
+    "Brandon",
+    "Corey",
+    "Janelle"
+  ],
+  "fax": [
+    "Masheke"
+  ],
+  "chaseBenefits": [
+    "Masheke"
   ]
 }

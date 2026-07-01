@@ -318,6 +318,10 @@ export async function writePatientProfile(p: Patient): Promise<void> {
 
   // Insurance
   tasks.push(statusPromise(p.id, COL.generalInsurance, p.generalInsurance, GENERAL_INSURANCE_INDEX));
+  // Working Member ID — the column the Stedi service READS (text_mm4t8gbq).
+  // Falls back to Member ID 1 for pre-redesign items whose working field is blank.
+  const workingId = (p.workingMemberId || p.memberId1 || "").trim();
+  if (workingId) tasks.push(writeText(p.id, COL.memberIdWorking, workingId));
   if (p.memberId1) tasks.push(writeText(p.id, COL.memberId1, p.memberId1));
   if (p.memberId2) tasks.push(writeText(p.id, COL.memberId2, p.memberId2));
 
@@ -326,8 +330,9 @@ export async function writePatientProfile(p: Patient): Promise<void> {
 
 /**
  * After writing, re-fetch the item from Monday and verify the four key
- * Stedi-input fields (Name, DOB, General Insurance, Member ID 1) match
- * what we expected to write.
+ * Stedi-input fields (Name, DOB, General Insurance, working Member ID) match
+ * what we expected to write. The working Member ID is the column Stedi reads
+ * (text_mm4t8gbq), so it's the one that must land before the check runs.
  *
  * Returns { ok: true } if everything matches, otherwise a list of
  * field-level mismatches for the toast.
@@ -338,13 +343,13 @@ export async function verifyProfileWritten(
     name: string;
     dob: string;
     generalInsurance: string;
-    memberId1: string;
+    workingMemberId: string;
   },
 ): Promise<{ ok: boolean; mismatches: string[] }> {
   const item = await fetchItem(itemId, [
     COL.dob,
     COL.generalInsurance,
-    COL.memberId1,
+    COL.memberIdWorking,
   ]);
   if (!item) return { ok: false, mismatches: ["Item not found in Monday"] };
 
@@ -363,9 +368,9 @@ export async function verifyProfileWritten(
       `General Insurance (Monday: "${cv(COL.generalInsurance)}", expected: "${expected.generalInsurance}")`,
     );
   }
-  if (cv(COL.memberId1) !== expected.memberId1) {
+  if (cv(COL.memberIdWorking) !== expected.workingMemberId) {
     mismatches.push(
-      `Member ID 1 (Monday: "${cv(COL.memberId1)}", expected: "${expected.memberId1}")`,
+      `Member ID (Monday: "${cv(COL.memberIdWorking)}", expected: "${expected.workingMemberId}")`,
     );
   }
   return { ok: mismatches.length === 0, mismatches };
