@@ -50,7 +50,7 @@ The Python backends the SPA mirrors (financial estimate, DVS automations) live o
 | Board | ID | Roles / purpose |
 |---|---|---|
 | **DTC Intake** | `18392794310` | Top of funnel; "Send To Medical Necessity" group feeds the pipeline. Read-only here (oversight/system-mgmt). |
-| **Profile Send Off** | `18406352652` | `profile` role. Its own board (groups: *Intake → Parachute Example → Tests → Stuck → Completed*). **Not** the Welcome Call board. |
+| **Profile Send Off** | `18406352652` | `profile` role. Its own board (groups: *Patient Intake → 1. Intake → Tests → Stuck → Completed*). Profile works **1. Intake** (`group_mm1xf2jb`); two send-off exits: **Advance to MN** (`Move to Onboarding` → automation creates the Masheke item + moves to Completed) and **Send back to Patient Intake** (`moveItemToGroup` → `group_mm4vhqff`). **Not** the Welcome Call board. |
 | **Medical Evaluation** ("Masheke") | `18406060017` | `evaluate`, `sendRequest`, `confirmReceipt`, `chaseFax`, `chaseParachute`. Medical-necessity document collection. |
 | **Insurance** ("Samantha") | `18410601299` | `benefits`, `submitAuth`, `authOutstanding`, `authDenied`. Groups: Benefits, Submit Auth, Auth Outstanding, Auth Denied, Escalations, Complete/Stuck. |
 | **Welcome Call** | `18410804557` | `welcomeCall` + `finalConfirm` (two roles, same board, different groups). See `BOARD_SCHEMA.md`. |
