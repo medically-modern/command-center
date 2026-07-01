@@ -440,16 +440,16 @@ function RailReferral({ patient }: { patient: Patient }) {
   const [updates, setUpdates] = useState<MondayUpdate[]>([]);
   const [loading, setLoading] = useState(false);
 
+  // Fetch on load / patient change and auto-expand when there's referral data.
   useEffect(() => {
-    if (!open) return;
     let cancelled = false;
     setLoading(true);
     fetchUpdates(patient.id)
-      .then((u) => { if (!cancelled) setUpdates(u); })
+      .then((u) => { if (!cancelled) { setUpdates(u); if (u.length > 0) setOpen(true); } })
       .catch(() => { if (!cancelled) setUpdates([]); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
-  }, [open, patient.id]);
+  }, [patient.id]);
 
   return (
     <div className="rail-card">
@@ -492,6 +492,11 @@ function ProfileBody(p: BodyProps) {
   const ip = servingIncludes(serv, "insulin pump");
   const stediComplete = !!(pt.stediPlanName || pt.stediEligibilityActive || pt.stediErrorDescription);
   const [readyOpen, setReadyOpen] = useState(false);
+  // Benefits Check inputs are entered fresh by the rep — never pre-filled from
+  // Monday. Local state (ProfileBody is keyed by patient id, so it resets to
+  // blank per patient); the rep's entry still flows to Monday via onUpdate.
+  const [giInput, setGiInput] = useState("");
+  const [midInput, setMidInput] = useState("");
   const primaryApplicable = !!p.suggestion?.value && PRIMARY_LABELS.has(p.suggestion.value);
   const servingSuggestion = (() => {
     const req = pt.requestType || "";
@@ -572,14 +577,20 @@ function ProfileBody(p: BodyProps) {
                 <header className="step-head"><span className="step-num">2</span><h2>Benefits Check</h2></header>
                 <div className="fgrid">
                   <Field label="General Insurance" required>
-                    <select value={pt.generalInsurance} onChange={(e) => p.onUpdate({ generalInsurance: e.target.value })}>
+                    <select value={giInput} onChange={(e) => { setGiInput(e.target.value); p.onUpdate({ generalInsurance: e.target.value }); }}>
                       <option value="" disabled hidden>Select insurance…</option>
                       {GENERAL_INS_OPTS.map((l) => <option key={l}>{l}</option>)}
                     </select>
                   </Field>
                   <Field label="Member ID" required>
-                    <input type="text" value={pt.workingMemberId || pt.memberId1}
-                      onChange={(e) => p.onUpdate({ workingMemberId: e.target.value })} placeholder="Member ID…" />
+                    <input type="text" value={midInput}
+                      onChange={(e) => { setMidInput(e.target.value); p.onUpdate({ workingMemberId: e.target.value }); }} placeholder="Member ID…" />
+                    {pt.memberId1 && midInput !== pt.memberId1 && (
+                      <button className="btn secondary sm" style={{ marginTop: 6 }}
+                        onClick={() => { setMidInput(pt.memberId1); p.onUpdate({ workingMemberId: pt.memberId1 }); }}>
+                        Show Member ID 1
+                      </button>
+                    )}
                   </Field>
                 </div>
                 <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 16 }}>
