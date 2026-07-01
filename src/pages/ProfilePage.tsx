@@ -16,6 +16,7 @@ import { PatientProfileCard } from "@/components/profile/PatientProfileCard";
 import { ReferralEmailPanel } from "@/components/profile/ReferralEmailPanel";
 import { NotesPanel } from "@/components/profile/NotesPanel";
 import { OopCard } from "@/components/profile/OopCard";
+import { ReadinessChecklist } from "@/components/profile/ReadinessChecklist";
 import { FollowUpModal } from "@/components/profile/FollowUpModal";
 import { Button } from "@/components/ui/button";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
@@ -55,41 +56,41 @@ const ProfilePage = () => {
     [patients, selectedId],
   );
 
-  // Required-field validation — the redesign checklist. Blocks "Advance to MN"
-  // when any required field is missing. Device type + coverage path are required
-  // only for the product(s) actually being served.
-  const missingRequired = useMemo(() => {
-    if (!selected) return [];
-    const missing: string[] = [];
-    // Demographics
-    if (!selected.name?.trim()) missing.push("Name");
-    if (!selected.dob?.trim()) missing.push("DOB");
-    if (!selected.ptPhone?.trim()) missing.push("Phone");
-    if (!selected.gender?.trim()) missing.push("Gender");
-    // Insurance
-    if (!selected.primaryInsurance?.trim()) missing.push("Primary Insurance");
-    if (!(selected.memberId1?.trim() || selected.workingMemberId?.trim())) missing.push("Member ID 1");
-    if (!selected.secondaryInsurance?.trim()) missing.push("Secondary Insurance");
-    // Member ID 2 is required only when the secondary is NY Medicaid
-    if (selected.secondaryInsurance === "NY Medicaid" && !selected.memberId2?.trim()) missing.push("Member ID 2");
-    // Benefits must have come back active
-    if ((selected.stediEligibilityActive || "").toLowerCase().trim() !== "yes") missing.push("Benefits verified active");
-    // Serving / Coverage — rep decision; device + path only for the served product
-    if (!selected.serving?.trim()) missing.push("Serving");
+  // Send-off checklist — the redesign requirements as an ordered pass/fail list.
+  // Device type + coverage path are required only for the product(s) served;
+  // Member ID 2 only when the secondary is NY Medicaid.
+  const checklist = useMemo(() => {
+    if (!selected) return [] as { label: string; ok: boolean }[];
     const serv = (selected.serving || "").toLowerCase();
+    const items: { label: string; ok: boolean }[] = [
+      { label: "Name", ok: !!selected.name?.trim() },
+      { label: "DOB", ok: !!selected.dob?.trim() },
+      { label: "Phone", ok: !!selected.ptPhone?.trim() },
+      { label: "Gender", ok: !!selected.gender?.trim() },
+      { label: "Primary Insurance", ok: !!selected.primaryInsurance?.trim() },
+      { label: "Member ID 1", ok: !!(selected.memberId1?.trim() || selected.workingMemberId?.trim()) },
+      { label: "Secondary Insurance", ok: !!selected.secondaryInsurance?.trim() },
+    ];
+    if (selected.secondaryInsurance === "NY Medicaid") {
+      items.push({ label: "Member ID 2 (NY Medicaid)", ok: !!selected.memberId2?.trim() });
+    }
+    items.push({ label: "Benefits verified active", ok: (selected.stediEligibilityActive || "").toLowerCase().trim() === "yes" });
+    items.push({ label: "Serving", ok: !!selected.serving?.trim() });
     if (serv.includes("cgm")) {
-      if (!selected.cgmType?.trim()) missing.push("CGM Type");
-      if (!selected.cgmCoveragePath?.trim()) missing.push("CGM Coverage Path");
+      items.push({ label: "CGM Type", ok: !!selected.cgmType?.trim() });
+      items.push({ label: "CGM Coverage Path", ok: !!selected.cgmCoveragePath?.trim() });
     }
     if (serv.includes("insulin pump")) {
-      if (!selected.pumpType?.trim()) missing.push("Pump Type");
-      if (!selected.insulinPumpCoveragePath?.trim()) missing.push("IP Coverage Path");
+      items.push({ label: "Pump Type", ok: !!selected.pumpType?.trim() });
+      items.push({ label: "IP Coverage Path", ok: !!selected.insulinPumpCoveragePath?.trim() });
     }
-    // Doctor Fax required when clinicals method is Fax
-    if (selected.clinicalsMethod === "Fax" && !selected.doctorFax?.trim()) missing.push("Doctor Fax");
-    return missing;
+    if (selected.clinicalsMethod === "Fax") {
+      items.push({ label: "Doctor Fax", ok: !!selected.doctorFax?.trim() });
+    }
+    return items;
   }, [selected]);
 
+  const missingRequired = useMemo(() => checklist.filter((i) => !i.ok).map((i) => i.label), [checklist]);
   const canSubmit = missingRequired.length === 0;
 
   const handleUpdate = useCallback((patch: Partial<Patient>) => {
@@ -310,17 +311,15 @@ const ProfilePage = () => {
                     onSuccess={refetch}
                   />
 
-                  {/* Submit */}
-                  <div className="rounded-xl bg-card border shadow-card p-5">
-                    {!canSubmit && (
-                      <div className="mb-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
-                        Missing required fields: {missingRequired.join(", ")}
-                      </div>
-                    )}
-                    <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+                  {/* Send-off — checklist + routes */}
+                  <div className="rounded-xl bg-card border shadow-card p-5 space-y-4">
+                    <ReadinessChecklist items={checklist} />
+                    <div className="flex flex-col sm:flex-row items-center justify-between gap-4 border-t pt-4">
                       <div className="text-sm text-muted-foreground">
-                        <p className="font-medium text-foreground">Ready to send off?</p>
-                        <p className="text-xs">All edits will be saved to Monday when you submit.</p>
+                        <p className="font-medium text-foreground">
+                          {canSubmit ? "Everything checks out — ready to advance." : "Complete the checklist above to advance."}
+                        </p>
+                        <p className="text-xs">Advancing saves all edits to Monday; sending back moves the patient to Patient Intake.</p>
                       </div>
                       <div className="flex gap-3">
                         <Button
