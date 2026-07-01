@@ -32,7 +32,9 @@
 .pf-root .duo.duo-stretch { align-items:stretch }
 .pf-root .duo.duo-stretch .leftcol { display:flex;flex-direction:column }
 .pf-root .duo.duo-stretch .leftcol>.card { flex:1 }
-.pf-root .leftrail { position:sticky;top:16px;align-self:start;max-height:calc(100vh - 32px);overflow:auto;display:flex;flex-direction:column;gap:16px }
+/* Not sticky / no internal scroll — the referral email must show in full;
+   the page scrolls, the rail never clips or scrolls its own content. */
+.pf-root .leftrail { align-self:start;display:flex;flex-direction:column;gap:16px }
 .pf-root .rail-card { border:1px solid var(--border);border-radius:14px;background:#fff;overflow:hidden }
 .pf-root .rail-card:first-child { border-top:4px solid var(--mm-teal) }
 .pf-root .rail-head { font-size:.74rem;text-transform:uppercase;letter-spacing:.05em;color:var(--mm-teal);font-weight:800;padding:12px 16px;border-bottom:1px solid var(--border);background:oklch(0.985 0.005 200) }

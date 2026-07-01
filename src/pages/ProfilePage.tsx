@@ -462,7 +462,7 @@ function RailReferral({ patient }: { patient: Patient }) {
             ) : updates.length === 0 ? (
               <p className="sugg-note">No referral email / updates on file.</p>
             ) : (
-              <div style={{ maxHeight: "calc(100vh - 320px)", overflow: "auto" }}>
+              <div>
                 {updates.map((u) => (
                   <div key={u.id} className="note-entry">
                     <span className="ts">[{u.created_at ? new Date(u.created_at).toLocaleString() : ""}] {u.creator?.name || ""}</span>
