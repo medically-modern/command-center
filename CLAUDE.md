@@ -155,6 +155,10 @@ The Cloudflare worker (`monday-file-proxy`) has three routes:
   relay, but no re-auth either). Set the worker var `GOOGLE_CLIENT_ID` to also pin the `aud` to this app.
   Recipients may be normal emails **or `<number>@rcfax.com`**, which
   **RingCentral converts to a fax**. This is how Send Request dispatches fax/email.
+  All **email** recipients go out as **one grouped message** (`To:` everyone, plus the optional
+  `cc` form field — Send Request's Cc input) so the Sent folder shows a single email to the
+  group; each **@rcfax** recipient still gets its **own** message (a fax is point-to-point, and
+  grouping would expose the rcfax addresses to the human recipients).
 `ringcentralApi.ts` also reads the **unread-fax count** (FAX dashboard role) and the Fax Inbox.
 > **Gotcha — fax count window:** RingCentral's message store defaults `dateFrom` to **~the last 24h**.
 > Both `fetchUnreadFaxCount` and `fetchInboundFaxes` must pass an explicit `dateFrom` (180-day lookback)

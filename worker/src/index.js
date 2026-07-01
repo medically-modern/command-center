@@ -7,8 +7,13 @@
  *   POST /send-message  → send an email (with attachments) as GMAIL_SENDER via
  *                         the Gmail API. Used by the Send Request composer.
  *                         Recipients may be normal emails OR <number>@rcfax.com
- *                         (RingCentral turns those into faxes). Gated to
- *                         signed-in medicallymodern.com users (no open relay).
+ *                         (RingCentral turns those into faxes). All EMAIL
+ *                         recipients go out as ONE message (To: everyone, plus
+ *                         an optional `cc` list) so the Sent folder shows a
+ *                         single email to the group; each @rcfax recipient
+ *                         still gets its own message (a fax is point-to-point).
+ *                         Gated to signed-in medicallymodern.com users (no
+ *                         open relay).
  *
  * Secrets (wrangler secret put …):
  *   GMAIL_CLIENT_ID  GMAIL_CLIENT_SECRET  GMAIL_REFRESH_TOKEN  GMAIL_SENDER
@@ -128,14 +133,14 @@ function altPart(body) {
   ];
 }
 
-/** Build an RFC-822 message — HTML+text body, optional base64 attachments. */
-function buildMime({ from, to, subject, body, attachments }) {
-  const headers = [
-    `From: ${cleanAddr(from)}`,
-    `To: ${cleanAddr(to)}`,
-    `Subject: ${encHeader(subject)}`,
-    "MIME-Version: 1.0",
-  ];
+/** Build an RFC-822 message — HTML+text body, optional Cc, optional base64
+ *  attachments. `to`/`cc` may be comma-joined address lists; either may be
+ *  empty (a Cc-only message is valid — used when a fax-only send carries a Cc). */
+function buildMime({ from, to, cc, subject, body, attachments }) {
+  const headers = [`From: ${cleanAddr(from)}`];
+  if (to) headers.push(`To: ${cleanAddr(to)}`);
+  if (cc) headers.push(`Cc: ${cleanAddr(cc)}`);
+  headers.push(`Subject: ${encHeader(subject)}`, "MIME-Version: 1.0");
   if (!attachments.length) {
     return [...headers, ...altPart(body)].join("\r\n");
   }
@@ -255,10 +260,38 @@ export default {
       } catch {
         return json({ error: "recipients must be a JSON array." }, 400, cors);
       }
-      recipients = (Array.isArray(recipients) ? recipients : [])
-        .map((s) => String(s).trim())
-        .filter(Boolean);
+      let cc;
+      try {
+        cc = JSON.parse(form.get("cc") || "[]");
+      } catch {
+        return json({ error: "cc must be a JSON array." }, 400, cors);
+      }
+      // Dedupe across To + Cc (case-insensitive) so nobody gets two copies.
+      const seen = new Set();
+      const dedupe = (list) =>
+        (Array.isArray(list) ? list : [])
+          .map((s) => String(s).trim())
+          .filter(Boolean)
+          .filter((a) => {
+            const k = a.toLowerCase();
+            if (seen.has(k)) return false;
+            seen.add(k);
+            return true;
+          });
+      recipients = dedupe(recipients);
+      cc = dedupe(cc);
       if (!recipients.length) return json({ error: "No recipients provided." }, 400, cors);
+      // Validate every address BEFORE anything sends. The grouped To/Cc header
+      // means one unparseable entry would make Gmail reject the message for
+      // EVERY email recipient (after the faxes already went out — a retry then
+      // re-faxes), and a comma/semicolon inside one entry could smuggle extra
+      // addresses past the fax split. Lenient addr-spec: local@domain with no
+      // spaces, list separators, or angle brackets.
+      const ADDR = /^[^\s@,;<>]+@[^\s@,;<>]+$/;
+      const badAddr = [...recipients, ...cc].filter((a) => !ADDR.test(a));
+      if (badAddr.length) {
+        return json({ error: `Invalid address${badAddr.length > 1 ? "es" : ""}: ${badAddr.join(", ")}` }, 400, cors);
+      }
 
       const subject = form.get("subject") || "";
       const body = form.get("body") || "";
@@ -275,17 +308,48 @@ export default {
         return json({ error: String(e.message || e) }, 502, cors);
       }
 
-      // One message per recipient — keeps addresses private and lets each
-      // @rcfax fax independently.
-      const results = [];
-      for (const to of recipients) {
-        const mime = buildMime({ from: env.GMAIL_SENDER, to, subject, body, attachments });
+      // ONE message for all the email recipients (To: everyone, Cc: the cc
+      // list) — the ops team wants the Sent folder to show a single email to
+      // the group, and the group to see each other (reply-all works). Each
+      // @rcfax recipient still gets its own message: a fax is point-to-point,
+      // and grouping fax addresses into the email would expose the rcfax
+      // addresses to the human recipients.
+      const isFax = (a) => /@rcfax\.com$/i.test(a);
+      const emailTo = recipients.filter((r) => !isFax(r));
+      const faxTo = recipients.filter(isFax);
+      // A fax address has no business in a Cc header — it would put the rcfax
+      // gateway address in front of every human recipient (and a reply-all
+      // would fire a junk fax). Route any stray one to its own fax instead.
+      const emailCc = cc.filter((a) => !isFax(a));
+      faxTo.push(...cc.filter(isFax));
+
+      const sendOne = async (mime) => {
         const resp = await fetch(
           "https://gmail.googleapis.com/upload/gmail/v1/users/me/messages/send?uploadType=media",
           { method: "POST", headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "message/rfc822" }, body: mime },
         );
         const jr = await resp.json().catch(() => ({}));
-        results.push({ to, ok: resp.ok, id: jr.id || null, error: resp.ok ? null : (jr.error?.message || `HTTP ${resp.status}`) });
+        return { ok: resp.ok, id: jr.id || null, error: resp.ok ? null : (jr.error?.message || `HTTP ${resp.status}`) };
+      };
+
+      const results = [];
+      if (emailTo.length || emailCc.length) {
+        // Cc with no email To happens on a fax-only send that carries a Cc
+        // (the rep wants a colleague to get a copy) — still one valid message.
+        const mime = buildMime({
+          from: env.GMAIL_SENDER,
+          to: emailTo.join(", "),
+          cc: emailCc.join(", "),
+          subject,
+          body,
+          attachments,
+        });
+        const r = await sendOne(mime);
+        results.push({ to: emailTo.join(", ") || emailCc.join(", "), cc: emailCc.join(", ") || null, ...r });
+      }
+      for (const to of faxTo) {
+        const r = await sendOne(buildMime({ from: env.GMAIL_SENDER, to, subject, body, attachments }));
+        results.push({ to, ...r });
       }
       const allOk = results.every((r) => r.ok);
       return json({ ok: allOk, sender: env.GMAIL_SENDER, actor, results }, allOk ? 200 : 207, cors);

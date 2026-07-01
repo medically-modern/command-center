@@ -273,8 +273,8 @@ export function SendRequestPanel({ patient, resetVersion = 0, onUpdate }: Props)
   const [sending, setSending] = useState(false);
   const [sentNow, setSentNow] = useState(false);
   const handleSend = useCallback(
-    async (payload: { recipients: string[]; subject: string; body: string; files: File[] }) => {
-      const { recipients, subject, body, files } = payload;
+    async (payload: { recipients: string[]; cc: string[]; subject: string; body: string; files: File[] }) => {
+      const { recipients, cc, subject, body, files } = payload;
       const idToken = getIdToken();
       if (!idToken) {
         toast.error("Sign in with your medicallymodern.com account to send.");
@@ -282,7 +282,9 @@ export function SendRequestPanel({ patient, resetVersion = 0, onUpdate }: Props)
       }
       // Normalize recipients: anything with "@" is sent as-is (email, or an
       // already-formatted @rcfax address); a bare number becomes
-      // <digits>@rcfax.com (RingCentral turns that into a fax).
+      // <digits>@rcfax.com (RingCentral turns that into a fax). All email
+      // recipients go out as ONE email (the worker groups them into a single
+      // To: list + Cc:); only @rcfax recipients fax individually.
       const to = recipients
         .map((r) => r.trim())
         .filter(Boolean)
@@ -292,10 +294,30 @@ export function SendRequestPanel({ patient, resetVersion = 0, onUpdate }: Props)
         toast.error("Add at least one recipient.");
         return;
       }
+      // One malformed address now fails the WHOLE grouped email (everyone
+      // shares one message), so validate each entry up front: plain
+      // local@domain, no spaces / separators / display names.
+      const ADDR = /^[^\s@,;<>]+@[^\s@,;<>]+$/;
+      const badTo = to.filter((r) => !ADDR.test(r));
+      if (badTo.length) {
+        toast.error(`Invalid recipient${badTo.length > 1 ? "s" : ""}: ${badTo.join(", ")}`, {
+          description: "Use a plain email address (or a fax number) per entry.",
+        });
+        return;
+      }
+      // Cc is email-only — a fax has no Cc, and an @rcfax address here would
+      // put the fax gateway address in front of every human recipient.
+      const ccList = cc.map((r) => r.trim()).filter(Boolean);
+      const badCc = ccList.filter((r) => !ADDR.test(r) || /@rcfax\.com$/i.test(r));
+      if (badCc.length) {
+        toast.error(`Cc must be a plain email address (no fax numbers): ${badCc.join(", ")}`);
+        return;
+      }
       setSending(true);
       try {
         const fd = new FormData();
         fd.append("recipients", JSON.stringify(to));
+        fd.append("cc", JSON.stringify(ccList));
         fd.append("subject", subject || "");
         fd.append("body", body || "");
         for (const f of files) fd.append("files", f);
@@ -336,7 +358,7 @@ export function SendRequestPanel({ patient, resetVersion = 0, onUpdate }: Props)
           });
           onUpdate({ requestBody: body });
           toast.success(
-            `Sent to ${to.length} recipient${to.length > 1 ? "s" : ""}${data.sender ? " from " + data.sender : ""} — moved to ${nextStage}`,
+            `Sent to ${to.length} recipient${to.length > 1 ? "s" : ""}${ccList.length ? ` (+${ccList.length} cc)` : ""}${data.sender ? " from " + data.sender : ""} — moved to ${nextStage}`,
           );
         } catch (advErr) {
           console.warn("[Send] sent OK but Monday update/advance failed:", advErr);
@@ -896,6 +918,77 @@ function MethodOfCommunication({
   );
 }
 
+/** Chip-style multi-address input (To / Cc). State lives in the parent so the
+ *  send handler can merge still-typed (uncommitted) text at send time. */
+function AddressChipsInput({
+  values,
+  setValues,
+  input,
+  setInput,
+  placeholder,
+}: {
+  values: string[];
+  setValues: (next: string[]) => void;
+  input: string;
+  setInput: (next: string) => void;
+  placeholder: string;
+}) {
+  const add = (raw: string) => {
+    // A paste can carry a whole address list ("a@x.com, b@x.com; c@x.com") —
+    // split it into chips; an embedded comma inside one entry would otherwise
+    // corrupt the grouped To/Cc header for every recipient.
+    const parts = [...new Set(raw.split(/[,;]+/).map((s) => s.trim()).filter(Boolean))];
+    const fresh = parts.filter((p) => !values.includes(p));
+    if (fresh.length) setValues([...values, ...fresh]);
+    setInput("");
+  };
+  return (
+    <div
+      className="flex flex-wrap items-center gap-1.5 rounded-xl border p-2 min-h-[44px]"
+      style={{ borderColor: "var(--mm-card-border)" }}
+    >
+      {values.map((r) => (
+        <span
+          key={r}
+          className="inline-flex items-center gap-1.5 rounded-full pl-2.5 pr-1.5 py-0.5 text-sm"
+          style={{ background: "oklch(0.94 0.02 175 / 0.6)", color: "var(--mm-teal)" }}
+        >
+          {r}
+          <button
+            type="button"
+            onClick={() => setValues(values.filter((x) => x !== r))}
+            className="hover:opacity-70"
+            aria-label={`Remove ${r}`}
+          >
+            <X className="h-3 w-3" />
+          </button>
+        </span>
+      ))}
+      <input
+        value={input}
+        onChange={(e) => {
+          // Typed separators are handled in onKeyDown; a separator arriving via
+          // onChange means a pasted list — commit it to chips immediately.
+          const v = e.target.value;
+          if (/[,;]/.test(v)) add(v);
+          else setInput(v);
+        }}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === "," || e.key === ";") {
+            e.preventDefault();
+            add(input);
+          } else if (e.key === "Backspace" && !input && values.length) {
+            setValues(values.slice(0, -1));
+          }
+        }}
+        onBlur={() => add(input)}
+        placeholder={values.length ? "" : placeholder}
+        className="flex-1 min-w-[140px] bg-transparent text-sm p-1 focus:outline-none"
+      />
+    </div>
+  );
+}
+
 /** Section 3 — auto-filled request template + notes + send footer. */
 function SendRequestComposer({
   patient,
@@ -914,7 +1007,7 @@ function SendRequestComposer({
   attempt: number;
   method: string;
   sending: boolean;
-  onSend: (payload: { recipients: string[]; subject: string; body: string; files: File[] }) => void;
+  onSend: (payload: { recipients: string[]; cc: string[]; subject: string; body: string; files: File[] }) => void;
   onAddNote: (text: string) => void;
   onMarkComplete: () => void;
   completing: boolean;
@@ -931,11 +1024,8 @@ function SendRequestComposer({
     method === "Email" ? patient.doctorEmail : method === "Fax" ? patient.doctorFax : patient.doctorPhone;
   const [recipients, setRecipients] = useState<string[]>(chanValue ? [chanValue] : []);
   const [recipInput, setRecipInput] = useState("");
-  const addRecipient = (raw: string) => {
-    const v = raw.trim().replace(/[,;]+$/, "").trim();
-    setRecipients((prev) => (v && !prev.includes(v) ? [...prev, v] : prev));
-    setRecipInput("");
-  };
+  const [cc, setCc] = useState<string[]>([]);
+  const [ccInput, setCcInput] = useState("");
   const [subject, setSubject] = useState(`Medical necessity documentation for ${titleCase(patient.name || "")}`);
   const isParachute = method === "Parachute";
   const [open, setOpen] = useState(!isParachute);
@@ -943,8 +1033,16 @@ function SendRequestComposer({
   const [showNoFile, setShowNoFile] = useState(false);
   const [dragOver, setDragOver] = useState(false);
   const doSend = () => {
-    const finalRecipients = recipInput.trim() ? [...recipients, recipInput.trim()] : recipients;
-    onSend({ recipients: finalRecipients, subject, body, files });
+    // Include still-typed (uncommitted) text in either address box.
+    const withPending = (list: string[], pending: string) =>
+      pending.trim() ? [...list, pending.trim()] : list;
+    onSend({
+      recipients: withPending(recipients, recipInput),
+      cc: withPending(cc, ccInput),
+      subject,
+      body,
+      files,
+    });
   };
   // Almost every request should carry an attachment — a missing one pops a
   // clear confirmation modal (instead of an easy-to-miss inline note).
@@ -981,46 +1079,29 @@ function SendRequestComposer({
           <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">To</p>
           {/* Editable — this is the send source of truth. Emails or fax numbers
               (a bare number is sent as <number>@rcfax.com). Prefilled from the
-              Doctor contact for the current method; the rep can add/remove. */}
-          <div
-            className="flex flex-wrap items-center gap-1.5 rounded-xl border p-2 min-h-[44px]"
-            style={{ borderColor: "var(--mm-card-border)" }}
-          >
-            {recipients.map((r) => (
-              <span
-                key={r}
-                className="inline-flex items-center gap-1.5 rounded-full pl-2.5 pr-1.5 py-0.5 text-sm"
-                style={{ background: "oklch(0.94 0.02 175 / 0.6)", color: "var(--mm-teal)" }}
-              >
-                {r}
-                <button
-                  type="button"
-                  onClick={() => setRecipients(recipients.filter((x) => x !== r))}
-                  className="hover:opacity-70"
-                  aria-label={`Remove ${r}`}
-                >
-                  <X className="h-3 w-3" />
-                </button>
-              </span>
-            ))}
-            <input
-              value={recipInput}
-              onChange={(e) => setRecipInput(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" || e.key === "," || e.key === ";") {
-                  e.preventDefault();
-                  addRecipient(recipInput);
-                } else if (e.key === "Backspace" && !recipInput && recipients.length) {
-                  setRecipients(recipients.slice(0, -1));
-                }
-              }}
-              onBlur={() => addRecipient(recipInput)}
-              placeholder={recipients.length ? "" : "Email or fax number"}
-              className="flex-1 min-w-[140px] bg-transparent text-sm p-1 focus:outline-none"
-            />
-          </div>
+              Doctor contact for the current method; the rep can add/remove.
+              All email addresses receive ONE shared email; fax numbers each
+              get their own fax. */}
+          <AddressChipsInput
+            values={recipients}
+            setValues={setRecipients}
+            input={recipInput}
+            setInput={setRecipInput}
+            placeholder="Email or fax number"
+          />
         </div>
         <div>
+          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">Cc</p>
+          {/* Email-only — Cc'd on the single grouped email (never on faxes). */}
+          <AddressChipsInput
+            values={cc}
+            setValues={setCc}
+            input={ccInput}
+            setInput={setCcInput}
+            placeholder="Cc email (optional)"
+          />
+        </div>
+        <div className="sm:col-span-2">
           <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">Subject</p>
           <input
             value={subject}
