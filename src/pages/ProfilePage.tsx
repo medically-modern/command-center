@@ -35,7 +35,7 @@ import { PageLoadingOverlay } from "@/components/shared/PageLoadingOverlay";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
 import { useBackNavigation } from "@/hooks/useBackNavigation";
-import { ClipboardCheck, ArrowLeft, Save, AlertTriangle } from "lucide-react";
+import { ClipboardCheck, ArrowLeft, Save, AlertTriangle, ChevronDown } from "lucide-react";
 import { toast } from "sonner";
 import "./profile/redesign.css";
 
@@ -477,6 +477,7 @@ function ProfileBody(p: BodyProps) {
   const cgm = servingIncludes(serv, "cgm");
   const ip = servingIncludes(serv, "insulin pump");
   const stediComplete = !!(pt.stediPlanName || pt.stediEligibilityActive || pt.stediErrorDescription);
+  const [readyOpen, setReadyOpen] = useState(false);
   const primaryApplicable = !!p.suggestion?.value && PRIMARY_LABELS.has(p.suggestion.value);
   const servingSuggestion = (() => {
     const req = pt.requestType || "";
@@ -745,22 +746,29 @@ function ProfileBody(p: BodyProps) {
             {/* Row 6 — ready to send off */}
             <div className="duo"><div className="leftcol" />
               <section className="card" style={{ borderLeft: "4px solid var(--mm-teal)" }}>
-                <header className="step-head"><span className="step-num">6</span><h2>Ready to Send Off?</h2>
-                  <span className="right">{p.canSubmit ? <span className="mp green">Ready</span> : <span className="mp">{p.missing.length} missing</span>}</span>
+                <header className="step-head clickable" style={{ marginBottom: 0 }} onClick={() => setReadyOpen((o) => !o)} aria-expanded={readyOpen}>
+                  <span className="step-num">6</span><h2>Ready to Send Off?</h2>
+                  {p.canSubmit ? <span className="mp green">Ready</span> : <span className="mp">{p.missing.length} missing</span>}
+                  <div className="right"><ChevronDown className={`chev ${readyOpen ? "open" : ""}`} width={22} height={22} /></div>
                 </header>
-                <div id="checklist">
-                  {p.checklist.map((it) => (
-                    <div key={it.label} className={`ci ${it.ok ? "done" : ""}`}>
-                      <span className="cb">{it.ok ? "✓" : "✕"}</span><span>{it.label}</span>
-                      <span className="ctag">{it.ok ? "ok" : "missing"}</span>
+                {readyOpen && (
+                  <div>
+                    <div style={{ height: 16 }} />
+                    <div id="checklist">
+                      {p.checklist.map((it) => (
+                        <div key={it.label} className={`ci ${it.ok ? "done" : ""}`}>
+                          <span className="cb">{it.ok ? "✓" : "✕"}</span><span>{it.label}</span>
+                          <span className="ctag">{it.ok ? "ok" : "missing"}</span>
+                        </div>
+                      ))}
                     </div>
-                  ))}
-                </div>
-                <div className="miss-pills">
-                  {p.missing.length
-                    ? p.missing.map((m) => <span key={m} className="mp">{m}</span>)
-                    : <span className="mp green">Nothing outstanding — ready to advance</span>}
-                </div>
+                    <div className="miss-pills">
+                      {p.missing.length
+                        ? p.missing.map((m) => <span key={m} className="mp">{m}</span>)
+                        : <span className="mp green">Nothing outstanding — ready to advance</span>}
+                    </div>
+                  </div>
+                )}
                 <div className="route-grid">
                   <div className={`route adv ${p.canSubmit ? "on" : ""}`}>
                     <h4>Advance to MN</h4>
