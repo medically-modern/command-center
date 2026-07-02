@@ -68,7 +68,8 @@ const App = () => (
   <AuthGate>
   <AccessProvider>
   <QueryClientProvider client={queryClient}>
-    <Toaster position="top-right" />
+    {/* Bottom-right: top-right toasts covered the file preview's close button. */}
+    <Toaster position="bottom-right" />
     <FileViewerHost />
     <BrowserRouter basename={basename}>
       <Suspense fallback={<Loading />}>

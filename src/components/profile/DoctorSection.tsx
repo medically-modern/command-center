@@ -33,6 +33,9 @@ const norm = (s: string) => (s || "").toLowerCase().replace(/[^a-z0-9]/g, "");
 
 interface Props {
   patient: Patient;
+  /** As-received (frozen) referral values — drives the "matches referral"
+   *  badge so picking a location doesn't move it. Falls back to `patient`. */
+  received?: Patient;
   onUpdate: (patch: Partial<Patient>) => void;
   clinicLabels: { id: number; name: string }[];
   onClinicSelect: (id: number, name: string) => void;
@@ -50,7 +53,7 @@ const emptyForm: LocForm = { clinic: "", phone: "", address: "", addrLat: null, 
  *  picks the exact PROFILE, never an NPI-merged blend. */
 const profileKey = (r: { name: string; npi: string }) => `${norm(r.name)}|${r.npi}`;
 
-export function DoctorSection({ patient: pt, onUpdate, clinicLabels, onClinicSelect }: Props) {
+export function DoctorSection({ patient: pt, received, onUpdate, clinicLabels, onClinicSelect }: Props) {
   // ── Doctor DB search — starts blank; the rep searches & picks explicitly ──
   const [term, setTerm] = useState("");
   const [results, setResults] = useState<DoctorRecord[]>([]);
@@ -166,9 +169,25 @@ export function DoctorSection({ patient: pt, onUpdate, clinicLabels, onClinicSel
     // Parachute count is per-NPI — keep it across location picks/edits.
   };
 
+  // "matches referral" badge — compared against the AS-RECEIVED referral info
+  // (falls back to current values), so picking a location doesn't move the
+  // badge. The provided doctor PHONE is the most specific signal: when any
+  // location's phone matches it, only those location(s) get the badge;
+  // otherwise fall back to clinic-name / address matching.
+  const ref = received ?? pt;
+  const phoneKey = (s?: string) => {
+    const d = (s || "").replace(/\D/g, "");
+    return d.length === 11 && d.startsWith("1") ? d.slice(1) : d;
+  };
+  const referralPhone = phoneKey(ref.doctorPhone);
+  const matchesByPhone = (rec: DoctorRecord) =>
+    referralPhone.length === 10 && phoneKey(rec.phone) === referralPhone;
+  const matchesByPlace = (rec: DoctorRecord) =>
+    (!!ref.clinicName && rec.clinic === ref.clinicName) ||
+    (!!ref.clinicAddress && !!rec.address && norm(rec.address) === norm(ref.clinicAddress));
+  const anyPhoneMatch = profiles.some(matchesByPhone);
   const matchesReferral = (rec: DoctorRecord) =>
-    (!!pt.clinicName && rec.clinic === pt.clinicName) ||
-    (!!pt.clinicAddress && !!rec.address && norm(rec.address) === norm(pt.clinicAddress));
+    anyPhoneMatch ? matchesByPhone(rec) : matchesByPlace(rec);
 
   // ── Parachute ──
   const confirmCount = async () => {

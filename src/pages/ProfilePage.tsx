@@ -727,13 +727,21 @@ function ProfileBody(p: BodyProps) {
 
             {/* Row 2 — benefits */}
             <div className="duo">
-              <div className="leftcol">
+              <div className="leftcol" style={{ display: "flex", flexDirection: "column", gap: 24 }}>
                 <section className="card recv-card">
                   <div className="recv-title"><h3>Provided Insurance</h3></div>
                   <div className="kv">
                     <div className="f full"><div className="k">General Insurance</div><div className="v">{rcv.generalInsurance || "—"}</div></div>
                     <div className="f"><div className="k">Member ID 1</div><div className="v">{rcv.memberId1 || "—"}</div></div>
                     <div className="f"><div className="k">Member ID 2</div><div className="v">{rcv.memberId2 || "—"}</div></div>
+                  </div>
+                </section>
+                {/* Request type rides beside the "Enter correct insurance
+                    information" box — it can change which Primary we pick. */}
+                <section className="card recv-card">
+                  <div className="recv-title"><h3>Request</h3></div>
+                  <div className="kv">
+                    <div className="f full"><div className="k">Request Type</div><div className="v">{rcv.requestType || "—"}</div></div>
                   </div>
                 </section>
               </div>
@@ -925,7 +933,7 @@ function ProfileBody(p: BodyProps) {
               <div className="work-col">
                 <section className="card step-card">
                   <header className="step-head"><span className="step-num">4</span><h2>Select Correct Provider</h2></header>
-                  <DoctorSection patient={pt} onUpdate={p.onUpdate} clinicLabels={p.clinicLabels} onClinicSelect={p.onClinicSelect} />
+                  <DoctorSection patient={pt} received={rcv} onUpdate={p.onUpdate} clinicLabels={p.clinicLabels} onClinicSelect={p.onClinicSelect} />
                 </section>
               </div>
             </div>

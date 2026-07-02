@@ -200,15 +200,23 @@ export function hasValidZip(address: string): boolean {
 /**
  * Inline warning for an address field, or undefined when it looks fine.
  * Flags: ZIP+4 ("12345-6789" — must be plain 5 digits), a missing/short zip,
- * and ALL-CAPS addresses (should be retyped in normal casing).
+ * and full or PARTIAL ALL-CAPS (e.g. "1746 45th Street, BROOKLYN, NY 11204")
+ * — caps words mean the address didn't come from the address matcher, so it
+ * should be re-picked from the suggestions. Words under 4 letters are exempt
+ * (state codes "NY", "USA", "APT", "FL 2" are legitimate caps).
  */
 export function addressWarning(address: string): string | undefined {
   const a = (address || "").trim();
   if (!a) return undefined;
   if (/\b\d{5}-\d{4}\b/.test(a)) return "Zip is in XXXXX-XXXX format — use the plain 5-digit zip";
   if (!/\b\d{5}\b/.test(a)) return "Address must include a 5-digit zip code (XXXXX)";
+  const capsWord = (a.match(/[a-zA-Z]+/g) ?? []).some(
+    (w) => w.length >= 4 && w === w.toUpperCase(),
+  );
   const letters = a.replace(/[^a-zA-Z]/g, "");
-  if (letters.length >= 8 && letters === letters.toUpperCase()) return "Address is ALL CAPS — retype it in normal casing";
+  if (capsWord || (letters.length >= 8 && letters === letters.toUpperCase())) {
+    return "Address has ALL-CAPS parts — re-pick it from the address suggestions so it's properly formatted";
+  }
   return undefined;
 }
 
