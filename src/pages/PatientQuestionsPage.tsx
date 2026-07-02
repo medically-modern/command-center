@@ -83,7 +83,7 @@ const PatientQuestionsPage = () => {
           </header>
 
           <main className="flex-1 px-6 py-6 overflow-y-auto">
-            <section className="max-w-4xl mx-auto space-y-5">
+            <section className="max-w-4xl xl:max-w-6xl 2xl:max-w-7xl mx-auto space-y-5">
               {!selected && (
                 <div className="rounded-xl bg-card border shadow-card p-10 text-center">
                   <MessageCircleQuestion className="h-10 w-10 text-muted-foreground mx-auto mb-3" />

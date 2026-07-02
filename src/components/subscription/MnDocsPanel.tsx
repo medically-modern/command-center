@@ -5,6 +5,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Download, FileText, Loader2, UploadCloud, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { ConfirmDeleteDialog } from "@/components/shared/ConfirmDeleteDialog";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import {
@@ -115,8 +116,14 @@ export function MnDocsPanel({ itemId, board = "subscription" }: Props) {
   };
 
   // ── Delete a single file (in case the wrong one was uploaded) ──
+  // Non-blocking confirmation (never window.confirm — see ConfirmDeleteDialog).
+  // Stored by assetId so the confirm re-resolves the target + keep-list from
+  // the CURRENT files — files added while the dialog is open are kept.
+  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
+  const pendingDelete = files.find((f) => f.assetId === pendingDeleteId) ?? null;
+
   const handleDelete = async (target: MondayFileEntry) => {
-    if (!confirm(`Delete "${target.name}" from Monday? This cannot be undone.`)) return;
+    setPendingDeleteId(null);
     setDeletingAssetId(target.assetId);
     try {
       const keepFiles = files
@@ -221,7 +228,7 @@ export function MnDocsPanel({ itemId, board = "subscription" }: Props) {
                 variant="ghost"
                 size="sm"
                 className="h-7 w-7 p-0 opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-red-600 hover:bg-red-50"
-                onClick={() => handleDelete(f)}
+                onClick={() => setPendingDeleteId(f.assetId)}
                 disabled={deletingAssetId !== null}
                 title={`Delete ${f.name} from Monday`}
               >
@@ -237,6 +244,12 @@ export function MnDocsPanel({ itemId, board = "subscription" }: Props) {
       ) : (
         <p className="text-sm text-muted-foreground mb-3">No files uploaded yet.</p>
       )}
+      <ConfirmDeleteDialog
+        open={pendingDelete !== null}
+        name={pendingDelete?.name ?? ""}
+        onConfirm={() => pendingDelete && handleDelete(pendingDelete)}
+        onOpenChange={(open) => { if (!open) setPendingDeleteId(null); }}
+      />
 
       {/* Upload drop zone */}
       <div

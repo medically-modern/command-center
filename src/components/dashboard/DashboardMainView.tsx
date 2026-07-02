@@ -93,7 +93,7 @@ export function DashboardMainView({ person }: Props) {
             </p>
           </div>
         ) : (
-          <div className="max-w-3xl xl:max-w-5xl 2xl:max-w-6xl">
+          <div className="max-w-3xl xl:max-w-5xl 2xl:max-w-7xl min-[1920px]:max-w-[1800px]">
             <DailyBurndown
               roleCounts={counts}
               countsLoading={loading}

@@ -22,7 +22,7 @@
 .pf-root { font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
   background:var(--background);color:var(--foreground);line-height:1.5;-webkit-font-smoothing:antialiased; }
 .pf-root button { font:inherit;cursor:pointer;background:none;border:none;color:inherit }
-.pf-root .page { max-width:104rem;margin:0 auto;padding:40px 20px;display:flex;flex-direction:column;gap:24px }
+.pf-root .page { max-width:120rem;margin:0 auto;padding:40px 20px;display:flex;flex-direction:column;gap:24px }
 .pf-root .layout { display:grid;grid-template-columns:420px minmax(0,1fr);gap:24px;align-items:start }
 .pf-root .layout-head { grid-column:1 / -1;display:grid;grid-template-columns:420px 2fr 3fr;gap:24px;margin-bottom:-8px }
 .pf-root .layout-head .dh { font-size:1.05rem;font-weight:800;letter-spacing:-.01em;display:flex;align-items:center;gap:10px;color:var(--mm-teal) }

@@ -22,7 +22,7 @@ export default function ProcessorView({ profile, email }: { profile: ProcessorPr
       </header>
 
       <main className="p-6 sm:p-8">
-        <div className="max-w-3xl xl:max-w-5xl mx-auto space-y-6">
+        <div className="max-w-3xl xl:max-w-5xl 2xl:max-w-7xl mx-auto space-y-6">
           <div>
             <h2 className="text-xl font-semibold text-foreground">
               {profile.name ? `${profile.name}'s work` : "Your work"}

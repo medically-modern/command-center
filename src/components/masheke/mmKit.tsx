@@ -23,6 +23,7 @@ import {
 } from "lucide-react";
 import type { MondayFileEntry } from "@/lib/masheke/mondayApi";
 import { openFileViewer } from "@/components/shared/FileViewerModal";
+import { ConfirmDeleteDialog } from "@/components/shared/ConfirmDeleteDialog";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
@@ -395,14 +396,14 @@ export function FileList({
   onView?: (url: string, name?: string) => void;
 }) {
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  // Non-blocking delete confirmation (never window.confirm — see ConfirmDeleteDialog).
+  const [pendingDelete, setPendingDelete] = useState<MondayFileEntry | null>(null);
   const rows: TaggedFile[] =
     tagged ?? (files ?? []).map((f) => ({ file: f }));
 
   const handleDelete = async (file: MondayFileEntry) => {
     if (!onDelete) return;
-    if (!window.confirm(`Delete "${file.name}" from Monday? This can't be undone.`)) {
-      return;
-    }
+    setPendingDelete(null);
     setDeletingId(file.assetId);
     try {
       await onDelete(file.assetId);
@@ -441,7 +442,7 @@ export function FileList({
             </button>
             {onDelete && (
               <button
-                onClick={() => handleDelete(f)}
+                onClick={() => setPendingDelete(f)}
                 disabled={deletingId !== null}
                 title={`Delete "${f.name}" from Monday`}
                 className="shrink-0 p-1.5 rounded-md text-red-600 hover:bg-red-50 hover:text-red-700 disabled:opacity-50 transition-colors"
@@ -457,6 +458,12 @@ export function FileList({
           </div>
         );
       })}
+      <ConfirmDeleteDialog
+        open={pendingDelete !== null}
+        name={pendingDelete?.name ?? ""}
+        onConfirm={() => pendingDelete && handleDelete(pendingDelete)}
+        onOpenChange={(open) => { if (!open) setPendingDelete(null); }}
+      />
     </div>
   );
 }

@@ -19,6 +19,7 @@ import {
   type ChartDef,
   type DayBucketLabel,
 } from "@/lib/oversight/oversightApi";
+import { fuzzyNameMatch } from "@/lib/oversight/fuzzyName";
 import { Loader2, BarChart3, X, ExternalLink, StickyNote, Search, ArrowUp, ArrowDown, ArrowUpDown, Star, SlidersHorizontal, Plus, Trash2, RotateCcw } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -861,6 +862,15 @@ export default function OversightTab() {
     const s = searchParams.get("stage");
     return s && OVERSIGHT_SECTIONS.some((x) => x.id === s) ? s : OVERSIGHT_SECTIONS[0].id;
   });
+  // Patient-name search — fuzzy-filters the selected stage's charts so bars
+  // without a matching patient disappear, leaving the bar(s) they're in.
+  const [patientSearch, setPatientSearch] = useState("");
+  const searchActive = patientSearch.trim().length > 0;
+  const bySearch = useCallback(
+    (list: OversightPatient[]) =>
+      patientSearch.trim() ? list.filter((p) => fuzzyNameMatch(p.name, patientSearch)) : list,
+    [patientSearch],
+  );
   const mountedRef = useRef(true);
 
   const updateConfig = useCallback((c: PriorityConfig) => {
@@ -1003,8 +1013,10 @@ export default function OversightTab() {
     [expandedChart],
   );
   const expandedPatients = useMemo(
-    () => (expandedChart && data ? data.get(expandedChart) ?? [] : []),
-    [expandedChart, data],
+    // The drill-down honors the patient search too, so clicking the one
+    // remaining bar shows the matched patient(s), not the whole bucket.
+    () => (expandedChart && data ? bySearch(data.get(expandedChart) ?? []) : []),
+    [expandedChart, data, bySearch],
   );
 
   // ── Render ────────────────────────────────────────────────────
@@ -1055,6 +1067,24 @@ export default function OversightTab() {
           <span className="text-sm text-muted-foreground tabular-nums">
             {totalPatients} total patients
           </span>
+          <div className="relative w-[240px]">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <input
+              value={patientSearch}
+              onChange={(e) => setPatientSearch(e.target.value)}
+              placeholder="Search patient name…"
+              className="w-full h-9 rounded-md border border-input bg-background pl-8 pr-8 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+            />
+            {searchActive && (
+              <button
+                onClick={() => setPatientSearch("")}
+                className="absolute right-2 top-1/2 -translate-y-1/2 p-0.5 rounded text-muted-foreground hover:text-foreground"
+                aria-label="Clear patient search"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            )}
+          </div>
         </div>
         <div className="flex items-center gap-3">
           {loading && (
@@ -1089,15 +1119,15 @@ export default function OversightTab() {
           ? resolve(section.tertiaryChartIds)
           : [];
 
-        // Unique patients across this stage's primary charts.
+        // Unique patients across this stage's primary charts (search-filtered).
         const seen = new Set<string>();
-        for (const c of charts) for (const p of data?.get(c.id) ?? []) seen.add(p.id);
+        for (const c of charts) for (const p of bySearch(data?.get(c.id) ?? [])) seen.add(p.id);
         const sectionTotal = seen.size;
 
         const renderChart = (chart: ChartDef) => (
           <StageChart
             chart={chart}
-            patients={data?.get(chart.id) ?? []}
+            patients={bySearch(data?.get(chart.id) ?? [])}
             priorityConfig={priorityConfig}
             onChartClick={() => handleChartClick(chart.id)}
             onBarClick={(bucket) => handleBarClick(chart.id, bucket)}
@@ -1105,7 +1135,13 @@ export default function OversightTab() {
         );
 
         const renderGrid = (list: ChartDef[]) => (
-          <div className={cn("grid gap-4 grid-cols-1", list.length > 1 && "md:grid-cols-2")}>
+          <div
+            className={cn(
+              "grid gap-4 grid-cols-1",
+              list.length > 1 && "md:grid-cols-2",
+              list.length > 2 && "min-[1920px]:grid-cols-3",
+            )}
+          >
             {list.map((chart) => (
               <Fragment key={chart.id}>{renderChart(chart)}</Fragment>
             ))}
@@ -1136,7 +1172,7 @@ export default function OversightTab() {
             <div className="flex items-baseline gap-3 border-b border-border pb-2">
               <h3 className="text-xl font-bold tracking-tight text-foreground">{section.title}</h3>
               <span className="text-sm font-semibold text-muted-foreground tabular-nums">
-                {sectionTotal} patient{sectionTotal !== 1 ? "s" : ""}
+                {sectionTotal} {searchActive ? "matching " : ""}patient{sectionTotal !== 1 ? "s" : ""}
               </span>
             </div>
 

@@ -91,6 +91,7 @@ import { GEN_SCRIPT_STATUS, ESCALATION_INDEX } from "@/lib/masheke/mondayMapping
 import { etToday } from "@/lib/masheke/etDate";
 import { EscalateButton } from "@/components/masheke/EscalateButton";
 import { openFileViewer } from "@/components/shared/FileViewerModal";
+import { ConfirmDeleteDialog } from "@/components/shared/ConfirmDeleteDialog";
 import { toast } from "sonner";
 import {
   Check,
@@ -1415,9 +1416,11 @@ function MondayScriptViewer({
   onDeleted,
 }: MondayScriptViewerProps) {
   const [deleting, setDeleting] = useState(false);
+  // Non-blocking delete confirmation (never window.confirm — see ConfirmDeleteDialog).
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
 
   const handleDelete = async () => {
-    if (!confirm(`Delete the ${label} from Monday? This cannot be undone.`)) return;
+    setConfirmingDelete(false);
     setDeleting(true);
     try {
       await deleteFileFromColumn(itemId, columnId);
@@ -1509,7 +1512,7 @@ function MondayScriptViewer({
             <Button
               variant="outline"
               size="sm"
-              onClick={handleDelete}
+              onClick={() => setConfirmingDelete(true)}
               disabled={deleting}
               className="h-7 px-2 text-[11px] text-red-700 hover:text-red-800 hover:bg-red-50 border-red-200"
               title="Delete from Monday"
@@ -1523,6 +1526,12 @@ function MondayScriptViewer({
           </div>
         </div>
       ))}
+      <ConfirmDeleteDialog
+        open={confirmingDelete}
+        name={label}
+        onConfirm={handleDelete}
+        onOpenChange={setConfirmingDelete}
+      />
     </div>
   );
 }
@@ -1567,9 +1576,14 @@ function FileUploadCard({
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [downloading, setDownloading] = useState(false);
   const [deletingAssetId, setDeletingAssetId] = useState<string | null>(null);
+  // Non-blocking delete confirmation (never window.confirm — see ConfirmDeleteDialog).
+  // Stored by assetId so the confirm re-resolves the target + keep-list from
+  // the CURRENT mondayFiles — files added while the dialog is open are kept.
+  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
+  const pendingDelete = mondayFiles.find((f) => f.assetId === pendingDeleteId) ?? null;
 
   const handleDeleteMondayFile = async (target: MondayFileEntry) => {
-    if (!confirm(`Delete "${target.name}" from Monday? This cannot be undone.`)) return;
+    setPendingDeleteId(null);
     setDeletingAssetId(target.assetId);
     try {
       const keepFiles = mondayFiles
@@ -1769,7 +1783,7 @@ function FileUploadCard({
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
-                      handleDeleteMondayFile(f);
+                      setPendingDeleteId(f.assetId);
                     }}
                     disabled={deletingAssetId === f.assetId}
                     className="shrink-0 p-0.5 rounded hover:bg-red-100 text-muted-foreground hover:text-red-600 transition-colors disabled:opacity-50"
@@ -1792,6 +1806,12 @@ function FileUploadCard({
           No Monday files attached
         </p>
       )}
+      <ConfirmDeleteDialog
+        open={pendingDelete !== null}
+        name={pendingDelete?.name ?? ""}
+        onConfirm={() => pendingDelete && handleDeleteMondayFile(pendingDelete)}
+        onOpenChange={(open) => { if (!open) setPendingDeleteId(null); }}
+      />
 
       {/* Upload drop zone */}
       <label

@@ -92,7 +92,7 @@ export default function AccessAdminPage() {
         </div>
       </header>
 
-      <main className="max-w-5xl mx-auto p-6 space-y-8">
+      <main className="max-w-5xl xl:max-w-7xl mx-auto p-6 space-y-8">
         {/* Add a person */}
         <section className="bg-card border border-border rounded-xl p-5 space-y-3">
           <h2 className="text-sm font-semibold text-foreground flex items-center gap-2">
