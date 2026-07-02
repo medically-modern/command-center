@@ -592,6 +592,9 @@ function ProfileBody(p: BodyProps) {
   const stediFailed = !!pt.stediErrorDescription && !pt.stediPlanName;
   // Error code + description + recommended solution for the failure banner.
   const stediError = interpretStediError(pt.stediErrorDescription);
+  // The "Enter correct insurance information" box (and the Request card that
+  // rides to its left) show once a check has completed and didn't fail.
+  const showInsuranceEntry = !p.stediRunning && !stediFailed && !!(pt.stediPlanName || pt.stediEligibilityActive);
   // Why the saved OOP figures are what they are — recompute the estimate from
   // the current inputs to surface the reason line (e.g. "Secondary NY
   // Medicaid covers remaining balance" behind a $0, or which benefits fields
@@ -725,8 +728,9 @@ function ProfileBody(p: BodyProps) {
               </section>
             </div>
 
-            {/* Row 2 — benefits */}
-            <div className="duo">
+            {/* Row 2 — benefits. Stretched so the Request card can bottom-align
+                with the "Enter correct insurance information" box across the row. */}
+            <div className="duo" style={{ alignItems: "stretch" }}>
               <div className="leftcol" style={{ display: "flex", flexDirection: "column", gap: 24 }}>
                 <section className="card recv-card">
                   <div className="recv-title"><h3>Provided Insurance</h3></div>
@@ -736,14 +740,17 @@ function ProfileBody(p: BodyProps) {
                     <div className="f"><div className="k">Member ID 2</div><div className="v">{rcv.memberId2 || "—"}</div></div>
                   </div>
                 </section>
-                {/* Request type rides beside the "Enter correct insurance
-                    information" box — it can change which Primary we pick. */}
-                <section className="card recv-card">
-                  <div className="recv-title"><h3>Request</h3></div>
-                  <div className="kv">
-                    <div className="f full"><div className="k">Request Type</div><div className="v">{rcv.requestType || "—"}</div></div>
-                  </div>
-                </section>
+                {/* Request type rides DIRECTLY beside the "Enter correct insurance
+                    information" box (bottom of the right card) — it can change
+                    which Primary we pick. Only shows when that box shows. */}
+                {showInsuranceEntry && (
+                  <section className="card recv-card" style={{ marginTop: "auto" }}>
+                    <div className="recv-title"><h3>Request</h3></div>
+                    <div className="kv">
+                      <div className="f full"><div className="k">Request Type</div><div className="v">{rcv.requestType || "—"}</div></div>
+                    </div>
+                  </section>
+                )}
               </div>
               <section className="card step-card">
                 <header className="step-head"><span className="step-num">2</span><h2>Benefits Check</h2></header>
@@ -815,7 +822,7 @@ function ProfileBody(p: BodyProps) {
                 {!p.stediRunning && !stediFailed && (pt.stediPlanName || pt.stediEligibilityActive) && <CostShare pt={pt} />}
 
                 {/* Enter correct insurance information */}
-                {!p.stediRunning && !stediFailed && (pt.stediPlanName || pt.stediEligibilityActive) && (
+                {showInsuranceEntry && (
                   <div id="post-stedi" style={{ marginTop: 22, border: "1.5px solid var(--amber-ring)", borderRadius: 12, background: "oklch(0.96 0.04 90 / 0.35)", padding: "18px 20px" }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
                       <span style={{ display: "grid", placeItems: "center", height: 26, width: 26, borderRadius: "50%", fontSize: ".8rem", fontWeight: 800, background: "var(--amber)", color: "#fff" }}>!</span>
