@@ -349,6 +349,8 @@ these services; when their math changes, `oopEstimator.ts` must be updated to ma
 
 ## 9. Conventions & gotchas
 
+- **Always push to `main` in this repo** (Josh's standing instruction, 2026-07). No feature
+  branches or PRs unless he explicitly asks — commit, rebase onto `origin/main`, push `main`.
 - **Verify before you advance.** Any new write that a Monday automation keys on must go through
   `executeWritesWithVerification` with the trigger column as `stageColumnId`.
 - **Column IDs, not titles**, are the contract. Add new ones to `mondayMapping.ts` + the schema docs.
