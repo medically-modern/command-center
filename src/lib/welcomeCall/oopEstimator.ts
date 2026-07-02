@@ -96,9 +96,12 @@ const PRIMARY_MEDICAID_LABELS = new Set([
   "United Medicaid",
 ]);
 
-// Medicare A&B: patient always pays $0 OOP (MM bills Medicare directly)
+// Payers whose patients always pay $0 OOP:
+//  - Medicare A&B: MM bills Medicare directly
+//  - NYSHIP (Empire Plan): plan covers DME in full — no patient cost share
 const ZERO_OOP_PAYERS = new Set([
   "Medicare A&B",
+  "NYSHIP",
 ]);
 
 // ─── Coinsurance overrides (source: insurance_rules.py) ──────────────────────

@@ -206,8 +206,9 @@ routing on submit), a doctor-facing **ask list**, and an **MN checklist**.
 ### 5.7 OOP estimator — `lib/welcomeCall/oopEstimator.ts`
 Estimates patient out-of-pocket for the Welcome Call. **Mirrors backend Python** (`claim_assumptions.py`,
 `financial_estimate_service.py`, `insurance_rules.py`) that lives on Railway, **not in this repo**.
-`PAYER_RATE_SCHEDULE` and the Medicaid/Medicare/Humana special-cases are **hardcoded and must be
-hand-synced** with that backend — there is no automated check for drift. Eligibility inputs
+`PAYER_RATE_SCHEDULE` and the Medicaid/Medicare/NYSHIP/Humana special-cases are **hardcoded and must
+be hand-synced** with that backend — there is no automated check for drift. (NYSHIP is a **$0-OOP
+payer** in both this estimator and `profile/oopEstimate.ts` — `ZERO_OOP_PAYERS`/`ZERO_PAYERS`.) Eligibility inputs
 (deductible, coinsurance %, OOP max) come from **Stedi**, written into Monday by the
 `stedi-monday-integration` Railway service and read back by `StediPanel`.
 

@@ -25,7 +25,8 @@ const PRIMARY_MEDICAID = new Set([
   "Fidelis Medicaid", "Anthem BCBS Medicaid (JLJ)", "Anthem BCBS Low-Cost (JLJ)",
   "Wellcare", "Medicaid", "United Medicaid",
 ]);
-const ZERO_PAYERS = new Set(["Medicare A&B"]);
+// $0-OOP payers — keep in sync with ZERO_OOP_PAYERS in welcomeCall/oopEstimator.ts
+const ZERO_PAYERS = new Set(["Medicare A&B", "NYSHIP"]);
 /** United Medicare = 0% coinsurance — patient pays the deductible only. */
 const COINS_OVERRIDES: Record<string, number> = { "United Medicare": 0 };
 const HUMANA_CGM = new Set(["CGM Monitor", "CGM Sensors"]);
