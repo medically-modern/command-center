@@ -612,14 +612,12 @@ function ProfileBody(p: BodyProps) {
   const [readyOpen, setReadyOpen] = useState(false);
   // Member ID 1 is always entered fresh by the rep (never auto-filled).
   const [mid1Input, setMid1Input] = useState("");
-  // Benefits Check inputs: patient self-referrals already carry insurance from
-  // intake, so pre-fill General Insurance + Member ID for them; every other
-  // referral source starts blank for fresh rep entry. Local state (ProfileBody
-  // is keyed by patient id, so it resets per patient); the rep's entry still
-  // flows to Monday via onUpdate.
-  const patientReferral = (pt.referralSource || "").trim().toLowerCase() === "patient";
-  const [giInput, setGiInput] = useState(patientReferral ? pt.generalInsurance : "");
-  const [midInput, setMidInput] = useState(patientReferral ? (pt.workingMemberId || pt.memberId1) : "");
+  // Benefits Check inputs ALWAYS start blank — the as-received insurance shows
+  // in the "What We Received" card to the left, and the rep enters the values
+  // fresh. Local state (ProfileBody is keyed by patient id, so it resets per
+  // patient); the rep's entry still flows to Monday via onUpdate.
+  const [giInput, setGiInput] = useState("");
+  const [midInput, setMidInput] = useState("");
 
   // ── CGM cross-sell — same auto-derivation the original ServingPanel ran ──
   // The status itself is no longer shown in the UI (it's folded into the
@@ -729,7 +727,16 @@ function ProfileBody(p: BodyProps) {
 
             {/* Row 2 — benefits */}
             <div className="duo">
-              <div className="leftcol" />
+              <div className="leftcol">
+                <section className="card recv-card">
+                  <div className="recv-title"><h3>Provided Insurance</h3></div>
+                  <div className="kv">
+                    <div className="f full"><div className="k">General Insurance</div><div className="v">{rcv.generalInsurance || "—"}</div></div>
+                    <div className="f"><div className="k">Member ID 1</div><div className="v">{rcv.memberId1 || "—"}</div></div>
+                    <div className="f"><div className="k">Member ID 2</div><div className="v">{rcv.memberId2 || "—"}</div></div>
+                  </div>
+                </section>
+              </div>
               <section className="card step-card">
                 <header className="step-head"><span className="step-num">2</span><h2>Benefits Check</h2></header>
                 <div className="fgrid">
@@ -847,9 +854,11 @@ function ProfileBody(p: BodyProps) {
                 <div className="recv-title"><h3>Initial Request</h3></div>
                 <div className="kv">
                   <div className="f"><div className="k">Request Type</div><div className="v">{rcv.requestType || "—"}</div></div>
+                  <div className="f"><div className="k">Referral Source</div><div className="v">{rcv.referralSource || "—"}</div></div>
                   <div className="f"><div className="k">CGM Type (provided)</div><div className="v">{rcv.cgmType || "—"}</div></div>
+                  <div className="f"><div className="k">CGM Coverage Path (provided)</div><div className="v">{rcv.cgmCoveragePath || "—"}</div></div>
                   <div className="f"><div className="k">Pump Type (provided)</div><div className="v">{rcv.pumpType || "—"}</div></div>
-                  <div className="f full"><div className="k">Referral Source</div><div className="v">{rcv.referralSource || "—"}</div></div>
+                  <div className="f"><div className="k">IP Coverage Path (provided)</div><div className="v">{rcv.insulinPumpCoveragePath || "—"}</div></div>
                 </div>
               </section>
               <div className="work-col">
