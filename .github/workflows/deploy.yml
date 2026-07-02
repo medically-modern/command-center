@@ -36,6 +36,14 @@ jobs:
           VITE_MONDAY_API_TOKEN: ${{ secrets.VITE_MONDAY_API_TOKEN }}
           VITE_GOOGLE_MAPS_API_KEY: ${{ secrets.VITE_GOOGLE_MAPS_API_KEY }}
           VITE_GITHUB_PAT: ${{ secrets.GH_PAT }}
+          # RingCentral (SMS/fax) — set these Actions secrets to use the new
+          # RC app without committing its credentials; unset falls back to the
+          # bundled legacy-app values in lib/fax/ringcentralApi.ts. Remember:
+          # secrets do NOT carry over on Sync from Test Repo (CLAUDE.md §8).
+          VITE_RC_CLIENT_ID: ${{ secrets.VITE_RC_CLIENT_ID }}
+          VITE_RC_CLIENT_SECRET: ${{ secrets.VITE_RC_CLIENT_SECRET }}
+          VITE_RC_JWT: ${{ secrets.VITE_RC_JWT }}
+          VITE_RC_SMS_FROM: ${{ secrets.VITE_RC_SMS_FROM }}
         run: npx vite build --base=/${{ github.event.repository.name }}/
 
       - name: Copy 404

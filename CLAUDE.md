@@ -164,6 +164,14 @@ The Cloudflare worker (`monday-file-proxy`) has three routes:
 > Both `fetchUnreadFaxCount` and `fetchInboundFaxes` must pass an explicit `dateFrom` (180-day lookback)
 > or unread faxes older than a day (e.g. over a weekend) silently drop out of the count.
 
+> **Gotcha — SMS sends 500 but deliver:** this account's `POST /extension/~/sms` returns a bare
+> `500 Internal Server Error` while still accepting the message (it lands in the message store and
+> delivers ~30s later). Reproduced on two separate OAuth apps (2026-07) — account-level, not
+> app-record rot. `sendSms` therefore confirms a 5xx against the message store (exact text +
+> recipient, created since the POST) before surfacing an error; without that, reps would retry and
+> double-text patients. The masheke Text popup (`components/masheke/mmKit.tsx` `TextCompose`) rides
+> on this. The RC OAuth app also needs the **Read Messages** scope or the popup's thread read fails.
+
 **In-app file viewer** (`components/shared/FileViewerModal.tsx`): a "View" button calls
 `openFileViewer({url,name})`; bytes are fetched via `shared/mondayAssets.ts` `fetchAssetBytes`
 (direct CORS fetch → worker `/asset` proxy fallback) and PDFs render with **pdf.js** (`pdfjs-dist`,

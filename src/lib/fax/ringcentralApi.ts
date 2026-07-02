@@ -15,6 +15,10 @@
 const RC_SERVER =
   (import.meta.env.VITE_RC_SERVER as string | undefined) ||
   "https://platform.ringcentral.com";
+// Prefer VITE_RC_* (injected by deploy.yml from Actions secrets — the clean
+// path for the new RC app's credentials, which must NOT be committed here).
+// The hardcoded fallbacks are the original app's, long since public in git
+// history (see CLAUDE.md §10) and kept only so local dev works out of the box.
 const RC_CLIENT_ID =
   (import.meta.env.VITE_RC_CLIENT_ID as string | undefined) ||
   "c2Fi3EZsRLPdAwT6F2bqzI";
@@ -204,7 +208,15 @@ function toE164(raw: string): string {
 
 /** Send an SMS via RingCentral from the MM SMS number — replaces the old sms:
  *  link that opened iMessage. Client-side (same JWT auth as the fax reads; the
- *  OAuth app carries the SMS scope). Throws with RingCentral's message on error. */
+ *  OAuth app carries the SMS scope). Throws with RingCentral's message on error.
+ *
+ *  Gotcha — RC 500s on sends that actually go out: this account's send API
+ *  returns a bare `500 Internal Server Error. Consult RC Support.` while STILL
+ *  accepting the message (it lands in the message store as Queued and delivers
+ *  ~30s later). Reproduced identically on two separate OAuth apps (2026-07), so
+ *  it isn't app-record specific. If we surfaced that 500 as a failure, the rep
+ *  would hit Send again and double-text the patient — so on a 5xx we read the
+ *  message store back and treat a matching just-created outbound SMS as success. */
 export async function sendSms(to: string, text: string): Promise<void> {
   const toNum = toE164(to);
   if (!toNum) throw new Error("No valid recipient number");
@@ -214,6 +226,7 @@ export async function sendSms(to: string, text: string): Promise<void> {
     to: [{ phoneNumber: toNum }],
     text: text.trim(),
   });
+  const sentAt = Date.now();
   const call = (token: string) =>
     fetch(`${RC_SERVER}/restapi/v1.0/account/~/extension/~/sms`, {
       method: "POST",
@@ -225,16 +238,53 @@ export async function sendSms(to: string, text: string): Promise<void> {
     clearCachedToken();
     res = await call(await getAccessToken());
   }
-  if (!res.ok) {
-    let msg = `RingCentral SMS failed (${res.status})`;
-    try {
-      const e = (await res.json()) as { message?: string; errors?: Array<{ message?: string }> };
-      msg = e.errors?.[0]?.message || e.message || msg;
-    } catch {
-      /* keep default */
-    }
-    throw new Error(msg);
+  if (res.ok) return;
+  // Only server errors get the read-back check — a 4xx means RC rejected the
+  // request outright and no message was created.
+  if (res.status >= 500 && (await confirmSmsAccepted(toNum, text.trim(), sentAt))) return;
+  let msg = `RingCentral SMS failed (${res.status})`;
+  try {
+    const e = (await res.json()) as { message?: string; errors?: Array<{ message?: string }> };
+    msg = e.errors?.[0]?.message || e.message || msg;
+  } catch {
+    /* keep default */
   }
+  throw new Error(msg);
+}
+
+/** After a 5xx from the send endpoint, check whether RC accepted the message
+ *  anyway: look for an outbound SMS to this recipient with this exact text
+ *  created since just before our POST. The store indexes within a few seconds,
+ *  so poll briefly. Any read failure counts as "not confirmed" — the caller
+ *  then surfaces the original send error. */
+async function confirmSmsAccepted(toNum: string, text: string, sentAtMs: number): Promise<boolean> {
+  const last10 = (s: string) => (s || "").replace(/\D/g, "").slice(-10);
+  const want = last10(toNum);
+  // 60s of slack absorbs clock skew between the browser and RC's servers.
+  const dateFrom = new Date(sentAtMs - 60_000).toISOString();
+  const url =
+    `${RC_SERVER}/restapi/v1.0/account/~/extension/~/message-store` +
+    `?messageType=SMS&direction=Outbound&phoneNumber=${encodeURIComponent(toNum)}` +
+    `&dateFrom=${encodeURIComponent(dateFrom)}&perPage=20`;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    if (attempt > 0) await new Promise((r) => setTimeout(r, 2000));
+    try {
+      const res = await fetch(url, { headers: { Authorization: `Bearer ${await getAccessToken()}` } });
+      if (!res.ok) continue;
+      const json = (await res.json()) as {
+        records?: Array<{ subject?: string; to?: Array<{ phoneNumber?: string }> }>;
+      };
+      const hit = (json.records ?? []).some(
+        (r) =>
+          (r.subject ?? "") === text &&
+          (r.to ?? []).some((t) => last10(t.phoneNumber || "") === want),
+      );
+      if (hit) return true;
+    } catch {
+      /* transient read failure — retry, then give up */
+    }
+  }
+  return false;
 }
 
 export interface SmsMessage {
