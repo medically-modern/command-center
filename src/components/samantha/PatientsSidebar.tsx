@@ -20,6 +20,7 @@ import { toast } from "sonner";
 import { clearStatusColumn, COL } from "@/lib/samantha/mondayApi";
 import { useSearchParams } from "react-router-dom";
 import { viewFilterFromParams } from "@/lib/roleView";
+import { sidebarSections } from "@/lib/samantha/sidebarList";
 
 const AUTH_TABS: { key: SidebarGroupType; label: string }[] = [
   { key: "submitAuth", label: "Submit Auth" },
@@ -109,9 +110,7 @@ export function PatientsSidebar({ patients, selectedId, onSelect, loading, error
   // alias for the existing labels.
   const [sp] = useSearchParams();
   const viewFilter = viewFilterFromParams(sp);
-  const escalatedOnly = viewFilter === "escalated";
-  const includeEscalated = viewFilter !== "nonEscalated";
-  const managerMode = escalatedOnly;
+  const managerMode = viewFilter === "escalated";
 
   const filteredBySearch = searchQuery.trim()
     ? patients.filter((p) => p.name.toLowerCase().includes(searchQuery.trim().toLowerCase()))
@@ -122,32 +121,15 @@ export function PatientsSidebar({ patients, selectedId, onSelect, loading, error
 
   const activeLabel = GROUP_LABELS[activeGroup];
 
-  // Split patients into active vs follow-up vs escalated vs both.
-  // Manager view: the main list IS the escalated list — the separate
-  // escalated/follow-up sections are hidden.
-  // escalated-only → just escalated; non-escalated → hide the escalated/both
-  // sections; all → show everything.
-  const escalatedPatients = escalatedOnly || !includeEscalated
-    ? []
-    : filteredBySearch.filter((p) => p.escalated && p.followUp !== "Follow Up");
-  const activePatients = escalatedOnly
-    ? filteredBySearch.filter((p) => p.escalated)
-    : filteredBySearch.filter((p) => !p.escalated && p.followUp !== "Follow Up");
-  const followUpPatients = escalatedOnly
-    ? []
-    : filteredBySearch.filter((p) => p.followUp === "Follow Up" && !p.escalated);
-  const bothPatients = escalatedOnly || !includeEscalated
-    ? []
-    : filteredBySearch.filter((p) => p.escalated && p.followUp === "Follow Up");
+  // Split patients into active vs follow-up vs escalated vs both, plus the
+  // Auth Outstanding re-sort — shared with the role pages' auto-select
+  // (sidebarList.ts) so the sidebar and pages can never drift apart.
+  const { activePatients, sortedPatients, followUpPatients, escalatedPatients, bothPatients } = useMemo(
+    () => sidebarSections(filteredBySearch, viewFilter, activeGroup),
+    [filteredBySearch, viewFilter, activeGroup],
+  );
 
   const grouped = useMemo(() => groupByInsurance(activePatients), [activePatients]);
-
-  // For Auth Outstanding, sort patients by daysSinceStageIndex descending
-  // (longest in system first). Other groups keep Monday order.
-  const sortedPatients = useMemo(() => {
-    if (activeGroup !== "authOutstanding") return activePatients;
-    return [...activePatients].sort((a, b) => (b.daysSinceStageIndex ?? -1) - (a.daysSinceStageIndex ?? -1));
-  }, [activePatients, activeGroup]);
 
   const isAuthOutstanding = activeGroup === "authOutstanding";
 

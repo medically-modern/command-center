@@ -8,8 +8,9 @@
  * patients queue with Parachute but are still sent by email. Old
  * /chase-benefits redirects to /chase-fax.
  */
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useMondayPatients } from "@/hooks/masheke/useMondayPatients";
+import { useAutoSelectPatient } from "@/hooks/useAutoSelectPatient";
 import type { Patient } from "@/lib/masheke/workflow";
 import { ChaseClinicalsPanel } from "@/components/masheke/ChaseClinicalsPanel";
 import { PatientsSidebar } from "@/components/masheke/PatientsSidebar";
@@ -20,6 +21,8 @@ import { RotateCcw, Stethoscope, ArrowLeft, Ban, Clock , Save} from "lucide-reac
 import { toast } from "sonner";
 import { clearEvalState } from "@/lib/masheke/evalState";
 import { useNavigate, useSearchParams } from "react-router-dom";
+import { viewFilterFromParams } from "@/lib/roleView";
+import { sidebarVisibleList } from "@/lib/masheke/sidebarList";
 import { BlockedModal } from "@/components/masheke/BlockedModal";
 import { EscalationFormModal } from "@/components/shared/EscalationFormModal";
 import { PageLoadingOverlay } from "@/components/shared/PageLoadingOverlay";
@@ -67,9 +70,18 @@ const ChaseClinicalsPage = ({ method }: ChasePageProps) => {
   const [escalationModalOpen, setEscalationModalOpen] = useState(false);
   const [followUpModalOpen, setFollowUpModalOpen] = useState(false);
 
-  useEffect(() => {
-    if (!selectedId && patients.length > 0) setSelectedId(patients[0].id);
-  }, [patients, selectedId]);
+  // Auto-select the first patient the sidebar actually shows (same list math
+  // as PatientsSidebar, fed the method-filtered list above), never from the
+  // pre-fetch localStorage cache.
+  const viewFilter = viewFilterFromParams(searchParams);
+  const visiblePatients = useMemo(
+    () => sidebarVisibleList(patients, viewFilter),
+    [patients, viewFilter],
+  );
+  useAutoSelectPatient(
+    initialLoading, patients, visiblePatients, selectedId, setSelectedId,
+    searchParams.get("patientId"),
+  );
 
   const selected: Patient | undefined = useMemo(
     () => patients.find((p) => p.id === selectedId),

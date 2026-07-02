@@ -1,8 +1,9 @@
 /**
  * Auth Outstanding — standalone view of Samantha-checklist's "Auth Outstanding" tab.
  */
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useMondayPatients } from "@/hooks/samantha/useMondayPatients";
+import { useAutoSelectPatient } from "@/hooks/useAutoSelectPatient";
 import {
   Patient,
   ProductCodeId,
@@ -27,6 +28,8 @@ import { ESCALATION_INDEX } from "@/lib/samantha/mondayMapping";
 import { FollowUpModal } from "@/components/samantha/FollowUpModal";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useBackNavigation } from "@/hooks/useBackNavigation";
+import { viewFilterFromParams } from "@/lib/roleView";
+import { sidebarVisibleList } from "@/lib/samantha/sidebarList";
 
 
 /* ── DVS + Claims Status Visual ─────────────────────────────────── */
@@ -83,9 +86,17 @@ const AuthOutstandingPage = () => {
   );
   const [followUpOpen, setFollowUpOpen] = useState(false);
 
-  useEffect(() => {
-    if (!selectedId && patients.length > 0) setSelectedId(patients[0].id);
-  }, [patients, selectedId]);
+  // Auto-select the first patient the sidebar actually shows (same list math
+  // as PatientsSidebar), never from the pre-fetch localStorage cache.
+  const viewFilter = viewFilterFromParams(searchParams);
+  const visiblePatients = useMemo(
+    () => sidebarVisibleList(patients, viewFilter, "authOutstanding"),
+    [patients, viewFilter],
+  );
+  useAutoSelectPatient(
+    initialLoading, patients, visiblePatients, selectedId, setSelectedId,
+    searchParams.get("patientId"),
+  );
 
   const selected: Patient | undefined = useMemo(
     () => patients.find((p) => p.id === selectedId),

@@ -40,19 +40,26 @@ function applyOverlay(p: Patient, o: Partial<Patient> | undefined): Patient {
 
 const POLL_MS = 30_000;
 const LS_KEY = "sam-overlays";
+// Namespaced per group — a shared key would seed a freshly-mounted role page
+// with the PREVIOUS group's patients until its first Monday fetch lands.
 const LS_CACHE_KEY = "sam-patients-cache";
+const cacheKey = (group: SidebarGroup) => `${LS_CACHE_KEY}:${group}`;
+// One-time cleanup of the pre-namespacing key — nothing reads it anymore and
+// it holds a full patient snapshot (PHI) that would otherwise sit in
+// localStorage forever.
+try { localStorage.removeItem(LS_CACHE_KEY); } catch { /* ignore */ }
 
-function loadCachedPatients(): Patient[] {
+function loadCachedPatients(group: SidebarGroup): Patient[] {
   try {
-    const raw = localStorage.getItem(LS_CACHE_KEY);
+    const raw = localStorage.getItem(cacheKey(group));
     if (!raw) return [];
     return JSON.parse(raw) as Patient[];
   } catch { return []; }
 }
 
-function persistPatientCache(patients: Patient[]): void {
+function persistPatientCache(group: SidebarGroup, patients: Patient[]): void {
   try {
-    localStorage.setItem(LS_CACHE_KEY, JSON.stringify(patients));
+    localStorage.setItem(cacheKey(group), JSON.stringify(patients));
   } catch { /* ignore */ }
 }
 
@@ -90,15 +97,17 @@ function removeOverlay(id: string): void {
 export type SidebarGroup = "benefits" | "submitAuth" | "authOutstanding";
 
 export function useMondayPatients(activeGroup: SidebarGroup = "benefits", injectedPatientId?: string | null) {
-  const cachedRef = useRef(loadCachedPatients());
-  const [patients, setPatients] = useState<Patient[]>(cachedRef.current);
-  const [loading, setLoading] = useState(cachedRef.current.length === 0);
+  // Lazy initializer — useRef would re-parse the whole cached list from
+  // localStorage on every render just to throw it away.
+  const [initialCache] = useState(() => loadCachedPatients(activeGroup));
+  const [patients, setPatients] = useState<Patient[]>(initialCache);
+  const [loading, setLoading] = useState(initialCache.length === 0);
   // Blocks the page (full-screen overlay) from mount until THIS group's first
-  // fetch lands. The localStorage cache is shared across all samantha groups, so a
-  // freshly-mounted role page would otherwise render the PREVIOUS group's patients
-  // — and let you click them — for the ~poll window before Monday responds.
-  // Unlike `loading`, this is always true on mount regardless of cache, and a
-  // background poll never re-raises it.
+  // fetch lands. The localStorage cache can hold patients who have since
+  // advanced off the group, so a freshly-mounted role page would otherwise
+  // render stale patients — and let you click them — for the ~poll window
+  // before Monday responds. Unlike `loading`, this is always true on mount
+  // regardless of cache, and a background poll never re-raises it.
   const [initialLoading, setInitialLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   // local-session overlay so UI edits persist without re-fetching from Monday
@@ -112,6 +121,7 @@ export function useMondayPatients(activeGroup: SidebarGroup = "benefits", inject
       if (mountedRef.current) {
         setError("VITE_MONDAY_API_TOKEN is not set. Add it in your project env vars and rebuild.");
         setLoading(false);
+        setInitialLoading(false); // never leave the blocking overlay up over the error
       }
       return;
     }
@@ -140,7 +150,7 @@ export function useMondayPatients(activeGroup: SidebarGroup = "benefits", inject
       }
 
       setPatients(merged);
-      persistPatientCache(merged);
+      persistPatientCache(activeGroup, merged);
     } catch (e) {
       if (mountedRef.current)
         setError(e instanceof Error ? e.message : "Failed to load patients from Monday");
@@ -152,17 +162,17 @@ export function useMondayPatients(activeGroup: SidebarGroup = "benefits", inject
         setInitialLoading(false);
       }
     }
-  }, [activeGroup]);
+  }, [activeGroup, injectedPatientId]);
 
   useEffect(() => {
     mountedRef.current = true;
-    refetch(cachedRef.current.length > 0);
+    refetch(initialCache.length > 0);
     const id = setInterval(() => refetch(true), POLL_MS);
     return () => {
       mountedRef.current = false;
       clearInterval(id);
     };
-  }, [refetch]);
+  }, [refetch, initialCache]);
 
   // Local-only update — used by UI handlers. Does NOT write to Monday;
   // call writeStatusIndex from mondayApi for that.

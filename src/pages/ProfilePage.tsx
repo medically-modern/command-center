@@ -7,6 +7,9 @@ import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import type { ReactNode } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useMondayPatients } from "@/hooks/profile/useMondayPatients";
+import { useAutoSelectPatient } from "@/hooks/useAutoSelectPatient";
+import { sidebarVisibleList } from "@/lib/profile/sidebarList";
+import { viewFilterFromParams } from "@/lib/roleView";
 import type { Patient } from "@/lib/profile/workflow";
 import {
   hasValidZip, formatPhone, crossSellReason, canCrossSellCgm, deriveServing, addressWarning,
@@ -117,7 +120,24 @@ const ProfilePage = () => {
   const [selectedClinicId, setSelectedClinicId] = useState<number | null>(null);
 
   useEffect(() => { fetchClinicLabels().then(setClinicLabels).catch(console.error); }, []);
-  useEffect(() => { if (!selectedId && patients.length > 0) setSelectedId(patients[0].id); }, [patients, selectedId]);
+  // Auto-select the first patient the sidebar actually shows (same list math
+  // as PatientsSidebar), never from the pre-fetch localStorage cache.
+  const viewFilter = viewFilterFromParams(searchParams);
+  const visiblePatients = useMemo(
+    () => sidebarVisibleList(patients, viewFilter),
+    [patients, viewFilter],
+  );
+  useAutoSelectPatient(
+    initialLoading, patients, visiblePatients, selectedId, setSelectedId,
+    searchParams.get("patientId"),
+  );
+
+  // The clinic pick belongs to one patient — reset it on EVERY selection
+  // change (sidebar click or auto-advance), or a clinic chosen for patient A
+  // could be written to the next patient's Monday item on submit.
+  useEffect(() => {
+    setSelectedClinicId(null);
+  }, [selectedId]);
 
   const selected: Patient | undefined = useMemo(
     () => patients.find((p) => p.id === selectedId), [patients, selectedId],
@@ -389,7 +409,7 @@ const ProfilePage = () => {
         <PatientsSidebar
           patients={patients}
           selectedId={selectedId}
-          onSelect={(id) => { setSelectedId(id); setSelectedClinicId(null); }}
+          onSelect={setSelectedId}
           loading={loading}
           error={error}
           onRefresh={refetch}

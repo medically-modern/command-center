@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import {
   Sidebar,
   SidebarContent,
@@ -14,6 +14,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { AlertTriangle, Loader2, RefreshCw, User, AlertCircle, Pause, XCircle, Search, X } from "lucide-react";
 import type { Patient } from "@/lib/subscription/workflow";
+import { sidebarSections } from "@/lib/subscription/sidebarList";
 import { cn } from "@/lib/utils";
 
 interface Props {
@@ -42,12 +43,12 @@ export function PatientsSidebar({ patients, selectedId, onSelect, loading, error
 
   const collapsed = state === "collapsed";
 
-  const escalatedPatients = filteredBySearch.filter((p) => p.escalated);
-  const nonEscalated = filteredBySearch.filter((p) => !p.escalated);
-  const active = nonEscalated.filter((p) => p.status === "Active");
-  const paused = nonEscalated.filter((p) => p.status === "Paused");
-  const dead = nonEscalated.filter((p) => p.status === "Dead");
-  const other = nonEscalated.filter((p) => p.status !== "Active" && p.status !== "Paused" && p.status !== "Dead");
+  // Status groups + escalated section — the shared list math lives in
+  // sidebarList.ts so page auto-select matches what renders here.
+  const { active, paused, dead, other, escalatedPatients } = useMemo(
+    () => sidebarSections(filteredBySearch),
+    [filteredBySearch],
+  );
 
   const renderGroup = (label: string, list: Patient[], icon?: React.ReactNode) => {
     if (list.length === 0) return null;

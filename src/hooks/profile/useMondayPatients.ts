@@ -83,6 +83,7 @@ export function useMondayPatients(injectedPatientId?: string | null) {
       if (mountedRef.current) {
         setError("VITE_MONDAY_API_TOKEN is not set. Add it in your project env vars and rebuild.");
         setLoading(false);
+        setInitialLoading(false); // never leave the blocking overlay up over the error
       }
       return;
     }

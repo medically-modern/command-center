@@ -17,6 +17,7 @@ import type { Patient } from "@/lib/finalConfirm/workflow";
 import { cn } from "@/lib/utils";
 import { useSearchParams } from "react-router-dom";
 import { viewFilterFromParams } from "@/lib/roleView";
+import { sidebarSections } from "@/lib/finalConfirm/sidebarList";
 
 interface Props {
   patients: Patient[];
@@ -39,16 +40,14 @@ export function PatientsSidebar({ patients, selectedId, onSelect, loading, error
 
   const [sp] = useSearchParams();
   const viewFilter = viewFilterFromParams(sp);
-  const escalatedOnly = viewFilter === "escalated";
-  const includeEscalated = viewFilter !== "nonEscalated";
-  const managerMode = escalatedOnly;
+  const managerMode = viewFilter === "escalated";
 
-  // escalated-only → main = escalated, no separate section; non-escalated →
-  // hide the escalated section; all → show it.
-  const mainPatients = escalatedOnly
-    ? filteredBySearch.filter((p) => p.escalated)
-    : filteredBySearch.filter((p) => !p.escalated);
-  const escalatedSection = escalatedOnly || !includeEscalated ? [] : filteredBySearch.filter((p) => p.escalated);
+  // Section math lives in lib/finalConfirm/sidebarList so the page's
+  // auto-select sees the exact same visible list.
+  const { main: mainPatients, escalated: escalatedSection } = sidebarSections(
+    filteredBySearch,
+    viewFilter,
+  );
 
   const collapsed = state === "collapsed";
 
@@ -140,11 +139,11 @@ export function PatientsSidebar({ patients, selectedId, onSelect, loading, error
           <SidebarGroup>
             <SidebarGroupLabel className="text-[10px] uppercase tracking-wider text-red-500 font-semibold flex items-center gap-1.5">
               <AlertTriangle className="h-3 w-3" />
-              Escalated ({filteredBySearch.filter((p) => p.escalated).length})
+              Escalated ({escalatedSection.length})
             </SidebarGroupLabel>
             <SidebarGroupContent>
               <SidebarMenu>
-                {filteredBySearch.filter((p) => p.escalated).map((p) => (
+                {escalatedSection.map((p) => (
                   <SidebarMenuItem key={p.id}>
                     <SidebarMenuButton
                       isActive={selectedId === p.id}

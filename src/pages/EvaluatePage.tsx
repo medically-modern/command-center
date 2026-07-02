@@ -1,8 +1,9 @@
 /**
  * Evaluate — standalone view of masheke-checklist's "Evaluate" tab.
  */
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useMondayPatients } from "@/hooks/masheke/useMondayPatients";
+import { useAutoSelectPatient } from "@/hooks/useAutoSelectPatient";
 import type { Patient } from "@/lib/masheke/workflow";
 import { EvaluatePanel } from "@/components/masheke/EvaluatePanel";
 import { PatientsSidebar } from "@/components/masheke/PatientsSidebar";
@@ -14,6 +15,8 @@ import { RotateCcw, Stethoscope, ArrowLeft, Mail, Ban , Save} from "lucide-react
 import { toast } from "sonner";
 import { clearEvalState } from "@/lib/masheke/evalState";
 import { useNavigate, useSearchParams } from "react-router-dom";
+import { viewFilterFromParams } from "@/lib/roleView";
+import { sidebarVisibleList } from "@/lib/masheke/sidebarList";
 import { BlockedModal } from "@/components/masheke/BlockedModal";
 import { EscalationFormModal } from "@/components/shared/EscalationFormModal";
 import { PageLoadingOverlay } from "@/components/shared/PageLoadingOverlay";
@@ -36,9 +39,17 @@ const EvaluatePage = () => {
   const [blockedModalOpen, setBlockedModalOpen] = useState(false);
   const [escalationModalOpen, setEscalationModalOpen] = useState(false);
 
-  useEffect(() => {
-    if (!selectedId && patients.length > 0) setSelectedId(patients[0].id);
-  }, [patients, selectedId]);
+  // Auto-select the first patient the sidebar actually shows (same list math
+  // as PatientsSidebar), never from the pre-fetch localStorage cache.
+  const viewFilter = viewFilterFromParams(searchParams);
+  const visiblePatients = useMemo(
+    () => sidebarVisibleList(patients, viewFilter),
+    [patients, viewFilter],
+  );
+  useAutoSelectPatient(
+    initialLoading, patients, visiblePatients, selectedId, setSelectedId,
+    searchParams.get("patientId"),
+  );
 
   const selected: Patient | undefined = useMemo(
     () => patients.find((p) => p.id === selectedId),

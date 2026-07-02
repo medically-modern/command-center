@@ -6,6 +6,7 @@ import confetti from "canvas-confetti";
 import { useEffect, useMemo, useState } from "react";
 import { useMondayPatients } from "@/hooks/finalConfirm/useMondayPatients";
 import type { Patient, SplitSide } from "@/lib/finalConfirm/workflow";
+import { sidebarVisibleList } from "@/lib/finalConfirm/sidebarList";
 import {
   validatePatientForSend,
   determineOriginalSide,
@@ -34,6 +35,8 @@ const STAGE_ADVANCER_REVIEW_PROFILE = 0;
 const SPLIT_FLAG_INDEX = 1;
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useBackNavigation } from "@/hooks/useBackNavigation";
+import { useAutoSelectPatient } from "@/hooks/useAutoSelectPatient";
+import { viewFilterFromParams } from "@/lib/roleView";
 
 const FinalConfirmPage = () => {
   const navigate = useNavigate();
@@ -47,9 +50,15 @@ const FinalConfirmPage = () => {
     searchParams.get("patientId") ?? null,
   );
 
-  useEffect(() => {
-    if (!selectedId && patients.length > 0) setSelectedId(patients[0].id);
-  }, [patients, selectedId]);
+  const viewFilter = viewFilterFromParams(searchParams);
+  const visiblePatients = useMemo(
+    () => sidebarVisibleList(patients, viewFilter),
+    [patients, viewFilter],
+  );
+  useAutoSelectPatient(
+    initialLoading, patients, visiblePatients, selectedId, setSelectedId,
+    searchParams.get("patientId"),
+  );
 
   // Any patient with _splitCreated has an unsubmitted local split.
   const unsubmittedSplits = useMemo(

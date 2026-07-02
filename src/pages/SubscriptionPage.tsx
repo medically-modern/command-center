@@ -3,9 +3,12 @@
  * Reads from board 18407459988, "Subscriptions" group.
  */
 import confetti from "canvas-confetti";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useMondayPatients } from "@/hooks/subscription/useMondayPatients";
+import { useAutoSelectPatient } from "@/hooks/useAutoSelectPatient";
 import type { Patient } from "@/lib/subscription/workflow";
+import { sidebarVisibleList } from "@/lib/subscription/sidebarList";
+import { viewFilterFromParams } from "@/lib/roleView";
 import { PatientInfoCard } from "@/components/subscription/PatientInfoCard";
 import { SubscriptionForm } from "@/components/subscription/SubscriptionForm";
 import { PatientsSidebar } from "@/components/subscription/PatientsSidebar";
@@ -31,9 +34,15 @@ const SubscriptionPage = () => {
     searchParams.get("patientId") ?? null,
   );
 
-  useEffect(() => {
-    if (!selectedId && patients.length > 0) setSelectedId(patients[0].id);
-  }, [patients, selectedId]);
+  const viewFilter = viewFilterFromParams(searchParams);
+  const visiblePatients = useMemo(
+    () => sidebarVisibleList(patients, viewFilter),
+    [patients, viewFilter],
+  );
+  useAutoSelectPatient(
+    initialLoading, patients, visiblePatients, selectedId, setSelectedId,
+    searchParams.get("patientId"),
+  );
 
   const selected: Patient | undefined = useMemo(
     () => patients.find((p) => p.id === selectedId),

@@ -20,6 +20,8 @@ import { toast } from "sonner";
 import { clearStatusColumn, clearDateColumn, COL } from "@/lib/masheke/mondayApi";
 import { useSearchParams } from "react-router-dom";
 import { viewFilterFromParams } from "@/lib/roleView";
+import { sidebarSections } from "@/lib/masheke/sidebarList";
+import { etToday } from "@/lib/masheke/etDate";
 
 /** Convert YYYY-MM-DD → MM/DD/YYYY */
 function fmtDate(iso: string): string {
@@ -119,23 +121,11 @@ export function PatientsSidebar({ patients, selectedId, onSelect, loading, error
   // const bothPatients = patients.filter((p) => p.escalation === "Escalation Required" && p.followUp === "Follow up" && p.blocked !== "Blocked" && p.advancer2c !== "Stuck");
 
   // Always use Eastern Time so all users see the same "today".
-  const etParts = new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
-  const todayStr = etParts; // "YYYY-MM-DD" in ET
+  const todayStr = etToday(); // "YYYY-MM-DD" in ET
 
-  const isEsc = (p: Patient) => p.escalation === "Escalation Required";
-  const escalatedList = patients.filter(isEsc);
-
-  // Non-escalated active list keeps the Next-Action-Date scheduling split
-  // (future-dated → scheduled folder). Escalated patients always show, no split.
-  const nonEsc = patients.filter((p) => !isEsc(p));
-  const pendingPatients = nonEsc.filter((p) => {
-    const nad = p.nextActionDate?.slice(0, 10);
-    return nad && nad > todayStr;
-  });
-  const nonEscNow = nonEsc.filter((p) => {
-    const nad = p.nextActionDate?.slice(0, 10);
-    return !nad || nad <= todayStr;
-  });
+  // List math lives in lib/masheke/sidebarList.ts — the role pages derive
+  // their auto-select order from the same module, so keep them in sync.
+  const { nonEscNow, pendingPatients, escalatedList } = sidebarSections(patients, todayStr);
   const hasPending = !escalatedOnly;
 
   // Main list: escalated-only → the escalated list; otherwise the

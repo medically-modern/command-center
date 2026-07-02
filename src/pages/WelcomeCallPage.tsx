@@ -2,9 +2,10 @@
  * Welcome Call — standalone view from welcome-call-checklist repo.
  */
 import confetti from "canvas-confetti";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useMondayPatients } from "@/hooks/welcomeCall/useMondayPatients";
 import type { Patient } from "@/lib/welcomeCall/workflow";
+import { sidebarVisibleList } from "@/lib/welcomeCall/sidebarList";
 import { PatientInfoCard, NextOrderDatesCard } from "@/components/welcomeCall/PatientInfoCard";
 import { OopEstimateCard } from "@/components/welcomeCall/OopEstimateCard";
 import { WelcomeCallForm } from "@/components/welcomeCall/WelcomeCallForm";
@@ -37,6 +38,8 @@ import { PageLoadingOverlay } from "@/components/shared/PageLoadingOverlay";
 import { validatePatientForSend } from "@/lib/welcomeCall/workflow";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useBackNavigation } from "@/hooks/useBackNavigation";
+import { useAutoSelectPatient } from "@/hooks/useAutoSelectPatient";
+import { viewFilterFromParams } from "@/lib/roleView";
 
 const WelcomeCallPage = () => {
   const navigate = useNavigate();
@@ -53,9 +56,15 @@ const WelcomeCallPage = () => {
     searchParams.get("patientId") ?? null,
   );
 
-  useEffect(() => {
-    if (!selectedId && patients.length > 0) setSelectedId(patients[0].id);
-  }, [patients, selectedId]);
+  const viewFilter = viewFilterFromParams(searchParams);
+  const visiblePatients = useMemo(
+    () => sidebarVisibleList(patients, viewFilter),
+    [patients, viewFilter],
+  );
+  useAutoSelectPatient(
+    initialLoading, patients, visiblePatients, selectedId, setSelectedId,
+    searchParams.get("patientId"),
+  );
 
   const selected: Patient | undefined = useMemo(
     () => patients.find((p) => p.id === selectedId),

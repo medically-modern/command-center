@@ -7,19 +7,26 @@ import { etToday } from "@/lib/masheke/etDate";
 
 const POLL_MS = 30_000;
 const LS_KEY = "mash-overlays";
+// Namespaced per tab — a shared key would seed a freshly-mounted role page
+// with the PREVIOUS role's patients until its first Monday fetch lands.
 const LS_CACHE_KEY = "mash-patients-cache";
+const cacheKey = (tab: TabKey) => `${LS_CACHE_KEY}:${tab}`;
+// One-time cleanup of the pre-namespacing key — nothing reads it anymore and
+// it holds a full patient snapshot (PHI) that would otherwise sit in
+// localStorage forever.
+try { localStorage.removeItem(LS_CACHE_KEY); } catch { /* ignore */ }
 
-function loadCachedPatients(): Patient[] {
+function loadCachedPatients(tab: TabKey): Patient[] {
   try {
-    const raw = localStorage.getItem(LS_CACHE_KEY);
+    const raw = localStorage.getItem(cacheKey(tab));
     if (!raw) return [];
     return JSON.parse(raw) as Patient[];
   } catch { return []; }
 }
 
-function persistPatientCache(patients: Patient[]): void {
+function persistPatientCache(tab: TabKey, patients: Patient[]): void {
   try {
-    localStorage.setItem(LS_CACHE_KEY, JSON.stringify(patients));
+    localStorage.setItem(cacheKey(tab), JSON.stringify(patients));
   } catch { /* ignore */ }
 }
 
@@ -72,16 +79,18 @@ function matchesTab(stageAdvancer: string | undefined, tab: TabKey): boolean {
 }
 
 export function useMondayPatients(activeTab: TabKey = "evaluate", injectedPatientId?: string | null) {
-  const cachedRef = useRef(loadCachedPatients());
-  const [patients, setPatients] = useState<Patient[]>(cachedRef.current);
+  // Lazy initializer — useRef would re-parse the whole cached list from
+  // localStorage on every render just to throw it away.
+  const [initialCache] = useState(() => loadCachedPatients(activeTab));
+  const [patients, setPatients] = useState<Patient[]>(initialCache);
   // Patients currently in the Chase Clinicals stage — exposed separately for
   // the Evaluate sidebar's read-only viewer folder (never affects counts).
   const [chaseViewerPatients, setChaseViewerPatients] = useState<Patient[]>([]);
-  const [loading, setLoading] = useState(cachedRef.current.length === 0);
+  const [loading, setLoading] = useState(initialCache.length === 0);
   // Blocks the page (full-screen overlay) from mount until THIS role's first
-  // fetch lands. The localStorage cache is shared across all masheke roles, so a
-  // freshly-mounted role page would otherwise render the PREVIOUS role's patients
-  // — and let you click them — for the ~poll window before Monday responds.
+  // fetch lands. The cache is namespaced per tab, but it can still hold
+  // patients who advanced off this stage since the last visit — a freshly
+  // mounted page must not let you click them before Monday responds.
   // Unlike `loading`, this is always true on mount regardless of cache, and a
   // background poll never re-raises it.
   const [initialLoading, setInitialLoading] = useState(true);
@@ -97,6 +106,7 @@ export function useMondayPatients(activeTab: TabKey = "evaluate", injectedPatien
       if (mountedRef.current) {
         setError("VITE_MONDAY_API_TOKEN is not set. Add it in your project env vars and rebuild.");
         setLoading(false);
+        setInitialLoading(false); // never leave the blocking overlay up over the error
       }
       return;
     }
@@ -165,7 +175,7 @@ export function useMondayPatients(activeTab: TabKey = "evaluate", injectedPatien
 
       setPatients(merged);
       setChaseViewerPatients(chase);
-      persistPatientCache(merged);
+      persistPatientCache(activeTab, merged);
     } catch (e) {
       if (mountedRef.current)
         setError(e instanceof Error ? e.message : "Failed to load patients from Monday");
@@ -177,17 +187,17 @@ export function useMondayPatients(activeTab: TabKey = "evaluate", injectedPatien
         setInitialLoading(false);
       }
     }
-  }, [activeTab]);
+  }, [activeTab, injectedPatientId]);
 
   useEffect(() => {
     mountedRef.current = true;
-    refetch(cachedRef.current.length > 0);
+    refetch(initialCache.length > 0);
     const id = setInterval(() => refetch(true), POLL_MS);
     return () => {
       mountedRef.current = false;
       clearInterval(id);
     };
-  }, [refetch]);
+  }, [refetch, initialCache]);
 
   const update = useCallback((id: string, patch: Partial<Patient>) => {
     overlayRef.current.set(id, { ...(overlayRef.current.get(id) ?? {}), ...patch });

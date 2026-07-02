@@ -19,6 +19,7 @@ import { toast } from "sonner";
 import { clearStatusColumn, clearDateColumn, COL } from "@/lib/welcomeCall/mondayApi";
 import { useSearchParams } from "react-router-dom";
 import { viewFilterFromParams } from "@/lib/roleView";
+import { sidebarSections } from "@/lib/welcomeCall/sidebarList";
 
 /** Convert YYYY-MM-DD → MM/DD/YYYY */
 function fmtDate(iso: string): string {
@@ -49,19 +50,16 @@ export function PatientsSidebar({ patients, selectedId, onSelect, loading, error
 
   const [sp] = useSearchParams();
   const viewFilter = viewFilterFromParams(sp);
-  const escalatedOnly = viewFilter === "escalated";
-  const includeEscalated = viewFilter !== "nonEscalated";
-  const managerMode = escalatedOnly;
+  const managerMode = viewFilter === "escalated";
 
-  // Split patients into active vs follow-up
-  // "Done" is the text Monday returns for status index 1 (our follow-up marker)
-  // Manager view: the main list IS the escalated list; other sections hide.
-  const escalatedPatients = escalatedOnly || !includeEscalated ? [] : filteredBySearch.filter((p) => p.escalated && p.followUp !== "Done");
-  const activePatients = escalatedOnly
-    ? filteredBySearch.filter((p) => p.escalated)
-    : filteredBySearch.filter((p) => !p.escalated && p.followUp !== "Done");
-  const followUpPatients = escalatedOnly ? [] : filteredBySearch.filter((p) => p.followUp === "Done" && !p.escalated);
-  const bothPatients = escalatedOnly || !includeEscalated ? [] : filteredBySearch.filter((p) => p.escalated && p.followUp === "Done");
+  // Section math lives in lib/welcomeCall/sidebarList so the page's
+  // auto-select sees the exact same visible list.
+  const {
+    active: activePatients,
+    escalated: escalatedPatients,
+    followUp: followUpPatients,
+    both: bothPatients,
+  } = sidebarSections(filteredBySearch, viewFilter);
 
   return (
     <Sidebar collapsible="icon">
