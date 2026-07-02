@@ -128,11 +128,15 @@ export const COL = {
   // Stedi Eligibility
   stediRunCheck: "color_mm2nnjam",
   stediActive: "color_mm2nzm33",
-  stediDatePlanBegin: "date_mm2n4b26",
+  // "Date Plan Begin" — recreated on the board as a TEXT column (the old
+  // date_mm2n4b26 no longer exists). Value should be yyyy-mm-dd.
+  stediDatePlanBegin: "text_mm3grb6t",
   stediMemberId: "text_mm2phve4",
   stediPayerName: "dropdown_mm2nz3wd",
   stediPlanName: "dropdown_mm2n7ps1",
-  stediDedRemaining: "numeric_mm2nkcfx",
+  // "Ded. Remaining" — recreated on the board as a TEXT column (the old
+  // numeric_mm2nkcfx no longer exists; reads were silently empty).
+  stediDedRemaining: "text_mm3g32ja",
   insuranceChange: "color_mm2p8v3m",
   priorAuthReq: "color_mm2pj23n",
   primaryClaimPaid: "color_mm33spks",

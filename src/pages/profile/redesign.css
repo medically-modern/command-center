@@ -32,9 +32,10 @@
 .pf-root .duo.duo-stretch { align-items:stretch }
 .pf-root .duo.duo-stretch .leftcol { display:flex;flex-direction:column }
 .pf-root .duo.duo-stretch .leftcol>.card { flex:1 }
-/* Not sticky / no internal scroll — the referral email must show in full;
-   the page scrolls, the rail never clips or scrolls its own content. */
-.pf-root .leftrail { align-self:start;display:flex;flex-direction:column;gap:16px }
+/* Sticky — the referral email + files follow the user up and down the page.
+   When the rail is taller than the viewport it scrolls its OWN content
+   (overflow-y) so the entire referral email is always reachable in place. */
+.pf-root .leftrail { position:sticky;top:16px;max-height:calc(100vh - 32px);overflow-y:auto;align-self:start;display:flex;flex-direction:column;gap:16px;overscroll-behavior:contain }
 .pf-root .rail-card { border:1px solid var(--border);border-radius:14px;background:#fff;overflow:hidden }
 .pf-root .rail-card:first-child { border-top:4px solid var(--mm-teal) }
 .pf-root .rail-head { font-size:.74rem;text-transform:uppercase;letter-spacing:.05em;color:var(--mm-teal);font-weight:800;padding:12px 16px;border-bottom:1px solid var(--border);background:oklch(0.985 0.005 200) }

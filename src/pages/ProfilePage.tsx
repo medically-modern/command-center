@@ -24,9 +24,10 @@ import {
   suggestPrimary, suggestSecondary, buildSuggestionInputs, isCoverageActive, isNyMedicaidId,
 } from "@/lib/profile/primaryInsurance";
 import { computeFirstAndRecurring } from "@/lib/profile/oopEstimate";
+import { interpretStediError } from "@/lib/profile/stediErrors";
 import {
   GENERAL_INSURANCE_INDEX, SECONDARY_INSURANCE_INDEX, GENDER_INDEX,
-  SERVING_INDEX, CGM_TYPE_INDEX, PUMP_TYPE_INDEX, CGM_CROSS_SELL_INDEX,
+  SERVING_INDEX, CGM_TYPE_INDEX, PUMP_TYPE_INDEX,
   CGM_COVERAGE_PATH_INDEX, INSULIN_PUMP_COVERAGE_PATH_INDEX,
   groupPrimaryInsuranceLabels,
 } from "@/lib/profile/mondayMapping";
@@ -57,6 +58,36 @@ function servingIncludes(serving: string, token: string): boolean {
   return (serving || "").toLowerCase().includes(token);
 }
 
+// ── Stedi run detection ──────────────────────────────────────────────────────
+// The Stedi service writes its ~16 result columns to Monday ONE AT A TIME
+// (~1/sec over 15–25s — confirmed in the board activity log), so there is no
+// single "done" column to key on. Instead we fingerprint EVERY Stedi column
+// and only reveal results once the whole set has gone quiet across polls —
+// everything then renders at once (success or failure), never piecemeal.
+const STEDI_SIGNATURE_KEYS: (keyof Patient)[] = [
+  "stediEligibilityActive", "stediCoverageType", "stediPayerName",
+  "stediMedicareAdvantage", "stediMedicareAdvantageCarrier", "stediMedicareAdvantageMemberId",
+  "stediQmb", "stediMedicareJurisdiction", "stediMedicaidMltc", "stediManagedMedicaid",
+  "stediInNetwork", "stediPriorAuthRequired", "stediCoinsurance", "stediCopay",
+  "stediIndividualDeductible", "stediIndividualDeductibleRemaining",
+  "stediFamilyDeductible", "stediFamilyDeductibleRemaining",
+  "stediIndividualOopMax", "stediIndividualOopMaxRemaining",
+  "stediFamilyOopMax", "stediFamilyOopMaxRemaining",
+  "stediPlanBeginDate", "stediErrorDescription", "stediSecondaryMedicaidId",
+  "stediPlanName", "stediGender", "stediMedicaidId", "stediHomePlan",
+];
+function stediSignature(p: Patient): string {
+  return STEDI_SIGNATURE_KEYS.map((k) => String(p[k] ?? "")).join("␟");
+}
+/** Poll Monday every 4s while a run is in flight. */
+const STEDI_POLL_MS = 4_000;
+/** Results changed then went quiet this long → run complete, reveal. */
+const STEDI_SETTLE_MS = 10_000;
+/** Nothing changed at all (re-run returned identical values) → reveal anyway. */
+const STEDI_UNCHANGED_MS = 35_000;
+/** Absolute cap — never spin past this. */
+const STEDI_TIMEOUT_MS = 95_000;
+
 const ProfilePage = () => {
   const { goBack } = useBackNavigation();
   const [searchParams] = useSearchParams();
@@ -75,6 +106,12 @@ const ProfilePage = () => {
   // Completion-signal values captured the instant Run is clicked, so the
   // watcher below can tell a fresh Stedi result from a stale read-replica poll.
   const stediRunSnapshotRef = useRef({ planName: "", errorDescription: "", eligibilityActive: "" });
+  // Fingerprint of ALL Stedi columns at Run-click time + the last-seen
+  // fingerprint with when it was first observed (the "settle" tracker).
+  const stediRunStartSigRef = useRef("");
+  const stediSettleRef = useRef<{ sig: string; at: number } | null>(null);
+  // Fast poll + hard-stop timers for the in-flight run.
+  const stediPollRef = useRef<{ interval: number; timeout: number } | null>(null);
   const [assets, setAssets] = useState<MondayAsset[]>([]);
   const [clinicLabels, setClinicLabels] = useState<{ id: number; name: string }[]>([]);
   const [selectedClinicId, setSelectedClinicId] = useState<number | null>(null);
@@ -104,22 +141,55 @@ const ProfilePage = () => {
   // A Stedi run is "in flight" for the selected patient only.
   const stediRunning = !!selected && stediRunningId === selected.id;
 
-  // Watcher — clear the running state once Monday returns a NEW terminal
-  // signal (plan name / error / eligibility) that differs from the snapshot
-  // taken at Run-click time. A stale-read poll returning the previous run's
-  // value won't satisfy this, so the spinner stays up until the real result.
+  const stopStediPolling = useCallback(() => {
+    const timers = stediPollRef.current;
+    if (timers) {
+      clearInterval(timers.interval);
+      clearTimeout(timers.timeout);
+      stediPollRef.current = null;
+    }
+  }, []);
+  useEffect(() => () => stopStediPolling(), [stopStediPolling]);
+
+  // Watcher — reveal results only when the ENTIRE Stedi column set has gone
+  // quiet. The service writes columns one at a time (~1/sec for 15–25s), so a
+  // single "new value" is a partial result: track the fingerprint across the
+  // 4s polls and clear the running state once it has been stable for
+  // STEDI_SETTLE_MS. A terminal signal (plan name / error / a changed
+  // eligibility value) must also be present, so the trigger's own clearing of
+  // the completion columns never reveals an empty card mid-run.
   useEffect(() => {
     if (!selected || stediRunningId !== selected.id) return;
-    const complete =
-      !!selected.stediPlanName || !!selected.stediErrorDescription || !!selected.stediEligibilityActive;
-    if (!complete) return;
+    const sig = stediSignature(selected);
+    const now = Date.now();
+    const settle = stediSettleRef.current;
+    if (!settle || settle.sig !== sig) {
+      stediSettleRef.current = { sig, at: now };
+      return;
+    }
+    const stableFor = now - settle.at;
     const snap = stediRunSnapshotRef.current;
-    const isNew =
-      (selected.stediPlanName ?? "") !== snap.planName ||
-      (selected.stediErrorDescription ?? "") !== snap.errorDescription ||
-      (selected.stediEligibilityActive ?? "") !== snap.eligibilityActive;
-    if (isNew) setStediRunningId(null);
-  }, [selected, stediRunningId]);
+    const terminal =
+      !!selected.stediPlanName || !!selected.stediErrorDescription ||
+      (!!selected.stediEligibilityActive && selected.stediEligibilityActive !== snap.eligibilityActive);
+    const changedSinceRun = sig !== stediRunStartSigRef.current;
+    if (terminal && changedSinceRun && stableFor >= STEDI_SETTLE_MS) {
+      stopStediPolling();
+      setStediRunningId(null);
+      return;
+    }
+    // Nothing moved at all — a re-run that returned byte-identical values.
+    // Reveal what's there after a longer quiet window instead of timing out.
+    if (!changedSinceRun && stableFor >= STEDI_UNCHANGED_MS) {
+      stopStediPolling();
+      setStediRunningId(null);
+      if (!terminal) {
+        toast.error("Stedi returned no new results", {
+          description: "The check may not have run — verify the inputs and try again.",
+        });
+      }
+    }
+  }, [selected, stediRunningId, stopStediPolling]);
 
 
   const checklist = useMemo(() => {
@@ -159,13 +229,17 @@ const ProfilePage = () => {
     }
     const runId = selected.id;
     const patient = selected;
-    // Snapshot the terminal signals as they are now (before we clear them) so
-    // the watcher can distinguish a fresh result from a stale read.
+    // Snapshot the terminal signals + the full column fingerprint as they are
+    // now (before we clear them) so the watcher can distinguish a fresh
+    // result from a stale read — and reset the settle tracker for this run.
     stediRunSnapshotRef.current = {
       planName: patient.stediPlanName ?? "",
       errorDescription: patient.stediErrorDescription ?? "",
       eligibilityActive: patient.stediEligibilityActive ?? "",
     };
+    stediRunStartSigRef.current = stediSignature(patient);
+    stediSettleRef.current = null;
+    stopStediPolling();
     setStediRunningId(runId);
     // Clear the terminal signals locally so the "running" card shows and the
     // prior result doesn't satisfy the completion check…
@@ -203,19 +277,23 @@ const ProfilePage = () => {
       }
       await triggerStediRun(runId);
       toast.success("Profile saved — Stedi eligibility check triggered");
-      [3000, 8000, 15000, 25000, 40000, 55000].forEach((ms) => setTimeout(() => refetch(true), ms));
-      // Hard stop at 65s — never spin forever.
-      setTimeout(() => {
+      // Poll fast while the run is in flight; the settle watcher above stops
+      // this the moment the full result set has landed and gone quiet.
+      const interval = window.setInterval(() => refetch(true), STEDI_POLL_MS);
+      // Hard stop — never spin forever.
+      const timeout = window.setTimeout(() => {
+        stopStediPolling();
         setStediRunningId((cur) => {
           if (cur === runId) {
             toast.error("Stedi check timed out", {
-              description: "No results after 60 seconds. Check Monday for details.",
+              description: "No results after 90 seconds. Check Monday for details.",
             });
             return null;
           }
           return cur;
         });
-      }, 65000);
+      }, STEDI_TIMEOUT_MS);
+      stediPollRef.current = { interval, timeout };
     } catch (e) {
       setStediRunningId((cur) => (cur === runId ? null : cur));
       toast.error("Failed to run Stedi", { description: e instanceof Error ? e.message : String(e) });
@@ -231,10 +309,13 @@ const ProfilePage = () => {
     }
     setCalcOop(true);
     try {
+      // Only the SELECTED Secondary Insurance feeds the estimate — the
+      // advisory suggestion must never silently flip a patient to the
+      // "secondary Medicaid covers everything → $0" rule.
       const { first, recurring } = computeFirstAndRecurring({
         serving: selected.serving,
         primaryInsurance: primary,
-        secondaryInsurance: selected.secondaryInsurance || secondarySuggestion || "",
+        secondaryInsurance: selected.secondaryInsurance || "",
         stediCoinsurance: selected.workingCoinsurance || selected.stediCoinsurance,
         deductibleRemaining: selected.workingDeductibleRemaining || selected.stediIndividualDeductibleRemaining,
         oopMaxRemaining: selected.workingOopMaxRemaining || selected.stediIndividualOopMaxRemaining,
@@ -488,8 +569,26 @@ function ProfileBody(p: BodyProps) {
   const serv = pt.serving || "";
   const cgm = servingIncludes(serv, "cgm");
   const ip = servingIncludes(serv, "insulin pump");
-  const stediComplete = !!(pt.stediPlanName || pt.stediEligibilityActive || pt.stediErrorDescription);
   const stediFailed = !!pt.stediErrorDescription && !pt.stediPlanName;
+  // Error code + description + recommended solution for the failure banner.
+  const stediError = interpretStediError(pt.stediErrorDescription);
+  // Why the saved OOP figures are what they are — recompute the estimate from
+  // the current inputs to surface the reason line (e.g. "Secondary NY
+  // Medicaid covers remaining balance" behind a $0, or which benefits fields
+  // Stedi is missing). Mirrors handleCalcOop's inputs.
+  const oopNote = (() => {
+    const primary = pt.primaryInsurance || p.suggestion?.value || "";
+    if (!primary || !pt.serving) return "";
+    const { first } = computeFirstAndRecurring({
+      serving: pt.serving,
+      primaryInsurance: primary,
+      secondaryInsurance: pt.secondaryInsurance || "",
+      stediCoinsurance: pt.workingCoinsurance || pt.stediCoinsurance,
+      deductibleRemaining: pt.workingDeductibleRemaining || pt.stediIndividualDeductibleRemaining,
+      oopMaxRemaining: pt.workingOopMaxRemaining || pt.stediIndividualOopMaxRemaining,
+    });
+    return first.note;
+  })();
   const [readyOpen, setReadyOpen] = useState(false);
   // Member ID 1 is always entered fresh by the rep (never auto-filled).
   const [mid1Input, setMid1Input] = useState("");
@@ -503,10 +602,12 @@ function ProfileBody(p: BodyProps) {
   const [midInput, setMidInput] = useState(patientReferral ? (pt.workingMemberId || pt.memberId1) : "");
 
   // ── CGM cross-sell — same auto-derivation the original ServingPanel ran ──
-  // Re-derive whenever Primary Insurance or Request Type changes: eligible
-  // (non-Medicaid/United/Cigna) → Cross-Sell + default Dexcom G7 on the
-  // Insulin path; blocked → Couldn't Cross-Sell + Not Serving. Manual
-  // "Already Serving CGM" is respected and never overwritten.
+  // The status itself is no longer shown in the UI (it's folded into the
+  // Serving suggestion below), but the column still auto-derives and writes
+  // to Monday on send-off. Re-derive whenever Primary Insurance or Request
+  // Type changes: eligible (non-Medicaid/United/Cigna) → Cross-Sell + default
+  // Dexcom G7 on the Insulin path; blocked → Couldn't Cross-Sell + Not
+  // Serving. Manual "Already Serving CGM" is respected and never overwritten.
   const primaryIns = pt.primaryInsurance;
   const crossSell = pt.cgmCrossSell;
   useEffect(() => {
@@ -527,15 +628,18 @@ function ProfileBody(p: BodyProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [crossSell, pt.requestType]);
   // Advisory Serving chip (no auto-apply button) — what the cross-sell logic
-  // says we should be serving; hidden once Serving already matches.
+  // says we should be serving; hidden once Serving already matches. The hint
+  // explains the cross-sell decision inline (the status dropdown is gone).
   const servingSuggestion = deriveServing(crossSell, pt.requestType || "") || pt.requestType || "";
   const xsellHint = (() => {
     const reason = crossSellReason(primaryIns);
+    if (reason === "no-primary") return "Set Primary Insurance in Benefits Check to evaluate CGM cross-sell eligibility";
     if (crossSell === "Cross-Sell" && reason === "eligible") return "Primary insurance is a non-Medicaid plan, so this patient is eligible for CGM cross-sell";
+    if (crossSell === "Already Serving CGM") return "Already serving CGM — no cross-sell added";
     if (crossSell === "Couldn't Cross-Sell") {
-      if (reason === "medicaid") return "Primary insurance is a Medicaid plan";
-      if (reason === "united") return "Primary insurance is United, so we choose not to cross-sell United patients";
-      if (reason === "cigna") return "Primary insurance is Cigna, so we choose not to cross-sell Cigna patients";
+      if (reason === "medicaid") return "No CGM cross-sell: primary insurance is a Medicaid plan";
+      if (reason === "united") return "No CGM cross-sell: primary insurance is United, and we choose not to cross-sell United patients";
+      if (reason === "cigna") return "No CGM cross-sell: primary insurance is Cigna, and we choose not to cross-sell Cigna patients";
     }
     return null;
   })();
@@ -626,21 +730,31 @@ function ProfileBody(p: BodyProps) {
                   </button>
                 </div>
 
-                {p.stediRunning && !stediComplete && (
+                {p.stediRunning && (
                   <div className="stedi-running">
                     <span className="stedi-spinner" aria-hidden />
                     <div>
                       <div className="sr-title">Saving profile &amp; running eligibility check…</div>
-                      <div className="sugg-note">Name, insurance &amp; Member ID are written to Monday first, then Stedi runs. Results appear here (usually 5–15 seconds).</div>
+                      <div className="sugg-note">Name, insurance &amp; Member ID are written to Monday first, then Stedi runs. Results appear all at once when the check completes (usually 20–40 seconds).</div>
                     </div>
                   </div>
                 )}
 
                 {/* Failure — show ONLY the failure banner, none of the outputs */}
-                {!p.stediRunning && stediFailed && (
+                {!p.stediRunning && stediFailed && stediError && (
                   <div className="err-banner" style={{ marginTop: 16 }}>
-                    <div className="et">Possible Stedi error — please try again</div>
-                    <div className="ed">{pt.stediErrorDescription}</div>
+                    <div className="et">
+                      Stedi check failed{stediError.code ? ` — error ${stediError.code}` : ""}
+                    </div>
+                    <div className="ed">{stediError.description}</div>
+                    <div className="ed" style={{ marginTop: 8 }}>
+                      <b>What to do:</b> {stediError.solution}
+                    </div>
+                    {stediError.isConnectionError && (
+                      <div className="ea">
+                        <button className="btn primary sm" onClick={p.onRunStedi}>Try Again</button>
+                      </div>
+                    )}
                   </div>
                 )}
 
@@ -727,6 +841,7 @@ function ProfileBody(p: BodyProps) {
                         <div className="sugg-line" style={{ marginBottom: 8 }}>
                           <span className="sugg-lead2">Suggestion:</span>
                           <span className="sugg-chip2">{servingSuggestion}</span>
+                          {xsellHint && <span className="sugg-note">{xsellHint}</span>}
                         </div>
                       )}
                       <Field label="Serving" required>
@@ -734,24 +849,8 @@ function ProfileBody(p: BodyProps) {
                           <option value="" disabled hidden>Select what we're serving…</option>
                           {SERVING_OPTS.map((l) => <option key={l}>{l}</option>)}
                         </select>
-                      </Field>
-                    </div>
-                    <div className="full">
-                      <Field label="CGM Cross-Sell Status" required>
-                        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                          <select style={{ flex: 1 }} className={crossSell ? "filled" : "need"} value={crossSell} onChange={(e) => p.onUpdate({ cgmCrossSell: e.target.value })}>
-                            <option value="" disabled hidden>Select…</option>
-                            {Object.keys(CGM_CROSS_SELL_INDEX).map((l) => <option key={l}>{l}</option>)}
-                          </select>
-                          {crossSell && (
-                            <span className={`method-pill ${crossSell === "Cross-Sell" ? "chute" : crossSell === "Couldn't Cross-Sell" ? "fax" : "mail"}`} style={{ marginTop: 0, flexShrink: 0 }}>
-                              {crossSell}
-                            </span>
-                          )}
-                        </div>
-                        {xsellHint && <div className="sugg-note" style={{ marginTop: 6 }}>{xsellHint}</div>}
-                        {crossSell === "Evaluate" && !primaryIns && (
-                          <div className="sugg-note" style={{ marginTop: 6 }}>Set Primary Insurance in Benefits Check to auto-evaluate cross-sell eligibility</div>
+                        {serv && xsellHint && servingSuggestion === serv && (
+                          <div className="sugg-note" style={{ marginTop: 6 }}>{xsellHint}</div>
                         )}
                       </Field>
                     </div>
@@ -768,14 +867,17 @@ function ProfileBody(p: BodyProps) {
                     <div className="warn-banner" style={{ marginTop: 12 }}><span><b>CareCentrix referral</b> — confirm the final out-of-pocket with CareCentrix directly.</span></div>
                   )}
                   {(pt.oopFirst || pt.oopRecurring) && (
-                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginTop: 14 }}>
-                      <div className="rcell" style={{ background: "var(--mm-mint)", borderColor: "var(--mm-mint-ring)" }}>
-                        <div className="rl">First Order</div>
-                        <div className="rv set" style={{ fontSize: "1.4rem" }}>{pt.oopFirst || "—"}</div>
-                        {ip && <div className="rl" style={{ marginTop: 4, textTransform: "none", letterSpacing: 0, color: "var(--mm-teal)", fontWeight: 700 }}>Includes Pump</div>}
+                    <>
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginTop: 14 }}>
+                        <div className="rcell" style={{ background: "var(--mm-mint)", borderColor: "var(--mm-mint-ring)" }}>
+                          <div className="rl">First Order</div>
+                          <div className="rv set" style={{ fontSize: "1.4rem" }}>{pt.oopFirst || "—"}</div>
+                          {ip && <div className="rl" style={{ marginTop: 4, textTransform: "none", letterSpacing: 0, color: "var(--mm-teal)", fontWeight: 700 }}>Includes Pump</div>}
+                        </div>
+                        <div className="rcell" style={{ background: "var(--mm-mint)", borderColor: "var(--mm-mint-ring)" }}><div className="rl">Recurring · 90-day</div><div className="rv set" style={{ fontSize: "1.4rem" }}>{pt.oopRecurring || "—"}</div></div>
                       </div>
-                      <div className="rcell" style={{ background: "var(--mm-mint)", borderColor: "var(--mm-mint-ring)" }}><div className="rl">Recurring · 90-day</div><div className="rv set" style={{ fontSize: "1.4rem" }}>{pt.oopRecurring || "—"}</div></div>
-                    </div>
+                      {oopNote && <div className="sugg-note" style={{ marginTop: 8 }}>{oopNote}</div>}
+                    </>
                   )}
                 </section>
               </div>

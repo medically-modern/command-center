@@ -326,11 +326,13 @@ interface PdfDocLike {
       width: number;
       height: number;
       rotation: number;
+      scale: number;
     };
     render(opts: { canvasContext: CanvasRenderingContext2D; viewport: unknown }): {
       promise: Promise<void>;
       cancel(): void;
     };
+    streamTextContent(): ReadableStream;
   }>;
 }
 
@@ -435,6 +437,7 @@ function PdfView({
 
     (async () => {
       container.innerHTML = "";
+      const pdfjs = await loadPdfjs();
       const dpr = Math.min(window.devicePixelRatio || 1, 2);
       for (let i = 1; i <= doc.numPages; i++) {
         if (cancelled) return;
@@ -444,20 +447,46 @@ function PdfView({
           scale: zoom * 1.25,
           rotation: (getDefaultRotation(page) + rotation) % 360,
         });
+        const cssW = Math.max(1, Math.floor(viewport.width));
+        const cssH = Math.max(1, Math.floor(viewport.height));
         const canvas = document.createElement("canvas");
         // Clamp to ≥1px: a degenerate page (0-width MediaBox) would floor to a
         // 0×0 canvas that renders as blank with no error.
         canvas.width = Math.max(1, Math.floor(viewport.width * dpr));
         canvas.height = Math.max(1, Math.floor(viewport.height * dpr));
-        canvas.style.width = `${Math.max(1, Math.floor(viewport.width))}px`;
-        canvas.style.height = `${Math.max(1, Math.floor(viewport.height))}px`;
-        canvas.className = "shadow-lg bg-white mx-auto block";
+        canvas.style.width = `${cssW}px`;
+        canvas.style.height = `${cssH}px`;
+        canvas.className = "shadow-lg bg-white block";
         const ctx = canvas.getContext("2d");
         if (!ctx) continue;
         ctx.scale(dpr, dpr);
         if (cancelled) return;
-        container.appendChild(canvas);
+        // Wrap each canvas so the selectable text layer can sit exactly on top.
+        const wrap = document.createElement("div");
+        wrap.className = "pdf-page-wrap mx-auto";
+        wrap.style.width = `${cssW}px`;
+        wrap.style.height = `${cssH}px`;
+        wrap.appendChild(canvas);
+        container.appendChild(wrap);
         await page.render({ canvasContext: ctx, viewport }).promise;
+        // Text layer — invisible spans positioned over the canvas so users can
+        // highlight and copy text. Best-effort: a text-layer failure (scanned
+        // page with no text, decoder hiccup) must never blank the canvas.
+        try {
+          const textDiv = document.createElement("div");
+          textDiv.className = "pdf-textlayer";
+          // pdf.js sizes each span with calc() against --scale-factor.
+          textDiv.style.setProperty("--scale-factor", String(viewport.scale));
+          wrap.appendChild(textDiv);
+          const textLayer = new pdfjs.TextLayer({
+            textContentSource: page.streamTextContent(),
+            container: textDiv,
+            viewport,
+          } as unknown as ConstructorParameters<typeof pdfjs.TextLayer>[0]);
+          await textLayer.render();
+        } catch {
+          // no selectable text for this page — the rendered canvas stands
+        }
       }
       if (!cancelled) setRendering(false);
     })().catch((e) => {

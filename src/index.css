@@ -228,3 +228,40 @@ h3 { font-size: 1.125rem; font-weight: 600; }
 .burndown-shimmer {
   animation: burndown-shimmer 1.3s ease-in-out infinite;
 }
+
+/* pdf.js text layer (FileViewerModal) — invisible selectable text positioned
+   over each rendered canvas so users can highlight & copy from documents.
+   Minimal subset of pdf.js's text_layer_builder.css; pdf.js sizes each span
+   with calc() against --scale-factor, which PdfView sets per page wrapper. */
+.pdf-page-wrap {
+  position: relative;
+}
+.pdf-textlayer {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  line-height: 1;
+  text-size-adjust: none;
+  forced-color-adjust: none;
+  transform-origin: 0 0;
+  caret-color: CanvasText;
+}
+.pdf-textlayer span,
+.pdf-textlayer br {
+  color: transparent;
+  position: absolute;
+  white-space: pre;
+  cursor: text;
+  transform-origin: 0 0;
+}
+.pdf-textlayer ::selection {
+  background: rgba(0, 105, 255, 0.35);
+}
+.pdf-textlayer .endOfContent {
+  display: block;
+  position: absolute;
+  inset: 100% 0 0;
+  z-index: -1;
+  cursor: default;
+  user-select: none;
+}
