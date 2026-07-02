@@ -41,6 +41,12 @@ export const COL = {
   stediFamilyOopMax: "text_mm1xqmg9",
   stediFamilyOopMaxRemaining: "text_mm1xkdgq",
   stediPlanBeginDate: "text_mm1xsa9",
+  // DATE-type mirror of the plan begin date, written by the SPA before
+  // advancing. Monday's create-item automations human-format ISO-looking
+  // TEXT tokens ("2022-01-01" → "01 January 2022") when copying to the next
+  // board; date→date mappings copy verbatim, so downstream boards read the
+  // yyyy-mm-dd value from their own Plan Begin Date date columns.
+  planBeginDate: "date_mm4wh83f",
   stediErrorDescription: "text_mm1x9tje",
   stediSecondaryMedicaidId: "text_mm25bjz7",
   stediPlanName: "text_mm1xdcet",

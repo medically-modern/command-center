@@ -358,6 +358,14 @@ these services; when their math changes, `oopEstimator.ts` must be updated to ma
 - **Exact label strings** for status/dropdown writes (Evaluate "Option A", coverage paths, etc.) —
   a casing mismatch creates duplicate board labels. Prefer index writes where possible.
 - **Monday dates are ET, timezone-naive.** Don't compare with a bare `new Date()` in a non-ET runtime.
+- **ISO text doesn't survive Monday's create-item automations.** The workflow engine type-sniffs
+  TEXT tokens: `2022-01-01` is parsed as a date and re-rendered `01 January 2022` in the created
+  item (confirmed 2026-07; `07/25/2016` passes verbatim). That's why "Stedi Plan Begin Date" text
+  mangles at every board hop. The yyyy-mm-dd value rides in DATE columns instead — profile
+  `date_mm4wh83f` (written by the SPA in `buildDataTasks`) → masheke `date_mm4w4jrv` → insurance
+  `date_mm4wwm2b` → welcome call `date_mm4w5hbc` → subscription `date_mm4wqkk0` — copied
+  date→date by the hop automations (date→date copies are verbatim). Never route a
+  machine-parsed date through a text column across boards.
 - **PHI everywhere.** Patient data is on every board. The gateway logs metadata only
   (`LOG_PAYLOAD=false`); keep it that way. Don't write patient data to logs/artifacts/commits.
 - **Optimistic UI** in many panels marks state "saved" before Monday confirms; failures rely on a

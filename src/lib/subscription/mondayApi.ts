@@ -129,8 +129,14 @@ export const COL = {
   stediRunCheck: "color_mm2nnjam",
   stediActive: "color_mm2nzm33",
   // "Date Plan Begin" — recreated on the board as a TEXT column (the old
-  // date_mm2n4b26 no longer exists). Value should be yyyy-mm-dd.
+  // date_mm2n4b26 no longer exists). Value should be yyyy-mm-dd; the Stedi
+  // re-check writes it ISO, but items copied from Welcome Call arrive
+  // human-formatted ("01 January 2026") until that hop is remapped.
   stediDatePlanBegin: "text_mm3grb6t",
+  // DATE-type "Plan Begin Date" — always reads back yyyy-mm-dd; fed by the
+  // Welcome Call → Subscription automations (date→date copy). Prefer this
+  // over the text column for anything that parses the date.
+  datePlanBegin: "date_mm4wqkk0",
   stediMemberId: "text_mm2phve4",
   stediPayerName: "dropdown_mm2nz3wd",
   stediPlanName: "dropdown_mm2n7ps1",

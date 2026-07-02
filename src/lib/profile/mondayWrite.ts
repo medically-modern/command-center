@@ -8,7 +8,7 @@
  */
 import {
   writeStatusIndex, writeText, writePhone, writeEmail, writeNumber,
-  writeLocation, writeItemName, writeDropdownIds, writeDropdownLabels,
+  writeLocation, writeItemName, writeDropdownIds, writeDropdownLabels, writeDate,
   fetchItem, clearStatusColumn, readColumnTexts, moveItemToGroup, GROUPS, COL,
 } from "./mondayApi";
 import { GENERAL_INSURANCE_INDEX } from "./mondayMapping";
@@ -162,6 +162,16 @@ function buildDataTasks(p: Patient, clinicLabelId: number | null): WriteTask[] {
   // ── Insurance Plan (copied from Stedi plan name) ──
   if (p.stediPlanName?.trim()) {
     tasks.push({ label: "Insurance Plan", columnId: COL.insurancePlan, fn: () => writeDropdownLabels(p.id, COL.insurancePlan, [p.stediPlanName.trim()]) });
+  }
+
+  // ── Plan Begin Date (date column, from the Stedi ISO text) ──
+  // Written before the advancer so the create-item automation can copy it
+  // date→date to the next board. The TEXT column can't survive the hop:
+  // Monday's automation engine human-formats ISO text ("2022-01-01" →
+  // "01 January 2022") when mapping it into the created item.
+  const planBegin = (p.stediPlanBeginDate || "").trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(planBegin)) {
+    tasks.push({ label: "Plan Begin Date", columnId: COL.planBeginDate, fn: () => writeDate(p.id, COL.planBeginDate, planBegin) });
   }
 
   // ── Active / Not Active (derived from Stedi Eligibility Active) ──
