@@ -117,6 +117,9 @@ export function ConfirmReceiptPanel({ patient, onUpdate, managerMode = false }: 
   const [resentNow, setResentNow] = useState(false);
   // For a "Not Confirmed" outcome, the rep must re-send the fax before saving.
   const [faxResent, setFaxResent] = useState(false);
+  // Inline "no re-send yet — save anyway?" confirmation (replaces the old
+  // blocking window.confirm). Reset whenever the outcome or re-send changes.
+  const [noResendWarning, setNoResendWarning] = useState(false);
   // Editable courtesy-fax message. null until the rep edits — until then we
   // show the saved column value (if any) or the freshly generated template.
   const [messageDraft, setMessageDraft] = useState<string | null>(null);
@@ -135,16 +138,22 @@ export function ConfirmReceiptPanel({ patient, onUpdate, managerMode = false }: 
     setJustConfirmed(null);
     setResentNow(false);
     setFaxResent(false);
+    setNoResendWarning(false);
     setMessageDraft(null);
     setExcludedAssetIds(new Set());
     setAddedFiles([]);
   }, [patient.id]);
 
   // Re-selecting an outcome clears the "must re-send" gate — switching away
-  // from "Not Confirmed" and back requires a fresh re-send.
+  // from "Not Confirmed" and back requires a fresh re-send. Any outcome or
+  // re-send change also clears the pending inline save confirmation.
   useEffect(() => {
     if (confirmed !== "no") setFaxResent(false);
+    setNoResendWarning(false);
   }, [confirmed]);
+  useEffect(() => {
+    if (faxResent) setNoResendWarning(false);
+  }, [faxResent]);
 
   // Default Next Action Date based on the picked outcome:
   //   No  → next weekday (fast follow-up after a confirmed-receipt no)
@@ -199,19 +208,23 @@ export function ConfirmReceiptPanel({ patient, onUpdate, managerMode = false }: 
     !saving &&
     !locked;
 
-  async function handleSave() {
+  async function handleSave(skipResendWarning = false) {
     if (!canSave) return;
     if (!hasToken()) {
       toast.error("Monday token not configured");
       return;
     }
-    // Not Confirmed without a fresh fax re-send — warn before saving.
-    if (confirmed === "no" && !faxResent) {
-      const ok = window.confirm(
-        `You haven't re-sent the ${isEmail ? "email" : "fax"} on this attempt. The office may still be missing the request. Save the attempt anyway?`,
-      );
-      if (!ok) return;
+    // Not Confirmed without a fresh fax re-send — warn INLINE before saving.
+    // Never a blocking window.confirm here: a native dialog suspends the save
+    // mid-flight indefinitely, and a rep who tabs away and dismisses it an
+    // hour later unknowingly commits their stale draft as an attempt (this
+    // logged a phantom attempt for a rep on 7/2). The inline row keeps the
+    // form fully un-saved and visible until "Save anyway" is clicked.
+    if (confirmed === "no" && !faxResent && !skipResendWarning) {
+      setNoResendWarning(true);
+      return;
     }
+    setNoResendWarning(false);
     setSaving(true);
     try {
       if (confirmed === "yes") {
@@ -691,10 +704,36 @@ export function ConfirmReceiptPanel({ patient, onUpdate, managerMode = false }: 
               </div>
             )}
 
+            {noResendWarning && (
+              <div
+                className="mt-4 rounded-xl border px-4 py-3.5 flex flex-col gap-3"
+                style={{ borderColor: "var(--amber-ring, #e8c47a)", background: "var(--amber-soft, #fdf6e3)" }}
+              >
+                <p className="text-sm font-semibold flex items-start gap-2 text-amber-700">
+                  <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
+                  You haven't re-sent the {isEmail ? "email" : "fax"} on this attempt — the office may
+                  still be missing the request.
+                </p>
+                <div className="flex gap-2.5">
+                  <Button
+                    size="sm"
+                    onClick={() => handleSave(true)}
+                    disabled={saving}
+                    className="gap-1.5 text-white bg-amber-600 hover:bg-amber-700"
+                  >
+                    Save attempt anyway
+                  </Button>
+                  <Button size="sm" variant="outline" onClick={() => setNoResendWarning(false)}>
+                    Go back
+                  </Button>
+                </div>
+              </div>
+            )}
+
             <div className="flex flex-col items-center gap-2 mt-5">
               <Button
                 size="lg"
-                onClick={handleSave}
+                onClick={() => handleSave()}
                 disabled={!canSave}
                 className="gap-2 text-white shadow-sm min-w-[200px] justify-center bg-[color:var(--mm-green)] hover:bg-[oklch(0.56_0.10_175)] disabled:bg-[oklch(0.85_0.01_200)]"
               >
