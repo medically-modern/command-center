@@ -567,7 +567,10 @@ function RailReferral({ patient }: { patient: Patient }) {
             ) : updates.length === 0 ? (
               <p className="sugg-note">No referral email / updates on file.</p>
             ) : (
-              <div>
+              /* Own bounded scroll area — the sticky rail's viewport math can
+                 leave its tail unreachable on short pages, so a long referral
+                 email must scroll INSIDE this box, not the rail. */
+              <div className="rail-updates">
                 {updates.map((u) => (
                   <div key={u.id} className="note-entry">
                     <span className="ts">[{u.created_at ? new Date(u.created_at).toLocaleString() : ""}] {u.creator?.name || ""}</span>
@@ -615,6 +618,17 @@ function ProfileBody(p: BodyProps) {
   const [readyOpen, setReadyOpen] = useState(false);
   // Member ID 1 is always entered fresh by the rep (never auto-filled).
   const [mid1Input, setMid1Input] = useState("");
+  // Secondary Insurance is a rep DECISION — intake sometimes pre-fills the
+  // board column, but that must only ever surface as a suggestion (Josh,
+  // 2026-07). Demote a board-sourced value on load: clear the working copy so
+  // the select starts on "Select…"; the chip under it re-offers the value in
+  // one click, and send-off skips the blank (the board keeps its value until
+  // the rep actively picks). ProfileBody is keyed by patient id, so this runs
+  // once per patient and never fights a selection made this session.
+  useEffect(() => {
+    if (pt.secondaryInsurance) p.onUpdate({ secondaryInsurance: "" });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   // Benefits Check inputs ALWAYS start blank — the as-received insurance shows
   // in the "What We Received" card to the left, and the rep enters the values
   // fresh. Local state (ProfileBody is keyed by patient id, so it resets per
@@ -847,10 +861,12 @@ function ProfileBody(p: BodyProps) {
                           <option value="" disabled hidden>Select…</option>
                           {SECONDARY_OPTS.map((l) => <option key={l}>{l}</option>)}
                         </select>
-                        {p.secondarySuggestion && (
+                        {(p.secondarySuggestion || rcv.secondaryInsurance) && (
                           <div className="sugg-line" style={{ marginTop: 8 }}>
                             <span className="sugg-lead2">Suggestion:</span>
-                            <span className="sugg-chip2">{p.secondarySuggestion}</span>
+                            {/* Engine suggestion first; else the intake-pre-filled
+                                board value rides along as the suggestion. */}
+                            <span className="sugg-chip2">{p.secondarySuggestion || rcv.secondaryInsurance}</span>
                           </div>
                         )}
                       </Field>

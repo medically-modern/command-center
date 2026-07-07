@@ -41,6 +41,14 @@
 .pf-root .rail-head { font-size:.74rem;text-transform:uppercase;letter-spacing:.05em;color:var(--mm-teal);font-weight:800;padding:12px 16px;border-bottom:1px solid var(--border);background:oklch(0.985 0.005 200) }
 .pf-root .rail-body { padding:14px 16px }
 .pf-root .rail-body pre { margin:0;font-size:.84rem;line-height:1.6;white-space:pre-wrap;word-break:break-word;font-family:inherit;color:var(--foreground) }
+/* Referral email / updates — scrolls INSIDE its own box. The sticky rail's
+   own overflow can leave its tail below the fold on short pages (its
+   max-height assumes it's pinned at top:16px), so a long email must never
+   rely on the rail scroll to be fully readable. */
+.pf-root .rail-updates { max-height:min(48vh, 460px);overflow-y:auto;overscroll-behavior:contain;padding-right:4px }
+.pf-root .rail-updates img { max-width:100%;height:auto }
+.pf-root .rail-updates table { max-width:100%;table-layout:fixed;word-break:break-word }
+.pf-root .rail-updates .note-entry { overflow-wrap:anywhere }
 .pf-root .rail-files { padding:8px }
 .pf-root .card { background:var(--card);border:1px solid var(--border);border-radius:16px;padding:24px;box-shadow:0 1px 2px 0 rgb(0 0 0 / .05) }
 .pf-root .step-card { border-left:4px solid var(--mm-green) }
