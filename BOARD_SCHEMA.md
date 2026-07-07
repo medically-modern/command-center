@@ -476,6 +476,12 @@
 - **ID:** `numeric_mm1xkq3b`
 - **Type:** `numbers`
 
+### Qty Cartridge
+- **ID:** `numeric_mm515sqv`
+- **Type:** `numbers`
+- Added 2026-07. Editable on the Welcome Call + Final Confirm views; the UI
+  defaults it to **3** for pump/supplies patients (never stamped on CGM-only).
+
 ### Infusion Set 2
 - **ID:** `color_mm1xekaz`
 - **Type:** `status`

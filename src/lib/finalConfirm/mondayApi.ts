@@ -62,6 +62,8 @@ export const COL = {
   qtyInf1: "numeric_mm1xv7wr",
   infusionSet2: "color_mm1xekaz",
   qtyInf2: "numeric_mm1xkq3b",
+  /** "Qty Cartridge" (added 2026-07) — cartridge quantity, defaults to 3 in the UI. */
+  qtyCartridge: "numeric_mm515sqv",
   monitorQty: "numeric_mm1xyfhc",
   pumpQty: "numeric_mm1xa0z2",
   orderHandling: "color_mm2776fg",
@@ -131,7 +133,7 @@ export const READ_COLUMN_IDS = [
   COL.serving, COL.pumpType, COL.cgmType, COL.requestType,
   COL.referralType, COL.referralSource, COL.carecentrixIntakeId,
   COL.subscriptionType, COL.infusionSet1, COL.qtyInf1,
-  COL.infusionSet2, COL.qtyInf2, COL.monitorQty, COL.pumpQty,
+  COL.infusionSet2, COL.qtyInf2, COL.qtyCartridge, COL.monitorQty, COL.pumpQty,
   COL.orderHandling,
   COL.cgmAuthResult, COL.sensorsAuthResult, COL.ipAuthResult,
   COL.infusionSetAuthResult, COL.cartridgeAuthResult,

@@ -75,6 +75,7 @@ export function mondayItemToPatient(item: MondayItem): Patient {
     qtyInf2: txt(COL.qtyInf2),
     infusionSet2: txt(COL.infusionSet2),
     infusionSet2Index: statusIndex(COL.infusionSet2),
+    qtyCartridge: txt(COL.qtyCartridge),
     subscriptionType: txt(COL.subscriptionType),
     subscriptionTypeIndex: statusIndex(COL.subscriptionType),
     welcomeCallText: txt(COL.welcomeCallText),

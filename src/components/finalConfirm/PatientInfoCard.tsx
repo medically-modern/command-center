@@ -539,6 +539,15 @@ export function PatientInfoCard({ patient, onFieldChange }: Props) {
   const infSet1Missing = servingRequiresInfusion && !patient.infusionSet1;
   const infQty1Missing = servingRequiresInfusion && (!patient.qtyInf1 || patient.qtyInf1 === "0");
 
+  // Qty Cartridge defaults to 3 (Josh, 2026-07): pre-fill once when blank so
+  // an untouched confirm still writes 3. Gated on servingRequiresInfusion —
+  // NOT !isCgmOnly — so a split order's sensors side (which deliberately
+  // clears the cell) never gets 3 stamped back onto it.
+  useEffect(() => {
+    if (servingRequiresInfusion && !patient.qtyCartridge) onFieldChange("qtyCartridge", "3");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [patient.id, servingRequiresInfusion, patient.qtyCartridge]);
+
   return (
     <div className="space-y-4">
       {/* Patient name + phone header */}
@@ -1037,6 +1046,19 @@ export function PatientInfoCard({ patient, onFieldChange }: Props) {
                 }}
                 onQtyChange={(v) => onFieldChange("qtyInf2", v)}
               />
+              <div className="rounded-lg border border-dashed border-muted-foreground/30 bg-muted/20 p-3 space-y-2">
+                <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Cartridges</p>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-muted-foreground font-medium whitespace-nowrap">Qty:</span>
+                  <Input
+                    className="h-8 text-sm w-20"
+                    type="number"
+                    value={patient.qtyCartridge}
+                    onChange={(e) => onFieldChange("qtyCartridge", e.target.value)}
+                    placeholder="0"
+                  />
+                </div>
+              </div>
             </div>
           </>
         )}

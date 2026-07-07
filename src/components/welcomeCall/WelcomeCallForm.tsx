@@ -173,6 +173,14 @@ export function WelcomeCallForm({ patient, onFieldChange, onSendWelcomeCallText 
   const showCgm = cgmOverride !== null ? cgmOverride : defaultShowCgm;
   const showPump = pumpOverride !== null ? pumpOverride : defaultShowPump;
 
+  // Qty Cartridge defaults to 3 (Josh, 2026-07): pre-fill once when blank so
+  // an untouched save still writes 3 — but only while the pump section
+  // applies, so CGM-only patients never get cartridges stamped on them.
+  useEffect(() => {
+    if (showPump && !patient.qtyCartridge) onFieldChange("qtyCartridge", "3");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [patient.id, showPump, patient.qtyCartridge]);
+
   return (
     <div className="space-y-5">
       {/* Header */}
@@ -403,6 +411,22 @@ export function WelcomeCallForm({ patient, onFieldChange, onSendWelcomeCallText 
                       Infusion set selected — please choose a quantity.
                     </p>
                   )}
+              </div>
+            </div>
+          </div>
+
+          {/* Cartridges */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-5">
+            <div className="rounded-lg border border-input bg-muted/20 p-4 space-y-4">
+              <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                Cartridges
+              </p>
+              <div>
+                <label className="text-xs text-muted-foreground block mb-1">Quantity</label>
+                <QtySelect
+                  value={patient.qtyCartridge}
+                  onChange={(val) => onFieldChange("qtyCartridge", val)}
+                />
               </div>
             </div>
           </div>

@@ -28,6 +28,7 @@ export function ReviewPanel({ patient }: Props) {
     ["Qty Inf. 1", patient.qtyInf1, !!patient.qtyInf1],
     ["Infusion Set 2", patient.infusionSet2, !!patient.infusionSet2],
     ["Qty Inf. 2", patient.qtyInf2, !!patient.qtyInf2],
+    ["Qty Cartridge", patient.qtyCartridge, !!patient.qtyCartridge],
     ["Subscription Type", patient.subscriptionType, !!patient.subscriptionType],
     ["Welcome Call Text", patient.welcomeCallText, !!patient.welcomeCallText],
     ["Order Handling", patient.orderHandling, !!patient.orderHandling],

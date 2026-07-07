@@ -49,6 +49,8 @@ export interface Patient {
   qtyInf2: string;
   infusionSet2: string;
   infusionSet2Index: number | null;
+  /** Cartridge quantity — UI defaults it to 3 for pump patients. */
+  qtyCartridge: string;
   subscriptionType: string;
   subscriptionTypeIndex: number | null;
   welcomeCallText: string;

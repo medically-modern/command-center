@@ -213,6 +213,12 @@ export async function sendPatientToMonday(p: Patient): Promise<void> {
   });
 
   tasks.push({
+    label: "Qty Cartridge",
+    columnId: COL.qtyCartridge,
+    fn: () => writeNumber(p.id, COL.qtyCartridge, p.qtyCartridge === "" ? "" : Number(p.qtyCartridge)),
+  });
+
+  tasks.push({
     label: "Monitor Qty",
     columnId: COL.monitorQty,
     fn: () => writeNumber(p.id, COL.monitorQty, p.monitorQty === "" ? "" : Number(p.monitorQty)),

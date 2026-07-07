@@ -77,6 +77,8 @@ export interface Patient {
   infusionSet2: string;
   infusionSet2Index: number | null;
   qtyInf2: string;
+  /** Cartridge quantity — UI defaults it to 3 for pump/supplies patients. */
+  qtyCartridge: string;
   monitorQty: string;
   pumpQty: string;
   orderHandling: string;
@@ -600,6 +602,7 @@ export function getSplitOverrides(side: SplitSide, original: Patient): Partial<P
       infusionSet2: original.infusionSet2,
       qtyInf1: original.qtyInf1,
       qtyInf2: original.qtyInf2,
+      qtyCartridge: original.qtyCartridge,
       pumpQty: original.pumpQty,
       ipAuthResultIndex: original.ipAuthResultIndex,
       ipAuthResult: original.ipAuthResult,
@@ -632,6 +635,7 @@ export function getSplitOverrides(side: SplitSide, original: Patient): Partial<P
     // when the cell is cleared, not when it holds 0.
     qtyInf1: "",
     qtyInf2: "",
+    qtyCartridge: "",
     pumpQty: "",
     ipAuthResultIndex: NOT_SERVING_INDEX.authResult,
     ipAuthResult: "Not Serving",

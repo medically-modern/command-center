@@ -91,6 +91,7 @@ export function mondayItemToPatient(item: MondayItem): Patient {
     infusionSet2: cv(item, COL.infusionSet2)?.text ?? "",
     infusionSet2Index: parseIndex(cv(item, COL.infusionSet2)?.value ?? null),
     qtyInf2: cv(item, COL.qtyInf2)?.text ?? "",
+    qtyCartridge: cv(item, COL.qtyCartridge)?.text ?? "",
     monitorQty: cv(item, COL.monitorQty)?.text ?? "",
     pumpQty: cv(item, COL.pumpQty)?.text ?? "",
     orderHandling: cv(item, COL.orderHandling)?.text ?? "",
