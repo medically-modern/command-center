@@ -27,6 +27,30 @@
 
 import { gatewaySendAvailable, submitSend } from "./gatewaySend";
 
+/** Progress milestones for UIs that block the screen during a send.
+ *  Gateway path: posting → accepted → confirmed.
+ *  Client fallback path: writing → verifying → confirmed. */
+export type WriteProgressPhase =
+  | "posting"
+  | "accepted"
+  | "writing"
+  | "verifying"
+  | "confirmed";
+
+/**
+ * Thrown (only when `requireDone` is set) when the gateway durably accepted
+ * the job but we stopped waiting before it was CONFIRMED written in Monday
+ * (slow queue / offline outbox). The job WILL still run server-side, so the
+ * caller must NOT retry or fall back to a client-side write — surface it as
+ * "queued, do not repeat" instead.
+ */
+export class GatewayPendingError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "GatewayPendingError";
+  }
+}
+
 export interface WriteTask {
   label: string;
   columnId: string;
@@ -86,6 +110,18 @@ interface VerifiedWriteOpts {
    *  client-side fallback path creates labels via each task's own `fn`, so this
    *  only affects the gateway fast path. */
   createLabelsIfMissing?: boolean;
+  /** Progress milestones — lets a panel block its screen until Monday
+   *  confirms (see WriteProgressPhase). */
+  onProgress?: (phase: WriteProgressPhase) => void;
+  /** When true, "accepted by the gateway" is NOT success: the call only
+   *  resolves once the job is CONFIRMED done in Monday. If the wait runs out
+   *  while the job is still queued/processing (or parked offline), throws
+   *  GatewayPendingError instead of silently succeeding — and never falls
+   *  back to the client path (the queued job will still run; a second
+   *  client-side transaction would double-write). */
+  requireDone?: boolean;
+  /** How long the gateway path polls for job completion (default 20s). */
+  waitForDoneMs?: number;
 }
 
 // ── Core ───────────────────────────────────────────────────────
@@ -106,6 +142,9 @@ export async function executeWritesWithVerification(
     boardId,
     label,
     createLabelsIfMissing,
+    onProgress,
+    requireDone,
+    waitForDoneMs,
   } = opts;
 
   // ── Gateway fast path (Phase 2): hand the whole transaction to the durable,
@@ -129,12 +168,21 @@ export async function executeWritesWithVerification(
       const sig = JSON.stringify({ dataColumns, stageColumns });
       for (let i = 0; i < sig.length; i++) h = ((h << 5) + h + sig.charCodeAt(i)) | 0;
       const idempotencyKey = `${itemId}:${(h >>> 0).toString(36)}`;
-      await submitSend(
+      const outcome = await submitSend(
         { itemId, boardId, dataColumns, stageColumns, verify, idempotencyKey, label, createLabelsIfMissing },
-        { waitForDone: true },
+        { waitForDone: true, waitForDoneMs, onPhase: onProgress },
       );
-      return [];
+      if (outcome === "done" || !requireDone) return [];
+      // requireDone and the job is durably queued but not yet confirmed in
+      // Monday — it WILL run server-side, so do NOT fall through to the
+      // client path (that would run the transaction a second time).
+      throw new GatewayPendingError(
+        outcome === "queued-offline"
+          ? "You're offline — the save is parked in this browser and will submit automatically when you're back online. Do not repeat it."
+          : "The server accepted the save and is still writing it to Monday. It will finish on its own — do not repeat this save.",
+      );
     } catch (err) {
+      if (err instanceof GatewayPendingError) throw err;
       console.warn("[verifiedWrite] gateway /send failed — falling back to client path:", err);
     }
   }
@@ -161,6 +209,7 @@ export async function executeWritesWithVerification(
   }
 
   // ── Phase 1: write all data columns in parallel ──────────
+  onProgress?.("writing");
   const dataResults = await Promise.all(dataTasks.map(executeWithRetry));
   const dataFailures = dataResults.filter((r): r is string => r !== null);
 
@@ -174,6 +223,7 @@ export async function executeWritesWithVerification(
   }
 
   // ── Phase 2: read-back verification ──────────────────────
+  onProgress?.("verifying");
   if (verifyColIds.length > 0) {
     // Track how many consecutive reads each column has been "stable"
     // (unchanged from snapshot). Once a column hits the threshold,
@@ -255,5 +305,6 @@ export async function executeWritesWithVerification(
     }
   }
 
+  onProgress?.("confirmed");
   return []; // all succeeded
 }

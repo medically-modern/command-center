@@ -39,6 +39,11 @@ export interface SendPayload {
 
 export type SendOutcome = "done" | "submitted" | "queued-offline";
 
+/** Progress milestones of a gateway send, for UIs that block until Monday
+ *  confirms: "posting" (browser → gateway), "accepted" (job durably queued
+ *  server-side), "confirmed" (job done — written AND read-back verified). */
+export type SendPhase = "posting" | "accepted" | "confirmed";
+
 export function gatewaySendAvailable(): boolean {
   return MONDAY_VIA_GATEWAY && GATEWAY.length > 0;
 }
@@ -92,9 +97,13 @@ async function pollDone(jobId: string | number, ms = 20000): Promise<{ status: s
  * parked offline). Throws only when the server reports the job FAILED while we
  * were watching — callers treat a throw as "fall back to the client-side path".
  */
-export async function submitSend(p: SendPayload, opts?: { waitForDone?: boolean }): Promise<SendOutcome> {
+export async function submitSend(
+  p: SendPayload,
+  opts?: { waitForDone?: boolean; waitForDoneMs?: number; onPhase?: (phase: SendPhase) => void },
+): Promise<SendOutcome> {
   if (!gatewaySendAvailable()) throw new Error("gateway send not configured");
 
+  opts?.onPhase?.("posting");
   let posted: { jobId: string | number; status: string } | null = null;
   let lastErr: unknown;
   for (let a = 0; a < 3; a++) {
@@ -112,10 +121,15 @@ export async function submitSend(p: SendPayload, opts?: { waitForDone?: boolean 
     throw lastErr instanceof Error ? lastErr : new Error("send failed");
   }
 
+  opts?.onPhase?.("accepted");
   if (opts?.waitForDone) {
-    const fin = await pollDone(posted.jobId);
+    const fin = await pollDone(posted.jobId, opts.waitForDoneMs);
     if (fin.status === "failed") throw new Error("send failed server-side: " + (fin.error || ""));
-    return fin.status === "done" ? "done" : "submitted";
+    if (fin.status === "done") {
+      opts?.onPhase?.("confirmed");
+      return "done";
+    }
+    return "submitted";
   }
   return "submitted";
 }

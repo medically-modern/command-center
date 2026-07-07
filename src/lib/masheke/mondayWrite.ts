@@ -1,7 +1,7 @@
 // Batch writer for Medical Necessity "Send to Monday"
 
 import { writeStatusIndex, writeText, writeLongText, writeDate, writeDateTime, writeStatusLabel, readColumnTexts, COL } from "./mondayApi";
-import { executeWritesWithVerification } from "../shared/verifiedWrite";
+import { executeWritesWithVerification, type WriteProgressPhase } from "../shared/verifiedWrite";
 import { etNow, clampToBusinessDay } from "./etDate";
 import {
   SUB_STAGE_INDEX,
@@ -75,6 +75,9 @@ export async function runVerifiedSend(opts: {
   stageColumnId: string | string[];
   createLabelsIfMissing?: boolean;
   label?: string;
+  onProgress?: (phase: WriteProgressPhase) => void;
+  requireDone?: boolean;
+  waitForDoneMs?: number;
 }): Promise<void> {
   const failures = await executeWritesWithVerification({
     itemId: opts.itemId,
@@ -86,6 +89,9 @@ export async function runVerifiedSend(opts: {
     readColumns: readColumnTexts,
     createLabelsIfMissing: opts.createLabelsIfMissing,
     writeDebug: (id, msg) => writeText(id, COL.joshDebug, msg),
+    onProgress: opts.onProgress,
+    requireDone: opts.requireDone,
+    waitForDoneMs: opts.waitForDoneMs,
   });
   if (failures.length > 0) {
     throw new Error(`${failures.length} column(s) failed verification: ${failures.join("; ")}`);

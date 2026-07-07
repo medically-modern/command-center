@@ -21,6 +21,14 @@
  *     even if the counter lags.
  *   - Completing requires ≥1 note added this session (no typed-but-unadded
  *     note text), and persists doctor-field edits.
+ *
+ * Write-safety (July 2026 incident): the Next Action Date is computed AT SAVE
+ * TIME (never held in component state — a stale in-flight save once cleared
+ * that state after the rep switched patients, so the next save went out
+ * dateless and the patient never left the due queue), a missing date aborts
+ * the save instead of being silently skipped, and a full-screen
+ * SaveProgressOverlay blocks ALL interaction until the transaction is
+ * confirmed written in Monday (requireDone).
  */
 import { useEffect, useMemo, useState, useRef } from "react";
 import type { Patient } from "@/lib/masheke/workflow";
@@ -42,7 +50,8 @@ import {
 } from "@/lib/masheke/mondayApi";
 import { runVerifiedSend } from "@/lib/masheke/mondayWrite";
 import { userInitials } from "@/lib/shared/auth";
-import type { WriteTask } from "@/lib/shared/verifiedWrite";
+import { GatewayPendingError, type WriteProgressPhase, type WriteTask } from "@/lib/shared/verifiedWrite";
+import { SaveProgressOverlay } from "@/components/shared/SaveProgressOverlay";
 import { FILE_PROXY_URL, fetchAssetBytes } from "@/lib/shared/mondayAssets";
 import { getIdToken } from "@/lib/shared/auth";
 import { ESCALATION_INDEX, MN_ATTEMPTS_INDEX } from "@/lib/masheke/mondayMapping";
@@ -67,16 +76,21 @@ interface Props {
   roleMethod?: "fax" | "parachute";
 }
 
+// How long a save blocks the screen waiting for Monday to confirm before we
+// give up and surface "queued on the server, do not repeat".
+const SAVE_CONFIRM_MS = 120_000;
+
 // =====================================================================
 // Main panel
 // =====================================================================
 
 export function ChaseClinicalsPanel({ patient, onUpdate, managerMode = false, roleMethod }: Props) {
   const [saving, setSaving] = useState(false);
+  // Which milestone the in-flight save is at — drives the blocking overlay.
+  const [savePhase, setSavePhase] = useState<WriteProgressPhase>("posting");
   const [escalated, setEscalated] = useState(false);
   const escalatedRef = useRef(false);
 
-  const [nextAction, setNextAction] = useState<string>("");
   // One free-text note per chase attempt — who you reached + what happened.
   // Saved into the attempt's own column, NOT the MN workflow notes.
   const [attemptNote, setAttemptNote] = useState("");
@@ -109,18 +123,11 @@ export function ChaseClinicalsPanel({ patient, onUpdate, managerMode = false, ro
     patient.clinicalsMethod === "Parachute" || patient.clinicalsMethod === "Email" ? 3 : 1;
 
   useEffect(() => {
-    setNextAction("");
     setAttemptNote("");
     setResentNow(false);
     setShowResendDrawer(false);
     setMessageDraft(null);
   }, [patient.id]);
-
-  // Default Next Action Date — +3 business days (both roles). Not displayed,
-  // but the computed value is written to Monday on Complete.
-  useEffect(() => {
-    setNextAction(formatDateInput(addBusinessDays(etNow(), nadBumpDays)));
-  }, [patient.id, nadBumpDays]);
 
   const currentAttempt = useMemo(() => {
     const v = (patient.mnAttempts || "").trim();
@@ -172,12 +179,32 @@ export function ChaseClinicalsPanel({ patient, onUpdate, managerMode = false, ro
       toast.error("Monday token not configured");
       return;
     }
+    // Computed AT SAVE TIME — never trusted from component state. A stale
+    // in-flight completion once blanked that state after a mid-save patient
+    // switch, and the date was silently dropped from the transaction.
+    const safeNextAction = clampToBusinessDay(
+      formatDateInput(addBusinessDays(etNow(), nadBumpDays)),
+    );
+    const toastId = `chase-save-${patient.id}`;
+    const onProgress = (phase: WriteProgressPhase) => {
+      setSavePhase(phase);
+      if (phase === "accepted") toast.loading("Data in server — writing to Monday…", { id: toastId });
+      else if (phase === "writing" || phase === "verifying") toast.loading("Writing to Monday…", { id: toastId });
+    };
+    // Optimistic patch + success copy are fixed BEFORE the awaits so the
+    // pending path (job durably queued, confirmation still running) can apply
+    // the exact same patch.
+    let patch: Partial<Patient> | undefined;
+    let successMsg = "";
     setSaving(true);
+    setSavePhase("posting");
+    toast.loading("Sending to server…", { id: toastId });
     try {
       if (isEscalated) {
         // Manager follow-up on an escalated patient: all 3 slots used, so just
         // move the next action date (weekend-clamped). Patient stays escalated.
-        const safeNextAction = clampToBusinessDay(nextAction);
+        patch = { nextActionDate: safeNextAction };
+        successMsg = "Follow-up saved — patient remains escalated";
         await runVerifiedSend({
           itemId: patient.id,
           label: "Chase Clinicals → escalated follow-up",
@@ -185,9 +212,10 @@ export function ChaseClinicalsPanel({ patient, onUpdate, managerMode = false, ro
           tasks: [
             { label: "Next Action Date", columnId: COL.nextActionDate, value: { date: safeNextAction }, fn: () => writeDate(patient.id, COL.nextActionDate, safeNextAction) },
           ],
+          onProgress,
+          requireDone: true,
+          waitForDoneMs: SAVE_CONFIRM_MS,
         });
-        onUpdate({ nextActionDate: safeNextAction });
-        toast.success("Follow-up saved — patient remains escalated");
       } else {
         // Chase Clinicals Completed — logs the attempt, bumps MN Attempts
         // (3rd press flags Escalation Required), and moves the next action
@@ -195,42 +223,56 @@ export function ChaseClinicalsPanel({ patient, onUpdate, managerMode = false, ro
         const attempt = currentAttempt ?? 1;
         const value = formatAttemptValue(attemptNote.trim(), etNow());
         const nextSlot = nextMnAttempt(attempt);
-        const safeNextAction = clampToBusinessDay(nextAction);
+        const fieldKey =
+          attempt === 1 ? "chaseAttempt1" : attempt === 2 ? "chaseAttempt2" : "chaseAttempt3";
+        patch = {
+          [fieldKey]: value,
+          mnAttempts: nextSlot,
+          nextActionDate: safeNextAction,
+          escalation: nextSlot === "Escalate" ? "Escalation Required" : patient.escalation,
+        };
+        successMsg =
+          nextSlot === "Escalate"
+            ? `Chase completed — attempt ${attempt} logged, escalated`
+            : `Chase completed — attempt ${attempt} logged`;
         await saveAttempt({
           patient,
           attempt,
           value,
           nextSlot,
           nextActionDateInput: safeNextAction,
+          onProgress,
         });
-        const fieldKey =
-          attempt === 1 ? "chaseAttempt1" : attempt === 2 ? "chaseAttempt2" : "chaseAttempt3";
-        onUpdate({
-          [fieldKey]: value,
-          mnAttempts: nextSlot,
-          nextActionDate: safeNextAction,
-          escalation: nextSlot === "Escalate" ? "Escalation Required" : patient.escalation,
-        });
-        toast.success(
-          nextSlot === "Escalate"
-            ? `Chase completed — attempt ${attempt} logged, escalated`
-            : `Chase completed — attempt ${attempt} logged`,
-        );
       }
+      onUpdate(patch);
       // Persist any doctor-field edits made on the header card
       const docTasks = buildDoctorWriteTasks(patient);
       if (docTasks.length) await Promise.all(docTasks.map((t) => t.run()));
-      setNextAction("");
       setAttemptNote("");
       if (escalatedRef.current) {
         await writeStatusIndex(patient.id, COL.escalation, ESCALATION_INDEX.required);
         setEscalated(false);
         escalatedRef.current = false;
       }
+      toast.success(`${successMsg} — confirmed in Monday`, { id: toastId });
     } catch (e) {
-      toast.error("Save failed", {
-        description: e instanceof Error ? e.message : String(e),
-      });
+      if (e instanceof GatewayPendingError && patch) {
+        // The gateway durably queued the job; it WILL complete server-side.
+        // Reflect it locally so the patient leaves the due list, but make
+        // clear the Monday confirmation is still pending.
+        onUpdate(patch);
+        setAttemptNote("");
+        toast.warning("Data in server — Monday confirmation still pending", {
+          id: toastId,
+          description: e.message,
+          duration: 12_000,
+        });
+      } else {
+        toast.error("Save failed — nothing was advanced", {
+          id: toastId,
+          description: e instanceof Error ? e.message : String(e),
+        });
+      }
     } finally {
       setSaving(false);
     }
@@ -335,6 +377,11 @@ export function ChaseClinicalsPanel({ patient, onUpdate, managerMode = false, ro
 
   return (
     <div className="flex flex-col gap-6">
+      {/* Blocks the WHOLE screen (sidebar included) while a save is in
+          flight, until Monday confirms — switching patients mid-save is what
+          corrupted saves in the July 2026 dropped-date incident. */}
+      <SaveProgressOverlay open={saving} phase={savePhase} />
+
       {/* ── Step 1 — Review Context & Attempt History ── */}
       <MmStep
         num={1}
@@ -661,12 +708,14 @@ async function saveAttempt({
   value,
   nextSlot,
   nextActionDateInput,
+  onProgress,
 }: {
   patient: Patient;
   attempt: number;
   value: string;
   nextSlot: "Attempt 2" | "Attempt 3" | "Escalate";
   nextActionDateInput: string;
+  onProgress?: (phase: WriteProgressPhase) => void;
 }) {
   // The attempt note is a DATA column (read-back verified) so it lands BEFORE
   // MN Attempts / Escalation flip (managers + automations key on those).
@@ -688,10 +737,24 @@ async function saveAttempt({
   if (escalate) {
     tasks.push({ label: "Escalation → Required", columnId: COL.escalation, value: { index: ESCALATION_INDEX.required }, fn: () => writeStatusIndex(patient.id, COL.escalation, ESCALATION_INDEX.required) });
     stageColumnId.push(COL.escalation);
-  } else if (nextActionDateInput) {
+  } else {
+    // A non-escalating complete MUST reschedule the patient — without this
+    // date they stay "due now" forever and get re-chased (the 7/6–7/7
+    // dropped-date incident). Abort loudly rather than write a partial save.
+    if (!nextActionDateInput) {
+      throw new Error("Next Action Date failed to compute — nothing was written. Reload and try again.");
+    }
     tasks.push({ label: "Next Action Date", columnId: COL.nextActionDate, value: { date: nextActionDateInput }, fn: () => writeDate(patient.id, COL.nextActionDate, nextActionDateInput) });
   }
-  await runVerifiedSend({ itemId: patient.id, label: `Chase Clinicals → Attempt ${attempt} (${nextSlot})`, tasks, stageColumnId });
+  await runVerifiedSend({
+    itemId: patient.id,
+    label: `Chase Clinicals → Attempt ${attempt} (${nextSlot})`,
+    tasks,
+    stageColumnId,
+    onProgress,
+    requireDone: true,
+    waitForDoneMs: SAVE_CONFIRM_MS,
+  });
 }
 
 // =====================================================================

@@ -116,6 +116,16 @@ of shipping stale data downstream.
 **Gateway fast path:** when the gateway is configured and every task carries a raw `value`, the
 whole transaction is handed to the durable server-side `POST /send` (idempotent), so the browser
 can close immediately. Any failure falls back to the client path — purely additive.
+**Blocking saves (July 2026 dropped-date incident):** callers may pass `requireDone` (+
+`waitForDoneMs`, `onProgress`) — then "gateway accepted" is NOT success: the call resolves only
+once the job is CONFIRMED done in Monday, and throws `GatewayPendingError` if the wait runs out.
+That error means the job is still queued server-side and WILL run — callers must surface
+"queued, don't repeat" and must NOT retry or fall back to the client path (double-write).
+Chase Clinicals + Confirm Receipt use this with a full-screen `SaveProgressOverlay` that blocks
+ALL interaction (sidebar included) until Monday confirms: a mid-save patient switch used to
+clobber panel state and silently drop the Next Action Date from the transaction, so completed
+patients never left the due queue and burned attempts. Those panels also compute the follow-up
+date **at save time**, never from component state, and a missing date now aborts the save loudly.
 
 The six main "Send to Monday" flows use this correctly. **Inline panel actions** (attempt saves,
 mark-complete, escalation modal, notes, Subscription's big write) historically bypassed it — see

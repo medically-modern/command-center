@@ -29,7 +29,8 @@ import {
   writeText,
 } from "@/lib/masheke/mondayApi";
 import { runVerifiedSend } from "@/lib/masheke/mondayWrite";
-import type { WriteTask } from "@/lib/shared/verifiedWrite";
+import { GatewayPendingError, type WriteProgressPhase, type WriteTask } from "@/lib/shared/verifiedWrite";
+import { SaveProgressOverlay } from "@/components/shared/SaveProgressOverlay";
 import { FILE_PROXY_URL, fetchAssetBytes } from "@/lib/shared/mondayAssets";
 import { getIdToken, userInitials } from "@/lib/shared/auth";
 import {
@@ -78,6 +79,10 @@ interface Props {
   managerMode?: boolean;
 }
 
+// How long a save blocks the screen waiting for Monday to confirm before we
+// surface "queued on the server, do not repeat" (same as Chase Clinicals).
+const SAVE_CONFIRM_MS = 120_000;
+
 // =====================================================================
 // Main panel
 // =====================================================================
@@ -97,14 +102,16 @@ export function ConfirmReceiptPanel({ patient, onUpdate, managerMode = false }: 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [patient.id, patient.serving, patient.medicalNecessity, patient.mnRequestConsolidated]);
   const [saving, setSaving] = useState(false);
+  // Which milestone the in-flight save is at — drives the blocking overlay.
+  const [savePhase, setSavePhase] = useState<WriteProgressPhase>("posting");
   const [escalated, setEscalated] = useState(false);
   const escalatedRef = useRef(false);
 
-  // Active-attempt form state — outcome + the single per-attempt note +
-  // (if no) next action date. The note (who they spoke to / what was said)
-  // is saved into the attempt's own column, NOT the MN workflow notes.
+  // Active-attempt form state — outcome + the single per-attempt note.
+  // The note (who they spoke to / what was said) is saved into the attempt's
+  // own column, NOT the MN workflow notes. The follow-up date is computed at
+  // save time (never held in state — see handleSave).
   const [confirmed, setConfirmed] = useState<"yes" | "no" | null>(null);
-  const [nextAction, setNextAction] = useState<string>("");
   // One free-text note per attempt. Required on "Not Confirmed"; optional
   // (but prompted with an example) on "Confirmed".
   const [attemptNote, setAttemptNote] = useState("");
@@ -133,7 +140,6 @@ export function ConfirmReceiptPanel({ patient, onUpdate, managerMode = false }: 
   // Reset form when patient changes
   useEffect(() => {
     setConfirmed(null);
-    setNextAction("");
     setAttemptNote("");
     setJustConfirmed(null);
     setResentNow(false);
@@ -154,15 +160,6 @@ export function ConfirmReceiptPanel({ patient, onUpdate, managerMode = false }: 
   useEffect(() => {
     if (faxResent) setNoResendWarning(false);
   }, [faxResent]);
-
-  // Default Next Action Date based on the picked outcome:
-  //   No  → next weekday (fast follow-up after a confirmed-receipt no)
-  //   Yes / nothing → 2 weekdays
-  // Re-applies on patient change and on every confirmed change.
-  useEffect(() => {
-    const days = confirmed === "no" ? 1 : 2;
-    setNextAction(formatDateInput(addBusinessDays(etNow(), days)));
-  }, [patient.id, confirmed]);
 
   // Determine current attempt slot (1, 2, or 3) from MN Attempts column.
   // No value yet → Attempt 1.
@@ -225,34 +222,50 @@ export function ConfirmReceiptPanel({ patient, onUpdate, managerMode = false }: 
       return;
     }
     setNoResendWarning(false);
+    // Follow-up date computed AT SAVE TIME (No → next weekday, escalated
+    // follow-up → 2 weekdays; weekend-clamped) — never trusted from component
+    // state, so a stale in-flight completion can never blank it and silently
+    // drop the date from the transaction (July 2026 chase incident).
+    const safeNextAction = clampToBusinessDay(
+      formatDateInput(addBusinessDays(etNow(), confirmed === "no" ? 1 : 2)),
+    );
+    const toastId = `confirm-save-${patient.id}`;
+    const onProgress = (phase: WriteProgressPhase) => {
+      setSavePhase(phase);
+      if (phase === "accepted") toast.loading("Data in server — writing to Monday…", { id: toastId });
+      else if (phase === "writing" || phase === "verifying") toast.loading("Writing to Monday…", { id: toastId });
+    };
+    // Optimistic patch + success copy are fixed BEFORE the awaits so the
+    // pending path (job durably queued, confirmation still running) can apply
+    // the exact same patch.
+    let patch: Partial<Patient> | undefined;
+    let successMsg = "";
+    let confirmedBanner: { note: string; ts: string } | null = null;
     setSaving(true);
+    setSavePhase("posting");
+    toast.loading("Sending to server…", { id: toastId });
     try {
       if (confirmed === "yes") {
         const slot = activeAttempt;
         const value = formatAttemptValue("confirmed", attemptNote.trim(), etNow());
-        await saveYes(patient, slot, value);
+        const fieldKey =
+          slot === 1 ? "confirmAttempt1" : slot === 2 ? "confirmAttempt2" : "confirmAttempt3";
+        patch = { [fieldKey]: value, subStage: "Chase Clinicals" };
+        successMsg = "Receipt confirmed — moved to Chase Clinicals";
+        confirmedBanner = { note: attemptNote.trim(), ts: formatDateShort(etNow()) };
+        await saveYes(patient, slot, value, onProgress);
         if (isEscalated) {
           // Manager resolved the escalation by confirming receipt — clear
           // the flag so the patient doesn't stay in escalated lists.
           await writeStatusIndex(patient.id, COL.escalation, ESCALATION_INDEX.done);
-          onUpdate({ escalation: "Done" });
+          patch.escalation = "Done";
         }
-        toast.success("Receipt confirmed — moved to Chase Clinicals");
-        setJustConfirmed({
-          note: attemptNote.trim(),
-          ts: formatDateShort(etNow()),
-        });
-        const fieldKey =
-          slot === 1 ? "confirmAttempt1" : slot === 2 ? "confirmAttempt2" : "confirmAttempt3";
-        onUpdate({
-          [fieldKey]: value,
-          subStage: "Chase Clinicals",
-        });
       } else if (isEscalated) {
         // Manager follow-up on an escalated patient: all 3 attempt slots are
         // used, so just set the next action date (weekend-clamped). Notes
         // were already saved by the notes panel. Patient stays escalated.
-        const safeNextAction = clampToBusinessDay(nextAction);
+        patch = { nextActionDate: safeNextAction };
+        successMsg = "Follow-up saved — patient remains escalated";
         await runVerifiedSend({
           itemId: patient.id,
           label: "Confirm Receipt → escalated follow-up",
@@ -260,38 +273,38 @@ export function ConfirmReceiptPanel({ patient, onUpdate, managerMode = false }: 
           tasks: [
             { label: "Next Action Date", columnId: COL.nextActionDate, value: { date: safeNextAction }, fn: () => writeDate(patient.id, COL.nextActionDate, safeNextAction) },
           ],
+          onProgress,
+          requireDone: true,
+          waitForDoneMs: SAVE_CONFIRM_MS,
         });
-        onUpdate({ nextActionDate: safeNextAction });
-        toast.success("Follow-up saved — patient remains escalated");
       } else {
         const attempt = currentAttempt ?? 1;
         const value = formatAttemptValue("not_confirmed", attemptNote.trim(), etNow());
         const nextSlot = nextMnAttempt(attempt);
-        // Never schedule a next action on a weekend, no matter how the
-        // date was produced.
-        const safeNextAction = clampToBusinessDay(nextAction);
+        // Optimistic local update so the chip + next slot show before refetch
+        const fieldKey =
+          attempt === 1 ? "confirmAttempt1" : attempt === 2 ? "confirmAttempt2" : "confirmAttempt3";
+        patch = {
+          [fieldKey]: value,
+          mnAttempts: nextSlot,
+          nextActionDate: safeNextAction,
+          escalation: nextSlot === "Escalate" ? "Escalation Required" : patient.escalation,
+        };
+        successMsg =
+          nextSlot === "Escalate"
+            ? `Attempt ${attempt} saved — escalated`
+            : `Attempt ${attempt} saved`;
         await saveNo({
           patient,
           attempt,
           value,
           nextSlot,
           nextActionDateInput: safeNextAction,
+          onProgress,
         });
-        // Optimistic local update so the chip + next slot show before refetch
-        const fieldKey =
-          attempt === 1 ? "confirmAttempt1" : attempt === 2 ? "confirmAttempt2" : "confirmAttempt3";
-        onUpdate({
-          [fieldKey]: value,
-          mnAttempts: nextSlot,
-          nextActionDate: safeNextAction,
-          escalation: nextSlot === "Escalate" ? "Escalation Required" : patient.escalation,
-        });
-        toast.success(
-          nextSlot === "Escalate"
-            ? `Attempt ${attempt} saved — escalated`
-            : `Attempt ${attempt} saved`,
-        );
       }
+      onUpdate(patch);
+      if (confirmedBanner) setJustConfirmed(confirmedBanner);
       // Persist any doctor-field edits made on the method hero
       const docTasks = buildDoctorWriteTasks(patient);
       if (docTasks.length) await Promise.all(docTasks.map((t) => t.run()));
@@ -302,12 +315,28 @@ export function ConfirmReceiptPanel({ patient, onUpdate, managerMode = false }: 
       }
       // Reset form for next attempt (or clear if patient is leaving the tab)
       setConfirmed(null);
-      setNextAction("");
       setAttemptNote("");
+      toast.success(`${successMsg} — confirmed in Monday`, { id: toastId });
     } catch (e) {
-      toast.error("Save failed", {
-        description: e instanceof Error ? e.message : String(e),
-      });
+      if (e instanceof GatewayPendingError && patch) {
+        // The gateway durably queued the job; it WILL complete server-side.
+        // Reflect it locally, but make clear the Monday confirmation is
+        // still pending.
+        onUpdate(patch);
+        if (confirmedBanner) setJustConfirmed(confirmedBanner);
+        setConfirmed(null);
+        setAttemptNote("");
+        toast.warning("Data in server — Monday confirmation still pending", {
+          id: toastId,
+          description: e.message,
+          duration: 12_000,
+        });
+      } else {
+        toast.error("Save failed — nothing was advanced", {
+          id: toastId,
+          description: e instanceof Error ? e.message : String(e),
+        });
+      }
     } finally {
       setSaving(false);
     }
@@ -434,6 +463,11 @@ export function ConfirmReceiptPanel({ patient, onUpdate, managerMode = false }: 
 
   return (
     <div className="flex flex-col gap-6">
+      {/* Blocks the WHOLE screen (sidebar included) while a save is in
+          flight, until Monday confirms — switching patients mid-save is what
+          corrupted saves in the July 2026 dropped-date incident. */}
+      <SaveProgressOverlay open={saving} phase={savePhase} />
+
       {/* Round header — which provider-ask cycle this is (from the counter). */}
       <div
         className="rounded-2xl border border-l-4 px-6 py-4 shadow-sm"
@@ -776,7 +810,12 @@ export function ConfirmReceiptPanel({ patient, onUpdate, managerMode = false }: 
 // Save handlers (unchanged)
 // =====================================================================
 
-async function saveYes(patient: Patient, slot: number, attemptValue: string) {
+async function saveYes(
+  patient: Patient,
+  slot: number,
+  attemptValue: string,
+  onProgress?: (phase: WriteProgressPhase) => void,
+) {
   // Yes path: log the confirmation note in the active attempt column (so the
   // effort + confirmed date/time show on Chase), advance stage. Also reset MN
   // Attempts back to "Attempt 1" so the Chase Clinicals tab starts fresh (the
@@ -804,6 +843,9 @@ async function saveYes(patient: Patient, slot: number, attemptValue: string) {
     label: "Confirm Receipt → Confirmed (advance to Chase)",
     tasks,
     stageColumnId: COL.subStage,
+    onProgress,
+    requireDone: true,
+    waitForDoneMs: SAVE_CONFIRM_MS,
   });
 }
 
@@ -813,12 +855,14 @@ async function saveNo({
   value,
   nextSlot,
   nextActionDateInput,
+  onProgress,
 }: {
   patient: Patient;
   attempt: number;
   value: string;
   nextSlot: "Attempt 2" | "Attempt 3" | "Escalate";
   nextActionDateInput: string;
+  onProgress?: (phase: WriteProgressPhase) => void;
 }) {
   // The attempt note is a DATA column (read-back verified) so it lands BEFORE
   // MN Attempts / Escalation flip (managers + automations key on those).
@@ -844,10 +888,24 @@ async function saveNo({
   if (escalate) {
     tasks.push({ label: "Escalation → Required", columnId: COL.escalation, value: { index: ESCALATION_INDEX.required }, fn: () => writeStatusIndex(patient.id, COL.escalation, ESCALATION_INDEX.required) });
     stageColumnId.push(COL.escalation);
-  } else if (nextActionDateInput) {
+  } else {
+    // A non-escalating "not confirmed" MUST reschedule the patient — without
+    // this date they stay "due now" forever and get re-worked, burning
+    // attempts (the 7/6 incident). Abort loudly rather than write a partial.
+    if (!nextActionDateInput) {
+      throw new Error("Next Action Date failed to compute — nothing was written. Reload and try again.");
+    }
     tasks.push({ label: "Next Action Date", columnId: COL.nextActionDate, value: { date: nextActionDateInput }, fn: () => writeDate(patient.id, COL.nextActionDate, nextActionDateInput) });
   }
-  await runVerifiedSend({ itemId: patient.id, label: `Confirm Receipt → Attempt ${attempt} (${nextSlot})`, tasks, stageColumnId });
+  await runVerifiedSend({
+    itemId: patient.id,
+    label: `Confirm Receipt → Attempt ${attempt} (${nextSlot})`,
+    tasks,
+    stageColumnId,
+    onProgress,
+    requireDone: true,
+    waitForDoneMs: SAVE_CONFIRM_MS,
+  });
 }
 
 // =====================================================================
