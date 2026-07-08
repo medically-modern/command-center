@@ -865,8 +865,14 @@ function ProfileBody(p: BodyProps) {
                           </div>
                         )}
                       </Field>
-                      <Field label={pt.secondaryInsurance === "NY Medicaid" ? "Member ID 2 (required)" : "Member ID 2"}>
-                        <input type="text" value={pt.memberId2} onChange={(e) => p.onUpdate({ memberId2: e.target.value })} placeholder="Member ID… (optional)" />
+                      {/* Member ID 2 is mandatory when Secondary is NY Medicaid (the
+                          send-off checklist already blocks on it) — the field must
+                          SAY so: required star, red/green border, no "(optional)". */}
+                      <Field label="Member ID 2" required={pt.secondaryInsurance === "NY Medicaid"}>
+                        <input type="text"
+                          className={pt.secondaryInsurance === "NY Medicaid" ? (pt.memberId2?.trim() ? "filled" : "need") : undefined}
+                          value={pt.memberId2} onChange={(e) => p.onUpdate({ memberId2: e.target.value })}
+                          placeholder={pt.secondaryInsurance === "NY Medicaid" ? "Member ID… (required)" : "Member ID… (optional)"} />
                       </Field>
                     </div>
                   </div>
