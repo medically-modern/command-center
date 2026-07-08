@@ -620,15 +620,18 @@ function ProfileBody(p: BodyProps) {
   const [readyOpen, setReadyOpen] = useState(false);
   // Member ID 1 is always entered fresh by the rep (never auto-filled).
   const [mid1Input, setMid1Input] = useState("");
-  // Secondary Insurance is a rep DECISION — intake sometimes pre-fills the
-  // board column, but that must only ever surface as a suggestion (Josh,
-  // 2026-07). Demote a board-sourced value on load: clear the working copy so
-  // the select starts on "Select…"; the chip under it re-offers the value in
-  // one click, and send-off skips the blank (the board keeps its value until
-  // the rep actively picks). ProfileBody is keyed by patient id, so this runs
-  // once per patient and never fights a selection made this session.
+  // Secondary Insurance and Serving are rep DECISIONS — intake/board values
+  // must only ever surface as suggestions (Josh, 2026-07). Demote
+  // board-sourced values on load: clear the working copies so both selects
+  // start on "Select…"; the suggestion chips re-offer a value in one click,
+  // and send-off skips blanks (statusWriteTask — the board keeps its values
+  // until the rep actively picks). ProfileBody is keyed by patient id, so
+  // this runs once per patient and never fights a selection made this session.
   useEffect(() => {
-    if (pt.secondaryInsurance) p.onUpdate({ secondaryInsurance: "" });
+    const demote: Partial<Patient> = {};
+    if (pt.secondaryInsurance) demote.secondaryInsurance = "";
+    if (pt.serving) demote.serving = "";
+    if (Object.keys(demote).length) p.onUpdate(demote);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   // Benefits Check inputs ALWAYS start blank — the as-received insurance shows
