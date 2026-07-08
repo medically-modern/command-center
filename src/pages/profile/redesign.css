@@ -324,6 +324,8 @@
 .pf-root .sugg-chip2.office { background:var(--amber-soft);color:var(--amber);box-shadow:inset 0 0 0 1px var(--amber-ring) }
 .pf-root .sugg-chip2.muted { background:var(--muted);color:var(--muted-foreground);box-shadow:inset 0 0 0 1px var(--border) }
 .pf-root .sugg-chip2.alt2 { background:#fff;color:var(--mm-teal);box-shadow:inset 0 0 0 1.5px var(--mm-mint-ring);border-style:dashed }
+.pf-root .sugg-chip2.clickable { border:0;cursor:pointer;font-family:inherit;transition:filter .12s ease }
+.pf-root .sugg-chip2.clickable:hover { filter:brightness(.93) }
 .pf-root .sugg-note { font-size:.8rem;color:var(--muted-foreground) }
 .pf-root .sugg-lead2 { font-size:.8rem;font-weight:800;color:var(--foreground) }
 

@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties } from "react";
 import type { Patient } from "@/lib/profile/workflow";
-import { formatPhone } from "@/lib/profile/workflow";
 import { AddressAutocomplete } from "@/components/profile/AddressAutocomplete";
 import { phoneToState } from "@/lib/profile/areaCodeState";
 import { addressWarning } from "@/lib/profile/workflow";
@@ -30,6 +29,24 @@ interface ParaDoctor {
 
 const initials = (n: string) => (n || "").split(" ").map((w) => w[0]).join("").slice(0, 2).toUpperCase() || "+";
 const norm = (s: string) => (s || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+
+// ── Display-only formatters (the Doctor DB data itself is never changed) ──
+
+/** 10-digit US numbers render as xxx-xxx-xxxx; anything else passes through. */
+const fmtPhoneUi = (raw: string): string => {
+  const d = (raw || "").replace(/\D/g, "").replace(/^1(?=\d{10}$)/, "");
+  return d.length === 10 ? `${d.slice(0, 3)}-${d.slice(3, 6)}-${d.slice(6)}` : (raw || "");
+};
+
+/** DB names are stored ALL CAPS — render them in normal capitalization
+ *  ("JASON O'BRIEN-SMITH MD" → "Jason O'Brien-Smith MD"). Credentials and
+ *  roman-numeral suffixes stay uppercase. */
+const KEEP_UPPER = new Set(["MD", "DO", "NP", "PA", "PA-C", "APRN", "DNP", "FNP", "CRNP", "ARNP", "CNM", "OD", "DPM", "II", "III", "IV"]);
+const displayName = (raw: string): string =>
+  (raw || "").trim().split(/\s+/).map((w) => {
+    if (KEEP_UPPER.has(w.replace(/[.,]/g, "").toUpperCase())) return w.toUpperCase();
+    return w.toLowerCase().replace(/(^|[-'’])(\p{L})/gu, (_, sep, ch) => sep + ch.toUpperCase());
+  }).join(" ");
 
 interface Props {
   patient: Patient;
@@ -136,7 +153,7 @@ export function DoctorSection({ patient: pt, received, onUpdate, clinicLabels, o
     setSelectedItemId(null);
     setCount(null);
     setLocMode(null);
-    setTerm(rec.name);
+    setTerm(displayName(rec.name));
     // Make sure every item for this NPI is loaded (a partial name search may
     // have missed some locations); other-name spellings stay separate groups.
     if (rec.npi) {
@@ -228,7 +245,7 @@ export function DoctorSection({ patient: pt, received, onUpdate, clinicLabels, o
     return (
       <div key={d.doctor_id} className="para-row" style={sel ? { background: "oklch(0.973 0.011 175)" } : undefined} onClick={() => setParaSel(sel ? null : d.npi)}>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontWeight: 700, fontSize: ".92rem" }}>{d.first_name} {d.last_name} <span style={{ fontWeight: 500, color: "var(--muted-foreground)" }}>– {d.npi}</span></div>
+          <div style={{ fontWeight: 700, fontSize: ".92rem" }}>{displayName(`${d.first_name} ${d.last_name}`)} <span style={{ fontWeight: 500, color: "var(--muted-foreground)" }}>– {d.npi}</span></div>
           <div style={{ fontSize: ".8rem", color: "var(--muted-foreground)" }}>{d.credential ? d.credential + ", " : ""}{d.signature_count} signed order{d.signature_count === 1 ? "" : "s"}</div>
         </div>
         <div style={{ textAlign: "right", flexShrink: 0, marginLeft: 12 }}>
@@ -396,7 +413,7 @@ export function DoctorSection({ patient: pt, received, onUpdate, clinicLabels, o
                 <div key={profileKey(d)} className="res" onClick={() => selectDoctor(d)}>
                   <div className="ri">{initials(d.name)}</div>
                   <div>
-                    <div className="rn">{d.name}</div>
+                    <div className="rn">{displayName(d.name)}</div>
                     <div className="rm">NPI {d.npi || "—"}</div>
                   </div>
                   <span className="loc-chip">{grp.length > 1 ? `${grp.length} locations` : (d.clinic || d.address || "1 location")}</span>
@@ -475,7 +492,7 @@ export function DoctorSection({ patient: pt, received, onUpdate, clinicLabels, o
           <div className="doctop">
             <div className="di">{initials(selectedDoctor.name)}</div>
             <div style={{ flex: 1 }}>
-              <div className="dn">{selectedDoctor.name} <span style={{ fontWeight: 500, color: "var(--muted-foreground)" }}>· NPI {selectedDoctor.npi}</span></div>
+              <div className="dn">{displayName(selectedDoctor.name)} <span style={{ fontWeight: 500, color: "var(--muted-foreground)" }}>· NPI {selectedDoctor.npi}</span></div>
               <div className="dm">{profiles.length > 1 ? `${profiles.length} locations on file` : "In Doctor Database"}</div>
             </div>
           </div>
@@ -502,7 +519,7 @@ export function DoctorSection({ patient: pt, received, onUpdate, clinicLabels, o
                   {matchesReferral(r) && <span className="badge-ref">matches referral</span>}
                   <div className="lc">{r.clinic || "Clinic —"}</div>
                   <div className="la">{r.address || "No address on file"}</div>
-                  <div className="li">{r.phone ? formatPhone(r.phone) : "No phone"}{r.fax ? ` · ${r.method === "Email" ? "Email" : "Fax"} ${r.fax}` : ""}</div>
+                  <div className="li">{r.phone ? fmtPhoneUi(r.phone) : "No phone"}{r.fax ? ` · ${r.method === "Email" ? "Email" : "Fax"} ${fmtPhoneUi(r.fax)}` : ""}</div>
                   <div><span className={`method-pill ${r.method === "Parachute" ? "chute" : r.method === "Email" ? "mail" : "fax"}`}>Method: {r.method || "—"}</span></div>
                 </div>
               ))}

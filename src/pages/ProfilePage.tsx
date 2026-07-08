@@ -417,7 +417,9 @@ const ProfilePage = () => {
         />
 
         <div className="flex-1 flex flex-col min-w-0">
-          <header className="bg-gradient-navy text-navy-foreground border-b border-sidebar-border">
+          {/* Already-in-system patients turn the ENTIRE header red (Josh, 2026-07 —
+              the small badge alone was too easy to miss). */}
+          <header className={`${selected?.alreadyInSystem?.toLowerCase() === "yes" ? "bg-gradient-to-b from-red-700 to-red-900" : "bg-gradient-navy"} text-navy-foreground border-b border-sidebar-border`}>
             <div className="px-6 py-5 flex items-center justify-between gap-4 flex-wrap">
               <div className="flex items-center gap-3">
                 <SidebarTrigger className="text-navy-foreground hover:bg-white/10" />
@@ -434,8 +436,8 @@ const ProfilePage = () => {
                     <p className="text-sm opacity-80 mt-0.5 flex items-center gap-2">
                       {selected.name}
                       {selected.alreadyInSystem?.toLowerCase() === "yes" && (
-                        <span className="inline-flex items-center gap-1 rounded-full bg-red-500 text-white text-[10px] font-bold uppercase tracking-wide px-2 py-0.5">
-                          <AlertTriangle className="h-3 w-3" /> Already In System
+                        <span className="inline-flex items-center gap-1.5 rounded-full bg-white text-red-700 text-sm font-extrabold uppercase tracking-wide px-3 py-1 shadow">
+                          <AlertTriangle className="h-4 w-4" /> Already In System
                         </span>
                       )}
                     </p>
@@ -655,20 +657,13 @@ function ProfileBody(p: BodyProps) {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [primaryIns, pt.requestType]);
-  // Auto-derive Serving from cross-sell + request type (original behavior).
-  useEffect(() => {
-    if (!crossSell || !pt.requestType) return;
-    const derived = deriveServing(crossSell, pt.requestType);
-    if (derived && derived !== pt.serving) p.onUpdate({ serving: derived });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [crossSell, pt.requestType]);
-  // Advisory Serving chip (no auto-apply button) — what the cross-sell logic
-  // says we should be serving; hidden once Serving already matches. The hint
-  // explains the cross-sell decision inline (the status dropdown is gone).
+  // Serving is NEVER auto-filled (Josh, 2026-07) — the cross-sell derivation
+  // above only surfaces as the advisory chip below; the rep picks Serving
+  // (clicking the chip applies it in one click). Hidden once Serving matches.
+  // The hint explains the cross-sell decision inline (the status dropdown is gone).
   const servingSuggestion = deriveServing(crossSell, pt.requestType || "") || pt.requestType || "";
   const xsellHint = (() => {
     const reason = crossSellReason(primaryIns);
-    if (reason === "no-primary") return "Set Primary Insurance in Benefits Check to evaluate CGM cross-sell eligibility";
     if (crossSell === "Cross-Sell" && reason === "eligible") return "Primary insurance is a non-Medicaid plan, so this patient is eligible for CGM cross-sell";
     if (crossSell === "Already Serving CGM") return "Already serving CGM — no cross-sell added";
     if (crossSell === "Couldn't Cross-Sell") {
@@ -850,7 +845,7 @@ function ProfileBody(p: BodyProps) {
                             <optgroup key={group} label={group}>{labels.map((l) => <option key={l}>{l}</option>)}</optgroup>
                           ))}
                         </select>
-                        <SuggestionInline sg={p.suggestion} />
+                        <SuggestionInline sg={p.suggestion} onPick={(v) => p.onUpdate({ primaryInsurance: v })} />
                       </Field>
                       <Field label="Member ID 1" required>
                         <input type="text" value={mid1Input}
@@ -866,7 +861,7 @@ function ProfileBody(p: BodyProps) {
                             <span className="sugg-lead2">Suggestion:</span>
                             {/* Engine suggestion first; else the intake-pre-filled
                                 board value rides along as the suggestion. */}
-                            <span className="sugg-chip2">{p.secondarySuggestion || rcv.secondaryInsurance}</span>
+                            <button type="button" className="sugg-chip2 clickable" onClick={() => p.onUpdate({ secondaryInsurance: p.secondarySuggestion || rcv.secondaryInsurance })}>{p.secondarySuggestion || rcv.secondaryInsurance}</button>
                           </div>
                         )}
                       </Field>
@@ -900,7 +895,7 @@ function ProfileBody(p: BodyProps) {
                       {servingSuggestion && servingSuggestion !== serv && (
                         <div className="sugg-line" style={{ marginBottom: 8 }}>
                           <span className="sugg-lead2">Suggestion:</span>
-                          <span className="sugg-chip2">{servingSuggestion}</span>
+                          <button type="button" className="sugg-chip2 clickable" onClick={() => p.onUpdate({ serving: servingSuggestion })}>{servingSuggestion}</button>
                           {xsellHint && <span className="sugg-note">{xsellHint}</span>}
                         </div>
                       )}
@@ -1093,8 +1088,8 @@ function CostShare({ pt }: { pt: Patient }) {
 
 /** Primary-insurance suggestion shown BELOW the Primary select (mirrors the
  *  prototype's #pins-suggest / suggestionCardHTML). Advisory only — the rep
- *  selects the insurance manually. */
-function SuggestionInline({ sg }: { sg: ReturnType<typeof suggestPrimary> }) {
+ *  selects the insurance manually, or clicks the pill to apply it. */
+function SuggestionInline({ sg, onPick }: { sg: ReturnType<typeof suggestPrimary>; onPick?: (v: string) => void }) {
   if (!sg) return null;
   const codes = (sg.warnings || []).map((w) => w.code);
   if (codes.includes("INACTIVE")) {
@@ -1119,7 +1114,11 @@ function SuggestionInline({ sg }: { sg: ReturnType<typeof suggestPrimary> }) {
       {sg.value ? (
         <div className="sugg-line" style={{ marginTop: 8 }}>
           <span className="sugg-lead2">Suggestion:</span>
-          <span className="sugg-chip2">{sg.value}</span>
+          {onPick && PRIMARY_LABELS.has(sg.value) ? (
+            <button type="button" className="sugg-chip2 clickable" onClick={() => onPick(sg.value!)}>{sg.value}</button>
+          ) : (
+            <span className="sugg-chip2">{sg.value}</span>
+          )}
           {sg.pos === "11" && <span className="sugg-chip2 office">{sg.posReason || "POS 11"}</span>}
         </div>
       ) : sg.reason ? (
