@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import type { Patient } from "@/lib/welcomeCall/workflow";
-import { SECONDARY_INSURANCE_OPTIONS, PRIMARY_INSURANCE_OPTIONS, SERVING_OPTIONS, formatPhone, formatDateMDY, isCrossSell } from "@/lib/welcomeCall/workflow";
+import { SECONDARY_INSURANCE_OPTIONS, PRIMARY_INSURANCE_OPTIONS, SERVING_OPTIONS, formatPhone, formatDateMDY, isCrossSell, computeNextOrder } from "@/lib/welcomeCall/workflow";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { AlertTriangle, CalendarDays, CheckCircle2, Pencil, Check, Loader2, X } from "lucide-react";
@@ -219,28 +219,6 @@ function OrderDateField({ label, dateStr }: { label: string; dateStr: string }) 
   );
 }
 
-/** Compute next order date from last bill dates: latest bill + 90 days, or today if none. */
-function computeNextOrder(lastBillDates: string[]): string {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const todayStr = today.toISOString().slice(0, 10);
-
-  const dates = lastBillDates
-    .filter(Boolean)
-    .map((d) => {
-      const m = d.match(/^(\d{4})-(\d{2})-(\d{2})/);
-      return m ? new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])) : null;
-    })
-    .filter((d): d is Date => d !== null);
-
-  if (dates.length === 0) return todayStr;
-
-  // Use the latest last bill date
-  const latest = dates.reduce((a, b) => (a > b ? a : b));
-  latest.setDate(latest.getDate() + 90);
-  return latest.toISOString().slice(0, 10);
-}
-
 function SmartNextOrderField({
   label,
   lastBillDates,
@@ -258,18 +236,10 @@ function SmartNextOrderField({
 }) {
   const computed = computeNextOrder(lastBillDates);
   const hasLastBill = lastBillDates.some(Boolean);
-  // Priority: edited > Monday value > computed
+  // Priority: edited > Monday value > computed. This is exactly what
+  // sendPatientToMonday writes (effectiveNextOrder), so the date on screen —
+  // including the computed default — is what lands on the board, no edit needed.
   const effectiveDate = editedDate ?? (mondayDate || computed);
-
-  // Always pre-populate the edited field with the computed value on first
-  // render: last bill + 90 days if a bill date exists, otherwise today.
-  // This ensures empty last-bill products default to today's date.
-  useEffect(() => {
-    if (editedDate === null && onFieldChange) {
-      onFieldChange(editedField, computed);
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   const match = effectiveDate.match(/^(\d{4})-(\d{2})-(\d{2})/);
   const today = new Date();

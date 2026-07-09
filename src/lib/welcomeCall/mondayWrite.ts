@@ -1,5 +1,6 @@
 import { writeStatusIndex, writeNumber, writeLocation, writeText, writeLongText, writeDate, writePhone, readColumnTexts, COL } from "./mondayApi";
 import { executeWritesWithVerification } from "../shared/verifiedWrite";
+import { effectiveNextOrder } from "./workflow";
 import type { Patient } from "./workflow";
 
 const MAX_RETRIES = 2;
@@ -97,13 +98,27 @@ export async function sendPatientToMonday(p: Patient): Promise<void> {
     tasks.push({ label: "Address", columnId: COL.address, fn: () => writeLocation(p.id, COL.address, p.addressEdited!, lat, lng) });
   }
 
-  // Next order dates (only if edited)
-  if (p.ipNextOrderDateEdited !== null && p.ipNextOrderDateEdited !== "")
-    tasks.push({ label: "IP Next Order Date", columnId: COL.ipNextOrderDate, fn: () => writeDate(p.id, COL.ipNextOrderDate, p.ipNextOrderDateEdited!) });
-  if (p.sensorsNextOrderDateEdited !== null && p.sensorsNextOrderDateEdited !== "")
-    tasks.push({ label: "Sensors Next Order Date", columnId: COL.sensorsNextOrderDate, fn: () => writeDate(p.id, COL.sensorsNextOrderDate, p.sensorsNextOrderDateEdited!) });
-  if (p.suppliesNextOrderDateEdited !== null && p.suppliesNextOrderDateEdited !== "")
-    tasks.push({ label: "Supplies Next Order Date", columnId: COL.suppliesNextOrderDate, fn: () => writeDate(p.id, COL.suppliesNextOrderDate, p.suppliesNextOrderDateEdited!) });
+  // Next order dates — always sync the date the UI is showing (edit → existing
+  // Monday value → computed default) so the displayed default actually lands on
+  // the board. Computed at send time, never read from a mount effect; skip only
+  // when the effective value already matches Monday (avoids a same-value write).
+  const nextOrderDateWrites: {
+    label: string;
+    columnId: string;
+    edited: string | null;
+    mondayDate: string;
+    lastBillDates: string[];
+  }[] = [
+    { label: "IP Next Order Date", columnId: COL.ipNextOrderDate, edited: p.ipNextOrderDateEdited, mondayDate: p.ipNextOrderDate, lastBillDates: [p.ipLastBillDate] },
+    { label: "Sensors Next Order Date", columnId: COL.sensorsNextOrderDate, edited: p.sensorsNextOrderDateEdited, mondayDate: p.sensorsNextOrderDate, lastBillDates: [p.sensorsLastBillDate, p.cgmLastBillDate] },
+    { label: "Supplies Next Order Date", columnId: COL.suppliesNextOrderDate, edited: p.suppliesNextOrderDateEdited, mondayDate: p.suppliesNextOrderDate, lastBillDates: [p.infusionSetLastBillDate, p.cartridgeLastBillDate] },
+  ];
+  for (const w of nextOrderDateWrites) {
+    const effective = effectiveNextOrder(w.edited, w.mondayDate, w.lastBillDates);
+    if (effective && effective !== w.mondayDate.slice(0, 10)) {
+      tasks.push({ label: w.label, columnId: w.columnId, fn: () => writeDate(p.id, w.columnId, effective) });
+    }
+  }
 
   // Notes
   if (typeof p.notes === "string" && p.notes.trim() !== "") {

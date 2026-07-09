@@ -308,6 +308,49 @@ export function formatDateMDY(raw: string): string {
   return raw;
 }
 
+/* ─── Next order dates ─── */
+
+/**
+ * Compute a product's next order date the way the Welcome Call UI shows it:
+ * the latest last-bill date + 90 days, or today when there is no last-bill date.
+ * Lives here (not in the component) so the display and the send path share one
+ * source of truth — the value on screen is exactly what gets written to Monday.
+ */
+export function computeNextOrder(lastBillDates: string[]): string {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const todayStr = today.toISOString().slice(0, 10);
+
+  const dates = lastBillDates
+    .filter(Boolean)
+    .map((d) => {
+      const m = d.match(/^(\d{4})-(\d{2})-(\d{2})/);
+      return m ? new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])) : null;
+    })
+    .filter((d): d is Date => d !== null);
+
+  if (dates.length === 0) return todayStr;
+
+  // Use the latest last bill date
+  const latest = dates.reduce((a, b) => (a > b ? a : b));
+  latest.setDate(latest.getDate() + 90);
+  return latest.toISOString().slice(0, 10);
+}
+
+/**
+ * The next order date the UI is actually displaying for a product:
+ *   explicit edit → existing Monday value → computed default.
+ * Mirrors SmartNextOrderField's `effectiveDate`, so the send path writes the
+ * same date the rep sees on screen.
+ */
+export function effectiveNextOrder(
+  edited: string | null,
+  mondayDate: string,
+  lastBillDates: string[],
+): string {
+  return (edited ?? (mondayDate || computeNextOrder(lastBillDates))).slice(0, 10);
+}
+
 /* ─── Validation for Send to Monday ─── */
 
 function hasZipCode(address: string): boolean {
