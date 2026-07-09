@@ -41,25 +41,16 @@
 .pf-root .rail-head { font-size:.74rem;text-transform:uppercase;letter-spacing:.05em;color:var(--mm-teal);font-weight:800;padding:12px 16px;border-bottom:1px solid var(--border);background:oklch(0.985 0.005 200) }
 .pf-root .rail-body { padding:14px 16px }
 .pf-root .rail-body pre { margin:0;font-size:.84rem;line-height:1.6;white-space:pre-wrap;word-break:break-word;font-family:inherit;color:var(--foreground) }
-/* Referral email / updates — scrolls INSIDE its own box. The sticky rail's
-   own overflow can leave its tail below the fold on short pages (its
-   max-height assumes it's pinned at top:16px), so a long email must never
-   rely on the rail scroll to be fully readable. */
-.pf-root .rail-updates { max-height:min(48vh, 460px);overflow-y:auto;overscroll-behavior:contain;padding-right:4px }
+/* Referral email / updates — scrolls INSIDE its own box (its own overflow, not
+   the rail's, so the tail is always reachable). The box stretches DOWN toward
+   the bottom of the screen (viewport-height cap) so as much of the email is
+   visible at once as fits; the rest scrolls within the box. Width and content
+   formatting are unchanged — it stays in the left-rail column. A short email
+   only takes the height it needs (max-height caps, never forces height). */
+.pf-root .rail-updates { max-height:calc(100vh - 240px);overflow-y:auto;overscroll-behavior:contain;padding-right:4px }
 .pf-root .rail-updates img { max-width:100%;height:auto }
 .pf-root .rail-updates table { max-width:100%;table-layout:fixed;word-break:break-word }
 .pf-root .rail-updates .note-entry { overflow-wrap:anywhere }
-/* Referral email promoted to a full-width banner above the two-column layout.
-   It always spans the full screen width (no matter the viewport), and the
-   email body scrolls inside its own box — vertically for a long email,
-   horizontally for wide content (natural-width tables) — so nothing is ever
-   clipped: as much as fits is shown, the rest is one scroll away. */
-.pf-root .pf-referral-full { width:100% }
-.pf-root .pf-referral-full .rail-updates { max-height:min(60vh, 640px);overflow:auto }
-.pf-root .pf-referral-full .rail-updates table { table-layout:auto;max-width:none }
-/* The referral card no longer leads the left rail, so its teal accent moves
-   with it — reset the Files card (now first) back to a plain top border. */
-.pf-root .leftrail .rail-card:first-child { border-top:1px solid var(--border) }
 .pf-root .rail-files { padding:8px }
 .pf-root .card { background:var(--card);border:1px solid var(--border);border-radius:16px;padding:24px;box-shadow:0 1px 2px 0 rgb(0 0 0 / .05) }
 .pf-root .step-card { border-left:4px solid var(--mm-green) }
