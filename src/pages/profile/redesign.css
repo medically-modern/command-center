@@ -49,6 +49,17 @@
 .pf-root .rail-updates img { max-width:100%;height:auto }
 .pf-root .rail-updates table { max-width:100%;table-layout:fixed;word-break:break-word }
 .pf-root .rail-updates .note-entry { overflow-wrap:anywhere }
+/* Referral email promoted to a full-width banner above the two-column layout.
+   It always spans the full screen width (no matter the viewport), and the
+   email body scrolls inside its own box — vertically for a long email,
+   horizontally for wide content (natural-width tables) — so nothing is ever
+   clipped: as much as fits is shown, the rest is one scroll away. */
+.pf-root .pf-referral-full { width:100% }
+.pf-root .pf-referral-full .rail-updates { max-height:min(60vh, 640px);overflow:auto }
+.pf-root .pf-referral-full .rail-updates table { table-layout:auto;max-width:none }
+/* The referral card no longer leads the left rail, so its teal accent moves
+   with it — reset the Files card (now first) back to a plain top border. */
+.pf-root .leftrail .rail-card:first-child { border-top:1px solid var(--border) }
 .pf-root .rail-files { padding:8px }
 .pf-root .card { background:var(--card);border:1px solid var(--border);border-radius:16px;padding:24px;box-shadow:0 1px 2px 0 rgb(0 0 0 / .05) }
 .pf-root .step-card { border-left:4px solid var(--mm-green) }

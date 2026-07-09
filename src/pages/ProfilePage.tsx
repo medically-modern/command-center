@@ -680,6 +680,12 @@ function ProfileBody(p: BodyProps) {
   return (
     <div className="pf-root">
       <div className="page" style={{ maxWidth: "none", paddingTop: 24 }}>
+        {/* Referral email spans the full screen width above the two-column
+            layout so the whole email is readable at any viewport size; it keeps
+            its own scroll for anything past the fold (see .pf-referral-full). */}
+        <div className="pf-referral-full">
+          <RailReferral patient={rcv} />
+        </div>
         <div className="layout">
           <div className="layout-head">
             <div className="dh lh-recv">What We Received</div>
@@ -688,7 +694,6 @@ function ProfileBody(p: BodyProps) {
 
           {/* Left rail */}
           <aside className="leftrail">
-            <RailReferral patient={rcv} />
             <div className="rail-card">
               <div className="rail-head">📎 Files — click to preview</div>
               <div className="rail-files">
