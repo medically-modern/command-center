@@ -394,9 +394,9 @@ export function DoctorSection({ patient: pt, received, onUpdate, clinicLabels, o
             onFocus={() => setOpen(true)}
             placeholder="Type a name or NPI…"
           />
-          <button type="button" className="para-tool" title="Check Parachute Database — signed-order counts"
+          <button type="button" className="para-tool" title="Doctor not in the database? Check Parachute for signed-order counts"
             onClick={() => { setParaOpen((o) => !o); if (!paraOpen) { setParaTerm(term || pt.doctorName); runParaSearch(term || pt.doctorName); } }}>
-            <span>Parachute</span>
+            <span>Not in DB? Check Parachute</span>
           </button>
         </div>
         {open && (
