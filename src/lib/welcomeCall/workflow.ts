@@ -310,6 +310,16 @@ export function formatDateMDY(raw: string): string {
 
 /* ─── Next order dates ─── */
 
+/** Format a Date as YYYY-MM-DD from its LOCAL calendar parts. Monday dates are
+ *  timezone-naive ET, so we must not round-trip through toISOString() (UTC) —
+ *  that rolls the day back in east-of-UTC runtimes and diverges from the board. */
+function ymdLocal(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
 /**
  * Compute a product's next order date the way the Welcome Call UI shows it:
  * the latest last-bill date + 90 days, or today when there is no last-bill date.
@@ -317,10 +327,6 @@ export function formatDateMDY(raw: string): string {
  * source of truth — the value on screen is exactly what gets written to Monday.
  */
 export function computeNextOrder(lastBillDates: string[]): string {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const todayStr = today.toISOString().slice(0, 10);
-
   const dates = lastBillDates
     .filter(Boolean)
     .map((d) => {
@@ -329,26 +335,28 @@ export function computeNextOrder(lastBillDates: string[]): string {
     })
     .filter((d): d is Date => d !== null);
 
-  if (dates.length === 0) return todayStr;
+  if (dates.length === 0) return ymdLocal(new Date());
 
   // Use the latest last bill date
   const latest = dates.reduce((a, b) => (a > b ? a : b));
   latest.setDate(latest.getDate() + 90);
-  return latest.toISOString().slice(0, 10);
+  return ymdLocal(latest);
 }
 
 /**
  * The next order date the UI is actually displaying for a product:
  *   explicit edit → existing Monday value → computed default.
  * Mirrors SmartNextOrderField's `effectiveDate`, so the send path writes the
- * same date the rep sees on screen.
+ * same date the rep sees on screen. Uses `||` (not `??`) for the edit so a
+ * cleared field ("") falls back to the Monday value / computed default rather
+ * than resolving to an empty string.
  */
 export function effectiveNextOrder(
   edited: string | null,
   mondayDate: string,
   lastBillDates: string[],
 ): string {
-  return (edited ?? (mondayDate || computeNextOrder(lastBillDates))).slice(0, 10);
+  return (edited || mondayDate || computeNextOrder(lastBillDates)).slice(0, 10);
 }
 
 /* ─── Validation for Send to Monday ─── */

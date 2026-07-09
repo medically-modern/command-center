@@ -1,6 +1,6 @@
 import { useState } from "react";
 import type { Patient } from "@/lib/welcomeCall/workflow";
-import { SECONDARY_INSURANCE_OPTIONS, PRIMARY_INSURANCE_OPTIONS, SERVING_OPTIONS, formatPhone, formatDateMDY, isCrossSell, computeNextOrder } from "@/lib/welcomeCall/workflow";
+import { SECONDARY_INSURANCE_OPTIONS, PRIMARY_INSURANCE_OPTIONS, SERVING_OPTIONS, formatPhone, formatDateMDY, isCrossSell, effectiveNextOrder } from "@/lib/welcomeCall/workflow";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { AlertTriangle, CalendarDays, CheckCircle2, Pencil, Check, Loader2, X } from "lucide-react";
@@ -234,12 +234,11 @@ function SmartNextOrderField({
   editedField: keyof Patient;
   onFieldChange?: (field: keyof Patient, value: string | number | null) => void;
 }) {
-  const computed = computeNextOrder(lastBillDates);
   const hasLastBill = lastBillDates.some(Boolean);
-  // Priority: edited > Monday value > computed. This is exactly what
-  // sendPatientToMonday writes (effectiveNextOrder), so the date on screen —
-  // including the computed default — is what lands on the board, no edit needed.
-  const effectiveDate = editedDate ?? (mondayDate || computed);
+  // Single source of truth with the send path: effectiveNextOrder is exactly
+  // what sendPatientToMonday writes, so the date on screen — including the
+  // computed default — is what lands on the board, no edit needed.
+  const effectiveDate = effectiveNextOrder(editedDate, mondayDate, lastBillDates);
 
   const match = effectiveDate.match(/^(\d{4})-(\d{2})-(\d{2})/);
   const today = new Date();
