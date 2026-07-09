@@ -14,7 +14,7 @@
  *   - "Chase Clinicals Completed" logs the attempt ("Who answered — date,
  *     time" into the matching chaseAttempt column), bumps MN Attempts (3rd
  *     press flags Escalation Required), and moves the Next Action Date forward
- *     (Email/Parachute +3 business days, Fax +1). It NEVER advances the stage —
+ *     +3 business days for every Clinicals Method. It NEVER advances the stage —
  *     patients leave Medical Necessity only via the Evaluate view.
  *   - Attempt slot (1/2/3) from Monday's MN Attempts column; the displayed
  *     active attempt is derived from the logged attempts so it stays correct
@@ -71,8 +71,8 @@ interface Props {
   /** Manager view: "Review Context" starts as a collapsed dropdown. */
   managerMode?: boolean;
   /** Which chase role this panel is rendered in (labels/copy + the optional
-   *  re-send box only). The Next Action bump is keyed off the patient's
-   *  Clinicals Method, not this: Email/Parachute +3 business days, Fax +1. */
+   *  re-send box only). The Next Action bump is a flat +3 business days for
+   *  every Clinicals Method. */
   roleMethod?: "fax" | "parachute";
 }
 
@@ -116,11 +116,9 @@ export function ChaseClinicalsPanel({ patient, onUpdate, managerMode = false, ro
 
   const isParachute = patient.clinicalsMethod === "Parachute";
   const effectiveRole = roleMethod ?? (isParachute ? "parachute" : "fax");
-  // Cadence on Complete: Email/Parachute push the Next Action Date +3 business
-  // days; Fax (or a blank method) pushes +1. Keyed off the patient's Clinicals
-  // Method — not the page role — so a deep-linked patient keeps its own cadence.
-  const nadBumpDays =
-    patient.clinicalsMethod === "Parachute" || patient.clinicalsMethod === "Email" ? 3 : 1;
+  // Cadence on Complete: every Clinicals Method (Fax/Email/Parachute/blank)
+  // pushes the Next Action Date +3 business days.
+  const nadBumpDays = 3;
 
   useEffect(() => {
     setAttemptNote("");
