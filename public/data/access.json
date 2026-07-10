@@ -3,7 +3,8 @@
     "josh@medicallymodern.com",
     "brandon@medicallymodern.com",
     "corey@medicallymodern.com",
-    "janelle@medicallymodern.com"
+    "janelle@medicallymodern.com",
+    "veda@medicallymodern.com"
   ],
   "processors": {
     "masheke@medicallymodern.com": {
@@ -34,9 +35,11 @@
     "madeline@medicallymodern.com": {
       "name": "Madeline",
       "roles": [
-        "chaseFax",
-        "confirmReceipt"
-      ]
+        "welcomeCall"
+      ],
+      "roleFilters": {
+        "welcomeCall": "all"
+      }
     },
     "josh@medicallymodern.com": {
       "name": "josh",
@@ -53,6 +56,42 @@
       "roleFilters": {
         "profile": "all",
         "finalConfirm": "all"
+      }
+    },
+    "veda@medicallymodern.com": {
+      "name": "Veda",
+      "roles": [
+        "confirmReceipt",
+        "chaseFax"
+      ],
+      "roleFilters": {
+        "chaseFax": "nonEscalated",
+        "confirmReceipt": "nonEscalated"
+      }
+    },
+    "corey@medicallymodern.com": {
+      "name": "corey",
+      "roles": [
+        "welcomeCall",
+        "profile",
+        "evaluate",
+        "sendRequest",
+        "confirmReceipt",
+        "chaseParachute",
+        "submitAuth",
+        "benefits",
+        "chaseFax",
+        "authOutstanding",
+        "subscription",
+        "finalConfirm",
+        "updateClinicals",
+        "authDenied",
+        "fax",
+        "patientQuestions"
+      ],
+      "roleFilters": {
+        "welcomeCall": "all",
+        "profile": "all"
       }
     }
   }
