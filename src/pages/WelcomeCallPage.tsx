@@ -38,6 +38,7 @@ import { PageLoadingOverlay } from "@/components/shared/PageLoadingOverlay";
 import { validatePatientForSend } from "@/lib/welcomeCall/workflow";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useBackNavigation } from "@/hooks/useBackNavigation";
+import { ReportIssueButton } from "@/components/shared/ReportIssueButton";
 import { useAutoSelectPatient } from "@/hooks/useAutoSelectPatient";
 import { viewFilterFromParams } from "@/lib/roleView";
 
@@ -239,6 +240,7 @@ const WelcomeCallPage = () => {
                 <Button onClick={resetForNewPatient} disabled={!selected} className="gap-2 bg-white text-navy hover:bg-white/90 shadow-elevate">
                   <RotateCcw className="h-4 w-4" /> Reset
                 </Button>
+                <ReportIssueButton />
               </div>
             </div>
           </header>

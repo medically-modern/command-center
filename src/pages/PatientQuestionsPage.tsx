@@ -12,6 +12,7 @@ import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { PageLoadingOverlay } from "@/components/shared/PageLoadingOverlay";
 import { ArrowLeft, MessageCircleQuestion } from "lucide-react";
 import { useBackNavigation } from "@/hooks/useBackNavigation";
+import { ReportIssueButton } from "@/components/shared/ReportIssueButton";
 
 const PatientQuestionsPage = () => {
   const { goBack } = useBackNavigation();
@@ -78,6 +79,7 @@ const PatientQuestionsPage = () => {
               </div>
               <div className="flex items-center gap-3 text-sm opacity-80">
                 <span>{filtered.length} message{filtered.length !== 1 ? "s" : ""}</span>
+                <ReportIssueButton />
               </div>
             </div>
           </header>

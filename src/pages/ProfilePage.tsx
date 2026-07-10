@@ -42,6 +42,7 @@ import { PageLoadingOverlay } from "@/components/shared/PageLoadingOverlay";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
 import { useBackNavigation } from "@/hooks/useBackNavigation";
+import { ReportIssueButton } from "@/components/shared/ReportIssueButton";
 import { ClipboardCheck, ArrowLeft, Save, AlertTriangle, ChevronDown } from "lucide-react";
 import { toast } from "sonner";
 import "./profile/redesign.css";
@@ -452,6 +453,7 @@ const ProfilePage = () => {
                 >
                   <Save className="h-4 w-4" /> Save
                 </Button>
+                <ReportIssueButton />
               </div>
             </div>
           </header>

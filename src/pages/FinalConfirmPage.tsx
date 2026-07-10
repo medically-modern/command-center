@@ -35,6 +35,7 @@ const STAGE_ADVANCER_REVIEW_PROFILE = 0;
 const SPLIT_FLAG_INDEX = 1;
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useBackNavigation } from "@/hooks/useBackNavigation";
+import { ReportIssueButton } from "@/components/shared/ReportIssueButton";
 import { useAutoSelectPatient } from "@/hooks/useAutoSelectPatient";
 import { viewFilterFromParams } from "@/lib/roleView";
 
@@ -281,6 +282,7 @@ const FinalConfirmPage = () => {
                 >
                   <RotateCcw className="h-4 w-4" /> Reset
                 </Button>
+                <ReportIssueButton />
               </div>
             </div>
           </header>

@@ -23,6 +23,7 @@ import { PageLoadingOverlay } from "@/components/shared/PageLoadingOverlay";
 import { writeStatusIndex, writeLongText, COL } from "@/lib/masheke/mondayApi";
 import { ESCALATION_INDEX } from "@/lib/masheke/mondayMapping";
 import { useBackNavigation } from "@/hooks/useBackNavigation";
+import { ReportIssueButton } from "@/components/shared/ReportIssueButton";
 
 const EvaluatePage = () => {
   const navigate = useNavigate();
@@ -120,6 +121,7 @@ const EvaluatePage = () => {
                 <Button onClick={resetForNewPatient} disabled={!selected} className="gap-2 bg-white text-navy hover:bg-white/90 shadow-elevate">
                   <RotateCcw className="h-4 w-4" /> Reset
                 </Button>
+                <ReportIssueButton />
               </div>
             </div>
           </header>

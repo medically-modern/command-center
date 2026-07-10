@@ -43,6 +43,7 @@ import {
 } from "@/components/ui/sidebar";
 import { ArrowLeft, CalendarDays, CheckCircle2, FileUp, Loader2, RefreshCw, Search, User, X } from "lucide-react";
 import { useBackNavigation } from "@/hooks/useBackNavigation";
+import { ReportIssueButton } from "@/components/shared/ReportIssueButton";
 import { PageLoadingOverlay } from "@/components/shared/PageLoadingOverlay";
 import { cn } from "@/lib/utils";
 
@@ -506,6 +507,9 @@ const UpdateClinicalsPage = () => {
                   <p className="text-sm opacity-80 mt-0.5">{selected.name}</p>
                 )}
               </div>
+              <span className="ml-auto">
+                <ReportIssueButton />
+              </span>
             </div>
           </header>
 
