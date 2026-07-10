@@ -3,11 +3,24 @@
  * at the far right of every role page header. Clicking it opens a small
  * popover asking whether the user wants to report a technical issue or make a
  * UI functionality request, with a link out to the request form.
+ *
+ * The link carries ?service=command-center&role=<role label> so the form
+ * arrives with the service and the role the user clicked from pre-selected
+ * (the form's role <select> options mirror ROLES labels — keep them in sync).
  */
+import { useLocation } from "react-router-dom";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { ExternalLink } from "lucide-react";
+import { ROLES } from "@/lib/config";
 
 const REQUEST_FORM_URL = "https://medically-modern.github.io/josh-tec-requests/";
+
+function requestFormUrl(pathname: string): string {
+  const params = new URLSearchParams({ service: "command-center" });
+  const role = ROLES.find((r) => r.route && r.route === pathname);
+  if (role) params.set("role", role.label);
+  return `${REQUEST_FORM_URL}?${params.toString()}`;
+}
 
 /** Lucide's Monitor outline with an exclamation mark drawn on the screen. */
 const MonitorAlertIcon = ({ className }: { className?: string }) => (
@@ -30,7 +43,9 @@ const MonitorAlertIcon = ({ className }: { className?: string }) => (
   </svg>
 );
 
-export const ReportIssueButton = () => (
+export const ReportIssueButton = () => {
+  const { pathname } = useLocation();
+  return (
   <Popover>
     <PopoverTrigger asChild>
       <button
@@ -49,7 +64,7 @@ export const ReportIssueButton = () => (
         request for the UI, we want to hear about it.
       </p>
       <a
-        href={REQUEST_FORM_URL}
+        href={requestFormUrl(pathname)}
         target="_blank"
         rel="noopener noreferrer"
         className="mt-3 inline-flex items-center gap-1.5 font-medium text-primary hover:underline"
@@ -59,4 +74,5 @@ export const ReportIssueButton = () => (
       </a>
     </PopoverContent>
   </Popover>
-);
+  );
+};
