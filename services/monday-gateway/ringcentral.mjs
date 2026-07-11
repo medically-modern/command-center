@@ -56,6 +56,31 @@ export function registerRingCentral({ app }) {
     if (!rcConfigured()) {
       return res.status(503).json({ error: "RingCentral is not configured on the gateway (missing RC_* env vars)." });
     }
+
+    // Fax attachment content lives on media.ringcentral.com (a DIFFERENT host
+    // from the platform API). The SPA sends the absolute URL to /rc/fetch?url=…;
+    // forward it to that exact RingCentral host with the bearer token.
+    if (req.path === "/rc/fetch") {
+      let u;
+      try { u = new URL(String((req.query && req.query.url) || "")); }
+      catch { return res.status(400).json({ error: "bad url" }); }
+      if (u.protocol !== "https:" ||
+          !/(^|\.)ringcentral\.com$/.test(u.hostname) ||
+          !/\/message-store\/\d+\/content\//.test(u.pathname)) {
+        return res.status(403).json({ error: "url not allowed" });
+      }
+      const pull = (token) => fetch(u.toString(), { headers: { Authorization: `Bearer ${token}` } });
+      try {
+        let token = await rcAccessToken();
+        let up = await pull(token);
+        if (up.status === 401) { token = await rcAccessToken(true); up = await pull(token); }
+        const ct = up.headers.get("content-type") || "application/octet-stream";
+        const buf = Buffer.from(await up.arrayBuffer());
+        return res.status(up.status).set("Content-Type", ct).send(buf);
+      } catch (e) {
+        return res.status(502).json({ error: String((e && e.message) || e) });
+      }
+    }
     const rcPath = req.originalUrl.replace(/^\/rc/, "");
     if (!ALLOWED_PATH.test(rcPath.split("?")[0])) {
       return res.status(403).json({ error: "RingCentral path not allowed" });

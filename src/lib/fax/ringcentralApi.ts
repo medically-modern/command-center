@@ -19,16 +19,17 @@ const RC_BASE = `${GATEWAY}/rc`;
  *  attachment URI) through the gateway, attaching the Workspace token. The
  *  gateway injects the RingCentral bearer token and refreshes it on 401. */
 async function rcFetch(pathOrUrl: string, init: RequestInit = {}): Promise<Response> {
-  const suffix = /^https?:\/\//.test(pathOrUrl)
-    ? (() => {
-        const u = new URL(pathOrUrl);
-        return u.pathname + u.search;
-      })()
-    : pathOrUrl;
+  // Fax attachment content lives on media.ringcentral.com — a DIFFERENT host
+  // from the platform API — so absolute URLs are passed whole to the gateway's
+  // /rc/fetch (which forwards to that exact host). Relative paths hit the
+  // platform API via /rc/<path>.
+  const target = /^https?:\/\//.test(pathOrUrl)
+    ? `${RC_BASE}/fetch?url=${encodeURIComponent(pathOrUrl)}`
+    : `${RC_BASE}${pathOrUrl}`;
   const token = getIdToken();
   const headers: Record<string, string> = { ...((init.headers as Record<string, string>) || {}) };
   if (token) headers["X-MM-Auth"] = token;
-  return fetch(`${RC_BASE}${suffix}`, { ...init, headers });
+  return fetch(target, { ...init, headers });
 }
 
 /** Number of unread faxes in the message store. Throws on failure — callers
