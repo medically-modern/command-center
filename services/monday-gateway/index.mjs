@@ -38,6 +38,7 @@ import express from "express";
 import pkg from "pg";
 const { Pool } = pkg;
 import { registerSend } from "./send.mjs";
+import { registerRingCentral } from "./ringcentral.mjs";
 import { verifyGoogleToken, authEnforced } from "./auth.mjs";
 
 const {
@@ -241,7 +242,7 @@ app.use((req, res, next) => {
     "Access-Control-Allow-Headers",
     "Content-Type, Authorization, API-Version, X-MM-User, X-MM-Auth, X-MM-Key",
   );
-  res.set("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+  res.set("Access-Control-Allow-Methods", "GET, POST, PUT, OPTIONS");
   res.set("Access-Control-Max-Age", "86400");
   if (req.method === "OPTIONS") return res.status(204).end();
   next();
@@ -542,6 +543,7 @@ app.get("/audit.json", async (req, res) => {
 
 // ── Phase 2: server-side transactional /send (durable, idempotent) ──
 registerSend({ app, pool, clientIp });
+registerRingCentral({ app });
 
 ensureSchema().finally(() => {
   app.listen(PORT, () =>
