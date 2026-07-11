@@ -15,13 +15,15 @@
  * user out.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
-import { dataRepo } from "./shared/dataRepo";
+import { dataRepoName } from "./shared/dataRepo";
+import { FILE_PROXY_URL } from "./shared/mondayAssets";
 
-const REPO = dataRepo(); // per-deployment: test→test repo, prod→prod repo (sync-safe)
-const FILE_PATH = "public/data/access.json";
+// Access config is read/written through the monday-file-proxy worker's /gh-state
+// endpoint, which holds the GitHub token SERVER-SIDE — the browser no longer
+// ships one. The worker allowlists repo + file, so this can only ever touch
+// public/data/access.json in the two Command Center repos.
 const BRANCH = "main";
-const PAT = import.meta.env.VITE_GITHUB_PAT as string | undefined;
-const API_BASE = `https://api.github.com/repos/${REPO}/contents/${FILE_PATH}`;
+const ACCESS_URL = `${FILE_PROXY_URL}/gh-state?repo=${dataRepoName()}&file=access`;
 const POLL_INTERVAL = 10_000;
 
 /** Per-role escalation scope a processor sees for a given role.
@@ -70,17 +72,10 @@ export function resolveAccess(email: string, cfg: AccessConfig): Access {
   return { type: "none" };
 }
 
-function ghHeaders(): Record<string, string> {
-  const h: Record<string, string> = { Accept: "application/vnd.github+json" };
-  if (PAT) h.Authorization = `token ${PAT}`;
-  return h;
-}
-
 let cachedSha: string | null = null;
 
 async function fetchAccess(): Promise<{ data: AccessConfig; sha: string | null }> {
-  const res = await fetch(`${API_BASE}?ref=${BRANCH}&t=${Date.now()}`, {
-    headers: ghHeaders(),
+  const res = await fetch(`${ACCESS_URL}&t=${Date.now()}`, {
     cache: "no-store",
   });
   if (res.status === 404) {
@@ -104,13 +99,15 @@ async function saveAccess(data: AccessConfig): Promise<void> {
     ...(sha ? { sha } : {}),
     branch: BRANCH,
   });
-  let res = await fetch(API_BASE, { method: "PUT", headers: ghHeaders(), body: JSON.stringify(body(cachedSha)) });
+  const put = (sha: string | null) =>
+    fetch(ACCESS_URL, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body(sha)) });
+  let res = await put(cachedSha);
   if (res.status === 409 || res.status === 422) {
     const latest = await fetchAccess();
     cachedSha = latest.sha;
-    res = await fetch(API_BASE, { method: "PUT", headers: ghHeaders(), body: JSON.stringify(body(cachedSha)) });
+    res = await put(cachedSha);
   }
-  if (!res.ok) throw new Error(`GitHub save failed: ${res.status}`);
+  if (!res.ok) throw new Error(`Access save failed: ${res.status}`);
   const json = await res.json();
   cachedSha = json.content?.sha ?? cachedSha;
 }
