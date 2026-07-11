@@ -29,6 +29,17 @@ const ALLOWED_ORIGINS = [
 ];
 const ALLOWED_SENDER_DOMAIN = "medicallymodern.com";
 
+// ── GitHub state proxy (access.json / fax-state.json) ───────────────────
+// Holds the GitHub token SERVER-SIDE (env.GITHUB_PAT) so the browser no longer
+// ships VITE_GITHUB_PAT. Locked to these repos + files, so the endpoint can only
+// ever touch the two Command Center state files — never arbitrary repo contents.
+const GH_STATE_OWNER = "medically-modern";
+const GH_STATE_REPOS = new Set(["command-center", "command-center-test"]);
+const GH_STATE_FILES = {
+  access: "public/data/access.json",
+  fax: "public/data/fax-state.json",
+};
+
 function corsHeaders(request) {
   const origin = request.headers.get("Origin") || "";
   const allow = ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGINS[0];
@@ -36,7 +47,7 @@ function corsHeaders(request) {
     "Access-Control-Allow-Origin": allow,
     "Vary": "Origin",
     "Access-Control-Allow-Headers": "Authorization, Content-Type, X-MM-Auth",
-    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+    "Access-Control-Allow-Methods": "GET, PUT, POST, OPTIONS",
     "Access-Control-Max-Age": "86400",
   };
 }
@@ -238,6 +249,29 @@ export default {
     const cors = corsHeaders(request);
     if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: cors });
     const url = new URL(request.url);
+
+    // ── GET/PUT /gh-state?repo=<slug>&file=<key> — access.json / fax-state.json
+    //    read+write with the GitHub token injected SERVER-SIDE. Replaces the old
+    //    bundled VITE_GITHUB_PAT. Repo + file are allowlisted; the response is
+    //    GitHub's verbatim so the SPA's existing parse logic is unchanged.
+    if (url.pathname === "/gh-state" && (request.method === "GET" || request.method === "PUT")) {
+      const repo = url.searchParams.get("repo") || "";
+      const path = GH_STATE_FILES[url.searchParams.get("file") || ""];
+      if (!GH_STATE_REPOS.has(repo) || !path) return json({ error: "Unknown repo/file" }, 400, cors);
+      if (!env.GITHUB_PAT) return json({ error: "GITHUB_PAT not configured on the server" }, 503, cors);
+      const ghUrl = `https://api.github.com/repos/${GH_STATE_OWNER}/${repo}/contents/${path}`;
+      const ghHeaders = {
+        Authorization: `token ${env.GITHUB_PAT}`,
+        Accept: "application/vnd.github+json",
+        "User-Agent": "mm-gh-state-proxy",
+        "X-GitHub-Api-Version": "2022-11-28",
+      };
+      const upstream = request.method === "GET"
+        ? await fetch(`${ghUrl}?ref=main&t=${Date.now()}`, { headers: ghHeaders })
+        : await fetch(ghUrl, { method: "PUT", headers: { ...ghHeaders, "Content-Type": "application/json" }, body: await request.text() });
+      const text = await upstream.text();
+      return new Response(text, { status: upstream.status, headers: { ...cors, "Content-Type": "application/json" } });
+    }
 
     // ── POST /send-message — send email as GMAIL_SENDER via Gmail API ──
     if (request.method === "POST" && url.pathname === "/send-message") {
