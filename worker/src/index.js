@@ -383,9 +383,12 @@ export default {
 
     // ── POST / — relay multipart upload to Monday's file API ────────────
     if (request.method === "POST") {
-      const token = request.headers.get("Authorization");
-      if (!token) return new Response("Missing Authorization header", { status: 401, headers: cors });
-      const headers = { Authorization: token };
+      // Monday token injected SERVER-SIDE (env.MONDAY_API_TOKEN) so the browser
+      // never needs to hold it. Falls back to the browser-forwarded header only
+      // when the env var isn't set yet — keeps uploads working during the cutover.
+      const monToken = env.MONDAY_API_TOKEN || request.headers.get("Authorization");
+      if (!monToken) return new Response("Monday token not configured", { status: 401, headers: cors });
+      const headers = { Authorization: monToken };
       const ct = request.headers.get("Content-Type");
       if (ct) headers["Content-Type"] = ct;
       const upstream = await fetch("https://api.monday.com/v2/file", { method: "POST", headers, body: request.body });
