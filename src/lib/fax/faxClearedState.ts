@@ -2,7 +2,7 @@
  * Shared "fax cleared today" latch for the FAX burndown bar.
  *
  * Persisted to the repo (**`public/data/fax-state.json`**) via the GitHub
- * Contents API (bundled `VITE_GITHUB_PAT`), exactly like `accessStore` — so the
+ * Contents API (via the worker's /gh-state proxy), exactly like `accessStore` — so the
  * FAX bar reads the SAME state for everyone (the fax handler, Brandon, every
  * device), not a per-device localStorage flag.
  *
@@ -14,31 +14,25 @@
  * again (e.g. 3). Purely a display latch — RingCentral and the Fax Inbox
  * (`/fax-inbox`) are untouched, so nothing is ever actually hidden from view.
  */
-import { dataRepo } from "../shared/dataRepo";
+import { dataRepoName } from "../shared/dataRepo";
+import { FILE_PROXY_URL } from "../shared/mondayAssets";
 
-const REPO = dataRepo(); // per-deployment: test→test repo, prod→prod repo (sync-safe)
-const FILE_PATH = "public/data/fax-state.json";
+// Persisted through the monday-file-proxy worker's /gh-state endpoint, which
+// holds the GitHub token SERVER-SIDE — the browser no longer ships one. The
+// worker allowlists repo + file, so this only ever touches fax-state.json.
 const BRANCH = "main";
-const PAT = import.meta.env.VITE_GITHUB_PAT as string | undefined;
-const API_BASE = `https://api.github.com/repos/${REPO}/contents/${FILE_PATH}`;
+const STATE_URL = `${FILE_PROXY_URL}/gh-state?repo=${dataRepoName()}&file=fax`;
 
 interface FaxState {
   /** ET date (YYYY-MM-DD) the inbox was last cleared, or null. */
   clearedDate: string | null;
 }
 
-function ghHeaders(): Record<string, string> {
-  const h: Record<string, string> = { Accept: "application/vnd.github+json" };
-  if (PAT) h.Authorization = `token ${PAT}`;
-  return h;
-}
-
 let cachedSha: string | null = null;
 
 /** Read the shared cleared-date (null when the file is missing or unparseable). */
 export async function fetchFaxClearedDate(): Promise<string | null> {
-  const res = await fetch(`${API_BASE}?ref=${BRANCH}&t=${Date.now()}`, {
-    headers: ghHeaders(),
+  const res = await fetch(`${STATE_URL}&t=${Date.now()}`, {
     cache: "no-store",
   });
   if (res.status === 404) {
@@ -63,10 +57,12 @@ async function writeFaxClearedDate(date: string): Promise<void> {
     ...(sha ? { sha } : {}),
     branch: BRANCH,
   });
-  let res = await fetch(API_BASE, { method: "PUT", headers: ghHeaders(), body: JSON.stringify(body(cachedSha)) });
+  const put = (sha: string | null) =>
+    fetch(STATE_URL, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body(sha)) });
+  let res = await put(cachedSha);
   if (res.status === 409 || res.status === 422) {
     await fetchFaxClearedDate(); // someone else wrote concurrently — refresh SHA
-    res = await fetch(API_BASE, { method: "PUT", headers: ghHeaders(), body: JSON.stringify(body(cachedSha)) });
+    res = await put(cachedSha);
   }
   if (!res.ok) throw new Error(`fax-state save failed: ${res.status}`);
   const json = await res.json();
