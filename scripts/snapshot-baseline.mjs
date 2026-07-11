@@ -14,11 +14,14 @@
 
 import { writeFileSync, mkdirSync, readFileSync, existsSync } from "fs";
 
-const TOKEN = process.env.MONDAY_API_TOKEN;
-if (!TOKEN) {
-  console.error("MONDAY_API_TOKEN is not set — aborting");
-  process.exit(1);
-}
+// This build step reaches Monday through the Railway monday-gateway, which
+// injects the real MONDAY_API_TOKEN server-side (same path the SPA uses). CI
+// therefore needs no real token: VITE_MONDAY_API_TOKEN can be a dummy
+// placeholder and this snapshot still works. Override with MONDAY_GATEWAY_URL.
+const GATEWAY = (process.env.MONDAY_GATEWAY_URL || "https://monday-gateway-production.up.railway.app").replace(/\/+$/, "");
+const MONDAY_ENDPOINT = `${GATEWAY}/gql`;
+// The gateway ignores this and injects its own token; any non-empty value is fine.
+const TOKEN = process.env.MONDAY_API_TOKEN || "gateway-handles-auth";
 
 const PAGE = 500;
 
@@ -69,7 +72,7 @@ const ESCALATION_BOARDS = [
 /* ── Monday GraphQL helper ────────────────────────────────── */
 
 async function gql(query, variables = {}) {
-  const res = await fetch("https://api.monday.com/v2", {
+  const res = await fetch(MONDAY_ENDPOINT, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
