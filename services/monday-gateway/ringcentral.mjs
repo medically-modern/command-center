@@ -29,22 +29,32 @@ const ALLOWED_PATH =
   /^\/restapi\/v1\.0\/account\/[^/]+\/extension\/[^/]+\/(message-store|sms)(\/|\?|$)/;
 
 let _token = { value: null, expiresAt: 0 };
+let _refreshing = null;
 async function rcAccessToken(force = false) {
   if (!force && _token.value && Date.now() < _token.expiresAt) return _token.value;
-  const basic = Buffer.from(`${RC_CLIENT_ID}:${RC_CLIENT_SECRET}`).toString("base64");
-  const r = await fetch(`${RC_SERVER}/restapi/oauth/token`, {
-    method: "POST",
-    headers: { Authorization: `Basic ${basic}`, "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({
-      grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer",
-      assertion: RC_JWT,
-    }).toString(),
-  });
-  if (!r.ok) throw new Error(`RingCentral auth failed (${r.status})`);
-  const j = await r.json();
-  if (!j.access_token) throw new Error("RingCentral auth: no access_token");
-  _token = { value: j.access_token, expiresAt: Date.now() + Math.max((j.expires_in ?? 3600) - 300, 60) * 1000 };
-  return _token.value;
+  // Coalesce concurrent refreshes so a burst of 401s doesn't fire N OAuth calls.
+  if (_refreshing) return _refreshing;
+  _refreshing = (async () => {
+    const basic = Buffer.from(`${RC_CLIENT_ID}:${RC_CLIENT_SECRET}`).toString("base64");
+    const r = await fetch(`${RC_SERVER}/restapi/oauth/token`, {
+      method: "POST",
+      headers: { Authorization: `Basic ${basic}`, "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer",
+        assertion: RC_JWT,
+      }).toString(),
+    });
+    if (!r.ok) throw new Error(`RingCentral auth failed (${r.status})`);
+    const j = await r.json();
+    if (!j.access_token) throw new Error("RingCentral auth: no access_token");
+    _token = { value: j.access_token, expiresAt: Date.now() + Math.max((j.expires_in ?? 3600) - 300, 60) * 1000 };
+    return _token.value;
+  })();
+  try {
+    return await _refreshing;
+  } finally {
+    _refreshing = null;
+  }
 }
 
 export function registerRingCentral({ app }) {
@@ -55,6 +65,11 @@ export function registerRingCentral({ app }) {
     }
     if (!rcConfigured()) {
       return res.status(503).json({ error: "RingCentral is not configured on the gateway (missing RC_* env vars)." });
+    }
+    // Only the verbs the SPA uses. Blocks DELETE/PATCH so an authenticated user
+    // can't irreversibly delete fax/SMS (PHI) records via a direct call.
+    if (!["GET", "POST", "PUT"].includes(req.method.toUpperCase())) {
+      return res.status(405).json({ error: "method not allowed" });
     }
 
     // Fax attachment content lives on media.ringcentral.com (a DIFFERENT host
