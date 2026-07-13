@@ -185,6 +185,11 @@ export function OperationsTab() {
     if (!snapshot) return [];
     return allRoles
       .map((role) => {
+        // A role with no key in the snapshot has no baseline to burn down
+        // against (e.g. the baseline generator predates the role, or the
+        // role's count isn't captured — fax / patient questions). Render it
+        // as "not connected" instead of a fake "0 → N" with phantom +in.
+        const connected = snapshot.counts[role.id] !== undefined;
         const baseline = snapshot.counts[role.id] ?? 0;
         const current = roleCounts[role.id] ?? 0;
         const delta = current - baseline;
@@ -196,7 +201,9 @@ export function OperationsTab() {
         const baselineIds = snapshot.patientIds?.[role.id];
         const currentIds = currentPatientIds[role.id];
 
-        if (baselineIds && currentIds) {
+        if (!connected) {
+          // no baseline — no movement to report
+        } else if (baselineIds && currentIds) {
           const baseSet = new Set(baselineIds);
           const currSet = new Set(currentIds);
           inCount = currentIds.filter((id) => !baseSet.has(id)).length;
@@ -207,7 +214,7 @@ export function OperationsTab() {
           else if (delta < 0) outCount = Math.abs(delta);
         }
 
-        return { role, baseline, current, delta, full, inCount, outCount };
+        return { role, connected, baseline, current, delta, full, inCount, outCount };
       })
       .filter((d) => d.full > 0 || d.baseline > 0);
   }, [allRoles, snapshot, roleCounts, currentPatientIds]);
@@ -357,14 +364,25 @@ export function OperationsTab() {
                   )}
                 </span>
                 <div className="flex items-center gap-2">
-                  <span className="text-xs text-muted-foreground tabular-nums">
-                    {d.baseline}
-                  </span>
-                  <span className="text-xs text-muted-foreground/50">→</span>
+                  {d.connected ? (
+                    <>
+                      <span className="text-xs text-muted-foreground tabular-nums">
+                        {d.baseline}
+                      </span>
+                      <span className="text-xs text-muted-foreground/50">→</span>
+                    </>
+                  ) : (
+                    <span
+                      className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground/60 border border-border rounded-md px-1.5 py-0.5"
+                      title="No baseline captured for this role — the bar shows the live count only"
+                    >
+                      not connected
+                    </span>
+                  )}
                   <span className="text-sm font-semibold text-foreground tabular-nums">
                     {countsLoading ? "…" : d.current}
                   </span>
-                  {(d.inCount > 0 || d.outCount > 0) ? (
+                  {!d.connected ? null : (d.inCount > 0 || d.outCount > 0) ? (
                     <span className="flex items-center gap-1">
                       {d.inCount > 0 && (
                         <span className="text-xs font-medium px-1.5 py-0.5 rounded-md tabular-nums text-amber-600 dark:text-amber-400 bg-amber-500/10">

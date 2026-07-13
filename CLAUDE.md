@@ -223,11 +223,20 @@ payer** in both this estimator and `profile/oopEstimate.ts` — `ZERO_OOP_PAYERS
 `stedi-monday-integration` Railway service and read back by `StediPanel`.
 
 ### 5.8 Burndown / baseline — `hooks/useServerBaseline.ts`, `components/dashboard/DailyBurndown.tsx`
-Daily "start-of-day" role counts are snapshotted to `public/data/baseline.json` by the
-`baseline-cron` Railway service (`services/baseline-cron`, also `scripts/snapshot-baseline.mjs`)
-and the `daily-baseline.yml` workflow. The burndown shows progress against today's baseline; if
-no baseline exists it bootstraps from live counts. Dates from Monday are **timezone-naive ET
-strings** — compare in ET, not via raw `new Date()` (see `ringcentralApi.ts` / cron comments).
+Daily "start-of-day" role counts land in `public/data/baseline.json` **two ways**: the
+`baseline-cron` Railway service (`services/baseline-cron`) **commits** it at 9 AM ET weekdays
+(cron `0 13 * * 1-5`; the commit triggers a Pages deploy, so it's what the site serves for the
+workday), and `deploy.yml` runs `scripts/snapshot-baseline.mjs` at **build time** (scheduled
+7:00 UTC weekdays, via the monday-gateway) as the pre-9 AM fallback — the script skips itself
+when a committed baseline for today already exists. **Counting contract:** both generators must
+mirror `src/hooks/useRoleCounts.ts` exactly (same escalation/follow-up/NAD filters, same
+chaseFax/chaseParachute split) — `OperationsTab` compares baseline vs that hook's live counts,
+so any drift shows up as phantom +in/-out chips all day; change all three files together. Roles
+**missing from the baseline** render as "not connected" in the Operations tab (never `0 → N`).
+The cron supports `DRY_RUN=1` (print, don't commit). The processor `DailyBurndown` bars render
+**live counts only** (baseline is not drawn there); if no server baseline exists the views
+bootstrap from live counts. Dates from Monday are **timezone-naive ET strings** — compare in
+ET, not via raw `new Date()` (see `ringcentralApi.ts` / cron comments).
 
 ### 5.9 Chase Clinicals split — Fax vs "Email & Parachute" (don't merge Email back into Fax)
 The Confirm-Receipt→Chase step has **one Monday stage** ("Chase Clinicals" on the Masheke board)
@@ -240,13 +249,16 @@ but is sliced into **two app roles** by the **Clinicals Method** status column
   cadence, but it is still **sent by email** (the optional fax/email re-send box keys off the
   panel's `roleMethod`, so Email patients in this role never see the fax re-send path).
 
-This grouping is applied in **three** places that must stay in agreement — if you "fix" one,
-fix all three (a future Claude keeps wanting to put Email back with Fax):
+This grouping is applied in **five** places that must stay in agreement — if you "fix" one,
+fix all five (a future Claude keeps wanting to put Email back with Fax):
 1. **Role page** — `src/pages/ChaseClinicalsPage.tsx` (the `useMemo` patient filter + header label).
 2. **Role counts / bars** — `src/hooks/useRoleCounts.ts` ("Chase Clinicals" bucket → `cm === "Parachute" || cm === "Email" ? "chaseParachute" : "chaseFax"`).
 3. **Oversight charts** — `src/lib/oversight/oversightApi.ts` `CHART_FILTERS` (`chase-fax` = method NOT in
    [Email, Parachute]; `chase-email-parachute` = method IN [Email, Parachute]; same split on the
    Escalations · Attempt 4+ row, ANDed with MN Attempts `color_mm1wz0vg` = `Escalate`).
+4. **Baseline (build time)** — `scripts/snapshot-baseline.mjs` `countMashekeStages` (was regressed
+   to Email→chaseFax once; see §5.8 counting contract).
+5. **Baseline (9 AM cron)** — `services/baseline-cron/index.mjs` `countMashekeStages`.
 
 **Cadence:** on Complete the Next Action Date moves **+3 business days for every Clinicals Method**
 (Fax/Email/Parachute/blank) — `ChaseClinicalsPanel.tsx` `nadBumpDays`. `config.ts`

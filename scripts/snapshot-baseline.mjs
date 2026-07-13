@@ -2,14 +2,31 @@
  * snapshot-baseline.mjs
  *
  * Fetches patient counts from all Monday.com boards and writes
- * public/data/baseline.json.  Designed to run in GitHub Actions
- * early morning ET every weekday so the SPA has an authoritative
- * start-of-day snapshot that doesn't depend on a browser being open.
+ * public/data/baseline.json. Runs at build time in deploy.yml (scheduled
+ * weekday mornings) so the SPA has a start-of-day snapshot even before the
+ * 9 AM Railway baseline-cron commit lands.
  *
- * Uses cursor-based pagination so boards with 500+ items are counted
- * accurately.
+ * COUNTING CONTRACT: counts here must mirror src/hooks/useRoleCounts.ts
+ * exactly — the burndown views compare this baseline against that hook's
+ * live counts, so any filter drift shows up as phantom "+in/-out" movement
+ * all day. services/baseline-cron/index.mjs (the Railway 9 AM generator)
+ * carries the same logic; change all three together.
  *
- * Env: MONDAY_API_TOKEN
+ * Per-role "active" rules (same as useRoleCounts):
+ *   benefits/submitAuth/authOutstanding — not escalated AND Follow Up !== "Follow Up"
+ *   evaluate/sendRequest/confirmReceipt/chaseFax/chaseParachute —
+ *     not escalated AND Next Action Date blank/today/past.
+ *     Chase split by Clinicals Method: Parachute OR Email → chaseParachute,
+ *     anything else (Fax/blank) → chaseFax (CLAUDE.md §5.9 — Email rides
+ *     with Parachute). chaseBenefits kept as the combined legacy total.
+ *   welcomeCall — not escalated AND Follow Up !== "Done"
+ *   finalConfirm — not escalated
+ *   profile — Follow Up !== "Done"
+ *   subscription — all items in the group
+ *   systemMgmt — escalated patients across all boards
+ *
+ * Env: MONDAY_API_TOKEN (dummy ok — the gateway injects the real token),
+ *      MONDAY_GATEWAY_URL (optional override)
  */
 
 import { writeFileSync, mkdirSync, readFileSync, existsSync } from "fs";
@@ -25,42 +42,38 @@ const TOKEN = process.env.MONDAY_API_TOKEN || "gateway-handles-auth";
 
 const PAGE = 500;
 
-/* ── Board / group constants (mirrors useRoleCounts.ts) ──── */
+/* ── Board / group / column constants (mirrors useRoleCounts.ts) ── */
 
 const SAM_BOARD   = 18410601299;
 const SAM_GROUPS  = {
-  benefits:       "group_mm1xr3q3",
-  submitAuth:     "group_mm1x1416",
-  authOutstanding:"group_mm2v6d1z",
+  benefits:        "group_mm1xr3q3",
+  submitAuth:      "group_mm1x1416",
+  authOutstanding: "group_mm2v6d1z",
 };
+const SAM_ESC_COL      = "color_mm2vsh2f"; // Escalation
+const SAM_FOLLOWUP_COL = "color_mm34jz1x"; // Follow Up
 
 const MESH_BOARD  = 18406060017;
-const MESH_GROUP  = "group_mm1xf2jb";   // 2. Medical Necessity
-const STAGE_COL   = "color_mm1wyr92";    // Stage Advancer
-const NAD_COL     = "date_mm1wadgs";     // Next Action Date
-const ESC_COL     = "color_mm1x7997";    // Escalation status
-const BLOCKED_COL = "color_mm33ppgw";    // Blocked status
-const STUCK_COL   = "color_mm1wf98t";    // Stuck (Advancer 2C)
-const FOLLOWUP_COL= "color_mm35v6a0";    // Follow up status
-const METHOD_COL  = "color_mm1xw7y5";    // Clinicals Method (chase fax/parachute split)
-const STAGE_MAP   = {
-  "Evaluate MN":    "evaluate",
-  "Send Request":   "sendRequest",
-  "Confirm Receipt":"confirmReceipt",
-  // Chase split June 2026 — resolved to chaseFax / chaseParachute by
-  // Clinicals Method below; chaseBenefits kept as the combined legacy total.
-  "Chase Clinicals":"chase",
-};
+const MESH_GROUP  = "group_mm1xf2jb";     // 2. Medical Necessity
+const MESH_STAGE_COL  = "color_mm1wyr92"; // Stage Advancer
+const MESH_NAD_COL    = "date_mm1wadgs";  // Next Action Date
+const MESH_ESC_COL    = "color_mm1x7997"; // Escalation
+const MESH_METHOD_COL = "color_mm1xw7y5"; // Clinicals Method (chase split)
 
 const WC_BOARD    = 18410804557;
 const WC_GROUP    = "group_mm1wvq8p";
-const FC_GROUP    = "group_mm2x8jtj";    // Final Profile Confirmation
+const FC_GROUP    = "group_mm2x8jtj";     // Final Profile Confirmation
+const WC_ESC_COL      = "color_mm1x7997"; // Escalation
+const WC_FOLLOWUP_COL = "color_mm38w2tk"; // Follow Up
 
 const PROF_BOARD  = 18406352652;
 const PROF_GROUP  = "group_mm1xf2jb";
+const PROF_FOLLOWUP_COL = "color_mm3822qq"; // Follow Up
 
 const SUB_BOARD   = 18407459988;
 const SUB_GROUP   = "topics";
+
+const ESC_REQUIRED = "Escalation Required";
 
 /* Boards with escalation columns — used for systemMgmt count */
 const ESCALATION_BOARDS = [
@@ -86,166 +99,134 @@ async function gql(query, variables = {}) {
   return json.data;
 }
 
-/* ── Count fetchers (with cursor pagination) ─────────────── */
+/* ── Item fetcher (cursor pagination, selected columns) ───── */
 
-/** Returns { count, ids } for a board group */
-async function countGroup(boardId, groupId) {
+/** All items in a board group as { id, cols: { colId: text } }. */
+async function fetchGroupItems(boardId, groupId, columnIds) {
   const compareValue = JSON.stringify([groupId]);
-
-  // First page
+  const itemFields = columnIds.length
+    ? "id column_values(ids: $cols) { id text }"
+    : "id";
   const query = `
-    query ($bid: ID!) {
+    query ($bid: ID!${columnIds.length ? ", $cols: [String!]" : ""}) {
       boards(ids: [$bid]) {
         items_page(limit: ${PAGE}, query_params: {
           rules: [{ column_id: "group", compare_value: ${compareValue} }]
-        }) {
-          cursor
-          items { id }
-        }
+        }) { cursor items { ${itemFields} } }
       }
     }`;
-  const data = await gql(query, { bid: boardId });
+  const toLight = (items) =>
+    items.map((i) => ({
+      id: String(i.id),
+      cols: Object.fromEntries((i.column_values ?? []).map((c) => [c.id, c.text ?? ""])),
+    }));
+
+  const vars = columnIds.length ? { bid: boardId, cols: columnIds } : { bid: boardId };
+  const data = await gql(query, vars);
   const page = data?.boards?.[0]?.items_page;
-  const ids = (page?.items ?? []).map(i => String(i.id));
+  const out = toLight(page?.items ?? []);
   let cursor = page?.cursor ?? null;
 
-  // Follow cursor pages
   while (cursor) {
     const nextQuery = `
-      query ($cursor: String!) {
-        next_items_page(limit: ${PAGE}, cursor: $cursor) {
-          cursor
-          items { id }
-        }
+      query ($cursor: String!${columnIds.length ? ", $cols: [String!]" : ""}) {
+        next_items_page(limit: ${PAGE}, cursor: $cursor) { cursor items { ${itemFields} } }
       }`;
-    const next = await gql(nextQuery, { cursor });
-    const nextItems = next?.next_items_page?.items ?? [];
-    ids.push(...nextItems.map(i => String(i.id)));
+    const nextVars = columnIds.length ? { cursor, cols: columnIds } : { cursor };
+    const next = await gql(nextQuery, nextVars);
+    out.push(...toLight(next?.next_items_page?.items ?? []));
     cursor = next?.next_items_page?.cursor ?? null;
   }
-
-  return { count: ids.length, ids };
+  return out;
 }
 
-async function countMashekeStages() {
-  const compareValue = JSON.stringify([MESH_GROUP]);
+/* ── Role counters (each returns { count, ids }) ──────────── */
 
-  // First page — use board-level items_page with group filter (same pattern as countGroup)
-  const query = `
-    query ($bid: ID!, $cols: [String!]) {
-      boards(ids: [$bid]) {
-        items_page(limit: ${PAGE}, query_params: {
-          rules: [{ column_id: "group", compare_value: ${compareValue} }]
-        }) {
-          cursor
-          items {
-            id
-            column_values(ids: $cols) { id text }
-          }
-        }
-      }
-    }`;
-  const colIds = [STAGE_COL, NAD_COL, ESC_COL, BLOCKED_COL, STUCK_COL, FOLLOWUP_COL, METHOD_COL];
-  const data = await gql(query, { bid: MESH_BOARD, cols: colIds });
-  const page = data?.boards?.[0]?.items_page;
-  const allItems = [...(page?.items ?? [])];
-  let cursor = page?.cursor ?? null;
+/** Samantha group: active = not escalated AND Follow Up !== "Follow Up". */
+async function countSamGroup(groupId) {
+  const items = await fetchGroupItems(SAM_BOARD, groupId, [SAM_ESC_COL, SAM_FOLLOWUP_COL]);
+  const active = items.filter(
+    (i) => i.cols[SAM_ESC_COL] !== ESC_REQUIRED && i.cols[SAM_FOLLOWUP_COL] !== "Follow Up",
+  );
+  return { count: active.length, ids: active.map((i) => i.id) };
+}
 
-  while (cursor) {
-    const nextQuery = `
-      query ($cursor: String!, $cols: [String!]) {
-        next_items_page(limit: ${PAGE}, cursor: $cursor) {
-          cursor
-          items {
-            id
-            column_values(ids: $cols) { id text }
-          }
-        }
-      }`;
-    const next = await gql(nextQuery, { cursor, cols: colIds });
-    const nextItems = next?.next_items_page?.items ?? [];
-    allItems.push(...nextItems);
-    cursor = next?.next_items_page?.cursor ?? null;
-  }
-
-  // Eastern date for pending comparison
-  const todayStr = new Date().toLocaleDateString("en-CA", { timeZone: "America/New_York" });
+/** Masheke stages: split by Stage Advancer + Clinicals Method, filter esc + future NAD. */
+async function countMashekeStages(todayStr) {
+  const items = await fetchGroupItems(MESH_BOARD, MESH_GROUP, [
+    MESH_STAGE_COL, MESH_NAD_COL, MESH_ESC_COL, MESH_METHOD_COL,
+  ]);
 
   const counts = { evaluate: 0, sendRequest: 0, confirmReceipt: 0, chaseFax: 0, chaseParachute: 0, chaseBenefits: 0 };
   const ids = { evaluate: [], sendRequest: [], confirmReceipt: [], chaseFax: [], chaseParachute: [], chaseBenefits: [] };
-  for (const item of allItems) {
-    const stageText = item.column_values?.find((c) => c.id === STAGE_COL)?.text ?? "";
-    let roleId = STAGE_MAP[stageText];
-    if (roleId === "chase") {
-      const method = item.column_values?.find((c) => c.id === METHOD_COL)?.text ?? "";
-      roleId = method === "Parachute" ? "chaseParachute" : "chaseFax";
+
+  for (const item of items) {
+    const stage = item.cols[MESH_STAGE_COL] ?? "";
+    let roleId = null;
+    if (stage === "Evaluate MN") roleId = "evaluate";
+    else if (stage === "Send Request") roleId = "sendRequest";
+    else if (stage === "Confirm Receipt") roleId = "confirmReceipt";
+    else if (stage === "Chase Clinicals") {
+      const cm = item.cols[MESH_METHOD_COL] ?? "";
+      roleId = cm === "Parachute" || cm === "Email" ? "chaseParachute" : "chaseFax";
     }
-    if (roleId && roleId in counts) {
-      // Only count active patients — exclude any in a filter bucket
-      const colText = (id) => item.column_values?.find((c) => c.id === id)?.text ?? "";
+    if (!roleId) continue;
 
-      const nad = colText(NAD_COL).slice(0, 10);
-      if (nad && nad > todayStr) continue; // pending
+    if (item.cols[MESH_ESC_COL] === ESC_REQUIRED) continue; // escalated
+    const nad = (item.cols[MESH_NAD_COL] ?? "").slice(0, 10);
+    if (nad && nad > todayStr) continue; // scheduled (future)
 
-      const escText = colText(ESC_COL);
-      if (escText === "Escalation Required" || escText === "Escalate") continue; // escalated
-      if (colText(BLOCKED_COL) === "Blocked") continue; // blocked
-      if (colText(STUCK_COL) === "Stuck") continue; // stuck
-      if (colText(FOLLOWUP_COL) === "Follow up") continue; // follow-up
-
-      counts[roleId]++;
-      ids[roleId].push(String(item.id));
-      if (roleId === "chaseFax" || roleId === "chaseParachute") {
-        counts.chaseBenefits++;
-        ids.chaseBenefits.push(String(item.id));
-      }
+    counts[roleId]++;
+    ids[roleId].push(item.id);
+    if (roleId === "chaseFax" || roleId === "chaseParachute") {
+      counts.chaseBenefits++;
+      ids.chaseBenefits.push(item.id);
     }
   }
   return { counts, ids };
 }
 
+/** Welcome Call group: active = not escalated AND Follow Up !== "Done". */
+async function countWelcomeCall() {
+  const items = await fetchGroupItems(WC_BOARD, WC_GROUP, [WC_ESC_COL, WC_FOLLOWUP_COL]);
+  const active = items.filter(
+    (i) => i.cols[WC_ESC_COL] !== ESC_REQUIRED && i.cols[WC_FOLLOWUP_COL] !== "Done",
+  );
+  return { count: active.length, ids: active.map((i) => i.id) };
+}
+
+/** Final Confirm group: active = not escalated. */
+async function countFinalConfirm() {
+  const items = await fetchGroupItems(WC_BOARD, FC_GROUP, [WC_ESC_COL]);
+  const active = items.filter((i) => i.cols[WC_ESC_COL] !== ESC_REQUIRED);
+  return { count: active.length, ids: active.map((i) => i.id) };
+}
+
+/** Profile group: active = Follow Up !== "Done". */
+async function countProfile() {
+  const items = await fetchGroupItems(PROF_BOARD, PROF_GROUP, [PROF_FOLLOWUP_COL]);
+  const active = items.filter((i) => i.cols[PROF_FOLLOWUP_COL] !== "Done");
+  return { count: active.length, ids: active.map((i) => i.id) };
+}
+
+/** Subscription group: all items. */
+async function countSubscription() {
+  const items = await fetchGroupItems(SUB_BOARD, SUB_GROUP, []);
+  return { count: items.length, ids: items.map((i) => i.id) };
+}
+
 /**
  * Count escalated patients across all boards that have an escalation column.
- * Mirrors the logic in useRoleCounts.ts → fetchAllPatients().filter(p => p.escalated).
+ * Mirrors the systemMgmt count.
  */
 async function countEscalations() {
   let total = 0;
   for (const { boardId, colId, groups } of ESCALATION_BOARDS) {
-    const compareValue = JSON.stringify(groups);
-    const query = `
-      query ($bid: ID!, $cols: [String!]) {
-        boards(ids: [$bid]) {
-          items_page(limit: ${PAGE}, query_params: {
-            rules: [{ column_id: "group", compare_value: ${compareValue} }]
-          }) {
-            cursor
-            items { id column_values(ids: $cols) { id text } }
-          }
-        }
-      }`;
-    const data = await gql(query, { bid: boardId, cols: [colId] });
-    const page = data?.boards?.[0]?.items_page;
-    const allItems = [...(page?.items ?? [])];
-    let cursor = page?.cursor ?? null;
-
-    while (cursor) {
-      const nextQuery = `
-        query ($cursor: String!, $cols: [String!]) {
-          next_items_page(limit: ${PAGE}, cursor: $cursor) {
-            cursor
-            items { id column_values(ids: $cols) { id text } }
-          }
-        }`;
-      const next = await gql(nextQuery, { cursor, cols: [colId] });
-      const nextItems = next?.next_items_page?.items ?? [];
-      allItems.push(...nextItems);
-      cursor = next?.next_items_page?.cursor ?? null;
-    }
-
-    for (const item of allItems) {
-      const txt = item.column_values?.find((c) => c.id === colId)?.text ?? "";
-      if (txt === "Escalation Required" || txt === "Escalate") {
-        total++;
+    for (const groupId of groups) {
+      const items = await fetchGroupItems(boardId, groupId, [colId]);
+      for (const item of items) {
+        const txt = item.cols[colId] ?? "";
+        if (txt === "Escalation Required" || txt === "Escalate") total++;
       }
     }
   }
@@ -257,6 +238,16 @@ async function countEscalations() {
 async function main() {
   console.log("Fetching patient counts from Monday.com…");
 
+  // Eastern date/time
+  const now = new Date();
+  const easternDate = now.toLocaleDateString("en-CA", { timeZone: "America/New_York" });
+  const easternTime = now.toLocaleTimeString("en-US", {
+    timeZone: "America/New_York",
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  });
+
   const [
     benefitsResult, submitAuthResult, authOutstandingResult,
     mashekeResult,
@@ -265,14 +256,14 @@ async function main() {
     subscriptionResult,
     systemMgmtCount,
   ] = await Promise.all([
-    countGroup(SAM_BOARD, SAM_GROUPS.benefits),
-    countGroup(SAM_BOARD, SAM_GROUPS.submitAuth),
-    countGroup(SAM_BOARD, SAM_GROUPS.authOutstanding),
-    countMashekeStages(),
-    countGroup(WC_BOARD, WC_GROUP),
-    countGroup(WC_BOARD, FC_GROUP),
-    countGroup(PROF_BOARD, PROF_GROUP),
-    countGroup(SUB_BOARD, SUB_GROUP),
+    countSamGroup(SAM_GROUPS.benefits),
+    countSamGroup(SAM_GROUPS.submitAuth),
+    countSamGroup(SAM_GROUPS.authOutstanding),
+    countMashekeStages(easternDate),
+    countWelcomeCall(),
+    countFinalConfirm(),
+    countProfile(),
+    countSubscription(),
     countEscalations(),
   ]);
 
@@ -298,16 +289,6 @@ async function main() {
     profile: profileResult.ids,
     subscription: subscriptionResult.ids,
   };
-
-  // Eastern date/time
-  const now = new Date();
-  const easternDate = now.toLocaleDateString("en-CA", { timeZone: "America/New_York" });
-  const easternTime = now.toLocaleTimeString("en-US", {
-    timeZone: "America/New_York",
-    hour: "numeric",
-    minute: "2-digit",
-    hour12: true,
-  });
 
   const baseline = {
     dateKey: easternDate,
