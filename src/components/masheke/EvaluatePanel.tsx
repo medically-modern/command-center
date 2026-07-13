@@ -109,6 +109,7 @@ import {
   XCircle,
   Plus,
   Send,
+  ChevronDown,
   ChevronRight,
   Circle,
   Activity,
@@ -213,6 +214,18 @@ export function EvaluatePanel({ patient, resetVersion = 0, onUpdate, onOpenForm 
   const mondayFiles = useMondayFiles(patient.id, {
     pollingIntervalMs: isGenerating ? 2000 : 0,
   });
+
+  // After an immediate upload settles (every file confirmed or errored),
+  // re-read Monday's file columns so the Monday-attached list updates without
+  // a page reload. A second silent refetch on the confirm-poll cadence (2.5s)
+  // covers the fast path where Monday returns the asset id before the column
+  // read reflects the new file. Stale-patient refetches are ignored inside
+  // useMondayFiles, so the delayed call is safe across patient switches.
+  const { refetch: refetchMondayFiles } = mondayFiles;
+  const refetchFilesAfterUpload = useCallback(() => {
+    void refetchMondayFiles();
+    window.setTimeout(() => void refetchMondayFiles(), 2500);
+  }, [refetchMondayFiles]);
 
   // Generate button handlers — write the Monday status column so the
   // DocExport automation actually runs. The automation fires on a *change*
@@ -696,7 +709,9 @@ export function EvaluatePanel({ patient, resetVersion = 0, onUpdate, onOpenForm 
           onRefetch={mondayFiles.refetch}
           onAdd={(files) => update("clinicalFiles", [...(state.clinicalFiles ?? []), ...files])}
           onAddRaw={(rawFiles) => {
-            clinicalUpload.upload(patient.id, COL.clinicalFiles, rawFiles);
+            void clinicalUpload
+              .upload(patient.id, COL.clinicalFiles, rawFiles)
+              .then(refetchFilesAfterUpload);
           }}
           onRemove={(idx) => {
             const next = [...(state.clinicalFiles ?? [])];
@@ -926,7 +941,9 @@ export function EvaluatePanel({ patient, resetVersion = 0, onUpdate, onOpenForm 
               update("finalClinicalFiles", [...(state.finalClinicalFiles ?? []), ...files])
             }
             onAddRaw={(rawFiles) => {
-              finalClinicalUpload.upload(patient.id, COL.finalClinicals, rawFiles);
+              void finalClinicalUpload
+                .upload(patient.id, COL.finalClinicals, rawFiles)
+                .then(refetchFilesAfterUpload);
             }}
             onRemove={(idx) => {
               const next = [...(state.finalClinicalFiles ?? [])];
@@ -1575,6 +1592,10 @@ function FileUploadCard({
   const [isDragOver, setIsDragOver] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [downloading, setDownloading] = useState(false);
+  // "Local storage" tab — browser-only file metadata (EvalState/localStorage),
+  // NOT the Monday-attached list above. Collapsed by default so reps aren't
+  // confused by seeing the same file twice.
+  const [showLocalFiles, setShowLocalFiles] = useState(false);
   const [deletingAssetId, setDeletingAssetId] = useState<string | null>(null);
   // Non-blocking delete confirmation (never window.confirm — see ConfirmDeleteDialog).
   // Stored by assetId so the confirm re-resolves the target + keep-list from
@@ -1838,30 +1859,50 @@ function FileUploadCard({
         />
       </label>
 
+      {/* Local storage tab — collapsed by default. These entries are browser-
+          only metadata (persisted in EvalState/localStorage when files were
+          dropped), not the Monday source of truth listed above. */}
       {files.length > 0 && (
-        <ul className="space-y-1">
-          {files.map((f, i) => (
-            <li
-              key={`${f.name}-${i}`}
-              className="flex items-center justify-between gap-2 text-xs bg-background border rounded px-2 py-1"
-            >
-              <span className="flex items-center gap-2 truncate">
-                <FileText className="h-3 w-3 text-muted-foreground shrink-0" />
-                <span className="truncate">{f.name}</span>
-                <span className="text-muted-foreground shrink-0">
-                  {(f.size / 1024).toFixed(1)} KB
-                </span>
-              </span>
-              <button
-                onClick={() => onRemove(i)}
-                className="text-muted-foreground hover:text-red-600"
-                aria-label="Remove file"
-              >
-                <Trash2 className="h-3 w-3" />
-              </button>
-            </li>
-          ))}
-        </ul>
+        <div>
+          <button
+            type="button"
+            onClick={() => setShowLocalFiles((v) => !v)}
+            aria-expanded={showLocalFiles}
+            className="flex items-center gap-1 text-[11px] font-medium text-muted-foreground hover:text-foreground transition-colors"
+          >
+            {showLocalFiles ? (
+              <ChevronDown className="h-3 w-3 shrink-0" />
+            ) : (
+              <ChevronRight className="h-3 w-3 shrink-0" />
+            )}
+            Local storage ({files.length})
+          </button>
+          {showLocalFiles && (
+            <ul className="space-y-1 mt-1">
+              {files.map((f, i) => (
+                <li
+                  key={`${f.name}-${i}`}
+                  className="flex items-center justify-between gap-2 text-xs bg-background border rounded px-2 py-1"
+                >
+                  <span className="flex items-center gap-2 truncate">
+                    <FileText className="h-3 w-3 text-muted-foreground shrink-0" />
+                    <span className="truncate">{f.name}</span>
+                    <span className="text-muted-foreground shrink-0">
+                      {(f.size / 1024).toFixed(1)} KB
+                    </span>
+                  </span>
+                  <button
+                    onClick={() => onRemove(i)}
+                    className="text-muted-foreground hover:text-red-600"
+                    aria-label="Remove file"
+                  >
+                    <Trash2 className="h-3 w-3" />
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
       )}
     </div>
   );

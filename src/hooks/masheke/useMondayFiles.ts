@@ -51,9 +51,15 @@ export function useMondayFiles(
   const [error, setError] = useState<string | null>(null);
   const mountedRef = useRef(true);
   const hasLoadedOnceRef = useRef(false);
+  // Tracks the CURRENT itemId so stale refetches (in-flight polls, or delayed
+  // post-upload refetches captured before a patient switch) can't clobber the
+  // new patient's data with the old patient's files.
+  const itemIdRef = useRef(itemId);
 
   const refetch = useCallback(async () => {
     if (!itemId) return;
+    // Stale closure from a previous patient — ignore.
+    if (itemIdRef.current !== itemId) return;
     if (!hasToken()) {
       setError("Monday token missing");
       return;
@@ -68,21 +74,26 @@ export function useMondayFiles(
         fetchItemFileColumns(itemId, FILE_COLUMN_IDS),
         fetchItemColumnTexts(itemId, STATUS_COLUMN_IDS),
       ]);
-      if (mountedRef.current) {
+      if (mountedRef.current && itemIdRef.current === itemId) {
         setData(files);
         setStatuses(texts);
         hasLoadedOnceRef.current = true;
       }
     } catch (e) {
-      if (mountedRef.current) setError(e instanceof Error ? e.message : String(e));
+      if (mountedRef.current && itemIdRef.current === itemId) {
+        setError(e instanceof Error ? e.message : String(e));
+      }
     } finally {
-      if (mountedRef.current && isInitial) setLoading(false);
+      if (mountedRef.current && itemIdRef.current === itemId && isInitial) {
+        setLoading(false);
+      }
     }
   }, [itemId]);
 
   // Reset state when itemId changes; do an initial fetch.
   useEffect(() => {
     mountedRef.current = true;
+    itemIdRef.current = itemId;
     hasLoadedOnceRef.current = false;
     setData({});
     setStatuses({});

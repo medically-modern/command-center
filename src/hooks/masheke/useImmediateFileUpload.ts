@@ -31,7 +31,9 @@ interface UseImmediateFileUploadReturn {
   busy: boolean;
   /** True when every file has been confirmed server-side (or list is empty). */
   allConfirmed: boolean;
-  /** Immediately upload new files to the given Monday column. */
+  /** Immediately upload new files to the given Monday column. The returned
+   *  promise resolves once EVERY file has settled — confirmed server-side or
+   *  errored — so callers can refetch Monday's file list at that point. */
   upload: (
     itemId: string,
     columnId: string,
@@ -131,7 +133,9 @@ export function useImmediateFileUpload(): UseImmediateFileUploadReturn {
               updateFile(file.name, { status: "confirmed" });
             } else {
               // No id in the response — fall back to polling the column.
-              confirmFile(itemId, columnId, file.name);
+              // Awaited so the upload() promise only resolves once the file
+              // is actually visible in Monday's column read (or timed out).
+              await confirmFile(itemId, columnId, file.name);
             }
           } catch (err) {
             const msg = err instanceof Error ? err.message : String(err);
