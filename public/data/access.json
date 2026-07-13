@@ -40,11 +40,7 @@
     },
     "josh@medicallymodern.com": {
       "name": "josh",
-      "roles": [
-        "profile",
-        "sendRequest",
-        "chaseFax"
-      ],
+      "roles": [],
       "roleOrder": {},
       "roleFilters": {}
     },
