@@ -16,6 +16,7 @@ import {
   NOT_CLEAR_PRODUCT_ID,
   PRODUCT_CODE_TO_PRODUCT_ID,
   TRIGGER_DVS_INDEX,
+  TRIGGER_PUMP_DVS_INDEX,
   SKIP_SOS_PRODUCT_ID,
   STAGE_INDEX,
   UNIVERSAL_INDEX,
@@ -440,6 +441,17 @@ export async function sendPatientToMonday(p: Patient, context: "benefits" | "sub
       label: "Trigger DVS",
       columnId: COL.triggerDvs,
       fn: () => writeStatusIndex(p.id, COL.triggerDvs, TRIGGER_DVS_INDEX.triggerDvs),
+    });
+  }
+
+  // ----- Trigger Pump DVS (Medicaid + insulin pump) -----
+  // Separate bot system from the supplies DVS: its own trigger column,
+  // no retry, no claims. Only write when the agent toggled the button.
+  if (p.triggerPumpDvs) {
+    tasks.push({
+      label: "Trigger Pump DVS",
+      columnId: COL.triggerPumpDvs,
+      fn: () => writeStatusIndex(p.id, COL.triggerPumpDvs, TRIGGER_PUMP_DVS_INDEX.triggerPumpDvs),
     });
   }
 

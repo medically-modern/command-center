@@ -104,6 +104,19 @@ const ChaseBenefitsPage = () => {
     return resolved.some((r) => r.product === "infusion_set" || r.product === "cartridge");
   }, [selected?.primaryInsurance, selected?.secondaryInsurance, selected?.serving]);
 
+  // Show "Trigger Pump DVS" when Medicaid appears in either insurance AND
+  // the serving includes the insulin pump. Separate bot from the supplies
+  // DVS: own trigger column, no retry, no claims.
+  const showTriggerPumpDvs = useMemo(() => {
+    if (!selected) return false;
+    const pri = (selected.primaryInsurance ?? "").toLowerCase();
+    const sec = (selected.secondaryInsurance ?? "").toLowerCase();
+    const hasMedicaid = pri.includes("medicaid") || sec.includes("medicaid");
+    if (!hasMedicaid) return false;
+    const resolved = resolveHcpcs(selected.primaryInsurance || null, selected.serving || null, selected.secondaryInsurance ?? null);
+    return resolved.some((r) => r.product === "insulin_pump");
+  }, [selected?.primaryInsurance, selected?.secondaryInsurance, selected?.serving]);
+
   const handleSend = async () => {
     if (!selected) return;
     if (benefitsMissing.length > 0) return;
@@ -211,20 +224,36 @@ const ChaseBenefitsPage = () => {
                     onOpenForm={() => setEscalationModalOpen(true)}
                   />
 
-                  {showTriggerDvs && (
-                    <div className="flex justify-center">
-                      <Button
-                        onClick={() => update(selected.id, { triggerDvs: !selected.triggerDvs })}
-                        variant="outline"
-                        className={
-                          selected.triggerDvs
-                            ? "gap-2 bg-blue-100 hover:bg-blue-200 !text-blue-700 border-blue-400 shadow-md"
-                            : "gap-2 border-blue-300 !text-blue-600 hover:bg-blue-50"
-                        }
-                      >
-                        <Zap className="h-4 w-4" />
-                        {selected.triggerDvs ? "DVS Triggered" : "Trigger DVS"}
-                      </Button>
+                  {(showTriggerDvs || showTriggerPumpDvs) && (
+                    <div className="flex justify-center gap-3 flex-wrap">
+                      {showTriggerDvs && (
+                        <Button
+                          onClick={() => update(selected.id, { triggerDvs: !selected.triggerDvs })}
+                          variant="outline"
+                          className={
+                            selected.triggerDvs
+                              ? "gap-2 bg-blue-100 hover:bg-blue-200 !text-blue-700 border-blue-400 shadow-md"
+                              : "gap-2 border-blue-300 !text-blue-600 hover:bg-blue-50"
+                          }
+                        >
+                          <Zap className="h-4 w-4" />
+                          {selected.triggerDvs ? "Supplies DVS Triggered" : "Trigger Supplies DVS"}
+                        </Button>
+                      )}
+                      {showTriggerPumpDvs && (
+                        <Button
+                          onClick={() => update(selected.id, { triggerPumpDvs: !selected.triggerPumpDvs })}
+                          variant="outline"
+                          className={
+                            selected.triggerPumpDvs
+                              ? "gap-2 bg-indigo-100 hover:bg-indigo-200 !text-indigo-700 border-indigo-400 shadow-md"
+                              : "gap-2 border-indigo-300 !text-indigo-600 hover:bg-indigo-50"
+                          }
+                        >
+                          <Zap className="h-4 w-4" />
+                          {selected.triggerPumpDvs ? "Pump DVS Triggered" : "Trigger Pump DVS"}
+                        </Button>
+                      )}
                     </div>
                   )}
 

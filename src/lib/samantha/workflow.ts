@@ -426,6 +426,9 @@ export interface Patient {
   pumpBrand?: string;
   /** DVS status label from Monday (e.g. "Trigger DVS", "Running", "Success") */
   dvsStatus?: string;
+  /** Pump DVS status label from Monday (e.g. "Trigger Pump DVS", "Running",
+   *  "Success", "Denied") — the separate insulin-pump bot's column. */
+  pumpDvsStatus?: string;
   /** Claims Status label from Monday (e.g. "Claims Paid", "Claims Denied") */
   claimsStatus?: string;
   escalated?: boolean;
@@ -434,6 +437,9 @@ export interface Patient {
   /** Trigger DVS — set when Medicaid + supplies serving. Written to
    *  Monday's "Trigger DVS -TEST" column on Send to Monday. */
   triggerDvs?: boolean;
+  /** Trigger Pump DVS — set when Medicaid + pump serving. Written to
+   *  Monday's "Trigger Pump DVS" column on Send to Monday. */
+  triggerPumpDvs?: boolean;
   /** Follow Up status — read from Monday. "Follow Up" when active. */
   followUp?: string;
   /** Follow Up date — YYYY-MM-DD. */

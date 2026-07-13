@@ -44,6 +44,9 @@ export const COL = {
   // Trigger DVS (Medicaid supplies automation)
   triggerDvs: "color_mm26pk1a",
 
+  // Trigger Pump DVS (Medicaid insulin-pump automation — separate bot system)
+  triggerPumpDvs: "color_mm578kbd",
+
   // Follow Up
   followUp: "color_mm34jz1x",
   followUpDate: "date_mm34m2dz",
@@ -242,6 +245,7 @@ export const AUTH_READ_COLUMN_IDS = [
   COL.carecentrixIntakeId,
   COL.daysSinceStage,
   COL.triggerDvs,
+  COL.triggerPumpDvs,
   COL.claimsStatus,
 ];
 

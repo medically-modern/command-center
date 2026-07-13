@@ -34,6 +34,11 @@ export const TRIGGER_DVS_INDEX = {
   triggerDvs: 1,
 } as const;
 
+// Trigger Pump DVS status indices (index 1 = "Trigger Pump DVS" fire label)
+export const TRIGGER_PUMP_DVS_INDEX = {
+  triggerPumpDvs: 1,
+} as const;
+
 // Follow Up status indices
 export const FOLLOW_UP_INDEX = {
   followUp: 1,
@@ -194,6 +199,7 @@ export function mondayItemToPatient(item: MondayItem): Patient {
   const patientAddress = cv(COL.patientAddress)?.text ?? "";
   const pumpBrand = cv(COL.pumpBrand)?.text ?? "";
   const dvsStatus = cv(COL.triggerDvs)?.text ?? "";
+  const pumpDvsStatus = cv(COL.triggerPumpDvs)?.text ?? "";
   const claimsStatus = cv(COL.claimsStatus)?.text ?? "";
   // Secondary Insurance is a status column with labels: "None", "NY Medicaid",
   // "Medicare Supplement". The text comes back as the label string.
@@ -370,6 +376,7 @@ export function mondayItemToPatient(item: MondayItem): Patient {
     patientAddress,
     pumpBrand,
     dvsStatus: dvsStatus || undefined,
+    pumpDvsStatus: pumpDvsStatus || undefined,
     claimsStatus: claimsStatus || undefined,
     escalated,
     stageAdvancerText,

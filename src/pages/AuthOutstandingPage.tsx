@@ -35,8 +35,8 @@ import { sidebarVisibleList } from "@/lib/samantha/sidebarList";
 
 /* ── DVS + Claims Status Visual ─────────────────────────────────── */
 
-function DvsClaimsVisual({ dvsStatus, claimsStatus }: { dvsStatus?: string; claimsStatus?: string }) {
-  if (!dvsStatus) return null;
+function DvsClaimsVisual({ dvsStatus, claimsStatus, pumpDvsStatus }: { dvsStatus?: string; claimsStatus?: string; pumpDvsStatus?: string }) {
+  if (!dvsStatus && !pumpDvsStatus) return null;
 
   const statusColor = (label: string | undefined) => {
     if (!label) return "bg-muted text-muted-foreground";
@@ -52,17 +52,27 @@ function DvsClaimsVisual({ dvsStatus, claimsStatus }: { dvsStatus?: string; clai
     <div className="rounded-xl bg-card border shadow-card p-4">
       <p className="text-xs uppercase tracking-wider text-muted-foreground mb-3">Verification Status</p>
       <div className="flex items-stretch gap-4">
-        <div className="flex-1 rounded-lg border p-3 text-center space-y-1.5">
-          <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">DVS</p>
-          <span className={`inline-block px-3 py-1 rounded-full text-xs font-medium ${statusColor(dvsStatus)}`}>
-            {dvsStatus}
-          </span>
-          {dvsStatus?.toLowerCase() === "mltc" && (
-            <p className="text-xs font-semibold text-red-600 mt-1.5">
-              MLTC requires auth for supplies, submit auth via fax.
-            </p>
-          )}
-        </div>
+        {dvsStatus && (
+          <div className="flex-1 rounded-lg border p-3 text-center space-y-1.5">
+            <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Supplies DVS</p>
+            <span className={`inline-block px-3 py-1 rounded-full text-xs font-medium ${statusColor(dvsStatus)}`}>
+              {dvsStatus}
+            </span>
+            {dvsStatus?.toLowerCase() === "mltc" && (
+              <p className="text-xs font-semibold text-red-600 mt-1.5">
+                MLTC requires auth for supplies, submit auth via fax.
+              </p>
+            )}
+          </div>
+        )}
+        {pumpDvsStatus && (
+          <div className="flex-1 rounded-lg border p-3 text-center space-y-1.5">
+            <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Pump DVS</p>
+            <span className={`inline-block px-3 py-1 rounded-full text-xs font-medium ${statusColor(pumpDvsStatus)}`}>
+              {pumpDvsStatus}
+            </span>
+          </div>
+        )}
         <div className="flex-1 rounded-lg border p-3 text-center space-y-1.5">
           <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Claim</p>
           <span className={`inline-block px-3 py-1 rounded-full text-xs font-medium ${statusColor(claimsStatus)}`}>
@@ -131,6 +141,19 @@ const AuthOutstandingPage = () => {
     if (!hasMedicaid) return false;
     const resolved = resolveHcpcs(selected.primaryInsurance || null, selected.serving || null, selected.secondaryInsurance ?? null);
     return resolved.some((r) => r.product === "infusion_set" || r.product === "cartridge");
+  }, [selected?.primaryInsurance, selected?.secondaryInsurance, selected?.serving]);
+
+  // Show "Trigger Pump DVS" when Medicaid appears in either insurance AND
+  // the serving includes the insulin pump. Separate bot from the supplies
+  // DVS: own trigger column, no retry, no claims.
+  const showTriggerPumpDvs = useMemo(() => {
+    if (!selected) return false;
+    const pri = (selected.primaryInsurance ?? "").toLowerCase();
+    const sec = (selected.secondaryInsurance ?? "").toLowerCase();
+    const hasMedicaid = pri.includes("medicaid") || sec.includes("medicaid");
+    if (!hasMedicaid) return false;
+    const resolved = resolveHcpcs(selected.primaryInsurance || null, selected.serving || null, selected.secondaryInsurance ?? null);
+    return resolved.some((r) => r.product === "insulin_pump");
   }, [selected?.primaryInsurance, selected?.secondaryInsurance, selected?.serving]);
 
   // Show "Claims Paid — Mark Complete" when DVS succeeded and claims are paid.
@@ -244,7 +267,7 @@ const AuthOutstandingPage = () => {
               {selected && (
                 <>
                   <PatientProfileCard patient={selected} onUpdate={(p) => update(selected.id, p)} />
-                  <DvsClaimsVisual dvsStatus={selected.dvsStatus} claimsStatus={selected.claimsStatus} />
+                  <DvsClaimsVisual dvsStatus={selected.dvsStatus} claimsStatus={selected.claimsStatus} pumpDvsStatus={selected.pumpDvsStatus} />
                   <AuthOutstandingPanel patient={selected} onCodeChange={updateCode} onNotesChange={(v) => update(selected.id, { notes: v })} onSaveNotesToMonday={(v) => writeLongText(selected.id, COL.callReferenceNotes, v)} />
                   <EscalateButton
                     escalated={!!selected.escalated}
@@ -252,20 +275,36 @@ const AuthOutstandingPage = () => {
                     onOpenForm={() => setEscalationModalOpen(true)}
                   />
 
-                  {showTriggerDvs && (
-                    <div className="flex justify-center">
-                      <Button
-                        onClick={() => update(selected.id, { triggerDvs: !selected.triggerDvs })}
-                        variant="outline"
-                        className={
-                          selected.triggerDvs
-                            ? "gap-2 bg-blue-100 hover:bg-blue-200 !text-blue-700 border-blue-400 shadow-md"
-                            : "gap-2 border-blue-300 !text-blue-600 hover:bg-blue-50"
-                        }
-                      >
-                        <Zap className="h-4 w-4" />
-                        {selected.triggerDvs ? "DVS Triggered" : "Trigger DVS"}
-                      </Button>
+                  {(showTriggerDvs || showTriggerPumpDvs) && (
+                    <div className="flex justify-center gap-3 flex-wrap">
+                      {showTriggerDvs && (
+                        <Button
+                          onClick={() => update(selected.id, { triggerDvs: !selected.triggerDvs })}
+                          variant="outline"
+                          className={
+                            selected.triggerDvs
+                              ? "gap-2 bg-blue-100 hover:bg-blue-200 !text-blue-700 border-blue-400 shadow-md"
+                              : "gap-2 border-blue-300 !text-blue-600 hover:bg-blue-50"
+                          }
+                        >
+                          <Zap className="h-4 w-4" />
+                          {selected.triggerDvs ? "Supplies DVS Triggered" : "Trigger Supplies DVS"}
+                        </Button>
+                      )}
+                      {showTriggerPumpDvs && (
+                        <Button
+                          onClick={() => update(selected.id, { triggerPumpDvs: !selected.triggerPumpDvs })}
+                          variant="outline"
+                          className={
+                            selected.triggerPumpDvs
+                              ? "gap-2 bg-indigo-100 hover:bg-indigo-200 !text-indigo-700 border-indigo-400 shadow-md"
+                              : "gap-2 border-indigo-300 !text-indigo-600 hover:bg-indigo-50"
+                          }
+                        >
+                          <Zap className="h-4 w-4" />
+                          {selected.triggerPumpDvs ? "Pump DVS Triggered" : "Trigger Pump DVS"}
+                        </Button>
+                      )}
                     </div>
                   )}
 
