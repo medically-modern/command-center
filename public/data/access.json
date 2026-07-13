@@ -44,7 +44,9 @@
         "patientQuestions"
       ],
       "roleOrder": {},
-      "roleFilters": {}
+      "roleFilters": {
+        "patientQuestions": "all"
+      }
     },
     "brandon@medicallymodern.com": {
       "name": "brandon",
