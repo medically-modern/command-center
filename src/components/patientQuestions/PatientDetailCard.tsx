@@ -1,15 +1,20 @@
 /**
- * Patient Questions — read-only detail card.
+ * Patient Questions — detail card.
  * Mimics the Subscription PatientInfoCard layout.
- * Message is the hero element at the top.
+ * Message is the hero element at the top, with a "Mark completed" action;
+ * phone renders as the Evaluate-style Call + Text (RingCentral) buttons.
  */
-import { MessageCircle, Phone } from "lucide-react";
+import { useState } from "react";
+import { CheckCircle2, Loader2, MessageCircle } from "lucide-react";
 import { Card } from "@/components/ui/card";
+import { PatientContact } from "@/components/masheke/mmKit";
 import type { PatientQuestion } from "@/lib/patientQuestions/types";
 import { cn } from "@/lib/utils";
 
 interface Props {
   patient: PatientQuestion;
+  /** Marks the question handled (page owns the Monday write + list update). */
+  onMarkCompleted?: (patient: PatientQuestion) => Promise<void>;
 }
 
 // ── Helpers ──
@@ -67,12 +72,24 @@ function DaysToOrderField({ value }: { value: string }) {
 
 // ── Main component ──
 
-export function PatientDetailCard({ patient }: Props) {
+export function PatientDetailCard({ patient, onMarkCompleted }: Props) {
+  const [completing, setCompleting] = useState(false);
+
+  const markCompleted = async () => {
+    if (!onMarkCompleted || completing) return;
+    setCompleting(true);
+    try {
+      await onMarkCompleted(patient);
+    } finally {
+      setCompleting(false);
+    }
+  };
+
   return (
     <div className="space-y-4">
       {/* ═══ HERO: Patient Message ═══ */}
       <Card className="p-5 border-l-4 border-l-sky-500 bg-sky-50/50 dark:bg-sky-950/20">
-        <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center justify-between mb-3 gap-3 flex-wrap">
           <div className="flex items-center gap-2">
             <MessageCircle className="h-5 w-5 text-sky-600" />
             <h3 className="text-xs font-semibold uppercase tracking-wider text-sky-700 dark:text-sky-300">
@@ -87,9 +104,25 @@ export function PatientDetailCard({ patient }: Props) {
               {patient.source === "subscription" ? "Re-order" : "Co-Pay"}
             </span>
           </div>
-          <span className="text-xs text-muted-foreground">
-            {formatTimestamp(patient.messageUpdatedAt)}
-          </span>
+          <div className="flex items-center gap-3">
+            <span className="text-xs text-muted-foreground">
+              {formatTimestamp(patient.messageUpdatedAt)}
+            </span>
+            {onMarkCompleted && (
+              <button
+                type="button"
+                onClick={() => void markCompleted()}
+                disabled={completing}
+                title="Removes this question from the inbox. It comes back automatically if the patient writes again."
+                className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-bold text-white shadow-sm transition-opacity hover:opacity-90 disabled:opacity-60 bg-emerald-600"
+              >
+                {completing
+                  ? <Loader2 className="h-3.5 w-3.5 animate-spin shrink-0" />
+                  : <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />}
+                Mark completed
+              </button>
+            )}
+          </div>
         </div>
         <div className="rounded-lg bg-white dark:bg-card border p-4">
           <p className="text-sm leading-relaxed whitespace-pre-wrap">{patient.message}</p>
@@ -117,10 +150,8 @@ export function PatientDetailCard({ patient }: Props) {
         {patient.phone && (
           <div className="text-right">
             <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1">Phone</p>
-            <a href={`tel:${patient.phone}`} className="text-lg font-semibold text-primary hover:underline flex items-center gap-1.5 justify-end">
-              <Phone className="h-4 w-4" />
-              {formatPhone(patient.phone)}
-            </a>
+            {/* Same Call + Text (RingCentral thread) buttons as Evaluate */}
+            <PatientContact phone={patient.phone} />
           </div>
         )}
       </Card>

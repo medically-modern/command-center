@@ -1,11 +1,15 @@
 /**
- * Patient Questions — read-only inbox view.
+ * Patient Questions — inbox view.
  * Aggregates patient messages from the Subscription board ("Patient Help Message")
- * and Secondary Claims board ("Patient Message").
+ * and Secondary Claims board ("Patient Message"). "Mark completed" stamps the
+ * board's "Question Handled At" column; the question reappears automatically
+ * if the patient writes again (see lib/patientQuestions/handled.ts).
  */
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { toast } from "sonner";
 import { useMondayPatients } from "@/hooks/patientQuestions/useMondayPatients";
 import type { PatientQuestion } from "@/lib/patientQuestions/types";
+import { markQuestionHandled, unmarkQuestionHandled } from "@/lib/patientQuestions/mondayApi";
 import { PatientsSidebar } from "@/components/patientQuestions/PatientsSidebar";
 import { PatientDetailCard } from "@/components/patientQuestions/PatientDetailCard";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
@@ -19,10 +23,47 @@ const PatientQuestionsPage = () => {
   const { patients, loading, initialLoading, error, refetch } = useMondayPatients();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"all" | "subscription" | "claims">("all");
+  // Optimistic dismissals: id → the messageUpdatedAt it was completed at.
+  // Keeps the item hidden while Monday indexes the write (the poll could
+  // otherwise briefly resurface it) — but only for that exact message, so a
+  // NEWER patient message still reappears immediately.
+  const [dismissed, setDismissed] = useState<Record<string, string>>({});
+
+  const visible = useMemo(
+    () => patients.filter((p) => dismissed[p.id] !== p.messageUpdatedAt),
+    [patients, dismissed],
+  );
+
+  const undoCompleted = useCallback(async (patient: PatientQuestion) => {
+    try {
+      await unmarkQuestionHandled(patient);
+      setDismissed((d) => {
+        const { [patient.id]: _drop, ...rest } = d;
+        return rest;
+      });
+      void refetch(true);
+    } catch (e) {
+      toast.error("Couldn't undo", { description: e instanceof Error ? e.message : String(e) });
+    }
+  }, [refetch]);
+
+  const handleMarkCompleted = useCallback(async (patient: PatientQuestion) => {
+    try {
+      await markQuestionHandled(patient);
+      setDismissed((d) => ({ ...d, [patient.id]: patient.messageUpdatedAt }));
+      toast.success(`${patient.name} marked completed`, {
+        description: "The question reappears automatically if the patient writes again.",
+        action: { label: "Undo", onClick: () => void undoCompleted(patient) },
+      });
+      void refetch(true);
+    } catch (e) {
+      toast.error("Couldn't mark completed", { description: e instanceof Error ? e.message : String(e) });
+    }
+  }, [refetch, undoCompleted]);
 
   const filtered = useMemo(
-    () => activeTab === "all" ? patients : patients.filter((p) => p.source === activeTab),
-    [patients, activeTab],
+    () => activeTab === "all" ? visible : visible.filter((p) => p.source === activeTab),
+    [visible, activeTab],
   );
 
   // Auto-select first patient when data loads
@@ -38,8 +79,8 @@ const PatientQuestionsPage = () => {
   }, [filtered, selectedId]);
 
   const selected: PatientQuestion | undefined = useMemo(
-    () => patients.find((p) => p.id === selectedId),
-    [patients, selectedId],
+    () => visible.find((p) => p.id === selectedId),
+    [visible, selectedId],
   );
 
   return (
@@ -47,7 +88,7 @@ const PatientQuestionsPage = () => {
       <PageLoadingOverlay show={initialLoading} />
       <div className="min-h-screen flex w-full bg-gradient-subtle">
         <PatientsSidebar
-          patients={patients}
+          patients={visible}
           selectedId={selectedId}
           onSelect={setSelectedId}
           loading={loading}
@@ -94,14 +135,14 @@ const PatientQuestionsPage = () => {
                       ? "Loading patient messages from Monday…"
                       : error
                         ? error
-                        : patients.length === 0
-                          ? "No patient messages found. Messages will appear here when patients submit questions via the reorder form or co-pay portal."
+                        : visible.length === 0
+                          ? "No open patient messages. Messages appear here when patients submit questions via the reorder form or co-pay portal."
                           : "Select a patient from the sidebar to view their message."}
                   </p>
                 </div>
               )}
 
-              {selected && <PatientDetailCard patient={selected} />}
+              {selected && <PatientDetailCard patient={selected} onMarkCompleted={handleMarkCompleted} />}
             </section>
           </main>
         </div>

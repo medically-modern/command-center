@@ -305,8 +305,12 @@ columns" automation on duplicated items). The SPA only flips the advancer; verif
 - **System Management** (`/system-mgmt`, `lib/systemMgmt/mondayApi.ts`) aggregates counts/pipeline
   across *all* boards (hardcoded board + stage-advancer column IDs); `OperationsTab` + `PipelineChart`
   render burndown and day-bucket distributions.
-- **Patient Questions** (`/patient-questions`) is a read-only inbox merging "patient message"
-  columns from the Subscription + Secondary Claims boards.
+- **Patient Questions** (`/patient-questions`) is an inbox merging "patient message" columns from
+  the Subscription + Secondary Claims boards. **Mark completed** stamps a "Question Handled At"
+  date column (Subscription `date_mm57yzmb`, Claims `date_mm57skrd`); an item shows only while
+  its message is **newer** than that stamp (`lib/patientQuestions/handled.ts`), so a new patient
+  message automatically reopens it — don't add a status column for this. Phone renders the
+  Evaluate-style Call + Text buttons (`masheke/mmKit.tsx` `PatientContact`).
 - **Fax Inbox** (`/fax-inbox`) reads inbound faxes from RingCentral.
 - **Access admin** (`/access`, managers only) edits `access.json` (auto-saves per mutation).
 

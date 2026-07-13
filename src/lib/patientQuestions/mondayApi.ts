@@ -1,14 +1,19 @@
 /**
- * Monday.com API for Patient Questions — read-only.
+ * Monday.com API for Patient Questions.
  *
  * Fetches from two boards:
  *   1. Subscription Board (18407459988) — "Patient Help Message" column
  *   2. Secondary Claims Board (18413019028) — "Patient Message" column
  *
- * Only returns items where the message column is populated.
+ * Only returns items where the message column is populated AND the message
+ * is newer than the "Question Handled At" mark (see handled.ts). The one
+ * write this module does is that mark — markQuestionHandled /
+ * unmarkQuestionHandled. No automation keys on the column (it's purely an
+ * inbox filter input), so it doesn't need the verified-write protocol.
  */
 
 import type { PatientQuestion } from "./types";
+import { isQuestionOpen, mondayDateValueToIso, newestTimestamp, nowAsMondayDateValue } from "./handled";
 
 import { MONDAY_API_URL, mondayIdentityHeaders } from "../shared/mondayEndpoint";
 const MONDAY_API_VERSION = "2024-10";
@@ -23,6 +28,7 @@ const CLAIMS_BOARD_ID = 18413019028;
 const SUB_COL = {
   patientHelpMessage: "long_text_mm3xnb6k",
   responseTimestamp: "text_mm3kt9bs",
+  questionHandledAt: "date_mm57yzmb",
   status: "color_mm2t7tdy",
   daysToOrder: "color_mkxmtv9c",
   orderingCycle: "color_mkyjawhq",
@@ -82,6 +88,7 @@ const SUB_COL = {
 
 const CLAIMS_COL = {
   patientMessage: "long_text_mm3yqgyt",
+  questionHandledAt: "date_mm57skrd",
   dob: "text_mkp3y5ax",
   gender: "color_mm1zy5f2",
   phone: "phone_mm1znnww",
@@ -243,6 +250,8 @@ export async function fetchPatientQuestions(): Promise<PatientQuestion[]> {
     const msg = longTextParts(item, SUB_COL.patientHelpMessage);
     if (!msg.text.trim()) continue;
     const explicitTs = txt(item, SUB_COL.responseTimestamp);
+    const handledAt = mondayDateValueToIso(cv(item, SUB_COL.questionHandledAt)?.value);
+    if (!isQuestionOpen(newestTimestamp(explicitTs, msg.updatedAt), handledAt)) continue;
     results.push({
       ...EMPTY,
       id: item.id,
@@ -319,6 +328,8 @@ export async function fetchPatientQuestions(): Promise<PatientQuestion[]> {
   for (const item of claimsItems) {
     const msg = longTextParts(item, CLAIMS_COL.patientMessage);
     if (!msg.text.trim()) continue;
+    const handledAt = mondayDateValueToIso(cv(item, CLAIMS_COL.questionHandledAt)?.value);
+    if (!isQuestionOpen(msg.updatedAt, handledAt)) continue;
     results.push({
       ...EMPTY,
       id: item.id,
@@ -376,4 +387,32 @@ export async function fetchPatientQuestions(): Promise<PatientQuestion[]> {
 export async function fetchPatientQuestionsCount(): Promise<number> {
   const questions = await fetchPatientQuestions();
   return questions.length;
+}
+
+// ── Mark completed ──────────────────────────────────────────────────
+
+const HANDLED_COL_BY_BOARD: Record<number, string> = {
+  [SUB_BOARD_ID]: SUB_COL.questionHandledAt,
+  [CLAIMS_BOARD_ID]: CLAIMS_COL.questionHandledAt,
+};
+
+async function writeHandledColumn(q: Pick<PatientQuestion, "id" | "boardId">, value: object): Promise<void> {
+  const colId = HANDLED_COL_BY_BOARD[q.boardId];
+  if (!colId) throw new Error(`No "Question Handled At" column mapped for board ${q.boardId}`);
+  await gql(
+    `mutation ($item: ID!, $board: ID!, $col: String!, $val: JSON!) {
+      change_column_value(item_id: $item, board_id: $board, column_id: $col, value: $val) { id }
+    }`,
+    { item: q.id, board: q.boardId, col: colId, val: JSON.stringify(value) },
+  );
+}
+
+/** Stamp "handled now" — the inbox hides the item until a newer message arrives. */
+export async function markQuestionHandled(q: Pick<PatientQuestion, "id" | "boardId">): Promise<void> {
+  await writeHandledColumn(q, nowAsMondayDateValue());
+}
+
+/** Undo — clear the mark so the question shows again. */
+export async function unmarkQuestionHandled(q: Pick<PatientQuestion, "id" | "boardId">): Promise<void> {
+  await writeHandledColumn(q, {});
 }
