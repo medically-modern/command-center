@@ -34,7 +34,13 @@ async function fetchWithTimeout(input: string, init?: RequestInit): Promise<Resp
  *  200 status. Rendering that as a "file" is the silent-blank failure we avoid. */
 function looksLikeErrorBody(bytes: Uint8Array, contentType: string | null): boolean {
   const ct = (contentType || "").toLowerCase();
-  if (ct.includes("xml") || ct.includes("html")) return true;
+  // Anchored to real error-page MIMEs (application/xml, text/html, …). Do NOT
+  // substring-match "xml", or a real Office file whose type merely CONTAINS it
+  // (application/vnd.openxmlformats-officedocument… → .docx/.xlsx/.pptx) gets
+  // wrongly treated as a corrupt/expired body. The leading-'<' scan below still
+  // catches genuine XML/HTML error bodies regardless of content-type.
+  if (ct.startsWith("text/html") || ct.startsWith("application/xhtml") ||
+      ct.startsWith("text/xml") || ct.startsWith("application/xml")) return true;
   for (let i = 0; i < Math.min(bytes.length, 64); i++) {
     const b = bytes[i];
     // skip leading whitespace + UTF-8 BOM
