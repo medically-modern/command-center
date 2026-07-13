@@ -41,7 +41,9 @@
     "josh@medicallymodern.com": {
       "name": "josh",
       "roles": [
-        "profile"
+        "profile",
+        "sendRequest",
+        "chaseFax"
       ],
       "roleOrder": {},
       "roleFilters": {}
