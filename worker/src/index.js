@@ -406,7 +406,13 @@ export default {
       // 200 status — passing that through as file bytes makes the viewer render
       // a blank page. Surface it as an error instead.
       const upstreamType = upstream.headers.get("Content-Type") || "application/octet-stream";
-      if (/xml|html/i.test(upstreamType)) {
+      // S3 error bodies (AccessDenied / expired URL) come back as an XML or HTML
+      // *error page*. Match those ANCHORED to the start of the MIME so we don't
+      // misfire on real Office files whose type merely CONTAINS "xml" —
+      // application/vnd.openxmlformats-officedocument… (.docx / .xlsx / .pptx).
+      const ctl = upstreamType.toLowerCase();
+      if (ctl.startsWith("text/html") || ctl.startsWith("application/xhtml") ||
+          ctl.startsWith("text/xml") || ctl.startsWith("application/xml")) {
         return json({ error: "asset_unavailable", detail: "The file link appears to have expired." }, 502, cors);
       }
       return new Response(upstream.body, {
