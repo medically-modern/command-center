@@ -51,7 +51,20 @@ jobs:
           VITE_RC_CLIENT_SECRET: ${{ secrets.VITE_RC_CLIENT_SECRET }}
           VITE_RC_JWT: ${{ secrets.VITE_RC_JWT }}
           VITE_RC_SMS_FROM: ${{ secrets.VITE_RC_SMS_FROM }}
-        run: npx vite build --base=/${{ github.event.repository.name }}/
+          # Repo name for src/lib/shared/dataRepo.ts — the data repo can no
+          # longer be derived from BASE_URL now that prod serves from "/" on
+          # the custom domain (commandcenter.medicallymodern.com).
+          VITE_REPO_NAME: ${{ github.event.repository.name }}
+        # Prod (command-center) is served at the ROOT of the custom domain
+        # commandcenter.medicallymodern.com, so its base is "/". Test still
+        # serves from the github.io project sub-path /<repo-name>/.
+        run: |
+          if [ "${{ github.event.repository.name }}" = "command-center" ]; then
+            BASE="/"
+          else
+            BASE="/${{ github.event.repository.name }}/"
+          fi
+          npx vite build --base="$BASE"
 
       - name: Copy 404
         run: cp dist/index.html dist/404.html
