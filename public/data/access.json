@@ -146,7 +146,9 @@
         "patientQuestions",
         "confirmReceipt",
         "evaluate",
-        "chaseParachute"
+        "chaseParachute",
+        "submitAuth",
+        "welcomeCall"
       ]
     }
   }
