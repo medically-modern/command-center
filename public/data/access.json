@@ -135,7 +135,9 @@
     },
     "janelle@medicallymodern.com": {
       "name": "janelle",
-      "roles": []
+      "roles": [
+        "profile"
+      ]
     }
   }
 }
