@@ -50,6 +50,8 @@ export const COL = {
   infusionSet2: "color_mm1xekaz",
   /** "Qty Cartridge" (added 2026-07) — cartridge quantity, defaults to 3 in the UI. */
   qtyCartridge: "numeric_mm515sqv",
+  /** "Medicare Prior Pump Date" (text) — MM/YYYY, Original-Medicare-only field. */
+  medicarePriorPumpDate: "text_mm58k9x9",
   subscriptionType: "color_mm1xbqth",
   welcomeCallText: "color_mm1xtqvv",
   orderHandling: "color_mm2776fg",
@@ -105,7 +107,7 @@ export const READ_COLUMN_IDS = [
   COL.referralSource, COL.referralReceivedDate,
   COL.diagnosis, COL.notes,
   COL.monitorQty, COL.pumpQty, COL.qtyInf1, COL.infusionSet1,
-  COL.qtyInf2, COL.infusionSet2, COL.qtyCartridge, COL.subscriptionType, COL.welcomeCallText,
+  COL.qtyInf2, COL.infusionSet2, COL.qtyCartridge, COL.medicarePriorPumpDate, COL.subscriptionType, COL.welcomeCallText,
   COL.orderHandling, COL.advanceDecision,
   COL.callAttempts,
   COL.cgmAuthResult, COL.sensorsAuthResult, COL.ipAuthResult,

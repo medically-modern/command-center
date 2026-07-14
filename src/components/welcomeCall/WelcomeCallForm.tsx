@@ -10,9 +10,11 @@ import {
   servingIncludesPump,
   isCrossSell,
   isInfusionSelling,
+  isOriginalMedicare,
   expectedSubscriptionType,
 } from "@/lib/welcomeCall/workflow";
 import { Card } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
 import {
@@ -36,7 +38,7 @@ import {
   CommandList,
 } from "@/components/ui/command";
 import { AddressAutocomplete, type AddressResult } from "@/components/welcomeCall/AddressAutocomplete";
-import { Check, ChevronsUpDown, MessageSquare, Eye, EyeOff, AlertTriangle } from "lucide-react";
+import { Check, ChevronsUpDown, MessageSquare, Eye, EyeOff, AlertTriangle, Lightbulb } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface Props {
@@ -173,6 +175,23 @@ export function WelcomeCallForm({ patient, onFieldChange, onSendWelcomeCallText 
   const showCgm = cgmOverride !== null ? cgmOverride : defaultShowCgm;
   const showPump = pumpOverride !== null ? pumpOverride : defaultShowPump;
 
+  // Prior Pump Purchase Date: Original Medicare (Medicare A&B) patients only,
+  // and only when Pump Qty is 0 (toggle off / not "1").
+  const effectivePrimaryInsurance = patient.primaryInsuranceEdited ?? patient.primaryInsurance;
+  const showPriorPumpDate =
+    isOriginalMedicare(effectivePrimaryInsurance) && patient.pumpQty !== "1";
+
+  // Clear a stale prior-pump date if the patient stops being eligible (insurance
+  // changed away from Medicare A&B, or Pump Qty set to 1). Keeps local state in
+  // sync with visibility so the save writes "" and clears the Monday cell rather
+  // than persisting a value that no longer applies.
+  useEffect(() => {
+    if (!showPriorPumpDate && patient.medicarePriorPumpDate) {
+      onFieldChange("medicarePriorPumpDate", "");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [patient.id, showPriorPumpDate, patient.medicarePriorPumpDate]);
+
   // Qty Cartridge defaults to 3 (Josh, 2026-07): pre-fill once when blank so
   // an untouched save still writes 3 — but only while the pump section
   // applies, so CGM-only patients never get cartridges stamped on them.
@@ -300,8 +319,8 @@ export function WelcomeCallForm({ patient, onFieldChange, onSendWelcomeCallText 
             )}
           </div>
 
-          {/* Pump Type + Pump Qty */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 mb-5">
+          {/* Pump Type + Pump Qty (+ Prior Pump Purchase Date for Original Medicare) */}
+          <div className={`grid grid-cols-1 ${showPriorPumpDate ? "sm:grid-cols-3" : "sm:grid-cols-2"} gap-6 mb-5`}>
             <div>
               <label className="text-xs uppercase tracking-wider text-muted-foreground font-semibold block mb-1">
                 Pump Type
@@ -348,6 +367,27 @@ export function WelcomeCallForm({ patient, onFieldChange, onSendWelcomeCallText 
                 </div>
               )}
             </div>
+
+            {/* Prior Pump Purchase Date — Original Medicare + Pump Qty 0 only */}
+            {showPriorPumpDate && (
+              <div>
+                <label className="text-xs uppercase tracking-wider text-muted-foreground font-semibold block mb-1">
+                  Prior Pump Purchase Date
+                </label>
+                <Input
+                  className="h-10"
+                  value={patient.medicarePriorPumpDate}
+                  onChange={(e) => onFieldChange("medicarePriorPumpDate", e.target.value)}
+                  placeholder="MM/YYYY"
+                />
+                <div className="mt-2 flex items-start gap-1.5 rounded-md border border-amber-300 bg-amber-50 dark:bg-amber-950/30 px-2.5 py-1.5">
+                  <Lightbulb className="h-3.5 w-3.5 text-amber-600 shrink-0 mt-0.5" />
+                  <span className="text-xs font-medium text-amber-700 dark:text-amber-300">
+                    If SoS is completely clear for Insulin Pump and Supplies, ask patient for approximate date they got their pump
+                  </span>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Infusion Set pairs */}
