@@ -163,7 +163,8 @@
         "updateClinicals": "escalated",
         "patientQuestions": "escalated",
         "evaluate": "escalated",
-        "confirmReceipt": "escalated"
+        "confirmReceipt": "escalated",
+        "chaseParachute": "escalated"
       }
     }
   }
