@@ -162,7 +162,8 @@
         "finalConfirm": "escalated",
         "updateClinicals": "escalated",
         "patientQuestions": "escalated",
-        "evaluate": "escalated"
+        "evaluate": "escalated",
+        "confirmReceipt": "escalated"
       }
     }
   }
