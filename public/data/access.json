@@ -160,7 +160,8 @@
         "authOutstanding": "escalated",
         "benefits": "escalated",
         "finalConfirm": "escalated",
-        "updateClinicals": "escalated"
+        "updateClinicals": "escalated",
+        "patientQuestions": "escalated"
       }
     }
   }
