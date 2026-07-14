@@ -139,7 +139,9 @@
         "profile",
         "sendRequest",
         "chaseFax",
-        "benefits"
+        "benefits",
+        "authOutstanding",
+        "finalConfirm"
       ]
     }
   }
