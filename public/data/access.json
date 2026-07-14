@@ -156,7 +156,8 @@
       "roleFilters": {
         "profile": "escalated",
         "sendRequest": "escalated",
-        "chaseFax": "escalated"
+        "chaseFax": "escalated",
+        "benefits": "escalated"
       }
     }
   }
