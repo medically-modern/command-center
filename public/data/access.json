@@ -136,7 +136,9 @@
     "janelle@medicallymodern.com": {
       "name": "janelle",
       "roles": [
-        "profile"
+        "profile",
+        "sendRequest",
+        "chaseFax"
       ]
     }
   }
