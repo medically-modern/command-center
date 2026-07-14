@@ -143,7 +143,8 @@
         "authOutstanding",
         "finalConfirm",
         "updateClinicals",
-        "patientQuestions"
+        "patientQuestions",
+        "evaluate"
       ]
     }
   }
