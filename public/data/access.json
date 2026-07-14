@@ -132,6 +132,12 @@
         "sendRequest": "all",
         "chaseFax": "all"
       }
+    },
+    "janelle@medicallymodern.com": {
+      "name": "janelle",
+      "roles": [
+        "profile"
+      ]
     }
   }
 }
