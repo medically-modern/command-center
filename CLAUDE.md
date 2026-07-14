@@ -395,6 +395,14 @@ these services; when their math changes, `oopEstimator.ts` must be updated to ma
   (`LOG_PAYLOAD=false`); keep it that way. Don't write patient data to logs/artifacts/commits.
 - **Optimistic UI** in many panels marks state "saved" before Monday confirms; failures rely on a
   toast. Don't assume a green UI means a durable write (esp. Subscription — see §10).
+- **Stale-tab chunk 404s self-heal** (`lib/shared/chunkReload.ts` + `components/shared/AppErrorBoundary.tsx`,
+  added after the 2026-07-14 white-screen incident): every Pages deploy replaces ALL hashed JS chunks, so a
+  tab left open across a code deploy 404s its next lazy page load — and React unmounts the whole app on an
+  uncaught render error. `lazyWithReload` + the `vite:preloadError` guard reload the tab ONCE (sessionStorage
+  `mm-chunk-reload` breaks loops; a second consecutive failure renders the root error boundary's Reload
+  screen instead of a blank page). **New lazy routes in `App.tsx` must use `lazyWithReload`, not bare
+  `lazy`** — and note the Vite trap: `preventDefault()` on `vite:preloadError` makes Vite resolve the failed
+  import with `undefined`, which must never be treated as a successful load (see chunkReload's comments/tests).
 - **Back-navigation is history-first** (`hooks/useBackNavigation.ts`): `goBack()` does `navigate(-1)`
   when there's in-app history, else falls back via `?from=system-mgmt` (→ `/system-mgmt`) or
   `?manager=1`. Manager views deep-link into role pages with `?from=system-mgmt`, so Back returns the

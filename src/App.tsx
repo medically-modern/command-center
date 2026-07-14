@@ -1,48 +1,49 @@
 import { Toaster } from "sonner";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
-import { lazy, Suspense } from "react";
+import { Suspense } from "react";
+import { lazyWithReload } from "./lib/shared/chunkReload";
 import Index from "./pages/Index";
 import { FileViewerHost } from "./components/shared/FileViewerModal";
 import AuthGate from "./components/AuthGate";
 import AccessProvider from "./components/AccessProvider";
 
 // Masheke board roles (4)
-const EvaluatePage = lazy(() => import("./pages/EvaluatePage"));
-const SendRequestPage = lazy(() => import("./pages/SendRequestPage"));
-const ConfirmReceiptPage = lazy(() => import("./pages/ConfirmReceiptPage"));
-const ChaseClinicalsPage = lazy(() => import("./pages/ChaseClinicalsPage"));
+const EvaluatePage = lazyWithReload(() => import("./pages/EvaluatePage"));
+const SendRequestPage = lazyWithReload(() => import("./pages/SendRequestPage"));
+const ConfirmReceiptPage = lazyWithReload(() => import("./pages/ConfirmReceiptPage"));
+const ChaseClinicalsPage = lazyWithReload(() => import("./pages/ChaseClinicalsPage"));
 
 // Samantha board roles (3)
-const BenefitsPage = lazy(() => import("./pages/ChaseBenefitsPage"));
-const WelcomeCallPage = lazy(() => import("./pages/WelcomeCallPage"));
-const ProfilePage = lazy(() => import("./pages/ProfilePage"));
-const SubmitAuthPage = lazy(() => import("./pages/SubmitAuthPage"));
-const AuthOutstandingPage = lazy(() => import("./pages/AuthOutstandingPage"));
+const BenefitsPage = lazyWithReload(() => import("./pages/ChaseBenefitsPage"));
+const WelcomeCallPage = lazyWithReload(() => import("./pages/WelcomeCallPage"));
+const ProfilePage = lazyWithReload(() => import("./pages/ProfilePage"));
+const SubmitAuthPage = lazyWithReload(() => import("./pages/SubmitAuthPage"));
+const AuthOutstandingPage = lazyWithReload(() => import("./pages/AuthOutstandingPage"));
 
 // Subscription Board
-const SubscriptionPage = lazy(() => import("./pages/SubscriptionPage"));
+const SubscriptionPage = lazyWithReload(() => import("./pages/SubscriptionPage"));
 
 // Update Clinicals (simplified clinicals upload view)
-const UpdateClinicalsPage = lazy(() => import("./pages/UpdateClinicalsPage"));
+const UpdateClinicalsPage = lazyWithReload(() => import("./pages/UpdateClinicalsPage"));
 
 // Final Profile Confirmation (pre-check before Monday automations)
-const FinalConfirmPage = lazy(() => import("./pages/FinalConfirmPage"));
+const FinalConfirmPage = lazyWithReload(() => import("./pages/FinalConfirmPage"));
 
 // Patient Questions (read-only inbox)
-const PatientQuestionsPage = lazy(() => import("./pages/PatientQuestionsPage"));
+const PatientQuestionsPage = lazyWithReload(() => import("./pages/PatientQuestionsPage"));
 
 // System Management
-const SystemMgmtPage = lazy(() => import("./pages/SystemMgmtPage"));
+const SystemMgmtPage = lazyWithReload(() => import("./pages/SystemMgmtPage"));
 
 // Access management (managers only)
-const AccessAdminPage = lazy(() => import("./pages/AccessAdminPage"));
+const AccessAdminPage = lazyWithReload(() => import("./pages/AccessAdminPage"));
 
 // Oversight (full-screen managers grid)
-const OversightPage = lazy(() => import("./pages/OversightPage"));
+const OversightPage = lazyWithReload(() => import("./pages/OversightPage"));
 
 // Fax Inbox (RingCentral inbound faxes)
-const FaxInboxPage = lazy(() => import("./pages/FaxInboxPage"));
+const FaxInboxPage = lazyWithReload(() => import("./pages/FaxInboxPage"));
 
 const queryClient = new QueryClient();
 
