@@ -50,6 +50,16 @@ export interface StediSnapshot {
   qmb: string;
   ma: boolean;
   mltc: boolean;
+  /** Managed-Medicaid MCO name (text_mm2vyta1). Real Stedi output writes
+   *  Coverage Type as plain "Medicaid" and puts the plan here — this column,
+   *  not covtype, is how managed enrollment is detected. */
+  managedMedicaid: string;
+}
+
+/** Managed-Medicaid MCO name, or "" when blank or Stedi's "—" none-marker. */
+export function managedMedicaidMco(raw: string): string {
+  const v = (raw || "").trim();
+  return v === "—" ? "" : v;
 }
 
 export interface SuggestionInputs {
@@ -264,7 +274,14 @@ function otherPayerSuggest(inp: SuggestionInputs): Suggestion {
     if (isMedicareAdvantage(s)) { o.value = null; o.confidence = "low"; o.reason = "Medicare Advantage — carrier not mapped"; o.warnings.push({ code: "MA_UNMAPPED", message: "Medicare Advantage (" + (s.payerName || "unknown carrier") + ") — pick the carrier's Medicare plan or verify serviceability; not straight Medicare A&B" }); return o; }
     o.value = "Medicare A&B"; o.confidence = "high"; o.reason = "Straight Medicare A&B."; return o;
   }
-  if (carrier === "medicaid") { o.value = "Medicaid"; o.confidence = "high"; o.reason = "Straight NY Medicaid (NYSDOH)."; return o; }
+  if (carrier === "medicaid") {
+    o.value = "Medicaid"; o.confidence = "high"; o.reason = "Straight NY Medicaid (NYSDOH).";
+    // NYSDOH + managed plan → supplies bill to straight Medicaid; no pump
+    // through straight Medicaid (Other Payers rulebook, SUPPLIES_TO_MEDICAID).
+    const mco = managedMedicaidMco(s.managedMedicaid);
+    if (mco) o.warnings.push({ code: "MANAGED_MEDICAID", message: "Managed Medicaid (" + mco + ") — Supplies Only eligible; supplies bill to straight Medicaid, no pump" });
+    return o;
+  }
   if (carrier === "magnacare") { o.value = "MagnaCare"; o.confidence = "high"; o.reason = "Magnacare PPO network."; o.warnings.push({ code: "RENTAL_NETWORK", message: "PPO rental network — confirm the underlying payer before billing." }); return o; }
   if (carrier === "midlands") { o.value = "Midlands Choice"; o.confidence = "high"; o.reason = "Midlands Choice PPO network."; o.warnings.push({ code: "RENTAL_NETWORK", message: "PPO rental network — confirm the underlying payer before billing." }); return o; }
   if (carrier === "wellcare") {
@@ -371,6 +388,7 @@ export function buildSuggestionInputs(p: Patient): SuggestionInputs {
       qmb: p.stediQmb ?? "",
       ma: truthy(p.stediMedicareAdvantage ?? ""),
       mltc: truthy(p.stediMedicaidMltc ?? ""),
+      managedMedicaid: managedMedicaidMco(p.stediManagedMedicaid ?? ""),
     },
   };
 }
