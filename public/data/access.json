@@ -148,7 +148,9 @@
         "evaluate",
         "chaseParachute",
         "submitAuth",
-        "welcomeCall"
+        "welcomeCall",
+        "subscription",
+        "authDenied"
       ]
     }
   }
