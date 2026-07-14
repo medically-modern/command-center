@@ -230,6 +230,14 @@ export async function sendPatientToMonday(p: Patient): Promise<void> {
     fn: () => writeNumber(p.id, COL.pumpQty, p.pumpQty === "" ? "" : Number(p.pumpQty)),
   });
 
+  // Medicare Prior Pump Date (Original-Medicare-only MM/YYYY text). Always write
+  // so an empty value clears the cell (matches the other text/number fields here).
+  tasks.push({
+    label: "Medicare Prior Pump Date",
+    columnId: COL.medicarePriorPumpDate,
+    fn: () => writeText(p.id, COL.medicarePriorPumpDate, p.medicarePriorPumpDate),
+  });
+
   if (p.orderHandlingIndex !== null)
     tasks.push({ label: "Order Handling", columnId: COL.orderHandling, fn: () => writeStatusIndex(p.id, COL.orderHandling, p.orderHandlingIndex!) });
 

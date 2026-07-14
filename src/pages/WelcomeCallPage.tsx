@@ -103,6 +103,7 @@ const WelcomeCallPage = () => {
       phoneEdited: null,
       monitorQty: "",
       pumpQty: "",
+      medicarePriorPumpDate: "",
       qtyInf1: "",
       infusionSet1: "",
       infusionSet1Index: null,

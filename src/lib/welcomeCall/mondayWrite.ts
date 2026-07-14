@@ -79,6 +79,12 @@ export async function sendPatientToMonday(p: Patient): Promise<void> {
   if (p.qtyInf2 !== "") tasks.push({ label: "Infusion Set 2 Qty", columnId: COL.qtyInf2, fn: () => writeNumber(p.id, COL.qtyInf2, Number(p.qtyInf2)) });
   if (p.qtyCartridge !== "") tasks.push({ label: "Qty Cartridge", columnId: COL.qtyCartridge, fn: () => writeNumber(p.id, COL.qtyCartridge, Number(p.qtyCartridge)) });
 
+  // Medicare Prior Pump Date (Original-Medicare-only MM/YYYY text). Always write so
+  // an empty value clears the cell — the form zeroes local state once the field is
+  // no longer eligible (insurance changed / Pump Qty set to 1), so a date entered
+  // and then reversed in-session is cleared on the board instead of persisting.
+  tasks.push({ label: "Medicare Prior Pump Date", columnId: COL.medicarePriorPumpDate, fn: () => writeText(p.id, COL.medicarePriorPumpDate, p.medicarePriorPumpDate) });
+
   if (p.infusionSet1Index !== null)
     tasks.push({ label: "Infusion Set 1", columnId: COL.infusionSet1, fn: () => writeStatusIndex(p.id, COL.infusionSet1, p.infusionSet1Index!) });
   if (p.infusionSet2Index !== null)

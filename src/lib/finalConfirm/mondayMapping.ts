@@ -94,6 +94,7 @@ export function mondayItemToPatient(item: MondayItem): Patient {
     qtyCartridge: cv(item, COL.qtyCartridge)?.text ?? "",
     monitorQty: cv(item, COL.monitorQty)?.text ?? "",
     pumpQty: cv(item, COL.pumpQty)?.text ?? "",
+    medicarePriorPumpDate: cv(item, COL.medicarePriorPumpDate)?.text ?? "",
     orderHandling: cv(item, COL.orderHandling)?.text ?? "",
     orderHandlingIndex: parseIndex(cv(item, COL.orderHandling)?.value ?? null),
 

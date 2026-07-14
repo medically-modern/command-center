@@ -51,6 +51,9 @@ export interface Patient {
   infusionSet2Index: number | null;
   /** Cartridge quantity — UI defaults it to 3 for pump patients. */
   qtyCartridge: string;
+  /** Medicare Prior Pump Date (MM/YYYY free text). Shown only for Original
+   *  Medicare patients with Pump Qty 0. Board col text_mm58k9x9. */
+  medicarePriorPumpDate: string;
   subscriptionType: string;
   subscriptionTypeIndex: number | null;
   welcomeCallText: string;
@@ -232,6 +235,13 @@ export const PRIMARY_INSURANCE_OPTIONS = [
   { index: 109, label: 'Anthem BCBS Low-Cost (JLJ)' },
   { index: 110, label: 'Fidelis CHP' },
 ];
+
+/** Original ("traditional") Medicare = primary insurance "Medicare A&B".
+ *  Medicare Advantage plans (United/Aetna/Anthem/Fidelis Medicare, Wellcare,
+ *  Humana) are private Part C plans and are NOT Original Medicare. */
+export function isOriginalMedicare(primaryInsuranceLabel: string): boolean {
+  return primaryInsuranceLabel.trim() === "Medicare A&B";
+}
 
 /* ─── Serving-based visibility helpers ─── */
 

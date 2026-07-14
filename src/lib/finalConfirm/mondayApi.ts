@@ -66,6 +66,8 @@ export const COL = {
   qtyCartridge: "numeric_mm515sqv",
   monitorQty: "numeric_mm1xyfhc",
   pumpQty: "numeric_mm1xa0z2",
+  /** "Medicare Prior Pump Date" (text) — MM/YYYY, Original-Medicare-only field. */
+  medicarePriorPumpDate: "text_mm58k9x9",
   orderHandling: "color_mm2776fg",
 
   // Auth Results
@@ -134,6 +136,7 @@ export const READ_COLUMN_IDS = [
   COL.referralType, COL.referralSource, COL.carecentrixIntakeId,
   COL.subscriptionType, COL.infusionSet1, COL.qtyInf1,
   COL.infusionSet2, COL.qtyInf2, COL.qtyCartridge, COL.monitorQty, COL.pumpQty,
+  COL.medicarePriorPumpDate,
   COL.orderHandling,
   COL.cgmAuthResult, COL.sensorsAuthResult, COL.ipAuthResult,
   COL.infusionSetAuthResult, COL.cartridgeAuthResult,
