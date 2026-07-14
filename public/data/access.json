@@ -166,7 +166,8 @@
         "confirmReceipt": "escalated",
         "chaseParachute": "escalated",
         "submitAuth": "escalated",
-        "welcomeCall": "escalated"
+        "welcomeCall": "escalated",
+        "subscription": "escalated"
       }
     }
   }
