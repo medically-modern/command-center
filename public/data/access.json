@@ -158,7 +158,8 @@
         "sendRequest": "escalated",
         "chaseFax": "escalated",
         "authOutstanding": "escalated",
-        "benefits": "escalated"
+        "benefits": "escalated",
+        "finalConfirm": "escalated"
       }
     }
   }
