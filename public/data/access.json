@@ -157,7 +157,8 @@
         "profile": "escalated",
         "sendRequest": "escalated",
         "chaseFax": "escalated",
-        "authOutstanding": "escalated"
+        "authOutstanding": "escalated",
+        "benefits": "escalated"
       }
     }
   }
