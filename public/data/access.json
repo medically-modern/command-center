@@ -161,7 +161,8 @@
         "benefits": "escalated",
         "finalConfirm": "escalated",
         "updateClinicals": "escalated",
-        "patientQuestions": "escalated"
+        "patientQuestions": "escalated",
+        "evaluate": "escalated"
       }
     }
   }
