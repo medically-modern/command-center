@@ -29,6 +29,7 @@ function mk(
       qmb: o.qmb ?? "No",
       ma: o.ma ?? false,
       mltc: o.mltc ?? false,
+      managedMedicaid: o.managedMedicaid ?? "",
     },
   };
 }
@@ -121,6 +122,42 @@ describe("suggestPrimary — payer routing", () => {
       covtype: "Medicare Advantage", ma: true,
     }));
     expect(sg?.value).toBe("Humana");
+  });
+
+  // Rulebook example 11 (Lakisha Valdez): NYSDOH + Molina managed plan →
+  // keep the Medicaid suggestion, warn supplies-only. Real Stedi writes
+  // Coverage Type as plain "Medicaid" and the MCO in its own column.
+  it("NYSDOH + Managed Medicaid (Molina) → Medicaid + supplies-only warning", () => {
+    const sg = suggestPrimary(mk({
+      gins: "Medicaid", payerName: "NYSDOH", covtype: "Medicaid",
+      plan: "NEW YORK MEDICAID", managedMedicaid: "MOLINA HEALTHCARE OF NY INC MAINSTR",
+    }));
+    expect(sg?.value).toBe("Medicaid");
+    const warn = sg?.warnings.find((w) => w.code === "MANAGED_MEDICAID");
+    expect(warn?.message).toContain("MOLINA HEALTHCARE OF NY INC MAINSTR");
+  });
+
+  it("NYSDOH without managed plan → no managed-medicaid warning", () => {
+    const sg = suggestPrimary(mk({ gins: "Medicaid", payerName: "NYSDOH", covtype: "Medicaid", plan: "NEW YORK MEDICAID" }));
+    expect(sg?.value).toBe("Medicaid");
+    expect(sg?.warnings.some((w) => w.code === "MANAGED_MEDICAID")).toBe(false);
+  });
+
+  it('Stedi "—" none-marker in Managed Medicaid → no warning', () => {
+    const sg = suggestPrimary(mk({ gins: "Medicaid", payerName: "NYSDOH", covtype: "Medicaid", plan: "NEW YORK MEDICAID", managedMedicaid: "—" }));
+    expect(sg?.warnings.some((w) => w.code === "MANAGED_MEDICAID")).toBe(false);
+  });
+
+  // The warning is scoped to the NYSDOH branch — a Medicaid plan routed to a
+  // mapped carrier (here Aetna Better Health) must not pick it up even with a
+  // populated Managed Medicaid column.
+  it("mapped-carrier Medicaid + populated Managed Medicaid → no NYSDOH warning", () => {
+    const sg = suggestPrimary(mk({
+      gins: "Aetna", payerName: "AETNA BETTER HEALTH OF NEW YORK", covtype: "Medicaid",
+      plan: "AETNA BETTER HEALTH MEDICAID", managedMedicaid: "AETNA BETTER HEALTH OF NEW YORK",
+    }));
+    expect(sg?.value).toBe("Medicaid"); // no pump requested → medicaidFork drops to plain Medicaid
+    expect(sg?.warnings.some((w) => w.code === "MANAGED_MEDICAID")).toBe(false);
   });
 });
 

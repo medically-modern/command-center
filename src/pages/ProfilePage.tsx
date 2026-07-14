@@ -25,6 +25,7 @@ import {
 import { NoteLog, stampNote } from "@/components/profile/NoteLog";
 import {
   suggestPrimary, suggestSecondary, buildSuggestionInputs, isCoverageActive, isNyMedicaidId,
+  managedMedicaidMco,
 } from "@/lib/profile/primaryInsurance";
 import { computeFirstAndRecurring } from "@/lib/profile/oopEstimate";
 import { interpretStediError } from "@/lib/profile/stediErrors";
@@ -270,7 +271,7 @@ const ProfilePage = () => {
     removeOverlayKeys(runId, [
       "stediPlanName", "stediErrorDescription", "stediEligibilityActive",
       "stediPayerName", "stediPlanBeginDate", "stediCoverageType", "stediHomePlan",
-      "stediMedicaidId", "stediQmb", "stediCoinsurance",
+      "stediMedicaidId", "stediQmb", "stediManagedMedicaid", "stediCoinsurance",
       "stediIndividualDeductibleRemaining", "stediIndividualOopMaxRemaining",
     ]);
     try {
@@ -599,6 +600,10 @@ function ProfileBody(p: BodyProps) {
   const stediFailed = !!pt.stediErrorDescription && !pt.stediPlanName;
   // Error code + description + recommended solution for the failure banner.
   const stediError = interpretStediError(pt.stediErrorDescription);
+  // Managed-Medicaid MCO (e.g. "MOLINA HEALTHCARE OF NY INC MAINSTR"). Keyed
+  // on the dedicated column — real Stedi writes Coverage Type as plain
+  // "Medicaid", so a covtype check would never fire on real data.
+  const managedMedicaid = managedMedicaidMco(pt.stediManagedMedicaid);
   // The "Enter correct insurance information" box (and the Request card that
   // rides to its left) show once a check has completed and didn't fail.
   const showInsuranceEntry = !p.stediRunning && !stediFailed && !!(pt.stediPlanName || pt.stediEligibilityActive);
@@ -817,17 +822,24 @@ function ProfileBody(p: BodyProps) {
                 {/* Eligibility results — live from Monday's Stedi columns */}
                 {!p.stediRunning && !stediFailed && (pt.stediPlanName || pt.stediEligibilityActive) && (
                   <>
+                    {managedMedicaid && (
+                      <div className="warn-banner" style={{ marginTop: 16 }}>
+                        <AlertTriangle className="h-4 w-4" />
+                        <span><b>Managed Medicaid detected — {managedMedicaid}.</b> Supplies Only eligible — set Serving accordingly.</span>
+                      </div>
+                    )}
                     <div className="res-grid" style={{ gridTemplateColumns: "repeat(3,1fr)", marginTop: 16 }}>
                       <ResCell label="Active?" value={pt.stediEligibilityActive} bad={!!pt.stediEligibilityActive && !p.stediActive} />
                       <ResCell label="Payer Name" value={pt.stediPayerName} />
                       <ResCell label="Plan Begin Date" value={pt.stediPlanBeginDate} />
                     </div>
-                    <div className="res-grid" style={{ gridTemplateColumns: `repeat(${pt.stediQmb ? 5 : 4},1fr)`, marginTop: 10 }}>
+                    <div className="res-grid" style={{ gridTemplateColumns: `repeat(${4 + (pt.stediQmb ? 1 : 0) + (pt.generalInsurance === "Medicaid" ? 1 : 0)},1fr)`, marginTop: 10 }}>
                       <ResCell label="Coverage Type" value={pt.stediCoverageType} />
                       <ResCell label="Plan Name" value={pt.stediPlanName} />
                       <ResCell label="Home Plan" value={pt.stediHomePlan} />
                       <ResCell label="Medicaid ID" value={isNyMedicaidId(pt.stediMedicaidId) ? pt.stediMedicaidId : ""} />
                       {pt.stediQmb && <ResCell label="QMB?" value={pt.stediQmb} />}
+                      {pt.generalInsurance === "Medicaid" && <ResCell label="Managed Medicaid" value={managedMedicaid} />}
                     </div>
                   </>
                 )}
