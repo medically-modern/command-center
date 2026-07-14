@@ -159,7 +159,8 @@
         "chaseFax": "escalated",
         "authOutstanding": "escalated",
         "benefits": "escalated",
-        "finalConfirm": "escalated"
+        "finalConfirm": "escalated",
+        "updateClinicals": "escalated"
       }
     }
   }
