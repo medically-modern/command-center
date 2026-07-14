@@ -145,7 +145,8 @@
         "updateClinicals",
         "patientQuestions",
         "confirmReceipt",
-        "evaluate"
+        "evaluate",
+        "chaseParachute"
       ]
     }
   }
