@@ -154,7 +154,8 @@
         "fax"
       ],
       "roleFilters": {
-        "profile": "escalated"
+        "profile": "escalated",
+        "sendRequest": "escalated"
       }
     }
   }
