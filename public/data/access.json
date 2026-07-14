@@ -141,7 +141,9 @@
         "chaseFax",
         "benefits",
         "authOutstanding",
-        "finalConfirm"
+        "finalConfirm",
+        "updateClinicals",
+        "patientQuestions"
       ]
     }
   }
