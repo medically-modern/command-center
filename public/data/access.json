@@ -167,7 +167,8 @@
         "chaseParachute": "escalated",
         "submitAuth": "escalated",
         "welcomeCall": "escalated",
-        "subscription": "escalated"
+        "subscription": "escalated",
+        "authDenied": "escalated"
       }
     }
   }
