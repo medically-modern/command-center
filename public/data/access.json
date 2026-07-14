@@ -144,7 +144,7 @@
         "finalConfirm",
         "updateClinicals",
         "patientQuestions",
-        "evaluate"
+        "confirmReceipt"
       ]
     }
   }
