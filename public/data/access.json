@@ -138,7 +138,8 @@
       "roles": [
         "profile",
         "sendRequest",
-        "chaseFax"
+        "chaseFax",
+        "benefits"
       ]
     }
   }
