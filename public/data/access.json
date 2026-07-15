@@ -142,8 +142,7 @@
         "submitAuth",
         "welcomeCall",
         "subscription",
-        "authDenied",
-        "fax"
+        "authDenied"
       ],
       "roleFilters": {
         "evaluate": "escalated",
@@ -152,8 +151,7 @@
         "submitAuth": "escalated",
         "welcomeCall": "escalated",
         "subscription": "escalated",
-        "authDenied": "escalated",
-        "fax": "escalated"
+        "authDenied": "escalated"
       }
     }
   }
