@@ -1,5 +1,15 @@
 # Benefits Redesign Review — Brandon's handoff vs. the live tab (2026-07-15)
 
+> **STATUS 2026-07-15: IMPLEMENTED** on branch `claude/benefits-redesign-handoff-ng248b`.
+> The Benefits role now runs the facts-based UI: `src/components/samantha/BenefitsPanel.tsx`
+> + `BenefitsPatientHeader.tsx` (read-only), derivation engine
+> `src/lib/samantha/benefitsDerive.ts` (34 tests), send-path changes in
+> `src/lib/samantha/mondayWrite.ts` (context-gated to "benefits"). The old
+> `InsurancePanel.tsx` is no longer imported anywhere (dead code — delete after the
+> redesign settles). Removed from the page: Follow Up button, Escalate button + modal,
+> Trigger DVS buttons, "edits stay local" strip, all header edit controls. The Monday
+> Board Output drawer ships as a testing aid — delete before production (spec §8).
+
 **What this is:** a change-by-change comparison of Brandon's redesign
 (`JOSH_HANDOFF_BENEFITS.md` + `benefits-redesign.html`, both now at repo root) against the
 current Benefits implementation (`src/pages/ChaseBenefitsPage.tsx`, `src/lib/samantha/*`,

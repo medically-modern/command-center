@@ -312,6 +312,21 @@ export function mondayItemToPatient(item: MondayItem): Patient {
     }
   }
 
+  // Benefits redesign — per-product SoS billing FACTS (dates + units).
+  // These are the fuller record: hydrate them over the legacy lastBillDate
+  // (which only exists for Not-Clear products) and mark the entry "billed".
+  for (const pk of PRODUCT_KEYS) {
+    const codeId = PRODUCT_KEY_TO_CODE[pk];
+    const factDate = cv(COL.sosLastBill[pk])?.text;
+    const factUnits = cv(COL.sosUnits[pk])?.text;
+    if (factDate || factUnits) {
+      if (!codes[codeId]) codes[codeId] = { status: "pending" } as ProductCodeState;
+      if (factDate) codes[codeId]!.lastBillDate = factDate;
+      if (factUnits) codes[codeId]!.units = factUnits;
+      codes[codeId]!.sosEntry = "billed";
+    }
+  }
+
   // Escalation toggle — hydrated from Monday so the Escalate button on the
   // Benefits / Submit Auth / Auth Outstanding pages reflects the current
   // state when the patient loads. "Escalation Required" → on; "Done" or
@@ -333,6 +348,22 @@ export function mondayItemToPatient(item: MondayItem): Patient {
   const neverBilledCgmText = cv(COL.neverBilledCgm)?.text?.trim().toLowerCase() ?? "";
   const neverBilledIsCar = neverBilledIsCarText === "never billed";
   const neverBilledCgm = neverBilledCgmText === "never billed";
+
+  // Benefits redesign — round-trip the "No Billing History" fact where the
+  // board can express it. Only the Medicare A&B rollups exist as columns, so
+  // per-product "never" state is recoverable ONLY for the products those
+  // rollups cover, and only when no billed facts landed for that product.
+  // (Known gap: non-Medicare never-billed facts don't round-trip — see the
+  // review doc's optional "SoS No Billing History" checkbox item.)
+  const seedNever = (codeId: ProductCodeId) => {
+    if (!codes[codeId]) codes[codeId] = { status: "pending" } as ProductCodeState;
+    if (codes[codeId]!.sosEntry !== "billed") codes[codeId]!.sosEntry = "never";
+  };
+  if (neverBilledIsCar) {
+    seedNever("infusion-sets");
+    seedNever("cartridges");
+  }
+  if (neverBilledCgm) seedNever("cgm-sensors");
 
   // Follow Up — mirrors Blocked on the Evaluate board
   const followUpText = cv(COL.followUp)?.text?.trim() ?? "";
@@ -384,6 +415,12 @@ export function mondayItemToPatient(item: MondayItem): Patient {
     daysSinceStageIndex,
     followUp: followUpText,
     followUpDate,
+    planName: cv(COL.planName)?.text || undefined,
+    stediQmb: cv(COL.stediQmb)?.text || undefined,
+    stediCoinsurance: cv(COL.stediCoinsurance)?.text || undefined,
+    stediPlanBegin: cv(COL.stediPlanBegin)?.text || undefined,
+    deductibleRemaining: cv(COL.deductibleRemaining)?.text || undefined,
+    oopMaxRemaining: cv(COL.oopMaxRemaining)?.text || undefined,
     insurance: {
       universal: {
         "in-network": inNetAndActive,

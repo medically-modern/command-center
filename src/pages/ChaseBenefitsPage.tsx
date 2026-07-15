@@ -1,53 +1,59 @@
 /**
- * Chase Benefits — standalone view of Samantha-checklist's "Benefits" tab.
- * Zero logic changes from the original; just stripped to a single-tab page.
+ * Chase Benefits — the redesigned Benefits tab (Brandon's July 2026 handoff;
+ * JOSH_HANDOFF_BENEFITS.md + BENEFITS_REDESIGN_REVIEW.md, decisions D1–D10).
+ *
+ * Kept from the old page: the patients sidebar, the top bar (Clinicals /
+ * Save / Reset / Report Issue), the 30s poll + local overlay machinery,
+ * deep links, and the Reference Notes panel.
+ *
+ * Removed on purpose: the Follow Up button (D-decision — SubmitAuth/Auth
+ * Outstanding keep theirs; existing follow-ups stay clearable from the
+ * sidebar), the Escalate button + modal (escalation is DERIVED on send,
+ * spec §5), the Trigger DVS buttons (D3 — DVS moves to its own stage), the
+ * "edits stay local" strip, and every header edit control (read-only, §6).
  */
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { useMondayPatients } from "@/hooks/samantha/useMondayPatients";
 import { useAutoSelectPatient } from "@/hooks/useAutoSelectPatient";
-import {
+import type {
+  CallLogRow,
   Patient,
   ProductCodeId,
   ProductCodeState,
-  EMPTY_INSURANCE,
   UniversalChoice,
-  validateBenefitsForSubmit,
 } from "@/lib/samantha/workflow";
-import { InsurancePanel } from "@/components/samantha/InsurancePanel";
+import { EMPTY_INSURANCE } from "@/lib/samantha/workflow";
+import { validateBenefitsFactsForSubmit } from "@/lib/samantha/benefitsDerive";
+import { BenefitsPanel } from "@/components/samantha/BenefitsPanel";
+import { BenefitsPatientHeader } from "@/components/samantha/BenefitsPatientHeader";
+import { NotesPanel } from "@/components/samantha/NotesPanel";
 import { PatientsSidebar } from "@/components/samantha/PatientsSidebar";
-import { PatientProfileCard } from "@/components/samantha/PatientProfileCard";
 import { SendToMondayButton } from "@/components/samantha/SendToMondayButton";
 import { Button } from "@/components/ui/button";
-import { EscalateButton } from "@/components/samantha/EscalateButton";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
-import { RotateCcw, Stethoscope, ArrowLeft, Zap, Clock , Save} from "lucide-react";
+import { RotateCcw, Stethoscope, ArrowLeft, Save } from "lucide-react";
 import { ClinicalsDownloadButton } from "@/components/samantha/ClinicalsDownloadButton";
-import { resolveHcpcs } from "@/lib/samantha/hcpcRules";
 import { toast } from "sonner";
 import { sendPatientToMonday } from "@/lib/samantha/mondayWrite";
-import { writeLongText, writeStatusIndex, COL } from "@/lib/samantha/mondayApi";
-import { EscalationFormModal } from "@/components/shared/EscalationFormModal";
+import { writeLongText, COL } from "@/lib/samantha/mondayApi";
 import { PageLoadingOverlay } from "@/components/shared/PageLoadingOverlay";
-import { ESCALATION_INDEX } from "@/lib/samantha/mondayMapping";
-import { FollowUpModal } from "@/components/samantha/FollowUpModal";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useSearchParams } from "react-router-dom";
 import { useBackNavigation } from "@/hooks/useBackNavigation";
 import { ReportIssueButton } from "@/components/shared/ReportIssueButton";
 import { viewFilterFromParams } from "@/lib/roleView";
 import { sidebarVisibleList } from "@/lib/samantha/sidebarList";
+import { useState } from "react";
 
 const ChaseBenefitsPage = () => {
-  const navigate = useNavigate();
   const { goBack } = useBackNavigation();
   const [searchParams] = useSearchParams();
   const isEscalated = searchParams.get("escalated") === "1";
   const isManager = searchParams.get("manager") === "1";
-  const [escalationModalOpen, setEscalationModalOpen] = useState(false);
-  const { patients, loading, initialLoading, error, refetch, update, clearOverlay , saveOverlay, hasOverlay } = useMondayPatients("benefits", searchParams.get("patientId"));
+  const { patients, loading, initialLoading, error, refetch, update, clearOverlay, saveOverlay, hasOverlay } =
+    useMondayPatients("benefits", searchParams.get("patientId"));
   const [selectedId, setSelectedId] = useState<string | null>(
     searchParams.get("patientId") ?? null,
   );
-  const [followUpOpen, setFollowUpOpen] = useState(false);
 
   // Auto-select the first patient the sidebar actually shows (same list math
   // as PatientsSidebar), never from the pre-fetch localStorage cache.
@@ -66,20 +72,25 @@ const ChaseBenefitsPage = () => {
     [patients, selectedId],
   );
 
-  const onUniversalChange = (id: string, value: UniversalChoice) => {
+  const onUniversalChange = (id: "in-network" | "active" | "dme-benefits", value: UniversalChoice) => {
     if (!selected) return;
     const ins = selected.insurance ?? EMPTY_INSURANCE;
-    const next = { ...ins, universal: { ...ins.universal, [id]: value } };
-    update(selected.id, { insurance: next });
+    update(selected.id, { insurance: { ...ins, universal: { ...ins.universal, [id]: value } } });
   };
 
   const updateCode = (codeId: ProductCodeId, patch: Partial<ProductCodeState>) => {
     if (!selected) return;
     const ins = selected.insurance ?? EMPTY_INSURANCE;
     const prev = ins.codes[codeId] ?? { status: "pending" as const };
-    const nextCode = { ...prev, ...patch };
-    const next = { ...ins, codes: { ...ins.codes, [codeId]: nextCode } };
-    update(selected.id, { insurance: next });
+    update(selected.id, {
+      insurance: { ...ins, codes: { ...ins.codes, [codeId]: { ...prev, ...patch } } },
+    });
+  };
+
+  const updateCallLog = (section: "callsUniversal" | "callsSosAuth", rows: CallLogRow[]) => {
+    if (!selected) return;
+    const ins = selected.insurance ?? EMPTY_INSURANCE;
+    update(selected.id, { insurance: { ...ins, [section]: rows } });
   };
 
   const resetForNewPatient = () => {
@@ -90,32 +101,7 @@ const ChaseBenefitsPage = () => {
     refetch();
   };
 
-  const benefitsMissing = selected ? validateBenefitsForSubmit(selected) : [];
-
-  // Show "Trigger DVS" when Medicaid appears in either insurance AND
-  // the serving includes supplies (infusion sets / cartridges).
-  const showTriggerDvs = useMemo(() => {
-    if (!selected) return false;
-    const pri = (selected.primaryInsurance ?? "").toLowerCase();
-    const sec = (selected.secondaryInsurance ?? "").toLowerCase();
-    const hasMedicaid = pri.includes("medicaid") || sec.includes("medicaid");
-    if (!hasMedicaid) return false;
-    const resolved = resolveHcpcs(selected.primaryInsurance || null, selected.serving || null, selected.secondaryInsurance ?? null);
-    return resolved.some((r) => r.product === "infusion_set" || r.product === "cartridge");
-  }, [selected?.primaryInsurance, selected?.secondaryInsurance, selected?.serving]);
-
-  // Show "Trigger Pump DVS" when Medicaid appears in either insurance AND
-  // the serving includes the insulin pump. Separate bot from the supplies
-  // DVS: own trigger column, no retry, no claims.
-  const showTriggerPumpDvs = useMemo(() => {
-    if (!selected) return false;
-    const pri = (selected.primaryInsurance ?? "").toLowerCase();
-    const sec = (selected.secondaryInsurance ?? "").toLowerCase();
-    const hasMedicaid = pri.includes("medicaid") || sec.includes("medicaid");
-    if (!hasMedicaid) return false;
-    const resolved = resolveHcpcs(selected.primaryInsurance || null, selected.serving || null, selected.secondaryInsurance ?? null);
-    return resolved.some((r) => r.product === "insulin_pump");
-  }, [selected?.primaryInsurance, selected?.secondaryInsurance, selected?.serving]);
+  const benefitsMissing = selected ? validateBenefitsFactsForSubmit(selected) : [];
 
   const handleSend = async () => {
     if (!selected) return;
@@ -123,7 +109,8 @@ const ChaseBenefitsPage = () => {
     try {
       await sendPatientToMonday(selected, "benefits");
       clearOverlay(selected.id);
-      toast.success("Sent to Monday");
+      toast.success("Benefit check complete — sent to Monday");
+      refetch(true);
     } catch (e) {
       toast.error("Send to Monday failed", { description: e instanceof Error ? e.message : String(e) });
       throw e;
@@ -157,15 +144,12 @@ const ChaseBenefitsPage = () => {
                   <Stethoscope className="h-5 w-5 text-primary-foreground" />
                 </div>
                 <div>
-                  <p className="text-[10px] uppercase tracking-[0.2em] opacity-70">Medically Modern</p>
+                  <p className="text-[10px] uppercase tracking-[0.2em] opacity-70">Medically Modern · Insurance Verification</p>
                   <h1 className="text-2xl font-bold">Benefits</h1>{selected && (<p className="text-sm opacity-80 mt-0.5 flex items-center gap-2">{selected.name}{selected.escalated && <span className="inline-flex items-center rounded-full bg-red-500 text-white text-[10px] font-bold uppercase tracking-wide px-2 py-0.5">Escalated</span>}</p>)}
                 </div>
               </div>
               <div className="flex items-center gap-2">
                 {selected && <ClinicalsDownloadButton itemId={selected.id} />}
-                <Button onClick={() => setFollowUpOpen(true)} disabled={!selected} className="gap-2 bg-white/90 text-blue-700 hover:bg-white shadow-elevate">
-                  <Clock className="h-4 w-4" /> Follow Up
-                </Button>
                 <Button
                   onClick={() => {
                     if (!selected) return;
@@ -197,65 +181,23 @@ const ChaseBenefitsPage = () => {
 
               {selected && (
                 <>
-                  <PatientProfileCard patient={selected} onUpdate={(p) => update(selected.id, p)} />
+                  <BenefitsPatientHeader patient={selected} />
 
-                  <InsurancePanel
+                  <BenefitsPanel
                     patient={selected}
                     onUniversalChange={onUniversalChange}
                     onCodeChange={updateCode}
+                    onCallLogChange={updateCallLog}
+                  />
+
+                  <NotesPanel
+                    notes={selected.notes}
                     onNotesChange={(v) => update(selected.id, { notes: v })}
-                    onSaveNotesToMonday={(v) => writeLongText(selected.id, COL.callReferenceNotes, v)}
-                    onNeverBilledChange={(field, value) => {
-                      const ins = selected.insurance ?? EMPTY_INSURANCE;
-                      update(selected.id, { insurance: { ...ins, [field]: value } });
+                    onSaveToMonday={async (v) => {
+                      await writeLongText(selected.id, COL.callReferenceNotes, v);
                     }}
+                    description="Shared notes across Benefits, Submit Auth, and Auth Outstanding. Auto-escalation reasons are appended here on send."
                   />
-
-                  <div className="rounded-xl bg-card border shadow-card p-5">
-                    <p className="text-xs uppercase tracking-wider text-muted-foreground mb-1">Insurance Verification</p>
-                    <p className="text-sm text-muted-foreground">
-                      Edits stay local until you click "Send to Monday". List refreshes every 60 seconds.
-                    </p>
-                  </div>
-
-                  <EscalateButton
-                    escalated={!!selected.escalated}
-                    onToggle={() => update(selected.id, { escalated: !selected.escalated })}
-                    onOpenForm={() => setEscalationModalOpen(true)}
-                  />
-
-                  {(showTriggerDvs || showTriggerPumpDvs) && (
-                    <div className="flex justify-center gap-3 flex-wrap">
-                      {showTriggerDvs && (
-                        <Button
-                          onClick={() => update(selected.id, { triggerDvs: !selected.triggerDvs })}
-                          variant="outline"
-                          className={
-                            selected.triggerDvs
-                              ? "gap-2 bg-blue-100 hover:bg-blue-200 !text-blue-700 border-blue-400 shadow-md"
-                              : "gap-2 border-blue-300 !text-blue-600 hover:bg-blue-50"
-                          }
-                        >
-                          <Zap className="h-4 w-4" />
-                          {selected.triggerDvs ? "Supplies DVS Triggered" : "Trigger Supplies DVS"}
-                        </Button>
-                      )}
-                      {showTriggerPumpDvs && (
-                        <Button
-                          onClick={() => update(selected.id, { triggerPumpDvs: !selected.triggerPumpDvs })}
-                          variant="outline"
-                          className={
-                            selected.triggerPumpDvs
-                              ? "gap-2 bg-indigo-100 hover:bg-indigo-200 !text-indigo-700 border-indigo-400 shadow-md"
-                              : "gap-2 border-indigo-300 !text-indigo-600 hover:bg-indigo-50"
-                          }
-                        >
-                          <Zap className="h-4 w-4" />
-                          {selected.triggerPumpDvs ? "Pump DVS Triggered" : "Trigger Pump DVS"}
-                        </Button>
-                      )}
-                    </div>
-                  )}
 
                   <SendToMondayButton onSend={handleSend} disabled={!selected || benefitsMissing.length > 0} />
                   {benefitsMissing.length > 0 && (
@@ -270,27 +212,6 @@ const ChaseBenefitsPage = () => {
           </main>
         </div>
       </div>
-
-      {selected && (
-        <FollowUpModal
-          open={followUpOpen}
-          onOpenChange={setFollowUpOpen}
-          patientId={selected.id}
-          patientName={selected.name}
-          onSuccess={refetch}
-        />
-      )}
-    {selected && (
-        <EscalationFormModal
-          open={escalationModalOpen}
-          onOpenChange={setEscalationModalOpen}
-          patientId={selected.id}
-          patientName={selected.name}
-          writeEscalationStatus={async (id) => { await writeStatusIndex(id, COL.escalation, ESCALATION_INDEX.required); }}
-          writeEscalationNotes={async (id, text) => { await writeLongText(id, COL.escalationNotes, text); }}
-          onSuccess={refetch}
-        />
-      )}
     </SidebarProvider>
   );
 };
