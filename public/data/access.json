@@ -136,7 +136,6 @@
     "janelle@medicallymodern.com": {
       "name": "janelle",
       "roles": [
-        "finalConfirm",
         "updateClinicals",
         "patientQuestions",
         "confirmReceipt",
@@ -149,7 +148,6 @@
         "fax"
       ],
       "roleFilters": {
-        "finalConfirm": "escalated",
         "updateClinicals": "escalated",
         "patientQuestions": "escalated",
         "evaluate": "escalated",
