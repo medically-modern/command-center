@@ -150,6 +150,57 @@ export function deriveServing(cgmCrossSell: string, requestType: string): string
   return null;
 }
 
+// ── ALL-CAPS normalization (autoscraped intake data arrives shouty) ──
+
+/** Roman-numeral name suffixes stay uppercase ("JOHN SMITH III"). */
+const ROMAN_SUFFIX = /^(?:II|III|IV|V|VI|VII|VIII|IX|X)$/;
+
+/** Capitalize the first letter of each -/'/. segment of an all-lowercase
+ *  word ("smith-jones" → "Smith-Jones", "o'brien" → "O'Brien"), then fix
+ *  Mc surnames ("mcdonald" → "McDonald"). */
+function capWordSegments(lower: string): string {
+  return lower
+    .replace(/(^|[-'’.])([a-z])/g, (_m, sep: string, c: string) => sep + c.toUpperCase())
+    .replace(/\bMc([a-z])/g, (_m, c: string) => "Mc" + c.toUpperCase());
+}
+
+/**
+ * Normalize an ALL-CAPS name to First Last. Only words whose letters are
+ * entirely uppercase are touched (≥2 letters — single initials stay), so an
+ * already-correct "McDonald" or a hand-typed mixed-case name is never mangled.
+ */
+export function titleCaseName(raw: string): string {
+  if (!raw) return raw ?? "";
+  return raw.replace(/[A-Za-z][A-Za-z'’.-]*/g, (w) => {
+    const letters = w.replace(/[^A-Za-z]/g, "");
+    if (letters.length < 2 || letters !== letters.toUpperCase()) return w;
+    if (ROMAN_SUFFIX.test(letters)) return w;
+    return capWordSegments(w.toLowerCase());
+  });
+}
+
+/**
+ * Normalize ALL-CAPS words in an address. Only words with ≥4 letters are
+ * touched — the same exemption addressWarning uses, so legitimate caps
+ * ("NY", "USA", "APT", "FL 2") survive. Ordinals lowercase ("45TH" → "45th").
+ */
+export function titleCaseAddress(raw: string): string {
+  if (!raw) return raw ?? "";
+  return raw.replace(/[A-Za-z0-9][A-Za-z0-9'’-]*/g, (w) => {
+    if (/^\d+(?:ST|ND|RD|TH)$/.test(w)) return w.toLowerCase();
+    const letters = w.replace(/[^A-Za-z]/g, "");
+    if (letters.length < 4 || letters !== letters.toUpperCase()) return w;
+    return capWordSegments(w.toLowerCase());
+  });
+}
+
+/** Lowercase an ALL-CAPS email; anything already containing lowercase is
+ *  left exactly as entered. */
+export function normalizeEmailCase(raw: string): string {
+  if (!raw || /[a-z]/.test(raw)) return raw ?? "";
+  return raw.toLowerCase();
+}
+
 /**
  * Strip non-digits and drop a leading "1" country code so an E.164
  * input like "+19142202922" normalizes to the same 10-digit US number

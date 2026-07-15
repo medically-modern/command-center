@@ -13,6 +13,7 @@ import { viewFilterFromParams } from "@/lib/roleView";
 import type { Patient } from "@/lib/profile/workflow";
 import {
   hasValidZip, formatPhone, crossSellReason, canCrossSellCgm, deriveServing, addressWarning,
+  titleCaseName, titleCaseAddress, normalizeEmailCase,
 } from "@/lib/profile/workflow";
 import {
   fetchClinicLabels, fetchItemAssets, fetchUpdates,
@@ -604,6 +605,18 @@ function ProfileBody(p: BodyProps) {
   // on the dedicated column — real Stedi writes Coverage Type as plain
   // "Medicaid", so a covtype check would never fire on real data.
   const managedMedicaid = managedMedicaidMco(pt.stediManagedMedicaid);
+  // Referral-claimed Secondary Insurance — an UNVERIFIED intake claim, shown
+  // as its own "From referral:" chip, never dressed up as a Suggestion.
+  // Hidden when it duplicates the engine suggestion or the rep's pick, and
+  // SUPPRESSED when Stedi contradicts it: a Medicaid-family claim with no
+  // valid CIN returned is wrong (e.g. a CHP kid whose referral said Medicaid).
+  const referralSecondary = (() => {
+    const claim = (rcv.secondaryInsurance || "").trim();
+    if (!claim || claim === pt.secondaryInsurance || claim === p.secondarySuggestion) return "";
+    const medid = (pt.stediMedicaidId || pt.stediSecondaryMedicaidId || "").trim();
+    if (/medicaid/i.test(claim) && !isNyMedicaidId(medid)) return "";
+    return claim;
+  })();
   // The "Enter correct insurance information" box (and the Request card that
   // rides to its left) show once a check has completed and didn't fail.
   const showInsuranceEntry = !p.stediRunning && !stediFailed && !!(pt.stediPlanName || pt.stediEligibilityActive);
@@ -635,10 +648,19 @@ function ProfileBody(p: BodyProps) {
   // until the rep actively picks). ProfileBody is keyed by patient id, so
   // this runs once per patient and never fights a selection made this session.
   useEffect(() => {
-    const demote: Partial<Patient> = {};
-    if (pt.secondaryInsurance) demote.secondaryInsurance = "";
-    if (pt.serving) demote.serving = "";
-    if (Object.keys(demote).length) p.onUpdate(demote);
+    const patch: Partial<Patient> = {};
+    if (pt.secondaryInsurance) patch.secondaryInsurance = "";
+    if (pt.serving) patch.serving = "";
+    // Autoscraped intake data often arrives ALL CAPS (Josh, 2026-07) —
+    // normalize the working copies once per patient load. The rep can still
+    // edit, and the normalized values ride the existing write paths to Monday.
+    const fixedName = titleCaseName(pt.name);
+    if (fixedName !== pt.name) patch.name = fixedName;
+    const fixedAddress = titleCaseAddress(pt.patientAddress);
+    if (fixedAddress !== pt.patientAddress) patch.patientAddress = fixedAddress;
+    const fixedEmail = normalizeEmailCase(pt.email);
+    if (fixedEmail !== pt.email) patch.email = fixedEmail;
+    if (Object.keys(patch).length) p.onUpdate(patch);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   // Benefits Check inputs ALWAYS start blank — the as-received insurance shows
@@ -757,6 +779,8 @@ function ProfileBody(p: BodyProps) {
                     <div className="f full"><div className="k">General Insurance</div><div className="v">{rcv.generalInsurance || "—"}</div></div>
                     <div className="f"><div className="k">Member ID 1</div><div className="v">{rcv.memberId1 || "—"}</div></div>
                     <div className="f"><div className="k">Member ID 2</div><div className="v">{rcv.memberId2 || "—"}</div></div>
+                    {/* Referral-claimed secondary — received data, NOT a suggestion */}
+                    <div className="f full"><div className="k">Secondary Insurance</div><div className="v">{rcv.secondaryInsurance || "—"}</div></div>
                   </div>
                 </section>
                 {/* Request type rides DIRECTLY beside the "Enter correct insurance
@@ -873,12 +897,21 @@ function ProfileBody(p: BodyProps) {
                           <option value="" disabled hidden>Select…</option>
                           {SECONDARY_OPTS.map((l) => <option key={l}>{l}</option>)}
                         </select>
-                        {(p.secondarySuggestion || rcv.secondaryInsurance) && (
+                        {/* Suggestion = ENGINE OUTPUT ONLY. The intake-pre-filled
+                            board value must never wear the Suggestion label — a
+                            wrong referral claim once shipped as "Suggestion: NY
+                            Medicaid" on a CHP kid with no CIN. */}
+                        {p.secondarySuggestion && (
                           <div className="sugg-line" style={{ marginTop: 8 }}>
                             <span className="sugg-lead2">Suggestion:</span>
-                            {/* Engine suggestion first; else the intake-pre-filled
-                                board value rides along as the suggestion. */}
-                            <button type="button" className="sugg-chip2 clickable" onClick={() => p.onUpdate({ secondaryInsurance: p.secondarySuggestion || rcv.secondaryInsurance })}>{p.secondarySuggestion || rcv.secondaryInsurance}</button>
+                            <button type="button" className="sugg-chip2 clickable" onClick={() => p.onUpdate({ secondaryInsurance: p.secondarySuggestion })}>{p.secondarySuggestion}</button>
+                          </div>
+                        )}
+                        {referralSecondary && (
+                          <div className="sugg-line" style={{ marginTop: 8 }}>
+                            <span className="sugg-lead2">From referral:</span>
+                            <button type="button" className="sugg-chip2 office clickable" onClick={() => p.onUpdate({ secondaryInsurance: referralSecondary })}>{referralSecondary}</button>
+                            <span className="sugg-note">unverified referral claim — confirm before using</span>
                           </div>
                         )}
                       </Field>
