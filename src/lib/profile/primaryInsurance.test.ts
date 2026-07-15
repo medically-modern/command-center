@@ -171,6 +171,14 @@ describe("suggestSecondary — Medicaid backstop", () => {
   it("no backstop → no secondary", () => {
     expect(suggestSecondary(mk({ gins: "Cigna", covtype: "Commercial" }))).toBe("");
   });
+  it("non-CIN Medicaid ID on a CHP plan → no secondary", () => {
+    // Emma Novick shape: Fidelis CHP kid, Stedi returned a non-CIN id and
+    // QMB=No — the referral's wrong "NY Medicaid" claim must never surface
+    // as an engine suggestion.
+    expect(suggestSecondary(mk({
+      gins: "Fidelis", plan: "Child Health Plus", covtype: "Medicaid", medid: "50980348",
+    }))).toBe("");
+  });
 });
 
 describe("isCoverageActive", () => {

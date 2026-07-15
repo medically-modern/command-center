@@ -14,6 +14,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Clock, Loader2, RefreshCw, User, AlertCircle, Undo2, Search, X, ChevronRight } from "lucide-react";
 import type { Patient } from "@/lib/profile/workflow";
+import { titleCaseName } from "@/lib/profile/workflow";
 import { sidebarSections } from "@/lib/profile/sidebarList";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
@@ -157,7 +158,8 @@ export function PatientsSidebar({ patients, selectedId, onSelect, loading, error
                           {!collapsed && (
                             <div className="min-w-0 text-left flex-1">
                               <div className="flex items-center gap-1.5">
-                                <p className="text-sm font-medium truncate">{p.name}</p>
+                                {/* Display-normalized — the working copy is fixed for real on open */}
+                                <p className="text-sm font-medium truncate">{titleCaseName(p.name)}</p>
                                 {hasOverlay?.(p.id) && (
                                   <span className="h-2 w-2 rounded-full bg-amber-400 shrink-0" title="Unsaved edits" />
                                 )}
@@ -204,7 +206,7 @@ export function PatientsSidebar({ patients, selectedId, onSelect, loading, error
                         <Clock className="h-4 w-4 mt-0.5 shrink-0 text-blue-400" />
                         <div className="min-w-0 text-left flex-1">
                           <div className="flex items-center gap-1.5">
-                            <p className="text-sm font-medium truncate">{p.name}</p>
+                            <p className="text-sm font-medium truncate">{titleCaseName(p.name)}</p>
                             {hasOverlay?.(p.id) && (
                               <span className="h-2 w-2 rounded-full bg-amber-400 shrink-0" title="Unsaved edits" />
                             )}
