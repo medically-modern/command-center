@@ -135,12 +135,8 @@
     },
     "janelle@medicallymodern.com": {
       "name": "janelle",
-      "roles": [
-        "evaluate"
-      ],
-      "roleFilters": {
-        "evaluate": "escalated"
-      }
+      "roles": [],
+      "roleFilters": {}
     }
   }
 }
