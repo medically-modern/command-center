@@ -16,6 +16,11 @@
  *     press flags Escalation Required), and moves the Next Action Date forward
  *     +3 business days for every Clinicals Method. It NEVER advances the stage —
  *     patients leave Medical Necessity only via the Evaluate view.
+ *   - Once ESCALATED (all 3 slots used), a manager follow-up has no attempt
+ *     column left to log into, so the required note is appended to MN Workflow
+ *     Notes (COL.mnEvalNotes) and only the Next Action Date moves — the patient
+ *     stays escalated. (Before July 2026 this note was REQUIRED but silently
+ *     dropped: the isEscalated save branch wrote only the Next Action Date.)
  *   - Attempt slot (1/2/3) from Monday's MN Attempts column; the displayed
  *     active attempt is derived from the logged attempts so it stays correct
  *     even if the counter lags.
@@ -199,15 +204,25 @@ export function ChaseClinicalsPanel({ patient, onUpdate, managerMode = false, ro
     toast.loading("Sending to server…", { id: toastId });
     try {
       if (isEscalated) {
-        // Manager follow-up on an escalated patient: all 3 slots used, so just
-        // move the next action date (weekend-clamped). Patient stays escalated.
-        patch = { nextActionDate: safeNextAction };
-        successMsg = "Follow-up saved — patient remains escalated";
+        // Manager follow-up on an escalated patient: all 3 chase-attempt slots
+        // are used, so there's no attempt column left to log into. The required
+        // note is NOT discarded — append it to MN Workflow Notes (the shared
+        // eval log) so the manager's "what happened" is durable, then move the
+        // next action date (weekend-clamped). Patient stays escalated.
+        const nextNotes = appendMnNote(
+          patient.mnEvalNotes,
+          formatEscalatedChaseNote(attemptNote.trim(), etNow()),
+        );
+        patch = { nextActionDate: safeNextAction, mnEvalNotes: nextNotes };
+        successMsg = "Follow-up saved — note added to MN Workflow Notes, patient remains escalated";
         await runVerifiedSend({
           itemId: patient.id,
           label: "Chase Clinicals → escalated follow-up",
           stageColumnId: [],
           tasks: [
+            // MN Workflow Notes is a DATA column (read-back verified). No
+            // stage-advancer here — an escalated follow-up never advances.
+            { label: "MN Workflow Notes", columnId: COL.mnEvalNotes, value: { text: nextNotes }, fn: () => writeLongText(patient.id, COL.mnEvalNotes, nextNotes) },
             { label: "Next Action Date", columnId: COL.nextActionDate, value: { date: safeNextAction }, fn: () => writeDate(patient.id, COL.nextActionDate, safeNextAction) },
           ],
           onProgress,
@@ -529,7 +544,8 @@ export function ChaseClinicalsPanel({ patient, onUpdate, managerMode = false, ro
                   <AlertTriangle className="h-4 w-4 shrink-0 text-amber-600" />
                   <p className="text-xs text-amber-800">
                     <span className="font-bold">Manager override</span> — all 3 attempts used.
-                    Completing just moves the next action date; the patient stays escalated.
+                    Completing logs your note to MN Workflow Notes and moves the next action
+                    date; the patient stays escalated.
                   </p>
                 </div>
               )}
@@ -973,6 +989,24 @@ function formatAttemptValue(note: string, date: Date): string {
   return (n ? `${datePart} · ${n}` : datePart) + sfx;
 }
 
+/** MN Workflow Notes line for a manager's escalated chase follow-up. Once a
+ *  patient escalates all three chase-attempt columns are full, so the manager's
+ *  required "what happened" note is appended here instead of being dropped.
+ *  "6/12/26, 2:33 PM · Chase (escalated) · {note} —{ini}" */
+function formatEscalatedChaseNote(note: string, date: Date): string {
+  const ini = userInitials();
+  const sfx = ini ? ` —${ini}` : "";
+  return `${formatDateTimeShort(date)} · Chase (escalated) · ${note.trim()}${sfx}`;
+}
+
+/** Append a line to the running MN Workflow Notes (newest last), preserving the
+ *  existing log. Monday's long_text has no server-side append, so the whole
+ *  value is rewritten from the in-memory notes + the new line. */
+function appendMnNote(existing: string | undefined, line: string): string {
+  const prev = (existing ?? "").trimEnd();
+  return prev ? `${prev}\n${line}` : line;
+}
+
 function nextMnAttempt(currentAttempt: number): "Attempt 2" | "Attempt 3" | "Escalate" {
   if (currentAttempt === 1) return "Attempt 2";
   if (currentAttempt === 2) return "Attempt 3";
@@ -1045,7 +1079,7 @@ function saveHint({
 }): string {
   if (!hasNote) return "Add a note about this attempt to enable.";
   if (isEscalated)
-    return `Moves the next action date out ${bumpDays} business day${bumpDays === 1 ? "" : "s"} — patient stays escalated.`;
+    return `Logs your note to MN Workflow Notes and moves the next action date out ${bumpDays} business day${bumpDays === 1 ? "" : "s"} — patient stays escalated.`;
   if (attemptNumber === 3) return "Logs Attempt 3 and flags Escalation Required.";
   return `Logs Attempt ${attemptNumber} and moves the next action date out ${bumpDays} business day${bumpDays === 1 ? "" : "s"}.`;
 }
