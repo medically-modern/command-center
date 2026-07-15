@@ -6,6 +6,15 @@ import { CLINIC_NAME_OPTIONS } from "./workflow";
 // Stage Advancer: index 4 = Completed
 const STAGE_ADVANCER_COMPLETED = 4;
 
+// Serving-based product gate for next order dates (MM-1042). Mirrors the
+// Welcome Call module's serving helpers; kept local so this module stays
+// self-contained (like its own COL map).
+const servingIncludesCgm = (serving: string): boolean => serving.toLowerCase().includes("cgm");
+const servingIncludesPump = (serving: string): boolean => {
+  const s = serving.toLowerCase();
+  return s.includes("pump") || s.includes("supplies");
+};
+
 const MAX_RETRIES = 2;
 const RETRY_DELAY_MS = 800;
 
@@ -257,14 +266,29 @@ export async function sendPatientToMonday(p: Patient): Promise<void> {
     tasks.push({ label: entry.label, columnId: entry.colId, fn: () => writeDate(p.id, entry.colId, entry.dateVal) });
   }
 
-  // ─── Next Order Dates (user-editable, written directly) ──
-  const nextOrderDateEntries: { label: string; dateVal: string; colId: string }[] = [
-    { label: "IP Next Order Date", dateVal: p.nextOrderDateIp, colId: COL.nextOrderDate.insulin_pump },
-    { label: "Sensors Next Order Date", dateVal: p.nextOrderDateSensors, colId: COL.nextOrderDate.sensors },
-    { label: "Supplies Next Order Date", dateVal: p.nextOrderDateSupplies, colId: COL.nextOrderDate.supplies },
+  // ─── Next Order Dates ────────────────────────────────────────
+  // MM-1042: a product's next order date must be empty when it isn't being
+  // served. These are read-only pass-throughs from the board, so a stale date
+  // on a not-served line (e.g. the Welcome Call step's "today" default) would
+  // otherwise be re-persisted here on every Send — clear it instead. Serving is
+  // trusted only when known, so unknown serving leaves the value untouched.
+  const servingKnown = p.serving.trim() !== "";
+  const cgmServed = !servingKnown || servingIncludesCgm(p.serving);
+  const pumpServed = !servingKnown || servingIncludesPump(p.serving);
+  const nextOrderDateEntries: { label: string; dateVal: string; colId: string; served: boolean }[] = [
+    { label: "IP Next Order Date", dateVal: p.nextOrderDateIp, colId: COL.nextOrderDate.insulin_pump, served: pumpServed },
+    { label: "Sensors Next Order Date", dateVal: p.nextOrderDateSensors, colId: COL.nextOrderDate.sensors, served: cgmServed },
+    { label: "Supplies Next Order Date", dateVal: p.nextOrderDateSupplies, colId: COL.nextOrderDate.supplies, served: pumpServed },
   ];
   for (const entry of nextOrderDateEntries) {
-    tasks.push({ label: entry.label, columnId: entry.colId, fn: () => writeDate(p.id, entry.colId, entry.dateVal) });
+    const dateVal = entry.served ? entry.dateVal : "";
+    // Skip a no-op empty write (a not-served line already blank on the board):
+    // executeWritesWithVerification reads back every task, so an empty→empty
+    // write is a wasted Monday round-trip. Mirrors resolveNextOrderWrite's
+    // null-skip in the Welcome Call path.
+    if (dateVal !== "" || entry.dateVal !== "") {
+      tasks.push({ label: entry.label, columnId: entry.colId, fn: () => writeDate(p.id, entry.colId, dateVal) });
+    }
   }
 
   // ─── Escalation ───────────────────────────────────────────

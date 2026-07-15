@@ -1,6 +1,6 @@
-import { writeStatusIndex, writeNumber, writeLocation, writeText, writeLongText, writeDate, writePhone, readColumnTexts, COL } from "./mondayApi";
+import { writeStatusIndex, writeNumber, writeLocation, writeText, writeLongText, writeDate, clearDateColumn, writePhone, readColumnTexts, COL } from "./mondayApi";
 import { executeWritesWithVerification } from "../shared/verifiedWrite";
-import { effectiveNextOrder } from "./workflow";
+import { resolveNextOrderWrite, servingIncludesCgm, servingIncludesPump } from "./workflow";
 import type { Patient } from "./workflow";
 
 const MAX_RETRIES = 2;
@@ -108,22 +108,40 @@ export async function sendPatientToMonday(p: Patient): Promise<void> {
   // Monday value → computed default) so the displayed default actually lands on
   // the board. Computed at send time, never read from a mount effect; skip only
   // when the effective value already matches Monday (avoids a same-value write).
+  //
+  // MM-1042: only a product that is actually being served gets a date. Without
+  // this gate the computed default falls through to "today" for a not-served
+  // line (no edit, no board value, no last-bill history), which is how the
+  // Sensors date was landing on the same day as supplies/pump. `served` is
+  // resolved from the effective serving value; when serving is unknown we leave
+  // the existing behavior untouched rather than risk clearing good data.
+  const effServing = p.servingEdited ?? p.serving;
+  const servingKnown = effServing.trim() !== "";
+  const cgmServed = !servingKnown || servingIncludesCgm(effServing);
+  const pumpServed = !servingKnown || servingIncludesPump(effServing);
   const nextOrderDateWrites: {
     label: string;
     columnId: string;
     edited: string | null;
     mondayDate: string;
     lastBillDates: string[];
+    served: boolean;
   }[] = [
-    { label: "IP Next Order Date", columnId: COL.ipNextOrderDate, edited: p.ipNextOrderDateEdited, mondayDate: p.ipNextOrderDate, lastBillDates: [p.ipLastBillDate] },
-    { label: "Sensors Next Order Date", columnId: COL.sensorsNextOrderDate, edited: p.sensorsNextOrderDateEdited, mondayDate: p.sensorsNextOrderDate, lastBillDates: [p.sensorsLastBillDate, p.cgmLastBillDate] },
-    { label: "Supplies Next Order Date", columnId: COL.suppliesNextOrderDate, edited: p.suppliesNextOrderDateEdited, mondayDate: p.suppliesNextOrderDate, lastBillDates: [p.infusionSetLastBillDate, p.cartridgeLastBillDate] },
+    { label: "IP Next Order Date", columnId: COL.ipNextOrderDate, edited: p.ipNextOrderDateEdited, mondayDate: p.ipNextOrderDate, lastBillDates: [p.ipLastBillDate], served: pumpServed },
+    { label: "Sensors Next Order Date", columnId: COL.sensorsNextOrderDate, edited: p.sensorsNextOrderDateEdited, mondayDate: p.sensorsNextOrderDate, lastBillDates: [p.sensorsLastBillDate, p.cgmLastBillDate], served: cgmServed },
+    { label: "Supplies Next Order Date", columnId: COL.suppliesNextOrderDate, edited: p.suppliesNextOrderDateEdited, mondayDate: p.suppliesNextOrderDate, lastBillDates: [p.infusionSetLastBillDate, p.cartridgeLastBillDate], served: pumpServed },
   ];
   for (const w of nextOrderDateWrites) {
-    const effective = effectiveNextOrder(w.edited, w.mondayDate, w.lastBillDates);
-    if (effective && effective !== w.mondayDate.slice(0, 10)) {
-      tasks.push({ label: w.label, columnId: w.columnId, fn: () => writeDate(p.id, w.columnId, effective) });
-    }
+    const value = resolveNextOrderWrite({ served: w.served, edited: w.edited, mondayDate: w.mondayDate, lastBillDates: w.lastBillDates });
+    if (value === null) continue;
+    // An empty result means "clear this date". This module's writeDate always
+    // sends { date: ... }, which Monday does NOT treat as a clear — the empty
+    // clear must go through clearDateColumn ({} payload). Non-empty values use
+    // writeDate as before.
+    const fn = value === ""
+      ? () => clearDateColumn(p.id, w.columnId)
+      : () => writeDate(p.id, w.columnId, value);
+    tasks.push({ label: w.label, columnId: w.columnId, fn });
   }
 
   // Notes
