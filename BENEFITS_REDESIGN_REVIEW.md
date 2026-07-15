@@ -37,6 +37,39 @@ spec §7) was not attached. The §7 rules below are known only from the spec's o
 
 ---
 
+## Decisions — 2026-07-15 (Josh)
+
+- **D1 (S1, TBD pump date):** DONE — new text column **`text_mm59qh8r`** "Medicare Prior Pump
+  Date" created on the Insurance board 18410601299 (2026-07-15).
+  **⚠️ ACTION FOR JOSH — still open:** add a copy mapping in the Stage Advancer → "Complete" →
+  create-item-in-Welcome-Call automation (**automation id `7918324247`**) so
+  `text_mm59qh8r` (Insurance) → `text_mm58k9x9` (Welcome Call). Until that mapping exists the
+  TBD never reaches the Welcome Call rep. Text→text copy is safe for the literal "TBD".
+- **D2 (S2, last-bill dates):** write the entered Last Bill Date for **every** billed product,
+  and change **Final Confirm to read the actual SoS columns instead of inferring "Not Clear"
+  from date presence** (`finalConfirm/mondayMapping.ts:107-111`). Implementation note: Final
+  Confirm lives on the Welcome Call board and can only read what the create-item automation
+  copies — the per-product SoS truth on the Insurance board is the **Not Clear Products**
+  (`dropdown_mm2vez5a`) + **Skip SoS Products** (`dropdown_mm31163t`) dropdowns, which are
+  **not currently in automation `7918324247`'s copy map**. Add both (dropdown→dropdown copy)
+  when making the D1 automation edit, then point Final Confirm's parser at them.
+- **D3 (S3, Trigger DVS):** remove the Benefits buttons; the DVS stage will own this later.
+  Interim reality: Submit Auth / Auth Outstanding keep their buttons; straight-Medicaid
+  supplies-only patients don't advance on their own, so they're handled manually on Monday
+  until the DVS stage ships.
+- **D4 (S7, escalation reason):** auto-compose the derived-escalation reason line and
+  **append it to the Insurance notes column `long_text_mm2ffsme` (Call Reference Notes)** —
+  visible to all three Insurance roles and hop-copied to Welcome Call — NOT to the
+  escalation-notes column. Compose read+append once, inside the verified batch (same
+  append-writer rules as the S6 call logs).
+- **D5 (S4, labels):** verified against the live board 2026-07-15 — all labels/ids in the
+  Skip→recheck path match (Skip/Not Clear dropdown ids 1–5, SoS 0:Skip/1:All Clear/2:Partial /
+  Not Clear, Auth aggregate, all five Auth Result sets, universal checks, Escalation). The
+  Medicaid-pump Clear→Skip change is **intended**. No board label work needed; keep writing by
+  index.
+
+---
+
 ## 1. Severity-ranked changes
 
 ### 🔴 S1 — CRITICAL: Never-billed "TBD" → `text_mm58k9x9` (spec §2)
@@ -357,19 +390,22 @@ the columns to the Benefits read set or accept that a reload mid-patient loses t
 
 ## 4. Open questions for Brandon / decisions for Josh
 
-1. **S2:** where do last-bill dates for derived-**Clear** products land? (Write-all + fix
-   Final Confirm/WC, or keep dates as a Not-Clear-only signal?)
-2. **S4:** Medicaid pump: Skip (new) vs Clear (today's pre-fill) — intended change? And is
-   bill-date exactly on the cutoff = Not Clear intended?
-3. **S3:** interim path for straight-Medicaid / supplies-only patients until the DVS stage
-   ships — keep the Benefits Trigger DVS button until then?
-4. **S1:** confirm the TBD design = new Insurance column + hop mapping; and that WC's Pump
-   Qty = 1 auto-clear of the pump date is acceptable for TBD patients.
+1. ~~**S2:** where do last-bill dates for derived-**Clear** products land?~~ **RESOLVED (D2):
+   write everything; fix Final Confirm to read the real SoS columns.**
+2. **S4:** ~~Medicaid pump Skip vs Clear~~ **RESOLVED (D5): intended.** Still open: is
+   bill-date exactly on the cutoff = Not Clear intended? (minor)
+3. ~~**S3:** keep the Benefits Trigger DVS button until the DVS stage ships?~~ **RESOLVED
+   (D3): remove it; interim handling is manual.**
+4. ~~**S1:** confirm the TBD design = new Insurance column + hop mapping.~~ **RESOLVED (D1):
+   column `text_mm59qh8r` created; automation mapping still to do (Josh).** WC's Pump Qty = 1
+   auto-clear accepted as-is.
 5. **S6:** call logs into `long_text_mm2ffsme` (shared with freeform notes) or new
-   column(s)? Retention/size policy for manager views and board hops?
+   column(s)? Retention/size policy for manager views and board hops? (D4 already makes the
+   escalation reason line an appender into this column.)
 6. **S9:** Units — one column or per-product, and which products?
-7. **S7:** auto-compose a derived-escalation reason into notes? And what's the un-escalate /
-   return-from-Escalations-group SOP?
+7. **S7:** ~~auto-compose a derived-escalation reason into notes?~~ **RESOLVED (D4): yes —
+   append to `long_text_mm2ffsme`.** Still open: the un-escalate / return-from-
+   Escalations-group SOP.
 8. **S10:** server-side gating scope for v1 (none / advancer-flip validation / full mirror +
    move the send to gateway `/send`)?
 9. **S8:** should a later send be able to *clear* Never Billed, and TBD ignoring the pump's
