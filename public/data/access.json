@@ -136,7 +136,6 @@
     "janelle@medicallymodern.com": {
       "name": "janelle",
       "roles": [
-        "benefits",
         "authOutstanding",
         "finalConfirm",
         "updateClinicals",
@@ -152,7 +151,6 @@
       ],
       "roleFilters": {
         "authOutstanding": "escalated",
-        "benefits": "escalated",
         "finalConfirm": "escalated",
         "updateClinicals": "escalated",
         "patientQuestions": "escalated",
