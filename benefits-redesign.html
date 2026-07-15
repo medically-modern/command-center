@@ -1,0 +1,1306 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Benefits · Redesign</title>
+<style>
+/* ============ design tokens (Medical Evaluation UI Design v2) ============ */
+:root{
+  --background:oklch(1 0 0);
+  --foreground:oklch(0.129 0.042 264.695);
+  --card:oklch(1 0 0);
+  --muted:oklch(0.968 0.007 247.896);
+  --muted-foreground:oklch(0.554 0.046 257.417);
+  --border:oklch(0.929 0.013 255.508);
+  --input:oklch(0.929 0.013 255.508);
+  /* Medically Modern palette */
+  --mm-teal:oklch(0.36 0.04 200);
+  --mm-green:oklch(0.62 0.10 175);
+  --mm-green-12:oklch(0.62 0.10 175 / 0.12);
+  --mm-mint:oklch(0.94 0.02 175);
+  --mm-mint-ring:oklch(0.85 0.04 175);
+  --mm-rose:oklch(0.62 0.13 18);
+  --mm-rose-soft:oklch(0.94 0.03 18);
+  --mm-amber:oklch(0.66 0.12 75);
+  --mm-amber-soft:oklch(0.96 0.04 90);
+  --mm-sky:oklch(0.60 0.10 230);
+  --mm-sky-soft:oklch(0.95 0.02 230);
+}
+*{box-sizing:border-box;margin:0;padding:0;border-color:var(--border)}
+body{
+  font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  background:var(--background);color:var(--foreground);line-height:1.5;
+  -webkit-font-smoothing:antialiased;
+}
+button{font:inherit;cursor:pointer;background:none;border:none;color:inherit}
+.page{max-width:120rem;margin:0 auto;padding:40px 32px;display:flex;flex-direction:column;gap:24px}
+
+/* ============ cards ============ */
+.card{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:24px;box-shadow:0 1px 2px 0 rgb(0 0 0 / .05)}
+.step-card{border-left:4px solid var(--mm-green)}
+.header-card{border-top:4px solid var(--mm-teal)}
+.step-head{display:flex;align-items:center;gap:12px;margin-bottom:6px}
+.step-num{
+  display:grid;place-items:center;height:36px;width:36px;border-radius:50%;
+  font-size:1rem;font-weight:700;background:var(--mm-green-12);color:var(--mm-teal);
+  box-shadow:inset 0 0 0 1px var(--mm-mint-ring);flex-shrink:0;
+}
+.step-num.done{background:var(--mm-green);color:#fff;box-shadow:none}
+.step-head h2{font-size:1.25rem;font-weight:700;letter-spacing:-.015em}
+.step-sub{font-size:.9rem;color:var(--muted-foreground);margin:0 0 20px 48px}
+.step-chip{margin-left:auto;font-size:.8rem;font-weight:600;padding:4px 12px;border-radius:999px;background:var(--muted);color:var(--muted-foreground)}
+.step-chip.ok{background:var(--mm-mint);color:var(--mm-teal)}
+
+/* ============ typography helpers ============ */
+.eyebrow{font-size:.875rem;font-weight:500;text-transform:uppercase;letter-spacing:.025em;color:var(--muted-foreground)}
+/* copy-friendly values: double-click (or single click-drag) selects the WHOLE value, never the label */
+.hval,.sval,.ph-name,.sel{user-select:all;-webkit-user-select:all}
+.demo-tag{
+  display:inline-block;margin-left:4px;padding:1px 7px;border-radius:999px;
+  font-size:.62rem;font-weight:700;letter-spacing:.05em;vertical-align:middle;
+  background:var(--mm-sky-soft);color:var(--mm-sky);box-shadow:inset 0 0 0 1px oklch(0.60 0.10 230 / 0.3);
+}
+.eyebrow-xs{font-size:.75rem;font-weight:500;text-transform:uppercase;letter-spacing:.025em;color:var(--muted-foreground)}
+.hval{margin-top:4px;font-size:1.125rem;font-weight:600}
+
+/* ============ top bar ============ */
+.topbar{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap}
+.topbar h1{font-size:1.875rem;font-weight:900;letter-spacing:-.025em;color:var(--mm-teal)}
+.topbar .actions{display:flex;gap:8px;flex-wrap:wrap}
+.tbtn{
+  display:inline-flex;align-items:center;gap:7px;border-radius:8px;padding:9px 16px;
+  font-size:.875rem;font-weight:600;border:1px solid var(--border);background:var(--card);
+  color:var(--mm-teal);box-shadow:0 1px 2px rgb(0 0 0 / .05);transition:all .12s;
+}
+.tbtn:hover{border-color:var(--mm-mint-ring);background:oklch(0.973 0.011 175)}
+.tbtn.solid{background:var(--mm-green);border-color:transparent;color:#fff}
+.tbtn.solid:hover{background:oklch(0.56 0.10 175)}
+.tbtn:disabled{opacity:.45;cursor:not-allowed}
+
+/* ============ demo bar ============ */
+.demo-bar{display:flex;align-items:center;justify-content:flex-end;gap:14px;margin-bottom:-8px;flex-wrap:wrap}
+.demo-bar .lbl{font-size:.75rem;font-weight:500;text-transform:uppercase;letter-spacing:.025em;color:var(--muted-foreground)}
+.demo-seg{display:inline-flex;border:1px solid var(--border);border-radius:8px;padding:3px;gap:2px;background:oklch(0.968 0.007 247.896 / 0.4);flex-wrap:wrap}
+.demo-seg button{font-size:.8rem;font-weight:600;padding:5px 12px;border-radius:6px;color:var(--muted-foreground)}
+.demo-seg button.on{background:var(--card);color:var(--mm-teal);box-shadow:0 1px 2px rgb(0 0 0 / .08)}
+.reset-link{font-size:.8rem;font-weight:600;color:var(--muted-foreground);text-decoration:underline;text-underline-offset:3px}
+.reset-link:hover{color:var(--foreground)}
+
+/* ============ patient header ============ */
+.ph-name{font-size:1.875rem;font-weight:900;letter-spacing:-.025em}
+.ph-dob{margin-top:4px;font-size:1.125rem;color:var(--muted-foreground)}
+.ph-groups{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:20px}
+.hgroup{border:1px solid var(--border);border-radius:12px;background:oklch(0.968 0.007 247.896 / 0.3);padding:16px}
+.hgroup .pair{display:grid;grid-template-columns:1fr 1fr;gap:12px;align-items:start}
+/* keep top-row labels one line + equal height so controls/values align across groups */
+.ph-groups .eyebrow{font-size:.78rem;white-space:nowrap;display:flex;align-items:center;gap:6px;height:18px}
+.ph-groups .hval{margin-top:6px;min-height:38px;display:flex;align-items:center}
+.ph-groups select{margin-top:6px}
+.ph-toggle{
+  margin-top:20px;display:inline-flex;align-items:center;gap:6px;
+  font-size:1.125rem;font-weight:600;color:var(--mm-teal);
+}
+.ph-toggle:hover{opacity:.8}
+.ph-toggle svg{transition:transform .2s}
+.ph-toggle.open svg{transform:rotate(180deg)}
+.ph-details{margin-top:20px;border-top:1px solid var(--border);padding-top:20px;display:grid;grid-template-columns:repeat(4,1fr);gap:20px}
+
+/* ============ stedi check output (read-only) ============ */
+.stedi-block{margin-top:16px;border:1px solid var(--border);border-radius:12px;padding:16px;background:oklch(0.968 0.007 247.896 / 0.2)}
+.stedi-head{margin-bottom:12px}
+.stedi-grid{display:grid;gap:10px}
+.stedi-grid+.stedi-grid{margin-top:10px}
+.stedi-grid.three{grid-template-columns:repeat(3,1fr)}
+.stedi-grid.four{grid-template-columns:repeat(4,1fr)}
+.stedi-grid.five{grid-template-columns:repeat(5,1fr)}
+.sbox{border:1px solid var(--border);border-radius:10px;background:var(--card);padding:10px 14px}
+.sval{margin-top:2px;font-size:.95rem;font-weight:500}
+.sval.strong{font-weight:700}
+.cs-row{display:flex;align-items:center;gap:12px;margin:14px 0 10px}
+.cs-toggle{display:inline-flex;border:1px solid var(--border);border-radius:8px;padding:2px;gap:2px;background:var(--card)}
+.cs-toggle button{font-size:.78rem;font-weight:600;padding:4px 12px;border-radius:6px;color:var(--muted-foreground)}
+.cs-toggle button.on{background:var(--mm-green-12);color:var(--mm-teal)}
+
+/* ============ who-to-call suggestion pills (matches profile-sendoff sugg-chip2) ============ */
+.sugg-line{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:14px}
+.sugg-lead2{font-size:.8rem;font-weight:800;color:var(--foreground)}
+.sugg-chip2{display:inline-flex;align-items:center;gap:7px;font-size:.8rem;font-weight:700;border-radius:999px;padding:5px 12px;background:var(--mm-green-12);color:var(--mm-teal);box-shadow:inset 0 0 0 1px var(--mm-mint-ring)}
+.sugg-chip2 .ph{font-weight:800;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.78rem;user-select:all;-webkit-user-select:all}
+.sugg-chip2.office{background:var(--mm-teal);color:#fff;box-shadow:none}
+.sugg-chip2.office .ph{color:#fff}
+.sugg-note{font-size:.8rem;color:var(--muted-foreground)}
+.head-pills{display:inline-flex;gap:8px;align-items:center;flex-wrap:wrap}
+.head-pills:empty{display:none}
+#s2-pills{margin-left:auto}
+.uc-pill{margin-top:12px}
+.uc-pill .sugg-lead2{margin-right:8px}
+.pos-flag{
+  margin-top:14px;display:flex;align-items:flex-start;gap:10px;
+  border:1px solid oklch(0.66 0.12 75 / 0.5);border-radius:10px;
+  background:oklch(0.96 0.04 90 / 0.6);padding:12px 16px;
+  font-size:.9rem;color:oklch(0.42 0.10 75);line-height:1.5;
+}
+.pos-flag svg{flex-shrink:0;margin-top:2px}
+.pos-flag b{color:oklch(0.38 0.10 75)}
+@media (max-width:1150px){
+  .stedi-grid.five{grid-template-columns:repeat(2,1fr)}
+  .stedi-grid.three,.stedi-grid.four{grid-template-columns:repeat(2,1fr)}
+}
+
+select,input[type=date],input[type=text],input[type=number],textarea{
+  font:inherit;font-size:.875rem;width:100%;height:38px;padding:0 12px;
+  border:1px solid var(--input);border-radius:6px;background:var(--background);color:var(--foreground);
+}
+textarea{height:auto;padding:10px 12px;resize:vertical}
+select:focus,input:focus,textarea:focus{outline:2px solid var(--mm-green);outline-offset:1px}
+.flabel{margin-bottom:6px;font-size:.75rem;font-weight:500;text-transform:uppercase;letter-spacing:.025em;color:var(--muted-foreground)}
+.fhint{margin-top:6px;font-size:.75rem;color:var(--muted-foreground)}
+.req-star{color:var(--mm-rose);font-weight:700}
+
+/* ============ universal checks ============ */
+.uc-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:20px}
+.subcard{border:1px solid var(--border);border-radius:12px;background:var(--card);padding:20px;box-shadow:0 1px 2px 0 rgb(0 0 0 / .05);transition:background .2s,border-color .2s}
+.subcard.ok{background:oklch(0.973 0.011 175);border-color:var(--mm-mint-ring)}
+.subcard.bad{background:oklch(0.62 0.13 18 / 0.05);border-color:oklch(0.62 0.13 18 / 0.35)}
+.uc-title{font-size:1.02rem;font-weight:700;letter-spacing:-.01em}
+.uc-grid .subcard{display:flex;flex-direction:column;padding:18px}
+.uc-grid .seg{margin-top:auto;padding-top:16px}
+.uc-grid .seg button{white-space:nowrap;padding:10px 8px}
+.uc-tag{font-size:.7rem;font-weight:600;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--muted-foreground);letter-spacing:.05em}
+
+/* ============ segmented buttons ============ */
+.seg{display:inline-flex;width:100%;gap:8px;margin-top:14px}
+.seg button{
+  flex:1;padding:10px 12px;font-size:.875rem;font-weight:600;border-radius:6px;
+  border:2px solid var(--border);background:var(--background);color:var(--muted-foreground);
+  transition:all .12s;
+}
+.seg button.g:not(.sel-g):hover{color:var(--mm-green);border-color:var(--mm-green);background:var(--mm-green-12)}
+.seg button.r:not(.sel-r):hover{color:var(--mm-rose);border-color:var(--mm-rose);background:oklch(0.62 0.13 18 / 0.12)}
+.seg button.a:not(.sel-a):hover{color:var(--mm-amber);border-color:var(--mm-amber);background:oklch(0.66 0.12 75 / 0.12)}
+.seg button.s:not(.sel-s):hover{color:var(--mm-sky);border-color:var(--mm-sky);background:oklch(0.60 0.10 230 / 0.10)}
+.seg button.sel-g{border-color:transparent;background:var(--mm-green);color:#fff;box-shadow:0 1px 2px 0 rgb(0 0 0 / .05)}
+.seg button.sel-r{border-color:transparent;background:var(--mm-rose);color:#fff;box-shadow:0 1px 2px 0 rgb(0 0 0 / .05)}
+.seg button.sel-a{border-color:transparent;background:var(--mm-amber);color:#fff;box-shadow:0 1px 2px 0 rgb(0 0 0 / .05)}
+.seg button.sel-s{border-color:transparent;background:var(--mm-sky);color:#fff;box-shadow:0 1px 2px 0 rgb(0 0 0 / .05)}
+
+/* ============ product cards ============ */
+.prod-list{display:flex;flex-direction:column;gap:16px}
+.prod-card{border:1px solid var(--border);border-left:4px solid var(--mm-mint-ring);border-radius:12px;background:var(--card);padding:20px;box-shadow:0 1px 2px 0 rgb(0 0 0 / .05)}
+.prod-card.recurring{border-left-color:var(--mm-green)}
+.prod-top{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.prod-title{font-size:1.125rem;font-weight:700;letter-spacing:-.01em}
+.prod-meta{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px}
+.chip{display:inline-flex;align-items:center;gap:5px;font-size:.7rem;font-weight:700;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.04em;padding:3px 10px;border-radius:999px}
+.chip.rec{background:var(--mm-green-12);color:var(--mm-teal)}
+.chip.one{background:var(--muted);color:var(--muted-foreground);box-shadow:inset 0 0 0 1px var(--border)}
+.chip.grp{background:transparent;color:var(--muted-foreground);padding:3px 2px}
+.chip.mcd{background:var(--mm-sky-soft);color:var(--mm-sky);box-shadow:inset 0 0 0 1px oklch(0.60 0.10 230 / 0.3)}
+.hcpc{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.85rem;color:var(--muted-foreground);margin-top:2px}
+.hcpc b{color:var(--mm-teal);font-weight:700}
+.prod-note{margin-top:8px;font-size:.8rem;color:var(--muted-foreground);max-width:52rem}
+.pill{display:inline-flex;align-items:center;gap:6px;padding:6px 14px;border-radius:999px;font-size:.8rem;font-weight:600;white-space:nowrap}
+.pill.pending{background:var(--muted);color:var(--muted-foreground)}
+.pill.clear{background:var(--mm-mint);color:var(--mm-teal);box-shadow:inset 0 0 0 1px var(--mm-mint-ring)}
+.pill.warn{background:var(--mm-amber-soft);color:oklch(0.5 0.11 75);box-shadow:inset 0 0 0 1px oklch(0.66 0.12 75 / 0.35)}
+.pill.rose{background:var(--mm-rose-soft);color:var(--mm-rose);box-shadow:inset 0 0 0 1px oklch(0.62 0.13 18 / 0.3)}
+.prod-grid{display:grid;grid-template-columns:2fr 3fr;gap:24px;margin-top:16px}
+.prod-q{border:1px solid var(--border);border-radius:10px;background:oklch(0.968 0.007 247.896 / 0.4);padding:16px 18px}
+.prod-q .flabel{color:var(--mm-teal);font-weight:700}
+.prod-grid .seg{margin-top:8px}
+.autofill-note{margin-top:10px;font-size:.78rem;color:var(--mm-sky);font-weight:500}
+.lastbill{
+  margin-top:14px;border:1px solid oklch(0.66 0.12 75 / 0.4);border-radius:10px;
+  background:oklch(0.96 0.04 90 / 0.5);padding:14px 16px;
+}
+.lastbill .flabel{color:oklch(0.5 0.11 75)}
+.lastbill input{max-width:220px;background:var(--background);border-color:oklch(0.66 0.12 75 / 0.4)}
+.lb-warn{
+  margin-top:10px;border:1px solid oklch(0.66 0.12 75 / 0.55);border-radius:8px;
+  background:oklch(0.96 0.04 90);padding:10px 14px;font-size:.83rem;
+  color:oklch(0.42 0.10 75);line-height:1.5;
+}
+.lb-warn b{color:oklch(0.42 0.10 75)}
+.dvs-note{
+  margin-top:16px;display:flex;align-items:flex-start;gap:12px;
+  border:1px solid var(--mm-mint-ring);border-radius:12px;
+  background:oklch(0.94 0.02 175 / 0.5);padding:16px 18px;
+  font-size:.95rem;color:var(--mm-teal);line-height:1.55;
+}
+.dvs-note svg{flex-shrink:0;margin-top:2px}
+.dvs-note b{font-weight:700}
+.empty-box{border:2px dashed var(--mm-mint-ring);border-radius:12px;background:oklch(0.94 0.02 175 / 0.25);padding:36px;text-align:center}
+.empty-box p{font-size:.95rem;color:var(--mm-teal);font-weight:600}
+.empty-box .sub{margin-top:6px;font-size:.85rem;color:var(--muted-foreground);font-weight:400;max-width:34rem;margin-left:auto;margin-right:auto}
+
+/* ============ product code labels ============ */
+.prod-code{font-size:1.4rem;font-weight:800;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--mm-teal);letter-spacing:-.01em}
+.prod-name{font-size:.9rem;font-weight:600;color:var(--muted-foreground);margin-top:1px}
+
+/* ============ SoS billing entry ============ */
+/* bottom-align the answer rows across both question boxes */
+.prod-q{display:flex;flex-direction:column}
+.prod-q>.seg{margin-top:auto}
+.sos-grid{display:flex;align-items:flex-end;gap:12px;margin-top:auto}
+.sos-pair{
+  flex:1;display:grid;grid-template-columns:minmax(140px,1fr) 90px;gap:10px;
+  border:1.5px dashed var(--border);border-radius:10px;background:var(--card);padding:10px 12px;
+}
+.sos-pair.locked{opacity:.5}
+.slab{margin-bottom:5px;font-size:.7rem;font-weight:600;text-transform:uppercase;letter-spacing:.03em;color:var(--muted-foreground);white-space:nowrap}
+.sos-grid input:disabled{cursor:not-allowed;background:var(--muted)}
+.sos-or{
+  display:grid;place-items:center;height:30px;width:30px;border-radius:50%;flex-shrink:0;
+  background:var(--muted);font-size:.68rem;font-weight:800;color:var(--muted-foreground);letter-spacing:.02em;
+  margin-bottom:14px;
+}
+.sos-toggle{margin-bottom:10px}
+.prod-q.off{opacity:.45;pointer-events:none}
+.prod-q.off .fhint{font-weight:600}
+.sos-toggle{
+  height:38px;padding:0 14px;font-size:.85rem;font-weight:600;border-radius:6px;
+  border:2px solid var(--border);background:var(--background);color:var(--muted-foreground);transition:all .12s;white-space:nowrap;
+}
+.sos-toggle.nv:not(.on):hover{color:var(--mm-sky);border-color:var(--mm-sky);background:var(--mm-sky-soft)}
+.sos-toggle.nv.on{border-color:transparent;background:var(--mm-sky);color:#fff}
+.sos-toggle.sk:not(.on):not(:disabled):hover{color:var(--mm-teal);border-color:var(--mm-teal);background:var(--mm-green-12)}
+.sos-toggle.sk.on{border-color:transparent;background:var(--mm-teal);color:#fff}
+.sos-toggle:disabled{opacity:.35;cursor:not-allowed}
+
+/* ============ call logs ============ */
+.call-log{margin-top:18px;border-top:1px dashed var(--border);padding-top:14px}
+.cl-head{font-size:.75rem;font-weight:700;text-transform:uppercase;letter-spacing:.03em;color:var(--mm-teal);margin-bottom:10px}
+.cl-row{display:grid;grid-template-columns:150px 1fr 32px;gap:10px;margin-bottom:10px;align-items:center}
+.cl-row input{height:38px}
+.cl-del{
+  display:grid;place-items:center;height:32px;width:32px;border-radius:8px;
+  color:var(--muted-foreground);font-size:.8rem;transition:all .12s;
+}
+.cl-del:hover{background:var(--mm-rose-soft);color:var(--mm-rose)}
+.cl-add{
+  display:inline-flex;align-items:center;gap:6px;font-size:.82rem;font-weight:600;
+  color:var(--mm-teal);border:1.5px dashed var(--mm-mint-ring);border-radius:8px;
+  padding:7px 14px;transition:all .12s;
+}
+.cl-add:hover{background:oklch(0.973 0.011 175)}
+
+/* ============ monday preview ============ */
+.mon-box{border:1px solid var(--border);border-radius:12px;background:oklch(0.968 0.007 247.896 / 0.3);padding:20px}
+.mon-box h3{font-size:1rem;font-weight:700;letter-spacing:-.01em}
+.mon-box .msub{font-size:.8rem;color:var(--muted-foreground);margin-top:2px;margin-bottom:14px}
+.mon-rows{border:1px solid var(--border);border-radius:10px;background:var(--card);overflow:hidden}
+.mon-row{display:grid;grid-template-columns:240px 1fr;align-items:center;gap:12px;padding:10px 16px}
+.mon-row + .mon-row{border-top:1px solid var(--border)}
+.mon-row .mlabel{font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted-foreground)}
+.mval{display:inline-flex;width:fit-content;align-items:center;padding:3px 10px;border-radius:6px;font-size:.875rem;font-weight:600}
+.mval.good{background:var(--mm-mint);color:var(--mm-teal)}
+.mval.warn{background:var(--mm-amber-soft);color:oklch(0.5 0.11 75)}
+.mval.bad{background:var(--mm-rose-soft);color:var(--mm-rose);box-shadow:inset 0 0 0 1px oklch(0.62 0.13 18 / 0.3)}
+.mval.skip{background:var(--mm-sky-soft);color:var(--mm-sky);box-shadow:inset 0 0 0 1px oklch(0.60 0.10 230 / 0.3)}
+.mval.neutral{background:transparent;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-weight:500;padding-left:0}
+.mon-note{margin-top:10px;font-size:.78rem;color:var(--muted-foreground);font-style:italic}
+
+/* ============ footer actions ============ */
+.foot-actions{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-top:20px}
+.foot-left{display:flex;gap:10px;flex-wrap:wrap}
+.obtn{
+  display:inline-flex;align-items:center;gap:8px;border-radius:8px;padding:10px 18px;
+  font-size:.875rem;font-weight:600;border:2px solid var(--border);background:var(--card);
+  color:var(--muted-foreground);transition:all .12s;
+}
+.obtn.rose{border-color:oklch(0.62 0.13 18 / 0.4);color:var(--mm-rose)}
+.obtn.rose:hover{background:var(--mm-rose-soft)}
+.obtn.rose.on{background:var(--mm-rose);border-color:transparent;color:#fff}
+.obtn.sky{border-color:oklch(0.60 0.10 230 / 0.4);color:var(--mm-sky)}
+.obtn.sky:hover{background:var(--mm-sky-soft)}
+.obtn.sky.on{background:var(--mm-sky);border-color:transparent;color:#fff}
+.send-btn{
+  display:inline-flex;align-items:center;gap:8px;border-radius:8px;
+  background:var(--mm-green);color:#fff;font-size:1rem;font-weight:600;
+  padding:13px 26px;box-shadow:0 1px 2px 0 rgb(0 0 0 / .1);
+}
+.send-btn:hover{background:oklch(0.56 0.10 175)}
+.send-btn:disabled{background:oklch(0.85 0.01 200);box-shadow:none;cursor:not-allowed}
+.missing-box{
+  margin-top:14px;border:1px solid oklch(0.66 0.12 75 / 0.45);border-radius:10px;
+  background:oklch(0.96 0.04 90 / 0.5);padding:12px 18px;text-align:center;
+}
+.missing-box .mb-title{font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:oklch(0.5 0.11 75)}
+.missing-box .mb-list{margin-top:4px;font-size:.85rem;color:oklch(0.45 0.1 75)}
+
+/* ============ modals & toast ============ */
+.overlay{position:fixed;inset:0;background:rgb(0 0 0 / .45);display:none;align-items:center;justify-content:center;z-index:50;padding:16px}
+.overlay.open{display:flex}
+.modal{background:var(--card);border:1px solid var(--border);border-radius:16px;box-shadow:0 20px 50px rgb(0 0 0 / .2);width:100%;max-width:30rem;padding:24px}
+.modal h3{font-size:1.15rem;font-weight:800;letter-spacing:-.015em;color:var(--mm-teal)}
+.modal .msub{font-size:.85rem;color:var(--muted-foreground);margin-top:2px;margin-bottom:16px}
+.modal .m-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:18px}
+.toast-wrap{position:fixed;top:20px;right:20px;z-index:60;display:flex;flex-direction:column;gap:8px}
+.toast{
+  background:var(--mm-teal);color:#fff;border-radius:10px;padding:12px 18px;
+  font-size:.875rem;font-weight:600;box-shadow:0 8px 24px rgb(0 0 0 / .2);
+  animation:tin .2s ease-out;
+}
+@keyframes tin{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:none}}
+
+/* ============ layout: main + notes rail ============ */
+.layout{display:grid;grid-template-columns:minmax(0,1fr) clamp(320px,22vw,420px);gap:24px;align-items:start}
+.main-col{display:flex;flex-direction:column;gap:24px;min-width:0}
+.notes-rail{position:sticky;top:16px;height:75vh}
+.notes-card{display:flex;flex-direction:column;padding:20px;height:100%}
+.notes-card textarea{flex:1;min-height:0;resize:none;font-size:.9rem;line-height:1.6}
+@media (max-width:1150px){
+  .layout{grid-template-columns:1fr}
+  .notes-rail{position:static}
+  .notes-card textarea{height:auto;min-height:140px}
+}
+
+/* ============ clinicals dropdown ============ */
+.clin-wrap{position:relative}
+.clin-count{
+  display:inline-grid;place-items:center;min-width:20px;height:20px;padding:0 5px;
+  border-radius:999px;background:var(--mm-green);color:#fff;font-size:.72rem;font-weight:700;
+}
+.clin-dd{
+  display:none;position:absolute;right:0;top:calc(100% + 6px);z-index:40;width:22rem;
+  background:var(--card);border:1px solid var(--border);border-radius:12px;
+  box-shadow:0 12px 32px rgb(0 0 0 / .14);padding:8px;
+}
+.clin-dd.open{display:block}
+.clin-file{
+  display:flex;align-items:center;gap:10px;width:100%;text-align:left;
+  padding:9px 10px;border-radius:8px;font-size:.85rem;font-weight:500;transition:background .12s;
+}
+.clin-file:hover{background:oklch(0.973 0.011 175)}
+.clin-file svg{flex-shrink:0;color:var(--mm-teal)}
+.clin-file .fname{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.clin-file .fsize{font-size:.72rem;color:var(--muted-foreground)}
+.clin-all{
+  margin-top:6px;border-top:1px solid var(--border);padding-top:8px;display:flex;justify-content:center;
+}
+
+/* ============ monday drawer toggle ============ */
+.mon-toggle{
+  display:flex;align-items:center;gap:12px;width:100%;text-align:left;
+  color:var(--mm-teal);
+}
+.mon-toggle h2{font-size:1.25rem;font-weight:700;letter-spacing:-.015em}
+.mon-toggle-hint{margin-left:auto;font-size:.85rem;font-weight:500;color:var(--muted-foreground)}
+.mon-toggle svg{transition:transform .2s;color:var(--muted-foreground);flex-shrink:0}
+.mon-toggle.open svg{transform:rotate(180deg)}
+.mon-toggle:hover .mon-toggle-hint{color:var(--foreground)}
+
+/* ============ responsive ============ */
+@media (max-width:960px){
+  .ph-groups,.uc-grid{grid-template-columns:1fr}
+  .ph-details{grid-template-columns:1fr 1fr}
+  .prod-grid{grid-template-columns:1fr}
+  .mon-row{grid-template-columns:1fr;gap:4px}
+}
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- ============ demo bar ============ -->
+  <div class="demo-bar">
+    <span class="lbl">Demo scenario</span>
+    <div class="demo-seg" id="demo-seg"></div>
+    <button class="reset-link" onclick="resetAll()">Reset selections</button>
+  </div>
+
+  <!-- ============ top bar ============ -->
+  <div class="topbar">
+    <div>
+      <p class="eyebrow">Medically Modern · Insurance Verification</p>
+      <h1>Benefits</h1>
+    </div>
+    <div class="actions">
+      <div class="clin-wrap">
+        <button class="tbtn" id="clin-btn" onclick="toggleClinicals()">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+          Clinicals <span class="clin-count" id="clin-count"></span>
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+        </button>
+        <div class="clin-dd" id="clin-dd"><!-- rendered --></div>
+      </div>
+      <button class="tbtn" onclick="toast('Progress saved — you can leave and come back')">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+        Save
+      </button>
+      <button class="tbtn" onclick="resetAll();toast('Cleared local edits — refetching from Monday (demo)')">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
+        Reset
+      </button>
+    </div>
+  </div>
+
+  <!-- ============ two-column layout: workflow left, notes rail right ============ -->
+  <div class="layout">
+  <div class="main-col">
+
+  <!-- ============ patient header ============ -->
+  <section class="card header-card" id="ph-card"><!-- rendered --></section>
+
+  <!-- ============ step 1 — universal checks ============ -->
+  <section class="card step-card">
+    <header class="step-head">
+      <span class="step-num" id="s1-num">1</span>
+      <h2>Call the Payer · Universal Checks</h2>
+      <span class="step-chip" id="s1-chip" style="margin-left:auto">0/3 confirmed</span>
+    </header>
+    <div class="uc-grid" id="uc-grid" style="margin-top:14px"><!-- rendered --></div>
+    <div id="call-log-1"><!-- rendered --></div>
+  </section>
+
+  <!-- ============ step 2 — product cards ============ -->
+  <section class="card step-card">
+    <header class="step-head">
+      <span class="step-num" id="s2-num">2</span>
+      <h2>Product-Specific SoS &amp; Auth Requirements</h2>
+      <span class="head-pills" id="s2-pills"></span>
+    </header>
+    <p class="step-sub">For each product, select Auth Requirements and Same or Similar status.</p>
+    <div id="prod-area"><!-- rendered --></div>
+    <div id="call-log-2"><!-- rendered --></div>
+  </section>
+
+  <!-- ============ monday output + actions ============ -->
+  <section class="card" id="mon-card" style="border-left:4px solid var(--mm-teal)"><!-- rendered --></section>
+
+  </div><!-- /main-col -->
+
+  <!-- ============ notes rail (sticky) ============ -->
+  <aside class="notes-rail">
+    <section class="card step-card notes-card">
+      <header class="step-head" style="margin-bottom:12px">
+        <h2 style="font-size:1.1rem">Reference Notes</h2>
+      </header>
+      <textarea id="notes" placeholder="Reference notes..." oninput="S.notes=this.value"></textarea>
+      <button class="tbtn" style="margin-top:12px;justify-content:center" onclick="toast('Notes saved to Monday (demo)')">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+        Save Notes to Monday
+      </button>
+    </section>
+  </aside>
+
+  </div><!-- /layout -->
+
+</div>
+
+<div class="toast-wrap" id="toasts"></div>
+
+<script>
+/* =====================================================================
+   LOGIC PORT — mirrors src/lib/samantha/hcpcRules.ts + workflow.ts and
+   src/components/samantha/InsurancePanel.tsx from command-center-app.
+   UI-only: nothing here talks to Monday.
+   ===================================================================== */
+
+/* ---------- hcpcRules.ts ---------- */
+const MONITOR_HCPC='E2103', SENSORS_HCPC='A4239', PUMP_HCPC='E0784';
+const SUPPLY_GROUPS={
+  A:{infusion_set:'A4230',cartridge:'A4232'},
+  B:{infusion_set:'A4224',cartridge:'A4225'},
+  C:{infusion_set:'A4231',cartridge:'A4232'},
+};
+const GROUP_BY_PAYER={
+  'Fidelis Medicaid':'A','Fidelis Low-Cost':'A','Fidelis Commercial':'A',
+  'Anthem BCBS Commercial':'A','Anthem BCBS Medicaid (JLJ)':'A','Anthem BCBS Low-Cost (JLJ)':'A',
+  'United Medicaid':'A','United Commercial':'A','United Low-Cost':'A',
+  'Horizon BCBS':'A','BCBS TN':'A','BCBS FL':'A','BCBS WY':'A',
+  'Medicaid':'A','Oregon Care':'A','MagnaCare':'A','UMR':'A',
+  'Anthem BCBS Medicare':'B','Fidelis Medicare':'B','Medicare A&B':'B','NYSHIP':'B',
+  'United Medicare':'B','Wellcare':'B','Humana':'B','Cigna':'B','Midlands Choice':'B',
+  'Aetna Commercial':'C','Aetna Medicare':'C',
+};
+const PRIMARY_OPTIONS=[
+  'Fidelis Medicaid','Fidelis Low-Cost','Fidelis Commercial','Fidelis Medicare',
+  'Anthem BCBS Medicare','Anthem BCBS Commercial','Anthem BCBS Medicaid (JLJ)','Anthem BCBS Low-Cost (JLJ)',
+  'Horizon BCBS','BCBS TN','BCBS FL','BCBS WY',
+  'United Medicare','United Medicaid','United Commercial','United Low-Cost',
+  'Aetna Medicare','Aetna Commercial',
+  'Medicare A&B','Medicaid','NYSHIP',
+  'Cigna','Humana','Wellcare','Midlands Choice','MagnaCare','UMR','Oregon Care',
+];
+const SECONDARY_OPTIONS=['None','NY Medicaid','Medicare Supplement'];
+const SERVING_OPTIONS=['Supplies Only','CGM','Insulin Pump','Supplies + CGM','Insulin Pump + CGM'];
+const SERVING_PRODUCTS={
+  'Supplies Only':['infusion_set','cartridge'],
+  'CGM':['monitor','sensors'],
+  'Insulin Pump':['insulin_pump','infusion_set','cartridge'],
+  'Supplies + CGM':['monitor','sensors','infusion_set','cartridge'],
+  'Insulin Pump + CGM':['monitor','sensors','insulin_pump','infusion_set','cartridge'],
+};
+const NEEDS_NY_MEDICAID_SECONDARY=new Set(['Fidelis Medicaid','Anthem BCBS Medicaid (JLJ)']);
+
+function suppliesRouteToMedicaid(primary,secondary){
+  if(primary==='Medicaid')return true;
+  if(NEEDS_NY_MEDICAID_SECONDARY.has(primary)){
+    return (secondary??'').trim().toLowerCase()==='ny medicaid';
+  }
+  return false;
+}
+function resolveHcpcs(primary,serving,secondary){
+  if(!primary||!serving)return[];
+  const products=SERVING_PRODUCTS[serving];
+  if(!products)return[];
+  const toMedicaid=suppliesRouteToMedicaid(primary,secondary);
+  const suppliesPayer=toMedicaid?'Medicaid':primary;
+  const grp=GROUP_BY_PAYER[suppliesPayer];
+  return products.map(product=>{
+    switch(product){
+      case 'monitor':      return{product,hcpc:MONITOR_HCPC,billsTo:'primary'};
+      case 'sensors':      return{product,hcpc:SENSORS_HCPC,billsTo:'primary'};
+      case 'insulin_pump': return{product,hcpc:PUMP_HCPC,billsTo:'primary'};
+      case 'infusion_set': return grp?{product,hcpc:SUPPLY_GROUPS[grp].infusion_set,billsTo:toMedicaid?'medicaid':'primary',group:grp}
+                                     :{product,hcpc:'Evaluate',billsTo:toMedicaid?'medicaid':'primary'};
+      case 'cartridge':    return grp?{product,hcpc:SUPPLY_GROUPS[grp].cartridge,billsTo:toMedicaid?'medicaid':'primary',group:grp}
+                                     :{product,hcpc:'Evaluate',billsTo:toMedicaid?'medicaid':'primary'};
+    }
+  });
+}
+const isAutoFilledMedicaidSupply=r=>(r.product==='infusion_set'||r.product==='cartridge')&&r.billsTo==='medicaid';
+const PRODUCT_LABELS={monitor:'CGM Monitor',sensors:'CGM Sensors',insulin_pump:'Insulin Pump',infusion_set:'Infusion Sets',cartridge:'Cartridges'};
+
+/* ---------- workflow.ts product metadata ---------- */
+const PID_TO_CODE={monitor:'cgm-monitor',sensors:'cgm-sensors',insulin_pump:'pump',infusion_set:'infusion-sets',cartridge:'cartridges'};
+const PRODUCT_META={
+  'cgm-monitor':{group:'CGM',name:'CGM Monitor',cadence:'ONE-TIME',
+    note:'Monitor is billed once. Same or similar lookback window applies — confirm with payer on validation call.'},
+  'cgm-sensors':{group:'CGM',name:'CGM Sensors',cadence:'RECURRING',
+    note:'Razor-blade model. Fill timing critical — billing too soon means no payment. Sensors ship on a 60 or 90 day cycle.'},
+  'pump':{group:'Pump',name:'Insulin Pump',cadence:'ONE-TIME',
+    note:'Pump billed once. Insurance allows replacement every 4 years — confirm prior pump billing is outside that window.'},
+  'infusion-sets':{group:'Pump',name:'Infusion Sets',cadence:'RECURRING',
+    note:'Code varies by payer — confirm on validation call. If patient has Medicaid, infusion sets must be billed to Medicaid (not managed Medicaid plan).'},
+  'cartridges':{group:'Pump',name:'Cartridges',cadence:'RECURRING',
+    note:'Code varies by payer — confirm on validation call. Medicaid routing applies same as infusion sets.'},
+};
+const UNIVERSAL_CHECKS=[
+  {id:'in-network',label:'In-Network',yes:'In-Network',no:'Out-of-Network'},
+  {id:'active',label:'Insurance Active',yes:'Active',no:'Not Active'},
+  {id:'dme-benefits',label:'DME Benefits',yes:'Covered',no:'Not Covered'},
+];
+const UNIVERSAL_LABELS={'in-network':'In-Network','active':'Insurance Active','dme-benefits':'DME Benefits'};
+
+/* SoS lookback — 4 yr for pump & monitor; 90 days for sensors/supplies (60 with Medicaid) */
+function patientHasMedicaid(){
+  return (P.primary??'').toLowerCase().includes('medicaid')||
+    ((P.secondary==='None'?'':P.secondary)??'').toLowerCase().includes('medicaid');
+}
+function sosLookbackDays(codeId){
+  if(codeId==='pump'||codeId==='cgm-monitor')return 365*4;
+  return patientHasMedicaid()?60:90;
+}
+function sosClearBeforeDate(codeId){
+  const days=sosLookbackDays(codeId);
+  const d=new Date();d.setDate(d.getDate()-days);
+  const mm=String(d.getMonth()+1).padStart(2,'0'),dd=String(d.getDate()).padStart(2,'0');
+  const label=days>=365?'4 yr lookback':`${days} day lookback${days===60?' — Medicaid':''}`;
+  return{date:`${mm}/${dd}/${d.getFullYear()}`,iso:d.toISOString().slice(0,10),days,label};
+}
+/* Next Order Date offset per product (matches computeNextOrderDates) */
+function nextOrderOffsetDays(codeId){
+  if(codeId==='pump')return 365*4;
+  if(codeId==='cgm-sensors')return 90;
+  if(codeId==='infusion-sets'||codeId==='cartridges')return patientHasMedicaid()?60:90;
+  return null; /* cgm-monitor has no next-order column */
+}
+function addDaysToDate(dateStr,days){
+  const d=new Date(dateStr+'T00:00:00');
+  if(isNaN(d.getTime()))return'';
+  d.setDate(d.getDate()+days);
+  return d.toISOString().slice(0,10);
+}
+const laterDate=(a,b)=>!a&&!b?'':!a?b:!b?a:(a>=b?a:b);
+function fmtDate(s){
+  if(!s)return'—';
+  const d=new Date(s+'T00:00:00');
+  if(isNaN(d.getTime()))return'—';
+  return d.toLocaleDateString('en-US',{month:'2-digit',day:'2-digit',year:'numeric'});
+}
+
+/* =====================================================================
+   state
+   ===================================================================== */
+const PATIENT={
+  name:'Bob Jones [TEST]',dob:'2025-01-01',phone:'(914) 220-2922',
+  memberId1:'YHQ3HZN33099920',memberId2:'',diagnosis:'E11.65',
+  address:'2093 Wantagh Ave, Wantagh, NY 11793',pumpBrand:'Tandem t:slim X2',cgmBrand:'Dexcom G7',
+  referralSource:'Patient',
+  doctorName:'Michael Greenberg',doctorPhone:'1 (844) 556-6683',doctorNpi:'1679847545',
+  doctorFax:'(718) 555-0142',doctorEmail:'mgreenberg@einstein.edu',
+  clinicalsMethod:'Parachute',clinicName:'1180 Morris Park Avenue, Bronx, NY 10461',
+};
+const blank=()=>({
+  universal:{'in-network':'','active':'','dme-benefits':''},
+  codes:{},          /* codeId → {auth:'',sos:'',lastBill:''} */
+  /* call logs: step-1 defaults to one row; step-2 starts empty */
+  calls1:[{ref:'',note:''}],
+  calls2:[],
+  notes:'',
+});
+const SCENARIOS=[
+  {key:'commercial',label:'Commercial · IP + CGM',primary:'Horizon BCBS',secondary:'None',serving:'Insulin Pump + CGM',
+   memberId2:'',
+   stedi:{active:'Yes',payerName:'Horizon BCBS of New Jersey',planBegin:'2026-01-01',coverageType:'Commercial',
+     planName:'Horizon PPO Advantage',homePlan:'Horizon BCBSNJ',medicaidId:'—',qmb:'No',
+     cost:{individual:{coins:'20%',copay:'$0',ded:'$350',oop:'$1,850'},family:{coins:'20%',copay:'$0',ded:'$900',oop:'$4,200'}}}},
+  {key:'medicare',label:'Medicare A&B',primary:'Medicare A&B',secondary:'None',serving:'Insulin Pump + CGM',
+   memberId2:'',
+   stedi:{active:'Yes',payerName:'CMS Medicare',planBegin:'2025-07-01',coverageType:'Medicare Part B',
+     planName:'Medicare A&B',homePlan:'CMS',medicaidId:'—',qmb:'No',
+     cost:{individual:{coins:'20%',copay:'$0',ded:'$57',oop:'—'},family:{coins:'20%',copay:'$0',ded:'$57',oop:'—'}}}},
+  {key:'managed-mcd',label:'Managed Medicaid · Pump',primary:'Fidelis Medicaid',secondary:'NY Medicaid',serving:'Insulin Pump',
+   memberId2:'EC81836D',
+   stedi:{active:'Yes',payerName:'Fidelis Care New York',planBegin:'2026-03-01',coverageType:'Medicaid',
+     planName:'Fidelis Medicaid Managed Care',homePlan:'Fidelis Care New York',medicaidId:'EC81836D',qmb:'No',
+     cost:{individual:{coins:'0%',copay:'$0',ded:'$0',oop:'$0'},family:{coins:'0%',copay:'$0',ded:'$0',oop:'$0'}}}},
+  {key:'bluecard',label:'BlueCard · CT Home Plan',primary:'Anthem BCBS Commercial',secondary:'None',serving:'Insulin Pump + CGM',
+   memberId2:'',state:'NY',
+   stedi:{active:'Yes',payerName:'Anthem BCBS New York (803)',planBegin:'2025-11-01',coverageType:'Commercial',
+     planName:'Anthem Blue Access PPO',homePlan:'BCBS Connecticut',medicaidId:'—',qmb:'No',
+     cost:{individual:{coins:'10%',copay:'$0',ded:'$120',oop:'$2,400'},family:{coins:'10%',copay:'$0',ded:'$480',oop:'$5,600'}}}},
+  {key:'pos11',label:'Out-of-State · POS 11',primary:'Anthem BCBS Commercial',secondary:'None',serving:'Insulin Pump + CGM',
+   memberId2:'',state:'TX',address:'4821 Cedar Springs Rd, Dallas, TX 75219',
+   stedi:{active:'Yes',payerName:'Anthem BCBS New York (803)',planBegin:'2026-02-01',coverageType:'Commercial',
+     planName:'Blue Cross Blue Shield of Texas PPO',homePlan:'BCBS Texas',medicaidId:'—',qmb:'No',
+     cost:{individual:{coins:'20%',copay:'$0',ded:'$600',oop:'$3,000'},family:{coins:'20%',copay:'$0',ded:'$1,200',oop:'$6,000'}}}},
+];
+
+/* POS rule (ANTHEM_BCBS_PRIMARY_SUGGESTION_RULEBOOK): patient address state
+   in NY/NJ/TN/FL/WY → local host plan, POS 12 (Home). Any other state →
+   out-of-state Blue via Anthem NY 803 BlueCard → POS 11 (Office) + flag. */
+const HOST_STATES=new Set(['NY','NJ','TN','FL','WY']);
+const isPos11=()=>isBcbsFamily(P.primary)&&!HOST_STATES.has(SC.state||'NY');
+
+/* ---------- payer phone directory (starter set — grows into a real DB) ---------- */
+const PAYER_PHONES={
+  'Horizon BCBS':'(800) 624-1110',
+  'Horizon BCBSNJ':'(800) 624-1110',
+  'Anthem BCBS Commercial':'(800) 450-8753',
+  'Anthem BCBS Medicare':'(800) 499-9554',
+  'Anthem BCBS Medicaid (JLJ)':'(800) 450-8753',
+  'Anthem BCBS Low-Cost (JLJ)':'(800) 450-8753',
+  'Anthem BCBS New York (803)':'(800) 450-8753',
+  'BCBS TN':'(800) 924-7141',
+  'BCBS FL':'(800) 727-2227',
+  'BCBS WY':'(800) 442-2376',
+  'BCBS Connecticut':'(800) 676-2583',
+};
+const isBcbsFamily=p=>/BCBS|Anthem|Horizon/i.test(p||'');
+const payerPhone=name=>PAYER_PHONES[name]||'';
+let scenario='commercial';
+let P={primary:'Horizon BCBS',secondary:'None',serving:'Insulin Pump + CGM'};
+let SC=SCENARIOS[0]; /* active scenario (read-only insurance detail) */
+let S=blank();
+let csView='individual';
+
+const $=id=>document.getElementById(id);
+const code=id=>S.codes[id]??{auth:'',sosEntry:'',lastBill:'',units:''};
+function setCode(id,patch){S.codes[id]={...code(id),...patch};render()}
+
+function setScenario(key){
+  scenario=key;
+  SC=SCENARIOS.find(s=>s.key===key);
+  P={primary:SC.primary,secondary:SC.secondary,serving:SC.serving};
+  S=blank();csView='individual';$('notes').value='';
+  render();
+}
+function resetAll(){S=blank();$('notes').value='';render()}
+function setCsView(v){csView=v;renderHeader()}
+function setP(k,v){P[k]=v;render()}
+function setUniversal(id,v){S.universal[id]=(S.universal[id]===v?'':v);render()}
+
+function setAuth(codeId,v){
+  const cur=code(codeId);
+  setCode(codeId,{auth:cur.auth===v?'':v});
+}
+/* SoS entry — the rep records facts (last bill date + units, or Never
+   Billed); clear/not-clear is DERIVED, never chosen. */
+function updateBillEntry(codeId,patch){
+  const cur={...code(codeId),...patch};
+  cur.sosEntry=(cur.lastBill||cur.units)?'billed':'';
+  S.codes[codeId]=cur;render();
+}
+function toggleNever(codeId){
+  const cur=code(codeId);
+  setCode(codeId,cur.sosEntry==='never'?{sosEntry:''}:{sosEntry:'never',lastBill:'',units:''});
+}
+/* Derived Same-or-Similar status (mirrors what the backend will compute):
+   never billed → clear; date older than the product's lookback (4yr
+   pump/monitor, 90d others, 60d Medicaid) → clear; date within the
+   window → not-clear. SKIP is never chosen by the rep — it's derived:
+   Auth = Required with no billing entry recorded → skip (defer until
+   the auth resolves). Still lands on the board exactly like today. */
+function derivedSos(codeId){
+  const s=code(codeId);
+  if(s.auth==='required')return 'skip'; /* SoS section disabled — always deferred */
+  if(s.sosEntry==='never')return 'clear';
+  if(s.sosEntry==='billed'&&s.lastBill){
+    return s.lastBill<sosClearBeforeDate(codeId).iso?'clear':'not-clear';
+  }
+  return '';
+}
+function sosComplete(codeId){
+  const s=code(codeId);
+  if(s.auth==='required')return true; /* deferred — nothing to fill */
+  if(s.sosEntry==='never')return true;
+  if(s.sosEntry==='billed')return !!s.lastBill&&!!s.units;
+  return false;
+}
+
+/* =====================================================================
+   derived — mirrors deriveMondayColumns / validateBenefitsForSubmit
+   ===================================================================== */
+function getResolved(){return resolveHcpcs(P.primary,P.serving,P.secondary==='None'?'':P.secondary)}
+function getVisible(){return getResolved().filter(r=>!isAutoFilledMedicaidSupply(r))}
+
+function deriveMondayColumns(resolved){
+  const u=S.universal;
+  const universalAllConfirmed=u['in-network']==='confirmed'&&u['active']==='confirmed'&&u['dme-benefits']==='confirmed';
+  const anyUniversalNotConfirmed=Object.values(u).some(v=>v==='not-confirmed');
+  const activeNetwork=(u['in-network']==='confirmed'&&u['active']==='confirmed')?'Active/In-network':'Stuck';
+  const dmeBenefits=u['dme-benefits']==='confirmed'?'Yes':'Partial / No';
+
+  const productStates=resolved.map(r=>{
+    if(isAutoFilledMedicaidSupply(r))return{product:r.product,label:PRODUCT_LABELS[r.product],auth:'required',sos:'clear',complete:true};
+    const cid=PID_TO_CODE[r.product];
+    const s=code(cid);
+    return{product:r.product,label:PRODUCT_LABELS[r.product],auth:s.auth,sos:derivedSos(cid),complete:sosComplete(cid)};
+  });
+
+  const allFilled=productStates.length>0&&productStates.every(p=>!!p.auth&&p.complete);
+  const anyAuthRequired=productStates.some(p=>p.auth==='required');
+  const allAuthsFilled=productStates.length>0&&productStates.every(p=>!!p.auth);
+  const auth=!allAuthsFilled?'—':anyAuthRequired?'Auths Required':'No Auths Required';
+
+  const anyNotClear=productStates.some(p=>p.sos==='not-clear');
+  const anySkip=productStates.some(p=>p.sos==='skip');
+  const pumpNotClear=productStates.some(p=>p.product==='insulin_pump'&&p.sos==='not-clear');
+  const sosCol=!allFilled?'—':anyNotClear?'Partial / Not Clear':anySkip?'Skip':'All Clear';
+
+  const notClearProducts=productStates.filter(p=>p.sos==='not-clear').map(p=>p.label).join(', ');
+  const skipSosProducts=productStates.filter(p=>p.sos==='skip').map(p=>p.label).join(', ');
+
+  let stageAdvancer;
+  if(anyUniversalNotConfirmed||!universalAllConfirmed||!allFilled||pumpNotClear){stageAdvancer='Benefits / SoS';}
+  else if(anyAuthRequired){stageAdvancer='Authorization';}
+  else{stageAdvancer='Complete';}
+
+  const shouldEscalate=anyUniversalNotConfirmed||pumpNotClear;
+  const escalation=shouldEscalate?'Escalation Required':'—';
+
+  return{activeNetwork,dmeBenefits,auth,sos:sosCol,
+    notClearProducts:notClearProducts||'—',skipSosProducts:skipSosProducts||'—',
+    stageAdvancer,escalation,allFilled,shouldEscalate,anyAuthRequired};
+}
+
+function computeNextOrderDates(){
+  const pump=code('pump'),sensors=code('cgm-sensors'),is=code('infusion-sets'),cart=code('cartridges');
+  const ip=pump.lastBill?addDaysToDate(pump.lastBill,365*4):'';
+  const sn=sensors.lastBill?addDaysToDate(sensors.lastBill,90):'';
+  const suppliesLast=laterDate(is.lastBill,cart.lastBill);
+  const isMedicaid=(P.primary??'').toLowerCase().includes('medicaid')||
+    ((P.secondary==='None'?'':P.secondary)??'').toLowerCase().includes('medicaid');
+  const sp=suppliesLast?addDaysToDate(suppliesLast,isMedicaid?60:90):'';
+  return{ip,sensors:sn,supplies:sp};
+}
+
+/* Never-billed roll-ups now derive straight from the SoS entries —
+   the old Medicare-only billing-history questions are gone. */
+function deriveNeverBilled(){
+  const isMedicareAB=P.primary==='Medicare A&B';
+  const isCarNever=code('infusion-sets').sosEntry==='never'&&code('cartridges').sosEntry==='never';
+  const cgmNever=code('cgm-sensors').sosEntry==='never';
+  return{
+    isCar:isMedicareAB&&isCarNever?'Never Billed':null,
+    cgm:isMedicareAB&&cgmNever?'Never Billed':null,
+    pumpDateTbd:isMedicareAB&&isCarNever,
+  };
+}
+
+function validateForSubmit(){
+  const missing=[];
+  for(const id of ['in-network','active','dme-benefits']){
+    if(!S.universal[id])missing.push(UNIVERSAL_LABELS[id]);
+  }
+  for(const r of getVisible()){
+    const cid=PID_TO_CODE[r.product];
+    const s=code(cid);
+    if(!s.auth)missing.push(`${r.hcpc} · Auth Requirements`);
+    if(!sosComplete(cid))missing.push(`${r.hcpc} · Last Bill Date + Units, or Never Billed`);
+  }
+  return missing;
+}
+
+/* value tones — matches GOOD/WARN/BAD/SKIP sets in InsurancePanel.tsx */
+const GOOD=new Set(['Active/In-network','Yes','No Auths Required','All Clear','Complete','Never Billed']);
+const WARN=new Set(['Stuck','Partial / No','Auths Required','Partial / Not Clear','Authorization','Benefits / SoS']);
+const BAD=new Set(['Escalation Required']);
+const SKIP=new Set(['Skip']);
+const tone=v=>GOOD.has(v)?'good':WARN.has(v)?'warn':BAD.has(v)?'bad':SKIP.has(v)?'skip':'neutral';
+
+/* =====================================================================
+   icons
+   ===================================================================== */
+const icoPhone=`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--mm-teal)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>`;
+const icoRepeat=`<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>`;
+const icoBox=`<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>`;
+const icoSend=`<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>`;
+const icoZap=`<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>`;
+const icoAlert=`<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>`;
+
+/* =====================================================================
+   render — patient header
+   ===================================================================== */
+let detailsOpen=false;
+function toggleDetails(){detailsOpen=!detailsOpen;renderHeader()}
+function sbox(label,value,strong){
+  return `<div class="sbox"><div class="eyebrow-xs">${label}</div><div class="sval${strong?' strong':''}">${value||'—'}</div></div>`;
+}
+/* Who-to-call suggestion pills — BCBS/Anthem family only.
+   Rule: auth requirements → member's HOME plan; Same or Similar &
+   benefits questions → the plan we BILL (host plan / 803). */
+const icoTel=`<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>`;
+function callChip(purpose,plan,cls){
+  return `<span class="sugg-chip2 ${cls||''}">${icoTel} ${purpose?purpose+' → ':''}${plan}</span>`;
+}
+/* Fill the step-header suggestion pills:
+   Step 1 (universal checks / benefits questions) → the plan we BILL.
+   Step 2 (SoS & Auth) → auth = HOME plan; SoS = billed plan (shown when they differ). */
+/* Who-to-call resolution:
+   In-Network → the plan we BILL (our contract / BlueCard network status).
+   Insurance Active + DME Benefits → the member's HOME plan (their contract
+   defines eligibility + benefit design). Same plan → everything collapses. */
+function callPlans(){
+  if(!isBcbsFamily(P.primary))return null;
+  const billed=P.primary, home=SC.stedi.homePlan||'';
+  const same=!home||home.split(' ')[0].toLowerCase()===billed.split(' ')[0].toLowerCase();
+  return {billed,home:same?billed:home,same};
+}
+function ucPill(checkId){
+  const cp=callPlans();
+  if(!cp)return '';
+  const isBilled=checkId==='in-network'||cp.same;
+  const plan=isBilled?cp.billed:cp.home;
+  return `<div class="uc-pill"><span class="sugg-lead2">Call:</span>${callChip('',plan,isBilled?'':'office')}</div>`;
+}
+function renderCallPills(){
+  const s2=$('s2-pills');
+  const cp=callPlans();
+  if(!cp){s2.innerHTML='';return;}
+  const lead=`<span class="sugg-lead2">Suggestion:</span>`;
+  s2.innerHTML=cp.same
+    ? lead+callChip('',cp.billed)
+    : lead+callChip('Auth',cp.home,'office')+callChip('SoS',cp.billed);
+}
+
+/* Demo-only editable select — production version renders these read-only,
+   fed from Profile Send-Off. */
+function selectField(label,key,options,value){
+  return `
+  <div>
+    <div class="eyebrow">${label} <span class="demo-tag">demo</span></div>
+    <select style="font-weight:600" onchange="setP('${key}',this.value)">
+      ${options.map(o=>`<option ${value===o?'selected':''}>${o}</option>`).join('')}
+    </select>
+  </div>`;
+}
+function renderHeader(){
+  const st=SC.stedi;
+  const cs=st.cost[csView];
+  const showPump=/Pump|Supplies/.test(P.serving);
+  const showCgm=/CGM/.test(P.serving);
+  const deviceItems=[
+    ['Referral Source',PATIENT.referralSource],
+    ...(showCgm?[['CGM Type',PATIENT.cgmBrand]]:[]),
+    ...(showPump?[['Pump Type',PATIENT.pumpBrand]]:[]),
+  ];
+  $('ph-card').innerHTML=`
+    <p class="eyebrow">Patient</p>
+    <h1 class="ph-name">${PATIENT.name}</h1>
+    <p class="ph-dob">DOB <span class="sel">${PATIENT.dob}</span> · <span class="sel">${PATIENT.phone}</span></p>
+
+    <div class="ph-groups">
+      <div class="hgroup"><div class="pair">
+        ${selectField('Serving','serving',SERVING_OPTIONS,P.serving)}
+        <div><div class="eyebrow">Diagnosis</div><div class="hval">${PATIENT.diagnosis}</div></div>
+      </div></div>
+      <div class="hgroup"><div class="pair">
+        ${selectField('Primary Insurance','primary',PRIMARY_OPTIONS,P.primary)}
+        ${selectField('Secondary Insurance','secondary',SECONDARY_OPTIONS,P.secondary)}
+      </div></div>
+      <div class="hgroup"><div class="pair">
+        <div><div class="eyebrow">Member ID</div><div class="hval">${PATIENT.memberId1}</div></div>
+        <div><div class="eyebrow">Member ID 2</div><div class="hval">${SC.memberId2||'—'}</div></div>
+      </div></div>
+    </div>
+
+    <!-- Insurance details — read-only Stedi check output from Profile Send-Off -->
+    <div class="stedi-block">
+      <div class="stedi-head">
+        <p class="eyebrow">Insurance Details · Stedi Check</p>
+      </div>
+      <div class="stedi-grid three">
+        ${sbox('Active?',st.active,true)}
+        ${sbox('Payer Name',st.payerName,true)}
+        ${sbox('Plan Begin Date',st.planBegin)}
+      </div>
+      ${(()=>{ /* dynamic row — only fields relevant to this payer type */
+        const isMedicare=/medicare/i.test(P.primary)||/medicare/i.test(st.coverageType);
+        const isMedicaid=patientHasMedicaid()||/medicaid/i.test(st.coverageType);
+        const row=[sbox('Coverage Type',st.coverageType),sbox('Plan Name',st.planName,true)];
+        if(isBcbsFamily(P.primary))row.push(sbox('Home Plan',st.homePlan));
+        if(isMedicaid)row.push(sbox('Medicaid ID',st.medicaidId));
+        if(isMedicare)row.push(sbox('QMB?',st.qmb));
+        return `<div class="stedi-grid" style="grid-template-columns:repeat(${row.length},1fr)">${row.join('')}</div>`;
+      })()}
+      <div class="cs-row">
+        <span class="eyebrow-xs">Cost Sharing</span>
+        <span class="cs-toggle">
+          <button class="${csView==='individual'?'on':''}" onclick="setCsView('individual')">Individual</button>
+          <button class="${csView==='family'?'on':''}" onclick="setCsView('family')">Family</button>
+        </span>
+      </div>
+      <div class="stedi-grid four">
+        ${sbox('Co-Insurance',cs.coins,true)}
+        ${sbox('Co-Pay',cs.copay,true)}
+        ${sbox('Deductible Remaining',cs.ded,true)}
+        ${sbox('OOP Max Remaining',cs.oop,true)}
+      </div>
+      ${isPos11()?`
+      <div class="pos-flag">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+        <span><b>Probably out of network</b> — out-of-state Blue (no local plan we bill directly). If we need to serve this patient, bill through Anthem NY (803) BlueCard and use Place of Service <b>11 (Office)</b>, not 12 (Home).</span>
+      </div>`:''}
+    </div>
+
+    <button type="button" class="ph-toggle ${detailsOpen?'open':''}" aria-expanded="${detailsOpen}" onclick="toggleDetails()">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+      <span>${detailsOpen?'Hide details':'Show address, devices & doctor info'}</span>
+    </button>
+
+    ${detailsOpen?`
+    <div class="ph-details">
+      <div style="grid-column:span ${4-deviceItems.length}"><div class="eyebrow">Patient Address</div><div class="hval">${SC.address||PATIENT.address}</div></div>
+      ${deviceItems.map(([l,v])=>`<div><div class="eyebrow">${l}</div><div class="hval">${v}</div></div>`).join('')}
+    </div>
+    <div class="ph-details" style="border-top:1px dashed var(--border)">
+      <div style="grid-column:1 / -1;margin-bottom:-8px"><span class="eyebrow" style="color:var(--mm-teal);font-weight:700">Doctor Info</span></div>
+      <div><div class="eyebrow">Doctor</div><div class="hval">${PATIENT.doctorName}</div></div>
+      <div><div class="eyebrow">Phone</div><div class="hval">${PATIENT.doctorPhone}</div></div>
+      <div><div class="eyebrow">NPI</div><div class="hval">${PATIENT.doctorNpi}</div></div>
+      <div><div class="eyebrow">Fax</div><div class="hval">${PATIENT.doctorFax}</div></div>
+      <div><div class="eyebrow">Email</div><div class="hval">${PATIENT.doctorEmail}</div></div>
+      <div><div class="eyebrow">Clinicals Method</div><div class="hval">${PATIENT.clinicalsMethod}</div></div>
+      <div style="grid-column:span 2"><div class="eyebrow">Clinic</div><div class="hval">${PATIENT.clinicName}</div></div>
+    </div>`:''}
+  `;
+}
+
+/* =====================================================================
+   render — step 1 universal checks
+   ===================================================================== */
+function renderUniversal(){
+  const confirmedCount=Object.values(S.universal).filter(v=>v==='confirmed').length;
+  const allConfirmed=confirmedCount===3;
+  $('s1-chip').textContent=`${confirmedCount}/3 confirmed`;
+  $('s1-chip').className=`step-chip ${allConfirmed?'ok':''}`;
+  $('s1-num').className=`step-num ${allConfirmed?'done':''}`;
+  $('s1-num').textContent=allConfirmed?'✓':'1';
+
+  $('call-log-1').innerHTML=callLogHtml('calls1',S.calls1,true);
+  $('uc-grid').innerHTML=UNIVERSAL_CHECKS.map((c,i)=>{
+    const v=S.universal[c.id];
+    return `
+    <div class="subcard ${v==='confirmed'?'ok':v==='not-confirmed'?'bad':''}">
+      <div style="display:flex;align-items:center;gap:12px">
+        ${icoPhone}
+        <div>
+          <div class="uc-tag">CHECK 0${i+1}</div>
+          <div class="uc-title">${c.label}</div>
+        </div>
+      </div>
+      ${ucPill(c.id)}
+      <div class="seg" role="radiogroup" aria-label="${c.label}">
+        <button class="g ${v==='confirmed'?'sel-g':''}" role="radio" aria-checked="${v==='confirmed'}" onclick="setUniversal('${c.id}','confirmed')">${c.yes}</button>
+        <button class="r ${v==='not-confirmed'?'sel-r':''}" role="radio" aria-checked="${v==='not-confirmed'}" onclick="setUniversal('${c.id}','not-confirmed')">${c.no}</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+/* =====================================================================
+   render — step 2 product cards
+   ===================================================================== */
+/* =====================================================================
+   call logs — [ref #][notes] rows; backend appends onto notes columns
+   ===================================================================== */
+const escAttr=v=>(v||'').replace(/"/g,'&quot;');
+function callLogHtml(key,rows,minOne){
+  const min=minOne?1:0;
+  return `
+  <div class="call-log">
+    <div class="cl-head">Call Log</div>
+    ${rows.map((r,i)=>`
+    <div class="cl-row">
+      <input type="text" class="cl-ref" placeholder="Ref #" value="${escAttr(r.ref)}" oninput="S.${key}[${i}].ref=this.value">
+      <input type="text" placeholder="Call notes…" value="${escAttr(r.note)}" oninput="S.${key}[${i}].note=this.value">
+      ${rows.length>min?`<button class="cl-del" title="Remove call" onclick="delCall('${key}',${i})">✕</button>`:'<span></span>'}
+    </div>`).join('')}
+    <button class="cl-add" onclick="addCall('${key}')">+ Add Call</button>
+  </div>`;
+}
+function addCall(key){S[key].push({ref:'',note:''});render()}
+function delCall(key,i){S[key].splice(i,1);render()}
+
+/* Rep-facing status — never exposes derived clear/not-clear */
+function statusPill(codeId){
+  const s=code(codeId);
+  if(!s.auth||!sosComplete(codeId))return`<span class="pill pending">● Pending</span>`;
+  if(s.auth==='required')return`<span class="pill warn">◷ Auth required</span>`;
+  return`<span class="pill clear">✓ Done</span>`;
+}
+function prodCard(r){
+  const codeId=PID_TO_CODE[r.product];
+  const meta=PRODUCT_META[codeId];
+  const s=code(codeId);
+  const isRec=meta.cadence==='RECURRING';
+  const entryLocked=s.sosEntry==='never';
+  const authReq=s.auth==='required';
+  const offset=nextOrderOffsetDays(codeId);
+  const nextOrder=(s.sosEntry==='billed'&&s.lastBill&&offset)?addDaysToDate(s.lastBill,offset):'';
+  return `
+  <div class="prod-card ${isRec?'recurring':''}">
+    <div class="prod-top">
+      <div style="min-width:0">
+        <div class="prod-meta">
+          <span class="chip ${isRec?'rec':'one'}">${isRec?icoRepeat:icoBox} ${meta.cadence}</span>
+          <span class="chip grp">${meta.group}</span>
+          ${r.billsTo==='medicaid'?'<span class="chip mcd">Bills to Medicaid</span>':''}
+        </div>
+        <div class="prod-code">${r.hcpc}</div>
+        <div class="prod-name">${meta.name}</div>
+      </div>
+      ${statusPill(codeId)}
+    </div>
+    <div class="prod-grid">
+      <div class="prod-q">
+        <div class="flabel">Auth Requirements <span class="req-star">*</span></div>
+        <div class="seg" role="radiogroup" aria-label="${r.hcpc} auth requirements">
+          <button class="g ${s.auth==='not-required'?'sel-g':''}" role="radio" aria-checked="${s.auth==='not-required'}" onclick="setAuth('${codeId}','not-required')">Not Required</button>
+          <button class="a ${s.auth==='required'?'sel-a':''}" role="radio" aria-checked="${s.auth==='required'}" onclick="setAuth('${codeId}','required')">Required</button>
+        </div>
+      </div>
+      <div class="prod-q ${authReq?'off':''}">
+        <div class="flabel">Same or Similar · Billing History ${authReq?'':'<span class="req-star">*</span>'}</div>
+        <div class="sos-grid">
+          <div class="sos-pair ${entryLocked?'locked':''}">
+            <div>
+              <div class="slab">Last Bill Date</div>
+              <input type="date" value="${s.lastBill}" ${entryLocked||authReq?'disabled':''} onchange="updateBillEntry('${codeId}',{lastBill:this.value})">
+            </div>
+            <div>
+              <div class="slab">Units</div>
+              <input type="number" min="0" placeholder="0" value="${s.units}" ${entryLocked||authReq?'disabled':''} onchange="updateBillEntry('${codeId}',{units:this.value})">
+            </div>
+          </div>
+          <div class="sos-or">OR</div>
+          <button class="sos-toggle nv ${s.sosEntry==='never'?'on':''}" ${authReq?'disabled':''} onclick="toggleNever('${codeId}')">No Billing History</button>
+        </div>
+        ${authReq?'<div class="fhint">Deferred until the auth is resolved.</div>':''}
+        ${nextOrder?`<div class="fhint">Next Order Date auto-set to <b style="color:var(--foreground)">${fmtDate(nextOrder)}</b>.</div>`:''}
+      </div>
+    </div>
+  </div>`;
+}
+function renderProducts(){
+  const resolved=getResolved();
+  const visible=getVisible();
+  const ready=!!P.primary&&!!P.serving;
+  const complete=ready&&visible.length>0&&visible.every(r=>{const cid=PID_TO_CODE[r.product];return !!code(cid).auth&&sosComplete(cid)});
+  $('s2-num').className=`step-num ${complete?'done':''}`;
+  $('s2-num').textContent=complete?'✓':'2';
+
+  if(!ready){
+    $('prod-area').innerHTML=`<div class="empty-box"><p>Select Serving and Primary Insurance to load the codes for this patient.</p></div>`;
+  }else if(visible.length===0){
+    $('prod-area').innerHTML=`
+    <div class="empty-box">
+      <p>No benefit check needed</p>
+      <p class="sub">Everything this patient is served bills to NY Medicaid. These patients skip the
+      benefit check entirely — they go straight to the DVS stage.</p>
+    </div>`;
+  }else{
+    const hidden=resolved.filter(isAutoFilledMedicaidSupply);
+    $('prod-area').innerHTML=`
+      <div class="prod-list">${visible.map(prodCard).join('')}</div>
+      ${hidden.length?`
+      <div class="dvs-note">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
+        <span><b>${hidden.map(r=>PRODUCT_LABELS[r.product]).join(' & ')}</b> will be handled at the DVS stage.</span>
+      </div>`:''}
+    `;
+  }
+
+  /* Call log for this section — optional, no default row */
+  $('call-log-2').innerHTML=callLogHtml('calls2',S.calls2,false);
+}
+
+/* =====================================================================
+   render — monday preview + actions
+   ===================================================================== */
+const PRODUCT_AUTH_COLUMN={monitor:'CGM auth result',sensors:'Sensors auth result',insulin_pump:'Insulin pump auth result',infusion_set:'Infusion set auth result',cartridge:'Cartridges auth result'};
+const ALL_AUTH_PRODUCTS=['monitor','sensors','insulin_pump','infusion_set','cartridge'];
+
+function renderMonday(){
+  const resolved=getResolved();
+  const ready=!!P.primary&&!!P.serving;
+  const cols=deriveMondayColumns(resolved);
+  const nod=computeNextOrderDates();
+  const nb=deriveNeverBilled();
+  const missing=validateForSubmit();
+
+  const rows=[
+    {label:'Active/Network',value:cols.activeNetwork},
+    {label:'DME Benefits',value:cols.dmeBenefits},
+    {label:'Auth',value:cols.auth},
+    {label:'SoS',value:cols.sos},
+    {label:'Not Clear Products',value:cols.notClearProducts},
+    {label:'Skip SoS Products',value:cols.skipSosProducts},
+    {label:'Stage Advancer',value:cols.stageAdvancer},
+    {label:'Escalation',value:cols.escalation},
+  ];
+  if(nod.ip)rows.push({label:'IP Next Order Date',value:fmtDate(nod.ip)});
+  if(nod.sensors)rows.push({label:'Sensors Next Order Date',value:fmtDate(nod.sensors)});
+  if(nod.supplies)rows.push({label:'Supplies Next Order Date',value:fmtDate(nod.supplies)});
+  if(nb.isCar!==null)rows.push({label:'Never billed IS/Car',value:nb.isCar});
+  if(nb.cgm!==null)rows.push({label:'Never billed CGM',value:nb.cgm});
+  /* Never billed pump/supplies → pump date unknown until the rep asks the
+     patient later — write "TBD" to the pump-date text column (text_mm58k9x9) */
+  if(nb.pumpDateTbd)rows.push({label:'Pump Date · text_mm58k9x9',value:'TBD'});
+
+  /* product-specific auth result columns */
+  const isReq=r=>isAutoFilledMedicaidSupply(r)?true:code(PID_TO_CODE[r.product]).auth==='required';
+  const anyAuthRequired=resolved.some(isReq);
+  const requiredSet=new Set(resolved.filter(isReq).map(r=>r.product));
+  const servedSet=new Set(resolved.map(r=>r.product));
+  const authRows=anyAuthRequired?ALL_AUTH_PRODUCTS.map(p=>({
+    label:PRODUCT_AUTH_COLUMN[p],
+    value:requiredSet.has(p)?'Required':servedSet.has(p)?'No Auth Needed':'Not Serving',
+  })):[];
+  const authTone=v=>v==='Required'?'warn':v==='Not Serving'?'good':'skip';
+
+  $('mon-card').innerHTML=`
+    <button type="button" class="mon-toggle ${mondayOpen?'open':''}" aria-expanded="${mondayOpen}" onclick="toggleMonday()">
+      <h2 style="color:var(--mm-teal)">Monday Board Output</h2>
+      <span class="mon-toggle-hint">${mondayOpen?'Hide':'Show'} what lands on the board</span>
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+    </button>
+
+    ${ready&&mondayOpen?`
+    <div style="display:flex;flex-direction:column;gap:16px;margin-top:16px">
+      <div class="mon-box">
+        <h3>Main columns</h3>
+        <p class="msub">Each column on the Monday board gets the value below.</p>
+        <div class="mon-rows">
+          ${rows.map(r=>`
+          <div class="mon-row">
+            <span class="mlabel">${r.label}</span>
+            <span class="mval ${tone(r.value)}">${r.value}</span>
+          </div>`).join('')}
+        </div>
+        ${!cols.allFilled?'<p class="mon-note">Fill Auth + SoS for every product to compute Auth and SoS columns.</p>':''}
+      </div>
+
+      <div class="mon-box">
+        <h3>Product-specific auth result columns</h3>
+        <p class="msub">${anyAuthRequired?'Each of the 5 auth result columns gets the value below.':'No auths required — the auth result columns stay blank on the Monday board.'}</p>
+        ${anyAuthRequired?`
+        <div class="mon-rows">
+          ${authRows.map(r=>`
+          <div class="mon-row">
+            <span class="mlabel">${r.label}</span>
+            <span class="mval ${authTone(r.value)}">${r.value}</span>
+          </div>`).join('')}
+        </div>`:''}
+      </div>
+    </div>`:''}
+
+    <div class="foot-actions">
+      <div class="foot-left"></div>
+      <button class="send-btn" ${missing.length?'disabled':''} onclick="toast('Benefit check complete — sent to Monday (demo)')">${icoSend} Benefit Check Complete</button>
+    </div>
+    ${missing.length?`
+    <div class="missing-box">
+      <div class="mb-title">Missing before send</div>
+      <div class="mb-list">${missing.join(' · ')}</div>
+    </div>`:''}
+  `;
+}
+
+let mondayOpen=false;
+function toggleMonday(){mondayOpen=!mondayOpen;renderMonday()}
+
+/* =====================================================================
+   modals & toast
+   ===================================================================== */
+function toast(msg){
+  const t=document.createElement('div');
+  t.className='toast';t.textContent=msg;
+  $('toasts').appendChild(t);
+  setTimeout(()=>t.remove(),3200);
+}
+
+/* =====================================================================
+   clinicals dropdown
+   ===================================================================== */
+const CLINICALS=[
+  {name:'Clinical Notes — Dr. Greenberg 05-12-2026.pdf',size:'1.2 MB'},
+  {name:'CGM Script.pdf',size:'184 KB'},
+  {name:'IP Script.pdf',size:'210 KB'},
+];
+const icoDl=`<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>`;
+function renderClinicals(){
+  $('clin-count').textContent=CLINICALS.length;
+  $('clin-dd').innerHTML=`
+    ${CLINICALS.map(f=>`
+    <button class="clin-file" onclick="toast('Downloading ${f.name.replace(/'/g,"\\'")} (demo)')">
+      ${icoDl}
+      <span class="fname" title="${f.name}">${f.name}</span>
+      <span class="fsize">${f.size}</span>
+    </button>`).join('')}
+    <div class="clin-all">
+      <button class="tbtn" style="width:100%;justify-content:center" onclick="toast('Downloading all ${CLINICALS.length} clinical files (demo)')">
+        ${icoDl} Download All (${CLINICALS.length})
+      </button>
+    </div>`;
+}
+function toggleClinicals(){$('clin-dd').classList.toggle('open')}
+document.addEventListener('click',e=>{
+  if(!e.target.closest('.clin-wrap'))$('clin-dd').classList.remove('open');
+});
+
+/* =====================================================================
+   main render
+   ===================================================================== */
+function renderDemoBar(){
+  $('demo-seg').innerHTML=SCENARIOS.map(s=>
+    `<button class="${scenario===s.key?'on':''}" onclick="setScenario('${s.key}')">${s.label}</button>`).join('');
+}
+function render(){
+  renderDemoBar();
+  renderHeader();
+  renderUniversal();
+  renderProducts();
+  renderCallPills();
+  renderMonday();
+}
+renderClinicals();
+render();
+</script>
+</body>
+</html>
