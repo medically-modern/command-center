@@ -58,6 +58,35 @@ spec §7) was not attached. The §7 rules below are known only from the spec's o
   The Not Clear / Skip dropdown additions to automation `7918324247` are **deferred** — they
   are only needed when the Final Confirm rewire eventually happens; at that point Final
   Confirm just reads the new facts columns / dropdown copies, no backfill required.
+- **D6 (S9, units granularity): per-product — columns CREATED 2026-07-15** on both boards
+  (Josh: "we can make all the monday columns we want"). Registry:
+
+  | Product | Insurance 18410601299 (source) | Welcome Call 18410804557 (target) |
+  |---|---|---|
+  | Insulin Pump SoS Last Bill | `date_mm59j483` | `date_mm593ghh` |
+  | Insulin Pump SoS Units | `numeric_mm59pspc` | `numeric_mm5998yx` |
+  | CGM Monitor SoS Last Bill | `date_mm59tx2g` | `date_mm599gk8` |
+  | CGM Monitor SoS Units | `numeric_mm5953dt` | `numeric_mm59qrs1` |
+  | CGM Sensors SoS Last Bill | `date_mm59ejs2` | `date_mm59n1x1` |
+  | CGM Sensors SoS Units | `numeric_mm596xga` | `numeric_mm59c4tw` |
+  | Infusion Sets SoS Last Bill | `date_mm59bzfv` | `date_mm59jcf5` |
+  | Infusion Sets SoS Units | `numeric_mm598cp9` | `numeric_mm591xm3` |
+  | Cartridges SoS Last Bill | `date_mm598y8w` | `date_mm59mw5n` |
+  | Cartridges SoS Units | `numeric_mm59xp3c` | `numeric_mm59nn46` |
+
+  Do **not** confuse the SoS Units columns with the existing per-product **Auth Units**
+  (`numeric_mm2w5jdp` family) — different concept, different writer.
+
+  **⚠️ JOSH'S FULL AUTOMATION CHECKLIST (automation `7918324247`, Stage Advancer → Complete →
+  create item in Welcome Call) — 11 mappings, same-named columns pair up:**
+  1. Medicare Prior Pump Date `text_mm59qh8r` → `text_mm58k9x9`
+  2–11. each Insurance SoS facts column above → its same-named Welcome Call column
+  (date→date and numeric→numeric copies are verbatim-safe).
+- **D7 (§7, Anthem rulebook):** `ANTHEM_BCBS_PRIMARY_SUGGESTION_RULEBOOK.md` **does not exist
+  yet** — it isn't a missing attachment, it hasn't been written. The BCBS who-to-call pills +
+  POS/out-of-network warning are **blocked on Brandon writing it**; the §7 summary in
+  JOSH_HANDOFF_BENEFITS.md is currently the only source and is not implementation-grade
+  (the home-plan canonicalization rules live in the Stedi 271 `_parse_home_plan` backend).
 - **D3 (S3, Trigger DVS):** remove the Benefits buttons; the DVS stage will own this later.
   Interim reality: Submit Auth / Auth Outstanding keep their buttons; straight-Medicaid
   supplies-only patients don't advance on their own, so they're handled manually on Monday
@@ -408,7 +437,8 @@ the columns to the Benefits read set or accept that a reload mid-patient loses t
 5. **S6:** call logs into `long_text_mm2ffsme` (shared with freeform notes) or new
    column(s)? Retention/size policy for manager views and board hops? (D4 already makes the
    escalation reason line an appender into this column.)
-6. **S9:** Units — one column or per-product, and which products?
+6. ~~**S9:** Units — one column or per-product, and which products?~~ **RESOLVED (D6):
+   per-product, all five; columns created on both boards (see registry).**
 7. **S7:** ~~auto-compose a derived-escalation reason into notes?~~ **RESOLVED (D4): yes —
    append to `long_text_mm2ffsme`.** Still open: the un-escalate / return-from-
    Escalations-group SOP.
@@ -416,8 +446,8 @@ the columns to the Benefits read set or accept that a reload mid-patient loses t
    move the send to gateway `/send`)?
 9. **S8:** should a later send be able to *clear* Never Billed, and TBD ignoring the pump's
    own entry — intended?
-10. §7 depends on `ANTHEM_BCBS_PRIMARY_SUGGESTION_RULEBOOK.md` — not attached; needed before
-    implementing the pills/POS warning.
+10. §7 depends on `ANTHEM_BCBS_PRIMARY_SUGGESTION_RULEBOOK.md` — **doesn't exist yet (D7)**;
+    the pills/POS warning stay out of scope until Brandon writes it.
 
 ## 5. Suggested implementation order
 
