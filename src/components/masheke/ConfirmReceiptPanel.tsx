@@ -9,6 +9,11 @@
  *   - No → writes "Name — date" into the attempt column, bumps MN
  *     Attempts, 3rd failure flags Escalation Required, otherwise writes
  *     the auto-computed next action date (No → next weekday).
+ *   - Escalated + "No" (manager override, all 3 slots used): the required
+ *     note is appended to MN Workflow Notes (COL.mnEvalNotes) and only the
+ *     next action date moves — patient stays escalated. (Before July 2026
+ *     this note was REQUIRED but silently dropped: the escalated branch
+ *     wrote only the Next Action Date.)
  *   - Save requires an outcome AND ≥1 note added this session (no
  *     typed-but-unadded note text), and persists doctor-field edits.
  */
@@ -262,15 +267,24 @@ export function ConfirmReceiptPanel({ patient, onUpdate, managerMode = false }: 
         }
       } else if (isEscalated) {
         // Manager follow-up on an escalated patient: all 3 attempt slots are
-        // used, so just set the next action date (weekend-clamped). Notes
-        // were already saved by the notes panel. Patient stays escalated.
-        patch = { nextActionDate: safeNextAction };
-        successMsg = "Follow-up saved — patient remains escalated";
+        // used, so there's no attempt column left to log into. The required
+        // "what happened" note is NOT discarded — append it to MN Workflow
+        // Notes (the shared eval log), then set the next action date
+        // (weekend-clamped). Patient stays escalated.
+        const nextNotes = appendMnNote(
+          patient.mnEvalNotes,
+          formatEscalatedConfirmNote(attemptNote.trim(), etNow()),
+        );
+        patch = { nextActionDate: safeNextAction, mnEvalNotes: nextNotes };
+        successMsg = "Follow-up saved — note added to MN Workflow Notes, patient remains escalated";
         await runVerifiedSend({
           itemId: patient.id,
           label: "Confirm Receipt → escalated follow-up",
           stageColumnId: [],
           tasks: [
+            // MN Workflow Notes is a DATA column (read-back verified). No
+            // stage-advancer here — an escalated follow-up never advances.
+            { label: "MN Workflow Notes", columnId: COL.mnEvalNotes, value: { text: nextNotes }, fn: () => writeLongText(patient.id, COL.mnEvalNotes, nextNotes) },
             { label: "Next Action Date", columnId: COL.nextActionDate, value: { date: safeNextAction }, fn: () => writeDate(patient.id, COL.nextActionDate, safeNextAction) },
           ],
           onProgress,
@@ -642,7 +656,8 @@ export function ConfirmReceiptPanel({ patient, onUpdate, managerMode = false }: 
                 <AlertTriangle className="h-4 w-4 shrink-0 text-amber-600" />
                 <p className="text-xs text-amber-800">
                   <span className="font-bold">Manager override</span> — all 3 attempts used.
-                  "Yes" advances the patient and clears the escalation; "No" just sets the next action date.
+                  "Yes" advances the patient and clears the escalation; "No" logs your note to
+                  MN Workflow Notes and sets the next action date.
                 </p>
               </div>
             )}
@@ -1508,6 +1523,24 @@ function formatAttemptValue(outcome: "confirmed" | "not_confirmed", note: string
   const ini = userInitials();
   const sfx = ini ? ` —${ini}` : "";
   return (n ? `${datePart} · ${label} · ${n}` : `${datePart} · ${label}`) + sfx;
+}
+
+/** MN Workflow Notes line for a manager's escalated Confirm Receipt follow-up.
+ *  Once a patient escalates all three attempt columns are full, so the required
+ *  "what happened" note is appended here instead of being dropped.
+ *  "6/12/26, 2:33 PM · Confirm Receipt (escalated) · {note} —{ini}" */
+function formatEscalatedConfirmNote(note: string, date: Date): string {
+  const ini = userInitials();
+  const sfx = ini ? ` —${ini}` : "";
+  return `${formatDateTimeShort(date)} · Confirm Receipt (escalated) · ${note.trim()}${sfx}`;
+}
+
+/** Append a line to the running MN Workflow Notes (newest last), preserving the
+ *  existing log. Monday's long_text has no server-side append, so the whole
+ *  value is rewritten from the in-memory notes + the new line. */
+function appendMnNote(existing: string | undefined, line: string): string {
+  const prev = (existing ?? "").trimEnd();
+  return prev ? `${prev}\n${line}` : line;
 }
 
 function nextMnAttempt(currentAttempt: number): "Attempt 2" | "Attempt 3" | "Escalate" {
