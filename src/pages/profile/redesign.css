@@ -106,6 +106,7 @@
 .pf-root .need { border-color:var(--mm-rose) !important;background:oklch(0.94 0.03 18 / 0.4) }
 .pf-root .filled { border-color:var(--mm-green) !important;background:oklch(0.97 0.02 175 / .55) }
 .pf-root .fgrid { display:grid;grid-template-columns:1fr 1fr;gap:16px 18px }
+.pf-root .fgrid.trio { grid-template-columns:1fr 1fr 1fr }
 .pf-root .fgrid .full { grid-column:1/-1 }
 .pf-root .fhint { margin-top:6px;font-size:.75rem;color:var(--muted-foreground) }
 .pf-root .fwarn { margin-top:6px;font-size:.78rem;font-weight:600;color:var(--amber);display:flex;align-items:center;gap:6px }

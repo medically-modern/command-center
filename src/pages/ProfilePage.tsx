@@ -232,8 +232,15 @@ const ProfilePage = () => {
       items.push({ label: "CGM Type", ok: !!selected.cgmType?.trim() });
       items.push({ label: "CGM Coverage Path", ok: !!selected.cgmCoveragePath?.trim() });
     }
+    // Pump Type is also required for supplies orders — infusion sets and
+    // cartridges are pump-specific. IP Coverage Path stays pump-only.
+    // "Not Serving" is a real board label but not a pickable option, so it
+    // must not satisfy the check (the dropdown renders blank for it).
+    if (servingIncludes(serv, "insulin pump") || servingIncludes(serv, "supplies")) {
+      const pumpType = (selected.pumpType || "").trim();
+      items.push({ label: "Pump Type", ok: !!pumpType && pumpType !== "Not Serving" });
+    }
     if (servingIncludes(serv, "insulin pump")) {
-      items.push({ label: "Pump Type", ok: !!selected.pumpType?.trim() });
       items.push({ label: "IP Coverage Path", ok: !!selected.insulinPumpCoveragePath?.trim() });
     }
     if (selected.clinicalsMethod === "Fax") items.push({ label: "Doctor Fax", ok: !!selected.doctorFax?.trim() });
@@ -598,6 +605,14 @@ function ProfileBody(p: BodyProps) {
   const serv = pt.serving || "";
   const cgm = servingIncludes(serv, "cgm");
   const ip = servingIncludes(serv, "insulin pump");
+  // Supplies orders (infusion sets/cartridges) are pump-specific, so they
+  // need a Pump Type too — but no IP Coverage Path (we're not placing a pump).
+  const supplies = servingIncludes(serv, "supplies");
+  // Rendered from two slots: the pump position for pump servings, or as the
+  // third box after the CGM pair for supplies-without-pump servings.
+  const pumpTypeField = (
+    <Field label="Pump Type" required><select value={pt.pumpType} onChange={(e) => p.onUpdate({ pumpType: e.target.value })}><option value="" disabled hidden>Select…</option>{PUMP_TYPE_OPTS.map((l) => <option key={l}>{l}</option>)}</select></Field>
+  );
   const stediFailed = !!pt.stediErrorDescription && !pt.stediPlanName;
   // Error code + description + recommended solution for the failure banner.
   const stediError = interpretStediError(pt.stediErrorDescription);
@@ -946,7 +961,9 @@ function ProfileBody(p: BodyProps) {
               <div className="work-col">
                 <section className="card step-card">
                   <header className="step-head"><span className="step-num">3</span><h2>Serving &amp; Coverage</h2></header>
-                  <div className="fgrid">
+                  {/* Supplies + CGM shows exactly three boxes (CGM Type · CGM
+                      Coverage Path · Pump Type) — render them as one 3-up row. */}
+                  <div className={cgm && supplies && !ip ? "fgrid trio" : "fgrid"}>
                     <div className="full">
                       {servingSuggestion && servingSuggestion !== serv && (
                         <div className="sugg-line" style={{ marginBottom: 8 }}>
@@ -966,8 +983,9 @@ function ProfileBody(p: BodyProps) {
                       </Field>
                     </div>
                     {cgm && <Field label="CGM Type" required><select value={pt.cgmType} onChange={(e) => p.onUpdate({ cgmType: e.target.value })}><option value="" disabled hidden>Select…</option>{CGM_TYPE_OPTS.map((l) => <option key={l}>{l}</option>)}</select></Field>}
-                    {ip && <Field label="Pump Type" required><select value={pt.pumpType} onChange={(e) => p.onUpdate({ pumpType: e.target.value })}><option value="" disabled hidden>Select…</option>{PUMP_TYPE_OPTS.map((l) => <option key={l}>{l}</option>)}</select></Field>}
+                    {ip && pumpTypeField}
                     {cgm && <Field label="CGM Coverage Path" required><select value={pt.cgmCoveragePath} onChange={(e) => p.onUpdate({ cgmCoveragePath: e.target.value })}><option value="" disabled hidden>Select…</option>{CGM_PATH_OPTS.map((l) => <option key={l}>{l}</option>)}</select></Field>}
+                    {supplies && !ip && pumpTypeField}
                     {ip && <Field label="Insulin Pump Coverage Path" required><select value={pt.insulinPumpCoveragePath} onChange={(e) => p.onUpdate({ insulinPumpCoveragePath: e.target.value })}><option value="" disabled hidden>Select…</option>{IP_PATH_OPTS.map((l) => <option key={l}>{l}</option>)}</select></Field>}
                   </div>
                 </section>
