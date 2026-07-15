@@ -114,7 +114,11 @@ spec §7) was not attached. The §7 rules below are known only from the spec's o
   **append it to the Insurance notes column `long_text_mm2ffsme` (Call Reference Notes)** —
   visible to all three Insurance roles and hop-copied to Welcome Call — NOT to the
   escalation-notes column. Compose read+append once, inside the verified batch (same
-  append-writer rules as the S6 call logs).
+  append-writer rules as the S6 call logs). *Accepted risk (S6):* this column is
+  overwrite-shared with the freeform notes box and the SubmitAuth/AuthOutstanding inline
+  saves, so a concurrent overwrite can clobber an appended reason — mitigate in the rewrite
+  by routing every Benefits-page notes write through one composed writer per send; the
+  dedicated call-log columns (D8) are already isolated from this.
 - **D5 (S4, labels):** verified against the live board 2026-07-15 — all labels/ids in the
   Skip→recheck path match (Skip/Not Clear dropdown ids 1–5, SoS 0:Skip/1:All Clear/2:Partial /
   Not Clear, Auth aggregate, all five Auth Result sets, universal checks, Escalation). The
@@ -148,8 +152,10 @@ false (`WelcomeCallForm.tsx:188-193`, `PatientInfoCard.tsx:547-551`). Gate =
 Original-Medicare patients whose Pump Qty isn't set to "1"; flip Pump Qty to 1 (or change the
 insurance) and the next WC/FC save erases it.
 
-**To implement §2 you need:** (a) a new Insurance-board text column (e.g. "Medicare Prior Pump
-Date"), written inside the verified batch; (b) an added mapping in automation `7918324247`
+**To implement §2 you need** (➡ *(a) is DONE per D1 — `text_mm59qh8r` created 2026-07-15; (b)
+is Josh's open automation task; (c)/(d) remain*)**:** (a) a new Insurance-board text column
+(e.g. "Medicare Prior Pump Date"), written inside the verified batch; (b) an added mapping in
+automation `7918324247`
 (text→text copy is safe for the literal `TBD`; never route a parseable date string through a
 text hop — CLAUDE.md §9); (c) a WC/FC decision that `TBD` means "ask the patient", so the gate
 and auto-clear don't erase it; (d) update `BOARD_SCHEMA.md` (already stale here — it predates
@@ -178,6 +184,10 @@ date" — implying dates now flow for **all** billed products.
   uses them in its next-order fallback chain (`welcomeCall/workflow.ts:364-370`).
 - The current clear-on-clear behavior disappears (stale dates stop being wiped).
 
+➡ **Resolved by D2 (revised):** the legacy columns keep the write-only-when-not-clear rule
+(authoritative going forward); the full facts land in the new D6 columns; Final Confirm is
+untouched until a later, separate migration. Original decision framing kept for context:
+
 **Decision needed (one of):** keep the current write-only-when-not-clear rule (and the facts
 live only in new columns / the overlay), **or** write all dates and fix
 `finalConfirm`'s heuristic + WC displays in the same change. Don't ship the middle.
@@ -202,7 +212,9 @@ supplies hidden with a banner.
 - **Supplies-only Medicaid patients have no exit.** The prototype shows "No benefit check
   needed … they go straight to the DVS stage", but the patients are still sitting in the
   Benefits group and nothing moves them (the prototype still gates send on the 3 universal
-  checks even for these patients). Interim SOP or DVS-stage-first sequencing required.
+  checks even for these patients). ➡ **Resolved by D3:** buttons come out now; interim SOP is
+  manual Monday handling for straight-Medicaid / supplies-only patients until the DVS stage
+  ships (Submit Auth / Auth Outstanding keep their buttons for patients that advance).
 - Keep the hidden-supplies auto-fill: both today (`mondayWrite.ts:124-140`) and the prototype
   hardcode hidden Medicaid supplies to Auth=Required / SoS=Clear, and the code comments note
   the DVS automation expects those auth-result columns to flip blank→"Required" at Benefits
@@ -240,6 +252,17 @@ prototype. Consequences:
     whose own comment says "1461"), so the prototype matches today's behavior; whether the
     window should be 1460 days or calendar-4-years is a Brandon intent question (added to
     open question 2's minor list). One-day skew, exact-boundary patients only.
+  - *Units validation (from CodeRabbit's PR #10 review):* the prototype's `sosComplete` treats
+    any truthy units as complete — the implementation should require a positive integer
+    (`min="1" step="1"`, `Number.isInteger(u) && u > 0`) before a billed entry counts.
+  - *Never-billed/TBD while Auth = Required (Brandon intent, minor):* spec §1 says entered
+    facts are "ignored while Auth = Required", but the prototype still derives the Medicare
+    never-billed rollups + TBD from `sosEntry === 'never'` regardless of auth state. Decide
+    whether the rollups/TBD apply for auth-required products (billing history is arguably a
+    payer fact independent of auth) — added to open question 9.
+  - *Blank call-log rows:* call-log section 1 always renders one empty row and the prototype
+    never validates rows — the implementation must discard fully-blank rows before appending,
+    and decide how to serialize a row with only a ref # or only notes.
 - **Lookbacks:** the doc's "current live code uses flat 90 days" is **wrong** — pump/monitor
   4-yr already exists (`InsurancePanel.tsx:403-409`, guidance text only). Actual changes:
   (a) the **Medicaid 60-day tier** for sensors/supplies (`patientHasMedicaid()` = substring
@@ -365,7 +388,10 @@ No per-product SoS-units columns exist anywhere. The Welcome Call board's
 `numeric_mm2w5jdp/gfrb/ayp9/h4ph/cgkc` are **Auth Units** (a different concept, written from
 SubmitAuth). The prototype collects per-product units and gates completeness on them but its
 drawer never previews a Units write — the only spec is the doc's one line ("add a Units column
-to the Welcome Call board", singular). Needed: decide granularity (per product? sensors/
+to the Welcome Call board", singular). ➡ **Resolved by D6:** per-product, all five products,
+columns created on BOTH boards — see the D6 registry; remaining work is the automation
+mappings (Josh) plus the app writer/mapping code. Original framing kept for context:
+decide granularity (per product? sensors/
 supplies only?), add Insurance-board column(s) written in the verified batch, extend the WC
 create-automation copy map **[live board]**, add to `welcomeCall`/`finalConfirm` mappings and
 `BOARD_SCHEMA.md`.
@@ -379,7 +405,8 @@ only; auth is non-blocking by design (RELIABILITY_AUDIT D2). And the samantha se
 payload-aware validation in `send.mjs` (most sanely scoped to flips of `color_mm1ws96t` on
 board 18410601299) **plus** migrating the Benefits send to the `/send` fast path (raw values +
 expectedText — which would also fix tab-close durability, a real win), **plus** accepting that
-`/gql` and direct mode can bypass it. Scope decision for Josh — v1 could reasonably stay
+`/gql` and direct mode can bypass it. ➡ **Resolved by D10:** client-side only for v1; server
+validation deferred as an infra item owned by the team. Original framing: v1 could reasonably stay
 client-only with the server mirror as a follow-up.
 
 ### 🟡 S11 — MEDIUM: relabeled universal checks + the read-back gap (spec §3)
@@ -476,14 +503,17 @@ the columns to the Benefits read set or accept that a reload mid-patient loses t
    Oversight (Medical Evaluation-style).**
 8. ~~**S10:** server-side gating scope for v1?~~ **RESOLVED (D10): client-only for v1;
    server validation is a deferred infra item owned by us.**
-9. **S8:** should a later send be able to *clear* Never Billed, and TBD ignoring the pump's
-   own entry — intended?
+9. **S8:** should a later send be able to *clear* Never Billed; TBD ignoring the pump's own
+   entry — intended?; and do the never-billed rollups/TBD apply when the product's Auth =
+   Required (facts otherwise "ignored" per §1)?
 10. §7 depends on `ANTHEM_BCBS_PRIMARY_SUGGESTION_RULEBOOK.md` — **doesn't exist yet (D7)**;
     the pills/POS warning stay out of scope until Brandon writes it.
 
 ## 5. Suggested implementation order
 
-1. **Schema first** (S1, S9, S5-header): new Insurance columns (pump date, units, home plan /
+1. **Schema first** (S1, S9, S5-header) — ➡ *pump date + per-product SoS facts columns are
+   DONE (D1/D6/D8 registries); still open: header columns below + the automation mappings*:
+   new Insurance columns (pump date ✅, units ✅, home plan /
    coverage type / Medicaid ID if header needs them), add to WC-create automation copy map,
    update `BOARD_SCHEMA.md` + `monday-integration-spec.md`.
 2. **Derivation layer** in `workflow.ts` (pure functions + tests mirroring the prototype's
@@ -494,5 +524,8 @@ the columns to the Benefits read set or accept that a reload mid-patient loses t
    header, pills) with DEMO affordances stripped.
 4. **Downstream fixes in the same release:** finalConfirm SoS heuristic (S2), WC TBD gate
    (S1), escalation reason auto-compose (S7).
-5. **Sequencing gates:** don't remove Trigger DVS until the DVS stage handoff lands (S3);
+5. **Sequencing gates:** Trigger DVS buttons come out of Benefits per **D3** — the release
+   requirement is the interim SOP, not the button: straight-Medicaid / supplies-only patients
+   are handled manually on Monday (Submit Auth / Auth Outstanding keep their buttons) until
+   the DVS stage ships (S3);
    Profile completeness gate before the header goes read-only (S5).
