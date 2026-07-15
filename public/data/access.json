@@ -137,13 +137,11 @@
       "name": "janelle",
       "roles": [
         "confirmReceipt",
-        "evaluate",
-        "chaseParachute"
+        "evaluate"
       ],
       "roleFilters": {
         "evaluate": "escalated",
-        "confirmReceipt": "escalated",
-        "chaseParachute": "escalated"
+        "confirmReceipt": "escalated"
       }
     }
   }
