@@ -369,6 +369,32 @@ export function effectiveNextOrder(
   return (edited || mondayDate || computeNextOrder(lastBillDates)).slice(0, 10);
 }
 
+/**
+ * Decide what to write to one product's Next Order Date column on Send, or
+ * `null` to skip the write.
+ *
+ * MM-1042: a product that is NOT being served must never receive the
+ * "today" default that `computeNextOrder([])` produces for an empty
+ * last-bill history. When a line isn't served its date must be empty, so we
+ * honor an explicit rep edit if there is one and otherwise clear a stale
+ * board value (skipping the write when the board is already empty). Served
+ * lines keep the existing edit → Monday value → computed-default resolution.
+ */
+export function resolveNextOrderWrite(args: {
+  served: boolean;
+  edited: string | null;
+  mondayDate: string;
+  lastBillDates: string[];
+}): string | null {
+  const current = args.mondayDate.slice(0, 10);
+  if (!args.served) {
+    const target = (args.edited ?? "").slice(0, 10);
+    return target !== current ? target : null;
+  }
+  const effective = effectiveNextOrder(args.edited, args.mondayDate, args.lastBillDates);
+  return effective && effective !== current ? effective : null;
+}
+
 /* ─── Validation for Send to Monday ─── */
 
 function hasZipCode(address: string): boolean {
