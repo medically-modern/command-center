@@ -45,14 +45,19 @@ spec §7) was not attached. The §7 rules below are known only from the spec's o
   create-item-in-Welcome-Call automation (**automation id `7918324247`**) so
   `text_mm59qh8r` (Insurance) → `text_mm58k9x9` (Welcome Call). Until that mapping exists the
   TBD never reaches the Welcome Call rep. Text→text copy is safe for the literal "TBD".
-- **D2 (S2, last-bill dates):** write the entered Last Bill Date for **every** billed product,
-  and change **Final Confirm to read the actual SoS columns instead of inferring "Not Clear"
-  from date presence** (`finalConfirm/mondayMapping.ts:107-111`). Implementation note: Final
-  Confirm lives on the Welcome Call board and can only read what the create-item automation
-  copies — the per-product SoS truth on the Insurance board is the **Not Clear Products**
-  (`dropdown_mm2vez5a`) + **Skip SoS Products** (`dropdown_mm31163t`) dropdowns, which are
-  **not currently in automation `7918324247`'s copy map**. Add both (dropdown→dropdown copy)
-  when making the D1 automation edit, then point Final Confirm's parser at them.
+- **D2 (S2, last-bill dates) — REVISED 2026-07-15: Final Confirm stays untouched for now.**
+  Keep the legacy contract intact: the existing `date_mm33*` Last Bill Date columns are
+  written **only for products whose derived SoS = Not Clear** (cleared otherwise) — exactly
+  today's rule, just driven by the derivation instead of the rep's dropdown. Final Confirm's
+  date-presence heuristic and all Welcome Call displays keep working unchanged. The **full
+  facts** (last bill date + units for every billed product, incl. derived-Clear ones) go to
+  **new per-product "SoS Last Bill / SoS Units" columns** that no existing code reads — to be
+  created once the units-granularity question (open question 6) is settled with Brandon.
+  Next Order Dates may be written for ALL billed products in the existing columns (verified:
+  no consumer infers Not-Clear from them; Welcome Call's fallback only improves).
+  The Not Clear / Skip dropdown additions to automation `7918324247` are **deferred** — they
+  are only needed when the Final Confirm rewire eventually happens; at that point Final
+  Confirm just reads the new facts columns / dropdown copies, no backfill required.
 - **D3 (S3, Trigger DVS):** remove the Benefits buttons; the DVS stage will own this later.
   Interim reality: Submit Auth / Auth Outstanding keep their buttons; straight-Medicaid
   supplies-only patients don't advance on their own, so they're handled manually on Monday
@@ -390,8 +395,9 @@ the columns to the Benefits read set or accept that a reload mid-patient loses t
 
 ## 4. Open questions for Brandon / decisions for Josh
 
-1. ~~**S2:** where do last-bill dates for derived-**Clear** products land?~~ **RESOLVED (D2):
-   write everything; fix Final Confirm to read the real SoS columns.**
+1. ~~**S2:** where do last-bill dates for derived-**Clear** products land?~~ **RESOLVED (D2,
+   revised): legacy date columns keep the Not-Clear-only rule; full facts go to new SoS
+   facts columns; Final Confirm untouched until a later, separate migration.**
 2. **S4:** ~~Medicaid pump Skip vs Clear~~ **RESOLVED (D5): intended.** Still open: is
    bill-date exactly on the cutoff = Not Clear intended? (minor)
 3. ~~**S3:** keep the Benefits Trigger DVS button until the DVS stage ships?~~ **RESOLVED
