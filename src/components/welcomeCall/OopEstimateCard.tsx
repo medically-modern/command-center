@@ -141,6 +141,11 @@ const FIELD_WARNINGS: Record<string, string> = {
 export function OopEstimateCard({ patient, infusionSets }: Props) {
   const isCarecentrix = (patient.referralSource || "").toLowerCase().includes("carecentrix");
 
+  // A mid-call edit (e.g. Secondary Insurance → NY Medicaid) must flip the
+  // estimate immediately — the board value lags until the Monday write
+  // round-trips, and the rep quotes this number to the patient on the call.
+  const secondaryInsurance = patient.secondaryInsuranceEdited || patient.secondaryInsurance;
+
   const result = useMemo(() => {
     if (isCarecentrix) return null;
     const parsedSets = parseInt(patient.qtyInf1 || "0", 10) + parseInt(patient.qtyInf2 || "0", 10);
@@ -148,7 +153,7 @@ export function OopEstimateCard({ patient, infusionSets }: Props) {
 
     return estimateOop({
       primaryInsurance: patient.primaryInsurance,
-      secondaryInsurance: patient.secondaryInsurance,
+      secondaryInsurance,
       serving: patient.serving,
       infusionSets: sets,
       deductibleRemaining: patient.deductibleRemaining,
@@ -158,7 +163,7 @@ export function OopEstimateCard({ patient, infusionSets }: Props) {
   }, [
     isCarecentrix,
     patient.primaryInsurance,
-    patient.secondaryInsurance,
+    secondaryInsurance,
     patient.serving,
     patient.qtyInf1,
     patient.qtyInf2,
