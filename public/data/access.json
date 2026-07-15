@@ -136,12 +136,10 @@
     "janelle@medicallymodern.com": {
       "name": "janelle",
       "roles": [
-        "confirmReceipt",
         "evaluate"
       ],
       "roleFilters": {
-        "evaluate": "escalated",
-        "confirmReceipt": "escalated"
+        "evaluate": "escalated"
       }
     }
   }
