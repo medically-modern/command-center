@@ -140,18 +140,14 @@
         "evaluate",
         "chaseParachute",
         "submitAuth",
-        "welcomeCall",
-        "subscription",
-        "authDenied"
+        "welcomeCall"
       ],
       "roleFilters": {
         "evaluate": "escalated",
         "confirmReceipt": "escalated",
         "chaseParachute": "escalated",
         "submitAuth": "escalated",
-        "welcomeCall": "escalated",
-        "subscription": "escalated",
-        "authDenied": "escalated"
+        "welcomeCall": "escalated"
       }
     }
   }
