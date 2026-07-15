@@ -229,6 +229,17 @@ prototype. Consequences:
   every send, not merged (`mondayWrite.ts:207-235`).
 - **Boundary:** prototype derives Clear only when lastBill is *strictly* older than the cutoff
   (`<` on ISO strings) — a bill exactly on the cutoff date is Not Clear. Confirm intended.
+- **Backend-port notes (from Greptile's PR #10 review, triaged 2026-07-15 — fix in the
+  implementation, NOT in the prototype, which stays as received):**
+  - *Timezone:* the prototype's `sosClearBeforeDate()` computes "today" with a bare
+    `new Date()`. Fine in a rep's browser; wrong on a UTC runtime. The implementation must
+    anchor "today" to **ET** before subtracting the lookback (CLAUDE.md §9 — Monday dates are
+    ET, timezone-naive), or a boundary patient flips Clear/Not-Clear near midnight.
+  - *Leap years:* "4 years" is coded as `365*4 = 1460` days — every real 4-calendar-year span
+    contains ≥1 leap day (1461+). Current production uses the same 1460 (`workflow.ts:570`,
+    whose own comment says "1461"), so the prototype matches today's behavior; whether the
+    window should be 1460 days or calendar-4-years is a Brandon intent question (added to
+    open question 2's minor list). One-day skew, exact-boundary patients only.
 - **Lookbacks:** the doc's "current live code uses flat 90 days" is **wrong** — pump/monitor
   4-yr already exists (`InsurancePanel.tsx:403-409`, guidance text only). Actual changes:
   (a) the **Medicaid 60-day tier** for sensors/supplies (`patientHasMedicaid()` = substring
@@ -446,8 +457,9 @@ the columns to the Benefits read set or accept that a reload mid-patient loses t
 1. ~~**S2:** where do last-bill dates for derived-**Clear** products land?~~ **RESOLVED (D2,
    revised): legacy date columns keep the Not-Clear-only rule; full facts go to new SoS
    facts columns; Final Confirm untouched until a later, separate migration.**
-2. **S4:** ~~Medicaid pump Skip vs Clear~~ **RESOLVED (D5): intended.** Still open: is
-   bill-date exactly on the cutoff = Not Clear intended? (minor)
+2. **S4:** ~~Medicaid pump Skip vs Clear~~ **RESOLVED (D5): intended.** Still open (minor,
+   for Brandon): (a) bill-date exactly on the cutoff = Not Clear — intended? (b) "4 years" =
+   1460 days (as coded today AND in the prototype) or calendar-4-years (1461 w/ leap day)?
 3. ~~**S3:** keep the Benefits Trigger DVS button until the DVS stage ships?~~ **RESOLVED
    (D3): remove it; interim handling is manual.**
 4. ~~**S1:** confirm the TBD design = new Insurance column + hop mapping.~~ **RESOLVED (D1):
