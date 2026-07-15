@@ -87,6 +87,25 @@ spec §7) was not attached. The §7 rules below are known only from the spec's o
   POS/out-of-network warning are **blocked on Brandon writing it**; the §7 summary in
   JOSH_HANDOFF_BENEFITS.md is currently the only source and is not implementation-grade
   (the home-plan canonicalization rules live in the Stedi 271 `_parse_home_plan` backend).
+- **D8 (S6, call logs): two dedicated columns, CREATED 2026-07-15** on the Insurance board —
+  Call Log #1 → **`long_text_mm59y5xt` "Benefits Call Log"**, Call Log #2 →
+  **`long_text_mm59rz2c` "SoS / Auth Call Log"** — in addition to (not instead of) Call
+  Reference Notes `long_text_mm2ffsme`, which keeps the freeform notes box and the D4
+  escalation reason line. Both logs are append-only: compose read+append once inside the
+  verified send, never overwrite. They are NOT in any hop-copy automation or manager view yet;
+  add them to automation `7918324247` only if the history should follow the patient to
+  Welcome Call (optional — Josh's call during the mapping session).
+- **D9 (S7, un-escalate path): there is none yet — accepted and noted.** Auto-escalated
+  patients land in the Escalations group (`group_mm2vg9gn`), which no app page reads; return
+  is manual on Monday for now. **FUTURE WORK ITEM:** build an Insurance escalations system in
+  Pipeline Oversight modeled on Medical Evaluation's "Escalations · Attempt 4+" sub-row
+  (CLAUDE.md §7) — i.e. an oversight surface that reads the Escalations group / escalation
+  column so managers can see, work, and release Insurance escalations from the app.
+- **D10 (S10, gating): client-side only for v1 — our call, not Brandon's.** The spec's
+  "client + server" line is treated as aspirational: submit gating stays in the SPA (same as
+  today, matching current behavior). Server-side validation is deferred as an infra hardening
+  item owned by us — if ever done, bundle it with moving the Benefits send onto the gateway's
+  durable `/send` path (which also fixes tab-close-mid-save).
 - **D3 (S3, Trigger DVS):** remove the Benefits buttons; the DVS stage will own this later.
   Interim reality: Submit Auth / Auth Outstanding keep their buttons; straight-Medicaid
   supplies-only patients don't advance on their own, so they're handled manually on Monday
@@ -434,16 +453,17 @@ the columns to the Benefits read set or accept that a reload mid-patient loses t
 4. ~~**S1:** confirm the TBD design = new Insurance column + hop mapping.~~ **RESOLVED (D1):
    column `text_mm59qh8r` created; automation mapping still to do (Josh).** WC's Pump Qty = 1
    auto-clear accepted as-is.
-5. **S6:** call logs into `long_text_mm2ffsme` (shared with freeform notes) or new
-   column(s)? Retention/size policy for manager views and board hops? (D4 already makes the
-   escalation reason line an appender into this column.)
+5. ~~**S6:** call logs into `long_text_mm2ffsme` or new column(s)?~~ **RESOLVED (D8): two
+   dedicated columns, `long_text_mm59y5xt` + `long_text_mm59rz2c`, alongside Call Reference
+   Notes.**
 6. ~~**S9:** Units — one column or per-product, and which products?~~ **RESOLVED (D6):
    per-product, all five; columns created on both boards (see registry).**
 7. **S7:** ~~auto-compose a derived-escalation reason into notes?~~ **RESOLVED (D4): yes —
-   append to `long_text_mm2ffsme`.** Still open: the un-escalate / return-from-
-   Escalations-group SOP.
-8. **S10:** server-side gating scope for v1 (none / advancer-flip validation / full mirror +
-   move the send to gateway `/send`)?
+   append to `long_text_mm2ffsme`.** ~~Un-escalate SOP?~~ **RESOLVED-AS-NOTED (D9): no path
+   back yet; manual on Monday; future work = Insurance escalations system in Pipeline
+   Oversight (Medical Evaluation-style).**
+8. ~~**S10:** server-side gating scope for v1?~~ **RESOLVED (D10): client-only for v1;
+   server validation is a deferred infra item owned by us.**
 9. **S8:** should a later send be able to *clear* Never Billed, and TBD ignoring the pump's
    own entry — intended?
 10. §7 depends on `ANTHEM_BCBS_PRIMARY_SUGGESTION_RULEBOOK.md` — **doesn't exist yet (D7)**;
