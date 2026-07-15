@@ -138,16 +138,12 @@
       "roles": [
         "confirmReceipt",
         "evaluate",
-        "chaseParachute",
-        "submitAuth",
-        "welcomeCall"
+        "chaseParachute"
       ],
       "roleFilters": {
         "evaluate": "escalated",
         "confirmReceipt": "escalated",
-        "chaseParachute": "escalated",
-        "submitAuth": "escalated",
-        "welcomeCall": "escalated"
+        "chaseParachute": "escalated"
       }
     }
   }
