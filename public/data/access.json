@@ -56,7 +56,8 @@
         "chaseFax",
         "benefits",
         "authOutstanding",
-        "finalConfirm"
+        "finalConfirm",
+        "updateClinicals"
       ],
       "roleOrder": {},
       "roleFilters": {
