@@ -50,7 +50,9 @@
         "welcomeCall",
         "subscription",
         "authDenied",
-        "fax"
+        "fax",
+        "unverifiedReferrals",
+        "sendRequest"
       ],
       "roleOrder": {},
       "roleFilters": {
