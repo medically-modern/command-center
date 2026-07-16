@@ -54,7 +54,9 @@
         "unverifiedReferrals",
         "sendRequest",
         "chaseFax",
-        "benefits"
+        "benefits",
+        "authOutstanding",
+        "finalConfirm"
       ],
       "roleOrder": {},
       "roleFilters": {
