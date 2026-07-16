@@ -82,6 +82,37 @@ describe("suggestPrimary — payer routing", () => {
     expect(sg?.value).toBe("Fidelis Low-Cost");
   });
 
+  // CHIP regex fix (Brandon 2026-07-15, member JLJ730667355): "NY CHIP" is
+  // Child Health Plus = Low-Cost — before the fix it skipped the Low-Cost
+  // branch, hit the covtype check, and mis-suggested Medicaid (JLJ) (then the
+  // supplies-only fork demoted the pill to plain "Medicaid").
+  it('Anthem "NY CHIP" plan → Anthem BCBS Low-Cost (JLJ), not Medicaid', () => {
+    const sg = suggestPrimary(mk({
+      gins: "Anthem / BCBS", memberId: "JLJ730667355", requestType: "Supplies Only",
+      address: "1504 SHERIDAN AVE, BRONX, NY 10457",
+      plan: "NY CHIP - MEMBER AND STATE BILLING", covtype: "Medicaid",
+    }));
+    expect(sg?.value).toBe("Anthem BCBS Low-Cost (JLJ)");
+    expect(sg?.warnings.some((w) => w.code === "CHECK_MEDICAID_ID")).toBe(false);
+  });
+  it('United "CHIP" plan → United Low-Cost', () => {
+    expect(suggestPrimary(mk({
+      gins: "United Healthcare", plan: "NY CHIP PREMIUM", covtype: "Medicaid", requestType: "Supplies Only",
+    }))?.value).toBe("United Low-Cost");
+  });
+  it('other-payer "CHIP" plan → Low-Cost (classifyCoverage)', () => {
+    expect(suggestPrimary(mk({
+      gins: "Other", payerName: "SOME PAYER", plan: "NY CHIP - MEMBER AND STATE BILLING",
+      covtype: "Medicaid", requestType: "Supplies Only",
+    }))?.value).toBe("Low-Cost");
+  });
+  it('"\\bchip\\b" is word-bounded — CHIPPEWA plan is NOT Low-Cost', () => {
+    expect(suggestPrimary(mk({
+      gins: "Anthem / BCBS", plan: "CHIPPEWA HEALTH PLAN", covtype: "Commercial",
+      address: "1504 SHERIDAN AVE, BRONX, NY 10457", requestType: "Supplies Only",
+    }))?.value).toBe("Anthem BCBS Commercial");
+  });
+
   it("Fidelis Wellcare Dual → Fidelis Medicare + NY Medicaid secondary", () => {
     const inp = mk({
       gins: "Fidelis", requestType: "Insulin Pump",
