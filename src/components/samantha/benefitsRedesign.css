@@ -33,20 +33,6 @@
 }
 .bnr button{font:inherit;cursor:pointer;background:none;border:none;color:inherit}
 
-/* ============ demo bar (testing aid — strip for production) ============ */
-.bnr .demo-bar{display:flex;align-items:center;justify-content:flex-end;gap:14px;margin-bottom:16px;flex-wrap:wrap}
-.bnr .demo-bar .lbl{font-size:.75rem;font-weight:500;text-transform:uppercase;letter-spacing:.025em;color:var(--bnr-muted-foreground)}
-.bnr .demo-seg{display:inline-flex;border:1px solid var(--bnr-border);border-radius:8px;padding:3px;gap:2px;background:oklch(0.968 0.007 247.896 / 0.4);flex-wrap:wrap}
-.bnr .demo-seg button{font-size:.8rem;font-weight:600;padding:5px 12px;border-radius:6px;color:var(--bnr-muted-foreground)}
-.bnr .demo-seg button.on{background:var(--bnr-card);color:var(--mm-teal);box-shadow:0 1px 2px rgb(0 0 0 / .08)}
-.bnr .reset-link{font-size:.8rem;font-weight:600;color:var(--bnr-muted-foreground);text-decoration:underline;text-underline-offset:3px}
-.bnr .reset-link:hover{color:var(--bnr-foreground)}
-.bnr .demo-flag{
-  display:inline-flex;align-items:center;gap:6px;padding:3px 10px;border-radius:999px;
-  font-size:.72rem;font-weight:700;letter-spacing:.05em;text-transform:uppercase;
-  background:var(--mm-sky-soft);color:var(--mm-sky);box-shadow:inset 0 0 0 1px oklch(0.60 0.10 230 / 0.3);
-}
-
 /* ============ cards ============ */
 .bnr .card{background:var(--bnr-card);border:1px solid var(--bnr-border);border-radius:16px;padding:24px;box-shadow:0 1px 2px 0 rgb(0 0 0 / .05)}
 .bnr .step-card{border-left:4px solid var(--mm-green)}
@@ -84,8 +70,10 @@
 .bnr .ph-groups{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:20px}
 .bnr .hgroup{border:1px solid var(--bnr-border);border-radius:12px;background:oklch(0.968 0.007 247.896 / 0.3);padding:16px}
 .bnr .hgroup .pair{display:grid;grid-template-columns:1fr 1fr;gap:12px;align-items:start}
+.bnr .hgroup .pair>div{min-width:0}
 .bnr .ph-groups .eyebrow{font-size:.78rem;white-space:nowrap;display:flex;align-items:center;gap:6px;height:18px}
-.bnr .ph-groups .hval{margin-top:6px;min-height:38px;display:flex;align-items:center}
+/* long values (member IDs) wrap inside their box instead of running off the page */
+.bnr .ph-groups .hval{margin-top:6px;min-height:38px;display:flex;align-items:center;overflow-wrap:anywhere;word-break:break-word}
 .bnr .ph-toggle{
   margin-top:20px;display:inline-flex;align-items:center;gap:6px;
   font-size:1.125rem;font-weight:600;color:var(--mm-teal);
@@ -269,7 +257,9 @@
 /* ============ layout: main + notes rail ============ */
 .bnr .layout{display:grid;grid-template-columns:minmax(0,1fr) clamp(320px,22vw,420px);gap:24px;align-items:start}
 .bnr .main-col{display:flex;flex-direction:column;gap:24px;min-width:0}
-.bnr .notes-rail{position:sticky;top:16px;height:75vh}
+/* notes rail fills the viewport height while pinned */
+.bnr .notes-rail{position:sticky;top:16px;height:calc(100vh - 32px)}
+.bnr .notes-rail>*{height:100%}
 .bnr .notes-card{display:flex;flex-direction:column;padding:20px;height:100%}
 .bnr .notes-card textarea{flex:1;min-height:0;resize:none;font-size:.9rem;line-height:1.6}
 @media (max-width:1150px){
