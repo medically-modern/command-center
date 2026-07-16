@@ -39,7 +39,17 @@ export function InsuranceSuggestions({ patient, onUpdate }: Props) {
       {/* Primary suggestion */}
       <div className="flex flex-wrap items-center gap-2">
         <span className="text-sm font-medium text-foreground">Primary:</span>
-        {primary.value ? (
+        {primary.cantServe ? (
+          /* CGM-only + Medicaid — advisory alert pill; no Use, never a board label */
+          <>
+            <span className="inline-flex items-center rounded-full bg-rose-100 text-rose-700 ring-1 ring-inset ring-rose-300 px-3 py-1 text-sm font-semibold">
+              Can't Serve
+            </span>
+            <span className="text-xs text-rose-700 font-medium">
+              CGM-only request with Medicaid coverage — route the referral instead of completing insurance
+            </span>
+          </>
+        ) : primary.value ? (
           <>
             <span className="inline-flex items-center rounded-full bg-emerald-100 text-emerald-800 px-3 py-1 text-sm font-semibold">
               {primary.value}

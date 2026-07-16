@@ -129,7 +129,7 @@ describe("suggestPrimary — payer routing", () => {
   // Coverage Type as plain "Medicaid" and the MCO in its own column.
   it("NYSDOH + Managed Medicaid (Molina) → Medicaid + supplies-only warning", () => {
     const sg = suggestPrimary(mk({
-      gins: "Medicaid", payerName: "NYSDOH", covtype: "Medicaid",
+      gins: "Medicaid", payerName: "NYSDOH", covtype: "Medicaid", requestType: "Insulin Pump + CGM",
       plan: "NEW YORK MEDICAID", managedMedicaid: "MOLINA HEALTHCARE OF NY INC MAINSTR",
     }));
     expect(sg?.value).toBe("Medicaid");
@@ -138,13 +138,13 @@ describe("suggestPrimary — payer routing", () => {
   });
 
   it("NYSDOH without managed plan → no managed-medicaid warning", () => {
-    const sg = suggestPrimary(mk({ gins: "Medicaid", payerName: "NYSDOH", covtype: "Medicaid", plan: "NEW YORK MEDICAID" }));
+    const sg = suggestPrimary(mk({ gins: "Medicaid", payerName: "NYSDOH", covtype: "Medicaid", plan: "NEW YORK MEDICAID", requestType: "Supplies Only" }));
     expect(sg?.value).toBe("Medicaid");
     expect(sg?.warnings.some((w) => w.code === "MANAGED_MEDICAID")).toBe(false);
   });
 
   it('Stedi "—" none-marker in Managed Medicaid → no warning', () => {
-    const sg = suggestPrimary(mk({ gins: "Medicaid", payerName: "NYSDOH", covtype: "Medicaid", plan: "NEW YORK MEDICAID", managedMedicaid: "—" }));
+    const sg = suggestPrimary(mk({ gins: "Medicaid", payerName: "NYSDOH", covtype: "Medicaid", plan: "NEW YORK MEDICAID", managedMedicaid: "—", requestType: "Supplies Only" }));
     expect(sg?.warnings.some((w) => w.code === "MANAGED_MEDICAID")).toBe(false);
   });
 
@@ -155,9 +155,104 @@ describe("suggestPrimary — payer routing", () => {
     const sg = suggestPrimary(mk({
       gins: "Aetna", payerName: "AETNA BETTER HEALTH OF NEW YORK", covtype: "Medicaid",
       plan: "AETNA BETTER HEALTH MEDICAID", managedMedicaid: "AETNA BETTER HEALTH OF NEW YORK",
+      requestType: "Supplies Only",
     }));
     expect(sg?.value).toBe("Medicaid"); // no pump requested → medicaidFork drops to plain Medicaid
     expect(sg?.warnings.some((w) => w.code === "MANAGED_MEDICAID")).toBe(false);
+  });
+});
+
+// CGM-only + any Medicaid flavor → Can't Serve (Brandon 2026-07-14; supersedes
+// the rulebooks' §6.5 fork for that row). Advisory only — value stays null so
+// nothing can be applied or written.
+describe("Can't Serve — CGM-only for Medicaid", () => {
+  // Hunora Lewis (item 12517509742): Fidelis managed Medicaid, CGM referral.
+  const hunora = (requestType: string) => mk({
+    gins: "Fidelis", requestType, plan: "Fidelis Medicaid Managed Care",
+    covtype: "Medicaid", medid: "GZ63048E",
+  });
+
+  it("Hunora: Fidelis Medicaid + CGM → Can't Serve", () => {
+    const sg = suggestPrimary(hunora("CGM"));
+    expect(sg?.cantServe).toBe(true);
+    expect(sg?.value).toBeNull();
+    expect(sg?.reason).toBe("");
+  });
+  it("Hunora: Supplies + CGM → Medicaid (serve supplies only, unchanged demotion)", () => {
+    const sg = suggestPrimary(hunora("Supplies + CGM"));
+    expect(sg?.cantServe).toBeUndefined();
+    expect(sg?.value).toBe("Medicaid");
+  });
+  it("Hunora: Insulin Pump → Fidelis Medicaid (unchanged)", () => {
+    expect(suggestPrimary(hunora("Insulin Pump"))?.value).toBe("Fidelis Medicaid");
+  });
+  it("Can't Serve suppresses the NY Medicaid secondary backstop", () => {
+    expect(suggestSecondary(hunora("CGM"))).toBe("");
+    expect(suggestSecondary(hunora("Insulin Pump"))).toBe("NY Medicaid");
+  });
+
+  // Lakisha Valdez–type: NYSDOH + Molina MCO in the Managed Medicaid column.
+  const lakisha = (requestType: string) => mk({
+    gins: "Medicaid", payerName: "NYSDOH", covtype: "Medicaid", requestType,
+    plan: "ELIGIBLE PCP", managedMedicaid: "MOLINA HEALTHCARE OF NY INC MAINSTR",
+  });
+
+  it("Lakisha: NYSDOH + Molina + Insulin Pump + CGM → Medicaid + managed warning (unchanged)", () => {
+    const sg = suggestPrimary(lakisha("Insulin Pump + CGM"));
+    expect(sg?.value).toBe("Medicaid");
+    expect(sg?.warnings.some((w) => w.code === "MANAGED_MEDICAID")).toBe(true);
+  });
+  it("Lakisha: CGM → Can't Serve", () => {
+    expect(suggestPrimary(lakisha("CGM"))?.cantServe).toBe(true);
+  });
+
+  it("straight NYSDOH, no MCO: CGM → Can't Serve", () => {
+    const sg = suggestPrimary(mk({ gins: "Medicaid", payerName: "NYSDOH", covtype: "Medicaid", plan: "NEW YORK MEDICAID", requestType: "CGM" }));
+    expect(sg?.cantServe).toBe(true);
+  });
+  it("straight NYSDOH, no MCO: Supplies Only → Medicaid (unchanged)", () => {
+    const sg = suggestPrimary(mk({ gins: "Medicaid", payerName: "NYSDOH", covtype: "Medicaid", plan: "NEW YORK MEDICAID", requestType: "Supplies Only" }));
+    expect(sg?.cantServe).toBeUndefined();
+    expect(sg?.value).toBe("Medicaid");
+  });
+
+  it("Anthem NY managed Medicaid (JLJ): CGM → Can't Serve", () => {
+    const sg = suggestPrimary(mk({
+      gins: "Anthem / BCBS", memberId: "JLJ735970080", requestType: "CGM",
+      address: "1504 SHERIDAN AVE, BRONX, NY 10457",
+      plan: "NEW YORK MEDICAID-LONG ISLAND- HARP", covtype: "Medicaid",
+    }));
+    expect(sg?.cantServe).toBe(true);
+  });
+
+  it("unmapped managed carrier (Molina payer) Medicaid: CGM → Can't Serve", () => {
+    const sg = suggestPrimary(mk({
+      gins: "Other", payerName: "MOLINA HEALTHCARE OF NY", covtype: "Medicaid",
+      plan: "MOLINA MEDICAID MANAGED CARE", requestType: "CGM",
+    }));
+    expect(sg?.cantServe).toBe(true);
+  });
+
+  it("Wellcare dual / D-SNP: CGM → Can't Serve", () => {
+    const sg = suggestPrimary(mk({
+      gins: "Wellcare", payerName: "WELLCARE", plan: "Wellcare Dual Align D-SNP",
+      covtype: "Medicaid", requestType: "CGM",
+    }));
+    expect(sg?.cantServe).toBe(true);
+  });
+
+  it("commercial coverage: CGM stays unchanged (rule doesn't apply)", () => {
+    const sg = suggestPrimary(mk({
+      gins: "Anthem / BCBS", requestType: "CGM", address: "30 Ravine Avenue, Wyckoff, NJ, USA",
+      homeplan: "Horizon Blue Cross and Blue Shield of New Jersey", covtype: "Commercial",
+    }));
+    expect(sg?.cantServe).toBeUndefined();
+    expect(sg?.value).toBe("Horizon BCBS");
+  });
+
+  it('"Insulin Pump + CGM" / "Supplies + CGM" are NOT CGM-only', () => {
+    expect(suggestPrimary(hunora("Insulin Pump + CGM"))?.cantServe).toBeUndefined();
+    expect(suggestPrimary(hunora("Supplies + CGM"))?.cantServe).toBeUndefined();
   });
 });
 

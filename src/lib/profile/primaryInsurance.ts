@@ -36,6 +36,11 @@ export interface Suggestion {
   warnings: SuggestionWarning[];
   /** Inputs the engine still needs (e.g. "address") to finish the suggestion. */
   needs: string[];
+  /** CGM-only request + any Medicaid flavor → not serviceable (Brandon,
+   *  2026-07-14 — supersedes the rulebooks' §6.5 fork for that row).
+   *  Advisory pill only: never a board label, never written to Monday;
+   *  the rep routes the referral instead of completing insurance. */
+  cantServe?: boolean;
 }
 
 /** Normalized Stedi snapshot the engine reasons over. */
@@ -156,6 +161,19 @@ function medicaidIdPresent(s: StediSnapshot): boolean {
   return !!(s.medid && s.medid !== "—") && isNyMedicaidId(s.medid);
 }
 function pumpRequested(requestType: string): boolean { return /insulin pump/i.test(requestType || ""); }
+/** Request Type is exactly "CGM" (board label; NOT "Insulin Pump + CGM" / "Supplies + CGM"). */
+function cgmOnlyRequested(requestType: string): boolean { return /^cgm$/i.test((requestType || "").trim()); }
+
+/** Medicaid (any flavor) can't be served CGM — same standing rule that blocks
+ *  the CGM cross-sell when the primary contains "medicaid". No reason string
+ *  and no warnings: the pill is the message (the Managed Medicaid banner, when
+ *  present, explains why). */
+function cantServeCgmMedicaid(): Suggestion {
+  const o = blank();
+  o.cantServe = true;
+  o.confidence = "high";
+  return o;
+}
 
 // ── Anthem / BCBS ──
 function anthemSubType(inp: SuggestionInputs): Suggestion & { value: string } {
@@ -256,6 +274,7 @@ function carrierFromPayer(inp: SuggestionInputs): string {
   return "generic";
 }
 function medicaidFork(inp: SuggestionInputs, o: Suggestion, managedLabel: string, reasonBase: string, unmapped: boolean): Suggestion {
+  if (cgmOnlyRequested(inp.requestType)) return cantServeCgmMedicaid();
   o.value = pumpRequested(inp.requestType) ? managedLabel : "Medicaid";
   o.reason = reasonBase;
   if (!medicaidIdPresent(inp.stedi)) o.warnings.push({ code: "CHECK_MEDICAID_ID", message: "Check ID card for Medicaid ID" });
@@ -275,6 +294,7 @@ function otherPayerSuggest(inp: SuggestionInputs): Suggestion {
     o.value = "Medicare A&B"; o.confidence = "high"; o.reason = "Straight Medicare A&B."; return o;
   }
   if (carrier === "medicaid") {
+    if (cgmOnlyRequested(inp.requestType)) return cantServeCgmMedicaid();
     o.value = "Medicaid"; o.confidence = "high"; o.reason = "Straight NY Medicaid (NYSDOH).";
     // NYSDOH + managed plan → supplies bill to straight Medicaid; no pump
     // through straight Medicaid (Other Payers rulebook, SUPPLIES_TO_MEDICAID).
@@ -300,11 +320,13 @@ function otherPayerSuggest(inp: SuggestionInputs): Suggestion {
   o.warnings.push({ code: "UNMAPPED_CARRIER", message: "New carrier (" + label + ") — confirm the correct Primary Insurance option before sending." });
   return o;
 }
-/** Managed-Medicaid labels drop to plain Medicaid unless a pump is requested. */
+/** Managed-Medicaid labels drop to plain Medicaid unless a pump is requested —
+ *  except CGM-only, which Medicaid can't be served at all. */
 function applyMedicaidFork(inp: SuggestionInputs, o: Suggestion | null): Suggestion | null {
   if (!o || !o.value) return o;
   const managed: Record<string, number> = { "Anthem BCBS Medicaid (JLJ)": 1, "United Medicaid": 1, "Fidelis Medicaid": 1 };
   if (!managed[o.value]) return o;
+  if (cgmOnlyRequested(inp.requestType)) return cantServeCgmMedicaid();
   if (!pumpRequested(inp.requestType)) { const managedPlan = o.value; o.value = "Medicaid"; o.reason = (inp.requestType || "No pump") + " → Medicaid; " + managedPlan + " is secondary"; }
   return o;
 }
@@ -357,6 +379,9 @@ export function suggestSecondary(inp: SuggestionInputs): string {
   if (!inp.stediDone) return "";
   if (!isCoverageActive(inp.stedi)) return "";
   const sg = suggestPrimary(inp);
+  // Can't Serve (CGM-only + Medicaid) — the referral gets routed, not billed;
+  // a Medicaid-backstop secondary would just invite completing the insurance.
+  if (sg?.cantServe) return "";
   if (sg && /^medicaid$/i.test(sg.value || "")) return "";
   const hasCheck = !!(sg && sg.warnings.some((w) => w.code === "CHECK_MEDICAID_ID"));
   const qmb = /^yes/i.test(inp.stedi.qmb || "");

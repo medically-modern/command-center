@@ -1165,6 +1165,16 @@ function CostShare({ pt }: { pt: Patient }) {
  *  selects the insurance manually, or clicks the pill to apply it. */
 function SuggestionInline({ sg, onPick }: { sg: ReturnType<typeof suggestPrimary>; onPick?: (v: string) => void }) {
   if (!sg) return null;
+  // CGM-only + Medicaid (any flavor) — advisory alert pill, no apply action:
+  // "Can't Serve" is not a board label and must never reach the Primary select.
+  if (sg.cantServe) {
+    return (
+      <div className="sugg-line" style={{ marginTop: 8 }}>
+        <span className="sugg-chip2" style={{ background: "#fdecef", color: "var(--mm-rose)", boxShadow: "inset 0 0 0 1px var(--mm-rose)" }}>Can't Serve</span>
+        <span className="sugg-note" style={{ color: "var(--mm-rose)", fontWeight: 600 }}>CGM-only request with Medicaid coverage — route the referral (send back) instead of completing insurance</span>
+      </div>
+    );
+  }
   const codes = (sg.warnings || []).map((w) => w.code);
   if (codes.includes("INACTIVE")) {
     return (
