@@ -333,6 +333,21 @@ export interface ProductCodeState {
   _mondayAuthLabel?: string;
   /** Last bill date — only meaningful when SoS = "not-clear". YYYY-MM-DD. */
   lastBillDate?: string;
+  /** Benefits redesign — the recorded billing-history FACT for this
+   *  product: "billed" (lastBillDate + units), "never" (No Billing
+   *  History at the payer), or "" (not recorded yet). SoS Clear /
+   *  Not Clear / Skip is DERIVED from this (benefitsDerive.ts) — the
+   *  rep never picks it. */
+  sosEntry?: "" | "billed" | "never";
+  /** Benefits redesign — units billed on the last bill (positive whole
+   *  number, kept as string for input round-trip). NOT auth units. */
+  units?: string;
+}
+
+/** One row of a Benefits call log: reference # + free-form notes. */
+export interface CallLogRow {
+  ref: string;
+  note: string;
 }
 
 export type UniversalChoice = "" | "confirmed" | "not-confirmed";
@@ -340,10 +355,18 @@ export type UniversalChoice = "" | "confirmed" | "not-confirmed";
 export interface InsuranceState {
   universal: Record<UniversalCheck["id"], UniversalChoice>;
   codes: Partial<Record<ProductCodeId, ProductCodeState>>;
-  /** Medicare A&B: agent confirmed E0784/A4224/A4225 never billed for patient */
+  /** Medicare A&B: agent confirmed E0784/A4224/A4225 never billed for patient.
+   *  Benefits redesign: DERIVED from per-product "No Billing History" entries
+   *  at send time — no longer a checkbox. Still hydrated from Monday. */
   neverBilledIsCar?: boolean;
   /** Medicare A&B: agent confirmed A4239/A4238/E2103 never billed for patient */
   neverBilledCgm?: boolean;
+  /** Benefits redesign — Call Log #1 rows (payer calls, under the
+   *  universal checks). Appended to the "Benefits Call Log" column on
+   *  send; local rows clear with the overlay after a successful send. */
+  callsUniversal?: CallLogRow[];
+  /** Benefits redesign — Call Log #2 rows (SoS/auth product calls). */
+  callsSosAuth?: CallLogRow[];
 }
 
 export const EMPTY_INSURANCE: InsuranceState = {
@@ -456,6 +479,14 @@ export interface Patient {
   daysSinceStage?: string;
   /** Numeric index of the daysSinceStage status (higher = longer). */
   daysSinceStageIndex?: number;
+  // Stedi output (read-only Benefits header display — written upstream by
+  // the stedi-monday-integration service / Profile Send-Off, never by us).
+  planName?: string;
+  stediQmb?: string;
+  stediCoinsurance?: string;
+  stediPlanBegin?: string;
+  deductibleRemaining?: string;
+  oopMaxRemaining?: string;
 }
 
 export function deriveInsuranceOutcome(ins?: InsuranceState, servedCodeIds?: ProductCodeId[]):

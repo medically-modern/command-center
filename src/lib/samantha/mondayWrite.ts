@@ -23,6 +23,17 @@ import {
 } from "./mondayMapping";
 import type { Patient, ProductCodeId, ProductCodeState } from "./workflow";
 import { EMPTY_INSURANCE, deriveInsuranceOutcome, computeNextOrderDates } from "./workflow";
+import {
+  appendCallLog,
+  composeCallLogLines,
+  composeEscalationReason,
+  derivedSos,
+  deriveNeverBilled,
+  etTodayYmd,
+  isBlankCallRow,
+  isValidUnits,
+  patientHasMedicaidIns,
+} from "./benefitsDerive";
 
 const MAX_RETRIES = 2;
 const RETRY_DELAY_MS = 800;
@@ -68,15 +79,43 @@ async function executeWithRetry(task: WriteTask): Promise<string | null> {
  * Throws if any columns failed (after logging), so the UI shows an error.
  */
 export async function sendPatientToMonday(p: Patient, context: "benefits" | "submitAuth" | "authOutstanding" = "benefits"): Promise<void> {
-  const ins = p.insurance ?? EMPTY_INSURANCE;
+  const rawIns = p.insurance ?? EMPTY_INSURANCE;
   const tasks: WriteTask[] = [];
 
   // ----- Guard: require Serving + Primary Insurance -----
   const resolved = resolveHcpcs(p.primaryInsurance || null, p.serving || null, p.secondaryInsurance ?? null);
   if (!p.serving || !p.primaryInsurance || resolved.length === 0) {
     throw new Error(
-      "Cannot send: Serving and Primary Insurance must both be selected before writing to Monday.",
+      "Cannot send: Serving and Primary Insurance must both be selected before writing to Monday. " +
+        "The Benefits header is read-only — fix the patient at Profile Send-Off.",
     );
+  }
+
+  // ----- Benefits redesign: DERIVE SoS + Never Billed from recorded facts -----
+  // The rep records Auth + billing facts only; Clear/Not-Clear/Skip and the
+  // Medicare never-billed rollups are computed here at send time (spec §1/§2,
+  // benefitsDerive.ts). Other contexts keep the state they hydrated.
+  const todayEt = etTodayYmd();
+  const hasMedicaidIns = patientHasMedicaidIns(p.primaryInsurance ?? "", p.secondaryInsurance ?? "");
+  let ins = rawIns;
+  if (context === "benefits") {
+    const derivedCodes: typeof rawIns.codes = { ...rawIns.codes };
+    for (const r of resolved) {
+      if (isAutoFilledMedicaidSupply(r)) continue; // hardcoded later in `entries`
+      const cid = Object.entries(PRODUCT_CODE_TO_PRODUCT_ID).find(([, v]) => v === r.product)?.[0] as
+        | ProductCodeId
+        | undefined;
+      if (!cid) continue;
+      const st = derivedCodes[cid] ?? ({ status: "pending" } as ProductCodeState);
+      derivedCodes[cid] = { ...st, sos: derivedSos(st, cid, hasMedicaidIns, todayEt) };
+    }
+    const nb = deriveNeverBilled({ ...rawIns, codes: derivedCodes }, p.primaryInsurance ?? "");
+    ins = {
+      ...rawIns,
+      codes: derivedCodes,
+      neverBilledIsCar: nb.isCar,
+      neverBilledCgm: nb.cgm,
+    };
   }
 
   // ----- Universal: Active / In-Network -----
@@ -258,7 +297,16 @@ export async function sendPatientToMonday(p: Patient, context: "benefits" | "sub
 
   // ----- Calculated Next Order Dates (3 columns) -----
   {
-    const nod = computeNextOrderDates(effectiveIns, p.primaryInsurance ?? "", p.secondaryInsurance ?? "");
+    // A product whose effective SoS is Skip is deferred — its entered
+    // last-bill date contributes nothing to next-order math (spec §1:
+    // "Any previously entered date/units are ignored while Auth = Required").
+    const nodCodes: typeof effectiveIns.codes = { ...effectiveIns.codes };
+    for (const e of entries) {
+      if (effectiveSos(e) === "skip" && nodCodes[e.cid]?.lastBillDate) {
+        nodCodes[e.cid] = { ...nodCodes[e.cid]!, lastBillDate: "" };
+      }
+    }
+    const nod = computeNextOrderDates({ ...effectiveIns, codes: nodCodes }, p.primaryInsurance ?? "", p.secondaryInsurance ?? "");
     // IP Next Order Date
     tasks.push({
       label: "IP Next Order Date",
@@ -319,7 +367,7 @@ export async function sendPatientToMonday(p: Patient, context: "benefits" | "sub
     const _codeStates = Object.values(effectiveIns.codes).filter(Boolean);
     console.log('[mondayWrite] context:', context);
     console.log('[mondayWrite] universal:', JSON.stringify(effectiveIns.universal));
-    console.log('[mondayWrite] codeStates:', JSON.stringify(_codeStates.map((c: any) => ({ auth: c.auth, sos: c.sos }))));
+    console.log('[mondayWrite] codeStates:', JSON.stringify(_codeStates.map((c) => ({ auth: c?.auth, sos: c?.sos }))));
     console.log('[mondayWrite] entries:', JSON.stringify(entries.map(e => ({ cid: e.cid, auth: e.state?.auth, sos: e.state?.sos }))));
     console.log('[mondayWrite] deriveInsuranceOutcome =>', _outcome);
   }
@@ -331,7 +379,12 @@ export async function sendPatientToMonday(p: Patient, context: "benefits" | "sub
   // Auto rules can also force Required (denial / blocker). When neither
   // manual nor auto demands escalation, we write "Done" so the toggle
   // round-trips through Monday cleanly.
-  const manualEscalate = p.escalated === true;
+  //
+  // Benefits redesign: escalation at Benefits is DERIVED ONLY (spec §5 —
+  // the Escalate button is gone). The hydrated p.escalated flag must NOT
+  // floor the decision there, or a previously-escalated patient could
+  // never be de-escalated by fixing the underlying facts and re-sending.
+  const manualEscalate = context !== "benefits" && p.escalated === true;
   let stageWriteIndex: number | null = null;
   type EscalationDecision = "required" | "done";
   let escalationDecision: EscalationDecision = manualEscalate ? "required" : "done";
@@ -418,6 +471,25 @@ export async function sendPatientToMonday(p: Patient, context: "benefits" | "sub
   });
   console.log(`[mondayWrite] Stage = ${stageWriteIndex ?? "(no change)"}, Escalation = ${escalationDecision}`);
 
+  // ----- Benefits redesign: auto-composed escalation reason (D4) -----
+  // Derived escalations carry no form text (the Escalate modal is gone at
+  // Benefits), so compose the reason from the failing derivation and append
+  // it to Call Reference Notes — visible to all three Insurance roles and
+  // hop-copied to Welcome Call. Skipped if the identical line already
+  // landed (repeat sends of the same blocker don't duplicate).
+  let notesForSend: string | undefined = typeof p.notes === "string" ? p.notes : undefined;
+  if (context === "benefits" && escalationDecision === "required") {
+    const reason = composeEscalationReason(
+      ins,
+      ins.codes["pump"]?.sos ?? "",
+      ins.codes["pump"]?.lastBillDate,
+      todayEt,
+    );
+    if (reason && !(notesForSend ?? "").includes(reason)) {
+      notesForSend = notesForSend ? `${notesForSend}\n\n${reason}` : reason;
+    }
+  }
+
   // ----- Never Billed attestations (Medicare A&B) -----
   if (ins.neverBilledIsCar) {
     tasks.push({
@@ -432,6 +504,83 @@ export async function sendPatientToMonday(p: Patient, context: "benefits" | "sub
       columnId: COL.neverBilledCgm,
       fn: () => writeStatusIndex(p.id, COL.neverBilledCgm, 0),
     });
+  }
+
+  // ----- Benefits redesign: SoS facts columns + TBD pump date + call logs -----
+  if (context === "benefits") {
+    // Per-product SoS billing facts (D2/D6): the full record — written for
+    // every billed product (even derived-Clear), cleared otherwise so stale
+    // facts never linger. Deliberately SEPARATE from the legacy lastBillDate
+    // columns, whose date-presence still encodes "Not Clear" downstream.
+    // Facts are ignored while the product's auth is pending (spec §1).
+    const ALL_CODE_IDS = Object.keys(PRODUCT_CODE_TO_PRODUCT_ID) as ProductCodeId[];
+    const servedCids = new Set(entries.map((e) => e.cid));
+    for (const cid of ALL_CODE_IDS) {
+      const productId = PRODUCT_CODE_TO_PRODUCT_ID[cid];
+      const st = ins.codes[cid];
+      const isBilledFact =
+        servedCids.has(cid) &&
+        st?.sosEntry === "billed" &&
+        st.auth !== "required" &&
+        !!st.lastBillDate;
+      const dateVal = isBilledFact ? st!.lastBillDate! : "";
+      tasks.push({
+        label: `SoS Last Bill: ${productId}`,
+        columnId: COL.sosLastBill[productId],
+        fn: () => writeDate(p.id, COL.sosLastBill[productId], dateVal),
+      });
+      const unitsVal = isBilledFact && isValidUnits(st?.units) ? st!.units! : "";
+      tasks.push({
+        label: `SoS Units: ${productId}`,
+        columnId: COL.sosUnits[productId],
+        fn: () => writeNumber(p.id, COL.sosUnits[productId], unitsVal),
+      });
+    }
+
+    // Call logs (D8) + "TBD" pump date (D1). Read the current values ONCE so
+    // each write is a single pre-composed, retry-idempotent value (no
+    // double-append on retry — RELIABILITY_AUDIT §H pattern).
+    const rows1 = (ins.callsUniversal ?? []).filter((r) => !isBlankCallRow(r));
+    const rows2 = (ins.callsSosAuth ?? []).filter((r) => !isBlankCallRow(r));
+    const pumpDateTbd = !!ins.neverBilledIsCar; // derived: Medicare A&B + IS AND Cartridges never billed
+    if (rows1.length > 0 || rows2.length > 0 || pumpDateTbd) {
+      const current = await readColumnTexts(p.id, [
+        COL.benefitsCallLog,
+        COL.sosAuthCallLog,
+        COL.medicarePriorPumpDate,
+      ]);
+      const textOf = (id: string) => current.find((c) => c.id === id)?.text ?? "";
+      if (rows1.length > 0) {
+        const composed = appendCallLog(textOf(COL.benefitsCallLog), composeCallLogLines(rows1, "benefits", todayEt));
+        tasks.push({
+          label: "Benefits Call Log",
+          columnId: COL.benefitsCallLog,
+          fn: () => writeLongText(p.id, COL.benefitsCallLog, composed),
+          expectedText: composed,
+        });
+      }
+      if (rows2.length > 0) {
+        const composed = appendCallLog(textOf(COL.sosAuthCallLog), composeCallLogLines(rows2, "sos-auth", todayEt));
+        tasks.push({
+          label: "SoS/Auth Call Log",
+          columnId: COL.sosAuthCallLog,
+          fn: () => writeLongText(p.id, COL.sosAuthCallLog, composed),
+          expectedText: composed,
+        });
+      }
+      // Write the literal "TBD" only into an empty (or already-TBD) cell —
+      // never clobber a real date someone collected. No clear path when the
+      // derivation later flips false (open question 9, matches Never Billed).
+      const existingPumpDate = textOf(COL.medicarePriorPumpDate).trim();
+      if (pumpDateTbd && (!existingPumpDate || existingPumpDate === "TBD")) {
+        tasks.push({
+          label: "Medicare Prior Pump Date (TBD)",
+          columnId: COL.medicarePriorPumpDate,
+          fn: () => writeText(p.id, COL.medicarePriorPumpDate, "TBD"),
+          expectedText: "TBD",
+        });
+      }
+    }
   }
 
   // ----- Trigger DVS (Medicaid + supplies) -----
@@ -827,11 +976,14 @@ export async function sendPatientToMonday(p: Patient, context: "benefits" | "sub
   }
 
   // ----- Notes (long text) -----
-  if (typeof p.notes === "string") {
+  // notesForSend = p.notes, plus the auto-escalation reason line when a
+  // Benefits send derives an escalation (D4).
+  if (typeof notesForSend === "string") {
+    const notesVal = notesForSend;
     tasks.push({
       label: "Call Reference Notes",
       columnId: COL.callReferenceNotes,
-      fn: () => writeLongText(p.id, COL.callReferenceNotes, p.notes),
+      fn: () => writeLongText(p.id, COL.callReferenceNotes, notesVal),
     });
   }
 

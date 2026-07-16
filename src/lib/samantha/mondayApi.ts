@@ -122,6 +122,8 @@ export const COL = {
   },
 
   // Per-product Last Bill Date columns (date — populated when SoS = Not Clear)
+  // ⚠ Date PRESENCE here encodes "Not Clear" downstream (Final Confirm derives
+  // its SoS display from it) — keep the Not-Clear-only write rule (decision D2).
   lastBillDate: {
     monitor: "date_mm33h1qv",
     sensors: "date_mm332rhq",
@@ -129,6 +131,48 @@ export const COL = {
     infusion_set: "date_mm33gj86",
     cartridge: "date_mm33cd87",
   },
+
+  // Benefits redesign (D2/D6) — per-product SoS billing FACTS. Written for
+  // every billed product (even derived-Clear) so the full history lands on
+  // the board without disturbing the legacy lastBillDate contract above.
+  // Same-named target columns exist on the Welcome Call board; Josh maps
+  // them in the Stage Advancer → Complete create-item automation (7918324247).
+  sosLastBill: {
+    monitor: "date_mm59tx2g",
+    sensors: "date_mm59ejs2",
+    insulin_pump: "date_mm59j483",
+    infusion_set: "date_mm59bzfv",
+    cartridge: "date_mm598y8w",
+  },
+  // SoS billing units — NOT auth units (authUnits above is a different concept).
+  sosUnits: {
+    monitor: "numeric_mm5953dt",
+    sensors: "numeric_mm596xga",
+    insulin_pump: "numeric_mm59pspc",
+    infusion_set: "numeric_mm598cp9",
+    cartridge: "numeric_mm59xp3c",
+  },
+
+  // Benefits redesign (D1) — "Medicare Prior Pump Date". Benefits writes the
+  // literal "TBD" when Medicare A&B + IS AND Cartridges are never-billed;
+  // the Welcome Call rep later replaces it with the real date (via the
+  // automation copy to WC text_mm58k9x9). Text literal only — never route a
+  // parseable date string through a text hop (CLAUDE.md §9).
+  medicarePriorPumpDate: "text_mm59qh8r",
+
+  // Benefits redesign (D8) — two dedicated append-only call-log columns,
+  // separate from Call Reference Notes. Compose read+append ONCE per send.
+  benefitsCallLog: "long_text_mm59y5xt",
+  sosAuthCallLog: "long_text_mm59rz2c",
+
+  // Stedi output columns displayed read-only in the Benefits header (D5/S5).
+  // Home Plan / Coverage Type / Medicaid ID do NOT exist on this board yet.
+  stediQmb: "text_mm2wabwr",
+  stediCoinsurance: "text_mm39k0hz",
+  stediPlanBegin: "text_mm3ggbwa",
+  planName: "dropdown_mm2w11t4",
+  deductibleRemaining: "text_mm1xdzxw",
+  oopMaxRemaining: "text_mm1xx5f",
 
   // Calculated Next Order Date columns (date — computed from last bill + lookback)
   nextOrderDate: {
@@ -196,6 +240,25 @@ export const READ_COLUMN_IDS = [
   // Never Billed (Medicare A&B)
   COL.neverBilledIsCar,
   COL.neverBilledCgm,
+  // Benefits redesign — SoS facts round-trip (dates + units per product)
+  COL.sosLastBill.monitor,
+  COL.sosLastBill.sensors,
+  COL.sosLastBill.insulin_pump,
+  COL.sosLastBill.infusion_set,
+  COL.sosLastBill.cartridge,
+  COL.sosUnits.monitor,
+  COL.sosUnits.sensors,
+  COL.sosUnits.insulin_pump,
+  COL.sosUnits.infusion_set,
+  COL.sosUnits.cartridge,
+  COL.medicarePriorPumpDate,
+  // Stedi header display (read-only)
+  COL.stediQmb,
+  COL.stediCoinsurance,
+  COL.stediPlanBegin,
+  COL.planName,
+  COL.deductibleRemaining,
+  COL.oopMaxRemaining,
 ];
 
 /** Extended read columns for auth groups — includes auth results + universal statuses */
