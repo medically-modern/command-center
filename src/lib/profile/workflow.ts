@@ -107,6 +107,7 @@ export interface Patient {
 
 /**
  * Cross-sell exclusions:
+ *   - Anthem JLJ plans (Medicaid AND Low-Cost): no JLJ plan can do CGM (Brandon, 2026-07-15)
  *   - Medicaid plans: not eligible (rule)
  *   - United plans: business decision — we choose not to cross-sell United patients
  *   - Cigna: business decision — we choose not to cross-sell Cigna patients
@@ -114,6 +115,7 @@ export interface Patient {
 export type CrossSellReason =
   | "no-primary"   // Primary insurance not yet selected
   | "eligible"     // Allowed → auto Cross-Sell
+  | "jlj"          // Blocked: Anthem JLJ plan (Medicaid and Low-Cost alike)
   | "medicaid"     // Blocked: Medicaid plan
   | "united"       // Blocked: United business rule
   | "cigna";       // Blocked: Cigna business rule
@@ -121,6 +123,10 @@ export type CrossSellReason =
 export function crossSellReason(primaryInsurance: string): CrossSellReason {
   if (!primaryInsurance) return "no-primary";
   const lower = primaryInsurance.toLowerCase();
+  // First, before medicaid — "Anthem BCBS Medicaid (JLJ)" was only blocked
+  // incidentally (label contains "medicaid"); "Low-Cost (JLJ)" wasn't blocked
+  // at all and auto-upgraded Supplies Only → Supplies + CGM.
+  if (lower.includes("jlj")) return "jlj";
   if (lower.includes("medicaid")) return "medicaid";
   if (lower.includes("united")) return "united";
   if (lower.includes("cigna")) return "cigna";

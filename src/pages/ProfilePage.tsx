@@ -745,6 +745,7 @@ function ProfileBody(p: BodyProps) {
     if (crossSell === "Cross-Sell" && reason === "eligible") return "Primary insurance is a non-Medicaid plan, so this patient is eligible for CGM cross-sell";
     if (crossSell === "Already Serving CGM") return "Already serving CGM — no cross-sell added";
     if (crossSell === "Couldn't Cross-Sell") {
+      if (reason === "jlj") return "No CGM cross-sell: primary insurance is an Anthem JLJ plan — JLJ plans cannot do CGM";
       if (reason === "medicaid") return "No CGM cross-sell: primary insurance is a Medicaid plan";
       if (reason === "united") return "No CGM cross-sell: primary insurance is United, and we choose not to cross-sell United patients";
       if (reason === "cigna") return "No CGM cross-sell: primary insurance is Cigna, and we choose not to cross-sell Cigna patients";

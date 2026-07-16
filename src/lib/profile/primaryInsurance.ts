@@ -142,7 +142,7 @@ function classifyCoverage(plan: string): "Medicaid" | "Medicare" | "LowCost" | "
   const p = (plan || "").toLowerCase();
   if (/medicaid|managed care|community plan(?! for kids)|harp|healthierlife|better health|mltc|managed long term care|care at home|\bmap\b|\bfida\b|ma eligible|eligible pcp/.test(p)) return "Medicaid";
   if (/medicare|mapd|advantage|d-snp|c-snp|i-snp|\bsnp\b|dual complete|dual access|dual align|dual liberty|gold plus|aarp medicare|group medicare|\bsenior\b|elite \(ppo\)|patriot|complete care/.test(p)) return "Medicare";
-  if (/essential plan|\bep ?\d|ep 200|child health|\bchp\b|chplus|community plan for kids/.test(p)) return "LowCost";
+  if (/essential plan|\bep ?\d|ep 200|child health|\bchp\b|\bchip\b|chplus|community plan for kids/.test(p)) return "LowCost";
   return "Commercial";
 }
 
@@ -182,7 +182,11 @@ function anthemSubType(inp: SuggestionInputs): Suggestion & { value: string } {
   const plan = s.plan || "";
   const out = blank();
   if (cov === "Medicare") { out.value = "Anthem BCBS Medicare"; out.reason = "Medicare"; return out as Suggestion & { value: string }; }
-  if (/essential plan|\bep ?\d|ep standard|child health|\bchp\b|chplus/i.test(plan)) { out.value = "Anthem BCBS Low-Cost (JLJ)"; out.reason = "Low-Cost"; return out as Suggestion & { value: string }; }
+  // "\bchip\b" (word-bounded — must not catch e.g. CHIPPEWA): "NY CHIP" plans
+  // are Child Health Plus = Low-Cost, NOT managed Medicaid; without it they
+  // fell through to the covtype check and mis-suggested Medicaid (JLJ)
+  // (Brandon, 2026-07-15 — trigger member JLJ730667355).
+  if (/essential plan|\bep ?\d|ep standard|child health|\bchp\b|\bchip\b|chplus/i.test(plan)) { out.value = "Anthem BCBS Low-Cost (JLJ)"; out.reason = "Low-Cost"; return out as Suggestion & { value: string }; }
   if (cov === "Medicaid" || midHasJLJ(inp.memberId)) {
     if (isMLTCplan(s)) { out.value = "Anthem BCBS Low-Cost (JLJ)"; out.reason = "MLTC"; return out as Suggestion & { value: string }; }
     out.value = "Anthem BCBS Medicaid (JLJ)"; out.reason = "Medicaid plan";
@@ -251,7 +255,7 @@ function unitedSuggest(inp: SuggestionInputs): Suggestion {
   const s = inp.stedi;
   const o = blank(); o.confidence = "high";
   const plan = s.plan || "";
-  if (/essential plan|\bep ?\d|ep standard|child health|\bchp\b|chplus/i.test(plan)) { o.value = "United Low-Cost"; o.reason = "Essential Plan / CHP — Low-Cost"; return o; }
+  if (/essential plan|\bep ?\d|ep standard|child health|\bchp\b|\bchip\b|chplus/i.test(plan)) { o.value = "United Low-Cost"; o.reason = "Essential Plan / CHP — Low-Cost"; return o; }
   const cov = coverageCategory(s);
   if (cov === "Medicare") { o.value = "United Medicare"; o.reason = "Medicare plan"; return o; }
   if (cov === "Commercial") { o.value = "United Commercial"; o.reason = "Commercial plan"; return o; }
