@@ -109,8 +109,6 @@ here so the flows are ready to verify the moment that ships.
 
 - **Universal checks are blank after a reload** — they were never readable on the
   Benefits group (pre-existing); use header **Save** to keep work-in-progress.
-- **"No Billing History" doesn't survive a reload for non-Medicare patients** — the
-  board has no column for it (the optional 5 checkboxes would fix this).
 - **A patient with bad header data can't be fixed here** — read-only by design;
   fix at Profile Send-Off.
 - **Demo tabs + Board Output drawer are testing aids** — both get deleted for

@@ -152,6 +152,16 @@ export const COL = {
     infusion_set: "numeric_mm598cp9",
     cartridge: "numeric_mm59xp3c",
   },
+  // Rep's "No Billing History" answer per product (checkbox — all payers,
+  // not just the Medicare A&B rollups). Written checked/cleared on EVERY
+  // Benefits send so the board always matches the current answer.
+  sosNeverBilled: {
+    monitor: "boolean_mm5a6haz",
+    sensors: "boolean_mm5aqgra",
+    insulin_pump: "boolean_mm5a1dse",
+    infusion_set: "boolean_mm5a565",
+    cartridge: "boolean_mm5a10fz",
+  },
 
   // Benefits redesign (D1) — "Medicare Prior Pump Date". Benefits writes the
   // literal "TBD" when Medicare A&B + IS AND Cartridges are never-billed;
@@ -251,6 +261,11 @@ export const READ_COLUMN_IDS = [
   COL.sosUnits.insulin_pump,
   COL.sosUnits.infusion_set,
   COL.sosUnits.cartridge,
+  COL.sosNeverBilled.monitor,
+  COL.sosNeverBilled.sensors,
+  COL.sosNeverBilled.insulin_pump,
+  COL.sosNeverBilled.infusion_set,
+  COL.sosNeverBilled.cartridge,
   COL.medicarePriorPumpDate,
   // Stedi header display (read-only)
   COL.stediQmb,
@@ -522,6 +537,23 @@ export async function writeDate(itemId: string, columnId: string, date: string):
     itemId,
     columnId,
     value: JSON.stringify(val),
+  });
+}
+
+/**
+ * Write a checkbox column. checked=true → ✓; checked=false → cleared.
+ */
+export async function writeCheckbox(itemId: string, columnId: string, checked: boolean): Promise<void> {
+  const query = `
+    mutation ($boardId: ID!, $itemId: ID!, $columnId: String!, $value: JSON!) {
+      change_column_value(board_id: $boardId, item_id: $itemId, column_id: $columnId, value: $value) { id }
+    }
+  `;
+  await gql(query, {
+    boardId: BOARD_ID,
+    itemId,
+    columnId,
+    value: JSON.stringify(checked ? { checked: "true" } : {}),
   });
 }
 

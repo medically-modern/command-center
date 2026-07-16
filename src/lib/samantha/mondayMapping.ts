@@ -312,9 +312,10 @@ export function mondayItemToPatient(item: MondayItem): Patient {
     }
   }
 
-  // Benefits redesign — per-product SoS billing FACTS (dates + units).
-  // These are the fuller record: hydrate them over the legacy lastBillDate
-  // (which only exists for Not-Clear products) and mark the entry "billed".
+  // Benefits redesign — per-product SoS billing FACTS (dates + units +
+  // "No Billing History" checkboxes). These are the fuller record: hydrate
+  // them over the legacy lastBillDate (which only exists for Not-Clear
+  // products) and mark the entry "billed" / "never".
   for (const pk of PRODUCT_KEYS) {
     const codeId = PRODUCT_KEY_TO_CODE[pk];
     const factDate = cv(COL.sosLastBill[pk])?.text;
@@ -324,6 +325,10 @@ export function mondayItemToPatient(item: MondayItem): Patient {
       if (factDate) codes[codeId]!.lastBillDate = factDate;
       if (factUnits) codes[codeId]!.units = factUnits;
       codes[codeId]!.sosEntry = "billed";
+    } else if (cv(COL.sosNeverBilled[pk])?.text) {
+      // Checkbox text is non-empty ("v") only when checked.
+      if (!codes[codeId]) codes[codeId] = { status: "pending" } as ProductCodeState;
+      codes[codeId]!.sosEntry = "never";
     }
   }
 

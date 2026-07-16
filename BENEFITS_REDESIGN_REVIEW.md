@@ -111,6 +111,19 @@ spec §7) was not attached. The §7 rules below are known only from the spec's o
   Pipeline Oversight modeled on Medical Evaluation's "Escalations · Attempt 4+" sub-row
   (CLAUDE.md §7) — i.e. an oversight surface that reads the Escalations group / escalation
   column so managers can see, work, and release Insurance escalations from the app.
+- **D11 (S8 gap, 2026-07-16): per-product "SoS No Billing History" CHECKBOX columns created**
+  on both boards, so the never-billed answer persists for ALL payers (not just the Medicare
+  A&B rollups) and survives reloads. Checkboxes are written **checked or cleared on every
+  Benefits send** — no can't-unset gap for these. Registry:
+
+  | Product | Insurance 18410601299 | Welcome Call 18410804557 (optional mapping) |
+  |---|---|---|
+  | Insulin Pump | `boolean_mm5a1dse` | `boolean_mm5amp56` |
+  | CGM Monitor | `boolean_mm5a6haz` | `boolean_mm5ad9rm` |
+  | CGM Sensors | `boolean_mm5aqgra` | `boolean_mm5afb9r` |
+  | Infusion Sets | `boolean_mm5a565` | `boolean_mm5a2899` |
+  | Cartridges | `boolean_mm5a10fz` | `boolean_mm5a3gq8` |
+
 - **D10 (S10, gating): client-side only for v1 — our call, not Brandon's.** The spec's
   "client + server" line is treated as aspirational: submit gating stays in the SPA (same as
   today, matching current behavior). Server-side validation is deferred as an infra hardening

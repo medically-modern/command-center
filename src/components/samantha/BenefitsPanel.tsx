@@ -351,10 +351,16 @@ export function BenefitsPanel({
     .map((r) => {
       const cid = PRODUCT_TO_CODE_ID[r.product];
       const st = ins.codes[cid];
-      if (st?.sosEntry !== "billed" || st.auth === "required" || !st.lastBillDate) return null;
-      return { label: PRODUCT_LABELS[r.product], date: st.lastBillDate, units: st.units ?? "" };
+      if (st?.auth === "required") return null; // facts deferred while auth pending
+      if (st?.sosEntry === "billed" && st.lastBillDate) {
+        return { label: PRODUCT_LABELS[r.product], value: `${ymdToUs(st.lastBillDate)} × ${st.units || "?"}` };
+      }
+      if (st?.sosEntry === "never") {
+        return { label: PRODUCT_LABELS[r.product], value: "No Billing History ✓" };
+      }
+      return null;
     })
-    .filter(Boolean) as Array<{ label: string; date: string; units: string }>;
+    .filter(Boolean) as Array<{ label: string; value: string }>;
 
   const handleSend = async () => {
     if (sendState === "sending" || missing.length > 0) return;
@@ -526,11 +532,7 @@ export function BenefitsPanel({
                   <MonRow label="Medicare Prior Pump Date" value="TBD" />
                 )}
                 {billedFacts.map((f) => (
-                  <MonRow
-                    key={f.label}
-                    label={`SoS Facts · ${f.label}`}
-                    value={`${ymdToUs(f.date)} × ${f.units || "?"}`}
-                  />
+                  <MonRow key={f.label} label={`SoS Facts · ${f.label}`} value={f.value} />
                 ))}
               </div>
               {preview.sos === "—" && (
