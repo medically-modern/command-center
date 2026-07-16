@@ -117,6 +117,8 @@ here so the flows are ready to verify the moment that ships.
 ## 6. Prerequisite for full end-to-end flow
 
 The new columns reach the **Welcome Call board** only after the automation mapping
-session (automation `7918324247`): pump date `text_mm59qh8r` → `text_mm58k9x9`,
-plus the 10 SoS facts pairs (same names on both boards). Until then the data is
-correct on the Insurance board but doesn't travel.
+session (automation `7918324247`) — **16 required mappings**, all same-named pairs:
+pump date `text_mm59qh8r` → `text_mm58k9x9`, the 10 SoS Last Bill / SoS Units pairs,
+and the 5 SoS No Billing History checkboxes. The two call logs deliberately do NOT
+travel — call history stays on the Insurance board. Until the mappings are added the
+data is correct on the Insurance board but doesn't travel.
