@@ -49,7 +49,8 @@
         "submitAuth",
         "welcomeCall",
         "subscription",
-        "authDenied"
+        "authDenied",
+        "fax"
       ],
       "roleOrder": {},
       "roleFilters": {
