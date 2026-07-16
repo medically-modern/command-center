@@ -81,7 +81,8 @@
     "katie@medicallymodern.com": {
       "name": "katie",
       "roles": [
-        "profile"
+        "profile",
+        "unverifiedReferrals"
       ]
     }
   }
