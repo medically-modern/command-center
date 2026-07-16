@@ -77,6 +77,12 @@
         "profile": "all",
         "finalConfirm": "all"
       }
+    },
+    "katie@medicallymodern.com": {
+      "name": "katie",
+      "roles": [
+        "profile"
+      ]
     }
   }
 }
