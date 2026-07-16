@@ -33,6 +33,20 @@
 }
 .bnr button{font:inherit;cursor:pointer;background:none;border:none;color:inherit}
 
+/* ============ demo bar (testing aid — strip for production) ============ */
+.bnr .demo-bar{display:flex;align-items:center;justify-content:flex-end;gap:14px;margin-bottom:16px;flex-wrap:wrap}
+.bnr .demo-bar .lbl{font-size:.75rem;font-weight:500;text-transform:uppercase;letter-spacing:.025em;color:var(--bnr-muted-foreground)}
+.bnr .demo-seg{display:inline-flex;border:1px solid var(--bnr-border);border-radius:8px;padding:3px;gap:2px;background:oklch(0.968 0.007 247.896 / 0.4);flex-wrap:wrap}
+.bnr .demo-seg button{font-size:.8rem;font-weight:600;padding:5px 12px;border-radius:6px;color:var(--bnr-muted-foreground)}
+.bnr .demo-seg button.on{background:var(--bnr-card);color:var(--mm-teal);box-shadow:0 1px 2px rgb(0 0 0 / .08)}
+.bnr .reset-link{font-size:.8rem;font-weight:600;color:var(--bnr-muted-foreground);text-decoration:underline;text-underline-offset:3px}
+.bnr .reset-link:hover{color:var(--bnr-foreground)}
+.bnr .demo-flag{
+  display:inline-flex;align-items:center;gap:6px;padding:3px 10px;border-radius:999px;
+  font-size:.72rem;font-weight:700;letter-spacing:.05em;text-transform:uppercase;
+  background:var(--mm-sky-soft);color:var(--mm-sky);box-shadow:inset 0 0 0 1px oklch(0.60 0.10 230 / 0.3);
+}
+
 /* ============ cards ============ */
 .bnr .card{background:var(--bnr-card);border:1px solid var(--bnr-border);border-radius:16px;padding:24px;box-shadow:0 1px 2px 0 rgb(0 0 0 / .05)}
 .bnr .step-card{border-left:4px solid var(--mm-green)}
