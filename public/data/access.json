@@ -46,7 +46,9 @@
         "evaluate",
         "confirmReceipt",
         "chaseParachute",
-        "submitAuth"
+        "submitAuth",
+        "welcomeCall",
+        "subscription"
       ],
       "roleOrder": {},
       "roleFilters": {
