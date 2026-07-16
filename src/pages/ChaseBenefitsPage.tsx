@@ -26,10 +26,10 @@ import { EMPTY_INSURANCE } from "@/lib/samantha/workflow";
 import { validateBenefitsFactsForSubmit } from "@/lib/samantha/benefitsDerive";
 import { BenefitsPanel } from "@/components/samantha/BenefitsPanel";
 import { BenefitsPatientHeader } from "@/components/samantha/BenefitsPatientHeader";
-import { NotesPanel } from "@/components/samantha/NotesPanel";
 import { PatientsSidebar } from "@/components/samantha/PatientsSidebar";
-import { SendToMondayButton } from "@/components/samantha/SendToMondayButton";
 import { Button } from "@/components/ui/button";
+import { Save as SaveIcon } from "lucide-react";
+import "@/components/samantha/benefitsRedesign.css";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { RotateCcw, Stethoscope, ArrowLeft, Save } from "lucide-react";
 import { ClinicalsDownloadButton } from "@/components/samantha/ClinicalsDownloadButton";
@@ -180,33 +180,52 @@ const ChaseBenefitsPage = () => {
               )}
 
               {selected && (
-                <>
-                  <BenefitsPatientHeader patient={selected} />
+                <div className="bnr">
+                  <div className="layout">
+                    <div className="main-col">
+                      <BenefitsPatientHeader patient={selected} />
 
-                  <BenefitsPanel
-                    patient={selected}
-                    onUniversalChange={onUniversalChange}
-                    onCodeChange={updateCode}
-                    onCallLogChange={updateCallLog}
-                  />
-
-                  <NotesPanel
-                    notes={selected.notes}
-                    onNotesChange={(v) => update(selected.id, { notes: v })}
-                    onSaveToMonday={async (v) => {
-                      await writeLongText(selected.id, COL.callReferenceNotes, v);
-                    }}
-                    description="Shared notes across Benefits, Submit Auth, and Auth Outstanding. Auto-escalation reasons are appended here on send."
-                  />
-
-                  <SendToMondayButton onSend={handleSend} disabled={!selected || benefitsMissing.length > 0} />
-                  {benefitsMissing.length > 0 && (
-                    <div className="max-w-xl mx-auto rounded-md border border-warning/40 bg-warning/10 px-4 py-2 text-center">
-                      <p className="text-[11px] font-semibold uppercase tracking-wider text-warning-foreground/80">Missing before send</p>
-                      <p className="mt-0.5 text-xs text-warning-foreground">{benefitsMissing.join(" · ")}</p>
+                      <BenefitsPanel
+                        patient={selected}
+                        onUniversalChange={onUniversalChange}
+                        onCodeChange={updateCode}
+                        onCallLogChange={updateCallLog}
+                        missing={benefitsMissing}
+                        onSend={handleSend}
+                      />
                     </div>
-                  )}
-                </>
+
+                    {/* Notes rail (sticky) — prototype's Reference Notes */}
+                    <aside className="notes-rail">
+                      <section className="card step-card notes-card">
+                        <header className="step-head" style={{ marginBottom: 12 }}>
+                          <h2 style={{ fontSize: "1.1rem" }}>Reference Notes</h2>
+                        </header>
+                        <textarea
+                          placeholder="Reference notes..."
+                          value={selected.notes}
+                          onChange={(e) => update(selected.id, { notes: e.target.value })}
+                        />
+                        <button
+                          className="tbtn"
+                          style={{ marginTop: 12, justifyContent: "center" }}
+                          onClick={async () => {
+                            try {
+                              await writeLongText(selected.id, COL.callReferenceNotes, selected.notes);
+                              toast.success("Notes saved to Monday");
+                            } catch (e) {
+                              toast.error("Failed to save notes", {
+                                description: e instanceof Error ? e.message : String(e),
+                              });
+                            }
+                          }}
+                        >
+                          <SaveIcon size={15} /> Save Notes to Monday
+                        </button>
+                      </section>
+                    </aside>
+                  </div>
+                </div>
               )}
             </section>
           </main>
