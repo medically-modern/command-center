@@ -264,11 +264,16 @@ export function composeCallLogLines(
     });
 }
 
-/** Append new lines onto the existing column text. Never drops history. */
+/** Append new lines onto the existing column text. Never drops history.
+ *  Lines already present in the existing text are skipped — so a rapid
+ *  double-send (before the post-send refetch clears local rows) appends
+ *  nothing twice. Duplicates WITHIN one batch are kept (two identical
+ *  calls logged in one sitting are legitimate). */
 export function appendCallLog(existing: string | null | undefined, lines: string[]): string {
   const base = (existing ?? "").trimEnd();
-  if (lines.length === 0) return base;
-  return base ? `${base}\n${lines.join("\n")}` : lines.join("\n");
+  const fresh = lines.filter((l) => !base.includes(l));
+  if (fresh.length === 0) return base;
+  return base ? `${base}\n${fresh.join("\n")}` : fresh.join("\n");
 }
 
 // ─────────────────────────────────────────────────────────────────────
