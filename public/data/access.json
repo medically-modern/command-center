@@ -52,7 +52,9 @@
         "authDenied",
         "fax",
         "unverifiedReferrals",
-        "sendRequest"
+        "sendRequest",
+        "chaseFax",
+        "benefits"
       ],
       "roleOrder": {},
       "roleFilters": {
