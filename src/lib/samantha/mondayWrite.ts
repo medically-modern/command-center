@@ -5,7 +5,7 @@
 // still fail after retries are logged to the "Josh Debug" column so
 // nothing is silently lost.
 
-import { writeStatusIndex, writeLongText, writeDropdownIds, writeDropdownLabels, writeText, writeDate, writeNumber, writeItemName, writePhone, writeEmail, writeSimpleValue, writeLocation, readColumnTexts, COL } from "./mondayApi";
+import { writeStatusIndex, writeLongText, writeDropdownIds, writeDropdownLabels, writeText, writeDate, writeNumber, writeCheckbox, writeItemName, writePhone, writeEmail, writeSimpleValue, writeLocation, readColumnTexts, COL } from "./mondayApi";
 import { executeWritesWithVerification } from "../shared/verifiedWrite";
 import { resolveHcpcs, isAutoFilledMedicaidSupply, PRIMARY_INSURANCE_INDEX, SECONDARY_INSURANCE_INDEX } from "./hcpcRules";
 import type { PrimaryInsurance } from "./hcpcRules";
@@ -534,6 +534,15 @@ export async function sendPatientToMonday(p: Patient, context: "benefits" | "sub
         label: `SoS Units: ${productId}`,
         columnId: COL.sosUnits[productId],
         fn: () => writeNumber(p.id, COL.sosUnits[productId], unitsVal),
+      });
+      // "No Billing History" checkbox — the rep's answer for ALL payers
+      // (the Medicare A&B rollups remain the derived special case). Written
+      // checked/cleared every send, so it always matches the current answer.
+      const neverChecked = servedCids.has(cid) && st?.sosEntry === "never" && st.auth !== "required";
+      tasks.push({
+        label: `SoS No Billing History: ${productId}`,
+        columnId: COL.sosNeverBilled[productId],
+        fn: () => writeCheckbox(p.id, COL.sosNeverBilled[productId], neverChecked),
       });
     }
 
