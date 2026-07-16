@@ -275,6 +275,14 @@ describe("call logs (spec §4, D8)", () => {
     expect(appendCallLog("", ["a", "b"])).toBe("a\nb");
     expect(appendCallLog(null, [])).toBe("");
   });
+  it("skips lines already in the history (double-send protection)", () => {
+    const line = "[Benefits call · ref 1 · 2026-07-16] spoke with payer";
+    const once = appendCallLog("", [line]);
+    expect(appendCallLog(once, [line])).toBe(once); // re-send appends nothing
+    expect(appendCallLog(once, [line, "new line"])).toBe(`${once}\nnew line`);
+    // duplicates WITHIN one batch are kept
+    expect(appendCallLog("", [line, line])).toBe(`${line}\n${line}`);
+  });
   it("isBlankCallRow", () => {
     expect(isBlankCallRow({ ref: "", note: " " })).toBe(true);
     expect(isBlankCallRow({ ref: "x", note: "" })).toBe(false);
