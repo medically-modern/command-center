@@ -43,7 +43,8 @@
       "roles": [
         "patientQuestions",
         "profile",
-        "evaluate"
+        "evaluate",
+        "confirmReceipt"
       ],
       "roleOrder": {},
       "roleFilters": {
