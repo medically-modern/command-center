@@ -88,10 +88,14 @@ spec §7) was not attached. The §7 rules below are known only from the spec's o
   (`numeric_mm2w5jdp` family) — different concept, different writer.
 
   **⚠️ JOSH'S FULL AUTOMATION CHECKLIST (automation `7918324247`, Stage Advancer → Complete →
-  create item in Welcome Call) — 11 mappings, same-named columns pair up:**
+  create item in Welcome Call) — 16 REQUIRED mappings, same-named columns pair up:**
   1. Medicare Prior Pump Date `text_mm59qh8r` → `text_mm58k9x9`
   2–11. each Insurance SoS facts column above → its same-named Welcome Call column
-  (date→date and numeric→numeric copies are verbatim-safe).
+  12–16. each "SoS No Billing History" checkbox (D11 registry) → its same-named Welcome
+  Call checkbox (promoted from optional to required, Josh 2026-07-16).
+  (date→date, numeric→numeric, checkbox→checkbox, text→text copies are all verbatim-safe.)
+  The two call logs deliberately do NOT travel (Josh 2026-07-16) — their Welcome Call
+  targets were never kept; history stays on the Insurance board.
 - **D7 (§7, Anthem rulebook):** `ANTHEM_BCBS_PRIMARY_SUGGESTION_RULEBOOK.md` **does not exist
   yet** — it isn't a missing attachment, it hasn't been written. The BCBS who-to-call pills +
   POS/out-of-network warning are **blocked on Brandon writing it**; the §7 summary in
