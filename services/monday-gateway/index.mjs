@@ -214,9 +214,14 @@ async function logRequest(rec) {
         rec.board_id,
         rec.item_id,
         STORE_PAYLOAD ? rec.query_text : null,
-        STORE_PAYLOAD ? rec.variables : null,
+        // JSONB params must be pre-stringified: node-postgres encodes JS
+        // ARRAYS as Postgres array literals (not JSON), so passing
+        // monday_errors (an errors[] array) raw fails the whole insert with
+        // "invalid input syntax for type json" — silently dropping the audit
+        // row for exactly the requests that errored (found 2026-07-16).
+        STORE_PAYLOAD && rec.variables != null ? JSON.stringify(rec.variables) : null,
         rec.monday_status,
-        rec.monday_errors,
+        rec.monday_errors != null ? JSON.stringify(rec.monday_errors) : null,
         rec.ok,
         rec.duration_ms,
         rec.columns ? JSON.stringify(rec.columns) : null,

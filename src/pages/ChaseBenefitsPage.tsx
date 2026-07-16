@@ -55,6 +55,11 @@ const ChaseBenefitsPage = () => {
   const [selectedId, setSelectedId] = useState<string | null>(
     searchParams.get("patientId") ?? null,
   );
+  /** Patient just sent successfully. Suppresses the panel until the board
+   *  automation moves them off the list — otherwise the overlay clear makes
+   *  the checks/auths re-hydrate blank (they aren't readable on the Benefits
+   *  group) and the "Missing before send" box would flash misleadingly. */
+  const [lastSentId, setLastSentId] = useState<string | null>(null);
 
   // Auto-select the first patient the sidebar actually shows (same list math
   // as PatientsSidebar), never from the pre-fetch localStorage cache.
@@ -110,6 +115,7 @@ const ChaseBenefitsPage = () => {
     try {
       await sendPatientToMonday(selected, "benefits");
       clearOverlay(selected.id);
+      setLastSentId(selected.id);
       toast.success("Benefit check complete — sent to Monday");
       refetch(true);
     } catch (e) {
@@ -186,14 +192,27 @@ const ChaseBenefitsPage = () => {
                     <div className="main-col">
                       <BenefitsPatientHeader patient={selected} />
 
-                      <BenefitsPanel
-                        patient={selected}
-                        onUniversalChange={onUniversalChange}
-                        onCodeChange={updateCode}
-                        onCallLogChange={updateCallLog}
-                        missing={benefitsMissing}
-                        onSend={handleSend}
-                      />
+                      {selected.id === lastSentId ? (
+                        <section className="card step-card">
+                          <div className="empty-box">
+                            <p>✓ Benefit check complete — sent to Monday</p>
+                            <p className="sub">
+                              The board automation is moving this patient to their next stage;
+                              they'll drop off this list within a minute. Pick the next patient
+                              from the sidebar.
+                            </p>
+                          </div>
+                        </section>
+                      ) : (
+                        <BenefitsPanel
+                          patient={selected}
+                          onUniversalChange={onUniversalChange}
+                          onCodeChange={updateCode}
+                          onCallLogChange={updateCallLog}
+                          missing={benefitsMissing}
+                          onSend={handleSend}
+                        />
+                      )}
                     </div>
 
                     {/* Notes rail (sticky, full viewport height) */}
