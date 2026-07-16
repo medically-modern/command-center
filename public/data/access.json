@@ -48,7 +48,8 @@
         "chaseParachute",
         "submitAuth",
         "welcomeCall",
-        "subscription"
+        "subscription",
+        "authDenied"
       ],
       "roleOrder": {},
       "roleFilters": {
