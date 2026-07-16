@@ -10,9 +10,12 @@ interface Props {
   onSaveToMonday?: (notes: string) => Promise<void>;
   placeholder?: string;
   description?: string;
+  /** Stretch the panel to fill its container's height, letting the notes
+   *  display grow instead of capping at 200px (Benefits notes rail). */
+  fillHeight?: boolean;
 }
 
-export function NotesPanel({ notes, onNotesChange, onSaveToMonday, placeholder, description }: Props) {
+export function NotesPanel({ notes, onNotesChange, onSaveToMonday, placeholder, description, fillHeight }: Props) {
   const [newNote, setNewNote] = useState("");
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -48,7 +51,7 @@ export function NotesPanel({ notes, onNotesChange, onSaveToMonday, placeholder, 
   };
 
   return (
-    <div className="rounded-lg border bg-muted/20 p-4 space-y-3">
+    <div className={`rounded-lg border bg-muted/20 p-4 space-y-3${fillHeight ? " h-full flex flex-col" : ""}`}>
       <div className="flex items-center justify-between">
         <div>
           <h3 className="text-sm font-semibold flex items-center gap-2">
@@ -90,11 +93,13 @@ export function NotesPanel({ notes, onNotesChange, onSaveToMonday, placeholder, 
           value={notes}
           onChange={(e) => onNotesChange(e.target.value)}
           rows={6}
-          className="text-sm font-mono bg-background"
+          className={`text-sm font-mono bg-background${fillHeight ? " flex-1 resize-none" : ""}`}
           placeholder="No notes yet."
         />
       ) : (
-        <div className="bg-background rounded-md p-3 min-h-[60px] max-h-[200px] overflow-y-auto border">
+        <div
+          className={`bg-background rounded-md p-3 min-h-[60px] overflow-y-auto border${fillHeight ? " flex-1" : " max-h-[200px]"}`}
+        >
           {notes ? (
             <pre className="text-sm whitespace-pre-wrap font-sans text-foreground">{notes}</pre>
           ) : (
