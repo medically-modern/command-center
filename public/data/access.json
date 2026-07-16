@@ -42,7 +42,8 @@
       "name": "josh",
       "roles": [
         "patientQuestions",
-        "profile"
+        "profile",
+        "evaluate"
       ],
       "roleOrder": {},
       "roleFilters": {
