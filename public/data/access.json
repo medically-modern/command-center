@@ -59,7 +59,8 @@
         "finalConfirm"
       ],
       "roleOrder": {
-        "profile": 1
+        "profile": 1,
+        "unverifiedReferrals": 2
       },
       "roleFilters": {
         "patientQuestions": "all"
