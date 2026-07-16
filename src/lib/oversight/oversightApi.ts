@@ -148,23 +148,37 @@ const CONFIRM_COLS: { colId: string; label: string; pill?: boolean }[] = [
   { colId: "text_mm2ymtsk", label: "Attempt 3 Log" },
 ];
 
+/** Shared drill-down columns for the two Profile Send Off charts (Verified +
+ *  Unverified Referrals — split by Referral Type/Source, see CHART_FILTERS). */
+const PROFILE_COLS: { colId: string; label: string; pill?: boolean }[] = [
+  { colId: "date_mm1wf43j", label: "Intake Date" },
+  { colId: "color_mm1wwm05", label: "Days in Stage" },
+  { colId: "color_mm1wm4n4", label: "Referral Type" },
+  { colId: "color_mm1w5wxr", label: "Referral Source" },
+  { colId: "color_mm1w1978", label: "Request" },
+  { colId: "color_mm24ap4j", label: "General Insurance" },
+  { colId: "color_mm1xg10n", label: "Primary Insurance" },
+  { colId: "text_mm1x2qk2", label: "Member ID 1" },
+  { colId: "color_mm1yeksx", label: "Run Stedi" },
+];
+
 const RAW_CHART_DEFS: ChartDef[] = [
-  // ── Board 18406352652 (Profile Send Off) ──
+  // ── Board 18406352652 (Profile Send Off) — split into Verified/Unverified
+  //    Referrals (July 2026). "profile-send-off" keeps its id (old drill-down
+  //    URLs stay valid) but now shows VERIFIED referrals only. ──
   {
     id: "profile-send-off",
-    title: "Profile Send Off",
+    title: "Profile Send Off — Verified Referrals",
     boardId: 18406352652,
     notesColId: "text_mm389fs",
-    drilldownCols: [
-      { colId: "date_mm1wf43j", label: "Intake Date" },
-      { colId: "color_mm1wwm05", label: "Days in Stage" },
-      { colId: "color_mm1w5wxr", label: "Referral Source" },
-      { colId: "color_mm1w1978", label: "Request" },
-      { colId: "color_mm24ap4j", label: "General Insurance" },
-      { colId: "color_mm1xg10n", label: "Primary Insurance" },
-      { colId: "text_mm1x2qk2", label: "Member ID 1" },
-      { colId: "color_mm1yeksx", label: "Run Stedi" },
-    ],
+    drilldownCols: PROFILE_COLS,
+  },
+  {
+    id: "profile-send-off-unverified",
+    title: "Profile Send Off — Unverified Referrals",
+    boardId: 18406352652,
+    notesColId: "text_mm389fs",
+    drilldownCols: PROFILE_COLS,
   },
 
   // ── Board 18406060017 (Medical Necessity) ──
@@ -499,7 +513,7 @@ export interface OversightSection {
 }
 
 export const OVERSIGHT_SECTIONS: OversightSection[] = [
-  { id: "intake", title: "Intake", chartIds: ["profile-send-off"] },
+  { id: "intake", title: "Intake", chartIds: ["profile-send-off", "profile-send-off-unverified"] },
   {
     id: "medical-evaluation",
     title: "Medical Evaluation",
@@ -776,28 +790,48 @@ function mapItem(raw: RawItem, boardId: number): OversightPatient {
 
 // ── Chart filtering rules ───────────────────────────────────────────────
 
+/** One column condition: the column's text must be (one of) `value` — or NOT
+ *  one of it when `not` is true. Alternatively `gte` does a numeric
+ *  "column value >= N" test (used for Evaluation Counter >= 3). */
+interface ColCondition {
+  colId: string;
+  value?: string | string[];
+  not?: boolean;
+  gte?: number;
+}
+
 interface ChartFilter {
   type: "group";
   groupId: string;
+  /** Optional extra AND conditions on top of the group — used for the Profile
+   *  Send Off Verified/Unverified Referrals split. */
+  andCols?: ColCondition[];
+  /** Optional OR conditions: at least ONE must match (ANDed with andCols).
+   *  Used for "Unverified = Referral Type Patient OR Source CareCentrix". */
+  anyCols?: ColCondition[];
 }
 
 interface ChartFilterStageAdvancer {
   type: "stageAdvancer";
   boardId: number;
   value: string;
-  /** Optional extra AND conditions on top of the stage. The column's text must
-   *  be (one of) `value` — or NOT one of it when `not` is true. Alternatively
-   *  `gte` does a numeric "column value >= N" test (used for Evaluation Counter
-   *  >= 3). Used for escalations (MN Attempts = "Escalate"), the Chase method
-   *  split (Fax = NOT Email/Parachute, so blank counts as fax; Email & Parachute
-   *  = either), and the 3rd+ Attempt escalation counter threshold. */
-  andCols?: { colId: string; value?: string | string[]; not?: boolean; gte?: number }[];
+  /** Optional extra AND conditions on top of the stage. Used for escalations
+   *  (MN Attempts = "Escalate"), the Chase method split (Fax = NOT
+   *  Email/Parachute, so blank counts as fax; Email & Parachute = either),
+   *  and the 3rd+ Attempt escalation counter threshold. */
+  andCols?: ColCondition[];
+  anyCols?: ColCondition[];
 }
 
 type FilterRule = ChartFilter | ChartFilterStageAdvancer;
 
 const CHART_FILTERS: Record<string, FilterRule> = {
-  "profile-send-off":   { type: "group", groupId: "group_mm1xf2jb" },
+  // Profile Send Off split (rule mirrors lib/profile/referralSplit.ts):
+  // Unverified = Referral Type "Patient" OR Referral Source "CareCentrix";
+  // Verified = neither. Only the TYPE column routes "Patient" — the SOURCE
+  // column has its own "Patient" label that must NOT match.
+  "profile-send-off":            { type: "group", groupId: "group_mm1xf2jb", andCols: [{ colId: "color_mm1wm4n4", value: "Patient", not: true }, { colId: "color_mm1w5wxr", value: "CareCentrix", not: true }] },
+  "profile-send-off-unverified": { type: "group", groupId: "group_mm1xf2jb", anyCols: [{ colId: "color_mm1wm4n4", value: "Patient" }, { colId: "color_mm1w5wxr", value: "CareCentrix" }] },
   "evaluate":           { type: "stageAdvancer", boardId: 18406060017, value: "Evaluate MN" },
   "send-request":       { type: "stageAdvancer", boardId: 18406060017, value: "Send Request" },
   "confirm-receipt":    { type: "stageAdvancer", boardId: 18406060017, value: "Confirm Receipt" },
@@ -828,27 +862,38 @@ const CHART_FILTERS: Record<string, FilterRule> = {
   "profile-review":     { type: "group", groupId: "group_mm2x8jtj" },
 };
 
+/** Evaluate a single column condition against a patient. */
+function colConditionPasses(patient: OversightPatient, c: ColCondition): boolean {
+  const cell = (patient.cols[c.colId] ?? "").trim();
+  if (c.gte !== undefined) {
+    // Numeric threshold (e.g. Evaluation Counter ≥ 3). Non-numeric → fails.
+    const n = Number(cell);
+    const pass = Number.isFinite(n) && cell !== "" && n >= c.gte;
+    return c.not ? !pass : pass;
+  }
+  const inSet = Array.isArray(c.value) ? c.value.includes(cell) : cell === c.value;
+  return c.not ? !inSet : inSet;
+}
+
 function matchesFilter(patient: OversightPatient, rule: FilterRule): boolean {
   if (rule.type === "group") {
-    return patient.groupId === rule.groupId;
+    if (patient.groupId !== rule.groupId) return false;
+  } else {
+    // Stage advancer filter
+    const saCol = STAGE_ADVANCER_COL[rule.boardId];
+    if (!saCol) return false;
+    const val = (patient.cols[saCol] ?? "").trim();
+    if (val !== rule.value) return false;
   }
-  // Stage advancer filter
-  const saCol = STAGE_ADVANCER_COL[rule.boardId];
-  if (!saCol) return false;
-  const val = (patient.cols[saCol] ?? "").trim();
-  if (val !== rule.value) return false;
-  // Optional extra AND conditions (escalations, Chase method split, counter ≥ N).
+  // Optional extra AND conditions (escalations, Chase method split, counter
+  // ≥ N, the Profile Verified split) — every one must pass.
   for (const c of rule.andCols ?? []) {
-    const cell = (patient.cols[c.colId] ?? "").trim();
-    if (c.gte !== undefined) {
-      // Numeric threshold (e.g. Evaluation Counter ≥ 3). Non-numeric → fails.
-      const n = Number(cell);
-      const pass = Number.isFinite(n) && cell !== "" && n >= c.gte;
-      if (c.not ? pass : !pass) return false;
-      continue;
-    }
-    const inSet = Array.isArray(c.value) ? c.value.includes(cell) : cell === c.value;
-    if (c.not ? inSet : !inSet) return false;
+    if (!colConditionPasses(patient, c)) return false;
+  }
+  // Optional OR conditions (the Profile Unverified split) — at least one
+  // must pass when any are given.
+  if (rule.anyCols?.length && !rule.anyCols.some((c) => colConditionPasses(patient, c))) {
+    return false;
   }
   return true;
 }
