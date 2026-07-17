@@ -294,7 +294,14 @@ function otherPayerSuggest(inp: SuggestionInputs): Suggestion {
   if (carrier === "cigna") { o.value = "Cigna"; o.confidence = "high"; o.reason = "Cigna payer → Cigna."; return o; }
   if (carrier === "humana") { o.value = "Humana"; o.confidence = "high"; o.reason = "Humana payer → Humana."; return o; }
   if (carrier === "medicare") {
-    if (isMedicareAdvantage(s)) { o.value = null; o.confidence = "low"; o.reason = "Medicare Advantage — carrier not mapped"; o.warnings.push({ code: "MA_UNMAPPED", message: "Medicare Advantage (" + (s.payerName || "unknown carrier") + ") — pick the carrier's Medicare plan or verify serviceability; not straight Medicare A&B" }); return o; }
+    if (isMedicareAdvantage(s)) {
+      o.value = null; o.confidence = "low"; o.reason = "Medicare Advantage — carrier not mapped";
+      o.warnings.push({ code: "MA_UNMAPPED", message: "Medicare Advantage (" + (s.payerName || "unknown carrier") + ") — pick the carrier's Medicare plan or verify serviceability; not straight Medicare A&B" });
+      // QMB dual (almost always D-SNP): claims go to the MA payer; Medicaid is
+      // cost-share secondary only. Additive to MA_UNMAPPED (Brandon, 2026-07-16).
+      if (/^yes/i.test(s.qmb || "")) o.warnings.push({ code: "MA_DUAL", message: "QMB dual — bill the MA payer; Medicaid is cost-share secondary only, do not route supplies to straight Medicaid" });
+      return o;
+    }
     o.value = "Medicare A&B"; o.confidence = "high"; o.reason = "Straight Medicare A&B."; return o;
   }
   if (carrier === "medicaid") {
@@ -395,7 +402,7 @@ export function suggestSecondary(inp: SuggestionInputs): string {
 
 // ── Patient → engine input adapter ──
 
-function truthy(v: string): boolean { return /^(yes|true|active|1)$/i.test((v || "").trim()); }
+export function truthy(v: string): boolean { return /^(yes|true|active|1)$/i.test((v || "").trim()); }
 
 /** Build engine inputs from a Patient. `stediDone` reflects whether a Stedi
  *  result has landed (plan name or active flag populated). */

@@ -31,7 +31,7 @@ import {
 import { NoteLog, stampNote } from "@/components/profile/NoteLog";
 import {
   suggestPrimary, suggestSecondary, buildSuggestionInputs, isCoverageActive, isNyMedicaidId,
-  managedMedicaidMco,
+  managedMedicaidMco, truthy,
 } from "@/lib/profile/primaryInsurance";
 import { computeFirstAndRecurring } from "@/lib/profile/oopEstimate";
 import { interpretStediError } from "@/lib/profile/stediErrors";
@@ -893,10 +893,30 @@ function ProfileBody(p: BodyProps) {
                 {/* Eligibility results — live from Monday's Stedi columns */}
                 {!p.stediRunning && !stediFailed && (pt.stediPlanName || pt.stediEligibilityActive) && (
                   <>
-                    {managedMedicaid && (
+                    {/* Managed Medicaid — suppressed when Stedi flags Medicare
+                        Advantage. An MA dual's MCO name can wrongly land in the
+                        Managed Medicaid column, and "supplies through Medicaid"
+                        is backwards for a member whose claims belong to the MA
+                        payer (Samira Delacruz, 2026-07-16). Belt-and-suspenders
+                        for the backend Y2 gate — protects even on stale data. */}
+                    {managedMedicaid && !truthy(pt.stediMedicareAdvantage) && (
                       <div className="warn-banner" style={{ marginTop: 16 }}>
                         <AlertTriangle className="h-4 w-4" />
                         <span><b>Managed Medicaid detected — {managedMedicaid}.</b> Supplies Only eligible — set Serving accordingly.</span>
+                      </div>
+                    )}
+                    {/* Medicare Advantage / dual — rendered from the MA columns
+                        the backend already writes (previously invisible in the
+                        UI, same class of bug as the original Managed Medicaid
+                        column). QMB dual gets the stronger D-SNP wording. */}
+                    {truthy(pt.stediMedicareAdvantage) && (
+                      <div className="warn-banner" style={{ marginTop: 16 }}>
+                        <AlertTriangle className="h-4 w-4" />
+                        {truthy(pt.stediQmb) ? (
+                          <span><b>Medicare Advantage detected — {pt.stediMedicareAdvantageCarrier || pt.stediPayerName}.</b> QMB dual — likely D-SNP; Medicaid is cost-share secondary only. Bill this payer (not Medicare A&B, not straight Medicaid) — verify network before serving.</span>
+                        ) : (
+                          <span><b>Medicare Advantage detected — {pt.stediMedicareAdvantageCarrier || pt.stediPayerName}.</b> Bill this payer — not straight Medicare A&B.</span>
+                        )}
                       </div>
                     )}
                     <div className="res-grid" style={{ gridTemplateColumns: "repeat(3,1fr)", marginTop: 16 }}>

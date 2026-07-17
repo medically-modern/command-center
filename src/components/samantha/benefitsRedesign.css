@@ -270,6 +270,27 @@
   .bnr .stedi-grid.three,.bnr .stedi-grid.four{grid-template-columns:repeat(2,1fr)}
 }
 
+/* ============ Medicare A&B — jurisdiction pill + In-Network hazard ============ */
+/* Copied from benefits-redesign.html (Brandon §3, added 2026-07-16), scoped
+   under .bnr. Display-only; the pill sits right of the step-1 title, the hazard
+   right of the In-Network card title. */
+.bnr .jur-chip{
+  display:inline-flex;align-items:center;white-space:nowrap;flex-shrink:0;cursor:help;
+  font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+  font-size:.72rem;font-weight:800;letter-spacing:.04em;border-radius:999px;padding:4px 11px;
+  background:var(--mm-green-12);color:var(--mm-teal);box-shadow:inset 0 0 0 1px var(--mm-mint-ring);
+}
+.bnr .uc-warn{
+  display:flex;align-items:flex-start;gap:7px;margin-left:auto;flex-shrink:0;
+  font-size:.7rem;font-weight:600;line-height:1.5;text-align:left;
+  color:oklch(0.45 0.10 75);
+}
+.bnr .uc-warn ul{margin:0;padding:0;list-style:none}
+.bnr .uc-warn li{white-space:nowrap}
+.bnr .uc-warn li::before{content:"•";margin-right:5px;color:oklch(0.66 0.14 85)}
+.bnr .uc-warn svg{flex-shrink:0;margin-top:1px;color:oklch(0.66 0.14 85);fill:oklch(0.66 0.14 85 / 0.15)}
+.bnr .uc-warn b{font-weight:800;color:oklch(0.4 0.10 75)}
+
 /* ============ responsive ============ */
 @media (max-width:960px){
   .bnr .ph-groups,.bnr .uc-grid{grid-template-columns:1fr}

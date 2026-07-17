@@ -16,7 +16,8 @@
  * exactly what each column write will be — delete it when this ships.
  */
 import { useEffect, useMemo, useState } from "react";
-import { ChevronDown, Phone } from "lucide-react";
+import { AlertTriangle, ChevronDown, Phone } from "lucide-react";
+import { isMedicareABOnly, medicareJurisdictionPill } from "@/lib/samantha/medicareJurisdiction";
 import type {
   CallLogRow,
   Patient,
@@ -315,6 +316,19 @@ export function BenefitsPanel({
   const universalCount = Object.values(ins.universal).filter((v) => v === "confirmed").length;
   const universalDone = universalCount === 3;
 
+  // Medicare A&B only (traditional, no secondary): show the HMO/MSP/Inpatient
+  // hazard reminder on the In-Network card, and a MAC-jurisdiction pill in the
+  // step-1 header when the address state maps. Display-only (Brandon §3).
+  const showMedicareAB = isMedicareABOnly(
+    patient.primaryInsurance ?? "",
+    patient.secondaryInsurance ?? "",
+  );
+  const macPill = medicareJurisdictionPill(
+    patient.primaryInsurance ?? "",
+    patient.secondaryInsurance ?? "",
+    patient.patientAddress ?? "",
+  );
+
   const resolved = useMemo(
     () =>
       resolveHcpcs(
@@ -384,6 +398,14 @@ export function BenefitsPanel({
             {universalDone ? "✓" : "1"}
           </span>
           <h2>Call the Payer · Universal Checks</h2>
+          {macPill && (
+            <span
+              className="jur-chip"
+              title={`Medicare A&B MAC jurisdiction for ${macPill.state} — ${macPill.contractor}. Fee schedules + portals differ per jurisdiction.`}
+            >
+              JURISDICTION {macPill.jurisdiction} · {macPill.state}
+            </span>
+          )}
           <span className={`step-chip ${universalDone ? "ok" : ""}`}>
             {universalCount}/3 confirmed
           </span>
@@ -402,6 +424,18 @@ export function BenefitsPanel({
                     <div className="uc-tag">CHECK 0{i + 1}</div>
                     <div className="uc-title">{meta.label}</div>
                   </div>
+                  {/* Medicare A&B only — reminder to probe the three things that
+                      most often reroute a "straight A&B" claim (Brandon §3). */}
+                  {i === 0 && showMedicareAB && (
+                    <div className="uc-warn">
+                      <AlertTriangle size={15} strokeWidth={2.2} />
+                      <ul>
+                        <li><b>HMO</b> (Medicare Adv)</li>
+                        <li><b>MSP</b> (Secondary Payer)</li>
+                        <li><b>Inpatient</b> (Hospital/SNF)</li>
+                      </ul>
+                    </div>
+                  )}
                 </div>
                 <div className="seg" role="radiogroup" aria-label={meta.label}>
                   <button

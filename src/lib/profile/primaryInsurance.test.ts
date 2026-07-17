@@ -147,6 +147,27 @@ describe("suggestPrimary — payer routing", () => {
     expect(sg?.warnings.some((w) => w.code === "MA_UNMAPPED")).toBe(true);
   });
 
+  // Samira Delacruz (2026-07-16): MA + QMB=Yes → D-SNP dual. MA_DUAL rides
+  // alongside MA_UNMAPPED; the "Check card" null pick is unchanged.
+  it("MA + QMB=Yes → MA_DUAL alongside MA_UNMAPPED", () => {
+    const sg = suggestPrimary(mk({
+      gins: "Medicare A&B", payerName: "Senior Whole Health of New York",
+      plan: "Senior Whole Health", covtype: "Medicare Advantage", ma: true, qmb: "Yes",
+    }));
+    expect(sg?.value).toBeNull();
+    expect(sg?.warnings.some((w) => w.code === "MA_UNMAPPED")).toBe(true);
+    expect(sg?.warnings.some((w) => w.code === "MA_DUAL")).toBe(true);
+  });
+
+  it("MA without QMB → MA_UNMAPPED only, no MA_DUAL", () => {
+    const sg = suggestPrimary(mk({
+      gins: "Medicare A&B", payerName: "Some MA Carrier",
+      plan: "Some MA Advantage", covtype: "Medicare Advantage", ma: true, qmb: "No",
+    }));
+    expect(sg?.warnings.some((w) => w.code === "MA_UNMAPPED")).toBe(true);
+    expect(sg?.warnings.some((w) => w.code === "MA_DUAL")).toBe(false);
+  });
+
   it("Humana Gold Plus (MA) → Humana", () => {
     const sg = suggestPrimary(mk({
       gins: "Humana", payerName: "Humana Gold Plus", plan: "Humana Gold Plus",
