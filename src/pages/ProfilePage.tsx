@@ -86,7 +86,7 @@ const STEDI_SIGNATURE_KEYS: (keyof Patient)[] = [
   "stediIndividualOopMax", "stediIndividualOopMaxRemaining",
   "stediFamilyOopMax", "stediFamilyOopMaxRemaining",
   "stediPlanBeginDate", "stediErrorDescription", "stediSecondaryMedicaidId",
-  "stediPlanName", "stediGender", "stediMedicaidId", "stediHomePlan",
+  "stediPlanName", "stediGender", "stediMedicaidId", "stediHomePlan", "stediFacilityFlags",
 ];
 function stediSignature(p: Patient): string {
   return STEDI_SIGNATURE_KEYS.map((k) => String(p[k] ?? "")).join("␟");
@@ -947,6 +947,26 @@ function ProfileBody(p: BodyProps) {
                       <div className="warn-banner" style={{ marginTop: 16 }}>
                         <AlertTriangle className="h-4 w-4" />
                         <span><b>Medicare's file shows {pt.stediPrimaryPayer.trim()} as PRIMARY.</b> Medicare will DENY primary claims while this MSP record is open — even if that coverage has ended. Get the commercial card and run the payer-side check (the CMS name is often the claims processor, not the member-facing brand). If the patient confirms the coverage ended: BCRC 855-798-2627, then re-run the Stedi check in 72 hours — a clean re-check is the all-clear.</span>
+                      </div>
+                    )}
+                    {/* Facility flags (Brandon, 2026-07-20) — active Hospice
+                        election / Hospital-SNF stay from the Medicare 271
+                        (mirror of the Subscription Board column). Medicare A&B
+                        only: hospice transfers Part B DME to the hospice
+                        benefit and a covered inpatient stay bundles DME, so
+                        claims deny while either is open. The backend clears
+                        the column on a clean re-check. */}
+                    {(pt.stediCoverageType || "").trim() === "Medicare A&B"
+                      && !!(pt.stediFacilityFlags || "").trim() && (
+                      <div className="warn-banner" style={{ marginTop: 16 }}>
+                        <AlertTriangle className="h-4 w-4" />
+                        <span>
+                          {/Hospice/i.test(pt.stediFacilityFlags)
+                            ? <><b>Active hospice election on file.</b> Medicare Part B DME will DENY while the election is open — supplies fall under the hospice benefit. Verify status with the patient before serving; a clean re-check clears this flag.</>
+                            : <><b>Active Hospital/SNF stay on file.</b> DME billed during a covered inpatient stay will deny — confirm discharge before shipping; a clean re-check clears this flag.</>}
+                          {/Hospice/i.test(pt.stediFacilityFlags) && /Hospital\/SNF/i.test(pt.stediFacilityFlags)
+                            ? <> Also shows an active Hospital/SNF stay.</> : null}
+                        </span>
                       </div>
                     )}
                     {/* Non-Medicare COB mismatch — the check itself named a

@@ -58,6 +58,10 @@ export const COL = {
   stediGender: "dropdown_mm30thnj",
   stediMedicaidId: "text_mm31e5se",
   stediHomePlan: "dropdown_mm457xy2",
+  // "SNF/Hospice/Hospital" — active Hospice election / Hospital-SNF stay
+  // from the Medicare 271 (mirror of the Subscription Board column).
+  // Dropdown labels: "Hospice", "Hospital/SNF"; empty = none active.
+  stediFacilityFlags: "dropdown_mm5ex3d7",
 
   // Plan Name flows from Stedi → Insurance Plan dropdown on Submit
   insurancePlan: "dropdown_mm1y2x75",
@@ -153,7 +157,7 @@ export const READ_COLUMN_IDS: string[] = [
   COL.stediFamilyOopMax, COL.stediFamilyOopMaxRemaining,
   COL.stediPlanBeginDate, COL.stediErrorDescription,
   COL.stediSecondaryMedicaidId,
-  COL.stediGender, COL.stediMedicaidId, COL.stediHomePlan,
+  COL.stediGender, COL.stediMedicaidId, COL.stediHomePlan, COL.stediFacilityFlags,
   // Insurance
   COL.primaryInsurance, COL.generalInsurance, COL.memberIdWorking,
   COL.memberId1, COL.memberId2, COL.secondaryInsurance,

@@ -63,6 +63,9 @@ export interface Patient {
   stediGender: string;
   stediMedicaidId: string;
   stediHomePlan: string;
+  /** Active facility status from the Medicare 271 — comma-joined dropdown
+   *  labels ("Hospice", "Hospital/SNF"); "" when none active. */
+  stediFacilityFlags: string;
 
   // ── Insurance ──
   primaryInsurance: string;
