@@ -4,7 +4,7 @@
 // deterministic routing rules. Run: npx vitest run src/lib/profile/primaryInsurance.test.ts
 import { describe, it, expect } from "vitest";
 import {
-  suggestPrimary, suggestSecondary, isCoverageActive,
+  suggestPrimary, suggestSecondary, isCoverageActive, primaryPayerMismatch,
   type SuggestionInputs, type StediSnapshot,
 } from "./primaryInsurance";
 
@@ -30,6 +30,7 @@ function mk(
       ma: o.ma ?? false,
       mltc: o.mltc ?? false,
       managedMedicaid: o.managedMedicaid ?? "",
+      primaryPayer: o.primaryPayer ?? "",
     },
   };
 }
@@ -95,6 +96,29 @@ describe("suggestPrimary — payer routing", () => {
     expect(sg?.value).toBe("Anthem BCBS Low-Cost (JLJ)");
     expect(sg?.warnings.some((w) => w.code === "CHECK_MEDICAID_ID")).toBe(false);
   });
+
+  // Anjuman Begum (Brandon, 2026-07-20): MLTC member with a JLJ member ID.
+  // The pill already said Low-Cost (JLJ) but carried no warning — a rep
+  // seeing a Medicaid ID on the card could still route Medicaid. MLTC DME
+  // is carved to the plan, so the warning states it explicitly.
+  it("Anthem MLTC plan → Low-Cost (JLJ) + MLTC_PLAN warning", () => {
+    const sg = suggestPrimary(mk({
+      gins: "Anthem / BCBS", memberId: "JLJ733871286",
+      plan: "NEW YORK MLTC", covtype: "Medicaid", payerName: "ANTHEM",
+    }));
+    expect(sg?.value).toBe("Anthem BCBS Low-Cost (JLJ)");
+    expect(sg?.warnings.some((w) => w.code === "MLTC_PLAN")).toBe(true);
+    expect(sg?.warnings.find((w) => w.code === "MLTC_PLAN")?.message).toContain("NEW YORK MLTC");
+  });
+
+  it("Anthem MLTC via the Stedi MLTC flag column → same warning", () => {
+    const sg = suggestPrimary(mk({
+      gins: "Anthem / BCBS", memberId: "JLJ733871286",
+      plan: "SOME PLAN", covtype: "Medicaid", mltc: true,
+    }));
+    expect(sg?.value).toBe("Anthem BCBS Low-Cost (JLJ)");
+    expect(sg?.warnings.some((w) => w.code === "MLTC_PLAN")).toBe(true);
+  });
   it('United "CHIP" plan → United Low-Cost', () => {
     expect(suggestPrimary(mk({
       gins: "United Healthcare", plan: "NY CHIP PREMIUM", covtype: "Medicaid", requestType: "Supplies Only",
@@ -138,13 +162,157 @@ describe("suggestPrimary — payer routing", () => {
     expect(sg?.value).toBe("Medicare A&B");
   });
 
-  it("unmapped Medicare Advantage → no confident pick + MA_UNMAPPED", () => {
+  it("unmapped Medicare Advantage → no confident pick + MA_PRIMARY", () => {
     const sg = suggestPrimary(mk({
       gins: "Medicare A&B", payerName: "Senior Whole Health Medicare Complete Care",
       plan: "Senior Whole Health Medicare Complete Care", covtype: "Medicare Advantage", ma: true, qmb: "Yes",
     }));
     expect(sg?.value).toBeNull();
-    expect(sg?.warnings.some((w) => w.code === "MA_UNMAPPED")).toBe(true);
+    expect(sg?.warnings.some((w) => w.code === "MA_PRIMARY")).toBe(true);
+  });
+
+  // Samira Delacruz (2026-07-16): MA + QMB=Yes → D-SNP dual. MA_DUAL rides
+  // alongside MA_PRIMARY; the "Check card" null pick is unchanged.
+  it("MA + QMB=Yes → MA_DUAL alongside MA_PRIMARY", () => {
+    const sg = suggestPrimary(mk({
+      gins: "Medicare A&B", payerName: "Senior Whole Health of New York",
+      plan: "Senior Whole Health", covtype: "Medicare Advantage", ma: true, qmb: "Yes",
+    }));
+    expect(sg?.value).toBeNull();
+    expect(sg?.warnings.some((w) => w.code === "MA_PRIMARY")).toBe(true);
+    expect(sg?.warnings.some((w) => w.code === "MA_DUAL")).toBe(true);
+  });
+
+  it("MA without QMB → MA_PRIMARY only, no MA_DUAL", () => {
+    const sg = suggestPrimary(mk({
+      gins: "Medicare A&B", payerName: "Some MA Carrier",
+      plan: "Some MA Advantage", covtype: "Medicare Advantage", ma: true, qmb: "No",
+    }));
+    expect(sg?.warnings.some((w) => w.code === "MA_PRIMARY")).toBe(true);
+    expect(sg?.warnings.some((w) => w.code === "MA_DUAL")).toBe(false);
+  });
+
+  // §1a HARD BLOCK (HANDOFF 2026-07-20): Hollander picked Medicare A&B
+  // past the warning — MA now always carries MA_PRIMARY (and the select
+  // disables the Medicare A&B option off this same flag).
+  it("MA → single MA_PRIMARY hard-block warning (no duplicate MA_UNMAPPED)", () => {
+    const sg = suggestPrimary(mk({
+      gins: "Medicare A&B", payerName: "UnitedHealthcare Group Medicare Advantage",
+      covtype: "Medicare Advantage", ma: true, qmb: "No",
+    }));
+    expect(sg?.value).toBeNull();
+    expect(sg?.warnings.some((w) => w.code === "MA_PRIMARY")).toBe(true);
+    // No duplicate second MA warning (Brandon, 2026-07-20).
+    expect(sg?.warnings.some((w) => w.code === "MA_UNMAPPED")).toBe(false);
+    expect(sg?.warnings.filter((w) => w.code === "MA_PRIMARY").length).toBe(1);
+    expect(sg?.warnings.find((w) => w.code === "MA_PRIMARY")?.message)
+      .toContain("UnitedHealthcare Group Medicare Advantage");
+  });
+
+  // §1b SOFT BLOCK (HANDOFF 2026-07-20) — Anthony Thompson: CMS COB file
+  // reports BCBS SC primary (MSP type 43, spouse's LGHP). NO suggestion
+  // (Brandon, 2026-07-20): the rep always re-runs the check against the
+  // commercial payer, and THAT check produces the suggestion.
+  it("MSP commercial-primary (BCBS) → NO suggestion + MSP_PRIMARY", () => {
+    const sg = suggestPrimary(mk({
+      gins: "Medicare A&B", payerName: "Medicare A&B", covtype: "Medicare A&B",
+      primaryPayer: "BLUE CROSS BLUE SHIELD S.C.",
+    }));
+    expect(sg?.value).toBeNull();
+    expect(sg?.confidence).toBe("low");
+    expect(sg?.warnings.some((w) => w.code === "MSP_PRIMARY")).toBe(true);
+    expect(sg?.reason).toContain("re-run the check");
+  });
+
+  // Jeremy Baluyot: Aetna Health type 43 — same, no family mapping.
+  it("MSP commercial-primary (Aetna) → NO suggestion + MSP_PRIMARY", () => {
+    const sg = suggestPrimary(mk({
+      gins: "Medicare A&B", payerName: "Medicare A&B", covtype: "Medicare A&B",
+      primaryPayer: "AETNA HEALTH INC.",
+    }));
+    expect(sg?.value).toBeNull();
+    expect(sg?.warnings.some((w) => w.code === "MSP_PRIMARY")).toBe(true);
+  });
+
+  it("MSP primary with unmapped carrier → null pick + MSP_PRIMARY", () => {
+    const sg = suggestPrimary(mk({
+      gins: "Medicare A&B", payerName: "Medicare A&B", covtype: "Medicare A&B",
+      primaryPayer: "SOME EMPLOYER TRUST",
+    }));
+    expect(sg?.value).toBeNull();
+    expect(sg?.warnings.some((w) => w.code === "MSP_PRIMARY")).toBe(true);
+  });
+
+  // Asif Sheikh–type: situational MSP records (auto/WC) are filtered by the
+  // backend and never land in Stedi Primary Payer — a plain "Medicare"
+  // value must keep the green Medicare A&B pill.
+  it("Stedi Primary Payer = Medicare → normal Medicare A&B pill, no MSP block", () => {
+    const sg = suggestPrimary(mk({
+      gins: "Medicare A&B", payerName: "Medicare A&B", covtype: "Medicare A&B",
+      primaryPayer: "Medicare",
+    }));
+    expect(sg?.value).toBe("Medicare A&B");
+    expect(sg?.confidence).toBe("high");
+    expect(sg?.warnings.some((w) => w.code === "MSP_PRIMARY")).toBe(false);
+  });
+
+  it("blank Stedi Primary Payer (older items) → unchanged Medicare A&B pill", () => {
+    const sg = suggestPrimary(mk({
+      gins: "Medicare A&B", payerName: "Medicare A&B", covtype: "Medicare A&B",
+    }));
+    expect(sg?.value).toBe("Medicare A&B");
+    expect(sg?.warnings.length).toBe(0);
+  });
+
+  // Ryan Impellizeri (Brandon, 2026-07-20): Fidelis Essential Plan 271 with a
+  // 2120 NM1*PRP naming UHC StudentResources as PRIMARY. Every branch — not
+  // just Medicare — must surface the mismatch.
+  it("non-Medicare COB record (Fidelis → UHC StudentResources) → PRIMARY_PAYER_MISMATCH", () => {
+    const sg = suggestPrimary(mk({
+      gins: "Fidelis", payerName: "Fidelis Care New York", covtype: "Medicaid",
+      plan: "Essential Plan 1", primaryPayer: "United Healthcare Student Resource",
+    }));
+    expect(sg?.warnings.some((w) => w.code === "PRIMARY_PAYER_MISMATCH")).toBe(true);
+    expect(sg?.warnings.find((w) => w.code === "PRIMARY_PAYER_MISMATCH")?.message)
+      .toContain("United Healthcare Student Resource");
+    // NO suggestion at all (Brandon, 2026-07-20): the re-run against the
+    // named primary produces the suggestion — never a pill from this check.
+    expect(sg?.value).toBeNull();
+    expect(sg?.confidence).toBe("low");
+    expect(sg?.reason).toContain("re-run the check");
+  });
+
+  it("COB mismatch with unmapped primary carrier → null pick (Check card)", () => {
+    const sg = suggestPrimary(mk({
+      gins: "Fidelis", payerName: "Fidelis Care New York", covtype: "Medicaid",
+      plan: "Essential Plan 1", primaryPayer: "SOME EMPLOYER TRUST FUND",
+    }));
+    expect(sg?.value).toBeNull();
+    expect(sg?.warnings.some((w) => w.code === "PRIMARY_PAYER_MISMATCH")).toBe(true);
+  });
+
+  it("matching primary payer (payer name echoed) → no mismatch warning", () => {
+    const sg = suggestPrimary(mk({
+      gins: "Fidelis", payerName: "Fidelis Care New York", covtype: "Medicaid",
+      plan: "Essential Plan 1", primaryPayer: "Fidelis Care New York",
+    }));
+    expect(sg?.warnings.some((w) => w.code === "PRIMARY_PAYER_MISMATCH")).toBe(false);
+  });
+
+  it("Medicare MSP branch keeps MSP_PRIMARY only — no duplicate mismatch warning", () => {
+    const sg = suggestPrimary(mk({
+      gins: "Medicare A&B", payerName: "Medicare A&B", covtype: "Medicare A&B",
+      primaryPayer: "AETNA HEALTH INC.",
+    }));
+    expect(sg?.warnings.some((w) => w.code === "MSP_PRIMARY")).toBe(true);
+    expect(sg?.warnings.some((w) => w.code === "PRIMARY_PAYER_MISMATCH")).toBe(false);
+  });
+
+  it("primaryPayerMismatch treats Medicare/Medicare A&B and substrings as matches", () => {
+    expect(primaryPayerMismatch("Medicare", "Medicare A&B")).toBe(false);
+    expect(primaryPayerMismatch("ANTHEM", "ANTHEM")).toBe(false);
+    expect(primaryPayerMismatch("", "Fidelis Care New York")).toBe(false);
+    expect(primaryPayerMismatch("United Healthcare Student Resource", "Fidelis Care New York")).toBe(true);
   });
 
   it("Humana Gold Plus (MA) → Humana", () => {

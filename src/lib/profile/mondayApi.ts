@@ -28,6 +28,11 @@ export const COL = {
   stediMedicareJurisdiction: "text_mm298skc",
   stediMedicaidMltc: "text_mm29kccv",
   stediManagedMedicaid: "text_mm2vyta1",
+  // Who is actually primary — MSP payer name when CMS's COB file says a
+  // commercial plan is primary to Medicare, "Medicare" for plain A&B,
+  // parsed payer name otherwise. Written by the backend since 2026-07-15;
+  // wired into the UI 2026-07-20 for the §1b MSP soft block.
+  stediPrimaryPayer: "dropdown_mm594743",
   stediInNetwork: "text_mm1xehx8",
   stediPriorAuthRequired: "text_mm1xhymg",
   stediCoinsurance: "text_mm1xssyw",
@@ -53,6 +58,10 @@ export const COL = {
   stediGender: "dropdown_mm30thnj",
   stediMedicaidId: "text_mm31e5se",
   stediHomePlan: "dropdown_mm457xy2",
+  // "SNF/Hospice/Hospital" — active Hospice election / Hospital-SNF stay
+  // from the Medicare 271 (mirror of the Subscription Board column).
+  // Dropdown labels: "Hospice", "Hospital/SNF"; empty = none active.
+  stediFacilityFlags: "dropdown_mm5ex3d7",
 
   // Plan Name flows from Stedi → Insurance Plan dropdown on Submit
   insurancePlan: "dropdown_mm1y2x75",
@@ -139,7 +148,8 @@ export const READ_COLUMN_IDS: string[] = [
   COL.stediPayerName, COL.stediPlanName, COL.stediMedicareAdvantage,
   COL.stediMedicareAdvantageCarrier, COL.stediMedicareAdvantageMemberId,
   COL.stediQmb, COL.stediMedicareJurisdiction, COL.stediMedicaidMltc,
-  COL.stediManagedMedicaid, COL.stediInNetwork, COL.stediPriorAuthRequired,
+  COL.stediManagedMedicaid, COL.stediPrimaryPayer,
+  COL.stediInNetwork, COL.stediPriorAuthRequired,
   COL.stediCoinsurance, COL.stediCopay,
   COL.stediIndividualDeductible, COL.stediIndividualDeductibleRemaining,
   COL.stediFamilyDeductible, COL.stediFamilyDeductibleRemaining,
@@ -147,7 +157,7 @@ export const READ_COLUMN_IDS: string[] = [
   COL.stediFamilyOopMax, COL.stediFamilyOopMaxRemaining,
   COL.stediPlanBeginDate, COL.stediErrorDescription,
   COL.stediSecondaryMedicaidId,
-  COL.stediGender, COL.stediMedicaidId, COL.stediHomePlan,
+  COL.stediGender, COL.stediMedicaidId, COL.stediHomePlan, COL.stediFacilityFlags,
   // Insurance
   COL.primaryInsurance, COL.generalInsurance, COL.memberIdWorking,
   COL.memberId1, COL.memberId2, COL.secondaryInsurance,

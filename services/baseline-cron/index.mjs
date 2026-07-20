@@ -20,7 +20,10 @@
  *     with Parachute). chaseBenefits kept as the combined legacy total.
  *   welcomeCall — not escalated AND Follow Up !== "Done"
  *   finalConfirm — not escalated
- *   profile — Follow Up !== "Done"
+ *   profile / unverifiedReferrals — Follow Up !== "Done", split by referral:
+ *     Referral Type "Patient" OR Referral Source "CareCentrix" →
+ *     unverifiedReferrals, everything else → profile (Verified Referrals)
+ *     (rule mirrors src/lib/profile/referralSplit.ts)
  *   subscription — all items in the group
  *   systemMgmt — escalated patients across all boards
  *
@@ -68,6 +71,8 @@ const WC_FOLLOWUP_COL = "color_mm38w2tk"; // Follow Up
 const PROF_BOARD  = 18406352652;
 const PROF_GROUP  = "group_mm1xf2jb";
 const PROF_FOLLOWUP_COL = "color_mm3822qq"; // Follow Up
+const PROF_REFERRAL_TYPE_COL = "color_mm1wm4n4";   // Referral Type (role split)
+const PROF_REFERRAL_SOURCE_COL = "color_mm1w5wxr"; // Referral Source (role split)
 
 const SUB_BOARD   = 18407459988;
 const SUB_GROUP   = "topics";
@@ -197,11 +202,25 @@ async function countFinalConfirm() {
   return { count: active.length, ids: active.map((i) => i.id) };
 }
 
-/** Profile group: active = Follow Up !== "Done". */
+/** Profile group: active = Follow Up !== "Done", split into
+ *  profile (Verified Referrals) vs unverifiedReferrals by Referral Type
+ *  "Patient" OR Referral Source "CareCentrix" (mirrors
+ *  src/lib/profile/referralSplit.ts — only the TYPE column routes "Patient";
+ *  the SOURCE column has its own "Patient" label that must NOT match). */
 async function countProfile() {
-  const items = await fetchGroupItems(PROF_BOARD, PROF_GROUP, [PROF_FOLLOWUP_COL]);
+  const items = await fetchGroupItems(PROF_BOARD, PROF_GROUP, [
+    PROF_FOLLOWUP_COL, PROF_REFERRAL_TYPE_COL, PROF_REFERRAL_SOURCE_COL,
+  ]);
   const active = items.filter((i) => i.cols[PROF_FOLLOWUP_COL] !== "Done");
-  return { count: active.length, ids: active.map((i) => i.id) };
+  const isUnverified = (i) =>
+    (i.cols[PROF_REFERRAL_TYPE_COL] ?? "").trim().toLowerCase() === "patient" ||
+    (i.cols[PROF_REFERRAL_SOURCE_COL] ?? "").trim().toLowerCase() === "carecentrix";
+  const unverified = active.filter(isUnverified);
+  const verified = active.filter((i) => !isUnverified(i));
+  return {
+    counts: { profile: verified.length, unverifiedReferrals: unverified.length },
+    ids: { profile: verified.map((i) => i.id), unverifiedReferrals: unverified.map((i) => i.id) },
+  };
 }
 
 /** Subscription group: all items. */
@@ -301,7 +320,7 @@ async function main() {
     ...mashekeResult.counts,
     welcomeCall: welcomeCallResult.count,
     finalConfirm: finalConfirmResult.count,
-    profile: profileResult.count,
+    ...profileResult.counts,
     subscription: subscriptionResult.count,
     systemMgmt: systemMgmtCount,
   };
@@ -313,7 +332,7 @@ async function main() {
     ...mashekeResult.ids,
     welcomeCall: welcomeCallResult.ids,
     finalConfirm: finalConfirmResult.ids,
-    profile: profileResult.ids,
+    ...profileResult.ids,
     subscription: subscriptionResult.ids,
   };
 

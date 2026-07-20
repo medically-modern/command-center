@@ -59,6 +59,13 @@ export interface StediSnapshot {
    *  Coverage Type as plain "Medicaid" and puts the plan here — this column,
    *  not covtype, is how managed enrollment is detected. */
   managedMedicaid: string;
+  /** Who is actually PRIMARY per the eligibility check (dropdown_mm594743).
+   *  On a Medicare check this is the MSP payer name when CMS's COB file
+   *  says a commercial plan is primary to Medicare (§1b), "Medicare" for
+   *  plain A&B. Detection signal only — the CMS-reported name is often the
+   *  Section-111 claims processor, not the member-facing brand (Anthony
+   *  Thompson: "BLUE CROSS BLUE SHIELD S.C." was actually Florida Blue). */
+  primaryPayer: string;
 }
 
 /** Managed-Medicaid MCO name, or "" when blank or Stedi's "—" none-marker. */
@@ -188,7 +195,16 @@ function anthemSubType(inp: SuggestionInputs): Suggestion & { value: string } {
   // (Brandon, 2026-07-15 — trigger member JLJ730667355).
   if (/essential plan|\bep ?\d|ep standard|child health|\bchp\b|\bchip\b|chplus/i.test(plan)) { out.value = "Anthem BCBS Low-Cost (JLJ)"; out.reason = "Low-Cost"; return out as Suggestion & { value: string }; }
   if (cov === "Medicaid" || midHasJLJ(inp.memberId)) {
-    if (isMLTCplan(s)) { out.value = "Anthem BCBS Low-Cost (JLJ)"; out.reason = "MLTC"; return out as Suggestion & { value: string }; }
+    if (isMLTCplan(s)) {
+      out.value = "Anthem BCBS Low-Cost (JLJ)"; out.reason = "MLTC";
+      // Explicit warning, not just the reason line (Brandon, 2026-07-20 —
+      // Anjuman Begum): an MLTC member often has a Medicaid ID on the card,
+      // which tempts the Medicaid (JLJ) / straight-Medicaid route — but
+      // MLTC plans carve DME to the plan itself, so it bills as Low-Cost
+      // (JLJ) regardless of the Medicaid ID.
+      out.warnings.push({ code: "MLTC_PLAN", message: "MLTC plan (" + (s.plan || "per Stedi") + ") — bill the MLTC plan as Low-Cost (JLJ), NOT Medicaid (JLJ) or straight Medicaid, even if a Medicaid ID is on the card" });
+      return out as Suggestion & { value: string };
+    }
     out.value = "Anthem BCBS Medicaid (JLJ)"; out.reason = "Medicaid plan";
     out.warnings.push({ code: "CHECK_MEDICAID_ID", message: "Check ID card for Medicaid ID" });
     return out as Suggestion & { value: string };
@@ -294,7 +310,45 @@ function otherPayerSuggest(inp: SuggestionInputs): Suggestion {
   if (carrier === "cigna") { o.value = "Cigna"; o.confidence = "high"; o.reason = "Cigna payer → Cigna."; return o; }
   if (carrier === "humana") { o.value = "Humana"; o.confidence = "high"; o.reason = "Humana payer → Humana."; return o; }
   if (carrier === "medicare") {
-    if (isMedicareAdvantage(s)) { o.value = null; o.confidence = "low"; o.reason = "Medicare Advantage — carrier not mapped"; o.warnings.push({ code: "MA_UNMAPPED", message: "Medicare Advantage (" + (s.payerName || "unknown carrier") + ") — pick the carrier's Medicare plan or verify serviceability; not straight Medicare A&B" }); return o; }
+    if (isMedicareAdvantage(s)) {
+      o.value = null; o.confidence = "low"; o.reason = "Medicare Advantage — carrier not mapped";
+      // §1a HARD BLOCK (HANDOFF 2026-07-20): EB*U is authoritative current
+      // enrollment — there is no stale-record scenario where billing straight
+      // A&B works (Michael Hollander picked Medicare A&B past the warning;
+      // Deborah Passer's A&B pick will CO-24 deny). The "Medicare A&B"
+      // <option> in the primary select is also disabled while this flag is
+      // set (ProfilePage) — the warning alone was proven not enough.
+      // One combined warning, not MA_PRIMARY + MA_UNMAPPED stacked — the two
+      // read as duplicates on screen (Brandon, 2026-07-20). MA_PRIMARY carries
+      // both the hard-block statement and the "what to do instead" guidance.
+      o.warnings.push({ code: "MA_PRIMARY", message: "Patient has a Medicare Advantage plan — " + (s.payerName || "see card") + ". Medicare A&B is blocked for this patient; pick the carrier's Medicare plan or verify serviceability, and bill the MA payer." });
+      // QMB dual (almost always D-SNP): claims go to the MA payer; Medicaid is
+      // cost-share secondary only. Additive to MA_PRIMARY (Brandon, 2026-07-16).
+      if (/^yes/i.test(s.qmb || "")) o.warnings.push({ code: "MA_DUAL", message: "QMB dual — bill the MA payer; Medicaid is cost-share secondary only, do not route supplies to straight Medicaid" });
+      return o;
+    }
+    // §1b SOFT BLOCK (HANDOFF 2026-07-20): CMS's COB file says a commercial
+    // plan is PRIMARY to Medicare (MSP type 12/13/43 — employer group
+    // health / ESRD; situational auto/WC/liability records never reach this
+    // column). Medicare will deny primary claims while the record is open —
+    // even if the coverage has actually ended (Jacqueline Fuller: record
+    // added 07-08 via claim processing, coverage ended 05/2026), so this is
+    // a warning + review, not a hard block. The CMS entity name is a
+    // detection signal, NOT billing truth: get the commercial card, run the
+    // payer-side check, and route by the home plan from THAT 271.
+    const mspPayer = (s.primaryPayer || "").trim();
+    if (mspPayer && !/^medicare\b/i.test(mspPayer)) {
+      // NO suggestion on an MSP record (Brandon, 2026-07-20 — Baluyot):
+      // the rep must ALWAYS re-run the check against the commercial payer,
+      // and THAT check's result produces the Primary Insurance suggestion.
+      // The CMS entity name is a claims-processor alias, not routing truth
+      // — mapping it to a family here invited picking without re-checking.
+      o.confidence = "low";
+      o.warnings.push({ code: "MSP_PRIMARY", message: "Medicare's file shows " + mspPayer + " as PRIMARY — Medicare will DENY primary claims while this MSP record is open, even if that coverage has ended. Get the commercial card and run the payer-side check (the CMS name is often the claims processor, not the member-facing brand). If the patient confirms the coverage ended: BCRC 855-798-2627, then re-run the Stedi check in 72 hours." });
+      o.value = null;
+      o.reason = "Medicare is SECONDARY — re-run the check against " + mspPayer + "; that check produces the suggestion.";
+      return o;
+    }
     o.value = "Medicare A&B"; o.confidence = "high"; o.reason = "Straight Medicare A&B."; return o;
   }
   if (carrier === "medicaid") {
@@ -351,8 +405,48 @@ function blank(): Suggestion {
   return { value: null, reason: "", confidence: "low", pos: "", secondary: "", alternatives: [], warnings: [], needs: [] };
 }
 
-/** Main entry — suggest the Primary Insurance from Stedi output. Returns null before Stedi runs. */
+/** True when the eligibility check names a DIFFERENT payer as primary than
+ *  the payer that was checked (Stedi Primary Payer vs Stedi Payer Name).
+ *  "Medicare" vs "Medicare A&B" and substring variants count as a match.
+ *  Blank primary payer (items checked before the column existed) → false. */
+export function primaryPayerMismatch(primaryPayer: string, payerName: string): boolean {
+  const a = (primaryPayer || "").trim().toUpperCase();
+  const b = (payerName || "").trim().toUpperCase();
+  if (!a || !b) return false;
+  if (a === b || a.includes(b) || b.includes(a)) return false;
+  if (/^MEDICARE\b/.test(a) && /MEDICARE/.test(b)) return false;
+  return true;
+}
+
+/** Main entry — suggest the Primary Insurance from Stedi output. Returns null before Stedi runs.
+ *  Post-pass (Brandon, 2026-07-20 — Ryan Impellizeri, Fidelis EP with a UHC
+ *  StudentResources COB record): whenever the check names a different payer
+ *  as PRIMARY, every branch gets a PRIMARY_PAYER_MISMATCH warning and the
+ *  suggestion is WITHHELD entirely (null pick) — the rep ALWAYS re-runs the
+ *  check against the named primary, and THAT check's result produces the
+ *  suggestion. Medicare keeps its richer MSP_PRIMARY branch untouched. */
 export function suggestPrimary(inp: SuggestionInputs): Suggestion | null {
+  const sg = suggestPrimaryInner(inp);
+  if (
+    sg
+    && !sg.cantServe
+    && primaryPayerMismatch(inp.stedi.primaryPayer, inp.stedi.payerName)
+    && !sg.warnings.some((w) => w.code === "MSP_PRIMARY")
+  ) {
+    const pp = inp.stedi.primaryPayer.trim();
+    sg.warnings.push({
+      code: "PRIMARY_PAYER_MISMATCH",
+      message: (inp.stedi.payerName || "The payer") + " reports " + pp + " as the PRIMARY payer — this plan pays second. Get the primary card, run the check against that payer, and verify COB before billing.",
+    });
+    sg.value = null;
+    sg.confidence = "low";
+    sg.secondary = "";
+    sg.reason = (inp.stedi.payerName || "The payer") + " reports " + pp + " as primary — re-run the check against that payer; that check produces the suggestion.";
+  }
+  return sg;
+}
+
+function suggestPrimaryInner(inp: SuggestionInputs): Suggestion | null {
   if (!inp.stediDone) return null;
   if (!isCoverageActive(inp.stedi)) {
     return { value: null, reason: "Coverage came back inactive", confidence: "low", pos: "", secondary: "", alternatives: [], needs: [], warnings: [{ code: "INACTIVE", message: "Eligibility inactive — verify before selecting a Primary Insurance" }] };
@@ -395,7 +489,7 @@ export function suggestSecondary(inp: SuggestionInputs): string {
 
 // ── Patient → engine input adapter ──
 
-function truthy(v: string): boolean { return /^(yes|true|active|1)$/i.test((v || "").trim()); }
+export function truthy(v: string): boolean { return /^(yes|true|active|1)$/i.test((v || "").trim()); }
 
 /** Build engine inputs from a Patient. `stediDone` reflects whether a Stedi
  *  result has landed (plan name or active flag populated). */
@@ -418,6 +512,7 @@ export function buildSuggestionInputs(p: Patient): SuggestionInputs {
       ma: truthy(p.stediMedicareAdvantage ?? ""),
       mltc: truthy(p.stediMedicaidMltc ?? ""),
       managedMedicaid: managedMedicaidMco(p.stediManagedMedicaid ?? ""),
+      primaryPayer: (p.stediPrimaryPayer ?? "").trim(),
     },
   };
 }

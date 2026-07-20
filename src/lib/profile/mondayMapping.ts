@@ -43,6 +43,7 @@ export function mondayItemToPatient(item: MondayItem): Patient {
     stediMedicareJurisdiction: col(item, COL.stediMedicareJurisdiction),
     stediMedicaidMltc: col(item, COL.stediMedicaidMltc),
     stediManagedMedicaid: col(item, COL.stediManagedMedicaid),
+    stediPrimaryPayer: col(item, COL.stediPrimaryPayer),
     stediInNetwork: col(item, COL.stediInNetwork),
     stediPriorAuthRequired: col(item, COL.stediPriorAuthRequired),
     stediCoinsurance: col(item, COL.stediCoinsurance),
@@ -62,6 +63,7 @@ export function mondayItemToPatient(item: MondayItem): Patient {
     stediGender: col(item, COL.stediGender),
     stediMedicaidId: col(item, COL.stediMedicaidId),
     stediHomePlan: col(item, COL.stediHomePlan),
+    stediFacilityFlags: col(item, COL.stediFacilityFlags),
 
     // Notes
     notes: col(item, COL.notes),

@@ -2,12 +2,17 @@
  * Profile Send-Off — redesign face (Brandon's HTML) wrapped in the app's
  * standard chrome (navy header + PatientsSidebar), with the stepped content
  * scoped under .pf-root (see ./profile/redesign.css).
+ *
+ * Serves TWO roles off the same board/group (July 2026): Verified Referrals
+ * (/profile) and Unverified Referrals (/unverified-referrals), split by
+ * Referral Type/Source — see the `variant` prop + lib/profile/referralSplit.ts.
  */
 import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import type { ReactNode } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useMondayPatients } from "@/hooks/profile/useMondayPatients";
 import { useAutoSelectPatient } from "@/hooks/useAutoSelectPatient";
+import { isUnverifiedReferral } from "@/lib/profile/referralSplit";
 import { sidebarVisibleList } from "@/lib/profile/sidebarList";
 import { viewFilterFromParams } from "@/lib/roleView";
 import type { Patient } from "@/lib/profile/workflow";
@@ -26,7 +31,7 @@ import {
 import { NoteLog, stampNote } from "@/components/profile/NoteLog";
 import {
   suggestPrimary, suggestSecondary, buildSuggestionInputs, isCoverageActive, isNyMedicaidId,
-  managedMedicaidMco,
+  managedMedicaidMco, primaryPayerMismatch, truthy,
 } from "@/lib/profile/primaryInsurance";
 import { computeFirstAndRecurring } from "@/lib/profile/oopEstimate";
 import { interpretStediError } from "@/lib/profile/stediErrors";
@@ -74,13 +79,14 @@ const STEDI_SIGNATURE_KEYS: (keyof Patient)[] = [
   "stediEligibilityActive", "stediCoverageType", "stediPayerName",
   "stediMedicareAdvantage", "stediMedicareAdvantageCarrier", "stediMedicareAdvantageMemberId",
   "stediQmb", "stediMedicareJurisdiction", "stediMedicaidMltc", "stediManagedMedicaid",
+  "stediPrimaryPayer",
   "stediInNetwork", "stediPriorAuthRequired", "stediCoinsurance", "stediCopay",
   "stediIndividualDeductible", "stediIndividualDeductibleRemaining",
   "stediFamilyDeductible", "stediFamilyDeductibleRemaining",
   "stediIndividualOopMax", "stediIndividualOopMaxRemaining",
   "stediFamilyOopMax", "stediFamilyOopMaxRemaining",
   "stediPlanBeginDate", "stediErrorDescription", "stediSecondaryMedicaidId",
-  "stediPlanName", "stediGender", "stediMedicaidId", "stediHomePlan",
+  "stediPlanName", "stediGender", "stediMedicaidId", "stediHomePlan", "stediFacilityFlags",
 ];
 function stediSignature(p: Patient): string {
   return STEDI_SIGNATURE_KEYS.map((k) => String(p[k] ?? "")).join("␟");
@@ -94,13 +100,37 @@ const STEDI_UNCHANGED_MS = 35_000;
 /** Absolute cap — never spin past this. */
 const STEDI_TIMEOUT_MS = 95_000;
 
-const ProfilePage = () => {
+interface ProfilePageProps {
+  /** Which referral split this page serves (same board, group, panels and
+   *  writes — only the patient list differs):
+   *  "verified" (/profile) — everyone EXCEPT the unverified referrals;
+   *  "unverified" (/unverified-referrals) — ONLY Referral Type "Patient" or
+   *  Referral Source "CareCentrix" (lib/profile/referralSplit.ts). */
+  variant: "verified" | "unverified";
+}
+
+const ProfilePage = ({ variant }: ProfilePageProps) => {
   const { goBack } = useBackNavigation();
   const [searchParams] = useSearchParams();
   const {
-    patients, loading, initialLoading, error, refetch,
+    patients: allProfilePatients, loading, initialLoading, error, refetch,
     updateLocal, clearOverlay, removeOverlayKeys, saveOverlay, hasOverlay, getReceived,
   } = useMondayPatients(searchParams.get("patientId"));
+
+  // Role split: unverified = Referral Type "Patient" OR Referral Source
+  // "CareCentrix"; verified = everyone else. Deep-linked patients
+  // (?patientId=) stay visible regardless of split — mirrors the Chase
+  // Clinicals fax/parachute pattern.
+  const deepLinkedId = searchParams.get("patientId");
+  const patients = useMemo(
+    () =>
+      allProfilePatients.filter(
+        (p) =>
+          p.id === deepLinkedId ||
+          isUnverifiedReferral(p.referralType, p.referralSource) === (variant === "unverified"),
+      ),
+    [allProfilePatients, variant, deepLinkedId],
+  );
 
   const [selectedId, setSelectedId] = useState<string | null>(searchParams.get("patientId") ?? null);
   const [submitting, setSubmitting] = useState(false);
@@ -441,7 +471,9 @@ const ProfilePage = () => {
                 </div>
                 <div>
                   <p className="text-[10px] uppercase tracking-[0.2em] opacity-70">Medically Modern</p>
-                  <h1 className="text-2xl font-bold">Profile Send-Off</h1>
+                  <h1 className="text-2xl font-bold">
+                    Profile Send-Off — {variant === "unverified" ? "Unverified" : "Verified"} Referrals
+                  </h1>
                   {selected && (
                     <p className="text-sm opacity-80 mt-0.5 flex items-center gap-2">
                       {selected.name}
@@ -620,6 +652,10 @@ function ProfileBody(p: BodyProps) {
   // on the dedicated column — real Stedi writes Coverage Type as plain
   // "Medicaid", so a covtype check would never fire on real data.
   const managedMedicaid = managedMedicaidMco(pt.stediManagedMedicaid);
+  // The check named a DIFFERENT payer as primary than the payer checked
+  // (e.g. Fidelis EP reporting a UHC StudentResources COB record). Drives
+  // the red Primary Payer cell + the generic mismatch banner.
+  const ppMismatch = primaryPayerMismatch(pt.stediPrimaryPayer ?? "", pt.stediPayerName ?? "");
   // Referral-claimed Secondary Insurance — an UNVERIFIED intake claim, shown
   // as its own "From referral:" chip, never dressed up as a Suggestion.
   // Hidden when it duplicates the engine suggestion or the rep's pick, and
@@ -862,15 +898,94 @@ function ProfileBody(p: BodyProps) {
                 {/* Eligibility results — live from Monday's Stedi columns */}
                 {!p.stediRunning && !stediFailed && (pt.stediPlanName || pt.stediEligibilityActive) && (
                   <>
-                    {managedMedicaid && (
+                    {/* Managed Medicaid — suppressed when Stedi flags Medicare
+                        Advantage. An MA dual's MCO name can wrongly land in the
+                        Managed Medicaid column, and "supplies through Medicaid"
+                        is backwards for a member whose claims belong to the MA
+                        payer (Samira Delacruz, 2026-07-16). Belt-and-suspenders
+                        for the backend Y2 gate — protects even on stale data. */}
+                    {managedMedicaid && !truthy(pt.stediMedicareAdvantage) && (
                       <div className="warn-banner" style={{ marginTop: 16 }}>
                         <AlertTriangle className="h-4 w-4" />
                         <span><b>Managed Medicaid detected — {managedMedicaid}.</b> Supplies Only eligible — set Serving accordingly.</span>
                       </div>
                     )}
-                    <div className="res-grid" style={{ gridTemplateColumns: "repeat(3,1fr)", marginTop: 16 }}>
+                    {/* Medicare Advantage / dual — rendered from the MA columns
+                        the backend already writes (previously invisible in the
+                        UI, same class of bug as the original Managed Medicaid
+                        column). QMB dual gets the stronger D-SNP wording. */}
+                    {truthy(pt.stediMedicareAdvantage) && (
+                      <div className="warn-banner" style={{ marginTop: 16 }}>
+                        <AlertTriangle className="h-4 w-4" />
+                        {truthy(pt.stediQmb) ? (
+                          <span><b>Medicare Advantage detected — {pt.stediMedicareAdvantageCarrier || pt.stediPayerName}.</b> QMB dual — likely D-SNP; Medicaid is cost-share secondary only. Bill this payer (not Medicare A&B, not straight Medicaid) — verify network before serving.</span>
+                        ) : (
+                          <span><b>Medicare Advantage detected — {pt.stediMedicareAdvantageCarrier || pt.stediPayerName}.</b> Bill this payer — not straight Medicare A&B.</span>
+                        )}
+                      </div>
+                    )}
+                    {/* §1b MSP — Medicare is SECONDARY per CMS's COB file (MSP
+                        type 12/13/43: employer group health / ESRD; situational
+                        auto/WC records never reach this column). Soft block —
+                        the record can be stale (Jacqueline Fuller: added via
+                        claim processing after the coverage had ended), so the
+                        rep verifies with the patient and disputes via BCRC
+                        rather than being hard-stopped. The CMS name is a
+                        detection signal, not billing truth (Anthony Thompson:
+                        CMS said "BCBS S.C.", the billable home plan resolved to
+                        Florida Blue via the payer-side check).
+                        TODO(§1b columns): when the Stedi MSP COB Date / Record
+                        Updated / Source columns are created on the board, show
+                        them here ("COB from {date}; record updated {date},
+                        source: {code}") and add the structured override that
+                        writes "MSP disputed — BCRC needed" to the status
+                        column gating claims release. */}
+                    {!truthy(pt.stediMedicareAdvantage)
+                      && (pt.stediCoverageType || "").trim() === "Medicare A&B"
+                      && !!(pt.stediPrimaryPayer || "").trim()
+                      && !/^medicare\b/i.test((pt.stediPrimaryPayer || "").trim()) && (
+                      <div className="warn-banner" style={{ marginTop: 16 }}>
+                        <AlertTriangle className="h-4 w-4" />
+                        <span><b>Medicare's file shows {pt.stediPrimaryPayer.trim()} as PRIMARY.</b> Medicare will DENY primary claims while this MSP record is open — even if that coverage has ended. Get the commercial card and run the payer-side check (the CMS name is often the claims processor, not the member-facing brand). If the patient confirms the coverage ended: BCRC 855-798-2627, then re-run the Stedi check in 72 hours — a clean re-check is the all-clear.</span>
+                      </div>
+                    )}
+                    {/* Facility flags (Brandon, 2026-07-20) — active Hospice
+                        election / Hospital-SNF stay from the Medicare 271
+                        (mirror of the Subscription Board column). Medicare A&B
+                        only: hospice transfers Part B DME to the hospice
+                        benefit and a covered inpatient stay bundles DME, so
+                        claims deny while either is open. The backend clears
+                        the column on a clean re-check. */}
+                    {(pt.stediCoverageType || "").trim() === "Medicare A&B"
+                      && !!(pt.stediFacilityFlags || "").trim() && (
+                      <div className="warn-banner" style={{ marginTop: 16 }}>
+                        <AlertTriangle className="h-4 w-4" />
+                        <span>
+                          {/Hospice/i.test(pt.stediFacilityFlags)
+                            ? <><b>Active hospice election on file.</b> Medicare Part B DME will DENY while the election is open — supplies fall under the hospice benefit. Verify status with the patient before serving; a clean re-check clears this flag.</>
+                            : <><b>Active Hospital/SNF stay on file.</b> DME billed during a covered inpatient stay will deny — confirm discharge before shipping; a clean re-check clears this flag.</>}
+                          {/Hospice/i.test(pt.stediFacilityFlags) && /Hospital\/SNF/i.test(pt.stediFacilityFlags)
+                            ? <> Also shows an active Hospital/SNF stay.</> : null}
+                        </span>
+                      </div>
+                    )}
+                    {/* Non-Medicare COB mismatch — the check itself named a
+                        different PRIMARY payer (e.g. Fidelis EP reporting a UHC
+                        StudentResources record — Ryan Impellizeri, 2026-07-20).
+                        Medicare A&B checks keep the richer MSP banner above. */}
+                    {ppMismatch && (pt.stediCoverageType || "").trim() !== "Medicare A&B" && (
+                      <div className="warn-banner" style={{ marginTop: 16 }}>
+                        <AlertTriangle className="h-4 w-4" />
+                        <span><b>{pt.stediPayerName || "This payer"} reports {pt.stediPrimaryPayer.trim()} as PRIMARY.</b> This plan pays second — get the primary card, run the check against that payer, and verify coordination of benefits before billing.</span>
+                      </div>
+                    )}
+                    <div className="res-grid" style={{ gridTemplateColumns: "repeat(4,1fr)", marginTop: 16 }}>
                       <ResCell label="Active?" value={pt.stediEligibilityActive} bad={!!pt.stediEligibilityActive && !p.stediActive} />
                       <ResCell label="Payer Name" value={pt.stediPayerName} />
+                      {/* Always shown (Brandon, 2026-07-20): who is actually
+                          PRIMARY per the check. Red when it names a different
+                          payer than the one checked. */}
+                      <ResCell label="Primary Payer" value={pt.stediPrimaryPayer} bad={ppMismatch} />
                       <ResCell label="Plan Begin Date" value={pt.stediPlanBeginDate} />
                     </div>
                     <div className="res-grid" style={{ gridTemplateColumns: `repeat(${4 + (pt.stediQmb ? 1 : 0) + (pt.generalInsurance === "Medicaid" ? 1 : 0)},1fr)`, marginTop: 10 }}>
@@ -898,8 +1013,11 @@ function ProfileBody(p: BodyProps) {
                       <Field label="Primary Insurance" required>
                         <select className={pt.primaryInsurance ? "filled" : "need"} value={pt.primaryInsurance} onChange={(e) => p.onUpdate({ primaryInsurance: e.target.value })}>
                           <option value="" disabled hidden>Select…</option>
+                          {/* §1a hard block: an MA member can never bill straight
+                              Medicare A&B (EB*U is authoritative — Hollander
+                              picked A&B past the warning banner). */}
                           {groupPrimaryInsuranceLabels().map(({ group, labels }) => (
-                            <optgroup key={group} label={group}>{labels.map((l) => <option key={l}>{l}</option>)}</optgroup>
+                            <optgroup key={group} label={group}>{labels.map((l) => <option key={l} disabled={l === "Medicare A&B" && truthy(pt.stediMedicareAdvantage)}>{l}</option>)}</optgroup>
                           ))}
                         </select>
                         <SuggestionInline sg={p.suggestion} onPick={(v) => p.onUpdate({ primaryInsurance: v })} />
