@@ -424,22 +424,44 @@ export function primaryPayerMismatch(primaryPayer: string, payerName: string): b
   return true;
 }
 
+/** Commercial-family board label for a COB primary-payer name, or null when
+ *  unrecognizable (→ "Check card" null pick). Family only — the exact plan
+ *  comes from running the check against that payer. */
+function primaryPayerFamily(name: string): string | null {
+  const up = (name || "").toUpperCase();
+  if (/AETNA/.test(up)) return "Aetna Commercial";
+  if (/BLUE CROSS|BLUE SHIELD|BCBS|HORIZON|ANTHEM|EMPIRE|HIGHMARK|CAREFIRST/.test(up)) return "Anthem BCBS Commercial";
+  if (/UNITED|\bUHC\b|OXFORD/.test(up)) return "United Commercial";
+  if (/CIGNA/.test(up)) return "Cigna";
+  if (/HUMANA/.test(up)) return "Humana";
+  return null;
+}
+
 /** Main entry — suggest the Primary Insurance from Stedi output. Returns null before Stedi runs.
  *  Post-pass (Brandon, 2026-07-20 — Ryan Impellizeri, Fidelis EP with a UHC
  *  StudentResources COB record): whenever the check names a different payer
- *  as PRIMARY, every branch gets a PRIMARY_PAYER_MISMATCH warning — not just
- *  Medicare (which keeps its richer MSP_PRIMARY messaging). */
+ *  as PRIMARY, every branch gets a PRIMARY_PAYER_MISMATCH warning AND the
+ *  suggestion stops confidently picking the checked payer — it becomes the
+ *  primary payer's commercial family (low confidence) or the "Check card"
+ *  null pick. Medicare keeps its richer MSP_PRIMARY branch untouched. */
 export function suggestPrimary(inp: SuggestionInputs): Suggestion | null {
   const sg = suggestPrimaryInner(inp);
   if (
     sg
+    && !sg.cantServe
     && primaryPayerMismatch(inp.stedi.primaryPayer, inp.stedi.payerName)
     && !sg.warnings.some((w) => w.code === "MSP_PRIMARY")
   ) {
+    const pp = inp.stedi.primaryPayer.trim();
     sg.warnings.push({
       code: "PRIMARY_PAYER_MISMATCH",
-      message: (inp.stedi.payerName || "The payer") + " reports " + inp.stedi.primaryPayer.trim() + " as the PRIMARY payer — this plan pays second. Get the primary card, run the check against that payer, and verify COB before billing.",
+      message: (inp.stedi.payerName || "The payer") + " reports " + pp + " as the PRIMARY payer — this plan pays second. Get the primary card, run the check against that payer, and verify COB before billing.",
     });
+    const fam = primaryPayerFamily(pp);
+    sg.value = fam;
+    sg.confidence = "low";
+    sg.secondary = "";
+    sg.reason = (inp.stedi.payerName || "The payer") + " reports " + pp + " as primary" + (fam ? " — " + fam + " family; the payer-side check resolves the exact plan." : " — unmapped carrier; check the card.");
   }
   return sg;
 }

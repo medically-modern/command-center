@@ -274,6 +274,19 @@ describe("suggestPrimary — payer routing", () => {
     expect(sg?.warnings.some((w) => w.code === "PRIMARY_PAYER_MISMATCH")).toBe(true);
     expect(sg?.warnings.find((w) => w.code === "PRIMARY_PAYER_MISMATCH")?.message)
       .toContain("United Healthcare Student Resource");
+    // The pill must NOT confidently pick the checked payer (was "Fidelis
+    // Low-Cost") — it flips to the primary payer's family, low confidence.
+    expect(sg?.value).toBe("United Commercial");
+    expect(sg?.confidence).toBe("low");
+  });
+
+  it("COB mismatch with unmapped primary carrier → null pick (Check card)", () => {
+    const sg = suggestPrimary(mk({
+      gins: "Fidelis", payerName: "Fidelis Care New York", covtype: "Medicaid",
+      plan: "Essential Plan 1", primaryPayer: "SOME EMPLOYER TRUST FUND",
+    }));
+    expect(sg?.value).toBeNull();
+    expect(sg?.warnings.some((w) => w.code === "PRIMARY_PAYER_MISMATCH")).toBe(true);
   });
 
   it("matching primary payer (payer name echoed) → no mismatch warning", () => {
