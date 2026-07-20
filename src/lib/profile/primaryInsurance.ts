@@ -338,21 +338,15 @@ function otherPayerSuggest(inp: SuggestionInputs): Suggestion {
     // payer-side check, and route by the home plan from THAT 271.
     const mspPayer = (s.primaryPayer || "").trim();
     if (mspPayer && !/^medicare\b/i.test(mspPayer)) {
-      const up = mspPayer.toUpperCase();
+      // NO suggestion on an MSP record (Brandon, 2026-07-20 — Baluyot):
+      // the rep must ALWAYS re-run the check against the commercial payer,
+      // and THAT check's result produces the Primary Insurance suggestion.
+      // The CMS entity name is a claims-processor alias, not routing truth
+      // — mapping it to a family here invited picking without re-checking.
       o.confidence = "low";
       o.warnings.push({ code: "MSP_PRIMARY", message: "Medicare's file shows " + mspPayer + " as PRIMARY — Medicare will DENY primary claims while this MSP record is open, even if that coverage has ended. Get the commercial card and run the payer-side check (the CMS name is often the claims processor, not the member-facing brand). If the patient confirms the coverage ended: BCRC 855-798-2627, then re-run the Stedi check in 72 hours." });
-      if (/AETNA/.test(up)) {
-        o.value = "Aetna Commercial";
-        o.reason = "Medicare is SECONDARY — CMS reports " + mspPayer + " as primary (Aetna family). Medicare A&B becomes the secondary once confirmed.";
-        return o;
-      }
-      if (/BLUE CROSS|BLUE SHIELD|BCBS|HORIZON|ANTHEM|EMPIRE|HIGHMARK|CAREFIRST/.test(up)) {
-        o.value = "Anthem BCBS Commercial";
-        o.reason = "Medicare is SECONDARY — CMS reports " + mspPayer + " as primary (BCBS family — the payer-side check resolves the true home plan; do NOT assume Anthem NY for out-of-state Blues).";
-        return o;
-      }
       o.value = null;
-      o.reason = "Medicare is SECONDARY — CMS reports " + mspPayer + " as primary";
+      o.reason = "Medicare is SECONDARY — re-run the check against " + mspPayer + "; that check produces the suggestion.";
       return o;
     }
     o.value = "Medicare A&B"; o.confidence = "high"; o.reason = "Straight Medicare A&B."; return o;
@@ -424,26 +418,13 @@ export function primaryPayerMismatch(primaryPayer: string, payerName: string): b
   return true;
 }
 
-/** Commercial-family board label for a COB primary-payer name, or null when
- *  unrecognizable (→ "Check card" null pick). Family only — the exact plan
- *  comes from running the check against that payer. */
-function primaryPayerFamily(name: string): string | null {
-  const up = (name || "").toUpperCase();
-  if (/AETNA/.test(up)) return "Aetna Commercial";
-  if (/BLUE CROSS|BLUE SHIELD|BCBS|HORIZON|ANTHEM|EMPIRE|HIGHMARK|CAREFIRST/.test(up)) return "Anthem BCBS Commercial";
-  if (/UNITED|\bUHC\b|OXFORD/.test(up)) return "United Commercial";
-  if (/CIGNA/.test(up)) return "Cigna";
-  if (/HUMANA/.test(up)) return "Humana";
-  return null;
-}
-
 /** Main entry — suggest the Primary Insurance from Stedi output. Returns null before Stedi runs.
  *  Post-pass (Brandon, 2026-07-20 — Ryan Impellizeri, Fidelis EP with a UHC
  *  StudentResources COB record): whenever the check names a different payer
- *  as PRIMARY, every branch gets a PRIMARY_PAYER_MISMATCH warning AND the
- *  suggestion stops confidently picking the checked payer — it becomes the
- *  primary payer's commercial family (low confidence) or the "Check card"
- *  null pick. Medicare keeps its richer MSP_PRIMARY branch untouched. */
+ *  as PRIMARY, every branch gets a PRIMARY_PAYER_MISMATCH warning and the
+ *  suggestion is WITHHELD entirely (null pick) — the rep ALWAYS re-runs the
+ *  check against the named primary, and THAT check's result produces the
+ *  suggestion. Medicare keeps its richer MSP_PRIMARY branch untouched. */
 export function suggestPrimary(inp: SuggestionInputs): Suggestion | null {
   const sg = suggestPrimaryInner(inp);
   if (
@@ -457,11 +438,10 @@ export function suggestPrimary(inp: SuggestionInputs): Suggestion | null {
       code: "PRIMARY_PAYER_MISMATCH",
       message: (inp.stedi.payerName || "The payer") + " reports " + pp + " as the PRIMARY payer — this plan pays second. Get the primary card, run the check against that payer, and verify COB before billing.",
     });
-    const fam = primaryPayerFamily(pp);
-    sg.value = fam;
+    sg.value = null;
     sg.confidence = "low";
     sg.secondary = "";
-    sg.reason = (inp.stedi.payerName || "The payer") + " reports " + pp + " as primary" + (fam ? " — " + fam + " family; the payer-side check resolves the exact plan." : " — unmapped carrier; check the card.");
+    sg.reason = (inp.stedi.payerName || "The payer") + " reports " + pp + " as primary — re-run the check against that payer; that check produces the suggestion.";
   }
   return sg;
 }

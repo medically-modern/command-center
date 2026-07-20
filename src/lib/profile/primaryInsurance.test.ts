@@ -210,26 +210,27 @@ describe("suggestPrimary — payer routing", () => {
   });
 
   // §1b SOFT BLOCK (HANDOFF 2026-07-20) — Anthony Thompson: CMS COB file
-  // reports BCBS SC primary (MSP type 43, spouse's LGHP). Suggest the BCBS
-  // family, warn MSP_PRIMARY, never a green Medicare A&B.
-  it("MSP commercial-primary (BCBS) → Anthem BCBS Commercial + MSP_PRIMARY", () => {
+  // reports BCBS SC primary (MSP type 43, spouse's LGHP). NO suggestion
+  // (Brandon, 2026-07-20): the rep always re-runs the check against the
+  // commercial payer, and THAT check produces the suggestion.
+  it("MSP commercial-primary (BCBS) → NO suggestion + MSP_PRIMARY", () => {
     const sg = suggestPrimary(mk({
       gins: "Medicare A&B", payerName: "Medicare A&B", covtype: "Medicare A&B",
       primaryPayer: "BLUE CROSS BLUE SHIELD S.C.",
     }));
-    expect(sg?.value).toBe("Anthem BCBS Commercial");
+    expect(sg?.value).toBeNull();
     expect(sg?.confidence).toBe("low");
     expect(sg?.warnings.some((w) => w.code === "MSP_PRIMARY")).toBe(true);
+    expect(sg?.reason).toContain("re-run the check");
   });
 
-  // Jeremy Baluyot: Aetna Health type 43 — proves the mapping isn't
-  // BCBS-specific.
-  it("MSP commercial-primary (Aetna) → Aetna Commercial + MSP_PRIMARY", () => {
+  // Jeremy Baluyot: Aetna Health type 43 — same, no family mapping.
+  it("MSP commercial-primary (Aetna) → NO suggestion + MSP_PRIMARY", () => {
     const sg = suggestPrimary(mk({
       gins: "Medicare A&B", payerName: "Medicare A&B", covtype: "Medicare A&B",
       primaryPayer: "AETNA HEALTH INC.",
     }));
-    expect(sg?.value).toBe("Aetna Commercial");
+    expect(sg?.value).toBeNull();
     expect(sg?.warnings.some((w) => w.code === "MSP_PRIMARY")).toBe(true);
   });
 
@@ -274,10 +275,11 @@ describe("suggestPrimary — payer routing", () => {
     expect(sg?.warnings.some((w) => w.code === "PRIMARY_PAYER_MISMATCH")).toBe(true);
     expect(sg?.warnings.find((w) => w.code === "PRIMARY_PAYER_MISMATCH")?.message)
       .toContain("United Healthcare Student Resource");
-    // The pill must NOT confidently pick the checked payer (was "Fidelis
-    // Low-Cost") — it flips to the primary payer's family, low confidence.
-    expect(sg?.value).toBe("United Commercial");
+    // NO suggestion at all (Brandon, 2026-07-20): the re-run against the
+    // named primary produces the suggestion — never a pill from this check.
+    expect(sg?.value).toBeNull();
     expect(sg?.confidence).toBe("low");
+    expect(sg?.reason).toContain("re-run the check");
   });
 
   it("COB mismatch with unmapped primary carrier → null pick (Check card)", () => {
