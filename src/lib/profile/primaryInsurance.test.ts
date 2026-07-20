@@ -30,6 +30,7 @@ function mk(
       ma: o.ma ?? false,
       mltc: o.mltc ?? false,
       managedMedicaid: o.managedMedicaid ?? "",
+      primaryPayer: o.primaryPayer ?? "",
     },
   };
 }
@@ -166,6 +167,74 @@ describe("suggestPrimary — payer routing", () => {
     }));
     expect(sg?.warnings.some((w) => w.code === "MA_UNMAPPED")).toBe(true);
     expect(sg?.warnings.some((w) => w.code === "MA_DUAL")).toBe(false);
+  });
+
+  // §1a HARD BLOCK (HANDOFF 2026-07-20): Hollander picked Medicare A&B
+  // past the warning — MA now always carries MA_PRIMARY (and the select
+  // disables the Medicare A&B option off this same flag).
+  it("MA → MA_PRIMARY hard-block warning alongside MA_UNMAPPED", () => {
+    const sg = suggestPrimary(mk({
+      gins: "Medicare A&B", payerName: "UnitedHealthcare Group Medicare Advantage",
+      covtype: "Medicare Advantage", ma: true, qmb: "No",
+    }));
+    expect(sg?.value).toBeNull();
+    expect(sg?.warnings.some((w) => w.code === "MA_PRIMARY")).toBe(true);
+    expect(sg?.warnings.find((w) => w.code === "MA_PRIMARY")?.message)
+      .toContain("UnitedHealthcare Group Medicare Advantage");
+  });
+
+  // §1b SOFT BLOCK (HANDOFF 2026-07-20) — Anthony Thompson: CMS COB file
+  // reports BCBS SC primary (MSP type 43, spouse's LGHP). Suggest the BCBS
+  // family, warn MSP_PRIMARY, never a green Medicare A&B.
+  it("MSP commercial-primary (BCBS) → Anthem BCBS Commercial + MSP_PRIMARY", () => {
+    const sg = suggestPrimary(mk({
+      gins: "Medicare A&B", payerName: "Medicare A&B", covtype: "Medicare A&B",
+      primaryPayer: "BLUE CROSS BLUE SHIELD S.C.",
+    }));
+    expect(sg?.value).toBe("Anthem BCBS Commercial");
+    expect(sg?.confidence).toBe("low");
+    expect(sg?.warnings.some((w) => w.code === "MSP_PRIMARY")).toBe(true);
+  });
+
+  // Jeremy Baluyot: Aetna Health type 43 — proves the mapping isn't
+  // BCBS-specific.
+  it("MSP commercial-primary (Aetna) → Aetna Commercial + MSP_PRIMARY", () => {
+    const sg = suggestPrimary(mk({
+      gins: "Medicare A&B", payerName: "Medicare A&B", covtype: "Medicare A&B",
+      primaryPayer: "AETNA HEALTH INC.",
+    }));
+    expect(sg?.value).toBe("Aetna Commercial");
+    expect(sg?.warnings.some((w) => w.code === "MSP_PRIMARY")).toBe(true);
+  });
+
+  it("MSP primary with unmapped carrier → null pick + MSP_PRIMARY", () => {
+    const sg = suggestPrimary(mk({
+      gins: "Medicare A&B", payerName: "Medicare A&B", covtype: "Medicare A&B",
+      primaryPayer: "SOME EMPLOYER TRUST",
+    }));
+    expect(sg?.value).toBeNull();
+    expect(sg?.warnings.some((w) => w.code === "MSP_PRIMARY")).toBe(true);
+  });
+
+  // Asif Sheikh–type: situational MSP records (auto/WC) are filtered by the
+  // backend and never land in Stedi Primary Payer — a plain "Medicare"
+  // value must keep the green Medicare A&B pill.
+  it("Stedi Primary Payer = Medicare → normal Medicare A&B pill, no MSP block", () => {
+    const sg = suggestPrimary(mk({
+      gins: "Medicare A&B", payerName: "Medicare A&B", covtype: "Medicare A&B",
+      primaryPayer: "Medicare",
+    }));
+    expect(sg?.value).toBe("Medicare A&B");
+    expect(sg?.confidence).toBe("high");
+    expect(sg?.warnings.some((w) => w.code === "MSP_PRIMARY")).toBe(false);
+  });
+
+  it("blank Stedi Primary Payer (older items) → unchanged Medicare A&B pill", () => {
+    const sg = suggestPrimary(mk({
+      gins: "Medicare A&B", payerName: "Medicare A&B", covtype: "Medicare A&B",
+    }));
+    expect(sg?.value).toBe("Medicare A&B");
+    expect(sg?.warnings.length).toBe(0);
   });
 
   it("Humana Gold Plus (MA) → Humana", () => {

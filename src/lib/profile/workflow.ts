@@ -39,6 +39,11 @@ export interface Patient {
   stediMedicareJurisdiction: string;
   stediMedicaidMltc: string;
   stediManagedMedicaid: string;
+  /** Who is actually PRIMARY per the eligibility check — the MSP payer name
+   *  (e.g. "BLUE CROSS BLUE SHIELD S.C.") when CMS's COB file says a
+   *  commercial plan is primary to Medicare, "Medicare" for plain A&B,
+   *  parsed payer name otherwise (dropdown_mm594743). */
+  stediPrimaryPayer: string;
   stediInNetwork: string;
   stediPriorAuthRequired: string;
   stediCoinsurance: string;

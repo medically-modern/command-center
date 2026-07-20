@@ -79,6 +79,7 @@ const STEDI_SIGNATURE_KEYS: (keyof Patient)[] = [
   "stediEligibilityActive", "stediCoverageType", "stediPayerName",
   "stediMedicareAdvantage", "stediMedicareAdvantageCarrier", "stediMedicareAdvantageMemberId",
   "stediQmb", "stediMedicareJurisdiction", "stediMedicaidMltc", "stediManagedMedicaid",
+  "stediPrimaryPayer",
   "stediInNetwork", "stediPriorAuthRequired", "stediCoinsurance", "stediCopay",
   "stediIndividualDeductible", "stediIndividualDeductibleRemaining",
   "stediFamilyDeductible", "stediFamilyDeductibleRemaining",
@@ -919,6 +920,31 @@ function ProfileBody(p: BodyProps) {
                         )}
                       </div>
                     )}
+                    {/* §1b MSP — Medicare is SECONDARY per CMS's COB file (MSP
+                        type 12/13/43: employer group health / ESRD; situational
+                        auto/WC records never reach this column). Soft block —
+                        the record can be stale (Jacqueline Fuller: added via
+                        claim processing after the coverage had ended), so the
+                        rep verifies with the patient and disputes via BCRC
+                        rather than being hard-stopped. The CMS name is a
+                        detection signal, not billing truth (Anthony Thompson:
+                        CMS said "BCBS S.C.", the billable home plan resolved to
+                        Florida Blue via the payer-side check).
+                        TODO(§1b columns): when the Stedi MSP COB Date / Record
+                        Updated / Source columns are created on the board, show
+                        them here ("COB from {date}; record updated {date},
+                        source: {code}") and add the structured override that
+                        writes "MSP disputed — BCRC needed" to the status
+                        column gating claims release. */}
+                    {!truthy(pt.stediMedicareAdvantage)
+                      && (pt.stediCoverageType || "").trim() === "Medicare A&B"
+                      && !!(pt.stediPrimaryPayer || "").trim()
+                      && !/^medicare\b/i.test((pt.stediPrimaryPayer || "").trim()) && (
+                      <div className="warn-banner" style={{ marginTop: 16 }}>
+                        <AlertTriangle className="h-4 w-4" />
+                        <span><b>Medicare's file shows {pt.stediPrimaryPayer.trim()} as PRIMARY.</b> Medicare will DENY primary claims while this MSP record is open — even if that coverage has ended. Get the commercial card and run the payer-side check (the CMS name is often the claims processor, not the member-facing brand). If the patient confirms the coverage ended: BCRC 855-798-2627, then re-run the Stedi check in 1–2 weeks — a clean re-check is the all-clear.</span>
+                      </div>
+                    )}
                     <div className="res-grid" style={{ gridTemplateColumns: "repeat(3,1fr)", marginTop: 16 }}>
                       <ResCell label="Active?" value={pt.stediEligibilityActive} bad={!!pt.stediEligibilityActive && !p.stediActive} />
                       <ResCell label="Payer Name" value={pt.stediPayerName} />
@@ -949,8 +975,11 @@ function ProfileBody(p: BodyProps) {
                       <Field label="Primary Insurance" required>
                         <select className={pt.primaryInsurance ? "filled" : "need"} value={pt.primaryInsurance} onChange={(e) => p.onUpdate({ primaryInsurance: e.target.value })}>
                           <option value="" disabled hidden>Select…</option>
+                          {/* §1a hard block: an MA member can never bill straight
+                              Medicare A&B (EB*U is authoritative — Hollander
+                              picked A&B past the warning banner). */}
                           {groupPrimaryInsuranceLabels().map(({ group, labels }) => (
-                            <optgroup key={group} label={group}>{labels.map((l) => <option key={l}>{l}</option>)}</optgroup>
+                            <optgroup key={group} label={group}>{labels.map((l) => <option key={l} disabled={l === "Medicare A&B" && truthy(pt.stediMedicareAdvantage)}>{l}</option>)}</optgroup>
                           ))}
                         </select>
                         <SuggestionInline sg={p.suggestion} onPick={(v) => p.onUpdate({ primaryInsurance: v })} />

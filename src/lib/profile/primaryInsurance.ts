@@ -59,6 +59,13 @@ export interface StediSnapshot {
    *  Coverage Type as plain "Medicaid" and puts the plan here — this column,
    *  not covtype, is how managed enrollment is detected. */
   managedMedicaid: string;
+  /** Who is actually PRIMARY per the eligibility check (dropdown_mm594743).
+   *  On a Medicare check this is the MSP payer name when CMS's COB file
+   *  says a commercial plan is primary to Medicare (§1b), "Medicare" for
+   *  plain A&B. Detection signal only — the CMS-reported name is often the
+   *  Section-111 claims processor, not the member-facing brand (Anthony
+   *  Thompson: "BLUE CROSS BLUE SHIELD S.C." was actually Florida Blue). */
+  primaryPayer: string;
 }
 
 /** Managed-Medicaid MCO name, or "" when blank or Stedi's "—" none-marker. */
@@ -296,10 +303,45 @@ function otherPayerSuggest(inp: SuggestionInputs): Suggestion {
   if (carrier === "medicare") {
     if (isMedicareAdvantage(s)) {
       o.value = null; o.confidence = "low"; o.reason = "Medicare Advantage — carrier not mapped";
+      // §1a HARD BLOCK (HANDOFF 2026-07-20): EB*U is authoritative current
+      // enrollment — there is no stale-record scenario where billing straight
+      // A&B works (Michael Hollander picked Medicare A&B past the warning;
+      // Deborah Passer's A&B pick will CO-24 deny). The "Medicare A&B"
+      // <option> in the primary select is also disabled while this flag is
+      // set (ProfilePage) — the warning alone was proven not enough.
+      o.warnings.push({ code: "MA_PRIMARY", message: "Patient has a Medicare Advantage plan — " + (s.payerName || "see card") + ". Medicare A&B is blocked for this patient; bill the MA payer." });
       o.warnings.push({ code: "MA_UNMAPPED", message: "Medicare Advantage (" + (s.payerName || "unknown carrier") + ") — pick the carrier's Medicare plan or verify serviceability; not straight Medicare A&B" });
       // QMB dual (almost always D-SNP): claims go to the MA payer; Medicaid is
       // cost-share secondary only. Additive to MA_UNMAPPED (Brandon, 2026-07-16).
       if (/^yes/i.test(s.qmb || "")) o.warnings.push({ code: "MA_DUAL", message: "QMB dual — bill the MA payer; Medicaid is cost-share secondary only, do not route supplies to straight Medicaid" });
+      return o;
+    }
+    // §1b SOFT BLOCK (HANDOFF 2026-07-20): CMS's COB file says a commercial
+    // plan is PRIMARY to Medicare (MSP type 12/13/43 — employer group
+    // health / ESRD; situational auto/WC/liability records never reach this
+    // column). Medicare will deny primary claims while the record is open —
+    // even if the coverage has actually ended (Jacqueline Fuller: record
+    // added 07-08 via claim processing, coverage ended 05/2026), so this is
+    // a warning + review, not a hard block. The CMS entity name is a
+    // detection signal, NOT billing truth: get the commercial card, run the
+    // payer-side check, and route by the home plan from THAT 271.
+    const mspPayer = (s.primaryPayer || "").trim();
+    if (mspPayer && !/^medicare\b/i.test(mspPayer)) {
+      const up = mspPayer.toUpperCase();
+      o.confidence = "low";
+      o.warnings.push({ code: "MSP_PRIMARY", message: "Medicare's file shows " + mspPayer + " as PRIMARY — Medicare will DENY primary claims while this MSP record is open, even if that coverage has ended. Get the commercial card and run the payer-side check (the CMS name is often the claims processor, not the member-facing brand). If the patient confirms the coverage ended: BCRC 855-798-2627, then re-run the Stedi check in 1–2 weeks." });
+      if (/AETNA/.test(up)) {
+        o.value = "Aetna Commercial";
+        o.reason = "Medicare is SECONDARY — CMS reports " + mspPayer + " as primary (Aetna family). Medicare A&B becomes the secondary once confirmed.";
+        return o;
+      }
+      if (/BLUE CROSS|BLUE SHIELD|BCBS|HORIZON|ANTHEM|EMPIRE|HIGHMARK|CAREFIRST/.test(up)) {
+        o.value = "Anthem BCBS Commercial";
+        o.reason = "Medicare is SECONDARY — CMS reports " + mspPayer + " as primary (BCBS family — the payer-side check resolves the true home plan; do NOT assume Anthem NY for out-of-state Blues).";
+        return o;
+      }
+      o.value = null;
+      o.reason = "Medicare is SECONDARY — CMS reports " + mspPayer + " as primary";
       return o;
     }
     o.value = "Medicare A&B"; o.confidence = "high"; o.reason = "Straight Medicare A&B."; return o;
@@ -425,6 +467,7 @@ export function buildSuggestionInputs(p: Patient): SuggestionInputs {
       ma: truthy(p.stediMedicareAdvantage ?? ""),
       mltc: truthy(p.stediMedicaidMltc ?? ""),
       managedMedicaid: managedMedicaidMco(p.stediManagedMedicaid ?? ""),
+      primaryPayer: (p.stediPrimaryPayer ?? "").trim(),
     },
   };
 }
