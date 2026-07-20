@@ -4,7 +4,7 @@
 // deterministic routing rules. Run: npx vitest run src/lib/profile/primaryInsurance.test.ts
 import { describe, it, expect } from "vitest";
 import {
-  suggestPrimary, suggestSecondary, isCoverageActive,
+  suggestPrimary, suggestSecondary, isCoverageActive, primaryPayerMismatch,
   type SuggestionInputs, type StediSnapshot,
 } from "./primaryInsurance";
 
@@ -261,6 +261,43 @@ describe("suggestPrimary — payer routing", () => {
     }));
     expect(sg?.value).toBe("Medicare A&B");
     expect(sg?.warnings.length).toBe(0);
+  });
+
+  // Ryan Impellizeri (Brandon, 2026-07-20): Fidelis Essential Plan 271 with a
+  // 2120 NM1*PRP naming UHC StudentResources as PRIMARY. Every branch — not
+  // just Medicare — must surface the mismatch.
+  it("non-Medicare COB record (Fidelis → UHC StudentResources) → PRIMARY_PAYER_MISMATCH", () => {
+    const sg = suggestPrimary(mk({
+      gins: "Fidelis", payerName: "Fidelis Care New York", covtype: "Medicaid",
+      plan: "Essential Plan 1", primaryPayer: "United Healthcare Student Resource",
+    }));
+    expect(sg?.warnings.some((w) => w.code === "PRIMARY_PAYER_MISMATCH")).toBe(true);
+    expect(sg?.warnings.find((w) => w.code === "PRIMARY_PAYER_MISMATCH")?.message)
+      .toContain("United Healthcare Student Resource");
+  });
+
+  it("matching primary payer (payer name echoed) → no mismatch warning", () => {
+    const sg = suggestPrimary(mk({
+      gins: "Fidelis", payerName: "Fidelis Care New York", covtype: "Medicaid",
+      plan: "Essential Plan 1", primaryPayer: "Fidelis Care New York",
+    }));
+    expect(sg?.warnings.some((w) => w.code === "PRIMARY_PAYER_MISMATCH")).toBe(false);
+  });
+
+  it("Medicare MSP branch keeps MSP_PRIMARY only — no duplicate mismatch warning", () => {
+    const sg = suggestPrimary(mk({
+      gins: "Medicare A&B", payerName: "Medicare A&B", covtype: "Medicare A&B",
+      primaryPayer: "AETNA HEALTH INC.",
+    }));
+    expect(sg?.warnings.some((w) => w.code === "MSP_PRIMARY")).toBe(true);
+    expect(sg?.warnings.some((w) => w.code === "PRIMARY_PAYER_MISMATCH")).toBe(false);
+  });
+
+  it("primaryPayerMismatch treats Medicare/Medicare A&B and substrings as matches", () => {
+    expect(primaryPayerMismatch("Medicare", "Medicare A&B")).toBe(false);
+    expect(primaryPayerMismatch("ANTHEM", "ANTHEM")).toBe(false);
+    expect(primaryPayerMismatch("", "Fidelis Care New York")).toBe(false);
+    expect(primaryPayerMismatch("United Healthcare Student Resource", "Fidelis Care New York")).toBe(true);
   });
 
   it("Humana Gold Plus (MA) → Humana", () => {

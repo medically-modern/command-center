@@ -411,8 +411,40 @@ function blank(): Suggestion {
   return { value: null, reason: "", confidence: "low", pos: "", secondary: "", alternatives: [], warnings: [], needs: [] };
 }
 
-/** Main entry — suggest the Primary Insurance from Stedi output. Returns null before Stedi runs. */
+/** True when the eligibility check names a DIFFERENT payer as primary than
+ *  the payer that was checked (Stedi Primary Payer vs Stedi Payer Name).
+ *  "Medicare" vs "Medicare A&B" and substring variants count as a match.
+ *  Blank primary payer (items checked before the column existed) → false. */
+export function primaryPayerMismatch(primaryPayer: string, payerName: string): boolean {
+  const a = (primaryPayer || "").trim().toUpperCase();
+  const b = (payerName || "").trim().toUpperCase();
+  if (!a || !b) return false;
+  if (a === b || a.includes(b) || b.includes(a)) return false;
+  if (/^MEDICARE\b/.test(a) && /MEDICARE/.test(b)) return false;
+  return true;
+}
+
+/** Main entry — suggest the Primary Insurance from Stedi output. Returns null before Stedi runs.
+ *  Post-pass (Brandon, 2026-07-20 — Ryan Impellizeri, Fidelis EP with a UHC
+ *  StudentResources COB record): whenever the check names a different payer
+ *  as PRIMARY, every branch gets a PRIMARY_PAYER_MISMATCH warning — not just
+ *  Medicare (which keeps its richer MSP_PRIMARY messaging). */
 export function suggestPrimary(inp: SuggestionInputs): Suggestion | null {
+  const sg = suggestPrimaryInner(inp);
+  if (
+    sg
+    && primaryPayerMismatch(inp.stedi.primaryPayer, inp.stedi.payerName)
+    && !sg.warnings.some((w) => w.code === "MSP_PRIMARY")
+  ) {
+    sg.warnings.push({
+      code: "PRIMARY_PAYER_MISMATCH",
+      message: (inp.stedi.payerName || "The payer") + " reports " + inp.stedi.primaryPayer.trim() + " as the PRIMARY payer — this plan pays second. Get the primary card, run the check against that payer, and verify COB before billing.",
+    });
+  }
+  return sg;
+}
+
+function suggestPrimaryInner(inp: SuggestionInputs): Suggestion | null {
   if (!inp.stediDone) return null;
   if (!isCoverageActive(inp.stedi)) {
     return { value: null, reason: "Coverage came back inactive", confidence: "low", pos: "", secondary: "", alternatives: [], needs: [], warnings: [{ code: "INACTIVE", message: "Eligibility inactive — verify before selecting a Primary Insurance" }] };

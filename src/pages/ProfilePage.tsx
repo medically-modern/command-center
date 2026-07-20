@@ -31,7 +31,7 @@ import {
 import { NoteLog, stampNote } from "@/components/profile/NoteLog";
 import {
   suggestPrimary, suggestSecondary, buildSuggestionInputs, isCoverageActive, isNyMedicaidId,
-  managedMedicaidMco, truthy,
+  managedMedicaidMco, primaryPayerMismatch, truthy,
 } from "@/lib/profile/primaryInsurance";
 import { computeFirstAndRecurring } from "@/lib/profile/oopEstimate";
 import { interpretStediError } from "@/lib/profile/stediErrors";
@@ -652,6 +652,10 @@ function ProfileBody(p: BodyProps) {
   // on the dedicated column — real Stedi writes Coverage Type as plain
   // "Medicaid", so a covtype check would never fire on real data.
   const managedMedicaid = managedMedicaidMco(pt.stediManagedMedicaid);
+  // The check named a DIFFERENT payer as primary than the payer checked
+  // (e.g. Fidelis EP reporting a UHC StudentResources COB record). Drives
+  // the red Primary Payer cell + the generic mismatch banner.
+  const ppMismatch = primaryPayerMismatch(pt.stediPrimaryPayer ?? "", pt.stediPayerName ?? "");
   // Referral-claimed Secondary Insurance — an UNVERIFIED intake claim, shown
   // as its own "From referral:" chip, never dressed up as a Suggestion.
   // Hidden when it duplicates the engine suggestion or the rep's pick, and
@@ -945,9 +949,23 @@ function ProfileBody(p: BodyProps) {
                         <span><b>Medicare's file shows {pt.stediPrimaryPayer.trim()} as PRIMARY.</b> Medicare will DENY primary claims while this MSP record is open — even if that coverage has ended. Get the commercial card and run the payer-side check (the CMS name is often the claims processor, not the member-facing brand). If the patient confirms the coverage ended: BCRC 855-798-2627, then re-run the Stedi check in 72 hours — a clean re-check is the all-clear.</span>
                       </div>
                     )}
-                    <div className="res-grid" style={{ gridTemplateColumns: "repeat(3,1fr)", marginTop: 16 }}>
+                    {/* Non-Medicare COB mismatch — the check itself named a
+                        different PRIMARY payer (e.g. Fidelis EP reporting a UHC
+                        StudentResources record — Ryan Impellizeri, 2026-07-20).
+                        Medicare A&B checks keep the richer MSP banner above. */}
+                    {ppMismatch && (pt.stediCoverageType || "").trim() !== "Medicare A&B" && (
+                      <div className="warn-banner" style={{ marginTop: 16 }}>
+                        <AlertTriangle className="h-4 w-4" />
+                        <span><b>{pt.stediPayerName || "This payer"} reports {pt.stediPrimaryPayer.trim()} as PRIMARY.</b> This plan pays second — get the primary card, run the check against that payer, and verify coordination of benefits before billing.</span>
+                      </div>
+                    )}
+                    <div className="res-grid" style={{ gridTemplateColumns: "repeat(4,1fr)", marginTop: 16 }}>
                       <ResCell label="Active?" value={pt.stediEligibilityActive} bad={!!pt.stediEligibilityActive && !p.stediActive} />
                       <ResCell label="Payer Name" value={pt.stediPayerName} />
+                      {/* Always shown (Brandon, 2026-07-20): who is actually
+                          PRIMARY per the check. Red when it names a different
+                          payer than the one checked. */}
+                      <ResCell label="Primary Payer" value={pt.stediPrimaryPayer} bad={ppMismatch} />
                       <ResCell label="Plan Begin Date" value={pt.stediPlanBeginDate} />
                     </div>
                     <div className="res-grid" style={{ gridTemplateColumns: `repeat(${4 + (pt.stediQmb ? 1 : 0) + (pt.generalInsurance === "Medicaid" ? 1 : 0)},1fr)`, marginTop: 10 }}>
