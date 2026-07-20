@@ -54,6 +54,7 @@ const SAM_GROUPS  = {
 };
 const SAM_ESC_COL      = "color_mm2vsh2f"; // Escalation
 const SAM_FOLLOWUP_COL = "color_mm34jz1x"; // Follow Up
+const SAM_FOLLOWUP_DATE_COL = "date_mm34m2dz"; // Follow Up Date (daily bucket)
 
 const MESH_BOARD  = 18406060017;
 const MESH_GROUP  = "group_mm1xf2jb";
@@ -142,12 +143,20 @@ async function fetchGroupItems(boardId, groupId, columnIds) {
 
 /* ── Role counters (each returns { count, ids }) ──────────── */
 
-/** Samantha group: active = not escalated AND Follow Up !== "Follow Up". */
-async function countSamGroup(groupId) {
-  const items = await fetchGroupItems(SAM_BOARD, groupId, [SAM_ESC_COL, SAM_FOLLOWUP_COL]);
-  const active = items.filter(
-    (i) => i.cols[SAM_ESC_COL] !== ESC_REQUIRED && i.cols[SAM_FOLLOWUP_COL] !== "Follow Up",
-  );
+/** Samantha group: active = not escalated AND not snoozed.
+ *  Daily bucket (2026-07-20): a Follow Up only hides the patient while its
+ *  date is in the FUTURE — when the date arrives (<= today ET) the patient
+ *  counts active again; dateless follow-ups stay snoozed. Mirrors
+ *  useRoleCounts.ts samActive + sidebarList.isSnoozedFollowUp (SS5.8
+ *  counting contract — change all of them together). */
+async function countSamGroup(groupId, todayStr) {
+  const items = await fetchGroupItems(SAM_BOARD, groupId, [SAM_ESC_COL, SAM_FOLLOWUP_COL, SAM_FOLLOWUP_DATE_COL]);
+  const snoozed = (i) => {
+    if (i.cols[SAM_FOLLOWUP_COL] !== "Follow Up") return false;
+    const d = i.cols[SAM_FOLLOWUP_DATE_COL];
+    return !d || d > todayStr;
+  };
+  const active = items.filter((i) => i.cols[SAM_ESC_COL] !== ESC_REQUIRED && !snoozed(i));
   return { count: active.length, ids: active.map((i) => i.id) };
 }
 
@@ -302,9 +311,9 @@ async function main() {
     profileResult, subscriptionResult,
     systemMgmtCount,
   ] = await Promise.all([
-    countSamGroup(SAM_GROUPS.benefits),
-    countSamGroup(SAM_GROUPS.submitAuth),
-    countSamGroup(SAM_GROUPS.authOutstanding),
+    countSamGroup(SAM_GROUPS.benefits, easternDate),
+    countSamGroup(SAM_GROUPS.submitAuth, easternDate),
+    countSamGroup(SAM_GROUPS.authOutstanding, easternDate),
     countMashekeStages(easternDate),
     countWelcomeCall(),
     countFinalConfirm(),

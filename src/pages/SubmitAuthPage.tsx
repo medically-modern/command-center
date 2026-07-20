@@ -2,9 +2,9 @@
  * Submit Auth — the redesigned single-step auth-submission tab
  * (HANDOFF-Josh-Submit-Auth.md + submit-auth-redesign.html, July 2026).
  *
- * Kept from the old page: the patients sidebar, the navy top bar (Follow
- * Up / Save / Reset / Report Issue + Clinicals), the 30s poll + local
- * overlay machinery, deep links, Follow Up + Escalation form modals.
+ * Kept from the old page: the patients sidebar, the navy top bar (Save /
+ * Reset / Report Issue + Clinicals), the 30s poll + local overlay
+ * machinery, deep links.
  *
  * Changed per the handoff: the editable PatientProfileCard is replaced by
  * the read-only BenefitsPatientHeader (§8 — header is fed by Profile
@@ -13,6 +13,11 @@
  * gone (DVS moves to its own stage, §10); SoS UI is gone (§3); sends are
  * gated on every card having Method + Date (+ number for Call/Fax, §7);
  * Reference Notes move to the sticky rail (Benefits pattern).
+ *
+ * Removed 2026-07-20 (Josh): the Follow Up button + modal and the
+ * Escalate button + form. Follow-up is automatic — the send stamps
+ * Follow Up Date = today, and the sidebar's per-patient "+1d" button
+ * pushes a patient to tomorrow (they auto-return when the date arrives).
  */
 import { useMemo, useState } from "react";
 import { useMondayPatients } from "@/hooks/samantha/useMondayPatients";
@@ -30,14 +35,11 @@ import { NotesPanel } from "@/components/samantha/NotesPanel";
 import { PatientsSidebar } from "@/components/samantha/PatientsSidebar";
 import { Button } from "@/components/ui/button";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
-import { RotateCcw, Stethoscope, ArrowLeft, Clock, Save } from "lucide-react";
+import { RotateCcw, Stethoscope, ArrowLeft, Save } from "lucide-react";
 import { toast } from "sonner";
 import { sendPatientToMonday } from "@/lib/samantha/mondayWrite";
-import { writeLongText, writeStatusIndex, COL } from "@/lib/samantha/mondayApi";
-import { EscalationFormModal } from "@/components/shared/EscalationFormModal";
+import { writeLongText, COL } from "@/lib/samantha/mondayApi";
 import { PageLoadingOverlay } from "@/components/shared/PageLoadingOverlay";
-import { ESCALATION_INDEX } from "@/lib/samantha/mondayMapping";
-import { FollowUpModal } from "@/components/samantha/FollowUpModal";
 import { useSearchParams } from "react-router-dom";
 import { useBackNavigation } from "@/hooks/useBackNavigation";
 import { ReportIssueButton } from "@/components/shared/ReportIssueButton";
@@ -52,13 +54,11 @@ const SubmitAuthPage = () => {
   const [searchParams] = useSearchParams();
   const isEscalated = searchParams.get("escalated") === "1";
   const isManager = searchParams.get("manager") === "1";
-  const [escalationModalOpen, setEscalationModalOpen] = useState(false);
   const { patients, loading, initialLoading, error, refetch, update, clearOverlay, saveOverlay, hasOverlay } =
     useMondayPatients("submitAuth", searchParams.get("patientId"));
   const [selectedId, setSelectedId] = useState<string | null>(
     searchParams.get("patientId") ?? null,
   );
-  const [followUpOpen, setFollowUpOpen] = useState(false);
   /** Patient just sent successfully — suppress the panel until the board
    *  automation moves them off this list (same pattern as Benefits). */
   const [lastSentId, setLastSentId] = useState<string | null>(null);
@@ -146,9 +146,6 @@ const SubmitAuthPage = () => {
               </div>
               <div className="flex items-center gap-2">
                 {selected && <ClinicalsDownloadButton itemId={selected.id} />}
-                <Button onClick={() => setFollowUpOpen(true)} disabled={!selected} className="gap-2 bg-white/90 text-blue-700 hover:bg-white shadow-elevate">
-                  <Clock className="h-4 w-4" /> Follow Up
-                </Button>
                 <Button
                   onClick={() => {
                     if (!selected) return;
@@ -202,8 +199,6 @@ const SubmitAuthPage = () => {
                           onIntakeIdChange={(v) => update(selected.id, { carecentrixIntakeId: v })}
                           missing={missing}
                           onSend={handleSend}
-                          onToggleEscalate={() => update(selected.id, { escalated: !selected.escalated })}
-                          onOpenEscalationForm={() => setEscalationModalOpen(true)}
                         />
                       )}
                     </div>
@@ -229,26 +224,6 @@ const SubmitAuthPage = () => {
         </div>
       </div>
 
-      {selected && (
-        <FollowUpModal
-          open={followUpOpen}
-          onOpenChange={setFollowUpOpen}
-          patientId={selected.id}
-          patientName={selected.name}
-          onSuccess={refetch}
-        />
-      )}
-      {selected && (
-        <EscalationFormModal
-          open={escalationModalOpen}
-          onOpenChange={setEscalationModalOpen}
-          patientId={selected.id}
-          patientName={selected.name}
-          writeEscalationStatus={async (id) => { await writeStatusIndex(id, COL.escalation, ESCALATION_INDEX.required); }}
-          writeEscalationNotes={async (id, text) => { await writeLongText(id, COL.escalationNotes, text); }}
-          onSuccess={refetch}
-        />
-      )}
     </SidebarProvider>
   );
 };

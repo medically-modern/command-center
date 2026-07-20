@@ -57,6 +57,7 @@ const MESH_METHOD_COL = "color_mm1xw7y5";  // Clinicals Method (chase fax/parach
 // Samantha
 const SAM_ESC_COL = "color_mm2vsh2f";      // Escalation
 const SAM_FOLLOWUP_COL = "color_mm34jz1x"; // Follow Up
+const SAM_FOLLOWUP_DATE_COL = "date_mm34m2dz"; // Follow Up Date (daily bucket)
 // Welcome Call board (shared by welcomeCall + finalConfirm groups)
 const WC_ESC_COL = "color_mm1x7997";       // Escalation
 const WC_FOLLOWUP_COL = "color_mm38w2tk";  // Follow Up
@@ -280,14 +281,22 @@ export function useRoleCounts(opts?: { roleIds?: string[] }) {
 
     const todayStr = new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
 
-    // Samantha group → active (not escalated, not follow-up) + escalated.
+    // Samantha group → active (not escalated, not snoozed) + escalated.
+    // Daily bucket (2026-07-20): a Follow Up only hides the patient while
+    // its date is in the FUTURE — when the date arrives (≤ today ET) the
+    // patient counts active again. Dateless follow-ups stay snoozed.
+    // Mirrors sidebarList.isSnoozedFollowUp + both baseline generators
+    // (§5.8 counting contract — change all of them together).
     const samActive = async (groupId: string, roleId: string) => {
       if (!samHasToken()) return;
-      const items = await fetchBoardGroupItemsLight(SAM_BOARD_ID, groupId, [SAM_ESC_COL, SAM_FOLLOWUP_COL]);
+      const items = await fetchBoardGroupItemsLight(SAM_BOARD_ID, groupId, [SAM_ESC_COL, SAM_FOLLOWUP_COL, SAM_FOLLOWUP_DATE_COL]);
       const escN = items.filter((i) => i.cols[SAM_ESC_COL] === ESC_REQUIRED).length;
-      const active = items.filter(
-        (i) => i.cols[SAM_ESC_COL] !== ESC_REQUIRED && i.cols[SAM_FOLLOWUP_COL] !== "Follow Up",
-      );
+      const snoozed = (i: (typeof items)[number]) => {
+        if (i.cols[SAM_FOLLOWUP_COL] !== "Follow Up") return false;
+        const d = i.cols[SAM_FOLLOWUP_DATE_COL];
+        return !d || d > todayStr;
+      };
+      const active = items.filter((i) => i.cols[SAM_ESC_COL] !== ESC_REQUIRED && !snoozed(i));
       merge({ [roleId]: active.length }, { [roleId]: escN }, { [roleId]: active.map((i) => i.id) });
     };
 

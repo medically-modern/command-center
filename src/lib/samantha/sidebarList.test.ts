@@ -6,7 +6,7 @@
 // Auth Outstanding group re-sorts the main list by daysSinceStageIndex
 // descending. Run: npx vitest run src/lib/samantha/sidebarList.test.ts
 import { describe, it, expect } from "vitest";
-import { sidebarSections, sidebarVisibleList } from "./sidebarList";
+import { isSnoozedFollowUp, sidebarSections, sidebarVisibleList } from "./sidebarList";
 import type { Patient } from "./workflow";
 
 const p = (over: Partial<Patient>): Patient =>
@@ -143,6 +143,43 @@ describe("sidebarVisibleList — authOutstanding sort", () => {
       "fuLate",
       "fuEarly",
     ]);
+  });
+});
+
+describe("daily bucket — Follow Up Date auto-return (2026-07-20)", () => {
+  const TODAY = "2026-07-20";
+
+  it("isSnoozedFollowUp: future date snoozes; due date or no status does not; dateless stays snoozed", () => {
+    expect(isSnoozedFollowUp(p({ followUp: "Follow Up", followUpDate: "2026-07-21" }), TODAY)).toBe(true);
+    expect(isSnoozedFollowUp(p({ followUp: "Follow Up", followUpDate: "2026-07-20" }), TODAY)).toBe(false);
+    expect(isSnoozedFollowUp(p({ followUp: "Follow Up", followUpDate: "2026-07-19" }), TODAY)).toBe(false);
+    expect(isSnoozedFollowUp(p({ followUp: "Follow Up" }), TODAY)).toBe(true); // legacy dateless
+    expect(isSnoozedFollowUp(p({ followUpDate: "2026-07-25" }), TODAY)).toBe(false); // no status
+  });
+
+  it("a due follow-up auto-returns to the active list; a future one stays in the section", () => {
+    const patients = [
+      p({ id: "due", followUp: "Follow Up", followUpDate: "2026-07-20" }),
+      p({ id: "past", followUp: "Follow Up", followUpDate: "2026-07-18" }),
+      p({ id: "tomorrow", followUp: "Follow Up", followUpDate: "2026-07-21" }),
+      p({ id: "active" }),
+    ];
+    expect(ids(sidebarVisibleList(patients, "nonEscalated", "submitAuth", TODAY))).toEqual([
+      "due",
+      "past",
+      "active",
+      "tomorrow",
+    ]);
+  });
+
+  it("escalated + future follow-up stays in the both section; escalated + due goes to escalated", () => {
+    const patients = [
+      p({ id: "escDue", escalated: true, followUp: "Follow Up", followUpDate: "2026-07-20" }),
+      p({ id: "escFuture", escalated: true, followUp: "Follow Up", followUpDate: "2026-07-22" }),
+    ];
+    const s = sidebarSections(patients, "all", "benefits", TODAY);
+    expect(ids(s.escalatedPatients)).toEqual(["escDue"]);
+    expect(ids(s.bothPatients)).toEqual(["escFuture"]);
   });
 });
 

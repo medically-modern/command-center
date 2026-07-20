@@ -42,7 +42,6 @@ import {
   submitAuthCards,
 } from "@/lib/samantha/submitAuthRules";
 import { etTodayYmd, ymdToUs } from "@/lib/samantha/benefitsDerive";
-import { EscalateButton } from "./EscalateButton";
 import { Repeat, Package } from "lucide-react";
 import "./benefitsRedesign.css";
 import "./submitAuthRedesign.css";
@@ -73,8 +72,6 @@ interface Props {
   onIntakeIdChange: (value: string) => void;
   missing: string[];
   onSend: () => Promise<void>;
-  onToggleEscalate: () => void;
-  onOpenEscalationForm: () => void;
 }
 
 function cardComplete(state: ProductCodeState | undefined): boolean {
@@ -292,8 +289,6 @@ export function AuthorizationsPanel({
   onIntakeIdChange,
   missing,
   onSend,
-  onToggleEscalate,
-  onOpenEscalationForm,
 }: Props) {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [sendState, setSendState] = useState<"idle" | "sending" | "success" | "error">("idle");
@@ -478,8 +473,8 @@ export function AuthorizationsPanel({
               <h3>Main columns</h3>
               <p className="msub">
                 One write each per send. Follow Up Date is stamped <b>today</b> so the patient lands
-                in tomorrow-or-sooner's Auth Outstanding bucket. Escalation follows the manual
-                toggle only — Submit Auth has no auto-escalation rules.
+                in tomorrow-or-sooner's Auth Outstanding bucket. Escalation carries the patient's
+                existing flag — Submit Auth has no escalation controls or auto-rules.
               </p>
               <div className="mon-rows">
                 <MonRow label="Stage Advancer" value="Auth. Outstanding" tone="warn" />
@@ -555,13 +550,11 @@ export function AuthorizationsPanel({
         )}
 
         <div className="foot-actions">
-          <div className="foot-left">
-            <EscalateButton
-              escalated={!!patient.escalated}
-              onToggle={onToggleEscalate}
-              onOpenForm={onOpenEscalationForm}
-            />
-          </div>
+          {/* No Follow Up / Escalate controls here (removed 2026-07-20):
+              follow-up is automatic (send stamps today; the sidebar's +1d
+              button pushes a patient to tomorrow), and escalation state
+              just carries through the send round-trip. */}
+          <div className="foot-left" />
           <button
             className={`send-btn ${sendState === "error" ? "err" : ""}`}
             disabled={missing.length > 0 || sendState === "sending"}
