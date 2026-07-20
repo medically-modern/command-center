@@ -309,10 +309,12 @@ function otherPayerSuggest(inp: SuggestionInputs): Suggestion {
       // Deborah Passer's A&B pick will CO-24 deny). The "Medicare A&B"
       // <option> in the primary select is also disabled while this flag is
       // set (ProfilePage) — the warning alone was proven not enough.
-      o.warnings.push({ code: "MA_PRIMARY", message: "Patient has a Medicare Advantage plan — " + (s.payerName || "see card") + ". Medicare A&B is blocked for this patient; bill the MA payer." });
-      o.warnings.push({ code: "MA_UNMAPPED", message: "Medicare Advantage (" + (s.payerName || "unknown carrier") + ") — pick the carrier's Medicare plan or verify serviceability; not straight Medicare A&B" });
+      // One combined warning, not MA_PRIMARY + MA_UNMAPPED stacked — the two
+      // read as duplicates on screen (Brandon, 2026-07-20). MA_PRIMARY carries
+      // both the hard-block statement and the "what to do instead" guidance.
+      o.warnings.push({ code: "MA_PRIMARY", message: "Patient has a Medicare Advantage plan — " + (s.payerName || "see card") + ". Medicare A&B is blocked for this patient; pick the carrier's Medicare plan or verify serviceability, and bill the MA payer." });
       // QMB dual (almost always D-SNP): claims go to the MA payer; Medicaid is
-      // cost-share secondary only. Additive to MA_UNMAPPED (Brandon, 2026-07-16).
+      // cost-share secondary only. Additive to MA_PRIMARY (Brandon, 2026-07-16).
       if (/^yes/i.test(s.qmb || "")) o.warnings.push({ code: "MA_DUAL", message: "QMB dual — bill the MA payer; Medicaid is cost-share secondary only, do not route supplies to straight Medicaid" });
       return o;
     }

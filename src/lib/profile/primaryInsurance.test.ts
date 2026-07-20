@@ -139,46 +139,49 @@ describe("suggestPrimary — payer routing", () => {
     expect(sg?.value).toBe("Medicare A&B");
   });
 
-  it("unmapped Medicare Advantage → no confident pick + MA_UNMAPPED", () => {
+  it("unmapped Medicare Advantage → no confident pick + MA_PRIMARY", () => {
     const sg = suggestPrimary(mk({
       gins: "Medicare A&B", payerName: "Senior Whole Health Medicare Complete Care",
       plan: "Senior Whole Health Medicare Complete Care", covtype: "Medicare Advantage", ma: true, qmb: "Yes",
     }));
     expect(sg?.value).toBeNull();
-    expect(sg?.warnings.some((w) => w.code === "MA_UNMAPPED")).toBe(true);
+    expect(sg?.warnings.some((w) => w.code === "MA_PRIMARY")).toBe(true);
   });
 
   // Samira Delacruz (2026-07-16): MA + QMB=Yes → D-SNP dual. MA_DUAL rides
-  // alongside MA_UNMAPPED; the "Check card" null pick is unchanged.
-  it("MA + QMB=Yes → MA_DUAL alongside MA_UNMAPPED", () => {
+  // alongside MA_PRIMARY; the "Check card" null pick is unchanged.
+  it("MA + QMB=Yes → MA_DUAL alongside MA_PRIMARY", () => {
     const sg = suggestPrimary(mk({
       gins: "Medicare A&B", payerName: "Senior Whole Health of New York",
       plan: "Senior Whole Health", covtype: "Medicare Advantage", ma: true, qmb: "Yes",
     }));
     expect(sg?.value).toBeNull();
-    expect(sg?.warnings.some((w) => w.code === "MA_UNMAPPED")).toBe(true);
+    expect(sg?.warnings.some((w) => w.code === "MA_PRIMARY")).toBe(true);
     expect(sg?.warnings.some((w) => w.code === "MA_DUAL")).toBe(true);
   });
 
-  it("MA without QMB → MA_UNMAPPED only, no MA_DUAL", () => {
+  it("MA without QMB → MA_PRIMARY only, no MA_DUAL", () => {
     const sg = suggestPrimary(mk({
       gins: "Medicare A&B", payerName: "Some MA Carrier",
       plan: "Some MA Advantage", covtype: "Medicare Advantage", ma: true, qmb: "No",
     }));
-    expect(sg?.warnings.some((w) => w.code === "MA_UNMAPPED")).toBe(true);
+    expect(sg?.warnings.some((w) => w.code === "MA_PRIMARY")).toBe(true);
     expect(sg?.warnings.some((w) => w.code === "MA_DUAL")).toBe(false);
   });
 
   // §1a HARD BLOCK (HANDOFF 2026-07-20): Hollander picked Medicare A&B
   // past the warning — MA now always carries MA_PRIMARY (and the select
   // disables the Medicare A&B option off this same flag).
-  it("MA → MA_PRIMARY hard-block warning alongside MA_UNMAPPED", () => {
+  it("MA → single MA_PRIMARY hard-block warning (no duplicate MA_UNMAPPED)", () => {
     const sg = suggestPrimary(mk({
       gins: "Medicare A&B", payerName: "UnitedHealthcare Group Medicare Advantage",
       covtype: "Medicare Advantage", ma: true, qmb: "No",
     }));
     expect(sg?.value).toBeNull();
     expect(sg?.warnings.some((w) => w.code === "MA_PRIMARY")).toBe(true);
+    // No duplicate second MA warning (Brandon, 2026-07-20).
+    expect(sg?.warnings.some((w) => w.code === "MA_UNMAPPED")).toBe(false);
+    expect(sg?.warnings.filter((w) => w.code === "MA_PRIMARY").length).toBe(1);
     expect(sg?.warnings.find((w) => w.code === "MA_PRIMARY")?.message)
       .toContain("UnitedHealthcare Group Medicare Advantage");
   });
