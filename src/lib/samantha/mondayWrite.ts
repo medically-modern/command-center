@@ -22,7 +22,7 @@ import {
   UNIVERSAL_INDEX,
 } from "./mondayMapping";
 import type { Patient, ProductCodeId, ProductCodeState } from "./workflow";
-import { EMPTY_INSURANCE, deriveInsuranceOutcome, computeNextOrderDates } from "./workflow";
+import { EMPTY_INSURANCE, deriveInsuranceOutcome, computeNextOrderDates, isNegUniversal } from "./workflow";
 import {
   appendCallLog,
   composeCallLogLines,
@@ -97,6 +97,17 @@ export async function sendPatientToMonday(p: Patient, context: "benefits" | "sub
   // benefitsDerive.ts). Other contexts keep the state they hydrated.
   const todayEt = etTodayYmd();
   const hasMedicaidIns = patientHasMedicaidIns(p.primaryInsurance ?? "", p.secondaryInsurance ?? "");
+
+  // Failed-check path (Medicare-not-Primary handoff §2–§4): any negative
+  // universal answer at Benefits means step 2 never ran — write ONLY the
+  // universal checks + Escalation + Stage Advancer (+ notes/call log/profile)
+  // and leave every per-product column untouched, even if stale step-2 facts
+  // linger locally behind the disabled UI. Benefits context ONLY: in the auth
+  // groups a board "Stuck" hydrates back as not-confirmed and must never
+  // suppress auth writes there.
+  const universalNegative =
+    context === "benefits" && Object.values(rawIns.universal).some(isNegUniversal);
+
   let ins = rawIns;
   if (context === "benefits") {
     const derivedCodes: typeof rawIns.codes = { ...rawIns.codes };
@@ -127,7 +138,8 @@ export async function sendPatientToMonday(p: Patient, context: "benefits" | "sub
       columnId: COL.activeNetwork,
       fn: () => writeStatusIndex(p.id, COL.activeNetwork, UNIVERSAL_INDEX.activeNetwork.pass),
     });
-  } else if (inNet === "not-confirmed" || active === "not-confirmed") {
+  } else if (isNegUniversal(inNet) || isNegUniversal(active)) {
+    // "Medicare not Primary" counts as not-confirmed here (handoff §4).
     tasks.push({
       label: "Active/Network",
       columnId: COL.activeNetwork,
@@ -187,9 +199,10 @@ export async function sendPatientToMonday(p: Patient, context: "benefits" | "sub
   }
   const effectiveIns = { ...ins, codes: effectiveCodes };
 
-  // Write auth result for served products (skip for authOutstanding — handled separately below)
+  // Write auth result for served products (skip for authOutstanding — handled
+  // separately below; skip entirely on the failed-check path — step 2 never ran)
   const servedProductKeys = new Set(entries.map((e) => PRODUCT_CODE_TO_PRODUCT_ID[e.cid]));
-  if (context !== "authOutstanding") {
+  if (context !== "authOutstanding" && !universalNegative) {
   for (const { cid, state, isMedicaidSupply } of entries) {
     if (!state?.auth) continue;
     const productId = PRODUCT_CODE_TO_PRODUCT_ID[cid];
@@ -230,7 +243,7 @@ export async function sendPatientToMonday(p: Patient, context: "benefits" | "sub
 
   // Write "Not Serving" for products NOT in this patient's serving type
   // Skip when in submit-auth flow — leave other auth results untouched
-  if (context !== "submitAuth" && context !== "authOutstanding") {
+  if (context !== "submitAuth" && context !== "authOutstanding" && !universalNegative) {
     const allProductIds = Object.keys(COL.authResult) as Array<keyof typeof COL.authResult>;
     for (const prodKey of allProductIds) {
       if (!servedProductKeys.has(prodKey)) {
@@ -253,6 +266,7 @@ export async function sendPatientToMonday(p: Patient, context: "benefits" | "sub
     return (e.state?.sos as "" | "clear" | "not-clear" | "skip" | undefined) ?? "";
   };
 
+  if (!universalNegative) {
   const notClearIds = entries
     .filter((e) => effectiveSos(e) === "not-clear")
     .map((e) => NOT_CLEAR_PRODUCT_ID[e.cid])
@@ -272,8 +286,10 @@ export async function sendPatientToMonday(p: Patient, context: "benefits" | "sub
     columnId: COL.skipSosProducts,
     fn: () => writeDropdownIds(p.id, COL.skipSosProducts, skipIds),
   });
+  }
 
   // ----- Per-product Last Bill Date (date — when SoS = Not Clear OR Auth = No Auth Needed) -----
+  if (!universalNegative) {
   for (const { cid, state } of entries) {
     const productId = PRODUCT_CODE_TO_PRODUCT_ID[cid];
     const lastBillDateCol = COL.lastBillDate[productId];
@@ -294,9 +310,10 @@ export async function sendPatientToMonday(p: Patient, context: "benefits" | "sub
       });
     }
   }
+  }
 
   // ----- Calculated Next Order Dates (3 columns) -----
-  {
+  if (!universalNegative) {
     // A product whose effective SoS is Skip is deferred — its entered
     // last-bill date contributes nothing to next-order math (spec §1:
     // "Any previously entered date/units are ignored while Auth = Required").
@@ -335,7 +352,7 @@ export async function sendPatientToMonday(p: Patient, context: "benefits" | "sub
   const allFilled =
     states.length > 0 &&
     entries.every((e) => !!e.state?.auth && !!effectiveSos(e));
-  if (allFilled) {
+  if (allFilled && !universalNegative) {
     const anyAuth = states.some((s) => s?.auth === "required");
     const anyNotClear = entries.some((e) => effectiveSos(e) === "not-clear");
     const anySkip = entries.some((e) => effectiveSos(e) === "skip");
@@ -479,10 +496,12 @@ export async function sendPatientToMonday(p: Patient, context: "benefits" | "sub
   // landed (repeat sends of the same blocker don't duplicate).
   let notesForSend: string | undefined = typeof p.notes === "string" ? p.notes : undefined;
   if (context === "benefits" && escalationDecision === "required") {
+    // On the failed-check path the reason cites only the failed checks —
+    // pump SoS facts behind the disabled step 2 are stale, not findings.
     const reason = composeEscalationReason(
       ins,
-      ins.codes["pump"]?.sos ?? "",
-      ins.codes["pump"]?.lastBillDate,
+      universalNegative ? "" : (ins.codes["pump"]?.sos ?? ""),
+      universalNegative ? undefined : ins.codes["pump"]?.lastBillDate,
       todayEt,
     );
     if (reason && !(notesForSend ?? "").includes(reason)) {
@@ -491,14 +510,15 @@ export async function sendPatientToMonday(p: Patient, context: "benefits" | "sub
   }
 
   // ----- Never Billed attestations (Medicare A&B) -----
-  if (ins.neverBilledIsCar) {
+  // Skipped on the failed-check path — derived from step-2 facts that never ran.
+  if (ins.neverBilledIsCar && !universalNegative) {
     tasks.push({
       label: "Never billed IS/Car",
       columnId: COL.neverBilledIsCar,
       fn: () => writeStatusIndex(p.id, COL.neverBilledIsCar, 0),
     });
   }
-  if (ins.neverBilledCgm) {
+  if (ins.neverBilledCgm && !universalNegative) {
     tasks.push({
       label: "Never billed CGM",
       columnId: COL.neverBilledCgm,
@@ -512,9 +532,11 @@ export async function sendPatientToMonday(p: Patient, context: "benefits" | "sub
     // every billed product (even derived-Clear), cleared otherwise so stale
     // facts never linger. Deliberately SEPARATE from the legacy lastBillDate
     // columns, whose date-presence still encodes "Not Clear" downstream.
-    // Facts are ignored while the product's auth is pending (spec §1).
+    // Facts are ignored while the product's auth is pending (spec §1), and
+    // the whole family is untouched on the failed-check path (handoff §4).
     const ALL_CODE_IDS = Object.keys(PRODUCT_CODE_TO_PRODUCT_ID) as ProductCodeId[];
     const servedCids = new Set(entries.map((e) => e.cid));
+    if (!universalNegative)
     for (const cid of ALL_CODE_IDS) {
       const productId = PRODUCT_CODE_TO_PRODUCT_ID[cid];
       const st = ins.codes[cid];
@@ -549,9 +571,11 @@ export async function sendPatientToMonday(p: Patient, context: "benefits" | "sub
     // Call logs (D8) + "TBD" pump date (D1). Read the current values ONCE so
     // each write is a single pre-composed, retry-idempotent value (no
     // double-append on retry — RELIABILITY_AUDIT §H pattern).
+    // Step-1 payer calls always land; the step-2 log + TBD pump date are
+    // step-2 outputs, skipped on the failed-check path (handoff §2/§4).
     const rows1 = (ins.callsUniversal ?? []).filter((r) => !isBlankCallRow(r));
-    const rows2 = (ins.callsSosAuth ?? []).filter((r) => !isBlankCallRow(r));
-    const pumpDateTbd = !!ins.neverBilledIsCar; // derived: Medicare A&B + IS AND Cartridges never billed
+    const rows2 = universalNegative ? [] : (ins.callsSosAuth ?? []).filter((r) => !isBlankCallRow(r));
+    const pumpDateTbd = !universalNegative && !!ins.neverBilledIsCar; // derived: Medicare A&B + IS AND Cartridges never billed
     if (rows1.length > 0 || rows2.length > 0 || pumpDateTbd) {
       const current = await readColumnTexts(p.id, [
         COL.benefitsCallLog,

@@ -25,7 +25,7 @@ import type {
   ProductCodeState,
   UniversalChoice,
 } from "@/lib/samantha/workflow";
-import { EMPTY_INSURANCE, PRODUCT_CODES } from "@/lib/samantha/workflow";
+import { EMPTY_INSURANCE, PRODUCT_CODES, isNegUniversal } from "@/lib/samantha/workflow";
 import type { ResolvedProduct } from "@/lib/samantha/hcpcRules";
 import {
   isAutoFilledMedicaidSupply,
@@ -34,8 +34,10 @@ import {
 } from "@/lib/samantha/hcpcRules";
 import {
   addDaysYmd,
+  anyUniversalNegative,
   deriveBenefitsPreview,
   etTodayYmd,
+  failedUniversalChecks,
   patientHasMedicaidIns,
   sosEntryComplete,
   ymdToUs,
@@ -316,9 +318,15 @@ export function BenefitsPanel({
   const universalCount = Object.values(ins.universal).filter((v) => v === "confirmed").length;
   const universalDone = universalCount === 3;
 
-  // Medicare A&B only (traditional, no secondary): show the HMO/MSP/Inpatient
-  // hazard reminder on the In-Network card, and a MAC-jurisdiction pill in the
-  // step-1 header when the address state maps. Display-only (Brandon §3).
+  // Any negative check (Out-of-Network / Medicare not Primary / Not Active /
+  // Not Covered): step 2 gates off, submission opens up, sending escalates
+  // (Medicare-not-Primary handoff §2–§3).
+  const gated = anyUniversalNegative(ins);
+
+  // Medicare A&B only (traditional, no secondary): Check 1 gains a third
+  // answer — "Medicare not Primary" — and the MAC-jurisdiction pill shows in
+  // the step-1 header when the address state maps. (The old HMO/MSP/Inpatient
+  // hazard bullets are gone — replaced by the third answer, handoff §1.)
   const showMedicareAB = isMedicareABOnly(
     patient.primaryInsurance ?? "",
     patient.secondaryInsurance ?? "",
@@ -413,10 +421,14 @@ export function BenefitsPanel({
         <div className="uc-grid" style={{ marginTop: 14 }}>
           {UNIVERSAL_META.map((meta, i) => {
             const v = ins.universal[meta.id];
+            // Medicare A&B only: In-Network gets a third answer — "Medicare
+            // not Primary" — rendered 3-across; it behaves exactly like
+            // Out-of-Network downstream (handoff §1).
+            const medNP = meta.id === "in-network" && showMedicareAB;
             return (
               <div
                 key={meta.id}
-                className={`subcard ${v === "confirmed" ? "ok" : v === "not-confirmed" ? "bad" : ""}`}
+                className={`subcard ${v === "confirmed" ? "ok" : isNegUniversal(v) ? "bad" : ""}`}
               >
                 <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
                   <Phone size={18} style={{ color: "var(--mm-teal)", flexShrink: 0 }} />
@@ -424,20 +436,8 @@ export function BenefitsPanel({
                     <div className="uc-tag">CHECK 0{i + 1}</div>
                     <div className="uc-title">{meta.label}</div>
                   </div>
-                  {/* Medicare A&B only — reminder to probe the three things that
-                      most often reroute a "straight A&B" claim (Brandon §3). */}
-                  {i === 0 && showMedicareAB && (
-                    <div className="uc-warn">
-                      <AlertTriangle size={15} strokeWidth={2.2} />
-                      <ul>
-                        <li><b>HMO</b> (Medicare Adv)</li>
-                        <li><b>MSP</b> (Secondary Payer)</li>
-                        <li><b>Inpatient</b> (Hospital/SNF)</li>
-                      </ul>
-                    </div>
-                  )}
                 </div>
-                <div className="seg" role="radiogroup" aria-label={meta.label}>
+                <div className={`seg ${medNP ? "seg-3" : ""}`} role="radiogroup" aria-label={meta.label}>
                   <button
                     className={`g ${v === "confirmed" ? "sel-g" : ""}`}
                     role="radio"
@@ -456,6 +456,21 @@ export function BenefitsPanel({
                   >
                     {meta.no}
                   </button>
+                  {medNP && (
+                    <button
+                      className={`r ${v === "medicare-not-primary" ? "sel-r" : ""}`}
+                      role="radio"
+                      aria-checked={v === "medicare-not-primary"}
+                      onClick={() =>
+                        onUniversalChange(
+                          meta.id,
+                          v === "medicare-not-primary" ? "" : "medicare-not-primary",
+                        )
+                      }
+                    >
+                      Medicare not Primary
+                    </button>
+                  )}
                 </div>
               </div>
             );
@@ -495,33 +510,45 @@ export function BenefitsPanel({
 
         {ready && visibleResolved.length > 0 && (
           <>
-            <div className="prod-list">
-              {visibleResolved.map((r) => (
-                <ProductCard
-                  key={r.product}
-                  resolved={r}
-                  state={ins.codes[PRODUCT_TO_CODE_ID[r.product]]}
-                  hasMedicaid={hasMedicaid}
-                  onChange={(patch) => onCodeChange(PRODUCT_TO_CODE_ID[r.product], patch)}
-                />
-              ))}
-            </div>
-            {hiddenMedicaidSupplies.length > 0 && (
-              <div className="dvs-note">
+            {gated && (
+              <div className="gate-note">
+                <AlertTriangle size={20} strokeWidth={2} />
                 <span>
-                  <b>{hiddenMedicaidSupplies.map((r) => PRODUCT_LABELS[r.product]).join(" & ")}</b>{" "}
-                  will be handled at the DVS stage.
+                  <b>{failedUniversalChecks(ins).join(" · ")}.</b> Submit below to escalate patient
                 </span>
               </div>
             )}
+            <div className={gated ? "step-gated" : undefined}>
+              <div className="prod-list">
+                {visibleResolved.map((r) => (
+                  <ProductCard
+                    key={r.product}
+                    resolved={r}
+                    state={ins.codes[PRODUCT_TO_CODE_ID[r.product]]}
+                    hasMedicaid={hasMedicaid}
+                    onChange={(patch) => onCodeChange(PRODUCT_TO_CODE_ID[r.product], patch)}
+                  />
+                ))}
+              </div>
+              {hiddenMedicaidSupplies.length > 0 && (
+                <div className="dvs-note">
+                  <span>
+                    <b>{hiddenMedicaidSupplies.map((r) => PRODUCT_LABELS[r.product]).join(" & ")}</b>{" "}
+                    will be handled at the DVS stage.
+                  </span>
+                </div>
+              )}
+            </div>
           </>
         )}
 
-        <CallLog
-          rows={ins.callsSosAuth ?? []}
-          minOne={false}
-          onChange={(rows) => onCallLogChange("callsSosAuth", rows)}
-        />
+        <div className={gated ? "step-gated" : undefined}>
+          <CallLog
+            rows={ins.callsSosAuth ?? []}
+            minOne={false}
+            onChange={(rows) => onCallLogChange("callsSosAuth", rows)}
+          />
+        </div>
       </section>
 
       {/* ============ monday output + actions ============ */}
@@ -565,20 +592,28 @@ export function BenefitsPanel({
                 {preview.neverBilled.pumpDateTbd && (
                   <MonRow label="Medicare Prior Pump Date" value="TBD" />
                 )}
-                {billedFacts.map((f) => (
-                  <MonRow key={f.label} label={`SoS Facts · ${f.label}`} value={f.value} />
-                ))}
+                {!gated &&
+                  billedFacts.map((f) => (
+                    <MonRow key={f.label} label={`SoS Facts · ${f.label}`} value={f.value} />
+                  ))}
               </div>
-              {preview.sos === "—" && (
+              {preview.sos === "—" && !gated && (
                 <p className="mon-note">
                   Fill Auth + billing history for every product to compute the Auth and SoS columns.
+                </p>
+              )}
+              {gated && (
+                <p className="mon-note">
+                  A universal check failed — step 2 skipped; submitting sets Escalation Required.
                 </p>
               )}
             </div>
 
             <div className="mon-box">
               <h3>Product-specific auth result columns</h3>
-              <p className="msub">Written on every send — Required / No Auth Needed / Not Serving.</p>
+              <p className="msub">
+                Required / No Auth Needed / Not Serving — untouched when a universal check fails.
+              </p>
               <div className="mon-rows">
                 <MonRow label="CGM auth result" value={preview.authResults.monitor} />
                 <MonRow label="Sensors auth result" value={preview.authResults.sensors} />
@@ -603,10 +638,14 @@ export function BenefitsPanel({
             {sendState === "sending"
               ? "Sending to Monday…"
               : sendState === "success"
-                ? "✓ Benefit check complete — sent"
+                ? gated
+                  ? "✓ Submitted — escalation required"
+                  : "✓ Benefit check complete — sent"
                 : sendState === "error"
                   ? "Send failed — click to retry"
-                  : "Benefit Check Complete"}
+                  : gated
+                    ? "Submit — Escalation Required"
+                    : "Benefit Check Complete"}
           </button>
         </div>
         {missing.length > 0 && (

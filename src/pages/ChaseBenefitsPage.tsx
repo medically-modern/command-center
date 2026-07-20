@@ -14,7 +14,7 @@
  * the demo scenario bar (verified 2026-07-16, then removed per Josh — the
  * Monday Board Output drawer remains the testing aid until production).
  */
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useMondayPatients } from "@/hooks/samantha/useMondayPatients";
 import { useAutoSelectPatient } from "@/hooks/useAutoSelectPatient";
 import type {
@@ -25,7 +25,8 @@ import type {
   UniversalChoice,
 } from "@/lib/samantha/workflow";
 import { EMPTY_INSURANCE } from "@/lib/samantha/workflow";
-import { validateBenefitsFactsForSubmit } from "@/lib/samantha/benefitsDerive";
+import { anyUniversalNegative, validateBenefitsFactsForSubmit } from "@/lib/samantha/benefitsDerive";
+import { isMedicareABOnly } from "@/lib/samantha/medicareJurisdiction";
 import { BenefitsPanel } from "@/components/samantha/BenefitsPanel";
 import { BenefitsPatientHeader } from "@/components/samantha/BenefitsPatientHeader";
 import { NotesPanel } from "@/components/samantha/NotesPanel";
@@ -84,6 +85,23 @@ const ChaseBenefitsPage = () => {
     update(selected.id, { insurance: { ...ins, universal: { ...ins.universal, [id]: value } } });
   };
 
+  // Handoff §1: "Medicare not Primary" only exists for Medicare A&B-only
+  // patients. The payer can change under us (the header is read-only here —
+  // primary/secondary arrive via the 30s poll), so a lingering answer is
+  // cleared back to unanswered; Monday must never receive this value for a
+  // non-Medicare-A&B patient.
+  const selInNetwork = selected?.insurance?.universal["in-network"];
+  useEffect(() => {
+    if (!selected || selInNetwork !== "medicare-not-primary") return;
+    if (!isMedicareABOnly(selected.primaryInsurance ?? "", selected.secondaryInsurance ?? "")) {
+      const ins = selected.insurance ?? EMPTY_INSURANCE;
+      update(selected.id, {
+        insurance: { ...ins, universal: { ...ins.universal, "in-network": "" } },
+      });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selected?.id, selected?.primaryInsurance, selected?.secondaryInsurance, selInNetwork]);
+
   const updateCode = (codeId: ProductCodeId, patch: Partial<ProductCodeState>) => {
     if (!selected) return;
     const ins = selected.insurance ?? EMPTY_INSURANCE;
@@ -112,11 +130,20 @@ const ChaseBenefitsPage = () => {
   const handleSend = async () => {
     if (!selected) return;
     if (benefitsMissing.length > 0) return;
+    // Failed-check path (handoff §3–§4): the patient STAYS at Benefits —
+    // no automation moves them, so keep the local answers visible (no
+    // overlay clear / success takeover card); the sidebar refetch moves
+    // them into the Escalated section instead.
+    const gatedSend = anyUniversalNegative(selected.insurance ?? EMPTY_INSURANCE);
     try {
       await sendPatientToMonday(selected, "benefits");
-      clearOverlay(selected.id);
-      setLastSentId(selected.id);
-      toast.success("Benefit check complete — sent to Monday");
+      if (gatedSend) {
+        toast.success("Submitted — Escalation Required set on Monday");
+      } else {
+        clearOverlay(selected.id);
+        setLastSentId(selected.id);
+        toast.success("Benefit check complete — sent to Monday");
+      }
       refetch(true);
     } catch (e) {
       toast.error("Send to Monday failed", { description: e instanceof Error ? e.message : String(e) });

@@ -32,7 +32,7 @@ import type {
   ProductCodeState,
   SosChoice,
 } from "./workflow";
-import { EMPTY_INSURANCE } from "./workflow";
+import { EMPTY_INSURANCE, isNegUniversal } from "./workflow";
 
 // ─────────────────────────────────────────────────────────────────────
 // ET-anchored date helpers
@@ -190,6 +190,30 @@ export function deriveNeverBilled(
 }
 
 // ─────────────────────────────────────────────────────────────────────
+// Failed-check gating (Medicare-not-Primary handoff §2–§3)
+// ─────────────────────────────────────────────────────────────────────
+
+/** Any universal check negative → step 2 gates off and submission opens up. */
+export function anyUniversalNegative(ins: InsuranceState): boolean {
+  return Object.values(ins.universal).some(isNegUniversal);
+}
+
+/**
+ * Rep-facing labels of the failed checks, in check order, for the rose
+ * gate banner and the send-button context. "Medicare not Primary" keeps
+ * its own label; the other negatives use each check's "no" wording.
+ */
+export function failedUniversalChecks(ins: InsuranceState): string[] {
+  const labels: string[] = [];
+  const inNet = ins.universal["in-network"];
+  if (inNet === "medicare-not-primary") labels.push("Medicare not Primary");
+  else if (inNet === "not-confirmed") labels.push("Out-of-Network");
+  if (isNegUniversal(ins.universal["active"])) labels.push("Not Active");
+  if (isNegUniversal(ins.universal["dme-benefits"])) labels.push("Not Covered");
+  return labels;
+}
+
+// ─────────────────────────────────────────────────────────────────────
 // Submit gating (spec §5)
 // ─────────────────────────────────────────────────────────────────────
 
@@ -220,6 +244,10 @@ export function validateBenefitsFactsForSubmit(patient: Patient): string[] {
   for (const id of ["in-network", "active", "dme-benefits"] as const) {
     if (!ins.universal[id]) missing.push(UNIVERSAL_GATE_LABELS[id]);
   }
+
+  // A negative check gates step 2 off — only the 3 checks themselves are
+  // required; sending in this state sets Escalation Required (handoff §3).
+  if (anyUniversalNegative(ins)) return missing;
 
   const resolved = resolveHcpcs(
     patient.primaryInsurance || null,
@@ -293,7 +321,11 @@ export function composeEscalationReason(
   dateYmd: string = etTodayYmd(),
 ): string {
   const reasons: string[] = [];
+  // "Medicare not Primary" gets its own reason line — this is what lets ops
+  // tell it apart from Out-of-Network on the board (both write Stuck +
+  // Escalation Required; handoff §4 open question).
   if (ins.universal["in-network"] === "not-confirmed") reasons.push("In-Network = Out-of-Network");
+  else if (ins.universal["in-network"] === "medicare-not-primary") reasons.push("In-Network = Medicare not Primary");
   if (ins.universal["active"] === "not-confirmed") reasons.push("Insurance Active = Not Active");
   if (ins.universal["dme-benefits"] === "not-confirmed") reasons.push("DME Benefits = Not Covered");
   if (pumpSos === "not-clear") {
@@ -314,6 +346,10 @@ export function composeEscalationReason(
 
 export interface BenefitsPreview {
   ready: boolean;
+  /** Any universal check negative — step 2 never ran, so every per-product
+   *  output below is blanked ("—"/empty), mirroring the send path which
+   *  leaves those columns untouched (handoff §4). */
+  gated: boolean;
   activeNetwork: string; // "Active/In-network" | "Stuck" | "—"
   dmeBenefits: string;   // "Yes" | "Partial / No" | "—"
   auth: string;          // "Auths Required" | "No Auths Required" | "—"
@@ -383,14 +419,14 @@ export function deriveBenefitsPreview(
 
   const uVals = Object.values(ins.universal);
   const universalAllConfirmed = uVals.length > 0 && uVals.every((v) => v === "confirmed");
-  const anyUniversalNotConfirmed = uVals.some((v) => v === "not-confirmed");
+  const anyUniversalNotConfirmed = uVals.some(isNegUniversal);
 
   const inNet = ins.universal["in-network"];
   const active = ins.universal["active"];
   const activeNetwork =
     inNet === "confirmed" && active === "confirmed"
       ? "Active/In-network"
-      : inNet === "not-confirmed" || active === "not-confirmed"
+      : isNegUniversal(inNet) || isNegUniversal(active)
         ? "Stuck"
         : "—";
   const dme = ins.universal["dme-benefits"];
@@ -450,8 +486,35 @@ export function deriveBenefitsPreview(
         : "—";
   }
 
+  // Failed-check path (handoff §4): step 2 never ran, so the send leaves
+  // every per-product column untouched — blank them here too so the drawer
+  // stays in lockstep with the send path even when stale step-2 facts
+  // linger locally behind the gate.
+  if (anyUniversalNotConfirmed) {
+    const blankResults = {} as Record<ProductId, string>;
+    for (const product of Object.keys(authResults) as ProductId[]) blankResults[product] = "—";
+    return {
+      ready: productStates.length > 0,
+      gated: true,
+      activeNetwork,
+      dmeBenefits,
+      auth: "—",
+      sos: "—",
+      notClearProducts: [],
+      skipProducts: [],
+      stage,
+      escalation: "Escalation Required",
+      nextOrder: { ip: "", sensors: "", supplies: "" },
+      neverBilled: { isCar: false, cgm: false, pumpDateTbd: false },
+      authResults: blankResults,
+      anyAuthRequired: false,
+      derived: {},
+    };
+  }
+
   return {
     ready: productStates.length > 0,
+    gated: false,
     activeNetwork,
     dmeBenefits,
     auth,

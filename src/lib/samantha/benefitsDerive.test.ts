@@ -1,12 +1,14 @@
 import { describe, expect, it } from "vitest";
 import {
   addDaysYmd,
+  anyUniversalNegative,
   appendCallLog,
   composeCallLogLines,
   composeEscalationReason,
   deriveBenefitsPreview,
   deriveNeverBilled,
   derivedSos,
+  failedUniversalChecks,
   isBlankCallRow,
   isValidUnits,
   patientHasMedicaidIns,
@@ -16,7 +18,7 @@ import {
   validateBenefitsFactsForSubmit,
 } from "./benefitsDerive";
 import type { InsuranceState, Patient, ProductCodeState } from "./workflow";
-import { EMPTY_INSURANCE } from "./workflow";
+import { EMPTY_INSURANCE, isNegUniversal } from "./workflow";
 
 const TODAY = "2026-07-15";
 
@@ -246,6 +248,68 @@ describe("submit gating (spec §5)", () => {
   });
 });
 
+describe("failed-check gating (Medicare-not-Primary handoff §2–§3)", () => {
+  it("isNegUniversal: not-confirmed and medicare-not-primary are negative", () => {
+    expect(isNegUniversal("not-confirmed")).toBe(true);
+    expect(isNegUniversal("medicare-not-primary")).toBe(true);
+    expect(isNegUniversal("confirmed")).toBe(false);
+    expect(isNegUniversal("")).toBe(false);
+    expect(isNegUniversal(undefined)).toBe(false);
+  });
+
+  it("a negative check skips ALL per-product validation — only the 3 checks are required", () => {
+    const p = makePatient({
+      serving: "CGM",
+      primaryInsurance: "Horizon BCBS",
+      insurance: {
+        ...structuredClone(EMPTY_INSURANCE),
+        universal: { "in-network": "not-confirmed", active: "confirmed", "dme-benefits": "confirmed" },
+        // step 2 untouched — products would normally be listed as missing
+      },
+    });
+    expect(validateBenefitsFactsForSubmit(p)).toEqual([]);
+  });
+
+  it("medicare-not-primary behaves identically for submit gating", () => {
+    const p = makePatient({
+      serving: "CGM",
+      primaryInsurance: "Medicare A&B",
+      insurance: {
+        ...structuredClone(EMPTY_INSURANCE),
+        universal: { "in-network": "medicare-not-primary", active: "confirmed", "dme-benefits": "confirmed" },
+      },
+    });
+    expect(validateBenefitsFactsForSubmit(p)).toEqual([]);
+  });
+
+  it("unanswered checks still block on the failed-check path", () => {
+    const p = makePatient({
+      serving: "CGM",
+      primaryInsurance: "Medicare A&B",
+      insurance: {
+        ...structuredClone(EMPTY_INSURANCE),
+        universal: { "in-network": "medicare-not-primary", active: "", "dme-benefits": "confirmed" },
+      },
+    });
+    expect(validateBenefitsFactsForSubmit(p)).toEqual(["Insurance Active"]);
+  });
+
+  it("failedUniversalChecks labels the banner in check order", () => {
+    const ins: InsuranceState = {
+      ...structuredClone(EMPTY_INSURANCE),
+      universal: { "in-network": "medicare-not-primary", active: "not-confirmed", "dme-benefits": "not-confirmed" },
+    };
+    expect(failedUniversalChecks(ins)).toEqual(["Medicare not Primary", "Not Active", "Not Covered"]);
+    const oon: InsuranceState = {
+      ...structuredClone(EMPTY_INSURANCE),
+      universal: { "in-network": "not-confirmed", active: "confirmed", "dme-benefits": "confirmed" },
+    };
+    expect(failedUniversalChecks(oon)).toEqual(["Out-of-Network"]);
+    expect(anyUniversalNegative(oon)).toBe(true);
+    expect(anyUniversalNegative(structuredClone(EMPTY_INSURANCE))).toBe(false);
+  });
+});
+
 describe("call logs (spec §4, D8)", () => {
   it("discards fully-blank rows and formats one line per call", () => {
     const lines = composeCallLogLines(
@@ -301,6 +365,15 @@ describe("escalation reason (D4)", () => {
   });
   it("returns empty when nothing escalates", () => {
     expect(composeEscalationReason(structuredClone(EMPTY_INSURANCE), "clear", undefined)).toBe("");
+  });
+  it("Medicare not Primary gets its own reason line — distinguishable from Out-of-Network", () => {
+    const ins: InsuranceState = {
+      ...structuredClone(EMPTY_INSURANCE),
+      universal: { "in-network": "medicare-not-primary", active: "confirmed", "dme-benefits": "confirmed" },
+    };
+    expect(composeEscalationReason(ins, "", undefined, "2026-07-20")).toBe(
+      "[Auto-escalated · 2026-07-20] In-Network = Medicare not Primary",
+    );
   });
 });
 
@@ -449,7 +522,7 @@ describe("deriveBenefitsPreview — full board output", () => {
     expect(pv.nextOrder.supplies).toBe("2026-08-30"); // +90d from 2026-06-01
   });
 
-  it("failed universal check → Stuck, escalation, stage held", () => {
+  it("failed universal check → Stuck, escalation, stage held, per-product output blanked", () => {
     const p = makePatient({
       serving: "CGM",
       primaryInsurance: "Horizon BCBS",
@@ -466,5 +539,50 @@ describe("deriveBenefitsPreview — full board output", () => {
     expect(pv.activeNetwork).toBe("Stuck");
     expect(pv.escalation).toBe("Escalation Required");
     expect(pv.stage).toBe("Benefits / SoS");
+    // handoff §4: step 2 never ran — the send leaves every per-product
+    // column untouched, so the preview blanks them even when stale step-2
+    // facts linger locally behind the gate.
+    expect(pv.gated).toBe(true);
+    expect(pv.auth).toBe("—");
+    expect(pv.sos).toBe("—");
+    expect(pv.notClearProducts).toEqual([]);
+    expect(pv.skipProducts).toEqual([]);
+    expect(pv.nextOrder).toEqual({ ip: "", sensors: "", supplies: "" });
+    expect(pv.neverBilled).toEqual({ isCar: false, cgm: false, pumpDateTbd: false });
+    expect(pv.authResults.monitor).toBe("—");
+    expect(pv.authResults.insulin_pump).toBe("—");
+  });
+
+  it("medicare-not-primary behaves exactly like Out-of-Network in the preview", () => {
+    const p = makePatient({
+      serving: "CGM",
+      primaryInsurance: "Medicare A&B",
+      insurance: {
+        ...structuredClone(EMPTY_INSURANCE),
+        universal: { "in-network": "medicare-not-primary", active: "confirmed", "dme-benefits": "confirmed" },
+      },
+    });
+    const pv = deriveBenefitsPreview(p, TODAY);
+    expect(pv.gated).toBe(true);
+    expect(pv.activeNetwork).toBe("Stuck");
+    expect(pv.dmeBenefits).toBe("Yes");
+    expect(pv.escalation).toBe("Escalation Required");
+    expect(pv.stage).toBe("Benefits / SoS");
+  });
+
+  it("the all-affirmative path is not gated", () => {
+    const p = makePatient({
+      serving: "CGM",
+      primaryInsurance: "Horizon BCBS",
+      insurance: {
+        ...structuredClone(EMPTY_INSURANCE),
+        universal: { "in-network": "confirmed", active: "confirmed", "dme-benefits": "confirmed" },
+        codes: {
+          "cgm-monitor": state({ auth: "not-required", sosEntry: "never" }),
+          "cgm-sensors": state({ auth: "not-required", sosEntry: "never" }),
+        },
+      },
+    });
+    expect(deriveBenefitsPreview(p, TODAY).gated).toBe(false);
   });
 });

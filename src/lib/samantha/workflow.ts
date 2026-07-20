@@ -350,7 +350,18 @@ export interface CallLogRow {
   note: string;
 }
 
-export type UniversalChoice = "" | "confirmed" | "not-confirmed";
+export type UniversalChoice = "" | "confirmed" | "not-confirmed" | "medicare-not-primary";
+
+/**
+ * Negative universal answers — Out-of-Network / Not Active / Not Covered,
+ * plus the Medicare A&B-only third In-Network option "Medicare not Primary",
+ * which is stored distinctly but behaves identically downstream (Medicare-
+ * not-Primary handoff §1–§4): step 2 gates off, submission opens up, and
+ * sending sets Escalation Required + holds the stage.
+ */
+export function isNegUniversal(v: UniversalChoice | undefined): boolean {
+  return v === "not-confirmed" || v === "medicare-not-primary";
+}
 
 export interface InsuranceState {
   universal: Record<UniversalCheck["id"], UniversalChoice>;
@@ -497,7 +508,7 @@ export function deriveInsuranceOutcome(ins?: InsuranceState, servedCodeIds?: Pro
   if (!ins) return "incomplete";
   const uVals = Object.values(ins.universal);
   const universalAllConfirmed = uVals.every((v) => v === "confirmed");
-  const anyUniversalNotConfirmed = uVals.some((v) => v === "not-confirmed");
+  const anyUniversalNotConfirmed = uVals.some(isNegUniversal);
   // Only consider served products if provided; otherwise fall back to all non-empty codes
   const codeStates = servedCodeIds
     ? (servedCodeIds.map((id) => ins.codes[id]).filter(Boolean) as ProductCodeState[])
