@@ -25,7 +25,7 @@ import type {
   ProductCodeState,
   UniversalChoice,
 } from "@/lib/samantha/workflow";
-import { EMPTY_INSURANCE, PRODUCT_CODES, isNegUniversal } from "@/lib/samantha/workflow";
+import { EMPTY_INSURANCE, PRODUCT_CODES, isNegUniversal, sensorsNextOrderOffsetDays } from "@/lib/samantha/workflow";
 import type { ResolvedProduct } from "@/lib/samantha/hcpcRules";
 import {
   isAutoFilledMedicaidSupply,
@@ -140,9 +140,13 @@ function statusPill(state: ProductCodeState | undefined) {
   return <span className="pill clear">✓ Done</span>;
 }
 
-function nextOrderOffsetDays(codeId: ProductCodeId, hasMedicaid: boolean): number | null {
+function nextOrderOffsetDays(
+  codeId: ProductCodeId,
+  hasMedicaid: boolean,
+  units?: string,
+): number | null {
   if (codeId === "pump") return 365 * 4;
-  if (codeId === "cgm-sensors") return 90;
+  if (codeId === "cgm-sensors") return sensorsNextOrderOffsetDays(units); // A4239: 30/60 for 1/2 units, else 90
   if (codeId === "infusion-sets" || codeId === "cartridges") return hasMedicaid ? 60 : 90;
   return null; // cgm-monitor has no next-order column
 }
@@ -166,7 +170,7 @@ function ProductCard({
   const entryLocked = entry === "never";
   const isRec = meta?.cadence === "RECURRING";
 
-  const offset = nextOrderOffsetDays(codeId, hasMedicaid);
+  const offset = nextOrderOffsetDays(codeId, hasMedicaid, state?.units);
   const nextOrder =
     entry === "billed" && state?.lastBillDate && offset
       ? addDaysYmd(state.lastBillDate, offset)

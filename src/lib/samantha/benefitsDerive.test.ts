@@ -18,7 +18,12 @@ import {
   validateBenefitsFactsForSubmit,
 } from "./benefitsDerive";
 import type { InsuranceState, Patient, ProductCodeState } from "./workflow";
-import { EMPTY_INSURANCE, isNegUniversal } from "./workflow";
+import {
+  EMPTY_INSURANCE,
+  computeNextOrderDates,
+  isNegUniversal,
+  sensorsNextOrderOffsetDays,
+} from "./workflow";
 
 const TODAY = "2026-07-15";
 
@@ -520,6 +525,66 @@ describe("deriveBenefitsPreview — full board output", () => {
     const pv = deriveBenefitsPreview(p, TODAY);
     expect(pv.nextOrder.ip).toBe("");
     expect(pv.nextOrder.supplies).toBe("2026-08-30"); // +90d from 2026-06-01
+  });
+
+  describe("A4239 sensors next-order offset — 30/60 days for 1/2 units, standard 90 otherwise", () => {
+    it("offset helper: 1 → 30, 2 → 60, 3+/blank/invalid → 90", () => {
+      expect(sensorsNextOrderOffsetDays("1")).toBe(30);
+      expect(sensorsNextOrderOffsetDays("2")).toBe(60);
+      expect(sensorsNextOrderOffsetDays("3")).toBe(90);
+      expect(sensorsNextOrderOffsetDays("12")).toBe(90);
+      expect(sensorsNextOrderOffsetDays("")).toBe(90);
+      expect(sensorsNextOrderOffsetDays(undefined)).toBe(90);
+      expect(sensorsNextOrderOffsetDays("abc")).toBe(90);
+    });
+
+    const sensorsIns = (units: string): InsuranceState => ({
+      ...structuredClone(EMPTY_INSURANCE),
+      codes: {
+        "cgm-sensors": state({ auth: "not-required", sosEntry: "billed", lastBillDate: "2026-04-11", units }),
+      },
+    });
+
+    it("write path (computeNextOrderDates → Sensors Next Order Date column)", () => {
+      expect(computeNextOrderDates(sensorsIns("1"), "Horizon BCBS", "").sensorsNextOrderDate).toBe("2026-05-11"); // +30d
+      expect(computeNextOrderDates(sensorsIns("2"), "Horizon BCBS", "").sensorsNextOrderDate).toBe("2026-06-10"); // +60d
+      expect(computeNextOrderDates(sensorsIns("3"), "Horizon BCBS", "").sensorsNextOrderDate).toBe("2026-07-10"); // +90d standard
+      expect(computeNextOrderDates(sensorsIns(""), "Horizon BCBS", "").sensorsNextOrderDate).toBe("2026-07-10"); // blank units → 90
+    });
+
+    it("preview (drawer) stays in lockstep with the write path", () => {
+      for (const [units, expected] of [
+        ["1", "2026-05-11"],
+        ["2", "2026-06-10"],
+        ["3", "2026-07-10"],
+      ] as const) {
+        const p = makePatient({
+          serving: "CGM",
+          primaryInsurance: "Horizon BCBS",
+          insurance: {
+            ...structuredClone(EMPTY_INSURANCE),
+            universal: { "in-network": "confirmed", active: "confirmed", "dme-benefits": "confirmed" },
+            codes: {
+              "cgm-monitor": state({ auth: "not-required", sosEntry: "never" }),
+              "cgm-sensors": state({ auth: "not-required", sosEntry: "billed", lastBillDate: "2026-04-11", units }),
+            },
+          },
+        });
+        expect(deriveBenefitsPreview(p, TODAY).nextOrder.sensors).toBe(expected);
+      }
+    });
+
+    it("units do NOT change the supplies offset — A4239 only", () => {
+      const ins: InsuranceState = {
+        ...structuredClone(EMPTY_INSURANCE),
+        codes: {
+          "infusion-sets": state({ auth: "not-required", sosEntry: "billed", lastBillDate: "2026-04-11", units: "1" }),
+          cartridges: state({ auth: "not-required", sosEntry: "never" }),
+        },
+      };
+      expect(computeNextOrderDates(ins, "Horizon BCBS", "").suppliesNextOrderDate).toBe("2026-07-10"); // still +90d
+      expect(computeNextOrderDates(ins, "Fidelis Medicaid", "").suppliesNextOrderDate).toBe("2026-06-10"); // still +60d Medicaid
+    });
   });
 
   it("failed universal check → Stuck, escalation, stage held, per-product output blanked", () => {

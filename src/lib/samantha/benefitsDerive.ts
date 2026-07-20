@@ -32,7 +32,7 @@ import type {
   ProductCodeState,
   SosChoice,
 } from "./workflow";
-import { EMPTY_INSURANCE, isNegUniversal } from "./workflow";
+import { EMPTY_INSURANCE, isNegUniversal, sensorsNextOrderOffsetDays } from "./workflow";
 
 // ─────────────────────────────────────────────────────────────────────
 // ET-anchored date helpers
@@ -465,7 +465,11 @@ export function deriveBenefitsPreview(
   const suppliesBill = later(usable("infusion-sets"), usable("cartridges"));
   const nextOrder = {
     ip: pumpBill ? addDaysYmd(pumpBill, 365 * 4) : "",
-    sensors: sensorsBill ? addDaysYmd(sensorsBill, 90) : "",
+    // A4239 only: 1/2 billed units push 30/60 days, 3+ the standard 90
+    // (sensorsNextOrderOffsetDays — keep in lockstep with computeNextOrderDates).
+    sensors: sensorsBill
+      ? addDaysYmd(sensorsBill, sensorsNextOrderOffsetDays(ins.codes["cgm-sensors"]?.units))
+      : "",
     supplies: suppliesBill ? addDaysYmd(suppliesBill, hasMedicaid ? 60 : 90) : "",
   };
 

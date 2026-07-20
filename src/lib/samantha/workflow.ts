@@ -584,6 +584,19 @@ function laterDate(a: string | undefined, b: string | undefined): string {
   return a >= b ? a : b;
 }
 
+/**
+ * A4239 (CGM Sensors) next-order offset — sensors ONLY. One billed unit is
+ * one month of sensors, so 1 or 2 units only push the next order 30/60 days
+ * out; 3+ units (and blank/unparseable) keep the standard 90-day push.
+ * Supplies keep their flat 90/60 (Medicaid) days and the pump its 4 years.
+ */
+export function sensorsNextOrderOffsetDays(units: string | undefined): number {
+  const n = Number((units ?? "").trim());
+  if (n === 1) return 30;
+  if (n === 2) return 60;
+  return 90;
+}
+
 export interface NextOrderDates {
   ipNextOrderDate: string;
   sensorsNextOrderDate: string;
@@ -594,7 +607,8 @@ export interface NextOrderDates {
  * Compute the 3 calculated next order dates from product state.
  *
  * - IP Next Order Date = Insulin Pump last bill + 4 years
- * - Sensors Next Order Date = CGM Sensors last bill + 90 days
+ * - Sensors Next Order Date = CGM Sensors last bill + 90 days, or
+ *     + 30/60 days when only 1/2 units were billed (A4239 monthly supply)
  * - Supplies Next Order Date = max(Infusion Sets, Cartridges) last bill
  *     + 90 days, or + 60 days if patient has Medicaid
  */
@@ -613,9 +627,9 @@ export function computeNextOrderDates(
     ? addDaysToDate(pumpState.lastBillDate, 365 * 4)
     : "";
 
-  // Sensors Next Order Date = sensors last bill + 90 days
+  // Sensors Next Order Date = sensors last bill + 90 days (30/60 for 1/2 units)
   const sensorsNextOrderDate = sensorsState?.lastBillDate
-    ? addDaysToDate(sensorsState.lastBillDate, 90)
+    ? addDaysToDate(sensorsState.lastBillDate, sensorsNextOrderOffsetDays(sensorsState.units))
     : "";
 
   // Supplies Next Order Date = max(infusion, cartridge) + 90d (or 60d if Medicaid)
