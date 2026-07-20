@@ -1,0 +1,89 @@
+/* submitAuthRedesign.css — Submit Auth redesign additions
+   (submit-auth-redesign.html is the visual spec; HANDOFF-Josh-Submit-Auth.md).
+   Scoped under .bnr and layered ON TOP of benefitsRedesign.css, which
+   already carries the shared tokens + card/step/pill/prod/mon/notes-rail
+   rules. Only the Submit Auth-specific pieces live here. */
+
+/* ============ context title (matrix card is context, not a step) ============ */
+.bnr .ctx-title{font-size:1.05rem!important;color:var(--mm-teal)}
+
+/* ============ auth status matrix (read-only, from Monday) ============ */
+/* Color semantics (Brandon, matches Auth Outstanding): Required = amber
+   (today's work) · No Auth Needed / resolved = grayed out · Not Serving =
+   faded · DVS Required = blue. No green/mint on no-action cells. */
+.bnr .mtx-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-top:14px}
+.bnr .mtx-cell{border:1px solid var(--bnr-border);border-radius:12px;background:var(--bnr-card);padding:14px;display:flex;flex-direction:column;gap:10px}
+.bnr .mtx-cell.req{border-color:oklch(0.66 0.12 75 / 0.5);background:oklch(0.96 0.04 90 / 0.4)}
+.bnr .mtx-cell.ok{border-color:var(--bnr-border);background:oklch(0.968 0.007 247.896 / 0.4);opacity:.65}
+.bnr .mtx-cell.ok .mtx-code{color:var(--bnr-muted-foreground)}
+.bnr .mtx-cell.na{opacity:.55}
+.bnr .mtx-code{font-size:1.05rem;font-weight:800;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--mm-teal);letter-spacing:-.01em}
+.bnr .mtx-cell.na .mtx-code{color:var(--bnr-muted-foreground)}
+.bnr .mtx-name{font-size:.78rem;font-weight:600;color:var(--bnr-muted-foreground);margin-top:1px}
+.bnr .mtx-pill{display:inline-flex;align-items:center;gap:6px;align-self:flex-start;padding:4px 12px;border-radius:999px;font-size:.78rem;font-weight:700;margin-top:auto}
+.bnr .mtx-pill.req{background:var(--mm-amber-soft);color:oklch(0.5 0.11 75);box-shadow:inset 0 0 0 1px oklch(0.66 0.12 75 / 0.35)}
+.bnr .mtx-pill.ok{background:var(--bnr-muted);color:var(--bnr-muted-foreground);box-shadow:inset 0 0 0 1px var(--bnr-border)}
+.bnr .mtx-pill.na{background:var(--bnr-muted);color:var(--bnr-muted-foreground)}
+.bnr .mtx-cell.dvs{border-color:oklch(0.60 0.10 230 / 0.45);background:oklch(0.95 0.02 230 / 0.4)}
+.bnr .mtx-pill.dvs{background:var(--mm-sky-soft);color:var(--mm-sky);box-shadow:inset 0 0 0 1px oklch(0.60 0.10 230 / 0.35)}
+@media (max-width:1150px){.bnr .mtx-grid{grid-template-columns:repeat(2,1fr)}}
+
+/* ============ card headline modifiers ============ */
+.bnr .prod-code-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.bnr .mod-dot{font-size:1.1rem;font-weight:700;color:var(--bnr-muted-foreground);opacity:.6}
+.bnr .mod-chip{
+  display:inline-flex;align-items:center;padding:2px 9px;border-radius:6px;
+  font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.9rem;font-weight:700;
+  background:var(--bnr-muted);color:var(--bnr-foreground);box-shadow:inset 0 0 0 1px var(--bnr-border);
+  user-select:all;-webkit-user-select:all;
+}
+
+/* ============ carecentrix / MLTC amber banner ============ */
+.bnr .ccx-card{
+  border:1px solid oklch(0.66 0.12 75 / 0.5);border-left:4px solid var(--mm-amber);
+  border-radius:16px;background:oklch(0.96 0.04 90 / 0.55);padding:18px 24px;
+}
+.bnr .ccx-card.tight{margin-bottom:16px}
+.bnr .ccx-row{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.bnr .ccx-row svg{flex-shrink:0;color:var(--mm-amber)}
+.bnr .ccx-title{font-size:.95rem;font-weight:700;color:oklch(0.42 0.10 75)}
+
+/* ============ home-plan banner (BCBS home ≠ host) ============ */
+.bnr .homeplan-note{
+  margin-bottom:16px;display:flex;align-items:flex-start;gap:12px;
+  border:1px solid oklch(0.36 0.04 200 / 0.3);border-left:4px solid var(--mm-teal);border-radius:12px;
+  background:oklch(0.36 0.04 200 / 0.06);padding:16px 18px;
+  font-size:.95rem;color:var(--mm-teal);line-height:1.55;
+}
+.bnr .homeplan-note svg{flex-shrink:0;margin-top:2px}
+.bnr .homeplan-note b{font-weight:800}
+/* (.sbox.auth-plan / .auth-tag live in benefitsRedesign.css — the patient
+   header is shared with the Benefits page, which imports only that file.) */
+
+/* ============ submission card body ============ */
+.bnr .sa-body{margin-top:16px;border:1px solid var(--bnr-border);border-radius:10px;background:oklch(0.968 0.007 247.896 / 0.4);padding:16px 18px}
+.bnr .sa-body .flabel{color:var(--mm-teal);font-weight:700}
+.bnr .method-seg{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:8px}
+.bnr .method-seg button{
+  padding:10px 8px;font-size:.85rem;font-weight:600;border-radius:6px;white-space:nowrap;
+  border:2px solid var(--bnr-border);background:var(--bnr-background);color:var(--bnr-muted-foreground);transition:all .12s;
+}
+.bnr .method-seg button:not(.on):hover{color:var(--mm-green);border-color:var(--mm-green);background:var(--mm-green-12)}
+.bnr .method-seg button.on{border-color:transparent;background:var(--mm-green);color:#fff;box-shadow:0 1px 2px 0 rgb(0 0 0 / .05)}
+.bnr .sa-fields{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-top:16px}
+.bnr .sa-fields input{background:var(--bnr-background)}
+.bnr .intake-box{
+  margin-top:14px;border:1px solid oklch(0.60 0.10 230 / 0.4);border-radius:10px;
+  background:oklch(0.95 0.02 230 / 0.5);padding:14px 16px;
+}
+.bnr .intake-box .flabel{color:var(--mm-sky)}
+.bnr .intake-box input{max-width:280px;background:var(--bnr-background);border-color:oklch(0.60 0.10 230 / 0.4);font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+.bnr .mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+@media (max-width:960px){
+  .bnr .sa-fields{grid-template-columns:1fr}
+  .bnr .method-seg{grid-template-columns:repeat(2,1fr)}
+}
+
+/* ============ monday drawer per-product group heads ============ */
+.bnr .mon-row.grp-head{background:oklch(0.968 0.007 247.896 / 0.5)}
+.bnr .mon-row.grp-head .mlabel{color:var(--mm-teal);font-weight:800}

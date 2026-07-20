@@ -1,427 +1,594 @@
-import {
+/**
+ * AuthorizationsPanel — the redesigned Submit Auth checklist, using the
+ * prototype's exact markup/classes (submit-auth-redesign.html IS the visual
+ * spec; HANDOFF-Josh-Submit-Auth.md is the behavior doc). Styles live in
+ * benefitsRedesign.css (shared base) + submitAuthRedesign.css, scoped .bnr.
+ *
+ * One step — "(1) Submit Auth for Each Required Product" — one card per
+ * product whose BOARD auth status is Required and that isn't DVS-routed.
+ * The "Auth Status by Product" matrix above it is read-only context, not a
+ * step (Required = amber · resolved = grayed · Not Serving = faded · DVS
+ * Required = blue). SoS lives at Benefits / rechecks at Auth Outstanding —
+ * no SoS UI here (handoff §3). Card headline shows HCPC · modifiers
+ * (payer-keyed route tables, handoff §4). MLTC plans get an amber
+ * fax-only banner off the Stedi Plan Name column (§5, tip only). BCBS
+ * home ≠ host shows the home-plan banner (§8, no phone directory yet).
+ *
+ * The "Monday Board Output" drawer is a TESTING AID (§9): verify writes,
+ * then delete the drawer — but keep the Escalate + send buttons below it.
+ */
+import { useState } from "react";
+import { AlertTriangle, Info } from "lucide-react";
+import type {
   Patient,
-  PRODUCT_CODES,
   ProductCodeId,
   ProductCodeState,
-  EMPTY_INSURANCE,
-  AUTH_SUBMISSION_METHODS,
-  AuthSubmissionMethod,
-  SosChoice,
 } from "@/lib/samantha/workflow";
+import { EMPTY_INSURANCE, PRODUCT_CODES } from "@/lib/samantha/workflow";
+import type { AuthSubmissionMethod } from "@/lib/samantha/workflow";
 import {
-  resolveHcpcs,
   isAutoFilledMedicaidSupply,
   PRODUCT_LABELS,
+  resolveHcpcs,
   type ProductId,
   type ResolvedProduct,
 } from "@/lib/samantha/hcpcRules";
-import { Input } from "@/components/ui/input";
-import { NotesPanel } from "@/components/samantha/NotesPanel";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { CalendarDays, Package, Repeat, ShieldCheck } from "lucide-react";
-import { cn } from "@/lib/utils";
-import { ClinicalsDownloadButton } from "./ClinicalsDownloadButton";
+import {
+  authHomePlan,
+  dvsRoutedProducts,
+  isMltcPlan,
+  modifiersFor,
+  productCodeId,
+  submitAuthCards,
+} from "@/lib/samantha/submitAuthRules";
+import { etTodayYmd, ymdToUs } from "@/lib/samantha/benefitsDerive";
+import { EscalateButton } from "./EscalateButton";
+import { Repeat, Package } from "lucide-react";
+import "./benefitsRedesign.css";
+import "./submitAuthRedesign.css";
+
+/** Segmented-control display order (prototype); same set as AUTH_SUBMISSION_METHODS. */
+const METHOD_ORDER: Exclude<AuthSubmissionMethod, "">[] = [
+  "Availity Portal",
+  "Payer Portal",
+  "Call",
+  "Fax",
+];
+
+const ALL_PRODUCTS: ProductId[] = ["monitor", "sensors", "insulin_pump", "infusion_set", "cartridge"];
+/** Fixed HCPCs for products with no payer variance (matrix fallback when unserved). */
+const FIXED_HCPC: Partial<Record<ProductId, string>> = {
+  monitor: "E2103",
+  sensors: "A4239",
+  insulin_pump: "E0784",
+};
 
 interface Props {
   patient: Patient;
   onCodeChange: (codeId: ProductCodeId, patch: Partial<ProductCodeState>) => void;
-  onNotesChange: (v: string) => void;
-  onSaveNotesToMonday?: (notes: string) => Promise<void>;
+  missing: string[];
+  onSend: () => Promise<void>;
+  onToggleEscalate: () => void;
+  onOpenEscalationForm: () => void;
 }
 
-const PRODUCT_TO_CODE_ID: Record<ProductId, ProductCodeId> = {
-  monitor: "cgm-monitor",
-  sensors: "cgm-sensors",
-  insulin_pump: "pump",
-  infusion_set: "infusion-sets",
-  cartridge: "cartridges",
-};
+function cardComplete(state: ProductCodeState | undefined): boolean {
+  const method = state?.authSubmissionMethod ?? "";
+  if (!method || !state?.authSubmissionDate) return false;
+  if ((method === "Call" || method === "Fax") && !(state?.callFaxNumber ?? "").trim()) return false;
+  return true;
+}
 
-export function AuthorizationsPanel({ patient, onCodeChange, onNotesChange, onSaveNotesToMonday }: Props) {
+function joinNames(list: ResolvedProduct[]): string {
+  const n = list.map((r) => PRODUCT_LABELS[r.product]);
+  return n.length <= 1 ? n.join("") : `${n.slice(0, -1).join(", ")} & ${n[n.length - 1]}`;
+}
+
+/* ── Auth Status by Product — read-only context matrix ────────────── */
+
+function AuthStatusMatrix({ patient }: { patient: Patient }) {
   const ins = patient.insurance ?? EMPTY_INSURANCE;
-  const serving = patient.serving || "";
-  const primaryInsurance = patient.primaryInsurance || "";
-  const dropdownsReady = !!serving && !!primaryInsurance;
-
-  const resolved: ResolvedProduct[] = resolveHcpcs(
-    primaryInsurance || null,
-    serving || null,
+  const resolved = resolveHcpcs(
+    patient.primaryInsurance || null,
+    patient.serving || null,
     patient.secondaryInsurance ?? null,
   );
-
-  // Hide infusion sets / cartridges that bill to Medicaid — Medicaid handles
-  // the auth flow on its own, so the user has nothing to submit here.
-  const visibleResolved = resolved.filter((r) => !isAutoFilledMedicaidSupply(r));
-
-  // Only visible products that require auth
-  const authRequired = visibleResolved.filter(
-    (r) => ins.codes[PRODUCT_TO_CODE_ID[r.product]]?.auth === "required",
-  );
+  const byProduct = new Map(resolved.map((r) => [r.product, r]));
+  const dvsSet = new Set(resolved.filter(isAutoFilledMedicaidSupply).map((r) => r.product));
 
   return (
-    <section className="rounded-xl border bg-card p-5 shadow-card space-y-6">
-      <div className="flex items-center justify-between gap-3 flex-wrap">
-        <div>
-          <h2 className="text-base font-semibold">Submit Auth</h2>
-          <p className="text-xs text-muted-foreground">
-            Submit auth for each required product.
-          </p>
-        </div>
-        <ClinicalsDownloadButton itemId={patient.id} />
-      </div>
-
-      {!dropdownsReady && (
-        <div className="rounded-lg border border-dashed bg-muted/20 p-8 text-center">
-          <p className="text-sm text-muted-foreground">
-            Select Serving and Primary Insurance on the Benefits tab to load auth-eligible products.
-          </p>
-        </div>
-      )}
-
-      {dropdownsReady && (
-        <AuthRequirementsMatrix
-          resolved={resolved}
-          medicaidProducts={new Set(resolved.filter(isAutoFilledMedicaidSupply).map((r) => r.product))}
-          ins={ins}
-        />
-      )}
-
-      {dropdownsReady && authRequired.length === 0 && (
-        <div className="rounded-lg border border-dashed bg-muted/20 p-8 text-center">
-          <p className="text-sm text-muted-foreground">
-            Set a product above to <span className="font-semibold">Required</span> to track its
-            submission and outstanding approval below.
-          </p>
-        </div>
-      )}
-
-      {dropdownsReady && authRequired.length > 0 && (() => {
-        // Carecentrix Intake ID is shared across all auth-required products —
-        // there's only ever one ID per patient. Derive the shared value once
-        // from the first non-empty intakeId, and provide a setter that fans
-        // the change out to every auth-required product so they stay in sync.
-        const sharedIntakeId =
-          authRequired
-            .map((r) => ins.codes[PRODUCT_TO_CODE_ID[r.product]]?.intakeId)
-            .find((v) => !!v) ?? "";
-        const setIntakeIdForAll = (value: string) => {
-          for (const r of authRequired) {
-            onCodeChange(PRODUCT_TO_CODE_ID[r.product], { intakeId: value });
-          }
-        };
-
+    <div className="mtx-grid">
+      {ALL_PRODUCTS.map((p) => {
+        const r = byProduct.get(p);
+        const isDvs = dvsSet.has(p);
+        const boardLabel = r ? (ins.codes[productCodeId(p)]?._mondayAuthLabel ?? "").trim() : "";
+        const label = !r ? "Not Serving" : isDvs ? "DVS Required" : boardLabel || "—";
+        const lower = label.toLowerCase();
+        const cls = !r
+          ? "na"
+          : isDvs
+            ? "dvs"
+            : lower === "required"
+              ? "req"
+              : lower === "not serving" || label === "—"
+                ? "na"
+                : "ok"; // No Auth Needed / Submitted / resolved → grayed, no action
+        const pillCls = cls === "req" || cls === "dvs" ? cls : cls === "na" ? "na" : "ok";
         return (
-          <div className="space-y-4">
-            {authRequired.map((r) => {
-              const codeId = PRODUCT_TO_CODE_ID[r.product];
-              const meta = PRODUCT_CODES.find((c) => c.id === codeId);
-              if (!meta) return null;
-              const state = ins.codes[codeId] ?? { status: "pending" as const };
-              return (
-                <ProductAuthBlock
-                  key={codeId}
-                  meta={meta}
-                  resolved={r}
-                  state={state}
-                  onChange={(patch) => onCodeChange(codeId, patch)}
-                  primaryInsurance={primaryInsurance}
-                  sharedIntakeId={sharedIntakeId}
-                  onSharedIntakeIdChange={setIntakeIdForAll}
-                />
-              );
-            })}
+          <div key={p} className={`mtx-cell ${cls}`}>
+            <div>
+              <div className="mtx-code">{r?.hcpc ?? FIXED_HCPC[p] ?? "—"}</div>
+              <div className="mtx-name">{PRODUCT_LABELS[p]}</div>
+            </div>
+            <span className={`mtx-pill ${pillCls}`}>{label}</span>
           </div>
         );
-      })()}
-
-      {/* Notes — same Call Reference Notes column as the Benefits tab. */}
-      <NotesPanel
-        notes={patient.notes}
-        onNotesChange={onNotesChange}
-        onSaveToMonday={onSaveNotesToMonday}
-        description="Carries over from the Benefits tab. Add anything new from the auth submission step."
-        placeholder="Auth submission notes, confirmation numbers, any rep feedback…"
-      />
-    </section>
+      })}
+    </div>
   );
 }
 
-interface BlockProps {
-  meta: typeof PRODUCT_CODES[number];
-  resolved: ResolvedProduct;
-  state: ProductCodeState;
-  onChange: (patch: Partial<ProductCodeState>) => void;
-  primaryInsurance: string;
-  /** Shared Carecentrix Intake ID derived once and kept in sync across products. */
-  sharedIntakeId: string;
-  onSharedIntakeIdChange: (value: string) => void;
-}
+/* ── Submission card ──────────────────────────────────────────────── */
 
-function ProductAuthBlock({
-  meta,
+function SubmissionCard({
   resolved,
   state,
-  onChange,
   primaryInsurance,
   sharedIntakeId,
+  onChange,
   onSharedIntakeIdChange,
-}: BlockProps) {
-  const isRecurring = meta.cadence === "RECURRING";
+}: {
+  resolved: ResolvedProduct;
+  state: ProductCodeState | undefined;
+  primaryInsurance: string;
+  sharedIntakeId: string;
+  onChange: (patch: Partial<ProductCodeState>) => void;
+  onSharedIntakeIdChange: (value: string) => void;
+}) {
+  const codeId = productCodeId(resolved.product);
+  const meta = PRODUCT_CODES.find((c) => c.id === codeId);
+  const isRec = meta?.cadence === "RECURRING";
+  const method = state?.authSubmissionMethod ?? "";
+  const isCallFax = method === "Call" || method === "Fax";
+  const mods = modifiersFor(resolved.hcpc, primaryInsurance);
+  const showIntake = primaryInsurance === "Horizon BCBS" && method === "Payer Portal";
+
+  const setMethod = (m: Exclude<AuthSubmissionMethod, "">) => {
+    if (method === m) {
+      onChange({ authSubmissionMethod: "", callFaxNumber: "" });
+    } else if (m === "Call" || m === "Fax") {
+      onChange({ authSubmissionMethod: m });
+    } else {
+      onChange({ authSubmissionMethod: m, callFaxNumber: "" });
+    }
+  };
 
   return (
-    <div
-      className={cn(
-        "rounded-xl border-l-4 border bg-card overflow-hidden",
-        isRecurring ? "border-l-primary" : "border-l-accent-foreground/40",
-      )}
-    >
-      {/* Product header */}
-      <div className="flex items-center justify-between gap-3 flex-wrap px-4 py-3 bg-muted/30 border-b">
-        <div className="min-w-0">
-          <div className="flex items-center gap-2 mb-1 flex-wrap">
-            <span
-              className={cn(
-                "inline-flex items-center gap-1 text-[10px] font-mono font-semibold px-2 py-0.5 rounded-full",
-                isRecurring
-                  ? "bg-primary/15 text-primary"
-                  : "bg-muted text-foreground/70 border border-border",
-              )}
-            >
-              {isRecurring ? <Repeat className="h-3 w-3" /> : <Package className="h-3 w-3" />}
-              {meta.cadence}
+    <div className={`prod-card ${isRec ? "recurring" : ""}`}>
+      <div className="prod-top">
+        <div style={{ minWidth: 0 }}>
+          <div className="prod-meta">
+            <span className={`chip ${isRec ? "rec" : "one"}`}>
+              {isRec ? <Repeat size={12} /> : <Package size={12} />} {meta?.cadence ?? ""}
             </span>
-            <span className="text-[10px] font-mono text-muted-foreground">{meta.group}</span>
+            <span className="chip grp">{meta?.group ?? ""}</span>
           </div>
-          <h4 className="text-sm font-semibold">{meta.name}</h4>
-          <p className="text-xs font-mono text-muted-foreground">HCPCS · {resolved.hcpc}</p>
+          <div className="prod-code-row">
+            <span className="prod-code">{resolved.hcpc}</span>
+            {mods && (
+              <>
+                <span className="mod-dot">·</span>
+                {mods.mods.map((m) => (
+                  <span key={m} className="mod-chip" title={`Modifier source: ${mods.source}`}>
+                    {m}
+                  </span>
+                ))}
+              </>
+            )}
+          </div>
+          <div className="prod-name">{meta?.name ?? PRODUCT_LABELS[resolved.product]}</div>
         </div>
-        <span className="inline-flex items-center gap-1.5 px-2 py-1 rounded text-[11px] font-medium bg-warning/20 text-warning-foreground">
-          Auth Required
-        </span>
+        {cardComplete(state) ? (
+          <span className="pill clear">✓ Submitted</span>
+        ) : (
+          <span className="pill pending">● Pending</span>
+        )}
       </div>
 
-      {/* Submit Auth fields */}
-      <div className="p-4 bg-muted/20">
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          {(() => {
-            const isCallOrFax =
-              state.authSubmissionMethod === "Call" || state.authSubmissionMethod === "Fax";
-            return (
-              <div className={isCallOrFax ? "" : "sm:col-span-2"}>
-                <FieldLabel>Auth Submission Method</FieldLabel>
-                <Select
-                  value={state.authSubmissionMethod || "__none__"}
-                  onValueChange={(v) =>
-                    onChange({
-                      authSubmissionMethod: (v === "__none__" ? "" : v) as AuthSubmissionMethod,
-                    })
-                  }
-                >
-                  <SelectTrigger className="mt-1 h-9 bg-background font-medium">
-                    <SelectValue placeholder="Select submission method…" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="__none__">— Not selected —</SelectItem>
-                    {AUTH_SUBMISSION_METHODS.map((m) => (
-                      <SelectItem key={m} value={m}>{m}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            );
-          })()}
-          {(state.authSubmissionMethod === "Call" || state.authSubmissionMethod === "Fax") && (
+      <div className="sa-body">
+        <div className="flabel">
+          Auth Submission Method <span className="req-star">*</span>
+        </div>
+        <div className="method-seg" role="radiogroup" aria-label={`${resolved.hcpc} submission method`}>
+          {METHOD_ORDER.map((m) => (
+            <button
+              key={m}
+              className={method === m ? "on" : ""}
+              role="radio"
+              aria-checked={method === m}
+              onClick={() => setMethod(m)}
+            >
+              {m}
+            </button>
+          ))}
+        </div>
+
+        <div className="sa-fields">
+          {isCallFax && (
             <div>
-              <FieldLabel>
-                {state.authSubmissionMethod === "Call" ? "Call Number" : "Fax Number"}
-              </FieldLabel>
-              <Input
-                value={state.callFaxNumber ?? ""}
-                onChange={(e) => onChange({ callFaxNumber: e.target.value })}
+              <div className="flabel">
+                {method} Number <span className="req-star">*</span>
+              </div>
+              <input
+                type="text"
+                className="mono"
                 placeholder="e.g. (555) 123-4567"
-                className="mt-1 h-9 bg-background font-mono text-sm"
+                value={state?.callFaxNumber ?? ""}
+                onChange={(e) => onChange({ callFaxNumber: e.target.value })}
               />
             </div>
           )}
           <div>
-            <FieldLabel>Auth Submission Date</FieldLabel>
-            <Input
+            <div className="flabel">
+              Auth Submission Date <span className="req-star">*</span>
+            </div>
+            <input
               type="date"
-              value={state.authSubmissionDate ?? ""}
+              value={state?.authSubmissionDate ?? ""}
               onChange={(e) => onChange({ authSubmissionDate: e.target.value })}
-              className="mt-1 h-9 bg-background"
             />
           </div>
           <div>
-            <FieldLabel>Auth ID</FieldLabel>
-            <Input
-              value={state.authId ?? ""}
-              onChange={(e) => onChange({ authId: e.target.value })}
+            <div className="flabel">Auth ID</div>
+            <input
+              type="text"
+              className="mono"
               placeholder="e.g. 123456"
-              className="mt-1 h-9 bg-background font-mono text-sm"
+              value={state?.authId ?? ""}
+              onChange={(e) => onChange({ authId: e.target.value })}
             />
+            <div className="fhint">Leave blank if the payer hasn't issued one yet.</div>
           </div>
-          {primaryInsurance === "Horizon BCBS" && state.authSubmissionMethod === "Payer Portal" && (
-            <div className="sm:col-span-2">
-              <FieldLabel>Intake ID · Carecentrix</FieldLabel>
-              <Input
-                value={sharedIntakeId}
-                onChange={(e) => onSharedIntakeIdChange(e.target.value)}
-                placeholder="e.g. INTAKE-789"
-                className="mt-1 h-9 bg-background font-mono text-sm"
-              />
-              <p className="text-[10px] text-muted-foreground mt-1">
-                Shared across all products — only one Intake ID per patient.
+        </div>
+
+        {showIntake && (
+          <div className="intake-box">
+            <div className="flabel">Intake ID · Carecentrix</div>
+            <input
+              type="text"
+              placeholder="e.g. INTAKE-789"
+              value={sharedIntakeId}
+              onChange={(e) => onSharedIntakeIdChange(e.target.value)}
+            />
+            <div className="fhint">Shared across all products — only one Intake ID per patient.</div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* ── Monday Board Output drawer row ───────────────────────────────── */
+
+function MonRow({ label, value, tone }: { label: string; value: string; tone: string }) {
+  return (
+    <div className="mon-row">
+      <span className="mlabel">{label}</span>
+      <span className={`mval ${tone}`}>{value || "—"}</span>
+    </div>
+  );
+}
+
+/* ── Main panel ───────────────────────────────────────────────────── */
+
+export function AuthorizationsPanel({
+  patient,
+  onCodeChange,
+  missing,
+  onSend,
+  onToggleEscalate,
+  onOpenEscalationForm,
+}: Props) {
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [sendState, setSendState] = useState<"idle" | "sending" | "success" | "error">("idle");
+  const ins = patient.insurance ?? EMPTY_INSURANCE;
+  const primaryInsurance = patient.primaryInsurance || "";
+  const ready = !!patient.serving && !!primaryInsurance;
+  const todayYmd = etTodayYmd();
+
+  const cards = submitAuthCards(patient);
+  const dvsRouted = dvsRoutedProducts(patient);
+  const isCarecentrix = (patient.referralSource || "").toLowerCase().includes("carecentrix");
+  const mltc = isMltcPlan(patient.planName);
+  const homePlan = authHomePlan(patient);
+  const allComplete =
+    cards.length > 0 && cards.every((r) => cardComplete(ins.codes[productCodeId(r.product)]));
+
+  // Carecentrix Intake ID is shared across all card products — one per
+  // patient. Derive from the first non-empty value; fan changes out.
+  const sharedIntakeId =
+    cards.map((r) => ins.codes[productCodeId(r.product)]?.intakeId).find((v) => !!v) ?? "";
+  const setIntakeIdForAll = (value: string) => {
+    for (const r of cards) onCodeChange(productCodeId(r.product), { intakeId: value });
+  };
+
+  const handleSend = async () => {
+    if (sendState === "sending" || missing.length > 0) return;
+    setSendState("sending");
+    try {
+      await onSend();
+      setSendState("success");
+      setTimeout(() => setSendState("idle"), 2200);
+    } catch {
+      setSendState("error");
+      setTimeout(() => setSendState("idle"), 2600);
+    }
+  };
+
+  const callFaxEntry = cards
+    .map((r) => ins.codes[productCodeId(r.product)])
+    .find(
+      (s) =>
+        (s?.authSubmissionMethod === "Call" || s?.authSubmissionMethod === "Fax") &&
+        (s?.callFaxNumber ?? "").trim(),
+    );
+
+  return (
+    <>
+      {/* carecentrix modifier warning (conditional) */}
+      {isCarecentrix && (
+        <div className="ccx-card">
+          <div className="ccx-row">
+            <AlertTriangle size={18} />
+            <span className="ccx-title">
+              Carecentrix referral — submit each auth with the modifiers shown on its card below.
+            </span>
+          </div>
+        </div>
+      )}
+
+      {/* context — auth status from monday (read-only, not a step) */}
+      <section className="card">
+        <header className="step-head">
+          <h2 className="ctx-title">Auth Status by Product</h2>
+        </header>
+        {!ready ? (
+          <div className="empty-box" style={{ marginTop: 14 }}>
+            <p>Serving and Primary Insurance must be set at Profile Send-Off to load this patient's codes.</p>
+          </div>
+        ) : (
+          <AuthStatusMatrix patient={patient} />
+        )}
+      </section>
+
+      {/* the one step — submit auth per required product */}
+      <section className="card step-card">
+        <header className="step-head">
+          <span className={`step-num ${allComplete ? "done" : ""}`}>{allComplete ? "✓" : "1"}</span>
+          <h2>Submit Auth for Each Required Product</h2>
+        </header>
+
+        {ready && (
+          <>
+            {mltc && (
+              <div className="ccx-card tight" style={{ marginTop: 14 }}>
+                <div className="ccx-row">
+                  <AlertTriangle size={18} />
+                  <span className="ccx-title">
+                    MLTC plan — <b>{patient.planName}</b> on the Stedi check — all auths submitted
+                    via <b>fax</b> only.
+                  </span>
+                </div>
+              </div>
+            )}
+
+            {cards.length === 0 ? (
+              <>
+                <div className="empty-box" style={{ marginTop: 14 }}>
+                  <p>No auths to submit</p>
+                  <p className="sub">
+                    {dvsRouted.length > 0
+                      ? "Everything bills to NY Medicaid — DVS happens at the next stage."
+                      : "No product on this patient is marked Required on the board."}
+                  </p>
+                </div>
+                {dvsRouted.length > 0 && (
+                  <div className="dvs-note">
+                    <Info size={20} />
+                    <span>
+                      <b>{joinNames(dvsRouted)}</b> {dvsRouted.length === 1 ? "bills" : "bill"} to NY
+                      Medicaid. Submit DVS at the DVS stage — nothing to submit here.
+                    </span>
+                  </div>
+                )}
+              </>
+            ) : (
+              <>
+                {homePlan && (
+                  <div className="homeplan-note" style={{ marginTop: 14 }}>
+                    <Info size={20} />
+                    <span>
+                      Auths go through the member's <b>home plan — {homePlan.home}</b> — not{" "}
+                      {homePlan.host}, the host plan we bill.
+                    </span>
+                  </div>
+                )}
+                <div className="prod-list" style={{ marginTop: homePlan || mltc ? 0 : 14 }}>
+                  {cards.map((r) => (
+                    <SubmissionCard
+                      key={r.product}
+                      resolved={r}
+                      state={ins.codes[productCodeId(r.product)]}
+                      primaryInsurance={primaryInsurance}
+                      sharedIntakeId={sharedIntakeId}
+                      onChange={(patch) => onCodeChange(productCodeId(r.product), patch)}
+                      onSharedIntakeIdChange={setIntakeIdForAll}
+                    />
+                  ))}
+                </div>
+                {dvsRouted.length > 0 && (
+                  <div className="dvs-note">
+                    <Info size={20} />
+                    <span>
+                      <b>{joinNames(dvsRouted)}</b> {dvsRouted.length === 1 ? "bills" : "bill"} to NY
+                      Medicaid. Submit DVS at the next stage once the pump is approved.
+                    </span>
+                  </div>
+                )}
+              </>
+            )}
+          </>
+        )}
+
+        {!ready && (
+          <div className="empty-box" style={{ marginTop: 14 }}>
+            <p>Serving and Primary Insurance must be set at Profile Send-Off to load this patient's codes.</p>
+          </div>
+        )}
+      </section>
+
+      {/* monday output + actions */}
+      <section className="card" style={{ borderLeft: "4px solid var(--mm-teal)" }}>
+        <button
+          type="button"
+          className={`mon-toggle ${drawerOpen ? "open" : ""}`}
+          aria-expanded={drawerOpen}
+          onClick={() => setDrawerOpen((v) => !v)}
+        >
+          <h2 style={{ color: "var(--mm-teal)" }}>Monday Board Output</h2>
+          <span className="mon-toggle-hint">Show/Hide what lands on the board</span>
+          <ChevronIcon open={drawerOpen} />
+        </button>
+
+        {drawerOpen && (
+          <div style={{ marginTop: 16, display: "flex", flexDirection: "column", gap: 16 }}>
+            <div className="mon-box">
+              <h3>Main columns</h3>
+              <p className="msub">
+                One write each per send. Follow Up Date is stamped <b>today</b> so the patient lands
+                in tomorrow-or-sooner's Auth Outstanding bucket. Escalation follows the manual
+                toggle only — Submit Auth has no auto-escalation rules.
+              </p>
+              <div className="mon-rows">
+                <MonRow label="Stage Advancer" value="Auth. Outstanding" tone="warn" />
+                <MonRow
+                  label="Follow Up Date · date_mm34m2dz"
+                  value={`${ymdToUs(todayYmd)} — today (same-day)`}
+                  tone="good"
+                />
+                <MonRow
+                  label="Escalation"
+                  value={patient.escalated ? "Escalation Required" : "Done"}
+                  tone={patient.escalated ? "bad" : "good"}
+                />
+                {callFaxEntry && (
+                  <MonRow label="Call/Fax Number" value={callFaxEntry.callFaxNumber ?? ""} tone="neutral" />
+                )}
+                {sharedIntakeId && (
+                  <MonRow label="Carecentrix Intake ID" value={sharedIntakeId} tone="neutral" />
+                )}
+              </div>
+            </div>
+
+            <div className="mon-box">
+              <h3>Per-product columns</h3>
+              <p className="msub">
+                Auth results flip to Submitted; method, date and ID land in their per-product
+                columns.
+              </p>
+              <div className="mon-rows">
+                {cards.map((r) => {
+                  const s = ins.codes[productCodeId(r.product)];
+                  return (
+                    <div key={r.product} style={{ display: "contents" }}>
+                      <div className="mon-row grp-head">
+                        <span className="mlabel">
+                          {r.hcpc} · {PRODUCT_LABELS[r.product]}
+                        </span>
+                        <span></span>
+                      </div>
+                      <MonRow label="Auth result" value="Submitted" tone="good" />
+                      <MonRow
+                        label="Auth Submission Method"
+                        value={s?.authSubmissionMethod || "—"}
+                        tone={s?.authSubmissionMethod ? "skip" : "neutral"}
+                      />
+                      <MonRow
+                        label="Auth Submission Date"
+                        value={s?.authSubmissionDate ? ymdToUs(s.authSubmissionDate) : "—"}
+                        tone="neutral"
+                      />
+                      <MonRow label="Auth ID" value={s?.authId || "—"} tone="neutral" />
+                    </div>
+                  );
+                })}
+                {dvsRouted.map((r) => (
+                  <div key={r.product} style={{ display: "contents" }}>
+                    <div className="mon-row grp-head">
+                      <span className="mlabel">
+                        {r.hcpc} · {PRODUCT_LABELS[r.product]}
+                      </span>
+                      <span></span>
+                    </div>
+                    <MonRow label="Auth result" value="Required (unchanged — DVS next stage)" tone="skip" />
+                  </div>
+                ))}
+              </div>
+              <p className="mon-note">
+                Testing aid — verify backend output against this drawer, then delete it for
+                production (spec §9; keep the buttons below).
               </p>
             </div>
-          )}
-        </div>
+          </div>
+        )}
 
-        {/* Same or Similar — inline with this product's card */}
-        {(() => {
-          const sos: SosChoice = state.sos ?? "";
-          return (
-            <div className="border-t border-border pt-3 mt-3">
-              <FieldLabel>Same or Similar</FieldLabel>
-              <Select
-                value={sos || "__none__"}
-                onValueChange={(v) => {
-                  const newSos = (v === "__none__" ? "" : v) as SosChoice;
-                  onChange(newSos === "not-clear" ? { sos: newSos } : { sos: newSos, lastBillDate: "" });
-                }}
-              >
-                <SelectTrigger
-                  className={cn(
-                    "mt-1 h-9 font-medium",
-                    sos === "not-clear" && "bg-warning/15 border-warning/50 text-warning-foreground",
-                    sos === "clear" && "bg-success/10 border-success/40 text-success",
-                    sos === "skip" && "bg-sky-50 border-sky-300 text-sky-800 dark:bg-sky-950/40 dark:border-sky-800 dark:text-sky-200",
-                  )}
-                >
-                  <SelectValue placeholder="Select SoS status…" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="__none__">— Not selected —</SelectItem>
-                  <SelectItem value="clear">Clear</SelectItem>
-                  <SelectItem value="not-clear">Not Clear</SelectItem>
-                  <SelectItem value="skip">Skip (defer until auth resolved)</SelectItem>
-                </SelectContent>
-              </Select>
-              {sos === "not-clear" && (
-                <div className="mt-3 rounded-lg border border-warning/40 bg-warning/5 p-3">
-                  <label className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-wider text-warning-foreground/80 mb-1.5">
-                    <CalendarDays className="h-3.5 w-3.5" />
-                    {meta.name} Last Bill Date
-                  </label>
-                  <Input
-                    type="date"
-                    value={state.lastBillDate ?? ""}
-                    onChange={(e) => onChange({ lastBillDate: e.target.value })}
-                    className="max-w-xs h-9 bg-background border-warning/30 focus-visible:ring-warning/40"
-                  />
-                </div>
-              )}
-            </div>
-          );
-        })()}
-      </div>
-    </div>
+        <div className="foot-actions">
+          <div className="foot-left">
+            <EscalateButton
+              escalated={!!patient.escalated}
+              onToggle={onToggleEscalate}
+              onOpenForm={onOpenEscalationForm}
+            />
+          </div>
+          <button
+            className={`send-btn ${sendState === "error" ? "err" : ""}`}
+            disabled={missing.length > 0 || sendState === "sending"}
+            onClick={handleSend}
+          >
+            {sendState === "sending"
+              ? "Sending to Monday…"
+              : sendState === "success"
+                ? "✓ Auth submission complete — sent"
+                : sendState === "error"
+                  ? "Send failed — click to retry"
+                  : "Auth Submission Complete"}
+          </button>
+        </div>
+        {missing.length > 0 && (
+          <div className="missing-box">
+            <div className="mb-title">Missing before send</div>
+            <div className="mb-list">{missing.join(" · ")}</div>
+          </div>
+        )}
+      </section>
+    </>
   );
 }
 
-function FieldLabel({ children }: { children: React.ReactNode }) {
+function ChevronIcon({ open }: { open: boolean }) {
   return (
-    <label className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-      {children}
-    </label>
-  );
-}
-
-function AuthRequirementsMatrix({
-  resolved,
-  medicaidProducts,
-  ins,
-}: {
-  resolved: ResolvedProduct[];
-  /** Products whose supplies route to Medicaid for this patient.
-   *  Renders an "E-paces DVS" pill alongside the Required status. */
-  medicaidProducts: Set<ProductId>;
-  ins: { codes: Partial<Record<ProductCodeId, ProductCodeState>> };
-}) {
-  // Show all 5 products, in canonical order
-  const ALL: ProductId[] = ["monitor", "sensors", "insulin_pump", "infusion_set", "cartridge"];
-  const servedSet = new Set(resolved.map((r) => r.product));
-
-  return (
-    <div className="rounded-xl border-2 border-border bg-muted/10 p-4">
-      <div className="flex items-start gap-3 mb-3">
-        <div className="h-8 w-8 rounded-full bg-background border-2 border-border flex items-center justify-center shrink-0">
-          <ShieldCheck className="h-4 w-4 text-muted-foreground" />
-        </div>
-        <div className="min-w-0">
-          <h3 className="text-sm font-semibold">Auth Status from Monday</h3>
-          <p className="text-xs text-muted-foreground mt-0.5">
-            Read-only — these values are pulled directly from the Monday board.
-          </p>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2">
-        {ALL.map((p) => {
-          const codeId = PRODUCT_TO_CODE_ID[p];
-          const isServed = servedSet.has(p);
-          const state = ins.codes[codeId];
-          const label = state?._mondayAuthLabel || "";
-          const isNotServing = label.toLowerCase() === "not serving";
-          const isRequired = label.toLowerCase() === "required";
-          const isNoAuth = label.toLowerCase() === "no auth needed";
-          const isMedicaidRouted = medicaidProducts.has(p);
-
-          return (
-            <div
-              key={p}
-              className={cn(
-                "rounded-lg border p-3 bg-background flex flex-col gap-2",
-                isNotServing && "opacity-60",
-                isRequired && "border-warning/50 bg-warning/5",
-                isNoAuth && "border-success/40 bg-success/5",
-              )}
-            >
-              <div>
-                <p className="text-sm font-semibold leading-tight">{PRODUCT_LABELS[p]}</p>
-                <p className="text-[10px] uppercase tracking-wider text-muted-foreground mt-0.5">
-                  {isServed && !isNotServing ? "Serving" : "Not Serving"}
-                </p>
-              </div>
-              <div className="mt-auto flex flex-col gap-1.5">
-                {/* Always render the pill slot so every card reserves the
-                    same vertical space — invisible when not Medicaid-routed. */}
-                <span
-                  aria-hidden={!isMedicaidRouted}
-                  className={cn(
-                    "self-start inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold whitespace-nowrap border",
-                    isMedicaidRouted
-                      ? "bg-sky-500/15 text-sky-700 dark:text-sky-300 border-sky-500/40"
-                      : "invisible border-transparent",
-                  )}
-                >
-                  E-paces DVS
-                </span>
-                <div
-                  className={cn(
-                    "h-9 flex items-center px-3 rounded-md border text-sm font-medium bg-muted",
-                    isRequired && "bg-warning/15 border-warning/50 text-warning-foreground",
-                    isNoAuth && "bg-success/10 border-success/40 text-success",
-                    isNotServing && "text-muted-foreground",
-                  )}
-                >
-                  {label || "—"}
-                </div>
-              </div>
-            </div>
-          );
-        })}
-      </div>
-    </div>
+    <svg
+      width="20"
+      height="20"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      style={{ transform: open ? "rotate(180deg)" : undefined, transition: "transform .2s" }}
+    >
+      <polyline points="6 9 12 15 18 9" />
+    </svg>
   );
 }

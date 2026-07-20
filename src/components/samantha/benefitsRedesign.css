@@ -90,6 +90,14 @@
 .bnr .stedi-grid+.stedi-grid{margin-top:10px}
 .bnr .stedi-grid.three{grid-template-columns:repeat(3,1fr)}
 .bnr .stedi-grid.four{grid-template-columns:repeat(4,1fr)}
+/* Home Plan box — "HANDLES AUTHS" variant when a BCBS-family member's home
+   plan differs from the host plan we bill (Submit Auth redesign §8). */
+.bnr .sbox.auth-plan{border-color:oklch(0.36 0.04 200 / 0.35);background:oklch(0.36 0.04 200 / 0.06)}
+.bnr .sbox.auth-plan .auth-tag{
+  display:inline-block;margin-left:6px;padding:1px 8px;border-radius:999px;
+  font-size:.62rem;font-weight:800;letter-spacing:.05em;vertical-align:middle;
+  background:var(--mm-teal);color:#fff;
+}
 .bnr .stedi-grid.five{grid-template-columns:repeat(5,1fr)}
 .bnr .sbox{border:1px solid var(--bnr-border);border-radius:10px;background:var(--bnr-card);padding:10px 14px}
 .bnr .sval{margin-top:2px;font-size:.95rem;font-weight:500}

@@ -421,6 +421,7 @@ export function mondayItemToPatient(item: MondayItem): Patient {
     followUp: followUpText,
     followUpDate,
     planName: cv(COL.planName)?.text || undefined,
+    homePlan: cv(COL.homePlan)?.text || undefined,
     stediQmb: cv(COL.stediQmb)?.text || undefined,
     stediCoinsurance: cv(COL.stediCoinsurance)?.text || undefined,
     stediPlanBegin: cv(COL.stediPlanBegin)?.text || undefined,

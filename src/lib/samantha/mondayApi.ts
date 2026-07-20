@@ -176,11 +176,15 @@ export const COL = {
   sosAuthCallLog: "long_text_mm59rz2c",
 
   // Stedi output columns displayed read-only in the Benefits header (D5/S5).
-  // Home Plan / Coverage Type / Medicaid ID do NOT exist on this board yet.
+  // Coverage Type / Medicaid ID do NOT exist on this board yet.
   stediQmb: "text_mm2wabwr",
   stediCoinsurance: "text_mm39k0hz",
   stediPlanBegin: "text_mm3ggbwa",
   planName: "dropdown_mm2w11t4",
+  // Stedi Home Plan (added 2026-07-20) — the member's HOME plan from the
+  // 271; when it differs from the BCBS-family host plan we bill, the home
+  // plan handles auths (Submit Auth redesign §8).
+  homePlan: "dropdown_mm5ex8wx",
   deductibleRemaining: "text_mm1xdzxw",
   oopMaxRemaining: "text_mm1xx5f",
 
@@ -272,6 +276,7 @@ export const READ_COLUMN_IDS = [
   COL.stediCoinsurance,
   COL.stediPlanBegin,
   COL.planName,
+  COL.homePlan,
   COL.deductibleRemaining,
   COL.oopMaxRemaining,
 ];

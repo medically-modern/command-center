@@ -1,5 +1,18 @@
 /**
- * Submit Auth — standalone view of Samantha-checklist's "Submit Auth" tab.
+ * Submit Auth — the redesigned single-step auth-submission tab
+ * (HANDOFF-Josh-Submit-Auth.md + submit-auth-redesign.html, July 2026).
+ *
+ * Kept from the old page: the patients sidebar, the navy top bar (Follow
+ * Up / Save / Reset / Report Issue + Clinicals), the 30s poll + local
+ * overlay machinery, deep links, Follow Up + Escalation form modals.
+ *
+ * Changed per the handoff: the editable PatientProfileCard is replaced by
+ * the read-only BenefitsPatientHeader (§8 — header is fed by Profile
+ * Send-Off); the Carecentrix modifier table is replaced by per-card
+ * modifier chips + a one-line banner (§4); the Trigger DVS buttons are
+ * gone (DVS moves to its own stage, §10); SoS UI is gone (§3); sends are
+ * gated on every card having Method + Date (+ number for Call/Fax, §7);
+ * Reference Notes move to the sticky rail (Benefits pattern).
  */
 import { useMemo, useState } from "react";
 import { useMondayPatients } from "@/hooks/samantha/useMondayPatients";
@@ -10,15 +23,14 @@ import {
   ProductCodeState,
   EMPTY_INSURANCE,
 } from "@/lib/samantha/workflow";
+import { validateSubmitAuthForSubmit } from "@/lib/samantha/submitAuthRules";
 import { AuthorizationsPanel } from "@/components/samantha/AuthorizationsPanel";
+import { BenefitsPatientHeader } from "@/components/samantha/BenefitsPatientHeader";
+import { NotesPanel } from "@/components/samantha/NotesPanel";
 import { PatientsSidebar } from "@/components/samantha/PatientsSidebar";
-import { PatientProfileCard } from "@/components/samantha/PatientProfileCard";
-import { SendToMondayButton } from "@/components/samantha/SendToMondayButton";
 import { Button } from "@/components/ui/button";
-import { EscalateButton } from "@/components/samantha/EscalateButton";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
-import { RotateCcw, Stethoscope, ArrowLeft, Clock, Save, Zap, AlertTriangle } from "lucide-react";
-import { resolveHcpcs } from "@/lib/samantha/hcpcRules";
+import { RotateCcw, Stethoscope, ArrowLeft, Clock, Save } from "lucide-react";
 import { toast } from "sonner";
 import { sendPatientToMonday } from "@/lib/samantha/mondayWrite";
 import { writeLongText, writeStatusIndex, COL } from "@/lib/samantha/mondayApi";
@@ -26,72 +38,30 @@ import { EscalationFormModal } from "@/components/shared/EscalationFormModal";
 import { PageLoadingOverlay } from "@/components/shared/PageLoadingOverlay";
 import { ESCALATION_INDEX } from "@/lib/samantha/mondayMapping";
 import { FollowUpModal } from "@/components/samantha/FollowUpModal";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useSearchParams } from "react-router-dom";
 import { useBackNavigation } from "@/hooks/useBackNavigation";
 import { ReportIssueButton } from "@/components/shared/ReportIssueButton";
+import { ClinicalsDownloadButton } from "@/components/samantha/ClinicalsDownloadButton";
 import { viewFilterFromParams } from "@/lib/roleView";
 import { sidebarVisibleList } from "@/lib/samantha/sidebarList";
-
-const CARECENTRIX_MODIFIERS: { hcpc: string; modifiers: string }[] = [
-  { hcpc: "A4230", modifiers: "NU SC" },
-  { hcpc: "A4232", modifiers: "NU SC" },
-  { hcpc: "A4239", modifiers: "NU" },
-  { hcpc: "E2103", modifiers: "NU" },
-  { hcpc: "E0784", modifiers: "NU" },
-];
-
-function CarecentrixModifierNote() {
-  const [showTable, setShowTable] = useState(false);
-  return (
-    <div className="rounded-xl bg-card border border-red-200 shadow-card p-4">
-      <div className="flex items-center gap-3">
-        <AlertTriangle className="h-5 w-5 text-red-600 flex-shrink-0" />
-        <p className="text-sm text-red-600 font-semibold">
-          Check Modifiers for carecentrix here.
-        </p>
-        <button
-          onMouseEnter={() => setShowTable(true)}
-          onMouseLeave={() => setShowTable(false)}
-          onClick={() => setShowTable((v) => !v)}
-          className="ml-2 px-3 py-1 text-xs font-medium rounded-md border border-red-300 bg-red-50 text-red-700 hover:bg-red-100 transition-colors"
-        >
-          View Modifiers
-        </button>
-      </div>
-      {showTable && (
-        <table className="mt-3 ml-8 text-sm">
-          <thead>
-            <tr className="border-b border-muted">
-              <th className="pr-6 pb-1 text-left text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">HCPC</th>
-              <th className="pb-1 text-left text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Modifiers</th>
-            </tr>
-          </thead>
-          <tbody>
-            {CARECENTRIX_MODIFIERS.map((row) => (
-              <tr key={row.hcpc} className="border-b border-muted/40 last:border-0">
-                <td className="pr-6 py-1 font-mono font-medium">{row.hcpc}</td>
-                <td className="py-1 font-mono">{row.modifiers}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
-    </div>
-  );
-}
+import "@/components/samantha/benefitsRedesign.css";
+import "@/components/samantha/submitAuthRedesign.css";
 
 const SubmitAuthPage = () => {
-  const navigate = useNavigate();
   const { goBack } = useBackNavigation();
   const [searchParams] = useSearchParams();
   const isEscalated = searchParams.get("escalated") === "1";
   const isManager = searchParams.get("manager") === "1";
   const [escalationModalOpen, setEscalationModalOpen] = useState(false);
-  const { patients, loading, initialLoading, error, refetch, update, clearOverlay , saveOverlay, hasOverlay } = useMondayPatients("submitAuth", searchParams.get("patientId"));
+  const { patients, loading, initialLoading, error, refetch, update, clearOverlay, saveOverlay, hasOverlay } =
+    useMondayPatients("submitAuth", searchParams.get("patientId"));
   const [selectedId, setSelectedId] = useState<string | null>(
     searchParams.get("patientId") ?? null,
   );
   const [followUpOpen, setFollowUpOpen] = useState(false);
+  /** Patient just sent successfully — suppress the panel until the board
+   *  automation moves them off this list (same pattern as Benefits). */
+  const [lastSentId, setLastSentId] = useState<string | null>(null);
 
   // Auto-select the first patient the sidebar actually shows (same list math
   // as PatientsSidebar), never from the pre-fetch localStorage cache.
@@ -114,9 +84,9 @@ const SubmitAuthPage = () => {
     if (!selected) return;
     const ins = selected.insurance ?? EMPTY_INSURANCE;
     const prev = ins.codes[codeId] ?? { status: "pending" as const };
-    const nextCode = { ...prev, ...patch };
-    const next = { ...ins, codes: { ...ins.codes, [codeId]: nextCode } };
-    update(selected.id, { insurance: next });
+    update(selected.id, {
+      insurance: { ...ins, codes: { ...ins.codes, [codeId]: { ...prev, ...patch } } },
+    });
   };
 
   const resetForNewPatient = () => {
@@ -127,37 +97,17 @@ const SubmitAuthPage = () => {
     refetch();
   };
 
-  // Show "Trigger DVS" when Medicaid appears in either insurance AND
-  // the serving includes supplies (infusion sets / cartridges).
-  const showTriggerDvs = useMemo(() => {
-    if (!selected) return false;
-    const pri = (selected.primaryInsurance ?? "").toLowerCase();
-    const sec = (selected.secondaryInsurance ?? "").toLowerCase();
-    const hasMedicaid = pri.includes("medicaid") || sec.includes("medicaid");
-    if (!hasMedicaid) return false;
-    const resolved = resolveHcpcs(selected.primaryInsurance || null, selected.serving || null, selected.secondaryInsurance ?? null);
-    return resolved.some((r) => r.product === "infusion_set" || r.product === "cartridge");
-  }, [selected?.primaryInsurance, selected?.secondaryInsurance, selected?.serving]);
-
-  // Show "Trigger Pump DVS" when Medicaid appears in either insurance AND
-  // the serving includes the insulin pump. Separate bot from the supplies
-  // DVS: own trigger column, no retry, no claims.
-  const showTriggerPumpDvs = useMemo(() => {
-    if (!selected) return false;
-    const pri = (selected.primaryInsurance ?? "").toLowerCase();
-    const sec = (selected.secondaryInsurance ?? "").toLowerCase();
-    const hasMedicaid = pri.includes("medicaid") || sec.includes("medicaid");
-    if (!hasMedicaid) return false;
-    const resolved = resolveHcpcs(selected.primaryInsurance || null, selected.serving || null, selected.secondaryInsurance ?? null);
-    return resolved.some((r) => r.product === "insulin_pump");
-  }, [selected?.primaryInsurance, selected?.secondaryInsurance, selected?.serving]);
+  const missing = selected ? validateSubmitAuthForSubmit(selected) : [];
 
   const handleSend = async () => {
     if (!selected) return;
+    if (missing.length > 0) return;
     try {
       await sendPatientToMonday(selected, "submitAuth");
       clearOverlay(selected.id);
-      toast.success("Sent to Monday");
+      setLastSentId(selected.id);
+      toast.success("Auth submission complete — sent to Monday");
+      refetch(true);
     } catch (e) {
       toast.error("Send to Monday failed", { description: e instanceof Error ? e.message : String(e) });
       throw e;
@@ -168,7 +118,16 @@ const SubmitAuthPage = () => {
     <SidebarProvider>
       <PageLoadingOverlay show={initialLoading} />
       <div className="min-h-screen flex w-full bg-gradient-subtle">
-        <PatientsSidebar patients={patients} selectedId={selectedId} onSelect={setSelectedId} loading={loading} error={error} onRefresh={refetch} activeGroup="submitAuth" managerMode={isManager} />
+        <PatientsSidebar
+          patients={patients}
+          selectedId={selectedId}
+          onSelect={setSelectedId}
+          loading={loading}
+          error={error}
+          onRefresh={refetch}
+          activeGroup="submitAuth"
+          managerMode={isManager}
+        />
         <div className="flex-1 flex flex-col min-w-0">
           <header className={`${isEscalated ? "bg-red-700" : "bg-gradient-navy"} text-navy-foreground border-b border-sidebar-border`}>
             <div className="px-3 sm:px-6 py-5 flex items-center justify-between gap-4 flex-wrap">
@@ -181,11 +140,12 @@ const SubmitAuthPage = () => {
                   <Stethoscope className="h-5 w-5 text-primary-foreground" />
                 </div>
                 <div>
-                  <p className="text-[10px] uppercase tracking-[0.2em] opacity-70">Medically Modern</p>
+                  <p className="text-[10px] uppercase tracking-[0.2em] opacity-70">Medically Modern · Authorization</p>
                   <h1 className="text-2xl font-bold">Submit Auth</h1>{selected && (<p className="text-sm opacity-80 mt-0.5 flex items-center gap-2">{selected.name}{selected.escalated && <span className="inline-flex items-center rounded-full bg-red-500 text-white text-[10px] font-bold uppercase tracking-wide px-2 py-0.5">Escalated</span>}</p>)}
                 </div>
               </div>
               <div className="flex items-center gap-2">
+                {selected && <ClinicalsDownloadButton itemId={selected.id} />}
                 <Button onClick={() => setFollowUpOpen(true)} disabled={!selected} className="gap-2 bg-white/90 text-blue-700 hover:bg-white shadow-elevate">
                   <Clock className="h-4 w-4" /> Follow Up
                 </Button>
@@ -209,61 +169,60 @@ const SubmitAuthPage = () => {
           </header>
 
           <main className="flex-1 px-3 sm:px-6 py-6">
-            <section className="max-w-5xl xl:max-w-7xl 2xl:max-w-[1800px] mx-auto space-y-5">
-              {!selected && (
-                <div className="rounded-xl bg-card border shadow-card p-10 text-center">
-                  <p className="text-sm text-muted-foreground">{loading ? "Loading patients from Monday…" : error ? error : "Select a patient from the sidebar to begin."}</p>
-                </div>
-              )}
-              {selected && (
-                <>
-                  <PatientProfileCard patient={selected} onUpdate={(p) => update(selected.id, p)} />
-                  {(selected.referralSource || "").toLowerCase().includes("carecentrix") && (
-                    <CarecentrixModifierNote />
-                  )}
-                  <AuthorizationsPanel patient={selected} onCodeChange={updateCode} onNotesChange={(v) => update(selected.id, { notes: v })} onSaveNotesToMonday={(v) => writeLongText(selected.id, COL.callReferenceNotes, v)} />
-                  <EscalateButton
-                    escalated={!!selected.escalated}
-                    onToggle={() => update(selected.id, { escalated: !selected.escalated })}
-                    onOpenForm={() => setEscalationModalOpen(true)}
-                  />
+            <section className="max-w-5xl xl:max-w-7xl 2xl:max-w-[1800px] mx-auto">
+              <div className="bnr">
+                {!selected && (
+                  <div className="rounded-xl bg-card border shadow-card p-10 text-center">
+                    <p className="text-sm text-muted-foreground">
+                      {loading ? "Loading patients from Monday…" : error ? error : "Select a patient from the sidebar to begin."}
+                    </p>
+                  </div>
+                )}
 
-                  {(showTriggerDvs || showTriggerPumpDvs) && (
-                    <div className="flex justify-center gap-3 flex-wrap">
-                      {showTriggerDvs && (
-                        <Button
-                          onClick={() => update(selected.id, { triggerDvs: !selected.triggerDvs })}
-                          variant="outline"
-                          className={
-                            selected.triggerDvs
-                              ? "gap-2 bg-blue-100 hover:bg-blue-200 !text-blue-700 border-blue-400 shadow-md"
-                              : "gap-2 border-blue-300 !text-blue-600 hover:bg-blue-50"
-                          }
-                        >
-                          <Zap className="h-4 w-4" />
-                          {selected.triggerDvs ? "Supplies DVS Triggered" : "Trigger Supplies DVS"}
-                        </Button>
-                      )}
-                      {showTriggerPumpDvs && (
-                        <Button
-                          onClick={() => update(selected.id, { triggerPumpDvs: !selected.triggerPumpDvs })}
-                          variant="outline"
-                          className={
-                            selected.triggerPumpDvs
-                              ? "gap-2 bg-indigo-100 hover:bg-indigo-200 !text-indigo-700 border-indigo-400 shadow-md"
-                              : "gap-2 border-indigo-300 !text-indigo-600 hover:bg-indigo-50"
-                          }
-                        >
-                          <Zap className="h-4 w-4" />
-                          {selected.triggerPumpDvs ? "Pump DVS Triggered" : "Trigger Pump DVS"}
-                        </Button>
+                {selected && (
+                  <div className="layout">
+                    <div className="main-col">
+                      <BenefitsPatientHeader patient={selected} />
+
+                      {selected.id === lastSentId ? (
+                        <section className="card step-card">
+                          <div className="empty-box">
+                            <p>✓ Auth submission complete — sent to Monday</p>
+                            <p className="sub">
+                              The board automation is moving this patient to Auth Outstanding;
+                              they'll drop off this list within a minute. Pick the next patient
+                              from the sidebar.
+                            </p>
+                          </div>
+                        </section>
+                      ) : (
+                        <AuthorizationsPanel
+                          patient={selected}
+                          onCodeChange={updateCode}
+                          missing={missing}
+                          onSend={handleSend}
+                          onToggleEscalate={() => update(selected.id, { escalated: !selected.escalated })}
+                          onOpenEscalationForm={() => setEscalationModalOpen(true)}
+                        />
                       )}
                     </div>
-                  )}
 
-                  <SendToMondayButton onSend={handleSend} disabled={!selected} />
-                </>
-              )}
+                    {/* Notes rail (sticky, full viewport height) */}
+                    <aside className="notes-rail">
+                      <NotesPanel
+                        notes={selected.notes}
+                        onNotesChange={(v) => update(selected.id, { notes: v })}
+                        onSaveToMonday={async (v) => {
+                          await writeLongText(selected.id, COL.callReferenceNotes, v);
+                        }}
+                        placeholder="Auth submission notes, confirmation numbers, any rep feedback…"
+                        description="Carries over from the Benefits tab. Add anything new from the auth submission step."
+                        fillHeight
+                      />
+                    </aside>
+                  </div>
+                )}
+              </div>
             </section>
           </main>
         </div>
@@ -278,7 +237,7 @@ const SubmitAuthPage = () => {
           onSuccess={refetch}
         />
       )}
-    {selected && (
+      {selected && (
         <EscalationFormModal
           open={escalationModalOpen}
           onOpenChange={setEscalationModalOpen}

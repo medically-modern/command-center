@@ -409,6 +409,18 @@ export async function sendPatientToMonday(p: Patient, context: "benefits" | "sub
   if (context === "submitAuth") {
     stageWriteIndex = STAGE_INDEX.authOutstanding;
     // submitAuth doesn't auto-touch escalation; manual toggle decides.
+    // Follow Up Date → TODAY (ET), same-day not +1 — many auths approve
+    // right away (Submit Auth redesign §7). This is the prerequisite for
+    // the Auth Outstanding daily bucket: reps there will only see patients
+    // whose Follow Up Date is today or earlier, and a "Still Outstanding"
+    // button will push it +1 day. The Follow Up STATUS column is left
+    // alone — the sidebar's Follow Up section keys on the status label,
+    // and these patients aren't snoozed, just date-stamped.
+    tasks.push({
+      label: "Follow Up Date (today)",
+      columnId: COL.followUpDate,
+      fn: () => writeDate(p.id, COL.followUpDate, todayEt),
+    });
   } else if (context === "authOutstanding") {
     // Auth Outstanding outcome rules (priority order):
     //   1. ANY product denied                → Stage = Auth Denied + Escalation Required

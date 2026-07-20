@@ -17,6 +17,7 @@
 import { useState } from "react";
 import { ChevronDown, FileText } from "lucide-react";
 import type { Patient } from "@/lib/samantha/workflow";
+import { authHomePlan } from "@/lib/samantha/submitAuthRules";
 import "./benefitsRedesign.css";
 
 function formatPhone(raw: string): string {
@@ -60,6 +61,10 @@ export function BenefitsPatientHeader({ patient }: Props) {
 
   const isMedicarePayer = /medicare/i.test(patient.primaryInsurance ?? "");
   const hasPump = !!(patient.serving && /Pump|Supplies/.test(patient.serving));
+  // Stedi Home Plan (dropdown_mm5ex8wx): shown whenever present; tagged
+  // "HANDLES AUTHS" when a BCBS-family member's home plan differs from the
+  // host plan we bill (Submit Auth redesign §8).
+  const homePlanDiffers = authHomePlan(patient);
 
   return (
     <section className="card header-card">
@@ -102,9 +107,18 @@ export function BenefitsPatientHeader({ patient }: Props) {
             Insurance Details · Stedi Check
           </span>
         </div>
-        <div className={`stedi-grid ${isMedicarePayer ? "three" : "three"}`}>
+        <div className={`stedi-grid ${patient.homePlan ? "four" : "three"}`}>
           <SBox label="Payer Name" value={patient.primaryInsurance || ""} strong />
           <SBox label="Plan Name" value={patient.planName ?? ""} />
+          {patient.homePlan && (
+            <div className={`sbox${homePlanDiffers ? " auth-plan" : ""}`}>
+              <div className="eyebrow-xs">
+                Home Plan
+                {homePlanDiffers && <span className="auth-tag">HANDLES AUTHS</span>}
+              </div>
+              <div className="sval strong">{patient.homePlan}</div>
+            </div>
+          )}
           <SBox label="Plan Begin Date" value={patient.stediPlanBegin ?? ""} />
         </div>
         <div className={`stedi-grid ${isMedicarePayer ? "four" : "three"}`}>

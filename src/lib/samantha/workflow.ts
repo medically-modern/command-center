@@ -493,6 +493,10 @@ export interface Patient {
   // Stedi output (read-only Benefits header display — written upstream by
   // the stedi-monday-integration service / Profile Send-Off, never by us).
   planName?: string;
+  /** Stedi Home Plan (dropdown_mm5ex8wx) — the member's home plan from the
+   *  271. For BCBS-family patients whose home ≠ host plan, the HOME plan
+   *  handles auths (Submit Auth redesign §8, submitAuthRules.authHomePlan). */
+  homePlan?: string;
   stediQmb?: string;
   stediCoinsurance?: string;
   stediPlanBegin?: string;

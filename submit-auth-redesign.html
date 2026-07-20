@@ -1,0 +1,1181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Submit Auth · Redesign</title>
+<style>
+/* ============ design tokens (Medical Evaluation UI Design v2) ============ */
+:root{
+  --background:oklch(1 0 0);
+  --foreground:oklch(0.129 0.042 264.695);
+  --card:oklch(1 0 0);
+  --muted:oklch(0.968 0.007 247.896);
+  --muted-foreground:oklch(0.554 0.046 257.417);
+  --border:oklch(0.929 0.013 255.508);
+  --input:oklch(0.929 0.013 255.508);
+  /* Medically Modern palette */
+  --mm-teal:oklch(0.36 0.04 200);
+  --mm-green:oklch(0.62 0.10 175);
+  --mm-green-12:oklch(0.62 0.10 175 / 0.12);
+  --mm-mint:oklch(0.94 0.02 175);
+  --mm-mint-ring:oklch(0.85 0.04 175);
+  --mm-rose:oklch(0.62 0.13 18);
+  --mm-rose-soft:oklch(0.94 0.03 18);
+  --mm-amber:oklch(0.66 0.12 75);
+  --mm-amber-soft:oklch(0.96 0.04 90);
+  --mm-sky:oklch(0.60 0.10 230);
+  --mm-sky-soft:oklch(0.95 0.02 230);
+}
+*{box-sizing:border-box;margin:0;padding:0;border-color:var(--border)}
+body{
+  font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  background:var(--background);color:var(--foreground);line-height:1.5;
+  -webkit-font-smoothing:antialiased;
+}
+button{font:inherit;cursor:pointer;background:none;border:none;color:inherit}
+.page{max-width:120rem;margin:0 auto;padding:40px 32px;display:flex;flex-direction:column;gap:24px}
+
+/* ============ cards ============ */
+.card{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:24px;box-shadow:0 1px 2px 0 rgb(0 0 0 / .05)}
+.step-card{border-left:4px solid var(--mm-green)}
+.header-card{border-top:4px solid var(--mm-teal)}
+.step-head{display:flex;align-items:center;gap:12px;margin-bottom:6px}
+.step-num{
+  display:grid;place-items:center;height:36px;width:36px;border-radius:50%;
+  font-size:1rem;font-weight:700;background:var(--mm-green-12);color:var(--mm-teal);
+  box-shadow:inset 0 0 0 1px var(--mm-mint-ring);flex-shrink:0;
+}
+.step-num.done{background:var(--mm-green);color:#fff;box-shadow:none}
+.step-head h2{font-size:1.25rem;font-weight:700;letter-spacing:-.015em}
+.ctx-title{font-size:1.05rem!important;color:var(--mm-teal)}
+.step-sub{font-size:.9rem;color:var(--muted-foreground);margin:0 0 20px 48px}
+.step-chip{margin-left:auto;font-size:.8rem;font-weight:600;padding:4px 12px;border-radius:999px;background:var(--muted);color:var(--muted-foreground)}
+.step-chip.ok{background:var(--mm-mint);color:var(--mm-teal)}
+
+/* ============ typography helpers ============ */
+.eyebrow{font-size:.875rem;font-weight:500;text-transform:uppercase;letter-spacing:.025em;color:var(--muted-foreground)}
+.hval,.sval,.ph-name,.sel{user-select:all;-webkit-user-select:all}
+.eyebrow-xs{font-size:.75rem;font-weight:500;text-transform:uppercase;letter-spacing:.025em;color:var(--muted-foreground)}
+.demo-tag{
+  display:inline-block;margin-left:4px;padding:1px 7px;border-radius:999px;
+  font-size:.62rem;font-weight:700;letter-spacing:.05em;vertical-align:middle;
+  background:var(--mm-sky-soft);color:var(--mm-sky);box-shadow:inset 0 0 0 1px oklch(0.60 0.10 230 / 0.3);
+}
+.hval{margin-top:4px;font-size:1.125rem;font-weight:600}
+
+/* ============ top bar ============ */
+.topbar{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap}
+.topbar h1{font-size:1.875rem;font-weight:900;letter-spacing:-.025em;color:var(--mm-teal)}
+.topbar .actions{display:flex;gap:8px;flex-wrap:wrap}
+.tbtn{
+  display:inline-flex;align-items:center;gap:7px;border-radius:8px;padding:9px 16px;
+  font-size:.875rem;font-weight:600;border:1px solid var(--border);background:var(--card);
+  color:var(--mm-teal);box-shadow:0 1px 2px rgb(0 0 0 / .05);transition:all .12s;
+}
+.tbtn:hover{border-color:var(--mm-mint-ring);background:oklch(0.973 0.011 175)}
+.tbtn:disabled{opacity:.45;cursor:not-allowed}
+
+/* ============ demo bar ============ */
+.demo-bar{display:flex;align-items:center;justify-content:flex-end;gap:14px;margin-bottom:-8px;flex-wrap:wrap}
+.demo-bar .lbl{font-size:.75rem;font-weight:500;text-transform:uppercase;letter-spacing:.025em;color:var(--muted-foreground)}
+.demo-seg{display:inline-flex;border:1px solid var(--border);border-radius:8px;padding:3px;gap:2px;background:oklch(0.968 0.007 247.896 / 0.4);flex-wrap:wrap}
+.demo-seg button{font-size:.8rem;font-weight:600;padding:5px 12px;border-radius:6px;color:var(--muted-foreground)}
+.demo-seg button.on{background:var(--card);color:var(--mm-teal);box-shadow:0 1px 2px rgb(0 0 0 / .08)}
+.reset-link{font-size:.8rem;font-weight:600;color:var(--muted-foreground);text-decoration:underline;text-underline-offset:3px}
+.reset-link:hover{color:var(--foreground)}
+
+/* ============ patient header ============ */
+.ph-name{font-size:1.875rem;font-weight:900;letter-spacing:-.025em}
+.ph-dob{margin-top:4px;font-size:1.125rem;color:var(--muted-foreground)}
+.ph-groups{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:20px}
+.hgroup{border:1px solid var(--border);border-radius:12px;background:oklch(0.968 0.007 247.896 / 0.3);padding:16px}
+.hgroup .pair{display:grid;grid-template-columns:1fr 1fr;gap:12px;align-items:start}
+.ph-groups .eyebrow{font-size:.78rem;white-space:nowrap;display:flex;align-items:center;gap:6px;height:18px}
+.ph-groups .hval{margin-top:6px;min-height:38px;display:flex;align-items:center}
+.ph-toggle{
+  margin-top:20px;display:inline-flex;align-items:center;gap:6px;
+  font-size:1.125rem;font-weight:600;color:var(--mm-teal);
+}
+.ph-toggle:hover{opacity:.8}
+.ph-toggle svg{transition:transform .2s}
+.ph-toggle.open svg{transform:rotate(180deg)}
+.ph-details{margin-top:20px;border-top:1px solid var(--border);padding-top:20px;display:grid;grid-template-columns:repeat(4,1fr);gap:20px}
+
+/* ============ stedi check output (read-only) ============ */
+.stedi-block{margin-top:16px;border:1px solid var(--border);border-radius:12px;padding:16px;background:oklch(0.968 0.007 247.896 / 0.2)}
+.stedi-head{margin-bottom:12px}
+.stedi-grid{display:grid;gap:10px}
+.stedi-grid+.stedi-grid{margin-top:10px}
+.stedi-grid.three{grid-template-columns:repeat(3,1fr)}
+.sbox{border:1px solid var(--border);border-radius:10px;background:var(--card);padding:10px 14px}
+.sval{margin-top:2px;font-size:.95rem;font-weight:500}
+.sval.strong{font-weight:700}
+@media (max-width:1150px){
+  .stedi-grid.three{grid-template-columns:repeat(2,1fr)}
+}
+
+select,input[type=date],input[type=text],input[type=number],textarea{
+  font:inherit;font-size:.875rem;width:100%;height:38px;padding:0 12px;
+  border:1px solid var(--input);border-radius:6px;background:var(--background);color:var(--foreground);
+}
+textarea{height:auto;padding:10px 12px;resize:vertical}
+select:focus,input:focus,textarea:focus{outline:2px solid var(--mm-green);outline-offset:1px}
+.flabel{margin-bottom:6px;font-size:.75rem;font-weight:500;text-transform:uppercase;letter-spacing:.025em;color:var(--muted-foreground)}
+.fhint{margin-top:6px;font-size:.75rem;color:var(--muted-foreground)}
+.req-star{color:var(--mm-rose);font-weight:700}
+
+/* ============ segmented buttons ============ */
+.seg{display:inline-flex;width:100%;gap:8px;margin-top:8px}
+.seg button{
+  flex:1;padding:10px 12px;font-size:.875rem;font-weight:600;border-radius:6px;
+  border:2px solid var(--border);background:var(--background);color:var(--muted-foreground);
+  transition:all .12s;
+}
+.seg button.g:not(.sel-g):hover{color:var(--mm-green);border-color:var(--mm-green);background:var(--mm-green-12)}
+.seg button.sel-g{border-color:transparent;background:var(--mm-green);color:#fff;box-shadow:0 1px 2px 0 rgb(0 0 0 / .05)}
+
+/* ============ carecentrix warning ============ */
+.ccx-card{
+  border:1px solid oklch(0.66 0.12 75 / 0.5);border-left:4px solid var(--mm-amber);
+  border-radius:16px;background:oklch(0.96 0.04 90 / 0.55);padding:18px 24px;
+}
+.ccx-row{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.ccx-row svg{flex-shrink:0;color:var(--mm-amber)}
+.ccx-title{font-size:.95rem;font-weight:700;color:oklch(0.42 0.10 75)}
+.prod-code-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.mod-dot{font-size:1.1rem;font-weight:700;color:var(--muted-foreground);opacity:.6}
+.mod-chip{
+  display:inline-flex;align-items:center;padding:2px 9px;border-radius:6px;
+  font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.9rem;font-weight:700;
+  background:var(--muted);color:var(--foreground);box-shadow:inset 0 0 0 1px var(--border);
+  user-select:all;-webkit-user-select:all;
+}
+
+/* ============ auth status matrix (read-only, from Monday) ============ */
+.mtx-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-top:14px}
+.mtx-cell{border:1px solid var(--border);border-radius:12px;background:var(--card);padding:14px;display:flex;flex-direction:column;gap:10px}
+.mtx-cell.req{border-color:oklch(0.66 0.12 75 / 0.5);background:oklch(0.96 0.04 90 / 0.4)}
+/* No Auth Needed / already-resolved = grayed out → nothing to do here (matches Auth Outstanding) */
+.mtx-cell.ok{border-color:var(--border);background:oklch(0.968 0.007 247.896 / 0.4);opacity:.65}
+.mtx-cell.ok .mtx-code{color:var(--muted-foreground)}
+.mtx-cell.na{opacity:.55}
+.mtx-code{font-size:1.05rem;font-weight:800;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--mm-teal);letter-spacing:-.01em}
+.mtx-cell.na .mtx-code{color:var(--muted-foreground)}
+.mtx-name{font-size:.78rem;font-weight:600;color:var(--muted-foreground);margin-top:1px}
+.mtx-pill{display:inline-flex;align-items:center;gap:6px;align-self:flex-start;padding:4px 12px;border-radius:999px;font-size:.78rem;font-weight:700;margin-top:auto}
+.mtx-pill.req{background:var(--mm-amber-soft);color:oklch(0.5 0.11 75);box-shadow:inset 0 0 0 1px oklch(0.66 0.12 75 / 0.35)}
+.mtx-pill.ok{background:var(--muted);color:var(--muted-foreground);box-shadow:inset 0 0 0 1px var(--border)}
+.mtx-pill.na{background:var(--muted);color:var(--muted-foreground)}
+.mtx-cell.dvs{border-color:oklch(0.60 0.10 230 / 0.45);background:oklch(0.95 0.02 230 / 0.4)}
+.mtx-pill.dvs{background:var(--mm-sky-soft);color:var(--mm-sky);box-shadow:inset 0 0 0 1px oklch(0.60 0.10 230 / 0.35)}
+.chip.mcd{background:var(--mm-sky-soft);color:var(--mm-sky);box-shadow:inset 0 0 0 1px oklch(0.60 0.10 230 / 0.3)}
+@media (max-width:1150px){.mtx-grid{grid-template-columns:repeat(2,1fr)}}
+
+/* ============ product cards ============ */
+.prod-list{display:flex;flex-direction:column;gap:16px}
+.prod-card{border:1px solid var(--border);border-left:4px solid var(--mm-mint-ring);border-radius:12px;background:var(--card);padding:20px;box-shadow:0 1px 2px 0 rgb(0 0 0 / .05)}
+.prod-card.recurring{border-left-color:var(--mm-green)}
+.prod-top{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.prod-meta{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px}
+.chip{display:inline-flex;align-items:center;gap:5px;font-size:.7rem;font-weight:700;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.04em;padding:3px 10px;border-radius:999px}
+.chip.rec{background:var(--mm-green-12);color:var(--mm-teal)}
+.chip.one{background:var(--muted);color:var(--muted-foreground);box-shadow:inset 0 0 0 1px var(--border)}
+.chip.grp{background:transparent;color:var(--muted-foreground);padding:3px 2px}
+.pill{display:inline-flex;align-items:center;gap:6px;padding:6px 14px;border-radius:999px;font-size:.8rem;font-weight:600;white-space:nowrap}
+.pill.pending{background:var(--muted);color:var(--muted-foreground)}
+.pill.clear{background:var(--mm-mint);color:var(--mm-teal);box-shadow:inset 0 0 0 1px var(--mm-mint-ring)}
+.pill.skip{background:var(--mm-sky-soft);color:var(--mm-sky);box-shadow:inset 0 0 0 1px oklch(0.60 0.10 230 / 0.3)}
+.prod-code{font-size:1.4rem;font-weight:800;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--mm-teal);letter-spacing:-.01em}
+.prod-name{font-size:.9rem;font-weight:600;color:var(--muted-foreground);margin-top:1px}
+
+/* submit-auth field area */
+.sa-body{margin-top:16px;border:1px solid var(--border);border-radius:10px;background:oklch(0.968 0.007 247.896 / 0.4);padding:16px 18px}
+.sa-body .flabel{color:var(--mm-teal);font-weight:700}
+.method-seg{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:8px}
+.method-seg button{
+  padding:10px 8px;font-size:.85rem;font-weight:600;border-radius:6px;white-space:nowrap;
+  border:2px solid var(--border);background:var(--background);color:var(--muted-foreground);transition:all .12s;
+}
+.method-seg button:not(.on):hover{color:var(--mm-green);border-color:var(--mm-green);background:var(--mm-green-12)}
+.method-seg button.on{border-color:transparent;background:var(--mm-green);color:#fff;box-shadow:0 1px 2px 0 rgb(0 0 0 / .05)}
+.sa-fields{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-top:16px}
+.sa-fields input{background:var(--background)}
+.intake-box{
+  margin-top:14px;border:1px solid oklch(0.60 0.10 230 / 0.4);border-radius:10px;
+  background:oklch(0.95 0.02 230 / 0.5);padding:14px 16px;
+}
+.intake-box .flabel{color:var(--mm-sky)}
+.intake-box input{max-width:280px;background:var(--background);border-color:oklch(0.60 0.10 230 / 0.4);font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+.mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+@media (max-width:960px){
+  .sa-fields{grid-template-columns:1fr}
+  .method-seg{grid-template-columns:repeat(2,1fr)}
+}
+
+.dvs-note{
+  margin-top:16px;display:flex;align-items:flex-start;gap:12px;
+  border:1px solid oklch(0.60 0.10 230 / 0.35);border-radius:12px;
+  background:oklch(0.95 0.02 230 / 0.5);padding:16px 18px;
+  font-size:.95rem;color:var(--mm-sky);line-height:1.55;
+}
+.dvs-note svg{flex-shrink:0;margin-top:2px}
+.dvs-note b{font-weight:700}
+.homeplan-note{
+  margin-bottom:16px;display:flex;align-items:flex-start;gap:12px;
+  border:1px solid oklch(0.36 0.04 200 / 0.3);border-left:4px solid var(--mm-teal);border-radius:12px;
+  background:oklch(0.36 0.04 200 / 0.06);padding:16px 18px;
+  font-size:.95rem;color:var(--mm-teal);line-height:1.55;
+}
+.homeplan-note svg{flex-shrink:0;margin-top:2px}
+.homeplan-note b{font-weight:800}
+.homeplan-note .ph{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-weight:800;user-select:all;-webkit-user-select:all}
+.sbox.auth-plan{border-color:oklch(0.36 0.04 200 / 0.35);background:oklch(0.36 0.04 200 / 0.06)}
+.sbox.auth-plan .auth-tag{
+  display:inline-block;margin-left:6px;padding:1px 8px;border-radius:999px;
+  font-size:.62rem;font-weight:800;letter-spacing:.05em;vertical-align:middle;
+  background:var(--mm-teal);color:#fff;
+}
+.empty-box{border:2px dashed var(--mm-mint-ring);border-radius:12px;background:oklch(0.94 0.02 175 / 0.25);padding:36px;text-align:center}
+.empty-box p{font-size:.95rem;color:var(--mm-teal);font-weight:600}
+.empty-box .sub{margin-top:6px;font-size:.85rem;color:var(--muted-foreground);font-weight:400;max-width:34rem;margin-left:auto;margin-right:auto}
+
+/* ============ monday preview ============ */
+.mon-box{border:1px solid var(--border);border-radius:12px;background:oklch(0.968 0.007 247.896 / 0.3);padding:20px}
+.mon-box h3{font-size:1rem;font-weight:700;letter-spacing:-.01em}
+.mon-box .msub{font-size:.8rem;color:var(--muted-foreground);margin-top:2px;margin-bottom:14px}
+.mon-rows{border:1px solid var(--border);border-radius:10px;background:var(--card);overflow:hidden}
+.mon-row{display:grid;grid-template-columns:280px 1fr;align-items:center;gap:12px;padding:10px 16px}
+.mon-row + .mon-row{border-top:1px solid var(--border)}
+.mon-row.grp-head{background:oklch(0.968 0.007 247.896 / 0.5)}
+.mon-row.grp-head .mlabel{color:var(--mm-teal);font-weight:800}
+.mon-row .mlabel{font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted-foreground)}
+.mval{display:inline-flex;width:fit-content;align-items:center;padding:3px 10px;border-radius:6px;font-size:.875rem;font-weight:600}
+.mval.good{background:var(--mm-mint);color:var(--mm-teal)}
+.mval.warn{background:var(--mm-amber-soft);color:oklch(0.5 0.11 75)}
+.mval.bad{background:var(--mm-rose-soft);color:var(--mm-rose);box-shadow:inset 0 0 0 1px oklch(0.62 0.13 18 / 0.3)}
+.mval.skip{background:var(--mm-sky-soft);color:var(--mm-sky);box-shadow:inset 0 0 0 1px oklch(0.60 0.10 230 / 0.3)}
+.mval.neutral{background:transparent;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-weight:500;padding-left:0}
+.mon-note{margin-top:10px;font-size:.78rem;color:var(--muted-foreground);font-style:italic}
+
+/* ============ footer actions ============ */
+.foot-actions{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-top:20px}
+.foot-left{display:flex;gap:10px;flex-wrap:wrap}
+.obtn{
+  display:inline-flex;align-items:center;gap:8px;border-radius:8px;padding:10px 18px;
+  font-size:.875rem;font-weight:600;border:2px solid var(--border);background:var(--card);
+  color:var(--muted-foreground);transition:all .12s;
+}
+.obtn.rose{border-color:oklch(0.62 0.13 18 / 0.4);color:var(--mm-rose)}
+.obtn.rose:hover{background:var(--mm-rose-soft)}
+.obtn.rose.on{background:var(--mm-rose);border-color:transparent;color:#fff}
+.send-btn{
+  display:inline-flex;align-items:center;gap:8px;border-radius:8px;
+  background:var(--mm-green);color:#fff;font-size:1rem;font-weight:600;
+  padding:13px 26px;box-shadow:0 1px 2px 0 rgb(0 0 0 / .1);
+}
+.send-btn:hover{background:oklch(0.56 0.10 175)}
+.send-btn:disabled{background:oklch(0.85 0.01 200);box-shadow:none;cursor:not-allowed}
+.missing-box{
+  margin-top:14px;border:1px solid oklch(0.66 0.12 75 / 0.45);border-radius:10px;
+  background:oklch(0.96 0.04 90 / 0.5);padding:12px 18px;text-align:center;
+}
+.missing-box .mb-title{font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:oklch(0.5 0.11 75)}
+.missing-box .mb-list{margin-top:4px;font-size:.85rem;color:oklch(0.45 0.1 75)}
+
+/* ============ toast ============ */
+.toast-wrap{position:fixed;top:20px;right:20px;z-index:60;display:flex;flex-direction:column;gap:8px}
+.toast{
+  background:var(--mm-teal);color:#fff;border-radius:10px;padding:12px 18px;
+  font-size:.875rem;font-weight:600;box-shadow:0 8px 24px rgb(0 0 0 / .2);
+  animation:tin .2s ease-out;
+}
+@keyframes tin{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:none}}
+
+/* ============ layout: main + notes rail ============ */
+.layout{display:grid;grid-template-columns:minmax(0,1fr) clamp(320px,22vw,420px);gap:24px;align-items:start}
+.main-col{display:flex;flex-direction:column;gap:24px;min-width:0}
+.notes-rail{position:sticky;top:16px;height:75vh}
+.notes-card{display:flex;flex-direction:column;padding:20px;height:100%}
+.notes-card textarea{flex:1;min-height:0;resize:none;font-size:.9rem;line-height:1.6}
+.notes-desc{font-size:.78rem;color:var(--muted-foreground);margin:-6px 0 10px}
+@media (max-width:1150px){
+  .layout{grid-template-columns:1fr}
+  .notes-rail{position:static}
+  .notes-card textarea{height:auto;min-height:140px}
+}
+
+/* ============ clinicals dropdown ============ */
+.clin-wrap{position:relative}
+.clin-count{
+  display:inline-grid;place-items:center;min-width:20px;height:20px;padding:0 5px;
+  border-radius:999px;background:var(--mm-green);color:#fff;font-size:.72rem;font-weight:700;
+}
+.clin-dd{
+  display:none;position:absolute;right:0;top:calc(100% + 6px);z-index:40;width:22rem;
+  background:var(--card);border:1px solid var(--border);border-radius:12px;
+  box-shadow:0 12px 32px rgb(0 0 0 / .14);padding:8px;
+}
+.clin-dd.open{display:block}
+.clin-file{
+  display:flex;align-items:center;gap:10px;width:100%;text-align:left;
+  padding:9px 10px;border-radius:8px;font-size:.85rem;font-weight:500;transition:background .12s;
+}
+.clin-file:hover{background:oklch(0.973 0.011 175)}
+.clin-file svg{flex-shrink:0;color:var(--mm-teal)}
+.clin-file .fname{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.clin-file .fsize{font-size:.72rem;color:var(--muted-foreground)}
+.clin-all{margin-top:6px;border-top:1px solid var(--border);padding-top:8px;display:flex;justify-content:center}
+
+/* ============ monday drawer toggle ============ */
+.mon-toggle{display:flex;align-items:center;gap:12px;width:100%;text-align:left;color:var(--mm-teal)}
+.mon-toggle h2{font-size:1.25rem;font-weight:700;letter-spacing:-.015em}
+.mon-toggle-hint{margin-left:auto;font-size:.85rem;font-weight:500;color:var(--muted-foreground)}
+.mon-toggle svg{transition:transform .2s;color:var(--muted-foreground);flex-shrink:0}
+.mon-toggle.open svg{transform:rotate(180deg)}
+.mon-toggle:hover .mon-toggle-hint{color:var(--foreground)}
+
+/* ============ responsive ============ */
+@media (max-width:960px){
+  .ph-groups{grid-template-columns:1fr}
+  .ph-details{grid-template-columns:1fr 1fr}
+  .mon-row{grid-template-columns:1fr;gap:4px}
+}
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- ============ demo bar ============ -->
+  <div class="demo-bar">
+    <span class="lbl">Demo scenario</span>
+    <div class="demo-seg" id="demo-seg"></div>
+    <button class="reset-link" onclick="resetAll()">Reset selections</button>
+  </div>
+
+  <!-- ============ top bar ============ -->
+  <div class="topbar">
+    <div>
+      <p class="eyebrow">Medically Modern · Authorization</p>
+      <h1>Submit Auth</h1>
+    </div>
+    <div class="actions">
+      <div class="clin-wrap">
+        <button class="tbtn" id="clin-btn" onclick="toggleClinicals()">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+          Clinicals <span class="clin-count" id="clin-count"></span>
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+        </button>
+        <div class="clin-dd" id="clin-dd"><!-- rendered --></div>
+      </div>
+      <button class="tbtn" onclick="toast('Progress saved — you can leave and come back')">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+        Save
+      </button>
+      <button class="tbtn" onclick="resetAll();toast('Cleared local edits — refetching from Monday (demo)')">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
+        Reset
+      </button>
+    </div>
+  </div>
+
+  <!-- ============ two-column layout ============ -->
+  <div class="layout">
+  <div class="main-col">
+
+  <!-- patient header -->
+  <section class="card header-card" id="ph-card"><!-- rendered --></section>
+
+  <!-- carecentrix modifier warning (conditional) -->
+  <div id="ccx-area"><!-- rendered --></div>
+
+  <!-- context — auth status from monday (read-only, not a step) -->
+  <section class="card">
+    <header class="step-head">
+      <h2 class="ctx-title">Auth Status by Product</h2>
+    </header>
+    <div id="mtx-area"><!-- rendered --></div>
+  </section>
+
+  <!-- the one step — submit auth per required product -->
+  <section class="card step-card">
+    <header class="step-head">
+      <span class="step-num" id="s2-num">1</span>
+      <h2>Submit Auth for Each Required Product</h2>
+    </header>
+    <div id="prod-area"><!-- rendered --></div>
+  </section>
+
+  <!-- monday output + actions -->
+  <section class="card" id="mon-card" style="border-left:4px solid var(--mm-teal)"><!-- rendered --></section>
+
+  </div><!-- /main-col -->
+
+  <!-- notes rail (sticky) -->
+  <aside class="notes-rail">
+    <section class="card step-card notes-card">
+      <header class="step-head" style="margin-bottom:12px">
+        <h2 style="font-size:1.1rem">Reference Notes</h2>
+      </header>
+      <p class="notes-desc">Carries over from the Benefits tab. Add anything new from the auth submission — confirmation numbers, rep feedback…</p>
+      <textarea id="notes" placeholder="Auth submission notes, confirmation numbers, any rep feedback…" oninput="S.notes=this.value"></textarea>
+      <button class="tbtn" style="margin-top:12px;justify-content:center" onclick="toast('Notes saved to Monday (demo)')">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+        Save Notes to Monday
+      </button>
+    </section>
+  </aside>
+
+  </div><!-- /layout -->
+
+</div>
+
+<div class="toast-wrap" id="toasts"></div>
+
+<script>
+/* =====================================================================
+   LOGIC PORT — mirrors src/lib/samantha/hcpcRules.ts, workflow.ts,
+   SubmitAuthPage.tsx + AuthorizationsPanel.tsx and the submitAuth branch
+   of mondayWrite.ts from command-center-app. UI-only: nothing here talks
+   to Monday.
+   ===================================================================== */
+
+/* ---------- hcpcRules.ts ---------- */
+const MONITOR_HCPC='E2103', SENSORS_HCPC='A4239', PUMP_HCPC='E0784';
+const SUPPLY_GROUPS={
+  A:{infusion_set:'A4230',cartridge:'A4232'},
+  B:{infusion_set:'A4224',cartridge:'A4225'},
+  C:{infusion_set:'A4231',cartridge:'A4232'},
+};
+const GROUP_BY_PAYER={
+  'Fidelis Medicaid':'A','Fidelis Low-Cost':'A','Fidelis Commercial':'A',
+  'Anthem BCBS Commercial':'A','Anthem BCBS Medicaid (JLJ)':'A','Anthem BCBS Low-Cost (JLJ)':'A',
+  'United Medicaid':'A','United Commercial':'A','United Low-Cost':'A',
+  'Horizon BCBS':'A','BCBS TN':'A','BCBS FL':'A','BCBS WY':'A',
+  'Medicaid':'A','Oregon Care':'A','MagnaCare':'A','UMR':'A',
+  'Anthem BCBS Medicare':'B','Fidelis Medicare':'B','Medicare A&B':'B','NYSHIP':'B',
+  'United Medicare':'B','Wellcare':'B','Humana':'B','Cigna':'B','Midlands Choice':'B',
+  'Aetna Commercial':'C','Aetna Medicare':'C',
+};
+const PRIMARY_OPTIONS=[
+  'Fidelis Medicaid','Fidelis Low-Cost','Fidelis Commercial','Fidelis Medicare',
+  'Anthem BCBS Medicare','Anthem BCBS Commercial','Anthem BCBS Medicaid (JLJ)','Anthem BCBS Low-Cost (JLJ)',
+  'Horizon BCBS','BCBS TN','BCBS FL','BCBS WY',
+  'United Medicare','United Medicaid','United Commercial','United Low-Cost',
+  'Aetna Medicare','Aetna Commercial',
+  'Medicare A&B','Medicaid','NYSHIP',
+  'Cigna','Humana','Wellcare','Midlands Choice','MagnaCare','UMR','Oregon Care',
+];
+const SECONDARY_OPTIONS=['None','NY Medicaid','Medicare Supplement'];
+const SERVING_OPTIONS=['Supplies Only','CGM','Insulin Pump','Supplies + CGM','Insulin Pump + CGM'];
+const SERVING_PRODUCTS={
+  'Supplies Only':['infusion_set','cartridge'],
+  'CGM':['monitor','sensors'],
+  'Insulin Pump':['insulin_pump','infusion_set','cartridge'],
+  'Supplies + CGM':['monitor','sensors','infusion_set','cartridge'],
+  'Insulin Pump + CGM':['monitor','sensors','insulin_pump','infusion_set','cartridge'],
+};
+const NEEDS_NY_MEDICAID_SECONDARY=new Set(['Fidelis Medicaid','Anthem BCBS Medicaid (JLJ)']);
+
+function suppliesRouteToMedicaid(primary,secondary){
+  if(primary==='Medicaid')return true;
+  if(NEEDS_NY_MEDICAID_SECONDARY.has(primary)){
+    return (secondary??'').trim().toLowerCase()==='ny medicaid';
+  }
+  return false;
+}
+function resolveHcpcs(primary,serving,secondary){
+  if(!primary||!serving)return[];
+  const products=SERVING_PRODUCTS[serving];
+  if(!products)return[];
+  const toMedicaid=suppliesRouteToMedicaid(primary,secondary);
+  const suppliesPayer=toMedicaid?'Medicaid':primary;
+  const grp=GROUP_BY_PAYER[suppliesPayer];
+  return products.map(product=>{
+    switch(product){
+      case 'monitor':      return{product,hcpc:MONITOR_HCPC,billsTo:'primary'};
+      case 'sensors':      return{product,hcpc:SENSORS_HCPC,billsTo:'primary'};
+      case 'insulin_pump': return{product,hcpc:PUMP_HCPC,billsTo:'primary'};
+      case 'infusion_set': return grp?{product,hcpc:SUPPLY_GROUPS[grp].infusion_set,billsTo:toMedicaid?'medicaid':'primary',group:grp}
+                                     :{product,hcpc:'Evaluate',billsTo:toMedicaid?'medicaid':'primary'};
+      case 'cartridge':    return grp?{product,hcpc:SUPPLY_GROUPS[grp].cartridge,billsTo:toMedicaid?'medicaid':'primary',group:grp}
+                                     :{product,hcpc:'Evaluate',billsTo:toMedicaid?'medicaid':'primary'};
+    }
+  });
+}
+const isAutoFilledMedicaidSupply=r=>(r.product==='infusion_set'||r.product==='cartridge')&&r.billsTo==='medicaid';
+const PRODUCT_LABELS={monitor:'CGM Monitor',sensors:'CGM Sensors',insulin_pump:'Insulin Pump',infusion_set:'Infusion Sets',cartridge:'Cartridges'};
+const ALL_PRODUCTS=['monitor','sensors','insulin_pump','infusion_set','cartridge'];
+
+/* ---------- workflow.ts product metadata ---------- */
+const PID_TO_CODE={monitor:'cgm-monitor',sensors:'cgm-sensors',insulin_pump:'pump',infusion_set:'infusion-sets',cartridge:'cartridges'};
+const PRODUCT_META={
+  'cgm-monitor':{group:'CGM',name:'CGM Monitor',cadence:'ONE-TIME'},
+  'cgm-sensors':{group:'CGM',name:'CGM Sensors',cadence:'RECURRING'},
+  'pump':{group:'Pump',name:'Insulin Pump',cadence:'ONE-TIME'},
+  'infusion-sets':{group:'Pump',name:'Infusion Sets',cadence:'RECURRING'},
+  'cartridges':{group:'Pump',name:'Cartridges',cadence:'RECURRING'},
+};
+/* AUTH_SUBMISSION_METHODS from workflow.ts */
+const METHODS=['Availity Portal','Payer Portal','Call','Fax'];
+
+/* =====================================================================
+   MODIFIERS — ported from claims-ui-tool (the repo that submits claims):
+   · PRODUCT_DEFAULTS in src/components/claims/PrimarySubmitBoard.tsx —
+     the default modifier set seeded on every claim line.
+   · EXPECTED_LINE_MODIFIERS_BY_PAYER in src/lib/claims/bcbsSubmitGuard.ts
+     + ANTHEM_SUBMISSION_RULES.md — route-specific BCBS overrides
+     (modifiers are ROUTE-specific, not just code-specific).
+   Per-claim actuals (incl. ERA-derived) live on the Monday Claims
+   subitems board, dropdown_mm1z7je9.
+   ===================================================================== */
+/* Defaults for every payer without a route override (PRODUCT_DEFAULTS) */
+const DEFAULT_MODIFIERS={
+  'A4230':['KX','NU'],'A4231':['KX','NU'],'A4224':['KX','NU'],
+  'A4232':['KX','NU'],'A4225':['KX','NU'],
+  'A4239':['KX'],'E0784':['KX','NU'],'E2103':['KX','NU'],
+};
+/* Route overrides (bcbsSubmitGuard EXPECTED_LINE_MODIFIERS_BY_PAYER) */
+const ROUTE_MODIFIERS={
+  /* Anthem NY / Empire 803 — NY residents + all out-of-state BlueCard.
+     E0784/E2103 not yet codified for 803 → fall through to defaults. */
+  'anthem-803':{label:'Anthem NY 803',
+    'A4230':['KX'],'A4231':['KX'],'A4224':['KX'],'A4232':['KX'],'A4225':['KX'],
+    'A4239':['KF','KX','CG']},
+  /* Horizon NJ via CareCentrix 11348 — NJ residents.
+     E0784/E2103 from the command-center Carecentrix table. */
+  'carecentrix':{label:'CareCentrix 11348',
+    'A4230':['NU','SC'],'A4231':['NU','SC'],'A4224':['NU','SC'],
+    'A4232':['NU','SC'],'A4225':['NU','SC'],
+    'A4239':['NU'],'E0784':['NU'],'E2103':['NU']},
+  /* BCBS Tennessee — direct, in-network 2026: NU on every line. */
+  'bcbs-tn':{label:'BCBS TN direct',
+    'A4230':['NU'],'A4231':['NU'],'A4224':['NU'],'A4232':['NU'],'A4225':['NU'],
+    'A4239':['NU'],'E0784':['NU'],'E2103':['NU']},
+};
+/* Route follows the BILLING PAYER (per ANTHEM_SUBMISSION_RULES.md the
+   real switch is patient address state — NJ→11348, NY/other→803; payer
+   stands in for it here). Referral source does NOT set the route. */
+function modifierRoute(){
+  if(P.primary==='Horizon BCBS')return 'carecentrix';
+  if(P.primary==='BCBS TN')return 'bcbs-tn';
+  if(/Anthem BCBS|BCBS FL|BCBS WY/.test(P.primary))return 'anthem-803';
+  return null;
+}
+function modifiersFor(hcpc){
+  const route=modifierRoute();
+  const routeTable=route?ROUTE_MODIFIERS[route]:null;
+  const mods=(routeTable&&routeTable[hcpc])||DEFAULT_MODIFIERS[hcpc]||null;
+  if(!mods)return null;
+  const fromRoute=!!(routeTable&&routeTable[hcpc]);
+  return{mods,source:fromRoute?routeTable.label:'default'};
+}
+
+/* payer phone directory (starter set) */
+const PAYER_PHONES={
+  'Horizon BCBS':'(800) 624-1110',
+  'Horizon BCBSNJ':'(800) 624-1110',
+  'Anthem BCBS Commercial':'(800) 450-8753',
+  'Anthem BCBS New York (803)':'(800) 450-8753',
+  'BCBS Connecticut':'(800) 676-2583',
+  'Fidelis Care New York':'(888) 343-3547',
+};
+const isBcbsFamily=p=>/BCBS|Anthem|Horizon/i.test(p||'');
+
+/* =====================================================================
+   scenarios — each is a patient arriving at the Submit Auth stage.
+   mondayAuth = the read-only auth-result labels set on the Benefits stage.
+   ===================================================================== */
+const PATIENT_BASE={
+  name:'Bob Jones [TEST]',dob:'2025-01-01',phone:'(914) 220-2922',
+  memberId1:'YHQ3HZN33099920',diagnosis:'E11.65',
+  address:'2093 Wantagh Ave, Wantagh, NY 11793',pumpBrand:'Tandem t:slim X2',cgmBrand:'Dexcom G7',
+  doctorName:'Michael Greenberg',doctorPhone:'1 (844) 556-6683',doctorNpi:'1679847545',
+  doctorFax:'(718) 555-0142',doctorEmail:'mgreenberg@einstein.edu',
+  clinicalsMethod:'Parachute',clinicName:'1180 Morris Park Avenue, Bronx, NY 10461',
+};
+const SCENARIOS=[
+  {key:'horizon',label:'Horizon · IP + CGM',
+   primary:'Horizon BCBS',secondary:'None',serving:'Insulin Pump + CGM',
+   referralSource:'Patient',memberId2:'',
+   mondayAuth:{monitor:'No Auth Needed',sensors:'Required',insulin_pump:'Required',infusion_set:'No Auth Needed',cartridge:'No Auth Needed'},
+   stedi:{active:'Yes',payerName:'Horizon BCBS of New Jersey',planBegin:'2026-01-01',coverageType:'Commercial',
+     planName:'Horizon PPO Advantage',homePlan:'Horizon BCBSNJ',medicaidId:'—',qmb:'No'}},
+  {key:'carecentrix',label:'Carecentrix Referral',
+   primary:'Horizon BCBS',secondary:'None',serving:'Insulin Pump',
+   referralSource:'Carecentrix',memberId2:'',
+   mondayAuth:{monitor:'Not Serving',sensors:'Not Serving',insulin_pump:'Required',infusion_set:'Required',cartridge:'Required'},
+   stedi:{active:'Yes',payerName:'Horizon BCBS of New Jersey',planBegin:'2025-09-01',coverageType:'Commercial',
+     planName:'Horizon OMNIA Silver',homePlan:'Horizon BCBSNJ',medicaidId:'—',qmb:'No'}},
+  {key:'managed-mcd',label:'Managed Medicaid · Pump',
+   primary:'Fidelis Medicaid',secondary:'NY Medicaid',serving:'Insulin Pump',
+   referralSource:'Patient',memberId2:'EC81836D',
+   mondayAuth:{monitor:'Not Serving',sensors:'Not Serving',insulin_pump:'Required',infusion_set:'Required',cartridge:'Required'},
+   stedi:{active:'Yes',payerName:'Fidelis Care New York',planBegin:'2026-03-01',coverageType:'Medicaid',
+     planName:'Fidelis Medicaid Managed Care',homePlan:'Fidelis Care New York',medicaidId:'EC81836D',qmb:'No'}},
+  {key:'bluecard',label:'BlueCard · CT Home Plan',
+   primary:'Anthem BCBS Commercial',secondary:'None',serving:'Insulin Pump + CGM',
+   referralSource:'Doctor',memberId2:'',
+   mondayAuth:{monitor:'Required',sensors:'No Auth Needed',insulin_pump:'Required',infusion_set:'No Auth Needed',cartridge:'No Auth Needed'},
+   stedi:{active:'Yes',payerName:'Anthem BCBS New York (803)',planBegin:'2025-11-01',coverageType:'Commercial',
+     planName:'Anthem Blue Access PPO',homePlan:'BCBS Connecticut',medicaidId:'—',qmb:'No'}},
+  /* MLTC exception (Final Insurance Rules): Anthem MLTC → Anthem BCBS
+     Low-Cost (JLJ). Supplies get authed through Anthem, NOT routed to
+     NY Medicaid — and MLTC auths must be submitted via Fax.
+     Scenario data mirrors a real 271 (2026-07-20): JLJ member ID, plan
+     description "NEW YORK MLTC", NO Medicaid CIN returned by Stedi. */
+  {key:'mltc',label:'Anthem MLTC · Pump',
+   primary:'Anthem BCBS Low-Cost (JLJ)',secondary:'None',serving:'Insulin Pump',
+   referralSource:'Patient',memberId2:'',
+   mondayAuth:{monitor:'Not Serving',sensors:'Not Serving',insulin_pump:'Required',infusion_set:'Required',cartridge:'Required'},
+   stedi:{active:'Yes',payerName:'Anthem BCBS New York (803)',planBegin:'2025-03-01',coverageType:'Medicaid',
+     planName:'NEW YORK MLTC',homePlan:'Anthem BCBS New York (803)',medicaidId:'—',qmb:'No'}},
+];
+
+const blank=()=>({codes:{},escalated:false,notes:''});
+let scenario='horizon';
+let SC=SCENARIOS[0];
+/* P — testing-only overrides for Serving / Primary / Secondary. Production
+   renders these read-only from the board; the demo dropdowns exist so the
+   resolver + card logic can be exercised across combinations. */
+let P={primary:SC.primary,secondary:SC.secondary,serving:SC.serving};
+let S=blank();
+
+const $=id=>document.getElementById(id);
+const code=id=>S.codes[id]??{method:'',callFax:'',date:'',authId:''};
+function setCode(id,patch){S.codes[id]={...code(id),...patch};render()}
+function setScenario(key){
+  scenario=key;
+  SC=SCENARIOS.find(s=>s.key===key);
+  P={primary:SC.primary,secondary:SC.secondary,serving:SC.serving};
+  S=blank();$('notes').value='';
+  render();
+}
+function setP(k,v){P[k]=v;render()}
+function resetAll(){S=blank();P={primary:SC.primary,secondary:SC.secondary,serving:SC.serving};$('notes').value='';render()}
+function setMethod(codeId,m){
+  const cur=code(codeId);
+  setCode(codeId,cur.method===m?{method:'',callFax:''}:{method:m,...(m==='Call'||m==='Fax'?{}:{callFax:''})});
+}
+
+/* =====================================================================
+   derived
+   ===================================================================== */
+function getResolved(){return resolveHcpcs(P.primary,P.serving,P.secondary==='None'?'':P.secondary)}
+/* Effective auth label per resolved product. The scenario's board values
+   apply while the demo dropdowns stay untouched; a product that has no
+   usable board value (added via the test dropdowns) defaults to Required
+   so its submission card — and the resolver differences — are visible. */
+function authLabelFor(r){
+  if(isAutoFilledMedicaidSupply(r))return 'Required';
+  const lbl=SC.mondayAuth[r.product];
+  return (lbl&&lbl!=='Not Serving')?lbl:'Required';
+}
+/* DVS routing: managed Medicaid w/ NY Medicaid secondary routes SUPPLIES
+   to Medicaid; a straight Medicaid primary bills EVERYTHING to Medicaid —
+   pump included — so every product is handled at the DVS stage. */
+function isDvsRouted(r){return isAutoFilledMedicaidSupply(r)||P.primary==='Medicaid'}
+/* products with a submission card = auth Required on Monday AND not
+   DVS-routed (those stay at Required — DVS happens at the next stage) */
+function getAuthRequired(){
+  return getResolved().filter(r=>authLabelFor(r)==='Required'&&!isDvsRouted(r));
+}
+function getMedicaidRouted(){
+  return getResolved().filter(r=>isDvsRouted(r));
+}
+const isCarecentrix=()=>(SC.referralSource||'').toLowerCase().includes('carecentrix');
+/* BCBS family: when the member's HOME plan differs from the host plan we
+   bill, the HOME plan is the one that handles auths. Stale once the demo
+   primary is switched away from the scenario's. */
+function authHomePlan(){
+  if(!isBcbsFamily(P.primary)||P.primary!==SC.primary)return null;
+  const home=SC.stedi.homePlan||'';
+  if(!home)return null;
+  const same=home.split(' ')[0].toLowerCase()===P.primary.split(' ')[0].toLowerCase();
+  return same?null:{home,host:SC.stedi.payerName||P.primary,phone:PAYER_PHONES[home]||''};
+}
+/* MLTC — DEFINITIVE, from the "Stedi Plan Name" Monday column (verified
+   against real 271s + a parser run, 2026-07-20): Anthem echoes "NEW YORK
+   MLTC" in the EB plan coverage (benefitsInformation[0].planCoverage),
+   which is pass 2 of _parse_plan_name() — so the right string lands in
+   the column today. (planInformation.planDescription / REF*18 carries the
+   same string but is never read by the parser — duplicate for Anthem;
+   a robustness gap for payers that ONLY use it.) Do NOT key off "Stedi
+   Managed Medicaid" — MLTC 271s leave it blank (no code-"U" referral row).
+   The old JLJ + Medicaid-ID heuristic is GONE — real MLTC 271s return NO
+   Medicaid CIN, so it depended on the rep keying Member ID 2.
+   MLTC auths must be submitted via FAX. */
+function isMltc(){return /MLTC/i.test(SC.stedi.planName||'')}
+function mltcBanner(){
+  if(!isMltc())return'';
+  return `
+  <div class="ccx-card" style="margin-bottom:16px">
+    <div class="ccx-row">
+      ${icoAlert}
+      <span class="ccx-title">MLTC plan — <b>${SC.stedi.planName}</b> on the Stedi check — all auths submitted via <b>fax</b> only.</span>
+    </div>
+  </div>`;
+}
+/* Horizon BCBS + Payer Portal → shared Carecentrix Intake ID (one per patient) */
+const showIntakeFor=codeId=>P.primary==='Horizon BCBS'&&code(codeId).method==='Payer Portal';
+function sharedIntakeId(){
+  for(const r of getAuthRequired()){
+    const v=code(PID_TO_CODE[r.product]).intakeId;
+    if(v)return v;
+  }
+  return '';
+}
+function setSharedIntakeId(v){
+  for(const r of getAuthRequired())S.codes[PID_TO_CODE[r.product]]={...code(PID_TO_CODE[r.product]),intakeId:v};
+  render();
+}
+
+function cardComplete(codeId){
+  const s=code(codeId);
+  if(!s.method||!s.date)return false;
+  if((s.method==='Call'||s.method==='Fax')&&!s.callFax)return false;
+  return true;
+}
+function validateForSubmit(){
+  const missing=[];
+  for(const r of getAuthRequired()){
+    const cid=PID_TO_CODE[r.product];
+    const s=code(cid);
+    if(!s.method)missing.push(`${r.hcpc} · Submission Method`);
+    if((s.method==='Call'||s.method==='Fax')&&!s.callFax)missing.push(`${r.hcpc} · ${s.method} Number`);
+    if(!s.date)missing.push(`${r.hcpc} · Submission Date`);
+  }
+  return missing;
+}
+
+function fmtDate(s){
+  if(!s)return'—';
+  const d=new Date(s+'T00:00:00');
+  if(isNaN(d.getTime()))return'—';
+  return d.toLocaleDateString('en-US',{month:'2-digit',day:'2-digit',year:'numeric'});
+}
+const todayFmt=()=>new Date().toLocaleDateString('en-US',{month:'2-digit',day:'2-digit',year:'numeric'});
+
+/* =====================================================================
+   icons
+   ===================================================================== */
+const icoSend=`<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>`;
+const icoAlert=`<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>`;
+const icoInfo=`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>`;
+const icoRepeat=`<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>`;
+const icoBox=`<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>`;
+const icoTel=`<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>`;
+
+/* =====================================================================
+   render — patient header (fully read-only at this stage)
+   ===================================================================== */
+let detailsOpen=false;
+function toggleDetails(){detailsOpen=!detailsOpen;renderHeader()}
+function sbox(label,value,strong){
+  return `<div class="sbox"><div class="eyebrow-xs">${label}</div><div class="sval${strong?' strong':''}">${value||'—'}</div></div>`;
+}
+function patientHasMedicaid(){
+  return (P.primary??'').toLowerCase().includes('medicaid')||
+    ((P.secondary==='None'?'':P.secondary)??'').toLowerCase().includes('medicaid');
+}
+/* Demo-only editable select — production renders these read-only from the board. */
+function selectField(label,key,options,value){
+  return `
+  <div>
+    <div class="eyebrow">${label} <span class="demo-tag">demo</span></div>
+    <select style="font-weight:600;margin-top:6px" onchange="setP('${key}',this.value)">
+      ${options.map(o=>`<option ${value===o?'selected':''}>${o}</option>`).join('')}
+    </select>
+  </div>`;
+}
+function renderHeader(){
+  const st=SC.stedi;
+  const PB=PATIENT_BASE;
+  const showPump=/Pump|Supplies/.test(P.serving);
+  const showCgm=/CGM/.test(P.serving);
+  const deviceItems=[
+    ['Referral Source',SC.referralSource],
+    ...(showCgm?[['CGM Type',PB.cgmBrand]]:[]),
+    ...(showPump?[['Pump Type',PB.pumpBrand]]:[]),
+  ];
+  const isMedicare=/medicare/i.test(P.primary)||/medicare/i.test(st.coverageType);
+  const isMedicaid=patientHasMedicaid()||/medicaid/i.test(st.coverageType);
+  const row2=[sbox('Coverage Type',st.coverageType),sbox('Plan Name',st.planName,true)];
+  if(isBcbsFamily(P.primary)){
+    const hp=authHomePlan();
+    row2.push(hp
+      ?`<div class="sbox auth-plan"><div class="eyebrow-xs">Home Plan<span class="auth-tag">HANDLES AUTHS</span></div><div class="sval strong">${st.homePlan||'—'}</div></div>`
+      :sbox('Home Plan',st.homePlan));
+  }
+  if(isMedicaid)row2.push(sbox('Medicaid ID',st.medicaidId));
+  if(isMedicare)row2.push(sbox('QMB?',st.qmb));
+
+  $('ph-card').innerHTML=`
+    <p class="eyebrow">Patient</p>
+    <h1 class="ph-name">${PB.name}</h1>
+    <p class="ph-dob">DOB <span class="sel">${PB.dob}</span> · <span class="sel">${PB.phone}</span></p>
+
+    <div class="ph-groups">
+      <div class="hgroup"><div class="pair">
+        ${selectField('Serving','serving',SERVING_OPTIONS,P.serving)}
+        <div><div class="eyebrow">Diagnosis</div><div class="hval">${PB.diagnosis}</div></div>
+      </div></div>
+      <div class="hgroup"><div class="pair">
+        ${selectField('Primary Insurance','primary',PRIMARY_OPTIONS,P.primary)}
+        ${selectField('Secondary Insurance','secondary',SECONDARY_OPTIONS,P.secondary)}
+      </div></div>
+      <div class="hgroup"><div class="pair">
+        <div><div class="eyebrow">Member ID</div><div class="hval">${PB.memberId1}</div></div>
+        <div><div class="eyebrow">Member ID 2</div><div class="hval">${SC.memberId2||'—'}</div></div>
+      </div></div>
+    </div>
+
+    <div class="stedi-block">
+      <div class="stedi-head">
+        <p class="eyebrow">Insurance Details · Stedi Check</p>
+      </div>
+      <div class="stedi-grid three">
+        ${sbox('Active?',st.active,true)}
+        ${sbox('Payer Name',st.payerName,true)}
+        ${sbox('Plan Begin Date',st.planBegin)}
+      </div>
+      <div class="stedi-grid" style="grid-template-columns:repeat(${row2.length},1fr)">${row2.join('')}</div>
+    </div>
+
+    <button type="button" class="ph-toggle ${detailsOpen?'open':''}" aria-expanded="${detailsOpen}" onclick="toggleDetails()">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+      <span>${detailsOpen?'Hide details':'Show address, devices & doctor info'}</span>
+    </button>
+
+    ${detailsOpen?`
+    <div class="ph-details">
+      <div style="grid-column:span ${4-deviceItems.length}"><div class="eyebrow">Patient Address</div><div class="hval">${PB.address}</div></div>
+      ${deviceItems.map(([l,v])=>`<div><div class="eyebrow">${l}</div><div class="hval">${v}</div></div>`).join('')}
+    </div>
+    <div class="ph-details" style="border-top:1px dashed var(--border)">
+      <div style="grid-column:1 / -1;margin-bottom:-8px"><span class="eyebrow" style="color:var(--mm-teal);font-weight:700">Doctor Info</span></div>
+      <div><div class="eyebrow">Doctor</div><div class="hval">${PB.doctorName}</div></div>
+      <div><div class="eyebrow">Phone</div><div class="hval">${PB.doctorPhone}</div></div>
+      <div><div class="eyebrow">NPI</div><div class="hval">${PB.doctorNpi}</div></div>
+      <div><div class="eyebrow">Fax</div><div class="hval">${PB.doctorFax}</div></div>
+      <div><div class="eyebrow">Email</div><div class="hval">${PB.doctorEmail}</div></div>
+      <div><div class="eyebrow">Clinicals Method</div><div class="hval">${PB.clinicalsMethod}</div></div>
+      <div style="grid-column:span 2"><div class="eyebrow">Clinic</div><div class="hval">${PB.clinicName}</div></div>
+    </div>`:''}
+  `;
+}
+
+/* =====================================================================
+   render — carecentrix warning
+   ===================================================================== */
+function renderCcx(){
+  if(!isCarecentrix()){$('ccx-area').innerHTML='';return;}
+  $('ccx-area').innerHTML=`
+  <div class="ccx-card">
+    <div class="ccx-row">
+      ${icoAlert}
+      <span class="ccx-title">Carecentrix referral — submit each auth with the modifiers shown on its card below.</span>
+    </div>
+  </div>`;
+}
+
+/* =====================================================================
+   render — auth status matrix (read-only, from Monday)
+   ===================================================================== */
+function renderMatrix(){
+  const resolved=getResolved();
+  const byProduct={};
+  resolved.forEach(r=>byProduct[r.product]=r);
+  const mcdSet=new Set(getMedicaidRouted().map(r=>r.product));
+  const FIXED={monitor:MONITOR_HCPC,sensors:SENSORS_HCPC,insulin_pump:PUMP_HCPC};
+
+  $('mtx-area').innerHTML=`
+  <div class="mtx-grid">
+    ${ALL_PRODUCTS.map(p=>{
+      const r=byProduct[p];
+      const isDvs=mcdSet.has(p);
+      const label=!r?'Not Serving':isDvs?'DVS Required':authLabelFor(r);
+      const isReq=label==='Required';
+      const isOk=label==='No Auth Needed';
+      const isNa=!r;
+      const cls=isNa?'na':isDvs?'dvs':isReq?'req':isOk?'ok':'';
+      const pillCls=isNa?'na':isDvs?'dvs':isReq?'req':'ok';
+      return `
+      <div class="mtx-cell ${cls}">
+        <div>
+          <div class="mtx-code">${(r&&r.hcpc)||FIXED[p]||'—'}</div>
+          <div class="mtx-name">${PRODUCT_LABELS[p]}</div>
+        </div>
+        <span class="mtx-pill ${pillCls}">${label}</span>
+      </div>`;
+    }).join('')}
+  </div>`;
+}
+
+/* =====================================================================
+   render — submission cards
+   ===================================================================== */
+function statusPill(codeId){
+  return cardComplete(codeId)
+    ?`<span class="pill clear">✓ Submitted</span>`
+    :`<span class="pill pending">● Pending</span>`;
+}
+function prodCard(r){
+  const codeId=PID_TO_CODE[r.product];
+  const meta=PRODUCT_META[codeId];
+  const s=code(codeId);
+  const isRec=meta.cadence==='RECURRING';
+  const isCallFax=s.method==='Call'||s.method==='Fax';
+  return `
+  <div class="prod-card ${isRec?'recurring':''}">
+    <div class="prod-top">
+      <div style="min-width:0">
+        <div class="prod-meta">
+          <span class="chip ${isRec?'rec':'one'}">${isRec?icoRepeat:icoBox} ${meta.cadence}</span>
+          <span class="chip grp">${meta.group}</span>
+        </div>
+        <div class="prod-code-row">
+          <span class="prod-code">${r.hcpc}</span>
+          ${(()=>{const m=modifiersFor(r.hcpc);
+            return m?`<span class="mod-dot">·</span>${m.mods.map(x=>`<span class="mod-chip">${x}</span>`).join('')}`:'';})()}
+        </div>
+        <div class="prod-name">${meta.name}</div>
+      </div>
+      ${statusPill(codeId)}
+    </div>
+
+    <div class="sa-body">
+      <div class="flabel">Auth Submission Method <span class="req-star">*</span></div>
+      <div class="method-seg" role="radiogroup" aria-label="${r.hcpc} submission method">
+        ${METHODS.map(m=>`<button class="${s.method===m?'on':''}" role="radio" aria-checked="${s.method===m}" onclick="setMethod('${codeId}','${m}')">${m}</button>`).join('')}
+      </div>
+
+      <div class="sa-fields">
+        ${isCallFax?`
+        <div>
+          <div class="flabel">${s.method} Number <span class="req-star">*</span></div>
+          <input type="text" class="mono" placeholder="e.g. (555) 123-4567" value="${escAttr(s.callFax)}" oninput="S.codes['${codeId}']={...code('${codeId}'),callFax:this.value}" onchange="render()">
+        </div>`:''}
+        <div>
+          <div class="flabel">Auth Submission Date <span class="req-star">*</span></div>
+          <input type="date" value="${s.date||''}" onchange="setCode('${codeId}',{date:this.value})">
+        </div>
+        <div>
+          <div class="flabel">Auth ID</div>
+          <input type="text" class="mono" placeholder="e.g. 123456" value="${escAttr(s.authId)}" oninput="S.codes['${codeId}']={...code('${codeId}'),authId:this.value}" onchange="render()">
+          <div class="fhint">Leave blank if the payer hasn't issued one yet.</div>
+        </div>
+      </div>
+
+      ${showIntakeFor(codeId)?`
+      <div class="intake-box">
+        <div class="flabel">Intake ID · Carecentrix</div>
+        <input type="text" placeholder="e.g. INTAKE-789" value="${escAttr(sharedIntakeId())}" oninput="setSharedIntakeIdSilent(this.value)" onchange="render()">
+        <div class="fhint">Shared across all products — only one Intake ID per patient.</div>
+      </div>`:''}
+    </div>
+  </div>`;
+}
+const escAttr=v=>(v||'').replace(/"/g,'&quot;');
+/* update shared intake id without re-render (keeps focus while typing) */
+function setSharedIntakeIdSilent(v){
+  for(const r of getAuthRequired())S.codes[PID_TO_CODE[r.product]]={...code(PID_TO_CODE[r.product]),intakeId:v};
+}
+
+function renderProducts(){
+  const required=getAuthRequired();
+  const mcd=getMedicaidRouted();
+  const complete=required.length>0&&required.every(r=>cardComplete(PID_TO_CODE[r.product]));
+  $('s2-num').className=`step-num ${complete?'done':''}`;
+  $('s2-num').textContent=complete?'✓':'1';
+
+  if(required.length===0){
+    $('prod-area').innerHTML=`
+    ${mltcBanner()}
+    <div class="empty-box">
+      <p>No auths to submit</p>
+      <p class="sub">${mcd.length?'Everything bills to NY Medicaid — DVS happens at the next stage.':'No product on this patient is marked Required on the board.'}</p>
+    </div>
+    ${mcdNote(mcd)}`;
+    return;
+  }
+  $('prod-area').innerHTML=`
+    ${mltcBanner()}
+    ${homePlanBanner()}
+    <div class="prod-list">${required.map(prodCard).join('')}</div>
+    ${mcdNote(mcd)}`;
+}
+function joinNames(list){
+  const n=list.map(r=>PRODUCT_LABELS[r.product]);
+  return n.length<=1?n.join(''):n.slice(0,-1).join(', ')+' & '+n[n.length-1];
+}
+function homePlanBanner(){
+  const hp=authHomePlan();
+  if(!hp)return'';
+  return `
+  <div class="homeplan-note">
+    ${icoInfo}
+    <span>Auths go through the member's <b>home plan — ${hp.home}</b>${hp.phone?` <span class="ph">${hp.phone}</span>`:''} — not ${hp.host}, the host plan we bill.</span>
+  </div>`;
+}
+function mcdNote(mcd){
+  if(!mcd.length)return'';
+  const pumpCard=getAuthRequired().some(r=>r.product==='insulin_pump');
+  const verb=mcd.length===1?'bills':'bill';
+  const tail=pumpCard
+    ?'Submit DVS at the next stage once the pump is approved.'
+    :'Submit DVS at the DVS stage — nothing to submit here.';
+  return `
+  <div class="dvs-note">
+    ${icoInfo}
+    <span><b>${joinNames(mcd)}</b> ${verb} to NY Medicaid. ${tail}</span>
+  </div>`;
+}
+
+/* =====================================================================
+   render — monday output + actions
+   ===================================================================== */
+const PRODUCT_AUTH_COLUMN={monitor:'CGM auth result',sensors:'Sensors auth result',insulin_pump:'Insulin pump auth result',infusion_set:'Infusion set auth result',cartridge:'Cartridges auth result'};
+let mondayOpen=false;
+function toggleMonday(){mondayOpen=!mondayOpen;renderMonday()}
+function toggleEscalate(){S.escalated=!S.escalated;renderMonday()}
+
+function renderMonday(){
+  const required=getAuthRequired();
+  const mcd=getMedicaidRouted();
+  const missing=validateForSubmit();
+
+  /* main columns — submitAuth branch of mondayWrite.ts */
+  const callFaxEntry=required.map(r=>code(PID_TO_CODE[r.product]))
+    .find(s=>(s.method==='Call'||s.method==='Fax')&&s.callFax);
+  const intake=sharedIntakeId();
+  const rows=[
+    {label:'Stage Advancer',value:'Auth Outstanding',tone:'warn'},
+    /* Same-day, NOT +1: many auths are approved right away. Auth Outstanding
+       becomes a daily bucket — reps only see patients whose Follow Up Date is
+       today or earlier ("Still Outstanding" pushes +1 day; ships with the
+       Auth Outstanding batch). */
+    {label:'Follow Up Date · date_mm34m2dz',value:`${todayFmt()} — today (same-day)`,tone:'good'},
+    {label:'Escalation',value:S.escalated?'Escalation Required':'Done',tone:S.escalated?'bad':'good'},
+  ];
+  if(callFaxEntry)rows.push({label:'Call/Fax Number',value:callFaxEntry.callFax,tone:'neutral'});
+  if(intake)rows.push({label:'Carecentrix Intake ID',value:intake,tone:'neutral'});
+
+  /* per-product columns */
+  const prodRows=[];
+  for(const r of required){
+    const s=code(PID_TO_CODE[r.product]);
+    prodRows.push({head:`${r.hcpc} · ${PRODUCT_LABELS[r.product]}`});
+    prodRows.push({label:PRODUCT_AUTH_COLUMN[r.product],value:'Submitted',tone:'good'});
+    prodRows.push({label:'Auth Submission Method',value:s.method||'—',tone:s.method?'skip':'neutral'});
+    prodRows.push({label:'Auth Submission Date',value:fmtDate(s.date),tone:'neutral'});
+    prodRows.push({label:'Auth ID',value:s.authId||'—',tone:'neutral'});
+  }
+  for(const r of mcd){
+    prodRows.push({head:`${r.hcpc} · ${PRODUCT_LABELS[r.product]}`});
+    prodRows.push({label:PRODUCT_AUTH_COLUMN[r.product],value:'Required (unchanged — DVS next stage)',tone:'skip'});
+  }
+
+  $('mon-card').innerHTML=`
+    <button type="button" class="mon-toggle ${mondayOpen?'open':''}" aria-expanded="${mondayOpen}" onclick="toggleMonday()">
+      <h2 style="color:var(--mm-teal)">Monday Board Output</h2>
+      <span class="mon-toggle-hint">${mondayOpen?'Hide':'Show'} what lands on the board</span>
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+    </button>
+
+    ${mondayOpen?`
+    <div style="display:flex;flex-direction:column;gap:16px;margin-top:16px">
+      <div class="mon-box">
+        <h3>Main columns</h3>
+        <p class="msub">One write each per send. Follow Up Date is stamped <b>today</b> so the patient lands in tomorrow-or-sooner's Auth Outstanding bucket. Escalation follows the manual toggle only — Submit Auth has no auto-escalation rules.</p>
+        <div class="mon-rows">
+          ${rows.map(r=>`
+          <div class="mon-row">
+            <span class="mlabel">${r.label}</span>
+            <span class="mval ${r.tone}">${r.value}</span>
+          </div>`).join('')}
+        </div>
+      </div>
+
+      <div class="mon-box">
+        <h3>Per-product columns</h3>
+        <p class="msub">Auth results flip to Submitted; method, date and ID land in their per-product columns.</p>
+        <div class="mon-rows">
+          ${prodRows.map(r=>r.head
+            ?`<div class="mon-row grp-head"><span class="mlabel">${r.head}</span><span></span></div>`
+            :`<div class="mon-row"><span class="mlabel">${r.label}</span><span class="mval ${r.tone}">${r.value}</span></div>`).join('')}
+        </div>
+      </div>
+    </div>`:''}
+
+    <div class="foot-actions">
+      <div class="foot-left">
+        <button class="obtn rose ${S.escalated?'on':''}" onclick="toggleEscalate()">
+          ${icoAlert} ${S.escalated?'Escalation Flagged':'Escalate'}
+        </button>
+      </div>
+      <button class="send-btn" ${missing.length?'disabled':''} onclick="toast('Auth submission complete — sent to Monday (demo)')">${icoSend} Auth Submission Complete</button>
+    </div>
+    ${missing.length?`
+    <div class="missing-box">
+      <div class="mb-title">Missing before send</div>
+      <div class="mb-list">${missing.join(' · ')}</div>
+    </div>`:''}
+  `;
+}
+
+/* =====================================================================
+   toast + clinicals
+   ===================================================================== */
+function toast(msg){
+  const t=document.createElement('div');
+  t.className='toast';t.textContent=msg;
+  $('toasts').appendChild(t);
+  setTimeout(()=>t.remove(),3200);
+}
+const CLINICALS=[
+  {name:'Clinical Notes — Dr. Greenberg 05-12-2026.pdf',size:'1.2 MB'},
+  {name:'CGM Script.pdf',size:'184 KB'},
+  {name:'IP Script.pdf',size:'210 KB'},
+];
+const icoDl=`<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>`;
+function renderClinicals(){
+  $('clin-count').textContent=CLINICALS.length;
+  $('clin-dd').innerHTML=`
+    ${CLINICALS.map(f=>`
+    <button class="clin-file" onclick="toast('Downloading ${f.name.replace(/'/g,"\\'")} (demo)')">
+      ${icoDl}
+      <span class="fname" title="${f.name}">${f.name}</span>
+      <span class="fsize">${f.size}</span>
+    </button>`).join('')}
+    <div class="clin-all">
+      <button class="tbtn" style="width:100%;justify-content:center" onclick="toast('Downloading all ${CLINICALS.length} clinical files (demo)')">
+        ${icoDl} Download All (${CLINICALS.length})
+      </button>
+    </div>`;
+}
+function toggleClinicals(){$('clin-dd').classList.toggle('open')}
+document.addEventListener('click',e=>{
+  if(!e.target.closest('.clin-wrap'))$('clin-dd').classList.remove('open');
+});
+
+/* =====================================================================
+   main render
+   ===================================================================== */
+function renderDemoBar(){
+  $('demo-seg').innerHTML=SCENARIOS.map(s=>
+    `<button class="${scenario===s.key?'on':''}" onclick="setScenario('${s.key}')">${s.label}</button>`).join('');
+}
+function render(){
+  renderDemoBar();
+  renderHeader();
+  renderCcx();
+  renderMatrix();
+  renderProducts();
+  renderMonday();
+}
+renderClinicals();
+render();
+</script>
+</body>
+</html>
