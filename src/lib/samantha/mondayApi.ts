@@ -326,6 +326,9 @@ export const AUTH_READ_COLUMN_IDS = [
   COL.authUnits.infusion_set,
   COL.authUnits.cartridge,
   COL.carecentrixIntakeId,
+  // Shared Call/Fax Number — read back so the number survives a reload
+  // (it hydrates into every Call/Fax-method code; see mondayMapping).
+  COL.callFaxNumber,
   COL.daysSinceStage,
   COL.triggerDvs,
   COL.triggerPumpDvs,

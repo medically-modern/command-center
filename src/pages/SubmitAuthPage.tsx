@@ -199,6 +199,7 @@ const SubmitAuthPage = () => {
                         <AuthorizationsPanel
                           patient={selected}
                           onCodeChange={updateCode}
+                          onIntakeIdChange={(v) => update(selected.id, { carecentrixIntakeId: v })}
                           missing={missing}
                           onSend={handleSend}
                           onToggleEscalate={() => update(selected.id, { escalated: !selected.escalated })}

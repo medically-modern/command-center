@@ -66,6 +66,11 @@ const FIXED_HCPC: Partial<Record<ProductId, string>> = {
 interface Props {
   patient: Patient;
   onCodeChange: (codeId: ProductCodeId, patch: Partial<ProductCodeState>) => void;
+  /** Mirrors the shared Carecentrix Intake ID onto the patient-level field.
+   *  The write path prefers `p.carecentrixIntakeId` over per-code values, so
+   *  an edit that only touched the codes would lose to a stale hydrated
+   *  profile value — keep both in sync. */
+  onIntakeIdChange: (value: string) => void;
   missing: string[];
   onSend: () => Promise<void>;
   onToggleEscalate: () => void;
@@ -284,6 +289,7 @@ function MonRow({ label, value, tone }: { label: string; value: string; tone: st
 export function AuthorizationsPanel({
   patient,
   onCodeChange,
+  onIntakeIdChange,
   missing,
   onSend,
   onToggleEscalate,
@@ -305,11 +311,17 @@ export function AuthorizationsPanel({
     cards.length > 0 && cards.every((r) => cardComplete(ins.codes[productCodeId(r.product)]));
 
   // Carecentrix Intake ID is shared across all card products — one per
-  // patient. Derive from the first non-empty value; fan changes out.
+  // patient. Display prefers the freshest per-code value, falling back to
+  // the hydrated patient-level field (the board's single shared column);
+  // edits fan out to every card AND the patient-level field so the write
+  // path (which prefers p.carecentrixIntakeId) sends what the rep typed.
   const sharedIntakeId =
-    cards.map((r) => ins.codes[productCodeId(r.product)]?.intakeId).find((v) => !!v) ?? "";
+    cards.map((r) => ins.codes[productCodeId(r.product)]?.intakeId).find((v) => !!v) ??
+    patient.carecentrixIntakeId ??
+    "";
   const setIntakeIdForAll = (value: string) => {
     for (const r of cards) onCodeChange(productCodeId(r.product), { intakeId: value });
+    onIntakeIdChange(value);
   };
 
   const handleSend = async () => {

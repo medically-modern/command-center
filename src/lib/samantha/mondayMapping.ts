@@ -264,14 +264,27 @@ export function mondayItemToPatient(item: MondayItem): Patient {
     if (authUnits) existing.authUnits = authUnits;
   }
 
-  // Carecentrix Intake ID (single shared column)
+  // Carecentrix Intake ID (single shared column). Applied to EVERY code —
+  // the ID is one-per-patient (the Submit Auth card fans it out the same
+  // way), and the old method === "Carecentrix Portal" gate was dead code:
+  // parseAuthMethod never produces that value, so the ID silently failed
+  // to rehydrate into the cards after a reload.
   const intakeText = cv(COL.carecentrixIntakeId)?.text;
   if (intakeText) {
-    // Apply to all product codes that use Carecentrix
     for (const codeId of Object.keys(codes) as ProductCodeId[]) {
-      if (codes[codeId]?.authSubmissionMethod === "Carecentrix Portal") {
-        codes[codeId]!.intakeId = intakeText;
-      }
+      codes[codeId]!.intakeId = intakeText;
+    }
+  }
+
+  // Call/Fax Number (single shared column, write-only until 2026-07-20).
+  // Rehydrate into every code whose method is Call or Fax so the number
+  // survives a reload — without this, the method came back but the number
+  // box sat empty, and the new submit validation would demand it again.
+  const callFaxText = cv(COL.callFaxNumber)?.text;
+  if (callFaxText) {
+    for (const codeId of Object.keys(codes) as ProductCodeId[]) {
+      const m = codes[codeId]?.authSubmissionMethod;
+      if (m === "Call" || m === "Fax") codes[codeId]!.callFaxNumber = callFaxText;
     }
   }
 
