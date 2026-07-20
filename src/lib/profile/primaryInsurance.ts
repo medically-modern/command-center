@@ -195,7 +195,16 @@ function anthemSubType(inp: SuggestionInputs): Suggestion & { value: string } {
   // (Brandon, 2026-07-15 — trigger member JLJ730667355).
   if (/essential plan|\bep ?\d|ep standard|child health|\bchp\b|\bchip\b|chplus/i.test(plan)) { out.value = "Anthem BCBS Low-Cost (JLJ)"; out.reason = "Low-Cost"; return out as Suggestion & { value: string }; }
   if (cov === "Medicaid" || midHasJLJ(inp.memberId)) {
-    if (isMLTCplan(s)) { out.value = "Anthem BCBS Low-Cost (JLJ)"; out.reason = "MLTC"; return out as Suggestion & { value: string }; }
+    if (isMLTCplan(s)) {
+      out.value = "Anthem BCBS Low-Cost (JLJ)"; out.reason = "MLTC";
+      // Explicit warning, not just the reason line (Brandon, 2026-07-20 —
+      // Anjuman Begum): an MLTC member often has a Medicaid ID on the card,
+      // which tempts the Medicaid (JLJ) / straight-Medicaid route — but
+      // MLTC plans carve DME to the plan itself, so it bills as Low-Cost
+      // (JLJ) regardless of the Medicaid ID.
+      out.warnings.push({ code: "MLTC_PLAN", message: "MLTC plan (" + (s.plan || "per Stedi") + ") — bill the MLTC plan as Low-Cost (JLJ), NOT Medicaid (JLJ) or straight Medicaid, even if a Medicaid ID is on the card" });
+      return out as Suggestion & { value: string };
+    }
     out.value = "Anthem BCBS Medicaid (JLJ)"; out.reason = "Medicaid plan";
     out.warnings.push({ code: "CHECK_MEDICAID_ID", message: "Check ID card for Medicaid ID" });
     return out as Suggestion & { value: string };

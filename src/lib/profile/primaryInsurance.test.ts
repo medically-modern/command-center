@@ -96,6 +96,29 @@ describe("suggestPrimary — payer routing", () => {
     expect(sg?.value).toBe("Anthem BCBS Low-Cost (JLJ)");
     expect(sg?.warnings.some((w) => w.code === "CHECK_MEDICAID_ID")).toBe(false);
   });
+
+  // Anjuman Begum (Brandon, 2026-07-20): MLTC member with a JLJ member ID.
+  // The pill already said Low-Cost (JLJ) but carried no warning — a rep
+  // seeing a Medicaid ID on the card could still route Medicaid. MLTC DME
+  // is carved to the plan, so the warning states it explicitly.
+  it("Anthem MLTC plan → Low-Cost (JLJ) + MLTC_PLAN warning", () => {
+    const sg = suggestPrimary(mk({
+      gins: "Anthem / BCBS", memberId: "JLJ733871286",
+      plan: "NEW YORK MLTC", covtype: "Medicaid", payerName: "ANTHEM",
+    }));
+    expect(sg?.value).toBe("Anthem BCBS Low-Cost (JLJ)");
+    expect(sg?.warnings.some((w) => w.code === "MLTC_PLAN")).toBe(true);
+    expect(sg?.warnings.find((w) => w.code === "MLTC_PLAN")?.message).toContain("NEW YORK MLTC");
+  });
+
+  it("Anthem MLTC via the Stedi MLTC flag column → same warning", () => {
+    const sg = suggestPrimary(mk({
+      gins: "Anthem / BCBS", memberId: "JLJ733871286",
+      plan: "SOME PLAN", covtype: "Medicaid", mltc: true,
+    }));
+    expect(sg?.value).toBe("Anthem BCBS Low-Cost (JLJ)");
+    expect(sg?.warnings.some((w) => w.code === "MLTC_PLAN")).toBe(true);
+  });
   it('United "CHIP" plan → United Low-Cost', () => {
     expect(suggestPrimary(mk({
       gins: "United Healthcare", plan: "NY CHIP PREMIUM", covtype: "Medicaid", requestType: "Supplies Only",
