@@ -942,7 +942,7 @@ function ProfileBody(p: BodyProps) {
                       && !/^medicare\b/i.test((pt.stediPrimaryPayer || "").trim()) && (
                       <div className="warn-banner" style={{ marginTop: 16 }}>
                         <AlertTriangle className="h-4 w-4" />
-                        <span><b>Medicare's file shows {pt.stediPrimaryPayer.trim()} as PRIMARY.</b> Medicare will DENY primary claims while this MSP record is open — even if that coverage has ended. Get the commercial card and run the payer-side check (the CMS name is often the claims processor, not the member-facing brand). If the patient confirms the coverage ended: BCRC 855-798-2627, then re-run the Stedi check in 1–2 weeks — a clean re-check is the all-clear.</span>
+                        <span><b>Medicare's file shows {pt.stediPrimaryPayer.trim()} as PRIMARY.</b> Medicare will DENY primary claims while this MSP record is open — even if that coverage has ended. Get the commercial card and run the payer-side check (the CMS name is often the claims processor, not the member-facing brand). If the patient confirms the coverage ended: BCRC 855-798-2627, then re-run the Stedi check in 72 hours — a clean re-check is the all-clear.</span>
                       </div>
                     )}
                     <div className="res-grid" style={{ gridTemplateColumns: "repeat(3,1fr)", marginTop: 16 }}>

@@ -340,7 +340,7 @@ function otherPayerSuggest(inp: SuggestionInputs): Suggestion {
     if (mspPayer && !/^medicare\b/i.test(mspPayer)) {
       const up = mspPayer.toUpperCase();
       o.confidence = "low";
-      o.warnings.push({ code: "MSP_PRIMARY", message: "Medicare's file shows " + mspPayer + " as PRIMARY — Medicare will DENY primary claims while this MSP record is open, even if that coverage has ended. Get the commercial card and run the payer-side check (the CMS name is often the claims processor, not the member-facing brand). If the patient confirms the coverage ended: BCRC 855-798-2627, then re-run the Stedi check in 1–2 weeks." });
+      o.warnings.push({ code: "MSP_PRIMARY", message: "Medicare's file shows " + mspPayer + " as PRIMARY — Medicare will DENY primary claims while this MSP record is open, even if that coverage has ended. Get the commercial card and run the payer-side check (the CMS name is often the claims processor, not the member-facing brand). If the patient confirms the coverage ended: BCRC 855-798-2627, then re-run the Stedi check in 72 hours." });
       if (/AETNA/.test(up)) {
         o.value = "Aetna Commercial";
         o.reason = "Medicare is SECONDARY — CMS reports " + mspPayer + " as primary (Aetna family). Medicare A&B becomes the secondary once confirmed.";
