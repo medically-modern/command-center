@@ -85,10 +85,7 @@ const App = () => (
           <Route path="/chase-benefits" element={<ChaseBenefitsRedirect />} />
           <Route path="/benefits" element={<BenefitsPage />} />
           <Route path="/welcome-call" element={<WelcomeCallPage />} />
-          {/* Profile Send Off — two roles (July 2026): verified and unverified
-              referrals, split by Referral Type/Source (lib/profile/referralSplit) */}
-          <Route path="/profile" element={<ProfilePage variant="verified" />} />
-          <Route path="/unverified-referrals" element={<ProfilePage variant="unverified" />} />
+          <Route path="/profile" element={<ProfilePage />} />
           <Route path="/submit-auth" element={<SubmitAuthPage />} />
           <Route path="/auth-outstanding" element={<AuthOutstandingPage />} />
           <Route path="/subscription" element={<SubscriptionPage />} />

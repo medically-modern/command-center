@@ -41,11 +41,7 @@ import {
 const CHART_ROUTES: Record<string, string | null> = {
   "dtc-partial-leads": null,        // no CC view
   "dtc-raw-intake": null,           // no CC view
-  // Profile Send Off split by referral: Verified → /profile, Unverified →
-  // /unverified-referrals (patients still open via ?patientId injection
-  // regardless of the page's own filter).
   "profile-send-off": "/profile",
-  "profile-send-off-unverified": "/unverified-referrals",
   "evaluate": "/evaluate",
   "send-request": "/send-request",
   "confirm-receipt": "/confirm-receipt",

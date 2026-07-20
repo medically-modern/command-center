@@ -24,9 +24,7 @@
  *   Method). active = not escalated AND nextActionDate blank/past/today
  * Welcome Call board (18410804557): welcomeCall group (active = not
  *   escalated AND followUp !== "Done") + finalConfirm group (not escalated)
- * Profile board (18406352652): intake group — active = followUp !== "Done",
- *   split into profile (verified) vs unverifiedReferrals by Referral Type
- *   "Patient" OR Referral Source "CareCentrix" (lib/profile/referralSplit.ts)
+ * Profile board (18406352652): intake group — active = followUp !== "Done"
  * Subscription board (18407459988): Subscriptions group — all items
  */
 import { useEffect, useState, useCallback, useRef } from "react";
@@ -62,8 +60,6 @@ const WC_ESC_COL = "color_mm1x7997";       // Escalation
 const WC_FOLLOWUP_COL = "color_mm38w2tk";  // Follow Up
 // Profile
 const PROF_FOLLOWUP_COL = "color_mm3822qq"; // Follow Up
-const PROF_REFERRAL_TYPE_COL = "color_mm1wm4n4";   // Referral Type (role split)
-const PROF_REFERRAL_SOURCE_COL = "color_mm1w5wxr"; // Referral Source (role split)
 
 const ESC_REQUIRED = "Escalation Required";
 
@@ -364,29 +360,12 @@ export function useRoleCounts(opts?: { roleIds?: string[] }) {
       );
     }
 
-    if (needAny("profile", "unverifiedReferrals")) {
+    if (need("profile")) {
       boardTasks.push(
         (async () => {
-          const items = await fetchBoardGroupItemsLight(
-            PROFILE_BOARD_ID,
-            PROFILE_GROUP_ID,
-            [PROF_FOLLOWUP_COL, PROF_REFERRAL_TYPE_COL, PROF_REFERRAL_SOURCE_COL],
-          );
+          const items = await fetchBoardGroupItemsLight(PROFILE_BOARD_ID, PROFILE_GROUP_ID, [PROF_FOLLOWUP_COL]);
           const active = items.filter((i) => i.cols[PROF_FOLLOWUP_COL] !== "Done");
-          // Verified/Unverified split — duplicates lib/profile/referralSplit.ts
-          // (not imported: that module rides in the lazy Profile page chunk).
-          // Only the TYPE column routes "Patient" — the SOURCE column has its
-          // own "Patient" label that must NOT match.
-          const isUnverified = (i: LightItem) =>
-            (i.cols[PROF_REFERRAL_TYPE_COL] ?? "").trim().toLowerCase() === "patient" ||
-            (i.cols[PROF_REFERRAL_SOURCE_COL] ?? "").trim().toLowerCase() === "carecentrix";
-          const unverified = active.filter(isUnverified);
-          const verified = active.filter((i) => !isUnverified(i));
-          merge(
-            { profile: verified.length, unverifiedReferrals: unverified.length },
-            { profile: 0, unverifiedReferrals: 0 },
-            { profile: verified.map((i) => i.id), unverifiedReferrals: unverified.map((i) => i.id) },
-          );
+          merge({ profile: active.length }, { profile: 0 }, { profile: active.map((i) => i.id) });
         })(),
       );
     }
