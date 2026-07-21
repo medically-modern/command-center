@@ -363,7 +363,12 @@ export function useRoleCounts(opts?: { roleIds?: string[] }) {
     // both baseline generators (§5.8 counting contract — change together).
     const samActive = async (groupId: string, roleId: string, dateOnlyBucket = false) => {
       if (!samHasToken()) return;
-      const items = await fetchBoardGroupItemsLight(SAM_BOARD_ID, groupId, [SAM_ESC_COL, SAM_FOLLOWUP_COL, SAM_FOLLOWUP_DATE_COL]);
+      const fetched = await fetchBoardGroupItemsLight(SAM_BOARD_ID, groupId, [SAM_ESC_COL, SAM_FOLLOWUP_COL, SAM_FOLLOWUP_DATE_COL, SAM_STAGE_COL]);
+      // Stage = "DVS" items stay in their old group (no group-move automation
+      // yet) but belong to the board-wide dvs count below — drop them here so
+      // a routed patient never counts in two roles (mirrors samantha
+      // useMondayPatients + both baseline countSamGroup, §5.8).
+      const items = fetched.filter((i) => i.cols[SAM_STAGE_COL] !== "DVS");
       const escN = items.filter((i) => i.cols[SAM_ESC_COL] === ESC_REQUIRED).length;
       const snoozed = (i: (typeof items)[number]) => {
         const d = i.cols[SAM_FOLLOWUP_DATE_COL];

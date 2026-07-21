@@ -7,13 +7,14 @@
  * the required reason (Proposed Stuck Reason text column). The patient
  * leaves this rep's stage queue immediately (useMondayPatients filters
  * proposed patients out) and lands in Pipeline Oversight → Final
- * Decisions, where the manager either Approves Stuck (writes the real
- * Stuck via Advancer 2C — what the old modal did) or Returns to Queue
- * (clears the proposal).
+ * Decisions, where the manager either Approves Stuck (writes the main
+ * Stage Advancer → Stuck) or Returns to Queue (clears the proposal).
  *
- * Deliberately NOT a verified-write transaction: neither column is an
- * automation trigger (the new status column has no automations), so the
- * two parallel writes carry no stale-sibling risk.
+ * Deliberately NOT a verified-write transaction (neither column is an
+ * automation trigger), but the writes are SEQUENTIAL, reason first: the
+ * status flip is what surfaces the patient in Final Decisions, so the
+ * manager must never see a proposal whose reason write failed or hasn't
+ * landed yet.
  */
 import { useState } from "react";
 import {
@@ -48,10 +49,8 @@ export function ProposeStuckModal({ open, onOpenChange, patientId, patientName, 
     }
     setSending(true);
     try {
-      await Promise.all([
-        writeStatusIndex(patientId, COL.proposedStuck, PROPOSED_STUCK_INDEX.proposed),
-        writeText(patientId, COL.proposedStuckReason, reason.trim()),
-      ]);
+      await writeText(patientId, COL.proposedStuckReason, reason.trim());
+      await writeStatusIndex(patientId, COL.proposedStuck, PROPOSED_STUCK_INDEX.proposed);
       toast.success(`${patientName} proposed as Stuck — sent to the manager for a decision`);
       onOpenChange(false);
       setReason("");

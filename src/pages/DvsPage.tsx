@@ -1,38 +1,44 @@
 /**
  * DVS — the fully-automatic Medicaid verification stage
- * (HANDOFF-Josh-DVS.md v2, 2026-07-20; dvs-redesign.html is the visual spec).
+ * (JOSH_HANDOFF_DVS.md v2; dvs-redesign.html is the visual spec).
  *
- * READ-ONLY MONITOR: the Stage Advancer flipping to "DVS" is the bot
- * trigger; this page writes nothing in the normal flow. It polls the board
- * and narrates what the automation did. The only writes are the Re-run
- * buttons on the manual-review path (§4), which flip the existing
- * Trigger DVS / Trigger Pump DVS columns the automate-dvs bots listen to.
+ * READ-ONLY MONITOR: the Stage Advancer flipping to "DVS" is the trigger
+ * (the app's sends also auto-flip the right Trigger DVS column for today's
+ * bots — dvsRouting.dvsAutoTrigger). This page polls the board and narrates
+ * what the automation did. The only writes here: the manual-review Re-run
+ * buttons, the rail's follow-up snooze (+1d, date-only — same rule as Auth
+ * Outstanding), and Reference Notes.
  *
- * ⚠ COARSE READ MODEL (§10 open item): the per-code columns the v2 handoff
- * wants (auth + claim result, paid amount, retry-queue state PER HCPC) do
- * not exist on the board yet — the bot writes one status per run (Supplies
- * DVS / Pump DVS / Claims / Retry Count). This page renders that per-run
- * granularity; wire the per-code columns into `runSteps()` when Josh's bot
- * defines them.
+ * Read model (live bot columns, found 2026-07-21): Trigger Supplies DVS /
+ * Trigger Pump DVS status labels (Running / Success / Failed / Manual
+ * Review / Retry Queued / MLTC / Denied), Claims Status, per-code claim
+ * text (A4230 Claim / A4232 Claim), Claims Paid Amount + Date, DVS Denial
+ * Reason, Claims Error + Denial Reason, Retry Count + Retry Next Date.
+ * Still missing per-code AUTH results and E0784 claim detail (§10).
+ *
+ * DVS runs on the CIN — the Medicaid ID in XX11111X format on Member ID 1
+ * or Member ID 2 (nyMedicaidCin). UI language is always "Medicaid ID".
  */
 import { useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useDvsPatients } from "@/hooks/dvs/useDvsPatients";
 import type { Patient } from "@/lib/samantha/workflow";
 import { PatientProfileCard } from "@/components/samantha/PatientProfileCard";
+import { NotesPanel } from "@/components/samantha/NotesPanel";
 import { PageLoadingOverlay } from "@/components/shared/PageLoadingOverlay";
 import { ReportIssueButton } from "@/components/shared/ReportIssueButton";
 import { Button } from "@/components/ui/button";
 import { useBackNavigation } from "@/hooks/useBackNavigation";
 import { resolveHcpcs, isAutoFilledMedicaidSupply, PRODUCT_LABELS, type ProductId } from "@/lib/samantha/hcpcRules";
-import { isStraightMedicaidPrimary } from "@/lib/samantha/dvsRouting";
-import { writeStatusIndex, COL } from "@/lib/samantha/mondayApi";
+import { allProductsDvsRouted, isStraightMedicaidPrimary, nyMedicaidCin } from "@/lib/samantha/dvsRouting";
+import { writeStatusIndex, writeDate, writeLongText, COL } from "@/lib/samantha/mondayApi";
 import { TRIGGER_DVS_INDEX, TRIGGER_PUMP_DVS_INDEX } from "@/lib/samantha/mondayMapping";
+import { addDaysYmd, etTodayYmd, ymdToUs } from "@/lib/samantha/benefitsDerive";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
-import { ArrowLeft, Bot, Loader2, RefreshCw, RotateCw, Search, User, Zap } from "lucide-react";
+import { AlertTriangle, ArrowLeft, Bot, Clock, Loader2, RefreshCw, RotateCw, Search, Undo2, User, Zap } from "lucide-react";
 
-/* ── status-chip tone mapping (coarse bot labels) ─────────────────── */
+/* ── status-chip tone mapping (live bot labels) ───────────────────── */
 
 type Tone = "mint" | "rose" | "sky" | "amber" | "gray";
 
@@ -40,7 +46,7 @@ function toneFor(label: string | undefined): Tone {
   const l = (label ?? "").toLowerCase();
   if (!l) return "gray";
   if (l.includes("success") || l.includes("paid") || l.includes("approved")) return "mint";
-  if (l.includes("denied") || l.includes("failed") || l.includes("error") || l.includes("manual") || l.includes("mltc")) return "rose";
+  if (l.includes("denied") || l.includes("failed") || l.includes("error") || l.includes("manual") || l.includes("mltc") || l.includes("incorrect")) return "rose";
   if (l.includes("retry")) return "amber";
   if (l.includes("running") || l.includes("trigger") || l.includes("submit")) return "sky";
   return "gray";
@@ -57,13 +63,15 @@ const TONE_CLASS: Record<Tone, string> = {
 function StatusChip({ label, fallback }: { label?: string; fallback?: string }) {
   const text = (label ?? "").trim() || (fallback ?? "Not started");
   return (
-    <span className={cn("inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold border", TONE_CLASS[toneFor(label)])}>
+    <span className={cn("inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold border whitespace-nowrap", TONE_CLASS[toneFor(label)])}>
       {text}
     </span>
   );
 }
 
 const isFailedish = (label: string | undefined) => toneFor(label) === "rose";
+const isQueued = (p: Patient) =>
+  (p.retryCount ?? 0) > 0 || toneFor(p.dvsStatus) === "amber" || toneFor(p.pumpDvsStatus) === "amber";
 
 /* ── page ─────────────────────────────────────────────────────────── */
 
@@ -74,18 +82,28 @@ const DvsPage = () => {
   const [selectedId, setSelectedId] = useState<string | null>(searchParams.get("patientId"));
   const [search, setSearch] = useState("");
   const [rerunning, setRerunning] = useState<string | null>(null);
+  const [snoozing, setSnoozing] = useState<string | null>(null);
+  const [noteDrafts, setNoteDrafts] = useState<Record<string, string>>({});
 
-  const visible = useMemo(() => {
+  const todayEt = etTodayYmd();
+  // Daily bucket (same date-only rule as Auth Outstanding): a future
+  // Follow Up Date hides the patient from the working list until it arrives.
+  const snoozed = (p: Patient) => !!p.followUpDate && p.followUpDate > todayEt;
+
+  const bySearch = useMemo(() => {
     const q = search.trim().toLowerCase();
     return q ? patients.filter((p) => p.name.toLowerCase().includes(q)) : patients;
   }, [patients, search]);
+  const duePatients = useMemo(() => bySearch.filter((p) => !snoozed(p)), [bySearch, todayEt]);
+  const snoozedPatients = useMemo(() => bySearch.filter((p) => snoozed(p)), [bySearch, todayEt]);
 
   const selected: Patient | undefined = useMemo(() => {
     const byId = patients.find((p) => p.id === selectedId);
-    return byId ?? visible[0];
-  }, [patients, selectedId, visible]);
+    return byId ?? duePatients[0] ?? snoozedPatients[0];
+  }, [patients, selectedId, duePatients, snoozedPatients]);
 
   const straight = selected ? isStraightMedicaidPrimary(selected) : false;
+  const cin = selected ? nyMedicaidCin(selected) : null;
   const resolved = useMemo(
     () =>
       selected
@@ -97,9 +115,21 @@ const DvsPage = () => {
     () => new Set(resolved.filter((r) => straight || isAutoFilledMedicaidSupply(r)).map((r) => r.product)),
     [resolved, straight],
   );
-  const servesPump = resolved.some((r) => r.product === "insulin_pump");
-  const pumpDvses = straight && servesPump;
-  const suppliesDvs = resolved.some((r) => dvsProducts.has(r.product) && (r.product === "infusion_set" || r.product === "cartridge"));
+  const pumpDvses = straight && resolved.some((r) => r.product === "insulin_pump");
+  const suppliesDvs = resolved.some(
+    (r) => dvsProducts.has(r.product) && (r.product === "infusion_set" || r.product === "cartridge"),
+  );
+  // "Everything here goes through NY Medicaid" — straight Medicaid OR a
+  // supplies-only managed dual. Only pump-via-payer duals rode the rail.
+  const skippedRail = selected ? allProductsDvsRouted(selected) : false;
+  const pumpDvsApproved = toneFor(selected?.pumpDvsStatus) === "mint";
+  // The supplies chain waits on the pump CLAIM being fully paid (§5), not
+  // just the DVS approval. Claims Status is the bot's shared claims column —
+  // while the pump is the only claim in flight, mint there = pump paid. Once
+  // the bot starts writing a supplies DVS status, show that instead.
+  const pumpClaimPaid = pumpDvsApproved && toneFor(selected?.claimsStatus) === "mint";
+  const suppliesStarted = !!(selected?.dvsStatus ?? "").trim();
+  const waitingOnPump = pumpDvses && !pumpClaimPaid && !suppliesStarted;
 
   const handleRerun = async (kind: "supplies" | "pump") => {
     if (!selected || rerunning) return;
@@ -110,7 +140,7 @@ const DvsPage = () => {
       } else {
         await writeStatusIndex(selected.id, COL.triggerPumpDvs, TRIGGER_PUMP_DVS_INDEX.triggerPumpDvs);
       }
-      toast.success(`${kind === "supplies" ? "Supplies" : "Pump"} DVS re-triggered — the bot picks it up from here`);
+      toast.success(`${kind === "supplies" ? "Supplies" : "Pump"} DVS re-triggered — only the unpaid work re-runs (§5)`);
       refetch();
     } catch (e) {
       toast.error("Re-run failed", { description: e instanceof Error ? e.message : String(e) });
@@ -119,45 +149,75 @@ const DvsPage = () => {
     }
   };
 
+  const pushToTomorrow = async (p: Patient) => {
+    if (snoozing) return;
+    setSnoozing(p.id);
+    try {
+      await writeDate(p.id, COL.followUpDate, addDaysYmd(todayEt, 1));
+      toast.success(`${p.name} — done for today; returns tomorrow`);
+      refetch();
+    } catch (e) {
+      toast.error("Failed to snooze", { description: e instanceof Error ? e.message : String(e) });
+    } finally {
+      setSnoozing(null);
+    }
+  };
+
+  const clearSnooze = async (p: Patient) => {
+    if (snoozing) return;
+    setSnoozing(p.id);
+    try {
+      await writeDate(p.id, COL.followUpDate, "");
+      toast.success(`${p.name} returned to the list`);
+      refetch();
+    } catch (e) {
+      toast.error("Failed to clear follow-up", { description: e instanceof Error ? e.message : String(e) });
+    } finally {
+      setSnoozing(null);
+    }
+  };
+
   /* banner narration (§7) */
   const banner = useMemo(() => {
     if (!selected) return null;
-    const paid = (selected.claimsStatus ?? "").toLowerCase().includes("paid");
+    const claimsPaid = toneFor(selected.claimsStatus) === "mint";
+    const suppliesDone = !suppliesDvs || toneFor(selected.dvsStatus) === "mint";
+    const pumpDone = !pumpDvses || pumpDvsApproved;
     const manual =
       selected.escalated || isFailedish(selected.dvsStatus) || isFailedish(selected.pumpDvsStatus) || isFailedish(selected.claimsStatus);
     if (manual) {
       return {
         tone: "rose" as Tone,
-        text: "Manual review — the bot flags this patient for the Auth Denial bucket (Stage → Auth Denied + Escalation Required). Fix the underlying issue, then Re-run the failed step below.",
+        text: "Manual review — the bot flags this patient for the Auth Denial bucket (Stage → Auth Denied + Escalation Required; manual review outranks the retry queue). Fix the underlying issue, then Re-run the failed step below.",
       };
     }
-    if (paid) {
+    if (claimsPaid && suppliesDone && pumpDone) {
       return {
         tone: "mint" as Tone,
-        text: "Paid — the bot writes Stage → Complete and the patient auto-moves to the Welcome Call board. Nothing to do here.",
+        text: "Fully paid — Stage → Complete writes itself and the patient moves to the Welcome Call board. No rep action on this view.",
       };
     }
-    if ((selected.retryCount ?? 0) > 0) {
+    if (isQueued(selected)) {
       return {
         tone: "amber" as Tone,
-        text: `In the retry queue — re-runs once a day automatically (attempt ${selected.retryCount}). Stage stays at DVS until it clears; the queue is monitored from the Insurance manager view.`,
+        text: `Holding in the retry queue — re-runs once a day automatically${selected.retryCount ? ` (attempt ${selected.retryCount}` : "("}${selected.retryNextDate ? ` · next run ${ymdToUs(selected.retryNextDate)})` : ")"}. Stage stays at DVS; the queue is monitored from the Insurance manager view.`,
       };
     }
     return {
       tone: "sky" as Tone,
-      text: "DVS running — the Stage Advancer flipping to DVS triggered the bot. Results stream in below as it writes them to the board.",
+      text: "Automation in progress — the stage flip triggered the DVS run. Results stream in below as the bot writes them to the board.",
     };
-  }, [selected]);
+  }, [selected, suppliesDvs, pumpDvses, pumpDvsApproved]);
 
   return (
     <div className="min-h-screen flex w-full bg-gradient-subtle">
       <PageLoadingOverlay show={initialLoading} />
 
-      {/* lite patient rail — read-only monitor list */}
+      {/* lite patient rail — daily bucket with the +1d follow-up snooze */}
       <aside className="w-72 shrink-0 border-r border-sidebar-border bg-sidebar text-sidebar-foreground hidden md:flex flex-col">
         <div className="p-3 border-b border-sidebar-border">
           <p className="text-[10px] uppercase tracking-[0.18em] text-muted-foreground">Monday · DVS</p>
-          <p className="text-sm font-semibold">Patients ({patients.length})</p>
+          <p className="text-sm font-semibold">Patients ({duePatients.length})</p>
           <div className="relative mt-2">
             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
             <input
@@ -169,33 +229,79 @@ const DvsPage = () => {
           </div>
         </div>
         <div className="flex-1 overflow-y-auto p-2">
-          {visible.map((p) => (
-            <button
-              key={p.id}
-              onClick={() => setSelectedId(p.id)}
-              className={cn(
-                "w-full flex items-start gap-2 p-2 rounded-lg text-left transition-colors",
-                selected?.id === p.id ? "bg-sidebar-accent" : "hover:bg-sidebar-accent/50",
-              )}
-            >
-              <User className="h-4 w-4 mt-0.5 shrink-0" />
-              <span className="min-w-0">
-                <span className="block text-sm font-medium truncate">{p.name}</span>
-                <span className="block text-[11px] text-muted-foreground truncate">
-                  {p.primaryInsurance || "—"} · {isStraightMedicaidPrimary(p) ? "Straight to DVS" : "Via payer rail"}
-                </span>
-                {(p.retryCount ?? 0) > 0 && (
-                  <span className="block text-[10px] font-medium text-amber-400 mt-0.5">
-                    Retry queue · attempt {p.retryCount}
-                  </span>
+          {duePatients.map((p) => (
+            <div key={p.id} className="flex items-center gap-1">
+              <button
+                onClick={() => setSelectedId(p.id)}
+                className={cn(
+                  "flex-1 min-w-0 flex items-start gap-2 p-2 rounded-lg text-left transition-colors",
+                  selected?.id === p.id ? "bg-sidebar-accent" : "hover:bg-sidebar-accent/50",
                 )}
-              </span>
-            </button>
+              >
+                <User className="h-4 w-4 mt-0.5 shrink-0" />
+                <span className="min-w-0">
+                  <span className="block text-sm font-medium truncate">{p.name}</span>
+                  <span className="block text-[11px] text-muted-foreground truncate">
+                    {p.primaryInsurance || "—"} · {isStraightMedicaidPrimary(p) ? "Straight to DVS" : "Via payer rail"}
+                  </span>
+                  {isQueued(p) && (
+                    <span className="block text-[10px] font-medium text-amber-400 mt-0.5">
+                      Retry queue{p.retryCount ? ` · attempt ${p.retryCount}` : ""}
+                    </span>
+                  )}
+                </span>
+              </button>
+              <button
+                onClick={() => pushToTomorrow(p)}
+                disabled={snoozing !== null}
+                className="shrink-0 flex items-center gap-1 px-1.5 py-1 rounded text-[10px] font-medium text-sky-300 bg-white/5 border border-white/15 hover:bg-white/10 transition-colors disabled:opacity-50"
+                title={`Done for today — ${p.name} returns tomorrow`}
+              >
+                {snoozing === p.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Clock className="h-3 w-3" />}
+                +1d
+              </button>
+            </div>
           ))}
-          {!loading && visible.length === 0 && (
+          {!loading && duePatients.length === 0 && (
             <p className="px-3 py-4 text-xs text-muted-foreground">
-              {error ? error : "No patients at the DVS stage."}
+              {error ? error : "Bucket clear — nothing due today."}
             </p>
+          )}
+
+          {/* Follow Up section — snoozed until their date arrives */}
+          {snoozedPatients.length > 0 && (
+            <div className="mt-3">
+              <p className="px-2 pb-1 text-[10px] uppercase tracking-wider font-semibold text-sky-400 flex items-center gap-1.5">
+                <Clock className="h-3 w-3" /> Follow Up ({snoozedPatients.length})
+              </p>
+              {snoozedPatients.map((p) => (
+                <div key={p.id} className="flex items-center gap-1">
+                  <button
+                    onClick={() => setSelectedId(p.id)}
+                    className={cn(
+                      "flex-1 min-w-0 flex items-start gap-2 p-2 rounded-lg text-left transition-colors opacity-60",
+                      selected?.id === p.id && "bg-sidebar-accent opacity-100",
+                    )}
+                  >
+                    <Clock className="h-4 w-4 mt-0.5 shrink-0 text-sky-400" />
+                    <span className="min-w-0">
+                      <span className="block text-sm font-medium truncate">{p.name}</span>
+                      <span className="block text-[11px] text-sky-400 truncate">
+                        Until {p.followUpDate ? ymdToUs(p.followUpDate) : "—"}
+                      </span>
+                    </span>
+                  </button>
+                  <button
+                    onClick={() => clearSnooze(p)}
+                    disabled={snoozing !== null}
+                    className="shrink-0 flex items-center gap-1 px-1.5 py-1 rounded text-[10px] font-medium text-sky-300 bg-white/5 border border-white/15 hover:bg-white/10 transition-colors disabled:opacity-50"
+                    title={`Bring ${p.name} back now`}
+                  >
+                    {snoozing === p.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Undo2 className="h-3 w-3" />}
+                  </button>
+                </div>
+              ))}
+            </div>
           )}
         </div>
       </aside>
@@ -211,7 +317,7 @@ const DvsPage = () => {
                 <Zap className="h-5 w-5 text-primary-foreground" />
               </div>
               <div>
-                <p className="text-[10px] uppercase tracking-[0.2em] opacity-70">Medically Modern</p>
+                <p className="text-[10px] uppercase tracking-[0.2em] opacity-70">Medically Modern · NY Medicaid</p>
                 <h1 className="text-2xl font-bold">DVS</h1>
                 {selected && <p className="text-sm opacity-80 mt-0.5">{selected.name}</p>}
               </div>
@@ -226,104 +332,112 @@ const DvsPage = () => {
         </header>
 
         <main className="flex-1 px-3 sm:px-6 py-6">
-          <section className="max-w-5xl xl:max-w-7xl mx-auto space-y-5">
-            {!selected && (
-              <div className="rounded-xl bg-card border shadow-card p-10 text-center">
-                <p className="text-sm text-muted-foreground">
-                  {loading ? "Loading patients from Monday…" : error ? error : "No patients at the DVS stage."}
-                </p>
-              </div>
-            )}
-            {selected && banner && (
-              <>
-                {/* automation status banner (§7) — the page's whole job */}
-                <div className={cn("flex items-start gap-3 rounded-xl border px-4 py-3", TONE_CLASS[banner.tone])}>
-                  <Bot className="h-5 w-5 mt-0.5 shrink-0" />
-                  <p className="text-sm font-medium leading-relaxed">{banner.text}</p>
+          <section className="max-w-5xl xl:max-w-none 2xl:max-w-[1800px] mx-auto grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_360px] gap-5 items-start">
+            <div className="space-y-5 min-w-0">
+              {!selected && (
+                <div className="rounded-xl bg-card border shadow-card p-10 text-center">
+                  <p className="text-sm text-muted-foreground">
+                    {loading ? "Loading patients from Monday…" : error ? error : "No patients at the DVS stage."}
+                  </p>
                 </div>
+              )}
+              {selected && banner && (
+                <>
+                  {/* automation status banner (§7) — the page's whole job */}
+                  <div className={cn("flex items-start gap-3 rounded-xl border px-4 py-3", TONE_CLASS[banner.tone])}>
+                    <Bot className="h-5 w-5 mt-0.5 shrink-0" />
+                    <p className="text-sm font-medium leading-relaxed">{banner.text}</p>
+                  </div>
 
-                <PatientProfileCard patient={selected} onUpdate={() => { /* read-only monitor */ }} />
+                  {/* CIN — the ID everything runs on (never say "CIN" in UI) */}
+                  {cin ? (
+                    <div className="rounded-xl border border-l-4 border-[#0F4C5C]/30 border-l-[#0F4C5C] bg-[#0F4C5C]/5 px-4 py-3 flex items-center gap-3 flex-wrap">
+                      <p className="text-sm text-[#0F4C5C] dark:text-teal-200">
+                        <span className="text-[10px] font-bold uppercase tracking-wide bg-[#0F4C5C] text-white rounded-full px-2 py-0.5 mr-2">DVS runs on this</span>
+                        Medicaid ID <b className="font-mono select-all">{cin.cin}</b>
+                        <span className="text-muted-foreground"> · from {cin.source}</span>
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="flex items-start gap-3 rounded-xl border border-red-300 bg-red-50 dark:bg-red-950/30 px-4 py-3">
+                      <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0 text-red-600" />
+                      <p className="text-sm text-red-800 dark:text-red-300">
+                        <b>No valid Medicaid ID</b> — neither Member ID matches the required format
+                        (2 letters · 5 digits · 1 letter, e.g. KJ51074B). The bot can't run and new
+                        sends won't route here until it's fixed on the profile.
+                      </p>
+                    </div>
+                  )}
 
-                {/* entry-path cards (§1) */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <PathCard
-                    active={straight}
-                    title="Straight to DVS"
-                    body="Everything bills NY Medicaid — skips Benefits / Submit Auth / Auth Outstanding entirely. DVS runs on Member ID 1."
-                  />
-                  <PathCard
-                    active={!straight}
-                    title="Pump approved via primary payer"
-                    body="Managed Medicaid dual — the pump rode the payer auth rail; only the supplies DVS here, on the Medicaid ID (Member ID 2)."
-                  />
-                </div>
+                  {/* no onUpdate — read-only monitor, so no Edit pencil */}
+                  <PatientProfileCard patient={selected} />
 
-                {/* DVS status by product (§8) */}
-                <div className="rounded-xl bg-card border shadow-card p-4">
-                  <p className="text-xs uppercase tracking-wider text-muted-foreground mb-3">DVS Status by Product</p>
-                  <div className="grid grid-cols-2 lg:grid-cols-5 gap-2">
-                    {(["monitor", "sensors", "insulin_pump", "infusion_set", "cartridge"] as ProductId[]).map((pid) => {
-                      const r = resolved.find((x) => x.product === pid);
-                      const isDvs = dvsProducts.has(pid);
-                      const viaPayer = !!r && !isDvs && pid === "insulin_pump";
-                      const authLabel = selected.insurance?.codes?.pump?._mondayAuthLabel ?? "";
-                      const supplies = pid === "infusion_set" || pid === "cartridge";
-                      const approved =
-                        isDvs &&
-                        (supplies || pid === "insulin_pump") &&
-                        toneFor(supplies ? selected.dvsStatus : selected.pumpDvsStatus) === "mint";
-                      return (
-                        <div
-                          key={pid}
-                          className={cn(
-                            "rounded-lg border p-3 flex flex-col gap-2",
-                            !r && "opacity-50",
-                            isDvs && !approved && "border-sky-300 bg-sky-50/70 dark:border-sky-800 dark:bg-sky-950/30",
-                            approved && "border-emerald-300 bg-emerald-50/70 dark:border-emerald-800 dark:bg-emerald-950/30",
-                          )}
-                        >
-                          <div>
-                            <p className="text-sm font-bold font-mono">{r?.hcpc ?? "—"}</p>
-                            <p className="text-[10px] uppercase tracking-wider text-muted-foreground">{PRODUCT_LABELS[pid]}</p>
+                  {/* entry-path cards (§1) — a supplies-only managed dual
+                      never rode the payer rail either, so it highlights the
+                      skip path with straight Medicaid */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <PathCard active={skippedRail} title="Straight to DVS" body="Everything goes through NY Medicaid — skipped Submit Auth and Auth Outstanding entirely." />
+                    <PathCard active={!skippedRail} title="Pump Approved via Primary Payer" body="Managed Medicaid dual — the pump rode the payer auth rail; only the supplies go through NY Medicaid here." />
+                  </div>
+
+                  {/* DVS status by product (§8) */}
+                  <div className="rounded-xl bg-card border shadow-card p-4">
+                    <p className="text-xs uppercase tracking-wider text-muted-foreground mb-3">DVS Status by Product</p>
+                    <div className="grid grid-cols-2 lg:grid-cols-5 gap-2">
+                      {(["monitor", "sensors", "insulin_pump", "infusion_set", "cartridge"] as ProductId[]).map((pid) => {
+                        const r = resolved.find((x) => x.product === pid);
+                        const isDvs = dvsProducts.has(pid);
+                        const pumpViaPayer = !!r && !isDvs && pid === "insulin_pump" &&
+                          (selected.insurance?.codes?.pump?._mondayAuthLabel ?? "").toLowerCase() === "auth valid";
+                        const supplies = pid === "infusion_set" || pid === "cartridge";
+                        const approved =
+                          isDvs && toneFor(supplies ? selected.dvsStatus : selected.pumpDvsStatus) === "mint";
+                        return (
+                          <div
+                            key={pid}
+                            className={cn(
+                              "rounded-lg border p-3 flex flex-col gap-2",
+                              !r && "opacity-50",
+                              isDvs && !approved && "border-sky-300 bg-sky-50/70 dark:border-sky-800 dark:bg-sky-950/30",
+                              (approved || pumpViaPayer) && "border-emerald-300 bg-emerald-50/70 dark:border-emerald-800 dark:bg-emerald-950/30",
+                              r && !isDvs && !pumpViaPayer && "opacity-65 bg-muted/30",
+                            )}
+                          >
+                            <div>
+                              <p className="text-sm font-bold font-mono">{r?.hcpc ?? "—"}</p>
+                              <p className="text-[10px] uppercase tracking-wider text-muted-foreground">{PRODUCT_LABELS[pid]}</p>
+                            </div>
+                            <span className={cn(
+                              "mt-auto self-start inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold border",
+                              !r && "bg-muted text-muted-foreground border-border",
+                              pumpViaPayer && "bg-emerald-100 text-emerald-800 border-emerald-300",
+                              r && !isDvs && !pumpViaPayer && "bg-muted text-muted-foreground border-border",
+                              r && isDvs && !approved && "bg-sky-100 text-sky-800 border-sky-300",
+                              r && isDvs && approved && "bg-emerald-100 text-emerald-800 border-emerald-300",
+                            )}>
+                              {!r
+                                ? "Not Serving"
+                                : pumpViaPayer
+                                  ? `Auth Valid · via ${selected.primaryInsurance || "payer"}`
+                                  : !isDvs
+                                    ? "Handled on the auth rail"
+                                    : approved
+                                      ? "DVS Approved"
+                                      : "DVS Required"}
+                            </span>
                           </div>
-                          <span className={cn(
-                            "mt-auto self-start inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold border",
-                            !r && "bg-muted text-muted-foreground border-border",
-                            r && viaPayer && "bg-emerald-100 text-emerald-800 border-emerald-300",
-                            r && !viaPayer && !isDvs && "bg-muted text-muted-foreground border-border",
-                            r && isDvs && !approved && "bg-sky-100 text-sky-800 border-sky-300",
-                            r && isDvs && approved && "bg-emerald-100 text-emerald-800 border-emerald-300",
-                          )}>
-                            {!r
-                              ? "Not Serving"
-                              : viaPayer
-                                ? `Auth Valid · via ${selected.primaryInsurance || "payer"}${authLabel && authLabel !== "Auth Valid" ? ` (${authLabel})` : ""}`
-                                : !isDvs
-                                  ? "Payer rail"
-                                  : approved
-                                    ? "DVS Approved"
-                                    : "DVS Required"}
-                          </span>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                {/* run steps — per-run granularity (per-code pending §10) */}
-                <div className="rounded-xl bg-card border shadow-card p-4 space-y-3">
-                  <div className="flex items-center justify-between gap-3 flex-wrap">
-                    <p className="text-xs uppercase tracking-wider text-muted-foreground">Automation Steps</p>
-                    <p className="text-[11px] text-muted-foreground">
-                      Per-code auth/claim detail arrives when the bot's per-code columns land (DVS handoff §10).
-                    </p>
+                        );
+                      })}
+                    </div>
                   </div>
 
+                  {/* run steps — AUTO; per-code claim detail where the bot writes it */}
                   {pumpDvses && (
-                    <RunStep
-                      title="Pump DVS (E0784)"
-                      note="Submits first. Supplies wait until the pump claim is fully paid."
-                      chip={<StatusChip label={selected.pumpDvsStatus} />}
+                    <StepCard
+                      num={1}
+                      title="Pump DVS"
+                      codes={["E0784"]}
+                      chip={<StatusChip label={selected.pumpDvsStatus} fallback="Submitting…" />}
                       action={
                         isFailedish(selected.pumpDvsStatus) && (
                           <Button size="sm" variant="outline" disabled={rerunning !== null} onClick={() => handleRerun("pump")} className="gap-1.5">
@@ -332,17 +446,23 @@ const DvsPage = () => {
                           </Button>
                         )
                       }
-                    />
+                    >
+                      {isFailedish(selected.pumpDvsStatus) && selected.dvsDenialReason && (
+                        <ErrorNote label="Denial reason" text={selected.dvsDenialReason} />
+                      )}
+                    </StepCard>
                   )}
                   {suppliesDvs && (
-                    <RunStep
-                      title="Supplies DVS (A4230 + A4232)"
-                      note={
-                        pumpDvses && toneFor(selected.pumpDvsStatus) !== "mint"
-                          ? "Waiting on pump — submits automatically once the pump claim is fully paid."
-                          : "Submits automatically on stage entry."
+                    <StepCard
+                      num={pumpDvses ? 2 : 1}
+                      title="Supplies DVS"
+                      codes={["A4230", "A4232"]}
+                      gateHint={waitingOnPump ? "Submits automatically once the Pump claim is fully paid" : undefined}
+                      chip={
+                        waitingOnPump
+                          ? <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border bg-muted text-muted-foreground border-border"><Clock className="h-3 w-3" /> Waiting on pump</span>
+                          : <StatusChip label={selected.dvsStatus} fallback="Submitting…" />
                       }
-                      chip={<StatusChip label={selected.dvsStatus} fallback={pumpDvses && toneFor(selected.pumpDvsStatus) !== "mint" ? "Waiting on pump" : undefined} />}
                       action={
                         isFailedish(selected.dvsStatus) && (
                           <Button size="sm" variant="outline" disabled={rerunning !== null} onClick={() => handleRerun("supplies")} className="gap-1.5">
@@ -351,16 +471,58 @@ const DvsPage = () => {
                           </Button>
                         )
                       }
-                    />
+                    >
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-1">
+                        <CodeTile hcpc="A4230" name="Infusion Sets" authLabel={selected.dvsStatus} claimText={selected.a4230Claim} />
+                        <CodeTile hcpc="A4232" name="Cartridges" authLabel={selected.dvsStatus} claimText={selected.a4232Claim} />
+                      </div>
+                      {isFailedish(selected.dvsStatus) && selected.dvsDenialReason && (
+                        <ErrorNote label="Denial reason" text={selected.dvsDenialReason} />
+                      )}
+                    </StepCard>
                   )}
-                  <RunStep title="Claims" note="Each code's claim submits automatically once its authorization clears." chip={<StatusChip label={selected.claimsStatus} />} />
-                  {(selected.retryCount ?? 0) > 0 && (
-                    <p className="text-xs font-semibold text-amber-700 dark:text-amber-300">
-                      IN RETRY QUEUE — attempt {selected.retryCount}; re-runs once a day. Only unpaid codes are resubmitted (§5).
-                    </p>
+
+                  {/* claims — bot-driven, shared columns */}
+                  <StepCard
+                    num={(pumpDvses ? 1 : 0) + (suppliesDvs ? 1 : 0) + 1}
+                    title="Claims"
+                    codes={[]}
+                    chip={<StatusChip label={selected.claimsStatus} fallback="Waits on authorization" />}
+                  >
+                    <div className="flex items-center gap-4 flex-wrap text-sm">
+                      {selected.claimsPaidAmount && (
+                        <p className="font-semibold text-emerald-700 dark:text-emerald-300">
+                          ✓ Paid · <span className="font-mono select-all">{selected.claimsPaidAmount}</span>
+                          {selected.claimsPaidDate && <span className="text-muted-foreground font-normal"> on {ymdToUs(selected.claimsPaidDate)}</span>}
+                        </p>
+                      )}
+                    </div>
+                    {selected.claimsError && <ErrorNote label="Claims error" text={selected.claimsError} />}
+                    {selected.claimsDenialReason && <ErrorNote label="Claims denial reason" text={selected.claimsDenialReason} />}
+                  </StepCard>
+
+                  {isQueued(selected) && (
+                    <div className="rounded-xl border border-amber-300 bg-amber-50/70 dark:border-amber-800 dark:bg-amber-950/30 px-4 py-3 text-sm font-semibold text-amber-800 dark:text-amber-300">
+                      IN RETRY QUEUE{selected.retryCount ? ` — attempt ${selected.retryCount}` : ""}
+                      {selected.retryNextDate ? ` · next run ${ymdToUs(selected.retryNextDate)}` : " · re-runs once a day"}.
+                      Only unpaid codes are resubmitted (§5). Nobody triggers queue retries from the UI.
+                    </div>
                   )}
-                </div>
-              </>
+                </>
+              )}
+            </div>
+
+            {/* notes rail — same Call Reference Notes column as the auth rail */}
+            {selected && (
+              <div className="xl:sticky xl:top-4">
+                <NotesPanel
+                  notes={noteDrafts[selected.id] ?? selected.notes}
+                  onNotesChange={(v) => setNoteDrafts((prev) => ({ ...prev, [selected.id]: v }))}
+                  onSaveToMonday={(v) => writeLongText(selected.id, COL.callReferenceNotes, v)}
+                  description="Carries over from the earlier stages. DVS reference numbers, ePACES notes…"
+                  placeholder="DVS reference numbers, ePACES notes, follow-ups…"
+                />
+              </div>
             )}
           </section>
         </main>
@@ -374,27 +536,80 @@ function PathCard({ active, title, body }: { active: boolean; title: string; bod
     <div className={cn(
       "rounded-xl border p-4",
       active
-        ? "border-sky-400 bg-sky-50/70 ring-1 ring-sky-300 dark:border-sky-700 dark:bg-sky-950/30"
-        : "border-border bg-card opacity-60",
+        ? "border-[#0F4C5C]/50 bg-[#0F4C5C]/5 ring-1 ring-[#0F4C5C]/20"
+        : "border-border bg-card opacity-50",
     )}>
-      <p className={cn("text-sm font-bold", active ? "text-sky-800 dark:text-sky-200" : "text-foreground/70")}>
+      <p className={cn("text-sm font-bold", active ? "text-[#0F4C5C] dark:text-teal-200" : "text-foreground/70")}>
         {title}
-        {active && <span className="ml-2 text-[10px] font-bold uppercase tracking-wide bg-sky-600 text-white rounded-full px-2 py-0.5">This patient</span>}
+        {active && <span className="ml-2 text-[10px] font-bold uppercase tracking-wide bg-[#0F4C5C] text-white rounded-full px-2 py-0.5">This patient</span>}
       </p>
       <p className="text-xs text-muted-foreground mt-1 leading-relaxed">{body}</p>
     </div>
   );
 }
 
-function RunStep({ title, note, chip, action }: { title: string; note: string; chip: React.ReactNode; action?: React.ReactNode }) {
+function StepCard({
+  num,
+  title,
+  codes,
+  chip,
+  gateHint,
+  action,
+  children,
+}: {
+  num: number;
+  title: string;
+  codes: string[];
+  chip: React.ReactNode;
+  gateHint?: string;
+  action?: React.ReactNode;
+  children?: React.ReactNode;
+}) {
   return (
-    <div className="flex items-center gap-3 flex-wrap rounded-lg border bg-muted/20 px-4 py-3">
-      <div className="min-w-0 flex-1">
-        <p className="text-sm font-semibold">{title}</p>
-        <p className="text-xs text-muted-foreground">{note}</p>
+    <section className="rounded-xl bg-card border border-l-4 border-l-primary shadow-card p-4 space-y-3">
+      <div className="flex items-center gap-3 flex-wrap">
+        <span className="grid place-items-center h-8 w-8 rounded-full bg-primary/10 text-sm font-bold text-primary shrink-0">{num}</span>
+        <h2 className="text-base font-bold">{title}</h2>
+        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-extrabold tracking-wide bg-emerald-100 text-emerald-800 border border-emerald-300 dark:bg-emerald-950/40 dark:text-emerald-300">AUTO</span>
+        {codes.map((c) => (
+          <span key={c} className="inline-flex items-center px-2 py-0.5 rounded text-xs font-mono font-bold bg-muted border border-border">{c}</span>
+        ))}
+        <span className="ml-auto flex items-center gap-2 flex-wrap">
+          {gateHint && <span className="text-xs text-muted-foreground">{gateHint}</span>}
+          {chip}
+          {action}
+        </span>
       </div>
-      {chip}
-      {action}
+      {children}
+    </section>
+  );
+}
+
+function CodeTile({ hcpc, name, authLabel, claimText }: { hcpc: string; name: string; authLabel?: string; claimText?: string }) {
+  return (
+    <div className="rounded-lg border bg-muted/20 overflow-hidden">
+      <div className="flex items-baseline gap-2 px-3 py-2 bg-muted/40 border-b">
+        <span className="font-mono font-bold text-sm">{hcpc}</span>
+        <span className="text-xs text-muted-foreground">{name}</span>
+      </div>
+      <div className="px-3 py-2 space-y-1.5">
+        <div>
+          <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Authorization</p>
+          <StatusChip label={authLabel} fallback="Not run yet" />
+        </div>
+        <div>
+          <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Claim</p>
+          <p className={cn("text-sm", claimText ? "font-medium" : "text-muted-foreground")}>{claimText || "— waits on authorization"}</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ErrorNote({ label, text }: { label: string; text: string }) {
+  return (
+    <div className="rounded-lg border border-red-300 bg-red-50/70 dark:border-red-800 dark:bg-red-950/30 px-3 py-2 text-xs text-red-800 dark:text-red-300">
+      <b className="uppercase tracking-wide text-[10px]">{label}:</b> {text}
     </div>
   );
 }

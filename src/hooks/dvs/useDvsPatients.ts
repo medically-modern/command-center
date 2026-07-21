@@ -38,7 +38,12 @@ export function useDvsPatients(injectedPatientId?: string | null) {
     try {
       const items = await fetchStageItems(STAGE_INDEX.dvs);
       if (!mountedRef.current) return;
-      const list = (Array.isArray(items) ? items : []).map(mondayItemToPatient);
+      // Escalated patients belong to the escalation views, not this monitor
+      // — same exclusion the dvs role count applies (useRoleCounts + both
+      // baseline countDvs), so the list always matches the burndown bar.
+      const list = (Array.isArray(items) ? items : [])
+        .map(mondayItemToPatient)
+        .filter((p) => !p.escalated);
 
       // Deep-linked patient (oversight drill-down) may have already left the
       // DVS stage — inject them individually so the link still lands.

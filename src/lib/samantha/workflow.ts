@@ -467,6 +467,15 @@ export interface Patient {
   claimsStatus?: string;
   /** DVS retry count (bot-written "Retry Count" number column). */
   retryCount?: number;
+  /** DVS bot output — read-only monitor fields (/dvs page). */
+  retryNextDate?: string;
+  a4230Claim?: string;
+  a4232Claim?: string;
+  dvsDenialReason?: string;
+  claimsPaidAmount?: string;
+  claimsPaidDate?: string;
+  claimsDenialReason?: string;
+  claimsError?: string;
   escalated?: boolean;
   /** Stage Advancer text from Monday — used to determine sidebar view for escalated patients. */
   stageAdvancerText?: string;

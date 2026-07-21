@@ -79,7 +79,6 @@ const CHART_ROUTES: Record<string, string | null> = {
   "chase-email-parachute-proposed-stuck": null,
   "benefits-check-failed": null,
   "dvs-retry-queue": null,
-  "dvs-stage": "/dvs",
   "benefits": "/benefits",
   "submit-auth": "/submit-auth",
   "auth-outstanding": "/auth-outstanding",
@@ -1249,7 +1248,10 @@ export default function OversightTab() {
           }
           return next;
         });
-        refetch(true);
+        // Reconcile AFTER Monday's indexing lag — an immediate refetch can
+        // still read the pre-decision column values and resurrect the row
+        // the optimistic update just removed. refetch guards on mountedRef.
+        setTimeout(() => refetch(true), 12_000);
       } catch (e) {
         toast.error(
           `${action === "approve" ? "Approve Stuck" : "Return to Queue"} failed`,
@@ -1360,7 +1362,10 @@ export default function OversightTab() {
           ? resolve(section.tertiaryChartIds)
           : [];
 
-        // Unique patients across this stage's primary charts (search-filtered).
+        // Unique patients across this stage's PRIMARY charts only
+        // (search-filtered). Deliberate: escalated + proposed-stuck patients
+        // left the active pool, so the header counts the workable queue —
+        // the manager columns carry their own per-chart counts.
         const seen = new Set<string>();
         for (const c of charts) for (const p of bySearch(data?.get(c.id) ?? [])) seen.add(p.id);
         const sectionTotal = seen.size;

@@ -446,6 +446,14 @@ export function mondayItemToPatient(item: MondayItem): Patient {
       const t = cv(COL.retryCount)?.text?.trim() ?? "";
       return t !== "" && Number.isFinite(Number(t)) ? Number(t) : undefined;
     })(),
+    retryNextDate: cv(COL.retryNextDate)?.text || undefined,
+    a4230Claim: cv(COL.a4230Claim)?.text || undefined,
+    a4232Claim: cv(COL.a4232Claim)?.text || undefined,
+    dvsDenialReason: cv(COL.dvsDenialReason)?.text || undefined,
+    claimsPaidAmount: cv(COL.claimsPaidAmount)?.text || undefined,
+    claimsPaidDate: cv(COL.claimsPaidDate)?.text || undefined,
+    claimsDenialReason: cv(COL.claimsDenialReason)?.text || undefined,
+    claimsError: cv(COL.claimsError)?.text || undefined,
     followUp: followUpText,
     followUpDate,
     planName: cv(COL.planName)?.text || undefined,

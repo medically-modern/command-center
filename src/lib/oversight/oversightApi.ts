@@ -481,7 +481,7 @@ const RAW_CHART_DEFS: ChartDef[] = [
     id: "confirm-receipt-proposed-stuck",
     title: "Confirm Receipt (Proposed Stuck)",
     boardId: 18406060017,
-    notesColId: "long_text_mm27zjt2",
+    notesColId: "long_text_mm2ytsxp",
     rowOf: "confirm-receipt",
     decision: "proposed-stuck",
     drilldownCols: [
@@ -498,7 +498,7 @@ const RAW_CHART_DEFS: ChartDef[] = [
     id: "chase-fax-proposed-stuck",
     title: "Chase Clinicals — Fax (Proposed Stuck)",
     boardId: 18406060017,
-    notesColId: "long_text_mm27zjt2",
+    notesColId: "long_text_mm2ytsxp",
     rowOf: "chase-fax",
     decision: "proposed-stuck",
     drilldownCols: [
@@ -515,7 +515,7 @@ const RAW_CHART_DEFS: ChartDef[] = [
     id: "chase-email-parachute-proposed-stuck",
     title: "Chase Clinicals — Email & Parachute (Proposed Stuck)",
     boardId: 18406060017,
-    notesColId: "long_text_mm27zjt2",
+    notesColId: "long_text_mm2ytsxp",
     rowOf: "chase-email-parachute",
     decision: "proposed-stuck",
     drilldownCols: [
@@ -1099,10 +1099,7 @@ const CHART_FILTERS: Record<string, FilterRule> = {
   "benefits-check-failed": { type: "stageAdvancer", boardId: 18410601299, value: "Benefits / SoS", andCols: [{ colId: "color_mm2vsh2f", value: "Escalation Required" }], anyCols: [{ colId: "color_mm2vhwan", value: "Stuck" }, { colId: "color_mm2vt8xg", value: "Partial / No" }] },
   // DVS retry queue (PROVISIONAL — see the ChartDef note): stage DVS with a
   // non-zero Retry Count.
-  "dvs-retry-queue": { type: "stageAdvancer", boardId: 18410601299, value: "DVS", andCols: [{ colId: "numeric_mm27nexq", gte: 1 }] },
-  // DVS stage chart (used by the DVS role page deep-links; not rendered in a
-  // section yet — Brandon's mockup keeps col 1 at four charts).
-  "dvs-stage": { type: "stageAdvancer", boardId: 18410601299, value: "DVS" },
+  "dvs-retry-queue": { type: "stageAdvancer", boardId: 18410601299, value: "DVS", anyCols: [{ colId: "numeric_mm27nexq", gte: 1 }, { colId: "color_mm26pk1a", value: "Retry Queued" }] },
 };
 
 /** Evaluate a single column condition against a patient. */
@@ -1142,16 +1139,18 @@ function matchesFilter(patient: OversightPatient, rule: FilterRule): boolean {
 }
 
 // ── Final Decisions mutations (Manager Views §3) ────────────────────────
-// The manager acts from the Oversight drill-down. Approve writes the REAL
-// Stuck exactly the way the old rep-side StuckModal did — Advancer 2C
-// (color_mm1wf98t) = index 2 — so the existing board automation takes over;
-// only THEN is the proposal cleared, so a failed stuck-write leaves the
+// The manager acts from the Oversight drill-down. Approve writes the MAIN
+// Stage Advancer → "Stuck" (index 15): the live automation list (checked
+// 2026-07-21) has NO recipe on Advancer 2C, so the old StuckModal's 2C
+// write was a silent no-op — the main stage is what the stage pages and
+// the board's Stuck semantics actually key on. The stuck-write lands
+// FIRST; only then is the proposal cleared, so a failed write leaves the
 // patient safely in the Final Decisions queue instead of silently
 // returning them to the rep. The reason column is kept for the audit trail.
 
 const MASHEKE_BOARD_ID = 18406060017;
-const ADVANCER_2C_COL = "color_mm1wf98t";
-const ADVANCER_2C_STUCK_INDEX = 2;
+const MASHEKE_STAGE_COL = "color_mm1wyr92";
+const MASHEKE_STAGE_STUCK_INDEX = 15;
 const PROPOSED_STUCK_COL = "color_mm5f37ve";
 
 async function writeStatusIndexOnBoard(boardId: number, itemId: string, columnId: string, index: number | null): Promise<void> {
@@ -1169,7 +1168,7 @@ async function writeStatusIndexOnBoard(boardId: number, itemId: string, columnId
 }
 
 export async function approveProposedStuck(itemId: string): Promise<void> {
-  await writeStatusIndexOnBoard(MASHEKE_BOARD_ID, itemId, ADVANCER_2C_COL, ADVANCER_2C_STUCK_INDEX);
+  await writeStatusIndexOnBoard(MASHEKE_BOARD_ID, itemId, MASHEKE_STAGE_COL, MASHEKE_STAGE_STUCK_INDEX);
   await writeStatusIndexOnBoard(MASHEKE_BOARD_ID, itemId, PROPOSED_STUCK_COL, null);
 }
 

@@ -209,9 +209,17 @@ export const COL = {
   // drive board filters and future automations (e.g. auto-escalate at N days).
   daysAuthOutstanding: "numeric_mm5f5ars",
 
-  // DVS retry count (written by the automate-dvs bot; read-only in the SPA —
-  // shown on the DVS monitor + backs the provisional DVS Retry Queue chart)
+  // DVS bot output (written by automate-dvs; read-only in the SPA — the
+  // /dvs monitor renders these; found on the live board 2026-07-21)
   retryCount: "numeric_mm27nexq",
+  retryNextDate: "date_mm27krnc",
+  a4230Claim: "text_mm28a3xt",
+  a4232Claim: "text_mm282cy5",
+  dvsDenialReason: "long_text_mm27hjey",
+  claimsPaidAmount: "text_mm288d3h",
+  claimsPaidDate: "date_mm284h2f",
+  claimsDenialReason: "text_mm28xy29",
+  claimsError: "text_mm28sr8y",
 
   // Debug / error logging
   joshDebug: "text_mm2w1qn4",
@@ -343,6 +351,14 @@ export const AUTH_READ_COLUMN_IDS = [
   COL.daysSinceStage,
   COL.daysAuthOutstanding,
   COL.retryCount,
+  COL.retryNextDate,
+  COL.a4230Claim,
+  COL.a4232Claim,
+  COL.dvsDenialReason,
+  COL.claimsPaidAmount,
+  COL.claimsPaidDate,
+  COL.claimsDenialReason,
+  COL.claimsError,
   COL.triggerDvs,
   COL.triggerPumpDvs,
   COL.claimsStatus,
@@ -435,7 +451,9 @@ export async function fetchGroupItems(
           }
         }
       `;
-      const next = await gql<{ next_items_page: { cursor: string | null; items: MondayItem[] } }>(nextQuery, { cursor, cols: READ_COLUMN_IDS });
+      // Same column set as page 1 — this used to hardcode READ_COLUMN_IDS,
+      // so auth-group patients past item 200 lost their auth/DVS columns.
+      const next = await gql<{ next_items_page: { cursor: string | null; items: MondayItem[] } }>(nextQuery, { cursor, cols });
       const items = next.next_items_page?.items ?? [];
       cursor = next.next_items_page?.cursor ?? null;
       if (items.length > 0) {

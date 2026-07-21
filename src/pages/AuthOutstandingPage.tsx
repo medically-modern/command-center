@@ -158,8 +158,9 @@ const AuthOutstandingPage = () => {
     [selected],
   );
 
-  // Client-side gating for Auth Review Complete (§6). A patient whose
-  // products are ALL DVS-routed can never advance from this page (§7).
+  // Client-side gating for Auth Review Complete (§6). All-DVS patients CAN
+  // complete — the send routes them to the DVS stage instead of Complete
+  // (dvsRouting; supersedes the old "never advances" guard).
   const missing = useMemo(
     () => (selected ? validateAuthReviewForComplete(selected) : []),
     [selected],

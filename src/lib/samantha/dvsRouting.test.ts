@@ -3,14 +3,49 @@
 import { describe, expect, it } from "vitest";
 import {
   allProductsDvsRouted,
+  dvsAutoTrigger,
   hasDvsRoutedProducts,
   isStraightMedicaidPrimary,
+  nyMedicaidCin,
 } from "./dvsRouting";
 import type { Patient } from "./workflow";
 
 function p(over: Partial<Patient>): Patient {
-  return { id: "1", name: "t", secondaryInsurance: "None", ...over } as Patient;
+  // Default CIN-shaped Member ID 1 so the routing gate passes unless a
+  // test overrides it.
+  return { id: "1", name: "t", secondaryInsurance: "None", memberId1: "KJ51074B", ...over } as Patient;
 }
+
+describe("nyMedicaidCin (XX11111X gate)", () => {
+  it("accepts the CIN shape in Member ID 1, then Member ID 2", () => {
+    expect(nyMedicaidCin(p({}))).toEqual({ cin: "KJ51074B", source: "Member ID 1" });
+    expect(nyMedicaidCin(p({ memberId1: "74306887200", memberId2: "ec81836d" })))
+      .toEqual({ cin: "EC81836D", source: "Member ID 2" });
+  });
+  it("rejects non-CIN shapes", () => {
+    expect(nyMedicaidCin(p({ memberId1: "74306887200", memberId2: "" }))).toBeNull();
+    expect(nyMedicaidCin(p({ memberId1: "KJ5107B", memberId2: "K51074BB" }))).toBeNull();
+  });
+  it("no CIN → no DVS routing at all, even for straight Medicaid", () => {
+    const noCin = p({ primaryInsurance: "Medicaid", serving: "Supplies Only", memberId1: "12345", memberId2: "" });
+    expect(hasDvsRoutedProducts(noCin)).toBe(false);
+    expect(allProductsDvsRouted(noCin)).toBe(false);
+    expect(dvsAutoTrigger(noCin)).toBeNull();
+  });
+});
+
+describe("dvsAutoTrigger", () => {
+  it("pump first for straight-Medicaid pump patients", () => {
+    expect(dvsAutoTrigger(p({ primaryInsurance: "Medicaid", serving: "Insulin Pump" }))).toBe("pump");
+  });
+  it("supplies for supplies-only straight Medicaid and managed duals", () => {
+    expect(dvsAutoTrigger(p({ primaryInsurance: "Medicaid", serving: "Supplies Only" }))).toBe("supplies");
+    expect(dvsAutoTrigger(p({ primaryInsurance: "Fidelis Medicaid", secondaryInsurance: "NY Medicaid", serving: "Insulin Pump" }))).toBe("supplies");
+  });
+  it("null for commercial patients", () => {
+    expect(dvsAutoTrigger(p({ primaryInsurance: "Horizon BCBS", serving: "Insulin Pump" }))).toBeNull();
+  });
+});
 
 describe("straight Medicaid primary", () => {
   it("everything DVSes — pump + supplies skip the rail entirely", () => {

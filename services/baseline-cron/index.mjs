@@ -64,6 +64,7 @@ const SAM_GROUPS  = {
   authOutstanding: "group_mm2v6d1z",
 };
 const SAM_ESC_COL      = "color_mm2vsh2f"; // Escalation
+const SAM_STAGE_COL    = "color_mm1ws96t"; // Stage Advancer ("DVS" exclusion + countDvs)
 const SAM_FOLLOWUP_COL = "color_mm34jz1x"; // Follow Up
 const SAM_FOLLOWUP_DATE_COL = "date_mm34m2dz"; // Follow Up Date (daily bucket)
 
@@ -176,7 +177,11 @@ async function fetchGroupItems(boardId, groupId, columnIds) {
  *  sidebarList (isSnoozedFollowUp / isSnoozedAuthOutstanding) (SS5.8
  *  counting contract — change all of them together). */
 async function countSamGroup(groupId, todayStr, dateOnlyBucket = false) {
-  const items = await fetchGroupItems(SAM_BOARD, groupId, [SAM_ESC_COL, SAM_FOLLOWUP_COL, SAM_FOLLOWUP_DATE_COL]);
+  const fetched = await fetchGroupItems(SAM_BOARD, groupId, [SAM_ESC_COL, SAM_FOLLOWUP_COL, SAM_FOLLOWUP_DATE_COL, SAM_STAGE_COL]);
+  // Stage = "DVS" items stay in their old group (no group-move automation
+  // yet) but belong to countDvs — drop them so a routed patient never
+  // counts in two roles (mirrors useRoleCounts samActive, SS5.8).
+  const items = fetched.filter((i) => i.cols[SAM_STAGE_COL] !== "DVS");
   const snoozed = (i) => {
     const d = i.cols[SAM_FOLLOWUP_DATE_COL];
     if (dateOnlyBucket) return !!d && d > todayStr;
@@ -397,7 +402,7 @@ async function fetchStageItems(boardId, stageColId, stageIndex, columnIds) {
 /** DVS role: Stage Advancer = "DVS" (index 1, verified 2026-07-21) board-wide,
  *  not escalated. Mirrors useRoleCounts (SS5.8 counting contract). */
 async function countDvs() {
-  const items = await fetchStageItems(SAM_BOARD, "color_mm1ws96t", 1, [SAM_ESC_COL]);
+  const items = await fetchStageItems(SAM_BOARD, SAM_STAGE_COL, 1, [SAM_ESC_COL]);
   const active = items.filter((i) => i.cols[SAM_ESC_COL] !== ESC_REQUIRED);
   return { count: active.length, ids: active.map((i) => i.id) };
 }

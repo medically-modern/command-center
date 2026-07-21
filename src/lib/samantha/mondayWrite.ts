@@ -35,7 +35,7 @@ import {
   patientHasMedicaidIns,
 } from "./benefitsDerive";
 import { derivedRecheckSos, effectiveResult } from "./authOutstandingReview";
-import { allProductsDvsRouted, hasDvsRoutedProducts } from "./dvsRouting";
+import { allProductsDvsRouted, dvsAutoTrigger, hasDvsRoutedProducts } from "./dvsRouting";
 
 const MAX_RETRIES = 2;
 const RETRY_DELAY_MS = 800;
@@ -545,6 +545,27 @@ export async function sendPatientToMonday(
       columnId: COL.stageAdvancer,
       fn: () => writeStatusIndex(p.id, COL.stageAdvancer, finalStageIndex),
     });
+    // Landing at DVS auto-flips the right bot trigger by serving (Josh,
+    // 2026-07-21): pump first for straight-Medicaid pump patients (supplies
+    // chain bot-side after the pump claim pays), supplies otherwise. These
+    // are the trigger columns today's automate-dvs bots listen to; delete
+    // when the v2 bot keys on the stage flip itself.
+    if (finalStageIndex === STAGE_INDEX.dvs) {
+      const trig = dvsAutoTrigger(p);
+      if (trig === "pump") {
+        tasks.push({
+          label: "Trigger Pump DVS (auto)",
+          columnId: COL.triggerPumpDvs,
+          fn: () => writeStatusIndex(p.id, COL.triggerPumpDvs, TRIGGER_PUMP_DVS_INDEX.triggerPumpDvs),
+        });
+      } else if (trig === "supplies") {
+        tasks.push({
+          label: "Trigger Supplies DVS (auto)",
+          columnId: COL.triggerDvs,
+          fn: () => writeStatusIndex(p.id, COL.triggerDvs, TRIGGER_DVS_INDEX.triggerDvs),
+        });
+      }
+    }
   }
   // Always write the Escalation column so the toggle round-trips: an
   // agent toggling OFF + sending will clear a previously-required flag.

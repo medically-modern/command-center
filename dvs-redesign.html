@@ -1,0 +1,1023 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DVS · Redesign</title>
+<style>
+/* ============ design tokens (Medical Evaluation UI Design v2) ============ */
+:root{
+  --background:oklch(1 0 0);
+  --foreground:oklch(0.129 0.042 264.695);
+  --card:oklch(1 0 0);
+  --muted:oklch(0.968 0.007 247.896);
+  --muted-foreground:oklch(0.554 0.046 257.417);
+  --border:oklch(0.929 0.013 255.508);
+  --input:oklch(0.929 0.013 255.508);
+  --mm-teal:oklch(0.36 0.04 200);
+  --mm-green:oklch(0.62 0.10 175);
+  --mm-green-12:oklch(0.62 0.10 175 / 0.12);
+  --mm-mint:oklch(0.94 0.02 175);
+  --mm-mint-ring:oklch(0.85 0.04 175);
+  --mm-rose:oklch(0.62 0.13 18);
+  --mm-rose-soft:oklch(0.94 0.03 18);
+  --mm-amber:oklch(0.66 0.12 75);
+  --mm-amber-soft:oklch(0.96 0.04 90);
+  --mm-sky:oklch(0.60 0.10 230);
+  --mm-sky-soft:oklch(0.95 0.02 230);
+}
+*{box-sizing:border-box;margin:0;padding:0;border-color:var(--border)}
+body{
+  font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  background:var(--background);color:var(--foreground);line-height:1.5;
+  -webkit-font-smoothing:antialiased;
+}
+button{font:inherit;cursor:pointer;background:none;border:none;color:inherit}
+.page{max-width:120rem;margin:0 auto;padding:40px 32px;display:flex;flex-direction:column;gap:24px}
+
+/* ============ cards ============ */
+.card{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:24px;box-shadow:0 1px 2px 0 rgb(0 0 0 / .05)}
+.header-card{border-top:4px solid var(--mm-teal)}
+.step-head{display:flex;align-items:center;gap:12px;margin-bottom:6px}
+.step-num{
+  display:grid;place-items:center;height:36px;width:36px;border-radius:50%;
+  font-size:1rem;font-weight:700;background:var(--mm-green-12);color:var(--mm-teal);
+  box-shadow:inset 0 0 0 1px var(--mm-mint-ring);flex-shrink:0;
+}
+.step-num.done{background:var(--mm-green);color:#fff;box-shadow:none}
+.step-head h2{font-size:1.25rem;font-weight:700;letter-spacing:-.015em}
+.ctx-title{font-size:1.05rem!important;color:var(--mm-teal)}
+
+/* ============ typography helpers ============ */
+.eyebrow{font-size:.875rem;font-weight:500;text-transform:uppercase;letter-spacing:.025em;color:var(--muted-foreground)}
+.hval,.sval,.ph-name,.sel{user-select:all;-webkit-user-select:all}
+.eyebrow-xs{font-size:.75rem;font-weight:500;text-transform:uppercase;letter-spacing:.025em;color:var(--muted-foreground)}
+.demo-tag{
+  display:inline-block;margin-left:4px;padding:1px 7px;border-radius:999px;
+  font-size:.62rem;font-weight:700;letter-spacing:.05em;vertical-align:middle;
+  background:var(--mm-sky-soft);color:var(--mm-sky);box-shadow:inset 0 0 0 1px oklch(0.60 0.10 230 / 0.3);
+}
+.hval{margin-top:4px;font-size:1.125rem;font-weight:600}
+.mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+
+/* ============ top bar ============ */
+.topbar{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap}
+.topbar h1{font-size:1.875rem;font-weight:900;letter-spacing:-.025em;color:var(--mm-teal)}
+.topbar .actions{display:flex;gap:8px;flex-wrap:wrap}
+.tbtn{
+  display:inline-flex;align-items:center;gap:7px;border-radius:8px;padding:9px 16px;
+  font-size:.875rem;font-weight:600;border:1px solid var(--border);background:var(--card);
+  color:var(--mm-teal);box-shadow:0 1px 2px rgb(0 0 0 / .05);transition:all .12s;
+}
+.tbtn:hover{border-color:var(--mm-mint-ring);background:oklch(0.973 0.011 175)}
+
+/* ============ demo bar ============ */
+.demo-bar{display:flex;align-items:center;justify-content:flex-end;gap:14px;margin-bottom:-8px;flex-wrap:wrap}
+.demo-bar .lbl{font-size:.75rem;font-weight:500;text-transform:uppercase;letter-spacing:.025em;color:var(--muted-foreground)}
+.demo-seg{display:inline-flex;border:1px solid var(--border);border-radius:8px;padding:3px;gap:2px;background:oklch(0.968 0.007 247.896 / 0.4);flex-wrap:wrap}
+.demo-seg button{font-size:.8rem;font-weight:600;padding:5px 12px;border-radius:6px;color:var(--muted-foreground)}
+.demo-seg button.on{background:var(--card);color:var(--mm-teal);box-shadow:0 1px 2px rgb(0 0 0 / .08)}
+.reset-link{font-size:.8rem;font-weight:600;color:var(--muted-foreground);text-decoration:underline;text-underline-offset:3px}
+.reset-link:hover{color:var(--foreground)}
+
+/* ============ patient header ============ */
+.ph-name{font-size:1.875rem;font-weight:900;letter-spacing:-.025em}
+.ph-dob{margin-top:4px;font-size:1.125rem;color:var(--muted-foreground)}
+.ph-groups{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:20px}
+.hgroup{border:1px solid var(--border);border-radius:12px;background:oklch(0.968 0.007 247.896 / 0.3);padding:16px}
+.hgroup .pair{display:grid;grid-template-columns:1fr 1fr;gap:12px;align-items:start}
+.ph-groups .eyebrow{font-size:.78rem;white-space:nowrap;display:flex;align-items:center;gap:6px;height:18px}
+.ph-groups .hval{margin-top:6px;min-height:38px;display:flex;align-items:center}
+.stedi-block{margin-top:16px;border:1px solid var(--border);border-radius:12px;padding:16px;background:oklch(0.968 0.007 247.896 / 0.2)}
+.stedi-head{margin-bottom:12px}
+.stedi-grid{display:grid;gap:10px}
+.stedi-grid+.stedi-grid{margin-top:10px}
+.stedi-grid.three{grid-template-columns:repeat(3,1fr)}
+.sbox{border:1px solid var(--border);border-radius:10px;background:var(--card);padding:10px 14px}
+.sval{margin-top:2px;font-size:.95rem;font-weight:500}
+.sval.strong{font-weight:700}
+.sbox.cin{border-color:oklch(0.36 0.04 200 / 0.35);background:oklch(0.36 0.04 200 / 0.06)}
+.sbox.cin .cin-tag{
+  display:inline-block;margin-left:6px;padding:1px 8px;border-radius:999px;
+  font-size:.62rem;font-weight:800;letter-spacing:.05em;vertical-align:middle;
+  background:var(--mm-teal);color:#fff;
+}
+@media (max-width:1150px){.stedi-grid.three{grid-template-columns:repeat(2,1fr)}}
+
+select{
+  font:inherit;font-size:.875rem;width:100%;height:38px;padding:0 12px;
+  border:1px solid var(--input);border-radius:6px;background:var(--background);color:var(--foreground);
+}
+select:focus{outline:2px solid var(--mm-green);outline-offset:1px}
+textarea{
+  font:inherit;font-size:.9rem;width:100%;padding:10px 12px;resize:vertical;
+  border:1px solid var(--input);border-radius:6px;background:var(--background);color:var(--foreground);line-height:1.6;
+}
+textarea:focus{outline:2px solid var(--mm-green);outline-offset:1px}
+
+/* ============ auth/DVS status matrix ============ */
+.mtx-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-top:14px}
+.mtx-cell{border:1px solid var(--border);border-radius:12px;background:var(--card);padding:14px;display:flex;flex-direction:column;gap:10px}
+.mtx-code{font-size:1.05rem;font-weight:800;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--mm-teal);letter-spacing:-.01em}
+.mtx-name{font-size:.78rem;font-weight:600;color:var(--muted-foreground);margin-top:1px}
+.mtx-pill{display:inline-flex;align-items:center;gap:6px;align-self:flex-start;padding:4px 12px;border-radius:999px;font-size:.78rem;font-weight:700;margin-top:auto}
+/* on THIS view, DVS Required is the action → light blue; everything else gray */
+.mtx-cell.dvs{border-color:oklch(0.60 0.10 230 / 0.5);background:oklch(0.95 0.02 230 / 0.7)}
+.mtx-pill.dvs{background:oklch(0.60 0.10 230 / 0.12);color:var(--mm-sky);box-shadow:inset 0 0 0 1px oklch(0.60 0.10 230 / 0.4)}
+.mtx-cell.ok{border-color:var(--border);background:oklch(0.968 0.007 247.896 / 0.4);opacity:.65}
+.mtx-cell.ok .mtx-code{color:var(--muted-foreground)}
+.mtx-pill.ok{background:var(--muted);color:var(--muted-foreground);box-shadow:inset 0 0 0 1px var(--border)}
+.mtx-cell.na{opacity:.55}
+.mtx-cell.na .mtx-code{color:var(--muted-foreground)}
+.mtx-pill.na{background:var(--muted);color:var(--muted-foreground)}
+.mtx-cell.done{border-color:var(--mm-mint-ring);background:oklch(0.94 0.02 175 / 0.35)}
+.mtx-pill.done{background:var(--mm-mint);color:var(--mm-teal);box-shadow:inset 0 0 0 1px var(--mm-mint-ring)}
+@media (max-width:1150px){.mtx-grid{grid-template-columns:repeat(2,1fr)}}
+
+/* ============ path selector — which way did this patient get here ============ */
+.path-row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.path-card{position:relative;border:1.5px solid var(--border);border-radius:12px;padding:16px 18px;background:var(--card);opacity:.5}
+.path-card.active{border-color:var(--mm-teal);background:oklch(0.36 0.04 200 / 0.05);opacity:1}
+.path-title{font-size:.95rem;font-weight:800;color:var(--mm-teal)}
+.path-card:not(.active) .path-title{color:var(--muted-foreground)}
+.path-sub{font-size:.82rem;color:var(--muted-foreground);margin-top:3px;line-height:1.5}
+.mid-note{margin:12px 2px 0;font-size:.82rem;color:var(--muted-foreground)}
+.mid-note b{color:var(--mm-teal)}
+@media (max-width:960px){.path-row{grid-template-columns:1fr}}
+
+/* ============ DVS step cards ============ */
+.dvs-step{border-left:4px solid var(--mm-green)}
+.dvs-step.dim{opacity:.55;border-left-color:var(--border)}
+.step-title-row{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.step-title-row h2{font-size:1.2rem;font-weight:700;letter-spacing:-.015em}
+.step-codes{display:flex;gap:6px}
+.code-chip{
+  display:inline-flex;align-items:center;padding:3px 10px;border-radius:6px;
+  font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.82rem;font-weight:700;
+  background:var(--card);color:var(--mm-teal);box-shadow:inset 0 0 0 1px var(--border);
+}
+.step-num.off{background:var(--muted);color:var(--muted-foreground);box-shadow:none}
+.step-reason{margin-left:auto;font-size:.8rem;font-weight:600;color:var(--muted-foreground);background:var(--muted);padding:6px 14px;border-radius:999px}
+/* automatic-run status chip (replaces the old Run button — nothing clickable) */
+.auto-chip{
+  margin-left:auto;display:inline-flex;align-items:center;gap:8px;border-radius:999px;padding:8px 16px;
+  font-size:.85rem;font-weight:700;white-space:nowrap;
+}
+.auto-chip.wait{background:var(--muted);color:var(--muted-foreground)}
+.auto-chip.run{background:var(--mm-sky);color:#fff}
+.auto-chip.done{background:var(--mm-mint);color:var(--mm-teal);box-shadow:inset 0 0 0 1px var(--mm-mint-ring)}
+.auto-chip.queue{background:oklch(0.48 0.03 255);color:#fff}
+.auto-chip.esc{background:var(--mm-rose);color:#fff}
+.gate-hint+.auto-chip{margin-left:0}
+.auto-tag{
+  display:inline-block;margin-left:8px;padding:2px 9px;border-radius:999px;vertical-align:middle;
+  font-size:.62rem;font-weight:800;letter-spacing:.06em;
+  background:var(--mm-green-12);color:var(--mm-teal);box-shadow:inset 0 0 0 1px var(--mm-mint-ring);
+}
+/* actively sitting in the retry queue — darker gray so it reads as live status */
+.gate-hint{margin-left:auto;font-size:.8rem;font-weight:600;color:var(--muted-foreground)}
+
+/* per-code columns: auth + claim grouped under the code they belong to */
+.code-cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:12px;margin-top:16px}
+.code-col{border:1.5px solid var(--border);border-radius:12px;background:var(--card);overflow:hidden}
+.code-col.pass{border-color:var(--mm-mint-ring)}
+.code-col.fail{border-color:oklch(0.62 0.13 18 / 0.45)}
+.code-col.run{border-color:oklch(0.60 0.10 230 / 0.45)}
+.col-head{display:flex;align-items:baseline;gap:8px;padding:11px 16px;background:oklch(0.968 0.007 247.896 / 0.5);border-bottom:1px solid var(--border)}
+.code-col.pass .col-head{background:oklch(0.94 0.02 175 / 0.5)}
+.code-col.fail .col-head{background:oklch(0.94 0.03 18 / 0.35)}
+.code-col.run .col-head{background:oklch(0.95 0.02 230 / 0.5)}
+.col-sec{padding:12px 16px 14px}
+.col-sec+.col-sec{border-top:1px dashed var(--border)}
+.col-sec.dim{opacity:.6}
+.sec-label{font-size:.68rem;font-weight:800;text-transform:uppercase;letter-spacing:.07em;color:var(--muted-foreground);margin-bottom:4px}
+.tile-code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:1.05rem;font-weight:800;color:var(--mm-teal)}
+.tile-name{font-size:.75rem;font-weight:600;color:var(--muted-foreground)}
+.tile-status{margin-top:7px;display:flex;align-items:center;gap:8px;font-size:.9rem;font-weight:700}
+.tile-status.pass{color:var(--mm-teal)}
+.tile-status.fail{color:var(--mm-rose)}
+.tile-status.run{color:var(--mm-sky)}
+.tile-status.idle,.tile-status.blocked{color:var(--muted-foreground);font-weight:500}
+.tile-err{
+  margin-top:8px;border:1px solid oklch(0.62 0.13 18 / 0.35);border-radius:8px;
+  background:oklch(0.94 0.03 18 / 0.35);padding:8px 11px;
+  font-size:.8rem;color:var(--mm-rose);line-height:1.45;
+}
+.tile-err .ec{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-weight:800}
+.spinner{
+  height:14px;width:14px;border-radius:50%;flex-shrink:0;
+  border:2px solid oklch(0.60 0.10 230 / 0.25);border-top-color:var(--mm-sky);
+  animation:spin .7s linear infinite;
+}
+@keyframes spin{to{transform:rotate(360deg)}}
+.tile-retry{
+  margin-top:8px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;
+  border:1px solid oklch(0.66 0.12 75 / 0.45);border-radius:8px;
+  background:oklch(0.96 0.04 90 / 0.55);padding:8px 11px;
+  font-size:.78rem;color:oklch(0.46 0.10 75);font-weight:600;
+}
+.q-pill{
+  display:inline-flex;align-items:center;padding:2px 9px;border-radius:999px;flex-shrink:0;
+  background:var(--card);box-shadow:inset 0 0 0 1px oklch(0.66 0.12 75 / 0.4);
+  font-size:.68rem;font-weight:800;letter-spacing:.03em;color:oklch(0.46 0.10 75);
+}
+.via-retry{
+  margin-top:7px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;
+  font-size:.76rem;font-weight:600;color:oklch(0.46 0.10 75);line-height:1.4;
+}
+.retry-now{
+  margin-left:auto;display:inline-flex;align-items:center;gap:6px;border-radius:7px;padding:5px 12px;
+  font-size:.76rem;font-weight:700;background:var(--mm-amber);color:#fff;box-shadow:0 1px 2px rgb(0 0 0 / .1);
+}
+.retry-now:hover{background:oklch(0.58 0.11 75)}
+.tile-esc{
+  margin-top:8px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;
+  border:1px solid oklch(0.62 0.13 18 / 0.4);border-radius:8px;
+  background:oklch(0.94 0.03 18 / 0.4);padding:8px 11px;
+  font-size:.78rem;color:var(--mm-rose);font-weight:600;line-height:1.45;
+}
+.rerun-btn{
+  margin-left:auto;display:inline-flex;align-items:center;gap:6px;border-radius:7px;padding:5px 12px;
+  font-size:.76rem;font-weight:700;background:var(--mm-rose);color:#fff;box-shadow:0 1px 2px rgb(0 0 0 / .1);
+}
+.rerun-btn:hover{background:oklch(0.56 0.13 18)}
+
+/* success banner */
+.pass-banner{
+  margin-top:16px;display:flex;align-items:center;gap:12px;
+  border:1px solid var(--mm-mint-ring);border-left:4px solid var(--mm-green);border-radius:12px;
+  background:oklch(0.94 0.02 175 / 0.45);padding:16px 18px;
+  font-size:.95rem;color:var(--mm-teal);line-height:1.55;font-weight:600;
+}
+.pass-banner svg{flex-shrink:0;color:var(--mm-green)}
+.empty-box{border:2px dashed var(--mm-mint-ring);border-radius:12px;background:oklch(0.94 0.02 175 / 0.25);padding:36px;text-align:center}
+.empty-box p{font-size:.95rem;color:var(--mm-teal);font-weight:600}
+.empty-box .sub{margin-top:6px;font-size:.85rem;color:var(--muted-foreground);font-weight:400;max-width:34rem;margin-left:auto;margin-right:auto}
+.cin-note{
+  margin-bottom:14px;display:flex;align-items:flex-start;gap:12px;
+  border:1px solid oklch(0.36 0.04 200 / 0.3);border-left:4px solid var(--mm-teal);border-radius:12px;
+  background:oklch(0.36 0.04 200 / 0.06);padding:14px 18px;
+  font-size:.92rem;color:var(--mm-teal);line-height:1.55;
+}
+.cin-note svg{flex-shrink:0;margin-top:2px}
+.cin-note b{font-weight:800}
+.cin-note .ph{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-weight:800;user-select:all;-webkit-user-select:all}
+
+/* ============ monday preview ============ */
+.mon-box{border:1px solid var(--border);border-radius:12px;background:oklch(0.968 0.007 247.896 / 0.3);padding:20px}
+.mon-box h3{font-size:1rem;font-weight:700;letter-spacing:-.01em}
+.mon-box .msub{font-size:.8rem;color:var(--muted-foreground);margin-top:2px;margin-bottom:14px}
+.mon-rows{border:1px solid var(--border);border-radius:10px;background:var(--card);overflow:hidden}
+.mon-row{display:grid;grid-template-columns:280px 1fr;align-items:center;gap:12px;padding:10px 16px}
+.mon-row + .mon-row{border-top:1px solid var(--border)}
+.mon-row.grp-head{background:oklch(0.968 0.007 247.896 / 0.5)}
+.mon-row.grp-head .mlabel{color:var(--mm-teal);font-weight:800}
+.mon-row .mlabel{font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted-foreground)}
+.mval{display:inline-flex;width:fit-content;align-items:center;padding:3px 10px;border-radius:6px;font-size:.875rem;font-weight:600}
+.mval.good{background:var(--mm-mint);color:var(--mm-teal)}
+.mval.warn{background:var(--mm-amber-soft);color:oklch(0.5 0.11 75)}
+.mval.bad{background:var(--mm-rose-soft);color:var(--mm-rose);box-shadow:inset 0 0 0 1px oklch(0.62 0.13 18 / 0.3)}
+.mval.skip{background:var(--mm-sky-soft);color:var(--mm-sky);box-shadow:inset 0 0 0 1px oklch(0.60 0.10 230 / 0.3)}
+.mval.neutral{background:transparent;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-weight:500;padding-left:0}
+.mon-toggle{display:flex;align-items:center;gap:12px;width:100%;text-align:left;color:var(--mm-teal)}
+.mon-toggle h2{font-size:1.25rem;font-weight:700;letter-spacing:-.015em}
+.mon-toggle-hint{margin-left:auto;font-size:.85rem;font-weight:500;color:var(--muted-foreground)}
+.mon-toggle svg{transition:transform .2s;color:var(--muted-foreground);flex-shrink:0}
+.mon-toggle.open svg{transform:rotate(180deg)}
+.mon-toggle:hover .mon-toggle-hint{color:var(--foreground)}
+
+/* ============ footer actions ============ */
+.foot-actions{display:flex;align-items:center;justify-content:flex-end;gap:16px;flex-wrap:wrap}
+.send-btn{
+  display:inline-flex;align-items:center;gap:8px;border-radius:8px;
+  background:var(--mm-green);color:#fff;font-size:1rem;font-weight:600;
+  padding:13px 26px;box-shadow:0 1px 2px 0 rgb(0 0 0 / .1);
+}
+.send-btn:hover{background:oklch(0.56 0.10 175)}
+.send-btn:disabled{background:oklch(0.85 0.01 200);box-shadow:none;cursor:not-allowed}
+.missing-box{
+  margin-top:14px;border:1px solid oklch(0.66 0.12 75 / 0.45);border-radius:10px;
+  background:oklch(0.96 0.04 90 / 0.5);padding:12px 18px;text-align:center;
+}
+.missing-box .mb-title{font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:oklch(0.5 0.11 75)}
+.missing-box .mb-list{margin-top:4px;font-size:.85rem;color:oklch(0.45 0.1 75)}
+
+/* ============ toast ============ */
+.toast-wrap{position:fixed;top:20px;right:20px;z-index:60;display:flex;flex-direction:column;gap:8px}
+.toast{
+  background:var(--mm-teal);color:#fff;border-radius:10px;padding:12px 18px;
+  font-size:.875rem;font-weight:600;box-shadow:0 8px 24px rgb(0 0 0 / .2);
+  animation:tin .2s ease-out;
+}
+@keyframes tin{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:none}}
+
+/* ============ layout: main + notes rail ============ */
+.layout{display:grid;grid-template-columns:minmax(0,1fr) clamp(320px,22vw,420px);gap:24px;align-items:start}
+.main-col{display:flex;flex-direction:column;gap:24px;min-width:0}
+.notes-rail{position:sticky;top:16px;height:75vh}
+.notes-card{display:flex;flex-direction:column;padding:20px;height:100%}
+.notes-card textarea{flex:1;min-height:0;resize:none}
+.notes-desc{font-size:.78rem;color:var(--muted-foreground);margin:-6px 0 10px}
+@media (max-width:1150px){
+  .layout{grid-template-columns:1fr}
+  .notes-rail{position:static}
+  .notes-card textarea{height:auto;min-height:140px}
+}
+@media (max-width:960px){
+  .ph-groups{grid-template-columns:1fr}
+  .dres-checks{grid-template-columns:1fr}
+  .mon-row{grid-template-columns:1fr;gap:4px}
+}
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- ============ demo bar ============ -->
+  <div class="demo-bar">
+    <span class="lbl">Demo scenario</span>
+    <div class="demo-seg" id="demo-seg"></div>
+    <button class="reset-link" onclick="simDayAll()">Advance a day</button>
+    <button class="reset-link" onclick="resetAll()">Reset</button>
+  </div>
+
+  <!-- ============ top bar ============ -->
+  <div class="topbar">
+    <div>
+      <p class="eyebrow">Medically Modern · NY Medicaid</p>
+      <h1>DVS</h1>
+    </div>
+    <div class="actions">
+      <button class="tbtn" onclick="toast('Progress saved (demo)')">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+        Save
+      </button>
+      <button class="tbtn" onclick="resetAll();toast('Cleared — refetching from Monday (demo)')">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
+        Reset
+      </button>
+    </div>
+  </div>
+
+  <!-- ============ two-column layout ============ -->
+  <div class="layout">
+  <div class="main-col">
+
+  <!-- patient header -->
+  <section class="card header-card" id="ph-card"><!-- rendered --></section>
+
+  <!-- context — DVS status by product (read-only) -->
+  <section class="card">
+    <header class="step-head">
+      <h2 class="ctx-title">DVS Status by Product</h2>
+    </header>
+    <div id="mtx-area"><!-- rendered --></div>
+  </section>
+
+  <!-- the workflow — path context + numbered run steps -->
+  <div id="run-area" style="display:flex;flex-direction:column;gap:20px"><!-- rendered --></div>
+
+  <!-- monday output (demo scaffolding — will eventually be deleted) -->
+  <section class="card" id="mon-card" style="border-left:4px solid var(--mm-teal)"><!-- rendered --></section>
+
+  <!-- page actions — standalone so it survives when the Monday drawer goes -->
+  <section class="card" id="act-card" style="border-left:4px solid var(--mm-green)"><!-- rendered --></section>
+
+  </div><!-- /main-col -->
+
+  <!-- notes rail (sticky) -->
+  <aside class="notes-rail">
+    <section class="card notes-card" style="border-left:4px solid var(--mm-green)">
+      <header class="step-head" style="margin-bottom:12px">
+        <h2 style="font-size:1.1rem">Reference Notes</h2>
+      </header>
+      <p class="notes-desc">Carries over from the earlier stages (when the patient had them). DVS reference numbers, ePACES notes…</p>
+      <textarea id="notes" placeholder="DVS reference numbers, ePACES notes, follow-ups…"></textarea>
+      <button class="tbtn" style="margin-top:12px;justify-content:center" onclick="toast('Notes saved to Monday (demo)')">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+        Save Notes to Monday
+      </button>
+    </section>
+  </aside>
+
+  </div><!-- /layout -->
+
+</div>
+
+<div class="toast-wrap" id="toasts"></div>
+
+<script>
+/* =====================================================================
+   DVS STAGE — v2 (Brandon, 2026-07-20): FULLY AUTOMATIC.
+   Stage Advancer now has a dedicated "DVS" stage. The moment a patient's
+   stage flips to DVS, the DVS process TRIGGERS ITSELF — no Run button,
+   no rep action:
+   · Pump present → pump DVS submits first; supplies DVS submits
+     automatically only after the pump claim is FULLY PAID.
+   · No pump → supplies DVS submits immediately on stage entry.
+   · Everything fully paid → Stage Advancer → Complete automatically; the
+     patient moves to the Welcome Call board with no rep touch (fully
+     paid patients are never seen on this view).
+   · Retryable failure → sits in the RETRY QUEUE (re-runs daily) until
+     resolved; stage unchanged.
+   · Non-retryable failure → MANUAL REVIEW → patient moves to the AUTH
+     DENIAL bucket (Stage → Auth Denied). Manual review OUTRANKS the
+     retry queue when both happen on one patient.
+   Supplies-only Medicaid (and pump patients with straight Medicaid) skip
+   Benefits/SoS, Submit Auth and Auth Outstanding entirely — DVS is their
+   first insurance stage. Josh's backend runs the DVS + claims and writes
+   results to Monday; this page is a read-only monitor of that pipeline
+   (timers simulate it here).
+   ===================================================================== */
+
+/* ---------- codes ---------- */
+const PUMP={codeId:'pump',hcpc:'E0784',name:'Insulin Pump'};
+const SUPPLIES=[
+  {codeId:'infusion-sets',hcpc:'A4230',name:'Infusion Sets'},
+  {codeId:'cartridges',hcpc:'A4232',name:'Cartridges'},
+];
+const ALL_PRODUCTS=[
+  {codeId:'cgm-monitor',hcpc:'E2103',name:'CGM Monitor'},
+  {codeId:'cgm-sensors',hcpc:'A4239',name:'CGM Sensors'},
+  PUMP,...SUPPLIES,
+];
+
+/* =====================================================================
+   scenarios — outcome scripts are per code, per check, PER ATTEMPT
+   (index 0 = first run, 1 = first retry…). 'pass' or {code,msg,retryable}.
+   Error codes/wording are demo placeholders in eMedNY style.
+   ===================================================================== */
+const PATIENT_BASE={
+  name:'Bob Jones [TEST]',dob:'2025-01-01',phone:'(914) 220-2922',
+  diagnosis:'E11.65',address:'1667 Nelson Ave, Bronx, NY 10453',
+};
+const SCENARIOS=[
+  {key:'supplies-only',label:'Supplies Only · Straight Medicaid',
+   primary:'Medicaid',secondary:'None',serving:'Supplies Only',
+   memberId1:'KJ51074B',memberId2:'',cin:'KJ51074B',cinSource:'Member ID 1',
+   skippedRail:true,pumpAuth:null,
+   stedi:{active:'Yes',payerName:'NYSDOH (eMedNY)',planBegin:'2026-04-01',coverageType:'Medicaid',
+     planName:'NY Medicaid FFS',medicaidId:'KJ51074B'},
+   script:{
+     'infusion-sets':{auth:['pass'],claim:['pass']},
+     'cartridges':{auth:['pass'],claim:[{code:'00321',msg:'eMedNY did not respond before timeout — claim pended',retryable:true},'pass']},
+   }},
+  {key:'pump-supplies',label:'Pump + Supplies · Straight Medicaid',
+   primary:'Medicaid',secondary:'None',serving:'Insulin Pump',
+   memberId1:'XK94820C',memberId2:'',cin:'XK94820C',cinSource:'Member ID 1',
+   skippedRail:true,pumpAuth:null,
+   stedi:{active:'Yes',payerName:'NYSDOH (eMedNY)',planBegin:'2026-02-01',coverageType:'Medicaid',
+     planName:'NY Medicaid FFS',medicaidId:'XK94820C'},
+   script:{
+     'pump':{auth:['pass'],claim:['pass']},
+     'infusion-sets':{auth:['pass'],claim:['pass']},
+     'cartridges':{auth:[{code:'00142',msg:'UT service limit — recipient file busy, resubmit',retryable:true},'pass'],claim:['pass']},
+   }},
+  {key:'managed',label:'Managed Medicaid · Supplies (pump approved)',
+   primary:'Fidelis Medicaid',secondary:'NY Medicaid',serving:'Insulin Pump',
+   memberId1:'74306887200',memberId2:'EC81836D',cin:'EC81836D',cinSource:'Member ID 2',
+   skippedRail:false,pumpAuth:'Auth Valid · via Fidelis',
+   stedi:{active:'Yes',payerName:'Fidelis Care New York',planBegin:'2026-03-01',coverageType:'Medicaid',
+     planName:'Fidelis Medicaid Managed Care',medicaidId:'EC81836D'},
+   script:{
+     'infusion-sets':{auth:['pass'],claim:['pass']},
+     'cartridges':{auth:['pass'],claim:['pass']},
+   }},
+  {key:'failures',label:'Failure Modes Demo',
+   primary:'Medicaid',secondary:'None',serving:'Supplies Only',
+   memberId1:'ZR33871F',memberId2:'',cin:'ZR33871F',cinSource:'Member ID 1',
+   skippedRail:true,pumpAuth:null,
+   stedi:{active:'Yes',payerName:'NYSDOH (eMedNY)',planBegin:'2026-05-01',coverageType:'Medicaid',
+     planName:'NY Medicaid FFS',medicaidId:'ZR33871F'},
+   script:{
+     'infusion-sets':{auth:[{code:'00125',msg:'Recipient not eligible on date of service',retryable:false}],claim:[]},
+     'cartridges':{auth:['pass'],claim:[{code:'00321',msg:'eMedNY did not respond before timeout — claim pended',retryable:true},{code:'00321',msg:'eMedNY did not respond before timeout — claim pended',retryable:true},'pass']},
+   }},
+];
+
+let scenario='supplies-only';
+let SC=SCENARIOS[0];
+/* RUN state per code:
+   {auth:{status:idle|running|pass|fail,err,attempts},
+    claim:{status:idle|running|pass|fail|blocked,err,attempts},
+    queued:null|{check:'auth'|'claim',secs}, escalated:bool} */
+let RUN={};
+let started={pump:false,supplies:false};
+let timers=[];
+
+const $=id=>document.getElementById(id);
+
+function blankRun(){
+  RUN={};started={pump:false,supplies:false};
+  timers.forEach(clearTimeout);timers=[];
+  for(const c of dvsCodes())RUN[c.codeId]={
+    auth:{status:'idle',err:null,attempts:0,viaRetry:false,lastRun:0},
+    claim:{status:'idle',err:null,attempts:0,viaRetry:false,lastRun:0},
+    queued:null,escalated:false,day:0,
+  };
+}
+function setScenario(key){
+  scenario=key;SC=SCENARIOS.find(s=>s.key===key);
+  blankRun();$('notes').value='';render();
+  later(autoTrigger,500); /* arriving at the DVS stage fires the run itself */
+}
+function resetAll(){blankRun();render();later(autoTrigger,500)}
+
+/* ---------- which codes DVS here ---------- */
+function pumpViaMedicaid(){return SC.primary==='Medicaid'&&/Pump/.test(SC.serving)}
+function suppliesViaMedicaid(){
+  if(SC.primary==='Medicaid')return /Pump|Supplies/.test(SC.serving);
+  return /Pump|Supplies/.test(SC.serving)&&(SC.secondary||'')==='NY Medicaid';
+}
+function dvsCodes(){
+  const out=[];
+  if(pumpViaMedicaid())out.push(PUMP);
+  if(suppliesViaMedicaid())out.push(...SUPPLIES);
+  return out;
+}
+function servedCodeIds(){
+  if(SC.serving==='Supplies Only')return['infusion-sets','cartridges'];
+  if(SC.serving==='Insulin Pump')return['pump','infusion-sets','cartridges'];
+  if(SC.serving==='Insulin Pump + CGM')return['cgm-monitor','cgm-sensors','pump','infusion-sets','cartridges'];
+  return[];
+}
+
+/* =====================================================================
+   the simulated run — the real page writes the trigger column and then
+   polls the board for Josh's bot results. Timings here are demo-only.
+   ===================================================================== */
+function later(fn,ms){timers.push(setTimeout(fn,ms))}
+
+function runGroup(group){
+  const codes=group==='pump'?[PUMP]:SUPPLIES;
+  started[group]=true;
+  toast(group==='pump'
+    ?'Stage → DVS — Pump DVS submitted automatically'
+    :(pumpViaMedicaid()?'Pump fully paid — Supplies DVS submitted automatically':'Stage → DVS — Supplies DVS submitted automatically'));
+  codes.forEach((c,i)=>startAuth(c.codeId,i*500));
+  render();
+}
+/* stage entry = automatic trigger (no rep action, no Run button) */
+function autoTrigger(){
+  if(pumpViaMedicaid()){if(!started.pump)runGroup('pump');}
+  else if(suppliesViaMedicaid()&&!started.supplies){runGroup('supplies');}
+}
+/* pump fully paid → supplies submit themselves */
+function maybeChainSupplies(){
+  if(pumpViaMedicaid()&&suppliesViaMedicaid()&&!started.supplies
+     &&RUN['pump']&&RUN['pump'].auth.status==='pass'&&RUN['pump'].claim.status==='pass'){
+    later(()=>runGroup('supplies'),700);
+  }
+}
+/* Failure handling mirrors Josh's backend exactly:
+   1) non-retryable → FLAGGED FOR MANUAL REVIEW (error reason written to the
+      Monday board; this page displays it)
+   2) retryable → ENTERS THE RETRY QUEUE automatically; the queue submits a
+      NEW DVS once per day. The rep just keeps checking the page — it shows
+      when it entered, when the last run happened, the latest error, and
+      (once it clears) that it came through the retry queue. */
+const DAY_MS=86400000;
+function dayStr(offset){
+  return new Date(Date.now()+(offset||0)*DAY_MS).toLocaleDateString('en-US',{month:'2-digit',day:'2-digit'});
+}
+function fmtDT(d){
+  return d.toLocaleDateString('en-US',{month:'2-digit',day:'2-digit'})+', '+
+         d.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'});
+}
+function resolveCheck(st,check,res,codeId){
+  const ck=st[check];
+  ck.lastRun=st.day;
+  ck.lastRunAt=new Date(Date.now()+(st.day||0)*DAY_MS);
+  if(res==='pass'){
+    ck.status='pass';
+    if(st.queued&&st.queued.check===check){
+      /* cleared the retry queue — keep the trail visible */
+      ck.viaRetry=true;ck.enteredDay=st.queued.entered;ck.clearedDay=st.day;
+      st.queued=null;
+    }
+    if(codeId==='pump'&&check==='claim')maybeChainSupplies();
+    return true;
+  }
+  ck.status='fail';ck.err=res;
+  if(res.retryable){
+    if(!(st.queued&&st.queued.check===check))st.queued={check,entered:st.day};
+  }else{st.escalated=true;st.queued=null;}
+  return false;
+}
+function startAuth(codeId,delay){
+  const st=RUN[codeId];
+  st.auth.status='running';st.auth.err=null;
+  later(()=>{
+    const att=st.auth.attempts++;
+    const res=(SC.script[codeId].auth||[])[att]??'pass';
+    if(resolveCheck(st,'auth',res,codeId)){startClaim(codeId,600);}
+    else if(st.auth.status==='fail'){st.claim.status='blocked';}
+    render();
+  },1400+delay);
+  render();
+}
+function startClaim(codeId,delay){
+  const st=RUN[codeId];
+  st.claim.status='running';st.claim.err=null;
+  later(()=>{
+    const att=st.claim.attempts++;
+    const res=(SC.script[codeId].claim||[])[att]??'pass';
+    resolveCheck(st,'claim',res,codeId);
+    render();
+  },1600+delay);
+  render();
+}
+/* DEMO ONLY — the "Advance a day" link in the demo bar stands in for the
+   queue's real once-a-day run. The rep can NOT trigger retries — the
+   in-card strip is pure status. */
+function simDay(codeId){
+  const st=RUN[codeId];
+  if(!st.queued)return;
+  st.day=(st.day||0)+1;
+  const check=st.queued.check;
+  if(check==='auth')startAuth(codeId,0);else startClaim(codeId,0);
+}
+/* Manual-review re-trigger — re-runs ONLY this code's failed check.
+   NOTE FOR JOSH: any re-trigger (manual or retry queue) must only re-run
+   the codes that did NOT get paid — approved+paid codes are never re-run. */
+function reRunCode(codeId){
+  const st=RUN[codeId];
+  if(!st.escalated)return;
+  st.escalated=false;
+  const check=st.auth.status==='fail'?'auth':'claim';
+  toast(`Re-running ${codeById(codeId).hcpc} ${check==='auth'?'authorization':'claim'} (demo)`);
+  if(check==='auth')startAuth(codeId,0);else startClaim(codeId,0);
+}
+function simDayAll(){
+  const queued=Object.keys(RUN).filter(id=>RUN[id].queued);
+  if(!queued.length){toast('Nothing in the retry queue (demo)');return;}
+  toast(`Next day — the retry queue re-ran ${queued.map(id=>codeById(id).hcpc).join(', ')} (demo)`);
+  queued.forEach(id=>simDay(id));
+}
+function codeById(id){return ALL_PRODUCTS.find(c=>c.codeId===id)}
+/* paid amounts come off the Monday board (written by Josh's bot) — demo values */
+const PAID_AMOUNTS={'pump':'$3,914.20','infusion-sets':'$268.50','cartridges':'$114.30'};
+
+/* ---------- derived ---------- */
+function groupCodes(group){return group==='pump'?[PUMP]:SUPPLIES}
+function groupState(group){
+  /* idle | running | queued | escalated | pass */
+  const codes=groupCodes(group);
+  if(!started[group])return 'idle';
+  if(codes.some(c=>RUN[c.codeId].escalated))return 'escalated';
+  if(codes.some(c=>RUN[c.codeId].queued))return 'queued';
+  if(codes.some(c=>['running'].includes(RUN[c.codeId].auth.status)||['running'].includes(RUN[c.codeId].claim.status)))return 'running';
+  if(codes.every(c=>RUN[c.codeId].auth.status==='pass'&&RUN[c.codeId].claim.status==='pass'))return 'pass';
+  return 'running';
+}
+function allPassed(){
+  const codes=dvsCodes();
+  return codes.length>0&&codes.every(c=>RUN[c.codeId]&&RUN[c.codeId].auth.status==='pass'&&RUN[c.codeId].claim.status==='pass');
+}
+function anyEscalated(){return dvsCodes().some(c=>RUN[c.codeId]&&RUN[c.codeId].escalated)}
+function queuedCodes(){return dvsCodes().filter(c=>RUN[c.codeId]&&RUN[c.codeId].queued)}
+
+/* =====================================================================
+   render — patient header (slim: DVS runs off the CIN)
+   ===================================================================== */
+function sbox(label,value,strong){
+  return `<div class="sbox"><div class="eyebrow-xs">${label}</div><div class="sval${strong?' strong':''}">${value||'—'}</div></div>`;
+}
+function renderHeader(){
+  const st=SC.stedi;const PB=PATIENT_BASE;
+  $('ph-card').innerHTML=`
+    <p class="eyebrow">Patient</p>
+    <h1 class="ph-name">${PB.name}</h1>
+    <p class="ph-dob">DOB <span class="sel">${PB.dob}</span> · <span class="sel">${PB.phone}</span></p>
+
+    <div class="ph-groups">
+      <div class="hgroup"><div class="pair">
+        <div><div class="eyebrow">Serving</div><div class="hval">${SC.serving}</div></div>
+        <div><div class="eyebrow">Diagnosis</div><div class="hval">${PB.diagnosis}</div></div>
+      </div></div>
+      <div class="hgroup"><div class="pair">
+        <div><div class="eyebrow">Primary Insurance</div><div class="hval">${SC.primary}</div></div>
+        <div><div class="eyebrow">Secondary Insurance</div><div class="hval">${SC.secondary}</div></div>
+      </div></div>
+      <div class="hgroup"><div class="pair">
+        <div><div class="eyebrow">Member ID</div><div class="hval mono">${SC.memberId1}</div></div>
+        <div><div class="eyebrow">Member ID 2</div><div class="hval mono">${SC.memberId2||'—'}</div></div>
+      </div></div>
+    </div>
+
+    <div class="stedi-block">
+      <div class="stedi-head"><p class="eyebrow">Insurance Details · Stedi Check</p></div>
+      <div class="stedi-grid three">
+        ${sbox('Active?',st.active,true)}
+        ${sbox('Payer Name',st.payerName,true)}
+        ${sbox('Plan Name',st.planName)}
+      </div>
+      <div class="stedi-grid three">
+        ${sbox('Coverage Type',st.coverageType)}
+        ${sbox('Plan Begin Date',st.planBegin)}
+        <div class="sbox cin"><div class="eyebrow-xs">Medicaid ID<span class="cin-tag">DVS RUNS ON THIS</span></div><div class="sval strong mono">${SC.cin}</div></div>
+      </div>
+    </div>`;
+}
+
+/* =====================================================================
+   render — DVS status matrix
+   ===================================================================== */
+function renderMatrix(){
+  const served=servedCodeIds();
+  const dvsIds=dvsCodes().map(c=>c.codeId);
+  $('mtx-area').innerHTML=`
+  <div class="mtx-grid">
+    ${ALL_PRODUCTS.map(p=>{
+      const isServed=served.includes(p.codeId);
+      const isDvs=dvsIds.includes(p.codeId);
+      let cls,label;
+      if(!isServed){cls='na';label='Not Serving';}
+      else if(isDvs){
+        const st=RUN[p.codeId];
+        const done=st&&st.auth.status==='pass'&&st.claim.status==='pass';
+        cls=done?'done':'dvs';label=done?'DVS Approved':'DVS Required';
+      }
+      else if(p.codeId==='pump'&&SC.pumpAuth){cls='done';label=SC.pumpAuth;}
+      else{cls='ok';label='Handled on the auth rail';}
+      return `
+      <div class="mtx-cell ${cls}">
+        <div>
+          <div class="mtx-code">${p.hcpc}</div>
+          <div class="mtx-name">${p.name}</div>
+        </div>
+        <span class="mtx-pill ${cls}">${label}</span>
+      </div>`;
+    }).join('')}
+  </div>`;
+}
+
+/* =====================================================================
+   render — run buttons + live result cards
+   ===================================================================== */
+const icoBolt=`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>`;
+const icoCheck=`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`;
+const icoInfo=`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>`;
+const icoClock=`<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>`;
+
+/* ---------- path selector: how did this patient get to DVS ---------- */
+function pathRow(){
+  const straight=SC.skippedRail;
+  return `
+  <div>
+    <div class="path-row">
+      <div class="path-card ${straight?'active':''}">
+        <div class="path-title">Straight to DVS</div>
+        <div class="path-sub">Everything goes through NY Medicaid</div>
+      </div>
+      <div class="path-card ${straight?'':'active'}">
+        <div class="path-title">Pump Approved via Primary Payer</div>
+        <div class="path-sub">Supplies only go through NY Medicaid</div>
+      </div>
+    </div>
+  </div>`;
+}
+
+/* ---------- one section: a code's status for ONE check (auth or claim) ---------- */
+function checkSec(c,check,num){
+  const st=RUN[c.codeId];
+  const ck=st[check];
+  const q=(st.queued&&st.queued.check===check)?st.queued:null;
+  const esc=st.escalated&&ck.status==='fail';
+  let status;
+  if(ck.status==='idle')status=check==='claim'
+    ?`<div class="tile-status idle">— waits on authorization</div>`
+    :`<div class="tile-status idle">— not run yet</div>`;
+  else if(ck.status==='running')status=`<div class="tile-status run"><span class="spinner"></span> Checking…</div>`;
+  else if(ck.status==='pass')status=`<div class="tile-status pass">✓ ${check==='claim'?`Paid · <span class="mono">${PAID_AMOUNTS[c.codeId]||'—'}</span>`:'Approved'}</div>
+    ${ck.viaRetry?`
+    <div class="via-retry">
+      <span class="q-pill">RETRY QUEUE</span>
+      <span>just cleared — entered ${dayStr(ck.enteredDay)}, ${check==='claim'?'paid':'approved'} on attempt ${ck.attempts} (${dayStr(ck.clearedDay)})</span>
+    </div>`:''}`;
+  else if(ck.status==='blocked')status=`<div class="tile-status blocked">— not submitted, authorization denied</div>`;
+  else status=`<div class="tile-status fail">✗ Denied</div>
+    ${ck.err?`<div class="tile-err"><span class="ec">${ck.err.code}</span> — ${ck.err.msg}</div>`:''}`;
+  return `
+  <div class="col-sec ${ck.status==='blocked'?'dim':''}">
+    <div class="sec-label">Step ${num}${check==='auth'?'a · Authorization':'b · Claim'}${ck.attempts>1?` · attempt ${ck.attempts}`:''}</div>
+    ${status}
+    ${q?`
+    <div class="tile-retry">
+      <span class="q-pill">IN RETRY QUEUE</span>
+      <span>Last run ${ck.lastRunAt?fmtDT(ck.lastRunAt):'—'} · next run tomorrow</span>
+    </div>`:''}
+    ${esc?`
+    <div class="tile-esc">
+      ${icoInfo}
+      <span><b>Manual review</b> — patient moved to the <b>Auth Denial bucket</b> (manual review outranks the retry queue).</span>
+      <button class="rerun-btn" onclick="reRunCode('${c.codeId}')">Re-run DVS</button>
+    </div>`:''}
+  </div>`;
+}
+/* ---------- one column: BOTH steps for one code, grouped ---------- */
+function codeCol(c,num){
+  const st=RUN[c.codeId];
+  const cls=(st.auth.status==='pass'&&st.claim.status==='pass')?'pass'
+    :(st.auth.status==='fail'||st.claim.status==='fail')?'fail'
+    :(st.auth.status==='running'||st.claim.status==='running')?'run':'';
+  return `
+  <div class="code-col ${cls}">
+    <div class="col-head">
+      <span class="tile-code">${c.hcpc}</span>
+      <span class="tile-name">${c.name}</span>
+    </div>
+    ${checkSec(c,'auth',num)}
+    ${checkSec(c,'claim',num)}
+  </div>`;
+}
+
+/* ---------- one step card: run button + AUTHORIZATION band + CLAIM band ---------- */
+function stepCard(group,num){
+  const codes=groupCodes(group);
+  const isPump=group==='pump';
+  const applies=isPump?pumpViaMedicaid():suppliesViaMedicaid();
+
+  /* pump not via Medicaid → no pump step at all (the path card + matrix
+     already tell that story) */
+  if(!applies)return '';
+
+  const state=groupState(group);
+  const stepDone=state==='pass';
+  const pumpGate=!isPump&&pumpViaMedicaid()&&groupState('pump')!=='pass';
+  /* status chip — the run is AUTOMATIC, nothing here is clickable */
+  const chip=pumpGate?`<span class="auto-chip wait">${icoClock} Waiting on pump</span>`
+    :!started[group]?`<span class="auto-chip wait"><span class="spinner"></span> Submitting…</span>`
+    :state==='running'?`<span class="auto-chip run"><span class="spinner" style="border-color:rgb(255 255 255/.35);border-top-color:#fff"></span> Running…</span>`
+    :state==='pass'?`<span class="auto-chip done">${icoCheck} Approved &amp; paid</span>`
+    :state==='queued'?`<span class="auto-chip queue">${icoClock} In retry queue</span>`
+    :`<span class="auto-chip esc">⚑ Auth Denial — manual review</span>`;
+  return `
+  <section class="card dvs-step">
+    <div class="step-title-row">
+      <span class="step-num ${stepDone?'done':''}">${stepDone?'✓':num}</span>
+      <h2>${isPump?'Pump':'Supplies'} DVS <span class="auto-tag">AUTO</span></h2>
+      <span class="step-codes">${codes.map(c=>`<span class="code-chip">${c.hcpc}</span>`).join('')}</span>
+      ${pumpGate?`<span class="gate-hint">Submits automatically once the Pump claim is fully paid</span>`:''}
+      ${chip}
+    </div>
+
+    ${started[group]?`
+    <div class="code-cols">
+      ${codes.map(c=>codeCol(c,num)).join('')}
+    </div>`:''}
+  </section>`;
+}
+
+function renderRun(){
+  const codes=dvsCodes();
+  const complete=allPassed();
+
+  if(codes.length===0){
+    $('run-area').innerHTML=`
+    <div class="empty-box">
+      <p>No DVS products on this patient</p>
+      <p class="sub">Nothing routes to NY Medicaid — this stage doesn't apply. (Pick a demo scenario above.)</p>
+    </div>`;
+    return;
+  }
+  /* pump first when it DVSes here (Step 1, supplies Step 2);
+     otherwise the grayed pump row shows why, and supplies is the one step */
+  const pumpHere=pumpViaMedicaid();
+  const suppliesNum=pumpHere?2:1;
+  $('run-area').innerHTML=`
+    ${pathRow()}
+    ${stepCard('pump',1)}
+    ${suppliesViaMedicaid()?stepCard('supplies',suppliesNum):''}
+    ${complete?`
+    <div class="pass-banner" style="margin-top:0">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+      <span>Every code cleared — authorization approved and claim paid on ${codes.map(c=>c.hcpc).join(', ')}. Stage → Complete writes itself; the patient moves to the Welcome Call board.</span>
+    </div>`:''}`;
+}
+
+/* =====================================================================
+   render — monday output (demo scaffolding) + actions
+   ===================================================================== */
+const DVS_COLUMN={'pump':'Pump DVS','infusion-sets':'Infusion set DVS','cartridges':'Cartridges DVS'};
+let mondayOpen=false;
+function toggleMonday(){mondayOpen=!mondayOpen;renderMonday()}
+function ckLabel(ck,paid,codeId){
+  if(ck.status==='pass')return{v:paid?`Paid · ${PAID_AMOUNTS[codeId]||'—'}`:'Approved',t:'good'};
+  if(ck.status==='fail')return{v:`Denied · ${ck.err?ck.err.code:''}`,t:'bad'};
+  if(ck.status==='running')return{v:'Running…',t:'skip'};
+  if(ck.status==='blocked')return{v:'Blocked (auth denied)',t:'warn'};
+  return{v:'—',t:'neutral'};
+}
+function renderMonday(){
+  const codes=dvsCodes();
+  const complete=allPassed();
+  const esc=anyEscalated();
+  /* stage rules: all paid → Complete (auto-advance to Welcome Call board);
+     any manual review → Auth Denied (the Auth Denial bucket) — manual
+     review OUTRANKS retry queue; retry-only → stage unchanged. */
+  const stage=esc?'Auth Denied':complete?'Complete':'— (unchanged'+(queuedCodes().length?' — holding in retry queue':'')+')';
+  const rows=[
+    {label:'Stage Advancer',value:stage,tone:esc?'bad':complete?'good':'neutral'},
+    {label:'Escalation',value:esc?'Escalation Required':'Done',tone:esc?'bad':'good'},
+  ];
+  const prodRows=[];
+  for(const c of codes){
+    const st=RUN[c.codeId];
+    prodRows.push({head:`${c.hcpc} · ${c.name}`});
+    const a=ckLabel(st.auth,false,c.codeId),cl=ckLabel(st.claim,true,c.codeId);
+    prodRows.push({label:`${DVS_COLUMN[c.codeId]} result`,value:a.v,tone:a.t});
+    prodRows.push({label:`${DVS_COLUMN[c.codeId]} claim`,value:cl.v,tone:cl.t});
+    if(st.queued)prodRows.push({label:'Retry queue',value:`In queue since ${dayStr(st.queued.entered)} · ${st.queued.check} · attempt ${st[st.queued.check].attempts} · re-runs daily`,tone:'warn'});
+  }
+  $('mon-card').innerHTML=`
+    <button type="button" class="mon-toggle ${mondayOpen?'open':''}" aria-expanded="${mondayOpen}" onclick="toggleMonday()">
+      <h2 style="color:var(--mm-teal)">Monday Board Output</h2>
+      <span class="mon-toggle-hint">${mondayOpen?'Hide':'Show'} what lands on the board</span>
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+    </button>
+    ${mondayOpen?`
+    <div style="display:flex;flex-direction:column;gap:16px;margin-top:16px">
+      <div class="mon-box">
+        <h3>Main columns</h3>
+        <p class="msub">Everything is bot-driven: Stage → DVS triggers the run; all codes fully paid → Stage → Complete (patient auto-moves to the Welcome Call board); any manual review → Stage → Auth Denied + Escalation Required (outranks retry queue); retry-only → stage stays put. This page writes nothing.</p>
+        <div class="mon-rows">
+          ${rows.map(r=>`<div class="mon-row"><span class="mlabel">${r.label}</span><span class="mval ${r.tone}">${r.value}</span></div>`).join('')}
+        </div>
+      </div>
+      <div class="mon-box">
+        <h3>Per-code columns (written by the bot, read by this page)</h3>
+        <p class="msub">Open question for Josh: confirm the per-code DVS + claim column IDs the bot writes.</p>
+        <div class="mon-rows">
+          ${prodRows.map(r=>r.head
+            ?`<div class="mon-row grp-head"><span class="mlabel">${r.head}</span><span></span></div>`
+            :`<div class="mon-row"><span class="mlabel">${r.label}</span><span class="mval ${r.tone}">${r.value}</span></div>`).join('')}
+        </div>
+      </div>
+    </div>`:''}`;
+}
+/* No manual complete — the stage advances (or escalates) by itself.
+   This card just narrates what the automation will do / has done. */
+function renderActions(){
+  const codes=dvsCodes();
+  const complete=allPassed();
+  const esc=anyEscalated();
+  const queued=queuedCodes();
+  const waiting=[];
+  for(const c of codes){
+    const st=RUN[c.codeId];
+    if(!st)continue;
+    if(st.auth.status!=='pass')waiting.push(`${c.hcpc} · DVS auth`);
+    else if(st.claim.status!=='pass')waiting.push(`${c.hcpc} · claim`);
+  }
+  let body;
+  if(!codes.length){body='';}
+  else if(esc){
+    body=`<div class="missing-box" style="margin-top:0;border-color:oklch(0.62 0.13 18 / 0.45);background:oklch(0.94 0.03 18 / 0.4)">
+      <div class="mb-title" style="color:var(--mm-rose)">Moved to the Auth Denial bucket</div>
+      <div class="mb-list" style="color:var(--mm-rose)">Manual review required — Stage → Auth Denied, Escalation Required. Manual review outranks the retry queue.</div>
+    </div>`;
+  }else if(complete){
+    body=`<div class="pass-banner" style="margin-top:0">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+      <span><b>Fully paid — Stage → Complete written automatically.</b> Patient moves to the Welcome Call board. No rep action on this view.</span>
+    </div>`;
+  }else{
+    body=`<div class="missing-box" style="margin-top:0">
+      <div class="mb-title">${queued.length?'Holding in the retry queue':'Automation in progress'}</div>
+      <div class="mb-list">${queued.length
+        ?`${queued.map(c=>c.hcpc).join(', ')} re-run${queued.length===1?'s':''} daily until resolved — stage stays at DVS. No rep action.`
+        :`Still waiting on: ${waiting.join(' · ')||'—'}. Stage advances by itself when everything is paid.`}</div>
+    </div>`;
+  }
+  $('act-card').innerHTML=body;
+  $('act-card').style.display=body?'':'none';
+}
+
+/* =====================================================================
+   toast + main render
+   ===================================================================== */
+function toast(msg){
+  const t=document.createElement('div');
+  t.className='toast';t.textContent=msg;
+  $('toasts').appendChild(t);
+  setTimeout(()=>t.remove(),3200);
+}
+function renderDemoBar(){
+  $('demo-seg').innerHTML=SCENARIOS.map(s=>
+    `<button class="${scenario===s.key?'on':''}" onclick="setScenario('${s.key}')">${s.label}</button>`).join('');
+}
+function render(){
+  renderDemoBar();
+  renderHeader();
+  renderMatrix();
+  renderRun();
+  renderMonday();
+  renderActions();
+}
+blankRun();
+render();
+later(autoTrigger,600); /* page load = stage entry in the demo */
+</script>
+</body>
+</html>

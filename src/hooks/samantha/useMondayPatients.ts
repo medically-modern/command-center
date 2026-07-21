@@ -134,7 +134,14 @@ export function useMondayPatients(activeGroup: SidebarGroup = "benefits", inject
       const items = await fetchGroupItems(groupId);
       if (!mountedRef.current) return;
       const safeItems = Array.isArray(items) ? items : [];
-      const ps = safeItems.map(mondayItemToPatient);
+      // Stage = "DVS" items stay in their old group (no group-move automation
+      // for the DVS stage yet), so a group fetch alone would keep showing a
+      // patient the send already routed to DVS. They belong to the /dvs
+      // monitor now — drop them here and in the counting twins (§5.8:
+      // useRoleCounts samActive + both baseline countSamGroup).
+      const ps = safeItems
+        .map(mondayItemToPatient)
+        .filter((p) => p.stageAdvancerText !== "DVS");
       const merged = ps.map((p) => applyOverlay(p, overlayRef.current.get(p.id)));
 
       // If a specific patient was deep-linked but isn't in this group, fetch individually.
