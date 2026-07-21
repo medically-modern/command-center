@@ -63,6 +63,7 @@ export function mondayItemToPatient(item: MondayItem): Patient {
     stediGender: col(item, COL.stediGender),
     stediMedicaidId: col(item, COL.stediMedicaidId),
     stediHomePlan: col(item, COL.stediHomePlan),
+    stediAddress: col(item, COL.stediAddress),
     stediFacilityFlags: col(item, COL.stediFacilityFlags),
 
     // Notes

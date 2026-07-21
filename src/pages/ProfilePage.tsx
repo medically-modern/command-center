@@ -87,6 +87,7 @@ const STEDI_SIGNATURE_KEYS: (keyof Patient)[] = [
   "stediFamilyOopMax", "stediFamilyOopMaxRemaining",
   "stediPlanBeginDate", "stediErrorDescription", "stediSecondaryMedicaidId",
   "stediPlanName", "stediGender", "stediMedicaidId", "stediHomePlan", "stediFacilityFlags",
+  "stediAddress",
 ];
 function stediSignature(p: Patient): string {
   return STEDI_SIGNATURE_KEYS.map((k) => String(p[k] ?? "")).join("␟");
@@ -995,6 +996,12 @@ function ProfileBody(p: BodyProps) {
                       <ResCell label="Medicaid ID" value={isNyMedicaidId(pt.stediMedicaidId) ? pt.stediMedicaidId : ""} />
                       {pt.stediQmb && <ResCell label="QMB?" value={pt.stediQmb} />}
                       {pt.generalInsurance === "Medicaid" && <ResCell label="Managed Medicaid" value={managedMedicaid} />}
+                    </div>
+                    {/* Address parsed by the Stedi check — full-width row of its
+                        own so the whole street/city/state/zip fits (Josh,
+                        2026-07-21). */}
+                    <div className="res-grid" style={{ gridTemplateColumns: "1fr", marginTop: 10 }}>
+                      <ResCell label="Address" value={pt.stediAddress} />
                     </div>
                   </>
                 )}

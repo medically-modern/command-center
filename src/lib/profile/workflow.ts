@@ -63,6 +63,8 @@ export interface Patient {
   stediGender: string;
   stediMedicaidId: string;
   stediHomePlan: string;
+  /** Member's address as parsed by the Stedi eligibility check (text_mm5fqm4s). */
+  stediAddress: string;
   /** Active facility status from the Medicare 271 — comma-joined dropdown
    *  labels ("Hospice", "Hospital/SNF"); "" when none active. */
   stediFacilityFlags: string;
