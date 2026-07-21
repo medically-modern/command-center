@@ -465,6 +465,8 @@ export interface Patient {
   pumpDvsStatus?: string;
   /** Claims Status label from Monday (e.g. "Claims Paid", "Claims Denied") */
   claimsStatus?: string;
+  /** DVS retry count (bot-written "Retry Count" number column). */
+  retryCount?: number;
   escalated?: boolean;
   /** Stage Advancer text from Monday — used to determine sidebar view for escalated patients. */
   stageAdvancerText?: string;

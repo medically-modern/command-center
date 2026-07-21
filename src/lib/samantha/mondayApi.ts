@@ -209,6 +209,10 @@ export const COL = {
   // drive board filters and future automations (e.g. auto-escalate at N days).
   daysAuthOutstanding: "numeric_mm5f5ars",
 
+  // DVS retry count (written by the automate-dvs bot; read-only in the SPA —
+  // shown on the DVS monitor + backs the provisional DVS Retry Queue chart)
+  retryCount: "numeric_mm27nexq",
+
   // Debug / error logging
   joshDebug: "text_mm2w1qn4",
 
@@ -338,6 +342,7 @@ export const AUTH_READ_COLUMN_IDS = [
   COL.callFaxNumber,
   COL.daysSinceStage,
   COL.daysAuthOutstanding,
+  COL.retryCount,
   COL.triggerDvs,
   COL.triggerPumpDvs,
   COL.claimsStatus,
@@ -440,6 +445,53 @@ export async function fetchGroupItems(
     } catch (e) { console.error("[fetchGroupItems] pagination error", e); break; }
   }
 
+  return allItems;
+}
+
+/**
+ * Fetch every item whose Stage Advancer sits at a given status INDEX,
+ * board-wide (no group rule) — the DVS stage has no dedicated group yet, so
+ * stage = "DVS" items stay wherever their group automation left them.
+ * Used by the DVS monitor page (stage index 1 = "DVS").
+ */
+export async function fetchStageItems(stageIndex: number): Promise<MondayItem[]> {
+  const PAGE = 200;
+  const query = `
+    query ($boardId: ID!, $cols: [String!]) {
+      boards(ids: [$boardId]) {
+        items_page(limit: ${PAGE}, query_params: { rules: [{ column_id: ${JSON.stringify(COL.stageAdvancer)}, compare_value: [${stageIndex}] }] }) {
+          cursor
+          items {
+            id
+            name
+            column_values(ids: $cols) { id text value }
+          }
+        }
+      }
+    }
+  `;
+  const data = await gql<{ boards: { items_page: { cursor: string | null; items: MondayItem[] } }[] }>(query, {
+    boardId: BOARD_ID,
+    cols: AUTH_READ_COLUMN_IDS,
+  });
+  const allItems: MondayItem[] = [...(data.boards?.[0]?.items_page?.items ?? [])];
+  let cursor = data.boards?.[0]?.items_page?.cursor ?? null;
+  while (cursor) {
+    try {
+      const nextQuery = `
+        query ($cursor: String!, $cols: [String!]) {
+          next_items_page(limit: ${PAGE}, cursor: $cursor) {
+            cursor
+            items { id name column_values(ids: $cols) { id text value } }
+          }
+        }
+      `;
+      const next = await gql<{ next_items_page: { cursor: string | null; items: MondayItem[] } }>(nextQuery, { cursor, cols: AUTH_READ_COLUMN_IDS });
+      const items = next.next_items_page?.items ?? [];
+      cursor = next.next_items_page?.cursor ?? null;
+      if (items.length > 0) allItems.push(...items);
+    } catch (e) { console.error("[fetchStageItems] pagination error", e); break; }
+  }
   return allItems;
 }
 

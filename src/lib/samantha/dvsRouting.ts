@@ -1,0 +1,58 @@
+/**
+ * dvsRouting.ts — who goes to the DVS stage, and when (HANDOFF-Josh-DVS.md
+ * §1/§7, v2 2026-07-20). The DVS stage is FULLY AUTOMATIC: the Stage
+ * Advancer flipping to "DVS" (STAGE_INDEX.dvs = 1, label verified on the
+ * live board) IS the bot trigger — these rules decide when the app's sends
+ * write that stage instead of their usual next stage.
+ *
+ *   - Benefits send: a patient whose served products ALL route to DVS
+ *     (Medicaid-billed supplies, or a straight-Medicaid primary) skips the
+ *     whole auth rail — stage → DVS directly.
+ *   - Submit Auth send: same all-DVS test (zero submission cards) → DVS
+ *     instead of Auth Outstanding.
+ *   - Auth Outstanding send: when the auth rail finishes (all non-DVS
+ *     products resolved) and the patient HAS DVS-routed products, stage →
+ *     DVS instead of Complete — the supplies still need their DVS run.
+ *
+ * NOTE: the handoff's primary entry ("skip patients get Stage Advancer →
+ * DVS straight from Profile Send-Off routing") is upstream board-automation
+ * work — until it exists, these send-time rules are how skip patients reach
+ * DVS. Straight-Medicaid patients normally never enter the rail at all
+ * (Josh, 2026-07-21); these rules are the app-side safety net when one does.
+ */
+import { isAutoFilledMedicaidSupply, resolveHcpcs } from "./hcpcRules";
+import type { Patient } from "./workflow";
+
+/** Straight NY Medicaid primary — everything the patient is served DVSes. */
+export function isStraightMedicaidPrimary(patient: Patient): boolean {
+  return (patient.primaryInsurance ?? "").trim() === "Medicaid";
+}
+
+/** Any served product that bills straight Medicaid (handled at DVS). */
+export function hasDvsRoutedProducts(patient: Patient): boolean {
+  if (isStraightMedicaidPrimary(patient)) {
+    return resolveHcpcs(
+      patient.primaryInsurance || null,
+      patient.serving || null,
+      patient.secondaryInsurance ?? null,
+    ).length > 0;
+  }
+  return resolveHcpcs(
+    patient.primaryInsurance || null,
+    patient.serving || null,
+    patient.secondaryInsurance ?? null,
+  ).some(isAutoFilledMedicaidSupply);
+}
+
+/** EVERY served product routes to DVS — the patient skips the auth rail
+ *  entirely (supplies-only Medicaid, or any straight-Medicaid primary). */
+export function allProductsDvsRouted(patient: Patient): boolean {
+  const resolved = resolveHcpcs(
+    patient.primaryInsurance || null,
+    patient.serving || null,
+    patient.secondaryInsurance ?? null,
+  );
+  if (resolved.length === 0) return false;
+  if (isStraightMedicaidPrimary(patient)) return true;
+  return resolved.every(isAutoFilledMedicaidSupply);
+}

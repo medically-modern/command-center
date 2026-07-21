@@ -11,6 +11,8 @@ import {
   fetchOversightData,
   fetchPriorityOptions,
   fetchPillColors,
+  approveProposedStuck,
+  returnProposedToQueue,
   CHART_DEFS,
   OVERSIGHT_SECTIONS,
   DAY_BUCKET_LABELS,
@@ -62,6 +64,22 @@ const CHART_ROUTES: Record<string, string | null> = {
   "confirm-receipt-escalated-3rd": "/confirm-receipt",
   "chase-fax-escalated-3rd": "/chase-fax",
   "chase-email-parachute-escalated-3rd": "/chase-parachute",
+  // Manager views (2026-07): merged escalation charts route like their base
+  // stage; Final Decisions charts have no rep page — decisions happen in the
+  // drill-down itself.
+  "evaluate-escalated-merged": "/evaluate",
+  "send-request-escalated-merged": "/send-request",
+  "confirm-receipt-escalated-merged": "/confirm-receipt",
+  "chase-fax-escalated-merged": "/chase-fax",
+  "chase-email-parachute-escalated-merged": "/chase-parachute",
+  "evaluate-proposed-stuck": null,
+  "send-request-proposed-stuck": null,
+  "confirm-receipt-proposed-stuck": null,
+  "chase-fax-proposed-stuck": null,
+  "chase-email-parachute-proposed-stuck": null,
+  "benefits-check-failed": null,
+  "dvs-retry-queue": null,
+  "dvs-stage": "/dvs",
   "benefits": "/benefits",
   "submit-auth": "/submit-auth",
   "auth-outstanding": "/auth-outstanding",
@@ -319,6 +337,135 @@ function StageChart({ chart, patients, priorityConfig, onChartClick, onBarClick 
   );
 }
 
+// ── StackedStageChart — two-series merged escalation chart ────────────────
+// Manager as Processor (ME): amber = Attempt 4+ below, red = 3rd+ round on
+// top (mockup rule: age is already the x-axis, so bars use SERIES colors,
+// not the day-bucket colors). Legend pills show the split; the count is the
+// deduped union.
+
+function StackedStageChart({
+  chart,
+  seriesA,
+  seriesB,
+  onChartClick,
+  onBarClick,
+}: {
+  chart: ChartDef;
+  /** Attempt 4+ pool with the 3rd+ overlap already removed. */
+  seriesA: OversightPatient[];
+  /** 3rd+ round pool (wins the dedup). */
+  seriesB: OversightPatient[];
+  onChartClick: () => void;
+  onBarClick: (bucket: DayBucketLabel) => void;
+}) {
+  const st = chart.stacked!;
+  const { aCounts, bCounts, maxCount, unknownCount } = useMemo(() => {
+    const a: Record<DayBucketLabel, number> = {} as Record<DayBucketLabel, number>;
+    const b: Record<DayBucketLabel, number> = {} as Record<DayBucketLabel, number>;
+    for (const label of DAY_BUCKET_LABELS) {
+      a[label] = 0;
+      b[label] = 0;
+    }
+    let unknown = 0;
+    for (const p of seriesA) {
+      if (p.dayBucket === "Unknown") unknown++;
+      else a[p.dayBucket]++;
+    }
+    for (const p of seriesB) {
+      if (p.dayBucket === "Unknown") unknown++;
+      else b[p.dayBucket]++;
+    }
+    const max = Math.max(1, ...DAY_BUCKET_LABELS.map((l) => a[l] + b[l]));
+    return { aCounts: a, bCounts: b, maxCount: max, unknownCount: unknown };
+  }, [seriesA, seriesB]);
+
+  const total = seriesA.length + seriesB.length;
+
+  return (
+    <div className="rounded-2xl border bg-card shadow-sm p-4 transition-all duration-200 text-left w-full border-border hover:shadow-md hover:ring-1 hover:ring-foreground/10">
+      <button
+        onClick={onChartClick}
+        className="flex items-start justify-between mb-3 w-full text-left group cursor-pointer"
+      >
+        <div className="min-w-0">
+          <h3 className="text-[0.95rem] font-bold tracking-tight text-foreground truncate group-hover:underline decoration-foreground/30 underline-offset-4">
+            {chart.title}
+          </h3>
+          <span className="inline-flex gap-1.5 mt-1">
+            <span
+              className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold"
+              style={{ backgroundColor: `${st.aColor}22`, color: "#92400e" }}
+            >
+              <span className="inline-block h-1.5 w-1.5 rounded-full" style={{ backgroundColor: st.aColor }} />
+              {st.aLabel}: {seriesA.length}
+            </span>
+            <span
+              className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold"
+              style={{ backgroundColor: `${st.bColor}22`, color: "#991b1b" }}
+            >
+              <span className="inline-block h-1.5 w-1.5 rounded-full" style={{ backgroundColor: st.bColor }} />
+              {st.bLabel}: {seriesB.length}
+            </span>
+          </span>
+        </div>
+        <span className="text-2xl font-bold text-foreground tabular-nums leading-none ml-2 shrink-0">
+          {total}
+        </span>
+      </button>
+
+      <div className="flex items-end gap-1.5 h-[200px]">
+        {DAY_BUCKET_LABELS.map((label) => {
+          const a = aCounts[label];
+          const b = bCounts[label];
+          const count = a + b;
+          return (
+            <button
+              key={label}
+              onClick={(e) => {
+                e.stopPropagation();
+                if (count > 0) onBarClick(label);
+              }}
+              className={cn(
+                "flex-1 flex flex-col items-center justify-end h-full group/bar",
+                count > 0 ? "cursor-pointer" : "cursor-default",
+              )}
+              title={`${label}: ${count} patient${count !== 1 ? "s" : ""} (${st.aLabel} ${a} · ${st.bLabel} ${b})`}
+            >
+              <span className="text-[9px] tabular-nums font-semibold mb-0.5 text-muted-foreground h-3">
+                {count > 0 ? count : ""}
+              </span>
+              <div className="w-full flex flex-col items-stretch justify-end flex-1 gap-px">
+                {/* red 3rd+ on top, amber Attempt 4+ below (mockup order) */}
+                {b > 0 && (
+                  <div
+                    className="w-full rounded-t-md group-hover/bar:opacity-80 transition-all duration-300"
+                    style={{ height: `${Math.max((b / maxCount) * 100, 4)}%`, backgroundColor: st.bColor }}
+                  />
+                )}
+                {a > 0 && (
+                  <div
+                    className={cn("w-full group-hover/bar:opacity-80 transition-all duration-300", b === 0 && "rounded-t-md")}
+                    style={{ height: `${Math.max((a / maxCount) * 100, 4)}%`, backgroundColor: st.aColor }}
+                  />
+                )}
+              </div>
+              <span className="text-[8px] mt-1 text-muted-foreground whitespace-nowrap">
+                {BUCKET_SHORT_LABELS[label]}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+
+      {unknownCount > 0 && (
+        <p className="text-[9px] text-muted-foreground mt-1.5 text-right">
+          +{unknownCount} unknown
+        </p>
+      )}
+    </div>
+  );
+}
+
 // ── DrilldownModal (overlay) ──────────────────────────────────────────────
 
 interface DrilldownModalProps {
@@ -331,6 +478,9 @@ interface DrilldownModalProps {
   onClose: () => void;
   onPatientClick: (patientId: string) => void;
   hasRoute: boolean;
+  /** Final Decisions charts (Manager Views §3): per-row Approve Stuck /
+   *  Return to Queue actions. Absent on every other chart. */
+  onDecision?: (patientId: string, action: "approve" | "return") => Promise<void>;
 }
 
 /** Sortable table header cell. */
@@ -389,8 +539,20 @@ function DrilldownModal({
   onClose,
   onPatientClick,
   hasRoute,
+  onDecision,
 }: DrilldownModalProps) {
   const [notesOpenId, setNotesOpenId] = useState<string | null>(null);
+  // Final Decisions actions — per-row busy lock while a decision writes.
+  const [decidingId, setDecidingId] = useState<string | null>(null);
+  const decide = async (patientId: string, action: "approve" | "return") => {
+    if (!onDecision || decidingId) return;
+    setDecidingId(patientId);
+    try {
+      await onDecision(patientId, action);
+    } finally {
+      setDecidingId(null);
+    }
+  };
   const [search, setSearch] = useState("");
   // sortKey: "name" | "days" | a column id; null = default (day bucket desc)
   const [sortKey, setSortKey] = useState<string | null>(null);
@@ -616,6 +778,11 @@ function DrilldownModal({
                       onClick={() => setSort(col.colId)}
                     />
                   ))}
+                  {onDecision && (
+                    <th className="text-left px-2 py-1.5 font-medium text-muted-foreground w-[210px]">
+                      Decision
+                    </th>
+                  )}
                 </tr>
               </thead>
               <tbody>
@@ -782,6 +949,29 @@ function DrilldownModal({
                           </td>
                         );
                       })}
+                      {onDecision && (
+                        <td className="px-2 py-1">
+                          <span className="flex gap-1.5" onClick={(e) => e.stopPropagation()}>
+                            <button
+                              onClick={() => decide(patient.id, "approve")}
+                              disabled={decidingId !== null}
+                              className="inline-flex items-center gap-1 rounded-md bg-amber-600 hover:bg-amber-700 disabled:opacity-50 text-white text-[11px] font-semibold px-2 py-1 transition-colors"
+                            >
+                              {decidingId === patient.id ? (
+                                <Loader2 className="h-3 w-3 animate-spin" />
+                              ) : null}
+                              Approve Stuck
+                            </button>
+                            <button
+                              onClick={() => decide(patient.id, "return")}
+                              disabled={decidingId !== null}
+                              className="inline-flex items-center rounded-md border border-border hover:bg-muted disabled:opacity-50 text-foreground/80 text-[11px] font-semibold px-2 py-1 transition-colors"
+                            >
+                              Return to Queue
+                            </button>
+                          </span>
+                        </td>
+                      )}
                     </tr>
                   );
                 })}
@@ -969,7 +1159,7 @@ export default function OversightTab() {
       // the escalated patient forward. The Confirm Receipt / Chase panels hide
       // the Confirmed / Not Confirmed actions for escalated patients unless
       // managerMode is on (?manager=1); ?escalated=1 styles the page as escalated.
-      if (expandedChart.endsWith("-escalations") || expandedChart.endsWith("-escalated-3rd")) {
+      if (expandedChart.endsWith("-escalations") || expandedChart.endsWith("-escalated-3rd") || expandedChart.endsWith("-escalated-merged")) {
         params.set("manager", "1");
         params.set("escalated", "1");
       }
@@ -1016,11 +1206,58 @@ export default function OversightTab() {
     () => (expandedChart ? CHART_DEFS.find((c) => c.id === expandedChart) : null),
     [expandedChart],
   );
-  const expandedPatients = useMemo(
+  const expandedPatients = useMemo(() => {
     // The drill-down honors the patient search too, so clicking the one
     // remaining bar shows the matched patient(s), not the whole bucket.
-    () => (expandedChart && data ? bySearch(data.get(expandedChart) ?? []) : []),
-    [expandedChart, data, bySearch],
+    if (!expandedChart || !data) return [];
+    const def = CHART_DEFS.find((c) => c.id === expandedChart);
+    if (def?.stacked) {
+      // Merged chart: union of both series, tagged via the synthetic
+      // __series__ column (red 3rd+ wins the dedup, same as the bars).
+      const st = def.stacked;
+      const b = bySearch(data.get(st.bId) ?? []);
+      const bIds = new Set(b.map((p) => p.id));
+      const aOnly = st.aId
+        ? bySearch(data.get(st.aId) ?? []).filter((p) => !bIds.has(p.id))
+        : [];
+      return [
+        ...b.map((p) => ({ ...p, cols: { ...p.cols, __series__: st.bLabel } })),
+        ...aOnly.map((p) => ({ ...p, cols: { ...p.cols, __series__: st.aLabel } })),
+      ];
+    }
+    return bySearch(data.get(expandedChart) ?? []);
+  }, [expandedChart, data, bySearch]);
+
+  // Final Decisions (§3): Approve writes the real Stuck (Advancer 2C) and
+  // clears the proposal; Return just clears the proposal. The row disappears
+  // optimistically; the silent refetch reconciles.
+  const handleDecision = useCallback(
+    async (patientId: string, action: "approve" | "return") => {
+      try {
+        if (action === "approve") await approveProposedStuck(patientId);
+        else await returnProposedToQueue(patientId);
+        toast.success(
+          action === "approve"
+            ? "Approved — patient marked Stuck"
+            : "Returned to the rep's queue",
+        );
+        setData((prev) => {
+          if (!prev) return prev;
+          const next = new Map(prev);
+          for (const [k, list] of next) {
+            if (k.endsWith("-proposed-stuck")) next.set(k, list.filter((p) => p.id !== patientId));
+          }
+          return next;
+        });
+        refetch(true);
+      } catch (e) {
+        toast.error(
+          `${action === "approve" ? "Approve Stuck" : "Return to Queue"} failed`,
+          { description: e instanceof Error ? e.message : String(e) },
+        );
+      }
+    },
+    [refetch],
   );
 
   // ── Render ────────────────────────────────────────────────────
@@ -1128,15 +1365,35 @@ export default function OversightTab() {
         for (const c of charts) for (const p of bySearch(data?.get(c.id) ?? [])) seen.add(p.id);
         const sectionTotal = seen.size;
 
-        const renderChart = (chart: ChartDef) => (
-          <StageChart
-            chart={chart}
-            patients={bySearch(data?.get(chart.id) ?? [])}
-            priorityConfig={priorityConfig}
-            onChartClick={() => handleChartClick(chart.id)}
-            onBarClick={(bucket) => handleBarClick(chart.id, bucket)}
-          />
-        );
+        const renderChart = (chart: ChartDef) => {
+          if (chart.stacked) {
+            // Two-series merged chart: series B (3rd+ round, red) wins the
+            // dedup — a patient matching both pools counts once, in red.
+            const b = bySearch(data?.get(chart.stacked.bId) ?? []);
+            const bIds = new Set(b.map((p) => p.id));
+            const aOnly = chart.stacked.aId
+              ? bySearch(data?.get(chart.stacked.aId) ?? []).filter((p) => !bIds.has(p.id))
+              : [];
+            return (
+              <StackedStageChart
+                chart={chart}
+                seriesA={aOnly}
+                seriesB={b}
+                onChartClick={() => handleChartClick(chart.id)}
+                onBarClick={(bucket) => handleBarClick(chart.id, bucket)}
+              />
+            );
+          }
+          return (
+            <StageChart
+              chart={chart}
+              patients={bySearch(data?.get(chart.id) ?? [])}
+              priorityConfig={priorityConfig}
+              onChartClick={() => handleChartClick(chart.id)}
+              onBarClick={(bucket) => handleBarClick(chart.id, bucket)}
+            />
+          );
+        };
 
         const renderGrid = (list: ChartDef[]) => (
           <div
@@ -1152,19 +1409,20 @@ export default function OversightTab() {
           </div>
         );
 
-        // For each primary chart, its escalated counterparts are the charts whose
-        // ids are `${chart.id}-escalations` (Attempt 4+ — only Confirm Receipt /
-        // Chase have one) and `${chart.id}-escalated-3rd` (3rd Attempt — all five).
+        // Row alignment (manager views 2026-07): a column-2/3 chart names the
+        // column-1 chart it sits beside via its rowOf field.
         const escFor = (chart: ChartDef) =>
-          secondaryCharts.find((s) => s.id === `${chart.id}-escalations`) ?? null;
+          secondaryCharts.find((s) => s.rowOf === chart.id) ?? null;
         const tertFor = (chart: ChartDef) =>
-          tertiaryCharts.find((s) => s.id === `${chart.id}-escalated-3rd`) ?? null;
+          tertiaryCharts.find((s) => s.rowOf === chart.id) ?? null;
 
-        const colHeader = (label: string, amber = false) => (
+        const colHeader = (label: string, tone: "gray" | "amber" | "rose" = "gray") => (
           <div
             className={cn(
               "text-xs font-bold uppercase tracking-[0.15em]",
-              amber ? "text-amber-600" : "text-muted-foreground",
+              tone === "amber" && "text-amber-600",
+              tone === "rose" && "text-rose-700",
+              tone === "gray" && "text-muted-foreground",
             )}
           >
             {label}
@@ -1206,9 +1464,9 @@ export default function OversightTab() {
                       rowGap: 16,
                     }}
                   >
-                    {colHeader("Active")}
-                    {colHeader(section.secondaryTitle ?? "Escalations", true)}
-                    {colHeader(section.tertiaryTitle ?? "Escalations", true)}
+                    {colHeader(section.primaryTitle ?? "Active")}
+                    {colHeader(section.secondaryTitle ?? "Escalations", "amber")}
+                    {colHeader(section.tertiaryTitle ?? "Escalations", "rose")}
                     {charts.map((chart) => {
                       const esc = escFor(chart);
                       const ter = tertFor(chart);
@@ -1233,8 +1491,8 @@ export default function OversightTab() {
                   aria-hidden
                 />
                 <div className="grid grid-cols-2 gap-x-12 gap-y-4">
-                  {colHeader("Active")}
-                  {colHeader(section.secondaryTitle ?? "Escalations", true)}
+                  {colHeader(section.primaryTitle ?? "Active")}
+                  {colHeader(section.secondaryTitle ?? "Escalations", "amber")}
                   {charts.map((chart) => {
                     const esc = escFor(chart);
                     return (
@@ -1265,6 +1523,7 @@ export default function OversightTab() {
           onClose={handleClose}
           onPatientClick={handlePatientClick}
           hasRoute={CHART_ROUTES[expandedChart!] !== null}
+          onDecision={expandedChartDef.decision === "proposed-stuck" ? handleDecision : undefined}
         />
       )}
 

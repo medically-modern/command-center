@@ -20,6 +20,7 @@ const WelcomeCallPage = lazyWithReload(() => import("./pages/WelcomeCallPage"));
 const ProfilePage = lazyWithReload(() => import("./pages/ProfilePage"));
 const SubmitAuthPage = lazyWithReload(() => import("./pages/SubmitAuthPage"));
 const AuthOutstandingPage = lazyWithReload(() => import("./pages/AuthOutstandingPage"));
+const DvsPage = lazyWithReload(() => import("./pages/DvsPage"));
 
 // Subscription Board
 const SubscriptionPage = lazyWithReload(() => import("./pages/SubscriptionPage"));
@@ -91,6 +92,7 @@ const App = () => (
           <Route path="/unverified-referrals" element={<ProfilePage variant="unverified" />} />
           <Route path="/submit-auth" element={<SubmitAuthPage />} />
           <Route path="/auth-outstanding" element={<AuthOutstandingPage />} />
+          <Route path="/dvs" element={<DvsPage />} />
           <Route path="/subscription" element={<SubscriptionPage />} />
           <Route path="/update-clinicals" element={<UpdateClinicalsPage />} />
           <Route path="/final-confirm" element={<FinalConfirmPage />} />

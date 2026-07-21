@@ -54,10 +54,13 @@ const MESH_STAGE_COL = "color_mm1wyr92";   // Stage Advancer
 const MESH_NAD_COL = "date_mm1wadgs";      // Next Action Date
 const MESH_ESC_COL = "color_mm1x7997";     // Escalation
 const MESH_METHOD_COL = "color_mm1xw7y5";  // Clinicals Method (chase fax/parachute split)
+const MESH_PROPOSED_STUCK_COL = "color_mm5f37ve"; // Proposed Stuck (propose→approve flow)
 // Samantha
 const SAM_ESC_COL = "color_mm2vsh2f";      // Escalation
 const SAM_FOLLOWUP_COL = "color_mm34jz1x"; // Follow Up
 const SAM_FOLLOWUP_DATE_COL = "date_mm34m2dz"; // Follow Up Date (daily bucket)
+const SAM_STAGE_COL = "color_mm1ws96t";    // Stage Advancer (DVS role count)
+const SAM_DVS_STAGE_INDEX = 1;             // "DVS" label index (verified 2026-07-21)
 // Welcome Call board (shared by welcomeCall + finalConfirm groups)
 const WC_ESC_COL = "color_mm1x7997";       // Escalation
 const WC_FOLLOWUP_COL = "color_mm38w2tk";  // Follow Up
@@ -204,6 +207,73 @@ async function fetchBoardGroupItemsLight(
   }
 }
 
+/** Board-wide light fetch by Stage Advancer INDEX — the DVS stage has no
+ *  dedicated group, so its items are found by the status value alone.
+ *  Mirrors both baseline generators (§5.8 counting contract). */
+async function fetchBoardStageItemsLight(
+  boardId: number,
+  stageColId: string,
+  stageIndex: number,
+  columnIds: string[],
+): Promise<LightItem[]> {
+  const PAGE = 500;
+  const token = getMondayToken();
+  if (!token) return [];
+  const itemFields = `id column_values(ids: $cols) { id text }`;
+
+  const toLight = (items: any[]): LightItem[] =>
+    items.map((i: any) => ({
+      id: String(i.id),
+      cols: Object.fromEntries(
+        (i.column_values ?? []).map((c: any) => [c.id, c.text ?? ""]),
+      ),
+    }));
+
+  const query = `
+    query ($bid: ID!, $cols: [String!]) {
+      boards(ids: [$bid]) {
+        items_page(limit: ${PAGE}, query_params: { rules: [{ column_id: ${JSON.stringify(stageColId)}, compare_value: [${stageIndex}] }] }) {
+          cursor
+          items { ${itemFields} }
+        }
+      }
+    }
+  `;
+  try {
+    const res = await fetch(MONDAY_API_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: token, ...mondayIdentityHeaders() },
+      body: JSON.stringify({ query, variables: { bid: boardId, cols: columnIds } }),
+    });
+    const json = await res.json();
+    const page = json?.data?.boards?.[0]?.items_page;
+    const out = toLight(Array.isArray(page?.items) ? page.items : []);
+    let cursor: string | null = page?.cursor ?? null;
+    while (cursor) {
+      const nextQuery = `
+        query ($cursor: String!, $cols: [String!]) {
+          next_items_page(limit: ${PAGE}, cursor: $cursor) {
+            cursor
+            items { ${itemFields} }
+          }
+        }
+      `;
+      const nextRes = await fetch(MONDAY_API_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: token, ...mondayIdentityHeaders() },
+        body: JSON.stringify({ query: nextQuery, variables: { cursor, cols: columnIds } }),
+      });
+      const nextJson = await nextRes.json();
+      const nextPage = nextJson?.data?.next_items_page;
+      out.push(...toLight(Array.isArray(nextPage?.items) ? nextPage.items : []));
+      cursor = nextPage?.cursor ?? null;
+    }
+    return out;
+  } catch {
+    return [];
+  }
+}
+
 export interface RoleCounts {
   [roleId: string]: number;
 }
@@ -319,12 +389,16 @@ export function useRoleCounts(opts?: { roleIds?: string[] }) {
           const items = await fetchBoardGroupItemsLight(
             MASHEKE_BOARD_ID,
             MESH_GROUPS.medicalNecessity,
-            [MESH_STAGE_COL, MESH_NAD_COL, MESH_ESC_COL, MESH_METHOD_COL],
+            [MESH_STAGE_COL, MESH_NAD_COL, MESH_ESC_COL, MESH_METHOD_COL, MESH_PROPOSED_STUCK_COL],
           );
           const nc: RoleCounts = { evaluate: 0, sendRequest: 0, confirmReceipt: 0, chaseFax: 0, chaseParachute: 0, chaseBenefits: 0 };
           const ec: RoleCounts = { evaluate: 0, sendRequest: 0, confirmReceipt: 0, chaseFax: 0, chaseParachute: 0, chaseBenefits: 0 };
           const ids: RolePatientIds = { evaluate: [], sendRequest: [], confirmReceipt: [], chaseFax: [], chaseParachute: [], chaseBenefits: [] };
           for (const item of items) {
+            // Proposed Stuck patients left the rep queues — they await the
+            // manager's Final Decision (mirrors masheke useMondayPatients +
+            // both baseline generators; §5.8 counting contract).
+            if (item.cols[MESH_PROPOSED_STUCK_COL] === "Proposed Stuck") continue;
             const stage = item.cols[MESH_STAGE_COL] ?? "";
             let roleId: string | null = null;
             if (stage === "Evaluate MN") roleId = "evaluate";
@@ -350,6 +424,21 @@ export function useRoleCounts(opts?: { roleIds?: string[] }) {
             }
           }
           merge(nc, ec, ids);
+        })(),
+      );
+    }
+
+    // DVS — patients at Stage Advancer "DVS" board-wide (no dedicated group;
+    // mirrors both baseline generators). Active = not escalated (a manual
+    // review flips the stage to Auth Denied anyway).
+    if (need("dvs")) {
+      boardTasks.push(
+        (async () => {
+          if (!samHasToken()) return;
+          const items = await fetchBoardStageItemsLight(SAM_BOARD_ID, SAM_STAGE_COL, SAM_DVS_STAGE_INDEX, [SAM_ESC_COL]);
+          const escN = items.filter((i) => i.cols[SAM_ESC_COL] === ESC_REQUIRED).length;
+          const active = items.filter((i) => i.cols[SAM_ESC_COL] !== ESC_REQUIRED);
+          merge({ dvs: active.length }, { dvs: escN }, { dvs: active.map((i) => i.id) });
         })(),
       );
     }

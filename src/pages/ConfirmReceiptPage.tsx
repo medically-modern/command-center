@@ -21,9 +21,9 @@ import { EscalationFormModal } from "@/components/shared/EscalationFormModal";
 import { PageLoadingOverlay } from "@/components/shared/PageLoadingOverlay";
 import { writeStatusIndex, writeLongText, COL } from "@/lib/masheke/mondayApi";
 import { ESCALATION_INDEX } from "@/lib/masheke/mondayMapping";
-import { StuckModal } from "@/components/masheke/StuckModal";
 import { useBackNavigation } from "@/hooks/useBackNavigation";
 import { ReportIssueButton } from "@/components/shared/ReportIssueButton";
+import { ProposeStuckModal } from "@/components/masheke/ProposeStuckModal";
 
 const ConfirmReceiptPage = () => {
   const navigate = useNavigate();
@@ -40,7 +40,6 @@ const ConfirmReceiptPage = () => {
   const [resetVersion, setResetVersion] = useState(0);
   const [blockedModalOpen, setBlockedModalOpen] = useState(false);
   const [escalationModalOpen, setEscalationModalOpen] = useState(false);
-  const [stuckModalOpen, setStuckModalOpen] = useState(false);
 
   // Auto-select the first patient the sidebar actually shows (same list math
   // as PatientsSidebar), never from the pre-fetch localStorage cache.
@@ -54,6 +53,9 @@ const ConfirmReceiptPage = () => {
     searchParams.get("patientId"),
   );
 
+  // Propose Stuck (Manager Views redesign §3) — replaces the old direct
+  // StuckModal; the manager approves/returns from Pipeline Oversight.
+  const [proposeStuckOpen, setProposeStuckOpen] = useState(false);
   const selected: Patient | undefined = useMemo(
     () => patients.find((p) => p.id === selectedId),
     [patients, selectedId],
@@ -103,13 +105,6 @@ const ConfirmReceiptPage = () => {
               </div>
               <div className="flex items-center gap-2">
                 {/* <Button
-                  onClick={() => setStuckModalOpen(true)}
-                  disabled={!selected}
-                  className="gap-2 bg-amber-600 hover:bg-amber-700 text-white shadow-elevate"
-                >
-                  <AlertTriangle className="h-4 w-4" /> Stuck
-                </Button> */}
-                {/* <Button
                   onClick={() => setBlockedModalOpen(true)}
                   disabled={!selected}
                   className="gap-2 bg-red-600 hover:bg-red-700 text-white shadow-elevate"
@@ -130,7 +125,23 @@ const ConfirmReceiptPage = () => {
                 <Button onClick={resetForNewPatient} disabled={!selected} className="gap-2 bg-white text-navy hover:bg-white/90 shadow-elevate">
                   <RotateCcw className="h-4 w-4" /> Reset
                 </Button>
+                <Button
+                  onClick={() => setProposeStuckOpen(true)}
+                  disabled={!selected}
+                  className="gap-2 bg-amber-600 hover:bg-amber-700 text-white shadow-elevate"
+                >
+                  <AlertTriangle className="h-4 w-4" /> Propose Stuck
+                </Button>
                 <ReportIssueButton />
+                {selected && (
+                  <ProposeStuckModal
+                    open={proposeStuckOpen}
+                    onOpenChange={setProposeStuckOpen}
+                    patientId={selected.id}
+                    patientName={selected.name}
+                    onSuccess={refetch}
+                  />
+                )}
               </div>
             </div>
           </header>
@@ -174,13 +185,6 @@ const ConfirmReceiptPage = () => {
             patientName={selected.name}
             writeEscalationStatus={async (id) => { await writeStatusIndex(id, COL.escalation, ESCALATION_INDEX.required); }}
             writeEscalationNotes={async (id, text) => { await writeLongText(id, COL.escalationNotes, text); }}
-            onSuccess={refetch}
-          /> */}
-          {/* <StuckModal
-            open={stuckModalOpen}
-            onOpenChange={setStuckModalOpen}
-            patientId={selected.id}
-            patientName={selected.name}
             onSuccess={refetch}
           /> */}
         </>

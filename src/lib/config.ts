@@ -25,6 +25,9 @@ export const ROLES: RoleConfig[] = [
   { id: "benefits",        label: "Benefits",           color: "bg-pink-500",    icon: "HeartPulse",     route: "/benefits"         },
   { id: "submitAuth",      label: "Submit Auth",        color: "bg-indigo-500",  icon: "FileCheck",      route: "/submit-auth"      },
   { id: "authOutstanding", label: "Auth Outstanding",   color: "bg-orange-500",  icon: "Clock",          route: "/auth-outstanding" },
+  // DVS — fully-automatic Medicaid verification stage (HANDOFF-Josh-DVS v2).
+  // The page is a read-only monitor; the bot does the work.
+  { id: "dvs",             label: "DVS",                color: "bg-cyan-600",    icon: "Zap",            route: "/dvs"              },
   { id: "welcomeCall",    label: "Welcome Call",     color: "bg-teal-500",    icon: "Phone",          route: "/welcome-call"     },
   { id: "finalConfirm",   label: "Final Profile Confirmation", color: "bg-lime-500", icon: "ShieldCheck", route: "/final-confirm" },
   { id: "subscription",   label: "Subscription",       color: "bg-rose-500",    icon: "RefreshCw",      route: "/subscription"     },

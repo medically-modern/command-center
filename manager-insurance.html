@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pipeline Oversight · Insurance</title>
+<style>
+/* =====================================================================
+   MANAGER VIEW · INSURANCE — mirrors the Medical Evaluation Pipeline
+   Oversight design (OversightTab.tsx). Same day buckets + colors as
+   src/lib/oversight/oversightApi.ts.
+   3 columns, rows horizontally aligned:
+   1 PROCESSOR OVERVIEW — Benefits → Submit Auth → Auth Outstanding → Auth Denial
+   2 MANAGER AS PROCESSOR — DVS Retry Queue (Submit Auth row) + Auth Denial
+   3 FINAL DECISIONS — Benefits Check Failed (aligned with Benefits row; display only)
+   ===================================================================== */
+:root{
+  --bg:#f7f9fb;--card:#fff;--border:#e5e7eb;--fg:#111827;--muted:#6b7280;
+  --accent:#f59e0b;--rose:#b91c1c;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;background:var(--bg);color:var(--fg);-webkit-font-smoothing:antialiased}
+.top{display:flex;align-items:center;gap:10px;padding:14px 24px;background:#fff;border-bottom:1px solid var(--border)}
+.top .back{font-size:1.1rem;color:var(--fg);text-decoration:none}
+.top .crumb{font-size:.95rem;font-weight:700}
+.page{padding:20px 24px 48px}
+.hrow{display:flex;align-items:center;gap:16px;flex-wrap:wrap}
+.hrow h1{font-size:1.5rem;font-weight:800;letter-spacing:-.02em}
+.pipesel{
+  font:inherit;font-size:.9rem;font-weight:600;padding:8px 34px 8px 12px;border-radius:10px;
+  border:2px solid #2563eb;background:#fff;appearance:none;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+  background-repeat:no-repeat;background-position:right 10px center;
+}
+.tot{font-size:.9rem;color:var(--muted)}
+.search{position:relative}
+.search input{font:inherit;font-size:.9rem;height:36px;width:230px;padding:0 12px 0 32px;border:1px solid var(--border);border-radius:8px;background:#fff;color:var(--fg)}
+.search svg{position:absolute;left:10px;top:50%;transform:translateY(-50%);color:#9ca3af}
+.subrow{display:flex;align-items:baseline;gap:10px;margin-top:10px}
+.subrow h2{font-size:1.1rem;font-weight:800}
+.subrow span{font-size:.85rem;color:var(--muted)}
+
+/* ── 3-column aligned grid ── */
+.board{position:relative;display:grid;grid-template-columns:1fr 1fr 1fr;column-gap:36px;row-gap:18px;margin-top:14px}
+.vline{position:absolute;top:0;bottom:0;width:2px;background:#f59e0b55}
+.vline.v1{left:calc(33.333% - 6px)}
+.vline.v2{left:calc(66.666% + 6px)}
+.colhead{font-size:.72rem;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);padding:2px 2px 0}
+.colhead.orange{color:var(--accent)}
+.colhead.rose{color:var(--rose)}
+
+/* ── chart card (OversightTab look) ── */
+.chart{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px 18px 12px;box-shadow:0 1px 2px rgb(0 0 0 / .04);display:flex;flex-direction:column}
+.chart .head{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}
+.chart .title{font-size:.95rem;font-weight:700;letter-spacing:-.01em}
+.chart .count{font-size:1.5rem;font-weight:800;line-height:1}
+.chart .note{margin-top:4px;font-size:.72rem;color:var(--muted);line-height:1.45}
+.bars{display:flex;align-items:flex-end;gap:6px;height:150px;margin-top:auto;padding-top:26px}
+.slot{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%;min-width:0}
+.slot .n{font-size:.62rem;font-weight:700;color:var(--fg);height:14px}
+.slot .bar{width:78%;border-radius:4px 4px 0 0;min-height:0}
+.axis{display:flex;gap:6px;margin-top:6px;border-top:1px solid var(--border);padding-top:5px}
+.axis span{flex:1;text-align:center;font-size:.58rem;color:#9ca3af;white-space:nowrap}
+</style>
+</head>
+<body>
+<div class="top">
+  <a class="back" href="#" onclick="return false">←</a>
+  <span class="crumb">Oversight</span>
+</div>
+<div class="page">
+  <div class="hrow">
+    <h1>Pipeline Oversight</h1>
+    <select class="pipesel"><option selected>Insurance</option><option>Medical Evaluation</option></select>
+    <span class="tot">223 total patients</span>
+    <span class="search">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+      <input type="text" placeholder="Search patient name...">
+    </span>
+  </div>
+  <div class="subrow"><h2>Insurance</h2><span id="ins-count"></span></div>
+
+  <div class="board" id="board">
+    <div class="vline v1"></div><div class="vline v2"></div>
+    <!-- rendered -->
+  </div>
+</div>
+
+<script>
+/* Day buckets + colors — verbatim from src/lib/oversight/oversightApi.ts */
+const BUCKETS=['0-2','3-5','6-8','9-12','13-15','16-20','21-29','30+'];
+const BUCKET_COLORS={'0-2':'#22c55e','3-5':'#84cc16','6-8':'#eab308','9-12':'#f97316','13-15':'#ef4444','16-20':'#dc2626','21-29':'#b91c1c','30+':'#7f1d1d'};
+
+/* Demo data. Each chart: title, bars {bucket:count}, optional note.
+   Grid placement keeps the rows horizontally aligned:
+   row 1  Benefits                | —                | Benefits (check failed)
+   row 2  Submit Auth             | DVS Retry Queue  | —
+   row 3  Auth Outstanding        | —                | —
+   row 4  Auth Denial             | Auth Denial      | Auth Denial             */
+const CHARTS=[
+  {col:1,row:2,title:'Benefits',bars:{'0-2':5,'3-5':2,'6-8':1,'30+':1}},
+  {col:1,row:3,title:'Submit Auth',bars:{'0-2':4,'3-5':2}},
+  {col:1,row:4,title:'Auth Outstanding',bars:{'0-2':3,'3-5':3,'6-8':2,'9-12':1,'21-29':1,'30+':1}},
+  {col:1,row:5,title:'Auth Denial',bars:{'9-12':1,'16-20':1,'30+':2}},
+  {col:2,row:3,title:'DVS — Retry Queue',bars:{'0-2':2,'3-5':2,'6-8':1}},
+  {col:2,row:5,title:'Auth Denial',bars:{'6-8':1,'13-15':1,'30+':1}},
+  {col:3,row:2,title:'Benefits',bars:{'0-2':1,'3-5':1,'13-15':1}},
+  {col:3,row:5,title:'Auth Denial',bars:{'9-12':1,'21-29':1,'30+':1}},
+];
+
+function chartHtml(c){
+  const total=BUCKETS.reduce((s,b)=>s+(c.bars[b]||0),0);
+  const max=Math.max(1,...BUCKETS.map(b=>c.bars[b]||0));
+  return `
+  <div class="chart" style="grid-column:${c.col};grid-row:${c.row}">
+    <div class="head">
+      <div>
+        <div class="title">${c.title}</div>
+        ${c.note?`<div class="note">${c.note}</div>`:''}
+      </div>
+      <div class="count">${total}</div>
+    </div>
+    <div class="bars">
+      ${BUCKETS.map(b=>{
+        const n=c.bars[b]||0;
+        const h=n?Math.max(10,Math.round(n/max*110)):0;
+        return `<div class="slot"><div class="n">${n||''}</div><div class="bar" style="height:${h}px;background:${BUCKET_COLORS[b]}"></div></div>`;
+      }).join('')}
+    </div>
+    <div class="axis">${BUCKETS.map(b=>`<span>${b}</span>`).join('')}</div>
+  </div>`;
+}
+
+const board=document.getElementById('board');
+board.insertAdjacentHTML('beforeend',`
+  <div class="colhead" style="grid-column:1;grid-row:1">Processor Overview</div>
+  <div class="colhead orange" style="grid-column:2;grid-row:1">Manager as Processor</div>
+  <div class="colhead rose" style="grid-column:3;grid-row:1">Final Decisions</div>
+`);
+CHARTS.forEach(c=>board.insertAdjacentHTML('beforeend',chartHtml(c)));
+document.getElementById('ins-count').textContent=
+  `${CHARTS.filter(c=>c.col===1).reduce((s,c)=>s+BUCKETS.reduce((t,b)=>t+(c.bars[b]||0),0),0)} patients`;
+</script>
+</body>
+</html>

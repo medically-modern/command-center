@@ -172,7 +172,9 @@ const AuthOutstandingPage = () => {
       selected.secondaryInsurance ?? null,
     ).filter((r) => !isAutoFilledMedicaidSupply(r)).length;
   }, [selected]);
-  const canComplete = !!selected && missing.length === 0 && nonDvsCount > 0;
+  // All-DVS patients CAN complete now — the send routes them to the DVS
+  // stage (dvsRouting in mondayWrite) instead of Complete.
+  const canComplete = !!selected && missing.length === 0;
 
   return (
     <SidebarProvider>
@@ -275,7 +277,7 @@ const AuthOutstandingPage = () => {
                     )}
                     {nonDvsCount === 0 && missing.length === 0 && (
                       <p className="mt-3 text-xs text-muted-foreground text-center">
-                        All of this patient's products are handled at the DVS stage — this page never advances their stage.
+                        All of this patient's products are handled at the DVS stage — completing sends them straight to DVS.
                       </p>
                     )}
                   </div>

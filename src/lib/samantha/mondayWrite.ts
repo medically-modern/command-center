@@ -35,6 +35,7 @@ import {
   patientHasMedicaidIns,
 } from "./benefitsDerive";
 import { derivedRecheckSos, effectiveResult } from "./authOutstandingReview";
+import { allProductsDvsRouted, hasDvsRoutedProducts } from "./dvsRouting";
 
 const MAX_RETRIES = 2;
 const RETRY_DELAY_MS = 800;
@@ -441,7 +442,10 @@ export async function sendPatientToMonday(
   let escalationDecision: EscalationDecision = manualEscalate ? "required" : "done";
 
   if (context === "submitAuth") {
-    stageWriteIndex = STAGE_INDEX.authOutstanding;
+    // DVS routing (HANDOFF-Josh-DVS §1): a patient with zero submission
+    // cards because EVERYTHING bills straight Medicaid goes to the DVS
+    // stage, not Auth Outstanding — the stage write itself triggers the bot.
+    stageWriteIndex = allProductsDvsRouted(p) ? STAGE_INDEX.dvs : STAGE_INDEX.authOutstanding;
     // submitAuth doesn't auto-touch escalation; manual toggle decides.
     // Follow Up Date → TODAY (ET), same-day not +1 — many auths approve
     // right away (Submit Auth redesign §7). This is the prerequisite for
@@ -506,8 +510,16 @@ export async function sendPatientToMonday(
       stageWriteIndex = STAGE_INDEX.authDenied;
       escalationDecision = "required"; // forced by denial regardless of toggle
     } else if (allResolved) {
-      stageWriteIndex = STAGE_INDEX.complete;
+      // Auth rail finished. Patients with Medicaid-routed supplies exit to
+      // the DVS stage (the stage write triggers the bot, HANDOFF-Josh-DVS
+      // §1/§7); everyone else completes as before.
+      stageWriteIndex = hasDvsRoutedProducts(p) ? STAGE_INDEX.dvs : STAGE_INDEX.complete;
       // escalation follows manualEscalate (already set above)
+    } else if (nonDvsEntries.length === 0 && entries.length > 0) {
+      // ALL products are DVS-routed — this patient never belonged on the
+      // auth rail. Send them to the DVS stage (supersedes the older
+      // "never advances" guard, which predates the DVS stage existing).
+      stageWriteIndex = STAGE_INDEX.dvs;
     }
     // else: partial → no Stage Advancer write; escalation still follows toggle
   } else {
@@ -516,6 +528,12 @@ export async function sendPatientToMonday(
     if (outcome === "all-clear") stageWriteIndex = STAGE_INDEX.complete;
     else if (outcome === "auth-required") stageWriteIndex = STAGE_INDEX.authorization;
     else stageWriteIndex = STAGE_INDEX.benefitsSos;
+    // DVS routing (HANDOFF-Josh-DVS §1): every served product bills straight
+    // Medicaid → skip Submit Auth / Auth Outstanding entirely, stage → DVS.
+    // A failed universal check still wins (blocker path escalates instead).
+    if (outcome !== "blocker" && outcome !== "incomplete" && allProductsDvsRouted(p)) {
+      stageWriteIndex = STAGE_INDEX.dvs;
+    }
     // Blocker condition force-elevates escalation.
     if (outcome === "blocker") escalationDecision = "required";
   }

@@ -143,8 +143,13 @@ export function useMondayPatients(activeTab: TabKey = "evaluate", injectedPatien
         }
       }
 
-      // Filter to patients whose Stage Advancer matches this tab
-      const filtered = allPatients.filter((p) => matchesTab(p.subStage, activeTab));
+      // Filter to patients whose Stage Advancer matches this tab. A patient
+      // with a pending stuck PROPOSAL leaves the stage queues immediately —
+      // they sit in Pipeline Oversight's Final Decisions until the manager
+      // approves (real Stuck) or returns them (proposal cleared).
+      const filtered = allPatients.filter(
+        (p) => matchesTab(p.subStage, activeTab) && !p.proposedStuck,
+      );
 
       const merged = filtered.map((p) => {
         const o = overlayRef.current.get(p.id);
@@ -155,7 +160,7 @@ export function useMondayPatients(activeTab: TabKey = "evaluate", injectedPatien
       // read-only "Chase Clinicals" folder. NOT part of `patients`, so it
       // never affects tab counts or the active list.
       const chase = allPatients
-        .filter((p) => p.subStage === "Chase Clinicals")
+        .filter((p) => p.subStage === "Chase Clinicals" && !p.proposedStuck)
         .map((p) => {
           const o = overlayRef.current.get(p.id);
           return o ? { ...p, ...o } : p;

@@ -51,8 +51,8 @@ The Python backends the SPA mirrors (financial estimate, DVS automations) live o
 |---|---|---|
 | **DTC Intake** | `18392794310` | Top of funnel; "Send To Medical Necessity" group feeds the pipeline. Read-only here (oversight/system-mgmt). |
 | **Profile Send Off** | `18406352652` | `profile` ("Verified Referrals") + `unverifiedReferrals` ("Unverified Referrals") — two roles, same board/group, split by Referral Type/Source (see §5.10). Its own board (groups: *Patient Intake → 1. Intake → Tests → Stuck → Completed*). Both roles work **1. Intake** (`group_mm1xf2jb`); two send-off exits: **Advance to MN** (`Move to Onboarding` → automation creates the Masheke item + moves to Completed) and **Send back to Patient Intake** (`moveItemToGroup` → `group_mm4vhqff`). **Not** the Welcome Call board. |
-| **Medical Evaluation** ("Masheke") | `18406060017` | `evaluate`, `sendRequest`, `confirmReceipt`, `chaseFax`, `chaseParachute`. Medical-necessity document collection. |
-| **Insurance** ("Samantha") | `18410601299` | `benefits`, `submitAuth`, `authOutstanding`, `authDenied`. Groups: Benefits, Submit Auth, Auth Outstanding, Auth Denied, Escalations, Complete/Stuck. |
+| **Medical Evaluation** ("Masheke") | `18406060017` | `evaluate`, `sendRequest`, `confirmReceipt`, `chaseFax`, `chaseParachute`. Medical-necessity document collection. Stuck is propose→approve (2026-07-21): reps write Proposed Stuck `color_mm5f37ve` + reason `text_mm5frng6`; managers approve from Oversight. |
+| **Insurance** ("Samantha") | `18410601299` | `benefits`, `submitAuth`, `authOutstanding`, `authDenied`, `dvs` (stage-based, no group — Stage Advancer index 1 "DVS", read-only monitor at `/dvs`). Groups: Benefits, Submit Auth, Auth Outstanding, Auth Denied, Escalations, Complete/Stuck. |
 | **Welcome Call** | `18410804557` | `welcomeCall` + `finalConfirm` (two roles, same board, different groups). See `BOARD_SCHEMA.md`. |
 | **Subscription Board - Updated** | `18407459988` | `subscription` role + one source for Patient Questions. |
 | **Secondary Claims Board** | `18413019028` | Second source for Patient Questions inbox. |
@@ -236,7 +236,11 @@ so any drift shows up as phantom +in/-out chips all day; change all three files 
 **Auth Outstanding is a PURE date bucket** (redesign 2026-07-21): snoozed iff Follow Up Date
 is in the future — the Follow Up STATUS column is ignored for that group and a blank date
 counts as due (`sidebarList.isSnoozedAuthOutstanding`; `samActive`/`countSamGroup` take a
-`dateOnlyBucket` flag). Benefits/Submit Auth keep the status-based rule. Roles
+`dateOnlyBucket` flag). Benefits/Submit Auth keep the status-based rule. **Masheke counts
+exclude Proposed Stuck patients** (`color_mm5f37ve` = "Proposed Stuck" — they await a manager
+decision in Oversight), and the **`dvs` role** counts Insurance items at Stage Advancer
+index 1 ("DVS") board-wide (no dedicated group) — both rules live in useRoleCounts + BOTH
+baseline generators + (for proposed stuck) masheke `useMondayPatients`; change them together. Roles
 **missing from the baseline** render as "not connected" in the Operations tab (never `0 → N`).
 The cron supports `DRY_RUN=1` (print, don't commit). **Second job (2026-07-21):** after the
 baseline commit it recalcs the Insurance board's **"Days Auth Outstanding"** number column
@@ -360,9 +364,14 @@ columns" automation on duplicated items). The SPA only flips the advancer; verif
 - **Pipeline Oversight** (`/system-mgmt?tab=oversight`, `components/oversight/OversightTab.tsx` +
   `lib/oversight/oversightApi.ts`) — the manager dashboard. A **stage dropdown** (Intake · Medical
   Evaluation · Insurance · Welcome Call) renders one stage's charts at a time, bucketed by
-  days-in-stage. Medical Evaluation has an **"Escalations · Attempt 4+"** sub-row (Confirm Receipt /
-  Chase Clinicals filtered by **MN Attempts** `color_mm1wz0vg` = `"Escalate"` — the board has no
-  literal "Attempt 4" label, so "Escalate" *is* the 4+ state). `lib/oversight/priority.ts` adds
+  days-in-stage. **Manager views (2026-07-21, `MANAGER_VIEWS_DVS_BUILD.md`):** Medical Evaluation
+  and Insurance use a 3-column scheme — Processor Overview / Manager as Processor / Final
+  Decisions — rows aligned via `ChartDef.rowOf`. ME column 2 stacks **Attempt 4+** (MN Attempts
+  `color_mm1wz0vg` = `"Escalate"` — the board has no literal "Attempt 4" label) with **3rd+ round**
+  per stage (dedup: 3rd+ wins). ME column 3 = **Proposed Stuck** charts whose drill-down has the
+  Oversight's first ACTION buttons: Approve Stuck (Advancer 2C = Stuck, then clear the proposal —
+  in that order) / Return to Queue (clear only). Insurance columns 2/3: DVS Retry Queue
+  (provisional) + Benefits check-failed, display-only. `lib/oversight/priority.ts` adds
   VIP/priority scoring (localStorage config). The open drill-down `{stage, chart, bucket}` is
   **mirrored to the URL** so Back from a patient's agent page returns to the exact drill-down (see the
   back-nav note in §9). **Keep oversight reads on the gateway:** `oversightApi.ts` must route through

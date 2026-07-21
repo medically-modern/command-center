@@ -40,6 +40,11 @@ export interface Patient {
   // Pipeline tracking
   masterStage?: string;
   subStage?: string;
+  /** "Proposed Stuck" while a stuck proposal awaits the manager's decision
+   *  (Manager Views redesign). Proposed patients leave the stage queues. */
+  proposedStuck?: string;
+  /** Rep's reason captured by the Propose Stuck modal. */
+  proposedStuckReason?: string;
   daysSinceIntake?: string;
   daysSinceStageStart?: string;
   dateOfIntake?: string;

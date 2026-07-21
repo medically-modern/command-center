@@ -48,6 +48,9 @@ export const FOLLOW_UP_INDEX = {
 // Stage Advancer indices
 export const STAGE_INDEX = {
   authDenied: 0,
+  /** "DVS" — the fully-automatic DVS stage (dvs-redesign v2, 2026-07).
+   *  Label verified on the live board 2026-07-21. */
+  dvs: 1,
   stuck: 2,
   benefitsSos: 3,
   authorization: 4,
@@ -439,6 +442,10 @@ export function mondayItemToPatient(item: MondayItem): Patient {
     daysSinceStage: daysSinceStage || undefined,
     daysSinceStageIndex,
     daysAuthOutstanding,
+    retryCount: (() => {
+      const t = cv(COL.retryCount)?.text?.trim() ?? "";
+      return t !== "" && Number.isFinite(Number(t)) ? Number(t) : undefined;
+    })(),
     followUp: followUpText,
     followUpDate,
     planName: cv(COL.planName)?.text || undefined,

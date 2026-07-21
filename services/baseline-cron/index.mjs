@@ -83,6 +83,7 @@ const MESH_STAGE_COL  = "color_mm1wyr92"; // Stage Advancer
 const MESH_NAD_COL    = "date_mm1wadgs";  // Next Action Date
 const MESH_ESC_COL    = "color_mm1x7997"; // Escalation
 const MESH_METHOD_COL = "color_mm1xw7y5"; // Clinicals Method (chase split)
+const MESH_PROPOSED_STUCK_COL = "color_mm5f37ve"; // Proposed Stuck (propose->approve flow)
 
 const WC_BOARD    = 18410804557;
 const WC_GROUP    = "group_mm1wvq8p";
@@ -189,13 +190,16 @@ async function countSamGroup(groupId, todayStr, dateOnlyBucket = false) {
 /** Masheke stages: split by Stage Advancer + Clinicals Method, filter esc + future NAD. */
 async function countMashekeStages(todayStr) {
   const items = await fetchGroupItems(MESH_BOARD, MESH_GROUP, [
-    MESH_STAGE_COL, MESH_NAD_COL, MESH_ESC_COL, MESH_METHOD_COL,
+    MESH_STAGE_COL, MESH_NAD_COL, MESH_ESC_COL, MESH_METHOD_COL, MESH_PROPOSED_STUCK_COL,
   ]);
 
   const counts = { evaluate: 0, sendRequest: 0, confirmReceipt: 0, chaseFax: 0, chaseParachute: 0, chaseBenefits: 0 };
   const ids = { evaluate: [], sendRequest: [], confirmReceipt: [], chaseFax: [], chaseParachute: [], chaseBenefits: [] };
 
   for (const item of items) {
+    // Proposed Stuck patients left the rep queues (manager Final Decision
+    // pending) — mirrors useRoleCounts + masheke useMondayPatients (SS5.8).
+    if (item.cols[MESH_PROPOSED_STUCK_COL] === "Proposed Stuck") continue;
     const stage = item.cols[MESH_STAGE_COL] ?? "";
     let roleId = null;
     if (stage === "Evaluate MN") roleId = "evaluate";
@@ -356,6 +360,48 @@ async function recalcDaysAuthOutstanding(todayStr) {
   if (failed > 0) throw new Error(`${failed} Days Auth Outstanding write(s) failed`);
 }
 
+
+/** Board-wide light fetch by Stage Advancer INDEX — the DVS stage has no
+ *  dedicated group. Mirrors useRoleCounts.fetchBoardStageItemsLight
+ *  (SS5.8 counting contract — change together). */
+async function fetchStageItems(boardId, stageColId, stageIndex, columnIds) {
+  const query = `
+    query ($bid: ID!, $cols: [String!]) {
+      boards(ids: [$bid]) {
+        items_page(limit: ${PAGE}, query_params: {
+          rules: [{ column_id: ${JSON.stringify(stageColId)}, compare_value: [${stageIndex}] }]
+        }) { cursor items { id column_values(ids: $cols) { id text } } }
+      }
+    }`;
+  const toLight = (items) =>
+    items.map((i) => ({
+      id: String(i.id),
+      cols: Object.fromEntries((i.column_values ?? []).map((c) => [c.id, c.text ?? ""])),
+    }));
+  const data = await gql(query, { bid: boardId, cols: columnIds });
+  const page = data?.boards?.[0]?.items_page;
+  const out = toLight(page?.items ?? []);
+  let cursor = page?.cursor ?? null;
+  while (cursor) {
+    const nextQuery = `
+      query ($cursor: String!, $cols: [String!]) {
+        next_items_page(limit: ${PAGE}, cursor: $cursor) { cursor items { id column_values(ids: $cols) { id text } } }
+      }`;
+    const next = await gql(nextQuery, { cursor, cols: columnIds });
+    out.push(...toLight(next?.next_items_page?.items ?? []));
+    cursor = next?.next_items_page?.cursor ?? null;
+  }
+  return out;
+}
+
+/** DVS role: Stage Advancer = "DVS" (index 1, verified 2026-07-21) board-wide,
+ *  not escalated. Mirrors useRoleCounts (SS5.8 counting contract). */
+async function countDvs() {
+  const items = await fetchStageItems(SAM_BOARD, "color_mm1ws96t", 1, [SAM_ESC_COL]);
+  const active = items.filter((i) => i.cols[SAM_ESC_COL] !== ESC_REQUIRED);
+  return { count: active.length, ids: active.map((i) => i.id) };
+}
+
 /* ── GitHub commit helper ─────────────────────────────────── */
 
 async function commitBaseline(baseline) {
@@ -410,6 +456,7 @@ async function main() {
   const [
     benefitsResult, submitAuthResult, authOutstandingResult,
     mashekeResult,
+    dvsResult,
     welcomeCallResult, finalConfirmResult,
     profileResult, subscriptionResult,
     systemMgmtCount,
@@ -418,6 +465,7 @@ async function main() {
     countSamGroup(SAM_GROUPS.submitAuth, easternDate),
     countSamGroup(SAM_GROUPS.authOutstanding, easternDate, true),
     countMashekeStages(easternDate),
+    countDvs(),
     countWelcomeCall(),
     countFinalConfirm(),
     countProfile(),
@@ -430,6 +478,7 @@ async function main() {
     submitAuth: submitAuthResult.count,
     authOutstanding: authOutstandingResult.count,
     ...mashekeResult.counts,
+    dvs: dvsResult.count,
     welcomeCall: welcomeCallResult.count,
     finalConfirm: finalConfirmResult.count,
     ...profileResult.counts,
@@ -442,6 +491,7 @@ async function main() {
     submitAuth: submitAuthResult.ids,
     authOutstanding: authOutstandingResult.ids,
     ...mashekeResult.ids,
+    dvs: dvsResult.ids,
     welcomeCall: welcomeCallResult.ids,
     finalConfirm: finalConfirmResult.ids,
     ...profileResult.ids,

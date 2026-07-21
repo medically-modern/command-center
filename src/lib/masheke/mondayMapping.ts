@@ -18,6 +18,11 @@ export const ADVANCER_2B_INDEX = { ready: 0, complete: 1, stuck: 2 } as const;
 export const ADVANCER_2C_INDEX = { ready: 0, complete: 1, stuck: 2 } as const;
 export const ADVANCER_2D_INDEX = { ready: 0, complete: 1 } as const;
 
+// ---- Proposed Stuck (Manager Views redesign 2026-07) ----
+// color_mm5f37ve — single label "Proposed Stuck" at index 1. Deliberately NOT
+// an Advancer 2C / Stage Advancer label so proposing fires no board automation.
+export const PROPOSED_STUCK_INDEX = { proposed: 1 } as const;
+
 // ---- Clinical eval status indices ----
 // Most checklist items share: 0=Evaluate, 1=Not Serving, 2=Collect, 3=Valid
 export const EVAL_STATUS = { evaluate: 0, notServing: 1, collect: 2, valid: 3 } as const;
@@ -87,6 +92,8 @@ export function mondayItemToPatient(item: MondayItem): Patient {
     patientEmail: col(item, "text_mm1xc140") || undefined,
     masterStage: col(item, "color_mm1ws96t") || undefined,
     subStage: col(item, "color_mm1wyr92") || undefined,
+    proposedStuck: col(item, "color_mm5f37ve") || undefined,
+    proposedStuckReason: col(item, "text_mm5frng6") || undefined,
     daysSinceIntake: col(item, "color_mm1xwabn") || undefined,
     daysSinceStageStart: col(item, "color_mm1wwm05") || undefined,
     dateOfIntake: col(item, "date_mm1wf43j") || undefined,
