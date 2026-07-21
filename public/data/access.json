@@ -58,7 +58,8 @@
         "benefits",
         "authOutstanding",
         "finalConfirm",
-        "dvs"
+        "dvs",
+        "updateClinicals"
       ],
       "roleOrder": {
         "profile": 1,
