@@ -40,6 +40,8 @@ import { toast } from "sonner";
 import { sendPatientToMonday } from "@/lib/samantha/mondayWrite";
 import { writeLongText, COL } from "@/lib/samantha/mondayApi";
 import { PageLoadingOverlay } from "@/components/shared/PageLoadingOverlay";
+import { SaveProgressOverlay } from "@/components/shared/SaveProgressOverlay";
+import type { WriteProgressPhase } from "@/lib/shared/verifiedWrite";
 import { useSearchParams } from "react-router-dom";
 import { useBackNavigation } from "@/hooks/useBackNavigation";
 import { ReportIssueButton } from "@/components/shared/ReportIssueButton";
@@ -62,6 +64,10 @@ const SubmitAuthPage = () => {
   /** Patient just sent successfully — suppress the panel until the board
    *  automation moves them off this list (same pattern as Benefits). */
   const [lastSentId, setLastSentId] = useState<string | null>(null);
+  // Blocking save overlay (Chase Clinicals precedent): a patient switch or
+  // edit while the verified send is in flight can clobber the transaction.
+  const [saving, setSaving] = useState(false);
+  const [savePhase, setSavePhase] = useState<WriteProgressPhase>("posting");
 
   // Auto-select the first patient the sidebar actually shows (same list math
   // as PatientsSidebar), never from the pre-fetch localStorage cache.
@@ -102,8 +108,10 @@ const SubmitAuthPage = () => {
   const handleSend = async () => {
     if (!selected) return;
     if (missing.length > 0) return;
+    setSaving(true);
+    setSavePhase("posting");
     try {
-      await sendPatientToMonday(selected, "submitAuth");
+      await sendPatientToMonday(selected, "submitAuth", { onProgress: setSavePhase });
       clearOverlay(selected.id);
       setLastSentId(selected.id);
       toast.success("Auth submission complete — sent to Monday");
@@ -111,12 +119,15 @@ const SubmitAuthPage = () => {
     } catch (e) {
       toast.error("Send to Monday failed", { description: e instanceof Error ? e.message : String(e) });
       throw e;
+    } finally {
+      setSaving(false);
     }
   };
 
   return (
     <SidebarProvider>
       <PageLoadingOverlay show={initialLoading} />
+      <SaveProgressOverlay open={saving} phase={savePhase} />
       <div className="min-h-screen flex w-full bg-gradient-subtle">
         <PatientsSidebar
           patients={patients}

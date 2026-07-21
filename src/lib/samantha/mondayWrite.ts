@@ -6,7 +6,7 @@
 // nothing is silently lost.
 
 import { writeStatusIndex, writeLongText, writeDropdownIds, writeDropdownLabels, writeText, writeDate, writeNumber, writeCheckbox, writeItemName, writePhone, writeEmail, writeSimpleValue, writeLocation, readColumnTexts, COL } from "./mondayApi";
-import { executeWritesWithVerification } from "../shared/verifiedWrite";
+import { executeWritesWithVerification, type WriteProgressPhase } from "../shared/verifiedWrite";
 import { resolveHcpcs, isAutoFilledMedicaidSupply, PRIMARY_INSURANCE_INDEX, SECONDARY_INSURANCE_INDEX } from "./hcpcRules";
 import type { PrimaryInsurance } from "./hcpcRules";
 import {
@@ -78,7 +78,11 @@ async function executeWithRetry(task: WriteTask): Promise<string | null> {
  *
  * Throws if any columns failed (after logging), so the UI shows an error.
  */
-export async function sendPatientToMonday(p: Patient, context: "benefits" | "submitAuth" | "authOutstanding" = "benefits"): Promise<void> {
+export async function sendPatientToMonday(
+  p: Patient,
+  context: "benefits" | "submitAuth" | "authOutstanding" = "benefits",
+  opts?: { onProgress?: (phase: WriteProgressPhase) => void },
+): Promise<void> {
   const rawIns = p.insurance ?? EMPTY_INSURANCE;
   const tasks: WriteTask[] = [];
 
@@ -1043,6 +1047,7 @@ export async function sendPatientToMonday(p: Patient, context: "benefits" | "sub
     executeWithRetry,
     readColumns: readColumnTexts,
     writeDebug: (id, msg) => writeText(id, COL.joshDebug, msg),
+    onProgress: opts?.onProgress,
   });
 
   if (failures.length > 0) {

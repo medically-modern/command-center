@@ -40,6 +40,8 @@ import { toast } from "sonner";
 import { sendPatientToMonday } from "@/lib/samantha/mondayWrite";
 import { writeLongText, COL } from "@/lib/samantha/mondayApi";
 import { PageLoadingOverlay } from "@/components/shared/PageLoadingOverlay";
+import { SaveProgressOverlay } from "@/components/shared/SaveProgressOverlay";
+import type { WriteProgressPhase } from "@/lib/shared/verifiedWrite";
 import { useSearchParams } from "react-router-dom";
 import { useBackNavigation } from "@/hooks/useBackNavigation";
 import { ReportIssueButton } from "@/components/shared/ReportIssueButton";
@@ -61,6 +63,10 @@ const ChaseBenefitsPage = () => {
    *  the checks/auths re-hydrate blank (they aren't readable on the Benefits
    *  group) and the "Missing before send" box would flash misleadingly. */
   const [lastSentId, setLastSentId] = useState<string | null>(null);
+  // Blocking save overlay (Chase Clinicals precedent): a patient switch or
+  // edit while the verified send is in flight can clobber the transaction.
+  const [saving, setSaving] = useState(false);
+  const [savePhase, setSavePhase] = useState<WriteProgressPhase>("posting");
 
   // Auto-select the first patient the sidebar actually shows (same list math
   // as PatientsSidebar), never from the pre-fetch localStorage cache.
@@ -135,8 +141,10 @@ const ChaseBenefitsPage = () => {
     // overlay clear / success takeover card); the sidebar refetch moves
     // them into the Escalated section instead.
     const gatedSend = anyUniversalNegative(selected.insurance ?? EMPTY_INSURANCE);
+    setSaving(true);
+    setSavePhase("posting");
     try {
-      await sendPatientToMonday(selected, "benefits");
+      await sendPatientToMonday(selected, "benefits", { onProgress: setSavePhase });
       if (gatedSend) {
         toast.success("Submitted — Escalation Required set on Monday");
       } else {
@@ -148,12 +156,15 @@ const ChaseBenefitsPage = () => {
     } catch (e) {
       toast.error("Send to Monday failed", { description: e instanceof Error ? e.message : String(e) });
       throw e;
+    } finally {
+      setSaving(false);
     }
   };
 
   return (
     <SidebarProvider>
       <PageLoadingOverlay show={initialLoading} />
+      <SaveProgressOverlay open={saving} phase={savePhase} />
       <div className="min-h-screen flex w-full bg-gradient-subtle">
         <PatientsSidebar
           patients={patients}

@@ -24,6 +24,8 @@ import { sendPatientToMonday } from "@/lib/samantha/mondayWrite";
 import { writeLongText, writeStatusIndex, COL } from "@/lib/samantha/mondayApi";
 import { EscalationFormModal } from "@/components/shared/EscalationFormModal";
 import { PageLoadingOverlay } from "@/components/shared/PageLoadingOverlay";
+import { SaveProgressOverlay } from "@/components/shared/SaveProgressOverlay";
+import type { WriteProgressPhase } from "@/lib/shared/verifiedWrite";
 import { ESCALATION_INDEX } from "@/lib/samantha/mondayMapping";
 import { FollowUpModal } from "@/components/samantha/FollowUpModal";
 import { useNavigate, useSearchParams } from "react-router-dom";
@@ -96,6 +98,10 @@ const AuthOutstandingPage = () => {
     searchParams.get("patientId") ?? null,
   );
   const [followUpOpen, setFollowUpOpen] = useState(false);
+  // Blocking save overlay (Chase Clinicals precedent): a patient switch or
+  // edit while the verified send is in flight can clobber the transaction.
+  const [saving, setSaving] = useState(false);
+  const [savePhase, setSavePhase] = useState<WriteProgressPhase>("posting");
 
   // Auto-select the first patient the sidebar actually shows (same list math
   // as PatientsSidebar), never from the pre-fetch localStorage cache.
@@ -203,19 +209,24 @@ const AuthOutstandingPage = () => {
 
   const handleSend = async () => {
     if (!selected) return;
+    setSaving(true);
+    setSavePhase("posting");
     try {
-      await sendPatientToMonday(selected, "authOutstanding");
+      await sendPatientToMonday(selected, "authOutstanding", { onProgress: setSavePhase });
       clearOverlay(selected.id);
       toast.success("Sent to Monday");
     } catch (e) {
       toast.error("Send to Monday failed", { description: e instanceof Error ? e.message : String(e) });
       throw e;
+    } finally {
+      setSaving(false);
     }
   };
 
   return (
     <SidebarProvider>
       <PageLoadingOverlay show={initialLoading} />
+      <SaveProgressOverlay open={saving} phase={savePhase} />
       <div className="min-h-screen flex w-full bg-gradient-subtle">
         <PatientsSidebar patients={patients} selectedId={selectedId} onSelect={setSelectedId} loading={loading} error={error} onRefresh={refetch} activeGroup="authOutstanding" managerMode={isManager} />
         <div className="flex-1 flex flex-col min-w-0">
