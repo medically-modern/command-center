@@ -400,10 +400,16 @@ async function fetchStageItems(boardId, stageColId, stageIndex, columnIds) {
 }
 
 /** DVS role: Stage Advancer = "DVS" (index 1, verified 2026-07-21) board-wide,
- *  not escalated. Mirrors useRoleCounts (SS5.8 counting contract). */
-async function countDvs() {
-  const items = await fetchStageItems(SAM_BOARD, SAM_STAGE_COL, 1, [SAM_ESC_COL]);
-  const active = items.filter((i) => i.cols[SAM_ESC_COL] !== ESC_REQUIRED);
+ *  not escalated, not date-snoozed (future Follow Up Date hides the patient —
+ *  same date-only rule as Auth Outstanding; blank date = due). Mirrors
+ *  useRoleCounts + DvsPage (SS5.8 counting contract). */
+async function countDvs(todayStr) {
+  const items = await fetchStageItems(SAM_BOARD, SAM_STAGE_COL, 1, [SAM_ESC_COL, SAM_FOLLOWUP_DATE_COL]);
+  const snoozed = (i) => {
+    const d = i.cols[SAM_FOLLOWUP_DATE_COL];
+    return !!d && d > todayStr;
+  };
+  const active = items.filter((i) => i.cols[SAM_ESC_COL] !== ESC_REQUIRED && !snoozed(i));
   return { count: active.length, ids: active.map((i) => i.id) };
 }
 
@@ -470,7 +476,7 @@ async function main() {
     countSamGroup(SAM_GROUPS.submitAuth, easternDate),
     countSamGroup(SAM_GROUPS.authOutstanding, easternDate, true),
     countMashekeStages(easternDate),
-    countDvs(),
+    countDvs(easternDate),
     countWelcomeCall(),
     countFinalConfirm(),
     countProfile(),

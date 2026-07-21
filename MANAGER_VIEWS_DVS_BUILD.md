@@ -150,9 +150,9 @@ or IP Auth Result (those fire automations). Both are named `[TEST]` — delete a
 ### Follow-up snooze on /dvs (directive #12)
 Same date-only rule as Auth Outstanding: **+1d** button writes Follow Up Date → tomorrow
 and hides the patient; a Follow Up section lists snoozed patients until their date arrives,
-with an undo. Counted identically in `useRoleCounts` (the dvs count is date-blind today —
-the bot owns the queue cadence; the snooze only affects the rep-facing list. If you want
-snoozed patients out of the count too, say so and all three counting twins change together).
+with an undo. **Snoozed patients are also excluded from the `dvs` role count** (Josh,
+2026-07-21 follow-up) — future Follow Up Date, blank counts as due — in `useRoleCounts`
+and both baseline `countDvs` (§5.8 counting contract), so the bar always matches the list.
 
 ### Profile Send-Off routing (directive #3) — NOT doable app-side today
 The Insurance-board item **does not exist** while the patient sits at Profile Send-Off /

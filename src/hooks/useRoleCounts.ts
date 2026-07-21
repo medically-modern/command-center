@@ -440,9 +440,17 @@ export function useRoleCounts(opts?: { roleIds?: string[] }) {
       boardTasks.push(
         (async () => {
           if (!samHasToken()) return;
-          const items = await fetchBoardStageItemsLight(SAM_BOARD_ID, SAM_STAGE_COL, SAM_DVS_STAGE_INDEX, [SAM_ESC_COL]);
+          const items = await fetchBoardStageItemsLight(SAM_BOARD_ID, SAM_STAGE_COL, SAM_DVS_STAGE_INDEX, [SAM_ESC_COL, SAM_FOLLOWUP_DATE_COL]);
           const escN = items.filter((i) => i.cols[SAM_ESC_COL] === ESC_REQUIRED).length;
-          const active = items.filter((i) => i.cols[SAM_ESC_COL] !== ESC_REQUIRED);
+          // Date-only snooze, same rule as Auth Outstanding (Josh 2026-07-21):
+          // a future Follow Up Date hides the patient from /dvs AND the count;
+          // blank date = due. Mirrors DvsPage `snoozed` + both baseline
+          // countDvs (§5.8 counting contract — change together).
+          const snoozedDvs = (i: (typeof items)[number]) => {
+            const d = i.cols[SAM_FOLLOWUP_DATE_COL];
+            return !!d && d > todayStr;
+          };
+          const active = items.filter((i) => i.cols[SAM_ESC_COL] !== ESC_REQUIRED && !snoozedDvs(i));
           merge({ dvs: active.length }, { dvs: escN }, { dvs: active.map((i) => i.id) });
         })(),
       );

@@ -239,8 +239,12 @@ counts as due (`sidebarList.isSnoozedAuthOutstanding`; `samActive`/`countSamGrou
 `dateOnlyBucket` flag). Benefits/Submit Auth keep the status-based rule. **Masheke counts
 exclude Proposed Stuck patients** (`color_mm5f37ve` = "Proposed Stuck" — they await a manager
 decision in Oversight), and the **`dvs` role** counts Insurance items at Stage Advancer
-index 1 ("DVS") board-wide (no dedicated group) — both rules live in useRoleCounts + BOTH
-baseline generators + (for proposed stuck) masheke `useMondayPatients`; change them together. Roles
+index 1 ("DVS") board-wide (no dedicated group), excluding Escalation Required AND
+date-snoozed patients (Follow Up Date in the future — same date-only rule as Auth
+Outstanding; mirrors the `/dvs` page list). Stage-DVS items are conversely EXCLUDED from the
+Benefits/Submit Auth/Auth Outstanding queues + counts (they linger in those groups — no
+group-move automation). All these rules live in useRoleCounts + BOTH baseline generators +
+the samantha/masheke `useMondayPatients` hooks; change them together. Roles
 **missing from the baseline** render as "not connected" in the Operations tab (never `0 → N`).
 The cron supports `DRY_RUN=1` (print, don't commit). **Second job (2026-07-21):** after the
 baseline commit it recalcs the Insurance board's **"Days Auth Outstanding"** number column
