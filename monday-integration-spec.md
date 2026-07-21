@@ -91,6 +91,35 @@ Each product also has Auth ID, Auth Start, and Auth End date fields:
 | Infusion Sets | `text_mm1xf6ht` | `date_mm1xrk1c` | `date_mm1xj3wp` |
 | Cartridges | `text_mm1xs6s8` | `date_mm1xp0vm` | `date_mm1xznf9` |
 
+## Days Auth Outstanding (added 2026-07-21)
+
+| Column | ID | Type | Semantics |
+|--------|----|------|-----------|
+| Days Auth Outstanding | `numeric_mm5f5ars` | numbers | Days since the **earliest** per-product Auth Submission Date. |
+
+**Owned by the backend, read-only in the SPA.** The `baseline-cron` Railway
+service recalculates it daily (9 AM ET weekdays) for every item in the Auth
+Outstanding group — an idempotent `today − earliest submission date`, never an
+increment, writing only when the value changed. Monday has no native
+"increment a number daily" automation, which is why a cron owns this column.
+The SPA prefers a live computation from the per-product submission dates and
+uses the column as fallback (`src/lib/samantha/authOutstandingDays.ts` — the
+counting contract twin of the cron's `recalcDaysAuthOutstanding`). Exists as a
+real column (not a frontend derivation) so it can drive board filters and
+future automations, e.g. "When Days Auth Outstanding changes, and only if it
+is > 14, set Escalation to Escalation Required".
+
+## Per-product partial save — "Save No Auth Needed" (added 2026-07-21)
+
+Auth Outstanding's product cards have a **Save No Auth Needed** button
+(visible when the card's Auth Result is No Auth Needed). It writes exactly one
+product to Monday immediately — auth result → `No Auth Needed` (index 3) plus
+a wipe of that product's Auth ID / Start / End / Units — through the verified
+write protocol with an **empty stage list**: Stage Advancer and Escalation are
+never touched, so no board automation fires and the patient stays in Auth
+Outstanding. `saveNoAuthNeededToMonday` in `src/lib/samantha/mondayWrite.ts`.
+The page-level **Send to Monday** remains the only stage-mover.
+
 ---
 
 ## API Examples

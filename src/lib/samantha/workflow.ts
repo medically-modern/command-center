@@ -490,6 +490,11 @@ export interface Patient {
   daysSinceStage?: string;
   /** Numeric index of the daysSinceStage status (higher = longer). */
   daysSinceStageIndex?: number;
+  /** "Days Auth Outstanding" number column — days since the earliest Auth
+   *  Submission Date across products. Written daily by baseline-cron; the
+   *  SPA prefers a live computation from the submission dates and uses this
+   *  as the fallback (see lib/samantha/authOutstandingDays.ts). */
+  daysAuthOutstanding?: number;
   // Stedi output (read-only Benefits header display — written upstream by
   // the stedi-monday-integration service / Profile Send-Off, never by us).
   planName?: string;

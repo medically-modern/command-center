@@ -20,6 +20,7 @@ import { toast } from "sonner";
 import { clearStatusColumn, writeDate, writeStatusIndex, COL } from "@/lib/samantha/mondayApi";
 import { FOLLOW_UP_INDEX } from "@/lib/samantha/mondayMapping";
 import { addDaysYmd, etTodayYmd } from "@/lib/samantha/benefitsDerive";
+import { daysAuthOutstanding } from "@/lib/samantha/authOutstandingDays";
 import { useSearchParams } from "react-router-dom";
 import { viewFilterFromParams } from "@/lib/roleView";
 import { sidebarSections } from "@/lib/samantha/sidebarList";
@@ -193,16 +194,35 @@ export function PatientsSidebar({ patients, selectedId, onSelect, loading, error
               <p className="text-[11px] text-muted-foreground truncate">
                 {p.primaryInsurance || "—"} · {p.serving || "—"}
               </p>
-              {isAuthOutstanding && p.daysSinceStage && (
-                <p className={cn(
-                  "text-[10px] font-medium truncate mt-0.5",
-                  (p.daysSinceStageIndex ?? 0) >= 3 ? "text-destructive" :
-                  (p.daysSinceStageIndex ?? 0) >= 2 ? "text-amber-400" :
-                  "text-muted-foreground",
-                )}>
-                  {p.daysSinceStage}
-                </p>
-              )}
+              {isAuthOutstanding && (() => {
+                // Days-outstanding row (redesign handoff §12) — days since the
+                // earliest Auth Submission Date (live compute, board-column
+                // fallback). Old "Days Since Stage" status label only when
+                // neither source has data.
+                const days = daysAuthOutstanding(p);
+                if (days !== null) {
+                  return (
+                    <p className={cn(
+                      "text-[10px] font-medium truncate mt-0.5",
+                      days >= 14 ? "text-destructive" :
+                      days >= 7 ? "text-amber-400" :
+                      "text-muted-foreground",
+                    )}>
+                      {days} {days === 1 ? "day" : "days"} outstanding
+                    </p>
+                  );
+                }
+                return p.daysSinceStage ? (
+                  <p className={cn(
+                    "text-[10px] font-medium truncate mt-0.5",
+                    (p.daysSinceStageIndex ?? 0) >= 3 ? "text-destructive" :
+                    (p.daysSinceStageIndex ?? 0) >= 2 ? "text-amber-400" :
+                    "text-muted-foreground",
+                  )}>
+                    {p.daysSinceStage}
+                  </p>
+                ) : null;
+              })()}
             </div>
           )}
         </SidebarMenuButton>

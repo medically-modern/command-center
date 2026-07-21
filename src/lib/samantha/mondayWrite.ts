@@ -1069,3 +1069,76 @@ export async function sendPatientToMonday(
   }
 }
 
+/**
+ * Per-product partial save — "Save No Auth Needed" (Auth Outstanding
+ * redesign handoff §4).
+ *
+ * Writes ONE product's auth-result column to "No Auth Needed" and clears
+ * that product's Auth ID / Start / End / Units, with NO Stage Advancer or
+ * Escalation write. Monday automations key on the Stage Advancer column and
+ * this path never touches it, so the patient stays in Auth Outstanding —
+ * the daily-check rep can persist a payer's "no auth needed" answer the
+ * moment she hears it and finish the rest (SoS recheck, other products,
+ * page-level complete) on a later pass.
+ *
+ * Still runs the full verified-write protocol (snapshot → write → read-back)
+ * so a silently-failed write surfaces as an error instead of looking saved.
+ */
+export async function saveNoAuthNeededToMonday(
+  p: Patient,
+  codeId: ProductCodeId,
+  opts?: { onProgress?: (phase: WriteProgressPhase) => void },
+): Promise<void> {
+  const productId = PRODUCT_CODE_TO_PRODUCT_ID[codeId];
+  const authColumnId = COL.authResult[productId];
+
+  const tasks: WriteTask[] = [
+    {
+      label: `Auth result: ${productId}`,
+      columnId: authColumnId,
+      expectedText: "No Auth Needed",
+      fn: () => writeStatusIndex(p.id, authColumnId, AUTH_RESULT_INDEX.noAuthNeeded),
+    },
+    // No auth exists, so the per-product auth detail columns are wiped —
+    // same treatment the full send applies for a no-auth-needed result.
+    {
+      label: `Auth ID (clear): ${productId}`,
+      columnId: COL.authId[productId],
+      fn: () => writeText(p.id, COL.authId[productId], ""),
+    },
+    {
+      label: `Auth Start (clear): ${productId}`,
+      columnId: COL.authStart[productId],
+      fn: () => writeDate(p.id, COL.authStart[productId], ""),
+    },
+    {
+      label: `Auth End (clear): ${productId}`,
+      columnId: COL.authEnd[productId],
+      fn: () => writeDate(p.id, COL.authEnd[productId], ""),
+    },
+    {
+      label: `Auth Units (clear): ${productId}`,
+      columnId: COL.authUnits[productId],
+      fn: () => writeNumber(p.id, COL.authUnits[productId], ""),
+    },
+  ];
+
+  // Empty stage list = every task is a verified data write and Phase 3
+  // (advance) writes nothing. Deliberate — see the function comment.
+  const failures = await executeWritesWithVerification({
+    itemId: p.id,
+    tasks,
+    stageColumnId: [],
+    executeWithRetry,
+    readColumns: readColumnTexts,
+    writeDebug: (id, msg) => writeText(id, COL.joshDebug, msg),
+    onProgress: opts?.onProgress,
+  });
+
+  if (failures.length > 0) {
+    throw new Error(
+      `${failures.length} column(s) failed after retries. Check "Josh Debug" column. Failed: ${failures.map((f) => f.split(":")[0]).join(", ")}`,
+    );
+  }
+}
+

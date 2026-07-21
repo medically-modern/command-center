@@ -9,6 +9,7 @@ import {
   ProductCodeId,
   ProductCodeState,
   EMPTY_INSURANCE,
+  PRODUCT_CODES,
 } from "@/lib/samantha/workflow";
 import { AuthOutstandingPanel } from "@/components/samantha/AuthOutstandingPanel";
 import { PatientsSidebar } from "@/components/samantha/PatientsSidebar";
@@ -20,7 +21,8 @@ import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { RotateCcw, Stethoscope, ArrowLeft, Clock, Save, Zap, CheckCircle2 } from "lucide-react";
 import { resolveHcpcs } from "@/lib/samantha/hcpcRules";
 import { toast } from "sonner";
-import { sendPatientToMonday } from "@/lib/samantha/mondayWrite";
+import { sendPatientToMonday, saveNoAuthNeededToMonday } from "@/lib/samantha/mondayWrite";
+import { daysAuthOutstanding } from "@/lib/samantha/authOutstandingDays";
 import { writeLongText, writeStatusIndex, COL } from "@/lib/samantha/mondayApi";
 import { EscalationFormModal } from "@/components/shared/EscalationFormModal";
 import { PageLoadingOverlay } from "@/components/shared/PageLoadingOverlay";
@@ -223,6 +225,32 @@ const AuthOutstandingPage = () => {
     }
   };
 
+  // Per-product partial save (redesign handoff §4): persist ONE product's
+  // "No Auth Needed" to Monday immediately — no Stage Advancer, no
+  // Escalation, nothing else. The patient stays in Auth Outstanding; the
+  // rest of the review continues locally until the page-level send.
+  const handleSaveNoAuthNeeded = async (codeId: ProductCodeId) => {
+    if (!selected) return;
+    const label = PRODUCT_CODES.find((c) => c.id === codeId)?.name ?? codeId;
+    setSaving(true);
+    setSavePhase("posting");
+    try {
+      await saveNoAuthNeededToMonday(selected, codeId, { onProgress: setSavePhase });
+      toast.success(`${label} saved as No Auth Needed — stage unchanged`);
+    } catch (e) {
+      toast.error(`Save No Auth Needed failed (${label})`, { description: e instanceof Error ? e.message : String(e) });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // "N days outstanding" badge — live-computed from the earliest Auth
+  // Submission Date, falling back to the cron-maintained board column.
+  const daysOut = useMemo(
+    () => (selected ? daysAuthOutstanding(selected) : null),
+    [selected],
+  );
+
   return (
     <SidebarProvider>
       <PageLoadingOverlay show={initialLoading} />
@@ -242,7 +270,7 @@ const AuthOutstandingPage = () => {
                 </div>
                 <div>
                   <p className="text-[10px] uppercase tracking-[0.2em] opacity-70">Medically Modern</p>
-                  <h1 className="text-2xl font-bold">Auth Outstanding</h1>{selected && (<p className="text-sm opacity-80 mt-0.5 flex items-center gap-2">{selected.name}{selected.escalated && <span className="inline-flex items-center rounded-full bg-red-500 text-white text-[10px] font-bold uppercase tracking-wide px-2 py-0.5">Escalated</span>}</p>)}
+                  <h1 className="text-2xl font-bold">Auth Outstanding</h1>{selected && (<p className="text-sm opacity-80 mt-0.5 flex items-center gap-2">{selected.name}{selected.escalated && <span className="inline-flex items-center rounded-full bg-red-500 text-white text-[10px] font-bold uppercase tracking-wide px-2 py-0.5">Escalated</span>}{daysOut !== null && (<span className={`inline-flex items-center gap-1 rounded-full text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 ${daysOut >= 14 ? "bg-red-500 text-white" : "bg-amber-400 text-amber-950"}`}><Clock className="h-3 w-3" />{daysOut} {daysOut === 1 ? "day" : "days"} outstanding</span>)}</p>)}
                 </div>
               </div>
               <div className="flex items-center gap-2">
@@ -279,7 +307,7 @@ const AuthOutstandingPage = () => {
                 <>
                   <PatientProfileCard patient={selected} onUpdate={(p) => update(selected.id, p)} />
                   <DvsClaimsVisual dvsStatus={selected.dvsStatus} claimsStatus={selected.claimsStatus} pumpDvsStatus={selected.pumpDvsStatus} />
-                  <AuthOutstandingPanel patient={selected} onCodeChange={updateCode} onNotesChange={(v) => update(selected.id, { notes: v })} onSaveNotesToMonday={(v) => writeLongText(selected.id, COL.callReferenceNotes, v)} />
+                  <AuthOutstandingPanel patient={selected} onCodeChange={updateCode} onNotesChange={(v) => update(selected.id, { notes: v })} onSaveNotesToMonday={(v) => writeLongText(selected.id, COL.callReferenceNotes, v)} onSaveNoAuthNeeded={handleSaveNoAuthNeeded} />
                   <EscalateButton
                     escalated={!!selected.escalated}
                     onToggle={() => update(selected.id, { escalated: !selected.escalated })}

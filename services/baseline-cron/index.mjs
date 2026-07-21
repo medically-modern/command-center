@@ -27,11 +27,22 @@
  *   subscription — all items in the group
  *   systemMgmt — escalated patients across all boards
  *
+ * ALSO (2026-07-21): after the baseline commit, recalcs the "Days Auth
+ * Outstanding" number column (numeric_mm5f5ars) for every item in the
+ * Insurance board's Auth Outstanding group — days since the EARLIEST
+ * per-product Auth Submission Date. Idempotent (today − date, never an
+ * increment), so a missed run self-heals on the next one; only writes when
+ * the value changed, so "when column changes" automations fire once per
+ * patient per day at most. Math mirrors
+ * src/lib/samantha/authOutstandingDays.ts (counting contract — change both).
+ *
  * Env vars:
  *   MONDAY_API_TOKEN  — Monday.com API token
  *   GITHUB_PAT        — GitHub personal access token with repo write
  *   GITHUB_REPO       — e.g. "medically-modern/command-center-test"
  *   DRY_RUN           — set to "1" to print the baseline instead of committing
+ *                       (also prints the days-recalc instead of writing it)
+ *   SKIP_DAYS_RECALC  — set to "1" to skip the Days Auth Outstanding recalc
  */
 
 const MONDAY_TOKEN = process.env.MONDAY_API_TOKEN;
@@ -55,6 +66,16 @@ const SAM_GROUPS  = {
 const SAM_ESC_COL      = "color_mm2vsh2f"; // Escalation
 const SAM_FOLLOWUP_COL = "color_mm34jz1x"; // Follow Up
 const SAM_FOLLOWUP_DATE_COL = "date_mm34m2dz"; // Follow Up Date (daily bucket)
+
+// Days Auth Outstanding recalc (Auth Outstanding group only)
+const SAM_DAYS_AUTH_OUT_COL = "numeric_mm5f5ars"; // Days Auth Outstanding (number)
+const SAM_AUTH_SUB_DATE_COLS = [ // per-product Auth Submission Date (TEXT, ISO)
+  "text_mm2wmc1z", // monitor
+  "text_mm2w85gd", // sensors
+  "text_mm2w72r6", // insulin pump
+  "text_mm2wvnpx", // infusion set
+  "text_mm2wth7t", // cartridge
+];
 
 const MESH_BOARD  = 18406060017;
 const MESH_GROUP  = "group_mm1xf2jb";
@@ -253,6 +274,83 @@ async function countEscalations() {
   return total;
 }
 
+/* ── Days Auth Outstanding recalc ─────────────────────────── */
+
+/** Normalize an Auth Submission Date to YYYY-MM-DD (ISO passthrough or
+ *  MM/DD/YYYY). Mirrors src/lib/samantha/authOutstandingDays.ts. */
+function normalizeYmd(raw) {
+  const s = (raw ?? "").trim();
+  if (!s) return "";
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  const us = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(s);
+  if (us) return `${us[3]}-${us[1].padStart(2, "0")}-${us[2].padStart(2, "0")}`;
+  return "";
+}
+
+/** Whole days from `fromYmd` to `toYmd` (UTC math). Null on bad input. */
+function daysBetweenYmd(fromYmd, toYmd) {
+  const a = /^(\d{4})-(\d{2})-(\d{2})$/.exec(fromYmd);
+  const b = /^(\d{4})-(\d{2})-(\d{2})$/.exec(toYmd);
+  if (!a || !b) return null;
+  const from = Date.UTC(Number(a[1]), Number(a[2]) - 1, Number(a[3]));
+  const to = Date.UTC(Number(b[1]), Number(b[2]) - 1, Number(b[3]));
+  return Math.round((to - from) / 86_400_000);
+}
+
+async function writeNumberColumn(itemId, columnId, value) {
+  await gql(
+    `mutation ($bid: ID!, $iid: ID!, $cid: String!, $val: String!) {
+       change_simple_column_value(board_id: $bid, item_id: $iid, column_id: $cid, value: $val) { id }
+     }`,
+    { bid: SAM_BOARD, iid: itemId, cid: columnId, val: value },
+  );
+}
+
+/** Recompute "Days Auth Outstanding" for every item in the Auth Outstanding
+ *  group: today (ET) minus the EARLIEST per-product Auth Submission Date.
+ *  Idempotent — never increments, so missed runs self-heal. Writes only when
+ *  the stored value differs (keeps "when column changes" automations to one
+ *  fire per patient per day); clears a stale value when no dates exist. */
+async function recalcDaysAuthOutstanding(todayStr) {
+  const items = await fetchGroupItems(SAM_BOARD, SAM_GROUPS.authOutstanding, [
+    ...SAM_AUTH_SUB_DATE_COLS,
+    SAM_DAYS_AUTH_OUT_COL,
+  ]);
+
+  let written = 0, cleared = 0, unchanged = 0, noDates = 0, failed = 0;
+  for (const item of items) {
+    const earliest = SAM_AUTH_SUB_DATE_COLS
+      .map((c) => normalizeYmd(item.cols[c]))
+      .filter(Boolean)
+      .sort()[0] ?? "";
+    const current = (item.cols[SAM_DAYS_AUTH_OUT_COL] ?? "").trim();
+
+    let next = ""; // blank = no submission dates recorded
+    if (earliest) {
+      const d = daysBetweenYmd(earliest, todayStr);
+      if (d !== null) next = String(Math.max(0, d));
+    }
+    if (!next) noDates++;
+
+    if (current === next || (current === "" && next === "")) { unchanged++; continue; }
+    if (DRY_RUN) {
+      console.log(`DRY_RUN: item ${item.id} Days Auth Outstanding "${current}" → "${next}"`);
+      continue;
+    }
+    try {
+      await writeNumberColumn(item.id, SAM_DAYS_AUTH_OUT_COL, next);
+      next === "" ? cleared++ : written++;
+    } catch (err) {
+      failed++;
+      console.error(`Days recalc failed for item ${item.id}:`, err.message ?? err);
+    }
+  }
+  console.log(
+    `Days Auth Outstanding recalc: ${items.length} items — ${written} written, ${unchanged} unchanged, ${cleared} cleared, ${noDates} without submission dates, ${failed} failed`,
+  );
+  if (failed > 0) throw new Error(`${failed} Days Auth Outstanding write(s) failed`);
+}
+
 /* ── GitHub commit helper ─────────────────────────────────── */
 
 async function commitBaseline(baseline) {
@@ -361,6 +459,20 @@ async function main() {
     console.log("DRY_RUN=1 — skipping GitHub commit");
   } else {
     await commitBaseline(baseline);
+  }
+
+  // Days Auth Outstanding — runs AFTER the baseline commit so a recalc
+  // failure never costs the day's baseline. Shared Monday boards ⇒ this one
+  // run covers both the test and prod SPAs.
+  if (process.env.SKIP_DAYS_RECALC === "1") {
+    console.log("SKIP_DAYS_RECALC=1 — skipping Days Auth Outstanding recalc");
+  } else {
+    try {
+      await recalcDaysAuthOutstanding(easternDate);
+    } catch (err) {
+      console.error("Days Auth Outstanding recalc failed:", err);
+      process.exitCode = 1; // surface in Railway without re-running the baseline
+    }
   }
   console.log("=== Baseline Cron Done ===");
 }

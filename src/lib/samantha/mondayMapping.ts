@@ -361,6 +361,13 @@ export function mondayItemToPatient(item: MondayItem): Patient {
     try { daysSinceStageIndex = JSON.parse(daysSinceRaw).index; } catch { /* ignore */ }
   }
 
+  // Days Auth Outstanding — number column recalced daily by baseline-cron
+  const daysAuthOutstandingText = cv(COL.daysAuthOutstanding)?.text?.trim() ?? "";
+  const daysAuthOutstanding =
+    daysAuthOutstandingText !== "" && Number.isFinite(Number(daysAuthOutstandingText))
+      ? Number(daysAuthOutstandingText)
+      : undefined;
+
   // Never Billed attestations (Medicare A&B)
   const neverBilledIsCarText = cv(COL.neverBilledIsCar)?.text?.trim().toLowerCase() ?? "";
   const neverBilledCgmText = cv(COL.neverBilledCgm)?.text?.trim().toLowerCase() ?? "";
@@ -431,6 +438,7 @@ export function mondayItemToPatient(item: MondayItem): Patient {
     stageAdvancerText,
     daysSinceStage: daysSinceStage || undefined,
     daysSinceStageIndex,
+    daysAuthOutstanding,
     followUp: followUpText,
     followUpDate,
     planName: cv(COL.planName)?.text || undefined,

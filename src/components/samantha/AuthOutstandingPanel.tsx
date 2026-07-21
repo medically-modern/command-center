@@ -15,10 +15,12 @@ import {
   type ProductId,
   type ResolvedProduct,
 } from "@/lib/samantha/hcpcRules";
+import { useState } from "react";
 import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 import { NotesPanel } from "@/components/samantha/NotesPanel";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Package, Repeat, Send, Inbox, ShieldCheck, CalendarDays } from "lucide-react";
+import { Package, Repeat, Send, Inbox, ShieldCheck, CalendarDays, Loader2, Save } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ClinicalsDownloadButton } from "./ClinicalsDownloadButton";
 import { FinalClinicalsUpload } from "./FinalClinicalsUpload";
@@ -28,6 +30,10 @@ interface Props {
   onCodeChange: (codeId: ProductCodeId, patch: Partial<ProductCodeState>) => void;
   onNotesChange: (v: string) => void;
   onSaveNotesToMonday?: (notes: string) => Promise<void>;
+  /** Per-product partial save (redesign handoff §4): writes THIS product's
+   *  "No Auth Needed" result (and wipes its auth fields) to Monday with no
+   *  Stage Advancer / Escalation side effects. */
+  onSaveNoAuthNeeded?: (codeId: ProductCodeId) => Promise<void>;
 }
 
 const PRODUCT_TO_CODE_ID: Record<ProductId, ProductCodeId> = {
@@ -38,7 +44,7 @@ const PRODUCT_TO_CODE_ID: Record<ProductId, ProductCodeId> = {
   cartridge: "cartridges",
 };
 
-export function AuthOutstandingPanel({ patient, onCodeChange, onNotesChange, onSaveNotesToMonday }: Props) {
+export function AuthOutstandingPanel({ patient, onCodeChange, onNotesChange, onSaveNotesToMonday, onSaveNoAuthNeeded }: Props) {
   const ins = patient.insurance ?? EMPTY_INSURANCE;
   const serving = patient.serving || "";
   const primaryInsurance = patient.primaryInsurance || "";
@@ -114,6 +120,7 @@ export function AuthOutstandingPanel({ patient, onCodeChange, onNotesChange, onS
                 state={state}
                 onChange={(patch) => onCodeChange(codeId, patch)}
                 primaryInsurance={primaryInsurance}
+                onSaveNoAuthNeeded={onSaveNoAuthNeeded ? () => onSaveNoAuthNeeded(codeId) : undefined}
               />
             );
           })}
@@ -140,10 +147,23 @@ interface BlockProps {
   state: ProductCodeState;
   onChange: (patch: Partial<ProductCodeState>) => void;
   primaryInsurance: string;
+  /** Bound per-product partial save — see Props.onSaveNoAuthNeeded. */
+  onSaveNoAuthNeeded?: () => Promise<void>;
 }
 
-function ProductAuthBlock({ meta, resolved, state, onChange, primaryInsurance }: BlockProps) {
+function ProductAuthBlock({ meta, resolved, state, onChange, primaryInsurance, onSaveNoAuthNeeded }: BlockProps) {
   const isRecurring = meta.cadence === "RECURRING";
+  const [savingNan, setSavingNan] = useState(false);
+
+  const handleSaveNan = async () => {
+    if (!onSaveNoAuthNeeded || savingNan) return;
+    setSavingNan(true);
+    try {
+      await onSaveNoAuthNeeded();
+    } finally {
+      setSavingNan(false);
+    }
+  };
 
   return (
     <div
@@ -320,6 +340,23 @@ function ProductAuthBlock({ meta, resolved, state, onChange, primaryInsurance }:
                 </SelectContent>
               </Select>
             </div>
+            {noAuthNeeded && onSaveNoAuthNeeded && (
+              <div className="sm:col-span-5 flex items-center justify-between gap-3 flex-wrap rounded-md border border-sky-300 bg-sky-50/60 dark:border-sky-800 dark:bg-sky-950/30 px-3 py-2.5">
+                <p className="text-[11px] text-sky-800 dark:text-sky-200 min-w-0">
+                  Saves <span className="font-semibold">{meta.name}</span> as No Auth Needed on Monday right now —
+                  no stage change, nothing else written. Finish the rest and Send to Monday when ready.
+                </p>
+                <Button
+                  size="sm"
+                  onClick={handleSaveNan}
+                  disabled={savingNan}
+                  className="gap-1.5 bg-sky-600 hover:bg-sky-700 text-white shrink-0"
+                >
+                  {savingNan ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
+                  Save No Auth Needed
+                </Button>
+              </div>
+            )}
             {state.sos === "skip" && state.authOutstandingResult === "no-auth-needed" && (
               <div className="sm:col-span-5 rounded-md border border-sky-300 bg-sky-50/60 dark:border-sky-800 dark:bg-sky-950/30 p-3">
                 <div className="flex items-start justify-between gap-2 mb-2">

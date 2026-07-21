@@ -202,6 +202,13 @@ export const COL = {
   // Days Since Stage Started (status — used for Auth Outstanding sorting)
   daysSinceStage: "color_mm1wwm05",
 
+  // Days Auth Outstanding (number — days since the EARLIEST Auth Submission
+  // Date across the patient's products). Maintained by the baseline-cron
+  // Railway service (daily idempotent recalc, see services/baseline-cron);
+  // the SPA only reads it. Real column (not a frontend derivation) so it can
+  // drive board filters and future automations (e.g. auto-escalate at N days).
+  daysAuthOutstanding: "numeric_mm5f5ars",
+
   // Debug / error logging
   joshDebug: "text_mm2w1qn4",
 
@@ -330,6 +337,7 @@ export const AUTH_READ_COLUMN_IDS = [
   // (it hydrates into every Call/Fax-method code; see mondayMapping).
   COL.callFaxNumber,
   COL.daysSinceStage,
+  COL.daysAuthOutstanding,
   COL.triggerDvs,
   COL.triggerPumpDvs,
   COL.claimsStatus,
