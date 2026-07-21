@@ -232,7 +232,11 @@ workday), and `deploy.yml` runs `scripts/snapshot-baseline.mjs` at **build time*
 when a committed baseline for today already exists. **Counting contract:** both generators must
 mirror `src/hooks/useRoleCounts.ts` exactly (same escalation/follow-up/NAD filters, same
 chaseFax/chaseParachute split) — `OperationsTab` compares baseline vs that hook's live counts,
-so any drift shows up as phantom +in/-out chips all day; change all three files together. Roles
+so any drift shows up as phantom +in/-out chips all day; change all three files together.
+**Auth Outstanding is a PURE date bucket** (redesign 2026-07-21): snoozed iff Follow Up Date
+is in the future — the Follow Up STATUS column is ignored for that group and a blank date
+counts as due (`sidebarList.isSnoozedAuthOutstanding`; `samActive`/`countSamGroup` take a
+`dateOnlyBucket` flag). Benefits/Submit Auth keep the status-based rule. Roles
 **missing from the baseline** render as "not connected" in the Operations tab (never `0 → N`).
 The cron supports `DRY_RUN=1` (print, don't commit). **Second job (2026-07-21):** after the
 baseline commit it recalcs the Insurance board's **"Days Auth Outstanding"** number column

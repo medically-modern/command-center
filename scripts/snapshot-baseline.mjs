@@ -149,16 +149,21 @@ async function fetchGroupItems(boardId, groupId, columnIds) {
 /* ── Role counters (each returns { count, ids }) ──────────── */
 
 /** Samantha group: active = not escalated AND not snoozed.
- *  Daily bucket (2026-07-20): a Follow Up only hides the patient while its
- *  date is in the FUTURE — when the date arrives (<= today ET) the patient
- *  counts active again; dateless follow-ups stay snoozed. Mirrors
- *  useRoleCounts.ts samActive + sidebarList.isSnoozedFollowUp (SS5.8
+ *  Daily bucket (2026-07-20), Benefits + Submit Auth: a Follow Up only
+ *  hides the patient while its date is in the FUTURE — when the date
+ *  arrives (<= today ET) the patient counts active again; dateless
+ *  follow-ups stay snoozed.
+ *  Auth Outstanding (redesign SS12, 2026-07-21): PURE date bucket — snoozed
+ *  iff Follow Up Date is in the future; the STATUS column is ignored and a
+ *  blank date counts as due. Mirrors useRoleCounts.ts samActive +
+ *  sidebarList (isSnoozedFollowUp / isSnoozedAuthOutstanding) (SS5.8
  *  counting contract — change all of them together). */
-async function countSamGroup(groupId, todayStr) {
+async function countSamGroup(groupId, todayStr, dateOnlyBucket = false) {
   const items = await fetchGroupItems(SAM_BOARD, groupId, [SAM_ESC_COL, SAM_FOLLOWUP_COL, SAM_FOLLOWUP_DATE_COL]);
   const snoozed = (i) => {
-    if (i.cols[SAM_FOLLOWUP_COL] !== "Follow Up") return false;
     const d = i.cols[SAM_FOLLOWUP_DATE_COL];
+    if (dateOnlyBucket) return !!d && d > todayStr;
+    if (i.cols[SAM_FOLLOWUP_COL] !== "Follow Up") return false;
     return !d || d > todayStr;
   };
   const active = items.filter((i) => i.cols[SAM_ESC_COL] !== ESC_REQUIRED && !snoozed(i));
@@ -286,7 +291,7 @@ async function main() {
   ] = await Promise.all([
     countSamGroup(SAM_GROUPS.benefits, easternDate),
     countSamGroup(SAM_GROUPS.submitAuth, easternDate),
-    countSamGroup(SAM_GROUPS.authOutstanding, easternDate),
+    countSamGroup(SAM_GROUPS.authOutstanding, easternDate, true),
     countMashekeStages(easternDate),
     countWelcomeCall(),
     countFinalConfirm(),

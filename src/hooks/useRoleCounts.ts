@@ -282,18 +282,23 @@ export function useRoleCounts(opts?: { roleIds?: string[] }) {
     const todayStr = new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
 
     // Samantha group → active (not escalated, not snoozed) + escalated.
-    // Daily bucket (2026-07-20): a Follow Up only hides the patient while
-    // its date is in the FUTURE — when the date arrives (≤ today ET) the
-    // patient counts active again. Dateless follow-ups stay snoozed.
-    // Mirrors sidebarList.isSnoozedFollowUp + both baseline generators
-    // (§5.8 counting contract — change all of them together).
-    const samActive = async (groupId: string, roleId: string) => {
+    // Daily bucket (2026-07-20), Benefits + Submit Auth: a Follow Up only
+    // hides the patient while its date is in the FUTURE — when the date
+    // arrives (≤ today ET) the patient counts active again. Dateless
+    // follow-ups stay snoozed.
+    // Auth Outstanding (redesign §12, 2026-07-21): PURE date bucket —
+    // snoozed iff Follow Up Date is in the future; the STATUS column is
+    // ignored and a blank date counts as due.
+    // Mirrors sidebarList (isSnoozedFollowUp / isSnoozedAuthOutstanding) +
+    // both baseline generators (§5.8 counting contract — change together).
+    const samActive = async (groupId: string, roleId: string, dateOnlyBucket = false) => {
       if (!samHasToken()) return;
       const items = await fetchBoardGroupItemsLight(SAM_BOARD_ID, groupId, [SAM_ESC_COL, SAM_FOLLOWUP_COL, SAM_FOLLOWUP_DATE_COL]);
       const escN = items.filter((i) => i.cols[SAM_ESC_COL] === ESC_REQUIRED).length;
       const snoozed = (i: (typeof items)[number]) => {
-        if (i.cols[SAM_FOLLOWUP_COL] !== "Follow Up") return false;
         const d = i.cols[SAM_FOLLOWUP_DATE_COL];
+        if (dateOnlyBucket) return !!d && d > todayStr;
+        if (i.cols[SAM_FOLLOWUP_COL] !== "Follow Up") return false;
         return !d || d > todayStr;
       };
       const active = items.filter((i) => i.cols[SAM_ESC_COL] !== ESC_REQUIRED && !snoozed(i));
@@ -305,7 +310,7 @@ export function useRoleCounts(opts?: { roleIds?: string[] }) {
 
     if (need("benefits")) boardTasks.push(samActive(SAM_GROUPS.benefits, "benefits"));
     if (need("submitAuth")) boardTasks.push(samActive(SAM_GROUPS.submitAuth, "submitAuth"));
-    if (need("authOutstanding")) boardTasks.push(samActive(SAM_GROUPS.authOutstanding, "authOutstanding"));
+    if (need("authOutstanding")) boardTasks.push(samActive(SAM_GROUPS.authOutstanding, "authOutstanding", true));
 
     if (needAny("evaluate", "sendRequest", "confirmReceipt", "chaseFax", "chaseParachute", "chaseBenefits")) {
       boardTasks.push(

@@ -118,7 +118,32 @@ a wipe of that product's Auth ID / Start / End / Units — through the verified
 write protocol with an **empty stage list**: Stage Advancer and Escalation are
 never touched, so no board automation fires and the patient stays in Auth
 Outstanding. `saveNoAuthNeededToMonday` in `src/lib/samantha/mondayWrite.ts`.
-The page-level **Send to Monday** remains the only stage-mover.
+The page-level **Auth Review Complete** remains the only stage-mover.
+
+**Recheck round-trip:** the saved product stays in the **Skip SoS Products**
+dropdown (`dropdown_mm31163t`) — that's what keeps its card open with "SoS
+recheck pending" across reloads. When the rep later records the recheck facts
+(Last Bill Date + Units, or No Billing History) and completes the review, the
+derived Clear/Not-Clear moves the product out of Skip into **Not Clear
+Products** (or clean out of both), the facts land in the `sosLastBill` /
+`sosUnits` / `sosNeverBilled` columns (additive — other products' Benefits
+facts are never cleared from this page), and the legacy per-product
+`lastBillDate` columns keep their existing presence-encodes-Not-Clear
+semantics. Rules in `src/lib/samantha/authOutstandingReview.ts`.
+
+## Auth Outstanding daily bucket (2026-07-21, redesign §12)
+
+The Auth Outstanding list is a **pure date bucket**: a patient is snoozed iff
+**Follow Up Date (`date_mm34m2dz`) is in the future**. The Follow Up STATUS
+column is **ignored on this stage** (Benefits / Submit Auth keep the
+status-based rule), and a **blank date counts as due** so legacy items never
+fall out of the bucket. Submit Auth stamps the date same-day on submission;
+the **"Auth Still Outstanding"** button on the patient view makes exactly one
+write — Follow Up Date → tomorrow — no stage, no escalation, no per-product
+writes. Counting contract (CLAUDE.md §5.8): `sidebarList.ts`
+(`isSnoozedAuthOutstanding`), `useRoleCounts.ts` (`samActive` dateOnlyBucket),
+`scripts/snapshot-baseline.mjs` and `services/baseline-cron/index.mjs`
+(`countSamGroup` dateOnlyBucket) — change all of them together.
 
 ---
 

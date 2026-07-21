@@ -128,20 +128,69 @@ describe("sidebarVisibleList — authOutstanding sort", () => {
   });
 
   it("re-sorts the escalated main list too, but never the follow-up section", () => {
+    // Snoozing on Auth Outstanding is date-only (§12) — a future Follow Up
+    // Date moves the patient to the follow-up section, which keeps input
+    // order even on Auth Outstanding.
     const patients = [
       p({ id: "esc0", escalated: true, daysSinceStageIndex: 0 }),
       p({ id: "esc2", escalated: true, daysSinceStageIndex: 2 }),
-      p({ id: "fuLate", followUp: "Follow Up", daysSinceStageIndex: 0 }),
-      p({ id: "fuEarly", followUp: "Follow Up", daysSinceStageIndex: 5 }),
+      p({ id: "fuLate", followUpDate: "2099-01-01", daysSinceStageIndex: 0 }),
+      p({ id: "fuEarly", followUpDate: "2099-01-02", daysSinceStageIndex: 5 }),
     ];
     expect(ids(sidebarVisibleList(patients, "escalated", "authOutstanding"))).toEqual([
       "esc2",
       "esc0",
     ]);
-    // Follow-up section keeps input order even on Auth Outstanding.
     expect(ids(sidebarVisibleList(patients, "nonEscalated", "authOutstanding"))).toEqual([
       "fuLate",
       "fuEarly",
+    ]);
+  });
+});
+
+describe("daily bucket — Auth Outstanding date-only rule (2026-07-21, §12)", () => {
+  const TODAY = "2026-07-21";
+
+  it("the Follow Up STATUS alone never snoozes on this stage; only a future date does", () => {
+    const patients = [
+      p({ id: "statusOnly", followUp: "Follow Up" }), // dateless legacy — DUE here
+      p({ id: "futureDate", followUpDate: "2026-07-22" }),
+      p({ id: "dueToday", followUp: "Follow Up", followUpDate: "2026-07-21" }),
+      p({ id: "blank" }),
+    ];
+    expect(ids(sidebarVisibleList(patients, "nonEscalated", "authOutstanding", TODAY))).toEqual([
+      "statusOnly",
+      "dueToday",
+      "blank",
+      "futureDate", // follow-up section below the main list
+    ]);
+    // Same patients on Benefits keep the status-based rule: statusOnly snoozed.
+    expect(ids(sidebarVisibleList(patients, "nonEscalated", "benefits", TODAY))).toEqual([
+      "futureDate",
+      "dueToday",
+      "blank",
+      "statusOnly",
+    ]);
+  });
+
+  it("sorts the due list by days outstanding (earliest auth submission first), fallback daysSinceStageIndex", () => {
+    const withSub = (id: string, date: string) =>
+      p({
+        id,
+        insurance: {
+          universal: { "in-network": "", active: "", "dme-benefits": "" },
+          codes: { pump: { status: "pending", authSubmissionDate: date } },
+        } as Patient["insurance"],
+      });
+    const patients = [
+      withSub("newer", "2026-07-20"),
+      withSub("older", "2026-07-01"),
+      p({ id: "noDates", daysSinceStageIndex: 9 }),
+    ];
+    expect(ids(sidebarVisibleList(patients, "nonEscalated", "authOutstanding", TODAY))).toEqual([
+      "older",
+      "newer",
+      "noDates",
     ]);
   });
 });

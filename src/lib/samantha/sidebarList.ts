@@ -8,14 +8,23 @@ import type { Patient } from "@/lib/samantha/workflow";
 import type { RoleFilter } from "@/lib/accessStore";
 import type { SidebarGroup } from "@/hooks/samantha/useMondayPatients";
 import { etTodayYmd } from "@/lib/samantha/benefitsDerive";
+import { isSnoozedAuthOutstanding } from "@/lib/samantha/authOutstandingReview";
+import { daysAuthOutstanding } from "@/lib/samantha/authOutstandingDays";
 
 /**
- * Daily-bucket rule (2026-07-20): a Follow Up only hides the patient while
- * its date is in the FUTURE. When the date arrives (≤ today, ET) the
- * patient auto-returns to the active list — no manual "clear" needed.
- * A dateless Follow Up stays snoozed until cleared (legacy behavior).
+ * Daily-bucket rule (2026-07-20), Benefits + Submit Auth: a Follow Up only
+ * hides the patient while its date is in the FUTURE. When the date arrives
+ * (≤ today, ET) the patient auto-returns to the active list — no manual
+ * "clear" needed. A dateless Follow Up stays snoozed until cleared (legacy
+ * behavior).
+ *
+ * AUTH OUTSTANDING uses the pure-date rule instead (redesign §12,
+ * 2026-07-21): snoozed iff Follow Up Date is in the future — the STATUS
+ * column is ignored, and a blank date counts as due (legacy items must
+ * never fall out of the bucket). See isSnoozedAuthOutstanding.
+ *
  * The role counts (useRoleCounts + both baseline generators) apply the
- * SAME rule — change them together (CLAUDE.md §5.8 counting contract).
+ * SAME rules — change them together (CLAUDE.md §5.8 counting contract).
  */
 export function isSnoozedFollowUp(p: Patient, todayYmd: string): boolean {
   if (p.followUp !== "Follow Up") return false;
@@ -55,7 +64,11 @@ export function sidebarSections(
 ): SidebarSections {
   const escalatedOnly = viewFilter === "escalated";
   const includeEscalated = viewFilter !== "nonEscalated";
-  const snoozed = (p: Patient) => isSnoozedFollowUp(p, todayYmd);
+  // Auth Outstanding: pure date bucket (§12). Other groups: status + date.
+  const snoozed = (p: Patient) =>
+    activeGroup === "authOutstanding"
+      ? isSnoozedAuthOutstanding(p, todayYmd)
+      : isSnoozedFollowUp(p, todayYmd);
 
   const escalatedPatients = escalatedOnly || !includeEscalated
     ? []
@@ -70,11 +83,18 @@ export function sidebarSections(
     ? []
     : patients.filter((p) => p.escalated && snoozed(p));
 
-  // For Auth Outstanding, sort the main list by daysSinceStageIndex descending
-  // (longest in system first). Other groups keep Monday order.
+  // For Auth Outstanding, sort the main list by days outstanding descending
+  // (longest first — live-computed from the earliest Auth Submission Date,
+  // board column as fallback), then by the legacy daysSinceStageIndex.
+  // Other groups keep Monday order.
   const sortedPatients = activeGroup !== "authOutstanding"
     ? activePatients
-    : [...activePatients].sort((a, b) => (b.daysSinceStageIndex ?? -1) - (a.daysSinceStageIndex ?? -1));
+    : [...activePatients].sort((a, b) => {
+        const da = daysAuthOutstanding(a, todayYmd) ?? -1;
+        const db = daysAuthOutstanding(b, todayYmd) ?? -1;
+        if (db !== da) return db - da;
+        return (b.daysSinceStageIndex ?? -1) - (a.daysSinceStageIndex ?? -1);
+      });
 
   return { activePatients, sortedPatients, followUpPatients, escalatedPatients, bothPatients };
 }

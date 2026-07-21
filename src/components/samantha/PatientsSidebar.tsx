@@ -160,7 +160,9 @@ export function PatientsSidebar({ patients, selectedId, onSelect, loading, error
     : patients;
 
   const collapsed = state === "collapsed";
-  const [groupByIns, setGroupByIns] = useState(false);
+  // Auth Outstanding defaults to group-by-payer (redesign §12); the toggle
+  // still lets the rep flatten the list.
+  const [groupByIns, setGroupByIns] = useState(activeGroup === "authOutstanding");
 
   const activeLabel = GROUP_LABELS[activeGroup];
 

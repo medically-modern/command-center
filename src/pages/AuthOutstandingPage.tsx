@@ -1,5 +1,19 @@
 /**
- * Auth Outstanding — standalone view of Samantha-checklist's "Auth Outstanding" tab.
+ * Auth Outstanding — standalone view of Samantha-checklist's "Auth
+ * Outstanding" tab, rebuilt per the July 2026 redesign
+ * (JOSH_HANDOFF_AUTH_OUTSTANDING.md; rules in authOutstandingReview.ts).
+ *
+ * The daily-check workflow: the rep clears her bucket every day — every
+ * patient due today gets either a recorded result or one click of
+ * "Auth Still Outstanding" (Follow Up Date → tomorrow, nothing else).
+ * "Auth Review Complete" is the ONLY stage-mover, gated client-side
+ * (validateAuthReviewForComplete) and server-side (mondayWrite rules).
+ *
+ * Deliberately ABSENT from this page (redesign §6/§7/§11):
+ *   - all DVS UI (status chips, Trigger DVS buttons, "Claims Paid — Mark
+ *     Supplies Complete") — moves to the dedicated DVS view
+ *   - the manual Escalate button — escalation is denial-driven only
+ *   - the Follow Up modal — superseded by "Auth Still Outstanding"
  */
 import { useMemo, useState } from "react";
 import { useMondayPatients } from "@/hooks/samantha/useMondayPatients";
@@ -14,96 +28,39 @@ import {
 import { AuthOutstandingPanel } from "@/components/samantha/AuthOutstandingPanel";
 import { PatientsSidebar } from "@/components/samantha/PatientsSidebar";
 import { PatientProfileCard } from "@/components/samantha/PatientProfileCard";
-import { SendToMondayButton } from "@/components/samantha/SendToMondayButton";
 import { Button } from "@/components/ui/button";
-import { EscalateButton } from "@/components/samantha/EscalateButton";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
-import { RotateCcw, Stethoscope, ArrowLeft, Clock, Save, Zap, CheckCircle2 } from "lucide-react";
-import { resolveHcpcs } from "@/lib/samantha/hcpcRules";
+import { RotateCcw, Stethoscope, ArrowLeft, Clock, Save, Send, Loader2 } from "lucide-react";
+import { resolveHcpcs, isAutoFilledMedicaidSupply } from "@/lib/samantha/hcpcRules";
 import { toast } from "sonner";
 import { sendPatientToMonday, saveNoAuthNeededToMonday } from "@/lib/samantha/mondayWrite";
 import { daysAuthOutstanding } from "@/lib/samantha/authOutstandingDays";
-import { writeLongText, writeStatusIndex, COL } from "@/lib/samantha/mondayApi";
-import { EscalationFormModal } from "@/components/shared/EscalationFormModal";
+import { validateAuthReviewForComplete } from "@/lib/samantha/authOutstandingReview";
+import { addDaysYmd, etTodayYmd, ymdToUs } from "@/lib/samantha/benefitsDerive";
+import { writeLongText, writeDate, COL } from "@/lib/samantha/mondayApi";
 import { PageLoadingOverlay } from "@/components/shared/PageLoadingOverlay";
 import { SaveProgressOverlay } from "@/components/shared/SaveProgressOverlay";
 import type { WriteProgressPhase } from "@/lib/shared/verifiedWrite";
-import { ESCALATION_INDEX } from "@/lib/samantha/mondayMapping";
-import { FollowUpModal } from "@/components/samantha/FollowUpModal";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useSearchParams } from "react-router-dom";
 import { useBackNavigation } from "@/hooks/useBackNavigation";
 import { ReportIssueButton } from "@/components/shared/ReportIssueButton";
 import { viewFilterFromParams } from "@/lib/roleView";
 import { sidebarVisibleList } from "@/lib/samantha/sidebarList";
 
-
-/* ── DVS + Claims Status Visual ─────────────────────────────────── */
-
-function DvsClaimsVisual({ dvsStatus, claimsStatus, pumpDvsStatus }: { dvsStatus?: string; claimsStatus?: string; pumpDvsStatus?: string }) {
-  if (!dvsStatus && !pumpDvsStatus) return null;
-
-  const statusColor = (label: string | undefined) => {
-    if (!label) return "bg-muted text-muted-foreground";
-    const l = label.toLowerCase();
-    if (l.includes("success") || l.includes("paid")) return "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300";
-    if (l.includes("failed") || l.includes("denied") || l.includes("error")) return "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300";
-    if (l.includes("running") || l.includes("trigger") || l.includes("submit")) return "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300";
-    if (l.includes("review") || l.includes("incorrect") || l.includes("retry")) return "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300";
-    return "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300";
-  };
-
-  return (
-    <div className="rounded-xl bg-card border shadow-card p-4">
-      <p className="text-xs uppercase tracking-wider text-muted-foreground mb-3">Verification Status</p>
-      <div className="flex items-stretch gap-4">
-        {dvsStatus && (
-          <div className="flex-1 rounded-lg border p-3 text-center space-y-1.5">
-            <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Supplies DVS</p>
-            <span className={`inline-block px-3 py-1 rounded-full text-xs font-medium ${statusColor(dvsStatus)}`}>
-              {dvsStatus}
-            </span>
-            {dvsStatus?.toLowerCase() === "mltc" && (
-              <p className="text-xs font-semibold text-red-600 mt-1.5">
-                MLTC requires auth for supplies, submit auth via fax.
-              </p>
-            )}
-          </div>
-        )}
-        {pumpDvsStatus && (
-          <div className="flex-1 rounded-lg border p-3 text-center space-y-1.5">
-            <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Pump DVS</p>
-            <span className={`inline-block px-3 py-1 rounded-full text-xs font-medium ${statusColor(pumpDvsStatus)}`}>
-              {pumpDvsStatus}
-            </span>
-          </div>
-        )}
-        <div className="flex-1 rounded-lg border p-3 text-center space-y-1.5">
-          <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Claim</p>
-          <span className={`inline-block px-3 py-1 rounded-full text-xs font-medium ${statusColor(claimsStatus)}`}>
-            {claimsStatus || "—"}
-          </span>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 const AuthOutstandingPage = () => {
-  const navigate = useNavigate();
   const { goBack } = useBackNavigation();
   const [searchParams] = useSearchParams();
   const isEscalated = searchParams.get("escalated") === "1";
   const isManager = searchParams.get("manager") === "1";
-  const [escalationModalOpen, setEscalationModalOpen] = useState(false);
-  const { patients, loading, initialLoading, error, refetch, update, clearOverlay , saveOverlay, hasOverlay } = useMondayPatients("authOutstanding", searchParams.get("patientId"));
+  const { patients, loading, initialLoading, error, refetch, update, clearOverlay, saveOverlay, hasOverlay } = useMondayPatients("authOutstanding", searchParams.get("patientId"));
   const [selectedId, setSelectedId] = useState<string | null>(
     searchParams.get("patientId") ?? null,
   );
-  const [followUpOpen, setFollowUpOpen] = useState(false);
   // Blocking save overlay (Chase Clinicals precedent): a patient switch or
   // edit while the verified send is in flight can clobber the transaction.
   const [saving, setSaving] = useState(false);
   const [savePhase, setSavePhase] = useState<WriteProgressPhase>("posting");
+  const [stillSaving, setStillSaving] = useState(false);
 
   // Auto-select the first patient the sidebar actually shows (same list math
   // as PatientsSidebar), never from the pre-fetch localStorage cache.
@@ -139,76 +96,6 @@ const AuthOutstandingPage = () => {
     refetch();
   };
 
-  // Show "Trigger DVS" when Medicaid appears in either insurance AND
-  // the serving includes supplies (infusion sets / cartridges).
-  const showTriggerDvs = useMemo(() => {
-    if (!selected) return false;
-    const pri = (selected.primaryInsurance ?? "").toLowerCase();
-    const sec = (selected.secondaryInsurance ?? "").toLowerCase();
-    const hasMedicaid = pri.includes("medicaid") || sec.includes("medicaid");
-    if (!hasMedicaid) return false;
-    const resolved = resolveHcpcs(selected.primaryInsurance || null, selected.serving || null, selected.secondaryInsurance ?? null);
-    return resolved.some((r) => r.product === "infusion_set" || r.product === "cartridge");
-  }, [selected?.primaryInsurance, selected?.secondaryInsurance, selected?.serving]);
-
-  // Show "Trigger Pump DVS" when Medicaid appears in either insurance AND
-  // the serving includes the insulin pump. Separate bot from the supplies
-  // DVS: own trigger column, no retry, no claims.
-  const showTriggerPumpDvs = useMemo(() => {
-    if (!selected) return false;
-    const pri = (selected.primaryInsurance ?? "").toLowerCase();
-    const sec = (selected.secondaryInsurance ?? "").toLowerCase();
-    const hasMedicaid = pri.includes("medicaid") || sec.includes("medicaid");
-    if (!hasMedicaid) return false;
-    const resolved = resolveHcpcs(selected.primaryInsurance || null, selected.serving || null, selected.secondaryInsurance ?? null);
-    return resolved.some((r) => r.product === "insulin_pump");
-  }, [selected?.primaryInsurance, selected?.secondaryInsurance, selected?.serving]);
-
-  // Show "Claims Paid — Mark Complete" when DVS succeeded and claims are paid.
-  // Only applies to Medicaid patients with supplies (infusion sets / cartridges).
-  const showClaimsPaid = useMemo(() => {
-    if (!selected) return false;
-    return (
-      selected.claimsStatus === "Claims Paid" &&
-      selected.dvsStatus === "Success"
-    );
-  }, [selected?.claimsStatus, selected?.dvsStatus]);
-
-  // Whether the supplies have already been marked auth-valid via the button.
-  const suppliesAlreadyMarked = useMemo(() => {
-    if (!selected) return false;
-    const ins = selected.insurance ?? EMPTY_INSURANCE;
-    const infState = ins.codes["infusion-sets"];
-    const cartState = ins.codes["cartridges"];
-    // Both must be auth-valid (or the product isn't served, indicated
-    // by _mondayAuthLabel). Consider "marked" if every served supply is resolved.
-    const infResolved =
-      infState?._mondayAuthLabel?.toLowerCase() === "not serving" ||
-      infState?.authOutstandingResult === "auth-valid";
-    const cartResolved =
-      cartState?._mondayAuthLabel?.toLowerCase() === "not serving" ||
-      cartState?.authOutstandingResult === "auth-valid";
-    return !!infResolved && !!cartResolved;
-  }, [selected?.insurance]);
-
-  const handleClaimsPaidComplete = () => {
-    if (!selected) return;
-    // Only mark infusion sets and cartridges — NOT pump or CGM products.
-    // The pump may go through a different insurance and has its own auth flow.
-    // Batch both updates into a single update() call so they don't overwrite each other.
-    const ins = selected.insurance ?? EMPTY_INSURANCE;
-    const supplyCodeIds: ProductCodeId[] = ["infusion-sets", "cartridges"];
-    let updatedCodes = { ...ins.codes };
-    for (const codeId of supplyCodeIds) {
-      const state = updatedCodes[codeId];
-      if (state?._mondayAuthLabel?.toLowerCase() === "not serving") continue;
-      const prev = updatedCodes[codeId] ?? { status: "pending" as const };
-      updatedCodes[codeId] = { ...prev, authOutstandingResult: "auth-valid" };
-    }
-    update(selected.id, { insurance: { ...ins, codes: updatedCodes } });
-    toast.success("Supplies marked as Auth Valid — hit Send to Monday to complete");
-  };
-
   const handleSend = async () => {
     if (!selected) return;
     setSaving(true);
@@ -216,9 +103,10 @@ const AuthOutstandingPage = () => {
     try {
       await sendPatientToMonday(selected, "authOutstanding", { onProgress: setSavePhase });
       clearOverlay(selected.id);
-      toast.success("Sent to Monday");
+      toast.success("Auth review complete — sent to Monday");
+      refetch();
     } catch (e) {
-      toast.error("Send to Monday failed", { description: e instanceof Error ? e.message : String(e) });
+      toast.error("Auth Review Complete failed", { description: e instanceof Error ? e.message : String(e) });
       throw e;
     } finally {
       setSaving(false);
@@ -244,12 +132,47 @@ const AuthOutstandingPage = () => {
     }
   };
 
+  // "Auth Still Outstanding" (§12) — ONE write: Follow Up Date → tomorrow.
+  // No stage change, no escalation, no per-product writes. Clears the
+  // patient from today's bucket; they reappear tomorrow.
+  const todayEt = etTodayYmd();
+  const alreadyCleared = !!selected?.followUpDate && selected.followUpDate > todayEt;
+  const handleStillOutstanding = async () => {
+    if (!selected || stillSaving) return;
+    setStillSaving(true);
+    try {
+      await writeDate(selected.id, COL.followUpDate, addDaysYmd(todayEt, 1));
+      toast.success(`${selected.name} — still outstanding. Cleared from today's bucket; returns tomorrow.`);
+      refetch();
+    } catch (e) {
+      toast.error("Failed to push the follow-up date", { description: e instanceof Error ? e.message : String(e) });
+    } finally {
+      setStillSaving(false);
+    }
+  };
+
   // "N days outstanding" badge — live-computed from the earliest Auth
   // Submission Date, falling back to the cron-maintained board column.
   const daysOut = useMemo(
     () => (selected ? daysAuthOutstanding(selected) : null),
     [selected],
   );
+
+  // Client-side gating for Auth Review Complete (§6). A patient whose
+  // products are ALL DVS-routed can never advance from this page (§7).
+  const missing = useMemo(
+    () => (selected ? validateAuthReviewForComplete(selected) : []),
+    [selected],
+  );
+  const nonDvsCount = useMemo(() => {
+    if (!selected) return 0;
+    return resolveHcpcs(
+      selected.primaryInsurance || null,
+      selected.serving || null,
+      selected.secondaryInsurance ?? null,
+    ).filter((r) => !isAutoFilledMedicaidSupply(r)).length;
+  }, [selected]);
+  const canComplete = !!selected && missing.length === 0 && nonDvsCount > 0;
 
   return (
     <SidebarProvider>
@@ -274,9 +197,6 @@ const AuthOutstandingPage = () => {
                 </div>
               </div>
               <div className="flex items-center gap-2">
-                <Button onClick={() => setFollowUpOpen(true)} disabled={!selected} className="gap-2 bg-white/90 text-blue-700 hover:bg-white shadow-elevate">
-                  <Clock className="h-4 w-4" /> Follow Up
-                </Button>
                 <Button
                   onClick={() => {
                     if (!selected) return;
@@ -305,117 +225,66 @@ const AuthOutstandingPage = () => {
               )}
               {selected && (
                 <>
+                  {/* Daily bucket: one click clears the patient until tomorrow */}
+                  <div className="flex justify-end">
+                    <Button
+                      onClick={handleStillOutstanding}
+                      disabled={stillSaving || alreadyCleared}
+                      className="gap-2 bg-amber-500 hover:bg-amber-600 text-white shadow-elevate"
+                    >
+                      {stillSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Clock className="h-4 w-4" />}
+                      {alreadyCleared
+                        ? `Cleared — returns ${selected.followUpDate ? ymdToUs(selected.followUpDate) : "tomorrow"}`
+                        : "Auth Still Outstanding"}
+                    </Button>
+                  </div>
+
                   <PatientProfileCard patient={selected} onUpdate={(p) => update(selected.id, p)} />
-                  <DvsClaimsVisual dvsStatus={selected.dvsStatus} claimsStatus={selected.claimsStatus} pumpDvsStatus={selected.pumpDvsStatus} />
-                  <AuthOutstandingPanel patient={selected} onCodeChange={updateCode} onNotesChange={(v) => update(selected.id, { notes: v })} onSaveNotesToMonday={(v) => writeLongText(selected.id, COL.callReferenceNotes, v)} onSaveNoAuthNeeded={handleSaveNoAuthNeeded} />
-                  <EscalateButton
-                    escalated={!!selected.escalated}
-                    onToggle={() => update(selected.id, { escalated: !selected.escalated })}
-                    onOpenForm={() => setEscalationModalOpen(true)}
+                  <AuthOutstandingPanel
+                    patient={selected}
+                    onCodeChange={updateCode}
+                    onNotesChange={(v) => update(selected.id, { notes: v })}
+                    onSaveNotesToMonday={(v) => writeLongText(selected.id, COL.callReferenceNotes, v)}
+                    onSaveNoAuthNeeded={handleSaveNoAuthNeeded}
                   />
 
-                  {(showTriggerDvs || showTriggerPumpDvs) && (
-                    <div className="flex justify-center gap-3 flex-wrap">
-                      {showTriggerDvs && (
-                        <Button
-                          onClick={() => update(selected.id, { triggerDvs: !selected.triggerDvs })}
-                          variant="outline"
-                          className={
-                            selected.triggerDvs
-                              ? "gap-2 bg-blue-100 hover:bg-blue-200 !text-blue-700 border-blue-400 shadow-md"
-                              : "gap-2 border-blue-300 !text-blue-600 hover:bg-blue-50"
-                          }
-                        >
-                          <Zap className="h-4 w-4" />
-                          {selected.triggerDvs ? "Supplies DVS Triggered" : "Trigger Supplies DVS"}
-                        </Button>
-                      )}
-                      {showTriggerPumpDvs && (
-                        <Button
-                          onClick={() => update(selected.id, { triggerPumpDvs: !selected.triggerPumpDvs })}
-                          variant="outline"
-                          className={
-                            selected.triggerPumpDvs
-                              ? "gap-2 bg-indigo-100 hover:bg-indigo-200 !text-indigo-700 border-indigo-400 shadow-md"
-                              : "gap-2 border-indigo-300 !text-indigo-600 hover:bg-indigo-50"
-                          }
-                        >
-                          <Zap className="h-4 w-4" />
-                          {selected.triggerPumpDvs ? "Pump DVS Triggered" : "Trigger Pump DVS"}
-                        </Button>
-                      )}
+                  {/* Auth Review Complete — the ONLY stage-mover (§6) */}
+                  <div className="rounded-xl bg-card border shadow-card p-5">
+                    <div className="flex items-center justify-between gap-4 flex-wrap">
+                      <p className="text-xs text-muted-foreground max-w-xl">
+                        Any product Denied → stage moves to Auth Denied with Escalation Required.
+                        Everything resolved → stage moves to Complete. Partial (e.g. a saved No Auth
+                        Needed awaiting its recheck) → the stage stays put.
+                      </p>
+                      <Button
+                        size="lg"
+                        onClick={handleSend}
+                        disabled={saving || !canComplete}
+                        className="gap-2 bg-emerald-600 hover:bg-emerald-700 text-white shadow-elevate px-7"
+                      >
+                        <Send className="h-4 w-4" /> Auth Review Complete
+                      </Button>
                     </div>
-                  )}
-
-                  {showClaimsPaid && (
-                    <div
-                      className={
-                        suppliesAlreadyMarked
-                          ? "rounded-xl border-2 border-emerald-400 bg-emerald-50 dark:bg-emerald-950/30 p-5 text-center transition-all duration-300"
-                          : "rounded-xl border-2 border-emerald-500/50 bg-gradient-to-r from-emerald-50 to-teal-50 dark:from-emerald-950/20 dark:to-teal-950/20 p-5 text-center transition-all duration-300"
-                      }
-                    >
-                      {suppliesAlreadyMarked ? (
-                        <div className="flex flex-col items-center gap-2">
-                          <div className="h-10 w-10 rounded-full bg-emerald-500 flex items-center justify-center shadow-md">
-                            <CheckCircle2 className="h-5 w-5 text-white" />
-                          </div>
-                          <p className="text-sm font-semibold text-emerald-700 dark:text-emerald-300">
-                            Supplies Marked Complete
-                          </p>
-                          <p className="text-xs text-emerald-600/70 dark:text-emerald-400/70">
-                            Hit Send to Monday to finalize
-                          </p>
-                        </div>
-                      ) : (
-                        <>
-                          <p className="text-xs uppercase tracking-wider text-emerald-700/70 dark:text-emerald-300/70 mb-3">
-                            DVS Verified · Claims Paid
-                          </p>
-                          <Button
-                            onClick={handleClaimsPaidComplete}
-                            size="lg"
-                            className="gap-2 bg-emerald-600 hover:bg-emerald-700 text-white shadow-elevate px-8 py-3 text-base transition-transform active:scale-95"
-                          >
-                            <CheckCircle2 className="h-5 w-5" />
-                            Mark Supplies Complete
-                          </Button>
-                          <p className="text-[11px] text-muted-foreground mt-2">
-                            Sets infusion sets &amp; cartridges to Auth Valid. Pump auth is handled separately.
-                          </p>
-                        </>
-                      )}
-                    </div>
-                  )}
-
-                  <SendToMondayButton onSend={handleSend} disabled={!selected} />
+                    {missing.length > 0 && (
+                      <div className="mt-4 rounded-lg border border-warning/40 bg-warning/10 px-4 py-3 text-center">
+                        <p className="text-[11px] font-bold uppercase tracking-wider text-warning-foreground">
+                          Needed before Auth Review Complete
+                        </p>
+                        <p className="text-sm text-warning-foreground/90 mt-1">{missing.join(" · ")}</p>
+                      </div>
+                    )}
+                    {nonDvsCount === 0 && missing.length === 0 && (
+                      <p className="mt-3 text-xs text-muted-foreground text-center">
+                        All of this patient's products are handled at the DVS stage — this page never advances their stage.
+                      </p>
+                    )}
+                  </div>
                 </>
               )}
             </section>
           </main>
         </div>
       </div>
-
-      {selected && (
-        <FollowUpModal
-          open={followUpOpen}
-          onOpenChange={setFollowUpOpen}
-          patientId={selected.id}
-          patientName={selected.name}
-          onSuccess={refetch}
-        />
-      )}
-    {selected && (
-        <EscalationFormModal
-          open={escalationModalOpen}
-          onOpenChange={setEscalationModalOpen}
-          patientId={selected.id}
-          patientName={selected.name}
-          writeEscalationStatus={async (id) => { await writeStatusIndex(id, COL.escalation, ESCALATION_INDEX.required); }}
-          writeEscalationNotes={async (id, text) => { await writeLongText(id, COL.escalationNotes, text); }}
-          onSuccess={refetch}
-        />
-      )}
     </SidebarProvider>
   );
 };

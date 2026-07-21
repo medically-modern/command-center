@@ -34,6 +34,7 @@ import {
   isValidUnits,
   patientHasMedicaidIns,
 } from "./benefitsDerive";
+import { derivedRecheckSos, effectiveResult } from "./authOutstandingReview";
 
 const MAX_RETRIES = 2;
 const RETRY_DELAY_MS = 800;
@@ -194,6 +195,19 @@ export async function sendPatientToMonday(
         !!e,
     );
 
+  // Auth Outstanding redesign (§3): the SoS recheck is DERIVED from recorded
+  // facts at SEND time (ET-anchored, same cutoffs as Benefits) — the UI sets
+  // sosRecheck live for display, but this recomputation is authoritative so a
+  // Friday-entered fact sent on Monday still derives against today's cutoff.
+  if (context === "authOutstanding") {
+    for (const e of entries) {
+      if (e.isMedicaidSupply || !e.state) continue;
+      if (effectiveResult(e.state) !== "no-auth-needed") continue;
+      const derived = derivedRecheckSos(e.state, e.cid, hasMedicaidIns, todayEt);
+      if (derived) e.state = { ...e.state, sosRecheck: derived };
+    }
+  }
+
   // Effective insurance state with auto-filled codes — used by
   // deriveInsuranceOutcome below so blocker/auth-required/all-clear logic
   // sees the same picture as the UI preview.
@@ -309,7 +323,12 @@ export async function sendPatientToMonday(
     const productId = PRODUCT_CODE_TO_PRODUCT_ID[cid];
     const lastBillDateCol = COL.lastBillDate[productId];
     const eSos = effectiveSos({ cid, state, isMedicaidSupply: false });
-    const noAuthNeeded = state?.authOutstandingResult === "no-auth-needed";
+    // On Auth Outstanding, a hydrated partial save (board label "No Auth
+    // Needed", no local result) counts too — effectiveResult covers it.
+    const noAuthNeeded =
+      context === "authOutstanding"
+        ? effectiveResult(state) === "no-auth-needed"
+        : state?.authOutstandingResult === "no-auth-needed";
     if ((eSos === "not-clear" || noAuthNeeded) && state?.lastBillDate) {
       tasks.push({
         label: `Last Bill Date: ${productId}`,
@@ -444,7 +463,12 @@ export async function sendPatientToMonday(
     //       of SoS status — SoS Not Clear does NOT block completion)
     //   3. Otherwise (partial — some product
     //      missing a result)                 → leave Stage Advancer alone
-    const anyDenied = entries.some(
+    // DVS-routed products neither gate nor advance this page (§7): they're
+    // excluded from the rule entirely, and a patient whose products are ALL
+    // DVS-routed can never reach Complete from here — their stage moves at
+    // the DVS view.
+    const nonDvsEntries = entries.filter((e) => !e.isMedicaidSupply);
+    const anyDenied = nonDvsEntries.some(
       (e) => e.state?.authOutstandingResult === "denied",
     );
     const isProductResolved = (e: typeof entries[number]) => {
@@ -452,13 +476,18 @@ export async function sendPatientToMonday(
       // the Auth Outstanding UI, so they have no authOutstandingResult to
       // fill in. They're already resolved — no auth work needed.
       if (e.state?.auth === "not-required") return true;
-      const r = e.state?.authOutstandingResult;
+      const r = e.state ? effectiveResult(e.state) : "";
       if (r === "auth-valid") return true;
-      if (r === "no-auth-needed") return true;
+      // No Auth Needed only resolves once its SoS recheck went out — a
+      // partial save awaiting the recheck keeps the stage put (§4). The
+      // recheck normalization above set sosRecheck when facts exist.
+      if (r === "no-auth-needed") {
+        return e.state?.sosRecheck === "clear" || e.state?.sosRecheck === "not-clear" || e.state?.sos !== "skip";
+      }
       return false;
     };
     const allResolved =
-      entries.length > 0 && entries.every(isProductResolved);
+      nonDvsEntries.length > 0 && nonDvsEntries.every(isProductResolved);
 
     // Diagnostic — verify the rule sees the right per-product results.
     console.log("[mondayWrite] authOutstanding rule:", {
@@ -640,6 +669,56 @@ export async function sendPatientToMonday(
           expectedText: "TBD",
         });
       }
+    }
+  }
+
+  // ----- Auth Outstanding redesign: SoS recheck facts (§3) -----
+  // The recheck records the same facts as Benefits (Last Bill Date + Units,
+  // or No Billing History) into the same facts columns — but ONLY for
+  // products whose result is No Auth Needed and whose recheck was actually
+  // recorded. Everything else is left untouched: this block must never
+  // clear facts Benefits wrote for other products.
+  if (context === "authOutstanding") {
+    for (const { cid, state, isMedicaidSupply } of entries) {
+      if (isMedicaidSupply || !state) continue;
+      if (effectiveResult(state) !== "no-auth-needed") continue;
+      const productId = PRODUCT_CODE_TO_PRODUCT_ID[cid];
+      if (state.sosEntry === "billed" && state.lastBillDate) {
+        tasks.push({
+          label: `SoS Last Bill (recheck): ${productId}`,
+          columnId: COL.sosLastBill[productId],
+          fn: () => writeDate(p.id, COL.sosLastBill[productId], state.lastBillDate!),
+        });
+        if (isValidUnits(state.units)) {
+          tasks.push({
+            label: `SoS Units (recheck): ${productId}`,
+            columnId: COL.sosUnits[productId],
+            fn: () => writeNumber(p.id, COL.sosUnits[productId], state.units!),
+          });
+        }
+        tasks.push({
+          label: `SoS No Billing History (recheck): ${productId}`,
+          columnId: COL.sosNeverBilled[productId],
+          fn: () => writeCheckbox(p.id, COL.sosNeverBilled[productId], false),
+        });
+      } else if (state.sosEntry === "never") {
+        tasks.push({
+          label: `SoS No Billing History (recheck): ${productId}`,
+          columnId: COL.sosNeverBilled[productId],
+          fn: () => writeCheckbox(p.id, COL.sosNeverBilled[productId], true),
+        });
+        tasks.push({
+          label: `SoS Last Bill (recheck, clear): ${productId}`,
+          columnId: COL.sosLastBill[productId],
+          fn: () => writeDate(p.id, COL.sosLastBill[productId], ""),
+        });
+        tasks.push({
+          label: `SoS Units (recheck, clear): ${productId}`,
+          columnId: COL.sosUnits[productId],
+          fn: () => writeNumber(p.id, COL.sosUnits[productId], ""),
+        });
+      }
+      // No recheck recorded → write nothing for this product.
     }
   }
 
