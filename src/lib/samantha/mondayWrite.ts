@@ -221,6 +221,17 @@ export async function sendPatientToMonday(
           console.log(`[mondayWrite] submitAuth: skipping Medicaid-routed supply ${productId} (staying at Required)`);
           continue;
         }
+        // Flip ONLY products whose BOARD label is exactly "Required" — the
+        // same rule submitAuthCards uses to render a card. Hydration collapses
+        // Auth Valid / Denied / Submitted into internal auth "required"
+        // (AUTH_RESULT_TEXT_MAP), so gating on internal state alone would
+        // silently overwrite an already-resolved auth outcome on the board
+        // for a product the rep never saw a card for.
+        const boardLabel = (state._mondayAuthLabel ?? "").trim().toLowerCase();
+        if (boardLabel !== "required") {
+          console.log(`[mondayWrite] submitAuth: leaving ${productId} untouched (board label "${state._mondayAuthLabel ?? ""}", not "Required")`);
+          continue;
+        }
         console.log(`[mondayWrite] submitAuth: writing ${productId} → Submitted`);
         tasks.push({
           label: `Auth result: ${productId}`,
