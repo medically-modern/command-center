@@ -78,7 +78,8 @@
       ],
       "roleFilters": {
         "profile": "all",
-        "finalConfirm": "all"
+        "finalConfirm": "all",
+        "unverifiedReferrals": "all"
       }
     },
     "katie@medicallymodern.com": {
