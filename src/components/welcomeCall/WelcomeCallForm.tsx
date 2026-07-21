@@ -10,7 +10,7 @@ import {
   servingIncludesPump,
   isCrossSell,
   isInfusionSelling,
-  isOriginalMedicare,
+  needsPriorPumpDate,
   expectedSubscriptionType,
 } from "@/lib/welcomeCall/workflow";
 import { Card } from "@/components/ui/card";
@@ -176,15 +176,16 @@ export function WelcomeCallForm({ patient, onFieldChange, onSendWelcomeCallText 
   const showPump = pumpOverride !== null ? pumpOverride : defaultShowPump;
 
   // Prior Pump Purchase Date: Original Medicare (Medicare A&B) patients only,
-  // and only when Pump Qty is 0 (toggle off / not "1").
+  // only when Pump Qty is 0 (toggle off / not "1"), and only when serving
+  // includes pump supplies — a CGM-only patient is never asked for it.
   const effectivePrimaryInsurance = patient.primaryInsuranceEdited ?? patient.primaryInsurance;
-  const showPriorPumpDate =
-    isOriginalMedicare(effectivePrimaryInsurance) && patient.pumpQty !== "1";
+  const showPriorPumpDate = needsPriorPumpDate(effectivePrimaryInsurance, patient.pumpQty, effectiveServing);
 
   // Clear a stale prior-pump date if the patient stops being eligible (insurance
-  // changed away from Medicare A&B, or Pump Qty set to 1). Keeps local state in
-  // sync with visibility so the save writes "" and clears the Monday cell rather
-  // than persisting a value that no longer applies.
+  // changed away from Medicare A&B, Pump Qty set to 1, or serving changed to
+  // CGM-only). Keeps local state in sync with visibility so the save writes ""
+  // and clears the Monday cell rather than persisting a value that no longer
+  // applies.
   useEffect(() => {
     if (!showPriorPumpDate && patient.medicarePriorPumpDate) {
       onFieldChange("medicarePriorPumpDate", "");
@@ -368,7 +369,7 @@ export function WelcomeCallForm({ patient, onFieldChange, onSendWelcomeCallText 
               )}
             </div>
 
-            {/* Prior Pump Purchase Date — Original Medicare + Pump Qty 0 only */}
+            {/* Prior Pump Purchase Date — Original Medicare + Pump Qty 0 + pump-supplies serving only */}
             {showPriorPumpDate && (
               <div>
                 <label className="text-xs uppercase tracking-wider text-muted-foreground font-semibold block mb-1">

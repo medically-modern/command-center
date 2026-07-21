@@ -214,6 +214,32 @@ export function isOriginalMedicare(primaryInsuranceLabel: string): boolean {
   return primaryInsuranceLabel.trim() === "Medicare A&B";
 }
 
+/* ─── Serving-based product gates (mirror the Welcome Call module's helpers) ─── */
+
+/** Returns true if serving includes CGM (MM-1042 product gate). */
+export function servingIncludesCgm(serving: string): boolean {
+  return serving.toLowerCase().includes("cgm");
+}
+
+/** Returns true if serving includes pump/supplies (MM-1042 product gate). */
+export function servingIncludesPump(serving: string): boolean {
+  const s = serving.toLowerCase();
+  return s.includes("pump") || s.includes("supplies");
+}
+
+/** Prior Pump Purchase Date is collected so Medicare can bill pump supplies
+ *  against a patient-owned pump. It applies only when all three hold:
+ *  Original Medicare (Medicare A&B), no pump being sold (Pump Qty 0), AND
+ *  serving includes pump/supplies — a CGM-only patient is never asked for it.
+ *  Unknown (blank) serving is trusted as pump-served so a missing column
+ *  can't hide the field and wipe an already-collected date.
+ *  Must stay in agreement with welcomeCall/workflow.ts needsPriorPumpDate
+ *  (priorPumpDate.test.ts guards both). */
+export function needsPriorPumpDate(primaryInsurance: string, pumpQty: string, serving: string): boolean {
+  if (!isOriginalMedicare(primaryInsurance) || pumpQty === "1") return false;
+  return serving.trim() === "" || servingIncludesPump(serving);
+}
+
 export const SECONDARY_INSURANCE_OPTIONS = [
   { index: 0, label: "None" },
   { index: 1, label: "NY Medicaid" },

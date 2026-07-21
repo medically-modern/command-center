@@ -257,6 +257,19 @@ export function servingIncludesPump(serving: string): boolean {
   return s.includes('pump') || s.includes('supplies');
 }
 
+/** Prior Pump Purchase Date is collected so Medicare can bill pump supplies
+ *  against a patient-owned pump. It applies only when all three hold:
+ *  Original Medicare (Medicare A&B), no pump being sold (Pump Qty 0), AND
+ *  serving includes pump/supplies — a CGM-only patient is never asked for it.
+ *  Unknown (blank) serving is trusted as pump-served so a missing column
+ *  can't hide the field and wipe an already-collected date.
+ *  Must stay in agreement with finalConfirm/workflow.ts needsPriorPumpDate
+ *  (priorPumpDate.test.ts guards both). */
+export function needsPriorPumpDate(primaryInsurance: string, pumpQty: string, serving: string): boolean {
+  if (!isOriginalMedicare(primaryInsurance) || pumpQty === '1') return false;
+  return serving.trim() === '' || servingIncludesPump(serving);
+}
+
 /* ─── Cross-Sell + Subscription consistency helpers ─── */
 
 const CGM_NOT_SERVING_INDEX = 9;

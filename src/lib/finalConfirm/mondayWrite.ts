@@ -1,19 +1,10 @@
 import { writeStatusIndex, writeStatusLabel, writeLongText, writeText, writeNumber, writeLocation, writeDate, writePhone, writeEmail, writeDropdownIds, renameItem, readColumnTexts, COL } from "./mondayApi";
 import { executeWritesWithVerification } from "../shared/verifiedWrite";
 import type { Patient } from "./workflow";
-import { CLINIC_NAME_OPTIONS } from "./workflow";
+import { CLINIC_NAME_OPTIONS, servingIncludesCgm, servingIncludesPump } from "./workflow";
 
 // Stage Advancer: index 4 = Completed
 const STAGE_ADVANCER_COMPLETED = 4;
-
-// Serving-based product gate for next order dates (MM-1042). Mirrors the
-// Welcome Call module's serving helpers; kept local so this module stays
-// self-contained (like its own COL map).
-const servingIncludesCgm = (serving: string): boolean => serving.toLowerCase().includes("cgm");
-const servingIncludesPump = (serving: string): boolean => {
-  const s = serving.toLowerCase();
-  return s.includes("pump") || s.includes("supplies");
-};
 
 const MAX_RETRIES = 2;
 const RETRY_DELAY_MS = 800;

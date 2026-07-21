@@ -16,7 +16,7 @@ import {
   INFUSION_SET_2_OPTIONS,
   SUBSCRIPTION_TYPE_OPTIONS,
   AUTH_RESULT_OPTIONS,
-  isOriginalMedicare,
+  needsPriorPumpDate,
   formatPhone,
   formatDateMDY,
 } from "@/lib/finalConfirm/workflow";
@@ -536,13 +536,14 @@ export function PatientInfoCard({ patient, onFieldChange }: Props) {
   const suppliesActive = subType === "Supplies" || subType === "Sensors & Supplies";
 
   // Prior Pump Purchase Date: Original Medicare (Medicare A&B) patients only,
-  // and only when Pump Qty is 0 (not "1").
-  const showPriorPumpDate =
-    isOriginalMedicare(patient.primaryInsurance) && patient.pumpQty !== "1";
+  // only when Pump Qty is 0 (not "1"), and only when serving includes pump
+  // supplies — a CGM-only patient is never asked for it.
+  const showPriorPumpDate = needsPriorPumpDate(patient.primaryInsurance, patient.pumpQty, patient.serving);
 
   // Clear a stale prior-pump date if the patient stops being eligible (insurance
-  // changed away from Medicare A&B, or Pump Qty set to 1). Final Confirm always
-  // writes this column, so zeroing local state clears the Monday cell on save.
+  // changed away from Medicare A&B, Pump Qty set to 1, or serving changed to
+  // CGM-only). Final Confirm always writes this column, so zeroing local state
+  // clears the Monday cell on save.
   useEffect(() => {
     if (!showPriorPumpDate && patient.medicarePriorPumpDate) {
       onFieldChange("medicarePriorPumpDate", "");
@@ -1001,7 +1002,7 @@ export function PatientInfoCard({ patient, onFieldChange }: Props) {
             </div>
           </div>
 
-          {/* Prior Pump Purchase Date — Original Medicare + Pump Qty 0 only */}
+          {/* Prior Pump Purchase Date — Original Medicare + Pump Qty 0 + pump-supplies serving only */}
           {showPriorPumpDate && (
             <div className="flex items-start gap-2 min-w-0 rounded-lg p-1.5 -m-1.5">
               <div className="h-8 w-8 rounded-md flex items-center justify-center shrink-0 bg-muted text-muted-foreground">
