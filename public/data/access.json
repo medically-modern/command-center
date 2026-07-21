@@ -73,7 +73,8 @@
       "name": "brandon",
       "roles": [
         "profile",
-        "finalConfirm"
+        "finalConfirm",
+        "unverifiedReferrals"
       ],
       "roleFilters": {
         "profile": "all",
