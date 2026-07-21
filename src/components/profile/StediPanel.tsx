@@ -1,3 +1,9 @@
+// ⚠️ DEAD CODE — NOT RENDERED ANYWHERE. Nothing imports this file (verified
+// 2026-07-21, static + dynamic imports). The LIVE "Run Stedi Check" UI —
+// including the Eligibility Results grid — is INLINE in
+// src/pages/ProfilePage.tsx (July 2026 profile redesign; see CLAUDE.md §5.11
+// for the flow and the live/dead inventory of this folder). Make Stedi-output
+// changes THERE. Kept only as reference for the pre-redesign panel layout.
 import { useState, useEffect, useRef } from "react";
 import type { Patient } from "@/lib/profile/workflow";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";

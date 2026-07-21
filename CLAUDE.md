@@ -220,7 +220,8 @@ Estimates patient out-of-pocket for the Welcome Call. **Mirrors backend Python**
 be hand-synced** with that backend — there is no automated check for drift. (NYSHIP is a **$0-OOP
 payer** in both this estimator and `profile/oopEstimate.ts` — `ZERO_OOP_PAYERS`/`ZERO_PAYERS`.) Eligibility inputs
 (deductible, coinsurance %, OOP max) come from **Stedi**, written into Monday by the
-`stedi-monday-integration` Railway service and read back by `StediPanel`.
+`stedi-monday-integration` Railway service and read back by the SPA — for the profile role that's
+the **inline Stedi step in `ProfilePage.tsx`**, *not* `StediPanel.tsx`, which is dead code (§5.11).
 
 ### 5.8 Burndown / baseline — `hooks/useServerBaseline.ts`, `components/dashboard/DailyBurndown.tsx`
 Daily "start-of-day" role counts land in `public/data/baseline.json` **two ways**: the
@@ -286,6 +287,44 @@ applied in **five** places that must stay in agreement (same drill as §5.9):
 3. **Oversight charts** — `src/lib/oversight/oversightApi.ts` `CHART_FILTERS` (`profile-send-off` = verified only; `profile-send-off-unverified` = Type `Patient` OR Source `CareCentrix` via `anyCols`).
 4. **Baseline (build time)** — `scripts/snapshot-baseline.mjs` `countProfile` (§5.8 counting contract).
 5. **Baseline (9 AM cron)** — `services/baseline-cron/index.mjs` `countProfile`.
+
+### 5.11 Profile "Run Stedi Check" — the live UI is INLINE in `ProfilePage.tsx` (`StediPanel.tsx` is DEAD)
+The profile role's whole Benefits step — Run Stedi Check button, **Eligibility Results grid**
+(`ResCell` rows incl. the full-width **Stedi Address `text_mm5fqm4s`** row), cost sharing, insurance
+entry — is rendered **inline in `src/pages/ProfilePage.tsx`** (+ `src/pages/profile/redesign.css`).
+The July 2026 redesign replaced the old per-panel components but left them in the tree unimported:
+**`components/profile/StediPanel.tsx` is dead code** (zero importers, static or dynamic — verified
+2026-07-21; it carries a banner comment). Editing it changes nothing on screen — a past handoff
+doc pointed there, so double-check you're in `ProfilePage.tsx` before touching Stedi UI.
+Dead from the same redesign: `DoctorPanel`, `PatientProfileCard`, `ServingPanel`, `NotesPanel`,
+`OopCard`, `ReadinessChecklist`, `ReferralEmailPanel`, `FollowUpModal`, `UpdatesSheet` (+
+transitively `InsuranceSuggestions`, `DoctorFollowers`, `ParachuteLookupPanel` — imported only by
+dead files). Still **live** in `components/profile/`: `PatientsSidebar`, `DoctorSection`, `NoteLog`,
+`AddressAutocomplete` — and **`ClinicalsDownloadButton`, whose only live importer is
+`samantha/AuthOutstandingPanel`** (don't break Auth Outstanding in a "profile dead code" cleanup).
+
+**Flow** (all in `ProfilePage.tsx` `handleRunStedi` + the settle watcher): Run →
+`writePatientProfile` + `verifyProfileWritten` (≤3 tries — Stedi reads Name/DOB/General
+Insurance/working Member ID `text_mm4t8gbq` **from Monday**, so inputs must land first; verify
+fails ⇒ the run aborts, Stedi never fires) → `triggerStediRun` flips `runStediEligibility`
+`color_mm1yeksx` → the **`stedi-monday-integration`** Railway service writes the `stedi*` result
+columns back **one at a time (~1/sec over 15–25s; there is NO "done" column)** → the page polls
+every 4s and fingerprints **every** result column (`STEDI_SIGNATURE_KEYS`), revealing only after
+the set has been stable ~10s (`STEDI_SETTLE_MS`; byte-identical re-runs reveal after 35s, hard
+timeout 90s) — results appear all at once, never piecemeal.
+
+**Adding a Stedi result column = 5 places, all in the profile slice** (same keep-in-agreement
+drill as §5.9/§5.10 — Stedi Address, added 2026-07-21, is the worked example):
+1. `lib/profile/mondayApi.ts` — `COL` entry **and** `READ_COLUMN_IDS` (every profile query fetches
+   `column_values(ids: READ_COLUMN_IDS)` only; miss this and the field reads permanently blank).
+2. `lib/profile/workflow.ts` — `Patient` field.
+3. `lib/profile/mondayMapping.ts` — `mondayItemToPatient`.
+4. `pages/ProfilePage.tsx` — `STEDI_SIGNATURE_KEYS` (miss this and the reveal can fire before your
+   column lands) + the defensive `removeOverlayKeys` list in `handleRunStedi`.
+5. `pages/ProfilePage.tsx` — the render (`ResCell` in the `res-grid` rows).
+The SPA **never writes** `stedi*` columns — the Railway service owns them (the SPA only clears
+three locally at run start). A result column that stays blank means the service isn't writing it,
+not an SPA bug.
 
 ---
 
@@ -459,6 +498,7 @@ these services; when their math changes, `oopEstimator.ts` must be updated to ma
 | A role's page behaves wrong | `src/pages/<Role>Page.tsx` → `hooks/<role>/useMondayPatients.ts` → `lib/<role>/workflow.ts` |
 | A value isn't saving to Monday | `lib/<role>/mondayWrite.ts` + `lib/shared/verifiedWrite.ts`; cross-check `mondayMapping.ts` column IDs |
 | Medical-necessity logic | `lib/masheke/evalState.ts` (+ ipPaths, requestTemplate, mnRequestPdf) |
+| Stedi check output / eligibility results | **inline in `src/pages/ProfilePage.tsx`** — NOT `components/profile/StediPanel.tsx` (dead, §5.11) |
 | Cost estimate wrong | `lib/welcomeCall/oopEstimator.ts` (sync vs Railway financial backend) |
 | Who can see what | `lib/accessStore.ts`, `lib/roleView.ts`, `components/AccessProvider.tsx` |
 | Files won't load / PDF viewer | `lib/shared/mondayAssets.ts`, `components/shared/FileViewerModal.tsx`, `worker/src/index.js` |

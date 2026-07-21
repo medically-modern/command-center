@@ -310,7 +310,7 @@ const ProfilePage = ({ variant }: ProfilePageProps) => {
     removeOverlayKeys(runId, [
       "stediPlanName", "stediErrorDescription", "stediEligibilityActive",
       "stediPayerName", "stediPlanBeginDate", "stediCoverageType", "stediHomePlan",
-      "stediMedicaidId", "stediQmb", "stediManagedMedicaid", "stediCoinsurance",
+      "stediMedicaidId", "stediAddress", "stediQmb", "stediManagedMedicaid", "stediCoinsurance",
       "stediIndividualDeductibleRemaining", "stediIndividualOopMaxRemaining",
     ]);
     try {
