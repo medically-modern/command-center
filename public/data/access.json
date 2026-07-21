@@ -57,7 +57,8 @@
         "chaseFax",
         "benefits",
         "authOutstanding",
-        "finalConfirm"
+        "finalConfirm",
+        "dvs"
       ],
       "roleOrder": {
         "profile": 1,
