@@ -516,6 +516,8 @@ const DvsPage = () => {
               <div className="xl:sticky xl:top-4">
                 <NotesPanel
                   notes={noteDrafts[selected.id] ?? selected.notes}
+                  profileSendOffNotes={selected.profileSendOffNotes}
+                  mnWorkflowNotes={selected.mnWorkflowNotes}
                   onNotesChange={(v) => setNoteDrafts((prev) => ({ ...prev, [selected.id]: v }))}
                   onSaveToMonday={(v) => writeLongText(selected.id, COL.callReferenceNotes, v)}
                   description="Carries over from the earlier stages. DVS reference numbers, ePACES notes…"

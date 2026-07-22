@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { MessageSquare, Plus, Loader2 } from "lucide-react";
 import { toast } from "sonner";
+import { PriorStageNotes } from "@/components/shared/PriorStageNotes";
 
 interface Props {
   notes: string;
@@ -10,12 +11,21 @@ interface Props {
   onSaveToMonday?: (notes: string) => Promise<void>;
   placeholder?: string;
   description?: string;
+  /** Earlier-stage notes shown read-only above the current Reference Notes. */
+  profileSendOffNotes?: string;
+  mnWorkflowNotes?: string;
   /** Stretch the panel to fill its container's height, letting the notes
    *  display grow instead of capping at 200px (Benefits notes rail). */
   fillHeight?: boolean;
 }
 
-export function NotesPanel({ notes, onNotesChange, onSaveToMonday, placeholder, description, fillHeight }: Props) {
+export function NotesPanel({ notes, onNotesChange, onSaveToMonday, placeholder, description, profileSendOffNotes, mnWorkflowNotes, fillHeight }: Props) {
+  // Earlier pipeline stages, oldest first, rendered read-only above the
+  // current (editable) insurance Reference Notes.
+  const priorStages = [
+    { label: "Profile Send-Off Notes", text: profileSendOffNotes },
+    { label: "MN Workflow Notes", text: mnWorkflowNotes },
+  ];
   const [newNote, setNewNote] = useState("");
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -86,6 +96,8 @@ export function NotesPanel({ notes, onNotesChange, onSaveToMonday, placeholder, 
           {editing ? (saving ? "Saving…" : "Done") : "Edit"}
         </Button>
       </div>
+
+      <PriorStageNotes stages={priorStages} />
 
       {/* Existing notes display / edit */}
       {editing ? (

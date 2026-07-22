@@ -36,6 +36,7 @@ import {
 import { runVerifiedSend } from "@/lib/masheke/mondayWrite";
 import { GatewayPendingError, type WriteProgressPhase, type WriteTask } from "@/lib/shared/verifiedWrite";
 import { SaveProgressOverlay } from "@/components/shared/SaveProgressOverlay";
+import { PriorStageNotes } from "@/components/shared/PriorStageNotes";
 import { FILE_PROXY_URL, fetchAssetBytes } from "@/lib/shared/mondayAssets";
 import { getIdToken, userInitials } from "@/lib/shared/auth";
 import {
@@ -554,6 +555,13 @@ export function ConfirmReceiptPanel({ patient, onUpdate, managerMode = false }: 
         {/* Other activity — the non-confirm-receipt rounds */}
         <h4 className="text-[1.05rem] font-bold tracking-tight mb-2.5 mt-6">Other activity</h4>
         <OtherActivity patient={patient} />
+
+        {/* Profile Send-Off notes — read-only history from the prior stage,
+            shown above the MN notes so the rep can scroll back through it. */}
+        <PriorStageNotes
+          stages={[{ label: "Profile Send-Off Notes", text: patient.profileSendOffNotes }]}
+          className="mt-6"
+        />
 
         {/* MN Workflow Notes — READ-ONLY here. Confirm Receipt never writes to
             these; on re-evaluation a prior round's attempt notes get folded in,

@@ -186,6 +186,8 @@ export function AuthOutstandingPanel({ patient, onCodeChange, onNotesChange, onS
       {/* Notes — same Call Reference Notes column as Benefits + Submit Auth. */}
       <NotesPanel
         notes={patient.notes}
+        profileSendOffNotes={patient.profileSendOffNotes}
+        mnWorkflowNotes={patient.mnWorkflowNotes}
         onNotesChange={onNotesChange}
         onSaveToMonday={onSaveNotesToMonday}
         description="Carries over from Benefits + Submit Auth. Add anything from approval / denial follow-up — rep names, reference numbers…"

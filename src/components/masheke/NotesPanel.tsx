@@ -1,10 +1,11 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { MessageSquare, Plus, Loader2, FileText, X } from "lucide-react";
+import { MessageSquare, Plus, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { etNow } from "@/lib/masheke/etDate";
 import { userInitials } from "@/lib/shared/auth";
+import { PriorStageNotes } from "@/components/shared/PriorStageNotes";
 
 interface Props {
   notes: string;
@@ -64,7 +65,8 @@ export function NotesPanel({ notes, onNotesChange, onSaveToMonday, notePrefix, p
   };
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [intakeNotesOpen, setIntakeNotesOpen] = useState(false);
+  // Earlier-stage notes rendered read-only above the current MN notes.
+  const priorStages = [{ label: "Profile Send-Off Notes", text: profileSendOffNotes }];
 
   const handleAppend = async () => {
     if (!newNote.trim()) return;
@@ -100,30 +102,6 @@ export function NotesPanel({ notes, onNotesChange, onSaveToMonday, notePrefix, p
     }
   };
 
-  const intakeModal = intakeNotesOpen ? (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
-      <div className="absolute inset-0 bg-black/50" onClick={() => setIntakeNotesOpen(false)} />
-      <div className="relative bg-card border rounded-xl shadow-xl w-full max-w-lg mx-4 max-h-[80vh] flex flex-col">
-        <div className="flex items-center justify-between p-4 border-b">
-          <h3 className="font-semibold text-sm">Profile Intake Notes</h3>
-          <button
-            onClick={() => setIntakeNotesOpen(false)}
-            className="h-7 w-7 rounded-md flex items-center justify-center hover:bg-muted transition-colors"
-          >
-            <X className="h-4 w-4" />
-          </button>
-        </div>
-        <div className="p-4 overflow-y-auto">
-          {profileSendOffNotes ? (
-            <p className="text-sm whitespace-pre-wrap">{profileSendOffNotes}</p>
-          ) : (
-            <p className="text-sm text-muted-foreground italic">No intake notes recorded.</p>
-          )}
-        </div>
-      </div>
-    </div>
-  ) : null;
-
   // ── Send Request redesign variant (June 2026 mockups) ──
   if (variant === "mm" || variant === "mm-inline") {
     const noteLines = notes.split("\n").map((l) => l.trim()).filter(Boolean);
@@ -144,15 +122,6 @@ export function NotesPanel({ notes, onNotesChange, onSaveToMonday, notePrefix, p
             >
               <MessageSquare className="h-[18px] w-[18px]" /> MN Workflow Notes
             </p>
-            {profileSendOffNotes !== undefined && (
-              <button
-                onClick={() => setIntakeNotesOpen(true)}
-                className="flex items-center gap-1.5 text-xs font-medium text-amber-700 hover:text-amber-800 bg-amber-100 hover:bg-amber-200 border border-amber-300 px-3 py-1.5 rounded-lg transition-colors"
-              >
-                <FileText className="h-3.5 w-3.5" />
-                Profile Intake Notes
-              </button>
-            )}
           </div>
           <Button
             variant="ghost"
@@ -179,6 +148,8 @@ export function NotesPanel({ notes, onNotesChange, onSaveToMonday, notePrefix, p
             {editing ? (saving ? "Saving…" : "Done") : "Edit"}
           </Button>
         </div>
+
+        <PriorStageNotes stages={priorStages} className="mt-2" />
 
         {editing ? (
           <Textarea
@@ -218,7 +189,6 @@ export function NotesPanel({ notes, onNotesChange, onSaveToMonday, notePrefix, p
           </Button>
         </div>
 
-        {intakeModal}
       </section>
     );
   }
@@ -230,15 +200,6 @@ export function NotesPanel({ notes, onNotesChange, onSaveToMonday, notePrefix, p
           <p className="text-xs uppercase tracking-wider text-muted-foreground font-semibold flex items-center gap-2">
             <MessageSquare className="h-3.5 w-3.5" /> MN Workflow Notes
           </p>
-          {profileSendOffNotes !== undefined && (
-            <button
-              onClick={() => setIntakeNotesOpen(true)}
-              className="flex items-center gap-1.5 text-xs font-medium text-amber-700 hover:text-amber-800 bg-amber-100 hover:bg-amber-200 border border-amber-300 px-3 py-1.5 rounded-lg transition-colors"
-            >
-              <FileText className="h-3.5 w-3.5" />
-              Profile Intake Notes
-            </button>
-          )}
         </div>
         <Button
           variant="ghost"
@@ -265,6 +226,8 @@ export function NotesPanel({ notes, onNotesChange, onSaveToMonday, notePrefix, p
           {editing ? (saving ? "Saving…" : "Done") : "Edit"}
         </Button>
       </div>
+
+      <PriorStageNotes stages={priorStages} />
 
       {/* Existing notes display / edit */}
       {editing ? (
@@ -304,9 +267,6 @@ export function NotesPanel({ notes, onNotesChange, onSaveToMonday, notePrefix, p
           {saving ? "Saving" : "Add"}
         </Button>
       </div>
-
-      {/* Profile Intake Notes Modal */}
-      {intakeModal}
     </section>
   );
 }

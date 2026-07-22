@@ -257,6 +257,8 @@ const ChaseBenefitsPage = () => {
                     <aside className="notes-rail">
                       <NotesPanel
                         notes={selected.notes}
+                        profileSendOffNotes={selected.profileSendOffNotes}
+                        mnWorkflowNotes={selected.mnWorkflowNotes}
                         onNotesChange={(v) => update(selected.id, { notes: v })}
                         onSaveToMonday={async (v) => {
                           await writeLongText(selected.id, COL.callReferenceNotes, v);

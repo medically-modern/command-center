@@ -15,7 +15,7 @@
  * Deductible / OOP Max remaining).
  */
 import { useState } from "react";
-import { ChevronDown, FileText } from "lucide-react";
+import { ChevronDown } from "lucide-react";
 import type { Patient } from "@/lib/samantha/workflow";
 import { authHomePlan } from "@/lib/samantha/submitAuthRules";
 import "./benefitsRedesign.css";
@@ -56,8 +56,6 @@ interface Props {
 
 export function BenefitsPatientHeader({ patient }: Props) {
   const [detailsOpen, setDetailsOpen] = useState(false);
-  const [notesOpen, setNotesOpen] = useState(false);
-  const [mnNotesOpen, setMnNotesOpen] = useState(false);
 
   const isMedicarePayer = /medicare/i.test(patient.primaryInsurance ?? "");
   const hasPump = !!(patient.serving && /Pump|Supplies/.test(patient.serving));
@@ -163,35 +161,6 @@ export function BenefitsPatientHeader({ patient }: Props) {
         </>
       )}
 
-      {/* Upstream notes (read-only viewers) */}
-      {(patient.profileSendOffNotes || patient.mnWorkflowNotes) && (
-        <div style={{ marginTop: 16, display: "flex", gap: 8, flexWrap: "wrap" }}>
-          {patient.profileSendOffNotes && (
-            <button className="tbtn" onClick={() => setNotesOpen((v) => !v)}>
-              <FileText size={14} /> Profile Intake Notes
-            </button>
-          )}
-          {patient.mnWorkflowNotes && (
-            <button className="tbtn" onClick={() => setMnNotesOpen((v) => !v)}>
-              <FileText size={14} /> MN Workflow Notes
-            </button>
-          )}
-        </div>
-      )}
-      {notesOpen && patient.profileSendOffNotes && (
-        <pre
-          style={{ marginTop: 10, whiteSpace: "pre-wrap", fontFamily: "inherit", fontSize: ".85rem", border: "1px solid var(--bnr-border)", borderRadius: 10, padding: 12, maxHeight: 220, overflowY: "auto" }}
-        >
-          {patient.profileSendOffNotes}
-        </pre>
-      )}
-      {mnNotesOpen && patient.mnWorkflowNotes && (
-        <pre
-          style={{ marginTop: 10, whiteSpace: "pre-wrap", fontFamily: "inherit", fontSize: ".85rem", border: "1px solid var(--bnr-border)", borderRadius: 10, padding: 12, maxHeight: 220, overflowY: "auto" }}
-        >
-          {patient.mnWorkflowNotes}
-        </pre>
-      )}
     </section>
   );
 }

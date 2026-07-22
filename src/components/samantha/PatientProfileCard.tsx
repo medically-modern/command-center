@@ -27,7 +27,6 @@ import {
   Send,
   MapPin,
   Cpu,
-  FileText,
   Pencil,
   X,
 } from "lucide-react";
@@ -126,8 +125,6 @@ export function PatientProfileCard({ patient, onUpdate }: Props) {
   const hasMember2 = !!patient.memberId2 && patient.memberId2.trim().length > 0;
   const [doctorOpen, setDoctorOpen] = useState(false);
   const [editing, setEditing] = useState(false);
-  const [notesOpen, setNotesOpen] = useState(false);
-  const [mnNotesOpen, setMnNotesOpen] = useState(false);
 
   const canEdit = !!onUpdate;
   const hasPumpOrSupplies = !!(
@@ -153,20 +150,6 @@ export function PatientProfileCard({ patient, onUpdate }: Props) {
           Patient Profile
         </p>
         <div className="flex items-center gap-2">
-          <button
-            onClick={() => setNotesOpen(true)}
-            className="flex items-center gap-1.5 text-xs font-medium text-primary hover:text-primary/80 bg-primary/10 hover:bg-primary/15 px-3 py-1.5 rounded-lg transition-colors"
-          >
-            <FileText className="h-3.5 w-3.5" />
-            Profile Intake Notes
-          </button>
-          <button
-            onClick={() => setMnNotesOpen(true)}
-            className="flex items-center gap-1.5 text-xs font-medium text-amber-700 hover:text-amber-800 bg-amber-100 hover:bg-amber-200 px-3 py-1.5 rounded-lg transition-colors"
-          >
-            <FileText className="h-3.5 w-3.5" />
-            MN Workflow Notes
-          </button>
         {canEdit && (
           <button
             onClick={toggleEdit}
@@ -485,56 +468,6 @@ export function PatientProfileCard({ patient, onUpdate }: Props) {
           </div>
         )}
       </div>
-
-      {/* Profile Intake Notes Modal */}
-      {notesOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center">
-          <div className="absolute inset-0 bg-black/50" onClick={() => setNotesOpen(false)} />
-          <div className="relative bg-card border rounded-xl shadow-xl w-full max-w-lg mx-4 max-h-[80vh] flex flex-col">
-            <div className="flex items-center justify-between p-4 border-b">
-              <h3 className="font-semibold text-sm">Profile Intake Notes</h3>
-              <button
-                onClick={() => setNotesOpen(false)}
-                className="h-7 w-7 rounded-md flex items-center justify-center hover:bg-muted transition-colors"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-            <div className="p-4 overflow-y-auto">
-              {patient.profileSendOffNotes ? (
-                <p className="text-sm whitespace-pre-wrap">{patient.profileSendOffNotes}</p>
-              ) : (
-                <p className="text-sm text-muted-foreground italic">No intake notes recorded.</p>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* MN Workflow Notes Modal */}
-      {mnNotesOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center">
-          <div className="absolute inset-0 bg-black/50" onClick={() => setMnNotesOpen(false)} />
-          <div className="relative bg-card border rounded-xl shadow-xl w-full max-w-lg mx-4 max-h-[80vh] flex flex-col">
-            <div className="flex items-center justify-between p-4 border-b">
-              <h3 className="font-semibold text-sm text-amber-700">MN Workflow Notes</h3>
-              <button
-                onClick={() => setMnNotesOpen(false)}
-                className="h-7 w-7 rounded-md flex items-center justify-center hover:bg-muted transition-colors"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-            <div className="p-4 overflow-y-auto">
-              {patient.mnWorkflowNotes ? (
-                <p className="text-sm whitespace-pre-wrap">{patient.mnWorkflowNotes}</p>
-              ) : (
-                <p className="text-sm text-muted-foreground italic">No MN workflow notes recorded.</p>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
 
     </div>
   );

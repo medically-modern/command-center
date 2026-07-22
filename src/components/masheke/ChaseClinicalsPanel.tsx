@@ -57,6 +57,7 @@ import { runVerifiedSend } from "@/lib/masheke/mondayWrite";
 import { userInitials } from "@/lib/shared/auth";
 import { GatewayPendingError, type WriteProgressPhase, type WriteTask } from "@/lib/shared/verifiedWrite";
 import { SaveProgressOverlay } from "@/components/shared/SaveProgressOverlay";
+import { PriorStageNotes } from "@/components/shared/PriorStageNotes";
 import { FILE_PROXY_URL, fetchAssetBytes } from "@/lib/shared/mondayAssets";
 import { getIdToken } from "@/lib/shared/auth";
 import { ESCALATION_INDEX, MN_ATTEMPTS_INDEX } from "@/lib/masheke/mondayMapping";
@@ -475,6 +476,13 @@ export function ChaseClinicalsPanel({ patient, onUpdate, managerMode = false, ro
         {/* Other activity — the earlier stages */}
         <h4 className="text-[1.05rem] font-bold tracking-tight mb-2.5 mt-6">Other activity</h4>
         <OtherActivity patient={patient} />
+
+        {/* Profile Send-Off notes — read-only history from the prior stage,
+            shown above the MN notes so the rep can scroll back through it. */}
+        <PriorStageNotes
+          stages={[{ label: "Profile Send-Off Notes", text: patient.profileSendOffNotes }]}
+          className="mt-6"
+        />
 
         {/* MN Workflow Notes — READ-ONLY here. Chase never writes to these; a
             prior round's attempt notes get folded in on re-evaluation, so the
