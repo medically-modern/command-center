@@ -159,8 +159,21 @@ export function deriveServing(cgmCrossSell: string, requestType: string): string
     if (requestType === "Supplies Only") return "Supplies + CGM";
     if (requestType === "Insulin Pump") return "Insulin Pump + CGM";
   }
-  if (cgmCrossSell === "Couldn't Cross-Sell" || cgmCrossSell === "Already Serving CGM") {
-    // Serving stays same as request type
+  if (cgmCrossSell === "Couldn't Cross-Sell") {
+    // We CANNOT serve CGM for this patient (Medicaid — e.g. Fidelis Medicaid —
+    // Anthem JLJ, United, or Cigna). When the referral asked for a COMBINED
+    // product, drop the CGM half and serve only the base product: we still
+    // serve the pump/supplies, just not the CGM they can't get. Without this,
+    // an "Insulin Pump + CGM" request was suggested verbatim as serving, i.e.
+    // suggesting a CGM we know we can't provide.
+    if (requestType === "Insulin Pump + CGM") return "Insulin Pump";
+    if (requestType === "Supplies + CGM") return "Supplies Only";
+    // Non-combined request (Insulin Pump / Supplies Only / CGM) — stays as-is.
+    return requestType || null;
+  }
+  if (cgmCrossSell === "Already Serving CGM") {
+    // Not a fresh cross-sell — the patient already gets CGM through us — so
+    // serving stays exactly as requested.
     return requestType || null;
   }
   return null;

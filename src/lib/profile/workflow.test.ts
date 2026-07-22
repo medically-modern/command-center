@@ -41,3 +41,33 @@ describe("JLJ end state (trigger member JLJ730667355)", () => {
     expect(deriveServing("Cross-Sell", "Supplies Only")).toBe("Supplies + CGM");
   });
 });
+
+describe("deriveServing strips CGM from a combined request when we can't serve CGM", () => {
+  it("Fidelis Medicaid + 'Insulin Pump + CGM' → serve Insulin Pump only", () => {
+    // Fidelis Medicaid is a Medicaid plan → can't cross-sell CGM.
+    expect(canCrossSellCgm("Fidelis Medicaid")).toBe(false);
+    // The bug: serving used to be suggested as "Insulin Pump + CGM" verbatim,
+    // suggesting a CGM we can't provide. It must drop to "Insulin Pump".
+    expect(deriveServing("Couldn't Cross-Sell", "Insulin Pump + CGM")).toBe("Insulin Pump");
+  });
+  it("Couldn't Cross-Sell + 'Supplies + CGM' → serve Supplies Only", () => {
+    expect(deriveServing("Couldn't Cross-Sell", "Supplies + CGM")).toBe("Supplies Only");
+  });
+  it("applies to every can't-cross-sell reason, not just Medicaid", () => {
+    for (const ins of ["Fidelis Medicaid", "Anthem BCBS Low-Cost (JLJ)", "United Medicare", "Cigna"]) {
+      expect(canCrossSellCgm(ins)).toBe(false);
+    }
+    expect(deriveServing("Couldn't Cross-Sell", "Insulin Pump + CGM")).toBe("Insulin Pump");
+  });
+  it("eligible plans still cross-sell the combined product (Insulin Pump → +CGM)", () => {
+    expect(deriveServing("Cross-Sell", "Insulin Pump")).toBe("Insulin Pump + CGM");
+  });
+  it("Already Serving CGM leaves the combined request unchanged", () => {
+    // Patient already gets CGM through us — serving reflects the full request.
+    expect(deriveServing("Already Serving CGM", "Insulin Pump + CGM")).toBe("Insulin Pump + CGM");
+  });
+  it("a non-combined request under Couldn't Cross-Sell is untouched", () => {
+    expect(deriveServing("Couldn't Cross-Sell", "Insulin Pump")).toBe("Insulin Pump");
+    expect(deriveServing("Couldn't Cross-Sell", "Supplies Only")).toBe("Supplies Only");
+  });
+});
