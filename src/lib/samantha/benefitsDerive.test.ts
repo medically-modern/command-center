@@ -329,14 +329,14 @@ describe("call logs (spec §4, D8)", () => {
       "2026-07-13",
     );
     expect(lines).toEqual([
-      "[Benefits call · ref 4821-A · 2026-07-13] spoke with payer",
-      "[Benefits call · 2026-07-13] note only",
-      "[Benefits call · ref REF-2 · 2026-07-13]",
+      "[2026-07-13] Benefits call · ref 4821-A: spoke with payer",
+      "[2026-07-13] Benefits call: note only",
+      "[2026-07-13] Benefits call · ref REF-2",
     ]);
   });
   it("tags section-2 rows as SoS/auth calls", () => {
     expect(composeCallLogLines([{ ref: "1", note: "x" }], "sos-auth", "2026-07-13")).toEqual([
-      "[SoS/auth call · ref 1 · 2026-07-13] x",
+      "[2026-07-13] SoS/auth call · ref 1: x",
     ]);
   });
   it("appends onto existing history without overwriting", () => {

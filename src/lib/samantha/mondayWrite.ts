@@ -36,6 +36,7 @@ import {
 } from "./benefitsDerive";
 import { derivedRecheckSos, effectiveResult } from "./authOutstandingReview";
 import { allProductsDvsRouted, dvsAutoTrigger, hasDvsRoutedProducts } from "./dvsRouting";
+import { etNow } from "../masheke/etDate";
 
 const MAX_RETRIES = 2;
 const RETRY_DELAY_MS = 800;
@@ -671,36 +672,29 @@ export async function sendPatientToMonday(
     const rows1 = (ins.callsUniversal ?? []).filter((r) => !isBlankCallRow(r));
     const rows2 = universalNegative ? [] : (ins.callsSosAuth ?? []).filter((r) => !isBlankCallRow(r));
     const pumpDateTbd = !universalNegative && !!ins.neverBilledIsCar; // derived: Medicare A&B + IS AND Cartridges never billed
-    if (rows1.length > 0 || rows2.length > 0 || pumpDateTbd) {
-      const current = await readColumnTexts(p.id, [
-        COL.benefitsCallLog,
-        COL.sosAuthCallLog,
-        COL.medicarePriorPumpDate,
-      ]);
-      const textOf = (id: string) => current.find((c) => c.id === id)?.text ?? "";
-      if (rows1.length > 0) {
-        const composed = appendCallLog(textOf(COL.benefitsCallLog), composeCallLogLines(rows1, "benefits", todayEt));
-        tasks.push({
-          label: "Benefits Call Log",
-          columnId: COL.benefitsCallLog,
-          fn: () => writeLongText(p.id, COL.benefitsCallLog, composed),
-          expectedText: composed,
-        });
-      }
-      if (rows2.length > 0) {
-        const composed = appendCallLog(textOf(COL.sosAuthCallLog), composeCallLogLines(rows2, "sos-auth", todayEt));
-        tasks.push({
-          label: "SoS/Auth Call Log",
-          columnId: COL.sosAuthCallLog,
-          fn: () => writeLongText(p.id, COL.sosAuthCallLog, composed),
-          expectedText: composed,
-        });
-      }
-      // Write the literal "TBD" only into an empty (or already-TBD) cell —
-      // never clobber a real date someone collected. No clear path when the
-      // derivation later flips false (open question 9, matches Never Billed).
-      const existingPumpDate = textOf(COL.medicarePriorPumpDate).trim();
-      if (pumpDateTbd && (!existingPumpDate || existingPumpDate === "TBD")) {
+
+    // Call logs → appended (timestamped) into Call Reference Notes, NOT the old
+    // dedicated columns (Josh, 2026-07): both the payer and SoS/auth calls land
+    // in the same notes. appendCallLog dedups against the notes text, and the
+    // notes write is a full replace, so a rapid double-send never duplicates a
+    // call line. Every call in one send shares the send-time ET stamp.
+    if (rows1.length > 0 || rows2.length > 0) {
+      const stamp = etNow().toLocaleString("en-US", {
+        month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit",
+      });
+      const callLogLines = [
+        ...composeCallLogLines(rows1, "benefits", stamp),
+        ...composeCallLogLines(rows2, "sos-auth", stamp),
+      ];
+      notesForSend = appendCallLog(notesForSend, callLogLines);
+    }
+
+    // "TBD" pump date (D1): write the literal "TBD" only into an empty (or
+    // already-TBD) cell — never clobber a real date someone collected.
+    if (pumpDateTbd) {
+      const current = await readColumnTexts(p.id, [COL.medicarePriorPumpDate]);
+      const existingPumpDate = (current.find((c) => c.id === COL.medicarePriorPumpDate)?.text ?? "").trim();
+      if (!existingPumpDate || existingPumpDate === "TBD") {
         tasks.push({
           label: "Medicare Prior Pump Date (TBD)",
           columnId: COL.medicarePriorPumpDate,

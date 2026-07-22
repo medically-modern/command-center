@@ -273,13 +273,14 @@ export function isBlankCallRow(row: CallLogRow): boolean {
   return !(row.ref ?? "").trim() && !(row.note ?? "").trim();
 }
 
-/** One line per call: "[Benefits call · ref 4821-A · 2026-07-13] <notes>".
- *  Section-2 rows are tagged as SoS/auth calls. Fully-blank rows are
- *  discarded before appending. */
+/** One timestamped line per call, for appending into Call Reference Notes:
+ *  "[Jul 13, 2026, 2:30 PM] Benefits call · ref 4821-A: <note>". Section-2
+ *  rows are tagged as SoS/auth calls. Fully-blank rows are discarded before
+ *  appending. `stamp` is the (ET) timestamp stamped on every row of the send. */
 export function composeCallLogLines(
   rows: CallLogRow[],
   section: "benefits" | "sos-auth",
-  dateYmd: string = etTodayYmd(),
+  stamp: string,
 ): string[] {
   const tag = section === "benefits" ? "Benefits call" : "SoS/auth call";
   return rows
@@ -287,8 +288,8 @@ export function composeCallLogLines(
     .map((r) => {
       const ref = (r.ref ?? "").trim();
       const note = (r.note ?? "").trim();
-      const head = ref ? `[${tag} · ref ${ref} · ${dateYmd}]` : `[${tag} · ${dateYmd}]`;
-      return note ? `${head} ${note}` : head;
+      const head = ref ? `[${stamp}] ${tag} · ref ${ref}` : `[${stamp}] ${tag}`;
+      return note ? `${head}: ${note}` : head;
     });
 }
 
