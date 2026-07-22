@@ -375,8 +375,8 @@ const DvsPage = () => {
                       never rode the payer rail either, so it highlights the
                       skip path with straight Medicaid */}
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <PathCard active={skippedRail} title="Straight to DVS" body="Everything goes through NY Medicaid — skipped Submit Auth and Auth Outstanding entirely." />
-                    <PathCard active={!skippedRail} title="Pump Approved via Primary Payer" body="Managed Medicaid dual — the pump rode the payer auth rail; only the supplies go through NY Medicaid here." />
+                    <PathCard active={skippedRail} title="Straight to DVS" />
+                    <PathCard active={!skippedRail} title="Pump Approved via Primary Payer" />
                   </div>
 
                   {/* DVS status by product (§8) */}
@@ -532,7 +532,7 @@ const DvsPage = () => {
   );
 };
 
-function PathCard({ active, title, body }: { active: boolean; title: string; body: string }) {
+function PathCard({ active, title, body }: { active: boolean; title: string; body?: string }) {
   return (
     <div className={cn(
       "rounded-xl border p-4",
@@ -544,7 +544,7 @@ function PathCard({ active, title, body }: { active: boolean; title: string; bod
         {title}
         {active && <span className="ml-2 text-[10px] font-bold uppercase tracking-wide bg-[#0F4C5C] text-white rounded-full px-2 py-0.5">This patient</span>}
       </p>
-      <p className="text-xs text-muted-foreground mt-1 leading-relaxed">{body}</p>
+      {body && <p className="text-xs text-muted-foreground mt-1 leading-relaxed">{body}</p>}
     </div>
   );
 }
