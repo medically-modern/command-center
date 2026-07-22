@@ -76,7 +76,8 @@
         "finalConfirm",
         "unverifiedReferrals",
         "dvs",
-        "benefits"
+        "benefits",
+        "submitAuth"
       ],
       "roleFilters": {
         "profile": "all",
