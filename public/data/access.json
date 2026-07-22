@@ -85,7 +85,8 @@
         "finalConfirm": "all",
         "unverifiedReferrals": "all",
         "benefits": "all",
-        "authOutstanding": "all"
+        "authOutstanding": "all",
+        "submitAuth": "all"
       }
     },
     "katie@medicallymodern.com": {
