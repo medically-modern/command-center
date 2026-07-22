@@ -567,6 +567,25 @@ const RAW_CHART_DEFS: ChartDef[] = [
       { colId: "color_mm284z0b", label: "Claims", pill: true },
     ],
   },
+  // Manager view: Insurance — a SEPARATE bucket for DVS items flagged for
+  // manual review, sitting to the right of Auth Denial (rowOf). Today it's
+  // just the "Manual Review" DVS statuses; more rules may land here later.
+  {
+    id: "dvs-manual-review",
+    title: "DVS — Manual Review",
+    boardId: 18410601299,
+    notesColId: "long_text_mm2ffsme",
+    rowOf: "auth-denial",
+    drilldownCols: [
+      { colId: "color_mm1wwm05", label: "Days in Stage" },
+      { colId: "color_mm1x157j", label: "Primary Insurance" },
+      { colId: "color_mm1w1cm9", label: "Serving" },
+      { colId: "color_mm26pk1a", label: "Supplies DVS", pill: true },
+      { colId: "color_mm578kbd", label: "Pump DVS", pill: true },
+      { colId: "color_mm284z0b", label: "Claims", pill: true },
+      { colId: "color_mm2vsh2f", label: "Escalation", pill: true },
+    ],
+  },
 
   // ── Board 18410804557 (Welcome Call / Order) ──
   {
@@ -747,7 +766,7 @@ export const OVERSIGHT_SECTIONS: OversightSection[] = [
     chartIds: ["benefits", "submit-auth", "auth-outstanding", "auth-denial"],
     primaryTitle: "Processor Overview",
     secondaryTitle: "Manager as Processor",
-    secondaryChartIds: ["dvs-retry-queue"],
+    secondaryChartIds: ["dvs-retry-queue", "dvs-manual-review"],
     tertiaryTitle: "Final Decisions",
     tertiaryChartIds: ["benefits-check-failed"],
   },
@@ -795,7 +814,10 @@ function dateToBucket(dateStr: string): DayBucketLabel | "Unknown" {
 const BOARD_GROUPS: Record<number, string[]> = {
   18406352652: ["group_mm1xf2jb"],
   18406060017: ["group_mm1xf2jb"],
-  18410601299: ["group_mm1xr3q3", "group_mm1x1416", "group_mm2v6d1z", "group_mm316hg2"],
+  // group_mm5gp2r2 = DVS: added 2026-07 when DVS got its own group (a
+  // group-move automation). Without it the DVS-stage items are never fetched,
+  // so the DVS charts (Retry Queue, Manual Review) show nothing.
+  18410601299: ["group_mm1xr3q3", "group_mm1x1416", "group_mm2v6d1z", "group_mm5gp2r2", "group_mm316hg2"],
   18410804557: ["group_mm1wvq8p", "group_mm2x8jtj"],
 };
 
@@ -1100,6 +1122,10 @@ const CHART_FILTERS: Record<string, FilterRule> = {
   // DVS retry queue (PROVISIONAL — see the ChartDef note): stage DVS with a
   // non-zero Retry Count.
   "dvs-retry-queue": { type: "stageAdvancer", boardId: 18410601299, value: "DVS", anyCols: [{ colId: "numeric_mm27nexq", gte: 1 }, { colId: "color_mm26pk1a", value: "Retry Queued" }] },
+  // DVS manual review (NEW 2026-07 — a separate bucket from the retry queue):
+  // stage DVS with a "Manual Review" status on Supplies or Pump DVS. More
+  // rules may be ORed in here later; for now it's just the manual-review items.
+  "dvs-manual-review": { type: "stageAdvancer", boardId: 18410601299, value: "DVS", anyCols: [{ colId: "color_mm26pk1a", value: "Manual Review" }, { colId: "color_mm578kbd", value: "Manual Review" }] },
 };
 
 /** Evaluate a single column condition against a patient. */
