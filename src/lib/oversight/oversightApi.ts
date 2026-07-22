@@ -568,8 +568,9 @@ const RAW_CHART_DEFS: ChartDef[] = [
     ],
   },
   // Manager view: Insurance — a SEPARATE bucket for DVS items flagged for
-  // manual review, sitting to the right of Auth Denial (rowOf). Today it's
-  // just the "Manual Review" DVS statuses; more rules may land here later.
+  // manual review, sitting to the right of Auth Denial (rowOf). Mirrors the
+  // DVS page's "manual review" flag — Escalation Required, any rose Supplies/
+  // Pump DVS status, or a claims failure (see the CHART_FILTERS entry).
   {
     id: "dvs-manual-review",
     title: "DVS — Manual Review",
@@ -1122,10 +1123,21 @@ const CHART_FILTERS: Record<string, FilterRule> = {
   // DVS retry queue (PROVISIONAL — see the ChartDef note): stage DVS with a
   // non-zero Retry Count.
   "dvs-retry-queue": { type: "stageAdvancer", boardId: 18410601299, value: "DVS", anyCols: [{ colId: "numeric_mm27nexq", gte: 1 }, { colId: "color_mm26pk1a", value: "Retry Queued" }] },
-  // DVS manual review (NEW 2026-07 — a separate bucket from the retry queue):
-  // stage DVS with a "Manual Review" status on Supplies or Pump DVS. More
-  // rules may be ORed in here later; for now it's just the manual-review items.
-  "dvs-manual-review": { type: "stageAdvancer", boardId: 18410601299, value: "DVS", anyCols: [{ colId: "color_mm26pk1a", value: "Manual Review" }, { colId: "color_mm578kbd", value: "Manual Review" }] },
+  // DVS manual review (NEW 2026-07 — a separate bucket from the retry queue).
+  // Mirrors the DVS page's "manual review" flag (isFailedish / escalated):
+  // stage DVS with Escalation Required, OR a rose Supplies/Pump DVS status
+  // (MLTC / Failed / Manual Review, plus Denied on Pump), OR a claims failure
+  // (Claims Error / Claims Denied / Payment Incorrect). More rules may be ORed
+  // in later. Label strings mirror the live board columns.
+  "dvs-manual-review": {
+    type: "stageAdvancer", boardId: 18410601299, value: "DVS",
+    anyCols: [
+      { colId: "color_mm2vsh2f", value: "Escalation Required" },
+      { colId: "color_mm26pk1a", value: ["MLTC", "Failed", "Manual Review"] },
+      { colId: "color_mm578kbd", value: ["MLTC", "Failed", "Manual Review", "Denied"] },
+      { colId: "color_mm284z0b", value: ["Claims Error", "Claims Denied", "Payment Incorrect"] },
+    ],
+  },
 };
 
 /** Evaluate a single column condition against a patient. */
