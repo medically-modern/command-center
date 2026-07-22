@@ -265,8 +265,12 @@
 /* ============ layout: main + notes rail ============ */
 .bnr .layout{display:grid;grid-template-columns:minmax(0,1fr) clamp(320px,22vw,420px);gap:24px;align-items:start}
 .bnr .main-col{display:flex;flex-direction:column;gap:24px;min-width:0}
-/* notes rail fills the viewport height while pinned */
-.bnr .notes-rail{position:sticky;top:16px;height:calc(100vh - 32px)}
+/* Notes rail: sticky, sized to fit the viewport ON PAGE LOAD. The page uses
+   body-scroll with a non-sticky header, so before the rail sticks to top:16px
+   it sits ~130px down (navy header + main padding). Subtracting that offset
+   keeps the rail's pinned input on-screen without scrolling; once stuck at
+   top:16px there's just a little extra room at the bottom. */
+.bnr .notes-rail{position:sticky;top:16px;height:calc(100vh - 150px)}
 .bnr .notes-rail>*{height:100%}
 .bnr .notes-card{display:flex;flex-direction:column;padding:20px;height:100%}
 .bnr .notes-card textarea{flex:1;min-height:0;resize:none;font-size:.9rem;line-height:1.6}
