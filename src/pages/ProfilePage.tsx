@@ -21,7 +21,7 @@ import {
   titleCaseName, titleCaseAddress, normalizeEmailCase,
 } from "@/lib/profile/workflow";
 import {
-  fetchClinicLabels, fetchItemAssets, fetchUpdates,
+  fetchClinicLabels, fetchItemAssets, fetchUpdates, createUpdate,
   type MondayAsset, type MondayUpdate,
 } from "@/lib/profile/mondayApi";
 import {
@@ -579,22 +579,67 @@ function Field({ label, required, children, warn }: { label: string; required?: 
   );
 }
 
-/** Inline referral email / Monday updates (read-only), rendered in the rail below Files. */
+/** Turn a hand-pasted referral email into a Monday update body: trim, escape
+ *  HTML (updates render via dangerouslySetInnerHTML, so stray <, &, > from a
+ *  pasted email must not break the markup), preserve the email's line breaks,
+ *  and append the same "-Profile Checklist" signature the role has always used
+ *  on posted updates. */
+function referralEmailToUpdateBody(text: string): string {
+  const esc = text
+    .trim()
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/\r\n|\r|\n/g, "<br>");
+  return `${esc}<br><br><i>-Profile Checklist</i>`;
+}
+
+/** Inline referral email / Monday updates, rendered in the rail below Files.
+ *  Reads existing Monday updates for the item AND lets a rep paste a referral
+ *  email in by hand — Save posts it as a new update on the SAME item, so it
+ *  lands in the same list. Serves BOTH profile roles (verified + unverified)
+ *  unchanged — one board/item, one updates feed. */
 function RailReferral({ patient }: { patient: Patient }) {
   const [open, setOpen] = useState(false);
   const [updates, setUpdates] = useState<MondayUpdate[]>([]);
   const [loading, setLoading] = useState(false);
+  const [composing, setComposing] = useState(false);
+  const [draft, setDraft] = useState("");
+  const [saving, setSaving] = useState(false);
 
-  // Fetch on load / patient change and auto-expand when there's referral data.
-  useEffect(() => {
+  // Load the item's updates. `autoOpen` expands the section when there's
+  // already referral data (first load / patient change); a manual Save
+  // re-fetches with autoOpen=false so it never fights the user's toggle.
+  const loadUpdates = useCallback((autoOpen: boolean) => {
     let cancelled = false;
     setLoading(true);
     fetchUpdates(patient.id)
-      .then((u) => { if (!cancelled) { setUpdates(u); if (u.length > 0) setOpen(true); } })
+      .then((u) => { if (!cancelled) { setUpdates(u); if (autoOpen && u.length > 0) setOpen(true); } })
       .catch(() => { if (!cancelled) setUpdates([]); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
   }, [patient.id]);
+
+  // Fetch on load / patient change and auto-expand when there's referral data.
+  useEffect(() => loadUpdates(true), [loadUpdates]);
+
+  const handleSaveReferral = async () => {
+    const text = draft.trim();
+    if (!text) return;
+    setSaving(true);
+    try {
+      await createUpdate(patient.id, referralEmailToUpdateBody(text));
+      toast.success("Referral email saved to Monday");
+      setDraft("");
+      setComposing(false);
+      setOpen(true);
+      loadUpdates(false); // re-fetch so the new update shows in the list below
+    } catch (e) {
+      toast.error("Failed to save referral email", { description: e instanceof Error ? e.message : String(e) });
+    } finally {
+      setSaving(false);
+    }
+  };
 
   return (
     <div className="rail-card">
@@ -625,6 +670,31 @@ function RailReferral({ patient }: { patient: Patient }) {
                   </div>
                 ))}
               </div>
+            )}
+
+            {/* Add a referral email by hand — paste it in and Save posts it as
+                a Monday update on this item, landing in the same list above. */}
+            {composing ? (
+              <div className="note-add" style={{ marginTop: 12 }}>
+                <textarea
+                  value={draft}
+                  onChange={(e) => setDraft(e.target.value)}
+                  placeholder="Paste the referral email here…"
+                  autoFocus
+                />
+                <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+                  <button className="btn primary sm" onClick={handleSaveReferral} disabled={saving || !draft.trim()}>
+                    {saving ? "Saving…" : "Save"}
+                  </button>
+                  <button className="btn secondary sm" onClick={() => { setComposing(false); setDraft(""); }} disabled={saving}>
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <button className="btn secondary sm" style={{ marginTop: 12 }} onClick={() => setComposing(true)}>
+                ＋ Add referral email
+              </button>
             )}
           </div>
         )}
