@@ -228,8 +228,10 @@ export function PatientsSidebar({ patients, selectedId, onSelect, loading, error
             </div>
           )}
         </SidebarMenuButton>
-        {/* "Done for today" — active (non-escalated) rows only */}
-        {!collapsed && !p.escalated && (
+        {/* "Done for today" (+1d) — active (non-escalated) rows only, and NOT
+            in Benefits (Josh, 2026-07): the +1d snooze isn't needed there.
+            Still shown for Submit Auth / Auth Outstanding. */}
+        {!collapsed && !p.escalated && activeGroup !== "benefits" && (
           <PushToTomorrowButton patientId={p.id} patientName={p.name} onSuccess={onRefresh} />
         )}
       </div>
