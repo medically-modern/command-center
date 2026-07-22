@@ -269,6 +269,8 @@ const WelcomeCallPage = () => {
                   <NextOrderDatesCard patient={selected} onFieldChange={handleFieldChange} />
                   <NotesPanel
                     notes={selected.notes}
+                    profileSendOffNotes={selected.profileSendOffNotes}
+                    mnWorkflowNotes={selected.mnWorkflowNotes}
                     onNotesChange={(v) => update(selected.id, { notes: v })}
                     onSaveToMonday={(v) => sendNotesToMonday(selected.id, v)}
                   />

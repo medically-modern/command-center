@@ -67,6 +67,8 @@ export function mondayItemToPatient(item: MondayItem): Patient {
     referralReceivedDate: txt(COL.referralReceivedDate),
     diagnosis: txt(COL.diagnosis),
     notes: txt(COL.notes),
+    profileSendOffNotes: txt(COL.profileSendOffNotes),
+    mnWorkflowNotes: txt(COL.mnWorkflowNotes),
     monitorQty: txt(COL.monitorQty),
     pumpQty: txt(COL.pumpQty),
     qtyInf1: txt(COL.qtyInf1),

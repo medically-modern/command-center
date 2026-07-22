@@ -320,6 +320,8 @@ const FinalConfirmPage = () => {
                   <SplitOrderButton patient={selected} onSplit={handleSplit} />
                   <NotesPanel
                     notes={selected.notes}
+                    profileSendOffNotes={selected.profileSendOffNotes}
+                    mnWorkflowNotes={selected.mnWorkflowNotes}
                     onNotesChange={(v) => update(selected.id, { notes: v })}
                     onSaveToMonday={(v) => writeLongText(selected.id, COL.notes, v)}
                   />
