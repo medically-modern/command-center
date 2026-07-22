@@ -77,7 +77,8 @@
         "unverifiedReferrals",
         "dvs",
         "benefits",
-        "submitAuth"
+        "submitAuth",
+        "authOutstanding"
       ],
       "roleFilters": {
         "profile": "all",
