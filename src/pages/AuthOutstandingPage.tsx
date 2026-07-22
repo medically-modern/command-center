@@ -253,12 +253,7 @@ const AuthOutstandingPage = () => {
 
                   {/* Auth Review Complete — the ONLY stage-mover (§6) */}
                   <div className="rounded-xl bg-card border shadow-card p-5">
-                    <div className="flex items-center justify-between gap-4 flex-wrap">
-                      <p className="text-xs text-muted-foreground max-w-xl">
-                        Any product Denied → stage moves to Auth Denied with Escalation Required.
-                        Everything resolved → stage moves to Complete. Partial (e.g. a saved No Auth
-                        Needed awaiting its recheck) → the stage stays put.
-                      </p>
+                    <div className="flex items-center justify-end gap-4 flex-wrap">
                       <Button
                         size="lg"
                         onClick={handleSend}

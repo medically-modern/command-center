@@ -302,40 +302,48 @@ export function PatientProfileCard({ patient, onUpdate }: Props) {
           <Field icon={<Activity className="h-4 w-4" />} label="Diagnosis" value={patient.diagnosis ?? ""} />
         )}
 
-        {/* Secondary Insurance — always editable dropdown */}
-        <div className="flex items-start gap-2 min-w-0">
-          <div className="h-8 w-8 rounded-md bg-muted flex items-center justify-center text-muted-foreground shrink-0 mt-1">
-            <ShieldCheck className="h-4 w-4" />
+        {/* Secondary Insurance — read-only by default, editable via the pencil */}
+        {editing ? (
+          <div className="flex items-start gap-2 min-w-0">
+            <div className="h-8 w-8 rounded-md bg-muted flex items-center justify-center text-muted-foreground shrink-0 mt-1">
+              <ShieldCheck className="h-4 w-4" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
+                Secondary Insurance
+              </p>
+              <Select
+                value={patient.secondaryInsurance ?? ""}
+                onValueChange={(v) => patch({ secondaryInsurance: v })}
+              >
+                <SelectTrigger className="h-7 text-sm mt-0.5">
+                  <SelectValue placeholder="Select insurance" />
+                </SelectTrigger>
+                <SelectContent>
+                  {SECONDARY_INSURANCE_OPTIONS_SAMANTHA.map((opt) => (
+                    <SelectItem key={opt} value={opt}>
+                      {opt}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
           </div>
-          <div className="min-w-0 flex-1">
-            <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
-              Secondary Insurance
-            </p>
-            <Select
-              value={patient.secondaryInsurance ?? ""}
-              onValueChange={(v) => patch({ secondaryInsurance: v })}
-            >
-              <SelectTrigger className="h-7 text-sm mt-0.5">
-                <SelectValue placeholder="Select insurance" />
-              </SelectTrigger>
-              <SelectContent>
-                {SECONDARY_INSURANCE_OPTIONS_SAMANTHA.map((opt) => (
-                  <SelectItem key={opt} value={opt}>
-                    {opt}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        </div>
+        ) : (
+          <Field icon={<ShieldCheck className="h-4 w-4" />} label="Secondary Insurance" value={patient.secondaryInsurance ?? ""} />
+        )}
 
-        {/* Member ID 2 — always editable */}
-        <EditableField
-          icon={<IdCard className="h-4 w-4" />}
-          label="Member ID 2"
-          value={patient.memberId2 ?? ""}
-          onChange={(v) => patch({ memberId2: v })}
-        />
+        {/* Member ID 2 — read-only by default, editable via the pencil */}
+        {editing ? (
+          <EditableField
+            icon={<IdCard className="h-4 w-4" />}
+            label="Member ID 2"
+            value={patient.memberId2 ?? ""}
+            onChange={(v) => patch({ memberId2: v })}
+          />
+        ) : (
+          <Field icon={<IdCard className="h-4 w-4" />} label="Member ID 2" value={patient.memberId2 ?? ""} />
+        )}
 
         <Field
           icon={<Stethoscope className="h-4 w-4" />}

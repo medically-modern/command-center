@@ -17,9 +17,7 @@ import type { Patient } from "@/lib/samantha/workflow";
 import type { SidebarGroup as SidebarGroupType } from "@/hooks/samantha/useMondayPatients";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
-import { clearStatusColumn, writeDate, writeStatusIndex, COL } from "@/lib/samantha/mondayApi";
-import { FOLLOW_UP_INDEX } from "@/lib/samantha/mondayMapping";
-import { addDaysYmd, etTodayYmd } from "@/lib/samantha/benefitsDerive";
+import { clearStatusColumn, COL } from "@/lib/samantha/mondayApi";
 import { daysAuthOutstanding } from "@/lib/samantha/authOutstandingDays";
 import { useSearchParams } from "react-router-dom";
 import { viewFilterFromParams } from "@/lib/roleView";
@@ -73,46 +71,6 @@ function ClearFollowUpButton({ patientId, patientName, onSuccess }: { patientId:
     >
       {sending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Undo2 className="h-3 w-3" />}
       Remove
-    </button>
-  );
-}
-
-/** Per-patient "done for today" button (2026-07-20): pushes the patient to
- *  tomorrow — Follow Up status + Follow Up Date = tomorrow (ET) — clearing
- *  them from the active list. They auto-return when the date arrives
- *  (sidebarList.isSnoozedFollowUp + the counting contract). Same two raw
- *  column writes the old Follow Up modal made, with the date fixed. */
-function PushToTomorrowButton({ patientId, patientName, onSuccess }: { patientId: string; patientName: string; onSuccess: () => void }) {
-  const [sending, setSending] = useState(false);
-
-  const handlePush = async (e: React.MouseEvent) => {
-    e.stopPropagation();
-    setSending(true);
-    const tomorrow = addDaysYmd(etTodayYmd(), 1);
-    try {
-      await Promise.all([
-        writeStatusIndex(patientId, COL.followUp, FOLLOW_UP_INDEX.followUp),
-        writeDate(patientId, COL.followUpDate, tomorrow),
-      ]);
-      toast.success(`${patientName} done for today — returns tomorrow`);
-      onSuccess();
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      toast.error(`Failed to push to tomorrow: ${msg}`);
-    } finally {
-      setSending(false);
-    }
-  };
-
-  return (
-    <button
-      onClick={handlePush}
-      disabled={sending}
-      className="shrink-0 flex items-center gap-1 px-1.5 py-1 rounded text-[10px] font-medium text-sky-300 bg-white/5 border border-white/15 hover:bg-white/10 transition-colors disabled:opacity-50"
-      title={`Done for today — ${patientName} returns tomorrow`}
-    >
-      {sending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Clock className="h-3 w-3" />}
-      +1d
     </button>
   );
 }
@@ -228,12 +186,6 @@ export function PatientsSidebar({ patients, selectedId, onSelect, loading, error
             </div>
           )}
         </SidebarMenuButton>
-        {/* "Done for today" (+1d) — Auth Outstanding only (Josh, 2026-07):
-            the +1d snooze isn't needed in Benefits or Submit Auth. Active
-            (non-escalated) rows only. */}
-        {!collapsed && !p.escalated && activeGroup === "authOutstanding" && (
-          <PushToTomorrowButton patientId={p.id} patientName={p.name} onSuccess={onRefresh} />
-        )}
       </div>
     </SidebarMenuItem>
   );
@@ -352,8 +304,10 @@ export function PatientsSidebar({ patients, selectedId, onSelect, loading, error
           </SidebarGroup>
         )}
 
-        {/* ── Follow Up section (all views) ── */}
-        {followUpPatients.length > 0 && !collapsed && (
+        {/* ── Follow Up section — hidden on Auth Outstanding (Josh, 2026-07):
+            the snooze still hides these patients from the active list, we just
+            don't re-list them here. ── */}
+        {followUpPatients.length > 0 && !collapsed && activeGroup !== "authOutstanding" && (
           <SidebarGroup>
             <SidebarGroupLabel className="text-[10px] uppercase tracking-wider text-blue-500 font-semibold flex items-center gap-1.5">
               <Clock className="h-3 w-3" />
