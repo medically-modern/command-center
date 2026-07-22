@@ -551,9 +551,10 @@ export function AuthorizationsPanel({
 
         <div className="foot-actions">
           {/* No Follow Up / Escalate controls here (removed 2026-07-20):
-              follow-up is automatic (send stamps today; the sidebar's +1d
-              button pushes a patient to tomorrow), and escalation state
-              just carries through the send round-trip. */}
+              follow-up is automatic (the send stamps Follow Up Date =
+              today), and escalation state just carries through the send
+              round-trip. (The sidebar's +1d snooze was removed from Submit
+              Auth too, 2026-07.) */}
           <div className="foot-left" />
           <button
             className={`send-btn ${sendState === "error" ? "err" : ""}`}

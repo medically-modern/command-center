@@ -16,8 +16,9 @@
  *
  * Removed 2026-07-20 (Josh): the Follow Up button + modal and the
  * Escalate button + form. Follow-up is automatic — the send stamps
- * Follow Up Date = today, and the sidebar's per-patient "+1d" button
- * pushes a patient to tomorrow (they auto-return when the date arrives).
+ * Follow Up Date = today. (The sidebar's per-patient "+1d" snooze was
+ * later removed from Submit Auth too, 2026-07; it remains on Auth
+ * Outstanding.)
  */
 import { useMemo, useState } from "react";
 import { useMondayPatients } from "@/hooks/samantha/useMondayPatients";
