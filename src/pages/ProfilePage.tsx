@@ -251,6 +251,7 @@ const ProfilePage = ({ variant }: ProfilePageProps) => {
     const serv = selected.serving || "";
     const items: { label: string; ok: boolean }[] = [
       { label: "Gender", ok: !!selected.gender?.trim() },
+      { label: "Address", ok: !!selected.patientAddress?.trim() },
       { label: "Phone", ok: !!selected.ptPhone?.trim() },
       { label: "Primary Insurance", ok: !!selected.primaryInsurance?.trim() },
       { label: "Member ID 1", ok: !!(selected.memberId1?.trim() || selected.workingMemberId?.trim()) },
@@ -813,8 +814,8 @@ function ProfileBody(p: BodyProps) {
                       {GENDER_OPTS.map((g) => <option key={g}>{g}</option>)}
                     </select>
                   </Field>
-                  <Field label="Address" warn={addressWarning(pt.patientAddress)}>
-                    <AddressAutocomplete value={pt.patientAddress} className="pf-input"
+                  <Field label="Address" required warn={addressWarning(pt.patientAddress)}>
+                    <AddressAutocomplete value={pt.patientAddress} className={pt.patientAddress?.trim() ? "pf-input filled" : "pf-input need"}
                       onChange={(r) => p.onUpdate({ patientAddress: r.address, patientAddressLat: r.lat || null, patientAddressLng: r.lng || null })}
                       placeholder="Start typing address…" />
                   </Field>
@@ -997,11 +998,14 @@ function ProfileBody(p: BodyProps) {
                       {pt.stediQmb && <ResCell label="QMB?" value={pt.stediQmb} />}
                       {pt.generalInsurance === "Medicaid" && <ResCell label="Managed Medicaid" value={managedMedicaid} />}
                     </div>
-                    {/* Address parsed by the Stedi check — full-width row of its
-                        own so the whole street/city/state/zip fits (Josh,
-                        2026-07-21). */}
-                    <div className="res-grid" style={{ gridTemplateColumns: "1fr", marginTop: 10 }}>
+                    {/* Address + Gender parsed by the Stedi check. Address keeps
+                        the bulk of the row so the whole street/city/state/zip
+                        still fits (Josh, 2026-07-21); Gender rides in a box
+                        beside it, pulled from the Stedi gender column (Josh,
+                        2026-07-22). */}
+                    <div className="res-grid" style={{ gridTemplateColumns: "minmax(0, 3fr) minmax(0, 1fr)", marginTop: 10 }}>
                       <ResCell label="Address" value={pt.stediAddress} />
+                      <ResCell label="Gender" value={pt.stediGender} />
                     </div>
                   </>
                 )}
