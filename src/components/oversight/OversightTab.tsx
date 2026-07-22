@@ -78,7 +78,10 @@ const CHART_ROUTES: Record<string, string | null> = {
   "chase-fax-proposed-stuck": null,
   "chase-email-parachute-proposed-stuck": null,
   "benefits-check-failed": null,
-  "dvs-retry-queue": null,
+  // DVS charts open the DVS monitor page for the clicked patient (?patientId
+  // deep-link + ?from=system-mgmt), i.e. the same DVS UI a rep clicks into.
+  "dvs-retry-queue": "/dvs",
+  "dvs-manual-review": "/dvs",
   "benefits": "/benefits",
   "submit-auth": "/submit-auth",
   "auth-outstanding": "/auth-outstanding",
