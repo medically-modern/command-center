@@ -532,10 +532,10 @@ const RAW_CHART_DEFS: ChartDef[] = [
   // ── Manager views: Insurance — Final Decisions "Benefits" (universal
   //    check failed: Out-of-Network / Medicare not Primary / Not Active /
   //    Not Covered — the failed-check submit, display only for now) and
-  //    Manager as Processor "DVS — Retry Queue" (PROVISIONAL: filters on
-  //    stage DVS + Retry Count ≥ 1; the x-axis is days IN STAGE, not days
-  //    in queue — the bot doesn't write a queue-entered date yet, DVS
-  //    handoff §10). ──
+  //    Manager as Processor "DVS — Retry Queue" (filters on stage DVS + a
+  //    "Retry Queued" status on Supplies/Pump DVS; the x-axis is days IN
+  //    STAGE, not days in queue — the bot doesn't write a queue-entered date
+  //    yet, DVS handoff §10). ──
   {
     id: "benefits-check-failed",
     title: "Benefits",
@@ -1120,9 +1120,12 @@ const CHART_FILTERS: Record<string, FilterRule> = {
   // Benefits check-failed (Final Decisions): still at Benefits, Escalation
   // Required, and at least one universal check failed on the board.
   "benefits-check-failed": { type: "stageAdvancer", boardId: 18410601299, value: "Benefits / SoS", andCols: [{ colId: "color_mm2vsh2f", value: "Escalation Required" }], anyCols: [{ colId: "color_mm2vhwan", value: "Stuck" }, { colId: "color_mm2vt8xg", value: "Partial / No" }] },
-  // DVS retry queue (PROVISIONAL — see the ChartDef note): stage DVS with a
-  // non-zero Retry Count.
-  "dvs-retry-queue": { type: "stageAdvancer", boardId: 18410601299, value: "DVS", anyCols: [{ colId: "numeric_mm27nexq", gte: 1 }, { colId: "color_mm26pk1a", value: "Retry Queued" }] },
+  // DVS retry queue: stage DVS with a "Retry Queued" status on Trigger
+  // Supplies DVS or Trigger Pump DVS — and nothing else. (The old Retry
+  // Count ≥ 1 condition is gone: a non-zero count lingers after an item
+  // leaves the queue.) NB only Supplies DVS currently has a "Retry Queued"
+  // label, so the Pump condition is a no-op today but wired for when it does.
+  "dvs-retry-queue": { type: "stageAdvancer", boardId: 18410601299, value: "DVS", anyCols: [{ colId: "color_mm26pk1a", value: "Retry Queued" }, { colId: "color_mm578kbd", value: "Retry Queued" }] },
   // DVS manual review (NEW 2026-07 — a separate bucket from the retry queue).
   // Mirrors the DVS page's "manual review" flag (isFailedish / escalated):
   // stage DVS with Escalation Required, OR a rose Supplies/Pump DVS status
