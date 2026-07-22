@@ -185,12 +185,11 @@ const DvsPage = () => {
     const pumpDone = !pumpDvses || pumpDvsApproved;
     const manual =
       selected.escalated || isFailedish(selected.dvsStatus) || isFailedish(selected.pumpDvsStatus) || isFailedish(selected.claimsStatus);
-    if (manual) {
-      return {
-        tone: "rose" as Tone,
-        text: "Manual review — the bot flags this patient for the Auth Denial bucket (Stage → Auth Denied + Escalation Required; manual review outranks the retry queue). Fix the underlying issue, then Re-run the failed step below.",
-      };
-    }
+    // Manual-review narration intentionally suppressed (Josh, 2026-07): the
+    // rep doesn't need the Auth-Denied / manual-review banner on this view.
+    // Return null (rather than falling through) so a failed/escalated patient
+    // doesn't instead get the misleading "Automation in progress" banner.
+    if (manual) return null;
     if (claimsPaid && suppliesDone && pumpDone) {
       return {
         tone: "mint" as Tone,
