@@ -177,36 +177,24 @@ const DvsPage = () => {
     }
   };
 
-  /* banner narration (§7) */
+  /* Top-of-page banner (§7). Narration trimmed (Josh, 2026-07): the
+     Manual-review, "Automation in progress" and "Fully paid" banners are all
+     gone — the DVS Status by Product grid already shows those states. Only the
+     retry-queue banner survives, since it carries the attempt # / next-run
+     date shown nowhere else on the page. */
   const banner = useMemo(() => {
     if (!selected) return null;
-    const claimsPaid = toneFor(selected.claimsStatus) === "mint";
-    const suppliesDone = !suppliesDvs || toneFor(selected.dvsStatus) === "mint";
-    const pumpDone = !pumpDvses || pumpDvsApproved;
     const manual =
       selected.escalated || isFailedish(selected.dvsStatus) || isFailedish(selected.pumpDvsStatus) || isFailedish(selected.claimsStatus);
-    // Manual-review narration intentionally suppressed (Josh, 2026-07): the
-    // rep doesn't need the Auth-Denied / manual-review banner on this view.
-    // Return null (rather than falling through) so a failed/escalated patient
-    // doesn't instead get the misleading "Automation in progress" banner.
     if (manual) return null;
-    if (claimsPaid && suppliesDone && pumpDone) {
-      return {
-        tone: "mint" as Tone,
-        text: "Fully paid — Stage → Complete writes itself and the patient moves to the Welcome Call board. No rep action on this view.",
-      };
-    }
     if (isQueued(selected)) {
       return {
         tone: "amber" as Tone,
         text: `Holding in the retry queue — re-runs once a day automatically${selected.retryCount ? ` (attempt ${selected.retryCount}` : "("}${selected.retryNextDate ? ` · next run ${ymdToUs(selected.retryNextDate)})` : ")"}. Stage stays at DVS; the queue is monitored from the Insurance manager view.`,
       };
     }
-    return {
-      tone: "sky" as Tone,
-      text: "Automation in progress — the stage flip triggered the DVS run. Results stream in below as the bot writes them to the board.",
-    };
-  }, [selected, suppliesDvs, pumpDvses, pumpDvsApproved]);
+    return null;
+  }, [selected]);
 
   return (
     <div className="min-h-screen flex w-full bg-gradient-subtle">
@@ -340,13 +328,19 @@ const DvsPage = () => {
                   </p>
                 </div>
               )}
-              {selected && banner && (
+              {selected && (
                 <>
-                  {/* automation status banner (§7) — the page's whole job */}
-                  <div className={cn("flex items-start gap-3 rounded-xl border px-4 py-3", TONE_CLASS[banner.tone])}>
-                    <Bot className="h-5 w-5 mt-0.5 shrink-0" />
-                    <p className="text-sm font-medium leading-relaxed">{banner.text}</p>
-                  </div>
+                  {/* Status banner — only when there's a noteworthy signal
+                      (retry queue). Routine running / fully-paid narration is
+                      omitted; the DVS Status by Product grid shows that state.
+                      Must NOT gate the rest of the pane — decoupled so a
+                      patient with no banner still renders their full detail. */}
+                  {banner && (
+                    <div className={cn("flex items-start gap-3 rounded-xl border px-4 py-3", TONE_CLASS[banner.tone])}>
+                      <Bot className="h-5 w-5 mt-0.5 shrink-0" />
+                      <p className="text-sm font-medium leading-relaxed">{banner.text}</p>
+                    </div>
+                  )}
 
                   {/* CIN — the ID everything runs on (never say "CIN" in UI) */}
                   {cin ? (
