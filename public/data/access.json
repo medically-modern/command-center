@@ -45,13 +45,9 @@
         "evaluate",
         "confirmReceipt",
         "chaseParachute",
-        "unverifiedReferrals",
-        "sendRequest",
-        "chaseFax"
+        "sendRequest"
       ],
-      "roleOrder": {
-        "unverifiedReferrals": 2
-      },
+      "roleOrder": {},
       "roleFilters": {}
     },
     "brandon@medicallymodern.com": {
