@@ -1,14 +1,15 @@
 // Batch writer for Medical Necessity "Send to Monday"
 
-import { writeStatusIndex, writeText, writeLongText, writeDate, writeDateTime, writeStatusLabel, readColumnTexts, COL } from "./mondayApi";
+import { writeStatusIndex, writeText, writeLongText, writeDate, writeDateTime, writeStatusLabel, clearStatusColumn, readColumnTexts, COL } from "./mondayApi";
 import { executeWritesWithVerification, type WriteProgressPhase } from "../shared/verifiedWrite";
-import { etNow, clampToBusinessDay } from "./etDate";
+import { etNow, etToday, clampToBusinessDay } from "./etDate";
 import {
   SUB_STAGE_INDEX,
   ADVANCER_2A_INDEX,
   ADVANCER_2B_INDEX,
   ADVANCER_2C_INDEX,
   ADVANCER_2D_INDEX,
+  ESCALATION_INDEX,
 } from "./mondayMapping";
 import {
   labelToIndex,
@@ -369,6 +370,91 @@ export async function recordAndAdvanceVerified(
   if (failures.length > 0) {
     throw new Error(
       `${failures.length} column(s) failed verification — item NOT moved. Check the Josh Debug column.`,
+    );
+  }
+}
+
+
+/**
+ * Return a patient to the Evaluate MN stage for re-review (Update Clinicals
+ * "Submit — back to Evaluate").
+ *
+ * A patient sent back to Evaluate must land in the rep's ACTIVE Evaluate queue,
+ * NOT a hidden bucket. Both the masheke sidebar (lib/masheke/sidebarList.ts) and
+ * the burndown counts (hooks/useRoleCounts.ts) drop any patient who is escalated
+ * ("Escalation Required"), has a future Next Action Date, OR carries a
+ * "Proposed Stuck" flag — so a patient returned WITHOUT resetting those stays
+ * invisible even though their Stage Advancer reads "Evaluate MN". (This is the
+ * "sent back but never showed up in my MN Evaluation queue" bug: the returning
+ * patient still carried the Escalation Required flag — and/or a stuck proposal —
+ * from a prior stage, e.g. Chase Clinicals, where Attempt 4+ escalates.)
+ *
+ * This is an EXPLICIT rep action (they uploaded new clinicals and chose to send
+ * the patient back), so it supersedes any pending escalation or stuck proposal
+ * unconditionally: it writes Escalation → Done, Proposed Stuck → cleared, and
+ * Next Action Date → today FIRST, verifies they landed (read-back), and ONLY
+ * THEN flips the Stage Advancer → Evaluate MN (the automation trigger, written
+ * last per the verify-before-advance rule). If verification fails the stage is
+ * not advanced and this throws, so the caller surfaces the error instead of
+ * reporting a phantom success.
+ */
+export async function returnToEvaluateVerified(itemId: string): Promise<void> {
+  // NOT clamped to a business day: we want the patient DUE NOW. Clamping a
+  // weekend "today" forward to Monday would re-hide them over the weekend —
+  // the exact failure mode this fixes. NAD <= today (ET) is the due-now rule.
+  const today = etToday();
+  const tasks: WriteTask[] = [
+    {
+      label: "Escalation → Done",
+      columnId: COL.escalation,
+      value: { index: ESCALATION_INDEX.done },
+      // Confirm the flag actually cleared before we advance — a still-Required
+      // escalation is what hides the patient from the rep.
+      expectedText: "Done",
+      fn: () => writeStatusIndex(itemId, COL.escalation, ESCALATION_INDEX.done),
+    },
+    {
+      // A lingering stuck PROPOSAL (color_mm5f37ve) hides the patient from the
+      // Evaluate queue + counts exactly like the escalation flag. Clear it —
+      // expectedText "" verifies the clear immediately whether or not a proposal
+      // was set. No raw `value` here (the status-clear shape differs across
+      // Monday mutations), which routes this whole transaction through the
+      // client verified-write path instead of the gateway fast path — fine for
+      // this low-frequency action.
+      label: "Proposed Stuck → cleared",
+      columnId: COL.proposedStuck,
+      expectedText: "",
+      fn: () => clearStatusColumn(itemId, COL.proposedStuck),
+    },
+    {
+      label: "Next Action Date → today",
+      columnId: COL.nextActionDate,
+      value: { date: today },
+      fn: () => writeDate(itemId, COL.nextActionDate, today),
+    },
+    {
+      // Stage Advancer LAST (the trigger column) — written only after the
+      // data columns above verify.
+      label: "Stage Advancer → Evaluate MN",
+      columnId: COL.subStage,
+      value: { index: SUB_STAGE_INDEX.evaluate },
+      fn: () => writeStatusIndex(itemId, COL.subStage, SUB_STAGE_INDEX.evaluate),
+    },
+  ];
+
+  const failures = await executeWritesWithVerification({
+    itemId,
+    boardId: BOARD_ID,
+    label: "Update Clinicals → back to Evaluate",
+    tasks,
+    stageColumnId: COL.subStage,
+    executeWithRetry,
+    readColumns: readColumnTexts,
+    writeDebug: (id, msg) => writeText(id, COL.joshDebug, msg),
+  });
+  if (failures.length > 0) {
+    throw new Error(
+      `${failures.length} column(s) failed verification — patient NOT returned to Evaluate. Check the Josh Debug column.`,
     );
   }
 }

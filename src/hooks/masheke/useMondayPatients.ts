@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Patient } from "@/lib/masheke/workflow";
-import { fetchGroupItems, fetchItemById, writeDate, COL, GROUPS, hasToken } from "@/lib/masheke/mondayApi";
+import { fetchGroupItems, fetchItemById, writeDate, writeStatusIndex, COL, GROUPS, hasToken } from "@/lib/masheke/mondayApi";
 // Note: GROUPS import kept for GROUPS.medicalNecessity
-import { mondayItemToPatient } from "@/lib/masheke/mondayMapping";
+import { mondayItemToPatient, ESCALATION_INDEX } from "@/lib/masheke/mondayMapping";
+import { hasStaleEvaluateEscalation } from "@/lib/masheke/evaluateReentry";
 import { etToday } from "@/lib/masheke/etDate";
 
 const POLL_MS = 30_000;
@@ -99,6 +100,9 @@ export function useMondayPatients(activeTab: TabKey = "evaluate", injectedPatien
   const mountedRef = useRef(true);
   // Patients we've already stamped with a Next Action Date this session.
   const stampedRef = useRef<Set<string>>(new Set());
+  // Patients whose stale Evaluate-MN escalation we've already cleared this
+  // session (the returning-patient self-heal below) — avoids re-writing each poll.
+  const unescalatedRef = useRef<Set<string>>(new Set());
 
   const refetch = useCallback(async (maybeSilent: unknown = false) => {
     const silent = maybeSilent === true;
@@ -139,6 +143,40 @@ export function useMondayPatients(activeTab: TabKey = "evaluate", injectedPatien
           p.nextActionDate = todayStr; // reflect locally right away
           writeDate(p.id, COL.nextActionDate, todayStr).catch(() => {
             stampedRef.current.delete(p.id); // retry on next poll
+          });
+        }
+      }
+
+      // ── Returning-patient self-heal (stale Evaluate-MN escalation) ──
+      // A patient moved back to Evaluate MN for re-review can arrive still
+      // carrying "Escalation Required" from a PRIOR stage (e.g. Chase Clinicals,
+      // where Attempt 4+ escalates). That flag hides them from the rep — both
+      // the sidebar and the burndown counts drop escalated patients — so they
+      // read "Evaluate MN" everywhere yet never appear in the MN Evaluation
+      // queue. The app-owned return path (Update Clinicals "Submit") clears the
+      // flag itself, but a manual Monday move can't be intercepted at write
+      // time; this catches those. Safe because Evaluate's own escalation only
+      // fires at Evaluation Counter >= 3 (the 3rd-attempt SOP), so a counter < 3
+      // escalation here is provably stale — hasStaleEvaluateEscalation.
+      // Reset escalation → Done AND pull Next Action Date → today so they land
+      // in the due-now list, not a hidden future/scheduled slot.
+      // NOTE: we deliberately do NOT auto-clear a "Proposed Stuck" flag here —
+      // a rep can legitimately propose-stuck FROM the Evaluate page, and there's
+      // no counter-like safe signal to tell a stale proposal from a live one, so
+      // clearing it on a poll could resolve a real proposal without the manager.
+      // A proposed-stuck patient correctly stays in Oversight's Final Decisions
+      // until a manager acts; the explicit return path (Update Clinicals Submit)
+      // clears the proposal itself (returnToEvaluateVerified).
+      for (const p of allPatients) {
+        if (hasStaleEvaluateEscalation(p) && !unescalatedRef.current.has(p.id)) {
+          unescalatedRef.current.add(p.id);
+          p.escalation = "Done";       // reflect locally right away
+          p.nextActionDate = todayStr; // due now, not scheduled
+          Promise.all([
+            writeStatusIndex(p.id, COL.escalation, ESCALATION_INDEX.done),
+            writeDate(p.id, COL.nextActionDate, todayStr),
+          ]).catch(() => {
+            unescalatedRef.current.delete(p.id); // retry on next poll
           });
         }
       }

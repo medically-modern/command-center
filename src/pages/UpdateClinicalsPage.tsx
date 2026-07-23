@@ -16,13 +16,10 @@ import { MnDocsPanel } from "@/components/subscription/MnDocsPanel";
 import { COL, writeDate } from "@/lib/subscription/mondayApi";
 // Medical Necessity (masheke) board — second patient source
 import {
-  COL as MN_COL,
   fetchGroupItems as mnFetchGroupItems,
-  writeStatusIndex as mnWriteStatusIndex,
-  writeDate as mnWriteDate,
   hasToken as mnHasToken,
 } from "@/lib/masheke/mondayApi";
-import { SUB_STAGE_INDEX as MN_SUB_STAGE_INDEX } from "@/lib/masheke/mondayMapping";
+import { returnToEvaluateVerified } from "@/lib/masheke/mondayWrite";
 import { mondayItemToPatient as mnItemToPatient } from "@/lib/masheke/mondayMapping";
 import { toast } from "sonner";
 import { Card } from "@/components/ui/card";
@@ -308,10 +305,15 @@ function VisitDateCard({ patient, onSaved }: { patient: ClinicalsRow; onSaved: (
 }
 
 /* ── Submit — MEDICAL NECESSITY BOARD ONLY ────────────────────
-      Flips Stage Advancer → "Evaluate MN" (whatever stage the patient is
-      in now) AND stamps Next Action Date = today so the patient lands in
-      Evaluate's active list immediately. Subscription patients have no
-      Submit button (uploads + visit date are the whole flow). ── */
+      Returns the patient to "Evaluate MN" for re-review. This clears the
+      Escalation flag (→ Done) and stamps Next Action Date = today BEFORE
+      flipping the Stage Advancer, then advances last — so the patient lands
+      in the rep's ACTIVE Evaluate queue instead of the hidden escalated /
+      scheduled bucket. (A returning patient still carrying "Escalation
+      Required" from a prior stage used to show "Evaluate MN" on this tab yet
+      never appear in the MN Evaluation view.) See returnToEvaluateVerified.
+      Subscription patients have no Submit button (uploads + visit date are the
+      whole flow). ── */
 
 function SubmitCard({ patient, onDone }: { patient: ClinicalsRow; onDone: () => void }) {
   const [submitting, setSubmitting] = useState(false);
@@ -319,14 +321,7 @@ function SubmitCard({ patient, onDone }: { patient: ClinicalsRow; onDone: () => 
   const handleSubmit = async () => {
     setSubmitting(true);
     try {
-      const todayEt = new Intl.DateTimeFormat("en-CA", {
-        timeZone: "America/New_York",
-        year: "numeric",
-        month: "2-digit",
-        day: "2-digit",
-      }).format(new Date());
-      await mnWriteStatusIndex(patient.id, MN_COL.subStage, MN_SUB_STAGE_INDEX.evaluate);
-      await mnWriteDate(patient.id, MN_COL.nextActionDate, todayEt);
+      await returnToEvaluateVerified(patient.id);
       toast.success(`${patient.name} sent back to Evaluate — due today`);
       onDone();
     } catch (e) {
@@ -345,7 +340,7 @@ function SubmitCard({ patient, onDone }: { patient: ClinicalsRow; onDone: () => 
         Submit
       </p>
       <p className="text-[11px] text-muted-foreground mb-3">
-        Submitting sends this patient back to Evaluate — their Stage Advancer is set to "Evaluate MN" no matter which stage they're in now, and their next action date is set to today.
+        Submitting sends this patient back to Evaluate — their Stage Advancer is set to "Evaluate MN" no matter which stage they're in now, any escalation or stuck-proposal flag is cleared, and their next action date is set to today, so they reappear in the MN Evaluation queue right away.
       </p>
       <Button
         onClick={handleSubmit}
