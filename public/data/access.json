@@ -43,7 +43,6 @@
       "name": "josh",
       "roles": [
         "patientQuestions",
-        "profile",
         "evaluate",
         "confirmReceipt",
         "chaseParachute",
@@ -62,7 +61,6 @@
         "updateClinicals"
       ],
       "roleOrder": {
-        "profile": 1,
         "unverifiedReferrals": 2
       },
       "roleFilters": {
