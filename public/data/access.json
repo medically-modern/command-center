@@ -46,7 +46,6 @@
         "evaluate",
         "confirmReceipt",
         "chaseParachute",
-        "submitAuth",
         "welcomeCall",
         "subscription",
         "authDenied",
