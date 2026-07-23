@@ -12,12 +12,10 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
-import { AlertTriangle, Clock, Loader2, RefreshCw, Undo2, User, AlertCircle, ArrowDownAZ, Search, X} from "lucide-react";
+import { RefreshCw, User, AlertCircle, ArrowDownAZ, Search, X} from "lucide-react";
 import type { Patient } from "@/lib/samantha/workflow";
 import type { SidebarGroup as SidebarGroupType } from "@/hooks/samantha/useMondayPatients";
 import { cn } from "@/lib/utils";
-import { toast } from "sonner";
-import { clearStatusColumn, COL } from "@/lib/samantha/mondayApi";
 import { daysAuthOutstanding } from "@/lib/samantha/authOutstandingDays";
 import { useSearchParams } from "react-router-dom";
 import { viewFilterFromParams } from "@/lib/roleView";
@@ -33,47 +31,6 @@ const GROUP_LABELS: Record<SidebarGroupType, string> = {
   submitAuth: "Submit Auth",
   authOutstanding: "Auth Outstanding",
 };
-
-/** Convert YYYY-MM-DD → MM/DD/YYYY */
-function fmtDate(iso: string): string {
-  const [y, m, d] = iso.split("-");
-  return `${m}/${d}/${y}`;
-}
-
-/** Small button to clear Follow Up status + date on Monday */
-function ClearFollowUpButton({ patientId, patientName, onSuccess }: { patientId: string; patientName: string; onSuccess: () => void }) {
-  const [sending, setSending] = useState(false);
-
-  const handleClear = async (e: React.MouseEvent) => {
-    e.stopPropagation();
-    setSending(true);
-    try {
-      await Promise.all([
-        clearStatusColumn(patientId, COL.followUp),
-        clearStatusColumn(patientId, COL.followUpDate),
-      ]);
-      toast.success(`${patientName} returned to active`);
-      onSuccess();
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      toast.error(`Failed to clear follow up: ${msg}`);
-    } finally {
-      setSending(false);
-    }
-  };
-
-  return (
-    <button
-      onClick={handleClear}
-      disabled={sending}
-      className="shrink-0 flex items-center gap-1 px-2 py-1 rounded text-[10px] font-medium text-blue-700 bg-blue-50 border border-blue-200 hover:bg-blue-100 transition-colors disabled:opacity-50"
-      title={`Remove follow up for ${patientName}`}
-    >
-      {sending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Undo2 className="h-3 w-3" />}
-      Remove
-    </button>
-  );
-}
 
 /** Group patients by their primaryInsurance, sorted alphabetically by insurer name. */
 function groupByInsurance(patients: Patient[]): { label: string; patients: Patient[] }[] {
@@ -127,7 +84,7 @@ export function PatientsSidebar({ patients, selectedId, onSelect, loading, error
   // Split patients into active vs follow-up vs escalated vs both, plus the
   // Auth Outstanding re-sort — shared with the role pages' auto-select
   // (sidebarList.ts) so the sidebar and pages can never drift apart.
-  const { activePatients, sortedPatients, followUpPatients, escalatedPatients, bothPatients } = useMemo(
+  const { activePatients, sortedPatients } = useMemo(
     () => sidebarSections(filteredBySearch, viewFilter, activeGroup),
     [filteredBySearch, viewFilter, activeGroup],
   );
@@ -198,7 +155,7 @@ export function PatientsSidebar({ patients, selectedId, onSelect, loading, error
             <div className="min-w-0">
               <p className="text-[10px] uppercase tracking-[0.18em] text-muted-foreground">Monday · {activeLabel}</p>
               <p className={cn("text-sm font-semibold truncate", managerMode && "text-red-500")}>
-                {managerMode ? `Escalated (${activePatients.length})` : `Patients (${patients.length})`}
+                {managerMode ? `Escalated (${activePatients.length})` : `Patients (${activePatients.length})`}
               </p>
             </div>
           )}
@@ -299,118 +256,6 @@ export function PatientsSidebar({ patients, selectedId, onSelect, loading, error
                     {managerMode ? `No escalated patients in ${activeLabel} group.` : `No patients in ${activeLabel} group.`}
                   </p>
                 )}
-              </SidebarMenu>
-            </SidebarGroupContent>
-          </SidebarGroup>
-        )}
-
-        {/* ── Follow Up section — hidden on Auth Outstanding (Josh, 2026-07):
-            the snooze still hides these patients from the active list, we just
-            don't re-list them here. ── */}
-        {followUpPatients.length > 0 && !collapsed && activeGroup !== "authOutstanding" && (
-          <SidebarGroup>
-            <SidebarGroupLabel className="text-[10px] uppercase tracking-wider text-blue-500 font-semibold flex items-center gap-1.5">
-              <Clock className="h-3 w-3" />
-              Follow Up ({followUpPatients.length})
-            </SidebarGroupLabel>
-            <SidebarGroupContent>
-              <SidebarMenu>
-                {followUpPatients.map((p) => (
-                  <SidebarMenuItem key={p.id}>
-                    <div className="flex items-center gap-1 w-full">
-                      <SidebarMenuButton
-                        isActive={selectedId === p.id}
-                        onClick={() => onSelect(p.id)}
-                        className={cn(
-                          "flex-1 flex items-start gap-2 py-2 h-auto opacity-60",
-                          selectedId === p.id && "bg-sidebar-accent opacity-100",
-                        )}
-                      >
-                        <Clock className="h-4 w-4 mt-0.5 shrink-0 text-blue-400" />
-                        <div className="min-w-0 text-left">
-                          <p className="text-sm font-medium truncate">{p.name}</p>
-                          <p className="text-[11px] text-blue-400 truncate">
-                            Until {p.followUpDate ? fmtDate(p.followUpDate) : "—"}
-                          </p>
-                        </div>
-                      </SidebarMenuButton>
-                      <ClearFollowUpButton patientId={p.id} patientName={p.name} onSuccess={onRefresh} />
-                    </div>
-                  </SidebarMenuItem>
-                ))}
-              </SidebarMenu>
-            </SidebarGroupContent>
-          </SidebarGroup>
-        )}
-
-        {/* ── Escalated section (all views) ── */}
-        {escalatedPatients.length > 0 && !collapsed && (
-          <SidebarGroup>
-            <SidebarGroupLabel className="text-[10px] uppercase tracking-wider text-red-500 font-semibold flex items-center gap-1.5">
-              <AlertTriangle className="h-3 w-3" />
-              Escalated ({escalatedPatients.length})
-            </SidebarGroupLabel>
-            <SidebarGroupContent>
-              <SidebarMenu>
-                {escalatedPatients.map((p) => (
-                  <SidebarMenuItem key={p.id}>
-                    <SidebarMenuButton
-                      isActive={selectedId === p.id}
-                      onClick={() => onSelect(p.id)}
-                      className={cn(
-                        "flex items-start gap-2 py-2 h-auto opacity-60",
-                        selectedId === p.id && "bg-sidebar-accent opacity-100",
-                      )}
-                    >
-                      <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0 text-red-400" />
-                      {!collapsed && (
-                        <div className="min-w-0 text-left">
-                          <p className="text-sm font-medium truncate">{p.name}</p>
-                          <p className="text-[11px] text-red-400 truncate">
-                            Escalation Required
-                          </p>
-                        </div>
-                      )}
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                ))}
-              </SidebarMenu>
-            </SidebarGroupContent>
-          </SidebarGroup>
-        )}
-
-        {/* ── Escalated + Follow Up (both statuses) ── */}
-        {bothPatients.length > 0 && !collapsed && (
-          <SidebarGroup>
-            <SidebarGroupLabel className="text-[10px] uppercase tracking-wider text-amber-500 font-semibold flex items-center gap-1.5">
-              <AlertTriangle className="h-3 w-3" />
-              Escalated + Follow Up ({bothPatients.length})
-            </SidebarGroupLabel>
-            <SidebarGroupContent>
-              <SidebarMenu>
-                {bothPatients.map((p) => (
-                  <SidebarMenuItem key={p.id}>
-                    <div className="flex items-center gap-1 w-full">
-                      <SidebarMenuButton
-                        isActive={selectedId === p.id}
-                        onClick={() => onSelect(p.id)}
-                        className={cn(
-                          "flex-1 flex items-start gap-2 py-2 h-auto opacity-60",
-                          selectedId === p.id && "bg-sidebar-accent opacity-100",
-                        )}
-                      >
-                        <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0 text-amber-400" />
-                        <div className="min-w-0 text-left">
-                          <p className="text-sm font-medium truncate">{p.name}</p>
-                          <p className="text-[10px] text-amber-400 truncate">
-                            Escalated · Follow up {p.followUpDate ? fmtDate(p.followUpDate) : ""}
-                          </p>
-                        </div>
-                      </SidebarMenuButton>
-                      <ClearFollowUpButton patientId={p.id} patientName={p.name} onSuccess={onRefresh} />
-                    </div>
-                  </SidebarMenuItem>
-                ))}
               </SidebarMenu>
             </SidebarGroupContent>
           </SidebarGroup>

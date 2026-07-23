@@ -36,7 +36,7 @@ import { TRIGGER_DVS_INDEX, TRIGGER_PUMP_DVS_INDEX } from "@/lib/samantha/monday
 import { addDaysYmd, etTodayYmd, ymdToUs } from "@/lib/samantha/benefitsDerive";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
-import { AlertTriangle, ArrowLeft, Bot, Clock, Loader2, RefreshCw, RotateCw, Search, Undo2, User, Zap } from "lucide-react";
+import { AlertTriangle, ArrowLeft, Bot, Clock, Loader2, RefreshCw, RotateCw, Search, User, Zap } from "lucide-react";
 
 /* ── status-chip tone mapping (live bot labels) ───────────────────── */
 
@@ -163,20 +163,6 @@ const DvsPage = () => {
     }
   };
 
-  const clearSnooze = async (p: Patient) => {
-    if (snoozing) return;
-    setSnoozing(p.id);
-    try {
-      await writeDate(p.id, COL.followUpDate, "");
-      toast.success(`${p.name} returned to the list`);
-      refetch();
-    } catch (e) {
-      toast.error("Failed to clear follow-up", { description: e instanceof Error ? e.message : String(e) });
-    } finally {
-      setSnoozing(null);
-    }
-  };
-
   /* Top-of-page banner (§7). Narration trimmed (Josh, 2026-07): the
      Manual-review, "Automation in progress" and "Fully paid" banners are all
      gone — the DVS Status by Product grid already shows those states. Only the
@@ -253,42 +239,6 @@ const DvsPage = () => {
             <p className="px-3 py-4 text-xs text-muted-foreground">
               {error ? error : "Bucket clear — nothing due today."}
             </p>
-          )}
-
-          {/* Follow Up section — snoozed until their date arrives */}
-          {snoozedPatients.length > 0 && (
-            <div className="mt-3">
-              <p className="px-2 pb-1 text-[10px] uppercase tracking-wider font-semibold text-sky-400 flex items-center gap-1.5">
-                <Clock className="h-3 w-3" /> Follow Up ({snoozedPatients.length})
-              </p>
-              {snoozedPatients.map((p) => (
-                <div key={p.id} className="flex items-center gap-1">
-                  <button
-                    onClick={() => setSelectedId(p.id)}
-                    className={cn(
-                      "flex-1 min-w-0 flex items-start gap-2 p-2 rounded-lg text-left transition-colors opacity-60",
-                      selected?.id === p.id && "bg-sidebar-accent opacity-100",
-                    )}
-                  >
-                    <Clock className="h-4 w-4 mt-0.5 shrink-0 text-sky-400" />
-                    <span className="min-w-0">
-                      <span className="block text-sm font-medium truncate">{p.name}</span>
-                      <span className="block text-[11px] text-sky-400 truncate">
-                        Until {p.followUpDate ? ymdToUs(p.followUpDate) : "—"}
-                      </span>
-                    </span>
-                  </button>
-                  <button
-                    onClick={() => clearSnooze(p)}
-                    disabled={snoozing !== null}
-                    className="shrink-0 flex items-center gap-1 px-1.5 py-1 rounded text-[10px] font-medium text-sky-300 bg-white/5 border border-white/15 hover:bg-white/10 transition-colors disabled:opacity-50"
-                    title={`Bring ${p.name} back now`}
-                  >
-                    {snoozing === p.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Undo2 className="h-3 w-3" />}
-                  </button>
-                </div>
-              ))}
-            </div>
           )}
         </div>
       </aside>
