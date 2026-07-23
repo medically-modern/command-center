@@ -42,7 +42,6 @@
     "josh@medicallymodern.com": {
       "name": "josh",
       "roles": [
-        "patientQuestions",
         "evaluate",
         "confirmReceipt",
         "chaseParachute",
@@ -59,9 +58,7 @@
       "roleOrder": {
         "unverifiedReferrals": 2
       },
-      "roleFilters": {
-        "patientQuestions": "all"
-      }
+      "roleFilters": {}
     },
     "brandon@medicallymodern.com": {
       "name": "brandon",
