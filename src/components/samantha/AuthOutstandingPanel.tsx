@@ -117,7 +117,7 @@ export function AuthOutstandingPanel({ patient, onCodeChange, onNotesChange, onS
     <section className="rounded-xl border bg-card p-5 shadow-card space-y-6">
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <div>
-          <h2 className="text-base font-semibold">Authorizations Outstanding</h2>
+          <h2 className="text-xl font-bold tracking-tight">Authorizations Outstanding</h2>
           <p className="text-xs text-muted-foreground">
             Record the auth result for each product. No Auth Needed can be saved one product at a time.
           </p>
@@ -420,7 +420,7 @@ function ProductResultCard({
             <span className="text-[10px] font-mono text-muted-foreground">{meta.group}</span>
           </div>
           <div className="flex items-center gap-2 flex-wrap">
-            <h4 className="text-base font-bold font-mono">{r.hcpc}</h4>
+            <h4 className="text-2xl font-extrabold font-mono tracking-tight">{r.hcpc}</h4>
             {mods && (
               <span className="flex items-center gap-1">
                 {mods.mods.map((m) => (

@@ -27,7 +27,7 @@ import {
 } from "@/lib/samantha/workflow";
 import { AuthOutstandingPanel } from "@/components/samantha/AuthOutstandingPanel";
 import { PatientsSidebar } from "@/components/samantha/PatientsSidebar";
-import { PatientProfileCard } from "@/components/samantha/PatientProfileCard";
+import { BenefitsPatientHeader } from "@/components/samantha/BenefitsPatientHeader";
 import { Button } from "@/components/ui/button";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { RotateCcw, Stethoscope, ArrowLeft, Clock, Save, Send, Loader2 } from "lucide-react";
@@ -242,7 +242,8 @@ const AuthOutstandingPage = () => {
                     </Button>
                   </div>
 
-                  <PatientProfileCard patient={selected} onUpdate={(p) => update(selected.id, p)} />
+                  {/* Same read-only header as Benefits + Submit Auth (.bnr skin) */}
+                  <div className="bnr"><BenefitsPatientHeader patient={selected} /></div>
                   <AuthOutstandingPanel
                     patient={selected}
                     onCodeChange={updateCode}
