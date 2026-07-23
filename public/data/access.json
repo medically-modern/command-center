@@ -47,9 +47,7 @@
         "chaseParachute",
         "unverifiedReferrals",
         "sendRequest",
-        "chaseFax",
-        "benefits",
-        "authOutstanding"
+        "chaseFax"
       ],
       "roleOrder": {
         "unverifiedReferrals": 2
