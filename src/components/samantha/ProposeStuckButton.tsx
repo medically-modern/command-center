@@ -55,7 +55,7 @@ export function ProposeStuckButton({ patientId, onDone }: { patientId: string; o
             </DialogTitle>
             <DialogDescription>
               This flags the patient as <b>Final Escalation Required</b> and sends them to the
-              manager's Final Decisions review. The stage stays at Benefits. Continue?
+              manager's Final Decisions review. The stage is unchanged. Continue?
             </DialogDescription>
           </DialogHeader>
           <DialogFooter className="gap-2 sm:gap-2">

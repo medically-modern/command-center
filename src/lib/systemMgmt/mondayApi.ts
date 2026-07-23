@@ -311,15 +311,19 @@ function mapToSystemPatient(item: RawItem, board: BoardDef): SystemPatient {
   const escalationNotes = board.escalationNotesColId
     ? colVal(board.escalationNotesColId)
     : "";
-  // Masheke (18406060017) escalation labels were renamed on the board (2026-07):
-  // index 0 "Manager Escalation Required" / index 2 "Final Escalation Required".
-  // Match that board by INDEX (both count as escalated) so a rename can't break
+  // Escalation labels were split (2026-07) on BOTH the Masheke (18406060017)
+  // and Insurance (18410601299) boards: index 0 "Manager Escalation Required" /
+  // index 2 "Final Escalation Required" (index 1 = Done). Detect by the new
+  // labels AND by index on those boards, so a future label rename can't break
   // detection; other boards keep their unchanged text labels.
   const escIndex = board.escalationColId ? colIndex(board.escalationColId) : null;
   const escalated =
     escalationText === "Escalation Required" ||
     escalationText === "Escalate" ||
-    (board.boardId === 18406060017 && (escIndex === 0 || escIndex === 2));
+    escalationText === "Manager Escalation Required" ||
+    escalationText === "Final Escalation Required" ||
+    ((board.boardId === 18406060017 || board.boardId === 18410601299) &&
+      (escIndex === 0 || escIndex === 2));
 
   // Determine pipeline stage + route
   const groupDef = board.activeGroups.find((g) => g.id === item.group.id);

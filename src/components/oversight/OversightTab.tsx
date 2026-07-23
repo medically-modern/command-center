@@ -13,6 +13,8 @@ import {
   fetchPillColors,
   approveProposedStuck,
   returnProposedToQueue,
+  approveInsuranceStuck,
+  returnInsuranceToQueue,
   CHART_DEFS,
   OVERSIGHT_SECTIONS,
   DAY_BUCKET_LABELS,
@@ -77,7 +79,12 @@ const CHART_ROUTES: Record<string, string | null> = {
   "confirm-receipt-proposed-stuck": null,
   "chase-fax-proposed-stuck": null,
   "chase-email-parachute-proposed-stuck": null,
-  "benefits-check-failed": null,
+  // Insurance Final Decisions charts — decisions happen in the drill-down.
+  "benefits-final-escalation": null,
+  "submit-auth-final-escalation": null,
+  "auth-outstanding-final-escalation": null,
+  // Manager as Processor: managers click through to work the patient.
+  "benefits-manager-escalation": "/benefits",
   // DVS charts open the DVS monitor page for the clicked patient (?patientId
   // deep-link + ?from=system-mgmt), i.e. the same DVS UI a rep clicks into.
   "dvs-retry-queue": "/dvs",
@@ -1234,20 +1241,26 @@ export default function OversightTab() {
   // clears the proposal; Return just clears the proposal. The row disappears
   // optimistically; the silent refetch reconciles.
   const handleDecision = useCallback(
-    async (patientId: string, action: "approve" | "return") => {
+    async (patientId: string, action: "approve" | "return", kind: "proposed-stuck" | "insurance-final") => {
       try {
-        if (action === "approve") await approveProposedStuck(patientId);
-        else await returnProposedToQueue(patientId);
+        if (kind === "insurance-final") {
+          if (action === "approve") await approveInsuranceStuck(patientId);
+          else await returnInsuranceToQueue(patientId);
+        } else {
+          if (action === "approve") await approveProposedStuck(patientId);
+          else await returnProposedToQueue(patientId);
+        }
         toast.success(
           action === "approve"
             ? "Approved — patient marked Stuck"
             : "Returned to the rep's queue",
         );
+        const suffix = kind === "insurance-final" ? "-final-escalation" : "-proposed-stuck";
         setData((prev) => {
           if (!prev) return prev;
           const next = new Map(prev);
           for (const [k, list] of next) {
-            if (k.endsWith("-proposed-stuck")) next.set(k, list.filter((p) => p.id !== patientId));
+            if (k.endsWith(suffix)) next.set(k, list.filter((p) => p.id !== patientId));
           }
           return next;
         });
@@ -1531,7 +1544,7 @@ export default function OversightTab() {
           onClose={handleClose}
           onPatientClick={handlePatientClick}
           hasRoute={CHART_ROUTES[expandedChart!] !== null}
-          onDecision={expandedChartDef.decision === "proposed-stuck" ? handleDecision : undefined}
+          onDecision={expandedChartDef.decision ? (id, action) => handleDecision(id, action, expandedChartDef.decision!) : undefined}
         />
       )}
 

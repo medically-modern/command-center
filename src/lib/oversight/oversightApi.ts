@@ -101,7 +101,7 @@ export interface ChartDef {
     bColor: string;
   };
   /** Final Decisions charts: which decision actions the drill-down offers. */
-  decision?: "proposed-stuck";
+  decision?: "proposed-stuck" | "insurance-final";
 }
 
 /** Series colors for the merged escalation charts — match the mockup's
@@ -539,25 +539,64 @@ const RAW_CHART_DEFS: ChartDef[] = [
   //    "Retry Queued" status on Supplies/Pump DVS; the x-axis is days IN
   //    STAGE, not days in queue — the bot doesn't write a queue-entered date
   //    yet, DVS handoff §10). ──
+  // Final Decisions (Manager Views §3): one chart per Insurance sub-stage, for
+  // patients flagged "Final Escalation Required" (auto on a failed universal
+  // check, or manual via the Propose Stuck button). decision "insurance-final"
+  // gives the drill-down Approve Stuck (→ "Stuck / Don't Proceed" stage) /
+  // Return to Queue (clear escalation) actions.
   {
-    id: "benefits-check-failed",
+    id: "benefits-final-escalation",
     title: "Benefits",
     boardId: 18410601299,
     notesColId: "long_text_mm2ffsme",
     rowOf: "benefits",
+    decision: "insurance-final",
     drilldownCols: [
       { colId: "date_mm1wf43j", label: "Intake Date" },
       { colId: "color_mm1wwm05", label: "Days in Stage" },
       { colId: "color_mm1x157j", label: "Primary Insurance" },
       { colId: "color_mm2vhwan", label: "Active/Network", pill: true },
       { colId: "color_mm2vt8xg", label: "DME Benefits", pill: true },
+      { colId: "color_mm2vsh2f", label: "Escalation", pill: true },
+      { colId: "long_text_mm3jrssp", label: "Escalation Notes" },
+    ],
+  },
+  {
+    id: "submit-auth-final-escalation",
+    title: "Submit Auth",
+    boardId: 18410601299,
+    notesColId: "long_text_mm2ffsme",
+    rowOf: "submit-auth",
+    decision: "insurance-final",
+    drilldownCols: [
+      { colId: "date_mm1wf43j", label: "Intake Date" },
+      { colId: "color_mm1wwm05", label: "Days in Stage" },
+      { colId: "color_mm1x157j", label: "Primary Insurance" },
+      { colId: "color_mm1w1cm9", label: "Serving" },
+      { colId: "color_mm2vsh2f", label: "Escalation", pill: true },
+      { colId: "long_text_mm3jrssp", label: "Escalation Notes" },
+    ],
+  },
+  {
+    id: "auth-outstanding-final-escalation",
+    title: "Auth Outstanding",
+    boardId: 18410601299,
+    notesColId: "long_text_mm2ffsme",
+    rowOf: "auth-outstanding",
+    decision: "insurance-final",
+    drilldownCols: [
+      { colId: "date_mm1wf43j", label: "Intake Date" },
+      { colId: "color_mm1wwm05", label: "Days in Stage" },
+      { colId: "color_mm1x157j", label: "Primary Insurance" },
+      { colId: "color_mm1w1cm9", label: "Serving" },
+      { colId: "color_mm2vsh2f", label: "Escalation", pill: true },
       { colId: "long_text_mm3jrssp", label: "Escalation Notes" },
     ],
   },
   // Manager view: Insurance — Benefits items escalated to the MANAGER (insulin-
   // pump SoS Not Clear only, benefitsDerive pumpNotClear) → "Manager as
   // Processor" column, benefits row. Failed-check escalations go to Final
-  // Decisions (benefits-check-failed) instead.
+  // Decisions (benefits-final-escalation) instead.
   {
     id: "benefits-manager-escalation",
     title: "Benefits",
@@ -793,7 +832,7 @@ export const OVERSIGHT_SECTIONS: OversightSection[] = [
     secondaryTitle: "Manager as Processor",
     secondaryChartIds: ["benefits-manager-escalation", "dvs-retry-queue", "dvs-manual-review"],
     tertiaryTitle: "Final Decisions",
-    tertiaryChartIds: ["benefits-check-failed"],
+    tertiaryChartIds: ["benefits-final-escalation", "submit-auth-final-escalation", "auth-outstanding-final-escalation"],
   },
   // "profile-review" chart not defined yet — needs a board/group; skipped until added.
   { id: "welcome-call", title: "Welcome Call", chartIds: ["welcome-call", "profile-review"] },
@@ -1162,7 +1201,9 @@ const CHART_FILTERS: Record<string, FilterRule> = {
   // either auto (failed universal check) or manual (Propose Stuck button). The
   // status label now uniquely encodes it, so the old Stuck/Partial-No board
   // heuristic is dropped (a Propose-Stuck item need not have those set).
-  "benefits-check-failed": { type: "stageAdvancer", boardId: 18410601299, value: "Benefits / SoS", andCols: [{ colId: "color_mm2vsh2f", value: "Final Escalation Required" }] },
+  "benefits-final-escalation": { type: "stageAdvancer", boardId: 18410601299, value: "Benefits / SoS", andCols: [{ colId: "color_mm2vsh2f", value: "Final Escalation Required" }] },
+  "submit-auth-final-escalation": { type: "stageAdvancer", boardId: 18410601299, value: "Submit Auth.", andCols: [{ colId: "color_mm2vsh2f", value: "Final Escalation Required" }] },
+  "auth-outstanding-final-escalation": { type: "stageAdvancer", boardId: 18410601299, value: "Auth. Outstanding", andCols: [{ colId: "color_mm2vsh2f", value: "Final Escalation Required" }] },
   // Manager as Processor: Benefits items flagged Manager Escalation Required
   // (insulin-pump SoS Not Clear only).
   "benefits-manager-escalation": { type: "stageAdvancer", boardId: 18410601299, value: "Benefits / SoS", andCols: [{ colId: "color_mm2vsh2f", value: "Manager Escalation Required" }] },
@@ -1269,6 +1310,24 @@ export async function approveProposedStuck(itemId: string): Promise<void> {
 
 export async function returnProposedToQueue(itemId: string): Promise<void> {
   await writeStatusIndexOnBoard(MASHEKE_BOARD_ID, itemId, PROPOSED_STUCK_COL, null);
+}
+
+// Insurance Final Decisions (2026-07): the Final-Escalation equivalent of the
+// Masheke propose→approve flow. Approve moves the patient to the Insurance
+// "Stuck / Don't Proceed" stage and clears the escalation; Return just clears
+// the escalation, dropping the patient back into its stage queue.
+const INSURANCE_BOARD_ID = 18410601299;
+const INSURANCE_STAGE_COL = "color_mm1ws96t";
+const INSURANCE_STAGE_STUCK_INDEX = 2; // "Stuck / Don't Proceed"
+const INSURANCE_ESC_COL = "color_mm2vsh2f";
+
+export async function approveInsuranceStuck(itemId: string): Promise<void> {
+  await writeStatusIndexOnBoard(INSURANCE_BOARD_ID, itemId, INSURANCE_STAGE_COL, INSURANCE_STAGE_STUCK_INDEX);
+  await writeStatusIndexOnBoard(INSURANCE_BOARD_ID, itemId, INSURANCE_ESC_COL, null);
+}
+
+export async function returnInsuranceToQueue(itemId: string): Promise<void> {
+  await writeStatusIndexOnBoard(INSURANCE_BOARD_ID, itemId, INSURANCE_ESC_COL, null);
 }
 
 // ── Public fetch function ───────────────────────────────────────────────

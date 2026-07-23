@@ -27,6 +27,7 @@ import {
 } from "@/lib/samantha/workflow";
 import { AuthOutstandingPanel } from "@/components/samantha/AuthOutstandingPanel";
 import { PatientsSidebar } from "@/components/samantha/PatientsSidebar";
+import { ProposeStuckButton } from "@/components/samantha/ProposeStuckButton";
 import { BenefitsPatientHeader } from "@/components/samantha/BenefitsPatientHeader";
 import { Button } from "@/components/ui/button";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
@@ -200,6 +201,7 @@ const AuthOutstandingPage = () => {
                 </div>
               </div>
               <div className="flex items-center gap-2">
+                {selected && <ProposeStuckButton patientId={selected.id} onDone={() => refetch(true)} />}
                 <Button
                   onClick={() => {
                     if (!selected) return;
