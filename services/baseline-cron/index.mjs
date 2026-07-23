@@ -107,6 +107,26 @@ const ESC_REQUIRED = "Escalation Required";
 const SAM_ESCALATED = new Set(["Manager Escalation Required", "Final Escalation Required"]);
 const isSamEscalated = (txt) => SAM_ESCALATED.has(txt);
 
+// Masheke (18406060017) escalation labels were renamed on the board (2026-07):
+// index 0 "Manager Escalation Required" / index 2 "Final Escalation Required" —
+// both count as escalated. Match by INDEX (not label text) so a future rename
+// can't silently break the count. Mirrors src/lib/masheke ESCALATED_INDICES +
+// useRoleCounts (§5.8 counting contract — keep these in agreement).
+const MESH_ESCALATED_INDICES = [0, 2];
+function statusIndex(raw) {
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw);
+    return typeof parsed?.index === "number" ? parsed.index : null;
+  } catch {
+    return null;
+  }
+}
+function isMeshEscalated(item) {
+  const idx = statusIndex(item.vals?.[MESH_ESC_COL]);
+  return idx !== null && MESH_ESCALATED_INDICES.includes(idx);
+}
+
 const ESCALATION_BOARDS = [
   { boardId: 18406060017, colId: "color_mm1x7997", groups: ["group_mm1xf2jb"] },
   { boardId: 18410601299, colId: "color_mm2vsh2f", groups: ["group_mm1xr3q3", "group_mm1x1416", "group_mm2v6d1z", "group_mm316hg2"] },
@@ -133,7 +153,7 @@ async function gql(query, variables = {}) {
 async function fetchGroupItems(boardId, groupId, columnIds) {
   const compareValue = JSON.stringify([groupId]);
   const itemFields = columnIds.length
-    ? "id column_values(ids: $cols) { id text }"
+    ? "id column_values(ids: $cols) { id text value }"
     : "id";
   const query = `
     query ($bid: ID!${columnIds.length ? ", $cols: [String!]" : ""}) {
@@ -147,6 +167,7 @@ async function fetchGroupItems(boardId, groupId, columnIds) {
     items.map((i) => ({
       id: String(i.id),
       cols: Object.fromEntries((i.column_values ?? []).map((c) => [c.id, c.text ?? ""])),
+      vals: Object.fromEntries((i.column_values ?? []).map((c) => [c.id, c.value ?? ""])),
     }));
 
   const vars = columnIds.length ? { bid: boardId, cols: columnIds } : { bid: boardId };
@@ -220,7 +241,7 @@ async function countMashekeStages(todayStr) {
     }
     if (!roleId) continue;
 
-    if (item.cols[MESH_ESC_COL] === ESC_REQUIRED) continue; // escalated
+    if (isMeshEscalated(item)) continue; // escalated (index 0/2)
     const nad = (item.cols[MESH_NAD_COL] ?? "").slice(0, 10);
     if (nad && nad > todayStr) continue; // scheduled (future)
 
@@ -284,8 +305,15 @@ async function countEscalations() {
     for (const groupId of groups) {
       const items = await fetchGroupItems(boardId, groupId, [colId]);
       for (const item of items) {
-        const txt = item.cols[colId] ?? "";
-        if (txt === "Escalation Required" || txt === "Escalate" || isSamEscalated(txt)) total++;
+        if (boardId === MESH_BOARD) {
+          // Masheke labels renamed — match by index (0/2). See isMeshEscalated.
+          if (isMeshEscalated(item)) total++;
+        } else {
+          // Insurance/Welcome Call: text match (+ isSamEscalated for the
+          // Insurance Manager/Final split).
+          const txt = item.cols[colId] ?? "";
+          if (txt === "Escalation Required" || txt === "Escalate" || isSamEscalated(txt)) total++;
+        }
       }
     }
   }

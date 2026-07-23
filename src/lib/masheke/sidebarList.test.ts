@@ -40,15 +40,26 @@ describe("sidebarVisibleList — nonEscalated (default) view", () => {
 
   it("hides escalated patients", () => {
     const patients = [
-      p({ id: "esc", escalation: "Escalation Required" }),
+      p({ id: "esc", escalationIndex: 0 }),
       p({ id: "plain" }),
     ];
     expect(ids(sidebarVisibleList(patients, "nonEscalated", TODAY))).toEqual(["plain"]);
   });
 
-  it("only 'Escalation Required' counts as escalated (e.g. 'Done' does not)", () => {
-    const patients = [p({ id: "done", escalation: "Done" })];
-    expect(ids(sidebarVisibleList(patients, "nonEscalated", TODAY))).toEqual(["done"]);
+  it("detects escalation by INDEX: 0 (manager) + 2 (final) escalated, 1 (Done) not", () => {
+    // Done (index 1) is not escalated → stays in the non-escalated list.
+    const done = [p({ id: "done", escalationIndex: 1 })];
+    expect(ids(sidebarVisibleList(done, "nonEscalated", TODAY))).toEqual(["done"]);
+    // Final Escalation (index 2) IS escalated → hidden from the non-escalated
+    // view and present in the escalated view.
+    const final = [p({ id: "final", escalationIndex: 2 }), p({ id: "plain" })];
+    expect(ids(sidebarVisibleList(final, "nonEscalated", TODAY))).toEqual(["plain"]);
+    expect(ids(sidebarVisibleList(final, "escalated", TODAY))).toEqual(["final"]);
+  });
+
+  it("a blank escalation (no index) is not escalated", () => {
+    const patients = [p({ id: "blank" })];
+    expect(ids(sidebarVisibleList(patients, "nonEscalated", TODAY))).toEqual(["blank"]);
   });
 
   it("compares only the date part of a datetime Next Action Date", () => {
@@ -72,16 +83,16 @@ describe("sidebarVisibleList — nonEscalated (default) view", () => {
 describe("sidebarVisibleList — escalated view", () => {
   it("shows only escalated patients, in input order", () => {
     const patients = [
-      p({ id: "esc1", escalation: "Escalation Required" }),
+      p({ id: "esc1", escalationIndex: 0 }),
       p({ id: "plain" }),
-      p({ id: "esc2", escalation: "Escalation Required" }),
+      p({ id: "esc2", escalationIndex: 0 }),
     ];
     expect(ids(sidebarVisibleList(patients, "escalated", TODAY))).toEqual(["esc1", "esc2"]);
   });
 
   it("ignores the Next Action Date split — future-dated escalated still show", () => {
     const patients = [
-      p({ id: "escFuture", escalation: "Escalation Required", nextActionDate: "2027-01-01" }),
+      p({ id: "escFuture", escalationIndex: 0, nextActionDate: "2027-01-01" }),
     ];
     expect(ids(sidebarVisibleList(patients, "escalated", TODAY))).toEqual(["escFuture"]);
   });
@@ -90,9 +101,9 @@ describe("sidebarVisibleList — escalated view", () => {
 describe("sidebarVisibleList — all view", () => {
   it("renders the non-escalated due-now section first, then escalated below", () => {
     const patients = [
-      p({ id: "esc1", escalation: "Escalation Required" }),
+      p({ id: "esc1", escalationIndex: 0 }),
       p({ id: "due1" }),
-      p({ id: "esc2", escalation: "Escalation Required", nextActionDate: "2027-01-01" }),
+      p({ id: "esc2", escalationIndex: 0, nextActionDate: "2027-01-01" }),
       p({ id: "due2", nextActionDate: TODAY }),
       p({ id: "future", nextActionDate: "2026-07-03" }),
     ];
@@ -108,7 +119,7 @@ describe("sidebarVisibleList — all view", () => {
 describe("sidebarSections", () => {
   it("splits into due-now, scheduled, and escalated (each in input order)", () => {
     const patients = [
-      p({ id: "esc", escalation: "Escalation Required" }),
+      p({ id: "esc", escalationIndex: 0 }),
       p({ id: "future", nextActionDate: "2026-08-01" }),
       p({ id: "due", nextActionDate: "2026-06-01" }),
       p({ id: "blank" }),

@@ -70,8 +70,11 @@ export interface OversightPatient {
   boardId: number;
   groupId: string;
   dayBucket: DayBucketLabel | "Unknown";
-  /** Raw column values keyed by column ID */
+  /** Raw column values (label text) keyed by column ID */
   cols: Record<string, string>;
+  /** Selected index per status column ID — for index-based filter conditions
+   *  (status labels can be renamed on the board; their index can't). */
+  colIndex: Record<string, number>;
 }
 
 export interface ChartDef {
@@ -926,6 +929,7 @@ function columnsForBoard(boardId: number): string[] {
 interface RawColumnValue {
   id: string;
   text: string | null;
+  value: string | null;
 }
 
 interface RawItem {
@@ -958,7 +962,7 @@ async function fetchBoard(
                 id
                 name
                 group { id }
-                column_values(ids: $cols) { id text }
+                column_values(ids: $cols) { id text value }
               }
             }
           }
@@ -990,7 +994,7 @@ async function fetchBoard(
                 id
                 name
                 group { id }
-                column_values(ids: $cols) { id text }
+                column_values(ids: $cols) { id text value }
               }
             }
           }
@@ -1017,11 +1021,20 @@ async function fetchBoard(
 // ── Item → OversightPatient mapper ──────────────────────────────────────
 
 function mapItem(raw: RawItem, boardId: number): OversightPatient {
-  // Build cols record
+  // Build cols record (label text) + colIndex record (status index from `value`)
   const cols: Record<string, string> = {};
+  const colIndex: Record<string, number> = {};
   cols["name"] = raw.name;
   for (const cv of raw.column_values) {
     cols[cv.id] = cv.text ?? "";
+    if (cv.value) {
+      try {
+        const parsed = JSON.parse(cv.value) as { index?: number } | null;
+        if (typeof parsed?.index === "number") colIndex[cv.id] = parsed.index;
+      } catch {
+        /* non-status column or unparseable value — skip */
+      }
+    }
   }
 
   // Derive day bucket based on board + group
@@ -1054,6 +1067,7 @@ function mapItem(raw: RawItem, boardId: number): OversightPatient {
     groupId,
     dayBucket,
     cols,
+    colIndex,
   };
 }
 
@@ -1065,6 +1079,10 @@ function mapItem(raw: RawItem, boardId: number): OversightPatient {
 interface ColCondition {
   colId: string;
   value?: string | string[];
+  /** Match by status INDEX instead of label text (rename-proof — use for status
+   *  columns whose labels may change on the board, e.g. Escalation). One index
+   *  or a set. Use this OR `value`, not both. */
+  index?: number | number[];
   not?: boolean;
   gte?: number;
 }
@@ -1118,11 +1136,11 @@ const CHART_FILTERS: Record<string, FilterRule> = {
   // the filter uses ≥ 3 (not == 3) to match the trigger and never drop an
   // escalated patient. color_mm1x7997 = Escalation status; flag set by the
   // Evaluate SOP (and by confirm/chase).
-  "evaluate-escalated-3rd":                { type: "stageAdvancer", boardId: 18406060017, value: "Evaluate MN",     andCols: [{ colId: "color_mm5f37ve", value: "Proposed Stuck", not: true }, { colId: "color_mm1x7997", value: "Escalation Required" }, { colId: "numeric_mm4bhjc8", gte: 3 }] },
-  "send-request-escalated-3rd":            { type: "stageAdvancer", boardId: 18406060017, value: "Send Request",    andCols: [{ colId: "color_mm5f37ve", value: "Proposed Stuck", not: true }, { colId: "color_mm1x7997", value: "Escalation Required" }, { colId: "numeric_mm4bhjc8", gte: 3 }] },
-  "confirm-receipt-escalated-3rd":         { type: "stageAdvancer", boardId: 18406060017, value: "Confirm Receipt", andCols: [{ colId: "color_mm5f37ve", value: "Proposed Stuck", not: true }, { colId: "color_mm1x7997", value: "Escalation Required" }, { colId: "numeric_mm4bhjc8", gte: 3 }] },
-  "chase-fax-escalated-3rd":               { type: "stageAdvancer", boardId: 18406060017, value: "Chase Clinicals", andCols: [{ colId: "color_mm5f37ve", value: "Proposed Stuck", not: true }, { colId: "color_mm1xw7y5", value: ["Email", "Parachute"], not: true }, { colId: "color_mm1x7997", value: "Escalation Required" }, { colId: "numeric_mm4bhjc8", gte: 3 }] },
-  "chase-email-parachute-escalated-3rd":   { type: "stageAdvancer", boardId: 18406060017, value: "Chase Clinicals", andCols: [{ colId: "color_mm5f37ve", value: "Proposed Stuck", not: true }, { colId: "color_mm1xw7y5", value: ["Email", "Parachute"] }, { colId: "color_mm1x7997", value: "Escalation Required" }, { colId: "numeric_mm4bhjc8", gte: 3 }] },
+  "evaluate-escalated-3rd":                { type: "stageAdvancer", boardId: 18406060017, value: "Evaluate MN",     andCols: [{ colId: "color_mm5f37ve", value: "Proposed Stuck", not: true }, { colId: "color_mm1x7997", index: [0, 2] }, { colId: "numeric_mm4bhjc8", gte: 3 }] },
+  "send-request-escalated-3rd":            { type: "stageAdvancer", boardId: 18406060017, value: "Send Request",    andCols: [{ colId: "color_mm5f37ve", value: "Proposed Stuck", not: true }, { colId: "color_mm1x7997", index: [0, 2] }, { colId: "numeric_mm4bhjc8", gte: 3 }] },
+  "confirm-receipt-escalated-3rd":         { type: "stageAdvancer", boardId: 18406060017, value: "Confirm Receipt", andCols: [{ colId: "color_mm5f37ve", value: "Proposed Stuck", not: true }, { colId: "color_mm1x7997", index: [0, 2] }, { colId: "numeric_mm4bhjc8", gte: 3 }] },
+  "chase-fax-escalated-3rd":               { type: "stageAdvancer", boardId: 18406060017, value: "Chase Clinicals", andCols: [{ colId: "color_mm5f37ve", value: "Proposed Stuck", not: true }, { colId: "color_mm1xw7y5", value: ["Email", "Parachute"], not: true }, { colId: "color_mm1x7997", index: [0, 2] }, { colId: "numeric_mm4bhjc8", gte: 3 }] },
+  "chase-email-parachute-escalated-3rd":   { type: "stageAdvancer", boardId: 18406060017, value: "Chase Clinicals", andCols: [{ colId: "color_mm5f37ve", value: "Proposed Stuck", not: true }, { colId: "color_mm1xw7y5", value: ["Email", "Parachute"] }, { colId: "color_mm1x7997", index: [0, 2] }, { colId: "numeric_mm4bhjc8", gte: 3 }] },
   "benefits":           { type: "stageAdvancer", boardId: 18410601299, value: "Benefits / SoS" },
   "submit-auth":        { type: "stageAdvancer", boardId: 18410601299, value: "Submit Auth." },
   "auth-outstanding":   { type: "stageAdvancer", boardId: 18410601299, value: "Auth. Outstanding" },
@@ -1179,6 +1197,14 @@ function colConditionPasses(patient: OversightPatient, c: ColCondition): boolean
     const n = Number(cell);
     const pass = Number.isFinite(n) && cell !== "" && n >= c.gte;
     return c.not ? !pass : pass;
+  }
+  if (c.index !== undefined) {
+    // Match by status index (rename-proof). Unset column → no index → no match.
+    const idx = patient.colIndex[c.colId];
+    const hit =
+      idx !== undefined &&
+      (Array.isArray(c.index) ? c.index.includes(idx) : idx === c.index);
+    return c.not ? !hit : hit;
   }
   const inSet = Array.isArray(c.value) ? c.value.includes(cell) : cell === c.value;
   return c.not ? !inSet : inSet;

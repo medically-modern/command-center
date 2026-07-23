@@ -265,6 +265,7 @@ export function ConfirmReceiptPanel({ patient, onUpdate, managerMode = false }: 
           // the flag so the patient doesn't stay in escalated lists.
           await writeStatusIndex(patient.id, COL.escalation, ESCALATION_INDEX.done);
           patch.escalation = "Done";
+          patch.escalationIndex = ESCALATION_INDEX.done; // detection is index-based
         }
       } else if (isEscalated) {
         // Manager follow-up on an escalated patient: all 3 attempt slots are
@@ -304,6 +305,8 @@ export function ConfirmReceiptPanel({ patient, onUpdate, managerMode = false }: 
           mnAttempts: nextSlot,
           nextActionDate: safeNextAction,
           escalation: nextSlot === "Escalate" ? "Escalation Required" : patient.escalation,
+          // Detection is index-based (badge/sidebar read escalationIndex).
+          escalationIndex: nextSlot === "Escalate" ? ESCALATION_INDEX.required : patient.escalationIndex,
         };
         successMsg =
           nextSlot === "Escalate"

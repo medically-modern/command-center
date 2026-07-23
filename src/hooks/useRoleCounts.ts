@@ -75,6 +75,28 @@ const ESC_REQUIRED = "Escalation Required";
 const SAM_ESCALATED = new Set(["Manager Escalation Required", "Final Escalation Required"]);
 const isSamEscalated = (txt: string): boolean => SAM_ESCALATED.has(txt);
 
+/** Selected index of a status column from its raw `value` JSON, or null. */
+function statusIndex(raw: string | undefined): number | null {
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw) as { index?: number } | null;
+    return typeof parsed?.index === "number" ? parsed.index : null;
+  } catch {
+    return null;
+  }
+}
+
+// Masheke escalation labels were renamed on the board (2026-07): index 0 is now
+// "Manager Escalation Required" and index 2 "Final Escalation Required" — both
+// count as escalated. Match by INDEX (not label text) so a future rename can't
+// silently break the counts. (Samantha/Welcome Call labels are unchanged and
+// keep their text match below.)
+const MESH_ESCALATED_INDICES = [0, 2];
+function isMeshEscalated(item: { vals: Record<string, string> }): boolean {
+  const idx = statusIndex(item.vals[MESH_ESC_COL]);
+  return idx !== null && MESH_ESCALATED_INDICES.includes(idx);
+}
+
 function getMondayToken(): string {
   return (import.meta.env.VITE_MONDAY_API_TOKEN as string | undefined) ?? "";
 }
@@ -144,6 +166,9 @@ async function fetchBoardGroupIds(boardId: number, groupId: string): Promise<str
 interface LightItem {
   id: string;
   cols: Record<string, string>;
+  /** Raw `value` JSON per column id — for index-based status matching
+   *  (a status label can be renamed on the board; its index can't). */
+  vals: Record<string, string>;
 }
 
 async function fetchBoardGroupItemsLight(
@@ -155,13 +180,18 @@ async function fetchBoardGroupItemsLight(
   const token = getMondayToken();
   if (!token) return [];
   const compareValue = JSON.stringify([groupId]);
-  const itemFields = `id column_values(ids: $cols) { id text }`;
+  const itemFields = `id column_values(ids: $cols) { id text value }`;
 
   const toLight = (items: any[]): LightItem[] =>
     items.map((i: any) => ({
       id: String(i.id),
       cols: Object.fromEntries(
         (i.column_values ?? []).map((c: any) => [c.id, c.text ?? ""]),
+      ),
+      vals: Object.fromEntries(
+        (i.column_values ?? []).map(
+          (c: { id: string; value: string | null }) => [c.id, c.value ?? ""],
+        ),
       ),
     }));
 
@@ -417,7 +447,7 @@ export function useRoleCounts(opts?: { roleIds?: string[] }) {
             if (!roleId) continue;
 
             const isChase = roleId === "chaseFax" || roleId === "chaseParachute";
-            if (item.cols[MESH_ESC_COL] === ESC_REQUIRED) {
+            if (isMeshEscalated(item)) {
               ec[roleId]++;
               if (isChase) ec.chaseBenefits++;
               continue; // escalated → not in the non-escalated active list

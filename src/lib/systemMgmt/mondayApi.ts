@@ -284,6 +284,17 @@ async function fetchBoardItems(board: BoardDef): Promise<SystemPatient[]> {
 function mapToSystemPatient(item: RawItem, board: BoardDef): SystemPatient {
   const colVal = (id: string) =>
     item.column_values.find((c) => c.id === id)?.text ?? "";
+  /** Selected index of a status column from its raw `value` JSON, or null. */
+  const colIndex = (id: string): number | null => {
+    const raw = item.column_values.find((c) => c.id === id)?.value;
+    if (!raw) return null;
+    try {
+      const parsed = JSON.parse(raw) as { index?: number } | null;
+      return typeof parsed?.index === "number" ? parsed.index : null;
+    } catch {
+      return null;
+    }
+  };
 
   const phone = colVal(board.phoneColId);
   const daysSinceStage = board.daysSinceStageColId
@@ -300,9 +311,15 @@ function mapToSystemPatient(item: RawItem, board: BoardDef): SystemPatient {
   const escalationNotes = board.escalationNotesColId
     ? colVal(board.escalationNotesColId)
     : "";
+  // Masheke (18406060017) escalation labels were renamed on the board (2026-07):
+  // index 0 "Manager Escalation Required" / index 2 "Final Escalation Required".
+  // Match that board by INDEX (both count as escalated) so a rename can't break
+  // detection; other boards keep their unchanged text labels.
+  const escIndex = board.escalationColId ? colIndex(board.escalationColId) : null;
   const escalated =
     escalationText === "Escalation Required" ||
-    escalationText === "Escalate";
+    escalationText === "Escalate" ||
+    (board.boardId === 18406060017 && (escIndex === 0 || escIndex === 2));
 
   // Determine pipeline stage + route
   const groupDef = board.activeGroups.find((g) => g.id === item.group.id);

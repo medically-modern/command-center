@@ -20,7 +20,7 @@ import { BlockedModal } from "@/components/masheke/BlockedModal";
 import { EscalationFormModal } from "@/components/shared/EscalationFormModal";
 import { PageLoadingOverlay } from "@/components/shared/PageLoadingOverlay";
 import { writeStatusIndex, writeLongText, COL } from "@/lib/masheke/mondayApi";
-import { ESCALATION_INDEX } from "@/lib/masheke/mondayMapping";
+import { ESCALATION_INDEX, isEscalatedIndex } from "@/lib/masheke/mondayMapping";
 import { useBackNavigation } from "@/hooks/useBackNavigation";
 import { ReportIssueButton } from "@/components/shared/ReportIssueButton";
 import { ProposeStuckModal } from "@/components/masheke/ProposeStuckModal";
@@ -100,7 +100,7 @@ const ConfirmReceiptPage = () => {
                         Manager · Escalated
                       </span>
                     )}
-                  </h1>{selected && (<p className="text-sm opacity-80 mt-0.5 flex items-center gap-2">{selected.name}{selected.escalation === "Escalation Required" && <span className="inline-flex items-center rounded-full bg-red-500 text-white text-[10px] font-bold uppercase tracking-wide px-2 py-0.5">Escalated</span>}</p>)}
+                  </h1>{selected && (<p className="text-sm opacity-80 mt-0.5 flex items-center gap-2">{selected.name}{isEscalatedIndex(selected.escalationIndex) && <span className="inline-flex items-center rounded-full bg-red-500 text-white text-[10px] font-bold uppercase tracking-wide px-2 py-0.5">Escalated</span>}</p>)}
                 </div>
               </div>
               <div className="flex items-center gap-2">

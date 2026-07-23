@@ -244,6 +244,8 @@ export function ChaseClinicalsPanel({ patient, onUpdate, managerMode = false, ro
           mnAttempts: nextSlot,
           nextActionDate: safeNextAction,
           escalation: nextSlot === "Escalate" ? "Escalation Required" : patient.escalation,
+          // Detection is index-based (badge/sidebar read escalationIndex).
+          escalationIndex: nextSlot === "Escalate" ? ESCALATION_INDEX.required : patient.escalationIndex,
         };
         successMsg =
           nextSlot === "Escalate"

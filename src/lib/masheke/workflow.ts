@@ -112,8 +112,13 @@ export interface Patient {
   chaseRecipientName?: string;
   mnAttempts?: string;
   nextActionDate?: string;
-  /** Escalation status — "Escalation Required" or "Done". */
+  /** Escalation status label text (display only — e.g. "Manager Escalation
+   *  Required" / "Final Escalation Required" / "Done"). Detection uses
+   *  escalationIndex, not this string (labels can be renamed on the board). */
   escalation?: string;
+  /** Escalation status INDEX (color_mm1x7997): 0=manager, 1=done, 2=final.
+   *  Use isEscalatedIndex() — index 0 or 2 means escalated. */
+  escalationIndex?: number;
 
   // Advancers
   advancer2a?: string;

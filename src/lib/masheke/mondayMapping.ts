@@ -45,8 +45,23 @@ export const GEN_SCRIPT_STATUS = { ready: 0, generate: 1, notNeeded: 2 } as cons
 // MN Attempts: 0=Escalate, 1=Attempt 3, 2=Attempt 1, 3=Attempt 2
 export const MN_ATTEMPTS_INDEX = { escalate: 0, attempt3: 1, attempt1: 2, attempt2: 3 } as const;
 
-// Escalation: 0=Escalation Required, 1=Done
-export const ESCALATION_INDEX = { required: 0, done: 1 } as const;
+// Escalation (color_mm1x7997). Labels were renamed on the board (2026-07):
+//   0 = "Manager Escalation Required", 1 = "Done", 2 = "Final Escalation Required".
+// The app writes this by INDEX and — since the rename — reads it by INDEX too, so a
+// future label rename can't silently break escalation detection. Both index 0
+// (manager) and index 2 (final) count as "escalated".
+export const ESCALATION_INDEX = { required: 0, done: 1, finalRequired: 2 } as const;
+
+/** Status indices that mean the patient is escalated (manager OR final). */
+export const ESCALATED_INDICES: readonly number[] = [
+  ESCALATION_INDEX.required,
+  ESCALATION_INDEX.finalRequired,
+];
+
+/** True when an escalation status index represents an escalated state. */
+export function isEscalatedIndex(index: number | null | undefined): boolean {
+  return index != null && ESCALATED_INDICES.includes(index);
+}
 
 // Clinicals Method: 0=Fax, 1=Parachute, 2=Email
 export const CLINICALS_METHOD_INDEX = { fax: 0, parachute: 1, email: 2 } as const;
@@ -59,6 +74,20 @@ export const FOLLOW_UP_INDEX = { followUp: 1 } as const;
 // ---- Item → Patient conversion ----
 function col(item: MondayItem, id: string): string {
   return item.column_values.find((c: MondayColumnValue) => c.id === id)?.text ?? "";
+}
+
+/** Parse a status column's selected index from its raw `value` JSON. Returns null
+ *  when unset/unparseable. Prefer this over matching label text for status columns
+ *  whose labels can be renamed on the board (e.g. Escalation — see ESCALATION_INDEX). */
+export function colIndex(item: MondayItem, id: string): number | null {
+  const raw = item.column_values.find((c: MondayColumnValue) => c.id === id)?.value;
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw) as { index?: number } | null;
+    return typeof parsed?.index === "number" ? parsed.index : null;
+  } catch {
+    return null;
+  }
 }
 
 export function mondayItemToPatient(item: MondayItem): Patient {
@@ -144,6 +173,7 @@ export function mondayItemToPatient(item: MondayItem): Patient {
     mnAttempts: col(item, "color_mm1wz0vg") || undefined,
     nextActionDate: col(item, "date_mm1wadgs") || undefined,
     escalation: col(item, "color_mm1x7997") || undefined,
+    escalationIndex: colIndex(item, "color_mm1x7997") ?? undefined,
     advancer2a: col(item, "color_mm1w73jx") || undefined,
     advancer2b: col(item, "color_mm1wfbkz") || undefined,
     advancer2c: col(item, "color_mm1wf98t") || undefined,

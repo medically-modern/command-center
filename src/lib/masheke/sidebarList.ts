@@ -7,6 +7,7 @@
 import type { Patient } from "@/lib/masheke/workflow";
 import type { RoleFilter } from "@/lib/accessStore";
 import { etToday } from "@/lib/masheke/etDate";
+import { isEscalatedIndex } from "@/lib/masheke/mondayMapping";
 
 export interface SidebarSections {
   /** Non-escalated patients due now (Next Action Date blank or <= today). */
@@ -14,11 +15,14 @@ export interface SidebarSections {
   /** Non-escalated patients scheduled for a future date. Hidden behind the
    *  (currently disabled) Scheduled folder — never part of the visible list. */
   pendingPatients: Patient[];
-  /** Escalated patients ("Escalation Required") — always shown, no date split. */
+  /** Escalated patients (escalation index 0 "Manager" or 2 "Final") — always
+   *  shown, no date split. */
   escalatedList: Patient[];
 }
 
-const isEsc = (p: Patient) => p.escalation === "Escalation Required";
+// Match by INDEX, not label text: the board's escalation labels were renamed
+// (2026-07) and matching "Escalation Required" here silently dropped everyone.
+const isEsc = (p: Patient) => isEscalatedIndex(p.escalationIndex);
 
 /** Split the raw patient list into the sidebar's sections, preserving input
  *  order within each. `todayStr` is YYYY-MM-DD in ET (defaults to ET today;
