@@ -1221,6 +1221,14 @@ function ProfileBody(p: BodyProps) {
                   <div className="f"><div className="k">Clinic Phone</div><div className="v">{rcv.doctorPhone || "—"}</div></div>
                   <div className="f full"><div className="k">Clinic Address</div><div className="v">{rcv.clinicAddress || "—"}</div></div>
                 </div>
+                {rcv.prescriberRequirements?.trim() && (
+                  <div className="mt-4 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3">
+                    <p className="text-sm font-semibold text-amber-800 mb-1 flex items-center gap-1.5">
+                      <AlertTriangle className="h-4 w-4" /> Prescriber Requirements
+                    </p>
+                    <p className="text-sm text-amber-900 whitespace-pre-wrap">{rcv.prescriberRequirements}</p>
+                  </div>
+                )}
               </section>
               <div className="work-col">
                 <section className="card step-card">
