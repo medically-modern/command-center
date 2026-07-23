@@ -197,11 +197,6 @@ const SubmitAuthPage = () => {
                         <section className="card step-card">
                           <div className="empty-box">
                             <p>✓ Auth submission complete — sent to Monday</p>
-                            <p className="sub">
-                              The board automation is moving this patient to Auth Outstanding;
-                              they'll drop off this list within a minute. Pick the next patient
-                              from the sidebar.
-                            </p>
                           </div>
                         </section>
                       ) : (
