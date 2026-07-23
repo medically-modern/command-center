@@ -424,7 +424,7 @@ describe("deriveBenefitsPreview — full board output", () => {
     expect(pv.sos).toBe("Partial / Not Clear");
     expect(pv.notClearProducts).toEqual(["Insulin Pump"]);
     expect(pv.stage).toBe("Benefits / SoS");
-    expect(pv.escalation).toBe("Escalation Required");
+    expect(pv.escalation).toBe("Manager Escalation Required");
   });
 
   it("a NON-pump not-clear product does NOT escalate (matches current behavior)", () => {
@@ -602,7 +602,7 @@ describe("deriveBenefitsPreview — full board output", () => {
     });
     const pv = deriveBenefitsPreview(p, TODAY);
     expect(pv.activeNetwork).toBe("Stuck");
-    expect(pv.escalation).toBe("Escalation Required");
+    expect(pv.escalation).toBe("Final Escalation Required");
     expect(pv.stage).toBe("Benefits / SoS");
     // handoff §4: step 2 never ran — the send leaves every per-product
     // column untouched, so the preview blanks them even when stale step-2
@@ -631,7 +631,7 @@ describe("deriveBenefitsPreview — full board output", () => {
     expect(pv.gated).toBe(true);
     expect(pv.activeNetwork).toBe("Stuck");
     expect(pv.dmeBenefits).toBe("Yes");
-    expect(pv.escalation).toBe("Escalation Required");
+    expect(pv.escalation).toBe("Final Escalation Required");
     expect(pv.stage).toBe("Benefits / SoS");
   });
 

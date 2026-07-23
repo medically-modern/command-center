@@ -70,6 +70,10 @@ const PROF_REFERRAL_TYPE_COL = "color_mm1wm4n4";   // Referral Type (role split)
 const PROF_REFERRAL_SOURCE_COL = "color_mm1w5wxr"; // Referral Source (role split)
 
 const ESC_REQUIRED = "Escalation Required";
+// Insurance board escalation split into two labels (2026-07) — either counts as
+// escalated. Masheke + Welcome Call still use the single ESC_REQUIRED above.
+const SAM_ESCALATED = new Set(["Manager Escalation Required", "Final Escalation Required"]);
+const isSamEscalated = (txt: string): boolean => SAM_ESCALATED.has(txt);
 
 function getMondayToken(): string {
   return (import.meta.env.VITE_MONDAY_API_TOKEN as string | undefined) ?? "";
@@ -369,14 +373,14 @@ export function useRoleCounts(opts?: { roleIds?: string[] }) {
       // a routed patient never counts in two roles (mirrors samantha
       // useMondayPatients + both baseline countSamGroup, §5.8).
       const items = fetched.filter((i) => i.cols[SAM_STAGE_COL] !== "DVS");
-      const escN = items.filter((i) => i.cols[SAM_ESC_COL] === ESC_REQUIRED).length;
+      const escN = items.filter((i) => isSamEscalated(i.cols[SAM_ESC_COL])).length;
       const snoozed = (i: (typeof items)[number]) => {
         const d = i.cols[SAM_FOLLOWUP_DATE_COL];
         if (dateOnlyBucket) return !!d && d > todayStr;
         if (i.cols[SAM_FOLLOWUP_COL] !== "Follow Up") return false;
         return !d || d > todayStr;
       };
-      const active = items.filter((i) => i.cols[SAM_ESC_COL] !== ESC_REQUIRED && !snoozed(i));
+      const active = items.filter((i) => !isSamEscalated(i.cols[SAM_ESC_COL]) && !snoozed(i));
       merge({ [roleId]: active.length }, { [roleId]: escN }, { [roleId]: active.map((i) => i.id) });
     };
 
@@ -441,7 +445,7 @@ export function useRoleCounts(opts?: { roleIds?: string[] }) {
         (async () => {
           if (!samHasToken()) return;
           const items = await fetchBoardStageItemsLight(SAM_BOARD_ID, SAM_STAGE_COL, SAM_DVS_STAGE_INDEX, [SAM_ESC_COL, SAM_FOLLOWUP_DATE_COL]);
-          const escN = items.filter((i) => i.cols[SAM_ESC_COL] === ESC_REQUIRED).length;
+          const escN = items.filter((i) => isSamEscalated(i.cols[SAM_ESC_COL])).length;
           // Date-only snooze, same rule as Auth Outstanding (Josh 2026-07-21):
           // a future Follow Up Date hides the patient from /dvs AND the count;
           // blank date = due. Mirrors DvsPage `snoozed` + both baseline
@@ -450,7 +454,7 @@ export function useRoleCounts(opts?: { roleIds?: string[] }) {
             const d = i.cols[SAM_FOLLOWUP_DATE_COL];
             return !!d && d > todayStr;
           };
-          const active = items.filter((i) => i.cols[SAM_ESC_COL] !== ESC_REQUIRED && !snoozedDvs(i));
+          const active = items.filter((i) => !isSamEscalated(i.cols[SAM_ESC_COL]) && !snoozedDvs(i));
           merge({ dvs: active.length }, { dvs: escN }, { dvs: active.map((i) => i.id) });
         })(),
       );

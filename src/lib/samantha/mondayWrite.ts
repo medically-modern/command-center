@@ -439,8 +439,8 @@ export async function sendPatientToMonday(
   // never be de-escalated by fixing the underlying facts and re-sending.
   const manualEscalate = context !== "benefits" && p.escalated === true;
   let stageWriteIndex: number | null = null;
-  type EscalationDecision = "required" | "done";
-  let escalationDecision: EscalationDecision = manualEscalate ? "required" : "done";
+  type EscalationDecision = "manager" | "final" | "done";
+  let escalationDecision: EscalationDecision = manualEscalate ? "manager" : "done";
 
   if (context === "submitAuth") {
     // DVS routing (HANDOFF-Josh-DVS §1): a patient with zero submission
@@ -509,7 +509,7 @@ export async function sendPatientToMonday(
 
     if (anyDenied) {
       stageWriteIndex = STAGE_INDEX.authDenied;
-      escalationDecision = "required"; // forced by denial regardless of toggle
+      escalationDecision = "manager"; // forced by denial regardless of toggle
     } else if (allResolved) {
       // Auth rail finished. Patients with Medicaid-routed supplies exit to
       // the DVS stage (the stage write triggers the bot, HANDOFF-Josh-DVS
@@ -535,8 +535,12 @@ export async function sendPatientToMonday(
     if (outcome !== "blocker" && outcome !== "incomplete" && allProductsDvsRouted(p)) {
       stageWriteIndex = STAGE_INDEX.dvs;
     }
-    // Blocker condition force-elevates escalation.
-    if (outcome === "blocker") escalationDecision = "required";
+    // Blocker force-elevates escalation, split by cause (2026-07): a failed
+    // universal check → Final (oversight Final Decisions); insulin-pump SoS
+    // Not Clear only → Manager (oversight Manager as Processor). Check-fail
+    // wins if both fire — deriveInsuranceOutcome returns blocker for the
+    // universal case first (workflow.ts:540 before :552).
+    if (outcome === "blocker") escalationDecision = universalNegative ? "final" : "manager";
   }
 
   if (stageWriteIndex !== null) {
@@ -577,9 +581,11 @@ export async function sendPatientToMonday(
       writeStatusIndex(
         p.id,
         COL.escalation,
-        escalationDecision === "required"
-          ? ESCALATION_INDEX.required
-          : ESCALATION_INDEX.done,
+        escalationDecision === "final"
+          ? ESCALATION_INDEX.finalRequired
+          : escalationDecision === "manager"
+            ? ESCALATION_INDEX.managerRequired
+            : ESCALATION_INDEX.done,
       ),
   });
   console.log(`[mondayWrite] Stage = ${stageWriteIndex ?? "(no change)"}, Escalation = ${escalationDecision}`);
@@ -591,7 +597,7 @@ export async function sendPatientToMonday(
   // hop-copied to Welcome Call. Skipped if the identical line already
   // landed (repeat sends of the same blocker don't duplicate).
   let notesForSend: string | undefined = typeof p.notes === "string" ? p.notes : undefined;
-  if (context === "benefits" && escalationDecision === "required") {
+  if (context === "benefits" && escalationDecision !== "done") {
     // On the failed-check path the reason cites only the failed checks —
     // pump SoS facts behind the disabled step 2 are stale, not findings.
     const reason = composeEscalationReason(

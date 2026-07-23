@@ -25,8 +25,9 @@ export const UNIVERSAL_INDEX = {
 
 // Escalation column indices
 export const ESCALATION_INDEX = {
-  required: 0,
-  done: 1,
+  managerRequired: 0, // "Manager Escalation Required"
+  done: 1,            // "Done"
+  finalRequired: 2,   // "Final Escalation Required"
 } as const;
 
 // Trigger DVS status indices
@@ -353,7 +354,11 @@ export function mondayItemToPatient(item: MondayItem): Patient {
   // state when the patient loads. "Escalation Required" → on; "Done" or
   // unset → off.
   const escalationText = cv(COL.escalation)?.text?.trim();
-  const escalated = escalationText === "Escalation Required";
+  // Insurance escalation split into two labels (2026-07) — either counts as
+  // escalated (Manager Escalation Required = index 0, Final = index 2).
+  const escalated =
+    escalationText === "Manager Escalation Required" ||
+    escalationText === "Final Escalation Required";
   const stageAdvancerText = cv(COL.stageAdvancer)?.text?.trim() ?? "";
 
   // Days Since Stage Started — status column with index-based ordering

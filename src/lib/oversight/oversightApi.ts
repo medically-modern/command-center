@@ -551,6 +551,27 @@ const RAW_CHART_DEFS: ChartDef[] = [
       { colId: "long_text_mm3jrssp", label: "Escalation Notes" },
     ],
   },
+  // Manager view: Insurance — Benefits items escalated to the MANAGER (insulin-
+  // pump SoS Not Clear only, benefitsDerive pumpNotClear) → "Manager as
+  // Processor" column, benefits row. Failed-check escalations go to Final
+  // Decisions (benefits-check-failed) instead.
+  {
+    id: "benefits-manager-escalation",
+    title: "Benefits",
+    boardId: 18410601299,
+    notesColId: "long_text_mm2ffsme",
+    rowOf: "benefits",
+    drilldownCols: [
+      { colId: "date_mm1wf43j", label: "Intake Date" },
+      { colId: "color_mm1wwm05", label: "Days in Stage" },
+      { colId: "color_mm1x157j", label: "Primary Insurance" },
+      { colId: "color_mm1w1cm9", label: "Serving" },
+      { colId: "color_mm2vemyy", label: "SoS", pill: true },
+      { colId: "dropdown_mm2vez5a", label: "Not Clear Products", pill: true },
+      { colId: "color_mm2vsh2f", label: "Escalation", pill: true },
+      { colId: "long_text_mm3jrssp", label: "Escalation Notes" },
+    ],
+  },
   {
     id: "dvs-retry-queue",
     title: "DVS — Retry Queue",
@@ -767,7 +788,7 @@ export const OVERSIGHT_SECTIONS: OversightSection[] = [
     chartIds: ["benefits", "submit-auth", "auth-outstanding", "auth-denial"],
     primaryTitle: "Processor Overview",
     secondaryTitle: "Manager as Processor",
-    secondaryChartIds: ["dvs-retry-queue", "dvs-manual-review"],
+    secondaryChartIds: ["benefits-manager-escalation", "dvs-retry-queue", "dvs-manual-review"],
     tertiaryTitle: "Final Decisions",
     tertiaryChartIds: ["benefits-check-failed"],
   },
@@ -1119,7 +1140,14 @@ const CHART_FILTERS: Record<string, FilterRule> = {
   "chase-email-parachute-proposed-stuck": { type: "stageAdvancer", boardId: 18406060017, value: "Chase Clinicals", andCols: [{ colId: "color_mm1xw7y5", value: ["Email", "Parachute"] }, { colId: "color_mm5f37ve", value: "Proposed Stuck" }] },
   // Benefits check-failed (Final Decisions): still at Benefits, Escalation
   // Required, and at least one universal check failed on the board.
-  "benefits-check-failed": { type: "stageAdvancer", boardId: 18410601299, value: "Benefits / SoS", andCols: [{ colId: "color_mm2vsh2f", value: "Escalation Required" }], anyCols: [{ colId: "color_mm2vhwan", value: "Stuck" }, { colId: "color_mm2vt8xg", value: "Partial / No" }] },
+  // Final Decisions: any Benefits item flagged Final Escalation Required —
+  // either auto (failed universal check) or manual (Propose Stuck button). The
+  // status label now uniquely encodes it, so the old Stuck/Partial-No board
+  // heuristic is dropped (a Propose-Stuck item need not have those set).
+  "benefits-check-failed": { type: "stageAdvancer", boardId: 18410601299, value: "Benefits / SoS", andCols: [{ colId: "color_mm2vsh2f", value: "Final Escalation Required" }] },
+  // Manager as Processor: Benefits items flagged Manager Escalation Required
+  // (insulin-pump SoS Not Clear only).
+  "benefits-manager-escalation": { type: "stageAdvancer", boardId: 18410601299, value: "Benefits / SoS", andCols: [{ colId: "color_mm2vsh2f", value: "Manager Escalation Required" }] },
   // DVS retry queue: stage DVS with a "Retry Queued" status on Trigger
   // Supplies DVS or Trigger Pump DVS — and nothing else. (The old Retry
   // Count ≥ 1 condition is gone: a non-zero count lingers after an item
@@ -1135,7 +1163,7 @@ const CHART_FILTERS: Record<string, FilterRule> = {
   "dvs-manual-review": {
     type: "stageAdvancer", boardId: 18410601299, value: "DVS",
     anyCols: [
-      { colId: "color_mm2vsh2f", value: "Escalation Required" },
+      { colId: "color_mm2vsh2f", value: "Manager Escalation Required" },
       { colId: "color_mm26pk1a", value: ["MLTC", "Failed", "Manual Review"] },
       { colId: "color_mm578kbd", value: ["MLTC", "Failed", "Manual Review", "Denied"] },
       { colId: "color_mm284z0b", value: ["Claims Error", "Claims Denied", "Payment Incorrect"] },

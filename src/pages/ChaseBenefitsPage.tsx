@@ -36,6 +36,7 @@ import "@/components/samantha/benefitsRedesign.css";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { RotateCcw, Stethoscope, ArrowLeft, Save } from "lucide-react";
 import { ClinicalsDownloadButton } from "@/components/samantha/ClinicalsDownloadButton";
+import { ProposeStuckButton } from "@/components/samantha/ProposeStuckButton";
 import { toast } from "sonner";
 import { sendPatientToMonday } from "@/lib/samantha/mondayWrite";
 import { writeLongText, COL } from "@/lib/samantha/mondayApi";
@@ -146,7 +147,7 @@ const ChaseBenefitsPage = () => {
     try {
       await sendPatientToMonday(selected, "benefits", { onProgress: setSavePhase });
       if (gatedSend) {
-        toast.success("Submitted — Escalation Required set on Monday");
+        toast.success("Submitted — escalation set on Monday");
       } else {
         clearOverlay(selected.id);
         setLastSentId(selected.id);
@@ -195,6 +196,7 @@ const ChaseBenefitsPage = () => {
               </div>
               <div className="flex items-center gap-2">
                 {selected && <ClinicalsDownloadButton itemId={selected.id} />}
+                {selected && <ProposeStuckButton patientId={selected.id} onDone={() => refetch(true)} />}
                 <Button
                   onClick={() => {
                     if (!selected) return;

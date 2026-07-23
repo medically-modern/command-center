@@ -280,7 +280,7 @@ function ProductCard({
 
 const GOOD = new Set(["Active/In-network", "Yes", "No Auths Required", "All Clear", "Complete", "Never Billed", "Done", "Not Serving"]);
 const WARN = new Set(["Stuck", "Partial / No", "Auths Required", "Partial / Not Clear", "Submit Auth.", "Benefits / SoS", "Required"]);
-const BAD = new Set(["Escalation Required"]);
+const BAD = new Set(["Manager Escalation Required", "Final Escalation Required"]);
 const SKIP = new Set(["Skip", "No Auth Needed"]);
 
 function mvalClass(v: string): string {

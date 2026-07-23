@@ -239,7 +239,10 @@ counts as due (`sidebarList.isSnoozedAuthOutstanding`; `samActive`/`countSamGrou
 `dateOnlyBucket` flag). Benefits/Submit Auth keep the status-based rule. **Masheke counts
 exclude Proposed Stuck patients** (`color_mm5f37ve` = "Proposed Stuck" — they await a manager
 decision in Oversight), and the **`dvs` role** counts Insurance items at Stage Advancer
-index 1 ("DVS") board-wide (no dedicated group), excluding Escalation Required AND
+index 1 ("DVS") board-wide (no dedicated group), excluding escalated (Insurance
+Escalation `color_mm2vsh2f` = "Manager Escalation Required" OR "Final Escalation Required" —
+split from a single "Escalation Required" in 2026-07; `SAM_ESCALATED` in useRoleCounts + both
+baseline generators) AND
 date-snoozed patients (Follow Up Date in the future — same date-only rule as Auth
 Outstanding; mirrors the `/dvs` page list). Stage-DVS items are conversely EXCLUDED from the
 Benefits/Submit Auth/Auth Outstanding queues + counts (they linger in those groups — no

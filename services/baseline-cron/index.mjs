@@ -102,6 +102,10 @@ const SUB_BOARD   = 18407459988;
 const SUB_GROUP   = "topics";
 
 const ESC_REQUIRED = "Escalation Required";
+// Insurance board escalation split into two labels (2026-07) — either counts as
+// escalated. Masheke + Welcome Call still use the single ESC_REQUIRED above.
+const SAM_ESCALATED = new Set(["Manager Escalation Required", "Final Escalation Required"]);
+const isSamEscalated = (txt) => SAM_ESCALATED.has(txt);
 
 const ESCALATION_BOARDS = [
   { boardId: 18406060017, colId: "color_mm1x7997", groups: ["group_mm1xf2jb"] },
@@ -188,7 +192,7 @@ async function countSamGroup(groupId, todayStr, dateOnlyBucket = false) {
     if (i.cols[SAM_FOLLOWUP_COL] !== "Follow Up") return false;
     return !d || d > todayStr;
   };
-  const active = items.filter((i) => i.cols[SAM_ESC_COL] !== ESC_REQUIRED && !snoozed(i));
+  const active = items.filter((i) => !isSamEscalated(i.cols[SAM_ESC_COL]) && !snoozed(i));
   return { count: active.length, ids: active.map((i) => i.id) };
 }
 
@@ -281,7 +285,7 @@ async function countEscalations() {
       const items = await fetchGroupItems(boardId, groupId, [colId]);
       for (const item of items) {
         const txt = item.cols[colId] ?? "";
-        if (txt === "Escalation Required" || txt === "Escalate") total++;
+        if (txt === "Escalation Required" || txt === "Escalate" || isSamEscalated(txt)) total++;
       }
     }
   }
@@ -409,7 +413,7 @@ async function countDvs(todayStr) {
     const d = i.cols[SAM_FOLLOWUP_DATE_COL];
     return !!d && d > todayStr;
   };
-  const active = items.filter((i) => i.cols[SAM_ESC_COL] !== ESC_REQUIRED && !snoozed(i));
+  const active = items.filter((i) => !isSamEscalated(i.cols[SAM_ESC_COL]) && !snoozed(i));
   return { count: active.length, ids: active.map((i) => i.id) };
 }
 
