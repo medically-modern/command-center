@@ -24,6 +24,7 @@ import {
   type DayBucketLabel,
 } from "@/lib/oversight/oversightApi";
 import { fuzzyNameMatch } from "@/lib/oversight/fuzzyName";
+import { extractProposedStuckReason } from "@/lib/masheke/proposedStuck";
 import { Loader2, BarChart3, X, ExternalLink, StickyNote, Search, ArrowUp, ArrowDown, ArrowUpDown, Star, SlidersHorizontal, Plus, Trash2, RotateCcw } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -67,18 +68,19 @@ const CHART_ROUTES: Record<string, string | null> = {
   "chase-fax-escalated-3rd": "/chase-fax",
   "chase-email-parachute-escalated-3rd": "/chase-parachute",
   // Manager views (2026-07): merged escalation charts route like their base
-  // stage; Final Decisions charts have no rep page — decisions happen in the
-  // drill-down itself.
+  // stage. Final Decisions (Proposed Stuck) charts also route to the stage page
+  // (opened in manager mode) so the manager can view/work the patient in the UI;
+  // the Approve/Return actions still live in the drill-down itself.
   "evaluate-escalated-merged": "/evaluate",
   "send-request-escalated-merged": "/send-request",
   "confirm-receipt-escalated-merged": "/confirm-receipt",
   "chase-fax-escalated-merged": "/chase-fax",
   "chase-email-parachute-escalated-merged": "/chase-parachute",
-  "evaluate-proposed-stuck": null,
-  "send-request-proposed-stuck": null,
-  "confirm-receipt-proposed-stuck": null,
-  "chase-fax-proposed-stuck": null,
-  "chase-email-parachute-proposed-stuck": null,
+  "evaluate-proposed-stuck": "/evaluate",
+  "send-request-proposed-stuck": "/send-request",
+  "confirm-receipt-proposed-stuck": "/confirm-receipt",
+  "chase-fax-proposed-stuck": "/chase-fax",
+  "chase-email-parachute-proposed-stuck": "/chase-parachute",
   // Insurance Final Decisions charts — decisions happen in the drill-down.
   "benefits-final-escalation": null,
   "submit-auth-final-escalation": null,
@@ -488,8 +490,9 @@ interface DrilldownModalProps {
   onPatientClick: (patientId: string) => void;
   hasRoute: boolean;
   /** Final Decisions charts (Manager Views §3): per-row Approve Stuck /
-   *  Return to Queue actions. Absent on every other chart. */
-  onDecision?: (patientId: string, action: "approve" | "return") => Promise<void>;
+   *  Return to Queue actions. Absent on every other chart. `appendNote` (Proposed
+   *  Stuck returns only) is stamped into the MN notes before the patient returns. */
+  onDecision?: (patientId: string, action: "approve" | "return", appendNote?: string) => Promise<void>;
 }
 
 /** Sortable table header cell. */
@@ -498,6 +501,7 @@ interface DrilldownModalProps {
  *  gets a compact fixed width so there's no dead space between columns. */
 function colWidthClass(label: string): string {
   if (/ Log$/.test(label)) return "";              // flex → widest, room for the note
+  if (label === "Proposed Reason") return "";      // flex → room for the stamped reason
   if (label === "Evaluation Count") return "w-[54px]";
   if (label === "Days in Stage") return "w-[74px]";
   if (label === "Clinicals Method") return "w-[80px]";
@@ -553,14 +557,37 @@ function DrilldownModal({
   const [notesOpenId, setNotesOpenId] = useState<string | null>(null);
   // Final Decisions actions — per-row busy lock while a decision writes.
   const [decidingId, setDecidingId] = useState<string | null>(null);
-  const decide = async (patientId: string, action: "approve" | "return") => {
+  // Return-to-queue modal (Proposed Stuck only): lets the manager append an
+  // optional note to the MN notes before the patient returns to the queue.
+  const [returnModalId, setReturnModalId] = useState<string | null>(null);
+  const [returnNote, setReturnNote] = useState("");
+  const isProposedStuck = chart.decision === "proposed-stuck";
+  const runDecision = async (patientId: string, action: "approve" | "return", appendNote?: string) => {
     if (!onDecision || decidingId) return;
     setDecidingId(patientId);
     try {
-      await onDecision(patientId, action);
+      await onDecision(patientId, action, appendNote);
     } finally {
       setDecidingId(null);
     }
+  };
+  const decide = async (patientId: string, action: "approve" | "return") => {
+    // A Proposed-Stuck Return opens a modal first (optional note + view of the MN
+    // notes). Everything else (Approve, or an Insurance-final Return) writes now.
+    if (action === "return" && isProposedStuck) {
+      setReturnNote("");
+      setReturnModalId(patientId);
+      return;
+    }
+    await runDecision(patientId, action);
+  };
+  const confirmReturn = async () => {
+    if (!returnModalId || decidingId) return;
+    const id = returnModalId;
+    const note = returnNote.trim();
+    await runDecision(id, "return", note || undefined);
+    setReturnModalId(null);
+    setReturnNote("");
   };
   const [search, setSearch] = useState("");
   // sortKey: "name" | "days" | a column id; null = default (day bucket desc)
@@ -571,13 +598,14 @@ function DrilldownModal({
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
-        if (notesOpenId) setNotesOpenId(null);
+        if (returnModalId) setReturnModalId(null);
+        else if (notesOpenId) setNotesOpenId(null);
         else onClose();
       }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [onClose, notesOpenId]);
+  }, [onClose, notesOpenId, returnModalId]);
 
   // Columns in the chart's authored order. The "Days in Stage" column renders
   // as the day-bucket pill wherever the chart places it.
@@ -948,6 +976,29 @@ function DrilldownModal({
                             </td>
                           );
                         }
+                        if (col.colId === "__proposedReason__") {
+                          // The rep's stamped stuck reason, extracted from the MN
+                          // notes. Truncated inline; full text on hover.
+                          const raw = (patient.cols[col.colId] ?? "").trim();
+                          if (!raw) {
+                            return <td key={col.colId} className="px-2 py-1 text-muted-foreground">—</td>;
+                          }
+                          return (
+                            <td key={col.colId} className="px-2 py-1 text-foreground/80">
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <span className="block truncate cursor-help">{raw}</span>
+                                </TooltipTrigger>
+                                <TooltipContent
+                                  side="top"
+                                  className="max-w-md whitespace-pre-wrap break-words text-xs leading-relaxed"
+                                >
+                                  {raw}
+                                </TooltipContent>
+                              </Tooltip>
+                            </td>
+                          );
+                        }
                         const value = patient.cols[col.colId] ?? "";
                         return (
                           <td
@@ -1023,6 +1074,85 @@ function DrilldownModal({
                 <p className="text-sm text-foreground whitespace-pre-wrap break-words leading-relaxed">
                   {noteText}
                 </p>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* ── Return-to-queue modal (Proposed Stuck) — optional stamped note ── */}
+      {returnModalId && (() => {
+        const rp = filtered.find((p) => p.id === returnModalId) ?? patients.find((p) => p.id === returnModalId);
+        if (!rp) return null;
+        const rpNotes = (chart.notesColId ? rp.cols[chart.notesColId] ?? "" : "").trim();
+        const busy = decidingId === returnModalId;
+        return (
+          <div
+            className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40"
+            onClick={() => !busy && setReturnModalId(null)}
+          >
+            <div
+              className="bg-card border border-border rounded-xl shadow-2xl w-[540px] max-h-[80vh] flex flex-col animate-in zoom-in-95 fade-in duration-150"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between px-4 py-3 border-b shrink-0">
+                <div className="flex items-center gap-2 min-w-0">
+                  <RotateCcw className="h-4 w-4 text-blue-500 shrink-0" />
+                  <h4 className="text-sm font-semibold text-foreground truncate">
+                    Return {rp.name} to the queue
+                  </h4>
+                </div>
+                <button
+                  onClick={() => setReturnModalId(null)}
+                  disabled={busy}
+                  className="p-1 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+              <div className="flex-1 overflow-y-auto px-4 py-3 min-h-0 space-y-3">
+                <p className="text-xs text-muted-foreground">
+                  Sets Next Action Date to today and clears the escalation, so the
+                  patient reappears in the rep's queue. Optionally add a note below —
+                  it's stamped into the MN notes.
+                </p>
+                <div>
+                  <label className="block text-xs font-medium text-muted-foreground mb-1">
+                    MN Notes
+                  </label>
+                  <div className="rounded-md border border-border bg-muted/30 px-3 py-2 text-xs text-foreground/80 whitespace-pre-wrap break-words max-h-40 overflow-y-auto">
+                    {rpNotes || <span className="text-muted-foreground">No notes yet.</span>}
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-muted-foreground mb-1">
+                    Add a note (optional)
+                  </label>
+                  <textarea
+                    value={returnNote}
+                    onChange={(e) => setReturnNote(e.target.value)}
+                    rows={3}
+                    placeholder="e.g. New clinicals arrived — back to Evaluate for re-review."
+                    className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-ring"
+                  />
+                </div>
+              </div>
+              <div className="flex justify-end gap-2 px-4 py-3 border-t shrink-0">
+                <button
+                  onClick={() => setReturnModalId(null)}
+                  disabled={busy}
+                  className="inline-flex items-center rounded-md border border-border hover:bg-muted disabled:opacity-50 text-foreground/80 text-sm font-semibold px-3 py-1.5 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={confirmReturn}
+                  disabled={busy}
+                  className="inline-flex items-center gap-1.5 rounded-md bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-sm font-semibold px-3 py-1.5 transition-colors"
+                >
+                  {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCcw className="h-4 w-4" />}
+                  Return to Queue
+                </button>
               </div>
             </div>
           </div>
@@ -1168,7 +1298,12 @@ export default function OversightTab() {
       // the escalated patient forward. The Confirm Receipt / Chase panels hide
       // the Confirmed / Not Confirmed actions for escalated patients unless
       // managerMode is on (?manager=1); ?escalated=1 styles the page as escalated.
-      if (expandedChart.endsWith("-escalations") || expandedChart.endsWith("-escalated-3rd") || expandedChart.endsWith("-escalated-merged")) {
+      if (
+        expandedChart.endsWith("-escalations") ||
+        expandedChart.endsWith("-escalated-3rd") ||
+        expandedChart.endsWith("-escalated-merged") ||
+        expandedChart.endsWith("-proposed-stuck")
+      ) {
         params.set("manager", "1");
         params.set("escalated", "1");
       }
@@ -1234,21 +1369,32 @@ export default function OversightTab() {
         ...aOnly.map((p) => ({ ...p, cols: { ...p.cols, __series__: st.aLabel } })),
       ];
     }
-    return bySearch(data.get(expandedChart) ?? []);
+    const list = bySearch(data.get(expandedChart) ?? []);
+    // Final Decisions (Proposed Stuck): the reason no longer has its own Monday
+    // column — pull the stamped line back out of the MN notes into a synthetic
+    // __proposedReason__ column so the drill-down can show it at a glance.
+    if (def?.decision === "proposed-stuck") {
+      return list.map((p) => ({
+        ...p,
+        cols: { ...p.cols, __proposedReason__: extractProposedStuckReason(p.cols["long_text_mm27zjt2"]) },
+      }));
+    }
+    return list;
   }, [expandedChart, data, bySearch]);
 
-  // Final Decisions (§3): Approve writes the real Stuck (Advancer 2C) and
-  // clears the proposal; Return just clears the proposal. The row disappears
-  // optimistically; the silent refetch reconciles.
+  // Final Decisions (§3): Approve writes the real Stuck (main Stage Advancer) and
+  // clears the escalation; Return re-dates + clears the escalation (Proposed
+  // Stuck also stamps the manager's optional note into the MN notes). The row
+  // disappears optimistically; the silent refetch reconciles.
   const handleDecision = useCallback(
-    async (patientId: string, action: "approve" | "return", kind: "proposed-stuck" | "insurance-final") => {
+    async (patientId: string, action: "approve" | "return", kind: "proposed-stuck" | "insurance-final", appendNote?: string) => {
       try {
         if (kind === "insurance-final") {
           if (action === "approve") await approveInsuranceStuck(patientId);
           else await returnInsuranceToQueue(patientId);
         } else {
           if (action === "approve") await approveProposedStuck(patientId);
-          else await returnProposedToQueue(patientId);
+          else await returnProposedToQueue(patientId, appendNote);
         }
         toast.success(
           action === "approve"
@@ -1544,7 +1690,7 @@ export default function OversightTab() {
           onClose={handleClose}
           onPatientClick={handlePatientClick}
           hasRoute={CHART_ROUTES[expandedChart!] !== null}
-          onDecision={expandedChartDef.decision ? (id, action) => handleDecision(id, action, expandedChartDef.decision!) : undefined}
+          onDecision={expandedChartDef.decision ? (id, action, appendNote) => handleDecision(id, action, expandedChartDef.decision!, appendNote) : undefined}
         />
       )}
 

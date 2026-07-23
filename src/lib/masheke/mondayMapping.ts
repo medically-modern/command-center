@@ -18,11 +18,6 @@ export const ADVANCER_2B_INDEX = { ready: 0, complete: 1, stuck: 2 } as const;
 export const ADVANCER_2C_INDEX = { ready: 0, complete: 1, stuck: 2 } as const;
 export const ADVANCER_2D_INDEX = { ready: 0, complete: 1 } as const;
 
-// ---- Proposed Stuck (Manager Views redesign 2026-07) ----
-// color_mm5f37ve — single label "Proposed Stuck" at index 1. Deliberately NOT
-// an Advancer 2C / Stage Advancer label so proposing fires no board automation.
-export const PROPOSED_STUCK_INDEX = { proposed: 1 } as const;
-
 // ---- Clinical eval status indices ----
 // Most checklist items share: 0=Evaluate, 1=Not Serving, 2=Collect, 3=Valid
 export const EVAL_STATUS = { evaluate: 0, notServing: 1, collect: 2, valid: 3 } as const;
@@ -48,19 +43,26 @@ export const MN_ATTEMPTS_INDEX = { escalate: 0, attempt3: 1, attempt1: 2, attemp
 // Escalation (color_mm1x7997). Labels were renamed on the board (2026-07):
 //   0 = "Manager Escalation Required", 1 = "Done", 2 = "Final Escalation Required".
 // The app writes this by INDEX and — since the rename — reads it by INDEX too, so a
-// future label rename can't silently break escalation detection. Both index 0
-// (manager) and index 2 (final) count as "escalated".
+// future label rename can't silently break escalation detection. Index 0
+// (manager) is "escalated"; index 2 (final) is the rep's "proposed stuck" signal
+// (leaves the queue for the manager's Final Decisions), handled separately.
 export const ESCALATION_INDEX = { required: 0, done: 1, finalRequired: 2 } as const;
 
-/** Status indices that mean the patient is escalated (manager OR final). */
+/** Status indices that mean the patient is escalated to a MANAGER (index 0).
+ *  Final Escalation Required (index 2) is NOT here — it's proposed-stuck. */
 export const ESCALATED_INDICES: readonly number[] = [
   ESCALATION_INDEX.required,
-  ESCALATION_INDEX.finalRequired,
 ];
 
-/** True when an escalation status index represents an escalated state. */
+/** True when an escalation status index represents an escalated (to manager) state. */
 export function isEscalatedIndex(index: number | null | undefined): boolean {
   return index != null && ESCALATED_INDICES.includes(index);
+}
+
+/** True when the escalation index is Final Escalation Required — the rep's
+ *  "proposed stuck" signal (leaves the queue → the manager's Final Decisions). */
+export function isProposedStuckIndex(index: number | null | undefined): boolean {
+  return index === ESCALATION_INDEX.finalRequired;
 }
 
 // Clinicals Method: 0=Fax, 1=Parachute, 2=Email
@@ -121,8 +123,10 @@ export function mondayItemToPatient(item: MondayItem): Patient {
     patientEmail: col(item, "text_mm1xc140") || undefined,
     masterStage: col(item, "color_mm1ws96t") || undefined,
     subStage: col(item, "color_mm1wyr92") || undefined,
-    proposedStuck: col(item, "color_mm5f37ve") || undefined,
-    proposedStuckReason: col(item, "text_mm5frng6") || undefined,
+    // Proposed Stuck is now the Escalation column at index 2 ("Final Escalation
+    // Required") — no separate column. The rep's reason lives in the MN notes
+    // (stamped), not its own column (Manager Views rework 2026-07).
+    proposedStuck: colIndex(item, "color_mm1x7997") === ESCALATION_INDEX.finalRequired,
     daysSinceIntake: col(item, "color_mm1xwabn") || undefined,
     daysSinceStageStart: col(item, "color_mm1wwm05") || undefined,
     dateOfIntake: col(item, "date_mm1wf43j") || undefined,

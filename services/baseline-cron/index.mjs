@@ -84,7 +84,9 @@ const MESH_STAGE_COL  = "color_mm1wyr92"; // Stage Advancer
 const MESH_NAD_COL    = "date_mm1wadgs";  // Next Action Date
 const MESH_ESC_COL    = "color_mm1x7997"; // Escalation
 const MESH_METHOD_COL = "color_mm1xw7y5"; // Clinicals Method (chase split)
-const MESH_PROPOSED_STUCK_COL = "color_mm5f37ve"; // Proposed Stuck (propose->approve flow)
+// "Final Escalation Required" (Escalation index 2) = a rep's stuck PROPOSAL —
+// leaves the rep queue for the manager's Final Decisions (excluded below).
+const MESH_FINAL_ESC_INDEX = 2;
 
 const WC_BOARD    = 18410804557;
 const WC_GROUP    = "group_mm1wvq8p";
@@ -108,11 +110,13 @@ const SAM_ESCALATED = new Set(["Manager Escalation Required", "Final Escalation 
 const isSamEscalated = (txt) => SAM_ESCALATED.has(txt);
 
 // Masheke (18406060017) escalation labels were renamed on the board (2026-07):
-// index 0 "Manager Escalation Required" / index 2 "Final Escalation Required" —
-// both count as escalated. Match by INDEX (not label text) so a future rename
-// can't silently break the count. Mirrors src/lib/masheke ESCALATED_INDICES +
-// useRoleCounts (§5.8 counting contract — keep these in agreement).
-const MESH_ESCALATED_INDICES = [0, 2];
+// index 0 "Manager Escalation Required" (escalated to a manager) / index 2
+// "Final Escalation Required" (a rep's stuck PROPOSAL — excluded separately
+// below; it leaves the rep queue for the manager's Final Decisions). ONLY
+// index 0 counts as escalated. Match by INDEX (not label text) so a future
+// rename can't silently break the count. Mirrors src/lib/masheke
+// ESCALATED_INDICES + useRoleCounts (§5.8 counting contract — keep in agreement).
+const MESH_ESCALATED_INDICES = [0];
 function statusIndex(raw) {
   if (!raw) return null;
   try {
@@ -220,7 +224,7 @@ async function countSamGroup(groupId, todayStr, dateOnlyBucket = false) {
 /** Masheke stages: split by Stage Advancer + Clinicals Method, filter esc + future NAD. */
 async function countMashekeStages(todayStr) {
   const items = await fetchGroupItems(MESH_BOARD, MESH_GROUP, [
-    MESH_STAGE_COL, MESH_NAD_COL, MESH_ESC_COL, MESH_METHOD_COL, MESH_PROPOSED_STUCK_COL,
+    MESH_STAGE_COL, MESH_NAD_COL, MESH_ESC_COL, MESH_METHOD_COL,
   ]);
 
   const counts = { evaluate: 0, sendRequest: 0, confirmReceipt: 0, chaseFax: 0, chaseParachute: 0, chaseBenefits: 0 };
@@ -228,8 +232,10 @@ async function countMashekeStages(todayStr) {
 
   for (const item of items) {
     // Proposed Stuck patients left the rep queues (manager Final Decision
-    // pending) — mirrors useRoleCounts + masheke useMondayPatients (SS5.8).
-    if (item.cols[MESH_PROPOSED_STUCK_COL] === "Proposed Stuck") continue;
+    // pending). That's now Escalation index 2 ("Final Escalation Required"),
+    // not a separate column — mirrors useRoleCounts + masheke useMondayPatients
+    // (SS5.8 counting contract).
+    if (statusIndex(item.vals?.[MESH_ESC_COL]) === MESH_FINAL_ESC_INDEX) continue;
     const stage = item.cols[MESH_STAGE_COL] ?? "";
     let roleId = null;
     if (stage === "Evaluate MN") roleId = "evaluate";
@@ -241,7 +247,7 @@ async function countMashekeStages(todayStr) {
     }
     if (!roleId) continue;
 
-    if (isMeshEscalated(item)) continue; // escalated (index 0/2)
+    if (isMeshEscalated(item)) continue; // escalated (index 0)
     const nad = (item.cols[MESH_NAD_COL] ?? "").slice(0, 10);
     if (nad && nad > todayStr) continue; // scheduled (future)
 

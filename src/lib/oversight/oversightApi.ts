@@ -4,6 +4,8 @@
 // ── Monday API plumbing ─────────────────────────────────────────────────
 
 import { MONDAY_API_URL, mondayIdentityHeaders } from "../shared/mondayEndpoint";
+import { etToday } from "../masheke/etDate";
+import { stampReturnedToQueue, appendStampedLine } from "../masheke/proposedStuck";
 const MONDAY_API_VERSION = "2024-10";
 
 function getToken(): string {
@@ -455,7 +457,7 @@ const RAW_CHART_DEFS: ChartDef[] = [
     decision: "proposed-stuck",
     drilldownCols: [
       { colId: "color_mm1wwm05", label: "Days in Stage" },
-      { colId: "text_mm5frng6", label: "Proposed Reason" },
+      { colId: "__proposedReason__", label: "Proposed Reason" },
       { colId: "color_mm1w5wxr", label: "Referral Source" },
       { colId: "color_mm1x157j", label: "Primary Insurance" },
       { colId: "color_mm1w1cm9", label: "Serving" },
@@ -472,7 +474,7 @@ const RAW_CHART_DEFS: ChartDef[] = [
     decision: "proposed-stuck",
     drilldownCols: [
       { colId: "color_mm1wwm05", label: "Days in Stage" },
-      { colId: "text_mm5frng6", label: "Proposed Reason" },
+      { colId: "__proposedReason__", label: "Proposed Reason" },
       { colId: "color_mm1w5wxr", label: "Referral Source" },
       { colId: "color_mm1x157j", label: "Primary Insurance" },
       { colId: "color_mm1w1cm9", label: "Serving" },
@@ -489,7 +491,7 @@ const RAW_CHART_DEFS: ChartDef[] = [
     decision: "proposed-stuck",
     drilldownCols: [
       { colId: "color_mm1wwm05", label: "Days in Stage" },
-      { colId: "text_mm5frng6", label: "Proposed Reason" },
+      { colId: "__proposedReason__", label: "Proposed Reason" },
       { colId: "color_mm1w5wxr", label: "Referral Source" },
       { colId: "color_mm1x157j", label: "Primary Insurance" },
       { colId: "color_mm1w1cm9", label: "Serving" },
@@ -506,7 +508,7 @@ const RAW_CHART_DEFS: ChartDef[] = [
     decision: "proposed-stuck",
     drilldownCols: [
       { colId: "color_mm1wwm05", label: "Days in Stage" },
-      { colId: "text_mm5frng6", label: "Proposed Reason" },
+      { colId: "__proposedReason__", label: "Proposed Reason" },
       { colId: "color_mm1w5wxr", label: "Referral Source" },
       { colId: "color_mm1x157j", label: "Primary Insurance" },
       { colId: "color_mm1w1cm9", label: "Serving" },
@@ -523,7 +525,7 @@ const RAW_CHART_DEFS: ChartDef[] = [
     decision: "proposed-stuck",
     drilldownCols: [
       { colId: "color_mm1wwm05", label: "Days in Stage" },
-      { colId: "text_mm5frng6", label: "Proposed Reason" },
+      { colId: "__proposedReason__", label: "Proposed Reason" },
       { colId: "color_mm1w5wxr", label: "Referral Source" },
       { colId: "color_mm1x157j", label: "Primary Insurance" },
       { colId: "color_mm1w1cm9", label: "Serving" },
@@ -944,8 +946,10 @@ function columnsForBoard(boardId: number): string[] {
   // column backs the 3rd-Attempt escalation filters (not a drilldown column).
   if (boardId === 18406060017) {
     set.add("dropdown_mm2yd3a2"); // MN Request Consolidated
-    set.add("color_mm1x7997");    // Escalation status (3rd-attempt filter)
-    set.add("color_mm5f37ve");    // Proposed Stuck (Final Decisions filter)
+    // Escalation status backs the 3rd-attempt (index 0) filters AND the
+    // Final-Decisions "Proposed Stuck" charts (index 2). The MN notes
+    // (long_text_mm27zjt2, a notesColId) carry the stamped reason.
+    set.add("color_mm1x7997");
   }
 
   // Insurance board — the Benefits check-failed filter needs the Escalation
@@ -1158,28 +1162,28 @@ const CHART_FILTERS: Record<string, FilterRule> = {
   // column has its own "Patient" label that must NOT match.
   "profile-send-off":            { type: "group", groupId: "group_mm1xf2jb", andCols: [{ colId: "color_mm1wm4n4", value: "Patient", not: true }, { colId: "color_mm1w5wxr", value: "CareCentrix", not: true }] },
   "profile-send-off-unverified": { type: "group", groupId: "group_mm1xf2jb", anyCols: [{ colId: "color_mm1wm4n4", value: "Patient" }, { colId: "color_mm1w5wxr", value: "CareCentrix" }] },
-  "evaluate":           { type: "stageAdvancer", boardId: 18406060017, value: "Evaluate MN", andCols: [{ colId: "color_mm5f37ve", value: "Proposed Stuck", not: true }] },
-  "send-request":       { type: "stageAdvancer", boardId: 18406060017, value: "Send Request", andCols: [{ colId: "color_mm5f37ve", value: "Proposed Stuck", not: true }] },
-  "confirm-receipt":    { type: "stageAdvancer", boardId: 18406060017, value: "Confirm Receipt", andCols: [{ colId: "color_mm5f37ve", value: "Proposed Stuck", not: true }] },
+  "evaluate":           { type: "stageAdvancer", boardId: 18406060017, value: "Evaluate MN", andCols: [{ colId: "color_mm1x7997", index: [2], not: true }] },
+  "send-request":       { type: "stageAdvancer", boardId: 18406060017, value: "Send Request", andCols: [{ colId: "color_mm1x7997", index: [2], not: true }] },
+  "confirm-receipt":    { type: "stageAdvancer", boardId: 18406060017, value: "Confirm Receipt", andCols: [{ colId: "color_mm1x7997", index: [2], not: true }] },
   // Chase Clinicals split by method: Fax (= NOT Email/Parachute, so a blank
   // method still shows under Fax) vs Email & Parachute (either). Method col = color_mm1xw7y5.
-  "chase-fax":             { type: "stageAdvancer", boardId: 18406060017, value: "Chase Clinicals", andCols: [{ colId: "color_mm5f37ve", value: "Proposed Stuck", not: true }, { colId: "color_mm1xw7y5", value: ["Email", "Parachute"], not: true }] },
-  "chase-email-parachute": { type: "stageAdvancer", boardId: 18406060017, value: "Chase Clinicals", andCols: [{ colId: "color_mm5f37ve", value: "Proposed Stuck", not: true }, { colId: "color_mm1xw7y5", value: ["Email", "Parachute"] }] },
+  "chase-fax":             { type: "stageAdvancer", boardId: 18406060017, value: "Chase Clinicals", andCols: [{ colId: "color_mm1x7997", index: [2], not: true }, { colId: "color_mm1xw7y5", value: ["Email", "Parachute"], not: true }] },
+  "chase-email-parachute": { type: "stageAdvancer", boardId: 18406060017, value: "Chase Clinicals", andCols: [{ colId: "color_mm1x7997", index: [2], not: true }, { colId: "color_mm1xw7y5", value: ["Email", "Parachute"] }] },
   // Escalations = same stage AND MN Attempts column = "Escalate" (attempt 4+).
-  "confirm-receipt-escalations":       { type: "stageAdvancer", boardId: 18406060017, value: "Confirm Receipt", andCols: [{ colId: "color_mm5f37ve", value: "Proposed Stuck", not: true }, { colId: "color_mm1wz0vg", value: "Escalate" }] },
-  "chase-fax-escalations":             { type: "stageAdvancer", boardId: 18406060017, value: "Chase Clinicals", andCols: [{ colId: "color_mm5f37ve", value: "Proposed Stuck", not: true }, { colId: "color_mm1xw7y5", value: ["Email", "Parachute"], not: true }, { colId: "color_mm1wz0vg", value: "Escalate" }] },
-  "chase-email-parachute-escalations": { type: "stageAdvancer", boardId: 18406060017, value: "Chase Clinicals", andCols: [{ colId: "color_mm5f37ve", value: "Proposed Stuck", not: true }, { colId: "color_mm1xw7y5", value: ["Email", "Parachute"] }, { colId: "color_mm1wz0vg", value: "Escalate" }] },
-  // 3rd+ Attempt escalations = same stage AND Escalation column = "Escalation
-  // Required" AND Evaluation Counter ≥ 3. The Evaluate SOP escalates at counter
-  // ≥ 3 and the patient stays in Evaluate MN, so the counter can keep climbing —
-  // the filter uses ≥ 3 (not == 3) to match the trigger and never drop an
-  // escalated patient. color_mm1x7997 = Escalation status; flag set by the
-  // Evaluate SOP (and by confirm/chase).
-  "evaluate-escalated-3rd":                { type: "stageAdvancer", boardId: 18406060017, value: "Evaluate MN",     andCols: [{ colId: "color_mm5f37ve", value: "Proposed Stuck", not: true }, { colId: "color_mm1x7997", index: [0, 2] }, { colId: "numeric_mm4bhjc8", gte: 3 }] },
-  "send-request-escalated-3rd":            { type: "stageAdvancer", boardId: 18406060017, value: "Send Request",    andCols: [{ colId: "color_mm5f37ve", value: "Proposed Stuck", not: true }, { colId: "color_mm1x7997", index: [0, 2] }, { colId: "numeric_mm4bhjc8", gte: 3 }] },
-  "confirm-receipt-escalated-3rd":         { type: "stageAdvancer", boardId: 18406060017, value: "Confirm Receipt", andCols: [{ colId: "color_mm5f37ve", value: "Proposed Stuck", not: true }, { colId: "color_mm1x7997", index: [0, 2] }, { colId: "numeric_mm4bhjc8", gte: 3 }] },
-  "chase-fax-escalated-3rd":               { type: "stageAdvancer", boardId: 18406060017, value: "Chase Clinicals", andCols: [{ colId: "color_mm5f37ve", value: "Proposed Stuck", not: true }, { colId: "color_mm1xw7y5", value: ["Email", "Parachute"], not: true }, { colId: "color_mm1x7997", index: [0, 2] }, { colId: "numeric_mm4bhjc8", gte: 3 }] },
-  "chase-email-parachute-escalated-3rd":   { type: "stageAdvancer", boardId: 18406060017, value: "Chase Clinicals", andCols: [{ colId: "color_mm5f37ve", value: "Proposed Stuck", not: true }, { colId: "color_mm1xw7y5", value: ["Email", "Parachute"] }, { colId: "color_mm1x7997", index: [0, 2] }, { colId: "numeric_mm4bhjc8", gte: 3 }] },
+  "confirm-receipt-escalations":       { type: "stageAdvancer", boardId: 18406060017, value: "Confirm Receipt", andCols: [{ colId: "color_mm1x7997", index: [2], not: true }, { colId: "color_mm1wz0vg", value: "Escalate" }] },
+  "chase-fax-escalations":             { type: "stageAdvancer", boardId: 18406060017, value: "Chase Clinicals", andCols: [{ colId: "color_mm1x7997", index: [2], not: true }, { colId: "color_mm1xw7y5", value: ["Email", "Parachute"], not: true }, { colId: "color_mm1wz0vg", value: "Escalate" }] },
+  "chase-email-parachute-escalations": { type: "stageAdvancer", boardId: 18406060017, value: "Chase Clinicals", andCols: [{ colId: "color_mm1x7997", index: [2], not: true }, { colId: "color_mm1xw7y5", value: ["Email", "Parachute"] }, { colId: "color_mm1wz0vg", value: "Escalate" }] },
+  // 3rd+ Attempt escalations = same stage AND Escalation = Manager Escalation
+  // Required (color_mm1x7997 index 0) AND Evaluation Counter ≥ 3. The Evaluate
+  // SOP escalates at counter ≥ 3 and the patient stays in Evaluate MN, so the
+  // counter can keep climbing — the filter uses ≥ 3 (not == 3) to match the
+  // trigger and never drop an escalated patient. Index [0] (Manager) inherently
+  // excludes a stuck PROPOSAL (index 2), which lives in Final Decisions instead.
+  "evaluate-escalated-3rd":                { type: "stageAdvancer", boardId: 18406060017, value: "Evaluate MN",     andCols: [{ colId: "color_mm1x7997", index: [0] }, { colId: "numeric_mm4bhjc8", gte: 3 }] },
+  "send-request-escalated-3rd":            { type: "stageAdvancer", boardId: 18406060017, value: "Send Request",    andCols: [{ colId: "color_mm1x7997", index: [0] }, { colId: "numeric_mm4bhjc8", gte: 3 }] },
+  "confirm-receipt-escalated-3rd":         { type: "stageAdvancer", boardId: 18406060017, value: "Confirm Receipt", andCols: [{ colId: "color_mm1x7997", index: [0] }, { colId: "numeric_mm4bhjc8", gte: 3 }] },
+  "chase-fax-escalated-3rd":               { type: "stageAdvancer", boardId: 18406060017, value: "Chase Clinicals", andCols: [{ colId: "color_mm1xw7y5", value: ["Email", "Parachute"], not: true }, { colId: "color_mm1x7997", index: [0] }, { colId: "numeric_mm4bhjc8", gte: 3 }] },
+  "chase-email-parachute-escalated-3rd":   { type: "stageAdvancer", boardId: 18406060017, value: "Chase Clinicals", andCols: [{ colId: "color_mm1xw7y5", value: ["Email", "Parachute"] }, { colId: "color_mm1x7997", index: [0] }, { colId: "numeric_mm4bhjc8", gte: 3 }] },
   "benefits":           { type: "stageAdvancer", boardId: 18410601299, value: "Benefits / SoS" },
   "submit-auth":        { type: "stageAdvancer", boardId: 18410601299, value: "Submit Auth." },
   "auth-outstanding":   { type: "stageAdvancer", boardId: 18410601299, value: "Auth. Outstanding" },
@@ -1188,13 +1192,14 @@ const CHART_FILTERS: Record<string, FilterRule> = {
   "profile-review":     { type: "group", groupId: "group_mm2x8jtj" },
 
   // ── Manager views (2026-07) ──
-  // Proposed Stuck (Final Decisions): stage + Proposed Stuck = "Proposed
-  // Stuck". The chase charts keep the §5.9 method split.
-  "evaluate-proposed-stuck":        { type: "stageAdvancer", boardId: 18406060017, value: "Evaluate MN",     andCols: [{ colId: "color_mm5f37ve", value: "Proposed Stuck" }] },
-  "send-request-proposed-stuck":    { type: "stageAdvancer", boardId: 18406060017, value: "Send Request",    andCols: [{ colId: "color_mm5f37ve", value: "Proposed Stuck" }] },
-  "confirm-receipt-proposed-stuck": { type: "stageAdvancer", boardId: 18406060017, value: "Confirm Receipt", andCols: [{ colId: "color_mm5f37ve", value: "Proposed Stuck" }] },
-  "chase-fax-proposed-stuck":       { type: "stageAdvancer", boardId: 18406060017, value: "Chase Clinicals", andCols: [{ colId: "color_mm1xw7y5", value: ["Email", "Parachute"], not: true }, { colId: "color_mm5f37ve", value: "Proposed Stuck" }] },
-  "chase-email-parachute-proposed-stuck": { type: "stageAdvancer", boardId: 18406060017, value: "Chase Clinicals", andCols: [{ colId: "color_mm1xw7y5", value: ["Email", "Parachute"] }, { colId: "color_mm5f37ve", value: "Proposed Stuck" }] },
+  // Proposed Stuck (Final Decisions): stage + Escalation = "Final Escalation
+  // Required" (color_mm1x7997 index 2). The rep's reason is appended to the MN
+  // notes (stamped), not a column. The chase charts keep the §5.9 method split.
+  "evaluate-proposed-stuck":        { type: "stageAdvancer", boardId: 18406060017, value: "Evaluate MN",     andCols: [{ colId: "color_mm1x7997", index: [2] }] },
+  "send-request-proposed-stuck":    { type: "stageAdvancer", boardId: 18406060017, value: "Send Request",    andCols: [{ colId: "color_mm1x7997", index: [2] }] },
+  "confirm-receipt-proposed-stuck": { type: "stageAdvancer", boardId: 18406060017, value: "Confirm Receipt", andCols: [{ colId: "color_mm1x7997", index: [2] }] },
+  "chase-fax-proposed-stuck":       { type: "stageAdvancer", boardId: 18406060017, value: "Chase Clinicals", andCols: [{ colId: "color_mm1xw7y5", value: ["Email", "Parachute"], not: true }, { colId: "color_mm1x7997", index: [2] }] },
+  "chase-email-parachute-proposed-stuck": { type: "stageAdvancer", boardId: 18406060017, value: "Chase Clinicals", andCols: [{ colId: "color_mm1xw7y5", value: ["Email", "Parachute"] }, { colId: "color_mm1x7997", index: [2] }] },
   // Benefits check-failed (Final Decisions): still at Benefits, Escalation
   // Required, and at least one universal check failed on the board.
   // Final Decisions: any Benefits item flagged Final Escalation Required —
@@ -1275,19 +1280,32 @@ function matchesFilter(patient: OversightPatient, rule: FilterRule): boolean {
 }
 
 // ── Final Decisions mutations (Manager Views §3) ────────────────────────
-// The manager acts from the Oversight drill-down. Approve writes the MAIN
-// Stage Advancer → "Stuck" (index 15): the live automation list (checked
-// 2026-07-21) has NO recipe on Advancer 2C, so the old StuckModal's 2C
-// write was a silent no-op — the main stage is what the stage pages and
-// the board's Stuck semantics actually key on. The stuck-write lands
-// FIRST; only then is the proposal cleared, so a failed write leaves the
-// patient safely in the Final Decisions queue instead of silently
-// returning them to the rep. The reason column is kept for the audit trail.
+// The manager acts from the Oversight drill-down.
+//
+// APPROVE STUCK writes the MAIN Stage Advancer → "Stuck" (index 15): the live
+// automation list (checked 2026-07-21) has NO recipe on Advancer 2C, so the old
+// StuckModal's 2C write was a silent no-op — the main stage is what the stage
+// pages and the board's Stuck semantics actually key on. The stuck-write lands
+// FIRST; only then is the Escalation cleared, so a failed write leaves the
+// patient safely in the Final Decisions queue instead of silently returning
+// them to the rep.
+//
+// RETURN TO QUEUE (2026-07 rework) appends the manager's OPTIONAL note to the MN
+// workflow notes (stamped), re-dates the Next Action Date to today, and clears
+// the Escalation (→ Done) so the patient reappears in the rep's due-now queue.
+//
+// A "Proposed Stuck" is now the Escalation column at index 2 ("Final Escalation
+// Required") — no separate proposal column; the rep's reason lives in the MN
+// notes (stamped). Clearing Escalation → Done (index 1) resolves the proposal in
+// both actions.
 
 const MASHEKE_BOARD_ID = 18406060017;
 const MASHEKE_STAGE_COL = "color_mm1wyr92";
 const MASHEKE_STAGE_STUCK_INDEX = 15;
-const PROPOSED_STUCK_COL = "color_mm5f37ve";
+const MASHEKE_ESC_COL = "color_mm1x7997";       // Escalation (index 2 = proposed stuck)
+const MASHEKE_ESC_DONE_INDEX = 1;               // "Done" — clears an escalation/proposal
+const MASHEKE_NAD_COL = "date_mm1wadgs";        // Next Action Date
+const MASHEKE_NOTES_COL = "long_text_mm27zjt2"; // MN workflow notes (carry the stamped reason)
 
 async function writeStatusIndexOnBoard(boardId: number, itemId: string, columnId: string, index: number | null): Promise<void> {
   const query = `
@@ -1303,13 +1321,60 @@ async function writeStatusIndexOnBoard(boardId: number, itemId: string, columnId
   });
 }
 
-export async function approveProposedStuck(itemId: string): Promise<void> {
-  await writeStatusIndexOnBoard(MASHEKE_BOARD_ID, itemId, MASHEKE_STAGE_COL, MASHEKE_STAGE_STUCK_INDEX);
-  await writeStatusIndexOnBoard(MASHEKE_BOARD_ID, itemId, PROPOSED_STUCK_COL, null);
+/** Write a long-text column on an arbitrary board. */
+async function writeLongTextOnBoard(boardId: number, itemId: string, columnId: string, text: string): Promise<void> {
+  const query = `
+    mutation ($boardId: ID!, $itemId: ID!, $columnId: String!, $value: JSON!) {
+      change_column_value(board_id: $boardId, item_id: $itemId, column_id: $columnId, value: $value) { id }
+    }
+  `;
+  await gql(query, { boardId: String(boardId), itemId, columnId, value: JSON.stringify({ text }) });
 }
 
-export async function returnProposedToQueue(itemId: string): Promise<void> {
-  await writeStatusIndexOnBoard(MASHEKE_BOARD_ID, itemId, PROPOSED_STUCK_COL, null);
+/** Write a date column (YYYY-MM-DD) on an arbitrary board. */
+async function writeDateOnBoard(boardId: number, itemId: string, columnId: string, dateStr: string): Promise<void> {
+  const query = `
+    mutation ($boardId: ID!, $itemId: ID!, $columnId: String!, $value: JSON!) {
+      change_column_value(board_id: $boardId, item_id: $itemId, column_id: $columnId, value: $value) { id }
+    }
+  `;
+  await gql(query, { boardId: String(boardId), itemId, columnId, value: JSON.stringify({ date: dateStr }) });
+}
+
+/** Read a single column's text for an item. */
+async function readItemColumnText(itemId: string, columnId: string): Promise<string> {
+  const query = `
+    query ($ids: [ID!]!, $cols: [String!]) {
+      items(ids: $ids) { column_values(ids: $cols) { id text } }
+    }
+  `;
+  const data = await gql<{ items: { column_values: { id: string; text: string | null }[] }[] }>(
+    query, { ids: [itemId], cols: [columnId] },
+  );
+  return data.items?.[0]?.column_values?.[0]?.text ?? "";
+}
+
+export async function approveProposedStuck(itemId: string): Promise<void> {
+  await writeStatusIndexOnBoard(MASHEKE_BOARD_ID, itemId, MASHEKE_STAGE_COL, MASHEKE_STAGE_STUCK_INDEX);
+  await writeStatusIndexOnBoard(MASHEKE_BOARD_ID, itemId, MASHEKE_ESC_COL, MASHEKE_ESC_DONE_INDEX);
+}
+
+/**
+ * Return a proposed-stuck patient to the rep's queue. The manager may append an
+ * OPTIONAL note (stamped) to the MN workflow notes; then the Next Action Date is
+ * set to today and the Escalation is cleared (→ Done, which also clears the
+ * index-2 stuck proposal) so the patient reappears in the due-now queue.
+ */
+export async function returnProposedToQueue(itemId: string, appendNote?: string): Promise<void> {
+  const note = appendNote?.trim();
+  if (note) {
+    // Read the notes fresh so a concurrent edit isn't clobbered, then append.
+    const existing = await readItemColumnText(itemId, MASHEKE_NOTES_COL);
+    const stamped = stampReturnedToQueue(note, etToday());
+    await writeLongTextOnBoard(MASHEKE_BOARD_ID, itemId, MASHEKE_NOTES_COL, appendStampedLine(existing, stamped));
+  }
+  await writeDateOnBoard(MASHEKE_BOARD_ID, itemId, MASHEKE_NAD_COL, etToday());
+  await writeStatusIndexOnBoard(MASHEKE_BOARD_ID, itemId, MASHEKE_ESC_COL, MASHEKE_ESC_DONE_INDEX);
 }
 
 // Insurance Final Decisions (2026-07): the Final-Escalation equivalent of the

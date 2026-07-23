@@ -15,8 +15,10 @@ export interface SidebarSections {
   /** Non-escalated patients scheduled for a future date. Hidden behind the
    *  (currently disabled) Scheduled folder — never part of the visible list. */
   pendingPatients: Patient[];
-  /** Escalated patients (escalation index 0 "Manager" or 2 "Final") — always
-   *  shown, no date split. */
+  /** Escalated patients (escalation index 0 "Manager Escalation Required") —
+   *  always shown, no date split. Index 2 ("Final Escalation Required") is a
+   *  stuck PROPOSAL: those leave the rep queue entirely (filtered upstream in
+   *  useMondayPatients) and surface in Oversight's Final Decisions instead. */
   escalatedList: Patient[];
 }
 

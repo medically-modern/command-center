@@ -120,12 +120,6 @@ export const COL = {
   escalation: "color_mm1x7997",
   escalationNotes: "long_text_mm3j43qk",
 
-  // Proposed Stuck (Manager Views redesign 2026-07) — propose→approve flow.
-  // Status label "Proposed Stuck" = index 1 (PROPOSED_STUCK_INDEX). The rep
-  // proposes with a reason; the manager decides from Pipeline Oversight.
-  proposedStuck: "color_mm5f37ve",
-  proposedStuckReason: "text_mm5frng6",
-
   // Advancers
   advancer2a: "color_mm1w73jx",
   advancer2b: "color_mm1wfbkz",
@@ -183,8 +177,6 @@ export const READ_COLUMN_IDS: string[] = [
   COL.escalationNotes,
   // Advancers
   COL.advancer2a, COL.advancer2b, COL.advancer2c, COL.advancer2d,
-  // Proposed Stuck (propose→approve flow)
-  COL.proposedStuck, COL.proposedStuckReason,
   // Blocked
   COL.blocked, COL.blockedDate,
   // Follow Up

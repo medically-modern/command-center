@@ -51,7 +51,7 @@ The Python backends the SPA mirrors (financial estimate, DVS automations) live o
 |---|---|---|
 | **DTC Intake** | `18392794310` | Top of funnel; "Send To Medical Necessity" group feeds the pipeline. Read-only here (oversight/system-mgmt). |
 | **Profile Send Off** | `18406352652` | `profile` ("Verified Referrals") + `unverifiedReferrals` ("Unverified Referrals") — two roles, same board/group, split by Referral Type/Source (see §5.10). Its own board (groups: *Patient Intake → 1. Intake → Tests → Stuck → Completed*). Both roles work **1. Intake** (`group_mm1xf2jb`); two send-off exits: **Advance to MN** (`Move to Onboarding` → automation creates the Masheke item + moves to Completed) and **Send back to Patient Intake** (`moveItemToGroup` → `group_mm4vhqff`). **Not** the Welcome Call board. |
-| **Medical Evaluation** ("Masheke") | `18406060017` | `evaluate`, `sendRequest`, `confirmReceipt`, `chaseFax`, `chaseParachute`. Medical-necessity document collection. Stuck is propose→approve (2026-07-21): reps write Proposed Stuck `color_mm5f37ve` + reason `text_mm5frng6`; managers approve from Oversight. |
+| **Medical Evaluation** ("Masheke") | `18406060017` | `evaluate`, `sendRequest`, `confirmReceipt`, `chaseFax`, `chaseParachute`. Medical-necessity document collection. Stuck is propose→approve: reps flip **Escalation `color_mm1x7997` → "Final Escalation Required" (index 2)** and the reason is appended to the **MN notes `long_text_mm27zjt2`** (stamped `[Proposed Stuck …]`); managers approve/return from Oversight. (The old `color_mm5f37ve`/`text_mm5frng6` columns are retired.) |
 | **Insurance** ("Samantha") | `18410601299` | `benefits`, `submitAuth`, `authOutstanding`, `authDenied`, `dvs` (stage-based, no group — Stage Advancer index 1 "DVS", read-only monitor at `/dvs`). Groups: Benefits, Submit Auth, Auth Outstanding, Auth Denied, Escalations, Complete/Stuck. |
 | **Welcome Call** | `18410804557` | `welcomeCall` + `finalConfirm` (two roles, same board, different groups). See `BOARD_SCHEMA.md`. |
 | **Subscription Board - Updated** | `18407459988` | `subscription` role + one source for Patient Questions. |
@@ -237,8 +237,10 @@ so any drift shows up as phantom +in/-out chips all day; change all three files 
 is in the future — the Follow Up STATUS column is ignored for that group and a blank date
 counts as due (`sidebarList.isSnoozedAuthOutstanding`; `samActive`/`countSamGroup` take a
 `dateOnlyBucket` flag). Benefits/Submit Auth keep the status-based rule. **Masheke counts
-exclude Proposed Stuck patients** (`color_mm5f37ve` = "Proposed Stuck" — they await a manager
-decision in Oversight), and the **`dvs` role** counts Insurance items at Stage Advancer
+exclude Proposed Stuck patients** (Escalation `color_mm1x7997` **index 2** = "Final Escalation
+Required" — a stuck PROPOSAL; they await a manager decision in Oversight's Final Decisions.
+Masheke "escalated" for counts/sidebar is now index **0** only — index 2 is proposed-stuck,
+handled separately), and the **`dvs` role** counts Insurance items at Stage Advancer
 index 1 ("DVS") board-wide (no dedicated group), excluding escalated (Insurance
 Escalation `color_mm2vsh2f` = "Manager Escalation Required" OR "Final Escalation Required" —
 split from a single "Escalation Required" in 2026-07; `SAM_ESCALATED` in useRoleCounts + both
@@ -375,9 +377,14 @@ columns" automation on duplicated items). The SPA only flips the advancer; verif
   and Insurance use a 3-column scheme — Processor Overview / Manager as Processor / Final
   Decisions — rows aligned via `ChartDef.rowOf`. ME column 2 stacks **Attempt 4+** (MN Attempts
   `color_mm1wz0vg` = `"Escalate"` — the board has no literal "Attempt 4" label) with **3rd+ round**
-  per stage (dedup: 3rd+ wins). ME column 3 = **Proposed Stuck** charts whose drill-down has the
-  Oversight's first ACTION buttons: Approve Stuck (Advancer 2C = Stuck, then clear the proposal —
-  in that order) / Return to Queue (clear only). Insurance columns 2/3: DVS Retry Queue
+  per stage (dedup: 3rd+ wins). ME column 3 = **Proposed Stuck** charts (keyed on Escalation
+  `color_mm1x7997` **index 2** "Final Escalation Required"; the reason is extracted from the MN
+  notes' stamped `[Proposed Stuck …]` line into a virtual `__proposedReason__` column) whose
+  drill-down has the Oversight's first ACTION buttons: Approve Stuck (main Stage Advancer = Stuck,
+  then clear the escalation — in that order) / Return to Queue (a modal that shows the MN notes,
+  takes an OPTIONAL stamped note, sets Next Action Date = today, and clears the escalation so the
+  patient re-enters the rep's queue). Every ME manager chart (incl. Proposed Stuck) opens the
+  patient in the stage page (manager mode) to view/work in UI. Insurance columns 2/3: DVS Retry Queue
   (provisional) + Benefits check-failed, display-only. `lib/oversight/priority.ts` adds
   VIP/priority scoring (localStorage config). The open drill-down `{stage, chart, bucket}` is
   **mirrored to the URL** so Back from a patient's agent page returns to the exact drill-down (see the

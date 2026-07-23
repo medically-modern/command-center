@@ -40,11 +40,11 @@ export interface Patient {
   // Pipeline tracking
   masterStage?: string;
   subStage?: string;
-  /** "Proposed Stuck" while a stuck proposal awaits the manager's decision
-   *  (Manager Views redesign). Proposed patients leave the stage queues. */
-  proposedStuck?: string;
-  /** Rep's reason captured by the Propose Stuck modal. */
-  proposedStuckReason?: string;
+  /** True while a stuck proposal awaits the manager's decision — the Escalation
+   *  column at index 2 ("Final Escalation Required"). Proposed patients leave the
+   *  stage queues (Manager Views rework 2026-07). The rep's reason is appended to
+   *  the MN notes (stamped), not a separate column. */
+  proposedStuck?: boolean;
   daysSinceIntake?: string;
   daysSinceStageStart?: string;
   dateOfIntake?: string;

@@ -1,20 +1,19 @@
 /**
- * ProposeStuckModal — the propose→approve stuck flow (Manager Views
- * redesign 2026-07, HANDOFF-Josh-Manager-Views.md §3). Replaces the old
- * direct StuckModal: reps no longer write Stuck themselves.
+ * ProposeStuckModal — the propose→approve stuck flow (Manager Views).
+ * Reps don't write Stuck themselves; they PROPOSE it and a manager decides.
  *
- * On confirm: writes "Proposed Stuck" (Proposed Stuck column, index 1) +
- * the required reason (Proposed Stuck Reason text column). The patient
- * leaves this rep's stage queue immediately (useMondayPatients filters
- * proposed patients out) and lands in Pipeline Oversight → Final
- * Decisions, where the manager either Approves Stuck (writes the main
- * Stage Advancer → Stuck) or Returns to Queue (clears the proposal).
+ * On confirm: the reason is APPENDED to the MN workflow notes
+ * (long_text_mm27zjt2, stamped "[Proposed Stuck · <date>] …") and Escalation is
+ * flipped to "Final Escalation Required" (color_mm1x7997 index 2). The patient
+ * leaves this rep's stage queue immediately (useMondayPatients filters index-2
+ * patients out) and lands in Pipeline Oversight → Final Decisions, where the
+ * manager either Approves Stuck (writes the main Stage Advancer → Stuck) or
+ * Returns to Queue (appends an optional note, re-dates, clears the escalation).
  *
- * Deliberately NOT a verified-write transaction (neither column is an
- * automation trigger), but the writes are SEQUENTIAL, reason first: the
- * status flip is what surfaces the patient in Final Decisions, so the
- * manager must never see a proposal whose reason write failed or hasn't
- * landed yet.
+ * Deliberately NOT a verified-write transaction (the escalation column isn't an
+ * automation trigger), but the writes are SEQUENTIAL, notes first: the status
+ * flip is what surfaces the patient in Final Decisions, so the manager must
+ * never see a proposal whose reason hasn't landed in the notes yet.
  */
 import { useState } from "react";
 import {
@@ -26,8 +25,10 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { AlertTriangle, Loader2 } from "lucide-react";
-import { writeStatusIndex, writeText, COL } from "@/lib/masheke/mondayApi";
-import { PROPOSED_STUCK_INDEX } from "@/lib/masheke/mondayMapping";
+import { writeStatusIndex, writeLongText, fetchItemColumnTexts, COL } from "@/lib/masheke/mondayApi";
+import { ESCALATION_INDEX } from "@/lib/masheke/mondayMapping";
+import { stampProposedStuck, appendStampedLine } from "@/lib/masheke/proposedStuck";
+import { etToday } from "@/lib/masheke/etDate";
 import { toast } from "sonner";
 
 interface Props {
@@ -49,8 +50,16 @@ export function ProposeStuckModal({ open, onOpenChange, patientId, patientName, 
     }
     setSending(true);
     try {
-      await writeText(patientId, COL.proposedStuckReason, reason.trim());
-      await writeStatusIndex(patientId, COL.proposedStuck, PROPOSED_STUCK_INDEX.proposed);
+      // Append the reason to the MN notes (stamped), THEN flip Escalation → Final
+      // Escalation Required (index 2). Notes first: the status flip is what
+      // surfaces the patient in the manager's Final Decisions, so the reason must
+      // already be in the notes when they look. Read the notes fresh so a
+      // concurrent edit isn't clobbered.
+      const existing = await fetchItemColumnTexts(patientId, [COL.mnEvalNotes]);
+      const stamped = stampProposedStuck(reason.trim(), etToday());
+      const appended = appendStampedLine(existing[COL.mnEvalNotes], stamped);
+      await writeLongText(patientId, COL.mnEvalNotes, appended);
+      await writeStatusIndex(patientId, COL.escalation, ESCALATION_INDEX.finalRequired);
       toast.success(`${patientName} proposed as Stuck — sent to the manager for a decision`);
       onOpenChange(false);
       setReason("");
@@ -92,7 +101,7 @@ export function ProposeStuckModal({ open, onOpenChange, patientId, patientName, 
               className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-ring"
             />
             <p className="text-xs text-muted-foreground mt-1">
-              Shown to the manager in the Oversight drill-down.
+              Appended to the MN notes and shown to the manager in the Oversight drill-down.
             </p>
           </div>
 

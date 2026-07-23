@@ -46,15 +46,17 @@ describe("sidebarVisibleList — nonEscalated (default) view", () => {
     expect(ids(sidebarVisibleList(patients, "nonEscalated", TODAY))).toEqual(["plain"]);
   });
 
-  it("detects escalation by INDEX: 0 (manager) + 2 (final) escalated, 1 (Done) not", () => {
+  it("detects escalation by INDEX: 0 (manager) escalated; 1 (Done) + 2 (Final/proposed-stuck) not", () => {
     // Done (index 1) is not escalated → stays in the non-escalated list.
     const done = [p({ id: "done", escalationIndex: 1 })];
     expect(ids(sidebarVisibleList(done, "nonEscalated", TODAY))).toEqual(["done"]);
-    // Final Escalation (index 2) IS escalated → hidden from the non-escalated
-    // view and present in the escalated view.
-    const final = [p({ id: "final", escalationIndex: 2 }), p({ id: "plain" })];
-    expect(ids(sidebarVisibleList(final, "nonEscalated", TODAY))).toEqual(["plain"]);
-    expect(ids(sidebarVisibleList(final, "escalated", TODAY))).toEqual(["final"]);
+    // Final Escalation Required (index 2) is a rep's stuck PROPOSAL, NOT a manager
+    // escalation. Those patients are filtered out upstream (useMondayPatients) and
+    // never reach this list — they belong to Oversight's Final Decisions — so the
+    // sidebar predicate treats index 2 as NOT escalated (absent from the escalated
+    // view). Only index 0 is escalated here.
+    const final = [p({ id: "final", escalationIndex: 2 })];
+    expect(ids(sidebarVisibleList(final, "escalated", TODAY))).toEqual([]);
   });
 
   it("a blank escalation (no index) is not escalated", () => {
