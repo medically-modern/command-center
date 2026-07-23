@@ -11,7 +11,8 @@
  *
  * Coinsurance overrides (insurance_rules.py) are applied here so
  * Humana = 0% just works. Medicare/United Medicare use real Stedi coinsurance
- * unless secondary is Medicaid (then $0 OOP).
+ * unless a secondary insurance is present — any secondary other than "None"
+ * (NY Medicaid or Medicare Supplement) picks up the balance → $0 OOP.
  */
 
 // ─── Rate Schedule (source: claim_assumptions.py PAYER_RATE_SCHEDULE) ────────
@@ -73,14 +74,14 @@ const SUPPLIES_ROUTE_TO_MEDICAID = new Set([
   "Fidelis Medicaid", "Anthem BCBS Medicaid (JLJ)", "Medicaid",
 ]);
 
-// ─── Secondary Medicaid detection ────────────────────────────────────────────
-// When secondary insurance is any Medicaid variant, Medicaid covers the
-// patient's remaining balance (deductible + coinsurance). Patient OOP = $0.
+// ─── Secondary coverage detection ────────────────────────────────────────────
+// Any secondary insurance other than "None" (the board options are NY Medicaid
+// and Medicare Supplement) is assumed to cover the patient's remaining balance
+// (deductible + coinsurance), so patient OOP = $0 — same as a Medicaid secondary.
 
-function isSecondaryMedicaid(secondary: string): boolean {
-  if (!secondary) return false;
-  const s = secondary.toLowerCase();
-  return s.includes("medicaid");
+function hasCoveringSecondary(secondary: string): boolean {
+  const s = (secondary ?? "").trim().toLowerCase();
+  return s !== "" && s !== "none";
 }
 
 // ─── Primary Medicaid detection ──────────────────────────────────────────────
@@ -330,11 +331,12 @@ export function estimateOop(inputs: OopInputs): OopResult {
 
   const totalAllowed = round2(lines.reduce((sum, l) => sum + l.allowed, 0));
 
-  // --- Medicaid check: primary Medicaid plan OR secondary Medicaid → $0 OOP ---
+  // --- Coverage check: primary Medicaid plan OR any secondary insurance
+  //     (not "None") → $0 OOP (the secondary picks up the balance) ---
   const isPrimaryMedicaid = PRIMARY_MEDICAID_LABELS.has(primaryInsurance);
-  const hasSecondaryMedicaid = isSecondaryMedicaid(inputs.secondaryInsurance);
+  const secondaryCovers = hasCoveringSecondary(inputs.secondaryInsurance);
 
-  if (isPrimaryMedicaid || hasSecondaryMedicaid) {
+  if (isPrimaryMedicaid || secondaryCovers) {
     const note = isPrimaryMedicaid
       ? `${primaryInsurance} is a Medicaid plan — no patient cost share`
       : `Secondary ${inputs.secondaryInsurance} covers remaining balance`;

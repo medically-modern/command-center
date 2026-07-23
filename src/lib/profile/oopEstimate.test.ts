@@ -108,6 +108,19 @@ describe("profile OOP — Profile-only rules", () => {
     expect(formatOop(r).val).toBe("$0");
   });
 
+  it("secondary Medicare Supplement → $0 (any secondary but None covers)", () => {
+    const r = estimateOop({
+      serving: "Supplies + CGM",
+      primaryInsurance: "United Medicare",
+      secondaryInsurance: "Medicare Supplement",
+      stediCoinsurance: "20",
+      deductibleRemaining: "1000",
+      oopMaxRemaining: "",
+    });
+    expect(r.medicaidCovers).toBe(true);
+    expect(formatOop(r).val).toBe("$0");
+  });
+
   it("missing rate → N/A", () => {
     const r = estimateOop({
       serving: "Insulin Pump",

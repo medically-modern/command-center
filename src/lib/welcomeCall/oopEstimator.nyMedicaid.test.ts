@@ -1,10 +1,10 @@
 /**
- * Secondary "NY Medicaid" forces patient OOP to $0 in BOTH estimators —
- * even when Stedi shows a live deductible and coinsurance. Medicaid picks up
- * the patient's remaining balance, so the rep must never quote a cost.
- * "NY Medicaid" is the exact status label on the Welcome Call board
- * (color_mm241kqp, id 1) and the Subscription board (color_mm25cr82, id 1);
- * the estimators match any label containing "medicaid", case-insensitive.
+ * A secondary insurance other than "None" forces patient OOP to $0 in BOTH
+ * estimators — even when Stedi shows a live deductible and coinsurance. The
+ * secondary (NY Medicaid or Medicare Supplement) picks up the patient's
+ * remaining balance, so the rep must never quote a cost. The board options are
+ * "None" / "NY Medicaid" / "Medicare Supplement" (Welcome Call color_mm241kqp,
+ * Subscription color_mm25cr82); the estimators zero OOP for anything but "None".
  */
 import { describe, it, expect } from "vitest";
 import { estimateOop } from "./oopEstimator";
@@ -48,11 +48,33 @@ describe("secondary NY Medicaid → $0 OOP", () => {
     expect(recurring.val).toBe("$0");
   });
 
-  it("secondary Medicare Supplement does NOT zero the estimate (rule didn't over-reach)", () => {
+  it("secondary Medicare Supplement also zeroes the estimate (not just Medicaid)", () => {
     const r = estimateOop({
       ...NY_MEDICAID_SECONDARY_WITH_REAL_COSTS,
       primaryInsurance: "Cigna",
       secondaryInsurance: "Medicare Supplement",
+    });
+    if (!r.ok) throw new Error(r.reason);
+    expect(r.patientOwes).toBe(0);
+    expect(r.medicaidCovers).toBe(true);
+    expect(r.medicaidNote).toContain("Medicare Supplement");
+  });
+
+  it("profile estimator: secondary Medicare Supplement → $0 First + Recurring", () => {
+    const { first, recurring } = computeFirstAndRecurring({
+      ...NY_MEDICAID_SECONDARY_WITH_REAL_COSTS,
+      primaryInsurance: "Cigna",
+      secondaryInsurance: "Medicare Supplement",
+    });
+    expect(first.val).toBe("$0");
+    expect(recurring.val).toBe("$0");
+  });
+
+  it("secondary 'None' does NOT zero the estimate — real cost share applies", () => {
+    const r = estimateOop({
+      ...NY_MEDICAID_SECONDARY_WITH_REAL_COSTS,
+      primaryInsurance: "Cigna",
+      secondaryInsurance: "None",
     });
     if (!r.ok) throw new Error(r.reason);
     expect(r.medicaidCovers).toBe(false);

@@ -111,8 +111,11 @@ export function estimateOop(inp: OopEstimateInputs): OopRaw {
 
   const totalAllowed = round2(lines.reduce((a, l) => a + l.allowed, 0));
   const isPrimMcaid = PRIMARY_MEDICAID.has(primary);
-  const secMcaid = (inp.secondaryInsurance || "").toLowerCase().includes("medicaid");
-  if (isPrimMcaid || secMcaid) {
+  // Any secondary other than "None" (NY Medicaid or Medicare Supplement) covers
+  // the patient's remaining balance → $0 OOP, same as a Medicaid secondary.
+  const secLabel = (inp.secondaryInsurance || "").trim().toLowerCase();
+  const secCovers = secLabel !== "" && secLabel !== "none";
+  if (isPrimMcaid || secCovers) {
     return { ok: true, lines, totalAllowed, patientOwes: 0, oopMaxRemaining: null, medicaidCovers: true, medicaidNote: isPrimMcaid ? `${primary} is a Medicaid plan — no patient cost share` : `Secondary ${inp.secondaryInsurance} covers remaining balance`, canCalculateCosts: true, missingFields: [] };
   }
   if (ZERO_PAYERS.has(primary)) {
