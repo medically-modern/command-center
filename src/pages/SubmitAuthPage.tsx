@@ -29,8 +29,9 @@ import {
   ProductCodeState,
   EMPTY_INSURANCE,
 } from "@/lib/samantha/workflow";
-import { validateSubmitAuthForSubmit } from "@/lib/samantha/submitAuthRules";
+import { validateSubmitAuthForSubmit, submitAuthCards, productCodeId } from "@/lib/samantha/submitAuthRules";
 import { AuthorizationsPanel } from "@/components/samantha/AuthorizationsPanel";
+import { AuthFaxPanel } from "@/components/samantha/AuthFaxPanel";
 import { BenefitsPatientHeader } from "@/components/samantha/BenefitsPatientHeader";
 import { NotesPanel } from "@/components/samantha/NotesPanel";
 import { PatientsSidebar } from "@/components/samantha/PatientsSidebar";
@@ -49,6 +50,7 @@ import { ReportIssueButton } from "@/components/shared/ReportIssueButton";
 import { ClinicalsDownloadButton } from "@/components/samantha/ClinicalsDownloadButton";
 import { viewFilterFromParams } from "@/lib/roleView";
 import { sidebarVisibleList } from "@/lib/samantha/sidebarList";
+import { cn } from "@/lib/utils";
 import "@/components/samantha/benefitsRedesign.css";
 import "@/components/samantha/submitAuthRedesign.css";
 
@@ -105,6 +107,19 @@ const SubmitAuthPage = () => {
   };
 
   const missing = selected ? validateSubmitAuthForSubmit(selected) : [];
+
+  // "Fax to Payer" tab — shown only when a product's Auth Submission Method is
+  // Fax. Send-only (no record/advance); the rep still submits from the
+  // Authorizations tab.
+  const [authTab, setAuthTab] = useState<"authorizations" | "fax">("authorizations");
+  const hasFaxProduct = useMemo(() => {
+    if (!selected) return false;
+    const ins = selected.insurance ?? EMPTY_INSURANCE;
+    return submitAuthCards(selected).some(
+      (r) => ins.codes[productCodeId(r.product)]?.authSubmissionMethod === "Fax",
+    );
+  }, [selected]);
+  const activeTab = hasFaxProduct ? authTab : "authorizations";
 
   const handleSend = async () => {
     if (!selected) return;
@@ -200,13 +215,39 @@ const SubmitAuthPage = () => {
                           </div>
                         </section>
                       ) : (
-                        <AuthorizationsPanel
-                          patient={selected}
-                          onCodeChange={updateCode}
-                          onIntakeIdChange={(v) => update(selected.id, { carecentrixIntakeId: v })}
-                          missing={missing}
-                          onSend={handleSend}
-                        />
+                        <>
+                          {hasFaxProduct && (
+                            <div className="flex gap-1 p-1 rounded-lg bg-muted w-fit" role="tablist" aria-label="Submit Auth view">
+                              {(["authorizations", "fax"] as const).map((t) => (
+                                <button
+                                  key={t}
+                                  role="tab"
+                                  aria-selected={activeTab === t}
+                                  onClick={() => setAuthTab(t)}
+                                  className={cn(
+                                    "px-4 py-1.5 text-sm font-medium rounded-md transition-colors",
+                                    activeTab === t
+                                      ? "bg-background shadow text-foreground"
+                                      : "text-muted-foreground hover:text-foreground",
+                                  )}
+                                >
+                                  {t === "authorizations" ? "Authorizations" : "Fax to Payer"}
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                          {activeTab === "fax" ? (
+                            <AuthFaxPanel key={selected.id} patient={selected} />
+                          ) : (
+                            <AuthorizationsPanel
+                              patient={selected}
+                              onCodeChange={updateCode}
+                              onIntakeIdChange={(v) => update(selected.id, { carecentrixIntakeId: v })}
+                              missing={missing}
+                              onSend={handleSend}
+                            />
+                          )}
+                        </>
                       )}
                     </div>
 
