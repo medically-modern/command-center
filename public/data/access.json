@@ -54,10 +54,7 @@
         "sendRequest",
         "chaseFax",
         "benefits",
-        "authOutstanding",
-        "finalConfirm",
-        "dvs",
-        "updateClinicals"
+        "authOutstanding"
       ],
       "roleOrder": {
         "unverifiedReferrals": 2
