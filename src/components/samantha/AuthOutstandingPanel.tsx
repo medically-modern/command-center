@@ -52,6 +52,7 @@ import {
 } from "@/lib/samantha/authOutstandingReview";
 import { authHomePlan, modifiersFor } from "@/lib/samantha/submitAuthRules";
 import { sosLookbackLabel, ymdToUs } from "@/lib/samantha/benefitsDerive";
+import { isMedicarePrimary } from "@/lib/samantha/medicareJurisdiction";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { NotesPanel } from "@/components/samantha/NotesPanel";
@@ -331,6 +332,8 @@ function ProductResultCard({
   const isRecurring = meta.cadence === "RECURRING";
   const result = effectiveResult(state);
   const mods = modifiersFor(r.hcpc, primaryInsurance);
+  // Medicare A&B primary → 5-year RUL for pump/CGM monitor same-or-similar.
+  const isMedicare = isMedicarePrimary(primaryInsurance);
   const method = state.authSubmissionMethod ?? "";
   const isCallFax = method === "Call" || method === "Fax";
   const [savingNan, setSavingNan] = useState(false);
@@ -356,7 +359,7 @@ function ProductResultCard({
    *  lockstep — mondayWrite re-derives at send time as the authority. */
   const patchRecheck = (patch: Partial<ProductCodeState>) => {
     const nextState = { ...state, ...patch };
-    onChange({ ...patch, sosRecheck: derivedRecheckSos(nextState, codeId, hasMedicaid) });
+    onChange({ ...patch, sosRecheck: derivedRecheckSos(nextState, codeId, hasMedicaid, undefined, isMedicare) });
   };
 
   const handleSaveNan = async () => {
@@ -372,7 +375,7 @@ function ProductResultCard({
   const recheckDone = recheckComplete(state);
   const nextOrder =
     state.sosEntry === "billed" && state.lastBillDate
-      ? nextOrderPreviewYmd(codeId, state.lastBillDate, hasMedicaid, state.units)
+      ? nextOrderPreviewYmd(codeId, state.lastBillDate, hasMedicaid, state.units, isMedicare)
       : "";
 
   // Shared auth-docs surface for the Valid + NAN variants (call/fax only —
@@ -572,7 +575,7 @@ function ProductResultCard({
                     )}
                   </div>
                   <p className="text-[11px] text-sky-800/80 dark:text-sky-300/80 mb-3">
-                    No auth needed — next step is the Same-or-Similar call ({sosLookbackLabel(codeId, hasMedicaid)} lookback).
+                    No auth needed — next step is the Same-or-Similar call ({sosLookbackLabel(codeId, hasMedicaid, isMedicare)} lookback).
                     Calling now? Record the billing history below. Calling later? <b>Save</b> writes just this product
                     to Monday (stage unchanged) and the recheck stays open until you do.
                   </p>

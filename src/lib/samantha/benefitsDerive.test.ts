@@ -57,9 +57,15 @@ function makePatient(overrides: Partial<Patient>): Patient {
 }
 
 describe("lookback windows (spec §1)", () => {
-  it("pump and monitor use 4 years (1460 days, matching current production math)", () => {
+  it("pump and monitor use 4 years (1460 days) for non-Medicare, 5 years (1825) for Medicare A&B", () => {
     expect(sosLookbackDays("pump", false)).toBe(1460);
     expect(sosLookbackDays("cgm-monitor", true)).toBe(1460);
+    // Medicare A&B primary → 5-year reasonable-useful-lifetime for capital DME.
+    expect(sosLookbackDays("pump", false, true)).toBe(1825);
+    expect(sosLookbackDays("cgm-monitor", false, true)).toBe(1825);
+    // The Medicare flag does not change the non-capital products.
+    expect(sosLookbackDays("cgm-sensors", false, true)).toBe(90);
+    expect(sosLookbackDays("infusion-sets", true, true)).toBe(60);
   });
   it("sensors/supplies use 90 days, tightened to 60 with Medicaid", () => {
     expect(sosLookbackDays("cgm-sensors", false)).toBe(90);
@@ -76,6 +82,15 @@ describe("lookback windows (spec §1)", () => {
     expect(sosCutoffYmd("cgm-sensors", false, TODAY)).toBe("2026-04-16");
     expect(sosCutoffYmd("cgm-sensors", true, TODAY)).toBe("2026-05-16");
     expect(sosCutoffYmd("pump", false, TODAY)).toBe(addDaysYmd(TODAY, -1460));
+    // Medicare A&B primary pushes the pump/monitor cutoff to 5 years.
+    expect(sosCutoffYmd("pump", false, TODAY, true)).toBe(addDaysYmd(TODAY, -1825));
+    expect(sosCutoffYmd("cgm-monitor", false, TODAY, true)).toBe(addDaysYmd(TODAY, -1825));
+  });
+  it("Medicare shifts the pump SoS boundary: a bill in the 4th–5th year is Clear off-Medicare but Not Clear on Medicare", () => {
+    // ~4.5 years before TODAY: past the 4-yr window, inside the 5-yr window.
+    const billed = state({ sosEntry: "billed", lastBillDate: addDaysYmd(TODAY, -1600) });
+    expect(derivedSos(billed, "pump", false, TODAY)).toBe("clear"); // non-Medicare (4 yr)
+    expect(derivedSos(billed, "pump", false, TODAY, true)).toBe("not-clear"); // Medicare (5 yr)
   });
 });
 

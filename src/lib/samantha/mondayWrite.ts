@@ -35,6 +35,7 @@ import {
   patientHasMedicaidIns,
 } from "./benefitsDerive";
 import { derivedRecheckSos, effectiveResult } from "./authOutstandingReview";
+import { isMedicarePrimary } from "./medicareJurisdiction";
 import { allProductsDvsRouted, dvsAutoTrigger, hasDvsRoutedProducts } from "./dvsRouting";
 import { etNow } from "../masheke/etDate";
 
@@ -104,6 +105,8 @@ export async function sendPatientToMonday(
   // benefitsDerive.ts). Other contexts keep the state they hydrated.
   const todayEt = etTodayYmd();
   const hasMedicaidIns = patientHasMedicaidIns(p.primaryInsurance ?? "", p.secondaryInsurance ?? "");
+  // Medicare A&B primary → 5-year RUL for pump/CGM monitor same-or-similar.
+  const isMedicare = isMedicarePrimary(p.primaryInsurance ?? "");
 
   // Failed-check path (Medicare-not-Primary handoff §2–§4): any negative
   // universal answer at Benefits means step 2 never ran — write ONLY the
@@ -125,7 +128,7 @@ export async function sendPatientToMonday(
         | undefined;
       if (!cid) continue;
       const st = derivedCodes[cid] ?? ({ status: "pending" } as ProductCodeState);
-      derivedCodes[cid] = { ...st, sos: derivedSos(st, cid, hasMedicaidIns, todayEt) };
+      derivedCodes[cid] = { ...st, sos: derivedSos(st, cid, hasMedicaidIns, todayEt, isMedicare) };
     }
     const nb = deriveNeverBilled({ ...rawIns, codes: derivedCodes }, p.primaryInsurance ?? "");
     ins = {
@@ -205,7 +208,7 @@ export async function sendPatientToMonday(
     for (const e of entries) {
       if (e.isMedicaidSupply || !e.state) continue;
       if (effectiveResult(e.state) !== "no-auth-needed") continue;
-      const derived = derivedRecheckSos(e.state, e.cid, hasMedicaidIns, todayEt);
+      const derived = derivedRecheckSos(e.state, e.cid, hasMedicaidIns, todayEt, isMedicare);
       if (derived) e.state = { ...e.state, sosRecheck: derived };
     }
   }

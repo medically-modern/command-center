@@ -126,8 +126,10 @@ describe("recheckComplete + derivedRecheckSos", () => {
 });
 
 describe("nextOrderPreviewYmd", () => {
-  it("pump +4yr, sensors by units, supplies 90/60, monitor none", () => {
+  it("pump +4yr (non-Medicare) / +5yr (Medicare), sensors by units, supplies 90/60, monitor none", () => {
     expect(nextOrderPreviewYmd("pump", "2026-01-01", false)).toBe("2029-12-31");
+    // Medicare A&B primary → pump RUL is 5 years (1825 days).
+    expect(nextOrderPreviewYmd("pump", "2026-01-01", false, undefined, true)).toBe("2030-12-31");
     expect(nextOrderPreviewYmd("cgm-sensors", "2026-07-01", false, "1")).toBe("2026-07-31");
     expect(nextOrderPreviewYmd("cgm-sensors", "2026-07-01", false, "3")).toBe("2026-09-29");
     expect(nextOrderPreviewYmd("infusion-sets", "2026-07-01", true)).toBe("2026-08-30");

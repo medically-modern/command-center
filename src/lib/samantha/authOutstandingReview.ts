@@ -118,18 +118,19 @@ export function recheckComplete(state: ProductCodeState | undefined): boolean {
  *   Billed, date < cutoff   → "clear"   (strict <, same as benefitsDerive)
  *   Billed, date ≥ cutoff   → "not-clear"
  *   incomplete              → ""
- * Lookbacks: pump/monitor 4 yr; sensors/IS/cartridges 90 days (60 with
- * Medicaid) — sosCutoffYmd.
+ * Lookbacks: pump/monitor 5 yr (Medicare A&B primary) / 4 yr otherwise;
+ * sensors/IS/cartridges 90 days (60 with Medicaid) — sosCutoffYmd.
  */
 export function derivedRecheckSos(
   state: ProductCodeState | undefined,
   codeId: ProductCodeId,
   hasMedicaid: boolean,
   todayYmd: string = etTodayYmd(),
+  isMedicare = false,
 ): "" | "clear" | "not-clear" {
   if (state?.sosEntry === "never") return "clear";
   if (state?.sosEntry === "billed" && state.lastBillDate) {
-    return state.lastBillDate < sosCutoffYmd(codeId, hasMedicaid, todayYmd)
+    return state.lastBillDate < sosCutoffYmd(codeId, hasMedicaid, todayYmd, isMedicare)
       ? "clear"
       : "not-clear";
   }
@@ -143,9 +144,10 @@ export function nextOrderPreviewYmd(
   lastBillYmd: string,
   hasMedicaid: boolean,
   units?: string,
+  isMedicare = false,
 ): string {
   if (!lastBillYmd) return "";
-  if (codeId === "pump") return addDaysYmd(lastBillYmd, 365 * 4);
+  if (codeId === "pump") return addDaysYmd(lastBillYmd, isMedicare ? 365 * 5 : 365 * 4);
   if (codeId === "cgm-sensors") return addDaysYmd(lastBillYmd, sensorsNextOrderOffsetDays(units));
   if (codeId === "infusion-sets" || codeId === "cartridges") {
     return addDaysYmd(lastBillYmd, hasMedicaid ? 60 : 90);

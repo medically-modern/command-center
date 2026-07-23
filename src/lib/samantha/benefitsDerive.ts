@@ -33,6 +33,7 @@ import type {
   SosChoice,
 } from "./workflow";
 import { EMPTY_INSURANCE, isNegUniversal, sensorsNextOrderOffsetDays } from "./workflow";
+import { isMedicarePrimary } from "./medicareJurisdiction";
 
 // ─────────────────────────────────────────────────────────────────────
 // ET-anchored date helpers
@@ -77,17 +78,23 @@ export function patientHasMedicaidIns(primary: string, secondary: string): boole
 }
 
 /**
- * SoS lookback per product: Insulin Pump (E0784) and CGM Monitor (E2103)
- * = 4 years; CGM Sensors / Infusion Sets / Cartridges = 90 days, or 60
- * days when the patient has Medicaid (primary or secondary).
+ * SoS lookback per product: Insulin Pump (E0784) and CGM Monitor (E2103) use
+ * the DME "reasonable useful lifetime" — 5 years under Medicare (isMedicare),
+ * 4 years for other payers. CGM Sensors / Infusion Sets / Cartridges = 90 days,
+ * or 60 days when the patient has Medicaid (primary or secondary).
  *
- * NOTE: "4 years" is 365*4 = 1460 days — matching both the prototype and
- * the live next-order math (workflow.ts). Whether an exact-boundary
- * patient should use calendar years (1461 w/ leap day) is an open intent
- * question for Brandon (review doc, open question 2).
+ * NOTE: years are 365-day multiples (1460 / 1825 days) — matching the live
+ * next-order math (workflow.ts). Whether an exact-boundary patient should use
+ * calendar years (leap day) is an open intent question for Brandon (review doc,
+ * open question 2). `isMedicare` = traditional Medicare A&B primary
+ * (isMedicarePrimary); it defaults false so non-Medicare callers keep 4 years.
  */
-export function sosLookbackDays(codeId: ProductCodeId, hasMedicaid: boolean): number {
-  if (codeId === "pump" || codeId === "cgm-monitor") return 365 * 4;
+export function sosLookbackDays(
+  codeId: ProductCodeId,
+  hasMedicaid: boolean,
+  isMedicare = false,
+): number {
+  if (codeId === "pump" || codeId === "cgm-monitor") return isMedicare ? 365 * 5 : 365 * 4;
   return hasMedicaid ? 60 : 90;
 }
 
@@ -96,14 +103,19 @@ export function sosCutoffYmd(
   codeId: ProductCodeId,
   hasMedicaid: boolean,
   todayYmd: string = etTodayYmd(),
+  isMedicare = false,
 ): string {
-  return addDaysYmd(todayYmd, -sosLookbackDays(codeId, hasMedicaid));
+  return addDaysYmd(todayYmd, -sosLookbackDays(codeId, hasMedicaid, isMedicare));
 }
 
-/** Human label for the lookback hint, e.g. "4 yr" / "90 day" / "60 day — Medicaid". */
-export function sosLookbackLabel(codeId: ProductCodeId, hasMedicaid: boolean): string {
-  const days = sosLookbackDays(codeId, hasMedicaid);
-  if (days >= 365) return "4 yr";
+/** Human label for the lookback hint, e.g. "5 yr" / "4 yr" / "90 day" / "60 day — Medicaid". */
+export function sosLookbackLabel(
+  codeId: ProductCodeId,
+  hasMedicaid: boolean,
+  isMedicare = false,
+): string {
+  const days = sosLookbackDays(codeId, hasMedicaid, isMedicare);
+  if (days >= 365) return `${Math.round(days / 365)} yr`;
   return days === 60 ? "60 day — Medicaid" : `${days} day`;
 }
 
@@ -127,11 +139,12 @@ export function derivedSos(
   codeId: ProductCodeId,
   hasMedicaid: boolean,
   todayYmd: string = etTodayYmd(),
+  isMedicare = false,
 ): SosChoice {
   if (state?.auth === "required") return "skip";
   if (state?.sosEntry === "never") return "clear";
   if (state?.sosEntry === "billed" && state.lastBillDate) {
-    return state.lastBillDate < sosCutoffYmd(codeId, hasMedicaid, todayYmd)
+    return state.lastBillDate < sosCutoffYmd(codeId, hasMedicaid, todayYmd, isMedicare)
       ? "clear"
       : "not-clear";
   }
@@ -386,6 +399,8 @@ export function deriveBenefitsPreview(
   const primary = patient.primaryInsurance ?? "";
   const secondary = patient.secondaryInsurance ?? "";
   const hasMedicaid = patientHasMedicaidIns(primary, secondary);
+  // Medicare A&B primary → 5-year RUL for pump/CGM monitor same-or-similar.
+  const isMedicare = isMedicarePrimary(primary);
 
   const resolved = resolveHcpcs(primary || null, patient.serving || null, secondary || null);
 
@@ -409,7 +424,7 @@ export function deriveBenefitsPreview(
       cid,
       product: r.product,
       auth: state?.auth ?? "",
-      sos: derivedSos(state, cid, hasMedicaid, todayYmd),
+      sos: derivedSos(state, cid, hasMedicaid, todayYmd, isMedicare),
       complete: !!state?.auth && sosEntryComplete(state),
       hidden: false,
     };
@@ -465,7 +480,7 @@ export function deriveBenefitsPreview(
   const sensorsBill = usable("cgm-sensors");
   const suppliesBill = later(usable("infusion-sets"), usable("cartridges"));
   const nextOrder = {
-    ip: pumpBill ? addDaysYmd(pumpBill, 365 * 4) : "",
+    ip: pumpBill ? addDaysYmd(pumpBill, isMedicare ? 365 * 5 : 365 * 4) : "",
     // A4239 only: 1/2 billed units push 30/60 days, 3+ the standard 90
     // (sensorsNextOrderOffsetDays — keep in lockstep with computeNextOrderDates).
     sensors: sensorsBill

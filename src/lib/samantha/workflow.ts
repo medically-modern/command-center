@@ -9,6 +9,7 @@ import {
   type ProductId,
   type Serving,
 } from "./hcpcRules";
+import { isMedicarePrimary } from "./medicareJurisdiction";
 
 export type StageId =
   | "intake"
@@ -642,9 +643,11 @@ export function computeNextOrderDates(
   const infusionState = ins.codes["infusion-sets"];
   const cartridgeState = ins.codes["cartridges"];
 
-  // IP Next Order Date = pump last bill + 4 years (1461 days)
+  // IP Next Order Date = pump last bill + RUL (5 years for Medicare A&B primary,
+  // else 4 years). Kept in sync with the same-or-similar window (benefitsDerive).
+  const ipRulDays = isMedicarePrimary(primaryInsurance) ? 365 * 5 : 365 * 4;
   const ipNextOrderDate = pumpState?.lastBillDate
-    ? addDaysToDate(pumpState.lastBillDate, 365 * 4)
+    ? addDaysToDate(pumpState.lastBillDate, ipRulDays)
     : "";
 
   // Sensors Next Order Date = sensors last bill + 90 days (30/60 for 1/2 units)

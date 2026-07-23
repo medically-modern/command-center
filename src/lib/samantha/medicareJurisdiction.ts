@@ -50,6 +50,18 @@ export function isMedicareABOnly(primary: string, secondary: string): boolean {
   return /^Medicare A&B/i.test(primary || "") && !hasSecondary;
 }
 
+/**
+ * Traditional Medicare A&B as the PRIMARY payer (regardless of any secondary).
+ * Drives the DME "reasonable useful lifetime" same-or-similar window: capital
+ * equipment — insulin pump (E0784) and CGM monitor (E2103) — is 5 years under
+ * Medicare vs the 4-year default for other payers. Unlike isMedicareABOnly this
+ * does NOT require the absence of a secondary: Medicare-primary means Medicare's
+ * RUL governs the primary claim even when a supplement/secondary exists.
+ */
+export function isMedicarePrimary(primary: string): boolean {
+  return /^Medicare A&B/i.test((primary || "").trim());
+}
+
 /** MAC jurisdiction for a 2-letter state code, or null when unmapped. */
 export function medicareJurisdictionForState(state: string): MacJurisdiction | null {
   return STATE_TO_JURISDICTION[(state || "").toUpperCase()] ?? null;

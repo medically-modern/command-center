@@ -17,7 +17,7 @@
  */
 import { useEffect, useMemo, useState } from "react";
 import { AlertTriangle, ChevronDown, Phone } from "lucide-react";
-import { isMedicareABOnly, medicareJurisdictionPill } from "@/lib/samantha/medicareJurisdiction";
+import { isMedicareABOnly, isMedicarePrimary, medicareJurisdictionPill } from "@/lib/samantha/medicareJurisdiction";
 import type {
   CallLogRow,
   Patient,
@@ -144,8 +144,9 @@ function nextOrderOffsetDays(
   codeId: ProductCodeId,
   hasMedicaid: boolean,
   units?: string,
+  isMedicare = false,
 ): number | null {
-  if (codeId === "pump") return 365 * 4;
+  if (codeId === "pump") return isMedicare ? 365 * 5 : 365 * 4; // RUL: 5 yr Medicare, else 4
   if (codeId === "cgm-sensors") return sensorsNextOrderOffsetDays(units); // A4239: 30/60 for 1/2 units, else 90
   if (codeId === "infusion-sets" || codeId === "cartridges") return hasMedicaid ? 60 : 90;
   return null; // cgm-monitor has no next-order column
@@ -155,11 +156,13 @@ function ProductCard({
   resolved,
   state,
   hasMedicaid,
+  isMedicare,
   onChange,
 }: {
   resolved: ResolvedProduct;
   state: ProductCodeState | undefined;
   hasMedicaid: boolean;
+  isMedicare: boolean;
   onChange: (patch: Partial<ProductCodeState>) => void;
 }) {
   const codeId = PRODUCT_TO_CODE_ID[resolved.product];
@@ -170,7 +173,7 @@ function ProductCard({
   const entryLocked = entry === "never";
   const isRec = meta?.cadence === "RECURRING";
 
-  const offset = nextOrderOffsetDays(codeId, hasMedicaid, state?.units);
+  const offset = nextOrderOffsetDays(codeId, hasMedicaid, state?.units, isMedicare);
   const nextOrder =
     entry === "billed" && state?.lastBillDate && offset
       ? addDaysYmd(state.lastBillDate, offset)
@@ -530,6 +533,7 @@ export function BenefitsPanel({
                     resolved={r}
                     state={ins.codes[PRODUCT_TO_CODE_ID[r.product]]}
                     hasMedicaid={hasMedicaid}
+                    isMedicare={isMedicarePrimary(patient.primaryInsurance ?? "")}
                     onChange={(patch) => onCodeChange(PRODUCT_TO_CODE_ID[r.product], patch)}
                   />
                 ))}
