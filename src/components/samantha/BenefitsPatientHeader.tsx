@@ -52,12 +52,9 @@ function SBox({ label, value, strong }: { label: string; value: string; strong?:
 
 interface Props {
   patient: Patient;
-  /** Show the "Read-only · fed by Profile Send-Off" chip. Benefits keeps it;
-   *  Submit Auth passes false to hide it (Josh, 2026-07). */
-  showSourceChip?: boolean;
 }
 
-export function BenefitsPatientHeader({ patient, showSourceChip = true }: Props) {
+export function BenefitsPatientHeader({ patient }: Props) {
   const [detailsOpen, setDetailsOpen] = useState(false);
 
   const isMedicarePayer = /medicare/i.test(patient.primaryInsurance ?? "");
@@ -77,7 +74,6 @@ export function BenefitsPatientHeader({ patient, showSourceChip = true }: Props)
             <span style={{ userSelect: "all" }}>{formatPhone(patient.patientPhone ?? "") || "—"}</span>
           </div>
         </div>
-        {showSourceChip && <span className="step-chip">Read-only · fed by Profile Send-Off</span>}
       </div>
 
       <div className="ph-groups">

@@ -191,7 +191,7 @@ const SubmitAuthPage = () => {
                 {selected && (
                   <div className="layout">
                     <div className="main-col">
-                      <BenefitsPatientHeader patient={selected} showSourceChip={false} />
+                      <BenefitsPatientHeader patient={selected} />
 
                       {selected.id === lastSentId ? (
                         <section className="card step-card">
