@@ -100,8 +100,8 @@ export function ProposeStuckModal({ open, onOpenChange, patientId, patientName, 
               placeholder="Why is this patient stuck? e.g. doctor unreachable after 6 attempts, patient not responding since 06/12…"
               className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-ring"
             />
-            <p className="text-xs text-muted-foreground mt-1">
-              Appended to the MN notes and shown to the manager in the Oversight drill-down.
+            <p className="text-xs text-amber-600 dark:text-amber-500 mt-1 font-medium">
+              NOTE: If you filled out the form but didn't submit it to Monday, that info will NOT be saved — include everything relevant to the stuck reason here.
             </p>
           </div>
 

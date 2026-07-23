@@ -106,8 +106,7 @@ const LS_CACHE_KEY = "oversight-cache";
 // Three-column oversight layout (Active | Attempt 4+ | 3rd Attempt). Columns are
 // a fixed width so every chart keeps its size and the block scrolls horizontally
 // rather than shrinking the charts to fit. Gap matches the old 2-column gap-x-12.
-const OVERSIGHT_COL_W = 640; // px per chart column
-const OVERSIGHT_COL_GAP = 48; // px between columns
+const OVERSIGHT_COL_GAP = 48; // px between the fluid manager-view columns
 
 // ── "Requesting" summary (Send Request / Confirm Receipt / Chase) ─────────
 // Derived from the MN Request Consolidated dropdown — the actual doctor-facing
@@ -1606,27 +1605,29 @@ export default function OversightTab() {
             </div>
 
             {tertiaryCharts.length > 0 ? (
-              // Three-column layout: Active | Attempt 4+ escalations | 3rd-Attempt
-              // escalations. Each chart keeps its fixed size, so the block scrolls
-              // horizontally; two yellow dividers separate the three columns. Each
-              // row pairs an original chart with its escalation counterparts (blank
-              // where a stage has no counterpart in that column).
+              // Three-column layout: Processor Overview | Manager as Processor |
+              // Final Decisions. Columns are FLUID (each 1fr) so all three fit the
+              // viewport on load — no horizontal scroll to reach Final Decisions.
+              // Two amber dividers sit in the column gaps. Each row pairs an
+              // original chart with its escalation counterparts (blank where a
+              // stage has no counterpart in that column). overflow-x-auto is only a
+              // safety net for very narrow screens.
               <div className="overflow-x-auto pb-2">
-                <div className="relative w-max">
+                <div className="relative w-full min-w-0">
                   <div
                     className="pointer-events-none absolute inset-y-0 w-0.5 bg-amber-300"
-                    style={{ left: OVERSIGHT_COL_W + OVERSIGHT_COL_GAP / 2 }}
+                    style={{ left: `calc((100% - ${2 * OVERSIGHT_COL_GAP}px) / 3 + ${OVERSIGHT_COL_GAP / 2}px)` }}
                     aria-hidden
                   />
                   <div
                     className="pointer-events-none absolute inset-y-0 w-0.5 bg-amber-300"
-                    style={{ left: 2 * OVERSIGHT_COL_W + OVERSIGHT_COL_GAP * 1.5 }}
+                    style={{ left: `calc((100% - ${2 * OVERSIGHT_COL_GAP}px) / 3 * 2 + ${OVERSIGHT_COL_GAP * 1.5}px)` }}
                     aria-hidden
                   />
                   <div
                     className="grid"
                     style={{
-                      gridTemplateColumns: `repeat(3, ${OVERSIGHT_COL_W}px)`,
+                      gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
                       columnGap: OVERSIGHT_COL_GAP,
                       rowGap: 16,
                     }}
