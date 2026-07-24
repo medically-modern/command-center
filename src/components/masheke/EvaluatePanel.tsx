@@ -50,7 +50,6 @@ import {
   formatOowDiff,
   getMrExpiry,
   deriveValidity,
-  bannerMnEstablished,
   buildMondayPreview,
   computeIpReasonLists,
   computeCgmInvalidReasons,
@@ -352,6 +351,23 @@ export function EvaluatePanel({ patient, resetVersion = 0, onUpdate, onOpenForm 
       toast.error("Monday token not configured");
       return;
     }
+    // Defense-in-depth gate (the Send button is also disabled on these). Blocks
+    // advancing the patient to the next board while a clinical file is still
+    // uploading — a mid-upload advance would move the item with no confirmed
+    // clinical package — and enforces required fields + an added note.
+    if (filesUploading) {
+      toast.error("Files are still uploading to Monday — wait until they're confirmed before completing.");
+      return;
+    }
+    const missingNow = getMissingRequiredFields(state, showCgm, showIp);
+    if (missingNow.length > 0) {
+      toast.error(`Fill in required fields first: ${missingNow.slice(0, 4).join(", ")}${missingNow.length > 4 ? "…" : ""}`);
+      return;
+    }
+    if (!noteAdded || pendingNoteText.trim().length > 0) {
+      toast.error(pendingNoteText.trim().length > 0 ? "Press Add on your note before sending" : "Add at least one MN Workflow note to send");
+      return;
+    }
     setSending(true);
     setSendErrors([]);
     const tasks: WriteTask[] = [];
@@ -477,7 +493,13 @@ export function EvaluatePanel({ patient, resetVersion = 0, onUpdate, onOpenForm 
     // patient stays in Evaluate MN for a manager to work (the oversight
     // "3rd Attempt" column). Established always completes; a not-yet-3rd pass
     // still routes to Send Request.
-    const mnEstablishedNow = bannerMnEstablished(state, showCgm, showIp);
+    // Route on the SAME `established` value we WRITE to the Medical Necessity
+    // column (deriveValidity → preview.medicalNecessity), so the stage move can
+    // never disagree with the written column. The old bannerMnEstablished ignored
+    // Diagnosis / Last-Visit validity, so a patient with Diagnosis left at the
+    // board's "Evaluate" placeholder advanced to Completed while the column was
+    // written "Not Established".
+    const mnEstablishedNow = validity.established;
     const attemptNum = Number(patient.evaluationCounter ?? 1) || 1;
     const sopEscalate = !mnEstablishedNow && attemptNum >= 3;
 
@@ -542,7 +564,7 @@ export function EvaluatePanel({ patient, resetVersion = 0, onUpdate, onOpenForm 
         duration: 10000,
       });
     }
-  }, [patient, state, preview, showCgm, showIp]);
+  }, [patient, state, validity, preview, showCgm, showIp, filesUploading, noteAdded, pendingNoteText]);
 
   // ── Evaluate redesign (prototype) ──
   // Attempt counter — pulled from Monday's Evaluation Counter column.
@@ -663,13 +685,27 @@ export function EvaluatePanel({ patient, resetVersion = 0, onUpdate, onOpenForm 
     state.cgmLanguage === "Yes";
   const ipLangChecked = ipServed && !!ipCfg && ipReqValues.every((v) => v === "Yes");
 
-  // Single source of truth for the banner AND the submit routing.
-  const mnEstablished = bannerMnEstablished(state, showCgm, showIp);
+  // Single source of truth for the banner AND the submit routing — the exact
+  // value written to the Medical Necessity column (deriveValidity), so the
+  // on-screen banner, the written column, and the stage move can never disagree.
+  const mnEstablished = validity.established;
 
   // 3rd-attempt escalation SOP: on the 3rd (or later) Evaluate pass with MN still
   // not established, sending escalates the patient instead of advancing to Send
   // Request — surface a warning by the Send button so the rep knows.
   const willEscalate = !mnEstablished && (Number(patient.evaluationCounter ?? 1) || 1) >= 3;
+
+  // Send gate (reintegrated — the summary component that held this was defined
+  // but never mounted, so the live button had no guard). Blocks Send until every
+  // required field is answered, ≥1 note is added (and no unadded text lingers),
+  // and every dropped clinical file has confirmed landing in Monday.
+  const missingFields = getMissingRequiredFields(state, showCgm, showIp);
+  const hasPendingNote = pendingNoteText.trim().length > 0;
+  const noteBlocked = !noteAdded || hasPendingNote;
+  const sendBlocked = missingFields.length > 0 || noteBlocked || filesUploading;
+  // Live per-file upload status so the rep watches each file go Uploading →
+  // Confirming → Confirmed (or Error) instead of guessing whether it landed.
+  const uploadFiles = [...clinicalUpload.files, ...finalClinicalUpload.files];
 
   const cgmLangLabel =
     state.cgmCoveragePath === "Hypo" ? "Hypoglycemia Language" : "Insulin Language";
@@ -977,10 +1013,75 @@ export function EvaluatePanel({ patient, resetVersion = 0, onUpdate, onOpenForm 
             </span>
           </div>
         )}
+        {/* Live per-file upload status — Send stays disabled until every file
+            reads "Confirmed" (landed in Monday). */}
+        {uploadFiles.length > 0 && (
+          <div className="w-full rounded-lg border bg-muted/20 px-3.5 py-2.5 space-y-1">
+            {uploadFiles.map((f) => (
+              <div key={f.name} className="flex items-center gap-2 text-xs">
+                {f.status === "confirmed" ? (
+                  <Check className="h-3.5 w-3.5 shrink-0 text-[color:var(--mm-green)]" />
+                ) : f.status === "error" ? (
+                  <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-red-600" />
+                ) : (
+                  <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-muted-foreground" />
+                )}
+                <span className="flex-1 truncate">{f.name}</span>
+                <span
+                  className={cn(
+                    "font-medium",
+                    f.status === "confirmed" && "text-[color:var(--mm-green)]",
+                    f.status === "error" && "text-red-600",
+                  )}
+                >
+                  {f.status === "uploading"
+                    ? "Uploading…"
+                    : f.status === "confirming"
+                      ? "Confirming…"
+                      : f.status === "confirmed"
+                        ? "Confirmed"
+                        : "Upload failed — retry"}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+        {/* Why Send is blocked (fields / note / uploading) */}
+        {missingFields.length > 0 && (
+          <span
+            className="text-xs font-medium text-right"
+            style={{ color: "var(--mm-rose)" }}
+            title={missingFields.join(", ")}
+          >
+            {missingFields.length} required field{missingFields.length > 1 ? "s" : ""} remaining:{" "}
+            {missingFields.slice(0, 4).join(", ")}
+            {missingFields.length > 4 ? "…" : ""}
+          </span>
+        )}
+        {noteBlocked && (
+          <span className="text-xs font-medium text-right" style={{ color: "var(--mm-rose)" }}>
+            {hasPendingNote
+              ? "Press Add on your note before sending"
+              : "Add at least one MN Workflow note to send"}
+          </span>
+        )}
+        {filesUploading && (
+          <div className="w-full flex items-start gap-2 rounded-lg border-2 border-red-400 bg-red-50 px-3 py-2 animate-pulse">
+            <Loader2 className="h-4 w-4 text-red-600 shrink-0 mt-0.5 animate-spin" />
+            <div>
+              <p className="text-xs font-bold text-red-800 uppercase tracking-wide">
+                Files uploading to Monday
+              </p>
+              <p className="text-[11px] text-red-700 mt-0.5">
+                Do NOT advance until upload is confirmed
+              </p>
+            </div>
+          </div>
+        )}
         <Button
           size="lg"
           onClick={handleSendToMonday}
-          disabled={sending}
+          disabled={sending || sendBlocked}
           className="gap-2 text-white shadow-elevate bg-[color:var(--mm-green)] hover:bg-[oklch(0.56_0.10_175)] disabled:bg-[oklch(0.85_0.01_200)]"
         >
           {sending ? (
@@ -1925,9 +2026,12 @@ function getMissingRequiredFields(
   if (cgmOn && state.cgmScriptValid === undefined) missing.push("CGM Script validity");
   if (ipOn && state.ipScriptValid === undefined) missing.push("IP Script validity");
 
-  // Diagnosis & Last Visit — required when Clinicals received
+  // Diagnosis & Last Visit — required when Clinicals received. "Evaluate" is the
+  // board's placeholder default (not a real diagnosis), so it counts as unanswered
+  // — otherwise it slips through the gate yet fails deriveValidity, writing "Not
+  // Established" with a "Diagnosis missing" reason.
   if (state.mrReceived === "Yes") {
-    if (!state.diagnosis) missing.push("Diagnosis");
+    if (!state.diagnosis || state.diagnosis === "Evaluate") missing.push("Diagnosis");
     if (!state.lastVisitDate) missing.push("Last Visit Date");
   }
 
@@ -1952,6 +2056,13 @@ function getMissingRequiredFields(
   return missing;
 }
 
+// ⚠️ SUPERSEDED / NOT RENDERED. This component was defined in the redesign but
+// never mounted (0 render sites), so its Send gate — required-fields + note +
+// files-uploading — was dead and the live button advanced patients mid-upload.
+// The gate now lives directly on the "Completed Evaluation" button in the main
+// EvaluatePanel component (search `sendBlocked`). Do NOT wire this back in as a
+// second Send path; edit the live gate instead. Kept only to avoid a cascading
+// dead-code delete (MondayPreviewPanel/OutcomeChip) right before release.
 interface ValiditySummaryProps {
   validity: ReturnType<typeof deriveValidity>;
   preview: ReturnType<typeof buildMondayPreview>;

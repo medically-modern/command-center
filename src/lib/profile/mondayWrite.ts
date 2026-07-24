@@ -237,10 +237,15 @@ export async function sendPatientToMonday(
 
 /**
  * Send the patient BACK to the Patient Intake stage (the "still missing info"
- * exit). Persists whatever the rep has entered (best-effort, with retry) so no
- * work is lost, then moves the item to the Patient Intake group. This is a
- * group move — NOT a "Move to Onboarding" status change — so no board
- * automation keys on it and no read-back verification is required.
+ * exit). Persists whatever the rep has entered (with retry), then moves the item
+ * to the Patient Intake group. This is a group move — NOT a "Move to Onboarding"
+ * status change — so no board automation keys on it and no read-back
+ * verification is required.
+ *
+ * FAILS HARD: if any field fails to save after retries the patient is NOT moved
+ * and this throws, so the caller keeps the rep's edits (overlay) and shows an
+ * error to retry — a failed correction must never be reported as "sent back"
+ * and then wiped. Mirrors the forward `sendPatientToMonday` contract.
  */
 export async function sendBackToPatientIntake(
   p: Patient,
@@ -254,10 +259,13 @@ export async function sendBackToPatientIntake(
       if (err) failures.push(err);
     }),
   );
-  // Move regardless of partial data failures — the rep is intentionally routing
-  // this back for more info; surfacing failures is best-effort via console.
+  // Do NOT move on a partial data failure — abort so the rep's edits are kept
+  // and they can retry. Moving here would strand the correction (write failed)
+  // while routing the patient onward with stale data.
   if (failures.length > 0) {
-    console.warn(`[mondayWrite:profile] send-back partial failures: ${failures.map((f) => f.split(":")[0]).join(", ")}`);
+    throw new Error(
+      `${failures.length} field(s) failed to save — patient was NOT moved back. Your edits are kept; retry. Failed: ${failures.map((f) => f.split(":")[0]).join(", ")}`,
+    );
   }
   await moveItemToGroup(p.id, GROUPS.patientIntake);
 }

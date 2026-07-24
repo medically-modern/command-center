@@ -413,12 +413,17 @@ const ProfilePage = ({ variant }: ProfilePageProps) => {
     setSendingBack(true);
     try {
       await sendBackToPatientIntake(selected, selectedClinicId);
+      // Only reached when every field saved AND the group move succeeded — safe
+      // to wipe the overlay. A failed write throws above, so we never clear on a
+      // partial save.
       clearOverlay(selected.id);
       toast.success(`${selected.name} sent back to Patient Intake`);
       setSelectedId(patients.find((p) => p.id !== selected.id)?.id ?? null);
       setTimeout(refetch, 1500);
     } catch (e) {
-      toast.error("Failed to send back", { description: e instanceof Error ? e.message : String(e) });
+      // Edits are intentionally NOT cleared here — they stay in the overlay so
+      // the rep can retry without re-typing.
+      toast.error("Send back failed — your edits are kept", { description: e instanceof Error ? e.message : String(e) });
     } finally { setSendingBack(false); }
   };
 

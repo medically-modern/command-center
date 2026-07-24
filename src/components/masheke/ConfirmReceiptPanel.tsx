@@ -256,17 +256,16 @@ export function ConfirmReceiptPanel({ patient, onUpdate, managerMode = false }: 
         const value = formatAttemptValue("confirmed", attemptNote.trim(), etNow());
         const fieldKey =
           slot === 1 ? "confirmAttempt1" : slot === 2 ? "confirmAttempt2" : "confirmAttempt3";
-        patch = { [fieldKey]: value, subStage: "Chase Clinicals" };
+        // If escalated, the manager confirming receipt also clears the escalation.
+        // Set it in `patch` UP FRONT (so the GatewayPendingError branch reflects
+        // it) and fold the actual clear into saveYes's durable transaction below —
+        // never a separate post-advance write that a queued/failed ack would skip.
+        patch = isEscalated
+          ? { [fieldKey]: value, subStage: "Chase Clinicals", escalation: "Done", escalationIndex: ESCALATION_INDEX.done }
+          : { [fieldKey]: value, subStage: "Chase Clinicals" };
         successMsg = "Receipt confirmed — moved to Chase Clinicals";
         confirmedBanner = { note: attemptNote.trim(), ts: formatDateShort(etNow()) };
-        await saveYes(patient, slot, value, onProgress);
-        if (isEscalated) {
-          // Manager resolved the escalation by confirming receipt — clear
-          // the flag so the patient doesn't stay in escalated lists.
-          await writeStatusIndex(patient.id, COL.escalation, ESCALATION_INDEX.done);
-          patch.escalation = "Done";
-          patch.escalationIndex = ESCALATION_INDEX.done; // detection is index-based
-        }
+        await saveYes(patient, slot, value, onProgress, isEscalated);
       } else if (isEscalated) {
         // Manager follow-up on an escalated patient: all 3 attempt slots are
         // used, so there's no attempt column left to log into. The required
@@ -841,6 +840,7 @@ async function saveYes(
   slot: number,
   attemptValue: string,
   onProgress?: (phase: WriteProgressPhase) => void,
+  clearEscalation = false,
 ) {
   // Yes path: log the confirmation note in the active attempt column (so the
   // effort + confirmed date/time show on Chase), advance stage. Also reset MN
@@ -864,6 +864,20 @@ async function saveYes(
     { label: "Next Action Date", columnId: COL.nextActionDate, value: { date: nextAction }, fn: () => writeDate(patient.id, COL.nextActionDate, nextAction) },
     { label: "Sub-Stage → Chase Clinicals", columnId: COL.subStage, value: { index: SUB_STAGE_INDEX.chase }, fn: () => writeStatusIndex(patient.id, COL.subStage, SUB_STAGE_INDEX.chase) },
   ];
+  if (clearEscalation) {
+    // Manager resolved the escalation by confirming receipt. Clear it as a DATA
+    // column INSIDE this durable transaction (verified before the stage flips)
+    // rather than a separate post-advance write — the old separate write was
+    // skipped whenever saveYes threw GatewayPendingError (queued but unconfirmed)
+    // or failed on a blip, leaving the patient advanced to Chase but still
+    // flagged escalated and hidden from the chase due-now queue.
+    tasks.push({
+      label: "Escalation → Done",
+      columnId: COL.escalation,
+      value: { index: ESCALATION_INDEX.done },
+      fn: () => writeStatusIndex(patient.id, COL.escalation, ESCALATION_INDEX.done),
+    });
+  }
   await runVerifiedSend({
     itemId: patient.id,
     label: "Confirm Receipt → Confirmed (advance to Chase)",

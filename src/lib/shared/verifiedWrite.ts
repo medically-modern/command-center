@@ -174,12 +174,15 @@ export async function executeWritesWithVerification(
       );
       if (outcome === "done" || !requireDone) return [];
       // requireDone and the job is durably queued but not yet confirmed in
-      // Monday — it WILL run server-side, so do NOT fall through to the
-      // client path (that would run the transaction a second time).
+      // Monday — it WILL run server-side (or flush from the browser outbox), so
+      // do NOT fall through to the client path (that would run the transaction a
+      // second time and double-write).
       throw new GatewayPendingError(
         outcome === "queued-offline"
           ? "You're offline — the save is parked in this browser and will submit automatically when you're back online. Do not repeat it."
-          : "The server accepted the save and is still writing it to Monday. It will finish on its own — do not repeat this save.",
+          : outcome === "queued-unconfirmed"
+            ? "The save is queued in this browser and will submit automatically. Do not repeat it."
+            : "The server accepted the save and is still writing it to Monday. It will finish on its own — do not repeat this save.",
       );
     } catch (err) {
       if (err instanceof GatewayPendingError) throw err;
@@ -198,14 +201,39 @@ export async function executeWritesWithVerification(
   const verifyColIds = dataTasks.map((t) => t.columnId);
 
   // ── Phase 0: snapshot BEFORE writing ─────────────────────
+  // Columns without `expectedText` are verified by snapshot-diff (Phase 2), which
+  // can ONLY work against a pre-write baseline. If the snapshot read fails we must
+  // NOT silently continue with an empty baseline — that degrades the check from
+  // "did it change?" to "is it non-empty?", so a stale not-yet-indexed value would
+  // falsely pass and we'd advance the stage on stale data (the exact race this
+  // utility exists to prevent). Retry a few times; if we still can't read a
+  // baseline AND any column relies on snapshot-diff, abort before writing anything.
   let beforeSnapshot = new Map<string, string>();
   if (verifyColIds.length > 0) {
-    try {
-      const snap = await readColumns(itemId, verifyColIds);
-      beforeSnapshot = new Map(snap.map((c) => [c.id, c.text ?? ""]));
-    } catch (err) {
-      console.warn("[verifiedWrite] Pre-write snapshot failed, falling back to no-snapshot mode:", err);
+    const needsSnapshot = dataTasks.some((t) => t.expectedText === undefined);
+    let snapped = false;
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      try {
+        const snap = await readColumns(itemId, verifyColIds);
+        beforeSnapshot = new Map(snap.map((c) => [c.id, c.text ?? ""]));
+        snapped = true;
+        break;
+      } catch (err) {
+        console.warn(`[verifiedWrite] Pre-write snapshot attempt ${attempt}/3 failed:`, err);
+        if (attempt < 3) await new Promise((r) => setTimeout(r, verifyIntervalMs));
+      }
     }
+    if (!snapped && needsSnapshot) {
+      const msg =
+        "Could not read the pre-write snapshot after 3 attempts — stage NOT advanced (read-back verification needs a baseline). Check the connection and retry.";
+      console.error(`[verifiedWrite] ${msg}`);
+      if (writeDebug) {
+        try { await writeDebug(itemId, `[${new Date().toISOString().slice(0, 19)}] ${msg}`); } catch { /* best-effort */ }
+      }
+      throw new Error(msg);
+    }
+    // If the snapshot failed but EVERY data column carries expectedText, Phase 2's
+    // exact-match path covers them without a baseline — safe to proceed.
   }
 
   // ── Phase 1: write all data columns in parallel ──────────

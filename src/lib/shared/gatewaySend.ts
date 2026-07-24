@@ -37,7 +37,7 @@ export interface SendPayload {
   createLabelsIfMissing?: boolean;
 }
 
-export type SendOutcome = "done" | "submitted" | "queued-offline";
+export type SendOutcome = "done" | "submitted" | "queued-offline" | "queued-unconfirmed";
 
 /** Progress milestones of a gateway send, for UIs that block until Monday
  *  confirms: "posting" (browser → gateway), "accepted" (job durably queued
@@ -106,19 +106,42 @@ export async function submitSend(
   opts?.onPhase?.("posting");
   let posted: { jobId: string | number; status: string } | null = null;
   let lastErr: unknown;
+  // Whether the LAST attempt got an HTTP error *response* from the gateway
+  // (res.ok === false) vs. a network-level rejection with no response. This is
+  // the safety hinge for H1 (see below).
+  let lastWasHttpError = false;
   for (let a = 0; a < 3; a++) {
     try { posted = await postSend(p); break; }
-    catch (e) { lastErr = e; await new Promise((r) => setTimeout(r, 600 * (a + 1))); }
+    catch (e) {
+      lastErr = e;
+      lastWasHttpError = e instanceof Error && e.message.includes("/send HTTP");
+      await new Promise((r) => setTimeout(r, 600 * (a + 1)));
+    }
   }
 
   if (!posted) {
-    // Couldn't reach the gateway at all → park it; flush when back online.
+    // Offline → park; flush on the next `online` event / load.
     if (typeof navigator !== "undefined" && navigator.onLine === false) {
       addToOutbox(p);
       return "queued-offline";
     }
-    // Online but /send is erroring → let caller fall back to the client path.
-    throw lastErr instanceof Error ? lastErr : new Error("send failed");
+    // Online but the gateway responded with an error STATUS (res.ok === false):
+    // POST /send only returns 2xx once the job is created/found, so a non-2xx
+    // means NO job was persisted — it is safe to let the caller fall back to the
+    // client path (there is no server job to double-write).
+    if (lastWasHttpError) {
+      throw lastErr instanceof Error ? lastErr : new Error("send failed");
+    }
+    // Online but NO response came back (fetch rejected). Ambiguous: the request
+    // may have reached the gateway and created the job while the ACK was lost.
+    // We must NOT fall back to the client path — that would run the whole
+    // transaction a SECOND time and double-write (the server can't dedupe the
+    // client's direct Monday writes). Since POST /send is idempotent on
+    // idempotencyKey, parking the SAME payload is always safe: the retry either
+    // finds the existing job or creates it exactly once.
+    addToOutbox(p);
+    scheduleOutboxRetry();
+    return "queued-unconfirmed";
   }
 
   opts?.onPhase?.("accepted");
@@ -143,6 +166,21 @@ export async function flushOutbox(): Promise<void> {
       if (r) removeFromOutbox(p.idempotencyKey);
     } catch { /* stay queued, try again next time */ }
   }
+}
+
+// Background retry for jobs parked while ONLINE (a lost-ack ambiguous failure).
+// The `online` event never fires in that case (we're already online), so passive
+// flushing wouldn't deliver until a page reload. This backs off and stops once
+// the outbox drains, so a parked send still lands without the rep doing anything.
+let outboxRetryTimer: ReturnType<typeof setTimeout> | null = null;
+function scheduleOutboxRetry(delayMs = 3000): void {
+  if (outboxRetryTimer != null) return;
+  outboxRetryTimer = setTimeout(() => {
+    outboxRetryTimer = null;
+    void flushOutbox().then(() => {
+      if (outboxCount() > 0) scheduleOutboxRetry(Math.min(delayMs * 2, 60000));
+    });
+  }, delayMs);
 }
 
 if (typeof window !== "undefined") {

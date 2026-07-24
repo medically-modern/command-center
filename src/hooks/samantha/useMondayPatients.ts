@@ -147,7 +147,12 @@ export function useMondayPatients(activeGroup: SidebarGroup = "benefits", inject
       // If a specific patient was deep-linked but isn't in this group, fetch individually.
       if (injectedPatientId && !merged.some((p) => p.id === injectedPatientId)) {
         try {
-          const useAuth = activeGroup === "authOutstanding";
+          // Both Submit Auth and Auth Outstanding need the per-product auth
+          // columns (AUTH_READ_COLUMN_IDS) — mirror AUTH_GROUP_IDS. Omitting
+          // submitAuth here made a deep-linked Submit Auth patient (e.g. an
+          // Oversight ?patientId= link, or an escalated item not in the group)
+          // read ALL auth data blank, risking a duplicate/blank re-submission.
+          const useAuth = activeGroup === "authOutstanding" || activeGroup === "submitAuth";
           const item = await fetchItemById(injectedPatientId, useAuth);
           if (item) {
             const injected = mondayItemToPatient(item);

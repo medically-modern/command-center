@@ -45,6 +45,7 @@
  *    clear real >= 3 SOP escalations, so a blank counter means "leave it".
  */
 import type { Patient } from "./workflow";
+import { ESCALATION_INDEX } from "./mondayMapping";
 
 /**
  * The Evaluation Counter parsed to a concrete number, or `null` when it is
@@ -70,7 +71,13 @@ export function evaluationCounterValue(
  */
 export function hasStaleEvaluateEscalation(p: Patient): boolean {
   if (p.subStage !== "Evaluate MN") return false;
-  if (p.escalation !== "Escalation Required") return false;
+  // Match by INDEX, not label text. The board renamed index 0 to "Manager
+  // Escalation Required" (2026-07), so the old `escalation === "Escalation
+  // Required"` string match silently returned false for every real patient and
+  // the self-heal never fired (sidebar/counts already migrated to index — see
+  // sidebarList isEscalatedIndex). A stale carry-over from a prior stage is the
+  // Attempt-4+ flag = ESCALATION_INDEX.required (0).
+  if (p.escalationIndex !== ESCALATION_INDEX.required) return false;
   const counter = evaluationCounterValue(p);
   return counter !== null && counter < 3;
 }
