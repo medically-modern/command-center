@@ -93,6 +93,31 @@ async function pollDone(jobId: string | number, ms = 20000): Promise<{ status: s
 }
 
 /**
+ * Decide what to do when the gateway POST never got a successful ACK (H1).
+ * Pure + exported so the no-double-write guarantee is unit-testable.
+ *   - offline → park in the outbox, flush on the next `online` event
+ *     ("queued-offline")
+ *   - online + the gateway returned an ERROR STATUS (res.ok === false) → POST
+ *     /send only 2xx's once the job is created/found, so a non-2xx means NO job
+ *     was persisted; the caller may safely fall back to the client path
+ *     ("fallback")
+ *   - online + NO response at all (fetch rejected) → AMBIGUOUS: the request may
+ *     have reached the gateway and created the job while the ACK was lost.
+ *     Falling back to the client path would double-write (the server can't
+ *     dedupe the client's direct Monday writes). POST /send is idempotent on
+ *     idempotencyKey, so park the SAME payload for a safe retry
+ *     ("queued-unconfirmed").
+ */
+export function decideLostAck(
+  online: boolean,
+  lastWasHttpError: boolean,
+): "queued-offline" | "fallback" | "queued-unconfirmed" {
+  if (!online) return "queued-offline";
+  if (lastWasHttpError) return "fallback";
+  return "queued-unconfirmed";
+}
+
+/**
  * Submit a send. Resolves once the job is durably accepted by the server (or
  * parked offline). Throws only when the server reports the job FAILED while we
  * were watching — callers treat a throw as "fall back to the client-side path".
@@ -120,28 +145,19 @@ export async function submitSend(
   }
 
   if (!posted) {
-    // Offline → park; flush on the next `online` event / load.
-    if (typeof navigator !== "undefined" && navigator.onLine === false) {
-      addToOutbox(p);
-      return "queued-offline";
-    }
-    // Online but the gateway responded with an error STATUS (res.ok === false):
-    // POST /send only returns 2xx once the job is created/found, so a non-2xx
-    // means NO job was persisted — it is safe to let the caller fall back to the
-    // client path (there is no server job to double-write).
-    if (lastWasHttpError) {
+    const online = !(typeof navigator !== "undefined" && navigator.onLine === false);
+    const decision = decideLostAck(online, lastWasHttpError);
+    // "fallback": the gateway definitively did not persist the job → safe to let
+    // the caller re-run on the client path.
+    if (decision === "fallback") {
       throw lastErr instanceof Error ? lastErr : new Error("send failed");
     }
-    // Online but NO response came back (fetch rejected). Ambiguous: the request
-    // may have reached the gateway and created the job while the ACK was lost.
-    // We must NOT fall back to the client path — that would run the whole
-    // transaction a SECOND time and double-write (the server can't dedupe the
-    // client's direct Monday writes). Since POST /send is idempotent on
-    // idempotencyKey, parking the SAME payload is always safe: the retry either
-    // finds the existing job or creates it exactly once.
+    // Otherwise park for an idempotent retry and NEVER fall back (no double
+    // write). "queued-unconfirmed" also kicks a background retry so a
+    // parked-while-online job still lands without a page reload.
     addToOutbox(p);
-    scheduleOutboxRetry();
-    return "queued-unconfirmed";
+    if (decision === "queued-unconfirmed") scheduleOutboxRetry();
+    return decision;
   }
 
   opts?.onPhase?.("accepted");
