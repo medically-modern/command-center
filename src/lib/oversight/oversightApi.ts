@@ -800,7 +800,40 @@ function withPriorityCols(chart: ChartDef): ChartDef {
   return { ...chart, drilldownCols: cols };
 }
 
-export const CHART_DEFS: ChartDef[] = RAW_CHART_DEFS.map(withPriorityCols);
+/**
+ * Mirror the column-1 stage's drill-down columns into its manager-view
+ * counterparts (Manager as Processor + Final Decisions), so a manager reads the
+ * SAME fields whichever column they drilled from — a Final-Decisions Benefits
+ * row shows Active/Network, DME Benefits, Auth, SoS … exactly like the
+ * Processor Overview Benefits row.
+ *
+ * A manager chart names its row via `rowOf`, which is what makes this
+ * automatic. Its OWN columns are kept first and win on conflict (that's where
+ * the decision-specific ones live — Proposed Reason, Escalation, the stacked
+ * chart's Escalation Type) and the base stage's columns are appended after,
+ * skipping any already present. Column sets are therefore static: they come
+ * from the chart definitions, never from which patients happen to be loaded.
+ */
+function withMirroredRowCols(chart: ChartDef, byId: Map<string, ChartDef>): ChartDef {
+  if (!chart.rowOf) return chart;
+  const base = byId.get(chart.rowOf);
+  if (!base || base.id === chart.id) return chart;
+  const cols = [...chart.drilldownCols];
+  const seen = new Set(cols.map((c) => c.colId));
+  for (const c of base.drilldownCols) {
+    if (seen.has(c.colId)) continue;
+    seen.add(c.colId);
+    cols.push(c);
+  }
+  return { ...chart, drilldownCols: cols };
+}
+
+const PRIORITISED_CHART_DEFS = RAW_CHART_DEFS.map(withPriorityCols);
+const CHART_DEFS_BY_ID = new Map(PRIORITISED_CHART_DEFS.map((c) => [c.id, c]));
+
+export const CHART_DEFS: ChartDef[] = PRIORITISED_CHART_DEFS.map((c) =>
+  withMirroredRowCols(c, CHART_DEFS_BY_ID),
+);
 
 // ── Section grouping (main view) ────────────────────────────────────────
 export interface OversightSection {
@@ -1414,6 +1447,9 @@ const INSURANCE_ESC_COL = "color_mm2vsh2f";
  *  already read and write on every Insurance panel, so a proposal and its
  *  decision sit in the same history the rep works from. */
 const INSURANCE_NOTES_COL = "long_text_mm2ffsme";
+/** Follow Up Date (samantha COL.followUpDate) — Auth Outstanding buckets purely
+ *  on this, so a Return to Queue must re-date or the patient stays snoozed. */
+const INSURANCE_FOLLOWUP_DATE_COL = "date_mm34m2dz";
 
 export async function approveInsuranceStuck(itemId: string): Promise<void> {
   await writeStatusIndexOnBoard(INSURANCE_BOARD_ID, itemId, INSURANCE_STAGE_COL, INSURANCE_STAGE_STUCK_INDEX);
@@ -1422,13 +1458,16 @@ export async function approveInsuranceStuck(itemId: string): Promise<void> {
 
 /**
  * Return a final-escalated Insurance patient to the rep's queue. The manager may
- * append an OPTIONAL note (stamped) to the Escalation Notes; then the Escalation
- * is cleared so the patient re-enters its stage queue.
+ * append an OPTIONAL note (stamped) to the Reference Notes; the Follow Up Date is
+ * set to today; then the Escalation is cleared so the patient re-enters its
+ * stage queue — the Masheke twin's behaviour, on the Insurance columns.
  *
- * Unlike the Masheke twin this does NOT re-date the patient: Auth Outstanding is
- * a pure Follow Up Date bucket (a blank/past date is due, a future date is
- * snoozed), so writing a date here would silently reshuffle the queue rather
- * than just undo the escalation.
+ * The re-date is what actually makes the return land in Auth Outstanding, which
+ * is a PURE Follow Up Date bucket (future date = snoozed, blank/past = due):
+ * clearing the escalation alone would drop a patient back into the group still
+ * snoozed behind whatever date the rep left. Benefits / Submit Auth snooze on
+ * the Follow Up STATUS instead, so for those the date write is harmless and
+ * keeps "returned" meaning "due now" across all three stages.
  */
 export async function returnInsuranceToQueue(itemId: string, appendNote?: string): Promise<void> {
   const note = appendNote?.trim();
@@ -1438,6 +1477,7 @@ export async function returnInsuranceToQueue(itemId: string, appendNote?: string
     const stamped = stampReturnedToQueue(note, etToday());
     await writeLongTextOnBoard(INSURANCE_BOARD_ID, itemId, INSURANCE_NOTES_COL, appendStampedLine(existing, stamped));
   }
+  await writeDateOnBoard(INSURANCE_BOARD_ID, itemId, INSURANCE_FOLLOWUP_DATE_COL, etToday());
   await writeStatusIndexOnBoard(INSURANCE_BOARD_ID, itemId, INSURANCE_ESC_COL, null);
 }
 

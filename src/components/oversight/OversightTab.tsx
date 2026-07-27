@@ -797,14 +797,12 @@ function DrilldownModal({
           </span>
         </div>
 
-        {/* Table body */}
-        {filtered.length === 0 ? (
-          <div className="px-5 py-12 text-center text-sm text-muted-foreground">
-            No patients match.
-          </div>
-        ) : (
-          <div className="flex-1 overflow-y-auto min-h-0">
-            <TooltipProvider delayDuration={150}>
+        {/* Table body. The table — header row included — renders even with zero
+            rows: the drill-down doubles as the reference for WHICH columns a
+            stage tracks, so an empty chart must still show them rather than
+            collapse to a bare message. */}
+        <div className="flex-1 overflow-y-auto min-h-0">
+          <TooltipProvider delayDuration={150}>
             <table className="w-full table-fixed text-xs">
               <thead className="sticky top-0 bg-card z-10">
                 <tr className="border-b">
@@ -834,6 +832,16 @@ function DrilldownModal({
                 </tr>
               </thead>
               <tbody>
+                {filtered.length === 0 && (
+                  <tr>
+                    <td
+                      colSpan={(chart.notesColId ? 1 : 0) + 1 + cols.length + (onDecision ? 1 : 0)}
+                      className="px-5 py-12 text-center text-sm text-muted-foreground"
+                    >
+                      No patients match.
+                    </td>
+                  </tr>
+                )}
                 {filtered.map((patient, idx) => {
                   const bucketColor =
                     patient.dayBucket !== "Unknown"
@@ -1048,9 +1056,8 @@ function DrilldownModal({
                 })}
               </tbody>
             </table>
-            </TooltipProvider>
-          </div>
-        )}
+          </TooltipProvider>
+        </div>
       </div>
 
       {/* ── Notes popup (centered overlay) ── */}
