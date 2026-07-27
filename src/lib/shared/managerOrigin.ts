@@ -25,6 +25,14 @@ export type ManagerOrigin = "overview" | "manager-processor" | "final-decisions"
 /** Query-string key. Short because it sits alongside patientId/from/manager. */
 export const MANAGER_ORIGIN_PARAM = "mv";
 
+/**
+ * The oversight CHART id the click came from, when the column alone isn't
+ * specific enough. Two charts can share a column — DVS "Retry Queue" and DVS
+ * "Manual Review" are both Manager as Processor — so a page that wants its
+ * list to match the exact bar chart needs the chart, not just the column.
+ */
+export const MANAGER_CHART_PARAM = "mvc";
+
 const VALID: readonly ManagerOrigin[] = ["overview", "manager-processor", "final-decisions"];
 
 function isManagerOrigin(v: string): v is ManagerOrigin {
@@ -41,4 +49,13 @@ export function managerOriginFromParams(params: URLSearchParams): ManagerOrigin 
   const raw = params.get(MANAGER_ORIGIN_PARAM);
   if (!raw) return null;
   return isManagerOrigin(raw) ? raw : null;
+}
+
+/**
+ * The oversight chart id this page was opened from, or null for an ordinary
+ * visit. Pages match it against their own known chart ids, so an unrecognised
+ * value simply means "don't narrow" — never an empty list.
+ */
+export function managerChartFromParams(params: URLSearchParams): string | null {
+  return params.get(MANAGER_CHART_PARAM) || null;
 }

@@ -25,7 +25,7 @@ import {
 } from "@/lib/oversight/oversightApi";
 import { fuzzyNameMatch } from "@/lib/oversight/fuzzyName";
 import { extractProposedStuckReason } from "@/lib/masheke/proposedStuck";
-import { MANAGER_ORIGIN_PARAM } from "@/lib/shared/managerOrigin";
+import { MANAGER_ORIGIN_PARAM, MANAGER_CHART_PARAM } from "@/lib/shared/managerOrigin";
 import { Loader2, BarChart3, X, ExternalLink, StickyNote, Search, ArrowUp, ArrowDown, ArrowUpDown, Star, SlidersHorizontal, Plus, Trash2, RotateCcw, Flag } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -1347,6 +1347,9 @@ export default function OversightTab() {
       );
       const isTertiary = !!section?.tertiaryChartIds?.includes(expandedChart);
       const isSecondary = !!section?.secondaryChartIds?.includes(expandedChart);
+      // The chart itself, for pages whose list must match one specific bar
+      // chart rather than a whole column (two DVS charts share a column).
+      if (isTertiary || isSecondary) params.set(MANAGER_CHART_PARAM, expandedChart);
       if (isTertiary) {
         params.set(MANAGER_ORIGIN_PARAM, "final-decisions");
       } else if (isSecondary) {

@@ -31,6 +31,7 @@ import { PageLoadingOverlay } from "@/components/shared/PageLoadingOverlay";
 import { ReportIssueButton } from "@/components/shared/ReportIssueButton";
 import { Button } from "@/components/ui/button";
 import { useBackNavigation } from "@/hooks/useBackNavigation";
+import { managerChartFromParams } from "@/lib/shared/managerOrigin";
 import { resolveHcpcs, isAutoFilledMedicaidSupply, PRODUCT_LABELS, type ProductId } from "@/lib/samantha/hcpcRules";
 import { allProductsDvsRouted, isStraightMedicaidPrimary, nyMedicaidCin } from "@/lib/samantha/dvsRouting";
 import { writeStatusIndex, writeLongText, COL } from "@/lib/samantha/mondayApi";
@@ -72,6 +73,16 @@ function StatusChip({ label, fallback }: { label?: string; fallback?: string }) 
 }
 
 const isFailedish = (label: string | undefined) => toneFor(label) === "rose";
+
+/**
+ * Needs a human: escalated to a manager, a rose Supplies/Pump DVS status
+ * (MLTC / Failed / Manual Review / Denied), or a claims failure. Mirrors the
+ * oversight `dvs-manual-review` CHART_FILTER — `toneFor` maps exactly those
+ * labels to "rose" — so the rail can match that chart.
+ */
+const isManualReview = (p: Patient) =>
+  !!p.escalated || isFailedish(p.dvsStatus) || isFailedish(p.pumpDvsStatus) || isFailedish(p.claimsStatus);
+
 /**
  * In the retry queue = the bot has literally parked the item there
  * (Supplies/Pump DVS = "Retry Queued"). Mirrors the oversight
@@ -83,6 +94,21 @@ const isFailedish = (label: string | undefined) => toneFor(label) === "rose";
  * in the rail when they aren't queued at all.
  */
 const isQueued = (p: Patient) => p.dvsStatus === "Retry Queued" || p.pumpDvsStatus === "Retry Queued";
+
+/**
+ * Rail narrowing for a click-through from Pipeline Oversight. Both DVS charts
+ * live in the same manager column, so the ORIGIN can't tell them apart and the
+ * chart id is what selects the predicate — arriving from "Retry Queue" must
+ * not list manual-review patients, and vice versa.
+ *
+ * An unknown or absent chart id means no narrowing (an ordinary /dvs visit),
+ * so this can never blank the rail. Declared AFTER both predicates: it reads
+ * them at module-eval time, so a forward reference would be a TDZ crash.
+ */
+const RAIL_FILTERS: Record<string, (p: Patient) => boolean> = {
+  "dvs-retry-queue": isQueued,
+  "dvs-manual-review": isManualReview,
+};
 
 /* ── page ─────────────────────────────────────────────────────────── */
 
@@ -100,10 +126,22 @@ const DvsPage = () => {
   // Follow Up Date hides the patient from the working list until it arrives.
   const snoozed = (p: Patient) => !!p.followUpDate && p.followUpDate > todayEt;
 
+  // Narrow the rail to the oversight chart this page was opened from, so the
+  // list matches the bar chart that produced it. A deep-linked patient
+  // (?patientId=) is always kept, even when they don't match — otherwise
+  // clicking a row could open a page that doesn't list that patient.
+  const railFilter = RAIL_FILTERS[managerChartFromParams(searchParams) ?? ""];
+  const deepLinkedId = searchParams.get("patientId");
+  const inRail = useMemo(
+    () => (p: Patient) => !railFilter || p.id === deepLinkedId || railFilter(p),
+    [railFilter, deepLinkedId],
+  );
+
   const bySearch = useMemo(() => {
     const q = search.trim().toLowerCase();
-    return q ? patients.filter((p) => p.name.toLowerCase().includes(q)) : patients;
-  }, [patients, search]);
+    const scoped = patients.filter(inRail);
+    return q ? scoped.filter((p) => p.name.toLowerCase().includes(q)) : scoped;
+  }, [patients, search, inRail]);
   const duePatients = useMemo(() => bySearch.filter((p) => !snoozed(p)), [bySearch, todayEt]);
   const snoozedPatients = useMemo(() => bySearch.filter((p) => snoozed(p)), [bySearch, todayEt]);
 
