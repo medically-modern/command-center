@@ -50,6 +50,7 @@ import { ReportIssueButton } from "@/components/shared/ReportIssueButton";
 import { ClinicalsDownloadButton } from "@/components/samantha/ClinicalsDownloadButton";
 import { StageActionBar } from "@/components/shared/StageActionBar";
 import { viewFilterFromParams } from "@/lib/roleView";
+import { managerOriginFromParams } from "@/lib/shared/managerOrigin";
 import { sidebarVisibleList } from "@/lib/samantha/sidebarList";
 import { cn } from "@/lib/utils";
 import "@/components/samantha/benefitsRedesign.css";
@@ -76,9 +77,10 @@ const SubmitAuthPage = () => {
   // Auto-select the first patient the sidebar actually shows (same list math
   // as PatientsSidebar), never from the pre-fetch localStorage cache.
   const viewFilter = viewFilterFromParams(searchParams);
+  const managerOrigin = managerOriginFromParams(searchParams);
   const visiblePatients = useMemo(
-    () => sidebarVisibleList(patients, viewFilter, "submitAuth"),
-    [patients, viewFilter],
+    () => sidebarVisibleList(patients, viewFilter, "submitAuth", undefined, managerOrigin),
+    [patients, viewFilter, managerOrigin],
   );
   useAutoSelectPatient(
     initialLoading, patients, visiblePatients, selectedId, setSelectedId,

@@ -503,7 +503,11 @@ interface DrilldownModalProps {
  *  gets a compact fixed width so there's no dead space between columns. */
 function colWidthClass(label: string): string {
   if (/ Log$/.test(label)) return "";              // flex → widest, room for the note
-  if (label === "Proposed Reason") return "";      // flex → room for the stamped reason
+  // Fixed, not flex. Since the manager charts started mirroring their stage's
+  // columns there are enough of them that an unsized reason column stops being
+  // constrained by table-fixed and its text spills over the neighbouring cell.
+  // Full text is still one hover away.
+  if (label === "Proposed Reason") return "w-[220px]";
   if (label === "Evaluation Count") return "w-[54px]";
   if (label === "Days in Stage") return "w-[74px]";
   if (label === "Clinicals Method") return "w-[80px]";
@@ -974,7 +978,11 @@ function DrilldownModal({
                         if (col.label === "Requesting") {
                           const pills = requestingPills(patient);
                           return (
-                            <td key={col.colId} className="px-2 py-1">
+                            // overflow-hidden: pills are whitespace-nowrap, so a
+                            // long label ("Final Escalation Required") in a
+                            // fixed-width column would otherwise paint over its
+                            // neighbour instead of being clipped.
+                            <td key={col.colId} className="px-2 py-1 max-w-0 overflow-hidden">
                               {pills.length ? (
                                 <span className="flex flex-wrap gap-1">
                                   {pills.map((pp) => (
@@ -1004,7 +1012,7 @@ function DrilldownModal({
                             return <td key={col.colId} className="px-2 py-1 text-muted-foreground">—</td>;
                           }
                           return (
-                            <td key={col.colId} className="px-2 py-1 text-foreground/80">
+                            <td key={col.colId} className="px-2 py-1 text-foreground/80 max-w-0 truncate">
                               <Tooltip>
                                 <TooltipTrigger asChild>
                                   <span className="block truncate cursor-help">{raw}</span>
@@ -1324,26 +1332,28 @@ export default function OversightTab() {
           s.secondaryChartIds?.includes(expandedChart) ||
           s.tertiaryChartIds?.includes(expandedChart),
       );
-      if (section?.tertiaryChartIds?.includes(expandedChart)) {
+      const isTertiary = !!section?.tertiaryChartIds?.includes(expandedChart);
+      const isSecondary = !!section?.secondaryChartIds?.includes(expandedChart);
+      if (isTertiary) {
         params.set(MANAGER_ORIGIN_PARAM, "final-decisions");
-      } else if (section?.secondaryChartIds?.includes(expandedChart)) {
+      } else if (isSecondary) {
         params.set(MANAGER_ORIGIN_PARAM, "manager-processor");
       } else if (section?.primaryTitle) {
         // Column 1 of a 3-column manager view (plain stage views have no
         // primaryTitle and stay unmarked, i.e. an ordinary rep page).
         params.set(MANAGER_ORIGIN_PARAM, "overview");
       }
-      // Escalation charts open in MANAGER mode so the manager can actually move
-      // the escalated patient forward. The Confirm Receipt / Chase panels hide
-      // the Confirmed / Not Confirmed actions for escalated patients unless
-      // managerMode is on (?manager=1); ?escalated=1 styles the page as escalated.
-      if (
-        expandedChart.endsWith("-escalations") ||
-        expandedChart.endsWith("-escalated-3rd") ||
-        expandedChart.endsWith("-escalated-merged") ||
-        expandedChart.endsWith("-proposed-stuck") ||
-        expandedChart.endsWith("-final-escalation")
-      ) {
+      // Any chart in a MANAGER column (2 or 3) opens the page in manager mode:
+      // ?manager=1 narrows the sidebar to escalated patients and unhides the
+      // panel actions that are gated for escalated items; ?escalated=1 styles
+      // the page as escalated.
+      //
+      // Driven by the section layout, NOT by chart-id suffixes. The old suffix
+      // list silently missed `benefits-manager-escalation` — singular
+      // "-escalation" matches none of "-escalations" / "-final-escalation" — so
+      // that chart opened an unfiltered rep sidebar showing every Benefits
+      // patient instead of the escalated ones the chart counted.
+      if (isSecondary || isTertiary) {
         params.set("manager", "1");
         params.set("escalated", "1");
       }

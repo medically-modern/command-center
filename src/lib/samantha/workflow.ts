@@ -478,6 +478,11 @@ export interface Patient {
   claimsDenialReason?: string;
   claimsError?: string;
   escalated?: boolean;
+  /** Raw Insurance Escalation label ("Manager Escalation Required" /
+   *  "Final Escalation Required"). `escalated` merges the two, which is right
+   *  for counting but NOT for the manager sidebars: Manager as Processor and
+   *  Final Decisions are different columns and must list different patients. */
+  escalationLabel?: string;
   /** Stage Advancer text from Monday — used to determine sidebar view for escalated patients. */
   stageAdvancerText?: string;
   /** Trigger DVS — set when Medicaid + supplies serving. Written to

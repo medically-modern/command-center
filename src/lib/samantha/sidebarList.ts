@@ -10,6 +10,29 @@ import type { SidebarGroup } from "@/hooks/samantha/useMondayPatients";
 import { etTodayYmd } from "@/lib/samantha/benefitsDerive";
 import { isSnoozedAuthOutstanding } from "@/lib/samantha/authOutstandingReview";
 import { daysAuthOutstanding } from "@/lib/samantha/authOutstandingDays";
+import type { ManagerOrigin } from "@/lib/shared/managerOrigin";
+
+/**
+ * Narrow the escalated pool to the ONE manager column the click came from.
+ *
+ * `Patient.escalated` merges "Manager Escalation Required" and "Final
+ * Escalation Required" — right for counting, wrong for these sidebars:
+ * Manager as Processor and Final Decisions are different oversight columns
+ * with different patients, so a click into either must list only its own.
+ * Without this the sidebar contradicts the bar chart that produced it.
+ *
+ * Any other origin (or none) keeps the whole escalated pool.
+ */
+const ESCALATION_LABEL_FOR: Partial<Record<ManagerOrigin, string>> = {
+  "manager-processor": "Manager Escalation Required",
+  "final-decisions": "Final Escalation Required",
+};
+
+function matchesOrigin(p: Patient, origin: ManagerOrigin | null | undefined): boolean {
+  const want = origin ? ESCALATION_LABEL_FOR[origin] : undefined;
+  return !want || p.escalationLabel === want;
+}
+
 
 /**
  * Daily-bucket rule (2026-07-20), Benefits + Submit Auth: a Follow Up only
@@ -61,6 +84,7 @@ export function sidebarSections(
   viewFilter: RoleFilter,
   activeGroup: SidebarGroup,
   todayYmd: string = etTodayYmd(),
+  managerOrigin: ManagerOrigin | null = null,
 ): SidebarSections {
   const escalatedOnly = viewFilter === "escalated";
   const includeEscalated = viewFilter !== "nonEscalated";
@@ -72,16 +96,16 @@ export function sidebarSections(
 
   const escalatedPatients = escalatedOnly || !includeEscalated
     ? []
-    : patients.filter((p) => p.escalated && !snoozed(p));
+    : patients.filter((p) => p.escalated && matchesOrigin(p, managerOrigin) && !snoozed(p));
   const activePatients = escalatedOnly
-    ? patients.filter((p) => p.escalated)
+    ? patients.filter((p) => p.escalated && matchesOrigin(p, managerOrigin))
     : patients.filter((p) => !p.escalated && !snoozed(p));
   const followUpPatients = escalatedOnly
     ? []
     : patients.filter((p) => snoozed(p) && !p.escalated);
   const bothPatients = escalatedOnly || !includeEscalated
     ? []
-    : patients.filter((p) => p.escalated && snoozed(p));
+    : patients.filter((p) => p.escalated && matchesOrigin(p, managerOrigin) && snoozed(p));
 
   // For Auth Outstanding, sort the main list by days outstanding descending
   // (longest first — live-computed from the earliest Auth Submission Date,
@@ -110,8 +134,9 @@ export function sidebarVisibleList(
   viewFilter: RoleFilter,
   activeGroup: SidebarGroup,
   todayYmd: string = etTodayYmd(),
+  managerOrigin: ManagerOrigin | null = null,
 ): Patient[] {
   const { sortedPatients, followUpPatients, escalatedPatients, bothPatients } =
-    sidebarSections(patients, viewFilter, activeGroup, todayYmd);
+    sidebarSections(patients, viewFilter, activeGroup, todayYmd, managerOrigin);
   return [...sortedPatients, ...followUpPatients, ...escalatedPatients, ...bothPatients];
 }

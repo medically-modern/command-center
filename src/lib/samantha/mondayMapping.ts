@@ -359,6 +359,8 @@ export function mondayItemToPatient(item: MondayItem): Patient {
   const escalated =
     escalationText === "Manager Escalation Required" ||
     escalationText === "Final Escalation Required";
+  // Keep the raw label too — the manager sidebars need to tell the two apart.
+  const escalationLabel = escalated ? escalationText : undefined;
   const stageAdvancerText = cv(COL.stageAdvancer)?.text?.trim() ?? "";
 
   // Days Since Stage Started — status column with index-based ordering
@@ -443,6 +445,7 @@ export function mondayItemToPatient(item: MondayItem): Patient {
     pumpDvsStatus: pumpDvsStatus || undefined,
     claimsStatus: claimsStatus || undefined,
     escalated,
+    escalationLabel,
     stageAdvancerText,
     daysSinceStage: daysSinceStage || undefined,
     daysSinceStageIndex,

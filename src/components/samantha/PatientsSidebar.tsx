@@ -20,6 +20,7 @@ import { daysAuthOutstanding } from "@/lib/samantha/authOutstandingDays";
 import { useSearchParams } from "react-router-dom";
 import { viewFilterFromParams } from "@/lib/roleView";
 import { sidebarSections } from "@/lib/samantha/sidebarList";
+import { managerOriginFromParams } from "@/lib/shared/managerOrigin";
 
 const AUTH_TABS: { key: SidebarGroupType; label: string }[] = [
   { key: "submitAuth", label: "Submit Auth" },
@@ -69,6 +70,9 @@ export function PatientsSidebar({ patients, selectedId, onSelect, loading, error
   const [sp] = useSearchParams();
   const viewFilter = viewFilterFromParams(sp);
   const managerMode = viewFilter === "escalated";
+  // Which oversight manager column this page was opened from, so the list
+  // matches the bar chart that produced it (see sidebarList.matchesOrigin).
+  const managerOrigin = managerOriginFromParams(sp);
 
   const filteredBySearch = searchQuery.trim()
     ? patients.filter((p) => p.name.toLowerCase().includes(searchQuery.trim().toLowerCase()))
@@ -85,8 +89,8 @@ export function PatientsSidebar({ patients, selectedId, onSelect, loading, error
   // Auth Outstanding re-sort — shared with the role pages' auto-select
   // (sidebarList.ts) so the sidebar and pages can never drift apart.
   const { activePatients, sortedPatients } = useMemo(
-    () => sidebarSections(filteredBySearch, viewFilter, activeGroup),
-    [filteredBySearch, viewFilter, activeGroup],
+    () => sidebarSections(filteredBySearch, viewFilter, activeGroup, undefined, managerOrigin),
+    [filteredBySearch, viewFilter, activeGroup, managerOrigin],
   );
 
   const grouped = useMemo(() => groupByInsurance(activePatients), [activePatients]);

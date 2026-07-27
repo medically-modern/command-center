@@ -21,6 +21,14 @@
  */
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { AlertTriangle, Flag, Loader2, RotateCcw } from "lucide-react";
 import { toast } from "sonner";
 import { useSearchParams } from "react-router-dom";
@@ -54,6 +62,7 @@ export function StageActionBar({ stage, board, patientId, patientName, onDone }:
   const actions = actionsFor(stage, origin);
 
   const [proposeOpen, setProposeOpen] = useState(false);
+  const [escalateOpen, setEscalateOpen] = useState(false);
   const [returnOpen, setReturnOpen] = useState(false);
   const [returnNote, setReturnNote] = useState("");
   const [busy, setBusy] = useState<StageAction | null>(null);
@@ -112,7 +121,7 @@ export function StageActionBar({ stage, board, patientId, patientName, onDone }:
 
       {has("escalateStuck") && (
         <Button
-          onClick={() => runDecision("escalateStuck")}
+          onClick={() => setEscalateOpen(true)}
           disabled={busy !== null}
           className="gap-2 bg-red-600 hover:bg-red-700 text-white shadow-elevate"
         >
@@ -120,6 +129,38 @@ export function StageActionBar({ stage, board, patientId, patientName, onDone }:
           Escalate Stuck
         </Button>
       )}
+
+      {/* Escalate Stuck confirms first. It moves the patient to the Stuck stage
+          and takes them out of the pipeline — the most consequential button on
+          the page, and unlike Propose Stuck it writes immediately, so a stray
+          click on a full-page button must not be enough to fire it. */}
+      <Dialog open={escalateOpen} onOpenChange={(o) => busy === null && setEscalateOpen(o)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-red-600" />
+              Escalate {patientName} to Stuck?
+            </DialogTitle>
+            <DialogDescription>
+              This approves the stuck proposal: the patient moves to the <b>Stuck</b> stage and
+              leaves the pipeline. Use <b>Return to Queue</b> instead if they should keep going.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2 sm:gap-2">
+            <Button variant="outline" onClick={() => setEscalateOpen(false)} disabled={busy !== null}>
+              Cancel
+            </Button>
+            <Button
+              onClick={() => runDecision("escalateStuck")}
+              disabled={busy !== null}
+              className="gap-2 bg-red-600 hover:bg-red-700 text-white"
+            >
+              {busy === "escalateStuck" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Flag className="h-4 w-4" />}
+              Yes, mark Stuck
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {has("returnToQueue") && (
         <Button

@@ -269,3 +269,37 @@ describe("sidebarSections", () => {
     expect(ids(s.sortedPatients)).toEqual(["d4", "d1"]);
   });
 });
+
+describe("manager-origin narrowing (sidebar must match the bar chart)", () => {
+  const mk = (id: string, label?: string): Patient =>
+    ({ id, name: id, escalated: !!label, escalationLabel: label }) as Patient;
+
+  const pool = [
+    mk("plain"),
+    mk("mgr", "Manager Escalation Required"),
+    mk("final", "Final Escalation Required"),
+  ];
+
+  it("Manager as Processor lists only Manager-escalated patients", () => {
+    const ids = sidebarVisibleList(pool, "escalated", "benefits", "2026-07-27", "manager-processor").map((p) => p.id);
+    expect(ids).toEqual(["mgr"]);
+  });
+
+  it("Final Decisions lists only Final-escalated patients", () => {
+    const ids = sidebarVisibleList(pool, "escalated", "benefits", "2026-07-27", "final-decisions").map((p) => p.id);
+    expect(ids).toEqual(["final"]);
+  });
+
+  it("keeps the whole escalated pool with no origin, and for Processor Overview", () => {
+    // A rep's own ?manager=1 link carries no origin — it must not be narrowed.
+    for (const origin of [null, "overview"] as const) {
+      const ids = sidebarVisibleList(pool, "escalated", "benefits", "2026-07-27", origin).map((p) => p.id);
+      expect(ids.sort()).toEqual(["final", "mgr"]);
+    }
+  });
+
+  it("never narrows a non-escalated (ordinary rep) view", () => {
+    const ids = sidebarVisibleList(pool, "nonEscalated", "benefits", "2026-07-27", "final-decisions").map((p) => p.id);
+    expect(ids).toEqual(["plain"]);
+  });
+});

@@ -47,6 +47,7 @@ import { useSearchParams } from "react-router-dom";
 import { useBackNavigation } from "@/hooks/useBackNavigation";
 import { ReportIssueButton } from "@/components/shared/ReportIssueButton";
 import { viewFilterFromParams } from "@/lib/roleView";
+import { managerOriginFromParams } from "@/lib/shared/managerOrigin";
 import { sidebarVisibleList } from "@/lib/samantha/sidebarList";
 
 const ChaseBenefitsPage = () => {
@@ -72,9 +73,10 @@ const ChaseBenefitsPage = () => {
   // Auto-select the first patient the sidebar actually shows (same list math
   // as PatientsSidebar), never from the pre-fetch localStorage cache.
   const viewFilter = viewFilterFromParams(searchParams);
+  const managerOrigin = managerOriginFromParams(searchParams);
   const visiblePatients = useMemo(
-    () => sidebarVisibleList(patients, viewFilter, "benefits"),
-    [patients, viewFilter],
+    () => sidebarVisibleList(patients, viewFilter, "benefits", undefined, managerOrigin),
+    [patients, viewFilter, managerOrigin],
   );
   useAutoSelectPatient(
     initialLoading, patients, visiblePatients, selectedId, setSelectedId,
