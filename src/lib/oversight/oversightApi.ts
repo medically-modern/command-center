@@ -104,6 +104,15 @@ export interface ChartDef {
   };
   /** Final Decisions charts: which decision actions the drill-down offers. */
   decision?: "proposed-stuck" | "insurance-final";
+  /** Final Decisions charts: the long-text column the rep's stamped
+   *  "[Proposed Stuck · date] …" line is appended to, so the drill-down can
+   *  extract it back into the synthetic `__proposedReason__` column. It is NOT
+   *  always the chart's `notesColId` — Medical Evaluation stamps the MN notes
+   *  (long_text_mm27zjt2) even on Chase charts whose notes column differs, and
+   *  Insurance stamps the Escalation Notes (long_text_mm3jrssp) rather than the
+   *  call-reference notes. Keep it in agreement with the writer
+   *  (masheke/ProposeStuckModal, samantha/ProposeStuckButton). */
+  reasonColId?: string;
 }
 
 /** Series colors for the merged escalation charts — match the mockup's
@@ -455,6 +464,7 @@ const RAW_CHART_DEFS: ChartDef[] = [
     notesColId: "long_text_mm27zjt2",
     rowOf: "evaluate",
     decision: "proposed-stuck",
+    reasonColId: "long_text_mm27zjt2",
     drilldownCols: [
       { colId: "color_mm1wwm05", label: "Days in Stage" },
       { colId: "__proposedReason__", label: "Proposed Reason" },
@@ -472,6 +482,7 @@ const RAW_CHART_DEFS: ChartDef[] = [
     notesColId: "long_text_mm27zjt2",
     rowOf: "send-request",
     decision: "proposed-stuck",
+    reasonColId: "long_text_mm27zjt2",
     drilldownCols: [
       { colId: "color_mm1wwm05", label: "Days in Stage" },
       { colId: "__proposedReason__", label: "Proposed Reason" },
@@ -489,6 +500,7 @@ const RAW_CHART_DEFS: ChartDef[] = [
     notesColId: "long_text_mm2ytsxp",
     rowOf: "confirm-receipt",
     decision: "proposed-stuck",
+    reasonColId: "long_text_mm27zjt2",
     drilldownCols: [
       { colId: "color_mm1wwm05", label: "Days in Stage" },
       { colId: "__proposedReason__", label: "Proposed Reason" },
@@ -506,6 +518,7 @@ const RAW_CHART_DEFS: ChartDef[] = [
     notesColId: "long_text_mm2ytsxp",
     rowOf: "chase-fax",
     decision: "proposed-stuck",
+    reasonColId: "long_text_mm27zjt2",
     drilldownCols: [
       { colId: "color_mm1wwm05", label: "Days in Stage" },
       { colId: "__proposedReason__", label: "Proposed Reason" },
@@ -523,6 +536,7 @@ const RAW_CHART_DEFS: ChartDef[] = [
     notesColId: "long_text_mm2ytsxp",
     rowOf: "chase-email-parachute",
     decision: "proposed-stuck",
+    reasonColId: "long_text_mm27zjt2",
     drilldownCols: [
       { colId: "color_mm1wwm05", label: "Days in Stage" },
       { colId: "__proposedReason__", label: "Proposed Reason" },
@@ -553,6 +567,7 @@ const RAW_CHART_DEFS: ChartDef[] = [
     notesColId: "long_text_mm2ffsme",
     rowOf: "benefits",
     decision: "insurance-final",
+    reasonColId: "long_text_mm3jrssp",
     drilldownCols: [
       { colId: "date_mm1wf43j", label: "Intake Date" },
       { colId: "color_mm1wwm05", label: "Days in Stage" },
@@ -560,7 +575,7 @@ const RAW_CHART_DEFS: ChartDef[] = [
       { colId: "color_mm2vhwan", label: "Active/Network", pill: true },
       { colId: "color_mm2vt8xg", label: "DME Benefits", pill: true },
       { colId: "color_mm2vsh2f", label: "Escalation", pill: true },
-      { colId: "long_text_mm3jrssp", label: "Escalation Notes" },
+      { colId: "__proposedReason__", label: "Proposed Reason" },
     ],
   },
   {
@@ -570,13 +585,14 @@ const RAW_CHART_DEFS: ChartDef[] = [
     notesColId: "long_text_mm2ffsme",
     rowOf: "submit-auth",
     decision: "insurance-final",
+    reasonColId: "long_text_mm3jrssp",
     drilldownCols: [
       { colId: "date_mm1wf43j", label: "Intake Date" },
       { colId: "color_mm1wwm05", label: "Days in Stage" },
       { colId: "color_mm1x157j", label: "Primary Insurance" },
       { colId: "color_mm1w1cm9", label: "Serving" },
       { colId: "color_mm2vsh2f", label: "Escalation", pill: true },
-      { colId: "long_text_mm3jrssp", label: "Escalation Notes" },
+      { colId: "__proposedReason__", label: "Proposed Reason" },
     ],
   },
   {
@@ -586,13 +602,14 @@ const RAW_CHART_DEFS: ChartDef[] = [
     notesColId: "long_text_mm2ffsme",
     rowOf: "auth-outstanding",
     decision: "insurance-final",
+    reasonColId: "long_text_mm3jrssp",
     drilldownCols: [
       { colId: "date_mm1wf43j", label: "Intake Date" },
       { colId: "color_mm1wwm05", label: "Days in Stage" },
       { colId: "color_mm1x157j", label: "Primary Insurance" },
       { colId: "color_mm1w1cm9", label: "Serving" },
       { colId: "color_mm2vsh2f", label: "Escalation", pill: true },
-      { colId: "long_text_mm3jrssp", label: "Escalation Notes" },
+      { colId: "__proposedReason__", label: "Proposed Reason" },
     ],
   },
   // Manager view: Insurance — Benefits items escalated to the MANAGER (insulin-
@@ -613,6 +630,8 @@ const RAW_CHART_DEFS: ChartDef[] = [
       { colId: "color_mm2vemyy", label: "SoS", pill: true },
       { colId: "dropdown_mm2vez5a", label: "Not Clear Products", pill: true },
       { colId: "color_mm2vsh2f", label: "Escalation", pill: true },
+      // Raw column, NOT __proposedReason__: this is a Manager-as-Processor
+      // chart, not a Final Decision, so there is no stamped proposal to derive.
       { colId: "long_text_mm3jrssp", label: "Escalation Notes" },
     ],
   },
@@ -912,6 +931,10 @@ function columnsForBoard(boardId: number): string[] {
     if (chart.boardId !== boardId) continue;
     for (const dc of chart.drilldownCols) set.add(dc.colId);
     if (chart.notesColId) set.add(chart.notesColId);
+    // The stamped-reason source is often NOT a drilldown column (the
+    // drill-down shows the derived __proposedReason__ instead), so fetch it
+    // explicitly or the "Proposed Reason" cell reads permanently blank.
+    if (chart.reasonColId) set.add(chart.reasonColId);
   }
 
   // Always include the priority-scoring columns (referral source/type + insurance)

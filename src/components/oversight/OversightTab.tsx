@@ -81,10 +81,12 @@ const CHART_ROUTES: Record<string, string | null> = {
   "confirm-receipt-proposed-stuck": "/confirm-receipt",
   "chase-fax-proposed-stuck": "/chase-fax",
   "chase-email-parachute-proposed-stuck": "/chase-parachute",
-  // Insurance Final Decisions charts — decisions happen in the drill-down.
-  "benefits-final-escalation": null,
-  "submit-auth-final-escalation": null,
-  "auth-outstanding-final-escalation": null,
+  // Insurance Final Decisions charts — like the ME Proposed Stuck charts, these
+  // route to the stage page (manager mode) so the manager can view/work the
+  // patient; the Approve/Return actions still live in the drill-down itself.
+  "benefits-final-escalation": "/benefits",
+  "submit-auth-final-escalation": "/submit-auth",
+  "auth-outstanding-final-escalation": "/auth-outstanding",
   // Manager as Processor: managers click through to work the patient.
   "benefits-manager-escalation": "/benefits",
   // DVS charts open the DVS monitor page for the clicked patient (?patientId
@@ -1301,7 +1303,8 @@ export default function OversightTab() {
         expandedChart.endsWith("-escalations") ||
         expandedChart.endsWith("-escalated-3rd") ||
         expandedChart.endsWith("-escalated-merged") ||
-        expandedChart.endsWith("-proposed-stuck")
+        expandedChart.endsWith("-proposed-stuck") ||
+        expandedChart.endsWith("-final-escalation")
       ) {
         params.set("manager", "1");
         params.set("escalated", "1");
@@ -1369,13 +1372,15 @@ export default function OversightTab() {
       ];
     }
     const list = bySearch(data.get(expandedChart) ?? []);
-    // Final Decisions (Proposed Stuck): the reason no longer has its own Monday
-    // column — pull the stamped line back out of the MN notes into a synthetic
+    // Final Decisions: the reason has no Monday column of its own — pull the
+    // stamped line back out of the chart's reason source (MN notes for Medical
+    // Evaluation, Escalation Notes for Insurance) into a synthetic
     // __proposedReason__ column so the drill-down can show it at a glance.
-    if (def?.decision === "proposed-stuck") {
+    if (def?.decision && def.reasonColId) {
+      const reasonColId = def.reasonColId;
       return list.map((p) => ({
         ...p,
-        cols: { ...p.cols, __proposedReason__: extractProposedStuckReason(p.cols["long_text_mm27zjt2"]) },
+        cols: { ...p.cols, __proposedReason__: extractProposedStuckReason(p.cols[reasonColId]) },
       }));
     }
     return list;
