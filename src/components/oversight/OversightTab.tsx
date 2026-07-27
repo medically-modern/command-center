@@ -562,7 +562,17 @@ function DrilldownModal({
   // optional note to the MN notes before the patient returns to the queue.
   const [returnModalId, setReturnModalId] = useState<string | null>(null);
   const [returnNote, setReturnNote] = useState("");
-  const isProposedStuck = chart.decision === "proposed-stuck";
+  // Both Final-Decisions kinds open the Return modal (optional stamped note +
+  // a view of the notes carrying the rep's proposal). They differ in WHERE the
+  // note lands and whether the return also re-dates the patient — Insurance
+  // deliberately doesn't re-date (Auth Outstanding buckets on that date).
+  const isDecisionChart = !!chart.decision;
+  const returnRedates = chart.decision === "proposed-stuck";
+  const reasonNotesLabel = chart.decision === "insurance-final" ? "Reference Notes" : "MN Notes";
+  // The proposal is stamped into the reason source, which is NOT always the
+  // chart's notesColId (Chase charts stamp the MN notes) — show the column the
+  // manager is actually deciding from.
+  const returnNotesColId = chart.reasonColId ?? chart.notesColId;
   const runDecision = async (patientId: string, action: "approve" | "return", appendNote?: string) => {
     if (!onDecision || decidingId) return;
     setDecidingId(patientId);
@@ -573,9 +583,9 @@ function DrilldownModal({
     }
   };
   const decide = async (patientId: string, action: "approve" | "return") => {
-    // A Proposed-Stuck Return opens a modal first (optional note + view of the MN
-    // notes). Everything else (Approve, or an Insurance-final Return) writes now.
-    if (action === "return" && isProposedStuck) {
+    // A Return opens a modal first (optional stamped note + a view of the notes
+    // the proposal was made in). Approve writes immediately.
+    if (action === "return" && isDecisionChart) {
       setReturnNote("");
       setReturnModalId(patientId);
       return;
@@ -1085,7 +1095,7 @@ function DrilldownModal({
       {returnModalId && (() => {
         const rp = filtered.find((p) => p.id === returnModalId) ?? patients.find((p) => p.id === returnModalId);
         if (!rp) return null;
-        const rpNotes = (chart.notesColId ? rp.cols[chart.notesColId] ?? "" : "").trim();
+        const rpNotes = (returnNotesColId ? rp.cols[returnNotesColId] ?? "" : "").trim();
         const busy = decidingId === returnModalId;
         return (
           <div
@@ -1113,13 +1123,14 @@ function DrilldownModal({
               </div>
               <div className="flex-1 overflow-y-auto px-4 py-3 min-h-0 space-y-3">
                 <p className="text-xs text-muted-foreground">
-                  Sets Next Action Date to today and clears the escalation, so the
-                  patient reappears in the rep's queue. Optionally add a note below —
-                  it's stamped into the MN notes.
+                  {returnRedates
+                    ? "Sets Next Action Date to today and clears the escalation, so the patient reappears in the rep's queue."
+                    : "Clears the escalation, so the patient reappears in the rep's queue. The follow-up date is left alone."}{" "}
+                  Optionally add a note below — it's stamped into the {reasonNotesLabel}.
                 </p>
                 <div>
                   <label className="block text-xs font-medium text-muted-foreground mb-1">
-                    MN Notes
+                    {reasonNotesLabel}
                   </label>
                   <div className="rounded-md border border-border bg-muted/30 px-3 py-2 text-xs text-foreground/80 whitespace-pre-wrap break-words max-h-40 overflow-y-auto">
                     {rpNotes || <span className="text-muted-foreground">No notes yet.</span>}
@@ -1374,7 +1385,7 @@ export default function OversightTab() {
     const list = bySearch(data.get(expandedChart) ?? []);
     // Final Decisions: the reason has no Monday column of its own — pull the
     // stamped line back out of the chart's reason source (MN notes for Medical
-    // Evaluation, Escalation Notes for Insurance) into a synthetic
+    // Evaluation, Reference Notes for Insurance) into a synthetic
     // __proposedReason__ column so the drill-down can show it at a glance.
     if (def?.decision && def.reasonColId) {
       const reasonColId = def.reasonColId;
@@ -1395,7 +1406,7 @@ export default function OversightTab() {
       try {
         if (kind === "insurance-final") {
           if (action === "approve") await approveInsuranceStuck(patientId);
-          else await returnInsuranceToQueue(patientId);
+          else await returnInsuranceToQueue(patientId, appendNote);
         } else {
           if (action === "approve") await approveProposedStuck(patientId);
           else await returnProposedToQueue(patientId, appendNote);

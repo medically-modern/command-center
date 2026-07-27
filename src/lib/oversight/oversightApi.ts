@@ -108,9 +108,9 @@ export interface ChartDef {
    *  "[Proposed Stuck · date] …" line is appended to, so the drill-down can
    *  extract it back into the synthetic `__proposedReason__` column. It is NOT
    *  always the chart's `notesColId` — Medical Evaluation stamps the MN notes
-   *  (long_text_mm27zjt2) even on Chase charts whose notes column differs, and
-   *  Insurance stamps the Escalation Notes (long_text_mm3jrssp) rather than the
-   *  call-reference notes. Keep it in agreement with the writer
+   *  (long_text_mm27zjt2) even on Chase charts whose notes column differs.
+   *  Insurance stamps its Reference Notes (long_text_mm2ffsme), which happens
+   *  to equal its notesColId. Keep it in agreement with the writer
    *  (masheke/ProposeStuckModal, samantha/ProposeStuckButton). */
   reasonColId?: string;
 }
@@ -567,7 +567,7 @@ const RAW_CHART_DEFS: ChartDef[] = [
     notesColId: "long_text_mm2ffsme",
     rowOf: "benefits",
     decision: "insurance-final",
-    reasonColId: "long_text_mm3jrssp",
+    reasonColId: "long_text_mm2ffsme",
     drilldownCols: [
       { colId: "date_mm1wf43j", label: "Intake Date" },
       { colId: "color_mm1wwm05", label: "Days in Stage" },
@@ -585,7 +585,7 @@ const RAW_CHART_DEFS: ChartDef[] = [
     notesColId: "long_text_mm2ffsme",
     rowOf: "submit-auth",
     decision: "insurance-final",
-    reasonColId: "long_text_mm3jrssp",
+    reasonColId: "long_text_mm2ffsme",
     drilldownCols: [
       { colId: "date_mm1wf43j", label: "Intake Date" },
       { colId: "color_mm1wwm05", label: "Days in Stage" },
@@ -602,7 +602,7 @@ const RAW_CHART_DEFS: ChartDef[] = [
     notesColId: "long_text_mm2ffsme",
     rowOf: "auth-outstanding",
     decision: "insurance-final",
-    reasonColId: "long_text_mm3jrssp",
+    reasonColId: "long_text_mm2ffsme",
     drilldownCols: [
       { colId: "date_mm1wf43j", label: "Intake Date" },
       { colId: "color_mm1wwm05", label: "Days in Stage" },
@@ -1408,13 +1408,36 @@ const INSURANCE_BOARD_ID = 18410601299;
 const INSURANCE_STAGE_COL = "color_mm1ws96t";
 const INSURANCE_STAGE_STUCK_INDEX = 2; // "Stuck / Don't Proceed"
 const INSURANCE_ESC_COL = "color_mm2vsh2f";
+/** Reference Notes — where the rep's stamped "[Proposed Stuck …]" reason and
+ *  the manager's "[Returned to queue …]" note both live on the Insurance board
+ *  (samantha COL.callReferenceNotes). This is the shared notes field the reps
+ *  already read and write on every Insurance panel, so a proposal and its
+ *  decision sit in the same history the rep works from. */
+const INSURANCE_NOTES_COL = "long_text_mm2ffsme";
 
 export async function approveInsuranceStuck(itemId: string): Promise<void> {
   await writeStatusIndexOnBoard(INSURANCE_BOARD_ID, itemId, INSURANCE_STAGE_COL, INSURANCE_STAGE_STUCK_INDEX);
   await writeStatusIndexOnBoard(INSURANCE_BOARD_ID, itemId, INSURANCE_ESC_COL, null);
 }
 
-export async function returnInsuranceToQueue(itemId: string): Promise<void> {
+/**
+ * Return a final-escalated Insurance patient to the rep's queue. The manager may
+ * append an OPTIONAL note (stamped) to the Escalation Notes; then the Escalation
+ * is cleared so the patient re-enters its stage queue.
+ *
+ * Unlike the Masheke twin this does NOT re-date the patient: Auth Outstanding is
+ * a pure Follow Up Date bucket (a blank/past date is due, a future date is
+ * snoozed), so writing a date here would silently reshuffle the queue rather
+ * than just undo the escalation.
+ */
+export async function returnInsuranceToQueue(itemId: string, appendNote?: string): Promise<void> {
+  const note = appendNote?.trim();
+  if (note) {
+    // Read the notes fresh so a concurrent edit isn't clobbered, then append.
+    const existing = await readItemColumnText(itemId, INSURANCE_NOTES_COL);
+    const stamped = stampReturnedToQueue(note, etToday());
+    await writeLongTextOnBoard(INSURANCE_BOARD_ID, itemId, INSURANCE_NOTES_COL, appendStampedLine(existing, stamped));
+  }
   await writeStatusIndexOnBoard(INSURANCE_BOARD_ID, itemId, INSURANCE_ESC_COL, null);
 }
 

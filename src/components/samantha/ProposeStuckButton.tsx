@@ -4,8 +4,8 @@
  * flow in `masheke/ProposeStuckModal`: reps don't write Stuck themselves, they
  * PROPOSE it with a reason and a manager decides.
  *
- * On confirm: the reason is APPENDED to the Escalation Notes
- * (long_text_mm3jrssp, stamped "[Proposed Stuck · <date>] …") and Escalation is
+ * On confirm: the reason is APPENDED to the Reference Notes
+ * (long_text_mm2ffsme, stamped "[Proposed Stuck · <date>] …") and Escalation is
  * flipped to "Final Escalation Required" (color_mm2vsh2f index 2). The Stage
  * Advancer is NOT touched, so this is a plain status write — no automation keys
  * on it for a stage move. The patient surfaces in Pipeline Oversight → Final
@@ -55,10 +55,10 @@ export function ProposeStuckButton({ patientId, onDone }: { patientId: string; o
     try {
       // Read the notes fresh so a concurrent edit isn't clobbered, append the
       // stamped reason, THEN flip the escalation status.
-      const existing = await readColumnTexts(patientId, [COL.escalationNotes]);
-      const current = existing.find((c) => c.id === COL.escalationNotes)?.text ?? "";
+      const existing = await readColumnTexts(patientId, [COL.callReferenceNotes]);
+      const current = existing.find((c) => c.id === COL.callReferenceNotes)?.text ?? "";
       const stamped = stampProposedStuck(reason.trim(), etToday());
-      await writeLongText(patientId, COL.escalationNotes, appendStampedLine(current, stamped));
+      await writeLongText(patientId, COL.callReferenceNotes, appendStampedLine(current, stamped));
       await writeStatusIndex(patientId, COL.escalation, ESCALATION_INDEX.finalRequired);
       toast.success("Proposed stuck — sent to the manager for a decision");
       close();
