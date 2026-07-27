@@ -187,6 +187,7 @@ export function StediPanel({ patient, onRefresh, onUpdate, onNext, onRemoveOverl
         dob: patient.dob,
         generalInsurance: patient.generalInsurance,
         workingMemberId: (patient.workingMemberId || patient.memberId1).trim(),
+        memberId1: patient.memberId1,
       });
       if (result.ok) {
         // Mark these values as the new "known in Monday" baseline

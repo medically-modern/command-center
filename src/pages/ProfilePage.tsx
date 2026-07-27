@@ -30,6 +30,17 @@ import {
 } from "@/lib/profile/primaryInsurance";
 import { computeFirstAndRecurring } from "@/lib/profile/oopEstimate";
 import { interpretStediError } from "@/lib/profile/stediErrors";
+import { checkMemberIdReentry, type MemberIdReentryCheck } from "@/lib/profile/memberIdCheck";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import {
   GENERAL_INSURANCE_INDEX, SECONDARY_INSURANCE_INDEX, GENDER_INDEX,
   SERVING_INDEX, CGM_TYPE_INDEX, PUMP_TYPE_INDEX,
@@ -105,6 +116,9 @@ const ProfilePage = () => {
 
   const [selectedId, setSelectedId] = useState<string | null>(searchParams.get("patientId") ?? null);
   const [submitting, setSubmitting] = useState(false);
+  // Set when the re-entered Member ID diverges from the one Stedi verified —
+  // holds both values for the confirmation dialog. Null = no conflict pending.
+  const [memberIdConflict, setMemberIdConflict] = useState<MemberIdReentryCheck | null>(null);
   const [sendingBack, setSendingBack] = useState(false);
   // Which patient a Stedi run is in-flight for (null = none). Kept per-patient
   // so switching patients while a check polls doesn't leak the spinner.
@@ -296,6 +310,7 @@ const ProfilePage = () => {
           dob: patient.dob,
           generalInsurance: patient.generalInsurance,
           workingMemberId: workingId,
+          memberId1: patient.memberId1,
         });
         if (verify.ok) break;
       }
@@ -359,11 +374,21 @@ const ProfilePage = () => {
     } finally { setCalcOop(false); }
   };
 
-  const handleAdvance = async () => {
+  const handleAdvance = async (opts?: { memberIdConfirmed?: boolean }) => {
     if (!selected) return;
     if (selected.clinicAddress && !hasValidZip(selected.clinicAddress)) {
       toast.error("Clinic address must include a valid 5-digit zip code");
       return;
+    }
+    // The re-entered Member ID must match the one Stedi actually ran against.
+    // Advisory, not a block — the Fidelis-supplies-only → NY Medicaid case is a
+    // legitimate divergence — so this asks once rather than refusing.
+    if (!opts?.memberIdConfirmed) {
+      const check = checkMemberIdReentry(selected);
+      if (check.mismatch) {
+        setMemberIdConflict(check);
+        return;
+      }
     }
     setSubmitting(true);
     try {
@@ -416,6 +441,52 @@ const ProfilePage = () => {
   return (
     <SidebarProvider>
       <PageLoadingOverlay show={initialLoading} />
+      {/* Member ID re-entry conflict — the re-entered ID is not the one Stedi
+          ran against. Shows both values so the rep can see which is which
+          instead of being told "something's wrong". */}
+      <AlertDialog
+        open={!!memberIdConflict}
+        onOpenChange={(open) => { if (!open) setMemberIdConflict(null); }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Member ID doesn't match the one we checked</AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-3">
+                <p>
+                  The Member ID you entered is not the one the eligibility check
+                  ran against. Advancing will send the entered value forward.
+                </p>
+                <div className="rounded-md border bg-muted/40 p-3 space-y-2 text-sm">
+                  <div className="flex justify-between gap-4">
+                    <span className="text-muted-foreground">Checked by Stedi</span>
+                    <span className="font-mono font-semibold">{memberIdConflict?.verified}</span>
+                  </div>
+                  <div className="flex justify-between gap-4">
+                    <span className="text-muted-foreground">You entered</span>
+                    <span className="font-mono font-semibold text-amber-700">{memberIdConflict?.entered}</span>
+                  </div>
+                </div>
+                <p>
+                  If the entered value is a typo, go back and fix it — the
+                  checked ID is the one benefits were verified on.
+                </p>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Go back and fix it</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                setMemberIdConflict(null);
+                void handleAdvance({ memberIdConfirmed: true });
+              }}
+            >
+              Advance anyway
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
       <div className="min-h-screen flex w-full bg-gradient-subtle">
         <PatientsSidebar
           patients={patients}
@@ -1156,7 +1227,7 @@ function ProfileBody(p: BodyProps) {
                   <div className={`route adv ${p.canSubmit ? "on" : ""}`}>
                     <h4>Advance to MN</h4>
                     <p>Everything checks out → save to Monday and move to Medical Necessity.</p>
-                    <button className="btn primary" onClick={p.onAdvance} disabled={!p.canSubmit || p.submitting || p.sendingBack}>
+                    <button className="btn primary" onClick={() => p.onAdvance()} disabled={!p.canSubmit || p.submitting || p.sendingBack}>
                       {p.submitting ? "Advancing…" : "Advance to MN →"}
                     </button>
                   </div>

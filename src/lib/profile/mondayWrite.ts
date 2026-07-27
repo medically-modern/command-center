@@ -365,12 +365,18 @@ export async function verifyProfileWritten(
     dob: string;
     generalInsurance: string;
     workingMemberId: string;
+    /** Member ID 1 — the ID that ADVANCES downstream. Optional so existing
+     *  callers keep working; pass it wherever it's known. Until 2026-07 this
+     *  column was the one field never verified, which is how a bad re-entry
+     *  reached Medical Evaluation unnoticed (Raska, 2026-07-24). */
+    memberId1?: string;
   },
 ): Promise<{ ok: boolean; mismatches: string[] }> {
   const item = await fetchItem(itemId, [
     COL.dob,
     COL.generalInsurance,
     COL.memberIdWorking,
+    COL.memberId1,
   ]);
   if (!item) return { ok: false, mismatches: ["Item not found in Monday"] };
 
@@ -392,6 +398,11 @@ export async function verifyProfileWritten(
   if (cv(COL.memberIdWorking) !== expected.workingMemberId) {
     mismatches.push(
       `Member ID (Monday: "${cv(COL.memberIdWorking)}", expected: "${expected.workingMemberId}")`,
+    );
+  }
+  if (expected.memberId1 !== undefined && cv(COL.memberId1) !== expected.memberId1) {
+    mismatches.push(
+      `Member ID 1 (Monday: "${cv(COL.memberId1)}", expected: "${expected.memberId1}")`,
     );
   }
   return { ok: mismatches.length === 0, mismatches };
