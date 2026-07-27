@@ -38,7 +38,7 @@ import { TRIGGER_DVS_INDEX, TRIGGER_PUMP_DVS_INDEX } from "@/lib/samantha/monday
 import { etTodayYmd, ymdToUs } from "@/lib/samantha/benefitsDerive";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
-import { AlertTriangle, ArrowLeft, Bot, Clock, Loader2, RefreshCw, RotateCw, Search, User, Zap } from "lucide-react";
+import { AlertTriangle, ArrowLeft, Clock, Loader2, RefreshCw, RotateCw, Search, User, Zap } from "lucide-react";
 
 /* ── status-chip tone mapping (live bot labels) ───────────────────── */
 
@@ -159,24 +159,11 @@ const DvsPage = () => {
     }
   };
 
-  /* Top-of-page banner (§7). Narration trimmed (Josh, 2026-07): the
-     Manual-review, "Automation in progress" and "Fully paid" banners are all
-     gone — the DVS Status by Product grid already shows those states. Only the
-     retry-queue banner survives, since it carries the attempt # / next-run
-     date shown nowhere else on the page. */
-  const banner = useMemo(() => {
-    if (!selected) return null;
-    const manual =
-      selected.escalated || isFailedish(selected.dvsStatus) || isFailedish(selected.pumpDvsStatus) || isFailedish(selected.claimsStatus);
-    if (manual) return null;
-    if (isQueued(selected)) {
-      return {
-        tone: "amber" as Tone,
-        text: `Holding in the retry queue — re-runs once a day automatically${selected.retryCount ? ` (attempt ${selected.retryCount}` : "("}${selected.retryNextDate ? ` · next run ${ymdToUs(selected.retryNextDate)})` : ")"}. Stage stays at DVS; the queue is monitored from the Insurance manager view.`,
-      };
-    }
-    return null;
-  }, [selected]);
+  /* Top-of-page banner: GONE (Josh, 2026-07). The Manual-review, "Automation in
+     progress" and "Fully paid" banners went earlier because the DVS Status by
+     Product grid already shows those states; the retry-queue one is now gone
+     too — the IN RETRY QUEUE strip below the Claims step already carries the
+     attempt # and next-run date, so the banner only repeated it. */
 
   return (
     <div className="min-h-screen flex w-full bg-gradient-subtle">
@@ -266,18 +253,6 @@ const DvsPage = () => {
               )}
               {selected && (
                 <>
-                  {/* Status banner — only when there's a noteworthy signal
-                      (retry queue). Routine running / fully-paid narration is
-                      omitted; the DVS Status by Product grid shows that state.
-                      Must NOT gate the rest of the pane — decoupled so a
-                      patient with no banner still renders their full detail. */}
-                  {banner && (
-                    <div className={cn("flex items-start gap-3 rounded-xl border px-4 py-3", TONE_CLASS[banner.tone])}>
-                      <Bot className="h-5 w-5 mt-0.5 shrink-0" />
-                      <p className="text-sm font-medium leading-relaxed">{banner.text}</p>
-                    </div>
-                  )}
-
                   {/* CIN — the ID everything runs on (never say "CIN" in UI) */}
                   {cin ? (
                     <div className="rounded-xl border border-l-4 border-[#0F4C5C]/30 border-l-[#0F4C5C] bg-[#0F4C5C]/5 px-4 py-3 flex items-center gap-3 flex-wrap">
@@ -433,8 +408,8 @@ const DvsPage = () => {
                   {isQueued(selected) && (
                     <div className="rounded-xl border border-amber-300 bg-amber-50/70 dark:border-amber-800 dark:bg-amber-950/30 px-4 py-3 text-sm font-semibold text-amber-800 dark:text-amber-300">
                       IN RETRY QUEUE{selected.retryCount ? ` — attempt ${selected.retryCount}` : ""}
-                      {selected.retryNextDate ? ` · next run ${ymdToUs(selected.retryNextDate)}` : " · re-runs once a day"}.
-                      Only unpaid codes are resubmitted (§5). Nobody triggers queue retries from the UI.
+                      {selected.retryNextDate ? ` · next run ${ymdToUs(selected.retryNextDate)}` : ""}
+                      {" · re-runs once a day automatically. Only unpaid codes are resubmitted."}
                     </div>
                   )}
                 </>
