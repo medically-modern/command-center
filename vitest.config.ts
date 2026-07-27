@@ -8,7 +8,9 @@ export default defineConfig({
     environment: "jsdom",
     globals: true,
     setupFiles: ["./src/test/setup.ts"],
-    include: ["src/**/*.{test,spec}.{ts,tsx}"],
+    // services/ holds the Railway-side Node services (monday-gateway et al).
+    // They ship separately from the SPA but are tested in the same run.
+    include: ["src/**/*.{test,spec}.{ts,tsx}", "services/**/*.{test,spec}.mjs"],
   },
   resolve: {
     alias: { "@": path.resolve(__dirname, "./src") },

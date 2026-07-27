@@ -28,8 +28,14 @@
  *                      (default: GitHub Pages site + localhost dev)
  *   MONDAY_API_VERSION default "2024-10"
  *   LOG_MODE           off | mutations | all          (default "all")
- *   LOG_PAYLOAD        "true" stores query text + variables — these contain
- *                      PATIENT DATA (PHI). Default false = metadata only.
+ *   LOG_PAYLOAD        "true" stores raw query text + variables ON MUTATIONS
+ *                      ONLY — these contain PATIENT DATA (PHI). Default false.
+ *                      Reads are ALWAYS metadata-only (who read which item,
+ *                      when) and never store payload regardless of this flag:
+ *                      reads are ~95% of traffic and carry the largest bodies,
+ *                      and the access trail doesn't need their contents.
+ *                      Note: what a mutation CHANGED is captured separately in
+ *                      the `columns` field and does not require this flag.
  *   GATEWAY_CLIENT_KEY if set, requests must send a matching X-MM-Key header
  *   PORT               set by Railway
  */
@@ -40,6 +46,7 @@ const { Pool } = pkg;
 import { registerSend } from "./send.mjs";
 import { registerRingCentral } from "./ringcentral.mjs";
 import { verifyGoogleToken, authEnforced } from "./auth.mjs";
+import { extractColumns } from "./columns.mjs";
 
 const {
   MONDAY_API_TOKEN,
@@ -103,6 +110,13 @@ CREATE INDEX IF NOT EXISTS gql_log_operation_idx  ON gql_log (operation);
 CREATE INDEX IF NOT EXISTS gql_log_item_idx       ON gql_log (item_id);
 CREATE INDEX IF NOT EXISTS gql_log_actor_idx      ON gql_log (actor);
 ALTER TABLE gql_log ADD COLUMN IF NOT EXISTS columns JSONB;  -- {colId: value} a mutation wrote (note: patient values = PHI)
+-- TRUE  = actor came from a verified Google Workspace ID token (X-MM-Auth)
+-- FALSE = actor is the self-asserted X-MM-User header, or absent
+-- NULL  = not recorded: rows predating this column, and /send rows (send.mjs
+--         writes gql_log directly and send_jobs carries no verified flag)
+-- Neither /gql nor /send ENFORCES auth today, so a row is only safe to
+-- attribute to a person when this is TRUE.
+ALTER TABLE gql_log ADD COLUMN IF NOT EXISTS actor_verified BOOLEAN;
 
 -- Convenience view: the writes people actually audit.
 CREATE OR REPLACE VIEW gql_writes AS
@@ -163,29 +177,9 @@ function extractBoardId(query, vars) {
   return m ? m[1] : null;
 }
 
-// Extract the column writes from a mutation as { columnId: value }. The app
-// builds inline mutations (value JSON inline, not variables), so parse the text.
-function extractColumns(query) {
-  const q = String(query || "");
-  const out = {};
-  // change_multiple_column_values(column_values: "{...json...}")
-  const multi = q.match(/column_values:\s*("(?:[^"\\]|\\.)*")/);
-  if (multi) {
-    try { Object.assign(out, JSON.parse(JSON.parse(multi[1]))); } catch { /* ignore */ }
-  }
-  // change_(simple_)column_value(column_id: "X", value: <"json" | literal>)
-  const col = q.match(/column_id:\s*"([^"]+)"/);
-  if (col) {
-    let val = null;
-    const vm = q.match(/value:\s*("(?:[^"\\]|\\.)*")/);
-    if (vm) {
-      try { val = JSON.parse(JSON.parse(vm[1])); }     // double-encoded JSON string
-      catch { try { val = JSON.parse(vm[1]); } catch { val = vm[1]; } }
-    }
-    out[col[1]] = val;
-  }
-  return Object.keys(out).length ? out : null;
-}
+// extractColumns() now lives in ./columns.mjs — it resolves $placeholders
+// against the variables object, so writes sent as GraphQL variables (which is
+// most of them) are recorded instead of logged as columns=NULL.
 
 function esc(s) {
   return String(s == null ? "" : s).replace(
@@ -197,15 +191,21 @@ function esc(s) {
 async function logRequest(rec) {
   if (!pool || LOG_MODE === "off") return;
   if (LOG_MODE === "mutations" && rec.operation !== "mutation") return;
+  // Reads keep the access trail (who touched which item, when) but never the
+  // body. They are ~95% of traffic and carry the largest payloads, and the
+  // table has no pruning — storing their contents buys nothing and grows
+  // without bound.
+  const keepPayload = STORE_PAYLOAD && rec.operation === "mutation";
   try {
     await pool.query(
       `INSERT INTO gql_log
-         (actor, client_ip, origin, user_agent, operation, operation_name,
+         (actor, actor_verified, client_ip, origin, user_agent, operation, operation_name,
           board_id, item_id, query_text, variables,
           monday_status, monday_errors, ok, duration_ms, columns)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`,
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)`,
       [
         rec.actor,
+        rec.actor_verified ?? null,
         rec.client_ip,
         rec.origin,
         rec.user_agent,
@@ -213,8 +213,8 @@ async function logRequest(rec) {
         rec.operation_name,
         rec.board_id,
         rec.item_id,
-        STORE_PAYLOAD ? rec.query_text : null,
-        STORE_PAYLOAD ? rec.variables : null,
+        keepPayload ? rec.query_text : null,
+        keepPayload ? rec.variables : null,
         rec.monday_status,
         rec.monday_errors,
         rec.ok,
@@ -282,6 +282,11 @@ app.post("/gql", async (req, res) => {
   // until the per-board gql() calls are wired to send the token too.
   const gUser = await verifyGoogleToken(req.headers["x-mm-auth"]);
   const actor = gUser?.email || req.headers["x-mm-user"] || null;
+  // Records HOW we know who this is. The fallback above trusts a header the
+  // browser sets, so without this an audit row can't distinguish "verified
+  // Google identity" from "self-asserted". Only actor_verified = TRUE should
+  // be treated as attributable to a person.
+  const actorVerified = !!gUser?.email;
 
   const started = Date.now();
   let status = 0;
@@ -321,6 +326,7 @@ app.post("/gql", async (req, res) => {
   // Fire-and-forget audit log (never blocks or fails the client response).
   logRequest({
     actor,
+    actor_verified: actorVerified,
     client_ip: clientIp(req),
     origin: req.headers.origin || null,
     user_agent: req.headers["user-agent"] || null,
@@ -328,7 +334,7 @@ app.post("/gql", async (req, res) => {
     operation_name: opName(query),
     board_id: extractBoardId(query, variables),
     item_id: extractItemId(query, variables),
-    columns: opType(query) === "mutation" ? extractColumns(query) : null,
+    columns: opType(query) === "mutation" ? extractColumns(query, variables) : null,
     query_text: query,
     variables: variables || null,
     monday_status: status,
@@ -419,7 +425,7 @@ async function fetchAudit(req) {
   const onlyWrites = req.query.all !== "1";
   const where = onlyWrites ? "WHERE operation = 'mutation'" : "";
   const r = await pool.query(
-    `SELECT created_at, actor, client_ip, operation, operation_name,
+    `SELECT created_at, actor, actor_verified, client_ip, operation, operation_name,
             item_id, board_id, ok, monday_status, duration_ms, columns
      FROM gql_log ${where} ORDER BY created_at DESC LIMIT $1`,
     [limit],
@@ -456,7 +462,7 @@ function renderAudit(rows, opts) {
       }
       return `<tr>
       <td class="t">${esc(fmtET(r.created_at))}</td>
-      <td>${esc(r.actor || "—")}</td>
+      <td>${esc(r.actor || "—")}${r.actor && !r.actor_verified ? ' <span class="unv" title="Identity came from the X-MM-User header, not a verified Google token — do not attribute this row to a person">unverified</span>' : ""}</td>
       <td><b>${first}</b></td>
       <td class="mono">${esc(r.client_ip || "—")}</td>
       <td><span class="op ${r.operation === "mutation" ? "mut" : "qry"}">${esc(r.operation || "")}</span></td>
@@ -495,6 +501,7 @@ ${autoRefresh ? '<meta http-equiv="refresh" content="30">' : ""}
  .op{font-size:11px;padding:2px 6px;border-radius:4px}
  .mut{background:#3a2540;color:#f0a6ff}.qry{background:#1f2a3a;color:#86b9ff}
  .ok{color:#5ad17a}.bad{color:#ff6b6b;font-weight:700}
+ .unv{font-size:10px;background:#3a2f1a;color:#ffc46b;border:1px solid #4d3f22;border-radius:3px;padding:1px 4px;margin-left:4px}
  .cols{white-space:normal;max-width:560px}
  .kv{display:inline-block;background:#1a1f29;border:1px solid #262c38;border-radius:4px;padding:1px 6px;margin:1px 2px;font-size:12px}
  .kv b{color:#9fd0ff;font-weight:600}
