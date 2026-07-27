@@ -1049,70 +1049,85 @@ async function fetchBoard(
 ): Promise<RawItem[]> {
   const allItems: RawItem[] = [];
 
-  for (const groupId of groupIds) {
-    // First page
-    const firstQuery = `
-      query ($boardId: ID!, $cols: [String!]) {
-        boards(ids: [$boardId]) {
-          groups(ids: ["${groupId}"]) {
-            items_page(limit: ${PAGE_SIZE}) {
-              cursor
-              items {
-                id
-                name
-                group { id }
-                column_values(ids: $cols) { id text value }
-              }
+  // ALL of the board's groups in ONE query. This used to be a `for` loop
+  // issuing one round trip per group, which made the Insurance board (5 groups)
+  // five sequential Monday calls — the dominant cost of the oversight load,
+  // since boards are already fetched in parallel and Insurance is the slowest.
+  // Monday's `groups(ids: [...])` returns a page per group, so the whole board
+  // costs one round trip unless a group actually overflows PAGE_SIZE.
+  const firstQuery = `
+    query ($boardId: ID!, $groupIds: [String!], $cols: [String!]) {
+      boards(ids: [$boardId]) {
+        groups(ids: $groupIds) {
+          id
+          items_page(limit: ${PAGE_SIZE}) {
+            cursor
+            items {
+              id
+              name
+              group { id }
+              column_values(ids: $cols) { id text value }
             }
           }
         }
-      }
-    `;
-
-    const data = await gql<{
-      boards: {
-        groups: {
-          items_page: { cursor: string | null; items: RawItem[] };
-        }[];
-      }[];
-    }>(firstQuery, { boardId: String(boardId), cols: columnIds });
-
-    const page = data.boards?.[0]?.groups?.[0]?.items_page;
-    const firstItems = page?.items ?? [];
-    let cursor = page?.cursor ?? null;
-    allItems.push(...firstItems);
-
-    // Subsequent pages
-    while (cursor) {
-      try {
-        const nextQuery = `
-          query ($cursor: String!, $cols: [String!]) {
-            next_items_page(limit: ${PAGE_SIZE}, cursor: $cursor) {
-              cursor
-              items {
-                id
-                name
-                group { id }
-                column_values(ids: $cols) { id text value }
-              }
-            }
-          }
-        `;
-        const next = await gql<{
-          next_items_page: { cursor: string | null; items: RawItem[] };
-        }>(nextQuery, { cursor, cols: columnIds });
-
-        const items = next.next_items_page?.items ?? [];
-        cursor = next.next_items_page?.cursor ?? null;
-        if (items.length > 0) {
-          allItems.push(...items);
-        }
-      } catch (e) {
-        console.error(`[oversightApi] pagination error board=${boardId} group=${groupId}`, e);
-        break;
       }
     }
+  `;
+
+  const data = await gql<{
+    boards: {
+      groups: {
+        id: string;
+        items_page: { cursor: string | null; items: RawItem[] };
+      }[];
+    }[];
+  }>(firstQuery, { boardId: String(boardId), groupIds, cols: columnIds });
+
+  const groups = data.boards?.[0]?.groups ?? [];
+  // Groups whose first page filled up still need their cursor followed. Rare
+  // (PAGE_SIZE is 500), and the follow-ups run in parallel across groups.
+  const overflowing: { groupId: string; cursor: string }[] = [];
+  for (const g of groups) {
+    allItems.push(...(g.items_page?.items ?? []));
+    if (g.items_page?.cursor) overflowing.push({ groupId: g.id, cursor: g.items_page.cursor });
   }
+
+  const overflowPages = await Promise.all(
+    overflowing.map(async ({ groupId, cursor: startCursor }) => {
+      const items: RawItem[] = [];
+      let cursor: string | null = startCursor;
+      while (cursor) {
+        try {
+          const nextQuery = `
+            query ($cursor: String!, $cols: [String!]) {
+              next_items_page(limit: ${PAGE_SIZE}, cursor: $cursor) {
+                cursor
+                items {
+                  id
+                  name
+                  group { id }
+                  column_values(ids: $cols) { id text value }
+                }
+              }
+            }
+          `;
+          const next: { next_items_page: { cursor: string | null; items: RawItem[] } } = await gql(
+            nextQuery,
+            { cursor, cols: columnIds },
+          );
+
+          items.push(...(next.next_items_page?.items ?? []));
+          cursor = next.next_items_page?.cursor ?? null;
+        } catch (e) {
+          console.error(`[oversightApi] pagination error board=${boardId} group=${groupId}`, e);
+          break;
+        }
+      }
+      return items;
+    }),
+  );
+
+  for (const page of overflowPages) allItems.push(...page);
 
   return allItems;
 }

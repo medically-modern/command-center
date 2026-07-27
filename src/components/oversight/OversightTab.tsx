@@ -984,13 +984,20 @@ function DrilldownModal({
                             // long label ("Final Escalation Required") in a
                             // fixed-width column would otherwise paint over its
                             // neighbour instead of being clipped.
-                            <td key={col.colId} className="px-2 py-1 max-w-0 overflow-hidden">
+                            // Clipping lives on a span INSIDE the cell, not on
+                            // the <td>: browsers don't reliably honour overflow
+                            // on table cells, so a long label ("Final Escalation
+                            // Required" in a 104px column) painted over its
+                            // neighbour. Each pill truncates to the cell width
+                            // and carries its full text as a title tooltip.
+                            <td key={col.colId} className="px-2 py-1">
                               {pills.length ? (
-                                <span className="flex flex-wrap gap-1">
+                                <span className="flex flex-wrap gap-1 min-w-0 overflow-hidden">
                                   {pills.map((pp) => (
                                     <span
                                       key={pp}
-                                      className="inline-block rounded px-1.5 py-0.5 text-[10px] font-bold whitespace-nowrap"
+                                      title={pp}
+                                      className="inline-block max-w-full truncate rounded px-1.5 py-0.5 text-[10px] font-bold"
                                       style={{
                                         backgroundColor: `${REQ_COLORS[pp]}20`,
                                         color: REQ_COLORS[pp],
@@ -1014,7 +1021,9 @@ function DrilldownModal({
                             return <td key={col.colId} className="px-2 py-1 text-muted-foreground">—</td>;
                           }
                           return (
-                            <td key={col.colId} className="px-2 py-1 text-foreground/80 max-w-0 truncate">
+                            // Same rule as the pill cell: the inner span does the
+                            // clipping, since overflow on a <td> is unreliable.
+                            <td key={col.colId} className="px-2 py-1 text-foreground/80">
                               <Tooltip>
                                 <TooltipTrigger asChild>
                                   <span className="block truncate cursor-help">{raw}</span>

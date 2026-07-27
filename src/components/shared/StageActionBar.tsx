@@ -199,50 +199,53 @@ export function StageActionBar({ stage, board, patientId, patientName, onDone }:
         </Button>
       )}
 
-      {returnOpen && (
-        <div
-          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40"
-          onClick={() => busy === null && setReturnOpen(false)}
-        >
-          <div
-            className="bg-card border border-border rounded-xl shadow-2xl w-[480px] max-h-[80vh] flex flex-col"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="px-4 py-3 border-b">
-              <h4 className="text-sm font-semibold text-foreground flex items-center gap-2">
-                <RotateCcw className="h-4 w-4 text-blue-500" />
-                Return {patientName} to the queue
-              </h4>
-            </div>
-            <div className="px-4 py-3 space-y-3">
-              <p className="text-xs text-muted-foreground">
-                Clears the escalation and re-dates the patient to today, so they go back into
-                the rep's queue. Optionally add a note below — it's stamped into the notes.
-              </p>
-              <textarea
-                value={returnNote}
-                onChange={(e) => setReturnNote(e.target.value)}
-                rows={3}
-                placeholder="e.g. New clinicals arrived — back to the rep for another attempt."
-                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-ring"
-              />
-            </div>
-            <div className="flex justify-end gap-2 px-4 py-3 border-t">
-              <Button variant="outline" onClick={() => setReturnOpen(false)} disabled={busy !== null}>
-                Cancel
-              </Button>
-              <Button
-                onClick={() => runDecision("returnToQueue", returnNote.trim() || undefined)}
-                disabled={busy !== null}
-                className="gap-2 bg-blue-600 hover:bg-blue-700 text-white"
-              >
-                {busy === "returnToQueue" ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCcw className="h-4 w-4" />}
-                Return to Queue
-              </Button>
-            </div>
+      {/* Dialog, NOT a hand-rolled fixed overlay. This bar renders inside the
+          page header (bg-gradient-navy text-navy-foreground), and an in-tree
+          overlay INHERITS that white text — the outline Cancel button sets no
+          colour of its own, so it came out white-on-white and invisible.
+          Dialog portals to document.body, escaping the inheritance. */}
+      <Dialog open={returnOpen} onOpenChange={(o) => busy === null && setReturnOpen(o)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <RotateCcw className="h-5 w-5 text-blue-500" />
+              Return {patientName} to the queue
+            </DialogTitle>
+            <DialogDescription>
+              Clears the escalation and re-dates the patient to today, so they go back into
+              the rep's queue.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div>
+            <label className="block text-xs font-medium text-muted-foreground mb-1">
+              Add a note (optional)
+            </label>
+            <textarea
+              value={returnNote}
+              onChange={(e) => setReturnNote(e.target.value)}
+              rows={3}
+              placeholder="e.g. New clinicals arrived — back to the rep for another attempt."
+              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-ring"
+            />
+            <p className="text-xs text-muted-foreground mt-1">Stamped into the notes.</p>
           </div>
-        </div>
-      )}
+
+          <DialogFooter className="gap-2 sm:gap-2">
+            <Button variant="outline" onClick={() => setReturnOpen(false)} disabled={busy !== null}>
+              Cancel
+            </Button>
+            <Button
+              onClick={() => runDecision("returnToQueue", returnNote.trim() || undefined)}
+              disabled={busy !== null}
+              className="gap-2 bg-blue-600 hover:bg-blue-700 text-white"
+            >
+              {busy === "returnToQueue" ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCcw className="h-4 w-4" />}
+              Return to Queue
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }
