@@ -6,8 +6,10 @@
  * (the app's sends also auto-flip the right Trigger DVS column for today's
  * bots — dvsRouting.dvsAutoTrigger). This page polls the board and narrates
  * what the automation did. The only writes here: the manual-review Re-run
- * buttons, the rail's follow-up snooze (+1d, date-only — same rule as Auth
- * Outstanding), and Reference Notes.
+ * buttons and Reference Notes. (The rail's +1d follow-up snooze was removed
+ * 2026-07 — DVS is automated, so there is nothing for a rep to defer. The
+ * due/snoozed split below is KEPT: a Follow Up Date set elsewhere still hides
+ * a patient from the rail, matching useRoleCounts' dvs rule.)
  *
  * Read model (live bot columns, found 2026-07-21): Trigger Supplies DVS /
  * Trigger Pump DVS status labels (Running / Success / Failed / Manual
@@ -31,9 +33,9 @@ import { Button } from "@/components/ui/button";
 import { useBackNavigation } from "@/hooks/useBackNavigation";
 import { resolveHcpcs, isAutoFilledMedicaidSupply, PRODUCT_LABELS, type ProductId } from "@/lib/samantha/hcpcRules";
 import { allProductsDvsRouted, isStraightMedicaidPrimary, nyMedicaidCin } from "@/lib/samantha/dvsRouting";
-import { writeStatusIndex, writeDate, writeLongText, COL } from "@/lib/samantha/mondayApi";
+import { writeStatusIndex, writeLongText, COL } from "@/lib/samantha/mondayApi";
 import { TRIGGER_DVS_INDEX, TRIGGER_PUMP_DVS_INDEX } from "@/lib/samantha/mondayMapping";
-import { addDaysYmd, etTodayYmd, ymdToUs } from "@/lib/samantha/benefitsDerive";
+import { etTodayYmd, ymdToUs } from "@/lib/samantha/benefitsDerive";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { AlertTriangle, ArrowLeft, Bot, Clock, Loader2, RefreshCw, RotateCw, Search, User, Zap } from "lucide-react";
@@ -70,8 +72,17 @@ function StatusChip({ label, fallback }: { label?: string; fallback?: string }) 
 }
 
 const isFailedish = (label: string | undefined) => toneFor(label) === "rose";
-const isQueued = (p: Patient) =>
-  (p.retryCount ?? 0) > 0 || toneFor(p.dvsStatus) === "amber" || toneFor(p.pumpDvsStatus) === "amber";
+/**
+ * In the retry queue = the bot has literally parked the item there
+ * (Supplies/Pump DVS = "Retry Queued"). Mirrors the oversight
+ * `dvs-retry-queue` CHART_FILTER — keep the two in agreement.
+ *
+ * Deliberately NOT `retryCount > 0 || tone === "amber"` (the old rule): a retry
+ * count LINGERS after an item leaves the queue, and "Manual Review" is amber
+ * too, so manual-review patients were being labelled "Retry queue · attempt N"
+ * in the rail when they aren't queued at all.
+ */
+const isQueued = (p: Patient) => p.dvsStatus === "Retry Queued" || p.pumpDvsStatus === "Retry Queued";
 
 /* ── page ─────────────────────────────────────────────────────────── */
 
@@ -82,7 +93,6 @@ const DvsPage = () => {
   const [selectedId, setSelectedId] = useState<string | null>(searchParams.get("patientId"));
   const [search, setSearch] = useState("");
   const [rerunning, setRerunning] = useState<string | null>(null);
-  const [snoozing, setSnoozing] = useState<string | null>(null);
   const [noteDrafts, setNoteDrafts] = useState<Record<string, string>>({});
 
   const todayEt = etTodayYmd();
@@ -149,20 +159,6 @@ const DvsPage = () => {
     }
   };
 
-  const pushToTomorrow = async (p: Patient) => {
-    if (snoozing) return;
-    setSnoozing(p.id);
-    try {
-      await writeDate(p.id, COL.followUpDate, addDaysYmd(todayEt, 1));
-      toast.success(`${p.name} — done for today; returns tomorrow`);
-      refetch();
-    } catch (e) {
-      toast.error("Failed to snooze", { description: e instanceof Error ? e.message : String(e) });
-    } finally {
-      setSnoozing(null);
-    }
-  };
-
   /* Top-of-page banner (§7). Narration trimmed (Josh, 2026-07): the
      Manual-review, "Automation in progress" and "Fully paid" banners are all
      gone — the DVS Status by Product grid already shows those states. Only the
@@ -203,37 +199,27 @@ const DvsPage = () => {
         </div>
         <div className="flex-1 overflow-y-auto p-2">
           {duePatients.map((p) => (
-            <div key={p.id} className="flex items-center gap-1">
-              <button
-                onClick={() => setSelectedId(p.id)}
-                className={cn(
-                  "flex-1 min-w-0 flex items-start gap-2 p-2 rounded-lg text-left transition-colors",
-                  selected?.id === p.id ? "bg-sidebar-accent" : "hover:bg-sidebar-accent/50",
-                )}
-              >
-                <User className="h-4 w-4 mt-0.5 shrink-0" />
-                <span className="min-w-0">
-                  <span className="block text-sm font-medium truncate">{p.name}</span>
-                  <span className="block text-[11px] text-muted-foreground truncate">
-                    {p.primaryInsurance || "—"} · {isStraightMedicaidPrimary(p) ? "Straight to DVS" : "Via payer rail"}
-                  </span>
-                  {isQueued(p) && (
-                    <span className="block text-[10px] font-medium text-amber-400 mt-0.5">
-                      Retry queue{p.retryCount ? ` · attempt ${p.retryCount}` : ""}
-                    </span>
-                  )}
+            <button
+              key={p.id}
+              onClick={() => setSelectedId(p.id)}
+              className={cn(
+                "w-full min-w-0 flex items-start gap-2 p-2 rounded-lg text-left transition-colors",
+                selected?.id === p.id ? "bg-sidebar-accent" : "hover:bg-sidebar-accent/50",
+              )}
+            >
+              <User className="h-4 w-4 mt-0.5 shrink-0" />
+              <span className="min-w-0">
+                <span className="block text-sm font-medium truncate">{p.name}</span>
+                <span className="block text-[11px] text-muted-foreground truncate">
+                  {p.primaryInsurance || "—"} · {isStraightMedicaidPrimary(p) ? "Straight to DVS" : "Via payer rail"}
                 </span>
-              </button>
-              <button
-                onClick={() => pushToTomorrow(p)}
-                disabled={snoozing !== null}
-                className="shrink-0 flex items-center gap-1 px-1.5 py-1 rounded text-[10px] font-medium text-sky-300 bg-white/5 border border-white/15 hover:bg-white/10 transition-colors disabled:opacity-50"
-                title={`Done for today — ${p.name} returns tomorrow`}
-              >
-                {snoozing === p.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Clock className="h-3 w-3" />}
-                +1d
-              </button>
-            </div>
+                {isQueued(p) && (
+                  <span className="block text-[10px] font-medium text-amber-400 mt-0.5">
+                    Retry queue{p.retryCount ? ` · attempt ${p.retryCount}` : ""}
+                  </span>
+                )}
+              </span>
+            </button>
           ))}
           {!loading && duePatients.length === 0 && (
             <p className="px-3 py-4 text-xs text-muted-foreground">
