@@ -49,7 +49,7 @@ Columns used throughout:
 - **Evaluation Count** `numeric_mm4bhjc8`
 - **MN notes** `long_text_mm27zjt2` — carries the stamped stuck reason
 
-### Column 1 · Processor Overview
+### Processor Overview
 
 | Chart | Arrives when | Leaves when |
 |---|---|---|
@@ -59,9 +59,9 @@ Columns used throughout:
 | **Chase Clinicals — Fax** | Stage = `Chase Clinicals` AND Escalation ≠ index 2 AND Method **not** in (`Email`, `Parachute`) — *blank counts as Fax* | Same, or Method changes to Email/Parachute |
 | **Chase Clinicals — Email & Parachute** | Stage = `Chase Clinicals` AND Escalation ≠ index 2 AND Method in (`Email`, `Parachute`) | Same, or Method changes to Fax/blank |
 
-> **Only proposed-stuck (index 2) is excluded here.** A patient escalated to a manager (index 0) still appears in column 1 *and* column 2 — deliberately, because a rep is still working them.
+> **Only proposed-stuck (index 2) is excluded here.** A patient escalated to a manager (index 0) still appears in Processor Overview *and* Manager Intervention — deliberately, because a rep is still working them.
 
-### Column 2 · Manager Intervention
+### Manager Intervention
 
 Each is a **stacked chart of two source pools**; a patient matching both is counted once, in the red series.
 
@@ -73,13 +73,13 @@ Each is a **stacked chart of two source pools**; a patient matching both is coun
 | **Chase — Fax (Escalated)** | Stage = `Chase Clinicals` AND Esc ≠ 2 AND Method not Email/Parachute AND MN Attempts = `Escalate` | Same stage/method AND Esc = 0 AND Count ≥ 3 |
 | **Chase — Email & Parachute (Escalated)** | Stage = `Chase Clinicals` AND Esc ≠ 2 AND Method in (Email, Parachute) AND MN Attempts = `Escalate` | Same stage/method AND Esc = 0 AND Count ≥ 3 |
 
-**Leaves when:** Escalation is cleared off index 0, MN Attempts moves off `Escalate`, the Evaluation Count drops below 3 (it doesn't, in practice), the stage changes, or the patient is proposed stuck (index 2 — which also removes them from column 1 and moves them to column 3).
+**Leaves when:** Escalation is cleared off index 0, MN Attempts moves off `Escalate`, the Evaluation Count drops below 3 (it doesn't, in practice), the stage changes, or the patient is proposed stuck (index 2 — which also removes them from Processor Overview and moves them to Final Decisions).
 
-### Column 3 · Final Decisions (Proposed Stuck)
+### Final Decisions (Proposed Stuck)
 
 | Chart | Arrives when | Leaves when |
 |---|---|---|
-| **Evaluate / Send Request / Confirm Receipt / Chase-Fax / Chase-Email&Parachute (Proposed Stuck)** | Same stage + method rules as column 1, AND Escalation = index **2** (`Final Escalation Required`) | A manager decides — see §5 |
+| **Evaluate / Send Request / Confirm Receipt / Chase-Fax / Chase-Email&Parachute (Proposed Stuck)** | Same stage + method rules as Processor Overview, AND Escalation = index **2** (`Final Escalation Required`) | A manager decides — see §5 |
 
 Getting here: a rep clicks **Propose Stuck** on the stage page. That appends the
 reason to the MN notes (stamped `[Proposed Stuck · date]`) and *then* sets
@@ -100,7 +100,7 @@ Columns:
 - **Follow Up Date** `date_mm34m2dz`
 - **Trigger Supplies DVS** `color_mm26pk1a` · **Trigger Pump DVS** `color_mm578kbd` · **Claims Status** `color_mm284z0b`
 
-### Column 1 · Processor Overview
+### Processor Overview
 
 | Chart | Arrives when | Leaves when |
 |---|---|---|
@@ -109,9 +109,9 @@ Columns:
 | **Auth Outstanding** | Stage = `Auth. Outstanding` | Stage changes |
 | **Auth Denial** | Item is in the `Auth Denied` group (group-based, not stage-based) | Moved out of that group |
 
-> **Unlike Medical Evaluation, escalation does NOT remove a patient from column 1.** An Insurance patient who is escalated *or* proposed stuck still appears in their stage chart. The stages are mutually exclusive by construction (one Stage Advancer value), so a DVS-stage patient never shows under Benefits/Submit Auth/Auth Outstanding.
+> **Unlike Medical Evaluation, escalation does NOT remove a patient from Processor Overview.** An Insurance patient who is escalated *or* proposed stuck still appears in their stage chart. The stages are mutually exclusive by construction (one Stage Advancer value), so a DVS-stage patient never shows under Benefits/Submit Auth/Auth Outstanding.
 
-### Column 2 · Manager Intervention
+### Manager Intervention
 
 | Chart | Arrives when | Leaves when |
 |---|---|---|
@@ -121,7 +121,7 @@ Columns:
 
 > Retry Queue and Manual Review are **disjoint** — a lingering retry *count* no longer counts as queued; only the literal `Retry Queued` status does.
 
-### Column 3 · Final Decisions
+### Final Decisions
 
 | Chart | Arrives when | Leaves when |
 |---|---|---|
@@ -132,7 +132,7 @@ Columns:
 Getting here: **Propose Stuck** on the Benefits / Submit Auth / Auth Outstanding
 page — appends the reason to Reference Notes (stamped), then sets Escalation →
 `Final Escalation Required`. It does **not** touch the Stage Advancer, so the
-patient stays in their stage and also remains visible in column 1.
+patient stays in their stage and also remains visible in Processor Overview.
 
 Auto-arrival: a failed universal check can set the same label, so a patient can
 land here without anyone clicking Propose Stuck. Those show a blank Proposed Reason.
@@ -148,21 +148,22 @@ land here without anyone clicking Propose Stuck. Those show a blank Proposed Rea
 
 ---
 
-## 5. The stuck lifecycle — the one loop that moves patients between columns
+## 5. The stuck lifecycle — the one loop that moves patients between the three views
 
 ```
-   rep, on the stage page                    manager, from Final Decisions
-   ──────────────────────                    ────────────────────────────
-   Propose Stuck                             Approve Stuck ──► Stage = Stuck
-     │  1. stamp reason into notes             │  1. optional note, stamped
-     │  2. Escalation → Final Esc Required     │  2. Stage Advancer → Stuck
-     ▼                                         │  3. Escalation cleared
-   Column 3 · Final Decisions ─────────────────┤
-                                               │
-                                             Return to Queue ──► back to the rep
-                                                1. optional note, stamped
-                                                2. Follow Up / Next Action = today
-                                                3. Escalation cleared
+  REP · on the stage page            MANAGER · from Final Decisions
+  ───────────────────────            ─────────────────────────────
+  Propose Stuck                      Approve Stuck
+   1. stamp reason into notes         1. optional note, stamped
+   2. Escalation → Final Esc Req      2. Stage Advancer → Stuck
+                                      3. Escalation cleared
+            │                         ⇒ gone from EVERY chart
+            ▼
+      Final Decisions  ─────────►    Return to Queue
+                                      1. optional note, stamped
+                                      2. Follow Up / Next Action = today
+                                      3. Escalation cleared
+                                      ⇒ back to Processor Overview
 ```
 
 **Ordering is deliberate everywhere:** the note is always written *before* the
@@ -175,7 +176,7 @@ the Stuck group — which is **not** a fetched group, so the patient disappears
 from *every* chart. That is the only true exit from oversight short of Complete.
 
 **After Return to Queue** the escalation is cleared and the date is set to today,
-so the patient is due now and reappears in column 1 (and column 2 if they still
+so the patient is due now and reappears in Processor Overview (and Manager Intervention if they still
 match an escalation rule). Both notes stay in the history: a re-proposal appends
 a second `[Proposed Stuck …]` line, and the drill-down's *Proposed Reason* column
 always shows the **most recent** one.
@@ -193,8 +194,8 @@ always shows the **most recent** one.
 ## 6. Gotchas worth knowing
 
 1. **Totals don't have to equal the bars.** Blank *Days Since Stage Started* ⇒ counted in the total, drawn in no bar (§0.6).
-2. **Medical Evaluation hides proposed-stuck from column 1; Insurance does not.** Not a bug — the two boards were specified differently.
-3. **Manager-escalated (index 0) patients appear in columns 1 and 2 at once** on Medical Evaluation. Column 2 is a manager's working view, not a hand-off.
+2. **Medical Evaluation hides proposed-stuck from Processor Overview; Insurance does not.** Not a bug — the two boards were specified differently.
+3. **Manager-escalated (index 0) patients appear in Processor Overview and Manager Intervention at once** on Medical Evaluation. Manager Intervention is a manager's working view, not a hand-off.
 4. **Chase Fax swallows blanks.** A missing Clinicals Method counts as Fax, so nobody falls through the cracks.
 5. **Auth Outstanding is a pure date bucket.** A future Follow Up Date snoozes a patient out of the rep's queue; the Follow Up *status* is ignored for that stage. That's why Return to Queue re-dates.
 6. **A patient in the Escalations, Completed or Stuck group is invisible** regardless of columns (§0.2).
