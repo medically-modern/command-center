@@ -25,6 +25,7 @@ import {
 } from "@/lib/oversight/oversightApi";
 import { fuzzyNameMatch } from "@/lib/oversight/fuzzyName";
 import { extractProposedStuckReason } from "@/lib/masheke/proposedStuck";
+import { MANAGER_ORIGIN_PARAM } from "@/lib/shared/managerOrigin";
 import { Loader2, BarChart3, X, ExternalLink, StickyNote, Search, ArrowUp, ArrowDown, ArrowUpDown, Star, SlidersHorizontal, Plus, Trash2, RotateCcw } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -1313,6 +1314,25 @@ export default function OversightTab() {
       }
       const params = new URLSearchParams({ patientId });
       params.set("from", "system-mgmt");
+      // Tell the destination page WHICH manager column this click came from, so
+      // it can resolve its own action bar (lib/shared/stageActions). Derived
+      // from the section layout rather than the chart id, so adding a chart to a
+      // column needs no change here.
+      const section = OVERSIGHT_SECTIONS.find(
+        (s) =>
+          s.chartIds.includes(expandedChart) ||
+          s.secondaryChartIds?.includes(expandedChart) ||
+          s.tertiaryChartIds?.includes(expandedChart),
+      );
+      if (section?.tertiaryChartIds?.includes(expandedChart)) {
+        params.set(MANAGER_ORIGIN_PARAM, "final-decisions");
+      } else if (section?.secondaryChartIds?.includes(expandedChart)) {
+        params.set(MANAGER_ORIGIN_PARAM, "manager-processor");
+      } else if (section?.primaryTitle) {
+        // Column 1 of a 3-column manager view (plain stage views have no
+        // primaryTitle and stay unmarked, i.e. an ordinary rep page).
+        params.set(MANAGER_ORIGIN_PARAM, "overview");
+      }
       // Escalation charts open in MANAGER mode so the manager can actually move
       // the escalated patient forward. The Confirm Receipt / Chase panels hide
       // the Confirmed / Not Confirmed actions for escalated patients unless

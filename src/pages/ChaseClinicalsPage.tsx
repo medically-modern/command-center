@@ -17,7 +17,7 @@ import { PatientsSidebar } from "@/components/masheke/PatientsSidebar";
 import { SendRequestHeaderCard } from "@/components/masheke/SendRequestHeaderCard";
 import { Button } from "@/components/ui/button";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
-import { AlertTriangle, RotateCcw, Stethoscope, ArrowLeft, Ban, Clock , Save} from "lucide-react";
+import { RotateCcw, Stethoscope, ArrowLeft, Ban, Clock , Save} from "lucide-react";
 import { toast } from "sonner";
 import { clearEvalState } from "@/lib/masheke/evalState";
 import { useNavigate, useSearchParams } from "react-router-dom";
@@ -31,7 +31,7 @@ import { ESCALATION_INDEX, isEscalatedIndex } from "@/lib/masheke/mondayMapping"
 import { FollowUpModal } from "@/components/masheke/FollowUpModal";
 import { useBackNavigation } from "@/hooks/useBackNavigation";
 import { ReportIssueButton } from "@/components/shared/ReportIssueButton";
-import { ProposeStuckModal } from "@/components/masheke/ProposeStuckModal";
+import { StageActionBar } from "@/components/shared/StageActionBar";
 
 interface ChasePageProps {
   /** Which chase role: "fax" (Fax/blank patients) or "parachute"
@@ -85,9 +85,6 @@ const ChaseClinicalsPage = ({ method }: ChasePageProps) => {
     searchParams.get("patientId"),
   );
 
-  // Propose Stuck (Manager Views redesign §3) — replaces the old direct
-  // StuckModal; the manager approves/returns from Pipeline Oversight.
-  const [proposeStuckOpen, setProposeStuckOpen] = useState(false);
   const selected: Patient | undefined = useMemo(
     () => patients.find((p) => p.id === selectedId),
     [patients, selectedId],
@@ -164,23 +161,16 @@ const ChaseClinicalsPage = ({ method }: ChasePageProps) => {
                 <Button onClick={resetForNewPatient} disabled={!selected} className="gap-2 bg-white text-navy hover:bg-white/90 shadow-elevate">
                   <RotateCcw className="h-4 w-4" /> Reset
                 </Button>
-                <Button
-                  onClick={() => setProposeStuckOpen(true)}
-                  disabled={!selected}
-                  className="gap-2 bg-amber-600 hover:bg-amber-700 text-white shadow-elevate"
-                >
-                  <AlertTriangle className="h-4 w-4" /> Propose Stuck
-                </Button>
-                <ReportIssueButton />
                 {selected && (
-                  <ProposeStuckModal
-                    open={proposeStuckOpen}
-                    onOpenChange={setProposeStuckOpen}
+                  <StageActionBar
+                    stage={method === "parachute" ? "chase-parachute" : "chase-fax"}
+                    board="masheke"
                     patientId={selected.id}
                     patientName={selected.name}
-                    onSuccess={refetch}
+                    onDone={refetch}
                   />
                 )}
+                <ReportIssueButton />
               </div>
             </div>
           </header>

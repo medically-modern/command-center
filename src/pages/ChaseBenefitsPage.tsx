@@ -36,7 +36,7 @@ import "@/components/samantha/benefitsRedesign.css";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { RotateCcw, Stethoscope, ArrowLeft, Save } from "lucide-react";
 import { ClinicalsDownloadButton } from "@/components/samantha/ClinicalsDownloadButton";
-import { ProposeStuckButton } from "@/components/samantha/ProposeStuckButton";
+import { StageActionBar } from "@/components/shared/StageActionBar";
 import { toast } from "sonner";
 import { sendPatientToMonday } from "@/lib/samantha/mondayWrite";
 import { writeLongText, COL } from "@/lib/samantha/mondayApi";
@@ -196,7 +196,15 @@ const ChaseBenefitsPage = () => {
               </div>
               <div className="flex items-center gap-2">
                 {selected && <ClinicalsDownloadButton itemId={selected.id} />}
-                {selected && <ProposeStuckButton patientId={selected.id} onDone={() => refetch(true)} />}
+                {selected && (
+                  <StageActionBar
+                    stage="benefits"
+                    board="insurance"
+                    patientId={selected.id}
+                    patientName={selected.name}
+                    onDone={() => refetch(true)}
+                  />
+                )}
                 <Button
                   onClick={() => {
                     if (!selected) return;

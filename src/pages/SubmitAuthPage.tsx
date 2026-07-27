@@ -48,7 +48,7 @@ import { useSearchParams } from "react-router-dom";
 import { useBackNavigation } from "@/hooks/useBackNavigation";
 import { ReportIssueButton } from "@/components/shared/ReportIssueButton";
 import { ClinicalsDownloadButton } from "@/components/samantha/ClinicalsDownloadButton";
-import { ProposeStuckButton } from "@/components/samantha/ProposeStuckButton";
+import { StageActionBar } from "@/components/shared/StageActionBar";
 import { viewFilterFromParams } from "@/lib/roleView";
 import { sidebarVisibleList } from "@/lib/samantha/sidebarList";
 import { cn } from "@/lib/utils";
@@ -174,7 +174,15 @@ const SubmitAuthPage = () => {
               </div>
               <div className="flex items-center gap-2">
                 {selected && <ClinicalsDownloadButton itemId={selected.id} />}
-                {selected && <ProposeStuckButton patientId={selected.id} onDone={() => refetch(true)} />}
+                {selected && (
+                  <StageActionBar
+                    stage="submit-auth"
+                    board="insurance"
+                    patientId={selected.id}
+                    patientName={selected.name}
+                    onDone={() => refetch(true)}
+                  />
+                )}
                 <Button
                   onClick={() => {
                     if (!selected) return;
