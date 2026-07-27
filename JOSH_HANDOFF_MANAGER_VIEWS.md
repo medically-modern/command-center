@@ -25,7 +25,7 @@ Auth Denial **includes DVS manual reviews** — a non-retryable DVS failure writ
 Denied (see DVS handoff §4/§7) and therefore shows up in this chart automatically. Same
 day-bucket histogram + drill-down behavior as the existing Medical Evaluation charts.
 
-**Column 2 · Manager as Processor** — two charts:
+**Column 2 · Manager Intervention** — two charts:
 
 - **DVS — Retry Queue**, on the **Submit Auth** row. Patients whose DVS failed retryably; they
   re-run once a day and either clear themselves or escalate to manual review (→ Auth Denial).
@@ -54,7 +54,7 @@ Same charts, new column scheme:
 
 - **Column 1 · Processor Overview** — the current ACTIVE column, unchanged (Evaluate, Send
   Request, Confirm Receipt, Chase Clinicals — Fax, …).
-- **Column 2 · Manager as Processor** — the current columns 2 AND 3 **merged**: one escalation
+- **Column 2 · Manager Intervention** — the current columns 2 AND 3 **merged**: one escalation
   chart per stage combining **Attempt 4+** and **3rd+ Round** patients. The two populations stay
   distinguishable in the chart itself: bars are **stacked by series — amber = Attempt 4+, red =
   3rd+ Round** (not the day-bucket colors; age is already the x-axis), with matching color-dot
@@ -93,7 +93,7 @@ New flow:
   a new pipeline option in the picker ("Insurance" / "Medical Evaluation").
 - Row alignment matters to Brandon: DVS Retry Queue ↔ Submit Auth row; Benefits Check Failed ↔
   Benefits row; per-stage escalation cards ↔ their stage's row.
-- Column headers: Processor Overview (gray), Manager as Processor (orange), Final Decisions
+- Column headers: Processor Overview (gray), Manager Intervention (orange), Final Decisions
   (red) — uppercase letter-spaced like the current ACTIVE / ESCALATIONS headers.
 - The mockups use demo data; counts and drill-down columns should come from the same board
   queries the current oversight uses.

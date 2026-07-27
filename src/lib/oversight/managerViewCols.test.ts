@@ -1,7 +1,7 @@
 /**
  * Manager-view drill-down columns (2026-07).
  *
- * A manager reading a Final Decisions / Manager as Processor row must see the
+ * A manager reading a Final Decisions / Manager Intervention row must see the
  * SAME fields as the Processor Overview row it sits beside — the drill-down
  * doubles as the reference for what a stage tracks. That mirroring is derived
  * from `rowOf` at CHART_DEFS build time (withMirroredRowCols), so these tests

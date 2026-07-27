@@ -4,7 +4,7 @@
  *
  * Pages render this instead of hardcoding a Propose Stuck button. What appears
  * depends on how the page was opened:
- *  - a rep, or a manager from Processor Overview / Manager as Processor
+ *  - a rep, or a manager from Processor Overview / Manager Intervention
  *      → Propose Stuck (unchanged behaviour)
  *  - a manager from Final Decisions (`?mv=final-decisions`)
  *      → Approve Stuck + Return to Queue, and NO Propose Stuck (the patient is

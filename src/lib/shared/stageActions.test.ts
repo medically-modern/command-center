@@ -42,7 +42,7 @@ describe("actionsFor", () => {
   it("keeps Propose Stuck for the two non-decision manager columns", () => {
     for (const stage of STAGES) {
       expect(actionsFor(stage, "overview")).toEqual(["proposeStuck"]);
-      expect(actionsFor(stage, "manager-processor")).toEqual(["proposeStuck"]);
+      expect(actionsFor(stage, "manager-intervention")).toEqual(["proposeStuck"]);
     }
   });
 
@@ -57,7 +57,7 @@ describe("actionsFor", () => {
 
   it("never returns an empty bar", () => {
     for (const stage of STAGES) {
-      for (const origin of [null, "overview", "manager-processor", "final-decisions"] as const) {
+      for (const origin of [null, "overview", "manager-intervention", "final-decisions"] as const) {
         expect(actionsFor(stage, origin).length).toBeGreaterThan(0);
       }
     }
@@ -67,7 +67,7 @@ describe("actionsFor", () => {
 describe("isDecisionOrigin", () => {
   it("is true only for Final Decisions", () => {
     expect(isDecisionOrigin("final-decisions")).toBe(true);
-    expect(isDecisionOrigin("manager-processor")).toBe(false);
+    expect(isDecisionOrigin("manager-intervention")).toBe(false);
     expect(isDecisionOrigin("overview")).toBe(false);
     expect(isDecisionOrigin(null)).toBe(false);
   });

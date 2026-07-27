@@ -374,7 +374,7 @@ columns" automation on duplicated items). The SPA only flips the advancer; verif
   `lib/oversight/oversightApi.ts`) — the manager dashboard. A **stage dropdown** (Intake · Medical
   Evaluation · Insurance · Welcome Call) renders one stage's charts at a time, bucketed by
   days-in-stage. **Manager views (2026-07-21, `MANAGER_VIEWS_DVS_BUILD.md`):** Medical Evaluation
-  and Insurance use a 3-column scheme — Processor Overview / Manager as Processor / Final
+  and Insurance use a 3-column scheme — Processor Overview / Manager Intervention / Final
   Decisions — rows aligned via `ChartDef.rowOf`. ME column 2 stacks **Attempt 4+** (MN Attempts
   `color_mm1wz0vg` = `"Escalate"` — the board has no literal "Attempt 4" label) with **3rd+ round**
   per stage (dedup: 3rd+ wins). ME column 3 = **Proposed Stuck** charts (keyed on Escalation

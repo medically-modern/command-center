@@ -17,14 +17,14 @@ import type { ManagerOrigin } from "@/lib/shared/managerOrigin";
  *
  * `Patient.escalated` merges "Manager Escalation Required" and "Final
  * Escalation Required" — right for counting, wrong for these sidebars:
- * Manager as Processor and Final Decisions are different oversight columns
+ * Manager Intervention and Final Decisions are different oversight columns
  * with different patients, so a click into either must list only its own.
  * Without this the sidebar contradicts the bar chart that produced it.
  *
  * Any other origin (or none) keeps the whole escalated pool.
  */
 const ESCALATION_LABEL_FOR: Partial<Record<ManagerOrigin, string>> = {
-  "manager-processor": "Manager Escalation Required",
+  "manager-intervention": "Manager Escalation Required",
   "final-decisions": "Final Escalation Required",
 };
 

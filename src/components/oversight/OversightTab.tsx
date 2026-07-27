@@ -89,7 +89,7 @@ const CHART_ROUTES: Record<string, string | null> = {
   "benefits-final-escalation": "/benefits",
   "submit-auth-final-escalation": "/submit-auth",
   "auth-outstanding-final-escalation": "/auth-outstanding",
-  // Manager as Processor: managers click through to work the patient.
+  // Manager Intervention: managers click through to work the patient.
   "benefits-manager-escalation": "/benefits",
   // DVS charts open the DVS monitor page for the clicked patient (?patientId
   // deep-link + ?from=system-mgmt), i.e. the same DVS UI a rep clicks into.
@@ -387,7 +387,7 @@ function StageChart({ chart, patients, priorityConfig, onChartClick, onBarClick 
 }
 
 // ── StackedStageChart — two-series merged escalation chart ────────────────
-// Manager as Processor (ME): amber = Attempt 4+ below, red = 3rd+ round on
+// Manager Intervention (ME): amber = Attempt 4+ below, red = 3rd+ round on
 // top (mockup rule: age is already the x-axis, so bars use SERIES colors,
 // not the day-bucket colors). Legend pills show the split; the count is the
 // deduped union.
@@ -1406,7 +1406,7 @@ export default function OversightTab() {
       if (isTertiary) {
         params.set(MANAGER_ORIGIN_PARAM, "final-decisions");
       } else if (isSecondary) {
-        params.set(MANAGER_ORIGIN_PARAM, "manager-processor");
+        params.set(MANAGER_ORIGIN_PARAM, "manager-intervention");
       } else if (section?.primaryTitle) {
         // Column 1 of a 3-column manager view (plain stage views have no
         // primaryTitle and stay unmarked, i.e. an ordinary rep page).
@@ -1752,7 +1752,7 @@ export default function OversightTab() {
             </div>
 
             {tertiaryCharts.length > 0 ? (
-              // Three-column layout: Processor Overview | Manager as Processor |
+              // Three-column layout: Processor Overview | Manager Intervention |
               // Final Decisions. Columns are FLUID (each 1fr) so all three fit the
               // viewport on load — no horizontal scroll to reach Final Decisions.
               // Two amber dividers sit in the column gaps. Each row pairs an

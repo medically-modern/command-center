@@ -18,7 +18,7 @@ bottom for the CIN gate, auto-trigger, fake test patients, and the adversarial-r
 ## ADDED
 
 **Pipeline Oversight — manager views (Phase A).** Medical Evaluation and Insurance now
-share the 3-column scheme: **Processor Overview** (gray) / **Manager as Processor**
+share the 3-column scheme: **Processor Overview** (gray) / **Manager Intervention**
 (amber) / **Final Decisions** (rose), rows aligned via the new `ChartDef.rowOf` field.
 - ME column 2: the old Attempt-4+ and 3rd+-Round columns are **merged** into one stacked
   chart per stage (`StackedStageChart`) — amber = Attempt 4+, red = 3rd+ round, legend
@@ -74,7 +74,7 @@ group) in `useRoleCounts` + both baseline generators.
   (Advancer 2C = index 2) lives on as the manager's **Approve Stuck** action.
   Net effect: **direct rep-side Stuck is gone for good; stuck is now propose→approve.**
 - ME Oversight's separate "Escalations · Attempt 4+" and "Escalations · 3rd+ Round"
-  columns (merged into Manager as Processor; the underlying chart filters remain as the
+  columns (merged into Manager Intervention; the underlying chart filters remain as the
   stacked series' data sources, and their drill-downs are reachable via the merged chart).
 - Auth Outstanding's "all-DVS patients never advance" server guard (replaced by → DVS).
 

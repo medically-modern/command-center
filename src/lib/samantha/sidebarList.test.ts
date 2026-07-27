@@ -280,8 +280,8 @@ describe("manager-origin narrowing (sidebar must match the bar chart)", () => {
     mk("final", "Final Escalation Required"),
   ];
 
-  it("Manager as Processor lists only Manager-escalated patients", () => {
-    const ids = sidebarVisibleList(pool, "escalated", "benefits", "2026-07-27", "manager-processor").map((p) => p.id);
+  it("Manager Intervention lists only Manager-escalated patients", () => {
+    const ids = sidebarVisibleList(pool, "escalated", "benefits", "2026-07-27", "manager-intervention").map((p) => p.id);
     expect(ids).toEqual(["mgr"]);
   });
 

@@ -13,7 +13,7 @@
  *
  *   const OVERRIDES = {
  *     "auth-outstanding": {
- *       "manager-processor": ["proposeStuck", "returnToQueue"],
+ *       "manager-intervention": ["proposeStuck", "returnToQueue"],
  *     },
  *   };
  *
@@ -53,7 +53,7 @@ const BASE: readonly StageAction[] = ["proposeStuck"];
  */
 const BY_ORIGIN: Record<ManagerOrigin, readonly StageAction[]> = {
   overview: BASE,
-  "manager-processor": BASE,
+  "manager-intervention": BASE,
   "final-decisions": ["approveStuck", "returnToQueue"],
 };
 

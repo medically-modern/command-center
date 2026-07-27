@@ -91,7 +91,7 @@ export interface ChartDef {
   /** Manager-views row alignment (2026-07): a column-2/3 chart names the
    *  column-1 chart id whose row it sits on. */
   rowOf?: string;
-  /** Stacked two-series chart (ME "Manager as Processor" merge): patients
+  /** Stacked two-series chart (ME "Manager Intervention" merge): patients
    *  come from two SOURCE charts fetched independently; series B (red)
    *  wins dedup when a patient matches both. */
   stacked?: {
@@ -551,7 +551,7 @@ const RAW_CHART_DEFS: ChartDef[] = [
   // ── Manager views: Insurance — Final Decisions "Benefits" (universal
   //    check failed: Out-of-Network / Medicare not Primary / Not Active /
   //    Not Covered — the failed-check submit, display only for now) and
-  //    Manager as Processor "DVS — Retry Queue" (filters on stage DVS + a
+  //    Manager Intervention "DVS — Retry Queue" (filters on stage DVS + a
   //    "Retry Queued" status on Supplies/Pump DVS; the x-axis is days IN
   //    STAGE, not days in queue — the bot doesn't write a queue-entered date
   //    yet, DVS handoff §10). ──
@@ -802,7 +802,7 @@ function withPriorityCols(chart: ChartDef): ChartDef {
 
 /**
  * Mirror the column-1 stage's drill-down columns into its manager-view
- * counterparts (Manager as Processor + Final Decisions), so a manager reads the
+ * counterparts (Manager Intervention + Final Decisions), so a manager reads the
  * SAME fields whichever column they drilled from — a Final-Decisions Benefits
  * row shows Active/Network, DME Benefits, Auth, SoS … exactly like the
  * Processor Overview Benefits row.
@@ -843,7 +843,7 @@ export interface OversightSection {
   chartIds: string[];
   /** Column-1 header (defaults to "Active"). Manager views: "Processor Overview". */
   primaryTitle?: string;
-  /** Optional second column (amber header). Manager views: "Manager as Processor". */
+  /** Optional second column (amber header). Manager views: "Manager Intervention". */
   secondaryTitle?: string;
   secondaryChartIds?: string[];
   /** Optional third column (rose header). Manager views: "Final Decisions". */
@@ -854,14 +854,14 @@ export interface OversightSection {
 export const OVERSIGHT_SECTIONS: OversightSection[] = [
   { id: "intake", title: "Intake", chartIds: ["profile-send-off", "profile-send-off-unverified"] },
   // Manager views (Brandon 2026-07-20): both stages share the 3-column
-  // scheme — Processor Overview / Manager as Processor / Final Decisions —
+  // scheme — Processor Overview / Manager Intervention / Final Decisions —
   // with rows horizontally aligned via each chart's rowOf.
   {
     id: "medical-evaluation",
     title: "Medical Evaluation",
     chartIds: ["evaluate", "send-request", "confirm-receipt", "chase-fax", "chase-email-parachute"],
     primaryTitle: "Processor Overview",
-    secondaryTitle: "Manager as Processor",
+    secondaryTitle: "Manager Intervention",
     secondaryChartIds: [
       "evaluate-escalated-merged",
       "send-request-escalated-merged",
@@ -883,7 +883,7 @@ export const OVERSIGHT_SECTIONS: OversightSection[] = [
     title: "Insurance",
     chartIds: ["benefits", "submit-auth", "auth-outstanding", "auth-denial"],
     primaryTitle: "Processor Overview",
-    secondaryTitle: "Manager as Processor",
+    secondaryTitle: "Manager Intervention",
     secondaryChartIds: ["benefits-manager-escalation", "dvs-retry-queue", "dvs-manual-review"],
     tertiaryTitle: "Final Decisions",
     tertiaryChartIds: ["benefits-final-escalation", "submit-auth-final-escalation", "auth-outstanding-final-escalation"],
@@ -1280,7 +1280,7 @@ const CHART_FILTERS: Record<string, FilterRule> = {
   "benefits-final-escalation": { type: "stageAdvancer", boardId: 18410601299, value: "Benefits / SoS", andCols: [{ colId: "color_mm2vsh2f", value: "Final Escalation Required" }] },
   "submit-auth-final-escalation": { type: "stageAdvancer", boardId: 18410601299, value: "Submit Auth.", andCols: [{ colId: "color_mm2vsh2f", value: "Final Escalation Required" }] },
   "auth-outstanding-final-escalation": { type: "stageAdvancer", boardId: 18410601299, value: "Auth. Outstanding", andCols: [{ colId: "color_mm2vsh2f", value: "Final Escalation Required" }] },
-  // Manager as Processor: Benefits items flagged Manager Escalation Required
+  // Manager Intervention: Benefits items flagged Manager Escalation Required
   // (insulin-pump SoS Not Clear only).
   "benefits-manager-escalation": { type: "stageAdvancer", boardId: 18410601299, value: "Benefits / SoS", andCols: [{ colId: "color_mm2vsh2f", value: "Manager Escalation Required" }] },
   // DVS retry queue: stage DVS with a "Retry Queued" status on Trigger

@@ -540,7 +540,7 @@ export async function sendPatientToMonday(
     }
     // Blocker force-elevates escalation, split by cause (2026-07): a failed
     // universal check → Final (oversight Final Decisions); insulin-pump SoS
-    // Not Clear only → Manager (oversight Manager as Processor). Check-fail
+    // Not Clear only → Manager (oversight Manager Intervention). Check-fail
     // wins if both fire — deriveInsuranceOutcome returns blocker for the
     // universal case first (workflow.ts:540 before :552).
     if (outcome === "blocker") escalationDecision = universalNegative ? "final" : "manager";

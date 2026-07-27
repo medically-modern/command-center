@@ -2,7 +2,7 @@
  * Manager-view origin — WHICH oversight column a manager clicked through from.
  *
  * Pipeline Oversight's manager views have three columns (Processor Overview /
- * Manager as Processor / Final Decisions) and every one of them deep-links into
+ * Manager Intervention / Final Decisions) and every one of them deep-links into
  * the same role page. The page therefore needs to know where the click came
  * from, because the right action bar differs: a patient opened from Final
  * Decisions has ALREADY been proposed stuck, so offering "Propose Stuck" again
@@ -20,7 +20,7 @@
  */
 
 /** The three manager-view columns, plus the ordinary (non-manager) entry. */
-export type ManagerOrigin = "overview" | "manager-processor" | "final-decisions";
+export type ManagerOrigin = "overview" | "manager-intervention" | "final-decisions";
 
 /** Query-string key. Short because it sits alongside patientId/from/manager. */
 export const MANAGER_ORIGIN_PARAM = "mv";
@@ -28,12 +28,12 @@ export const MANAGER_ORIGIN_PARAM = "mv";
 /**
  * The oversight CHART id the click came from, when the column alone isn't
  * specific enough. Two charts can share a column — DVS "Retry Queue" and DVS
- * "Manual Review" are both Manager as Processor — so a page that wants its
+ * "Manual Review" are both Manager Intervention — so a page that wants its
  * list to match the exact bar chart needs the chart, not just the column.
  */
 export const MANAGER_CHART_PARAM = "mvc";
 
-const VALID: readonly ManagerOrigin[] = ["overview", "manager-processor", "final-decisions"];
+const VALID: readonly ManagerOrigin[] = ["overview", "manager-intervention", "final-decisions"];
 
 function isManagerOrigin(v: string): v is ManagerOrigin {
   return (VALID as readonly string[]).includes(v);
