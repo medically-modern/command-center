@@ -35,12 +35,12 @@ export type StageKey =
 /**
  * A button the bar can render.
  * - `proposeStuck`   — the rep's ask: flag the patient and send them to a manager.
- * - `escalateStuck`  — the manager's approval: patient really is Stuck.
+ * - `approveStuck`   — the manager's approval: patient really is Stuck.
  * - `returnToQueue`  — the manager's rejection: send the patient back into the
  *                      pipeline, into the queue they came from. (Josh calls this
  *                      "send back to pipeline"; same action, same write.)
  */
-export type StageAction = "proposeStuck" | "escalateStuck" | "returnToQueue";
+export type StageAction = "proposeStuck" | "approveStuck" | "returnToQueue";
 
 /** What a page shows when nobody came from an oversight manager column. */
 const BASE: readonly StageAction[] = ["proposeStuck"];
@@ -54,7 +54,7 @@ const BASE: readonly StageAction[] = ["proposeStuck"];
 const BY_ORIGIN: Record<ManagerOrigin, readonly StageAction[]> = {
   overview: BASE,
   "manager-processor": BASE,
-  "final-decisions": ["escalateStuck", "returnToQueue"],
+  "final-decisions": ["approveStuck", "returnToQueue"],
 };
 
 /**

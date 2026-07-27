@@ -5,7 +5,7 @@
 
 import { MONDAY_API_URL, mondayIdentityHeaders } from "../shared/mondayEndpoint";
 import { etToday } from "../masheke/etDate";
-import { stampReturnedToQueue, appendStampedLine } from "../masheke/proposedStuck";
+import { stampReturnedToQueue, stampApprovedStuck, appendStampedLine } from "../masheke/proposedStuck";
 const MONDAY_API_VERSION = "2024-10";
 
 function getToken(): string {
@@ -1410,7 +1410,19 @@ async function readItemColumnText(itemId: string, columnId: string): Promise<str
   return data.items?.[0]?.column_values?.[0]?.text ?? "";
 }
 
-export async function approveProposedStuck(itemId: string): Promise<void> {
+/**
+ * Approve a stuck proposal: the patient moves to the Stuck stage and the
+ * escalation clears. The manager may append an OPTIONAL stamped note first —
+ * it records why the patient was let go, and it has to land BEFORE the stage
+ * flip, since that flip is what takes them out of the pipeline.
+ */
+export async function approveProposedStuck(itemId: string, appendNote?: string): Promise<void> {
+  const note = appendNote?.trim();
+  if (note) {
+    const existing = await readItemColumnText(itemId, MASHEKE_NOTES_COL);
+    const stamped = stampApprovedStuck(note, etToday());
+    await writeLongTextOnBoard(MASHEKE_BOARD_ID, itemId, MASHEKE_NOTES_COL, appendStampedLine(existing, stamped));
+  }
   await writeStatusIndexOnBoard(MASHEKE_BOARD_ID, itemId, MASHEKE_STAGE_COL, MASHEKE_STAGE_STUCK_INDEX);
   await writeStatusIndexOnBoard(MASHEKE_BOARD_ID, itemId, MASHEKE_ESC_COL, MASHEKE_ESC_DONE_INDEX);
 }
@@ -1451,7 +1463,15 @@ const INSURANCE_NOTES_COL = "long_text_mm2ffsme";
  *  on this, so a Return to Queue must re-date or the patient stays snoozed. */
 const INSURANCE_FOLLOWUP_DATE_COL = "date_mm34m2dz";
 
-export async function approveInsuranceStuck(itemId: string): Promise<void> {
+/** Insurance twin of approveProposedStuck — same optional stamped note, same
+ *  notes-before-stage ordering, on the Insurance Reference Notes. */
+export async function approveInsuranceStuck(itemId: string, appendNote?: string): Promise<void> {
+  const note = appendNote?.trim();
+  if (note) {
+    const existing = await readItemColumnText(itemId, INSURANCE_NOTES_COL);
+    const stamped = stampApprovedStuck(note, etToday());
+    await writeLongTextOnBoard(INSURANCE_BOARD_ID, itemId, INSURANCE_NOTES_COL, appendStampedLine(existing, stamped));
+  }
   await writeStatusIndexOnBoard(INSURANCE_BOARD_ID, itemId, INSURANCE_STAGE_COL, INSURANCE_STAGE_STUCK_INDEX);
   await writeStatusIndexOnBoard(INSURANCE_BOARD_ID, itemId, INSURANCE_ESC_COL, null);
 }

@@ -7,7 +7,7 @@
  *  - a rep, or a manager from Processor Overview / Manager as Processor
  *      → Propose Stuck (unchanged behaviour)
  *  - a manager from Final Decisions (`?mv=final-decisions`)
- *      → Escalate Stuck + Return to Queue, and NO Propose Stuck (the patient is
+ *      → Approve Stuck + Return to Queue, and NO Propose Stuck (the patient is
  *        already proposed stuck — proposing again is a no-op)
  *
  * The two boards write different columns, so `board` picks the writer pair; the
@@ -62,33 +62,36 @@ export function StageActionBar({ stage, board, patientId, patientName, onDone }:
   const actions = actionsFor(stage, origin);
 
   const [proposeOpen, setProposeOpen] = useState(false);
-  const [escalateOpen, setEscalateOpen] = useState(false);
+  const [approveOpen, setApproveOpen] = useState(false);
+  const [approveNote, setApproveNote] = useState("");
   const [returnOpen, setReturnOpen] = useState(false);
   const [returnNote, setReturnNote] = useState("");
   const [busy, setBusy] = useState<StageAction | null>(null);
 
   const has = (a: StageAction) => actions.includes(a);
 
-  const runDecision = async (action: "escalateStuck" | "returnToQueue", note?: string) => {
+  const runDecision = async (action: "approveStuck" | "returnToQueue", note?: string) => {
     if (busy) return;
     setBusy(action);
     try {
-      if (action === "escalateStuck") {
-        if (board === "insurance") await approveInsuranceStuck(patientId);
-        else await approveProposedStuck(patientId);
+      if (action === "approveStuck") {
+        if (board === "insurance") await approveInsuranceStuck(patientId, note);
+        else await approveProposedStuck(patientId, note);
         toast.success(`${patientName} marked Stuck`);
       } else {
         if (board === "insurance") await returnInsuranceToQueue(patientId, note);
         else await returnProposedToQueue(patientId, note);
         toast.success(`${patientName} returned to the queue`);
       }
+      setApproveOpen(false);
+      setApproveNote("");
       setReturnOpen(false);
       setReturnNote("");
       onDone();
       // The patient just left this stage's queue — go back to the drill-down.
       goBack();
     } catch (e) {
-      toast.error(action === "escalateStuck" ? "Escalate Stuck failed" : "Return to Queue failed", {
+      toast.error(action === "approveStuck" ? "Approve Stuck failed" : "Return to Queue failed", {
         description: e instanceof Error ? e.message : String(e),
       });
     } finally {
@@ -119,43 +122,63 @@ export function StageActionBar({ stage, board, patientId, patientName, onDone }:
           </>
         ))}
 
-      {has("escalateStuck") && (
+      {has("approveStuck") && (
         <Button
-          onClick={() => setEscalateOpen(true)}
+          onClick={() => {
+            setApproveNote("");
+            setApproveOpen(true);
+          }}
           disabled={busy !== null}
           className="gap-2 bg-red-600 hover:bg-red-700 text-white shadow-elevate"
         >
-          {busy === "escalateStuck" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Flag className="h-4 w-4" />}
-          Escalate Stuck
+          {busy === "approveStuck" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Flag className="h-4 w-4" />}
+          Approve Stuck
         </Button>
       )}
 
-      {/* Escalate Stuck confirms first. It moves the patient to the Stuck stage
+      {/* Approve Stuck confirms first. It moves the patient to the Stuck stage
           and takes them out of the pipeline — the most consequential button on
           the page, and unlike Propose Stuck it writes immediately, so a stray
           click on a full-page button must not be enough to fire it. */}
-      <Dialog open={escalateOpen} onOpenChange={(o) => busy === null && setEscalateOpen(o)}>
+      <Dialog open={approveOpen} onOpenChange={(o) => busy === null && setApproveOpen(o)}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <AlertTriangle className="h-5 w-5 text-red-600" />
-              Escalate {patientName} to Stuck?
+              Approve {patientName} as Stuck?
             </DialogTitle>
             <DialogDescription>
               This approves the stuck proposal: the patient moves to the <b>Stuck</b> stage and
               leaves the pipeline. Use <b>Return to Queue</b> instead if they should keep going.
             </DialogDescription>
           </DialogHeader>
+
+          <div>
+            <label className="block text-xs font-medium text-muted-foreground mb-1">
+              Add a note (optional)
+            </label>
+            <textarea
+              value={approveNote}
+              onChange={(e) => setApproveNote(e.target.value)}
+              rows={3}
+              placeholder="e.g. Confirmed with the payer — no path forward, patient notified."
+              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-ring"
+            />
+            <p className="text-xs text-muted-foreground mt-1">
+              Stamped into the notes — the last thing recorded before the patient leaves the pipeline.
+            </p>
+          </div>
+
           <DialogFooter className="gap-2 sm:gap-2">
-            <Button variant="outline" onClick={() => setEscalateOpen(false)} disabled={busy !== null}>
+            <Button variant="outline" onClick={() => setApproveOpen(false)} disabled={busy !== null}>
               Cancel
             </Button>
             <Button
-              onClick={() => runDecision("escalateStuck")}
+              onClick={() => runDecision("approveStuck", approveNote.trim() || undefined)}
               disabled={busy !== null}
               className="gap-2 bg-red-600 hover:bg-red-700 text-white"
             >
-              {busy === "escalateStuck" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Flag className="h-4 w-4" />}
+              {busy === "approveStuck" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Flag className="h-4 w-4" />}
               Yes, mark Stuck
             </Button>
           </DialogFooter>

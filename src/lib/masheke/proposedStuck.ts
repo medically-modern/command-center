@@ -17,6 +17,8 @@
 export const PROPOSED_STUCK_TAG = "[Proposed Stuck";
 /** Leading tag on a manager's "returned to queue" note line. */
 export const RETURNED_TO_QUEUE_TAG = "[Returned to queue";
+/** Leading tag on a manager's "approved stuck" note line. */
+export const APPROVED_STUCK_TAG = "[Approved Stuck";
 
 /** The line appended to MN notes when a rep proposes stuck. */
 export function stampProposedStuck(reason: string, dateStr: string): string {
@@ -26,6 +28,15 @@ export function stampProposedStuck(reason: string, dateStr: string): string {
 /** The line appended to MN notes when a manager returns a proposal to the queue. */
 export function stampReturnedToQueue(note: string, dateStr: string): string {
   return `${RETURNED_TO_QUEUE_TAG} · ${dateStr}] ${note.trim()}`;
+}
+
+/**
+ * The line appended when a manager APPROVES a stuck proposal. Optional, like
+ * the return note — it records WHY the patient was let go, which is the last
+ * thing written before they leave the pipeline.
+ */
+export function stampApprovedStuck(note: string, dateStr: string): string {
+  return `${APPROVED_STUCK_TAG} · ${dateStr}] ${note.trim()}`;
 }
 
 /** Append a stamped line to an existing notes body (blank-line separated). */

@@ -51,7 +51,7 @@ describe("actionsFor", () => {
       const actions = actionsFor(stage, "final-decisions");
       // The patient is already proposed stuck — proposing again is a no-op.
       expect(actions).not.toContain("proposeStuck");
-      expect(actions).toEqual(["escalateStuck", "returnToQueue"]);
+      expect(actions).toEqual(["approveStuck", "returnToQueue"]);
     }
   });
 

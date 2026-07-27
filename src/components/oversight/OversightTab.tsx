@@ -26,7 +26,7 @@ import {
 import { fuzzyNameMatch } from "@/lib/oversight/fuzzyName";
 import { extractProposedStuckReason } from "@/lib/masheke/proposedStuck";
 import { MANAGER_ORIGIN_PARAM } from "@/lib/shared/managerOrigin";
-import { Loader2, BarChart3, X, ExternalLink, StickyNote, Search, ArrowUp, ArrowDown, ArrowUpDown, Star, SlidersHorizontal, Plus, Trash2, RotateCcw } from "lucide-react";
+import { Loader2, BarChart3, X, ExternalLink, StickyNote, Search, ArrowUp, ArrowDown, ArrowUpDown, Star, SlidersHorizontal, Plus, Trash2, RotateCcw, Flag } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
@@ -563,9 +563,11 @@ function DrilldownModal({
   const [notesOpenId, setNotesOpenId] = useState<string | null>(null);
   // Final Decisions actions — per-row busy lock while a decision writes.
   const [decidingId, setDecidingId] = useState<string | null>(null);
-  // Return-to-queue modal (Proposed Stuck only): lets the manager append an
-  // optional note to the MN notes before the patient returns to the queue.
-  const [returnModalId, setReturnModalId] = useState<string | null>(null);
+  // Decision modal: BOTH Final-Decisions actions confirm through it, so the
+  // manager can append an optional stamped note either way — approving stuck is
+  // the last thing recorded before a patient leaves the pipeline, so it wants a
+  // reason at least as much as a return does.
+  const [decisionModal, setDecisionModal] = useState<{ id: string; action: "approve" | "return" } | null>(null);
   const [returnNote, setReturnNote] = useState("");
   // Both Final-Decisions kinds open the Return modal (optional stamped note +
   // a view of the notes carrying the rep's proposal). They differ in WHERE the
@@ -588,21 +590,21 @@ function DrilldownModal({
     }
   };
   const decide = async (patientId: string, action: "approve" | "return") => {
-    // A Return opens a modal first (optional stamped note + a view of the notes
-    // the proposal was made in). Approve writes immediately.
-    if (action === "return" && isDecisionChart) {
+    // Every Final-Decisions action confirms first (optional stamped note + a
+    // view of the notes the proposal was made in).
+    if (isDecisionChart) {
       setReturnNote("");
-      setReturnModalId(patientId);
+      setDecisionModal({ id: patientId, action });
       return;
     }
     await runDecision(patientId, action);
   };
   const confirmReturn = async () => {
-    if (!returnModalId || decidingId) return;
-    const id = returnModalId;
+    if (!decisionModal || decidingId) return;
+    const { id, action } = decisionModal;
     const note = returnNote.trim();
-    await runDecision(id, "return", note || undefined);
-    setReturnModalId(null);
+    await runDecision(id, action, note || undefined);
+    setDecisionModal(null);
     setReturnNote("");
   };
   const [search, setSearch] = useState("");
@@ -614,14 +616,14 @@ function DrilldownModal({
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
-        if (returnModalId) setReturnModalId(null);
+        if (decisionModal) setDecisionModal(null);
         else if (notesOpenId) setNotesOpenId(null);
         else onClose();
       }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [onClose, notesOpenId, returnModalId]);
+  }, [onClose, notesOpenId, decisionModal]);
 
   // Columns in the chart's authored order. The "Days in Stage" column renders
   // as the day-bucket pill wherever the chart places it.
@@ -1108,7 +1110,9 @@ function DrilldownModal({
       })()}
 
       {/* ── Return-to-queue modal (Proposed Stuck) — optional stamped note ── */}
-      {returnModalId && (() => {
+      {decisionModal && (() => {
+        const returnModalId = decisionModal.id;
+        const isApprove = decisionModal.action === "approve";
         const rp = filtered.find((p) => p.id === returnModalId) ?? patients.find((p) => p.id === returnModalId);
         if (!rp) return null;
         const rpNotes = (returnNotesColId ? rp.cols[returnNotesColId] ?? "" : "").trim();
@@ -1116,7 +1120,7 @@ function DrilldownModal({
         return (
           <div
             className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40"
-            onClick={() => !busy && setReturnModalId(null)}
+            onClick={() => !busy && setDecisionModal(null)}
           >
             <div
               className="bg-card border border-border rounded-xl shadow-2xl w-[540px] max-h-[80vh] flex flex-col animate-in zoom-in-95 fade-in duration-150"
@@ -1124,13 +1128,15 @@ function DrilldownModal({
             >
               <div className="flex items-center justify-between px-4 py-3 border-b shrink-0">
                 <div className="flex items-center gap-2 min-w-0">
-                  <RotateCcw className="h-4 w-4 text-blue-500 shrink-0" />
+                  {isApprove
+                    ? <Flag className="h-4 w-4 text-red-600 shrink-0" />
+                    : <RotateCcw className="h-4 w-4 text-blue-500 shrink-0" />}
                   <h4 className="text-sm font-semibold text-foreground truncate">
-                    Return {rp.name} to the queue
+                    {isApprove ? `Approve ${rp.name} as Stuck` : `Return ${rp.name} to the queue`}
                   </h4>
                 </div>
                 <button
-                  onClick={() => setReturnModalId(null)}
+                  onClick={() => setDecisionModal(null)}
                   disabled={busy}
                   className="p-1 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
                 >
@@ -1139,9 +1145,11 @@ function DrilldownModal({
               </div>
               <div className="flex-1 overflow-y-auto px-4 py-3 min-h-0 space-y-3">
                 <p className="text-xs text-muted-foreground">
-                  {returnRedates
-                    ? "Sets Next Action Date to today and clears the escalation, so the patient reappears in the rep's queue."
-                    : "Clears the escalation, so the patient reappears in the rep's queue. The follow-up date is left alone."}{" "}
+                  {isApprove
+                    ? "Moves the patient to the Stuck stage and clears the escalation — they leave the pipeline."
+                    : returnRedates
+                      ? "Sets Next Action Date to today and clears the escalation, so the patient reappears in the rep's queue."
+                      : "Clears the escalation, so the patient reappears in the rep's queue. The follow-up date is left alone."}{" "}
                   Optionally add a note below — it's stamped into the {reasonNotesLabel}.
                 </p>
                 <div>
@@ -1167,7 +1175,7 @@ function DrilldownModal({
               </div>
               <div className="flex justify-end gap-2 px-4 py-3 border-t shrink-0">
                 <button
-                  onClick={() => setReturnModalId(null)}
+                  onClick={() => setDecisionModal(null)}
                   disabled={busy}
                   className="inline-flex items-center rounded-md border border-border hover:bg-muted disabled:opacity-50 text-foreground/80 text-sm font-semibold px-3 py-1.5 transition-colors"
                 >
@@ -1176,10 +1184,15 @@ function DrilldownModal({
                 <button
                   onClick={confirmReturn}
                   disabled={busy}
-                  className="inline-flex items-center gap-1.5 rounded-md bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-sm font-semibold px-3 py-1.5 transition-colors"
+                  className={cn(
+                    "inline-flex items-center gap-1.5 rounded-md disabled:opacity-50 text-white text-sm font-semibold px-3 py-1.5 transition-colors",
+                    isApprove ? "bg-red-600 hover:bg-red-700" : "bg-blue-600 hover:bg-blue-700",
+                  )}
                 >
-                  {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCcw className="h-4 w-4" />}
-                  Return to Queue
+                  {busy
+                    ? <Loader2 className="h-4 w-4 animate-spin" />
+                    : isApprove ? <Flag className="h-4 w-4" /> : <RotateCcw className="h-4 w-4" />}
+                  {isApprove ? "Approve Stuck" : "Return to Queue"}
                 </button>
               </div>
             </div>
@@ -1442,10 +1455,10 @@ export default function OversightTab() {
     async (patientId: string, action: "approve" | "return", kind: "proposed-stuck" | "insurance-final", appendNote?: string) => {
       try {
         if (kind === "insurance-final") {
-          if (action === "approve") await approveInsuranceStuck(patientId);
+          if (action === "approve") await approveInsuranceStuck(patientId, appendNote);
           else await returnInsuranceToQueue(patientId, appendNote);
         } else {
-          if (action === "approve") await approveProposedStuck(patientId);
+          if (action === "approve") await approveProposedStuck(patientId, appendNote);
           else await returnProposedToQueue(patientId, appendNote);
         }
         toast.success(
