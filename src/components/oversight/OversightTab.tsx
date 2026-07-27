@@ -29,6 +29,7 @@ import { MANAGER_ORIGIN_PARAM, MANAGER_CHART_PARAM } from "@/lib/shared/managerO
 import { Loader2, BarChart3, X, ExternalLink, StickyNote, Search, ArrowUp, ArrowDown, ArrowUpDown, Star, SlidersHorizontal, Plus, Trash2, RotateCcw, Flag } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
@@ -110,6 +111,41 @@ const LS_CACHE_KEY = "oversight-cache";
 // a fixed width so every chart keeps its size and the block scrolls horizontally
 // rather than shrinking the charts to fit. Gap matches the old 2-column gap-x-12.
 const OVERSIGHT_COL_GAP = 48; // px between the fluid manager-view columns
+
+/**
+ * Placeholder for one bar chart while Monday is queried. Mirrors StageChart's
+ * frame (card, title row, count, 8 day-bucket bars) so the real charts drop
+ * straight into the same boxes without the layout shifting.
+ *
+ * Bar heights come from `seed`, not Math.random: a re-render mid-fetch must not
+ * reshuffle the skeleton, which reads as flicker rather than loading.
+ */
+function ChartSkeleton({ seed }: { seed: number }) {
+  return (
+    <div className="rounded-xl bg-card border shadow-card p-4">
+      <div className="flex items-center justify-between mb-3">
+        <Skeleton className="h-4 w-28" />
+        <Skeleton className="h-4 w-8" />
+      </div>
+      <div className="flex items-end gap-1.5 h-[120px]">
+        {Array.from({ length: 8 }).map((_, i) => (
+          <Skeleton
+            key={i}
+            className="flex-1 rounded-sm"
+            // Deterministic pseudo-random heights: varied enough to read as a
+            // chart, stable across renders.
+            style={{ height: `${18 + ((seed * 7 + i * 29) % 70)}%` }}
+          />
+        ))}
+      </div>
+      <div className="flex gap-1.5 mt-2">
+        {Array.from({ length: 8 }).map((_, i) => (
+          <Skeleton key={i} className="flex-1 h-2" />
+        ))}
+      </div>
+    </div>
+  );
+}
 
 // ── "Requesting" summary (Send Request / Confirm Receipt / Chase) ─────────
 // Derived from the MN Request Consolidated dropdown — the actual doctor-facing
@@ -1222,6 +1258,8 @@ export default function OversightTab() {
     cachedRef.current,
   );
   const [loading, setLoading] = useState(cachedRef.current === null);
+  /** True during ANY Monday fetch, including silent background polls. */
+  const [fetching, setFetching] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // Drill-down + stage state is seeded from the URL so the browser Back button
   // (e.g. returning from a patient's CC page) restores the exact view the user
@@ -1278,6 +1316,11 @@ export default function OversightTab() {
   // ── Data fetching ─────────────────────────────────────────────
 
   const refetch = useCallback(async (silent = false) => {
+    // `fetching` tracks EVERY fetch, silent ones included — a background poll
+    // used to update the charts with no on-screen sign that anything was
+    // happening, so numbers changed under the manager unannounced. `loading` is
+    // still cold-load-only, since that's what swaps in the skeleton.
+    if (mountedRef.current) setFetching(true);
     if (mountedRef.current && !silent) {
       setLoading(true);
       setError(null);
@@ -1293,6 +1336,7 @@ export default function OversightTab() {
         setError(e instanceof Error ? e.message : String(e));
       }
     } finally {
+      if (mountedRef.current) setFetching(false);
       if (mountedRef.current && !silent) setLoading(false);
     }
   }, []);
@@ -1503,13 +1547,33 @@ export default function OversightTab() {
 
   // ── Render ────────────────────────────────────────────────────
 
+  // Cold load (no cached data): render the SHAPE of the page rather than a bare
+  // centred spinner, so the layout doesn't jump when the data lands and the
+  // manager can see what's coming while Monday is queried.
   if (loading && !data) {
+    const section =
+      OVERSIGHT_SECTIONS.find((s) => s.id === selectedStage) ?? OVERSIGHT_SECTIONS[0];
+    const isManagerView = !!section.tertiaryChartIds?.length;
+    const rows = section.chartIds.length || 3;
     return (
-      <div className="flex flex-col items-center justify-center py-24 gap-3">
-        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-        <p className="text-sm text-muted-foreground">
-          Loading pipeline data...
-        </p>
+      <div className="space-y-4">
+        <div className="flex items-center gap-3">
+          <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+          <p className="text-sm font-medium text-muted-foreground">
+            Loading {section.title} from Monday…
+          </p>
+        </div>
+        <div
+          className="grid gap-4"
+          style={{
+            gridTemplateColumns: `repeat(${isManagerView ? 3 : 2}, minmax(0, 1fr))`,
+            columnGap: isManagerView ? OVERSIGHT_COL_GAP : 16,
+          }}
+        >
+          {Array.from({ length: rows * (isManagerView ? 3 : 2) }).map((_, i) => (
+            <ChartSkeleton key={i} seed={i} />
+          ))}
+        </div>
       </div>
     );
   }
@@ -1569,8 +1633,13 @@ export default function OversightTab() {
           </div>
         </div>
         <div className="flex items-center gap-3">
-          {loading && (
-            <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
+          {/* Shown for every fetch, background polls included, so the manager
+              always knows when the numbers are being pulled from Monday. */}
+          {fetching && (
+            <span className="inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              Syncing with Monday…
+            </span>
           )}
           {error && (
             <span className="text-[10px] text-destructive">
