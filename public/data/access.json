@@ -51,7 +51,8 @@
         "dvs",
         "submitAuth",
         "updateClinicals",
-        "patientQuestions"
+        "patientQuestions",
+        "fax"
       ],
       "roleOrder": {},
       "roleFilters": {}
