@@ -48,7 +48,8 @@
         "sendRequest",
         "profile",
         "finalConfirm",
-        "dvs"
+        "dvs",
+        "submitAuth"
       ],
       "roleOrder": {},
       "roleFilters": {}
