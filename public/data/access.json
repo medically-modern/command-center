@@ -47,7 +47,8 @@
         "chaseParachute",
         "sendRequest",
         "profile",
-        "submitAuth"
+        "submitAuth",
+        "dvs"
       ],
       "roleOrder": {},
       "roleFilters": {}
