@@ -45,7 +45,8 @@
         "evaluate",
         "confirmReceipt",
         "chaseParachute",
-        "sendRequest"
+        "sendRequest",
+        "profile"
       ],
       "roleOrder": {},
       "roleFilters": {}
