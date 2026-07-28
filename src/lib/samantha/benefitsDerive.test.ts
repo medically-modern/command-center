@@ -349,6 +349,15 @@ describe("call logs (spec §4, D8)", () => {
       "[2026-07-13] Benefits call · ref REF-2",
     ]);
   });
+  it("signs each call line with the rep's initials when signed in", () => {
+    expect(composeCallLogLines([{ ref: "4821-A", note: "spoke with payer" }], "benefits", "2026-07-13", "JH")).toEqual([
+      "[2026-07-13] Benefits call · ref 4821-A: spoke with payer —JH",
+    ]);
+    // Ref-less / note-less rows are signed the same way.
+    expect(composeCallLogLines([{ ref: "REF-2", note: "" }], "sos-auth", "2026-07-13", "JH")).toEqual([
+      "[2026-07-13] SoS/auth call · ref REF-2 —JH",
+    ]);
+  });
   it("tags section-2 rows as SoS/auth calls", () => {
     expect(composeCallLogLines([{ ref: "1", note: "x" }], "sos-auth", "2026-07-13")).toEqual([
       "[2026-07-13] SoS/auth call · ref 1: x",

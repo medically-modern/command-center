@@ -36,6 +36,26 @@ describe("stampProposedStuck / extractProposedStuckReason", () => {
   });
 });
 
+describe("initials on the stamped head", () => {
+  it("signs the line inside the bracket so the reason still extracts clean", () => {
+    const line = stampProposedStuck("doctor unreachable", "2026-07-27", "JH");
+    expect(line).toBe("[Proposed Stuck · 2026-07-27 · JH] doctor unreachable");
+    expect(extractProposedStuckReason(line)).toBe("doctor unreachable");
+  });
+
+  it("signs the manager's decision lines too", () => {
+    expect(stampReturnedToQueue("new clinicals arrived", "2026-07-27", "AB"))
+      .toBe("[Returned to queue · 2026-07-27 · AB] new clinicals arrived");
+    expect(stampApprovedStuck("no path forward", "2026-07-27", "AB"))
+      .toBe("[Approved Stuck · 2026-07-27 · AB] no path forward");
+  });
+
+  it("falls back to the unsigned head when signed out", () => {
+    expect(stampProposedStuck("reason", "2026-07-27", ""))
+      .toBe("[Proposed Stuck · 2026-07-27] reason");
+  });
+});
+
 describe("stampApprovedStuck", () => {
   it("stamps a manager's approval note with the same shape as the other tags", () => {
     const line = stampApprovedStuck("  no path forward with the payer  ", "2026-07-27");

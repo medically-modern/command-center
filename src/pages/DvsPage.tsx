@@ -463,6 +463,7 @@ const DvsPage = () => {
                   mnWorkflowNotes={selected.mnWorkflowNotes}
                   onNotesChange={(v) => setNoteDrafts((prev) => ({ ...prev, [selected.id]: v }))}
                   onSaveToMonday={(v) => writeLongText(selected.id, COL.callReferenceNotes, v)}
+                  notePrefix="DVS"
                   description="Carries over from the earlier stages. DVS reference numbers, ePACES notes…"
                   placeholder="DVS reference numbers, ePACES notes, follow-ups…"
                 />

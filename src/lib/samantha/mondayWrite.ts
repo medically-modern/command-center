@@ -38,6 +38,7 @@ import { derivedRecheckSos, effectiveResult } from "./authOutstandingReview";
 import { isMedicarePrimary } from "./medicareJurisdiction";
 import { allProductsDvsRouted, dvsAutoTrigger, hasDvsRoutedProducts } from "./dvsRouting";
 import { etNow } from "../masheke/etDate";
+import { userInitials } from "../shared/auth";
 
 const MAX_RETRIES = 2;
 const RETRY_DELAY_MS = 800;
@@ -691,9 +692,10 @@ export async function sendPatientToMonday(
       const stamp = etNow().toLocaleString("en-US", {
         month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit",
       });
+      const ini = userInitials();
       const callLogLines = [
-        ...composeCallLogLines(rows1, "benefits", stamp),
-        ...composeCallLogLines(rows2, "sos-auth", stamp),
+        ...composeCallLogLines(rows1, "benefits", stamp, ini),
+        ...composeCallLogLines(rows2, "sos-auth", stamp, ini),
       ];
       notesForSend = appendCallLog(notesForSend, callLogLines);
     }

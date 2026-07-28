@@ -275,6 +275,7 @@ const ChaseBenefitsPage = () => {
                         onSaveToMonday={async (v) => {
                           await writeLongText(selected.id, COL.callReferenceNotes, v);
                         }}
+                        notePrefix="Benefits"
                         placeholder="Add a call reference note…"
                         description="Shared across Benefits, Submit Auth & Auth Outstanding. Auto-escalation reasons are appended here on send."
                         fillHeight

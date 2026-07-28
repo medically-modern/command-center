@@ -6,6 +6,7 @@
 import { MONDAY_API_URL, mondayIdentityHeaders } from "../shared/mondayEndpoint";
 import { etToday } from "../masheke/etDate";
 import { stampReturnedToQueue, stampApprovedStuck, appendStampedLine } from "../masheke/proposedStuck";
+import { userInitials } from "../shared/auth";
 const MONDAY_API_VERSION = "2024-10";
 
 function getToken(): string {
@@ -1435,7 +1436,7 @@ export async function approveProposedStuck(itemId: string, appendNote?: string):
   const note = appendNote?.trim();
   if (note) {
     const existing = await readItemColumnText(itemId, MASHEKE_NOTES_COL);
-    const stamped = stampApprovedStuck(note, etToday());
+    const stamped = stampApprovedStuck(note, etToday(), userInitials());
     await writeLongTextOnBoard(MASHEKE_BOARD_ID, itemId, MASHEKE_NOTES_COL, appendStampedLine(existing, stamped));
   }
   await writeStatusIndexOnBoard(MASHEKE_BOARD_ID, itemId, MASHEKE_STAGE_COL, MASHEKE_STAGE_STUCK_INDEX);
@@ -1453,7 +1454,7 @@ export async function returnProposedToQueue(itemId: string, appendNote?: string)
   if (note) {
     // Read the notes fresh so a concurrent edit isn't clobbered, then append.
     const existing = await readItemColumnText(itemId, MASHEKE_NOTES_COL);
-    const stamped = stampReturnedToQueue(note, etToday());
+    const stamped = stampReturnedToQueue(note, etToday(), userInitials());
     await writeLongTextOnBoard(MASHEKE_BOARD_ID, itemId, MASHEKE_NOTES_COL, appendStampedLine(existing, stamped));
   }
   await writeDateOnBoard(MASHEKE_BOARD_ID, itemId, MASHEKE_NAD_COL, etToday());
@@ -1484,7 +1485,7 @@ export async function approveInsuranceStuck(itemId: string, appendNote?: string)
   const note = appendNote?.trim();
   if (note) {
     const existing = await readItemColumnText(itemId, INSURANCE_NOTES_COL);
-    const stamped = stampApprovedStuck(note, etToday());
+    const stamped = stampApprovedStuck(note, etToday(), userInitials());
     await writeLongTextOnBoard(INSURANCE_BOARD_ID, itemId, INSURANCE_NOTES_COL, appendStampedLine(existing, stamped));
   }
   await writeStatusIndexOnBoard(INSURANCE_BOARD_ID, itemId, INSURANCE_STAGE_COL, INSURANCE_STAGE_STUCK_INDEX);
@@ -1509,7 +1510,7 @@ export async function returnInsuranceToQueue(itemId: string, appendNote?: string
   if (note) {
     // Read the notes fresh so a concurrent edit isn't clobbered, then append.
     const existing = await readItemColumnText(itemId, INSURANCE_NOTES_COL);
-    const stamped = stampReturnedToQueue(note, etToday());
+    const stamped = stampReturnedToQueue(note, etToday(), userInitials());
     await writeLongTextOnBoard(INSURANCE_BOARD_ID, itemId, INSURANCE_NOTES_COL, appendStampedLine(existing, stamped));
   }
   await writeDateOnBoard(INSURANCE_BOARD_ID, itemId, INSURANCE_FOLLOWUP_DATE_COL, etToday());

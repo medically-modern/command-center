@@ -191,6 +191,7 @@ export function AuthOutstandingPanel({ patient, onCodeChange, onNotesChange, onS
         mnWorkflowNotes={patient.mnWorkflowNotes}
         onNotesChange={onNotesChange}
         onSaveToMonday={onSaveNotesToMonday}
+        notePrefix="Auth Outstanding"
         description="Carries over from Benefits + Submit Auth. Add anything from approval / denial follow-up — rep names, reference numbers…"
         placeholder="Approval / denial details, rep names, follow-up actions…"
       />

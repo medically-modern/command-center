@@ -324,6 +324,7 @@ const FinalConfirmPage = () => {
                     mnWorkflowNotes={selected.mnWorkflowNotes}
                     onNotesChange={(v) => update(selected.id, { notes: v })}
                     onSaveToMonday={(v) => writeLongText(selected.id, COL.notes, v)}
+                    notePrefix="Final Confirm"
                   />
                   <EscalateButton
                     escalated={selected.escalated}

@@ -20,14 +20,23 @@ export const RETURNED_TO_QUEUE_TAG = "[Returned to queue";
 /** Leading tag on a manager's "approved stuck" note line. */
 export const APPROVED_STUCK_TAG = "[Approved Stuck";
 
+/** Tag body: "<TAG> · <date>" plus the author's initials when signed in, so a
+ *  stamped line says WHO proposed/decided — same signature every other note
+ *  line carries (lib/shared/noteStamp). Kept INSIDE the bracket so
+ *  `extractProposedStuckReason` (which slices at the first "]") still returns
+ *  the reason alone. */
+function stampHead(tag: string, dateStr: string, initials: string): string {
+  return initials ? `${tag} · ${dateStr} · ${initials}]` : `${tag} · ${dateStr}]`;
+}
+
 /** The line appended to MN notes when a rep proposes stuck. */
-export function stampProposedStuck(reason: string, dateStr: string): string {
-  return `${PROPOSED_STUCK_TAG} · ${dateStr}] ${reason.trim()}`;
+export function stampProposedStuck(reason: string, dateStr: string, initials = ""): string {
+  return `${stampHead(PROPOSED_STUCK_TAG, dateStr, initials)} ${reason.trim()}`;
 }
 
 /** The line appended to MN notes when a manager returns a proposal to the queue. */
-export function stampReturnedToQueue(note: string, dateStr: string): string {
-  return `${RETURNED_TO_QUEUE_TAG} · ${dateStr}] ${note.trim()}`;
+export function stampReturnedToQueue(note: string, dateStr: string, initials = ""): string {
+  return `${stampHead(RETURNED_TO_QUEUE_TAG, dateStr, initials)} ${note.trim()}`;
 }
 
 /**
@@ -35,8 +44,8 @@ export function stampReturnedToQueue(note: string, dateStr: string): string {
  * the return note — it records WHY the patient was let go, which is the last
  * thing written before they leave the pipeline.
  */
-export function stampApprovedStuck(note: string, dateStr: string): string {
-  return `${APPROVED_STUCK_TAG} · ${dateStr}] ${note.trim()}`;
+export function stampApprovedStuck(note: string, dateStr: string, initials = ""): string {
+  return `${stampHead(APPROVED_STUCK_TAG, dateStr, initials)} ${note.trim()}`;
 }
 
 /** Append a stamped line to an existing notes body (blank-line separated). */

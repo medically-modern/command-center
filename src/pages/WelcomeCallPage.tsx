@@ -273,6 +273,7 @@ const WelcomeCallPage = () => {
                     mnWorkflowNotes={selected.mnWorkflowNotes}
                     onNotesChange={(v) => update(selected.id, { notes: v })}
                     onSaveToMonday={(v) => sendNotesToMonday(selected.id, v)}
+                    notePrefix="Welcome Call"
                   />
                   <ReviewPanel patient={selected} />
                   <EscalateButton escalated={selected.escalated} onToggle={toggleEscalate} disabled={!selected} onOpenForm={() => setEscalationModalOpen(true)} />

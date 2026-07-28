@@ -156,6 +156,7 @@ const SubscriptionPage = () => {
                     notes={selected.notes}
                     onNotesChange={(v) => update(selected.id, { notes: v })}
                     onSaveToMonday={(v) => sendNotesToMonday(selected.id, v)}
+                    notePrefix="Subscription"
                   />
                   <EscalateButton escalated={selected.escalated} onToggle={toggleEscalate} disabled={!selected} />
                   <SendToMondayButton onSend={handleSend} disabled={!selected || !validation.valid} validationErrors={validation.errors} />

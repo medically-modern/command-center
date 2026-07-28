@@ -3,9 +3,8 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { MessageSquare, Plus, Loader2 } from "lucide-react";
 import { toast } from "sonner";
-import { etNow } from "@/lib/masheke/etDate";
-import { userInitials } from "@/lib/shared/auth";
 import { PriorStageNotes } from "@/components/shared/PriorStageNotes";
+import { appendStampedNote } from "@/lib/shared/noteStamp";
 
 interface Props {
   notes: string;
@@ -70,17 +69,7 @@ export function NotesPanel({ notes, onNotesChange, onSaveToMonday, notePrefix, p
 
   const handleAppend = async () => {
     if (!newNote.trim()) return;
-    const timestamp = etNow().toLocaleString("en-US", {
-      month: "short",
-      day: "numeric",
-      year: "numeric",
-      hour: "numeric",
-      minute: "2-digit",
-    });
-    const prefix = notePrefix ? `${notePrefix}: ` : "";
-    const initials = userInitials();
-    const entry = `[${timestamp}] ${prefix}${newNote.trim()}${initials ? ` —${initials}` : ""}`;
-    const appended = notes ? `${notes}\n\n${entry}` : entry;
+    const appended = appendStampedNote(notes, newNote, notePrefix);
     onNotesChange(appended);
     setNewNoteAndReport("");
 

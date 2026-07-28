@@ -1,21 +1,15 @@
-import { etNow } from "@/lib/masheke/etDate";
-import { userInitials } from "@/lib/shared/auth";
+import { appendStampedNote } from "@/lib/shared/noteStamp";
 
 /** Stage label stamped into each appended note. */
 export const NOTE_STAGE = "Profile Send-Off";
 
 /**
- * Append a new note to an existing log the way the Evaluate role does:
+ * Append a new note to an existing log the way every other role does:
  * "[Mon D, YYYY, H:MM AM] Profile Send-Off: <text> —<initials>", separated
- * from prior entries by a blank line.
+ * from prior entries by a blank line. Format lives in lib/shared/noteStamp.
  */
 export function stampNote(existing: string, draft: string): string {
-  const ts = etNow().toLocaleString("en-US", {
-    month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit",
-  });
-  const inits = userInitials();
-  const entry = `[${ts}] ${NOTE_STAGE}: ${draft.trim()}${inits ? ` —${inits}` : ""}`;
-  return existing ? `${existing}\n\n${entry}` : entry;
+  return appendStampedNote(existing, draft, NOTE_STAGE);
 }
 
 /** Render a note log, bolding each entry's "[date time] Stage:" prefix. */

@@ -5,6 +5,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { MessageSquare, Plus, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { PriorStageNotes } from "@/components/shared/PriorStageNotes";
+import { appendStampedNote } from "@/lib/shared/noteStamp";
 
 interface Props {
   notes: string;
@@ -13,9 +14,11 @@ interface Props {
   /** Read-only notes carried from earlier stages, shown above the current notes. */
   profileSendOffNotes?: string;
   mnWorkflowNotes?: string;
+  /** Stage label stamped into each appended note (see lib/shared/noteStamp). */
+  notePrefix?: string;
 }
 
-export function NotesPanel({ notes, onNotesChange, onSaveToMonday, profileSendOffNotes, mnWorkflowNotes }: Props) {
+export function NotesPanel({ notes, onNotesChange, onSaveToMonday, profileSendOffNotes, mnWorkflowNotes, notePrefix }: Props) {
   const priorStages = [
     { label: "Profile Send-Off Notes", text: profileSendOffNotes },
     { label: "MN Workflow Notes", text: mnWorkflowNotes },
@@ -26,16 +29,7 @@ export function NotesPanel({ notes, onNotesChange, onSaveToMonday, profileSendOf
 
   const handleAppend = async () => {
     if (!newNote.trim()) return;
-    const timestamp = new Date().toLocaleString("en-US", {
-      month: "short",
-      day: "numeric",
-      year: "numeric",
-      hour: "numeric",
-      minute: "2-digit",
-    });
-    const appended = notes
-      ? `${notes}\n\n[${timestamp}] ${newNote.trim()}`
-      : `[${timestamp}] ${newNote.trim()}`;
+    const appended = appendStampedNote(notes, newNote, notePrefix);
     onNotesChange(appended);
     setNewNote("");
 

@@ -34,6 +34,7 @@ import { toast } from "sonner";
 import { writeStatusIndex, writeLongText, readColumnTexts, COL } from "@/lib/samantha/mondayApi";
 import { ESCALATION_INDEX } from "@/lib/samantha/mondayMapping";
 import { stampProposedStuck, appendStampedLine } from "@/lib/masheke/proposedStuck";
+import { userInitials } from "@/lib/shared/auth";
 import { etToday } from "@/lib/masheke/etDate";
 
 export function ProposeStuckButton({ patientId, onDone }: { patientId: string; onDone?: () => void }) {
@@ -57,7 +58,7 @@ export function ProposeStuckButton({ patientId, onDone }: { patientId: string; o
       // stamped reason, THEN flip the escalation status.
       const existing = await readColumnTexts(patientId, [COL.callReferenceNotes]);
       const current = existing.find((c) => c.id === COL.callReferenceNotes)?.text ?? "";
-      const stamped = stampProposedStuck(reason.trim(), etToday());
+      const stamped = stampProposedStuck(reason.trim(), etToday(), userInitials());
       await writeLongText(patientId, COL.callReferenceNotes, appendStampedLine(current, stamped));
       await writeStatusIndex(patientId, COL.escalation, ESCALATION_INDEX.finalRequired);
       toast.success("Proposed stuck — sent to the manager for a decision");

@@ -28,6 +28,7 @@ import { AlertTriangle, Loader2 } from "lucide-react";
 import { writeStatusIndex, writeLongText, fetchItemColumnTexts, COL } from "@/lib/masheke/mondayApi";
 import { ESCALATION_INDEX } from "@/lib/masheke/mondayMapping";
 import { stampProposedStuck, appendStampedLine } from "@/lib/masheke/proposedStuck";
+import { userInitials } from "@/lib/shared/auth";
 import { etToday } from "@/lib/masheke/etDate";
 import { toast } from "sonner";
 
@@ -56,7 +57,7 @@ export function ProposeStuckModal({ open, onOpenChange, patientId, patientName, 
       // already be in the notes when they look. Read the notes fresh so a
       // concurrent edit isn't clobbered.
       const existing = await fetchItemColumnTexts(patientId, [COL.mnEvalNotes]);
-      const stamped = stampProposedStuck(reason.trim(), etToday());
+      const stamped = stampProposedStuck(reason.trim(), etToday(), userInitials());
       const appended = appendStampedLine(existing[COL.mnEvalNotes], stamped);
       await writeLongText(patientId, COL.mnEvalNotes, appended);
       await writeStatusIndex(patientId, COL.escalation, ESCALATION_INDEX.finalRequired);

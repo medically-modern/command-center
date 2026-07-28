@@ -273,6 +273,7 @@ const SubmitAuthPage = () => {
                         onSaveToMonday={async (v) => {
                           await writeLongText(selected.id, COL.callReferenceNotes, v);
                         }}
+                        notePrefix="Submit Auth"
                         placeholder="Auth submission notes, confirmation numbers, any rep feedback…"
                         description="Carries over from the Benefits tab. Add anything new from the auth submission step."
                         fillHeight

@@ -4,6 +4,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { MessageSquare, Plus, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { PriorStageNotes } from "@/components/shared/PriorStageNotes";
+import { appendStampedNote } from "@/lib/shared/noteStamp";
 
 interface Props {
   notes: string;
@@ -11,6 +12,11 @@ interface Props {
   onSaveToMonday?: (notes: string) => Promise<void>;
   placeholder?: string;
   description?: string;
+  /** Stage label stamped into each appended note ("Benefits", "Submit Auth",
+   *  "Auth Outstanding", "DVS"). All four Insurance roles append to the SAME
+   *  Call Reference Notes column, so without it a line can't be traced back
+   *  to the stage that wrote it. */
+  notePrefix?: string;
   /** Earlier-stage notes shown read-only above the current Reference Notes. */
   profileSendOffNotes?: string;
   mnWorkflowNotes?: string;
@@ -19,7 +25,7 @@ interface Props {
   fillHeight?: boolean;
 }
 
-export function NotesPanel({ notes, onNotesChange, onSaveToMonday, placeholder, description, profileSendOffNotes, mnWorkflowNotes, fillHeight }: Props) {
+export function NotesPanel({ notes, onNotesChange, onSaveToMonday, placeholder, description, notePrefix, profileSendOffNotes, mnWorkflowNotes, fillHeight }: Props) {
   // Earlier pipeline stages, oldest first, rendered read-only above the
   // current (editable) insurance Reference Notes.
   const priorStages = [
@@ -32,16 +38,7 @@ export function NotesPanel({ notes, onNotesChange, onSaveToMonday, placeholder, 
 
   const handleAppend = async () => {
     if (!newNote.trim()) return;
-    const timestamp = new Date().toLocaleString("en-US", {
-      month: "short",
-      day: "numeric",
-      year: "numeric",
-      hour: "numeric",
-      minute: "2-digit",
-    });
-    const appended = notes
-      ? `${notes}\n\n[${timestamp}] ${newNote.trim()}`
-      : `[${timestamp}] ${newNote.trim()}`;
+    const appended = appendStampedNote(notes, newNote, notePrefix);
     onNotesChange(appended);
     setNewNote("");
 

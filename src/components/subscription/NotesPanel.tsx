@@ -4,26 +4,24 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { MessageSquare, Plus, Loader2 } from "lucide-react";
 import { toast } from "sonner";
+import { appendStampedNote } from "@/lib/shared/noteStamp";
 
 interface Props {
   notes: string;
   onNotesChange: (notes: string) => void;
   onSaveToMonday?: (notes: string) => Promise<void>;
+  /** Stage label stamped into each appended note (see lib/shared/noteStamp). */
+  notePrefix?: string;
 }
 
-export function NotesPanel({ notes, onNotesChange, onSaveToMonday }: Props) {
+export function NotesPanel({ notes, onNotesChange, onSaveToMonday, notePrefix }: Props) {
   const [newNote, setNewNote] = useState("");
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
 
   const handleAppend = async () => {
     if (!newNote.trim()) return;
-    const timestamp = new Date().toLocaleString("en-US", {
-      month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit",
-    });
-    const appended = notes
-      ? `${notes}\n\n[${timestamp}] ${newNote.trim()}`
-      : `[${timestamp}] ${newNote.trim()}`;
+    const appended = appendStampedNote(notes, newNote, notePrefix);
     onNotesChange(appended);
     setNewNote("");
 

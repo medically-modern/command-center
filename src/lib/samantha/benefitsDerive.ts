@@ -294,15 +294,19 @@ export function composeCallLogLines(
   rows: CallLogRow[],
   section: "benefits" | "sos-auth",
   stamp: string,
+  /** Initials of the rep who made the call — signed off like every other
+   *  note line (see lib/shared/noteStamp). Omitted when signed out. */
+  initials = "",
 ): string[] {
   const tag = section === "benefits" ? "Benefits call" : "SoS/auth call";
+  const sfx = initials ? ` —${initials}` : "";
   return rows
     .filter((r) => !isBlankCallRow(r))
     .map((r) => {
       const ref = (r.ref ?? "").trim();
       const note = (r.note ?? "").trim();
       const head = ref ? `[${stamp}] ${tag} · ref ${ref}` : `[${stamp}] ${tag}`;
-      return note ? `${head}: ${note}` : head;
+      return (note ? `${head}: ${note}` : head) + sfx;
     });
 }
 
