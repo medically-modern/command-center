@@ -56,7 +56,9 @@
         "authDenied",
         "subscription",
         "welcomeCall",
-        "authOutstanding"
+        "authOutstanding",
+        "benefits",
+        "chaseFax"
       ],
       "roleOrder": {},
       "roleFilters": {}
