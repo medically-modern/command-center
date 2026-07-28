@@ -55,7 +55,8 @@
         "fax",
         "authDenied",
         "subscription",
-        "welcomeCall"
+        "welcomeCall",
+        "authOutstanding"
       ],
       "roleOrder": {},
       "roleFilters": {}
