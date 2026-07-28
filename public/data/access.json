@@ -47,7 +47,8 @@
         "chaseParachute",
         "sendRequest",
         "profile",
-        "finalConfirm"
+        "finalConfirm",
+        "dvs"
       ],
       "roleOrder": {},
       "roleFilters": {}
