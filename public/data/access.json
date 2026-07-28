@@ -54,7 +54,8 @@
         "patientQuestions",
         "fax",
         "authDenied",
-        "subscription"
+        "subscription",
+        "welcomeCall"
       ],
       "roleOrder": {},
       "roleFilters": {}
