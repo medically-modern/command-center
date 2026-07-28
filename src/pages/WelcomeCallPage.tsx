@@ -271,6 +271,7 @@ const WelcomeCallPage = () => {
                     notes={selected.notes}
                     profileSendOffNotes={selected.profileSendOffNotes}
                     mnWorkflowNotes={selected.mnWorkflowNotes}
+                    insuranceNotes={selected.insuranceNotes}
                     onNotesChange={(v) => update(selected.id, { notes: v })}
                     onSaveToMonday={(v) => sendNotesToMonday(selected.id, v)}
                     notePrefix="Welcome Call"

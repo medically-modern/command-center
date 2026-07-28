@@ -44,6 +44,7 @@ export const COL = {
   // automation; the SPA only reads them). Columns created 2026-07.
   profileSendOffNotes: "long_text_mm5g1txs",
   mnWorkflowNotes: "long_text_mm5gx6j6",
+  insuranceNotes: "text_mm5pegde",
 
   // Welcome Call editable fields
   monitorQty: "numeric_mm1xyfhc",
@@ -109,7 +110,7 @@ export const READ_COLUMN_IDS = [
   COL.primaryInsurance, COL.memberId1, COL.secondaryInsurance, COL.memberId2,
   COL.serving, COL.pumpType, COL.cgmType, COL.requestType, COL.doctorName, COL.doctorNpi,
   COL.referralSource, COL.referralReceivedDate,
-  COL.diagnosis, COL.notes, COL.profileSendOffNotes, COL.mnWorkflowNotes,
+  COL.diagnosis, COL.notes, COL.profileSendOffNotes, COL.mnWorkflowNotes, COL.insuranceNotes,
   COL.monitorQty, COL.pumpQty, COL.qtyInf1, COL.infusionSet1,
   COL.qtyInf2, COL.infusionSet2, COL.qtyCartridge, COL.medicarePriorPumpDate, COL.subscriptionType, COL.welcomeCallText,
   COL.orderHandling, COL.advanceDecision,

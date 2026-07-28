@@ -143,10 +143,12 @@ export interface Patient {
 
   // Notes
   notes: string;
-  /** Read-only notes carried from earlier stages, populated by a Monday
-   *  automation. Shown read-only in the notes section. */
+  /** Read-only notes carried from earlier stages (Profile, Medical Necessity,
+   *  Insurance), populated by a Monday automation. Shown read-only in the notes
+   *  section, oldest stage first. */
   profileSendOffNotes?: string;
   mnWorkflowNotes?: string;
+  insuranceNotes?: string;
 
   // Editable overrides
   addressEdited: string | null;

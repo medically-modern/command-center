@@ -322,6 +322,7 @@ const FinalConfirmPage = () => {
                     notes={selected.notes}
                     profileSendOffNotes={selected.profileSendOffNotes}
                     mnWorkflowNotes={selected.mnWorkflowNotes}
+                    insuranceNotes={selected.insuranceNotes}
                     onNotesChange={(v) => update(selected.id, { notes: v })}
                     onSaveToMonday={(v) => writeLongText(selected.id, COL.notes, v)}
                     notePrefix="Final Confirm"

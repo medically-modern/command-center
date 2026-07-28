@@ -156,6 +156,7 @@ export function mondayItemToPatient(item: MondayItem): Patient {
     notes: cv(item, COL.notes)?.text ?? "",
     profileSendOffNotes: cv(item, COL.profileSendOffNotes)?.text ?? undefined,
     mnWorkflowNotes: cv(item, COL.mnWorkflowNotes)?.text ?? undefined,
+    insuranceNotes: cv(item, COL.insuranceNotes)?.text ?? undefined,
 
     // Editable overrides (start null — populated by local edits)
     addressEdited: null,

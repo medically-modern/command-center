@@ -36,10 +36,12 @@ export interface Patient {
   referralReceivedDate: string;      // NEW: date column
   diagnosis: string;
   notes: string;
-  /** Read-only notes carried from earlier stages (Profile, Medical Necessity),
-   *  populated on the board by a Monday automation. Shown read-only here. */
+  /** Read-only notes carried from earlier stages (Profile, Medical Necessity,
+   *  Insurance), populated on the board by a Monday automation. Shown read-only
+   *  here, oldest stage first, above the Welcome Call's own notes. */
   profileSendOffNotes?: string;
   mnWorkflowNotes?: string;
+  insuranceNotes?: string;
   // Secondary insurance & member ID 2 (editable when empty)
   secondaryInsuranceIndex: number | null;
   secondaryInsuranceEdited: string | null;

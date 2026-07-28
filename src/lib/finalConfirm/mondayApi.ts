@@ -92,6 +92,7 @@ export const COL = {
   // automation; the SPA only reads them). Columns created 2026-07.
   profileSendOffNotes: "long_text_mm5g1txs",
   mnWorkflowNotes: "long_text_mm5gx6j6",
+  insuranceNotes: "text_mm5pegde",
 
   // Stage/Escalation
   stageAdvancer: "color_mm1ws96t",
@@ -150,7 +151,7 @@ export const READ_COLUMN_IDS = [
   COL.authDetail.insulin_pump.id, COL.authDetail.insulin_pump.start, COL.authDetail.insulin_pump.end, COL.authDetail.insulin_pump.units,
   COL.authDetail.infusion_set.id, COL.authDetail.infusion_set.start, COL.authDetail.infusion_set.end, COL.authDetail.infusion_set.units,
   COL.authDetail.cartridge.id, COL.authDetail.cartridge.start, COL.authDetail.cartridge.end, COL.authDetail.cartridge.units,
-  COL.notes, COL.profileSendOffNotes, COL.mnWorkflowNotes,
+  COL.notes, COL.profileSendOffNotes, COL.mnWorkflowNotes, COL.insuranceNotes,
   COL.lastBillDate.monitor, COL.lastBillDate.sensors, COL.lastBillDate.insulin_pump,
   COL.lastBillDate.infusion_set, COL.lastBillDate.cartridge,
   COL.nextOrderDate.insulin_pump, COL.nextOrderDate.sensors, COL.nextOrderDate.supplies,

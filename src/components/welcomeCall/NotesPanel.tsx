@@ -11,17 +11,20 @@ interface Props {
   notes: string;
   onNotesChange: (notes: string) => void;
   onSaveToMonday?: (notes: string) => Promise<void>;
-  /** Read-only notes carried from earlier stages, shown above the current notes. */
+  /** Read-only notes carried from earlier stages, shown above the current notes
+   *  in pipeline order (Profile Send-Off → Medical Necessity → Insurance). */
   profileSendOffNotes?: string;
   mnWorkflowNotes?: string;
+  insuranceNotes?: string;
   /** Stage label stamped into each appended note (see lib/shared/noteStamp). */
   notePrefix?: string;
 }
 
-export function NotesPanel({ notes, onNotesChange, onSaveToMonday, profileSendOffNotes, mnWorkflowNotes, notePrefix }: Props) {
+export function NotesPanel({ notes, onNotesChange, onSaveToMonday, profileSendOffNotes, mnWorkflowNotes, insuranceNotes, notePrefix }: Props) {
   const priorStages = [
     { label: "Profile Send-Off Notes", text: profileSendOffNotes },
     { label: "MN Workflow Notes", text: mnWorkflowNotes },
+    { label: "Insurance Notes", text: insuranceNotes },
   ];
   const [newNote, setNewNote] = useState("");
   const [editing, setEditing] = useState(false);
