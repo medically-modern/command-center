@@ -35,6 +35,7 @@ import { sendPatientToMonday, sendWelcomeCallTextToMonday, sendNotesToMonday, se
 import { writeStatusIndex, writeLongText, COL } from "@/lib/welcomeCall/mondayApi";
 import { EscalationFormModal } from "@/components/shared/EscalationFormModal";
 import { PageLoadingOverlay } from "@/components/shared/PageLoadingOverlay";
+import { EmptyPatientPane } from "@/components/shared/EmptyPatientPane";
 import { validatePatientForSend } from "@/lib/welcomeCall/workflow";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useBackNavigation } from "@/hooks/useBackNavigation";
@@ -250,9 +251,7 @@ const WelcomeCallPage = () => {
             <section className="max-w-5xl xl:max-w-7xl 2xl:max-w-[1800px] mx-auto space-y-5">
               {!selected && (
                 <div className="rounded-xl bg-card border shadow-card p-10 text-center">
-                  <p className="text-sm text-muted-foreground">
-                    {loading ? "Loading patients from Monday…" : error ? error : "Select a patient from the sidebar to begin."}
-                  </p>
+                  <EmptyPatientPane loading={loading} error={error} queueEmpty={visiblePatients.length === 0} hint="No welcome calls are due right now." />
                 </div>
               )}
 

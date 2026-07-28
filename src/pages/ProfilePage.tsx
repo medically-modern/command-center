@@ -9,6 +9,7 @@
  */
 import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import type { ReactNode } from "react";
+import { EmptyPatientPane } from "@/components/shared/EmptyPatientPane";
 import { useSearchParams } from "react-router-dom";
 import { useMondayPatients } from "@/hooks/profile/useMondayPatients";
 import { useAutoSelectPatient } from "@/hooks/useAutoSelectPatient";
@@ -509,7 +510,7 @@ const ProfilePage = ({ variant }: ProfilePageProps) => {
           <main className="flex-1 min-w-0">
             {!selected ? (
               <div style={{ padding: 40 }}>
-                <p className="text-sm text-muted-foreground">{loading ? "Loading patients from Monday…" : error || "Select a patient to begin."}</p>
+                <EmptyPatientPane loading={loading} error={error} queueEmpty={visiblePatients.length === 0} hint="No referrals are due to work right now." selectPrompt="Select a patient to begin." />
               </div>
             ) : (
               <ProfileBody

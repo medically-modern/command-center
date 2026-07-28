@@ -28,6 +28,7 @@ import type { Patient } from "@/lib/samantha/workflow";
 import { PatientProfileCard } from "@/components/samantha/PatientProfileCard";
 import { NotesPanel } from "@/components/samantha/NotesPanel";
 import { PageLoadingOverlay } from "@/components/shared/PageLoadingOverlay";
+import { EmptyPatientPane } from "@/components/shared/EmptyPatientPane";
 import { ReportIssueButton } from "@/components/shared/ReportIssueButton";
 import { Button } from "@/components/ui/button";
 import { useBackNavigation } from "@/hooks/useBackNavigation";
@@ -147,8 +148,15 @@ const DvsPage = () => {
 
   const selected: Patient | undefined = useMemo(() => {
     const byId = patients.find((p) => p.id === selectedId);
+    // Nothing in the sidebar → open nothing, rather than falling back to a
+    // patient the rail/search no longer lists (same rule as
+    // useAutoSelectPatient). A deep-linked patient is exempt — managers open
+    // those deliberately from off-queue.
+    if (duePatients.length === 0 && snoozedPatients.length === 0) {
+      return byId && byId.id === searchParams.get("patientId") ? byId : undefined;
+    }
     return byId ?? duePatients[0] ?? snoozedPatients[0];
-  }, [patients, selectedId, duePatients, snoozedPatients]);
+  }, [patients, selectedId, duePatients, snoozedPatients, searchParams]);
 
   const straight = selected ? isStraightMedicaidPrimary(selected) : false;
   const cin = selected ? nyMedicaidCin(selected) : null;
@@ -284,9 +292,12 @@ const DvsPage = () => {
             <div className="space-y-5 min-w-0">
               {!selected && (
                 <div className="rounded-xl bg-card border shadow-card p-10 text-center">
-                  <p className="text-sm text-muted-foreground">
-                    {loading ? "Loading patients from Monday…" : error ? error : "No patients at the DVS stage."}
-                  </p>
+                  <EmptyPatientPane
+                    loading={loading}
+                    error={error}
+                    queueEmpty={duePatients.length === 0 && snoozedPatients.length === 0}
+                    hint="No patients are at the DVS stage right now."
+                  />
                 </div>
               )}
               {selected && (

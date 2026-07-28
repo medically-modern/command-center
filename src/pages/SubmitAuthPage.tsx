@@ -44,6 +44,7 @@ import { writeLongText, COL } from "@/lib/samantha/mondayApi";
 import { PageLoadingOverlay } from "@/components/shared/PageLoadingOverlay";
 import { SaveProgressOverlay } from "@/components/shared/SaveProgressOverlay";
 import type { WriteProgressPhase } from "@/lib/shared/verifiedWrite";
+import { EmptyPatientPane } from "@/components/shared/EmptyPatientPane";
 import { useSearchParams } from "react-router-dom";
 import { useBackNavigation } from "@/hooks/useBackNavigation";
 import { ReportIssueButton } from "@/components/shared/ReportIssueButton";
@@ -209,9 +210,7 @@ const SubmitAuthPage = () => {
               <div className="bnr">
                 {!selected && (
                   <div className="rounded-xl bg-card border shadow-card p-10 text-center">
-                    <p className="text-sm text-muted-foreground">
-                      {loading ? "Loading patients from Monday…" : error ? error : "Select a patient from the sidebar to begin."}
-                    </p>
+                    <EmptyPatientPane loading={loading} error={error} queueEmpty={visiblePatients.length === 0} hint="No auths are due to submit right now." />
                   </div>
                 )}
 

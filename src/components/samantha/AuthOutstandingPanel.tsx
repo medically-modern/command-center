@@ -60,6 +60,7 @@ import { cn } from "@/lib/utils";
 import {
   CalendarDays,
   FileText,
+  Check,
   Info,
   Loader2,
   Package,
@@ -234,7 +235,8 @@ function AuthStatusMatrix({
         <div className="min-w-0">
           <h3 className="text-sm font-semibold">Auth Status by Product</h3>
           <p className="text-xs text-muted-foreground mt-0.5">
-            Read-only, from the Monday board. Blue = check this one today; gray = no action on this view.
+            Read-only, from the Monday board. Blue = check this one today; green = auth approved, done;
+            gray = no action on this view.
           </p>
         </div>
       </div>
@@ -253,24 +255,35 @@ function AuthStatusMatrix({
           const isSubmitted = lower === "submitted";
           const isRequired = lower === "required";
           const isNotServing = !r || lower === "not serving";
-          // Anything else (Auth Valid / Denied / No Auth Needed / blank) is
-          // resolved-gray: no action on this view.
+          // Auth Valid = DONE, and it reads as done (green). This matters when
+          // a patient comes back to Auth Outstanding because ONE product was
+          // denied: the approved product's card disappears (trackedCards only
+          // keeps Submitted), so this matrix is the only place the rep sees it,
+          // and dimming it gray made "approved" look identical to "denied".
+          const isAuthValid = lower === "auth valid";
+          // Anything else (Denied / No Auth Needed / blank) is resolved-gray:
+          // no action on this view.
           return (
             <div
               key={p}
               className={cn(
                 "rounded-lg border p-3 bg-background flex flex-col gap-2",
                 isSubmitted && "border-sky-300 bg-sky-50/70 dark:border-sky-800 dark:bg-sky-950/30",
+                isAuthValid && !isDvs && "border-emerald-300 bg-emerald-50/70 dark:border-emerald-800 dark:bg-emerald-950/30",
                 isRequired && "border-warning/50 bg-warning/5",
                 isDvs && "opacity-80 bg-muted/40",
-                !isSubmitted && !isRequired && !isDvs && !isNotServing && "opacity-65 bg-muted/30",
+                !isSubmitted && !isAuthValid && !isRequired && !isDvs && !isNotServing && "opacity-65 bg-muted/30",
                 isNotServing && "opacity-55",
               )}
             >
               <div>
                 <p className={cn(
                   "text-sm font-bold font-mono leading-tight",
-                  isSubmitted ? "text-sky-800 dark:text-sky-200" : "text-foreground/80",
+                  isSubmitted
+                    ? "text-sky-800 dark:text-sky-200"
+                    : isAuthValid && !isDvs
+                      ? "text-emerald-800 dark:text-emerald-200"
+                      : "text-foreground/80",
                 )}>
                   {r?.hcpc ?? FIXED_HCPC[p] ?? "—"}
                 </p>
@@ -280,12 +293,14 @@ function AuthStatusMatrix({
               </div>
               <span
                 className={cn(
-                  "mt-auto self-start inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-semibold border",
+                  "mt-auto self-start inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-semibold border",
                   isSubmitted && "bg-sky-100 border-sky-300 text-sky-800 dark:bg-sky-950/50 dark:border-sky-800 dark:text-sky-200",
+                  isAuthValid && !isDvs && "bg-emerald-100 border-emerald-300 text-emerald-800 dark:bg-emerald-950/50 dark:border-emerald-800 dark:text-emerald-200",
                   isRequired && "bg-warning/15 border-warning/50 text-warning-foreground",
-                  !isSubmitted && !isRequired && "bg-muted border-border text-muted-foreground",
+                  !isSubmitted && !isAuthValid && !isRequired && "bg-muted border-border text-muted-foreground",
                 )}
               >
+                {isAuthValid && !isDvs && <Check className="h-3 w-3" />}
                 {label}
               </span>
             </div>

@@ -27,6 +27,7 @@ import { sendPatientToMonday } from "@/lib/finalConfirm/mondayWrite";
 import { duplicateItem, writeStatusIndex, writeDate, writeLongText, COL } from "@/lib/finalConfirm/mondayApi";
 import { EscalationFormModal } from "@/components/shared/EscalationFormModal";
 import { PageLoadingOverlay } from "@/components/shared/PageLoadingOverlay";
+import { EmptyPatientPane } from "@/components/shared/EmptyPatientPane";
 
 // Stage Advancer label index 0 = "Review Profile" — the stage that lands an
 // item in the Final Profile Confirmation group on Monday.
@@ -304,13 +305,7 @@ const FinalConfirmPage = () => {
             <section className="max-w-5xl xl:max-w-7xl 2xl:max-w-[1800px] mx-auto space-y-5">
               {!selected && (
                 <div className="rounded-xl bg-card border shadow-card p-10 text-center">
-                  <p className="text-sm text-muted-foreground">
-                    {loading
-                      ? "Loading patients from Monday…"
-                      : error
-                        ? error
-                        : "Select a patient from the sidebar to begin."}
-                  </p>
+                  <EmptyPatientPane loading={loading} error={error} queueEmpty={visiblePatients.length === 0} hint="No orders are due for final confirmation right now." />
                 </div>
               )}
 

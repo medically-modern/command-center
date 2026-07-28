@@ -19,6 +19,7 @@ import { sidebarVisibleList } from "@/lib/masheke/sidebarList";
 import { BlockedModal } from "@/components/masheke/BlockedModal";
 import { EscalationFormModal } from "@/components/shared/EscalationFormModal";
 import { PageLoadingOverlay } from "@/components/shared/PageLoadingOverlay";
+import { EmptyPatientPane } from "@/components/shared/EmptyPatientPane";
 import { writeStatusIndex, writeLongText, COL } from "@/lib/masheke/mondayApi";
 import { ESCALATION_INDEX, isEscalatedIndex } from "@/lib/masheke/mondayMapping";
 import { useBackNavigation } from "@/hooks/useBackNavigation";
@@ -126,7 +127,7 @@ const SendRequestPage = () => {
             <section className="max-w-5xl xl:max-w-7xl 2xl:max-w-[1800px] mx-auto space-y-5">
               {!selected && (
                 <div className="rounded-xl bg-card border shadow-card p-10 text-center">
-                  <p className="text-sm text-muted-foreground">{loading ? "Loading patients from Monday…" : error ? error : "Select a patient from the sidebar to begin."}</p>
+                  <EmptyPatientPane loading={loading} error={error} queueEmpty={visiblePatients.length === 0} hint="No requests are due to send right now." />
                 </div>
               )}
               {selected && (

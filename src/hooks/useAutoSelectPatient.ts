@@ -43,6 +43,26 @@ export function useAutoSelectPatient(
 
   useEffect(() => {
     if (initialLoading) return;
+    // Nothing left in the sidebar → open nothing. Selection normally survives
+    // the patient being filtered out of the visible list (escalated/future-
+    // dated patients stay open while the rep works them), but when the list is
+    // EMPTY that same rule left a completed/snoozed patient's full profile on
+    // screen next to an empty sidebar — which reads as a live assignment. The
+    // page's EmptyPatientPane takes over instead.
+    // Guards: `allPatients.length > 0` means we actually have a list (an empty
+    // or failed poll is handled below, and leaves `selected` undefined anyway),
+    // and a deep link (?patientId=, manager drill-down) is never cleared — those
+    // patients are opened deliberately from off-queue.
+    if (
+      selectedId &&
+      selectedId !== pinnedId &&
+      visiblePatients.length === 0 &&
+      allPatients.length > 0
+    ) {
+      missedRef.current = null;
+      setSelectedId(null);
+      return;
+    }
     if (selectedId) {
       if (allPatients.some((p) => p.id === selectedId)) {
         missedRef.current = null;

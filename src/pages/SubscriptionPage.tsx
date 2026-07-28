@@ -22,6 +22,7 @@ import { toast } from "sonner";
 import { sendPatientToMonday, sendNotesToMonday } from "@/lib/subscription/mondayWrite";
 import { validatePatientForSend } from "@/lib/subscription/workflow";
 import { PageLoadingOverlay } from "@/components/shared/PageLoadingOverlay";
+import { EmptyPatientPane } from "@/components/shared/EmptyPatientPane";
 import { useSearchParams } from "react-router-dom";
 import { useBackNavigation } from "@/hooks/useBackNavigation";
 import { ReportIssueButton } from "@/components/shared/ReportIssueButton";
@@ -142,9 +143,7 @@ const SubscriptionPage = () => {
             <section className="max-w-6xl xl:max-w-7xl 2xl:max-w-[1800px] mx-auto space-y-5">
               {!selected && (
                 <div className="rounded-xl bg-card border shadow-card p-10 text-center">
-                  <p className="text-sm text-muted-foreground">
-                    {loading ? "Loading patients from Monday…" : error ? error : "Select a patient from the sidebar to begin."}
-                  </p>
+                  <EmptyPatientPane loading={loading} error={error} queueEmpty={visiblePatients.length === 0} hint="No subscriptions are due right now." />
                 </div>
               )}
 

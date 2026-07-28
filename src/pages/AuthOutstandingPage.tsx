@@ -42,6 +42,7 @@ import { writeLongText, writeDate, COL } from "@/lib/samantha/mondayApi";
 import { PageLoadingOverlay } from "@/components/shared/PageLoadingOverlay";
 import { SaveProgressOverlay } from "@/components/shared/SaveProgressOverlay";
 import type { WriteProgressPhase } from "@/lib/shared/verifiedWrite";
+import { EmptyPatientPane } from "@/components/shared/EmptyPatientPane";
 import { useSearchParams } from "react-router-dom";
 import { useBackNavigation } from "@/hooks/useBackNavigation";
 import { ReportIssueButton } from "@/components/shared/ReportIssueButton";
@@ -235,7 +236,7 @@ const AuthOutstandingPage = () => {
             <section className="max-w-5xl xl:max-w-7xl 2xl:max-w-[1800px] mx-auto space-y-5">
               {!selected && (
                 <div className="rounded-xl bg-card border shadow-card p-10 text-center">
-                  <p className="text-sm text-muted-foreground">{loading ? "Loading patients from Monday…" : error ? error : "Select a patient from the sidebar to begin."}</p>
+                  <EmptyPatientPane loading={loading} error={error} queueEmpty={visiblePatients.length === 0} hint="No outstanding auths are due to review right now." />
                 </div>
               )}
               {selected && (

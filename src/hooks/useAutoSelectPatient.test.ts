@@ -64,6 +64,32 @@ describe("useAutoSelectPatient", () => {
     expect(setSelectedId).not.toHaveBeenCalled();
   });
 
+  it("clears a still-on-the-board selection once the sidebar has NOTHING left to work", () => {
+    // The rep finishes the last patient in the queue: they're still in
+    // `all` (snoozed/completed, not gone from the board) but no longer
+    // visible. Their profile used to stay on screen next to an empty
+    // sidebar, which reads as a live assignment.
+    const { setSelectedId } = render({
+      initialLoading: false,
+      all: [p("just-completed")],
+      visible: [],
+      selectedId: "just-completed",
+    });
+    expect(setSelectedId).toHaveBeenCalledWith(null);
+  });
+
+  it("keeps a deep-linked patient open even when the queue is empty", () => {
+    // Manager drill-downs open patients that are deliberately off-queue.
+    const { setSelectedId } = render({
+      initialLoading: false,
+      all: [p("from-oversight")],
+      visible: [],
+      selectedId: "from-oversight",
+      pinnedId: "from-oversight",
+    });
+    expect(setSelectedId).not.toHaveBeenCalled();
+  });
+
   it("holds a selection through ONE missed list, then falls back on the second consecutive miss", () => {
     const setSelectedId = vi.fn();
     const { rerender } = render(
