@@ -52,7 +52,9 @@
         "submitAuth",
         "updateClinicals",
         "patientQuestions",
-        "fax"
+        "fax",
+        "authDenied",
+        "subscription"
       ],
       "roleOrder": {},
       "roleFilters": {}
