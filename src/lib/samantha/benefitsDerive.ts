@@ -337,6 +337,11 @@ export function composeEscalationReason(
   pumpSos: SosChoice,
   pumpLastBill: string | undefined,
   dateYmd: string = etTodayYmd(),
+  /** Initials of the rep whose send triggered the escalation. The line itself
+   *  is machine-composed, but it is the SEND that raises the escalation, so it
+   *  is attributed like every other note line. Inside the bracket, matching
+   *  the Propose Stuck stamps. */
+  initials = "",
 ): string {
   const reasons: string[] = [];
   // "Medicare not Primary" gets its own reason line — this is what lets ops
@@ -354,7 +359,8 @@ export function composeEscalationReason(
     );
   }
   if (reasons.length === 0) return "";
-  return `[Auto-escalated · ${dateYmd}] ${reasons.join("; ")}`;
+  const head = initials ? `[Auto-escalated · ${dateYmd} · ${initials}]` : `[Auto-escalated · ${dateYmd}]`;
+  return `${head} ${reasons.join("; ")}`;
 }
 
 // ─────────────────────────────────────────────────────────────────────

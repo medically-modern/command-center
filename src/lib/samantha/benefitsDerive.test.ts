@@ -395,6 +395,17 @@ describe("escalation reason (D4)", () => {
   it("returns empty when nothing escalates", () => {
     expect(composeEscalationReason(structuredClone(EMPTY_INSURANCE), "clear", undefined)).toBe("");
   });
+  it("attributes the line to the rep whose send raised the escalation", () => {
+    const ins = structuredClone(EMPTY_INSURANCE);
+    ins.universal["active"] = "not-confirmed";
+    expect(composeEscalationReason(ins, "clear", undefined, "2026-07-28", "JH")).toBe(
+      "[Auto-escalated · 2026-07-28 · JH] Insurance Active = Not Active",
+    );
+    // Signed out → the unattributed head, never a dangling separator.
+    expect(composeEscalationReason(ins, "clear", undefined, "2026-07-28", "")).toBe(
+      "[Auto-escalated · 2026-07-28] Insurance Active = Not Active",
+    );
+  });
   it("Medicare not Primary gets its own reason line — distinguishable from Out-of-Network", () => {
     const ins: InsuranceState = {
       ...structuredClone(EMPTY_INSURANCE),

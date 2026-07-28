@@ -477,9 +477,10 @@ these services; when their math changes, `oopEstimator.ts` must be updated to ma
   is what makes a line traceable when several roles share one column: Benefits / Submit Auth /
   Auth Outstanding / DVS all append to Insurance `long_text_mm2ffsme`. A new NotesPanel must pass
   `notePrefix`, and note-writing paths outside the panels (Benefits call log, Propose Stuck /
-  Approve Stuck / Return to Queue stamps) take an `initials` arg — pass `userInitials()`. The one
-  deliberately unsigned line is the machine-written `[Auto-escalated · date]` reason: no human
-  wrote it. Stuck stamps keep the initials INSIDE the bracket so
+  Approve Stuck / Return to Queue stamps, the machine-composed `[Auto-escalated …]` reason) take an
+  `initials` arg — pass `userInitials()`. **Every** line that lands in a notes column is now
+  attributed; the auto-escalation line is credited to the rep whose send raised it. Bracketed
+  stamps keep the initials INSIDE the bracket so
   `extractProposedStuckReason` (Oversight's "Proposed Reason" column) still slices at the first `]`.
 - **ISO text doesn't survive Monday's create-item automations.** The workflow engine type-sniffs
   TEXT tokens: `2022-01-01` is parsed as a date and re-rendered `01 January 2022` in the created

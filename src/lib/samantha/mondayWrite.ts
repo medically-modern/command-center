@@ -609,6 +609,7 @@ export async function sendPatientToMonday(
       universalNegative ? "" : (ins.codes["pump"]?.sos ?? ""),
       universalNegative ? undefined : ins.codes["pump"]?.lastBillDate,
       todayEt,
+      userInitials(),
     );
     if (reason && !(notesForSend ?? "").includes(reason)) {
       notesForSend = notesForSend ? `${notesForSend}\n\n${reason}` : reason;
