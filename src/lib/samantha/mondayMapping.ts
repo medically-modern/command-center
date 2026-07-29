@@ -15,9 +15,12 @@ function parseAuthMethod(text: string | null | undefined): AuthSubmissionMethod 
 }
 
 
-// Universal-check write indices
+// Universal-check write indices. In-Network? and Active? are SEPARATE columns
+// as of 2026-07-29 (they were one "Active/Network" column before the board
+// split) — see COL.inNetwork / COL.active.
 export const UNIVERSAL_INDEX = {
-  activeNetwork: { pass: 1, fail: 2 }, // 1=Active/In-network, 2=Stuck
+  inNetwork: { pass: 1, fail: 2 },     // 1=In-Network, 2=Out-of-Network
+  active: { pass: 1, fail: 2 },        // 1=Active, 2=Inactive
   dmeBenefits: { pass: 1, fail: 2 },   // 1=Yes, 2=Partial / No
   sos: { pass: 1, fail: 2, skip: 0 },  // 1=All Clear, 2=Partial / Not Clear, 0=Skip
   auth: { noAuth: 1, required: 0 },    // 0=Auths Required, 1=No Auths Required
@@ -153,12 +156,33 @@ const AUTH_RESULT_TEXT_MAP: Record<string, { auth: AuthChoice; sos?: SosChoice }
   "evaluate":        { auth: "" },
 };
 
-// Map Monday universal status text → internal UniversalChoice
-function parseUniversal(text: string | null | undefined): UniversalChoice {
-  if (!text) return "";
-  const t = text.toLowerCase().trim();
-  if (t === "active/in-network" || t === "yes" || t === "all clear") return "confirmed";
-  if (t === "stuck" || t === "partial / no" || t === "partial / not clear") return "not-confirmed";
+/** Status column `value` JSON → label index, or undefined when unset. */
+function statusIndex(value: string | null | undefined): number | undefined {
+  if (!value) return undefined;
+  try {
+    const idx = (JSON.parse(value) as { index?: number }).index;
+    return typeof idx === "number" ? idx : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Monday universal status → internal UniversalChoice, matched by INDEX.
+ *
+ * This used to match label TEXT ("active/in-network" / "stuck"), and silently
+ * started returning "" for every patient when the Active/Network column was
+ * renamed and split on the board (2026-07-29) — the answers stopped
+ * round-tripping and reps had to re-enter both checks on every load. Indices
+ * survive a rename; labels don't (CLAUDE.md §9).
+ */
+function parseUniversal(
+  cell: { value: string | null } | undefined,
+  idx: { pass: number; fail: number },
+): UniversalChoice {
+  const i = statusIndex(cell?.value);
+  if (i === idx.pass) return "confirmed";
+  if (i === idx.fail) return "not-confirmed";
   return "";
 }
 
@@ -209,11 +233,14 @@ export function mondayItemToPatient(item: MondayItem): Patient {
   // "Medicare Supplement". The text comes back as the label string.
   const secondaryInsurance = cv(COL.secondaryInsurance)?.text ?? "";
 
-  // Parse universal checks from Monday (only present for auth group reads)
-  const activeNetText = cv(COL.activeNetwork)?.text;
-  const dmeText = cv(COL.dmeBenefits)?.text;
-  const inNetAndActive = parseUniversal(activeNetText);
-  const dmeBenefits = parseUniversal(dmeText);
+  // Parse universal checks from Monday (only present for auth group reads).
+  // In-Network and Active are read from their own columns — before the
+  // 2026-07-29 board split one column answered both, which meant an
+  // in-network-but-inactive patient was indistinguishable from an
+  // out-of-network one.
+  const inNetwork = parseUniversal(cv(COL.inNetwork), UNIVERSAL_INDEX.inNetwork);
+  const active = parseUniversal(cv(COL.active), UNIVERSAL_INDEX.active);
+  const dmeBenefits = parseUniversal(cv(COL.dmeBenefits), UNIVERSAL_INDEX.dmeBenefits);
 
   // Parse per-product auth results from Monday (only present for auth group reads)
   const codes: Partial<Record<ProductCodeId, ProductCodeState>> = {};
@@ -473,8 +500,8 @@ export function mondayItemToPatient(item: MondayItem): Patient {
     oopMaxRemaining: cv(COL.oopMaxRemaining)?.text || undefined,
     insurance: {
       universal: {
-        "in-network": inNetAndActive,
-        active: inNetAndActive,
+        "in-network": inNetwork,
+        active,
         "dme-benefits": dmeBenefits,
       },
       codes,

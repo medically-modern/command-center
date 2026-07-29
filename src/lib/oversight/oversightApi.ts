@@ -331,7 +331,8 @@ const RAW_CHART_DEFS: ChartDef[] = [
       { colId: "color_mm1w5wxr", label: "Referral Source" },
       { colId: "color_mm1x157j", label: "Primary Insurance" },
       { colId: "color_mm1w1cm9", label: "Serving" },
-      { colId: "color_mm2vhwan", label: "Active/Network", pill: true },
+      { colId: "color_mm2vhwan", label: "In-Network?", pill: true },
+      { colId: "color_mm5q9y3", label: "Active?", pill: true },
       { colId: "color_mm2vt8xg", label: "DME Benefits", pill: true },
       { colId: "color_mm2vg3ew", label: "Auth", pill: true },
       { colId: "color_mm2vemyy", label: "SoS", pill: true },
@@ -573,7 +574,8 @@ const RAW_CHART_DEFS: ChartDef[] = [
       { colId: "date_mm1wf43j", label: "Intake Date" },
       { colId: "color_mm1wwm05", label: "Days in Stage" },
       { colId: "color_mm1x157j", label: "Primary Insurance" },
-      { colId: "color_mm2vhwan", label: "Active/Network", pill: true },
+      { colId: "color_mm2vhwan", label: "In-Network?", pill: true },
+      { colId: "color_mm5q9y3", label: "Active?", pill: true },
       { colId: "color_mm2vt8xg", label: "DME Benefits", pill: true },
       { colId: "color_mm2vsh2f", label: "Escalation", pill: true },
       { colId: "__proposedReason__", label: "Proposed Reason" },
@@ -765,7 +767,7 @@ export async function fetchPriorityOptions(): Promise<{
  *  from Monday so pills match the board's colors. Keyed by colId, then by the
  *  lower-cased label. */
 export async function fetchPillColors(): Promise<Record<string, Record<string, string>>> {
-  const cols = ["color_mm2vhwan", "color_mm2vt8xg", "color_mm2vg3ew", "color_mm2vemyy"];
+  const cols = ["color_mm2vhwan", "color_mm5q9y3", "color_mm2vt8xg", "color_mm2vg3ew", "color_mm2vemyy"];
   const query = `query { boards(ids: 18410601299) { columns(ids: ${JSON.stringify(cols)}) { id settings_str } } }`;
   const data = await gql<{ boards: { columns: { id: string; settings_str: string }[] }[] }>(query);
   const out: Record<string, Record<string, string>> = {};

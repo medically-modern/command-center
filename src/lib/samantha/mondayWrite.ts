@@ -140,21 +140,39 @@ export async function sendPatientToMonday(
     };
   }
 
-  // ----- Universal: Active / In-Network -----
+  // ----- Universal: In-Network + Active -----
+  // Two INDEPENDENT columns since the 2026-07-29 board split. Each answer
+  // writes its own column, so an in-network-but-inactive patient now reads
+  // "In-Network" + "Inactive" instead of a single "Out-of-Network" that hid
+  // which check actually failed. "Medicare not Primary" is a rep-facing
+  // option only — it counts as not-confirmed and writes Out-of-Network
+  // (handoff §4); the distinction lives in the auto-escalation note line.
   const inNet = ins.universal["in-network"];
   const active = ins.universal["active"];
-  if (inNet === "confirmed" && active === "confirmed") {
+  if (inNet === "confirmed") {
     tasks.push({
-      label: "Active/Network",
-      columnId: COL.activeNetwork,
-      fn: () => writeStatusIndex(p.id, COL.activeNetwork, UNIVERSAL_INDEX.activeNetwork.pass),
+      label: "In-Network",
+      columnId: COL.inNetwork,
+      fn: () => writeStatusIndex(p.id, COL.inNetwork, UNIVERSAL_INDEX.inNetwork.pass),
     });
-  } else if (isNegUniversal(inNet) || isNegUniversal(active)) {
-    // "Medicare not Primary" counts as not-confirmed here (handoff §4).
+  } else if (isNegUniversal(inNet)) {
     tasks.push({
-      label: "Active/Network",
-      columnId: COL.activeNetwork,
-      fn: () => writeStatusIndex(p.id, COL.activeNetwork, UNIVERSAL_INDEX.activeNetwork.fail),
+      label: "In-Network",
+      columnId: COL.inNetwork,
+      fn: () => writeStatusIndex(p.id, COL.inNetwork, UNIVERSAL_INDEX.inNetwork.fail),
+    });
+  }
+  if (active === "confirmed") {
+    tasks.push({
+      label: "Active",
+      columnId: COL.active,
+      fn: () => writeStatusIndex(p.id, COL.active, UNIVERSAL_INDEX.active.pass),
+    });
+  } else if (isNegUniversal(active)) {
+    tasks.push({
+      label: "Active",
+      columnId: COL.active,
+      fn: () => writeStatusIndex(p.id, COL.active, UNIVERSAL_INDEX.active.fail),
     });
   }
 

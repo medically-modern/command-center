@@ -432,7 +432,8 @@ describe("deriveBenefitsPreview — full board output", () => {
       },
     });
     const pv = deriveBenefitsPreview(p, TODAY);
-    expect(pv.activeNetwork).toBe("Active/In-network");
+    expect(pv.inNetwork).toBe("In-Network");
+    expect(pv.active).toBe("Active");
     expect(pv.dmeBenefits).toBe("Yes");
     expect(pv.auth).toBe("No Auths Required");
     expect(pv.sos).toBe("All Clear");
@@ -636,7 +637,10 @@ describe("deriveBenefitsPreview — full board output", () => {
       },
     });
     const pv = deriveBenefitsPreview(p, TODAY);
-    expect(pv.activeNetwork).toBe("Stuck");
+    // In-Network? and Active? are independent columns (2026-07-29 split): a
+    // failed network check must NOT drag the Active column down with it.
+    expect(pv.inNetwork).toBe("Out-of-Network");
+    expect(pv.active).toBe("Active");
     expect(pv.escalation).toBe("Final Escalation Required");
     expect(pv.stage).toBe("Benefits / SoS");
     // handoff §4: step 2 never ran — the send leaves every per-product
@@ -664,7 +668,9 @@ describe("deriveBenefitsPreview — full board output", () => {
     });
     const pv = deriveBenefitsPreview(p, TODAY);
     expect(pv.gated).toBe(true);
-    expect(pv.activeNetwork).toBe("Stuck");
+    // Rep-facing option only — it writes/previews as plain Out-of-Network.
+    expect(pv.inNetwork).toBe("Out-of-Network");
+    expect(pv.active).toBe("Active");
     expect(pv.dmeBenefits).toBe("Yes");
     expect(pv.escalation).toBe("Final Escalation Required");
     expect(pv.stage).toBe("Benefits / SoS");

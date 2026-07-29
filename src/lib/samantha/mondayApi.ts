@@ -35,8 +35,15 @@ export const COL = {
   memberId2: "text_mm1xaccx",
   referralSource: "color_mm1w5wxr",
 
-  // Universal write columns
-  activeNetwork: "color_mm2vhwan",
+  // Universal write columns. In-Network? and Active? were ONE column
+  // ("Active/Network", color_mm2vhwan) until Brandon split them on the board
+  // 2026-07-29: color_mm2vhwan was renamed/relabelled to In-Network?
+  // (1=In-Network, 2=Out-of-Network) and Active? (color_mm5q9y3, 1=Active,
+  // 2=Inactive) was added. The two checks are written and read independently
+  // now — the manager dashboard routes Inactive and Out-of-Network to
+  // different columns, so collapsing them loses the reason.
+  inNetwork: "color_mm2vhwan",
+  active: "color_mm5q9y3",
   dmeBenefits: "color_mm2vt8xg",
   sos: "color_mm2vemyy",
   auth: "color_mm2vg3ew",
@@ -303,7 +310,8 @@ export const READ_COLUMN_IDS = [
 /** Extended read columns for auth groups — includes auth results + universal statuses */
 export const AUTH_READ_COLUMN_IDS = [
   ...READ_COLUMN_IDS,
-  COL.activeNetwork,
+  COL.inNetwork,
+  COL.active,
   COL.dmeBenefits,
   COL.sos,
   COL.auth,

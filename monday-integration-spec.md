@@ -32,11 +32,25 @@
 
 ## WRITE back to Monday → Main Columns (universal checks)
 
-These map to the 4 universal checks in the UI:
+These map to the universal checks in the UI.
+
+> **2026-07-29 — In-Network and Active were split into two board columns.**
+> `color_mm2vhwan` was renamed *Active/Network → In-Network?* and relabelled
+> (`Active/In-network`/`Stuck` → `In-Network`/`Out-of-Network`); *Active?*
+> (`color_mm5q9y3`) was added. The manager dashboard routes **Inactive** and
+> **Out-of-Network** differently, so the two answers are written and read
+> independently — never collapse them back into one column. Reads match on the
+> **index**, not the label text (`mondayMapping.parseUniversal`): the rename
+> broke text matching and blanked both answers for every patient.
+> "Medicare not Primary" stays a rep-facing option only — it writes
+> `Out-of-Network` and reads back as such; the distinction survives in the
+> `[Auto-escalated …]` note line.
+
 
 | UI Check | Monday Column | Column ID | Status Values |
 |----------|--------------|-----------|---------------|
-| ✓ In-Network + Active | Active/Network | `color_mm2vhwan` | `1` = "Active/In-network", `2` = "Stuck" |
+| ✓ In-Network | In-Network? | `color_mm2vhwan` | `1` = "In-Network", `2` = "Out-of-Network" |
+| ✓ Active | Active? | `color_mm5q9y3` | `1` = "Active", `2` = "Inactive" |
 | ✓ DME Benefits Confirmed | DME Benefits | `color_mm2vt8xg` | `1` = "Yes", `2` = "Partial / No" |
 | ✓ Same or Similar Clear | SoS | `color_mm2vemyy` | `1` = "All Clear", `2` = "Partial / Not Clear" |
 | ✓ Auth Required? | Auth | `color_mm2vg3ew` | `0` = "Auths Required", `1` = "No Auths Required" |
@@ -175,7 +189,7 @@ mutation {
     board_id: 18410601299,
     item_id: ITEM_ID,
     column_id: "color_mm2vhwan",
-    value: "Active/In-network"
+    value: "In-Network"
   ) {
     id
   }

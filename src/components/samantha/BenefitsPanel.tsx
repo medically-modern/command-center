@@ -281,8 +281,8 @@ function ProductCard({
 
 /* ── Monday Board Output drawer ───────────────────────────────────── */
 
-const GOOD = new Set(["Active/In-network", "Yes", "No Auths Required", "All Clear", "Complete", "Never Billed", "Done", "Not Serving"]);
-const WARN = new Set(["Stuck", "Partial / No", "Auths Required", "Partial / Not Clear", "Submit Auth.", "Benefits / SoS", "Required"]);
+const GOOD = new Set(["In-Network", "Active", "Yes", "No Auths Required", "All Clear", "Complete", "Never Billed", "Done", "Not Serving"]);
+const WARN = new Set(["Out-of-Network", "Inactive", "Partial / No", "Auths Required", "Partial / Not Clear", "Submit Auth.", "Benefits / SoS", "Required"]);
 const BAD = new Set(["Manager Escalation Required", "Final Escalation Required"]);
 const SKIP = new Set(["Skip", "No Auth Needed"]);
 
@@ -578,7 +578,8 @@ export function BenefitsPanel({
               <h3>Main columns</h3>
               <p className="msub">Each column on the Monday board gets the value below.</p>
               <div className="mon-rows">
-                <MonRow label="Active/Network" value={preview.activeNetwork} />
+                <MonRow label="In-Network?" value={preview.inNetwork} />
+                <MonRow label="Active?" value={preview.active} />
                 <MonRow label="DME Benefits" value={preview.dmeBenefits} />
                 <MonRow label="Auth" value={preview.auth} />
                 <MonRow label="SoS" value={preview.sos} />

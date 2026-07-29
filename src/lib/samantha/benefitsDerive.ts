@@ -374,7 +374,8 @@ export interface BenefitsPreview {
    *  output below is blanked ("—"/empty), mirroring the send path which
    *  leaves those columns untouched (handoff §4). */
   gated: boolean;
-  activeNetwork: string; // "Active/In-network" | "Stuck" | "—"
+  inNetwork: string;     // "In-Network" | "Out-of-Network" | "—"
+  active: string;        // "Active" | "Inactive" | "—"
   dmeBenefits: string;   // "Yes" | "Partial / No" | "—"
   auth: string;          // "Auths Required" | "No Auths Required" | "—"
   sos: string;           // "All Clear" | "Partial / Not Clear" | "Skip" | "—"
@@ -447,14 +448,16 @@ export function deriveBenefitsPreview(
   const universalAllConfirmed = uVals.length > 0 && uVals.every((v) => v === "confirmed");
   const anyUniversalNotConfirmed = uVals.some(isNegUniversal);
 
+  // One preview row per board column since the 2026-07-29 split — these are
+  // the exact labels the send writes, so the rep sees what Monday will say.
+  // "Medicare not Primary" is rep-facing only: it previews (and writes) as
+  // Out-of-Network.
   const inNet = ins.universal["in-network"];
-  const active = ins.universal["active"];
-  const activeNetwork =
-    inNet === "confirmed" && active === "confirmed"
-      ? "Active/In-network"
-      : isNegUniversal(inNet) || isNegUniversal(active)
-        ? "Stuck"
-        : "—";
+  const activeChoice = ins.universal["active"];
+  const inNetwork =
+    inNet === "confirmed" ? "In-Network" : isNegUniversal(inNet) ? "Out-of-Network" : "—";
+  const active =
+    activeChoice === "confirmed" ? "Active" : isNegUniversal(activeChoice) ? "Inactive" : "—";
   const dme = ins.universal["dme-benefits"];
   const dmeBenefits = dme === "confirmed" ? "Yes" : dme === "not-confirmed" ? "Partial / No" : "—";
 
@@ -526,7 +529,8 @@ export function deriveBenefitsPreview(
     return {
       ready: productStates.length > 0,
       gated: true,
-      activeNetwork,
+      inNetwork,
+      active,
       dmeBenefits,
       auth: "—",
       sos: "—",
@@ -545,7 +549,8 @@ export function deriveBenefitsPreview(
   return {
     ready: productStates.length > 0,
     gated: false,
-    activeNetwork,
+    inNetwork,
+    active,
     dmeBenefits,
     auth,
     sos,

@@ -596,9 +596,9 @@ function deriveMondayColumns(patient: Patient, resolved: ResolvedProduct[]) {
     u["dme-benefits"] === "confirmed";
   const anyUniversalNotConfirmed = Object.values(u).some((v) => v === "not-confirmed");
 
-  // 1) Active/Network — both must be confirmed
-  const activeNetwork =
-    u["in-network"] === "confirmed" && u["active"] === "confirmed" ? "Active/In-network" : "Stuck";
+  // 1) In-Network? and Active? — separate board columns since 2026-07-29
+  const inNetwork = u["in-network"] === "confirmed" ? "In-Network" : "Out-of-Network";
+  const active = u["active"] === "confirmed" ? "Active" : "Inactive";
 
   // 2) DME Benefits
   const dmeBenefits = u["dme-benefits"] === "confirmed" ? "Yes" : "Partial / No";
@@ -683,7 +683,8 @@ function deriveMondayColumns(patient: Patient, resolved: ResolvedProduct[]) {
   const escalation = shouldEscalate ? "Escalation Required" : "—";
 
   return {
-    activeNetwork,
+    inNetwork,
+    active,
     dmeBenefits,
     auth,
     sos: sosCol,
@@ -724,8 +725,8 @@ const PRODUCT_AUTH_COLUMN: Record<ProductId, string> = {
 
 const ALL_AUTH_PRODUCTS: ProductId[] = ["monitor", "sensors", "insulin_pump", "infusion_set", "cartridge"];
 
-const GOOD_VALUES = new Set(["Active/In-network", "Yes", "No Auths Required", "All Clear", "Complete", "Never Billed"]);
-const WARN_VALUES = new Set(["Stuck", "Partial / No", "Auths Required", "Partial / Not Clear", "Authorization", "Benefits / SoS"]);
+const GOOD_VALUES = new Set(["In-Network", "Active", "Yes", "No Auths Required", "All Clear", "Complete", "Never Billed"]);
+const WARN_VALUES = new Set(["Out-of-Network", "Inactive", "Partial / No", "Auths Required", "Partial / Not Clear", "Authorization", "Benefits / SoS"]);
 const BAD_VALUES = new Set(["Escalation Required"]);
 const SKIP_VALUES = new Set(["Skip"]);
 function valueTone(v: string): "good" | "warn" | "bad" | "skip" | "neutral" {
@@ -752,7 +753,8 @@ function MondayOutput({
   const ins = patient.insurance ?? EMPTY_INSURANCE;
 
   const rows: { key: string; label: string; value: string }[] = [
-    { key: "active", label: "Active/Network", value: cols.activeNetwork },
+    { key: "innetwork", label: "In-Network?", value: cols.inNetwork },
+    { key: "active", label: "Active?", value: cols.active },
     { key: "dme", label: "DME Benefits", value: cols.dmeBenefits },
     { key: "auth", label: "Auth", value: cols.auth },
     { key: "sos", label: "SoS", value: cols.sos },
