@@ -6,11 +6,19 @@
  *
  * On confirm: the reason is APPENDED to the Reference Notes
  * (long_text_mm2ffsme, stamped "[Proposed Stuck · <date>] …") and Escalation is
- * flipped to "Final Escalation Required" (color_mm2vsh2f index 2). The Stage
- * Advancer is NOT touched, so this is a plain status write — no automation keys
- * on it for a stage move. The patient surfaces in Pipeline Oversight → Final
- * Decisions, where the manager either Approves Stuck (Stage Advancer → "Stuck /
- * Don't Proceed") or Returns to Queue (clears the escalation).
+ * flipped. WHERE it lands depends on the stage (`escalateTo`):
+ *
+ *   - "final" (Benefits, Auth Outstanding — the default): "Final Escalation
+ *     Required" (index 2) → Oversight's Final Decisions, where the manager
+ *     Approves Stuck or Returns to Queue.
+ *   - "manager" (Submit Auth, 2026-07-29): "Manager Escalation Required"
+ *     (index 0) → the Manager Intervention "Submit Auth" chart's Propose Stuck
+ *     bar FIRST. The manager reviews there and either returns the patient or
+ *     explicitly escalates to Final Decisions (a second, manager-authored
+ *     note) — a two-step propose → review → final flow.
+ *
+ * The Stage Advancer is NOT touched either way, so this is a plain status
+ * write — no automation keys on it for a stage move.
  *
  * Deliberately NOT a verified-write transaction (the escalation column isn't an
  * automation trigger), but the writes are SEQUENTIAL, notes first: the status
@@ -37,7 +45,16 @@ import { stampProposedStuck, appendStampedLine } from "@/lib/masheke/proposedStu
 import { userInitials } from "@/lib/shared/auth";
 import { etToday } from "@/lib/masheke/etDate";
 
-export function ProposeStuckButton({ patientId, onDone }: { patientId: string; onDone?: () => void }) {
+export function ProposeStuckButton({
+  patientId,
+  onDone,
+  escalateTo = "final",
+}: {
+  patientId: string;
+  onDone?: () => void;
+  /** Which escalation the proposal writes — "manager" only at Submit Auth. */
+  escalateTo?: "final" | "manager";
+}) {
   const [open, setOpen] = useState(false);
   const [reason, setReason] = useState("");
   const [saving, setSaving] = useState(false);
@@ -60,7 +77,11 @@ export function ProposeStuckButton({ patientId, onDone }: { patientId: string; o
       const current = existing.find((c) => c.id === COL.callReferenceNotes)?.text ?? "";
       const stamped = stampProposedStuck(reason.trim(), etToday(), userInitials());
       await writeLongText(patientId, COL.callReferenceNotes, appendStampedLine(current, stamped));
-      await writeStatusIndex(patientId, COL.escalation, ESCALATION_INDEX.finalRequired);
+      await writeStatusIndex(
+        patientId,
+        COL.escalation,
+        escalateTo === "manager" ? ESCALATION_INDEX.managerRequired : ESCALATION_INDEX.finalRequired,
+      );
       toast.success("Proposed stuck — sent to the manager for a decision");
       close();
       onDone?.();
@@ -87,9 +108,19 @@ export function ProposeStuckButton({ patientId, onDone }: { patientId: string; o
               Propose Stuck
             </DialogTitle>
             <DialogDescription>
-              This flags the patient as <b>Final Escalation Required</b> and sends them to the
-              manager's Final Decisions review — the manager either approves (patient moves to
-              Stuck) or returns them to your queue. The stage is unchanged.
+              {escalateTo === "manager" ? (
+                <>
+                  This flags the patient as <b>Manager Escalation Required</b> and sends them to
+                  the manager's intervention review — the manager either returns them to your
+                  queue or escalates to Final Decisions. The stage is unchanged.
+                </>
+              ) : (
+                <>
+                  This flags the patient as <b>Final Escalation Required</b> and sends them to the
+                  manager's Final Decisions review — the manager either approves (patient moves to
+                  Stuck) or returns them to your queue. The stage is unchanged.
+                </>
+              )}
             </DialogDescription>
           </DialogHeader>
 

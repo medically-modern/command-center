@@ -103,7 +103,13 @@ export function StageActionBar({ stage, board, patientId, patientName, onDone }:
     <>
       {has("proposeStuck") &&
         (board === "insurance" ? (
-          <ProposeStuckButton patientId={patientId} onDone={onDone} />
+          // Submit Auth proposals go to MANAGER INTERVENTION first (2026-07-29,
+          // two-step review); Benefits/Auth Outstanding go straight to Final.
+          <ProposeStuckButton
+            patientId={patientId}
+            onDone={onDone}
+            escalateTo={stage === "submit-auth" ? "manager" : "final"}
+          />
         ) : (
           <>
             <Button

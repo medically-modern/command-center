@@ -217,18 +217,25 @@ export function anyUniversalNegative(ins: InsuranceState): boolean {
  * its own label; the other negatives use each check's "no" wording.
  */
 /**
- * Which oversight column a Benefits patient belongs in, from the universal
- * checks alone. Precedence is explicit because "Medicare not Primary" WINS
- * over every other answer (Katie/Brandon 2026-07-29): whatever Active and DME
- * Benefits say, we can't work the patient on this payer, so a manager makes
- * the call. Callers must not re-derive this from `anyUniversalNegative`.
+ * Which oversight column a failed-check Benefits patient belongs in, from the
+ * universal checks alone (Katie/Brandon 2026-07-29):
  *
- * When the Inactive → Manager Intervention change lands, only the `active`
- * line below moves to "manager" — the Medicare rule stays ahead of it.
+ *   - In-Network = Out-of-Network or Medicare not Primary → FINAL. Medicare
+ *     not Primary wins over every other answer — whatever Active and DME say,
+ *     we can't work the patient on this payer, so a manager makes the call.
+ *   - DME Benefits = Partial/No → FINAL.
+ *   - Insurance Active = Inactive, ALONE → MANAGER. The patient probably has
+ *     other coverage, so this is "manager keeps an eye" rather than "stop":
+ *     they land in Manager Intervention, not Final Decisions. Any final-level
+ *     failure alongside it still wins.
+ *
+ * Callers must not re-derive this from `anyUniversalNegative` — the
+ * precedence lives here and only here.
  */
 export function universalEscalationLevel(ins: InsuranceState): "final" | "manager" | "none" {
-  if (ins.universal["in-network"] === "medicare-not-primary") return "final";
-  if (anyUniversalNegative(ins)) return "final";
+  if (isNegUniversal(ins.universal["in-network"])) return "final"; // OON or Medicare not Primary
+  if (ins.universal["dme-benefits"] === "not-confirmed") return "final";
+  if (isNegUniversal(ins.universal["active"])) return "manager";
   return "none";
 }
 
@@ -412,7 +419,7 @@ export interface BenefitsPreview {
   notClearProducts: string[];
   skipProducts: string[];
   stage: string;         // board labels: "Benefits / SoS" | "Submit Auth." | "Complete"
-  escalation: string;    // "Escalation Required" | "Done"
+  escalation: string;    // "Final Escalation Required" | "Manager Escalation Required" | "Done"
   nextOrder: { ip: string; sensors: string; supplies: string };
   neverBilled: DerivedNeverBilled;
   /** Per-product auth-result labels keyed by ProductId ("Required" /
@@ -573,7 +580,12 @@ export function deriveBenefitsPreview(
       notClearProducts: [],
       skipProducts: [],
       stage,
-      escalation: "Final Escalation Required",
+      // Inactive alone escalates to the MANAGER; OON / Medicare not Primary /
+      // DME Partial-No go to FINAL (universalEscalationLevel owns the rule).
+      escalation:
+        universalEscalationLevel(ins) === "manager"
+          ? "Manager Escalation Required"
+          : "Final Escalation Required",
       nextOrder: { ip: "", sensors: "", supplies: "" },
       neverBilled: { isCar: false, cgm: false, pumpDateTbd: false },
       authResults: blankResults,

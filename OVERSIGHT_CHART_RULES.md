@@ -19,8 +19,8 @@ These come first because most "why isn't this patient showing?" questions end he
 | 0.2 | **The group gate.** Only items inside a board's *fetched groups* are loaded at all (`BOARD_GROUPS`). An item in Completed, Stuck, or a board's Escalations group is invisible to every chart, whatever its columns say. |
 | 0.3 | **The filter gate.** Within those groups, each chart applies its own rule (§1–§4). A patient can match several charts at once and will appear in all of them. |
 | 0.4 | **Refresh cadence.** Fetched on open, then every 60s. The header shows "Syncing with Monday…" whenever a fetch is running, including background polls. Cached data paints immediately on revisit while the refetch runs. |
-| 0.5 | **Day buckets** come from *Days Since Stage Started* (`color_mm1wwm05`) on Medical Evaluation / Insurance / Welcome Call, and from *Intake Date* on Profile Send Off. |
-| 0.6 | **Blank day bucket ⇒ no bar.** A patient with an empty Days column counts in the chart's total (top-right number) but renders in **no** bar. This is why bar counts can add up to less than the total. They still appear in the drill-down. |
+| 0.5 | **Day buckets** come from *Days Since Stage Started* (`color_mm1wwm05`) on Medical Evaluation / Insurance / Welcome Call, and from *Intake Date* on Profile Send Off. The Insurance **manager columns** instead use **reason buckets** (§3) — one bar per reason, a patient can be in several. |
+| 0.6 | **Blank day bucket ⇒ no bar.** A patient with an empty Days column counts in the chart's total (top-right number) but renders in **no** bar. This is why bar counts can add up to less than the total. They still appear in the drill-down. (Reason-bucketed charts have the mirror case: a patient matching several reasons is in several bars, so bars can also sum to MORE than the total.) |
 | 0.7 | **Stage moves are Monday's job, not the app's.** The app writes the Stage Advancer; a Monday automation moves the item to the next group/board. So "leaves the chart" almost always means "the Stage Advancer changed, and an automation then moved it". |
 
 ---
@@ -96,9 +96,21 @@ Columns:
 
 - **Stage Advancer** `color_mm1ws96t` — `Benefits / SoS` · `Submit Auth.` · `Auth. Outstanding` · `DVS` · `Auth Denied` · `Stuck / Don't Proceed` · `Complete`
 - **Escalation** `color_mm2vsh2f` — **0** = `Manager Escalation Required`, **1** = `Done`, **2** = `Final Escalation Required`
+- **In-Network?** `color_mm2vhwan` — `In-Network` · `Out-of-Network` · `Medicare not Primary` (key 11) · **Active?** `color_mm5q9y3` — `Active` · `Inactive` · **DME Benefits?** `color_mm2vt8xg` — `Yes` · `Partial / No`
+- **Days in Stage** `color_mm1wwm05` — bucket labels; indices 2,3,4,6,7,8 = `6–8 Days` and beyond (>5 days)
+- **Not Clear Products** `dropdown_mm2vez5a` — comma-joined product labels
 - **Reference Notes** `long_text_mm2ffsme` — carries the stamped stuck reason *and* the manager's decision note
 - **Follow Up Date** `date_mm34m2dz`
 - **Trigger Supplies DVS** `color_mm26pk1a` · **Trigger Pump DVS** `color_mm578kbd` · **Claims Status** `color_mm284z0b`
+
+> **Reason-bucketed charts (2026-07-29).** The Insurance manager columns no
+> longer bucket by days-in-stage: each bar is a REASON, defined by its own
+> filter rule below. A patient can match several bars and counts in each —
+> the card's headline number stays **distinct patients**, so bars can sum past
+> it (the card footnotes "N patients in multiple bars"). Clicking a bar
+> filters the drill-down to that reason; the drill-down's **Reason** column
+> shows every bar a row matches, from the same rule evaluation
+> (`reasonBucketsFor`) the bars use.
 
 ### Processor Overview
 
@@ -113,29 +125,80 @@ Columns:
 
 ### Manager Intervention
 
-| Chart | Arrives when | Leaves when |
-|---|---|---|
-| **Benefits** | Stage = `Benefits / SoS` AND Escalation = `Manager Escalation Required` | Escalation cleared or changed, or stage changes |
-| **DVS — Retry Queue** | Stage = `DVS` AND (Supplies DVS **or** Pump DVS = `Retry Queued`) | The bot moves that status off `Retry Queued` |
-| **DVS — Manual Review** | Stage = `DVS` AND **any** of: Escalation = `Manager Escalation Required`; Supplies DVS in (`MLTC`, `Failed`, `Manual Review`); Pump DVS in (`MLTC`, `Failed`, `Manual Review`, `Denied`); Claims Status in (`Claims Error`, `Claims Denied`, `Payment Incorrect`) | Every one of those clears |
+**Benefits** (chart `benefits-manager-escalation`) — reason bars; the chart's
+population is the UNION of the bars (there is no separate population rule).
+Every bar is a **board fact**, not the Escalation label, so a patient shows the
+moment the fact lands:
 
-> Retry Queue and Manual Review are **disjoint** — a lingering retry *count* no longer counts as queued; only the literal `Retry Queued` status does.
+| Bar | Arrives when | Leaves when |
+|---|---|---|
+| **Inactive insurance** | Stage = `Benefits / SoS` AND Active? = `Inactive` (index 2) | Rep confirms coverage and re-sends (Active? ≠ Inactive), or stage changes |
+| **Pump SoS** | Stage = `Benefits / SoS` AND Not Clear Products contains `Insulin Pump` | The pump SoS resolves off Not Clear, or stage changes |
+| **Check outstanding >5d** | Stage = `Benefits / SoS` AND Days in Stage at `6–8 Days` or beyond (index ≥ 2 of the used keys) | Stage changes (days only grow) |
+
+> The planned Monday automation "Days = 6–8 → Escalation = Manager" is **not
+> required** for the >5d bar (it reads the days column directly) and did not
+> exist when this was built. If it's added, it MUST be conditioned on Stage =
+> `Benefits / SoS` — the days column exists at every stage, and an unconditioned
+> recipe would escalate Auth Outstanding / DVS patients too.
+
+**Submit Auth** (chart `submit-auth-manager`, 2026-07-29 — the old *DVS — Retry
+Queue* and *DVS — Manual Review* charts merged into it, so the manager sees the
+total outstanding-auth workload in one card). Union population, three bars:
+
+| Bar | Arrives when | Leaves when |
+|---|---|---|
+| **DVS Retry** | Stage = `DVS` AND (Supplies DVS **or** Pump DVS = `Retry Queued`) | The bot moves that status off `Retry Queued` |
+| **DVS Manual Review** | Stage = `DVS` AND **any** of: Escalation = `Manager Escalation Required`; Supplies DVS in (`MLTC`, `Failed`, `Manual Review`); Pump DVS in (`MLTC`, `Failed`, `Manual Review`, `Denied`); Claims Status in (`Claims Error`, `Claims Denied`, `Payment Incorrect`) | Every one of those clears |
+| **Propose Stuck** | Stage = `Submit Auth.` AND Escalation = `Manager Escalation Required` AND Reference Notes contain a `[Proposed Stuck` stamp | The manager decides (below), or a rep-side send clears the escalation |
+
+> The stamp condition on the Propose Stuck bar is what keeps a Submit Auth
+> send's **manual escalate toggle** (which also writes `Manager Escalation
+> Required`) out of the bar.
+
+**Drill-down action (the first Manager Intervention buttons):** a Propose Stuck
+row offers **Escalate to Final Decisions** — the manager's note is **required**
+(stamped `[Escalated to Final · date · initials]` into Reference Notes first),
+then Escalation → `Final Escalation Required`. The patient moves to the Final
+Decisions Submit Auth chart; the DVS rows get no button (bot states — nothing
+to decide).
 
 ### Final Decisions
 
+**Benefits** (chart `benefits-final-escalation`) — population unchanged
+(Stage = `Benefits / SoS` AND Escalation = `Final Escalation Required`), but the
+bars are now the two ARRIVAL PATHS instead of day buckets:
+
+| Bar | Arrives when |
+|---|---|
+| **Propose Stuck** | …AND Reference Notes contain a `[Proposed Stuck` stamp (the rep's required reason — also shown in the Proposed Reason column) |
+| **Universal Check** | …AND the failed check is on the board: In-Network? in (`Out-of-Network`, `Medicare not Primary`) OR DME Benefits? = `Partial / No` |
+
+A patient can match both (proposed once, check failed too — the stamp is a
+permanent audit trail); a legacy patient matching neither still counts in the
+headline number and shows under "all". **Inactive is deliberately NOT a
+Universal Check reason** — an inactive-only patient escalates to *Manager
+Intervention* instead (2026-07-29: the patient probably has other coverage, so
+the manager watches while the rep keeps working them).
+
 | Chart | Arrives when | Leaves when |
 |---|---|---|
-| **Benefits** | Stage = `Benefits / SoS` AND Escalation = `Final Escalation Required` | A manager decides — §5 |
-| **Submit Auth** | Stage = `Submit Auth.` AND Escalation = `Final Escalation Required` | Same |
+| **Submit Auth** | Stage = `Submit Auth.` AND Escalation = `Final Escalation Required` — reached ONLY via the manager's **Escalate to Final Decisions** (two-step review; a rep's Propose Stuck lands in Manager Intervention first) | A manager decides — §5 |
 | **Auth Outstanding** | Stage = `Auth. Outstanding` AND Escalation = `Final Escalation Required` | Same |
 
-Getting here: **Propose Stuck** on the Benefits / Submit Auth / Auth Outstanding
-page — appends the reason to Reference Notes (stamped), then sets Escalation →
-`Final Escalation Required`. It does **not** touch the Stage Advancer, so the
-patient stays in their stage and also remains visible in Processor Overview.
+Getting here: **Propose Stuck** on the Benefits / Auth Outstanding page —
+appends the reason to Reference Notes (stamped), then sets Escalation →
+`Final Escalation Required`. On the **Submit Auth** page the same button sets
+`Manager Escalation Required` instead (the two-step flow above). It does
+**not** touch the Stage Advancer, so the patient stays in their stage and also
+remains visible in Processor Overview.
 
-Auto-arrival: a failed universal check can set the same label, so a patient can
-land here without anyone clicking Propose Stuck. Those show a blank Proposed Reason.
+Auto-arrival (Benefits): Out-of-Network, Medicare not Primary, or DME
+Partial/No on send sets `Final Escalation Required` automatically; an
+**Inactive-only** send sets `Manager Escalation Required`
+(`universalEscalationLevel` in `benefitsDerive.ts` owns the precedence —
+final-level failures win when combined). Auto-arrivals show a blank Proposed
+Reason but carry the machine-composed `[Auto-escalated …]` note line.
 
 ---
 
@@ -186,8 +249,9 @@ always shows the **most recent** one.
 | Where | Buttons |
 |---|---|
 | Oversight drill-down (Final Decisions rows) | Approve Stuck · Return to Queue — both take an optional note |
+| Oversight drill-down (Manager Intervention **Submit Auth**, Propose Stuck rows only) | Escalate to Final Decisions — note **required** (2026-07-29 two-step review) |
 | Stage page opened *from* Final Decisions (`?mv=final-decisions`) | Approve Stuck · Return to Queue — Propose Stuck is hidden, since the patient is already proposed |
-| Stage page opened any other way | Propose Stuck |
+| Stage page opened any other way | Propose Stuck (at Submit Auth it flags `Manager Escalation Required`; Benefits / Auth Outstanding flag `Final Escalation Required`) |
 
 ---
 

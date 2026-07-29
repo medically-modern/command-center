@@ -357,6 +357,60 @@ describe("failed-check gating (Medicare-not-Primary handoff §2–§3)", () => {
     expect(universalEscalationLevel(clean)).toBe("none");
   });
 
+  // 2026-07-29 escalation routing: Out-of-Network / Medicare not Primary /
+  // DME Partial-No auto-flip FINAL; Inactive ALONE goes to the MANAGER (the
+  // patient probably has other coverage — watch, don't stop).
+  it("inactive alone escalates to the manager; a final-level failure alongside wins", () => {
+    const inactiveOnly: InsuranceState = {
+      ...structuredClone(EMPTY_INSURANCE),
+      universal: { "in-network": "confirmed", active: "not-confirmed", "dme-benefits": "confirmed" },
+    };
+    expect(universalEscalationLevel(inactiveOnly)).toBe("manager");
+
+    const inactiveAndOon: InsuranceState = {
+      ...structuredClone(EMPTY_INSURANCE),
+      universal: { "in-network": "not-confirmed", active: "not-confirmed", "dme-benefits": "confirmed" },
+    };
+    expect(universalEscalationLevel(inactiveAndOon)).toBe("final");
+
+    const inactiveAndNoDme: InsuranceState = {
+      ...structuredClone(EMPTY_INSURANCE),
+      universal: { "in-network": "confirmed", active: "not-confirmed", "dme-benefits": "not-confirmed" },
+    };
+    expect(universalEscalationLevel(inactiveAndNoDme)).toBe("final");
+  });
+
+  it("out-of-network or DME partial/no alone auto-flip final", () => {
+    const oon: InsuranceState = {
+      ...structuredClone(EMPTY_INSURANCE),
+      universal: { "in-network": "not-confirmed", active: "confirmed", "dme-benefits": "confirmed" },
+    };
+    expect(universalEscalationLevel(oon)).toBe("final");
+    const noDme: InsuranceState = {
+      ...structuredClone(EMPTY_INSURANCE),
+      universal: { "in-network": "confirmed", active: "confirmed", "dme-benefits": "not-confirmed" },
+    };
+    expect(universalEscalationLevel(noDme)).toBe("final");
+  });
+
+  it("the preview shows Manager Escalation Required for an inactive-only gate", () => {
+    const p = makePatient({
+      serving: "CGM",
+      primaryInsurance: "Horizon BCBS",
+      insurance: {
+        ...structuredClone(EMPTY_INSURANCE),
+        universal: { "in-network": "confirmed", active: "not-confirmed", "dme-benefits": "confirmed" },
+      },
+    });
+    const pv = deriveBenefitsPreview(p, TODAY);
+    expect(pv.gated).toBe(true);
+    expect(pv.active).toBe("Inactive");
+    expect(pv.escalation).toBe("Manager Escalation Required");
+    // Still held at Benefits — inactive is a blocker for advancing, just not
+    // a Final Decisions matter.
+    expect(pv.stage).toBe("Benefits / SoS");
+  });
+
   it("failedUniversalChecks labels the banner in check order", () => {
     const ins: InsuranceState = {
       ...structuredClone(EMPTY_INSURANCE),

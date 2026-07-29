@@ -107,8 +107,13 @@ const isQueued = (p: Patient) => p.dvsStatus === "Retry Queued" || p.pumpDvsStat
  * them at module-eval time, so a forward reference would be a TDZ crash.
  */
 const RAIL_FILTERS: Record<string, (p: Patient) => boolean> = {
+  // Bucket-level ids (still what CHART_FILTERS calls the two DVS rules).
   "dvs-retry-queue": isQueued,
   "dvs-manual-review": isManualReview,
+  // The merged Manager Intervention chart (2026-07-29): its DVS rows are the
+  // union of the two rules. (Its Propose Stuck rows are Submit Auth patients
+  // and never route here — handlePatientClick sends them to /submit-auth.)
+  "submit-auth-manager": (p) => isQueued(p) || isManualReview(p),
 };
 
 /* ── page ─────────────────────────────────────────────────────────── */

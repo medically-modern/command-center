@@ -384,8 +384,17 @@ columns" automation on duplicated items). The SPA only flips the advancer; verif
   then clear the escalation — in that order) / Return to Queue (a modal that shows the MN notes,
   takes an OPTIONAL stamped note, sets Next Action Date = today, and clears the escalation so the
   patient re-enters the rep's queue). Every ME manager chart (incl. Proposed Stuck) opens the
-  patient in the stage page (manager mode) to view/work in UI. Insurance columns 2/3: DVS Retry Queue
-  (provisional) + Benefits check-failed, display-only. `lib/oversight/priority.ts` adds
+  patient in the stage page (manager mode) to view/work in UI. **Insurance columns 2/3 are
+  REASON-BUCKETED (2026-07-29, `OVERSIGHT_CHART_RULES.md` §3):** the x-axis is one bar per reason
+  (a patient can be in several bars; header count = distinct patients), driven by
+  `ChartDef.reasonBuckets` + `reasonBucketsFor`. Column 2: Benefits (Inactive insurance · Pump SoS ·
+  Check outstanding >5d — board facts, not the escalation label) and **Submit Auth** (the two DVS
+  charts merged: DVS Retry · DVS Manual Review · Propose Stuck). Column 3 Benefits bars = arrival
+  path (Propose Stuck stamp vs Universal Check columns). Submit Auth propose-stuck is TWO-STEP:
+  the rep's proposal writes Manager Escalation Required (not Final), and the manager's drill-down
+  "Escalate to Final Decisions" button (required stamped note) promotes it. Benefits auto-escalation
+  splits by cause: OON / Medicare-not-primary / DME-no → Final, Inactive alone → Manager
+  (`universalEscalationLevel`). `lib/oversight/priority.ts` adds
   VIP/priority scoring (localStorage config). The open drill-down `{stage, chart, bucket}` is
   **mirrored to the URL** so Back from a patient's agent page returns to the exact drill-down (see the
   back-nav note in §9). **Keep oversight reads on the gateway:** `oversightApi.ts` must route through

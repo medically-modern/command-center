@@ -5,7 +5,7 @@
 
 import { MONDAY_API_URL, mondayIdentityHeaders } from "../shared/mondayEndpoint";
 import { etToday } from "../masheke/etDate";
-import { stampReturnedToQueue, stampApprovedStuck, appendStampedLine } from "../masheke/proposedStuck";
+import { stampReturnedToQueue, stampApprovedStuck, stampEscalatedToFinal, appendStampedLine } from "../masheke/proposedStuck";
 import { userInitials } from "../shared/auth";
 const MONDAY_API_VERSION = "2024-10";
 
@@ -103,8 +103,17 @@ export interface ChartDef {
     aColor: string;
     bColor: string;
   };
-  /** Final Decisions charts: which decision actions the drill-down offers. */
-  decision?: "proposed-stuck" | "insurance-final";
+  /** Which decision actions the drill-down offers. "proposed-stuck" /
+   *  "insurance-final" = Final Decisions (Approve Stuck / Return to Queue);
+   *  "submit-auth-manager" = the Manager Intervention Submit Auth chart's
+   *  Escalate to Final Decisions button (required note). */
+  decision?: "proposed-stuck" | "insurance-final" | "submit-auth-manager";
+  /** Reason-bucketed chart (Katie 2026-07-29): the x-axis is one bar per
+   *  REASON, not the day buckets. Each bucket names a CHART_FILTERS rule; a
+   *  patient can match several buckets and is counted in each (the header
+   *  count stays distinct patients). When the chart has NO CHART_FILTERS
+   *  entry of its own, its population is the UNION of its buckets. */
+  reasonBuckets?: ReasonBucket[];
   /** Final Decisions charts: the long-text column the rep's stamped
    *  "[Proposed Stuck · date] …" line is appended to, so the drill-down can
    *  extract it back into the synthetic `__proposedReason__` column. It is NOT
@@ -120,6 +129,28 @@ export interface ChartDef {
  *  legend pills (amber = Attempt 4+, red = 3rd+ round). */
 export const STACK_A_COLOR = "#f59e0b";
 export const STACK_B_COLOR = "#dc2626";
+
+/** One bar of a reason-bucketed chart. `filterId` names a CHART_FILTERS rule;
+ *  `label` is both the bar label and the value shown in the drill-down's
+ *  synthetic `__reasons__` column (and the ?bucket= URL param). */
+export interface ReasonBucket {
+  key: string;
+  label: string;
+  /** Short label under the bar (defaults to `label`). */
+  short?: string;
+  filterId: string;
+  color: string;
+}
+
+/** Categorical bar colors for reason buckets — identity colors, assigned in
+ *  fixed order per chart (NOT the sequential day-bucket ramp). The trio is
+ *  CVD-validated against the card surface; every bar also carries its own
+ *  text label, so color is never the only identity carrier. */
+export const REASON_COLORS = {
+  sky: "#0ea5e9",
+  amber: "#f59e0b",
+  violet: "#8b5cf6",
+} as const;
 
 // ── Chart definitions (12 charts) ───────────────────────────────────────
 
@@ -570,8 +601,19 @@ const RAW_CHART_DEFS: ChartDef[] = [
     rowOf: "benefits",
     decision: "insurance-final",
     reasonColId: "long_text_mm2ffsme",
+    // Reason-bucketed x-axis (Katie 2026-07-29): HOW the patient got here —
+    // a rep's Propose Stuck (filtered off the "[Proposed Stuck" note stamp)
+    // vs an automatic failed universal check (filtered off the board columns
+    // the send writes: In-Network? OON / Medicare not Primary, DME
+    // Partial/No). The population stays "Final Escalation Required" — the
+    // buckets categorize within it, and a legacy patient matching neither
+    // still counts in the header total.
+    reasonBuckets: [
+      { key: "proposed", label: "Propose Stuck", short: "Proposed", filterId: "benefits-final-proposed", color: REASON_COLORS.sky },
+      { key: "universal", label: "Universal Check", short: "Universal", filterId: "benefits-final-universal", color: REASON_COLORS.amber },
+    ],
     drilldownCols: [
-      { colId: "date_mm1wf43j", label: "Intake Date" },
+      { colId: "__reasons__", label: "Reason", pill: true },
       { colId: "color_mm1wwm05", label: "Days in Stage" },
       { colId: "color_mm1x157j", label: "Primary Insurance" },
       { colId: "color_mm2vhwan", label: "In-Network?", pill: true },
@@ -615,59 +657,61 @@ const RAW_CHART_DEFS: ChartDef[] = [
       { colId: "__proposedReason__", label: "Proposed Reason" },
     ],
   },
-  // Manager view: Insurance — Benefits items escalated to the MANAGER (insulin-
-  // pump SoS Not Clear only, benefitsDerive pumpNotClear) → "Manager as
-  // Processor" column, benefits row. Failed-check escalations go to Final
-  // Decisions (benefits-final-escalation) instead.
+  // Manager view: Insurance — Benefits row, REASON-BUCKETED (Katie
+  // 2026-07-29): one bar per reason a manager needs eyes on a Benefits
+  // patient, not day buckets. Population = union of the bars; the count is
+  // distinct patients (a patient can match several bars).
   {
     id: "benefits-manager-escalation",
     title: "Benefits",
     boardId: 18410601299,
     notesColId: "long_text_mm2ffsme",
     rowOf: "benefits",
+    reasonBuckets: [
+      { key: "inactive", label: "Inactive insurance", short: "Inactive", filterId: "benefits-manager-inactive", color: REASON_COLORS.sky },
+      { key: "pump-sos", label: "Pump SoS", short: "Pump SoS", filterId: "benefits-manager-pump-sos", color: REASON_COLORS.amber },
+      { key: "overdue", label: "Check outstanding >5d", short: ">5 days", filterId: "benefits-manager-overdue", color: REASON_COLORS.violet },
+    ],
     drilldownCols: [
-      { colId: "date_mm1wf43j", label: "Intake Date" },
+      { colId: "__reasons__", label: "Reason", pill: true },
       { colId: "color_mm1wwm05", label: "Days in Stage" },
       { colId: "color_mm1x157j", label: "Primary Insurance" },
       { colId: "color_mm1w1cm9", label: "Serving" },
+      { colId: "color_mm5q9y3", label: "Active?", pill: true },
       { colId: "color_mm2vemyy", label: "SoS", pill: true },
       { colId: "dropdown_mm2vez5a", label: "Not Clear Products", pill: true },
       { colId: "color_mm2vsh2f", label: "Escalation", pill: true },
-      // Raw column, NOT __proposedReason__: this is a Manager-as-Processor
-      // chart, not a Final Decision, so there is no stamped proposal to derive.
-      { colId: "long_text_mm3jrssp", label: "Escalation Notes" },
     ],
   },
+  // Manager view: Insurance — Submit Auth row, MERGED (Brandon 2026-07-29):
+  // the old "DVS — Retry Queue" and "DVS — Manual Review" charts fold into
+  // one "Submit Auth" chart so the manager sees the total outstanding-auth
+  // workload at a glance, plus the Submit Auth stuck PROPOSALS (which now
+  // land here first — the two-step review). The drill-down offers Escalate
+  // to Final Decisions on the proposed rows.
   {
-    id: "dvs-retry-queue",
-    title: "DVS — Retry Queue",
+    id: "submit-auth-manager",
+    title: "Submit Auth",
     boardId: 18410601299,
     notesColId: "long_text_mm2ffsme",
     rowOf: "submit-auth",
+    decision: "submit-auth-manager",
+    reasonColId: "long_text_mm2ffsme",
+    reasonBuckets: [
+      { key: "dvs-retry", label: "DVS Retry", short: "DVS Retry", filterId: "dvs-retry-queue", color: REASON_COLORS.sky },
+      { key: "dvs-manual", label: "DVS Manual Review", short: "DVS Manual", filterId: "dvs-manual-review", color: REASON_COLORS.amber },
+      { key: "proposed", label: "Propose Stuck", short: "Proposed", filterId: "submit-auth-proposed-manager", color: REASON_COLORS.violet },
+    ],
     drilldownCols: [
+      { colId: "__reasons__", label: "Reason", pill: true },
+      // The rep's stamped reason sits right after the bar tag — on a
+      // Propose Stuck row it's what the manager decides from (blank on the
+      // DVS rows, which have no proposal).
+      { colId: "__proposedReason__", label: "Proposed Reason" },
       { colId: "color_mm1wwm05", label: "Days in Stage" },
       { colId: "color_mm1x157j", label: "Primary Insurance" },
       { colId: "color_mm1w1cm9", label: "Serving" },
       { colId: "numeric_mm27nexq", label: "Retry Count" },
-      { colId: "color_mm26pk1a", label: "Supplies DVS", pill: true },
-      { colId: "color_mm578kbd", label: "Pump DVS", pill: true },
-      { colId: "color_mm284z0b", label: "Claims", pill: true },
-    ],
-  },
-  // Manager view: Insurance — a SEPARATE bucket for DVS items flagged for
-  // manual review, sitting to the right of Auth Denial (rowOf). Mirrors the
-  // DVS page's "manual review" flag — Escalation Required, any rose Supplies/
-  // Pump DVS status, or a claims failure (see the CHART_FILTERS entry).
-  {
-    id: "dvs-manual-review",
-    title: "DVS — Manual Review",
-    boardId: 18410601299,
-    notesColId: "long_text_mm2ffsme",
-    rowOf: "auth-denial",
-    drilldownCols: [
-      { colId: "color_mm1wwm05", label: "Days in Stage" },
-      { colId: "color_mm1x157j", label: "Primary Insurance" },
-      { colId: "color_mm1w1cm9", label: "Serving" },
       { colId: "color_mm26pk1a", label: "Supplies DVS", pill: true },
       { colId: "color_mm578kbd", label: "Pump DVS", pill: true },
       { colId: "color_mm284z0b", label: "Claims", pill: true },
@@ -887,7 +931,9 @@ export const OVERSIGHT_SECTIONS: OversightSection[] = [
     chartIds: ["benefits", "submit-auth", "auth-outstanding", "auth-denial"],
     primaryTitle: "Processor Overview",
     secondaryTitle: "Manager Intervention",
-    secondaryChartIds: ["benefits-manager-escalation", "dvs-retry-queue", "dvs-manual-review"],
+    // 2026-07-29: the two DVS charts merged into the reason-bucketed
+    // "Submit Auth" chart (DVS Retry · DVS Manual Review · Propose Stuck).
+    secondaryChartIds: ["benefits-manager-escalation", "submit-auth-manager"],
     tertiaryTitle: "Final Decisions",
     tertiaryChartIds: ["benefits-final-escalation", "submit-auth-final-escalation", "auth-outstanding-final-escalation"],
   },
@@ -971,6 +1017,18 @@ function columnsForBoard(boardId: number): string[] {
     // drill-down shows the derived __proposedReason__ instead), so fetch it
     // explicitly or the "Proposed Reason" cell reads permanently blank.
     if (chart.reasonColId) set.add(chart.reasonColId);
+    // Every column a chart's filter rules condition on — the population rule
+    // AND its reason-bucket rules. A filter column missing from the fetch
+    // silently matches nothing, so collect them from the rules themselves
+    // instead of trusting each one to also be a drilldown column.
+    const rules = [
+      CHART_FILTERS[chart.id],
+      ...(chart.reasonBuckets ?? []).map((b) => CHART_FILTERS[b.filterId]),
+    ];
+    for (const rule of rules) {
+      if (!rule) continue;
+      for (const c of [...(rule.andCols ?? []), ...(rule.anyCols ?? [])]) set.add(c.colId);
+    }
   }
 
   // Always include the priority-scoring columns (referral source/type + insurance)
@@ -1200,6 +1258,11 @@ interface ColCondition {
    *  columns whose labels may change on the board, e.g. Escalation). One index
    *  or a set. Use this OR `value`, not both. */
   index?: number | number[];
+  /** SUBSTRING match: passes when the cell text contains ANY of these strings.
+   *  Used for dropdown cells (comma-joined labels, e.g. Not Clear Products
+   *  contains "Insulin Pump") and for note-stamp tags (Reference Notes contain
+   *  "[Proposed Stuck"). Exclusive with `value`/`index`/`gte`. */
+  containsAny?: string[];
   not?: boolean;
   gte?: number;
 }
@@ -1283,9 +1346,47 @@ const CHART_FILTERS: Record<string, FilterRule> = {
   "benefits-final-escalation": { type: "stageAdvancer", boardId: 18410601299, value: "Benefits / SoS", andCols: [{ colId: "color_mm2vsh2f", value: "Final Escalation Required" }] },
   "submit-auth-final-escalation": { type: "stageAdvancer", boardId: 18410601299, value: "Submit Auth.", andCols: [{ colId: "color_mm2vsh2f", value: "Final Escalation Required" }] },
   "auth-outstanding-final-escalation": { type: "stageAdvancer", boardId: 18410601299, value: "Auth. Outstanding", andCols: [{ colId: "color_mm2vsh2f", value: "Final Escalation Required" }] },
-  // Manager Intervention: Benefits items flagged Manager Escalation Required
-  // (insulin-pump SoS Not Clear only).
-  "benefits-manager-escalation": { type: "stageAdvancer", boardId: 18410601299, value: "Benefits / SoS", andCols: [{ colId: "color_mm2vsh2f", value: "Manager Escalation Required" }] },
+  // ── Manager Intervention: Benefits reason buckets (Katie 2026-07-29). ──
+  // The chart id itself has NO entry — its population is the UNION of these
+  // three bucket rules. Each keys on the BOARD FACT, not the Escalation
+  // label, so a patient shows the moment the fact lands (the >5-days bar
+  // works whether or not the planned board automation that flips Manager
+  // Escalation at 6–8 days exists yet).
+  //
+  // Inactive insurance: Active? = Inactive (index 2 — the column split).
+  "benefits-manager-inactive": { type: "stageAdvancer", boardId: 18410601299, value: "Benefits / SoS", andCols: [{ colId: "color_mm5q9y3", index: [2] }] },
+  // Pump SoS: same-or-similar Not Clear on the insulin pump specifically —
+  // the Not Clear Products dropdown (comma-joined labels) contains it. Other
+  // products being Not Clear deliberately do NOT put a patient here.
+  "benefits-manager-pump-sos": { type: "stageAdvancer", boardId: 18410601299, value: "Benefits / SoS", andCols: [{ colId: "dropdown_mm2vez5a", containsAny: ["Insulin Pump"] }] },
+  // Check outstanding >5 days: Days in Stage status at "6–8 Days" or beyond.
+  // Matched by INDEX (settings keys 2,3,4,6,7,8 — note 5 is unused on the
+  // board) so the en-dash/hyphen mix in the labels can't bite. Blank days →
+  // no index → not overdue.
+  "benefits-manager-overdue": { type: "stageAdvancer", boardId: 18410601299, value: "Benefits / SoS", andCols: [{ colId: "color_mm1wwm05", index: [2, 3, 4, 6, 7, 8] }] },
+  // ── Final Decisions: Benefits reason buckets — HOW the patient arrived. ──
+  // Both are subsets of benefits-final-escalation (the population rule).
+  // Propose Stuck: the rep's stamped reason line is the marker (the stamp is
+  // the contract with samantha/ProposeStuckButton). A patient proposed once,
+  // returned, then auto-escalated later can match BOTH bars — the stamp is an
+  // audit trail and deliberately never removed.
+  "benefits-final-proposed": { type: "stageAdvancer", boardId: 18410601299, value: "Benefits / SoS", andCols: [{ colId: "color_mm2vsh2f", value: "Final Escalation Required" }, { colId: "long_text_mm2ffsme", containsAny: ["[Proposed Stuck"] }] },
+  // Universal Check: the failed check is on the board — In-Network? =
+  // Out-of-Network / Medicare not Primary, or DME Benefits = Partial / No.
+  // (Inactive is NOT here — it escalates to Manager Intervention instead.)
+  "benefits-final-universal": {
+    type: "stageAdvancer", boardId: 18410601299, value: "Benefits / SoS",
+    andCols: [{ colId: "color_mm2vsh2f", value: "Final Escalation Required" }],
+    anyCols: [
+      { colId: "color_mm2vhwan", value: ["Out-of-Network", "Medicare not Primary"] },
+      { colId: "color_mm2vt8xg", value: "Partial / No" },
+    ],
+  },
+  // ── Manager Intervention: Submit Auth proposed-stuck bucket (2026-07-29,
+  // two-step review). Escalation = Manager + the rep's stamp — the stamp
+  // requirement keeps a manually-toggled Submit Auth escalation (the send's
+  // escalate toggle also writes Manager) out of the Propose Stuck bar. ──
+  "submit-auth-proposed-manager": { type: "stageAdvancer", boardId: 18410601299, value: "Submit Auth.", andCols: [{ colId: "color_mm2vsh2f", value: "Manager Escalation Required" }, { colId: "long_text_mm2ffsme", containsAny: ["[Proposed Stuck"] }] },
   // DVS retry queue: stage DVS with a "Retry Queued" status on Trigger
   // Supplies DVS or Trigger Pump DVS — and nothing else. (The old Retry
   // Count ≥ 1 condition is gone: a non-zero count lingers after an item
@@ -1326,6 +1427,10 @@ function colConditionPasses(patient: OversightPatient, c: ColCondition): boolean
       (Array.isArray(c.index) ? c.index.includes(idx) : idx === c.index);
     return c.not ? !hit : hit;
   }
+  if (c.containsAny !== undefined) {
+    const hit = c.containsAny.some((s) => cell.includes(s));
+    return c.not ? !hit : hit;
+  }
   const inSet = Array.isArray(c.value) ? c.value.includes(cell) : cell === c.value;
   return c.not ? !inSet : inSet;
 }
@@ -1351,6 +1456,37 @@ function matchesFilter(patient: OversightPatient, rule: FilterRule): boolean {
     return false;
   }
   return true;
+}
+
+/**
+ * Which of a reason-bucketed chart's bars a patient belongs in — bar counts,
+ * drill-down bar filtering, and the synthetic `__reasons__` column all key
+ * off this one evaluation, so they can never disagree. Returns bucket LABELS
+ * in the chart's authored order; empty for a patient matching no bar (they
+ * still count in a categorize-mode chart's total, like an unknown day bucket).
+ */
+export function reasonBucketsFor(chart: ChartDef, patient: OversightPatient): string[] {
+  if (!chart.reasonBuckets?.length) return [];
+  const out: string[] = [];
+  for (const b of chart.reasonBuckets) {
+    const rule = CHART_FILTERS[b.filterId];
+    if (rule && matchesFilter(patient, rule)) out.push(b.label);
+  }
+  return out;
+}
+
+/**
+ * Does a patient belong to a chart at all? Population = the chart's own
+ * CHART_FILTERS rule when it has one (categorize mode — reason buckets, if
+ * any, subdivide within it), else the UNION of its reason buckets. Exported
+ * so tests exercise the exact evaluation the fetch uses.
+ */
+export function patientMatchesChart(chart: ChartDef, patient: OversightPatient): boolean {
+  if (patient.boardId !== chart.boardId) return false;
+  const rule = CHART_FILTERS[chart.id];
+  if (rule) return matchesFilter(patient, rule);
+  if (chart.reasonBuckets?.length) return reasonBucketsFor(chart, patient).length > 0;
+  return false;
 }
 
 // ── Final Decisions mutations (Manager Views §3) ────────────────────────
@@ -1519,6 +1655,28 @@ export async function returnInsuranceToQueue(itemId: string, appendNote?: string
   await writeStatusIndexOnBoard(INSURANCE_BOARD_ID, itemId, INSURANCE_ESC_COL, null);
 }
 
+const INSURANCE_ESC_FINAL_INDEX = 2; // "Final Escalation Required"
+
+/**
+ * Escalate a Submit Auth stuck proposal from Manager Intervention to Final
+ * Decisions (the second step of the 2026-07-29 two-step review). The
+ * manager's note is REQUIRED — "why does this need a final decision" is what
+ * the Final Decisions reviewer works from — and lands in the Reference Notes
+ * (stamped "[Escalated to Final · date · initials] …") BEFORE the status
+ * flip, same reason-then-flag ordering as ProposeStuckButton: nobody should
+ * ever see a Final-Decisions row whose justification hasn't landed yet.
+ * The rep's original "[Proposed Stuck …]" stamp stays in the notes as the
+ * Proposed Reason. The Stage Advancer is not touched.
+ */
+export async function escalateSubmitAuthToFinal(itemId: string, note: string): Promise<void> {
+  const trimmed = note.trim();
+  if (!trimmed) throw new Error("A note is required to escalate to Final Decisions");
+  const existing = await readItemColumnText(itemId, INSURANCE_NOTES_COL);
+  const stamped = stampEscalatedToFinal(trimmed, etToday(), userInitials());
+  await writeLongTextOnBoard(INSURANCE_BOARD_ID, itemId, INSURANCE_NOTES_COL, appendStampedLine(existing, stamped));
+  await writeStatusIndexOnBoard(INSURANCE_BOARD_ID, itemId, INSURANCE_ESC_COL, INSURANCE_ESC_FINAL_INDEX);
+}
+
 // ── Public fetch function ───────────────────────────────────────────────
 
 /**
@@ -1549,16 +1707,10 @@ export async function fetchOversightData(): Promise<Map<string, OversightPatient
   const result = new Map<string, OversightPatient[]>();
 
   for (const chart of CHART_DEFS) {
-    const rule = CHART_FILTERS[chart.id];
-    if (!rule) {
-      result.set(chart.id, []);
-      continue;
-    }
-
-    const patients = allPatients.filter(
-      (p) => p.boardId === chart.boardId && matchesFilter(p, rule),
+    result.set(
+      chart.id,
+      allPatients.filter((p) => patientMatchesChart(chart, p)),
     );
-    result.set(chart.id, patients);
   }
 
   return result;

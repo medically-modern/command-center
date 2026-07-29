@@ -15,6 +15,8 @@ import {
   returnProposedToQueue,
   approveInsuranceStuck,
   returnInsuranceToQueue,
+  escalateSubmitAuthToFinal,
+  reasonBucketsFor,
   CHART_DEFS,
   OVERSIGHT_SECTIONS,
   DAY_BUCKET_LABELS,
@@ -93,8 +95,10 @@ const CHART_ROUTES: Record<string, string | null> = {
   "benefits-manager-escalation": "/benefits",
   // DVS charts open the DVS monitor page for the clicked patient (?patientId
   // deep-link + ?from=system-mgmt), i.e. the same DVS UI a rep clicks into.
-  "dvs-retry-queue": "/dvs",
-  "dvs-manual-review": "/dvs",
+  // Merged Manager Intervention chart (2026-07-29): DVS rows open the DVS
+  // monitor; a Submit Auth proposed-stuck row opens /submit-auth instead —
+  // handlePatientClick overrides per patient by their Stage Advancer.
+  "submit-auth-manager": "/dvs",
   "benefits": "/benefits",
   "submit-auth": "/submit-auth",
   "auth-outstanding": "/auth-outstanding",
@@ -386,6 +390,148 @@ function StageChart({ chart, patients, priorityConfig, onChartClick, onBarClick 
   );
 }
 
+// ── ReasonStageChart — reason-bucketed chart (Katie 2026-07-29) ───────────
+// The x-axis is one bar per REASON (identity colors, fixed order — not the
+// sequential day ramp; each bar carries its own label so color is never the
+// only carrier). A patient can match several bars and is counted in each;
+// the header count stays DISTINCT patients, so bars can sum past it.
+
+function ReasonStageChart({
+  chart,
+  patients,
+  priorityConfig,
+  onChartClick,
+  onBarClick,
+}: {
+  chart: ChartDef;
+  patients: OversightPatient[];
+  priorityConfig: PriorityConfig;
+  onChartClick: () => void;
+  onBarClick: (bucket: string) => void;
+}) {
+  const buckets = chart.reasonBuckets ?? [];
+  const { counts, vipCounts, totalVip, overlap } = useMemo(() => {
+    const counts: Record<string, number> = {};
+    const vipCounts: Record<string, number> = {};
+    for (const b of buckets) {
+      counts[b.label] = 0;
+      vipCounts[b.label] = 0;
+    }
+    let totalVip = 0;
+    let overlap = 0;
+    for (const p of patients) {
+      const labels = reasonBucketsFor(chart, p);
+      if (labels.length > 1) overlap++;
+      const vip = isVip(p, priorityConfig);
+      if (vip) totalVip++;
+      for (const l of labels) {
+        counts[l] = (counts[l] ?? 0) + 1;
+        if (vip) vipCounts[l] = (vipCounts[l] ?? 0) + 1;
+      }
+    }
+    return { counts, vipCounts, totalVip, overlap };
+  }, [patients, priorityConfig, chart, buckets]);
+
+  const totalCount = patients.length;
+  const maxCount = Math.max(1, ...buckets.map((b) => counts[b.label] ?? 0));
+
+  return (
+    <div
+      className={cn(
+        "rounded-2xl border bg-card shadow-sm p-4 transition-all duration-200",
+        "text-left w-full",
+        "border-border hover:shadow-md hover:ring-1 hover:ring-foreground/10",
+      )}
+    >
+      <button
+        onClick={onChartClick}
+        className="flex items-center justify-between mb-3 w-full text-left group cursor-pointer"
+      >
+        <h3 className="text-[0.95rem] font-bold tracking-tight text-foreground truncate min-w-0 group-hover:underline decoration-foreground/30 underline-offset-4">
+          {chart.title}
+        </h3>
+        <div className="flex items-center gap-1.5 ml-2 shrink-0">
+          {totalVip > 0 && (
+            <span
+              className="inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[10px] font-bold text-white"
+              style={{ backgroundColor: VIP_COLOR }}
+              title={`${totalVip} priority patient${totalVip !== 1 ? "s" : ""}`}
+            >
+              <Star className="h-2.5 w-2.5 fill-white" />
+              {totalVip}
+            </span>
+          )}
+          <span className="text-2xl font-bold text-foreground tabular-nums leading-none">
+            {totalCount}
+          </span>
+        </div>
+      </button>
+
+      {/* Reason bars — wider than day buckets (2–3 bars), each clickable */}
+      <div className="flex items-end gap-3 h-[200px] px-2">
+        {buckets.map((b) => {
+          const count = counts[b.label] ?? 0;
+          const vip = vipCounts[b.label] ?? 0;
+          const heightPct = count > 0 ? (count / maxCount) * 100 : 0;
+          return (
+            <button
+              key={b.key}
+              onClick={(e) => {
+                e.stopPropagation();
+                if (count > 0) onBarClick(b.label);
+              }}
+              className={cn(
+                "flex-1 flex flex-col items-center justify-end h-full group/bar min-w-0",
+                count > 0 ? "cursor-pointer" : "cursor-default",
+              )}
+              title={`${b.label}: ${count} patient${count !== 1 ? "s" : ""}${vip > 0 ? ` · ${vip} VIP` : ""}`}
+            >
+              <span className="text-[8px] font-bold leading-none h-2.5" style={{ color: vip > 0 ? VIP_COLOR : "transparent" }}>
+                {vip > 0 ? `★${vip}` : "★"}
+              </span>
+              <span className="text-[10px] tabular-nums font-semibold mb-0.5 text-muted-foreground h-3.5">
+                {count > 0 ? count : ""}
+              </span>
+              <div className="w-full flex items-end justify-center flex-1">
+                <div
+                  className={cn(
+                    "w-full max-w-[72px] rounded-t-md overflow-hidden flex flex-col justify-start transition-all duration-300 ease-out",
+                    count > 0 && "group-hover/bar:opacity-80 group-hover/bar:ring-1 group-hover/bar:ring-foreground/30",
+                    count === 0 && "invisible",
+                  )}
+                  style={{
+                    height: count > 0 ? `${Math.max(heightPct, 3)}%` : "0%",
+                    backgroundColor: b.color,
+                    minHeight: count > 0 ? "4px" : undefined,
+                  }}
+                >
+                  {vip > 0 && (
+                    <div
+                      style={{ height: `${(vip / count) * 100}%`, backgroundColor: VIP_COLOR }}
+                      title={`${vip} VIP`}
+                    />
+                  )}
+                </div>
+              </div>
+              <span className="text-[9px] mt-1 text-muted-foreground truncate max-w-full">
+                {b.short ?? b.label}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+
+      {/* A patient can match several reasons — say so instead of letting the
+          bars silently sum past the header count. */}
+      {overlap > 0 && (
+        <p className="text-[9px] text-muted-foreground mt-1.5 text-right">
+          {overlap} patient{overlap !== 1 ? "s" : ""} in multiple bars
+        </p>
+      )}
+    </div>
+  );
+}
+
 // ── StackedStageChart — two-series merged escalation chart ────────────────
 // Manager Intervention (ME): amber = Attempt 4+ below, red = 3rd+ round on
 // top (mockup rule: age is already the x-axis, so bars use SERIES colors,
@@ -520,17 +666,19 @@ function StackedStageChart({
 interface DrilldownModalProps {
   chart: ChartDef;
   patients: OversightPatient[];
-  bucket: DayBucketLabel | "all";
+  /** A day-bucket label, a reason-bucket label, or "all". */
+  bucket: string;
   priorityConfig: PriorityConfig;
   pillColors: Record<string, Record<string, string>>;
-  onBucketChange: (bucket: DayBucketLabel | "all") => void;
+  onBucketChange: (bucket: string) => void;
   onClose: () => void;
   onPatientClick: (patientId: string) => void;
   hasRoute: boolean;
-  /** Final Decisions charts (Manager Views §3): per-row Approve Stuck /
-   *  Return to Queue actions. Absent on every other chart. `appendNote` (Proposed
-   *  Stuck returns only) is stamped into the MN notes before the patient returns. */
-  onDecision?: (patientId: string, action: "approve" | "return", appendNote?: string) => Promise<void>;
+  /** Decision-chart row actions. Final Decisions charts (Manager Views §3):
+   *  Approve Stuck / Return to Queue. The Manager Intervention Submit Auth
+   *  chart: "escalate" (→ Final Decisions, REQUIRED note). `appendNote` is
+   *  stamped into the notes before the status flip. */
+  onDecision?: (patientId: string, action: "approve" | "return" | "escalate", appendNote?: string) => Promise<void>;
 }
 
 /** Sortable table header cell. */
@@ -597,26 +745,30 @@ function DrilldownModal({
   onDecision,
 }: DrilldownModalProps) {
   const [notesOpenId, setNotesOpenId] = useState<string | null>(null);
-  // Final Decisions actions — per-row busy lock while a decision writes.
+  // Decision actions — per-row busy lock while a decision writes.
   const [decidingId, setDecidingId] = useState<string | null>(null);
-  // Decision modal: BOTH Final-Decisions actions confirm through it, so the
-  // manager can append an optional stamped note either way — approving stuck is
-  // the last thing recorded before a patient leaves the pipeline, so it wants a
-  // reason at least as much as a return does.
-  const [decisionModal, setDecisionModal] = useState<{ id: string; action: "approve" | "return" } | null>(null);
+  // Decision modal: every decision action confirms through it, so the manager
+  // can append a stamped note — approving stuck is the last thing recorded
+  // before a patient leaves the pipeline, and "escalate" (Submit Auth manager
+  // review, 2026-07-29) REQUIRES the note: the justification is the whole
+  // payload the Final Decisions reviewer works from.
+  const [decisionModal, setDecisionModal] = useState<{ id: string; action: "approve" | "return" | "escalate" } | null>(null);
   const [returnNote, setReturnNote] = useState("");
-  // Both Final-Decisions kinds open the Return modal (optional stamped note +
-  // a view of the notes carrying the rep's proposal). They differ in WHERE the
-  // note lands and whether the return also re-dates the patient — Insurance
-  // deliberately doesn't re-date (Auth Outstanding buckets on that date).
+  // The decision kinds differ in WHERE the note lands and whether a return
+  // also re-dates the patient — Insurance deliberately doesn't re-date (Auth
+  // Outstanding buckets on that date).
   const isDecisionChart = !!chart.decision;
   const returnRedates = chart.decision === "proposed-stuck";
-  const reasonNotesLabel = chart.decision === "insurance-final" ? "Reference Notes" : "MN Notes";
+  const reasonNotesLabel = chart.decision === "proposed-stuck" ? "MN Notes" : "Reference Notes";
+  // Manager Intervention Submit Auth chart: the only action is Escalate to
+  // Final Decisions, and only Propose Stuck rows get it (a DVS retry/manual
+  // row is a bot state — there's nothing to escalate).
+  const isEscalateChart = chart.decision === "submit-auth-manager";
   // The proposal is stamped into the reason source, which is NOT always the
   // chart's notesColId (Chase charts stamp the MN notes) — show the column the
   // manager is actually deciding from.
   const returnNotesColId = chart.reasonColId ?? chart.notesColId;
-  const runDecision = async (patientId: string, action: "approve" | "return", appendNote?: string) => {
+  const runDecision = async (patientId: string, action: "approve" | "return" | "escalate", appendNote?: string) => {
     if (!onDecision || decidingId) return;
     setDecidingId(patientId);
     try {
@@ -625,9 +777,9 @@ function DrilldownModal({
       setDecidingId(null);
     }
   };
-  const decide = async (patientId: string, action: "approve" | "return") => {
-    // Every Final-Decisions action confirms first (optional stamped note + a
-    // view of the notes the proposal was made in).
+  const decide = async (patientId: string, action: "approve" | "return" | "escalate") => {
+    // Every decision action confirms first (stamped note + a view of the
+    // notes the proposal was made in).
     if (isDecisionChart) {
       setReturnNote("");
       setDecisionModal({ id: patientId, action });
@@ -639,6 +791,10 @@ function DrilldownModal({
     if (!decisionModal || decidingId) return;
     const { id, action } = decisionModal;
     const note = returnNote.trim();
+    // Escalation without a reason is exactly the blind hand-off the two-step
+    // review exists to prevent — the confirm button is disabled, and this
+    // guard backs it up.
+    if (action === "escalate" && !note) return;
     await runDecision(id, action, note || undefined);
     setDecisionModal(null);
     setReturnNote("");
@@ -666,16 +822,39 @@ function DrilldownModal({
   const cols = chart.drilldownCols;
   const isDaysCol = (label: string) => label === "Days in Stage";
 
+  // Reason-bucketed charts (2026-07-29) swap the day strip + day filtering
+  // for the chart's reason bars; bar counts/filtering share one evaluation
+  // (reasonBucketsFor) so they can never disagree with the card outside.
+  const reasonBuckets = chart.reasonBuckets ?? [];
+  const isReasonChart = reasonBuckets.length > 0;
+  const reasonsByPatient = useMemo(() => {
+    if (!isReasonChart) return new Map<string, string[]>();
+    return new Map(patients.map((p) => [p.id, reasonBucketsFor(chart, p)]));
+  }, [patients, chart, isReasonChart]);
+
   // Day-bucket counts for the bar chart + filtering
   const bucketCounts = useMemo(() => {
     const counts: Record<string, number> = {};
+    if (isReasonChart) {
+      for (const b of reasonBuckets) counts[b.label] = 0;
+      for (const p of patients) {
+        for (const l of reasonsByPatient.get(p.id) ?? []) counts[l] = (counts[l] ?? 0) + 1;
+      }
+      return counts;
+    }
     for (const label of DAY_BUCKET_LABELS) counts[label] = 0;
     for (const p of patients) if (p.dayBucket !== "Unknown") counts[p.dayBucket]++;
     return counts;
-  }, [patients]);
+  }, [patients, isReasonChart, reasonBuckets, reasonsByPatient]);
   const maxBucket = useMemo(
-    () => Math.max(1, ...DAY_BUCKET_LABELS.map((l) => bucketCounts[l] ?? 0)),
-    [bucketCounts],
+    () =>
+      Math.max(
+        1,
+        ...(isReasonChart
+          ? reasonBuckets.map((b) => bucketCounts[b.label] ?? 0)
+          : DAY_BUCKET_LABELS.map((l) => bucketCounts[l] ?? 0)),
+      ),
+    [bucketCounts, isReasonChart, reasonBuckets],
   );
 
   const setSort = (key: string) => {
@@ -688,7 +867,12 @@ function DrilldownModal({
   };
 
   const filtered = useMemo(() => {
-    let list = bucket === "all" ? patients : patients.filter((p) => p.dayBucket === bucket);
+    let list =
+      bucket === "all"
+        ? patients
+        : isReasonChart
+          ? patients.filter((p) => (reasonsByPatient.get(p.id) ?? []).includes(bucket))
+          : patients.filter((p) => p.dayBucket === bucket);
 
     const q = search.trim().toLowerCase();
     if (q) {
@@ -734,7 +918,7 @@ function DrilldownModal({
       sorted.sort((a, b) => bucketSortValue(b.dayBucket) - bucketSortValue(a.dayBucket));
     }
     return sorted;
-  }, [patients, bucket, search, sortKey, sortDir, cols]);
+  }, [patients, bucket, search, sortKey, sortDir, cols, isReasonChart, reasonsByPatient]);
 
   return (
     <div
@@ -764,10 +948,24 @@ function DrilldownModal({
           </button>
         </div>
 
-        {/* Bar chart — days-in-stage distribution; click a bar to filter */}
+        {/* Bar chart — reason distribution on reason-bucketed charts,
+            days-in-stage everywhere else; click a bar to filter */}
         <div className="px-5 pt-4 pb-3 border-b shrink-0">
           <div className="flex items-end gap-2 h-[140px]">
-            {DAY_BUCKET_LABELS.map((label) => {
+            {(isReasonChart
+              ? reasonBuckets.map((b) => ({
+                  label: b.label,
+                  short: b.short ?? b.label,
+                  color: b.color,
+                  maxW: "max-w-[110px]",
+                }))
+              : DAY_BUCKET_LABELS.map((label) => ({
+                  label: label as string,
+                  short: BUCKET_SHORT_LABELS[label],
+                  color: DAY_BUCKET_COLORS[label],
+                  maxW: "",
+                }))
+            ).map(({ label, short, color, maxW }) => {
               const count = bucketCounts[label] ?? 0;
               const heightPct = count > 0 ? (count / maxBucket) * 100 : 0;
               const selected = bucket === label;
@@ -777,7 +975,7 @@ function DrilldownModal({
                   key={label}
                   onClick={() => count > 0 && onBucketChange(selected ? "all" : label)}
                   className={cn(
-                    "flex-1 flex flex-col items-center justify-end h-full group",
+                    "flex-1 flex flex-col items-center justify-end h-full group min-w-0",
                     count > 0 ? "cursor-pointer" : "cursor-default",
                   )}
                   title={`${label}: ${count} patient${count !== 1 ? "s" : ""}`}
@@ -789,23 +987,24 @@ function DrilldownModal({
                     <div
                       className={cn(
                         "w-full rounded-t-sm transition-all duration-300",
+                        maxW,
                         count > 0 && "group-hover:opacity-90",
                         selected && "ring-2 ring-offset-1 ring-foreground/40",
                       )}
                       style={{
                         height: count > 0 ? `${Math.max(heightPct, 3)}%` : "2px",
-                        backgroundColor: DAY_BUCKET_COLORS[label],
+                        backgroundColor: color,
                         opacity: dimmed ? 0.3 : 1,
                       }}
                     />
                   </div>
                   <span
                     className={cn(
-                      "text-[9px] mt-1 whitespace-nowrap",
+                      "text-[9px] mt-1 whitespace-nowrap truncate max-w-full",
                       selected ? "font-bold text-foreground" : "text-muted-foreground",
                     )}
                   >
-                    {BUCKET_SHORT_LABELS[label]}
+                    {short}
                   </span>
                 </button>
               );
@@ -1086,25 +1285,47 @@ function DrilldownModal({
                       })}
                       {onDecision && (
                         <td className="px-2 py-1">
-                          <span className="flex gap-1.5" onClick={(e) => e.stopPropagation()}>
-                            <button
-                              onClick={() => decide(patient.id, "approve")}
-                              disabled={decidingId !== null}
-                              className="inline-flex items-center gap-1 rounded-md bg-amber-600 hover:bg-amber-700 disabled:opacity-50 text-white text-[11px] font-semibold px-2 py-1 transition-colors"
-                            >
-                              {decidingId === patient.id ? (
-                                <Loader2 className="h-3 w-3 animate-spin" />
-                              ) : null}
-                              Approve Stuck
-                            </button>
-                            <button
-                              onClick={() => decide(patient.id, "return")}
-                              disabled={decidingId !== null}
-                              className="inline-flex items-center rounded-md border border-border hover:bg-muted disabled:opacity-50 text-foreground/80 text-[11px] font-semibold px-2 py-1 transition-colors"
-                            >
-                              Return to Queue
-                            </button>
-                          </span>
+                          {isEscalateChart ? (
+                            // Only a Propose Stuck row can be escalated — a DVS
+                            // retry/manual row is a bot state with nothing to
+                            // decide, so it gets no button at all.
+                            (reasonsByPatient.get(patient.id) ?? []).includes("Propose Stuck") ? (
+                              <span className="flex gap-1.5" onClick={(e) => e.stopPropagation()}>
+                                <button
+                                  onClick={() => decide(patient.id, "escalate")}
+                                  disabled={decidingId !== null}
+                                  className="inline-flex items-center gap-1 rounded-md bg-rose-600 hover:bg-rose-700 disabled:opacity-50 text-white text-[11px] font-semibold px-2 py-1 transition-colors"
+                                >
+                                  {decidingId === patient.id ? (
+                                    <Loader2 className="h-3 w-3 animate-spin" />
+                                  ) : null}
+                                  Escalate to Final Decisions
+                                </button>
+                              </span>
+                            ) : (
+                              <span className="text-muted-foreground text-[11px]">—</span>
+                            )
+                          ) : (
+                            <span className="flex gap-1.5" onClick={(e) => e.stopPropagation()}>
+                              <button
+                                onClick={() => decide(patient.id, "approve")}
+                                disabled={decidingId !== null}
+                                className="inline-flex items-center gap-1 rounded-md bg-amber-600 hover:bg-amber-700 disabled:opacity-50 text-white text-[11px] font-semibold px-2 py-1 transition-colors"
+                              >
+                                {decidingId === patient.id ? (
+                                  <Loader2 className="h-3 w-3 animate-spin" />
+                                ) : null}
+                                Approve Stuck
+                              </button>
+                              <button
+                                onClick={() => decide(patient.id, "return")}
+                                disabled={decidingId !== null}
+                                className="inline-flex items-center rounded-md border border-border hover:bg-muted disabled:opacity-50 text-foreground/80 text-[11px] font-semibold px-2 py-1 transition-colors"
+                              >
+                                Return to Queue
+                              </button>
+                            </span>
+                          )}
                         </td>
                       )}
                     </tr>
@@ -1158,6 +1379,7 @@ function DrilldownModal({
       {decisionModal && (() => {
         const returnModalId = decisionModal.id;
         const isApprove = decisionModal.action === "approve";
+        const isEscalate = decisionModal.action === "escalate";
         const rp = filtered.find((p) => p.id === returnModalId) ?? patients.find((p) => p.id === returnModalId);
         if (!rp) return null;
         const rpNotes = (returnNotesColId ? rp.cols[returnNotesColId] ?? "" : "").trim();
@@ -1173,11 +1395,15 @@ function DrilldownModal({
             >
               <div className="flex items-center justify-between px-4 py-3 border-b shrink-0">
                 <div className="flex items-center gap-2 min-w-0">
-                  {isApprove
+                  {isApprove || isEscalate
                     ? <Flag className="h-4 w-4 text-red-600 shrink-0" />
                     : <RotateCcw className="h-4 w-4 text-blue-500 shrink-0" />}
                   <h4 className="text-sm font-semibold text-foreground truncate">
-                    {isApprove ? `Approve ${rp.name} as Stuck` : `Return ${rp.name} to the queue`}
+                    {isEscalate
+                      ? `Escalate ${rp.name} to Final Decisions`
+                      : isApprove
+                        ? `Approve ${rp.name} as Stuck`
+                        : `Return ${rp.name} to the queue`}
                   </h4>
                 </div>
                 <button
@@ -1190,12 +1416,14 @@ function DrilldownModal({
               </div>
               <div className="flex-1 overflow-y-auto px-4 py-3 min-h-0 space-y-3">
                 <p className="text-xs text-muted-foreground">
-                  {isApprove
-                    ? "Moves the patient to the Stuck stage and clears the escalation — they leave the pipeline."
-                    : returnRedates
-                      ? "Sets Next Action Date to today and clears the escalation, so the patient reappears in the rep's queue."
-                      : "Clears the escalation, so the patient reappears in the rep's queue. The follow-up date is left alone."}{" "}
-                  Optionally add a note below — it's stamped into the {reasonNotesLabel}.
+                  {isEscalate
+                    ? "Flags the patient Final Escalation Required — they move to the Final Decisions column, where a manager approves Stuck or returns them to the rep. Your note below is REQUIRED: it's what the Final Decisions review works from, stamped into the "
+                    : isApprove
+                      ? "Moves the patient to the Stuck stage and clears the escalation — they leave the pipeline. "
+                      : returnRedates
+                        ? "Sets Next Action Date to today and clears the escalation, so the patient reappears in the rep's queue. "
+                        : "Clears the escalation, so the patient reappears in the rep's queue. The follow-up date is left alone. "}
+                  {isEscalate ? `${reasonNotesLabel}.` : `Optionally add a note below — it's stamped into the ${reasonNotesLabel}.`}
                 </p>
                 <div>
                   <label className="block text-xs font-medium text-muted-foreground mb-1">
@@ -1207,13 +1435,21 @@ function DrilldownModal({
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-muted-foreground mb-1">
-                    Add a note (optional)
+                    {isEscalate ? (
+                      <>Why does this need a final decision? <span className="text-red-500">*</span></>
+                    ) : (
+                      "Add a note (optional)"
+                    )}
                   </label>
                   <textarea
                     value={returnNote}
                     onChange={(e) => setReturnNote(e.target.value)}
                     rows={3}
-                    placeholder="e.g. New clinicals arrived — back to Evaluate for re-review."
+                    placeholder={
+                      isEscalate
+                        ? "e.g. Rep is right — payer has denied twice and won't take a peer-to-peer. Recommend Stuck."
+                        : "e.g. New clinicals arrived — back to Evaluate for re-review."
+                    }
                     className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-ring"
                   />
                 </div>
@@ -1228,16 +1464,16 @@ function DrilldownModal({
                 </button>
                 <button
                   onClick={confirmReturn}
-                  disabled={busy}
+                  disabled={busy || (isEscalate && !returnNote.trim())}
                   className={cn(
                     "inline-flex items-center gap-1.5 rounded-md disabled:opacity-50 text-white text-sm font-semibold px-3 py-1.5 transition-colors",
-                    isApprove ? "bg-red-600 hover:bg-red-700" : "bg-blue-600 hover:bg-blue-700",
+                    isApprove || isEscalate ? "bg-red-600 hover:bg-red-700" : "bg-blue-600 hover:bg-blue-700",
                   )}
                 >
                   {busy
                     ? <Loader2 className="h-4 w-4 animate-spin" />
-                    : isApprove ? <Flag className="h-4 w-4" /> : <RotateCcw className="h-4 w-4" />}
-                  {isApprove ? "Approve Stuck" : "Return to Queue"}
+                    : isApprove || isEscalate ? <Flag className="h-4 w-4" /> : <RotateCcw className="h-4 w-4" />}
+                  {isEscalate ? "Escalate to Final Decisions" : isApprove ? "Approve Stuck" : "Return to Queue"}
                 </button>
               </div>
             </div>
@@ -1267,9 +1503,12 @@ export default function OversightTab() {
   const [expandedChart, setExpandedChart] = useState<string | null>(
     () => searchParams.get("chart"),
   );
-  const [selectedBucket, setSelectedBucket] = useState<DayBucketLabel | "all">(() => {
-    const b = searchParams.get("bucket");
-    return b && (DAY_BUCKET_LABELS as readonly string[]).includes(b) ? (b as DayBucketLabel) : "all";
+  // Day-bucket label OR a reason-bucket label (reason-bucketed charts,
+  // 2026-07-29) — plain string either way; "all" = no bar filter. A stale URL
+  // value that matches no bar simply filters to zero rows, and Clear filters
+  // resets it.
+  const [selectedBucket, setSelectedBucket] = useState<string>(() => {
+    return searchParams.get("bucket") || "all";
   });
   const [priorityConfig, setPriorityConfig] = useState<PriorityConfig>(loadPriorityConfig);
   const [configOpen, setConfigOpen] = useState(false);
@@ -1364,7 +1603,7 @@ export default function OversightTab() {
     setSelectedBucket("all");
   }, []);
 
-  const handleBarClick = useCallback((chartId: string, bucket: DayBucketLabel) => {
+  const handleBarClick = useCallback((chartId: string, bucket: string) => {
     setExpandedChart(chartId);
     setSelectedBucket(bucket);
   }, []);
@@ -1374,14 +1613,21 @@ export default function OversightTab() {
     setSelectedBucket("all");
   }, []);
 
-  const handleBucketChange = useCallback((bucket: DayBucketLabel | "all") => {
+  const handleBucketChange = useCallback((bucket: string) => {
     setSelectedBucket(bucket);
   }, []);
 
   const handlePatientClick = useCallback(
     (patientId: string) => {
       if (!expandedChart) return;
-      const route = CHART_ROUTES[expandedChart];
+      let route = CHART_ROUTES[expandedChart];
+      // The merged Submit Auth manager chart mixes stages: DVS rows open the
+      // DVS monitor (the chart's base route), but a proposed-stuck row is a
+      // Submit Auth patient and belongs on that stage page.
+      if (expandedChart === "submit-auth-manager") {
+        const p = (data?.get(expandedChart) ?? []).find((x) => x.id === patientId);
+        if (p && (p.cols["color_mm1ws96t"] ?? "").trim() === "Submit Auth.") route = "/submit-auth";
+      }
       if (!route) {
         toast.info("This stage doesn't have a dedicated page yet");
         return;
@@ -1428,7 +1674,7 @@ export default function OversightTab() {
       }
       navigate(`${route}?${params.toString()}`);
     },
-    [expandedChart, navigate],
+    [expandedChart, navigate, data],
   );
 
   // Mirror stage + drill-down state into the URL (replace, no history spam) so
@@ -1488,16 +1734,25 @@ export default function OversightTab() {
         ...aOnly.map((p) => ({ ...p, cols: { ...p.cols, __series__: st.aLabel } })),
       ];
     }
-    const list = bySearch(data.get(expandedChart) ?? []);
+    let list = bySearch(data.get(expandedChart) ?? []);
     // Final Decisions: the reason has no Monday column of its own — pull the
     // stamped line back out of the chart's reason source (MN notes for Medical
     // Evaluation, Reference Notes for Insurance) into a synthetic
     // __proposedReason__ column so the drill-down can show it at a glance.
     if (def?.decision && def.reasonColId) {
       const reasonColId = def.reasonColId;
-      return list.map((p) => ({
+      list = list.map((p) => ({
         ...p,
         cols: { ...p.cols, __proposedReason__: extractProposedStuckReason(p.cols[reasonColId]) },
+      }));
+    }
+    // Reason-bucketed charts: the matched bar labels become the synthetic
+    // __reasons__ column (rendered as pills). Evaluated from the SAME rules
+    // as the bars, so the table can never disagree with the chart.
+    if (def?.reasonBuckets?.length) {
+      list = list.map((p) => ({
+        ...p,
+        cols: { ...p.cols, __reasons__: reasonBucketsFor(def, p).join(", ") },
       }));
     }
     return list;
@@ -1508,9 +1763,14 @@ export default function OversightTab() {
   // Stuck also stamps the manager's optional note into the MN notes). The row
   // disappears optimistically; the silent refetch reconciles.
   const handleDecision = useCallback(
-    async (patientId: string, action: "approve" | "return", kind: "proposed-stuck" | "insurance-final", appendNote?: string) => {
+    async (patientId: string, action: "approve" | "return" | "escalate", kind: "proposed-stuck" | "insurance-final" | "submit-auth-manager", appendNote?: string) => {
       try {
-        if (kind === "insurance-final") {
+        if (kind === "submit-auth-manager") {
+          // Manager Intervention Submit Auth: the only action is Escalate to
+          // Final Decisions, and the note is required (enforced by the modal
+          // AND the API — belt and braces on a status flip).
+          await escalateSubmitAuthToFinal(patientId, appendNote ?? "");
+        } else if (kind === "insurance-final") {
           if (action === "approve") await approveInsuranceStuck(patientId, appendNote);
           else await returnInsuranceToQueue(patientId, appendNote);
         } else {
@@ -1518,16 +1778,24 @@ export default function OversightTab() {
           else await returnProposedToQueue(patientId, appendNote);
         }
         toast.success(
-          action === "approve"
-            ? "Approved — patient marked Stuck"
-            : "Returned to the rep's queue",
+          action === "escalate"
+            ? "Escalated — sent to Final Decisions"
+            : action === "approve"
+              ? "Approved — patient marked Stuck"
+              : "Returned to the rep's queue",
         );
-        const suffix = kind === "insurance-final" ? "-final-escalation" : "-proposed-stuck";
+        // Optimistic removal from the chart(s) the patient just left: an
+        // escalated Submit Auth proposal leaves ONLY the manager chart (it
+        // reappears under Final Decisions on the reconciling refetch).
+        const leaves = (k: string) =>
+          kind === "submit-auth-manager"
+            ? k === "submit-auth-manager"
+            : k.endsWith(kind === "insurance-final" ? "-final-escalation" : "-proposed-stuck");
         setData((prev) => {
           if (!prev) return prev;
           const next = new Map(prev);
           for (const [k, list] of next) {
-            if (k.endsWith(suffix)) next.set(k, list.filter((p) => p.id !== patientId));
+            if (leaves(k)) next.set(k, list.filter((p) => p.id !== patientId));
           }
           return next;
         });
@@ -1537,7 +1805,7 @@ export default function OversightTab() {
         setTimeout(() => refetch(true), 12_000);
       } catch (e) {
         toast.error(
-          `${action === "approve" ? "Approve Stuck" : "Return to Queue"} failed`,
+          `${action === "escalate" ? "Escalate to Final Decisions" : action === "approve" ? "Approve Stuck" : "Return to Queue"} failed`,
           { description: e instanceof Error ? e.message : String(e) },
         );
       }
@@ -1679,6 +1947,17 @@ export default function OversightTab() {
         const sectionTotal = seen.size;
 
         const renderChart = (chart: ChartDef) => {
+          if (chart.reasonBuckets?.length) {
+            return (
+              <ReasonStageChart
+                chart={chart}
+                patients={bySearch(data?.get(chart.id) ?? [])}
+                priorityConfig={priorityConfig}
+                onChartClick={() => handleChartClick(chart.id)}
+                onBarClick={(bucket) => handleBarClick(chart.id, bucket)}
+              />
+            );
+          }
           if (chart.stacked) {
             // Two-series merged chart: series B (3rd+ round, red) wins the
             // dedup — a patient matching both pools counts once, in red.
