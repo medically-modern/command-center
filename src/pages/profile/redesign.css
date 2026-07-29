@@ -109,6 +109,13 @@
 .pf-root .fgrid.trio { grid-template-columns:1fr 1fr 1fr }
 .pf-root .fgrid .full { grid-column:1/-1 }
 .pf-root .fhint { margin-top:6px;font-size:.75rem;color:var(--muted-foreground) }
+/* Fax entry: the input looks like any other field, with a fixed @rcfax.com
+   suffix riding on the right — the rep types only the number. */
+.pf-root .fax-wrap { display:flex;align-items:center;border:1.5px solid var(--input);border-radius:8px;background:var(--background) }
+.pf-root .fax-wrap:focus-within { outline:2px solid var(--mm-green);outline-offset:1px }
+.pf-root .fax-wrap input[type=text] { border:0;border-radius:8px 0 0 8px;flex:1;min-width:0;padding-right:4px;background:transparent }
+.pf-root .fax-wrap input[type=text]:focus { outline:none }
+.pf-root .fax-sfx { flex-shrink:0;padding:0 13px 0 0;font-size:.9rem;font-weight:600;color:var(--muted-foreground);white-space:nowrap;user-select:none }
 .pf-root .fwarn { margin-top:6px;font-size:.78rem;font-weight:600;color:var(--amber);display:flex;align-items:center;gap:6px }
 .pf-root .ferr { margin-top:6px;font-size:.78rem;font-weight:600;color:var(--mm-rose) }
 .pf-root .warn-banner { display:flex;align-items:flex-start;gap:10px;border:1px solid var(--amber-ring);border-radius:10px;background:var(--amber-soft);padding:12px 16px;font-size:.875rem;font-weight:500;color:oklch(0.4 0.1 75) }

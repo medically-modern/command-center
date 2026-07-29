@@ -8,6 +8,7 @@ import {
   searchDoctors, saveDoctorNotes, saveDoctorFollowers, saveDoctorLocation,
   createDoctorItem, MAX_FOLLOWERS, type DoctorRecord, type OrderFollower,
 } from "@/lib/shared/doctorDb";
+import { toFaxAddress, splitFaxAddress, RCFAX_SUFFIX } from "@/lib/shared/faxAddress";
 import { toast } from "sonner";
 
 /**
@@ -177,7 +178,9 @@ export function DoctorSection({ patient: pt, received, onUpdate, clinicLabels, o
       doctorPhone: rec.phone || pt.doctorPhone,
       clinicAddress: rec.address || pt.clinicAddress,
       clinicalsMethod: rec.method || pt.clinicalsMethod,
-      doctorFax: rec.fax || pt.doctorFax,
+      // Legacy DB rows hold a bare number; the patient's Doctor Fax is an email
+      // column too, so normalize on the way across instead of failing that write.
+      doctorFax: toFaxAddress(rec.fax) || pt.doctorFax,
       doctorEmail: rec.email || pt.doctorEmail,
     });
     const label = clinicLabels.find((c) => c.name === rec.clinic);
@@ -284,7 +287,9 @@ export function DoctorSection({ patient: pt, received, onUpdate, clinicLabels, o
   const openEditLoc = () => {
     const r = profiles.find((p) => p.itemId === selectedItemId);
     if (!r) { toast.error("Pick a location first"); return; }
-    setForm({ clinic: r.clinic, phone: r.phone, address: r.address, addrLat: null, addrLng: null, fax: r.fax, email: r.email, method: r.method || "Fax", name: r.name, npi: r.npi });
+    // Fax is stored as an address — show the rep just the number (legacy bare
+    // numbers already read that way) and let the suffix adornment carry the rest.
+    setForm({ clinic: r.clinic, phone: r.phone, address: r.address, addrLat: null, addrLng: null, fax: splitFaxAddress(r.fax).local, email: r.email, method: r.method || "Fax", name: r.name, npi: r.npi });
     setLocMode("edit");
   };
   const openAddLoc = () => {
@@ -296,7 +301,7 @@ export function DoctorSection({ patient: pt, received, onUpdate, clinicLabels, o
     // NPI intentionally left blank — the rep verifies and types it manually.
     setForm({
       ...emptyForm, name: term || pt.doctorName, npi: "",
-      phone: pt.doctorPhone, address: pt.clinicAddress, fax: pt.doctorFax,
+      phone: pt.doctorPhone, address: pt.clinicAddress, fax: splitFaxAddress(pt.doctorFax).local,
       email: pt.doctorEmail, method: pt.clinicalsMethod || "Fax", clinic: pt.clinicName,
     });
     setLocMode("new-doctor");
@@ -306,17 +311,20 @@ export function DoctorSection({ patient: pt, received, onUpdate, clinicLabels, o
     if (!form.name.trim() || !form.npi.trim()) { toast.error("Name and NPI are required"); return; }
     if (locMode !== "edit" && !form.address.trim()) { toast.error("Address is required"); return; }
     setSavingLoc(true);
+    // Both boards store the fax in an EMAIL column — send an address, never a
+    // bare number, or Monday rejects the whole mutation.
+    const faxAddr = toFaxAddress(form.fax);
     try {
       if (locMode === "edit" && selectedItemId) {
         await saveDoctorLocation(selectedItemId, {
           clinic: form.clinic, address: form.address, phone: form.phone,
-          fax: form.fax, email: form.email, method: form.method,
+          fax: faxAddr, email: form.email, method: form.method,
         });
         toast.success("Location updated in the Doctor Database");
       } else {
         const id = await createDoctorItem({
           name: form.name.trim(), npi: form.npi.trim(), address: form.address,
-          phone: form.phone, fax: form.fax, email: form.email, method: form.method,
+          phone: form.phone, fax: faxAddr, email: form.email, method: form.method,
         });
         toast.success(locMode === "add" ? "New location added under this doctor" : `${form.name} added to the Doctor Database`);
         setSelectedItemId(id);
@@ -327,7 +335,7 @@ export function DoctorSection({ patient: pt, received, onUpdate, clinicLabels, o
         doctorPhone: form.phone || pt.doctorPhone,
         clinicAddress: form.address || pt.clinicAddress,
         clinicalsMethod: form.method || pt.clinicalsMethod,
-        doctorFax: form.fax || pt.doctorFax,
+        doctorFax: faxAddr || pt.doctorFax,
         doctorEmail: form.email || pt.doctorEmail,
       });
       const label = clinicLabels.find((c) => c.name === form.clinic);
@@ -365,7 +373,18 @@ export function DoctorSection({ patient: pt, received, onUpdate, clinicLabels, o
             onChange={(r) => setForm({ ...form, address: r.address, addrLat: r.lat || null, addrLng: r.lng || null })} />
           {addressWarning(form.address) && <div className="fwarn">{addressWarning(form.address)}</div>}
         </div>
-        <div><div className="flabel">Fax</div><input type="text" value={form.fax} onChange={(e) => setForm({ ...form, fax: e.target.value })} /></div>
+        {/* Fax writes into an EMAIL column on both the Doctor DB and the patient
+            board, so it is stored as <number>@rcfax.com (also what RingCentral
+            faxes). The rep types just the number; the suffix rides along. It is
+            hidden when they paste some other address, which saves verbatim. */}
+        <div><div className="flabel">Fax</div>
+          <div className="fax-wrap">
+            <input type="text" inputMode="tel" placeholder="8653742115"
+              value={form.fax} onChange={(e) => setForm({ ...form, fax: e.target.value })} />
+            {splitFaxAddress(form.fax).suffixed && <span className="fax-sfx">{RCFAX_SUFFIX}</span>}
+          </div>
+          <div className="fhint">Saves as <b>{toFaxAddress(form.fax) || `<number>${RCFAX_SUFFIX}`}</b></div>
+        </div>
         <div><div className="flabel">Email</div><input type="text" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} /></div>
         <div className="full"><div className="flabel">Method</div>
           <select value={form.method} onChange={(e) => setForm({ ...form, method: e.target.value })}>
