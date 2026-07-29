@@ -42,14 +42,22 @@ These map to the universal checks in the UI.
 > independently — never collapse them back into one column. Reads match on the
 > **index**, not the label text (`mondayMapping.parseUniversal`): the rename
 > broke text matching and blanked both answers for every patient.
-> "Medicare not Primary" stays a rep-facing option only — it writes
-> `Out-of-Network` and reads back as such; the distinction survives in the
-> `[Auto-escalated …]` note line.
+> **2026-07-29 (same day) — "Medicare not Primary" became a real status** on
+> In-Network?, key **11** (Monday derives a new label's key from its palette
+> slot, so it is not 3 — never renumber by hand). It now round-trips instead of
+> collapsing to Out-of-Network. Rules:
+> - The option is offered **only** for Medicare A&B-only patients, and for them
+>   it **replaces** Out-of-Network — traditional Medicare has no network.
+> - It **outranks every other universal answer**: whatever Active and DME
+>   Benefits say, the patient goes to Final Escalation Required → Benefits
+>   Final Decisions (`universalEscalationLevel` in `benefitsDerive.ts`).
+> - Selecting it **blocks the send** until the rep names the real primary payer
+>   in the Universal Checks call notes (`needsPrimaryPayerNote`).
 
 
 | UI Check | Monday Column | Column ID | Status Values |
 |----------|--------------|-----------|---------------|
-| ✓ In-Network | In-Network? | `color_mm2vhwan` | `1` = "In-Network", `2` = "Out-of-Network" |
+| ✓ In-Network | In-Network? | `color_mm2vhwan` | `1` = "In-Network", `2` = "Out-of-Network", `11` = "Medicare not Primary" |
 | ✓ Active | Active? | `color_mm5q9y3` | `1` = "Active", `2` = "Inactive" |
 | ✓ DME Benefits Confirmed | DME Benefits | `color_mm2vt8xg` | `1` = "Yes", `2` = "Partial / No" |
 | ✓ Same or Similar Clear | SoS | `color_mm2vemyy` | `1` = "All Clear", `2` = "Partial / Not Clear" |

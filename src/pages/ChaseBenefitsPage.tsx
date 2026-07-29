@@ -95,15 +95,25 @@ const ChaseBenefitsPage = () => {
     update(selected.id, { insurance: { ...ins, universal: { ...ins.universal, [id]: value } } });
   };
 
-  // Handoff §1: "Medicare not Primary" only exists for Medicare A&B-only
-  // patients. The payer can change under us (the header is read-only here —
-  // primary/secondary arrive via the 30s poll), so a lingering answer is
-  // cleared back to unanswered; Monday must never receive this value for a
-  // non-Medicare-A&B patient.
+  // Handoff §1: the In-Network answers available depend on the payer, and the
+  // payer can change under us (the header is read-only here — primary/secondary
+  // arrive via the 30s poll). Either way a now-unreachable answer is cleared
+  // back to unanswered rather than left to be sent:
+  //   - "Medicare not Primary" only exists for Medicare A&B-only patients.
+  //   - "Out-of-Network" is not offered FOR them (2026-07-29) — traditional
+  //     Medicare has no network — so a lingering one would gate the patient
+  //     with no visible reason and no way to clear it.
   const selInNetwork = selected?.insurance?.universal["in-network"];
   useEffect(() => {
-    if (!selected || selInNetwork !== "medicare-not-primary") return;
-    if (!isMedicareABOnly(selected.primaryInsurance ?? "", selected.secondaryInsurance ?? "")) {
+    if (!selected) return;
+    if (selInNetwork !== "medicare-not-primary" && selInNetwork !== "not-confirmed") return;
+    const medicareABOnly = isMedicareABOnly(
+      selected.primaryInsurance ?? "",
+      selected.secondaryInsurance ?? "",
+    );
+    const unreachable =
+      selInNetwork === "medicare-not-primary" ? !medicareABOnly : medicareABOnly;
+    if (unreachable) {
       const ins = selected.insurance ?? EMPTY_INSURANCE;
       update(selected.id, {
         insurance: { ...ins, universal: { ...ins.universal, "in-network": "" } },

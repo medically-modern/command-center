@@ -294,9 +294,16 @@
 }
 .bnr .uc-grid .subcard .uc-title{white-space:nowrap}
 .bnr .uc-grid .subcard svg{flex-shrink:0}
-/* 3-across variant (Medicare A&B In-Network) — tighter so all fit one row */
+/* 3-across variant — kept for any check that needs a third answer. Medicare
+   A&B In-Network now SWAPS Out-of-Network for "Medicare not Primary" rather
+   than adding a third button, so it renders 2-across like every other check. */
 .bnr .uc-grid .seg.seg-3{gap:6px}
 .bnr .uc-grid .seg.seg-3 button{font-size:.75rem;padding:10px 4px;letter-spacing:-.01em}
+/* Prompt shown when Medicare not Primary is picked — the primary payer has to
+   be written into the call notes before the send unlocks. */
+.bnr .uc-grid .subcard .uc-hint{
+  margin-top:12px;font-size:.78rem;line-height:1.45;color:var(--mm-rose);
+}
 
 /* ============ failed-check gate (handoff §2) ============ */
 /* step 2 gated off while a universal check is negative */

@@ -428,9 +428,12 @@ export function BenefitsPanel({
         <div className="uc-grid" style={{ marginTop: 14 }}>
           {UNIVERSAL_META.map((meta, i) => {
             const v = ins.universal[meta.id];
-            // Medicare A&B only: In-Network gets a third answer — "Medicare
-            // not Primary" — rendered 3-across; it behaves exactly like
-            // Out-of-Network downstream (handoff §1).
+            // Medicare A&B only: In-Network swaps its "no" answer for
+            // "Medicare not Primary". Traditional Medicare has no network to
+            // be out of, so Out-of-Network is not offered here at all
+            // (Brandon, 2026-07-29) — the real question for these patients is
+            // whether Medicare is primary. Every other payer keeps the plain
+            // In-Network / Out-of-Network pair.
             const medNP = meta.id === "in-network" && showMedicareAB;
             return (
               <div
@@ -444,7 +447,7 @@ export function BenefitsPanel({
                     <div className="uc-title">{meta.label}</div>
                   </div>
                 </div>
-                <div className={`seg ${medNP ? "seg-3" : ""}`} role="radiogroup" aria-label={meta.label}>
+                <div className="seg" role="radiogroup" aria-label={meta.label}>
                   <button
                     className={`g ${v === "confirmed" ? "sel-g" : ""}`}
                     role="radio"
@@ -453,17 +456,7 @@ export function BenefitsPanel({
                   >
                     {meta.yes}
                   </button>
-                  <button
-                    className={`r ${v === "not-confirmed" ? "sel-r" : ""}`}
-                    role="radio"
-                    aria-checked={v === "not-confirmed"}
-                    onClick={() =>
-                      onUniversalChange(meta.id, v === "not-confirmed" ? "" : "not-confirmed")
-                    }
-                  >
-                    {meta.no}
-                  </button>
-                  {medNP && (
+                  {medNP ? (
                     <button
                       className={`r ${v === "medicare-not-primary" ? "sel-r" : ""}`}
                       role="radio"
@@ -477,8 +470,25 @@ export function BenefitsPanel({
                     >
                       Medicare not Primary
                     </button>
+                  ) : (
+                    <button
+                      className={`r ${v === "not-confirmed" ? "sel-r" : ""}`}
+                      role="radio"
+                      aria-checked={v === "not-confirmed"}
+                      onClick={() =>
+                        onUniversalChange(meta.id, v === "not-confirmed" ? "" : "not-confirmed")
+                      }
+                    >
+                      {meta.no}
+                    </button>
                   )}
                 </div>
+                {medNP && v === "medicare-not-primary" && (
+                  <p className="uc-hint">
+                    Record <strong>who the primary payer is</strong> in the call notes below — the
+                    send is blocked until you do, and it's what the manager decides from.
+                  </p>
+                )}
               </div>
             );
           })}

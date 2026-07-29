@@ -55,6 +55,26 @@ describe("universal checks — Monday round-trip", () => {
     expect(u?.["active"]).toBe("confirmed");
   });
 
+  it("Medicare not Primary round-trips instead of collapsing to Out-of-Network", () => {
+    const u = universalOf(
+      itemWith([
+        statusCell(
+          COL.inNetwork,
+          UNIVERSAL_INDEX.inNetwork.medicareNotPrimary,
+          "Medicare not Primary",
+        ),
+      ]),
+    );
+    // Before the label existed (2026-07-29) this answer wrote the plain fail
+    // index and came back as "not-confirmed", losing the reason on reload.
+    expect(u?.["in-network"]).toBe("medicare-not-primary");
+  });
+
+  it("Medicare not Primary and Out-of-Network are distinct indices", () => {
+    expect(UNIVERSAL_INDEX.inNetwork.medicareNotPrimary).not.toBe(UNIVERSAL_INDEX.inNetwork.fail);
+    expect(UNIVERSAL_INDEX.inNetwork.medicareNotPrimary).not.toBe(UNIVERSAL_INDEX.inNetwork.pass);
+  });
+
   it("an unset or unparseable column reads as unanswered, not as a failed check", () => {
     const u = universalOf(
       itemWith([

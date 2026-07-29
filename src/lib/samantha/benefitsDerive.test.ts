@@ -15,6 +15,7 @@ import {
   sosCutoffYmd,
   sosEntryComplete,
   sosLookbackDays,
+  universalEscalationLevel,
   validateBenefitsFactsForSubmit,
 } from "./benefitsDerive";
 import type { InsuranceState, Patient, ProductCodeState } from "./workflow";
@@ -290,13 +291,38 @@ describe("failed-check gating (Medicare-not-Primary handoff §2–§3)", () => {
     expect(validateBenefitsFactsForSubmit(p)).toEqual([]);
   });
 
-  it("medicare-not-primary behaves identically for submit gating", () => {
+  // Medicare not Primary sends the patient to a manager, so the rep must say
+  // WHO is primary before the send unlocks (Katie/Brandon 2026-07-29).
+  const PAYER_NOTE = "Aetna PPO is primary per rep";
+
+  it("medicare-not-primary blocks the send until the primary payer is noted", () => {
     const p = makePatient({
       serving: "CGM",
       primaryInsurance: "Medicare A&B",
       insurance: {
         ...structuredClone(EMPTY_INSURANCE),
         universal: { "in-network": "medicare-not-primary", active: "confirmed", "dme-benefits": "confirmed" },
+      },
+    });
+    expect(validateBenefitsFactsForSubmit(p)).toEqual([
+      "Primary payer — name it in the Universal Checks call notes",
+    ]);
+
+    // A ref # alone isn't enough — the payer name has to be written down.
+    p.insurance!.callsUniversal = [{ ref: "12345", note: "" }];
+    expect(validateBenefitsFactsForSubmit(p)).toHaveLength(1);
+
+    p.insurance!.callsUniversal = [{ ref: "12345", note: PAYER_NOTE }];
+    expect(validateBenefitsFactsForSubmit(p)).toEqual([]);
+  });
+
+  it("a plain Out-of-Network answer needs no payer note", () => {
+    const p = makePatient({
+      serving: "CGM",
+      primaryInsurance: "Horizon BCBS",
+      insurance: {
+        ...structuredClone(EMPTY_INSURANCE),
+        universal: { "in-network": "not-confirmed", active: "confirmed", "dme-benefits": "confirmed" },
       },
     });
     expect(validateBenefitsFactsForSubmit(p)).toEqual([]);
@@ -309,9 +335,26 @@ describe("failed-check gating (Medicare-not-Primary handoff §2–§3)", () => {
       insurance: {
         ...structuredClone(EMPTY_INSURANCE),
         universal: { "in-network": "medicare-not-primary", active: "", "dme-benefits": "confirmed" },
+        callsUniversal: [{ ref: "", note: PAYER_NOTE }],
       },
     });
     expect(validateBenefitsFactsForSubmit(p)).toEqual(["Insurance Active"]);
+  });
+
+  it("medicare-not-primary outranks every other answer for escalation", () => {
+    // "doesn't matter what insurance active or dme benefits selected are" —
+    // the manager still gets the final call.
+    const ins: InsuranceState = {
+      ...structuredClone(EMPTY_INSURANCE),
+      universal: { "in-network": "medicare-not-primary", active: "not-confirmed", "dme-benefits": "not-confirmed" },
+    };
+    expect(universalEscalationLevel(ins)).toBe("final");
+
+    const clean: InsuranceState = {
+      ...structuredClone(EMPTY_INSURANCE),
+      universal: { "in-network": "confirmed", active: "confirmed", "dme-benefits": "confirmed" },
+    };
+    expect(universalEscalationLevel(clean)).toBe("none");
   });
 
   it("failedUniversalChecks labels the banner in check order", () => {
@@ -657,7 +700,7 @@ describe("deriveBenefitsPreview — full board output", () => {
     expect(pv.authResults.insulin_pump).toBe("—");
   });
 
-  it("medicare-not-primary behaves exactly like Out-of-Network in the preview", () => {
+  it("medicare-not-primary previews as its own board label", () => {
     const p = makePatient({
       serving: "CGM",
       primaryInsurance: "Medicare A&B",
@@ -668,8 +711,9 @@ describe("deriveBenefitsPreview — full board output", () => {
     });
     const pv = deriveBenefitsPreview(p, TODAY);
     expect(pv.gated).toBe(true);
-    // Rep-facing option only — it writes/previews as plain Out-of-Network.
-    expect(pv.inNetwork).toBe("Out-of-Network");
+    // It has a real status on the board since 2026-07-29 — it no longer
+    // masquerades as Out-of-Network.
+    expect(pv.inNetwork).toBe("Medicare not Primary");
     expect(pv.active).toBe("Active");
     expect(pv.dmeBenefits).toBe("Yes");
     expect(pv.escalation).toBe("Final Escalation Required");

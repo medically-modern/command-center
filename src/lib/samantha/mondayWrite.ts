@@ -33,6 +33,7 @@ import {
   isBlankCallRow,
   isValidUnits,
   patientHasMedicaidIns,
+  universalEscalationLevel,
 } from "./benefitsDerive";
 import { derivedRecheckSos, effectiveResult } from "./authOutstandingReview";
 import { isMedicarePrimary } from "./medicareJurisdiction";
@@ -144,9 +145,9 @@ export async function sendPatientToMonday(
   // Two INDEPENDENT columns since the 2026-07-29 board split. Each answer
   // writes its own column, so an in-network-but-inactive patient now reads
   // "In-Network" + "Inactive" instead of a single "Out-of-Network" that hid
-  // which check actually failed. "Medicare not Primary" is a rep-facing
-  // option only — it counts as not-confirmed and writes Out-of-Network
-  // (handoff §4); the distinction lives in the auto-escalation note line.
+  // which check actually failed. "Medicare not Primary" has its own board
+  // label as of 2026-07-29 — it must be checked BEFORE isNegUniversal, which
+  // is also true for it.
   const inNet = ins.universal["in-network"];
   const active = ins.universal["active"];
   if (inNet === "confirmed") {
@@ -154,6 +155,12 @@ export async function sendPatientToMonday(
       label: "In-Network",
       columnId: COL.inNetwork,
       fn: () => writeStatusIndex(p.id, COL.inNetwork, UNIVERSAL_INDEX.inNetwork.pass),
+    });
+  } else if (inNet === "medicare-not-primary") {
+    tasks.push({
+      label: "In-Network",
+      columnId: COL.inNetwork,
+      fn: () => writeStatusIndex(p.id, COL.inNetwork, UNIVERSAL_INDEX.inNetwork.medicareNotPrimary),
     });
   } else if (isNegUniversal(inNet)) {
     tasks.push({
@@ -562,7 +569,12 @@ export async function sendPatientToMonday(
     // Not Clear only → Manager (oversight Manager Intervention). Check-fail
     // wins if both fire — deriveInsuranceOutcome returns blocker for the
     // universal case first (workflow.ts:540 before :552).
-    if (outcome === "blocker") escalationDecision = universalNegative ? "final" : "manager";
+    // universalEscalationLevel owns the precedence between the checks
+    // themselves (Medicare not Primary outranks everything else).
+    if (outcome === "blocker") {
+      const level = universalEscalationLevel(effectiveIns);
+      escalationDecision = level === "none" ? "manager" : level;
+    }
   }
 
   if (stageWriteIndex !== null) {

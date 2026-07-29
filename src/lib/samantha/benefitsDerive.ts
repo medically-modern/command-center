@@ -216,6 +216,28 @@ export function anyUniversalNegative(ins: InsuranceState): boolean {
  * gate banner and the send-button context. "Medicare not Primary" keeps
  * its own label; the other negatives use each check's "no" wording.
  */
+/**
+ * Which oversight column a Benefits patient belongs in, from the universal
+ * checks alone. Precedence is explicit because "Medicare not Primary" WINS
+ * over every other answer (Katie/Brandon 2026-07-29): whatever Active and DME
+ * Benefits say, we can't work the patient on this payer, so a manager makes
+ * the call. Callers must not re-derive this from `anyUniversalNegative`.
+ *
+ * When the Inactive → Manager Intervention change lands, only the `active`
+ * line below moves to "manager" — the Medicare rule stays ahead of it.
+ */
+export function universalEscalationLevel(ins: InsuranceState): "final" | "manager" | "none" {
+  if (ins.universal["in-network"] === "medicare-not-primary") return "final";
+  if (anyUniversalNegative(ins)) return "final";
+  return "none";
+}
+
+/** Medicare not Primary requires the rep to record WHO the primary payer is. */
+export function needsPrimaryPayerNote(ins: InsuranceState): boolean {
+  if (ins.universal["in-network"] !== "medicare-not-primary") return false;
+  return !(ins.callsUniversal ?? []).some((r) => (r.note ?? "").trim());
+}
+
 export function failedUniversalChecks(ins: InsuranceState): string[] {
   const labels: string[] = [];
   const inNet = ins.universal["in-network"];
@@ -256,6 +278,14 @@ export function validateBenefitsFactsForSubmit(patient: Patient): string[] {
 
   for (const id of ["in-network", "active", "dme-benefits"] as const) {
     if (!ins.universal[id]) missing.push(UNIVERSAL_GATE_LABELS[id]);
+  }
+
+  // Medicare not Primary sends the patient straight to a manager, and the ONLY
+  // thing that makes that decision actionable is knowing who the real primary
+  // payer is — so the send is blocked until the rep writes it down. Checked
+  // before the negative-check early return, since this answer is negative.
+  if (needsPrimaryPayerNote(ins)) {
+    missing.push("Primary payer — name it in the Universal Checks call notes");
   }
 
   // A negative check gates step 2 off — only the 3 checks themselves are
@@ -455,7 +485,13 @@ export function deriveBenefitsPreview(
   const inNet = ins.universal["in-network"];
   const activeChoice = ins.universal["active"];
   const inNetwork =
-    inNet === "confirmed" ? "In-Network" : isNegUniversal(inNet) ? "Out-of-Network" : "—";
+    inNet === "confirmed"
+      ? "In-Network"
+      : inNet === "medicare-not-primary"
+        ? "Medicare not Primary"
+        : isNegUniversal(inNet)
+          ? "Out-of-Network"
+          : "—";
   const active =
     activeChoice === "confirmed" ? "Active" : isNegUniversal(activeChoice) ? "Inactive" : "—";
   const dme = ins.universal["dme-benefits"];

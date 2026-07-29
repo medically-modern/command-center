@@ -19,7 +19,11 @@ function parseAuthMethod(text: string | null | undefined): AuthSubmissionMethod 
 // as of 2026-07-29 (they were one "Active/Network" column before the board
 // split) — see COL.inNetwork / COL.active.
 export const UNIVERSAL_INDEX = {
-  inNetwork: { pass: 1, fail: 2 },     // 1=In-Network, 2=Out-of-Network
+  // 11 is not a typo: Monday derives a new status label's key from its palette
+  // slot, and "Medicare not Primary" (dark red) landed on 11 when the label was
+  // added 2026-07-29. Never renumber these by hand — read the column's
+  // settings_str if a label is ever re-added.
+  inNetwork: { pass: 1, fail: 2, medicareNotPrimary: 11 },
   active: { pass: 1, fail: 2 },        // 1=Active, 2=Inactive
   dmeBenefits: { pass: 1, fail: 2 },   // 1=Yes, 2=Partial / No
   sos: { pass: 1, fail: 2, skip: 0 },  // 1=All Clear, 2=Partial / Not Clear, 0=Skip
@@ -178,11 +182,15 @@ function statusIndex(value: string | null | undefined): number | undefined {
  */
 function parseUniversal(
   cell: { value: string | null } | undefined,
-  idx: { pass: number; fail: number },
+  idx: { pass: number; fail: number; medicareNotPrimary?: number },
 ): UniversalChoice {
   const i = statusIndex(cell?.value);
   if (i === idx.pass) return "confirmed";
   if (i === idx.fail) return "not-confirmed";
+  // In-Network only: "Medicare not Primary" is its own board label as of
+  // 2026-07-29, so the answer now survives a reload instead of coming back as
+  // a plain Out-of-Network.
+  if (idx.medicareNotPrimary !== undefined && i === idx.medicareNotPrimary) return "medicare-not-primary";
   return "";
 }
 
