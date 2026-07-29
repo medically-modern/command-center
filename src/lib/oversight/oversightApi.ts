@@ -1673,7 +1673,12 @@ export async function escalateSubmitAuthToFinal(itemId: string, note: string): P
   if (!trimmed) throw new Error("A note is required to escalate to Final Decisions");
   const existing = await readItemColumnText(itemId, INSURANCE_NOTES_COL);
   const stamped = stampEscalatedToFinal(trimmed, etToday(), userInitials());
-  await writeLongTextOnBoard(INSURANCE_BOARD_ID, itemId, INSURANCE_NOTES_COL, appendStampedLine(existing, stamped));
+  // Idempotent on retry: if the notes write landed but the status flip
+  // failed, the manager's retry re-reads notes that already carry this exact
+  // stamped line — skip the append instead of duplicating it.
+  if (!existing.includes(stamped)) {
+    await writeLongTextOnBoard(INSURANCE_BOARD_ID, itemId, INSURANCE_NOTES_COL, appendStampedLine(existing, stamped));
+  }
   await writeStatusIndexOnBoard(INSURANCE_BOARD_ID, itemId, INSURANCE_ESC_COL, INSURANCE_ESC_FINAL_INDEX);
 }
 

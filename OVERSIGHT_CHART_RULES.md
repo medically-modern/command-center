@@ -156,12 +156,21 @@ total outstanding-auth workload in one card). Union population, three bars:
 > send's **manual escalate toggle** (which also writes `Manager Escalation
 > Required`) out of the bar.
 
-**Drill-down action (the first Manager Intervention buttons):** a Propose Stuck
-row offers **Escalate to Final Decisions** — the manager's note is **required**
-(stamped `[Escalated to Final · date · initials]` into Reference Notes first),
-then Escalation → `Final Escalation Required`. The patient moves to the Final
-Decisions Submit Auth chart; the DVS rows get no button (bot states — nothing
-to decide).
+**Drill-down actions (the first Manager Intervention buttons):** a Propose
+Stuck row offers **Escalate to Final Decisions** — the manager's note is
+**required** (stamped `[Escalated to Final · date · initials]` into Reference
+Notes first, idempotent on retry), then Escalation → `Final Escalation
+Required` — and **Return to Queue** (optional note; clears the escalation and
+re-dates Follow Up to today). The DVS rows get no buttons (bot states —
+nothing to decide).
+
+> **Rail gotcha (pre-existing, re-flagged 2026-07-29):** a DVS Manual Review
+> row whose ONLY flag is `Manager Escalation Required` deep-links to `/dvs`,
+> but `useDvsPatients` excludes escalated patients from the rail (mirroring
+> the dvs role count) — only the clicked patient is injected. The bar can
+> therefore count more patients than the rail lists. Fixing it means deciding
+> whether escalated DVS patients belong in the /dvs working list at all
+> (counting contract §5.8) — not a chart-side change.
 
 ### Final Decisions
 
@@ -249,7 +258,7 @@ always shows the **most recent** one.
 | Where | Buttons |
 |---|---|
 | Oversight drill-down (Final Decisions rows) | Approve Stuck · Return to Queue — both take an optional note |
-| Oversight drill-down (Manager Intervention **Submit Auth**, Propose Stuck rows only) | Escalate to Final Decisions — note **required** (2026-07-29 two-step review) |
+| Oversight drill-down (Manager Intervention **Submit Auth**, Propose Stuck rows only) | Escalate to Final Decisions (note **required**) · Return to Queue (optional note; clears the escalation + re-dates Follow Up) — the two outcomes the rep's Propose Stuck dialog promises. A patient already at Final is never DOWNGRADED by a re-proposal (ProposeStuckButton preserves Final). |
 | Stage page opened *from* Final Decisions (`?mv=final-decisions`) | Approve Stuck · Return to Queue — Propose Stuck is hidden, since the patient is already proposed |
 | Stage page opened any other way | Propose Stuck (at Submit Auth it flags `Manager Escalation Required`; Benefits / Auth Outstanding flag `Final Escalation Required`) |
 

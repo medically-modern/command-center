@@ -410,7 +410,7 @@ function ReasonStageChart({
   onBarClick: (bucket: string) => void;
 }) {
   const buckets = chart.reasonBuckets ?? [];
-  const { counts, vipCounts, totalVip, overlap } = useMemo(() => {
+  const { counts, vipCounts, totalVip, overlap, uncategorized } = useMemo(() => {
     const counts: Record<string, number> = {};
     const vipCounts: Record<string, number> = {};
     for (const b of buckets) {
@@ -419,9 +419,15 @@ function ReasonStageChart({
     }
     let totalVip = 0;
     let overlap = 0;
+    let uncategorized = 0;
     for (const p of patients) {
       const labels = reasonBucketsFor(chart, p);
       if (labels.length > 1) overlap++;
+      // Categorize-mode charts (population rule + buckets) can hold patients
+      // matching no bar — e.g. a legacy Final escalation with neither a stamp
+      // nor a failed check on the board. Footnote them like the day charts'
+      // "+N unknown", or the bars silently sum under the header count.
+      if (labels.length === 0) uncategorized++;
       const vip = isVip(p, priorityConfig);
       if (vip) totalVip++;
       for (const l of labels) {
@@ -429,7 +435,7 @@ function ReasonStageChart({
         if (vip) vipCounts[l] = (vipCounts[l] ?? 0) + 1;
       }
     }
-    return { counts, vipCounts, totalVip, overlap };
+    return { counts, vipCounts, totalVip, overlap, uncategorized };
   }, [patients, priorityConfig, chart, buckets]);
 
   const totalCount = patients.length;
@@ -521,11 +527,17 @@ function ReasonStageChart({
         })}
       </div>
 
-      {/* A patient can match several reasons — say so instead of letting the
-          bars silently sum past the header count. */}
-      {overlap > 0 && (
+      {/* A patient can match several reasons (bars sum past the header) or —
+          on categorize-mode charts — none (bars sum under it). Say so instead
+          of leaving the arithmetic looking broken. */}
+      {(overlap > 0 || uncategorized > 0) && (
         <p className="text-[9px] text-muted-foreground mt-1.5 text-right">
-          {overlap} patient{overlap !== 1 ? "s" : ""} in multiple bars
+          {[
+            overlap > 0 ? `${overlap} in multiple bars` : "",
+            uncategorized > 0 ? `+${uncategorized} in no bar` : "",
+          ]
+            .filter(Boolean)
+            .join(" · ")}
         </p>
       )}
     </div>
@@ -692,6 +704,10 @@ function colWidthClass(label: string): string {
   // constrained by table-fixed and its text spills over the neighbouring cell.
   // Full text is still one hover away.
   if (label === "Proposed Reason") return "w-[220px]";
+  // Reason-bucket pills ("Check outstanding >5d", "DVS Manual Review") are
+  // whitespace-nowrap — the default 104px overflows the fixed-layout cell
+  // onto its neighbour, so give them room to wrap as a group.
+  if (label === "Reason") return "w-[170px]";
   if (label === "Evaluation Count") return "w-[54px]";
   if (label === "Days in Stage") return "w-[74px]";
   if (label === "Clinicals Method") return "w-[80px]";
@@ -1286,9 +1302,12 @@ function DrilldownModal({
                       {onDecision && (
                         <td className="px-2 py-1">
                           {isEscalateChart ? (
-                            // Only a Propose Stuck row can be escalated — a DVS
-                            // retry/manual row is a bot state with nothing to
-                            // decide, so it gets no button at all.
+                            // Only a Propose Stuck row gets decision buttons —
+                            // a DVS retry/manual row is a bot state with
+                            // nothing to decide. The manager either promotes
+                            // the proposal to Final Decisions or returns the
+                            // patient to the rep's queue (the two outcomes the
+                            // rep's Propose Stuck dialog promises).
                             (reasonsByPatient.get(patient.id) ?? []).includes("Propose Stuck") ? (
                               <span className="flex gap-1.5" onClick={(e) => e.stopPropagation()}>
                                 <button
@@ -1299,7 +1318,14 @@ function DrilldownModal({
                                   {decidingId === patient.id ? (
                                     <Loader2 className="h-3 w-3 animate-spin" />
                                   ) : null}
-                                  Escalate to Final Decisions
+                                  Escalate to Final
+                                </button>
+                                <button
+                                  onClick={() => decide(patient.id, "return")}
+                                  disabled={decidingId !== null}
+                                  className="inline-flex items-center rounded-md border border-border hover:bg-muted disabled:opacity-50 text-foreground/80 text-[11px] font-semibold px-2 py-1 transition-colors"
+                                >
+                                  Return to Queue
                                 </button>
                               </span>
                             ) : (
@@ -1422,7 +1448,7 @@ function DrilldownModal({
                       ? "Moves the patient to the Stuck stage and clears the escalation — they leave the pipeline. "
                       : returnRedates
                         ? "Sets Next Action Date to today and clears the escalation, so the patient reappears in the rep's queue. "
-                        : "Clears the escalation, so the patient reappears in the rep's queue. The follow-up date is left alone. "}
+                        : "Sets the Follow Up Date to today and clears the escalation, so the patient reappears in the rep's due queue. "}
                   {isEscalate ? `${reasonNotesLabel}.` : `Optionally add a note below — it's stamped into the ${reasonNotesLabel}.`}
                 </p>
                 <div>
@@ -1668,7 +1694,25 @@ export default function OversightTab() {
       // "-escalation" matches none of "-escalations" / "-final-escalation" — so
       // that chart opened an unfiltered rep sidebar showing every Benefits
       // patient instead of the escalated ones the chart counted.
-      if (isSecondary || isTertiary) {
+      //
+      // EXCEPT when the clicked patient carries no manager-escalation label.
+      // The reason-bucketed manager charts (2026-07-29) are populated by board
+      // FACTS — the Benefits ">5d" bar needs no escalation at all — and
+      // opening /benefits in escalated-only mode for such a patient would
+      // show a sidebar that contradicts the chart AND red-style a patient who
+      // isn't escalated. Those rows open the plain rep page with the patient
+      // pinned instead (deep-linked ?patientId= is always kept visible).
+      let managerMode = isSecondary || isTertiary;
+      if (managerMode && expandedChart === "benefits-manager-escalation") {
+        const p = (data?.get(expandedChart) ?? []).find((x) => x.id === patientId);
+        const esc = (p?.cols["color_mm2vsh2f"] ?? "").trim();
+        if (esc !== "Manager Escalation Required") {
+          managerMode = false;
+          params.delete(MANAGER_CHART_PARAM);
+          params.delete(MANAGER_ORIGIN_PARAM);
+        }
+      }
+      if (managerMode) {
         params.set("manager", "1");
         params.set("escalated", "1");
       }
@@ -1766,10 +1810,12 @@ export default function OversightTab() {
     async (patientId: string, action: "approve" | "return" | "escalate", kind: "proposed-stuck" | "insurance-final" | "submit-auth-manager", appendNote?: string) => {
       try {
         if (kind === "submit-auth-manager") {
-          // Manager Intervention Submit Auth: the only action is Escalate to
-          // Final Decisions, and the note is required (enforced by the modal
-          // AND the API — belt and braces on a status flip).
-          await escalateSubmitAuthToFinal(patientId, appendNote ?? "");
+          // Manager Intervention Submit Auth: Escalate to Final Decisions
+          // (required note — enforced by the modal AND the API, belt and
+          // braces on a status flip) or Return to Queue (same clear-and-
+          // re-date as a Final Decisions return).
+          if (action === "escalate") await escalateSubmitAuthToFinal(patientId, appendNote ?? "");
+          else await returnInsuranceToQueue(patientId, appendNote);
         } else if (kind === "insurance-final") {
           if (action === "approve") await approveInsuranceStuck(patientId, appendNote);
           else await returnInsuranceToQueue(patientId, appendNote);

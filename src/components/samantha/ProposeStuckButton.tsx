@@ -73,15 +73,21 @@ export function ProposeStuckButton({
     try {
       // Read the notes fresh so a concurrent edit isn't clobbered, append the
       // stamped reason, THEN flip the escalation status.
-      const existing = await readColumnTexts(patientId, [COL.callReferenceNotes]);
+      const existing = await readColumnTexts(patientId, [COL.callReferenceNotes, COL.escalation]);
       const current = existing.find((c) => c.id === COL.callReferenceNotes)?.text ?? "";
       const stamped = stampProposedStuck(reason.trim(), etToday(), userInitials());
       await writeLongText(patientId, COL.callReferenceNotes, appendStampedLine(current, stamped));
-      await writeStatusIndex(
-        patientId,
-        COL.escalation,
-        escalateTo === "manager" ? ESCALATION_INDEX.managerRequired : ESCALATION_INDEX.finalRequired,
-      );
+      // Never DOWNGRADE an escalation: a Submit Auth proposal writes Manager,
+      // but a patient already at Final Escalation Required stays there — the
+      // manager's decision outranks a rep's proposal, and pulling them back
+      // out of Final Decisions would silently undo it. The reason stamp still
+      // lands either way.
+      const currentEsc = existing.find((c) => c.id === COL.escalation)?.text?.trim() ?? "";
+      const target =
+        escalateTo === "manager" && currentEsc !== "Final Escalation Required"
+          ? ESCALATION_INDEX.managerRequired
+          : ESCALATION_INDEX.finalRequired;
+      await writeStatusIndex(patientId, COL.escalation, target);
       toast.success("Proposed stuck — sent to the manager for a decision");
       close();
       onDone?.();
