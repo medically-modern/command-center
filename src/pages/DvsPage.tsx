@@ -76,13 +76,16 @@ function StatusChip({ label, fallback }: { label?: string; fallback?: string }) 
 const isFailedish = (label: string | undefined) => toneFor(label) === "rose";
 
 /**
- * Needs a human: escalated to a manager, a rose Supplies/Pump DVS status
- * (MLTC / Failed / Manual Review / Denied), or a claims failure. Mirrors the
- * oversight `dvs-manual-review` CHART_FILTER — `toneFor` maps exactly those
- * labels to "rose" — so the rail can match that chart.
+ * Needs a human: a rose Supplies/Pump DVS status (MLTC / Failed / Manual
+ * Review / Denied) or a claims failure. STATUS-ONLY (Josh 2026-07-29): no
+ * automation flips DVS patients to a manager escalation, so the Escalation
+ * column is deliberately not consulted — a label carried in from an earlier
+ * stage must not classify a patient as manual review. Mirrors the oversight
+ * `dvs-manual-review` CHART_FILTER — `toneFor` maps exactly those labels to
+ * "rose" — so the rail can match that chart.
  */
 const isManualReview = (p: Patient) =>
-  !!p.escalated || isFailedish(p.dvsStatus) || isFailedish(p.pumpDvsStatus) || isFailedish(p.claimsStatus);
+  isFailedish(p.dvsStatus) || isFailedish(p.pumpDvsStatus) || isFailedish(p.claimsStatus);
 
 /**
  * In the retry queue = the bot has literally parked the item there

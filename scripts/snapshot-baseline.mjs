@@ -25,6 +25,9 @@
  *     Referral Type "Patient" OR Referral Source "CareCentrix" →
  *     unverifiedReferrals, everything else → profile (Verified Referrals)
  *     (rule mirrors src/lib/profile/referralSplit.ts)
+ *   dvs — Stage Advancer "DVS" board-wide; ONLY the date snooze excludes a
+ *     patient. Escalated patients are INCLUDED (Josh 2026-07-29): the /dvs
+ *     queue classifies purely off the DVS/Claims status columns.
  *   subscription — all items in the group
  *   systemMgmt — escalated patients across all boards
  *
@@ -357,7 +360,10 @@ async function countDvs(todayStr) {
     const d = i.cols[SAM_FOLLOWUP_DATE_COL];
     return !!d && d > todayStr;
   };
-  const active = items.filter((i) => !isSamEscalated(i.cols[SAM_ESC_COL]) && !snoozed(i));
+  // Escalated DVS patients are INCLUDED (Josh 2026-07-29): the /dvs queue
+  // keys purely off the DVS/Claims statuses, so only the date snooze hides
+  // a patient. Mirrors useDvsPatients + useRoleCounts (SS5.8 contract).
+  const active = items.filter((i) => !snoozed(i));
   return { count: active.length, ids: active.map((i) => i.id) };
 }
 

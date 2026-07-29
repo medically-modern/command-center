@@ -134,13 +134,17 @@ moment the fact lands:
 |---|---|---|
 | **Inactive insurance** | Stage = `Benefits / SoS` AND Active? = `Inactive` (index 2) | Rep confirms coverage and re-sends (Active? ≠ Inactive), or stage changes |
 | **Pump SoS** | Stage = `Benefits / SoS` AND Not Clear Products contains `Insulin Pump` | The pump SoS resolves off Not Clear, or stage changes |
-| **Check outstanding >5d** | Stage = `Benefits / SoS` AND Days in Stage at `6–8 Days` or beyond (index ≥ 2 of the used keys) | Stage changes (days only grow) |
+| **Check outstanding >5d** | Stage = `Benefits / SoS` AND Escalation = `Manager Escalation Required` AND Days in Stage at `6–8 Days` or beyond | Escalation cleared (manager Return to Queue, or a rep send that de-escalates), or stage changes |
 
-> The planned Monday automation "Days = 6–8 → Escalation = Manager" is **not
-> required** for the >5d bar (it reads the days column directly) and did not
-> exist when this was built. If it's added, it MUST be conditioned on Stage =
-> `Benefits / SoS` — the days column exists at every stage, and an unconditioned
-> recipe would escalate Auth Outstanding / DVS patients too.
+> The >5d bar's escalation label is written by **board automation 7921298383**
+> (active, verified live 2026-07-29): *when Days Since Stage Started changes to
+> `6–8 Days` AND Stage Advancer is `Benefits / SoS` → Escalation → Manager
+> Escalation Required*. Because it fires on the CHANGE to 6–8, patients already
+> past that bucket before the automation existed were never flipped and won't
+> show; and a patient whose escalation a manager clears drops off the bar for
+> good even as the days keep climbing (the automation doesn't re-fire). Note
+> the label also parks the patient in the rep sidebar's Escalated section
+> (SAM_ESCALATED) and removes them from the Benefits active count.
 
 **Submit Auth** (chart `submit-auth-manager`, 2026-07-29 — the old *DVS — Retry
 Queue* and *DVS — Manual Review* charts merged into it, so the manager sees the
@@ -149,7 +153,7 @@ total outstanding-auth workload in one card). Union population, three bars:
 | Bar | Arrives when | Leaves when |
 |---|---|---|
 | **DVS Retry** | Stage = `DVS` AND (Supplies DVS **or** Pump DVS = `Retry Queued`) | The bot moves that status off `Retry Queued` |
-| **DVS Manual Review** | Stage = `DVS` AND **any** of: Escalation = `Manager Escalation Required`; Supplies DVS in (`MLTC`, `Failed`, `Manual Review`); Pump DVS in (`MLTC`, `Failed`, `Manual Review`, `Denied`); Claims Status in (`Claims Error`, `Claims Denied`, `Payment Incorrect`) | Every one of those clears |
+| **DVS Manual Review** | Stage = `DVS` AND **any** of: Supplies DVS in (`MLTC`, `Failed`, `Manual Review`); Pump DVS in (`MLTC`, `Failed`, `Manual Review`, `Denied`); Claims Status in (`Claims Error`, `Claims Denied`, `Payment Incorrect`) — **STATUS-ONLY**: the Escalation column is deliberately not a condition (2026-07-29; no automation flips DVS patients to a manager escalation, and a label carried in from an earlier stage must not classify a patient) | Every one of those clears |
 | **Propose Stuck** | Stage = `Submit Auth.` AND Escalation = `Manager Escalation Required` AND Reference Notes contain a `[Proposed Stuck` stamp | The manager decides (below), or a rep-side send clears the escalation |
 
 > The stamp condition on the Propose Stuck bar is what keeps a Submit Auth
@@ -164,13 +168,12 @@ Required` — and **Return to Queue** (optional note; clears the escalation and
 re-dates Follow Up to today). The DVS rows get no buttons (bot states —
 nothing to decide).
 
-> **Rail gotcha (pre-existing, re-flagged 2026-07-29):** a DVS Manual Review
-> row whose ONLY flag is `Manager Escalation Required` deep-links to `/dvs`,
-> but `useDvsPatients` excludes escalated patients from the rail (mirroring
-> the dvs role count) — only the clicked patient is injected. The bar can
-> therefore count more patients than the rail lists. Fixing it means deciding
-> whether escalated DVS patients belong in the /dvs working list at all
-> (counting contract §5.8) — not a chart-side change.
+> **Resolved 2026-07-29 (Josh):** escalated DVS patients now belong in the
+> `/dvs` working queue — `useDvsPatients`, the dvs role count, and both
+> baseline `countDvs` all stopped excluding them (§5.8 contract, changed
+> together), and both the chart's Manual Review bar and the page's rail
+> classify by DVS/Claims **status only**. The bar and the rail therefore list
+> the same patients again.
 
 ### Final Decisions
 

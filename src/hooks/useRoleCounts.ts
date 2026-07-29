@@ -474,14 +474,16 @@ export function useRoleCounts(opts?: { roleIds?: string[] }) {
     }
 
     // DVS — patients at Stage Advancer "DVS" board-wide (no dedicated group;
-    // mirrors both baseline generators). Active = not escalated (a manual
-    // review flips the stage to Auth Denied anyway).
+    // mirrors both baseline generators). Active = not date-snoozed —
+    // ESCALATED PATIENTS ARE INCLUDED (Josh 2026-07-29): the /dvs queue keys
+    // purely off the DVS/Claims statuses, and no automation flips DVS
+    // patients to a manager escalation, so a label carried in from an
+    // earlier stage must not hide them from the queue or the count.
     if (need("dvs")) {
       boardTasks.push(
         (async () => {
           if (!samHasToken()) return;
-          const items = await fetchBoardStageItemsLight(SAM_BOARD_ID, SAM_STAGE_COL, SAM_DVS_STAGE_INDEX, [SAM_ESC_COL, SAM_FOLLOWUP_DATE_COL]);
-          const escN = items.filter((i) => isSamEscalated(i.cols[SAM_ESC_COL])).length;
+          const items = await fetchBoardStageItemsLight(SAM_BOARD_ID, SAM_STAGE_COL, SAM_DVS_STAGE_INDEX, [SAM_FOLLOWUP_DATE_COL]);
           // Date-only snooze, same rule as Auth Outstanding (Josh 2026-07-21):
           // a future Follow Up Date hides the patient from /dvs AND the count;
           // blank date = due. Mirrors DvsPage `snoozed` + both baseline
@@ -490,8 +492,13 @@ export function useRoleCounts(opts?: { roleIds?: string[] }) {
             const d = i.cols[SAM_FOLLOWUP_DATE_COL];
             return !!d && d > todayStr;
           };
-          const active = items.filter((i) => !isSamEscalated(i.cols[SAM_ESC_COL]) && !snoozedDvs(i));
-          merge({ dvs: active.length }, { dvs: escN }, { dvs: active.map((i) => i.id) });
+          const active = items.filter((i) => !snoozedDvs(i));
+          // DVS has NO escalation split: escalated patients are part of the one
+          // queue, so the escalated count is 0 rather than a subset of `active`.
+          // useFilteredRoleCounts sums active + escalated for the "all" filter
+          // and relies on them being disjoint — reporting a subset here would
+          // double-count every escalated DVS patient in that view.
+          merge({ dvs: active.length }, { dvs: 0 }, { dvs: active.map((i) => i.id) });
         })(),
       );
     }

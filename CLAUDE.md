@@ -241,12 +241,16 @@ exclude Proposed Stuck patients** (Escalation `color_mm1x7997` **index 2** = "Fi
 Required" — a stuck PROPOSAL; they await a manager decision in Oversight's Final Decisions.
 Masheke "escalated" for counts/sidebar is now index **0** only — index 2 is proposed-stuck,
 handled separately), and the **`dvs` role** counts Insurance items at Stage Advancer
-index 1 ("DVS") board-wide (no dedicated group), excluding escalated (Insurance
-Escalation `color_mm2vsh2f` = "Manager Escalation Required" OR "Final Escalation Required" —
-split from a single "Escalation Required" in 2026-07; `SAM_ESCALATED` in useRoleCounts + both
-baseline generators) AND
-date-snoozed patients (Follow Up Date in the future — same date-only rule as Auth
-Outstanding; mirrors the `/dvs` page list). Stage-DVS items are conversely EXCLUDED from the
+index 1 ("DVS") board-wide (no dedicated group), excluding ONLY date-snoozed patients
+(Follow Up Date in the future — same date-only rule as Auth Outstanding; mirrors the
+`/dvs` page list). **Escalated DVS patients are INCLUDED** (Josh 2026-07-29): the DVS
+queue/charts key purely off the DVS/Claims status columns — no automation flips DVS
+patients to a manager escalation, so a label carried in from an earlier stage must not
+hide them (useDvsPatients + useRoleCounts + both baseline `countDvs` changed together).
+(Insurance Escalation `color_mm2vsh2f` = "Manager Escalation Required" OR "Final
+Escalation Required" — split from a single "Escalation Required" in 2026-07;
+`SAM_ESCALATED` in useRoleCounts + both baseline generators — still governs the OTHER
+Insurance roles' active counts.) Stage-DVS items are conversely EXCLUDED from the
 Benefits/Submit Auth/Auth Outstanding queues + counts (they linger in those groups — no
 group-move automation). All these rules live in useRoleCounts + BOTH baseline generators +
 the samantha/masheke `useMondayPatients` hooks; change them together. Roles

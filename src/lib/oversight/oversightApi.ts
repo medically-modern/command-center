@@ -1348,10 +1348,7 @@ const CHART_FILTERS: Record<string, FilterRule> = {
   "auth-outstanding-final-escalation": { type: "stageAdvancer", boardId: 18410601299, value: "Auth. Outstanding", andCols: [{ colId: "color_mm2vsh2f", value: "Final Escalation Required" }] },
   // ── Manager Intervention: Benefits reason buckets (Katie 2026-07-29). ──
   // The chart id itself has NO entry — its population is the UNION of these
-  // three bucket rules. Each keys on the BOARD FACT, not the Escalation
-  // label, so a patient shows the moment the fact lands (the >5-days bar
-  // works whether or not the planned board automation that flips Manager
-  // Escalation at 6–8 days exists yet).
+  // three bucket rules.
   //
   // Inactive insurance: Active? = Inactive (index 2 — the column split).
   "benefits-manager-inactive": { type: "stageAdvancer", boardId: 18410601299, value: "Benefits / SoS", andCols: [{ colId: "color_mm5q9y3", index: [2] }] },
@@ -1359,11 +1356,15 @@ const CHART_FILTERS: Record<string, FilterRule> = {
   // the Not Clear Products dropdown (comma-joined labels) contains it. Other
   // products being Not Clear deliberately do NOT put a patient here.
   "benefits-manager-pump-sos": { type: "stageAdvancer", boardId: 18410601299, value: "Benefits / SoS", andCols: [{ colId: "dropdown_mm2vez5a", containsAny: ["Insulin Pump"] }] },
-  // Check outstanding >5 days: Days in Stage status at "6–8 Days" or beyond.
-  // Matched by INDEX (settings keys 2,3,4,6,7,8 — note 5 is unused on the
-  // board) so the en-dash/hyphen mix in the labels can't bite. Blank days →
-  // no index → not overdue.
-  "benefits-manager-overdue": { type: "stageAdvancer", boardId: 18410601299, value: "Benefits / SoS", andCols: [{ colId: "color_mm1wwm05", index: [2, 3, 4, 6, 7, 8] }] },
+  // Check outstanding >5 days (Josh 2026-07-29): Escalation = Manager
+  // Escalation Required AND Days in Stage at "6–8 Days" or beyond. Board
+  // automation 7921298383 (active, verified) flips the escalation when the
+  // days column CHANGES TO 6–8 Days at the Benefits stage, so the label is
+  // how a patient arrives — and a manager clearing the escalation (Return to
+  // Queue) removes them from the bar even though the days keep climbing.
+  // Days matched by INDEX (settings keys 2,3,4,6,7,8 — note 5 is unused on
+  // the board) so the en-dash/hyphen mix in the labels can't bite.
+  "benefits-manager-overdue": { type: "stageAdvancer", boardId: 18410601299, value: "Benefits / SoS", andCols: [{ colId: "color_mm2vsh2f", value: "Manager Escalation Required" }, { colId: "color_mm1wwm05", index: [2, 3, 4, 6, 7, 8] }] },
   // ── Final Decisions: Benefits reason buckets — HOW the patient arrived. ──
   // Both are subsets of benefits-final-escalation (the population rule).
   // Propose Stuck: the rep's stamped reason line is the marker (the stamp is
@@ -1393,16 +1394,18 @@ const CHART_FILTERS: Record<string, FilterRule> = {
   // leaves the queue.) NB only Supplies DVS currently has a "Retry Queued"
   // label, so the Pump condition is a no-op today but wired for when it does.
   "dvs-retry-queue": { type: "stageAdvancer", boardId: 18410601299, value: "DVS", anyCols: [{ colId: "color_mm26pk1a", value: "Retry Queued" }, { colId: "color_mm578kbd", value: "Retry Queued" }] },
-  // DVS manual review (NEW 2026-07 — a separate bucket from the retry queue).
-  // Mirrors the DVS page's "manual review" flag (isFailedish / escalated):
-  // stage DVS with Escalation Required, OR a rose Supplies/Pump DVS status
-  // (MLTC / Failed / Manual Review, plus Denied on Pump), OR a claims failure
-  // (Claims Error / Claims Denied / Payment Incorrect). More rules may be ORed
-  // in later. Label strings mirror the live board columns.
+  // DVS manual review — STATUS-ONLY as of 2026-07-29 (Josh): no automation
+  // flips DVS patients to a manager escalation, so the Escalation column is
+  // NOT a condition (a label carried in from an earlier stage must not put a
+  // patient in this bar, and it made the bar count rows the /dvs rail
+  // couldn't list). Stage DVS with a rose Supplies/Pump DVS status (MLTC /
+  // Failed / Manual Review, plus Denied on Pump) OR a claims failure (Claims
+  // Error / Claims Denied / Payment Incorrect). Mirrors DvsPage
+  // isManualReview — keep the two in agreement. Label strings mirror the
+  // live board columns.
   "dvs-manual-review": {
     type: "stageAdvancer", boardId: 18410601299, value: "DVS",
     anyCols: [
-      { colId: "color_mm2vsh2f", value: "Manager Escalation Required" },
       { colId: "color_mm26pk1a", value: ["MLTC", "Failed", "Manual Review"] },
       { colId: "color_mm578kbd", value: ["MLTC", "Failed", "Manual Review", "Denied"] },
       { colId: "color_mm284z0b", value: ["Claims Error", "Claims Denied", "Payment Incorrect"] },

@@ -38,12 +38,15 @@ export function useDvsPatients(injectedPatientId?: string | null) {
     try {
       const items = await fetchStageItems(STAGE_INDEX.dvs);
       if (!mountedRef.current) return;
-      // Escalated patients belong to the escalation views, not this monitor
-      // — same exclusion the dvs role count applies (useRoleCounts + both
-      // baseline countDvs), so the list always matches the burndown bar.
-      const list = (Array.isArray(items) ? items : [])
-        .map(mondayItemToPatient)
-        .filter((p) => !p.escalated);
+      // Escalated DVS patients BELONG in this working queue (Josh
+      // 2026-07-29): DVS classification keys purely off the DVS/Claims
+      // status columns — no automation flips DVS patients to a manager
+      // escalation, so a lingering escalation label carried in from an
+      // earlier stage must not hide them here. The dvs role count includes
+      // them too (useRoleCounts + both baseline countDvs — §5.8 counting
+      // contract, changed together), so the list still matches the
+      // burndown bar. Date-snoozing is the page's own concern (below).
+      const list = (Array.isArray(items) ? items : []).map(mondayItemToPatient);
 
       // Deep-linked patient (oversight drill-down) may have already left the
       // DVS stage — inject them individually so the link still lands.

@@ -88,24 +88,39 @@ describe("Benefits · Manager Intervention (reason union)", () => {
     expect(patientMatchesChart(c, sensorsOnly)).toBe(false);
   });
 
-  it("Check outstanding >5d = Days in Stage index 6–8 Days or beyond; blank/fresh days don't", () => {
+  // Board automation 7921298383 (active, verified live): when Days changes to
+  // "6–8 Days" at the Benefits stage, Escalation → Manager Escalation
+  // Required. The bar = that label AND days ≥ 6–8 (Josh 2026-07-29).
+  const MGR_ESC = { [ESC_COL]: "Manager Escalation Required" };
+
+  it("Check outstanding >5d = Manager escalation AND Days at 6–8 or beyond", () => {
     for (const idx of [2, 3, 4, 6, 7, 8]) {
-      expect(reasonBucketsFor(c, atBenefits({}, { [DAYS_COL]: idx }))).toEqual([
+      expect(reasonBucketsFor(c, atBenefits(MGR_ESC, { [DAYS_COL]: idx }))).toEqual([
         "Check outstanding >5d",
       ]);
     }
-    expect(patientMatchesChart(c, atBenefits({}, { [DAYS_COL]: 0 }))).toBe(false);
-    expect(patientMatchesChart(c, atBenefits({}, { [DAYS_COL]: 1 }))).toBe(false);
+    // The label alone isn't overdue (fresh patient escalated for another
+    // reason)…
+    expect(patientMatchesChart(c, atBenefits(MGR_ESC, { [DAYS_COL]: 0 }))).toBe(false);
+    expect(patientMatchesChart(c, atBenefits(MGR_ESC, { [DAYS_COL]: 1 }))).toBe(false);
+    // …and days alone aren't either: a manager clearing the escalation
+    // (Return to Queue) removes the patient from the bar even though the
+    // days keep climbing, and pre-automation patients were never flipped.
+    expect(patientMatchesChart(c, atBenefits({}, { [DAYS_COL]: 3 }))).toBe(false);
+    // A FINAL-escalated overdue patient belongs to Final Decisions, not here.
+    expect(
+      patientMatchesChart(c, atBenefits({ [ESC_COL]: "Final Escalation Required" }, { [DAYS_COL]: 3 })),
+    ).toBe(false);
   });
 
-  it("the bars are facts, not the Escalation label — a patient shows before any automation flips it", () => {
-    const p = atBenefits({}, { [DAYS_COL]: 2 }); // no escalation column at all
-    expect(patientMatchesChart(c, p)).toBe(true);
+  it("Inactive and Pump SoS stay pure board facts — no escalation label needed", () => {
+    expect(patientMatchesChart(c, atBenefits({}, { [ACTIVE_COL]: 2 }))).toBe(true);
+    expect(patientMatchesChart(c, atBenefits({ [NOT_CLEAR_COL]: "Insulin Pump" }))).toBe(true);
   });
 
   it("a patient can be in several bars at once; a non-Benefits stage is never in the chart", () => {
     const multi = atBenefits(
-      { [NOT_CLEAR_COL]: "Insulin Pump" },
+      { ...MGR_ESC, [NOT_CLEAR_COL]: "Insulin Pump" },
       { [ACTIVE_COL]: 2, [DAYS_COL]: 3 },
     );
     expect(reasonBucketsFor(c, multi)).toEqual([
@@ -194,13 +209,23 @@ describe("Submit Auth · Manager Intervention (merged DVS + proposals, union)", 
     expect(patientMatchesChart(c, atDvs())).toBe(false);
   });
 
-  it("DVS Manual Review = the failed-ish DVS statuses / escalation / claims failures", () => {
+  it("DVS Manual Review = the failed-ish DVS statuses / claims failures — STATUS-ONLY", () => {
     expect(reasonBucketsFor(c, atDvs({ [SUPPLIES_DVS_COL]: "Manual Review" }))).toEqual([
       "DVS Manual Review",
     ]);
+    expect(reasonBucketsFor(c, atDvs({ [PUMP_DVS_COL]: "Denied" }))).toEqual([
+      "DVS Manual Review",
+    ]);
+    expect(reasonBucketsFor(c, atDvs({ "color_mm284z0b": "Claims Denied" }))).toEqual([
+      "DVS Manual Review",
+    ]);
+    // An escalation label alone does NOT qualify (Josh 2026-07-29): no
+    // automation flips DVS patients to a manager escalation, so a label
+    // carried in from an earlier stage must not classify a patient as
+    // manual review — the /dvs rail and this bar key purely off statuses.
     expect(
-      reasonBucketsFor(c, atDvs({ [ESC_COL]: "Manager Escalation Required" })),
-    ).toEqual(["DVS Manual Review"]);
+      patientMatchesChart(c, atDvs({ [ESC_COL]: "Manager Escalation Required" })),
+    ).toBe(false);
   });
 
   it("Propose Stuck = Submit Auth stage + Manager escalation + the note stamp", () => {
