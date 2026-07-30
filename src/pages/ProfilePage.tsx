@@ -1007,23 +1007,33 @@ function ProfileBody(p: BodyProps) {
                       </div>
                     )}
                     {/* Wrong-plan benefits (Brandon, 2026-07-29 — Jack
-                        Omilanowicz): whenever the plan that ANSWERED this
-                        check isn't the plan that actually pays primary, the
-                        cost-sharing tiles below are the wrong plan's numbers.
-                        Covers the MA-dual case the COB banner can't see —
-                        neither Fidelis's nor eMedNY's 271 carried a COB
-                        record; the "someone else is primary" knowledge came
-                        from the backend's chained Medicare check (MA columns).
-                        Fires when MA?=Yes but the check that produced these
-                        benefit figures wasn't the MA plan itself. Suppressed
-                        when the COB-mismatch banner (below) already fires —
-                        that one carries the same re-run instruction. */}
+                        Omilanowicz): whenever the plan that pays primary is
+                        the MA plan, the cost-sharing tiles below are the
+                        wrong plan's numbers. Covers the MA-dual case the COB
+                        banner can't see — neither Fidelis's nor eMedNY's 271
+                        carried a COB record; the "someone else is primary"
+                        knowledge came from the backend's chained Medicare
+                        check (MA columns). Wording deliberately does NOT
+                        attribute the tiles to the current check: the tiles
+                        are accumulated board columns (blanks never
+                        overwrite), so e.g. the eMedNY view shows OOP figures
+                        left over from the Fidelis MMC check. Fires when
+                        MA?=Yes but the coverage on file isn't the MA plan
+                        itself. Suppressed when the COB-mismatch banner
+                        (below) already fires — same re-run instruction.
+                        KNOWN GAP (verified live 2026-07-29): for
+                        Wellcare-Fidelis D-SNPs no route we hold IDs for
+                        returns the MA product — 11315 AND its 11315MA alias
+                        return only the MMC record even when queried with the
+                        MBI; Wellcare (EGASA) and Centene (IMJGY) don't
+                        recognize the Fidelis ID or the MBI — so the re-run
+                        needs the member's MA card ID. */}
                     {truthy(pt.stediMedicareAdvantage)
                       && (pt.stediCoverageType || "").trim() !== "Medicare Advantage"
                       && !ppMismatch && (
                       <div className="warn-banner" style={{ marginTop: 16 }}>
                         <AlertTriangle className="h-4 w-4" />
-                        <span><b>Benefits below are the {(pt.stediCoverageType || "checked").trim()} plan's, not the primary's.</b> This check was answered by {pt.stediPayerName || "the checked payer"} — the co-insurance / deductible / OOP shown are that plan's numbers. The primary is {pt.stediMedicareAdvantageCarrier || "the MA plan"}: run a Stedi check against the MA payer for the primary plan's cost sharing before quoting the patient.</span>
+                        <span><b>Cost sharing below is not the primary (MA) plan's.</b> These figures are from the {(pt.stediCoverageType || "non-MA").trim()}-side record on file — {pt.stediMedicareAdvantageCarrier || "the MA plan"} pays primary and its co-insurance / deductible / OOP are not shown. To see the MA plan's cost sharing, run a Stedi check against the MA payer using the member's MA card ID.{truthy(pt.stediQmb) ? " QMB: member responsibility is $0 by federal protection regardless." : ""}</span>
                       </div>
                     )}
                     {/* §1b MSP — Medicare is SECONDARY per CMS's COB file (MSP
