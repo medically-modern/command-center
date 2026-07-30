@@ -283,6 +283,14 @@ export function validateBenefitsFactsForSubmit(patient: Patient): string[] {
   const missing: string[] = [];
   const ins = patient.insurance ?? EMPTY_INSURANCE;
 
+  // Serving + Primary Insurance are a hard precondition of the send
+  // (mondayWrite throws on them). They were absent from this list, so the
+  // button went green and the send then failed with a thrown error instead —
+  // the gate and the guard have to agree. The Benefits header is read-only,
+  // so the fix is at Profile Send-Off; naming them here at least says why.
+  if (!patient.serving) missing.push("Serving (set at Profile Send-Off)");
+  if (!patient.primaryInsurance) missing.push("Primary Insurance (set at Profile Send-Off)");
+
   for (const id of ["in-network", "active", "dme-benefits"] as const) {
     if (!ins.universal[id]) missing.push(UNIVERSAL_GATE_LABELS[id]);
   }

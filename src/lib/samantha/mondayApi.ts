@@ -305,14 +305,24 @@ export const READ_COLUMN_IDS = [
   COL.homePlan,
   COL.deductibleRemaining,
   COL.oopMaxRemaining,
-];
-
-/** Extended read columns for auth groups — includes auth results + universal statuses */
-export const AUTH_READ_COLUMN_IDS = [
-  ...READ_COLUMN_IDS,
+  // The three universal checks. These live in the BASE list, not the auth-only
+  // one below, because the Benefits group is NOT in AUTH_GROUP_IDS — and
+  // Benefits is the page that WRITES them. Kept here they were written on send
+  // and then fetched by nobody, so every answer hydrated blank on reload and
+  // reps re-entered all three on every patient load (found in live testing
+  // 2026-07-30). The rest of this list already follows that rule: the rep's
+  // other Benefits inputs (sosLastBill / sosUnits / sosNeverBilled /
+  // notClearProducts) are all here for the same reason.
   COL.inNetwork,
   COL.active,
   COL.dmeBenefits,
+];
+
+/** Extended read columns for auth groups — includes auth results + the derived
+ *  SoS/Auth summary columns. The three universal checks are in the base list
+ *  above (Benefits writes them, so Benefits must read them back). */
+export const AUTH_READ_COLUMN_IDS = [
+  ...READ_COLUMN_IDS,
   COL.sos,
   COL.auth,
   // Per-product auth result (status)

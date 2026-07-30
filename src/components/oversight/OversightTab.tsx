@@ -704,10 +704,12 @@ function colWidthClass(label: string): string {
   // constrained by table-fixed and its text spills over the neighbouring cell.
   // Full text is still one hover away.
   if (label === "Proposed Reason") return "w-[220px]";
-  // Reason-bucket pills ("Check outstanding >5d", "DVS Manual Review") are
-  // whitespace-nowrap — the default 104px overflows the fixed-layout cell
-  // onto its neighbour, so give them room to wrap as a group.
+  // Pill columns whose labels are longer than the 104px default. The pills are
+  // whitespace-nowrap, so an undersized column used to paint over its
+  // neighbour: "Final Escalation Required" alone needs ~141px, and it appears
+  // on every escalated row of the manager views.
   if (label === "Reason") return "w-[170px]";
+  if (label === "Escalation") return "w-[150px]";
   if (label === "Evaluation Count") return "w-[54px]";
   if (label === "Days in Stage") return "w-[74px]";
   if (label === "Clinicals Method") return "w-[80px]";
@@ -1208,7 +1210,13 @@ function DrilldownModal({
                           return (
                             <td key={col.colId} className="px-2 py-1">
                               {parts.length ? (
-                                <span className="flex flex-wrap gap-1">
+                                // overflow-hidden is load-bearing: the pills are
+                                // whitespace-nowrap, and in a table-fixed layout a
+                                // pill wider than its column paints OVER the next
+                                // cell rather than clipping (browsers don't honour
+                                // overflow on <td> itself — same reason the
+                                // Requesting cell below wraps its content).
+                                <span className="flex flex-wrap gap-1 overflow-hidden">
                                   {parts.map((v, i) => {
                                     const hex = colorMap[v.toLowerCase()] ?? "#94a3b8";
                                     return (

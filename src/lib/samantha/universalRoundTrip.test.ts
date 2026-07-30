@@ -15,7 +15,7 @@
  */
 import { describe, it, expect } from "vitest";
 import { mondayItemToPatient, UNIVERSAL_INDEX } from "./mondayMapping";
-import { COL, type MondayItem } from "./mondayApi";
+import { COL, READ_COLUMN_IDS, AUTH_READ_COLUMN_IDS, type MondayItem } from "./mondayApi";
 
 /** A status cell as Monday returns it: `text` is the label, `value` the JSON index. */
 function statusCell(id: string, index: number, text: string) {
@@ -27,6 +27,40 @@ function itemWith(cols: { id: string; text: string; value: string }[]): MondayIt
 }
 
 const universalOf = (item: MondayItem) => mondayItemToPatient(item).insurance?.universal;
+
+/**
+ * The fetch-list half of the round-trip.
+ *
+ * Every test below this block hands the parser a hand-built item that ALREADY
+ * contains the columns — so they answer "if the data arrives, do we read it
+ * correctly?" and can never catch a column that is written but never fetched.
+ * That is exactly how the Benefits page shipped writing all three universal
+ * answers to Monday and reading none of them back (2026-07-30): the columns
+ * sat in AUTH_READ_COLUMN_IDS, and the Benefits group is not in
+ * AUTH_GROUP_IDS, so its query never asked for them.
+ *
+ * This block asserts the LIST, not the parsing — the one thing a synthetic
+ * item can't check. Same trap as the Stedi column contract (CLAUDE.md §5.11).
+ */
+describe("universal checks — fetched, not just parseable", () => {
+  const UNIVERSAL_COLS = [COL.inNetwork, COL.active, COL.dmeBenefits];
+
+  it("the BASE read list fetches all three — Benefits writes them, so Benefits must read them", () => {
+    // Benefits is NOT in AUTH_GROUP_IDS, so it queries with READ_COLUMN_IDS.
+    // If this fails, the answers hydrate blank and reps re-enter them on every
+    // load, with no error anywhere.
+    for (const id of UNIVERSAL_COLS) expect(READ_COLUMN_IDS).toContain(id);
+  });
+
+  it("the auth read list covers them too (it spreads the base list)", () => {
+    for (const id of UNIVERSAL_COLS) expect(AUTH_READ_COLUMN_IDS).toContain(id);
+  });
+
+  it("neither list fetches a column twice", () => {
+    expect(READ_COLUMN_IDS).toHaveLength(new Set(READ_COLUMN_IDS).size);
+    expect(AUTH_READ_COLUMN_IDS).toHaveLength(new Set(AUTH_READ_COLUMN_IDS).size);
+  });
+});
 
 describe("universal checks — Monday round-trip", () => {
   it("reads In-Network? and Active? from their own columns", () => {
