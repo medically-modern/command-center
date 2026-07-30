@@ -416,6 +416,21 @@ function otherPayerSuggest(inp: SuggestionInputs): Suggestion {
   }
   const label = s.payerName || inp.generalInsurance || "Unknown carrier";
   if (cov === "Medicaid") return medicaidFork(inp, o, label, "Unmapped carrier — Medicaid.", true);
+  // MA members reaching the generic tail (Brandon, 2026-07-29: General
+  // Insurance flipped to "Wellcare" while the board held Fidelis MMC data
+  // — carrierFromPayer resolved neither, and the fallback glued payer name
+  // + coverage era into the non-existent label "Fidelis Care New York
+  // Medicare"): when the MA columns identify the plan, map it to the real
+  // board family instead of fabricating a label.
+  if (s.ma === true) {
+    const mapped = maFamilyLabel(s.maCarrier);
+    if (mapped) {
+      o.value = mapped; o.confidence = "medium";
+      o.reason = "Medicare Advantage member — " + mapped + " from the MA plan name (" + (s.maCarrier || "").trim() + ").";
+      o.warnings.push({ code: "MA_PRIMARY", message: "Patient has a Medicare Advantage plan — " + (s.maCarrier || "see MA columns").trim() + ". Bill the MA payer; verify network before serving." });
+      return o;
+    }
+  }
   o.value = label + " " + (cov === "Medicare" ? "Medicare" : "Commercial"); o.confidence = "low";
   o.reason = "Unmapped carrier (" + label + ") — verify the right Primary Insurance.";
   o.warnings.push({ code: "UNMAPPED_CARRIER", message: "New carrier (" + label + ") — confirm the correct Primary Insurance option before sending." });

@@ -536,3 +536,38 @@ describe("isCoverageActive", () => {
     expect(isCoverageActive({ active: "No" } as StediSnapshot)).toBe(false);
   });
 });
+
+// ── Generic-tail MA gate (Brandon, 2026-07-29 #2): General Insurance set to
+//    "Wellcare" while the board holds Fidelis MMC data produced the
+//    fabricated label "Fidelis Care New York Medicare" (UNMAPPED_CARRIER
+//    fallback). With MA columns populated, map to the real family. ──
+describe("suggestPrimary — MA gate on the unmapped-carrier fallback", () => {
+  const jackBoardState = {
+    gins: "Wellcare", payerName: "Fidelis Care New York", covtype: "Medicaid",
+    plan: "Wellcare Fidelis Dual Liberty Sync MMC (Upstate)",
+    medid: "AG02545S", qmb: "Yes", primaryPayer: "Fidelis Care New York",
+  };
+
+  it("Wellcare gins + Fidelis MMC board data + MA columns → Fidelis Medicare", () => {
+    const sg = suggestPrimary(mk({
+      ...jackBoardState, ma: true, maCarrier: "Wellcare Fidelis Dual Liberty Sync",
+    }));
+    expect(sg?.value).toBe("Fidelis Medicare");
+    expect(sg?.warnings.some((w) => w.code === "MA_PRIMARY")).toBe(true);
+    expect(sg?.warnings.some((w) => w.code === "UNMAPPED_CARRIER")).toBe(false);
+  });
+
+  it("same state without MA columns keeps the legacy unmapped fallback", () => {
+    const sg = suggestPrimary(mk({ ...jackBoardState, ma: false, maCarrier: "" }));
+    expect(sg?.value).toBe("Fidelis Care New York Medicare");
+    expect(sg?.warnings.some((w) => w.code === "UNMAPPED_CARRIER")).toBe(true);
+  });
+
+  it("MA member with unmappable carrier keeps the unmapped fallback + warning", () => {
+    const sg = suggestPrimary(mk({
+      ...jackBoardState, ma: true, maCarrier: "SOME REGIONAL MA PLAN",
+    }));
+    expect(sg?.value).toBe("Fidelis Care New York Medicare");
+    expect(sg?.warnings.some((w) => w.code === "UNMAPPED_CARRIER")).toBe(true);
+  });
+});
