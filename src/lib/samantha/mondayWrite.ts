@@ -35,6 +35,16 @@ import {
   patientHasMedicaidIns,
   universalEscalationLevel,
 } from "./benefitsDerive";
+import {
+  diffIdentity,
+  identityNoteText,
+  IDENTITY_STATUS_COLUMNS,
+  IDENTITY_TEXT_COLUMNS,
+  type IdentityChange,
+  type IdentityDraft,
+  type IdentityStatusFieldId,
+} from "./managerIdentityEdit";
+import { appendStampedNote } from "../shared/noteStamp";
 import { derivedRecheckSos, effectiveResult } from "./authOutstandingReview";
 import { isMedicarePrimary } from "./medicareJurisdiction";
 import { allProductsDvsRouted, dvsAutoTrigger, hasDvsRoutedProducts } from "./dvsRouting";
@@ -1238,6 +1248,109 @@ export async function sendPatientToMonday(
  * Still runs the full verified-write protocol (snapshot → write → read-back)
  * so a silently-failed write surfaces as an error instead of looking saved.
  */
+/**
+ * Manager-only correction of a patient's insurance identity — Serving, Primary
+ * / Secondary Insurance, Member ID 1 / 2. Gated in the UI to the oversight
+ * escalation columns (`?mv=manager-intervention` / `final-decisions`); see
+ * `lib/samantha/managerIdentityEdit` for the why and the product-set caveat.
+ *
+ * Three deliberate choices:
+ *
+ * 1. **Only changed fields are written.** Every task in the batch is a real
+ *    change, which makes read-back verification meaningful — an unchanged
+ *    column here means the write did NOT land.
+ * 2. **`expectedText` comes from the board's own label**, passed in by the
+ *    caller from `fetchStatusOptions`. Verifying against a hardcoded label
+ *    would fail on the board's actual spelling ("Magnacare"), and the
+ *    snapshot-diff fallback is too weak for this flow: it treats three stable
+ *    reads as "same-value write, fine", which is exactly what a silently failed
+ *    write looks like here.
+ * 3. **`stageColumnId: []`** — nothing to advance. Every Insurance automation
+ *    that mentions these columns triggers on Stage Advancer and merely reads
+ *    them, so this write fires no automation (verified against the live board
+ *    2026-07-30). The verification still runs; it just has no advancer to gate.
+ *
+ * The attribution note is appended to the CURRENT Monday value of the notes
+ * column, re-read here rather than taken from the caller's patient object: the
+ * local overlay can hold an unsaved note draft, and a correction must not
+ * commit someone else's half-typed line (or clobber a note saved since the
+ * page last polled).
+ *
+ * Returns the changes it wrote; an empty draft-diff is a no-op, not an error.
+ */
+export async function saveManagerIdentityEdits(
+  p: Patient,
+  draft: IdentityDraft,
+  /** Live board options per column id, from `fetchStatusOptions`. */
+  statusOptions: Record<string, { index: number; label: string }[]>,
+  /** Stage label for the note stamp ("Benefits" / "Submit Auth" / …). */
+  stage: string,
+  opts?: { onProgress?: (phase: WriteProgressPhase) => void },
+): Promise<IdentityChange[]> {
+  const changes = diffIdentity(p, draft);
+  if (changes.length === 0) return [];
+
+  const tasks: WriteTask[] = [];
+
+  for (const change of changes) {
+    const statusCol = IDENTITY_STATUS_COLUMNS[change.field as IdentityStatusFieldId];
+    if (statusCol) {
+      const option = (statusOptions[statusCol] ?? []).find((o) => o.label === change.to);
+      if (!option) {
+        // The picker is built from these same options, so this is unreachable
+        // in the UI — but a stale cache after someone renames a board label
+        // would otherwise write a wrong index silently. Fail loudly instead.
+        throw new Error(`"${change.to}" is no longer a ${change.label} option on the board — reload and try again.`);
+      }
+      tasks.push({
+        label: change.label,
+        columnId: statusCol,
+        expectedText: option.label,
+        fn: () => writeStatusIndex(p.id, statusCol, option.index),
+      });
+      continue;
+    }
+    const textCol = IDENTITY_TEXT_COLUMNS[change.field as keyof typeof IDENTITY_TEXT_COLUMNS];
+    if (textCol) {
+      tasks.push({
+        label: change.label,
+        columnId: textCol,
+        expectedText: change.to,
+        fn: () => writeText(p.id, textCol, change.to),
+      });
+    }
+  }
+
+  const current = await readColumnTexts(p.id, [COL.callReferenceNotes]);
+  const existingNotes = current.find((c) => c.id === COL.callReferenceNotes)?.text ?? "";
+  const notes = appendStampedNote(existingNotes, identityNoteText(changes), stage, {
+    initials: userInitials(),
+  });
+  tasks.push({
+    label: "Reference Notes",
+    columnId: COL.callReferenceNotes,
+    expectedText: notes,
+    fn: () => writeLongText(p.id, COL.callReferenceNotes, notes),
+  });
+
+  const failures = await executeWritesWithVerification({
+    itemId: p.id,
+    tasks,
+    stageColumnId: [],
+    executeWithRetry,
+    readColumns: readColumnTexts,
+    writeDebug: (id, msg) => writeText(id, COL.joshDebug, msg),
+    onProgress: opts?.onProgress,
+  });
+
+  if (failures.length > 0) {
+    throw new Error(
+      `${failures.length} column(s) failed after retries. Failed: ${failures.map((f) => f.split(":")[0]).join(", ")}`,
+    );
+  }
+  return changes;
+}
+
 export async function saveNoAuthNeededToMonday(
   p: Patient,
   codeId: ProductCodeId,

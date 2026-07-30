@@ -4,10 +4,16 @@
  * decisions D5/S5; benefits-redesign.html `renderHeader()` is the visual
  * spec — styles live in benefitsRedesign.css, scoped under .bnr).
  *
- * No edit mode, no edit toggle: Serving, Primary/Secondary Insurance,
- * Member IDs and everything else are finalized at Profile Send-Off.
- * The prototype's DEMO dropdowns are deliberately absent (production
- * strips them, spec §6). Every value is user-select-all for one-click copy.
+ * Read-only for reps: Serving, Primary/Secondary Insurance, Member IDs and
+ * everything else are finalized at Profile Send-Off. The prototype's DEMO
+ * dropdowns are deliberately absent (production strips them, spec §6). Every
+ * value is user-select-all for one-click copy.
+ *
+ * ONE exception, 2026-07-30: pass `managerEdit` and an "Edit insurance" button
+ * appears, opening `ManagerIdentityEditDialog`. The three pages that render this
+ * header set it only when the URL says the visitor came from an oversight
+ * ESCALATION column (`?mv=manager-intervention` / `final-decisions`) — a rep's
+ * page, and Processor Overview, stay read-only.
  *
  * Stedi strip: Home Plan / Coverage Type / Medicaid ID / Active? have no
  * Insurance-board columns yet — the strip shows what the board carries
@@ -18,6 +24,7 @@ import { useState } from "react";
 import { ChevronDown } from "lucide-react";
 import type { Patient } from "@/lib/samantha/workflow";
 import { authHomePlan } from "@/lib/samantha/submitAuthRules";
+import { ManagerIdentityEditDialog } from "./ManagerIdentityEditDialog";
 import "./benefitsRedesign.css";
 
 function formatPhone(raw: string): string {
@@ -52,9 +59,15 @@ function SBox({ label, value, strong }: { label: string; value: string; strong?:
 
 interface Props {
   patient: Patient;
+  /** Manager escalation view: show the "Edit insurance" affordance. */
+  managerEdit?: boolean;
+  /** Stage label for the correction's note stamp ("Benefits" / …). */
+  stage?: string;
+  /** Called after a correction lands on Monday — pages refetch. */
+  onIdentitySaved?: () => void;
 }
 
-export function BenefitsPatientHeader({ patient }: Props) {
+export function BenefitsPatientHeader({ patient, managerEdit, stage, onIdentitySaved }: Props) {
   const [detailsOpen, setDetailsOpen] = useState(false);
 
   const isMedicarePayer = /medicare/i.test(patient.primaryInsurance ?? "");
@@ -74,6 +87,13 @@ export function BenefitsPatientHeader({ patient }: Props) {
             <span style={{ userSelect: "all" }}>{formatPhone(patient.patientPhone ?? "") || "—"}</span>
           </div>
         </div>
+        {managerEdit && (
+          <ManagerIdentityEditDialog
+            patient={patient}
+            stage={stage ?? "Benefits"}
+            onSaved={onIdentitySaved}
+          />
+        )}
       </div>
 
       <div className="ph-groups">

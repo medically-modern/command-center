@@ -404,6 +404,20 @@ columns" automation on duplicated items). The SPA only flips the advancer; verif
   back-nav note in §9). **Keep oversight reads on the gateway:** `oversightApi.ts` must route through
   `MONDAY_API_URL`/`mondayIdentityHeaders` from `shared/mondayEndpoint`, *not* hardcode
   `api.monday.com` (a handoff once regressed this — reads would then bypass token-injection + audit).
+  **Manager-only insurance edit (2026-07-30):** the otherwise read-only `BenefitsPatientHeader` grows
+  an "Edit insurance" button — Serving · Primary/Secondary Insurance · Member ID 1/2 — but ONLY when
+  the URL says the visitor came from an escalation column (`isManagerEscalationView(mv)` = manager-
+  intervention | final-decisions; **Processor Overview and rep pages stay read-only**). Most Insurance
+  escalations ARE one of those five being wrong, and the alternative was editing Monday directly.
+  `lib/samantha/managerIdentityEdit` (pure: diff + note + product impact) + `saveManagerIdentityEdits`
+  (verified write, `stageColumnId: []` — no automation triggers on these columns; every one that
+  mentions them triggers on Stage Advancer). Two rules worth keeping: the dropdowns and the write's
+  `expectedText` both come from the **live board labels** (`fetchStatusOptions`), never from
+  `PRIMARY_INSURANCE_OPTIONS`/`SERVING_OPTIONS` — those parse machine writes and have already drifted
+  ("Magnacare" vs "MagnaCare", no "Fidelis CHP"); and only CHANGED fields are written, which is what
+  makes read-back verification meaningful (snapshot-diff alone treats a silently-failed write as a
+  same-value write). Changing Serving or Primary/Secondary re-runs `resolveHcpcs`, so the dialog warns
+  which products enter/leave play before committing.
 - **System Management** (`/system-mgmt`, `lib/systemMgmt/mondayApi.ts`) aggregates counts/pipeline
   across *all* boards (hardcoded board + stage-advancer column IDs); `OperationsTab` + `PipelineChart`
   render burndown and day-bucket distributions.

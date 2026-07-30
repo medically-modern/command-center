@@ -51,7 +51,7 @@ import { ReportIssueButton } from "@/components/shared/ReportIssueButton";
 import { ClinicalsDownloadButton } from "@/components/samantha/ClinicalsDownloadButton";
 import { StageActionBar } from "@/components/shared/StageActionBar";
 import { viewFilterFromParams } from "@/lib/roleView";
-import { managerOriginFromParams, managerChartFromParams, managerBucketFromParams } from "@/lib/shared/managerOrigin";
+import { managerOriginFromParams, managerChartFromParams, managerBucketFromParams, isManagerEscalationView } from "@/lib/shared/managerOrigin";
 import { railFilterFor, applyRail } from "@/lib/samantha/managerRail";
 import { sidebarVisibleList } from "@/lib/samantha/sidebarList";
 import { cn } from "@/lib/utils";
@@ -230,7 +230,12 @@ const SubmitAuthPage = () => {
                 {selected && (
                   <div className="layout">
                     <div className="main-col">
-                      <BenefitsPatientHeader patient={selected} />
+                      <BenefitsPatientHeader
+                        patient={selected}
+                        managerEdit={isManagerEscalationView(managerOrigin)}
+                        stage="Submit Auth"
+                        onIdentitySaved={() => refetch(true)}
+                      />
 
                       {selected.id === lastSentId ? (
                         <section className="card step-card">
