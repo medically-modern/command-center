@@ -32,7 +32,7 @@ import {
 import { NoteLog, stampNote } from "@/components/profile/NoteLog";
 import {
   suggestPrimary, suggestSecondary, buildSuggestionInputs, isCoverageActive, isNyMedicaidId,
-  managedMedicaidMco, primaryPayerMismatch, truthy,
+  maFamilyLabel, managedMedicaidMco, primaryPayerMismatch, truthy,
 } from "@/lib/profile/primaryInsurance";
 import { computeFirstAndRecurring } from "@/lib/profile/oopEstimate";
 import { interpretStediError } from "@/lib/profile/stediErrors";
@@ -1021,16 +1021,29 @@ function ProfileBody(p: BodyProps) {
                         MA?=Yes but the coverage on file isn't the MA plan
                         itself. Suppressed when the COB-mismatch banner
                         (below) already fires — same re-run instruction.
-                        KNOWN GAP (verified live 2026-07-29): for
-                        Wellcare-Fidelis D-SNPs no route we hold IDs for
-                        returns the MA product — 11315 AND its 11315MA alias
-                        return only the MMC record even when queried with the
-                        MBI; Wellcare (EGASA) and Centene (IMJGY) don't
-                        recognize the Fidelis ID or the MBI — so the re-run
-                        needs the member's MA card ID. */}
+                        SAME-CARRIER SUPPRESSION (Brandon, 2026-07-29 #2):
+                        when the payer that answered IS the MA plan's own
+                        organization, its accumulators are the operative
+                        dual cost sharing and the banner must NOT fire —
+                        verified against the Fidelis provider portal: the
+                        11315 "MMC" 271 returns deductible 283/283/0 and
+                        MOOP 9250/1571.22/7678.78, matching the portal
+                        exactly (MA-shaped accumulators; Medicaid MMC has
+                        no deductible — Fidelis administers both halves of
+                        the aligned dual and reports one set). So: Fidelis
+                        check on a Fidelis/Wellcare dual → no banner;
+                        eMedNY check → banner (NYSDOH genuinely cannot see
+                        the MA side; its snapshot shows — / $0 tiles).
+                        Family match via maFamilyLabel on both names
+                        ("Fidelis Care New York" and "Wellcare Fidelis
+                        Dual Liberty Sync" both → Fidelis Medicare). */}
                     {truthy(pt.stediMedicareAdvantage)
                       && (pt.stediCoverageType || "").trim() !== "Medicare Advantage"
-                      && !ppMismatch && (
+                      && !ppMismatch
+                      && !(
+                        maFamilyLabel(pt.stediPayerName || "") !== ""
+                        && maFamilyLabel(pt.stediPayerName || "") === maFamilyLabel(pt.stediMedicareAdvantageCarrier || "")
+                      ) && (
                       <div className="warn-banner" style={{ marginTop: 16 }}>
                         <AlertTriangle className="h-4 w-4" />
                         <span><b>Cost sharing below is not the primary (MA) plan's.</b> These figures are from the {(pt.stediCoverageType || "non-MA").trim()}-side record on file — {pt.stediMedicareAdvantageCarrier || "the MA plan"} pays primary and its co-insurance / deductible / OOP are not shown. To see the MA plan's cost sharing, run a Stedi check against the MA payer using the member's MA card ID.{truthy(pt.stediQmb) ? " QMB: member responsibility is $0 by federal protection regardless." : ""}</span>
