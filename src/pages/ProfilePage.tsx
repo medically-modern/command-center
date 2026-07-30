@@ -991,12 +991,16 @@ function ProfileBody(p: BodyProps) {
                     {/* Medicare Advantage / dual — rendered from the MA columns
                         the backend already writes (previously invisible in the
                         UI, same class of bug as the original Managed Medicaid
-                        column). QMB dual gets the stronger D-SNP wording. */}
+                        column). QMB dual gets the stronger dual wording — no
+                        "likely D-SNP" guess (Brandon, 2026-07-29): almost
+                        always D-SNP, but a QMB member can sit in a regular MA
+                        plan (real case: Aetna Medicare Enhanced Extra PPO with
+                        QMB), so state the facts without the plan-type guess. */}
                     {truthy(pt.stediMedicareAdvantage) && (
                       <div className="warn-banner" style={{ marginTop: 16 }}>
                         <AlertTriangle className="h-4 w-4" />
                         {truthy(pt.stediQmb) ? (
-                          <span><b>Medicare Advantage detected — {pt.stediMedicareAdvantageCarrier || pt.stediPayerName}.</b> QMB dual — likely D-SNP; Medicaid is cost-share secondary only. Bill this payer (not Medicare A&B, not straight Medicaid) — verify network before serving.</span>
+                          <span><b>Medicare Advantage detected — {pt.stediMedicareAdvantageCarrier || pt.stediPayerName}.</b> QMB dual — Medicaid is cost-share secondary only. Bill this payer (not Medicare A&B, not straight Medicaid) — verify network before serving.</span>
                         ) : (
                           <span><b>Medicare Advantage detected — {pt.stediMedicareAdvantageCarrier || pt.stediPayerName}.</b> Bill this payer — not straight Medicare A&B.</span>
                         )}
@@ -1062,12 +1066,40 @@ function ProfileBody(p: BodyProps) {
                       <ResCell label="Payer Name" value={pt.stediPayerName} />
                       {/* Always shown (Brandon, 2026-07-20): who is actually
                           PRIMARY per the check. Red when it names a different
-                          payer than the one checked. */}
-                      <ResCell label="Primary Payer" value={pt.stediPrimaryPayer} bad={ppMismatch} />
+                          payer than the one checked. When the check itself
+                          carried no COB record (Primary Payer = echo of the
+                          checked payer) but the MA columns say the member has
+                          a Medicare Advantage plan, the MA plan IS the primary
+                          — show it (Brandon, 2026-07-29: eMedNY check on a
+                          dual said "Primary Payer: NYSDOH"). A genuine COB
+                          mismatch (red) always wins over the MA substitution. */}
+                      <ResCell
+                        label="Primary Payer"
+                        value={
+                          !ppMismatch && truthy(pt.stediMedicareAdvantage) && (pt.stediMedicareAdvantageCarrier || "").trim()
+                            ? pt.stediMedicareAdvantageCarrier
+                            : pt.stediPrimaryPayer
+                        }
+                        bad={ppMismatch}
+                      />
                       <ResCell label="Plan Begin Date" value={pt.stediPlanBeginDate} />
                     </div>
                     <div className="res-grid" style={{ gridTemplateColumns: `repeat(${4 + (pt.stediQmb ? 1 : 0) + (pt.generalInsurance === "Medicaid" ? 1 : 0)},1fr)`, marginTop: 10 }}>
-                      <ResCell label="Coverage Type" value={pt.stediCoverageType} />
+                      {/* Coverage Type stays faithful to the CHECKED payer's
+                          271 in the Monday column (a dual's Medicaid MCO
+                          answers with the MMC record, so "Medicaid" is what
+                          that payer said) — the resolver/classifier and this
+                          engine string-match the column, so do NOT rewrite the
+                          data. Display-only dual context here (Brandon,
+                          2026-07-29, Jack Omilanowicz). */}
+                      <ResCell
+                        label="Coverage Type"
+                        value={
+                          truthy(pt.stediMedicareAdvantage) && (pt.stediCoverageType || "").trim() && pt.stediCoverageType !== "Medicare Advantage"
+                            ? `${pt.stediCoverageType} (dual — MA primary)`
+                            : pt.stediCoverageType
+                        }
+                      />
                       <ResCell label="Plan Name" value={pt.stediPlanName} />
                       <ResCell label="Home Plan" value={pt.stediHomePlan} />
                       <ResCell label="Medicaid ID" value={isNyMedicaidId(pt.stediMedicaidId) ? pt.stediMedicaidId : ""} />

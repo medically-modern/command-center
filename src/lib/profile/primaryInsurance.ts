@@ -66,6 +66,27 @@ export interface StediSnapshot {
    *  Section-111 claims processor, not the member-facing brand (Anthony
    *  Thompson: "BLUE CROSS BLUE SHIELD S.C." was actually Florida Blue). */
   primaryPayer: string;
+  /** MA plan/carrier name (text_mm25pyfx) — written by Medicare-side checks
+   *  (direct or the backend's D-SNP MBI chain). Lets non-Medicare branches
+   *  route duals to the MA family instead of straight Medicaid (Brandon,
+   *  2026-07-29, Jack Omilanowicz: eMedNY check suggested "Medicaid" for a
+   *  member whose claims belong to Wellcare Fidelis Dual Liberty Sync). */
+  maCarrier: string;
+}
+
+/** Map an MA plan/carrier name to a board Primary Insurance family label.
+ *  FIDELIS is tested before WELLCARE: the Fidelis D-SNPs are Wellcare-branded
+ *  ("Wellcare Fidelis Dual Liberty Sync") but bill as Fidelis Medicare. */
+export function maFamilyLabel(maCarrier: string): string {
+  const n = (maCarrier || "").toUpperCase();
+  if (!n.trim()) return "";
+  if (/FIDELIS/.test(n)) return "Fidelis Medicare";
+  if (/WELLCARE/.test(n)) return "Wellcare";
+  if (/UNITED|\bUHC\b|OXFORD/.test(n)) return "United Medicare";
+  if (/ANTHEM|EMPIRE/.test(n)) return "Anthem BCBS Medicare";
+  if (/AETNA/.test(n)) return "Aetna Medicare";
+  if (/HUMANA/.test(n)) return "Humana";
+  return "";
 }
 
 /** Managed-Medicaid MCO name, or "" when blank or Stedi's "—" none-marker. */
@@ -352,6 +373,28 @@ function otherPayerSuggest(inp: SuggestionInputs): Suggestion {
     o.value = "Medicare A&B"; o.confidence = "high"; o.reason = "Straight Medicare A&B."; return o;
   }
   if (carrier === "medicaid") {
+    // MA dual gate (Brandon, 2026-07-29 — Jack Omilanowicz): when the MA
+    // columns say the member has a Medicare Advantage plan, straight
+    // Medicaid must never be the pick — the MA payer owns the claims and
+    // Medicaid is cost-share secondary only. Suggest the MA family mapped
+    // from the MA plan name (medium confidence — rep verifies), or
+    // withhold the pick when the carrier is unmapped. Checked BEFORE the
+    // CGM-only Medicaid block: an MA member isn't a Medicaid-only serve.
+    if (s.ma === true) {
+      const maName = (s.maCarrier || "").trim();
+      const mapped = maFamilyLabel(maName);
+      o.value = mapped || null;
+      o.confidence = mapped ? "medium" : "low";
+      o.reason = mapped
+        ? "Medicare Advantage member (" + (maName || "per MA columns") + ") — " + mapped + " from the MA plan name; straight Medicaid is cost-share secondary only."
+        : "Medicare Advantage member — bill the MA payer, not straight Medicaid.";
+      o.warnings.push({
+        code: "MA_PRIMARY",
+        message: "Patient has a Medicare Advantage plan — " + (maName || "see MA columns") + ". Bill the MA payer, not straight Medicaid"
+          + (mapped ? " — suggested " + mapped + " from the MA plan name; verify network before serving." : ". Run the check against the MA payer to confirm the plan."),
+      });
+      return o;
+    }
     if (cgmOnlyRequested(inp.requestType)) return cantServeCgmMedicaid();
     o.value = "Medicaid"; o.confidence = "high"; o.reason = "Straight NY Medicaid (NYSDOH).";
     // NYSDOH + managed plan → supplies bill to straight Medicaid; no pump
@@ -513,6 +556,7 @@ export function buildSuggestionInputs(p: Patient): SuggestionInputs {
       mltc: truthy(p.stediMedicaidMltc ?? ""),
       managedMedicaid: managedMedicaidMco(p.stediManagedMedicaid ?? ""),
       primaryPayer: (p.stediPrimaryPayer ?? "").trim(),
+      maCarrier: (p.stediMedicareAdvantageCarrier ?? "").trim(),
     },
   };
 }

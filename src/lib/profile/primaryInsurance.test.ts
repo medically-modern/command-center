@@ -31,9 +31,63 @@ function mk(
       mltc: o.mltc ?? false,
       managedMedicaid: o.managedMedicaid ?? "",
       primaryPayer: o.primaryPayer ?? "",
+      maCarrier: o.maCarrier ?? "",
     },
   };
 }
+
+// ── MA dual gate on the straight-Medicaid branch (2026-07-29, Jack
+//    Omilanowicz): an eMedNY check on a dual suggested "Medicaid" while the
+//    MA columns said Wellcare Fidelis Dual Liberty Sync owns the claims. ──
+describe("suggestPrimary — MA dual gate on Medicaid checks", () => {
+  it("MA dual on an eMedNY check → Fidelis Medicare, never Medicaid", () => {
+    const sg = suggestPrimary(mk({
+      gins: "Medicaid", payerName: "NYSDOH", covtype: "Medicaid",
+      plan: "ELIGIBLE PCP", medid: "AG02545S", qmb: "Yes",
+      ma: true, maCarrier: "Wellcare Fidelis Dual Liberty Sync",
+      managedMedicaid: "FIDELIS CARE", primaryPayer: "NYSDOH",
+    }));
+    expect(sg?.value).toBe("Fidelis Medicare");
+    expect(sg?.warnings.some((w) => w.code === "MA_PRIMARY")).toBe(true);
+    expect(sg?.warnings.some((w) => w.code === "MANAGED_MEDICAID")).toBe(false);
+  });
+
+  it("MA dual with unmapped carrier → pick withheld, MA_PRIMARY warning", () => {
+    const sg = suggestPrimary(mk({
+      gins: "Medicaid", payerName: "NYSDOH", covtype: "Medicaid",
+      ma: true, maCarrier: "SOME REGIONAL MA PLAN", primaryPayer: "NYSDOH",
+    }));
+    expect(sg?.value).toBeNull();
+    expect(sg?.warnings.some((w) => w.code === "MA_PRIMARY")).toBe(true);
+  });
+
+  it("MA dual + QMB → secondary is NY Medicaid", () => {
+    const inp = mk({
+      gins: "Medicaid", payerName: "NYSDOH", covtype: "Medicaid",
+      medid: "AG02545S", qmb: "Yes",
+      ma: true, maCarrier: "Wellcare Fidelis Dual Liberty Sync", primaryPayer: "NYSDOH",
+    });
+    expect(suggestSecondary(inp)).toBe("NY Medicaid");
+  });
+
+  it("non-dual eMedNY check keeps the straight-Medicaid suggestion", () => {
+    const sg = suggestPrimary(mk({
+      gins: "Medicaid", payerName: "NYSDOH", covtype: "Medicaid",
+      requestType: "Supplies Only",  // CGM-only + Medicaid is Can't Serve — not this test
+      medid: "AB12345C", managedMedicaid: "HEALTH FIRST PHSP INC", primaryPayer: "NYSDOH",
+    }));
+    expect(sg?.value).toBe("Medicaid");
+    expect(sg?.warnings.some((w) => w.code === "MANAGED_MEDICAID")).toBe(true);
+  });
+
+  it("plain Wellcare (non-Fidelis) MA carrier maps to Wellcare, not Fidelis", () => {
+    const sg = suggestPrimary(mk({
+      gins: "Medicaid", payerName: "NYSDOH", covtype: "Medicaid",
+      ma: true, maCarrier: "WELLCARE HEALTH PLANS", primaryPayer: "NYSDOH",
+    }));
+    expect(sg?.value).toBe("Wellcare");
+  });
+});
 
 describe("suggestPrimary — payer routing", () => {
   it("returns null before Stedi runs", () => {
