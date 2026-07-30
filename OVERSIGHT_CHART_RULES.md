@@ -114,14 +114,20 @@ Columns:
 
 ### Processor Overview
 
+All four are **non-escalated only** (Josh 2026-07-30).
+
 | Chart | Arrives when | Leaves when |
 |---|---|---|
-| **Benefits** | Stage = `Benefits / SoS` | Stage changes |
-| **Submit Auth** | Stage = `Submit Auth.` | Stage changes |
-| **Auth Outstanding** | Stage = `Auth. Outstanding` | Stage changes |
-| **Auth Denial** | Item is in the `Auth Denied` group (group-based, not stage-based) | Moved out of that group |
+| **Benefits** | Stage = `Benefits / SoS` AND Escalation is neither Manager nor Final | Stage changes, or the patient is escalated |
+| **Submit Auth** | Stage = `Submit Auth.` AND not escalated | Same |
+| **Auth Outstanding** | Stage = `Auth. Outstanding` AND not escalated | Same |
+| **Auth Denial** | Item is in the `Auth Denied` group (group-based, not stage-based) AND not escalated | Moved out of that group, or escalated |
 
-> **Unlike Medical Evaluation, escalation does NOT remove a patient from Processor Overview.** An Insurance patient who is escalated *or* proposed stuck still appears in their stage chart. The stages are mutually exclusive by construction (one Stage Advancer value), so a DVS-stage patient never shows under Benefits/Submit Auth/Auth Outstanding.
+> **Escalation removes a patient from Processor Overview** (changed 2026-07-30 — it previously did not). This column is the processors' own queue, so a patient flagged for a manager at EITHER level belongs to columns 2/3 and drops out of here. It matches the counting contract, where a role's active count is likewise "not escalated" (§5.8), so the charts and the burndown bars now agree.
+>
+> ⚠️ **Auth Denial is affected too.** A denial sets the escalation on the same send that moves the patient to `Auth Denied`, so that chart shows only denials whose escalation has since been cleared. If it should count every denial regardless, drop the `andCols` from the `auth-denial` filter.
+>
+> The stages are mutually exclusive by construction (one Stage Advancer value), so a DVS-stage patient never shows under Benefits/Submit Auth/Auth Outstanding.
 
 ### Manager Intervention
 

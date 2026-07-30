@@ -32,7 +32,8 @@ import { EmptyPatientPane } from "@/components/shared/EmptyPatientPane";
 import { ReportIssueButton } from "@/components/shared/ReportIssueButton";
 import { Button } from "@/components/ui/button";
 import { useBackNavigation } from "@/hooks/useBackNavigation";
-import { managerChartFromParams } from "@/lib/shared/managerOrigin";
+import { managerChartFromParams, managerBucketFromParams } from "@/lib/shared/managerOrigin";
+import { railFilterFor } from "@/lib/samantha/managerRail";
 import { resolveHcpcs, isAutoFilledMedicaidSupply, PRODUCT_LABELS, type ProductId } from "@/lib/samantha/hcpcRules";
 import { allProductsDvsRouted, isStraightMedicaidPrimary, nyMedicaidCin } from "@/lib/samantha/dvsRouting";
 import { writeStatusIndex, writeLongText, COL } from "@/lib/samantha/mondayApi";
@@ -99,26 +100,6 @@ const isManualReview = (p: Patient) =>
  */
 const isQueued = (p: Patient) => p.dvsStatus === "Retry Queued" || p.pumpDvsStatus === "Retry Queued";
 
-/**
- * Rail narrowing for a click-through from Pipeline Oversight. Both DVS charts
- * live in the same manager column, so the ORIGIN can't tell them apart and the
- * chart id is what selects the predicate — arriving from "Retry Queue" must
- * not list manual-review patients, and vice versa.
- *
- * An unknown or absent chart id means no narrowing (an ordinary /dvs visit),
- * so this can never blank the rail. Declared AFTER both predicates: it reads
- * them at module-eval time, so a forward reference would be a TDZ crash.
- */
-const RAIL_FILTERS: Record<string, (p: Patient) => boolean> = {
-  // Bucket-level ids (still what CHART_FILTERS calls the two DVS rules).
-  "dvs-retry-queue": isQueued,
-  "dvs-manual-review": isManualReview,
-  // The merged Manager Intervention chart (2026-07-29): its DVS rows are the
-  // union of the two rules. (Its Propose Stuck rows are Submit Auth patients
-  // and never route here — handlePatientClick sends them to /submit-auth.)
-  "submit-auth-manager": (p) => isQueued(p) || isManualReview(p),
-};
-
 /* ── page ─────────────────────────────────────────────────────────── */
 
 const DvsPage = () => {
@@ -135,11 +116,15 @@ const DvsPage = () => {
   // Follow Up Date hides the patient from the working list until it arrives.
   const snoozed = (p: Patient) => !!p.followUpDate && p.followUpDate > todayEt;
 
-  // Narrow the rail to the oversight chart this page was opened from, so the
-  // list matches the bar chart that produced it. A deep-linked patient
-  // (?patientId=) is always kept, even when they don't match — otherwise
-  // clicking a row could open a page that doesn't list that patient.
-  const railFilter = RAIL_FILTERS[managerChartFromParams(searchParams) ?? ""];
+  // Narrow the rail to the oversight chart AND BAR this page was opened from,
+  // so the list matches what the manager clicked (lib/samantha/managerRail —
+  // shared with the Benefits / Submit Auth / Auth Outstanding pages). A
+  // deep-linked patient (?patientId=) is always kept even when they don't
+  // match, so a click can never open a page that doesn't list that patient.
+  const railFilter = railFilterFor(
+    managerChartFromParams(searchParams),
+    managerBucketFromParams(searchParams),
+  );
   const deepLinkedId = searchParams.get("patientId");
   const inRail = useMemo(
     () => (p: Patient) => !railFilter || p.id === deepLinkedId || railFilter(p),

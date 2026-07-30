@@ -47,7 +47,8 @@ import { useSearchParams } from "react-router-dom";
 import { useBackNavigation } from "@/hooks/useBackNavigation";
 import { ReportIssueButton } from "@/components/shared/ReportIssueButton";
 import { viewFilterFromParams } from "@/lib/roleView";
-import { managerOriginFromParams } from "@/lib/shared/managerOrigin";
+import { managerOriginFromParams, managerChartFromParams, managerBucketFromParams } from "@/lib/shared/managerOrigin";
+import { railFilterFor, applyRail } from "@/lib/samantha/managerRail";
 import { sidebarVisibleList } from "@/lib/samantha/sidebarList";
 
 const AuthOutstandingPage = () => {
@@ -69,9 +70,21 @@ const AuthOutstandingPage = () => {
   // as PatientsSidebar), never from the pre-fetch localStorage cache.
   const viewFilter = viewFilterFromParams(searchParams);
   const managerOrigin = managerOriginFromParams(searchParams);
+  // Opened from an oversight bar: narrow the list to that bar's patients so
+  // the sidebar matches the chart the manager clicked (lib/samantha/managerRail).
+  const rail = useMemo(
+    () => railFilterFor(managerChartFromParams(searchParams), managerBucketFromParams(searchParams)),
+    [searchParams],
+  );
+  const railPatients = useMemo(
+    () => applyRail(patients, rail, searchParams.get("patientId")),
+    [patients, rail, searchParams],
+  );
   const visiblePatients = useMemo(
-    () => sidebarVisibleList(patients, viewFilter, "authOutstanding", undefined, managerOrigin),
-    [patients, viewFilter, managerOrigin],
+    () => (rail
+      ? sidebarVisibleList(railPatients, "all", "authOutstanding", undefined, null)
+      : sidebarVisibleList(patients, viewFilter, "authOutstanding", undefined, managerOrigin)),
+    [patients, railPatients, rail, viewFilter, managerOrigin],
   );
   useAutoSelectPatient(
     initialLoading, patients, visiblePatients, selectedId, setSelectedId,
@@ -186,7 +199,7 @@ const AuthOutstandingPage = () => {
       <PageLoadingOverlay show={initialLoading} />
       <SaveProgressOverlay open={saving} phase={savePhase} />
       <div className="min-h-screen flex w-full bg-gradient-subtle">
-        <PatientsSidebar patients={patients} selectedId={selectedId} onSelect={setSelectedId} loading={loading} error={error} onRefresh={refetch} activeGroup="authOutstanding" managerMode={isManager} />
+        <PatientsSidebar patients={railPatients} selectedId={selectedId} onSelect={setSelectedId} loading={loading} error={error} onRefresh={refetch} activeGroup="authOutstanding" managerMode={isManager} />
         <div className="flex-1 flex flex-col min-w-0">
           <header className={`${isEscalated ? "bg-red-700" : "bg-gradient-navy"} text-navy-foreground border-b border-sidebar-border`}>
             <div className="px-3 sm:px-6 py-5 flex items-center justify-between gap-4 flex-wrap">

@@ -27,7 +27,7 @@ import {
 } from "@/lib/oversight/oversightApi";
 import { fuzzyNameMatch } from "@/lib/oversight/fuzzyName";
 import { extractProposedStuckReason } from "@/lib/masheke/proposedStuck";
-import { MANAGER_ORIGIN_PARAM, MANAGER_CHART_PARAM } from "@/lib/shared/managerOrigin";
+import { MANAGER_ORIGIN_PARAM, MANAGER_CHART_PARAM, MANAGER_BUCKET_PARAM } from "@/lib/shared/managerOrigin";
 import { Loader2, BarChart3, X, ExternalLink, StickyNote, Search, ArrowUp, ArrowDown, ArrowUpDown, Star, SlidersHorizontal, Plus, Trash2, RotateCcw, Flag } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -1061,7 +1061,11 @@ function DrilldownModal({
             rows: the drill-down doubles as the reference for WHICH columns a
             stage tracks, so an empty chart must still show them rather than
             collapse to a bare message. */}
-        <div className="flex-1 overflow-y-auto min-h-0">
+        {/* overflow-x is required as well as -y: manager charts mirror their
+            stage's columns, so the fixed-width table is routinely wider than
+            the viewport. Without it the right-hand columns were simply
+            unreachable rather than scrollable. */}
+        <div className="flex-1 overflow-auto min-h-0">
           <TooltipProvider delayDuration={150}>
             <table className="w-full table-fixed text-xs">
               <thead className="sticky top-0 bg-card z-10">
@@ -1085,7 +1089,10 @@ function DrilldownModal({
                     />
                   ))}
                   {onDecision && (
-                    <th className="text-left px-2 py-1.5 font-medium text-muted-foreground w-[210px]">
+                    // Pinned to the right edge: the decision is the whole
+                    // reason a manager opened this table, so it must be on
+                    // screen at rest rather than a horizontal scroll away.
+                    <th className="text-left px-2 py-1.5 font-medium text-muted-foreground w-[228px] sticky right-0 z-20 bg-card border-l border-border">
                       Decision
                     </th>
                   )}
@@ -1308,7 +1315,9 @@ function DrilldownModal({
                         );
                       })}
                       {onDecision && (
-                        <td className="px-2 py-1">
+                        // Matches the pinned header. bg-card (not transparent)
+                        // so the columns it floats over don't show through.
+                        <td className="px-2 py-1 sticky right-0 z-10 bg-card border-l border-border">
                           {isEscalateChart ? (
                             // Only a Propose Stuck row gets decision buttons —
                             // a DVS retry/manual row is a bot state with
@@ -1317,7 +1326,7 @@ function DrilldownModal({
                             // patient to the rep's queue (the two outcomes the
                             // rep's Propose Stuck dialog promises).
                             (reasonsByPatient.get(patient.id) ?? []).includes("Propose Stuck") ? (
-                              <span className="flex gap-1.5" onClick={(e) => e.stopPropagation()}>
+                              <span className="flex flex-wrap gap-1.5" onClick={(e) => e.stopPropagation()}>
                                 <button
                                   onClick={() => decide(patient.id, "escalate")}
                                   disabled={decidingId !== null}
@@ -1340,7 +1349,7 @@ function DrilldownModal({
                               <span className="text-muted-foreground text-[11px]">—</span>
                             )
                           ) : (
-                            <span className="flex gap-1.5" onClick={(e) => e.stopPropagation()}>
+                            <span className="flex flex-wrap gap-1.5" onClick={(e) => e.stopPropagation()}>
                               <button
                                 onClick={() => decide(patient.id, "approve")}
                                 disabled={decidingId !== null}
@@ -1703,30 +1712,30 @@ export default function OversightTab() {
       // that chart opened an unfiltered rep sidebar showing every Benefits
       // patient instead of the escalated ones the chart counted.
       //
-      // EXCEPT when the clicked patient carries no manager-escalation label.
-      // The reason-bucketed manager charts (2026-07-29) are populated by board
-      // FACTS — the Benefits ">5d" bar needs no escalation at all — and
-      // opening /benefits in escalated-only mode for such a patient would
-      // show a sidebar that contradicts the chart AND red-style a patient who
-      // isn't escalated. Those rows open the plain rep page with the patient
-      // pinned instead (deep-linked ?patientId= is always kept visible).
-      let managerMode = isSecondary || isTertiary;
-      if (managerMode && expandedChart === "benefits-manager-escalation") {
+      // The destination page narrows its sidebar to exactly this bar
+      // (lib/samantha/managerRail), so it also needs WHICH bar was clicked —
+      // the chart id alone would list every reason on the card.
+      if ((isSecondary || isTertiary) && selectedBucket !== "all") {
+        params.set(MANAGER_BUCKET_PARAM, selectedBucket);
+      }
+      if (isSecondary || isTertiary) {
+        // manager=1 unhides the manager actions. The rail filter is what makes
+        // the sidebar match the chart, so this no longer has to double as a
+        // list filter.
+        params.set("manager", "1");
+        // ?escalated=1 only red-styles the page, so set it only when the
+        // patient really is escalated: the reason-bucketed charts are built on
+        // board FACTS (the ">5d" bar aside, a patient can sit in one with no
+        // escalation at all) and styling them as escalated would be a lie.
         const p = (data?.get(expandedChart) ?? []).find((x) => x.id === patientId);
         const esc = (p?.cols["color_mm2vsh2f"] ?? "").trim();
-        if (esc !== "Manager Escalation Required") {
-          managerMode = false;
-          params.delete(MANAGER_CHART_PARAM);
-          params.delete(MANAGER_ORIGIN_PARAM);
+        if (esc === "Manager Escalation Required" || esc === "Final Escalation Required") {
+          params.set("escalated", "1");
         }
-      }
-      if (managerMode) {
-        params.set("manager", "1");
-        params.set("escalated", "1");
       }
       navigate(`${route}?${params.toString()}`);
     },
-    [expandedChart, navigate, data],
+    [expandedChart, navigate, data, selectedBucket],
   );
 
   // Mirror stage + drill-down state into the URL (replace, no history spam) so

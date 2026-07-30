@@ -33,6 +33,18 @@ export const MANAGER_ORIGIN_PARAM = "mv";
  */
 export const MANAGER_CHART_PARAM = "mvc";
 
+/**
+ * The reason BUCKET (bar) within that chart, when the manager clicked a
+ * specific bar rather than the card header. The Insurance manager charts are
+ * reason-bucketed, so the chart id alone would list every reason — clicking
+ * "Inactive insurance" has to land on a sidebar of inactive patients, not on
+ * every patient the card counts.
+ *
+ * Carries the bucket's display label verbatim (e.g. "Pump SoS"); pages match
+ * it against their own known labels and ignore anything unrecognised.
+ */
+export const MANAGER_BUCKET_PARAM = "mvb";
+
 const VALID: readonly ManagerOrigin[] = ["overview", "manager-intervention", "final-decisions"];
 
 function isManagerOrigin(v: string): v is ManagerOrigin {
@@ -58,4 +70,13 @@ export function managerOriginFromParams(params: URLSearchParams): ManagerOrigin 
  */
 export function managerChartFromParams(params: URLSearchParams): string | null {
   return params.get(MANAGER_CHART_PARAM) || null;
+}
+
+/**
+ * The reason bucket this page was opened from, or null when the manager
+ * opened the whole card (or on an ordinary visit). Null means "don't narrow
+ * to one bar" — never an empty list.
+ */
+export function managerBucketFromParams(params: URLSearchParams): string | null {
+  return params.get(MANAGER_BUCKET_PARAM) || null;
 }

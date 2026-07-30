@@ -1321,10 +1321,18 @@ const CHART_FILTERS: Record<string, FilterRule> = {
   "confirm-receipt-escalated-3rd":         { type: "stageAdvancer", boardId: 18406060017, value: "Confirm Receipt", andCols: [{ colId: "color_mm1x7997", index: [0] }, { colId: "numeric_mm4bhjc8", gte: 3 }] },
   "chase-fax-escalated-3rd":               { type: "stageAdvancer", boardId: 18406060017, value: "Chase Clinicals", andCols: [{ colId: "color_mm1xw7y5", value: ["Email", "Parachute"], not: true }, { colId: "color_mm1x7997", index: [0] }, { colId: "numeric_mm4bhjc8", gte: 3 }] },
   "chase-email-parachute-escalated-3rd":   { type: "stageAdvancer", boardId: 18406060017, value: "Chase Clinicals", andCols: [{ colId: "color_mm1xw7y5", value: ["Email", "Parachute"] }, { colId: "color_mm1x7997", index: [0] }, { colId: "numeric_mm4bhjc8", gte: 3 }] },
-  "benefits":           { type: "stageAdvancer", boardId: 18410601299, value: "Benefits / SoS" },
-  "submit-auth":        { type: "stageAdvancer", boardId: 18410601299, value: "Submit Auth." },
-  "auth-outstanding":   { type: "stageAdvancer", boardId: 18410601299, value: "Auth. Outstanding" },
-  "auth-denial":        { type: "group", groupId: "group_mm316hg2" },
+  // ── Insurance Processor Overview (column 1) ──
+  // NON-ESCALATED ONLY (Josh 2026-07-30): this column is the processors' own
+  // working queue, so a patient flagged for a manager — either level — belongs
+  // to columns 2/3 and drops out of here. Matches the counting contract, where
+  // a role's active count is likewise "not escalated" (useRoleCounts samActive
+  // + both baseline generators, CLAUDE.md §5.8). Escalation color_mm2vsh2f:
+  // index 0 = Manager Escalation Required, 2 = Final Escalation Required
+  // (matched by INDEX so a board rename can't silently reopen the queue).
+  "benefits":           { type: "stageAdvancer", boardId: 18410601299, value: "Benefits / SoS",    andCols: [{ colId: "color_mm2vsh2f", index: [0, 2], not: true }] },
+  "submit-auth":        { type: "stageAdvancer", boardId: 18410601299, value: "Submit Auth.",      andCols: [{ colId: "color_mm2vsh2f", index: [0, 2], not: true }] },
+  "auth-outstanding":   { type: "stageAdvancer", boardId: 18410601299, value: "Auth. Outstanding", andCols: [{ colId: "color_mm2vsh2f", index: [0, 2], not: true }] },
+  "auth-denial":        { type: "group", groupId: "group_mm316hg2", andCols: [{ colId: "color_mm2vsh2f", index: [0, 2], not: true }] },
   "welcome-call":       { type: "group", groupId: "group_mm1wvq8p" },
   "profile-review":     { type: "group", groupId: "group_mm2x8jtj" },
 

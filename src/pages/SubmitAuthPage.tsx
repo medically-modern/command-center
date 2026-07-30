@@ -51,7 +51,8 @@ import { ReportIssueButton } from "@/components/shared/ReportIssueButton";
 import { ClinicalsDownloadButton } from "@/components/samantha/ClinicalsDownloadButton";
 import { StageActionBar } from "@/components/shared/StageActionBar";
 import { viewFilterFromParams } from "@/lib/roleView";
-import { managerOriginFromParams } from "@/lib/shared/managerOrigin";
+import { managerOriginFromParams, managerChartFromParams, managerBucketFromParams } from "@/lib/shared/managerOrigin";
+import { railFilterFor, applyRail } from "@/lib/samantha/managerRail";
 import { sidebarVisibleList } from "@/lib/samantha/sidebarList";
 import { cn } from "@/lib/utils";
 import "@/components/samantha/benefitsRedesign.css";
@@ -79,9 +80,21 @@ const SubmitAuthPage = () => {
   // as PatientsSidebar), never from the pre-fetch localStorage cache.
   const viewFilter = viewFilterFromParams(searchParams);
   const managerOrigin = managerOriginFromParams(searchParams);
+  // Opened from an oversight bar: narrow the list to that bar's patients so
+  // the sidebar matches the chart the manager clicked (lib/samantha/managerRail).
+  const rail = useMemo(
+    () => railFilterFor(managerChartFromParams(searchParams), managerBucketFromParams(searchParams)),
+    [searchParams],
+  );
+  const railPatients = useMemo(
+    () => applyRail(patients, rail, searchParams.get("patientId")),
+    [patients, rail, searchParams],
+  );
   const visiblePatients = useMemo(
-    () => sidebarVisibleList(patients, viewFilter, "submitAuth", undefined, managerOrigin),
-    [patients, viewFilter, managerOrigin],
+    () => (rail
+      ? sidebarVisibleList(railPatients, "all", "submitAuth", undefined, null)
+      : sidebarVisibleList(patients, viewFilter, "submitAuth", undefined, managerOrigin)),
+    [patients, railPatients, rail, viewFilter, managerOrigin],
   );
   useAutoSelectPatient(
     initialLoading, patients, visiblePatients, selectedId, setSelectedId,
@@ -150,7 +163,7 @@ const SubmitAuthPage = () => {
       <SaveProgressOverlay open={saving} phase={savePhase} />
       <div className="min-h-screen flex w-full bg-gradient-subtle">
         <PatientsSidebar
-          patients={patients}
+          patients={railPatients}
           selectedId={selectedId}
           onSelect={setSelectedId}
           loading={loading}

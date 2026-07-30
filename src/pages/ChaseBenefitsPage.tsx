@@ -48,7 +48,8 @@ import { useSearchParams } from "react-router-dom";
 import { useBackNavigation } from "@/hooks/useBackNavigation";
 import { ReportIssueButton } from "@/components/shared/ReportIssueButton";
 import { viewFilterFromParams } from "@/lib/roleView";
-import { managerOriginFromParams } from "@/lib/shared/managerOrigin";
+import { managerOriginFromParams, managerChartFromParams, managerBucketFromParams } from "@/lib/shared/managerOrigin";
+import { railFilterFor, applyRail } from "@/lib/samantha/managerRail";
 import { sidebarVisibleList } from "@/lib/samantha/sidebarList";
 
 const ChaseBenefitsPage = () => {
@@ -75,9 +76,25 @@ const ChaseBenefitsPage = () => {
   // as PatientsSidebar), never from the pre-fetch localStorage cache.
   const viewFilter = viewFilterFromParams(searchParams);
   const managerOrigin = managerOriginFromParams(searchParams);
+  // Opened from an oversight bar: narrow the whole page's list to that bar's
+  // patients, so the sidebar the manager walks matches the chart they clicked.
+  // The rail IS the filter in that case — the escalated-only view filter and
+  // the origin narrowing would wrongly drop bar members who carry no
+  // escalation label (the ">5d" bar aside, those charts are built on board
+  // facts, not on the escalation column).
+  const rail = useMemo(
+    () => railFilterFor(managerChartFromParams(searchParams), managerBucketFromParams(searchParams)),
+    [searchParams],
+  );
+  const railPatients = useMemo(
+    () => applyRail(patients, rail, searchParams.get("patientId")),
+    [patients, rail, searchParams],
+  );
   const visiblePatients = useMemo(
-    () => sidebarVisibleList(patients, viewFilter, "benefits", undefined, managerOrigin),
-    [patients, viewFilter, managerOrigin],
+    () => (rail
+      ? sidebarVisibleList(railPatients, "all", "benefits", undefined, null)
+      : sidebarVisibleList(patients, viewFilter, "benefits", undefined, managerOrigin)),
+    [patients, railPatients, rail, viewFilter, managerOrigin],
   );
   useAutoSelectPatient(
     initialLoading, patients, visiblePatients, selectedId, setSelectedId,
@@ -181,7 +198,7 @@ const ChaseBenefitsPage = () => {
       <SaveProgressOverlay open={saving} phase={savePhase} />
       <div className="min-h-screen flex w-full bg-gradient-subtle">
         <PatientsSidebar
-          patients={patients}
+          patients={railPatients}
           selectedId={selectedId}
           onSelect={setSelectedId}
           loading={loading}
