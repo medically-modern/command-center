@@ -1006,6 +1006,26 @@ function ProfileBody(p: BodyProps) {
                         )}
                       </div>
                     )}
+                    {/* Wrong-plan benefits (Brandon, 2026-07-29 — Jack
+                        Omilanowicz): whenever the plan that ANSWERED this
+                        check isn't the plan that actually pays primary, the
+                        cost-sharing tiles below are the wrong plan's numbers.
+                        Covers the MA-dual case the COB banner can't see —
+                        neither Fidelis's nor eMedNY's 271 carried a COB
+                        record; the "someone else is primary" knowledge came
+                        from the backend's chained Medicare check (MA columns).
+                        Fires when MA?=Yes but the check that produced these
+                        benefit figures wasn't the MA plan itself. Suppressed
+                        when the COB-mismatch banner (below) already fires —
+                        that one carries the same re-run instruction. */}
+                    {truthy(pt.stediMedicareAdvantage)
+                      && (pt.stediCoverageType || "").trim() !== "Medicare Advantage"
+                      && !ppMismatch && (
+                      <div className="warn-banner" style={{ marginTop: 16 }}>
+                        <AlertTriangle className="h-4 w-4" />
+                        <span><b>Benefits below are the {(pt.stediCoverageType || "checked").trim()} plan's, not the primary's.</b> This check was answered by {pt.stediPayerName || "the checked payer"} — the co-insurance / deductible / OOP shown are that plan's numbers. The primary is {pt.stediMedicareAdvantageCarrier || "the MA plan"}: run a Stedi check against the MA payer for the primary plan's cost sharing before quoting the patient.</span>
+                      </div>
+                    )}
                     {/* §1b MSP — Medicare is SECONDARY per CMS's COB file (MSP
                         type 12/13/43: employer group health / ESRD; situational
                         auto/WC records never reach this column). Soft block —
@@ -1058,7 +1078,7 @@ function ProfileBody(p: BodyProps) {
                     {ppMismatch && (pt.stediCoverageType || "").trim() !== "Medicare A&B" && (
                       <div className="warn-banner" style={{ marginTop: 16 }}>
                         <AlertTriangle className="h-4 w-4" />
-                        <span><b>{pt.stediPayerName || "This payer"} reports {pt.stediPrimaryPayer.trim()} as PRIMARY.</b> This plan pays second — get the primary card, run the check against that payer, and verify coordination of benefits before billing.</span>
+                        <span><b>{pt.stediPayerName || "This payer"} reports {pt.stediPrimaryPayer.trim()} as PRIMARY.</b> This plan pays second — get the primary card, run the check against that payer, and verify coordination of benefits before billing. The co-insurance / deductible / OOP shown below are this plan's numbers, not the primary's — the re-run supplies the real ones.</span>
                       </div>
                     )}
                     <div className="res-grid" style={{ gridTemplateColumns: "repeat(4,1fr)", marginTop: 16 }}>
