@@ -113,52 +113,18 @@ export interface Patient {
   neverBilledCgm: boolean;
 }
 
-export const INFUSION_SET_1_OPTIONS = [
-  { index: 0, label: 'AutoSoft XC 6mm 23"' },
-  { index: 1, label: 'AutoSoft XC 6mm 32"' },
-  { index: 2, label: 'AutoSoft XC 6mm 43"' },
-  { index: 3, label: 'AutoSoft XC 9mm 23"' },
-  { index: 4, label: 'AutoSoft 30 13mm 23"' },
-  { index: 6, label: 'TruSteel 6mm 23"' },
-  { index: 7, label: 'TruSteel 6mm 32"' },
-  { index: 8, label: 'TruSteel 8mm 23"' },
-  { index: 9, label: 'TruSteel 8mm 32"' },
-  { index: 10, label: 'VariSoft 13mm 23"' },
-  { index: 11, label: 'VariSoft 13mm 32"' },
-  { index: 12, label: 'VariSoft 17mm 23"' },
-  { index: 13, label: 'Contact 6mm 23"' },
-  { index: 14, label: 'Inset 6mm 23"' },
-  { index: 15, label: 'AutoSoft XC 6mm 5"' },
-  { index: 16, label: 'AutoSoft 90 6mm 23"' },
-  { index: 17, label: 'AutoSoft 90 6mm 43"' },
-  { index: 18, label: 'AutoSoft 90 9mm 23"' },
-  { index: 19, label: 'AutoSoft 90 9mm 43"' },
-  { index: 101, label: 'Not Serving' },
-  { index: 102, label: 'Mio Advance Clear 9mm 23"' },
-];
-
-export const INFUSION_SET_2_OPTIONS = [
-  { index: 0, label: 'AutoSoft 90 6mm 23"' },
-  { index: 1, label: 'AutoSoft XC 6mm 23"' },
-  { index: 2, label: 'AutoSoft 90 6mm 43"' },
-  { index: 3, label: 'AutoSoft 90 9mm 23"' },
-  { index: 4, label: 'AutoSoft 90 9mm 43"' },
-  { index: 6, label: 'AutoSoft XC 6mm 5"' },
-  { index: 7, label: 'AutoSoft XC 6mm 32"' },
-  { index: 8, label: 'AutoSoft XC 6mm 43"' },
-  { index: 9, label: 'AutoSoft XC 9mm 23"' },
-  { index: 10, label: 'AutoSoft 30 13mm 23"' },
-  { index: 11, label: 'TruSteel 6mm 23"' },
-  { index: 12, label: 'TruSteel 6mm 32"' },
-  { index: 13, label: 'TruSteel 8mm 23"' },
-  { index: 14, label: 'TruSteel 8mm 32"' },
-  { index: 15, label: 'VariSoft 13mm 23"' },
-  { index: 16, label: 'VariSoft 13mm 32"' },
-  { index: 17, label: 'VariSoft 17mm 23"' },
-  { index: 18, label: 'Contact 6mm 23"' },
-  { index: 19, label: 'Inset 6mm 23"' },
-  { index: 101, label: 'Not Serving' },
-];
+// Infusion Set 1 / 2 options are NOT hardcoded here any more.
+//
+// They were `{ index, label }[]` tables written straight to Monday with
+// `writeStatusIndex`. The index is the only binding — the label string never
+// reaches Monday — so a deleted index writes a blank without erroring, and a
+// label the board added is simply never offered (this table stopped at index
+// 102, so it never showed QuickSet, AutoSoft XC 9 mm 43", AutoSoft 30 13 mm 43"
+// or Luer after those were added).
+//
+// The forms now read both columns live via `useStatusOptions`
+// (`lib/shared/statusOptions.ts`) and disable the control until they load.
+// Do not reintroduce a hardcoded list here.
 
 export const SUBSCRIPTION_TYPE_OPTIONS = [
   { index: 0, label: 'Sensors' },
