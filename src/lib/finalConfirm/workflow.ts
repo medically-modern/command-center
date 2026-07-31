@@ -363,52 +363,18 @@ export const REFERRAL_SOURCE_OPTIONS = [
   { index: 6, label: "Solace Advocates" },
 ];
 
-export const INFUSION_SET_1_OPTIONS = [
-  { index: 0, label: 'AutoSoft XC 6 mm 23"' },
-  { index: 1, label: 'AutoSoft XC 6 mm 32"' },
-  { index: 2, label: 'AutoSoft XC 6 mm 43"' },
-  { index: 3, label: 'AutoSoft XC 9 mm 23"' },
-  { index: 4, label: 'AutoSoft 30 13 mm 23"' },
-  { index: 6, label: 'TruSteel 6 mm 23"' },
-  { index: 7, label: 'TruSteel 6 mm 32"' },
-  { index: 8, label: 'TruSteel 8 mm 23"' },
-  { index: 9, label: 'TruSteel 8 mm 32"' },
-  { index: 10, label: 'VariSoft 13 mm 23"' },
-  { index: 11, label: 'VariSoft 13 mm 32"' },
-  { index: 12, label: 'VariSoft 17 mm 23"' },
-  { index: 13, label: 'Contact 6mm 23"' },
-  { index: 14, label: 'Inset 6mm 23"' },
-  { index: 15, label: 'AutoSoft XC 6 mm 5"' },
-  { index: 16, label: 'AutoSoft 90 6 mm 23"' },
-  { index: 17, label: 'AutoSoft 90 6 mm 43"' },
-  { index: 18, label: 'AutoSoft 90 9 mm 23"' },
-  { index: 19, label: 'AutoSoft 90 9 mm 43"' },
-  { index: 101, label: "Not Serving" },
-  { index: 102, label: 'Mio Advance Clear 9mm 23"' },
-];
-
-export const INFUSION_SET_2_OPTIONS = [
-  { index: 0, label: 'AutoSoft 90 6 mm 23"' },
-  { index: 1, label: 'AutoSoft XC 6 mm 23"' },
-  { index: 2, label: 'AutoSoft 90 6 mm 43"' },
-  { index: 3, label: 'AutoSoft 90 9 mm 23"' },
-  { index: 4, label: 'AutoSoft 90 9 mm 43"' },
-  { index: 6, label: 'AutoSoft XC 6 mm 5"' },
-  { index: 7, label: 'AutoSoft XC 6 mm 32"' },
-  { index: 8, label: 'AutoSoft XC 6 mm 43"' },
-  { index: 9, label: 'AutoSoft XC 9 mm 23"' },
-  { index: 10, label: 'AutoSoft 30 13 mm 23"' },
-  { index: 11, label: 'TruSteel 6 mm 23"' },
-  { index: 12, label: 'TruSteel 6 mm 32"' },
-  { index: 13, label: 'TruSteel 8 mm 23"' },
-  { index: 14, label: 'TruSteel 8 mm 32"' },
-  { index: 15, label: 'VariSoft 13 mm 23"' },
-  { index: 16, label: 'VariSoft 13 mm 32"' },
-  { index: 17, label: 'VariSoft 17 mm 23"' },
-  { index: 18, label: 'Contact 6 mm 23"' },
-  { index: 19, label: 'Inset 6 mm 23"' },
-  { index: 101, label: "Not Serving" },
-];
+// Infusion Set 1 / 2 options are NOT hardcoded here any more.
+//
+// They were `{ index, label }[]` tables written straight to Monday with
+// `writeStatusIndex`. The index is the only binding — the label string never
+// reaches Monday — so a deleted index writes a blank without erroring, and a
+// label the board added is simply never offered (this table stopped at index
+// 102, so it never showed QuickSet, AutoSoft XC 9 mm 43", AutoSoft 30 13 mm 43"
+// or Luer after those were added).
+//
+// The forms now read both columns live via `useStatusOptions`
+// (`lib/shared/statusOptions.ts`) and disable the control until they load.
+// Do not reintroduce a hardcoded list here.
 
 export const SUBSCRIPTION_TYPE_OPTIONS = [
   { index: 0, label: "Sensors" },
@@ -501,9 +467,58 @@ export function formatDateMDY(raw: string): string {
 
 /* ─── Validation ─── */
 
-/** No fields are required — user can send at any time */
-export function validatePatientForSend(_p: Patient): { valid: boolean; errors: string[] } {
-  return { valid: true, errors: [] };
+/**
+ * Almost nothing is required — a rep can send at any time. The one invariant
+ * enforced here is the sensors-only contradiction.
+ *
+ * A patient on Subscription Type "Sensors" is not receiving pump supplies, so
+ * both infusion set columns must read "Not Serving". The Sensors selector tries
+ * to set that automatically, but it resolves "Not Serving" from the live board
+ * and cannot when the options have not loaded — and it must not guess an index.
+ * Previously that left the pump-side infusion set sitting on a patient now
+ * marked sensors-only, with `sendPatientToMonday` happily writing that product
+ * index onto the sensors record. A toast alone did not stop it: the rep can
+ * miss or dismiss it, and the send still goes through.
+ *
+ * So it blocks the send instead. This also catches the inconsistency however it
+ * arose, not just via the Sensors selector. It reads the LABEL rather than the
+ * index, so it stays correct no matter how the board is renumbered.
+ */
+export function validatePatientForSend(p: Patient): { valid: boolean; errors: string[] } {
+  const errors: string[] = [];
+
+  // The INDEX is what gets written, so the index has to be part of the test.
+  // Checking only the label leaves a hole: an item whose stored index points at
+  // a label that no longer exists reads back with empty text but a non-null
+  // index, so a label-only check would wave it through while `sendPatientToMonday`
+  // writes that dead index straight back onto a sensors record. A blank label
+  // with a null index is genuinely unset and writes nothing, so that stays fine.
+  const stillServing = (label: string, index: number | null) => {
+    const l = (label ?? "").trim();
+    return l !== "Not Serving" && (l !== "" || index !== null);
+  };
+  const describe = (label: string, index: number | null) =>
+    (label ?? "").trim() || `index ${index}, no label on the board`;
+
+  if (p.subscriptionType === "Sensors") {
+    const stuck = [
+      stillServing(p.infusionSet1, p.infusionSet1Index)
+        ? `Infusion Set 1 (${describe(p.infusionSet1, p.infusionSet1Index)})`
+        : null,
+      stillServing(p.infusionSet2, p.infusionSet2Index)
+        ? `Infusion Set 2 (${describe(p.infusionSet2, p.infusionSet2Index)})`
+        : null,
+    ].filter(Boolean);
+    if (stuck.length > 0) {
+      errors.push(
+        `Subscription Type is "Sensors" but ${stuck.join(" and ")} ${stuck.length === 1 ? "is" : "are"} still set — ` +
+          `set them to "Not Serving" before sending. (If the infusion set dropdowns are disabled, ` +
+          `their options are still loading from Monday; they re-enable automatically.)`,
+      );
+    }
+  }
+
+  return { valid: errors.length === 0, errors };
 }
 
 /* ─── Split Order Helpers ───────────────────────────────────────
@@ -525,7 +540,6 @@ const NOT_SERVING_INDEX = {
   ipCoveragePath: 7,
   pumpType: 3,
   cgmType: 9,
-  infusionSet: 101,
   authResult: 7,
 } as const;
 
@@ -598,7 +612,18 @@ export function describeSplitEligibility(p: Patient): string {
  * Order Handling is forced to "Separate" on BOTH sides — this is the
  * visual signal that the item is half of a split.
  */
-export function getSplitOverrides(side: SplitSide, original: Patient): Partial<Patient> {
+export function getSplitOverrides(
+  side: SplitSide,
+  original: Patient,
+  /**
+   * "Not Serving" indexes for Infusion Set 1 / 2, resolved from the LIVE board
+   * by the caller. Previously a hardcoded 101 that rode this overlay into a real
+   * Monday write on the sensors side — the last hardcoded infusion index in the
+   * app. The two columns are resolved separately because nothing guarantees they
+   * assign "Not Serving" the same index.
+   */
+  infusionNotServing: { set1: number; set2: number },
+): Partial<Patient> {
   if (side === "supplies") {
     // Original Serving "Insulin Pump + CGM" (3) → "Insulin Pump" (0)
     // Original Serving "Supplies + CGM" (4)   → "Supplies Only" (1)
@@ -670,9 +695,9 @@ export function getSplitOverrides(side: SplitSide, original: Patient): Partial<P
     ipCoveragePath: "Not Serving",
     pumpTypeIndex: NOT_SERVING_INDEX.pumpType,
     pumpType: "Not Serving",
-    infusionSet1Index: NOT_SERVING_INDEX.infusionSet,
+    infusionSet1Index: infusionNotServing.set1,
     infusionSet1: "Not Serving",
-    infusionSet2Index: NOT_SERVING_INDEX.infusionSet,
+    infusionSet2Index: infusionNotServing.set2,
     infusionSet2: "Not Serving",
     // Clear (not zero) — Monday automations gated on "is empty" only fire
     // when the cell is cleared, not when it holds 0.

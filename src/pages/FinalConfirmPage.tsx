@@ -24,7 +24,9 @@ import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { RotateCcw, ShieldCheck, ArrowLeft, AlertTriangle, Save } from "lucide-react";
 import { toast } from "sonner";
 import { sendPatientToMonday } from "@/lib/finalConfirm/mondayWrite";
-import { duplicateItem, writeStatusIndex, writeDate, writeLongText, COL } from "@/lib/finalConfirm/mondayApi";
+import { duplicateItem, writeStatusIndex, writeDate, writeLongText, BOARD_ID, COL } from "@/lib/finalConfirm/mondayApi";
+import { useStatusOptions } from "@/hooks/useStatusOptions";
+import { indexForLabel } from "@/lib/shared/statusOptions";
 import { EscalationFormModal } from "@/components/shared/EscalationFormModal";
 import { PageLoadingOverlay } from "@/components/shared/PageLoadingOverlay";
 import { EmptyPatientPane } from "@/components/shared/EmptyPatientPane";
@@ -166,8 +168,30 @@ const FinalConfirmPage = () => {
    *
    * No column writes happen here — those happen per profile on Submit.
    */
+  // Live infusion-set options, shared (and cached) with PatientInfoCard — the
+  // split path needs to resolve "Not Serving" against the real board.
+  const { options: infusionOptions } = useStatusOptions(BOARD_ID, [
+    COL.infusionSet1,
+    COL.infusionSet2,
+  ]);
+
   const handleSplit = async () => {
     if (!selected) return;
+
+    // The sensors half of a split gets its infusion sets set to "Not Serving",
+    // and that index reaches Monday. Resolve it from the LIVE board and abort
+    // BEFORE duplicateItem if we can't — a guessed index writes a blank without
+    // erroring, and aborting here means nothing has been created yet.
+    const ns1 = indexForLabel(infusionOptions[COL.infusionSet1] ?? [], "Not Serving");
+    const ns2 = indexForLabel(infusionOptions[COL.infusionSet2] ?? [], "Not Serving");
+    if (ns1 === null || ns2 === null) {
+      toast.error("Can't split yet — infusion set options haven't loaded from Monday", {
+        description: "Nothing was created. Wait a moment and try again.",
+      });
+      return;
+    }
+    const infusionNotServing = { set1: ns1, set2: ns2 };
+
     const originalSide: SplitSide = determineOriginalSide(selected);
     const otherSide: SplitSide = originalSide === "supplies" ? "sensors" : "supplies";
     try {
@@ -197,7 +221,7 @@ const FinalConfirmPage = () => {
       }
 
       // Apply overrides + _splitCreated flag to the existing (original) patient.
-      const originalOverrides = { ...getSplitOverrides(originalSide, selected), _splitCreated: true };
+      const originalOverrides = { ...getSplitOverrides(originalSide, selected, infusionNotServing), _splitCreated: true };
       update(selected.id, originalOverrides);
 
       // Build the duplicate patient locally (clone of original + opposite-side
@@ -205,7 +229,7 @@ const FinalConfirmPage = () => {
       // sidebar and Days Since stay in sync even if Monday's writes are
       // briefly out of date relative to our local view.
       const otherOverrides = {
-        ...getSplitOverrides(otherSide, selected),
+        ...getSplitOverrides(otherSide, selected, infusionNotServing),
         _splitCreated: true,
         name: selected.name,
         dateOfStageStart: selected.dateOfStageStart,

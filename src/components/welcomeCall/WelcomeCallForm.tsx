@@ -2,8 +2,6 @@ import { useState, useEffect } from "react";
 import type { Patient } from "@/lib/welcomeCall/workflow";
 import {
   CGM_TYPE_OPTIONS,
-  INFUSION_SET_1_OPTIONS,
-  INFUSION_SET_2_OPTIONS,
   SUBSCRIPTION_TYPE_OPTIONS,
   servingIncludesCgm,
   PUMP_TYPE_OPTIONS,
@@ -13,6 +11,8 @@ import {
   needsPriorPumpDate,
   expectedSubscriptionType,
 } from "@/lib/welcomeCall/workflow";
+import { BOARD_ID, COL } from "@/lib/welcomeCall/mondayApi";
+import { useStatusOptions } from "@/hooks/useStatusOptions";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
@@ -71,11 +71,14 @@ function InfusionSetCombobox({
   value,
   onSelect,
   placeholder = "Select option",
+  disabled = false,
 }: {
   options: { index: number; label: string }[];
   value: number | null;
   onSelect: (label: string, index: number | null) => void;
   placeholder?: string;
+  /** True while live board options are loading or failed to load. */
+  disabled?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const selected = options.find((o) => o.index === value);
@@ -87,6 +90,7 @@ function InfusionSetCombobox({
           variant="outline"
           role="combobox"
           aria-expanded={open}
+          disabled={disabled}
           className="w-full justify-between font-normal"
         >
           <span className="truncate">
@@ -153,6 +157,20 @@ function QtySelect({
 
 export function WelcomeCallForm({ patient, onFieldChange, onSendWelcomeCallText }: Props) {
   const [sendingWelcomeText, setSendingWelcomeText] = useState(false);
+  // Infusion-set options are read from the LIVE board, never a hardcoded table —
+  // the index is the only thing that reaches Monday, so a deleted index writes a
+  // blank without erroring. See `lib/shared/statusOptions.ts`.
+  const { options: liveOptions, loading: optionsLoading, error: optionsError, ready: optionsReady } =
+    useStatusOptions(BOARD_ID, [COL.infusionSet1, COL.infusionSet2]);
+  const infusionSet1Options = liveOptions[COL.infusionSet1] ?? [];
+  const infusionSet2Options = liveOptions[COL.infusionSet2] ?? [];
+  const infusionDisabled = !optionsReady;
+  const infusionHint = optionsError
+    ? `Couldn't load infusion sets from Monday: ${optionsError}`
+    : optionsLoading
+      ? "Loading infusion sets from Monday…"
+      : null;
+
   const handleSelectChange = (field: string, value: string, index: number | null) => {
     onFieldChange(field as keyof Patient, value);
     onFieldChange(`${field}Index` as keyof Patient, index);
@@ -401,13 +419,17 @@ export function WelcomeCallForm({ patient, onFieldChange, onSendWelcomeCallText 
               <div>
                 <label className="text-xs text-muted-foreground block mb-1">Set Type</label>
                 <InfusionSetCombobox
-                  options={INFUSION_SET_1_OPTIONS}
+                  options={infusionSet1Options}
+                  disabled={infusionDisabled}
                   value={patient.infusionSet1Index}
                   onSelect={(label, index) =>
                     handleSelectChange("infusionSet1", label, index)
                   }
                   placeholder="Search infusion sets..."
                 />
+                {infusionHint && (
+                  <p className="mt-1 text-[11px] text-muted-foreground">{infusionHint}</p>
+                )}
               </div>
               <div>
                 <label className="text-xs text-muted-foreground block mb-1">Quantity</label>
@@ -432,13 +454,17 @@ export function WelcomeCallForm({ patient, onFieldChange, onSendWelcomeCallText 
               <div>
                 <label className="text-xs text-muted-foreground block mb-1">Set Type</label>
                 <InfusionSetCombobox
-                  options={INFUSION_SET_2_OPTIONS}
+                  options={infusionSet2Options}
+                  disabled={infusionDisabled}
                   value={patient.infusionSet2Index}
                   onSelect={(label, index) =>
                     handleSelectChange("infusionSet2", label, index)
                   }
                   placeholder="Search infusion sets..."
                 />
+                {infusionHint && (
+                  <p className="mt-1 text-[11px] text-muted-foreground">{infusionHint}</p>
+                )}
               </div>
               <div>
                 <label className="text-xs text-muted-foreground block mb-1">Quantity</label>
