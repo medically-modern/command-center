@@ -1,16 +1,23 @@
 /**
- * Verified vs Unverified referral split for the Profile Send Off board —
- * one Monday group (1. Intake), two app roles, same pattern as the Chase
- * Clinicals fax/parachute split (CLAUDE.md §5.9):
+ * Verified / Unverified / Already-In-System split for the Profile Send Off
+ * board — one Monday group (1. Intake), THREE app roles, same pattern as the
+ * Chase Clinicals fax/parachute split (CLAUDE.md §5.9):
  *
+ *   inSystemReferrals ("Already In System", /in-system-referrals) —
+ *     Already In System = "Yes". Checked FIRST, so an already-in-system
+ *     patient works out of this queue no matter what referral type/source
+ *     they carry.
  *   unverifiedReferrals ("Unverified Referrals", /unverified-referrals) —
  *     Referral Type "Patient" OR Referral Source "CareCentrix".
  *   profile ("Verified Referrals", /profile) — everyone else.
  *
- * This function is the canonical rule for the SPA (ProfilePage + tests).
- * The SAME rule is duplicated where this module can't be imported —
- * change all of them together or the burndown/oversight counts drift
- * (§5.8 counting contract):
+ * The three are MUTUALLY EXCLUSIVE and cover the whole group: every active
+ * intake patient lands in exactly one queue, so the role counts still sum to
+ * the group total (§5.8 counting contract) and no patient is worked twice.
+ *
+ * `profileReferralRole` is the canonical rule for the SPA (ProfilePage +
+ * tests). The SAME rule is duplicated where this module can't be imported —
+ * change all of them together or the burndown/oversight counts drift:
  *   1. src/hooks/useRoleCounts.ts        (profile board count task)
  *   2. scripts/snapshot-baseline.mjs     (build-time baseline, plain JS)
  *   3. services/baseline-cron/index.mjs  (9 AM Railway baseline, plain JS)
@@ -23,6 +30,11 @@
  *  between roles. */
 export const UNVERIFIED_REFERRAL_TYPE = "Patient";
 export const UNVERIFIED_REFERRAL_SOURCE = "CareCentrix";
+/** Already In System (color_mm2xe7r8) labels: "Yes" / "No" (blank = unset). */
+export const IN_SYSTEM_YES = "Yes";
+
+/** Which of the three intake roles a patient belongs to. */
+export type ProfileReferralRole = "inSystem" | "unverified" | "verified";
 
 /**
  * True when a patient belongs to the Unverified Referrals role.
@@ -30,6 +42,9 @@ export const UNVERIFIED_REFERRAL_SOURCE = "CareCentrix";
  * NOTE: the Referral SOURCE column also has a "Patient" label — only the
  * Referral TYPE column routes "Patient" to Unverified. A patient-sourced
  * referral with, say, a Manufacturer type stays with Verified Referrals.
+ *
+ * This ignores Already In System — use `profileReferralRole` for the actual
+ * queue a patient lands in.
  */
 export function isUnverifiedReferral(
   referralType: string | null | undefined,
@@ -41,4 +56,24 @@ export function isUnverifiedReferral(
     type === UNVERIFIED_REFERRAL_TYPE.toLowerCase() ||
     source === UNVERIFIED_REFERRAL_SOURCE.toLowerCase()
   );
+}
+
+/** True when the Already In System status column says "Yes" (blank/"No"/any
+ *  other value = not in system, so an unset column can never hide a patient
+ *  from the verified/unverified queues). */
+export function isAlreadyInSystem(alreadyInSystem: string | null | undefined): boolean {
+  return (alreadyInSystem ?? "").trim().toLowerCase() === IN_SYSTEM_YES.toLowerCase();
+}
+
+/**
+ * The one queue a Profile Send Off intake patient belongs to.
+ * Already In System wins over the referral type/source split.
+ */
+export function profileReferralRole(
+  referralType: string | null | undefined,
+  referralSource: string | null | undefined,
+  alreadyInSystem: string | null | undefined,
+): ProfileReferralRole {
+  if (isAlreadyInSystem(alreadyInSystem)) return "inSystem";
+  return isUnverifiedReferral(referralType, referralSource) ? "unverified" : "verified";
 }

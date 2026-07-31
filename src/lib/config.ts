@@ -9,13 +9,16 @@ export interface RoleConfig {
 }
 
 export const ROLES: RoleConfig[] = [
-  // Profile Send Off split (July 2026): same board + group, two roles keyed on
-  // Referral Type/Source (rule: lib/profile/referralSplit.ts). "profile" kept
-  // its id (existing role assignments in access.json stay valid) but now shows
-  // ONLY verified referrals; Patient-type / CareCentrix-source patients moved
-  // to unverifiedReferrals.
+  // Profile Send Off split (July 2026): same board + group, THREE roles keyed
+  // on Already In System, then Referral Type/Source (rule:
+  // lib/profile/referralSplit.ts). "profile" kept its id (existing role
+  // assignments in access.json stay valid) but now shows ONLY verified
+  // referrals; Patient-type / CareCentrix-source patients moved to
+  // unverifiedReferrals, and Already In System = "Yes" patients (whatever
+  // their referral) moved to inSystemReferrals.
   { id: "profile",         label: "Verified Referrals", color: "bg-blue-500",    icon: "UserCircle",     route: "/profile"          },
   { id: "unverifiedReferrals", label: "Unverified Referrals", color: "bg-sky-500", icon: "UserSearch",   route: "/unverified-referrals" },
+  { id: "inSystemReferrals", label: "Already In System", color: "bg-red-600",   icon: "UserRoundCheck", route: "/in-system-referrals" },
   { id: "evaluate",        label: "Evaluate",           color: "bg-violet-500",  icon: "ClipboardCheck", route: "/evaluate"         },
   { id: "sendRequest",     label: "Send Request",       color: "bg-cyan-500",    icon: "Send",           route: "/send-request"     },
   { id: "confirmReceipt",  label: "Confirm Receipt",    color: "bg-emerald-500", icon: "CheckCircle",    route: "/confirm-receipt"  },

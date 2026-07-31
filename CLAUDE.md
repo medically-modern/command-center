@@ -50,7 +50,7 @@ The Python backends the SPA mirrors (financial estimate, DVS automations) live o
 | Board | ID | Roles / purpose |
 |---|---|---|
 | **DTC Intake** | `18392794310` | Top of funnel; "Send To Medical Necessity" group feeds the pipeline. Read-only here (oversight/system-mgmt). |
-| **Profile Send Off** | `18406352652` | `profile` ("Verified Referrals") + `unverifiedReferrals` ("Unverified Referrals") — two roles, same board/group, split by Referral Type/Source (see §5.10). Its own board (groups: *Patient Intake → 1. Intake → Tests → Stuck → Completed*). Both roles work **1. Intake** (`group_mm1xf2jb`); two send-off exits: **Advance to MN** (`Move to Onboarding` → automation creates the Masheke item + moves to Completed) and **Send back to Patient Intake** (`moveItemToGroup` → `group_mm4vhqff`). **Not** the Welcome Call board. |
+| **Profile Send Off** | `18406352652` | `profile` ("Verified Referrals") + `unverifiedReferrals` ("Unverified Referrals") + `inSystemReferrals` ("Already In System") — three roles, same board/group, split by Already In System then Referral Type/Source (see §5.10). Its own board (groups: *Patient Intake → 1. Intake → Tests → Stuck → Completed*). All three roles work **1. Intake** (`group_mm1xf2jb`); two send-off exits: **Advance to MN** (`Move to Onboarding` → automation creates the Masheke item + moves to Completed) and **Send back to Patient Intake** (`moveItemToGroup` → `group_mm4vhqff`). **Not** the Welcome Call board. |
 | **Medical Evaluation** ("Masheke") | `18406060017` | `evaluate`, `sendRequest`, `confirmReceipt`, `chaseFax`, `chaseParachute`. Medical-necessity document collection. Stuck is propose→approve: reps flip **Escalation `color_mm1x7997` → "Final Escalation Required" (index 2)** and the reason is appended to the **MN notes `long_text_mm27zjt2`** (stamped `[Proposed Stuck …]`); managers approve/return from Oversight. (The old `color_mm5f37ve`/`text_mm5frng6` columns are retired.) |
 | **Insurance** ("Samantha") | `18410601299` | `benefits`, `submitAuth`, `authOutstanding`, `authDenied`, `dvs` (stage-based, no group — Stage Advancer index 1 "DVS", read-only monitor at `/dvs`). Groups: Benefits, Submit Auth, Auth Outstanding, Auth Denied, Escalations, Complete/Stuck. |
 | **Welcome Call** | `18410804557` | `welcomeCall` + `finalConfirm` (two roles, same board, different groups). See `BOARD_SCHEMA.md`. |
@@ -291,21 +291,28 @@ fix all five (a future Claude keeps wanting to put Email back with Fax):
 (Fax/Email/Parachute/blank) — `ChaseClinicalsPanel.tsx` `nadBumpDays`. `config.ts`
 `chaseFax`/`chaseParachute` are the role registry entries.
 
-### 5.10 Profile Send Off split — Verified vs "Unverified Referrals" (July 2026)
+### 5.10 Profile Send Off split — Verified · Unverified · Already In System (July 2026)
 Same pattern as §5.9: **one Monday stage** (Profile Send Off board `18406352652`, group
-**1. Intake** `group_mm1xf2jb`) sliced into **two app roles** by two status columns —
-**Referral Type `color_mm1wm4n4`** and **Referral Source `color_mm1w5wxr`**:
+**1. Intake** `group_mm1xf2jb`) sliced into **three app roles** by three status columns —
+**Already In System `color_mm2xe7r8`** (labels `Yes`/`No`), **Referral Type `color_mm1wm4n4`**
+and **Referral Source `color_mm1w5wxr`**, evaluated in that order:
+- **`inSystemReferrals`** (`/in-system-referrals`, "Already In System", added 2026-07-31) —
+  Already In System **`Yes`**, whatever the referral type/source. Checked **first**.
 - **`unverifiedReferrals`** (`/unverified-referrals`, "Unverified Referrals") — Referral Type
-  **`Patient`** OR Referral Source **`CareCentrix`**.
+  **`Patient`** OR Referral Source **`CareCentrix`** (and not already in system).
 - **`profile`** (`/profile`, relabelled **"Verified Referrals"**, id unchanged so existing
   access.json role assignments keep working) — **everyone else**.
 
+The three are **mutually exclusive and exhaustive** — every active intake patient is in exactly
+one queue, so role counts still sum to the group total (§5.8) and no patient is worked twice.
+A blank Already In System counts as NOT in system (the column isn't always set).
+
 ⚠️ Referral **Source** also has a `Patient` label — only the **Type** column routes `Patient`
-to Unverified. Canonical rule: `src/lib/profile/referralSplit.ts` (+ tests). The rule is
-applied in **five** places that must stay in agreement (same drill as §5.9):
+to Unverified. Canonical rule: `src/lib/profile/referralSplit.ts` `profileReferralRole`
+(+ tests). The rule is applied in **five** places that must stay in agreement (same drill as §5.9):
 1. **Role page** — `src/pages/ProfilePage.tsx` (`variant` prop; deep-linked `?patientId=` stays visible regardless of split).
-2. **Role counts / bars** — `src/hooks/useRoleCounts.ts` (profile board task splits `profile` / `unverifiedReferrals`).
-3. **Oversight charts** — `src/lib/oversight/oversightApi.ts` `CHART_FILTERS` (`profile-send-off` = verified only; `profile-send-off-unverified` = Type `Patient` OR Source `CareCentrix` via `anyCols`).
+2. **Role counts / bars** — `src/hooks/useRoleCounts.ts` (profile board task splits `profile` / `unverifiedReferrals` / `inSystemReferrals`).
+3. **Oversight charts** — `src/lib/oversight/oversightApi.ts` `CHART_FILTERS` (`profile-send-off` = verified only; `profile-send-off-unverified` = Type `Patient` OR Source `CareCentrix` via `anyCols`; `profile-send-off-in-system` = Already In System `Yes` — the other two AND it out) + `CHART_ROUTES` in `OversightTab.tsx`.
 4. **Baseline (build time)** — `scripts/snapshot-baseline.mjs` `countProfile` (§5.8 counting contract).
 5. **Baseline (9 AM cron)** — `services/baseline-cron/index.mjs` `countProfile`.
 
@@ -405,7 +412,7 @@ columns" automation on duplicated items). The SPA only flips the advancer; verif
   `MONDAY_API_URL`/`mondayIdentityHeaders` from `shared/mondayEndpoint`, *not* hardcode
   `api.monday.com` (a handoff once regressed this — reads would then bypass token-injection + audit).
   **Manager-only insurance edit (2026-07-30):** the otherwise read-only `BenefitsPatientHeader` grows
-  an "Edit insurance" button — Serving · Primary/Secondary Insurance · Member ID 1/2 — but ONLY when
+  an "Edit profile" button — Serving · Primary/Secondary Insurance · Member ID 1/2 — but ONLY when
   the URL says the visitor came from an escalation column (`isManagerEscalationView(mv)` = manager-
   intervention | final-decisions; **Processor Overview and rep pages stay read-only**). Most Insurance
   escalations ARE one of those five being wrong, and the alternative was editing Monday directly.

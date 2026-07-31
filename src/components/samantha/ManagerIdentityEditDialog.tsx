@@ -22,7 +22,6 @@ import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
@@ -114,20 +113,19 @@ export function ManagerIdentityEditDialog({
         onClick={() => setOpen(true)}
         className="inline-flex items-center gap-1.5 rounded-md border border-[var(--bnr-border)] px-2.5 py-1 text-xs font-semibold text-[var(--mm-teal)] hover:bg-black/[.04] dark:hover:bg-white/[.06] transition-colors"
       >
-        <PencilLine size={13} /> Edit insurance
+        <PencilLine size={13} /> Edit profile
       </button>
 
+      {/* aria-describedby={undefined}: the explanatory blurb was dropped (Josh,
+          2026-07-31) and Radix warns when a Dialog references a description
+          that isn't rendered. The title alone describes the dialog. */}
       <Dialog open={open} onOpenChange={(o) => (o ? setOpen(true) : setOpen(false))}>
-        <DialogContent className="sm:max-w-lg">
+        <DialogContent className="sm:max-w-lg" aria-describedby={undefined}>
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <PencilLine className="h-5 w-5 text-teal-600" />
               Correct insurance details
             </DialogTitle>
-            <DialogDescription>
-              Manager view only. Saving writes straight to Monday and records who changed
-              what in the Reference Notes — it does not move the patient's stage.
-            </DialogDescription>
           </DialogHeader>
 
           {optionsError && (

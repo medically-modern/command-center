@@ -3,9 +3,10 @@
  * standard chrome (navy header + PatientsSidebar), with the stepped content
  * scoped under .pf-root (see ./profile/redesign.css).
  *
- * Serves TWO roles off the same board/group (July 2026): Verified Referrals
- * (/profile) and Unverified Referrals (/unverified-referrals), split by
- * Referral Type/Source — see the `variant` prop + lib/profile/referralSplit.ts.
+ * Serves THREE roles off the same board/group (July 2026): Verified Referrals
+ * (/profile), Unverified Referrals (/unverified-referrals) and Already In
+ * System (/in-system-referrals) — split by Already In System, then Referral
+ * Type/Source. See the `variant` prop + lib/profile/referralSplit.ts.
  */
 import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import type { ReactNode } from "react";
@@ -13,7 +14,7 @@ import { EmptyPatientPane } from "@/components/shared/EmptyPatientPane";
 import { useSearchParams } from "react-router-dom";
 import { useMondayPatients } from "@/hooks/profile/useMondayPatients";
 import { useAutoSelectPatient } from "@/hooks/useAutoSelectPatient";
-import { isUnverifiedReferral } from "@/lib/profile/referralSplit";
+import { profileReferralRole, type ProfileReferralRole } from "@/lib/profile/referralSplit";
 import { sidebarVisibleList } from "@/lib/profile/sidebarList";
 import { viewFilterFromParams } from "@/lib/roleView";
 import type { Patient } from "@/lib/profile/workflow";
@@ -105,11 +106,19 @@ const STEDI_TIMEOUT_MS = 95_000;
 interface ProfilePageProps {
   /** Which referral split this page serves (same board, group, panels and
    *  writes — only the patient list differs):
-   *  "verified" (/profile) — everyone EXCEPT the unverified referrals;
+   *  "inSystem" (/in-system-referrals) — ONLY Already In System = "Yes";
    *  "unverified" (/unverified-referrals) — ONLY Referral Type "Patient" or
-   *  Referral Source "CareCentrix" (lib/profile/referralSplit.ts). */
-  variant: "verified" | "unverified";
+   *  Referral Source "CareCentrix", and not already in system;
+   *  "verified" (/profile) — everyone else (lib/profile/referralSplit.ts). */
+  variant: ProfileReferralRole;
 }
+
+/** Header suffix per role — also the page's identity in the UI. */
+const VARIANT_LABEL: Record<ProfileReferralRole, string> = {
+  inSystem: "Already In System",
+  unverified: "Unverified Referrals",
+  verified: "Verified Referrals",
+};
 
 const ProfilePage = ({ variant }: ProfilePageProps) => {
   const { goBack } = useBackNavigation();
@@ -119,7 +128,8 @@ const ProfilePage = ({ variant }: ProfilePageProps) => {
     updateLocal, clearOverlay, removeOverlayKeys, saveOverlay, hasOverlay, getReceived,
   } = useMondayPatients(searchParams.get("patientId"));
 
-  // Role split: unverified = Referral Type "Patient" OR Referral Source
+  // Role split (three-way, mutually exclusive): inSystem = Already In System
+  // "Yes"; unverified = Referral Type "Patient" OR Referral Source
   // "CareCentrix"; verified = everyone else. Deep-linked patients
   // (?patientId=) stay visible regardless of split — mirrors the Chase
   // Clinicals fax/parachute pattern.
@@ -129,7 +139,7 @@ const ProfilePage = ({ variant }: ProfilePageProps) => {
       allProfilePatients.filter(
         (p) =>
           p.id === deepLinkedId ||
-          isUnverifiedReferral(p.referralType, p.referralSource) === (variant === "unverified"),
+          profileReferralRole(p.referralType, p.referralSource, p.alreadyInSystem) === variant,
       ),
     [allProfilePatients, variant, deepLinkedId],
   );
@@ -480,7 +490,7 @@ const ProfilePage = ({ variant }: ProfilePageProps) => {
                 <div>
                   <p className="text-[10px] uppercase tracking-[0.2em] opacity-70">Medically Modern</p>
                   <h1 className="text-2xl font-bold">
-                    Profile Send-Off — {variant === "unverified" ? "Unverified" : "Verified"} Referrals
+                    Profile Send-Off — {VARIANT_LABEL[variant]}
                   </h1>
                   {selected && (
                     <p className="text-sm opacity-80 mt-0.5 flex items-center gap-2">

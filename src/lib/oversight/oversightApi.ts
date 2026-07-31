@@ -215,13 +215,15 @@ const CONFIRM_COLS: { colId: string; label: string; pill?: boolean }[] = [
   { colId: "text_mm2ymtsk", label: "Attempt 3 Log" },
 ];
 
-/** Shared drill-down columns for the two Profile Send Off charts (Verified +
- *  Unverified Referrals — split by Referral Type/Source, see CHART_FILTERS). */
+/** Shared drill-down columns for the three Profile Send Off charts (Verified +
+ *  Unverified Referrals + Already In System — split by Already In System then
+ *  Referral Type/Source, see CHART_FILTERS). */
 const PROFILE_COLS: { colId: string; label: string; pill?: boolean }[] = [
   { colId: "date_mm1wf43j", label: "Intake Date" },
   { colId: "color_mm1wwm05", label: "Days in Stage" },
   { colId: "color_mm1wm4n4", label: "Referral Type" },
   { colId: "color_mm1w5wxr", label: "Referral Source" },
+  { colId: "color_mm2xe7r8", label: "Already In System" },
   { colId: "color_mm1w1978", label: "Request" },
   { colId: "color_mm24ap4j", label: "General Insurance" },
   { colId: "color_mm1xg10n", label: "Primary Insurance" },
@@ -230,9 +232,9 @@ const PROFILE_COLS: { colId: string; label: string; pill?: boolean }[] = [
 ];
 
 const RAW_CHART_DEFS: ChartDef[] = [
-  // ── Board 18406352652 (Profile Send Off) — split into Verified/Unverified
-  //    Referrals (July 2026). "profile-send-off" keeps its id (old drill-down
-  //    URLs stay valid) but now shows VERIFIED referrals only. ──
+  // ── Board 18406352652 (Profile Send Off) — split into Verified/Unverified/
+  //    Already-In-System Referrals (July 2026). "profile-send-off" keeps its id
+  //    (old drill-down URLs stay valid) but now shows VERIFIED referrals only. ──
   {
     id: "profile-send-off",
     title: "Profile Send Off — Verified Referrals",
@@ -243,6 +245,13 @@ const RAW_CHART_DEFS: ChartDef[] = [
   {
     id: "profile-send-off-unverified",
     title: "Profile Send Off — Unverified Referrals",
+    boardId: 18406352652,
+    notesColId: "text_mm389fs",
+    drilldownCols: PROFILE_COLS,
+  },
+  {
+    id: "profile-send-off-in-system",
+    title: "Profile Send Off — Already In System",
     boardId: 18406352652,
     notesColId: "text_mm389fs",
     drilldownCols: PROFILE_COLS,
@@ -899,7 +908,7 @@ export interface OversightSection {
 }
 
 export const OVERSIGHT_SECTIONS: OversightSection[] = [
-  { id: "intake", title: "Intake", chartIds: ["profile-send-off", "profile-send-off-unverified"] },
+  { id: "intake", title: "Intake", chartIds: ["profile-send-off", "profile-send-off-unverified", "profile-send-off-in-system"] },
   // Manager views (Brandon 2026-07-20): both stages share the 3-column
   // scheme — Processor Overview / Manager Intervention / Final Decisions —
   // with rows horizontally aligned via each chart's rowOf.
@@ -1294,11 +1303,13 @@ type FilterRule = ChartFilter | ChartFilterStageAdvancer;
 
 const CHART_FILTERS: Record<string, FilterRule> = {
   // Profile Send Off split (rule mirrors lib/profile/referralSplit.ts):
-  // Unverified = Referral Type "Patient" OR Referral Source "CareCentrix";
+  // Already In System "Yes" wins FIRST (so it's ANDed out of the other two);
+  // then Unverified = Referral Type "Patient" OR Referral Source "CareCentrix";
   // Verified = neither. Only the TYPE column routes "Patient" — the SOURCE
   // column has its own "Patient" label that must NOT match.
-  "profile-send-off":            { type: "group", groupId: "group_mm1xf2jb", andCols: [{ colId: "color_mm1wm4n4", value: "Patient", not: true }, { colId: "color_mm1w5wxr", value: "CareCentrix", not: true }] },
-  "profile-send-off-unverified": { type: "group", groupId: "group_mm1xf2jb", anyCols: [{ colId: "color_mm1wm4n4", value: "Patient" }, { colId: "color_mm1w5wxr", value: "CareCentrix" }] },
+  "profile-send-off":            { type: "group", groupId: "group_mm1xf2jb", andCols: [{ colId: "color_mm2xe7r8", value: "Yes", not: true }, { colId: "color_mm1wm4n4", value: "Patient", not: true }, { colId: "color_mm1w5wxr", value: "CareCentrix", not: true }] },
+  "profile-send-off-unverified": { type: "group", groupId: "group_mm1xf2jb", andCols: [{ colId: "color_mm2xe7r8", value: "Yes", not: true }], anyCols: [{ colId: "color_mm1wm4n4", value: "Patient" }, { colId: "color_mm1w5wxr", value: "CareCentrix" }] },
+  "profile-send-off-in-system":  { type: "group", groupId: "group_mm1xf2jb", andCols: [{ colId: "color_mm2xe7r8", value: "Yes" }] },
   "evaluate":           { type: "stageAdvancer", boardId: 18406060017, value: "Evaluate MN", andCols: [{ colId: "color_mm1x7997", index: [2], not: true }] },
   "send-request":       { type: "stageAdvancer", boardId: 18406060017, value: "Send Request", andCols: [{ colId: "color_mm1x7997", index: [2], not: true }] },
   "confirm-receipt":    { type: "stageAdvancer", boardId: 18406060017, value: "Confirm Receipt", andCols: [{ colId: "color_mm1x7997", index: [2], not: true }] },

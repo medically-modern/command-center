@@ -9,7 +9,7 @@
  * dropdowns are deliberately absent (production strips them, spec §6). Every
  * value is user-select-all for one-click copy.
  *
- * ONE exception, 2026-07-30: pass `managerEdit` and an "Edit insurance" button
+ * ONE exception, 2026-07-30: pass `managerEdit` and an "Edit profile" button
  * appears, opening `ManagerIdentityEditDialog`. The three pages that render this
  * header set it only when the URL says the visitor came from an oversight
  * ESCALATION column (`?mv=manager-intervention` / `final-decisions`) — a rep's
@@ -59,7 +59,7 @@ function SBox({ label, value, strong }: { label: string; value: string; strong?:
 
 interface Props {
   patient: Patient;
-  /** Manager escalation view: show the "Edit insurance" affordance. */
+  /** Manager escalation view: show the "Edit profile" affordance. */
   managerEdit?: boolean;
   /** Stage label for the correction's note stamp ("Benefits" / …). */
   stage?: string;

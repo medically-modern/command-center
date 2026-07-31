@@ -102,6 +102,7 @@ const PROF_GROUP  = "group_mm1xf2jb";
 const PROF_FOLLOWUP_COL = "color_mm3822qq"; // Follow Up
 const PROF_REFERRAL_TYPE_COL = "color_mm1wm4n4";   // Referral Type (role split)
 const PROF_REFERRAL_SOURCE_COL = "color_mm1w5wxr"; // Referral Source (role split)
+const PROF_IN_SYSTEM_COL = "color_mm2xe7r8";       // Already In System (role split)
 
 const SUB_BOARD   = 18407459988;
 const SUB_GROUP   = "topics";
@@ -280,24 +281,36 @@ async function countFinalConfirm() {
   return { count: active.length, ids: active.map((i) => i.id) };
 }
 
-/** Profile group: active = Follow Up !== "Done", split into
- *  profile (Verified Referrals) vs unverifiedReferrals by Referral Type
- *  "Patient" OR Referral Source "CareCentrix" (mirrors
+/** Profile group: active = Follow Up !== "Done", split THREE ways —
+ *  inSystemReferrals (Already In System = "Yes", checked first), then
+ *  unverifiedReferrals (Referral Type "Patient" OR Referral Source
+ *  "CareCentrix"), then profile (Verified Referrals). Mirrors
  *  src/lib/profile/referralSplit.ts — only the TYPE column routes "Patient";
- *  the SOURCE column has its own "Patient" label that must NOT match). */
+ *  the SOURCE column has its own "Patient" label that must NOT match. */
 async function countProfile() {
   const items = await fetchGroupItems(PROF_BOARD, PROF_GROUP, [
-    PROF_FOLLOWUP_COL, PROF_REFERRAL_TYPE_COL, PROF_REFERRAL_SOURCE_COL,
+    PROF_FOLLOWUP_COL, PROF_REFERRAL_TYPE_COL, PROF_REFERRAL_SOURCE_COL, PROF_IN_SYSTEM_COL,
   ]);
   const active = items.filter((i) => i.cols[PROF_FOLLOWUP_COL] !== "Done");
+  const isInSystem = (i) => (i.cols[PROF_IN_SYSTEM_COL] ?? "").trim().toLowerCase() === "yes";
   const isUnverified = (i) =>
-    (i.cols[PROF_REFERRAL_TYPE_COL] ?? "").trim().toLowerCase() === "patient" ||
-    (i.cols[PROF_REFERRAL_SOURCE_COL] ?? "").trim().toLowerCase() === "carecentrix";
+    !isInSystem(i) &&
+    ((i.cols[PROF_REFERRAL_TYPE_COL] ?? "").trim().toLowerCase() === "patient" ||
+      (i.cols[PROF_REFERRAL_SOURCE_COL] ?? "").trim().toLowerCase() === "carecentrix");
+  const inSystem = active.filter(isInSystem);
   const unverified = active.filter(isUnverified);
-  const verified = active.filter((i) => !isUnverified(i));
+  const verified = active.filter((i) => !isInSystem(i) && !isUnverified(i));
   return {
-    counts: { profile: verified.length, unverifiedReferrals: unverified.length },
-    ids: { profile: verified.map((i) => i.id), unverifiedReferrals: unverified.map((i) => i.id) },
+    counts: {
+      profile: verified.length,
+      unverifiedReferrals: unverified.length,
+      inSystemReferrals: inSystem.length,
+    },
+    ids: {
+      profile: verified.map((i) => i.id),
+      unverifiedReferrals: unverified.map((i) => i.id),
+      inSystemReferrals: inSystem.map((i) => i.id),
+    },
   };
 }
 
