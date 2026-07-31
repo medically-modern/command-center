@@ -20,6 +20,7 @@ import {
 } from "@/lib/finalConfirm/workflow";
 import { hasToken, fetchStatusOptions, BOARD_ID, COL } from "@/lib/finalConfirm/mondayApi";
 import { useStatusOptions } from "@/hooks/useStatusOptions";
+import { toast } from "sonner";
 import { indexForLabel } from "@/lib/shared/statusOptions";
 import { AddressAutocomplete, type AddressResult } from "@/components/finalConfirm/AddressAutocomplete";
 import { Card } from "@/components/ui/card";
@@ -1060,18 +1061,28 @@ export function PatientInfoCard({ patient, onFieldChange }: Props) {
               onFieldChange("subscriptionTypeIndex", index);
               const opt = SUBSCRIPTION_TYPE_OPTIONS.find((o) => o.index === index);
               if (opt) onFieldChange("subscriptionType", opt.label);
-              // When "Sensors" is selected, auto-set infusion sets to "Not Serving"
-              // "Not Serving" is resolved from the live board, not the old
-              // hardcoded 101 — that index is only correct until someone edits
-              // the column, and a wrong index writes a blank without erroring.
+              // When "Sensors" is selected, auto-set infusion sets to "Not Serving".
+              // Resolved from the live board, not the old hardcoded 101 — that
+              // index is only correct until someone edits the column, and a wrong
+              // index writes a blank without erroring.
+              //
+              // If either can't resolve (options still loading, or the fetch
+              // failed) the clear MUST NOT be skipped silently: the patient would
+              // keep the pump-side infusion set while being marked sensors-only,
+              // and Final Confirm would write that product index onto a sensors
+              // record with nothing flagging the contradiction. Say so instead.
               if (opt && opt.label === "Sensors") {
                 const ns1 = indexForLabel(infusionSet1Options, "Not Serving");
                 const ns2 = indexForLabel(infusionSet2Options, "Not Serving");
-                if (ns1 !== null) {
+                if (ns1 === null || ns2 === null) {
+                  toast.error("Infusion sets were NOT cleared", {
+                    description:
+                      "Options haven't loaded from Monday, so \"Not Serving\" couldn't be resolved. Re-select Sensors once the infusion set dropdowns are enabled, or set them by hand before sending.",
+                    duration: 12_000,
+                  });
+                } else {
                   onFieldChange("infusionSet1Index", ns1);
                   onFieldChange("infusionSet1", "Not Serving");
-                }
-                if (ns2 !== null) {
                   onFieldChange("infusionSet2Index", ns2);
                   onFieldChange("infusionSet2", "Not Serving");
                 }
