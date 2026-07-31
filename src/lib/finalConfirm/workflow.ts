@@ -467,9 +467,46 @@ export function formatDateMDY(raw: string): string {
 
 /* ─── Validation ─── */
 
-/** No fields are required — user can send at any time */
-export function validatePatientForSend(_p: Patient): { valid: boolean; errors: string[] } {
-  return { valid: true, errors: [] };
+/**
+ * Almost nothing is required — a rep can send at any time. The one invariant
+ * enforced here is the sensors-only contradiction.
+ *
+ * A patient on Subscription Type "Sensors" is not receiving pump supplies, so
+ * both infusion set columns must read "Not Serving". The Sensors selector tries
+ * to set that automatically, but it resolves "Not Serving" from the live board
+ * and cannot when the options have not loaded — and it must not guess an index.
+ * Previously that left the pump-side infusion set sitting on a patient now
+ * marked sensors-only, with `sendPatientToMonday` happily writing that product
+ * index onto the sensors record. A toast alone did not stop it: the rep can
+ * miss or dismiss it, and the send still goes through.
+ *
+ * So it blocks the send instead. This also catches the inconsistency however it
+ * arose, not just via the Sensors selector. It reads the LABEL rather than the
+ * index, so it stays correct no matter how the board is renumbered.
+ */
+export function validatePatientForSend(p: Patient): { valid: boolean; errors: string[] } {
+  const errors: string[] = [];
+
+  const servingAProduct = (label: string) => {
+    const l = (label ?? "").trim();
+    return l !== "" && l !== "Not Serving";
+  };
+
+  if (p.subscriptionType === "Sensors") {
+    const stuck = [
+      servingAProduct(p.infusionSet1) ? `Infusion Set 1 (${p.infusionSet1})` : null,
+      servingAProduct(p.infusionSet2) ? `Infusion Set 2 (${p.infusionSet2})` : null,
+    ].filter(Boolean);
+    if (stuck.length > 0) {
+      errors.push(
+        `Subscription Type is "Sensors" but ${stuck.join(" and ")} ${stuck.length === 1 ? "is" : "are"} still set — ` +
+          `set them to "Not Serving" before sending. (If the infusion set dropdowns are disabled, ` +
+          `their options are still loading from Monday; they re-enable automatically.)`,
+      );
+    }
+  }
+
+  return { valid: errors.length === 0, errors };
 }
 
 /* ─── Split Order Helpers ───────────────────────────────────────
