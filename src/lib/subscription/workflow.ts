@@ -204,60 +204,18 @@ export const SUPPLIES_TYPE_OPTIONS = [
   { index: 3, label: "Not Serving" },
 ];
 
-export const INFUSION_SET_1_OPTIONS = [
-  { index: 6, label: 'AutoSoft XC 6mm 23"' },
-  { index: 107, label: 'AutoSoft XC 6mm 23"' },
-  { index: 17, label: 'AutoSoft XC 6mm 32"' },
-  { index: 108, label: 'AutoSoft XC 6mm 32"' },
-  { index: 11, label: 'AutoSoft XC 6mm 43"' },
-  { index: 110, label: 'AutoSoft XC 6mm 43"' },
-  { index: 7, label: 'AutoSoft XC 6mm 5"' },
-  { index: 151, label: 'AutoSoft XC 6mm 5"' },
-  { index: 0, label: 'AutoSoft XC 9mm 23"' },
-  { index: 153, label: 'AutoSoft XC 9mm 23"' },
-  { index: 16, label: 'AutoSoft XC 9mm 43"' },
-  { index: 8, label: 'AutoSoft 90 6mm 23"' },
-  { index: 106, label: 'AutoSoft 90 6mm 23"' },
-  { index: 13, label: 'AutoSoft 90 6mm 43"' },
-  { index: 4, label: 'AutoSoft 90 9mm 23"' },
-  { index: 15, label: 'AutoSoft 90 9mm 43"' },
-  { index: 9, label: 'AutoSoft 30 13mm 23"' },
-  { index: 105, label: 'AutoSoft 30 13mm 23"' },
-  { index: 103, label: 'AutoSoft 30 13mm 43"' },
-  { index: 10, label: 'TruSteel 6mm 23"' },
-  { index: 154, label: 'TruSteel 6mm 23"' },
-  { index: 2, label: 'TruSteel 6mm 32"' },
-  { index: 155, label: 'TruSteel 6mm 32"' },
-  { index: 3, label: 'TruSteel 8mm 23"' },
-  { index: 18, label: 'TruSteel 8mm 32"' },
-  { index: 14, label: 'VariSoft 13mm 23"' },
-  { index: 109, label: 'VariSoft 13mm 23"' },
-  { index: 12, label: 'VariSoft 13mm 32"' },
-  { index: 1, label: 'VariSoft 17mm 23"' },
-  { index: 19, label: 'Contact 6mm 23"' },
-  { index: 101, label: 'Inset 6mm 23"' },
-  { index: 102, label: 'Luer 6mm 32"' },
-  { index: 152, label: 'Mio Advance Clear 9mm 23"' },
-  { index: 104, label: "Not Serving" },
-];
-
-export const INFUSION_SET_2_OPTIONS = [
-  { index: 4, label: 'AutoSoft XC 6mm 23"' },
-  { index: 14, label: 'AutoSoft XC 6mm 23"' },
-  { index: 11, label: 'AutoSoft XC 6mm 32"' },
-  { index: 0, label: 'AutoSoft XC 6mm 43"' },
-  { index: 2, label: 'AutoSoft XC 6mm 5"' },
-  { index: 6, label: 'AutoSoft XC 9mm 23"' },
-  { index: 9, label: 'AutoSoft 90 6mm 23"' },
-  { index: 15, label: 'AutoSoft 90 6mm 23"' },
-  { index: 3, label: 'AutoSoft 90 6mm 43"' },
-  { index: 7, label: 'AutoSoft 90 9mm 23"' },
-  { index: 8, label: 'VariSoft 13mm 32"' },
-  { index: 10, label: 'AutoSoft 30 13mm 23"' },
-  { index: 13, label: 'AutoSoft 30 13mm 23"' },
-  { index: 1, label: 'TruSteel 6mm 23"' },
-  { index: 12, label: "Not Serving" },
-];
+// Infusion Set 1 / 2 options are NOT hardcoded here any more.
+//
+// They used to be `{ index, label }[]` tables written straight to Monday with
+// `writeStatusIndex`. The index is the only binding — the label string never
+// reaches Monday — so when the July 2026 dedup deleted this board's duplicate
+// infusion-set labels, 17 of the 49 entries pointed at indexes that no longer
+// existed and 10 more rendered as a second, identical-looking option next to a
+// working one. Nothing surfaced it: the write "succeeded" and landed blank.
+//
+// `SubscriptionForm` now reads both columns live via `useStatusOptions`
+// (`lib/shared/statusOptions.ts`) and disables the control until they load.
+// Do not reintroduce a hardcoded list here — see CLAUDE.md and that module.
 
 export const PRIMARY_INSURANCE_OPTIONS = [
   { index: 0, label: "Medicare A&B" },

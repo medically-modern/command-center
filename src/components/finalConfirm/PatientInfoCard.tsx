@@ -12,15 +12,15 @@ import {
   CLINICALS_METHOD_OPTIONS,
   // REFERRAL_TYPE_OPTIONS, // read-only display, no select needed
   // REFERRAL_SOURCE_OPTIONS,
-  INFUSION_SET_1_OPTIONS,
-  INFUSION_SET_2_OPTIONS,
   SUBSCRIPTION_TYPE_OPTIONS,
   AUTH_RESULT_OPTIONS,
   needsPriorPumpDate,
   formatPhone,
   formatDateMDY,
 } from "@/lib/finalConfirm/workflow";
-import { hasToken, fetchStatusOptions, COL } from "@/lib/finalConfirm/mondayApi";
+import { hasToken, fetchStatusOptions, BOARD_ID, COL } from "@/lib/finalConfirm/mondayApi";
+import { useStatusOptions } from "@/hooks/useStatusOptions";
+import { indexForLabel } from "@/lib/shared/statusOptions";
 import { AddressAutocomplete, type AddressResult } from "@/components/finalConfirm/AddressAutocomplete";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -214,6 +214,8 @@ function InfusionSetPair({
   onSetChange,
   onQtyChange,
   hasError,
+  disabled = false,
+  hint,
 }: {
   setLabel: string;
   setOptions: { index: number; label: string }[];
@@ -222,6 +224,9 @@ function InfusionSetPair({
   onSetChange: (index: number, label: string) => void;
   onQtyChange: (v: string) => void;
   hasError?: boolean;
+  /** True while live board options are loading or failed to load. */
+  disabled?: boolean;
+  hint?: string | null;
 }) {
   const selectedOpt = setOptions.find((o) => o.label === setVal);
   return (
@@ -233,6 +238,7 @@ function InfusionSetPair({
           const opt = setOptions.find((o) => String(o.index) === v);
           if (opt) onSetChange(opt.index, opt.label);
         }}
+        disabled={disabled}
       >
         <SelectTrigger className="h-8 text-sm">
           <SelectValue placeholder="Select infusion set" />
@@ -245,6 +251,7 @@ function InfusionSetPair({
           ))}
         </SelectContent>
       </Select>
+      {hint && <p className="text-[10px] text-muted-foreground">{hint}</p>}
       <div className="flex items-center gap-2">
         <span className="text-xs text-muted-foreground font-medium whitespace-nowrap">Qty:</span>
         <Input
@@ -518,6 +525,22 @@ function DiagnosisCombobox({
 }
 
 export function PatientInfoCard({ patient, onFieldChange }: Props) {
+  // Infusion-set options are read from the LIVE board, never a hardcoded table.
+  // Final Confirm and Welcome Call write the SAME two columns, and their
+  // hardcoded tables had already drifted apart from each other ("6mm" here vs
+  // "6 mm" there) — invisible, because only the index reaches Monday.
+  // See `lib/shared/statusOptions.ts`.
+  const { options: liveOptions, loading: optionsLoading, error: optionsError, ready: optionsReady } =
+    useStatusOptions(BOARD_ID, [COL.infusionSet1, COL.infusionSet2]);
+  const infusionSet1Options = liveOptions[COL.infusionSet1] ?? [];
+  const infusionSet2Options = liveOptions[COL.infusionSet2] ?? [];
+  const infusionDisabled = !optionsReady;
+  const infusionHint = optionsError
+    ? `Couldn't load infusion sets from Monday: ${optionsError}`
+    : optionsLoading
+      ? "Loading infusion sets from Monday…"
+      : null;
+
   const handleAddressChange = (result: AddressResult) => {
     onFieldChange("addressEdited", result.address);
     onFieldChange("addressLat", result.lat);
@@ -1038,11 +1061,20 @@ export function PatientInfoCard({ patient, onFieldChange }: Props) {
               const opt = SUBSCRIPTION_TYPE_OPTIONS.find((o) => o.index === index);
               if (opt) onFieldChange("subscriptionType", opt.label);
               // When "Sensors" is selected, auto-set infusion sets to "Not Serving"
+              // "Not Serving" is resolved from the live board, not the old
+              // hardcoded 101 — that index is only correct until someone edits
+              // the column, and a wrong index writes a blank without erroring.
               if (opt && opt.label === "Sensors") {
-                onFieldChange("infusionSet1Index", 101);
-                onFieldChange("infusionSet1", "Not Serving");
-                onFieldChange("infusionSet2Index", 101);
-                onFieldChange("infusionSet2", "Not Serving");
+                const ns1 = indexForLabel(infusionSet1Options, "Not Serving");
+                const ns2 = indexForLabel(infusionSet2Options, "Not Serving");
+                if (ns1 !== null) {
+                  onFieldChange("infusionSet1Index", ns1);
+                  onFieldChange("infusionSet1", "Not Serving");
+                }
+                if (ns2 !== null) {
+                  onFieldChange("infusionSet2Index", ns2);
+                  onFieldChange("infusionSet2", "Not Serving");
+                }
               }
             }}
           />
@@ -1057,12 +1089,14 @@ export function PatientInfoCard({ patient, onFieldChange }: Props) {
               <div className="space-y-1">
                 <InfusionSetPair
                   setLabel="Infusion Set 1"
-                  setOptions={INFUSION_SET_1_OPTIONS}
+                  setOptions={infusionSet1Options}
+                  disabled={infusionDisabled}
+                  hint={infusionHint}
                   setVal={patient.infusionSet1}
                   qtyVal={patient.qtyInf1}
                   onSetChange={(index) => {
                     onFieldChange("infusionSet1Index", index);
-                    const opt = INFUSION_SET_1_OPTIONS.find((o) => o.index === index);
+                    const opt = infusionSet1Options.find((o) => o.index === index);
                     if (opt) onFieldChange("infusionSet1", opt.label);
                   }}
                   onQtyChange={(v) => onFieldChange("qtyInf1", v)}
@@ -1076,12 +1110,14 @@ export function PatientInfoCard({ patient, onFieldChange }: Props) {
               </div>
               <InfusionSetPair
                 setLabel="Infusion Set 2"
-                setOptions={INFUSION_SET_2_OPTIONS}
+                setOptions={infusionSet2Options}
+                disabled={infusionDisabled}
+                hint={infusionHint}
                 setVal={patient.infusionSet2}
                 qtyVal={patient.qtyInf2}
                 onSetChange={(index) => {
                   onFieldChange("infusionSet2Index", index);
-                  const opt = INFUSION_SET_2_OPTIONS.find((o) => o.index === index);
+                  const opt = infusionSet2Options.find((o) => o.index === index);
                   if (opt) onFieldChange("infusionSet2", opt.label);
                 }}
                 onQtyChange={(v) => onFieldChange("qtyInf2", v)}
