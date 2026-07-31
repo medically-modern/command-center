@@ -59,7 +59,8 @@
         "unverifiedReferrals",
         "chaseFax",
         "benefits",
-        "authOutstanding"
+        "authOutstanding",
+        "inSystemReferrals"
       ],
       "roleOrder": {},
       "roleFilters": {}
