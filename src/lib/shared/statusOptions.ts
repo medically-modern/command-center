@@ -18,7 +18,11 @@
 // options can't be loaded, the caller must disable the control rather than fall
 // back to a hardcoded list — a stale index writes "successfully" and lands blank.
 
-import { MONDAY_API_URL, mondayIdentityHeaders } from "./mondayEndpoint";
+import {
+  MONDAY_API_URL,
+  mondayAuthHeaders,
+  mondayIdentityHeaders,
+} from "./mondayEndpoint";
 
 const MONDAY_API_VERSION = "2024-10";
 
@@ -45,11 +49,20 @@ export function invalidateStatusOptions(): void {
 }
 
 async function gql<T>(query: string, variables: Record<string, unknown>): Promise<T> {
+  // BOTH header sets are required, and the split is easy to get wrong:
+  // mondayAuthHeaders() carries `Authorization` (the bundled token, which the
+  // gateway ignores), while mondayIdentityHeaders() carries only the caller's
+  // Google identity for the audit log — and returns {} outright when the
+  // gateway is not configured. Sending identity alone means NO Authorization
+  // header in direct mode, so every request 401s and the dropdowns sit disabled
+  // forever. Every other gql() in this app sets Authorization explicitly; this
+  // one must too.
   const res = await fetch(MONDAY_API_URL, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       "API-Version": MONDAY_API_VERSION,
+      ...mondayAuthHeaders(),
       ...mondayIdentityHeaders(),
     },
     body: JSON.stringify({ query, variables }),

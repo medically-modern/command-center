@@ -2,9 +2,14 @@
 // July 2026 infusion-set dedup dangerous. The fixtures are trimmed from real
 // `settings_str` payloads on the Subscription board (18407459988).
 
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
-import { parseStatusSettings, indexForLabel } from "./statusOptions";
+import {
+  parseStatusSettings,
+  indexForLabel,
+  fetchStatusOptions,
+  invalidateStatusOptions,
+} from "./statusOptions";
 
 // Subscription / Infusion Set 1 (color_mkxm50f9) as it stood BEFORE the dedup:
 // duplicate labels, doubled spaces, and Monday's reserved blank at index 5.
@@ -106,5 +111,79 @@ describe("indexForLabel", () => {
   it("returns null for empty input", () => {
     expect(indexForLabel(after, "")).toBeNull();
     expect(indexForLabel([], "Not Serving")).toBeNull();
+  });
+});
+
+// ── fetchStatusOptions: the request itself ────────────────────────────────
+// These exist because a header bug shipped past typecheck, lint, a clean
+// production build and 604 unit tests: the first version of this module sent
+// only mondayIdentityHeaders(), which returns {} when the gateway is not
+// configured. No Authorization header => every request 401s => the infusion
+// dropdowns sit disabled forever. Nothing that does not make a real call can
+// catch that, so this asserts the wire format directly.
+describe("fetchStatusOptions request", () => {
+  const COL_A = "color_test_a";
+
+  function mockFetch(payload: unknown) {
+    const spy = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => payload,
+    });
+    vi.stubGlobal("fetch", spy);
+    return spy;
+  }
+
+  beforeEach(() => {
+    invalidateStatusOptions();
+    vi.stubEnv("VITE_MONDAY_API_TOKEN", "test-token-123");
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
+  });
+
+  it("sends an Authorization header", async () => {
+    const spy = mockFetch({
+      data: { boards: [{ columns: [{ id: COL_A, settings_str: SUB1_AFTER }] }] },
+    });
+    await fetchStatusOptions(123, [COL_A]);
+    expect(spy).toHaveBeenCalledTimes(1);
+    const headers = spy.mock.calls[0][1].headers as Record<string, string>;
+    expect(headers.Authorization).toBe("test-token-123");
+    expect(headers["Content-Type"]).toBe("application/json");
+  });
+
+  it("returns parsed options keyed by column id", async () => {
+    mockFetch({
+      data: { boards: [{ columns: [{ id: COL_A, settings_str: SUB1_AFTER }] }] },
+    });
+    const out = await fetchStatusOptions(123, [COL_A]);
+    expect(out[COL_A].map((o) => o.label)).toEqual([
+      'AutoSoft XC 6 mm 23"',
+      'AutoSoft XC 9 mm 23"',
+      "Not Serving",
+    ]);
+  });
+
+  it("serves the second call from cache instead of refetching", async () => {
+    const spy = mockFetch({
+      data: { boards: [{ columns: [{ id: COL_A, settings_str: SUB1_AFTER }] }] },
+    });
+    await fetchStatusOptions(123, [COL_A]);
+    await fetchStatusOptions(123, [COL_A]);
+    expect(spy).toHaveBeenCalledTimes(1);
+  });
+
+  it("propagates a GraphQL error instead of resolving to an empty list", async () => {
+    // A silent [] would disable the dropdown with no explanation; the caller
+    // needs the error so it can show a retry.
+    mockFetch({ errors: [{ message: "Invalid column id" }] });
+    await expect(fetchStatusOptions(123, [COL_A])).rejects.toThrow("Invalid column id");
+  });
+
+  it("propagates a non-200 instead of resolving to an empty list", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: false, status: 401 }));
+    await expect(fetchStatusOptions(123, [COL_A])).rejects.toThrow("401");
   });
 });
