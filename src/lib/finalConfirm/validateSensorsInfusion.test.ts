@@ -17,7 +17,9 @@ const patient = (over: Partial<P>): P =>
   ({
     subscriptionType: "",
     infusionSet1: "",
+    infusionSet1Index: null,
     infusionSet2: "",
+    infusionSet2Index: null,
     ...over,
   }) as P;
 
@@ -56,10 +58,34 @@ describe("validatePatientForSend — sensors-only infusion invariant", () => {
     expect(r.errors).toEqual([]);
   });
 
-  it("allows Sensors when both slots are blank — blank is not a product", () => {
+  it("allows Sensors when both slots are genuinely unset — blank label AND null index", () => {
     // A never-set column writes nothing (the writer skips a null index), so it
     // is not the contradiction this rule is guarding against.
     const r = validatePatientForSend(patient({ subscriptionType: "Sensors" }));
+    expect(r.valid).toBe(true);
+  });
+
+  it("blocks a blank label that still carries an index — the index is what gets written", () => {
+    // An item pointing at a label deleted from the board reads back with empty
+    // text but a live index. Checking the label alone would wave it through
+    // while sendPatientToMonday writes the dead index onto a sensors record.
+    const r = validatePatientForSend(
+      patient({ subscriptionType: "Sensors", infusionSet1: "", infusionSet1Index: 107 }),
+    );
+    expect(r.valid).toBe(false);
+    expect(r.errors[0]).toContain("index 107");
+  });
+
+  it("still allows Not Serving even when its index is present", () => {
+    const r = validatePatientForSend(
+      patient({
+        subscriptionType: "Sensors",
+        infusionSet1: "Not Serving",
+        infusionSet1Index: 104,
+        infusionSet2: "Not Serving",
+        infusionSet2Index: 12,
+      }),
+    );
     expect(r.valid).toBe(true);
   });
 

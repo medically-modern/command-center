@@ -487,15 +487,27 @@ export function formatDateMDY(raw: string): string {
 export function validatePatientForSend(p: Patient): { valid: boolean; errors: string[] } {
   const errors: string[] = [];
 
-  const servingAProduct = (label: string) => {
+  // The INDEX is what gets written, so the index has to be part of the test.
+  // Checking only the label leaves a hole: an item whose stored index points at
+  // a label that no longer exists reads back with empty text but a non-null
+  // index, so a label-only check would wave it through while `sendPatientToMonday`
+  // writes that dead index straight back onto a sensors record. A blank label
+  // with a null index is genuinely unset and writes nothing, so that stays fine.
+  const stillServing = (label: string, index: number | null) => {
     const l = (label ?? "").trim();
-    return l !== "" && l !== "Not Serving";
+    return l !== "Not Serving" && (l !== "" || index !== null);
   };
+  const describe = (label: string, index: number | null) =>
+    (label ?? "").trim() || `index ${index}, no label on the board`;
 
   if (p.subscriptionType === "Sensors") {
     const stuck = [
-      servingAProduct(p.infusionSet1) ? `Infusion Set 1 (${p.infusionSet1})` : null,
-      servingAProduct(p.infusionSet2) ? `Infusion Set 2 (${p.infusionSet2})` : null,
+      stillServing(p.infusionSet1, p.infusionSet1Index)
+        ? `Infusion Set 1 (${describe(p.infusionSet1, p.infusionSet1Index)})`
+        : null,
+      stillServing(p.infusionSet2, p.infusionSet2Index)
+        ? `Infusion Set 2 (${describe(p.infusionSet2, p.infusionSet2Index)})`
+        : null,
     ].filter(Boolean);
     if (stuck.length > 0) {
       errors.push(
