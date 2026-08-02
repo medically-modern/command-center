@@ -316,21 +316,27 @@ export const READ_COLUMN_IDS = [
   COL.inNetwork,
   COL.active,
   COL.dmeBenefits,
-];
-
-/** Extended read columns for auth groups — includes auth results + the derived
- *  SoS/Auth summary columns. The three universal checks are in the base list
- *  above (Benefits writes them, so Benefits must read them back). */
-export const AUTH_READ_COLUMN_IDS = [
-  ...READ_COLUMN_IDS,
-  COL.sos,
-  COL.auth,
-  // Per-product auth result (status)
+  // Per-product Auth Result — same rule, same bug as the three checks above
+  // (found 2026-08-02): Benefits WRITES these on send and, being read only by
+  // the auth groups, fetched them back from nobody — so every "Auth Required /
+  // Not Required" answer hydrated blank on reload and a manager reopening the
+  // patient saw an empty step 2 while Monday held the real answers.
   COL.authResult.monitor,
   COL.authResult.sensors,
   COL.authResult.insulin_pump,
   COL.authResult.infusion_set,
   COL.authResult.cartridge,
+];
+
+/** Extended read columns for auth groups — adds the per-product SUBMISSION
+ *  fields and the derived SoS/Auth summary columns. The three universal checks
+ *  and the five per-product Auth Result columns are in the base list above
+ *  (Benefits writes them, so Benefits must read them back) — do NOT repeat them
+ *  here; `universalRoundTrip.test.ts` fails the build on a duplicate. */
+export const AUTH_READ_COLUMN_IDS = [
+  ...READ_COLUMN_IDS,
+  COL.sos,
+  COL.auth,
   // Per-product submission fields (read back for Auth Outstanding display)
   COL.authMethod.monitor,
   COL.authMethod.sensors,

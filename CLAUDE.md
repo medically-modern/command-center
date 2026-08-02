@@ -401,11 +401,34 @@ columns" automation on duplicated items). The SPA only flips the advancer; verif
   `ChartDef.reasonBuckets` + `reasonBucketsFor`. Column 2: Benefits (Inactive insurance · Pump SoS ·
   Check outstanding >5d — board facts, not the escalation label) and **Submit Auth** (the two DVS
   charts merged: DVS Retry · DVS Manual Review · Propose Stuck). Column 3 Benefits bars = arrival
-  path (Propose Stuck stamp vs Universal Check columns). Submit Auth propose-stuck is TWO-STEP:
-  the rep's proposal writes Manager Escalation Required (not Final), and the manager's drill-down
-  "Escalate to Final Decisions" button (required stamped note) promotes it. Benefits auto-escalation
-  splits by cause: OON / Medicare-not-primary / DME-no → Final, Inactive alone → Manager
-  (`universalEscalationLevel`). `lib/oversight/priority.ts` adds
+  path (Propose Stuck stamp vs Universal Check columns); **Submit Auth column 3 mirrors column 2's
+  three bars one rung up** and **Auth Outstanding column 3 has a single Propose Stuck bar** (both
+  2026-08-02 — before that they were day-bucketed, which said nothing a manager could act on).
+  ⚠️ `submit-auth-final-escalation`, like `submit-auth-manager`, deliberately has **no
+  `CHART_FILTERS` entry**: two of its three bars are stage-**DVS** patients, so a chart-level
+  "Submit Auth." rule would filter them out — its population is the UNION of its bars, and
+  `OversightTab.handlePatientClick` overrides the route per patient (DVS rows → `/dvs`).
+  **The escalation ladder is processor → Manager Intervention → Final Decisions**
+  (`stageActions.proposeStuckLevel`, 2026-08-02): Propose Stuck writes one rung UP from wherever
+  the patient already is — an existing escalation label OR a click from Manager Intervention
+  promotes to Final; otherwise Submit Auth and DVS start at Manager and Benefits / Auth
+  Outstanding go straight to Final. It used to key off the STAGE alone, which made a manager's own
+  Propose Stuck a no-op at Submit Auth (it rewrote the label the patient already had). The
+  drill-down's "Escalate to Final Decisions" button still exists as the other route up.
+  **Both DVS bars are escalation-split**: Manager Intervention excludes Final, Final Decisions
+  requires it — reversing the 2026-07-29 "status-only" rule, which was correct only while nothing
+  ever wrote an escalation onto a DVS patient. Board automation **7918444697** now does (Trigger
+  Supplies DVS → Failed / Manual Review / MLTC ⇒ Manager Escalation Required); it watches only the
+  SUPPLIES column, so pump-DVS and claims failures still escalate by hand.
+  **Manager Intervention has "Send back to pipeline"** (`returnToQueue`, optional stamped note →
+  clears the escalation + re-dates to today) — an escalated patient is invisible to the rep, so
+  this is the only way back and it previously existed only in Final Decisions.
+  **DVS × Final Decisions additionally gets "Send back to manager"** (`returnToManager` →
+  `returnInsuranceToManager`, Final → Manager index 0): the final reviewer fixes the run on the
+  board and hands it back to the manager who watches DVS, rather than dropping it to a rep who has
+  no DVS actions. That is the only Final→Manager transition; everything else raises or clears.
+  Benefits auto-escalation splits by cause: OON / Medicare-not-primary / DME-no → Final, Inactive
+  alone → Manager (`universalEscalationLevel`). `lib/oversight/priority.ts` adds
   VIP/priority scoring (localStorage config). The open drill-down `{stage, chart, bucket}` is
   **mirrored to the URL** so Back from a patient's agent page returns to the exact drill-down (see the
   back-nav note in §9). **Keep oversight reads on the gateway:** `oversightApi.ts` must route through

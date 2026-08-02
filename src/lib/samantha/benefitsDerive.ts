@@ -291,8 +291,19 @@ export function validateBenefitsFactsForSubmit(patient: Patient): string[] {
   if (!patient.serving) missing.push("Serving (set at Profile Send-Off)");
   if (!patient.primaryInsurance) missing.push("Primary Insurance (set at Profile Send-Off)");
 
-  for (const id of ["in-network", "active", "dme-benefits"] as const) {
-    if (!ins.universal[id]) missing.push(UNIVERSAL_GATE_LABELS[id]);
+  // ONE negative answer is a complete answer (Josh, 2026-08-02). Out-of-Network
+  // / Not Active / Not Covered / Medicare not Primary each stop the benefit
+  // check on their own, so the rep is NOT made to go back and answer the other
+  // two before escalating — that was busywork on a call that had already ended.
+  // The remaining checks simply go unanswered: the send only writes checks that
+  // HAVE an answer, and `universalEscalationLevel` reads the answers present
+  // (an unanswered Active is not "Inactive", so it can't pull an
+  // Out-of-Network patient down from Final to Manager).
+  const negative = anyUniversalNegative(ins);
+  if (!negative) {
+    for (const id of ["in-network", "active", "dme-benefits"] as const) {
+      if (!ins.universal[id]) missing.push(UNIVERSAL_GATE_LABELS[id]);
+    }
   }
 
   // Medicare not Primary sends the patient straight to a manager, and the ONLY
@@ -303,9 +314,9 @@ export function validateBenefitsFactsForSubmit(patient: Patient): string[] {
     missing.push("Primary payer — name it in the Universal Checks call notes");
   }
 
-  // A negative check gates step 2 off — only the 3 checks themselves are
-  // required; sending in this state sets Escalation Required (handoff §3).
-  if (anyUniversalNegative(ins)) return missing;
+  // A negative check gates step 2 off — sending in this state sets Escalation
+  // Required (handoff §3).
+  if (negative) return missing;
 
   const resolved = resolveHcpcs(
     patient.primaryInsurance || null,

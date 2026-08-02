@@ -552,6 +552,21 @@ export async function sendPatientToMonday(
       stageWriteIndex = STAGE_INDEX.dvs;
     }
     // else: partial → no Stage Advancer write; escalation still follows toggle
+
+    // Insulin-pump same-or-similar coming back NOT CLEAR is a manager decision
+    // wherever it surfaces (Josh, 2026-08-02). At Benefits the derivation
+    // escalates through deriveInsuranceOutcome's blocker path — but a pump whose
+    // SoS was DEFERRED there (rep answered Auth = Required ⇒ derived "skip", so
+    // the pump sits in Skip SoS Products) reaches the same finding for the first
+    // time at THIS page's recheck. That moved the pump into Not Clear Products —
+    // which is what put the patient in Oversight's "Pump SoS" bar, since that bar
+    // keys on the dropdown — while the Escalation column stayed blank, so no
+    // manager was ever told. Applied after the stage rules so a denial (which
+    // already forces manager) and the resolved/DVS paths keep their stage write.
+    const pumpEntry = entries.find((e) => e.cid === "pump");
+    if (pumpEntry && effectiveSos(pumpEntry) === "not-clear") {
+      escalationDecision = "manager";
+    }
   } else {
     // benefits page — use insurance outcome to drive Stage Advancer.
     const outcome = deriveInsuranceOutcome(effectiveIns, entries.map(e => e.cid));

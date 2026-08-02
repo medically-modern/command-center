@@ -30,6 +30,7 @@ import { NotesPanel } from "@/components/samantha/NotesPanel";
 import { PageLoadingOverlay } from "@/components/shared/PageLoadingOverlay";
 import { EmptyPatientPane } from "@/components/shared/EmptyPatientPane";
 import { ReportIssueButton } from "@/components/shared/ReportIssueButton";
+import { StageActionBar } from "@/components/shared/StageActionBar";
 import { Button } from "@/components/ui/button";
 import { useBackNavigation } from "@/hooks/useBackNavigation";
 import { managerChartFromParams, managerBucketFromParams } from "@/lib/shared/managerOrigin";
@@ -272,6 +273,16 @@ const DvsPage = () => {
               </div>
             </div>
             <div className="flex items-center gap-2">
+              {selected && (
+                <StageActionBar
+                  stage="dvs"
+                  board="insurance"
+                  patientId={selected.id}
+                  patientName={selected.name}
+                  escalationLabel={selected.escalationLabel}
+                  onDone={() => refetch(true)}
+                />
+              )}
               <Button onClick={() => refetch()} disabled={loading} className="gap-2 bg-white text-navy hover:bg-white/90 shadow-elevate">
                 <RefreshCw className={cn("h-4 w-4", loading && "animate-spin")} /> Refresh
               </Button>

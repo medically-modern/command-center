@@ -328,17 +328,43 @@ describe("failed-check gating (Medicare-not-Primary handoff §2–§3)", () => {
     expect(validateBenefitsFactsForSubmit(p)).toEqual([]);
   });
 
-  it("unanswered checks still block on the failed-check path", () => {
+  // Josh, 2026-08-02: one negative answer IS a complete answer. The rep used to
+  // have to go back and fill the other two before she could escalate, on a call
+  // that had already ended.
+  it("a negative check releases the other two from being required", () => {
     const p = makePatient({
       serving: "CGM",
       primaryInsurance: "Medicare A&B",
       insurance: {
         ...structuredClone(EMPTY_INSURANCE),
-        universal: { "in-network": "medicare-not-primary", active: "", "dme-benefits": "confirmed" },
+        universal: { "in-network": "medicare-not-primary", active: "", "dme-benefits": "" },
         callsUniversal: [{ ref: "", note: PAYER_NOTE }],
       },
     });
-    expect(validateBenefitsFactsForSubmit(p)).toEqual(["Insurance Active"]);
+    expect(validateBenefitsFactsForSubmit(p)).toEqual([]);
+  });
+
+  it("still requires all three while every answer is positive-or-blank", () => {
+    const p = makePatient({
+      serving: "CGM",
+      primaryInsurance: "Medicare A&B",
+      insurance: {
+        ...structuredClone(EMPTY_INSURANCE),
+        universal: { "in-network": "confirmed", active: "", "dme-benefits": "confirmed" },
+      },
+    });
+    expect(validateBenefitsFactsForSubmit(p)).toContain("Insurance Active");
+  });
+
+  // The released checks stay UNANSWERED rather than defaulting — so a blank
+  // Active can't read as "Inactive" and pull an Out-of-Network patient down
+  // from Final Decisions to Manager Intervention.
+  it("an unanswered Active does not downgrade the escalation level", () => {
+    const ins: InsuranceState = {
+      ...structuredClone(EMPTY_INSURANCE),
+      universal: { "in-network": "not-confirmed", active: "", "dme-benefits": "" },
+    };
+    expect(universalEscalationLevel(ins)).toBe("final");
   });
 
   it("medicare-not-primary outranks every other answer for escalation", () => {

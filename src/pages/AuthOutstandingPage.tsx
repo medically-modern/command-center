@@ -223,6 +223,7 @@ const AuthOutstandingPage = () => {
                     board="insurance"
                     patientId={selected.id}
                     patientName={selected.name}
+                    escalationLabel={selected.escalationLabel}
                     onDone={() => refetch(true)}
                   />
                 )}

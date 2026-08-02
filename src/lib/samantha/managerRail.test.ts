@@ -132,11 +132,69 @@ describe("Submit Auth · Manager Intervention bars", () => {
     expect(bar("DVS Manual Review")(patient({ dvsStatus: "Success" }))).toBe(false);
   });
 
-  it("an escalation label alone is NOT manual review — DVS classifies on status only", () => {
+  it("an escalation label alone is NOT manual review — DVS classifies on status first", () => {
     expect(bar("DVS Manual Review")(patient({ escalationLabel: "Manager Escalation Required" }))).toBe(false);
   });
 
-  it("Propose Stuck needs the manager label AND the stamp", () => {
+  // 2026-08-02: manual review now auto-raises Manager Escalation Required, and
+  // a manager can promote to Final. Janelle's bars must drop the promoted half
+  // or a patient she has already handed up stays in her chart forever.
+  it("drops a patient once they have been promoted to Final", () => {
+    const promoted = { escalationLabel: "Final Escalation Required" };
+    expect(bar("DVS Manual Review")(patient({ dvsStatus: "Manual Review", ...promoted }))).toBe(false);
+    expect(bar("DVS Retry")(patient({ dvsStatus: "Retry Queued", ...promoted }))).toBe(false);
+    // …and keeps them while they are still only at Manager.
+    expect(bar("DVS Manual Review")(patient({ dvsStatus: "Manual Review", escalationLabel: "Manager Escalation Required" }))).toBe(true);
+  });
+});
+
+describe("Submit Auth · Final Decisions bars", () => {
+  const bar = (b: string) => railFilterFor("submit-auth-final-escalation", b)!;
+  const FINAL = "Final Escalation Required";
+
+  it("mirrors the Manager Intervention bars, one rung up", () => {
+    expect(bar("DVS Manual Review")(patient({ dvsStatus: "Manual Review", escalationLabel: FINAL }))).toBe(true);
+    expect(bar("DVS Retry")(patient({ dvsStatus: "Retry Queued", escalationLabel: FINAL }))).toBe(true);
+    expect(
+      bar("Propose Stuck")(patient({ escalationLabel: FINAL, notes: "[Proposed Stuck · 2026-08-02 · JR] payer will not budge" })),
+    ).toBe(true);
+  });
+
+  it("excludes the not-yet-promoted half that still belongs to Janelle", () => {
+    const atManager = { escalationLabel: "Manager Escalation Required" };
+    expect(bar("DVS Manual Review")(patient({ dvsStatus: "Manual Review", ...atManager }))).toBe(false);
+    expect(bar("DVS Retry")(patient({ dvsStatus: "Retry Queued", ...atManager }))).toBe(false);
+  });
+
+  it("is the union of its bars — this chart has no stage rule of its own", () => {
+    // Two of the three bars are stage-DVS patients, so a chart-level "Submit
+    // Auth." rule would filter them out (see CHART_FILTERS).
+    const whole = railFilterFor("submit-auth-final-escalation", null)!;
+    expect(whole(patient({ dvsStatus: "Manual Review", escalationLabel: FINAL }))).toBe(true);
+    expect(whole(patient({ escalationLabel: FINAL }))).toBe(false);
+  });
+});
+
+describe("Auth Outstanding · Final Decisions bar", () => {
+  const FINAL = "Final Escalation Required";
+
+  it("Propose Stuck keys on the stamp", () => {
+    const bar = railFilterFor("auth-outstanding-final-escalation", "Propose Stuck")!;
+    expect(bar(patient({ escalationLabel: FINAL, notes: "[Proposed Stuck · 2026-08-02 · JR] no auth after 30d" }))).toBe(true);
+    expect(bar(patient({ escalationLabel: FINAL }))).toBe(false);
+  });
+
+  it("still lists a Final patient with no stamp — the bucket only subdivides", () => {
+    const whole = railFilterFor("auth-outstanding-final-escalation", null)!;
+    expect(whole(patient({ escalationLabel: FINAL }))).toBe(true);
+    expect(whole(patient({ escalationLabel: "Manager Escalation Required" }))).toBe(false);
+  });
+});
+
+describe("Submit Auth · Manager Intervention · Propose Stuck bar", () => {
+  const bar = (b: string) => railFilterFor("submit-auth-manager", b)!;
+
+  it("needs the manager label AND the stamp", () => {
     const proposed = patient({
       escalationLabel: "Manager Escalation Required",
       notes: "[Proposed Stuck · 2026-07-30 · BE] portal rejects the NPI",

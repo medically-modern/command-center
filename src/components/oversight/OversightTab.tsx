@@ -90,7 +90,10 @@ const CHART_ROUTES: Record<string, string | null> = {
   // route to the stage page (manager mode) so the manager can view/work the
   // patient; the Approve/Return actions still live in the drill-down itself.
   "benefits-final-escalation": "/benefits",
-  "submit-auth-final-escalation": "/submit-auth",
+  // Reason-bucketed since 2026-08-02 and therefore stage-mixed, exactly like
+  // "submit-auth-manager": DVS rows open the DVS monitor, and a proposed-stuck
+  // row is overridden to /submit-auth per patient in handlePatientClick.
+  "submit-auth-final-escalation": "/dvs",
   "auth-outstanding-final-escalation": "/auth-outstanding",
   // Manager Intervention: managers click through to work the patient.
   "benefits-manager-escalation": "/benefits",
@@ -1665,10 +1668,12 @@ export default function OversightTab() {
     (patientId: string) => {
       if (!expandedChart) return;
       let route = CHART_ROUTES[expandedChart];
-      // The merged Submit Auth manager chart mixes stages: DVS rows open the
+      // The merged Submit Auth manager charts mix stages: DVS rows open the
       // DVS monitor (the chart's base route), but a proposed-stuck row is a
-      // Submit Auth patient and belongs on that stage page.
-      if (expandedChart === "submit-auth-manager") {
+      // Submit Auth patient and belongs on that stage page. Both the Manager
+      // Intervention chart and its Final Decisions twin are reason-bucketed
+      // the same way, so both need the per-patient override.
+      if (expandedChart === "submit-auth-manager" || expandedChart === "submit-auth-final-escalation") {
         const p = (data?.get(expandedChart) ?? []).find((x) => x.id === patientId);
         if (p && (p.cols["color_mm1ws96t"] ?? "").trim() === "Submit Auth.") route = "/submit-auth";
       }

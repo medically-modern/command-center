@@ -54,13 +54,24 @@ const isUniversalCheckFail = (p: Patient): boolean => {
   return isNegUniversal(u?.["in-network"]) || u?.["dme-benefits"] === "not-confirmed";
 };
 
-const isDvsRetry = (p: Patient): boolean =>
+const FINAL_ESC = "Final Escalation Required";
+const isFinal = (p: Patient): boolean => p.escalationLabel === FINAL_ESC;
+
+const dvsRetryStatus = (p: Patient): boolean =>
   p.dvsStatus === "Retry Queued" || p.pumpDvsStatus === "Retry Queued";
 
-const isDvsManualReview = (p: Patient): boolean =>
+const dvsManualStatus = (p: Patient): boolean =>
   DVS_FAILED.has(p.dvsStatus ?? "") ||
   DVS_FAILED.has(p.pumpDvsStatus ?? "") ||
   CLAIMS_FAILED.has(p.claimsStatus ?? "");
+
+// Manager Intervention shows the not-yet-promoted half; Final Decisions the
+// promoted half. Mirrors the escalation split added to both CHART_FILTERS
+// on 2026-08-02 — change the two together.
+const isDvsRetry = (p: Patient): boolean => dvsRetryStatus(p) && !isFinal(p);
+const isDvsManualReview = (p: Patient): boolean => dvsManualStatus(p) && !isFinal(p);
+const isDvsRetryFinal = (p: Patient): boolean => dvsRetryStatus(p) && isFinal(p);
+const isDvsManualReviewFinal = (p: Patient): boolean => dvsManualStatus(p) && isFinal(p);
 
 const isSubmitAuthProposed = (p: Patient): boolean =>
   p.escalationLabel === MANAGER_ESC && hasProposedStuckStamp(p);
@@ -94,13 +105,25 @@ const RAIL: Record<string, { buckets: Record<string, RailPredicate>; all: RailPr
     },
     all: (p) => isDvsRetry(p) || isDvsManualReview(p) || isSubmitAuthProposed(p),
   },
+  // Final Decisions · Submit Auth row — reason-bucketed like its Manager
+  // Intervention twin (2026-08-02). Population is the union of the bars, NOT
+  // "any Final patient": two of the three bars are stage-DVS patients, so this
+  // chart deliberately has no stage rule of its own (see CHART_FILTERS).
   "submit-auth-final-escalation": {
-    buckets: {},
-    all: (p) => p.escalationLabel === "Final Escalation Required",
+    buckets: {
+      "DVS Retry": isDvsRetryFinal,
+      "DVS Manual Review": isDvsManualReviewFinal,
+      "Propose Stuck": (p) => isFinal(p) && hasProposedStuckStamp(p),
+    },
+    all: (p) => isDvsRetryFinal(p) || isDvsManualReviewFinal(p) || (isFinal(p) && hasProposedStuckStamp(p)),
   },
   "auth-outstanding-final-escalation": {
-    buckets: {},
-    all: (p) => p.escalationLabel === "Final Escalation Required",
+    buckets: {
+      "Propose Stuck": (p) => isFinal(p) && hasProposedStuckStamp(p),
+    },
+    // Population stays "any Final patient at this stage" — the bucket only
+    // subdivides it, so a Final patient without a stamp is still listed.
+    all: isFinal,
   },
 };
 

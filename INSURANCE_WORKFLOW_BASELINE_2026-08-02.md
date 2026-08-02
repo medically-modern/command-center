@@ -566,6 +566,41 @@ onto the wrong function.
 **Also corrects §10 quirk list:** quirk 12's neighbours are unaffected, but the baseline's §1.3
 dead-code map and §7.3 manager-actions list should be read with this removal applied.
 
+### 2026-08-02 · Escalation-routing fixes (Brandon's seven)
+
+Seven reported items, all shipped together. Tests **600 → 616**; `tsc` clean; lint unchanged.
+
+1. **Pump SoS Not Clear now escalates at Auth Outstanding too.** The Benefits path was already
+   correct (verified by simulation). The gap was a pump whose SoS was DEFERRED at Benefits — rep
+   answered Auth = Required ⇒ derived *Skip* — which reaches the not-clear finding for the first
+   time at the Auth Outstanding recheck. That context had no pump rule, so the pump moved into Not
+   Clear Products (putting the patient in Oversight's Pump SoS bar, which keys on the dropdown)
+   while Escalation stayed blank. `mondayWrite` authOutstanding now writes Manager when the pump's
+   *effective* SoS is not-clear. **Verified against a live board item** (created, exercised through
+   the real read → `mondayItemToPatient` → decision path, deleted): `done` before, `manager` after.
+2. **Per-product Auth answers now round-trip on Benefits.** `READ_COLUMN_IDS` contained none of the
+   auth columns, so Benefits wrote Auth Required/Not Required and fetched it back from nobody —
+   identical to the universal-checks bug of 2026-07-30. Added the five `authResult` columns to the
+   base list and removed them from `AUTH_READ_COLUMN_IDS` (which spreads the base list — the
+   `universalRoundTrip` duplicate test caught that immediately).
+3. **"Send back to pipeline" in Manager Intervention** — `returnToQueue` was gated to Final
+   Decisions. Note optional. (The half of this item about reps not seeing escalated patients was
+   already true: default view filter `nonEscalated`, and `samActive` excludes escalated.)
+4. **One negative universal check no longer requires the other two.** `validateBenefitsFactsForSubmit`
+   ran the three-answer loop before the negative early-return.
+5. **Propose Stuck is now ladder-aware** (`proposeStuckLevel`) — see CLAUDE.md §7. Could not
+   reproduce the reported "went to Final from Submit Auth"; the code wrote Manager and the board
+   had zero Final-escalated items at the time.
+6. **Final Decisions charts reason-bucketed** for Submit Auth (3 bars) and Auth Outstanding (1 bar).
+7. **DVS**: Propose Stuck added to the page (new `dvs` StageKey), both DVS bars escalation-split so
+   a promoted patient leaves Janelle's chart, and a new Final→Manager transition
+   (`returnInsuranceToManager` + `returnToManager` action, scoped to DVS × Final Decisions).
+
+**Outstanding, needs a Monday admin:** board automation **7918444697** (Trigger Supplies DVS →
+Failed / Manual Review / MLTC ⇒ Manager Escalation Required) is still **inactive** — the MCP
+connection returned `USER_UNAUTHORIZED` on activate. It watches the SUPPLIES column only, so pump
+DVS and claims failures would still need hand-escalation even once it's on.
+
 ### Board findings that are still open (not caused by any change here)
 
 Found while scoping, unresolved, and relevant to any future "send it back to Benefits" work:
