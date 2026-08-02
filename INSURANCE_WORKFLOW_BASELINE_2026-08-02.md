@@ -505,6 +505,79 @@ change or a snowball effect.
 **Cross-cutting**
 - [ ] Role-bar counts == sidebar lengths for all four roles (the four-implementation contract).
 - [ ] Oversight bar count == that bar's sidebar length after click-through (managerRail pairing).
-- [ ] Manager profile edit still writes only changed fields and previews the product delta.
+- [ ] ~~Manager profile edit still writes only changed fields and previews the product delta.~~
+      *(obsolete — feature removed, see change log below)*
 - [ ] `npm test` still green, and the count moved only by tests intentionally added/removed
       (baseline: **54 files / 623 tests**).
+
+---
+
+## 12. Change log — deltas against this snapshot
+
+Appended as the rework lands. §0–§11 above are frozen at `1d0e40e` and deliberately
+**not** edited, so they stay a faithful "before".
+
+### 2026-08-02 · Manager "Edit profile" removed from the Insurance manager views
+
+**What changed.** The manager-only identity edit is gone. `BenefitsPatientHeader` is now read-only
+for everyone, on all three Insurance pages and in every oversight origin.
+
+Deleted: `components/samantha/ManagerIdentityEditDialog.tsx`, `lib/samantha/managerIdentityEdit.ts`
+(+ its 23 tests), `saveManagerIdentityEdits` in `lib/samantha/mondayWrite.ts`, samantha's
+`fetchStatusOptions` / `StatusOption` / `statusOptionsCache` in `lib/samantha/mondayApi.ts`, and
+`isManagerEscalationView` in `lib/shared/managerOrigin.ts`. All were exclusive to this feature —
+the other three `fetchStatusOptions` implementations (masheke, finalConfirm, shared) are untouched.
+`BenefitsPatientHeader` lost its `managerEdit` / `stage` / `onIdentitySaved` props; the three pages
+now render `<BenefitsPatientHeader patient={selected} />`.
+
+**Resulting behavior.** A manager arriving from Manager Intervention or Final Decisions sees the
+same read-only header a rep sees. The remaining manager actions are unchanged: Propose Stuck,
+Approve Stuck, Return to Queue, and the rail narrowing (`?mv=` / `mvc` / `mvb` still drive
+`managerRail`; only the edit affordance keyed off `mv`). To correct Serving, Primary/Secondary
+Insurance or a Member ID, the patient goes back through Profile Send-Off.
+
+**Why** (Josh). Editing those five fields is only half a correction — a payer change has to be
+re-verified through Stedi, and the Insurance board cannot run one. Findings from the live boards
+and Railway, worth keeping so this isn't re-litigated:
+- The Stedi trigger is a stock Monday webhooks recipe (**id 130**, subscription `562943120`):
+  *"when `color_mm1yeksx` changes to index 1, POST to the webhook."* Insurance already runs two
+  identical recipe-130 subscriptions for the DVS triggers, so the trigger half is easy — but the
+  column doesn't exist on Insurance.
+- **Neither eligibility input exists on Insurance**: General Insurance (`color_mm24ap4j`) and the
+  working Member ID (`text_mm4t8gbq`). Name and DOB do (DOB shares `text_mm1xvxst` across both
+  boards — they were duplicated from one template).
+- **Insurance carries ~9 of 33 Stedi result columns**, arriving by hop-copy, and is missing both
+  terminal signals (Eligibility Active?, Error Description) plus Coverage Type, Managed Medicaid,
+  Medicare Advantage ×3, Medicaid ID, Secondary/Medicaid ID, In-Network?, Prior Auth Required?,
+  Copay, the family deductible/OOP splits, Stedi Gender, Stedi Address and facility flags — ~22
+  columns. Several are load-bearing (`isCoverageActive`, the Managed-Medicaid and MA/QMB banners,
+  the serving + cross-sell suggestion, and `Plan Name` → MLTC detection at Submit Auth).
+- The Railway **`stedi-monday-integration`** service is bound to one board's schema — a single
+  `ELIG_COL_FIRST_NAME/LAST_NAME/DOB/INSURANCE/MEMBER_ID` set, and a board list of
+  INTAKE/ONBOARDING/CLAIMS/ORDER with no Insurance board.
+
+**Snowball effects: none observed.** `npm test` **53 files / 600 tests**, all green — exactly
+−23, the deleted module's own tests; no other suite moved. `tsc --noEmit` clean; `npm run lint`
+unchanged from before the removal (32 pre-existing errors, none in the touched files). Two
+incidental fixes fell out: an orphaned doc comment in `mondayWrite.ts` now sits with
+`saveNoAuthNeededToMonday`, and one in `mondayApi.ts` with `readColumnTexts` — both had drifted
+onto the wrong function.
+
+**Also corrects §10 quirk list:** quirk 12's neighbours are unaffected, but the baseline's §1.3
+dead-code map and §7.3 manager-actions list should be read with this removal applied.
+
+### Board findings that are still open (not caused by any change here)
+
+Found while scoping, unresolved, and relevant to any future "send it back to Benefits" work:
+- **No automation moves an item back to the Benefits group.** Active Stage-Advancer→group moves
+  are only `4→Submit Auth`, `6→Auth Outstanding`, `2→Stuck`, `0→Auth Denied`, `1→DVS`. Writing
+  stage = Benefits/SoS (3) leaves the item in its current group, invisible to the group-read
+  Benefits queue. (`7918291617`, Complete→Complete group, is **inactive**.)
+- **Stage 3 bounces Medicaid patients straight to DVS.** Three active automations
+  (`7921013564` / `7921013652` / `7921013691`) fire on stage→3 and, for NY-Medicaid-secondary or
+  Medicaid-primary patients with certain Servings, immediately set stage := 1 (DVS) and force the
+  supplies (± pump) auth results to Required.
+- **A DVS group now exists** (`group_mm5gp2r2`) and stage→1 actively moves items into it
+  (`7921018058`). The codebase still assumes "DVS has no group" — `useMondayPatients`,
+  `useRoleCounts`, both baseline generators, CLAUDE.md §5.8. Nothing breaks today (those paths
+  filter by stage), but the comments are stale.

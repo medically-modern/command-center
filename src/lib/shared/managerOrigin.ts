@@ -64,21 +64,6 @@ export function managerOriginFromParams(params: URLSearchParams): ManagerOrigin 
 }
 
 /**
- * True for the two MANAGER ESCALATION columns (Manager Intervention / Final
- * Decisions) — the views where a manager owns the patient and may correct board
- * facts a rep can't (see `components/samantha/ManagerIdentityEditDialog`).
- *
- * Deliberately excludes "overview": Processor Overview is the rep's own queue
- * shown to a manager, and an edit affordance there would be one click away from
- * the rep-facing page it mirrors.
- *
- * One predicate so the three Insurance pages can't drift apart on who gets it.
- */
-export function isManagerEscalationView(origin: ManagerOrigin | null): boolean {
-  return origin === "manager-intervention" || origin === "final-decisions";
-}
-
-/**
  * The oversight chart id this page was opened from, or null for an ordinary
  * visit. Pages match it against their own known chart ids, so an unrecognised
  * value simply means "don't narrow" — never an empty list.

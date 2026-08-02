@@ -411,20 +411,21 @@ columns" automation on duplicated items). The SPA only flips the advancer; verif
   back-nav note in §9). **Keep oversight reads on the gateway:** `oversightApi.ts` must route through
   `MONDAY_API_URL`/`mondayIdentityHeaders` from `shared/mondayEndpoint`, *not* hardcode
   `api.monday.com` (a handoff once regressed this — reads would then bypass token-injection + audit).
-  **Manager-only insurance edit (2026-07-30):** the otherwise read-only `BenefitsPatientHeader` grows
-  an "Edit profile" button — Serving · Primary/Secondary Insurance · Member ID 1/2 — but ONLY when
-  the URL says the visitor came from an escalation column (`isManagerEscalationView(mv)` = manager-
-  intervention | final-decisions; **Processor Overview and rep pages stay read-only**). Most Insurance
-  escalations ARE one of those five being wrong, and the alternative was editing Monday directly.
-  `lib/samantha/managerIdentityEdit` (pure: diff + note + product impact) + `saveManagerIdentityEdits`
-  (verified write, `stageColumnId: []` — no automation triggers on these columns; every one that
-  mentions them triggers on Stage Advancer). Two rules worth keeping: the dropdowns and the write's
-  `expectedText` both come from the **live board labels** (`fetchStatusOptions`), never from
-  `PRIMARY_INSURANCE_OPTIONS`/`SERVING_OPTIONS` — those parse machine writes and have already drifted
-  ("Magnacare" vs "MagnaCare", no "Fidelis CHP"); and only CHANGED fields are written, which is what
-  makes read-back verification meaningful (snapshot-diff alone treats a silently-failed write as a
-  same-value write). Changing Serving or Primary/Secondary re-runs `resolveHcpcs`, so the dialog warns
-  which products enter/leave play before committing.
+  **`BenefitsPatientHeader` is read-only for EVERYONE — including managers (2026-08-02).** A
+  manager-only "Edit profile" dialog lived there from 2026-07-30 (Serving · Primary/Secondary
+  Insurance · Member ID 1/2, gated to the escalation columns) and was removed, along with
+  `lib/samantha/managerIdentityEdit`, `saveManagerIdentityEdits`, samantha's `fetchStatusOptions`
+  and `isManagerEscalationView`. **Don't rebuild it without solving the Stedi half** (Josh): those
+  five facts are only half a correction — changing the payer means re-verifying eligibility, and
+  the Insurance board cannot run a Stedi check. It has **no Run-Stedi trigger column**, **neither
+  eligibility input column** (General Insurance `color_mm24ap4j` and the working Member ID
+  `text_mm4t8gbq` are Profile-Send-Off-only; Insurance's Primary Insurance is a different column
+  with a different vocabulary), and only ~9 of the 33 Stedi result columns — missing both terminal
+  signals (Eligibility Active?, Error Description) plus Managed Medicaid / Medicare Advantage /
+  Medicaid ID, which drive the banners, `isCoverageActive` and the serving suggestion. The Railway
+  `stedi-monday-integration` service is bound to one board's schema (single `ELIG_COL_*` set; its
+  board list has no Insurance board), so this is board **and** backend work, not a UI change.
+  Corrections go back through Profile Send-Off instead.
 - **System Management** (`/system-mgmt`, `lib/systemMgmt/mondayApi.ts`) aggregates counts/pipeline
   across *all* boards (hardcoded board + stage-advancer column IDs); `OperationsTab` + `PipelineChart`
   render burndown and day-bucket distributions.

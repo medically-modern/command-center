@@ -48,7 +48,7 @@ import { useSearchParams } from "react-router-dom";
 import { useBackNavigation } from "@/hooks/useBackNavigation";
 import { ReportIssueButton } from "@/components/shared/ReportIssueButton";
 import { viewFilterFromParams } from "@/lib/roleView";
-import { managerOriginFromParams, managerChartFromParams, managerBucketFromParams, isManagerEscalationView } from "@/lib/shared/managerOrigin";
+import { managerOriginFromParams, managerChartFromParams, managerBucketFromParams } from "@/lib/shared/managerOrigin";
 import { railFilterFor, applyRail } from "@/lib/samantha/managerRail";
 import { sidebarVisibleList } from "@/lib/samantha/sidebarList";
 
@@ -266,12 +266,7 @@ const ChaseBenefitsPage = () => {
                 {selected && (
                   <div className="layout">
                     <div className="main-col">
-                      <BenefitsPatientHeader
-                        patient={selected}
-                        managerEdit={isManagerEscalationView(managerOrigin)}
-                        stage="Benefits"
-                        onIdentitySaved={() => refetch(true)}
-                      />
+                      <BenefitsPatientHeader patient={selected} />
 
                       {selected.id === lastSentId ? (
                         <section className="card step-card">

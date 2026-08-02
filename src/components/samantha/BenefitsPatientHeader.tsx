@@ -4,16 +4,19 @@
  * decisions D5/S5; benefits-redesign.html `renderHeader()` is the visual
  * spec — styles live in benefitsRedesign.css, scoped under .bnr).
  *
- * Read-only for reps: Serving, Primary/Secondary Insurance, Member IDs and
+ * Read-only for EVERYONE: Serving, Primary/Secondary Insurance, Member IDs and
  * everything else are finalized at Profile Send-Off. The prototype's DEMO
  * dropdowns are deliberately absent (production strips them, spec §6). Every
  * value is user-select-all for one-click copy.
  *
- * ONE exception, 2026-07-30: pass `managerEdit` and an "Edit profile" button
- * appears, opening `ManagerIdentityEditDialog`. The three pages that render this
- * header set it only when the URL says the visitor came from an oversight
- * ESCALATION column (`?mv=manager-intervention` / `final-decisions`) — a rep's
- * page, and Processor Overview, stay read-only.
+ * A manager-only "Edit profile" dialog lived here from 2026-07-30 until
+ * 2026-08-02, letting the oversight escalation views correct Serving /
+ * Primary+Secondary Insurance / Member IDs in place. It was removed (Josh):
+ * changing those five facts is only half the job — the payer change also has to
+ * be re-verified through Stedi, which the Insurance board has no way to run
+ * (no trigger column, none of the eligibility input columns, and the Railway
+ * service is bound to the Profile Send-Off board). Corrections go back through
+ * Profile Send-Off rather than being made blind here.
  *
  * Stedi strip: Home Plan / Coverage Type / Medicaid ID / Active? have no
  * Insurance-board columns yet — the strip shows what the board carries
@@ -24,7 +27,6 @@ import { useState } from "react";
 import { ChevronDown } from "lucide-react";
 import type { Patient } from "@/lib/samantha/workflow";
 import { authHomePlan } from "@/lib/samantha/submitAuthRules";
-import { ManagerIdentityEditDialog } from "./ManagerIdentityEditDialog";
 import "./benefitsRedesign.css";
 
 function formatPhone(raw: string): string {
@@ -59,15 +61,9 @@ function SBox({ label, value, strong }: { label: string; value: string; strong?:
 
 interface Props {
   patient: Patient;
-  /** Manager escalation view: show the "Edit profile" affordance. */
-  managerEdit?: boolean;
-  /** Stage label for the correction's note stamp ("Benefits" / …). */
-  stage?: string;
-  /** Called after a correction lands on Monday — pages refetch. */
-  onIdentitySaved?: () => void;
 }
 
-export function BenefitsPatientHeader({ patient, managerEdit, stage, onIdentitySaved }: Props) {
+export function BenefitsPatientHeader({ patient }: Props) {
   const [detailsOpen, setDetailsOpen] = useState(false);
 
   const isMedicarePayer = /medicare/i.test(patient.primaryInsurance ?? "");
@@ -79,21 +75,12 @@ export function BenefitsPatientHeader({ patient, managerEdit, stage, onIdentityS
 
   return (
     <section className="card header-card">
-      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
-        <div>
-          <div className="ph-name">{patient.name || "—"}</div>
-          <div className="ph-dob">
-            DOB <span style={{ userSelect: "all" }}>{patient.dob || "—"}</span> ·{" "}
-            <span style={{ userSelect: "all" }}>{formatPhone(patient.patientPhone ?? "") || "—"}</span>
-          </div>
+      <div>
+        <div className="ph-name">{patient.name || "—"}</div>
+        <div className="ph-dob">
+          DOB <span style={{ userSelect: "all" }}>{patient.dob || "—"}</span> ·{" "}
+          <span style={{ userSelect: "all" }}>{formatPhone(patient.patientPhone ?? "") || "—"}</span>
         </div>
-        {managerEdit && (
-          <ManagerIdentityEditDialog
-            patient={patient}
-            stage={stage ?? "Benefits"}
-            onSaved={onIdentitySaved}
-          />
-        )}
       </div>
 
       <div className="ph-groups">
