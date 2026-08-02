@@ -124,7 +124,7 @@ export function ManagerIdentityEditDialog({
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <PencilLine className="h-5 w-5 text-teal-600" />
-              Correct insurance details
+              Edit profile
             </DialogTitle>
           </DialogHeader>
 
