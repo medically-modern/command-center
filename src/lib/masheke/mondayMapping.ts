@@ -9,7 +9,26 @@ export const SUB_STAGE_INDEX = {
   sendRequest: 9,     // 2B. Send Request
   confirmReceipt: 10, // 2C. Confirm Receipt
   chase: 11,          // 2D. Chase Clinicals
+  // Doctor Appointment (2026-08-03). Index 0, NOT 12 — Monday assigns the index
+  // when a label is created in the UI and it picked the lowest free slot, which
+  // happened to be 0 (this column's other labels start at 8). Verified against
+  // the live board; a status write by index is silent if the index has no
+  // label, so confirm the settings_str before changing this.
+  doctorAppointment: 0,
   completed: 14,      // Final stage — clinicals received
+} as const;
+
+/** Sub-Stage label text, keyed by index. The Sub-Stage column IS the stage
+ *  advancer on this board (see mondayWrite.recordAndAdvanceVerified — it passes
+ *  COL.subStage as `stageColumnId`, "the single write that moves the item"), so
+ *  moving a patient between sub-stages needs no board automation. */
+export const SUB_STAGE_LABEL = {
+  [SUB_STAGE_INDEX.evaluate]: "Evaluate MN",
+  [SUB_STAGE_INDEX.sendRequest]: "Send Request",
+  [SUB_STAGE_INDEX.confirmReceipt]: "Confirm Receipt",
+  [SUB_STAGE_INDEX.chase]: "Chase Clinicals",
+  [SUB_STAGE_INDEX.doctorAppointment]: "Doctor Appointment",
+  [SUB_STAGE_INDEX.completed]: "Completed",
 } as const;
 
 // ---- Advancer indices ----
@@ -186,6 +205,11 @@ export function mondayItemToPatient(item: MondayItem): Patient {
     followUp: col(item, "color_mm35v6a0") || undefined,
     followUpDate: col(item, "date_mm35kbkj") || undefined,
     blockedDate: col(item, "date_mm33vqkm") || undefined,
+    // Doctor Appointments (2026-08-03)
+    appointmentDate: col(item, "date_mm5w2vsf") || undefined,
+    apptAttempt1: col(item, "text_mm5wjp3r") || undefined,
+    apptAttempt2: col(item, "text_mm5wb4c2") || undefined,
+    apptAttempt3: col(item, "text_mm5w1j8y") || undefined,
     profileSendOffNotes: col(item, "text_mm3xdze1") || undefined,
     notes: "",
   };

@@ -13,6 +13,7 @@ const EvaluatePage = lazyWithReload(() => import("./pages/EvaluatePage"));
 const SendRequestPage = lazyWithReload(() => import("./pages/SendRequestPage"));
 const ConfirmReceiptPage = lazyWithReload(() => import("./pages/ConfirmReceiptPage"));
 const ChaseClinicalsPage = lazyWithReload(() => import("./pages/ChaseClinicalsPage"));
+const DoctorAppointmentsPage = lazyWithReload(() => import("./pages/DoctorAppointmentsPage"));
 
 // Samantha board roles (3)
 const BenefitsPage = lazyWithReload(() => import("./pages/ChaseBenefitsPage"));
@@ -84,6 +85,9 @@ const App = () => (
           <Route path="/chase-fax" element={<ChaseClinicalsPage method="fax" />} />
           <Route path="/chase-parachute" element={<ChaseClinicalsPage method="parachute" />} />
           <Route path="/chase-benefits" element={<ChaseBenefitsRedirect />} />
+          {/* Doctor Appointments — patient outreach when the provider requires
+              a new visit before sending clinicals (2026-08-03) */}
+          <Route path="/doctor-appointments" element={<DoctorAppointmentsPage />} />
           <Route path="/benefits" element={<BenefitsPage />} />
           <Route path="/welcome-call" element={<WelcomeCallPage />} />
           {/* Profile Send Off — three roles (July 2026): verified, unverified

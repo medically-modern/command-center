@@ -427,7 +427,7 @@ export function useRoleCounts(opts?: { roleIds?: string[] }) {
     if (need("submitAuth")) boardTasks.push(samActive(SAM_GROUPS.submitAuth, "submitAuth"));
     if (need("authOutstanding")) boardTasks.push(samActive(SAM_GROUPS.authOutstanding, "authOutstanding", true));
 
-    if (needAny("evaluate", "sendRequest", "confirmReceipt", "chaseFax", "chaseParachute", "chaseBenefits")) {
+    if (needAny("evaluate", "sendRequest", "confirmReceipt", "chaseFax", "chaseParachute", "chaseBenefits", "doctorAppointments")) {
       boardTasks.push(
         (async () => {
           if (!meshHasToken()) return;
@@ -436,9 +436,9 @@ export function useRoleCounts(opts?: { roleIds?: string[] }) {
             MESH_GROUPS.medicalNecessity,
             [MESH_STAGE_COL, MESH_NAD_COL, MESH_ESC_COL, MESH_METHOD_COL],
           );
-          const nc: RoleCounts = { evaluate: 0, sendRequest: 0, confirmReceipt: 0, chaseFax: 0, chaseParachute: 0, chaseBenefits: 0 };
-          const ec: RoleCounts = { evaluate: 0, sendRequest: 0, confirmReceipt: 0, chaseFax: 0, chaseParachute: 0, chaseBenefits: 0 };
-          const ids: RolePatientIds = { evaluate: [], sendRequest: [], confirmReceipt: [], chaseFax: [], chaseParachute: [], chaseBenefits: [] };
+          const nc: RoleCounts = { evaluate: 0, sendRequest: 0, confirmReceipt: 0, chaseFax: 0, chaseParachute: 0, chaseBenefits: 0, doctorAppointments: 0 };
+          const ec: RoleCounts = { evaluate: 0, sendRequest: 0, confirmReceipt: 0, chaseFax: 0, chaseParachute: 0, chaseBenefits: 0, doctorAppointments: 0 };
+          const ids: RolePatientIds = { evaluate: [], sendRequest: [], confirmReceipt: [], chaseFax: [], chaseParachute: [], chaseBenefits: [], doctorAppointments: [] };
           for (const item of items) {
             // Proposed Stuck patients left the rep queues — they await the
             // manager's Final Decision. That's now the Escalation column at
@@ -452,6 +452,12 @@ export function useRoleCounts(opts?: { roleIds?: string[] }) {
             else if (stage === "Send Request") roleId = "sendRequest";
             else if (stage === "Confirm Receipt") roleId = "confirmReceipt";
             else if (stage === "Chase Clinicals") { const cm = item.cols[MESH_METHOD_COL]; roleId = cm === "Parachute" || cm === "Email" ? "chaseParachute" : "chaseFax"; }
+            // Doctor Appointments (2026-08-03). WITHOUT this branch the new
+            // sub-stage falls through the `if (!roleId) continue` below and the
+            // patient is counted NOWHERE — no error, just invisible. Same
+            // branch exists in scripts/snapshot-baseline.mjs and
+            // services/baseline-cron/index.mjs (SS5.8 counting contract).
+            else if (stage === "Doctor Appointment") roleId = "doctorAppointments";
             if (!roleId) continue;
 
             const isChase = roleId === "chaseFax" || roleId === "chaseParachute";

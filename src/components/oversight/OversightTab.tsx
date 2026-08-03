@@ -21,6 +21,8 @@ import {
   OVERSIGHT_SECTIONS,
   DAY_BUCKET_LABELS,
   DAY_BUCKET_COLORS,
+  APPENDIX_BUCKET,
+  matchesAppendixBar,
   type OversightPatient,
   type ChartDef,
   type DayBucketLabel,
@@ -283,7 +285,8 @@ interface StageChartProps {
   patients: OversightPatient[];
   priorityConfig: PriorityConfig;
   onChartClick: () => void;
-  onBarClick: (bucket: DayBucketLabel) => void;
+  /** A DayBucketLabel, or APPENDIX_BUCKET when the appendix bar is clicked. */
+  onBarClick: (bucket: string) => void;
 }
 
 const VIP_COLOR = "var(--mm-teal)";
@@ -298,21 +301,32 @@ function StageChart({ chart, patients, priorityConfig, onChartClick, onBarClick 
     }
     let unknownCount = 0;
     let totalVip = 0;
+    // Appendix-bar patients are counted separately and REMOVED from the day
+    // buckets — a patient parked six weeks for a doctor appointment would
+    // otherwise sit in "30+ Days" reading as a rotting case every day until
+    // the visit (ChartDef.appendixBar).
+    let appendixCount = 0;
+    let appendixVip = 0;
 
     for (const p of patients) {
       const vip = isVip(p, priorityConfig);
+      if (vip) totalVip++;
+      if (chart.appendixBar && matchesAppendixBar(chart, p)) {
+        appendixCount++;
+        if (vip) appendixVip++;
+        continue;
+      }
       if (p.dayBucket === "Unknown") {
         unknownCount++;
       } else {
         counts[p.dayBucket]++;
         if (vip) vipCounts[p.dayBucket]++;
       }
-      if (vip) totalVip++;
     }
-    return { counts, vipCounts, unknownCount, totalVip };
-  }, [patients, priorityConfig]);
+    return { counts, vipCounts, unknownCount, totalVip, appendixCount, appendixVip };
+  }, [patients, priorityConfig, chart]);
 
-  const { counts, vipCounts, unknownCount, totalVip } = bucketCounts;
+  const { counts, vipCounts, unknownCount, totalVip, appendixCount, appendixVip } = bucketCounts;
   const totalCount = patients.length;
   const maxCount = useMemo(
     () => Math.max(1, ...Object.values(counts)),
@@ -412,6 +426,70 @@ function StageChart({ chart, patients, priorityConfig, onChartClick, onBarClick 
             </button>
           );
         })}
+
+        {/* Appendix bar — sectioned off to the right of "30+" by a rule and a
+            wider gap, because it isn't on the days axis at all. */}
+        {chart.appendixBar && (
+          <>
+            <div
+              className="self-stretch w-px shrink-0 mx-1"
+              style={{ backgroundColor: "var(--border)" }}
+              aria-hidden="true"
+            />
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                if (appendixCount > 0) onBarClick(APPENDIX_BUCKET);
+              }}
+              className={cn(
+                "flex-1 flex flex-col items-center justify-end h-full group/bar",
+                appendixCount > 0 ? "cursor-pointer" : "cursor-default",
+              )}
+              title={`${chart.appendixBar.label}: ${appendixCount} patient${appendixCount !== 1 ? "s" : ""}${appendixVip > 0 ? ` · ${appendixVip} VIP` : ""}`}
+            >
+              <span
+                className="text-[8px] font-bold leading-none h-2.5"
+                style={{ color: appendixVip > 0 ? VIP_COLOR : "transparent" }}
+              >
+                {appendixVip > 0 ? `★${appendixVip}` : "★"}
+              </span>
+              <span className="text-[9px] tabular-nums font-semibold mb-0.5 text-muted-foreground h-3">
+                {appendixCount > 0 ? appendixCount : ""}
+              </span>
+              <div className="w-full flex items-end justify-center flex-1">
+                <div
+                  className={cn(
+                    "w-full rounded-t-md overflow-hidden flex flex-col justify-start transition-all duration-300 ease-out",
+                    appendixCount > 0 &&
+                      "group-hover/bar:opacity-80 group-hover/bar:ring-1 group-hover/bar:ring-foreground/30",
+                    appendixCount === 0 && "invisible",
+                  )}
+                  style={{
+                    height: appendixCount > 0 ? `${Math.max((appendixCount / maxCount) * 100, 3)}%` : "0%",
+                    backgroundColor: chart.appendixBar.color,
+                    minHeight: appendixCount > 0 ? "4px" : undefined,
+                  }}
+                >
+                  {appendixVip > 0 && (
+                    <div
+                      style={{
+                        height: `${(appendixVip / appendixCount) * 100}%`,
+                        backgroundColor: VIP_COLOR,
+                      }}
+                      title={`${appendixVip} VIP`}
+                    />
+                  )}
+                </div>
+              </div>
+              <span
+                className="text-[8px] mt-1 whitespace-nowrap font-semibold"
+                style={{ color: chart.appendixBar.color }}
+              >
+                {chart.appendixBar.short}
+              </span>
+            </button>
+          </>
+        )}
       </div>
 
       {/* Unknown note */}
@@ -922,9 +1000,13 @@ function DrilldownModal({
     let list =
       bucket === "all"
         ? patients
-        : isReasonChart
-          ? patients.filter((p) => (reasonsByPatient.get(p.id) ?? []).includes(bucket))
-          : patients.filter((p) => p.dayBucket === bucket);
+        : bucket === APPENDIX_BUCKET
+          // The appendix bar isn't on the days axis — filter by its own rule,
+          // the same evaluation the bar count uses (matchesAppendixBar).
+          ? patients.filter((p) => matchesAppendixBar(chart, p))
+          : isReasonChart
+            ? patients.filter((p) => (reasonsByPatient.get(p.id) ?? []).includes(bucket))
+            : patients.filter((p) => p.dayBucket === bucket);
 
     const q = search.trim().toLowerCase();
     if (q) {

@@ -34,6 +34,7 @@ const TAB_LABELS: Record<TabKey, string> = {
   sendRequest: "Send Request",
   confirmReceipt: "Confirm Receipt",
   chase: "Chase",
+  doctorAppointments: "Doctor Appts",
 };
 
 

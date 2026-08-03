@@ -51,7 +51,7 @@ The Python backends the SPA mirrors (financial estimate, DVS automations) live o
 |---|---|---|
 | **DTC Intake** | `18392794310` | Top of funnel; "Send To Medical Necessity" group feeds the pipeline. Read-only here (oversight/system-mgmt). |
 | **Profile Send Off** | `18406352652` | `profile` ("Verified Referrals") + `unverifiedReferrals` ("Unverified Referrals") + `inSystemReferrals` ("Already In System") — three roles, same board/group, split by Already In System then Referral Type/Source (see §5.10). Its own board (groups: *Patient Intake → 1. Intake → Tests → Stuck → Completed*). All three roles work **1. Intake** (`group_mm1xf2jb`); two send-off exits: **Advance to MN** (`Move to Onboarding` → automation creates the Masheke item + moves to Completed) and **Send back to Patient Intake** (`moveItemToGroup` → `group_mm4vhqff`). **Not** the Welcome Call board. |
-| **Medical Evaluation** ("Masheke") | `18406060017` | `evaluate`, `sendRequest`, `confirmReceipt`, `chaseFax`, `chaseParachute`. Medical-necessity document collection. Stuck is propose→approve: reps flip **Escalation `color_mm1x7997` → "Final Escalation Required" (index 2)** and the reason is appended to the **MN notes `long_text_mm27zjt2`** (stamped `[Proposed Stuck …]`); managers approve/return from Oversight. (The old `color_mm5f37ve`/`text_mm5frng6` columns are retired.) |
+| **Medical Evaluation** ("Masheke") | `18406060017` | `evaluate`, `sendRequest`, `confirmReceipt`, `chaseFax`, `chaseParachute`, `doctorAppointments` (§5.12). Medical-necessity document collection. Stuck is propose→approve: reps flip **Escalation `color_mm1x7997` → "Final Escalation Required" (index 2)** and the reason is appended to the **MN notes `long_text_mm27zjt2`** (stamped `[Proposed Stuck …]`); managers approve/return from Oversight. (The old `color_mm5f37ve`/`text_mm5frng6` columns are retired.) |
 | **Insurance** ("Samantha") | `18410601299` | `benefits`, `submitAuth`, `authOutstanding`, `authDenied`, `dvs` (stage-based, no group — Stage Advancer index 1 "DVS", read-only monitor at `/dvs`). Groups: Benefits, Submit Auth, Auth Outstanding, Auth Denied, Escalations, Complete/Stuck. |
 | **Welcome Call** | `18410804557` | `welcomeCall` + `finalConfirm` (two roles, same board, different groups). See `BOARD_SCHEMA.md`. |
 | **Subscription Board - Updated** | `18407459988` | `subscription` role + one source for Patient Questions. |
@@ -325,6 +325,75 @@ to Unverified. Canonical rule: `src/lib/profile/referralSplit.ts` `profileReferr
 3. **Oversight charts** — `src/lib/oversight/oversightApi.ts` `CHART_FILTERS` (`profile-send-off` = verified only; `profile-send-off-unverified` = Type `Patient` OR Source `CareCentrix` via `anyCols`; `profile-send-off-in-system` = Already In System `Yes` — the other two AND it out) + `CHART_ROUTES` in `OversightTab.tsx`.
 4. **Baseline (build time)** — `scripts/snapshot-baseline.mjs` `countProfile` (§5.8 counting contract).
 5. **Baseline (9 AM cron)** — `services/baseline-cron/index.mjs` `countProfile`.
+
+### 5.12 Doctor Appointments — patient outreach when the provider needs a new visit (Aug 2026)
+The office sometimes answers a clinicals chase with *"we haven't seen this patient recently — they
+need to come in."* The chase is dead until the visit, so the rep flips the patient with the
+**Doctor Appointment Required** button on either chase page (`DoctorAppointmentRequiredDialog` —
+the ONLY entry point; there is deliberately no way for a rep to set this on their own judgment).
+**One rule is the whole state machine:**
+- **Appointment Date set** ⇒ a normal Chase patient, Next Action Date = appointment **+ 1 day**
+  (weekend-clamped — never the appointment date itself, which would surface them the morning of
+  the visit). They never enter the queue below.
+- **Appointment Date blank** ⇒ Sub-Stage → **"Doctor Appointment"** (`SUB_STAGE_INDEX
+  .doctorAppointment` = **0** — Monday assigns the index when a label is created in the UI and
+  picked the lowest free slot; this column's other labels start at 8), the `doctorAppointments`
+  role at `/doctor-appointments`.
+
+Exits: an appointment date (→ back to Chase, snoozed) or three failed attempts (→ escalation).
+Nothing else. Canonical logic: **`lib/masheke/apptOutreach.ts`** (+ tests).
+
+**No new Monday group and no new automation** — Sub-Stage `color_mm1wyr92` **IS** the stage
+advancer on this board (`mondayWrite.recordAndAdvanceVerified` passes it as `stageColumnId`,
+"the single write that moves the item"), so a new sub-stage index is the whole board change.
+New columns: **Appointment Date `date_mm5w2vsf`**, **Appt Attempt 1/2/3 `text_mm5wjp3r` /
+`text_mm5wb4c2` / `text_mm5w1j8y`**.
+
+> **The three attempt columns ARE the counter.** MN Attempts `color_mm1wz0vg` is Chase's and is
+> board-wide — reusing it would hand a patient who spent two chase attempts exactly one outreach
+> attempt, and spend the chase counter on the way back. So the count is derived from how many
+> attempt columns are filled, which is also **why a note is mandatory on every attempt**: an empty
+> column reads as an unused slot, so a note-less save would be invisible to the counter and hand
+> the rep an unlimited retry (`canLogAttempt`).
+
+> **Escalation is shared, so entry CLEARS it.** `enterDoctorAppointments` writes Escalation → Done
+> on the way in. Without it, a manager working an escalated chase patient who clicks the button
+> delivers them into this queue already escalated — and escalated patients are hidden from this
+> sidebar, so they'd be **invisible on arrival, with no error**. Same stale-carry-over class of bug
+> `evaluateReentry.ts` exists to self-heal. Three failed attempts escalate to **index 0** (Manager
+> Intervention), never index 2 — index 2 is a stuck PROPOSAL awaiting a Final Decision, and an
+> unreachable patient is a manager task, not a pipeline exit.
+
+**Cadence** (one constant, `APPT_ATTEMPT_CADENCE_BUSINESS_DAYS`): **1 / 3 / 5 business days**.
+"Will call the office" = 7 calendar days. Chase gives a fax room a flat +3; a flat +1 here would
+burn all three attempts inside one working week and escalate anyone on vacation.
+⚠️ **OPEN — "Spoke, won't schedule" is built as burns-an-attempt + a 14-day snooze**
+(`WONT_SCHEDULE_ESCALATES = false`), pending Katie. Flip that one boolean to make a refusal terminal.
+
+**The sidebar deliberately keeps snoozed patients VISIBLE** (`apptSidebarSections`) in an
+"Awaiting reply" folder — unlike every other masheke stage, which hides future-NAD patients. The
+work is texting patients; someone who replies on day two of a seven-day snooze is exactly who the
+rep needs to open. Escalated patients are the opposite and drop out entirely — they're the
+manager's. **Role counts still follow the normal due-today rule**, so the role bar matches the
+sidebar's "Reach out today" section, not its total.
+
+**Oversight** (`ChartDef.appendixBar`, new mechanism): both chase charts get an **"Appts" bar to
+the right of "30+ Days"**, divider-separated, split by Clinicals Method with the same §5.9 rule.
+Its patients are **removed from the day buckets** — parked for weeks, they'd otherwise pile into
+30+ and read as rotting cases every day until the visit. It also widens the chart's population
+(`patientMatchesChart`), which is what keeps an **escalated** appointment patient visible at all
+(§7's rule that a state matching no chart is invisible app-wide). Bar colour is off the day ramp
+on purpose: parked is a state, not a severity.
+
+**Keep-in-agreement (same drill as §5.9/§5.10) — the §5.8 counting contract:**
+1. **Role page** — `src/pages/DoctorAppointmentsPage.tsx` + `hooks/masheke/useMondayPatients` `SUB_STAGE_FILTER`.
+2. **Role counts** — `src/hooks/useRoleCounts.ts` (`stage === "Doctor Appointment"`). ⚠️ Without this branch the sub-stage falls through `if (!roleId) continue` and the patient is counted **nowhere** — no error, just invisible.
+3. **Oversight** — `oversightApi.ts` `CHART_FILTERS` (`chase-fax-appointments`, `chase-email-parachute-appointments`) + the two `appendixBar` defs.
+4. **Baseline (build time)** — `scripts/snapshot-baseline.mjs` `countMashekeStages`.
+5. **Baseline (9 AM cron)** — `services/baseline-cron/index.mjs` `countMashekeStages`.
+
+Shared with Chase, extracted 2026-08-03 so the two can't drift: `components/masheke/AttemptCards.tsx`
+and `lib/masheke/attemptLog.ts` (attempt parse/format + note append).
 
 ### 5.11 Profile "Run Stedi Check" — the live UI is INLINE in `ProfilePage.tsx` (`StediPanel.tsx` is DEAD)
 The profile role's whole Benefits step — Run Stedi Check button, **Eligibility Results grid**

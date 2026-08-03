@@ -215,8 +215,8 @@ async function countMashekeStages(todayStr) {
     MESH_STAGE_COL, MESH_NAD_COL, MESH_ESC_COL, MESH_METHOD_COL,
   ]);
 
-  const counts = { evaluate: 0, sendRequest: 0, confirmReceipt: 0, chaseFax: 0, chaseParachute: 0, chaseBenefits: 0 };
-  const ids = { evaluate: [], sendRequest: [], confirmReceipt: [], chaseFax: [], chaseParachute: [], chaseBenefits: [] };
+  const counts = { evaluate: 0, sendRequest: 0, confirmReceipt: 0, chaseFax: 0, chaseParachute: 0, chaseBenefits: 0, doctorAppointments: 0 };
+  const ids = { evaluate: [], sendRequest: [], confirmReceipt: [], chaseFax: [], chaseParachute: [], chaseBenefits: [], doctorAppointments: [] };
 
   for (const item of items) {
     // Proposed Stuck patients left the rep queues (manager Final Decision
@@ -233,8 +233,20 @@ async function countMashekeStages(todayStr) {
       const cm = item.cols[MESH_METHOD_COL] ?? "";
       roleId = cm === "Parachute" || cm === "Email" ? "chaseParachute" : "chaseFax";
     }
+    // Doctor Appointments (2026-08-03) — patient outreach when the provider
+    // requires a new visit. Must mirror useRoleCounts + the other baseline
+    // generator exactly (SS5.8 counting contract) or the Operations tab shows
+    // phantom +in/-out chips all day.
+    else if (stage === "Doctor Appointment") roleId = "doctorAppointments";
     if (!roleId) continue;
 
+    // Escalated (index 0) patients are dropped from the baseline for EVERY
+    // masheke role, Doctor Appointments included. That is not an omission:
+    // OperationsTab compares this snapshot against useRoleCounts' `counts`
+    // store, which applies the identical `continue` — the hook's separate
+    // `escalatedCounts` store is never read there. Counting escalated patients
+    // here would put them on one side of the comparison only and manufacture a
+    // permanent phantom "-out" for each one (§5.8 counting contract).
     if (isMeshEscalated(item)) continue; // escalated (index 0)
     const nad = (item.cols[MESH_NAD_COL] ?? "").slice(0, 10);
     if (nad && nad > todayStr) continue; // scheduled (future)

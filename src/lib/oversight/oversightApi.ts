@@ -104,6 +104,27 @@ export interface ChartDef {
    * future date there means nothing and the tag would be a lie.
    */
   snoozeDateColId?: string;
+  /**
+   * An extra bar rendered to the RIGHT of the day buckets, visually sectioned
+   * off (Josh, 2026-08-03). Unlike `reasonBuckets` — which replaces the whole
+   * x-axis — this keeps the day buckets and adds one categorical bar beside
+   * them, for a population that days-in-stage says nothing useful about.
+   *
+   * Its patients are REMOVED from the day buckets. That's the point: the two
+   * chase charts use it for patients waiting on a doctor appointment, who are
+   * legitimately parked for weeks and would otherwise pile into "30+ Days" and
+   * read as rotting cases every day until the visit.
+   *
+   * It also widens the chart's population (`patientMatchesChart`), which is
+   * what keeps an escalated Doctor Appointment patient visible somewhere —
+   * §7's rule that a state matching no chart is invisible in the whole app.
+   */
+  appendixBar?: {
+    label: string;
+    short: string;
+    filterId: string;
+    color: string;
+  };
   /** Stacked two-series chart (ME "Manager Intervention" merge): patients
    *  come from two SOURCE charts fetched independently; series B (red)
    *  wins dedup when a patient matches both. */
@@ -184,6 +205,21 @@ const CHASE_COLS: { colId: string; label: string; pill?: boolean }[] = [
   { colId: "text_mm2yb3rv", label: "Attempt 2 Log" },
   { colId: "text_mm2ybk06", label: "Attempt 3 Log" },
   { colId: "date_mm1wadgs", label: "Next Action" },
+];
+
+/** Bar colour for the "waiting on a doctor appointment" appendix bar. A slate
+ *  grey deliberately outside the day-bucket green→red ramp: parked is a STATE,
+ *  not a severity, and colouring it on the ramp would imply one. */
+export const APPOINTMENT_BAR_COLOR = "#64748b";
+
+/** Chase drill-down columns plus the appointment fields, so a manager opening
+ *  the Appointments bar sees the date and the outreach log without leaving. */
+const CHASE_APPT_COLS: { colId: string; label: string; pill?: boolean }[] = [
+  ...CHASE_COLS,
+  { colId: "date_mm5w2vsf", label: "Appointment Date" },
+  { colId: "text_mm5wjp3r", label: "Appt Attempt 1" },
+  { colId: "text_mm5wb4c2", label: "Appt Attempt 2" },
+  { colId: "text_mm5w1j8y", label: "Appt Attempt 3" },
 ];
 
 /** Shared drill-down columns for the Evaluate chart + its escalated variant. */
@@ -296,14 +332,28 @@ const RAW_CHART_DEFS: ChartDef[] = [
     title: "Chase Clinicals — Fax",
     boardId: 18406060017,
     notesColId: "long_text_mm2ytsxp",
-    drilldownCols: CHASE_COLS,
+    // Patients parked waiting on a doctor appointment get their own bar to the
+    // right of "30+ Days" instead of inflating it — see ChartDef.appendixBar.
+    appendixBar: {
+      label: "Waiting on a doctor appointment",
+      short: "Appts",
+      filterId: "chase-fax-appointments",
+      color: APPOINTMENT_BAR_COLOR,
+    },
+    drilldownCols: CHASE_APPT_COLS,
   },
   {
     id: "chase-email-parachute",
     title: "Chase Clinicals — Email & Parachute",
     boardId: 18406060017,
     notesColId: "long_text_mm2ytsxp",
-    drilldownCols: CHASE_COLS,
+    appendixBar: {
+      label: "Waiting on a doctor appointment",
+      short: "Appts",
+      filterId: "chase-email-parachute-appointments",
+      color: APPOINTMENT_BAR_COLOR,
+    },
+    drilldownCols: CHASE_APPT_COLS,
   },
 
   // ── Escalations (attempt 4+ / MN Attempts = "Escalate") — second row of the
@@ -1097,6 +1147,7 @@ function columnsForBoard(boardId: number): string[] {
     const rules = [
       CHART_FILTERS[chart.id],
       ...(chart.reasonBuckets ?? []).map((b) => CHART_FILTERS[b.filterId]),
+      ...(chart.appendixBar ? [CHART_FILTERS[chart.appendixBar.filterId]] : []),
     ];
     for (const rule of rules) {
       if (!rule) continue;
@@ -1381,6 +1432,16 @@ const CHART_FILTERS: Record<string, FilterRule> = {
   // method still shows under Fax) vs Email & Parachute (either). Method col = color_mm1xw7y5.
   "chase-fax":             { type: "stageAdvancer", boardId: 18406060017, value: "Chase Clinicals", andCols: [{ colId: "color_mm1x7997", index: [2], not: true }, { colId: "color_mm1xw7y5", value: ["Email", "Parachute"], not: true }] },
   "chase-email-parachute": { type: "stageAdvancer", boardId: 18406060017, value: "Chase Clinicals", andCols: [{ colId: "color_mm1x7997", index: [2], not: true }, { colId: "color_mm1xw7y5", value: ["Email", "Parachute"] }] },
+  // Doctor Appointments (2026-08-03) — the "Appointments" appendix bar on each
+  // chase chart. Split by Clinicals Method exactly like the chase pair above,
+  // so a patient parked for a visit sits on the row of the chase role they came
+  // from and will go back to. Escalated patients are INCLUDED: three failed
+  // outreach attempts escalate to Manager Intervention, and this is the chart
+  // that keeps them visible (§7 — a state matching no chart is invisible
+  // everywhere). Index 2 is still excluded, as everywhere: a stuck PROPOSAL
+  // belongs to Final Decisions.
+  "chase-fax-appointments":             { type: "stageAdvancer", boardId: 18406060017, value: "Doctor Appointment", andCols: [{ colId: "color_mm1x7997", index: [2], not: true }, { colId: "color_mm1xw7y5", value: ["Email", "Parachute"], not: true }] },
+  "chase-email-parachute-appointments": { type: "stageAdvancer", boardId: 18406060017, value: "Doctor Appointment", andCols: [{ colId: "color_mm1x7997", index: [2], not: true }, { colId: "color_mm1xw7y5", value: ["Email", "Parachute"] }] },
   // Escalations = same stage AND MN Attempts column = "Escalate" (attempt 4+).
   "confirm-receipt-escalations":       { type: "stageAdvancer", boardId: 18406060017, value: "Confirm Receipt", andCols: [{ colId: "color_mm1x7997", index: [2], not: true }, { colId: "color_mm1wz0vg", value: "Escalate" }] },
   "chase-fax-escalations":             { type: "stageAdvancer", boardId: 18406060017, value: "Chase Clinicals", andCols: [{ colId: "color_mm1x7997", index: [2], not: true }, { colId: "color_mm1xw7y5", value: ["Email", "Parachute"], not: true }, { colId: "color_mm1wz0vg", value: "Escalate" }] },
@@ -1646,9 +1707,26 @@ export function patientMatchesChart(chart: ChartDef, patient: OversightPatient):
   if (patient.boardId !== chart.boardId) return false;
   const rule = CHART_FILTERS[chart.id];
   if (rule && matchesFilter(patient, rule)) return true;
+  // The appendix bar only ever ADDS — a Doctor Appointment patient is not in
+  // the chase stage any more, so the chart's own rule can't reach them.
+  if (matchesAppendixBar(chart, patient)) return true;
   if (chart.reasonBuckets?.length) return reasonBucketsFor(chart, patient).length > 0;
   return false;
 }
+
+/**
+ * Is this patient in the chart's appendix bar (and therefore OUT of the day
+ * buckets)? One evaluation feeds the bar count, the day-bucket exclusion and
+ * the drill-down filter, so the three can never disagree.
+ */
+export function matchesAppendixBar(chart: ChartDef, patient: OversightPatient): boolean {
+  if (!chart.appendixBar) return false;
+  const rule = CHART_FILTERS[chart.appendixBar.filterId];
+  return !!rule && matchesFilter(patient, rule);
+}
+
+/** Drill-down bucket key for the appendix bar (also the ?bucket= URL value). */
+export const APPENDIX_BUCKET = "__appendix__";
 
 // ── Final Decisions mutations (Manager Views §3) ────────────────────────
 // The manager acts from the Oversight drill-down.

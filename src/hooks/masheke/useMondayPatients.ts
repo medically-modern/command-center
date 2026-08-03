@@ -62,7 +62,7 @@ function removeOverlay(id: string): void {
   }
 }
 
-export type TabKey = "evaluate" | "sendRequest" | "confirmReceipt" | "chase";
+export type TabKey = "evaluate" | "sendRequest" | "confirmReceipt" | "chase" | "doctorAppointments";
 
 // Stage Advancer (color_mm1wyr92) text values that map to each tab.
 const SUB_STAGE_FILTER: Record<TabKey, string> = {
@@ -70,6 +70,10 @@ const SUB_STAGE_FILTER: Record<TabKey, string> = {
   sendRequest: "Send Request",
   confirmReceipt: "Confirm Receipt",
   chase: "Chase Clinicals",
+  // 2026-08-03. Being in this map also opts the stage into the Next Action Date
+  // backfill below, which the outreach queue needs — a patient without a NAD
+  // would be permanently "due" and re-called on every poll.
+  doctorAppointments: "Doctor Appointment",
 };
 
 // Every tab — including Evaluate — now shows only its own stage.
