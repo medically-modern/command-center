@@ -36,12 +36,16 @@ const MANAGER_CHARTS = [
   "benefits-manager-escalation",
   "submit-auth-manager",
   "auth-outstanding-manager",
-  "auth-denial-manager",
   "benefits-final-escalation",
   "submit-auth-final-escalation",
   "auth-outstanding-final-escalation",
-  "auth-denial-final-escalation",
 ];
+
+// Auth Denied is UNDER CONSTRUCTION and has no manager charts on purpose
+// (Josh, 2026-08-03: don't build UI for it). It is the one place the invariant
+// below is knowingly not upheld, so it's carved out by name and asserted as a
+// carve-out rather than quietly dropped — see the last test in this file.
+const UNBUILT_ROW = "auth-denial";
 
 // Stage "DVS" is the one stage Oversight's Insurance charts do NOT own end to
 // end: the `dvs` role has its own page (/dvs) and its own burndown count, and
@@ -95,10 +99,10 @@ const seenBy = (p: OversightPatient, ids: string[]) =>
 const visibleIn = (p: OversightPatient) => seenBy(p, [...PROCESSOR_CHARTS, ...MANAGER_CHARTS]);
 
 // Stages a patient can be parked at while still inside the Insurance pipeline
-// AND for which Oversight is the only window. Complete and Stuck are terminal —
-// they have left it on purpose — and DVS has /dvs, so all three are excluded
-// deliberately rather than silently passing.
-const LIVE_STAGES = ["Benefits / SoS", "Submit Auth.", "Auth. Outstanding", "Auth Denied"];
+// AND for which Oversight is the only window. Excluded deliberately rather
+// than silently passing: Complete and Stuck are terminal (they left on
+// purpose), DVS has /dvs, and Auth Denied is the unbuilt row above.
+const LIVE_STAGES = ["Benefits / SoS", "Submit Auth.", "Auth. Outstanding"];
 
 describe("a non-escalated patient is always the rep's", () => {
   it.each(LIVE_STAGES)("%s with no escalation shows in Processor Overview", (stage) => {
@@ -134,15 +138,16 @@ describe("an escalated patient is always SOME manager's", () => {
   });
 
   // The two columns are a ladder, so every Processor Overview row needs a rung
-  // above it. A row with no manager chart is exactly the hole the Auth Denied
-  // and Auth Outstanding rows were before 2026-08-03.
-  it("every Processor Overview row has a Manager Intervention and a Final Decisions chart", () => {
+  // above it. A row with no manager chart is exactly the hole the Auth
+  // Outstanding row was before 2026-08-03.
+  it("every built Processor Overview row has a Manager Intervention and a Final Decisions chart", () => {
     const insurance = OVERSIGHT_SECTIONS.find((s) => s.id === "insurance")!;
     const rowsOf = (ids: string[]) =>
       new Set(ids.map((id) => CHART_DEFS.find((c) => c.id === id)?.rowOf).filter(Boolean));
     const managerRows = rowsOf(insurance.secondaryChartIds ?? []);
     const finalRows = rowsOf(insurance.tertiaryChartIds ?? []);
     for (const row of insurance.chartIds) {
+      if (row === UNBUILT_ROW) continue;
       expect(managerRows.has(row), `${row} has no Manager Intervention chart`).toBe(true);
       expect(finalRows.has(row), `${row} has no Final Decisions chart`).toBe(true);
     }
@@ -202,19 +207,6 @@ describe("the real post-Benefits outcomes", () => {
     expect(seenBy(pump, MANAGER_CHARTS)).toContain("submit-auth-manager");
   });
 
-  it("auth denied → the patient is escalated by the send, and must still be seen", () => {
-    // authOutstandingOutcome returns escalate:true on ANY denial, so this
-    // pairing is not an edge case — it is every denied patient. And the Auth
-    // Denied group is what marks them: their Stage Advancer often still reads
-    // "Benefits / SoS", which is why both auth-denial charts are group-scoped.
-    const p = patient("Auth Denied", "Manager Escalation Required");
-    expect(seenBy(p, MANAGER_CHARTS)).toContain("auth-denial-manager");
-    expect(seenBy(p, PROCESSOR_CHARTS), "escalated, so not the rep's").toEqual([]);
-
-    const promoted = patient("Auth Denied", "Final Escalation Required");
-    expect(seenBy(promoted, MANAGER_CHARTS)).toContain("auth-denial-final-escalation");
-  });
-
   it("pump SoS not clear at the Auth Outstanding recheck holds the stage + escalates", () => {
     // The stage is deliberately NOT advanced (PR #22 review), so the patient
     // sits at Auth. Outstanding carrying a Manager escalation. The send writes
@@ -227,12 +219,32 @@ describe("the real post-Benefits outcomes", () => {
     expect(reasonBucketsFor(chart("auth-outstanding-manager"), p)).toContain("Pump SoS");
   });
 
-  it("a manual escalate toggle at Submit Auth stamps nothing, and is still seen", () => {
-    // mondayWrite's `manualEscalate` writes Manager with no Propose Stuck
-    // stamp, which is exactly what the Propose Stuck bar filters out — so this
-    // patient rides in on the chart's own population rule, in no bar.
-    const p = patient("Submit Auth.", "Manager Escalation Required");
-    expect(seenBy(p, MANAGER_CHARTS)).toContain("submit-auth-manager");
-    expect(reasonBucketsFor(chart("submit-auth-manager"), p)).toEqual([]);
+  it("a manual escalate toggle at Submit Auth lands in Final Decisions", () => {
+    // The toggle writes FINAL at this stage (manualEscalationLevel, Josh
+    // 2026-08-03) and stamps nothing, so it matches no reason bar — it rides in
+    // on the chart's own population rule and shows in the header count as one
+    // "in no bar".
+    const p = patient("Submit Auth.", "Final Escalation Required");
+    expect(seenBy(p, MANAGER_CHARTS)).toContain("submit-auth-final-escalation");
+    expect(reasonBucketsFor(chart("submit-auth-final-escalation"), p)).toEqual([]);
+  });
+});
+
+describe("Auth Denied — the deliberate hole", () => {
+  // Under construction, no UI (Josh, 2026-08-03). Stated as a test so the gap
+  // is a recorded decision rather than an oversight, and so whoever builds the
+  // stage sees it: when Auth Denied gets manager charts, DELETE this test and
+  // put "Auth Denied" back in LIVE_STAGES.
+  it("has no manager chart, so an escalated denial is visible to nobody", () => {
+    const p = patient("Auth Denied", "Manager Escalation Required");
+    expect(seenBy(p, MANAGER_CHARTS)).toEqual([]);
+    // And every denial IS escalated — authOutstandingOutcome returns
+    // escalate:true on anyDenied — so Processor Overview can't hold them
+    // either. They're worked on the Monday board until the stage is built.
+    expect(seenBy(p, PROCESSOR_CHARTS)).toEqual([]);
+  });
+
+  it("still shows a denial with no escalation in Processor Overview", () => {
+    expect(seenBy(patient("Auth Denied", ""), PROCESSOR_CHARTS)).toContain("auth-denial");
   });
 });

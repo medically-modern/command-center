@@ -77,6 +77,30 @@ async function executeWithRetry(task: WriteTask): Promise<string | null> {
   return null;
 }
 
+export type SendContext = "benefits" | "submitAuth" | "authOutstanding";
+export type EscalationDecision = "manager" | "final" | "done";
+
+/**
+ * Which rung the send's manual Escalate toggle writes. Pure so the rule is
+ * unit-testable — same reasoning as `authOutstandingOutcome`.
+ *
+ * - **Benefits**: the toggle doesn't exist. Escalation there is DERIVED from
+ *   the universal checks only (redesign §5), so a hydrated `escalated` flag
+ *   must not floor the decision or a patient could never be de-escalated by
+ *   fixing the facts and re-sending.
+ * - **Submit Auth → FINAL** (Josh, 2026-08-03). That stage's Manager rung is
+ *   the two-step Propose Stuck review, and its chart bar keys on the stamped
+ *   reason a proposal leaves behind. The toggle stamps nothing, so a toggled
+ *   patient sat at Manager with no proposal for anyone to review. They want a
+ *   decision, so they go where decisions are made.
+ * - **Auth Outstanding → Manager**, which is a real destination there
+ *   (oversight `auth-outstanding-manager`).
+ */
+export function manualEscalationLevel(context: SendContext, escalated: boolean): EscalationDecision {
+  if (context === "benefits" || !escalated) return "done";
+  return context === "submitAuth" ? "final" : "manager";
+}
+
 /**
  * Push every relevant column for a patient to Monday in one batch.
  * Each column is written independently with retries. Columns that fail
@@ -86,7 +110,7 @@ async function executeWithRetry(task: WriteTask): Promise<string | null> {
  */
 export async function sendPatientToMonday(
   p: Patient,
-  context: "benefits" | "submitAuth" | "authOutstanding" = "benefits",
+  context: SendContext = "benefits",
   opts?: { onProgress?: (phase: WriteProgressPhase) => void },
 ): Promise<void> {
   const rawIns = p.insurance ?? EMPTY_INSURANCE;
@@ -456,20 +480,16 @@ export async function sendPatientToMonday(
 
   // ----- Escalation + Stage Advancer -----
   // One write each per send. Per-context rules decide the Stage Advancer
-  // index, and Escalation is computed as: manual toggle (p.escalated) is
-  // the floor — true means "Required" no matter what auto rules say.
-  // Auto rules can also force Required (denial / blocker). When neither
-  // manual nor auto demands escalation, we write "Done" so the toggle
-  // round-trips through Monday cleanly.
-  //
-  // Benefits redesign: escalation at Benefits is DERIVED ONLY (spec §5 —
-  // the Escalate button is gone). The hydrated p.escalated flag must NOT
-  // floor the decision there, or a previously-escalated patient could
-  // never be de-escalated by fixing the underlying facts and re-sending.
+  // index, and Escalation is computed as: the manual toggle is the floor —
+  // true means "Required" no matter what auto rules say, at the rung
+  // `manualEscalationLevel` picks (Final at Submit Auth, Manager at Auth
+  // Outstanding, never at Benefits — see its doc comment). Auto rules can also
+  // force Required (denial / blocker), but only ever UP. When neither manual
+  // nor auto demands escalation, we write "Done" so the toggle round-trips
+  // through Monday cleanly.
   const manualEscalate = context !== "benefits" && p.escalated === true;
   let stageWriteIndex: number | null = null;
-  type EscalationDecision = "manager" | "final" | "done";
-  let escalationDecision: EscalationDecision = manualEscalate ? "manager" : "done";
+  let escalationDecision: EscalationDecision = manualEscalationLevel(context, p.escalated === true);
 
   if (context === "submitAuth") {
     // DVS routing (HANDOFF-Josh-DVS §1): a patient with zero submission
@@ -563,8 +583,9 @@ export async function sendPatientToMonday(
     if (outcome.stage === "authDenied") stageWriteIndex = STAGE_INDEX.authDenied;
     else if (outcome.stage === "complete") stageWriteIndex = STAGE_INDEX.complete;
     else if (outcome.stage === "dvs") stageWriteIndex = STAGE_INDEX.dvs;
-    // Escalation is a floor: the manual toggle can still have set it above.
-    if (outcome.escalate) escalationDecision = "manager";
+    // Escalation is a floor, and a floor never lowers the ceiling: an already
+    // "final" decision stays final rather than being written back down.
+    if (outcome.escalate && escalationDecision !== "final") escalationDecision = "manager";
   } else {
     // benefits page — use insurance outcome to drive Stage Advancer.
     const outcome = deriveInsuranceOutcome(effectiveIns, entries.map(e => e.cid));

@@ -412,15 +412,23 @@ columns" automation on duplicated items). The SPA only flips the advancer; verif
   ⚠️ **Every escalated patient must land in some manager chart** — an escalation removes them from
   the rep's queue AND from the role count, so a state that matches no chart is invisible in the
   whole app. Bars key on board FACTS and escalations are LABELS, so the two drift; each Insurance
-  manager chart therefore carries a population rule wider than its bars, and **all four Processor
-  Overview rows now have both rungs above them** — `auth-outstanding-manager` (the pump-SoS hold
-  from PR #22 holds the stage and escalates) and `auth-denial-manager` /
-  `auth-denial-final-escalation` (ANY denial escalates, and `authDenied` is a count-only role with
-  no page, so those patients were invisible everywhere) were added 2026-08-03. Manager Intervention
-  decision buttons now show on **every row except a bot-owned DVS one** — a row a manager can see
-  but not clear is still a stranded patient. `lib/oversight/insuranceCoverage.test.ts` enumerates
-  the reachable (stage × escalation) states and fails if one goes blind; `lib/samantha/managerRail`
-  mirrors these populations for the destination page's sidebar — change the two together.
+  manager chart therefore carries a population rule wider than its bars, and **Benefits, Submit Auth
+  and Auth Outstanding all have both rungs above them** — `auth-outstanding-manager` was added
+  2026-08-03 because the pump-SoS hold from PR #22 holds the stage and escalates to Manager.
+  **`authDenied` is the one deliberate exception (Josh, 2026-08-03): the stage is under
+  construction — do NOT build UI for it.** It has no manager charts, and since ANY denial escalates
+  those patients are worked on the board until the stage is built; don't "fix" this. Manager
+  Intervention decision buttons show on **every row except a bot-owned DVS one** — a row a manager
+  can see but not clear is still a stranded patient. `lib/oversight/insuranceCoverage.test.ts`
+  enumerates the reachable (stage × escalation) states and fails if one goes blind (Auth Denied is
+  carved out by name, and asserted as a carve-out); `lib/samantha/managerRail` mirrors these
+  populations for the destination page's sidebar — change the two together.
+  **The send's Escalate toggle picks its rung by stage** (`samantha/mondayWrite.manualEscalationLevel`):
+  **Submit Auth → Final** (Josh, 2026-08-03 — that stage's Manager rung is the two-step Propose
+  Stuck review, and the toggle leaves no stamped proposal to review), Auth Outstanding → Manager,
+  and at Benefits the toggle doesn't exist (escalation there is derived from the universal checks
+  only, so a hydrated flag must never floor it). An auto-escalation can raise that decision but
+  never lowers it.
   **The escalation ladder is processor → Manager Intervention → Final Decisions**
   (`stageActions.proposeStuckLevel`, 2026-08-02): Propose Stuck writes one rung UP from wherever
   the patient already is — an existing escalation label OR a click from Manager Intervention

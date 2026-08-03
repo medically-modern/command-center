@@ -127,16 +127,19 @@ All four are **non-escalated only** (Josh 2026-07-30).
 >
 > ⚠️ **Auth Denial is affected too.** A denial sets the escalation on the same send that moves the patient to `Auth Denied`, so that chart shows only denials whose escalation has since been cleared.
 >
-> **Resolved 2026-08-03 — the other way round.** Processor Overview keeps its
-> "not escalated" rule (a denied patient really isn't a rep's to work, and
-> `authDenied` is a count-only role with no page); what was missing was the rung
-> above it. Auth Denied now has **both** manager charts (`auth-denial-manager`,
-> `auth-denial-final-escalation`), so a denial lands in Manager Intervention
-> instead of nowhere. Before that it was invisible in all three columns, absent
-> from the burndown count (same escalation rule), and had no stage page — the
-> worst state in this pipeline. Same fix for **Auth Outstanding**, whose
+> ⚠️ **Leave it that way — Auth Denied is under construction (Josh,
+> 2026-08-03): don't build UI for it.** It is the one known place an escalated
+> patient lands in no chart at all. Since ANY denial escalates
+> (`authOutstandingOutcome` returns `escalate: true` on `anyDenied`), that means
+> denials are invisible in all three columns, absent from the burndown count
+> (same escalation rule), and have no stage page — they're worked on the Monday
+> board until the stage is built. `insuranceCoverage.test.ts` carves the row out
+> by name and asserts the carve-out, so the invariant still holds everywhere
+> else and whoever builds the stage finds the note.
+>
+> **Auth Outstanding, which had the same shape, WAS fixed on 2026-08-03**: its
 > pump-SoS blocker (which holds the stage and escalates) had a Final Decisions
-> chart above it but no Manager one.
+> chart above it but no Manager one. See `auth-outstanding-manager` below.
 >
 > The stages are mutually exclusive by construction (one Stage Advancer value), so a DVS-stage patient never shows under Benefits/Submit Auth/Auth Outstanding.
 
@@ -187,9 +190,12 @@ bars, which are stage `DVS`, keep coming in through the union):
 | **Propose Stuck** | Stage = `Submit Auth.` AND Escalation = `Manager Escalation Required` AND Reference Notes contain a `[Proposed Stuck` stamp | The manager decides (below), or a rep-side send clears the escalation |
 
 > The stamp condition on the Propose Stuck bar is what keeps a Submit Auth
-> send's **manual escalate toggle** (which also writes `Manager Escalation
-> Required`) out of the bar. That toggle is precisely what the safety-net rule
-> catches: escalated, no stamp, in no bar — visible, and decidable, under "all".
+> send's **manual escalate toggle** out of the bar. As of 2026-08-03 that
+> toggle writes **`Final Escalation Required`** at this stage, not Manager
+> (`manualEscalationLevel`) — the Manager rung here IS the two-step proposal
+> review, and the toggle leaves no proposal to review, so those patients go
+> straight to Final Decisions where a decision gets made. They match no bar
+> there either, and ride in on that chart's population rule.
 
 **Auth Outstanding** (chart `auth-outstanding-manager`, 2026-08-03). Population
 = Stage `Auth. Outstanding` AND Escalation = index 0; two bars name how:
@@ -199,11 +205,8 @@ bars, which are stage `DVS`, keep coming in through the union):
 | **Pump SoS** | …AND Not Clear Products contains `Insulin Pump` — the recheck blocker that deliberately HOLDS the stage rather than completing the patient (Josh 2026-08-02). The send writes the same dropdown here as at Benefits (`effectiveSos` folds the recheck in) | The pump SoS resolves, or the escalation is cleared |
 | **Propose Stuck** | …AND Reference Notes contain a `[Proposed Stuck` stamp | The manager decides |
 
-**Auth Denied** (chart `auth-denial-manager`, 2026-08-03) — day-bucketed, not
-reason-bucketed: the reason IS the denial, so what a manager needs is which one
-has been sitting longest. Population = **group** `Auth Denied` AND Escalation =
-index 0. Group-scoped like its Processor Overview twin, because items there
-often still read Stage Advancer `Benefits / SoS`.
+**Auth Denied** — no chart. Under construction; see the note in Processor
+Overview above.
 
 **Drill-down actions (the first Manager Intervention buttons):** every row
 except a bot-owned DVS one offers **Escalate to Final Decisions** — the
@@ -247,7 +250,6 @@ the manager watches while the rep keeps working them).
 |---|---|---|
 | **Submit Auth** | Stage = `Submit Auth.` AND Escalation = `Final Escalation Required` — reached ONLY via the manager's **Escalate to Final Decisions** (two-step review; a rep's Propose Stuck lands in Manager Intervention first). Reason-bucketed since 2026-08-02, mirroring its Manager Intervention twin one rung up; the stage rule is the safety net unioned with those bars, two of which are stage `DVS` | A manager decides — §5 |
 | **Auth Outstanding** | Stage = `Auth. Outstanding` AND Escalation = `Final Escalation Required` | Same |
-| **Auth Denied** (2026-08-03) | Group = `Auth Denied` AND Escalation = `Final Escalation Required` — a denial promoted out of Manager Intervention | Same |
 
 Getting here: **Propose Stuck** on the Benefits / Auth Outstanding page —
 appends the reason to Reference Notes (stamped), then sets Escalation →
@@ -255,6 +257,13 @@ appends the reason to Reference Notes (stamped), then sets Escalation →
 `Manager Escalation Required` instead (the two-step flow above). It does
 **not** touch the Stage Advancer, so the patient stays in their stage and also
 remains visible in Processor Overview.
+
+Also here: the send's **Escalate toggle at Submit Auth** (2026-08-03). The
+toggle and Propose Stuck deliberately land on DIFFERENT rungs at that stage —
+a proposal is reviewed at Manager Intervention first, while a toggle carries no
+proposal to review and goes straight to a decision. `manualEscalationLevel`
+owns the rule; an auto-escalation on the same send can raise the result but
+never lowers it.
 
 Auto-arrival (Benefits): Out-of-Network, Medicare not Primary, or DME
 Partial/No on send sets `Final Escalation Required` automatically; an
@@ -312,7 +321,7 @@ always shows the **most recent** one.
 | Where | Buttons |
 |---|---|
 | Oversight drill-down (Final Decisions rows) | Approve Stuck · Return to Queue — both take an optional note |
-| Oversight drill-down (Manager Intervention **Submit Auth**, Propose Stuck rows only) | Escalate to Final Decisions (note **required**) · Return to Queue (optional note; clears the escalation + re-dates Follow Up) — the two outcomes the rep's Propose Stuck dialog promises. A patient already at Final is never DOWNGRADED by a re-proposal (ProposeStuckButton preserves Final). |
+| Oversight drill-down (Manager Intervention, every row except a bot-owned DVS one) | Escalate to Final Decisions (note **required**) · Return to Queue (optional note; clears the escalation + re-dates Follow Up) — the two outcomes the rep's Propose Stuck dialog promises. A patient already at Final is never DOWNGRADED by a re-proposal (ProposeStuckButton preserves Final). |
 | Stage page opened *from* Final Decisions (`?mv=final-decisions`) | Approve Stuck · Return to Queue — Propose Stuck is hidden, since the patient is already proposed |
 | Stage page opened any other way | Propose Stuck (at Submit Auth it flags `Manager Escalation Required`; Benefits / Auth Outstanding flag `Final Escalation Required`) |
 

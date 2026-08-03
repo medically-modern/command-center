@@ -104,11 +104,6 @@ const CHART_ROUTES: Record<string, string | null> = {
   // handlePatientClick overrides per patient by their Stage Advancer.
   "submit-auth-manager": "/dvs",
   "auth-outstanding-manager": "/auth-outstanding",
-  // Auth Denied has no CC page (count-only role), same as its Processor
-  // Overview twin — the drill-down table IS the view, and the decision buttons
-  // are how a manager acts on the row.
-  "auth-denial-manager": null,
-  "auth-denial-final-escalation": null,
   "benefits": "/benefits",
   "submit-auth": "/submit-auth",
   "auth-outstanding": "/auth-outstanding",

@@ -713,45 +713,6 @@ const RAW_CHART_DEFS: ChartDef[] = [
       { colId: "color_mm2vsh2f", label: "Escalation", pill: true },
     ],
   },
-  // Manager view: Insurance — Auth Denied row (2026-08-03), both columns.
-  // ANY denial escalates, so before these two charts existed every denied
-  // patient was invisible everywhere: out of Processor Overview (escalated),
-  // out of the burndown count (same rule), and with no page of their own
-  // (`authDenied` is a count-only role). Day-bucketed rather than
-  // reason-bucketed — the reason IS the denial, and days-since is what tells a
-  // manager which one has been sitting.
-  {
-    id: "auth-denial-manager",
-    title: "Auth Denied",
-    boardId: 18410601299,
-    notesColId: "long_text_mm2ffsme",
-    rowOf: "auth-denial",
-    decision: "submit-auth-manager",
-    reasonColId: "long_text_mm2ffsme",
-    drilldownCols: [
-      { colId: "__proposedReason__", label: "Proposed Reason" },
-      { colId: "color_mm1wwm05", label: "Days in Stage" },
-      { colId: "color_mm1x157j", label: "Primary Insurance" },
-      { colId: "color_mm1w1cm9", label: "Serving" },
-      { colId: "color_mm2vsh2f", label: "Escalation", pill: true },
-    ],
-  },
-  {
-    id: "auth-denial-final-escalation",
-    title: "Auth Denied",
-    boardId: 18410601299,
-    notesColId: "long_text_mm2ffsme",
-    rowOf: "auth-denial",
-    decision: "insurance-final",
-    reasonColId: "long_text_mm2ffsme",
-    drilldownCols: [
-      { colId: "__proposedReason__", label: "Proposed Reason" },
-      { colId: "color_mm1wwm05", label: "Days in Stage" },
-      { colId: "color_mm1x157j", label: "Primary Insurance" },
-      { colId: "color_mm1w1cm9", label: "Serving" },
-      { colId: "color_mm2vsh2f", label: "Escalation", pill: true },
-    ],
-  },
   // Manager view: Insurance — Benefits row, REASON-BUCKETED (Katie
   // 2026-07-29): one bar per reason a manager needs eyes on a Benefits
   // patient, not day buckets. Population = the bars unioned with the chart's
@@ -1029,22 +990,21 @@ export const OVERSIGHT_SECTIONS: OversightSection[] = [
     secondaryTitle: "Manager Intervention",
     // 2026-07-29: the two DVS charts merged into the reason-bucketed
     // "Submit Auth" chart (DVS Retry · DVS Manual Review · Propose Stuck).
-    // 2026-08-03: Auth Outstanding and Auth Denied gained manager charts so all
-    // four Processor Overview rows have a rung above them — an escalated
-    // patient leaves the rep's queue, so a row with no manager chart is a hole
-    // the patient falls through (insuranceCoverage.test.ts).
+    // 2026-08-03: Auth Outstanding gained a Manager Intervention chart so its
+    // row has both rungs — an escalated patient leaves the rep's queue, so a
+    // row with no manager chart is a hole the patient falls through
+    // (insuranceCoverage.test.ts). Auth Denied is the deliberate exception:
+    // the stage is under construction, no UI for it (Josh, 2026-08-03).
     secondaryChartIds: [
       "benefits-manager-escalation",
       "submit-auth-manager",
       "auth-outstanding-manager",
-      "auth-denial-manager",
     ],
     tertiaryTitle: "Final Decisions",
     tertiaryChartIds: [
       "benefits-final-escalation",
       "submit-auth-final-escalation",
       "auth-outstanding-final-escalation",
-      "auth-denial-final-escalation",
     ],
   },
   // "profile-review" chart not defined yet — needs a board/group; skipped until added.
@@ -1472,15 +1432,14 @@ const CHART_FILTERS: Record<string, FilterRule> = {
   // Manager, 2 = Final) so a board rename can't silently empty the chart.
   "submit-auth-final-escalation": { type: "stageAdvancer", boardId: 18410601299, value: "Submit Auth.", andCols: [{ colId: "color_mm2vsh2f", index: [2] }] },
   "auth-outstanding-final-escalation": { type: "stageAdvancer", boardId: 18410601299, value: "Auth. Outstanding", andCols: [{ colId: "color_mm2vsh2f", value: "Final Escalation Required" }] },
-  // Auth Denied (2026-08-03) — the row that had NO manager chart at all. Every
-  // denial escalates (authOutstandingOutcome returns escalate:true on anyDenied),
-  // which dropped the patient out of the Processor Overview "auth-denial" chart,
-  // out of the rep's counts (samActive excludes escalated) and — with no manager
-  // chart to land in — out of the app entirely. Group-scoped like its Processor
-  // twin: items here often still read Stage Advancer "Benefits / SoS", so the
-  // GROUP is what reliably says "denied".
-  "auth-denial-manager": { type: "group", groupId: "group_mm316hg2", andCols: [{ colId: "color_mm2vsh2f", index: [0] }] },
-  "auth-denial-final-escalation": { type: "group", groupId: "group_mm316hg2", andCols: [{ colId: "color_mm2vsh2f", index: [2] }] },
+  // ⚠️ Auth Denied has NO manager charts, deliberately (Josh, 2026-08-03): the
+  // stage is under construction, so don't build UI for it. It is the one known
+  // exception to "every escalated patient lands in some manager chart" — every
+  // denial escalates, which drops the patient out of the Processor Overview
+  // "auth-denial" chart and out of the rep's counts, and there is no page for
+  // the count-only `authDenied` role. Expect them to be worked on the board
+  // until the stage is built. insuranceCoverage.test.ts records the carve-out
+  // so the invariant still holds everywhere else.
   "auth-outstanding-proposed-final": { type: "stageAdvancer", boardId: 18410601299, value: "Auth. Outstanding", andCols: [{ colId: "color_mm2vsh2f", value: "Final Escalation Required" }, { colId: "long_text_mm2ffsme", containsAny: ["[Proposed Stuck"] }] },
   // ── Manager Intervention: Auth Outstanding (2026-08-03). The stage had a
   // Final Decisions chart but no Manager one, while the pump-SoS blocker added
