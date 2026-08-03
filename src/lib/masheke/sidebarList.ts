@@ -57,10 +57,11 @@ export function sidebarSections(
  * the snoozed patients, not the booked ones.
  *
  * A MANAGER additionally gets *Awaiting reply* (snoozed) and *Scheduled*
- * (booked a visit, so they've left this stage for Chase). Both are oversight,
- * not work.
+ * (a visit is booked and hasn't happened yet). Both are oversight, not work.
  *
- * Every patient lands in EXACTLY ONE section — see the dedupe in the function.
+ * Every patient lands in EXACTLY ONE section, and a **booked visit wins** — a
+ * patient with an appointment on the calendar is in Scheduled, never in Reach
+ * out today or Awaiting reply, whatever their Next Action Date says.
  *
  * Escalated patients belong to the manager too, so they drop out of the rep's
  * sidebar entirely. Index 2 (proposed stuck) is filtered upstream in
@@ -71,8 +72,8 @@ export interface ApptSidebarSections {
   dueNow: Patient[];
   /** Snoozed, in the "Awaiting reply" folder. Manager view only. */
   awaitingReply: Patient[];
-  /** Booked a visit and therefore LEFT this stage for Chase. Manager view only,
-   *  and never anyone already listed above — see the dedupe below. */
+  /** A visit is booked and hasn't happened yet. Manager view only, and these
+   *  patients are in NO other section — a booked visit wins. */
   scheduled: Patient[];
 }
 
@@ -81,26 +82,41 @@ export function apptSidebarSections(
   todayStr: string = etToday(),
   scheduledPatients: Patient[] = [],
 ): ApptSidebarSections {
+  /** A visit is booked and hasn't happened yet. */
+  const isBooked = (p: Patient) => {
+    const d = p.appointmentDate?.slice(0, 10);
+    return !!d && d >= todayStr;
+  };
+
   const active = patients.filter((p) => !isEsc(p));
-  const dueNow = active.filter((p) => {
+
+  // ── A BOOKED VISIT OUTRANKS THE DATE SECTIONS (Josh, 2026-08-03). ──
+  // There is nothing to do for these patients until the visit happens, so they
+  // belong in Scheduled even when their Next Action Date says today or their
+  // follow-up is a week out. Sorting them by the date sections instead is how
+  // the same person ended up under Awaiting reply AND Scheduled: `patients`
+  // carries them (useMondayPatients injects a deep-linked `?patientId=` even
+  // when it doesn't match this stage) and so does `scheduledPatients`.
+  const scheduled: Patient[] = [];
+  const seen = new Set<string>();
+  for (const p of [...active, ...scheduledPatients]) {
+    if (isEsc(p) || !isBooked(p) || seen.has(p.id)) continue;
+    seen.add(p.id);
+    scheduled.push(p);
+  }
+  // Soonest visit first — the one most likely to need attention.
+  scheduled.sort((a, b) => (a.appointmentDate ?? "").localeCompare(b.appointmentDate ?? ""));
+
+  // Everything else splits on the Next Action Date, as before.
+  const working = active.filter((p) => !isBooked(p));
+  const dueNow = working.filter((p) => {
     const nad = p.nextActionDate?.slice(0, 10);
     return !nad || nad <= todayStr;
   });
-  const awaitingReply = active.filter((p) => {
+  const awaitingReply = working.filter((p) => {
     const nad = p.nextActionDate?.slice(0, 10);
     return !!nad && nad > todayStr;
   });
-
-  // A patient appears in EXACTLY ONE section. The dedupe is not belt-and-braces:
-  // `useMondayPatients` injects a deep-linked `?patientId=` into the main list
-  // even when it doesn't match this stage, so a booked chase patient opened from
-  // Oversight lands in BOTH lists — which is how the same person showed up under
-  // Awaiting reply and Scheduled at once.
-  const listed = new Set([...dueNow, ...awaitingReply].map((p) => p.id));
-  const scheduled = scheduledPatients
-    .filter((p) => !isEsc(p) && !listed.has(p.id))
-    // Soonest visit first — the one most likely to need attention.
-    .sort((a, b) => (a.appointmentDate ?? "").localeCompare(b.appointmentDate ?? ""));
 
   return { dueNow, awaitingReply, scheduled };
 }

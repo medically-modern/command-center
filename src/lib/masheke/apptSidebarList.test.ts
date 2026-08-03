@@ -25,15 +25,29 @@ describe("Doctor Appointments sidebar", () => {
     expect(apptSidebarVisibleList(list, TODAY, [], false).map((x) => x.id)).toEqual(["due"]);
   });
 
-  it("puts a patient in EXACTLY one section, even when deep-linked", () => {
+  it("a BOOKED visit wins — Scheduled, never Reach out today or Awaiting reply", () => {
     // useMondayPatients injects a deep-linked ?patientId= into the main list
-    // even when they don't match this stage — so a booked chase patient can
-    // arrive in BOTH lists. They belong to Awaiting reply / Reach out today,
-    // not Scheduled.
-    const booked = p({ id: "dup", nextActionDate: "2026-08-13", appointmentDate: "2026-08-12" });
-    const { awaitingReply, scheduled } = apptSidebarSections([booked], TODAY, [booked]);
-    expect(awaitingReply.map((x) => x.id)).toEqual(["dup"]);
+    // even when they don't match this stage, so a booked patient arrives in
+    // BOTH lists. There's nothing to do until the visit, so Scheduled wins.
+    const snoozed = p({ id: "snoozed", nextActionDate: "2026-08-13", appointmentDate: "2026-08-12" });
+    const dueToday = p({ id: "dueToday", nextActionDate: TODAY, appointmentDate: "2026-08-12" });
+
+    const a = apptSidebarSections([snoozed], TODAY, [snoozed]);
+    expect(a.scheduled.map((x) => x.id)).toEqual(["snoozed"]);
+    expect(a.awaitingReply).toHaveLength(0);
+    expect(a.dueNow).toHaveLength(0);
+
+    // Even a Next Action Date of TODAY doesn't pull them into the work list.
+    const b = apptSidebarSections([dueToday], TODAY, []);
+    expect(b.scheduled.map((x) => x.id)).toEqual(["dueToday"]);
+    expect(b.dueNow).toHaveLength(0);
+  });
+
+  it("a PAST appointment is not 'scheduled' — the visit already happened", () => {
+    const seen = p({ id: "seen", nextActionDate: TODAY, appointmentDate: "2026-07-20" });
+    const { dueNow, scheduled } = apptSidebarSections([seen], TODAY, [seen]);
     expect(scheduled).toHaveLength(0);
+    expect(dueNow.map((x) => x.id)).toEqual(["seen"]);
   });
 
   it("shows Scheduled to managers only, soonest visit first", () => {

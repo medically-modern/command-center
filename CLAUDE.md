@@ -412,11 +412,13 @@ Phone call · Text message · Email.
   ⚠️ The manager view lists **every** patient in the stage, not just escalated ones — an
   escalated-only filter left it empty for the common pre-escalation case (attempt 3, follow-up
   tomorrow), which is exactly who a manager wants to see.
-  ⚠️ `apptSidebarSections` **dedupes**: a patient is in exactly one section. `useMondayPatients`
-  injects a deep-linked `?patientId=` into the main list even when it doesn't match this stage, so
-  a booked chase patient opened from Oversight otherwise appears in Awaiting reply AND Scheduled.
-  The panel shows the booked date instead of the attempt form for those, because writes against a
-  patient who isn't in this stage would corrupt the count.
+  ⚠️ **A booked visit WINS.** A patient whose Appointment Date is today-or-later is in *Scheduled*
+  and nowhere else — never Reach out today, never Awaiting reply, whatever their Next Action Date
+  says. There's nothing to do for them until the visit. That ordering is also what stops the same
+  person appearing twice: `useMondayPatients` injects a deep-linked `?patientId=` into the main
+  list even when it doesn't match this stage, so a booked patient arrives in `patients` AND
+  `scheduledApptPatients`. The panel shows the booked date instead of the attempt form for those,
+  because writes against a patient who isn't in this stage would corrupt the count.
 
 Escalated patients drop out of the processor sidebar entirely — they're the manager's. **Role
 counts follow the normal due-today rule**, so the role bar matches "Reach out today".
