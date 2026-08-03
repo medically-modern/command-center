@@ -90,7 +90,8 @@
       "name": "katie",
       "roles": [
         "profile",
-        "unverifiedReferrals"
+        "unverifiedReferrals",
+        "doctorAppointments"
       ]
     }
   }
