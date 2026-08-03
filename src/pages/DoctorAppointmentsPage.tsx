@@ -64,13 +64,9 @@ const DoctorAppointmentsPage = () => {
     scheduledApptPatients,
   } = useMondayPatients("doctorAppointments", deepLinkedId);
 
-  // A manager sees the WHOLE queue, not just the escalated slice (Josh,
-  // 2026-08-03). Filtering to escalated-only left the manager view empty for
-  // every pre-escalation patient — including the common case of someone on
-  // attempt 3 with a follow-up tomorrow, who is exactly who a manager wants to
-  // look at. The escalated ones are still marked with a badge and sort into the
-  // same sections; what makes this the manager view is the Awaiting-reply
-  // folder and the action bar, not a narrower list.
+  // A manager sees the WHOLE queue — escalated and not — sorted into the same
+  // sections by Next Action Date. What makes this the manager view is the extra
+  // folders and the action bar, not a narrower list.
   const patients = allPatients;
 
   const [selectedId, setSelectedId] = useState<string | null>(deepLinkedId ?? null);

@@ -12,9 +12,9 @@
  * the patient to whichever chase role they came from, and snoozes them to the
  * day after the visit.
  *
- * The three Appt Attempt columns ARE the counter, which is why the note is
- * mandatory — an empty column reads as an unused slot and would hand the rep
- * an unlimited retry.
+ * The attempt LINES in MN Workflow Notes ARE the counter (there are no
+ * per-attempt columns), which is why the note is mandatory — a note-less save
+ * would be indistinguishable from no attempt and hand the rep an unlimited retry.
  *
  * Manager mode is the SAME screen (Josh, 2026-08-03). A manager who lands here
  * from Oversight → Manager Intervention → Appointments gets the identical
@@ -29,7 +29,9 @@
  * Decisions drill-down reads it in the "Proposed Reason" column with no
  * special-casing. The stamp carries the stage and the attempt number, because
  * that column is shared and a bare sentence wouldn't tell a manager whether the
- * patient refused on call one or call three.
+ * patient refused on call one or call three. It is offered in every view EXCEPT
+ * Final Decisions — that manager IS the decision, and Approve Stuck on the
+ * action bar is the button they want.
  */
 import { useEffect, useMemo, useState } from "react";
 import type { Patient } from "@/lib/masheke/workflow";
@@ -99,12 +101,20 @@ interface Props {
 
 export function DoctorAppointmentsPanel({ patient, onUpdate, managerMode = false, onDone }: Props) {
   const [searchParams] = useSearchParams();
+  const origin = managerOriginFromParams(searchParams);
   // Which rung a "won't schedule" proposal lands on — the shared ladder, so a
   // rep's proposal reaches Manager Intervention and a manager's reaches Final.
-  const stuckLevel = proposeStuckLevel(
-    "doctor-appointments",
-    managerOriginFromParams(searchParams),
-    patient.escalation,
+  const stuckLevel = proposeStuckLevel("doctor-appointments", origin, patient.escalation);
+  /**
+   * FINAL DECISIONS drops "won't schedule / wants to cancel" (Josh, 2026-08-03).
+   * A proposal is what got the patient into that column; the final reviewer
+   * doesn't propose it again, they Approve Stuck straight from the action bar.
+   * Every other view keeps it — it's the rep's and the intervening manager's
+   * only way to raise a refusal.
+   */
+  const outcomes = useMemo(
+    () => (origin === "final-decisions" ? OUTCOME_ORDER.filter((o) => o !== "wontSchedule") : OUTCOME_ORDER),
+    [origin],
   );
   const [method, setMethod] = useState<ApptMethod>("Phone call");
   const [outcome, setOutcome] = useState<ApptOutcome>("noAnswer");
@@ -119,6 +129,13 @@ export function DoctorAppointmentsPanel({ patient, onUpdate, managerMode = false
     setOutcome("noAnswer");
     setMethod("Phone call");
   }, [patient.id]);
+
+  // The same component instance survives a change of `mv` (Oversight columns
+  // deep-link into this page), so a selection that is no longer in the dropdown
+  // must not stay armed on the Save button — it isn't visible to correct.
+  useEffect(() => {
+    setOutcome((o) => (outcomes.includes(o) ? o : "noAnswer"));
+  }, [outcomes]);
 
   // Same checklist Chase shows — it's what the visit has to produce, so the rep
   // can tell the patient why they're being asked to go in.
@@ -460,8 +477,8 @@ export function DoctorAppointmentsPanel({ patient, onUpdate, managerMode = false
                   No attempt limit here
                 </p>
                 <p className="mt-0.5 text-muted-foreground">
-                  Log as many as it takes. {patient.name} leaves this queue only when you get an
-                  appointment date, send them back to the pipeline, or propose stuck.
+                  {patient.name} leaves this queue only when you get an appointment date, send them
+                  back to the pipeline, or propose stuck.
                 </p>
               </div>
             )}
@@ -489,7 +506,7 @@ export function DoctorAppointmentsPanel({ patient, onUpdate, managerMode = false
                   className="w-full rounded-xl border bg-background px-4 py-2.5 text-sm focus:outline-none"
                   style={{ borderColor: "var(--mm-card-border)" }}
                 >
-                  {OUTCOME_ORDER.map((o) => (
+                  {outcomes.map((o) => (
                     <option key={o} value={o}>
                       {APPT_OUTCOME_LABEL[o]}
                     </option>

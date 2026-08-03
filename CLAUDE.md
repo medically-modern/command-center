@@ -351,6 +351,12 @@ manager proposing from there — or a proposal on an already-escalated patient �
 Decisions** (index 2). The page also carries the standard `StageActionBar`, so Propose Stuck /
 Approve Stuck / Send back to pipeline are available from all three manager columns. Canonical logic: **`lib/masheke/apptOutreach.ts`**
 (+ tests).
+> The **Final Decisions view is the one place the "won't schedule / wants to cancel" outcome is
+> hidden** (Josh, 2026-08-03): a proposal is what put the patient in that column, so proposing it
+> again is a no-op — that manager Approves Stuck from the action bar instead. Gated on
+> `?mv=final-decisions` only; every other view keeps it. The panel also re-defaults the selection
+> when the filtered list changes, because the same component instance survives a change of `mv`
+> and a hidden option must not stay armed on the Save button.
 
 > **Why a refusal doesn't wait for the third attempt:** it's a rep JUDGMENT about what they were
 > told, not a counter running out. It climbs one rung rather than jumping to Final so a manager
@@ -413,7 +419,14 @@ Phone call · Text message · Email.
   by every Oversight column and by nothing else.
   ⚠️ The manager view lists **every** patient in the stage, not just escalated ones — an
   escalated-only filter left it empty for the common pre-escalation case (attempt 3, follow-up
-  tomorrow), which is exactly who a manager wants to see.
+  tomorrow), which is exactly who a manager wants to see. That includes the **escalated** ones,
+  sorted into the same two folders by Next Action Date like anyone else — hence
+  `apptSidebarSections`' `includeEscalated` flag (true only for the manager view). Without it
+  Manager Intervention read "Nobody due right now" while its own bar chart counted the patient:
+  the filter used `isEscalatedIndex`, which is **index-0-only**, so index-0 patients vanished and
+  index-2 (Final Decisions) came through — exactly the asymmetry that made Final look correct and
+  Manager Intervention look broken. (Index 2 reaches the page by deep-link injection, since
+  `useMondayPatients` drops `proposedStuck` from every stage queue.)
   ⚠️ **A booked visit WINS.** A patient whose Appointment Date is today-or-later is in *Scheduled*
   and nowhere else — never Reach out today, never Awaiting reply, whatever their Next Action Date
   says. There's nothing to do for them until the visit. That ordering is also what stops the same

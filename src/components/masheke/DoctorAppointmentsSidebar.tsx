@@ -118,6 +118,7 @@ export function DoctorAppointmentsSidebar({
     patients,
     today,
     managerView ? scheduledPatients : [],
+    managerView,
   );
   // Open by default — a folder nobody opens is the same as hiding them.
   const [showAwaiting, setShowAwaiting] = useState(true);

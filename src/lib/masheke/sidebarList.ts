@@ -63,9 +63,11 @@ export function sidebarSections(
  * patient with an appointment on the calendar is in Scheduled, never in Reach
  * out today or Awaiting reply, whatever their Next Action Date says.
  *
- * Escalated patients belong to the manager too, so they drop out of the rep's
- * sidebar entirely. Index 2 (proposed stuck) is filtered upstream in
- * useMondayPatients like everywhere else.
+ * Escalated patients drop out of the PROCESSOR's sidebar entirely — they're the
+ * manager's. In the manager view they stay, and sort by Next Action Date like
+ * anyone else: due today or earlier ⇒ Reach out today, future ⇒ Awaiting reply.
+ * Index 2 (proposed stuck) is filtered upstream in useMondayPatients for the
+ * rep; a manager reaches those through Oversight's Final Decisions.
  */
 export interface ApptSidebarSections {
   /** Due now — no Next Action Date, or one at/before today. */
@@ -81,6 +83,16 @@ export function apptSidebarSections(
   patients: Patient[],
   todayStr: string = etToday(),
   scheduledPatients: Patient[] = [],
+  /**
+   * Keep escalated patients in the sections. TRUE for the manager view — they
+   * ARE the manager's list, so dropping them left Manager Intervention showing
+   * "Nobody due right now" while the chart counted the patient.
+   *
+   * The bug only bit index 0: `isEscalatedIndex` is index-0-only, so index 2
+   * (Final Decisions) patients were never filtered — which is why Final looked
+   * correct and Manager Intervention looked empty.
+   */
+  includeEscalated = false,
 ): ApptSidebarSections {
   /** A visit is booked and hasn't happened yet. */
   const isBooked = (p: Patient) => {
@@ -88,7 +100,7 @@ export function apptSidebarSections(
     return !!d && d >= todayStr;
   };
 
-  const active = patients.filter((p) => !isEsc(p));
+  const active = includeEscalated ? patients : patients.filter((p) => !isEsc(p));
 
   // ── A BOOKED VISIT OUTRANKS THE DATE SECTIONS (Josh, 2026-08-03). ──
   // There is nothing to do for these patients until the visit happens, so they
@@ -100,7 +112,7 @@ export function apptSidebarSections(
   const scheduled: Patient[] = [];
   const seen = new Set<string>();
   for (const p of [...active, ...scheduledPatients]) {
-    if (isEsc(p) || !isBooked(p) || seen.has(p.id)) continue;
+    if ((!includeEscalated && isEsc(p)) || !isBooked(p) || seen.has(p.id)) continue;
     seen.add(p.id);
     scheduled.push(p);
   }
@@ -128,14 +140,16 @@ export function apptSidebarVisibleList(
   patients: Patient[],
   todayStr: string = etToday(),
   scheduledPatients: Patient[] = [],
-  /** Manager view — the Awaiting-reply and Scheduled folders. A processor's
-   *  sidebar is "Reach out today" and nothing else. */
+  /** Manager view — the Awaiting-reply and Scheduled folders, and escalated
+   *  patients included. A processor's sidebar is "Reach out today" and nothing
+   *  else, with escalated patients dropped. */
   managerView = false,
 ): Patient[] {
   const { dueNow, awaitingReply, scheduled } = apptSidebarSections(
     patients,
     todayStr,
     managerView ? scheduledPatients : [],
+    managerView,
   );
   return managerView ? [...dueNow, ...awaitingReply, ...scheduled] : [...dueNow];
 }

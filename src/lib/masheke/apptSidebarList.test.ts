@@ -81,7 +81,7 @@ describe("Doctor Appointments sidebar", () => {
     expect(apptSidebarSections(list, TODAY).awaitingReply).toHaveLength(0);
   });
 
-  it("drops escalated patients entirely — they belong to the manager", () => {
+  it("drops escalated patients from the PROCESSOR sidebar — they belong to the manager", () => {
     const list = [
       p({ id: "due", nextActionDate: TODAY }),
       p({ id: "esc", escalationIndex: ESCALATION_INDEX.required, nextActionDate: TODAY }),
@@ -90,7 +90,55 @@ describe("Doctor Appointments sidebar", () => {
     const { dueNow, awaitingReply } = apptSidebarSections(list, TODAY);
     expect(dueNow.map((x) => x.id)).toEqual(["due"]);
     expect(awaitingReply).toHaveLength(0);
-    expect(apptSidebarVisibleList(list, TODAY, [], true).map((x) => x.id)).toEqual(["due"]);
+    expect(apptSidebarVisibleList(list, TODAY, [], false).map((x) => x.id)).toEqual(["due"]);
+  });
+
+  /**
+   * Manager Intervention showed "Nobody due right now" while its bar chart
+   * counted the patient: the sections filtered on isEscalatedIndex, which is
+   * index-0-ONLY — so Manager Intervention (index 0) patients vanished and
+   * Final Decisions (index 2) patients came through, which is exactly the
+   * asymmetry Josh reported. The manager's list IS the escalated patients.
+   */
+  it("KEEPS escalated patients in the manager view, sorted by Next Action Date", () => {
+    const list = [
+      p({ id: "escToday", escalationIndex: ESCALATION_INDEX.required, nextActionDate: TODAY }),
+      p({ id: "escPast", escalationIndex: ESCALATION_INDEX.required, nextActionDate: "2026-07-28" }),
+      p({ id: "escFuture", escalationIndex: ESCALATION_INDEX.required, nextActionDate: "2026-09-01" }),
+      p({ id: "escBlank", escalationIndex: ESCALATION_INDEX.required }),
+    ];
+    const { dueNow, awaitingReply, scheduled } = apptSidebarSections(list, TODAY, [], true);
+    expect(dueNow.map((x) => x.id)).toEqual(["escToday", "escPast", "escBlank"]);
+    expect(awaitingReply.map((x) => x.id)).toEqual(["escFuture"]);
+    expect(scheduled).toHaveLength(0);
+    expect(apptSidebarVisibleList(list, TODAY, [], true).map((x) => x.id)).toEqual([
+      "escToday",
+      "escPast",
+      "escBlank",
+      "escFuture",
+    ]);
+    // Same list, processor view: nothing at all.
+    expect(apptSidebarVisibleList(list, TODAY, [], false)).toHaveLength(0);
+  });
+
+  it("keeps a proposed-stuck (index 2) patient in the manager view too", () => {
+    const list = [
+      p({ id: "final", escalationIndex: ESCALATION_INDEX.finalRequired, nextActionDate: TODAY }),
+    ];
+    expect(apptSidebarSections(list, TODAY, [], true).dueNow.map((x) => x.id)).toEqual(["final"]);
+  });
+
+  it("a booked visit still wins for an escalated patient in the manager view", () => {
+    const booked = p({
+      id: "escBooked",
+      escalationIndex: ESCALATION_INDEX.required,
+      nextActionDate: TODAY,
+      appointmentDate: "2026-08-14",
+    });
+    const { dueNow, awaitingReply, scheduled } = apptSidebarSections([booked], TODAY, [booked], true);
+    expect(scheduled.map((x) => x.id)).toEqual(["escBooked"]);
+    expect(dueNow).toHaveLength(0);
+    expect(awaitingReply).toHaveLength(0);
   });
 
   it("compares only the date part of a datetime Next Action Date", () => {
