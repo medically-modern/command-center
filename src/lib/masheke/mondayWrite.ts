@@ -517,16 +517,16 @@ export async function enterDoctorAppointments(opts: {
 /**
  * Doctor Appointments → log one outreach attempt (patient stays in the queue).
  *
- * The attempt text column IS the counter, so it must land before anything that
- * reads the count. `escalate` is the third-attempt hand-off: Escalation → index
+ * The notes body IS the attempt log and the counter, so it must land before the
+ * escalation flip. `escalate` is the third-attempt hand-off: Escalation → index
  * 0 (Manager Intervention), NOT index 2 — index 2 is the "proposed stuck"
  * signal that pulls a patient out of every queue awaiting a Final Decision, and
  * an unreachable patient is a manager task, not a pipeline exit.
  */
 export async function logApptAttemptVerified(opts: {
   itemId: string;
-  attemptColumnId: string;
-  attemptValue: string;
+  /** The full MN Workflow Notes body, attempt line already appended. There are
+   *  no per-attempt columns — this body IS the attempt log and the counter. */
   notes: string;
   /** Null when escalating or proposing stuck — the patient is a manager's. */
   nextActionDate: string | null;
@@ -541,13 +541,6 @@ export async function logApptAttemptVerified(opts: {
   waitForDoneMs?: number;
 }): Promise<void> {
   const tasks: WriteTask[] = [
-    {
-      label: "Appointment attempt",
-      columnId: opts.attemptColumnId,
-      value: opts.attemptValue,
-      expectedText: opts.attemptValue,
-      fn: () => writeText(opts.itemId, opts.attemptColumnId, opts.attemptValue),
-    },
     {
       label: "MN Workflow Notes",
       columnId: COL.mnEvalNotes,
@@ -609,29 +602,18 @@ export async function logApptAttemptVerified(opts: {
  * appointment date, and the patient goes back to the pipeline snoozed rather
  * than staying in Manager Intervention with a date nobody acts on.
  *
- * `attempt` is optional — set when a rep logged this as an outreach attempt,
- * omitted when a manager entered the date directly.
+ * The attempt line (if the rep logged one) is already inside `notes`.
  */
 export async function returnToChaseWithAppointment(opts: {
   itemId: string;
   appointmentDate: string;
   nextActionDate: string;
   notes: string;
-  attempt?: { columnId: string; value: string };
   onProgress?: (phase: WriteProgressPhase) => void;
   requireDone?: boolean;
   waitForDoneMs?: number;
 }): Promise<void> {
   const tasks: WriteTask[] = [];
-  if (opts.attempt) {
-    tasks.push({
-      label: "Appointment attempt",
-      columnId: opts.attempt.columnId,
-      value: opts.attempt.value,
-      expectedText: opts.attempt.value,
-      fn: () => writeText(opts.itemId, opts.attempt!.columnId, opts.attempt!.value),
-    });
-  }
   tasks.push(
     {
       label: "Appointment Date",

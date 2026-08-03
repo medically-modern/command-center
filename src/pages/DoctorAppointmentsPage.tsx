@@ -45,6 +45,7 @@ const DoctorAppointmentsPage = () => {
     refetch,
     update,
     clearOverlay,
+    scheduledApptPatients,
   } = useMondayPatients("doctorAppointments", deepLinkedId);
 
   // Managers work the escalated list (Oversight → Manager Intervention →
@@ -61,8 +62,11 @@ const DoctorAppointmentsPage = () => {
   const [selectedId, setSelectedId] = useState<string | null>(deepLinkedId ?? null);
 
   const visiblePatients = useMemo(
-    () => (isManager ? patients : apptSidebarVisibleList(patients)),
-    [patients, isManager],
+    () =>
+      isManager
+        ? patients
+        : apptSidebarVisibleList(patients, undefined, scheduledApptPatients),
+    [patients, isManager, scheduledApptPatients],
   );
   useAutoSelectPatient(
     initialLoading,
@@ -73,9 +77,13 @@ const DoctorAppointmentsPage = () => {
     deepLinkedId,
   );
 
+  // The Scheduled folder shows patients who have already left this stage, so
+  // the selection has to be resolvable from that list too.
   const selected: Patient | undefined = useMemo(
-    () => patients.find((p) => p.id === selectedId),
-    [patients, selectedId],
+    () =>
+      patients.find((p) => p.id === selectedId) ??
+      scheduledApptPatients.find((p) => p.id === selectedId),
+    [patients, scheduledApptPatients, selectedId],
   );
 
   const onUpdate = (patch: Partial<Patient>) => {
@@ -97,6 +105,7 @@ const DoctorAppointmentsPage = () => {
       <div className="min-h-screen flex w-full bg-gradient-subtle">
         <DoctorAppointmentsSidebar
           patients={patients}
+          scheduledPatients={isManager ? [] : scheduledApptPatients}
           selectedId={selectedId}
           onSelect={setSelectedId}
           loading={loading}

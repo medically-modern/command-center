@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import type { Patient } from "./workflow";
 import {
   APPT_ATTEMPT_SNOOZE_BUSINESS_DAYS,
-  WILL_CALL_SNOOZE_DAYS,
   apptProposedStuckReason,
   apptAttemptCount,
   apptAttempts,
@@ -24,26 +23,37 @@ const MON = "2026-08-03";
 const p = (over: Partial<Patient> = {}): Patient =>
   ({ id: "1", name: "Test", dob: "", notes: "", ...over }) as Patient;
 
-describe("attempt columns are the counter", () => {
-  it("counts only filled columns", () => {
+/** An attempt line exactly as the app writes it into MN Workflow Notes. */
+const line = (n: number) =>
+  `8/${n}/26, 1:38 PM · Phone call — No answer / no response · tried her again —JH`;
+const notesOf = (...ls: string[]) => ls.join("\n");
+
+describe("MN notes lines are the counter", () => {
+  it("counts the attempt lines in the notes body", () => {
     expect(apptAttemptCount(p())).toBe(0);
-    expect(apptAttemptCount(p({ apptAttempt1: "a" }))).toBe(1);
-    expect(apptAttemptCount(p({ apptAttempt1: "a", apptAttempt2: "b" }))).toBe(2);
-    expect(apptAttemptCount(p({ apptAttempt1: "a", apptAttempt2: "b", apptAttempt3: "c" }))).toBe(3);
+    expect(apptAttemptCount(p({ mnEvalNotes: line(1) }))).toBe(1);
+    expect(apptAttemptCount(p({ mnEvalNotes: notesOf(line(1), line(2)) }))).toBe(2);
+    expect(apptAttemptCount(p({ mnEvalNotes: notesOf(line(1), line(2), line(3)) }))).toBe(3);
   });
 
-  it("treats a whitespace-only column as unused", () => {
-    expect(apptAttemptCount(p({ apptAttempt1: "   " }))).toBe(0);
+  it("ignores other stages' lines in the same shared column", () => {
+    const notes = notesOf(
+      "8/1/26, 9:00 AM · Chase (escalated) · left a voicemail with records —BE",
+      "[Proposed Stuck · 8/2/26 · JH] something else entirely",
+      "7/30/26, 2:00 PM · Patient Doctor Appointment · Provider requires a new visit —JH",
+      line(3),
+    );
+    expect(apptAttemptCount(p({ mnEvalNotes: notes }))).toBe(1);
   });
 
   it("hands out the next free slot, then null", () => {
     expect(nextApptSlot(p())).toBe(1);
-    expect(nextApptSlot(p({ apptAttempt1: "a" }))).toBe(2);
-    expect(nextApptSlot(p({ apptAttempt1: "a", apptAttempt2: "b" }))).toBe(3);
-    expect(nextApptSlot(p({ apptAttempt1: "a", apptAttempt2: "b", apptAttempt3: "c" }))).toBeNull();
+    expect(nextApptSlot(p({ mnEvalNotes: line(1) }))).toBe(2);
+    expect(nextApptSlot(p({ mnEvalNotes: notesOf(line(1), line(2)) }))).toBe(3);
+    expect(nextApptSlot(p({ mnEvalNotes: notesOf(line(1), line(2), line(3)) }))).toBeNull();
   });
 
-  it("requires a note — an empty note would leave the slot looking unused", () => {
+  it("requires a note — a note-less save would be invisible to the counter", () => {
     expect(canLogAttempt("", 1)).toBe(false);
     expect(canLogAttempt("   ", 1)).toBe(false);
     expect(canLogAttempt("called, no answer", 1)).toBe(true);
@@ -51,14 +61,35 @@ describe("attempt columns are the counter", () => {
   });
 
   it("is exhausted only with 3 attempts AND no appointment", () => {
-    const three = { apptAttempt1: "a", apptAttempt2: "b", apptAttempt3: "c" };
+    const three = { mnEvalNotes: notesOf(line(1), line(2), line(3)) };
     expect(isApptExhausted(p(three))).toBe(true);
     expect(isApptExhausted(p({ ...three, appointmentDate: "2026-09-16" }))).toBe(false);
-    expect(isApptExhausted(p({ apptAttempt1: "a" }))).toBe(false);
+    expect(isApptExhausted(p({ mnEvalNotes: line(1) }))).toBe(false);
+  });
+
+  it("never locks the rep out if extra matching lines appear", () => {
+    // A returned-and-re-worked patient could accumulate more than three.
+    const many = notesOf(line(1), line(2), line(3), line(4), line(5));
+    expect(apptAttemptCount(p({ mnEvalNotes: many }))).toBe(3);
+    expect(apptAttempts(p({ mnEvalNotes: many })).map((a) => a.slot)).toEqual([1, 2, 3]);
   });
 });
 
-describe("attempt column round-trip", () => {
+describe("attempt line round-trip", () => {
+  it("writes exactly the agreed format", () => {
+    expect(
+      formatApptAttempt({
+        date: "8/3/26, 1:38 PM",
+        method: "Phone call",
+        outcome: "noAnswer",
+        note: "sent her a text to ask if shes booking a follow up meeting with doctor test",
+        initials: "JH",
+      }),
+    ).toBe(
+      "8/3/26, 1:38 PM · Phone call — No answer / no response · sent her a text to ask if shes booking a follow up meeting with doctor test —JH",
+    );
+  });
+
   it("survives format → parse with a note", () => {
     const raw = formatApptAttempt({
       date: "8/3/26, 2:33 PM",
@@ -89,9 +120,9 @@ describe("attempt column round-trip", () => {
     expect(back.note).toBe("someone typed this straight into Monday");
   });
 
-  it("lists attempts in slot order", () => {
-    const list = apptAttempts(p({ apptAttempt1: "8/1/26 · a — b", apptAttempt3: "8/3/26 · c — d" }));
-    expect(list.map((a) => a.slot)).toEqual([1, 3]);
+  it("numbers attempts by position, so count and slot can never disagree", () => {
+    const list = apptAttempts(p({ mnEvalNotes: notesOf(line(1), line(2)) }));
+    expect(list.map((a) => a.slot)).toEqual([1, 2]);
   });
 });
 
@@ -118,15 +149,14 @@ describe("outcome → effect", () => {
     expect(resolveApptOutcome({ outcome: "leftMessage", slot: 2, today: MON }).nextActionDate).toBe("2026-08-06");
   });
 
-  it("will-call waits a week and never lands on a weekend", () => {
-    const e = resolveApptOutcome({ outcome: "willCall", slot: 1, today: MON });
-    expect(WILL_CALL_SNOOZE_DAYS).toBe(7);
-    // Mon 3 Aug + 7 calendar days = Mon 10 Aug (a weekday, unchanged)
-    expect(e.nextActionDate).toBe("2026-08-10");
-    // Fri 7 Aug + 7 = Fri 14 Aug
-    expect(resolveApptOutcome({ outcome: "willCall", slot: 1, today: "2026-08-07" }).nextActionDate).toBe("2026-08-14");
-    // Wed 5 Aug + 7 = Wed 12 Aug
-    expect(resolveApptOutcome({ outcome: "willCall", slot: 1, today: "2026-08-05" }).nextActionDate).toBe("2026-08-12");
+  it("every non-booking, non-refusal outcome gets the SAME 3-day snooze", () => {
+    // Josh, 2026-08-03: one cadence. "Will call the office" used to get 7 days.
+    for (const outcome of ["noAnswer", "leftMessage", "willCall"] as const) {
+      expect(
+        resolveApptOutcome({ outcome, slot: 1, today: MON }).nextActionDate,
+        outcome,
+      ).toBe("2026-08-06");
+    }
   });
 
   it("won't-schedule / wants-to-cancel proposes stuck at ANY attempt", () => {
@@ -238,5 +268,12 @@ describe("Sub-Stage indices", () => {
       expect(SUB_STAGE_INDEX.doctorAppointment).toBe(0);
       expect(SUB_STAGE_LABEL[SUB_STAGE_INDEX.doctorAppointment]).toBe("Doctor Appointment");
     });
+  });
+});
+
+describe("reach-out methods", () => {
+  it("offers phone, text and email only — no patient portal", async () => {
+    const { APPT_METHODS } = await import("./apptOutreach");
+    expect(APPT_METHODS).toEqual(["Phone call", "Text message", "Email"]);
   });
 });

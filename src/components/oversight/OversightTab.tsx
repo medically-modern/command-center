@@ -1829,6 +1829,17 @@ export default function OversightTab() {
         const p = (data?.get(expandedChart) ?? []).find((x) => x.id === patientId);
         if (p && (p.cols["color_mm1ws96t"] ?? "").trim() === "Submit Auth.") route = "/submit-auth";
       }
+      // The chase charts carry Doctor Appointment patients too — in the "Appts"
+      // appendix bar, and (for a refusal) in the proposed-stuck chart. Opening
+      // those in the chase UI is confusing: the work is patient outreach, not
+      // chasing an office. Route by the patient's own sub-stage (Josh,
+      // 2026-08-03).
+      {
+        const p = (data?.get(expandedChart) ?? []).find((x) => x.id === patientId);
+        if (p && (p.cols["color_mm1wyr92"] ?? "").trim() === "Doctor Appointment") {
+          route = "/doctor-appointments";
+        }
+      }
       if (!route) {
         toast.info("This stage doesn't have a dedicated page yet");
         return;

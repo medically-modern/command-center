@@ -215,9 +215,6 @@ export function mondayItemToPatient(item: MondayItem): Patient {
     blockedDate: col(item, "date_mm33vqkm") || undefined,
     // Doctor Appointments (2026-08-03)
     appointmentDate: col(item, "date_mm5w2vsf") || undefined,
-    apptAttempt1: col(item, "text_mm5wjp3r") || undefined,
-    apptAttempt2: col(item, "text_mm5wb4c2") || undefined,
-    apptAttempt3: col(item, "text_mm5w1j8y") || undefined,
     profileSendOffNotes: col(item, "text_mm3xdze1") || undefined,
     notes: "",
   };

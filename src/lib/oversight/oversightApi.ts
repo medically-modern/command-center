@@ -212,14 +212,13 @@ const CHASE_COLS: { colId: string; label: string; pill?: boolean }[] = [
  *  not a severity, and colouring it on the ramp would imply one. */
 export const APPOINTMENT_BAR_COLOR = "#64748b";
 
-/** Chase drill-down columns plus the appointment fields, so a manager opening
- *  the Appointments bar sees the date and the outreach log without leaving. */
+/** Chase drill-down columns plus the appointment date, so a manager opening the
+ *  Appointments bar sees when the visit is without leaving. The outreach
+ *  attempts live in MN Workflow Notes, which the drill-down already surfaces
+ *  through the notes popover. */
 const CHASE_APPT_COLS: { colId: string; label: string; pill?: boolean }[] = [
   ...CHASE_COLS,
   { colId: "date_mm5w2vsf", label: "Appointment Date" },
-  { colId: "text_mm5wjp3r", label: "Appt Attempt 1" },
-  { colId: "text_mm5wb4c2", label: "Appt Attempt 2" },
-  { colId: "text_mm5w1j8y", label: "Appt Attempt 3" },
 ];
 
 /** Shared drill-down columns for the Evaluate chart + its escalated variant. */

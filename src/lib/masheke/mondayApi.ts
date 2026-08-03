@@ -138,13 +138,10 @@ export const COL = {
 
   // Doctor Appointments (2026-08-03) — the provider told us the patient must be
   // seen again before they'll send clinicals. The appointment date drives the
-  // Next Action Date snooze; the three attempt columns ARE the attempt counter
-  // (see lib/masheke/apptOutreach.ts — deliberately NOT reusing MN Attempts
-  // color_mm1wz0vg, which Chase owns and would arrive part-spent).
+  // Next Action Date snooze. Outreach ATTEMPTS have no columns of their own:
+  // every note this stage writes goes to MN Workflow Notes, and the attempt
+  // lines in that body are the counter (lib/masheke/apptOutreach).
   appointmentDate: "date_mm5w2vsf",
-  apptAttempt1: "text_mm5wjp3r",
-  apptAttempt2: "text_mm5wb4c2",
-  apptAttempt3: "text_mm5w1j8y",
 
   // Debug
   joshDebug: "text_mm356n2y",
@@ -196,7 +193,7 @@ export const READ_COLUMN_IDS: string[] = [
   COL.profileSendOffNotes,
   // Doctor Appointments — MUST stay here or the whole feature reads blank
   // (every masheke query fetches column_values(ids: READ_COLUMN_IDS) only).
-  COL.appointmentDate, COL.apptAttempt1, COL.apptAttempt2, COL.apptAttempt3,
+  COL.appointmentDate,
 ];
 
 export interface MondayColumnValue {

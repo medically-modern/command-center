@@ -363,15 +363,20 @@ else keeps the patient in the queue, snoozed. Canonical logic: **`lib/masheke/ap
 **No new Monday group and no new automation** — Sub-Stage `color_mm1wyr92` **IS** the stage
 advancer on this board (`mondayWrite.recordAndAdvanceVerified` passes it as `stageColumnId`,
 "the single write that moves the item"), so a new sub-stage index is the whole board change.
-New columns: **Appointment Date `date_mm5w2vsf`**, **Appt Attempt 1/2/3 `text_mm5wjp3r` /
-`text_mm5wb4c2` / `text_mm5w1j8y`**.
+**One new column: Appointment Date `date_mm5w2vsf`.**
 
-> **The three attempt columns ARE the counter.** MN Attempts `color_mm1wz0vg` is Chase's and is
-> board-wide — reusing it would hand a patient who spent two chase attempts exactly one outreach
-> attempt, and spend the chase counter on the way back. So the count is derived from how many
-> attempt columns are filled, which is also **why a note is mandatory on every attempt**: an empty
-> column reads as an unused slot, so a note-less save would be invisible to the counter and hand
-> the rep an unlimited retry (`canLogAttempt`).
+> **Every note this stage writes goes to MN Workflow Notes** `long_text_mm27zjt2` — outreach
+> attempts have no columns of their own (Josh, 2026-08-03; three `Appt Attempt` text columns were
+> created and then deleted). The attempt line is exactly:
+> `8/3/26, 1:38 PM · Phone call — No answer / no response · <rep note> —JH`
+>
+> ⚠️ **THAT LINE IS THE COUNTER.** `apptAttemptsFromNotes` counts the lines in the notes body
+> matching `{known method} — {known outcome}`, and numbers them by position, so the shape is a
+> contract: a format change not matched in the parser doesn't error, it silently resets a
+> patient's attempt count and hands the rep unlimited retries. It's also **why a note is mandatory
+> on every attempt** (`canLogAttempt`) — a note-less save would be indistinguishable from no
+> attempt. MN Attempts `color_mm1wz0vg` is deliberately NOT reused: it's Chase's and board-wide,
+> so a patient who spent two chase attempts would arrive with one outreach attempt left.
 
 > **Escalation is shared, so entry CLEARS it.** `enterDoctorAppointments` writes Escalation → Done
 > on the way in. Without it, a manager working an escalated chase patient who clicks the button
@@ -381,17 +386,24 @@ New columns: **Appointment Date `date_mm5w2vsf`**, **Appt Attempt 1/2/3 `text_mm
 > Intervention), never index 2 — index 2 is a stuck PROPOSAL awaiting a Final Decision, and an
 > unreachable patient is a manager task, not a pipeline exit.
 
-**Cadence** (one constant, `APPT_ATTEMPT_SNOOZE_BUSINESS_DAYS`): a logged attempt snoozes a **flat
-3 business days**, matching Chase's `nadBumpDays` — text, note, submit, back in three days to check
-for a reply. "Will call the office" = 7 calendar days, the one cadence number that comes from the
-handoff (Brandon's v3 outcome matrix); every other number here is ours.
+**Cadence** (one constant, `APPT_ATTEMPT_SNOOZE_BUSINESS_DAYS`): **every** logged attempt snoozes a
+flat **3 business days** — no per-outcome variation. Reach-out methods are Phone call · Text
+message · Email.
 
-**The sidebar deliberately keeps snoozed patients VISIBLE** (`apptSidebarSections`) in an
-"Awaiting reply" folder — unlike every other masheke stage, which hides future-NAD patients. The
-work is texting patients; someone who replies on day two of a seven-day snooze is exactly who the
-rep needs to open. Escalated patients are the opposite and drop out entirely — they're the
-manager's. **Role counts still follow the normal due-today rule**, so the role bar matches the
-sidebar's "Reach out today" section, not its total.
+**The sidebar has three sections** (`apptSidebarSections`). *Reach out today* is the work.
+*Awaiting reply* keeps snoozed patients VISIBLE — unlike every other masheke stage, which hides
+future-NAD patients — because someone who texts back mid-snooze is exactly who the rep needs to
+open. *Scheduled* (closed by default) lists patients who already have an appointment and have
+therefore **left this stage** for Chase; the hook surfaces them via `scheduledApptPatients`
+(appointmentDate set AND sub-stage ≠ Doctor Appointment) purely so the rep has a way back to them,
+and the panel shows the booked date instead of the attempt form. Escalated patients drop out
+entirely — they're the manager's. **Role counts follow the normal due-today rule**, so the role bar
+matches "Reach out today", not the sidebar total.
+
+**Oversight routing:** `handlePatientClick` sends any patient whose Sub-Stage reads
+`Doctor Appointment` to `/doctor-appointments`, overriding the chart's own route — they surface in
+the CHASE charts (appendix bar + proposed-stuck), and opening them in the chase UI would show the
+wrong job.
 
 **Oversight** (`ChartDef.appendixBar`, new mechanism): both chase charts get an **"Appts" bar to
 the right of "30+ Days"**, divider-separated, split by Clinicals Method with the same §5.9 rule.

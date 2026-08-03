@@ -70,11 +70,20 @@ export interface ApptSidebarSections {
   dueNow: Patient[];
   /** Snoozed but still shown, in the "Awaiting reply" folder. */
   awaitingReply: Patient[];
+  /**
+   * Patients who HAVE an appointment booked and are waiting for it. They have
+   * already left this stage — they're back in Chase, snoozed — but the rep can
+   * still reach them here in case something changes (Josh, 2026-08-03).
+   * Read-only in practice: the panel shows the appointment instead of the
+   * attempt form.
+   */
+  scheduled: Patient[];
 }
 
 export function apptSidebarSections(
   patients: Patient[],
   todayStr: string = etToday(),
+  scheduledPatients: Patient[] = [],
 ): ApptSidebarSections {
   const active = patients.filter((p) => !isEsc(p));
   const dueNow = active.filter((p) => {
@@ -85,7 +94,11 @@ export function apptSidebarSections(
     const nad = p.nextActionDate?.slice(0, 10);
     return !!nad && nad > todayStr;
   });
-  return { dueNow, awaitingReply };
+  // Soonest visit first — the one most likely to need attention.
+  const scheduled = [...scheduledPatients]
+    .filter((p) => !isEsc(p))
+    .sort((a, b) => (a.appointmentDate ?? "").localeCompare(b.appointmentDate ?? ""));
+  return { dueNow, awaitingReply, scheduled };
 }
 
 /** Flattened Doctor Appointments list in render order — due now, then the
@@ -94,9 +107,14 @@ export function apptSidebarSections(
 export function apptSidebarVisibleList(
   patients: Patient[],
   todayStr: string = etToday(),
+  scheduledPatients: Patient[] = [],
 ): Patient[] {
-  const { dueNow, awaitingReply } = apptSidebarSections(patients, todayStr);
-  return [...dueNow, ...awaitingReply];
+  const { dueNow, awaitingReply, scheduled } = apptSidebarSections(
+    patients,
+    todayStr,
+    scheduledPatients,
+  );
+  return [...dueNow, ...awaitingReply, ...scheduled];
 }
 
 /** Every patient row the sidebar renders for a view filter, flattened

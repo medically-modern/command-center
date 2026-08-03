@@ -91,6 +91,9 @@ export function useMondayPatients(activeTab: TabKey = "evaluate", injectedPatien
   // Patients currently in the Chase Clinicals stage — exposed separately for
   // the Evaluate sidebar's read-only viewer folder (never affects counts).
   const [chaseViewerPatients, setChaseViewerPatients] = useState<Patient[]>([]);
+  // Patients with a booked appointment, waiting for the visit — see the
+  // "Scheduled" folder in DoctorAppointmentsSidebar.
+  const [scheduledApptPatients, setScheduledApptPatients] = useState<Patient[]>([]);
   const [loading, setLoading] = useState(initialCache.length === 0);
   // Blocks the page (full-screen overlay) from mount until THIS role's first
   // fetch lands. The cache is namespaced per tab, but it can still hold
@@ -198,6 +201,18 @@ export function useMondayPatients(activeTab: TabKey = "evaluate", injectedPatien
         return o ? { ...p, ...o } : p;
       });
 
+      // Booked-appointment viewer list — patients who already have an
+      // Appointment Date and are waiting for the visit. They live in the CHASE
+      // sub-stage (that's where a booking sends them), so the Doctor
+      // Appointments sidebar can't find them in its own stage — it shows them
+      // in a "Scheduled" folder so the rep can still reach them.
+      const scheduledAppt = allPatients
+        .filter((p) => !!p.appointmentDate && !p.proposedStuck && p.subStage !== "Doctor Appointment")
+        .map((p) => {
+          const o = overlayRef.current.get(p.id);
+          return o ? { ...p, ...o } : p;
+        });
+
       // Chase Clinicals viewer list — used by the Evaluate sidebar's
       // read-only "Chase Clinicals" folder. NOT part of `patients`, so it
       // never affects tab counts or the active list.
@@ -222,6 +237,7 @@ export function useMondayPatients(activeTab: TabKey = "evaluate", injectedPatien
 
       setPatients(merged);
       setChaseViewerPatients(chase);
+      setScheduledApptPatients(scheduledAppt);
       persistPatientCache(activeTab, merged);
     } catch (e) {
       if (mountedRef.current)
@@ -285,5 +301,5 @@ export function useMondayPatients(activeTab: TabKey = "evaluate", injectedPatien
   }, []);
 
 
-  return { patients, chaseViewerPatients, loading, initialLoading, error, refetch, update, clearOverlay, saveOverlay, hasOverlay };
+  return { patients, chaseViewerPatients, scheduledApptPatients, loading, initialLoading, error, refetch, update, clearOverlay, saveOverlay, hasOverlay };
 }

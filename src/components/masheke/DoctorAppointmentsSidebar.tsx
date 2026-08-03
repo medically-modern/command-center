@@ -36,6 +36,9 @@ import { apptAttemptCount } from "@/lib/masheke/apptOutreach";
 
 interface Props {
   patients: Patient[];
+  /** Patients with a booked appointment, waiting for the visit — they sit in
+   *  Chase now, and appear here in a read-only "Scheduled" folder. */
+  scheduledPatients?: Patient[];
   selectedId: string | null;
   onSelect: (id: string) => void;
   loading?: boolean;
@@ -56,12 +59,15 @@ function ApptRow({
   collapsed,
   onSelect,
   snoozedUntil,
+  appointmentOn,
 }: {
   patient: Patient;
   isActive: boolean;
   collapsed: boolean;
   onSelect: (id: string) => void;
   snoozedUntil?: string;
+  /** Set for the Scheduled folder — the booked visit date. */
+  appointmentOn?: string;
 }) {
   const attempts = apptAttemptCount(patient);
   return (
@@ -76,9 +82,11 @@ function ApptRow({
           <div className="min-w-0 flex-1">
             <p className="truncate text-sm font-medium leading-tight">{patient.name}</p>
             <p className="truncate text-[11px] text-muted-foreground leading-tight mt-0.5">
-              {snoozedUntil
-                ? `Following up ${shortDate(snoozedUntil)} · ${attempts} of 3`
-                : `Attempt ${Math.min(attempts + 1, 3)} of 3`}
+              {appointmentOn
+                ? `Appointment ${shortDate(appointmentOn)}`
+                : snoozedUntil
+                  ? `Following up ${shortDate(snoozedUntil)} · ${attempts} of 3`
+                  : `Attempt ${Math.min(attempts + 1, 3)} of 3`}
             </p>
           </div>
         )}
@@ -89,6 +97,7 @@ function ApptRow({
 
 export function DoctorAppointmentsSidebar({
   patients,
+  scheduledPatients = [],
   selectedId,
   onSelect,
   loading,
@@ -98,9 +107,16 @@ export function DoctorAppointmentsSidebar({
   const { state } = useSidebar();
   const collapsed = state === "collapsed";
   const today = etToday();
-  const { dueNow, awaitingReply } = apptSidebarSections(patients, today);
+  const { dueNow, awaitingReply, scheduled } = apptSidebarSections(
+    patients,
+    today,
+    scheduledPatients,
+  );
   // Open by default — a folder nobody opens is the same as hiding them.
   const [showAwaiting, setShowAwaiting] = useState(true);
+  // Closed by default — these patients are handled; the folder is a way back
+  // to them, not a work list.
+  const [showScheduled, setShowScheduled] = useState(false);
 
   return (
     <Sidebar collapsible="icon">
@@ -170,24 +186,15 @@ export function DoctorAppointmentsSidebar({
 
         {awaitingReply.length > 0 && (
           <SidebarGroup>
-            <button
-              type="button"
-              onClick={() => setShowAwaiting((o) => !o)}
-              className="flex w-full items-center gap-1.5 px-2 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
-            >
-              <ChevronRight
-                className={cn("h-3.5 w-3.5 transition-transform", showAwaiting && "rotate-90")}
-              />
-              <CalendarCheck2 className="h-3.5 w-3.5" />
-              {!collapsed && `Awaiting reply (${awaitingReply.length})`}
-            </button>
+            <FolderHeader
+              open={showAwaiting}
+              onToggle={() => setShowAwaiting((o) => !o)}
+              collapsed={collapsed}
+              icon={<MessageCircle className="h-3.5 w-3.5 shrink-0" />}
+              label={`Awaiting reply (${awaitingReply.length})`}
+            />
             {showAwaiting && (
               <SidebarGroupContent>
-                {!collapsed && (
-                  <p className="px-3 pb-1.5 text-[11px] leading-snug text-muted-foreground">
-                    Snoozed, but still here — open anyone who texts back to add their appointment date.
-                  </p>
-                )}
                 <SidebarMenu>
                   {awaitingReply.map((p) => (
                     <ApptRow
@@ -204,7 +211,68 @@ export function DoctorAppointmentsSidebar({
             )}
           </SidebarGroup>
         )}
+
+        {scheduled.length > 0 && (
+          <SidebarGroup>
+            <FolderHeader
+              open={showScheduled}
+              onToggle={() => setShowScheduled((o) => !o)}
+              collapsed={collapsed}
+              icon={<CalendarCheck2 className="h-3.5 w-3.5 shrink-0" />}
+              label={`Scheduled (${scheduled.length})`}
+            />
+            {showScheduled && (
+              <SidebarGroupContent>
+                <SidebarMenu>
+                  {scheduled.map((p) => (
+                    <ApptRow
+                      key={p.id}
+                      patient={p}
+                      isActive={p.id === selectedId}
+                      collapsed={collapsed}
+                      onSelect={onSelect}
+                      appointmentOn={p.appointmentDate}
+                    />
+                  ))}
+                </SidebarMenu>
+              </SidebarGroupContent>
+            )}
+          </SidebarGroup>
+        )}
       </SidebarContent>
     </Sidebar>
+  );
+}
+
+/**
+ * Collapsible folder header.
+ *
+ * The label keeps ONE colour through hover. An earlier version used
+ * `hover:text-foreground`, which read as the text disappearing on hover against
+ * the dark sidebar — the hovered colour was near-invisible there.
+ */
+function FolderHeader({
+  open,
+  onToggle,
+  collapsed,
+  icon,
+  label,
+}: {
+  open: boolean;
+  onToggle: () => void;
+  collapsed: boolean;
+  icon: React.ReactNode;
+  label: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      className="flex w-full items-center gap-1.5 rounded-md px-2 py-1.5 text-xs font-medium text-sidebar-foreground/70 hover:bg-sidebar-accent/50"
+    >
+      <ChevronRight className={cn("h-3.5 w-3.5 shrink-0 transition-transform", open && "rotate-90")} />
+      {icon}
+      {!collapsed && <span className="truncate">{label}</span>}
+    </button>
   );
 }

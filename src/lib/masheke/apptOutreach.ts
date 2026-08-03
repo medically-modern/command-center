@@ -30,14 +30,16 @@
  * third attempt because it's a rep JUDGMENT about what they were told, not a
  * counter running out.
  *
- * WHY THE ATTEMPT COLUMNS ARE THE COUNTER. Chase owns MN Attempts
- * (color_mm1wz0vg) board-wide. Reusing it would hand a patient who already
- * spent two chase attempts exactly one outreach attempt before escalating, and
- * would spend the chase counter on the way back. So the count is DERIVED from
- * how many of the three Appt Attempt columns are filled — which also means a
- * note is mandatory on every attempt (an empty column is an unused slot, so a
- * note-less save would be invisible to the counter and the rep would get a free
- * retry forever). `canLogAttempt` enforces that.
+ WHERE THE ATTEMPTS LIVE. Every note this stage writes goes to MN Workflow
+ * Notes (`long_text_mm27zjt2`) — there are no per-attempt columns (Josh,
+ * 2026-08-03). The count is derived by matching attempt lines in that body
+ * (`apptAttemptsFromNotes`), which is why the line format is a contract and why
+ * a note is mandatory on every attempt: a note-less save would be
+ * indistinguishable from no attempt and hand the rep unlimited retries.
+ *
+ * Chase's MN Attempts column (color_mm1wz0vg) is deliberately NOT reused — it is
+ * board-wide, so a patient who spent two chase attempts would arrive with one
+ * outreach attempt left, and the chase counter would be spent on the way back.
  *
  * ESCALATION. Three filled attempts with no appointment date ⇒ Escalation
  * (color_mm1x7997) index 0, Manager Intervention. Oversight's Appointments bar
@@ -80,14 +82,9 @@ export const APPT_OUTCOME_LABEL: Record<ApptOutcome, string> = {
   wontSchedule: "Spoke — won't schedule / wants to cancel",
 };
 
-export type ApptMethod = "Phone call" | "Text message" | "Email" | "Patient portal";
+export type ApptMethod = "Phone call" | "Text message" | "Email";
 
-export const APPT_METHODS: ApptMethod[] = [
-  "Phone call",
-  "Text message",
-  "Email",
-  "Patient portal",
-];
+export const APPT_METHODS: ApptMethod[] = ["Phone call", "Text message", "Email"];
 
 /**
  * Business days a logged attempt snoozes the patient (Josh, 2026-08-03).
@@ -99,12 +96,11 @@ export const APPT_METHODS: ApptMethod[] = [
  */
 export const APPT_ATTEMPT_SNOOZE_BUSINESS_DAYS = 3;
 
-/** Calendar days to wait when the patient says they'll call the office
- *  themselves. Calendar, not business — it's a patient-side promise, and the
- *  result is weekend-clamped anyway. This is the one cadence number that comes
- *  from the handoff (Brandon, v3 outcome matrix); every other number here is
- *  ours. */
-export const WILL_CALL_SNOOZE_DAYS = 7;
+// Every outcome except "booked" and "won't schedule" uses the SAME
+// APPT_ATTEMPT_SNOOZE_BUSINESS_DAYS gap (Josh, 2026-08-03). "Will call the
+// office" used to get 7 calendar days (Brandon's v3 matrix); it doesn't any
+// more — one cadence is easier to reason about and the rep is checking for a
+// reply either way.
 
 // ---------------------------------------------------------------------------
 // Attempt log
@@ -116,20 +112,22 @@ export interface ApptAttempt {
   date: string;
   method: string;
   outcome: string;
+  /** The rep's note, with the initials suffix still attached. */
   note: string;
   raw: string;
 }
 
-/** The three attempt column values in slot order. */
-export function apptAttemptRaw(p: Pick<Patient, "apptAttempt1" | "apptAttempt2" | "apptAttempt3">): (string | undefined)[] {
-  return [p.apptAttempt1, p.apptAttempt2, p.apptAttempt3];
-}
-
 /**
- * Column format: `M/D/YY, h:mm PM · {method} — {outcome} · {note} —{initials}`
- * Mirrors the chase attempt format (parseAttemptValue in lib/masheke/attemptLog)
- * so both stages read the same shape. Round-tripped by apptOutreach.test.ts —
- * a change here that isn't matched in the parser silently blanks history.
+ * The one line an outreach attempt writes, appended to MN Workflow Notes
+ * (Josh, 2026-08-03 — there are no per-attempt columns; every note this stage
+ * produces lands in `long_text_mm27zjt2` alongside every other stage's):
+ *
+ *   8/3/26, 1:38 PM · Phone call — No answer / no response · sent her a text… —JH
+ *
+ * ⚠️ THIS LINE IS THE ATTEMPT COUNTER. `apptAttemptsFromNotes` counts the lines
+ * in the notes body that match it, so the shape is a contract, not cosmetics: a
+ * change here that isn't matched in the parser doesn't error, it silently
+ * resets a patient's attempt count and hands the rep unlimited retries.
  */
 export function formatApptAttempt(opts: {
   date: string;
@@ -144,8 +142,31 @@ export function formatApptAttempt(opts: {
   return `${head}${body}${sig}`;
 }
 
-/** Parse one stored attempt value back out. Tolerant of legacy/hand-edited
- *  values — anything unparseable becomes the note so nothing is ever lost. */
+/** Every outcome label, for recognising an attempt line in the notes. */
+const OUTCOME_LABELS = new Set<string>(Object.values(APPT_OUTCOME_LABEL));
+const METHOD_NAMES = new Set<string>(APPT_METHODS);
+
+/**
+ * Is this notes line one of THIS stage's attempts?
+ *
+ * Keyed on the `{known method} — {known outcome}` segment rather than a tag,
+ * because that's what the agreed line format gives us. Both vocabularies are
+ * closed sets owned by this module, and no other stage writes that shape into
+ * MN notes, so a false positive would need someone to hand-type a line that
+ * looks exactly like an outreach attempt.
+ */
+function isApptAttemptLine(line: string): boolean {
+  const parts = line.split(" · ");
+  if (parts.length < 2) return false;
+  const dash = parts[1].indexOf(" — ");
+  if (dash < 0) return false;
+  return (
+    METHOD_NAMES.has(parts[1].slice(0, dash).trim()) &&
+    OUTCOME_LABELS.has(parts[1].slice(dash + 3).trim())
+  );
+}
+
+/** Parse one attempt line. */
 export function parseApptAttempt(slot: 1 | 2 | 3, raw: string): ApptAttempt {
   const parts = raw.split(" · ");
   const date = (parts[0] ?? "").trim();
@@ -162,41 +183,47 @@ export function parseApptAttempt(slot: 1 | 2 | 3, raw: string): ApptAttempt {
       raw,
     };
   }
-  // No recognisable method/outcome segment — keep the whole thing as the note.
-  return { slot, date: parts.length > 1 ? date : "", method: "", outcome: "", note: parts.length > 1 ? [middle, note].filter(Boolean).join(" · ") : raw, raw };
+  return { slot, date: "", method: "", outcome: "", note: raw, raw };
 }
 
-/** Every logged attempt, in slot order. */
-export function apptAttempts(p: Pick<Patient, "apptAttempt1" | "apptAttempt2" | "apptAttempt3">): ApptAttempt[] {
-  const out: ApptAttempt[] = [];
-  apptAttemptRaw(p).forEach((raw, i) => {
-    if (raw && raw.trim()) out.push(parseApptAttempt((i + 1) as 1 | 2 | 3, raw));
-  });
-  return out;
+/**
+ * Every outreach attempt for this patient, oldest first, read back out of MN
+ * Workflow Notes. Slots are assigned by position — the first matching line is
+ * attempt 1 — so the numbering can never disagree with the count.
+ *
+ * Reads at most 3: a patient can't have more, and if the notes somehow contain
+ * extra matching lines (a manual paste, a returned-then-re-worked patient) we
+ * take the most recent three so the rep isn't locked out forever.
+ */
+export function apptAttemptsFromNotes(notes: string | undefined): ApptAttempt[] {
+  const lines = (notes ?? "")
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter((l) => l && isApptAttemptLine(l));
+  const recent = lines.slice(-3);
+  return recent.map((raw, i) => parseApptAttempt((i + 1) as 1 | 2 | 3, raw));
+}
+
+/** Every logged attempt for a patient. */
+export function apptAttempts(p: Pick<Patient, "mnEvalNotes">): ApptAttempt[] {
+  return apptAttemptsFromNotes(p.mnEvalNotes);
 }
 
 /** How many attempts have been logged (0–3). This IS the counter. */
-export function apptAttemptCount(p: Pick<Patient, "apptAttempt1" | "apptAttempt2" | "apptAttempt3">): number {
+export function apptAttemptCount(p: Pick<Patient, "mnEvalNotes">): number {
   return apptAttempts(p).length;
 }
 
 /** The slot the next attempt writes into, or null when all three are spent. */
-export function nextApptSlot(
-  p: Pick<Patient, "apptAttempt1" | "apptAttempt2" | "apptAttempt3">,
-): 1 | 2 | 3 | null {
+export function nextApptSlot(p: Pick<Patient, "mnEvalNotes">): 1 | 2 | 3 | null {
   const n = apptAttemptCount(p);
   return n >= 3 ? null : ((n + 1) as 1 | 2 | 3);
 }
 
-/** The column id for a slot. */
-export function apptAttemptColumn(slot: 1 | 2 | 3, cols: { apptAttempt1: string; apptAttempt2: string; apptAttempt3: string }): string {
-  return slot === 1 ? cols.apptAttempt1 : slot === 2 ? cols.apptAttempt2 : cols.apptAttempt3;
-}
-
 /**
- * A note is REQUIRED on every attempt. The three columns are the counter, so a
- * note-less save would leave the slot looking unused and hand the rep an
- * unlimited retry. Also matches Chase, which requires a note to complete.
+ * A note is REQUIRED on every attempt. The notes line IS the counter, so a
+ * note-less save would be indistinguishable from no attempt at all and hand the
+ * rep an unlimited retry. Also matches Chase, which requires a note to complete.
  */
 export function canLogAttempt(note: string, slot: 1 | 2 | 3 | null): boolean {
   return slot !== null && note.trim().length > 0;
@@ -281,14 +308,6 @@ export function resolveApptOutcome(opts: {
     };
   }
 
-  if (opts.outcome === "willCall") {
-    return {
-      kind: "retry",
-      nextActionDate: addCalendarDaysIso(today, WILL_CALL_SNOOZE_DAYS),
-      summary: `Patient will call the office — following up in ${WILL_CALL_SNOOZE_DAYS} days.`,
-    };
-  }
-
   const gap = APPT_ATTEMPT_SNOOZE_BUSINESS_DAYS;
   return {
     kind: "retry",
@@ -326,7 +345,7 @@ export function snoozeUntilAfterAppointment(
 
 /** True when the patient has run out of attempts with no appointment on file. */
 export function isApptExhausted(
-  p: Pick<Patient, "apptAttempt1" | "apptAttempt2" | "apptAttempt3" | "appointmentDate">,
+  p: Pick<Patient, "mnEvalNotes" | "appointmentDate">,
 ): boolean {
   return !p.appointmentDate && apptAttemptCount(p) >= 3;
 }

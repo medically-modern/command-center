@@ -98,7 +98,6 @@ describe("Doctor Appointments — the Oversight appendix bar", () => {
     for (const id of ["chase-fax", "chase-email-parachute"]) {
       const cols = chart(id).drilldownCols.map((c) => c.colId);
       expect(cols, id).toContain("date_mm5w2vsf"); // Appointment Date
-      expect(cols, id).toContain("text_mm5wjp3r"); // Appt Attempt 1
     }
   });
 

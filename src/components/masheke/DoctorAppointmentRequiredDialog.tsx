@@ -225,10 +225,6 @@ export function DoctorAppointmentRequiredDialog({
               <CalendarClock className="h-5 w-5" style={{ color: "var(--mm-teal)" }} />
               Doctor appointment required
             </DialogTitle>
-            <DialogDescription>
-              The provider's office says <strong>{patient.name}</strong> needs to be seen before
-              they'll send clinicals. Is the appointment already scheduled?
-            </DialogDescription>
           </DialogHeader>
 
           {branch === null && (
@@ -306,18 +302,6 @@ export function DoctorAppointmentRequiredDialog({
 
           {branch === "unscheduled" && (
             <div className="grid gap-3 pt-1">
-              <div
-                className="rounded-xl border px-4 py-3 text-sm"
-                style={{ background: "var(--mm-rose-soft)", borderColor: "oklch(0.62 0.13 18 / 0.35)" }}
-              >
-                <p className="font-bold" style={{ color: "var(--mm-rose)" }}>
-                  Moving to Doctor Appointments
-                </p>
-                <p className="mt-0.5 text-muted-foreground">
-                  {patient.name} leaves {fromStage} and enters the patient outreach queue — up to 3
-                  attempts to get a visit booked. They come back here automatically once there's a date.
-                </p>
-              </div>
               <NoteField value={note} onChange={setNote} />
               <DialogActions
                 onBack={() => setBranch(null)}

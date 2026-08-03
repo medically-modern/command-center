@@ -47,7 +47,7 @@ import { AttemptCards } from "@/components/masheke/AttemptCards";
 import { MissingChecklist } from "@/components/masheke/MissingChecklist";
 import { PriorStageNotes } from "@/components/shared/PriorStageNotes";
 import { SaveProgressOverlay } from "@/components/shared/SaveProgressOverlay";
-import { COL, hasToken } from "@/lib/masheke/mondayApi";
+import { hasToken } from "@/lib/masheke/mondayApi";
 import { logApptAttemptVerified, returnToChaseWithAppointment } from "@/lib/masheke/mondayWrite";
 import { GatewayPendingError, type WriteProgressPhase } from "@/lib/shared/verifiedWrite";
 import { userInitials } from "@/lib/shared/auth";
@@ -61,7 +61,6 @@ import {
   APPT_OUTCOME_LABEL,
   type ApptMethod,
   type ApptOutcome,
-  apptAttemptColumn,
   apptAttempts,
   apptProposedStuckReason,
   canLogAttempt,
@@ -70,7 +69,6 @@ import {
   nextApptSlot,
   resolveApptOutcome,
   snoozeUntilAfterAppointment,
-  stampApptAttemptNote,
   stampApptEscalated,
   stampReturnedToChase,
 } from "@/lib/masheke/apptOutreach";
@@ -131,11 +129,15 @@ export function DoctorAppointmentsPanel({ patient, onUpdate, managerMode = false
           .join(" · "),
         raw: a.raw,
       })),
-    [patient.apptAttempt1, patient.apptAttempt2, patient.apptAttempt3],
+    [patient.mnEvalNotes],
   );
 
   const slot = nextApptSlot(patient);
   const exhausted = slot === null;
+  // Opened from the sidebar's "Scheduled" folder: this patient already has a
+  // visit booked and is back in Chase. There is nothing to log here, so the
+  // work step shows the appointment instead of the attempt form.
+  const alreadyScheduled = !!patient.appointmentDate && patient.subStage !== "Doctor Appointment";
   const today = etToday();
   const returnStage = chaseRoleLabel(patient.clinicalsMethod);
 
@@ -185,19 +187,12 @@ export function DoctorAppointmentsPanel({ patient, onUpdate, managerMode = false
 
     const initials = userInitials();
     const stamp = formatDateTimeShort(etNow());
-    const attemptValue = formatApptAttempt({ date: stamp, method, outcome, note, initials });
-    const columnId = apptAttemptColumn(slot, {
-      apptAttempt1: COL.apptAttempt1,
-      apptAttempt2: COL.apptAttempt2,
-      apptAttempt3: COL.apptAttempt3,
-    });
-    const attemptKey =
-      slot === 1 ? "apptAttempt1" : slot === 2 ? "apptAttempt2" : "apptAttempt3";
-
-    // Build the notes body up front so the pending path applies the same patch.
+    // The attempt line IS the log and the counter — it goes straight into MN
+    // Workflow Notes, no per-attempt column. Built up front so the pending path
+    // applies the same patch.
     let notes = appendNoteLine(
       patient.mnEvalNotes,
-      stampApptAttemptNote({ stamp, slot, method, outcome, note, initials }),
+      formatApptAttempt({ date: stamp, method, outcome, note, initials }),
     );
     if (effect.kind === "booked") {
       notes = appendNoteLine(
@@ -226,7 +221,6 @@ export function DoctorAppointmentsPanel({ patient, onUpdate, managerMode = false
     }
 
     const patch: Partial<Patient> = {
-      [attemptKey]: attemptValue,
       mnEvalNotes: notes,
       ...(effect.kind === "booked"
         ? {
@@ -260,7 +254,6 @@ export function DoctorAppointmentsPanel({ patient, onUpdate, managerMode = false
           appointmentDate: apptDate,
           nextActionDate: effect.nextActionDate!,
           notes,
-          attempt: { columnId, value: attemptValue },
           onProgress,
           requireDone: true,
           waitForDoneMs: SAVE_CONFIRM_MS,
@@ -268,8 +261,6 @@ export function DoctorAppointmentsPanel({ patient, onUpdate, managerMode = false
       } else {
         await logApptAttemptVerified({
           itemId: patient.id,
-          attemptColumnId: columnId,
-          attemptValue,
           notes,
           nextActionDate: effect.nextActionDate,
           escalate: effect.kind === "escalate",
@@ -337,20 +328,32 @@ export function DoctorAppointmentsPanel({ patient, onUpdate, managerMode = false
           </div>
         </div>
 
-        <div
-          className="flex items-start gap-2.5 rounded-xl border px-4 py-3 mb-5"
-          style={{ background: "var(--mm-rose-soft)", borderColor: "oklch(0.62 0.13 18 / 0.35)" }}
-        >
-          <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" style={{ color: "var(--mm-rose)" }} />
-          <div>
-            <p className="text-sm font-bold" style={{ color: "var(--mm-rose)" }}>
-              No appointment on file
-            </p>
-            <p className="text-sm text-muted-foreground mt-0.5">
-              The provider requires a new visit before they'll send medical documentation.
+        {alreadyScheduled ? (
+          <div
+            className="flex items-start gap-2.5 rounded-xl border px-4 py-3 mb-5"
+            style={{ background: "var(--mm-mint)", borderColor: "var(--mm-mint-ring)" }}
+          >
+            <CalendarCheck2 className="h-4 w-4 shrink-0 mt-0.5" style={{ color: "var(--mm-green)" }} />
+            <p className="text-sm font-bold" style={{ color: "var(--mm-teal)" }}>
+              Appointment booked for {patient.appointmentDate}
             </p>
           </div>
-        </div>
+        ) : (
+          <div
+            className="flex items-start gap-2.5 rounded-xl border px-4 py-3 mb-5"
+            style={{ background: "var(--mm-rose-soft)", borderColor: "oklch(0.62 0.13 18 / 0.35)" }}
+          >
+            <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" style={{ color: "var(--mm-rose)" }} />
+            <div>
+              <p className="text-sm font-bold" style={{ color: "var(--mm-rose)" }}>
+                No appointment on file
+              </p>
+              <p className="text-sm text-muted-foreground mt-0.5">
+                The provider requires a new visit before they'll send medical documentation.
+              </p>
+            </div>
+          </div>
+        )}
 
         <h4 className="text-[1.05rem] font-bold tracking-tight mb-2.5">
           What the visit needs to produce
@@ -395,7 +398,23 @@ export function DoctorAppointmentsPanel({ patient, onUpdate, managerMode = false
           </div>
         </div>
 
-        {exhausted ? (
+        {alreadyScheduled ? (
+          <div
+            className="mt-5 flex items-start gap-3 rounded-xl border px-4.5 py-4"
+            style={{ background: "var(--mm-mint)", borderColor: "var(--mm-mint-ring)" }}
+          >
+            <CalendarCheck2 className="h-5 w-5 shrink-0" style={{ color: "var(--mm-green)" }} />
+            <div>
+              <p className="text-base font-bold" style={{ color: "var(--mm-teal)" }}>
+                Appointment booked for {patient.appointmentDate}
+              </p>
+              <p className="text-sm text-muted-foreground">
+                {patient.name} is back in {returnStage}, hidden until the day after the visit. Nothing
+                to do here — this folder is just a way back to them.
+              </p>
+            </div>
+          </div>
+        ) : exhausted ? (
           <div
             className="mt-5 flex items-center gap-3 rounded-xl border px-4.5 py-4"
             style={{ background: "var(--mm-rose-soft)", borderColor: "oklch(0.62 0.13 18 / 0.35)" }}
