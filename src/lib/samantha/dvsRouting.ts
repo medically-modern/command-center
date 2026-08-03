@@ -81,6 +81,33 @@ export function allProductsDvsRouted(patient: Patient): boolean {
 }
 
 /**
+ * The claims status that answers "did the INSULIN PUMP claim pay?".
+ *
+ * The board splits claims into two families — `S Claims Status` (supplies) and
+ * `IP Claims Status` (pump). This prefers the pump-specific column and falls
+ * back to the supplies one only while the pump column is blank, which is every
+ * patient today: the bot doesn't populate it yet (verified against the live
+ * board 2026-08-02), and the older single-column model treated the shared
+ * column as "whichever claim is in flight" — the pump, at this point in the
+ * chain, since supplies haven't been submitted.
+ *
+ * The fallback makes this self-healing: the day the bot starts writing
+ * `IP Claims Status`, this reads it with no code change. That matters because
+ * the alternative was guessing the bot's behaviour in advance and swapping a
+ * dormant bug for a live one.
+ *
+ * Being wrong here is cosmetic by design — it only picks the Supplies card's
+ * "Waiting on pump" chip. A pump claim that actually FAILS is caught by
+ * `isManualReview` (and the board's escalation automation) off the raw status
+ * columns, which never consult this.
+ */
+export function pumpClaimStatus(
+  patient: Pick<Patient, "ipClaimsStatus" | "claimsStatus">,
+): string {
+  return (patient.ipClaimsStatus ?? "").trim() || (patient.claimsStatus ?? "").trim();
+}
+
+/**
  * Which bot trigger fires when the app writes Stage → DVS (Josh,
  * 2026-07-21: landing at DVS auto-flips the trigger by serving).
  *   - Pump DVSes here (straight Medicaid + pump serving) → PUMP first;

@@ -635,10 +635,26 @@ Also corrected `src/pages/dvsRail.test.ts`, whose local copy of `isManualReview`
 `|| !!p.escalated` — dropped from the page in the 2026-07-29 status-only change, so the test had
 stopped mirroring the thing it guards.
 
-⚠️ **Left alone deliberately:** `DvsPage.pumpClaimPaid` reads the **supplies** claims column to
+⚠️ **Left alone in this round:** `DvsPage.pumpClaimPaid` reads the **supplies** claims column to
 decide whether the PUMP claim paid (its comment calls it "the bot's shared claims column"). That
 holds only while `IP Claims Status` is empty — **no board item carries a value today**, verified.
-When the bot starts writing it, that check must move to `ipClaimsStatus`.
+*(Resolved immediately after — see below.)*
+
+### 2026-08-02 · `pumpClaimPaid` made self-healing instead of pinned to one column
+
+Josh's call, and the better one: rather than wait to learn which column the bot writes, read the
+pump-specific column **when it has a value** and fall back to the shared/supplies column otherwise
+(`dvsRouting.pumpClaimStatus`). Today `IP Claims Status` is blank on every item, so behaviour is
+byte-identical to before; the day the bot starts writing it, the gate follows with no code change.
+
+What made this safe rather than a guess: **the failure path doesn't go through this gate.** A pump
+claim that errors / is denied / pays incorrectly is caught by `isManualReview` and by board
+automation `7921431140` reading the raw status columns, neither of which consults `pumpClaimPaid`.
+So the gate only ever chooses the Supplies card's "Waiting on pump" chip for an otherwise-healthy
+patient — a cosmetic outcome, and the reason a fallback beats a guess here.
+
+Tests 624 → 628 (`dvsRouting.test.ts`), covering the blank-fallback, the preference once written,
+and that a pump failure still reads through on the raw column.
 
 <details><summary>Superseded note from the previous round</summary>
 

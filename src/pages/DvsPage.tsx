@@ -36,7 +36,7 @@ import { useBackNavigation } from "@/hooks/useBackNavigation";
 import { managerChartFromParams, managerBucketFromParams } from "@/lib/shared/managerOrigin";
 import { railFilterFor } from "@/lib/samantha/managerRail";
 import { resolveHcpcs, isAutoFilledMedicaidSupply, PRODUCT_LABELS, type ProductId } from "@/lib/samantha/hcpcRules";
-import { allProductsDvsRouted, isStraightMedicaidPrimary, nyMedicaidCin } from "@/lib/samantha/dvsRouting";
+import { allProductsDvsRouted, isStraightMedicaidPrimary, nyMedicaidCin, pumpClaimStatus } from "@/lib/samantha/dvsRouting";
 import { writeStatusIndex, writeLongText, COL } from "@/lib/samantha/mondayApi";
 import { TRIGGER_DVS_INDEX, TRIGGER_PUMP_DVS_INDEX } from "@/lib/samantha/mondayMapping";
 import { etTodayYmd, ymdToUs } from "@/lib/samantha/benefitsDerive";
@@ -178,11 +178,12 @@ const DvsPage = () => {
   // supplies-only managed dual. Only pump-via-payer duals rode the rail.
   const skippedRail = selected ? allProductsDvsRouted(selected) : false;
   const pumpDvsApproved = toneFor(selected?.pumpDvsStatus) === "mint";
-  // The supplies chain waits on the pump CLAIM being fully paid (§5), not
-  // just the DVS approval. Claims Status is the bot's shared claims column —
-  // while the pump is the only claim in flight, mint there = pump paid. Once
-  // the bot starts writing a supplies DVS status, show that instead.
-  const pumpClaimPaid = pumpDvsApproved && toneFor(selected?.claimsStatus) === "mint";
+  // The supplies chain waits on the pump CLAIM being fully paid (§5), not just
+  // the DVS approval. `pumpClaimStatus` reads the pump-specific claims column
+  // when the bot has written one and falls back to the shared/supplies column
+  // otherwise, so this keeps working either side of that switchover.
+  const pumpClaimPaid =
+    pumpDvsApproved && !!selected && toneFor(pumpClaimStatus(selected)) === "mint";
   const suppliesStarted = !!(selected?.dvsStatus ?? "").trim();
   const waitingOnPump = pumpDvses && !pumpClaimPaid && !suppliesStarted;
 

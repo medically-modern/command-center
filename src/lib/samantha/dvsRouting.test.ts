@@ -7,6 +7,7 @@ import {
   hasDvsRoutedProducts,
   isStraightMedicaidPrimary,
   nyMedicaidCin,
+  pumpClaimStatus,
 } from "./dvsRouting";
 import type { Patient } from "./workflow";
 
@@ -90,5 +91,39 @@ describe("commercial patients", () => {
     expect(isStraightMedicaidPrimary(pt)).toBe(false);
     expect(allProductsDvsRouted(pt)).toBe(false);
     expect(hasDvsRoutedProducts(pt)).toBe(false);
+  });
+});
+
+describe("pumpClaimStatus", () => {
+  const p = (over: Partial<Patient>) => over as Patient;
+
+  it("falls back to the shared/supplies column while the pump one is blank", () => {
+    // Every patient today: the bot doesn't write IP Claims Status yet, so this
+    // must behave exactly as the old single-column read did.
+    expect(pumpClaimStatus(p({ claimsStatus: "Claims Paid" }))).toBe("Claims Paid");
+    expect(pumpClaimStatus(p({ claimsStatus: "Claims Paid", ipClaimsStatus: "" }))).toBe("Claims Paid");
+    expect(pumpClaimStatus(p({ claimsStatus: "Claims Paid", ipClaimsStatus: "   " }))).toBe("Claims Paid");
+  });
+
+  it("prefers the pump column once the bot writes it — self-healing switchover", () => {
+    expect(
+      pumpClaimStatus(p({ claimsStatus: "Claims Paid", ipClaimsStatus: "Claims Running" })),
+    ).toBe("Claims Running");
+    expect(
+      pumpClaimStatus(p({ claimsStatus: "Claims Denied", ipClaimsStatus: "Claims Paid" })),
+    ).toBe("Claims Paid");
+  });
+
+  it("is empty when neither column has a value", () => {
+    expect(pumpClaimStatus(p({}))).toBe("");
+  });
+
+  // The gate this feeds is cosmetic: a genuinely failed pump claim is caught by
+  // isManualReview off the raw columns, which never consult pumpClaimStatus.
+  // Pinned so nobody 'simplifies' the two into one another.
+  it("does not swallow a pump failure — the raw column still says Denied", () => {
+    const patient = p({ claimsStatus: "Claims Paid", ipClaimsStatus: "Claims Denied" });
+    expect(pumpClaimStatus(patient)).toBe("Claims Denied");
+    expect(patient.ipClaimsStatus).toBe("Claims Denied");
   });
 });
