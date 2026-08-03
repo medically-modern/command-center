@@ -14,10 +14,12 @@ import {
   // REFERRAL_SOURCE_OPTIONS,
   SUBSCRIPTION_TYPE_OPTIONS,
   AUTH_RESULT_OPTIONS,
+  POS_OPTIONS,
   needsPriorPumpDate,
   formatPhone,
   formatDateMDY,
 } from "@/lib/finalConfirm/workflow";
+import type { CheckFinding, CheckSeverity } from "@/lib/finalConfirm/checkPack";
 import { hasToken, fetchStatusOptions, BOARD_ID, COL } from "@/lib/finalConfirm/mondayApi";
 import { useStatusOptions } from "@/hooks/useStatusOptions";
 import { toast } from "sonner";
@@ -49,7 +51,6 @@ import {
 import { useEffect, useMemo, useState } from "react";
 import { cn } from "@/lib/utils";
 import {
-  AlertTriangle,
   Check,
   ChevronsUpDown,
   ChevronDown,
@@ -80,6 +81,22 @@ import { DoctorNotesPanel } from "@/components/shared/DoctorNotesPanel";
 interface Props {
   patient: Patient;
   onFieldChange: (field: keyof Patient, value: string | number | null) => void;
+  /** Check-pack results for this patient, used only to tint the fields they
+   *  anchor to. The findings themselves are rendered by FinalCheckPanel — this
+   *  card never restates them, so a rule has exactly one voice on the page. */
+  findings?: CheckFinding[];
+}
+
+/** Worst severity per anchored field, red > amber > info. */
+function severityByField(findings: CheckFinding[]): Map<keyof Patient, CheckSeverity> {
+  const rank: Record<CheckSeverity, number> = { info: 0, amber: 1, red: 2 };
+  const map = new Map<keyof Patient, CheckSeverity>();
+  for (const f of findings) {
+    if (!f.field) continue;
+    const prev = map.get(f.field);
+    if (!prev || rank[f.severity] > rank[prev]) map.set(f.field, f.severity);
+  }
+  return map;
 }
 
 function EditableTextField({
@@ -525,7 +542,8 @@ function DiagnosisCombobox({
   );
 }
 
-export function PatientInfoCard({ patient, onFieldChange }: Props) {
+export function PatientInfoCard({ patient, onFieldChange, findings = [] }: Props) {
+  const fieldSeverity = useMemo(() => severityByField(findings), [findings]);
   // Infusion-set options are read from the LIVE board, never a hardcoded table.
   // Final Confirm and Welcome Call write the SAME two columns, and their
   // hardcoded tables had already drifted apart from each other ("6mm" here vs
@@ -673,13 +691,30 @@ export function PatientInfoCard({ patient, onFieldChange }: Props) {
         {/* Address — full width with Google autocomplete */}
         {(() => {
           const addr = patient.addressEdited ?? patient.address;
-          const zipPattern = new RegExp("[0-9]{5}");
-          const hasZip = zipPattern.test(addr);
-          const isAllCaps = addr.length > 3 && addr === addr.toUpperCase() && addr.match(new RegExp("[A-Z]"));
-          const hasError = addr ? (!hasZip || isAllCaps) : !addr;
+          // The ALL-CAPS / missing-zip rules that used to be re-derived here
+          // now live in the check pack (C22_*), which owns them for the whole
+          // page \u2014 one warning system, one visual language. All that stays
+          // local is the ring, driven by whatever the pack anchored to
+          // `address` (C23's stale-POS warning included, since address is what
+          // drives POS). A blank address still rings on its own: the pack is
+          // silent on missing inputs by design.
+          const severity = fieldSeverity.get("address");
+          const hasError = !addr || severity === "red";
+          const hasWarning = !hasError && severity === "amber";
           return (
-            <div className={cn("flex items-start gap-2 min-w-0 rounded-lg p-1.5 -m-1.5 transition-colors", hasError && "bg-red-50 dark:bg-red-950/20 ring-1 ring-red-200 dark:ring-red-800/40")}>
-              <div className={cn("h-8 w-8 rounded-md flex items-center justify-center shrink-0", hasError ? "bg-red-100 dark:bg-red-900/30 text-red-500" : "bg-muted text-muted-foreground")}>
+            <div className={cn(
+              "flex items-start gap-2 min-w-0 rounded-lg p-1.5 -m-1.5 transition-colors",
+              hasError && "bg-red-50 dark:bg-red-950/20 ring-1 ring-red-200 dark:ring-red-800/40",
+              hasWarning && "bg-amber-50 dark:bg-amber-950/20 ring-1 ring-amber-200 dark:ring-amber-800/40",
+            )}>
+              <div className={cn(
+                "h-8 w-8 rounded-md flex items-center justify-center shrink-0",
+                hasError
+                  ? "bg-red-100 dark:bg-red-900/30 text-red-500"
+                  : hasWarning
+                    ? "bg-amber-100 dark:bg-amber-900/30 text-amber-600"
+                    : "bg-muted text-muted-foreground",
+              )}>
                 <MapPin className="h-4 w-4" />
               </div>
               <div className="min-w-0 flex-1">
@@ -689,19 +724,27 @@ export function PatientInfoCard({ patient, onFieldChange }: Props) {
                   onChange={handleAddressChange}
                   placeholder="Start typing address\u2026"
                 />
-                {addr && isAllCaps && (
-                  <div className="mt-1.5 rounded-md bg-red-600 text-white px-3 py-1.5 text-xs font-bold flex items-center gap-2">
-                    <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
-                    Address is in ALL CAPS \u2014 must be re-entered with correct formatting
-                  </div>
-                )}
-                {addr && !isAllCaps && !hasZip && (
-                  <p className="text-[11px] text-red-500 font-medium mt-1">Zip code is missing</p>
-                )}
               </div>
             </div>
           );
         })()}
+
+        {/* POS \u2014 computed and written at Welcome Call from Primary Insurance +
+            address; shown here so it is visible and overridable at the last
+            gate. Nothing recomputes it at this stage: if the rep's value
+            contradicts the rule, C23_POS_STALE says so in the panel and the
+            send dialog, and the override lands in the audit note. Sits beside
+            Address because address state is the rule's sole driver. */}
+        <SelectField
+          label="POS (Place of Service)"
+          icon={<MapPin className="h-4 w-4" />}
+          options={POS_OPTIONS}
+          value={patient.pos}
+          onChange={(index, label) => {
+            onFieldChange("posIndex", index);
+            onFieldChange("pos", label);
+          }}
+        />
       </Card>
 
       {/* Insurance */}

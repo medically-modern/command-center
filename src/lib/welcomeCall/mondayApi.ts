@@ -2,6 +2,7 @@
 // Token is read from VITE_MONDAY_API_TOKEN at build time.
 
 import { MONDAY_API_URL, mondayIdentityHeaders } from "../shared/mondayEndpoint";
+import { POS_COLUMN_ID } from "../shared/pos";
 import { planPhoneWrite } from "../shared/phoneCell";
 const MONDAY_API_VERSION = "2024-10";
 
@@ -29,7 +30,12 @@ export const COL = {
   memberId1: "text_mm1x2qk2",
   secondaryInsurance: "color_mm241kqp",
   memberId2: "text_mm1xaccx",
-  
+
+  /** "POS" (Office = 0 | Home = 1). Write-only here: the rep has no control
+   *  over it, the app dictates it from Primary Insurance + address at submit.
+   *  The literal ID lives in lib/shared/pos.ts next to the rule that fills it. */
+  pos: POS_COLUMN_ID,
+
   // Referral/Product info (read-only)
   serving: "color_mm1w1cm9",
   pumpType: "color_mm1wjjtk",

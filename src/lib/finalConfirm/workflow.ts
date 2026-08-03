@@ -1,6 +1,7 @@
 /**
  * Final Profile Confirmation — Data Model & Validation
  */
+import { POS_INDEX } from "@/lib/shared/pos";
 
 export interface Patient {
   id: string;
@@ -86,6 +87,12 @@ export interface Patient {
   medicarePriorPumpDate: string;
   orderHandling: string;
   orderHandlingIndex: number | null;
+  /** Place of Service — "Office" | "Home" | "". Auto-computed and written at
+   *  Welcome Call from Primary Insurance + address; editable here. The system
+   *  never auto-rewrites it at this stage (decided 2026-08-03) — check C23
+   *  warns when it disagrees with `expectedPos`, and the rep decides. */
+  pos: string;
+  posIndex: number | null;
 
   // SoS & Order Dates (per-product)
   sosMonitor: string;       // "Clear" | "Not Clear" | ""
@@ -174,6 +181,13 @@ export interface Patient {
 }
 
 /* ─── Status dropdown options (from Monday column settings) ─── */
+
+/** POS status column (`color_mm5wq0ys`) — indexes owned by lib/shared/pos.ts,
+ *  which is also what computes the value at Welcome Call. */
+export const POS_OPTIONS = [
+  { index: POS_INDEX.Office, label: "Office" },
+  { index: POS_INDEX.Home, label: "Home" },
+];
 
 export const GENDER_OPTIONS = [
   { index: 0, label: "Male" },
@@ -484,42 +498,21 @@ export function formatDateMDY(raw: string): string {
  * arose, not just via the Sensors selector. It reads the LABEL rather than the
  * index, so it stays correct no matter how the board is renumbered.
  */
-export function validatePatientForSend(p: Patient): { valid: boolean; errors: string[] } {
-  const errors: string[] = [];
-
-  // The INDEX is what gets written, so the index has to be part of the test.
-  // Checking only the label leaves a hole: an item whose stored index points at
-  // a label that no longer exists reads back with empty text but a non-null
-  // index, so a label-only check would wave it through while `sendPatientToMonday`
-  // writes that dead index straight back onto a sensors record. A blank label
-  // with a null index is genuinely unset and writes nothing, so that stays fine.
-  const stillServing = (label: string, index: number | null) => {
-    const l = (label ?? "").trim();
-    return l !== "Not Serving" && (l !== "" || index !== null);
-  };
-  const describe = (label: string, index: number | null) =>
-    (label ?? "").trim() || `index ${index}, no label on the board`;
-
-  if (p.subscriptionType === "Sensors") {
-    const stuck = [
-      stillServing(p.infusionSet1, p.infusionSet1Index)
-        ? `Infusion Set 1 (${describe(p.infusionSet1, p.infusionSet1Index)})`
-        : null,
-      stillServing(p.infusionSet2, p.infusionSet2Index)
-        ? `Infusion Set 2 (${describe(p.infusionSet2, p.infusionSet2Index)})`
-        : null,
-    ].filter(Boolean);
-    if (stuck.length > 0) {
-      errors.push(
-        `Subscription Type is "Sensors" but ${stuck.join(" and ")} ${stuck.length === 1 ? "is" : "are"} still set — ` +
-          `set them to "Not Serving" before sending. (If the infusion set dropdowns are disabled, ` +
-          `their options are still loading from Monday; they re-enable automatically.)`,
-      );
-    }
-  }
-
-  return { valid: errors.length === 0, errors };
-}
+/*
+ * `validatePatientForSend` lived here until 2026-08-03. It was Final Confirm's
+ * only HARD send gate — Subscription Type "Sensors" with an infusion set still
+ * attached (PR #21) — and it came out when the stage went advisory-only:
+ * nothing on this page may block Send any more, the rep always has full manual
+ * override (Brandon's hard requirement #1).
+ *
+ * The invariant did NOT come out with it. It is now C15_SUBSCRIPTION_MISMATCH
+ * in `checkPack.ts` at RED severity, so it leads the findings panel and has to
+ * be ticked off in the send dialog before the rep can proceed. Its cases are
+ * ported into `checkPack.sensorsInfusion.test.ts`.
+ *
+ * Note that the Welcome Call and Subscription roles keep their own
+ * `validatePatientForSend` — requirement #1 governs Final Confirm only.
+ */
 
 /* ─── Split Order Helpers ───────────────────────────────────────
  *
@@ -678,6 +671,13 @@ export function getSplitOverrides(
       infusionSetAuthResult: original.infusionSetAuthResult,
       cartridgeAuthResultIndex: original.cartridgeAuthResultIndex,
       cartridgeAuthResult: original.cartridgeAuthResult,
+      // POS is a property of the PATIENT (payer + address), not of the order,
+      // so both halves of a split carry the same value. Pinned for the same
+      // reason as the status columns above: duplicate_item can drop it, and a
+      // blank POS rides the create-item automation onto the Subscription /
+      // New Order board with no error to notice.
+      posIndex: original.posIndex,
+      pos: original.pos,
       // ── New side identity ─────────────────────────────────────────────
       servingIndex: servingIdx,
       serving: servingLabel,
@@ -730,6 +730,9 @@ export function getSplitOverrides(
     cgmAuthResult: original.cgmAuthResult,
     sensorsAuthResultIndex: original.sensorsAuthResultIndex,
     sensorsAuthResult: original.sensorsAuthResult,
+    // Same patient, same payer, same address — same POS on both split sides.
+    posIndex: original.posIndex,
+    pos: original.pos,
     lastBillDateSensors: original.lastBillDateSensors,
     lastBillDateMonitor: original.lastBillDateMonitor,
     nextOrderDateSensors: original.nextOrderDateSensors,

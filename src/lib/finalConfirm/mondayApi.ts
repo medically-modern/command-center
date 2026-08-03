@@ -2,6 +2,7 @@
 // Same board as Welcome Call, different group.
 
 import { MONDAY_API_URL, mondayIdentityHeaders } from "../shared/mondayEndpoint";
+import { POS_COLUMN_ID } from "../shared/pos";
 import { planPhoneWrite } from "../shared/phoneCell";
 import { planEmailWrite } from "../shared/emailCell";
 const MONDAY_API_VERSION = "2024-10";
@@ -71,6 +72,12 @@ export const COL = {
   /** "Medicare Prior Pump Date" (text) — MM/YYYY, Original-Medicare-only field. */
   medicarePriorPumpDate: "text_mm58k9x9",
   orderHandling: "color_mm2776fg",
+
+  /** "POS" (Office = 0 | Home = 1). Written automatically at Welcome Call from
+   *  Primary Insurance + address; editable here and NEVER auto-rewritten at
+   *  this stage — the rep's value stands. Check C23 flags any disagreement with
+   *  the rule. The literal ID lives in lib/shared/pos.ts beside that rule. */
+  pos: POS_COLUMN_ID,
 
   // Auth Results
   cgmAuthResult: "color_mm1wgjd1",
@@ -144,7 +151,7 @@ export const READ_COLUMN_IDS = [
   COL.subscriptionType, COL.infusionSet1, COL.qtyInf1,
   COL.infusionSet2, COL.qtyInf2, COL.qtyCartridge, COL.monitorQty, COL.pumpQty,
   COL.medicarePriorPumpDate,
-  COL.orderHandling,
+  COL.orderHandling, COL.pos,
   COL.cgmAuthResult, COL.sensorsAuthResult, COL.ipAuthResult,
   COL.infusionSetAuthResult, COL.cartridgeAuthResult,
   // Auth details (ID, start, end, units)

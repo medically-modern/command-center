@@ -8,14 +8,15 @@ import { useMondayPatients } from "@/hooks/finalConfirm/useMondayPatients";
 import type { Patient, SplitSide } from "@/lib/finalConfirm/workflow";
 import { sidebarVisibleList } from "@/lib/finalConfirm/sidebarList";
 import {
-  validatePatientForSend,
   determineOriginalSide,
   getSplitOverrides,
 } from "@/lib/finalConfirm/workflow";
+import { runFinalChecks, type CheckFinding } from "@/lib/finalConfirm/checkPack";
 import { PatientInfoCard } from "@/components/finalConfirm/PatientInfoCard";
 import { NotesPanel } from "@/components/finalConfirm/NotesPanel";
 import { PatientsSidebar } from "@/components/finalConfirm/PatientsSidebar";
-import { SendToMondayButton } from "@/components/finalConfirm/SendToMondayButton";
+import { FinalCheckPanel } from "@/components/finalConfirm/FinalCheckPanel";
+import { SendWithChecksButton } from "@/components/finalConfirm/SendWithChecksButton";
 import { SplitOrderButton } from "@/components/finalConfirm/SplitOrderButton";
 import { EscalateButton } from "@/components/finalConfirm/EscalateButton";
 import { ClinicalsDownloadButton } from "@/components/finalConfirm/ClinicalsDownloadButton";
@@ -28,6 +29,7 @@ import { duplicateItem, writeStatusIndex, writeDate, writeLongText, BOARD_ID, CO
 import { useStatusOptions } from "@/hooks/useStatusOptions";
 import { indexForLabel } from "@/lib/shared/statusOptions";
 import { EscalationFormModal } from "@/components/shared/EscalationFormModal";
+import { appendNoteEntry, stampNoteEntry } from "@/lib/shared/noteStamp";
 import { PageLoadingOverlay } from "@/components/shared/PageLoadingOverlay";
 import { EmptyPatientPane } from "@/components/shared/EmptyPatientPane";
 
@@ -90,8 +92,15 @@ const FinalConfirmPage = () => {
     [patients, selectedId],
   );
 
-  const validation = useMemo(
-    () => (selected ? validatePatientForSend(selected) : { valid: false, errors: [] }),
+  // Check pack — recomputed from `selected` on every keystroke, so fixing a
+  // field clears its warning immediately instead of on the next send attempt.
+  // Purely advisory: nothing here can disable Send (Brandon's hard requirement
+  // #1). The page's old hard gate — Subscription Type "Sensors" with infusion
+  // sets still set — is now C15 at RED severity inside the pack, so the rule
+  // survives at the top of the panel and in every send dialog; it just can't
+  // trap a rep behind a disabled button any more.
+  const findings = useMemo(
+    () => (selected ? runFinalChecks(selected) : []),
     [selected],
   );
 
@@ -141,12 +150,40 @@ const FinalConfirmPage = () => {
     refetch();
   };
 
-  const handleSend = async () => {
+  const handleSend = async (overridden: CheckFinding[] = []) => {
     if (!selected) return;
     try {
       await sendPatientToMonday(selected);
       toast.success("Profile confirmed & sent to Monday — Stage Advancer set to Completed");
       confetti({ particleCount: 200, spread: 100, origin: { y: 0.6 } });
+
+      // Audit trail for every warning the rep sent through anyway. Written
+      // AFTER the send, and deliberately not part of the verified transaction:
+      // a failed notes write must never fail or roll back a send that already
+      // landed (Brandon's hard requirement #3). The trade-off is that the line
+      // lands after the Stage Advancer fired, so it stays on this item rather
+      // than riding the create-item automation downstream — which is the right
+      // home for it anyway, since this is where the decision was made.
+      //
+      // Stamped through the shared helper rather than written raw, so the line
+      // carries WHO overrode it (CLAUDE.md §9 — the raw format Brandon drafted
+      // had no attribution). The `[FPC override] <ID>` token sits INSIDE the
+      // stamp, keeping check IDs greppable while leaving the first `]` to the
+      // timestamp, which is what Oversight's reason extractor slices on.
+      if (overridden.length > 0) {
+        try {
+          const entry = overridden
+            .map((f) => stampNoteEntry(`[FPC override] ${f.id} — ${f.title}`, "Final Confirm"))
+            .join("\n");
+          await writeLongText(selected.id, COL.notes, appendNoteEntry(selected.notes, entry));
+        } catch (noteErr) {
+          console.warn("[finalConfirm] override audit note failed (send already succeeded)", noteErr);
+          toast.warning("Sent — but the override note didn't save", {
+            description: "The profile went through. Add the override reason to Notes by hand.",
+          });
+        }
+      }
+
       clearOverlay(selected.id);
       refetch();
     } catch (e) {
@@ -335,7 +372,8 @@ const FinalConfirmPage = () => {
 
               {selected && (
                 <>
-                  <PatientInfoCard patient={selected} onFieldChange={handleFieldChange} />
+                  <FinalCheckPanel findings={findings} />
+                  <PatientInfoCard patient={selected} onFieldChange={handleFieldChange} findings={findings} />
                   <SplitOrderButton patient={selected} onSplit={handleSplit} />
                   <NotesPanel
                     notes={selected.notes}
@@ -352,10 +390,10 @@ const FinalConfirmPage = () => {
                     disabled={!selected}
                     onOpenForm={() => setEscalationModalOpen(true)}
                   />
-                  <SendToMondayButton
+                  <SendWithChecksButton
+                    findings={findings}
                     onSend={handleSend}
-                    disabled={!selected || !validation.valid}
-                    validationErrors={validation.errors}
+                    disabled={!selected}
                   />
                 </>
               )}

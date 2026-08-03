@@ -1,5 +1,6 @@
 import { writeStatusIndex, writeStatusLabel, writeLongText, writeText, writeNumber, writeLocation, writeDate, writePhone, writeEmail, writeDropdownIds, renameItem, readColumnTexts, COL } from "./mondayApi";
 import { executeWritesWithVerification } from "../shared/verifiedWrite";
+import { expectedPos, POS_INDEX } from "../shared/pos";
 import type { Patient } from "./workflow";
 import { CLINIC_NAME_OPTIONS, servingIncludesCgm, servingIncludesPump } from "./workflow";
 
@@ -240,6 +241,23 @@ export async function sendPatientToMonday(p: Patient): Promise<void> {
 
   if (p.orderHandlingIndex !== null)
     tasks.push({ label: "Order Handling", columnId: COL.orderHandling, fn: () => writeStatusIndex(p.id, COL.orderHandling, p.orderHandlingIndex!) });
+
+  // POS — rides the send like any other editable field. A stored value is
+  // never recomputed: Welcome Call owns the rule, this stage owns the override.
+  // If the rep's value contradicts the rule, C23 says so in the review dialog
+  // and the override lands in the audit line; the value itself stands.
+  //
+  // A BLANK one is different, and does get filled. The rule's else-branch gives
+  // every payer a value, so the only way POS is empty here is a patient who
+  // cleared Welcome Call before POS existed — the in-flight cohort at the time
+  // this shipped. Skipping the write would advance them to Subscription / New
+  // Order with a blank POS and nothing to notice it: C23_POS_11 only speaks up
+  // for out-of-state Blues, so a blank that should read Home is silent. Filling
+  // it is not the auto-rewrite the spec forbids — there is no stored value and
+  // no rep decision to overwrite, and it is the same rule Welcome Call would
+  // have applied. (Found in review on PR #25.)
+  const posIndexToWrite = p.posIndex ?? POS_INDEX[expectedPos(p.primaryInsurance, p.addressEdited ?? p.address)];
+  tasks.push({ label: "POS", columnId: COL.pos, fn: () => writeStatusIndex(p.id, COL.pos, posIndexToWrite) });
 
   // ─── Notes ────────────────────────────────────────────────
   if (typeof p.notes === "string" && p.notes.trim() !== "")

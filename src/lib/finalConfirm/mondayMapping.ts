@@ -100,6 +100,8 @@ export function mondayItemToPatient(item: MondayItem): Patient {
     medicarePriorPumpDate: cv(item, COL.medicarePriorPumpDate)?.text ?? "",
     orderHandling: cv(item, COL.orderHandling)?.text ?? "",
     orderHandlingIndex: parseIndex(cv(item, COL.orderHandling)?.value ?? null),
+    pos: cv(item, COL.pos)?.text ?? "",
+    posIndex: parseIndex(cv(item, COL.pos)?.value ?? null),
 
     // SoS & Last Bill Dates — derive SoS from whether a last-bill date is populated
     lastBillDateMonitor: cv(item, COL.lastBillDate.monitor)?.text ?? "",

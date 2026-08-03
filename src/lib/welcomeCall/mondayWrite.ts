@@ -1,5 +1,6 @@
 import { writeStatusIndex, writeNumber, writeLocation, writeText, writeLongText, writeDate, clearDateColumn, writePhone, readColumnTexts, COL } from "./mondayApi";
 import { executeWritesWithVerification } from "../shared/verifiedWrite";
+import { expectedPos, POS_INDEX } from "../shared/pos";
 import { resolveNextOrderWrite, servingIncludesCgm, servingIncludesPump } from "./workflow";
 import type { Patient } from "./workflow";
 
@@ -103,6 +104,27 @@ export async function sendPatientToMonday(p: Patient): Promise<void> {
     const lng = p.addressLng ?? 0;
     tasks.push({ label: "Address", columnId: COL.address, fn: () => writeLocation(p.id, COL.address, p.addressEdited!, lat, lng) });
   }
+
+  // POS — dictated by logic, never by the rep. A pure function of Primary
+  // Insurance + address (out-of-state Blue → Office, everyone else → Home), so
+  // there is no POS control anywhere in the Welcome Call UI. Computed from the
+  // EFFECTIVE values as they stand at submit, because an address or payer the
+  // rep just corrected is the one that should drive it.
+  //
+  // The else-branch covers every payer, so this always writes — the column is
+  // never left blank after Welcome Call. This is a DATA task deliberately: it
+  // must land before the Stage Advancer flips (below), or the create-item
+  // automations copy a blank/stale POS onto the Subscription / New Order
+  // boards, silently and with no error (CLAUDE.md §5.2).
+  const posLabel = expectedPos(
+    p.primaryInsuranceEdited ?? p.primaryInsurance,
+    p.addressEdited ?? p.address,
+  );
+  tasks.push({
+    label: "POS",
+    columnId: COL.pos,
+    fn: () => writeStatusIndex(p.id, COL.pos, POS_INDEX[posLabel]),
+  });
 
   // Next order dates — always sync the date the UI is showing (edit → existing
   // Monday value → computed default) so the displayed default actually lands on
