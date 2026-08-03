@@ -163,6 +163,16 @@ The Cloudflare worker (`monday-file-proxy`) has three routes:
   token** (RS256 signature against Google's JWKS + issuer + domain) and **deliberately ignores both
   `exp` and `iat`** — sign-in is the durable gate, so a stale token sends however old it is (no open
   relay, but no re-auth either). Set the worker var `GOOGLE_CLIENT_ID` to also pin the `aud` to this app.
+  > **Gotcha — ignoring `exp` is NOT enough (fixed 2026-08-03).** Google **rotates its signing keys
+  > every day or two** and drops retired ones from the published JWKS, so a token whose `kid` was
+  > gone couldn't be verified at all: sends 401'd with "Sign in with your medicallymodern.com
+  > account is required" after a day or two, and expiry policy never entered into it. The worker now
+  > **retains every key it has ever fetched** (`KEY_RETENTION_MS`, 180 days, in the Cache API +
+  > memory) and falls back to that set, so one sign-in keeps sending for months. The security
+  > property is unchanged — signatures still verify against keys Google really published. Do NOT
+  > "simplify" this by accepting an unverified token: the endpoint sends mail AS the company. The
+  > 401 body now distinguishes "no token" (signed out) from "couldn't verify" (past retention,
+  > wrong `aud`, wrong domain).
   Recipients may be normal emails **or `<number>@rcfax.com`**, which
   **RingCentral converts to a fax**. This is how Send Request dispatches fax/email.
   All **email** recipients go out as **one grouped message** (`To:` everyone, plus the optional
@@ -451,6 +461,18 @@ columns" automation on duplicated items). The SPA only flips the advancer; verif
   **Benefits is the deliberate exception** and still writes unconditionally, "Done" included:
   escalation there is DERIVED from the universal checks (redesign §5), so clearing it by fixing the
   facts and re-sending is the design.
+  **A manager who works the patient RESOLVES them** (Josh, 2026-08-03) — the one case besides
+  Benefits where a send writes the column with no auto rule. The three Insurance stage pages pass
+  `managerResolve: isManager` to `sendPatientToMonday`, so Benefit Check Complete / Auth Submission
+  Complete / Auth Review Complete clear the escalation and hand the patient back to the pipeline
+  rather than leaving the label that put them in the manager column. It does NOT reintroduce the
+  toggle above: this is an explicit act by the person the escalation was raised FOR, keyed off
+  `?manager=1`, not a hydrated flag re-written on every send — and the auto rules still run after
+  it, so a review that comes back denied re-escalates on the NEW facts.
+  `components/samantha/ManagerResolveNote` says so on the page whenever `?manager=1`, because it
+  can't be undone from there. Manager Intervention's **Send back to pipeline requires a note** (the
+  return clears the escalation and the row vanishes, so the stamped note is the only thing the rep
+  ever sees); Final Decisions' return stays optional.
   **The escalation ladder is processor → Manager Intervention → Final Decisions**
   (`stageActions.proposeStuckLevel`, 2026-08-02): Propose Stuck writes one rung UP from wherever
   the patient already is — an existing escalation label OR a click from Manager Intervention

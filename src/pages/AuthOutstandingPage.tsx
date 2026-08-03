@@ -29,6 +29,7 @@ import { AuthOutstandingPanel } from "@/components/samantha/AuthOutstandingPanel
 import { PatientsSidebar } from "@/components/samantha/PatientsSidebar";
 import { StageActionBar } from "@/components/shared/StageActionBar";
 import { BenefitsPatientHeader } from "@/components/samantha/BenefitsPatientHeader";
+import { ManagerResolveNote } from "@/components/samantha/ManagerResolveNote";
 import { Button } from "@/components/ui/button";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { RotateCcw, Stethoscope, ArrowLeft, Clock, Save, Send, Loader2 } from "lucide-react";
@@ -118,7 +119,7 @@ const AuthOutstandingPage = () => {
     setSaving(true);
     setSavePhase("posting");
     try {
-      await sendPatientToMonday(selected, "authOutstanding", { onProgress: setSavePhase });
+      await sendPatientToMonday(selected, "authOutstanding", { onProgress: setSavePhase, managerResolve: isManager });
       clearOverlay(selected.id);
       toast.success("Auth review complete — sent to Monday");
       refetch();
@@ -245,6 +246,8 @@ const AuthOutstandingPage = () => {
               </div>
             </div>
           </header>
+
+          {isManager && selected && <ManagerResolveNote action="Auth Review Complete" />}
 
           <main className="flex-1 px-3 sm:px-6 py-6">
             <section className="max-w-5xl xl:max-w-7xl 2xl:max-w-[1800px] mx-auto space-y-5">

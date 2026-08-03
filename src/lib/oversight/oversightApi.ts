@@ -92,6 +92,18 @@ export interface ChartDef {
   /** Manager-views row alignment (2026-07): a column-2/3 chart names the
    *  column-1 chart id whose row it sits on. */
   rowOf?: string;
+  /**
+   * Date column that SNOOZES a patient out of the processor's queue, for
+   * stages that bucket purely on a date (Josh, 2026-08-03). Auth Outstanding is
+   * the only one: snoozed iff Follow Up Date is in the future (§5.8), and those
+   * patients still appear in this chart while being absent from the burndown —
+   * which looked like a bug. Set it and the drill-down tags the Days in Stage
+   * cell with the snooze date in amber, so the gap explains itself.
+   *
+   * NOT for Benefits / Submit Auth: they snooze on the follow-up STATUS, so a
+   * future date there means nothing and the tag would be a lie.
+   */
+  snoozeDateColId?: string;
   /** Stacked two-series chart (ME "Manager Intervention" merge): patients
    *  come from two SOURCE charts fetched independently; series B (red)
    *  wins dedup when a patient matches both. */
@@ -402,6 +414,7 @@ const RAW_CHART_DEFS: ChartDef[] = [
     title: "Auth Outstanding",
     boardId: 18410601299,
     notesColId: "long_text_mm2ffsme",
+    snoozeDateColId: "date_mm34m2dz",
     drilldownCols: [
       { colId: "date_mm1wf43j", label: "Intake Date" },
       { colId: "color_mm1wwm05", label: "Days in Stage" },
@@ -664,6 +677,7 @@ const RAW_CHART_DEFS: ChartDef[] = [
     title: "Auth Outstanding",
     boardId: 18410601299,
     notesColId: "long_text_mm2ffsme",
+    snoozeDateColId: "date_mm34m2dz",
     rowOf: "auth-outstanding",
     decision: "insurance-final",
     reasonColId: "long_text_mm2ffsme",
@@ -1069,6 +1083,9 @@ function columnsForBoard(boardId: number): string[] {
     if (chart.boardId !== boardId) continue;
     for (const dc of chart.drilldownCols) set.add(dc.colId);
     if (chart.notesColId) set.add(chart.notesColId);
+    // The snooze date is rendered INSIDE the Days in Stage cell, so it is not a
+    // drilldown column of its own and has to be requested explicitly.
+    if (chart.snoozeDateColId) set.add(chart.snoozeDateColId);
     // The stamped-reason source is often NOT a drilldown column (the
     // drill-down shows the derived __proposedReason__ instead), so fetch it
     // explicitly or the "Proposed Reason" cell reads permanently blank.

@@ -121,7 +121,22 @@ export function autoEscalationWrite(
 export async function sendPatientToMonday(
   p: Patient,
   context: SendContext = "benefits",
-  opts?: { onProgress?: (phase: WriteProgressPhase) => void },
+  opts?: {
+    onProgress?: (phase: WriteProgressPhase) => void;
+    /**
+     * The sender is a MANAGER working the patient from an oversight view
+     * (Josh, 2026-08-03). Doing the processor's job IS the resolution, so the
+     * send clears the escalation and hands the patient back to the pipeline
+     * instead of re-writing the label they arrived with.
+     *
+     * Mechanically this stops the hydrated `p.escalated` flag from flooring the
+     * decision — the same rule Benefits has always used. Auto-rules on THIS
+     * send still apply, so a manager who completes an Auth Outstanding review
+     * that comes back denied still escalates: the patient leaves on the new
+     * facts, not the old label.
+     */
+    managerResolve?: boolean;
+  },
 ): Promise<void> {
   const rawIns = p.insurance ?? EMPTY_INSURANCE;
   const tasks: WriteTask[] = [];
@@ -513,8 +528,18 @@ export async function sendPatientToMonday(
   // Benefits is the one context that still writes unconditionally, including
   // "done": there escalation is DERIVED from the universal checks (redesign
   // §5), so clearing it by fixing the facts and re-sending is the design.
+  //
+  // The ONE other case that writes without an auto rule: a MANAGER working the
+  // patient from an oversight view (`managerResolve`, Josh 2026-08-03). Doing
+  // the processor's job IS the resolution, so completing the form clears the
+  // escalation and hands the patient back to the pipeline rather than leaving
+  // the label that put them in the manager column. That is an explicit act by
+  // the person the escalation was raised FOR — not the silent re-write of a
+  // hydrated flag the rules above exist to prevent — and the auto rules below
+  // still run, so a review that comes back denied re-escalates on the new facts.
   let stageWriteIndex: number | null = null;
-  let escalationDecision: EscalationDecision | null = context === "benefits" ? "done" : null;
+  let escalationDecision: EscalationDecision | null =
+    context === "benefits" || opts?.managerResolve ? "done" : null;
 
   if (context === "submitAuth") {
     // DVS routing (HANDOFF-Josh-DVS §1): a patient with zero submission
@@ -613,7 +638,10 @@ export async function sendPatientToMonday(
     // Only an auto rule writes escalation here — the pump-SoS hold (final) or a
     // denial (manager); see `authOutstandingOutcome`, which owns the rung as
     // well as the order, and `autoEscalationWrite` for the raise-only guard.
-    escalationDecision = autoEscalationWrite(outcome.escalate, p.escalationLabel);
+    // `?? escalationDecision` so a manager's resolve isn't undone by "no auto
+    // rule fired" — null means don't touch the column, which for a manager
+    // submit would leave the escalation they just worked off.
+    escalationDecision = autoEscalationWrite(outcome.escalate, p.escalationLabel) ?? escalationDecision;
   } else {
     // benefits page — use insurance outcome to drive Stage Advancer.
     const outcome = deriveInsuranceOutcome(effectiveIns, entries.map(e => e.cid));

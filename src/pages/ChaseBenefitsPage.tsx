@@ -29,6 +29,7 @@ import { anyUniversalNegative, validateBenefitsFactsForSubmit } from "@/lib/sama
 import { isMedicareABOnly } from "@/lib/samantha/medicareJurisdiction";
 import { BenefitsPanel } from "@/components/samantha/BenefitsPanel";
 import { BenefitsPatientHeader } from "@/components/samantha/BenefitsPatientHeader";
+import { ManagerResolveNote } from "@/components/samantha/ManagerResolveNote";
 import { NotesPanel } from "@/components/samantha/NotesPanel";
 import { PatientsSidebar } from "@/components/samantha/PatientsSidebar";
 import { Button } from "@/components/ui/button";
@@ -175,7 +176,7 @@ const ChaseBenefitsPage = () => {
     setSaving(true);
     setSavePhase("posting");
     try {
-      await sendPatientToMonday(selected, "benefits", { onProgress: setSavePhase });
+      await sendPatientToMonday(selected, "benefits", { onProgress: setSavePhase, managerResolve: isManager });
       if (gatedSend) {
         toast.success("Submitted — escalation set on Monday");
       } else {
@@ -254,6 +255,8 @@ const ChaseBenefitsPage = () => {
               </div>
             </div>
           </header>
+
+          {isManager && selected && <ManagerResolveNote action="Benefit Check Complete" />}
 
           <main className="flex-1 px-3 sm:px-6 py-6">
             <section className="max-w-5xl xl:max-w-7xl 2xl:max-w-[1800px] mx-auto">

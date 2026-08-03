@@ -27,6 +27,7 @@ import {
 } from "@/lib/oversight/oversightApi";
 import { fuzzyNameMatch } from "@/lib/oversight/fuzzyName";
 import { extractProposedStuckReason } from "@/lib/masheke/proposedStuck";
+import { etTodayYmd } from "@/lib/samantha/benefitsDerive";
 import { MANAGER_ORIGIN_PARAM, MANAGER_CHART_PARAM, MANAGER_BUCKET_PARAM } from "@/lib/shared/managerOrigin";
 import { Loader2, BarChart3, X, ExternalLink, StickyNote, Search, ArrowUp, ArrowDown, ArrowUpDown, Star, SlidersHorizontal, Plus, Trash2, RotateCcw, Flag } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -109,6 +110,23 @@ const CHART_ROUTES: Record<string, string | null> = {
   "auth-denial": null,              // no CC view yet
   "welcome-call": "/welcome-call",
 };
+
+/** Days Since Stage Started — the cell the snooze tag rides in. */
+const DAYS_IN_STAGE_COL = "color_mm1wwm05";
+
+/**
+ * "MM/DD" when this Follow Up Date snoozes the patient, else null.
+ *
+ * Mirrors `isSnoozedAuthOutstanding` — future date = snoozed, blank = due —
+ * on the raw Monday text (yyyy-mm-dd, timezone-naive ET, so the string compare
+ * is the date compare and no `new Date()` is involved; CLAUDE.md §9).
+ */
+function snoozedUntil(raw: string | undefined): string | null {
+  const ymd = (raw ?? "").trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(ymd)) return null;
+  if (ymd <= etTodayYmd()) return null;
+  return `${ymd.slice(5, 7)}/${ymd.slice(8, 10)}`;
+}
 
 /** Reason bars whose state belongs to the DVS bot, not to a person. */
 const BOT_OWNED_REASONS = new Set(["DVS Retry", "DVS Manual Review"]);
@@ -1321,12 +1339,29 @@ function DrilldownModal({
                           );
                         }
                         const value = patient.cols[col.colId] ?? "";
+                        // Days in Stage on a date-bucketed stage also says WHEN
+                        // the patient wakes up. Without it a manager sees a row
+                        // sitting at "9–12 Days" that the processor burndown
+                        // doesn't count, and the only explanation is a Follow Up
+                        // Date they can't see from here.
+                        const snooze =
+                          col.colId === DAYS_IN_STAGE_COL && chart.snoozeDateColId
+                            ? snoozedUntil(patient.cols[chart.snoozeDateColId])
+                            : null;
                         return (
                           <td
                             key={col.colId}
                             className="px-2 py-1 text-foreground/80 truncate"
                           >
                             {value || "—"}
+                            {snooze && (
+                              <span
+                                title={`Snoozed until ${snooze} — not in the processor burndown until then`}
+                                className="ml-1.5 inline-block rounded px-1.5 py-0.5 text-[10px] font-bold bg-amber-400/20 text-amber-600 dark:text-amber-400"
+                              >
+                                Snoozed → {snooze}
+                              </span>
+                            )}
                           </td>
                         );
                       })}
@@ -1447,6 +1482,13 @@ function DrilldownModal({
         const returnModalId = decisionModal.id;
         const isApprove = decisionModal.action === "approve";
         const isEscalate = decisionModal.action === "escalate";
+        // Manager Intervention's "send back to pipeline" REQUIRES a note (Josh,
+        // 2026-08-03). Returning a patient is the one decision that leaves no
+        // other trace: the escalation is cleared, the row vanishes from the
+        // manager column, and the rep picks them up with no idea what was
+        // looked at or why it came back. Final Decisions' return stays optional
+        // — that column's rows already carry the proposal being answered.
+        const noteRequired = isEscalate || (isEscalateChart && decisionModal.action === "return");
         const rp = filtered.find((p) => p.id === returnModalId) ?? patients.find((p) => p.id === returnModalId);
         if (!rp) return null;
         const rpNotes = (returnNotesColId ? rp.cols[returnNotesColId] ?? "" : "").trim();
@@ -1490,7 +1532,11 @@ function DrilldownModal({
                       : returnRedates
                         ? "Sets Next Action Date to today and clears the escalation, so the patient reappears in the rep's queue. "
                         : "Sets the Follow Up Date to today and clears the escalation, so the patient reappears in the rep's due queue. "}
-                  {isEscalate ? `${reasonNotesLabel}.` : `Optionally add a note below — it's stamped into the ${reasonNotesLabel}.`}
+                  {isEscalate
+                    ? `${reasonNotesLabel}.`
+                    : noteRequired
+                      ? `Your note below is REQUIRED — it's the only record of this decision the rep will see, stamped into the ${reasonNotesLabel}.`
+                      : `Optionally add a note below — it's stamped into the ${reasonNotesLabel}.`}
                 </p>
                 <div>
                   <label className="block text-xs font-medium text-muted-foreground mb-1">
@@ -1504,6 +1550,8 @@ function DrilldownModal({
                   <label className="block text-xs font-medium text-muted-foreground mb-1">
                     {isEscalate ? (
                       <>Why does this need a final decision? <span className="text-red-500">*</span></>
+                    ) : noteRequired ? (
+                      <>What should the rep do next? <span className="text-red-500">*</span></>
                     ) : (
                       "Add a note (optional)"
                     )}
@@ -1515,7 +1563,9 @@ function DrilldownModal({
                     placeholder={
                       isEscalate
                         ? "e.g. Rep is right — payer has denied twice and won't take a peer-to-peer. Recommend Stuck."
-                        : "e.g. New clinicals arrived — back to Evaluate for re-review."
+                        : noteRequired
+                          ? "e.g. Called the payer — auth is on file, just re-submit the pump line with modifier KX."
+                          : "e.g. New clinicals arrived — back to Evaluate for re-review."
                     }
                     className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-ring"
                   />
@@ -1531,7 +1581,7 @@ function DrilldownModal({
                 </button>
                 <button
                   onClick={confirmReturn}
-                  disabled={busy || (isEscalate && !returnNote.trim())}
+                  disabled={busy || (noteRequired && !returnNote.trim())}
                   className={cn(
                     "inline-flex items-center gap-1.5 rounded-md disabled:opacity-50 text-white text-sm font-semibold px-3 py-1.5 transition-colors",
                     isApprove || isEscalate ? "bg-red-600 hover:bg-red-700" : "bg-blue-600 hover:bg-blue-700",

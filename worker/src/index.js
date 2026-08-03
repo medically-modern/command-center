@@ -179,15 +179,71 @@ function buildMime({ from, to, cc, subject, body, attachments }) {
 // re-authenticating, while a non-medicallymodern.com caller still can't (no open
 // relay).
 
-/** Google's RS256 signing keys (JWKS), cached per-isolate for an hour. */
+// ⚠️ Ignoring `exp` is NOT enough to make sign-in durable, and this is the bug
+// that kept surfacing as "Sign in with your medicallymodern.com account is
+// required." on the fax/email screens (Josh, 2026-08-03). Google ROTATES its
+// signing keys every day or two and drops the retired ones from the published
+// JWKS. A token whose `kid` is gone can't be verified at all, so a rep who
+// signed in two days ago was refused however generous we were about expiry.
+//
+// The fix is to REMEMBER the keys instead of relaxing the check: every key we
+// have ever fetched from Google is retained (in the Cache API, so it survives
+// isolate recycling, plus in memory), and verification looks in the retained
+// set when the current JWKS doesn't have the token's kid. The security property
+// is unchanged — a signature still has to verify against a key Google really
+// published, and we only ever trust keys we fetched from Google ourselves — but
+// a signed-in rep can now send for as long as we hold the key (KEY_RETENTION_MS)
+// rather than until Google's next rotation.
+const KEY_RETENTION_MS = 180 * 24 * 60 * 60 * 1000; // 180 days
+const KEY_CACHE_ORIGIN = "https://mm-jwks-retention.invalid/kid/";
+
+/** Google's CURRENT JWKS, cached per-isolate for an hour. */
 let _googleKeys = { keys: null, exp: 0 };
+/** Every key seen this isolate's lifetime, by kid — survives Google rotation. */
+const _retainedKeys = new Map();
+
 async function getGoogleSigningKeys() {
   if (_googleKeys.keys && Date.now() < _googleKeys.exp) return _googleKeys.keys;
   const r = await fetch("https://www.googleapis.com/oauth2/v3/certs");
   if (!r.ok) throw new Error("jwks fetch failed");
   const { keys } = await r.json();
   _googleKeys = { keys, exp: Date.now() + 60 * 60 * 1000 };
+  for (const k of keys) retainKey(k);
   return keys;
+}
+
+/** Remember one key, in memory and (best effort) in the edge cache. */
+function retainKey(jwk) {
+  if (!jwk || !jwk.kid) return;
+  if (_retainedKeys.has(jwk.kid)) return;
+  _retainedKeys.set(jwk.kid, jwk);
+  try {
+    // Cache API keys off a URL; the body is the JWK. s-maxage drives eviction.
+    caches.default.put(
+      new Request(KEY_CACHE_ORIGIN + encodeURIComponent(jwk.kid)),
+      new Response(JSON.stringify(jwk), {
+        headers: { "Content-Type": "application/json", "Cache-Control": `s-maxage=${Math.floor(KEY_RETENTION_MS / 1000)}` },
+      }),
+    );
+  } catch {
+    // Cache unavailable (e.g. local dev) — the in-memory map still works.
+  }
+}
+
+/** A previously-published Google key, after it has left the current JWKS. */
+async function getRetainedKey(kid) {
+  if (!kid) return null;
+  const hit = _retainedKeys.get(kid);
+  if (hit) return hit;
+  try {
+    const cached = await caches.default.match(new Request(KEY_CACHE_ORIGIN + encodeURIComponent(kid)));
+    if (!cached) return null;
+    const jwk = await cached.json();
+    _retainedKeys.set(kid, jwk);
+    return jwk;
+  } catch {
+    return null;
+  }
 }
 
 function b64urlToBytes(b64url) {
@@ -212,8 +268,12 @@ async function verifyIdToken(idToken, env) {
 
     // 1) Signature must verify against Google's keys — proves it's a genuine,
     //    unmodified Google-issued token (replaces the tokeninfo call, which
-    //    rejected anything past its 1h expiry).
-    const jwk = (await getGoogleSigningKeys()).find((k) => k.kid === header.kid);
+    //    rejected anything past its 1h expiry). Falls back to a key Google
+    //    published earlier and has since rotated out, so an older sign-in is
+    //    still verifiable rather than simply unknown (see KEY_RETENTION_MS).
+    const jwk =
+      (await getGoogleSigningKeys()).find((k) => k.kid === header.kid) ||
+      (await getRetainedKey(header.kid));
     if (!jwk) return null;
     const key = await crypto.subtle.importKey(
       "jwk", jwk, { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" }, false, ["verify"],
@@ -277,7 +337,19 @@ export default {
     if (request.method === "POST" && url.pathname === "/send-message") {
       const actor = await verifyIdToken(request.headers.get("X-MM-Auth"), env);
       if (!actor) {
-        return json({ error: "Sign in with your medicallymodern.com account is required." }, 401, cors);
+        // Says WHICH failure this is, so the next report is diagnosable: no
+        // token at all (signed out / header stripped) vs a token we couldn't
+        // verify (unknown kid past retention, wrong aud, non-MM domain).
+        const hadToken = !!request.headers.get("X-MM-Auth");
+        return json(
+          {
+            error: hadToken
+              ? "Your Google sign-in could not be verified — sign out and back in, then resend."
+              : "Sign in with your medicallymodern.com account is required.",
+          },
+          401,
+          cors,
+        );
       }
       if (!env.GMAIL_REFRESH_TOKEN || !env.GMAIL_SENDER) {
         return json({ error: "Gmail sending is not configured on the server (missing secrets)." }, 503, cors);

@@ -25,6 +25,7 @@
  */
 import { useState } from "react";
 import { ChevronDown } from "lucide-react";
+import { DoctorNotesPanel } from "@/components/shared/DoctorNotesPanel";
 import type { Patient } from "@/lib/samantha/workflow";
 import { authHomePlan } from "@/lib/samantha/submitAuthRules";
 import "./benefitsRedesign.css";
@@ -163,6 +164,23 @@ export function BenefitsPatientHeader({ patient }: Props) {
             <HVal label="Email" value={patient.doctorEmail || ""} />
             <HVal label="Clinicals Method" value={patient.clinicalsMethod || ""} />
             <HVal label="Clinic" value={patient.clinicName || ""} span={2} />
+            {/* Doctor Notes (Josh, 2026-08-03) — the shared MM Doctor Database
+                log that Evaluate has had all along. The Insurance stages call
+                the same offices about the same auths, so the "this office wants
+                a peer-to-peer" note has to be readable and writable here too.
+                This header is read-only about the PATIENT; the doctor log is a
+                different record (its own board), so it stays editable.
+                One placement covers Benefits, Submit Auth and Auth Outstanding —
+                all three render this header. DVS already has it via
+                samantha/PatientProfileCard. */}
+            <div style={{ gridColumn: "1 / -1" }}>
+              <DoctorNotesPanel
+                doctorNpi={patient.doctorNpi ?? ""}
+                doctorName={patient.doctorName}
+                compact
+                flush
+              />
+            </div>
           </div>
         </>
       )}

@@ -33,6 +33,7 @@ import { validateSubmitAuthForSubmit, submitAuthCards, productCodeId } from "@/l
 import { AuthorizationsPanel } from "@/components/samantha/AuthorizationsPanel";
 import { AuthFaxPanel } from "@/components/samantha/AuthFaxPanel";
 import { BenefitsPatientHeader } from "@/components/samantha/BenefitsPatientHeader";
+import { ManagerResolveNote } from "@/components/samantha/ManagerResolveNote";
 import { NotesPanel } from "@/components/samantha/NotesPanel";
 import { PatientsSidebar } from "@/components/samantha/PatientsSidebar";
 import { Button } from "@/components/ui/button";
@@ -144,7 +145,7 @@ const SubmitAuthPage = () => {
     setSaving(true);
     setSavePhase("posting");
     try {
-      await sendPatientToMonday(selected, "submitAuth", { onProgress: setSavePhase });
+      await sendPatientToMonday(selected, "submitAuth", { onProgress: setSavePhase, managerResolve: isManager });
       clearOverlay(selected.id);
       setLastSentId(selected.id);
       toast.success("Auth submission complete — sent to Monday");
@@ -218,6 +219,8 @@ const SubmitAuthPage = () => {
               </div>
             </div>
           </header>
+
+          {isManager && selected && <ManagerResolveNote action="Auth Submission Complete" />}
 
           <main className="flex-1 px-3 sm:px-6 py-6">
             <section className="max-w-5xl xl:max-w-7xl 2xl:max-w-[1800px] mx-auto">
