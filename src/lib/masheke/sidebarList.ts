@@ -50,6 +50,55 @@ export function sidebarSections(
   return { nonEscNow, pendingPatients, escalatedList };
 }
 
+/**
+ * Doctor Appointments sidebar sections (2026-08-03).
+ *
+ * Deliberately different from every other masheke stage: the snoozed patients
+ * stay VISIBLE, in their own folder. The work here is texting and calling
+ * patients, and a patient who replies on day two of a seven-day snooze is
+ * exactly the one the rep needs to open — hiding them would mean the reply
+ * sits unread until the snooze lapses. So the folder is a working list, not an
+ * archive.
+ *
+ * Escalated patients are the opposite: they belong to the manager (Oversight →
+ * Manager Intervention → Appointments), so they drop out of the rep's sidebar
+ * entirely. Index 2 (proposed stuck) is filtered upstream in useMondayPatients
+ * like everywhere else.
+ */
+export interface ApptSidebarSections {
+  /** Due now — no Next Action Date, or one at/before today. */
+  dueNow: Patient[];
+  /** Snoozed but still shown, in the "Awaiting reply" folder. */
+  awaitingReply: Patient[];
+}
+
+export function apptSidebarSections(
+  patients: Patient[],
+  todayStr: string = etToday(),
+): ApptSidebarSections {
+  const active = patients.filter((p) => !isEsc(p));
+  const dueNow = active.filter((p) => {
+    const nad = p.nextActionDate?.slice(0, 10);
+    return !nad || nad <= todayStr;
+  });
+  const awaitingReply = active.filter((p) => {
+    const nad = p.nextActionDate?.slice(0, 10);
+    return !!nad && nad > todayStr;
+  });
+  return { dueNow, awaitingReply };
+}
+
+/** Flattened Doctor Appointments list in render order — due now, then the
+ *  awaiting-reply folder. Used for auto-select so the page can never select a
+ *  patient the sidebar doesn't show. */
+export function apptSidebarVisibleList(
+  patients: Patient[],
+  todayStr: string = etToday(),
+): Patient[] {
+  const { dueNow, awaitingReply } = apptSidebarSections(patients, todayStr);
+  return [...dueNow, ...awaitingReply];
+}
+
 /** Every patient row the sidebar renders for a view filter, flattened
  *  top-to-bottom in exact render order:
  *  - "nonEscalated" (default): the non-escalated due-now list only.

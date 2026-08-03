@@ -134,6 +134,16 @@ export interface Patient {
   followUp?: string;
   followUpDate?: string;
 
+  // Doctor Appointments (2026-08-03) — the provider requires a new visit before
+  // sending clinicals. `appointmentDate` set ⇒ the patient is a normal snoozed
+  // chase patient; blank ⇒ they sit in the Doctor Appointments outreach queue.
+  appointmentDate?: string;
+  /** Per-attempt outreach records — these three columns ARE the attempt
+   *  counter (see lib/masheke/apptOutreach.ts). */
+  apptAttempt1?: string;
+  apptAttempt2?: string;
+  apptAttempt3?: string;
+
   // Notes
   // Profile Send Off Notes
   profileSendOffNotes?: string;

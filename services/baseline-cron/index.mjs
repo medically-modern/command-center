@@ -231,8 +231,8 @@ async function countMashekeStages(todayStr) {
     MESH_STAGE_COL, MESH_NAD_COL, MESH_ESC_COL, MESH_METHOD_COL,
   ]);
 
-  const counts = { evaluate: 0, sendRequest: 0, confirmReceipt: 0, chaseFax: 0, chaseParachute: 0, chaseBenefits: 0 };
-  const ids = { evaluate: [], sendRequest: [], confirmReceipt: [], chaseFax: [], chaseParachute: [], chaseBenefits: [] };
+  const counts = { evaluate: 0, sendRequest: 0, confirmReceipt: 0, chaseFax: 0, chaseParachute: 0, chaseBenefits: 0, doctorAppointments: 0 };
+  const ids = { evaluate: [], sendRequest: [], confirmReceipt: [], chaseFax: [], chaseParachute: [], chaseBenefits: [], doctorAppointments: [] };
 
   for (const item of items) {
     // Proposed Stuck patients left the rep queues (manager Final Decision
@@ -249,6 +249,11 @@ async function countMashekeStages(todayStr) {
       const cm = item.cols[MESH_METHOD_COL] ?? "";
       roleId = cm === "Parachute" || cm === "Email" ? "chaseParachute" : "chaseFax";
     }
+    // Doctor Appointments (2026-08-03) — patient outreach when the provider
+    // requires a new visit. Must mirror useRoleCounts + the other baseline
+    // generator exactly (SS5.8 counting contract) or the Operations tab shows
+    // phantom +in/-out chips all day.
+    else if (stage === "Doctor Appointment") roleId = "doctorAppointments";
     if (!roleId) continue;
 
     if (isMeshEscalated(item)) continue; // escalated (index 0)

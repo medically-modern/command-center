@@ -399,6 +399,267 @@ export async function recordAndAdvanceVerified(
  * before-advance rule). If verification fails the stage is not advanced and this
  * throws, so the caller surfaces the error instead of reporting a phantom success.
  */
+// =====================================================================
+// Doctor Appointments (2026-08-03)
+// =====================================================================
+
+/**
+ * Chase → "the office says a visit is already booked".
+ *
+ * The patient does NOT move — they stay a normal Chase patient, just snoozed
+ * until the day after the visit. Appointment Date and the stamped note are DATA
+ * columns; Next Action Date goes LAST because it's the write that hides the
+ * patient. If the note or the date failed and the NAD landed anyway, we'd have
+ * an invisible patient with no record of why — the exact failure the
+ * verify-before-advance rule exists to prevent.
+ */
+export async function scheduleAppointmentFromChase(opts: {
+  itemId: string;
+  appointmentDate: string;
+  nextActionDate: string;
+  notes: string;
+  onProgress?: (phase: WriteProgressPhase) => void;
+  requireDone?: boolean;
+  waitForDoneMs?: number;
+}): Promise<void> {
+  await runVerifiedSend({
+    itemId: opts.itemId,
+    label: "Chase → appointment scheduled",
+    tasks: [
+      {
+        label: "Appointment Date",
+        columnId: COL.appointmentDate,
+        value: { date: opts.appointmentDate },
+        fn: () => writeDate(opts.itemId, COL.appointmentDate, opts.appointmentDate),
+      },
+      {
+        label: "MN Workflow Notes",
+        columnId: COL.mnEvalNotes,
+        value: { text: opts.notes },
+        fn: () => writeLongText(opts.itemId, COL.mnEvalNotes, opts.notes),
+      },
+      {
+        label: "Next Action Date",
+        columnId: COL.nextActionDate,
+        value: { date: opts.nextActionDate },
+        fn: () => writeDate(opts.itemId, COL.nextActionDate, opts.nextActionDate),
+      },
+    ],
+    stageColumnId: COL.nextActionDate,
+    onProgress: opts.onProgress,
+    requireDone: opts.requireDone,
+    waitForDoneMs: opts.waitForDoneMs,
+  });
+}
+
+/**
+ * Chase → Doctor Appointments (no appointment booked yet).
+ *
+ * CLEARS THE ESCALATION on the way in, deliberately. Escalation
+ * (color_mm1x7997) is one board-wide column that Chase already writes at
+ * Attempt 4+ — so a manager working an escalated chase patient who clicks
+ * "Doctor Appointment Required" would otherwise deliver them into the
+ * Doctor Appointments queue ALREADY escalated, where escalated patients are
+ * hidden from the sidebar. They'd be invisible on arrival, with no error.
+ * Same stale-carry-over class of bug that evaluateReentry.ts exists to
+ * self-heal, and the same fix returnToEvaluateVerified already applies.
+ *
+ * Next Action Date → today so they're due immediately in the new queue.
+ * Sub-Stage is written LAST — it IS the stage advancer on this board.
+ */
+export async function enterDoctorAppointments(opts: {
+  itemId: string;
+  notes: string;
+  onProgress?: (phase: WriteProgressPhase) => void;
+  requireDone?: boolean;
+  waitForDoneMs?: number;
+}): Promise<void> {
+  // NOT weekend-clamped: we want them due NOW, and clamping a Saturday forward
+  // would re-hide the patient for the rest of the weekend.
+  const today = etToday();
+  await runVerifiedSend({
+    itemId: opts.itemId,
+    label: "Chase → Doctor Appointments",
+    tasks: [
+      {
+        label: "MN Workflow Notes",
+        columnId: COL.mnEvalNotes,
+        value: { text: opts.notes },
+        fn: () => writeLongText(opts.itemId, COL.mnEvalNotes, opts.notes),
+      },
+      {
+        label: "Escalation → Done",
+        columnId: COL.escalation,
+        value: { index: ESCALATION_INDEX.done },
+        expectedText: "Done",
+        fn: () => writeStatusIndex(opts.itemId, COL.escalation, ESCALATION_INDEX.done),
+      },
+      {
+        label: "Next Action Date → today",
+        columnId: COL.nextActionDate,
+        value: { date: today },
+        fn: () => writeDate(opts.itemId, COL.nextActionDate, today),
+      },
+      {
+        label: "Stage Advancer → Doctor Appointment",
+        columnId: COL.subStage,
+        value: { index: SUB_STAGE_INDEX.doctorAppointment },
+        fn: () => writeStatusIndex(opts.itemId, COL.subStage, SUB_STAGE_INDEX.doctorAppointment),
+      },
+    ],
+    stageColumnId: COL.subStage,
+    onProgress: opts.onProgress,
+    requireDone: opts.requireDone,
+    waitForDoneMs: opts.waitForDoneMs,
+  });
+}
+
+/**
+ * Doctor Appointments → log one outreach attempt (patient stays in the queue).
+ *
+ * The attempt text column IS the counter, so it must land before anything that
+ * reads the count. `escalate` is the third-attempt hand-off: Escalation → index
+ * 0 (Manager Intervention), NOT index 2 — index 2 is the "proposed stuck"
+ * signal that pulls a patient out of every queue awaiting a Final Decision, and
+ * an unreachable patient is a manager task, not a pipeline exit.
+ */
+export async function logApptAttemptVerified(opts: {
+  itemId: string;
+  attemptColumnId: string;
+  attemptValue: string;
+  notes: string;
+  /** Null when escalating — an escalated patient is the manager's. */
+  nextActionDate: string | null;
+  escalate: boolean;
+  onProgress?: (phase: WriteProgressPhase) => void;
+  requireDone?: boolean;
+  waitForDoneMs?: number;
+}): Promise<void> {
+  const tasks: WriteTask[] = [
+    {
+      label: "Appointment attempt",
+      columnId: opts.attemptColumnId,
+      value: opts.attemptValue,
+      expectedText: opts.attemptValue,
+      fn: () => writeText(opts.itemId, opts.attemptColumnId, opts.attemptValue),
+    },
+    {
+      label: "MN Workflow Notes",
+      columnId: COL.mnEvalNotes,
+      value: { text: opts.notes },
+      fn: () => writeLongText(opts.itemId, COL.mnEvalNotes, opts.notes),
+    },
+  ];
+  const stageColumnId: string[] = [];
+  if (opts.escalate) {
+    tasks.push({
+      label: "Escalation → Manager Intervention",
+      columnId: COL.escalation,
+      value: { index: ESCALATION_INDEX.required },
+      fn: () => writeStatusIndex(opts.itemId, COL.escalation, ESCALATION_INDEX.required),
+    });
+    stageColumnId.push(COL.escalation);
+  } else {
+    if (!opts.nextActionDate) {
+      // Without a date the patient stays due forever and gets re-called every
+      // poll — the same dropped-date failure the chase panel guards against.
+      throw new Error("Next Action Date failed to compute — nothing was written. Reload and try again.");
+    }
+    tasks.push({
+      label: "Next Action Date",
+      columnId: COL.nextActionDate,
+      value: { date: opts.nextActionDate },
+      fn: () => writeDate(opts.itemId, COL.nextActionDate, opts.nextActionDate),
+    });
+    stageColumnId.push(COL.nextActionDate);
+  }
+  await runVerifiedSend({
+    itemId: opts.itemId,
+    label: "Doctor Appointments → attempt logged",
+    tasks,
+    stageColumnId,
+    onProgress: opts.onProgress,
+    requireDone: opts.requireDone,
+    waitForDoneMs: opts.waitForDoneMs,
+  });
+}
+
+/**
+ * Doctor Appointments → back to Chase with an appointment on file.
+ *
+ * The only non-escalation exit. Clears the escalation unconditionally, because
+ * this is also the path a MANAGER takes on an escalated patient: they get the
+ * appointment date, and the patient goes back to the pipeline snoozed rather
+ * than staying in Manager Intervention with a date nobody acts on.
+ *
+ * `attempt` is optional — set when a rep logged this as an outreach attempt,
+ * omitted when a manager entered the date directly.
+ */
+export async function returnToChaseWithAppointment(opts: {
+  itemId: string;
+  appointmentDate: string;
+  nextActionDate: string;
+  notes: string;
+  attempt?: { columnId: string; value: string };
+  onProgress?: (phase: WriteProgressPhase) => void;
+  requireDone?: boolean;
+  waitForDoneMs?: number;
+}): Promise<void> {
+  const tasks: WriteTask[] = [];
+  if (opts.attempt) {
+    tasks.push({
+      label: "Appointment attempt",
+      columnId: opts.attempt.columnId,
+      value: opts.attempt.value,
+      expectedText: opts.attempt.value,
+      fn: () => writeText(opts.itemId, opts.attempt!.columnId, opts.attempt!.value),
+    });
+  }
+  tasks.push(
+    {
+      label: "Appointment Date",
+      columnId: COL.appointmentDate,
+      value: { date: opts.appointmentDate },
+      fn: () => writeDate(opts.itemId, COL.appointmentDate, opts.appointmentDate),
+    },
+    {
+      label: "MN Workflow Notes",
+      columnId: COL.mnEvalNotes,
+      value: { text: opts.notes },
+      fn: () => writeLongText(opts.itemId, COL.mnEvalNotes, opts.notes),
+    },
+    {
+      label: "Escalation → Done",
+      columnId: COL.escalation,
+      value: { index: ESCALATION_INDEX.done },
+      expectedText: "Done",
+      fn: () => writeStatusIndex(opts.itemId, COL.escalation, ESCALATION_INDEX.done),
+    },
+    {
+      label: "Next Action Date",
+      columnId: COL.nextActionDate,
+      value: { date: opts.nextActionDate },
+      fn: () => writeDate(opts.itemId, COL.nextActionDate, opts.nextActionDate),
+    },
+    {
+      // LAST — the Sub-Stage column is the stage advancer on this board.
+      label: "Stage Advancer → Chase Clinicals",
+      columnId: COL.subStage,
+      value: { index: SUB_STAGE_INDEX.chase },
+      fn: () => writeStatusIndex(opts.itemId, COL.subStage, SUB_STAGE_INDEX.chase),
+    },
+  );
+  await runVerifiedSend({
+    itemId: opts.itemId,
+    label: "Doctor Appointments → back to Chase",
+    tasks,
+    stageColumnId: COL.subStage,
+    onProgress: opts.onProgress,
+    requireDone: opts.requireDone,
+    waitForDoneMs: opts.waitForDoneMs,
+  });
+}
+
 export async function returnToEvaluateVerified(itemId: string): Promise<void> {
   // NOT clamped to a business day: we want the patient DUE NOW. Clamping a
   // weekend "today" forward to Monday would re-hide them over the weekend —

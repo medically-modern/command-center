@@ -37,7 +37,21 @@
  */
 import { useEffect, useMemo, useState, useRef } from "react";
 import type { Patient } from "@/lib/masheke/workflow";
-import { etNow, clampToBusinessDay } from "@/lib/masheke/etDate";
+import {
+  etNow,
+  clampToBusinessDay,
+  addBusinessDays,
+  formatDateInput,
+  formatDateTimeShort,
+} from "@/lib/masheke/etDate";
+import {
+  type AttemptChip,
+  appendNoteLine,
+  formatAttemptValue,
+  parseAttemptValue,
+} from "@/lib/masheke/attemptLog";
+import { AttemptCards } from "@/components/masheke/AttemptCards";
+import { DoctorAppointmentRequiredDialog } from "@/components/masheke/DoctorAppointmentRequiredDialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useMondayFiles } from "@/hooks/masheke/useMondayFiles";
@@ -63,6 +77,7 @@ import { getIdToken } from "@/lib/shared/auth";
 import { ESCALATION_INDEX, MN_ATTEMPTS_INDEX } from "@/lib/masheke/mondayMapping";
 import { toast } from "sonner";
 import { AlertTriangle, Check, CheckCircle2, ChevronRight, FileText, Loader2, Phone, Send } from "lucide-react";
+import { CalendarClock } from "lucide-react";
 import { FileList, LoadingRow, MmStep } from "@/components/masheke/mmKit";
 import { MissingChecklist } from "@/components/masheke/MissingChecklist";
 import { MethodBar } from "@/components/masheke/MethodBar";
@@ -94,6 +109,8 @@ export function ChaseClinicalsPanel({ patient, onUpdate, managerMode = false, ro
   const [saving, setSaving] = useState(false);
   // Which milestone the in-flight save is at — drives the blocking overlay.
   const [savePhase, setSavePhase] = useState<WriteProgressPhase>("posting");
+  // "Doctor Appointment Required" — the only entry into Doctor Appointments.
+  const [apptDialogOpen, setApptDialogOpen] = useState(false);
   const [escalated, setEscalated] = useState(false);
   const escalatedRef = useRef(false);
 
@@ -235,7 +252,7 @@ export function ChaseClinicalsPanel({ patient, onUpdate, managerMode = false, ro
         // (3rd press flags Escalation Required), and moves the next action
         // date +3 business days. NEVER advances the stage.
         const attempt = currentAttempt ?? 1;
-        const value = formatAttemptValue(attemptNote.trim(), etNow());
+        const value = formatAttemptValue(attemptNote.trim(), etNow(), userInitials());
         const nextSlot = nextMnAttempt(attempt);
         const fieldKey =
           attempt === 1 ? "chaseAttempt1" : attempt === 2 ? "chaseAttempt2" : "chaseAttempt3";
@@ -473,7 +490,7 @@ export function ChaseClinicalsPanel({ patient, onUpdate, managerMode = false, ro
         <h4 className="text-[1.05rem] font-bold tracking-tight mt-7 mb-2.5">
           Chase Clinicals — Attempt {activeAttempt} of 3
         </h4>
-        <AttemptCards history={history} isEscalated={isEscalated} />
+        <AttemptCards history={history} exhausted={isEscalated} />
 
         {/* Other activity — the earlier stages */}
         <h4 className="text-[1.05rem] font-bold tracking-tight mb-2.5 mt-6">Other activity</h4>
@@ -716,8 +733,38 @@ export function ChaseClinicalsPanel({ patient, onUpdate, managerMode = false, ro
               </div>
             </>
           )}
+
+          {/* Doctor Appointment Required — secondary to "Chase Clinicals
+              Completed" because it's the exception, not the day job. Shown even
+              when escalated: a manager working the escalated queue is exactly
+              who hears "she needs to come in" on the follow-up call. */}
+          <div
+            className="mt-5 flex flex-col items-center gap-2 border-t pt-5"
+            style={{ borderColor: "var(--mm-card-border)" }}
+          >
+            <Button
+              variant="outline"
+              onClick={() => setApptDialogOpen(true)}
+              disabled={saving}
+              className="gap-2 min-w-[240px] justify-center"
+            >
+              <CalendarClock className="h-4 w-4" />
+              Doctor Appointment Required
+            </Button>
+            <p className="text-xs text-muted-foreground text-center max-w-md">
+              Use this when the office says the patient must be seen again before they'll send
+              clinicals.
+            </p>
+          </div>
         </div>
       </MmStep>
+
+      <DoctorAppointmentRequiredDialog
+        open={apptDialogOpen}
+        onOpenChange={setApptDialogOpen}
+        patient={patient}
+        onUpdate={onUpdate}
+      />
     </div>
   );
 }
@@ -784,79 +831,6 @@ async function saveAttempt({
 // =====================================================================
 // Sub-components
 // =====================================================================
-
-/** Chase attempts — always three cards. Logged attempts are "Still pending"
- *  (the chase didn't return clinicals yet); the active round is "In progress"
- *  and future rounds are "Scheduled". */
-function AttemptCards({ history, isEscalated }: { history: AttemptChip[]; isEscalated: boolean }) {
-  const doneSlots = new Set(history.map((h) => h.attempt));
-  const activeSlot = [1, 2, 3].find((n) => !doneSlots.has(n)) ?? null;
-  const cards = [1, 2, 3].map((n) => {
-    const h = history.find((x) => x.attempt === n);
-    if (h) {
-      // Show only what's actually logged on Monday — the timestamp and the
-      // note (if any). No fabricated status text.
-      return { n, status: "logged" as const, date: h.date || "—", desc: h.note };
-    }
-    if (!isEscalated && activeSlot === n) {
-      return { n, status: "in_progress" as const, date: "Today", desc: "" };
-    }
-    return { n, status: "scheduled" as const, date: "—", desc: "" };
-  });
-  return (
-    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-      {cards.map((c) => (
-        <AttemptCard key={c.n} {...c} />
-      ))}
-    </div>
-  );
-}
-
-function AttemptCard({
-  n,
-  status,
-  date,
-  desc,
-}: {
-  n: number;
-  status: "logged" | "in_progress" | "scheduled";
-  date: string;
-  desc: string;
-}) {
-  // The current round is bright white + fully opaque; every other round is
-  // grayed + dimmed so it's obvious which attempt you're on.
-  const cfg = {
-    logged: { border: "var(--mm-card-border)", width: 1, current: false, pillColor: "var(--muted-foreground)", label: "Logged" },
-    in_progress: { border: "var(--mm-teal)", width: 2, current: true, pillColor: "var(--mm-teal)", label: "In progress" },
-    scheduled: { border: "var(--mm-card-border)", width: 1, current: false, pillColor: "var(--muted-foreground)", label: "" },
-  }[status];
-  return (
-    <div
-      className={`rounded-xl p-3.5 ${cfg.current ? "bg-card" : "bg-muted/50"}`}
-      style={{
-        border: `${cfg.width}px solid ${cfg.border}`,
-        opacity: cfg.current ? 1 : 0.6,
-        ...(cfg.current ? { boxShadow: "0 1px 2px rgba(15,31,36,.06)" } : {}),
-      }}
-    >
-      <div className="flex items-center justify-between gap-2">
-        <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-          Attempt {n}
-        </span>
-        {cfg.label && (
-          <span
-            className="rounded-full bg-background px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider"
-            style={{ color: cfg.pillColor }}
-          >
-            {cfg.label}
-          </span>
-        )}
-      </div>
-      <p className="text-sm font-bold mt-2">{date}</p>
-      {desc && <p className="text-xs text-muted-foreground mt-0.5 leading-snug">{desc}</p>}
-    </div>
-  );
-}
 
 /** Non-chase activity (Send Request) as compact rows. Confirm Receipt attempts
  *  get their own view-only cards above, so they're not duplicated here. */
@@ -968,37 +942,6 @@ function FilesLabel({ children, className }: { children: React.ReactNode; classN
 // Helpers
 // =====================================================================
 
-interface AttemptChip {
-  attempt: number;
-  date: string;
-  note: string;
-  raw: string;
-}
-
-/** Chase per-attempt column format: "6/12/26, 2:33 PM · {note}".
- *  Older rows used "Name — date"; parse those too so legacy history renders. */
-function parseAttemptValue(attempt: number, raw: string): AttemptChip {
-  const parts = raw.split(" · ");
-  if (parts.length >= 2) {
-    const [date, ...rest] = parts;
-    return { attempt, date: date.trim(), note: rest.join(" · ").trim(), raw };
-  }
-  const m = raw.match(/^(.+?)\s+—\s+(.+)$/);
-  if (m) return { attempt, date: m[2], note: m[1], raw };
-  // Bare value (legacy attempts logged without a note) — it's the timestamp,
-  // so put it on top with no note (date-on-top, note-below format).
-  return { attempt, date: raw, note: "", raw };
-}
-
-function formatAttemptValue(note: string, date: Date): string {
-  // "6/12/26, 2:33 PM · {note}" — note omitted if empty.
-  const datePart = formatDateTimeShort(date);
-  const n = note.trim();
-  const ini = userInitials();
-  const sfx = ini ? ` —${ini}` : "";
-  return (n ? `${datePart} · ${n}` : datePart) + sfx;
-}
-
 /** MN Workflow Notes line for a manager's escalated chase follow-up. Once a
  *  patient escalates all three chase-attempt columns are full, so the manager's
  *  required "what happened" note is appended here instead of being dropped.
@@ -1009,57 +952,14 @@ function formatEscalatedChaseNote(note: string, date: Date): string {
   return `${formatDateTimeShort(date)} · Chase (escalated) · ${note.trim()}${sfx}`;
 }
 
-/** Append a line to the running MN Workflow Notes (newest last), preserving the
- *  existing log. Monday's long_text has no server-side append, so the whole
- *  value is rewritten from the in-memory notes + the new line. */
-function appendMnNote(existing: string | undefined, line: string): string {
-  const prev = (existing ?? "").trimEnd();
-  return prev ? `${prev}\n${line}` : line;
-}
+/** Append a line to the running MN Workflow Notes. Shared with Doctor
+ *  Appointments — see lib/masheke/attemptLog. */
+const appendMnNote = appendNoteLine;
 
 function nextMnAttempt(currentAttempt: number): "Attempt 2" | "Attempt 3" | "Escalate" {
   if (currentAttempt === 1) return "Attempt 2";
   if (currentAttempt === 2) return "Attempt 3";
   return "Escalate";
-}
-
-function addBusinessDays(date: Date, days: number): Date {
-  const out = new Date(date);
-  let added = 0;
-  while (added < days) {
-    out.setDate(out.getDate() + 1);
-    const day = out.getDay();
-    if (day !== 0 && day !== 6) added++;
-  }
-  return out;
-}
-
-function formatDateInput(d: Date): string {
-  const yyyy = d.getFullYear();
-  const mm = String(d.getMonth() + 1).padStart(2, "0");
-  const dd = String(d.getDate()).padStart(2, "0");
-  return `${yyyy}-${mm}-${dd}`;
-}
-
-function formatDateShort(d: Date): string {
-  return `${d.getMonth() + 1}/${d.getDate()}/${String(d.getFullYear()).slice(-2)}`;
-}
-
-/** "6/12/26, 2:33 PM" — expects a Date whose components are already ET (etNow). */
-function formatDateTimeShort(d: Date): string {
-  const h24 = d.getHours();
-  const ampm = h24 >= 12 ? "PM" : "AM";
-  const h = h24 % 12 || 12;
-  const mins = String(d.getMinutes()).padStart(2, "0");
-  return `${formatDateShort(d)}, ${h}:${mins} ${ampm}`;
-}
-
-function formatDateLong(iso: string): string {
-  // Parse date-only strings (YYYY-MM-DD) as LOCAL dates to avoid an off-by-one.
-  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso.trim());
-  const d = m ? new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])) : new Date(iso);
-  if (Number.isNaN(d.getTime())) return iso;
-  return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 }
 
 /** Format raw phone digits for the Call button. */
