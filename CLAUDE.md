@@ -340,8 +340,23 @@ the ONLY entry point; there is deliberately no way for a rep to set this on thei
   picked the lowest free slot; this column's other labels start at 8), the `doctorAppointments`
   role at `/doctor-appointments`.
 
-Exits: an appointment date (→ back to Chase, snoozed) or three failed attempts (→ escalation).
-Nothing else. Canonical logic: **`lib/masheke/apptOutreach.ts`** (+ tests).
+**Three exits, and only three:** an appointment date (→ back to Chase, snoozed to appt+1); three
+spent attempts (→ Escalation index 0, Manager Intervention); or **"won't schedule / wants to
+cancel"** (→ Escalation index **2**, Propose Stuck → Final Decisions, at ANY attempt). Everything
+else keeps the patient in the queue, snoozed. Canonical logic: **`lib/masheke/apptOutreach.ts`**
+(+ tests).
+
+> **Why a refusal goes to Final Decisions, not Manager Intervention.** The question it raises is
+> "should this patient leave the pipeline at all" — exactly what Final Decisions answers
+> (Approve Stuck / Return to Queue). Manager Intervention means "a manager must DO something",
+> which fits an unreachable patient, not one who declined. It doesn't wait for the third attempt
+> because it's a rep JUDGMENT about what they were told, not a counter running out. The reason is
+> stamped through the shared `stampProposedStuck` helper (so `extractProposedStuckReason` reads it
+> with no special-casing) and carries the **stage and attempt number** — that notes column is
+> shared, and a bare sentence wouldn't tell a manager whether the patient refused on call 1 or 3.
+> ⚠️ Those patients surface in the **CHASE proposed-stuck charts**, whose `stageAdvancer` filter
+> now spans `["Chase Clinicals", "Doctor Appointment"]`. Without that they'd match no chart and be
+> invisible app-wide (§7).
 
 **No new Monday group and no new automation** — Sub-Stage `color_mm1wyr92` **IS** the stage
 advancer on this board (`mondayWrite.recordAndAdvanceVerified` passes it as `stageColumnId`,
@@ -364,11 +379,10 @@ New columns: **Appointment Date `date_mm5w2vsf`**, **Appt Attempt 1/2/3 `text_mm
 > Intervention), never index 2 — index 2 is a stuck PROPOSAL awaiting a Final Decision, and an
 > unreachable patient is a manager task, not a pipeline exit.
 
-**Cadence** (one constant, `APPT_ATTEMPT_CADENCE_BUSINESS_DAYS`): **1 / 3 / 5 business days**.
-"Will call the office" = 7 calendar days. Chase gives a fax room a flat +3; a flat +1 here would
-burn all three attempts inside one working week and escalate anyone on vacation.
-⚠️ **OPEN — "Spoke, won't schedule" is built as burns-an-attempt + a 14-day snooze**
-(`WONT_SCHEDULE_ESCALATES = false`), pending Katie. Flip that one boolean to make a refusal terminal.
+**Cadence** (one constant, `APPT_ATTEMPT_SNOOZE_BUSINESS_DAYS`): a logged attempt snoozes a **flat
+3 business days**, matching Chase's `nadBumpDays` — text, note, submit, back in three days to check
+for a reply. "Will call the office" = 7 calendar days, the one cadence number that comes from the
+handoff (Brandon's v3 outcome matrix); every other number here is ours.
 
 **The sidebar deliberately keeps snoozed patients VISIBLE** (`apptSidebarSections`) in an
 "Awaiting reply" folder — unlike every other masheke stage, which hides future-NAD patients. The

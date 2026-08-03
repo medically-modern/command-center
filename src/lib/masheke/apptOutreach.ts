@@ -12,8 +12,23 @@
  *
  * That single rule is the whole state machine — there is no separate status
  * column for "scheduled vs unscheduled", and the queue never contains a patient
- * who already has a date. When outreach lands a date the patient goes straight
- * back to Chase, snoozed. Nothing else exits this stage except escalation.
+ * who already has a date.
+ *
+ * THREE WAYS OUT, and only three (Josh, 2026-08-03):
+ *   1. An appointment date  → back to Chase, snoozed to appt + 1. The happy path.
+ *   2. Three spent attempts → Escalation index 0, Manager Intervention.
+ *   3. "Won't schedule / wants to cancel" → Escalation index 2, Propose Stuck →
+ *      Final Decisions, at ANY attempt.
+ * Everything else keeps the patient right here, snoozed for
+ * APPT_ATTEMPT_SNOOZE_BUSINESS_DAYS.
+ *
+ * Why (3) is Final Decisions and not Manager Intervention: the question a
+ * refusal raises is "should this patient leave the pipeline at all", which is
+ * exactly what Final Decisions answers (Approve Stuck / Return to Queue).
+ * Manager Intervention means "a manager needs to DO something" — the right home
+ * for (2), where the patient is simply unreachable. And (3) doesn't wait for the
+ * third attempt because it's a rep JUDGMENT about what they were told, not a
+ * counter running out.
  *
  * WHY THE ATTEMPT COLUMNS ARE THE COUNTER. Chase owns MN Attempts
  * (color_mm1wz0vg) board-wide. Reusing it would hand a patient who already
@@ -25,12 +40,14 @@
  * retry forever). `canLogAttempt` enforces that.
  *
  * ESCALATION. Three filled attempts with no appointment date ⇒ Escalation
- * (color_mm1x7997) index 0, Manager Intervention. NOT index 2 — index 2 is the
- * "proposed stuck" signal that pulls a patient out of every queue awaiting a
- * Final Decision, and an unreachable patient is a manager task, not a
- * pipeline exit. Oversight's Appointments bar keys on index 0 AND this
- * sub-stage (see oversightApi CHART_FILTERS) so it can't scoop up escalated
- * chase patients, which share the column.
+ * (color_mm1x7997) index 0, Manager Intervention. Oversight's Appointments bar
+ * keys on this sub-stage AND excludes index 2 (see oversightApi CHART_FILTERS)
+ * so it can't scoop up chase patients, who share the column.
+ *
+ * A Propose Stuck (index 2) from here surfaces in the CHASE proposed-stuck
+ * charts instead — their filter spans both stage labels, because the patient
+ * belongs on the chase row they came from and would otherwise match no chart at
+ * all, which is invisible app-wide (§7).
  *
  * The escalation column being shared is also why `enterDoctorAppointments`
  * CLEARS it on the way in (mondayWrite): a manager working an escalated chase
@@ -53,14 +70,14 @@ export type ApptOutcome =
   | "willCall"      // reached, patient says they'll call the office
   | "noAnswer"      // no answer / no response
   | "leftMessage"   // voicemail / text left
-  | "wontSchedule"; // reached, patient won't schedule
+  | "wontSchedule"; // reached, patient won't schedule or wants to cancel
 
 export const APPT_OUTCOME_LABEL: Record<ApptOutcome, string> = {
   booked: "Patient booked an appointment",
   willCall: "Spoke — patient will call the office",
   noAnswer: "No answer / no response",
   leftMessage: "Left message",
-  wontSchedule: "Spoke — patient won't schedule",
+  wontSchedule: "Spoke — won't schedule / wants to cancel",
 };
 
 export type ApptMethod = "Phone call" | "Text message" | "Email" | "Patient portal";
@@ -73,34 +90,21 @@ export const APPT_METHODS: ApptMethod[] = [
 ];
 
 /**
- * Days between outreach attempts, indexed by the attempt just logged (1-based).
- * Escalating rather than flat: attempt 2 the next day catches a different time
- * of day, and the last gap being a week is what makes "we genuinely tried"
- * defensible to a manager. Chase gives a fax room a flat +3 (ChaseClinicalsPanel
- * nadBumpDays); a flat +1 here would burn all three inside one working week and
- * escalate anyone on vacation.
+ * Business days a logged attempt snoozes the patient (Josh, 2026-08-03).
+ * FLAT — every attempt gets the same gap, matching the Chase cadence
+ * (ChaseClinicalsPanel `nadBumpDays`). The rep texts, writes a note, submits;
+ * the patient comes back three days later so the rep can check for a reply.
  *
  * ── CHANGE THE CADENCE HERE AND NOWHERE ELSE ──
  */
-export const APPT_ATTEMPT_CADENCE_BUSINESS_DAYS = [1, 3, 5] as const;
+export const APPT_ATTEMPT_SNOOZE_BUSINESS_DAYS = 3;
 
 /** Calendar days to wait when the patient says they'll call the office
  *  themselves. Calendar, not business — it's a patient-side promise, and the
- *  result is weekend-clamped anyway. */
+ *  result is weekend-clamped anyway. This is the one cadence number that comes
+ *  from the handoff (Brandon, v3 outcome matrix); every other number here is
+ *  ours. */
 export const WILL_CALL_SNOOZE_DAYS = 7;
-
-/**
- * Calendar days to wait after "won't schedule".
- *
- * ⚠️ OPEN — Katie has not ruled on this. Built as "burns an attempt, snooze and
- * try again" because that's the reversible default: it keeps the doc's own rule
- * that escalation comes from EXHAUSTING the attempts, and it avoids flooding
- * Final Decisions with patients who said "not right now, I'm travelling".
- * If Katie decides a refusal is terminal, set WONT_SCHEDULE_ESCALATES = true —
- * that's the entire change.
- */
-export const WONT_SCHEDULE_SNOOZE_DAYS = 14;
-export const WONT_SCHEDULE_ESCALATES = false;
 
 // ---------------------------------------------------------------------------
 // Attempt log
@@ -203,11 +207,18 @@ export function canLogAttempt(note: string, slot: 1 | 2 | 3 | null): boolean {
 // ---------------------------------------------------------------------------
 
 export interface ApptOutcomeEffect {
-  /** `booked` → back to Chase snoozed; `retry` → stay here, snoozed;
-   *  `escalate` → Manager Intervention. */
-  kind: "booked" | "retry" | "escalate";
+  /**
+   * - `booked`       → back to Chase, snoozed to appointment + 1.
+   * - `retry`        → stay in this queue, snoozed.
+   * - `escalate`     → Manager Intervention (Escalation index 0). Only ever
+   *                    reached by exhausting all three attempts.
+   * - `proposeStuck` → Final Decisions (Escalation index 2). The rep's route
+   *                    for a patient who won't schedule or wants to cancel —
+   *                    a manager decides whether they leave the pipeline.
+   */
+  kind: "booked" | "retry" | "escalate" | "proposeStuck";
   /** Next Action Date to write (YYYY-MM-DD, already weekend-clamped).
-   *  Null only when escalating — an escalated patient is the manager's. */
+   *  Null when escalating or proposing stuck — the patient is a manager's now. */
   nextActionDate: string | null;
   /** Human sentence for the toast + the stamped note. */
   summary: string;
@@ -243,15 +254,21 @@ export function resolveApptOutcome(opts: {
     };
   }
 
-  if (opts.outcome === "wontSchedule" && WONT_SCHEDULE_ESCALATES) {
+  // A patient who won't schedule, or wants to cancel outright, is a candidate
+  // for LEAVING the pipeline — which is what Final Decisions is for. So this
+  // routes through the board's existing Propose Stuck path (Escalation index 2)
+  // rather than Manager Intervention, at ANY attempt. It is the rep's judgment
+  // call, not a counter running out, so it doesn't wait for the third attempt.
+  if (opts.outcome === "wontSchedule") {
     return {
-      kind: "escalate",
+      kind: "proposeStuck",
       nextActionDate: null,
-      summary: "Patient will not schedule — escalated to Manager Intervention.",
+      summary: "Proposed stuck — sent to Final Decisions for a manager to approve or return.",
     };
   }
 
-  // Every other outcome burns the slot. Third one with no date hands over.
+  // Every other outcome burns the slot and the patient stays in this queue.
+  // Only running out of attempts hands them over.
   if (opts.slot >= 3) {
     return {
       kind: "escalate",
@@ -268,19 +285,11 @@ export function resolveApptOutcome(opts: {
     };
   }
 
-  if (opts.outcome === "wontSchedule") {
-    return {
-      kind: "retry",
-      nextActionDate: addCalendarDaysIso(today, WONT_SCHEDULE_SNOOZE_DAYS),
-      summary: `Patient not ready to schedule — following up in ${WONT_SCHEDULE_SNOOZE_DAYS} days.`,
-    };
-  }
-
-  const gap = APPT_ATTEMPT_CADENCE_BUSINESS_DAYS[opts.slot - 1] ?? 3;
+  const gap = APPT_ATTEMPT_SNOOZE_BUSINESS_DAYS;
   return {
     kind: "retry",
     nextActionDate: addBusinessDaysIso(today, gap),
-    summary: `Attempt ${opts.slot} of 3 logged — trying again in ${gap} business day${gap === 1 ? "" : "s"}.`,
+    summary: `Attempt ${opts.slot} of 3 logged — trying again in ${gap} business days.`,
   };
 }
 
@@ -371,6 +380,23 @@ export function stampApptEscalated(opts: { stamp: string; initials?: string }): 
     `${opts.stamp} · ${APPT_NOTE_PREFIX} · 3 of 3 attempts with no appointment — ` +
     `escalated to Manager Intervention${sig(opts.initials)}`
   );
+}
+
+/**
+ * The reason body for a Propose Stuck raised from this stage — "won't schedule
+ * / wants to cancel". It is wrapped by `stampProposedStuck` (lib/masheke/
+ * proposedStuck) so the line starts with the `[Proposed Stuck` tag that
+ * Oversight's `extractProposedStuckReason` slices on; this function supplies
+ * only what goes AFTER the closing bracket, which is what a manager reads in
+ * the Final Decisions "Proposed Reason" column.
+ *
+ * Carries the stage and the attempt number because that column is shared with
+ * every other masheke stage — without them a manager sees a bare sentence and
+ * can't tell a patient who refused on the first call from one who refused after
+ * three. The note is required by the panel (`canLogAttempt`).
+ */
+export function apptProposedStuckReason(opts: { slot: 1 | 2 | 3; note: string }): string {
+  return `${APPT_NOTE_PREFIX}s · Attempt ${opts.slot} of 3 · ${opts.note.trim()}`;
 }
 
 // ---------------------------------------------------------------------------

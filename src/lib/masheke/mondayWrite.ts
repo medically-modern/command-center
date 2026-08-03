@@ -528,9 +528,14 @@ export async function logApptAttemptVerified(opts: {
   attemptColumnId: string;
   attemptValue: string;
   notes: string;
-  /** Null when escalating — an escalated patient is the manager's. */
+  /** Null when escalating or proposing stuck — the patient is a manager's. */
   nextActionDate: string | null;
+  /** Three attempts spent → Escalation index 0, Manager Intervention. */
   escalate: boolean;
+  /** "Won't schedule / wants to cancel" → Escalation index 2, Final Decisions.
+   *  Mutually exclusive with `escalate`; the reason rides in `notes` as a
+   *  `[Proposed Stuck …]` stamped line, which is what Oversight parses. */
+  proposeStuck?: boolean;
   onProgress?: (phase: WriteProgressPhase) => void;
   requireDone?: boolean;
   waitForDoneMs?: number;
@@ -551,7 +556,19 @@ export async function logApptAttemptVerified(opts: {
     },
   ];
   const stageColumnId: string[] = [];
-  if (opts.escalate) {
+  if (opts.proposeStuck) {
+    // Index 2 — the same "Final Escalation Required" flag the Propose Stuck
+    // modal writes elsewhere on this board. It pulls the patient out of every
+    // rep queue (useMondayPatients drops proposedStuck) and into Oversight's
+    // Final Decisions, where a manager can Approve Stuck or Return to Queue.
+    tasks.push({
+      label: "Escalation → Propose Stuck (Final Decisions)",
+      columnId: COL.escalation,
+      value: { index: ESCALATION_INDEX.finalRequired },
+      fn: () => writeStatusIndex(opts.itemId, COL.escalation, ESCALATION_INDEX.finalRequired),
+    });
+    stageColumnId.push(COL.escalation);
+  } else if (opts.escalate) {
     tasks.push({
       label: "Escalation → Manager Intervention",
       columnId: COL.escalation,

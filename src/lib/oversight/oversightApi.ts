@@ -1405,7 +1405,11 @@ interface ChartFilter {
 interface ChartFilterStageAdvancer {
   type: "stageAdvancer";
   boardId: number;
-  value: string;
+  /** One stage label, or several when a chart legitimately spans stages —
+   *  the Chase proposed-stuck charts also cover Doctor Appointment patients,
+   *  who reach Final Decisions from the outreach queue but belong on the chase
+   *  row they came from. */
+  value: string | string[];
   /** Optional extra AND conditions on top of the stage. Used for escalations
    *  (MN Attempts = "Escalate"), the Chase method split (Fax = NOT
    *  Email/Parachute, so blank counts as fax; Email & Parachute = either),
@@ -1479,8 +1483,14 @@ const CHART_FILTERS: Record<string, FilterRule> = {
   "evaluate-proposed-stuck":        { type: "stageAdvancer", boardId: 18406060017, value: "Evaluate MN",     andCols: [{ colId: "color_mm1x7997", index: [2] }] },
   "send-request-proposed-stuck":    { type: "stageAdvancer", boardId: 18406060017, value: "Send Request",    andCols: [{ colId: "color_mm1x7997", index: [2] }] },
   "confirm-receipt-proposed-stuck": { type: "stageAdvancer", boardId: 18406060017, value: "Confirm Receipt", andCols: [{ colId: "color_mm1x7997", index: [2] }] },
-  "chase-fax-proposed-stuck":       { type: "stageAdvancer", boardId: 18406060017, value: "Chase Clinicals", andCols: [{ colId: "color_mm1xw7y5", value: ["Email", "Parachute"], not: true }, { colId: "color_mm1x7997", index: [2] }] },
-  "chase-email-parachute-proposed-stuck": { type: "stageAdvancer", boardId: 18406060017, value: "Chase Clinicals", andCols: [{ colId: "color_mm1xw7y5", value: ["Email", "Parachute"] }, { colId: "color_mm1x7997", index: [2] }] },
+  // Doctor Appointment is included (2026-08-03): "won't schedule / wants to
+  // cancel" raises a Propose Stuck from the outreach queue, and index 2 pulls
+  // the patient out of every rep queue. Without this stage in the rule they
+  // would match NO chart and be invisible app-wide (§7). They ride the chase
+  // row they came from, split by the same Clinicals Method rule as the
+  // Appointments appendix bar.
+  "chase-fax-proposed-stuck":       { type: "stageAdvancer", boardId: 18406060017, value: ["Chase Clinicals", "Doctor Appointment"], andCols: [{ colId: "color_mm1xw7y5", value: ["Email", "Parachute"], not: true }, { colId: "color_mm1x7997", index: [2] }] },
+  "chase-email-parachute-proposed-stuck": { type: "stageAdvancer", boardId: 18406060017, value: ["Chase Clinicals", "Doctor Appointment"], andCols: [{ colId: "color_mm1xw7y5", value: ["Email", "Parachute"] }, { colId: "color_mm1x7997", index: [2] }] },
   // Benefits check-failed (Final Decisions): still at Benefits, Escalation
   // Required, and at least one universal check failed on the board.
   // Final Decisions: any Benefits item flagged Final Escalation Required —
@@ -1656,7 +1666,8 @@ function matchesFilter(patient: OversightPatient, rule: FilterRule): boolean {
     const saCol = STAGE_ADVANCER_COL[rule.boardId];
     if (!saCol) return false;
     const val = (patient.cols[saCol] ?? "").trim();
-    if (val !== rule.value) return false;
+    const wanted = Array.isArray(rule.value) ? rule.value : [rule.value];
+    if (!wanted.includes(val)) return false;
   }
   // Optional extra AND conditions (escalations, Chase method split, counter
   // ≥ N, the Profile Verified split) — every one must pass.

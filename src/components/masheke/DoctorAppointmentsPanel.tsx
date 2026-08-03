@@ -21,6 +21,15 @@
  * controls; recording an appointment clears the escalation on the way out, so
  * the patient rejoins the pipeline instead of sitting in a manager queue with a
  * date nobody acts on.
+ *
+ * "Won't schedule / wants to cancel" is the one outcome that doesn't wait for
+ * the counter: it raises a Propose Stuck (Escalation index 2) at whatever
+ * attempt the rep is on, stamped into MN Workflow Notes through the SAME
+ * `stampProposedStuck` helper every other stage uses — so Oversight's Final
+ * Decisions drill-down reads it in the "Proposed Reason" column with no
+ * special-casing. The stamp carries the stage and the attempt number, because
+ * that column is shared and a bare sentence wouldn't tell a manager whether the
+ * patient refused on call one or call three.
  */
 import { useEffect, useMemo, useState } from "react";
 import type { Patient } from "@/lib/masheke/workflow";
@@ -42,8 +51,9 @@ import { COL, hasToken } from "@/lib/masheke/mondayApi";
 import { logApptAttemptVerified, returnToChaseWithAppointment } from "@/lib/masheke/mondayWrite";
 import { GatewayPendingError, type WriteProgressPhase } from "@/lib/shared/verifiedWrite";
 import { userInitials } from "@/lib/shared/auth";
-import { etNow, etToday, formatDateTimeShort } from "@/lib/masheke/etDate";
+import { etNow, etToday, formatDateShort, formatDateTimeShort } from "@/lib/masheke/etDate";
 import { appendNoteLine, type AttemptChip } from "@/lib/masheke/attemptLog";
+import { appendStampedLine, stampProposedStuck } from "@/lib/masheke/proposedStuck";
 import { loadEvalStateForPatient, computeMnChecklist } from "@/lib/masheke/evalState";
 import { shouldShowCgmBlock, shouldShowIpBlock } from "@/lib/masheke/ipPaths";
 import {
@@ -53,6 +63,7 @@ import {
   type ApptOutcome,
   apptAttemptColumn,
   apptAttempts,
+  apptProposedStuckReason,
   canLogAttempt,
   chaseRoleLabel,
   formatApptAttempt,
@@ -198,6 +209,18 @@ export function DoctorAppointmentsPanel({ patient, onUpdate, managerMode = false
       );
     } else if (effect.kind === "escalate") {
       notes = appendNoteLine(notes, stampApptEscalated({ stamp, initials }));
+    } else if (effect.kind === "proposeStuck") {
+      // Must go through stampProposedStuck so the line carries the
+      // "[Proposed Stuck · date · initials]" tag that Oversight's Final
+      // Decisions drill-down slices for its "Proposed Reason" column.
+      notes = appendStampedLine(
+        notes,
+        stampProposedStuck(
+          apptProposedStuckReason({ slot, note }),
+          formatDateShort(etNow()),
+          initials,
+        ),
+      );
     }
 
     const patch: Partial<Patient> = {
@@ -213,7 +236,9 @@ export function DoctorAppointmentsPanel({ patient, onUpdate, managerMode = false
           }
         : effect.kind === "escalate"
           ? { escalation: "Manager Escalation Required", escalationIndex: 0 }
-          : { nextActionDate: effect.nextActionDate ?? undefined }),
+          : effect.kind === "proposeStuck"
+            ? { escalation: "Final Escalation Required", escalationIndex: 2, proposedStuck: true }
+            : { nextActionDate: effect.nextActionDate ?? undefined }),
     };
 
     const toastId = `appt-save-${patient.id}`;
@@ -246,6 +271,7 @@ export function DoctorAppointmentsPanel({ patient, onUpdate, managerMode = false
           notes,
           nextActionDate: effect.nextActionDate,
           escalate: effect.kind === "escalate",
+          proposeStuck: effect.kind === "proposeStuck",
           onProgress,
           requireDone: true,
           waitForDoneMs: SAVE_CONFIRM_MS,
@@ -493,6 +519,16 @@ export function DoctorAppointmentsPanel({ patient, onUpdate, managerMode = false
                 <p className="flex items-center gap-1.5 text-xs font-semibold text-amber-600">
                   <AlertTriangle className="h-3.5 w-3.5" />
                   This is the last attempt — saving escalates to a manager.
+                </p>
+              )}
+              {preview?.kind === "proposeStuck" && (
+                <p
+                  className="flex items-center gap-1.5 text-xs font-semibold"
+                  style={{ color: "var(--mm-rose)" }}
+                >
+                  <AlertTriangle className="h-3.5 w-3.5" />
+                  Proposes stuck — {patient.name} leaves the queue for a manager's Final Decision.
+                  Your note is the reason they'll see.
                 </p>
               )}
             </div>

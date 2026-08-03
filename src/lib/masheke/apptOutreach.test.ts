@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 import type { Patient } from "./workflow";
 import {
-  APPT_ATTEMPT_CADENCE_BUSINESS_DAYS,
+  APPT_ATTEMPT_SNOOZE_BUSINESS_DAYS,
   WILL_CALL_SNOOZE_DAYS,
-  WONT_SCHEDULE_SNOOZE_DAYS,
+  apptProposedStuckReason,
   apptAttemptCount,
   apptAttempts,
   canLogAttempt,
@@ -111,13 +111,10 @@ describe("outcome → effect", () => {
     expect(e.kind).toBe("booked");
   });
 
-  it("no answer uses the escalating cadence", () => {
-    const [g1, g2] = APPT_ATTEMPT_CADENCE_BUSINESS_DAYS;
-    expect(g1).toBe(1);
-    expect(g2).toBe(3);
-    // Mon 3 Aug + 1 business day = Tue 4 Aug
-    expect(resolveApptOutcome({ outcome: "noAnswer", slot: 1, today: MON }).nextActionDate).toBe("2026-08-04");
-    // Mon 3 Aug + 3 business days = Thu 6 Aug
+  it("a logged attempt snoozes a FLAT 3 business days (Josh, 2026-08-03)", () => {
+    expect(APPT_ATTEMPT_SNOOZE_BUSINESS_DAYS).toBe(3);
+    // Mon 3 Aug + 3 business days = Thu 6 Aug — same for attempt 1 and 2.
+    expect(resolveApptOutcome({ outcome: "noAnswer", slot: 1, today: MON }).nextActionDate).toBe("2026-08-06");
     expect(resolveApptOutcome({ outcome: "leftMessage", slot: 2, today: MON }).nextActionDate).toBe("2026-08-06");
   });
 
@@ -132,16 +129,25 @@ describe("outcome → effect", () => {
     expect(resolveApptOutcome({ outcome: "willCall", slot: 1, today: "2026-08-05" }).nextActionDate).toBe("2026-08-12");
   });
 
-  it("won't-schedule snoozes rather than escalating (Katie's open call)", () => {
-    const e = resolveApptOutcome({ outcome: "wontSchedule", slot: 1, today: MON });
-    expect(e.kind).toBe("retry");
-    expect(WONT_SCHEDULE_SNOOZE_DAYS).toBe(14);
-    // Mon 3 Aug + 14 = Mon 17 Aug
-    expect(e.nextActionDate).toBe("2026-08-17");
+  it("won't-schedule / wants-to-cancel proposes stuck at ANY attempt", () => {
+    // It is a rep JUDGMENT, not a counter running out, so it doesn't wait for
+    // the third attempt — and it goes to Final Decisions (index 2), not Manager
+    // Intervention, because the question is whether the patient leaves at all.
+    for (const slot of [1, 2, 3] as const) {
+      const e = resolveApptOutcome({ outcome: "wontSchedule", slot, today: MON });
+      expect(e.kind, `slot ${slot}`).toBe("proposeStuck");
+      expect(e.nextActionDate, `slot ${slot}`).toBeNull();
+    }
+  });
+
+  it("stamps the proposed-stuck reason with the stage, the attempt and the note", () => {
+    const reason = apptProposedStuckReason({ slot: 2, note: "going back to injections" });
+    expect(reason).toBe("Patient Doctor Appointments · Attempt 2 of 3 · going back to injections");
   });
 
   it("the third non-booking attempt escalates with no next date", () => {
-    for (const outcome of ["noAnswer", "leftMessage", "willCall", "wontSchedule"] as const) {
+    // wontSchedule is excluded — it proposes stuck at every slot (above).
+    for (const outcome of ["noAnswer", "leftMessage", "willCall"] as const) {
       const e = resolveApptOutcome({ outcome, slot: 3, today: MON });
       expect(e.kind, outcome).toBe("escalate");
       expect(e.nextActionDate, outcome).toBeNull();
