@@ -674,7 +674,7 @@ const RAW_CHART_DEFS: ChartDef[] = [
     // escalation at this stage should only ever land in Final Decisions. A
     // Manager Intervention chart was built for it earlier the same night and
     // then removed on that instruction; every write that escalates here now
-    // aims at Final instead (`authOutstandingOutcome`, `manualEscalationLevel`,
+    // aims at Final instead (`authOutstandingOutcome` → the pump-SoS hold, and
     // `proposeStuckLevel`). The Pump SoS bar moved up from that deleted chart,
     // because the rung changed — the reason a manager needs to SEE did not.
     //
@@ -1495,9 +1495,11 @@ const CHART_FILTERS: Record<string, FilterRule> = {
   // Safety net for the chart itself (2026-08-03), unioned with the three bars
   // above — the DVS bars are stage "DVS" and keep coming in through the union.
   // The gap it closes is the one the Propose Stuck bar's stamp requirement
-  // opens: the send's manual escalate toggle also writes Manager but stamps
-  // nothing (mondayWrite `manualEscalate`), so that patient matched no bar and
-  // was already out of the rep's queue for being escalated.
+  // opens: a Manager label can arrive with no stamp — from a board automation,
+  // or carried in from an earlier stage — and that patient matched no bar while
+  // already being out of the rep's queue for being escalated. (Until 2026-08-03
+  // a Submit Auth send could also produce this, by re-writing the hydrated
+  // escalation flag; it no longer writes the column at all.)
   "submit-auth-manager": { type: "stageAdvancer", boardId: 18410601299, value: "Submit Auth.", andCols: [{ colId: "color_mm2vsh2f", index: [0] }] },
   // DVS retry queue: stage DVS with a "Retry Queued" status on Trigger
   // Supplies DVS or Trigger Pump DVS — and nothing else. (The old Retry

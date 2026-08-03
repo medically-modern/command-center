@@ -35,7 +35,12 @@ import {
   patientHasMedicaidIns,
   universalEscalationLevel,
 } from "./benefitsDerive";
-import { authOutstandingOutcome, derivedRecheckSos, effectiveResult } from "./authOutstandingReview";
+import {
+  authOutstandingOutcome,
+  derivedRecheckSos,
+  effectiveResult,
+  type AuthOutstandingEscalation,
+} from "./authOutstandingReview";
 import { isMedicarePrimary } from "./medicareJurisdiction";
 import { allProductsDvsRouted, dvsAutoTrigger, hasDvsRoutedProducts } from "./dvsRouting";
 import { etNow } from "../masheke/etDate";
@@ -80,33 +85,30 @@ async function executeWithRetry(task: WriteTask): Promise<string | null> {
 export type SendContext = "benefits" | "submitAuth" | "authOutstanding";
 export type EscalationDecision = "manager" | "final" | "done";
 
+/** Board label for the top rung — read to make sure an auto rule never lowers it. */
+const FINAL_ESCALATION_LABEL = "Final Escalation Required";
+
 /**
- * Which rung the send's manual Escalate toggle writes. Pure so the rule is
- * unit-testable — same reasoning as `authOutstandingOutcome`.
+ * What a send writes to the Escalation column at a NON-Benefits stage, or
+ * `null` to leave the column exactly as the board has it.
  *
- * - **Benefits**: the toggle doesn't exist. Escalation there is DERIVED from
- *   the universal checks only (redesign §5), so a hydrated `escalated` flag
- *   must not floor the decision or a patient could never be de-escalated by
- *   fixing the facts and re-sending.
- * - **Submit Auth → FINAL** (Josh, 2026-08-03). That stage's Manager rung is
- *   the two-step Propose Stuck review, and its chart bar keys on the stamped
- *   reason a proposal leaves behind. The toggle stamps nothing, so a toggled
- *   patient sat at Manager with no proposal for anyone to review. They want a
- *   decision, so they go where decisions are made.
- * - **Auth Outstanding → FINAL** (Josh, 2026-08-03). That stage has exactly one
- *   manager rung: an escalation there should only ever land in Final Decisions.
- *   The Manager Intervention chart built for it earlier the same night was
- *   removed, so Manager is no longer a destination at this stage at all.
+ * There is no Escalate toggle in the Insurance UI (Josh, 2026-08-03), so the
+ * ONLY thing that can move this on a send is an auto rule — today the Auth
+ * Outstanding pump-SoS hold (`final`) and a denial (`manager`). Submit Auth has
+ * no auto rule at all and therefore always passes `null`, which is what keeps a
+ * pending Propose Stuck proposal at Manager until a manager actually reviews it
+ * instead of the next send promoting it past them.
  *
- * Which leaves Benefits as the only stage the toggle can't escalate from — but
- * spelled out per stage rather than collapsed to `!== "benefits"`, because the
- * three reasons are independent and the next stage added won't share any of them.
+ * An auto rule only ever raises: a denial must not undo a manager's promotion
+ * to Final. `currentLabel` is read for that guard alone and never written back.
  */
-export function manualEscalationLevel(context: SendContext, escalated: boolean): EscalationDecision {
-  if (!escalated) return "done";
-  if (context === "benefits") return "done";
-  // Submit Auth and Auth Outstanding agree on the rung for different reasons.
-  return "final";
+export function autoEscalationWrite(
+  auto: AuthOutstandingEscalation,
+  currentLabel: string | undefined,
+): EscalationDecision | null {
+  if (auto === "final") return "final";
+  if (auto === "manager" && currentLabel !== FINAL_ESCALATION_LABEL) return "manager";
+  return null;
 }
 
 /**
@@ -487,24 +489,42 @@ export async function sendPatientToMonday(
   }
 
   // ----- Escalation + Stage Advancer -----
-  // One write each per send. Per-context rules decide the Stage Advancer
-  // index, and Escalation is computed as: the manual toggle is the floor —
-  // true means "Required" no matter what auto rules say, at the rung
-  // `manualEscalationLevel` picks (Final at Submit Auth, Manager at Auth
-  // Outstanding, never at Benefits — see its doc comment). Auto rules can also
-  // force Required (denial / blocker), but only ever UP. When neither manual
-  // nor auto demands escalation, we write "Done" so the toggle round-trips
-  // through Monday cleanly.
-  const manualEscalate = context !== "benefits" && p.escalated === true;
+  // One write each per send. Per-context rules decide the Stage Advancer index.
+  //
+  // ESCALATION IS NOT A TOGGLE (Josh, 2026-08-03). There is no Escalate control
+  // anywhere in the Insurance UI — `components/samantha/EscalateButton.tsx` had
+  // zero importers and was deleted. `p.escalated` is HYDRATED FROM THE BOARD
+  // (mondayMapping reads the Escalation column: index 0 Manager, 2 Final), so
+  // the old "manual toggle is the floor" rule was really "re-write whatever
+  // label the patient already carries, on every send" — which did two bad
+  // things:
+  //   • It PROMOTED silently. A rep's Propose Stuck at Submit Auth writes
+  //     Manager + a stamp and waits for a manager to review it; the next send
+  //     of that patient re-wrote the hydrated flag as Final and skipped the
+  //     review entirely, with no note and no decision.
+  //   • It CLEARED silently. When the flag was false — a manager escalated
+  //     after this page last polled, or a board automation raised it — the send
+  //     wrote "Done" over it and dropped the patient back into the rep's queue
+  //     with nobody told.
+  // So `null` here means DON'T TOUCH THE COLUMN, and escalation comes only from
+  // the Propose Stuck popup, the manager decision buttons, the board
+  // automations, and the auto rules below.
+  //
+  // Benefits is the one context that still writes unconditionally, including
+  // "done": there escalation is DERIVED from the universal checks (redesign
+  // §5), so clearing it by fixing the facts and re-sending is the design.
   let stageWriteIndex: number | null = null;
-  let escalationDecision: EscalationDecision = manualEscalationLevel(context, p.escalated === true);
+  let escalationDecision: EscalationDecision | null = context === "benefits" ? "done" : null;
 
   if (context === "submitAuth") {
     // DVS routing (HANDOFF-Josh-DVS §1): a patient with zero submission
     // cards because EVERYTHING bills straight Medicaid goes to the DVS
     // stage, not Auth Outstanding — the stage write itself triggers the bot.
     stageWriteIndex = allProductsDvsRouted(p) ? STAGE_INDEX.dvs : STAGE_INDEX.authOutstanding;
-    // submitAuth doesn't auto-touch escalation; manual toggle decides.
+    // submitAuth has NO escalation rule of its own and no toggle, so the send
+    // leaves the column alone entirely — Propose Stuck (→ Manager, stamped) and
+    // the manager's own buttons are the only ways it moves at this stage. That
+    // is what keeps the two-step review intact across repeat sends.
     // Follow Up Date → TODAY (ET), same-day not +1 — many auths approve
     // right away (Submit Auth redesign §7). This is the prerequisite for
     // the Auth Outstanding daily bucket: reps there will only see patients
@@ -555,7 +575,6 @@ export async function sendPatientToMonday(
     console.log("[mondayWrite] authOutstanding rule:", {
       anyDenied,
       allResolved,
-      manualEscalate,
       results: entries.map((e) => ({
         cid: e.cid,
         authOutstandingResult: e.state?.authOutstandingResult ?? "(unset)",
@@ -591,12 +610,10 @@ export async function sendPatientToMonday(
     if (outcome.stage === "authDenied") stageWriteIndex = STAGE_INDEX.authDenied;
     else if (outcome.stage === "complete") stageWriteIndex = STAGE_INDEX.complete;
     else if (outcome.stage === "dvs") stageWriteIndex = STAGE_INDEX.dvs;
-    // Escalation is a floor, and a floor never lowers the ceiling: an already
-    // "final" decision stays final rather than being written back down by an
-    // auto rule that only asks for a manager (a denial does — see
-    // `authOutstandingOutcome`, which owns the rung as well as the order).
-    if (outcome.escalate === "final") escalationDecision = "final";
-    else if (outcome.escalate === "manager" && escalationDecision !== "final") escalationDecision = "manager";
+    // Only an auto rule writes escalation here — the pump-SoS hold (final) or a
+    // denial (manager); see `authOutstandingOutcome`, which owns the rung as
+    // well as the order, and `autoEscalationWrite` for the raise-only guard.
+    escalationDecision = autoEscalationWrite(outcome.escalate, p.escalationLabel);
   } else {
     // benefits page — use insurance outcome to drive Stage Advancer.
     const outcome = deriveInsuranceOutcome(effectiveIns, entries.map(e => e.cid));
@@ -651,22 +668,27 @@ export async function sendPatientToMonday(
       }
     }
   }
-  // Always write the Escalation column so the toggle round-trips: an
-  // agent toggling OFF + sending will clear a previously-required flag.
-  tasks.push({
-    label: "Escalation",
-    columnId: COL.escalation,
-    fn: () =>
-      writeStatusIndex(
-        p.id,
-        COL.escalation,
-        escalationDecision === "final"
-          ? ESCALATION_INDEX.finalRequired
-          : escalationDecision === "manager"
-            ? ESCALATION_INDEX.managerRequired
-            : ESCALATION_INDEX.done,
-      ),
-  });
+  // Write Escalation only when THIS send decided one. `null` = leave the column
+  // exactly as the board has it, so a send can neither promote a pending
+  // proposal past its review nor clear a manager's flag behind their back (see
+  // the decision block above). Benefits always decides, so it always writes.
+  if (escalationDecision !== null) {
+    const decided = escalationDecision;
+    tasks.push({
+      label: "Escalation",
+      columnId: COL.escalation,
+      fn: () =>
+        writeStatusIndex(
+          p.id,
+          COL.escalation,
+          decided === "final"
+            ? ESCALATION_INDEX.finalRequired
+            : decided === "manager"
+              ? ESCALATION_INDEX.managerRequired
+              : ESCALATION_INDEX.done,
+        ),
+    });
+  }
   console.log(`[mondayWrite] Stage = ${stageWriteIndex ?? "(no change)"}, Escalation = ${escalationDecision}`);
 
   // ----- Benefits redesign: auto-composed escalation reason (D4) -----

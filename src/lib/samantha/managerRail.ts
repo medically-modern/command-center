@@ -124,8 +124,10 @@ const RAIL: Record<string, { buckets: Record<string, RailPredicate>; all: RailPr
     },
     // Bars ∪ safety net. The bars stay stage-free (two of them are stage-DVS
     // patients); the net is stage-scoped to Submit Auth, matching the chart —
-    // it catches the manual escalate toggle, which writes Manager but stamps
-    // nothing, so the Propose Stuck bar can't see it.
+    // it catches a Manager label with no stamp — a board automation, or one
+    // carried in from an earlier stage — which the Propose Stuck bar can't see.
+    // (A Submit Auth send no longer writes escalation at all; there is no
+    // toggle. The net stays because the board can still put a label there.)
     all: (p) =>
       isDvsRetry(p) ||
       isDvsManualReview(p) ||

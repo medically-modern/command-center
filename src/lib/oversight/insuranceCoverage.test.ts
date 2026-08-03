@@ -50,7 +50,7 @@ const UNBUILT_ROW = "auth-denial";
 // escalation there should only ever land in Final Decisions. A Manager
 // Intervention chart was built for it earlier the same night and removed on
 // that instruction, and every escalating write was re-aimed at Final to match
-// (`authOutstandingOutcome` · `manualEscalationLevel` · `proposeStuckLevel`).
+// (`authOutstandingOutcome` · `proposeStuckLevel`).
 //
 // This is NOT a hole like Auth Denied: the row still has a chart, and that
 // chart's population takes EITHER rung, so a Manager label arriving some other
@@ -138,11 +138,10 @@ describe("a non-escalated patient is always the rep's", () => {
 describe("an escalated patient is always SOME manager's", () => {
   // The bare case: escalated, but carrying none of the board facts the reason
   // buckets key on. This is the shape a patient takes when the escalation came
-  // from somewhere other than the bucket's own cause — the send's manual
-  // escalate toggle (which stamps nothing), a label carried in from an earlier
-  // stage, or an automation. Reason bars are built on FACTS and an escalation
-  // is a LABEL, so the two drift; every chart therefore needs a population rule
-  // wide enough to hold the drift.
+  // from somewhere other than the bucket's own cause — a label carried in from
+  // an earlier stage, or one of the four DVS/claims board automations. Reason
+  // bars are built on FACTS and an escalation is a LABEL, so the two drift;
+  // every chart therefore needs a population rule wide enough to hold the drift.
   it.each(LIVE_STAGES)("%s + Manager escalation, no other facts", (stage) => {
     const p = patient(stage, "Manager Escalation Required");
     expect(visibleIn(p), `${stage} + Manager is invisible`).not.toEqual([]);
@@ -269,11 +268,12 @@ describe("the real post-Benefits outcomes", () => {
     expect(reasonBucketsFor(chart("auth-outstanding-final-escalation"), p)).toContain("Pump SoS");
   });
 
-  it("a manual escalate toggle at Submit Auth lands in Final Decisions", () => {
-    // The toggle writes FINAL at this stage (manualEscalationLevel, Josh
-    // 2026-08-03) and stamps nothing, so it matches no reason bar — it rides in
-    // on the chart's own population rule and shows in the header count as one
-    // "in no bar".
+  it("a stamp-less Final at Submit Auth still lands in Final Decisions", () => {
+    // Every bar on this chart needs a board fact — a DVS status, or a
+    // [Proposed Stuck stamp. A Final label with neither (carried in from an
+    // earlier stage, or written by a board automation) matches no bar, so it
+    // rides in on the chart's own population rule and shows in the header count
+    // as one "in no bar".
     const p = patient("Submit Auth.", "Final Escalation Required");
     expect(seenBy(p, MANAGER_CHARTS)).toContain("submit-auth-final-escalation");
     expect(reasonBucketsFor(chart("submit-auth-final-escalation"), p)).toEqual([]);

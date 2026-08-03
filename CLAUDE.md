@@ -417,8 +417,8 @@ columns" automation on duplicated items). The SPA only flips the advancer; verif
   that stage should only ever land in Final, so the `auth-outstanding-manager` chart built earlier
   that night was removed). Because that leaves one chart to catch everything, its population rule
   takes **either** escalation index (0 or 2) — nothing in the SPA writes Manager there any more
-  (`authOutstandingOutcome` → `final` on the pump-SoS hold, `manualEscalationLevel` → `final`,
-  `proposeStuckLevel` → `final`), but a label carried in from an earlier stage or written by one of
+  (`authOutstandingOutcome` → `final` on the pump-SoS hold, `proposeStuckLevel` → `final`),
+  but a label carried in from an earlier stage or written by one of
   the four DVS/claims automations would otherwise be invisible. Its two bars (**Pump SoS** ·
   **Propose Stuck**) match either rung for the same reason — deliberately unlike the Submit Auth
   pair, which splits on level so a promoted patient leaves the lower chart.
@@ -433,12 +433,24 @@ columns" automation on duplicated items). The SPA only flips the advancer; verif
   carved out by name, and Auth Outstanding's Final-only shape via `FINAL_ONLY_ROWS` — both asserted
   as carve-outs); `lib/samantha/managerRail` mirrors these populations for the destination page's
   sidebar — change the two together.
-  **The send's Escalate toggle picks its rung by stage** (`samantha/mondayWrite.manualEscalationLevel`):
-  **Submit Auth → Final** (Josh, 2026-08-03 — that stage's Manager rung is the two-step Propose
-  Stuck review, and the toggle leaves no stamped proposal to review), **Auth Outstanding → Final**
-  (Josh, 2026-08-03 — Final is that stage's only rung), and at Benefits the toggle doesn't exist
-  (escalation there is derived from the universal checks only, so a hydrated flag must never floor
-  it). An auto-escalation can raise that decision but never lowers it.
+  ⚠️ **There is NO Escalate toggle in the Insurance UI — don't reintroduce one** (Josh,
+  2026-08-03). The only escalation affordance is the **Propose Stuck popup**, plus the manager
+  decision buttons and the board automations. `components/samantha/EscalateButton.tsx` had zero
+  importers and was deleted (Welcome Call / Final Confirm / Subscription keep their own copies in
+  their own folders — those are live; masheke's is commented out).
+  **A send therefore writes the Escalation column only when an AUTO rule decides one**
+  (`samantha/mondayWrite.autoEscalationWrite`): the Auth Outstanding pump-SoS hold → Final, a
+  denial → Manager, and an auto rule only ever RAISES. Otherwise the column is left exactly as the
+  board has it. Submit Auth has no auto rule at all, so its sends never touch escalation — that is
+  what keeps a rep's Propose Stuck at Manager until a manager actually reviews it.
+  This replaced a "manual toggle is the floor" rule that read `p.escalated` — which is **hydrated
+  FROM the board** (`mondayMapping`, index 0/2), not from any control — and re-wrote it on every
+  send. It silently PROMOTED (a pending Submit Auth proposal jumped to Final, skipping the review,
+  with no note) and silently CLEARED (a flag raised since the page last polled got overwritten with
+  "Done", dropping the patient back into the rep's queue with nobody told).
+  **Benefits is the deliberate exception** and still writes unconditionally, "Done" included:
+  escalation there is DERIVED from the universal checks (redesign §5), so clearing it by fixing the
+  facts and re-sending is the design.
   **The escalation ladder is processor → Manager Intervention → Final Decisions**
   (`stageActions.proposeStuckLevel`, 2026-08-02): Propose Stuck writes one rung UP from wherever
   the patient already is — an existing escalation label OR a click from Manager Intervention

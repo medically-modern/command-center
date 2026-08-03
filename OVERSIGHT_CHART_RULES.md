@@ -192,18 +192,17 @@ bars, which are stage `DVS`, keep coming in through the union):
 | **DVS Manual Review** | Stage = `DVS` AND **any** of: Supplies DVS in (`MLTC`, `Failed`, `Manual Review`); Pump DVS in (`MLTC`, `Failed`, `Manual Review`, `Denied`); Claims Status in (`Claims Error`, `Claims Denied`, `Payment Incorrect`) — **STATUS-ONLY**: the Escalation column is deliberately not a condition (2026-07-29; no automation flips DVS patients to a manager escalation, and a label carried in from an earlier stage must not classify a patient) | Every one of those clears |
 | **Propose Stuck** | Stage = `Submit Auth.` AND Escalation = `Manager Escalation Required` AND Reference Notes contain a `[Proposed Stuck` stamp | The manager decides (below), or a rep-side send clears the escalation |
 
-> The stamp condition on the Propose Stuck bar is what keeps a Submit Auth
-> send's **manual escalate toggle** out of the bar. As of 2026-08-03 that
-> toggle writes **`Final Escalation Required`** at this stage, not Manager
-> (`manualEscalationLevel`) — the Manager rung here IS the two-step proposal
-> review, and the toggle leaves no proposal to review, so those patients go
-> straight to Final Decisions where a decision gets made. They match no bar
-> there either, and ride in on that chart's population rule.
+> The stamp condition on the Propose Stuck bar used to matter for keeping a
+> Submit Auth send's **escalate toggle** out of it. As of 2026-08-03 there is no
+> toggle, and a Submit Auth send does not write the Escalation column at all —
+> so the only thing that puts a patient at Manager here is Propose Stuck, which
+> always stamps. The chart's population rule still covers a stamp-less Manager
+> label (a board automation, or one carried in from an earlier stage).
 
 **Auth Outstanding** — **no chart** (Josh, 2026-08-03). One was built earlier
 that day and removed on his instruction: an escalation at this stage should only
 ever land in **Final Decisions**, so every escalating write aims there
-(`authOutstandingOutcome` · `manualEscalationLevel` · `proposeStuckLevel`) and
+(`authOutstandingOutcome` · `proposeStuckLevel`) and
 the Pump SoS bar moved up to the Final chart. Not a hole like Auth Denied — the
 row still has a chart, and that chart takes either rung.
 
@@ -269,19 +268,26 @@ appends the reason to Reference Notes (stamped), then sets Escalation →
 **not** touch the Stage Advancer, so the patient stays in their stage and also
 remains visible in Processor Overview.
 
-Also here: the **Auth Outstanding send**, both ways it escalates — the rep's
-**Escalate toggle**, and the **pump-SoS hold** (`authOutstandingOutcome`), which
-writes no stage at all so the patient stays put. A **denial** is the one
-escalation from that page that still writes `Manager Escalation Required`: the
-patient leaves for **Auth Denied**, an unbuilt stage with no charts at either
-rung, so picking Final would pre-judge a design nobody has done.
+Also here: the **Auth Outstanding pump-SoS hold** (`authOutstandingOutcome`),
+which writes no stage at all, so the patient stays put at a stage whose only
+manager rung is this one. A **denial** is the one escalation from that page that
+writes `Manager Escalation Required` instead: the patient leaves for **Auth
+Denied**, an unbuilt stage with no charts at either rung, so picking Final would
+pre-judge a design nobody has done.
 
-Also here: the send's **Escalate toggle at Submit Auth** (2026-08-03). The
-toggle and Propose Stuck deliberately land on DIFFERENT rungs at that stage —
-a proposal is reviewed at Manager Intervention first, while a toggle carries no
-proposal to review and goes straight to a decision. `manualEscalationLevel`
-owns the rule; an auto-escalation on the same send can raise the result but
-never lowers it.
+> ⚠️ **There is no Escalate toggle** — and there should not be one (Josh,
+> 2026-08-03). Escalation at these stages comes from the **Propose Stuck popup**,
+> the manager decision buttons, the board automations, and the two auto rules
+> just named. A send writes the column ONLY when an auto rule decides one
+> (`mondayWrite.autoEscalationWrite`), and an auto rule only ever RAISES.
+>
+> Until 2026-08-03 the send re-wrote whatever label the patient already carried
+> — `p.escalated` is hydrated FROM the board, not from any control — which
+> silently promoted a pending Submit Auth proposal to Final past its review, and
+> silently cleared a flag raised since the page last polled. Submit Auth sends
+> now touch escalation not at all. Benefits is the deliberate exception (its
+> escalation is derived from the universal checks, so re-sending with the facts
+> fixed is *meant* to clear it).
 
 Auto-arrival (Benefits): Out-of-Network, Medicare not Primary, or DME
 Partial/No on send sets `Final Escalation Required` automatically; an
