@@ -412,6 +412,14 @@ export async function recordAndAdvanceVerified(
  * patient. If the note or the date failed and the NAD landed anyway, we'd have
  * an invisible patient with no record of why — the exact failure the
  * verify-before-advance rule exists to prevent.
+ *
+ * CLEARS THE ESCALATION, same as every other path that lands an appointment date
+ * (Josh, 2026-08-03). A booked visit is the answer to "this chase is stuck", so
+ * the patient goes back to the rep's queue rather than staying in a manager
+ * column with a date nobody needs to act on. The rep's own re-send is what
+ * raises it again if the visit doesn't produce clinicals. This is an explicit
+ * act by the person recording the date, not a flag re-written on every send —
+ * the distinction §7 draws for the Insurance board.
  */
 export async function scheduleAppointmentFromChase(opts: {
   itemId: string;
@@ -437,6 +445,13 @@ export async function scheduleAppointmentFromChase(opts: {
         columnId: COL.mnEvalNotes,
         value: { text: opts.notes },
         fn: () => writeLongText(opts.itemId, COL.mnEvalNotes, opts.notes),
+      },
+      {
+        label: "Escalation → Done",
+        columnId: COL.escalation,
+        value: { index: ESCALATION_INDEX.done },
+        expectedText: "Done",
+        fn: () => writeStatusIndex(opts.itemId, COL.escalation, ESCALATION_INDEX.done),
       },
       {
         label: "Next Action Date",

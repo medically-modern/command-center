@@ -402,6 +402,16 @@ advancer on this board (`mondayWrite.recordAndAdvanceVerified` passes it as `sta
 > `evaluateReentry.ts` exists to self-heal. Three failed attempts escalate to **index 0** (Manager
 > Intervention), never index 2 — index 2 is a stuck PROPOSAL awaiting a Final Decision, and an
 > unreachable patient is a manager task, not a pipeline exit.
+>
+> **An appointment DATE clears it too, on all three paths** (Josh, 2026-08-03): a booked visit is
+> the answer to "this chase is stuck", so the patient returns to the rep's queue rather than sitting
+> in a manager column with a date nobody needs to act on. `returnToChaseWithAppointment` (the
+> outreach panel's booked outcome) and `enterDoctorAppointments` always did;
+> **`scheduleAppointmentFromChase`** — the entry dialog's "yes, they already have one" answer — did
+> not, so a chase patient escalated at attempt 4+ kept the flag while waiting on a visit. All three
+> now write Escalation → Done. This is not the Insurance-board anti-pattern §7 warns about: it's an
+> explicit act by the person recording the date, not a hydrated flag re-written on every send, and
+> the rep's own re-send re-raises it if the visit doesn't produce clinicals.
 
 **Cadence** (one constant, `APPT_ATTEMPT_SNOOZE_BUSINESS_DAYS`): **every** logged attempt snoozes a
 flat **1 business day** (Brandon's v3 matrix) — no per-outcome variation. Reach-out methods are
@@ -446,6 +456,15 @@ booked visit — the "yes" answer to the entry dialog, matched on **Appointment 
 chase charts exclude that second group so nobody is counted twice, and those patients drop off this
 row on their own once the date passes. Their BEHAVIOUR is unchanged — still chase patients, still
 due when the Next Action Date lands; this is only where a manager looks at them.
+⚠️ That exclusion belongs on **all EIGHT chase charts, not just the two processor ones** — the two
+`-escalations` (Attempt 4+), the two `-escalated-3rd`, and the two `-proposed-stuck` as well. It
+shipped on the processor pair alone and the everyday path put a patient on two rows of the SAME
+column: a chase patient at attempt 4+ keeps MN Attempts = `Escalate` when the office asks for a
+visit, so recording the date left them on the Doctor Appointments bar AND the Chase bar of Manager
+Intervention. Nothing goes blind by removing them, because `doctor-appointments-manager` / `-final`
+already partition indices 0 and 2 over exactly that population — and the exclusion is scoped to a
+FUTURE visit, so a patient whose appointment has passed returns to the chase chart with their
+escalation intact. `appointmentsBar.test.ts` checks every (column × method) pair both ways.
 The three filters partition by escalation — none / index 0 / index 2 — so **every** escalation
 value lands in exactly one chart,
 which is what guarantees §7 (a state matching no chart is invisible app-wide);

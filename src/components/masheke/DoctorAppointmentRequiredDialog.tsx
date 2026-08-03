@@ -118,6 +118,9 @@ export function DoctorAppointmentRequiredDialog({
       appointmentDate: apptDate,
       mnEvalNotes: nextNotes,
       nextActionDate: nextAction,
+      // A booked visit answers the escalation — see scheduleAppointmentFromChase.
+      escalation: "Done",
+      escalationIndex: 1,
     };
     const toastId = `appt-sched-${patient.id}`;
     setSaving(true);

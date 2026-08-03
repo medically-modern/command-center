@@ -156,4 +156,49 @@ describe("patients waiting on a booked visit ride the Doctor Appointments row", 
     expect(patientMatchesChart(chart(MANAGER), escalated)).toBe(true);
     expect(patientMatchesChart(chart(PROCESSOR), escalated)).toBe(false);
   });
+
+  /**
+   * The "not counted twice" rule holds in EVERY column, not just Processor
+   * Overview. It regressed in the manager ones because the appointment
+   * exclusion was only ever added to the two processor charts: a chase patient
+   * at attempt 4+ who then gets an appointment date keeps MN Attempts =
+   * "Escalate", so they showed on the Doctor Appointments bar AND the Chase bar
+   * of Manager Intervention at the same time. Same for 3rd+ round and for a
+   * proposed-stuck patient in Final Decisions.
+   */
+  const MN_ATTEMPTS = "color_mm1wz0vg";
+  const EVAL_COUNTER = "numeric_mm4bhjc8";
+
+  const CROSS_COLUMN: {
+    label: string;
+    apptRow: string;
+    chaseRow: string;
+    escalationIndex: number;
+    extraCols: Record<string, string>;
+  }[] = [
+    { label: "Attempt 4+", apptRow: MANAGER, chaseRow: "chase-fax-escalations", escalationIndex: 0, extraCols: { [MN_ATTEMPTS]: "Escalate" } },
+    { label: "3rd+ round", apptRow: MANAGER, chaseRow: "chase-fax-escalated-3rd", escalationIndex: 0, extraCols: { [EVAL_COUNTER]: "4" } },
+    { label: "Proposed stuck", apptRow: FINAL, chaseRow: "chase-fax-proposed-stuck", escalationIndex: 2, extraCols: {} },
+    { label: "Attempt 4+ (email/parachute)", apptRow: MANAGER, chaseRow: "chase-email-parachute-escalations", escalationIndex: 0, extraCols: { [METHOD]: "Parachute", [MN_ATTEMPTS]: "Escalate" } },
+    { label: "3rd+ round (email/parachute)", apptRow: MANAGER, chaseRow: "chase-email-parachute-escalated-3rd", escalationIndex: 0, extraCols: { [METHOD]: "Parachute", [EVAL_COUNTER]: "4" } },
+    { label: "Proposed stuck (email/parachute)", apptRow: FINAL, chaseRow: "chase-email-parachute-proposed-stuck", escalationIndex: 2, extraCols: { [METHOD]: "Parachute" } },
+  ];
+
+  it.each(CROSS_COLUMN)(
+    "$label: a waiting patient is on the appointments row only, never the chase row too",
+    ({ apptRow, chaseRow, escalationIndex, extraCols }) => {
+      const waiting = { ...chasePatient(FUTURE, escalationIndex) };
+      waiting.cols = { ...waiting.cols, ...extraCols };
+      expect(patientMatchesChart(chart(apptRow), waiting)).toBe(true);
+      expect(patientMatchesChart(chart(chaseRow), waiting)).toBe(false);
+
+      // The exclusion is scoped to a FUTURE visit — once it has happened the
+      // patient is an ordinary escalated chase patient again and must come back
+      // to the chase chart, or the escalation would go invisible (§7).
+      const seen = { ...chasePatient(PAST, escalationIndex) };
+      seen.cols = { ...seen.cols, ...extraCols };
+      expect(patientMatchesChart(chart(chaseRow), seen)).toBe(true);
+      expect(patientMatchesChart(chart(apptRow), seen)).toBe(false);
+    },
+  );
 });
