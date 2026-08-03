@@ -103,12 +103,30 @@ const CHART_ROUTES: Record<string, string | null> = {
   // monitor; a Submit Auth proposed-stuck row opens /submit-auth instead —
   // handlePatientClick overrides per patient by their Stage Advancer.
   "submit-auth-manager": "/dvs",
+  "auth-outstanding-manager": "/auth-outstanding",
+  // Auth Denied has no CC page (count-only role), same as its Processor
+  // Overview twin — the drill-down table IS the view, and the decision buttons
+  // are how a manager acts on the row.
+  "auth-denial-manager": null,
+  "auth-denial-final-escalation": null,
   "benefits": "/benefits",
   "submit-auth": "/submit-auth",
   "auth-outstanding": "/auth-outstanding",
   "auth-denial": null,              // no CC view yet
   "welcome-call": "/welcome-call",
 };
+
+/** Reason bars whose state belongs to the DVS bot, not to a person. */
+const BOT_OWNED_REASONS = new Set(["DVS Retry", "DVS Manual Review"]);
+
+/**
+ * Is this drill-down row purely a bot state, i.e. nothing for a manager to
+ * decide? Only true when EVERY reason the row matched is bot-owned — a row
+ * with no reasons at all (a day-bucketed chart, or a patient the bars missed)
+ * is emphatically not, since that is the row most likely to be stranded.
+ */
+const isBotOwnedRow = (reasons: string[]): boolean =>
+  reasons.length > 0 && reasons.every((r) => BOT_OWNED_REASONS.has(r));
 
 // ── Constants ──────────────────────────────────────────────────────────────
 
@@ -1323,13 +1341,21 @@ function DrilldownModal({
                         // so the columns it floats over don't show through.
                         <td className="px-2 py-1 sticky right-0 z-10 bg-card border-l border-border">
                           {isEscalateChart ? (
-                            // Only a Propose Stuck row gets decision buttons —
-                            // a DVS retry/manual row is a bot state with
-                            // nothing to decide. The manager either promotes
-                            // the proposal to Final Decisions or returns the
-                            // patient to the rep's queue (the two outcomes the
-                            // rep's Propose Stuck dialog promises).
-                            (reasonsByPatient.get(patient.id) ?? []).includes("Propose Stuck") ? (
+                            // Every row EXCEPT a bot-owned DVS state gets the
+                            // decision buttons: the manager either promotes to
+                            // Final Decisions or returns the patient to the
+                            // rep's queue (the two outcomes the rep's Propose
+                            // Stuck dialog promises). A DVS retry/manual row is
+                            // a bot state with nothing to decide, so it stays
+                            // button-free.
+                            //
+                            // Was "only a Propose Stuck row" (2026-08-03): that
+                            // left every OTHER escalated row — a pump-SoS hold,
+                            // a denial, a stamp-less manual escalation — with no
+                            // way back. Since an escalation is what removes a
+                            // patient from the rep's queue, a visible row a
+                            // manager cannot clear is still a stranded patient.
+                            !isBotOwnedRow(reasonsByPatient.get(patient.id) ?? []) ? (
                               <span className="flex flex-wrap gap-1.5" onClick={(e) => e.stopPropagation()}>
                                 <button
                                   onClick={() => decide(patient.id, "escalate")}
@@ -1830,7 +1856,7 @@ export default function OversightTab() {
   // Stuck also stamps the manager's optional note into the MN notes). The row
   // disappears optimistically; the silent refetch reconciles.
   const handleDecision = useCallback(
-    async (patientId: string, action: "approve" | "return" | "escalate", kind: "proposed-stuck" | "insurance-final" | "submit-auth-manager", appendNote?: string) => {
+    async (patientId: string, action: "approve" | "return" | "escalate", kind: "proposed-stuck" | "insurance-final" | "submit-auth-manager", chartId: string, appendNote?: string) => {
       try {
         if (kind === "submit-auth-manager") {
           // Manager Intervention Submit Auth: Escalate to Final Decisions
@@ -1854,11 +1880,13 @@ export default function OversightTab() {
               : "Returned to the rep's queue",
         );
         // Optimistic removal from the chart(s) the patient just left: an
-        // escalated Submit Auth proposal leaves ONLY the manager chart (it
-        // reappears under Final Decisions on the reconciling refetch).
+        // escalated Manager Intervention row leaves ONLY the chart it was
+        // decided from (it reappears under Final Decisions on the reconciling
+        // refetch). Keyed on the chart id rather than the kind — several
+        // Manager Intervention charts share the "submit-auth-manager" kind.
         const leaves = (k: string) =>
           kind === "submit-auth-manager"
-            ? k === "submit-auth-manager"
+            ? k === chartId
             : k.endsWith(kind === "insurance-final" ? "-final-escalation" : "-proposed-stuck");
         setData((prev) => {
           if (!prev) return prev;
@@ -2186,7 +2214,7 @@ export default function OversightTab() {
           onClose={handleClose}
           onPatientClick={handlePatientClick}
           hasRoute={CHART_ROUTES[expandedChart!] !== null}
-          onDecision={expandedChartDef.decision ? (id, action, appendNote) => handleDecision(id, action, expandedChartDef.decision!, appendNote) : undefined}
+          onDecision={expandedChartDef.decision ? (id, action, appendNote) => handleDecision(id, action, expandedChartDef.decision!, expandedChartDef.id, appendNote) : undefined}
         />
       )}
 

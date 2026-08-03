@@ -78,6 +78,19 @@ const isDvsManualReviewFinal = (p: Patient): boolean => dvsManualStatus(p) && is
 const isSubmitAuthProposed = (p: Patient): boolean =>
   p.escalationLabel === MANAGER_ESC && hasProposedStuckStamp(p);
 
+/**
+ * The chart-level safety nets (2026-08-03) — `patientMatchesChart` unions each
+ * chart's own rule with its bars, so the rail's `all` predicate has to union
+ * the same way or the sidebar drops the very patients the chart added.
+ *
+ * The oversight rules are stage-scoped; here the STAGE is implicit in which
+ * page applied the rail, except where a chart mixes stages (the Submit Auth
+ * charts carry DVS rows), so those check `stageAdvancerText` explicitly.
+ */
+const atStage = (p: Patient, stage: string): boolean =>
+  (p.stageAdvancerText ?? "").trim() === stage;
+const isManagerEsc = (p: Patient): boolean => p.escalationLabel === MANAGER_ESC;
+
 /** chart id → (bucket label → predicate). The `null` key is the whole chart,
  *  used when a manager opens a card without clicking a specific bar. */
 const RAIL: Record<string, { buckets: Record<string, RailPredicate>; all: RailPredicate }> = {
@@ -87,7 +100,9 @@ const RAIL: Record<string, { buckets: Record<string, RailPredicate>; all: RailPr
       "Pump SoS": isPumpSosNotClear,
       "Check outstanding >5d": isCheckOverdue,
     },
-    all: (p) => isInactive(p) || isPumpSosNotClear(p) || isCheckOverdue(p),
+    // Bars ∪ safety net: the three bars are board facts (they match escalated
+    // and non-escalated patients alike), plus any Manager label the facts miss.
+    all: (p) => isInactive(p) || isPumpSosNotClear(p) || isCheckOverdue(p) || isManagerEsc(p),
   },
   "benefits-final-escalation": {
     buckets: {
@@ -105,19 +120,41 @@ const RAIL: Record<string, { buckets: Record<string, RailPredicate>; all: RailPr
       "DVS Manual Review": isDvsManualReview,
       "Propose Stuck": isSubmitAuthProposed,
     },
-    all: (p) => isDvsRetry(p) || isDvsManualReview(p) || isSubmitAuthProposed(p),
+    // Bars ∪ safety net. The bars stay stage-free (two of them are stage-DVS
+    // patients); the net is stage-scoped to Submit Auth, matching the chart —
+    // it catches the manual escalate toggle, which writes Manager but stamps
+    // nothing, so the Propose Stuck bar can't see it.
+    all: (p) =>
+      isDvsRetry(p) ||
+      isDvsManualReview(p) ||
+      isSubmitAuthProposed(p) ||
+      (atStage(p, "Submit Auth.") && isManagerEsc(p)),
   },
   // Final Decisions · Submit Auth row — reason-bucketed like its Manager
-  // Intervention twin (2026-08-02). Population is the union of the bars, NOT
-  // "any Final patient": two of the three bars are stage-DVS patients, so this
-  // chart deliberately has no stage rule of its own (see CHART_FILTERS).
+  // Intervention twin (2026-08-02). Two of the three bars are stage-DVS
+  // patients, so the population is the bars unioned with a Submit-Auth-scoped
+  // Final rule (never a bare stage rule, which would filter the DVS rows out).
   "submit-auth-final-escalation": {
     buckets: {
       "DVS Retry": isDvsRetryFinal,
       "DVS Manual Review": isDvsManualReviewFinal,
       "Propose Stuck": (p) => isFinal(p) && hasProposedStuckStamp(p),
     },
-    all: (p) => isDvsRetryFinal(p) || isDvsManualReviewFinal(p) || (isFinal(p) && hasProposedStuckStamp(p)),
+    all: (p) =>
+      isDvsRetryFinal(p) ||
+      isDvsManualReviewFinal(p) ||
+      (isFinal(p) && hasProposedStuckStamp(p)) ||
+      (atStage(p, "Submit Auth.") && isFinal(p)),
+  },
+  // Manager Intervention · Auth Outstanding row (2026-08-03). Population is the
+  // Manager label itself — the bars only name how the patient got it, so a hold
+  // the bars don't recognise is still listed.
+  "auth-outstanding-manager": {
+    buckets: {
+      "Pump SoS": isPumpSosNotClear,
+      "Propose Stuck": (p) => isManagerEsc(p) && hasProposedStuckStamp(p),
+    },
+    all: isManagerEsc,
   },
   "auth-outstanding-final-escalation": {
     buckets: {

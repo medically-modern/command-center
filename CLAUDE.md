@@ -404,10 +404,23 @@ columns" automation on duplicated items). The SPA only flips the advancer; verif
   path (Propose Stuck stamp vs Universal Check columns); **Submit Auth column 3 mirrors column 2's
   three bars one rung up** and **Auth Outstanding column 3 has a single Propose Stuck bar** (both
   2026-08-02 — before that they were day-bucketed, which said nothing a manager could act on).
-  ⚠️ `submit-auth-final-escalation`, like `submit-auth-manager`, deliberately has **no
-  `CHART_FILTERS` entry**: two of its three bars are stage-**DVS** patients, so a chart-level
-  "Submit Auth." rule would filter them out — its population is the UNION of its bars, and
-  `OversightTab.handlePatientClick` overrides the route per patient (DVS rows → `/dvs`).
+  **A chart's population is its `CHART_FILTERS` rule UNION its bars** (`patientMatchesChart`,
+  2026-08-03). That union is what lets `submit-auth-manager` / `submit-auth-final-escalation` carry
+  a "Submit Auth." stage rule at all: two of their three bars are stage-**DVS** patients, which a
+  chart-level rule alone would filter out, so the rule can only ever ADD. `handlePatientClick`
+  still overrides the route per patient (DVS rows → `/dvs`).
+  ⚠️ **Every escalated patient must land in some manager chart** — an escalation removes them from
+  the rep's queue AND from the role count, so a state that matches no chart is invisible in the
+  whole app. Bars key on board FACTS and escalations are LABELS, so the two drift; each Insurance
+  manager chart therefore carries a population rule wider than its bars, and **all four Processor
+  Overview rows now have both rungs above them** — `auth-outstanding-manager` (the pump-SoS hold
+  from PR #22 holds the stage and escalates) and `auth-denial-manager` /
+  `auth-denial-final-escalation` (ANY denial escalates, and `authDenied` is a count-only role with
+  no page, so those patients were invisible everywhere) were added 2026-08-03. Manager Intervention
+  decision buttons now show on **every row except a bot-owned DVS one** — a row a manager can see
+  but not clear is still a stranded patient. `lib/oversight/insuranceCoverage.test.ts` enumerates
+  the reachable (stage × escalation) states and fails if one goes blind; `lib/samantha/managerRail`
+  mirrors these populations for the destination page's sidebar — change the two together.
   **The escalation ladder is processor → Manager Intervention → Final Decisions**
   (`stageActions.proposeStuckLevel`, 2026-08-02): Propose Stuck writes one rung UP from wherever
   the patient already is — an existing escalation label OR a click from Manager Intervention

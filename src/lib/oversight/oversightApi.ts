@@ -685,10 +685,78 @@ const RAW_CHART_DEFS: ChartDef[] = [
       { colId: "__proposedReason__", label: "Proposed Reason" },
     ],
   },
+  // Manager view: Insurance — Auth Outstanding row, Manager Intervention
+  // (2026-08-03). The stage previously had a Final Decisions chart and nothing
+  // below it, so a Manager escalation here was a dead end: escalated patients
+  // leave the rep's queue and no manager chart listed them. Two bars name the
+  // ways in — the pump-SoS blocker (which HOLDS the stage by design, PR #22)
+  // and a rep's Propose Stuck; the chart rule carries anyone else.
+  {
+    id: "auth-outstanding-manager",
+    title: "Auth Outstanding",
+    boardId: 18410601299,
+    notesColId: "long_text_mm2ffsme",
+    rowOf: "auth-outstanding",
+    decision: "submit-auth-manager",
+    reasonColId: "long_text_mm2ffsme",
+    reasonBuckets: [
+      { key: "pump-sos", label: "Pump SoS", short: "Pump SoS", filterId: "auth-outstanding-manager-pump-sos", color: REASON_COLORS.amber },
+      { key: "proposed", label: "Propose Stuck", short: "Proposed", filterId: "auth-outstanding-proposed-manager", color: REASON_COLORS.violet },
+    ],
+    drilldownCols: [
+      { colId: "__reasons__", label: "Reason", pill: true },
+      { colId: "__proposedReason__", label: "Proposed Reason" },
+      { colId: "color_mm1wwm05", label: "Days in Stage" },
+      { colId: "color_mm1x157j", label: "Primary Insurance" },
+      { colId: "color_mm1w1cm9", label: "Serving" },
+      { colId: "dropdown_mm2vez5a", label: "Not Clear Products", pill: true },
+      { colId: "color_mm2vsh2f", label: "Escalation", pill: true },
+    ],
+  },
+  // Manager view: Insurance — Auth Denied row (2026-08-03), both columns.
+  // ANY denial escalates, so before these two charts existed every denied
+  // patient was invisible everywhere: out of Processor Overview (escalated),
+  // out of the burndown count (same rule), and with no page of their own
+  // (`authDenied` is a count-only role). Day-bucketed rather than
+  // reason-bucketed — the reason IS the denial, and days-since is what tells a
+  // manager which one has been sitting.
+  {
+    id: "auth-denial-manager",
+    title: "Auth Denied",
+    boardId: 18410601299,
+    notesColId: "long_text_mm2ffsme",
+    rowOf: "auth-denial",
+    decision: "submit-auth-manager",
+    reasonColId: "long_text_mm2ffsme",
+    drilldownCols: [
+      { colId: "__proposedReason__", label: "Proposed Reason" },
+      { colId: "color_mm1wwm05", label: "Days in Stage" },
+      { colId: "color_mm1x157j", label: "Primary Insurance" },
+      { colId: "color_mm1w1cm9", label: "Serving" },
+      { colId: "color_mm2vsh2f", label: "Escalation", pill: true },
+    ],
+  },
+  {
+    id: "auth-denial-final-escalation",
+    title: "Auth Denied",
+    boardId: 18410601299,
+    notesColId: "long_text_mm2ffsme",
+    rowOf: "auth-denial",
+    decision: "insurance-final",
+    reasonColId: "long_text_mm2ffsme",
+    drilldownCols: [
+      { colId: "__proposedReason__", label: "Proposed Reason" },
+      { colId: "color_mm1wwm05", label: "Days in Stage" },
+      { colId: "color_mm1x157j", label: "Primary Insurance" },
+      { colId: "color_mm1w1cm9", label: "Serving" },
+      { colId: "color_mm2vsh2f", label: "Escalation", pill: true },
+    ],
+  },
   // Manager view: Insurance — Benefits row, REASON-BUCKETED (Katie
   // 2026-07-29): one bar per reason a manager needs eyes on a Benefits
-  // patient, not day buckets. Population = union of the bars; the count is
-  // distinct patients (a patient can match several bars).
+  // patient, not day buckets. Population = the bars unioned with the chart's
+  // own safety-net rule; the count is distinct patients (a patient can match
+  // several bars).
   {
     id: "benefits-manager-escalation",
     title: "Benefits",
@@ -961,9 +1029,23 @@ export const OVERSIGHT_SECTIONS: OversightSection[] = [
     secondaryTitle: "Manager Intervention",
     // 2026-07-29: the two DVS charts merged into the reason-bucketed
     // "Submit Auth" chart (DVS Retry · DVS Manual Review · Propose Stuck).
-    secondaryChartIds: ["benefits-manager-escalation", "submit-auth-manager"],
+    // 2026-08-03: Auth Outstanding and Auth Denied gained manager charts so all
+    // four Processor Overview rows have a rung above them — an escalated
+    // patient leaves the rep's queue, so a row with no manager chart is a hole
+    // the patient falls through (insuranceCoverage.test.ts).
+    secondaryChartIds: [
+      "benefits-manager-escalation",
+      "submit-auth-manager",
+      "auth-outstanding-manager",
+      "auth-denial-manager",
+    ],
     tertiaryTitle: "Final Decisions",
-    tertiaryChartIds: ["benefits-final-escalation", "submit-auth-final-escalation", "auth-outstanding-final-escalation"],
+    tertiaryChartIds: [
+      "benefits-final-escalation",
+      "submit-auth-final-escalation",
+      "auth-outstanding-final-escalation",
+      "auth-denial-final-escalation",
+    ],
   },
   // "profile-review" chart not defined yet — needs a board/group; skipped until added.
   { id: "welcome-call", title: "Welcome Call", chartIds: ["welcome-call", "profile-review"] },
@@ -1382,16 +1464,44 @@ const CHART_FILTERS: Record<string, FilterRule> = {
   // status label now uniquely encodes it, so the old Stuck/Partial-No board
   // heuristic is dropped (a Propose-Stuck item need not have those set).
   "benefits-final-escalation": { type: "stageAdvancer", boardId: 18410601299, value: "Benefits / SoS", andCols: [{ colId: "color_mm2vsh2f", value: "Final Escalation Required" }] },
-  // NB "submit-auth-final-escalation" deliberately has NO entry — like its
-  // Manager Intervention twin it is the UNION of its reason buckets, because
-  // two of the three (DVS Retry / DVS Manual) are patients at stage "DVS", not
-  // "Submit Auth.", and a chart-level stage rule would filter them straight out.
+  // Safety net (2026-08-03), NOT a narrowing: `patientMatchesChart` unions the
+  // chart rule with its bars, so this ADDS the Submit Auth patients whose Final
+  // escalation carries no stamp. The DVS bars (stage "DVS", not "Submit Auth.")
+  // are unaffected — they come in through the union, which is why this chart
+  // could not have a stage rule before. Escalation matched by INDEX (0 =
+  // Manager, 2 = Final) so a board rename can't silently empty the chart.
+  "submit-auth-final-escalation": { type: "stageAdvancer", boardId: 18410601299, value: "Submit Auth.", andCols: [{ colId: "color_mm2vsh2f", index: [2] }] },
   "auth-outstanding-final-escalation": { type: "stageAdvancer", boardId: 18410601299, value: "Auth. Outstanding", andCols: [{ colId: "color_mm2vsh2f", value: "Final Escalation Required" }] },
+  // Auth Denied (2026-08-03) — the row that had NO manager chart at all. Every
+  // denial escalates (authOutstandingOutcome returns escalate:true on anyDenied),
+  // which dropped the patient out of the Processor Overview "auth-denial" chart,
+  // out of the rep's counts (samActive excludes escalated) and — with no manager
+  // chart to land in — out of the app entirely. Group-scoped like its Processor
+  // twin: items here often still read Stage Advancer "Benefits / SoS", so the
+  // GROUP is what reliably says "denied".
+  "auth-denial-manager": { type: "group", groupId: "group_mm316hg2", andCols: [{ colId: "color_mm2vsh2f", index: [0] }] },
+  "auth-denial-final-escalation": { type: "group", groupId: "group_mm316hg2", andCols: [{ colId: "color_mm2vsh2f", index: [2] }] },
   "auth-outstanding-proposed-final": { type: "stageAdvancer", boardId: 18410601299, value: "Auth. Outstanding", andCols: [{ colId: "color_mm2vsh2f", value: "Final Escalation Required" }, { colId: "long_text_mm2ffsme", containsAny: ["[Proposed Stuck"] }] },
+  // ── Manager Intervention: Auth Outstanding (2026-08-03). The stage had a
+  // Final Decisions chart but no Manager one, while the pump-SoS blocker added
+  // to the Auth Outstanding send (PR #22) deliberately HOLDS the stage and
+  // writes Manager — a state with nowhere to be seen. Population = the label;
+  // the bars name the two ways a patient gets it.
+  "auth-outstanding-manager": { type: "stageAdvancer", boardId: 18410601299, value: "Auth. Outstanding", andCols: [{ colId: "color_mm2vsh2f", index: [0] }] },
+  // Pump SoS: the send writes the same Not Clear Products dropdown here as at
+  // Benefits (the recheck feeds `effectiveSos`), so the bar reads the same
+  // column as its Benefits twin.
+  "auth-outstanding-manager-pump-sos": { type: "stageAdvancer", boardId: 18410601299, value: "Auth. Outstanding", andCols: [{ colId: "color_mm2vsh2f", index: [0] }, { colId: "dropdown_mm2vez5a", containsAny: ["Insulin Pump"] }] },
+  "auth-outstanding-proposed-manager": { type: "stageAdvancer", boardId: 18410601299, value: "Auth. Outstanding", andCols: [{ colId: "color_mm2vsh2f", index: [0] }, { colId: "long_text_mm2ffsme", containsAny: ["[Proposed Stuck"] }] },
   "submit-auth-proposed-final": { type: "stageAdvancer", boardId: 18410601299, value: "Submit Auth.", andCols: [{ colId: "color_mm2vsh2f", value: "Final Escalation Required" }, { colId: "long_text_mm2ffsme", containsAny: ["[Proposed Stuck"] }] },
   // ── Manager Intervention: Benefits reason buckets (Katie 2026-07-29). ──
-  // The chart id itself has NO entry — its population is the UNION of these
-  // three bucket rules.
+  // The chart id's own rule below is a SAFETY NET unioned with these three
+  // bucket rules, not a filter over them (see `patientMatchesChart`): the bars
+  // are board facts and match escalated and non-escalated patients alike, so
+  // requiring the label here would have thrown the fact-only rows out. What it
+  // catches is the reverse — a Manager label with none of the three facts on
+  // the board, which is invisible to the rep (escalated) and to every bar.
+  "benefits-manager-escalation": { type: "stageAdvancer", boardId: 18410601299, value: "Benefits / SoS", andCols: [{ colId: "color_mm2vsh2f", index: [0] }] },
   //
   // Inactive insurance: Active? = Inactive (index 2 — the column split).
   "benefits-manager-inactive": { type: "stageAdvancer", boardId: 18410601299, value: "Benefits / SoS", andCols: [{ colId: "color_mm5q9y3", index: [2] }] },
@@ -1431,6 +1541,13 @@ const CHART_FILTERS: Record<string, FilterRule> = {
   // requirement keeps a manually-toggled Submit Auth escalation (the send's
   // escalate toggle also writes Manager) out of the Propose Stuck bar. ──
   "submit-auth-proposed-manager": { type: "stageAdvancer", boardId: 18410601299, value: "Submit Auth.", andCols: [{ colId: "color_mm2vsh2f", value: "Manager Escalation Required" }, { colId: "long_text_mm2ffsme", containsAny: ["[Proposed Stuck"] }] },
+  // Safety net for the chart itself (2026-08-03), unioned with the three bars
+  // above — the DVS bars are stage "DVS" and keep coming in through the union.
+  // The gap it closes is the one the Propose Stuck bar's stamp requirement
+  // opens: the send's manual escalate toggle also writes Manager but stamps
+  // nothing (mondayWrite `manualEscalate`), so that patient matched no bar and
+  // was already out of the rep's queue for being escalated.
+  "submit-auth-manager": { type: "stageAdvancer", boardId: 18410601299, value: "Submit Auth.", andCols: [{ colId: "color_mm2vsh2f", index: [0] }] },
   // DVS retry queue: stage DVS with a "Retry Queued" status on Trigger
   // Supplies DVS or Trigger Pump DVS — and nothing else. (The old Retry
   // Count ≥ 1 condition is gone: a non-zero count lingers after an item
@@ -1542,14 +1659,23 @@ export function reasonBucketsFor(chart: ChartDef, patient: OversightPatient): st
 
 /**
  * Does a patient belong to a chart at all? Population = the chart's own
- * CHART_FILTERS rule when it has one (categorize mode — reason buckets, if
- * any, subdivide within it), else the UNION of its reason buckets. Exported
- * so tests exercise the exact evaluation the fetch uses.
+ * CHART_FILTERS rule UNION its reason buckets — a patient matching either is
+ * in. Exported so tests exercise the exact evaluation the fetch uses.
+ *
+ * The union (2026-08-03) replaced "the rule wins, buckets subdivide within
+ * it". For every chart that had both, the bars were already strict subsets of
+ * the rule, so nothing moved. What it buys is a SAFETY NET: a bucket-only
+ * chart can now be given a population rule that only ever ADDS the patients
+ * its bars miss, without narrowing the bars themselves. Reason bars are built
+ * on board FACTS (inactive, a DVS status, a stamped note) while an escalation
+ * is a LABEL, so the two can always drift apart — and a chart whose population
+ * was the bare union of its bars dropped the patient entirely when they did.
+ * See `insuranceCoverage.test.ts` for the invariant this protects.
  */
 export function patientMatchesChart(chart: ChartDef, patient: OversightPatient): boolean {
   if (patient.boardId !== chart.boardId) return false;
   const rule = CHART_FILTERS[chart.id];
-  if (rule) return matchesFilter(patient, rule);
+  if (rule && matchesFilter(patient, rule)) return true;
   if (chart.reasonBuckets?.length) return reasonBucketsFor(chart, patient).length > 0;
   return false;
 }
