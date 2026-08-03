@@ -403,17 +403,20 @@ Phone call · Text message · Email.
 
 **Sidebar sections differ by ROLE** (`apptSidebarSections`):
 - *Reach out today* — the work. Everyone.
-- *Awaiting reply* (snoozed patients) — **MANAGERS ONLY**, gated on `access.type === "manager"`
-  (the signed-in user), NOT on `?manager=1`: that param is only set by some Oversight columns, so
-  URL-gating hid the folder from a manager who clicked in from Processor Overview.
-  A processor's list should be today's work and nothing else; a manager looks at the whole queue.
+- *Awaiting reply* (snoozed) and *Scheduled* (booked a visit, so already back in Chase — sourced
+  from `scheduledApptPatients`, closed by default) — **MANAGERS ONLY**, both of them. Neither is
+  work; a processor's sidebar is "Reach out today" and nothing else. Gated on
+  `access.type === "manager"` (the signed-in user), NOT on `?manager=1`: that param is only set by
+  some Oversight columns, so URL-gating hid the folders from a manager who clicked in from
+  Processor Overview.
   ⚠️ The manager view lists **every** patient in the stage, not just escalated ones — an
   escalated-only filter left it empty for the common pre-escalation case (attempt 3, follow-up
   tomorrow), which is exactly who a manager wants to see.
-- *Scheduled* (closed by default) — patients who booked and therefore **left this stage** for
-  Chase. The hook surfaces them via `scheduledApptPatients` (appointmentDate set AND sub-stage ≠
-  Doctor Appointment) purely as a way back; the panel shows the booked date instead of the attempt
-  form, because writes against a patient who isn't here would corrupt the count.
+  ⚠️ `apptSidebarSections` **dedupes**: a patient is in exactly one section. `useMondayPatients`
+  injects a deep-linked `?patientId=` into the main list even when it doesn't match this stage, so
+  a booked chase patient opened from Oversight otherwise appears in Awaiting reply AND Scheduled.
+  The panel shows the booked date instead of the attempt form for those, because writes against a
+  patient who isn't in this stage would corrupt the count.
 
 Escalated patients drop out of the processor sidebar entirely — they're the manager's. **Role
 counts follow the normal due-today rule**, so the role bar matches "Reach out today".

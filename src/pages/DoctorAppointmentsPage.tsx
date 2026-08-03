@@ -115,7 +115,7 @@ const DoctorAppointmentsPage = () => {
         <DoctorAppointmentsSidebar
           patients={patients}
           scheduledPatients={scheduledApptPatients}
-          showAwaitingReply={isManager}
+          managerView={isManager}
           selectedId={selectedId}
           onSelect={setSelectedId}
           loading={loading}

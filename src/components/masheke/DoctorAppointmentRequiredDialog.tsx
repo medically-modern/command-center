@@ -282,13 +282,11 @@ export function DoctorAppointmentRequiredDialog({
                 onConfirm={handleScheduled}
                 confirmLabel="Save appointment"
                 hint={
-                  !hasDate
-                    ? "Pick the appointment date."
-                    : !hasNote
-                      ? "Add what the office told you."
-                      : isBackdated
-                        ? `Records the visit and leaves ${patient.name} due now.`
-                        : `Snoozes ${patient.name} until the day after the visit.`
+                  !hasDate || !hasNote
+                    ? ""
+                    : isBackdated
+                      ? `Records the visit and leaves ${patient.name} due now.`
+                      : `Snoozes ${patient.name} until the day after the visit.`
                 }
               />
             </div>
@@ -303,7 +301,7 @@ export function DoctorAppointmentRequiredDialog({
                 saving={saving}
                 onConfirm={handleUnscheduled}
                 confirmLabel="Move to Doctor Appointments"
-                hint={hasNote ? "" : "Add what the office told you."}
+                hint=""
               />
             </div>
           )}

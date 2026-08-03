@@ -9,7 +9,7 @@ const p = (over: Partial<Patient> = {}): Patient =>
   ({ id: "x", name: "Test", dob: "", notes: "", ...over }) as Patient;
 
 describe("Doctor Appointments sidebar", () => {
-  it("keeps snoozed patients VISIBLE in their own folder", () => {
+  it("keeps snoozed patients VISIBLE in the manager's folder", () => {
     const list = [
       p({ id: "due", nextActionDate: TODAY }),
       p({ id: "snoozed", nextActionDate: "2026-08-10" }),
@@ -17,8 +17,40 @@ describe("Doctor Appointments sidebar", () => {
     const { dueNow, awaitingReply } = apptSidebarSections(list, TODAY);
     expect(dueNow.map((x) => x.id)).toEqual(["due"]);
     expect(awaitingReply.map((x) => x.id)).toEqual(["snoozed"]);
-    // The whole point: a patient who texts back mid-snooze is still reachable.
-    expect(apptSidebarVisibleList(list, TODAY).map((x) => x.id)).toEqual(["due", "snoozed"]);
+    // A manager sees both; a processor sees only today's work.
+    expect(apptSidebarVisibleList(list, TODAY, [], true).map((x) => x.id)).toEqual([
+      "due",
+      "snoozed",
+    ]);
+    expect(apptSidebarVisibleList(list, TODAY, [], false).map((x) => x.id)).toEqual(["due"]);
+  });
+
+  it("puts a patient in EXACTLY one section, even when deep-linked", () => {
+    // useMondayPatients injects a deep-linked ?patientId= into the main list
+    // even when they don't match this stage — so a booked chase patient can
+    // arrive in BOTH lists. They belong to Awaiting reply / Reach out today,
+    // not Scheduled.
+    const booked = p({ id: "dup", nextActionDate: "2026-08-13", appointmentDate: "2026-08-12" });
+    const { awaitingReply, scheduled } = apptSidebarSections([booked], TODAY, [booked]);
+    expect(awaitingReply.map((x) => x.id)).toEqual(["dup"]);
+    expect(scheduled).toHaveLength(0);
+  });
+
+  it("shows Scheduled to managers only, soonest visit first", () => {
+    const sched = [
+      p({ id: "later", appointmentDate: "2026-09-20" }),
+      p({ id: "sooner", appointmentDate: "2026-08-12" }),
+    ];
+    expect(apptSidebarSections([], TODAY, sched).scheduled.map((x) => x.id)).toEqual([
+      "sooner",
+      "later",
+    ]);
+    // A processor never sees them.
+    expect(apptSidebarVisibleList([], TODAY, sched, false)).toHaveLength(0);
+    expect(apptSidebarVisibleList([], TODAY, sched, true).map((x) => x.id)).toEqual([
+      "sooner",
+      "later",
+    ]);
   });
 
   it("treats a blank or past Next Action Date as due now", () => {
@@ -44,7 +76,7 @@ describe("Doctor Appointments sidebar", () => {
     const { dueNow, awaitingReply } = apptSidebarSections(list, TODAY);
     expect(dueNow.map((x) => x.id)).toEqual(["due"]);
     expect(awaitingReply).toHaveLength(0);
-    expect(apptSidebarVisibleList(list, TODAY).map((x) => x.id)).toEqual(["due"]);
+    expect(apptSidebarVisibleList(list, TODAY, [], true).map((x) => x.id)).toEqual(["due"]);
   });
 
   it("compares only the date part of a datetime Next Action Date", () => {
@@ -64,6 +96,11 @@ describe("Doctor Appointments sidebar", () => {
       p({ id: "s2", nextActionDate: "2026-08-05" }),
       p({ id: "d2" }),
     ];
-    expect(apptSidebarVisibleList(list, TODAY).map((x) => x.id)).toEqual(["d1", "d2", "s1", "s2"]);
+    expect(apptSidebarVisibleList(list, TODAY, [], true).map((x) => x.id)).toEqual([
+      "d1",
+      "d2",
+      "s1",
+      "s2",
+    ]);
   });
 });

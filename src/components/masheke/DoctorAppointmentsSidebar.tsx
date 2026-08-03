@@ -1,14 +1,15 @@
 /**
  * Doctor Appointments sidebar.
  *
- * Up to three sections, and who sees which differs by role (Josh, 2026-08-03):
+ * A PROCESSOR sees exactly one section — **Reach out today**, the work.
  *
- *  - **Reach out today** — the work. Everyone.
- *  - **Awaiting reply** — snoozed patients. MANAGERS ONLY (`showAwaitingReply`).
- *    A processor's list should be today's work and nothing else; a manager is
- *    looking at the whole queue and needs to see who is parked.
- *  - **Scheduled** — patients who booked a visit and have therefore LEFT this
- *    stage for Chase. Closed by default; a way back to them, not a work list.
+ * A MANAGER (`managerView`) additionally gets **Awaiting reply** (snoozed) and
+ * **Scheduled** (booked a visit, so already back in Chase). Neither is work;
+ * both are oversight, which is why a processor never sees them.
+ *
+ * A patient is in EXACTLY ONE section — apptSidebarSections dedupes, because a
+ * deep-linked patient is injected into the main list even when they don't match
+ * this stage and would otherwise appear twice.
  *
  * Escalated patients are hidden from the processor entirely — they're the
  * manager's, in Oversight → Medical Evaluation → Doctor Appointments. See
@@ -37,14 +38,13 @@ import { apptAttemptCount } from "@/lib/masheke/apptOutreach";
 
 interface Props {
   patients: Patient[];
-  /** Patients with a booked appointment, waiting for the visit — they sit in
-   *  Chase now, and appear here in a read-only "Scheduled" folder. */
+  /** Patients with a booked visit — they sit in Chase now. Manager view only;
+   *  pass [] for a processor. */
   scheduledPatients?: Patient[];
-  /** Show the "Awaiting reply" folder. MANAGERS ONLY (Josh, 2026-08-03): a
-   *  processor's list is the work due today, so a snoozed patient is noise on
-   *  it; a manager is looking at the whole queue and needs to see who is
-   *  parked. */
-  showAwaitingReply?: boolean;
+  /** Manager view: adds the "Awaiting reply" and "Scheduled" folders. A
+   *  processor's sidebar is "Reach out today" and nothing else (Josh,
+   *  2026-08-03) — neither folder is work, both are oversight. */
+  managerView?: boolean;
   selectedId: string | null;
   onSelect: (id: string) => void;
   loading?: boolean;
@@ -104,7 +104,7 @@ function ApptRow({
 export function DoctorAppointmentsSidebar({
   patients,
   scheduledPatients = [],
-  showAwaitingReply = false,
+  managerView = false,
   selectedId,
   onSelect,
   loading,
@@ -117,12 +117,12 @@ export function DoctorAppointmentsSidebar({
   const { dueNow, awaitingReply, scheduled } = apptSidebarSections(
     patients,
     today,
-    scheduledPatients,
+    managerView ? scheduledPatients : [],
   );
   // Open by default — a folder nobody opens is the same as hiding them.
   const [showAwaiting, setShowAwaiting] = useState(true);
-  // Closed by default — these patients are handled; the folder is a way back
-  // to them, not a work list.
+  // Closed by default — these patients are handled; the folder is a way back to
+  // them, not a work list.
   const [showScheduled, setShowScheduled] = useState(false);
 
   return (
@@ -135,7 +135,7 @@ export function DoctorAppointmentsSidebar({
                 Monday · Doctor Appts
               </p>
               <p className="text-sm font-semibold leading-tight">
-                Patients ({dueNow.length + (showAwaitingReply ? awaitingReply.length : 0)})
+                Patients ({dueNow.length + (managerView ? awaitingReply.length : 0)})
               </p>
             </div>
           )}
@@ -191,7 +191,7 @@ export function DoctorAppointmentsSidebar({
           </SidebarGroupContent>
         </SidebarGroup>
 
-        {showAwaitingReply && awaitingReply.length > 0 && (
+        {managerView && awaitingReply.length > 0 && (
           <SidebarGroup>
             <FolderHeader
               open={showAwaiting}
@@ -219,7 +219,7 @@ export function DoctorAppointmentsSidebar({
           </SidebarGroup>
         )}
 
-        {scheduled.length > 0 && (
+        {managerView && scheduled.length > 0 && (
           <SidebarGroup>
             <FolderHeader
               open={showScheduled}

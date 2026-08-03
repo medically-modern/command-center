@@ -53,30 +53,26 @@ export function sidebarSections(
 /**
  * Doctor Appointments sidebar sections (2026-08-03).
  *
- * Deliberately different from every other masheke stage: the snoozed patients
- * stay VISIBLE, in their own folder. The work here is texting and calling
- * patients, and a patient who replies on day two of a seven-day snooze is
- * exactly the one the rep needs to open — hiding them would mean the reply
- * sits unread until the snooze lapses. So the folder is a working list, not an
- * archive.
+ * A PROCESSOR sees exactly one section: *Reach out today*. Nothing else — not
+ * the snoozed patients, not the booked ones.
  *
- * Escalated patients are the opposite: they belong to the manager (Oversight →
- * Manager Intervention → Appointments), so they drop out of the rep's sidebar
- * entirely. Index 2 (proposed stuck) is filtered upstream in useMondayPatients
- * like everywhere else.
+ * A MANAGER additionally gets *Awaiting reply* (snoozed) and *Scheduled*
+ * (booked a visit, so they've left this stage for Chase). Both are oversight,
+ * not work.
+ *
+ * Every patient lands in EXACTLY ONE section — see the dedupe in the function.
+ *
+ * Escalated patients belong to the manager too, so they drop out of the rep's
+ * sidebar entirely. Index 2 (proposed stuck) is filtered upstream in
+ * useMondayPatients like everywhere else.
  */
 export interface ApptSidebarSections {
   /** Due now — no Next Action Date, or one at/before today. */
   dueNow: Patient[];
-  /** Snoozed but still shown, in the "Awaiting reply" folder. */
+  /** Snoozed, in the "Awaiting reply" folder. Manager view only. */
   awaitingReply: Patient[];
-  /**
-   * Patients who HAVE an appointment booked and are waiting for it. They have
-   * already left this stage — they're back in Chase, snoozed — but the rep can
-   * still reach them here in case something changes (Josh, 2026-08-03).
-   * Read-only in practice: the panel shows the appointment instead of the
-   * attempt form.
-   */
+  /** Booked a visit and therefore LEFT this stage for Chase. Manager view only,
+   *  and never anyone already listed above — see the dedupe below. */
   scheduled: Patient[];
 }
 
@@ -94,10 +90,18 @@ export function apptSidebarSections(
     const nad = p.nextActionDate?.slice(0, 10);
     return !!nad && nad > todayStr;
   });
-  // Soonest visit first — the one most likely to need attention.
-  const scheduled = [...scheduledPatients]
-    .filter((p) => !isEsc(p))
+
+  // A patient appears in EXACTLY ONE section. The dedupe is not belt-and-braces:
+  // `useMondayPatients` injects a deep-linked `?patientId=` into the main list
+  // even when it doesn't match this stage, so a booked chase patient opened from
+  // Oversight lands in BOTH lists — which is how the same person showed up under
+  // Awaiting reply and Scheduled at once.
+  const listed = new Set([...dueNow, ...awaitingReply].map((p) => p.id));
+  const scheduled = scheduledPatients
+    .filter((p) => !isEsc(p) && !listed.has(p.id))
+    // Soonest visit first — the one most likely to need attention.
     .sort((a, b) => (a.appointmentDate ?? "").localeCompare(b.appointmentDate ?? ""));
+
   return { dueNow, awaitingReply, scheduled };
 }
 
@@ -108,15 +112,16 @@ export function apptSidebarVisibleList(
   patients: Patient[],
   todayStr: string = etToday(),
   scheduledPatients: Patient[] = [],
-  /** Managers see the Awaiting-reply folder; processors don't. */
-  includeAwaitingReply = true,
+  /** Manager view — the Awaiting-reply and Scheduled folders. A processor's
+   *  sidebar is "Reach out today" and nothing else. */
+  managerView = false,
 ): Patient[] {
   const { dueNow, awaitingReply, scheduled } = apptSidebarSections(
     patients,
     todayStr,
-    scheduledPatients,
+    managerView ? scheduledPatients : [],
   );
-  return [...dueNow, ...(includeAwaitingReply ? awaitingReply : []), ...scheduled];
+  return managerView ? [...dueNow, ...awaitingReply, ...scheduled] : [...dueNow];
 }
 
 /** Every patient row the sidebar renders for a view filter, flattened
