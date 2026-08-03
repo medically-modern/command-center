@@ -247,10 +247,14 @@ export function resolveApptOutcome(opts: {
       // wait for, and the whole point is the snooze.
       throw new Error("An appointment date is required to record a booked appointment.");
     }
+    const nextAction = snoozeUntilAfterAppointment(appt, today);
     return {
       kind: "booked",
-      nextActionDate: snoozeUntilAfterAppointment(appt),
-      summary: `Appointment booked for ${appt} — returned to Chase Clinicals, snoozed until the day after.`,
+      nextActionDate: nextAction,
+      summary:
+        nextAction <= today
+          ? `Appointment ${appt} recorded — returned to Chase Clinicals, due now.`
+          : `Appointment ${appt} recorded — returned to Chase Clinicals, snoozed until ${nextAction}.`,
     };
   }
 
@@ -294,12 +298,30 @@ export function resolveApptOutcome(opts: {
 }
 
 /**
- * The snooze a known appointment produces: the day AFTER the visit, clamped off
- * the weekend. Never the appointment date itself — that surfaces the patient on
- * the morning of the visit, before anything can have been sent.
+ * The Next Action Date a known appointment produces: the day AFTER the visit,
+ * clamped off the weekend. Never the appointment date itself — that surfaces
+ * the patient on the morning of the visit, before anything can have been sent.
+ *
+ * NEVER EARLIER THAN TODAY, and never later than it needs to be (Josh,
+ * 2026-08-03). A date can legitimately arrive after the fact — the office says
+ * "she was seen last Thursday", or the patient says "I already went in" — and
+ * there is nothing left to wait for, so those patients are due NOW rather than
+ * snoozed to a date in the past. Returning a past date would technically work
+ * (the queues treat NAD ≤ today as due) but it would show a stale follow-up
+ * date on screen and in Monday, which reads as a bug.
+ *
+ * An appointment TODAY still snoozes to tomorrow: the visit hasn't produced
+ * paperwork yet, which is the whole reason for the +1.
  */
-export function snoozeUntilAfterAppointment(appointmentDate: string): string {
-  return addCalendarDaysIso(appointmentDate, 1);
+export function snoozeUntilAfterAppointment(
+  appointmentDate: string,
+  today: string = etToday(),
+): string {
+  const dayAfter = addCalendarDaysIso(appointmentDate, 1);
+  // Deliberately NOT weekend-clamped when it falls back to today: clamping a
+  // Saturday forward would re-hide a patient who is due, the same reason
+  // enterDoctorAppointments writes a raw etToday().
+  return dayAfter > today ? dayAfter : today;
 }
 
 /** True when the patient has run out of attempts with no appointment on file. */

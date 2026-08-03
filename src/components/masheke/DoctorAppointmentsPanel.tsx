@@ -140,12 +140,14 @@ export function DoctorAppointmentsPanel({ patient, onUpdate, managerMode = false
   const returnStage = chaseRoleLabel(patient.clinicalsMethod);
 
   const isBooked = outcome === "booked";
-  const dateIsFuture = !!apptDate && apptDate > today;
+  // A PAST date is allowed on purpose (Josh, 2026-08-03) — "I already went in
+  // last Thursday" is a normal answer. snoozeUntilAfterAppointment then returns
+  // today, so the patient goes back to Chase due now rather than snoozed to a
+  // date that has been and gone.
+  const hasDate = !!apptDate;
+  const isBackdated = hasDate && apptDate <= today;
   const hasNote = note.trim().length > 0;
-  const canSave =
-    !saving &&
-    canLogAttempt(note, slot) &&
-    (!isBooked || dateIsFuture);
+  const canSave = !saving && canLogAttempt(note, slot) && (!isBooked || hasDate);
 
   // What this save will do, previewed under the button so nothing is a surprise.
   const preview = useMemo(() => {
@@ -455,21 +457,18 @@ export function DoctorAppointmentsPanel({ patient, onUpdate, managerMode = false
                 <input
                   type="date"
                   value={apptDate}
-                  min={today}
                   onChange={(e) => setApptDate(e.target.value)}
                   className="w-full rounded-xl border bg-background px-4 py-2.5 text-sm focus:outline-none"
                   style={{ borderColor: "var(--mm-card-border)" }}
                 />
-                {apptDate && !dateIsFuture ? (
-                  <p className="mt-1.5 text-xs font-semibold" style={{ color: "var(--mm-rose)" }}>
-                    Pick a date in the future.
-                  </p>
-                ) : (
-                  <p className="mt-1.5 text-xs text-muted-foreground">
-                    Returns {patient.name} to {returnStage}
-                    {dateIsFuture ? `, snoozed until ${snoozeUntilAfterAppointment(apptDate)}` : ""}.
-                  </p>
-                )}
+                <p className="mt-1.5 text-xs text-muted-foreground">
+                  Returns {patient.name} to {returnStage}
+                  {!hasDate
+                    ? "."
+                    : isBackdated
+                      ? " — that visit already happened, so they'll be due now."
+                      : `, snoozed until ${snoozeUntilAfterAppointment(apptDate, today)}.`}
+                </p>
               </div>
             )}
 
@@ -511,8 +510,8 @@ export function DoctorAppointmentsPanel({ patient, onUpdate, managerMode = false
               <p className="text-center text-xs text-muted-foreground max-w-md">
                 {!hasNote
                   ? "Add a note about this attempt to enable."
-                  : isBooked && !dateIsFuture
-                    ? "Pick a future appointment date."
+                  : isBooked && !hasDate
+                    ? "Enter the appointment date."
                     : (preview?.summary ?? "")}
               </p>
               {preview?.kind === "escalate" && (

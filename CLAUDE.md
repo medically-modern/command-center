@@ -334,7 +334,9 @@ the ONLY entry point; there is deliberately no way for a rep to set this on thei
 **One rule is the whole state machine:**
 - **Appointment Date set** ⇒ a normal Chase patient, Next Action Date = appointment **+ 1 day**
   (weekend-clamped — never the appointment date itself, which would surface them the morning of
-  the visit). They never enter the queue below.
+  the visit). They never enter the queue below. A **past** date is accepted on purpose ("she was
+  seen last Thursday" / "I already went in"): `snoozeUntilAfterAppointment` floors the result at
+  **today**, so those patients are due NOW rather than carrying a stale follow-up date.
 - **Appointment Date blank** ⇒ Sub-Stage → **"Doctor Appointment"** (`SUB_STAGE_INDEX
   .doctorAppointment` = **0** — Monday assigns the index when a label is created in the UI and
   picked the lowest free slot; this column's other labels start at 8), the `doctorAppointments`

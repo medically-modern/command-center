@@ -87,9 +87,13 @@ export function DoctorAppointmentRequiredDialog({
   const fromStage = chaseRoleLabel(patient.clinicalsMethod);
   const today = etToday();
   const hasNote = note.trim().length > 0;
-  // A visit that already happened can't be what we're waiting for.
-  const dateIsFuture = !!apptDate && apptDate > today;
-  const canSaveScheduled = dateIsFuture && hasNote && !saving;
+  // A PAST date is allowed on purpose (Josh, 2026-08-03): the office often says
+  // "she was seen last Thursday, records are being pulled". There is nothing to
+  // wait for then, so snoozeUntilAfterAppointment returns today and the patient
+  // is due immediately back in Chase.
+  const hasDate = !!apptDate;
+  const isBackdated = hasDate && apptDate <= today;
+  const canSaveScheduled = hasDate && hasNote && !saving;
   const canSaveUnscheduled = hasNote && !saving;
 
   const onProgress = (p: WriteProgressPhase) => setPhase(p);
@@ -109,7 +113,7 @@ export function DoctorAppointmentRequiredDialog({
       initials: userInitials(),
     });
     const nextNotes = appendNoteLine(patient.mnEvalNotes, line);
-    const nextAction = snoozeUntilAfterAppointment(apptDate);
+    const nextAction = snoozeUntilAfterAppointment(apptDate, today);
     const patch: Partial<Patient> = {
       appointmentDate: apptDate,
       mnEvalNotes: nextNotes,
@@ -130,7 +134,12 @@ export function DoctorAppointmentRequiredDialog({
         waitForDoneMs: SAVE_CONFIRM_MS,
       });
       onUpdate(patch);
-      toast.success(`Appointment ${apptDate} saved — snoozed until ${nextAction}`, { id: toastId });
+      toast.success(
+        isBackdated
+          ? `Appointment ${apptDate} recorded — ${patient.name} is due now`
+          : `Appointment ${apptDate} saved — snoozed until ${nextAction}`,
+        { id: toastId },
+      );
       onOpenChange(false);
       onDone?.();
     } catch (e) {
@@ -264,18 +273,14 @@ export function DoctorAppointmentRequiredDialog({
                 <input
                   type="date"
                   value={apptDate}
-                  min={today}
                   onChange={(e) => setApptDate(e.target.value)}
                   className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
                 />
-                {apptDate && !dateIsFuture && (
-                  <p className="mt-1.5 text-xs font-semibold" style={{ color: "var(--mm-rose)" }}>
-                    Pick a date in the future — a visit that already happened isn't what we're waiting on.
-                  </p>
-                )}
-                {dateIsFuture && (
+                {hasDate && (
                   <p className="mt-1.5 text-xs text-muted-foreground">
-                    Hidden from the queue until {snoozeUntilAfterAppointment(apptDate)}.
+                    {isBackdated
+                      ? "That visit has already happened — the patient stays due now so you can chase the records."
+                      : `Hidden from the queue until ${snoozeUntilAfterAppointment(apptDate, today)}.`}
                   </p>
                 )}
               </div>
@@ -287,11 +292,13 @@ export function DoctorAppointmentRequiredDialog({
                 onConfirm={handleScheduled}
                 confirmLabel="Save appointment"
                 hint={
-                  !dateIsFuture
-                    ? "Pick a future appointment date."
+                  !hasDate
+                    ? "Pick the appointment date."
                     : !hasNote
                       ? "Add what the office told you."
-                      : `Snoozes ${patient.name} until the day after the visit.`
+                      : isBackdated
+                        ? `Records the visit and leaves ${patient.name} due now.`
+                        : `Snoozes ${patient.name} until the day after the visit.`
                 }
               />
             </div>

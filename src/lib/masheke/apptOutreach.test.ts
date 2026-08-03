@@ -154,11 +154,35 @@ describe("outcome → effect", () => {
     }
   });
 
+  it("a date that has already passed makes the patient due NOW, not snoozed", () => {
+    // "She was seen last Thursday" — nothing left to wait for. A past Next
+    // Action Date would technically read as due, but it would show a stale
+    // follow-up date on screen and in Monday.
+    expect(snoozeUntilAfterAppointment("2026-07-20", MON)).toBe(MON);
+    const e = resolveApptOutcome({ outcome: "booked", slot: 1, appointmentDate: "2026-07-20", today: MON });
+    expect(e.kind).toBe("booked");
+    expect(e.nextActionDate).toBe(MON);
+    expect(e.summary).toMatch(/due now/i);
+  });
+
+  it("yesterday's appointment is due today, not tomorrow", () => {
+    // Sun 2 Aug + 1 = Mon 3 Aug, which IS today — not in the future, so due now.
+    expect(snoozeUntilAfterAppointment("2026-08-02", MON)).toBe(MON);
+  });
+
+  it("an appointment TODAY still snoozes to tomorrow", () => {
+    // The visit hasn't produced paperwork yet — that's the whole point of +1.
+    expect(snoozeUntilAfterAppointment(MON, MON)).toBe("2026-08-04");
+    const e = resolveApptOutcome({ outcome: "booked", slot: 1, appointmentDate: MON, today: MON });
+    expect(e.nextActionDate).toBe("2026-08-04");
+    expect(e.summary).toMatch(/snoozed until/i);
+  });
+
   it("a snooze never lands on a Saturday or Sunday", () => {
     // Thu 6 Aug + 3 business days = Tue 11 Aug (skips the weekend)
     expect(resolveApptOutcome({ outcome: "noAnswer", slot: 2, today: "2026-08-06" }).nextActionDate).toBe("2026-08-11");
     // An appointment on Fri 11 Sep would snooze to Sat 12 → clamped to Mon 14
-    expect(snoozeUntilAfterAppointment("2026-09-11")).toBe("2026-09-14");
+    expect(snoozeUntilAfterAppointment("2026-09-11", MON)).toBe("2026-09-14");
   });
 });
 
