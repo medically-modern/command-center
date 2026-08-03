@@ -47,6 +47,7 @@ import { registerSend } from "./send.mjs";
 import { registerRingCentral } from "./ringcentral.mjs";
 import { verifyGoogleToken, authEnforced } from "./auth.mjs";
 import { extractColumns } from "./columns.mjs";
+import { buildAuditQuery } from "./auditQuery.mjs";
 
 const {
   MONDAY_API_TOKEN,
@@ -119,10 +120,25 @@ ALTER TABLE gql_log ADD COLUMN IF NOT EXISTS columns JSONB;  -- {colId: value} a
 ALTER TABLE gql_log ADD COLUMN IF NOT EXISTS actor_verified BOOLEAN;
 
 -- Convenience view: the writes people actually audit.
-CREATE OR REPLACE VIEW gql_writes AS
-  SELECT id, created_at, actor, client_ip, origin, item_id, board_id,
+-- NOTE: this whole SCHEMA is a JS template literal — never use backticks in
+-- these comments, they terminate the string and mangle the SQL silently.
+--
+-- DROP + CREATE, not CREATE OR REPLACE: replacing a view cannot insert columns
+-- in the middle of the list, and this definition adds actor_verified after
+-- actor, and columns before query_text. Left as CREATE OR REPLACE it errored
+-- ("cannot change name of view column"), which — because the whole SCHEMA
+-- string runs as one implicit transaction — silently rolled back the ALTER
+-- TABLEs above it too, and ensureSchema() only logs the failure.
+--
+-- The missing "columns" mattered: it is the {colId: value} of what was actually
+-- written, so every example query in db/schema.sql ("who changed this column,
+-- and to what") failed against the deployed view with "column does not exist".
+-- That is most of why the audit log looked like it did not record submissions.
+DROP VIEW IF EXISTS gql_writes;
+CREATE VIEW gql_writes AS
+  SELECT id, created_at, actor, actor_verified, client_ip, origin, item_id, board_id,
          operation_name, ok, monday_status, monday_errors, duration_ms,
-         query_text, variables
+         columns, query_text, variables
   FROM gql_log
   WHERE operation = 'mutation';
 `;
@@ -426,16 +442,27 @@ async function fetchAudit(req) {
   // Every row is stored in Postgres forever (no pruning) — `limit` only bounds
   // how many the viewer renders at once. Default 1000; cap 50000 so a stray
   // ?limit= can't try to render the entire table into one HTML page.
-  const limit = Math.min(parseInt(req.query.limit, 10) || 1000, 50000);
-  const onlyWrites = req.query.all !== "1";
-  const where = onlyWrites ? "WHERE operation = 'mutation'" : "";
+  // ?failed=1 · ?item= · ?actor= · ?since=<days> — added 2026-08-03. Filter
+  // building lives in auditQuery.mjs so the placeholder numbering is unit-tested
+  // (an off-by-one there returns the wrong rows silently).
+  const f = buildAuditQuery(req.query);
   const r = await pool.query(
     `SELECT created_at, actor, actor_verified, client_ip, operation, operation_name,
-            item_id, board_id, ok, monday_status, duration_ms, columns
-     FROM gql_log ${where} ORDER BY created_at DESC LIMIT $1`,
-    [limit],
+            item_id, board_id, ok, monday_status, monday_errors, duration_ms, columns
+     FROM gql_log ${f.where} ORDER BY created_at DESC LIMIT $${f.params.length}`,
+    f.params,
   );
-  return { rows: r.rows, onlyWrites, limit };
+  return { rows: r.rows, ...f };
+}
+
+/** Monday's errors[] → one readable line. This is the "why" behind a FAIL. */
+function fmtError(errs) {
+  if (errs == null) return "";
+  const list = Array.isArray(errs) ? errs : [errs];
+  return list
+    .map((e) => (typeof e === "string" ? e : e?.message || e?.error || JSON.stringify(e)))
+    .filter(Boolean)
+    .join(" · ");
 }
 
 /** Format a TIMESTAMPTZ as Eastern Time (auto-handles EDT/EST). */
@@ -450,9 +477,27 @@ function fmtET(ts) {
 }
 
 function renderAudit(rows, opts) {
-  const k = encodeURIComponent(opts.key);
   const names = opts.names || new Map();
   const titles = opts.titles || new Map();
+  // Every header link changes ONE thing and keeps the rest. Without this,
+  // clicking "5k rows" while filtered to a patient silently dropped the filter
+  // and dumped you back into the unfiltered firehose.
+  const qs = (over) => {
+    const cur = {
+      key: opts.key,
+      limit: opts.limit,
+      failed: opts.onlyFailed ? "1" : null,
+      all: opts.onlyWrites ? null : "1",
+      item: opts.item || null,
+      actor: opts.actor || null,
+      since: opts.sinceDays || null,
+      ...over,
+    };
+    return Object.entries(cur)
+      .filter(([, v]) => v != null && v !== "")
+      .map(([key, v]) => `${key}=${encodeURIComponent(v)}`)
+      .join("&");
+  };
   const body = rows
     .map((r) => {
       const nm = names.get(String(r.item_id));
@@ -474,6 +519,7 @@ function renderAudit(rows, opts) {
       <td class="mono">${esc(r.item_id || "—")}</td>
       <td class="cols">${cols}</td>
       <td>${r.ok ? '<span class="ok">ok</span>' : '<span class="bad">FAIL</span>'}</td>
+      <td class="err">${r.ok ? "" : esc(fmtError(r.monday_errors)) || '<span class="dim">no error recorded</span>'}</td>
       <td class="num">${esc(r.duration_ms || "")}</td>
     </tr>`;
     })
@@ -510,34 +556,55 @@ ${autoRefresh ? '<meta http-equiv="refresh" content="30">' : ""}
  .cols{white-space:normal;max-width:560px}
  .kv{display:inline-block;background:#1a1f29;border:1px solid #262c38;border-radius:4px;padding:1px 6px;margin:1px 2px;font-size:12px}
  .kv b{color:#9fd0ff;font-weight:600}
+ .err{white-space:normal;max-width:420px;color:#ffb4b4;font-size:12px}
+ .dim{color:#6b7484}
+ form.f{display:flex;gap:6px;align-items:center}
+ form.f input{background:#11141a;border:1px solid #2a3340;color:#e6e6e6;border-radius:6px;padding:4px 8px;font-size:12px;width:130px}
+ form.f button{background:#243043;color:#cfe6ff;border:1px solid #2a3340;border-radius:6px;padding:4px 10px;font-size:12px;cursor:pointer}
+ a.btn.on{background:#3a2020;color:#ffb4b4;border-color:#5a2b2b;font-weight:600}
 </style></head><body>
 <header>
  <h1>monday-gateway · audit log</h1>
- <span class="pill">${rows.length} rows shown · ${opts.onlyWrites ? "writes only" : "all traffic"} · ${autoRefresh ? "auto-refresh 30s" : "no auto-refresh"}</span>
+ <span class="pill">${rows.length} rows shown · ${opts.onlyWrites ? "writes only" : "all traffic"}${opts.onlyFailed ? " · FAILURES ONLY" : ""} · ${autoRefresh ? "auto-refresh 30s" : "no auto-refresh"}</span>
  <span class="rows">
   <span class="lbl">show:</span>
   ${[200, 1000, 5000, 20000, 50000]
-    .map((n) => `<a class="${opts.limit === n ? "cur" : ""}" href="?key=${k}&limit=${n}${opts.onlyWrites ? "" : "&all=1"}">${n >= 1000 ? n / 1000 + "k" : n}</a>`)
+    .map((n) => `<a class="${opts.limit === n ? "cur" : ""}" href="?${qs({ limit: n })}">${n >= 1000 ? n / 1000 + "k" : n}</a>`)
     .join("")}
  </span>
- <a class="btn" href="?key=${k}&limit=${opts.limit}${opts.onlyWrites ? "&all=1" : ""}">${opts.onlyWrites ? "Show all traffic" : "Show writes only"}</a>
- <a class="btn" href="/audit.json?key=${k}&limit=${opts.limit}${opts.onlyWrites ? "" : "&all=1"}">JSON</a>
+ <a class="btn ${opts.onlyFailed ? "on" : ""}" href="?${qs({ failed: opts.onlyFailed ? null : "1" })}">${opts.onlyFailed ? "✕ Failures only" : "Failures only"}</a>
+ <a class="btn" href="?${qs({ all: opts.onlyWrites ? "1" : null })}">${opts.onlyWrites ? "Show all traffic" : "Show writes only"}</a>
+ <form class="f" method="get" action="/audit">
+  <input type="hidden" name="key" value="${esc(opts.key)}">
+  ${opts.onlyFailed ? '<input type="hidden" name="failed" value="1">' : ""}
+  ${opts.onlyWrites ? "" : '<input type="hidden" name="all" value="1">'}
+  <input name="item" placeholder="item id" value="${esc(opts.item || "")}">
+  <input name="actor" placeholder="who (email)" value="${esc(opts.actor || "")}">
+  <input name="since" placeholder="days" value="${esc(opts.sinceDays || "")}" style="width:60px">
+  <button type="submit">Filter</button>
+ </form>
+ <a class="btn" href="/audit.json?${qs({})}">JSON</a>
 </header>
 <table><thead><tr>
- <th>time (ET)</th><th>who</th><th>patient</th><th>ip</th><th>op</th><th>item</th><th>columns written → value</th><th>ok</th><th>ms</th>
-</tr></thead><tbody>${body || '<tr><td colspan="9" style="padding:20px;color:#9aa4b2">No rows yet.</td></tr>'}</tbody></table>
+ <th>time (ET)</th><th>who</th><th>patient</th><th>ip</th><th>op</th><th>item</th><th>columns written → value</th><th>ok</th><th>why it failed</th><th>ms</th>
+</tr></thead><tbody>${body || '<tr><td colspan="10" style="padding:20px;color:#9aa4b2">No rows match.</td></tr>'}</tbody></table>
 </body></html>`;
 }
 
 app.get("/audit", async (req, res) => {
   if (auditDenied(req, res)) return;
   try {
-    const { rows, onlyWrites, limit } = await fetchAudit(req);
+    const { rows, onlyWrites, onlyFailed, item, actor, sinceDays, limit } = await fetchAudit(req);
     const names = await resolveItemNames([...new Set(rows.map((r) => r.item_id).filter(Boolean))]);
     const pairs = [];
     for (const r of rows) if (r.board_id && r.columns) for (const c of Object.keys(r.columns)) pairs.push([r.board_id, c]);
     const titles = await resolveColumnTitles(pairs);
-    res.type("html").send(renderAudit(rows, { onlyWrites, limit, key: process.env.AUDIT_KEY, names, titles }));
+    res.type("html").send(
+      renderAudit(rows, {
+        onlyWrites, onlyFailed, item, actor, sinceDays, limit,
+        key: process.env.AUDIT_KEY, names, titles,
+      }),
+    );
   } catch (e) {
     res.status(500).send("Query error: " + e.message);
   }
