@@ -431,10 +431,12 @@ columns" automation on duplicated items). The SPA only flips the advancer; verif
   as nothing); it now flows through `COL.ipClaims*` → `Patient` → both DVS chart filters,
   managerRail and DvsPage's `isManualReview`, and renders as an "Insulin pump claim" block on the
   DVS claims card so the manual-review reason is visible.
-  ⚠️ `DvsPage`'s `pumpClaimPaid` still reads the **supplies** column (`claimsStatus`) to decide
-  whether the PUMP claim paid — correct only while the bot leaves `IP Claims Status` empty, which
-  it does today (no board item carries a value, verified 2026-08-02). **When the bot starts writing
-  it, move that check to `ipClaimsStatus`.**
+  `DvsPage`'s `pumpClaimPaid` ("has the pump claim paid, so supplies may submit?") reads
+  `dvsRouting.pumpClaimStatus`, which **prefers `ipClaimsStatus` and falls back to the shared
+  `claimsStatus`** while the pump column is blank — every patient today. So it needs no edit when
+  the bot starts writing the pump column. Being wrong there is cosmetic by design: it only picks
+  the Supplies card's "Waiting on pump" chip, while a pump claim that actually FAILS is caught by
+  `isManualReview` + the escalation automation off the raw status columns, which never consult it.
   **Manager Intervention has "Send back to pipeline"** (`returnToQueue`, optional stamped note →
   clears the escalation + re-dates to today) — an escalated patient is invisible to the rep, so
   this is the only way back and it previously existed only in Final Decisions.
