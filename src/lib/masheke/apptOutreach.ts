@@ -17,18 +17,17 @@
  * THREE WAYS OUT, and only three (Josh, 2026-08-03):
  *   1. An appointment date  → back to Chase, snoozed to appt + 1. The happy path.
  *   2. Three spent attempts → Escalation index 0, Manager Intervention.
- *   3. "Won't schedule / wants to cancel" → Escalation index 2, Propose Stuck →
- *      Final Decisions, at ANY attempt.
+ *   3. "Won't schedule / wants to cancel" → Propose Stuck, at ANY attempt. It
+ *      climbs the shared ladder (stageActions.proposeStuckLevel): a rep's
+ *      proposal lands in Manager Intervention (index 0), and a manager
+ *      proposing from there promotes it to Final Decisions (index 2).
  * Everything else keeps the patient right here, snoozed for
  * APPT_ATTEMPT_SNOOZE_BUSINESS_DAYS.
  *
- * Why (3) is Final Decisions and not Manager Intervention: the question a
- * refusal raises is "should this patient leave the pipeline at all", which is
- * exactly what Final Decisions answers (Approve Stuck / Return to Queue).
- * Manager Intervention means "a manager needs to DO something" — the right home
- * for (2), where the patient is simply unreachable. And (3) doesn't wait for the
- * third attempt because it's a rep JUDGMENT about what they were told, not a
- * counter running out.
+ (3) doesn't wait for the third attempt because it's a rep JUDGMENT about what
+ * they were told, not a counter running out. It goes UP one rung rather than
+ * straight to Final so a manager actually reviews the refusal before the
+ * patient can leave the pipeline.
  *
  * WHERE THE ATTEMPTS LIVE. Every note this stage writes goes to MN Workflow
  * Notes (`long_text_mm27zjt2`) — there are no per-attempt columns (Josh,
@@ -256,6 +255,8 @@ export function resolveApptOutcome(opts: {
   slot: 1 | 2 | 3;
   appointmentDate?: string;
   today?: string;
+  /** Rung a "won't schedule" proposal lands on — see stageActions. */
+  proposeStuckLevel?: "manager" | "final";
 }): ApptOutcomeEffect {
   const today = opts.today ?? etToday();
 
@@ -284,10 +285,16 @@ export function resolveApptOutcome(opts: {
   // rather than Manager Intervention, at ANY attempt. It is the rep's judgment
   // call, not a counter running out, so it doesn't wait for the third attempt.
   if (opts.outcome === "wontSchedule") {
+    // Which RUNG this lands on is the caller's call — it follows the shared
+    // ladder (lib/shared/stageActions.proposeStuckLevel): a rep's proposal goes
+    // to Manager Intervention, a manager's from there goes to Final Decisions.
+    const toFinal = opts.proposeStuckLevel === "final";
     return {
       kind: "proposeStuck",
       nextActionDate: null,
-      summary: "Proposed stuck — sent to Final Decisions for a manager to approve or return.",
+      summary: toFinal
+        ? "Proposed stuck — sent to Final Decisions for a manager to approve or return."
+        : "Proposed stuck — sent to Manager Intervention for review.",
     };
   }
 

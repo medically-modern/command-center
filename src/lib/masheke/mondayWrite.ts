@@ -532,10 +532,12 @@ export async function logApptAttemptVerified(opts: {
   nextActionDate: string | null;
   /** Three attempts spent → Escalation index 0, Manager Intervention. */
   escalate: boolean;
-  /** "Won't schedule / wants to cancel" → Escalation index 2, Final Decisions.
+  /** "Won't schedule / wants to cancel" — the rung it lands on. "manager" =
+   *  Escalation index 0 (Manager Intervention), "final" = index 2 (Final
+   *  Decisions), per the shared ladder in stageActions.proposeStuckLevel.
    *  Mutually exclusive with `escalate`; the reason rides in `notes` as a
    *  `[Proposed Stuck …]` stamped line, which is what Oversight parses. */
-  proposeStuck?: boolean;
+  proposeStuck?: "manager" | "final";
   onProgress?: (phase: WriteProgressPhase) => void;
   requireDone?: boolean;
   waitForDoneMs?: number;
@@ -550,15 +552,16 @@ export async function logApptAttemptVerified(opts: {
   ];
   const stageColumnId: string[] = [];
   if (opts.proposeStuck) {
-    // Index 2 — the same "Final Escalation Required" flag the Propose Stuck
-    // modal writes elsewhere on this board. It pulls the patient out of every
-    // rep queue (useMondayPatients drops proposedStuck) and into Oversight's
+    // One rung up from wherever the patient is. Index 2 additionally pulls them
+    // out of every rep queue (useMondayPatients drops proposedStuck) and into
     // Final Decisions, where a manager can Approve Stuck or Return to Queue.
+    const idx =
+      opts.proposeStuck === "final" ? ESCALATION_INDEX.finalRequired : ESCALATION_INDEX.required;
     tasks.push({
-      label: "Escalation → Propose Stuck (Final Decisions)",
+      label: `Escalation → Propose Stuck (${opts.proposeStuck})`,
       columnId: COL.escalation,
-      value: { index: ESCALATION_INDEX.finalRequired },
-      fn: () => writeStatusIndex(opts.itemId, COL.escalation, ESCALATION_INDEX.finalRequired),
+      value: { index: idx },
+      fn: () => writeStatusIndex(opts.itemId, COL.escalation, idx),
     });
     stageColumnId.push(COL.escalation);
   } else if (opts.escalate) {

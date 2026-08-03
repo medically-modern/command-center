@@ -160,14 +160,24 @@ describe("outcome → effect", () => {
   });
 
   it("won't-schedule / wants-to-cancel proposes stuck at ANY attempt", () => {
-    // It is a rep JUDGMENT, not a counter running out, so it doesn't wait for
-    // the third attempt — and it goes to Final Decisions (index 2), not Manager
-    // Intervention, because the question is whether the patient leaves at all.
+    // A rep JUDGMENT, not a counter running out, so it doesn't wait for the
+    // third attempt.
     for (const slot of [1, 2, 3] as const) {
       const e = resolveApptOutcome({ outcome: "wontSchedule", slot, today: MON });
       expect(e.kind, `slot ${slot}`).toBe("proposeStuck");
       expect(e.nextActionDate, `slot ${slot}`).toBeNull();
     }
+  });
+
+  it("names the rung the proposal lands on", () => {
+    expect(
+      resolveApptOutcome({ outcome: "wontSchedule", slot: 1, today: MON, proposeStuckLevel: "manager" })
+        .summary,
+    ).toMatch(/Manager Intervention/);
+    expect(
+      resolveApptOutcome({ outcome: "wontSchedule", slot: 1, today: MON, proposeStuckLevel: "final" })
+        .summary,
+    ).toMatch(/Final Decisions/);
   });
 
   it("stamps the proposed-stuck reason with the stage, the attempt and the note", () => {
@@ -275,5 +285,24 @@ describe("reach-out methods", () => {
   it("offers phone, text and email only — no patient portal", async () => {
     const { APPT_METHODS } = await import("./apptOutreach");
     expect(APPT_METHODS).toEqual(["Phone call", "Text message", "Email"]);
+  });
+});
+
+describe("Propose Stuck climbs the shared ladder", () => {
+  it("rep proposal → Manager Intervention; manager's → Final Decisions", async () => {
+    const { proposeStuckLevel } = await import("@/lib/shared/stageActions");
+    // A rep on the page (no manager origin), patient not yet escalated.
+    expect(proposeStuckLevel("doctor-appointments", null)).toBe("manager");
+    expect(proposeStuckLevel("doctor-appointments", "overview")).toBe("manager");
+    // A manager proposing FROM Manager Intervention promotes to Final.
+    expect(proposeStuckLevel("doctor-appointments", "manager-intervention")).toBe("final");
+    // An already-escalated patient promotes wherever the click came from —
+    // Final is the top rung, so a second proposal can't drop back down.
+    expect(
+      proposeStuckLevel("doctor-appointments", null, "Manager Escalation Required"),
+    ).toBe("final");
+    expect(
+      proposeStuckLevel("doctor-appointments", null, "Final Escalation Required"),
+    ).toBe("final");
   });
 });

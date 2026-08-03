@@ -54,6 +54,9 @@ import { userInitials } from "@/lib/shared/auth";
 import { etNow, etToday, formatDateShort, formatDateTimeShort } from "@/lib/masheke/etDate";
 import { appendNoteLine, type AttemptChip } from "@/lib/masheke/attemptLog";
 import { appendStampedLine, stampProposedStuck } from "@/lib/masheke/proposedStuck";
+import { proposeStuckLevel } from "@/lib/shared/stageActions";
+import { managerOriginFromParams } from "@/lib/shared/managerOrigin";
+import { useSearchParams } from "react-router-dom";
 import { loadEvalStateForPatient, computeMnChecklist } from "@/lib/masheke/evalState";
 import { shouldShowCgmBlock, shouldShowIpBlock } from "@/lib/masheke/ipPaths";
 import {
@@ -93,6 +96,14 @@ interface Props {
 }
 
 export function DoctorAppointmentsPanel({ patient, onUpdate, managerMode = false, onDone }: Props) {
+  const [searchParams] = useSearchParams();
+  // Which rung a "won't schedule" proposal lands on — the shared ladder, so a
+  // rep's proposal reaches Manager Intervention and a manager's reaches Final.
+  const stuckLevel = proposeStuckLevel(
+    "doctor-appointments",
+    managerOriginFromParams(searchParams),
+    patient.escalation,
+  );
   const [method, setMethod] = useState<ApptMethod>("Phone call");
   const [outcome, setOutcome] = useState<ApptOutcome>("noAnswer");
   const [note, setNote] = useState("");
@@ -160,11 +171,12 @@ export function DoctorAppointmentsPanel({ patient, onUpdate, managerMode = false
         slot,
         appointmentDate: isBooked ? apptDate : undefined,
         today,
+        proposeStuckLevel: stuckLevel,
       });
     } catch {
       return null;
     }
-  }, [outcome, slot, apptDate, isBooked, today]);
+  }, [outcome, slot, apptDate, isBooked, today, stuckLevel]);
 
   async function handleSave() {
     if (!canSave || slot === null) return;
@@ -179,6 +191,7 @@ export function DoctorAppointmentsPanel({ patient, onUpdate, managerMode = false
         slot,
         appointmentDate: isBooked ? apptDate : undefined,
         today,
+        proposeStuckLevel: stuckLevel,
       });
     } catch (e) {
       toast.error(e instanceof Error ? e.message : String(e));
@@ -233,7 +246,9 @@ export function DoctorAppointmentsPanel({ patient, onUpdate, managerMode = false
         : effect.kind === "escalate"
           ? { escalation: "Manager Escalation Required", escalationIndex: 0 }
           : effect.kind === "proposeStuck"
-            ? { escalation: "Final Escalation Required", escalationIndex: 2, proposedStuck: true }
+            ? stuckLevel === "final"
+              ? { escalation: "Final Escalation Required", escalationIndex: 2, proposedStuck: true }
+              : { escalation: "Manager Escalation Required", escalationIndex: 0 }
             : { nextActionDate: effect.nextActionDate ?? undefined }),
     };
 
@@ -264,7 +279,7 @@ export function DoctorAppointmentsPanel({ patient, onUpdate, managerMode = false
           notes,
           nextActionDate: effect.nextActionDate,
           escalate: effect.kind === "escalate",
-          proposeStuck: effect.kind === "proposeStuck",
+          proposeStuck: effect.kind === "proposeStuck" ? stuckLevel : undefined,
           onProgress,
           requireDone: true,
           waitForDoneMs: SAVE_CONFIRM_MS,
@@ -328,7 +343,7 @@ export function DoctorAppointmentsPanel({ patient, onUpdate, managerMode = false
           </div>
         </div>
 
-        {alreadyScheduled ? (
+        {alreadyScheduled && (
           <div
             className="flex items-start gap-2.5 rounded-xl border px-4 py-3 mb-5"
             style={{ background: "var(--mm-mint)", borderColor: "var(--mm-mint-ring)" }}
@@ -337,21 +352,6 @@ export function DoctorAppointmentsPanel({ patient, onUpdate, managerMode = false
             <p className="text-sm font-bold" style={{ color: "var(--mm-teal)" }}>
               Appointment booked for {patient.appointmentDate}
             </p>
-          </div>
-        ) : (
-          <div
-            className="flex items-start gap-2.5 rounded-xl border px-4 py-3 mb-5"
-            style={{ background: "var(--mm-rose-soft)", borderColor: "oklch(0.62 0.13 18 / 0.35)" }}
-          >
-            <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" style={{ color: "var(--mm-rose)" }} />
-            <div>
-              <p className="text-sm font-bold" style={{ color: "var(--mm-rose)" }}>
-                No appointment on file
-              </p>
-              <p className="text-sm text-muted-foreground mt-0.5">
-                The provider requires a new visit before they'll send medical documentation.
-              </p>
-            </div>
           </div>
         )}
 
@@ -545,8 +545,9 @@ export function DoctorAppointmentsPanel({ patient, onUpdate, managerMode = false
                   style={{ color: "var(--mm-rose)" }}
                 >
                   <AlertTriangle className="h-3.5 w-3.5" />
-                  Proposes stuck — {patient.name} leaves the queue for a manager's Final Decision.
-                  Your note is the reason they'll see.
+                  Proposes stuck — {patient.name} goes to{" "}
+                  {stuckLevel === "final" ? "Final Decisions" : "Manager Intervention"}. Your note is
+                  the reason they'll see.
                 </p>
               )}
             </div>

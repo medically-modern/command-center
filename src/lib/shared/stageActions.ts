@@ -31,7 +31,8 @@ export type StageKey =
   | "benefits"
   | "submit-auth"
   | "auth-outstanding"
-  | "dvs";
+  | "dvs"
+  | "doctor-appointments";
 
 /**
  * A button the bar can render.
@@ -112,10 +113,14 @@ export function isDecisionOrigin(origin: ManagerOrigin | null): boolean {
  *     or
  *   - the click came from Manager Intervention, i.e. Janelle is the one asking.
  *
- * Otherwise Submit Auth and DVS start at Manager — both have a manager-review
- * step of their own — and Benefits / Auth Outstanding go straight to Final,
- * which is the existing behaviour: for those two, the rep's proposal IS the
- * escalation.
+ * Otherwise Submit Auth, DVS and Doctor Appointments start at Manager — each
+ * has a manager-review step of its own — and Benefits / Auth Outstanding go
+ * straight to Final, which is the existing behaviour: for those two, the rep's
+ * proposal IS the escalation.
+ *
+ * Doctor Appointments follows the same ladder for its "won't schedule / wants
+ * to cancel" outcome (Josh, 2026-08-03): a rep's proposal reaches Manager
+ * Intervention, and a manager proposing from there sends it to Final Decisions.
  */
 export function proposeStuckLevel(
   stage: StageKey,
@@ -126,5 +131,7 @@ export function proposeStuckLevel(
   const label = (escalationLabel ?? "").trim();
   if (label === "Manager Escalation Required" || label === "Final Escalation Required") return "final";
   if (origin === "manager-intervention") return "final";
-  return stage === "submit-auth" || stage === "dvs" ? "manager" : "final";
+  return stage === "submit-auth" || stage === "dvs" || stage === "doctor-appointments"
+    ? "manager"
+    : "final";
 }

@@ -344,21 +344,21 @@ the ONLY entry point; there is deliberately no way for a rep to set this on thei
 
 **Three exits, and only three:** an appointment date (→ back to Chase, snoozed to appt+1); three
 spent attempts (→ Escalation index 0, Manager Intervention); or **"won't schedule / wants to
-cancel"** (→ Escalation index **2**, Propose Stuck → Final Decisions, at ANY attempt). Everything
-else keeps the patient in the queue, snoozed. Canonical logic: **`lib/masheke/apptOutreach.ts`**
+cancel"** (→ Propose Stuck, at ANY attempt). Everything else keeps the patient in the queue,
+snoozed. Propose Stuck climbs the **shared ladder** (`stageActions.proposeStuckLevel`, the same one
+Submit Auth and DVS use): a rep's proposal lands in **Manager Intervention** (index 0), and a
+manager proposing from there — or a proposal on an already-escalated patient — promotes to **Final
+Decisions** (index 2). The page also carries the standard `StageActionBar`, so Propose Stuck /
+Approve Stuck / Send back to pipeline are available from all three manager columns. Canonical logic: **`lib/masheke/apptOutreach.ts`**
 (+ tests).
 
-> **Why a refusal goes to Final Decisions, not Manager Intervention.** The question it raises is
-> "should this patient leave the pipeline at all" — exactly what Final Decisions answers
-> (Approve Stuck / Return to Queue). Manager Intervention means "a manager must DO something",
-> which fits an unreachable patient, not one who declined. It doesn't wait for the third attempt
-> because it's a rep JUDGMENT about what they were told, not a counter running out. The reason is
+> **Why a refusal doesn't wait for the third attempt:** it's a rep JUDGMENT about what they were
+> told, not a counter running out. It climbs one rung rather than jumping to Final so a manager
+> actually reviews the refusal before the patient can leave the pipeline. The reason is
 > stamped through the shared `stampProposedStuck` helper (so `extractProposedStuckReason` reads it
 > with no special-casing) and carries the **stage and attempt number** — that notes column is
 > shared, and a bare sentence wouldn't tell a manager whether the patient refused on call 1 or 3.
-> ⚠️ Those patients surface in the **CHASE proposed-stuck charts**, whose `stageAdvancer` filter
-> now spans `["Chase Clinicals", "Doctor Appointment"]`. Without that they'd match no chart and be
-> invisible app-wide (§7).
+> ⚠️ Both rungs have a chart on the Doctor Appointments row, so neither can go invisible (§7).
 
 **No new Monday group and no new automation** — Sub-Stage `color_mm1wyr92` **IS** the stage
 advancer on this board (`mondayWrite.recordAndAdvanceVerified` passes it as `stageColumnId`,
@@ -394,6 +394,9 @@ Phone call · Text message · Email.
 - *Reach out today* — the work. Everyone.
 - *Awaiting reply* (snoozed patients) — **MANAGERS ONLY** (`showAwaitingReply`, Josh 2026-08-03).
   A processor's list should be today's work and nothing else; a manager looks at the whole queue.
+  ⚠️ The manager view lists **every** patient in the stage, not just escalated ones — an
+  escalated-only filter left it empty for the common pre-escalation case (attempt 3, follow-up
+  tomorrow), which is exactly who a manager wants to see.
 - *Scheduled* (closed by default) — patients who booked and therefore **left this stage** for
   Chase. The hook surfaces them via `scheduledApptPatients` (appointmentDate set AND sub-stage ≠
   Doctor Appointment) purely as a way back; the panel shows the booked date instead of the attempt

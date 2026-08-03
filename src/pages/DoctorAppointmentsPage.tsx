@@ -30,6 +30,7 @@ import { PageLoadingOverlay } from "@/components/shared/PageLoadingOverlay";
 import { EmptyPatientPane } from "@/components/shared/EmptyPatientPane";
 import { useBackNavigation } from "@/hooks/useBackNavigation";
 import { ReportIssueButton } from "@/components/shared/ReportIssueButton";
+import { StageActionBar } from "@/components/shared/StageActionBar";
 import { isEscalatedIndex } from "@/lib/masheke/mondayMapping";
 
 const DoctorAppointmentsPage = () => {
@@ -48,16 +49,14 @@ const DoctorAppointmentsPage = () => {
     scheduledApptPatients,
   } = useMondayPatients("doctorAppointments", deepLinkedId);
 
-  // Managers work the escalated list (Oversight → Manager Intervention →
-  // Appointments deep-links here with ?manager=1); reps never see it, which is
-  // why the rep sidebar filters escalated out entirely.
-  const patients = useMemo(
-    () =>
-      isManager
-        ? allPatients.filter((p) => p.id === deepLinkedId || isEscalatedIndex(p.escalationIndex))
-        : allPatients,
-    [allPatients, isManager, deepLinkedId],
-  );
+  // A manager sees the WHOLE queue, not just the escalated slice (Josh,
+  // 2026-08-03). Filtering to escalated-only left the manager view empty for
+  // every pre-escalation patient — including the common case of someone on
+  // attempt 3 with a follow-up tomorrow, who is exactly who a manager wants to
+  // look at. The escalated ones are still marked with a badge and sort into the
+  // same sections; what makes this the manager view is the Awaiting-reply
+  // folder and the action bar, not a narrower list.
+  const patients = allPatients;
 
   const [selectedId, setSelectedId] = useState<string | null>(deepLinkedId ?? null);
 
@@ -65,10 +64,7 @@ const DoctorAppointmentsPage = () => {
   // processor doesn't get the Awaiting-reply folder, so snoozed patients are
   // not selectable for them.
   const visiblePatients = useMemo(
-    () =>
-      isManager
-        ? patients
-        : apptSidebarVisibleList(patients, undefined, scheduledApptPatients, false),
+    () => apptSidebarVisibleList(patients, undefined, scheduledApptPatients, isManager),
     [patients, isManager, scheduledApptPatients],
   );
   useAutoSelectPatient(
@@ -108,7 +104,7 @@ const DoctorAppointmentsPage = () => {
       <div className="min-h-screen flex w-full bg-gradient-subtle">
         <DoctorAppointmentsSidebar
           patients={patients}
-          scheduledPatients={isManager ? [] : scheduledApptPatients}
+          scheduledPatients={scheduledApptPatients}
           showAwaitingReply={isManager}
           selectedId={selectedId}
           onSelect={setSelectedId}
@@ -163,6 +159,16 @@ const DoctorAppointmentsPage = () => {
                 >
                   <RotateCcw className="h-4 w-4" /> Reset
                 </Button>
+                {selected && (
+                  <StageActionBar
+                    stage="doctor-appointments"
+                    board="masheke"
+                    patientId={selected.id}
+                    patientName={selected.name}
+                    escalationLabel={selected.escalation}
+                    onDone={refetch}
+                  />
+                )}
                 <ReportIssueButton />
               </div>
             </div>
