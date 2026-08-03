@@ -9,8 +9,10 @@
  * pages; exit is an appointment date (back to chase, snoozed) or three failed
  * attempts (Manager Intervention).
  *
- * Sidebar sections differ by role (Awaiting reply is manager-only) — see
- * DoctorAppointmentsSidebar.
+ * Sidebar sections differ by ROLE, not by URL: the Awaiting-reply folder shows
+ * for anyone who is a manager in access.json, however they got here. Gating it
+ * on `?manager=1` hid it whenever a manager clicked in from the Processor
+ * Overview column, which doesn't set that param.
  */
 import { useMemo, useState } from "react";
 import { useMondayPatients } from "@/hooks/masheke/useMondayPatients";
@@ -32,11 +34,19 @@ import { useBackNavigation } from "@/hooks/useBackNavigation";
 import { ReportIssueButton } from "@/components/shared/ReportIssueButton";
 import { StageActionBar } from "@/components/shared/StageActionBar";
 import { isEscalatedIndex } from "@/lib/masheke/mondayMapping";
+import { useAccessContext } from "@/components/AccessProvider";
 
 const DoctorAppointmentsPage = () => {
   const { goBack } = useBackNavigation();
   const [searchParams] = useSearchParams();
-  const isManager = searchParams.get("manager") === "1";
+  // Who the SIGNED-IN USER is, not how they arrived. `?manager=1` is only set
+  // by some Oversight columns — clicking a patient from Processor Overview
+  // doesn't set it — so gating the Awaiting-reply folder on the URL hid it from
+  // a manager depending on which chart they clicked (Josh, 2026-08-03).
+  const { access } = useAccessContext();
+  const isManager = access.type === "manager";
+  /** Arrived from an Oversight manager column — drives the header badge only. */
+  const fromManagerColumn = searchParams.get("manager") === "1";
   const deepLinkedId = searchParams.get("patientId");
   const {
     patients: allPatients,
@@ -133,9 +143,9 @@ const DoctorAppointmentsPage = () => {
                   </p>
                   <h1 className="text-2xl font-bold flex items-center gap-2.5">
                     Doctor Appointments
-                    {isManager && (
+                    {fromManagerColumn && (
                       <span className="text-[11px] font-semibold uppercase tracking-wider bg-white/15 border border-white/25 rounded-full px-2.5 py-0.5">
-                        Manager · Escalated
+                        Manager view
                       </span>
                     )}
                   </h1>
@@ -196,7 +206,7 @@ const DoctorAppointmentsPage = () => {
                   <DoctorAppointmentsPanel
                     patient={selected}
                     onUpdate={onUpdate}
-                    managerMode={isManager}
+                    managerMode={fromManagerColumn}
                     onDone={refetch}
                   />
                 </>

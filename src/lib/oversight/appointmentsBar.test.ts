@@ -99,3 +99,61 @@ describe("Doctor Appointments — the Oversight row", () => {
     }
   });
 });
+
+describe("patients waiting on a booked visit ride the Doctor Appointments row", () => {
+  const APPT_DATE = "date_mm5w2vsf";
+  const METHOD = "color_mm1xw7y5";
+
+  function chasePatient(apptDate: string, escalationIndex?: number): OversightPatient {
+    return {
+      id: "p2",
+      name: "Waiting Patient",
+      boardId: MASHEKE,
+      groupId: "group_mm1xf2jb",
+      dayBucket: "30+ Days",
+      cols: {
+        [SUB_STAGE]: "Chase Clinicals",
+        [APPT_DATE]: apptDate,
+        [METHOD]: "Fax",
+        [ESCALATION]: "",
+      },
+      colIndex: escalationIndex === undefined ? {} : { [ESCALATION]: escalationIndex },
+    } as unknown as OversightPatient;
+  }
+
+  // Anchored well past any plausible "today" so the date compare is stable.
+  const FUTURE = "2099-09-16";
+  const PAST = "2020-01-05";
+
+  it("a chase patient with a FUTURE appointment shows on Doctor Appointments, not chase", () => {
+    const waiting = chasePatient(FUTURE);
+    expect(patientMatchesChart(chart(PROCESSOR), waiting)).toBe(true);
+    expect(patientMatchesChart(chart("chase-fax"), waiting)).toBe(false);
+  });
+
+  it("drops back to chase once the appointment date has passed", () => {
+    const seen = chasePatient(PAST);
+    expect(patientMatchesChart(chart(PROCESSOR), seen)).toBe(false);
+    expect(patientMatchesChart(chart("chase-fax"), seen)).toBe(true);
+  });
+
+  it("a chase patient with NO appointment is untouched", () => {
+    const plain = chasePatient("");
+    expect(patientMatchesChart(chart(PROCESSOR), plain)).toBe(false);
+    expect(patientMatchesChart(chart("chase-fax"), plain)).toBe(true);
+  });
+
+  it("is never counted on both rows at once", () => {
+    for (const d of [FUTURE, PAST, ""]) {
+      const p = chasePatient(d);
+      const rows = [PROCESSOR, "chase-fax"].filter((id) => patientMatchesChart(chart(id), p));
+      expect(rows, `appointment "${d}"`).toHaveLength(1);
+    }
+  });
+
+  it("an escalated waiting patient lands in the manager column, not the processor one", () => {
+    const escalated = chasePatient(FUTURE, 0);
+    expect(patientMatchesChart(chart(MANAGER), escalated)).toBe(true);
+    expect(patientMatchesChart(chart(PROCESSOR), escalated)).toBe(false);
+  });
+});

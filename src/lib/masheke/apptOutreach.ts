@@ -56,6 +56,7 @@
  */
 import type { Patient } from "./workflow";
 import { addBusinessDaysIso, addCalendarDaysIso, etToday } from "./etDate";
+import { RETURNED_TO_QUEUE_TAG } from "./proposedStuck";
 
 // ---------------------------------------------------------------------------
 // Outcomes
@@ -179,21 +180,71 @@ export function parseApptAttempt(slot: 1 | 2 | 3, raw: string): ApptAttempt {
 }
 
 /**
- * Every outreach attempt for this patient, oldest first, read back out of MN
+ * Lines that RESET the attempt count — everything before one belongs to a
+ * previous pass through this stage and must not be held against the patient:
+ *
+ *  - the entry stamp, written every time a patient is moved in from Chase, so a
+ *    patient who comes back a second time starts at attempt 1 rather than
+ *    arriving pre-exhausted;
+ *  - a manager's Return to Queue, which hands the patient back to the rep — and
+ *    would otherwise hand them back with the counter already spent, including
+ *    all the attempts the MANAGER logged while they were escalated.
+ *
+ * Without this, both cases silently lock the processor out of a patient they
+ * are supposed to be working, with no error and no way to tell why.
+ */
+const RESET_MARKERS = [
+  "Provider requires a new visit",
+  RETURNED_TO_QUEUE_TAG,
+];
+
+function isResetLine(line: string): boolean {
+  return RESET_MARKERS.some((m) => line.includes(m));
+}
+
+/**
+ * Every outreach attempt in the CURRENT pass, oldest first, read back out of MN
  * Workflow Notes. Slots are assigned by position — the first matching line is
  * attempt 1 — so the numbering can never disagree with the count.
  *
- * Reads at most 3: a patient can't have more, and if the notes somehow contain
- * extra matching lines (a manual paste, a returned-then-re-worked patient) we
- * take the most recent three so the rep isn't locked out forever.
+ * Counting starts after the last reset marker (see above). Capped at the three
+ * most recent so a manager's unlimited logging can't produce a slot 4.
  */
 export function apptAttemptsFromNotes(notes: string | undefined): ApptAttempt[] {
-  const lines = (notes ?? "")
-    .split(/\r?\n/)
-    .map((l) => l.trim())
-    .filter((l) => l && isApptAttemptLine(l));
-  const recent = lines.slice(-3);
-  return recent.map((raw, i) => parseApptAttempt((i + 1) as 1 | 2 | 3, raw));
+  const all = (notes ?? "").split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+  let start = 0;
+  all.forEach((l, i) => {
+    if (isResetLine(l)) start = i + 1;
+  });
+  const lines = all.slice(start).filter(isApptAttemptLine);
+  return lines.slice(-3).map((raw, i) => parseApptAttempt((i + 1) as 1 | 2 | 3, raw));
+}
+
+/**
+ * How many attempts are in the current pass, UNCAPPED. A manager working an
+ * escalated patient logs as many as they like, so this can exceed 3 — it's what
+ * the manager UI shows instead of "attempt N of 3".
+ */
+export function apptAttemptTotal(p: Pick<Patient, "mnEvalNotes">): number {
+  const all = (p.mnEvalNotes ?? "").split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+  let start = 0;
+  all.forEach((l, i) => {
+    if (isResetLine(l)) start = i + 1;
+  });
+  return all.slice(start).filter(isApptAttemptLine).length;
+}
+
+/**
+ * Is the 3-attempt cap in force for this patient?
+ *
+ * NO once they are escalated (Josh, 2026-08-03): a manager in Manager
+ * Intervention or Final Decisions documents as many attempts as it takes, and
+ * leaves that queue only by promoting the Propose Stuck or by getting a date.
+ * The cap exists to stop a REP chasing forever, and it has already done its job
+ * by the time a patient reaches a manager.
+ */
+export function apptCapApplies(p: Pick<Patient, "escalationIndex">): boolean {
+  return p.escalationIndex !== 0 && p.escalationIndex !== 2;
 }
 
 /** Every logged attempt for a patient. */
@@ -206,10 +257,17 @@ export function apptAttemptCount(p: Pick<Patient, "mnEvalNotes">): number {
   return apptAttempts(p).length;
 }
 
-/** The slot the next attempt writes into, or null when all three are spent. */
-export function nextApptSlot(p: Pick<Patient, "mnEvalNotes">): 1 | 2 | 3 | null {
+/**
+ * The slot the next attempt writes into, or null when the rep has spent all
+ * three. An ESCALATED patient never returns null — the cap doesn't apply to a
+ * manager (see apptCapApplies) — so the slot clamps at 3 for display purposes.
+ */
+export function nextApptSlot(
+  p: Pick<Patient, "mnEvalNotes" | "escalationIndex">,
+): 1 | 2 | 3 | null {
   const n = apptAttemptCount(p);
-  return n >= 3 ? null : ((n + 1) as 1 | 2 | 3);
+  if (n < 3) return (n + 1) as 1 | 2 | 3;
+  return apptCapApplies(p) ? null : 3;
 }
 
 /**
@@ -257,6 +315,9 @@ export function resolveApptOutcome(opts: {
   today?: string;
   /** Rung a "won't schedule" proposal lands on — see stageActions. */
   proposeStuckLevel?: "manager" | "final";
+  /** False for an escalated patient a manager is working — no 3-attempt cap,
+   *  so the third attempt logs like any other instead of escalating. */
+  capApplies?: boolean;
 }): ApptOutcomeEffect {
   const today = opts.today ?? etToday();
 
@@ -299,8 +360,10 @@ export function resolveApptOutcome(opts: {
   }
 
   // Every other outcome burns the slot and the patient stays in this queue.
-  // Only running out of attempts hands them over.
-  if (opts.slot >= 3) {
+  // Only running out of attempts hands them over — and only while the cap is in
+  // force, i.e. for a REP. A manager already past that gate logs freely and
+  // leaves by promoting the Propose Stuck or by getting a date.
+  if (opts.slot >= 3 && opts.capApplies !== false) {
     return {
       kind: "escalate",
       nextActionDate: null,
@@ -345,9 +408,9 @@ export function snoozeUntilAfterAppointment(
 
 /** True when the patient has run out of attempts with no appointment on file. */
 export function isApptExhausted(
-  p: Pick<Patient, "mnEvalNotes" | "appointmentDate">,
+  p: Pick<Patient, "mnEvalNotes" | "appointmentDate" | "escalationIndex">,
 ): boolean {
-  return !p.appointmentDate && apptAttemptCount(p) >= 3;
+  return !p.appointmentDate && apptCapApplies(p) && apptAttemptCount(p) >= 3;
 }
 
 // ---------------------------------------------------------------------------

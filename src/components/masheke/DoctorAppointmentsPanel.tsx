@@ -65,6 +65,8 @@ import {
   type ApptMethod,
   type ApptOutcome,
   apptAttempts,
+  apptAttemptTotal,
+  apptCapApplies,
   apptProposedStuckReason,
   canLogAttempt,
   chaseRoleLabel,
@@ -144,6 +146,11 @@ export function DoctorAppointmentsPanel({ patient, onUpdate, managerMode = false
   );
 
   const slot = nextApptSlot(patient);
+  // The 3-attempt cap is a REP guardrail. Once a patient is escalated the
+  // manager working them documents as many attempts as it takes, and leaves
+  // that queue only by promoting the Propose Stuck or by getting a date.
+  const capApplies = apptCapApplies(patient);
+  const totalAttempts = apptAttemptTotal(patient);
   const exhausted = slot === null;
   // Opened from the sidebar's "Scheduled" folder: this patient already has a
   // visit booked and is back in Chase. There is nothing to log here, so the
@@ -172,11 +179,12 @@ export function DoctorAppointmentsPanel({ patient, onUpdate, managerMode = false
         appointmentDate: isBooked ? apptDate : undefined,
         today,
         proposeStuckLevel: stuckLevel,
+        capApplies,
       });
     } catch {
       return null;
     }
-  }, [outcome, slot, apptDate, isBooked, today, stuckLevel]);
+  }, [outcome, slot, apptDate, isBooked, today, stuckLevel, capApplies]);
 
   async function handleSave() {
     if (!canSave || slot === null) return;
@@ -192,6 +200,7 @@ export function DoctorAppointmentsPanel({ patient, onUpdate, managerMode = false
         appointmentDate: isBooked ? apptDate : undefined,
         today,
         proposeStuckLevel: stuckLevel,
+        capApplies,
       });
     } catch (e) {
       toast.error(e instanceof Error ? e.message : String(e));
@@ -361,9 +370,19 @@ export function DoctorAppointmentsPanel({ patient, onUpdate, managerMode = false
         <MissingChecklist checklist={mnChecklist} />
 
         <h4 className="text-[1.05rem] font-bold tracking-tight mt-7 mb-2.5">
-          Appointment Attempts — {exhausted ? "3 of 3 used" : `Attempt ${(slot ?? 3)} of 3`}
+          Appointment Attempts —{" "}
+          {!capApplies
+            ? `${totalAttempts} logged`
+            : exhausted
+              ? "3 of 3 used"
+              : `Attempt ${slot ?? 3} of 3`}
         </h4>
-        <AttemptCards history={history} exhausted={exhausted} />
+        <AttemptCards history={history} exhausted={exhausted && capApplies} />
+        {!capApplies && totalAttempts > 3 && (
+          <p className="mt-2 text-xs text-muted-foreground">
+            Showing the 3 most recent — the full log is in MN Workflow Notes below.
+          </p>
+        )}
 
         <PriorStageNotes
           stages={[{ label: "Profile Send-Off Notes", text: patient.profileSendOffNotes }]}
@@ -414,7 +433,7 @@ export function DoctorAppointmentsPanel({ patient, onUpdate, managerMode = false
               </p>
             </div>
           </div>
-        ) : exhausted ? (
+        ) : exhausted && capApplies ? (
           <div
             className="mt-5 flex items-center gap-3 rounded-xl border px-4.5 py-4"
             style={{ background: "var(--mm-rose-soft)", borderColor: "oklch(0.62 0.13 18 / 0.35)" }}
@@ -425,13 +444,27 @@ export function DoctorAppointmentsPanel({ patient, onUpdate, managerMode = false
                 All 3 attempts used
               </p>
               <p className="text-sm text-muted-foreground">
-                This patient is with a manager in Oversight → Manager Intervention → Appointments.
-                Recording an appointment date there returns them to {returnStage}.
+                {patient.name} is with a manager now. Open them from Oversight → Medical Evaluation →
+                Doctor Appointments to keep working them.
               </p>
             </div>
           </div>
         ) : (
           <div className="mt-5 flex flex-col gap-4">
+            {!capApplies && (
+              <div
+                className="rounded-xl border px-4 py-3 text-sm"
+                style={{ background: "var(--mm-mint)", borderColor: "var(--mm-mint-ring)" }}
+              >
+                <p className="font-bold" style={{ color: "var(--mm-teal)" }}>
+                  No attempt limit here
+                </p>
+                <p className="mt-0.5 text-muted-foreground">
+                  Log as many as it takes. {patient.name} leaves this queue only when you get an
+                  appointment date, send them back to the pipeline, or propose stuck.
+                </p>
+              </div>
+            )}
             <div className="grid gap-4 sm:grid-cols-2">
               <div>
                 <FieldLabel>How did you reach out?</FieldLabel>
@@ -522,7 +555,8 @@ export function DoctorAppointmentsPanel({ patient, onUpdate, managerMode = false
                   </>
                 ) : (
                   <>
-                    <Check className="h-4 w-4" /> Log Attempt {slot} of 3
+                    <Check className="h-4 w-4" />{" "}
+                    {capApplies ? `Log Attempt ${slot} of 3` : "Log Attempt"}
                   </>
                 )}
               </Button>

@@ -306,3 +306,75 @@ describe("Propose Stuck climbs the shared ladder", () => {
     ).toBe("final");
   });
 });
+
+describe("the counter resets on re-entry and on a manager's return", () => {
+  const attempt = (n: number) =>
+    `8/${n}/26, 1:38 PM · Phone call — No answer / no response · tried again —JH`;
+  const entry =
+    "8/1/26, 9:00 AM · Patient Doctor Appointment · Provider requires a new visit, none scheduled (from Chase Clinicals — Fax) · moved to Doctor Appointments —JH";
+  const returned = "[Returned to queue · 8/9/26 · MG] give it another go";
+
+  it("a patient re-entering the stage starts at attempt 1, not pre-exhausted", async () => {
+    const { apptAttemptCount, nextApptSlot } = await import("./apptOutreach");
+    // First pass burned all three, then they were sent back through Chase and
+    // the office asked for a visit again.
+    const notes = [attempt(1), attempt(2), attempt(3), entry].join("\n");
+    expect(apptAttemptCount(p({ mnEvalNotes: notes }))).toBe(0);
+    expect(nextApptSlot(p({ mnEvalNotes: notes }))).toBe(1);
+  });
+
+  it("a manager's Return to Queue hands the rep a fresh three", async () => {
+    const { apptAttemptCount, nextApptSlot } = await import("./apptOutreach");
+    // Rep spent three, manager logged five more, then returned them.
+    const notes = [
+      attempt(1), attempt(2), attempt(3),
+      attempt(4), attempt(5), attempt(6), attempt(7), attempt(8),
+      returned,
+    ].join("\n");
+    expect(apptAttemptCount(p({ mnEvalNotes: notes }))).toBe(0);
+    expect(nextApptSlot(p({ mnEvalNotes: notes }))).toBe(1);
+  });
+
+  it("counts only attempts AFTER the most recent marker", async () => {
+    const { apptAttemptCount } = await import("./apptOutreach");
+    const notes = [attempt(1), entry, attempt(2), attempt(3)].join("\n");
+    expect(apptAttemptCount(p({ mnEvalNotes: notes }))).toBe(2);
+  });
+});
+
+describe("the 3-attempt cap is a REP guardrail only", () => {
+  const attempt = (n: number) =>
+    `8/${n}/26, 1:38 PM · Phone call — No answer / no response · tried again —JH`;
+  const three = [attempt(1), attempt(2), attempt(3)].join("\n");
+
+  it("locks a rep out at three, but never a manager", async () => {
+    const { apptCapApplies, nextApptSlot, isApptExhausted } = await import("./apptOutreach");
+    const rep = p({ mnEvalNotes: three });
+    const manager = p({ mnEvalNotes: three, escalationIndex: 0 });
+    const final = p({ mnEvalNotes: three, escalationIndex: 2 });
+
+    expect(apptCapApplies(rep)).toBe(true);
+    expect(nextApptSlot(rep)).toBeNull();
+    expect(isApptExhausted(rep)).toBe(true);
+
+    for (const m of [manager, final]) {
+      expect(apptCapApplies(m)).toBe(false);
+      expect(nextApptSlot(m)).toBe(3); // clamped for display; never null
+      expect(isApptExhausted(m)).toBe(false);
+    }
+  });
+
+  it("counts a manager's attempts uncapped", async () => {
+    const { apptAttemptTotal } = await import("./apptOutreach");
+    const many = [1, 2, 3, 4, 5, 6].map(attempt).join("\n");
+    expect(apptAttemptTotal(p({ mnEvalNotes: many }))).toBe(6);
+  });
+
+  it("a manager's third attempt logs instead of escalating", () => {
+    const e = resolveApptOutcome({ outcome: "noAnswer", slot: 3, today: MON, capApplies: false });
+    expect(e.kind).toBe("retry");
+    expect(e.nextActionDate).toBe("2026-08-04");
+    // A rep's third still hands over.
+    expect(resolveApptOutcome({ outcome: "noAnswer", slot: 3, today: MON }).kind).toBe("escalate");
+  });
+});

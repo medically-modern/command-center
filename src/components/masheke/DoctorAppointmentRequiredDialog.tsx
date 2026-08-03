@@ -239,9 +239,6 @@ export function DoctorAppointmentRequiredDialog({
                   <CalendarClock className="h-4 w-4" style={{ color: "var(--mm-green)" }} />
                   Yes — appointment already scheduled
                 </span>
-                <span className="mt-1 block text-sm text-muted-foreground">
-                  Stays in {fromStage}, hidden until the day after the visit.
-                </span>
               </button>
               <button
                 type="button"
@@ -252,9 +249,6 @@ export function DoctorAppointmentRequiredDialog({
                 <span className="flex items-center gap-2 text-[15px] font-bold">
                   <CalendarX2 className="h-4 w-4" style={{ color: "var(--mm-rose)" }} />
                   No — not scheduled yet
-                </span>
-                <span className="mt-1 block text-sm text-muted-foreground">
-                  Moves to Doctor Appointments so someone can call the patient and book one.
                 </span>
               </button>
             </div>

@@ -1,5 +1,6 @@
 // Oversight dashboard API — fetches patients across 5 Monday boards,
 // buckets them by "days in stage", and returns chart-ready data.
+import { etTodayYmd } from "@/lib/samantha/benefitsDerive";
 
 // ── Monday API plumbing ─────────────────────────────────────────────────
 
@@ -1181,7 +1182,7 @@ function columnsForBoard(boardId: number): string[] {
     ];
     for (const rule of rules) {
       if (!rule) continue;
-      for (const c of [...(rule.andCols ?? []), ...(rule.anyCols ?? [])]) set.add(c.colId);
+      for (const c of filterColumns(rule)) set.add(c);
     }
   }
 
@@ -1419,6 +1420,10 @@ interface ColCondition {
   containsAny?: string[];
   not?: boolean;
   gte?: number;
+  /** Date column holds a date that is TODAY or later (ET). Monday dates are
+   *  timezone-naive ET yyyy-mm-dd, so this is a string compare — no `new Date()`
+   *  (CLAUDE.md §9). Used for "still waiting on a booked appointment". */
+  dateOnOrAfterToday?: boolean;
 }
 
 interface ChartFilter {
@@ -1448,7 +1453,15 @@ interface ChartFilterStageAdvancer {
   anyCols?: ColCondition[];
 }
 
-type FilterRule = ChartFilter | ChartFilterStageAdvancer;
+/** A patient matching ANY of `of` is in. The one composite — needed because
+ *  Doctor Appointments spans two stages: patients IN the outreach queue, and
+ *  patients parked in Chase waiting for a booked visit. */
+interface ChartFilterAny {
+  type: "any";
+  of: FilterRule[];
+}
+
+type FilterRule = ChartFilter | ChartFilterStageAdvancer | ChartFilterAny;
 
 const CHART_FILTERS: Record<string, FilterRule> = {
   // Profile Send Off split (rule mirrors lib/profile/referralSplit.ts):
@@ -1464,15 +1477,48 @@ const CHART_FILTERS: Record<string, FilterRule> = {
   "confirm-receipt":    { type: "stageAdvancer", boardId: 18406060017, value: "Confirm Receipt", andCols: [{ colId: "color_mm1x7997", index: [2], not: true }] },
   // Chase Clinicals split by method: Fax (= NOT Email/Parachute, so a blank
   // method still shows under Fax) vs Email & Parachute (either). Method col = color_mm1xw7y5.
-  "chase-fax":             { type: "stageAdvancer", boardId: 18406060017, value: "Chase Clinicals", andCols: [{ colId: "color_mm1x7997", index: [2], not: true }, { colId: "color_mm1xw7y5", value: ["Email", "Parachute"], not: true }] },
-  "chase-email-parachute": { type: "stageAdvancer", boardId: 18406060017, value: "Chase Clinicals", andCols: [{ colId: "color_mm1x7997", index: [2], not: true }, { colId: "color_mm1xw7y5", value: ["Email", "Parachute"] }] },
+  // A chase patient WAITING on a booked visit is excluded here and shown on the
+  // Doctor Appointments row instead — otherwise they'd be counted twice, and
+  // they'd sit in the chase day buckets drifting toward "30+ Days" while
+  // legitimately parked.
+  "chase-fax":             { type: "stageAdvancer", boardId: 18406060017, value: "Chase Clinicals", andCols: [{ colId: "color_mm1x7997", index: [2], not: true }, { colId: "color_mm1xw7y5", value: ["Email", "Parachute"], not: true }, { colId: "date_mm5w2vsf", dateOnOrAfterToday: true, not: true }] },
+  "chase-email-parachute": { type: "stageAdvancer", boardId: 18406060017, value: "Chase Clinicals", andCols: [{ colId: "color_mm1x7997", index: [2], not: true }, { colId: "color_mm1xw7y5", value: ["Email", "Parachute"] }, { colId: "date_mm5w2vsf", dateOnOrAfterToday: true, not: true }] },
   // Doctor Appointments — one sub-stage, three states, one per manager column.
   // Between them they cover EVERY escalation value, which is what keeps an
   // outreach patient visible in all of them (§7: a state matching no chart is
   // invisible app-wide).
-  "doctor-appointments":         { type: "stageAdvancer", boardId: 18406060017, value: "Doctor Appointment", andCols: [{ colId: "color_mm1x7997", index: [0, 2], not: true }] },
-  "doctor-appointments-manager": { type: "stageAdvancer", boardId: 18406060017, value: "Doctor Appointment", andCols: [{ colId: "color_mm1x7997", index: [0] }] },
-  "doctor-appointments-final":   { type: "stageAdvancer", boardId: 18406060017, value: "Doctor Appointment", andCols: [{ colId: "color_mm1x7997", index: [2] }] },
+  // The row covers BOTH halves of this stage (Josh, 2026-08-03):
+  //   • the outreach queue — Sub-Stage "Doctor Appointment", no date yet; and
+  //   • patients parked in CHASE waiting for a visit that IS booked — the "yes"
+  //     answer to Doctor Appointment Required, keyed off the Appointment Date
+  //     being today or later.
+  // The second half used to sit in the chase charts, where a manager reading
+  // "Chase Clinicals — Fax" couldn't tell a stalled chase from a patient who is
+  // simply waiting for an appointment. Their BEHAVIOUR is unchanged — they're
+  // still chase patients and come back to that queue when the Next Action Date
+  // lands; this is only where a manager looks at them. Once the appointment date
+  // passes they drop off this row on their own.
+  "doctor-appointments": {
+    type: "any",
+    of: [
+      { type: "stageAdvancer", boardId: 18406060017, value: "Doctor Appointment", andCols: [{ colId: "color_mm1x7997", index: [0, 2], not: true }] },
+      { type: "stageAdvancer", boardId: 18406060017, value: "Chase Clinicals", andCols: [{ colId: "color_mm1x7997", index: [0, 2], not: true }, { colId: "date_mm5w2vsf", dateOnOrAfterToday: true }] },
+    ],
+  },
+  "doctor-appointments-manager": {
+    type: "any",
+    of: [
+      { type: "stageAdvancer", boardId: 18406060017, value: "Doctor Appointment", andCols: [{ colId: "color_mm1x7997", index: [0] }] },
+      { type: "stageAdvancer", boardId: 18406060017, value: "Chase Clinicals", andCols: [{ colId: "color_mm1x7997", index: [0] }, { colId: "date_mm5w2vsf", dateOnOrAfterToday: true }] },
+    ],
+  },
+  "doctor-appointments-final": {
+    type: "any",
+    of: [
+      { type: "stageAdvancer", boardId: 18406060017, value: "Doctor Appointment", andCols: [{ colId: "color_mm1x7997", index: [2] }] },
+      { type: "stageAdvancer", boardId: 18406060017, value: "Chase Clinicals", andCols: [{ colId: "color_mm1x7997", index: [2] }, { colId: "date_mm5w2vsf", dateOnOrAfterToday: true }] },
+    ],
+  },
   // Escalations = same stage AND MN Attempts column = "Escalate" (attempt 4+).
   "confirm-receipt-escalations":       { type: "stageAdvancer", boardId: 18406060017, value: "Confirm Receipt", andCols: [{ colId: "color_mm1x7997", index: [2], not: true }, { colId: "color_mm1wz0vg", value: "Escalate" }] },
   "chase-fax-escalations":             { type: "stageAdvancer", boardId: 18406060017, value: "Chase Clinicals", andCols: [{ colId: "color_mm1x7997", index: [2], not: true }, { colId: "color_mm1xw7y5", value: ["Email", "Parachute"], not: true }, { colId: "color_mm1wz0vg", value: "Escalate" }] },
@@ -1657,6 +1703,11 @@ const CHART_FILTERS: Record<string, FilterRule> = {
 /** Evaluate a single column condition against a patient. */
 function colConditionPasses(patient: OversightPatient, c: ColCondition): boolean {
   const cell = (patient.cols[c.colId] ?? "").trim();
+  if (c.dateOnOrAfterToday) {
+    const ymd = cell.slice(0, 10);
+    const pass = /^\d{4}-\d{2}-\d{2}$/.test(ymd) && ymd >= etTodayYmd();
+    return c.not ? !pass : pass;
+  }
   if (c.gte !== undefined) {
     // Numeric threshold (e.g. Evaluation Counter ≥ 3). Non-numeric → fails.
     const n = Number(cell);
@@ -1679,7 +1730,15 @@ function colConditionPasses(patient: OversightPatient, c: ColCondition): boolean
   return c.not ? !inSet : inSet;
 }
 
+/** Every column id a rule conditions on, recursing into composites. A filter
+ *  column missing from the fetch silently matches nothing. */
+function filterColumns(rule: FilterRule): string[] {
+  if (rule.type === "any") return rule.of.flatMap(filterColumns);
+  return [...(rule.andCols ?? []), ...(rule.anyCols ?? [])].map((c) => c.colId);
+}
+
 function matchesFilter(patient: OversightPatient, rule: FilterRule): boolean {
+  if (rule.type === "any") return rule.of.some((r) => matchesFilter(patient, r));
   if (rule.type === "group") {
     if (patient.groupId !== rule.groupId) return false;
   } else {

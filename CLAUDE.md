@@ -360,6 +360,17 @@ Approve Stuck / Send back to pipeline are available from all three manager colum
 > shared, and a bare sentence wouldn't tell a manager whether the patient refused on call 1 or 3.
 > ⚠️ Both rungs have a chart on the Doctor Appointments row, so neither can go invisible (§7).
 
+> **The 3-attempt cap is a REP guardrail only** (`apptCapApplies`). An escalated patient has NO
+> limit: the manager working them in Manager Intervention or Final Decisions logs as many attempts
+> as it takes, and leaves that queue only by getting a date, sending them back to the pipeline, or
+> promoting the Propose Stuck. The cap has already done its job by the time a patient reaches them.
+>
+> ⚠️ Which means the count needs a **reset marker**, or two ordinary situations silently lock a
+> processor out of a patient they're supposed to work: a patient who re-enters the stage a second
+> time, and a patient a manager hands back after logging five attempts of their own. Both would
+> arrive with ≥3 attempt lines already in the notes. `apptAttemptsFromNotes` therefore counts only
+> the lines AFTER the last marker — the stage-entry stamp, or `[Returned to queue`.
+
 **No new Monday group and no new automation** — Sub-Stage `color_mm1wyr92` **IS** the stage
 advancer on this board (`mondayWrite.recordAndAdvanceVerified` passes it as `stageColumnId`,
 "the single write that moves the item"), so a new sub-stage index is the whole board change.
@@ -392,7 +403,9 @@ Phone call · Text message · Email.
 
 **Sidebar sections differ by ROLE** (`apptSidebarSections`):
 - *Reach out today* — the work. Everyone.
-- *Awaiting reply* (snoozed patients) — **MANAGERS ONLY** (`showAwaitingReply`, Josh 2026-08-03).
+- *Awaiting reply* (snoozed patients) — **MANAGERS ONLY**, gated on `access.type === "manager"`
+  (the signed-in user), NOT on `?manager=1`: that param is only set by some Oversight columns, so
+  URL-gating hid the folder from a manager who clicked in from Processor Overview.
   A processor's list should be today's work and nothing else; a manager looks at the whole queue.
   ⚠️ The manager view lists **every** patient in the stage, not just escalated ones — an
   escalated-only filter left it empty for the common pre-escalation case (attempt 3, follow-up
@@ -406,8 +419,15 @@ Escalated patients drop out of the processor sidebar entirely — they're the ma
 counts follow the normal due-today rule**, so the role bar matches "Reach out today".
 
 **Oversight — its own row across all three columns** (`doctor-appointments` /
-`-manager` / `-final`, aligned by `rowOf`). The three filters partition the sub-stage by
-escalation — none / index 0 / index 2 — so **every** escalation value lands in exactly one chart,
+`-manager` / `-final`, aligned by `rowOf`). The row covers **both halves** of the stage: the
+outreach queue (Sub-Stage `Doctor Appointment`), and patients parked in **Chase** waiting for a
+booked visit — the "yes" answer to the entry dialog, matched on **Appointment Date today-or-later**
+(`ColCondition.dateOnOrAfterToday`, and the charts use the one composite `{type:"any"}` rule). The
+chase charts exclude that second group so nobody is counted twice, and those patients drop off this
+row on their own once the date passes. Their BEHAVIOUR is unchanged — still chase patients, still
+due when the Next Action Date lands; this is only where a manager looks at them.
+The three filters partition by escalation — none / index 0 / index 2 — so **every** escalation
+value lands in exactly one chart,
 which is what guarantees §7 (a state matching no chart is invisible app-wide);
 `appointmentsBar.test.ts` asserts that partition. All three route to `/doctor-appointments` — the
 work is calling the PATIENT, and the chase UI would show the wrong job.
