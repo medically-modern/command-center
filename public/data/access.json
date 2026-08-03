@@ -60,7 +60,8 @@
         "chaseFax",
         "benefits",
         "authOutstanding",
-        "inSystemReferrals"
+        "inSystemReferrals",
+        "doctorAppointments"
       ],
       "roleOrder": {},
       "roleFilters": {}
