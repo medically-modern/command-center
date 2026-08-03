@@ -612,6 +612,36 @@ these escalate can be listed by the chart they escalate into. **That pairing is 
 adding a label to one of the automations without adding it to the filter (or vice versa) produces
 either an escalated patient in no bar, or a bar row with no escalation.
 
+### 2026-08-02 · PR #22 review round: pump blocker + the unread pump-claims family
+
+**Greptile P1 — valid, fixed.** The pump SoS fix above escalated but did **not** stop the patient
+advancing: `isProductResolved` counts a completed not-clear recheck as *resolved*, so `allResolved`
+won and the send wrote **Complete** (firing the Welcome Call create-item automation) while merely
+flagging a manager. Now the pump blocker outranks `allResolved` and writes **no stage at all**,
+mirroring Benefits — where the identical finding returns `blocker` from `deriveInsuranceOutcome`
+and holds the patient at Benefits / SoS. A denial still outranks the blocker (Auth Denied is a more
+specific destination with its own queue). The whole priority order was extracted to
+`authOutstandingReview.authOutstandingOutcome` so the ORDER is unit-tested — it is the entire rule,
+and getting it wrong silently advances a blocked patient.
+
+**`IP Claims Status` is now wired up and automated** (was deferred one round earlier). The board
+splits claims into supplies (`S …`) and pump (`IP …`) families of five columns each; the pump half
+was referenced **nowhere** in `src/`, so a pump claim failure classified as nothing at all. Added
+`COL.ipClaims*` → `READ`/`AUTH_READ` → `Patient` → `mondayMapping`, both DVS chart filters,
+`managerRail.dvsManualStatus`, `DvsPage.isManualReview`, plus an "Insulin pump claim" block on the
+DVS claims card so the manual-review reason is visible. Automation **7921431140** then created.
+
+Also corrected `src/pages/dvsRail.test.ts`, whose local copy of `isManualReview` still carried
+`|| !!p.escalated` — dropped from the page in the 2026-07-29 status-only change, so the test had
+stopped mirroring the thing it guards.
+
+⚠️ **Left alone deliberately:** `DvsPage.pumpClaimPaid` reads the **supplies** claims column to
+decide whether the PUMP claim paid (its comment calls it "the bot's shared claims column"). That
+holds only while `IP Claims Status` is empty — **no board item carries a value today**, verified.
+When the bot starts writing it, that check must move to `ipClaimsStatus`.
+
+<details><summary>Superseded note from the previous round</summary>
+
 **Deliberately NOT automated: `IP Claims Status` (`color_mm5g8085`).** It carries the same five
 failure labels as S Claims Status, but the SPA doesn't read it anywhere — no `COL` entry, absent
 from `dvs-manual-review` / `dvs-manual-review-final`, from `DvsPage.isManualReview`, and from
@@ -621,6 +651,9 @@ Intervention chart, whose population is the union of its buckets. Net effect: in
 everyone. Sequence to fix, if wanted: add the column to `samantha/mondayApi` + `mondayMapping` +
 `Patient`, extend the two DVS chart filters and the rail/page predicates, then create the
 automation.
+
+*(Done in the next round, in exactly that order — see above.)*
+</details>
 
 ### Board findings that are still open (not caused by any change here)
 

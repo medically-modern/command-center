@@ -35,7 +35,7 @@ import {
   patientHasMedicaidIns,
   universalEscalationLevel,
 } from "./benefitsDerive";
-import { derivedRecheckSos, effectiveResult } from "./authOutstandingReview";
+import { authOutstandingOutcome, derivedRecheckSos, effectiveResult } from "./authOutstandingReview";
 import { isMedicarePrimary } from "./medicareJurisdiction";
 import { allProductsDvsRouted, dvsAutoTrigger, hasDvsRoutedProducts } from "./dvsRouting";
 import { etNow } from "../masheke/etDate";
@@ -536,37 +536,35 @@ export async function sendPatientToMonday(
       })),
     });
 
-    if (anyDenied) {
-      stageWriteIndex = STAGE_INDEX.authDenied;
-      escalationDecision = "manager"; // forced by denial regardless of toggle
-    } else if (allResolved) {
-      // Auth rail finished. Patients with Medicaid-routed supplies exit to
-      // the DVS stage (the stage write triggers the bot, HANDOFF-Josh-DVS
-      // §1/§7); everyone else completes as before.
-      stageWriteIndex = hasDvsRoutedProducts(p) ? STAGE_INDEX.dvs : STAGE_INDEX.complete;
-      // escalation follows manualEscalate (already set above)
-    } else if (nonDvsEntries.length === 0 && entries.length > 0) {
-      // ALL products are DVS-routed — this patient never belonged on the
-      // auth rail. Send them to the DVS stage (supersedes the older
-      // "never advances" guard, which predates the DVS stage existing).
-      stageWriteIndex = STAGE_INDEX.dvs;
-    }
-    // else: partial → no Stage Advancer write; escalation still follows toggle
-
-    // Insulin-pump same-or-similar coming back NOT CLEAR is a manager decision
-    // wherever it surfaces (Josh, 2026-08-02). At Benefits the derivation
-    // escalates through deriveInsuranceOutcome's blocker path — but a pump whose
-    // SoS was DEFERRED there (rep answered Auth = Required ⇒ derived "skip", so
-    // the pump sits in Skip SoS Products) reaches the same finding for the first
-    // time at THIS page's recheck. That moved the pump into Not Clear Products —
-    // which is what put the patient in Oversight's "Pump SoS" bar, since that bar
-    // keys on the dropdown — while the Escalation column stayed blank, so no
-    // manager was ever told. Applied after the stage rules so a denial (which
-    // already forces manager) and the resolved/DVS paths keep their stage write.
+    // Insulin-pump same-or-similar coming back NOT CLEAR is a BLOCKER, not just
+    // a flag (Josh 2026-08-02; PR #22 review). At Benefits the identical finding
+    // returns "blocker" from deriveInsuranceOutcome, which holds the patient at
+    // Benefits / SoS and escalates. A pump whose SoS was DEFERRED there (rep
+    // answered Auth = Required ⇒ derived "skip", so it sits in Skip SoS
+    // Products) reaches the finding for the first time at THIS page's recheck —
+    // and `isProductResolved` counts a completed recheck as resolved either way,
+    // so without this the send would advance the patient to Complete (firing the
+    // Welcome Call create-item automation) while merely flagging a manager.
+    // Ordered ABOVE allResolved so the blocker wins; a DENIAL still outranks it,
+    // since Auth Denied is a more specific destination with its own queue.
     const pumpEntry = entries.find((e) => e.cid === "pump");
-    if (pumpEntry && effectiveSos(pumpEntry) === "not-clear") {
-      escalationDecision = "manager";
-    }
+    const pumpSosNotClear = !!pumpEntry && effectiveSos(pumpEntry) === "not-clear";
+
+    // Priority order lives in authOutstandingReview.authOutstandingOutcome so
+    // it can be unit-tested; see its doc comment for why each rung outranks the
+    // next. A null stage means "leave the Stage Advancer alone".
+    const outcome = authOutstandingOutcome({
+      anyDenied,
+      pumpSosNotClear,
+      allResolved,
+      allDvsRouted: nonDvsEntries.length === 0 && entries.length > 0,
+      hasDvsRouted: hasDvsRoutedProducts(p),
+    });
+    if (outcome.stage === "authDenied") stageWriteIndex = STAGE_INDEX.authDenied;
+    else if (outcome.stage === "complete") stageWriteIndex = STAGE_INDEX.complete;
+    else if (outcome.stage === "dvs") stageWriteIndex = STAGE_INDEX.dvs;
+    // Escalation is a floor: the manual toggle can still have set it above.
+    if (outcome.escalate) escalationDecision = "manager";
   } else {
     // benefits page — use insurance outcome to drive Stage Advancer.
     const outcome = deriveInsuranceOutcome(effectiveIns, entries.map(e => e.cid));

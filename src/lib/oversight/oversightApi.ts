@@ -1451,6 +1451,7 @@ const CHART_FILTERS: Record<string, FilterRule> = {
       { colId: "color_mm26pk1a", value: ["MLTC", "Failed", "Manual Review"] },
       { colId: "color_mm578kbd", value: ["MLTC", "Failed", "Manual Review", "Denied"] },
       { colId: "color_mm284z0b", value: ["Claims Error", "Claims Denied", "Payment Incorrect"] },
+      { colId: "color_mm5g8085", value: ["Claims Error", "Claims Denied", "Payment Incorrect"] },
     ],
   },
   // DVS manual review — STATUS-ONLY as of 2026-07-29 (Josh): no automation
@@ -1469,6 +1470,7 @@ const CHART_FILTERS: Record<string, FilterRule> = {
       { colId: "color_mm26pk1a", value: ["MLTC", "Failed", "Manual Review"] },
       { colId: "color_mm578kbd", value: ["MLTC", "Failed", "Manual Review", "Denied"] },
       { colId: "color_mm284z0b", value: ["Claims Error", "Claims Denied", "Payment Incorrect"] },
+      { colId: "color_mm5g8085", value: ["Claims Error", "Claims Denied", "Payment Incorrect"] },
     ],
   },
 };

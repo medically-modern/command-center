@@ -63,7 +63,9 @@ const dvsRetryStatus = (p: Patient): boolean =>
 const dvsManualStatus = (p: Patient): boolean =>
   DVS_FAILED.has(p.dvsStatus ?? "") ||
   DVS_FAILED.has(p.pumpDvsStatus ?? "") ||
-  CLAIMS_FAILED.has(p.claimsStatus ?? "");
+  // Both halves of the board's split claims family — supplies AND pump.
+  CLAIMS_FAILED.has(p.claimsStatus ?? "") ||
+  CLAIMS_FAILED.has(p.ipClaimsStatus ?? "");
 
 // Manager Intervention shows the not-yet-promoted half; Final Decisions the
 // promoted half. Mirrors the escalation split added to both CHART_FILTERS

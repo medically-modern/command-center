@@ -421,17 +421,20 @@ columns" automation on duplicated items). The SPA only flips the advancer; verif
   2026-08-02), one per rose column, each ⇒ Escalation = Manager Escalation Required:
   **7918444697** Trigger Supplies DVS `color_mm26pk1a` ∈ {Failed, Manual Review, MLTC} ·
   **7921430568** Trigger Pump DVS `color_mm578kbd` ∈ {MLTC, Failed, Manual Review, Denied} ·
-  **7921431002** S Claims Status `color_mm284z0b` ∈ {Claims Error, Claims Denied, Payment
-  Incorrect}. Those label sets are exactly the `dvs-manual-review` CHART_FILTER's `anyCols` —
-  **keep the three automations and that filter in agreement**, or a patient escalates into a chart
-  that can't list them.
-  ⚠️ **`IP Claims Status` (`color_mm5g8085`) is deliberately NOT automated.** It carries the same
-  failure labels as S Claims Status, but nothing in the SPA reads it — no `COL` entry, absent from
-  `dvs-manual-review`/`-final`, from DvsPage's `isManualReview`, and from managerRail's
-  `CLAIMS_FAILED` (all of which key on S Claims only). Escalating on it today would make the
-  patient invisible: flagged for a manager (so out of the rep's queue and counts) yet matching no
-  bar of the Manager Intervention chart, whose population is the union of its buckets. Wiring it up
-  means the column + filter + rail + page first, THEN the automation.
+  **7921431002** S Claims Status `color_mm284z0b` and **7921431140** IP Claims Status
+  `color_mm5g8085`, both ∈ {Claims Error, Claims Denied, Payment Incorrect}. Those label sets are
+  exactly the `dvs-manual-review` CHART_FILTER's `anyCols` — **keep the four automations and that
+  filter in agreement**, or a patient escalates into a chart that can't list them.
+  **The board splits claims in two** — `S Claims Status` (supplies) and `IP Claims Status` (pump),
+  each with its own paid-amount / paid-date / denial-reason / error columns. The **IP half was
+  unread by the entire SPA until 2026-08-02** (no `COL` entry, so a pump claim failure classified
+  as nothing); it now flows through `COL.ipClaims*` → `Patient` → both DVS chart filters,
+  managerRail and DvsPage's `isManualReview`, and renders as an "Insulin pump claim" block on the
+  DVS claims card so the manual-review reason is visible.
+  ⚠️ `DvsPage`'s `pumpClaimPaid` still reads the **supplies** column (`claimsStatus`) to decide
+  whether the PUMP claim paid — correct only while the bot leaves `IP Claims Status` empty, which
+  it does today (no board item carries a value, verified 2026-08-02). **When the bot starts writing
+  it, move that check to `ipClaimsStatus`.**
   **Manager Intervention has "Send back to pipeline"** (`returnToQueue`, optional stamped note →
   clears the escalation + re-dates to today) — an escalated patient is invisible to the rep, so
   this is the only way back and it previously existed only in Final Decisions.

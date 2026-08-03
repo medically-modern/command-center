@@ -228,6 +228,18 @@ export const COL = {
   claimsDenialReason: "text_mm28xy29",
   claimsError: "text_mm28sr8y",
 
+  // Insulin-pump claims — the board split claims into two families ("S …" for
+  // supplies, "IP …" for the pump) and this half went unread until 2026-08-02.
+  // Same label vocabulary as the S columns. NB `claimsStatus` above is still
+  // what DvsPage's `pumpClaimPaid` consults; that stays correct only while the
+  // bot leaves this column empty (no item carries a value today) — when it
+  // starts writing here, that check has to move.
+  ipClaimsStatus: "color_mm5g8085",
+  ipClaimsPaidAmount: "text_mm5gdf21",
+  ipClaimsPaidDate: "date_mm5gkz8g",
+  ipClaimsDenialReason: "text_mm5g31v4",
+  ipClaimsError: "text_mm5gm4vb",
+
   // Debug / error logging
   joshDebug: "text_mm2w1qn4",
 
@@ -383,6 +395,11 @@ export const AUTH_READ_COLUMN_IDS = [
   COL.claimsPaidDate,
   COL.claimsDenialReason,
   COL.claimsError,
+  COL.ipClaimsStatus,
+  COL.ipClaimsPaidAmount,
+  COL.ipClaimsPaidDate,
+  COL.ipClaimsDenialReason,
+  COL.ipClaimsError,
   COL.triggerDvs,
   COL.triggerPumpDvs,
   COL.claimsStatus,

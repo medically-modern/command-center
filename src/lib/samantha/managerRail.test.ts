@@ -132,6 +132,17 @@ describe("Submit Auth · Manager Intervention bars", () => {
     expect(bar("DVS Manual Review")(patient({ dvsStatus: "Success" }))).toBe(false);
   });
 
+  // The board splits claims in two — "S Claims Status" (supplies) and
+  // "IP Claims Status" (pump). The pump half was unread everywhere until
+  // 2026-08-02, so a pump claim failure classified as nothing at all.
+  it("matches a PUMP claim failure, not just a supplies one", () => {
+    for (const label of ["Claims Error", "Claims Denied", "Payment Incorrect"]) {
+      expect(bar("DVS Manual Review")(patient({ ipClaimsStatus: label }))).toBe(true);
+    }
+    expect(bar("DVS Manual Review")(patient({ ipClaimsStatus: "Claims Paid" }))).toBe(false);
+    expect(bar("DVS Manual Review")(patient({ ipClaimsStatus: "Submit Pump Claims" }))).toBe(false);
+  });
+
   it("an escalation label alone is NOT manual review — DVS classifies on status first", () => {
     expect(bar("DVS Manual Review")(patient({ escalationLabel: "Manager Escalation Required" }))).toBe(false);
   });
