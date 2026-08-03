@@ -9,7 +9,12 @@ export const SUB_STAGE_INDEX = {
   sendRequest: 9,     // 2B. Send Request
   confirmReceipt: 10, // 2C. Confirm Receipt
   chase: 11,          // 2D. Chase Clinicals
-  doctorAppointment: 12, // 2E. Doctor Appointment (2026-08-03)
+  // Doctor Appointment (2026-08-03). Index 0, NOT 12 — Monday assigns the index
+  // when a label is created in the UI and it picked the lowest free slot, which
+  // happened to be 0 (this column's other labels start at 8). Verified against
+  // the live board; a status write by index is silent if the index has no
+  // label, so confirm the settings_str before changing this.
+  doctorAppointment: 0,
   completed: 14,      // Final stage — clinicals received
 } as const;
 

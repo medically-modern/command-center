@@ -186,3 +186,27 @@ describe("which chase role a patient returns to", () => {
     expect(chaseRoleLabel("Fax")).toBe("Chase Clinicals — Fax");
   });
 });
+
+describe("Sub-Stage indices", () => {
+  it("are distinct and every one has a label", async () => {
+    const { SUB_STAGE_INDEX, SUB_STAGE_LABEL } = await import("./mondayMapping");
+    const values = Object.values(SUB_STAGE_INDEX);
+    // A collision would silently move patients into the wrong stage.
+    expect(new Set(values).size).toBe(values.length);
+    for (const idx of values) {
+      expect(SUB_STAGE_LABEL[idx as keyof typeof SUB_STAGE_LABEL], `index ${idx}`).toBeTruthy();
+    }
+  });
+
+  it("pins Doctor Appointment to the index the live board actually assigned", () => {
+    // Monday picks the index when a label is created in the UI — it chose 0,
+    // not the 12 this was first written against. A status write by index is
+    // SILENT if the index has no label, so this is pinned deliberately: change
+    // it only after re-reading the board's settings_str.
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    return import("./mondayMapping").then(({ SUB_STAGE_INDEX, SUB_STAGE_LABEL }) => {
+      expect(SUB_STAGE_INDEX.doctorAppointment).toBe(0);
+      expect(SUB_STAGE_LABEL[SUB_STAGE_INDEX.doctorAppointment]).toBe("Doctor Appointment");
+    });
+  });
+});
