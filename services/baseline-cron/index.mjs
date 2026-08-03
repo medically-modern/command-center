@@ -256,6 +256,13 @@ async function countMashekeStages(todayStr) {
     else if (stage === "Doctor Appointment") roleId = "doctorAppointments";
     if (!roleId) continue;
 
+    // Escalated (index 0) patients are dropped from the baseline for EVERY
+    // masheke role, Doctor Appointments included. That is not an omission:
+    // OperationsTab compares this snapshot against useRoleCounts' `counts`
+    // store, which applies the identical `continue` — the hook's separate
+    // `escalatedCounts` store is never read there. Counting escalated patients
+    // here would put them on one side of the comparison only and manufacture a
+    // permanent phantom "-out" for each one (§5.8 counting contract).
     if (isMeshEscalated(item)) continue; // escalated (index 0)
     const nad = (item.cols[MESH_NAD_COL] ?? "").slice(0, 10);
     if (nad && nad > todayStr) continue; // scheduled (future)
