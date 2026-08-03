@@ -596,10 +596,31 @@ Seven reported items, all shipped together. Tests **600 → 616**; `tsc` clean; 
    a promoted patient leaves Janelle's chart, and a new Final→Manager transition
    (`returnInsuranceToManager` + `returnToManager` action, scoped to DVS × Final Decisions).
 
-**Outstanding, needs a Monday admin:** board automation **7918444697** (Trigger Supplies DVS →
-Failed / Manual Review / MLTC ⇒ Manager Escalation Required) is still **inactive** — the MCP
-connection returned `USER_UNAUTHORIZED` on activate. It watches the SUPPLIES column only, so pump
-DVS and claims failures would still need hand-escalation even once it's on.
+### 2026-08-02 · DVS auto-escalation: all three rose columns now covered (board config)
+
+`7918444697` (Trigger Supplies DVS) was enabled by Josh — the MCP connection had returned
+`USER_UNAUTHORIZED` on activate. Two twins were then created and are active:
+
+| Automation | Trigger column | Fires on | Writes |
+|---|---|---|---|
+| `7918444697` | Trigger Supplies DVS `color_mm26pk1a` | Failed · Manual Review · MLTC | Escalation = Manager Escalation Required |
+| `7921430568` | Trigger Pump DVS `color_mm578kbd` | MLTC · Failed · Manual Review · Denied | Escalation = Manager Escalation Required |
+| `7921431002` | S Claims Status `color_mm284z0b` | Claims Error · Claims Denied · Payment Incorrect | Escalation = Manager Escalation Required |
+
+Each label set is exactly the matching arm of `dvs-manual-review`'s `anyCols`, so every patient
+these escalate can be listed by the chart they escalate into. **That pairing is now a contract:**
+adding a label to one of the automations without adding it to the filter (or vice versa) produces
+either an escalated patient in no bar, or a bar row with no escalation.
+
+**Deliberately NOT automated: `IP Claims Status` (`color_mm5g8085`).** It carries the same five
+failure labels as S Claims Status, but the SPA doesn't read it anywhere — no `COL` entry, absent
+from `dvs-manual-review` / `dvs-manual-review-final`, from `DvsPage.isManualReview`, and from
+managerRail's `CLAIMS_FAILED`. An automation on it would flag the patient for a manager — removing
+them from the rep's sidebar and burndown count — while matching no bucket of the Manager
+Intervention chart, whose population is the union of its buckets. Net effect: invisible to
+everyone. Sequence to fix, if wanted: add the column to `samantha/mondayApi` + `mondayMapping` +
+`Patient`, extend the two DVS chart filters and the rail/page predicates, then create the
+automation.
 
 ### Board findings that are still open (not caused by any change here)
 

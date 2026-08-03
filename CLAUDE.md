@@ -417,9 +417,21 @@ columns" automation on duplicated items). The SPA only flips the advancer; verif
   drill-down's "Escalate to Final Decisions" button still exists as the other route up.
   **Both DVS bars are escalation-split**: Manager Intervention excludes Final, Final Decisions
   requires it — reversing the 2026-07-29 "status-only" rule, which was correct only while nothing
-  ever wrote an escalation onto a DVS patient. Board automation **7918444697** now does (Trigger
-  Supplies DVS → Failed / Manual Review / MLTC ⇒ Manager Escalation Required); it watches only the
-  SUPPLIES column, so pump-DVS and claims failures still escalate by hand.
+  ever wrote an escalation onto a DVS patient. **Three board automations now do** (all active
+  2026-08-02), one per rose column, each ⇒ Escalation = Manager Escalation Required:
+  **7918444697** Trigger Supplies DVS `color_mm26pk1a` ∈ {Failed, Manual Review, MLTC} ·
+  **7921430568** Trigger Pump DVS `color_mm578kbd` ∈ {MLTC, Failed, Manual Review, Denied} ·
+  **7921431002** S Claims Status `color_mm284z0b` ∈ {Claims Error, Claims Denied, Payment
+  Incorrect}. Those label sets are exactly the `dvs-manual-review` CHART_FILTER's `anyCols` —
+  **keep the three automations and that filter in agreement**, or a patient escalates into a chart
+  that can't list them.
+  ⚠️ **`IP Claims Status` (`color_mm5g8085`) is deliberately NOT automated.** It carries the same
+  failure labels as S Claims Status, but nothing in the SPA reads it — no `COL` entry, absent from
+  `dvs-manual-review`/`-final`, from DvsPage's `isManualReview`, and from managerRail's
+  `CLAIMS_FAILED` (all of which key on S Claims only). Escalating on it today would make the
+  patient invisible: flagged for a manager (so out of the rep's queue and counts) yet matching no
+  bar of the Manager Intervention chart, whose population is the union of its buckets. Wiring it up
+  means the column + filter + rail + page first, THEN the automation.
   **Manager Intervention has "Send back to pipeline"** (`returnToQueue`, optional stamped note →
   clears the escalation + re-dates to today) — an escalated patient is invisible to the rep, so
   this is the only way back and it previously existed only in Final Decisions.
