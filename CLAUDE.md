@@ -405,10 +405,12 @@ Phone call · Text message · Email.
 - *Reach out today* — the work. Everyone.
 - *Awaiting reply* (snoozed) and *Scheduled* (booked a visit, so already back in Chase — sourced
   from `scheduledApptPatients`, closed by default) — **MANAGERS ONLY**, both of them. Neither is
-  work; a processor's sidebar is "Reach out today" and nothing else. Gated on
-  `access.type === "manager"` (the signed-in user), NOT on `?manager=1`: that param is only set by
-  some Oversight columns, so URL-gating hid the folders from a manager who clicked in from
-  Processor Overview.
+  work; a processor's sidebar is "Reach out today" and nothing else. Gated on the
+  **`?mv=` Oversight origin** — i.e. this is the manager VIEW, not "the signed-in user is a
+  manager". Two earlier gates were both wrong: `?manager=1` is only set by SOME columns, so the
+  folders vanished when a manager clicked in from Processor Overview; and gating on access level
+  showed them permanently, including on the ordinary role page a processor works from. `mv` is set
+  by every Oversight column and by nothing else.
   ⚠️ The manager view lists **every** patient in the stage, not just escalated ones — an
   escalated-only filter left it empty for the common pre-escalation case (attempt 3, follow-up
   tomorrow), which is exactly who a manager wants to see.

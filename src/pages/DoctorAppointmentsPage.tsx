@@ -9,10 +9,10 @@
  * pages; exit is an appointment date (back to chase, snoozed) or three failed
  * attempts (Manager Intervention).
  *
- * Sidebar sections differ by ROLE, not by URL: the Awaiting-reply folder shows
- * for anyone who is a manager in access.json, however they got here. Gating it
- * on `?manager=1` hid it whenever a manager clicked in from the Processor
- * Overview column, which doesn't set that param.
+ * The Awaiting-reply and Scheduled folders belong to the MANAGER VIEW — this
+ * page opened from an Oversight column (`?mv=`). Working the queue directly is
+ * the processor view and shows "Reach out today" alone. See the gate below for
+ * why it keys off `mv` rather than `?manager=1` or the user's access level.
  */
 import { useMemo, useState } from "react";
 import { useMondayPatients } from "@/hooks/masheke/useMondayPatients";
@@ -34,18 +34,23 @@ import { useBackNavigation } from "@/hooks/useBackNavigation";
 import { ReportIssueButton } from "@/components/shared/ReportIssueButton";
 import { StageActionBar } from "@/components/shared/StageActionBar";
 import { isEscalatedIndex } from "@/lib/masheke/mondayMapping";
-import { useAccessContext } from "@/components/AccessProvider";
+import { managerOriginFromParams } from "@/lib/shared/managerOrigin";
 
 const DoctorAppointmentsPage = () => {
   const { goBack } = useBackNavigation();
   const [searchParams] = useSearchParams();
-  // Who the SIGNED-IN USER is, not how they arrived. `?manager=1` is only set
-  // by some Oversight columns — clicking a patient from Processor Overview
-  // doesn't set it — so gating the Awaiting-reply folder on the URL hid it from
-  // a manager depending on which chart they clicked (Josh, 2026-08-03).
-  const { access } = useAccessContext();
-  const isManager = access.type === "manager";
-  /** Arrived from an Oversight manager column — drives the header badge only. */
+  /**
+   * MANAGER VIEW = arrived from an Oversight column (`?mv=`), not "the signed-in
+   * user happens to be a manager" (Josh, 2026-08-03). Two earlier gates were
+   * both wrong: `?manager=1` is only set by SOME columns, so the folders
+   * vanished when a manager clicked in from Processor Overview; and gating on
+   * the user's access level showed them permanently, including on the ordinary
+   * role page a processor works from. The URL says which VIEW this is, which is
+   * exactly the distinction — `mv` is set by every Oversight column and by
+   * nothing else.
+   */
+  const isManager = managerOriginFromParams(searchParams) !== null;
+  /** Specifically an ESCALATION column — drives the header badge only. */
   const fromManagerColumn = searchParams.get("manager") === "1";
   const deepLinkedId = searchParams.get("patientId");
   const {
