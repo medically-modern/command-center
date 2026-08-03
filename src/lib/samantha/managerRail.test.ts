@@ -198,7 +198,30 @@ describe("Auth Outstanding · Final Decisions bar", () => {
   it("still lists a Final patient with no stamp — the bucket only subdivides", () => {
     const whole = railFilterFor("auth-outstanding-final-escalation", null)!;
     expect(whole(patient({ escalationLabel: FINAL }))).toBe(true);
-    expect(whole(patient({ escalationLabel: "Manager Escalation Required" }))).toBe(false);
+    expect(whole(patient({}))).toBe(false);
+  });
+
+  it("takes EITHER rung — this chart is the stage's only manager destination", () => {
+    // Josh 2026-08-03: an Auth Outstanding escalation should only ever land in
+    // Final Decisions, so the Manager Intervention chart was removed. Nothing
+    // writes Manager here now, but a label carried in from an earlier stage (or
+    // written by a DVS/claims board automation) would otherwise have no chart
+    // at all — and an escalated patient is already out of the rep's queue.
+    // Mirrors the widened CHART_FILTERS rule; change the two together.
+    const whole = railFilterFor("auth-outstanding-final-escalation", null)!;
+    expect(whole(patient({ escalationLabel: "Manager Escalation Required" }))).toBe(true);
+  });
+
+  it("Pump SoS names the blocker that holds the stage", () => {
+    // Moved up from the deleted Manager Intervention chart: the rung changed,
+    // the reason a manager needs to see did not.
+    const bar = railFilterFor("auth-outstanding-final-escalation", "Pump SoS")!;
+    const notClear = patient({
+      escalationLabel: FINAL,
+      insurance: { ...structuredClone(EMPTY_INSURANCE), codes: { pump: { status: "pending", sos: "not-clear" } } },
+    } as Partial<Patient>);
+    expect(bar(notClear)).toBe(true);
+    expect(bar(patient({ escalationLabel: FINAL }))).toBe(false);
   });
 });
 

@@ -90,6 +90,8 @@ const isSubmitAuthProposed = (p: Patient): boolean =>
 const atStage = (p: Patient, stage: string): boolean =>
   (p.stageAdvancerText ?? "").trim() === stage;
 const isManagerEsc = (p: Patient): boolean => p.escalationLabel === MANAGER_ESC;
+/** Either rung — for a chart that is its stage's only manager destination. */
+const isEscalated = (p: Patient): boolean => isManagerEsc(p) || isFinal(p);
 
 /** chart id → (bucket label → predicate). The `null` key is the whole chart,
  *  used when a manager opens a card without clicking a specific bar. */
@@ -146,23 +148,20 @@ const RAIL: Record<string, { buckets: Record<string, RailPredicate>; all: RailPr
       (isFinal(p) && hasProposedStuckStamp(p)) ||
       (atStage(p, "Submit Auth.") && isFinal(p)),
   },
-  // Manager Intervention · Auth Outstanding row (2026-08-03). Population is the
-  // Manager label itself — the bars only name how the patient got it, so a hold
-  // the bars don't recognise is still listed.
-  "auth-outstanding-manager": {
-    buckets: {
-      "Pump SoS": isPumpSosNotClear,
-      "Propose Stuck": (p) => isManagerEsc(p) && hasProposedStuckStamp(p),
-    },
-    all: isManagerEsc,
-  },
+  // Final Decisions · Auth Outstanding — the stage's ONLY manager rung (Josh,
+  // 2026-08-03; the `auth-outstanding-manager` chart built earlier that night
+  // was removed and the escalating writes re-aimed at Final). So, exactly like
+  // the chart it mirrors, this matches ANY escalation rather than Final alone:
+  // nothing in the SPA writes Manager here now, but a label carried in from an
+  // earlier stage — or written by a DVS/claims board automation — would have no
+  // other chart to land in. The buckets take the same condition for the same
+  // reason, so a stray Manager label still shows WHY it's there.
   "auth-outstanding-final-escalation": {
     buckets: {
-      "Propose Stuck": (p) => isFinal(p) && hasProposedStuckStamp(p),
+      "Pump SoS": isPumpSosNotClear,
+      "Propose Stuck": (p) => isEscalated(p) && hasProposedStuckStamp(p),
     },
-    // Population stays "any Final patient at this stage" — the bucket only
-    // subdivides it, so a Final patient without a stamp is still listed.
-    all: isFinal,
+    all: isEscalated,
   },
 };
 

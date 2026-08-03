@@ -93,12 +93,20 @@ export type EscalationDecision = "manager" | "final" | "done";
  *   reason a proposal leaves behind. The toggle stamps nothing, so a toggled
  *   patient sat at Manager with no proposal for anyone to review. They want a
  *   decision, so they go where decisions are made.
- * - **Auth Outstanding → Manager**, which is a real destination there
- *   (oversight `auth-outstanding-manager`).
+ * - **Auth Outstanding → FINAL** (Josh, 2026-08-03). That stage has exactly one
+ *   manager rung: an escalation there should only ever land in Final Decisions.
+ *   The Manager Intervention chart built for it earlier the same night was
+ *   removed, so Manager is no longer a destination at this stage at all.
+ *
+ * Which leaves Benefits as the only stage the toggle can't escalate from — but
+ * spelled out per stage rather than collapsed to `!== "benefits"`, because the
+ * three reasons are independent and the next stage added won't share any of them.
  */
 export function manualEscalationLevel(context: SendContext, escalated: boolean): EscalationDecision {
-  if (context === "benefits" || !escalated) return "done";
-  return context === "submitAuth" ? "final" : "manager";
+  if (!escalated) return "done";
+  if (context === "benefits") return "done";
+  // Submit Auth and Auth Outstanding agree on the rung for different reasons.
+  return "final";
 }
 
 /**
@@ -584,8 +592,11 @@ export async function sendPatientToMonday(
     else if (outcome.stage === "complete") stageWriteIndex = STAGE_INDEX.complete;
     else if (outcome.stage === "dvs") stageWriteIndex = STAGE_INDEX.dvs;
     // Escalation is a floor, and a floor never lowers the ceiling: an already
-    // "final" decision stays final rather than being written back down.
-    if (outcome.escalate && escalationDecision !== "final") escalationDecision = "manager";
+    // "final" decision stays final rather than being written back down by an
+    // auto rule that only asks for a manager (a denial does — see
+    // `authOutstandingOutcome`, which owns the rung as well as the order).
+    if (outcome.escalate === "final") escalationDecision = "final";
+    else if (outcome.escalate === "manager" && escalationDecision !== "final") escalationDecision = "manager";
   } else {
     // benefits page — use insurance outcome to drive Stage Advancer.
     const outcome = deriveInsuranceOutcome(effectiveIns, entries.map(e => e.cid));

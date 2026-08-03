@@ -17,9 +17,11 @@ describe("manualEscalationLevel", () => {
     expect(manualEscalationLevel("submitAuth", true)).toBe("final");
   });
 
-  it("Auth Outstanding stays at Manager", () => {
-    // A real destination there since the auth-outstanding-manager chart exists.
-    expect(manualEscalationLevel("authOutstanding", true)).toBe("manager");
+  it("Auth Outstanding also goes to Final — its only manager rung", () => {
+    // Josh 2026-08-03. The Manager Intervention chart built for this stage
+    // earlier the same night was removed: an Auth Outstanding escalation should
+    // only ever land in Final Decisions, so Manager is not a destination here.
+    expect(manualEscalationLevel("authOutstanding", true)).toBe("final");
   });
 
   it("Benefits never escalates from the flag — it is derived from the checks", () => {

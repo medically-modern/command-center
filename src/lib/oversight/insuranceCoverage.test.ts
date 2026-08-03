@@ -35,7 +35,6 @@ const PROCESSOR_CHARTS = ["benefits", "submit-auth", "auth-outstanding", "auth-d
 const MANAGER_CHARTS = [
   "benefits-manager-escalation",
   "submit-auth-manager",
-  "auth-outstanding-manager",
   "benefits-final-escalation",
   "submit-auth-final-escalation",
   "auth-outstanding-final-escalation",
@@ -46,6 +45,20 @@ const MANAGER_CHARTS = [
 // below is knowingly not upheld, so it's carved out by name and asserted as a
 // carve-out rather than quietly dropped — see the last test in this file.
 const UNBUILT_ROW = "auth-denial";
+
+// Auth Outstanding has ONE manager rung, not two (Josh, 2026-08-03): an
+// escalation there should only ever land in Final Decisions. A Manager
+// Intervention chart was built for it earlier the same night and removed on
+// that instruction, and every escalating write was re-aimed at Final to match
+// (`authOutstandingOutcome` · `manualEscalationLevel` · `proposeStuckLevel`).
+//
+// This is NOT a hole like Auth Denied: the row still has a chart, and that
+// chart's population takes EITHER rung, so a Manager label arriving some other
+// way — carried in from an earlier stage, or written by a DVS/claims board
+// automation — is still visible. The tests below prove exactly that, so the
+// difference between "one rung by design" and "a patient nobody can see" stays
+// asserted rather than assumed.
+const FINAL_ONLY_ROWS = new Set(["auth-outstanding"]);
 
 // Stage "DVS" is the one stage Oversight's Insurance charts do NOT own end to
 // end: the `dvs` role has its own page (/dvs) and its own burndown count, and
@@ -92,6 +105,9 @@ function patient(
 }
 
 const chart = (id: string) => CHART_DEFS.find((c) => c.id === id)!;
+/** The Processor Overview rows a set of manager charts sits above. */
+const rowsOf = (ids: string[]) =>
+  new Set(ids.map((id) => CHART_DEFS.find((c) => c.id === id)?.rowOf).filter(Boolean));
 const seenBy = (p: OversightPatient, ids: string[]) =>
   ids.filter((id) => patientMatchesChart(chart(id), p));
 
@@ -137,19 +153,37 @@ describe("an escalated patient is always SOME manager's", () => {
     expect(visibleIn(p), `${stage} + Final is invisible`).not.toEqual([]);
   });
 
-  // The two columns are a ladder, so every Processor Overview row needs a rung
-  // above it. A row with no manager chart is exactly the hole the Auth
-  // Outstanding row was before 2026-08-03.
-  it("every built Processor Overview row has a Manager Intervention and a Final Decisions chart", () => {
+  // Every built Processor Overview row needs at least ONE manager chart above
+  // it — that is the invariant. Two rungs is the usual shape (the ladder), but
+  // a row may deliberately have only Final Decisions; what it may never have is
+  // nothing, which is exactly the hole the Auth Outstanding row was in before
+  // 2026-08-03.
+  it("every built Processor Overview row has a Final Decisions chart", () => {
     const insurance = OVERSIGHT_SECTIONS.find((s) => s.id === "insurance")!;
-    const rowsOf = (ids: string[]) =>
-      new Set(ids.map((id) => CHART_DEFS.find((c) => c.id === id)?.rowOf).filter(Boolean));
-    const managerRows = rowsOf(insurance.secondaryChartIds ?? []);
     const finalRows = rowsOf(insurance.tertiaryChartIds ?? []);
     for (const row of insurance.chartIds) {
       if (row === UNBUILT_ROW) continue;
-      expect(managerRows.has(row), `${row} has no Manager Intervention chart`).toBe(true);
       expect(finalRows.has(row), `${row} has no Final Decisions chart`).toBe(true);
+    }
+  });
+
+  it("and a Manager Intervention chart, unless the row is Final-only by design", () => {
+    const insurance = OVERSIGHT_SECTIONS.find((s) => s.id === "insurance")!;
+    const managerRows = rowsOf(insurance.secondaryChartIds ?? []);
+    for (const row of insurance.chartIds) {
+      if (row === UNBUILT_ROW || FINAL_ONLY_ROWS.has(row)) continue;
+      expect(managerRows.has(row), `${row} has no Manager Intervention chart`).toBe(true);
+    }
+  });
+
+  // The carve-out asserted as a carve-out: Final-only rows must genuinely have
+  // no Manager chart (so the constant can't rot into a stale exemption that
+  // silently excuses a row which later grew one).
+  it("a Final-only row really has no Manager Intervention chart", () => {
+    const insurance = OVERSIGHT_SECTIONS.find((s) => s.id === "insurance")!;
+    const managerRows = rowsOf(insurance.secondaryChartIds ?? []);
+    for (const row of FINAL_ONLY_ROWS) {
+      expect(managerRows.has(row), `${row} grew a Manager chart — drop it from FINAL_ONLY_ROWS`).toBe(false);
     }
   });
 });
@@ -207,16 +241,32 @@ describe("the real post-Benefits outcomes", () => {
     expect(seenBy(pump, MANAGER_CHARTS)).toContain("submit-auth-manager");
   });
 
-  it("pump SoS not clear at the Auth Outstanding recheck holds the stage + escalates", () => {
+  it("pump SoS not clear at the Auth Outstanding recheck holds the stage + escalates to Final", () => {
     // The stage is deliberately NOT advanced (PR #22 review), so the patient
-    // sits at Auth. Outstanding carrying a Manager escalation. The send writes
-    // the same Not Clear Products dropdown here as at Benefits, so the reason
-    // bar can name why.
+    // sits at Auth. Outstanding carrying an escalation — FINAL, since that is
+    // the stage's only manager rung (Josh, 2026-08-03). The send writes the
+    // same Not Clear Products dropdown here as at Benefits, so the reason bar
+    // can name why.
+    const p = patient("Auth. Outstanding", "Final Escalation Required", {
+      dropdown_mm2vez5a: "Insulin Pump",
+    });
+    expect(seenBy(p, MANAGER_CHARTS)).toContain("auth-outstanding-final-escalation");
+    expect(reasonBucketsFor(chart("auth-outstanding-final-escalation"), p)).toContain("Pump SoS");
+  });
+
+  it("a stray Manager label at Auth Outstanding still lands in Final Decisions", () => {
+    // Nothing in the SPA writes Manager at this stage any more, but a label can
+    // still arrive — carried in from an earlier stage, or written by one of the
+    // four DVS/claims board automations, which trigger on their rose columns
+    // regardless of stage. With the Manager chart gone, the Final Decisions
+    // chart's population has to take EITHER rung or those patients are
+    // invisible in the entire app. It buckets them by reason too, rather than
+    // dropping them into "+N in no bar".
     const p = patient("Auth. Outstanding", "Manager Escalation Required", {
       dropdown_mm2vez5a: "Insulin Pump",
     });
-    expect(seenBy(p, MANAGER_CHARTS)).toContain("auth-outstanding-manager");
-    expect(reasonBucketsFor(chart("auth-outstanding-manager"), p)).toContain("Pump SoS");
+    expect(seenBy(p, MANAGER_CHARTS)).toContain("auth-outstanding-final-escalation");
+    expect(reasonBucketsFor(chart("auth-outstanding-final-escalation"), p)).toContain("Pump SoS");
   });
 
   it("a manual escalate toggle at Submit Auth lands in Final Decisions", () => {

@@ -103,7 +103,6 @@ const CHART_ROUTES: Record<string, string | null> = {
   // monitor; a Submit Auth proposed-stuck row opens /submit-auth instead —
   // handlePatientClick overrides per patient by their Stage Advancer.
   "submit-auth-manager": "/dvs",
-  "auth-outstanding-manager": "/auth-outstanding",
   "benefits": "/benefits",
   "submit-auth": "/submit-auth",
   "auth-outstanding": "/auth-outstanding",

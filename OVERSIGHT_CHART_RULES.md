@@ -137,9 +137,12 @@ All four are **non-escalated only** (Josh 2026-07-30).
 > by name and asserts the carve-out, so the invariant still holds everywhere
 > else and whoever builds the stage finds the note.
 >
-> **Auth Outstanding, which had the same shape, WAS fixed on 2026-08-03**: its
-> pump-SoS blocker (which holds the stage and escalates) had a Final Decisions
-> chart above it but no Manager one. See `auth-outstanding-manager` below.
+> **Auth Outstanding had the same shape and was fixed differently** (Josh,
+> 2026-08-03): rather than growing a Manager chart, it keeps **only Final
+> Decisions**, and every write that escalates there was re-aimed at Final. So
+> the row is covered by one chart instead of two — see *Final Decisions* below,
+> and `FINAL_ONLY_ROWS` in `insuranceCoverage.test.ts`, which asserts the shape
+> is deliberate and that a stray Manager label still lands somewhere.
 >
 > The stages are mutually exclusive by construction (one Stage Advancer value), so a DVS-stage patient never shows under Benefits/Submit Auth/Auth Outstanding.
 
@@ -197,16 +200,15 @@ bars, which are stage `DVS`, keep coming in through the union):
 > straight to Final Decisions where a decision gets made. They match no bar
 > there either, and ride in on that chart's population rule.
 
-**Auth Outstanding** (chart `auth-outstanding-manager`, 2026-08-03). Population
-= Stage `Auth. Outstanding` AND Escalation = index 0; two bars name how:
+**Auth Outstanding** — **no chart** (Josh, 2026-08-03). One was built earlier
+that day and removed on his instruction: an escalation at this stage should only
+ever land in **Final Decisions**, so every escalating write aims there
+(`authOutstandingOutcome` · `manualEscalationLevel` · `proposeStuckLevel`) and
+the Pump SoS bar moved up to the Final chart. Not a hole like Auth Denied — the
+row still has a chart, and that chart takes either rung.
 
-| Bar | Arrives when | Leaves when |
-|---|---|---|
-| **Pump SoS** | …AND Not Clear Products contains `Insulin Pump` — the recheck blocker that deliberately HOLDS the stage rather than completing the patient (Josh 2026-08-02). The send writes the same dropdown here as at Benefits (`effectiveSos` folds the recheck in) | The pump SoS resolves, or the escalation is cleared |
-| **Propose Stuck** | …AND Reference Notes contain a `[Proposed Stuck` stamp | The manager decides |
-
-**Auth Denied** — no chart. Under construction; see the note in Processor
-Overview above.
+**Auth Denied** — no chart, and none above it either. Under construction; see
+the note in Processor Overview above.
 
 **Drill-down actions (the first Manager Intervention buttons):** every row
 except a bot-owned DVS one offers **Escalate to Final Decisions** — the
@@ -249,7 +251,16 @@ the manager watches while the rep keeps working them).
 | Chart | Arrives when | Leaves when |
 |---|---|---|
 | **Submit Auth** | Stage = `Submit Auth.` AND Escalation = `Final Escalation Required` — reached ONLY via the manager's **Escalate to Final Decisions** (two-step review; a rep's Propose Stuck lands in Manager Intervention first). Reason-bucketed since 2026-08-02, mirroring its Manager Intervention twin one rung up; the stage rule is the safety net unioned with those bars, two of which are stage `DVS` | A manager decides — §5 |
-| **Auth Outstanding** | Stage = `Auth. Outstanding` AND Escalation = `Final Escalation Required` | Same |
+| **Auth Outstanding** | Stage = `Auth. Outstanding` AND Escalation = **index 0 OR 2** — this is the stage's ONLY manager chart (Josh, 2026-08-03), so it takes either rung. Reason-bucketed: **Pump SoS** (Not Clear Products contains `Insulin Pump` — the recheck blocker that deliberately HOLDS the stage instead of completing the patient; the send writes the same dropdown here as at Benefits, `effectiveSos` folds the recheck in) · **Propose Stuck** (Reference Notes contain a `[Proposed Stuck` stamp) | A manager decides — §5 |
+
+> **Why Auth Outstanding's bars do NOT split on escalation level**, unlike the
+> Submit Auth pair: that pair splits so a patient promoted to Final leaves the
+> Manager chart. With one rung there is nothing to leave, and matching the
+> population rule instead means a stray Manager label — carried in from an
+> earlier stage, or written by one of the four DVS/claims board automations,
+> which trigger on their rose columns regardless of stage — is bucketed by
+> REASON rather than dropping into "+N in no bar". Nothing in the SPA writes
+> Manager at this stage any more; the width is there for what arrives anyway.
 
 Getting here: **Propose Stuck** on the Benefits / Auth Outstanding page —
 appends the reason to Reference Notes (stamped), then sets Escalation →
@@ -257,6 +268,13 @@ appends the reason to Reference Notes (stamped), then sets Escalation →
 `Manager Escalation Required` instead (the two-step flow above). It does
 **not** touch the Stage Advancer, so the patient stays in their stage and also
 remains visible in Processor Overview.
+
+Also here: the **Auth Outstanding send**, both ways it escalates — the rep's
+**Escalate toggle**, and the **pump-SoS hold** (`authOutstandingOutcome`), which
+writes no stage at all so the patient stays put. A **denial** is the one
+escalation from that page that still writes `Manager Escalation Required`: the
+patient leaves for **Auth Denied**, an unbuilt stage with no charts at either
+rung, so picking Final would pre-judge a design nobody has done.
 
 Also here: the send's **Escalate toggle at Submit Auth** (2026-08-03). The
 toggle and Propose Stuck deliberately land on DIFFERENT rungs at that stage —

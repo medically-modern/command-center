@@ -233,14 +233,14 @@ describe("authOutstandingOutcome", () => {
   it("advances a fully resolved patient to Complete", () => {
     expect(authOutstandingOutcome(facts({ allResolved: true }))).toEqual({
       stage: "complete",
-      escalate: false,
+      escalate: null,
     });
   });
 
   it("sends a resolved patient with DVS-routed supplies to DVS instead", () => {
     expect(authOutstandingOutcome(facts({ allResolved: true, hasDvsRouted: true }))).toEqual({
       stage: "dvs",
-      escalate: false,
+      escalate: null,
     });
   });
 
@@ -251,33 +251,38 @@ describe("authOutstandingOutcome", () => {
   it("HOLDS the stage when the pump SoS came back Not Clear, even if all resolved", () => {
     expect(authOutstandingOutcome(facts({ allResolved: true, pumpSosNotClear: true }))).toEqual({
       stage: null,
-      escalate: true,
+      // FINAL, not manager: the hold keeps the patient at Auth Outstanding, and
+      // that stage's only manager rung is Final Decisions (Josh, 2026-08-03).
+      escalate: "final",
     });
   });
 
   it("holds it for a DVS-routed patient too, rather than exiting to DVS", () => {
     expect(
       authOutstandingOutcome(facts({ allResolved: true, hasDvsRouted: true, pumpSosNotClear: true })),
-    ).toEqual({ stage: null, escalate: true });
+    ).toEqual({ stage: null, escalate: "final" });
     expect(
       authOutstandingOutcome(facts({ allDvsRouted: true, pumpSosNotClear: true })),
-    ).toEqual({ stage: null, escalate: true });
+    ).toEqual({ stage: null, escalate: "final" });
   });
 
   it("lets a denial outrank the pump blocker — Auth Denied has its own queue", () => {
     expect(
       authOutstandingOutcome(facts({ anyDenied: true, pumpSosNotClear: true, allResolved: true })),
-    ).toEqual({ stage: "authDenied", escalate: true });
+      // Manager, not Final: the patient LEAVES this stage for Auth Denied, which
+      // is under construction and has no charts at either rung — so writing
+      // Final would pre-judge a stage nobody has designed yet.
+    ).toEqual({ stage: "authDenied", escalate: "manager" });
   });
 
   it("routes an all-DVS patient to DVS", () => {
     expect(authOutstandingOutcome(facts({ allDvsRouted: true }))).toEqual({
       stage: "dvs",
-      escalate: false,
+      escalate: null,
     });
   });
 
   it("writes no stage at all for a partial save", () => {
-    expect(authOutstandingOutcome(facts())).toEqual({ stage: null, escalate: false });
+    expect(authOutstandingOutcome(facts())).toEqual({ stage: null, escalate: null });
   });
 });

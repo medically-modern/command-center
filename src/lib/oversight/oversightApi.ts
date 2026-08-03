@@ -667,41 +667,27 @@ const RAW_CHART_DEFS: ChartDef[] = [
     rowOf: "auth-outstanding",
     decision: "insurance-final",
     reasonColId: "long_text_mm2ffsme",
-    // One bar, by reason rather than days (Josh, 2026-08-02): the ONLY way a
-    // patient reaches Final Decisions from Auth Outstanding is a rep's Propose
-    // Stuck, so "days in stage" said nothing a manager could act on. Keeps its
-    // own CHART_FILTERS entry as the population — the bucket is a subdivision,
-    // so a Final-escalated patient with no stamp still shows in the header
-    // count as "+N in no bar" rather than vanishing.
+    // Reason bars rather than days (Josh, 2026-08-02) — "days in stage" said
+    // nothing a manager could act on.
+    //
+    // AUTH OUTSTANDING HAS EXACTLY ONE MANAGER RUNG (Josh, 2026-08-03): an
+    // escalation at this stage should only ever land in Final Decisions. A
+    // Manager Intervention chart was built for it earlier the same night and
+    // then removed on that instruction; every write that escalates here now
+    // aims at Final instead (`authOutstandingOutcome`, `manualEscalationLevel`,
+    // `proposeStuckLevel`). The Pump SoS bar moved up from that deleted chart,
+    // because the rung changed — the reason a manager needs to SEE did not.
+    //
+    // Consequently the bars do NOT split on escalation level, unlike their
+    // Submit Auth twins: that pair splits so a promoted patient leaves the
+    // lower chart, and with one rung there is nothing to leave. Matching the
+    // population rule instead means a stray Manager label — carried in from an
+    // earlier stage, or written by one of the four DVS/claims board
+    // automations — still gets bucketed by REASON rather than dropping into
+    // "+N in no bar".
     reasonBuckets: [
+      { key: "pump-sos", label: "Pump SoS", short: "Pump SoS", filterId: "auth-outstanding-pump-sos-final", color: REASON_COLORS.amber },
       { key: "proposed", label: "Propose Stuck", short: "Proposed", filterId: "auth-outstanding-proposed-final", color: REASON_COLORS.violet },
-    ],
-    drilldownCols: [
-      { colId: "date_mm1wf43j", label: "Intake Date" },
-      { colId: "color_mm1wwm05", label: "Days in Stage" },
-      { colId: "color_mm1x157j", label: "Primary Insurance" },
-      { colId: "color_mm1w1cm9", label: "Serving" },
-      { colId: "color_mm2vsh2f", label: "Escalation", pill: true },
-      { colId: "__proposedReason__", label: "Proposed Reason" },
-    ],
-  },
-  // Manager view: Insurance — Auth Outstanding row, Manager Intervention
-  // (2026-08-03). The stage previously had a Final Decisions chart and nothing
-  // below it, so a Manager escalation here was a dead end: escalated patients
-  // leave the rep's queue and no manager chart listed them. Two bars name the
-  // ways in — the pump-SoS blocker (which HOLDS the stage by design, PR #22)
-  // and a rep's Propose Stuck; the chart rule carries anyone else.
-  {
-    id: "auth-outstanding-manager",
-    title: "Auth Outstanding",
-    boardId: 18410601299,
-    notesColId: "long_text_mm2ffsme",
-    rowOf: "auth-outstanding",
-    decision: "submit-auth-manager",
-    reasonColId: "long_text_mm2ffsme",
-    reasonBuckets: [
-      { key: "pump-sos", label: "Pump SoS", short: "Pump SoS", filterId: "auth-outstanding-manager-pump-sos", color: REASON_COLORS.amber },
-      { key: "proposed", label: "Propose Stuck", short: "Proposed", filterId: "auth-outstanding-proposed-manager", color: REASON_COLORS.violet },
     ],
     drilldownCols: [
       { colId: "__reasons__", label: "Reason", pill: true },
@@ -990,16 +976,16 @@ export const OVERSIGHT_SECTIONS: OversightSection[] = [
     secondaryTitle: "Manager Intervention",
     // 2026-07-29: the two DVS charts merged into the reason-bucketed
     // "Submit Auth" chart (DVS Retry · DVS Manual Review · Propose Stuck).
-    // 2026-08-03: Auth Outstanding gained a Manager Intervention chart so its
-    // row has both rungs — an escalated patient leaves the rep's queue, so a
-    // row with no manager chart is a hole the patient falls through
-    // (insuranceCoverage.test.ts). Auth Denied is the deliberate exception:
-    // the stage is under construction, no UI for it (Josh, 2026-08-03).
-    secondaryChartIds: [
-      "benefits-manager-escalation",
-      "submit-auth-manager",
-      "auth-outstanding-manager",
-    ],
+    // Two rows deliberately have NO Manager Intervention chart (Josh,
+    // 2026-08-03) — both recorded in insuranceCoverage.test.ts so they stay
+    // decisions rather than drifting into oversights:
+    //   • Auth Outstanding — one rung only; escalations there land in Final
+    //     Decisions. (A Manager chart was built earlier the same night and
+    //     removed on Josh's instruction; the writes were re-aimed at Final so
+    //     the row is covered, not blind.)
+    //   • Auth Denied — the stage is under construction; no UI for it, and it
+    //     has no Final Decisions chart either.
+    secondaryChartIds: ["benefits-manager-escalation", "submit-auth-manager"],
     tertiaryTitle: "Final Decisions",
     tertiaryChartIds: [
       "benefits-final-escalation",
@@ -1431,7 +1417,15 @@ const CHART_FILTERS: Record<string, FilterRule> = {
   // could not have a stage rule before. Escalation matched by INDEX (0 =
   // Manager, 2 = Final) so a board rename can't silently empty the chart.
   "submit-auth-final-escalation": { type: "stageAdvancer", boardId: 18410601299, value: "Submit Auth.", andCols: [{ colId: "color_mm2vsh2f", index: [2] }] },
-  "auth-outstanding-final-escalation": { type: "stageAdvancer", boardId: 18410601299, value: "Auth. Outstanding", andCols: [{ colId: "color_mm2vsh2f", value: "Final Escalation Required" }] },
+  // Auth Outstanding's ONE manager rung (Josh, 2026-08-03), so this matches ANY
+  // escalation at the stage — index 0 (Manager) as well as 2 (Final) — rather
+  // than Final alone. Nothing in the SPA writes Manager here any more, but a
+  // label can still arrive on a patient: carried in from an earlier stage, or
+  // written by one of the four DVS/claims board automations, which trigger on
+  // their rose columns regardless of stage. With no Manager chart to catch
+  // those, matching Final only would make them invisible in the whole app —
+  // exactly the failure insuranceCoverage.test.ts exists to prevent.
+  "auth-outstanding-final-escalation": { type: "stageAdvancer", boardId: 18410601299, value: "Auth. Outstanding", andCols: [{ colId: "color_mm2vsh2f", index: [0, 2] }] },
   // ⚠️ Auth Denied has NO manager charts, deliberately (Josh, 2026-08-03): the
   // stage is under construction, so don't build UI for it. It is the one known
   // exception to "every escalated patient lands in some manager chart" — every
@@ -1440,18 +1434,16 @@ const CHART_FILTERS: Record<string, FilterRule> = {
   // the count-only `authDenied` role. Expect them to be worked on the board
   // until the stage is built. insuranceCoverage.test.ts records the carve-out
   // so the invariant still holds everywhere else.
-  "auth-outstanding-proposed-final": { type: "stageAdvancer", boardId: 18410601299, value: "Auth. Outstanding", andCols: [{ colId: "color_mm2vsh2f", value: "Final Escalation Required" }, { colId: "long_text_mm2ffsme", containsAny: ["[Proposed Stuck"] }] },
-  // ── Manager Intervention: Auth Outstanding (2026-08-03). The stage had a
-  // Final Decisions chart but no Manager one, while the pump-SoS blocker added
-  // to the Auth Outstanding send (PR #22) deliberately HOLDS the stage and
-  // writes Manager — a state with nowhere to be seen. Population = the label;
-  // the bars name the two ways a patient gets it.
-  "auth-outstanding-manager": { type: "stageAdvancer", boardId: 18410601299, value: "Auth. Outstanding", andCols: [{ colId: "color_mm2vsh2f", index: [0] }] },
+  // The two bars subdivide it. Both take the SAME escalation condition as the
+  // chart (any rung, not Final alone) so a stray Manager label is bucketed by
+  // reason instead of landing in "+N in no bar" — see the chart def.
+  //
   // Pump SoS: the send writes the same Not Clear Products dropdown here as at
   // Benefits (the recheck feeds `effectiveSos`), so the bar reads the same
-  // column as its Benefits twin.
-  "auth-outstanding-manager-pump-sos": { type: "stageAdvancer", boardId: 18410601299, value: "Auth. Outstanding", andCols: [{ colId: "color_mm2vsh2f", index: [0] }, { colId: "dropdown_mm2vez5a", containsAny: ["Insulin Pump"] }] },
-  "auth-outstanding-proposed-manager": { type: "stageAdvancer", boardId: 18410601299, value: "Auth. Outstanding", andCols: [{ colId: "color_mm2vsh2f", index: [0] }, { colId: "long_text_mm2ffsme", containsAny: ["[Proposed Stuck"] }] },
+  // column as its Benefits twin. This bar moved up from the deleted
+  // `auth-outstanding-manager` chart when the rung became Final.
+  "auth-outstanding-pump-sos-final": { type: "stageAdvancer", boardId: 18410601299, value: "Auth. Outstanding", andCols: [{ colId: "color_mm2vsh2f", index: [0, 2] }, { colId: "dropdown_mm2vez5a", containsAny: ["Insulin Pump"] }] },
+  "auth-outstanding-proposed-final": { type: "stageAdvancer", boardId: 18410601299, value: "Auth. Outstanding", andCols: [{ colId: "color_mm2vsh2f", index: [0, 2] }, { colId: "long_text_mm2ffsme", containsAny: ["[Proposed Stuck"] }] },
   "submit-auth-proposed-final": { type: "stageAdvancer", boardId: 18410601299, value: "Submit Auth.", andCols: [{ colId: "color_mm2vsh2f", value: "Final Escalation Required" }, { colId: "long_text_mm2ffsme", containsAny: ["[Proposed Stuck"] }] },
   // ── Manager Intervention: Benefits reason buckets (Katie 2026-07-29). ──
   // The chart id's own rule below is a SAFETY NET unioned with these three

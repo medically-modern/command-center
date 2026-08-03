@@ -412,23 +412,33 @@ columns" automation on duplicated items). The SPA only flips the advancer; verif
   ⚠️ **Every escalated patient must land in some manager chart** — an escalation removes them from
   the rep's queue AND from the role count, so a state that matches no chart is invisible in the
   whole app. Bars key on board FACTS and escalations are LABELS, so the two drift; each Insurance
-  manager chart therefore carries a population rule wider than its bars, and **Benefits, Submit Auth
-  and Auth Outstanding all have both rungs above them** — `auth-outstanding-manager` was added
-  2026-08-03 because the pump-SoS hold from PR #22 holds the stage and escalates to Manager.
+  manager chart therefore carries a population rule wider than its bars. **Benefits and Submit Auth
+  have both rungs; Auth Outstanding has ONLY Final Decisions** (Josh, 2026-08-03 — an escalation at
+  that stage should only ever land in Final, so the `auth-outstanding-manager` chart built earlier
+  that night was removed). Because that leaves one chart to catch everything, its population rule
+  takes **either** escalation index (0 or 2) — nothing in the SPA writes Manager there any more
+  (`authOutstandingOutcome` → `final` on the pump-SoS hold, `manualEscalationLevel` → `final`,
+  `proposeStuckLevel` → `final`), but a label carried in from an earlier stage or written by one of
+  the four DVS/claims automations would otherwise be invisible. Its two bars (**Pump SoS** ·
+  **Propose Stuck**) match either rung for the same reason — deliberately unlike the Submit Auth
+  pair, which splits on level so a promoted patient leaves the lower chart.
   **`authDenied` is the one deliberate exception (Josh, 2026-08-03): the stage is under
-  construction — do NOT build UI for it.** It has no manager charts, and since ANY denial escalates
-  those patients are worked on the board until the stage is built; don't "fix" this. Manager
+  construction — do NOT build UI for it.** It has no manager charts at all, and since ANY denial
+  escalates those patients are worked on the board until the stage is built; don't "fix" this. (The
+  Auth Outstanding send still writes **Manager** on a denial — the patient leaves for that unbuilt
+  stage, so choosing Final would pre-judge a design nobody has done.) Manager
   Intervention decision buttons show on **every row except a bot-owned DVS one** — a row a manager
   can see but not clear is still a stranded patient. `lib/oversight/insuranceCoverage.test.ts`
   enumerates the reachable (stage × escalation) states and fails if one goes blind (Auth Denied is
-  carved out by name, and asserted as a carve-out); `lib/samantha/managerRail` mirrors these
-  populations for the destination page's sidebar — change the two together.
+  carved out by name, and Auth Outstanding's Final-only shape via `FINAL_ONLY_ROWS` — both asserted
+  as carve-outs); `lib/samantha/managerRail` mirrors these populations for the destination page's
+  sidebar — change the two together.
   **The send's Escalate toggle picks its rung by stage** (`samantha/mondayWrite.manualEscalationLevel`):
   **Submit Auth → Final** (Josh, 2026-08-03 — that stage's Manager rung is the two-step Propose
-  Stuck review, and the toggle leaves no stamped proposal to review), Auth Outstanding → Manager,
-  and at Benefits the toggle doesn't exist (escalation there is derived from the universal checks
-  only, so a hydrated flag must never floor it). An auto-escalation can raise that decision but
-  never lowers it.
+  Stuck review, and the toggle leaves no stamped proposal to review), **Auth Outstanding → Final**
+  (Josh, 2026-08-03 — Final is that stage's only rung), and at Benefits the toggle doesn't exist
+  (escalation there is derived from the universal checks only, so a hydrated flag must never floor
+  it). An auto-escalation can raise that decision but never lowers it.
   **The escalation ladder is processor → Manager Intervention → Final Decisions**
   (`stageActions.proposeStuckLevel`, 2026-08-02): Propose Stuck writes one rung UP from wherever
   the patient already is — an existing escalation label OR a click from Manager Intervention
@@ -438,7 +448,7 @@ columns" automation on duplicated items). The SPA only flips the advancer; verif
   drill-down's "Escalate to Final Decisions" button still exists as the other route up.
   **Both DVS bars are escalation-split**: Manager Intervention excludes Final, Final Decisions
   requires it — reversing the 2026-07-29 "status-only" rule, which was correct only while nothing
-  ever wrote an escalation onto a DVS patient. **Three board automations now do** (all active
+  ever wrote an escalation onto a DVS patient. **Four board automations now do** (all active
   2026-08-02), one per rose column, each ⇒ Escalation = Manager Escalation Required:
   **7918444697** Trigger Supplies DVS `color_mm26pk1a` ∈ {Failed, Manual Review, MLTC} ·
   **7921430568** Trigger Pump DVS `color_mm578kbd` ∈ {MLTC, Failed, Manual Review, Denied} ·

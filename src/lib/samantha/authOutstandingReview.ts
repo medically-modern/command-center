@@ -229,6 +229,9 @@ export function isSnoozedAuthOutstanding(p: Patient, todayYmd: string): boolean 
 /** Stage the Auth Outstanding send writes, or null to LEAVE IT ALONE. */
 export type AuthOutstandingStage = "authDenied" | "complete" | "dvs" | null;
 
+/** Which escalation rung the send writes, or null for none. */
+export type AuthOutstandingEscalation = "manager" | "final" | null;
+
 export interface AuthOutstandingFacts {
   /** Any non-DVS product came back Denied. */
   anyDenied: boolean;
@@ -249,7 +252,12 @@ export interface AuthOutstandingFacts {
  *
  *   1. Denial          → Auth Denied + manager. Most specific destination, and
  *                        it has its own queue, so it outranks the pump blocker.
- *   2. Pump SoS Not Clear → NO stage write + manager. A pump we may not be able
+ *                        The rung stays MANAGER because the patient leaves this
+ *                        stage: Auth Denied is under construction and has no
+ *                        oversight charts at either rung (Josh, 2026-08-03), so
+ *                        writing Final here would pre-judge a stage nobody has
+ *                        designed yet. Revisit when that stage gets built.
+ *   2. Pump SoS Not Clear → NO stage write + FINAL. A pump we may not be able
  *                        to bill is a blocker, exactly as at Benefits, where the
  *                        identical finding makes deriveInsuranceOutcome return
  *                        "blocker" and hold the patient at Benefits / SoS.
@@ -258,18 +266,21 @@ export interface AuthOutstandingFacts {
  *                        send would advance the patient to Complete — firing the
  *                        Welcome Call create-item automation — while merely
  *                        flagging a manager. (PR #22 review, 2026-08-02.)
+ *                        FINAL, not Manager, because this hold KEEPS the patient
+ *                        at Auth Outstanding, and that stage has exactly one
+ *                        manager rung: Final Decisions (Josh, 2026-08-03).
  *   3. All resolved    → Complete, or DVS when supplies still owe a DVS run.
  *   4. All DVS-routed  → DVS; the patient never belonged on the auth rail.
  *   5. Otherwise       → partial save: no stage write.
  */
 export function authOutstandingOutcome(
   f: AuthOutstandingFacts,
-): { stage: AuthOutstandingStage; escalate: boolean } {
-  if (f.anyDenied) return { stage: "authDenied", escalate: true };
-  if (f.pumpSosNotClear) return { stage: null, escalate: true };
-  if (f.allResolved) return { stage: f.hasDvsRouted ? "dvs" : "complete", escalate: false };
-  if (f.allDvsRouted) return { stage: "dvs", escalate: false };
-  return { stage: null, escalate: false };
+): { stage: AuthOutstandingStage; escalate: AuthOutstandingEscalation } {
+  if (f.anyDenied) return { stage: "authDenied", escalate: "manager" };
+  if (f.pumpSosNotClear) return { stage: null, escalate: "final" };
+  if (f.allResolved) return { stage: f.hasDvsRouted ? "dvs" : "complete", escalate: null };
+  if (f.allDvsRouted) return { stage: "dvs", escalate: null };
+  return { stage: null, escalate: null };
 }
 
 /** Convenience for the panel: does the patient have Medicaid (either insurance)? */
