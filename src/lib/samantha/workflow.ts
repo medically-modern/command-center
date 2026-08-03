@@ -464,8 +464,18 @@ export interface Patient {
   /** Pump DVS status label from Monday (e.g. "Trigger Pump DVS", "Running",
    *  "Success", "Denied") — the separate insulin-pump bot's column. */
   pumpDvsStatus?: string;
-  /** Claims Status label from Monday (e.g. "Claims Paid", "Claims Denied") */
+  /** SUPPLIES Claims Status label from Monday ("S Claims Status" —
+   *  e.g. "Claims Paid", "Claims Denied"). */
   claimsStatus?: string;
+  /** INSULIN-PUMP Claims Status label ("IP Claims Status") — the pump half of
+   *  the board's split claims family. Same vocabulary as claimsStatus; a
+   *  failure here classifies the patient as DVS manual review just like the
+   *  supplies one. */
+  ipClaimsStatus?: string;
+  ipClaimsPaidAmount?: string;
+  ipClaimsPaidDate?: string;
+  ipClaimsDenialReason?: string;
+  ipClaimsError?: string;
   /** DVS retry count (bot-written "Retry Count" number column). */
   retryCount?: number;
   /** DVS bot output — read-only monitor fields (/dvs page). */

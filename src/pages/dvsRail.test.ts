@@ -26,8 +26,16 @@ function toneFor(label: string | undefined): Tone {
   return "gray";
 }
 const isFailedish = (label: string | undefined) => toneFor(label) === "rose";
+// Mirrors DvsPage.isManualReview. Classification is STATUS-driven: an escalation
+// label never puts a patient in manual review (the 2026-07-29 rule) — the chart
+// filter only uses the escalation column to EXCLUDE the Final half, which is a
+// column-split concern rather than part of this predicate. This local copy had
+// kept a stale `|| !!p.escalated`, so it stopped mirroring the page it guards.
 const isManualReview = (p: Patient) =>
-  !!p.escalated || isFailedish(p.dvsStatus) || isFailedish(p.pumpDvsStatus) || isFailedish(p.claimsStatus);
+  isFailedish(p.dvsStatus) ||
+  isFailedish(p.pumpDvsStatus) ||
+  isFailedish(p.claimsStatus) ||
+  isFailedish(p.ipClaimsStatus);
 const isQueued = (p: Patient) => p.dvsStatus === "Retry Queued" || p.pumpDvsStatus === "Retry Queued";
 
 const mk = (over: Partial<Patient>): Patient => ({ id: "x", name: "x", ...over }) as Patient;
@@ -60,13 +68,19 @@ describe("isManualReview (mirrors CHART_FILTERS['dvs-manual-review'])", () => {
     for (const label of ["MLTC", "Failed", "Manual Review", "Denied"]) {
       expect(isManualReview(mk({ pumpDvsStatus: label }))).toBe(true);
     }
+    // BOTH claims families — supplies ("S Claims Status") and pump
+    // ("IP Claims Status"). The pump half was unread until 2026-08-02.
     for (const label of ["Claims Error", "Claims Denied", "Payment Incorrect"]) {
       expect(isManualReview(mk({ claimsStatus: label }))).toBe(true);
+      expect(isManualReview(mk({ ipClaimsStatus: label }))).toBe(true);
     }
   });
 
-  it("matches a manager escalation", () => {
-    expect(isManualReview(mk({ escalated: true }))).toBe(true);
+  it("does NOT classify on the escalation label — status only", () => {
+    // A label carried in from an earlier stage must not read as manual review;
+    // that was the 2026-07-29 rule and it still holds for classification.
+    expect(isManualReview(mk({ escalated: true }))).toBe(false);
+    expect(isManualReview(mk({ escalated: true, escalationLabel: "Manager Escalation Required" }))).toBe(false);
   });
 
   it("does not match healthy or queued patients", () => {
@@ -81,13 +95,16 @@ describe("the two rails are disjoint", () => {
     const pool = [
       mk({ id: "queued", dvsStatus: "Retry Queued" }),
       mk({ id: "manual", dvsStatus: "Manual Review" }),
-      mk({ id: "esc", escalated: true }),
+      mk({ id: "pumpclaim", ipClaimsStatus: "Claims Denied" }),
+      // Escalated but every status healthy: classification is status-driven, so
+      // this patient belongs to NEITHER rail (the label alone means nothing).
+      mk({ id: "esc", escalated: true, escalationLabel: "Manager Escalation Required" }),
       mk({ id: "ok", dvsStatus: "Success" }),
     ];
     const queued = pool.filter(isQueued).map((p) => p.id);
     const manual = pool.filter(isManualReview).map((p) => p.id);
     expect(queued).toEqual(["queued"]);
-    expect(manual.sort()).toEqual(["esc", "manual"]);
+    expect(manual.sort()).toEqual(["manual", "pumpclaim"]);
     expect(queued.filter((id) => manual.includes(id))).toEqual([]);
   });
 });

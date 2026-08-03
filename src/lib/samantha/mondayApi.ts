@@ -228,6 +228,18 @@ export const COL = {
   claimsDenialReason: "text_mm28xy29",
   claimsError: "text_mm28sr8y",
 
+  // Insulin-pump claims — the board split claims into two families ("S …" for
+  // supplies, "IP …" for the pump) and this half went unread until 2026-08-02.
+  // Same label vocabulary as the S columns. NB `claimsStatus` above is still
+  // what DvsPage's `pumpClaimPaid` consults; that stays correct only while the
+  // bot leaves this column empty (no item carries a value today) — when it
+  // starts writing here, that check has to move.
+  ipClaimsStatus: "color_mm5g8085",
+  ipClaimsPaidAmount: "text_mm5gdf21",
+  ipClaimsPaidDate: "date_mm5gkz8g",
+  ipClaimsDenialReason: "text_mm5g31v4",
+  ipClaimsError: "text_mm5gm4vb",
+
   // Debug / error logging
   joshDebug: "text_mm2w1qn4",
 
@@ -316,21 +328,27 @@ export const READ_COLUMN_IDS = [
   COL.inNetwork,
   COL.active,
   COL.dmeBenefits,
-];
-
-/** Extended read columns for auth groups — includes auth results + the derived
- *  SoS/Auth summary columns. The three universal checks are in the base list
- *  above (Benefits writes them, so Benefits must read them back). */
-export const AUTH_READ_COLUMN_IDS = [
-  ...READ_COLUMN_IDS,
-  COL.sos,
-  COL.auth,
-  // Per-product auth result (status)
+  // Per-product Auth Result — same rule, same bug as the three checks above
+  // (found 2026-08-02): Benefits WRITES these on send and, being read only by
+  // the auth groups, fetched them back from nobody — so every "Auth Required /
+  // Not Required" answer hydrated blank on reload and a manager reopening the
+  // patient saw an empty step 2 while Monday held the real answers.
   COL.authResult.monitor,
   COL.authResult.sensors,
   COL.authResult.insulin_pump,
   COL.authResult.infusion_set,
   COL.authResult.cartridge,
+];
+
+/** Extended read columns for auth groups — adds the per-product SUBMISSION
+ *  fields and the derived SoS/Auth summary columns. The three universal checks
+ *  and the five per-product Auth Result columns are in the base list above
+ *  (Benefits writes them, so Benefits must read them back) — do NOT repeat them
+ *  here; `universalRoundTrip.test.ts` fails the build on a duplicate. */
+export const AUTH_READ_COLUMN_IDS = [
+  ...READ_COLUMN_IDS,
+  COL.sos,
+  COL.auth,
   // Per-product submission fields (read back for Auth Outstanding display)
   COL.authMethod.monitor,
   COL.authMethod.sensors,
@@ -377,6 +395,11 @@ export const AUTH_READ_COLUMN_IDS = [
   COL.claimsPaidDate,
   COL.claimsDenialReason,
   COL.claimsError,
+  COL.ipClaimsStatus,
+  COL.ipClaimsPaidAmount,
+  COL.ipClaimsPaidDate,
+  COL.ipClaimsDenialReason,
+  COL.ipClaimsError,
   COL.triggerDvs,
   COL.triggerPumpDvs,
   COL.claimsStatus,
@@ -892,75 +915,6 @@ export async function fetchItemById(itemId: string, useAuthColumns?: boolean): P
 
 
 /** Read arbitrary column text values for a single item (used by write verification). */
-export interface StatusOption {
-  /** Monday's label index — what writes use (never the label text). */
-  index: number;
-  /** The label exactly as the board spells it. */
-  label: string;
-}
-
-/** Session cache: label sets change when someone edits the board, which is
- *  rare, and the manager edit dialog would otherwise re-read on every open. */
-const statusOptionsCache = new Map<string, StatusOption[]>();
-
-/**
- * The live label set for one or more status columns, in board order.
- *
- * Every other status write in this app maps a hardcoded label list to a
- * hardcoded index map, which is fine for machine-chosen values but wrong for a
- * human-facing dropdown: the two drift (the board spells index 3 "Magnacare"
- * while `PRIMARY_INSURANCE_OPTIONS` says "MagnaCare", and the board's "Fidelis
- * CHP" is missing from the list entirely). A picker built from THIS can't drift
- * — and its label is the exact string the write's read-back verification should
- * expect.
- *
- * Deactivated labels are dropped; `labels_positions_v2` (Monday's display
- * order) is honoured when present so the dropdown matches the board's own
- * ordering rather than numeric index order.
- */
-export async function fetchStatusOptions(
-  columnIds: string[],
-): Promise<Record<string, StatusOption[]>> {
-  const missing = columnIds.filter((id) => !statusOptionsCache.has(id));
-  if (missing.length > 0) {
-    const query = `
-      query ($boardId: [ID!], $cols: [String!]) {
-        boards(ids: $boardId) { columns(ids: $cols) { id settings_str } }
-      }
-    `;
-    const data = await gql<{ boards: { columns: { id: string; settings_str: string }[] }[] }>(
-      query,
-      { boardId: [String(BOARD_ID)], cols: missing },
-    );
-    for (const col of data.boards?.[0]?.columns ?? []) {
-      let parsed: {
-        labels?: Record<string, string>;
-        labels_positions_v2?: Record<string, number>;
-        deactivated_labels?: (string | number)[];
-      } = {};
-      try {
-        parsed = JSON.parse(col.settings_str ?? "{}");
-      } catch {
-        parsed = {};
-      }
-      const dead = new Set((parsed.deactivated_labels ?? []).map(String));
-      const positions = parsed.labels_positions_v2 ?? {};
-      const options = Object.entries(parsed.labels ?? {})
-        .filter(([idx, label]) => !!label && !dead.has(idx))
-        .map(([idx, label]) => ({ index: Number(idx), label }))
-        .sort((a, b) => {
-          const pa = positions[String(a.index)] ?? a.index;
-          const pb = positions[String(b.index)] ?? b.index;
-          return pa - pb;
-        });
-      statusOptionsCache.set(col.id, options);
-    }
-  }
-  const out: Record<string, StatusOption[]> = {};
-  for (const id of columnIds) out[id] = statusOptionsCache.get(id) ?? [];
-  return out;
-}
-
 export async function readColumnTexts(
   itemId: string,
   columnIds: string[],

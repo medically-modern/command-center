@@ -22,6 +22,9 @@ export const APPROVED_STUCK_TAG = "[Approved Stuck";
 /** Leading tag on a manager's "escalated to Final Decisions" note line
  *  (Submit Auth two-step review, 2026-07-29). */
 export const ESCALATED_TO_FINAL_TAG = "[Escalated to Final";
+/** Leading tag when Final Decisions hands a patient back DOWN to Manager
+ *  Intervention rather than out to the rep queue (DVS loop, 2026-08-02). */
+export const RETURNED_TO_MANAGER_TAG = "[Returned to manager";
 
 /** Tag body: "<TAG> · <date>" plus the author's initials when signed in, so a
  *  stamped line says WHO proposed/decided — same signature every other note
@@ -59,6 +62,15 @@ export function stampApprovedStuck(note: string, dateStr: string, initials = "")
  */
 export function stampEscalatedToFinal(note: string, dateStr: string, initials = ""): string {
   return `${stampHead(ESCALATED_TO_FINAL_TAG, dateStr, initials)} ${note.trim()}`;
+}
+
+/**
+ * The line appended when Final Decisions sends a patient back DOWN to Manager
+ * Intervention (DVS manual-review loop). Optional note — usually "what I fixed
+ * on the board", which is what the manager needs before re-running.
+ */
+export function stampReturnedToManager(note: string, dateStr: string, initials = ""): string {
+  return `${stampHead(RETURNED_TO_MANAGER_TAG, dateStr, initials)} ${note.trim()}`;
 }
 
 /** Append a stamped line to an existing notes body (blank-line separated). */

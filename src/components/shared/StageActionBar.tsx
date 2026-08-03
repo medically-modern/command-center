@@ -29,17 +29,18 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { AlertTriangle, Flag, Loader2, RotateCcw } from "lucide-react";
+import { AlertTriangle, CornerDownLeft, Flag, Loader2, RotateCcw } from "lucide-react";
 import { toast } from "sonner";
 import { useSearchParams } from "react-router-dom";
 import {
   approveInsuranceStuck,
   returnInsuranceToQueue,
+  returnInsuranceToManager,
   approveProposedStuck,
   returnProposedToQueue,
 } from "@/lib/oversight/oversightApi";
 import { managerOriginFromParams } from "@/lib/shared/managerOrigin";
-import { actionsFor, type StageAction, type StageKey } from "@/lib/shared/stageActions";
+import { actionsFor, proposeStuckLevel, type StageAction, type StageKey } from "@/lib/shared/stageActions";
 import { useBackNavigation } from "@/hooks/useBackNavigation";
 import { ProposeStuckModal } from "@/components/masheke/ProposeStuckModal";
 import { ProposeStuckButton } from "@/components/samantha/ProposeStuckButton";
@@ -51,11 +52,15 @@ interface Props {
   board: StageBoard;
   patientId: string;
   patientName: string;
+  /** The patient's current Insurance Escalation label — decides whether a
+   *  Propose Stuck raises to Manager Intervention or promotes to Final
+   *  Decisions (`proposeStuckLevel`). Insurance board only. */
+  escalationLabel?: string;
   /** Refetch the page's patient list after a write. */
   onDone: () => void;
 }
 
-export function StageActionBar({ stage, board, patientId, patientName, onDone }: Props) {
+export function StageActionBar({ stage, board, patientId, patientName, escalationLabel, onDone }: Props) {
   const [searchParams] = useSearchParams();
   const { goBack } = useBackNavigation();
   const origin = managerOriginFromParams(searchParams);
@@ -66,11 +71,16 @@ export function StageActionBar({ stage, board, patientId, patientName, onDone }:
   const [approveNote, setApproveNote] = useState("");
   const [returnOpen, setReturnOpen] = useState(false);
   const [returnNote, setReturnNote] = useState("");
+  const [downOpen, setDownOpen] = useState(false);
+  const [downNote, setDownNote] = useState("");
   const [busy, setBusy] = useState<StageAction | null>(null);
 
   const has = (a: StageAction) => actions.includes(a);
 
-  const runDecision = async (action: "approveStuck" | "returnToQueue", note?: string) => {
+  const runDecision = async (
+    action: "approveStuck" | "returnToQueue" | "returnToManager",
+    note?: string,
+  ) => {
     if (busy) return;
     setBusy(action);
     try {
@@ -78,22 +88,32 @@ export function StageActionBar({ stage, board, patientId, patientName, onDone }:
         if (board === "insurance") await approveInsuranceStuck(patientId, note);
         else await approveProposedStuck(patientId, note);
         toast.success(`${patientName} marked Stuck`);
+      } else if (action === "returnToManager") {
+        await returnInsuranceToManager(patientId, note);
+        toast.success(`${patientName} sent back to Manager Intervention`);
       } else {
         if (board === "insurance") await returnInsuranceToQueue(patientId, note);
         else await returnProposedToQueue(patientId, note);
-        toast.success(`${patientName} returned to the queue`);
+        toast.success(`${patientName} sent back to the pipeline`);
       }
       setApproveOpen(false);
       setApproveNote("");
       setReturnOpen(false);
       setReturnNote("");
+      setDownOpen(false);
+      setDownNote("");
       onDone();
       // The patient just left this stage's queue — go back to the drill-down.
       goBack();
     } catch (e) {
-      toast.error(action === "approveStuck" ? "Approve Stuck failed" : "Return to Queue failed", {
-        description: e instanceof Error ? e.message : String(e),
-      });
+      toast.error(
+        action === "approveStuck"
+          ? "Approve Stuck failed"
+          : action === "returnToManager"
+            ? "Send back to Manager Intervention failed"
+            : "Send back to pipeline failed",
+        { description: e instanceof Error ? e.message : String(e) },
+      );
     } finally {
       setBusy(null);
     }
@@ -103,12 +123,13 @@ export function StageActionBar({ stage, board, patientId, patientName, onDone }:
     <>
       {has("proposeStuck") &&
         (board === "insurance" ? (
-          // Submit Auth proposals go to MANAGER INTERVENTION first (2026-07-29,
-          // two-step review); Benefits/Auth Outstanding go straight to Final.
+          // One rung up from wherever the patient already sits — a patient
+          // already flagged for a manager, or a proposal made BY a manager,
+          // promotes to Final Decisions (lib/shared/stageActions).
           <ProposeStuckButton
             patientId={patientId}
             onDone={onDone}
-            escalateTo={stage === "submit-auth" ? "manager" : "final"}
+            escalateTo={proposeStuckLevel(stage, origin, escalationLabel)}
           />
         ) : (
           <>
@@ -201,9 +222,69 @@ export function StageActionBar({ stage, board, patientId, patientName, onDone }:
           className="gap-2 bg-blue-600 hover:bg-blue-700 text-white shadow-elevate"
         >
           {busy === "returnToQueue" ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCcw className="h-4 w-4" />}
-          Return to Queue
+          Send back to pipeline
         </Button>
       )}
+
+      {/* Final Decisions → Manager Intervention (DVS only today). Katie fixes
+          the run in Monday and hands the patient back to Janelle rather than
+          out to a rep, who has no DVS actions. */}
+      {has("returnToManager") && (
+        <Button
+          onClick={() => {
+            setDownNote("");
+            setDownOpen(true);
+          }}
+          disabled={busy !== null}
+          className="gap-2 bg-amber-500 hover:bg-amber-600 text-white shadow-elevate"
+        >
+          {busy === "returnToManager" ? <Loader2 className="h-4 w-4 animate-spin" /> : <CornerDownLeft className="h-4 w-4" />}
+          Send back to manager
+        </Button>
+      )}
+
+      <Dialog open={downOpen} onOpenChange={(o) => busy === null && setDownOpen(o)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <CornerDownLeft className="h-5 w-5 text-amber-500" />
+              Send {patientName} back to Manager Intervention
+            </DialogTitle>
+            <DialogDescription>
+              Drops the escalation from Final Decisions back to Manager Escalation Required, so the
+              patient reappears in Manager Intervention. They do NOT go back to the rep.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div>
+            <label className="block text-xs font-medium text-muted-foreground mb-1">
+              Add a note (optional)
+            </label>
+            <textarea
+              value={downNote}
+              onChange={(e) => setDownNote(e.target.value)}
+              rows={3}
+              placeholder="e.g. Fixed the Medicaid ID on the board — re-run the DVS."
+              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-ring"
+            />
+            <p className="text-xs text-muted-foreground mt-1">Stamped into the notes.</p>
+          </div>
+
+          <DialogFooter className="gap-2 sm:gap-2">
+            <Button variant="outline" onClick={() => setDownOpen(false)} disabled={busy !== null}>
+              Cancel
+            </Button>
+            <Button
+              onClick={() => runDecision("returnToManager", downNote.trim() || undefined)}
+              disabled={busy !== null}
+              className="gap-2 bg-amber-500 hover:bg-amber-600 text-white"
+            >
+              {busy === "returnToManager" ? <Loader2 className="h-4 w-4 animate-spin" /> : <CornerDownLeft className="h-4 w-4" />}
+              Send back to manager
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Dialog, NOT a hand-rolled fixed overlay. This bar renders inside the
           page header (bg-gradient-navy text-navy-foreground), and an in-tree
@@ -215,11 +296,11 @@ export function StageActionBar({ stage, board, patientId, patientName, onDone }:
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <RotateCcw className="h-5 w-5 text-blue-500" />
-              Return {patientName} to the queue
+              Send {patientName} back to the pipeline
             </DialogTitle>
             <DialogDescription>
               Clears the escalation and re-dates the patient to today, so they go back into
-              the rep's queue.
+              the rep's queue and reappear in her sidebar and burndown count.
             </DialogDescription>
           </DialogHeader>
 

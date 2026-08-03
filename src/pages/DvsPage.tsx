@@ -30,6 +30,7 @@ import { NotesPanel } from "@/components/samantha/NotesPanel";
 import { PageLoadingOverlay } from "@/components/shared/PageLoadingOverlay";
 import { EmptyPatientPane } from "@/components/shared/EmptyPatientPane";
 import { ReportIssueButton } from "@/components/shared/ReportIssueButton";
+import { StageActionBar } from "@/components/shared/StageActionBar";
 import { Button } from "@/components/ui/button";
 import { useBackNavigation } from "@/hooks/useBackNavigation";
 import { managerChartFromParams, managerBucketFromParams } from "@/lib/shared/managerOrigin";
@@ -86,7 +87,12 @@ const isFailedish = (label: string | undefined) => toneFor(label) === "rose";
  * "rose" — so the rail can match that chart.
  */
 const isManualReview = (p: Patient) =>
-  isFailedish(p.dvsStatus) || isFailedish(p.pumpDvsStatus) || isFailedish(p.claimsStatus);
+  isFailedish(p.dvsStatus) ||
+  isFailedish(p.pumpDvsStatus) ||
+  // Both halves of the split claims family — "S Claims Status" (supplies) and
+  // "IP Claims Status" (pump). The pump half went unread until 2026-08-02.
+  isFailedish(p.claimsStatus) ||
+  isFailedish(p.ipClaimsStatus);
 
 /**
  * In the retry queue = the bot has literally parked the item there
@@ -272,6 +278,16 @@ const DvsPage = () => {
               </div>
             </div>
             <div className="flex items-center gap-2">
+              {selected && (
+                <StageActionBar
+                  stage="dvs"
+                  board="insurance"
+                  patientId={selected.id}
+                  patientName={selected.name}
+                  escalationLabel={selected.escalationLabel}
+                  onDone={() => refetch(true)}
+                />
+              )}
               <Button onClick={() => refetch()} disabled={loading} className="gap-2 bg-white text-navy hover:bg-white/90 shadow-elevate">
                 <RefreshCw className={cn("h-4 w-4", loading && "animate-spin")} /> Refresh
               </Button>
@@ -445,6 +461,31 @@ const DvsPage = () => {
                     </div>
                     {selected.claimsError && <ErrorNote label="Claims error" text={selected.claimsError} />}
                     {selected.claimsDenialReason && <ErrorNote label="Claims denial reason" text={selected.claimsDenialReason} />}
+
+                    {/* Insulin-pump claims — the board's second claims family
+                        ("IP …"). Rendered whenever the bot has written anything
+                        here, so a patient pulled into DVS Manual Review by a
+                        PUMP claim failure shows the reason rather than an
+                        unexplained classification. Hidden while empty, which is
+                        every patient until the bot starts populating it. */}
+                    {(selected.ipClaimsStatus || selected.ipClaimsPaidAmount || selected.ipClaimsError || selected.ipClaimsDenialReason) && (
+                      <div className="mt-3 pt-3 border-t border-dashed">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+                            Insulin pump claim
+                          </span>
+                          <StatusChip label={selected.ipClaimsStatus} fallback="Not started" />
+                        </div>
+                        {selected.ipClaimsPaidAmount && (
+                          <p className="mt-2 text-sm font-semibold text-emerald-700 dark:text-emerald-300">
+                            ✓ Paid · <span className="font-mono select-all">{selected.ipClaimsPaidAmount}</span>
+                            {selected.ipClaimsPaidDate && <span className="text-muted-foreground font-normal"> on {ymdToUs(selected.ipClaimsPaidDate)}</span>}
+                          </p>
+                        )}
+                        {selected.ipClaimsError && <ErrorNote label="Pump claims error" text={selected.ipClaimsError} />}
+                        {selected.ipClaimsDenialReason && <ErrorNote label="Pump claims denial reason" text={selected.ipClaimsDenialReason} />}
+                      </div>
+                    )}
                   </StepCard>
 
                   {isQueued(selected) && (

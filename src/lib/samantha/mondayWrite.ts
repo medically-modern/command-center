@@ -35,17 +35,7 @@ import {
   patientHasMedicaidIns,
   universalEscalationLevel,
 } from "./benefitsDerive";
-import {
-  diffIdentity,
-  identityNoteText,
-  IDENTITY_STATUS_COLUMNS,
-  IDENTITY_TEXT_COLUMNS,
-  type IdentityChange,
-  type IdentityDraft,
-  type IdentityStatusFieldId,
-} from "./managerIdentityEdit";
-import { appendStampedNote } from "../shared/noteStamp";
-import { derivedRecheckSos, effectiveResult } from "./authOutstandingReview";
+import { authOutstandingOutcome, derivedRecheckSos, effectiveResult } from "./authOutstandingReview";
 import { isMedicarePrimary } from "./medicareJurisdiction";
 import { allProductsDvsRouted, dvsAutoTrigger, hasDvsRoutedProducts } from "./dvsRouting";
 import { etNow } from "../masheke/etDate";
@@ -546,22 +536,35 @@ export async function sendPatientToMonday(
       })),
     });
 
-    if (anyDenied) {
-      stageWriteIndex = STAGE_INDEX.authDenied;
-      escalationDecision = "manager"; // forced by denial regardless of toggle
-    } else if (allResolved) {
-      // Auth rail finished. Patients with Medicaid-routed supplies exit to
-      // the DVS stage (the stage write triggers the bot, HANDOFF-Josh-DVS
-      // §1/§7); everyone else completes as before.
-      stageWriteIndex = hasDvsRoutedProducts(p) ? STAGE_INDEX.dvs : STAGE_INDEX.complete;
-      // escalation follows manualEscalate (already set above)
-    } else if (nonDvsEntries.length === 0 && entries.length > 0) {
-      // ALL products are DVS-routed — this patient never belonged on the
-      // auth rail. Send them to the DVS stage (supersedes the older
-      // "never advances" guard, which predates the DVS stage existing).
-      stageWriteIndex = STAGE_INDEX.dvs;
-    }
-    // else: partial → no Stage Advancer write; escalation still follows toggle
+    // Insulin-pump same-or-similar coming back NOT CLEAR is a BLOCKER, not just
+    // a flag (Josh 2026-08-02; PR #22 review). At Benefits the identical finding
+    // returns "blocker" from deriveInsuranceOutcome, which holds the patient at
+    // Benefits / SoS and escalates. A pump whose SoS was DEFERRED there (rep
+    // answered Auth = Required ⇒ derived "skip", so it sits in Skip SoS
+    // Products) reaches the finding for the first time at THIS page's recheck —
+    // and `isProductResolved` counts a completed recheck as resolved either way,
+    // so without this the send would advance the patient to Complete (firing the
+    // Welcome Call create-item automation) while merely flagging a manager.
+    // Ordered ABOVE allResolved so the blocker wins; a DENIAL still outranks it,
+    // since Auth Denied is a more specific destination with its own queue.
+    const pumpEntry = entries.find((e) => e.cid === "pump");
+    const pumpSosNotClear = !!pumpEntry && effectiveSos(pumpEntry) === "not-clear";
+
+    // Priority order lives in authOutstandingReview.authOutstandingOutcome so
+    // it can be unit-tested; see its doc comment for why each rung outranks the
+    // next. A null stage means "leave the Stage Advancer alone".
+    const outcome = authOutstandingOutcome({
+      anyDenied,
+      pumpSosNotClear,
+      allResolved,
+      allDvsRouted: nonDvsEntries.length === 0 && entries.length > 0,
+      hasDvsRouted: hasDvsRoutedProducts(p),
+    });
+    if (outcome.stage === "authDenied") stageWriteIndex = STAGE_INDEX.authDenied;
+    else if (outcome.stage === "complete") stageWriteIndex = STAGE_INDEX.complete;
+    else if (outcome.stage === "dvs") stageWriteIndex = STAGE_INDEX.dvs;
+    // Escalation is a floor: the manual toggle can still have set it above.
+    if (outcome.escalate) escalationDecision = "manager";
   } else {
     // benefits page — use insurance outcome to drive Stage Advancer.
     const outcome = deriveInsuranceOutcome(effectiveIns, entries.map(e => e.cid));
@@ -1248,109 +1251,6 @@ export async function sendPatientToMonday(
  * Still runs the full verified-write protocol (snapshot → write → read-back)
  * so a silently-failed write surfaces as an error instead of looking saved.
  */
-/**
- * Manager-only correction of a patient's insurance identity — Serving, Primary
- * / Secondary Insurance, Member ID 1 / 2. Gated in the UI to the oversight
- * escalation columns (`?mv=manager-intervention` / `final-decisions`); see
- * `lib/samantha/managerIdentityEdit` for the why and the product-set caveat.
- *
- * Three deliberate choices:
- *
- * 1. **Only changed fields are written.** Every task in the batch is a real
- *    change, which makes read-back verification meaningful — an unchanged
- *    column here means the write did NOT land.
- * 2. **`expectedText` comes from the board's own label**, passed in by the
- *    caller from `fetchStatusOptions`. Verifying against a hardcoded label
- *    would fail on the board's actual spelling ("Magnacare"), and the
- *    snapshot-diff fallback is too weak for this flow: it treats three stable
- *    reads as "same-value write, fine", which is exactly what a silently failed
- *    write looks like here.
- * 3. **`stageColumnId: []`** — nothing to advance. Every Insurance automation
- *    that mentions these columns triggers on Stage Advancer and merely reads
- *    them, so this write fires no automation (verified against the live board
- *    2026-07-30). The verification still runs; it just has no advancer to gate.
- *
- * The attribution note is appended to the CURRENT Monday value of the notes
- * column, re-read here rather than taken from the caller's patient object: the
- * local overlay can hold an unsaved note draft, and a correction must not
- * commit someone else's half-typed line (or clobber a note saved since the
- * page last polled).
- *
- * Returns the changes it wrote; an empty draft-diff is a no-op, not an error.
- */
-export async function saveManagerIdentityEdits(
-  p: Patient,
-  draft: IdentityDraft,
-  /** Live board options per column id, from `fetchStatusOptions`. */
-  statusOptions: Record<string, { index: number; label: string }[]>,
-  /** Stage label for the note stamp ("Benefits" / "Submit Auth" / …). */
-  stage: string,
-  opts?: { onProgress?: (phase: WriteProgressPhase) => void },
-): Promise<IdentityChange[]> {
-  const changes = diffIdentity(p, draft);
-  if (changes.length === 0) return [];
-
-  const tasks: WriteTask[] = [];
-
-  for (const change of changes) {
-    const statusCol = IDENTITY_STATUS_COLUMNS[change.field as IdentityStatusFieldId];
-    if (statusCol) {
-      const option = (statusOptions[statusCol] ?? []).find((o) => o.label === change.to);
-      if (!option) {
-        // The picker is built from these same options, so this is unreachable
-        // in the UI — but a stale cache after someone renames a board label
-        // would otherwise write a wrong index silently. Fail loudly instead.
-        throw new Error(`"${change.to}" is no longer a ${change.label} option on the board — reload and try again.`);
-      }
-      tasks.push({
-        label: change.label,
-        columnId: statusCol,
-        expectedText: option.label,
-        fn: () => writeStatusIndex(p.id, statusCol, option.index),
-      });
-      continue;
-    }
-    const textCol = IDENTITY_TEXT_COLUMNS[change.field as keyof typeof IDENTITY_TEXT_COLUMNS];
-    if (textCol) {
-      tasks.push({
-        label: change.label,
-        columnId: textCol,
-        expectedText: change.to,
-        fn: () => writeText(p.id, textCol, change.to),
-      });
-    }
-  }
-
-  const current = await readColumnTexts(p.id, [COL.callReferenceNotes]);
-  const existingNotes = current.find((c) => c.id === COL.callReferenceNotes)?.text ?? "";
-  const notes = appendStampedNote(existingNotes, identityNoteText(changes), stage, {
-    initials: userInitials(),
-  });
-  tasks.push({
-    label: "Reference Notes",
-    columnId: COL.callReferenceNotes,
-    expectedText: notes,
-    fn: () => writeLongText(p.id, COL.callReferenceNotes, notes),
-  });
-
-  const failures = await executeWritesWithVerification({
-    itemId: p.id,
-    tasks,
-    stageColumnId: [],
-    executeWithRetry,
-    readColumns: readColumnTexts,
-    writeDebug: (id, msg) => writeText(id, COL.joshDebug, msg),
-    onProgress: opts?.onProgress,
-  });
-
-  if (failures.length > 0) {
-    throw new Error(
-      `${failures.length} column(s) failed after retries. Failed: ${failures.map((f) => f.split(":")[0]).join(", ")}`,
-    );
-  }
-  return changes;
-}
-
 export async function saveNoAuthNeededToMonday(
   p: Patient,
   codeId: ProductCodeId,

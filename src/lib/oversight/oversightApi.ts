@@ -5,7 +5,7 @@
 
 import { MONDAY_API_URL, mondayIdentityHeaders } from "../shared/mondayEndpoint";
 import { etToday } from "../masheke/etDate";
-import { stampReturnedToQueue, stampApprovedStuck, stampEscalatedToFinal, appendStampedLine } from "../masheke/proposedStuck";
+import { stampReturnedToQueue, stampReturnedToManager, stampApprovedStuck, stampEscalatedToFinal, appendStampedLine } from "../masheke/proposedStuck";
 import { userInitials } from "../shared/auth";
 const MONDAY_API_VERSION = "2024-10";
 
@@ -640,6 +640,16 @@ const RAW_CHART_DEFS: ChartDef[] = [
     rowOf: "submit-auth",
     decision: "insurance-final",
     reasonColId: "long_text_mm2ffsme",
+    // REASON-BUCKETED, mirroring the Manager Intervention chart above it
+    // (Josh, 2026-08-02) — same three reasons, one rung further up. Like that
+    // chart this has NO CHART_FILTERS entry of its own: the population is the
+    // union of the bars, which is what lets the DVS bars (stage "DVS") sit in
+    // the Submit Auth row alongside a proposed-stuck bar (stage "Submit Auth.").
+    reasonBuckets: [
+      { key: "dvs-retry", label: "DVS Retry", short: "DVS Retry", filterId: "dvs-retry-queue-final", color: REASON_COLORS.sky },
+      { key: "dvs-manual", label: "DVS Manual Review", short: "DVS Manual", filterId: "dvs-manual-review-final", color: REASON_COLORS.amber },
+      { key: "proposed", label: "Propose Stuck", short: "Proposed", filterId: "submit-auth-proposed-final", color: REASON_COLORS.violet },
+    ],
     drilldownCols: [
       { colId: "date_mm1wf43j", label: "Intake Date" },
       { colId: "color_mm1wwm05", label: "Days in Stage" },
@@ -657,6 +667,15 @@ const RAW_CHART_DEFS: ChartDef[] = [
     rowOf: "auth-outstanding",
     decision: "insurance-final",
     reasonColId: "long_text_mm2ffsme",
+    // One bar, by reason rather than days (Josh, 2026-08-02): the ONLY way a
+    // patient reaches Final Decisions from Auth Outstanding is a rep's Propose
+    // Stuck, so "days in stage" said nothing a manager could act on. Keeps its
+    // own CHART_FILTERS entry as the population — the bucket is a subdivision,
+    // so a Final-escalated patient with no stamp still shows in the header
+    // count as "+N in no bar" rather than vanishing.
+    reasonBuckets: [
+      { key: "proposed", label: "Propose Stuck", short: "Proposed", filterId: "auth-outstanding-proposed-final", color: REASON_COLORS.violet },
+    ],
     drilldownCols: [
       { colId: "date_mm1wf43j", label: "Intake Date" },
       { colId: "color_mm1wwm05", label: "Days in Stage" },
@@ -1363,8 +1382,13 @@ const CHART_FILTERS: Record<string, FilterRule> = {
   // status label now uniquely encodes it, so the old Stuck/Partial-No board
   // heuristic is dropped (a Propose-Stuck item need not have those set).
   "benefits-final-escalation": { type: "stageAdvancer", boardId: 18410601299, value: "Benefits / SoS", andCols: [{ colId: "color_mm2vsh2f", value: "Final Escalation Required" }] },
-  "submit-auth-final-escalation": { type: "stageAdvancer", boardId: 18410601299, value: "Submit Auth.", andCols: [{ colId: "color_mm2vsh2f", value: "Final Escalation Required" }] },
+  // NB "submit-auth-final-escalation" deliberately has NO entry — like its
+  // Manager Intervention twin it is the UNION of its reason buckets, because
+  // two of the three (DVS Retry / DVS Manual) are patients at stage "DVS", not
+  // "Submit Auth.", and a chart-level stage rule would filter them straight out.
   "auth-outstanding-final-escalation": { type: "stageAdvancer", boardId: 18410601299, value: "Auth. Outstanding", andCols: [{ colId: "color_mm2vsh2f", value: "Final Escalation Required" }] },
+  "auth-outstanding-proposed-final": { type: "stageAdvancer", boardId: 18410601299, value: "Auth. Outstanding", andCols: [{ colId: "color_mm2vsh2f", value: "Final Escalation Required" }, { colId: "long_text_mm2ffsme", containsAny: ["[Proposed Stuck"] }] },
+  "submit-auth-proposed-final": { type: "stageAdvancer", boardId: 18410601299, value: "Submit Auth.", andCols: [{ colId: "color_mm2vsh2f", value: "Final Escalation Required" }, { colId: "long_text_mm2ffsme", containsAny: ["[Proposed Stuck"] }] },
   // ── Manager Intervention: Benefits reason buckets (Katie 2026-07-29). ──
   // The chart id itself has NO entry — its population is the UNION of these
   // three bucket rules.
@@ -1412,7 +1436,24 @@ const CHART_FILTERS: Record<string, FilterRule> = {
   // Count ≥ 1 condition is gone: a non-zero count lingers after an item
   // leaves the queue.) NB only Supplies DVS currently has a "Retry Queued"
   // label, so the Pump condition is a no-op today but wired for when it does.
-  "dvs-retry-queue": { type: "stageAdvancer", boardId: 18410601299, value: "DVS", anyCols: [{ colId: "color_mm26pk1a", value: "Retry Queued" }, { colId: "color_mm578kbd", value: "Retry Queued" }] },
+  // Both DVS bars are split by escalation LEVEL as of 2026-08-02: manual review
+  // now auto-raises Manager Escalation Required (board automation 7918444697),
+  // and a manager can promote to Final — so the Manager Intervention bars must
+  // EXCLUDE Final or a promoted patient stays in Janelle's chart forever. This
+  // reverses the 2026-07-29 "status-only" rule, which was correct only while
+  // nothing ever wrote an escalation onto a DVS patient.
+  "dvs-retry-queue": { type: "stageAdvancer", boardId: 18410601299, value: "DVS", andCols: [{ colId: "color_mm2vsh2f", value: "Final Escalation Required", not: true }], anyCols: [{ colId: "color_mm26pk1a", value: "Retry Queued" }, { colId: "color_mm578kbd", value: "Retry Queued" }] },
+  "dvs-retry-queue-final": { type: "stageAdvancer", boardId: 18410601299, value: "DVS", andCols: [{ colId: "color_mm2vsh2f", value: "Final Escalation Required" }], anyCols: [{ colId: "color_mm26pk1a", value: "Retry Queued" }, { colId: "color_mm578kbd", value: "Retry Queued" }] },
+  "dvs-manual-review-final": {
+    type: "stageAdvancer", boardId: 18410601299, value: "DVS",
+    andCols: [{ colId: "color_mm2vsh2f", value: "Final Escalation Required" }],
+    anyCols: [
+      { colId: "color_mm26pk1a", value: ["MLTC", "Failed", "Manual Review"] },
+      { colId: "color_mm578kbd", value: ["MLTC", "Failed", "Manual Review", "Denied"] },
+      { colId: "color_mm284z0b", value: ["Claims Error", "Claims Denied", "Payment Incorrect"] },
+      { colId: "color_mm5g8085", value: ["Claims Error", "Claims Denied", "Payment Incorrect"] },
+    ],
+  },
   // DVS manual review — STATUS-ONLY as of 2026-07-29 (Josh): no automation
   // flips DVS patients to a manager escalation, so the Escalation column is
   // NOT a condition (a label carried in from an earlier stage must not put a
@@ -1424,10 +1465,12 @@ const CHART_FILTERS: Record<string, FilterRule> = {
   // live board columns.
   "dvs-manual-review": {
     type: "stageAdvancer", boardId: 18410601299, value: "DVS",
+    andCols: [{ colId: "color_mm2vsh2f", value: "Final Escalation Required", not: true }],
     anyCols: [
       { colId: "color_mm26pk1a", value: ["MLTC", "Failed", "Manual Review"] },
       { colId: "color_mm578kbd", value: ["MLTC", "Failed", "Manual Review", "Denied"] },
       { colId: "color_mm284z0b", value: ["Claims Error", "Claims Denied", "Payment Incorrect"] },
+      { colId: "color_mm5g8085", value: ["Claims Error", "Claims Denied", "Payment Incorrect"] },
     ],
   },
 };
@@ -1678,6 +1721,33 @@ export async function returnInsuranceToQueue(itemId: string, appendNote?: string
 }
 
 const INSURANCE_ESC_FINAL_INDEX = 2; // "Final Escalation Required"
+const INSURANCE_ESC_MANAGER_INDEX = 0; // "Manager Escalation Required"
+
+/**
+ * Hand a patient DOWN one rung — Final Decisions → Manager Intervention
+ * (Josh, 2026-08-02). Added for the DVS manual-review loop: the final reviewer
+ * fixes the underlying problem on the board (a bad Medicaid ID, a plan that
+ * needs a manual claim) and gives the patient back to the manager who watches
+ * the DVS queue, rather than clearing the escalation — which would drop them
+ * to a rep who has no DVS actions — or approving them Stuck.
+ *
+ * Note-then-flag ordering, same as every other escalation write here: the
+ * status flip is what moves the patient between oversight columns, so the
+ * reason must already be in the notes when they arrive. The note is OPTIONAL
+ * (the fix itself is usually self-evident on the board) and the flip is
+ * idempotent, so a retry after a half-failed write is safe.
+ */
+export async function returnInsuranceToManager(itemId: string, appendNote?: string): Promise<void> {
+  const note = appendNote?.trim();
+  if (note) {
+    const existing = await readItemColumnText(itemId, INSURANCE_NOTES_COL);
+    const stamped = stampReturnedToManager(note, etToday(), userInitials());
+    if (!existing.includes(stamped)) {
+      await writeLongTextOnBoard(INSURANCE_BOARD_ID, itemId, INSURANCE_NOTES_COL, appendStampedLine(existing, stamped));
+    }
+  }
+  await writeStatusIndexOnBoard(INSURANCE_BOARD_ID, itemId, INSURANCE_ESC_COL, INSURANCE_ESC_MANAGER_INDEX);
+}
 
 /**
  * Escalate a Submit Auth stuck proposal from Manager Intervention to Final

@@ -2,6 +2,7 @@
 // derived SoS recheck, Auth Review Complete gating, daily-bucket snooze.
 import { describe, expect, it } from "vitest";
 import {
+  authOutstandingOutcome,
   derivedRecheckSos,
   effectiveResult,
   isSnoozedAuthOutstanding,
@@ -212,5 +213,71 @@ describe("isSnoozedAuthOutstanding (daily bucket §12)", () => {
     expect(isSnoozedAuthOutstanding(p({}), TODAY)).toBe(false);
     // Follow Up STATUS alone (dateless) does NOT snooze on this stage.
     expect(isSnoozedAuthOutstanding(p({ followUp: "Follow Up" }), TODAY)).toBe(false);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────
+// Send outcome — the priority order (PR #22 review, 2026-08-02)
+// ─────────────────────────────────────────────────────────────────────
+
+describe("authOutstandingOutcome", () => {
+  const facts = (over: Partial<Parameters<typeof authOutstandingOutcome>[0]> = {}) => ({
+    anyDenied: false,
+    pumpSosNotClear: false,
+    allResolved: false,
+    allDvsRouted: false,
+    hasDvsRouted: false,
+    ...over,
+  });
+
+  it("advances a fully resolved patient to Complete", () => {
+    expect(authOutstandingOutcome(facts({ allResolved: true }))).toEqual({
+      stage: "complete",
+      escalate: false,
+    });
+  });
+
+  it("sends a resolved patient with DVS-routed supplies to DVS instead", () => {
+    expect(authOutstandingOutcome(facts({ allResolved: true, hasDvsRouted: true }))).toEqual({
+      stage: "dvs",
+      escalate: false,
+    });
+  });
+
+  // THE REGRESSION THIS GUARDS. A completed not-clear pump recheck counts as
+  // RESOLVED, so without the pump rung outranking `allResolved` the send would
+  // advance the patient to Complete — firing the Welcome Call create-item
+  // automation — while only flagging a manager.
+  it("HOLDS the stage when the pump SoS came back Not Clear, even if all resolved", () => {
+    expect(authOutstandingOutcome(facts({ allResolved: true, pumpSosNotClear: true }))).toEqual({
+      stage: null,
+      escalate: true,
+    });
+  });
+
+  it("holds it for a DVS-routed patient too, rather than exiting to DVS", () => {
+    expect(
+      authOutstandingOutcome(facts({ allResolved: true, hasDvsRouted: true, pumpSosNotClear: true })),
+    ).toEqual({ stage: null, escalate: true });
+    expect(
+      authOutstandingOutcome(facts({ allDvsRouted: true, pumpSosNotClear: true })),
+    ).toEqual({ stage: null, escalate: true });
+  });
+
+  it("lets a denial outrank the pump blocker — Auth Denied has its own queue", () => {
+    expect(
+      authOutstandingOutcome(facts({ anyDenied: true, pumpSosNotClear: true, allResolved: true })),
+    ).toEqual({ stage: "authDenied", escalate: true });
+  });
+
+  it("routes an all-DVS patient to DVS", () => {
+    expect(authOutstandingOutcome(facts({ allDvsRouted: true }))).toEqual({
+      stage: "dvs",
+      escalate: false,
+    });
+  });
+
+  it("writes no stage at all for a partial save", () => {
+    expect(authOutstandingOutcome(facts())).toEqual({ stage: null, escalate: false });
   });
 });
