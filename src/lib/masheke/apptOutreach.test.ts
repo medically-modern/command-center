@@ -142,20 +142,20 @@ describe("outcome → effect", () => {
     expect(e.kind).toBe("booked");
   });
 
-  it("a logged attempt snoozes a FLAT 3 business days (Josh, 2026-08-03)", () => {
-    expect(APPT_ATTEMPT_SNOOZE_BUSINESS_DAYS).toBe(3);
-    // Mon 3 Aug + 3 business days = Thu 6 Aug — same for attempt 1 and 2.
-    expect(resolveApptOutcome({ outcome: "noAnswer", slot: 1, today: MON }).nextActionDate).toBe("2026-08-06");
-    expect(resolveApptOutcome({ outcome: "leftMessage", slot: 2, today: MON }).nextActionDate).toBe("2026-08-06");
+  it("a logged attempt snoozes a FLAT 1 business day (Brandon's v3 matrix)", () => {
+    expect(APPT_ATTEMPT_SNOOZE_BUSINESS_DAYS).toBe(1);
+    // Mon 3 Aug + 1 business day = Tue 4 Aug — same for attempt 1 and 2.
+    expect(resolveApptOutcome({ outcome: "noAnswer", slot: 1, today: MON }).nextActionDate).toBe("2026-08-04");
+    expect(resolveApptOutcome({ outcome: "leftMessage", slot: 2, today: MON }).nextActionDate).toBe("2026-08-04");
   });
 
-  it("every non-booking, non-refusal outcome gets the SAME 3-day snooze", () => {
-    // Josh, 2026-08-03: one cadence. "Will call the office" used to get 7 days.
+  it("every non-booking, non-refusal outcome gets the SAME snooze", () => {
+    // One cadence. "Will call the office" used to get 7 calendar days.
     for (const outcome of ["noAnswer", "leftMessage", "willCall"] as const) {
       expect(
         resolveApptOutcome({ outcome, slot: 1, today: MON }).nextActionDate,
         outcome,
-      ).toBe("2026-08-06");
+      ).toBe("2026-08-04");
     }
   });
 
@@ -209,8 +209,8 @@ describe("outcome → effect", () => {
   });
 
   it("a snooze never lands on a Saturday or Sunday", () => {
-    // Thu 6 Aug + 3 business days = Tue 11 Aug (skips the weekend)
-    expect(resolveApptOutcome({ outcome: "noAnswer", slot: 2, today: "2026-08-06" }).nextActionDate).toBe("2026-08-11");
+    // Fri 7 Aug + 1 business day = Mon 10 Aug (skips the weekend)
+    expect(resolveApptOutcome({ outcome: "noAnswer", slot: 2, today: "2026-08-07" }).nextActionDate).toBe("2026-08-10");
     // An appointment on Fri 11 Sep would snooze to Sat 12 → clamped to Mon 14
     expect(snoozeUntilAfterAppointment("2026-09-11", MON)).toBe("2026-09-14");
   });

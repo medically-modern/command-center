@@ -111,6 +111,11 @@ const CHART_ROUTES: Record<string, string | null> = {
   "auth-outstanding": "/auth-outstanding",
   "auth-denial": null,              // no CC view yet
   "welcome-call": "/welcome-call",
+  // Doctor Appointments — all three columns open the outreach page. The work is
+  // calling the PATIENT; the chase UI would show the wrong job entirely.
+  "doctor-appointments": "/doctor-appointments",
+  "doctor-appointments-manager": "/doctor-appointments",
+  "doctor-appointments-final": "/doctor-appointments",
 };
 
 /** Days Since Stage Started — the cell the snooze tag rides in. */
@@ -1829,11 +1834,10 @@ export default function OversightTab() {
         const p = (data?.get(expandedChart) ?? []).find((x) => x.id === patientId);
         if (p && (p.cols["color_mm1ws96t"] ?? "").trim() === "Submit Auth.") route = "/submit-auth";
       }
-      // The chase charts carry Doctor Appointment patients too — in the "Appts"
-      // appendix bar, and (for a refusal) in the proposed-stuck chart. Opening
-      // those in the chase UI is confusing: the work is patient outreach, not
-      // chasing an office. Route by the patient's own sub-stage (Josh,
-      // 2026-08-03).
+      // Belt and braces: any patient whose Sub-Stage reads Doctor Appointment
+      // opens the outreach page, whichever chart surfaced them. The dedicated
+      // Doctor Appointments row routes there already, but a patient could
+      // linger in another chart's population after a stage change.
       {
         const p = (data?.get(expandedChart) ?? []).find((x) => x.id === patientId);
         if (p && (p.cols["color_mm1wyr92"] ?? "").trim() === "Doctor Appointment") {

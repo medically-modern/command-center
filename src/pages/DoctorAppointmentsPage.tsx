@@ -9,8 +9,8 @@
  * pages; exit is an appointment date (back to chase, snoozed) or three failed
  * attempts (Manager Intervention).
  *
- * The sidebar deliberately keeps snoozed patients visible — see
- * DoctorAppointmentsSidebar for why.
+ * Sidebar sections differ by role (Awaiting reply is manager-only) — see
+ * DoctorAppointmentsSidebar.
  */
 import { useMemo, useState } from "react";
 import { useMondayPatients } from "@/hooks/masheke/useMondayPatients";
@@ -61,11 +61,14 @@ const DoctorAppointmentsPage = () => {
 
   const [selectedId, setSelectedId] = useState<string | null>(deepLinkedId ?? null);
 
+  // Auto-select must only ever land on a row the sidebar actually renders. A
+  // processor doesn't get the Awaiting-reply folder, so snoozed patients are
+  // not selectable for them.
   const visiblePatients = useMemo(
     () =>
       isManager
         ? patients
-        : apptSidebarVisibleList(patients, undefined, scheduledApptPatients),
+        : apptSidebarVisibleList(patients, undefined, scheduledApptPatients, false),
     [patients, isManager, scheduledApptPatients],
   );
   useAutoSelectPatient(
@@ -106,6 +109,7 @@ const DoctorAppointmentsPage = () => {
         <DoctorAppointmentsSidebar
           patients={patients}
           scheduledPatients={isManager ? [] : scheduledApptPatients}
+          showAwaitingReply={isManager}
           selectedId={selectedId}
           onSelect={setSelectedId}
           loading={loading}

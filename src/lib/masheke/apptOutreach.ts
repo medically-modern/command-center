@@ -30,7 +30,7 @@
  * third attempt because it's a rep JUDGMENT about what they were told, not a
  * counter running out.
  *
- WHERE THE ATTEMPTS LIVE. Every note this stage writes goes to MN Workflow
+ * WHERE THE ATTEMPTS LIVE. Every note this stage writes goes to MN Workflow
  * Notes (`long_text_mm27zjt2`) — there are no per-attempt columns (Josh,
  * 2026-08-03). The count is derived by matching attempt lines in that body
  * (`apptAttemptsFromNotes`), which is why the line format is a contract and why
@@ -41,15 +41,12 @@
  * board-wide, so a patient who spent two chase attempts would arrive with one
  * outreach attempt left, and the chase counter would be spent on the way back.
  *
- * ESCALATION. Three filled attempts with no appointment date ⇒ Escalation
- * (color_mm1x7997) index 0, Manager Intervention. Oversight's Appointments bar
- * keys on this sub-stage AND excludes index 2 (see oversightApi CHART_FILTERS)
- * so it can't scoop up chase patients, who share the column.
- *
- * A Propose Stuck (index 2) from here surfaces in the CHASE proposed-stuck
- * charts instead — their filter spans both stage labels, because the patient
- * belongs on the chase row they came from and would otherwise match no chart at
- * all, which is invisible app-wide (§7).
+ OVERSIGHT. The stage owns a full row across all three manager columns —
+ * `doctor-appointments` (active) / `-manager` (escalation index 0) /
+ * `-final` (index 2). Between them they cover every escalation value, which is
+ * what guarantees an outreach patient is never in a state that matches no chart
+ * (§7 — that would make them invisible app-wide). All three open
+ * /doctor-appointments, never the chase UI: the work is calling the patient.
  *
  * The escalation column being shared is also why `enterDoctorAppointments`
  * CLEARS it on the way in (mondayWrite): a manager working an escalated chase
@@ -87,20 +84,16 @@ export type ApptMethod = "Phone call" | "Text message" | "Email";
 export const APPT_METHODS: ApptMethod[] = ["Phone call", "Text message", "Email"];
 
 /**
- * Business days a logged attempt snoozes the patient (Josh, 2026-08-03).
- * FLAT — every attempt gets the same gap, matching the Chase cadence
- * (ChaseClinicalsPanel `nadBumpDays`). The rep texts, writes a note, submits;
- * the patient comes back three days later so the rep can check for a reply.
+ * Business days a logged attempt snoozes the patient — Brandon's v3 matrix
+ * ("No answer or left message: 1 business day"), confirmed by Josh 2026-08-03.
+ * FLAT: every outcome except a booking or a refusal gets the same gap. The rep
+ * texts, writes a note, submits; the patient is back tomorrow to check for a
+ * reply.
  *
  * ── CHANGE THE CADENCE HERE AND NOWHERE ELSE ──
  */
-export const APPT_ATTEMPT_SNOOZE_BUSINESS_DAYS = 3;
+export const APPT_ATTEMPT_SNOOZE_BUSINESS_DAYS = 1;
 
-// Every outcome except "booked" and "won't schedule" uses the SAME
-// APPT_ATTEMPT_SNOOZE_BUSINESS_DAYS gap (Josh, 2026-08-03). "Will call the
-// office" used to get 7 calendar days (Brandon's v3 matrix); it doesn't any
-// more — one cadence is easier to reason about and the rep is checking for a
-// reply either way.
 
 // ---------------------------------------------------------------------------
 // Attempt log

@@ -108,13 +108,15 @@ export function apptSidebarVisibleList(
   patients: Patient[],
   todayStr: string = etToday(),
   scheduledPatients: Patient[] = [],
+  /** Managers see the Awaiting-reply folder; processors don't. */
+  includeAwaitingReply = true,
 ): Patient[] {
   const { dueNow, awaitingReply, scheduled } = apptSidebarSections(
     patients,
     todayStr,
     scheduledPatients,
   );
-  return [...dueNow, ...awaitingReply, ...scheduled];
+  return [...dueNow, ...(includeAwaitingReply ? awaitingReply : []), ...scheduled];
 }
 
 /** Every patient row the sidebar renders for a view filter, flattened

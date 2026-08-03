@@ -1,17 +1,18 @@
 /**
  * Doctor Appointments sidebar.
  *
- * Two sections, and the second one is the point of difference from every other
- * masheke stage: **snoozed patients stay visible**, in an "Awaiting reply"
- * folder, open by default. The work here is texting and calling patients — if
- * someone replies on day two of a seven-day snooze, the rep needs to be able
- * to open them and put the appointment date in right then. Hiding them (the
- * behaviour everywhere else in the app) would leave that reply unread until
- * the snooze lapsed.
+ * Up to three sections, and who sees which differs by role (Josh, 2026-08-03):
  *
- * Escalated patients are hidden — they're the manager's, in Oversight →
- * Manager Intervention → Appointments. See lib/masheke/sidebarList
- * apptSidebarSections, which this renders verbatim.
+ *  - **Reach out today** — the work. Everyone.
+ *  - **Awaiting reply** — snoozed patients. MANAGERS ONLY (`showAwaitingReply`).
+ *    A processor's list should be today's work and nothing else; a manager is
+ *    looking at the whole queue and needs to see who is parked.
+ *  - **Scheduled** — patients who booked a visit and have therefore LEFT this
+ *    stage for Chase. Closed by default; a way back to them, not a work list.
+ *
+ * Escalated patients are hidden from the processor entirely — they're the
+ * manager's, in Oversight → Medical Evaluation → Doctor Appointments. See
+ * lib/masheke/sidebarList apptSidebarSections, which this renders verbatim.
  */
 import { useState } from "react";
 import {
@@ -39,6 +40,11 @@ interface Props {
   /** Patients with a booked appointment, waiting for the visit — they sit in
    *  Chase now, and appear here in a read-only "Scheduled" folder. */
   scheduledPatients?: Patient[];
+  /** Show the "Awaiting reply" folder. MANAGERS ONLY (Josh, 2026-08-03): a
+   *  processor's list is the work due today, so a snoozed patient is noise on
+   *  it; a manager is looking at the whole queue and needs to see who is
+   *  parked. */
+  showAwaitingReply?: boolean;
   selectedId: string | null;
   onSelect: (id: string) => void;
   loading?: boolean;
@@ -98,6 +104,7 @@ function ApptRow({
 export function DoctorAppointmentsSidebar({
   patients,
   scheduledPatients = [],
+  showAwaitingReply = false,
   selectedId,
   onSelect,
   loading,
@@ -128,7 +135,7 @@ export function DoctorAppointmentsSidebar({
                 Monday · Doctor Appts
               </p>
               <p className="text-sm font-semibold leading-tight">
-                Patients ({dueNow.length + awaitingReply.length})
+                Patients ({dueNow.length + (showAwaitingReply ? awaitingReply.length : 0)})
               </p>
             </div>
           )}
@@ -168,7 +175,7 @@ export function DoctorAppointmentsSidebar({
             <SidebarMenu>
               {dueNow.length === 0 && !collapsed && (
                 <p className="px-3 py-2 text-xs text-muted-foreground italic">
-                  Nobody due — check the follow-ups below.
+                  Nobody due right now.
                 </p>
               )}
               {dueNow.map((p) => (
@@ -184,7 +191,7 @@ export function DoctorAppointmentsSidebar({
           </SidebarGroupContent>
         </SidebarGroup>
 
-        {awaitingReply.length > 0 && (
+        {showAwaitingReply && awaitingReply.length > 0 && (
           <SidebarGroup>
             <FolderHeader
               open={showAwaiting}

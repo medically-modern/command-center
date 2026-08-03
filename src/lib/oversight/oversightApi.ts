@@ -207,18 +207,27 @@ const CHASE_COLS: { colId: string; label: string; pill?: boolean }[] = [
   { colId: "date_mm1wadgs", label: "Next Action" },
 ];
 
-/** Bar colour for the "waiting on a doctor appointment" appendix bar. A slate
- *  grey deliberately outside the day-bucket green→red ramp: parked is a STATE,
- *  not a severity, and colouring it on the ramp would imply one. */
-export const APPOINTMENT_BAR_COLOR = "#64748b";
-
-/** Chase drill-down columns plus the appointment date, so a manager opening the
- *  Appointments bar sees when the visit is without leaving. The outreach
- *  attempts live in MN Workflow Notes, which the drill-down already surfaces
- *  through the notes popover. */
+/** Chase drill-down columns plus the appointment date — a chase patient can be
+ *  snoozed waiting for a visit booked from the chase page ("already scheduled"),
+ *  and the date explains the gap. */
 const CHASE_APPT_COLS: { colId: string; label: string; pill?: boolean }[] = [
   ...CHASE_COLS,
   { colId: "date_mm5w2vsf", label: "Appointment Date" },
+];
+
+/** Doctor Appointments drill-down. The outreach attempts are LINES IN MN
+ *  Workflow Notes rather than columns, so the notes popover (notesColId) is the
+ *  attempt log — there is nothing else to add here. */
+const APPT_COLS: { colId: string; label: string; pill?: boolean }[] = [
+  { colId: "date_mm1wf43j", label: "Intake Date" },
+  { colId: "color_mm1wwm05", label: "Days in Stage" },
+  { colId: "date_mm5w2vsf", label: "Appointment Date" },
+  { colId: "color_mm1xw7y5", label: "Clinicals Method" },
+  { colId: "color_mm1w5wxr", label: "Referral Source" },
+  { colId: "color_mm1x157j", label: "Primary Insurance" },
+  { colId: "color_mm1w1cm9", label: "Serving" },
+  { colId: "color_mm1x7997", label: "Escalation", pill: true },
+  { colId: "date_mm1wadgs", label: "Next Action" },
 ];
 
 /** Shared drill-down columns for the Evaluate chart + its escalated variant. */
@@ -331,14 +340,6 @@ const RAW_CHART_DEFS: ChartDef[] = [
     title: "Chase Clinicals — Fax",
     boardId: 18406060017,
     notesColId: "long_text_mm2ytsxp",
-    // Patients parked waiting on a doctor appointment get their own bar to the
-    // right of "30+ Days" instead of inflating it — see ChartDef.appendixBar.
-    appendixBar: {
-      label: "Waiting on a doctor appointment",
-      short: "Appts",
-      filterId: "chase-fax-appointments",
-      color: APPOINTMENT_BAR_COLOR,
-    },
     drilldownCols: CHASE_APPT_COLS,
   },
   {
@@ -346,13 +347,41 @@ const RAW_CHART_DEFS: ChartDef[] = [
     title: "Chase Clinicals — Email & Parachute",
     boardId: 18406060017,
     notesColId: "long_text_mm2ytsxp",
-    appendixBar: {
-      label: "Waiting on a doctor appointment",
-      short: "Appts",
-      filterId: "chase-email-parachute-appointments",
-      color: APPOINTMENT_BAR_COLOR,
-    },
     drilldownCols: CHASE_APPT_COLS,
+  },
+
+  // ── Doctor Appointments — its own row across all three manager columns
+  //    (Josh, 2026-08-03). It started as an "Appts" appendix bar on the two
+  //    chase charts, which put an ESCALATED outreach patient in the PROCESSOR
+  //    column — visible, but not where a manager looks. A full row is simpler
+  //    and puts each state where it belongs. ──
+  {
+    id: "doctor-appointments",
+    title: "Doctor Appointments",
+    boardId: 18406060017,
+    notesColId: "long_text_mm27zjt2",
+    drilldownCols: APPT_COLS,
+  },
+  {
+    id: "doctor-appointments-manager",
+    title: "Doctor Appointments",
+    boardId: 18406060017,
+    notesColId: "long_text_mm27zjt2",
+    rowOf: "doctor-appointments",
+    drilldownCols: APPT_COLS,
+  },
+  {
+    id: "doctor-appointments-final",
+    title: "Doctor Appointments",
+    boardId: 18406060017,
+    notesColId: "long_text_mm27zjt2",
+    rowOf: "doctor-appointments",
+    decision: "proposed-stuck",
+    reasonColId: "long_text_mm27zjt2",
+    drilldownCols: [
+      { colId: "__proposedReason__", label: "Proposed Reason" },
+      ...APPT_COLS,
+    ],
   },
 
   // ── Escalations (attempt 4+ / MN Attempts = "Escalate") — second row of the
@@ -1012,7 +1041,7 @@ export const OVERSIGHT_SECTIONS: OversightSection[] = [
   {
     id: "medical-evaluation",
     title: "Medical Evaluation",
-    chartIds: ["evaluate", "send-request", "confirm-receipt", "chase-fax", "chase-email-parachute"],
+    chartIds: ["evaluate", "send-request", "confirm-receipt", "chase-fax", "chase-email-parachute", "doctor-appointments"],
     primaryTitle: "Processor Overview",
     secondaryTitle: "Manager Intervention",
     secondaryChartIds: [
@@ -1021,6 +1050,7 @@ export const OVERSIGHT_SECTIONS: OversightSection[] = [
       "confirm-receipt-escalated-merged",
       "chase-fax-escalated-merged",
       "chase-email-parachute-escalated-merged",
+      "doctor-appointments-manager",
     ],
     tertiaryTitle: "Final Decisions",
     tertiaryChartIds: [
@@ -1029,6 +1059,7 @@ export const OVERSIGHT_SECTIONS: OversightSection[] = [
       "confirm-receipt-proposed-stuck",
       "chase-fax-proposed-stuck",
       "chase-email-parachute-proposed-stuck",
+      "doctor-appointments-final",
     ],
   },
   {
@@ -1435,16 +1466,13 @@ const CHART_FILTERS: Record<string, FilterRule> = {
   // method still shows under Fax) vs Email & Parachute (either). Method col = color_mm1xw7y5.
   "chase-fax":             { type: "stageAdvancer", boardId: 18406060017, value: "Chase Clinicals", andCols: [{ colId: "color_mm1x7997", index: [2], not: true }, { colId: "color_mm1xw7y5", value: ["Email", "Parachute"], not: true }] },
   "chase-email-parachute": { type: "stageAdvancer", boardId: 18406060017, value: "Chase Clinicals", andCols: [{ colId: "color_mm1x7997", index: [2], not: true }, { colId: "color_mm1xw7y5", value: ["Email", "Parachute"] }] },
-  // Doctor Appointments (2026-08-03) — the "Appointments" appendix bar on each
-  // chase chart. Split by Clinicals Method exactly like the chase pair above,
-  // so a patient parked for a visit sits on the row of the chase role they came
-  // from and will go back to. Escalated patients are INCLUDED: three failed
-  // outreach attempts escalate to Manager Intervention, and this is the chart
-  // that keeps them visible (§7 — a state matching no chart is invisible
-  // everywhere). Index 2 is still excluded, as everywhere: a stuck PROPOSAL
-  // belongs to Final Decisions.
-  "chase-fax-appointments":             { type: "stageAdvancer", boardId: 18406060017, value: "Doctor Appointment", andCols: [{ colId: "color_mm1x7997", index: [2], not: true }, { colId: "color_mm1xw7y5", value: ["Email", "Parachute"], not: true }] },
-  "chase-email-parachute-appointments": { type: "stageAdvancer", boardId: 18406060017, value: "Doctor Appointment", andCols: [{ colId: "color_mm1x7997", index: [2], not: true }, { colId: "color_mm1xw7y5", value: ["Email", "Parachute"] }] },
+  // Doctor Appointments — one sub-stage, three states, one per manager column.
+  // Between them they cover EVERY escalation value, which is what keeps an
+  // outreach patient visible in all of them (§7: a state matching no chart is
+  // invisible app-wide).
+  "doctor-appointments":         { type: "stageAdvancer", boardId: 18406060017, value: "Doctor Appointment", andCols: [{ colId: "color_mm1x7997", index: [0, 2], not: true }] },
+  "doctor-appointments-manager": { type: "stageAdvancer", boardId: 18406060017, value: "Doctor Appointment", andCols: [{ colId: "color_mm1x7997", index: [0] }] },
+  "doctor-appointments-final":   { type: "stageAdvancer", boardId: 18406060017, value: "Doctor Appointment", andCols: [{ colId: "color_mm1x7997", index: [2] }] },
   // Escalations = same stage AND MN Attempts column = "Escalate" (attempt 4+).
   "confirm-receipt-escalations":       { type: "stageAdvancer", boardId: 18406060017, value: "Confirm Receipt", andCols: [{ colId: "color_mm1x7997", index: [2], not: true }, { colId: "color_mm1wz0vg", value: "Escalate" }] },
   "chase-fax-escalations":             { type: "stageAdvancer", boardId: 18406060017, value: "Chase Clinicals", andCols: [{ colId: "color_mm1x7997", index: [2], not: true }, { colId: "color_mm1xw7y5", value: ["Email", "Parachute"], not: true }, { colId: "color_mm1wz0vg", value: "Escalate" }] },
@@ -1482,14 +1510,8 @@ const CHART_FILTERS: Record<string, FilterRule> = {
   "evaluate-proposed-stuck":        { type: "stageAdvancer", boardId: 18406060017, value: "Evaluate MN",     andCols: [{ colId: "color_mm1x7997", index: [2] }] },
   "send-request-proposed-stuck":    { type: "stageAdvancer", boardId: 18406060017, value: "Send Request",    andCols: [{ colId: "color_mm1x7997", index: [2] }] },
   "confirm-receipt-proposed-stuck": { type: "stageAdvancer", boardId: 18406060017, value: "Confirm Receipt", andCols: [{ colId: "color_mm1x7997", index: [2] }] },
-  // Doctor Appointment is included (2026-08-03): "won't schedule / wants to
-  // cancel" raises a Propose Stuck from the outreach queue, and index 2 pulls
-  // the patient out of every rep queue. Without this stage in the rule they
-  // would match NO chart and be invisible app-wide (§7). They ride the chase
-  // row they came from, split by the same Clinicals Method rule as the
-  // Appointments appendix bar.
-  "chase-fax-proposed-stuck":       { type: "stageAdvancer", boardId: 18406060017, value: ["Chase Clinicals", "Doctor Appointment"], andCols: [{ colId: "color_mm1xw7y5", value: ["Email", "Parachute"], not: true }, { colId: "color_mm1x7997", index: [2] }] },
-  "chase-email-parachute-proposed-stuck": { type: "stageAdvancer", boardId: 18406060017, value: ["Chase Clinicals", "Doctor Appointment"], andCols: [{ colId: "color_mm1xw7y5", value: ["Email", "Parachute"] }, { colId: "color_mm1x7997", index: [2] }] },
+  "chase-fax-proposed-stuck":       { type: "stageAdvancer", boardId: 18406060017, value: "Chase Clinicals", andCols: [{ colId: "color_mm1xw7y5", value: ["Email", "Parachute"], not: true }, { colId: "color_mm1x7997", index: [2] }] },
+  "chase-email-parachute-proposed-stuck": { type: "stageAdvancer", boardId: 18406060017, value: "Chase Clinicals", andCols: [{ colId: "color_mm1xw7y5", value: ["Email", "Parachute"] }, { colId: "color_mm1x7997", index: [2] }] },
   // Benefits check-failed (Final Decisions): still at Benefits, Escalation
   // Required, and at least one universal check failed on the board.
   // Final Decisions: any Benefits item flagged Final Escalation Required —

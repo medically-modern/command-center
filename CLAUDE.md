@@ -387,31 +387,31 @@ advancer on this board (`mondayWrite.recordAndAdvanceVerified` passes it as `sta
 > unreachable patient is a manager task, not a pipeline exit.
 
 **Cadence** (one constant, `APPT_ATTEMPT_SNOOZE_BUSINESS_DAYS`): **every** logged attempt snoozes a
-flat **3 business days** — no per-outcome variation. Reach-out methods are Phone call · Text
-message · Email.
+flat **1 business day** (Brandon's v3 matrix) — no per-outcome variation. Reach-out methods are
+Phone call · Text message · Email.
 
-**The sidebar has three sections** (`apptSidebarSections`). *Reach out today* is the work.
-*Awaiting reply* keeps snoozed patients VISIBLE — unlike every other masheke stage, which hides
-future-NAD patients — because someone who texts back mid-snooze is exactly who the rep needs to
-open. *Scheduled* (closed by default) lists patients who already have an appointment and have
-therefore **left this stage** for Chase; the hook surfaces them via `scheduledApptPatients`
-(appointmentDate set AND sub-stage ≠ Doctor Appointment) purely so the rep has a way back to them,
-and the panel shows the booked date instead of the attempt form. Escalated patients drop out
-entirely — they're the manager's. **Role counts follow the normal due-today rule**, so the role bar
-matches "Reach out today", not the sidebar total.
+**Sidebar sections differ by ROLE** (`apptSidebarSections`):
+- *Reach out today* — the work. Everyone.
+- *Awaiting reply* (snoozed patients) — **MANAGERS ONLY** (`showAwaitingReply`, Josh 2026-08-03).
+  A processor's list should be today's work and nothing else; a manager looks at the whole queue.
+- *Scheduled* (closed by default) — patients who booked and therefore **left this stage** for
+  Chase. The hook surfaces them via `scheduledApptPatients` (appointmentDate set AND sub-stage ≠
+  Doctor Appointment) purely as a way back; the panel shows the booked date instead of the attempt
+  form, because writes against a patient who isn't here would corrupt the count.
 
-**Oversight routing:** `handlePatientClick` sends any patient whose Sub-Stage reads
-`Doctor Appointment` to `/doctor-appointments`, overriding the chart's own route — they surface in
-the CHASE charts (appendix bar + proposed-stuck), and opening them in the chase UI would show the
-wrong job.
+Escalated patients drop out of the processor sidebar entirely — they're the manager's. **Role
+counts follow the normal due-today rule**, so the role bar matches "Reach out today".
 
-**Oversight** (`ChartDef.appendixBar`, new mechanism): both chase charts get an **"Appts" bar to
-the right of "30+ Days"**, divider-separated, split by Clinicals Method with the same §5.9 rule.
-Its patients are **removed from the day buckets** — parked for weeks, they'd otherwise pile into
-30+ and read as rotting cases every day until the visit. It also widens the chart's population
-(`patientMatchesChart`), which is what keeps an **escalated** appointment patient visible at all
-(§7's rule that a state matching no chart is invisible app-wide). Bar colour is off the day ramp
-on purpose: parked is a state, not a severity.
+**Oversight — its own row across all three columns** (`doctor-appointments` /
+`-manager` / `-final`, aligned by `rowOf`). The three filters partition the sub-stage by
+escalation — none / index 0 / index 2 — so **every** escalation value lands in exactly one chart,
+which is what guarantees §7 (a state matching no chart is invisible app-wide);
+`appointmentsBar.test.ts` asserts that partition. All three route to `/doctor-appointments` — the
+work is calling the PATIENT, and the chase UI would show the wrong job.
+> This replaced an "Appts" appendix bar on the two chase charts (`ChartDef.appendixBar`, still in
+> the codebase and unused). That put an **escalated** outreach patient in the PROCESSOR column —
+> visible, but not where a manager looks. Its one lost benefit: chase patients snoozed waiting for
+> a booked visit are back in the chase day buckets and will drift into "30+ Days" while parked.
 
 **Keep-in-agreement (same drill as §5.9/§5.10) — the §5.8 counting contract:**
 1. **Role page** — `src/pages/DoctorAppointmentsPage.tsx` + `hooks/masheke/useMondayPatients` `SUB_STAGE_FILTER`.
