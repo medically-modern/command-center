@@ -1,6 +1,7 @@
 // Monday API layer for Medical Necessity board (18406060017)
 
 import { MONDAY_API_URL, mondayIdentityHeaders } from "../shared/mondayEndpoint";
+import { planPhoneWrite } from "../shared/phoneCell";
 import { planEmailWrite } from "../shared/emailCell";
 const MONDAY_API_VERSION = "2024-10";
 const BOARD_ID = "18406060017";
@@ -703,8 +704,13 @@ export async function fetchItemFileColumns(
 // ---- Doctor-field write helpers ----
 // Phone and email columns need specific JSON shapes.
 
+/** See shared/phoneCell.ts — Monday's API needs bare digits; reps type formatting. */
 export async function writePhone(itemId: string, columnId: string, phone: string): Promise<void> {
-  const value = JSON.stringify({ phone, countryShortName: "US" });
+  const plan = planPhoneWrite(phone);
+  if (plan.action === "skip") return;
+  const value = JSON.stringify(
+    plan.action === "write" ? { phone: plan.phone, countryShortName: "US" } : {},
+  );
   await gql(`mutation { change_column_value(item_id: ${itemId}, board_id: ${BOARD_ID}, column_id: "${columnId}", value: ${JSON.stringify(value)}) { id } }`);
 }
 

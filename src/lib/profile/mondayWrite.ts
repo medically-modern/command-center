@@ -14,7 +14,6 @@ import {
 import { GENERAL_INSURANCE_INDEX } from "./mondayMapping";
 import { executeWritesWithVerification } from "../shared/verifiedWrite";
 import type { Patient } from "./workflow";
-import { phoneDigits } from "./workflow";
 import {
   PRIMARY_INSURANCE_INDEX, GENERAL_INSURANCE_INDEX, SECONDARY_INSURANCE_INDEX,
   DOCTOR_STATUS_INDEX, CLINICALS_METHOD_INDEX, REFERRAL_TYPE_INDEX,
@@ -111,7 +110,7 @@ function buildDataTasks(p: Patient, clinicLabelId: number | null): WriteTask[] {
 
   // ── Demographics ──
   tasks.push({ label: "DOB", columnId: COL.dob, fn: () => writeText(p.id, COL.dob, p.dob) });
-  if (p.ptPhone) tasks.push({ label: "Phone", columnId: COL.ptPhone, fn: () => writePhone(p.id, COL.ptPhone, phoneDigits(p.ptPhone)) });
+  if (p.ptPhone) tasks.push({ label: "Phone", columnId: COL.ptPhone, fn: () => writePhone(p.id, COL.ptPhone, p.ptPhone) });
   if (p.email) tasks.push({ label: "Email", columnId: COL.email, fn: () => writeText(p.id, COL.email, p.email) });
   statusWriteTask(tasks, p.id, "Gender", COL.gender, p.gender, GENDER_INDEX);
   if (p.patientAddress) tasks.push({ label: "Patient Address", columnId: COL.patientAddress, fn: () => writeLocation(p.id, COL.patientAddress, p.patientAddress, p.patientAddressLat ?? 0, p.patientAddressLng ?? 0) });
@@ -149,7 +148,7 @@ function buildDataTasks(p: Patient, clinicLabelId: number | null): WriteTask[] {
   // ── Doctor ──
   statusWriteTask(tasks, p.id, "Doctor Status", COL.doctorStatus, p.doctorStatus, DOCTOR_STATUS_INDEX);
   if (p.doctorName) tasks.push({ label: "Doctor Name", columnId: COL.doctorName, fn: () => writeText(p.id, COL.doctorName, p.doctorName) });
-  if (p.doctorPhone) tasks.push({ label: "Doctor Phone", columnId: COL.doctorPhone, fn: () => writePhone(p.id, COL.doctorPhone, phoneDigits(p.doctorPhone)) });
+  if (p.doctorPhone) tasks.push({ label: "Doctor Phone", columnId: COL.doctorPhone, fn: () => writePhone(p.id, COL.doctorPhone, p.doctorPhone) });
   if (p.doctorNpi) tasks.push({ label: "Doctor NPI", columnId: COL.doctorNpi, fn: () => writeText(p.id, COL.doctorNpi, p.doctorNpi) });
   statusWriteTask(tasks, p.id, "Clinicals Method", COL.clinicalsMethod, p.clinicalsMethod, CLINICALS_METHOD_INDEX);
   if (p.doctorEmail) tasks.push({ label: "Doctor Email", columnId: COL.doctorEmail, fn: () => writeEmail(p.id, COL.doctorEmail, p.doctorEmail) });
@@ -340,7 +339,7 @@ export async function writePatientProfile(p: Patient): Promise<void> {
 
   // Demographics
   tasks.push(writeText(p.id, COL.dob, p.dob));
-  if (p.ptPhone) tasks.push(writePhone(p.id, COL.ptPhone, phoneDigits(p.ptPhone)));
+  if (p.ptPhone) tasks.push(writePhone(p.id, COL.ptPhone, p.ptPhone));
   if (p.email) tasks.push(writeText(p.id, COL.email, p.email));
   tasks.push(statusPromise(p.id, COL.gender, p.gender, GENDER_INDEX));
   if (p.patientAddress) tasks.push(writeLocation(p.id, COL.patientAddress, p.patientAddress, p.patientAddressLat ?? 0, p.patientAddressLng ?? 0));

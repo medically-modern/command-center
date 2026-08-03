@@ -2,6 +2,7 @@
 // Same board as Welcome Call, different group.
 
 import { MONDAY_API_URL, mondayIdentityHeaders } from "../shared/mondayEndpoint";
+import { planPhoneWrite } from "../shared/phoneCell";
 import { planEmailWrite } from "../shared/emailCell";
 const MONDAY_API_VERSION = "2024-10";
 
@@ -450,7 +451,11 @@ export async function writeDate(itemId: string, columnId: string, date: string):
  * Write a phone column.
  * Monday phone columns expect: {"phone": "12125551234", "countryShortName": "US"}
  */
+/** See shared/phoneCell.ts — Monday's API needs bare digits; reps type formatting. */
 export async function writePhone(itemId: string, columnId: string, phone: string, countryShortName = "US"): Promise<void> {
+  const plan = planPhoneWrite(phone);
+  if (plan.action === "skip") return;
+  const val = plan.action === "write" ? { phone: plan.phone, countryShortName } : {};
   const query = `
     mutation ($boardId: ID!, $itemId: ID!, $columnId: String!, $value: JSON!) {
       change_column_value(board_id: $boardId, item_id: $itemId, column_id: $columnId, value: $value) { id }
@@ -460,7 +465,7 @@ export async function writePhone(itemId: string, columnId: string, phone: string
     boardId: BOARD_ID,
     itemId,
     columnId,
-    value: JSON.stringify({ phone, countryShortName }),
+    value: JSON.stringify(val),
   });
 }
 

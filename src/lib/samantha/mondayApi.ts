@@ -2,6 +2,7 @@
 // Token is read from VITE_MONDAY_API_TOKEN at build time.
 
 import { MONDAY_API_URL, mondayIdentityHeaders } from "../shared/mondayEndpoint";
+import { planPhoneWrite } from "../shared/phoneCell";
 import { planEmailWrite } from "../shared/emailCell";
 const MONDAY_API_VERSION = "2024-10";
 
@@ -817,7 +818,9 @@ export async function writePhone(itemId: string, columnId: string, phone: string
       change_column_value(board_id: $boardId, item_id: $itemId, column_id: $columnId, value: $value) { id }
     }
   `;
-  const val = phone ? { phone, countryShortName: "US" } : {};
+  const plan = planPhoneWrite(phone);
+  if (plan.action === "skip") return;
+  const val = plan.action === "write" ? { phone: plan.phone, countryShortName: "US" } : {};
   await gql(query, {
     boardId: BOARD_ID,
     itemId,

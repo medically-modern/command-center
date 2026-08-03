@@ -1,6 +1,7 @@
 import { useState } from "react";
 import type { Patient } from "@/lib/welcomeCall/workflow";
 import { SECONDARY_INSURANCE_OPTIONS, PRIMARY_INSURANCE_OPTIONS, SERVING_OPTIONS, formatPhone, formatDateMDY, isCrossSell, effectiveNextOrder } from "@/lib/welcomeCall/workflow";
+import { phoneRejectionReason } from "@/lib/shared/phoneCell";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { AlertTriangle, CalendarDays, CheckCircle2, Pencil, Check, Loader2, X } from "lucide-react";
@@ -367,6 +368,17 @@ function PhoneField({
   const handleSave = async () => {
     const val = phoneEdited ?? phone;
     if (!val || !onSavePhone) return;
+    // Check BEFORE writing. writePhone silently skips a number it can't parse
+    // so a stray value can't abort a bulk send (shared/phoneCell.ts) — but this
+    // is a human explicitly saving one, and a skip would read as success. Reps
+    // type the number the way the provider says it ("917-968-9304"), which is
+    // fine; this only fires on something genuinely unusable, and says why
+    // instead of showing Monday's API-documentation link.
+    const rejection = phoneRejectionReason(val);
+    if (rejection) {
+      toast.error("Can't save that phone number", { description: rejection });
+      return;
+    }
     setSaving(true);
     try {
       await onSavePhone(val);
