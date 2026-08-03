@@ -1,5 +1,6 @@
 import type { Patient } from "./workflow";
 import { COL, type MondayItem } from "./mondayApi";
+import { readEmailCell } from "../shared/emailCell";
 
 function cv(item: MondayItem, id: string) {
   return item.column_values.find((c) => c.id === id);
@@ -48,8 +49,10 @@ export function mondayItemToPatient(item: MondayItem): Patient {
     doctorName: cv(item, COL.doctorName)?.text ?? "",
     doctorNpi: cv(item, COL.doctorNpi)?.text ?? "",
     doctorPhone: cv(item, COL.doctorPhone)?.text ?? "",
-    doctorEmail: cv(item, COL.doctorEmail)?.text ?? "",
-    doctorFax: cv(item, COL.doctorFax)?.text ?? "",
+    // Email columns render as "<label> - <address>" when the two differ, so
+    // the display text is NOT an address. See shared/emailCell.ts.
+    doctorEmail: readEmailCell(cv(item, COL.doctorEmail)),
+    doctorFax: readEmailCell(cv(item, COL.doctorFax)),
     clinicName: cv(item, COL.clinicName)?.text ?? "",
     clinicalsMethod: cv(item, COL.clinicalsMethod)?.text ?? "",
     clinicalsMethodIndex: parseIndex(cv(item, COL.clinicalsMethod)?.value ?? null),

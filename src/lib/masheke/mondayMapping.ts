@@ -2,6 +2,7 @@
 
 import type { Patient } from "./workflow";
 import type { MondayItem, MondayColumnValue } from "./mondayApi";
+import { readEmailCell } from "../shared/emailCell";
 
 // ---- Sub-Stage index → tab mapping ----
 export const SUB_STAGE_INDEX = {
@@ -97,6 +98,11 @@ function col(item: MondayItem, id: string): string {
   return item.column_values.find((c: MondayColumnValue) => c.id === id)?.text ?? "";
 }
 
+/** Read an email/fax column as an ADDRESS, not as its display rendering. */
+function emailCol(item: MondayItem, id: string): string {
+  return readEmailCell(item.column_values.find((c: MondayColumnValue) => c.id === id));
+}
+
 /** Parse a status column's selected index from its raw `value` JSON. Returns null
  *  when unset/unparseable. Prefer this over matching label text for status columns
  *  whose labels can be renamed on the board (e.g. Escalation — see ESCALATION_INDEX). */
@@ -134,8 +140,10 @@ export function mondayItemToPatient(item: MondayItem): Patient {
     doctorNpi: col(item, "text_mm1x7d91") || undefined,
     clinicalsMethod: col(item, "color_mm1xw7y5") || undefined,
     doctorPhone: col(item, "phone_mm1xz8c0") || undefined,
-    doctorEmail: col(item, "email_mm1x6fq5") || undefined,
-    doctorFax: col(item, "email_mm1xdzcj") || undefined,
+    // Email columns render as "<label> - <address>" when the two differ, so
+    // col()'s display text is NOT an address. See shared/emailCell.ts.
+    doctorEmail: emailCol(item, "email_mm1x6fq5") || undefined,
+    doctorFax: emailCol(item, "email_mm1xdzcj") || undefined,
     clinicName: col(item, "dropdown_mm1xbvas") || undefined,
     clinicAddress: col(item, "location_mm1xjnfv") || undefined,
     prescriberRequirements: col(item, "text_mm4b45rh") || undefined,

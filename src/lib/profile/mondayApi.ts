@@ -2,6 +2,7 @@
 // Token is read from VITE_MONDAY_API_TOKEN at build time.
 
 import { MONDAY_API_URL, mondayIdentityHeaders } from "../shared/mondayEndpoint";
+import { planEmailWrite } from "../shared/emailCell";
 const MONDAY_API_VERSION = "2024-10";
 
 export const BOARD_ID = 18406352652;
@@ -399,13 +400,25 @@ export async function writePhone(itemId: string, columnId: string, phone: string
 }
 
 /** Write an email column. */
-export async function writeEmail(itemId: string, columnId: string, email: string, text?: string): Promise<void> {
+/**
+ * See shared/emailCell.ts — never hand Monday a value that isn't an address.
+ *
+ * The label is deliberately pinned to the address rather than taken as an
+ * argument (the old `text?` param had no callers): a label that differs from
+ * the address is exactly what makes Monday render the composite that broke the
+ * Benefits send. Profile Send-Off is upstream of every board that copies these
+ * columns, so it is the last place that should be able to create one.
+ */
+export async function writeEmail(itemId: string, columnId: string, email: string): Promise<void> {
+  const plan = planEmailWrite(email);
+  if (plan.action === "skip") return;
+  const clean = plan.action === "write" ? plan.email : "";
   const query = `
     mutation ($boardId: ID!, $itemId: ID!, $columnId: String!, $value: JSON!) {
       change_column_value(board_id: $boardId, item_id: $itemId, column_id: $columnId, value: $value) { id }
     }
   `;
-  await gql(query, { boardId: BOARD_ID, itemId, columnId, value: JSON.stringify({ email, text: text ?? email }) });
+  await gql(query, { boardId: BOARD_ID, itemId, columnId, value: JSON.stringify({ email: clean, text: clean }) });
 }
 
 /** Write a numeric column. Strips non-numeric chars (\$, %, commas) before sending. */

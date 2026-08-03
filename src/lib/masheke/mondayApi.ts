@@ -1,6 +1,7 @@
 // Monday API layer for Medical Necessity board (18406060017)
 
 import { MONDAY_API_URL, mondayIdentityHeaders } from "../shared/mondayEndpoint";
+import { planEmailWrite } from "../shared/emailCell";
 const MONDAY_API_VERSION = "2024-10";
 const BOARD_ID = "18406060017";
 
@@ -707,8 +708,12 @@ export async function writePhone(itemId: string, columnId: string, phone: string
   await gql(`mutation { change_column_value(item_id: ${itemId}, board_id: ${BOARD_ID}, column_id: "${columnId}", value: ${JSON.stringify(value)}) { id } }`);
 }
 
+/** See shared/emailCell.ts — never hand Monday a value that isn't an address. */
 export async function writeEmail(itemId: string, columnId: string, email: string): Promise<void> {
-  const value = JSON.stringify({ email, text: email });
+  const plan = planEmailWrite(email);
+  if (plan.action === "skip") return;
+  const clean = plan.action === "write" ? plan.email : "";
+  const value = JSON.stringify({ email: clean, text: clean });
   await gql(`mutation { change_column_value(item_id: ${itemId}, board_id: ${BOARD_ID}, column_id: "${columnId}", value: ${JSON.stringify(value)}) { id } }`);
 }
 

@@ -2,6 +2,7 @@
 // Same board as Welcome Call, different group.
 
 import { MONDAY_API_URL, mondayIdentityHeaders } from "../shared/mondayEndpoint";
+import { planEmailWrite } from "../shared/emailCell";
 const MONDAY_API_VERSION = "2024-10";
 
 export const BOARD_ID = 18410804557;
@@ -467,7 +468,11 @@ export async function writePhone(itemId: string, columnId: string, phone: string
  * Write an email column.
  * Monday email columns expect: {"text": "a@b.com", "email": "a@b.com"}
  */
+/** See shared/emailCell.ts — never hand Monday a value that isn't an address. */
 export async function writeEmail(itemId: string, columnId: string, email: string): Promise<void> {
+  const plan = planEmailWrite(email);
+  if (plan.action === "skip") return;
+  const clean = plan.action === "write" ? plan.email : "";
   const query = `
     mutation ($boardId: ID!, $itemId: ID!, $columnId: String!, $value: JSON!) {
       change_column_value(board_id: $boardId, item_id: $itemId, column_id: $columnId, value: $value) { id }
@@ -477,7 +482,7 @@ export async function writeEmail(itemId: string, columnId: string, email: string
     boardId: BOARD_ID,
     itemId,
     columnId,
-    value: JSON.stringify({ text: email, email }),
+    value: JSON.stringify({ text: clean, email: clean }),
   });
 }
 

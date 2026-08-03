@@ -4,6 +4,7 @@ import type { Patient, InsuranceState, ProductCodeState, ProductCodeId, Universa
 import type { PrimaryInsurance, Serving, ProductId } from "./hcpcRules";
 import { PRIMARY_INSURANCE_OPTIONS, SERVING_OPTIONS } from "./hcpcRules";
 import { COL, type MondayItem } from "./mondayApi";
+import { readEmailCell } from "../shared/emailCell";
 // Reverse: Monday dropdown text → AuthSubmissionMethod
 import type { AuthSubmissionMethod } from "./workflow";
 import { AUTH_SUBMISSION_METHODS } from "./workflow";
@@ -222,8 +223,10 @@ export function mondayItemToPatient(item: MondayItem): Patient {
   const doctorName = cv(COL.doctorName)?.text ?? "";
   const doctorPhone = cv(COL.doctorPhone)?.text ?? "";
   const doctorNpi = cv(COL.doctorNpi)?.text ?? "";
-  const doctorEmail = cv(COL.doctorEmail)?.text ?? "";
-  const doctorFax = cv(COL.doctorFax)?.text ?? "";
+  // Email columns render as "<label> - <address>" when the two differ, so the
+  // display text is NOT an address. See shared/emailCell.ts.
+  const doctorEmail = readEmailCell(cv(COL.doctorEmail));
+  const doctorFax = readEmailCell(cv(COL.doctorFax));
   const clinicalsMethod = cv(COL.clinicalsMethod)?.text ?? "";
   const clinic = cv(COL.clinicName)?.text ?? "";
   const notes = cv(COL.callReferenceNotes)?.text ?? "";

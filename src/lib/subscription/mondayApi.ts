@@ -4,6 +4,7 @@
 import { fetchAssetBytes } from "@/lib/shared/mondayAssets";
 
 import { MONDAY_API_URL, mondayIdentityHeaders } from "../shared/mondayEndpoint";
+import { planEmailWrite } from "../shared/emailCell";
 const MONDAY_API_VERSION = "2024-10";
 
 export const BOARD_ID = 18407459988;
@@ -398,13 +399,17 @@ export async function writePhone(itemId: string, columnId: string, phone: string
   await gql(query, { boardId: BOARD_ID, itemId, columnId, value: JSON.stringify({ phone, countryShortName: "US" }) });
 }
 
+/** See shared/emailCell.ts — never hand Monday a value that isn't an address. */
 export async function writeEmail(itemId: string, columnId: string, email: string): Promise<void> {
+  const plan = planEmailWrite(email);
+  if (plan.action === "skip") return;
+  const val = plan.action === "write" ? { email: plan.email, text: plan.email } : {};
   const query = `
     mutation ($boardId: ID!, $itemId: ID!, $columnId: String!, $value: JSON!) {
       change_column_value(board_id: $boardId, item_id: $itemId, column_id: $columnId, value: $value) { id }
     }
   `;
-  await gql(query, { boardId: BOARD_ID, itemId, columnId, value: JSON.stringify({ email, text: email }) });
+  await gql(query, { boardId: BOARD_ID, itemId, columnId, value: JSON.stringify(val) });
 }
 
 export async function clearStatusColumn(itemId: string, columnId: string): Promise<void> {

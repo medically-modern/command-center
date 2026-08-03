@@ -2,6 +2,7 @@
 // Token is read from VITE_MONDAY_API_TOKEN at build time.
 
 import { MONDAY_API_URL, mondayIdentityHeaders } from "../shared/mondayEndpoint";
+import { planEmailWrite } from "../shared/emailCell";
 const MONDAY_API_VERSION = "2024-10";
 
 export const BOARD_ID = 18410601299;
@@ -827,14 +828,20 @@ export async function writePhone(itemId: string, columnId: string, phone: string
 
 /**
  * Write an email column. Monday expects { email, text }.
+ *
+ * Routed through planEmailWrite so a label that has drifted from the address
+ * can't reach Monday as an address and fail the whole verified send — see
+ * shared/emailCell.ts for the 2026-08-03 Benefits incident.
  */
 export async function writeEmail(itemId: string, columnId: string, email: string): Promise<void> {
+  const plan = planEmailWrite(email);
+  if (plan.action === "skip") return;
   const query = `
     mutation ($boardId: ID!, $itemId: ID!, $columnId: String!, $value: JSON!) {
       change_column_value(board_id: $boardId, item_id: $itemId, column_id: $columnId, value: $value) { id }
     }
   `;
-  const val = email ? { email, text: email } : {};
+  const val = plan.action === "write" ? { email: plan.email, text: plan.email } : {};
   await gql(query, {
     boardId: BOARD_ID,
     itemId,
