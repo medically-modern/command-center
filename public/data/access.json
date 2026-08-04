@@ -110,7 +110,8 @@
         "inSystemReferrals",
         "unverifiedReferrals",
         "dvs",
-        "doctorAppointments"
+        "doctorAppointments",
+        "assignedPatients"
       ],
       "roleFilters": {
         "profile": "all",
