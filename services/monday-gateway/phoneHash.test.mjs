@@ -43,6 +43,24 @@ describe("toE164", () => {
   it("passes through an already-E.164 international number", () => {
     expect(toE164("+442071838750")).toBe("+442071838750");
   });
+
+  // Regression: a short/partial Monday value used to fall through to
+  // "+" + digits, fabricating a valid-LOOKING number. "+310213829" was read by
+  // RingCentral as a Netherlands number and rejected on send, and matched no
+  // conversation on read, so the thread rendered empty with no explanation.
+  it("returns empty for a number too short to place, rather than inventing one", () => {
+    for (const bad of ["0213829", "213829", "12345", "+310213829", "555-1234"]) {
+      expect(toE164(bad), bad).toBe("");
+    }
+  });
+
+  it("rejects a + number longer than E.164 allows", () => {
+    expect(toE164("+1234567890123456")).toBe("");
+  });
+
+  it("still accepts a plausible international number", () => {
+    expect(toE164("+44 20 7183 8750")).toBe("+442071838750");
+  });
 });
 
 describe("phoneHmac", () => {

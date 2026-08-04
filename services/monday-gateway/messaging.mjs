@@ -33,6 +33,7 @@ const { Pool } = pkg;
 import { verifyGoogleIdentity, authEnforced, setKeyStore } from "./auth.mjs";
 import { rcApiFetch, SIP_PROVISION_PATH } from "./ringcentral.mjs";
 import { toE164, phoneHmac, hashingConfigured } from "./phoneHash.mjs";
+import { confirmSmsAccepted } from "./smsSend.mjs";
 
 export { toE164, phoneHmac };
 
@@ -167,7 +168,7 @@ export function registerMessaging({ app }) {
         // ⚠️ This account's POST /sms returns a bare 500 while still ACCEPTING
         // the message (CLAUDE.md §5.5). Confirm against the message store
         // before reporting failure, or reps re-send and double-text patients.
-        ok = await confirmSent(to, text);
+        ok = await confirmSmsAccepted({ rcFetch: (path) => rcApiFetch(path), to, text });
       }
       if (!ok) {
         let msg = `RingCentral SMS failed (${up.status})`;
@@ -196,30 +197,6 @@ export function registerMessaging({ app }) {
     }
     res.json({ ok: true, id: rcId });
   });
-
-  /** Did a just-sent message actually land, despite a 5xx? */
-  async function confirmSent(to, text) {
-    const dateFrom = new Date(Date.now() - 60_000).toISOString();
-    for (let attempt = 0; attempt < 3; attempt++) {
-      if (attempt > 0) await new Promise((r) => setTimeout(r, 2000));
-      try {
-        const up = await rcApiFetch(
-          `/restapi/v1.0/account/~/extension/~/message-store` +
-            `?messageType=SMS&direction=Outbound&phoneNumber=${encodeURIComponent(to)}` +
-            `&dateFrom=${encodeURIComponent(dateFrom)}&perPage=20`,
-        );
-        if (!up.ok) continue;
-        const j = await up.json();
-        const hit = (j.records ?? []).some(
-          (r) => (r.subject ?? "") === text && (r.to ?? []).some((t) => last10(t.phoneNumber) === last10(to)),
-        );
-        if (hit) return true;
-      } catch {
-        /* transient — retry, then give up */
-      }
-    }
-    return false;
-  }
 
   /**
    * A patient's full conversation, with **who sent** each outbound message.

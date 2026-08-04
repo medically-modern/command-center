@@ -31,12 +31,21 @@ export function hashingConfigured() {
  * conversation vanishes from the rep's inbox with no error anywhere.
  */
 export function toE164(raw) {
-  const d = String(raw ?? "").replace(/\D/g, "");
-  if (d.length === 11 && d.startsWith("1")) return "+" + d;
-  if (d.length === 10) return "+1" + d;
   const t = String(raw ?? "").trim();
-  if (t.startsWith("+")) return t;
-  return d ? "+" + d : "";
+  const d = t.replace(/[^0-9]/g, "");
+  // US/NANP, the only shape we can infer a country code for.
+  if (d.length === 10) return "+1" + d;
+  if (d.length === 11 && d.startsWith("1")) return "+" + d;
+  // Already-international input is trusted only if it is a plausible E.164
+  // length (ITU caps country+national digits at 15).
+  if (t.startsWith("+") && d.length >= 11 && d.length <= 15) return "+" + d;
+  // WARN: anything else is UNUSABLE - return empty rather than guessing.
+  // This used to fall through to "+" + digits, fabricating a valid-LOOKING
+  // number from partial data: a short Monday value became "+310213829", which
+  // RingCentral parsed as a Netherlands number and rejected on send, and which
+  // matched no conversation on read, so the thread looked empty. A number we
+  // cannot normalise must be reported as MISSING, not invented.
+  return "";
 }
 
 /** Keyed hash of a phone number, or "" when the number is unusable. */

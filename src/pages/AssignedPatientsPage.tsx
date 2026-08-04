@@ -152,7 +152,10 @@ export default function AssignedPatientsPage() {
                   {p.name}
                 </p>
                 <p className="text-[11px] text-muted-foreground truncate">
-                  {p.phone ? fmtPhone(p.phone) : "no phone on record"} · {p.boardName}
+                  {/* toE164 returns "" for a number it cannot normalise, so an
+                      unusable Monday value reads as missing rather than being
+                      silently turned into something RingCentral will reject. */}
+                  {p.phone ? fmtPhone(p.phone) : "unusable phone number"} · {p.boardName}
                 </p>
               </button>
             ))}

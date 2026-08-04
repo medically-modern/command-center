@@ -191,7 +191,11 @@ export function DailyBurndown({
   // Ad-hoc TASK roles — not a queue the processor "burns down" but work that
   // can land on any patient at any time. Rendered as a task tile below the
   // bars instead of a burndown bar.
-  const TASK_ROLE_IDS = new Set(["updateClinicals", "subscription"]);
+  // Patient Texting belongs here for a stronger reason than the other two: it
+  // has no Monday stage at all — no board, no group, no queue — so its bar
+  // would always render empty and read as "nothing to do today" rather than as
+  // a tool you open when you need it.
+  const TASK_ROLE_IDS = new Set(["updateClinicals", "subscription", "assignedPatients"]);
 
   // When an explicit order is provided (processor SOP sequence), sort by it and
   // show position numbers; otherwise keep canonical config order.

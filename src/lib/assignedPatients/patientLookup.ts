@@ -57,7 +57,11 @@ interface RawItem {
 
 function toPatientRef(it: RawItem): PatientRef {
   // Boards use different phone column ids; take the first one that has a value.
-  const phoneCol = (it.column_values ?? []).find((c) => PHONE_COL_IDS.includes(c.id) && (c.text || "").trim());
+  // Take the first phone column that yields a NORMALISABLE number — a board
+  // whose value is partial or malformed must not shadow one that's usable.
+  const phoneCol = (it.column_values ?? []).find(
+    (c) => PHONE_COL_IDS.includes(c.id) && toE164(c.text || ""),
+  );
   const bid = it.board?.id ? String(it.board.id) : "";
   return {
     itemId: String(it.id),

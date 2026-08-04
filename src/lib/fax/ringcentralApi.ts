@@ -101,10 +101,21 @@ export async function fetchOutboundFaxStatus(
 const RC_SMS_FROM = (import.meta.env.VITE_RC_SMS_FROM as string | undefined) || "+13475037148";
 
 export function toE164(raw: string): string {
-  const d = (raw || "").replace(/\D/g, "");
-  if (d.length === 11 && d.startsWith("1")) return "+" + d;
+  const t = String(raw ?? "").trim();
+  const d = t.replace(/[^0-9]/g, "");
+  // US/NANP, the only shape we can infer a country code for.
   if (d.length === 10) return "+1" + d;
-  return (raw || "").trim().startsWith("+") ? (raw || "").trim() : d ? "+" + d : "";
+  if (d.length === 11 && d.startsWith("1")) return "+" + d;
+  // Already-international input is trusted only if it is a plausible E.164
+  // length (ITU caps country+national digits at 15).
+  if (t.startsWith("+") && d.length >= 11 && d.length <= 15) return "+" + d;
+  // WARN: anything else is UNUSABLE - return empty rather than guessing.
+  // This used to fall through to "+" + digits, fabricating a valid-LOOKING
+  // number from partial data: a short Monday value became "+310213829", which
+  // RingCentral parsed as a Netherlands number and rejected on send, and which
+  // matched no conversation on read, so the thread looked empty. A number we
+  // cannot normalise must be reported as MISSING, not invented.
+  return "";
 }
 
 
