@@ -14,7 +14,9 @@
         "sendRequest",
         "chaseParachute",
         "updateClinicals",
-        "fax"
+        "fax",
+        "confirmReceipt",
+        "chaseFax"
       ],
       "roleOrder": {
         "fax": 1,
@@ -34,36 +36,12 @@
     },
     "madeline@medicallymodern.com": {
       "name": "Madeline",
-      "roles": [
-        "chaseFax",
-        "confirmReceipt"
-      ]
+      "roles": [],
+      "roleFilters": {}
     },
     "josh@medicallymodern.com": {
       "name": "josh",
-      "roles": [
-        "evaluate",
-        "confirmReceipt",
-        "chaseParachute",
-        "sendRequest",
-        "profile",
-        "finalConfirm",
-        "dvs",
-        "submitAuth",
-        "updateClinicals",
-        "patientQuestions",
-        "fax",
-        "authDenied",
-        "subscription",
-        "welcomeCall",
-        "unverifiedReferrals",
-        "chaseFax",
-        "benefits",
-        "authOutstanding",
-        "inSystemReferrals",
-        "doctorAppointments",
-        "assignedPatients"
-      ],
+      "roles": [],
       "roleOrder": {},
       "roleFilters": {}
     },
@@ -73,34 +51,92 @@
         "profile",
         "finalConfirm",
         "unverifiedReferrals",
-        "dvs",
-        "benefits",
-        "submitAuth",
-        "authOutstanding"
+        "inSystemReferrals"
       ],
       "roleFilters": {
         "profile": "all",
         "finalConfirm": "all",
         "unverifiedReferrals": "all",
-        "benefits": "all",
-        "authOutstanding": "all",
-        "submitAuth": "all",
-        "dvs": "all"
+        "inSystemReferrals": "all"
+      }
+    },
+    "corey@medicallymodern.com": {
+      "name": "corey",
+      "roles": [
+        "welcomeCall",
+        "profile",
+        "evaluate",
+        "sendRequest",
+        "confirmReceipt",
+        "chaseParachute",
+        "submitAuth",
+        "benefits",
+        "chaseFax",
+        "authOutstanding",
+        "subscription",
+        "finalConfirm",
+        "updateClinicals",
+        "authDenied",
+        "fax",
+        "patientQuestions",
+        "inSystemReferrals",
+        "dvs",
+        "unverifiedReferrals"
+      ],
+      "roleFilters": {
+        "welcomeCall": "all",
+        "profile": "all"
       }
     },
     "katie@medicallymodern.com": {
-      "name": "katie",
+      "name": "Katie",
       "roles": [
         "profile",
+        "sendRequest",
+        "chaseFax",
+        "patientQuestions",
+        "updateClinicals",
+        "finalConfirm",
+        "authOutstanding",
+        "benefits",
+        "fax",
+        "authDenied",
+        "subscription",
+        "welcomeCall",
+        "submitAuth",
+        "chaseParachute",
+        "evaluate",
+        "confirmReceipt",
+        "inSystemReferrals",
         "unverifiedReferrals",
-        "doctorAppointments"
-      ]
+        "dvs"
+      ],
+      "roleFilters": {
+        "profile": "all",
+        "evaluate": "all",
+        "confirmReceipt": "all",
+        "chaseParachute": "all",
+        "submitAuth": "all",
+        "welcomeCall": "all",
+        "authDenied": "all",
+        "fax": "all",
+        "subscription": "all",
+        "patientQuestions": "all",
+        "updateClinicals": "all",
+        "finalConfirm": "all",
+        "authOutstanding": "all",
+        "benefits": "all",
+        "sendRequest": "all",
+        "chaseFax": "all",
+        "inSystemReferrals": "all",
+        "unverifiedReferrals": "all",
+        "dvs": "all"
+      }
     },
     "janelle@medicallymodern.com": {
-      "name": "janelle",
-      "roles": [
-        "doctorAppointments"
-      ]
+      "name": "Janelle",
+      "roles": [],
+      "roleFilters": {}
     }
   }
 }
