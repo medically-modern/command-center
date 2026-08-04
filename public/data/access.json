@@ -61,7 +61,8 @@
         "benefits",
         "authOutstanding",
         "inSystemReferrals",
-        "doctorAppointments"
+        "doctorAppointments",
+        "assignedPatients"
       ],
       "roleOrder": {},
       "roleFilters": {}
