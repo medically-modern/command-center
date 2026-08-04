@@ -13,7 +13,6 @@
  */
 import { useEffect, useMemo, useState } from "react";
 import { ArrowLeft, Loader2, MessagesSquare, Phone, Search, User } from "lucide-react";
-import { useNavigate, useSearchParams } from "react-router-dom";
 import { useBackNavigation } from "@/hooks/useBackNavigation";
 import { useWebPhone } from "@/hooks/assignedPatients/useWebPhone";
 import CallOverlay from "@/components/assignedPatients/CallOverlay";
@@ -33,20 +32,27 @@ function asDirectNumber(query: string): PatientRef | null {
 }
 
 export default function AssignedPatientsPage() {
+  // ⚠️ Back is HISTORY-FIRST via the shared hook (CLAUDE.md §9) — do not swap
+  // it for a hardcoded route. This page used to navigate() straight to
+  // /system-mgmt?tab=oversight, which PUSHES a new entry rather than going
+  // back: arriving from Oversight built a stack of oversight → texting →
+  // oversight, so Back bounced between the two instead of leaving.
   const { goBack } = useBackNavigation();
-  const navigate = useNavigate();
-  const [params] = useSearchParams();
-  const fromSystemMgmt = params.get("from") === "system-mgmt";
-  const back = () => (fromSystemMgmt ? navigate("/system-mgmt?tab=oversight") : goBack());
 
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<PatientRef[]>([]);
   const [searching, setSearching] = useState(false);
   const [selected, setSelected] = useState<PatientRef | null>(null);
+  // Always-available dialer: type or paste any number and call it, without
+  // having to find a patient first. Separate state from the search box so
+  // looking someone up doesn't clear a number you were about to dial.
+  const [dialInput, setDialInput] = useState("");
 
   const { call: activeCall, error: callError, dismissError, dial, hangup, toggleMute } = useWebPhone();
 
   const directNumber = useMemo(() => asDirectNumber(query), [query]);
+  /** Normalised number from the dialer box, or "" while it isn't callable. */
+  const dialTarget = useMemo(() => toE164(dialInput), [dialInput]);
 
   useEffect(() => {
     const q = query.trim();
@@ -78,7 +84,7 @@ export default function AssignedPatientsPage() {
     <div className="h-screen bg-gradient-subtle flex flex-col">
       <header className="bg-gradient-navy text-navy-foreground border-b border-sidebar-border shrink-0">
         <div className="px-4 sm:px-6 py-4 flex items-center gap-3">
-          <button onClick={back} className="p-1.5 rounded-md hover:bg-white/10 transition-colors" title="Back">
+          <button onClick={goBack} className="p-1.5 rounded-md hover:bg-white/10 transition-colors" title="Back">
             <ArrowLeft className="h-5 w-5" />
           </button>
           <div className="h-9 w-9 rounded-lg bg-gradient-primary flex items-center justify-center shadow-elevate">
@@ -87,6 +93,29 @@ export default function AssignedPatientsPage() {
           <div className="min-w-0">
             <p className="text-[10px] uppercase tracking-[0.2em] opacity-70">Medically Modern · RingCentral</p>
             <h1 className="text-xl font-bold truncate">Patient Texting</h1>
+          </div>
+
+          <div className="ml-auto flex items-center gap-2">
+            <input
+              value={dialInput}
+              onChange={(e) => setDialInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && dialTarget) void dial(dialTarget);
+              }}
+              placeholder="Call any number…"
+              aria-label="Call any number"
+              className="w-44 rounded-lg bg-white/10 placeholder:text-white/50 px-3 py-1.5 text-sm outline-none focus:ring-1 focus:ring-white/40"
+            />
+            <button
+              onClick={() => dialTarget && void dial(dialTarget)}
+              // Disabled until the number normalises, so we never hand
+              // RingCentral something it will reject (see toE164).
+              disabled={!dialTarget || !!activeCall}
+              title={dialTarget ? `Call ${fmtPhone(dialTarget)}` : "Enter a full phone number"}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-white/10 hover:bg-white/15 px-3 py-1.5 text-sm font-medium disabled:opacity-40"
+            >
+              <Phone className="h-4 w-4" /> Call
+            </button>
           </div>
         </div>
       </header>
@@ -190,7 +219,7 @@ export default function AssignedPatientsPage() {
       {activeCall && (
         <CallOverlay
           call={activeCall}
-          name={selected?.name || ""}
+          name={activeCall.phone === selected?.phone ? selected?.name || "" : ""}
           onHangup={() => void hangup()}
           onToggleMute={() => toggleMute()}
         />
