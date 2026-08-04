@@ -109,7 +109,8 @@
         "confirmReceipt",
         "inSystemReferrals",
         "unverifiedReferrals",
-        "dvs"
+        "dvs",
+        "doctorAppointments"
       ],
       "roleFilters": {
         "profile": "all",
