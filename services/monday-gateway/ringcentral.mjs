@@ -38,6 +38,12 @@ const rcConfigured = () => !!(RC_CLIENT_ID && RC_CLIENT_SECRET && RC_JWT);
 const ALLOWED_PATH =
   /^\/restapi\/v1\.0\/account\/[^/]+\/extension\/[^/]+\/(message-store|sms|ring-out)(\/|\?|$)/;
 
+// client-info/sip-provision sits OUTSIDE the /account/~/extension/~/ tree, so it
+// needs its own rule. It hands back the SIP credentials the browser softphone
+// registers with — see /assignments/sip-provision in assignments.mjs, which is
+// what the SPA actually calls (this proxy path is not used directly).
+export const SIP_PROVISION_PATH = "/restapi/v1.0/client-info/sip-provision";
+
 let _token = { value: null, expiresAt: 0 };
 let _refreshing = null;
 async function rcAccessToken(force = false) {

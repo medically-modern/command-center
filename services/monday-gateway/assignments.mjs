@@ -36,7 +36,7 @@ import pkg from "pg";
 const { Pool } = pkg;
 
 import { verifyGoogleIdentity, authEnforced } from "./auth.mjs";
-import { rcApiFetch } from "./ringcentral.mjs";
+import { rcApiFetch, SIP_PROVISION_PATH } from "./ringcentral.mjs";
 import { toE164, phoneHmac, hashingConfigured } from "./phoneHash.mjs";
 
 export { toE164, phoneHmac };
@@ -606,6 +606,48 @@ export function registerAssignments({ app }) {
         if (!lastRead || new Date(t.lastInboundTime) > new Date(lastRead)) unread += 1;
       }
       res.json({ unread });
+    } catch (e) {
+      res.status(502).json({ error: String((e && e.message) || e) });
+    }
+  });
+
+  /**
+   * SIP credentials for the in-browser softphone.
+   *
+   * The browser has no RingCentral token — the JWT lives here — so it can't call
+   * client-info/sip-provision itself. The gateway does it and hands back the
+   * `sipInfo` block that ringcentral-web-phone registers with. That is what
+   * makes a call happen IN THE PAGE (dial, talk, hang up) instead of
+   * RingCentral ringing the rep's own phone first, which is what RingOut does
+   * and what everyone found baffling.
+   *
+   * ⚠️ Requires the `VoipCalling` scope on the RingCentral app AND a Digital
+   * Line on the extension this JWT authenticates as. Without either, RingCentral
+   * refuses to provision and the SPA falls back to showing why.
+   *
+   * ⚠️ Every rep registers as the SAME extension, which is fine because this is
+   * OUTBOUND ONLY: the documented consequence of sharing an instanceId is that
+   * older instances stop receiving INBOUND calls, and we don't take inbound
+   * here. Callers therefore pass no instanceId, deliberately — distinct ones
+   * would each claim a slot against the SIP server's 5-per-extension cap.
+   */
+  app.get("/assignments/sip-provision", async (req, res) => {
+    const caller = await resolveCaller(req, res);
+    if (!caller) return;
+    if (!caller.who && authEnforced()) return res.status(401).json({ error: "Sign in required" });
+    try {
+      const up = await rcApiFetch(SIP_PROVISION_PATH, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sipInfo: [{ transport: "WSS" }] }),
+      });
+      const body = await up.text();
+      if (!up.ok) {
+        // Surface RingCentral's own reason — "feature not available" here almost
+        // always means the missing scope or Digital Line above.
+        return res.status(up.status).type("application/json").send(body);
+      }
+      res.type("application/json").send(body);
     } catch (e) {
       res.status(502).json({ error: String((e && e.message) || e) });
     }

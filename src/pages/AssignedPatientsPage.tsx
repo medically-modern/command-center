@@ -28,7 +28,8 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import { useAccessContext } from "@/components/AccessProvider";
 import { useBackNavigation } from "@/hooks/useBackNavigation";
 import { useAssignedThreads } from "@/hooks/assignedPatients/useAssignedThreads";
-import { useRingOut } from "@/hooks/assignedPatients/useRingOut";
+import { useWebPhone } from "@/hooks/assignedPatients/useWebPhone";
+import CallOverlay from "@/components/assignedPatients/CallOverlay";
 import { markThreadRead } from "@/lib/assignedPatients/assignmentsApi";
 import ConversationSidebar from "@/components/assignedPatients/ConversationSidebar";
 import ConversationThread from "@/components/assignedPatients/ConversationThread";
@@ -76,7 +77,11 @@ export default function AssignedPatientsPage() {
     return (key && config.processors[key]?.phoneNumber) || "";
   }, [config.processors, viewingRep]);
 
-  const { call, callingPhone } = useRingOut(repPhone);
+  // In-browser softphone: the call happens IN THE PAGE with a hangup button,
+  // rather than RingCentral ringing the rep's own phone first (that was
+  // RingOut, and nobody could make sense of it).
+  const { call: activeCall, error: callError, dismissError, dial, hangup, toggleMute } = useWebPhone();
+  const callingPhone = activeCall && activeCall.status !== "connected" ? activeCall.phone : null;
 
   const openThread = (phone: string) => {
     setSelected(phone);
@@ -135,6 +140,20 @@ export default function AssignedPatientsPage() {
           {error}
         </div>
       )}
+      {callError && (
+        <div className="px-4 py-2 text-sm bg-destructive/10 text-destructive border-b border-destructive/20 shrink-0 flex items-start gap-2">
+          <span className="flex-1">
+            {callError}
+            {/* Almost always the two prerequisites, so say so rather than
+                leaving a bare RingCentral error on screen. */}
+            <span className="block text-[11px] opacity-80">
+              In-browser calling needs the <b>VoIP Calling</b> scope on the RingCentral app and a <b>Digital Line</b>
+              {" "}on its extension.
+            </span>
+          </span>
+          <button onClick={dismissError} className="shrink-0 underline">Dismiss</button>
+        </div>
+      )}
 
       <div className="flex-1 flex min-h-0">
         {managerView && (
@@ -169,7 +188,7 @@ export default function AssignedPatientsPage() {
           threads={threads}
           selected={selected}
           onSelect={openThread}
-          onCall={(phone) => void call(phone)}
+          onCall={(phone) => void dial(phone)}
           callingPhone={callingPhone}
           loading={loading}
           search={search}
@@ -185,8 +204,8 @@ export default function AssignedPatientsPage() {
             patient={activeThread?.patient ?? null}
             repPhone={repPhone}
             rep={viewingRep}
-            onCall={() => void call(selected)}
-            calling={callingPhone === selected}
+            onCall={() => void dial(selected)}
+            calling={activeCall?.phone === selected}
             onSent={() => void refresh()}
           />
         ) : (
@@ -198,6 +217,15 @@ export default function AssignedPatientsPage() {
           </section>
         )}
       </div>
+
+      {activeCall && (
+        <CallOverlay
+          call={activeCall}
+          name={threads.find((t) => t.phone === activeCall.phone)?.patient?.name || ""}
+          onHangup={() => void hangup()}
+          onToggleMute={() => void toggleMute()}
+        />
+      )}
 
       <AssignPatientDialog
         open={assignOpen}
