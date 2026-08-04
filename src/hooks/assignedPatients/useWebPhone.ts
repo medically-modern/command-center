@@ -22,9 +22,14 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import WebPhone from "ringcentral-web-phone";
 import { getIdToken } from "@/lib/shared/auth";
+import { mmPhoneNumber } from "@/lib/fax/ringcentralApi";
 
 const GATEWAY =
   (import.meta.env.VITE_MONDAY_GATEWAY_URL as string | undefined)?.replace(/\/+$/, "") || "";
+
+/** The SDK only exports its WebPhone class from the package root, so the call
+ *  session type is derived from `call()` rather than deep-imported. */
+type OutboundCallSession = Awaited<ReturnType<WebPhone["call"]>>;
 
 export type CallStatus = "idle" | "connecting" | "ringing" | "connected" | "ending";
 
@@ -36,19 +41,11 @@ export interface WebPhoneCall {
   muted: boolean;
 }
 
-interface RcCallSession {
-  hangup?: () => Promise<void> | void;
-  mute?: () => Promise<void> | void;
-  unmute?: () => Promise<void> | void;
-  on?: (event: string, fn: () => void) => void;
-  state?: string;
-}
-
 export function useWebPhone() {
   const [call, setCall] = useState<WebPhoneCall | null>(null);
   const [error, setError] = useState<string | null>(null);
   const phoneRef = useRef<WebPhone | null>(null);
-  const sessionRef = useRef<RcCallSession | null>(null);
+  const sessionRef = useRef<OutboundCallSession | null>(null);
   const tickRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const mounted = useRef(true);
 
@@ -59,7 +56,7 @@ export function useWebPhone() {
       if (tickRef.current) clearInterval(tickRef.current);
       // Leave the SIP registration up on unmount only if a call is live;
       // otherwise release it so we don't hold a slot on the shared extension.
-      if (!sessionRef.current) void phoneRef.current?.dispose?.().catch?.(() => {});
+      if (!sessionRef.current) void phoneRef.current?.dispose().catch(() => {});
     };
   }, []);
 
@@ -107,12 +104,16 @@ export function useWebPhone() {
       try {
         const wp = await ensureRegistered();
         if (!mounted.current) return;
-        setCall((c) => (c ? { ...c, status: "ringing" } : c));
 
-        const session = (await wp.call(phone)) as unknown as RcCallSession;
+        // callerId is passed EXPLICITLY: every call must reach the patient as
+        // the MM main line, never the extension's own default.
+        const session = await wp.call(phone, mmPhoneNumber());
         sessionRef.current = session;
 
-        session.on?.("answered", () => {
+        session.on("ringing", () => {
+          if (mounted.current) setCall((c) => (c ? { ...c, status: "ringing" } : c));
+        });
+        session.on("answered", () => {
           if (!mounted.current) return;
           setCall((c) => (c ? { ...c, status: "connected" } : c));
           const startedAt = Date.now();
@@ -121,9 +122,13 @@ export function useWebPhone() {
             setCall((c) => (c ? { ...c, seconds: Math.floor((Date.now() - startedAt) / 1000) } : c));
           }, 1000);
         });
-        // Both names appear across SDK versions; harmless to listen for both.
-        session.on?.("disposed", cleanupCall);
-        session.on?.("terminated", cleanupCall);
+        // The SDK's only terminal events. Listening for `disposed` alone would
+        // leave the overlay stuck on screen forever whenever a call FAILS.
+        session.on("disposed", cleanupCall);
+        session.on("failed", () => {
+          if (mounted.current) setError("The call couldn't be connected.");
+          cleanupCall();
+        });
       } catch (e) {
         if (!mounted.current) return;
         setError(e instanceof Error ? e.message : String(e));
@@ -138,20 +143,21 @@ export function useWebPhone() {
     if (!s) return cleanupCall();
     setCall((c) => (c ? { ...c, status: "ending" } : c));
     try {
-      await s.hangup?.();
+      await s.hangup();
     } catch {
       /* the call is going away either way */
     }
     cleanupCall();
   }, [cleanupCall]);
 
-  const toggleMute = useCallback(async () => {
+  // mute()/unmute() are SYNCHRONOUS in the SDK — not promises.
+  const toggleMute = useCallback(() => {
     const s = sessionRef.current;
     if (!s) return;
     const next = !call?.muted;
     try {
-      if (next) await s.mute?.();
-      else await s.unmute?.();
+      if (next) s.mute();
+      else s.unmute();
       setCall((c) => (c ? { ...c, muted: next } : c));
     } catch {
       /* leave the flag alone if the SDK refused */

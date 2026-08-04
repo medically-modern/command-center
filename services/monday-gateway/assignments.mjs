@@ -653,6 +653,41 @@ export function registerAssignments({ app }) {
     }
   });
 
+  /** Is in-browser calling actually usable? Attempts a real provision and
+   *  reports the outcome WITHOUT returning any credentials — so "the scopes are
+   *  on" can be verified without signing in or reading SIP secrets. */
+  app.get("/assignments/call-health", async (_req, res) => {
+    try {
+      const up = await rcApiFetch(SIP_PROVISION_PATH, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sipInfo: [{ transport: "WSS" }] }),
+      });
+      const text = await up.text();
+      if (!up.ok) {
+        let reason = text.slice(0, 300);
+        try {
+          const j = JSON.parse(text);
+          reason = j.message || j.error_description || j.errors?.[0]?.message || reason;
+        } catch {
+          /* keep the raw snippet */
+        }
+        return res.json({ ok: false, status: up.status, reason });
+      }
+      let hasSip = false;
+      try {
+        const j = JSON.parse(text);
+        const info = Array.isArray(j.sipInfo) ? j.sipInfo[0] : j.sipInfo;
+        hasSip = !!(info && info.username && info.domain);
+      } catch {
+        /* hasSip stays false */
+      }
+      res.json({ ok: hasSip, status: up.status, sipInfo: hasSip ? "present" : "missing" });
+    } catch (e) {
+      res.json({ ok: false, reason: String((e && e.message) || e) });
+    }
+  });
+
   app.get("/assignments/health", async (_req, res) => {
     if (!configured()) {
       return res.json({ ok: false, db: pool ? "configured" : "disabled", pepper: hashingConfigured() });
