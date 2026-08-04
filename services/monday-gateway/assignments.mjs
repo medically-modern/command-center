@@ -353,51 +353,93 @@ export function registerAssignments({ app }) {
 
   const last10 = (s) => String(s || "").replace(/\D/g, "").slice(-10);
 
-  /** Group the shared account's SMS into per-counterparty threads. */
-  async function loadThreads({ sinceDays = 90, perPage = 250 }) {
+  /**
+   * Group the shared account's SMS into per-counterparty threads.
+   *
+   * ⚠️ This PAGES. A single 250-message page is roughly a couple of days on the
+   * shared number, and an unpaged scan doesn't just undercount the inbox — an
+   * assigned patient whose last text falls outside that page drops out of their
+   * rep's queue entirely, with no error. The whole window has to be read.
+   *
+   * ⚠️ And it CACHES, because the scan is account-wide and identical for every
+   * caller: without this, N reps polling every 20s means N full scans of the
+   * message store every 20s. One in-flight scan is shared by all callers.
+   */
+  const THREADS_TTL_MS = 45_000;
+  const THREADS_PAGE_SIZE = 250;
+  const THREADS_MAX_PAGES = 40; // 10k messages across the window
+  let _threads = { at: 0, value: null };
+  let _threadsInFlight = null;
+
+  async function scanThreads(sinceDays) {
     const dateFrom = new Date(Date.now() - sinceDays * 24 * 60 * 60_000).toISOString();
-    const res = await rcApiFetch(
-      `/restapi/v1.0/account/~/extension/~/message-store` +
-        `?messageType=SMS&dateFrom=${encodeURIComponent(dateFrom)}&perPage=${perPage}`,
-    );
-    if (!res.ok) throw new Error(`RingCentral SMS threads failed (${res.status})`);
-    const json = await res.json();
     const threads = new Map();
-    for (const r of json.records ?? []) {
-      const outbound = r.direction === "Outbound";
-      // The conversation key is always the OUTSIDE party.
-      const other = toE164(outbound ? (r.to ?? [])[0]?.phoneNumber || "" : r.from?.phoneNumber || "");
-      if (!other) continue;
-      const time = r.creationTime ?? "";
-      const text = r.subject ?? r.text ?? "";
-      const inboundTime = outbound ? "" : time;
-      const cur = threads.get(other);
-      if (!cur) {
-        threads.set(other, {
-          phone: other,
-          lastText: text,
-          lastTime: time,
-          lastDirection: outbound ? "Outbound" : "Inbound",
-          lastInboundTime: inboundTime,
-          messageCount: 1,
-        });
-        continue;
+    for (let page = 1; page <= THREADS_MAX_PAGES; page++) {
+      const res = await rcApiFetch(
+        `/restapi/v1.0/account/~/extension/~/message-store` +
+          `?messageType=SMS&dateFrom=${encodeURIComponent(dateFrom)}` +
+          `&perPage=${THREADS_PAGE_SIZE}&page=${page}`,
+      );
+      if (!res.ok) throw new Error(`RingCentral SMS threads failed (${res.status})`);
+      const json = await res.json();
+      const records = json.records ?? [];
+      for (const r of records) {
+        const outbound = r.direction === "Outbound";
+        // The conversation key is always the OUTSIDE party.
+        const other = toE164(outbound ? (r.to ?? [])[0]?.phoneNumber || "" : r.from?.phoneNumber || "");
+        if (!other) continue;
+        const time = r.creationTime ?? "";
+        const text = r.subject ?? r.text ?? "";
+        const inboundTime = outbound ? "" : time;
+        const cur = threads.get(other);
+        if (!cur) {
+          threads.set(other, {
+            phone: other,
+            lastText: text,
+            lastTime: time,
+            lastDirection: outbound ? "Outbound" : "Inbound",
+            lastInboundTime: inboundTime,
+            messageCount: 1,
+          });
+          continue;
+        }
+        cur.messageCount += 1;
+        if (inboundTime && (!cur.lastInboundTime || inboundTime > cur.lastInboundTime)) {
+          cur.lastInboundTime = inboundTime;
+        }
+        if (time && time > cur.lastTime) {
+          cur.lastText = text;
+          cur.lastTime = time;
+          cur.lastDirection = outbound ? "Outbound" : "Inbound";
+        }
       }
-      cur.messageCount += 1;
-      if (inboundTime && (!cur.lastInboundTime || inboundTime > cur.lastInboundTime)) {
-        cur.lastInboundTime = inboundTime;
-      }
-      if (time && time > cur.lastTime) {
-        cur.lastText = text;
-        cur.lastTime = time;
-        cur.lastDirection = outbound ? "Outbound" : "Inbound";
-      }
+      if (records.length < THREADS_PAGE_SIZE) break; // short page = last page
     }
     return [...threads.values()].sort((a, b) => String(b.lastTime).localeCompare(String(a.lastTime)));
   }
 
-  /** The caller's inbox: their assigned conversations, plus — for a manager —
-   *  the unassigned ones that still need routing to somebody. */
+  async function loadThreads({ sinceDays = 180 }) {
+    if (_threads.value && Date.now() - _threads.at < THREADS_TTL_MS) return _threads.value;
+    if (_threadsInFlight) return _threadsInFlight;
+    _threadsInFlight = (async () => {
+      const value = await scanThreads(sinceDays);
+      _threads = { at: Date.now(), value };
+      return value;
+    })();
+    try {
+      return await _threadsInFlight;
+    } finally {
+      _threadsInFlight = null;
+    }
+  }
+
+  /** The caller's inbox: ONLY conversations assigned to them.
+   *
+   *  There is deliberately no "unassigned" list (Josh, 2026-08-04). The shared
+   *  number carries every patient conversation in the company, so surfacing the
+   *  unassigned remainder just reproduced the RingCentral inbox this page exists
+   *  to replace. Assignment happens through the Assign dialog's patient search,
+   *  which starts from the patient rather than from a stray number. */
   app.get("/assignments/inbox", async (req, res) => {
     if (guard(res)) return;
     const caller = await resolveCaller(req, res);
@@ -418,27 +460,21 @@ export function registerAssignments({ app }) {
       const byHash = new Map(rows.rows.map((r) => [r.phone_hmac, r]));
 
       const mine = [];
-      const unassigned = [];
       const matched = new Set();
       for (const t of threads) {
         const hash = phoneHmac(t.phone);
         const row = byHash.get(hash);
-        if (row && row.rep_email === rep) {
-          matched.add(hash);
-          mine.push({
-            ...t,
-            assignment: {
-              repEmail: row.rep_email,
-              mondayItemId: row.monday_item_id,
-              mondayBoardId: row.monday_board_id,
-              lastReadAt: row.last_read_at ? new Date(row.last_read_at).toISOString() : null,
-            },
-          });
-        } else if (!row && caller.manager) {
-          // Only a manager is shown conversations that belong to nobody — for
-          // anyone else these are just other people's patients.
-          unassigned.push(t);
-        }
+        if (!row || row.rep_email !== rep) continue;
+        matched.add(hash);
+        mine.push({
+          ...t,
+          assignment: {
+            repEmail: row.rep_email,
+            mondayItemId: row.monday_item_id,
+            mondayBoardId: row.monday_board_id,
+            lastReadAt: row.last_read_at ? new Date(row.last_read_at).toISOString() : null,
+          },
+        });
       }
 
       // Assigned patients who have never exchanged a text have no RingCentral
@@ -455,7 +491,7 @@ export function registerAssignments({ app }) {
           lastReadAt: r.last_read_at ? new Date(r.last_read_at).toISOString() : null,
         }));
 
-      res.json({ threads: mine, unassigned, pending });
+      res.json({ threads: mine, pending });
     } catch (e) {
       res.status(502).json({ error: String((e && e.message) || e) });
     }
@@ -530,6 +566,46 @@ export function registerAssignments({ app }) {
       }
       messages.sort((a, b) => String(a.time).localeCompare(String(b.time)));
       res.json({ messages, complete });
+    } catch (e) {
+      res.status(502).json({ error: String((e && e.message) || e) });
+    }
+  });
+
+  /** How many of this rep's conversations have a patient message they haven't
+   *  read — the number the Assigned Patients role bar shows.
+   *
+   *  Same per-rep unread rule as the inbox: the patient has written since the
+   *  rep last opened the thread. An outbound reply never counts, or a rep would
+   *  re-flag their own message. Rides the cached thread scan, so this is cheap
+   *  after the first caller. */
+  app.get("/assignments/unread-count", async (req, res) => {
+    if (guard(res)) return;
+    const caller = await resolveCaller(req, res);
+    if (!caller) return;
+    if (!caller.manager && !caller.who) return res.json({ unread: 0 });
+    const rep = scopedRep(caller, req.query?.rep);
+    try {
+      const [threads, rows] = await Promise.all([
+        loadThreads({}),
+        pool.query(
+          `SELECT a.phone_hmac, r.last_read_at
+             FROM phone_assignments a
+             LEFT JOIN thread_reads r
+               ON r.phone_hmac = a.phone_hmac AND r.rep_email = $1
+            WHERE a.rep_email = $1`,
+          [rep],
+        ),
+      ]);
+      const byHash = new Map(rows.rows.map((r) => [r.phone_hmac, r.last_read_at]));
+      let unread = 0;
+      for (const t of threads) {
+        const hash = phoneHmac(t.phone);
+        if (!byHash.has(hash)) continue;
+        if (!t.lastInboundTime) continue;
+        const lastRead = byHash.get(hash);
+        if (!lastRead || new Date(t.lastInboundTime) > new Date(lastRead)) unread += 1;
+      }
+      res.json({ unread });
     } catch (e) {
       res.status(502).json({ error: String((e && e.message) || e) });
     }

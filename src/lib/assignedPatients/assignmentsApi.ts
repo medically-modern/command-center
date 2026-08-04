@@ -91,7 +91,8 @@ export interface AssignedInboxThread extends InboxThread {
  * patient's number and last message into each rep's network response and memory
  * — client-side filtering is a UI convention, not a boundary. So the gateway
  * joins RingCentral against the assignments table and returns only what this
- * caller is entitled to. `unassigned` comes back non-empty for managers only.
+ * caller is entitled to. Only assigned conversations come back — there is
+ * deliberately no "unassigned" list; see the gateway's /assignments/inbox.
  */
 /** An assigned patient with no RingCentral conversation yet. Carries no phone
  *  number — the store holds only a hash — so the client resolves both name and
@@ -104,12 +105,11 @@ export interface PendingAssignment {
 
 export async function fetchInbox(
   rep: string,
-): Promise<{ threads: AssignedInboxThread[]; unassigned: InboxThread[]; pending: PendingAssignment[] }> {
+): Promise<{ threads: AssignedInboxThread[]; pending: PendingAssignment[] }> {
   const q = rep ? `?rep=${encodeURIComponent(rep)}` : "";
   const res = await call(`/assignments/inbox${q}`);
   const r = await json<{
     threads: AssignedInboxThread[];
-    unassigned: InboxThread[];
     pending?: PendingAssignment[];
   }>(res, "Loading inbox");
   return { ...r, pending: r.pending ?? [] };
@@ -182,4 +182,19 @@ export async function unassignPatient(opts: { phone?: string; phoneHmac?: string
 export async function markThreadRead(phone: string, rep: string): Promise<void> {
   const res = await call("/assignments/read", { method: "POST", body: JSON.stringify({ phone, rep }) });
   await json<{ ok: boolean }>(res, "Marking read");
+}
+
+/** Unread conversation count for a rep — what the Assigned Patients role bar
+ *  shows. Returns 0 rather than throwing when the feature isn't configured, so
+ *  a gateway without the assignments DB can't blank the whole burndown. */
+export async function fetchUnreadCount(rep: string): Promise<number> {
+  if (!GATEWAY || !rep) return 0;
+  try {
+    const res = await call(`/assignments/unread-count?rep=${encodeURIComponent(rep)}`);
+    if (!res.ok) return 0;
+    const j = (await res.json()) as { unread?: number };
+    return j.unread ?? 0;
+  } catch {
+    return 0;
+  }
 }

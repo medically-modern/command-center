@@ -9,7 +9,7 @@
  *   Monday      — the patient's name (the assignment store holds no PHI)
  */
 import { useCallback, useEffect, useRef, useState } from "react";
-import { fetchInbox, type AssignedInboxThread, type InboxThread } from "@/lib/assignedPatients/assignmentsApi";
+import { fetchInbox, type AssignedInboxThread } from "@/lib/assignedPatients/assignmentsApi";
 import { fetchPatientsByItemIds, type PatientRef } from "@/lib/assignedPatients/patientLookup";
 
 const POLL_INTERVAL = 20_000;
@@ -31,9 +31,6 @@ export function isUnread(lastInboundTime: string, lastReadAt: string | null): bo
 
 export interface UseAssignedThreadsResult {
   threads: AssignedThread[];
-  /** Conversations on the MM number that belong to nobody yet. The SERVER
-   *  returns these for managers only — a processor never receives them. */
-  unassigned: InboxThread[];
   loading: boolean;
   error: string | null;
   refresh: () => Promise<void>;
@@ -43,7 +40,6 @@ export interface UseAssignedThreadsResult {
 
 export function useAssignedThreads(repEmail: string): UseAssignedThreadsResult {
   const [threads, setThreads] = useState<AssignedThread[]>([]);
-  const [unassigned, setUnassigned] = useState<InboxThread[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const mounted = useRef(true);
@@ -56,7 +52,6 @@ export function useAssignedThreads(repEmail: string): UseAssignedThreadsResult {
     if (!rep) {
       if (mounted.current) {
         setThreads([]);
-        setUnassigned([]);
         setLoading(false);
       }
       return;
@@ -106,7 +101,6 @@ export function useAssignedThreads(repEmail: string): UseAssignedThreadsResult {
         })),
         ...pendingThreads,
       ]);
-      setUnassigned(inbox.unassigned ?? []);
       setError(null);
     } catch (e) {
       if (mounted.current) setError(e instanceof Error ? e.message : String(e));
@@ -130,5 +124,5 @@ export function useAssignedThreads(repEmail: string): UseAssignedThreadsResult {
     setThreads((prev) => prev.map((t) => (t.phone === phone ? { ...t, unread: false } : t)));
   }, []);
 
-  return { threads, unassigned, loading, error, refresh: load, markReadLocally };
+  return { threads, loading, error, refresh: load, markReadLocally };
 }

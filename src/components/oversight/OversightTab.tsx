@@ -31,7 +31,7 @@ import { fuzzyNameMatch } from "@/lib/oversight/fuzzyName";
 import { extractProposedStuckReason } from "@/lib/masheke/proposedStuck";
 import { etTodayYmd } from "@/lib/samantha/benefitsDerive";
 import { MANAGER_ORIGIN_PARAM, MANAGER_CHART_PARAM, MANAGER_BUCKET_PARAM } from "@/lib/shared/managerOrigin";
-import { Loader2, BarChart3, MessagesSquare, X, ExternalLink, StickyNote, Search, ArrowUp, ArrowDown, ArrowUpDown, Star, SlidersHorizontal, Plus, Trash2, RotateCcw, Flag } from "lucide-react";
+import { Loader2, BarChart3, X, ExternalLink, StickyNote, Search, ArrowUp, ArrowDown, ArrowUpDown, Star, SlidersHorizontal, Plus, Trash2, RotateCcw, Flag } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -1690,6 +1690,10 @@ function DrilldownModal({
 
 // ── Main component ─────────────────────────────────────────────────────────
 
+/** Sentinel value for the dropdown's Assigned Patients entry. Not a stage —
+ *  selecting it navigates to the role page rather than swapping the charts. */
+const ASSIGNED_PATIENTS_OPTION = "__assigned-patients__";
+
 export default function OversightTab() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -2106,7 +2110,22 @@ export default function OversightTab() {
           <h2 className="text-2xl font-bold text-foreground">
             Pipeline Oversight
           </h2>
-          <Select value={selectedStage} onValueChange={setSelectedStage}>
+          {/* Assigned Patients rides in this dropdown but is NOT a stage: it has
+              no board, no group and no days-in-stage, so there is nothing to
+              chart. Picking it navigates to the role page instead of changing
+              the charts below. `from=system-mgmt` is what puts that page into
+              its MANAGER view (employee rail + Assign) — arriving from the
+              burndown role bar without the marker gives the processor view. */}
+          <Select
+            value={selectedStage}
+            onValueChange={(v) => {
+              if (v === ASSIGNED_PATIENTS_OPTION) {
+                navigate("/assigned-patients?from=system-mgmt");
+                return;
+              }
+              setSelectedStage(v);
+            }}
+          >
             <SelectTrigger className="w-[220px] h-9 font-semibold">
               <SelectValue placeholder="Select a stage…" />
             </SelectTrigger>
@@ -2114,23 +2133,12 @@ export default function OversightTab() {
               {OVERSIGHT_SECTIONS.map((s) => (
                 <SelectItem key={s.id} value={s.id}>{s.title}</SelectItem>
               ))}
+              <SelectItem value={ASSIGNED_PATIENTS_OPTION}>Assigned Patients</SelectItem>
             </SelectContent>
           </Select>
           <span className="text-sm text-muted-foreground tabular-nums">
             {totalPatients} total patients
           </span>
-          {/* Assigned Patients isn't a Monday stage — it has no board, no group
-              and no days-in-stage — so it can't be a chart in the dropdown
-              above. It's a link instead. `from=system-mgmt` is what puts that
-              page into its MANAGER view (employee rail + Unassigned + Assign);
-              arriving from the role bar without it gives the processor view. */}
-          <a
-            href={`${import.meta.env.BASE_URL}assigned-patients?from=system-mgmt`}
-            className="inline-flex items-center gap-1.5 h-9 rounded-md border border-input bg-background px-3 text-sm font-medium hover:bg-muted/50"
-            title="Texting inboxes by employee — assign patients and see their conversations"
-          >
-            <MessagesSquare className="h-4 w-4" /> Assigned Patients
-          </a>
           <div className="relative w-[240px]">
             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <input

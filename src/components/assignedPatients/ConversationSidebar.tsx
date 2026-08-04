@@ -2,12 +2,17 @@
  * Conversation list for Assigned Patients — the left rail, modelled on
  * RingCentral's Text screen: who, the last line, when, and an unread dot.
  *
+ * Shows ONLY patients assigned to this rep. There is deliberately no
+ * "unassigned" section (Josh, 2026-08-04): the shared number carries every
+ * patient conversation in the company, so listing the remainder just reproduced
+ * the RingCentral inbox this page exists to replace. Assignment happens through
+ * the Assign dialog's patient search.
+ *
  * Unread is PER-REP (computed by useAssignedThreads), not RingCentral's own
  * readStatus, which is account-wide and would clear everyone's dot the moment
  * one rep opened a thread.
  */
-import { Loader2, MessageSquare, Search, UserPlus } from "lucide-react";
-import type { InboxThread } from "@/lib/assignedPatients/assignmentsApi";
+import { Loader2, MessageSquare, Phone, Search } from "lucide-react";
 import type { AssignedThread } from "@/hooks/assignedPatients/useAssignedThreads";
 import { fmtPhone, fmtWhen } from "@/lib/assignedPatients/format";
 import { cn } from "@/lib/utils";
@@ -24,10 +29,11 @@ function initials(name: string, phone: string): string {
 
 interface Props {
   threads: AssignedThread[];
-  unassigned: InboxThread[];
   selected: string | null;
   onSelect: (phone: string) => void;
-  onAssign?: (phone: string) => void;
+  /** Start a call without opening the conversation first. */
+  onCall: (phone: string) => void;
+  callingPhone: string | null;
   loading: boolean;
   search: string;
   onSearch: (v: string) => void;
@@ -37,10 +43,10 @@ interface Props {
 
 export default function ConversationSidebar({
   threads,
-  unassigned,
   selected,
   onSelect,
-  onAssign,
+  onCall,
+  callingPhone,
   loading,
   search,
   onSearch,
@@ -54,7 +60,6 @@ export default function ConversationSidebar({
   const visible = threads.filter(
     (t) => (!showUnreadOnly || t.unread) && matches(t.patient?.name || "", t.phone),
   );
-  const visibleUnassigned = unassigned.filter((t) => !showUnreadOnly && matches("", t.phone));
   const unreadCount = threads.filter((t) => t.unread).length;
 
   return (
@@ -93,80 +98,69 @@ export default function ConversationSidebar({
       </div>
 
       <div className="flex-1 overflow-y-auto min-h-0">
-        {visible.length === 0 && visibleUnassigned.length === 0 ? (
+        {visible.length === 0 ? (
           <p className="p-6 text-center text-sm text-muted-foreground">
-            {loading ? "Loading conversations…" : showUnreadOnly ? "Nothing unread." : "No assigned conversations yet."}
+            {loading
+              ? "Loading conversations…"
+              : showUnreadOnly
+                ? "Nothing unread."
+                : "No patients assigned yet. A manager assigns them from Pipeline Oversight."}
           </p>
         ) : null}
 
         {visible.map((t) => (
-          <button
+          <div
             key={t.phone}
-            onClick={() => onSelect(t.phone)}
             className={cn(
-              "w-full text-left flex items-start gap-2.5 px-3 py-2.5 border-b border-border/60 hover:bg-muted/40 transition-colors",
+              "w-full flex items-start gap-2.5 px-3 py-2.5 border-b border-border/60 hover:bg-muted/40 transition-colors",
               selected === t.phone && "bg-muted/60",
             )}
           >
-            <span className="relative shrink-0">
-              <span className="h-8 w-8 rounded-full bg-gradient-primary text-primary-foreground text-[11px] font-semibold flex items-center justify-center">
-                {initials(t.patient?.name || "", t.phone)}
-              </span>
-              {t.unread && (
-                <span className="absolute -left-0.5 -top-0.5 h-2.5 w-2.5 rounded-full bg-orange-500 ring-2 ring-card" />
-              )}
-            </span>
-            <span className="min-w-0 flex-1">
-              <span className="flex items-baseline gap-2">
-                <span className={cn("truncate text-sm", t.unread ? "font-bold" : "font-medium")}>
-                  {t.patient?.name || fmtPhone(t.phone)}
+            <button onClick={() => onSelect(t.phone)} className="flex min-w-0 flex-1 items-start gap-2.5 text-left">
+              <span className="relative shrink-0">
+                <span className="h-8 w-8 rounded-full bg-gradient-primary text-primary-foreground text-[11px] font-semibold flex items-center justify-center">
+                  {initials(t.patient?.name || "", t.phone)}
                 </span>
-                <span className="ml-auto shrink-0 text-[10px] text-muted-foreground">{fmtWhen(t.lastTime)}</span>
-              </span>
-              <span className="flex items-center gap-1 text-[11px] text-muted-foreground">
-                <MessageSquare className="h-3 w-3 shrink-0" />
-                <span className="truncate">
-                  {t.lastDirection === "Outbound" ? "You: " : ""}
-                  {t.lastText}
-                </span>
-              </span>
-            </span>
-          </button>
-        ))}
-
-        {visibleUnassigned.length > 0 && (
-          <>
-            <p className="px-3 pt-4 pb-1 text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
-              Unassigned · {visibleUnassigned.length}
-            </p>
-            {visibleUnassigned.map((t) => (
-              <div
-                key={t.phone}
-                className="w-full flex items-start gap-2.5 px-3 py-2.5 border-b border-border/60 hover:bg-muted/40"
-              >
-                <button onClick={() => onSelect(t.phone)} className="min-w-0 flex-1 text-left">
-                  <span className="flex items-baseline gap-2">
-                    <span className="truncate text-sm font-medium">{fmtPhone(t.phone)}</span>
-                    <span className="ml-auto shrink-0 text-[10px] text-muted-foreground">{fmtWhen(t.lastTime)}</span>
-                  </span>
-                  <span className="block truncate text-[11px] text-muted-foreground">
-                    {t.lastDirection === "Outbound" ? "You: " : ""}
-                    {t.lastText}
-                  </span>
-                </button>
-                {onAssign && (
-                  <button
-                    onClick={() => onAssign(t.phone)}
-                    title="Assign to a rep"
-                    className="shrink-0 p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted"
-                  >
-                    <UserPlus className="h-4 w-4" />
-                  </button>
+                {t.unread && (
+                  <span className="absolute -left-0.5 -top-0.5 h-2.5 w-2.5 rounded-full bg-orange-500 ring-2 ring-card" />
                 )}
-              </div>
-            ))}
-          </>
-        )}
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="flex items-baseline gap-2">
+                  <span className={cn("truncate text-sm", t.unread ? "font-bold" : "font-medium")}>
+                    {t.patient?.name || fmtPhone(t.phone)}
+                  </span>
+                  <span className="ml-auto shrink-0 text-[10px] text-muted-foreground">{fmtWhen(t.lastTime)}</span>
+                </span>
+                <span className="flex items-center gap-1 text-[11px] text-muted-foreground">
+                  <MessageSquare className="h-3 w-3 shrink-0" />
+                  <span className="truncate">
+                    {t.messageCount === 0 ? (
+                      <em>No messages yet</em>
+                    ) : (
+                      <>
+                        {t.lastDirection === "Outbound" ? "You: " : ""}
+                        {t.lastText}
+                      </>
+                    )}
+                  </span>
+                </span>
+              </span>
+            </button>
+            <button
+              onClick={() => onCall(t.phone)}
+              disabled={callingPhone === t.phone}
+              title={`Call ${t.patient?.name || fmtPhone(t.phone)}`}
+              className="shrink-0 p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted disabled:opacity-50"
+            >
+              {callingPhone === t.phone ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Phone className="h-4 w-4" />
+              )}
+            </button>
+          </div>
+        ))}
       </div>
     </aside>
   );

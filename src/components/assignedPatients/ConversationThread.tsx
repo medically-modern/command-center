@@ -13,7 +13,7 @@
 import { useEffect, useRef, useState } from "react";
 import { AlertTriangle, Loader2, Phone, Send, ShieldOff } from "lucide-react";
 import { toast } from "sonner";
-import { mmPhoneNumber, sendSms, startRingOut } from "@/lib/fax/ringcentralApi";
+import { mmPhoneNumber, sendSms } from "@/lib/fax/ringcentralApi";
 import { fetchConversation, type ConversationMessage } from "@/lib/assignedPatients/assignmentsApi";
 import { consentState } from "@/lib/assignedPatients/optOut";
 import type { PatientRef } from "@/lib/assignedPatients/patientLookup";
@@ -27,10 +27,14 @@ interface Props {
   repPhone: string;
   /** Whose inbox this is — the gateway authorizes the read against it. */
   rep: string;
+  /** Start the call. Shared with the sidebar via useRingOut so the two can't
+   *  drift on which number rings whom. */
+  onCall: () => void;
+  calling: boolean;
   onSent?: () => void;
 }
 
-export default function ConversationThread({ phone, patient, repPhone, rep, onSent }: Props) {
+export default function ConversationThread({ phone, patient, repPhone, rep, onCall, calling, onSent }: Props) {
   const [messages, setMessages] = useState<ConversationMessage[]>([]);
   // Whether we saw the WHOLE thread. Consent can't be inferred from a partial
   // one, so this gates the composer alongside the messages themselves.
@@ -44,7 +48,6 @@ export default function ConversationThread({ phone, patient, repPhone, rep, onSe
   const [error, setError] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
-  const [calling, setCalling] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
 
   const load = async (showSpinner: boolean) => {
@@ -98,24 +101,6 @@ export default function ConversationThread({ phone, patient, repPhone, rep, onSe
     }
   };
 
-  const call = async () => {
-    if (calling) return;
-    setCalling(true);
-    try {
-      const from = repPhone || mmPhoneNumber();
-      await startRingOut({ from, to: phone, callerId: mmPhoneNumber() });
-      toast.success(
-        repPhone
-          ? `Calling — answer at ${fmtPhone(from)} and we'll connect you.`
-          : `Calling — answer at the main line ${fmtPhone(from)} and we'll connect you.`,
-      );
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : String(e));
-    } finally {
-      setCalling(false);
-    }
-  };
-
   return (
     <section className="flex-1 flex flex-col min-h-0 min-w-0">
       <header className="px-4 py-3 border-b border-border bg-card shrink-0 flex items-center gap-3">
@@ -127,7 +112,7 @@ export default function ConversationThread({ phone, patient, repPhone, rep, onSe
           </p>
         </div>
         <button
-          onClick={() => void call()}
+          onClick={onCall}
           disabled={calling}
           className="ml-auto inline-flex items-center gap-1.5 rounded-lg bg-[color:var(--mm-teal,theme(colors.teal.600))] px-3 py-1.5 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50"
         >

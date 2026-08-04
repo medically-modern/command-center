@@ -24,10 +24,11 @@
  */
 import { useMemo, useState } from "react";
 import { ArrowLeft, MessagesSquare, RefreshCw, UserPlus, Users } from "lucide-react";
-import { useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { useAccessContext } from "@/components/AccessProvider";
 import { useBackNavigation } from "@/hooks/useBackNavigation";
 import { useAssignedThreads } from "@/hooks/assignedPatients/useAssignedThreads";
+import { useRingOut } from "@/hooks/assignedPatients/useRingOut";
 import { markThreadRead } from "@/lib/assignedPatients/assignmentsApi";
 import ConversationSidebar from "@/components/assignedPatients/ConversationSidebar";
 import ConversationThread from "@/components/assignedPatients/ConversationThread";
@@ -36,10 +37,18 @@ import { cn } from "@/lib/utils";
 
 export default function AssignedPatientsPage() {
   const { goBack } = useBackNavigation();
+  const navigate = useNavigate();
   const { access, email, config } = useAccessContext();
   const [params, setParams] = useSearchParams();
   // The VIEW is the Oversight origin plus actually being a manager (see header).
-  const managerView = params.get("from") === "system-mgmt" && access.type === "manager";
+  const fromSystemMgmt = params.get("from") === "system-mgmt";
+  const managerView = fromSystemMgmt && access.type === "manager";
+
+  // Back returns to the Oversight TAB, not just /system-mgmt — which defaults to
+  // Search and reads as "back went somewhere else". Deterministic rather than
+  // history-based, because selecting the dropdown entry replaces the URL and a
+  // plain navigate(-1) can land mid-selection.
+  const back = () => (fromSystemMgmt ? navigate("/system-mgmt?tab=oversight") : goBack());
 
   // In the manager view you can look at anyone's queue; otherwise you only ever
   // see your own, whatever the URL says.
@@ -49,11 +58,10 @@ export default function AssignedPatientsPage() {
   const [search, setSearch] = useState("");
   const [unreadOnly, setUnreadOnly] = useState(false);
   const [assignOpen, setAssignOpen] = useState(false);
-  const [assignPhone, setAssignPhone] = useState<string | undefined>();
 
-  // The gateway decides what this caller may see — including whether the
-  // Unassigned folder comes back at all — so nothing here needs a manager flag.
-  const { threads, unassigned, loading, error, refresh, markReadLocally } = useAssignedThreads(viewingRep);
+  // The gateway decides what this caller may see, so nothing here needs a
+  // manager flag. Only assigned conversations ever come back.
+  const { threads, loading, error, refresh, markReadLocally } = useAssignedThreads(viewingRep);
 
   const reps = useMemo(
     () =>
@@ -67,6 +75,8 @@ export default function AssignedPatientsPage() {
     const key = Object.keys(config.processors || {}).find((k) => k.toLowerCase() === viewingRep.toLowerCase());
     return (key && config.processors[key]?.phoneNumber) || "";
   }, [config.processors, viewingRep]);
+
+  const { call, callingPhone } = useRingOut(repPhone);
 
   const openThread = (phone: string) => {
     setSelected(phone);
@@ -85,7 +95,7 @@ export default function AssignedPatientsPage() {
     <div className="h-screen bg-gradient-subtle flex flex-col">
       <header className="bg-gradient-navy text-navy-foreground border-b border-sidebar-border shrink-0">
         <div className="px-4 sm:px-6 py-4 flex items-center gap-3">
-          <button onClick={goBack} className="p-1.5 rounded-md hover:bg-white/10 transition-colors" title="Back">
+          <button onClick={back} className="p-1.5 rounded-md hover:bg-white/10 transition-colors" title="Back">
             <ArrowLeft className="h-5 w-5" />
           </button>
           <div className="h-9 w-9 rounded-lg bg-gradient-primary flex items-center justify-center shadow-elevate">
@@ -103,10 +113,7 @@ export default function AssignedPatientsPage() {
           <div className="ml-auto flex items-center gap-2">
             {managerView && (
               <button
-                onClick={() => {
-                  setAssignPhone(undefined);
-                  setAssignOpen(true);
-                }}
+                onClick={() => setAssignOpen(true)}
                 className="inline-flex items-center gap-1.5 rounded-lg bg-white/10 hover:bg-white/15 px-3 py-1.5 text-sm font-medium"
               >
                 <UserPlus className="h-4 w-4" /> Assign
@@ -160,17 +167,10 @@ export default function AssignedPatientsPage() {
 
         <ConversationSidebar
           threads={threads}
-          unassigned={unassigned}
           selected={selected}
           onSelect={openThread}
-          onAssign={
-            managerView
-              ? (phone) => {
-                  setAssignPhone(phone);
-                  setAssignOpen(true);
-                }
-              : undefined
-          }
+          onCall={(phone) => void call(phone)}
+          callingPhone={callingPhone}
           loading={loading}
           search={search}
           onSearch={setSearch}
@@ -185,6 +185,8 @@ export default function AssignedPatientsPage() {
             patient={activeThread?.patient ?? null}
             repPhone={repPhone}
             rep={viewingRep}
+            onCall={() => void call(selected)}
+            calling={callingPhone === selected}
             onSent={() => void refresh()}
           />
         ) : (
@@ -203,7 +205,6 @@ export default function AssignedPatientsPage() {
         onAssigned={() => void refresh()}
         reps={reps}
         defaultRep={viewingRep}
-        presetPhone={assignPhone}
       />
     </div>
   );
