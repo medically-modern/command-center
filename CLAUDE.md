@@ -413,9 +413,14 @@ advancer on this board (`mondayWrite.recordAndAdvanceVerified` passes it as `sta
 > explicit act by the person recording the date, not a hydrated flag re-written on every send, and
 > the rep's own re-send re-raises it if the visit doesn't produce clinicals.
 
-**Cadence** (one constant, `APPT_ATTEMPT_SNOOZE_BUSINESS_DAYS`): **every** logged attempt snoozes a
-flat **1 business day** (Brandon's v3 matrix) — no per-outcome variation. Reach-out methods are
-Phone call · Text message · Email.
+**Cadence** — `APPT_ATTEMPT_SNOOZE_BUSINESS_DAYS` = **1 business day** for every logged attempt
+(Brandon's v3 matrix), with **one** per-outcome exception: *"Spoke — patient will call the office"*
+waits `WILL_CALL_SNOOZE_CALENDAR_DAYS` = **7 CALENDAR days** (Brandon, restored 2026-08-04 after
+being flattened to 1 in the 2026-08-03 build). The next move is the patient's, so there's nothing
+to check tomorrow. Calendar, not business, so it lands on the same weekday a week out and can never
+fall on a weekend (7 business days would be a week and a half). It still burns an attempt, and the
+**third attempt still escalates** — that check runs before the gap is chosen, so a longer snooze
+never buys a fourth try. Reach-out methods are Phone call · Text message · Email.
 
 **Sidebar sections differ by ROLE** (`apptSidebarSections`):
 - *Reach out today* — the work. Everyone.

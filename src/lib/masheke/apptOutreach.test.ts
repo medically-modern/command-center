@@ -15,6 +15,7 @@ import {
   resolveApptOutcome,
   snoozeUntilAfterAppointment,
   stampApptAttemptNote,
+  WILL_CALL_SNOOZE_CALENDAR_DAYS,
 } from "./apptOutreach";
 
 // Monday 3 Aug 2026 — every date assertion below is anchored to this.
@@ -142,16 +143,40 @@ describe("outcome → effect", () => {
     expect(e.kind).toBe("booked");
   });
 
-  it("a logged attempt snoozes a FLAT 1 business day (Brandon's v3 matrix)", () => {
+  it("a logged attempt snoozes 1 business day (Brandon's v3 matrix)", () => {
     expect(APPT_ATTEMPT_SNOOZE_BUSINESS_DAYS).toBe(1);
     // Mon 3 Aug + 1 business day = Tue 4 Aug — same for attempt 1 and 2.
     expect(resolveApptOutcome({ outcome: "noAnswer", slot: 1, today: MON }).nextActionDate).toBe("2026-08-04");
     expect(resolveApptOutcome({ outcome: "leftMessage", slot: 2, today: MON }).nextActionDate).toBe("2026-08-04");
   });
 
-  it("every non-booking, non-refusal outcome gets the SAME snooze", () => {
-    // One cadence. "Will call the office" used to get 7 calendar days.
-    for (const outcome of ["noAnswer", "leftMessage", "willCall"] as const) {
+  it("'will call the office' is the ONE outcome with a longer gap — 7 days", () => {
+    // Brandon, restored 2026-08-04: the next move is the patient's, so there is
+    // nothing to check tomorrow. Mon 3 Aug + 7 calendar days = Mon 10 Aug.
+    expect(WILL_CALL_SNOOZE_CALENDAR_DAYS).toBe(7);
+    const e = resolveApptOutcome({ outcome: "willCall", slot: 1, today: MON });
+    expect(e.kind).toBe("retry");
+    expect(e.nextActionDate).toBe("2026-08-10");
+    expect(e.summary).toMatch(/will call the office/i);
+  });
+
+  it("the will-call week is CALENDAR days, so it never lands on a weekend", () => {
+    // 7 calendar days is always the same weekday — that's the point of not
+    // using business days here (7 business days would be a week and a half).
+    for (const [today, expected] of [
+      ["2026-08-04", "2026-08-11"], // Tue → Tue
+      ["2026-08-06", "2026-08-13"], // Thu → Thu
+      ["2026-08-07", "2026-08-14"], // Fri → Fri
+    ] as const) {
+      expect(
+        resolveApptOutcome({ outcome: "willCall", slot: 2, today }).nextActionDate,
+        today,
+      ).toBe(expected);
+    }
+  });
+
+  it("the other non-booking, non-refusal outcomes still share the 1-day gap", () => {
+    for (const outcome of ["noAnswer", "leftMessage"] as const) {
       expect(
         resolveApptOutcome({ outcome, slot: 1, today: MON }).nextActionDate,
         outcome,

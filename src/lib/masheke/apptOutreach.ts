@@ -22,7 +22,8 @@
  *      proposal lands in Manager Intervention (index 0), and a manager
  *      proposing from there promotes it to Final Decisions (index 2).
  * Everything else keeps the patient right here, snoozed for
- * APPT_ATTEMPT_SNOOZE_BUSINESS_DAYS.
+ * APPT_ATTEMPT_SNOOZE_BUSINESS_DAYS — except "patient will call the office",
+ * which waits WILL_CALL_SNOOZE_CALENDAR_DAYS because the next move is theirs.
  *
  (3) doesn't wait for the third attempt because it's a rep JUDGMENT about what
  * they were told, not a counter running out. It goes UP one rung rather than
@@ -86,13 +87,32 @@ export const APPT_METHODS: ApptMethod[] = ["Phone call", "Text message", "Email"
 /**
  * Business days a logged attempt snoozes the patient — Brandon's v3 matrix
  * ("No answer or left message: 1 business day"), confirmed by Josh 2026-08-03.
- * FLAT: every outcome except a booking or a refusal gets the same gap. The rep
- * texts, writes a note, submits; the patient is back tomorrow to check for a
- * reply.
+ * The rep texts, writes a note, submits; the patient is back tomorrow to check
+ * for a reply.
  *
  * ── CHANGE THE CADENCE HERE AND NOWHERE ELSE ──
  */
 export const APPT_ATTEMPT_SNOOZE_BUSINESS_DAYS = 1;
+
+/**
+ * The ONE exception to the gap above: "patient will call the office" waits a
+ * full week (Brandon's original proposal, restored 2026-08-04 — it was
+ * flattened to the 1-day cadence and he asked for it back).
+ *
+ * The reason it's different: every other outcome leaves the ball in OUR court,
+ * so the rep checks back tomorrow. This one leaves it in the PATIENT's — they
+ * said they'd call the office themselves, and there is nothing to check a day
+ * later. Chasing them again tomorrow burns an attempt on a promise they haven't
+ * had time to keep.
+ *
+ * CALENDAR days, not business, and deliberately so: 7 calendar days lands on the
+ * same weekday one week out, which both reads as "a week" to the rep and can
+ * never fall on a weekend. 7 BUSINESS days would be a week and a half.
+ *
+ * It still burns an attempt like any other outcome, and the third one still
+ * escalates — only the gap changes.
+ */
+export const WILL_CALL_SNOOZE_CALENDAR_DAYS = 7;
 
 
 // ---------------------------------------------------------------------------
@@ -371,11 +391,24 @@ export function resolveApptOutcome(opts: {
     };
   }
 
+  // "They said they'll call the office" waits a week rather than a day — see
+  // WILL_CALL_SNOOZE_CALENDAR_DAYS. Placed AFTER the escalation check on
+  // purpose: a longer gap doesn't buy a fourth attempt, so the third one hands
+  // the patient to a manager exactly like every other outcome.
+  if (opts.outcome === "willCall") {
+    const days = WILL_CALL_SNOOZE_CALENDAR_DAYS;
+    return {
+      kind: "retry",
+      nextActionDate: addCalendarDaysIso(today, days),
+      summary: `Attempt ${opts.slot} of 3 logged — patient will call the office, following up in ${days} days.`,
+    };
+  }
+
   const gap = APPT_ATTEMPT_SNOOZE_BUSINESS_DAYS;
   return {
     kind: "retry",
     nextActionDate: addBusinessDaysIso(today, gap),
-    summary: `Attempt ${opts.slot} of 3 logged — trying again in ${gap} business days.`,
+    summary: `Attempt ${opts.slot} of 3 logged — trying again in ${gap} business day${gap === 1 ? "" : "s"}.`,
   };
 }
 
