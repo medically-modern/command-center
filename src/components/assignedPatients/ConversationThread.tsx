@@ -13,8 +13,8 @@
 import { useEffect, useRef, useState } from "react";
 import { AlertTriangle, Loader2, Phone, Send, ShieldOff } from "lucide-react";
 import { toast } from "sonner";
-import { mmPhoneNumber, sendSms } from "@/lib/fax/ringcentralApi";
-import { fetchConversation, type ConversationMessage } from "@/lib/assignedPatients/assignmentsApi";
+import { mmPhoneNumber } from "@/lib/fax/ringcentralApi";
+import { fetchConversation, sendMessage, type ConversationMessage } from "@/lib/assignedPatients/messagingApi";
 import { consentState } from "@/lib/assignedPatients/optOut";
 import type { PatientRef } from "@/lib/assignedPatients/patientLookup";
 import { fmtPhone } from "@/lib/assignedPatients/format";
@@ -23,18 +23,12 @@ import { cn } from "@/lib/utils";
 interface Props {
   phone: string;
   patient: PatientRef | null;
-  /** Number RingCentral rings to reach the caller; blank → MM main line. */
-  repPhone: string;
-  /** Whose inbox this is — the gateway authorizes the read against it. */
-  rep: string;
-  /** Start the call. Shared with the sidebar via useRingOut so the two can't
-   *  drift on which number rings whom. */
+  /** Start the call (in-browser softphone). */
   onCall: () => void;
   calling: boolean;
-  onSent?: () => void;
 }
 
-export default function ConversationThread({ phone, patient, repPhone, rep, onCall, calling, onSent }: Props) {
+export default function ConversationThread({ phone, patient, onCall, calling }: Props) {
   const [messages, setMessages] = useState<ConversationMessage[]>([]);
   // Whether we saw the WHOLE thread. Consent can't be inferred from a partial
   // one, so this gates the composer alongside the messages themselves.
@@ -53,7 +47,7 @@ export default function ConversationThread({ phone, patient, repPhone, rep, onCa
   const load = async (showSpinner: boolean) => {
     if (showSpinner) setLoading(true);
     try {
-      const thread = await fetchConversation(phone, rep);
+      const thread = await fetchConversation(phone);
       setMessages(thread.messages);
       setHistoryComplete(thread.complete);
       setError(null);
@@ -90,10 +84,9 @@ export default function ConversationThread({ phone, patient, repPhone, rep, onCa
     if (!text || sending || consent.optedOut) return;
     setSending(true);
     try {
-      await sendSms(phone, text);
+      await sendMessage({ to: phone, text, mondayItemId: patient?.itemId || undefined });
       setDraft("");
       await load(false);
-      onSent?.();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : String(e));
     } finally {
@@ -121,16 +114,6 @@ export default function ConversationThread({ phone, patient, repPhone, rep, onCa
         </button>
       </header>
 
-      {!repPhone && (
-        <div className="px-4 py-2 text-[11px] bg-amber-500/10 text-amber-700 border-b border-amber-500/20 flex items-start gap-1.5">
-          <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-px" />
-          <span>
-            No direct number set for you, so a call rings the main line ({fmtPhone(mmPhoneNumber())}) and whoever
-            answers there gets connected. A manager can set yours on the Access page.
-          </span>
-        </div>
-      )}
-
       <div className="flex-1 overflow-y-auto min-h-0 p-4 space-y-2 bg-gradient-subtle">
         {loading ? (
           <div className="flex items-center justify-center gap-2 py-16 text-sm text-muted-foreground">
@@ -157,6 +140,9 @@ export default function ConversationThread({ phone, patient, repPhone, rep, onCa
                   )}
                 >
                   {m.time ? new Date(m.time).toLocaleString("en-US", { month: "numeric", day: "numeric", hour: "numeric", minute: "2-digit" }) : ""}
+                  {/* Who sent it. Blank for messages that predate this tracking
+                      or went out from RingCentral directly rather than here. */}
+                  {m.direction === "Outbound" && m.sentBy ? ` · ${m.sentBy}` : ""}
                 </p>
               </div>
             </div>

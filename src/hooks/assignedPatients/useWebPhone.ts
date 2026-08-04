@@ -4,7 +4,7 @@
  * confused everyone who used it.
  *
  * The browser has no RingCentral token (the JWT lives on the gateway), so the
- * SIP credentials come from `${GATEWAY}/assignments/sip-provision`. Registration
+ * SIP credentials come from `${GATEWAY}/messaging/sip-provision`. Registration
  * is lazy: nothing connects until the first call, so merely opening the page
  * doesn't claim a SIP registration.
  *
@@ -66,7 +66,7 @@ export function useWebPhone() {
     if (phoneRef.current) return phoneRef.current;
     if (!GATEWAY) throw new Error("Calling needs the Monday gateway (VITE_MONDAY_GATEWAY_URL).");
     const token = getIdToken();
-    const res = await fetch(`${GATEWAY}/assignments/sip-provision`, {
+    const res = await fetch(`${GATEWAY}/messaging/sip-provision`, {
       headers: token ? { "X-MM-Auth": token } : {},
     });
     if (!res.ok) {

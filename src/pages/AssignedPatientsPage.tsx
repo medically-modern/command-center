@@ -1,100 +1,78 @@
 /**
- * Assigned Patients — a rep's texting inbox on the MM number, narrowed to the
- * patients a manager assigned to them, with click-to-call.
+ * Patient Texting — look up any patient by name or number, read the
+ * conversation, text them, call them.
  *
- * ONE page serves both the processor and the manager view, because the manager
- * view is the processor view plus an employee picker and an assign control:
- *   /assigned-patients                    → the signed-in rep's own conversations
- *   /assigned-patients?from=system-mgmt   → the manager view (employee rail,
- *                                           Unassigned folder, Assign)
- *   …&rep=<email>                         → a specific person's queue
+ * There is no assignment model (removed Aug 2026). Nobody owns a patient; any
+ * employee can text any patient. What the company tracks instead is **who sent
+ * what, to whom, and when** — recorded server-side from the verified token and
+ * shown against every outbound message.
  *
- * ⚠️ The manager view is gated on the **`?from=system-mgmt` ORIGIN**, not on
- * "the signed-in user is a manager" — same rule as Doctor Appointments
- * (CLAUDE.md §5.12), and for the same reason: gating on access level shows the
- * manager furniture permanently, including on the ordinary role page a manager
- * works their OWN queue from. Clicking the role bar on the burndown lands here
- * without the marker and gets the plain processor view; Pipeline Oversight
- * deep-links WITH it. Being a manager is still required on top, so a processor
- * who types the parameter doesn't get an employee rail they can't use.
- *
- * None of this is the security boundary — the gateway independently authorizes
- * every read and write against the verified token. This only decides what the
- * page draws.
+ * ⚠️ You can text a number that isn't on any board (Josh, 2026-08-04). Typing a
+ * bare phone number is a valid lookup: the patient record is a convenience for
+ * FINDING someone, not a precondition for reaching them.
  */
-import { useMemo, useState } from "react";
-import { ArrowLeft, MessagesSquare, RefreshCw, UserPlus, Users } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { ArrowLeft, Loader2, MessagesSquare, Phone, Search, User } from "lucide-react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { useAccessContext } from "@/components/AccessProvider";
 import { useBackNavigation } from "@/hooks/useBackNavigation";
-import { useAssignedThreads } from "@/hooks/assignedPatients/useAssignedThreads";
 import { useWebPhone } from "@/hooks/assignedPatients/useWebPhone";
 import CallOverlay from "@/components/assignedPatients/CallOverlay";
-import { markThreadRead } from "@/lib/assignedPatients/assignmentsApi";
-import ConversationSidebar from "@/components/assignedPatients/ConversationSidebar";
 import ConversationThread from "@/components/assignedPatients/ConversationThread";
-import AssignPatientDialog from "@/components/assignedPatients/AssignPatientDialog";
+import { searchPatientsByName, type PatientRef } from "@/lib/assignedPatients/patientLookup";
+import { fmtPhone } from "@/lib/assignedPatients/format";
+import { toE164 } from "@/lib/fax/ringcentralApi";
 import { cn } from "@/lib/utils";
+
+/** A raw number typed into the search box, rather than a patient record. */
+function asDirectNumber(query: string): PatientRef | null {
+  const digits = query.replace(/\D/g, "");
+  if (digits.length < 10) return null;
+  const phone = toE164(query);
+  if (!phone) return null;
+  return { itemId: "", name: "", phone, boardId: "", boardName: "" };
+}
 
 export default function AssignedPatientsPage() {
   const { goBack } = useBackNavigation();
   const navigate = useNavigate();
-  const { access, email, config } = useAccessContext();
-  const [params, setParams] = useSearchParams();
-  // The VIEW is the Oversight origin plus actually being a manager (see header).
+  const [params] = useSearchParams();
   const fromSystemMgmt = params.get("from") === "system-mgmt";
-  const managerView = fromSystemMgmt && access.type === "manager";
-
-  // Back returns to the Oversight TAB, not just /system-mgmt — which defaults to
-  // Search and reads as "back went somewhere else". Deterministic rather than
-  // history-based, because selecting the dropdown entry replaces the URL and a
-  // plain navigate(-1) can land mid-selection.
   const back = () => (fromSystemMgmt ? navigate("/system-mgmt?tab=oversight") : goBack());
 
-  // In the manager view you can look at anyone's queue; otherwise you only ever
-  // see your own, whatever the URL says.
-  const viewingRep = (managerView ? params.get("rep") : "") || email;
+  const [query, setQuery] = useState("");
+  const [results, setResults] = useState<PatientRef[]>([]);
+  const [searching, setSearching] = useState(false);
+  const [selected, setSelected] = useState<PatientRef | null>(null);
 
-  const [selected, setSelected] = useState<string | null>(null);
-  const [search, setSearch] = useState("");
-  const [unreadOnly, setUnreadOnly] = useState(false);
-  const [assignOpen, setAssignOpen] = useState(false);
-
-  // The gateway decides what this caller may see, so nothing here needs a
-  // manager flag. Only assigned conversations ever come back.
-  const { threads, loading, error, refresh, markReadLocally } = useAssignedThreads(viewingRep);
-
-  const reps = useMemo(
-    () =>
-      Object.entries(config.processors || {})
-        .map(([e, p]) => ({ email: e, name: p.name || e.split("@")[0] }))
-        .sort((a, b) => a.name.localeCompare(b.name)),
-    [config.processors],
-  );
-
-  const repPhone = useMemo(() => {
-    const key = Object.keys(config.processors || {}).find((k) => k.toLowerCase() === viewingRep.toLowerCase());
-    return (key && config.processors[key]?.phoneNumber) || "";
-  }, [config.processors, viewingRep]);
-
-  // In-browser softphone: the call happens IN THE PAGE with a hangup button,
-  // rather than RingCentral ringing the rep's own phone first (that was
-  // RingOut, and nobody could make sense of it).
   const { call: activeCall, error: callError, dismissError, dial, hangup, toggleMute } = useWebPhone();
-  const callingPhone = activeCall && activeCall.status !== "connected" ? activeCall.phone : null;
 
-  const openThread = (phone: string) => {
-    setSelected(phone);
-    const t = threads.find((x) => x.phone === phone);
-    if (t?.unread) {
-      markReadLocally(phone);
-      // Best-effort: a failed stamp just means the dot returns next poll.
-      void markThreadRead(phone, viewingRep).catch(() => {});
+  const directNumber = useMemo(() => asDirectNumber(query), [query]);
+
+  useEffect(() => {
+    const q = query.trim();
+    if (q.length < 2) {
+      setResults([]);
+      return;
     }
-  };
-
-  const activeThread = threads.find((t) => t.phone === selected) || null;
-  const viewingName = reps.find((r) => r.email.toLowerCase() === viewingRep.toLowerCase())?.name || viewingRep;
+    let alive = true;
+    setSearching(true);
+    // Debounced: the search fans out across every pipeline board, so typing
+    // must not fire one of those per keystroke.
+    const id = setTimeout(async () => {
+      try {
+        const r = await searchPatientsByName(q);
+        if (alive) setResults(r);
+      } catch {
+        if (alive) setResults([]);
+      } finally {
+        if (alive) setSearching(false);
+      }
+    }, 350);
+    return () => {
+      alive = false;
+      clearTimeout(id);
+    };
+  }, [query]);
 
   return (
     <div className="h-screen bg-gradient-subtle flex flex-col">
@@ -108,112 +86,100 @@ export default function AssignedPatientsPage() {
           </div>
           <div className="min-w-0">
             <p className="text-[10px] uppercase tracking-[0.2em] opacity-70">Medically Modern · RingCentral</p>
-            <h1 className="text-xl font-bold truncate">
-              Assigned Patients
-              {managerView && viewingRep.toLowerCase() !== email.toLowerCase() && (
-                <span className="text-sm font-normal opacity-80"> · {viewingName}</span>
-              )}
-            </h1>
-          </div>
-          <div className="ml-auto flex items-center gap-2">
-            {managerView && (
-              <button
-                onClick={() => setAssignOpen(true)}
-                className="inline-flex items-center gap-1.5 rounded-lg bg-white/10 hover:bg-white/15 px-3 py-1.5 text-sm font-medium"
-              >
-                <UserPlus className="h-4 w-4" /> Assign
-              </button>
-            )}
-            <button
-              onClick={() => void refresh()}
-              disabled={loading}
-              className="inline-flex items-center gap-1.5 rounded-lg bg-white/10 hover:bg-white/15 px-3 py-1.5 text-sm font-medium disabled:opacity-50"
-            >
-              <RefreshCw className={cn("h-4 w-4", loading && "animate-spin")} /> Refresh
-            </button>
+            <h1 className="text-xl font-bold truncate">Patient Texting</h1>
           </div>
         </div>
       </header>
 
-      {error && (
-        <div className="px-4 py-2 text-sm bg-destructive/10 text-destructive border-b border-destructive/20 shrink-0">
-          {error}
-        </div>
-      )}
       {callError && (
         <div className="px-4 py-2 text-sm bg-destructive/10 text-destructive border-b border-destructive/20 shrink-0 flex items-start gap-2">
-          <span className="flex-1">
-            {callError}
-            {/* Almost always the two prerequisites, so say so rather than
-                leaving a bare RingCentral error on screen. */}
-            <span className="block text-[11px] opacity-80">
-              In-browser calling needs the <b>VoIP Calling</b> scope on the RingCentral app and a <b>Digital Line</b>
-              {" "}on its extension.
-            </span>
-          </span>
-          <button onClick={dismissError} className="shrink-0 underline">Dismiss</button>
+          <span className="flex-1">{callError}</span>
+          <button onClick={dismissError} className="shrink-0 underline">
+            Dismiss
+          </button>
         </div>
       )}
 
       <div className="flex-1 flex min-h-0">
-        {managerView && (
-          <nav className="hidden md:flex w-52 shrink-0 flex-col border-r border-border bg-card min-h-0">
-            <p className="px-3 pt-3 pb-1 text-[10px] uppercase tracking-wider text-muted-foreground font-semibold flex items-center gap-1.5">
-              <Users className="h-3 w-3" /> Employees
-            </p>
-            <div className="flex-1 overflow-y-auto min-h-0">
-              {reps.map((r) => (
-                <button
-                  key={r.email}
-                  onClick={() => {
-                    const next = new URLSearchParams(params);
-                    next.set("rep", r.email);
-                    setParams(next, { replace: true });
-                    setSelected(null);
-                  }}
-                  className={cn(
-                    "w-full text-left px-3 py-2 text-sm hover:bg-muted/50 border-b border-border/60",
-                    r.email.toLowerCase() === viewingRep.toLowerCase() && "bg-muted font-semibold",
-                  )}
-                >
-                  <span className="block truncate">{r.name}</span>
-                  <span className="block truncate text-[10px] text-muted-foreground">{r.email}</span>
-                </button>
-              ))}
+        <aside className="w-full sm:w-80 shrink-0 border-r border-border bg-card flex flex-col min-h-0">
+          <div className="px-3 py-3 border-b border-border shrink-0">
+            <div className="relative">
+              <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+              <input
+                autoFocus
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Search name or number…"
+                className="w-full rounded-md border border-border bg-background pl-7 pr-7 py-1.5 text-sm outline-none focus:ring-1 focus:ring-ring"
+              />
+              {searching && (
+                <Loader2 className="absolute right-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 animate-spin text-muted-foreground" />
+              )}
             </div>
-          </nav>
-        )}
+          </div>
 
-        <ConversationSidebar
-          threads={threads}
-          selected={selected}
-          onSelect={openThread}
-          onCall={(phone) => void dial(phone)}
-          callingPhone={callingPhone}
-          loading={loading}
-          search={search}
-          onSearch={setSearch}
-          showUnreadOnly={unreadOnly}
-          onToggleUnread={setUnreadOnly}
-        />
+          <div className="flex-1 overflow-y-auto min-h-0">
+            {/* A typed number is always offered, matched patient or not —
+                reaching someone must not depend on them being on a board. */}
+            {directNumber && (
+              <button
+                onClick={() => setSelected(directNumber)}
+                className={cn(
+                  "w-full text-left px-3 py-2.5 border-b border-border/60 hover:bg-muted/40",
+                  selected?.phone === directNumber.phone && !selected?.itemId && "bg-muted/60",
+                )}
+              >
+                <p className="text-sm font-medium flex items-center gap-1.5">
+                  <Phone className="h-3.5 w-3.5 text-muted-foreground" />
+                  {fmtPhone(directNumber.phone)}
+                </p>
+                <p className="text-[11px] text-muted-foreground">Text this number directly</p>
+              </button>
+            )}
+
+            {results.map((p) => (
+              <button
+                key={p.itemId}
+                onClick={() => setSelected(p)}
+                disabled={!p.phone}
+                className={cn(
+                  "w-full text-left px-3 py-2.5 border-b border-border/60 hover:bg-muted/40 disabled:opacity-50",
+                  selected?.itemId === p.itemId && "bg-muted/60",
+                )}
+              >
+                <p className="text-sm font-medium truncate flex items-center gap-1.5">
+                  <User className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                  {p.name}
+                </p>
+                <p className="text-[11px] text-muted-foreground truncate">
+                  {p.phone ? fmtPhone(p.phone) : "no phone on record"} · {p.boardName}
+                </p>
+              </button>
+            ))}
+
+            {query.trim().length >= 2 && !searching && results.length === 0 && !directNumber && (
+              <p className="p-6 text-center text-sm text-muted-foreground">No patients matched.</p>
+            )}
+            {query.trim().length < 2 && (
+              <p className="p-6 text-center text-sm text-muted-foreground">
+                Search for a patient by name, or type a phone number.
+              </p>
+            )}
+          </div>
+        </aside>
 
         {selected ? (
           <ConversationThread
-            key={selected}
-            phone={selected}
-            patient={activeThread?.patient ?? null}
-            repPhone={repPhone}
-            rep={viewingRep}
-            onCall={() => void dial(selected)}
-            calling={activeCall?.phone === selected}
-            onSent={() => void refresh()}
+            key={selected.phone}
+            phone={selected.phone}
+            patient={selected.itemId ? selected : null}
+            onCall={() => void dial(selected.phone)}
+            calling={activeCall?.phone === selected.phone}
           />
         ) : (
           <section className="flex-1 hidden sm:flex flex-col items-center justify-center gap-1 text-center p-8">
             <h2 className="text-lg font-semibold">Text details</h2>
-            <p className="text-sm text-muted-foreground">
-              Select a conversation on the left to see it in full.
-            </p>
+            <p className="text-sm text-muted-foreground">Find a patient on the left to see the conversation.</p>
           </section>
         )}
       </div>
@@ -221,19 +187,11 @@ export default function AssignedPatientsPage() {
       {activeCall && (
         <CallOverlay
           call={activeCall}
-          name={threads.find((t) => t.phone === activeCall.phone)?.patient?.name || ""}
+          name={selected?.name || ""}
           onHangup={() => void hangup()}
-          onToggleMute={() => void toggleMute()}
+          onToggleMute={() => toggleMute()}
         />
       )}
-
-      <AssignPatientDialog
-        open={assignOpen}
-        onClose={() => setAssignOpen(false)}
-        onAssigned={() => void refresh()}
-        reps={reps}
-        defaultRep={viewingRep}
-      />
     </div>
   );
 }

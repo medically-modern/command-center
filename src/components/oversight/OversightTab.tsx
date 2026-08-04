@@ -2133,7 +2133,7 @@ export default function OversightTab() {
               {OVERSIGHT_SECTIONS.map((s) => (
                 <SelectItem key={s.id} value={s.id}>{s.title}</SelectItem>
               ))}
-              <SelectItem value={ASSIGNED_PATIENTS_OPTION}>Assigned Patients</SelectItem>
+              <SelectItem value={ASSIGNED_PATIENTS_OPTION}>Patient Texting</SelectItem>
             </SelectContent>
           </Select>
           <span className="text-sm text-muted-foreground tabular-nums">

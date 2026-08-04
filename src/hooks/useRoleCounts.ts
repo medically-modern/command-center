@@ -31,8 +31,6 @@
  * Subscription board (18407459988): Subscriptions group — all items
  */
 import { useEffect, useState, useCallback, useRef } from "react";
-import { fetchUnreadCount } from "@/lib/assignedPatients/assignmentsApi";
-import { getUser } from "@/lib/shared/auth";
 import { GROUPS as SAM_GROUPS, BOARD_ID as SAM_BOARD_ID, hasToken as samHasToken } from "@/lib/samantha/mondayApi";
 import { GROUPS as MESH_GROUPS, hasToken as meshHasToken } from "@/lib/masheke/mondayApi";
 import { MONDAY_API_URL, mondayIdentityHeaders } from "@/lib/shared/mondayEndpoint";
@@ -644,29 +642,6 @@ export function useRoleCounts(opts?: { roleIds?: string[] }) {
       clearInterval(interval);
     };
   }, [fetchCounts, roleKey]);
-
-  // ── Assigned Patients ────────────────────────────────────────────────────
-  // Not a Monday stage, so it can't come from the board scan above: its number
-  // is "conversations with a patient message I haven't read", which only the
-  // gateway knows. Merged into the same counts map so the role bar renders like
-  // any other. fetchUnreadCount swallows its own errors and returns 0, so a
-  // gateway hiccup can never blank the rest of the burndown.
-  useEffect(() => {
-    let alive = true;
-    const rep = getUser()?.email || "";
-    if (!rep) return;
-    const load = async () => {
-      const unread = await fetchUnreadCount(rep);
-      if (!alive || !mountedRef.current) return;
-      setCounts((prev) => (prev.assignedPatients === unread ? prev : { ...prev, assignedPatients: unread }));
-    };
-    void load();
-    const interval = setInterval(() => void load(), POLL_MS);
-    return () => {
-      alive = false;
-      clearInterval(interval);
-    };
-  }, []);
 
   return { counts, escalatedCounts, patientIds, loading, refetch: fetchCounts };
 }
