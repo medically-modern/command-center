@@ -132,7 +132,8 @@
         "chaseFax": "all",
         "inSystemReferrals": "all",
         "unverifiedReferrals": "all",
-        "dvs": "all"
+        "dvs": "all",
+        "doctorAppointments": "all"
       }
     },
     "janelle@medicallymodern.com": {
