@@ -31,7 +31,7 @@ import { fuzzyNameMatch } from "@/lib/oversight/fuzzyName";
 import { extractProposedStuckReason } from "@/lib/masheke/proposedStuck";
 import { etTodayYmd } from "@/lib/samantha/benefitsDerive";
 import { MANAGER_ORIGIN_PARAM, MANAGER_CHART_PARAM, MANAGER_BUCKET_PARAM } from "@/lib/shared/managerOrigin";
-import { Loader2, BarChart3, X, ExternalLink, StickyNote, Search, ArrowUp, ArrowDown, ArrowUpDown, Star, SlidersHorizontal, Plus, Trash2, RotateCcw, Flag } from "lucide-react";
+import { Loader2, BarChart3, MessagesSquare, X, ExternalLink, StickyNote, Search, ArrowUp, ArrowDown, ArrowUpDown, Star, SlidersHorizontal, Plus, Trash2, RotateCcw, Flag } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -2119,6 +2119,18 @@ export default function OversightTab() {
           <span className="text-sm text-muted-foreground tabular-nums">
             {totalPatients} total patients
           </span>
+          {/* Assigned Patients isn't a Monday stage — it has no board, no group
+              and no days-in-stage — so it can't be a chart in the dropdown
+              above. It's a link instead. `from=system-mgmt` is what puts that
+              page into its MANAGER view (employee rail + Unassigned + Assign);
+              arriving from the role bar without it gives the processor view. */}
+          <a
+            href={`${import.meta.env.BASE_URL}assigned-patients?from=system-mgmt`}
+            className="inline-flex items-center gap-1.5 h-9 rounded-md border border-input bg-background px-3 text-sm font-medium hover:bg-muted/50"
+            title="Texting inboxes by employee — assign patients and see their conversations"
+          >
+            <MessagesSquare className="h-4 w-4" /> Assigned Patients
+          </a>
           <div className="relative w-[240px]">
             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <input

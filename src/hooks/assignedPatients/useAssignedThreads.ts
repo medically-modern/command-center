@@ -65,17 +65,47 @@ export function useAssignedThreads(repEmail: string): UseAssignedThreadsResult {
       // Already filtered to this rep by the gateway — the shared inbox never
       // reaches the browser, so there is nothing to narrow here.
       const inbox = await fetchInbox(rep);
-      const patients = await fetchPatientsByItemIds(inbox.threads.map((t) => t.assignment.mondayItemId));
+      const patients = await fetchPatientsByItemIds([
+        ...inbox.threads.map((t) => t.assignment.mondayItemId),
+        ...inbox.pending.map((p) => p.mondayItemId),
+      ]);
       const byItemId = new Map(patients.map((p) => [p.itemId, p]));
 
+      // Assigned patients who have never texted have no RingCentral thread, so
+      // they arrive as `pending` and are shown as empty conversations — you can
+      // still open them to call or send the first message. Their phone number
+      // comes from Monday, since the assignment store holds only a hash.
+      const pendingThreads: AssignedThread[] = [];
+      for (const p of inbox.pending) {
+        const patient = byItemId.get(p.mondayItemId);
+        if (!patient?.phone) continue; // nothing to route to — skip quietly
+        pendingThreads.push({
+          phone: patient.phone,
+          lastText: "",
+          lastTime: "",
+          lastDirection: "Outbound",
+          lastInboundTime: "",
+          messageCount: 0,
+          assignment: {
+            repEmail: rep,
+            mondayItemId: p.mondayItemId,
+            mondayBoardId: p.mondayBoardId,
+            lastReadAt: p.lastReadAt,
+          },
+          patient,
+          unread: false,
+        });
+      }
+
       if (!mounted.current) return;
-      setThreads(
-        inbox.threads.map((t) => ({
+      setThreads([
+        ...inbox.threads.map((t) => ({
           ...t,
           patient: byItemId.get(t.assignment.mondayItemId) ?? null,
           unread: isUnread(t.lastInboundTime, t.assignment.lastReadAt),
         })),
-      );
+        ...pendingThreads,
+      ]);
       setUnassigned(inbox.unassigned ?? []);
       setError(null);
     } catch (e) {

@@ -35,7 +35,7 @@
 import pkg from "pg";
 const { Pool } = pkg;
 
-import { verifyGoogleToken, authEnforced } from "./auth.mjs";
+import { verifyGoogleIdentity, authEnforced } from "./auth.mjs";
 import { rcApiFetch } from "./ringcentral.mjs";
 import { toE164, phoneHmac, hashingConfigured } from "./phoneHash.mjs";
 
@@ -117,9 +117,14 @@ void ensureSchema();
 const norm = (e) => String(e || "").trim().toLowerCase();
 
 export function registerAssignments({ app }) {
-  /** Verified caller's email, or null. */
+  /** Verified caller's email, or null.
+   *
+   *  Uses verifyGoogleIdentity (signature + domain, `exp` ignored) rather than
+   *  verifyGoogleToken, because these routes BLOCK on identity and the SPA
+   *  never refreshes its Google token — sign-in is the durable gate here, so an
+   *  expiry check would 401 every rep about an hour after they signed in. */
   async function actor(req) {
-    const u = await verifyGoogleToken(req.headers["x-mm-auth"]);
+    const u = await verifyGoogleIdentity(req.headers["x-mm-auth"]);
     return u ? (u.email || "").toLowerCase() : null;
   }
 
@@ -414,9 +419,12 @@ export function registerAssignments({ app }) {
 
       const mine = [];
       const unassigned = [];
+      const matched = new Set();
       for (const t of threads) {
-        const row = byHash.get(phoneHmac(t.phone));
+        const hash = phoneHmac(t.phone);
+        const row = byHash.get(hash);
         if (row && row.rep_email === rep) {
+          matched.add(hash);
           mine.push({
             ...t,
             assignment: {
@@ -432,7 +440,22 @@ export function registerAssignments({ app }) {
           unassigned.push(t);
         }
       }
-      res.json({ threads: mine, unassigned });
+
+      // Assigned patients who have never exchanged a text have no RingCentral
+      // thread, so the loop above cannot find them — they'd be assigned and yet
+      // completely invisible, with no way to open them and no way to call. Send
+      // them through as `pending`: no phone number (we only hold a hash), just
+      // the Monday item id, which is what the client resolves names and numbers
+      // from anyway. It renders them as empty conversations.
+      const pending = rows.rows
+        .filter((r) => r.rep_email === rep && !matched.has(r.phone_hmac))
+        .map((r) => ({
+          mondayItemId: r.monday_item_id,
+          mondayBoardId: r.monday_board_id,
+          lastReadAt: r.last_read_at ? new Date(r.last_read_at).toISOString() : null,
+        }));
+
+      res.json({ threads: mine, unassigned, pending });
     } catch (e) {
       res.status(502).json({ error: String((e && e.message) || e) });
     }

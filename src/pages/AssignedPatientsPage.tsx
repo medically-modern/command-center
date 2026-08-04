@@ -4,10 +4,23 @@
  *
  * ONE page serves both the processor and the manager view, because the manager
  * view is the processor view plus an employee picker and an assign control:
- *   /assigned-patients            → the signed-in rep's own conversations
- *   /assigned-patients?rep=<email> → that rep's, for a manager
- * Managers additionally get the employee rail, the unassigned folder, and the
- * assign dialog. Processors get their queue and nothing else.
+ *   /assigned-patients                    → the signed-in rep's own conversations
+ *   /assigned-patients?from=system-mgmt   → the manager view (employee rail,
+ *                                           Unassigned folder, Assign)
+ *   …&rep=<email>                         → a specific person's queue
+ *
+ * ⚠️ The manager view is gated on the **`?from=system-mgmt` ORIGIN**, not on
+ * "the signed-in user is a manager" — same rule as Doctor Appointments
+ * (CLAUDE.md §5.12), and for the same reason: gating on access level shows the
+ * manager furniture permanently, including on the ordinary role page a manager
+ * works their OWN queue from. Clicking the role bar on the burndown lands here
+ * without the marker and gets the plain processor view; Pipeline Oversight
+ * deep-links WITH it. Being a manager is still required on top, so a processor
+ * who types the parameter doesn't get an employee rail they can't use.
+ *
+ * None of this is the security boundary — the gateway independently authorizes
+ * every read and write against the verified token. This only decides what the
+ * page draws.
  */
 import { useMemo, useState } from "react";
 import { ArrowLeft, MessagesSquare, RefreshCw, UserPlus, Users } from "lucide-react";
@@ -25,11 +38,12 @@ export default function AssignedPatientsPage() {
   const { goBack } = useBackNavigation();
   const { access, email, config } = useAccessContext();
   const [params, setParams] = useSearchParams();
-  const isManager = access.type === "manager";
+  // The VIEW is the Oversight origin plus actually being a manager (see header).
+  const managerView = params.get("from") === "system-mgmt" && access.type === "manager";
 
-  // A manager can look at anyone's queue; a processor only ever sees their own,
-  // whatever the URL says.
-  const viewingRep = (isManager ? params.get("rep") : "") || email;
+  // In the manager view you can look at anyone's queue; otherwise you only ever
+  // see your own, whatever the URL says.
+  const viewingRep = (managerView ? params.get("rep") : "") || email;
 
   const [selected, setSelected] = useState<string | null>(null);
   const [search, setSearch] = useState("");
@@ -81,13 +95,13 @@ export default function AssignedPatientsPage() {
             <p className="text-[10px] uppercase tracking-[0.2em] opacity-70">Medically Modern · RingCentral</p>
             <h1 className="text-xl font-bold truncate">
               Assigned Patients
-              {isManager && viewingRep.toLowerCase() !== email.toLowerCase() && (
+              {managerView && viewingRep.toLowerCase() !== email.toLowerCase() && (
                 <span className="text-sm font-normal opacity-80"> · {viewingName}</span>
               )}
             </h1>
           </div>
           <div className="ml-auto flex items-center gap-2">
-            {isManager && (
+            {managerView && (
               <button
                 onClick={() => {
                   setAssignPhone(undefined);
@@ -116,7 +130,7 @@ export default function AssignedPatientsPage() {
       )}
 
       <div className="flex-1 flex min-h-0">
-        {isManager && (
+        {managerView && (
           <nav className="hidden md:flex w-52 shrink-0 flex-col border-r border-border bg-card min-h-0">
             <p className="px-3 pt-3 pb-1 text-[10px] uppercase tracking-wider text-muted-foreground font-semibold flex items-center gap-1.5">
               <Users className="h-3 w-3" /> Employees
@@ -150,7 +164,7 @@ export default function AssignedPatientsPage() {
           selected={selected}
           onSelect={openThread}
           onAssign={
-            isManager
+            managerView
               ? (phone) => {
                   setAssignPhone(phone);
                   setAssignOpen(true);

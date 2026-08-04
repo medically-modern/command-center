@@ -93,10 +93,26 @@ export interface AssignedInboxThread extends InboxThread {
  * joins RingCentral against the assignments table and returns only what this
  * caller is entitled to. `unassigned` comes back non-empty for managers only.
  */
-export async function fetchInbox(rep: string): Promise<{ threads: AssignedInboxThread[]; unassigned: InboxThread[] }> {
+/** An assigned patient with no RingCentral conversation yet. Carries no phone
+ *  number — the store holds only a hash — so the client resolves both name and
+ *  number from `mondayItemId`. */
+export interface PendingAssignment {
+  mondayItemId: string;
+  mondayBoardId: string | null;
+  lastReadAt: string | null;
+}
+
+export async function fetchInbox(
+  rep: string,
+): Promise<{ threads: AssignedInboxThread[]; unassigned: InboxThread[]; pending: PendingAssignment[] }> {
   const q = rep ? `?rep=${encodeURIComponent(rep)}` : "";
   const res = await call(`/assignments/inbox${q}`);
-  return json<{ threads: AssignedInboxThread[]; unassigned: InboxThread[] }>(res, "Loading inbox");
+  const r = await json<{
+    threads: AssignedInboxThread[];
+    unassigned: InboxThread[];
+    pending?: PendingAssignment[];
+  }>(res, "Loading inbox");
+  return { ...r, pending: r.pending ?? [] };
 }
 
 export interface ConversationMessage {
