@@ -36,27 +36,60 @@ export function senderName(email: string): string {
 }
 
 /**
- * A stable colour per sender, so a manager scrolling a long thread can see at a
- * glance who sent what without reading every label.
+ * A stable colour per sender, so a long thread can be scanned for "who sent
+ * what" without reading every label. One person is the same colour everywhere
+ * in the app and across reloads.
  *
- * Deterministic from the email rather than assigned in order, so the same
- * person is the same colour in every conversation and across reloads.
+ * ⚠️ The roster is EXPLICIT rather than hashed. Hashing an email into a palette
+ * is stable but not distinct: with ~8 people and 8 colours there is roughly a
+ * 90% chance two of them collide, which defeats the entire point — two people
+ * sharing a colour is worse than no colours at all, because it reads as one
+ * person. Listing the team guarantees each gets their own.
+ *
+ * Adding someone: append them here. Anyone NOT listed still gets a colour (the
+ * hash fallback below), so a new hire is never colourless — they just aren't
+ * guaranteed to be unique until they're added. Append rather than insert:
+ * reordering this list repaints everyone above the change.
  */
-const SENDER_COLORS = [
-  "bg-sky-600",
+const SENDER_PALETTE = [
+  "bg-emerald-600", // josh
+  "bg-sky-600",     // katie
   "bg-violet-600",
-  "bg-emerald-600",
   "bg-amber-600",
   "bg-rose-600",
   "bg-cyan-700",
   "bg-indigo-600",
   "bg-teal-600",
+  "bg-fuchsia-600",
+  "bg-lime-700",
+  "bg-orange-600",
+  "bg-pink-600",
+] as const;
+
+/** Team roster, in colour order. Append only — see the note above. */
+const SENDER_ORDER = [
+  "josh@medicallymodern.com",
+  "katie@medicallymodern.com",
+  "janelle@medicallymodern.com",
+  "brandon@medicallymodern.com",
+  "corey@medicallymodern.com",
+  "masheke@medicallymodern.com",
+  "samantha@medicallymodern.com",
+  "madeline@medicallymodern.com",
 ] as const;
 
 export function senderColor(email: string): string {
-  const e = String(email || "").toLowerCase();
+  const e = String(email || "").trim().toLowerCase();
   if (!e) return "bg-primary";
+  const known = SENDER_ORDER.indexOf(e as (typeof SENDER_ORDER)[number]);
+  if (known >= 0) return SENDER_PALETTE[known % SENDER_PALETTE.length];
+  // Not on the roster — still deterministic, just not collision-proof. Starts
+  // past the assigned block so a new sender is unlikely to duplicate a
+  // teammate's colour before someone adds them above.
   let h = 0;
   for (let i = 0; i < e.length; i++) h = (h * 31 + e.charCodeAt(i)) >>> 0;
-  return SENDER_COLORS[h % SENDER_COLORS.length];
+  const spare = SENDER_PALETTE.length - SENDER_ORDER.length;
+  return spare > 0
+    ? SENDER_PALETTE[SENDER_ORDER.length + (h % spare)]
+    : SENDER_PALETTE[h % SENDER_PALETTE.length];
 }
