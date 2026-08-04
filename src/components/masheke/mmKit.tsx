@@ -29,7 +29,10 @@ import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
-import { sendSms, fetchSmsConversation, type SmsMessage } from "@/lib/fax/ringcentralApi";
+// Sends go through the gateway (not RingCentral directly) so WHO sent the text
+// is recorded from the verified token. This popup is behind every Text button in
+// the app, so routing it here is what makes the attribution log complete.
+import { fetchConversation, sendMessage, type ConversationMessage as SmsMessage } from "@/lib/assignedPatients/messagingApi";
 
 // =====================================================================
 // Step shell
@@ -583,7 +586,7 @@ function TextCompose({ tel, display }: { tel: string; display: string }) {
     setLoading(true);
     setErr(null);
     try {
-      setMessages(await fetchSmsConversation(tel));
+      setMessages((await fetchConversation(tel)).messages);
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e));
     } finally {
@@ -606,7 +609,7 @@ function TextCompose({ tel, display }: { tel: string; display: string }) {
     if (!msg.trim()) return;
     setSending(true);
     try {
-      await sendSms(tel, msg.trim());
+      await sendMessage({ to: tel, text: msg.trim() });
       setMsg("");
       await load(); // refresh so the sent text appears in the thread
     } catch (e) {

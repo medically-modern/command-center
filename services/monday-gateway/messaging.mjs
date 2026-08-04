@@ -30,7 +30,7 @@
 import pkg from "pg";
 const { Pool } = pkg;
 
-import { verifyGoogleIdentity, authEnforced } from "./auth.mjs";
+import { verifyGoogleIdentity, authEnforced, setKeyStore } from "./auth.mjs";
 import { rcApiFetch, SIP_PROVISION_PATH } from "./ringcentral.mjs";
 import { toE164, phoneHmac, hashingConfigured } from "./phoneHash.mjs";
 
@@ -64,6 +64,16 @@ CREATE TABLE IF NOT EXISTS sent_messages (
 CREATE INDEX IF NOT EXISTS sent_messages_phone_idx  ON sent_messages (phone_hmac);
 CREATE INDEX IF NOT EXISTS sent_messages_rcid_idx   ON sent_messages (rc_message_id);
 CREATE INDEX IF NOT EXISTS sent_messages_sender_idx ON sent_messages (sender_email, sent_at DESC);
+
+-- Google signing keys we have seen. Google rotates every day or two and drops
+-- retired keys from its published JWKS, so a token signed by an aged-out key
+-- becomes unverifiable — and this gateway redeploys on every push to main, so
+-- an in-memory-only cache would log everyone out for unrelated reasons.
+CREATE TABLE IF NOT EXISTS google_signing_keys (
+  kid        TEXT PRIMARY KEY,
+  jwk        JSONB NOT NULL,
+  first_seen TIMESTAMPTZ NOT NULL DEFAULT now()
+);
 `;
 
 async function ensureSchema() {
@@ -75,7 +85,18 @@ async function ensureSchema() {
     console.error("Messaging schema failed:", e.message);
   }
 }
-void ensureSchema();
+void ensureSchema().then(() => {
+  // Durable key retention, so a redeploy doesn't invalidate everyone's sign-in.
+  if (!pool) return;
+  setKeyStore({
+    load: async () => (await pool.query(`SELECT kid, jwk FROM google_signing_keys`)).rows,
+    save: async (kid, jwk) =>
+      pool.query(
+        `INSERT INTO google_signing_keys (kid, jwk) VALUES ($1,$2) ON CONFLICT (kid) DO NOTHING`,
+        [kid, jwk],
+      ),
+  });
+});
 
 const RC_SMS_FROM = process.env.RC_SMS_FROM || "+13475037148";
 const last10 = (s) => String(s || "").replace(/\D/g, "").slice(-10);

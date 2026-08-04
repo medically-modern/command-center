@@ -107,35 +107,6 @@ export function toE164(raw: string): string {
   return (raw || "").trim().startsWith("+") ? (raw || "").trim() : d ? "+" + d : "";
 }
 
-/** Send an SMS via RingCentral from the MM number. On a 5xx the send often
- *  still goes out, so we read the message store back and treat a matching
- *  just-created outbound SMS as success (avoids double-texting patients). */
-export async function sendSms(to: string, text: string): Promise<void> {
-  const toNum = toE164(to);
-  if (!toNum) throw new Error("No valid recipient number");
-  if (!text.trim()) throw new Error("Message is empty");
-  const body = JSON.stringify({
-    from: { phoneNumber: RC_SMS_FROM },
-    to: [{ phoneNumber: toNum }],
-    text: text.trim(),
-  });
-  const sentAt = Date.now();
-  const res = await rcFetch(`/restapi/v1.0/account/~/extension/~/sms`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body,
-  });
-  if (res.ok) return;
-  if (res.status >= 500 && (await confirmSmsAccepted(toNum, text.trim(), sentAt))) return;
-  let msg = `RingCentral SMS failed (${res.status})`;
-  try {
-    const e = (await res.json()) as { message?: string; errors?: Array<{ message?: string }> };
-    msg = e.errors?.[0]?.message || e.message || msg;
-  } catch {
-    /* keep default */
-  }
-  throw new Error(msg);
-}
 
 async function confirmSmsAccepted(toNum: string, text: string, sentAtMs: number): Promise<boolean> {
   const last10 = (s: string) => (s || "").replace(/\D/g, "").slice(-10);

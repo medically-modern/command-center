@@ -17,7 +17,7 @@ import { mmPhoneNumber } from "@/lib/fax/ringcentralApi";
 import { fetchConversation, sendMessage, type ConversationMessage } from "@/lib/assignedPatients/messagingApi";
 import { consentState } from "@/lib/assignedPatients/optOut";
 import type { PatientRef } from "@/lib/assignedPatients/patientLookup";
-import { fmtPhone } from "@/lib/assignedPatients/format";
+import { fmtPhone, senderColor, senderName } from "@/lib/assignedPatients/format";
 import { cn } from "@/lib/utils";
 
 interface Props {
@@ -125,24 +125,41 @@ export default function ConversationThread({ phone, patient, onCall, calling }: 
           <p className="py-16 text-center text-sm text-muted-foreground">No messages yet.</p>
         ) : (
           messages.map((m) => (
-            <div key={m.id} className={cn("flex", m.direction === "Outbound" ? "justify-end" : "justify-start")}>
+            <div
+              key={m.id}
+              className={cn("flex flex-col", m.direction === "Outbound" ? "items-end" : "items-start")}
+            >
+              {/* Sender name ABOVE the bubble, and the bubble tinted per sender,
+                  so a long thread can be scanned for "who sent what" without
+                  reading every label. Colour is derived from the email, so one
+                  person is the same colour everywhere. */}
+              {m.direction === "Outbound" && m.sentBy && (
+                <span className="text-[10px] font-medium text-muted-foreground mb-0.5 mr-1">
+                  {senderName(m.sentBy)}
+                </span>
+              )}
               <div
                 className={cn(
                   "max-w-[75%] rounded-2xl px-3 py-2 text-sm shadow-sm",
-                  m.direction === "Outbound" ? "bg-primary text-primary-foreground" : "bg-card border border-border",
+                  m.direction !== "Outbound"
+                    ? "bg-card border border-border"
+                    : m.sentBy
+                      ? `${senderColor(m.sentBy)} text-white`
+                      : "bg-primary text-primary-foreground",
                 )}
               >
                 <p className="whitespace-pre-wrap break-words">{m.text}</p>
                 <p
                   className={cn(
                     "text-[10px] mt-0.5",
-                    m.direction === "Outbound" ? "text-primary-foreground/70" : "text-muted-foreground",
+                    m.direction === "Outbound" ? "text-white/70" : "text-muted-foreground",
                   )}
                 >
                   {m.time ? new Date(m.time).toLocaleString("en-US", { month: "numeric", day: "numeric", hour: "numeric", minute: "2-digit" }) : ""}
-                  {/* Who sent it. Blank for messages that predate this tracking
-                      or went out from RingCentral directly rather than here. */}
-                  {m.direction === "Outbound" && m.sentBy ? ` · ${m.sentBy}` : ""}
+                  {/* Sends made outside the Command Center (or before this
+                      tracking existed) have no sender on record — say so rather
+                      than leaving the reader to guess. */}
+                  {m.direction === "Outbound" && !m.sentBy ? " · sent outside Command Center" : ""}
                 </p>
               </div>
             </div>

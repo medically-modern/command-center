@@ -39,16 +39,31 @@ export function authEnforced() {
  * ⚠️ Google rotates its signing keys every day or two and drops retired ones
  * from the published JWKS, so a token whose `kid` has aged out cannot be
  * verified at all — the failure the worker hit in Aug 2026. Every key we have
- * ever seen is therefore retained in memory and used as a fallback.
- * Limitation vs the worker: the worker persists these in the Cache API, so its
- * retention survives restarts. Ours is per-process, so a gateway redeploy drops
- * the retained set and a rep whose sign-in predates the current JWKS has to
- * sign in again. If that starts happening, persist this map.
+ * ever seen is therefore retained AND PERSISTED, so it survives a redeploy.
+ * That matters here more than anywhere: this gateway redeploys on every push to
+ * main, and an in-memory-only set would mean a rep who signed in days ago being
+ * asked to sign in again after an unrelated deploy. Sign-in is meant to be
+ * durable, so the keys backing it have to be too. Persistence is best-effort —
+ * if the store is unavailable we fall back to the in-memory set rather than
+ * failing verification.
  */
 const JWKS_URL = "https://www.googleapis.com/oauth2/v3/certs";
 const JWKS_TTL_MS = 60 * 60_000;
 let _jwks = { keys: [], fetchedAt: 0 };
 const _retainedKeys = new Map(); // kid → jwk, never evicted
+
+/** Durable backing for _retainedKeys, injected by the messaging module (which
+ *  owns a Postgres pool). Left unset, retention is in-memory only. */
+let _keyStore = null;
+export function setKeyStore(store) {
+  _keyStore = store;
+  // Warm the in-memory set from whatever was retained before this restart.
+  void Promise.resolve(store.load?.())
+    .then((rows) => {
+      for (const r of rows || []) if (r.kid && r.jwk) _retainedKeys.set(r.kid, r.jwk);
+    })
+    .catch(() => {});
+}
 
 async function googleSigningKeys() {
   if (_jwks.keys.length && Date.now() - _jwks.fetchedAt < JWKS_TTL_MS) return _jwks.keys;
@@ -59,7 +74,12 @@ async function googleSigningKeys() {
     const keys = Array.isArray(j.keys) ? j.keys : [];
     if (keys.length) {
       _jwks = { keys, fetchedAt: Date.now() };
-      for (const k of keys) if (k.kid) _retainedKeys.set(k.kid, k);
+      for (const k of keys) {
+        if (!k.kid) continue;
+        const isNew = !_retainedKeys.has(k.kid);
+        _retainedKeys.set(k.kid, k);
+        if (isNew && _keyStore) void Promise.resolve(_keyStore.save?.(k.kid, k)).catch(() => {});
+      }
     }
   } catch {
     /* keep whatever we already have rather than going blind */
