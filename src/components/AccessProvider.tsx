@@ -12,6 +12,7 @@ interface AccessCtxValue {
   removeEmail: (email: string) => void;
   addProcessor: (email: string, name: string) => void;
   setProcessorName: (email: string, name: string) => void;
+  setProcessorPhone: (email: string, phone: string) => void;
   toggleProcessorRole: (email: string, roleId: string) => void;
   setRoleFilter: (email: string, roleId: string, filter: RoleFilter) => void;
   setRoleOrder: (email: string, roleId: string, order: number | null) => void;
@@ -46,6 +47,7 @@ export default function AccessProvider({ children }: { children: React.ReactNode
     removeEmail: acc.removeEmail,
     addProcessor: acc.addProcessor,
     setProcessorName: acc.setProcessorName,
+    setProcessorPhone: acc.setProcessorPhone,
     toggleProcessorRole: acc.toggleProcessorRole,
     setRoleFilter: acc.setRoleFilter,
     setRoleOrder: acc.setRoleOrder,

@@ -39,6 +39,16 @@ export interface ProcessorProfile {
   roleFilters?: Record<string, RoleFilter>;
   /** Per-role SOP order number (1,2,3…). Missing → falls back to config order. */
   roleOrder?: Record<string, number>;
+  /**
+   * Direct number RingCentral rings to reach this person on a click-to-call
+   * (RingOut's `from` leg — desk line or cell).
+   *
+   * ⚠️ This is NOT the number the patient sees. Patients always see the MM
+   * number, which RingOut sends as `callerId`. Left blank, click-to-call falls
+   * back to the MM main number — calls still work, but the main line rings and
+   * whoever picks up there gets bridged instead of this person.
+   */
+  phoneNumber?: string;
 }
 export interface AccessConfig {
   managers: string[];
@@ -227,6 +237,22 @@ export function useAccess() {
     });
   }, [mutate]);
 
+  /** Set (or clear, when blank) the number RingCentral rings to reach this
+   *  person on a click-to-call. See ProcessorProfile.phoneNumber. */
+  const setProcessorPhone = useCallback((email: string, phone: string) => {
+    const e = norm(email);
+    mutate((prev) => {
+      const pk = Object.keys(prev.processors).find((k) => norm(k) === e);
+      if (!pk) return prev;
+      const cur = prev.processors[pk];
+      const next: ProcessorProfile = { ...cur };
+      const trimmed = (phone || "").trim();
+      if (trimmed) next.phoneNumber = trimmed;
+      else delete next.phoneNumber;
+      return { ...prev, processors: { ...prev.processors, [pk]: next } };
+    });
+  }, [mutate]);
+
   /** Set the escalation filter for one of a processor's roles. */
   const setRoleFilter = useCallback((email: string, roleId: string, filter: RoleFilter) => {
     const e = norm(email);
@@ -261,6 +287,7 @@ export function useAccess() {
     removeEmail,
     addProcessor,
     setProcessorName,
+    setProcessorPhone,
     toggleProcessorRole,
     setRoleFilter,
     setRoleOrder,

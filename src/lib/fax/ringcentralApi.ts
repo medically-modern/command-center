@@ -100,7 +100,7 @@ export async function fetchOutboundFaxStatus(
 
 const RC_SMS_FROM = (import.meta.env.VITE_RC_SMS_FROM as string | undefined) || "+13475037148";
 
-function toE164(raw: string): string {
+export function toE164(raw: string): string {
   const d = (raw || "").replace(/\D/g, "");
   if (d.length === 11 && d.startsWith("1")) return "+" + d;
   if (d.length === 10) return "+1" + d;
@@ -175,44 +175,153 @@ export interface SmsMessage {
   to: string;
 }
 
-/** Full SMS conversation with one number, oldest → newest. */
-export async function fetchSmsConversation(phone: string, perPage = 100): Promise<SmsMessage[]> {
+export interface SmsConversation {
+  messages: SmsMessage[];
+  /**
+   * We reached the end of the history rather than stopping at the page cap.
+   *
+   * ⚠️ Load-bearing for the opt-out guard. Consent is derived by scanning the
+   * conversation for an inbound STOP, so a PARTIAL history can only ever prove
+   * the absence of one within the part we fetched — and "we didn't see a STOP"
+   * would otherwise re-enable the composer for a patient who is still opted
+   * out. Callers must treat `complete: false` as "consent unknown", not "opted
+   * in". See lib/assignedPatients/optOut.ts.
+   */
+  complete: boolean;
+}
+
+const CONVERSATION_PAGE_SIZE = 250;
+/** 2,500 messages with one patient. Far beyond any real conversation, so
+ *  hitting this means something is wrong rather than someone being chatty. */
+const CONVERSATION_MAX_PAGES = 10;
+
+/**
+ * Full SMS conversation with one number, oldest → newest, following pagination
+ * to the end of the history.
+ *
+ * It pages rather than taking the first N because the whole thread — not its
+ * most recent page — is what the opt-out guard reads.
+ */
+export async function fetchSmsThread(phone: string): Promise<SmsConversation> {
   const num = toE164(phone);
-  if (!num) return [];
+  if (!num) return { messages: [], complete: true };
   const dateFrom = new Date(Date.now() - 365 * 24 * 60 * 60_000).toISOString();
-  const path =
-    `/restapi/v1.0/account/~/extension/~/message-store` +
-    `?messageType=SMS&phoneNumber=${encodeURIComponent(num)}&dateFrom=${encodeURIComponent(dateFrom)}&perPage=${perPage}`;
-  const res = await rcFetch(path);
-  if (!res.ok) throw new Error(`RingCentral SMS history failed (${res.status})`);
-  const json = (await res.json()) as {
-    records?: Array<{
-      id: number;
-      direction?: string;
-      subject?: string;
-      text?: string;
-      creationTime?: string;
-      from?: { phoneNumber?: string };
-      to?: Array<{ phoneNumber?: string }>;
-    }>;
-  };
   const last10 = (s: string) => (s || "").replace(/\D/g, "").slice(-10);
   const want = last10(num);
-  return (json.records ?? [])
-    .filter(
-      (r) =>
-        last10(r.from?.phoneNumber || "") === want ||
-        (r.to ?? []).some((t) => last10(t.phoneNumber || "") === want),
-    )
-    .map((r) => ({
-      id: r.id,
-      direction: (r.direction === "Outbound" ? "Outbound" : "Inbound") as "Inbound" | "Outbound",
-      text: r.subject ?? r.text ?? "",
-      time: r.creationTime ?? "",
-      from: r.from?.phoneNumber ?? "",
-      to: (r.to ?? [])[0]?.phoneNumber ?? "",
-    }))
-    .sort((a, b) => new Date(a.time).getTime() - new Date(b.time).getTime());
+
+  const out: SmsMessage[] = [];
+  let complete = false;
+  for (let page = 1; page <= CONVERSATION_MAX_PAGES; page++) {
+    const path =
+      `/restapi/v1.0/account/~/extension/~/message-store` +
+      `?messageType=SMS&phoneNumber=${encodeURIComponent(num)}&dateFrom=${encodeURIComponent(dateFrom)}` +
+      `&perPage=${CONVERSATION_PAGE_SIZE}&page=${page}`;
+    const res = await rcFetch(path);
+    if (!res.ok) throw new Error(`RingCentral SMS history failed (${res.status})`);
+    const json = (await res.json()) as {
+      records?: Array<{
+        id: number;
+        direction?: string;
+        subject?: string;
+        text?: string;
+        creationTime?: string;
+        from?: { phoneNumber?: string };
+        to?: Array<{ phoneNumber?: string }>;
+      }>;
+    };
+    const records = json.records ?? [];
+    out.push(
+      ...records
+        .filter(
+          (r) =>
+            last10(r.from?.phoneNumber || "") === want ||
+            (r.to ?? []).some((t) => last10(t.phoneNumber || "") === want),
+        )
+        .map((r) => ({
+          id: r.id,
+          direction: (r.direction === "Outbound" ? "Outbound" : "Inbound") as "Inbound" | "Outbound",
+          text: r.subject ?? r.text ?? "",
+          time: r.creationTime ?? "",
+          from: r.from?.phoneNumber ?? "",
+          to: (r.to ?? [])[0]?.phoneNumber ?? "",
+        })),
+    );
+    // A short page is the last page.
+    if (records.length < CONVERSATION_PAGE_SIZE) {
+      complete = true;
+      break;
+    }
+  }
+
+  out.sort((a, b) => new Date(a.time).getTime() - new Date(b.time).getTime());
+  return { messages: out, complete };
+}
+
+/** Full SMS conversation with one number, oldest → newest.
+ *  Prefer `fetchSmsThread` where consent matters — this drops the
+ *  completeness signal the opt-out guard needs. */
+export async function fetchSmsConversation(phone: string): Promise<SmsMessage[]> {
+  return (await fetchSmsThread(phone)).messages;
+}
+
+/*
+ * NOTE: the Assigned Patients inbox is deliberately NOT here.
+ *
+ * The MM number is one shared RingCentral inbox holding every patient
+ * conversation, so anything in this file — which runs in the browser — would
+ * hand a rep the whole thing and filter afterwards. Client-side filtering is a
+ * UI convention, not a boundary. The inbox and the per-conversation history are
+ * assembled and authorized on the gateway instead:
+ * `lib/assignedPatients/assignmentsApi.ts` → `/assignments/inbox`,
+ * `/assignments/conversation`.
+ */
+
+/**
+ * Start an outbound call via RingOut (two-legged): RingCentral rings `from`
+ * first, and once the rep picks up it dials the patient and bridges them.
+ *
+ * Deliberately NOT WebRTC. RingOut needs no browser softphone, no VoipCalling
+ * scope, no per-rep RingCentral login and no Digital Line — so click-to-call
+ * rides entirely on the gateway's existing JWT.
+ *
+ * ⚠️ `from` is the number RINGCENTRAL CALLS to reach the rep — it is NOT what
+ * the patient sees. The patient sees `callerId`, which is always the MM number.
+ * Passing the MM main number as `from` therefore rings the main line, and
+ * whoever answers there gets bridged rather than the rep who clicked.
+ *
+ * There is no cancel: DELETE is excluded by both the gateway's method allowlist
+ * and its CORS layer.
+ */
+export async function startRingOut(opts: { from: string; to: string; callerId?: string }): Promise<void> {
+  const from = toE164(opts.from);
+  const to = toE164(opts.to);
+  if (!from) throw new Error("No valid number to ring you on");
+  if (!to) throw new Error("No valid number to call");
+  const body = JSON.stringify({
+    from: { phoneNumber: from },
+    to: { phoneNumber: to },
+    callerId: { phoneNumber: toE164(opts.callerId || RC_SMS_FROM) },
+    playPrompt: false,
+  });
+  const res = await rcFetch(`/restapi/v1.0/account/~/extension/~/ring-out`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body,
+  });
+  if (res.ok) return;
+  let msg = `RingCentral call failed (${res.status})`;
+  try {
+    const e = (await res.json()) as { message?: string; errors?: Array<{ message?: string }> };
+    msg = e.errors?.[0]?.message || e.message || msg;
+  } catch {
+    /* keep default */
+  }
+  throw new Error(msg);
+}
+
+/** The number patients see on texts and calls from the Command Center. */
+export function mmPhoneNumber(): string {
+  return RC_SMS_FROM;
 }
 
 export interface InboundFax {

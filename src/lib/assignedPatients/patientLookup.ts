@@ -1,0 +1,134 @@
+/**
+ * Cross-board patient lookup for Assigned Patients.
+ *
+ * The assignment store deliberately holds no patient data — just an HMAC of the
+ * number and a Monday item id (see services/monday-gateway/assignments.mjs). So
+ * every name and phone number on screen is resolved from Monday at render time,
+ * which is what this module does.
+ *
+ * Boards and their phone columns come from systemMgmt's BOARDS registry rather
+ * than a second hardcoded list, so a board added there is picked up here too.
+ */
+import { MONDAY_API_URL, mondayIdentityHeaders } from "../shared/mondayEndpoint";
+import { BOARDS } from "../systemMgmt/mondayApi";
+import { toE164 } from "../fax/ringcentralApi";
+
+const MONDAY_API_VERSION = "2024-10";
+
+function getToken(): string {
+  return (import.meta.env.VITE_MONDAY_API_TOKEN as string | undefined) ?? "";
+}
+
+async function gql<T>(query: string, variables: Record<string, unknown> = {}): Promise<T> {
+  const res = await fetch(MONDAY_API_URL, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: getToken(),
+      ...mondayIdentityHeaders(),
+      "API-Version": MONDAY_API_VERSION,
+    },
+    body: JSON.stringify({ query, variables }),
+  });
+  if (!res.ok) throw new Error(`Monday request failed (${res.status})`);
+  const json = await res.json();
+  if (json.errors) throw new Error(json.errors.map((e: { message: string }) => e.message).join("; "));
+  return json.data as T;
+}
+
+export interface PatientRef {
+  itemId: string;
+  name: string;
+  phone: string;
+  boardId: string;
+  boardName: string;
+}
+
+const PHONE_COL_IDS = [...new Set(BOARDS.map((b) => b.phoneColId))];
+const boardName = (id: string): string =>
+  BOARDS.find((b) => String(b.boardId) === String(id))?.boardName || "";
+
+interface RawItem {
+  id: string;
+  name: string;
+  board?: { id: string } | null;
+  column_values?: Array<{ id: string; text: string | null }>;
+}
+
+function toPatientRef(it: RawItem): PatientRef {
+  // Boards use different phone column ids; take the first one that has a value.
+  const phoneCol = (it.column_values ?? []).find((c) => PHONE_COL_IDS.includes(c.id) && (c.text || "").trim());
+  const bid = it.board?.id ? String(it.board.id) : "";
+  return {
+    itemId: String(it.id),
+    name: it.name || "",
+    phone: toE164(phoneCol?.text || ""),
+    boardId: bid,
+    boardName: boardName(bid),
+  };
+}
+
+/** Resolve assignment rows (item ids) to displayable patients.
+ *  Monday drops ids it can't find — a deleted item simply won't come back, and
+ *  callers should treat a missing id as an assignment to clean up rather than
+ *  an error. */
+export async function fetchPatientsByItemIds(itemIds: string[]): Promise<PatientRef[]> {
+  const ids = [...new Set((itemIds || []).filter(Boolean))];
+  if (!ids.length) return [];
+  const out: PatientRef[] = [];
+  // Monday caps items(ids:) — chunk so a big rep list doesn't blow the limit.
+  for (let i = 0; i < ids.length; i += 100) {
+    const chunk = ids.slice(i, i + 100);
+    const data = await gql<{ items: RawItem[] }>(
+      `query ($ids: [ID!], $cols: [String!]) {
+         items (ids: $ids) {
+           id name
+           board { id }
+           column_values (ids: $cols) { id text }
+         }
+       }`,
+      { ids: chunk, cols: PHONE_COL_IDS },
+    );
+    out.push(...(data.items ?? []).map(toPatientRef));
+  }
+  return out;
+}
+
+/** Search patients by name across every pipeline board, for the manager's
+ *  assign dialog. Returns at most `limit` per board. */
+export async function searchPatientsByName(query: string, limit = 10): Promise<PatientRef[]> {
+  const q = (query || "").trim();
+  if (q.length < 2) return [];
+  const results = await Promise.all(
+    BOARDS.map(async (b) => {
+      try {
+        const data = await gql<{
+          boards: Array<{ items_page?: { items: RawItem[] } }>;
+        }>(
+          `query ($board: [ID!], $q: CompareValue!, $cols: [String!], $limit: Int!) {
+             boards (ids: $board) {
+               items_page (
+                 limit: $limit,
+                 query_params: { rules: [{ column_id: "name", compare_value: $q, operator: contains_text }] }
+               ) {
+                 items { id name board { id } column_values (ids: $cols) { id text } }
+               }
+             }
+           }`,
+          { board: [String(b.boardId)], q: [q], cols: PHONE_COL_IDS, limit },
+        );
+        return (data.boards?.[0]?.items_page?.items ?? []).map(toPatientRef);
+      } catch {
+        // One board failing (permissions, a renamed column) must not blank the
+        // whole search — the other boards still return.
+        return [];
+      }
+    }),
+  );
+  const seen = new Set<string>();
+  return results.flat().filter((p) => {
+    if (seen.has(p.itemId)) return false;
+    seen.add(p.itemId);
+    return true;
+  });
+}

@@ -27,6 +27,7 @@ export default function AccessAdminPage() {
     removeEmail,
     addProcessor,
     setProcessorName,
+    setProcessorPhone,
     toggleProcessorRole,
     setRoleFilter,
     setRoleOrder,
@@ -146,12 +147,25 @@ export default function AccessAdminPage() {
                         {isSelf && <span className="ml-1 text-[10px] text-muted-foreground">(you)</span>}
                       </div>
                       {profile ? (
-                        <input
-                          value={profile.name}
-                          onChange={(e) => setProcessorName(pe, e.target.value)}
-                          placeholder="Display name"
-                          className="w-40 rounded-lg border border-border bg-background px-2 py-1 text-sm"
-                        />
+                        <>
+                          <input
+                            value={profile.name}
+                            onChange={(e) => setProcessorName(pe, e.target.value)}
+                            placeholder="Display name"
+                            className="w-40 rounded-lg border border-border bg-background px-2 py-1 text-sm"
+                          />
+                          {/* Click-to-call: the number RingCentral rings to reach
+                              this person. NOT what the patient sees — patients
+                              always see the MM number. Blank falls back to the
+                              main line, which rings whoever is on it. */}
+                          <input
+                            value={profile.phoneNumber ?? ""}
+                            onChange={(e) => setProcessorPhone(pe, e.target.value)}
+                            placeholder="Call-me-at number"
+                            title="Number RingCentral rings to reach this person on a click-to-call. Patients always see the MM number."
+                            className="w-40 rounded-lg border border-border bg-background px-2 py-1 text-sm"
+                          />
+                        </>
                       ) : (
                         <span className="text-xs text-muted-foreground">{pe.split("@")[0]}</span>
                       )}

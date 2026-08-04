@@ -47,6 +47,8 @@ const OversightPage = lazyWithReload(() => import("./pages/OversightPage"));
 // Fax Inbox (RingCentral inbound faxes)
 const FaxInboxPage = lazyWithReload(() => import("./pages/FaxInboxPage"));
 
+const AssignedPatientsPage = lazyWithReload(() => import("./pages/AssignedPatientsPage"));
+
 const queryClient = new QueryClient();
 
 const Loading = () => (
@@ -107,6 +109,7 @@ const App = () => (
           <Route path="/access" element={<AccessAdminPage />} />
           <Route path="/oversight" element={<OversightPage />} />
           <Route path="/fax-inbox" element={<FaxInboxPage />} />
+          <Route path="/assigned-patients" element={<AssignedPatientsPage />} />
           <Route path="*" element={<Index />} />
         </Routes>
       </Suspense>

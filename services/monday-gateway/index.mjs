@@ -45,6 +45,7 @@ import pkg from "pg";
 const { Pool } = pkg;
 import { registerSend } from "./send.mjs";
 import { registerRingCentral } from "./ringcentral.mjs";
+import { registerAssignments } from "./assignments.mjs";
 import { verifyGoogleToken, authEnforced } from "./auth.mjs";
 import { extractColumns } from "./columns.mjs";
 import { buildAuditQuery } from "./auditQuery.mjs";
@@ -623,6 +624,10 @@ app.get("/audit.json", async (req, res) => {
 // ── Phase 2: server-side transactional /send (durable, idempotent) ──
 registerSend({ app, pool, clientIp });
 registerRingCentral({ app });
+// Assigned Patients: patient-phone → rep routing + per-rep read state. Runs on
+// its OWN Postgres (ASSIGNMENTS_DATABASE_URL) so the audit DB above keeps its
+// "metadata only, no PHI" property — see assignments.mjs.
+registerAssignments({ app });
 
 ensureSchema().finally(() => {
   app.listen(PORT, () =>

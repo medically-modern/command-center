@@ -22,11 +22,21 @@ const { RC_CLIENT_ID, RC_CLIENT_SECRET, RC_JWT } = process.env;
 
 const rcConfigured = () => !!(RC_CLIENT_ID && RC_CLIENT_SECRET && RC_JWT);
 
-// Only the RingCentral paths the SPA actually uses (message-store reads/writes,
-// fax PDF content, SMS send). Keeps this from becoming an open proxy to the
-// rest of the account's RingCentral API.
+// Only the RingCentral paths the SPA actually uses. Keeps this from becoming an
+// open proxy to the rest of the account's RingCentral API.
+//   message-store — fax + SMS reads, mark-read, and the Assigned Patients inbox
+//   sms           — send
+//   ring-out      — outbound click-to-call (two-legged; no WebRTC, no Digital
+//                   Line). NOTE: cancelling a RingOut is DELETE, which the
+//                   gateway's method allowlist and CORS layer both exclude — so
+//                   there is deliberately no cancel. Starting a call and letting
+//                   it ring is the whole feature.
+//
+// message-sync (incremental SMS sync with a sync token) is the eventual upgrade
+// for the inbox poll, but it is deliberately NOT allowlisted yet: nothing calls
+// it, and this proxy should only ever expose paths in use.
 const ALLOWED_PATH =
-  /^\/restapi\/v1\.0\/account\/[^/]+\/extension\/[^/]+\/(message-store|sms)(\/|\?|$)/;
+  /^\/restapi\/v1\.0\/account\/[^/]+\/extension\/[^/]+\/(message-store|sms|ring-out)(\/|\?|$)/;
 
 let _token = { value: null, expiresAt: 0 };
 let _refreshing = null;
@@ -56,6 +66,33 @@ async function rcAccessToken(force = false) {
     _refreshing = null;
   }
 }
+
+/**
+ * Call the RingCentral REST API from inside the gateway, with the bearer token
+ * injected and one refresh-and-retry on 401.
+ *
+ * This is the in-process equivalent of the /rc proxy below, for routes that must
+ * do their own RingCentral work rather than relaying the browser's request —
+ * notably the Assigned Patients inbox, which has to filter the shared account's
+ * messages by assignment BEFORE any of it reaches a rep's browser.
+ */
+export async function rcApiFetch(path, init = {}) {
+  if (!rcConfigured()) throw new Error("RingCentral is not configured on the gateway (missing RC_* env vars).");
+  const go = (token) =>
+    fetch(`${RC_SERVER}${path}`, {
+      ...init,
+      headers: { Authorization: `Bearer ${token}`, ...(init.headers || {}) },
+    });
+  let token = await rcAccessToken();
+  let res = await go(token);
+  if (res.status === 401) {
+    token = await rcAccessToken(true);
+    res = await go(token);
+  }
+  return res;
+}
+
+export { rcConfigured };
 
 export function registerRingCentral({ app }) {
   app.all(/^\/rc\/.+/, async (req, res) => {

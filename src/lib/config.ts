@@ -36,6 +36,11 @@ export const ROLES: RoleConfig[] = [
   { id: "finalConfirm",   label: "Final Profile Confirmation", color: "bg-lime-500", icon: "ShieldCheck", route: "/final-confirm" },
   { id: "subscription",   label: "Subscription",       color: "bg-rose-500",    icon: "RefreshCw",      route: "/subscription"     },
   { id: "updateClinicals", label: "Update Clinicals",   color: "bg-fuchsia-500", icon: "FileUp",         route: "/update-clinicals" },
+  // Assigned Patients — the rep's texting inbox on the MM number, narrowed to
+  // the patients a manager assigned to them (+ click-to-call via RingOut).
+  // Not a Monday stage: assignment lives in the gateway's own Postgres, so this
+  // role has no board, no group and no counting-contract entry.
+  { id: "assignedPatients", label: "Assigned Patients", color: "bg-emerald-600", icon: "MessagesSquare", route: "/assigned-patients" },
   { id: "authDenied",      label: "Auth Denied",        color: "bg-red-500",     icon: "XCircle",        route: "/auth-denied"      },
   { id: "patientQuestions", label: "Patient Questions", color: "bg-sky-500",     icon: "MessageCircleQuestion", route: "/patient-questions" },
   // FAX — count-only role: bar shows RingCentral unread faxes (0 → Done!).
