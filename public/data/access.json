@@ -133,7 +133,8 @@
         "inSystemReferrals": "all",
         "unverifiedReferrals": "all",
         "dvs": "all",
-        "doctorAppointments": "all"
+        "doctorAppointments": "all",
+        "assignedPatients": "all"
       }
     },
     "janelle@medicallymodern.com": {
