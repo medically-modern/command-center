@@ -95,28 +95,39 @@ export default function AssignedPatientsPage() {
             <h1 className="text-xl font-bold truncate">Patient Texting</h1>
           </div>
 
-          <div className="ml-auto flex items-center gap-2">
-            <input
-              value={dialInput}
-              onChange={(e) => setDialInput(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && dialTarget) void dial(dialTarget);
-              }}
-              placeholder="Call any number…"
-              aria-label="Call any number"
-              className="w-44 rounded-lg bg-white/10 placeholder:text-white/50 px-3 py-1.5 text-sm outline-none focus:ring-1 focus:ring-white/40"
-            />
+          {/* Centred and high-contrast on purpose: this sat top-right in
+              white/10 on a navy bar and was genuinely hard to find. A solid
+              input and a green call button make it the obvious thing in the
+              header. `mx-auto` centres it in the bar; the spacer on the right
+              keeps it centred against the back button + title on the left. */}
+          <div className="mx-auto flex items-center gap-2 rounded-xl bg-white/10 ring-1 ring-white/20 p-1.5">
+            <div className="relative">
+              <Phone className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-emerald-400" />
+              <input
+                value={dialInput}
+                onChange={(e) => setDialInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && dialTarget) void dial(dialTarget);
+                }}
+                placeholder="Call any number…"
+                aria-label="Call any number"
+                className="w-56 rounded-lg bg-white text-foreground placeholder:text-muted-foreground pl-8 pr-3 py-2 text-sm outline-none focus:ring-2 focus:ring-emerald-400"
+              />
+            </div>
             <button
               onClick={() => dialTarget && void dial(dialTarget)}
               // Disabled until the number normalises, so we never hand
               // RingCentral something it will reject (see toE164).
               disabled={!dialTarget || !!activeCall}
               title={dialTarget ? `Call ${fmtPhone(dialTarget)}` : "Enter a full phone number"}
-              className="inline-flex items-center gap-1.5 rounded-lg bg-white/10 hover:bg-white/15 px-3 py-1.5 text-sm font-medium disabled:opacity-40"
+              className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-500 hover:bg-emerald-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-40 disabled:hover:bg-emerald-500"
             >
               <Phone className="h-4 w-4" /> Call
             </button>
           </div>
+
+          {/* Balances the back button + title so the dialer sits truly centred. */}
+          <div className="w-9 shrink-0" aria-hidden />
         </div>
       </header>
 
