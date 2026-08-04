@@ -95,6 +95,12 @@
         "unverifiedReferrals",
         "doctorAppointments"
       ]
+    },
+    "janelle@medicallymodern.com": {
+      "name": "janelle",
+      "roles": [
+        "doctorAppointments"
+      ]
     }
   }
 }
