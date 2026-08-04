@@ -137,7 +137,8 @@
         "assignedPatients": "all"
       },
       "roleOrder": {
-        "assignedPatients": 1
+        "assignedPatients": 1,
+        "doctorAppointments": 2
       }
     },
     "janelle@medicallymodern.com": {
