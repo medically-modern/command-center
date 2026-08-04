@@ -135,6 +135,9 @@
         "dvs": "all",
         "doctorAppointments": "all",
         "assignedPatients": "all"
+      },
+      "roleOrder": {
+        "assignedPatients": 1
       }
     },
     "janelle@medicallymodern.com": {
