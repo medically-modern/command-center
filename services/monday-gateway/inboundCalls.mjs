@@ -366,7 +366,13 @@ async function reconcileSubscription() {
       (r) => r?.deliveryMode?.address === url && (r.eventFilters || []).some((f) => f.includes("/telephony/sessions")),
     );
 
-    // Collapse any duplicates a previous bad deploy may have left behind.
+    // ⚠️ ACTIVE ONES FIRST, then collapse the rest. RingCentral marks a
+    // subscription `Blacklisted` after repeated webhook failures, and the list
+    // comes back in no particular order — so keeping records[0] could delete
+    // the healthy subscription and keep the dead one, then create another, and
+    // oscillate there forever while /calls/health reported success.
+    mine.sort((a, b) => (String(b.status) === "Active") - (String(a.status) === "Active"));
+
     for (const extra of mine.slice(1)) {
       await rcApiFetch(`/restapi/v1.0/subscription/${extra.id}`, { method: "DELETE" }).catch(() => {});
     }
@@ -420,6 +426,37 @@ async function reconcileSubscription() {
     subscriptionState.error = String((e && e.message) || e);
     console.error("Inbound calls: subscription failed:", subscriptionState.error);
   }
+}
+
+/**
+ * RingCentral's CURRENT opinion of our subscription, not our memory of creating
+ * it.
+ *
+ * ⚠️ This is the difference between a health check and a comforting lie. The
+ * cached `subscriptionState` only records that a create/renew once succeeded —
+ * so when RingCentral **blacklists** the webhook (which is what it does after
+ * repeated delivery failures) the gateway keeps reporting `ok: true` and calls
+ * silently stop arriving. Only asking RC can tell you that.
+ *
+ * Cached for a minute because /calls/health takes no auth: without it, anyone
+ * who found the URL could drive an unbounded number of RingCentral API calls.
+ */
+let _liveStatus = { at: 0, status: null, error: null };
+async function liveSubscriptionStatus() {
+  if (!subscriptionState.id) return { status: null, error: subscriptionState.error };
+  if (Date.now() - _liveStatus.at < 60_000) return _liveStatus;
+  try {
+    const up = await rcApiFetch(`/restapi/v1.0/subscription/${subscriptionState.id}`);
+    if (!up.ok) {
+      _liveStatus = { at: Date.now(), status: null, error: `RingCentral says ${up.status}` };
+      return _liveStatus;
+    }
+    const j = await up.json();
+    _liveStatus = { at: Date.now(), status: String(j.status || ""), error: null };
+  } catch (e) {
+    _liveStatus = { at: Date.now(), status: null, error: String((e && e.message) || e) };
+  }
+  return _liveStatus;
 }
 
 /* ── prefs ────────────────────────────────────────────────────────────────── */
@@ -524,7 +561,7 @@ export function registerInboundCalls({ app }) {
     res.flushHeaders?.();
 
     const who = email;
-    const entry = { id: ++subscriberSeq, email: who, res, prefs: await loadPrefs(who) };
+    const entry = { id: ++subscriberSeq, email: who, res, connectedAt: Date.now(), prefs: await loadPrefs(who) };
     subscribers.set(entry.id, entry);
     sendTo(entry, "ready", { prefs: entry.prefs });
 
@@ -716,11 +753,14 @@ export function registerInboundCalls({ app }) {
     if (!e164) return res.json({ pinned: false, id: "" });
     const id = phoneHmac(e164);
     try {
-      const r = await pool.query(
-        `SELECT 1 FROM call_ring_allow WHERE email = $1 AND phone_hmac = $2`,
-        [who, id],
-      );
-      res.json({ pinned: r.rowCount > 0, id });
+      const [r, prefs] = await Promise.all([
+        pool.query(`SELECT 1 FROM call_ring_allow WHERE email = $1 AND phone_hmac = $2`, [who, id]),
+        loadPrefs(who),
+      ]);
+      // `mode` rides along so the bell can warn that pinning is a no-op: a rep
+      // on `off` can happily watch a patient and never be rung, which looks
+      // exactly like the feature being broken.
+      res.json({ pinned: r.rowCount > 0, id, mode: prefs.mode });
     } catch (e) {
       res.status(500).json({ error: String((e && e.message) || e) });
     }
@@ -765,16 +805,32 @@ export function registerInboundCalls({ app }) {
     });
   });
 
-  /** Is the whole path healthy — subscription up, CallControl granted? */
+  /**
+   * Can we still receive calls, and is anyone listening?
+   *
+   * `ok` requires RingCentral to say the subscription is **Active right now** —
+   * not merely that we once created one. See liveSubscriptionStatus.
+   *
+   * ⚠️ Deliberately reports no employee emails. This route takes no auth (the
+   * monitor has no identity to present), so it stays counts-only; who is
+   * connected is nobody's business at a public URL.
+   */
   app.get("/calls/health", async (_req, res) => {
+    const live = await liveSubscriptionStatus();
+    const now = Date.now();
     res.json({
-      ok: !!subscriptionState.id && !subscriptionState.error,
+      ok: !!subscriptionState.id && !subscriptionState.error && live.status === "Active",
       configured: configured(),
       webhookUrl: webhookUrl(),
       subscriptionId: subscriptionState.id,
+      subscriptionStatus: live.status,
       expiresAt: subscriptionState.expiresAt ? new Date(subscriptionState.expiresAt).toISOString() : null,
-      error: subscriptionState.error,
+      error: subscriptionState.error || live.error,
       subscribers: subscribers.size,
+      // How long each open browser has been attached. Ages, never identities:
+      // a stack of zero-second entries is a browser reconnect-looping, which
+      // reads as "connected" if you only count them.
+      subscriberAges: [...subscribers.values()].map((s) => Math.round((now - s.connectedAt) / 1000)),
       ringing: [...calls.values()].filter((c) => c.state === "ringing").length,
       // `seen` climbing while `rings` stays 0 means deliveries are arriving and
       // being discarded — the failure that is otherwise indistinguishable from

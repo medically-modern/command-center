@@ -16,6 +16,7 @@ import { Loader2, Phone, PhoneIncoming, PhoneOff, X } from "lucide-react";
 import { toast } from "sonner";
 import { useInboundCalls, type RingingCall } from "@/hooks/inboundCalls/useInboundCalls";
 import RingPreferencesDialog from "@/components/inboundCalls/RingPreferencesDialog";
+import CallStreamStatus from "@/components/inboundCalls/CallStreamStatus";
 import { fmtPhone, senderName } from "@/lib/assignedPatients/format";
 import { getUser } from "@/lib/shared/auth";
 import { cn } from "@/lib/utils";
@@ -208,13 +209,16 @@ function CallCard({
 }
 
 export default function IncomingCallHost() {
-  const { calls, claim, dismiss } = useInboundCalls();
+  const { calls, claim, dismiss, connected, error } = useInboundCalls();
   // Carried here rather than on the texting page so "add your number" is
   // fixable from wherever the call found you.
   const [settingsOpen, setSettingsOpen] = useState(false);
-  if (!calls.length && !settingsOpen) return null;
+  // ⚠️ No early return on "nothing ringing" any more — CallStreamStatus has to
+  // render precisely when there are NO calls, because "no calls" is exactly
+  // what a dead stream looks like.
   return (
     <>
+      <CallStreamStatus connected={connected} error={error} />
       {/* pointer-events-none on the stack so the gap between cards doesn't
           swallow clicks on the page behind them. */}
       <div className="fixed top-4 right-4 z-[60] flex flex-col gap-2 pointer-events-none">

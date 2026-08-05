@@ -611,6 +611,30 @@ so `seen` climbing while `rings` stays 0 names this failure instantly.
 in-memory, so a webhook landing on replica A never reaches a browser on replica B. If this is ever
 scaled up the fix is Postgres **`LISTEN/NOTIFY`** — `pg` is already there — not a bigger map.
 
+**Every failure mode here is SILENT, so three things watch it** (2026-08-05). A blacklisted
+subscription, a revoked permission, a dead gateway, a dropped SSE stream — all of them look exactly
+like a quiet afternoon:
+1. **`/calls/health` re-queries RingCentral** for the subscription's status rather than replaying
+   its own memory of creating one. ⚠️ The `subscriptionId` survives blacklisting **unchanged**, so
+   checking that it exists reports health during a real outage; `subscriptionStatus` is the truth.
+   The route takes no auth, so it reports counts and `subscriberAges` but **never employee emails**,
+   and the RC lookup is cached 60s so a public URL can't drive unbounded RC calls.
+2. **`components/inboundCalls/CallStreamStatus.tsx`** — the only thing that tells the affected REP.
+   The hook always computed `connected`/`error` and nothing rendered them, so a browser whose stream
+   died showed no cards, no error, no clue. A server-side monitor can't cover this: the gateway
+   knows how many browsers are attached, not whose tab fell off. Silent while healthy on purpose.
+3. **`services/calls-monitor`** — Railway cron (`*/10 * * * *`) → ntfy. Proves the chain up to
+   delivery; it cannot prove delivery itself (only a real call does, and we don't place synthetic
+   ones into a production line). `faults()` is pure + tested — an alert that stays quiet during an
+   outage is worse than none, since it reads as an all-clear. Its `BUSINESS_HOURS` check runs in
+   **ET, not the container clock** (Railway is UTC — a naive hour check alarms every night until
+   someone mutes it). ⚠️ Its ntfy topic is the only thing protecting the alerts and is deliberately
+   **not in this repo** — Railway variable only.
+
+**A pin can't ring if the rep's mode is `off`**, and that silent no-op is the likeliest support
+question the bell will generate — so `WatchCallbackButton` warns on add and renders the watched-but-
+muted state as inert rather than active.
+
 Files: `services/monday-gateway/inboundCalls.mjs` (subscription lifecycle · webhook · SSE hub ·
 claim · prefs) + `callRules.mjs`/`callRules.test.mjs` (pure: which party, who gets rung),
 `lib/inboundCalls/callsApi.ts`, `hooks/inboundCalls/useInboundCalls.ts`,

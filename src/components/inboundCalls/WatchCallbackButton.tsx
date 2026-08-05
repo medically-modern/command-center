@@ -21,6 +21,7 @@ import {
   checkAllowedNumber,
   inboundCallsConfigured,
   removeAllowedNumber,
+  type RingMode,
 } from "@/lib/inboundCalls/callsApi";
 import { cn } from "@/lib/utils";
 
@@ -33,6 +34,7 @@ interface Props {
 export default function WatchCallbackButton({ phone, label }: Props) {
   const [pinned, setPinned] = useState<boolean | null>(null);
   const [id, setId] = useState("");
+  const [mode, setMode] = useState<RingMode>("all");
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
@@ -43,6 +45,7 @@ export default function WatchCallbackButton({ phone, label }: Props) {
         if (!alive) return;
         setPinned(r.pinned);
         setId(r.id);
+        setMode(r.mode);
       })
       // Unknown stays unknown: rendering "not watched" on a failed check would
       // invite a second add, and the row would look wrong until reload.
@@ -62,7 +65,17 @@ export default function WatchCallbackButton({ phone, label }: Props) {
       if (next) {
         const entry = await addAllowedNumber(phone, label || "");
         setId(entry.id);
-        toast.success("You'll be notified when this number calls.");
+        // ⚠️ Pinning is a NO-OP on `off`, and silently so — the number goes on
+        // the list and never rings. That is indistinguishable from the feature
+        // being broken, and it is the likeliest support question this button
+        // will generate, so say it at the moment it happens.
+        if (mode === "off") {
+          toast.warning("Added — but your call alerts are set to Nothing, so this won't ring you.", {
+            description: "Change it under the bell in the Patient Texting header.",
+          });
+        } else {
+          toast.success("You'll be notified when this number calls.");
+        }
       } else {
         await removeAllowedNumber(id);
         toast.success("Removed from your ring list.");
@@ -79,13 +92,23 @@ export default function WatchCallbackButton({ phone, label }: Props) {
     <button
       onClick={() => void toggle()}
       disabled={busy}
-      title={pinned ? "Stop notifying me about this number" : "Notify me when they call back"}
+      title={
+        pinned && mode === "off"
+          ? "Watched — but your call alerts are off, so this won't ring"
+          : pinned
+            ? "Stop notifying me about this number"
+            : "Notify me when they call back"
+      }
       aria-pressed={pinned}
       className={cn(
         "h-8 w-8 rounded-lg border flex items-center justify-center transition-colors disabled:opacity-50",
-        pinned
+        pinned && mode !== "off"
           ? "border-amber-500/40 bg-amber-500/10 text-amber-600"
-          : "border-border text-muted-foreground hover:bg-muted",
+          : pinned
+            ? // Watched but muted: shown as inert rather than active, so the
+              // control never claims a notification that cannot arrive.
+              "border-border bg-muted text-muted-foreground line-through decoration-1"
+            : "border-border text-muted-foreground hover:bg-muted",
       )}
     >
       {pinned ? <BellRing className="h-4 w-4" /> : <Bell className="h-4 w-4" />}

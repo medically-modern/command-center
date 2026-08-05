@@ -120,10 +120,13 @@ export async function addAllowedNumber(phone: string, label: string): Promise<Al
 }
 
 /** Is this number on my ring list? The browser can't hash it itself — the
- *  pepper is server-side — so membership has to be asked for. */
-export async function checkAllowedNumber(phone: string): Promise<{ pinned: boolean; id: string }> {
+ *  pepper is server-side — so membership has to be asked for.
+ *  Returns the caller's `mode` too, so the UI can say when pinning won't ring. */
+export async function checkAllowedNumber(
+  phone: string,
+): Promise<{ pinned: boolean; id: string; mode: RingMode }> {
   const res = await call("/calls/allow/status", { method: "POST", body: JSON.stringify({ phone }) });
-  return json<{ pinned: boolean; id: string }>(res, "Checking your ring list");
+  return json<{ pinned: boolean; id: string; mode: RingMode }>(res, "Checking your ring list");
 }
 
 export async function removeAllowedNumber(id: string): Promise<void> {
