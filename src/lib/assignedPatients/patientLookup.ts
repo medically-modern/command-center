@@ -98,6 +98,52 @@ export async function fetchPatientsByItemIds(itemIds: string[]): Promise<Patient
   return out;
 }
 
+/**
+ * Who is calling — resolve an inbound number to a patient across every board.
+ *
+ * ⚠️ Matched on the LAST FOUR DIGITS, then filtered by normalised equality.
+ * That looks backwards until you try it the obvious way: boards store phone
+ * numbers in whatever shape they were typed, so a `contains_text` search for
+ * "3475550101" misses "(347) 555-0101" and a search for "555-0101" misses the
+ * unformatted one. The last four digits are the only substring present in every
+ * rendering. The wide net is then narrowed by toE164 comparison, so a coincidental
+ * "0101" elsewhere in the column can't return the wrong patient.
+ *
+ * Returns null rather than throwing — a caller we can't name still has to ring.
+ */
+export async function findPatientByPhone(phone: string): Promise<PatientRef | null> {
+  const want = toE164(phone);
+  if (!want) return null;
+  const tail = want.replace(/\D/g, "").slice(-4);
+  if (tail.length < 4) return null;
+
+  const perBoard = await Promise.all(
+    BOARDS.map(async (b) => {
+      try {
+        const data = await gql<{ boards: Array<{ items_page?: { items: RawItem[] } }> }>(
+          `query ($board: [ID!], $q: CompareValue!, $cols: [String!], $col: String!) {
+             boards (ids: $board) {
+               items_page (
+                 limit: 50,
+                 query_params: { rules: [{ column_id: $col, compare_value: $q, operator: contains_text }] }
+               ) {
+                 items { id name board { id } column_values (ids: $cols) { id text } }
+               }
+             }
+           }`,
+          { board: [String(b.boardId)], q: [tail], cols: PHONE_COL_IDS, col: b.phoneColId },
+        );
+        return (data.boards?.[0]?.items_page?.items ?? []).map(toPatientRef);
+      } catch {
+        // One board failing must not leave the caller anonymous everywhere.
+        return [];
+      }
+    }),
+  );
+
+  return perBoard.flat().find((p) => p.phone && p.phone === want) ?? null;
+}
+
 /** Search patients by name across every pipeline board, for the manager's
  *  assign dialog. Returns at most `limit` per board. */
 export async function searchPatientsByName(query: string, limit = 10): Promise<PatientRef[]> {

@@ -5,6 +5,7 @@ import { Suspense } from "react";
 import { lazyWithReload } from "./lib/shared/chunkReload";
 import Index from "./pages/Index";
 import { FileViewerHost } from "./components/shared/FileViewerModal";
+import IncomingCallHost from "./components/inboundCalls/IncomingCallHost";
 import AuthGate from "./components/AuthGate";
 import AccessProvider from "./components/AccessProvider";
 
@@ -76,6 +77,9 @@ const App = () => (
     {/* Bottom-right: top-right toasts covered the file preview's close button. */}
     <Toaster position="bottom-right" />
     <FileViewerHost />
+    {/* App-wide on purpose: a call arrives wherever you happen to be working,
+        so this cannot live on the texting page. See IncomingCallHost.tsx. */}
+    <IncomingCallHost />
     <BrowserRouter basename={basename}>
       <Suspense fallback={<Loading />}>
         <Routes>

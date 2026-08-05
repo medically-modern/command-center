@@ -1,0 +1,130 @@
+/**
+ * callRules.mjs — who gets rung, and which leg of a call we act on.
+ *
+ * Kept free of `pg` and `fetch` so it can be unit-tested directly, same split as
+ * columns.mjs / phoneHash.mjs. Two responsibilities, both pure:
+ *
+ *   1. pickInboundParty() — read RingCentral's telephony-session payload and
+ *      return the one party that represents "somebody is calling us, right now".
+ *   2. shouldNotify()     — decide whether a given employee wants to see it.
+ *
+ * ── The model (Josh, 2026-08-05) ────────────────────────────────────────────
+ * The Command Center is ONE instance. Every inbound call routes through the
+ * shared line, every eligible employee can see it, and IT DOES NOT MATTER WHO
+ * PICKS UP. So there is deliberately no routing, no ownership, and no
+ * per-patient assignment here: a rule decides who gets *notified*, never who
+ * the call belongs to. Anyone who sees a ringing call may take it.
+ *
+ * That is why the rules below are a display filter and nothing more. Narrowing
+ * your own list can never make a call unanswerable by someone else — it only
+ * quiets YOUR screen.
+ */
+
+/** Party statuses that mean "still ringing, not yet answered".
+ *  RingCentral says `Proceeding` where a human would say "ringing"; `Setup` is
+ *  the moment before. Those two are also exactly the window in which the
+ *  Forward API works, so this list doubles as "can still be claimed". */
+export const RINGING_STATES = ["Setup", "Proceeding"];
+
+/** Statuses that end a call's life on screen. */
+export const TERMINAL_STATES = ["Disconnected", "Gone", "VoiceMail", "VoiceMailScreening"];
+
+export function isRinging(status) {
+  return RINGING_STATES.includes(String(status || ""));
+}
+
+/**
+ * The inbound, still-ringing party of a telephony session event — or null.
+ *
+ * ⚠️ Three things this has to get right, because each one silently produces a
+ * feature that "works" while showing the wrong thing:
+ *
+ *  · Reps' OUTBOUND calls generate these events too. A party whose direction is
+ *    Outbound is us calling a patient; ringing the whole office for it would
+ *    make every click-to-call pop everyone's screen.
+ *  · A session can carry several parties (IVR → queue → extension). We want the
+ *    one that is inbound AND ringing; an already-Answered party is a call
+ *    somebody is on, not an offer.
+ *  · `from.phoneNumber` is the CALLER. Reading `to` instead would key the whole
+ *    feature on our own main line and match every call to the same "patient".
+ */
+export function pickInboundParty(event) {
+  const parties = Array.isArray(event?.parties) ? event.parties : [];
+  for (const p of parties) {
+    if (String(p?.direction || "") !== "Inbound") continue;
+    if (!isRinging(p?.status?.code)) continue;
+    const from = String(p?.from?.phoneNumber || "");
+    if (!from) continue;
+    return {
+      partyId: String(p.id || ""),
+      from,
+      to: String(p?.to?.phoneNumber || ""),
+      callerName: String(p?.from?.name || ""),
+    };
+  }
+  return null;
+}
+
+/**
+ * The state a session has moved to, for a call we are already showing.
+ *
+ * Returned separately from pickInboundParty because the interesting transition
+ * is the one AWAY from ringing: a card left on screen after the caller hung up
+ * is worse than no card at all, and RingCentral tells us via the same event
+ * stream rather than a distinct "call over" message.
+ */
+export function sessionOutcome(event) {
+  const parties = Array.isArray(event?.parties) ? event.parties : [];
+  const inbound = parties.filter((p) => String(p?.direction || "") === "Inbound");
+  if (!inbound.length) return null;
+  if (inbound.some((p) => String(p?.status?.code || "") === "Answered")) return "answered";
+  if (inbound.every((p) => TERMINAL_STATES.includes(String(p?.status?.code || "")))) {
+    // A caller who reached voicemail was still missed by every human.
+    return "ended";
+  }
+  return null;
+}
+
+/** Ring modes. `list` is "only what I chose"; `off` silences everything. */
+export const RING_MODES = ["all", "list", "off"];
+
+/**
+ * Normalised preferences, with the defaults a brand-new employee gets.
+ *
+ * Defaults to `all` ON PURPOSE. The shared line is everyone's line, and a
+ * default of `list` would mean a new hire's screen stays silent until they
+ * discover a settings dialog they have no reason to look for.
+ */
+export function normalizePrefs(raw) {
+  const mode = RING_MODES.includes(raw?.mode) ? raw.mode : "all";
+  return { mode, forwardNumber: String(raw?.forwardNumber || "") };
+}
+
+/**
+ * Does this employee want to be notified about this call?
+ *
+ * `facts.pinned` — the number is on this person's explicit allow list.
+ *
+ * ⚠️ Membership in `list` mode is EXPLICIT ONLY (Josh, 2026-08-05). An earlier
+ * cut also rang for "anyone I've texted", inferred from sent_messages. It is
+ * tempting because the data is already there and it costs no configuration —
+ * and it is wrong: a rep who texts fifty patients a week would have quietly
+ * rebuilt `all` under a name that promises the opposite, and the one person
+ * most likely to choose `list` is exactly the person who texts the most.
+ * Texting a patient must never enrol them in your ring list. The only way onto
+ * the list is to put a number on it.
+ */
+export function shouldNotify(prefs, facts = {}) {
+  const p = normalizePrefs(prefs);
+  if (p.mode === "off") return false;
+  if (p.mode === "all") return true;
+  return !!facts.pinned;
+}
+
+/** Last four digits, the only part of a number the allow list stores in the
+ *  clear. Enough to recognise your own entry, useless as an identifier on its
+ *  own — the full number is never written down (see inboundCalls.mjs). */
+export function last4(raw) {
+  const d = String(raw ?? "").replace(/\D/g, "");
+  return d.length >= 4 ? d.slice(-4) : "";
+}

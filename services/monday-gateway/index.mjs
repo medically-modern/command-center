@@ -46,6 +46,7 @@ const { Pool } = pkg;
 import { registerSend } from "./send.mjs";
 import { registerRingCentral } from "./ringcentral.mjs";
 import { registerMessaging } from "./messaging.mjs";
+import { registerInboundCalls } from "./inboundCalls.mjs";
 import { verifyGoogleToken, authEnforced } from "./auth.mjs";
 import { extractColumns } from "./columns.mjs";
 import { buildAuditQuery } from "./auditQuery.mjs";
@@ -628,6 +629,11 @@ registerRingCentral({ app });
 // OWN Postgres (ASSIGNMENTS_DATABASE_URL) so the audit DB above keeps its
 // "metadata only, no PHI" property — see messaging.mjs.
 registerMessaging({ app });
+// Inbound calls on the shared line: one server-side RingCentral subscription,
+// fanned out to every browser over SSE, claimable by whoever is free. Shares
+// the messaging Postgres (and its phone-HMAC discipline) — see inboundCalls.mjs
+// for why the browser can't be the thing that learns about an incoming call.
+registerInboundCalls({ app });
 
 ensureSchema().finally(() => {
   app.listen(PORT, () =>

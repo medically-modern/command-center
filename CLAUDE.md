@@ -528,6 +528,89 @@ The SPA **never writes** `stedi*` columns — the Railway service owns them (the
 three locally at run start). A result column that stays blank means the service isn't writing it,
 not an SPA bug.
 
+### 5.13 Inbound calls — the shared line, live in the app (Aug 2026)
+Any inbound call to the MM line pops a card in the Command Center, wherever the rep is working, and
+**"Take it" forwards the still-ringing call to that person's own phone.**
+
+**The insight the whole feature rests on: SIGNAL and AUDIO are separable.** The browser softphone
+(`useWebPhone.ts`) is **outbound only**, and has to be — every rep registers as the *same*
+RingCentral extension, a SIP server caps an extension at **5 registrations**, and a shared
+`instanceId` knocks older tabs off inbound entirely. So the browser can never be the thing that
+learns about an incoming call. It doesn't have to be:
+- **Signal** — **one** server-side webhook subscription on the gateway, fanned out over **SSE**.
+  No SIP, no registration, no cap: ten browsers cost what one does.
+- **Audio** — stays on RingCentral, on the claimer's **own** number, reached by **forwarding** the
+  ringing call to them.
+
+⚠️ **Don't "simplify" this by having the browser register for inbound SIP.** That is the design
+that hits the 5-registration cap, and it fails by silently dropping the 6th tab, not by erroring.
+
+**Claiming, not notifying.** RingCentral's **Forward Call Party** works on a party in
+`Setup`/`Proceeding` — i.e. while the phone is still ringing — so "Take it" doesn't ask anyone to go
+find the RingCentral app and race the shared line: the forward **is** the routing. Needs the
+**`CallControl`** permission on the RC app (added 2026-08-05); without it the subscription can't be
+created and `/calls/claim` 502s. **`GET /calls/health` reports which half is missing.**
+
+**The model (Josh, 2026-08-05): the Command Center is ONE instance and IT DOES NOT MATTER WHO PICKS
+UP.** There is deliberately **no routing, no ownership, no per-patient assignment**. Each employee
+only chooses what reaches *their* screen — `all` (the default) / `list` / `off`. **Narrowing your
+list quiets your screen; it can never make a call unanswerable by someone else.** Don't rebuild this
+as an assignment model — the previous "assigned patients" model was removed in Aug 2026 for the same
+reason.
+
+**Matching is SERVER-side, per SSE connection.** Broadcasting every caller's number to every open tab
+and filtering in the browser would hand each rep the numbers of patients their own rules excluded —
+the filter is a **privacy boundary**, not a UI convenience.
+
+⚠️ **`list` membership is EXPLICIT ONLY** (Josh, 2026-08-05). The obvious shortcut is to infer it
+from `sent_messages` — the data is already there (`phone_hmac` + `sender_email`, §5.5), so "anyone
+I've texted" costs no configuration and was in the first cut. It is wrong: a rep who texts fifty
+patients a week would have silently rebuilt `all` under a name promising the opposite, and the
+people who text most are exactly the ones who'd choose a narrow list. **Texting, calling, or opening
+a patient's thread must never enrol them.** The only way onto the list is
+`components/inboundCalls/WatchCallbackButton.tsx` (the bell on a conversation header — placed there
+because that's the moment the intent exists) or typing a number into the settings dialog.
+`callRules.test.mjs` asserts the `texted` fact does not ring.
+
+> **PHI:** `call_ring_allow` stores the **HMAC**, never the number — same call `messaging.mjs` makes,
+> for the same reason. `last4` is a display hint so a rep recognises their own entry; removal keys on
+> the HMAC, so the number never travels back. The caller's full number **is** in the SSE payload —
+> it goes only to employees whose own rules matched, and the browser needs it to name the patient.
+
+**Caller → patient is resolved in the BROWSER** (`patientLookup.findPatientByPhone`), not the
+gateway: the board + phone-column registry is systemMgmt's `BOARDS`, and a server-side copy is
+exactly the drift §5.9/§5.10 exist to prevent. ⚠️ It matches on the **last four digits** then filters
+by `toE164` equality — boards store numbers in whatever shape they were typed, and the last four are
+the only substring present in every rendering (`3475550101` and `(347) 555-0101` share nothing else).
+
+**Gotchas that produce a feature which "works" while showing the wrong thing** (all covered by
+`callRules.test.mjs`):
+- Reps' **outbound** calls raise these events too — filter on `direction === "Inbound"` or every
+  click-to-call pops the whole office.
+- `from` is the CALLER. Reading `to` keys everything on our own main line, collapsing every caller
+  onto one "patient".
+- A **claimed** call reports terminal on the original session no matter how it went — forwarding
+  tears down the inbound leg. Reading that literally flashes **"Missed"** at the person who just
+  took the call.
+- **Reconcile the subscription, never blindly create it.** The gateway redeploys on every push to
+  `main`; create-on-boot leaves a trail of subscriptions at the same URL and every call fans out
+  two, three, five times.
+- **Ack the webhook FIRST**, then do the work — RingCentral retries and eventually blacklists a slow
+  endpoint.
+
+⚠️ **One replica is load-bearing** (`cmd ctr server`, checked 2026-08-05). The live-call registry is
+in-memory, so a webhook landing on replica A never reaches a browser on replica B. If this is ever
+scaled up the fix is Postgres **`LISTEN/NOTIFY`** — `pg` is already there — not a bigger map.
+
+Files: `services/monday-gateway/inboundCalls.mjs` (subscription lifecycle · webhook · SSE hub ·
+claim · prefs) + `callRules.mjs`/`callRules.test.mjs` (pure: which party, who gets rung),
+`lib/inboundCalls/callsApi.ts`, `hooks/inboundCalls/useInboundCalls.ts`,
+`components/inboundCalls/IncomingCallHost.tsx` (mounted **app-wide** in `App.tsx` — a call arrives
+wherever you're working) + `RingPreferencesDialog.tsx` (reached from the Patient Texting header).
+Optional env: `CALLS_WEBHOOK_URL` (defaults to `https://$RAILWAY_PUBLIC_DOMAIN/calls/webhook`),
+`CALLS_WEBHOOK_TOKEN` (defaults to a value derived from `PHONE_HMAC_PEPPER`, so it needs no new
+Railway variable).
+
 ---
 
 ## 6. Patient flow across boards (the big picture)

@@ -12,10 +12,11 @@
  * FINDING someone, not a precondition for reaching them.
  */
 import { useEffect, useMemo, useState } from "react";
-import { ArrowLeft, Loader2, MessagesSquare, Phone, Search, User } from "lucide-react";
+import { ArrowLeft, BellRing, Loader2, MessagesSquare, Phone, Search, User } from "lucide-react";
 import { useBackNavigation } from "@/hooks/useBackNavigation";
 import { useWebPhone } from "@/hooks/assignedPatients/useWebPhone";
 import CallOverlay from "@/components/assignedPatients/CallOverlay";
+import RingPreferencesDialog from "@/components/inboundCalls/RingPreferencesDialog";
 import ConversationThread from "@/components/assignedPatients/ConversationThread";
 import { searchPatientsByName, type PatientRef } from "@/lib/assignedPatients/patientLookup";
 import { fmtPhone } from "@/lib/assignedPatients/format";
@@ -47,6 +48,7 @@ export default function AssignedPatientsPage() {
   // having to find a patient first. Separate state from the search box so
   // looking someone up doesn't clear a number you were about to dial.
   const [dialInput, setDialInput] = useState("");
+  const [ringSettings, setRingSettings] = useState(false);
 
   const { call: activeCall, error: callError, dismissError, dial, hangup, toggleMute } = useWebPhone();
 
@@ -126,8 +128,15 @@ export default function AssignedPatientsPage() {
             </button>
           </div>
 
-          {/* Balances the back button + title so the dialer sits truly centred. */}
-          <div className="w-9 shrink-0" aria-hidden />
+          {/* Also balances the back button + title so the dialer sits truly
+              centred — hence w-9, matching the spacer it replaced. */}
+          <button
+            onClick={() => setRingSettings(true)}
+            title="Which calls ring me"
+            className="w-9 h-9 shrink-0 rounded-md hover:bg-white/10 transition-colors flex items-center justify-center"
+          >
+            <BellRing className="h-4.5 w-4.5" />
+          </button>
         </div>
       </header>
 
@@ -226,6 +235,8 @@ export default function AssignedPatientsPage() {
           </section>
         )}
       </div>
+
+      <RingPreferencesDialog open={ringSettings} onOpenChange={setRingSettings} />
 
       {activeCall && (
         <CallOverlay
