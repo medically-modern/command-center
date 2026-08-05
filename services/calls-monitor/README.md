@@ -53,3 +53,15 @@ phones subscribed to it. Don't paste it into code, commits, or issues.
 runs UTC; a naive hour check would put the window in the middle of the night and
 alarm every evening until someone muted it — at which point it stops being a
 monitor.
+
+## Note on repo visibility
+
+`medically-modern/command-center-test` is **private** (GitHub Team, 2026-08-05). Railway pulls it
+through its GitHub App installation rather than a token, so private visibility changes nothing here
+and needs no configuration.
+
+⚠️ The parts that DO care are the personal access tokens: the Cloudflare worker's `GITHUB_PAT`
+(reads/writes `access.json`), baseline-cron's `GITHUB_PAT`, and `GH_PAT` in `sync-from-test.yml`.
+A classic PAT scoped `public_repo` works on a public repo and 404s on a private one, silently. The
+`access.json` case is the one to watch: a 404 there leaves the SPA in bootstrap mode, where
+*everyone* is treated as a manager. All three were verified working after the switch.
