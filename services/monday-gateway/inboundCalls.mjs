@@ -140,12 +140,27 @@ const webhookUrl = () => {
   return host ? `https://${host}/calls/webhook` : "";
 };
 
-/** Shared secret RingCentral echoes on every delivery. Derived from the pepper
- *  when unset so this needs no new Railway variable, but never guessable. */
+/**
+ * Shared secret RingCentral echoes on every delivery. Derived from the pepper
+ * when unset so this needs no new Railway variable, but never guessable.
+ *
+ * ⚠️ TRUNCATED TO 32 CHARS ON PURPOSE. The full SHA-256 hex digest is 64, and
+ * RingCentral rejected it with `Parameter [deliveryMode.verificationToken]
+ * value is invalid` — an undocumented length limit: their OpenAPI spec declares
+ * the field as a bare `string` with no maxLength or pattern, and the webhook
+ * endpoint provably answers the Validation-Token handshake, which is the other
+ * thing that error is known to mean. 128 bits is ample for a value that is only
+ * ever compared for equality, so there is nothing to win by sending all 64.
+ */
+const WEBHOOK_TOKEN_CHARS = 32;
 const webhookToken = () =>
   process.env.CALLS_WEBHOOK_TOKEN ||
   (hashingConfigured()
-    ? crypto.createHmac("sha256", process.env.PHONE_HMAC_PEPPER).update("rc-calls-webhook").digest("hex")
+    ? crypto
+        .createHmac("sha256", process.env.PHONE_HMAC_PEPPER)
+        .update("rc-calls-webhook")
+        .digest("hex")
+        .slice(0, WEBHOOK_TOKEN_CHARS)
     : "");
 
 /* ── live call registry ───────────────────────────────────────────────────── */
@@ -700,6 +715,29 @@ export function registerInboundCalls({ app }) {
     } catch (e) {
       res.status(500).json({ error: String((e && e.message) || e) });
     }
+  });
+
+  /**
+   * Force a subscription reconcile now.
+   *
+   * The automatic pass runs on boot and hourly, which is right for steady state
+   * and painful while someone is changing RingCentral app permissions: every
+   * attempt otherwise costs a redeploy of the gateway (which also serves the
+   * SPA's Monday traffic) or an hour's wait, and /calls/health is deliberately
+   * side-effect free so it replays the last result rather than retrying.
+   */
+  app.post("/calls/resubscribe", async (req, res) => {
+    const who = await requireCaller(req, res);
+    if (who === null) return;
+    if (!configured()) return res.status(503).json({ error: "Inbound calls are not configured." });
+    await reconcileSubscription();
+    console.log(`Inbound calls: manual reconcile by ${who}`);
+    res.json({
+      ok: !!subscriptionState.id && !subscriptionState.error,
+      subscriptionId: subscriptionState.id,
+      expiresAt: subscriptionState.expiresAt ? new Date(subscriptionState.expiresAt).toISOString() : null,
+      error: subscriptionState.error,
+    });
   });
 
   /** Is the whole path healthy — subscription up, CallControl granted? */

@@ -611,6 +611,20 @@ Optional env: `CALLS_WEBHOOK_URL` (defaults to `https://$RAILWAY_PUBLIC_DOMAIN/c
 `CALLS_WEBHOOK_TOKEN` (defaults to a value derived from `PHONE_HMAC_PEPPER`, so it needs no new
 Railway variable).
 
+> **RingCentral app permissions are TWO, and they fail one at a time** (2026-08-05). `CallControl`
+> covers the event filter + the forward; **`SubscriptionWebhook`** ("Webhook Subscriptions") covers
+> the *delivery transport*. With only the first you get
+> `[SubscriptionWebhook] application permission is required for [WebHook] transport` — the transport
+> is checked first, so the event filter's permission isn't even evaluated until that one is granted.
+> Production apps may need RingCentral support to enable it.
+> **The verification token is truncated to 32 chars**: a full 64-char SHA-256 hex digest is rejected
+> with `Parameter [deliveryMode.verificationToken] value is invalid`, an undocumented length limit
+> (their OpenAPI spec declares a bare `string`). ⚠️ That same error ALSO means "your endpoint failed
+> the Validation-Token handshake", so rule the handshake out first — `curl -X POST <webhook> -H
+> 'Validation-Token: x' -i` must echo the header — before assuming it's the value.
+> **`POST /calls/resubscribe`** (authenticated) forces a reconcile, so iterating on RC console
+> settings costs neither a gateway redeploy nor the hourly wait.
+
 ---
 
 ## 6. Patient flow across boards (the big picture)
