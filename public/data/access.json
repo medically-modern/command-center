@@ -64,7 +64,8 @@
         "assignedPatients"
       ],
       "roleOrder": {},
-      "roleFilters": {}
+      "roleFilters": {},
+      "phoneNumber": "3"
     },
     "brandon@medicallymodern.com": {
       "name": "brandon",
