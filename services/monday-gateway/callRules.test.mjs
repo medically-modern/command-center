@@ -6,6 +6,7 @@ import {
   pickInboundParty,
   sessionOutcome,
   shouldNotify,
+  unwrapEvent,
 } from "./callRules.mjs";
 
 /** A telephony-session notification shaped like RingCentral's, trimmed to the
@@ -19,6 +20,41 @@ const inboundRinging = {
   to: { phoneNumber: "+13475037148" },
   status: { code: "Proceeding" },
 };
+
+describe("unwrapEvent", () => {
+  // The bug that shipped: RingCentral delivers an envelope, the docs example
+  // shows the inner payload, and reading the top level drops every event while
+  // still returning 200 — indistinguishable from no webhook at all.
+  it("pulls the telephony payload out of RingCentral's envelope", () => {
+    const inner = { telephonySessionId: "abc", parties: [inboundRinging] };
+    const got = unwrapEvent({
+      uuid: "u-1",
+      event: "/restapi/v1.0/account/123/telephony/sessions",
+      timestamp: "2026-08-05T19:10:00Z",
+      subscriptionId: "s-1",
+      ownerId: "o-1",
+      body: inner,
+    });
+    expect(got).toBe(inner);
+    expect(pickInboundParty(got)?.from).toBe("+13475550101");
+  });
+
+  it("passes an already-unwrapped payload through, so a replay still parses", () => {
+    const bare = { telephonySessionId: "abc", parties: [inboundRinging] };
+    expect(unwrapEvent(bare)).toBe(bare);
+  });
+
+  it("ignores a non-object body rather than returning junk", () => {
+    const p = { telephonySessionId: "abc", body: "nope" };
+    expect(unwrapEvent(p)).toBe(p);
+  });
+
+  it("survives garbage", () => {
+    expect(unwrapEvent(null)).toBeNull();
+    expect(unwrapEvent("x")).toBeNull();
+    expect(unwrapEvent([])).toBeNull();
+  });
+});
 
 describe("pickInboundParty", () => {
   it("returns the caller for an inbound ringing party", () => {

@@ -583,6 +583,15 @@ exactly the drift §5.9/§5.10 exist to prevent. ⚠️ It matches on the **last
 by `toE164` equality — boards store numbers in whatever shape they were typed, and the last four are
 the only substring present in every rendering (`3475550101` and `(347) 555-0101` share nothing else).
 
+⚠️ **Deliveries are an ENVELOPE, not the shape the docs example shows.** What arrives is
+`AccountTelephonySessionsEvent` — `{uuid, event, timestamp, subscriptionId, ownerId, body:{…}}` — and
+`telephonySessionId`/`parties` live under **`body`**. The published example is the *inner* payload,
+so reading the top level finds nothing and drops every event **while still returning 200**: a webhook
+we can't parse is indistinguishable from one that was never sent. That is exactly how this shipped
+(33 delivered, 33 acked, 33 dropped, nothing in the logs) and it took Railway HTTP-log forensics to
+see. `unwrapEvent` handles it; **`/calls/health` now reports `events:{seen,rings,unparsed,lastAt}`**
+so `seen` climbing while `rings` stays 0 names this failure instantly.
+
 **Gotchas that produce a feature which "works" while showing the wrong thing** (all covered by
 `callRules.test.mjs`):
 - Reps' **outbound** calls raise these events too — filter on `direction === "Inbound"` or every

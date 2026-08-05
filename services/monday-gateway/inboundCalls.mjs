@@ -56,6 +56,7 @@ import {
   pickInboundParty,
   sessionOutcome,
   shouldNotify,
+  unwrapEvent,
 } from "./callRules.mjs";
 
 const { ASSIGNMENTS_DATABASE_URL } = process.env;
@@ -254,9 +255,32 @@ function broadcastUpdate(call) {
   }
 }
 
-async function handleEvent(body) {
+/**
+ * Counters for /calls/health. Shape and counts only — never a number, never a
+ * name. Their whole reason for existing is that the envelope bug below was
+ * INVISIBLE: RingCentral delivered 33 events, every one was acked 200, every
+ * one was dropped, and "parsed nothing" looked exactly like "was never sent".
+ */
+const eventStats = { seen: 0, rings: 0, unparsed: 0, lastAt: 0 };
+
+async function handleEvent(payload) {
+  eventStats.seen++;
+  eventStats.lastAt = Date.now();
+
+  // ⚠️ RingCentral wraps deliveries in an envelope; the payload is under
+  // `body`. Reading the top level finds no telephonySessionId and silently
+  // drops the event — see unwrapEvent in callRules.mjs.
+  const body = unwrapEvent(payload);
   const sessionId = String(body?.telephonySessionId || "");
-  if (!sessionId) return;
+  if (!sessionId) {
+    eventStats.unparsed++;
+    // Keys only: the payload carries patient phone numbers (PHI), so the SHAPE
+    // is logged and the content never is. Enough to spot a schema change.
+    console.warn(
+      `call event: no telephonySessionId (outer keys: ${Object.keys(payload || {}).join(",") || "none"})`,
+    );
+    return;
+  }
 
   const existing = calls.get(sessionId);
   const outcome = sessionOutcome(body);
@@ -299,6 +323,7 @@ async function handleEvent(body) {
   calls.set(sessionId, call);
   pruneCalls();
 
+  eventStats.rings++;
   const audience = await audienceFor(call.hmac);
   call.audience = audience.map((a) => a.email);
   for (const entry of audience) sendTo(entry, "call-ring", publicCall(call));
@@ -751,6 +776,15 @@ export function registerInboundCalls({ app }) {
       error: subscriptionState.error,
       subscribers: subscribers.size,
       ringing: [...calls.values()].filter((c) => c.state === "ringing").length,
+      // `seen` climbing while `rings` stays 0 means deliveries are arriving and
+      // being discarded — the failure that is otherwise indistinguishable from
+      // RingCentral never sending anything.
+      events: {
+        seen: eventStats.seen,
+        rings: eventStats.rings,
+        unparsed: eventStats.unparsed,
+        lastAt: eventStats.lastAt ? new Date(eventStats.lastAt).toISOString() : null,
+      },
     });
   });
 }

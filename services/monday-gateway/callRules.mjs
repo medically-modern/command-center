@@ -34,6 +34,30 @@ export function isRinging(status) {
 }
 
 /**
+ * The telephony payload inside RingCentral's webhook envelope.
+ *
+ * ⚠️ Deliveries are NOT the shape the docs' example shows. The published
+ * example is the *inner* payload, while what actually arrives is
+ * `AccountTelephonySessionsEvent`:
+ *
+ *   { uuid, event, timestamp, subscriptionId, ownerId, body: { telephonySessionId, parties } }
+ *
+ * Reading the top level therefore finds no `telephonySessionId` and drops every
+ * event — with a 200 back to RingCentral and nothing in the logs, because a
+ * webhook we can't parse looks identical to a webhook that wasn't sent. That is
+ * exactly how this shipped and it cost a round of log forensics to see; the
+ * event counters on /calls/health exist so the next person sees it immediately.
+ *
+ * Accepts an already-unwrapped payload too, so a replayed body still parses.
+ */
+export function unwrapEvent(payload) {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) return null;
+  const body = payload.body;
+  if (body && typeof body === "object" && !Array.isArray(body)) return body;
+  return payload;
+}
+
+/**
  * The inbound, still-ringing party of a telephony session event — or null.
  *
  * ⚠️ Three things this has to get right, because each one silently produces a
