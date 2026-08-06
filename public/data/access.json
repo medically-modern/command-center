@@ -16,7 +16,8 @@
         "updateClinicals",
         "fax",
         "confirmReceipt",
-        "chaseFax"
+        "chaseFax",
+        "doctorAppointments"
       ],
       "roleOrder": {
         "fax": 1,
