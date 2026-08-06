@@ -1,0 +1,249 @@
+/* Patient Intake — DTC & CareCentrix.
+   =====================================================================
+   PART B of patientintakeredesign.html, ported into the app.
+
+   The mockup's stylesheet was redesign.css verbatim (PART A) plus this
+   layer. PART A is already the live design system and is imported
+   separately, so only the additions live here — the two-pane shell, the
+   lock overlay, the patient header strip, and Corey's benefits-output
+   cards.
+
+   Everything is scoped under .pf-root, exactly like redesign.css, and
+   this file is imported ONLY by UnverifiedReferralsPage. Profile
+   Send-Off must not shift by a pixel.
+
+   Deliberately NOT ported from the mockup, because the real app already
+   provides them and duplicating would fight the live components:
+
+     html, body            global resets — would leak across every page
+     .cc-shell, .cc-main   the app shell; SidebarProvider owns this
+     .psb-*                a hand-built copy of PatientsSidebar, which
+                           exists as a real component with its own styles
+     .topbar, .tb-*        the navy header; mirrored from ProfilePage's
+                           header markup instead, so the two pages stay
+                           visually identical as that header evolves
+     --sidebar-bg, --navy-fg
+                           tokens only those two blocks used
+     .devnote, .chg        the mockup's own design-note banners and
+                           build-log panel — prototype scaffolding
+     .viewer-page          a file previewer this page does not render
+   ===================================================================== */
+
+/* ---- patient header strip ---- */
+.pf-root .phdr { background:#fff; border-bottom:1px solid var(--border); padding:14px 26px 12px;
+  display:flex; align-items:flex-start; gap:20px; flex-wrap:wrap; z-index:35;
+  box-shadow:0 1px 3px rgb(0 0 0 / .04); flex:none }
+.pf-root .phdr .who { min-width:0 }
+.pf-root .phdr .nm { font-size:1.5rem; font-weight:900; letter-spacing:-.025em; line-height:1.15 }
+.pf-root .phdr .sub { font-size:.85rem; color:var(--muted-foreground); margin-top:2px }
+.pf-root .phdr .spacer { flex:1 }
+.pf-root .attempt-badge { display:inline-flex; align-items:center; gap:9px; border-radius:999px;
+  padding:8px 17px; font-size:.9rem; font-weight:800; background:var(--mm-teal); color:#fff; flex:none }
+.pf-root .attempt-badge .dot { width:7px; height:7px; border-radius:50%; background:#fff; flex:none }
+.pf-root .attempt-badge.auto { background:oklch(0.94 0.02 175 / 0.7); color:var(--mm-teal);
+  box-shadow:inset 0 0 0 1px var(--mm-mint-ring) }
+
+/* ---- two-pane intake layout — each pane scrolls independently ---- */
+.pf-root .panes { display:grid; grid-template-columns:1fr 1fr; align-items:stretch;
+  max-width:1900px; margin:0 auto; width:100%; flex:1; min-height:0 }
+.pf-root .pane { min-width:0; display:flex; flex-direction:column; gap:18px }
+/* never let a card be squashed by the pane's fixed height */
+.pf-root .pane > * { flex:none }
+/* the two scroll containers */
+.pf-root .panes > .pane      { overflow-y:auto; overscroll-behavior:contain; padding:0 11px 110px 26px }
+.pf-root .panes > .panewrap  { overflow-y:auto; overscroll-behavior:contain; padding:0 26px 110px 11px }
+.pf-root .panes > .pane::-webkit-scrollbar,
+.pf-root .panes > .panewrap::-webkit-scrollbar { width:10px }
+.pf-root .panes > .pane::-webkit-scrollbar-thumb,
+.pf-root .panes > .panewrap::-webkit-scrollbar-thumb { background:oklch(0.88 0.01 250); border-radius:99px;
+  border:3px solid transparent; background-clip:content-box }
+.pf-root .panes > .pane::-webkit-scrollbar-thumb:hover,
+.pf-root .panes > .panewrap::-webkit-scrollbar-thumb:hover { background:oklch(0.78 0.02 250);
+  border:3px solid transparent; background-clip:content-box }
+.pf-root .pane-head { display:flex; align-items:center; gap:12px; border:1px solid var(--mm-mint-ring);
+  border-left:4px solid var(--mm-teal); border-radius:0 0 12px 12px; background:oklch(0.973 0.011 175);
+  padding:13px 17px; position:sticky; top:0; z-index:20; box-shadow:0 6px 14px -10px rgba(0,0,0,.35) }
+.pf-root .pane-head h2 { font-size:1.08rem; font-weight:800; letter-spacing:-.015em; color:var(--mm-teal) }
+.pf-root .pane-head .st { margin-left:auto; font-size:.7rem; font-weight:800; text-transform:uppercase;
+  letter-spacing:.05em; border-radius:999px; padding:4px 11px; background:#fff;
+  color:var(--muted-foreground); box-shadow:inset 0 0 0 1px var(--border) }
+.pf-root .pane-head .st.open { color:var(--mm-teal); box-shadow:inset 0 0 0 1px var(--mm-mint-ring) }
+
+/* ---- lock overlay on the right pane ---- */
+.pf-root .panewrap { position:relative; min-width:0 }
+.pf-root .panewrap.locked .pane-inner { filter:blur(2px); opacity:.4; pointer-events:none; user-select:none }
+.pf-root .lockover { display:none; position:absolute; inset:0; z-index:25; justify-content:center;
+  align-items:flex-start; padding-top:110px }
+.pf-root .panewrap.locked .lockover { display:flex }
+.pf-root .lockmsg { position:sticky; top:110px; background:#fff; border:1px solid var(--border);
+  border-radius:14px; padding:24px 28px; text-align:center; max-width:320px;
+  box-shadow:0 14px 40px -14px rgb(0 0 0 / .3) }
+.pf-root .lockmsg .li { font-size:1.5rem; margin-bottom:8px }
+.pf-root .lockmsg .lt { font-size:.95rem; font-weight:800 }
+.pf-root .lockmsg .ls { font-size:.82rem; color:var(--muted-foreground); margin-top:5px; line-height:1.5 }
+
+/* ---- section card inside a pane ---- */
+.pf-root .sect { background:#fff; border:1px solid var(--border); border-radius:14px; padding:20px 22px;
+  box-shadow:0 1px 2px 0 rgb(0 0 0 / .05) }
+.pf-root .sect.lead { border-left:4px solid var(--mm-green) }
+.pf-root .sect.decide { border-left:4px solid var(--mm-teal) }
+.pf-root .sect.hilite { border-left-color:var(--amber); background:oklch(0.96 0.04 90 / .28) }
+.pf-root .sect-title { display:flex; align-items:center; gap:10px; font-size:1.02rem; font-weight:800;
+  color:var(--mm-teal); letter-spacing:-.01em; padding-bottom:11px; margin-bottom:16px;
+  border-bottom:1.5px solid var(--mm-mint-ring) }
+.pf-root .sect-title .rt { margin-left:auto }
+
+/* ---- misc controls ---- */
+.pf-root .seg { display:inline-flex; border:1px solid var(--border); border-radius:9px; padding:3px; gap:2px;
+  background:oklch(0.968 0.007 247.896 / .5) }
+.pf-root .seg button { font-size:.82rem; font-weight:700; padding:7px 15px; border-radius:7px;
+  color:var(--muted-foreground) }
+.pf-root .seg button.on { background:#fff; color:var(--mm-teal); box-shadow:0 1px 2px rgb(0 0 0 / .1) }
+.pf-root .pills { display:flex; gap:8px; flex-wrap:wrap }
+.pf-root .pillbtn { font-size:.85rem; font-weight:700; padding:9px 16px; border-radius:9px;
+  border:1.5px solid var(--border); background:#fff; color:var(--muted-foreground) }
+.pf-root .pillbtn.on { border-color:var(--mm-green); background:oklch(0.973 0.011 175); color:var(--mm-teal) }
+
+/* ---- provenance line: where a field comes from → where it lands ---- */
+.pf-root .prov { margin-top:6px; display:flex; align-items:center; gap:6px; flex-wrap:wrap; line-height:1.4 }
+.pf-root .prov .src { font-size:.58rem; font-weight:800; text-transform:uppercase; letter-spacing:.07em;
+  border-radius:4px; padding:2px 6px; white-space:nowrap }
+.pf-root .prov .src.form { background:oklch(0.94 0.02 175 / .75); color:var(--mm-teal);
+  box-shadow:inset 0 0 0 1px var(--mm-mint-ring) }
+.pf-root .prov .src.rep { background:var(--amber-soft); color:var(--amber);
+  box-shadow:inset 0 0 0 1px var(--amber-ring) }
+.pf-root .prov .src.derived { background:oklch(0.94 0.03 285); color:oklch(0.45 0.13 288);
+  box-shadow:inset 0 0 0 1px oklch(0.86 0.05 288) }
+.pf-root .prov .arw { color:oklch(0.72 0.01 250); font-size:.7rem }
+.pf-root .prov .col { font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  font-size:.64rem; color:var(--muted-foreground) }
+.pf-root .prov .col.isnew { color:var(--amber); font-weight:800; font-family:inherit;
+  font-size:.6rem; letter-spacing:.06em; text-transform:uppercase }
+
+/* ---- product category columns ---- */
+.pf-root .cat { display:flex; align-items:center; gap:9px; width:100%; text-align:left;
+  padding:12px 14px; border-radius:11px; border:1.5px solid var(--border); background:#fff;
+  color:var(--muted-foreground); font-weight:700; font-size:.92rem }
+.pf-root .cat .bx { width:19px; height:19px; border-radius:5px; flex:none; display:grid;
+  place-items:center; font-size:.7rem; font-weight:800; color:transparent;
+  box-shadow:inset 0 0 0 1.5px var(--border); background:#fff }
+.pf-root .cat.on { border-color:var(--mm-green); background:oklch(0.973 0.011 175); color:var(--mm-teal) }
+.pf-root .cat.on .bx { background:var(--mm-green); color:#fff; box-shadow:none }
+.pf-root .needs2 { display:grid; grid-template-columns:1fr 1fr; gap:18px 22px; align-items:start }
+/* Explicit columns so hiding one side never reflows the other into column 1.
+   The mockup pinned these by id (#catCgm/#cgmBlock); classes here, since the
+   React tree renders the same node in both slots. */
+.pf-root .needs2 > .col-cgm  { grid-column:1 }
+.pf-root .needs2 > .col-pump { grid-column:2 }
+.pf-root .devcol { display:flex; flex-direction:column; gap:16px }
+.pf-root .devcol.off { display:none }
+.pf-root .fld .flabel { margin-bottom:6px }
+
+/* ---- compact flat chip (used in the attachment row) ---- */
+.pf-root .chip-sm { font-size:.62rem; font-weight:800; text-transform:uppercase; letter-spacing:.05em;
+  border-radius:5px; padding:3px 7px; background:#fff; color:var(--mm-teal);
+  box-shadow:inset 0 0 0 1px var(--mm-mint-ring); white-space:nowrap; flex:none }
+.pf-root .fnm-link { font:inherit; font-size:.86rem; font-weight:700; color:var(--mm-teal);
+  text-align:left; text-decoration:underline; text-underline-offset:2px; cursor:pointer }
+.pf-root .fnm-link:hover { color:oklch(0.3 0.05 200) }
+/* Command Center file pattern: click the row to view, ✕ to remove,
+   drop-or-click zone to add. */
+.pf-root .file-row { align-items:center }
+.pf-root .file-row .filex { flex:none; width:26px; height:26px; border-radius:7px; display:grid;
+  place-items:center; color:var(--muted-foreground); font-size:.8rem; font-weight:800 }
+.pf-root .file-row .filex:hover { background:var(--mm-rose-soft); color:var(--mm-rose) }
+.pf-root .upzone { display:none; cursor:pointer; margin-top:10px; flex-direction:column;
+  align-items:center; gap:4px; text-align:center; border:1.5px dashed var(--border);
+  border-radius:10px; padding:20px 14px; background:oklch(0.985 0.003 247); transition:.12s }
+.pf-root .upzone:hover, .pf-root .upzone.over { border-color:var(--mm-green);
+  background:oklch(0.973 0.011 175) }
+.pf-root .upzone.show { display:flex }
+.pf-root .upzone .uz-t { font-size:.88rem; font-weight:700; color:var(--mm-teal) }
+
+/* ---- derived footer strip + inline panels ---- */
+.pf-root .derived-strip { display:flex; align-items:center; gap:10px; flex-wrap:wrap;
+  margin-top:20px; padding-top:16px; border-top:1px dashed var(--border) }
+.pf-root .derived-strip .dlabel { font-size:.72rem; font-weight:800; text-transform:uppercase;
+  letter-spacing:.05em; color:var(--muted-foreground) }
+.pf-root .stack { display:flex; flex-direction:column; gap:14px }
+.pf-root .hide { display:none !important }
+.pf-root .divider { height:1px; background:var(--border); margin:16px 0 14px }
+.pf-root .okline { display:none; align-items:center; gap:7px; margin-top:9px; font-size:.83rem;
+  font-weight:700; color:var(--mm-green) }
+.pf-root .okline.show { display:flex }
+.pf-root .okline.rose { color:var(--mm-rose) }
+.pf-root .msgbox { font-size:.86rem; background:oklch(0.968 0.007 247.896 / .45); border-radius:10px;
+  padding:10px 13px; margin-top:8px; line-height:1.5 }
+.pf-root .msgbox .ts { color:var(--muted-foreground); font-size:.76rem; font-weight:600 }
+.pf-root .msgbox .ch { color:var(--mm-teal); font-weight:800 }
+.pf-root .msgbox.rose .ch { color:var(--mm-rose) }
+.pf-root .inline-panel { display:none; margin-top:13px }
+.pf-root .inline-panel.show { display:block }
+.pf-root .checkline { display:flex; align-items:flex-start; gap:11px; cursor:pointer;
+  border:1.5px solid var(--border); border-radius:11px; padding:13px 15px; background:#fff }
+.pf-root .checkline:hover { border-color:var(--mm-mint-ring) }
+.pf-root .checkline input { width:19px; height:19px; margin-top:1px; flex:none; accent-color:var(--mm-green); cursor:pointer }
+.pf-root .checkline b { font-size:.92rem }
+.pf-root .checkline.done { border-color:var(--mm-green); background:oklch(0.973 0.011 175) }
+.pf-root .bookrow { display:flex; align-items:center; gap:14px; border:1px solid var(--border);
+  border-radius:11px; padding:12px 15px; background:oklch(0.985 0.003 247) }
+.pf-root .bookval { font-size:1.02rem; font-weight:800; margin-top:2px }
+.pf-root .bookrow .mp { margin-left:auto }
+.pf-root .gate { display:flex; align-items:center; gap:9px; padding:7px 0; font-size:.86rem;
+  border-bottom:1px dashed var(--border) }
+.pf-root .gate:last-child { border-bottom:0 }
+.pf-root .gate .gb { width:19px; height:19px; border-radius:5px; display:grid; place-items:center;
+  flex:none; font-size:.68rem; font-weight:800; background:var(--mm-rose-soft); color:var(--mm-rose);
+  box-shadow:inset 0 0 0 1.5px oklch(0.62 0.13 18 / .3) }
+.pf-root .gate.ok .gb { background:var(--mm-green); color:#fff; box-shadow:none }
+.pf-root .gate.ok { color:oklch(0.42 0.08 175) }
+
+/* ---- "why was this picked?" hover ---- */
+/* small uppercase label used inside the doctor card (DoctorSection's `lab`) */
+.pf-root .doclab { font-size:.72rem; font-weight:600; text-transform:uppercase; letter-spacing:.04em;
+  color:var(--muted-foreground) }
+.pf-root .para-row.sel { background:oklch(0.973 0.011 175) }
+.pf-root .why { position:relative; display:inline-grid; place-items:center; width:16px; height:16px;
+  border-radius:50%; background:oklch(0.9 0.01 250); color:var(--muted-foreground); font-size:.6rem;
+  font-weight:800; cursor:help; text-transform:none; letter-spacing:0; font-style:italic; flex:none }
+.pf-root .why:hover, .pf-root .why:focus { background:var(--mm-green); color:#fff; outline:none }
+.pf-root .whycard { display:none; position:absolute; z-index:60; top:calc(100% + 8px); left:-10px;
+  width:330px; background:#fff; border:1px solid var(--border); border-radius:12px; padding:13px 15px;
+  box-shadow:0 18px 44px -16px rgba(0,0,0,.4); font-size:.8rem; font-weight:400; font-style:normal;
+  line-height:1.55; color:var(--foreground); text-align:left; text-transform:none; letter-spacing:0 }
+.pf-root .why:hover .whycard, .pf-root .why:focus .whycard { display:block }
+.pf-root .whycard b { color:var(--mm-teal); font-weight:700 }
+.pf-root .whycard .wl { display:block; font-size:.63rem; font-weight:800; text-transform:uppercase;
+  letter-spacing:.06em; color:var(--muted-foreground); margin-bottom:7px }
+.pf-root .whycard ul { margin:7px 0 0; padding-left:16px }
+.pf-root .whycard li { margin-bottom:3px }
+
+/* ---- Corey's benefits output (today / 3-mo / 6-mo) ---- */
+.pf-root .bo-sect { margin-top:18px }
+.pf-root .bo-lbl { font-size:.72rem; font-weight:800; text-transform:uppercase; letter-spacing:.05em;
+  color:var(--mm-teal); margin-bottom:8px }
+.pf-root .bo-eq { display:grid; grid-template-columns:repeat(4,1fr); gap:8px; margin-bottom:8px }
+.pf-root .bo-res { display:grid; grid-template-columns:repeat(3,1fr); gap:8px }
+.pf-root .bo { border:1px solid var(--border); border-radius:10px; padding:10px 11px; text-align:center;
+  background:oklch(0.985 0.003 247) }
+.pf-root .bo .bl { font-size:.62rem; font-weight:700; text-transform:uppercase; letter-spacing:.03em;
+  color:var(--muted-foreground); line-height:1.3 }
+.pf-root .bo .bv { font-size:.95rem; font-weight:800; margin-top:5px }
+.pf-root .bo.eq { background:oklch(0.94 0.02 175 / .6); border-color:var(--mm-mint-ring) }
+.pf-root .bo.eq .bv { color:var(--mm-teal) }
+.pf-root .bo.fin { background:var(--mm-teal); border-color:var(--mm-teal) }
+.pf-root .bo.fin .bl { color:oklch(0.85 0.02 200) }
+.pf-root .bo.fin .bv { color:#fff; font-size:1.12rem }
+
+/* ---- route / decision cards ---- */
+.pf-root .route.esc h4 { color:var(--mm-rose) }
+.pf-root .route.esc.on { border-color:oklch(0.62 0.13 18 / .4); background:oklch(0.62 0.13 18 / .06) }
+.pf-root .route-stack { display:flex; flex-direction:column; gap:14px; margin-top:18px }
+
+/* Below this width the side-by-side panes stop earning their keep — stack
+   them and let the page scroll as one, rather than two 600px columns. */
+@media (max-width:1500px) {
+  .pf-root .panes { grid-template-columns:1fr; flex:none }
+  .pf-root .panes > .pane, .pf-root .panes > .panewrap { overflow:visible; padding:20px 26px 40px }
+  .pf-root .panewrap.locked .lockover { padding-top:60px }
+}

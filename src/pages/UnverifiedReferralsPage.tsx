@@ -40,9 +40,16 @@ import type { Patient } from "@/lib/profile/workflow";
 // literally the same component and copy Medical Evaluation uses — not a
 // lookalike that can drift from it.
 import { StageActionBar } from "@/components/shared/StageActionBar";
-// DoctorSection's markup is scoped under .pf-root — same stylesheet the
-// send-off page loads, so the component looks identical in both places.
+// The live sidebar and header, so this page sits in the same chrome as every
+// other Command Center stage instead of inventing its own.
+import { PatientsSidebar } from "@/components/profile/PatientsSidebar";
+import { PageLoadingOverlay } from "@/components/shared/PageLoadingOverlay";
+import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
+// redesign.css is the shared design system (DoctorSection's markup is scoped
+// under .pf-root too, so it looks identical here and on send-off).
+// intake.css adds the two-pane shell and lock that only this page uses.
 import "./profile/redesign.css";
+import "./profile/intake.css";
 
 /** Which pool is on screen. This role is the DTC + CareCentrix queue: "intake"
  *  is the 1. Intake group (CareCentrix + legacy referrals); the other two are
@@ -63,39 +70,61 @@ const SOURCE_LABEL: Record<Source, string> = {
 
 /** Read-only field. Used for anything the patient told us that the rep is not
  *  expected to retype — the left pane should be a confirmation, not data entry. */
-function Field({ label, value }: { label: string; value?: string }) {
+function Field({ label, value, full }: { label: string; value?: string; full?: boolean }) {
   return (
-    <div className="min-w-0">
-      <div className="text-[11px] uppercase tracking-wide text-muted-foreground">{label}</div>
-      <div className="text-sm font-medium break-words">{value?.trim() || "—"}</div>
+    <div className={full ? "f full" : "f"}>
+      <div className="k">{label}</div>
+      <div className="v">{value?.trim() || "—"}</div>
+    </div>
+  );
+}
+
+/** Where a value came from and where it lands. The mockup puts this under
+ *  every field so a rep can tell at a glance what the patient typed versus
+ *  what someone here entered. */
+function Prov({ src, col, isNew }: { src: "form" | "rep" | "derived"; col: string; isNew?: boolean }) {
+  const label = src === "form" ? "From form" : src === "rep" ? "Rep enters" : "Derived";
+  return (
+    <div className="prov">
+      <span className={`src ${src}`}>{label}</span>
+      <span className="arw">→</span>
+      <span className={isNew ? "col isnew" : "col"}>{col}</span>
     </div>
   );
 }
 
 function EditText({
-  label, value, onChange, placeholder,
-}: { label: string; value: string; onChange: (v: string) => void; placeholder?: string }) {
+  label, value, onChange, placeholder, prov, full,
+}: {
+  label: string; value: string; onChange: (v: string) => void; placeholder?: string;
+  prov?: React.ReactNode; full?: boolean;
+}) {
   return (
-    <label className="block min-w-0">
-      <div className="text-[11px] uppercase tracking-wide text-muted-foreground mb-1">{label}</div>
+    <label className={full ? "fld full" : "fld"}>
+      <div className="flabel">{label}</div>
       <input
-        className="w-full rounded-md border border-input bg-background px-2.5 py-1.5 text-sm"
+        type="text"
+        className={value.trim() ? "filled" : undefined}
         value={value}
         placeholder={placeholder}
         onChange={(e) => onChange(e.target.value)}
       />
+      {prov}
     </label>
   );
 }
 
 function EditSelect({
-  label, value, options, onChange,
-}: { label: string; value: string; options: string[]; onChange: (v: string) => void }) {
+  label, value, options, onChange, prov, full,
+}: {
+  label: string; value: string; options: string[]; onChange: (v: string) => void;
+  prov?: React.ReactNode; full?: boolean;
+}) {
   return (
-    <label className="block min-w-0">
-      <div className="text-[11px] uppercase tracking-wide text-muted-foreground mb-1">{label}</div>
+    <label className={full ? "fld full" : "fld"}>
+      <div className="flabel">{label}</div>
       <select
-        className="w-full rounded-md border border-input bg-background px-2.5 py-1.5 text-sm"
+        className={value.trim() ? "filled" : undefined}
         value={value}
         onChange={(e) => onChange(e.target.value)}
       >
@@ -106,14 +135,25 @@ function EditSelect({
           <option key={o} value={o}>{o}</option>
         ))}
       </select>
+      {prov}
     </label>
   );
 }
 
-function Card({ title, children }: { title: string; children: React.ReactNode }) {
+/** A section card inside a pane. `tone` maps to the mockup's coloured left
+ *  border: lead = green (what we already know), decide = teal (an action). */
+function Card({
+  title, children, tone, right,
+}: {
+  title: string; children: React.ReactNode;
+  tone?: "lead" | "decide" | "hilite"; right?: React.ReactNode;
+}) {
   return (
-    <section className="rounded-lg border bg-card p-4 shadow-sm">
-      <h3 className="text-sm font-semibold mb-3">{title}</h3>
+    <section className={tone ? `sect ${tone}` : "sect"}>
+      <div className="sect-title">
+        {title}
+        {right && <span className="rt">{right}</span>}
+      </div>
       {children}
     </section>
   );
@@ -356,75 +396,90 @@ const UnverifiedReferralsPage = () => {
     }
   }, [selected, edit, refetch]);
 
+  const attempts = Number(selected?.attemptCounter || 0);
+
   return (
-    <div className="min-h-screen bg-background">
-      <header className="bg-gradient-navy text-navy-foreground border-b border-sidebar-border">
-        <div className="px-5 py-3 flex items-center gap-3">
-          <div className="h-10 w-10 rounded-lg bg-gradient-primary flex items-center justify-center shadow-elevate">
-            <ClipboardCheck className="h-5 w-5 text-primary-foreground" />
-          </div>
-          <div className="min-w-0">
-            <p className="text-[10px] uppercase tracking-[0.2em] opacity-70">Medically Modern</p>
-            <h1 className="text-2xl font-bold">Patient Intake — Unverified Referrals</h1>
-            <div className="flex items-center gap-1.5 mt-1.5">
-              {(Object.keys(SOURCE_GROUP) as Source[]).map((s) => (
-                <button
-                  key={s}
-                  type="button"
-                  onClick={() => switchSource(s)}
-                  className={
-                    "rounded-full px-3 py-1 text-xs font-semibold transition-colors " +
-                    (source === s ? "bg-white text-navy shadow" : "bg-white/10 text-white/80 hover:bg-white/20")
-                  }
-                >
-                  {SOURCE_LABEL[s]}
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
-      </header>
+    <SidebarProvider>
+      <PageLoadingOverlay show={initialLoading} />
+      {/* .pf-root scopes the whole Command Center design system (redesign.css)
+          plus this page's additions (intake.css). Without it every class below
+          is inert — which is exactly how this page shipped the first time. */}
+      <div className="pf-root min-h-screen flex w-full bg-gradient-subtle">
+        <PatientsSidebar
+          patients={visible}
+          selectedId={selectedId}
+          onSelect={setSelectedId}
+          loading={loading}
+          error={error}
+          onRefresh={refetch}
+        />
 
-      {error && (
-        <div className="m-4 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm">
-          {error}
-        </div>
-      )}
-
-      <div className="flex gap-4 p-4">
-        {/* Patient list */}
-        <aside className="w-64 shrink-0 rounded-lg border bg-card p-2 max-h-[calc(100vh-8rem)] overflow-y-auto">
-          <div className="px-2 py-1 text-[11px] uppercase tracking-wide text-muted-foreground">
-            {initialLoading ? "Loading…" : `${visible.length} patient${visible.length === 1 ? "" : "s"}`}
-          </div>
-          {visible.map((p) => (
-            <button
-              key={p.id}
-              onClick={() => setSelectedId(p.id)}
-              className={
-                "w-full text-left rounded-md px-2 py-1.5 text-sm " +
-                (p.id === selected?.id ? "bg-accent font-semibold" : "hover:bg-accent/50")
-              }
-            >
-              <div className="truncate">{p.name}</div>
-              <div className="text-[11px] text-muted-foreground truncate">
-                {p.formDropOffStep || p.dateOfIntake || "—"}
+        <div className="flex-1 flex flex-col min-w-0">
+          <header className="bg-gradient-navy text-navy-foreground border-b border-sidebar-border flex-none">
+            <div className="px-6 py-5 flex items-center justify-between gap-4 flex-wrap">
+              <div className="flex items-center gap-3">
+                <SidebarTrigger className="text-navy-foreground hover:bg-white/10" />
+                <div className="h-10 w-10 rounded-lg bg-gradient-primary flex items-center justify-center shadow-elevate">
+                  <ClipboardCheck className="h-5 w-5 text-primary-foreground" />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-[10px] uppercase tracking-[0.2em] opacity-70">Medically Modern</p>
+                  <h1 className="text-2xl font-bold">Patient Intake — DTC &amp; CareCentrix</h1>
+                  <div className="flex items-center gap-1.5 mt-1.5">
+                    {(Object.keys(SOURCE_GROUP) as Source[]).map((s) => (
+                      <button
+                        key={s}
+                        type="button"
+                        onClick={() => switchSource(s)}
+                        className={
+                          "rounded-full px-3 py-1 text-xs font-semibold transition-colors " +
+                          (source === s ? "bg-white text-navy shadow" : "bg-white/10 text-white/80 hover:bg-white/20")
+                        }
+                      >
+                        {SOURCE_LABEL[s]}
+                      </button>
+                    ))}
+                  </div>
+                </div>
               </div>
-            </button>
-          ))}
-          {!initialLoading && visible.length === 0 && (
-            <p className="px-2 py-3 text-sm text-muted-foreground">Nothing in this queue.</p>
-          )}
-        </aside>
+            </div>
+          </header>
 
-        {!selected ? (
-          <main className="flex-1 rounded-lg border bg-card p-8 text-sm text-muted-foreground">
-            Select a patient.
-          </main>
-        ) : (
-          <main className="flex-1 grid grid-cols-1 xl:grid-cols-2 gap-4 min-w-0">
-            {/* ── LEFT: Patient Info Collection ── */}
-            <div className="space-y-4 min-w-0">
+          {error && (
+            <div className="m-4 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm flex-none">
+              {error}
+            </div>
+          )}
+
+          {/* Patient header strip — who you are working, and how many times
+              anyone has tried to reach them. The badge goes solid teal once a
+              call has actually been logged. */}
+          {selected && (
+            <div className="phdr">
+              <div className="who">
+                <div className="nm">{selected.name}</div>
+                <div className="sub">
+                  {[selected.dob, selected.ptPhone, selected.email].filter(Boolean).join(" · ") || "—"}
+                </div>
+              </div>
+              <div className="spacer" />
+              <span className={attempts > 0 ? "attempt-badge" : "attempt-badge auto"}>
+                <span className="dot" />
+                {attempts === 0 ? "No contact attempts yet" : `Attempt ${attempts}`}
+              </span>
+            </div>
+          )}
+
+          {!selected ? (
+            <div className="sect m-6 text-sm text-muted-foreground">Select a patient.</div>
+          ) : (
+            <div className="panes">
+              {/* ── LEFT: Patient Info. Collection ── */}
+              <div className="pane">
+                <div className="pane-head">
+                  <h2>Patient Info. Collection</h2>
+                  <span className="st open">Open</span>
+                </div>
               <Card title="Patient Demographics">
                 <div className="grid grid-cols-2 gap-3">
                   <Field label="Name" value={selected.name} />
@@ -624,9 +679,32 @@ const UnverifiedReferralsPage = () => {
               </div>
             </div>
 
-            {/* ── RIGHT: Profile Clean-Up, locked behind the unlock rule ── */}
-            <div className="min-w-0">
-              <Card title="Advance to Profile Clean-Up">
+            {/* ── RIGHT: Patient Profile Clean-Up ──
+                The mockup's whole point: the right pane is blurred and inert
+                until the left one is done. `.panewrap.locked` does the blur,
+                the overlay and the pointer-events block in CSS, so there is no
+                second copy of that rule in JSX to drift out of sync. */}
+            <div className={unlock.unlocked ? "panewrap" : "panewrap locked"}>
+              <div className="lockover">
+                <div className="lockmsg">
+                  <div className="li"><Lock className="h-6 w-6 mx-auto" /></div>
+                  <div className="lt">Finish Patient Info. Collection</div>
+                  <div className="ls">
+                    {unlock.conditions.find((c) => !c.passed)?.hint
+                      ?? "Complete the checklist on the left to unlock this pane."}
+                  </div>
+                </div>
+              </div>
+
+              <div className="pane pane-inner">
+                <div className="pane-head">
+                  <h2>Patient Profile Clean-Up</h2>
+                  <span className={unlock.unlocked ? "st open" : "st"}>
+                    {unlock.unlocked ? "Open" : "Locked"}
+                  </span>
+                </div>
+
+              <Card title="Advance to Profile Clean-Up" tone="decide">
                 {isPartial ? (
                   <p className="text-sm text-muted-foreground">
                     This is an incomplete form. Advancing a partial isn't defined yet — work it as
@@ -662,17 +740,12 @@ const UnverifiedReferralsPage = () => {
                 )}
               </Card>
 
-              <div className="relative mt-4">
-                {!unlock.unlocked && (
-                  <div className="absolute inset-0 z-10 flex items-center justify-center rounded-lg bg-background/70 backdrop-blur-sm">
-                    <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
-                      <Lock className="h-4 w-4" />
-                      Locked until the checklist above passes
-                    </div>
-                  </div>
-                )}
-                <div className={unlock.unlocked ? "" : "pointer-events-none select-none"}>
-                  <Card title="Verified Insurance">
+              {/* The blur + pointer-events block now come from
+                  .panewrap.locked on the pane itself, so this no longer
+                  hand-rolls a second overlay that could disagree with it. */}
+              <div className="stack">
+                <div>
+                  <Card title="Verified Insurance" tone="lead">
                     <div className="grid grid-cols-2 gap-3">
                       <EditSelect
                         label="Primary Insurance"
@@ -793,11 +866,13 @@ const UnverifiedReferralsPage = () => {
                   <AlertTriangle className="h-4 w-4" /> Already In System
                 </div>
               )}
+              </div>
             </div>
-          </main>
+          </div>
         )}
+        </div>
       </div>
-    </div>
+    </SidebarProvider>
   );
 };
 
