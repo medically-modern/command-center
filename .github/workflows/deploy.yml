@@ -17,8 +17,21 @@ permissions:
 # deploy-pages job in flight orphans a Pages deployment that keeps holding the
 # environment lock, wedging every later deploy. Queue them instead (GitHub's
 # own recommended setting for Pages).
+# Deliberately NOT the conventional group name "pages".
+#
+# GitHub's built-in Pages builder (dynamic/pages/pages-build-deployment) claims
+# that group too. When one of its runs wedges — which it does during a Pages
+# outage, and it cannot be cancelled ("409: Cannot cancel a workflow re-run
+# that has not yet queued") — every workflow sharing the group queues behind it
+# indefinitely. That is what stalled the 2026-08-06 deploy: run #1281 sat
+# `queued` for the whole outage while nothing was actually running.
+#
+# A distinct group keeps the property that matters (our own deploys queue
+# rather than cancel each other mid-publish, which would orphan a Pages
+# deployment and hold the environment lock) without inheriting a jam we have no
+# way to clear.
 concurrency:
-  group: pages
+  group: pages-deploy-actions
   cancel-in-progress: false
 
 jobs:
