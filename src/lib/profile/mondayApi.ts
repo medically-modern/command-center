@@ -45,6 +45,17 @@ export const COL = {
   formCallSlot: "text_mm5za6zx",
   formBookingStatus: "color_mm5zrbn3",
 
+  // ── Rep-entered on the intake call (HANDOFF §9) ──
+  // Deliberately NOT on the patient form — these are phone-call answers.
+  selfAdvocacy: "color_mm5z31hs",
+  currentOopCost: "text_mm5zj2q1",
+  cgmDataAwareness: "color_mm5z4yqq",
+  cgmDataFile: "file_mm5zhsxh",
+  attemptCounter: "numeric_mm5ze82q",
+  /** Rep-side equivalent of the patient choosing "Send request now" —
+   *  satisfies condition 1 of the advance-unlock rule (§2, §7.2). */
+  intakeCallComplete: "color_mm5z6eze",
+
   // ── Stedi ──
   runStediEligibility: "color_mm1yeksx",
   stediEligibilityActive: "text_mm1xpgy2",
@@ -215,6 +226,9 @@ export const READ_COLUMN_IDS: string[] = [
   COL.formInsuranceVia, COL.formInsuranceOther,
   COL.formSecondaryProvided, COL.formSecondaryMemberId, COL.formCardPhoto,
   COL.formProceedPreference, COL.formCallSlot, COL.formBookingStatus,
+  // Rep-entered on the intake call
+  COL.selfAdvocacy, COL.currentOopCost, COL.cgmDataAwareness,
+  COL.attemptCounter, COL.intakeCallComplete,
 ];
 
 export interface MondayColumnValue {

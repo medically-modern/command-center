@@ -46,6 +46,13 @@ export function mondayItemToPatient(item: MondayItem): Patient {
     formCallSlot: col(item, COL.formCallSlot),
     formBookingStatus: col(item, COL.formBookingStatus),
 
+    // Rep-entered on the intake call
+    selfAdvocacy: col(item, COL.selfAdvocacy),
+    currentOopCost: col(item, COL.currentOopCost),
+    cgmDataAwareness: col(item, COL.cgmDataAwareness),
+    attemptCounter: col(item, COL.attemptCounter),
+    intakeCallComplete: col(item, COL.intakeCallComplete),
+
     // Status
     alreadyInSystem: col(item, COL.alreadyInSystem),
     moveToOnboarding: col(item, COL.moveToOnboarding),

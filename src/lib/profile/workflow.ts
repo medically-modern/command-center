@@ -46,6 +46,13 @@ export interface Patient {
   formCallSlot: string;
   formBookingStatus: string;
 
+  // ── Rep-entered on the intake call (not on the patient form) ──
+  selfAdvocacy: string;
+  currentOopCost: string;
+  cgmDataAwareness: string;
+  attemptCounter: string;
+  intakeCallComplete: string;
+
   // ── Follow Up ──
   followUp: string;
   followUpDate: string;
