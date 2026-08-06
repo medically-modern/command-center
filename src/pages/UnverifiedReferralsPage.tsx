@@ -17,7 +17,11 @@ import { useSearchParams } from "react-router-dom";
 import { AlertTriangle, ClipboardCheck, Lock, Check, X } from "lucide-react";
 
 import { useMondayPatients } from "@/hooks/profile/useMondayPatients";
-import { GROUPS } from "@/lib/profile/mondayApi";
+import { GROUPS, fetchClinicLabels } from "@/lib/profile/mondayApi";
+// §6.1: this is the EXISTING component, unchanged. Search, Parachute panel,
+// location grid, order count and notes all behave exactly as on /profile —
+// rebuilding it would fork behaviour reps already rely on.
+import { DoctorSection } from "@/components/profile/DoctorSection";
 import { evaluateUnlock } from "@/lib/profile/intakeUnlock";
 import {
   PRIMARY_INSURANCE_INDEX, SECONDARY_INSURANCE_INDEX, SERVING_INDEX,
@@ -32,6 +36,9 @@ import {
   suggestPrimary, suggestSecondary, buildSuggestionInputs,
 } from "@/lib/profile/primaryInsurance";
 import type { Patient } from "@/lib/profile/workflow";
+// DoctorSection's markup is scoped under .pf-root — same stylesheet the
+// send-off page loads, so the component looks identical in both places.
+import "./profile/redesign.css";
 
 /** Which pool is on screen. This role is the DTC + CareCentrix queue: "intake"
  *  is the 1. Intake group (CareCentrix + legacy referrals); the other two are
@@ -258,6 +265,16 @@ const UnverifiedReferralsPage = () => {
   }, [selected, refetch]);
 
   const [escalateReason, setEscalateReason] = useState("");
+
+  // Doctor DB clinic dropdown labels — fetched once, same source as /profile.
+  const [clinicLabels, setClinicLabels] = useState<{ id: number; name: string }[]>([]);
+  useEffect(() => {
+    let alive = true;
+    fetchClinicLabels()
+      .then((l) => { if (alive) setClinicLabels(l); })
+      .catch(() => { /* dropdown just stays empty — not worth blocking the page */ });
+    return () => { alive = false; };
+  }, []);
 
   const runStageAction = useCallback(
     async (kind: "advance" | "escalate" | "proposeStuck" | "return") => {
@@ -691,6 +708,19 @@ const UnverifiedReferralsPage = () => {
                       Save verified insurance
                     </button>
                   </Card>
+
+                  {/* Select Correct Provider — turns the free text the patient
+                      typed into a real NPI + location + clinicals method. It
+                      writes the VERIFIED doctor columns; the Provided * fields
+                      on the left are untouched by it (§6.0). */}
+                  <div className="pf-root mt-4">
+                    <DoctorSection
+                      patient={selected}
+                      onUpdate={edit}
+                      clinicLabels={clinicLabels}
+                      onClinicSelect={(_id, name) => edit({ clinicName: name })}
+                    />
+                  </div>
                 </div>
               </div>
 
