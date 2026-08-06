@@ -130,9 +130,27 @@ const UnverifiedReferralsPage = () => {
   const [saving, setSaving] = useState(false);
   const [saveNote, setSaveNote] = useState<string | null>(null);
 
+  // An escalated patient is a manager's problem, not the rep's — same rule the
+  // Medical Evaluation queues apply. Managers clicking in from an oversight
+  // column carry ?origin=, and for them the escalated patients are the ONLY
+  // ones worth showing, so the filter inverts rather than disappearing.
+  const managerOrigin = searchParams.get("origin");
+  const visible = useMemo(() => {
+    const escalated = (p: Patient) =>
+      p.intakeEscalation === "Manager Escalation Required" ||
+      p.intakeEscalation === "Final Escalation Required";
+    if (managerOrigin === "manager-intervention") {
+      return patients.filter((p) => p.intakeEscalation === "Manager Escalation Required");
+    }
+    if (managerOrigin === "final-decisions") {
+      return patients.filter((p) => p.intakeEscalation === "Final Escalation Required");
+    }
+    return patients.filter((p) => !escalated(p));
+  }, [patients, managerOrigin]);
+
   const selected = useMemo(
-    () => patients.find((p) => p.id === selectedId) ?? patients[0] ?? null,
-    [patients, selectedId],
+    () => visible.find((p) => p.id === selectedId) ?? visible[0] ?? null,
+    [visible, selectedId],
   );
 
   const unlock = useMemo(() => evaluateUnlock(selected), [selected]);
@@ -373,9 +391,9 @@ const UnverifiedReferralsPage = () => {
         {/* Patient list */}
         <aside className="w-64 shrink-0 rounded-lg border bg-card p-2 max-h-[calc(100vh-8rem)] overflow-y-auto">
           <div className="px-2 py-1 text-[11px] uppercase tracking-wide text-muted-foreground">
-            {initialLoading ? "Loading…" : `${patients.length} patient${patients.length === 1 ? "" : "s"}`}
+            {initialLoading ? "Loading…" : `${visible.length} patient${visible.length === 1 ? "" : "s"}`}
           </div>
-          {patients.map((p) => (
+          {visible.map((p) => (
             <button
               key={p.id}
               onClick={() => setSelectedId(p.id)}
@@ -390,7 +408,7 @@ const UnverifiedReferralsPage = () => {
               </div>
             </button>
           ))}
-          {!initialLoading && patients.length === 0 && (
+          {!initialLoading && visible.length === 0 && (
             <p className="px-2 py-3 text-sm text-muted-foreground">Nothing in this queue.</p>
           )}
         </aside>

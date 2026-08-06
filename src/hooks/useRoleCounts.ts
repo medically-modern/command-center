@@ -50,6 +50,11 @@ const PROFILE_GROUP_ID = "group_mm1xf2jb";
 // so form patients count toward it as one number alongside the 1. Intake
 // unverified split — they are the same role, just a different source.
 const PROFILE_FORM_GROUP_IDS = ["group_mm5zgeak", "group_mm5z87zt"];
+// Intake Escalation. Index 0 = with a manager, 2 = proposed stuck. Both leave
+// the rep's queue and her count — that is what escalating is FOR. Mirrors how
+// the Medical Evaluation counts treat color_mm1x7997.
+const PROF_INTAKE_ESC_COL = "color_mm5zww42";
+const PROF_ESCALATED_LABELS = ["Manager Escalation Required", "Final Escalation Required"];
 const SUB_BOARD_ID = 18407459988;
 const SUB_GROUP_ID = "topics";
 
@@ -545,7 +550,7 @@ export function useRoleCounts(opts?: { roleIds?: string[] }) {
           const items = await fetchBoardGroupItemsLight(
             PROFILE_BOARD_ID,
             PROFILE_GROUP_ID,
-            [PROF_FOLLOWUP_COL, PROF_REFERRAL_TYPE_COL, PROF_REFERRAL_SOURCE_COL, PROF_IN_SYSTEM_COL],
+            [PROF_FOLLOWUP_COL, PROF_REFERRAL_TYPE_COL, PROF_REFERRAL_SOURCE_COL, PROF_IN_SYSTEM_COL, PROF_INTAKE_ESC_COL],
           );
           const active = items.filter((i) => i.cols[PROF_FOLLOWUP_COL] !== "Done");
           // Three-way split — duplicates lib/profile/referralSplit.ts (not
@@ -560,7 +565,9 @@ export function useRoleCounts(opts?: { roleIds?: string[] }) {
             ((i.cols[PROF_REFERRAL_TYPE_COL] ?? "").trim().toLowerCase() === "patient" ||
               (i.cols[PROF_REFERRAL_SOURCE_COL] ?? "").trim().toLowerCase() === "carecentrix");
           const inSystem = active.filter(isInSystem);
-          const unverified = active.filter(isUnverified);
+          const isIntakeEscalated = (i: LightItem) =>
+            PROF_ESCALATED_LABELS.includes((i.cols[PROF_INTAKE_ESC_COL] ?? "").trim());
+          const unverified = active.filter((i) => isUnverified(i) && !isIntakeEscalated(i));
           const verified = active.filter((i) => !isInSystem(i) && !isUnverified(i));
 
           // Form patients live in their own groups but belong to the same role.
@@ -569,13 +576,17 @@ export function useRoleCounts(opts?: { roleIds?: string[] }) {
           const formItems = (
             await Promise.all(
               PROFILE_FORM_GROUP_IDS.map((gid) =>
-                fetchBoardGroupItemsLight(PROFILE_BOARD_ID, gid, [PROF_FOLLOWUP_COL]).catch(
+                fetchBoardGroupItemsLight(PROFILE_BOARD_ID, gid, [PROF_FOLLOWUP_COL, PROF_INTAKE_ESC_COL]).catch(
                   () => [] as LightItem[],
                 ),
               ),
             )
           ).flat();
-          const formActive = formItems.filter((i) => i.cols[PROF_FOLLOWUP_COL] !== "Done");
+          const formActive = formItems.filter(
+            (i) =>
+              i.cols[PROF_FOLLOWUP_COL] !== "Done" &&
+              !PROF_ESCALATED_LABELS.includes((i.cols[PROF_INTAKE_ESC_COL] ?? "").trim()),
+          );
 
           merge(
             {

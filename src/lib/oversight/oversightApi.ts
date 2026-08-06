@@ -275,6 +275,15 @@ const CONFIRM_COLS: { colId: string; label: string; pill?: boolean }[] = [
 /** Shared drill-down columns for the three Profile Send Off charts (Verified +
  *  Unverified Referrals + Already In System — split by Already In System then
  *  Referral Type/Source, see CHART_FILTERS). */
+/** Unverified Referrals spans 1. Intake plus the DTC form's two groups. */
+const PROFILE_UNVERIFIED_GROUPS = ["group_mm1xf2jb", "group_mm5zgeak", "group_mm5z87zt"];
+/** Referral Type "Patient" OR Source "CareCentrix" — matches referralSplit.ts.
+ *  Form patients carry Referral Type "Patient", so they satisfy this too. */
+const PROFILE_UNVERIFIED_ANY = [
+  { colId: "color_mm1wm4n4", value: "Patient" },
+  { colId: "color_mm1w5wxr", value: "CareCentrix" },
+];
+
 const PROFILE_COLS: { colId: string; label: string; pill?: boolean }[] = [
   { colId: "date_mm1wf43j", label: "Intake Date" },
   { colId: "color_mm1wwm05", label: "Days in Stage" },
@@ -304,6 +313,23 @@ const RAW_CHART_DEFS: ChartDef[] = [
     title: "Profile Send Off — Unverified Referrals",
     boardId: 18406352652,
     notesColId: "text_mm389fs",
+    drilldownCols: PROFILE_COLS,
+  },
+  {
+    id: "profile-send-off-unverified-escalated",
+    title: "Unverified Referrals (Escalated)",
+    boardId: 18406352652,
+    notesColId: "long_text_mm5z3sq9",
+    rowOf: "profile-send-off-unverified",
+    drilldownCols: PROFILE_COLS,
+  },
+  {
+    id: "profile-send-off-unverified-stuck",
+    title: "Unverified Referrals (Proposed Stuck)",
+    boardId: 18406352652,
+    notesColId: "long_text_mm5z3sq9",
+    rowOf: "profile-send-off-unverified",
+    proposedReasonColId: "long_text_mm5z3sq9",
     drilldownCols: PROFILE_COLS,
   },
   {
@@ -1428,7 +1454,9 @@ interface ColCondition {
 
 interface ChartFilter {
   type: "group";
-  groupId: string;
+  /** One group, or several when a role legitimately spans them — Unverified
+   *  Referrals covers 1. Intake plus the DTC form's own two groups. */
+  groupId: string | string[];
   /** Optional extra AND conditions on top of the group — used for the Profile
    *  Send Off Verified/Unverified Referrals split. */
   andCols?: ColCondition[];
@@ -1470,7 +1498,16 @@ const CHART_FILTERS: Record<string, FilterRule> = {
   // Verified = neither. Only the TYPE column routes "Patient" — the SOURCE
   // column has its own "Patient" label that must NOT match.
   "profile-send-off":            { type: "group", groupId: "group_mm1xf2jb", andCols: [{ colId: "color_mm2xe7r8", value: "Yes", not: true }, { colId: "color_mm1wm4n4", value: "Patient", not: true }, { colId: "color_mm1w5wxr", value: "CareCentrix", not: true }] },
-  "profile-send-off-unverified": { type: "group", groupId: "group_mm1xf2jb", andCols: [{ colId: "color_mm2xe7r8", value: "Yes", not: true }], anyCols: [{ colId: "color_mm1wm4n4", value: "Patient" }, { colId: "color_mm1w5wxr", value: "CareCentrix" }] },
+  // Unverified Referrals = DTC + CareCentrix. It spans 1. Intake (CareCentrix
+  // and legacy referrals) plus the DTC intake form's own two groups. Escalated
+  // and proposed-stuck patients are excluded here and claimed by the two
+  // manager charts below — otherwise they'd be counted twice and would sit in
+  // the processor's day buckets while nobody is actually working them.
+  "profile-send-off-unverified": { type: "group", groupId: PROFILE_UNVERIFIED_GROUPS, andCols: [{ colId: "color_mm2xe7r8", value: "Yes", not: true }, { colId: "color_mm5zww42", index: [0, 2], not: true }], anyCols: PROFILE_UNVERIFIED_ANY },
+  // Manager Intervention — the rep escalated, a manager owns it now.
+  "profile-send-off-unverified-escalated": { type: "group", groupId: PROFILE_UNVERIFIED_GROUPS, andCols: [{ colId: "color_mm2xe7r8", value: "Yes", not: true }, { colId: "color_mm5zww42", index: [0] }], anyCols: PROFILE_UNVERIFIED_ANY },
+  // Final Decisions — the rep proposed the patient is stuck.
+  "profile-send-off-unverified-stuck": { type: "group", groupId: PROFILE_UNVERIFIED_GROUPS, andCols: [{ colId: "color_mm2xe7r8", value: "Yes", not: true }, { colId: "color_mm5zww42", index: [2] }], anyCols: PROFILE_UNVERIFIED_ANY },
   "profile-send-off-in-system":  { type: "group", groupId: "group_mm1xf2jb", andCols: [{ colId: "color_mm2xe7r8", value: "Yes" }] },
   "evaluate":           { type: "stageAdvancer", boardId: 18406060017, value: "Evaluate MN", andCols: [{ colId: "color_mm1x7997", index: [2], not: true }] },
   "send-request":       { type: "stageAdvancer", boardId: 18406060017, value: "Send Request", andCols: [{ colId: "color_mm1x7997", index: [2], not: true }] },
@@ -1752,7 +1789,8 @@ function filterColumns(rule: FilterRule): string[] {
 function matchesFilter(patient: OversightPatient, rule: FilterRule): boolean {
   if (rule.type === "any") return rule.of.some((r) => matchesFilter(patient, r));
   if (rule.type === "group") {
-    if (patient.groupId !== rule.groupId) return false;
+    const groups = Array.isArray(rule.groupId) ? rule.groupId : [rule.groupId];
+    if (!groups.includes(patient.groupId)) return false;
   } else {
     // Stage advancer filter
     const saCol = STAGE_ADVANCER_COL[rule.boardId];
