@@ -16,6 +16,7 @@ import { useMondayPatients } from "@/hooks/profile/useMondayPatients";
 import { useAutoSelectPatient } from "@/hooks/useAutoSelectPatient";
 import { profileReferralRole, type ProfileReferralRole } from "@/lib/profile/referralSplit";
 import { sidebarVisibleList } from "@/lib/profile/sidebarList";
+import { GROUPS } from "@/lib/profile/mondayApi";
 import { viewFilterFromParams } from "@/lib/roleView";
 import type { Patient } from "@/lib/profile/workflow";
 import {
@@ -120,13 +121,38 @@ const VARIANT_LABEL: Record<ProfileReferralRole, string> = {
   verified: "Verified Referrals",
 };
 
+/** Which pool of Unverified Referrals is on screen. This role is the DTC +
+ *  CareCentrix queue: "intake" is the 1. Intake group (CareCentrix and legacy
+ *  referrals), the other two are the DTC intake form's own groups. URL-driven
+ *  so a filtered queue is shareable, matching the ?view= convention. */
+type UnverifiedSource = "intake" | "completed" | "partial";
+
+const UNVERIFIED_SOURCE_GROUP: Record<UnverifiedSource, string | undefined> = {
+  intake: undefined, // hook default — GROUPS.intake
+  completed: GROUPS.newFormCompleted,
+  partial: GROUPS.newFormPartial,
+};
+
+const UNVERIFIED_SOURCE_LABEL: Record<UnverifiedSource, string> = {
+  intake: "Referrals",
+  completed: "Completed forms",
+  partial: "Partial forms",
+};
+
 const ProfilePage = ({ variant }: ProfilePageProps) => {
   const { goBack } = useBackNavigation();
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const sourceParam = searchParams.get("source");
+  const source: UnverifiedSource =
+    variant === "unverifiedReferrals" &&
+    (sourceParam === "completed" || sourceParam === "partial")
+      ? sourceParam
+      : "intake";
+
   const {
     patients: allProfilePatients, loading, initialLoading, error, refetch,
     updateLocal, clearOverlay, removeOverlayKeys, saveOverlay, hasOverlay, getReceived,
-  } = useMondayPatients(searchParams.get("patientId"));
+  } = useMondayPatients(searchParams.get("patientId"), UNVERIFIED_SOURCE_GROUP[source]);
 
   // Role split (three-way, mutually exclusive): inSystem = Already In System
   // "Yes"; unverified = Referral Type "Patient" OR Referral Source
@@ -136,12 +162,16 @@ const ProfilePage = ({ variant }: ProfilePageProps) => {
   const deepLinkedId = searchParams.get("patientId");
   const patients = useMemo(
     () =>
-      allProfilePatients.filter(
-        (p) =>
-          p.id === deepLinkedId ||
-          profileReferralRole(p.referralType, p.referralSource, p.alreadyInSystem) === variant,
-      ),
-    [allProfilePatients, variant, deepLinkedId],
+      // The form groups hold nothing but DTC form patients, so every item there
+      // already belongs to this role — the Type/Source split has nothing to do.
+      source !== "intake"
+        ? allProfilePatients
+        : allProfilePatients.filter(
+            (p) =>
+              p.id === deepLinkedId ||
+              profileReferralRole(p.referralType, p.referralSource, p.alreadyInSystem) === variant,
+          ),
+    [allProfilePatients, variant, deepLinkedId, source],
   );
 
   const [selectedId, setSelectedId] = useState<string | null>(searchParams.get("patientId") ?? null);
@@ -492,6 +522,34 @@ const ProfilePage = ({ variant }: ProfilePageProps) => {
                   <h1 className="text-2xl font-bold">
                     Profile Send-Off — {VARIANT_LABEL[variant]}
                   </h1>
+                  {variant === "unverifiedReferrals" && (
+                    <div className="flex items-center gap-1.5 mt-1.5">
+                      {(Object.keys(UNVERIFIED_SOURCE_GROUP) as UnverifiedSource[]).map((s) => (
+                        <button
+                          key={s}
+                          type="button"
+                          onClick={() => {
+                            const next = new URLSearchParams(searchParams);
+                            if (s === "intake") next.delete("source");
+                            else next.set("source", s);
+                            // Selection is per-pool; carrying it across would
+                            // deep-link a patient that isn't in the new list.
+                            next.delete("patientId");
+                            setSearchParams(next, { replace: true });
+                            setSelectedId(null);
+                          }}
+                          className={
+                            "rounded-full px-3 py-1 text-xs font-semibold transition-colors " +
+                            (source === s
+                              ? "bg-white text-navy shadow"
+                              : "bg-white/10 text-white/80 hover:bg-white/20")
+                          }
+                        >
+                          {UNVERIFIED_SOURCE_LABEL[s]}
+                        </button>
+                      ))}
+                    </div>
+                  )}
                   {selected && (
                     <p className="text-sm opacity-80 mt-0.5 flex items-center gap-2">
                       {selected.name}

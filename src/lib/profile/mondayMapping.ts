@@ -28,6 +28,24 @@ export function mondayItemToPatient(item: MondayItem): Patient {
     patientAddressLat: null,
     patientAddressLng: null,
 
+    // DTC intake form
+    formReasonForInquiry: col(item, COL.formReasonForInquiry),
+    formState: col(item, COL.formState),
+    formDropOffStep: col(item, COL.formDropOffStep),
+    formSessionId: col(item, COL.formSessionId),
+    formPumpNeed: col(item, COL.formPumpNeed),
+    formCgmPreference: col(item, COL.formCgmPreference),
+    formPumpPreference: col(item, COL.formPumpPreference),
+    formProvidedDoctorName: col(item, COL.formProvidedDoctorName),
+    formProvidedClinicPhone: col(item, COL.formProvidedClinicPhone),
+    formInsuranceVia: col(item, COL.formInsuranceVia),
+    formInsuranceOther: col(item, COL.formInsuranceOther),
+    formSecondaryProvided: col(item, COL.formSecondaryProvided),
+    formSecondaryMemberId: col(item, COL.formSecondaryMemberId),
+    formProceedPreference: col(item, COL.formProceedPreference),
+    formCallSlot: col(item, COL.formCallSlot),
+    formBookingStatus: col(item, COL.formBookingStatus),
+
     // Status
     alreadyInSystem: col(item, COL.alreadyInSystem),
     moveToOnboarding: col(item, COL.moveToOnboarding),

@@ -13,11 +13,38 @@ export const GROUPS = {
   patientIntake: "group_mm4vhqff",
   intake: "group_mm1xf2jb",
   tests: "group_mm1wvq8p",
+  // DTC intake form (dtc-mm-form). Same board, same columns — a separate group
+  // per funnel state so partial fill-outs never sit in a rep's work queue
+  // alongside finished ones. Both feed the Unverified Referrals role.
+  newFormPartial: "group_mm5z87zt",
+  newFormCompleted: "group_mm5zgeak",
   stuck: "group_mm1xyczx",
   completed: "group_mm1y57sz",
 } as const;
 
 export const COL = {
+  // ── DTC intake form (written by dtc-mm-form-api) ──
+  // "Provided *" columns hold what the PATIENT told us and are never
+  // overwritten by Select Correct Provider — the verified doctor columns
+  // (doctorName / doctorPhone) stay the rep's. See HANDOFF §6.0.
+  formReasonForInquiry: "color_mm5zb8h6",
+  formState: "text_mm5zc4vy",
+  formDropOffStep: "color_mm5zv7q8",
+  formSessionId: "text_mm5zmfgg",
+  formPumpNeed: "color_mm5zsfmj",
+  formCgmPreference: "color_mm5z5v3n",
+  formPumpPreference: "color_mm5zxfh9",
+  formProvidedDoctorName: "text_mm5z586h",
+  formProvidedClinicPhone: "text_mm5zjh88",
+  formInsuranceVia: "color_mm5zv5pa",
+  formInsuranceOther: "text_mm5z8w99",
+  formSecondaryProvided: "color_mm5zh2af",
+  formSecondaryMemberId: "text_mm5ztdq9",
+  formCardPhoto: "file_mm5zhy1",
+  formProceedPreference: "color_mm5zp6rt",
+  formCallSlot: "text_mm5za6zx",
+  formBookingStatus: "color_mm5zrbn3",
+
   // ── Stedi ──
   runStediEligibility: "color_mm1yeksx",
   stediEligibilityActive: "text_mm1xpgy2",
@@ -181,6 +208,13 @@ export const READ_COLUMN_IDS: string[] = [
   COL.insulinPumpCoveragePath, COL.cgmCoveragePath,
   // Notes + Follow Up
   COL.notes, COL.followUp, COL.followUpDate,
+  // DTC intake form
+  COL.formReasonForInquiry, COL.formState, COL.formDropOffStep, COL.formSessionId,
+  COL.formPumpNeed, COL.formCgmPreference, COL.formPumpPreference,
+  COL.formProvidedDoctorName, COL.formProvidedClinicPhone,
+  COL.formInsuranceVia, COL.formInsuranceOther,
+  COL.formSecondaryProvided, COL.formSecondaryMemberId, COL.formCardPhoto,
+  COL.formProceedPreference, COL.formCallSlot, COL.formBookingStatus,
 ];
 
 export interface MondayColumnValue {

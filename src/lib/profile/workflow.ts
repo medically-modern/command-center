@@ -23,6 +23,29 @@ export interface Patient {
   // ── Notes ──
   notes: string;
 
+  // ── DTC intake form (dtc-mm-form) ──
+  // Everything the patient answered on the form. "provided*" values are what
+  // THEY told us and are deliberately separate from the verified doctor
+  // columns the rep fills via Select Correct Provider (HANDOFF §6.0).
+  formReasonForInquiry: string;
+  formState: string;
+  /** Furthest step reached; "Completed" once submitted. Drives the
+   *  partial-vs-completed split in Unverified Referrals. */
+  formDropOffStep: string;
+  formSessionId: string;
+  formPumpNeed: string;
+  formCgmPreference: string;
+  formPumpPreference: string;
+  formProvidedDoctorName: string;
+  formProvidedClinicPhone: string;
+  formInsuranceVia: string;
+  formInsuranceOther: string;
+  formSecondaryProvided: string;
+  formSecondaryMemberId: string;
+  formProceedPreference: string;
+  formCallSlot: string;
+  formBookingStatus: string;
+
   // ── Follow Up ──
   followUp: string;
   followUpDate: string;

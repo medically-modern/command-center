@@ -46,6 +46,10 @@ const WC_GROUP_ID = "group_mm1wvq8p";
 const FINAL_CONFIRM_GROUP_ID = "group_mm2x8jtj";
 const PROFILE_BOARD_ID = 18406352652;
 const PROFILE_GROUP_ID = "group_mm1xf2jb";
+// DTC intake form groups. Unverified Referrals is the DTC + CareCentrix queue,
+// so form patients count toward it as one number alongside the 1. Intake
+// unverified split — they are the same role, just a different source.
+const PROFILE_FORM_GROUP_IDS = ["group_mm5zgeak", "group_mm5z87zt"];
 const SUB_BOARD_ID = 18407459988;
 const SUB_GROUP_ID = "topics";
 
@@ -558,16 +562,31 @@ export function useRoleCounts(opts?: { roleIds?: string[] }) {
           const inSystem = active.filter(isInSystem);
           const unverified = active.filter(isUnverified);
           const verified = active.filter((i) => !isInSystem(i) && !isUnverified(i));
+
+          // Form patients live in their own groups but belong to the same role.
+          // Every item there came from the DTC form, so no referral split is
+          // needed — they are unverified by definition.
+          const formItems = (
+            await Promise.all(
+              PROFILE_FORM_GROUP_IDS.map((gid) =>
+                fetchBoardGroupItemsLight(PROFILE_BOARD_ID, gid, [PROF_FOLLOWUP_COL]).catch(
+                  () => [] as LightItem[],
+                ),
+              ),
+            )
+          ).flat();
+          const formActive = formItems.filter((i) => i.cols[PROF_FOLLOWUP_COL] !== "Done");
+
           merge(
             {
               profile: verified.length,
-              unverifiedReferrals: unverified.length,
+              unverifiedReferrals: unverified.length + formActive.length,
               inSystemReferrals: inSystem.length,
             },
             { profile: 0, unverifiedReferrals: 0, inSystemReferrals: 0 },
             {
               profile: verified.map((i) => i.id),
-              unverifiedReferrals: unverified.map((i) => i.id),
+              unverifiedReferrals: unverified.map((i) => i.id).concat(formActive.map((i) => i.id)),
               inSystemReferrals: inSystem.map((i) => i.id),
             },
           );

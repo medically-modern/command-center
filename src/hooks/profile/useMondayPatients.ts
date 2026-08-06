@@ -4,7 +4,13 @@ import { fetchGroupItems, fetchItemById, hasToken } from "@/lib/profile/mondayAp
 import { mondayItemToPatient } from "@/lib/profile/mondayMapping";
 
 const POLL_MS = 15_000;
-const LS_CACHE_KEY = "prof-patients-cache";
+const LS_CACHE_KEY_BASE = "prof-patients-cache";
+// Per-group cache. Without this, flipping the Unverified Referrals filter
+// paints the previous group's patients from localStorage before the fetch lands.
+let LS_CACHE_KEY = LS_CACHE_KEY_BASE;
+function setCacheScope(groupId?: string): void {
+  LS_CACHE_KEY = groupId ? `${LS_CACHE_KEY_BASE}:${groupId}` : LS_CACHE_KEY_BASE;
+}
 const LS_OVERLAY_KEY = "prof-overlays";
 
 function loadOverlays(): Record<string, Partial<Patient>> {
@@ -49,8 +55,11 @@ function persistPatientCache(patients: Patient[]): void {
   } catch { /* ignore */ }
 }
 
-export function useMondayPatients(injectedPatientId?: string | null) {
+export function useMondayPatients(injectedPatientId?: string | null, groupId?: string) {
   const cachedRef = useRef(loadCachedPatients());
+  // Held in a ref so switching groups doesn't rebuild `refetch` (which the
+  // poll interval depends on) — the effect below drives the re-fetch instead.
+  const groupIdRef = useRef(groupId);
   const [patients, setPatients] = useState<Patient[]>(cachedRef.current);
   const [loading, setLoading] = useState(cachedRef.current.length === 0);
   // Blocks the page (full-screen overlay) from mount until this role's first
@@ -92,7 +101,7 @@ export function useMondayPatients(injectedPatientId?: string | null) {
       setError(null);
     }
     try {
-      const items = await fetchGroupItems(undefined);
+      const items = await fetchGroupItems(groupIdRef.current);
       if (!mountedRef.current) return;
       const safeItems = Array.isArray(items) ? items : [];
       const ps = safeItems.map(mondayItemToPatient);
@@ -128,7 +137,18 @@ export function useMondayPatients(injectedPatientId?: string | null) {
   }, [applyOverlays]);
 
   useEffect(() => {
+    if (groupIdRef.current === groupId) return;
+    groupIdRef.current = groupId;
+    setCacheScope(groupId);
+    cachedRef.current = loadCachedPatients();
+    setPatients(cachedRef.current);
+    setInitialLoading(true);
+    refetch(false);
+  }, [groupId, refetch]);
+
+  useEffect(() => {
     mountedRef.current = true;
+    setCacheScope(groupIdRef.current);
     refetch(cachedRef.current.length > 0);
     const id = setInterval(() => refetch(true), POLL_MS);
     return () => {
