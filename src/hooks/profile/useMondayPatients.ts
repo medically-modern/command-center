@@ -5,11 +5,13 @@ import { mondayItemToPatient } from "@/lib/profile/mondayMapping";
 
 const POLL_MS = 15_000;
 const LS_CACHE_KEY_BASE = "prof-patients-cache";
-// Per-group cache. Without this, flipping the Unverified Referrals filter
-// paints the previous group's patients from localStorage before the fetch lands.
-let LS_CACHE_KEY = LS_CACHE_KEY_BASE;
-function setCacheScope(groupId?: string): void {
-  LS_CACHE_KEY = groupId ? `${LS_CACHE_KEY_BASE}:${groupId}` : LS_CACHE_KEY_BASE;
+// Per-group cache key. Without scoping, flipping the Unverified Referrals
+// filter paints the previous group's patients from localStorage before the
+// fetch lands. Derived per call rather than held in a module-level variable —
+// two pages using this hook during a lazy route transition would otherwise
+// race on it and read each other's cache.
+function cacheKeyFor(groupId?: string): string {
+  return groupId ? `${LS_CACHE_KEY_BASE}:${groupId}` : LS_CACHE_KEY_BASE;
 }
 const LS_OVERLAY_KEY = "prof-overlays";
 
@@ -41,22 +43,22 @@ function removePersistedOverlay(id: string): void {
   }
 }
 
-function loadCachedPatients(): Patient[] {
+function loadCachedPatients(groupId?: string): Patient[] {
   try {
-    const raw = localStorage.getItem(LS_CACHE_KEY);
+    const raw = localStorage.getItem(cacheKeyFor(groupId));
     if (!raw) return [];
     return JSON.parse(raw) as Patient[];
   } catch { return []; }
 }
 
-function persistPatientCache(patients: Patient[]): void {
+function persistPatientCache(patients: Patient[], groupId?: string): void {
   try {
-    localStorage.setItem(LS_CACHE_KEY, JSON.stringify(patients));
+    localStorage.setItem(cacheKeyFor(groupId), JSON.stringify(patients));
   } catch { /* ignore */ }
 }
 
 export function useMondayPatients(injectedPatientId?: string | null, groupId?: string) {
-  const cachedRef = useRef(loadCachedPatients());
+  const cachedRef = useRef(loadCachedPatients(groupId));
   // Held in a ref so switching groups doesn't rebuild `refetch` (which the
   // poll interval depends on) — the effect below drives the re-fetch instead.
   const groupIdRef = useRef(groupId);
@@ -122,7 +124,7 @@ export function useMondayPatients(injectedPatientId?: string | null, groupId?: s
       }
 
       setPatients(merged);
-      persistPatientCache(merged);
+      persistPatientCache(merged, groupIdRef.current);
     } catch (e) {
       if (mountedRef.current)
         setError(e instanceof Error ? e.message : "Failed to load patients from Monday");
@@ -139,8 +141,7 @@ export function useMondayPatients(injectedPatientId?: string | null, groupId?: s
   useEffect(() => {
     if (groupIdRef.current === groupId) return;
     groupIdRef.current = groupId;
-    setCacheScope(groupId);
-    cachedRef.current = loadCachedPatients();
+    cachedRef.current = loadCachedPatients(groupId);
     setPatients(cachedRef.current);
     setInitialLoading(true);
     refetch(false);
@@ -148,7 +149,6 @@ export function useMondayPatients(injectedPatientId?: string | null, groupId?: s
 
   useEffect(() => {
     mountedRef.current = true;
-    setCacheScope(groupIdRef.current);
     refetch(cachedRef.current.length > 0);
     const id = setInterval(() => refetch(true), POLL_MS);
     return () => {

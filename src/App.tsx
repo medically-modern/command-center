@@ -20,6 +20,10 @@ const DoctorAppointmentsPage = lazyWithReload(() => import("./pages/DoctorAppoin
 const BenefitsPage = lazyWithReload(() => import("./pages/ChaseBenefitsPage"));
 const WelcomeCallPage = lazyWithReload(() => import("./pages/WelcomeCallPage"));
 const ProfilePage = lazyWithReload(() => import("./pages/ProfilePage"));
+// Its own page, not a ProfilePage variant — the intake redesign must not
+// change the Verified Referrals send-off, and separate components is the
+// only way to guarantee that.
+const UnverifiedReferralsPage = lazyWithReload(() => import("./pages/UnverifiedReferralsPage"));
 const SubmitAuthPage = lazyWithReload(() => import("./pages/SubmitAuthPage"));
 const AuthOutstandingPage = lazyWithReload(() => import("./pages/AuthOutstandingPage"));
 const DvsPage = lazyWithReload(() => import("./pages/DvsPage"));
@@ -100,7 +104,7 @@ const App = () => (
               and already-in-system referrals, split by Already In System then
               Referral Type/Source (lib/profile/referralSplit) */}
           <Route path="/profile" element={<ProfilePage variant="verified" />} />
-          <Route path="/unverified-referrals" element={<ProfilePage variant="unverified" />} />
+          <Route path="/unverified-referrals" element={<UnverifiedReferralsPage />} />
           <Route path="/in-system-referrals" element={<ProfilePage variant="inSystem" />} />
           <Route path="/submit-auth" element={<SubmitAuthPage />} />
           <Route path="/auth-outstanding" element={<AuthOutstandingPage />} />
