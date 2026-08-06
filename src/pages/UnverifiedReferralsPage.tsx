@@ -12,14 +12,24 @@
  *   Right — Patient Profile Clean-Up. Locked until all four unlock conditions pass.
  */
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { AlertTriangle, ClipboardCheck, Lock, Check, X } from "lucide-react";
 
 import { useMondayPatients } from "@/hooks/profile/useMondayPatients";
 import { GROUPS } from "@/lib/profile/mondayApi";
 import { evaluateUnlock } from "@/lib/profile/intakeUnlock";
-import { writeIntakeEdits, logContactAttempt, type IntakeEdits } from "@/lib/profile/unverifiedWrite";
+import {
+  PRIMARY_INSURANCE_INDEX, SECONDARY_INSURANCE_INDEX, SERVING_INDEX,
+} from "@/lib/profile/mondayMapping";
+import {
+  writeIntakeEdits, writeVerifiedInsurance, logContactAttempt,
+  type IntakeEdits, type VerifiedEdits,
+} from "@/lib/profile/unverifiedWrite";
+import { useStediRun, STEDI_POLL_MS } from "@/hooks/profile/useStediRun";
+import {
+  suggestPrimary, suggestSecondary, buildSuggestionInputs,
+} from "@/lib/profile/primaryInsurance";
 import type { Patient } from "@/lib/profile/workflow";
 
 /** Which pool is on screen. This role is the DTC + CareCentrix queue: "intake"
@@ -119,6 +129,66 @@ const UnverifiedReferralsPage = () => {
 
   const unlock = useMemo(() => evaluateUnlock(selected), [selected]);
 
+  // ── Benefits check ──────────────────────────────────────────────────────
+  const stedi = useStediRun();
+
+  // While a run is in flight the service streams results back one column at a
+  // time, so poll and let the hook decide when the whole set has settled.
+  useEffect(() => {
+    if (!stedi.isRunning) return;
+    const id = window.setInterval(() => { void refetch(true); }, STEDI_POLL_MS);
+    return () => window.clearInterval(id);
+  }, [stedi.isRunning, refetch]);
+
+  useEffect(() => { stedi.observe(selected); }, [selected, stedi]);
+
+  // ── Right pane pre-fill ─────────────────────────────────────────────────
+  // The derived values arrive already entered, not as a chip the rep has to
+  // click (HANDOFF §4). The engine resolves home state from patientAddress,
+  // which a form patient doesn't have — feed them the State they gave us, or
+  // it returns no suggestion at all (§8.2).
+  const suggestion = useMemo(() => {
+    if (!selected) return null;
+    const forEngine = {
+      ...selected,
+      patientAddress: selected.patientAddress?.trim() || selected.formState || "",
+    } as Patient;
+    const inputs = buildSuggestionInputs(forEngine);
+    return { primary: suggestPrimary(inputs), secondary: suggestSecondary(inputs) };
+  }, [selected]);
+
+  const [verified, setVerified] = useState<VerifiedEdits>({});
+  const seededFor = useRef<string | null>(null);
+
+  // Seed once per patient: what's on the board wins, the engine fills the
+  // blanks. Re-seeding on every render would fight the rep's typing.
+  useEffect(() => {
+    if (!selected) return;
+    const key = `${selected.id}:${suggestion?.primary?.value ?? ""}`;
+    if (seededFor.current === key) return;
+    seededFor.current = key;
+    setVerified({
+      primaryInsurance: selected.primaryInsurance || suggestion?.primary?.value || "",
+      memberId1: selected.memberId1 || selected.memberIdWorking || "",
+      secondaryInsurance: selected.secondaryInsurance || suggestion?.secondary || "",
+      memberId2: selected.memberId2 || "",
+      serving: selected.serving || selected.requestType || "",
+    });
+  }, [selected, suggestion]);
+
+  const saveVerified = useCallback(async () => {
+    if (!selected) return;
+    setSaving(true);
+    setSaveNote(null);
+    try {
+      const res = await writeVerifiedInsurance(selected.id, verified);
+      setSaveNote(res.ok ? "Verified insurance saved." : res.errors.map((e) => `${e.label}: ${e.error}`).join(" · "));
+      if (res.ok) await refetch(true);
+    } finally {
+      setSaving(false);
+    }
+  }, [selected, verified, refetch]);
+
   /** A partial fill-out is an incomplete form, not a workable referral. The
    *  advance path is meaningless for them — parked until that flow is designed. */
   const isPartial = source === "partial";
@@ -185,6 +255,17 @@ const UnverifiedReferralsPage = () => {
       setSaving(false);
     }
   }, [selected, refetch]);
+
+  // Declared after save() deliberately: naming it in the dependency array
+  // before the const initialises would throw on first render.
+  const runBenefitsCheck = useCallback(async () => {
+    if (!selected) return;
+    setSaveNote(null);
+    // Persist the rep's edits first — the check reads General Insurance and
+    // Member ID off the BOARD, not off this page's local state.
+    await save();
+    await stedi.start(selected);
+  }, [selected, stedi, save]);
 
   const logAttempt = useCallback(async () => {
     if (!selected) return;
@@ -358,6 +439,28 @@ const UnverifiedReferralsPage = () => {
                     onChange={(v) => edit({ formSecondaryMemberId: v })}
                   />
                 </div>
+                <div className="mt-3 flex items-center gap-2">
+                  <button
+                    onClick={runBenefitsCheck}
+                    disabled={saving || stedi.isRunning || !(selected.generalInsurance ?? "").trim()}
+                    className="rounded-md bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground disabled:opacity-50"
+                  >
+                    {stedi.isRunning ? "Running benefits check…" : "Run benefits check"}
+                  </button>
+                  {stedi.state.message && (
+                    <span className={"text-xs " + (stedi.state.phase === "error" ? "text-destructive" : "text-muted-foreground")}>
+                      {stedi.state.message}
+                    </span>
+                  )}
+                  {!(selected.generalInsurance ?? "").trim() && (
+                    <span className="text-xs text-muted-foreground">Needs General Insurance first.</span>
+                  )}
+                </div>
+                {selected.stediErrorDescription?.trim() && (
+                  <p className="mt-2 rounded-md bg-red-50 border border-red-200 px-3 py-2 text-xs text-red-800">
+                    Last check failed: {selected.stediErrorDescription}
+                  </p>
+                )}
                 {(selected.formInsuranceVia ?? "") === "Not provided" && (
                   <p className="mt-3 rounded-md bg-amber-50 border border-amber-200 px-3 py-2 text-xs text-amber-900">
                     No card provided — the patient was asked to text a photo to (347) 503-7148.
@@ -494,19 +597,63 @@ const UnverifiedReferralsPage = () => {
                   </div>
                 )}
                 <div className={unlock.unlocked ? "" : "pointer-events-none select-none"}>
-                  <Card title="Patient Profile Clean-Up">
+                  <Card title="Verified Insurance">
                     <div className="grid grid-cols-2 gap-3">
-                      <Field label="Primary Insurance" value={selected.primaryInsurance} />
-                      <Field label="Member ID 1" value={selected.memberId1} />
-                      <Field label="Secondary Insurance" value={selected.secondaryInsurance} />
-                      <Field label="Member ID 2" value={selected.memberId2} />
-                      <Field label="Serving" value={selected.serving} />
+                      <EditSelect
+                        label="Primary Insurance"
+                        value={verified.primaryInsurance ?? ""}
+                        onChange={(v) => setVerified((s) => ({ ...s, primaryInsurance: v }))}
+                        options={Object.keys(PRIMARY_INSURANCE_INDEX)}
+                      />
+                      <EditText
+                        label="Member ID 1"
+                        value={verified.memberId1 ?? ""}
+                        onChange={(v) => setVerified((s) => ({ ...s, memberId1: v }))}
+                      />
+                      <EditSelect
+                        label="Secondary Insurance"
+                        value={verified.secondaryInsurance ?? ""}
+                        onChange={(v) => setVerified((s) => ({ ...s, secondaryInsurance: v }))}
+                        options={Object.keys(SECONDARY_INSURANCE_INDEX)}
+                      />
+                      <EditText
+                        label={"Member ID 2" + ((verified.secondaryInsurance ?? "") === "NY Medicaid" ? " (required)" : "")}
+                        value={verified.memberId2 ?? ""}
+                        onChange={(v) => setVerified((s) => ({ ...s, memberId2: v }))}
+                      />
+                      <EditSelect
+                        label="Serving"
+                        value={verified.serving ?? ""}
+                        onChange={(v) => setVerified((s) => ({ ...s, serving: v }))}
+                        options={Object.keys(SERVING_INDEX)}
+                      />
                     </div>
-                    <p className="mt-3 rounded-md border border-dashed px-3 py-2 text-xs text-muted-foreground">
-                      Verified-insurance suggestions, Select Correct Provider and the benefits grid
-                      are wired next — they reuse the existing components rather than new ones, so
-                      nothing here diverges from the send-off page.
-                    </p>
+
+                    {/* Why the engine landed there. Replaces the suggestion
+                        chip / confidence label / alternates furniture (§4).
+                        Hard blocks stay visible banners below — the hover is
+                        for explaining a normal pick, never for hiding a problem. */}
+                    {suggestion?.primary && (
+                      <details className="mt-3 rounded-md border bg-muted/40 px-3 py-2">
+                        <summary className="cursor-pointer text-xs font-medium">
+                          Why {suggestion.primary.value || "this"}? ({suggestion.primary.confidence} confidence)
+                        </summary>
+                        <p className="mt-2 text-xs text-muted-foreground">{suggestion.primary.reason}</p>
+                      </details>
+                    )}
+                    {suggestion?.primary?.warnings?.map((w, i) => (
+                      <p key={i} className="mt-2 rounded-md bg-amber-50 border border-amber-200 px-3 py-2 text-xs text-amber-900">
+                        {typeof w === "string" ? w : w.text}
+                      </p>
+                    ))}
+
+                    <button
+                      onClick={saveVerified}
+                      disabled={saving}
+                      className="mt-3 rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground disabled:opacity-50"
+                    >
+                      Save verified insurance
+                    </button>
                   </Card>
                 </div>
               </div>

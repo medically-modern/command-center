@@ -19,7 +19,10 @@
  */
 
 import { COL, writeStatusIndex, writeText, writeNumber } from "./mondayApi";
-import { GENERAL_INSURANCE_INDEX } from "./mondayMapping";
+import {
+  GENERAL_INSURANCE_INDEX, PRIMARY_INSURANCE_INDEX,
+  SECONDARY_INSURANCE_INDEX, SERVING_INDEX,
+} from "./mondayMapping";
 
 /** label → index for every status column this stage writes.
  *  Indices are the ones the columns were created with; they are stable across
@@ -238,4 +241,69 @@ export async function logContactAttempt(itemId: string, current: string | number
   const next = (Number.isFinite(n) ? n : 0) + 1;
   await writeNumber(itemId, COL.attemptCounter, next);
   return next;
+}
+
+
+/** The five verified values on the right pane. These carry forward to Medical
+ *  Necessity, so they are written separately from the left pane's raw claim —
+ *  General Insurance / Member ID stay what the patient told us. */
+export interface VerifiedEdits {
+  primaryInsurance?: string;
+  memberId1?: string;
+  secondaryInsurance?: string;
+  memberId2?: string;
+  serving?: string;
+}
+
+/**
+ * Persist the verified insurance decision. Member ID 2 is REQUIRED when
+ * Secondary is NY Medicaid (HANDOFF §4) — the write is refused rather than
+ * half-applied, because a Medicaid secondary with no ID fails downstream in a
+ * way nobody traces back to here.
+ */
+export async function writeVerifiedInsurance(
+  itemId: string,
+  edits: VerifiedEdits,
+): Promise<IntakeWriteResult> {
+  if ((edits.secondaryInsurance ?? "").trim() === "NY Medicaid" && !(edits.memberId2 ?? "").trim()) {
+    return {
+      ok: false,
+      errors: [{
+        label: "Member ID 2",
+        columnId: COL.memberId2,
+        error: "Required when Secondary Insurance is NY Medicaid.",
+      }],
+    };
+  }
+
+  const tasks: WriteTask[] = [];
+  const status = (label: string, columnId: string, map: Record<string, number>, value?: string) => {
+    if (value === undefined) return;
+    const idx = map[value.trim()];
+    if (idx === undefined) return;
+    tasks.push({ label, columnId, fn: () => writeStatusIndex(itemId, columnId, idx) });
+  };
+
+  status("Primary Insurance", COL.primaryInsurance, PRIMARY_INSURANCE_INDEX, edits.primaryInsurance);
+  status("Secondary Insurance", COL.secondaryInsurance, SECONDARY_INSURANCE_INDEX, edits.secondaryInsurance);
+  status("Serving", COL.serving, SERVING_INDEX, edits.serving);
+  if (edits.memberId1 !== undefined) {
+    tasks.push({ label: "Member ID 1", columnId: COL.memberId1, fn: () => writeText(itemId, COL.memberId1, edits.memberId1 as string) });
+  }
+  if (edits.memberId2 !== undefined) {
+    tasks.push({ label: "Member ID 2", columnId: COL.memberId2, fn: () => writeText(itemId, COL.memberId2, edits.memberId2 as string) });
+  }
+
+  const settled = await Promise.allSettled(tasks.map((t) => t.fn()));
+  const errors: IntakeWriteResult["errors"] = [];
+  settled.forEach((r, i) => {
+    if (r.status === "rejected") {
+      errors.push({
+        label: tasks[i].label,
+        columnId: tasks[i].columnId,
+        error: r.reason instanceof Error ? r.reason.message : String(r.reason),
+      });
+    }
+  });
+  return { ok: errors.length === 0, errors };
 }
