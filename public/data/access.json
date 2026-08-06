@@ -31,7 +31,8 @@
       "roles": [
         "benefits",
         "submitAuth",
-        "authOutstanding"
+        "authOutstanding",
+        "assignedPatients"
       ]
     },
     "josh@medicallymodern.com": {
