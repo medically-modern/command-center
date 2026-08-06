@@ -27,3 +27,6 @@ dist-ssr
 .env
 .env.local
 public/data/baseline.json
+
+# tsc -b build-mode artifacts
+*.tsbuildinfo
