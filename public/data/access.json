@@ -140,9 +140,7 @@
     },
     "janelle@medicallymodern.com": {
       "name": "Janelle",
-      "roles": [
-        "assignedPatients"
-      ],
+      "roles": [],
       "roleFilters": {}
     }
   }
