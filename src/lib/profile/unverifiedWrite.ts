@@ -208,7 +208,7 @@ export async function writeIntakeEdits(itemId: string, edits: IntakeEdits): Prom
     tasks.push({
       label: "Attempt Counter",
       columnId: COL.attemptCounter,
-      fn: () => writeNumber(itemId, COL.attemptCounter, edits.attemptCounter as number),
+      fn: () => writeNumber(itemId, COL.attemptCounter, String(edits.attemptCounter)),
     });
   }
 
@@ -239,7 +239,7 @@ export async function writeIntakeEdits(itemId: string, edits: IntakeEdits): Prom
 export async function logContactAttempt(itemId: string, current: string | number): Promise<number> {
   const n = typeof current === "number" ? current : parseInt(String(current || "0"), 10);
   const next = (Number.isFinite(n) ? n : 0) + 1;
-  await writeNumber(itemId, COL.attemptCounter, next);
+  await writeNumber(itemId, COL.attemptCounter, String(next));
   return next;
 }
 
@@ -390,4 +390,15 @@ export function proposeIntakeStuck(itemId: string, reason: string, existingNotes
 /** Manager sends the patient back into the rep pipeline. */
 export function returnIntakeToPipeline(itemId: string, note: string, existingNotes?: string) {
   return setEscalation(itemId, INTAKE_ESCALATION_INDEX.done, `Returned to pipeline: ${note}`, existingNotes);
+}
+
+/** Manager approves the rep's proposal — the patient really is Stuck. Keeps
+ *  the Final Escalation index and records the decision in the note log. */
+export function approveIntakeStuck(itemId: string, note: string, existingNotes?: string) {
+  return setEscalation(
+    itemId,
+    INTAKE_ESCALATION_INDEX.finalRequired,
+    `Stuck approved${note.trim() ? `: ${note.trim()}` : ""}`,
+    existingNotes,
+  );
 }

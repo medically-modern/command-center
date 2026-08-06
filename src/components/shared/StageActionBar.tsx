@@ -40,12 +40,24 @@ import {
   returnProposedToQueue,
 } from "@/lib/oversight/oversightApi";
 import { managerOriginFromParams } from "@/lib/shared/managerOrigin";
+import {
+  proposeIntakeStuck, returnIntakeToPipeline, approveIntakeStuck,
+} from "@/lib/profile/unverifiedWrite";
 import { actionsFor, proposeStuckLevel, type StageAction, type StageKey } from "@/lib/shared/stageActions";
 import { useBackNavigation } from "@/hooks/useBackNavigation";
 import { ProposeStuckModal } from "@/components/masheke/ProposeStuckModal";
 import { ProposeStuckButton } from "@/components/samantha/ProposeStuckButton";
 
-export type StageBoard = "masheke" | "insurance";
+export type StageBoard = "masheke" | "insurance" | "profile";
+
+/** Every board dispatch below is an exhaustive switch, not an if/else. The
+ *  previous binary form treated masheke as the `else`, so adding a board would
+ *  have silently routed its patients into the masheke escalation columns —
+ *  wrong board, no type error, no runtime error. A switch with a `never` guard
+ *  turns that same mistake into a compile failure. */
+function unhandledBoard(board: never): never {
+  throw new Error(`StageActionBar: no write path for board "${String(board)}"`);
+}
 
 interface Props {
   stage: StageKey;
@@ -85,15 +97,30 @@ export function StageActionBar({ stage, board, patientId, patientName, escalatio
     setBusy(action);
     try {
       if (action === "approveStuck") {
-        if (board === "insurance") await approveInsuranceStuck(patientId, note);
-        else await approveProposedStuck(patientId, note);
+        switch (board) {
+          case "insurance": await approveInsuranceStuck(patientId, note); break;
+          case "masheke":   await approveProposedStuck(patientId, note); break;
+          case "profile":   await approveIntakeStuck(patientId, note ?? ""); break;
+          default: unhandledBoard(board);
+        }
         toast.success(`${patientName} marked Stuck`);
       } else if (action === "returnToManager") {
-        await returnInsuranceToManager(patientId, note);
+        // Only the Insurance board hands a patient DOWN a rung today.
+        switch (board) {
+          case "insurance": await returnInsuranceToManager(patientId, note); break;
+          case "masheke":
+          case "profile":
+            throw new Error(`"Send back to Manager Intervention" is not wired for the ${board} board`);
+          default: unhandledBoard(board);
+        }
         toast.success(`${patientName} sent back to Manager Intervention`);
       } else {
-        if (board === "insurance") await returnInsuranceToQueue(patientId, note);
-        else await returnProposedToQueue(patientId, note);
+        switch (board) {
+          case "insurance": await returnInsuranceToQueue(patientId, note); break;
+          case "masheke":   await returnProposedToQueue(patientId, note); break;
+          case "profile":   await returnIntakeToPipeline(patientId, note ?? "Returned by a manager"); break;
+          default: unhandledBoard(board);
+        }
         toast.success(`${patientName} sent back to the pipeline`);
       }
       setApproveOpen(false);
@@ -139,12 +166,19 @@ export function StageActionBar({ stage, board, patientId, patientName, escalatio
             >
               <AlertTriangle className="h-4 w-4" /> Propose Stuck
             </Button>
+            {/* Same modal for both remaining boards — only the write differs,
+                so the rep sees identical copy and behaviour either way. */}
             <ProposeStuckModal
               open={proposeOpen}
               onOpenChange={setProposeOpen}
               patientId={patientId}
               patientName={patientName}
               onSuccess={onDone}
+              onConfirm={
+                board === "profile"
+                  ? async (reason) => { await proposeIntakeStuck(patientId, reason); }
+                  : undefined
+              }
             />
           </>
         ))}

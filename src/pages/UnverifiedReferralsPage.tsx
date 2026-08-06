@@ -36,6 +36,10 @@ import {
   suggestPrimary, suggestSecondary, buildSuggestionInputs,
 } from "@/lib/profile/primaryInsurance";
 import type { Patient } from "@/lib/profile/workflow";
+// The shared bar, so this stage's Propose Stuck / Send back to pipeline are
+// literally the same component and copy Medical Evaluation uses — not a
+// lookalike that can drift from it.
+import { StageActionBar } from "@/components/shared/StageActionBar";
 // DoctorSection's markup is scoped under .pf-root — same stylesheet the
 // send-off page loads, so the component looks identical in both places.
 import "./profile/redesign.css";
@@ -195,7 +199,7 @@ const UnverifiedReferralsPage = () => {
     seededFor.current = key;
     setVerified({
       primaryInsurance: selected.primaryInsurance || suggestion?.primary?.value || "",
-      memberId1: selected.memberId1 || selected.memberIdWorking || "",
+      memberId1: selected.memberId1 || selected.workingMemberId || "",
       secondaryInsurance: selected.secondaryInsurance || suggestion?.secondary || "",
       memberId2: selected.memberId2 || "",
       serving: selected.serving || selected.requestType || "",
@@ -244,7 +248,7 @@ const UnverifiedReferralsPage = () => {
       dob: selected.dob,
       email: selected.email,
       formState: selected.formState,
-      workingMemberId: selected.memberIdWorking,
+      workingMemberId: selected.workingMemberId,
       generalInsurance: selected.generalInsurance,
       formInsuranceVia: selected.formInsuranceVia,
       formInsuranceOther: selected.formInsuranceOther,
@@ -480,8 +484,8 @@ const UnverifiedReferralsPage = () => {
                   <Field label="General Insurance" value={selected.generalInsurance} />
                   <EditText
                     label="Member ID (Stedi reads this)"
-                    value={selected.memberIdWorking ?? ""}
-                    onChange={(v) => edit({ memberIdWorking: v })}
+                    value={selected.workingMemberId ?? ""}
+                    onChange={(v) => edit({ workingMemberId: v })}
                   />
                   <EditSelect
                     label="Provided via"
@@ -714,7 +718,7 @@ const UnverifiedReferralsPage = () => {
                     )}
                     {suggestion?.primary?.warnings?.map((w, i) => (
                       <p key={i} className="mt-2 rounded-md bg-amber-50 border border-amber-200 px-3 py-2 text-xs text-amber-900">
-                        {typeof w === "string" ? w : w.text}
+                        {typeof w === "string" ? w : w.message}
                       </p>
                     ))}
 
@@ -751,33 +755,29 @@ const UnverifiedReferralsPage = () => {
                       {selected.intakeEscalation === "Final Escalation Required" && " — awaiting a Final Decision."}
                     </p>
                   ) : null}
-                  <EditText
-                    label="Reason / note"
-                    value={escalateReason}
-                    placeholder="What's blocking this patient?"
-                    onChange={setEscalateReason}
+                  <StageActionBar
+                    stage="unverified-intake"
+                    board="profile"
+                    patientId={selected.id}
+                    patientName={selected.name}
+                    escalationLabel={selected.intakeEscalation}
+                    onDone={() => { void refetch(true); }}
                   />
-                  <div className="flex flex-wrap gap-2 mt-2">
+                  {/* Escalate is this stage's own exit — it has no equivalent
+                      on the shared bar, which starts at Propose Stuck. */}
+                  <div className="mt-3">
+                    <EditText
+                      label="Escalate — reason"
+                      value={escalateReason}
+                      placeholder="What's blocking this patient?"
+                      onChange={setEscalateReason}
+                    />
                     <button
                       onClick={() => runStageAction("escalate")}
                       disabled={saving}
-                      className="rounded-md border border-amber-400 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-900 disabled:opacity-50"
+                      className="mt-2 rounded-md border border-amber-400 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-900 disabled:opacity-50"
                     >
                       Escalate — doesn't qualify
-                    </button>
-                    <button
-                      onClick={() => runStageAction("proposeStuck")}
-                      disabled={saving}
-                      className="rounded-md border border-red-300 bg-red-50 px-3 py-1.5 text-xs font-semibold text-red-800 disabled:opacity-50"
-                    >
-                      Propose stuck
-                    </button>
-                    <button
-                      onClick={() => runStageAction("return")}
-                      disabled={saving}
-                      className="rounded-md border px-3 py-1.5 text-xs font-semibold disabled:opacity-50"
-                    >
-                      Send back to pipeline
                     </button>
                   </div>
                   {selected.intakeEscalationNotes?.trim() && (

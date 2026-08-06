@@ -90,7 +90,7 @@ export function useStediRun() {
       name: p.name,
       dob: p.dob ?? "",
       generalInsurance: p.generalInsurance ?? "",
-      workingMemberId: p.memberIdWorking ?? "",
+      workingMemberId: p.workingMemberId ?? "",
     };
 
     let verified: { ok: boolean; mismatches: string[] } = { ok: false, mismatches: ["not attempted"] };

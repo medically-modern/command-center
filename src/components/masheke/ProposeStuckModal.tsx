@@ -38,9 +38,13 @@ interface Props {
   patientId: string;
   patientName: string;
   onSuccess: () => void;
+  /** Override the write for a board other than Medical Evaluation. Given the
+   *  rep's reason, it must stamp the note and flip that board's escalation to
+   *  its Final/proposed-stuck index. Omitted = the MN behaviour below. */
+  onConfirm?: (reason: string) => Promise<void>;
 }
 
-export function ProposeStuckModal({ open, onOpenChange, patientId, patientName, onSuccess }: Props) {
+export function ProposeStuckModal({ open, onOpenChange, patientId, patientName, onSuccess, onConfirm }: Props) {
   const [reason, setReason] = useState("");
   const [sending, setSending] = useState(false);
 
@@ -56,11 +60,15 @@ export function ProposeStuckModal({ open, onOpenChange, patientId, patientName, 
       // surfaces the patient in the manager's Final Decisions, so the reason must
       // already be in the notes when they look. Read the notes fresh so a
       // concurrent edit isn't clobbered.
-      const existing = await fetchItemColumnTexts(patientId, [COL.mnEvalNotes]);
-      const stamped = stampProposedStuck(reason.trim(), etToday(), userInitials());
-      const appended = appendStampedLine(existing[COL.mnEvalNotes], stamped);
-      await writeLongText(patientId, COL.mnEvalNotes, appended);
-      await writeStatusIndex(patientId, COL.escalation, ESCALATION_INDEX.finalRequired);
+      if (onConfirm) {
+        await onConfirm(reason.trim());
+      } else {
+        const existing = await fetchItemColumnTexts(patientId, [COL.mnEvalNotes]);
+        const stamped = stampProposedStuck(reason.trim(), etToday(), userInitials());
+        const appended = appendStampedLine(existing[COL.mnEvalNotes], stamped);
+        await writeLongText(patientId, COL.mnEvalNotes, appended);
+        await writeStatusIndex(patientId, COL.escalation, ESCALATION_INDEX.finalRequired);
+      }
       toast.success(`${patientName} proposed as Stuck — sent to the manager for a decision`);
       onOpenChange(false);
       setReason("");

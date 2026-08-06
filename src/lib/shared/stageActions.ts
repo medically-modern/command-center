@@ -32,7 +32,9 @@ export type StageKey =
   | "submit-auth"
   | "auth-outstanding"
   | "dvs"
-  | "doctor-appointments";
+  | "doctor-appointments"
+  /** Unverified Referrals — the DTC + CareCentrix intake stage. */
+  | "unverified-intake";
 
 /**
  * A button the bar can render.

@@ -329,7 +329,7 @@ const RAW_CHART_DEFS: ChartDef[] = [
     boardId: 18406352652,
     notesColId: "long_text_mm5z3sq9",
     rowOf: "profile-send-off-unverified",
-    proposedReasonColId: "long_text_mm5z3sq9",
+    reasonColId: "long_text_mm5z3sq9",
     drilldownCols: PROFILE_COLS,
   },
   {
