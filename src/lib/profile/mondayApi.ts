@@ -45,6 +45,13 @@ export const COL = {
   formCallSlot: "text_mm5za6zx",
   formBookingStatus: "color_mm5zrbn3",
 
+  /** Mirrors the Medical Evaluation escalation model exactly:
+   *  0 = "Manager Escalation Required" (→ Manager Intervention)
+   *  1 = "Done" (resolved / back in the rep pipeline)
+   *  2 = "Final Escalation Required" (Proposed Stuck → Final Decisions) */
+  intakeEscalation: "color_mm5zww42",
+  intakeEscalationNotes: "long_text_mm5z3sq9",
+
   // ── Rep-entered on the intake call (HANDOFF §9) ──
   // Deliberately NOT on the patient form — these are phone-call answers.
   selfAdvocacy: "color_mm5z31hs",
@@ -229,6 +236,7 @@ export const READ_COLUMN_IDS: string[] = [
   // Rep-entered on the intake call
   COL.selfAdvocacy, COL.currentOopCost, COL.cgmDataAwareness,
   COL.attemptCounter, COL.intakeCallComplete,
+  COL.intakeEscalation, COL.intakeEscalationNotes,
 ];
 
 export interface MondayColumnValue {

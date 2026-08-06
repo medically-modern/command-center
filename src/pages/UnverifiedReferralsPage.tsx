@@ -24,6 +24,7 @@ import {
 } from "@/lib/profile/mondayMapping";
 import {
   writeIntakeEdits, writeVerifiedInsurance, logContactAttempt,
+  advanceToMedicalNecessity, escalateIntake, proposeIntakeStuck, returnIntakeToPipeline,
   type IntakeEdits, type VerifiedEdits,
 } from "@/lib/profile/unverifiedWrite";
 import { useStediRun, STEDI_POLL_MS } from "@/hooks/profile/useStediRun";
@@ -255,6 +256,40 @@ const UnverifiedReferralsPage = () => {
       setSaving(false);
     }
   }, [selected, refetch]);
+
+  const [escalateReason, setEscalateReason] = useState("");
+
+  const runStageAction = useCallback(
+    async (kind: "advance" | "escalate" | "proposeStuck" | "return") => {
+      if (!selected) return;
+      if (kind !== "advance" && !escalateReason.trim()) {
+        setSaveNote("Add a reason first — a manager can't action a blank escalation.");
+        return;
+      }
+      setSaving(true);
+      setSaveNote(null);
+      try {
+        const notes = selected.intakeEscalationNotes;
+        const res =
+          kind === "advance" ? await advanceToMedicalNecessity(selected.id)
+          : kind === "escalate" ? await escalateIntake(selected.id, escalateReason, notes)
+          : kind === "proposeStuck" ? await proposeIntakeStuck(selected.id, escalateReason, notes)
+          : await returnIntakeToPipeline(selected.id, escalateReason, notes);
+        setSaveNote(
+          res.ok
+            ? kind === "advance" ? "Advanced to Medical Necessity."
+              : kind === "escalate" ? "Escalated to Manager Intervention."
+              : kind === "proposeStuck" ? "Proposed stuck — sent to Final Decisions."
+              : "Sent back to the pipeline."
+            : res.errors.map((e) => `${e.label}: ${e.error}`).join(" · "),
+        );
+        if (res.ok) { setEscalateReason(""); await refetch(true); }
+      } finally {
+        setSaving(false);
+      }
+    },
+    [selected, escalateReason, refetch],
+  );
 
   // Declared after save() deliberately: naming it in the dependency array
   // before the const initialises would throw on first render.
@@ -578,10 +613,11 @@ const UnverifiedReferralsPage = () => {
                       ))}
                     </ul>
                     <button
-                      disabled={!unlock.unlocked}
+                      onClick={() => runStageAction("advance")}
+                      disabled={!unlock.unlocked || saving}
                       className="mt-4 w-full rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground disabled:opacity-40"
                     >
-                      {unlock.unlocked ? "Advance to Profile Clean-Up" : "Locked"}
+                      {unlock.unlocked ? "Advance to Medical Necessity" : "Locked"}
                     </button>
                   </>
                 )}
@@ -656,6 +692,52 @@ const UnverifiedReferralsPage = () => {
                     </button>
                   </Card>
                 </div>
+              </div>
+
+              <div className="mt-4">
+                <Card title="Escalation">
+                  {selected.intakeEscalation?.trim() ? (
+                    <p className="mb-3 rounded-md bg-amber-50 border border-amber-200 px-3 py-2 text-xs text-amber-900">
+                      Currently: <strong>{selected.intakeEscalation}</strong>
+                      {selected.intakeEscalation === "Manager Escalation Required" && " — with Manager Intervention."}
+                      {selected.intakeEscalation === "Final Escalation Required" && " — awaiting a Final Decision."}
+                    </p>
+                  ) : null}
+                  <EditText
+                    label="Reason / note"
+                    value={escalateReason}
+                    placeholder="What's blocking this patient?"
+                    onChange={setEscalateReason}
+                  />
+                  <div className="flex flex-wrap gap-2 mt-2">
+                    <button
+                      onClick={() => runStageAction("escalate")}
+                      disabled={saving}
+                      className="rounded-md border border-amber-400 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-900 disabled:opacity-50"
+                    >
+                      Escalate — doesn't qualify
+                    </button>
+                    <button
+                      onClick={() => runStageAction("proposeStuck")}
+                      disabled={saving}
+                      className="rounded-md border border-red-300 bg-red-50 px-3 py-1.5 text-xs font-semibold text-red-800 disabled:opacity-50"
+                    >
+                      Propose stuck
+                    </button>
+                    <button
+                      onClick={() => runStageAction("return")}
+                      disabled={saving}
+                      className="rounded-md border px-3 py-1.5 text-xs font-semibold disabled:opacity-50"
+                    >
+                      Send back to pipeline
+                    </button>
+                  </div>
+                  {selected.intakeEscalationNotes?.trim() && (
+                    <pre className="mt-3 max-h-40 overflow-y-auto whitespace-pre-wrap rounded-md bg-muted/40 px-3 py-2 text-[11px]">
+                      {selected.intakeEscalationNotes}
+                    </pre>
+                  )}
+                </Card>
               </div>
 
               {(selected.alreadyInSystem ?? "").toLowerCase() === "yes" && (

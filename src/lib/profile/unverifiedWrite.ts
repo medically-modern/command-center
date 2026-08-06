@@ -18,10 +18,10 @@
  *     in the Provided * columns and are never overwritten (HANDOFF §6.0).
  */
 
-import { COL, writeStatusIndex, writeText, writeNumber } from "./mondayApi";
+import { COL, writeStatusIndex, writeText, writeNumber, writeLongText } from "./mondayApi";
 import {
   GENERAL_INSURANCE_INDEX, PRIMARY_INSURANCE_INDEX,
-  SECONDARY_INSURANCE_INDEX, SERVING_INDEX,
+  SECONDARY_INSURANCE_INDEX, SERVING_INDEX, MOVE_TO_ONBOARDING_INDEX,
 } from "./mondayMapping";
 
 /** label → index for every status column this stage writes.
@@ -306,4 +306,88 @@ export async function writeVerifiedInsurance(
     }
   });
   return { ok: errors.length === 0, errors };
+}
+
+// ── Stage exits ─────────────────────────────────────────────────────────────
+// The intake stage mirrors Medical Evaluation's escalation model rather than
+// inventing a second one: index 0 raises to Manager Intervention, index 2 is
+// the rep's Propose Stuck which promotes to Final Decisions, index 1 clears
+// the escalation and puts the patient back in the rep pipeline.
+
+export const INTAKE_ESCALATION_INDEX = {
+  /** Escalated to a manager — leaves the rep queue and the burndown count. */
+  required: 0,
+  /** Resolved. "Send back to pipeline" writes this. */
+  done: 1,
+  /** The rep's proposal that the patient really is stuck → Final Decisions. */
+  finalRequired: 2,
+} as const;
+
+/** Timestamped, append-style so a decision never overwrites its own history. */
+function appendNote(existing: string | undefined, note: string): string {
+  const stamp = new Date().toISOString().slice(0, 16).replace("T", " ");
+  const line = `[${stamp}] ${note}`;
+  return existing?.trim() ? `${existing.trim()}\n${line}` : line;
+}
+
+/**
+ * Advance to Medical Necessity. Writes Move to Onboarding = "Advance to MN",
+ * which is what the board automation watches to create the Masheke item and
+ * move the patient on — the same signal the send-off page uses.
+ */
+export async function advanceToMedicalNecessity(itemId: string): Promise<IntakeWriteResult> {
+  const idx = MOVE_TO_ONBOARDING_INDEX["Advance to MN"];
+  try {
+    await writeStatusIndex(itemId, COL.moveToOnboarding, idx);
+    return { ok: true, errors: [] };
+  } catch (e) {
+    return {
+      ok: false,
+      errors: [{
+        label: "Move to Onboarding",
+        columnId: COL.moveToOnboarding,
+        error: e instanceof Error ? e.message : String(e),
+      }],
+    };
+  }
+}
+
+async function setEscalation(
+  itemId: string, index: number, note: string, existingNotes?: string,
+): Promise<IntakeWriteResult> {
+  const errors: IntakeWriteResult["errors"] = [];
+  // Notes first: if the status lands and the note doesn't, a manager sees an
+  // escalation with no reason attached.
+  try {
+    await writeLongText(itemId, COL.intakeEscalationNotes, appendNote(existingNotes, note));
+  } catch (e) {
+    errors.push({
+      label: "Escalation notes", columnId: COL.intakeEscalationNotes,
+      error: e instanceof Error ? e.message : String(e),
+    });
+  }
+  try {
+    await writeStatusIndex(itemId, COL.intakeEscalation, index);
+  } catch (e) {
+    errors.push({
+      label: "Intake Escalation", columnId: COL.intakeEscalation,
+      error: e instanceof Error ? e.message : String(e),
+    });
+  }
+  return { ok: errors.length === 0, errors };
+}
+
+/** Rep → Manager Intervention. */
+export function escalateIntake(itemId: string, reason: string, existingNotes?: string) {
+  return setEscalation(itemId, INTAKE_ESCALATION_INDEX.required, `Escalated: ${reason}`, existingNotes);
+}
+
+/** Rep's proposal that the patient is stuck → Final Decisions. */
+export function proposeIntakeStuck(itemId: string, reason: string, existingNotes?: string) {
+  return setEscalation(itemId, INTAKE_ESCALATION_INDEX.finalRequired, `Proposed stuck: ${reason}`, existingNotes);
+}
+
+/** Manager sends the patient back into the rep pipeline. */
+export function returnIntakeToPipeline(itemId: string, note: string, existingNotes?: string) {
+  return setEscalation(itemId, INTAKE_ESCALATION_INDEX.done, `Returned to pipeline: ${note}`, existingNotes);
 }

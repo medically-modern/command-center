@@ -52,6 +52,9 @@ export interface Patient {
   cgmDataAwareness: string;
   attemptCounter: string;
   intakeCallComplete: string;
+  /** "Manager Escalation Required" | "Done" | "Final Escalation Required" */
+  intakeEscalation: string;
+  intakeEscalationNotes: string;
 
   // ── Follow Up ──
   followUp: string;
