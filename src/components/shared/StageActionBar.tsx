@@ -176,7 +176,15 @@ export function StageActionBar({ stage, board, patientId, patientName, escalatio
               onSuccess={onDone}
               onConfirm={
                 board === "profile"
-                  ? async (reason) => { await proposeIntakeStuck(patientId, reason); }
+                  ? async (reason) => {
+                      // Same ladder as Insurance/Medical Evaluation: a rep's
+                      // proposal lands in Manager Intervention, a manager's
+                      // proposal from there promotes to Final Decisions.
+                      await proposeIntakeStuck(
+                        patientId, reason, undefined,
+                        proposeStuckLevel(stage, origin, escalationLabel),
+                      );
+                    }
                   : undefined
               }
             />

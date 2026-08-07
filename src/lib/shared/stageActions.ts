@@ -134,6 +134,7 @@ export function proposeStuckLevel(
   if (label === "Manager Escalation Required" || label === "Final Escalation Required") return "final";
   if (origin === "manager-intervention") return "final";
   return stage === "submit-auth" || stage === "dvs" || stage === "doctor-appointments"
+    || stage === "unverified-intake"
     ? "manager"
     : "final";
 }

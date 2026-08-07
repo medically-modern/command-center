@@ -39,9 +39,14 @@ interface Props {
   error: string | null;
   onRefresh: () => void;
   hasOverlay?: (id: string) => boolean;
+  /** Optional filter chips rendered under the sidebar header. Used by Patient
+   *  Intake, whose queue is split by Monday GROUP rather than by a status
+   *  column, so the split belongs next to the list it filters. Omitted by
+   *  Verified Referrals, which has a single pool. */
+  filters?: React.ReactNode;
 }
 
-export function PatientsSidebar({ patients, selectedId, onSelect, loading, error, onRefresh, hasOverlay }: Props) {
+export function PatientsSidebar({ patients, selectedId, onSelect, loading, error, onRefresh, hasOverlay, filters }: Props) {
   const { state } = useSidebar();
   const [searchQuery, setSearchQuery] = useState("");
 
@@ -112,6 +117,7 @@ export function PatientsSidebar({ patients, selectedId, onSelect, loading, error
             )}
           </div>
         )}
+        {filters && <div className="mt-2.5 flex flex-wrap gap-1.5">{filters}</div>}
       </SidebarHeader>
 
       <SidebarContent>

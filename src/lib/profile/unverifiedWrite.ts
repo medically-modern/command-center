@@ -20,7 +20,7 @@
 
 import {
   COL, GROUPS, writeStatusIndex, writeText, writeNumber, writeLongText, writeItemName,
-  writePhone, moveItemToGroup,
+  writePhone, moveItemToGroup, readColumnTexts,
 } from "./mondayApi";
 import {
   GENERAL_INSURANCE_INDEX, PRIMARY_INSURANCE_INDEX,
@@ -412,10 +412,24 @@ async function setEscalation(
   itemId: string, index: number, note: string, existingNotes?: string,
 ): Promise<IntakeWriteResult> {
   const errors: IntakeWriteResult["errors"] = [];
+  // Read the CURRENT log rather than trusting the caller to have passed it.
+  // StageActionBar can't know it, and calling appendNote(undefined, …) writes
+  // only the new line — silently destroying every earlier escalation note.
+  let prior = existingNotes;
+  if (prior === undefined) {
+    try {
+      const cols = await readColumnTexts(itemId, [COL.intakeEscalationNotes]);
+      prior = cols.find((c) => c.id === COL.intakeEscalationNotes)?.text ?? "";
+    } catch {
+      // Couldn't read it — append to nothing rather than fail the escalation,
+      // but never overwrite on a read we didn't get.
+      prior = "";
+    }
+  }
   // Notes first: if the status lands and the note doesn't, a manager sees an
   // escalation with no reason attached.
   try {
-    await writeLongText(itemId, COL.intakeEscalationNotes, appendNote(existingNotes, note));
+    await writeLongText(itemId, COL.intakeEscalationNotes, appendNote(prior, note));
   } catch (e) {
     errors.push({
       label: "Escalation notes", columnId: COL.intakeEscalationNotes,
@@ -438,9 +452,27 @@ export function escalateIntake(itemId: string, reason: string, existingNotes?: s
   return setEscalation(itemId, INTAKE_ESCALATION_INDEX.required, `Escalated: ${reason}`, existingNotes);
 }
 
-/** Rep's proposal that the patient is stuck → Final Decisions. */
-export function proposeIntakeStuck(itemId: string, reason: string, existingNotes?: string) {
-  return setEscalation(itemId, INTAKE_ESCALATION_INDEX.finalRequired, `Proposed stuck: ${reason}`, existingNotes);
+/**
+ * Propose Stuck, one rung UP from wherever the patient already sits — the same
+ * ladder Medical Evaluation and Submit Auth use (`stageActions.proposeStuckLevel`):
+ * a rep's proposal lands in Manager Intervention, and a manager proposing from
+ * there — or a proposal on an already-escalated patient — promotes to Final
+ * Decisions.
+ *
+ * It used to write Final unconditionally, which skipped Manager Intervention
+ * entirely: a rep could put a patient one click from leaving the pipeline with
+ * no manager ever reviewing the proposal.
+ */
+export function proposeIntakeStuck(
+  itemId: string,
+  reason: string,
+  existingNotes?: string,
+  level: "manager" | "final" = "manager",
+) {
+  const index = level === "final"
+    ? INTAKE_ESCALATION_INDEX.finalRequired
+    : INTAKE_ESCALATION_INDEX.required;
+  return setEscalation(itemId, index, `Proposed stuck: ${reason}`, existingNotes);
 }
 
 /** Manager sends the patient back into the rep pipeline. */

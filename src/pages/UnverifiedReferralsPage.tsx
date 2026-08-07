@@ -54,19 +54,18 @@ import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import "./profile/redesign.css";
 import "./profile/intake.css";
 
-/** Which pool is on screen. This role is the DTC + CareCentrix queue: "intake"
- *  is the 1. Intake group (CareCentrix + legacy referrals); the other two are
- *  the DTC intake form's own groups on the same board. */
-type Source = "intake" | "completed" | "partial";
+/** This queue is the DTC form's two groups and nothing else. "Referrals"
+ *  (the 1. Intake group) was a third option here and is gone: that group is
+ *  Verified Referrals' queue, and it is where this stage ADVANCES patients to,
+ *  so listing it here showed reps the stage they'd already handed off to. */
+type Source = "completed" | "partial";
 
-const SOURCE_GROUP: Record<Source, string | undefined> = {
-  intake: undefined, // hook default — GROUPS.intake
+const SOURCE_GROUP: Record<Source, string> = {
   completed: GROUPS.newFormCompleted,
   partial: GROUPS.newFormPartial,
 };
 
 const SOURCE_LABEL: Record<Source, string> = {
-  intake: "Referrals",
   completed: "Completed forms",
   partial: "Partial forms",
 };
@@ -167,8 +166,7 @@ const UnverifiedReferralsPage = () => {
   const [searchParams, setSearchParams] = useSearchParams();
 
   const sourceParam = searchParams.get("source");
-  const source: Source =
-    sourceParam === "completed" || sourceParam === "partial" ? sourceParam : "intake";
+  const source: Source = sourceParam === "partial" ? "partial" : "completed";
 
   const {
     patients, loading, initialLoading, error, refetch, updateLocal, hasOverlay,
@@ -307,7 +305,7 @@ const UnverifiedReferralsPage = () => {
 
   const switchSource = useCallback((next: Source) => {
     const params = new URLSearchParams(searchParams);
-    if (next === "intake") params.delete("source");
+    if (next === "completed") params.delete("source");
     else params.set("source", next);
     // Selection is per-pool; carrying it over would deep-link a patient that
     // isn't in the list being switched to.
@@ -470,6 +468,21 @@ const UnverifiedReferralsPage = () => {
              unsaved-edit marker. Without it this sidebar silently loses a
              cue reps rely on, which is most of why it read as "odd". */
           hasOverlay={hasOverlay}
+          filters={(Object.keys(SOURCE_GROUP) as Source[]).map((sKey) => (
+            <button
+              key={sKey}
+              type="button"
+              onClick={() => switchSource(sKey)}
+              className={
+                "rounded-full px-2.5 py-1 text-[11px] font-semibold transition-colors " +
+                (source === sKey
+                  ? "bg-primary text-primary-foreground"
+                  : "bg-muted text-muted-foreground hover:bg-muted/70")
+              }
+            >
+              {SOURCE_LABEL[sKey]}
+            </button>
+          ))}
         />
 
         {/* panes-host is the CONTAINER the two-pane split queries against, so
@@ -486,21 +499,6 @@ const UnverifiedReferralsPage = () => {
                 <div className="min-w-0">
                   <p className="text-[10px] uppercase tracking-[0.2em] opacity-70">Medically Modern</p>
                   <h1 className="text-2xl font-bold">Patient Intake — DTC &amp; CareCentrix</h1>
-                  <div className="flex items-center gap-1.5 mt-1.5">
-                    {(Object.keys(SOURCE_GROUP) as Source[]).map((s) => (
-                      <button
-                        key={s}
-                        type="button"
-                        onClick={() => switchSource(s)}
-                        className={
-                          "rounded-full px-3 py-1 text-xs font-semibold transition-colors " +
-                          (source === s ? "bg-white text-navy shadow" : "bg-white/10 text-white/80 hover:bg-white/20")
-                        }
-                      >
-                        {SOURCE_LABEL[s]}
-                      </button>
-                    ))}
-                  </div>
                 </div>
               </div>
             </div>
@@ -919,13 +917,18 @@ const UnverifiedReferralsPage = () => {
                         chip / confidence label / alternates furniture (§4).
                         Hard blocks stay visible banners below — the hover is
                         for explaining a normal pick, never for hiding a problem. */}
+                    {/* The engine's reasoning, always readable. It was a
+                        <details> the rep had to click open, so in practice the
+                        pre-fill arrived unexplained — the opposite of §4's
+                        "PRE-FILLS, it does not suggest" intent. */}
                     {suggestion?.primary && (
-                      <details className="mt-3 rounded-md border bg-muted/40 px-3 py-2">
-                        <summary className="cursor-pointer text-xs font-medium">
-                          Why {suggestion.primary.value || "this"}? ({suggestion.primary.confidence} confidence)
-                        </summary>
-                        <p className="mt-2 text-xs text-muted-foreground">{suggestion.primary.reason}</p>
-                      </details>
+                      <div className="why">
+                        <div className="why-h">
+                          Why {suggestion.primary.value || "this"}?
+                          <span className="conf">{suggestion.primary.confidence} confidence</span>
+                        </div>
+                        <p className="why-b">{suggestion.primary.reason}</p>
+                      </div>
                     )}
                     {suggestion?.primary?.warnings?.map((w, i) => (
                       <p key={i} className="mt-2 rounded-md bg-amber-50 border border-amber-200 px-3 py-2 text-xs text-amber-900">
