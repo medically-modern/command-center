@@ -17,7 +17,10 @@ export const ROLES: RoleConfig[] = [
   // unverifiedReferrals, and Already In System = "Yes" patients (whatever
   // their referral) moved to inSystemReferrals.
   { id: "profile",         label: "Verified Referrals", color: "bg-blue-500",    icon: "UserCircle",     route: "/profile"          },
-  { id: "unverifiedReferrals", label: "Unverified Referrals", color: "bg-sky-500", icon: "UserSearch",   route: "/unverified-referrals" },
+  // Label matches the page header. The id stays `unverifiedReferrals` so
+  // existing access.json role assignments keep working — same reason `profile`
+  // kept its id when it was relabelled "Verified Referrals" (CLAUDE.md §5.10).
+  { id: "unverifiedReferrals", label: "Patient Intake — DTC & CareCentrix", color: "bg-sky-500", icon: "UserSearch",   route: "/unverified-referrals" },
   { id: "inSystemReferrals", label: "Already In System", color: "bg-red-600",   icon: "UserRoundCheck", route: "/in-system-referrals" },
   { id: "evaluate",        label: "Evaluate",           color: "bg-violet-500",  icon: "ClipboardCheck", route: "/evaluate"         },
   { id: "sendRequest",     label: "Send Request",       color: "bg-cyan-500",    icon: "Send",           route: "/send-request"     },
