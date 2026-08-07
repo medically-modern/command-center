@@ -31,7 +31,7 @@ import {
 } from "@/lib/profile/mondayMapping";
 import {
   writeIntakeEdits, writeVerifiedInsurance, logContactAttempt,
-  advanceToMedicalNecessity, escalateIntake, proposeIntakeStuck, returnIntakeToPipeline,
+  advanceToProfileCleanUp, escalateIntake, proposeIntakeStuck, returnIntakeToPipeline,
   type IntakeEdits, type VerifiedEdits,
 } from "@/lib/profile/unverifiedWrite";
 import { useStediRun, STEDI_POLL_MS } from "@/hooks/profile/useStediRun";
@@ -400,13 +400,13 @@ const UnverifiedReferralsPage = () => {
       try {
         const notes = selected.intakeEscalationNotes;
         const res =
-          kind === "advance" ? await advanceToMedicalNecessity(selected.id)
+          kind === "advance" ? await advanceToProfileCleanUp(selected.id)
           : kind === "escalate" ? await escalateIntake(selected.id, escalateReason, notes)
           : kind === "proposeStuck" ? await proposeIntakeStuck(selected.id, escalateReason, notes)
           : await returnIntakeToPipeline(selected.id, escalateReason, notes);
         setSaveNote(
           res.ok
-            ? kind === "advance" ? "Advanced to Medical Necessity."
+            ? kind === "advance" ? "Advanced to Verified Referrals — finish the send-off there."
               : kind === "escalate" ? "Escalated to Manager Intervention."
               : kind === "proposeStuck" ? "Proposed stuck — sent to Final Decisions."
               : "Sent back to the pipeline."
@@ -768,24 +768,90 @@ const UnverifiedReferralsPage = () => {
                 )}
               </Card>
 
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={save}
-                  disabled={saving}
-                  className="btn primary"
-                >
-                  {saving ? "Saving…" : "Save"}
-                </button>
-                <button
-                  onClick={logAttempt}
-                  disabled={saving}
-                  className="btn secondary"
-                >
-                  Insufficient — log call attempt
-                </button>
-                {saveNote && <span className="text-sm text-muted-foreground">{saveNote}</span>}
-                {loading && <span className="text-xs text-muted-foreground">refreshing…</span>}
-              </div>
+              {/* HANDOFF §2 "Left-pane exits" — all three live here, at the
+                  bottom of the pane they belong to, as the mockup has them. */}
+              <Card
+                title="Ready to Advance?"
+                tone="decide"
+                right={
+                  <span className={unlock.unlocked ? "pill ok" : "pill warn"}>
+                    {unlock.unlocked ? "Ready" : `${unlock.conditions.filter((c) => !c.passed).length} blocking`}
+                  </span>
+                }
+              >
+                {isPartial ? (
+                  <p className="text-sm text-muted-foreground">
+                    This is an incomplete form. Advancing a partial isn't defined yet — work it as
+                    outreach, or wait for the patient to finish.
+                  </p>
+                ) : (
+                  <>
+                    {/* A disabled button with no explanation is the thing reps
+                        escalate about (§2), so the blockers are always visible. */}
+                    <ul className="space-y-2">
+                      {unlock.conditions.map((c) => (
+                        <li key={c.id} className="flex items-start gap-2 text-sm">
+                          {c.passed ? (
+                            <Check className="h-4 w-4 mt-0.5 text-emerald-600 shrink-0" />
+                          ) : (
+                            <X className="h-4 w-4 mt-0.5 text-muted-foreground shrink-0" />
+                          )}
+                          <div className="min-w-0">
+                            <div className={c.passed ? "" : "text-muted-foreground"}>{c.label}</div>
+                            {!c.passed && <div className="text-[11px] text-amber-700">{c.hint}</div>}
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+
+                    <div className="mt-4 flex flex-wrap items-center gap-2">
+                      <button onClick={save} disabled={saving} className="btn primary">
+                        {saving ? "Saving…" : "Save"}
+                      </button>
+                      <button
+                        onClick={() => runStageAction("advance")}
+                        disabled={!unlock.unlocked || saving}
+                        className="btn primary"
+                        title={unlock.unlocked ? undefined : "Blocked by the checklist above"}
+                      >
+                        Advance to Profile Clean-Up →
+                      </button>
+                      <button onClick={logAttempt} disabled={saving} className="btn secondary">
+                        Insufficient — log call attempt
+                      </button>
+                    </div>
+
+                    {/* Exit 3. Reason is required — a manager can't action a
+                        blank escalation. */}
+                    <div className="mt-3">
+                      <EditText
+                        label="Escalate — reason"
+                        value={escalateReason}
+                        placeholder="What's blocking this patient?"
+                        onChange={setEscalateReason}
+                      />
+                      <button
+                        onClick={() => runStageAction("escalate")}
+                        disabled={saving}
+                        className="btn amber sm mt-2"
+                      >
+                        Escalate — doesn't qualify
+                      </button>
+                    </div>
+
+                    <p className="mt-3 text-[11px] text-muted-foreground">
+                      Advancing moves the patient into Verified Referrals (1. Intake). That stage
+                      finishes the send-off and is what advances them to Medical Necessity.
+                    </p>
+                  </>
+                )}
+                {(saveNote || loading) && (
+                  <div className="mt-3 flex items-center gap-2">
+                    {saveNote && <span className="text-sm text-muted-foreground">{saveNote}</span>}
+                    {loading && <span className="text-xs text-muted-foreground">refreshing…</span>}
+                  </div>
+                )}
+              </Card>
             </div>
 
             {/* ── RIGHT: Patient Profile Clean-Up ──
@@ -813,41 +879,10 @@ const UnverifiedReferralsPage = () => {
                   </span>
                 </div>
 
-              <Card title="Advance to Profile Clean-Up" tone="decide">
-                {isPartial ? (
-                  <p className="text-sm text-muted-foreground">
-                    This is an incomplete form. Advancing a partial isn't defined yet — work it as
-                    outreach, or wait for the patient to finish.
-                  </p>
-                ) : (
-                  <>
-                    <ul className="space-y-2">
-                      {unlock.conditions.map((c) => (
-                        <li key={c.id} className="flex items-start gap-2 text-sm">
-                          {c.passed ? (
-                            <Check className="h-4 w-4 mt-0.5 text-emerald-600 shrink-0" />
-                          ) : (
-                            <X className="h-4 w-4 mt-0.5 text-muted-foreground shrink-0" />
-                          )}
-                          <div className="min-w-0">
-                            <div className={c.passed ? "" : "text-muted-foreground"}>{c.label}</div>
-                            {!c.passed && (
-                              <div className="text-[11px] text-amber-700">{c.hint}</div>
-                            )}
-                          </div>
-                        </li>
-                      ))}
-                    </ul>
-                    <button
-                      onClick={() => runStageAction("advance")}
-                      disabled={!unlock.unlocked || saving}
-                      className="btn primary mt-4 w-full justify-center"
-                    >
-                      {unlock.unlocked ? "Advance to Medical Necessity" : "Locked"}
-                    </button>
-                  </>
-                )}
-              </Card>
+              {/* The advance decision lives at the bottom of the LEFT pane
+                  ("Ready to Advance?"), which is where HANDOFF §2 puts all
+                  three of this stage's exits. This pane is the work you do
+                  AFTER advancing is unblocked, not the place you trigger it. */}
 
               {/* The blur + pointer-events block now come from
                   .panewrap.locked on the pane itself, so this no longer
@@ -1011,23 +1046,9 @@ const UnverifiedReferralsPage = () => {
                     escalationLabel={selected.intakeEscalation}
                     onDone={() => { void refetch(true); }}
                   />
-                  {/* Escalate is this stage's own exit — it has no equivalent
-                      on the shared bar, which starts at Propose Stuck. */}
-                  <div className="mt-3">
-                    <EditText
-                      label="Escalate — reason"
-                      value={escalateReason}
-                      placeholder="What's blocking this patient?"
-                      onChange={setEscalateReason}
-                    />
-                    <button
-                      onClick={() => runStageAction("escalate")}
-                      disabled={saving}
-                      className="btn amber sm mt-2"
-                    >
-                      Escalate — doesn't qualify
-                    </button>
-                  </div>
+                  {/* "Escalate — doesn't qualify" is a LEFT-pane exit (§2) and
+                      lives in Ready to Advance?. What stays here is the shared
+                      manager ladder: Propose Stuck / Approve / Send back. */}
                   {selected.intakeEscalationNotes?.trim() && (
                     <pre className="mt-3 max-h-40 overflow-y-auto whitespace-pre-wrap rounded-md bg-muted/40 px-3 py-2 text-[11px]">
                       {selected.intakeEscalationNotes}
