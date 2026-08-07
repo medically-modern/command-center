@@ -18,10 +18,13 @@
  *     in the Provided * columns and are never overwritten (HANDOFF §6.0).
  */
 
-import { COL, writeStatusIndex, writeText, writeNumber, writeLongText } from "./mondayApi";
+import {
+  COL, writeStatusIndex, writeText, writeNumber, writeLongText, writeItemName, writePhone,
+} from "./mondayApi";
 import {
   GENERAL_INSURANCE_INDEX, PRIMARY_INSURANCE_INDEX,
   SECONDARY_INSURANCE_INDEX, SERVING_INDEX, MOVE_TO_ONBOARDING_INDEX,
+  REQUEST_TYPE_INDEX, CGM_COVERAGE_PATH_INDEX, INSULIN_PUMP_COVERAGE_PATH_INDEX,
 } from "./mondayMapping";
 
 /** label → index for every status column this stage writes.
@@ -102,10 +105,21 @@ export function statusIndexFor(field: IntakeStatusField, label: string | undefin
 /** Everything a rep can edit on the intake stage. All optional — a partial
  *  save must never blank a column the rep didn't touch. */
 export interface IntakeEdits {
-  // Demographics the rep can correct
+  // Demographics the rep can correct. Name and phone come off the form as the
+  // patient typed them, so they are the two most likely to need fixing before
+  // the benefits check runs against them.
+  name?: string;
+  ptPhone?: string;
   dob?: string;
   email?: string;
   formState?: string;
+
+  // Product decision. These share their Monday columns with the Serving &
+  // Coverage card on the right pane — one value, two places to edit it, so
+  // both bind to the same patient field and this writes it once.
+  requestType?: string;
+  cgmCoveragePath?: string;
+  insulinPumpCoveragePath?: string;
 
   // Insurance (left pane — what the patient told us, and what Stedi reads)
   generalInsurance?: string;
@@ -162,10 +176,34 @@ export async function writeIntakeEdits(itemId: string, edits: IntakeEdits): Prom
     tasks.push({ label, columnId, fn: () => writeStatusIndex(itemId, columnId, idx) });
   };
 
+  /** Status write against a map that lives in mondayMapping (shared with the
+   *  send-off page), rather than this file's own INTAKE_STATUS_INDEX. */
+  const mapped = (label: string, columnId: string, map: Record<string, number>, value?: string) => {
+    if (value === undefined) return;
+    const idx = map[value.trim()];
+    if (idx === undefined) return;
+    tasks.push({ label, columnId, fn: () => writeStatusIndex(itemId, columnId, idx) });
+  };
+
   // Demographics
+  // The item NAME is the patient's name — there is no name column.
+  if (edits.name !== undefined && edits.name.trim()) {
+    const nm = edits.name.trim();
+    tasks.push({ label: "Name", columnId: "name", fn: () => writeItemName(itemId, nm) });
+  }
+  if (edits.ptPhone !== undefined) {
+    const ph = edits.ptPhone;
+    tasks.push({ label: "Phone", columnId: COL.ptPhone, fn: () => writePhone(itemId, COL.ptPhone, ph) });
+  }
   text("DOB", COL.dob, edits.dob);
   text("Email", COL.email, edits.email);
   text("State", COL.formState, edits.formState);
+
+  // Product decision
+  mapped("Request Type", COL.requestType, REQUEST_TYPE_INDEX, edits.requestType);
+  mapped("CGM Coverage Path", COL.cgmCoveragePath, CGM_COVERAGE_PATH_INDEX, edits.cgmCoveragePath);
+  mapped("Insulin Pump Coverage Path", COL.insulinPumpCoveragePath,
+    INSULIN_PUMP_COVERAGE_PATH_INDEX, edits.insulinPumpCoveragePath);
 
   // Insurance — General Insurance + Member ID are what the benefits check runs
   // against, so they are the two the rep most often corrects.

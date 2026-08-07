@@ -25,6 +25,8 @@ import { DoctorSection } from "@/components/profile/DoctorSection";
 import { evaluateUnlock } from "@/lib/profile/intakeUnlock";
 import {
   PRIMARY_INSURANCE_INDEX, SECONDARY_INSURANCE_INDEX, SERVING_INDEX,
+  GENERAL_INSURANCE_INDEX, REQUEST_TYPE_INDEX,
+  CGM_COVERAGE_PATH_INDEX, INSULIN_PUMP_COVERAGE_PATH_INDEX,
 } from "@/lib/profile/mondayMapping";
 import {
   writeIntakeEdits, writeVerifiedInsurance, logContactAttempt,
@@ -67,6 +69,15 @@ const SOURCE_LABEL: Record<Source, string> = {
   completed: "Completed forms",
   partial: "Partial forms",
 };
+
+/** "Not Serving" is a real board label but never a pickable option — same rule
+ *  ProfilePage applies, so the two pages offer identical choices. */
+const noNotServing = (labels: string[]) => labels.filter((l) => l !== "Not Serving");
+const SERVING_OPTS = noNotServing(Object.keys(SERVING_INDEX));
+const REQUEST_TYPE_OPTS = noNotServing(Object.keys(REQUEST_TYPE_INDEX));
+const CGM_PATH_OPTS = noNotServing(Object.keys(CGM_COVERAGE_PATH_INDEX));
+const IP_PATH_OPTS = noNotServing(Object.keys(INSULIN_PUMP_COVERAGE_PATH_INDEX));
+const GENERAL_INSURANCE_OPTS = Object.keys(GENERAL_INSURANCE_INDEX);
 
 /** Read-only field. Used for anything the patient told us that the rep is not
  *  expected to retype — the left pane should be a confirmation, not data entry. */
@@ -167,7 +178,7 @@ const UnverifiedReferralsPage = () => {
     sourceParam === "completed" || sourceParam === "partial" ? sourceParam : "intake";
 
   const {
-    patients, loading, initialLoading, error, refetch, updateLocal,
+    patients, loading, initialLoading, error, refetch, updateLocal, hasOverlay,
   } = useMondayPatients(searchParams.get("patientId"), SOURCE_GROUP[source]);
 
   const [selectedId, setSelectedId] = useState<string | null>(searchParams.get("patientId"));
@@ -199,6 +210,38 @@ const UnverifiedReferralsPage = () => {
 
   const unlock = useMemo(() => evaluateUnlock(selected), [selected]);
 
+  const [verified, setVerified] = useState<VerifiedEdits>({});
+
+  /** "Ready to Send Off?" — what still has to be true before this patient can
+   *  go to Medical Necessity. Same shape as the send-off page's checklist, and
+   *  like that one it is DERIVED, never stored: the only way it can disagree
+   *  with the board is if a field below it is wrong.
+   *  Coverage paths are conditional on what we're actually serving — asking for
+   *  a pump path on a CGM-only patient is noise. */
+  const readiness = useMemo(() => {
+    if (!selected) return [] as { label: string; ok: boolean }[];
+    const serving = (selected.serving || "").trim();
+    const items = [
+      { label: "Primary Insurance", ok: !!(verified.primaryInsurance ?? "").trim() },
+      { label: "Member ID 1", ok: !!(verified.memberId1 ?? "").trim() },
+      { label: "Serving", ok: !!serving },
+    ];
+    if (/CGM/i.test(serving)) {
+      items.push({ label: "CGM Coverage Path", ok: !!(selected.cgmCoveragePath ?? "").trim() });
+    }
+    if (/Pump/i.test(serving)) {
+      items.push({
+        label: "Insulin Pump Coverage Path",
+        ok: !!(selected.insulinPumpCoveragePath ?? "").trim(),
+      });
+    }
+    // The doctor carries to Medical Necessity and is what Send Request needs.
+    items.push({ label: "Doctor selected", ok: !!(selected.doctorNpi ?? "").trim() });
+    return items;
+  }, [selected, verified.primaryInsurance, verified.memberId1]);
+
+  const readyMissing = readiness.filter((i) => !i.ok).length;
+
   // ── Benefits check ──────────────────────────────────────────────────────
   const stedi = useStediRun();
 
@@ -227,7 +270,6 @@ const UnverifiedReferralsPage = () => {
     return { primary: suggestPrimary(inputs), secondary: suggestSecondary(inputs) };
   }, [selected]);
 
-  const [verified, setVerified] = useState<VerifiedEdits>({});
   const seededFor = useRef<string | null>(null);
 
   // Seed once per patient: what's on the board wins, the engine fills the
@@ -242,7 +284,9 @@ const UnverifiedReferralsPage = () => {
       memberId1: selected.memberId1 || selected.workingMemberId || "",
       secondaryInsurance: selected.secondaryInsurance || suggestion?.secondary || "",
       memberId2: selected.memberId2 || "",
-      serving: selected.serving || selected.requestType || "",
+      // serving deliberately NOT seeded here — it lives on the patient, because
+      // the Serving & Coverage card and the left pane's product fields edit the
+      // same Monday columns. Two copies of that state is how they drift.
     });
   }, [selected, suggestion]);
 
@@ -251,7 +295,12 @@ const UnverifiedReferralsPage = () => {
     setSaving(true);
     setSaveNote(null);
     try {
-      const res = await writeVerifiedInsurance(selected.id, verified);
+      // Serving rides along from the patient, not from `verified` — same value
+      // the left pane and the Serving & Coverage card both edit.
+      const res = await writeVerifiedInsurance(selected.id, {
+        ...verified,
+        serving: selected.serving,
+      });
       setSaveNote(res.ok ? "Verified insurance saved." : res.errors.map((e) => `${e.label}: ${e.error}`).join(" · "));
       if (res.ok) await refetch(true);
     } finally {
@@ -285,9 +334,15 @@ const UnverifiedReferralsPage = () => {
     setSaving(true);
     setSaveNote(null);
     const edits: IntakeEdits = {
+      name: selected.name,
+      ptPhone: selected.ptPhone,
       dob: selected.dob,
       email: selected.email,
       formState: selected.formState,
+      // Product decision — shared with the right pane's Serving & Coverage card.
+      requestType: selected.requestType,
+      cgmCoveragePath: selected.cgmCoveragePath,
+      insulinPumpCoveragePath: selected.insulinPumpCoveragePath,
       workingMemberId: selected.workingMemberId,
       generalInsurance: selected.generalInsurance,
       formInsuranceVia: selected.formInsuranceVia,
@@ -416,6 +471,10 @@ const UnverifiedReferralsPage = () => {
           loading={loading}
           error={error}
           onRefresh={refetch}
+          /* Verified Referrals passes this too — it's what draws the
+             unsaved-edit marker. Without it this sidebar silently loses a
+             cue reps rely on, which is most of why it read as "odd". */
+          hasOverlay={hasOverlay}
         />
 
         {/* panes-host is the CONTAINER the two-pane split queries against, so
@@ -489,8 +548,10 @@ const UnverifiedReferralsPage = () => {
                 </div>
               <Card title="Patient Demographics">
                 <div className="grid grid-cols-2 gap-3">
-                  <Field label="Name" value={selected.name} />
-                  <Field label="Phone" value={selected.ptPhone} />
+                  {/* Name and phone are form-typed, so they are correctable —
+                      and the benefits check runs against the name. */}
+                  <EditText label="Name" value={selected.name ?? ""} onChange={(v) => edit({ name: v })} />
+                  <EditText label="Phone" value={selected.ptPhone ?? ""} onChange={(v) => edit({ ptPhone: v })} />
                   <EditText label="Date of Birth" value={selected.dob ?? ""} onChange={(v) => edit({ dob: v })} />
                   <EditText label="Email" value={selected.email ?? ""} onChange={(v) => edit({ email: v })} />
                   <EditText label="State" value={selected.formState ?? ""} onChange={(v) => edit({ formState: v })} />
@@ -511,13 +572,19 @@ const UnverifiedReferralsPage = () => {
                       "I want off the finger prick / try a pump",
                     ]}
                   />
-                  <Field label="Form progress" value={selected.formDropOffStep} />
                 </div>
               </Card>
 
               <Card title="What they need">
                 <div className="grid grid-cols-2 gap-3">
-                  <Field label="Request Type (derived)" value={selected.requestType} />
+                  {/* Same Monday column as the Serving & Coverage card on the
+                      right — one value, edited from whichever pane you're in. */}
+                  <EditSelect
+                    label="Request Type"
+                    value={selected.requestType ?? ""}
+                    onChange={(v) => edit({ requestType: v })}
+                    options={REQUEST_TYPE_OPTS}
+                  />
                   <EditSelect
                     label="Pump Need"
                     value={selected.formPumpNeed ?? ""}
@@ -536,14 +603,32 @@ const UnverifiedReferralsPage = () => {
                     onChange={(v) => edit({ formPumpPreference: v })}
                     options={["Tandem t:slim X2", "Tandem Mobi", "Beta Bionics iLet", "Not sure"]}
                   />
-                  <Field label="CGM Coverage Path" value={selected.cgmCoveragePath} />
-                  <Field label="Insulin Pump Coverage Path" value={selected.insulinPumpCoveragePath} />
+                  <EditSelect
+                    label="CGM Coverage Path"
+                    value={selected.cgmCoveragePath ?? ""}
+                    onChange={(v) => edit({ cgmCoveragePath: v })}
+                    options={CGM_PATH_OPTS}
+                  />
+                  <EditSelect
+                    label="Insulin Pump Coverage Path"
+                    value={selected.insulinPumpCoveragePath ?? ""}
+                    onChange={(v) => edit({ insulinPumpCoveragePath: v })}
+                    options={IP_PATH_OPTS}
+                  />
                 </div>
               </Card>
 
               <Card title="Insurance — as provided">
                 <div className="grid grid-cols-2 gap-3">
-                  <Field label="General Insurance" value={selected.generalInsurance} />
+                  {/* Editable, and written by Save — which the benefits check
+                      runs FIRST, because Stedi reads this column off the board
+                      rather than off this page. */}
+                  <EditSelect
+                    label="General Insurance"
+                    value={selected.generalInsurance ?? ""}
+                    onChange={(v) => edit({ generalInsurance: v })}
+                    options={GENERAL_INSURANCE_OPTS}
+                  />
                   <EditText
                     label="Member ID (Stedi reads this)"
                     value={selected.workingMemberId ?? ""}
@@ -579,7 +664,7 @@ const UnverifiedReferralsPage = () => {
                   <button
                     onClick={runBenefitsCheck}
                     disabled={saving || stedi.isRunning || !(selected.generalInsurance ?? "").trim()}
-                    className="rounded-md bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground disabled:opacity-50"
+                    className="btn primary sm"
                   >
                     {stedi.isRunning ? "Running benefits check…" : "Run benefits check"}
                   </button>
@@ -670,14 +755,14 @@ const UnverifiedReferralsPage = () => {
                 <button
                   onClick={save}
                   disabled={saving}
-                  className="rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground disabled:opacity-50"
+                  className="btn primary"
                 >
                   {saving ? "Saving…" : "Save"}
                 </button>
                 <button
                   onClick={logAttempt}
                   disabled={saving}
-                  className="rounded-md border px-4 py-2 text-sm font-semibold disabled:opacity-50"
+                  className="btn secondary"
                 >
                   Insufficient — log call attempt
                 </button>
@@ -739,7 +824,7 @@ const UnverifiedReferralsPage = () => {
                     <button
                       onClick={() => runStageAction("advance")}
                       disabled={!unlock.unlocked || saving}
-                      className="mt-4 w-full rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground disabled:opacity-40"
+                      className="btn primary mt-4 w-full justify-center"
                     >
                       {unlock.unlocked ? "Advance to Medical Necessity" : "Locked"}
                     </button>
@@ -776,12 +861,6 @@ const UnverifiedReferralsPage = () => {
                         value={verified.memberId2 ?? ""}
                         onChange={(v) => setVerified((s) => ({ ...s, memberId2: v }))}
                       />
-                      <EditSelect
-                        label="Serving"
-                        value={verified.serving ?? ""}
-                        onChange={(v) => setVerified((s) => ({ ...s, serving: v }))}
-                        options={Object.keys(SERVING_INDEX)}
-                      />
                     </div>
 
                     {/* Why the engine landed there. Replaces the suggestion
@@ -805,10 +884,48 @@ const UnverifiedReferralsPage = () => {
                     <button
                       onClick={saveVerified}
                       disabled={saving}
-                      className="mt-3 rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground disabled:opacity-50"
+                      className="btn primary mt-3"
                     >
                       Save verified insurance
                     </button>
+                  </Card>
+
+                  {/* Serving & Coverage — the product decision that carries to
+                      Medical Necessity. These are the SAME Monday columns the
+                      left pane's "What they need" edits, deliberately: the left
+                      is what the patient asked for, this is what we commit to,
+                      and they are one value so a save can't write two answers. */}
+                  <Card title="Serving & Coverage" tone="lead">
+                    <div className="grid grid-cols-2 gap-3">
+                      <EditSelect
+                        label="Serving"
+                        value={selected.serving ?? ""}
+                        onChange={(v) => edit({ serving: v })}
+                        options={SERVING_OPTS}
+                      />
+                      <EditSelect
+                        label="Request Type"
+                        value={selected.requestType ?? ""}
+                        onChange={(v) => edit({ requestType: v })}
+                        options={REQUEST_TYPE_OPTS}
+                      />
+                      <EditSelect
+                        label="CGM Coverage Path"
+                        value={selected.cgmCoveragePath ?? ""}
+                        onChange={(v) => edit({ cgmCoveragePath: v })}
+                        options={CGM_PATH_OPTS}
+                      />
+                      <EditSelect
+                        label="Insulin Pump Coverage Path"
+                        value={selected.insulinPumpCoveragePath ?? ""}
+                        onChange={(v) => edit({ insulinPumpCoveragePath: v })}
+                        options={IP_PATH_OPTS}
+                      />
+                    </div>
+                    <p className="mt-2 text-[11px] text-muted-foreground">
+                      Serving saves with “Save verified insurance”; Request Type and the
+                      coverage paths save with “Save” on the left.
+                    </p>
                   </Card>
 
                   {/* Select Correct Provider — turns the free text the patient
@@ -823,6 +940,40 @@ const UnverifiedReferralsPage = () => {
                       onClinicSelect={(_id, name) => edit({ clinicName: name })}
                     />
                   </div>
+
+                  {/* Ready to Send Off? — the send-off page's checklist, same
+                      derived-not-stored rule. Sits last because it summarises
+                      everything above it, doctor included. */}
+                  <Card
+                    title="Ready to Send Off?"
+                    tone={readyMissing === 0 ? "lead" : "decide"}
+                    right={
+                      <span className={readyMissing === 0 ? "pill ok" : "pill warn"}>
+                        {readyMissing === 0 ? "Ready" : `${readyMissing} missing`}
+                      </span>
+                    }
+                  >
+                    <ul className="space-y-2">
+                      {readiness.map((it) => (
+                        <li key={it.label} className="flex items-center gap-2 text-sm">
+                          {it.ok ? (
+                            <Check className="h-4 w-4 text-emerald-600 shrink-0" />
+                          ) : (
+                            <X className="h-4 w-4 text-muted-foreground shrink-0" />
+                          )}
+                          <span className={it.ok ? "" : "text-muted-foreground"}>{it.label}</span>
+                          <span
+                            className={
+                              "ml-auto text-xs font-semibold " +
+                              (it.ok ? "text-emerald-600" : "text-amber-700")
+                            }
+                          >
+                            {it.ok ? "ok" : "missing"}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  </Card>
                 </div>
               </div>
 
@@ -855,7 +1006,7 @@ const UnverifiedReferralsPage = () => {
                     <button
                       onClick={() => runStageAction("escalate")}
                       disabled={saving}
-                      className="mt-2 rounded-md border border-amber-400 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-900 disabled:opacity-50"
+                      className="btn amber sm mt-2"
                     >
                       Escalate — doesn't qualify
                     </button>
