@@ -284,6 +284,7 @@ const UnverifiedReferralsPage = () => {
     const key = `${selected.id}:${suggestion?.primary?.value ?? ""}`;
     if (seededFor.current === key) return;
     seededFor.current = key;
+    setClinicLabelId(null);
     setVerified({
       primaryInsurance: selected.primaryInsurance || suggestion?.primary?.value || "",
       memberId1: selected.memberId1 || selected.workingMemberId || "",
@@ -394,6 +395,9 @@ const UnverifiedReferralsPage = () => {
 
   // Doctor DB clinic dropdown labels — fetched once, same source as /profile.
   const [clinicLabels, setClinicLabels] = useState<{ id: number; name: string }[]>([]);
+  /** Set when the rep picks a clinic the board dropdown already knows, so the
+   *  send can write the option id rather than create a duplicate label. */
+  const [clinicLabelId, setClinicLabelId] = useState<number | null>(null);
   useEffect(() => {
     let alive = true;
     fetchClinicLabels()
@@ -413,8 +417,22 @@ const UnverifiedReferralsPage = () => {
       setSaveNote(null);
       try {
         const notes = selected.intakeEscalationNotes;
+        // "Write everything, then flip the advancer" — the same contract
+        // Verified Referrals' send-off has. The left pane's edits and the
+        // verified insurance go first; advanceToMedicalNecessity then writes
+        // the doctor columns, reads every column back, and only writes Move to
+        // Onboarding once they have all landed.
+        if (kind === "advance") {
+          await save();
+          const ins = await writeVerifiedInsurance(selected.id, { ...verified, serving: selected.serving });
+          if (!ins.ok) {
+            setSaveNote(`Not advanced — ${ins.errors.map((e) => `${e.label}: ${e.error}`).join(" · ")}`);
+            setSaving(false);
+            return;
+          }
+        }
         const res =
-          kind === "advance" ? await advanceToMedicalNecessity(selected.id)
+          kind === "advance" ? await advanceToMedicalNecessity(selected, clinicLabelId)
           : kind === "escalate" ? await escalateIntake(selected.id, escalateReason, notes)
           : kind === "proposeStuck" ? await proposeIntakeStuck(selected.id, escalateReason, notes)
           : await returnIntakeToPipeline(selected.id, escalateReason, notes);
@@ -431,7 +449,7 @@ const UnverifiedReferralsPage = () => {
         setSaving(false);
       }
     },
-    [selected, escalateReason, refetch],
+    [selected, escalateReason, refetch, save, verified, clinicLabelId],
   );
 
   // Declared after save() deliberately: naming it in the dependency array
@@ -991,7 +1009,7 @@ const UnverifiedReferralsPage = () => {
                       patient={selected}
                       onUpdate={edit}
                       clinicLabels={clinicLabels}
-                      onClinicSelect={(_id, name) => edit({ clinicName: name })}
+                      onClinicSelect={(id, name) => { setClinicLabelId(id); edit({ clinicName: name }); }}
                     />
                   </div>
                   </Card>

@@ -20,8 +20,12 @@
 
 import {
   COL, writeStatusIndex, writeText, writeNumber, writeLongText, writeItemName,
-  writePhone, readColumnTexts,
+  writePhone, writeEmail, writeLocation, writeDropdownIds, writeDropdownLabels,
+  readColumnTexts,
 } from "./mondayApi";
+import { executeWritesWithVerification } from "../shared/verifiedWrite";
+import { CLINICALS_METHOD_INDEX } from "./mondayMapping";
+import type { Patient } from "./workflow";
 import {
   GENERAL_INSURANCE_INDEX, PRIMARY_INSURANCE_INDEX,
   SECONDARY_INSURANCE_INDEX, SERVING_INDEX, MOVE_TO_ONBOARDING_INDEX,
@@ -380,21 +384,116 @@ function appendNote(existing: string | undefined, note: string): string {
   return existing?.trim() ? `${existing.trim()}\n${line}` : line;
 }
 
+const MAX_RETRIES = 2;
+const RETRY_DELAY_MS = 800;
+
+async function executeWithRetry(task: WriteTask): Promise<string | null> {
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    try {
+      await task.fn();
+      return null;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.warn(`[unverifiedWrite] ${task.label} (${task.columnId}) attempt ${attempt + 1}: ${msg}`);
+      if (attempt < MAX_RETRIES) await new Promise((r) => setTimeout(r, RETRY_DELAY_MS * (attempt + 1)));
+      else return `${task.label}: ${msg}`;
+    }
+  }
+  return null;
+}
+
 /**
- * Advance to Medical Necessity — the stage's exit (mockup step 4, "Advance to
- * MN"). Writes Move to Onboarding = "Advance to MN", which is what board
- * automation 7917676280 watches to create the Medical Evaluation item and move
- * this one to Completed.
+ * The VERIFIED doctor columns — what Select Correct Provider (step 3) chose.
+ *
+ * These are the eight the Advance-to-MN automation copies to Medical
+ * Evaluation, and nothing on this page used to write them: DoctorSection
+ * reports its pick through onUpdate, the page put it in an in-memory overlay,
+ * and the overlay was never persisted. The rep's provider work was discarded
+ * on every advance and the patient reached Send Request with no fax or email
+ * to send to, and a blank Clinicals Method (which §5.9 reads as a fax chase).
+ *
+ * Mirrors mondayWrite.buildDataTasks' doctor block exactly — same columns,
+ * same per-type helpers — so the two stages write a doctor identically.
+ * Each is guarded on a value: a blank field means "not picked", never "clear
+ * what's on the board".
  */
-export async function advanceToMedicalNecessity(itemId: string): Promise<IntakeWriteResult> {
+function buildDoctorTasks(p: Patient, clinicLabelId: number | null): WriteTask[] {
+  const tasks: WriteTask[] = [];
+  if (p.doctorName) tasks.push({ label: "Doctor Name", columnId: COL.doctorName, fn: () => writeText(p.id, COL.doctorName, p.doctorName) });
+  if (p.doctorPhone) tasks.push({ label: "Doctor Phone", columnId: COL.doctorPhone, fn: () => writePhone(p.id, COL.doctorPhone, p.doctorPhone) });
+  if (p.doctorNpi) tasks.push({ label: "Doctor NPI", columnId: COL.doctorNpi, fn: () => writeText(p.id, COL.doctorNpi, p.doctorNpi) });
+  if (p.doctorEmail) tasks.push({ label: "Doctor Email", columnId: COL.doctorEmail, fn: () => writeEmail(p.id, COL.doctorEmail, p.doctorEmail) });
+  if (p.doctorFax) tasks.push({ label: "Doctor Fax", columnId: COL.doctorFax, fn: () => writeEmail(p.id, COL.doctorFax, p.doctorFax) });
+  const cm = CLINICALS_METHOD_INDEX[(p.clinicalsMethod ?? "").trim()];
+  if (cm !== undefined) {
+    tasks.push({ label: "Clinicals Method", columnId: COL.clinicalsMethod, fn: () => writeStatusIndex(p.id, COL.clinicalsMethod, cm) });
+  }
+  if (clinicLabelId !== null) {
+    tasks.push({ label: "Clinic Name", columnId: COL.clinicName, fn: () => writeDropdownIds(p.id, COL.clinicName, [clinicLabelId]) });
+  } else if (p.clinicName?.trim()) {
+    // A clinic the Doctor DB knows but this board's dropdown doesn't yet —
+    // create_labels_if_missing, the same path /profile uses for a new clinic.
+    const cn = p.clinicName.trim();
+    tasks.push({ label: "Clinic Name", columnId: COL.clinicName, fn: () => writeDropdownLabels(p.id, COL.clinicName, [cn]) });
+  }
+  if (p.clinicAddress) {
+    tasks.push({
+      label: "Clinic Address", columnId: COL.clinicAddress,
+      fn: () => writeLocation(p.id, COL.clinicAddress, p.clinicAddress, p.clinicAddressLat ?? 0, p.clinicAddressLng ?? 0),
+    });
+  }
+  return tasks;
+}
+
+/**
+ * Advance to Medical Necessity — the stage's exit (mockup step 4).
+ *
+ * Built like Verified Referrals' send-off (`mondayWrite.sendPatientToMonday`),
+ * because the hazard is identical: Move to Onboarding is a STAGE ADVANCER, and
+ * board automation 7917676280 fires on it and copies 52 columns to Medical
+ * Evaluation. Monday returns 200 on a column write before the value is
+ * indexed, so an advancer flipped in the same breath as its sibling data can
+ * hand the automation stale — or blank — values.
+ *
+ * So: every data column is written and READ BACK first, and Move to Onboarding
+ * is written only once they have all landed. If verification times out this
+ * throws and does NOT advance, which surfaces the problem instead of shipping
+ * a half-built patient downstream.
+ */
+export async function advanceToMedicalNecessity(
+  p: Patient,
+  clinicLabelId: number | null = null,
+): Promise<IntakeWriteResult> {
+  const tasks: WriteTask[] = buildDoctorTasks(p, clinicLabelId);
+
+  // The advancer goes in LAST — executeWritesWithVerification holds it back
+  // until every task above it verifies.
+  tasks.push({
+    label: "Move to Onboarding",
+    columnId: COL.moveToOnboarding,
+    fn: () => writeStatusIndex(p.id, COL.moveToOnboarding, MOVE_TO_ONBOARDING_INDEX["Advance to MN"]),
+  });
+
   try {
-    await writeStatusIndex(itemId, COL.moveToOnboarding, MOVE_TO_ONBOARDING_INDEX["Advance to MN"]);
+    const failures = await executeWritesWithVerification({
+      itemId: p.id,
+      tasks,
+      stageColumnId: COL.moveToOnboarding,
+      executeWithRetry,
+      readColumns: readColumnTexts,
+    });
+    if (failures.length > 0) {
+      return {
+        ok: false,
+        errors: failures.map((f) => ({ label: f.split(":")[0], columnId: "", error: f })),
+      };
+    }
     return { ok: true, errors: [] };
   } catch (e) {
     return {
       ok: false,
       errors: [{
-        label: "Move to Onboarding", columnId: COL.moveToOnboarding,
+        label: "Advance to MN", columnId: COL.moveToOnboarding,
         error: e instanceof Error ? e.message : String(e),
       }],
     };
