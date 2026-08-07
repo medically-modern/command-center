@@ -27,6 +27,7 @@ import {
   PRIMARY_INSURANCE_INDEX, SECONDARY_INSURANCE_INDEX, SERVING_INDEX,
   GENERAL_INSURANCE_INDEX, REQUEST_TYPE_INDEX,
   CGM_COVERAGE_PATH_INDEX, INSULIN_PUMP_COVERAGE_PATH_INDEX,
+  REFERRAL_TYPE_INDEX, REFERRAL_SOURCE_INDEX,
 } from "@/lib/profile/mondayMapping";
 import {
   writeIntakeEdits, writeVerifiedInsurance, logContactAttempt,
@@ -78,6 +79,8 @@ const REQUEST_TYPE_OPTS = noNotServing(Object.keys(REQUEST_TYPE_INDEX));
 const CGM_PATH_OPTS = noNotServing(Object.keys(CGM_COVERAGE_PATH_INDEX));
 const IP_PATH_OPTS = noNotServing(Object.keys(INSULIN_PUMP_COVERAGE_PATH_INDEX));
 const GENERAL_INSURANCE_OPTS = Object.keys(GENERAL_INSURANCE_INDEX);
+const REFERRAL_TYPE_OPTS = Object.keys(REFERRAL_TYPE_INDEX);
+const REFERRAL_SOURCE_OPTS = Object.keys(REFERRAL_SOURCE_INDEX);
 
 /** Read-only field. Used for anything the patient told us that the rep is not
  *  expected to retype — the left pane should be a confirmation, not data entry. */
@@ -90,25 +93,17 @@ function Field({ label, value, full }: { label: string; value?: string; full?: b
   );
 }
 
-/** Where a value came from and where it lands. The mockup puts this under
- *  every field so a rep can tell at a glance what the patient typed versus
- *  what someone here entered. */
-function Prov({ src, col, isNew }: { src: "form" | "rep" | "derived"; col: string; isNew?: boolean }) {
-  const label = src === "form" ? "From form" : src === "rep" ? "Rep enters" : "Derived";
-  return (
-    <div className="prov">
-      <span className={`src ${src}`}>{label}</span>
-      <span className="arw">→</span>
-      <span className={isNew ? "col isnew" : "col"}>{col}</span>
-    </div>
-  );
-}
+// NOTE: the mockup prints a provenance stamp under every field
+// (`FROM FORM → color_mm1w7pmf`). Those are BUILD NOTES for the implementer,
+// not UI — HANDOFF's preamble says so explicitly: "They are NOT part of the
+// design and must NOT appear in production." A <Prov> component that rendered
+// them lived here unused; it is deleted so nobody wires it up by mistake.
 
 function EditText({
-  label, value, onChange, placeholder, prov, full,
+  label, value, onChange, placeholder, full,
 }: {
   label: string; value: string; onChange: (v: string) => void; placeholder?: string;
-  prov?: React.ReactNode; full?: boolean;
+  full?: boolean;
 }) {
   return (
     <label className={full ? "fld full" : "fld"}>
@@ -120,16 +115,15 @@ function EditText({
         placeholder={placeholder}
         onChange={(e) => onChange(e.target.value)}
       />
-      {prov}
     </label>
   );
 }
 
 function EditSelect({
-  label, value, options, onChange, prov, full,
+  label, value, options, onChange, full,
 }: {
   label: string; value: string; options: string[]; onChange: (v: string) => void;
-  prov?: React.ReactNode; full?: boolean;
+  full?: boolean;
 }) {
   return (
     <label className={full ? "fld full" : "fld"}>
@@ -146,7 +140,6 @@ function EditSelect({
           <option key={o} value={o}>{o}</option>
         ))}
       </select>
-      {prov}
     </label>
   );
 }
@@ -339,6 +332,8 @@ const UnverifiedReferralsPage = () => {
       dob: selected.dob,
       email: selected.email,
       formState: selected.formState,
+      referralType: selected.referralType,
+      referralSource: selected.referralSource,
       // Product decision — shared with the right pane's Serving & Coverage card.
       requestType: selected.requestType,
       cgmCoveragePath: selected.cgmCoveragePath,
@@ -546,6 +541,28 @@ const UnverifiedReferralsPage = () => {
                   <h2>Patient Info. Collection</h2>
                   <span className="st open">Open</span>
                 </div>
+              <Card title="Referral Routing">
+                <div className="grid grid-cols-2 gap-3">
+                  <EditSelect
+                    label="Referral Source"
+                    value={selected.referralSource ?? ""}
+                    onChange={(v) => edit({ referralSource: v })}
+                    options={REFERRAL_SOURCE_OPTS}
+                  />
+                  <EditSelect
+                    label="Referral Type"
+                    value={selected.referralType ?? ""}
+                    onChange={(v) => edit({ referralType: v })}
+                    options={REFERRAL_TYPE_OPTS}
+                  />
+                </div>
+                <p className="mt-2 text-[11px] text-muted-foreground">
+                  These two decide which intake queue the patient lands in — Referral
+                  Type “Patient” or Source “CareCentrix” is what makes this an Unverified
+                  Referral. Changing them can move the patient to another queue.
+                </p>
+              </Card>
+
               <Card title="Patient Demographics">
                 <div className="grid grid-cols-2 gap-3">
                   {/* Name and phone are form-typed, so they are correctable —
@@ -618,7 +635,7 @@ const UnverifiedReferralsPage = () => {
                 </div>
               </Card>
 
-              <Card title="Insurance — as provided">
+              <Card title="Provided Insurance">
                 <div className="grid grid-cols-2 gap-3">
                   {/* Editable, and written by Save — which the benefits check
                       runs FIRST, because Stedi reads this column off the board
@@ -689,7 +706,7 @@ const UnverifiedReferralsPage = () => {
                 )}
               </Card>
 
-              <Card title="Doctor — as provided by the patient">
+              <Card title="Provided Doctor Info">
                 <div className="grid grid-cols-2 gap-3">
                   <EditText
                     label="Provided Doctor Name"
@@ -731,7 +748,7 @@ const UnverifiedReferralsPage = () => {
                 </div>
               </Card>
 
-              <Card title="Call handling">
+              <Card title="Proceed Preference">
                 <div className="grid grid-cols-2 gap-3">
                   <Field label="Proceed preference" value={selected.formProceedPreference} />
                   <Field label="Slot picked on form" value={selected.formCallSlot} />

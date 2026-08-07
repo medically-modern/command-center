@@ -25,6 +25,7 @@ import {
   GENERAL_INSURANCE_INDEX, PRIMARY_INSURANCE_INDEX,
   SECONDARY_INSURANCE_INDEX, SERVING_INDEX, MOVE_TO_ONBOARDING_INDEX,
   REQUEST_TYPE_INDEX, CGM_COVERAGE_PATH_INDEX, INSULIN_PUMP_COVERAGE_PATH_INDEX,
+  REFERRAL_TYPE_INDEX, REFERRAL_SOURCE_INDEX,
 } from "./mondayMapping";
 
 /** label → index for every status column this stage writes.
@@ -114,6 +115,12 @@ export interface IntakeEdits {
   email?: string;
   formState?: string;
 
+  // Referral routing — where this patient came from. Board automations also
+  // set Type from Source on item creation; a rep correcting it here wins,
+  // because those only run once, at create.
+  referralType?: string;
+  referralSource?: string;
+
   // Product decision. These share their Monday columns with the Serving &
   // Coverage card on the right pane — one value, two places to edit it, so
   // both bind to the same patient field and this writes it once.
@@ -198,6 +205,10 @@ export async function writeIntakeEdits(itemId: string, edits: IntakeEdits): Prom
   text("DOB", COL.dob, edits.dob);
   text("Email", COL.email, edits.email);
   text("State", COL.formState, edits.formState);
+
+  // Referral routing
+  mapped("Referral Source", COL.referralSource, REFERRAL_SOURCE_INDEX, edits.referralSource);
+  mapped("Referral Type", COL.referralType, REFERRAL_TYPE_INDEX, edits.referralType);
 
   // Product decision
   mapped("Request Type", COL.requestType, REQUEST_TYPE_INDEX, edits.requestType);
