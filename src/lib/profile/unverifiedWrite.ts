@@ -26,6 +26,8 @@ import {
 import { executeWritesWithVerification } from "../shared/verifiedWrite";
 import { CLINICALS_METHOD_INDEX } from "./mondayMapping";
 import type { Patient } from "./workflow";
+import { appendStampedNote } from "../shared/noteStamp";
+import { userInitials } from "../shared/auth";
 import {
   GENERAL_INSURANCE_INDEX, PRIMARY_INSURANCE_INDEX,
   SECONDARY_INSURANCE_INDEX, SERVING_INDEX, MOVE_TO_ONBOARDING_INDEX,
@@ -377,11 +379,18 @@ export const INTAKE_ESCALATION_INDEX = {
   finalRequired: 2,
 } as const;
 
-/** Timestamped, append-style so a decision never overwrites its own history. */
+/**
+ * Append a decision to the escalation log in the app's ONE note format
+ * (`lib/shared/noteStamp`): `[ET timestamp] Patient Intake: <text> —<initials>`.
+ *
+ * This rolled its own stamp from `new Date().toISOString()`, which is UTC —
+ * four hours ahead of the ET the boards are keyed to (CLAUDE.md §9), so an
+ * escalation logged after 8pm ET was dated the NEXT DAY. It also carried no
+ * initials and no stage label, which is exactly what a manager needs to act on
+ * an escalation: who raised it, and from where.
+ */
 function appendNote(existing: string | undefined, note: string): string {
-  const stamp = new Date().toISOString().slice(0, 16).replace("T", " ");
-  const line = `[${stamp}] ${note}`;
-  return existing?.trim() ? `${existing.trim()}\n${line}` : line;
+  return appendStampedNote(existing, note, "Patient Intake", { initials: userInitials() });
 }
 
 const MAX_RETRIES = 2;

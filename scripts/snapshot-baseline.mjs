@@ -79,6 +79,11 @@ const WC_FOLLOWUP_COL = "color_mm38w2tk"; // Follow Up
 
 const PROF_BOARD  = 18406352652;
 const PROF_GROUP  = "group_mm1xf2jb";
+// The DTC intake form's own groups on the same board. §5.8 counting contract:
+// these must match useRoleCounts.ts PROFILE_FORM_GROUP_IDS exactly.
+const PROF_FORM_GROUPS = ["group_mm5zgeak", "group_mm5z87zt"];
+const PROF_INTAKE_ESC_COL = "color_mm5zww42";
+const PROF_ESCALATED_LABELS = ["Manager Escalation Required", "Final Escalation Required"];
 const PROF_FOLLOWUP_COL = "color_mm3822qq"; // Follow Up
 const PROF_REFERRAL_TYPE_COL = "color_mm1wm4n4";   // Referral Type (role split)
 const PROF_REFERRAL_SOURCE_COL = "color_mm1w5wxr"; // Referral Source (role split)
@@ -286,6 +291,7 @@ async function countFinalConfirm() {
 async function countProfile() {
   const items = await fetchGroupItems(PROF_BOARD, PROF_GROUP, [
     PROF_FOLLOWUP_COL, PROF_REFERRAL_TYPE_COL, PROF_REFERRAL_SOURCE_COL, PROF_IN_SYSTEM_COL,
+    PROF_INTAKE_ESC_COL,
   ]);
   const active = items.filter((i) => i.cols[PROF_FOLLOWUP_COL] !== "Done");
   const isInSystem = (i) => (i.cols[PROF_IN_SYSTEM_COL] ?? "").trim().toLowerCase() === "yes";
@@ -293,18 +299,40 @@ async function countProfile() {
     !isInSystem(i) &&
     ((i.cols[PROF_REFERRAL_TYPE_COL] ?? "").trim().toLowerCase() === "patient" ||
       (i.cols[PROF_REFERRAL_SOURCE_COL] ?? "").trim().toLowerCase() === "carecentrix");
+  // Escalated patients leave the rep queue AND the role count — they are the
+  // manager's, and Oversight's Manager Intervention / Final Decisions charts
+  // are where they show up. Mirrors useRoleCounts.
+  const isIntakeEscalated = (i) =>
+    PROF_ESCALATED_LABELS.includes((i.cols[PROF_INTAKE_ESC_COL] ?? "").trim());
   const inSystem = active.filter(isInSystem);
-  const unverified = active.filter(isUnverified);
+  const unverified = active.filter((i) => isUnverified(i) && !isIntakeEscalated(i));
   const verified = active.filter((i) => !isInSystem(i) && !isUnverified(i));
+
+  // The DTC form's own two groups. Every item there came from the form, so no
+  // referral split applies — they are Patient Intake by definition. Missing
+  // these was why the Operations tab showed phantom "+N in" chips for this
+  // role all day: the live hook counted them and the baseline did not.
+  const formItems = [];
+  for (const gid of PROF_FORM_GROUPS) {
+    try {
+      formItems.push(...await fetchGroupItems(PROF_BOARD, gid, [PROF_FOLLOWUP_COL, PROF_INTAKE_ESC_COL]));
+    } catch (e) {
+      console.error(`[countProfile] form group ${gid} failed:`, e.message);
+    }
+  }
+  const formActive = formItems.filter(
+    (i) => i.cols[PROF_FOLLOWUP_COL] !== "Done" && !isIntakeEscalated(i),
+  );
+
   return {
     counts: {
       profile: verified.length,
-      unverifiedReferrals: unverified.length,
+      unverifiedReferrals: unverified.length + formActive.length,
       inSystemReferrals: inSystem.length,
     },
     ids: {
       profile: verified.map((i) => i.id),
-      unverifiedReferrals: unverified.map((i) => i.id),
+      unverifiedReferrals: unverified.map((i) => i.id).concat(formActive.map((i) => i.id)),
       inSystemReferrals: inSystem.map((i) => i.id),
     },
   };
