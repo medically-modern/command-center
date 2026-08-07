@@ -31,7 +31,7 @@ import {
 } from "@/lib/profile/mondayMapping";
 import {
   writeIntakeEdits, writeVerifiedInsurance, logContactAttempt,
-  advanceToProfileCleanUp, escalateIntake, proposeIntakeStuck, returnIntakeToPipeline,
+  advanceToMedicalNecessity, escalateIntake, proposeIntakeStuck, returnIntakeToPipeline,
   type IntakeEdits, type VerifiedEdits,
 } from "@/lib/profile/unverifiedWrite";
 import { useStediRun, STEDI_POLL_MS } from "@/hooks/profile/useStediRun";
@@ -150,17 +150,27 @@ function EditSelect({
 /** A section card inside a pane. `tone` maps to the mockup's coloured left
  *  border: lead = green (what we already know), decide = teal (an action). */
 function Card({
-  title, children, tone, right,
+  title, children, tone, right, step,
 }: {
   title: string; children: React.ReactNode;
   tone?: "lead" | "decide" | "hilite"; right?: React.ReactNode;
+  /** Right-pane cards are numbered steps 1-4 in the mockup. */
+  step?: number;
 }) {
   return (
     <section className={tone ? `sect ${tone}` : "sect"}>
-      <div className="sect-title">
-        {title}
-        {right && <span className="rt">{right}</span>}
-      </div>
+      {step === undefined ? (
+        <div className="sect-title">
+          {title}
+          {right && <span className="rt">{right}</span>}
+        </div>
+      ) : (
+        <div className="step-head">
+          <span className="step-num">{step}</span>
+          <h2>{title}</h2>
+          {right && <div className="right">{right}</div>}
+        </div>
+      )}
       {children}
     </section>
   );
@@ -379,6 +389,8 @@ const UnverifiedReferralsPage = () => {
   }, [selected, refetch]);
 
   const [escalateReason, setEscalateReason] = useState("");
+  /** Right pane, so "Advance to Profile Clean-Up" can bring the rep to it. */
+  const cleanUpRef = useRef<HTMLDivElement | null>(null);
 
   // Doctor DB clinic dropdown labels — fetched once, same source as /profile.
   const [clinicLabels, setClinicLabels] = useState<{ id: number; name: string }[]>([]);
@@ -402,13 +414,13 @@ const UnverifiedReferralsPage = () => {
       try {
         const notes = selected.intakeEscalationNotes;
         const res =
-          kind === "advance" ? await advanceToProfileCleanUp(selected.id)
+          kind === "advance" ? await advanceToMedicalNecessity(selected.id)
           : kind === "escalate" ? await escalateIntake(selected.id, escalateReason, notes)
           : kind === "proposeStuck" ? await proposeIntakeStuck(selected.id, escalateReason, notes)
           : await returnIntakeToPipeline(selected.id, escalateReason, notes);
         setSaveNote(
           res.ok
-            ? kind === "advance" ? "Advanced to Verified Referrals — finish the send-off there."
+            ? kind === "advance" ? "Advanced to Medical Necessity."
               : kind === "escalate" ? "Escalated to Manager Intervention."
               : kind === "proposeStuck" ? "Proposed stuck — sent to Final Decisions."
               : "Sent back to the pipeline."
@@ -810,8 +822,12 @@ const UnverifiedReferralsPage = () => {
                       <button onClick={save} disabled={saving} className="btn primary">
                         {saving ? "Saving…" : "Save"}
                       </button>
+                      {/* The pane itself unlocks from the four conditions
+                          (HANDOFF §2: "not unlocked by a button click"), so this
+                          takes the rep TO the unlocked pane rather than gating
+                          it a second time. */}
                       <button
-                        onClick={() => runStageAction("advance")}
+                        onClick={() => cleanUpRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })}
                         disabled={!unlock.unlocked || saving}
                         className="btn primary"
                         title={unlock.unlocked ? undefined : "Blocked by the checklist above"}
@@ -861,7 +877,7 @@ const UnverifiedReferralsPage = () => {
                 until the left one is done. `.panewrap.locked` does the blur,
                 the overlay and the pointer-events block in CSS, so there is no
                 second copy of that rule in JSX to drift out of sync. */}
-            <div className={unlock.unlocked ? "panewrap" : "panewrap locked"}>
+            <div ref={cleanUpRef} className={unlock.unlocked ? "panewrap" : "panewrap locked"}>
               <div className="lockover">
                 <div className="lockmsg">
                   <div className="li"><Lock className="h-6 w-6 mx-auto" /></div>
@@ -891,7 +907,7 @@ const UnverifiedReferralsPage = () => {
                   hand-rolls a second overlay that could disagree with it. */}
               <div className="stack">
                 <div>
-                  <Card title="Verified Insurance" tone="lead">
+                  <Card step={1} title="Verified Insurance" tone="lead">
                     <div className="grid grid-cols-2 gap-3">
                       <EditSelect
                         label="Primary Insurance"
@@ -949,12 +965,12 @@ const UnverifiedReferralsPage = () => {
                     </button>
                   </Card>
 
-                  {/* Serving & Coverage — the product decision that carries to
-                      Medical Necessity. These are the SAME Monday columns the
-                      left pane's "What they need" edits, deliberately: the left
-                      is what the patient asked for, this is what we commit to,
-                      and they are one value so a save can't write two answers. */}
-                  <Card title="Serving & Coverage" tone="lead">
+                  {/* Step 2 — the one decision this card owns. The mockup has
+                      Serving and nothing else: Request Type and the coverage
+                      paths are the patient's answers and live on the left, so
+                      duplicating them here just created two controls for one
+                      column and a note explaining which button saved which. */}
+                  <Card step={2} title="Serving & Coverage" tone="lead">
                     <div className="grid grid-cols-2 gap-3">
                       <EditSelect
                         label="Serving"
@@ -962,36 +978,15 @@ const UnverifiedReferralsPage = () => {
                         onChange={(v) => edit({ serving: v })}
                         options={SERVING_OPTS}
                       />
-                      <EditSelect
-                        label="Request Type"
-                        value={selected.requestType ?? ""}
-                        onChange={(v) => edit({ requestType: v })}
-                        options={REQUEST_TYPE_OPTS}
-                      />
-                      <EditSelect
-                        label="CGM Coverage Path"
-                        value={selected.cgmCoveragePath ?? ""}
-                        onChange={(v) => edit({ cgmCoveragePath: v })}
-                        options={CGM_PATH_OPTS}
-                      />
-                      <EditSelect
-                        label="Insulin Pump Coverage Path"
-                        value={selected.insulinPumpCoveragePath ?? ""}
-                        onChange={(v) => edit({ insulinPumpCoveragePath: v })}
-                        options={IP_PATH_OPTS}
-                      />
                     </div>
-                    <p className="mt-2 text-[11px] text-muted-foreground">
-                      Serving saves with “Save verified insurance”; Request Type and the
-                      coverage paths save with “Save” on the left.
-                    </p>
                   </Card>
 
                   {/* Select Correct Provider — turns the free text the patient
                       typed into a real NPI + location + clinicals method. It
                       writes the VERIFIED doctor columns; the Provided * fields
                       on the left are untouched by it (§6.0). */}
-                  <div className="pf-root mt-4">
+                  <Card step={3} title="Select Correct Provider" tone="lead">
+                  <div className="pf-root">
                     <DoctorSection
                       patient={selected}
                       onUpdate={edit}
@@ -999,15 +994,17 @@ const UnverifiedReferralsPage = () => {
                       onClinicSelect={(_id, name) => edit({ clinicName: name })}
                     />
                   </div>
+                  </Card>
 
                   {/* Ready to Send Off? — the send-off page's checklist, same
                       derived-not-stored rule. Sits last because it summarises
                       everything above it, doctor included. */}
                   <Card
+                    step={4}
                     title="Ready to Send Off?"
-                    tone={readyMissing === 0 ? "lead" : "decide"}
+                    tone="decide"
                     right={
-                      <span className={readyMissing === 0 ? "pill ok" : "pill warn"}>
+                      <span className={readyMissing === 0 ? "pill ok" : "mp"}>
                         {readyMissing === 0 ? "Ready" : `${readyMissing} missing`}
                       </span>
                     }
@@ -1032,6 +1029,21 @@ const UnverifiedReferralsPage = () => {
                         </li>
                       ))}
                     </ul>
+
+                    {/* The stage's two real exits, as the mockup lays them out. */}
+                    <div className="route-grid" style={{ gridTemplateColumns: "1fr" }}>
+                      <div className={readyMissing === 0 ? "route adv on" : "route adv"}>
+                        <h4>Advance to MN</h4>
+                        <p>Profile is complete — hand the patient to Medical Necessity.</p>
+                        <button
+                          onClick={() => runStageAction("advance")}
+                          disabled={readyMissing > 0 || saving}
+                          className="btn primary justify-center"
+                        >
+                          Advance to MN →
+                        </button>
+                      </div>
+                    </div>
                   </Card>
                 </div>
               </div>

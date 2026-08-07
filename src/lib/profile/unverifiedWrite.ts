@@ -19,12 +19,12 @@
  */
 
 import {
-  COL, GROUPS, writeStatusIndex, writeText, writeNumber, writeLongText, writeItemName,
-  writePhone, moveItemToGroup, readColumnTexts,
+  COL, writeStatusIndex, writeText, writeNumber, writeLongText, writeItemName,
+  writePhone, readColumnTexts,
 } from "./mondayApi";
 import {
   GENERAL_INSURANCE_INDEX, PRIMARY_INSURANCE_INDEX,
-  SECONDARY_INSURANCE_INDEX, SERVING_INDEX,
+  SECONDARY_INSURANCE_INDEX, SERVING_INDEX, MOVE_TO_ONBOARDING_INDEX,
   REQUEST_TYPE_INDEX, CGM_COVERAGE_PATH_INDEX, INSULIN_PUMP_COVERAGE_PATH_INDEX,
   REFERRAL_TYPE_INDEX, REFERRAL_SOURCE_INDEX,
 } from "./mondayMapping";
@@ -381,27 +381,20 @@ function appendNote(existing: string | undefined, note: string): string {
 }
 
 /**
- * Advance to Profile Clean-Up — this stage's exit (HANDOFF §2, "Left-pane
- * exits" #1). It moves the patient into the **1. Intake** group, which is the
- * Verified Referrals queue.
- *
- * It deliberately does NOT write Move to Onboarding. Verified Referrals is the
- * stage BETWEEN this one and Medical Necessity, and it owns the send-off: it
- * is where the verified insurance, serving/coverage and doctor get finished
- * and where "Advance to MN" is flipped. Writing that here would fire the
- * create-item automation immediately and hand Medical Evaluation a patient
- * with none of the right pane filled in.
+ * Advance to Medical Necessity — the stage's exit (mockup step 4, "Advance to
+ * MN"). Writes Move to Onboarding = "Advance to MN", which is what board
+ * automation 7917676280 watches to create the Medical Evaluation item and move
+ * this one to Completed.
  */
-export async function advanceToProfileCleanUp(itemId: string): Promise<IntakeWriteResult> {
+export async function advanceToMedicalNecessity(itemId: string): Promise<IntakeWriteResult> {
   try {
-    await moveItemToGroup(itemId, GROUPS.intake);
+    await writeStatusIndex(itemId, COL.moveToOnboarding, MOVE_TO_ONBOARDING_INDEX["Advance to MN"]);
     return { ok: true, errors: [] };
   } catch (e) {
     return {
       ok: false,
       errors: [{
-        label: "Advance to Profile Clean-Up",
-        columnId: "group",
+        label: "Move to Onboarding", columnId: COL.moveToOnboarding,
         error: e instanceof Error ? e.message : String(e),
       }],
     };
