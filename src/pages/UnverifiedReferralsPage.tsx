@@ -39,6 +39,10 @@ import {
   suggestPrimary, suggestSecondary, buildSuggestionInputs,
 } from "@/lib/profile/primaryInsurance";
 import type { Patient } from "@/lib/profile/workflow";
+// The oversight columns deep-link with ?mv= — read it through the shared
+// helper rather than a hand-rolled param name, which is how this page ended
+// up looking for a "?origin=" nothing ever wrote.
+import { managerOriginFromParams } from "@/lib/shared/managerOrigin";
 // The shared bar, so this stage's Propose Stuck / Send back to pipeline are
 // literally the same component and copy Medical Evaluation uses — not a
 // lookalike that can drift from it.
@@ -180,7 +184,7 @@ const UnverifiedReferralsPage = () => {
   // Medical Evaluation queues apply. Managers clicking in from an oversight
   // column carry ?origin=, and for them the escalated patients are the ONLY
   // ones worth showing, so the filter inverts rather than disappearing.
-  const managerOrigin = searchParams.get("origin");
+  const managerOrigin = managerOriginFromParams(searchParams);
   const visible = useMemo(() => {
     const escalated = (p: Patient) =>
       p.intakeEscalation === "Manager Escalation Required" ||

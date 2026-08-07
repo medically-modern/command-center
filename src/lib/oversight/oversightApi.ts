@@ -1061,7 +1061,27 @@ export interface OversightSection {
 }
 
 export const OVERSIGHT_SECTIONS: OversightSection[] = [
-  { id: "intake", title: "Intake", chartIds: ["profile-send-off", "profile-send-off-unverified", "profile-send-off-in-system"] },
+  // Patient Intake carries the 3-column manager scheme, but ONLY for the
+  // Unverified queue — it is the one intake stage with an escalation ladder
+  // (rep → Manager Intervention → Final Decisions). Verified Referrals and
+  // Already In System have no escalation column, so they sit in the left
+  // column with blank manager cells, which is what `rowOf` alignment renders.
+  //
+  // ⚠️ Before this, the two escalation charts existed in CHART_DEFS and
+  // CHART_FILTERS but were in no section at all, so they never rendered. An
+  // escalated intake patient is filtered out of the rep sidebar AND out of
+  // useRoleCounts, so with no chart to land in they were invisible in the
+  // entire app — exactly the §7 invariant the Insurance coverage test guards.
+  {
+    id: "intake",
+    title: "Patient Intake",
+    chartIds: ["profile-send-off-unverified", "profile-send-off", "profile-send-off-in-system"],
+    primaryTitle: "Processor Overview",
+    secondaryTitle: "Manager Intervention",
+    secondaryChartIds: ["profile-send-off-unverified-escalated"],
+    tertiaryTitle: "Final Decisions",
+    tertiaryChartIds: ["profile-send-off-unverified-stuck"],
+  },
   // Manager views (Brandon 2026-07-20): both stages share the 3-column
   // scheme — Processor Overview / Manager Intervention / Final Decisions —
   // with rows horizontally aligned via each chart's rowOf.

@@ -59,6 +59,12 @@ const CHART_ROUTES: Record<string, string | null> = {
   "profile-send-off": "/profile",
   "profile-send-off-unverified": "/unverified-referrals",
   "profile-send-off-in-system": "/in-system-referrals",
+  // Both intake manager charts open the same stage page in manager mode. Without
+  // these, CHART_ROUTES[chartId] is undefined and handlePatientClick toasts
+  // "This stage doesn't have a dedicated page yet" — a manager could see the
+  // escalated patient on the bar and had no way to open them.
+  "profile-send-off-unverified-escalated": "/unverified-referrals",
+  "profile-send-off-unverified-stuck": "/unverified-referrals",
   "evaluate": "/evaluate",
   "send-request": "/send-request",
   "confirm-receipt": "/confirm-receipt",
