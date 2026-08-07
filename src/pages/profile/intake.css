@@ -52,9 +52,16 @@
      2. The sidebar COLLAPSES (SidebarTrigger). Container width is the only
         measure that notices, so collapsing it can now buy back the split.
    Stacked is the base state; the split is what gets turned on. */
-.pf-root .panes-host { container-type:inline-size; container-name:panes }
+/* min-height:0 is load-bearing: without it this flex child refuses to shrink
+   below its content, the panes grow to full content height instead of being
+   bounded, and NOTHING scrolls internally — the window scrolls instead. That
+   also means a wheel over a pane hits an overflow:auto box that isn't actually
+   overflowing, and `overscroll-behavior:contain` (below) stops it chaining
+   out, so the wheel does nothing at all and you're left dragging the bar. */
+.pf-root .panes-host { container-type:inline-size; container-name:panes; min-height:0 }
+/* Stacked: .panes IS the scroller, so the region still scrolls as one doc. */
 .pf-root .panes { display:grid; grid-template-columns:1fr; align-items:stretch;
-  max-width:1900px; margin:0 auto; width:100%; min-height:0 }
+  max-width:1900px; margin:0 auto; width:100%; flex:1; min-height:0; overflow-y:auto }
 .pf-root .pane { min-width:0; display:flex; flex-direction:column; gap:18px }
 /* never let a card be squashed by the pane's fixed height */
 .pf-root .pane > * { flex:none }
@@ -63,8 +70,9 @@
 /* ~1100px of PANE space = ~515px per column, the point below which two
    columns are narrower than the field grids inside them. */
 @container panes (min-width:1100px) {
-  /* the two scroll containers — only meaningful side by side */
-  .pf-root .panes { grid-template-columns:1fr 1fr; flex:1 }
+  /* the two scroll containers — only meaningful side by side, so the grid
+     itself stops scrolling and hands that job to each column. */
+  .pf-root .panes { grid-template-columns:1fr 1fr; overflow:hidden }
   .pf-root .panes > .pane      { overflow-y:auto; overscroll-behavior:contain; padding:0 11px 110px 26px }
   .pf-root .panes > .panewrap  { overflow-y:auto; overscroll-behavior:contain; padding:0 26px 110px 11px }
   .pf-root .panewrap.locked .lockover { padding-top:110px }

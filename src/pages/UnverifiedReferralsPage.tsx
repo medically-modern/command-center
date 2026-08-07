@@ -404,7 +404,11 @@ const UnverifiedReferralsPage = () => {
       {/* .pf-root scopes the whole Command Center design system (redesign.css)
           plus this page's additions (intake.css). Without it every class below
           is inert — which is exactly how this page shipped the first time. */}
-      <div className="pf-root min-h-screen flex w-full bg-gradient-subtle">
+      {/* h-screen, not min-h-screen: the panes below scroll INTERNALLY, which
+          needs a definite height to shrink against. With min-h-screen the
+          chain has no upper bound, the panes grow to content, and the wheel
+          stops working over them entirely. */}
+      <div className="pf-root h-screen overflow-hidden flex w-full bg-gradient-subtle">
         <PatientsSidebar
           patients={visible}
           selectedId={selectedId}
