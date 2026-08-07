@@ -43,15 +43,32 @@
 .pf-root .attempt-badge.auto { background:oklch(0.94 0.02 175 / 0.7); color:var(--mm-teal);
   box-shadow:inset 0 0 0 1px var(--mm-mint-ring) }
 
-/* ---- two-pane intake layout — each pane scrolls independently ---- */
-.pf-root .panes { display:grid; grid-template-columns:1fr 1fr; align-items:stretch;
-  max-width:1900px; margin:0 auto; width:100%; flex:1; min-height:0 }
+/* ---- two-pane intake layout — each pane scrolls independently ----
+   The split is driven by a CONTAINER query on .panes-host, not a viewport
+   media query. Two reasons the viewport is the wrong thing to measure:
+     1. The panes never get the whole window — PatientsSidebar takes ~256px of
+        it — so a `max-width:1500px` media query was collapsing the layout on
+        every ordinary laptop. That is the "one long doc" bug.
+     2. The sidebar COLLAPSES (SidebarTrigger). Container width is the only
+        measure that notices, so collapsing it can now buy back the split.
+   Stacked is the base state; the split is what gets turned on. */
+.pf-root .panes-host { container-type:inline-size; container-name:panes }
+.pf-root .panes { display:grid; grid-template-columns:1fr; align-items:stretch;
+  max-width:1900px; margin:0 auto; width:100%; min-height:0 }
 .pf-root .pane { min-width:0; display:flex; flex-direction:column; gap:18px }
 /* never let a card be squashed by the pane's fixed height */
 .pf-root .pane > * { flex:none }
-/* the two scroll containers */
-.pf-root .panes > .pane      { overflow-y:auto; overscroll-behavior:contain; padding:0 11px 110px 26px }
-.pf-root .panes > .panewrap  { overflow-y:auto; overscroll-behavior:contain; padding:0 26px 110px 11px }
+.pf-root .panes > .pane, .pf-root .panes > .panewrap { padding:20px 26px 40px }
+
+/* ~1100px of PANE space = ~515px per column, the point below which two
+   columns are narrower than the field grids inside them. */
+@container panes (min-width:1100px) {
+  /* the two scroll containers — only meaningful side by side */
+  .pf-root .panes { grid-template-columns:1fr 1fr; flex:1 }
+  .pf-root .panes > .pane      { overflow-y:auto; overscroll-behavior:contain; padding:0 11px 110px 26px }
+  .pf-root .panes > .panewrap  { overflow-y:auto; overscroll-behavior:contain; padding:0 26px 110px 11px }
+  .pf-root .panewrap.locked .lockover { padding-top:110px }
+}
 .pf-root .panes > .pane::-webkit-scrollbar,
 .pf-root .panes > .panewrap::-webkit-scrollbar { width:10px }
 .pf-root .panes > .pane::-webkit-scrollbar-thumb,
@@ -73,7 +90,7 @@
 .pf-root .panewrap { position:relative; min-width:0 }
 .pf-root .panewrap.locked .pane-inner { filter:blur(2px); opacity:.4; pointer-events:none; user-select:none }
 .pf-root .lockover { display:none; position:absolute; inset:0; z-index:25; justify-content:center;
-  align-items:flex-start; padding-top:110px }
+  align-items:flex-start; padding-top:60px }
 .pf-root .panewrap.locked .lockover { display:flex }
 .pf-root .lockmsg { position:sticky; top:110px; background:#fff; border:1px solid var(--border);
   border-radius:14px; padding:24px 28px; text-align:center; max-width:320px;
@@ -240,10 +257,7 @@
 .pf-root .route.esc.on { border-color:oklch(0.62 0.13 18 / .4); background:oklch(0.62 0.13 18 / .06) }
 .pf-root .route-stack { display:flex; flex-direction:column; gap:14px; margin-top:18px }
 
-/* Below this width the side-by-side panes stop earning their keep — stack
-   them and let the page scroll as one, rather than two 600px columns. */
-@media (max-width:1500px) {
-  .pf-root .panes { grid-template-columns:1fr; flex:none }
-  .pf-root .panes > .pane, .pf-root .panes > .panewrap { overflow:visible; padding:20px 26px 40px }
-  .pf-root .panewrap.locked .lockover { padding-top:60px }
-}
+/* The stacking rule that used to live here was a `max-width:1500px` VIEWPORT
+   media query, which collapsed the split on every ordinary laptop. Stacking is
+   now the base state and the split is turned on by the container query at the
+   top of this file — see the comment there. */

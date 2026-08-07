@@ -414,7 +414,10 @@ const UnverifiedReferralsPage = () => {
           onRefresh={refetch}
         />
 
-        <div className="flex-1 flex flex-col min-w-0">
+        {/* panes-host is the CONTAINER the two-pane split queries against, so
+            the layout keys off the width the panes actually have rather than
+            the window's — the sidebar takes ~256px of that, and collapses. */}
+        <div className="panes-host flex-1 flex flex-col min-w-0">
           <header className="bg-gradient-navy text-navy-foreground border-b border-sidebar-border flex-none">
             <div className="px-6 py-5 flex items-center justify-between gap-4 flex-wrap">
               <div className="flex items-center gap-3">
