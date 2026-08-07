@@ -1,0 +1,2583 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Patient Intake — Command Center build (Corey flow)</title>
+<style>
+/* ============================================================
+   PART A — Command Center design system.
+   Verbatim port of src/pages/profile/redesign.css from
+   medically-modern/command-center-test (the live /profile page).
+   ============================================================ */
+/* Profile Send-Off redesign — CSS ported from profile-sendoff-redesign-v2.html,
+   scoped under .pf-root (theme tokens live on .pf-root, not :root, so the app theme is untouched). */
+
+.pf-root { --background:oklch(1 0 0);
+  --foreground:oklch(0.129 0.042 264.695);
+  --card:oklch(1 0 0);
+  --muted:oklch(0.968 0.007 247.896);
+  --muted-foreground:oklch(0.554 0.046 257.417);
+  --border:oklch(0.929 0.013 255.508);
+  --input:oklch(0.929 0.013 255.508);
+  --mm-teal:oklch(0.36 0.04 200);
+  --mm-green:oklch(0.62 0.10 175);
+  --mm-green-12:oklch(0.62 0.10 175 / 0.12);
+  --mm-mint:oklch(0.94 0.02 175);
+  --mm-mint-ring:oklch(0.85 0.04 175);
+  --mm-rose:oklch(0.62 0.13 18);
+  --mm-rose-soft:oklch(0.94 0.03 18);
+  --amber:oklch(0.55 0.12 75);
+  --amber-soft:oklch(0.96 0.04 90);
+  --amber-ring:oklch(0.85 0.08 85); }
+.pf-root * { box-sizing:border-box;margin:0;padding:0;border-color:var(--border) }
+.pf-root { font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  background:var(--background);color:var(--foreground);line-height:1.5;-webkit-font-smoothing:antialiased; }
+.pf-root button { font:inherit;cursor:pointer;background:none;border:none;color:inherit }
+.pf-root .page { max-width:120rem;margin:0 auto;padding:40px 20px;display:flex;flex-direction:column;gap:24px }
+.pf-root .layout { display:grid;grid-template-columns:420px minmax(0,1fr);gap:24px;align-items:start }
+.pf-root .layout-head { grid-column:1 / -1;display:grid;grid-template-columns:420px 2fr 3fr;gap:24px;margin-bottom:-8px }
+.pf-root .layout-head .dh { font-size:1.05rem;font-weight:800;letter-spacing:-.01em;display:flex;align-items:center;gap:10px;color:var(--mm-teal) }
+.pf-root .layout-head .lh-recv { grid-column:1 / 3 }
+.pf-root .layout-head .lh-work { grid-column:3 }
+.pf-root .maincol { display:flex;flex-direction:column;gap:24px;min-width:0 }
+.pf-root .duo.duo-stretch { align-items:stretch }
+.pf-root .duo.duo-stretch .leftcol { display:flex;flex-direction:column }
+.pf-root .duo.duo-stretch .leftcol>.card { flex:1 }
+/* Sticky — the referral email + files follow the user up and down the page.
+   When the rail is taller than the viewport it scrolls its OWN content
+   (overflow-y) so the entire referral email is always reachable in place. */
+.pf-root .leftrail { position:sticky;top:16px;max-height:calc(100vh - 32px);overflow-y:auto;align-self:start;display:flex;flex-direction:column;gap:16px;overscroll-behavior:contain }
+.pf-root .rail-card { border:1px solid var(--border);border-radius:14px;background:#fff;overflow:hidden }
+.pf-root .rail-card:first-child { border-top:4px solid var(--mm-teal) }
+.pf-root .rail-head { font-size:.74rem;text-transform:uppercase;letter-spacing:.05em;color:var(--mm-teal);font-weight:800;padding:12px 16px;border-bottom:1px solid var(--border);background:oklch(0.985 0.005 200) }
+.pf-root .rail-body { padding:14px 16px }
+.pf-root .rail-body pre { margin:0;font-size:.84rem;line-height:1.6;white-space:pre-wrap;word-break:break-word;font-family:inherit;color:var(--foreground) }
+/* Referral email / updates — scrolls INSIDE its own box (its own overflow, not
+   the rail's, so the tail is always reachable). The box stretches DOWN toward
+   the bottom of the screen (viewport-height cap) so as much of the email is
+   visible at once as fits; the rest scrolls within the box. Width and content
+   formatting are unchanged — it stays in the left-rail column. A short email
+   only takes the height it needs (max-height caps, never forces height). */
+.pf-root .rail-updates { max-height:calc(100vh - 240px);overflow-y:auto;overscroll-behavior:contain;padding-right:4px }
+.pf-root .rail-updates img { max-width:100%;height:auto }
+.pf-root .rail-updates table { max-width:100%;table-layout:fixed;word-break:break-word }
+.pf-root .rail-updates .note-entry { overflow-wrap:anywhere }
+.pf-root .rail-files { padding:8px }
+.pf-root .card { background:var(--card);border:1px solid var(--border);border-radius:16px;padding:24px;box-shadow:0 1px 2px 0 rgb(0 0 0 / .05) }
+.pf-root .step-card { border-left:4px solid var(--mm-green) }
+.pf-root .header-card { border-top:4px solid var(--mm-teal) }
+.pf-root .recv-card { border-top:4px solid var(--mm-teal);background:oklch(0.985 0.005 200) }
+.pf-root .leftcol { min-width:0 }
+.pf-root #ref-handle { position:fixed;left:0;top:150px;z-index:40;display:inline-flex;align-items:center;gap:9px;border:none;cursor:pointer;background:var(--mm-teal);color:#fff;font-size:.92rem;font-weight:800;letter-spacing:.01em;padding:15px 20px;border-radius:0 14px 14px 0;box-shadow:3px 4px 18px rgba(0,0,0,.22);animation:refpulse 2.4s ease-in-out infinite;transition:opacity .2s,filter .15s,transform .15s }
+.pf-root #ref-handle:hover { transform:translateX(2px) }
+@keyframes refpulse{0%,100%{box-shadow:3px 4px 18px rgba(0,0,0,.22)}50%{box-shadow:3px 4px 26px var(--mm-mint-ring)}}
+.pf-root #ref-handle:hover { filter:brightness(1.06) }
+.pf-root #ref-drawer { position:fixed;left:0;top:120px;z-index:41;display:flex;flex-direction:column;width:min(460px, calc(100vw - 28px));max-height:84vh;background:#fff;border:1px solid var(--border);border-left:none;border-radius:0 16px 16px 0;box-shadow:8px 10px 36px rgba(0,0,0,.18);transform:translateX(-110%);opacity:0;transition:transform .3s cubic-bezier(.4,0,.2,1),opacity .22s;overflow:hidden }
+.pf-root #ref-drawer.open { transform:translateX(0);opacity:1 }
+.pf-root .ref-drawer-head { display:flex;align-items:center;justify-content:space-between;gap:12px;padding:13px 16px;border-bottom:1px solid var(--border);background:oklch(0.985 0.005 200) }
+.pf-root .ref-drawer-head b { font-size:.74rem;text-transform:uppercase;letter-spacing:.05em;color:var(--mm-teal) }
+.pf-root .ref-drawer-head button { border:none;background:none;cursor:pointer;color:var(--muted-foreground);font-size:1.05rem;line-height:1;padding:2px 6px;border-radius:6px }
+.pf-root .ref-drawer-head button:hover { background:oklch(0.93 0.01 247);color:var(--foreground) }
+.pf-root .ref-drawer-body { padding:14px 18px;overflow:auto;flex:1;min-height:0 }
+.pf-root .ref-drawer-body pre { margin:0;font-size:.875rem;line-height:1.6;white-space:pre-wrap;word-break:break-word;font-family:inherit;color:var(--foreground) }
+.pf-root .step-head { display:flex;align-items:center;gap:12px;margin-bottom:20px }
+.pf-root .step-num { display:grid;place-items:center;height:36px;width:36px;border-radius:50%;flex-shrink:0;
+  font-size:1rem;font-weight:700;background:var(--mm-green-12);color:var(--mm-teal);
+  box-shadow:inset 0 0 0 1px var(--mm-mint-ring); }
+.pf-root .step-head h2 { font-size:1.25rem;font-weight:700;letter-spacing:-.015em }
+.pf-root .step-head .right { margin-left:auto }
+.pf-root .eyebrow { font-size:.875rem;font-weight:500;text-transform:uppercase;letter-spacing:.025em;color:var(--muted-foreground) }
+.pf-root .eyebrow-xs { font-size:.75rem;font-weight:500;text-transform:uppercase;letter-spacing:.025em;color:var(--muted-foreground) }
+.pf-root .hval { margin-top:4px;font-size:1.125rem;font-weight:600 }
+.pf-root .ph-name { font-size:1.875rem;font-weight:900;letter-spacing:-.025em }
+.pf-root .ph-dob { margin-top:4px;font-size:1.125rem;color:var(--muted-foreground) }
+.pf-root .ph-groups { display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:20px }
+.pf-root .hgroup { border:1px solid var(--border);border-radius:12px;background:oklch(0.968 0.007 247.896 / 0.3);padding:16px }
+.pf-root .hgroup .pair { display:grid;grid-template-columns:1fr 1fr;gap:12px }
+.pf-root .stage-chip { display:inline-flex;align-items:center;gap:8px;border-radius:999px;padding:7px 16px;font-size:.875rem;font-weight:700;background:oklch(0.94 0.02 175 / 0.7);color:var(--mm-teal);box-shadow:inset 0 0 0 1px var(--mm-mint-ring) }
+.pf-root .duo { display:grid;grid-template-columns:2fr 3fr;gap:24px;align-items:start }
+.pf-root .duo-head { display:grid;grid-template-columns:2fr 3fr;gap:24px;margin-bottom:-8px }
+.pf-root .duo-head .dh { font-size:1.05rem;font-weight:800;letter-spacing:-.01em;display:flex;align-items:center;gap:10px }
+.pf-root .duo-head .dh.recv { color:var(--mm-teal) }
+.pf-root .duo-head .dh.work { color:var(--mm-teal) }
+.pf-root .duo-head .dh .tag { font-size:.7rem;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--muted-foreground) }
+.pf-root .recv-title { display:flex;align-items:center;gap:10px;margin-bottom:16px }
+.pf-root .recv-title h3 { font-size:1.05rem;font-weight:700;color:var(--mm-teal) }
+.pf-root .recv-title .as { font-size:.7rem;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--muted-foreground);background:oklch(0.968 0.007 247.896 / 0.6);border-radius:999px;padding:3px 10px }
+.pf-root .kv { display:grid;grid-template-columns:1fr 1fr;gap:14px 20px }
+.pf-root .kv .f .k { font-size:.72rem;font-weight:500;text-transform:uppercase;letter-spacing:.025em;color:var(--muted-foreground) }
+.pf-root .kv .f .v { margin-top:3px;font-size:.98rem;font-weight:600;overflow-wrap:break-word }
+.pf-root .kv .f.full { grid-column:1/-1 }
+.pf-root .flabel { margin:0 0 7px;font-size:.75rem;font-weight:500;text-transform:uppercase;letter-spacing:.025em;color:var(--muted-foreground);display:flex;align-items:center;gap:6px }
+.pf-root .req-star { color:var(--mm-rose);font-weight:700 }
+.pf-root input[type=text], .pf-root input[type=date], .pf-root select, .pf-root textarea { font:inherit;font-size:.95rem;width:100%;padding:10px 13px;
+  border:1.5px solid var(--input);border-radius:8px;background:var(--background);color:var(--foreground); }
+.pf-root select { height:44px;cursor:pointer }
+.pf-root input:focus, .pf-root select:focus, .pf-root textarea:focus { outline:2px solid var(--mm-green);outline-offset:1px }
+.pf-root .need { border-color:var(--mm-rose) !important;background:oklch(0.94 0.03 18 / 0.4) }
+.pf-root .filled { border-color:var(--mm-green) !important;background:oklch(0.97 0.02 175 / .55) }
+.pf-root .fgrid { display:grid;grid-template-columns:1fr 1fr;gap:16px 18px }
+.pf-root .fgrid.trio { grid-template-columns:1fr 1fr 1fr }
+.pf-root .fgrid .full { grid-column:1/-1 }
+.pf-root .fhint { margin-top:6px;font-size:.75rem;color:var(--muted-foreground) }
+/* Fax entry: the input looks like any other field, with a fixed @rcfax.com
+   suffix riding on the right — the rep types only the number. */
+.pf-root .fax-wrap { display:flex;align-items:center;border:1.5px solid var(--input);border-radius:8px;background:var(--background) }
+.pf-root .fax-wrap:focus-within { outline:2px solid var(--mm-green);outline-offset:1px }
+.pf-root .fax-wrap input[type=text] { border:0;border-radius:8px 0 0 8px;flex:1;min-width:0;padding-right:4px;background:transparent }
+.pf-root .fax-wrap input[type=text]:focus { outline:none }
+.pf-root .fax-sfx { flex-shrink:0;padding:0 13px 0 0;font-size:.9rem;font-weight:600;color:var(--muted-foreground);white-space:nowrap;user-select:none }
+.pf-root .fwarn { margin-top:6px;font-size:.78rem;font-weight:600;color:var(--amber);display:flex;align-items:center;gap:6px }
+.pf-root .ferr { margin-top:6px;font-size:.78rem;font-weight:600;color:var(--mm-rose) }
+.pf-root .warn-banner { display:flex;align-items:flex-start;gap:10px;border:1px solid var(--amber-ring);border-radius:10px;background:var(--amber-soft);padding:12px 16px;font-size:.875rem;font-weight:500;color:oklch(0.4 0.1 75) }
+.pf-root .warn-banner svg { color:var(--amber);flex-shrink:0;margin-top:2px }
+.pf-root .err-banner { border:1px solid oklch(0.62 0.13 18 / 0.35);border-radius:12px;background:var(--mm-rose-soft);padding:16px 18px }
+.pf-root .err-banner .et { font-size:1rem;font-weight:800;color:var(--mm-rose);display:flex;align-items:center;gap:9px }
+.pf-root .err-banner .ed { font-size:.875rem;color:oklch(0.42 0.1 18);margin-top:6px;line-height:1.5 }
+.pf-root .err-banner .ea { display:flex;gap:10px;margin-top:12px }
+.pf-root .ok-banner { display:flex;align-items:center;gap:10px;border:1px solid var(--mm-mint-ring);border-radius:10px;background:oklch(0.973 0.011 175);padding:12px 16px;font-size:.875rem;font-weight:600;color:var(--mm-teal) }
+.pf-root .ok-banner svg { color:var(--mm-green);flex-shrink:0 }
+.pf-root .btn { display:inline-flex;align-items:center;gap:8px;border-radius:8px;font-size:.9rem;font-weight:600;
+  padding:11px 20px;box-shadow:0 1px 2px 0 rgb(0 0 0 / .1);flex-shrink:0; }
+.pf-root .btn.primary { background:var(--mm-green);color:#fff }
+.pf-root .btn.primary:hover { background:oklch(0.56 0.10 175) }
+.pf-root .btn.primary:disabled { background:oklch(0.85 0.01 200);box-shadow:none;cursor:not-allowed }
+.pf-root .btn.secondary { background:#fff;color:var(--mm-teal);box-shadow:inset 0 0 0 1.5px var(--mm-teal) }
+.pf-root .btn.secondary:hover { background:oklch(0.36 0.04 200 / 0.06) }
+.pf-root .btn.rose { background:#fff;color:var(--mm-rose);box-shadow:inset 0 0 0 1.5px var(--mm-rose) }
+.pf-root .btn.rose:hover { background:oklch(0.62 0.13 18 / 0.07) }
+.pf-root .btn.amber { background:#fff;color:var(--amber);box-shadow:inset 0 0 0 1.5px var(--amber) }
+.pf-root .btn.amber:hover { background:oklch(0.55 0.12 75 / 0.07) }
+.pf-root .btn.sm { padding:8px 14px;font-size:.82rem }
+.pf-root .file-row { display:flex;align-items:center;gap:12px;border:1px solid var(--mm-mint-ring);
+  border-radius:10px;padding:11px 14px;background:oklch(0.973 0.011 175);cursor:pointer;transition:.12s; }
+.pf-root .file-row:hover { box-shadow:0 0 0 3px oklch(0.62 0.10 175 / 0.12) }
+.pf-root .file-row+.file-row { margin-top:10px }
+.pf-root .file-row svg { color:var(--mm-teal);flex-shrink:0 }
+.pf-root .file-row .fname { font-size:.92rem;font-weight:600;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap }
+.pf-root .file-row .fmeta { font-size:.75rem;color:var(--muted-foreground);text-transform:uppercase }
+.pf-root .res-grid { display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:16px }
+.pf-root .rcell { border:1px solid var(--border);border-radius:10px;padding:12px 13px;background:oklch(0.985 0.003 247) }
+.pf-root .rcell .rl { font-size:.68rem;font-weight:600;text-transform:uppercase;letter-spacing:.04em;color:var(--muted-foreground) }
+.pf-root .rcell .rv { font-size:1rem;font-weight:700;margin-top:5px;color:oklch(0.75 0.01 250) }
+.pf-root .rcell .rv.set { color:var(--foreground) }
+.pf-root .rcell .rv.good { color:var(--mm-green) }
+.pf-root .rcell .rv.bad { color:var(--mm-rose) }
+.pf-root .rcell.wide { grid-column:span 2 }
+@keyframes pulse{0%,100%{opacity:.35}50%{opacity:1}}
+.pf-root .rv.loading { animation:pulse 1s infinite;color:var(--mm-teal) }
+.pf-root .stedi-status { display:inline-flex;align-items:center;gap:8px;font-size:.85rem;font-weight:700 }
+.pf-root .stedi-status.running { color:var(--mm-teal);animation:pulse 1.2s infinite }
+.pf-root .stedi-status.done { color:var(--mm-green) }
+.pf-root .cs-grid { display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-top:14px }
+.pf-root .seg-mini { display:inline-flex;border:1px solid var(--border);border-radius:9px;padding:3px;gap:2px;background:oklch(0.968 0.007 247.896 / 0.4) }
+.pf-root .seg-mini button { font-size:.8rem;font-weight:600;padding:6px 13px;border-radius:7px;color:var(--muted-foreground) }
+.pf-root .seg-mini button.on { background:var(--card);color:var(--mm-teal);box-shadow:0 1px 2px rgb(0 0 0 / .08) }
+.pf-root .work-col { display:flex;flex-direction:column;gap:24px }
+.pf-root .match-banner { display:flex;align-items:center;gap:14px;border:1px solid var(--mm-mint-ring);border-radius:12px;
+  background:oklch(0.973 0.011 175);padding:14px 18px;margin-bottom:18px }
+.pf-root .match-banner .mb-chip { font-size:.7rem;font-weight:800;text-transform:uppercase;letter-spacing:.05em;
+  background:var(--mm-green);color:#fff;border-radius:999px;padding:4px 11px;flex-shrink:0 }
+.pf-root .match-banner .t { font-size:.95rem;font-weight:700 }
+.pf-root .match-banner .d { font-size:.82rem;color:var(--muted-foreground) }
+.pf-root .res .loc-chip { margin-left:auto;font-size:.72rem;font-weight:700;color:var(--mm-teal);
+  background:oklch(0.94 0.02 175 / 0.7);border-radius:999px;padding:3px 10px;flex-shrink:0;
+  max-width:22rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap }
+.pf-root .res.para:hover { background:oklch(0.96 0.015 245) }
+.pf-root .res .sig { margin-left:auto;text-align:right;flex-shrink:0 }
+.pf-root .sc { font-size:.7rem;font-weight:700;border-radius:999px;padding:2px 9px }
+.pf-root .sc.chute { background:oklch(0.93 0.03 175);color:oklch(0.4 0.08 175) }
+.pf-root .sc.fax { background:oklch(0.96 0.015 245);color:oklch(0.45 0.08 245) }
+.pf-root .res-note { font-size:.72rem;color:var(--muted-foreground);padding:8px 11px;border-top:1px dashed var(--border) }
+.pf-root .doccard { margin-top:18px;border:1px solid var(--border);border-radius:14px;overflow:hidden;box-shadow:0 1px 2px 0 rgb(0 0 0 / .04) }
+.pf-root .doctop { display:flex;gap:13px;align-items:center;padding:15px 16px;background:oklch(0.985 0.004 247);border-bottom:1px solid var(--border) }
+.pf-root .doctop .di { width:44px;height:44px;border-radius:11px;background:var(--mm-teal);color:#fff;display:grid;place-items:center;font-weight:800;flex-shrink:0 }
+.pf-root .doctop .dn { font-weight:800;font-size:1.1rem }
+.pf-root .doctop .dm { font-size:.8rem;color:var(--muted-foreground) }
+.pf-root .docnotes { padding:12px 16px;border-bottom:1px solid var(--border);background:#fff;font-size:.85rem }
+.pf-root .docnotes b { color:var(--mm-teal) }
+.pf-root .locwrap { padding:16px;background:#fff }
+.pf-root .loc-grid { display:grid;grid-template-columns:1fr 1fr;gap:14px }
+.pf-root .loc-grid.single { grid-template-columns:minmax(0,30rem);justify-content:center }
+.pf-root .loc { border:1.5px solid var(--border);border-radius:12px;padding:16px;cursor:pointer;position:relative;transition:.13s;background:#fff }
+.pf-root .loc:hover { border-color:var(--mm-green) }
+.pf-root .loc.sel { border-color:var(--mm-green);background:oklch(0.973 0.011 175);box-shadow:0 0 0 3px oklch(0.62 0.10 175 / 0.15) }
+.pf-root .loc.sel::after { content:'✓';position:absolute;bottom:12px;right:12px;width:24px;height:24px;border-radius:50%;
+  background:var(--mm-green);color:#fff;font-weight:800;font-size:.8rem;display:grid;place-items:center }
+.pf-root .loc .lv { font-size:.7rem;font-weight:800;text-transform:uppercase;letter-spacing:.06em;color:var(--muted-foreground) }
+.pf-root .loc .lc { font-size:1rem;font-weight:800;margin-top:2px }
+.pf-root .loc .la { font-size:.82rem;color:var(--muted-foreground);margin-top:2px }
+.pf-root .loc .li { font-size:.82rem;margin-top:8px }
+.pf-root .loc .badge-ref { position:absolute;top:-10px;right:12px;font-size:.68rem;font-weight:800;background:var(--amber-soft);
+  color:var(--amber);border:1px solid var(--amber-ring);border-radius:999px;padding:2px 10px }
+.pf-root .loc .pick { margin-top:12px;font-size:.78rem;font-weight:700;color:var(--mm-green) }
+.pf-root .method-pill { display:inline-flex;font-size:.72rem;font-weight:700;border-radius:999px;padding:3px 10px;margin-top:8px }
+.pf-root .method-pill.fax { background:oklch(0.96 0.015 245);color:oklch(0.45 0.08 245) }
+.pf-root .method-pill.chute { background:oklch(0.93 0.03 175);color:oklch(0.4 0.08 175) }
+.pf-root .method-pill.mail { background:oklch(0.95 0.03 300);color:oklch(0.45 0.13 300) }
+.pf-root .loc-actions { display:flex;gap:10px;margin-top:14px }
+.pf-root .cc-line { display:flex;align-items:center;gap:10px;padding:9px 0;font-size:.95rem;font-weight:600;border-bottom:1px dashed var(--border) }
+.pf-root .cc-line:last-of-type { border-bottom:0 }
+.pf-root .cc-line.ok { color:oklch(0.42 0.08 175) }
+.pf-root .cc-line.warn { color:var(--amber) }
+.pf-root .cc-line.none { color:var(--muted-foreground) }
+.pf-root .cc-ic { width:24px;height:24px;border-radius:7px;display:grid;place-items:center;font-size:.8rem;font-weight:800;flex-shrink:0 }
+.pf-root .cc-ic.ok { background:var(--mm-green);color:#fff }
+.pf-root .cc-ic.warn { background:var(--amber-soft);color:var(--amber);box-shadow:inset 0 0 0 1.5px var(--amber-ring) }
+.pf-root .cc-ic.none { background:var(--muted);color:var(--muted-foreground) }
+.pf-root .cc-line.bad { color:var(--mm-rose) }
+.pf-root .cc-ic.bad { background:var(--mm-rose);color:#fff }
+.pf-root .para-panel { border:1px solid var(--border);border-radius:12px;margin-top:14px;background:#fff;overflow:hidden }
+.pf-root .para-head { display:flex;align-items:center;justify-content:space-between;gap:8px;font-weight:700;font-size:.95rem;color:var(--mm-teal);padding:12px 14px;border-bottom:1px solid var(--border) }
+.pf-root .para-close { border:none;background:none;cursor:pointer;color:var(--muted-foreground);font-size:1.05rem;line-height:1;padding:2px 7px;border-radius:6px }
+.pf-root .para-close:hover { background:var(--muted);color:var(--foreground) }
+.pf-root .para-tool.on { background:var(--mm-green);color:#fff;border-style:solid;border-color:var(--mm-green) }
+.pf-root .para-bar { display:flex;align-items:center;gap:9px;padding:10px 14px;border-bottom:1px solid var(--border);background:oklch(0.985 0.003 247) }
+.pf-root .para-bar input { border:0;background:transparent;font-size:.92rem;width:100%;padding:2px 0;outline:none }
+.pf-root .para-list { max-height:340px;overflow-y:auto }
+.pf-root .para-grp { font-size:.74rem;font-weight:700;color:var(--muted-foreground);background:var(--muted);padding:6px 14px }
+.pf-root .para-grp.match { color:oklch(0.4 0.08 175);background:oklch(0.95 0.03 175 / .5) }
+.pf-root .para-row { display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding:11px 14px;border-bottom:1px solid var(--border);cursor:pointer }
+.pf-root .para-row:last-child { border-bottom:0 }
+.pf-root .para-row:hover { background:oklch(0.97 0.01 175) }
+.pf-root .para-row.sel { background:oklch(0.95 0.04 175);box-shadow:inset 3px 0 0 var(--mm-green) }
+.pf-root .para-foot { display:flex;align-items:center;justify-content:space-between;gap:12px;padding:9px 14px;font-size:.78rem;color:var(--muted-foreground);background:oklch(0.985 0.003 247);border-top:1px solid var(--border) }
+.pf-root .para-foot a { color:var(--mm-teal);font-weight:700;text-decoration:none;white-space:nowrap }
+.pf-root .sig-bar { display:flex;height:14px;border-radius:7px;overflow:hidden;margin:10px 0 4px;background:var(--muted) }
+.pf-root .sig-bar div { height:100% }
+.pf-root .sig-legend { display:flex;gap:16px;font-size:.75rem;color:var(--muted-foreground);flex-wrap:wrap }
+.pf-root .dot { display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:5px }
+.pf-root .cc-loading { font-size:.92rem;font-weight:700;color:var(--mm-teal);animation:pulse 1.1s infinite;padding:8px 0 }
+.pf-root .sugg-chip { display:inline-flex;align-items:center;gap:8px;border-radius:10px;padding:10px 16px;margin-top:14px;
+  font-size:.9rem;font-weight:700;background:var(--amber-soft);color:oklch(0.4 0.1 75);border:1px solid var(--amber-ring) }
+.pf-root .searchwrap { position:relative }
+.pf-root .searchrow { display:flex;gap:8px;align-items:stretch }
+.pf-root .searchrow input { flex:1;min-width:0 }
+.pf-root .para-tool { display:inline-flex;align-items:center;gap:6px;white-space:nowrap;cursor:pointer;border:1px dashed var(--mm-mint-ring);background:oklch(0.97 0.02 175 / .55);color:var(--mm-teal);font-size:.8rem;font-weight:700;border-radius:10px;padding:0 13px }
+.pf-root .para-tool:hover { background:oklch(0.94 0.03 175) }
+.pf-root .para-tool svg { width:15px;height:15px;flex-shrink:0 }
+.pf-root .results { position:absolute;z-index:30;top:calc(100% + 6px);left:0;right:0;background:#fff;border:1px solid var(--border);border-radius:12px;box-shadow:0 18px 40px -16px rgb(0 0 0/.35);padding:6px;display:none }
+.pf-root .results.open { display:block }
+.pf-root .res { display:flex;gap:11px;align-items:center;padding:10px 11px;border-radius:9px;cursor:pointer }
+.pf-root .res:hover { background:oklch(0.973 0.011 175) }
+.pf-root .res .ri { width:34px;height:34px;border-radius:9px;background:oklch(0.94 0.02 175 / 0.7);color:var(--mm-teal);display:grid;place-items:center;font-weight:800;flex-shrink:0 }
+.pf-root .res .rn { font-weight:700;font-size:.92rem }
+.pf-root .res .rm { font-size:.78rem;color:var(--muted-foreground) }
+.pf-root .res.add .ri { background:var(--mm-green);color:#fff }
+.pf-root .provcard { margin-top:16px;border:1px solid var(--mm-mint-ring);background:oklch(0.973 0.011 175);border-radius:12px;overflow:hidden }
+.pf-root .provtop { display:flex;gap:13px;align-items:center;padding:15px 16px;border-bottom:1px solid var(--mm-mint-ring) }
+.pf-root .provtop .di { width:44px;height:44px;border-radius:11px;background:var(--mm-teal);color:#fff;display:grid;place-items:center;font-weight:800;flex-shrink:0 }
+.pf-root .provtop .dn { font-weight:800;font-size:1.05rem }
+.pf-root .provtop .dsub { font-size:.75rem;font-weight:600;text-transform:uppercase;letter-spacing:.04em;color:var(--mm-green);margin-top:1px }
+.pf-root .dgrid { display:grid;grid-template-columns:1fr 1fr;gap:13px 22px;padding:16px;background:#fff }
+.pf-root .dgf .dgl { font-size:.68rem;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--muted-foreground) }
+.pf-root .dgf .dgv { font-size:.92rem;font-weight:600;margin-top:2px }
+.pf-root .dgf.full { grid-column:1/-1 }
+.pf-root .ci { display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px dashed var(--border);font-size:.95rem }
+.pf-root .ci:last-child { border-bottom:0 }
+.pf-root .ci .cb { width:22px;height:22px;border-radius:6px;display:grid;place-items:center;flex-shrink:0;font-size:.75rem;font-weight:800;background:var(--mm-rose-soft);color:var(--mm-rose);box-shadow:inset 0 0 0 1.5px oklch(0.62 0.13 18 / 0.3) }
+.pf-root .ci.done .cb { background:var(--mm-green);color:#fff;box-shadow:none }
+.pf-root .ci .ctag { margin-left:auto;font-size:.78rem;font-weight:700;color:var(--mm-rose) }
+.pf-root .ci.done .ctag { color:var(--mm-green) }
+.pf-root .route-grid { display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:20px }
+.pf-root .step-head.clickable { cursor:pointer;user-select:none }
+.pf-root .step-head.clickable:hover h2 { opacity:.8 }
+.pf-root .chev { transition:transform .2s;color:var(--muted-foreground) }
+.pf-root .chev.open { transform:rotate(180deg) }
+.pf-root .route { border:1px solid var(--border);border-radius:12px;padding:18px;display:flex;flex-direction:column;gap:10px;opacity:.6;transition:.15s }
+.pf-root .route.on { opacity:1 }
+.pf-root .route h4 { font-size:1rem;font-weight:800 }
+.pf-root .route p { font-size:.82rem;color:var(--muted-foreground);flex:1 }
+.pf-root .route.adv.on { border-color:var(--mm-mint-ring);background:oklch(0.973 0.011 175) }
+.pf-root .route.adv h4 { color:var(--mm-teal) }
+.pf-root .route.intake h4, .pf-root .route.outreach h4 { color:var(--amber) }
+.pf-root .route.intake.on, .pf-root .route.outreach.on { border-color:var(--amber-ring);background:oklch(0.96 0.04 90 / 0.4) }
+.pf-root .miss-pills { display:flex;flex-wrap:wrap;gap:7px;margin-top:12px }
+.pf-root .mp { font-size:.78rem;font-weight:600;padding:4px 11px;border-radius:999px;background:var(--mm-rose-soft);color:var(--mm-rose);box-shadow:inset 0 0 0 1px oklch(0.62 0.13 18 / 0.3) }
+.pf-root .mp.green { background:oklch(0.94 0.02 175 / 0.7);color:var(--mm-teal);box-shadow:inset 0 0 0 1px var(--mm-mint-ring) }
+.pf-root .note-entry { font-size:.9rem;background:oklch(0.968 0.007 247.896 / 0.4);border-radius:9px;padding:10px 14px;margin-top:8px }
+.pf-root .note-entry .ts { color:var(--muted-foreground);font-size:.8rem }
+.pf-root .note-add { display:flex;gap:10px;align-items:flex-start;margin-top:12px }
+.pf-root .note-add textarea { min-height:58px;resize:vertical }
+.pf-root .modal { position:fixed;inset:0;background:oklch(0.965 0.004 247);display:none;flex-direction:column;z-index:100 }
+.pf-root .modal.open { display:flex }
+.pf-root .viewer-top { display:flex;align-items:center;justify-content:space-between;gap:16px;padding:11px 18px;background:#fff;border-bottom:1px solid var(--border);box-shadow:0 1px 3px rgb(0 0 0/.05) }
+.pf-root .viewer-top .vt-name { font-weight:700;font-size:.92rem;color:var(--foreground);overflow:hidden;text-overflow:ellipsis;white-space:nowrap }
+.pf-root .vt-tools { display:flex;align-items:center;gap:3px;flex-shrink:0 }
+.pf-root .vt-tools button { border:none;background:none;cursor:pointer;color:var(--muted-foreground);width:34px;height:34px;border-radius:8px;display:grid;place-items:center }
+.pf-root .vt-tools button:hover { background:oklch(0.93 0.012 247);color:var(--foreground) }
+.pf-root .vt-sep { width:1px;height:20px;background:var(--border);margin:0 5px }
+.pf-root .vt-pct { font-size:.82rem;color:var(--muted-foreground);min-width:46px;text-align:center;font-weight:600 }
+.pf-root .viewer-body { flex:1;overflow:auto;display:grid;place-items:center;padding:40px }
+.pf-root .viewer-page { transition:transform .15s ease;transform-origin:center;will-change:transform }
+.pf-root .dl { height:9px;background:#e2e8f0;border-radius:3px }
+.pf-root .toast { position:fixed;left:50%;bottom:26px;transform:translateX(-50%) translateY(160%);background:var(--mm-teal);color:#fff;font-size:.85rem;font-weight:600;padding:13px 20px;border-radius:12px;transition:transform .3s;display:flex;gap:10px;align-items:center;z-index:120 }
+.pf-root .toast.show { transform:translateX(-50%) translateY(0) }
+@media (max-width:1100px) {
+  .pf-root .layout { grid-template-columns:1fr }
+  .pf-root .layout-head { display:none }
+  .pf-root .leftrail { position:static;max-height:none;flex-direction:row;flex-wrap:wrap }
+  .pf-root .leftrail .rail-card { flex:1;min-width:280px }
+}
+@media (max-width:1000px) {
+  .pf-root .duo, .pf-root .duo-head { grid-template-columns:1fr }
+  .pf-root .res-grid, .pf-root .cs-grid { grid-template-columns:1fr 1fr }
+  .pf-root .route-grid { grid-template-columns:1fr }
+  .pf-root .ph-groups { grid-template-columns:1fr }
+}
+.pf-root .sugg-sig { margin-bottom:10px;display:flex;align-items:center;gap:12px;flex-wrap:wrap }
+.pf-root .sugg-sig .flabel { margin:0 }
+.pf-root .pos-badge { flex-shrink:0;font-size:.7rem;font-weight:800;border-radius:999px;padding:5px 11px;background:oklch(0.94 0.02 175 / 0.7);color:var(--mm-teal);box-shadow:inset 0 0 0 1px var(--mm-mint-ring) }
+.pf-root .pos-badge.office { background:var(--amber-soft);color:var(--amber);box-shadow:inset 0 0 0 1px var(--amber-ring) }
+.pf-root .sugg-state { font-size:.8rem;font-weight:600;color:var(--mm-teal);margin-bottom:10px;display:flex;align-items:center;gap:8px }
+.pf-root .sugg-state svg { color:var(--mm-teal);flex-shrink:0 }
+.pf-root .sugg-state .pin { font-size:.68rem;font-weight:800;text-transform:uppercase;letter-spacing:.04em;background:oklch(0.94 0.02 175 / 0.7);border-radius:999px;padding:3px 9px }
+.pf-root .sp-conf { font-size:.66rem;font-weight:700;text-transform:none;letter-spacing:0;color:var(--muted-foreground) }
+.pf-root .sugg-alts { display:flex;flex-wrap:wrap;gap:7px;margin-top:8px }
+.pf-root .sugg-alts .alt { font-size:.78rem;font-weight:700;padding:5px 11px;border-radius:999px;background:#fff;border:1.5px dashed var(--mm-mint-ring);color:var(--mm-teal) }
+.pf-root .sugg-warn { margin-top:10px }
+.pf-root .err-banner.sugg-warn .et { font-size:.85rem }
+.pf-root .pos-pill { display:inline-flex;align-items:center;gap:6px;margin-top:8px;font-size:.76rem;font-weight:800;border-radius:999px;padding:6px 13px;background:var(--amber-soft);color:var(--amber);box-shadow:inset 0 0 0 1px var(--amber-ring) }
+.pf-root .sugg-caveat { display:flex;align-items:flex-start;gap:6px;margin-top:8px;font-size:.76rem;font-weight:600;color:var(--amber) }
+.pf-root .sugg-caveat svg { flex-shrink:0;margin-top:1px;color:var(--amber) }
+.pf-root .sugg-line { display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:6px }
+.pf-root .sugg-chip2 { display:inline-flex;align-items:center;font-size:.8rem;font-weight:700;border-radius:999px;padding:5px 12px;background:var(--mm-green-12);color:var(--mm-teal);box-shadow:inset 0 0 0 1px var(--mm-mint-ring) }
+.pf-root .sugg-chip2.office { background:var(--amber-soft);color:var(--amber);box-shadow:inset 0 0 0 1px var(--amber-ring) }
+.pf-root .sugg-chip2.muted { background:var(--muted);color:var(--muted-foreground);box-shadow:inset 0 0 0 1px var(--border) }
+.pf-root .sugg-chip2.alt2 { background:#fff;color:var(--mm-teal);box-shadow:inset 0 0 0 1.5px var(--mm-mint-ring);border-style:dashed }
+.pf-root .sugg-chip2.clickable { border:0;cursor:pointer;font-family:inherit;transition:filter .12s ease }
+.pf-root .sugg-chip2.clickable:hover { filter:brightness(.93) }
+.pf-root .sugg-note { font-size:.8rem;color:var(--muted-foreground) }
+.pf-root .sugg-lead2 { font-size:.8rem;font-weight:800;color:var(--foreground) }
+
+/* Address autocomplete inputs (they render an untyped <input>, so the
+   input[type=text] rule above doesn't reach them) — match .pf inputs. */
+.pf-root .pf-input { font:inherit;font-size:.95rem;width:100%;padding:10px 13px;border:1.5px solid var(--input);border-radius:8px;background:var(--background);color:var(--foreground); }
+.pf-root .pf-input:focus { outline:2px solid var(--mm-green);outline-offset:1px; }
+
+/* Stedi "running eligibility check" card — shown between Run and the results. */
+.pf-root .stedi-running { margin-top:16px;display:flex;align-items:center;gap:13px;border:1.5px solid var(--mm-mint-ring);border-radius:12px;background:oklch(0.973 0.011 175);padding:14px 16px }
+.pf-root .stedi-running .sr-title { font-weight:800;font-size:.9rem;color:var(--mm-teal) }
+.pf-root .stedi-spinner { flex-shrink:0;width:20px;height:20px;border-radius:50%;border:2.5px solid var(--mm-mint-ring);border-top-color:var(--mm-teal);animation:pfspin .7s linear infinite }
+@keyframes pfspin { to { transform:rotate(360deg) } }
+
+/* deploy bump 7126c6b */
+
+
+/* ============================================================
+   PART B — additions for this prototype only.
+   Two-pane intake layout + lock, patients sidebar, patient
+   header strip, tags, Corey's benefits-output cards.
+   ============================================================ */
+
+html, body { margin:0; padding:0; background:oklch(0.985 0.003 247); }
+body { font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif; }
+
+/* Command Center shell tokens — from src/index.css */
+.pf-root { --sidebar-bg:hsl(215 60% 13%); --sidebar-fg:hsl(210 40% 96%);
+  --sidebar-accent:hsl(215 50% 20%); --sidebar-border:hsl(215 50% 22%);
+  --sidebar-muted:hsl(213 25% 66%);
+  --gradient-navy:linear-gradient(180deg, hsl(215 55% 18%), hsl(215 60% 12%));
+  --gradient-primary:linear-gradient(135deg, hsl(217 91% 50%), hsl(217 91% 62%));
+  --navy-fg:hsl(210 40% 98%); }
+
+/* ---- app shell ---- */
+.cc-shell { display:flex; height:100vh; align-items:stretch; overflow:hidden; }
+.cc-main { flex:1; min-width:0; display:flex; flex-direction:column; min-height:0; }
+.pf-root .topbar, .pf-root .phdr, .pf-root .devnote { flex:none }
+
+/* ---- patients sidebar (live PatientsSidebar — navy) ---- */
+.pf-root .psb { width:256px; flex-shrink:0; background:var(--sidebar-bg); color:var(--sidebar-fg);
+  display:flex; flex-direction:column; position:sticky; top:0; height:100vh; overflow:hidden }
+.pf-root .psb.collapsed { width:0; border:0 }
+.pf-root .psb-head { padding:12px; border-bottom:1px solid var(--sidebar-border) }
+.pf-root .psb-headtop { display:flex; align-items:center; justify-content:space-between; gap:8px }
+.pf-root .psb-eyebrow { font-size:.625rem; text-transform:uppercase; letter-spacing:.18em; color:var(--sidebar-muted) }
+.pf-root .psb-title { font-size:.875rem; font-weight:600; margin-top:1px }
+.pf-root .psb-refresh { width:28px; height:28px; border-radius:6px; display:grid; place-items:center;
+  color:var(--sidebar-muted); flex:none; font-size:.85rem }
+.pf-root .psb-refresh:hover { background:rgba(255,255,255,.08); color:var(--sidebar-fg) }
+.pf-root .psb-searchwrap { position:relative; margin-top:8px }
+.pf-root .psb-searchwrap .ic { position:absolute; left:9px; top:50%; transform:translateY(-50%);
+  font-size:.72rem; color:#9aa6b8; pointer-events:none }
+.pf-root .psb-searchwrap input { width:100%; padding:6px 10px 6px 27px; border-radius:6px;
+  border:1px solid var(--sidebar-border); background:#fff; color:#0f172a; font-size:.875rem }
+.pf-root .psb-searchwrap input::placeholder { color:#9aa3af }
+.pf-root .psb-list { overflow-y:auto; flex:1; padding:8px 0 24px }
+.pf-root .psb-grp { display:flex; align-items:center; gap:6px; font-size:.625rem; font-weight:600;
+  text-transform:uppercase; letter-spacing:.06em; color:var(--sidebar-muted); padding:8px 14px 4px;
+  cursor:pointer }
+.pf-root .psb-grp:hover { color:var(--sidebar-fg) }
+.pf-root .psb-grp .cv { display:inline-block; transition:transform .2s; font-size:.6rem }
+.pf-root .psb-grp.open .cv { transform:rotate(90deg) }
+.pf-root .psb-grp.fu { color:hsl(213 94% 68%) }
+.pf-root .psb-items { padding:0 8px }
+.pf-root .psb-items.closed { display:none }
+.pf-root .psb-item { display:flex; align-items:flex-start; gap:8px; padding:7px 9px; border-radius:7px;
+  cursor:pointer; color:var(--sidebar-fg) }
+.pf-root .psb-item:hover { background:rgba(255,255,255,.06) }
+.pf-root .psb-item.on { background:var(--sidebar-accent) }
+.pf-root .psb-item .ui { flex:none; margin-top:1px; font-size:.82rem; opacity:.85 }
+.pf-root .psb-item .nmrow { display:flex; align-items:center; gap:6px; min-width:0 }
+.pf-root .psb-nm { font-size:.875rem; font-weight:500; white-space:nowrap; overflow:hidden; text-overflow:ellipsis }
+.pf-root .psb-dot { width:8px; height:8px; border-radius:50%; background:hsl(43 96% 56%); flex:none }
+.pf-root .psb-date { font-size:.6875rem; color:var(--sidebar-muted); margin-top:1px }
+.pf-root .psb-item.fu { opacity:.6 }
+.pf-root .psb-item.fu.on { opacity:1 }
+.pf-root .psb-item.fu .psb-date { color:hsl(213 94% 68%) }
+.pf-root .psb-empty { padding:14px; font-size:.75rem; color:var(--sidebar-muted) }
+
+/* ---- navy topbar ---- */
+.pf-root .topbar { background:var(--gradient-navy); color:var(--navy-fg);
+  border-bottom:1px solid var(--sidebar-border); z-index:40 }
+.pf-root .topbar-in { padding:18px 24px; display:flex; align-items:center; justify-content:space-between;
+  gap:16px; flex-wrap:wrap }
+.pf-root .tb-left { display:flex; align-items:center; gap:12px }
+.pf-root .tb-icon { padding:6px; border-radius:6px; color:var(--navy-fg); display:grid; place-items:center;
+  font-size:1rem; line-height:1 }
+.pf-root .tb-icon:hover { background:rgba(255,255,255,.1) }
+.pf-root .tb-tile { height:40px; width:40px; border-radius:10px; background:var(--gradient-primary);
+  display:grid; place-items:center; font-size:1.05rem; box-shadow:0 10px 22px -10px rgba(0,0,0,.5) }
+.pf-root .tb-eyebrow { font-size:.625rem; text-transform:uppercase; letter-spacing:.2em; opacity:.7 }
+.pf-root .tb-title { font-size:1.5rem; font-weight:700; letter-spacing:-.01em; line-height:1.15 }
+.pf-root .tb-sub { font-size:.875rem; opacity:.8; margin-top:2px; display:flex; align-items:center; gap:8px }
+.pf-root .tb-save { display:inline-flex; align-items:center; gap:8px; background:#059669; color:#fff;
+  border-radius:8px; padding:9px 17px; font-size:.875rem; font-weight:600;
+  box-shadow:0 10px 22px -12px rgba(0,0,0,.6) }
+.pf-root .tb-save:hover { background:#047857 }
+
+/* ---- patient header strip ---- */
+.pf-root .phdr { background:#fff; border-bottom:1px solid var(--border); padding:14px 26px 12px;
+  display:flex; align-items:flex-start; gap:20px; flex-wrap:wrap; z-index:35;
+  box-shadow:0 1px 3px rgb(0 0 0 / .04) }
+.pf-root .phdr .who { min-width:0 }
+.pf-root .phdr .nm { font-size:1.5rem; font-weight:900; letter-spacing:-.025em; line-height:1.15 }
+.pf-root .phdr .sub { font-size:.85rem; color:var(--muted-foreground); margin-top:2px }
+.pf-root .phdr .spacer { flex:1 }
+.pf-root .attempt-badge { display:inline-flex; align-items:center; gap:9px; border-radius:999px;
+  padding:8px 17px; font-size:.9rem; font-weight:800; background:var(--mm-teal); color:#fff; flex:none }
+.pf-root .attempt-badge .dot { width:7px; height:7px; border-radius:50%; background:#fff; flex:none }
+.pf-root .attempt-badge.auto { background:oklch(0.94 0.02 175 / 0.7); color:var(--mm-teal);
+  box-shadow:inset 0 0 0 1px var(--mm-mint-ring) }
+
+/* ---- two-pane intake layout — each pane scrolls independently ---- */
+.pf-root .panes { display:grid; grid-template-columns:1fr 1fr; align-items:stretch;
+  max-width:1900px; margin:0 auto; width:100%; flex:1; min-height:0 }
+.pf-root .pane { min-width:0; display:flex; flex-direction:column; gap:18px }
+/* never let a card be squashed by the pane's fixed height */
+.pf-root .pane > * { flex:none }
+/* the two scroll containers */
+.pf-root .panes > .pane      { overflow-y:auto; overscroll-behavior:contain; padding:0 11px 110px 26px }
+.pf-root .panes > .panewrap  { overflow-y:auto; overscroll-behavior:contain; padding:0 26px 110px 11px }
+.pf-root .panes > .pane::-webkit-scrollbar,
+.pf-root .panes > .panewrap::-webkit-scrollbar { width:10px }
+.pf-root .panes > .pane::-webkit-scrollbar-thumb,
+.pf-root .panes > .panewrap::-webkit-scrollbar-thumb { background:oklch(0.88 0.01 250); border-radius:99px;
+  border:3px solid transparent; background-clip:content-box }
+.pf-root .panes > .pane::-webkit-scrollbar-thumb:hover,
+.pf-root .panes > .panewrap::-webkit-scrollbar-thumb:hover { background:oklch(0.78 0.02 250);
+  border:3px solid transparent; background-clip:content-box }
+.pf-root .pane-head { display:flex; align-items:center; gap:12px; border:1px solid var(--mm-mint-ring);
+  border-left:4px solid var(--mm-teal); border-radius:0 0 12px 12px; background:oklch(0.973 0.011 175);
+  padding:13px 17px; position:sticky; top:0; z-index:20; box-shadow:0 6px 14px -10px rgba(0,0,0,.35) }
+.pf-root .pane-head h2 { font-size:1.08rem; font-weight:800; letter-spacing:-.015em; color:var(--mm-teal) }
+.pf-root .pane-head .st { margin-left:auto; font-size:.7rem; font-weight:800; text-transform:uppercase;
+  letter-spacing:.05em; border-radius:999px; padding:4px 11px; background:#fff;
+  color:var(--muted-foreground); box-shadow:inset 0 0 0 1px var(--border) }
+.pf-root .pane-head .st.open { color:var(--mm-teal); box-shadow:inset 0 0 0 1px var(--mm-mint-ring) }
+
+/* ---- lock overlay on the right pane ---- */
+.pf-root .panewrap { position:relative; min-width:0 }
+.pf-root .panewrap.locked .pane-inner { filter:blur(2px); opacity:.4; pointer-events:none; user-select:none }
+.pf-root .lockover { display:none; position:absolute; inset:0; z-index:25; justify-content:center;
+  align-items:flex-start; padding-top:110px }
+.pf-root .panewrap.locked .lockover { display:flex }
+.pf-root .lockmsg { position:sticky; top:110px; background:#fff; border:1px solid var(--border);
+  border-radius:14px; padding:24px 28px; text-align:center; max-width:320px;
+  box-shadow:0 14px 40px -14px rgb(0 0 0 / .3) }
+.pf-root .lockmsg .li { font-size:1.5rem; margin-bottom:8px }
+.pf-root .lockmsg .lt { font-size:.95rem; font-weight:800 }
+.pf-root .lockmsg .ls { font-size:.82rem; color:var(--muted-foreground); margin-top:5px; line-height:1.5 }
+
+/* ---- section card inside a pane ---- */
+.pf-root .sect { background:#fff; border:1px solid var(--border); border-radius:14px; padding:20px 22px;
+  box-shadow:0 1px 2px 0 rgb(0 0 0 / .05) }
+.pf-root .sect.lead { border-left:4px solid var(--mm-green) }
+.pf-root .sect.decide { border-left:4px solid var(--mm-teal) }
+.pf-root .sect.hilite { border-left-color:var(--amber); background:oklch(0.96 0.04 90 / .28) }
+.pf-root .sect-title { display:flex; align-items:center; gap:10px; font-size:1.02rem; font-weight:800;
+  color:var(--mm-teal); letter-spacing:-.01em; padding-bottom:11px; margin-bottom:16px;
+  border-bottom:1.5px solid var(--mm-mint-ring) }
+.pf-root .sect-title .rt { margin-left:auto }
+
+/* ---- misc controls ---- */
+.pf-root .seg { display:inline-flex; border:1px solid var(--border); border-radius:9px; padding:3px; gap:2px;
+  background:oklch(0.968 0.007 247.896 / .5) }
+.pf-root .seg button { font-size:.82rem; font-weight:700; padding:7px 15px; border-radius:7px;
+  color:var(--muted-foreground) }
+.pf-root .seg button.on { background:#fff; color:var(--mm-teal); box-shadow:0 1px 2px rgb(0 0 0 / .1) }
+.pf-root .pills { display:flex; gap:8px; flex-wrap:wrap }
+.pf-root .pillbtn { font-size:.85rem; font-weight:700; padding:9px 16px; border-radius:9px;
+  border:1.5px solid var(--border); background:#fff; color:var(--muted-foreground) }
+.pf-root .pillbtn.on { border-color:var(--mm-green); background:oklch(0.973 0.011 175); color:var(--mm-teal) }
+/* ---- provenance line: where a field comes from → where it lands ---- */
+.pf-root .prov { margin-top:6px; display:flex; align-items:center; gap:6px; flex-wrap:wrap; line-height:1.4 }
+.pf-root .prov .src { font-size:.58rem; font-weight:800; text-transform:uppercase; letter-spacing:.07em;
+  border-radius:4px; padding:2px 6px; white-space:nowrap }
+.pf-root .prov .src.form { background:oklch(0.94 0.02 175 / .75); color:var(--mm-teal);
+  box-shadow:inset 0 0 0 1px var(--mm-mint-ring) }
+.pf-root .prov .src.rep { background:var(--amber-soft); color:var(--amber);
+  box-shadow:inset 0 0 0 1px var(--amber-ring) }
+.pf-root .prov .src.derived { background:oklch(0.94 0.03 285); color:oklch(0.45 0.13 288);
+  box-shadow:inset 0 0 0 1px oklch(0.86 0.05 288) }
+.pf-root .prov .arw { color:oklch(0.72 0.01 250); font-size:.7rem }
+.pf-root .prov .col { font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  font-size:.64rem; color:var(--muted-foreground) }
+.pf-root .prov .col.isnew { color:var(--amber); font-weight:800; font-family:inherit;
+  font-size:.6rem; letter-spacing:.06em; text-transform:uppercase }
+
+/* ---- product category columns ---- */
+.pf-root .cat { display:flex; align-items:center; gap:9px; width:100%; text-align:left;
+  padding:12px 14px; border-radius:11px; border:1.5px solid var(--border); background:#fff;
+  color:var(--muted-foreground); font-weight:700; font-size:.92rem }
+.pf-root .cat .bx { width:19px; height:19px; border-radius:5px; flex:none; display:grid;
+  place-items:center; font-size:.7rem; font-weight:800; color:transparent;
+  box-shadow:inset 0 0 0 1.5px var(--border); background:#fff }
+.pf-root .cat.on { border-color:var(--mm-green); background:oklch(0.973 0.011 175); color:var(--mm-teal) }
+.pf-root .cat.on .bx { background:var(--mm-green); color:#fff; box-shadow:none }
+.pf-root .needs2 { display:grid; grid-template-columns:1fr 1fr; gap:18px 22px; align-items:start }
+/* Explicit columns so hiding one side never reflows the other into column 1. */
+.pf-root #catCgm, .pf-root #cgmBlock { grid-column:1 }
+.pf-root #catPump, .pf-root #pumpBlock { grid-column:2 }
+.pf-root .devcol { display:flex; flex-direction:column; gap:16px }
+.pf-root .devcol.off { display:none }
+.pf-root .fld .flabel { margin-bottom:6px }
+
+/* ---- dev-annotation banner ---- */
+.pf-root .devnote { display:flex; align-items:flex-start; gap:10px; margin:0 26px 4px;
+  border:1px dashed oklch(0.86 0.05 288); border-radius:11px; background:oklch(0.97 0.02 288);
+  padding:11px 15px; font-size:.82rem; color:oklch(0.42 0.11 288) }
+.pf-root .devnote b { font-weight:800 }
+.pf-root .devnote .x { margin-left:auto; cursor:pointer; font-weight:800; opacity:.6; flex:none }
+.pf-root .devnote .x:hover { opacity:1 }
+
+/* ---- compact flat chip (used in the attachment row) ---- */
+.pf-root .chip-sm { font-size:.62rem; font-weight:800; text-transform:uppercase; letter-spacing:.05em;
+  border-radius:5px; padding:3px 7px; background:#fff; color:var(--mm-teal);
+  box-shadow:inset 0 0 0 1px var(--mm-mint-ring); white-space:nowrap; flex:none }
+.pf-root .fnm-link { font:inherit; font-size:.86rem; font-weight:700; color:var(--mm-teal);
+  text-align:left; text-decoration:underline; text-underline-offset:2px; cursor:pointer }
+.pf-root .fnm-link:hover { color:oklch(0.3 0.05 200) }
+/* Command Center file pattern: click the row to view, ✕ to remove,
+   drop-or-click zone to add. */
+.pf-root .file-row { align-items:center }
+.pf-root #attachRow, .pf-root #upZone { margin-top:12px }
+.pf-root #uploadLinkBtn { margin-top:2px }
+.pf-root .file-row .filex { flex:none; width:26px; height:26px; border-radius:7px; display:grid;
+  place-items:center; color:var(--muted-foreground); font-size:.8rem; font-weight:800 }
+.pf-root .file-row .filex:hover { background:var(--mm-rose-soft); color:var(--mm-rose) }
+.pf-root .upzone { display:none; cursor:pointer; margin-top:10px; flex-direction:column;
+  align-items:center; gap:4px; text-align:center; border:1.5px dashed var(--border);
+  border-radius:10px; padding:20px 14px; background:oklch(0.985 0.003 247); transition:.12s }
+.pf-root .upzone:hover, .pf-root .upzone.over { border-color:var(--mm-green);
+  background:oklch(0.973 0.011 175) }
+.pf-root .upzone .uz-t { font-size:.88rem; font-weight:700; color:var(--mm-teal) }
+.pf-root .viewer-page { background:#fff; border:1px solid var(--border); border-radius:10px;
+  box-shadow:0 10px 40px -18px rgba(0,0,0,.45); padding:34px 40px; width:min(760px, 92vw) }
+.pf-root .viewer-page h3 { font-size:1.1rem; font-weight:800; margin-bottom:4px }
+.pf-root .viewer-page .vp-sub { font-size:.82rem; color:var(--muted-foreground); margin-bottom:20px }
+.pf-root .viewer-page table { border-collapse:collapse; width:100%; font-size:.85rem }
+.pf-root .viewer-page th, .pf-root .viewer-page td { border:1px solid var(--border); padding:7px 10px; text-align:left }
+.pf-root .viewer-page th { background:oklch(0.968 0.007 247.896 / .6); font-weight:700 }
+.pf-root .viewer-page .vp-doc { display:flex; flex-direction:column; gap:9px }
+.pf-root .viewer-page .dl { height:9px; background:#e2e8f0; border-radius:3px }
+
+/* ---- derived footer strip ---- */
+.pf-root .derived-strip { display:flex; align-items:center; gap:10px; flex-wrap:wrap;
+  margin-top:20px; padding-top:16px; border-top:1px dashed var(--border) }
+.pf-root .derived-strip .dlabel { font-size:.72rem; font-weight:800; text-transform:uppercase;
+  letter-spacing:.05em; color:var(--muted-foreground) }
+.pf-root .stack { display:flex; flex-direction:column; gap:14px }
+.pf-root .hide { display:none !important }
+.pf-root .divider { height:1px; background:var(--border); margin:16px 0 14px }
+.pf-root .okline { display:none; align-items:center; gap:7px; margin-top:9px; font-size:.83rem;
+  font-weight:700; color:var(--mm-green) }
+.pf-root .okline.show { display:flex }
+.pf-root .okline.rose { color:var(--mm-rose) }
+.pf-root .upzone.show { display:flex }
+.pf-root .msgbox { font-size:.86rem; background:oklch(0.968 0.007 247.896 / .45); border-radius:10px;
+  padding:10px 13px; margin-top:8px; line-height:1.5 }
+.pf-root .msgbox .ts { color:var(--muted-foreground); font-size:.76rem; font-weight:600 }
+.pf-root .msgbox .ch { color:var(--mm-teal); font-weight:800 }
+.pf-root .msgbox.rose .ch { color:var(--mm-rose) }
+.pf-root .inline-panel { display:none; margin-top:13px }
+.pf-root .inline-panel.show { display:block }
+.pf-root .checkline { display:flex; align-items:flex-start; gap:11px; cursor:pointer;
+  border:1.5px solid var(--border); border-radius:11px; padding:13px 15px; background:#fff }
+.pf-root .checkline:hover { border-color:var(--mm-mint-ring) }
+.pf-root .checkline input { width:19px; height:19px; margin-top:1px; flex:none; accent-color:var(--mm-green); cursor:pointer }
+.pf-root .checkline b { font-size:.92rem }
+.pf-root .checkline.done { border-color:var(--mm-green); background:oklch(0.973 0.011 175) }
+.pf-root .bookrow { display:flex; align-items:center; gap:14px; border:1px solid var(--border);
+  border-radius:11px; padding:12px 15px; background:oklch(0.985 0.003 247) }
+.pf-root .bookval { font-size:1.02rem; font-weight:800; margin-top:2px }
+.pf-root .bookrow .mp { margin-left:auto }
+.pf-root .gate { display:flex; align-items:center; gap:9px; padding:7px 0; font-size:.86rem;
+  border-bottom:1px dashed var(--border) }
+.pf-root .gate:last-child { border-bottom:0 }
+.pf-root .gate .gb { width:19px; height:19px; border-radius:5px; display:grid; place-items:center;
+  flex:none; font-size:.68rem; font-weight:800; background:var(--mm-rose-soft); color:var(--mm-rose);
+  box-shadow:inset 0 0 0 1.5px oklch(0.62 0.13 18 / .3) }
+.pf-root .gate.ok .gb { background:var(--mm-green); color:#fff; box-shadow:none }
+.pf-root .gate.ok { color:oklch(0.42 0.08 175) }
+
+/* ---- "why was this picked?" hover ---- */
+/* small uppercase label used inside the doctor card (DoctorSection's `lab`) */
+.pf-root .doclab { font-size:.72rem; font-weight:600; text-transform:uppercase; letter-spacing:.04em;
+  color:var(--muted-foreground) }
+.pf-root .para-row.sel { background:oklch(0.973 0.011 175) }
+
+.pf-root .why { position:relative; display:inline-grid; place-items:center; width:16px; height:16px;
+  border-radius:50%; background:oklch(0.9 0.01 250); color:var(--muted-foreground); font-size:.6rem;
+  font-weight:800; cursor:help; text-transform:none; letter-spacing:0; font-style:italic; flex:none }
+.pf-root .why:hover, .pf-root .why:focus { background:var(--mm-green); color:#fff; outline:none }
+.pf-root .whycard { display:none; position:absolute; z-index:60; top:calc(100% + 8px); left:-10px;
+  width:330px; background:#fff; border:1px solid var(--border); border-radius:12px; padding:13px 15px;
+  box-shadow:0 18px 44px -16px rgba(0,0,0,.4); font-size:.8rem; font-weight:400; font-style:normal;
+  line-height:1.55; color:var(--foreground); text-align:left; text-transform:none; letter-spacing:0 }
+.pf-root .why:hover .whycard, .pf-root .why:focus .whycard { display:block }
+.pf-root .whycard b { color:var(--mm-teal); font-weight:700 }
+.pf-root .whycard .wl { display:block; font-size:.63rem; font-weight:800; text-transform:uppercase;
+  letter-spacing:.06em; color:var(--muted-foreground); margin-bottom:7px }
+.pf-root .whycard ul { margin:7px 0 0; padding-left:16px }
+.pf-root .whycard li { margin-bottom:3px }
+
+/* ---- Corey's benefits output (today / 3-mo / 6-mo) ---- */
+.pf-root .bo-sect { margin-top:18px }
+.pf-root .bo-lbl { font-size:.72rem; font-weight:800; text-transform:uppercase; letter-spacing:.05em;
+  color:var(--mm-teal); margin-bottom:8px }
+.pf-root .bo-eq { display:grid; grid-template-columns:repeat(4,1fr); gap:8px; margin-bottom:8px }
+.pf-root .bo-res { display:grid; grid-template-columns:repeat(3,1fr); gap:8px }
+.pf-root .bo { border:1px solid var(--border); border-radius:10px; padding:10px 11px; text-align:center;
+  background:oklch(0.985 0.003 247) }
+.pf-root .bo .bl { font-size:.62rem; font-weight:700; text-transform:uppercase; letter-spacing:.03em;
+  color:var(--muted-foreground); line-height:1.3 }
+.pf-root .bo .bv { font-size:.95rem; font-weight:800; margin-top:5px }
+.pf-root .bo.eq { background:oklch(0.94 0.02 175 / .6); border-color:var(--mm-mint-ring) }
+.pf-root .bo.eq .bv { color:var(--mm-teal) }
+.pf-root .bo.fin { background:var(--mm-teal); border-color:var(--mm-teal) }
+.pf-root .bo.fin .bl { color:oklch(0.85 0.02 200) }
+.pf-root .bo.fin .bv { color:#fff; font-size:1.12rem }
+
+/* ---- route / decision cards ---- */
+.pf-root .route.esc h4 { color:var(--mm-rose) }
+.pf-root .route.esc.on { border-color:oklch(0.62 0.13 18 / .4); background:oklch(0.62 0.13 18 / .06) }
+.pf-root .route-stack { display:flex; flex-direction:column; gap:14px; margin-top:18px }
+
+/* ---- change-log panel ---- */
+.chg { max-width:1240px; margin:26px auto 70px; padding:0 26px }
+.chg details { background:#fff; border:1px solid #dfe7e6; border-radius:14px; padding:0; overflow:hidden }
+.chg summary { cursor:pointer; padding:16px 20px; font-weight:800; font-size:.95rem; color:#1c3d4d;
+  background:#f4f8f7; list-style:none; display:flex; align-items:center; gap:10px }
+.chg summary::-webkit-details-marker { display:none }
+.chg summary::before { content:'▸'; transition:transform .15s }
+.chg details[open] summary::before { transform:rotate(90deg) }
+.chg .cbody { padding:18px 22px 22px; font-size:.88rem; line-height:1.65; color:#25323b }
+.chg h4 { font-size:.8rem; text-transform:uppercase; letter-spacing:.05em; color:#5a7280;
+  margin:20px 0 8px; font-weight:800 }
+.chg h4:first-child { margin-top:0 }
+.chg ul { margin:0; padding-left:20px }
+.chg li { margin-bottom:6px }
+.chg code { background:#eef3f2; border-radius:4px; padding:1px 5px; font-size:.85em }
+.chg table { border-collapse:collapse; width:100%; font-size:.83rem; margin-top:6px }
+.chg th, .chg td { border:1px solid #dfe7e6; padding:6px 9px; text-align:left; vertical-align:top }
+.chg th { background:#f4f8f7; font-weight:800 }
+.chg .was { color:#a13a2f }
+.chg .now { color:#0a4d3c; font-weight:600 }
+
+@media (max-width:1500px) {
+  .cc-shell { height:auto; overflow:visible }
+  .cc-main { min-height:0 }
+  .pf-root .panes { grid-template-columns:1fr; flex:none }
+  .pf-root .panes > .pane, .pf-root .panes > .panewrap { overflow:visible; padding:20px 26px 40px }
+  .pf-root .panewrap.locked .lockover { padding-top:60px }
+  .pf-root .psb { height:100vh }
+}
+@media (max-width:1100px) { .pf-root .psb { display:none } }
+</style>
+</head>
+<body>
+
+<div class="pf-root">
+<div class="cc-shell">
+
+  <!-- ══════════════ PATIENTS SIDEBAR (live PatientsSidebar) ══════════════ -->
+  <aside class="psb" id="psb">
+    <div class="psb-head">
+      <div class="psb-headtop">
+        <div style="min-width:0">
+          <div class="psb-eyebrow">Monday · Profile</div>
+          <div class="psb-title">Patients (<span id="psbCount">6</span>)</div>
+        </div>
+        <button class="psb-refresh" title="Refresh from Monday" onclick="toast('Refreshed from Monday')">⟳</button>
+      </div>
+      <div class="psb-searchwrap">
+        <span class="ic">🔎</span>
+        <input type="text" placeholder="Search patients…" oninput="filterPatients(this.value)">
+      </div>
+    </div>
+    <div class="psb-list" id="psbList"></div>
+  </aside>
+
+  <div class="cc-main">
+
+    <!-- ══════════════ NAVY TOPBAR ══════════════ -->
+    <header class="topbar">
+      <div class="topbar-in">
+        <div class="tb-left">
+          <button class="tb-icon" title="Toggle sidebar" onclick="toggleSidebar()">▥</button>
+          <button class="tb-icon" title="Back">←</button>
+          <div class="tb-tile">📋</div>
+          <div>
+            <div class="tb-eyebrow">Medically Modern</div>
+            <h1 class="tb-title">Patient Intake — DTC &amp; CareCentrix</h1>
+            <div class="tb-sub" id="tbSub">Richard Clark</div>
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px">
+          <button class="tb-save" onclick="toast('Saved to Monday')">💾 Save</button>
+          <button class="tb-icon" title="Report an issue">🗨</button>
+        </div>
+      </div>
+    </header>
+
+    <!-- ══════════════ PATIENT HEADER STRIP ══════════════ -->
+    <div class="phdr">
+      <div class="who">
+        <div class="nm" id="hdrName">Richard Clark</div>
+        <div class="sub" id="hdrSub">DOB 06/08/2022 · 3 y/o · (315) 641-9422 · Central Square, NY</div>
+        <div style="margin-top:10px">
+          <span class="attempt-badge" id="attemptBadge"><span class="dot"></span> 1st attempt</span>
+        </div>
+      </div>
+      <div class="spacer"></div>
+      <div style="display:flex;flex-direction:column;align-items:flex-end;gap:9px">
+        <div style="display:flex;align-items:center;gap:8px">
+          <span class="eyebrow-xs">Demo coverage</span>
+          <div class="seg" id="demoSeg">
+            <button class="on" onclick="setScenario('active',this)">Active</button>
+            <button onclick="setScenario('inactive',this)">Inactive</button>
+            <button onclick="setScenario('oon',this)">Out-of-network</button>
+            <button onclick="setScenario('failed',this)">Check failed</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="devnote" id="devNote">
+      <span>🛠</span>
+      <span><b>Build annotations, not production UI.</b> The small stamps under every field
+      (<b>FROM FORM</b> / <b>REP · ON CALL</b> / <b>SUGGESTED</b> → Monday column) exist so Josh can see
+      where each value comes from and where it lands. <b>None of them render in production.</b></span>
+      <span class="x" onclick="document.getElementById('devNote').remove()">✕</span>
+    </div>
+
+    <!-- ══════════════ TWO PANES ══════════════ -->
+    <div class="panes">
+
+      <!-- ─────────────────────────────────────────────────────────
+           LEFT PANE — Patient Info. Collection
+           ───────────────────────────────────────────────────────── -->
+      <div class="pane">
+        <div class="pane-head">
+          <h2>Patient Info. Collection</h2>
+          <span class="st open" id="leftState">In progress</span>
+        </div>
+
+        <!-- Referral email rail card (live RailReferral) -->
+        <div class="rail-card">
+          <div class="rail-head">✉ Referral Email</div>
+          <div class="rail-body">
+            <div class="kv">
+              <div class="f"><div class="k">Referral Type</div><div class="v">Patient</div></div>
+              <div class="f"><div class="k">Referral Source</div><div class="v">CareCentrix</div></div>
+            </div>
+            <button class="btn secondary sm" style="margin-top:12px" id="refToggle" onclick="toggleRef()">Show referral email / updates</button>
+            <div class="hide" id="refBody" style="margin-top:12px">
+              <div class="rail-updates">
+                <div class="note-entry">
+                  <span class="ts">[Jul 14, 2026, 9:12 AM] referrals@carecentrix.com</span>
+                  <div style="margin-top:6px;white-space:pre-wrap;line-height:1.6">Subject: DME referral — CLARK, RICHARD (DOB 06/08/2022)
+
+Patient: Richard Clark
+DOB: 06/08/2022
+Phone: (315) 641-9422
+Address: 122 Elderberry Ln, Central Square, NY 13036
+
+Insurance: Fidelis  |  Member ID 74586024900
+Secondary: NY Medicaid (ID on file)
+
+Request: Insulin pump — 1st pump, &gt;6mo since diagnosis.
+Ordering provider: Janine Robbins, (315) 464-5726.
+
+Attachments: order form, recent chart notes.</div>
+                </div>
+              </div>
+              <button class="btn secondary sm" style="margin-top:12px" onclick="toast('Paste a referral email — Save posts it as a Monday update')">＋ Add referral email</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Files rail card -->
+        <div class="rail-card">
+          <div class="rail-head">📎 Files — click to preview</div>
+          <div class="rail-files">
+            <div class="file-row" onclick="openViewer('documents-order-Q0-JX94-ZT1I-LDV.pdf')">
+              <span class="fname">documents-order-Q0-JX94-ZT1I-LDV.pdf</span><span class="fmeta">pdf</span></div>
+            <div class="file-row" onclick="openViewer('chart-notes-2026-06-28.pdf')">
+              <span class="fname">chart-notes-2026-06-28.pdf</span><span class="fmeta">pdf</span></div>
+          </div>
+        </div>
+
+        <!-- Referral routing (rep-editable) -->
+        <section class="sect lead">
+          <div class="sect-title">Referral Routing</div>
+          <div class="fgrid">
+            <div>
+              <div class="flabel">Referral Source <span class="req-star">*</span></div>
+              <select id="referralSource" class="filled" onchange="onReferralSource()">
+                <option>Patient</option>
+                <option selected>CareCentrix</option>
+                <option>Tandem</option>
+                <option>Beta Bionics</option>
+                <option>Doctor</option>
+                <option>Solace Advocates</option>
+              </select>
+              <div class="prov"><span class="src form">From form</span><span class="arw">→</span><span class="col">color_mm1w5wxr</span></div>
+            </div>
+            <div>
+              <div class="flabel">Referral Type <span class="req-star">*</span></div>
+              <select id="referralType" class="filled">
+                <option>Manufacturer</option><option>Payor</option>
+                <option selected>Patient</option><option>Doctor</option><option>Advocacy Group</option>
+              </select>
+              <div class="prov"><span class="src form">From form</span><span class="arw">→</span><span class="col">color_mm1wm4n4</span></div>
+            </div>
+          </div>
+        </section>
+
+        <!-- Demographics -->
+        <section class="sect lead">
+          <div class="sect-title">Patient Demographics</div>
+          <div class="fgrid">
+            <div><div class="flabel">First Name <span class="req-star">*</span></div><input type="text" class="filled" value="Richard">
+              <div class="prov"><span class="src form">From form</span><span class="arw">→</span><span class="col">name</span>
+                <span class="sugg-note" style="margin-left:4px">first + last = the Monday item name</span></div></div>
+            <div><div class="flabel">Last Name <span class="req-star">*</span></div><input type="text" class="filled" value="Clark">
+              <div class="prov"><span class="src form">From form</span><span class="arw">→</span><span class="col">name</span></div></div>
+            <div><div class="flabel">Date of Birth <span class="req-star">*</span></div><input type="text" class="filled" value="06/08/2022">
+              <div class="prov"><span class="src form">From form</span><span class="arw">→</span><span class="col">text_mm1xvxst</span></div></div>
+            <div><div class="flabel">Phone <span class="req-star">*</span></div><input type="text" class="filled" value="(315) 641-9422">
+              <div class="prov"><span class="src form">From form</span><span class="arw">→</span><span class="col">phone_mm1x44yk</span></div></div>
+            <div><div class="flabel">Email <span class="req-star">*</span></div><input type="text" class="filled" value="rclark.family@gmail.com">
+              <div class="prov"><span class="src form">From form</span><span class="arw">→</span><span class="col">text_mm1xc140</span></div></div>
+            <div><div class="flabel">Gender <span class="req-star">*</span></div>
+              <select class="filled"><option selected>Male</option><option>Female</option><option>Unknown</option></select>
+              <div class="prov"><span class="src rep">Rep / Stedi</span><span class="arw">→</span><span class="col">color_mm1x1bdg</span>
+                <span class="sugg-note" style="margin-left:4px">not asked on the form</span></div></div>
+            <div class="full"><div class="flabel">Address <span class="req-star">*</span></div>
+              <input type="text" class="filled" value="122 Elderberry Ln, Central Square, NY 13036">
+              <div class="prov"><span class="src form">From form</span><span class="arw">→</span><span class="col">location_mm1xhw17</span><span class="sugg-note" style="margin-left:4px">state drives BCBS routing + POS 11</span></div></div>
+          </div>
+        </section>
+
+        <!-- What they need -->
+        <section class="sect lead">
+          <div class="sect-title">What They Need</div>
+
+          <div style="margin-bottom:20px">
+            <div class="flabel">Reason for Inquiry</div>
+            <select id="reasonSelect" class="filled" onchange="onReason()">
+              <option value="pharmacy">Pharmacy is too expensive</option>
+              <option value="denied" selected>Denied by insurance</option>
+              <option value="supplier">I need a new supplier</option>
+              <option value="fingerprick">I want off the finger prick / try a pump</option>
+            </select>
+            <div class="prov"><span class="src form">From form</span><span class="arw">→</span>
+              <span class="col isnew">New column needed</span></div>
+          </div>
+
+          <div class="flabel" style="margin-bottom:9px">Product Categories <span style="text-transform:none;letter-spacing:0;font-weight:400">— select all that apply</span></div>
+
+          <div class="needs2">
+            <!-- ── column headers (category toggles) ── -->
+            <button class="cat" id="catCgm" onclick="toggleCat('cgm')"><span class="bx">✓</span>Continuous Glucose Monitor</button>
+            <button class="cat on" id="catPump" onclick="toggleCat('pump')"><span class="bx">✓</span>Insulin Pump / Supplies</button>
+
+            <!-- ── row 1 ── -->
+            <div class="devcol off" id="cgmBlock">
+              <div class="fld">
+                <div class="flabel">CGM Type</div>
+                <select id="cgmTypeIn">
+                  <option>FreeStyle Libre 3 Plus</option><option>FreeStyle Libre 2 Plus</option>
+                  <option>FreeStyle Libre 14-Day</option><option selected>Dexcom G7</option>
+                  <option>Dexcom G7 15-Day</option><option>Dexcom G6</option>
+                  <option>Guardian 4</option><option>Instinct</option><option>Not Serving</option>
+                </select>
+                <div class="prov"><span class="src form">From form</span><span class="arw">→</span>
+                  <span class="col">color_mm1w7pmf</span></div>
+              </div>
+              <div class="fld">
+                <div class="flabel">CGM Coverage Path</div>
+                <select id="cgmPathIn" onchange="onCgmPath()">
+                  <option>Insulin</option><option selected>Hypoglycemia</option><option>Not Serving</option>
+                </select>
+                <div class="prov"><span class="src form">From form</span><span class="arw">→</span>
+                  <span class="col">color_mm1w7e5q</span></div>
+              </div>
+              <div class="fld" id="awarenessWrap">
+                <div class="flabel">CGM Data &amp; Doctor Awareness</div>
+                <select id="cgmAware">
+                  <option>Patient has existing data</option><option>Doctor is aware</option>
+                  <option>Neither applies</option><option selected>Both apply</option>
+                </select>
+                <div class="prov"><span class="src rep">Rep · on call</span><span class="arw">→</span>
+                  <span class="col isnew">New column needed</span></div>
+              </div>
+            </div>
+
+            <div class="devcol" id="pumpBlock">
+              <div class="fld">
+                <div class="flabel">Pump Type</div>
+                <select id="pumpTypeIn">
+                  <option>t:slim</option><option selected>Mobi</option><option>iLet</option>
+                  <option>Minimed 780G</option><option>Not Serving</option>
+                </select>
+                <div class="prov"><span class="src form">From form</span><span class="arw">→</span>
+                  <span class="col">color_mm1wjjtk</span></div>
+              </div>
+              <div class="fld">
+                <div class="flabel">Pump Need</div>
+                <select id="pumpNeedIn" onchange="onPumpNeed()">
+                  <option selected>Need a new pump</option><option>Only need supplies</option>
+                </select>
+                <div class="prov"><span class="src form">From form</span><span class="arw">→</span>
+                  <span class="col isnew">New column needed</span></div>
+              </div>
+              <div class="fld">
+                <div class="flabel">Insulin Pump Coverage Path</div>
+                <select id="ipPathIn">
+                  <option>1st Pump &lt;6M Diagnosed</option>
+                  <option selected>1st Pump &gt;6M Diagnosed</option>
+                  <option>OOW Pump</option><option>IW New Insurance</option>
+                  <option>Omnipod Switch</option><option>Supplies Only</option><option>Not Serving</option>
+                </select>
+                <div class="prov"><span class="src rep">Rep · on call</span><span class="arw">→</span>
+                  <span class="col">color_mm1w5xn1</span></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- ── CGM data collection (full width, below the aligned rows) ── -->
+          <div class="hide" id="cgmUploadWrap" style="margin-top:20px;padding-top:18px;border-top:1px dashed var(--border)">
+            <div class="flabel">CGM Data File</div>
+            <div class="prov" style="margin:0 0 10px"><span class="src rep">Rep · sends link on call</span>
+              <span class="arw">→</span><span class="col isnew">New file column needed</span></div>
+            <button class="btn secondary sm" id="uploadLinkBtn" onclick="sendUploadLink()">Send photo upload link to patient</button>
+            <div class="okline" id="uploadLinkOk">✓ Upload link sent — their file saves below once received</div>
+            <div class="file-row" id="attachRow" onclick="openViewer(document.getElementById('attachName').textContent.trim())">
+              <span class="fname" id="attachName">hypo_event_log.csv</span>
+              <span class="fmeta">from patient</span>
+              <button class="filex" title="Remove" onclick="event.stopPropagation(); removeCgmFile()">✕</button>
+            </div>
+            <label class="upzone" id="upZone" for="cgmFile"
+                   ondragover="event.preventDefault(); this.classList.add('over')"
+                   ondragleave="this.classList.remove('over')"
+                   ondrop="onCgmDrop(event)">
+              <div class="uz-t">Drop a file here, or click to choose</div>
+              <div class="sugg-note">PDF, CSV, or an exported report / screenshot</div>
+            </label>
+            <input type="file" id="cgmFile" style="display:none" onchange="onCgmFile(event)">
+          </div>
+
+          <div class="derived-strip">
+            <span class="dlabel">Request Type</span>
+            <span class="sugg-chip2" id="requestTypeChip">Insulin Pump</span>
+          </div>
+          <div class="prov" style="margin-top:8px"><span class="src derived">Derived</span>
+            <span class="arw">→</span><span class="col">color_mm1w1978</span>
+            <span class="sugg-note" style="margin-left:4px">computed from the categories above — never typed</span></div>
+        </section>
+
+        <!-- Care assessment -->
+        <section class="sect lead">
+          <div class="sect-title">Care Assessment</div>
+          <div class="flabel">Self Advocacy <span style="text-transform:none;letter-spacing:0;font-weight:400">— optional</span></div>
+          <div class="pills" id="advocacyPills">
+            <button class="pillbtn" onclick="pickPill('advocacyPills',this)">High</button>
+            <button class="pillbtn" onclick="pickPill('advocacyPills',this)">Low</button>
+          </div>
+          <div class="prov" style="margin-top:8px"><span class="src rep">Rep · on call</span><span class="arw">→</span><span class="col isnew">New column needed</span></div>
+        </section>
+
+        <!-- Cost & coverage (conditional on pharmacy reason) -->
+        <section class="sect lead" id="costCard">
+          <div class="sect-title">Cost &amp; Coverage</div>
+          <div class="flabel">Current Out-of-Pocket Cost <span style="text-transform:none;letter-spacing:0;font-weight:400">— optional</span></div>
+          <input type="text" placeholder="e.g. $75/month">
+          <div class="prov" style="margin-top:8px"><span class="src rep">Rep · on call</span><span class="arw">→</span><span class="col isnew">New column needed</span><span class="sugg-note" style="margin-left:4px">text, not numeric — e.g. &ldquo;$75/month&rdquo;</span></div>
+        </section>
+
+        <!-- Provided insurance -->
+        <section class="sect lead">
+          <div class="sect-title">Provided Insurance</div>
+
+          <div style="margin-bottom:16px">
+            <div class="flabel">Provided Via</div>
+            <div class="seg" id="viaSeg">
+              <button onclick="setVia('photo',this)">Photo of card</button>
+              <button class="on" onclick="setVia('manual',this)">Entered manually</button>
+              <button onclick="setVia('none',this)">Not provided</button>
+            </div>
+            <div class="prov"><span class="src form">From form</span><span class="arw">→</span>
+              <span class="col isnew">New column needed</span></div>
+          </div>
+
+          <div class="hide" id="cardPhotoField" style="margin-bottom:16px">
+            <div class="flabel">Insurance Card Photo</div>
+            <div class="file-row" onclick="openViewer('insurance_card_front.jpg')">
+              <span class="fname">insurance_card_front.jpg</span><span class="fmeta">jpg</span></div>
+            <div class="prov"><span class="src form">From form</span><span class="arw">→</span>
+              <span class="col isnew">New file column needed</span></div>
+          </div>
+
+          <div class="fgrid">
+            <div>
+              <div class="flabel">General Insurance <span class="req-star">*</span></div>
+              <select id="generalIns" class="filled" onchange="onGeneralIns()">
+                <option>Anthem / BCBS</option><option>Aetna</option><option>Cigna</option>
+                <option selected>Fidelis</option><option>Medicare A&amp;B</option><option>Medicaid</option>
+                <option>NYSHIP Empire</option><option>UMR</option><option>Wellcare</option>
+                <option>United Healthcare</option><option>Humana</option><option>MagnaCare</option>
+                <option>Midlands Choice</option><option>Stedi</option>
+              </select>
+              <div class="prov"><span class="src form">From form</span><span class="arw">→</span><span class="col">color_mm24ap4j</span><span class="sugg-note" style="margin-left:4px">what the patient told us</span></div>
+            </div>
+            <div>
+              <div class="flabel">Member ID <span class="req-star">*</span></div>
+              <input type="text" class="filled" id="workingMemberId" value="74586024900">
+              <div class="prov"><span class="src form">From form</span><span class="arw">→</span><span class="col">text_mm4t8gbq</span><span class="sugg-note" style="margin-left:4px"><b>the ID Stedi reads</b></span></div>
+            </div>
+          </div>
+
+          <div class="hide" id="stateField" style="margin-top:14px">
+            <div class="flabel">State <span class="req-star">*</span> <span style="text-transform:none;letter-spacing:0;font-weight:400">— needed to confirm benefits for this plan</span></div>
+            <input type="text" placeholder="e.g. NY">
+            <div class="prov"><span class="src form">From form</span><span class="arw">→</span>
+              <span class="col">location_mm1xhw17</span>
+              <span class="sugg-note" style="margin-left:4px">now captured in demographics on the 8.4 form</span></div>
+          </div>
+
+          <div class="warn-banner hide" id="uhcNote" style="margin-top:14px">
+            <span><b>Coverage note:</b> United Healthcare covers 5 sensors/month via the medical benefit vs. 6/month through pharmacy.</span>
+          </div>
+
+          <div style="display:flex;align-items:center;gap:12px;margin-top:18px">
+            <button class="btn primary" id="stediBtn" onclick="runStedi()">Run Benefits Check</button>
+            <span class="sugg-note">writes to Monday, verifies, then triggers Stedi</span>
+          </div>
+
+          <div class="stedi-running hide" id="stediRunning">
+            <span class="stedi-spinner"></span>
+            <div>
+              <div class="sr-title">Saving profile &amp; running eligibility check…</div>
+              <div class="sugg-note">Name, insurance &amp; Member ID are written to Monday first, then Stedi runs. Results appear all at once when the check completes (usually 20–40 seconds).</div>
+            </div>
+          </div>
+
+          <div class="fgrid" style="margin-top:16px">
+            <div>
+              <div class="flabel">Secondary Insurance <span style="text-transform:none;letter-spacing:0;font-weight:400">— as provided</span></div>
+              <select id="secondaryProvided" class="filled">
+                <option>None</option>
+                <option>Anthem or Blue Cross Blue Shield</option>
+                <option>UnitedHealthcare</option>
+                <option>Aetna</option>
+                <option>Cigna</option>
+                <option>Humana</option>
+                <option selected>NYS Medicaid</option>
+                <option>Medicare</option>
+                <option>Fidelis</option>
+                <option>NYSHIP Empire</option>
+                <option>Other</option>
+              </select>
+              <div class="prov"><span class="src form">From form</span><span class="arw">→</span>
+                <span class="col isnew">New column needed</span>
+                <span class="sugg-note" style="margin-left:4px">the form's payer list — the right pane condenses it to board labels</span></div>
+            </div>
+            <div>
+              <div class="flabel">Secondary Member ID <span style="text-transform:none;letter-spacing:0;font-weight:400">— as provided</span></div>
+              <input type="text" placeholder="Optional">
+              <div class="prov"><span class="src form">From form</span><span class="arw">→</span>
+                <span class="col isnew">New column needed</span></div>
+            </div>
+          </div>
+
+          <div class="divider"></div>
+          <button class="btn secondary sm" id="followUpBtn" onclick="startFollowUp()">Start Insurance Follow-Up</button>
+          <div class="okline" id="followUpOk">✓ Follow-up text sent — patient tagged</div>
+        </section>
+
+        <!-- Benefits check output -->
+        <section class="sect lead hide" id="benefitsOut">
+          <div class="sect-title">Benefits Check Output
+            <span class="rt stedi-status done" id="stediStamp">✓ Stedi complete</span></div>
+          <div class="warn-banner" style="margin-bottom:16px">
+            <span><b>Placeholder — this section is going to change.</b> Scoping down to Network status,
+            Active status and Primary payor pending Corey's plan-level research.
+            <b>Josh: don't build backend for this yet</b> — and don't remove any Stedi columns.</span>
+          </div>
+
+          <div id="stediBanners"></div>
+
+          <div class="res-grid" style="grid-template-columns:repeat(4,1fr);margin-top:4px">
+            <div class="rcell"><div class="rl">Active Status</div><div class="rv set" id="rActive">Active</div></div>
+            <div class="rcell"><div class="rl">Network Status</div><div class="rv set" id="rNetwork">In-Network</div></div>
+            <div class="rcell"><div class="rl">Primary Payor</div><div class="rv set">Fidelis Care New York</div></div>
+            <div class="rcell"><div class="rl">Plan Begin Date</div><div class="rv set">2026-01-01</div></div>
+          </div>
+          <div class="res-grid" style="grid-template-columns:repeat(5,1fr);margin-top:10px">
+            <div class="rcell"><div class="rl">Coverage Type</div><div class="rv set">Medicaid</div></div>
+            <div class="rcell"><div class="rl">Plan Name</div><div class="rv set">Fidelis Medicaid Managed Care</div></div>
+            <div class="rcell"><div class="rl">Home Plan</div><div class="rv set">—</div></div>
+            <div class="rcell"><div class="rl">Medicaid ID</div><div class="rv set">AB12345C</div></div>
+            <div class="rcell"><div class="rl">QMB?</div><div class="rv set">No</div></div>
+          </div>
+          <div class="res-grid" style="grid-template-columns:minmax(0,3fr) minmax(0,1fr);margin-top:10px">
+            <div class="rcell"><div class="rl">Address</div><div class="rv set">122 ELDERBERRY LN, CENTRAL SQUARE NY 13036</div></div>
+            <div class="rcell"><div class="rl">Gender</div><div class="rv set">M</div></div>
+          </div>
+
+          <div class="flabel" style="margin-top:20px">Cost Sharing</div>
+          <div class="res-grid" style="grid-template-columns:repeat(4,1fr);margin-top:4px">
+            <div class="rcell"><div class="rl">Co-insurance</div><div class="rv set">20%</div></div>
+            <div class="rcell"><div class="rl">Co-pay</div><div class="rv set">$0.00</div></div>
+            <div class="rcell"><div class="rl">Deductible Remaining</div><div class="rv set">$0.00</div></div>
+            <div class="rcell"><div class="rl">OOP Max Remaining</div><div class="rv set">$4,680.13</div></div>
+          </div>
+
+          <div class="divider" style="margin-top:22px"></div>
+
+          <div class="sugg-line" style="margin-bottom:6px">
+            <span class="sugg-lead2">Order estimates</span>
+            <span class="sugg-note">% of year elapsed: <b id="pctYear">—</b></span>
+          </div>
+
+          <div class="bo-sect">
+            <div class="bo-lbl">Today's order</div>
+            <div class="bo-eq">
+              <div class="bo"><div class="bl">Total cost</div><div class="bv">$150.00</div></div>
+              <div class="bo"><div class="bl">Applied to deductible</div><div class="bv">$0.00</div></div>
+              <div class="bo"><div class="bl">Owed via co-insurance</div><div class="bv">$30.00</div></div>
+              <div class="bo eq"><div class="bl">= Total OOP</div><div class="bv">$30.00</div></div>
+            </div>
+            <div class="bo-res">
+              <div class="bo"><div class="bl">Total OOP</div><div class="bv">$30.00</div></div>
+              <div class="bo"><div class="bl">OOP max remaining</div><div class="bv">$4,680.13</div></div>
+              <div class="bo fin"><div class="bl">Patient cost</div><div class="bv">$30.00</div></div>
+            </div>
+          </div>
+
+          <div class="bo-sect order-3mo">
+            <div class="bo-lbl">3-month order</div>
+            <div class="bo-eq">
+              <div class="bo"><div class="bl">Total cost</div><div class="bv">$450.00</div></div>
+              <div class="bo"><div class="bl">Applied to deductible</div><div class="bv">$0.00</div></div>
+              <div class="bo"><div class="bl">Owed via co-insurance</div><div class="bv">$90.00</div></div>
+              <div class="bo eq"><div class="bl">= Total OOP</div><div class="bv">$90.00</div></div>
+            </div>
+            <div class="bo-res">
+              <div class="bo"><div class="bl">Total OOP</div><div class="bv">$90.00</div></div>
+              <div class="bo"><div class="bl">OOP max remaining</div><div class="bv">$4,680.13</div></div>
+              <div class="bo fin"><div class="bl">Patient cost</div><div class="bv">$90.00</div></div>
+            </div>
+          </div>
+
+          <div class="bo-sect order-6mo">
+            <div class="bo-lbl">6-month order</div>
+            <div class="bo-eq">
+              <div class="bo"><div class="bl">Total cost</div><div class="bv">$900.00</div></div>
+              <div class="bo"><div class="bl">Applied to deductible</div><div class="bv">$0.00</div></div>
+              <div class="bo"><div class="bl">Owed via co-insurance</div><div class="bv">$180.00</div></div>
+              <div class="bo eq"><div class="bl">= Total OOP</div><div class="bv">$180.00</div></div>
+            </div>
+            <div class="bo-res">
+              <div class="bo"><div class="bl">Total OOP</div><div class="bv">$180.00</div></div>
+              <div class="bo"><div class="bl">OOP max remaining</div><div class="bv">$4,680.13</div></div>
+              <div class="bo fin"><div class="bl">Patient cost</div><div class="bv">$180.00</div></div>
+            </div>
+          </div>
+
+          <div class="sugg-note" style="margin-top:12px">Orders only appear if enough months remain in the calendar year to fit them. Family plans use the lower of individual/family remaining. Spouse-specific logic still TBD.</div>
+        </section>
+
+        <!-- Provided doctor info -->
+        <section class="sect lead">
+          <div class="sect-title">Provided Doctor Info</div>
+          <div class="fgrid">
+            <div><div class="flabel">Doctor Name</div><input type="text" class="filled" value="Janine Robbins">
+              <div class="prov"><span class="src form">From form</span><span class="arw">→</span>
+                <span class="col isnew">New column needed</span>
+                <span class="sugg-note" style="margin-left:4px">form &ldquo;Provider name (or clinic name)&rdquo;</span></div></div>
+            <div><div class="flabel">Clinic Phone</div><input type="text" class="filled" value="(315) 464-5726">
+              <div class="prov"><span class="src form">From form</span><span class="arw">→</span>
+                <span class="col isnew">New column needed</span>
+                <span class="sugg-note" style="margin-left:4px">form &ldquo;Clinic phone or location&rdquo;</span></div></div>
+            <div class="full"><div class="flabel">Clinic Address</div><input type="text" placeholder="Collect on call">
+              <div class="prov"><span class="src rep">Rep · on call</span><span class="arw">→</span>
+                <span class="col isnew">New column needed</span></div></div>
+            <div class="full"><div class="flabel">Helpful Links / Identification Info</div>
+              <input type="text" placeholder="Insert helpful links here">
+              <div class="prov"><span class="src rep">Rep · on call</span><span class="arw">→</span>
+                <span class="col isnew">New column needed</span></div></div>
+          </div>
+        </section>
+
+        <!-- Proceed preference -->
+        <section class="sect lead">
+          <div class="sect-title">Proceed Preference</div>
+
+          <div class="flabel">How would they like to proceed?</div>
+          <div class="pills" id="proceedPills">
+            <button class="pillbtn" onclick="setProceed('request',this)">Send request now</button>
+            <button class="pillbtn" onclick="setProceed('call',this)">Wants a call first</button>
+          </div>
+          <div class="prov" style="margin-top:8px"><span class="src form">From form</span><span class="arw">→</span>
+            <span class="col isnew">New column needed</span>
+            <span class="sugg-note" style="margin-left:4px">the patient's answer to the last form question</span></div>
+
+
+          <!-- Booking — shown when the patient asked for a call -->
+          <div class="hide" id="slotWrap" style="margin-top:16px;padding-top:14px;border-top:1px dashed var(--border)">
+            <div class="flabel">Call Booking</div>
+            <div class="bookrow">
+              <div>
+                <div class="eyebrow-xs">Selected on form</div>
+                <div class="bookval" id="formSlot">Tomorrow 9:30 AM</div>
+              </div>
+              <span class="mp green" id="slotBadge">Scheduled</span>
+            </div>
+            <div class="prov" style="margin-top:8px"><span class="src form">From form · Calendly</span>
+              <span class="arw">→</span><span class="col isnew">New column needed</span></div>
+
+            <div style="margin-top:14px">
+              <div class="flabel">Override — pick a different opening</div>
+              <select id="slotSelect">
+                <option value="">Select a Calendly opening…</option>
+                <option>Today 2:00 PM</option><option>Today 4:00 PM</option>
+                <option>Tomorrow 9:30 AM</option><option>Tomorrow 1:00 PM</option>
+                <option>Thu 11:00 AM</option><option>Thu 3:30 PM</option>
+              </select>
+              <div style="margin-top:12px">
+                <button class="btn primary sm" onclick="confirmSlot()">Confirm booking</button>
+              </div>
+              <div class="prov" style="margin-top:8px"><span class="src rep">Rep override</span><span class="arw">→</span>
+                <span class="col isnew">New column needed</span>
+                <span class="sugg-note" style="margin-left:4px">live Calendly openings — next 2–3 days, min 2-hour buffer</span></div>
+            </div>
+          </div>
+
+          <!-- Intake Call Complete — hidden when the patient chose "Send request now";
+               otherwise sits below the booking block. -->
+          <div class="hide" id="iccWrap" style="margin-top:16px;padding-top:14px;border-top:1px dashed var(--border)">
+            <label class="checkline" id="iccLabel">
+              <input type="checkbox" id="intakeCallComplete" onchange="refreshGate()">
+              <span>
+                <b>Intake Call Complete</b>
+                <span class="sugg-note" style="display:block;margin-top:2px">Check this once you have finished the intake call — required to advance.</span>
+              </span>
+            </label>
+            <div class="prov" style="margin-top:8px"><span class="src rep">Rep</span><span class="arw">→</span>
+              <span class="col isnew">New column needed</span></div>
+          </div>
+        </section>
+
+        <!-- Patient messages -->
+        <section class="sect">
+          <div class="sect-title">Patient Messages <span class="rt mp green" id="msgCount">1</span></div>
+          <div style="margin-bottom:12px">
+            <div class="flabel">Send New Message Via</div>
+            <div class="seg" id="chanSeg">
+              <button onclick="setChan(this)">Text</button>
+              <button class="on" onclick="setChan(this)">Email</button>
+            </div>
+          </div>
+          <div id="msgList">
+            <div class="msgbox"><span class="ts">[Jul 15, 2026, 3:52 PM]</span> <span class="ch">Email:</span> Sent insurance follow-up link to patient's email on file.</div>
+          </div>
+          <div class="note-add">
+            <textarea id="msgInput" placeholder="Type a message to send…"></textarea>
+            <button class="btn primary sm" onclick="sendMsg()">Send</button>
+          </div>
+        </section>
+
+        <!-- Call log & notes -->
+        <section class="sect">
+          <div class="sect-title">Call Log &amp; Notes</div>
+          <div id="noteList">
+            <div class="note-entry"><span class="ts">[Jul 15, 2026, 3:51 PM]</span> <b style="color:var(--mm-teal)">Patient Intake:</b> Emailed CareCentrix — this patient's insurance shows inactive. Can they confirm whether new coverage was issued or the Fidelis plan lapsed? Called patient, no answer, left voicemail. — BE</div>
+            <div class="note-entry"><span class="ts">[Jul 15, 2026, 3:51 PM]</span> <b style="color:var(--mm-teal)">Patient Intake:</b> Medicaid ID is also now inactive. — BE</div>
+          </div>
+          <div class="note-add">
+            <textarea id="noteInput" placeholder="Add a note…"></textarea>
+            <button class="btn primary sm" onclick="addNote()">+ Add</button>
+          </div>
+          <div class="prov" style="margin-top:10px"><span class="src rep">Rep</span><span class="arw">→</span>
+            <span class="col">text_mm389fs</span>
+            <span class="sugg-note" style="margin-left:4px">append-only, stamped + signed</span></div>
+        </section>
+
+        <!-- Decision -->
+        <section class="sect decide">
+          <div class="sect-title" style="color:var(--mm-teal)">Ready to Advance?</div>
+          <div class="route-stack">
+            <div class="route adv" id="routeAdvLeft">
+              <h4>Advance to Profile Clean-Up</h4>
+              <p>Referral info is sufficient → unlock the profile checklist on the right.</p>
+              <div id="gateList" style="margin:4px 0 12px"></div>
+              <button class="btn primary" id="advanceLeftBtn" disabled onclick="advanceRight()">Advance to Profile Clean-Up →</button>
+            </div>
+            <div class="route intake on">
+              <h4>Insufficient — log call</h4>
+              <p>Missing info → call the patient, collect it above, then log the attempt.</p>
+              <button class="btn amber" onclick="togglePanel('callLogPanel')">Log call attempt</button>
+              <div class="inline-panel" id="callLogPanel">
+                <textarea id="callLogText" placeholder="What did you ask / learn on the call?"></textarea>
+                <button class="btn amber sm" style="margin-top:9px" onclick="logCall()">Save call attempt</button>
+              </div>
+            </div>
+            <div class="route esc on">
+              <h4>Escalate — doesn't qualify</h4>
+              <p>Patient doesn't meet criteria for this request → flag for supervisor review instead of advancing.</p>
+              <button class="btn rose" id="escBtn" onclick="togglePanel('escPanel')">Escalate for review</button>
+              <div class="inline-panel" id="escPanel">
+                <select id="escReason">
+                  <option value="">Select a reason…</option>
+                  <option>Doesn't meet clinical criteria</option>
+                  <option>Non-compliant with current therapy</option>
+                  <option>Insurance permanently denies coverage</option>
+                  <option>Other</option>
+                </select>
+                <textarea id="escNotes" placeholder="Add context for the reviewer…" style="margin-top:9px"></textarea>
+                <button class="btn rose sm" style="margin-top:9px" onclick="submitEsc()">Submit escalation</button>
+              </div>
+              <div class="okline rose" id="escOk">✓ Escalated — pending supervisor review</div>
+            </div>
+          </div>
+        </section>
+      </div>
+
+      <!-- ─────────────────────────────────────────────────────────
+           RIGHT PANE — Patient Profile Clean-Up (locked)
+           ───────────────────────────────────────────────────────── -->
+      <div class="panewrap locked" id="rightWrap">
+        <div class="lockover">
+          <div class="lockmsg">
+            <div class="li">🔒</div>
+            <div class="lt">Locked</div>
+            <div class="ls">Complete Patient Info. Collection and advance on the left to unlock the profile checklist.</div>
+          </div>
+        </div>
+
+        <div class="pane pane-inner">
+          <div class="pane-head">
+            <h2>Patient Profile Clean-Up</h2>
+            <span class="st" id="rightState">Locked</span>
+          </div>
+
+          <!-- Step 1 — verified insurance + suggestion engine -->
+          <section class="card step-card">
+            <header class="step-head"><span class="step-num">1</span><h2>Verified Insurance</h2></header>
+
+            <div class="fgrid">
+              <div>
+                <div class="flabel">Primary Insurance <span class="req-star">*</span>
+                  <span class="why" tabindex="0">i<span class="whycard">
+                    <span class="wl">Why Fidelis Medicaid?</span>
+                    The benefits check returned <b>Fidelis Care New York</b>, coverage type
+                    <b>Medicaid</b>, plan name <b>Fidelis Medicaid Managed Care</b>.
+                    <ul>
+                      <li>Managed-Medicaid plan name → the Medicaid variant, not Commercial</li>
+                      <li>Home address is <b>NY</b>, so no out-of-state Blue routing applies</li>
+                      <li>No QMB / dual indicators returned</li>
+                    </ul>
+                    Confidence: <b>high</b>. Runners-up: Fidelis Low-Cost, Medicaid.
+                  </span></span>
+                </div>
+                <select id="primaryIns" class="need" onchange="onPrimaryIns()">
+                  <option value="" selected disabled hidden>Select…</option>
+                  <optgroup label="Fidelis">
+                    <option>Fidelis Commercial</option><option>Fidelis Low-Cost</option>
+                    <option>Fidelis Medicaid</option><option>Fidelis Medicare</option>
+                  </optgroup>
+                  <optgroup label="Anthem / BCBS">
+                    <option>Anthem BCBS Commercial</option><option>Anthem BCBS Low-Cost (JLJ)</option>
+                    <option>Anthem BCBS Medicaid (JLJ)</option><option>Anthem BCBS Medicare</option>
+                    <option>BCBS FL</option><option>BCBS TN</option><option>BCBS WY</option>
+                    <option>Horizon BCBS</option>
+                  </optgroup>
+                  <optgroup label="United">
+                    <option>United Commercial</option><option>United Low-Cost</option>
+                    <option>United Medicaid</option><option>United Medicare</option>
+                  </optgroup>
+                  <optgroup label="Aetna">
+                    <option>Aetna Commercial</option><option>Aetna Medicare</option>
+                  </optgroup>
+                  <optgroup label="Medicare / Medicaid">
+                    <option>Medicaid</option><option>Medicare A&amp;B</option>
+                  </optgroup>
+                  <optgroup label="Other">
+                    <option>Cigna</option><option>Humana</option><option>MagnaCare</option>
+                    <option>Midlands Choice</option><option>NYSHIP</option><option>Oregon Care</option>
+                    <option>Stedi</option><option>UMR</option><option>Wellcare</option>
+                  </optgroup>
+                </select>
+                <div class="prov"><span class="src derived">Suggested</span><span class="arw">→</span>
+                  <span class="col">color_mm1xg10n</span>
+                  <span class="sugg-note" style="margin-left:4px">pre-filled by the engine, editable</span></div>
+              </div>
+
+              <div>
+                <div class="flabel">Member ID 1 <span class="req-star">*</span></div>
+                <input type="text" class="need" id="memberId1" placeholder="Member ID…" oninput="markFilled(this)">
+                <div class="prov"><span class="src derived">Suggested</span><span class="arw">→</span>
+                  <span class="col">text_mm1x2qk2</span>
+                  <span class="sugg-note" style="margin-left:4px">pre-populated, editable</span></div>
+              </div>
+
+              <div>
+                <div class="flabel">Secondary Insurance <span class="req-star">*</span>
+                  <span class="why" tabindex="0">i<span class="whycard">
+                    <span class="wl">Why NY Medicaid?</span>
+                    The check returned a <b>Medicaid ID</b> for this member, so a Medicaid backstop
+                    exists behind the primary plan. Mapped from the form's answer
+                    (<b>NYS Medicaid</b>) to the board label <b>NY Medicaid</b>.
+                  </span></span>
+                </div>
+                <select id="secondaryIns" class="need" onchange="onSecondary()">
+                  <option value="" selected disabled hidden>Select…</option>
+                  <option>NY Medicaid</option><option>Medicare Supplement</option><option>None</option>
+                </select>
+                <div class="prov"><span class="src derived">Suggested</span><span class="arw">→</span>
+                  <span class="col">color_mm1zbrx0</span>
+                  <span class="sugg-note" style="margin-left:4px">board labels only — no &ldquo;Other&rdquo;</span></div>
+              </div>
+
+              <div>
+                <div class="flabel">Member ID 2 <span id="mid2Star" class="req-star">*</span></div>
+                <input type="text" id="memberId2" placeholder="Member ID… (required when Secondary = NY Medicaid)" oninput="markFilled(this)">
+                <div class="prov"><span class="src derived">Suggested</span><span class="arw">→</span>
+                  <span class="col">text_mm1xaccx</span>
+                  <span class="sugg-note" style="margin-left:4px">required when Secondary = NY Medicaid</span></div>
+              </div>
+            </div>
+
+            <div class="warn-banner" style="margin-top:16px">
+              <span><b>Managed Medicaid detected — Fidelis Medicaid Managed Care.</b> Supplies Only eligible — set Serving accordingly.</span>
+            </div>
+          </section>
+
+          <!-- Step 2 — serving & coverage -->
+          <section class="card step-card">
+            <header class="step-head"><span class="step-num">2</span><h2>Serving &amp; Coverage</h2></header>
+
+            <div>
+              <div>
+                <div class="flabel">Serving <span class="req-star">*</span>
+                  <span class="why" tabindex="0">i<span class="whycard">
+                    <span class="wl">Why Supplies Only?</span>
+                    <ul>
+                      <li>Request Type is <b>Insulin Pump</b> (derived from the form)</li>
+                      <li><b>Managed Medicaid</b> detected — Supplies Only eligible</li>
+                      <li>No CGM cross-sell: primary insurance is a <b>Medicaid</b> plan</li>
+                    </ul>
+                    The rep owns the final call — change it if the clinicals say otherwise.
+                  </span></span>
+                </div>
+                <select id="serving" class="need" onchange="onServing()">
+                  <option value="" selected disabled hidden>Select what we're serving…</option>
+                  <option>Insulin Pump</option><option>Supplies Only</option><option>CGM</option>
+                  <option>Insulin Pump + CGM</option><option>Supplies + CGM</option>
+                </select>
+                <div class="prov"><span class="src derived">Suggested</span><span class="arw">→</span>
+                  <span class="col">color_mm1w1cm9</span>
+                  <span class="sugg-note" style="margin-left:4px">pre-populated, editable — rep owns the final call</span></div>
+              </div>
+
+            </div>
+          </section>
+
+          <!-- Step 3 — provider (mirrors src/components/profile/DoctorSection.tsx) -->
+          <section class="card step-card">
+            <header class="step-head"><span class="step-num">3</span><h2>Select Correct Provider</h2></header>
+            <div class="prov" style="margin:0 0 12px"><span class="src rep">Rep picks</span><span class="arw">→</span>
+              <span class="col">text_mm1x46et · phone_mm1xz8c0 · text_mm1x7d91 · color_mm1xw7y5 · email_mm1xdzcj · location_mm1xjnfv</span>
+              <span class="sugg-note" style="margin-left:4px">the verified doctor — this is what moves to Medical Evaluation</span></div>
+            <div id="doctorSection"></div>
+          </section>
+
+          <!-- Step 4 — send off -->
+          <section class="card" style="border-left:4px solid var(--mm-teal)">
+            <header class="step-head clickable" style="margin-bottom:0" onclick="toggleChecklist()">
+              <span class="step-num">4</span><h2>Ready to Send Off?</h2>
+              <span class="mp" id="missBadge">5 missing</span>
+              <div class="right"><span class="chev open" id="chev">▾</span></div>
+            </header>
+            <div id="checkWrap">
+              <div style="height:16px"></div>
+              <div id="checklist"></div>
+              <div class="miss-pills" id="missPills"></div>
+            </div>
+
+            <div class="route-grid" style="margin-top:20px">
+              <div class="route adv" id="routeAdv">
+                <h4>Advance to MN</h4>
+                <button class="btn primary" id="advBtn" disabled onclick="advanceMn()">Advance to MN →</button>
+              </div>
+              <div class="route intake on">
+                <h4>Send back to Patient Intake</h4>
+                <button class="btn amber" onclick="toast('Moved back to Patient Intake')">Send back to Patient Intake</button>
+              </div>
+            </div>
+          </section>
+        </div>
+      </div>
+
+    </div><!-- /panes -->
+  </div><!-- /cc-main -->
+</div><!-- /cc-shell -->
+
+<!-- ══════════════ FILE VIEWER ══════════════ -->
+<div class="modal" id="viewer">
+  <div class="viewer-top">
+    <span class="vt-name" id="viewerName">file</span>
+    <div class="vt-tools">
+      <button title="Zoom out" onclick="zoomViewer(-10)">−</button>
+      <span class="vt-pct" id="viewerPct">100%</span>
+      <button title="Zoom in" onclick="zoomViewer(10)">+</button>
+      <span class="vt-sep"></span>
+      <button title="Download" onclick="toast('Download')">⬇</button>
+      <button title="Close" onclick="closeViewer()">✕</button>
+    </div>
+  </div>
+  <div class="viewer-body" onclick="if(event.target===this) closeViewer()">
+    <div class="viewer-page" id="viewerPage"></div>
+  </div>
+</div>
+
+<div class="toast" id="toast"><span id="toastMsg"></span></div>
+</div><!-- /pf-root -->
+
+<div class="chg">
+<details open>
+<summary>Build notes — what came from where, and every change I made</summary>
+<div class="cbody">
+
+<h4>What this is</h4>
+<p>The <b>Command Center <code>/profile</code></b> page (design system, Stedi results grid, insurance suggestion engine, doctor DB + Parachute, patients sidebar, referral drawer) rearranged to <b>function like Corey's PROFIL2</b> — two panes, right one locked until you advance on the left. CSS is a verbatim port of <code>src/pages/profile/redesign.css</code> so it matches the live page pixel-for-pixel.</p>
+
+<h4>Corey's flow, replicated</h4>
+<ul>
+<li>Left = <b>Patient Info. Collection</b>, right = <b>Patient Profile Clean-Up</b>, blurred + locked behind an overlay until <b>Advance to Profile Clean-Up</b>.</li>
+<li>Attempt badge increments on each logged call attempt.</li>
+<li>Auto-tags (Hypoglycemic episodes, Pediatric &lt;18) plus event tags added by <b>Start insurance follow-up</b> and <b>Escalate</b>.</li>
+<li>Conditional reveals: reason → Cost &amp; coverage card; product category → device blocks; Provided via → card photo; General Insurance = Medicare A&amp;B / Medicaid → State; proceed preference → call slot.</li>
+<li>Three-way left decision: Advance / Insufficient — log call / Escalate (with reason + notes).</li>
+<li>Benefits check on the <b>left</b>; Today's / 3-month / 6-month order estimates, gated on months remaining in the calendar year.</li>
+</ul>
+
+<h4>Label corrections — Corey's mockup vs. the live Monday board</h4>
+<p>Every dropdown now uses <b>exact board labels</b>. Corey's values in red would silently fail to write (Monday drops status writes for labels that don't exist).</p>
+<table>
+<tr><th>Field</th><th>Corey's PROFIL2</th><th>Board label used here</th></tr>
+<tr><td>Pump Type<br><code>color_mm1wjjtk</code></td><td class="was">Tandem t:slim X2 · Tandem Mobi · Beta Bionics iLet · Not sure which type is right</td><td class="now">t:slim · Mobi · iLet · Minimed 780G · Not Serving</td></tr>
+<tr><td>CGM Type<br><code>color_mm1w7pmf</code></td><td class="was">Freestyle Libre 3 Plus · Dexcom G7 · Medtronic Guardian 4 · Any will work</td><td class="now">FreeStyle Libre 3 Plus · FreeStyle Libre 2 Plus · FreeStyle Libre 14-Day · Dexcom G7 · Dexcom G7 15-Day · Dexcom G6 · Guardian 4 · Instinct · Not Serving</td></tr>
+<tr><td>Insulin Pump Coverage Path<br><code>color_mm1w5xn1</code></td><td class="was">1st pump ≤6mo · 1st pump &gt;6mo · <b>Replacement (lost/damaged)</b> · <b>Warranty replacement</b> · <b>Upgrade from current pump</b></td><td class="now">1st Pump &lt;6M Diagnosed · 1st Pump &gt;6M Diagnosed · OOW Pump · IW New Insurance · Omnipod Switch · Supplies Only · Not Serving</td></tr>
+<tr><td>CGM Coverage Path<br><code>color_mm1w7e5q</code></td><td class="was">Injecting insulin · Hypoglycemic event · Neither applies</td><td class="now">Insulin · Hypoglycemia · Not Serving</td></tr>
+<tr><td>Insurance dropdown<br><code>color_mm24ap4j</code></td><td class="was">Anthem or Blue Cross Blue Shield · UnitedHealthcare · NYS Medicaid · Medicare · Other</td><td class="now">Anthem / BCBS · United Healthcare · Medicaid · Medicare A&amp;B (+ UMR, Wellcare, MagnaCare, Midlands Choice; no "Other")</td></tr>
+<tr><td>Secondary Insurance<br><code>color_mm1zbrx0</code></td><td class="was">None · NY Medicaid · Medicare Supplement · <b>Other</b></td><td class="now">NY Medicaid · Medicare Supplement · None</td></tr>
+</table>
+
+<h4>Structural changes I had to make</h4>
+<ul>
+<li><b>General Insurance vs Primary Insurance split.</b> Corey's mockup had one "Primary insurance" dropdown on the left. These are two different columns: <code>color_mm24ap4j</code> General Insurance + <code>text_mm4t8gbq</code> Member ID are what the patient told us and <b>what Stedi reads</b>; <code>color_mm1xg10n</code> Primary Insurance + <code>text_mm1x2qk2</code> Member ID 1 are the verified/derived answer. Left pane now holds General Insurance + Member ID; the right pane holds Primary + Member ID 1 + Secondary + Member ID 2 with the suggestion engine. Without this the benefits check has nothing to run against.</li>
+<li><b>Right pane is 4 steps, not 3.</b> Verified Insurance was added as step 1 to give the suggestion engine a home. Serving → Provider → Ready to Send Off follow as Corey had them.</li>
+<li><b>Benefits check is async.</b> Corey's version popped an instant modal. Stedi actually writes results back one column at a time over 15–25s with a ~10s settle, so this shows the real running state and then reveals the full grid at once. (Shortened in the prototype so you're not waiting 30s per click.)</li>
+<li><b>Referral email + files are rail cards at the top of the left pane</b>, matching the live page: Referral Type / Referral Source shown read-only with a <i>Show referral email / updates</i> toggle and an <i>+ Add referral email</i> action. A separate Referral Routing card below holds the rep-editable Source / Type dropdowns.</li>
+<li><b>App chrome matches Command Center</b> — navy sidebar (<code>--sidebar-background: 215 60% 13%</code>) with patients grouped by <b>referral source</b> in collapsible sections, intake date under each name, amber dot for unsaved edits, and the Follow Up section at the bottom; navy gradient topbar with the app tile, "Medically Modern" eyebrow, page title, patient subtitle and the emerald Save button.</li>
+<li><b>Request Type is derived</b>, not typed — computed from the product categories + pump need, shown as a chip.</li>
+</ul>
+
+<h4>Fields with no Monday column yet</h4>
+<ul>
+<li>Reason for Inquiry · Self Advocacy · Current Out-of-Pocket Cost · CGM Data &amp; Doctor Awareness · CGM data file · Proceed preference + call slot · Tags · Attempt counter · 3-month / 6-month OOP (live board only stores First-Order <code>text_mm4tvsk6</code> and Recurring <code>text_mm4ttaa6</code>)</li>
+</ul>
+
+<h4>Left untouched on purpose</h4>
+<ul>
+<li>Left pane mirrors <b>Corey's PROFIL2 exactly</b> — including State hidden behind Medicare/Medicaid, which the 8.4 form now contradicts (form asks for state in demographics). Flagged, not fixed.</li>
+<li>Required-field enforcement, dedupe on submit, and the unified attempt model are all still open.</li>
+</ul>
+
+</div>
+</details>
+</div>
+
+<script>
+/* ══════════════════════════════════════════════════════════════
+   Patient Intake — Command Center build, Corey flow
+   Prototype logic only. Nothing here talks to Monday.
+   ══════════════════════════════════════════════════════════════ */
+
+/* ══════════════════════════════════════════════════════════════
+   BOARD-DRIVEN DROPDOWNS
+   Options are built from Monday's own column settings, not from a
+   hardcoded list — so adding/renaming a status on the board flows
+   through automatically. Labels on HIDDEN_LABELS are never offered.
+
+   In production this object is the parsed `settings_str` from
+     boards(ids:[...]) { columns { id title settings_str } }
+   cached per session. `labels` = index → label,
+   `labels_positions_v2` = index → display order.
+   ══════════════════════════════════════════════════════════════ */
+const BOARD_LABELS = {
+  color_mm1w7pmf: { title:'CGM Type', labels:{                       // index → label
+    0:'FreeStyle Libre 14-Day', 1:'Guardian 4', 2:'Instinct', 3:'FreeStyle Libre 3 Plus',
+    4:'FreeStyle Libre 2 Plus', 6:'Dexcom G7', 7:'Dexcom G7 15-Day', 8:'Dexcom G6',
+    9:'Not Serving' } },
+  color_mm1wjjtk: { title:'Pump Type', labels:{
+    0:'iLet', 1:'Mobi', 2:'t:slim', 3:'Not Serving', 4:'Minimed 780G' } },
+  color_mm1w7e5q: { title:'CGM Coverage Path', labels:{
+    0:'Insulin', 1:'Hypoglycemia', 2:'Not Serving' } },
+  color_mm1w5xn1: { title:'Insulin Pump Coverage Path', labels:{
+    0:'Not Serving', 1:'IW New Insurance', 2:'Omnipod Switch', 3:'OOW Pump',
+    4:'1st Pump >6M Diagnosed', 6:'1st Pump <6M Diagnosed', 7:'Supplies Only' } },
+};
+
+/* Never offered to the rep. "Not Serving" stays a real, writable board value —
+   the cross-sell derivation still WRITES it — it is only hidden from the picker.
+   Blank label slots are dropped too. */
+const HIDDEN_LABELS = ['Not Serving'];
+
+function boardOptions(colId){
+  const src = BOARD_LABELS[colId];
+  if(!src) return [];
+  return Object.entries(src.labels)
+    .filter(([, label]) => label && label.trim() && !HIDDEN_LABELS.includes(label))
+    .map(([index, label]) => ({ index:Number(index), label }));
+}
+
+/* Populate a <select> from the board. If the item's CURRENT value is a hidden
+   label, it is still rendered (disabled) so the value is visible and can't be
+   silently blanked on the next save. */
+function fillFromBoard(selectId, colId, current){
+  const el = document.getElementById(selectId);
+  if(!el) return;
+  const value = current !== undefined ? current : el.value;
+  const opts = boardOptions(colId);
+  let html = opts.map(o => `<option value="${o.label}" data-index="${o.index}">${o.label}</option>`).join('');
+  if(value && !opts.some(o => o.label === value)){
+    html = `<option value="${value}" disabled selected>${value} — not selectable</option>` + html;
+  }
+  el.innerHTML = html;
+  if(value) el.value = value;
+}
+
+function applyBoardDropdowns(){
+  fillFromBoard('cgmTypeIn',  'color_mm1w7pmf', 'Dexcom G7');
+  fillFromBoard('pumpTypeIn', 'color_mm1wjjtk', 'Mobi');
+  fillFromBoard('cgmPathIn',  'color_mm1w7e5q', 'Hypoglycemia');
+  fillFromBoard('ipPathIn',   'color_mm1w5xn1', '1st Pump >6M Diagnosed');
+}
+
+/* Sidebar mirrors the live PatientsSidebar: grouped by REFERRAL SOURCE,
+   collapsible, amber dot = unsaved edits, intake date under the name,
+   plus the Follow Up section at the bottom. */
+const PATIENTS = [
+  { g:'CARECENTRIX', n:'Richard Clark',     d:'2026-07-15', dot:true, on:true },
+  { g:'CARECENTRIX', n:'Tyrell Jackson',    d:'2026-08-03' },
+  { g:'PATIENT',     n:'Eleanor Boyd',      d:'2026-08-04' },
+  { g:'PATIENT',     n:'Devon Pike',        d:'2026-08-05' },
+  { g:'PATIENT',     n:'Priya Raghunathan', d:'2026-08-02' },
+  { g:'FOLLOW UP',   n:'Marisol Vega',      d:'Until 08/12/2026', fu:true },
+];
+const closedGroups = new Set();
+
+function renderPatients(filter){
+  const q = (filter||'').trim().toLowerCase();
+  const list = PATIENTS.filter(p => !q || p.n.toLowerCase().includes(q));
+  const groups = [];
+  list.forEach(p => {
+    let g = groups.find(x => x.name === p.g);
+    if(!g){ g = { name:p.g, items:[] }; groups.push(g); }
+    g.items.push(p);
+  });
+  let html = '';
+  groups.forEach(g => {
+    const open = !closedGroups.has(g.name);
+    const fu = g.name === 'FOLLOW UP';
+    html += `<div class="psb-grp ${open?'open':''} ${fu?'fu':''}" onclick="toggleGroup('${g.name}')">
+        <span class="cv">▶</span>${fu ? '🕘 Follow Up' : g.name} (${g.items.length})</div>
+      <div class="psb-items ${open?'':'closed'}">` +
+      g.items.map(p => `<div class="psb-item ${p.on?'on':''} ${p.fu?'fu':''}" onclick="pickPatient(this,'${p.n}')">
+          <span class="ui">${p.fu ? '🕘' : '👤'}</span>
+          <div style="min-width:0;flex:1">
+            <div class="nmrow"><span class="psb-nm">${p.n}</span>${p.dot?'<span class="psb-dot" title="Unsaved edits"></span>':''}</div>
+            <div class="psb-date">${p.d}</div>
+          </div></div>`).join('') + `</div>`;
+  });
+  document.getElementById('psbList').innerHTML = html || '<div class="psb-empty">No active patients.</div>';
+  document.getElementById('psbCount').textContent = list.length;
+}
+function toggleGroup(name){
+  if(closedGroups.has(name)) closedGroups.delete(name); else closedGroups.add(name);
+  renderPatients(document.querySelector('.psb-searchwrap input').value);
+}
+function filterPatients(v){ renderPatients(v); }
+function pickPatient(el, name){
+  document.querySelectorAll('.psb-item').forEach(i => i.classList.remove('on'));
+  el.classList.add('on');
+  if(name !== 'Richard Clark') toast(`${name} — demo only loads Richard Clark`);
+}
+function toggleSidebar(){ document.getElementById('psb').classList.toggle('collapsed'); }
+function toggleRef(){
+  const b = document.getElementById('refBody');
+  b.classList.toggle('hide');
+  document.getElementById('refToggle').textContent =
+    (b.classList.contains('hide') ? 'Show' : 'Hide') + ' referral email / updates';
+}
+
+/* ── left pane conditionals ── */
+function onReferralSource(){}
+/* Cost & Coverage is ALWAYS shown. Corey's mockup revealed it only for the
+   pharmacy-cost reason; that gate is an open question, so the card stays
+   visible and simply highlights when the reason is pharmacy cost. */
+function onReason(){
+  const v = document.getElementById('reasonSelect').value;
+  document.getElementById('costCard').classList.toggle('hilite', v === 'pharmacy');
+}
+/* A product category that's switched OFF hides its whole column. The
+   category toggle itself carries the selected highlight, so the individual
+   fields inside the column are left unstyled. Explicit grid-column rules in
+   the CSS keep the surviving column on its own side. */
+function syncDevices(){
+  const cgmOn  = document.getElementById('catCgm').classList.contains('on');
+  const pumpOn = document.getElementById('catPump').classList.contains('on');
+  const hypo   = document.getElementById('cgmPathIn').value === 'Hypoglycemia';
+
+  document.getElementById('cgmBlock').classList.toggle('off', !cgmOn);
+  document.getElementById('pumpBlock').classList.toggle('off', !pumpOn);
+
+  // Upload block only matters on the hypoglycemia path.
+  document.getElementById('cgmUploadWrap').classList.toggle('hide', !(cgmOn && hypo));
+  deriveRequestType();
+}
+function onCgmPath(){ syncDevices(); }
+function onPumpNeed(){
+  const supplies = document.getElementById('pumpNeedIn').value === 'Only need supplies';
+  const sel = document.getElementById('ipPathIn');
+  if(supplies) sel.value = 'Supplies Only';
+  deriveRequestType();
+}
+function toggleCat(which){
+  document.getElementById(which === 'cgm' ? 'catCgm' : 'catPump').classList.toggle('on');
+  syncDevices();
+}
+function deriveRequestType(){
+  const cgm = document.getElementById('catCgm').classList.contains('on');
+  const pump = document.getElementById('catPump').classList.contains('on');
+  const suppliesOnly = document.getElementById('pumpNeedIn').value === 'Only need supplies';
+  let rt = '—';
+  if(cgm && pump) rt = suppliesOnly ? 'Supplies + CGM' : 'Insulin Pump + CGM';
+  else if(cgm) rt = 'CGM';
+  else if(pump) rt = suppliesOnly ? 'Supplies Only' : 'Insulin Pump';
+  document.getElementById('requestTypeChip').textContent = rt;
+}
+function pickPill(groupId, el){
+  document.querySelectorAll('#'+groupId+' .pillbtn').forEach(b => b.classList.remove('on'));
+  el.classList.add('on');
+}
+function setVia(kind, el){
+  document.querySelectorAll('#viaSeg button').forEach(b => b.classList.remove('on'));
+  el.classList.add('on');
+  document.getElementById('cardPhotoField').classList.toggle('hide', kind !== 'photo');
+}
+function onGeneralIns(){
+  const v = document.getElementById('generalIns').value;
+  document.getElementById('stateField').classList.toggle('hide', !(v === 'Medicare A&B' || v === 'Medicaid'));
+  document.getElementById('uhcNote').classList.toggle('hide', v !== 'United Healthcare');
+}
+let proceedChoice = null;
+/* "Send request now"  → the patient has already authorised us, so Intake Call
+                          Complete is irrelevant and is hidden entirely.
+   "Wants a call first" → booking block, then Intake Call Complete beneath it.
+   no selection yet     → Intake Call Complete shows (the rep may have taken the
+                          call before the form question was ever answered).      */
+function setProceed(kind, el){
+  proceedChoice = kind;
+  pickPill('proceedPills', el);
+  syncProceed();
+  refreshGate();
+}
+function syncProceed(){
+  document.getElementById('slotWrap').classList.toggle('hide', proceedChoice !== 'call');
+  document.getElementById('iccWrap').classList.toggle('hide', proceedChoice === 'request');
+}
+/* The form's answer is what shows by default. The rep can pick a different
+   Calendly opening and confirm — that overrides it. */
+function confirmSlot(){
+  const v = document.getElementById('slotSelect').value;
+  if(!v){ toast('Pick an opening first'); return; }
+  document.getElementById('formSlot').textContent = v;
+  const b = document.getElementById('slotBadge');
+  b.textContent = 'Scheduled'; b.className = 'mp green';
+  toast('Booking overridden — ' + v);
+  refreshGate();
+}
+/* ── advance gate (left pane) ──
+   Advance is allowed ONLY when:
+     1. the patient chose "Send request now" on the form, OR the rep has
+        ticked "Intake Call Complete"
+     2. the Stedi check ran and did NOT fail
+     3. coverage is Active
+     4. the plan is In-Network                                            */
+function gateState(){
+  const ran     = !document.getElementById('benefitsOut').classList.contains('hide');
+  const icc     = document.getElementById('intakeCallComplete').checked;
+  return [
+    { label: proceedChoice === 'request'
+        ? 'Patient chose "Send request now" on the form'
+        : 'Intake call complete (or patient chose "Send request now")',
+      ok: proceedChoice === 'request' || icc },
+    { label: 'Benefits check ran without failing', ok: ran && SCENARIO !== 'failed' },
+    { label: 'Coverage is Active',                 ok: ran && SCENARIO === 'active' || (ran && SCENARIO === 'oon') },
+    { label: 'Plan is In-Network',                 ok: ran && SCENARIO === 'active' },
+  ];
+}
+function refreshGate(){
+  const items = gateState();
+  document.getElementById('gateList').innerHTML = items.map(i =>
+    `<div class="gate ${i.ok?'ok':''}"><span class="gb">${i.ok?'✓':'✕'}</span><span>${i.label}</span></div>`).join('');
+  const pass = items.every(i => i.ok);
+  document.getElementById('advanceLeftBtn').disabled = !pass;
+  document.getElementById('routeAdvLeft').classList.toggle('on', pass);
+  const icc = document.getElementById('intakeCallComplete');
+  document.getElementById('iccLabel').classList.toggle('done', icc.checked);
+}
+
+/* ── CGM file ── */
+function sendUploadLink(){
+  document.getElementById('uploadLinkBtn').style.display = 'none';
+  document.getElementById('uploadLinkOk').classList.add('show');
+  logMessage('Sent CGM data photo upload link to patient.');
+}
+function setCgmFile(name){
+  document.getElementById('attachName').textContent = name;
+  document.getElementById('attachRow').classList.remove('hide');
+  document.getElementById('upZone').classList.remove('show');
+}
+function onCgmFile(e){ const f = e.target.files[0]; if(f) setCgmFile(f.name); }
+function onCgmDrop(e){
+  e.preventDefault();
+  e.currentTarget.classList.remove('over');
+  const f = e.dataTransfer.files[0];
+  if(f) setCgmFile(f.name);
+}
+function removeCgmFile(){
+  document.getElementById('cgmFile').value = '';
+  document.getElementById('attachRow').classList.add('hide');
+  document.getElementById('upZone').classList.add('show');
+}
+
+/* ── benefits check (async, like the real Stedi run) ── */
+let SCENARIO = 'active';
+function setScenario(s, el){
+  SCENARIO = s;
+  document.querySelectorAll('#demoSeg button').forEach(b => b.classList.remove('on'));
+  el.classList.add('on');
+  if(!document.getElementById('benefitsOut').classList.contains('hide')) paintStedi();
+  refreshGate();
+}
+function runStedi(){
+  const btn = document.getElementById('stediBtn');
+  btn.disabled = true; btn.textContent = 'Running…';
+  document.getElementById('stediRunning').classList.remove('hide');
+  document.getElementById('benefitsOut').classList.add('hide');
+  setTimeout(() => {
+    document.getElementById('stediRunning').classList.add('hide');
+    btn.disabled = false; btn.textContent = 'Re-run Benefits Check';
+    document.getElementById('benefitsOut').classList.remove('hide');
+    paintStedi();
+    document.getElementById('benefitsOut').scrollIntoView({behavior:'smooth', block:'center'});
+    prefillRightPane();
+    refreshChecklist();
+    refreshGate();
+  }, 2600);
+}
+function paintStedi(){
+  const failed = SCENARIO === 'failed';
+  const active = SCENARIO === 'active' || SCENARIO === 'oon';
+  const inNet  = SCENARIO === 'active';
+
+  const a = document.getElementById('rActive');
+  a.textContent = failed ? '—' : (active ? 'Active' : 'Inactive');
+  a.className = 'rv set ' + (failed ? '' : (active ? 'good' : 'bad'));
+
+  const n = document.getElementById('rNetwork');
+  n.textContent = failed ? '—' : (inNet ? 'In-Network' : 'Out-of-Network');
+  n.className = 'rv set ' + (failed ? '' : (inNet ? 'good' : 'bad'));
+
+  let banner = '';
+  if(failed){
+    banner = `<div class="err-banner" style="margin-bottom:16px">
+      <div class="et">Stedi check failed — error 72</div>
+      <div class="ed">The payer could not match the subscriber on the ID submitted.</div>
+      <div class="ed" style="margin-top:8px"><b>What to do:</b> confirm name, DOB and Member ID with the patient, correct them above, and re-run. <b>You cannot advance on a failed check.</b></div>
+      <div class="ea"><button class="btn primary sm" onclick="runStedi()">Try Again</button></div>
+    </div>`;
+  } else if(!active){
+    banner = `<div class="err-banner" style="margin-bottom:16px">
+      <div class="et">⚠ Coverage is INACTIVE</div>
+      <div class="ed">Fidelis Care New York returned Active = No as of the plan begin date on file.</div>
+      <div class="ed" style="margin-top:8px"><b>What to do:</b> confirm with the patient whether new coverage was issued or the plan lapsed, then re-run the check. <b>Advance is blocked.</b></div>
+    </div>`;
+  } else if(!inNet){
+    banner = `<div class="warn-banner" style="margin-bottom:16px">
+      <span><b>Out-of-network.</b> Coverage is active but this plan is out of network — advance is blocked. Escalate or confirm an alternate plan.</span>
+    </div>`;
+  }
+  document.getElementById('stediBanners').innerHTML = banner;
+  refreshChecklist();
+  refreshGate();
+}
+function startFollowUp(){
+  document.getElementById('followUpBtn').style.display = 'none';
+  document.getElementById('followUpOk').classList.add('show');
+  logMessage('Sent insurance follow-up request to patient.');
+}
+
+/* ── messages & notes ── */
+function setChan(el){
+  document.querySelectorAll('#chanSeg button').forEach(b => b.classList.remove('on'));
+  el.classList.add('on');
+}
+function chan(){ const a = document.querySelector('#chanSeg button.on'); return a ? a.textContent : 'Email'; }
+function stamp(){
+  return new Date().toLocaleString('en-US',{month:'short',day:'numeric',year:'numeric',hour:'numeric',minute:'2-digit'});
+}
+let msgCount = 1;
+function logMessage(text){
+  const d = document.createElement('div');
+  d.className = 'msgbox';
+  d.innerHTML = `<span class="ts">[${stamp()}]</span> <span class="ch">${chan()}:</span> ${text}`;
+  document.getElementById('msgList').appendChild(d);
+  msgCount++; document.getElementById('msgCount').textContent = msgCount;
+}
+function sendMsg(){
+  const i = document.getElementById('msgInput');
+  if(!i.value.trim()) return;
+  logMessage(i.value); i.value = '';
+}
+function addNote(text, label){
+  const i = document.getElementById('noteInput');
+  const body = text || i.value;
+  if(!body.trim()) return;
+  const d = document.createElement('div');
+  d.className = 'note-entry';
+  d.innerHTML = `<span class="ts">[${stamp()}]</span> <b style="color:var(--mm-teal)">${label || 'Patient Intake'}:</b> ${body}`;
+  document.getElementById('noteList').appendChild(d);
+  if(!text) i.value = '';
+}
+
+/* ── decision ── */
+function togglePanel(id){ document.getElementById(id).classList.toggle('show'); }
+let attempts = 1;
+const ORD = {1:'1st',2:'2nd',3:'3rd',4:'4th',5:'5th',6:'6th',7:'7th'};
+function logCall(){
+  const t = document.getElementById('callLogText');
+  if(!t.value.trim()) return;
+  attempts++;
+  const b = document.getElementById('attemptBadge');
+  b.innerHTML = `<span class="dot"></span> ${ORD[attempts] || attempts+'th'} attempt`;
+  if(attempts >= 5) b.style.background = 'var(--mm-rose)';
+  addNote(t.value, 'Call log');
+  t.value = '';
+  document.getElementById('callLogPanel').classList.remove('show');
+}
+function submitEsc(){
+  const r = document.getElementById('escReason');
+  if(!r.value) return;
+  document.getElementById('escBtn').style.display = 'none';
+  document.getElementById('escPanel').classList.remove('show');
+  document.getElementById('escOk').classList.add('show');
+  const n = document.getElementById('escNotes').value;
+  addNote(r.value + (n.trim() ? ' — ' + n : ''), 'Escalated');
+}
+function advanceRight(){
+  if(!gateState().every(i => i.ok)){ toast('Advance is blocked — see the checks above'); return; }
+  const w = document.getElementById('rightWrap');
+  w.classList.remove('locked');
+  const s = document.getElementById('rightState');
+  s.textContent = 'Unlocked'; s.classList.add('open');
+  document.getElementById('leftState').textContent = 'Advanced';
+  refreshChecklist();
+  w.scrollIntoView({behavior:'smooth', block:'start'});
+}
+
+/* ── right pane ── */
+function markFilled(el){
+  el.classList.remove('need');
+  if(el.value.trim()) el.classList.add('filled'); else el.classList.remove('filled');
+  refreshChecklist();
+}
+/* The suggestion engine PRE-FILLS the right pane — it does not merely suggest.
+   Every value below is editable; the ⓘ hover explains why it was chosen. */
+function prefillRightPane(){
+  const set = (id, val) => {
+    const el = document.getElementById(id);
+    if(!el) return;
+    el.value = val;
+    el.classList.remove('need');
+    if(val) el.classList.add('filled');
+  };
+  set('primaryIns',   'Fidelis Medicaid');
+  set('memberId1',    '74586024900');
+  set('secondaryIns', 'NY Medicaid');
+  set('memberId2',    'AB12345C');
+  set('serving',      'Supplies Only');
+  onSecondary();
+  onServing();
+  refreshChecklist();
+}
+function onPrimaryIns(){
+  const s = document.getElementById('primaryIns');
+  if(s.value){ s.classList.remove('need'); s.classList.add('filled'); }
+  refreshChecklist();
+}
+function onSecondary(){
+  const s = document.getElementById('secondaryIns');
+  if(s.value){ s.classList.remove('need'); s.classList.add('filled'); }
+  const needs2 = s.value === 'NY Medicaid';
+  const m2 = document.getElementById('memberId2');
+  document.getElementById('mid2Star').style.display = needs2 ? '' : 'none';
+  m2.classList.toggle('need', needs2 && !m2.value.trim());
+  refreshChecklist();
+}
+/* Device type + coverage path live on the LEFT pane only — the right pane
+   just carries Serving. */
+function onServing(){
+  const s = document.getElementById('serving');
+  if(s.value){ s.classList.remove('need'); s.classList.add('filled'); }
+  refreshChecklist();
+}
+
+/* ══════════════════════════════════════════════════════════════
+   SELECT CORRECT PROVIDER
+   Mirrors src/components/profile/DoctorSection.tsx 1:1 — search the
+   MM Doctor Database (18142847597) by name or NPI → the doctor's
+   profiles (one DB item = one clinic location) render as a 2-wide
+   grid → pick the location for THIS patient → confirm the Parachute
+   order count INLINE → edit/add locations, notes & order followers.
+   ══════════════════════════════════════════════════════════════ */
+const THRESHOLD = 15;
+const MAX_FOLLOWERS = 4;
+
+const DOCTOR_DB = [
+  { itemId:'1', name:'JANINE ROBBINS MD', npi:'1982736450', clinic:'Central Square Endocrinology',
+    address:'1120 Route 49, Central Square, NY 13036', phone:'3154645726', fax:'3154645799',
+    email:'', method:'Parachute',
+    notes:'Prefers Parachute. Requires a recent office-visit note dated within 90 days.',
+    followers:[{name:'Dana Whitfield', email:'dana@csendo.com'}] },
+  { itemId:'2', name:'JANINE ROBBINS MD', npi:'1982736450', clinic:'Syracuse Diabetes Center',
+    address:'400 Harrison St, Syracuse, NY 13202', phone:'3154648120', fax:'3154648811',
+    email:'', method:'Fax', notes:'', followers:[] },
+  { itemId:'3', name:'JASON ROBB MD', npi:'1447382910', clinic:'Syracuse Endocrine Associates',
+    address:'900 E Genesee St, Syracuse, NY 13210', phone:'3154742200', fax:'3154742299',
+    email:'', method:'Fax', notes:'', followers:[] },
+];
+const PARA_DB = [
+  { doctor_id:'p1', first_name:'JANINE', last_name:'ROBBINS', npi:'1982736450', credential:'MD',
+    city:'Central Square', state:'NY', signature_count:43 },
+  { doctor_id:'p2', first_name:'JANINE', last_name:'ROBBINS', npi:'1730025518', credential:'DO',
+    city:'Erie', state:'PA', signature_count:4 },
+  { doctor_id:'p3', first_name:'JAMES', last_name:'WARSHAW', npi:'1356306211', credential:'MD',
+    city:'Brooklyn', state:'NY', signature_count:0 },
+];
+/* the referral gave us this phone — drives the "matches referral" badge and
+   the Parachute panel's area-code grouping */
+const REFERRAL_PHONE = '3154645726';
+const PHONE_STATE = { state:'NY', areaCode:'315' };
+
+const KEEP_UPPER = new Set(['MD','DO','NP','PA','PA-C','APRN','DNP','FNP','CRNP','ARNP','CNM','OD','DPM','II','III','IV']);
+const displayName = raw => (raw||'').trim().split(/\s+/).map(w =>
+  KEEP_UPPER.has(w.replace(/[.,]/g,'').toUpperCase()) ? w.toUpperCase()
+  : w.toLowerCase().replace(/(^|[-'’])(\p{L})/gu,(_,sep,ch)=>sep+ch.toUpperCase())).join(' ');
+const initials = n => (n||'').split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase() || '+';
+const norm = s => (s||'').toLowerCase().replace(/[^a-z0-9]/g,'');
+const profileKey = r => `${norm(r.name)}|${r.npi}`;
+const fmtPhoneUi = raw => {
+  const d = (raw||'').replace(/\D/g,'').replace(/^1(?=\d{10}$)/,'');
+  return d.length === 10 ? `${d.slice(0,3)}-${d.slice(3,6)}-${d.slice(6)}` : (raw||'');
+};
+const phoneKey = s => { const d=(s||'').replace(/\D/g,''); return d.length===11&&d[0]==='1'?d.slice(1):d; };
+
+const DOC = {
+  term:'', results:[], open:false, selectedKey:null, selectedItemId:null,
+  count:null, countLoading:false,
+  paraOpen:false, paraTerm:'', paraResults:[], paraSel:null, paraQuery:'', paraLoading:false,
+  notes:'', followers:[], editingInfo:false,
+  locMode:null, form:null,
+};
+const emptyForm = () => ({clinic:'',phone:'',address:'',fax:'',email:'',method:'Fax',name:'',npi:''});
+
+function docSearchResults(q){
+  const query=(q||'').trim().toLowerCase();
+  if(!query) return [];
+  return DOCTOR_DB.filter(r => r.name.toLowerCase().includes(query) || r.npi.includes(query));
+}
+function docProfiles(){ return DOC.selectedKey ? DOC.results.filter(r=>profileKey(r)===DOC.selectedKey) : []; }
+function selectedDoctor(){ return docProfiles()[0] || null; }
+
+/* "matches referral" — phone is the most specific signal; fall back to place */
+function matchesReferral(rec){
+  const refP = phoneKey(REFERRAL_PHONE);
+  const any = docProfiles().some(r => refP.length===10 && phoneKey(r.phone)===refP);
+  if(any) return refP.length===10 && phoneKey(rec.phone)===refP;
+  return false;
+}
+
+function onDocTerm(v){ DOC.term=v; DOC.open=true; DOC.results=docSearchResults(v); renderDoctor(); }
+function openDocResults(){ DOC.open=true; DOC.results=docSearchResults(DOC.term); renderDoctor(); }
+function selectDoctorRec(key){
+  const rec = DOC.results.find(r=>profileKey(r)===key) || DOCTOR_DB.find(r=>profileKey(r)===key);
+  if(!rec) return;
+  DOC.open=false; DOC.selectedKey=key; DOC.selectedItemId=null; DOC.count=null; DOC.locMode=null;
+  DOC.term=displayName(rec.name);
+  // load every location for this NPI (a partial name search may have missed some)
+  const have=new Set(DOC.results.map(r=>r.itemId));
+  DOC.results=[...DOC.results, ...DOCTOR_DB.filter(r=>r.npi===rec.npi && !have.has(r.itemId))];
+  renderDoctor(); refreshChecklist();
+}
+function pickProfile(itemId){
+  const r = docProfiles().find(x=>x.itemId===itemId); if(!r) return;
+  DOC.selectedItemId=itemId; DOC.notes=r.notes; DOC.followers=r.followers.map(f=>({...f}));
+  DOC.editingInfo=false;
+  renderDoctor(); refreshChecklist();
+}
+function confirmCount(){
+  if(!selectedDoctor()){ toast('Select a provider first'); return; }
+  DOC.countLoading=true; renderDoctor();
+  setTimeout(()=>{
+    const npi=selectedDoctor().npi;
+    const m=PARA_DB.find(d=>d.npi===npi);
+    DOC.count = m ? m.signature_count : 0;
+    DOC.countLoading=false; renderDoctor();
+  }, 700);
+}
+function toggleParaPanel(){
+  DOC.paraOpen=!DOC.paraOpen;
+  if(DOC.paraOpen){ DOC.paraTerm = DOC.term || 'Robbins'; runParaSearch(DOC.paraTerm); }
+  else renderDoctor();
+}
+function runParaSearch(q){
+  const query=(q||'').trim();
+  if(query.length<2){ renderDoctor(); return; }
+  DOC.paraLoading=true; renderDoctor();
+  setTimeout(()=>{
+    DOC.paraResults = PARA_DB.filter(d =>
+      `${d.first_name} ${d.last_name}`.toLowerCase().includes(query.toLowerCase()) || d.npi.includes(query));
+    DOC.paraQuery=query; DOC.paraLoading=false; renderDoctor();
+  }, 500);
+}
+function setParaTerm(v){ DOC.paraTerm=v; }
+function selectParaRow(npi){ DOC.paraSel = DOC.paraSel===npi ? null : npi; renderDoctor(); }
+
+function openEditLoc(){
+  const r=docProfiles().find(p=>p.itemId===DOC.selectedItemId);
+  if(!r){ toast('Pick a location first'); return; }
+  DOC.form={clinic:r.clinic,phone:r.phone,address:r.address,fax:r.fax,email:r.email,method:r.method,name:r.name,npi:r.npi};
+  DOC.locMode='edit'; renderDoctor();
+}
+function openAddLoc(){
+  const d=selectedDoctor();
+  DOC.form={...emptyForm(), name:d?d.name:'', npi:d?d.npi:''};
+  DOC.locMode='add'; renderDoctor();
+}
+function openNewDoctor(fromPara){
+  let f={...emptyForm(), name:DOC.term||'', npi:''};
+  if(fromPara){
+    const c=PARA_DB.find(d=>d.npi===DOC.paraSel);
+    if(c){ f.name=`${c.first_name} ${c.last_name}`; f.npi=c.npi; f.method=c.signature_count>THRESHOLD?'Parachute':'Fax'; }
+    else f.name=DOC.paraTerm||'';
+    DOC.paraOpen=false;
+  }
+  DOC.form=f; DOC.locMode='new-doctor'; renderDoctor();
+}
+function setForm(k,v){ DOC.form[k]=v; if(k==='fax') renderDoctor(); }
+function cancelLoc(){ DOC.locMode=null; DOC.form=null; renderDoctor(); }
+function saveLoc(){
+  const f=DOC.form;
+  if(!f.name.trim() || !f.npi.trim()){ toast('Name and NPI are required'); return; }
+  if(DOC.locMode!=='edit' && !f.address.trim()){ toast('Address is required'); return; }
+  if(DOC.locMode==='edit'){
+    const r=DOCTOR_DB.find(x=>x.itemId===DOC.selectedItemId);
+    Object.assign(r,{clinic:f.clinic,address:f.address,phone:f.phone,fax:f.fax,email:f.email,method:f.method});
+    const lr=DOC.results.find(x=>x.itemId===DOC.selectedItemId); if(lr) Object.assign(lr,r);
+    toast('Location updated in the Doctor Database');
+  } else {
+    const id='n'+(DOCTOR_DB.length+1);
+    const rec={itemId:id,name:f.name.trim().toUpperCase(),npi:f.npi.trim(),clinic:f.clinic,address:f.address,
+      phone:f.phone,fax:f.fax,email:f.email,method:f.method,notes:'',followers:[]};
+    DOCTOR_DB.push(rec); DOC.results=[...DOC.results, rec];
+    DOC.selectedKey=profileKey(rec); DOC.selectedItemId=id;
+    DOC.notes=''; DOC.followers=[];
+    toast(DOC.locMode==='add' ? 'New location added under this doctor' : `${f.name} added to the Doctor Database`);
+  }
+  DOC.locMode=null; DOC.form=null; renderDoctor(); refreshChecklist();
+}
+function editInfo(on){ DOC.editingInfo=on; renderDoctor(); }
+function setNotesDraft(v){ DOC.notes=v; }
+function setFollower(i,k,v){ DOC.followers[i]=Object.assign({name:'',email:''},DOC.followers[i],{[k]:v}); }
+function saveInfo(){
+  const r=DOCTOR_DB.find(x=>x.itemId===DOC.selectedItemId);
+  if(r){ r.notes=DOC.notes; r.followers=DOC.followers.filter(f=>f.name||f.email); }
+  DOC.editingInfo=false; renderDoctor();
+  toast('Doctor notes & order followers saved to Doctor DB');
+}
+
+const esc = s => (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;');
+
+function locFormHtml(){
+  const f=DOC.form, m=DOC.locMode;
+  return `
+  <div style="border:1px solid var(--border);border-radius:12px;padding:16px;margin-top:14px;background:oklch(0.985 0.003 247)">
+    <div class="flabel" style="margin-bottom:12px">${
+      m==='edit' ? 'Edit this location — saves in place to the Doctor DB'
+      : m==='add' ? 'New location — saved as another profile under the same NPI'
+      : 'Add a new provider to the Doctor Database'}</div>
+    <div class="fgrid">
+      ${m==='new-doctor' ? `
+        <div><div class="flabel">Name <span class="req-star">*</span></div>
+          <input type="text" value="${esc(f.name)}" oninput="setForm('name',this.value)"></div>
+        <div><div class="flabel">NPI <span class="req-star">*</span></div>
+          <input type="text" value="${esc(f.npi)}" oninput="setForm('npi',this.value)"></div>` : ''}
+      <div><div class="flabel">Clinic</div>
+        <input type="text" value="${esc(f.clinic)}" oninput="setForm('clinic',this.value)"></div>
+      <div><div class="flabel">Phone</div>
+        <input type="text" value="${esc(f.phone)}" oninput="setForm('phone',this.value)"></div>
+      <div class="full"><div class="flabel">Address ${m!=='edit'?'<span class="req-star">*</span>':''}</div>
+        <input type="text" class="pf-input" placeholder="Start typing address…" value="${esc(f.address)}" oninput="setForm('address',this.value)"></div>
+      <div><div class="flabel">Fax</div>
+        <div class="fax-wrap">
+          <input type="text" inputmode="tel" placeholder="8653742115" value="${esc(f.fax)}" oninput="setForm('fax',this.value)">
+          ${/@/.test(f.fax)?'':'<span class="fax-sfx">@rcfax.com</span>'}
+        </div>
+        <div class="fhint">Saves as <b>${f.fax ? (/@/.test(f.fax)?esc(f.fax):esc(f.fax)+'@rcfax.com') : '&lt;number&gt;@rcfax.com'}</b></div></div>
+      <div><div class="flabel">Email</div>
+        <input type="text" value="${esc(f.email)}" oninput="setForm('email',this.value)"></div>
+      <div class="full"><div class="flabel">Method</div>
+        <select onchange="setForm('method',this.value)">
+          ${['Fax','Parachute','Email'].map(o=>`<option ${f.method===o?'selected':''}>${o}</option>`).join('')}
+        </select></div>
+    </div>
+    <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:14px">
+      <button class="btn secondary sm" onclick="cancelLoc()">Cancel</button>
+      <button class="btn primary sm" onclick="saveLoc()">${
+        m==='edit'?'Save fix to Doctor DB':m==='add'?'Create new location':'Add to Doctor DB'}</button>
+    </div>
+  </div>`;
+}
+
+function paraRowHtml(d){
+  const chute=d.signature_count>THRESHOLD, sel=DOC.paraSel===d.npi;
+  return `<div class="para-row ${sel?'sel':''}" onclick="selectParaRow('${d.npi}')">
+    <div style="flex:1;min-width:0">
+      <div style="font-weight:700;font-size:.92rem">${displayName(d.first_name+' '+d.last_name)}
+        <span style="font-weight:500;color:var(--muted-foreground)">– ${d.npi}</span></div>
+      <div style="font-size:.8rem;color:var(--muted-foreground)">${d.credential?d.credential+', ':''}${d.signature_count} signed order${d.signature_count===1?'':'s'}</div>
+    </div>
+    <div style="text-align:right;flex-shrink:0;margin-left:12px">
+      <div style="font-size:.8rem;color:var(--muted-foreground);margin-bottom:4px">${d.city}, ${d.state}</div>
+      <span class="method-pill ${chute?'chute':'fax'}" style="margin-top:0">${chute?'Parachute':'Fax'}</span>
+    </div></div>`;
+}
+
+function renderDoctor(){
+  const host=document.getElementById('doctorSection'); if(!host) return;
+  const profs=docProfiles(), doc=selectedDoctor();
+  const groups=[]; DOC.results.forEach(r=>{ if(!groups.some(g=>profileKey(g[0])===profileKey(r))) groups.push(DOC.results.filter(x=>profileKey(x)===profileKey(r))); });
+
+  let html = `
+  <div class="searchwrap">
+    <div class="flabel">Search the doctor database <span class="req-star">*</span></div>
+    <div class="searchrow">
+      <input type="text" id="docTerm" autocomplete="off" placeholder="Type a name or NPI…"
+        value="${esc(DOC.term)}" oninput="onDocTerm(this.value)" onfocus="openDocResults()">
+      <button type="button" class="para-tool ${DOC.paraOpen?'on':''}" onclick="toggleParaPanel()"
+        title="Doctor not in the database? Check Parachute for signed-order counts">
+        <span>Not in DB? Check Parachute</span></button>
+    </div>
+    ${DOC.open ? `<div class="results open">${
+      groups.length===0
+        ? `<div class="res-note">No match in our database.
+             <a href="#" style="color:var(--mm-teal);font-weight:700" onclick="event.preventDefault();toggleParaPanel()">Check Parachute</a>
+             or <a href="#" style="color:var(--mm-teal);font-weight:700" onclick="event.preventDefault();DOC.open=false;openNewDoctor(false)">add them directly</a>.</div>`
+        : groups.map(g=>{ const d=g[0]; return `
+            <div class="res" onclick="selectDoctorRec('${profileKey(d)}')">
+              <div class="ri">${initials(d.name)}</div>
+              <div><div class="rn">${displayName(d.name)}</div><div class="rm">NPI ${d.npi||'—'}</div></div>
+              <span class="loc-chip">${g.length>1?g.length+' locations':(d.clinic||d.address||'1 location')}</span>
+            </div>`; }).join('')}</div>` : ''}
+  </div>`;
+
+  if(!DOC.selectedKey && !DOC.locMode && !DOC.paraOpen){
+    html += `<div id="doc-actions" style="margin-top:12px">
+      <button class="btn primary sm" onclick="openNewDoctor(false)">Add Doctor to Database</button></div>`;
+  }
+
+  if(DOC.paraOpen){
+    const matches = DOC.paraResults.filter(d=>d.state===PHONE_STATE.state);
+    const others  = DOC.paraResults.filter(d=>d.state!==PHONE_STATE.state);
+    const gh='padding:6px 12px;font-size:.72rem;font-weight:800;color:var(--mm-teal);background:oklch(0.973 0.011 175);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:6px';
+    const gm='padding:6px 12px;font-size:.72rem;font-weight:700;color:var(--muted-foreground);background:var(--muted);border-bottom:1px solid var(--border)';
+    html += `<div class="para-panel">
+      <div class="para-head"><span>Parachute Lookup</span>
+        <button class="para-close" onclick="toggleParaPanel()">✕</button></div>
+      <div class="para-bar">
+        <input value="${esc(DOC.paraTerm)}" placeholder="Search doctor name or NPI…"
+          oninput="setParaTerm(this.value)" onkeydown="if(event.key==='Enter')runParaSearch(this.value)">
+        <button class="btn secondary sm" onclick="runParaSearch(DOC.paraTerm)">Search</button></div>
+      <div class="para-list">${
+        DOC.paraLoading ? '<div class="res-note">Searching…</div>'
+        : DOC.paraResults.length===0
+          ? (DOC.paraQuery
+              ? `<div class="res-note">Nothing came up on Parachute for <b>&ldquo;${esc(DOC.paraQuery)}&rdquo;</b> — no doctor matched that name or NPI.</div>`
+              : '<div class="res-note">Type a name or NPI, then Search.</div>')
+          : `${matches.length ? `<div style="${gh}">📍 ${PHONE_STATE.state} — matches phone area code (${PHONE_STATE.areaCode})</div>`
+                              : `<div style="${gm}">No ${PHONE_STATE.state} doctors (phone area code ${PHONE_STATE.areaCode})</div>`}
+             ${matches.map(paraRowHtml).join('')}
+             ${matches.length && others.length ? `<div style="${gm}">Other states</div>`:''}
+             ${others.map(paraRowHtml).join('')}`}</div>
+      <div class="para-foot" style="justify-content:flex-end">
+        <button class="btn primary sm" onclick="openNewDoctor(true)">Add Doctor to Database</button></div>
+    </div>`;
+  }
+
+  if(DOC.locMode==='new-doctor') html += locFormHtml();
+
+  if(DOC.selectedKey && doc && DOC.locMode!=='new-doctor'){
+    const faxMissing = DOC.selectedItemId &&
+      (docProfiles().find(p=>p.itemId===DOC.selectedItemId)||{}).method==='Fax' &&
+      !(docProfiles().find(p=>p.itemId===DOC.selectedItemId)||{}).fax;
+    html += `<div class="doccard">
+      <div class="doctop">
+        <div class="di">${initials(doc.name)}</div>
+        <div style="flex:1">
+          <div class="dn">${displayName(doc.name)}
+            <span style="font-weight:500;color:var(--muted-foreground)">· NPI ${doc.npi}</span></div>
+          <div class="dm">${profs.length>1?profs.length+' locations on file':'In Doctor Database'}</div>
+        </div>
+      </div>
+
+      <div class="locwrap" style="border-bottom:1px solid var(--border);padding-bottom:14px">
+        <div class="doclab" style="margin-bottom:6px">Parachute lookup</div>
+        ${DOC.count===null
+          ? `<button class="btn secondary sm" onclick="confirmCount()" ${DOC.countLoading?'disabled':''}>${DOC.countLoading?'Checking…':'Confirm Parachute Order Count'}</button>`
+          : `<div class="cc-line ${DOC.count>THRESHOLD?'ok':'bad'}">
+               <span class="cc-ic ${DOC.count>THRESHOLD?'ok':'bad'}">${DOC.count>THRESHOLD?'✓':'✗'}</span>
+               <span><b>${DOC.count} signed orders</b> on Parachute</span></div>`}
+      </div>
+
+      <div class="locwrap">
+        <div class="flabel">Pick the practice location for THIS patient <span class="req-star">*</span></div>
+        <div class="loc-grid ${profs.length===1?'single':''}">
+          ${profs.map(r=>`
+            <div class="loc ${DOC.selectedItemId===r.itemId?'sel':''}" onclick="pickProfile('${r.itemId}')">
+              ${matchesReferral(r)?'<span class="badge-ref">matches referral</span>':''}
+              <div class="lc">${esc(r.clinic)||'Clinic —'}</div>
+              <div class="la">${esc(r.address)||'No address on file'}</div>
+              <div class="li">${r.phone?fmtPhoneUi(r.phone):'No phone'}${r.fax?` · ${r.method==='Email'?'Email':'Fax'} ${fmtPhoneUi(r.fax)}`:''}</div>
+              <div><span class="method-pill ${r.method==='Parachute'?'chute':r.method==='Email'?'mail':'fax'}">Method: ${r.method||'—'}</span></div>
+            </div>`).join('')}
+        </div>
+        <div class="loc-actions">
+          <button class="btn secondary sm" onclick="openEditLoc()" ${DOC.selectedItemId?'':'disabled'}>Edit selected location</button>
+          <button class="btn secondary sm" onclick="openAddLoc()">+ Add another location</button>
+        </div>
+        ${(DOC.locMode==='edit'||DOC.locMode==='add') ? locFormHtml() : ''}
+        ${faxMissing ? `<div class="err-banner" style="margin-top:12px">
+            <div class="et">Method is Fax — no fax on file</div>
+            <div class="ed">Add a fax to the selected location (Edit selected location); it blocks send-off.</div>
+          </div>` : ''}
+      </div>
+
+      <div style="margin:16px 0;padding:0 16px 16px">
+        ${!DOC.selectedItemId ? `<div style="color:var(--amber);font-weight:700;font-size:.84rem;margin-bottom:12px;display:flex;align-items:center;gap:7px">
+            <span style="font-size:.95rem">⚠</span> Select a location above to view &amp; edit its notes and order followers.</div>`:''}
+        <div style="opacity:${DOC.selectedItemId?1:.5};pointer-events:${DOC.selectedItemId?'auto':'none'}">
+        ${!DOC.editingInfo ? `
+          <div style="margin-bottom:14px">
+            <div class="doclab" style="margin-bottom:5px">Doctor Notes</div>
+            <div style="font-size:.88rem;line-height:1.45;white-space:pre-wrap">${
+              DOC.notes ? esc(DOC.notes) : '<span class="sugg-note">None on file.</span>'}</div>
+          </div>
+          <div>
+            <div class="doclab" style="margin-bottom:5px">Order Followers</div>
+            ${DOC.followers.filter(f=>f.name||f.email).length===0
+              ? '<span class="sugg-note">None on file.</span>'
+              : `<ul style="margin:0;padding-left:18px">${DOC.followers.filter(f=>f.name||f.email).map(f=>
+                  `<li style="font-size:.88rem">${esc(f.name)||'Follower'}${f.email?` — <a href="mailto:${esc(f.email)}" style="color:var(--mm-teal);font-weight:700">${esc(f.email)}</a>`:''}</li>`).join('')}</ul>`}
+          </div>
+          <button class="btn secondary sm" style="margin-top:14px" onclick="editInfo(true)" ${DOC.selectedItemId?'':'disabled'}>Edit Notes and Followers</button>`
+        : `<div class="fgrid">
+            <div class="full"><div class="flabel">Doctor Notes</div>
+              <textarea rows="3" oninput="setNotesDraft(this.value)">${esc(DOC.notes)}</textarea></div>
+            ${Array.from({length:MAX_FOLLOWERS},(_,i)=>`
+              <div class="full" style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+                <div><div class="flabel">Order follower ${i+1} (name — optional)</div>
+                  <input type="text" value="${esc(DOC.followers[i]?.name??'')}" oninput="setFollower(${i},'name',this.value)"></div>
+                <div><div class="flabel">Follower ${i+1} email</div>
+                  <input type="text" value="${esc(DOC.followers[i]?.email??'')}" oninput="setFollower(${i},'email',this.value)"></div>
+              </div>`).join('')}
+            <div class="full" style="display:flex;gap:10px;justify-content:flex-end">
+              <button class="btn secondary sm" onclick="editInfo(false)">Cancel</button>
+              <button class="btn primary sm" onclick="saveInfo()">Save to Doctor DB</button></div>
+          </div>`}
+        </div>
+      </div>
+    </div>`;
+  }
+  host.innerHTML = html;
+}
+
+/* close the results dropdown on outside click, like the live component */
+document.addEventListener('mousedown', e => {
+  const w = document.querySelector('#doctorSection .searchwrap');
+  if(DOC.open && w && !w.contains(e.target)){ DOC.open=false; renderDoctor(); }
+});
+
+/* ── checklist ── */
+function toggleChecklist(){
+  const w = document.getElementById('checkWrap');
+  const hidden = w.style.display === 'none';
+  w.style.display = hidden ? '' : 'none';
+  document.getElementById('chev').classList.toggle('open', hidden);
+}
+function refreshChecklist(){
+  const primary = document.getElementById('primaryIns').value;
+  const mid1 = document.getElementById('memberId1').value.trim();
+  const sec = document.getElementById('secondaryIns').value;
+  const mid2 = document.getElementById('memberId2').value.trim();
+  const serving = document.getElementById('serving').value;
+  const doc = !!DOC.selectedItemId;
+  const stediDone = !document.getElementById('benefitsOut').classList.contains('hide');
+  const active = SCENARIO === 'active';
+
+  const items = [
+    { label:'Benefits check run',                 ok: stediDone },
+    { label:'Coverage active',                    ok: stediDone && active },
+    { label:'Primary Insurance selected',         ok: !!primary },
+    { label:'Member ID 1 entered',                ok: !!mid1 },
+    { label:'Secondary Insurance selected',       ok: !!sec },
+    { label:'Member ID 2 (required for NY Medicaid)', ok: sec !== 'NY Medicaid' || !!mid2 },
+    { label:'Serving selected',                   ok: !!serving },
+    { label:'Provider selected from database',    ok: doc },
+  ];
+  document.getElementById('checklist').innerHTML = items.map(i =>
+    `<div class="ci ${i.ok?'done':''}"><span class="cb">${i.ok?'✓':'✕'}</span><span>${i.label}</span>
+     <span class="ctag">${i.ok?'ok':'missing'}</span></div>`).join('');
+
+  const missing = items.filter(i => !i.ok).map(i => i.label);
+  document.getElementById('missPills').innerHTML =
+    missing.map(m => `<span class="mp">${m}</span>`).join('');
+
+  const badge = document.getElementById('missBadge');
+  badge.textContent = missing.length ? `${missing.length} missing` : 'Ready';
+  badge.className = missing.length ? 'mp' : 'mp green';
+
+  document.getElementById('advBtn').disabled = missing.length > 0;
+  document.getElementById('routeAdv').classList.toggle('on', missing.length === 0);
+}
+function advanceMn(){ toast('Advanced to Medical Necessity — Move to Onboarding = "Advance to MN"'); }
+
+/* ── file viewer ── */
+let viewerZoom = 100;
+function openViewer(name){
+  document.getElementById('viewerName').textContent = name;
+  document.getElementById('viewerPage').innerHTML = viewerContent(name);
+  viewerZoom = 100; applyZoom();
+  document.getElementById('viewer').classList.add('open');
+}
+function closeViewer(){ document.getElementById('viewer').classList.remove('open'); }
+function zoomViewer(d){ viewerZoom = Math.max(50, Math.min(200, viewerZoom + d)); applyZoom(); }
+function applyZoom(){
+  document.getElementById('viewerPage').style.transform = `scale(${viewerZoom/100})`;
+  document.getElementById('viewerPct').textContent = viewerZoom + '%';
+}
+function viewerContent(name){
+  if(/\.(csv)$/i.test(name)){
+    const rows = [
+      ['2026-07-02 02:14','54 mg/dL','Low — symptomatic'],
+      ['2026-07-05 03:41','48 mg/dL','Low — required assistance'],
+      ['2026-07-09 23:58','58 mg/dL','Low — overnight'],
+      ['2026-07-14 04:02','51 mg/dL','Low — symptomatic'],
+      ['2026-07-21 01:37','46 mg/dL','Low — overnight'],
+    ];
+    return `<h3>${name}</h3>
+      <div class="vp-sub">Uploaded by patient · 5 hypoglycemic events in the last 30 days</div>
+      <table><thead><tr><th>Timestamp</th><th>Glucose</th><th>Note</th></tr></thead>
+      <tbody>${rows.map(r=>`<tr><td>${r[0]}</td><td><b>${r[1]}</b></td><td>${r[2]}</td></tr>`).join('')}</tbody></table>`;
+  }
+  if(/\.(jpg|jpeg|png|heic)$/i.test(name)){
+    return `<h3>${name}</h3><div class="vp-sub">Uploaded by patient</div>
+      <div style="height:230px;border-radius:10px;border:1px solid var(--border);
+        background:linear-gradient(135deg,oklch(0.94 0.02 175),oklch(0.9 0.03 245));
+        display:grid;place-items:center;font-weight:800;color:var(--mm-teal)">Image preview</div>`;
+  }
+  return `<h3>${name}</h3><div class="vp-sub">PDF · 2 pages</div>
+    <div class="vp-doc">${'<div class="dl"></div>'.repeat(4)}
+      <div class="dl" style="width:65%"></div><div style="height:10px"></div>
+      ${'<div class="dl"></div>'.repeat(5)}<div class="dl" style="width:45%"></div></div>`;
+}
+document.addEventListener('keydown', e => { if(e.key === 'Escape') closeViewer(); });
+
+/* ── toast ── */
+let toastT;
+function toast(msg){
+  const t = document.getElementById('toast');
+  document.getElementById('toastMsg').textContent = msg;
+  t.classList.add('show');
+  clearTimeout(toastT);
+  toastT = setTimeout(() => t.classList.remove('show'), 2600);
+}
+
+/* ── init ── */
+(function init(){
+  renderPatients('');
+  applyBoardDropdowns();
+  prefillRightPane();
+  renderDoctor();
+  onReason(); syncDevices(); onGeneralIns(); syncProceed(); refreshGate();
+  const now = new Date();
+  const monthsLeft = 11 - now.getMonth();
+  document.getElementById('pctYear').textContent =
+    Math.round(((now.getMonth()*30 + now.getDate())/365)*100) + '% elapsed';
+  document.querySelectorAll('.order-3mo').forEach(e => { if(monthsLeft < 3) e.style.display = 'none'; });
+  document.querySelectorAll('.order-6mo').forEach(e => { if(monthsLeft < 6) e.style.display = 'none'; });
+  document.getElementById('mid2Star').style.display = 'none';
+  refreshChecklist();
+})();
+</script>
+</body>
+</html>
