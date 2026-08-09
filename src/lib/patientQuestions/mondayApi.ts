@@ -206,12 +206,17 @@ function locationVal(item: MondayItem, id: string): string {
   if (!v) return cv(item, id)?.text ?? "";
   try { return JSON.parse(v).address ?? ""; } catch { return cv(item, id)?.text ?? ""; }
 }
-function longTextParts(item: MondayItem, id: string): { text: string; updatedAt: string } {
+// Monday stamps long-text column values with `changed_at`. Read `updated_at`
+// too — it costs nothing and covers any column that ever carries that spelling
+// instead. Getting this key wrong silently yields "" and, because a question
+// with no readable message time defers to the handled mark (see
+// isQuestionOpen), permanently hides every already-handled row.
+export function longTextParts(item: MondayItem, id: string): { text: string; updatedAt: string } {
   const c = cv(item, id);
   const text = c?.text ?? "";
   const raw = c?.value;
   if (!raw) return { text, updatedAt: "" };
-  try { const p = JSON.parse(raw); return { text: p.text ?? text, updatedAt: p.updated_at ?? "" }; }
+  try { const p = JSON.parse(raw); return { text: p.text ?? text, updatedAt: p.changed_at ?? p.updated_at ?? "" }; }
   catch { return { text, updatedAt: "" }; }
 }
 
@@ -249,15 +254,21 @@ export async function fetchPatientQuestions(): Promise<PatientQuestion[]> {
   for (const item of subItems) {
     const msg = longTextParts(item, SUB_COL.patientHelpMessage);
     if (!msg.text.trim()) continue;
+    // The order-response column is human-formatted ("Aug 9, 2026, 2:57 PM ET"),
+    // so it is unparseable and newestTimestamp drops it — it stays here only as
+    // a fallback for rows whose message value predates `changed_at`.
     const explicitTs = txt(item, SUB_COL.responseTimestamp);
     const handledAt = mondayDateValueToIso(cv(item, SUB_COL.questionHandledAt)?.value);
-    if (!isQuestionOpen(newestTimestamp(explicitTs, msg.updatedAt), handledAt)) continue;
+    const messageAt = newestTimestamp(explicitTs, msg.updatedAt);
+    if (!isQuestionOpen(messageAt, handledAt)) continue;
     results.push({
       ...EMPTY,
       id: item.id,
       name: item.name,
       message: msg.text,
-      messageUpdatedAt: explicitTs || msg.updatedAt || new Date().toISOString(),
+      // Must stay parseable — results.sort() falls back to epoch 0 otherwise,
+      // which parked every subscription question at the bottom of the inbox.
+      messageUpdatedAt: messageAt || new Date().toISOString(),
       source: "subscription",
       boardId: SUB_BOARD_ID,
       // demographics
