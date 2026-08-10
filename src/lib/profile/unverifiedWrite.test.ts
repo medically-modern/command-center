@@ -224,6 +224,15 @@ describe("write paths added for the mockup port", () => {
     expect(columnsOf(buildIntakeTasks("123", { gender: "Male" }))).toContain(COL.gender);
   });
 
+  it("writes CGM Type and Pump Type — the device, not the stated preference", () => {
+    const cols = columnsOf(buildIntakeTasks("123", { cgmType: "Dexcom G7", pumpType: "Mobi" }));
+    expect(cols).toContain(COL.cgmType);
+    expect(cols).toContain(COL.pumpType);
+    // Distinct columns from what the patient said they wanted.
+    expect(COL.cgmType).not.toBe(COL.formCgmPreference);
+    expect(COL.pumpType).not.toBe(COL.formPumpPreference);
+  });
+
   it("writes the Follow Up flag and its date", () => {
     const cols = columnsOf(buildIntakeTasks("123", { followUp: "Follow Up", followUpDate: "2026-08-10" }));
     expect(cols).toContain(COL.followUp);

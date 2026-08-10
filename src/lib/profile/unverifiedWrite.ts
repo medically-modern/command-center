@@ -33,6 +33,7 @@ import {
   SECONDARY_INSURANCE_INDEX, SERVING_INDEX, MOVE_TO_ONBOARDING_INDEX,
   REQUEST_TYPE_INDEX, CGM_COVERAGE_PATH_INDEX, INSULIN_PUMP_COVERAGE_PATH_INDEX,
   REFERRAL_TYPE_INDEX, REFERRAL_SOURCE_INDEX, GENDER_INDEX, FOLLOW_UP_INDEX,
+  CGM_TYPE_INDEX, PUMP_TYPE_INDEX,
 } from "./mondayMapping";
 
 /** label → index for every status column this stage writes.
@@ -143,6 +144,12 @@ export interface IntakeEdits {
   requestType?: string;
   cgmCoveragePath?: string;
   insulinPumpCoveragePath?: string;
+  /** The DEVICE, distinct from the patient's stated preference
+   *  (formCgmPreference / formPumpPreference). Both were read into Patient and
+   *  had no write path, so the mockup's CGM Type / Pump Type dropdowns — two of
+   *  the four §5.2 names — were invisible AND unsaveable. */
+  cgmType?: string;
+  pumpType?: string;
 
   // Insurance (left pane — what the patient told us, and what Stedi reads)
   generalInsurance?: string;
@@ -251,6 +258,8 @@ export function buildIntakeTasks(itemId: string, edits: IntakeEdits): WriteTask[
 
   // Product decision
   mapped("Request Type", COL.requestType, REQUEST_TYPE_INDEX, edits.requestType);
+  mapped("CGM Type", COL.cgmType, CGM_TYPE_INDEX, edits.cgmType);
+  mapped("Pump Type", COL.pumpType, PUMP_TYPE_INDEX, edits.pumpType);
   mapped("CGM Coverage Path", COL.cgmCoveragePath, CGM_COVERAGE_PATH_INDEX, edits.cgmCoveragePath);
   mapped("Insulin Pump Coverage Path", COL.insulinPumpCoveragePath,
     INSULIN_PUMP_COVERAGE_PATH_INDEX, edits.insulinPumpCoveragePath);

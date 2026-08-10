@@ -28,6 +28,7 @@ import {
   GENERAL_INSURANCE_INDEX, REQUEST_TYPE_INDEX,
   CGM_COVERAGE_PATH_INDEX, INSULIN_PUMP_COVERAGE_PATH_INDEX,
   REFERRAL_TYPE_INDEX, REFERRAL_SOURCE_INDEX,
+  CGM_TYPE_INDEX, PUMP_TYPE_INDEX,
 } from "@/lib/profile/mondayMapping";
 import {
   writeIntakeEdits, writeVerifiedInsurance, logContactAttempt, appendIntakeNote,
@@ -104,6 +105,8 @@ const REQUEST_TYPE_OPTS = Object.keys(REQUEST_TYPE_INDEX);
 const CGM_PATH_OPTS = Object.keys(CGM_COVERAGE_PATH_INDEX);
 const IP_PATH_OPTS = Object.keys(INSULIN_PUMP_COVERAGE_PATH_INDEX);
 const GENERAL_INSURANCE_OPTS = Object.keys(GENERAL_INSURANCE_INDEX);
+const CGM_TYPE_OPTS = Object.keys(CGM_TYPE_INDEX);
+const PUMP_TYPE_OPTS = Object.keys(PUMP_TYPE_INDEX);
 const REFERRAL_TYPE_OPTS = Object.keys(REFERRAL_TYPE_INDEX);
 const REFERRAL_SOURCE_OPTS = Object.keys(REFERRAL_SOURCE_INDEX);
 
@@ -301,6 +304,8 @@ function intakeEditsFor(p: Patient): IntakeEdits {
     requestType: p.requestType,
     cgmCoveragePath: p.cgmCoveragePath,
     insulinPumpCoveragePath: p.insulinPumpCoveragePath,
+    cgmType: p.cgmType,
+    pumpType: p.pumpType,
     workingMemberId: p.workingMemberId,
     generalInsurance: p.generalInsurance,
     formInsuranceVia: p.formInsuranceVia,
@@ -1058,6 +1063,14 @@ const UnverifiedReferralsPage = () => {
                       it does not grey out, and the fields inside are not
                       individually highlighted. `.devcol.off` is that rule. */}
                   <div className={cgmOn ? "devcol" : "devcol off"}>
+                    {/* The DEVICE, first in the column as the mockup has it —
+                        distinct from the patient's stated preference below. */}
+                    <EditSelect
+                      label="CGM Type"
+                      value={selected.cgmType ?? ""}
+                      onChange={(v) => edit({ cgmType: v })}
+                      options={CGM_TYPE_OPTS}
+                    />
                     <EditSelect
                       label="CGM Coverage Path"
                       value={selected.cgmCoveragePath ?? ""}
@@ -1079,6 +1092,12 @@ const UnverifiedReferralsPage = () => {
                   </div>
 
                   <div className={pumpOn ? "devcol" : "devcol off"}>
+                    <EditSelect
+                      label="Pump Type"
+                      value={selected.pumpType ?? ""}
+                      onChange={(v) => edit({ pumpType: v })}
+                      options={PUMP_TYPE_OPTS}
+                    />
                     <EditSelect
                       label="Pump preference (patient's answer)"
                       value={selected.formPumpPreference ?? ""}
