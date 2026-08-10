@@ -33,6 +33,9 @@ import { toast } from "sonner";
 // is recorded from the verified token. This popup is behind every Text button in
 // the app, so routing it here is what makes the attribution log complete.
 import { fetchConversation, sendMessage, type ConversationMessage as SmsMessage } from "@/lib/assignedPatients/messagingApi";
+// TCPA/CTIA guard, shared with the Assigned Patients inbox — nothing upstream
+// stops a send to someone who replied STOP, so every composer needs it.
+import { consentState } from "@/lib/assignedPatients/optOut";
 
 // =====================================================================
 // Step shell
@@ -605,19 +608,36 @@ function TextCompose({
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [messages, setMessages] = useState<SmsMessage[]>([]);
+  /** Whether the whole history was readable. NOT cosmetic — the opt-out guard
+   *  treats an incomplete history as consent UNKNOWN and blocks on it. */
+  const [historyComplete, setHistoryComplete] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const load = async () => {
     setLoading(true);
     setErr(null);
     try {
-      setMessages((await fetchConversation(tel)).messages);
+      const c = await fetchConversation(tel);
+      setMessages(c.messages);
+      setHistoryComplete(c.complete);
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e));
+      // A thread we couldn't read is NOT an empty thread. Leaving this true
+      // would let the guard below fail open.
+      setHistoryComplete(false);
     } finally {
       setLoading(false);
     }
   };
+
+  /**
+   * TCPA/CTIA opt-out. This composer had NO guard — the Assigned Patients
+   * inbox blocked opted-out patients and this one didn't, so the same rep
+   * could text them from Evaluate, Patient Questions, Doctor Appointments or
+   * Patient Intake instead. Our sends go through the plain /sms endpoint, not
+   * High Volume SMS, so nothing upstream stops it.
+   */
+  const consent = consentState(messages, historyComplete);
 
   // An outside button (Patient Intake's "Start Insurance Follow-Up") pushing
   // the composer open. One-way: the dialog still closes itself.
@@ -642,7 +662,7 @@ function TextCompose({
   }, [messages, loading]);
 
   const send = async () => {
-    if (!msg.trim()) return;
+    if (!msg.trim() || consent.optedOut) return;
     setSending(true);
     try {
       await sendMessage({ to: tel, text: msg.trim() });
@@ -721,11 +741,19 @@ function TextCompose({
 
         {/* Reply box */}
         <div className="space-y-2 border-t p-3">
+          {consent.optedOut && !loading && (
+            <p className="rounded-md bg-amber-50 border border-amber-200 px-3 py-2 text-xs text-amber-900">
+              {consent.unknown
+                ? "Can’t confirm this patient hasn’t opted out — the full text history didn’t load. Texting is blocked until it does. Call them instead."
+                : `This patient opted out of texts${consent.keyword ? ` (“${consent.keyword}”)` : ""}. Call them instead.`}
+            </p>
+          )}
           <Textarea
             value={msg}
             onChange={(e) => setMsg(e.target.value)}
             rows={2}
-            placeholder={`Reply to ${display}…`}
+            disabled={consent.optedOut}
+            placeholder={consent.optedOut ? "Texting is blocked for this patient" : `Reply to ${display}…`}
             className="resize-none text-sm"
             onKeyDown={(e) => {
               if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
@@ -745,7 +773,7 @@ function TextCompose({
             <Button
               size="sm"
               onClick={send}
-              disabled={!msg.trim() || sending}
+              disabled={!msg.trim() || sending || consent.optedOut}
               className="gap-1.5 text-white bg-[color:var(--mm-teal)] hover:opacity-90 disabled:opacity-50"
             >
               {sending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />} Send

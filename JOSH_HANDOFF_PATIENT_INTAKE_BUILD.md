@@ -41,15 +41,27 @@ Demographics (First/Last split, Gender, Address) · What They Need (category
 checkboxes that hide a whole column, CGM Type / Pump Type / paths / awareness,
 CGM Data File) · Care Assessment · Cost & Coverage · Provided Insurance
 (segmented Provided Via, Insurance Card Photo, Start Insurance Follow-Up) ·
-Provided Doctor Info (incl. Clinic Address + Doctor Notes) · Proceed Preference
-(pills, booking, Confirm booking) · Patient Messages · Call Log & Notes ·
-Ready to Advance (three `.route` cards).
+Provided Doctor Info · Proceed Preference (pills, booking, Confirm booking) ·
+Email patient? · Call Log & Notes · Ready to Advance (three `.route` cards).
 
 The right pane was already the mockup's four numbered steps.
 
+Deliberately NOT on the left pane, though the mockup has them:
+- **Clinic Address** — commented out (Josh, 2026-08-10). Step 3's provider sets
+  the verified address, which is the value that carries forward. It is also out
+  of `intakeEditsFor`; restoring one without the other lets a Save clear it.
+- **Doctor Notes** — the right pane's Select Correct Provider already carries
+  the panel, and it is the same Doctor Database record either way.
+- **Text**, in Patient Messages — the Call/Text buttons sit by the patient's
+  name and that dialog holds the real RingCentral thread. Two composers for one
+  conversation, only one showing history, is worse than one. So that card is
+  email only, and collapsed until asked for.
+
 **The PART B CSS was already complete** — every class the mockup uses was in
-`intake.css` before any of this markup existed. If a section looks unstyled,
-you have the wrong class name, not a missing rule.
+`intake.css` before any of this markup existed. So if a section looks unstyled
+the class name is usually wrong, not missing — but check the traps table below
+first: `.upzone` is `display:none` without `.show`, and `.pf-root` strips bare
+buttons. Both look like "unstyled" and neither is.
 
 ### Still not built, all deliberate
 
@@ -57,7 +69,20 @@ you have the wrong class name, not a missing rule.
 |---|---|
 | **Benefits Check Output** | §3/§10 — pending Corey's plan-level research. **Do not build.** Leave the Stedi plumbing alone. |
 | **Calendly booking picker** (§7/§7.2) | No integration. The override is free text + an explicit Confirm — a dropdown of invented times is worse than none, because the rep would believe those openings exist. 🟡 OPEN: can the rep *book*, or only view? |
-| **Send photo upload link to patient** (§8.3) | Needs the tokenized-URL service. The **rep-side** upload is built (drop zone → `file_mm5zhsxh`), so the file half works. |
+| **Send photo upload link to patient** (§8.3) | Needs the tokenized-URL service. The **rep-side** upload is built, so the file half works — see Files below. |
+
+### Files
+
+Monday files live **in a column**, not loose on the item, and this board has
+exactly two — so an upload has to pick one and the UI names which:
+
+| Control | Column | Source |
+|---|---|---|
+| *Upload insurance card* (Files card) | `file_mm5zhy1` | The patient can attach this on the intake **form**, so it often arrives on its own; the button is the fallback for cards that come by text or email. |
+| *Upload CGM data* (Files card) + the drop zone under What They Need | `file_mm5zhsxh` | **Never** from the form. §8.3 has the rep send a tokenized upload link ON THE CALL; that link is unbuilt, so the button is the only route today. |
+
+A genuinely untyped "patient documents" bucket would need a **new Files column
+on the board** — a board change, not a UI one.
 
 ---
 
@@ -75,8 +100,10 @@ twice, and both cost a round trip to find:
    Two of the four dropdowns §5.2 names. Fixed.
 2. **Clinic Address** and **Helpful Links / Identification Info** genuinely had
    no column. Resolved by Josh (2026-08-10) without creating any:
-   - Clinic Address writes the **verified** column `location_mm1xjnfv`. This is
-     the one deliberate exception to §6.0's "provided ≠ verified".
+   - Clinic Address was pointed at the **verified** column `location_mm1xjnfv`
+     — the one authorised exception to §6.0's "provided ≠ verified" — and then
+     the field was dropped from the pane entirely as unnecessary. The write
+     path and the de-dup rule below still stand if it ever returns.
    - "Helpful Links / Identification Info" **is Doctor Notes** — the shared
      `DoctorNotesPanel` the Medical Necessity tabs carry. It lives on the MM
      Doctor Database keyed by NPI, so it is per-DOCTOR and needs no column on
@@ -130,11 +157,19 @@ live board. Guarded now by `src/lib/profile/unverifiedWrite.test.ts`.
 
 ---
 
-## Patient Messages — read this before touching it
+## Messaging — read this before touching it
 
-Text goes through the **gateway** (`messagingApi.sendMessage`), never straight
-to RingCentral, so the sender comes off the verified Google token server-side.
-Email reuses `sendViaWorker`, the same route Send Request uses.
+**Text** is Evaluate's Call/Text buttons (`mmKit.PatientContact`), beside the
+patient's name. That dialog holds the real RingCentral thread. Sends go through
+the **gateway** (`messagingApi.sendMessage`), never straight to RingCentral, so
+the sender comes off the verified Google token server-side. "Start Insurance
+Follow-Up" opens the same dialog with a template; the plain Text button opens it
+empty.
+
+**Email** is its own collapsed card, reusing `sendViaWorker` — the route Send
+Request uses. No merged history: the SMS thread is real, sent email has no
+per-patient store to read back, and a combined list would imply a record we
+don't keep. Sent emails are appended to the Call Log instead.
 
 ⚠️ **Sending is blocked on `consentState` (TCPA/CTIA) and must stay that way.**
 Our sends use the plain `/sms` endpoint, not High Volume SMS, so nothing
@@ -142,28 +177,88 @@ upstream stops a rep texting someone who replied STOP. A thread that fails to
 load sets `complete = false`, which also blocks: "no STOP found" in a truncated
 history is the absence of evidence, not consent.
 
-There is deliberately **no merged message history** — the SMS thread is real,
-sent email has no per-patient store to read back, and a combined list would
-imply a record we don't keep.
+> **`mmKit`'s composer had NO guard until 2026-08-10.** Only the Assigned
+> Patients inbox enforced it, so the same rep could text an opted-out patient
+> from Evaluate, Patient Questions, Doctor Appointments or Patient Intake
+> instead. It now runs the same `consentState` and disables the box with the
+> reason. If you add another composer, it needs the guard too — the check
+> belongs at every send point, not at one of them.
 
 ---
 
-## CSS: one selector, two meanings
+---
 
-`intake.css` defined `.pf-root .why` **twice** — the always-visible reasoning
-note (line ~122) and §4's ⓘ hover circle (line ~272). Later won, so the note
-rendered into a 16px italic circle and its text overflowed across the Save
-button and the next card's header. The hover one is now `.whyicon`.
+## The queue — settled 2026-08-10
 
-Both style sets are kept because **the §4 ruling is still open** (below). No
-other selector is duplicated inside `intake.css`. Five are defined in both
+**Patient Intake is the DTC form's two groups and nothing else**: New Form —
+Completed (`group_mm5zgeak`) and New Form — Partial (`group_mm5z87zt`). It does
+not look at `1. Intake`. CareCentrix arrives in Completed via automation
+`7921666432`, so it needs no filter of its own.
+
+**`1. Intake` is now entirely Verified Referrals** (minus Already In System).
+`profile-send-off` had to WIDEN in the same change — it used to exclude
+Referral Type `Patient` / Source `CareCentrix`, and with intake no longer
+claiming those ~90 patients they'd have matched no chart and gone invisible
+app-wide (§7).
+
+That killed the referral split as a *queue* rule: `profileReferralRole` returns
+`inSystem` or `verified`, never `unverified`. `isUnverifiedReferral` is kept and
+still tested — it's the right question to ask about a referral for labelling, it
+just no longer decides anything.
+
+All five §5.10 places were changed together: `referralSplit.ts`,
+`useRoleCounts.ts`, `snapshot-baseline.mjs`, `baseline-cron/index.mjs`,
+`oversightApi.ts`. **The role page is a sixth** — `ProfilePage` filters its LIST
+through `profileReferralRole`, which is how the same bug nearly shipped
+mirrored: patients counted in `profile` and drawn in its chart, but filtered off
+the page.
+
+The Oversight bar graph has an **All / Completed / Partial** toggle, filtering on
+the `groupId` each row already carries.
+
+---
+
+## Traps this stage has already fallen into
+
+All of these fail SILENTLY — a blank, a zero, or unstyled markup. None throw.
+
+| Trap | Symptom |
+|---|---|
+| **`BOARD_GROUPS` must list a group before any chart can filter on it** | Chart renders **0**. The form groups were absent, so intake charts only ever matched inside `1. Intake`. |
+| **A filtered column must be in the fetched column set** | `colIndex` is undefined ⇒ index conditions never match. `color_mm5zww42` wasn't fetched, so Manager Intervention and Final Decisions were empty from the day they were added. |
+| **`.pf-root` resets bare elements** — `.pf-root button` clears background/border/colour, beating Tailwind on specificity | Every shadcn control inside renders stripped. Scope `.pf-root` to the panes, never the sidebar or header (ProfilePage does the same). |
+| **`.pf-root .panes-host` is a DESCENDANT selector** | Both classes on one div ⇒ `container-name` never set ⇒ `@container` never fires ⇒ the two-pane split silently stacks. |
+| **`.upzone` is `display:none` until `.show`** | The mockup revealed it from JS. Used without `.show`, an upload control is invisible. |
+| **Column ID prefix must match the write primitive** | `writeLongText` on `text_mm389fs` ⇒ Monday rejects with "invalid value…". Audited all 32 helper sites + direct calls; `notes` was the only mismatch. |
+| **A FILE column's `text` is a URL, not a filename** | Join on `value`'s `assetId` instead. The asset's `public_url` is signed; the column's `protected_static` link needs a Monday session and can't open on its own. |
+| **`writeDate`/`writeLocation` with a blank string CLEAR the column** | Any field in the bulk save with no control behind it can wipe what another path wrote. `notes`, `followUp`/`followUpDate` and `clinicAddress` are all deliberately OUT of `intakeEditsFor` for this reason. |
+
+### CSS notes
+
+`.pf-root .why` was defined **twice** — the always-visible reasoning note and
+§4's ⓘ hover circle — and the later one won, rendering the note into a 16px
+italic circle whose text overflowed across the Save button and the next card's
+header. The hover one is `.whyicon` now; both sets are kept because the §4
+ruling is still open.
+
+No other selector is duplicated *inside* `intake.css`. Five are defined in both
 `intake.css` and `redesign.css` — `.file-row`, `.route`, `.route-grid`,
 `.step-head`, `.step-num` — which is fine: `intake.css` imports second and
-either augments or repeats. Note `.route` gets `opacity:.6` from `redesign.css`
-with `.route.on` restoring it, so a route card without `on` is dimmed. That is
-the mockup's own behaviour for the inactive Advance card.
+either augments or repeats. Worth knowing: `.route` gets `opacity:.6` from
+`redesign.css` with `.route.on` restoring it, so a route card without `on` is
+dimmed. That's the mockup's own behaviour for the inactive Advance card.
 
----
+## Notes is the record
+
+Josh, 2026-08-10: the Call Log (`text_mm389fs`) is where all free text lives for
+future reference. Every stage decision routes through `logDecision`, which
+writes BOTH the escalation column (the manager's audit trail) and the Call Log —
+one implementation, so a path added later can't write one and forget the other.
+
+Propose Stuck stamps its rung: nothing for a processor, `— Manager Escalation`,
+`— Final Escalation` (`proposeStuckNoteLine`, tested). Cost and Self Advocacy
+mirror in on save, once, only on change. Sent **emails** log too (a text keeps
+its RingCentral thread; email has no per-patient store).
 
 ## Open — needs Josh, don't guess
 
@@ -172,15 +267,12 @@ the mockup's own behaviour for the inactive Advance card.
    readable *without* clicking in. What ships is always-visible **and** keeps a
    `HIGH CONFIDENCE` pill — which is the specific thing §4 says to drop.
    Whichever way this goes it is a markup swap; both style sets exist.
-2. **Queue definition.** Verified Referrals keyed off `1. Intake`, Patient
-   Intake off the two form groups. **Not done** — it moves ~90 live patients
-   between queues, and `1. Intake` holds ~100 items with `Drop-off Step` and
-   `Form Session ID` empty (they predate the new form). Their partial/completed
-   state lives on **DTC Intake `18392794310`**. Josh said he'll sort the board.
-   5-file change per §5.10.
-3. **Monday automation `7921666432`** — *when item created + Referral Source is
-   CareCentrix → move to New Form — Completed*. Built by an MCP tool with the
-   wrong condition value and hand-fixed by Josh; **verify before trusting it.**
+2. ~~Queue definition.~~ **DONE 2026-08-10** — see "The queue" below.
+3. ~~Verify automation `7921666432`.~~ **DONE 2026-08-10** — read off the live
+   board: active, trigger *new item created*, condition *Referral Source is
+   CareCentrix*, action *move to New Form — Completed*. Correct. Note it has
+   never actually fired: there are **zero** CareCentrix-sourced items on the
+   board, so the first real CCX referral is still its first test.
 4. §5.2 wants the four product dropdowns sourced from `settings_str` at runtime
    with the hardcoded maps as fallback. **The data-loss half is fixed** — a
    board value the picker doesn't offer renders as a disabled "not selectable"
