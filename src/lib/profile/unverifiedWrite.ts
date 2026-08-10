@@ -384,7 +384,13 @@ export async function appendIntakeNote(
     }
   }
   try {
-    await writeLongText(
+    // ⚠️ writeText, NOT writeLongText. `notes` is text_mm389fs — a TEXT
+    // column, which takes a bare JSON string. writeLongText sends
+    // `{"text": …}`, the long_text shape, and Monday rejects it outright with
+    // "invalid value, please check our API documentation for the correct data
+    // structure for this column". The escalation log next door IS long_text,
+    // which is how the two got crossed.
+    await writeText(
       itemId, COL.notes,
       appendStampedNote(prior, body, "Patient Intake", { initials: userInitials() }),
     );

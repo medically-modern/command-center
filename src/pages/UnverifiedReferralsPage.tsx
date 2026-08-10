@@ -382,8 +382,11 @@ function intakeEditsFor(p: Patient): IntakeEdits {
     selfAdvocacy: p.selfAdvocacy,
     currentOopCost: p.currentOopCost,
     cgmDataAwareness: p.cgmDataAwareness,
-    followUp: p.followUp,
-    followUpDate: p.followUpDate,
+    // followUp / followUpDate are NOT sent either. `logAttempt` owns the
+    // snooze and writes both explicitly. Round-tripping them through every
+    // Save only creates a way to lose one: writeDate with a blank string
+    // CLEARS the column, so a save whose local copy of the date was stale
+    // would silently un-snooze the patient back onto the burndown.
     // `notes` is NOT sent. The Call Log appends through appendIntakeNote —
     // including it here would write the whole log back over itself, and the
     // moment a textarea was bound to it, replace the log with one line.
@@ -591,6 +594,27 @@ const UnverifiedReferralsPage = () => {
 
   const [escalateReason, setEscalateReason] = useState("");
   const { goBack } = useBackNavigation();
+
+  /** The unlock checklist. One definition, rendered by BOTH branches of Ready
+   *  to Advance — the badge counts blockers on a partial as well, so hiding
+   *  the list there left a number nobody could act on. */
+  const blockerList = (
+    <ul className="space-y-2" style={{ margin: "4px 0 12px" }}>
+      {unlock.conditions.map((c) => (
+        <li key={c.id} className="flex items-start gap-2 text-sm">
+          {c.passed ? (
+            <Check className="h-4 w-4 mt-0.5 text-emerald-600 shrink-0" />
+          ) : (
+            <X className="h-4 w-4 mt-0.5 text-muted-foreground shrink-0" />
+          )}
+          <div className="min-w-0">
+            <div className={c.passed ? "" : "text-muted-foreground"}>{c.label}</div>
+            {!c.passed && <div className="text-[11px] text-amber-700">{c.hint}</div>}
+          </div>
+        </li>
+      ))}
+    </ul>
+  );
 
   /** Which rung a Propose Stuck from here lands on. Hoisted out of the click
    *  handler so the card can NAME the destination — the previous copy told the
@@ -999,7 +1023,14 @@ const UnverifiedReferralsPage = () => {
           {!selected ? (
             <div className="m-6 text-sm text-muted-foreground">Select a patient.</div>
           ) : (
-            <div className="pf-root panes-host flex-1 flex flex-col min-w-0 overflow-hidden">
+            <div className="pf-root flex-1 flex flex-col min-w-0 overflow-hidden">
+            {/* Two elements, not one. `.pf-root .panes-host` is a DESCENDANT
+                selector — it is what sets `container-name: panes`, and the
+                whole two-pane split hangs off the `@container panes` query.
+                Put both classes on the same div and the rule never matches:
+                the container is never named, the query never fires, and the
+                page is permanently stacked with no error anywhere. */}
+            <div className="panes-host flex-1 flex flex-col min-w-0">
             <div className="panes">
               {/* ── LEFT: Patient Info. Collection ── */}
               <div className="pane">
@@ -1642,10 +1673,21 @@ const UnverifiedReferralsPage = () => {
                 }
               >
                 {isPartial ? (
-                  <p className="text-sm text-muted-foreground">
-                    This is an incomplete form. Advancing a partial isn't defined yet — work it as
-                    outreach, or wait for the patient to finish.
-                  </p>
+                  <>
+                    <p className="text-sm text-muted-foreground">
+                      This is an incomplete form. Advancing a partial isn't defined yet — work it as
+                      outreach, or wait for the patient to finish.
+                    </p>
+                    {/* The badge counts blockers on a partial too, so the list
+                        has to be here — a bare "4 BLOCKING" with nothing under
+                        it tells the rep a number and no way to act on it. It
+                        also doubles as the outreach script: these are exactly
+                        the things to collect on the call. */}
+                    <p className="mt-3 mb-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                      Still needed
+                    </p>
+                    {blockerList}
+                  </>
                 ) : (
                   <>
                     {/* Three `.route` cards, as the mockup has them — one per
@@ -1668,21 +1710,7 @@ const UnverifiedReferralsPage = () => {
                         {/* A disabled button with no explanation is the thing
                             reps escalate about (§2), so the blockers stay
                             visible rather than living in a tooltip. */}
-                        <ul className="space-y-2" style={{ margin: "4px 0 12px" }}>
-                          {unlock.conditions.map((c) => (
-                            <li key={c.id} className="flex items-start gap-2 text-sm">
-                              {c.passed ? (
-                                <Check className="h-4 w-4 mt-0.5 text-emerald-600 shrink-0" />
-                              ) : (
-                                <X className="h-4 w-4 mt-0.5 text-muted-foreground shrink-0" />
-                              )}
-                              <div className="min-w-0">
-                                <div className={c.passed ? "" : "text-muted-foreground"}>{c.label}</div>
-                                {!c.passed && <div className="text-[11px] text-amber-700">{c.hint}</div>}
-                              </div>
-                            </li>
-                          ))}
-                        </ul>
+                        {blockerList}
                         {/* NOT an advance. The right pane unlocks from the
                             conditions above on its own (HANDOFF §2: "not
                             unlocked by a button click"), so all this does is
@@ -1972,6 +2000,7 @@ const UnverifiedReferralsPage = () => {
               )}
               </div>
             </div>
+          </div>
           </div>
           </div>
         )}

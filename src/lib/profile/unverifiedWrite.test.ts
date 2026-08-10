@@ -262,6 +262,17 @@ describe("write paths added for the mockup port", () => {
     expect(columnsOf(buildIntakeTasks("123", { followUp: "" }))).not.toContain(COL.followUp);
   });
 
+  it("never lets a bulk save clear the snooze", () => {
+    // followUp/followUpDate belong to logAttempt. writeDate with a blank string
+    // CLEARS the column, so round-tripping them through Save is a way to
+    // un-snooze a patient back onto the burndown by accident.
+    const cols = columnsOf(buildIntakeTasks("123", { dob: "01/02/1990", followUpDate: "" }));
+    expect(cols).toContain(COL.followUpDate); // explicit callers still can
+    const save = columnsOf(buildIntakeTasks("123", { dob: "01/02/1990" }));
+    expect(save).not.toContain(COL.followUpDate);
+    expect(save).not.toContain(COL.followUp);
+  });
+
   it("NEVER writes the notes column from a bulk save", () => {
     // The Call Log is append-only (appendIntakeNote). If `notes` could ride
     // along in IntakeEdits, the first save from a bound textarea would replace
