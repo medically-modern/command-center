@@ -1211,31 +1211,55 @@ const UnverifiedReferralsPage = () => {
                     ))
                   )}
                 </div>
-                {/* Upload documents.
-                    ⚠️ A <label>, not a <button>: `.pf-root button` strips
-                    background/border off bare buttons, and `.upzone` — the
-                    mockup's drop zone — is `display:none` until JS adds
-                    `.show`, which is why the first attempt at this was
-                    invisible on the page.
-                    ⚠️ Monday files live IN A COLUMN, not loose on the item,
-                    and this board has exactly two: Insurance Card Photo and
-                    CGM Data File. CGM has its own zone under What They Need,
-                    so these land on the card-photo column. A genuinely
-                    untyped attachment would need a new Files column. */}
-                <div style={{ padding: "0 8px 10px" }}>
+                {/* TWO buttons, one per file column — Monday files live IN A
+                    COLUMN, so an upload has to pick one and a single "Upload
+                    documents" button could only guess. The two are different
+                    things from different sources:
+                      Insurance Card Photo — the patient can attach this on the
+                        intake FORM, so it often arrives on its own.
+                      CGM Data File — never from the form. HANDOFF §8.3: the rep
+                        sends the patient a tokenized upload link ON THE CALL
+                        and they upload from their phone. That link isn't built,
+                        so this button is how the file gets there today.
+                    ⚠️ <label>, not <button>: `.pf-root button` strips
+                    background/border off bare buttons. And do NOT reach for
+                    `.upzone` here — it is display:none until something adds
+                    `.show`, which is why the first cut of this was invisible. */}
+                <div style={{ padding: "0 8px 10px", display: "flex", gap: 8, flexWrap: "wrap" }}>
                   <label
                     className="btn secondary sm"
                     style={{ display: "inline-flex", cursor: cardUploading ? "wait" : "pointer" }}
+                    title="Saves to the Insurance Card Photo column"
                   >
-                    {cardUploading ? "Uploading…" : "Upload documents"}
+                    {cardUploading ? "Uploading…" : "Upload insurance card"}
                     <input
                       type="file"
                       multiple
+                      accept=".jpg,.jpeg,.png,.heic,.pdf"
                       style={{ display: "none" }}
                       disabled={cardUploading}
                       onChange={(e) => {
                         const files = Array.from(e.target.files ?? []);
                         if (files.length) void uploadCardFile(files);
+                        e.target.value = "";
+                      }}
+                    />
+                  </label>
+                  <label
+                    className="btn secondary sm"
+                    style={{ display: "inline-flex", cursor: cgmUploading ? "wait" : "pointer" }}
+                    title="Saves to the CGM Data File column"
+                  >
+                    {cgmUploading ? "Uploading…" : "Upload CGM data"}
+                    <input
+                      type="file"
+                      multiple
+                      accept=".jpg,.jpeg,.png,.heic,.pdf,.csv"
+                      style={{ display: "none" }}
+                      disabled={cgmUploading}
+                      onChange={(e) => {
+                        const files = Array.from(e.target.files ?? []);
+                        if (files.length) void uploadCgmFile(files);
                         e.target.value = "";
                       }}
                     />
