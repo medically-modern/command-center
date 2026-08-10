@@ -567,8 +567,12 @@ export function useRoleCounts(opts?: { roleIds?: string[] }) {
           const inSystem = active.filter(isInSystem);
           const isIntakeEscalated = (i: LightItem) =>
             PROF_ESCALATED_LABELS.includes((i.cols[PROF_INTAKE_ESC_COL] ?? "").trim());
-          const unverified = active.filter((i) => isUnverified(i) && !isIntakeEscalated(i));
-          const verified = active.filter((i) => !isInSystem(i) && !isUnverified(i));
+          // 1. Intake is ALL Verified Referrals now (Josh, 2026-08-10) —
+          // Patient Intake is the DTC form's two groups and nothing else. The
+          // referral split no longer routes anyone out of this group; it stays
+          // only because Oversight still labels by it.
+          void isUnverified;
+          const verified = active.filter((i) => !isInSystem(i));
 
           // Form patients live in their own groups but belong to the same role.
           // Every item there came from the DTC form, so no referral split is
@@ -591,13 +595,13 @@ export function useRoleCounts(opts?: { roleIds?: string[] }) {
           merge(
             {
               profile: verified.length,
-              unverifiedReferrals: unverified.length + formActive.length,
+              unverifiedReferrals: formActive.length,
               inSystemReferrals: inSystem.length,
             },
             { profile: 0, unverifiedReferrals: 0, inSystemReferrals: 0 },
             {
               profile: verified.map((i) => i.id),
-              unverifiedReferrals: unverified.map((i) => i.id).concat(formActive.map((i) => i.id)),
+              unverifiedReferrals: formActive.map((i) => i.id),
               inSystemReferrals: inSystem.map((i) => i.id),
             },
           );

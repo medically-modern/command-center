@@ -276,13 +276,24 @@ const CONFIRM_COLS: { colId: string; label: string; pill?: boolean }[] = [
  *  Unverified Referrals + Already In System — split by Already In System then
  *  Referral Type/Source, see CHART_FILTERS). */
 /** Unverified Referrals spans 1. Intake plus the DTC form's two groups. */
-const PROFILE_UNVERIFIED_GROUPS = ["group_mm1xf2jb", "group_mm5zgeak", "group_mm5z87zt"];
-/** Referral Type "Patient" OR Source "CareCentrix" — matches referralSplit.ts.
- *  Form patients carry Referral Type "Patient", so they satisfy this too. */
-const PROFILE_UNVERIFIED_ANY = [
-  { colId: "color_mm1wm4n4", value: "Patient" },
-  { colId: "color_mm1w5wxr", value: "CareCentrix" },
-];
+/**
+ * Patient Intake is the DTC form's own two groups and NOTHING else
+ * (Josh, 2026-08-10): New Form — Completed and New Form — Partial.
+ *
+ * It used to also span `1. Intake`, filtered to Referral Type "Patient" OR
+ * Source "CareCentrix". That is now Verified Referrals' population in full —
+ * `profile-send-off` no longer excludes those two, precisely so the ~90
+ * patients this change moves out of here still match a chart. A state that
+ * matches no chart is invisible app-wide (§7).
+ *
+ * No referral-split filter applies inside these groups: everything in them
+ * came from the form, so the group IS the queue.
+ */
+const PROFILE_FORM_GROUPS = ["group_mm5zgeak", "group_mm5z87zt"];
+/** Which form group a patient is in, for the drill-down's All/Partial/
+ *  Completed toggle. */
+export const PROFILE_FORM_GROUP_COMPLETED = "group_mm5zgeak";
+export const PROFILE_FORM_GROUP_PARTIAL = "group_mm5z87zt";
 
 const PROFILE_COLS: { colId: string; label: string; pill?: boolean }[] = [
   { colId: "date_mm1wf43j", label: "Intake Date" },
@@ -1517,17 +1528,21 @@ const CHART_FILTERS: Record<string, FilterRule> = {
   // then Unverified = Referral Type "Patient" OR Referral Source "CareCentrix";
   // Verified = neither. Only the TYPE column routes "Patient" — the SOURCE
   // column has its own "Patient" label that must NOT match.
-  "profile-send-off":            { type: "group", groupId: "group_mm1xf2jb", andCols: [{ colId: "color_mm2xe7r8", value: "Yes", not: true }, { colId: "color_mm1wm4n4", value: "Patient", not: true }, { colId: "color_mm1w5wxr", value: "CareCentrix", not: true }] },
+  // Verified Referrals is now ALL of 1. Intake that isn't Already In System.
+  // The Type "Patient" / Source "CareCentrix" exclusions were dropped when
+  // Patient Intake became form-groups-only (Josh, 2026-08-10) — without that,
+  // those ~90 patients would match no chart at all and go invisible (§7).
+  "profile-send-off":            { type: "group", groupId: "group_mm1xf2jb", andCols: [{ colId: "color_mm2xe7r8", value: "Yes", not: true }] },
   // Unverified Referrals = DTC + CareCentrix. It spans 1. Intake (CareCentrix
   // and legacy referrals) plus the DTC intake form's own two groups. Escalated
   // and proposed-stuck patients are excluded here and claimed by the two
   // manager charts below — otherwise they'd be counted twice and would sit in
   // the processor's day buckets while nobody is actually working them.
-  "profile-send-off-unverified": { type: "group", groupId: PROFILE_UNVERIFIED_GROUPS, andCols: [{ colId: "color_mm2xe7r8", value: "Yes", not: true }, { colId: "color_mm5zww42", index: [0, 2], not: true }], anyCols: PROFILE_UNVERIFIED_ANY },
+  "profile-send-off-unverified": { type: "group", groupId: PROFILE_FORM_GROUPS, andCols: [{ colId: "color_mm2xe7r8", value: "Yes", not: true }, { colId: "color_mm5zww42", index: [0, 2], not: true }] },
   // Manager Intervention — the rep escalated, a manager owns it now.
-  "profile-send-off-unverified-escalated": { type: "group", groupId: PROFILE_UNVERIFIED_GROUPS, andCols: [{ colId: "color_mm2xe7r8", value: "Yes", not: true }, { colId: "color_mm5zww42", index: [0] }], anyCols: PROFILE_UNVERIFIED_ANY },
+  "profile-send-off-unverified-escalated": { type: "group", groupId: PROFILE_FORM_GROUPS, andCols: [{ colId: "color_mm2xe7r8", value: "Yes", not: true }, { colId: "color_mm5zww42", index: [0] }] },
   // Final Decisions — the rep proposed the patient is stuck.
-  "profile-send-off-unverified-stuck": { type: "group", groupId: PROFILE_UNVERIFIED_GROUPS, andCols: [{ colId: "color_mm2xe7r8", value: "Yes", not: true }, { colId: "color_mm5zww42", index: [2] }], anyCols: PROFILE_UNVERIFIED_ANY },
+  "profile-send-off-unverified-stuck": { type: "group", groupId: PROFILE_FORM_GROUPS, andCols: [{ colId: "color_mm2xe7r8", value: "Yes", not: true }, { colId: "color_mm5zww42", index: [2] }] },
   "profile-send-off-in-system":  { type: "group", groupId: "group_mm1xf2jb", andCols: [{ colId: "color_mm2xe7r8", value: "Yes" }] },
   "evaluate":           { type: "stageAdvancer", boardId: 18406060017, value: "Evaluate MN", andCols: [{ colId: "color_mm1x7997", index: [2], not: true }] },
   "send-request":       { type: "stageAdvancer", boardId: 18406060017, value: "Send Request", andCols: [{ colId: "color_mm1x7997", index: [2], not: true }] },

@@ -63,12 +63,24 @@ describe("profileReferralRole (three-way intake split)", () => {
     expect(profileReferralRole("", "", " yes ")).toBe("inSystem");
   });
 
-  it("falls back to the verified/unverified split when not in system", () => {
-    expect(profileReferralRole("Patient", "Tandem", "No")).toBe("unverified");
-    expect(profileReferralRole("Payor", "CareCentrix", "")).toBe("unverified");
+  it("sends everything not in system to VERIFIED, whatever the referral", () => {
+    // Josh, 2026-08-10: 1. Intake no longer splits on referral type/source.
+    // Patient Intake is the DTC form's two GROUPS and nothing else, so these
+    // two — which used to route to "unverified" — stay with Verified Referrals.
+    // Routing them away would filter them off /profile's list while the role
+    // count and the profile-send-off chart still counted them.
+    expect(profileReferralRole("Patient", "Tandem", "No")).toBe("verified");
+    expect(profileReferralRole("Payor", "CareCentrix", "")).toBe("verified");
     expect(profileReferralRole("Manufacturer", "Tandem", "No")).toBe("verified");
     expect(profileReferralRole("Doctor", "Patient", null)).toBe("verified");
     expect(profileReferralRole(null, undefined, undefined)).toBe("verified");
+  });
+
+  it("still answers 'is this an unverified referral?' for labelling", () => {
+    // The predicate is intact — it just no longer decides the queue.
+    expect(isUnverifiedReferral("Patient", "Tandem")).toBe(true);
+    expect(isUnverifiedReferral("Payor", "CareCentrix")).toBe(true);
+    expect(isUnverifiedReferral("Doctor", "Patient")).toBe(false);
   });
 
   it("puts every patient in exactly one queue (the counting contract)", () => {

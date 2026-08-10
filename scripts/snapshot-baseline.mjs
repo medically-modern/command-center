@@ -305,8 +305,11 @@ async function countProfile() {
   const isIntakeEscalated = (i) =>
     PROF_ESCALATED_LABELS.includes((i.cols[PROF_INTAKE_ESC_COL] ?? "").trim());
   const inSystem = active.filter(isInSystem);
-  const unverified = active.filter((i) => isUnverified(i) && !isIntakeEscalated(i));
-  const verified = active.filter((i) => !isInSystem(i) && !isUnverified(i));
+  // 1. Intake is ALL Verified Referrals now (Josh, 2026-08-10) — Patient
+  // Intake is the DTC form's two groups and nothing else. Mirrors
+  // useRoleCounts and oversightApi's CHART_FILTERS; change all three together.
+  void isUnverified;
+  const verified = active.filter((i) => !isInSystem(i));
 
   // The DTC form's own two groups. Every item there came from the form, so no
   // referral split applies — they are Patient Intake by definition. Missing
@@ -327,12 +330,12 @@ async function countProfile() {
   return {
     counts: {
       profile: verified.length,
-      unverifiedReferrals: unverified.length + formActive.length,
+      unverifiedReferrals: formActive.length,
       inSystemReferrals: inSystem.length,
     },
     ids: {
       profile: verified.map((i) => i.id),
-      unverifiedReferrals: unverified.map((i) => i.id).concat(formActive.map((i) => i.id)),
+      unverifiedReferrals: formActive.map((i) => i.id),
       inSystemReferrals: inSystem.map((i) => i.id),
     },
   };

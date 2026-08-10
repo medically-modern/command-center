@@ -23,6 +23,8 @@ import {
   DAY_BUCKET_COLORS,
   APPENDIX_BUCKET,
   matchesAppendixBar,
+  PROFILE_FORM_GROUP_COMPLETED,
+  PROFILE_FORM_GROUP_PARTIAL,
   type OversightPatient,
   type ChartDef,
   type DayBucketLabel,
@@ -302,7 +304,28 @@ interface StageChartProps {
 
 const VIP_COLOR = "var(--mm-teal)";
 
-function StageChart({ chart, patients, priorityConfig, onChartClick, onBarClick }: StageChartProps) {
+/** Form-group filter for the Patient Intake charts. The DTC form splits its
+ *  own queue into Completed and Partial groups, and a manager wants to see
+ *  either half on its own — a partial fill-out isn't workable the way a
+ *  finished one is, so mixing them flattens two different problems into one
+ *  set of day buckets. Every other chart is unaffected. */
+const FORM_GROUP_FILTERS = [
+  { key: "all", label: "All", groupId: null as string | null },
+  { key: "completed", label: "Completed", groupId: PROFILE_FORM_GROUP_COMPLETED },
+  { key: "partial", label: "Partial", groupId: PROFILE_FORM_GROUP_PARTIAL },
+] as const;
+
+function StageChart({ chart, patients: allPatients, priorityConfig, onChartClick, onBarClick }: StageChartProps) {
+  const [formFilter, setFormFilter] = useState<string>("all");
+  // Only the intake charts carry the toggle — they are the only ones whose
+  // population spans the two form groups.
+  const showsFormToggle = chart.id.startsWith("profile-send-off-unverified");
+  const patients = useMemo(() => {
+    if (!showsFormToggle || formFilter === "all") return allPatients;
+    const gid = FORM_GROUP_FILTERS.find((f) => f.key === formFilter)?.groupId;
+    return gid ? allPatients.filter((p) => p.groupId === gid) : allPatients;
+  }, [allPatients, formFilter, showsFormToggle]);
+
   const bucketCounts = useMemo(() => {
     const counts: Record<DayBucketLabel, number> = {} as Record<DayBucketLabel, number>;
     const vipCounts: Record<DayBucketLabel, number> = {} as Record<DayBucketLabel, number>;
@@ -352,6 +375,27 @@ function StageChart({ chart, patients, priorityConfig, onChartClick, onBarClick 
         "border-border hover:shadow-md hover:ring-1 hover:ring-foreground/10",
       )}
     >
+      {showsFormToggle && (
+        <div className="mb-3 inline-flex rounded-lg border bg-muted/40 p-0.5">
+          {FORM_GROUP_FILTERS.map((f) => (
+            <button
+              key={f.key}
+              type="button"
+              aria-pressed={formFilter === f.key}
+              onClick={(e) => { e.stopPropagation(); setFormFilter(f.key); }}
+              className={cn(
+                "rounded-md px-2.5 py-1 text-[11px] font-semibold transition-colors",
+                formFilter === f.key
+                  ? "bg-card text-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground",
+              )}
+            >
+              {f.label}
+            </button>
+          ))}
+        </div>
+      )}
+
       {/* Header — clickable to show all patients */}
       <button
         onClick={onChartClick}

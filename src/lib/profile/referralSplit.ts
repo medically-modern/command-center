@@ -75,5 +75,16 @@ export function profileReferralRole(
   alreadyInSystem: string | null | undefined,
 ): ProfileReferralRole {
   if (isAlreadyInSystem(alreadyInSystem)) return "inSystem";
-  return isUnverifiedReferral(referralType, referralSource) ? "unverified" : "verified";
+  // ⚠️ 1. Intake NO LONGER SPLITS on referral type/source (Josh, 2026-08-10).
+  // Patient Intake is the DTC form's own two GROUPS and nothing else, so
+  // everything left in 1. Intake that isn't already in the system is Verified
+  // Referrals. Routing "unverified" from here would filter those patients off
+  // /profile's list while the role count and profile-send-off chart still
+  // included them — counted and charted, but unopenable.
+  //
+  // `isUnverifiedReferral` is kept: it is still the right question to ask
+  // ABOUT a referral, and Oversight labels by Referral Type / Source. It just
+  // no longer decides the queue.
+  void referralType; void referralSource;
+  return "verified";
 }
