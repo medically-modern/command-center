@@ -422,15 +422,52 @@ regardless of which spelling the board carries.
 2. At 54 characters it is nearly 3× the longest existing label
    (`Anthem BCBS Medicaid (JLJ)`, 26) and will wrap in the Subscription dropdown.
 
-Neither is worth an unplanned board edit. **Shortening it to `CDPHP` is the
-recommended cleanup** — it matches every other carrier on these columns, and while
-no item carries the value yet a rename is free (a status rename keeps the index).
-If it is done, exactly two things change: the `label` string in
-`subscription/workflow.ts` (display-only, the index is the binding), and
+**Shortening it to `CDPHP` is the recommended cleanup** — it matches every other
+carrier on these columns, and while no item carries the value yet the change is
+free. If it is done, exactly two things change in code: the `label` string in
+`subscription/workflow.ts` (display-only — the index is the binding), and
 `CDPHP_BOARD_LABEL` in `cardinal-api/test/transform.test.js`. The Cardinal
 `ROUTING` table already carries the bare `CDPHP` key for precisely this reason and
 needs no edit. **Rename both boards together or not at all** — renaming one blanks
-the hop.
+the hop (§2).
+
+**Do the rename in the Monday UI, not the API** — see §9.1.
+
+### 9.1 You cannot rename a status label through the API without collateral damage
+
+Established empirically on 2026-08-10 against a throwaway board (created,
+probed, deleted), because guessing on a production billing column is not an
+option. Recorded here so nobody has to rediscover it.
+
+- `change_column_metadata` accepts only `title` and `description`. The
+  `ColumnProperty` enum has no `labels` member. It cannot touch labels at all.
+- `update_status_column` is the only path, and its `settings.labels` input
+  **replaces the entire label set**. Probed with a 4-label column and a
+  single-label payload: the other three were **deleted**. On the Subscription
+  column that is 24 insurance labels gone and every subscriber's Primary
+  Insurance blanked.
+- Passing the *complete* set does work, and colours round-trip exactly — the
+  `StatusColumnColors` enum maps onto the legacy `var_name`s despite not sharing
+  their spelling (`working_orange`→`orange`, `done_green`→`green-shadow`,
+  `stuck_red`→`red-shadow`, `dark_blue`→`blue-links`, `saladish`→`mustered`,
+  `egg_yolk`→`yellow`, `blackish`→`soft-black`, `sofia_pink`→`dark-pink`,
+  `lipstick`→`light-pink`, `bright_green`→`lime-green`, `chili_blue`→`turquoise`,
+  `american_gray`→`trolley-grey`).
+- **But `UpdateStatusLabelInput` has no `position` field**, and a full replace
+  rewrites `labels_positions_v2` to plain **index order**. Both columns carry a
+  curated order that is nothing like index order — on Subscription,
+  `Anthem BCBS Commercial` (index 1) sits at position 0 while `Medicare A&B`
+  (index 0) sits at position 8. A replace would visibly reshuffle the dropdown
+  every rep uses.
+- That reshuffle is **not undoable through the API** — with no `position` field
+  there is no way to write the curated order back. It would have to be dragged
+  back by hand, 25 labels on one board and 31 on the other.
+- A full replace also drops `color_mapping` (the Order board carries
+  `{"152":160,"160":152}`).
+
+A rename in the Monday UI has none of these effects: it keeps the index, the
+colour, the position and every item's value. **The UI is the correct tool for
+this job, and the API is not.**
 
 **Scope is deliberately partial** (confirmed by Josh): CDPHP is being added to the
 Subscription and Order boards **only**. A CDPHP patient therefore cannot be entered
