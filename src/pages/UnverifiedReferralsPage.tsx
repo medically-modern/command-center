@@ -35,10 +35,14 @@ import {
   type IntakeEdits, type VerifiedEdits,
 } from "@/lib/profile/unverifiedWrite";
 import {
-  fetchUpdates, fetchItemAssets,
+  fetchUpdates, fetchItemAssets, createUpdate, COL,
   type MondayUpdate, type MondayAsset,
 } from "@/lib/profile/mondayApi";
+// The worker's multipart relay to Monday's file API. Board-agnostic (item id +
+// column id), so the profile board uses the same one masheke does.
+import { uploadFileToColumn } from "@/lib/masheke/mondayApi";
 import { openFileViewer } from "@/components/shared/FileViewerModal";
+import { IntakeMessages } from "@/components/profile/IntakeMessages";
 import { useStediRun, STEDI_POLL_MS } from "@/hooks/profile/useStediRun";
 import {
   suggestPrimary, suggestSecondary, buildSuggestionInputs,
@@ -668,6 +672,58 @@ const UnverifiedReferralsPage = () => {
     return () => { alive = false; };
   }, [selected]);
 
+  /**
+   * Attach a CGM data file to the item's file column.
+   *
+   * The mockup's flow is the PATIENT uploading from their phone via a tokenized
+   * link (§8.3), which needs a service that doesn't exist. This is the half
+   * that works today: the worker already relays multipart uploads to Monday's
+   * file API, so the rep can attach what the patient emails or texts over.
+   */
+  const [cgmDragOver, setCgmDragOver] = useState(false);
+  const [cgmUploading, setCgmUploading] = useState(false);
+  const uploadCgmFile = useCallback(async (file: File) => {
+    if (!selected) return;
+    setCgmUploading(true);
+    setSaveNote(null);
+    try {
+      const bytes = new Uint8Array(await file.arrayBuffer());
+      await uploadFileToColumn(
+        selected.id, COL.cgmDataFile, bytes, file.name,
+        file.type || "application/octet-stream",
+      );
+      setSaveNote(`Attached ${file.name}.`);
+      setAssets(null); // re-fetch so it appears in the Files card
+      await refetch(true);
+    } catch (e) {
+      setSaveNote(e instanceof Error ? `Upload failed — ${e.message}` : "Upload failed.");
+    } finally {
+      setCgmUploading(false);
+    }
+  }, [selected, refetch]);
+
+  /** Paste a referral email → post it as a Monday update, which is where the
+   *  referral already lives (the card above reads updates, not a column). */
+  const [addRefOpen, setAddRefOpen] = useState(false);
+  const [refDraft, setRefDraft] = useState("");
+  useEffect(() => { setAddRefOpen(false); setRefDraft(""); }, [selected?.id]);
+  const addReferralEmail = useCallback(async () => {
+    if (!selected || !refDraft.trim()) return;
+    setSaving(true);
+    setSaveNote(null);
+    try {
+      await createUpdate(selected.id, refDraft.trim());
+      setRefDraft("");
+      setAddRefOpen(false);
+      setUpdates(null); // force the list to re-fetch so the new one shows
+      setSaveNote("Referral email posted as a Monday update.");
+    } catch (e) {
+      setSaveNote(e instanceof Error ? `Couldn't post it — ${e.message}` : "Couldn't post it.");
+    } finally {
+      setSaving(false);
+    }
+  }, [selected, refDraft]);
+
   /** Append one stamped line to the Call Log. */
   const [noteDraft, setNoteDraft] = useState("");
   useEffect(() => { setNoteDraft(""); }, [selected?.id]);
@@ -836,6 +892,34 @@ const UnverifiedReferralsPage = () => {
                           ))
                         )}
                       </div>
+                      {/* The mockup's own toast spells this out: "Paste a
+                          referral email — Save posts it as a Monday update".
+                          Updates are where the referral already lives, which is
+                          why the card above reads them. */}
+                      {addRefOpen ? (
+                        <div className="note-add" style={{ marginTop: 12 }}>
+                          <textarea
+                            value={refDraft}
+                            placeholder="Paste the referral email…"
+                            onChange={(e) => setRefDraft(e.target.value)}
+                          />
+                          <button
+                            className="btn primary sm"
+                            disabled={saving || !refDraft.trim()}
+                            onClick={addReferralEmail}
+                          >
+                            Post
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          className="btn secondary sm"
+                          style={{ marginTop: 12 }}
+                          onClick={() => setAddRefOpen(true)}
+                        >
+                          ＋ Add referral email
+                        </button>
+                      )}
                     </div>
                   )}
                 </div>
@@ -1015,6 +1099,47 @@ const UnverifiedReferralsPage = () => {
                     />
                   </div>
                 </div>
+
+                {/* CGM data collection — full width, below the aligned rows,
+                    and only while the CGM category is on (as the mockup gates
+                    it). The rep-side upload works today; the patient-side
+                    "send them a link" half is §8.3 and needs a service that
+                    doesn't exist. */}
+                {cgmOn && (
+                  <div style={{ marginTop: 20, paddingTop: 18, borderTop: "1px dashed var(--border)" }}>
+                    <div className="flabel">CGM Data File</div>
+                    <p className="mb-2 text-[11px] text-muted-foreground">
+                      Sending the patient an upload link isn’t built yet (§8.3) — for now, attach the
+                      file yourself once they email or text it over.
+                    </p>
+                    <label
+                      className={cgmDragOver ? "upzone over" : "upzone"}
+                      onDragOver={(e) => { e.preventDefault(); setCgmDragOver(true); }}
+                      onDragLeave={() => setCgmDragOver(false)}
+                      onDrop={(e) => {
+                        e.preventDefault();
+                        setCgmDragOver(false);
+                        const f = e.dataTransfer.files?.[0];
+                        if (f) void uploadCgmFile(f);
+                      }}
+                    >
+                      <div className="uz-t">
+                        {cgmUploading ? "Uploading…" : "Drop a file here, or click to choose"}
+                      </div>
+                      <div className="sugg-note">PDF, CSV, or an exported report / screenshot</div>
+                      <input
+                        type="file"
+                        style={{ display: "none" }}
+                        disabled={cgmUploading}
+                        onChange={(e) => {
+                          const f = e.target.files?.[0];
+                          if (f) void uploadCgmFile(f);
+                          e.target.value = "";
+                        }}
+                      />
+                    </label>
+                  </div>
+                )}
 
                 <div className="derived-strip">
                   <span className="dlabel">Request Type</span>
@@ -1267,6 +1392,16 @@ const UnverifiedReferralsPage = () => {
                   </div>
                 )}
               </Card>
+
+              {/* ── Patient Messages ── Text via the gateway (sender taken from
+                  the verified token server-side), Email via the same worker
+                  route Send Request uses. Sending is blocked on the shared
+                  TCPA/CTIA opt-out guard. */}
+              <IntakeMessages
+                patientId={selected.id}
+                phone={selected.ptPhone}
+                email={selected.email}
+              />
 
               {/* ── Call Log & Notes ── append-only and stamped, per the note
                   under the mockup's card and CLAUDE.md §9. The log is rendered
