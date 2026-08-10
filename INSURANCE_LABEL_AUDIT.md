@@ -453,15 +453,22 @@ option. Recorded here so nobody has to rediscover it.
   `egg_yolk`→`yellow`, `blackish`→`soft-black`, `sofia_pink`→`dark-pink`,
   `lipstick`→`light-pink`, `bright_green`→`lime-green`, `chili_blue`→`turquoise`,
   `american_gray`→`trolley-grey`).
-- **But `UpdateStatusLabelInput` has no `position` field**, and a full replace
-  rewrites `labels_positions_v2` to plain **index order**. Both columns carry a
-  curated order that is nothing like index order — on Subscription,
-  `Anthem BCBS Commercial` (index 1) sits at position 0 while `Medicare A&B`
-  (index 0) sits at position 8. A replace would visibly reshuffle the dropdown
-  every rep uses.
-- That reshuffle is **not undoable through the API** — with no `position` field
-  there is no way to write the curated order back. It would have to be dragged
-  back by hand, 25 labels on one board and 31 on the other.
+- **But `UpdateStatusLabelInput` has no `position` field**, and in the probe the
+  replace emitted an explicit index-order `labels_positions_v2`
+  (`{"0":0,"1":1,"2":2,"107":107}`) — it *writes* positions rather than leaving
+  them alone. Both production columns carry a curated order that is nothing like
+  index order: on Subscription, `Anthem BCBS Commercial` (index 1) sits at
+  position 0 while `Medicare A&B` (index 0) sits at position 8.
+  > Strictly, the probe column had no curated order to begin with, so this does
+  > not *prove* a replace discards one — it proves the replace writes positions,
+  > and that the input cannot express any order other than by index. Proving it
+  > outright would need a probe column with a hand-curated order, which cannot be
+  > set through the API at all. Treat the risk as real but unconfirmed.
+- Either way the reshuffle is **not undoable through the API** — with no
+  `position` field there is no way to write a curated order back. It would have
+  to be dragged into place by hand, 25 labels on one board and 31 on the other.
+  That asymmetry — cheap to cause, expensive to undo, and unprovable in advance
+  — is why this path was not taken for the CDPHP rename.
 - A full replace also drops `color_mapping` (the Order board carries
   `{"152":160,"160":152}`).
 
