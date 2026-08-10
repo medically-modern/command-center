@@ -152,6 +152,50 @@ function EditSelect({
   );
 }
 
+/**
+ * The mockup's segmented pill control (`.pills` / `.pillbtn`, already in
+ * intake.css). Used where the mockup shows a short, closed set of choices as
+ * buttons rather than a `<select>` — Self Advocacy is the worked example.
+ *
+ * Clicking the active pill CLEARS it. These fields are optional in the mockup
+ * ("— optional"), and with no other affordance a rep who mis-clicked would have
+ * no way back to "not set": a status column the app can set but never unset is
+ * the `intakeCallComplete` trap (write-only-when-truthy) in a new place.
+ */
+function Pills({
+  label, value, options, onChange, hint,
+}: {
+  label: string; value: string; options: string[]; onChange: (v: string) => void;
+  hint?: string;
+}) {
+  return (
+    <div className="fld full">
+      <div className="flabel">
+        {label}
+        {hint && (
+          <span style={{ textTransform: "none", letterSpacing: 0, fontWeight: 400 }}> — {hint}</span>
+        )}
+      </div>
+      <div className="pills">
+        {options.map((o) => {
+          const on = value.trim() === o;
+          return (
+            <button
+              key={o}
+              type="button"
+              className={on ? "pillbtn on" : "pillbtn"}
+              aria-pressed={on}
+              onClick={() => onChange(on ? "" : o)}
+            >
+              {o}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 /** A section card inside a pane. `tone` maps to the mockup's coloured left
  *  border: lead = green (what we already know), decide = teal (an action). */
 function Card({
@@ -689,6 +733,14 @@ const UnverifiedReferralsPage = () => {
                     onChange={(v) => edit({ insulinPumpCoveragePath: v })}
                     options={IP_PATH_OPTS}
                   />
+                  {/* Mockup keeps this in the CGM column of What They Need,
+                      next to the CGM Data File — not in a separate card. */}
+                  <EditSelect
+                    label="CGM Data & Doctor Awareness"
+                    value={selected.cgmDataAwareness ?? ""}
+                    onChange={(v) => edit({ cgmDataAwareness: v })}
+                    options={["Patient has existing data", "Doctor is aware", "Neither applies", "Both apply"]}
+                  />
                 </div>
               </Card>
 
@@ -781,28 +833,34 @@ const UnverifiedReferralsPage = () => {
                 </p>
               </Card>
 
-              <Card title="On the call">
-                <div className="grid grid-cols-2 gap-3">
-                  <EditSelect
-                    label="Self Advocacy"
-                    value={selected.selfAdvocacy ?? ""}
-                    onChange={(v) => edit({ selfAdvocacy: v })}
-                    options={["High", "Low"]}
-                  />
-                  <EditText
-                    label="Current out-of-pocket cost"
-                    placeholder="$75/month"
-                    value={selected.currentOopCost ?? ""}
-                    onChange={(v) => edit({ currentOopCost: v })}
-                  />
-                  <EditSelect
-                    label="CGM Data & Doctor Awareness"
-                    value={selected.cgmDataAwareness ?? ""}
-                    onChange={(v) => edit({ cgmDataAwareness: v })}
-                    options={["Patient has existing data", "Doctor is aware", "Neither applies", "Both apply"]}
-                  />
-                  <Field label="Contact attempts" value={selected.attemptCounter} />
-                </div>
+              {/* Two cards, not one. "On the call" was invented by an earlier
+                  build and merged these; the mockup has Care Assessment and
+                  Cost & Coverage as separate `.sect.lead` sections in this
+                  order, and Self Advocacy as segmented pills rather than a
+                  dropdown. CGM Data & Doctor Awareness moved up into What They
+                  Need, which is where the mockup keeps it (beside the CGM Data
+                  File, in the CGM column). */}
+              <Card title="Care Assessment" tone="lead">
+                <Pills
+                  label="Self Advocacy"
+                  hint="optional"
+                  value={selected.selfAdvocacy ?? ""}
+                  onChange={(v) => edit({ selfAdvocacy: v })}
+                  options={["High", "Low"]}
+                />
+              </Card>
+
+              <Card title="Cost & Coverage" tone="lead">
+                <EditText
+                  full
+                  label="Current Out-of-Pocket Cost — optional"
+                  placeholder="e.g. $75/month"
+                  value={selected.currentOopCost ?? ""}
+                  onChange={(v) => edit({ currentOopCost: v })}
+                />
+                <p className="mt-2 text-[11px] text-muted-foreground">
+                  Free text, not a number — the board column is text, so “$75/month” is the expected shape.
+                </p>
               </Card>
 
               <Card title="Proceed Preference">
@@ -880,6 +938,13 @@ const UnverifiedReferralsPage = () => {
                       <button onClick={logAttempt} disabled={saving} className="btn secondary">
                         Insufficient — log call attempt
                       </button>
+                      {/* The mockup's home for this is Call Log & Notes, which
+                          isn't built yet. Parked next to the button that
+                          increments it so the count stays on screen — a rep
+                          logging an attempt has to be able to see the total. */}
+                      <span className="self-center text-xs text-muted-foreground">
+                        {attempts} attempt{attempts === 1 ? "" : "s"} logged
+                      </span>
                     </div>
 
                     {/* Exit 3. Reason is required — a manager can't action a
