@@ -17,6 +17,7 @@
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { sendViaWorker, SendValidationError } from "@/lib/shared/sendViaWorker";
+import { appendIntakeNote } from "@/lib/profile/unverifiedWrite";
 
 export function IntakeMessages({
   patientId, email,
@@ -45,6 +46,17 @@ export function IntakeMessages({
       await sendViaWorker({
         recipients: [addr], cc: [], subject: subject.trim(), body: body.trim(), files: [],
       });
+      // The Call Log is where all free text lives for future reference
+      // (Josh, 2026-08-10). A sent email has no per-patient store to read back
+      // — unlike a text, which keeps its RingCentral thread — so without this
+      // line there is no record on the patient that we ever wrote to them.
+      // Best-effort: the email HAS gone, so a failed note must not read as a
+      // failed send.
+      try {
+        await appendIntakeNote(patientId, `Email to ${addr} — ${subject.trim()}: ${body.trim()}`);
+      } catch {
+        /* logged below by the toast; the send itself succeeded */
+      }
       setSubject("");
       setBody("");
       setOpen(false);

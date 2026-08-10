@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   INTAKE_STATUS_INDEX, statusIndexFor,
   verifiedInsuranceBlocker, buildAdvanceTasks, buildIntakeTasks,
-  buildVerifiedInsuranceTasks, advanceToMedicalNecessity,
+  buildVerifiedInsuranceTasks, advanceToMedicalNecessity, proposeStuckNoteLine,
   type AdvanceInput,
 } from "./unverifiedWrite";
 import { COL } from "./mondayApi";
@@ -283,6 +283,30 @@ describe("write paths added for the mockup port", () => {
       selfAdvocacy: "High", currentOopCost: "$75/month",
     });
     expect(columnsOf(everything)).not.toContain(COL.notes);
+  });
+});
+
+describe("Propose Stuck stamps where it came from", () => {
+  // The label is what a manager reads in the Call Log to tell a rep's proposal
+  // apart from a second opinion on someone else's.
+  const line = (origin: Parameters<typeof proposeStuckNoteLine>[1]) =>
+    proposeStuckNoteLine("no insurance on file", origin);
+
+  it("leaves a processor's proposal unlabelled", () => {
+    expect(line("processor")).toBe("Proposed stuck: no insurance on file");
+  });
+
+  it("names Manager Escalation and Final Escalation", () => {
+    expect(line("manager-intervention"))
+      .toBe("Proposed stuck — Manager Escalation: no insurance on file");
+    expect(line("final-decisions"))
+      .toBe("Proposed stuck — Final Escalation: no insurance on file");
+  });
+
+  it("always carries the reason, whatever the rung", () => {
+    for (const o of ["processor", "manager-intervention", "final-decisions"] as const) {
+      expect(line(o)).toContain("no insurance on file");
+    }
   });
 });
 

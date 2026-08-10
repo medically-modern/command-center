@@ -759,11 +759,35 @@ async function writeEscalationNote(
   }
 }
 
+/**
+ * Record ONE decision in BOTH logs.
+ *
+ * Josh, 2026-08-10: the Call Log is where all free text lives for future
+ * reference. The escalation column is a manager's audit trail — useful, but
+ * it's a column you have to know to open, and a patient vanishing from the
+ * queue with the reason recorded only there is how "why did this stop?"
+ * becomes a question nobody can answer.
+ *
+ * Every stage decision goes through here, so no path can be added later that
+ * writes one log and forgets the other. appendIntakeNote re-reads the Call Log
+ * itself, so it can't clobber a line written between the two writes.
+ */
+async function logDecision(
+  itemId: string,
+  line: string,
+  existingNotes: string | undefined,
+  errors: IntakeWriteResult["errors"],
+): Promise<void> {
+  await writeEscalationNote(itemId, line, existingNotes, errors);
+  const note = await appendIntakeNote(itemId, line);
+  if (!note.ok) errors.push(...note.errors);
+}
+
 async function setEscalation(
   itemId: string, index: number, note: string, existingNotes?: string,
 ): Promise<IntakeWriteResult> {
   const errors: IntakeWriteResult["errors"] = [];
-  await writeEscalationNote(itemId, note, existingNotes, errors);
+  await logDecision(itemId, note, existingNotes, errors);
   try {
     await writeStatusIndex(itemId, COL.intakeEscalation, index);
   } catch (e) {
@@ -791,16 +815,36 @@ export function escalateIntake(itemId: string, reason: string, existingNotes?: s
  * entirely: a rep could put a patient one click from leaving the pipeline with
  * no manager ever reviewing the proposal.
  */
-export function proposeIntakeStuck(
+export type ProposeStuckOrigin = "processor" | "manager-intervention" | "final-decisions";
+
+/** Which rung the proposal was made FROM, for the note stamp. A processor's
+ *  proposal gets no label — it's the ordinary case and naming it adds noise.
+ *  The two manager columns are the ones worth recording, because a proposal
+ *  made from them is a second opinion on someone else's. */
+const PROPOSE_ORIGIN_LABEL: Record<ProposeStuckOrigin, string> = {
+  processor: "",
+  "manager-intervention": " — Manager Escalation",
+  "final-decisions": " — Final Escalation",
+};
+
+/** The exact line written to both logs. Exported so the wording is testable
+ *  without a Monday token — it's the thing a manager actually reads. */
+export function proposeStuckNoteLine(reason: string, origin: ProposeStuckOrigin): string {
+  return `Proposed stuck${PROPOSE_ORIGIN_LABEL[origin]}: ${reason}`;
+}
+
+export async function proposeIntakeStuck(
   itemId: string,
   reason: string,
   existingNotes?: string,
   level: "manager" | "final" = "manager",
-) {
+  origin: ProposeStuckOrigin = "processor",
+): Promise<IntakeWriteResult> {
   const index = level === "final"
     ? INTAKE_ESCALATION_INDEX.finalRequired
     : INTAKE_ESCALATION_INDEX.required;
-  return setEscalation(itemId, index, `Proposed stuck: ${reason}`, existingNotes);
+  // setEscalation records this in BOTH logs — see logDecision.
+  return setEscalation(itemId, index, proposeStuckNoteLine(reason, origin), existingNotes);
 }
 
 /** Manager sends the patient back into the rep pipeline. */
@@ -829,7 +873,7 @@ export async function approveIntakeStuck(
   itemId: string, note: string, existingNotes?: string,
 ): Promise<IntakeWriteResult> {
   const errors: IntakeWriteResult["errors"] = [];
-  await writeEscalationNote(
+  await logDecision(
     itemId,
     `Stuck approved${note.trim() ? `: ${note.trim()}` : ""}`,
     existingNotes,

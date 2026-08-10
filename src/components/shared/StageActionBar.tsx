@@ -183,6 +183,12 @@ export function StageActionBar({ stage, board, patientId, patientName, escalatio
                       await proposeIntakeStuck(
                         patientId, reason, undefined,
                         proposeStuckLevel(stage, origin, escalationLabel),
+                        // Stamps the Call Log with which rung this came from —
+                        // nothing for a processor, named for the two manager
+                        // columns.
+                        origin === "manager-intervention" ? "manager-intervention"
+                        : origin === "final-decisions" ? "final-decisions"
+                        : "processor",
                       );
                     }
                   : undefined

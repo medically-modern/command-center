@@ -732,7 +732,12 @@ const UnverifiedReferralsPage = () => {
           })
           : kind === "escalate" ? await escalateIntake(selected.id, escalateReason, notes)
           : kind === "proposeStuck"
-            ? await proposeIntakeStuck(selected.id, escalateReason, notes, stuckLevel)
+            ? await proposeIntakeStuck(
+                selected.id, escalateReason, notes, stuckLevel,
+                managerOrigin === "manager-intervention" ? "manager-intervention"
+                : managerOrigin === "final-decisions" ? "final-decisions"
+                : "processor",
+              )
           : await returnIntakeToPipeline(selected.id, escalateReason, notes);
         setSaveNote(
           res.ok
