@@ -169,3 +169,83 @@ the board *before* the item moves to Completed.
 - Every write is a separate task with `Promise.allSettled`, so one rejected
   column can't discard the rest — the UI reports "Saved, except: X".
 - A blank field means *"not set"*, never *"clear the board"*. Guard every task.
+
+
+---
+
+## Spec conflicts found by actually reading HANDOFF_PATIENT_INTAKE.md
+
+Added after re-reading the spec end to end. These are places the shipped code
+disagrees with it — each cites the section.
+
+### 1. Dropdown options must come from the BOARD, not hardcoded maps (§5.2)
+
+CGM Type, Pump Type, CGM Coverage Path and Insulin Pump Coverage Path should
+read their options from `columns { settings_str }` at runtime, so a board rename
+or a new label flows through without a code edit. Shipped code uses the
+hardcoded `*_INDEX` maps — the spec says outright "the filter is right; the
+**source** is wrong."
+
+Required shape: fetch settings once per session and cache · build a live
+label↔index map · render sorted by `labels_positions_v2` · drop empty slots ·
+filter `HIDDEN_LABELS = ["Not Serving"]` · **write by index** · keep the
+hardcoded maps as a fallback so the dropdown is never empty.
+
+> ⚠️ **The bug this creates today.** `noNotServing()` removes "Not Serving" from
+> the OPTIONS entirely. The spec is explicit: if an item's current value IS a
+> hidden label it must still render, greyed and unselectable — otherwise the
+> select shows blank and a later save can wipe a real value. "Not Serving" is a
+> legitimate written value (the cross-sell derivation writes it), it is only
+> hidden from the *picker*. **Never apply the filter on the write path.**
+
+### 2. The engine's reasoning is an ⓘ HOVER, and the confidence label is furniture (§4)
+
+§4 says to remove "the suggestion chip, the confidence label, the state pin, the
+runner-up alternates" and put the reasoning behind an ⓘ next to **Primary
+Insurance** and **Serving**. The shipped `.why` note is always-visible and keeps
+a `HIGH CONFIDENCE` pill.
+
+⚠️ This is a genuine conflict, not an oversight: Josh asked in-session for the
+reasoning to be readable *without clicking in*. The always-visible note is what
+he asked for; the confidence pill is what §4 says to drop. **Get a ruling before
+changing it.** Either way, hard blocks and MSP/MA/facility warnings stay as
+visible banners — the hover is for explaining a normal pick, never for hiding a
+problem.
+
+### 3. Member ID 2 blocks the advance when Secondary = NY Medicaid (§4)
+
+`writeVerifiedInsurance` refuses the write, but the step-4 **Ready to Send Off?**
+checklist has no row for it — the mockup does ("Member ID 2 (required for NY
+Medicaid)"). Add it so the block is visible before the rep hits Advance.
+
+### 4. Product categories hide their whole column (§7.1)
+
+"An unselected product category hides its **entire column**" — it does not grey
+out, and the individual field boxes are not highlighted because the category
+toggle carries the selected state. This is the checkbox-reveal behaviour in the
+mockup's *What They Need*; shipped code has flat dropdowns.
+
+### 5. Not built at all, and specced in detail
+
+- **Calendly (§7, §7.2)** — real integration, next 2–3 days of availability, ~2h
+  buffer. The booking-override dropdown and the form's slot picker must read the
+  SAME live openings so they can't disagree. 🟡 OPEN: can the rep *book* from the
+  UI, or only view the patient's booking?
+- **CGM data upload (§8.3)** — "Send photo upload link to patient" generates a
+  tokenized URL scoped to one Monday item; the patient uploads from their phone;
+  the file lands in `CGM Data File` (`file_mm5zhsxh`, exists, currently unread)
+  and appears in the left pane using the standard file-row + viewer + drop-zone
+  pattern. 🟡 OPEN: channel, expiry, append-or-replace.
+
+### 6. Still awaiting Josh (§7.1)
+
+- Is **CGM Data & Doctor Awareness** conditional on CGM Coverage Path =
+  `Hypoglycemia`, or always shown when the CGM category is on?
+- Is **Cost & Coverage** gated on Reason = pharmacy cost, or always visible and
+  merely highlighted?
+
+### 7. Where the spec is now STALE
+
+§9 says *Care Assessment* and *Cost & Coverage* "have no backing columns at all".
+They do now — `color_mm5z31hs` and `text_mm5zj2q1` — and the page writes both.
+Same for every other `NEW COLUMN NEEDED` stamp. Trust the live board over §9.
