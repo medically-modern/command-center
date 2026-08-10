@@ -274,29 +274,54 @@ function FileColumnRow({
 }: {
   label: string; filename?: string; assets: MondayAsset[] | null;
 }) {
-  const name = (filename ?? "").trim();
-  if (!name) return null;
-  // The column can list several; the assets list is the source of truth for
-  // what's actually attached.
-  const names = name.split(",").map((n) => n.trim()).filter(Boolean);
+  const raw = (filename ?? "").trim();
+  if (!raw) return null;
+
+  // ⚠️ A Monday FILE column's `text` is a URL, not a filename —
+  // "https://…/protected_static/…/card.jpg". Matching that against asset
+  // NAMES never hit, so every row rendered the full URL and "no preview".
+  // Take the last path segment as the name, and keep the URL as a fallback
+  // target for the viewer when the asset list hasn't resolved.
+  const entries = raw
+    .split(/[,\s]+/)
+    .map((v) => v.trim())
+    .filter(Boolean)
+    .map((v) => {
+      const isUrl = /^https?:\/\//i.test(v);
+      let name = v;
+      if (isUrl) {
+        try {
+          name = decodeURIComponent(new URL(v).pathname.split("/").filter(Boolean).pop() ?? v);
+        } catch {
+          name = v.split("/").pop() ?? v;
+        }
+      }
+      return { name, url: isUrl ? v : null };
+    });
+
   return (
     <div style={{ marginBottom: 16 }}>
       <div className="flabel">{label}</div>
-      {names.map((n) => {
-        const asset = assets?.find((a) => a.name === n) ?? null;
-        return asset ? (
+      {entries.map((e, i) => {
+        // Prefer the asset: its public_url is signed, where the column's raw
+        // URL is a protected_static path that can 403 on its own.
+        const asset = assets?.find((a) => a.name === e.name) ?? null;
+        const url = asset ? (asset.public_url || asset.url) : e.url;
+        const ext = e.name.includes(".") ? e.name.split(".").pop() : "";
+        return url ? (
           <div
-            key={n}
+            key={`${e.name}-${i}`}
             className="file-row"
-            onClick={() => openFileViewer({ url: asset.public_url || asset.url, name: asset.name })}
+            title="Click to preview"
+            onClick={() => openFileViewer({ url, name: e.name })}
           >
-            <span className="fname">{n}</span>
-            <span className="fmeta">{n.split(".").pop() ?? ""}</span>
+            <span className="fname">{e.name}</span>
+            <span className="fmeta">{ext}</span>
           </div>
         ) : (
-          <div key={n} className="file-row" style={{ opacity: 0.6, cursor: "default" }}>
-            <span className="fname">{n}</span>
-            <span className="fmeta">{assets === null ? "loading" : "no preview"}</span>
+          <div key={`${e.name}-${i}`} className="file-row" style={{ opacity: 0.6, cursor: "default" }}>
+            <span className="fname">{e.name}</span>
+            <span className="fmeta">{assets === null ? "loading" : ext}</span>
           </div>
         );
       })}
@@ -372,9 +397,10 @@ function intakeEditsFor(p: Patient): IntakeEdits {
     formPumpPreference: p.formPumpPreference,
     formProvidedDoctorName: p.formProvidedDoctorName,
     formProvidedClinicPhone: p.formProvidedClinicPhone,
-    clinicAddress: p.clinicAddress,
-    clinicAddressLat: p.clinicAddressLat,
-    clinicAddressLng: p.clinicAddressLng,
+    // clinicAddress is NOT sent. Its control is commented out, and writeLocation
+    // with a blank address CLEARS the column — so a Save would wipe whatever
+    // the step-3 provider put there. buildDoctorTasks still writes it from the
+    // picked provider on advance, which is the only thing that should.
     formProceedPreference: p.formProceedPreference,
     formCallSlot: p.formCallSlot,
     formBookingStatus: p.formBookingStatus,
@@ -1043,9 +1069,9 @@ const UnverifiedReferralsPage = () => {
                 <div className="min-w-0">
                   <p className="text-[10px] uppercase tracking-[0.2em] opacity-70">Medically Modern</p>
                   <h1 className="text-2xl font-bold">Patient Intake — DTC &amp; CareCentrix</h1>
-                  {selected && (
-                    <p className="text-sm opacity-80 mt-0.5">{selected.name}</p>
-                  )}
+                  {/* No patient name here — the Evaluate-style block directly
+                      below carries it at full size. Printing it in both is
+                      what made this page look off the first time. */}
                 </div>
               </div>
               <div className="flex items-center gap-2">
@@ -1070,25 +1096,46 @@ const UnverifiedReferralsPage = () => {
               header subtitle, and printing it twice at two sizes is most of
               what made this look unlike the other roles. Outside `.pf-root`
               so Evaluate's Call/Text buttons keep their own styling. */}
+          {/* Eyebrow + name + DOB · gender · contact — ported from Evaluate's
+              PatientProfileCard so the two stages read identically. Outside
+              `.pf-root`, so PatientContact keeps its own styling. */}
           {selected && (
-            <div className="flex items-center gap-3 flex-wrap border-b bg-card px-6 py-3 flex-none">
-              <PatientContact
-                phone={selected.ptPhone}
-                textPrefill={followUpPrefill}
-                textOpen={followUpTextOpen}
-                onTextOpenChange={(o) => {
-                  setFollowUpTextOpen(o);
-                  // Drop the template once the dialog closes, so the next
-                  // plain "Text" click opens an empty composer.
-                  if (!o) setFollowUpPrefill(undefined);
-                }}
-              />
-              <span className="text-sm text-muted-foreground">
-                {[selected.dob, selected.email].filter(Boolean).join(" · ") || "—"}
-              </span>
-              <span className="ml-auto text-xs font-semibold text-muted-foreground">
-                {attempts === 0 ? "No contact attempts yet" : `Attempt ${attempts}`}
-              </span>
+            <div className="border-b bg-card px-6 py-4 flex-none">
+              <div className="flex items-start justify-between gap-4 flex-wrap">
+                <div className="min-w-0">
+                  <p className="text-sm font-medium uppercase tracking-wide text-muted-foreground">
+                    Patient
+                  </p>
+                  <h1
+                    className="text-3xl font-black tracking-tight mt-0.5 truncate"
+                    title={selected.name}
+                  >
+                    {selected.name}
+                  </h1>
+                  <div className="mt-1 flex items-center gap-3 flex-wrap">
+                    <span className="text-lg text-muted-foreground">
+                      DOB {selected.dob || "—"}{selected.gender ? ` · ${selected.gender}` : ""}
+                    </span>
+                    <PatientContact
+                      phone={selected.ptPhone}
+                      textPrefill={followUpPrefill}
+                      textOpen={followUpTextOpen}
+                      onTextOpenChange={(o) => {
+                        setFollowUpTextOpen(o);
+                        // Drop the template once the dialog closes, so the next
+                        // plain "Text" click opens an empty composer.
+                        if (!o) setFollowUpPrefill(undefined);
+                      }}
+                    />
+                  </div>
+                  {selected.email?.trim() && (
+                    <p className="mt-1 text-sm text-muted-foreground truncate">{selected.email}</p>
+                  )}
+                </div>
+                <span className="text-xs font-semibold text-muted-foreground shrink-0">
+                  {attempts === 0 ? "No contact attempts yet" : `Attempt ${attempts}`}
+                </span>
+              </div>
             </div>
           )}
 
@@ -1566,8 +1613,14 @@ const UnverifiedReferralsPage = () => {
                 </div>
                 {/* Two actions on one row, each with its own status line below
                     rather than jammed in beside it — the messages are what made
-                    this wrap raggedly. */}
-                <div className="mt-4 flex flex-wrap items-center gap-2">
+                    this wrap raggedly. Ruled off and spaced away from the field
+                    grid: they sat flush against the Secondary Member ID input,
+                    which read as part of that field rather than actions on the
+                    whole card. */}
+                <div
+                  className="flex flex-wrap items-center gap-3"
+                  style={{ marginTop: 24, paddingTop: 18, borderTop: "1px dashed var(--border)" }}
+                >
                   <button
                     onClick={runBenefitsCheck}
                     disabled={saving || stedi.isRunning || !(selected.generalInsurance ?? "").trim()}
@@ -1625,10 +1678,14 @@ const UnverifiedReferralsPage = () => {
                     value={selected.formProvidedClinicPhone ?? ""}
                     onChange={(v) => edit({ formProvidedClinicPhone: v })}
                   />
-                  {/* Writes the VERIFIED clinic address column
-                      (location_mm1xjnfv) — Josh's call: there is no separate
-                      provided-address column and one isn't wanted. Picking a
-                      provider in step 3 overwrites this, which is intended. */}
+                  {/* Clinic Address — commented out, Josh 2026-08-10: not
+                      needed here. Picking a provider in step 3 sets the
+                      verified clinic address anyway, which is the value that
+                      carries forward.
+                      ⚠️ If this comes back, re-add `clinicAddress` to
+                      intakeEditsFor as well — it was removed so a Save with no
+                      control behind it can't write a blank location and CLEAR
+                      the column (the same trap followUpDate had).
                   <EditText
                     full
                     label="Clinic Address"
@@ -1636,6 +1693,7 @@ const UnverifiedReferralsPage = () => {
                     value={selected.clinicAddress ?? ""}
                     onChange={(v) => edit({ clinicAddress: v })}
                   />
+                  */}
                 </div>
 
                 {/* The mockup's "Helpful Links / Identification Info" IS Doctor
