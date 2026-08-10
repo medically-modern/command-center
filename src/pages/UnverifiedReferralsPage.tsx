@@ -30,10 +30,15 @@ import {
   REFERRAL_TYPE_INDEX, REFERRAL_SOURCE_INDEX,
 } from "@/lib/profile/mondayMapping";
 import {
-  writeIntakeEdits, writeVerifiedInsurance, logContactAttempt,
+  writeIntakeEdits, writeVerifiedInsurance, logContactAttempt, appendIntakeNote,
   advanceToMedicalNecessity, escalateIntake, proposeIntakeStuck, returnIntakeToPipeline,
   type IntakeEdits, type VerifiedEdits,
 } from "@/lib/profile/unverifiedWrite";
+import {
+  fetchUpdates, fetchItemAssets,
+  type MondayUpdate, type MondayAsset,
+} from "@/lib/profile/mondayApi";
+import { openFileViewer } from "@/components/shared/FileViewerModal";
 import { useStediRun, STEDI_POLL_MS } from "@/hooks/profile/useStediRun";
 import {
   suggestPrimary, suggestSecondary, buildSuggestionInputs,
@@ -46,6 +51,12 @@ import { managerOriginFromParams } from "@/lib/shared/managerOrigin";
 // §5.2: a value the board holds but the picker doesn't offer must still be
 // visible, or the select renders blank and the field looks empty when it isn't.
 import { optionsWithCurrent } from "@/lib/profile/selectOptions";
+// First/Last are two boxes over one Monday value — this board has no name
+// columns, the item name IS the name, so the split has to round-trip.
+import { splitName, joinName } from "@/lib/profile/nameParts";
+// Monday dates are timezone-naive ET — never date a board column from a bare
+// `new Date()` in a UTC runtime (CLAUDE.md §9).
+import { etToday } from "@/lib/masheke/etDate";
 // The shared bar, so this stage's Propose Stuck / Send back to pipeline are
 // literally the same component and copy Medical Evaluation uses — not a
 // lookalike that can drift from it.
@@ -196,6 +207,42 @@ function Pills({
   );
 }
 
+/**
+ * The mockup's `.seg` segmented control — a joined 3-up (or 2-up) bar, as
+ * distinct from `.pills`, which are separate rounded buttons. The mockup uses
+ * both and they are not interchangeable: Provided Via and the message channel
+ * are `.seg`, Self Advocacy and Proceed Preference are `.pills`.
+ *
+ * Re-clicking the active segment clears it, same reasoning as Pills.
+ */
+function Seg({
+  label, value, options, onChange,
+}: {
+  label?: string; value: string; options: string[]; onChange: (v: string) => void;
+}) {
+  return (
+    <div className="fld full">
+      {label && <div className="flabel">{label}</div>}
+      <div className="seg">
+        {options.map((o) => {
+          const on = value.trim() === o;
+          return (
+            <button
+              key={o}
+              type="button"
+              className={on ? "on" : undefined}
+              aria-pressed={on}
+              onClick={() => onChange(on ? "" : o)}
+            >
+              {o}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 /** A section card inside a pane. `tone` maps to the mockup's coloured left
  *  border: lead = green (what we already know), decide = teal (an action). */
 function Card({
@@ -240,6 +287,10 @@ function intakeEditsFor(p: Patient): IntakeEdits {
     dob: p.dob,
     email: p.email,
     formState: p.formState,
+    gender: p.gender,
+    patientAddress: p.patientAddress,
+    patientAddressLat: p.patientAddressLat,
+    patientAddressLng: p.patientAddressLng,
     referralType: p.referralType,
     referralSource: p.referralSource,
     // Product decision — shared with the right pane's Serving & Coverage card.
@@ -265,7 +316,11 @@ function intakeEditsFor(p: Patient): IntakeEdits {
     selfAdvocacy: p.selfAdvocacy,
     currentOopCost: p.currentOopCost,
     cgmDataAwareness: p.cgmDataAwareness,
-    notes: p.notes,
+    followUp: p.followUp,
+    followUpDate: p.followUpDate,
+    // `notes` is NOT sent. The Call Log appends through appendIntakeNote —
+    // including it here would write the whole log back over itself, and the
+    // moment a textarea was bound to it, replace the log with one line.
   };
 }
 
@@ -451,6 +506,35 @@ const UnverifiedReferralsPage = () => {
   }, [selected, refetch]);
 
   const [escalateReason, setEscalateReason] = useState("");
+
+  /** First/Last are two boxes over one Monday value (the item name). */
+  const nameParts = useMemo(() => splitName(selected?.name), [selected?.name]);
+
+  /**
+   * Product-category toggles. Seeded from the board — a category counts as
+   * selected when the patient already has ANY value in that column group — and
+   * then owned by the rep for the rest of the visit.
+   *
+   * Switching one OFF only hides the column; it never clears those columns.
+   * A blank field means "not set", never "clear the board", and a rep
+   * un-ticking CGM to tidy the view must not wipe a coverage path the form
+   * collected.
+   */
+  const [catOverride, setCatOverride] = useState<{ cgm?: boolean; pump?: boolean }>({});
+  useEffect(() => { setCatOverride({}); }, [selected?.id]);
+
+  const cgmSeeded = !!(
+    selected?.cgmCoveragePath?.trim() || selected?.formCgmPreference?.trim() ||
+    selected?.cgmDataAwareness?.trim() || /cgm|monitor/i.test(selected?.requestType ?? "")
+  );
+  const pumpSeeded = !!(
+    selected?.insulinPumpCoveragePath?.trim() || selected?.formPumpPreference?.trim() ||
+    selected?.formPumpNeed?.trim() || /pump/i.test(selected?.requestType ?? "")
+  );
+  const cgmOn = catOverride.cgm ?? cgmSeeded;
+  const pumpOn = catOverride.pump ?? pumpSeeded;
+  const setCatCgm = (v: boolean) => setCatOverride((s) => ({ ...s, cgm: v }));
+  const setCatPump = (v: boolean) => setCatOverride((s) => ({ ...s, pump: v }));
   /** Right pane, so "Advance to Profile Clean-Up" can bring the rep to it. */
   const cleanUpRef = useRef<HTMLDivElement | null>(null);
 
@@ -531,6 +615,74 @@ const UnverifiedReferralsPage = () => {
     await save();
     await stedi.start(selected);
   }, [selected, stedi, save]);
+
+  /**
+   * Flag the patient for insurance follow-up, dated TODAY in ET.
+   *
+   * Monday dates are timezone-naive ET (CLAUDE.md §9), so this uses etToday()
+   * rather than a bare `new Date()` — in a UTC container the latter dates
+   * anything after 8pm ET as tomorrow.
+   */
+  const startFollowUp = useCallback(async () => {
+    if (!selected) return;
+    setSaving(true);
+    setSaveNote(null);
+    try {
+      const res = await writeIntakeEdits(selected.id, {
+        followUp: "Follow Up",
+        followUpDate: etToday(),
+      });
+      setSaveNote(
+        res.ok
+          ? "Insurance follow-up started — flagged and dated today."
+          : res.errors.map((e) => `${e.label}: ${e.error}`).join(" · "),
+      );
+      if (res.ok) await refetch(true);
+    } finally {
+      setSaving(false);
+    }
+  }, [selected, refetch]);
+
+  // ── Referral email (Monday updates) + Files (item assets) ────────────────
+  // Both fetchers already existed and had no caller. Loaded per patient and
+  // only when the rep opens the card — an intake queue is long and neither is
+  // needed to work the top of the page.
+  const [refOpen, setRefOpen] = useState(false);
+  const [updates, setUpdates] = useState<MondayUpdate[] | null>(null);
+  const [assets, setAssets] = useState<MondayAsset[] | null>(null);
+  useEffect(() => { setRefOpen(false); setUpdates(null); setAssets(null); }, [selected?.id]);
+  useEffect(() => {
+    if (!selected || !refOpen || updates !== null) return;
+    let alive = true;
+    fetchUpdates(selected.id)
+      .then((u) => { if (alive) setUpdates(u); })
+      .catch(() => { if (alive) setUpdates([]); });
+    return () => { alive = false; };
+  }, [selected, refOpen, updates]);
+  useEffect(() => {
+    if (!selected) return;
+    let alive = true;
+    fetchItemAssets(selected.id)
+      .then((a) => { if (alive) setAssets(a); })
+      .catch(() => { if (alive) setAssets([]); });
+    return () => { alive = false; };
+  }, [selected]);
+
+  /** Append one stamped line to the Call Log. */
+  const [noteDraft, setNoteDraft] = useState("");
+  useEffect(() => { setNoteDraft(""); }, [selected?.id]);
+  const addNote = useCallback(async () => {
+    if (!selected || !noteDraft.trim()) return;
+    setSaving(true);
+    setSaveNote(null);
+    try {
+      const res = await appendIntakeNote(selected.id, noteDraft, selected.notes);
+      setSaveNote(res.ok ? "Note added." : res.errors.map((e) => `${e.label}: ${e.error}`).join(" · "));
+      if (res.ok) { setNoteDraft(""); await refetch(true); }
+    } finally {
+      setSaving(false);
+    }
+  }, [selected, noteDraft, refetch]);
 
   const logAttempt = useCallback(async () => {
     if (!selected) return;
@@ -642,7 +794,77 @@ const UnverifiedReferralsPage = () => {
                   <h2>Patient Info. Collection</h2>
                   <span className="st open">Open</span>
                 </div>
-              <Card title="Referral Routing">
+
+              {/* ── Referral Email rail-card ── mockup's first block. The
+                  referral arrives as a Monday UPDATE, not a column, which is
+                  why it needs fetchUpdates rather than a COL entry. */}
+              <div className="rail-card">
+                <div className="rail-head">✉ Referral Email</div>
+                <div className="rail-body">
+                  <div className="kv">
+                    <Field label="Referral Type" value={selected.referralType} />
+                    <Field label="Referral Source" value={selected.referralSource} />
+                  </div>
+                  <button
+                    className="btn secondary sm"
+                    style={{ marginTop: 12 }}
+                    onClick={() => setRefOpen((o) => !o)}
+                  >
+                    {refOpen ? "Hide referral email / updates" : "Show referral email / updates"}
+                  </button>
+                  {refOpen && (
+                    <div style={{ marginTop: 12 }}>
+                      <div className="rail-updates">
+                        {updates === null ? (
+                          <div className="text-xs text-muted-foreground">Loading…</div>
+                        ) : updates.length === 0 ? (
+                          <div className="text-xs text-muted-foreground">No updates on this item.</div>
+                        ) : (
+                          updates.map((u) => (
+                            <div key={u.id} className="note-entry">
+                              <span className="ts">
+                                [{u.created_at}] {u.creator?.name ?? "unknown"}
+                              </span>
+                              {/* Monday update bodies are HTML. Rendered as
+                                  TEXT deliberately — dangerouslySetInnerHTML on
+                                  a referral email is an XSS sink fed by an
+                                  external sender. */}
+                              <div style={{ marginTop: 6, whiteSpace: "pre-wrap", lineHeight: 1.6 }}>
+                                {u.body.replace(/<[^>]+>/g, "").trim()}
+                              </div>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* ── Files rail-card ── */}
+              <div className="rail-card">
+                <div className="rail-head">📎 Files — click to preview</div>
+                <div className="rail-files">
+                  {assets === null ? (
+                    <div className="text-xs text-muted-foreground px-1 py-2">Loading…</div>
+                  ) : assets.length === 0 ? (
+                    <div className="text-xs text-muted-foreground px-1 py-2">No files on this item.</div>
+                  ) : (
+                    assets.map((a) => (
+                      <div
+                        key={a.id}
+                        className="file-row"
+                        onClick={() => openFileViewer({ url: a.public_url || a.url, name: a.name })}
+                      >
+                        <span className="fname">{a.name}</span>
+                        <span className="fmeta">{a.name.split(".").pop() ?? ""}</span>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+
+              <Card title="Referral Routing" tone="lead">
                 <div className="grid grid-cols-2 gap-3">
                   <EditSelect
                     label="Referral Source"
@@ -664,22 +886,56 @@ const UnverifiedReferralsPage = () => {
                 </p>
               </Card>
 
-              <Card title="Patient Demographics">
-                <div className="grid grid-cols-2 gap-3">
-                  {/* Name and phone are form-typed, so they are correctable —
-                      and the benefits check runs against the name. */}
-                  <EditText label="Name" value={selected.name ?? ""} onChange={(v) => edit({ name: v })} />
-                  <EditText label="Phone" value={selected.ptPhone ?? ""} onChange={(v) => edit({ ptPhone: v })} />
+              <Card title="Patient Demographics" tone="lead">
+                <div className="fgrid">
+                  {/* First/Last are two boxes in the mockup but ONE Monday
+                      value — this board has no name columns, the item name IS
+                      the name. splitName/joinName round-trip it. */}
+                  <EditText
+                    label="First Name"
+                    value={nameParts.first}
+                    onChange={(v) => edit({ name: joinName({ ...nameParts, first: v }) })}
+                  />
+                  <EditText
+                    label="Last Name"
+                    value={nameParts.last}
+                    onChange={(v) => edit({ name: joinName({ ...nameParts, last: v }) })}
+                  />
                   <EditText label="Date of Birth" value={selected.dob ?? ""} onChange={(v) => edit({ dob: v })} />
+                  <EditText label="Phone" value={selected.ptPhone ?? ""} onChange={(v) => edit({ ptPhone: v })} />
                   <EditText label="Email" value={selected.email ?? ""} onChange={(v) => edit({ email: v })} />
+                  {/* Not asked on the form — rep or Stedi fills it. */}
+                  <EditSelect
+                    label="Gender"
+                    value={selected.gender ?? ""}
+                    onChange={(v) => edit({ gender: v })}
+                    options={["Male", "Female", "Unknown"]}
+                  />
+                  <EditText
+                    full
+                    label="Address"
+                    placeholder="122 Elderberry Ln, Central Square, NY 13036"
+                    value={selected.patientAddress ?? ""}
+                    onChange={(v) => edit({ patientAddress: v })}
+                  />
                   <EditText label="State" value={selected.formState ?? ""} onChange={(v) => edit({ formState: v })} />
                   <Field label="Date of Intake" value={selected.dateOfIntake} />
                 </div>
+                {!(selected.patientAddress ?? "").trim() && (
+                  <p className="mt-2 text-[11px] text-amber-700">
+                    No address on file. The form doesn’t collect one, and downstream stages need it to ship —
+                    collect it on the call.
+                  </p>
+                )}
               </Card>
 
-              <Card title="Why they came">
-                <div className="grid grid-cols-2 gap-3">
+              <Card title="What They Need" tone="lead">
+                {/* Reason for Inquiry is the FIRST field of What They Need in
+                    the mockup. It had been split into a "Why they came" card
+                    that the mockup doesn't have. */}
+                <div className="mb-5">
                   <EditSelect
+                    full
                     label="Reason for Inquiry"
                     value={selected.formReasonForInquiry ?? ""}
                     onChange={(v) => edit({ formReasonForInquiry: v })}
@@ -691,61 +947,107 @@ const UnverifiedReferralsPage = () => {
                     ]}
                   />
                 </div>
-              </Card>
 
-              <Card title="What they need">
-                <div className="grid grid-cols-2 gap-3">
-                  {/* Same Monday column as the Serving & Coverage card on the
-                      right — one value, edited from whichever pane you're in. */}
+                <div className="flabel" style={{ marginBottom: 9 }}>
+                  Product Categories
+                  <span style={{ textTransform: "none", letterSpacing: 0, fontWeight: 400 }}>
+                    {" "}— select all that apply
+                  </span>
+                </div>
+                <div className="needs2">
+                  <button
+                    type="button"
+                    className={cgmOn ? "cat on" : "cat"}
+                    onClick={() => setCatCgm(!cgmOn)}
+                  >
+                    <span className="bx">✓</span>Continuous Glucose Monitor
+                  </button>
+                  <button
+                    type="button"
+                    className={pumpOn ? "cat on" : "cat"}
+                    onClick={() => setCatPump(!pumpOn)}
+                  >
+                    <span className="bx">✓</span>Insulin Pump / Supplies
+                  </button>
+
+                  {/* An unselected category hides its ENTIRE column (§7.1) —
+                      it does not grey out, and the fields inside are not
+                      individually highlighted. `.devcol.off` is that rule. */}
+                  <div className={cgmOn ? "devcol" : "devcol off"}>
+                    <EditSelect
+                      label="CGM Coverage Path"
+                      value={selected.cgmCoveragePath ?? ""}
+                      onChange={(v) => edit({ cgmCoveragePath: v })}
+                      options={CGM_PATH_OPTS}
+                    />
+                    <EditSelect
+                      label="CGM preference (patient's answer)"
+                      value={selected.formCgmPreference ?? ""}
+                      onChange={(v) => edit({ formCgmPreference: v })}
+                      options={["Freestyle Libre 3 Plus", "Dexcom G7", "Medtronic Guardian 4", "Any will work"]}
+                    />
+                    <EditSelect
+                      label="CGM Data & Doctor Awareness"
+                      value={selected.cgmDataAwareness ?? ""}
+                      onChange={(v) => edit({ cgmDataAwareness: v })}
+                      options={["Patient has existing data", "Doctor is aware", "Neither applies", "Both apply"]}
+                    />
+                  </div>
+
+                  <div className={pumpOn ? "devcol" : "devcol off"}>
+                    <EditSelect
+                      label="Pump preference (patient's answer)"
+                      value={selected.formPumpPreference ?? ""}
+                      onChange={(v) => edit({ formPumpPreference: v })}
+                      options={["Tandem t:slim X2", "Tandem Mobi", "Beta Bionics iLet", "Not sure"]}
+                    />
+                    <EditSelect
+                      label="Pump Need"
+                      value={selected.formPumpNeed ?? ""}
+                      onChange={(v) => edit({ formPumpNeed: v })}
+                      options={["Need a new pump", "Only need supplies"]}
+                    />
+                    <EditSelect
+                      label="Insulin Pump Coverage Path"
+                      value={selected.insulinPumpCoveragePath ?? ""}
+                      onChange={(v) => edit({ insulinPumpCoveragePath: v })}
+                      options={IP_PATH_OPTS}
+                    />
+                  </div>
+                </div>
+
+                <div className="derived-strip">
+                  <span className="dlabel">Request Type</span>
+                  <span className="sugg-chip2">{selected.requestType?.trim() || "—"}</span>
+                </div>
+
+                {/* Request Type is DERIVED from the categories above in the
+                    mockup ("computed — never typed"), but nothing computes it
+                    yet, so it stays editable below the strip rather than
+                    becoming a read-only chip that no longer has a source. */}
+                <div className="mt-4">
                   <EditSelect
-                    label="Request Type"
+                    full
+                    label="Request Type — shared with Serving & Coverage on the right"
                     value={selected.requestType ?? ""}
                     onChange={(v) => edit({ requestType: v })}
                     options={REQUEST_TYPE_OPTS}
                   />
-                  <EditSelect
-                    label="Pump Need"
-                    value={selected.formPumpNeed ?? ""}
-                    onChange={(v) => edit({ formPumpNeed: v })}
-                    options={["Need a new pump", "Only need supplies"]}
-                  />
-                  <EditSelect
-                    label="CGM preference (patient's answer)"
-                    value={selected.formCgmPreference ?? ""}
-                    onChange={(v) => edit({ formCgmPreference: v })}
-                    options={["Freestyle Libre 3 Plus", "Dexcom G7", "Medtronic Guardian 4", "Any will work"]}
-                  />
-                  <EditSelect
-                    label="Pump preference (patient's answer)"
-                    value={selected.formPumpPreference ?? ""}
-                    onChange={(v) => edit({ formPumpPreference: v })}
-                    options={["Tandem t:slim X2", "Tandem Mobi", "Beta Bionics iLet", "Not sure"]}
-                  />
-                  <EditSelect
-                    label="CGM Coverage Path"
-                    value={selected.cgmCoveragePath ?? ""}
-                    onChange={(v) => edit({ cgmCoveragePath: v })}
-                    options={CGM_PATH_OPTS}
-                  />
-                  <EditSelect
-                    label="Insulin Pump Coverage Path"
-                    value={selected.insulinPumpCoveragePath ?? ""}
-                    onChange={(v) => edit({ insulinPumpCoveragePath: v })}
-                    options={IP_PATH_OPTS}
-                  />
-                  {/* Mockup keeps this in the CGM column of What They Need,
-                      next to the CGM Data File — not in a separate card. */}
-                  <EditSelect
-                    label="CGM Data & Doctor Awareness"
-                    value={selected.cgmDataAwareness ?? ""}
-                    onChange={(v) => edit({ cgmDataAwareness: v })}
-                    options={["Patient has existing data", "Doctor is aware", "Neither applies", "Both apply"]}
-                  />
                 </div>
               </Card>
 
-              <Card title="Provided Insurance">
-                <div className="grid grid-cols-2 gap-3">
+              <Card title="Provided Insurance" tone="lead">
+                {/* Mockup leads with Provided Via as a segmented 3-up, above
+                    the field grid — not as one dropdown inside it. */}
+                <div className="mb-4">
+                  <Seg
+                    label="Provided Via"
+                    value={selected.formInsuranceVia ?? ""}
+                    onChange={(v) => edit({ formInsuranceVia: v })}
+                    options={["Photo of card", "Entered manually", "Not provided"]}
+                  />
+                </div>
+                <div className="fgrid">
                   {/* Editable, and written by Save — which the benefits check
                       runs FIRST, because Stedi reads this column off the board
                       rather than off this page. */}
@@ -759,12 +1061,6 @@ const UnverifiedReferralsPage = () => {
                     label="Member ID (Stedi reads this)"
                     value={selected.workingMemberId ?? ""}
                     onChange={(v) => edit({ workingMemberId: v })}
-                  />
-                  <EditSelect
-                    label="Provided via"
-                    value={selected.formInsuranceVia ?? ""}
-                    onChange={(v) => edit({ formInsuranceVia: v })}
-                    options={["Photo of card", "Entered manually", "Not provided"]}
                   />
                   <EditText
                     label="Insurance (Other) — as typed"
@@ -801,6 +1097,24 @@ const UnverifiedReferralsPage = () => {
                   )}
                   {!(selected.generalInsurance ?? "").trim() && (
                     <span className="text-xs text-muted-foreground">Needs General Insurance first.</span>
+                  )}
+                  {/* Both columns were already read into Patient and nothing
+                      ever wrote them — this is the button they were waiting
+                      for. Flags Follow Up and dates it today; the mockup's
+                      "follow-up text sent" half needs the messaging wiring
+                      that Patient Messages also needs. */}
+                  <button
+                    onClick={startFollowUp}
+                    disabled={saving}
+                    className="btn secondary sm"
+                    title="Flag this patient for insurance follow-up, dated today"
+                  >
+                    Start Insurance Follow-Up
+                  </button>
+                  {(selected.followUp ?? "").trim() && (
+                    <span className="text-xs text-muted-foreground">
+                      Following up{(selected.followUpDate ?? "").trim() ? ` · ${selected.followUpDate}` : ""}
+                    </span>
                   )}
                 </div>
                 {selected.stediErrorDescription?.trim() && (
@@ -863,24 +1177,129 @@ const UnverifiedReferralsPage = () => {
                 </p>
               </Card>
 
-              <Card title="Proceed Preference">
-                <div className="grid grid-cols-2 gap-3">
-                  <Field label="Proceed preference" value={selected.formProceedPreference} />
-                  <Field label="Slot picked on form" value={selected.formCallSlot} />
-                  <Field label="Booking status" value={selected.formBookingStatus} />
-                </div>
+              <Card title="Proceed Preference" tone="lead">
+                <Pills
+                  label="How would they like to proceed?"
+                  value={selected.formProceedPreference ?? ""}
+                  onChange={(v) => edit({ formProceedPreference: v })}
+                  options={["Send request now", "Wants a call first"]}
+                />
+
+                {/* Booking block — the mockup shows it only when the patient
+                    asked for a call. */}
+                {(selected.formProceedPreference ?? "") === "Wants a call first" && (
+                  <div
+                    style={{ marginTop: 16, paddingTop: 14, borderTop: "1px dashed var(--border)" }}
+                  >
+                    <div className="flabel">Call Booking</div>
+                    <div className="bookrow">
+                      <div>
+                        <div className="eyebrow-xs">Selected on form</div>
+                        <div className="bookval">{selected.formCallSlot?.trim() || "—"}</div>
+                      </div>
+                      {(selected.formBookingStatus ?? "").trim() && (
+                        <span className={
+                          (selected.formBookingStatus ?? "").trim() === "Scheduled" ? "mp green" : "mp"
+                        }>
+                          {selected.formBookingStatus}
+                        </span>
+                      )}
+                    </div>
+
+                    {/* The mockup's override is a picker of LIVE Calendly
+                        openings. There is no Calendly integration, so this is
+                        a free-text slot plus an explicit Confirm — the half
+                        that works without one. A dropdown of invented times
+                        would be worse than no dropdown: the rep would think
+                        those openings were real. */}
+                    <div style={{ marginTop: 14 }}>
+                      <EditText
+                        full
+                        label="Override — enter a different opening"
+                        placeholder="e.g. Thu 11:00 AM"
+                        value={selected.formCallSlot ?? ""}
+                        onChange={(v) => edit({ formCallSlot: v })}
+                      />
+                      <div className="mt-3 flex items-center gap-2">
+                        <button
+                          className="btn primary sm"
+                          disabled={saving || !(selected.formCallSlot ?? "").trim()}
+                          onClick={() => edit({ formBookingStatus: "Scheduled" })}
+                          title={
+                            (selected.formCallSlot ?? "").trim()
+                              ? "Mark this slot Scheduled — Save writes it"
+                              : "Enter a slot first"
+                          }
+                        >
+                          Confirm booking
+                        </button>
+                        {(selected.formBookingStatus ?? "") !== "Scheduled" && (
+                          <button
+                            className="btn secondary sm"
+                            disabled={saving}
+                            onClick={() => edit({ formBookingStatus: "Unscheduled" })}
+                          >
+                            Mark unscheduled
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 {/* Hidden when the patient already authorised us — the checkbox
                     is irrelevant then and must not be shown (HANDOFF §7.2). */}
                 {(selected.formProceedPreference ?? "") !== "Send request now" && (
-                  <label className="mt-3 flex items-center gap-2 text-sm">
-                    <input
-                      type="checkbox"
-                      checked={(selected.intakeCallComplete ?? "").trim().toLowerCase() === "yes"}
-                      onChange={(e) => edit({ intakeCallComplete: e.target.checked ? "Yes" : "" })}
-                    />
-                    Intake call complete
-                  </label>
+                  <div style={{ marginTop: 16, paddingTop: 14, borderTop: "1px dashed var(--border)" }}>
+                    <label className="checkline">
+                      <input
+                        type="checkbox"
+                        checked={(selected.intakeCallComplete ?? "").trim().toLowerCase() === "yes"}
+                        onChange={(e) => edit({ intakeCallComplete: e.target.checked ? "Yes" : "" })}
+                      />
+                      <span>
+                        <b>Intake Call Complete</b>
+                        <span className="sugg-note" style={{ display: "block", marginTop: 2 }}>
+                          Check this once you have finished the intake call — required to advance.
+                        </span>
+                      </span>
+                    </label>
+                  </div>
                 )}
+              </Card>
+
+              {/* ── Call Log & Notes ── append-only and stamped, per the note
+                  under the mockup's card and CLAUDE.md §9. The log is rendered
+                  read-only; the box below appends ONE line. Binding a textarea
+                  straight to `notes` would replace the history on first save. */}
+              <Card title="Call Log & Notes">
+                <div>
+                  {(selected.notes ?? "").trim()
+                    ? (selected.notes ?? "")
+                        .split("\n")
+                        .filter((l) => l.trim())
+                        .map((line, i) => (
+                          <div key={i} className="note-entry">{line}</div>
+                        ))
+                    : <div className="text-xs text-muted-foreground">No notes yet.</div>}
+                </div>
+                <div className="note-add">
+                  <textarea
+                    value={noteDraft}
+                    placeholder="Add a note…"
+                    onChange={(e) => setNoteDraft(e.target.value)}
+                  />
+                  <button
+                    className="btn primary sm"
+                    disabled={saving || !noteDraft.trim()}
+                    onClick={addNote}
+                  >
+                    + Add
+                  </button>
+                </div>
+                <p className="mt-2 text-[11px] text-muted-foreground">
+                  Append-only. Each line is stamped with the ET time, the stage and your initials.
+                </p>
               </Card>
 
               {/* HANDOFF §2 "Left-pane exits" — all three live here, at the
@@ -901,68 +1320,92 @@ const UnverifiedReferralsPage = () => {
                   </p>
                 ) : (
                   <>
-                    {/* A disabled button with no explanation is the thing reps
-                        escalate about (§2), so the blockers are always visible. */}
-                    <ul className="space-y-2">
-                      {unlock.conditions.map((c) => (
-                        <li key={c.id} className="flex items-start gap-2 text-sm">
-                          {c.passed ? (
-                            <Check className="h-4 w-4 mt-0.5 text-emerald-600 shrink-0" />
-                          ) : (
-                            <X className="h-4 w-4 mt-0.5 text-muted-foreground shrink-0" />
-                          )}
-                          <div className="min-w-0">
-                            <div className={c.passed ? "" : "text-muted-foreground"}>{c.label}</div>
-                            {!c.passed && <div className="text-[11px] text-amber-700">{c.hint}</div>}
-                          </div>
-                        </li>
-                      ))}
-                    </ul>
-
-                    <div className="mt-4 flex flex-wrap items-center gap-2">
+                    {/* Three `.route` cards, as the mockup has them — one per
+                        exit — instead of a flat button row. The Escalation card
+                        that used to sit below this is folded into the third
+                        route; the mockup has no separate escalation section. */}
+                    <div className="mt-2 flex flex-wrap items-center gap-2">
                       <button onClick={save} disabled={saving} className="btn primary">
                         {saving ? "Saving…" : "Save"}
                       </button>
-                      {/* The pane itself unlocks from the four conditions
-                          (HANDOFF §2: "not unlocked by a button click"), so this
-                          takes the rep TO the unlocked pane rather than gating
-                          it a second time. */}
-                      <button
-                        onClick={() => cleanUpRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })}
-                        disabled={!unlock.unlocked || saving}
-                        className="btn primary"
-                        title={unlock.unlocked ? undefined : "Blocked by the checklist above"}
-                      >
-                        Advance to Profile Clean-Up →
-                      </button>
-                      <button onClick={logAttempt} disabled={saving} className="btn secondary">
-                        Insufficient — log call attempt
-                      </button>
-                      {/* The mockup's home for this is Call Log & Notes, which
-                          isn't built yet. Parked next to the button that
-                          increments it so the count stays on screen — a rep
-                          logging an attempt has to be able to see the total. */}
-                      <span className="self-center text-xs text-muted-foreground">
-                        {attempts} attempt{attempts === 1 ? "" : "s"} logged
+                      <span className="text-xs text-muted-foreground">
+                        Saves the left pane without advancing.
                       </span>
                     </div>
 
-                    {/* Exit 3. Reason is required — a manager can't action a
-                        blank escalation. */}
-                    <div className="mt-3">
-                      <EditText
-                        label="Escalate — reason"
-                        value={escalateReason}
-                        placeholder="What's blocking this patient?"
-                        onChange={setEscalateReason}
-                      />
-                      <button
-                        onClick={() => runStageAction("escalate")}
-                        disabled={saving}
-                        className="btn amber sm mt-2"
-                      >
-                        Escalate — doesn't qualify
-                      </button>
+                    <div className="route-stack" style={{ marginTop: 14 }}>
+                      <div className={unlock.unlocked ? "route adv on" : "route adv"}>
+                        <h4>Advance to Profile Clean-Up</h4>
+                        <p>Referral info is sufficient → unlock the profile checklist on the right.</p>
+                        {/* A disabled button with no explanation is the thing
+                            reps escalate about (§2), so the blockers stay
+                            visible rather than living in a tooltip. */}
+                        <ul className="space-y-2" style={{ margin: "4px 0 12px" }}>
+                          {unlock.conditions.map((c) => (
+                            <li key={c.id} className="flex items-start gap-2 text-sm">
+                              {c.passed ? (
+                                <Check className="h-4 w-4 mt-0.5 text-emerald-600 shrink-0" />
+                              ) : (
+                                <X className="h-4 w-4 mt-0.5 text-muted-foreground shrink-0" />
+                              )}
+                              <div className="min-w-0">
+                                <div className={c.passed ? "" : "text-muted-foreground"}>{c.label}</div>
+                                {!c.passed && <div className="text-[11px] text-amber-700">{c.hint}</div>}
+                              </div>
+                            </li>
+                          ))}
+                        </ul>
+                        {/* The pane itself unlocks from the four conditions
+                            (HANDOFF §2: "not unlocked by a button click"), so
+                            this takes the rep TO the unlocked pane rather than
+                            gating it a second time. */}
+                        <button
+                          onClick={() => cleanUpRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })}
+                          disabled={!unlock.unlocked || saving}
+                          className="btn primary"
+                          title={unlock.unlocked ? undefined : "Blocked by the checklist above"}
+                        >
+                          Advance to Profile Clean-Up →
+                        </button>
+                      </div>
+
+                      <div className="route intake on">
+                        <h4>Insufficient — log call</h4>
+                        <p>Missing info → call the patient, collect it above, then log the attempt.</p>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <button onClick={logAttempt} disabled={saving} className="btn amber">
+                            Log call attempt
+                          </button>
+                          <span className="text-xs text-muted-foreground">
+                            {attempts} attempt{attempts === 1 ? "" : "s"} logged
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="route esc on">
+                        <h4>Escalate — doesn't qualify</h4>
+                        <p>
+                          Patient doesn't meet criteria for this request → flag for supervisor review
+                          instead of advancing.
+                        </p>
+                        {/* Reason is required — a manager can't action a blank
+                            escalation. */}
+                        <div className="inline-panel" style={{ display: "block" }}>
+                          <textarea
+                            value={escalateReason}
+                            placeholder="Add context for the reviewer…"
+                            onChange={(e) => setEscalateReason(e.target.value)}
+                          />
+                          <button
+                            onClick={() => runStageAction("escalate")}
+                            disabled={saving || !escalateReason.trim()}
+                            className="btn rose sm"
+                            style={{ marginTop: 9 }}
+                          >
+                            Submit escalation
+                          </button>
+                        </div>
+                      </div>
                     </div>
 
                     <p className="mt-3 text-[11px] text-muted-foreground">

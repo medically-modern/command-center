@@ -21,7 +21,7 @@
 import {
   COL, GROUPS, writeStatusIndex, writeText, writeNumber, writeLongText, writeItemName,
   writePhone, writeEmail, writeLocation, writeDropdownIds, writeDropdownLabels,
-  readColumnTexts, moveItemToGroup,
+  readColumnTexts, moveItemToGroup, writeDate,
 } from "./mondayApi";
 import { executeWritesWithVerification } from "../shared/verifiedWrite";
 import { CLINICALS_METHOD_INDEX } from "./mondayMapping";
@@ -32,7 +32,7 @@ import {
   GENERAL_INSURANCE_INDEX, PRIMARY_INSURANCE_INDEX,
   SECONDARY_INSURANCE_INDEX, SERVING_INDEX, MOVE_TO_ONBOARDING_INDEX,
   REQUEST_TYPE_INDEX, CGM_COVERAGE_PATH_INDEX, INSULIN_PUMP_COVERAGE_PATH_INDEX,
-  REFERRAL_TYPE_INDEX, REFERRAL_SOURCE_INDEX,
+  REFERRAL_TYPE_INDEX, REFERRAL_SOURCE_INDEX, GENDER_INDEX, FOLLOW_UP_INDEX,
 } from "./mondayMapping";
 
 /** label → index for every status column this stage writes.
@@ -121,6 +121,15 @@ export interface IntakeEdits {
   dob?: string;
   email?: string;
   formState?: string;
+  /** Not asked on the intake form — the rep or Stedi supplies it. */
+  gender?: string;
+  /** The mockup's one genuinely MISSING datum, not just an unrendered one:
+   *  location_mm1xhw17 is empty on every form patient and downstream stages
+   *  need it to ship. Lat/lng ride along because Monday's location column
+   *  takes them together with the address text. */
+  patientAddress?: string;
+  patientAddressLat?: number | null;
+  patientAddressLng?: number | null;
 
   // Referral routing — where this patient came from. Board automations also
   // set Type from Source on item creation; a rep correcting it here wins,
@@ -161,12 +170,21 @@ export interface IntakeEdits {
   intakeCallComplete?: boolean;
   attemptCounter?: number;
 
+  // Insurance follow-up. Both columns were already READ into Patient; nothing
+  // ever wrote them, so the mockup's "Start Insurance Follow-Up" had a place to
+  // land and no way to get there.
+  followUp?: string;
+  followUpDate?: string;
+
   // Care assessment / cost — rep-entered on the call
   selfAdvocacy?: string;
   currentOopCost?: string;
   cgmDataAwareness?: string;
 
-  notes?: string;
+  // `notes` is deliberately NOT here. The Call Log is append-only and stamped
+  // (the mockup says so under the card, and §9 makes it the app-wide rule), so
+  // it cannot ride along in a bulk save that overwrites whatever it is given.
+  // Use `appendIntakeNote` instead.
 }
 
 /**
@@ -216,6 +234,16 @@ export function buildIntakeTasks(itemId: string, edits: IntakeEdits): WriteTask[
   text("DOB", COL.dob, edits.dob);
   text("Email", COL.email, edits.email);
   text("State", COL.formState, edits.formState);
+  mapped("Gender", COL.gender, GENDER_INDEX, edits.gender);
+  if (edits.patientAddress !== undefined) {
+    const addr = edits.patientAddress;
+    const lat = edits.patientAddressLat ?? 0;
+    const lng = edits.patientAddressLng ?? 0;
+    tasks.push({
+      label: "Address", columnId: COL.patientAddress,
+      fn: () => writeLocation(itemId, COL.patientAddress, addr, lat, lng),
+    });
+  }
 
   // Referral routing
   mapped("Referral Source", COL.referralSource, REFERRAL_SOURCE_INDEX, edits.referralSource);
@@ -277,9 +305,65 @@ export function buildIntakeTasks(itemId: string, edits: IntakeEdits): WriteTask[
   text("Current Out-of-Pocket Cost", COL.currentOopCost, edits.currentOopCost);
   status("CGM Data & Doctor Awareness", COL.cgmDataAwareness, "cgmDataAwareness", edits.cgmDataAwareness);
 
-  text("Notes", COL.notes, edits.notes);
+  // Insurance follow-up. The status column has exactly one label ("Follow Up",
+  // index 1), so this is a flag rather than a choice — the DATE is the payload.
+  if (edits.followUp !== undefined) {
+    const on = edits.followUp.trim() !== "";
+    if (on) {
+      tasks.push({
+        label: "Follow Up", columnId: COL.followUp,
+        fn: () => writeStatusIndex(itemId, COL.followUp, FOLLOW_UP_INDEX.followUp),
+      });
+    }
+  }
+  if (edits.followUpDate !== undefined) {
+    const d = edits.followUpDate;
+    tasks.push({ label: "Follow Up Date", columnId: COL.followUpDate, fn: () => writeDate(itemId, COL.followUpDate, d) });
+  }
 
   return tasks;
+}
+
+/**
+ * Append one line to the Call Log — the ONLY way this stage writes notes.
+ *
+ * The column is append-only and stamped (`[ET timestamp] Patient Intake: … —XX`,
+ * CLAUDE.md §9). It used to sit in `IntakeEdits` and be written with a plain
+ * `text()` overwrite of whatever the page held, which was inert only because
+ * nothing rendered a notes box: the first save from a bound textarea would have
+ * replaced the entire history with one line.
+ *
+ * Reads the current log itself rather than trusting the caller, for the same
+ * reason `writeEscalationNote` does — a concurrent edit must not be clobbered.
+ */
+export async function appendIntakeNote(
+  itemId: string, note: string, existingNotes?: string,
+): Promise<IntakeWriteResult> {
+  const body = note.trim();
+  if (!body) {
+    return { ok: false, errors: [{ label: "Note", columnId: COL.notes, error: "Nothing to add." }] };
+  }
+  let prior = existingNotes;
+  if (prior === undefined) {
+    try {
+      const cols = await readColumnTexts(itemId, [COL.notes]);
+      prior = cols.find((c) => c.id === COL.notes)?.text ?? "";
+    } catch {
+      prior = "";
+    }
+  }
+  try {
+    await writeLongText(
+      itemId, COL.notes,
+      appendStampedNote(prior, body, "Patient Intake", { initials: userInitials() }),
+    );
+    return { ok: true, errors: [] };
+  } catch (e) {
+    return {
+      ok: false,
+      errors: [{ label: "Note", columnId: COL.notes, error: e instanceof Error ? e.message : String(e) }],
+    };
+  }
 }
 
 /** Run a task list to completion, collecting per-column failures rather than

@@ -209,6 +209,46 @@ describe("intake task builders keep provided and verified apart", () => {
   });
 });
 
+describe("write paths added for the mockup port", () => {
+  it("writes Gender and Address, which had no write path before", () => {
+    const cols = columnsOf(buildIntakeTasks("123", {
+      gender: "Female",
+      patientAddress: "122 Elderberry Ln, Central Square, NY 13036",
+    }));
+    expect(cols).toContain(COL.gender);
+    expect(cols).toContain(COL.patientAddress);
+  });
+
+  it("skips an unknown Gender label rather than guessing", () => {
+    expect(columnsOf(buildIntakeTasks("123", { gender: "M" }))).not.toContain(COL.gender);
+    expect(columnsOf(buildIntakeTasks("123", { gender: "Male" }))).toContain(COL.gender);
+  });
+
+  it("writes the Follow Up flag and its date", () => {
+    const cols = columnsOf(buildIntakeTasks("123", { followUp: "Follow Up", followUpDate: "2026-08-10" }));
+    expect(cols).toContain(COL.followUp);
+    expect(cols).toContain(COL.followUpDate);
+  });
+
+  it("does not raise the Follow Up flag for a blank value", () => {
+    // The column has a single label, so "" means "leave it alone" — writing
+    // index 1 anyway would flag every patient whose save touched the field.
+    expect(columnsOf(buildIntakeTasks("123", { followUp: "" }))).not.toContain(COL.followUp);
+  });
+
+  it("NEVER writes the notes column from a bulk save", () => {
+    // The Call Log is append-only (appendIntakeNote). If `notes` could ride
+    // along in IntakeEdits, the first save from a bound textarea would replace
+    // the entire history with one line.
+    const everything = buildIntakeTasks("123", {
+      name: "Richard Clark", dob: "01/02/1990", gender: "Male",
+      patientAddress: "1 Main St", followUp: "Follow Up", followUpDate: "2026-08-10",
+      selfAdvocacy: "High", currentOopCost: "$75/month",
+    });
+    expect(columnsOf(everything)).not.toContain(COL.notes);
+  });
+});
+
 describe("intake climbs the shared Propose Stuck ladder", () => {
   it("starts a rep's proposal at Manager Intervention", () => {
     expect(proposeStuckLevel("unverified-intake", null, "")).toBe("manager");
