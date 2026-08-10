@@ -1,143 +1,200 @@
-# Handoff — Patient Intake (DTC & CareCentrix) build state, 2026-08-07
+# Handoff — Patient Intake (DTC & CareCentrix) build state, 2026-08-10
 
-Continues the stage at `/unverified-referrals` (role id `unverifiedReferrals`,
-label **Patient Intake — DTC & CareCentrix**). Everything below is on `main`.
+The stage at `/unverified-referrals` (role id `unverifiedReferrals`, label
+**Patient Intake — DTC & CareCentrix**). Everything below is on `main`.
 
-## ⚠️ Read these two FIRST — they are now in the repo
+> **Verify that claim before trusting it.** The previous version of this file
+> said "everything below is on `main`" while the whole build sat unpushed on a
+> `claude/…` branch — so Pages was serving none of it. `git ls-remote origin
+> refs/heads/main` and compare to your HEAD; don't infer it from a clean tree.
+
+## ⚠️ Read these two FIRST — they are in the repo
 
 | File | What it is |
 |---|---|
-| [`patient-intake-redesign.html`](patient-intake-redesign.html) | **THE SPEC.** Corey's mockup. Open it in a browser. Its stylesheet is `redesign.css` (PART A, already live) + the additions in `src/pages/profile/intake.css` (PART B). |
-| [`HANDOFF_PATIENT_INTAKE.md`](HANDOFF_PATIENT_INTAKE.md) | Josh's written spec — the §-numbers this code cites (§2 unlock rule, §3 benefits check, §4 pre-fill, §5.2 index writes, §6.0 provided-vs-verified, §7.2 booking, §9 columns, §10 do-not-build). |
+| [`patient-intake-redesign.html`](patient-intake-redesign.html) | **THE SPEC.** Corey's mockup. Open it in a browser AND read its DOM. Stylesheet is `redesign.css` (PART A) + `src/pages/profile/intake.css` (PART B). |
+| [`HANDOFF_PATIENT_INTAKE.md`](HANDOFF_PATIENT_INTAKE.md) | Josh's written spec — the §-numbers this file cites. |
 
-Both were missing for most of the session that built this, which is exactly how
-the layout drifted. **Do not rebuild from the section headings — port the
-mockup's markup.** That mistake is described in "What is NOT done" below.
+**Port from the mockup's MARKUP, not its section headings.** Building from
+headings is how an earlier pass invented cards ("On the call", "Why they came")
+that the mockup doesn't have.
 
-> **The mockup's `NEW COLUMN NEEDED` stamps are STALE.** Those columns were
-> created after it was written. Verified against the live board 2026-08-07:
-> every field in the mockup already has its Monday column. See the inventory
-> below — **the remaining work is pure front-end.**
+> **The mockup's `NEW COLUMN NEEDED` stamps are mostly stale** — but NOT all of
+> them, and the previous version of this file said otherwise. See
+> "Where the column inventory was wrong" below before you plan any work on the
+> strength of "it's pure front-end".
 
-> **The little `FROM FORM → color_xxx` stamps under every field are BUILD
-> NOTES, not UI.** HANDOFF's preamble is explicit: "They are NOT part of the
-> design and must NOT appear in production." A `<Prov>` component that rendered
-> them was deleted; don't reintroduce it.
+> **The `FROM FORM → color_xxx` stamps are BUILD NOTES, not UI.** HANDOFF's
+> preamble: "They are NOT part of the design and must NOT appear in production."
 
 ---
 
-## What IS done (11 commits, `0816726`..`981b293`)
+## The left pane is ported
 
-**Layout / shell**
-- Two-pane split now driven by a **container query** on `.panes-host`, not a
-  viewport media query. The old `@media (max-width:1500px)` collapsed the split
-  on every ordinary laptop — the panes never get the whole window (the sidebar
-  takes ~256px). Splits at 1440px open, and at 1280px with the sidebar
-  collapsed. `intake.css` top comment has the reasoning.
-- **Panes actually scroll.** `.panes-host` had no `min-height:0`, so the flex
-  child refused to shrink, panes grew to content height, nothing overflowed —
-  and `overscroll-behavior:contain` then ate the wheel, leaving only the
-  scrollbar. Page root is `h-screen overflow-hidden`; split hands scrolling to
-  the two columns, stacked keeps `.panes` as one scroller.
-- Sidebar has exactly two filters (**Completed forms** / **Partial forms**),
-  rendered through a new optional `filters` slot on `PatientsSidebar`
-  (Verified Referrals omits it, unchanged). The old "Referrals" tab is gone —
-  that's `1. Intake`, the stage this one advances INTO.
+Every section of the mockup's left pane is now rendered, in mockup order, and
+round-trips to Monday:
 
-**Right pane — matches the mockup's four numbered steps**
-1 Verified Insurance · 2 Serving & Coverage · 3 Select Correct Provider ·
-4 Ready to Send Off? → **Advance to MN**.
-`.step-head` / `.step-num` / `.route-grid` / `.route` ported from the mockup.
+Referral Email rail-card (Monday **updates**, not a column — `fetchUpdates`,
+plus ＋ Add referral email via `createUpdate`) · Files rail-card
+(`fetchItemAssets` → `FileViewerModal`) · Referral Routing · Patient
+Demographics (First/Last split, Gender, Address) · What They Need (category
+checkboxes that hide a whole column, CGM Type / Pump Type / paths / awareness,
+CGM Data File) · Care Assessment · Cost & Coverage · Provided Insurance
+(segmented Provided Via, Insurance Card Photo, Start Insurance Follow-Up) ·
+Provided Doctor Info (incl. Clinic Address + Doctor Notes) · Proceed Preference
+(pills, booking, Confirm booking) · Patient Messages · Call Log & Notes ·
+Ready to Advance (three `.route` cards).
 
-**Backend**
-- **Doctor columns now save.** Was the worst bug: `DoctorSection` reported picks
-  into an in-memory overlay and nothing persisted the eight verified doctor
-  columns, so the rep's provider work was discarded on every advance.
-- **Advance is verified.** `advanceToMedicalNecessity(p, clinicLabelId)` follows
-  `mondayWrite.sendPatientToMonday`'s contract: save left pane → write verified
-  insurance → `executeWritesWithVerification` writes the doctor columns and
-  reads them all back → **only then** writes `Move to Onboarding = Advance to
-  MN`. Verification timeout throws and does NOT advance.
-- **Propose Stuck climbs the shared ladder** (`stageActions.proposeStuckLevel`,
-  `unverified-intake` starts at `manager`): rep → Manager Intervention, manager
-  from there → Final Decisions. It used to write Final unconditionally.
-- **Escalation notes no longer wipe history.** `setEscalation` reads the current
-  log before appending — `StageActionBar` can't pass it, and
-  `appendNote(undefined, …)` was writing only the new line.
-- Notes use `shared/noteStamp` (**ET + stage + initials**); they were
-  `toISOString()` = UTC, so anything after 8pm ET was dated the next day.
-- Editable + writing: Name, Phone, DOB, Email, State, Referral Source/Type,
-  Request Type, both Coverage Paths, General Insurance, Serving.
+The right pane was already the mockup's four numbered steps.
 
-**Oversight** — escalated intake patients were invisible **app-wide** (3 stacked
-gaps: charts in no section, no `CHART_ROUTES` entries, page read `?origin=` when
-the param is `?mv=`). Intake now has the 3-column manager scheme scoped to the
-Unverified queue.
+**The PART B CSS was already complete** — every class the mockup uses was in
+`intake.css` before any of this markup existed. If a section looks unstyled,
+you have the wrong class name, not a missing rule.
 
-**Counting contract (§5.8)** — all three now agree on the DTC form groups:
-`useRoleCounts.ts`, `scripts/snapshot-baseline.mjs`,
-`services/baseline-cron/index.mjs`. They were causing phantom "+N in" chips
-daily. *Not verified by running them — they need a gateway token.*
+### Still not built, all deliberate
 
----
-
-## What is NOT done — the left pane
-
-**This is the main outstanding work.** The right pane matches the mockup; the
-left one is still a paraphrase. Port it section by section from
-`patient-intake-redesign.html`, in this order:
-
-| Mockup section | State |
+| | Why |
 |---|---|
-| Referral Email card + "Show referral email / updates" | **missing** — use `fetchUpdates()` |
-| Files — click to preview | **missing** — `fetchItemAssets()` + `FileViewerModal` |
-| Patient Demographics | wrong: needs **First/Last split**, **Gender**, **Address** |
-| What They Need | wrong: mockup is **Product Categories checkboxes** revealing Pump Type / Pump Need / Coverage Path |
-| Care Assessment | merged into my "On the call"; needs its own card + **segmented High/Low** |
-| Cost & Coverage | same — own card |
-| Provided Insurance | dropdown; mockup uses a **segmented** 3-up for Provided via, plus **Start Insurance Follow-Up** |
-| Benefits Check Output | **DO NOT BUILD** (§3/§10, pending Corey's research) |
-| Provided Doctor Info | present, roughly right |
-| Proceed Preference | missing the booking **override** + Confirm booking |
-| Patient Messages | **missing** |
-| Call Log & Notes | **missing entirely** — no notes UI exists, though `notes` is in the save payload |
-| Ready to Advance? | flat button row; mockup uses **`.route` cards** |
-
-**Address is a real data gap**, not just cosmetic — `location_mm1xhw17` is empty
-on every form patient and downstream stages need it for shipping.
-
-### Backend inventory — nothing is blocked
-
-Verified against the live board 2026-08-07. Every mockup field has its column:
-Gender `color_mm1x1bdg` · Address `location_mm1xhw17` · Reason `color_mm5zb8h6` ·
-Pump Type `color_mm1wjjtk` · Pump Need `color_mm5zsfmj` · IP Path `color_mm1w5xn1` ·
-Self Advocacy `color_mm5z31hs` · OOP Cost `text_mm5zj2q1` · Provided via
-`color_mm5zv5pa` · Secondary `color_mm5zh2af` / `text_mm5ztdq9` · Follow Up
-`color_mm3822qq` / `date_mm3874an` · Notes `text_mm389fs`. First/Last = the item
-`name`, no column needed.
+| **Benefits Check Output** | §3/§10 — pending Corey's plan-level research. **Do not build.** Leave the Stedi plumbing alone. |
+| **Calendly booking picker** (§7/§7.2) | No integration. The override is free text + an explicit Confirm — a dropdown of invented times is worse than none, because the rep would believe those openings exist. 🟡 OPEN: can the rep *book*, or only view? |
+| **Send photo upload link to patient** (§8.3) | Needs the tokenized-URL service. The **rep-side** upload is built (drop zone → `file_mm5zhsxh`), so the file half works. |
 
 ---
 
-## Other open items
+## Where the column inventory was wrong
 
-1. **Queue definition.** Josh wants Verified Referrals keyed off `1. Intake` and
-   Patient Intake off the two form groups. **Not done** — it moves ~90 live
-   patients between queues. `1. Intake` holds ~100 items, ~90 with Referral Type
-   `Patient`, and **all of them have `Drop-off Step` and `Form Session ID`
-   empty** (they predate the new form). Their partial/completed state lives on
-   **DTC Intake `18392794310`** (`Partial Leads` group, `JotForm submission ID`,
-   `Drop-off Page`). Josh said he'll sort the board himself. Changing this is a
+The previous version of this file said: *"every field in the mockup already has
+its Monday column — the remaining work is pure front-end."* That was wrong
+twice, and both cost a round trip to find:
+
+1. **CGM Type (`color_mm1w7pmf`) and Pump Type (`color_mm1wjjtk`)** had a `COL`
+   entry, a `READ_COLUMN_IDS` slot, a mapping line, a `Patient` field and an
+   index map — everything except a control and a write path. They were
+   invisible AND unsaveable, and the page showed `formCgmPreference` /
+   `formPumpPreference` (what the patient *said they wanted*) in their place.
+   Two of the four dropdowns §5.2 names. Fixed.
+2. **Clinic Address** and **Helpful Links / Identification Info** genuinely had
+   no column. Resolved by Josh (2026-08-10) without creating any:
+   - Clinic Address writes the **verified** column `location_mm1xjnfv`. This is
+     the one deliberate exception to §6.0's "provided ≠ verified".
+   - "Helpful Links / Identification Info" **is Doctor Notes** — the shared
+     `DoctorNotesPanel` the Medical Necessity tabs carry. It lives on the MM
+     Doctor Database keyed by NPI, so it is per-DOCTOR and needs no column on
+     the patient. It activates once step 3 supplies an NPI.
+
+**Lesson for the next inventory:** "the column exists" and "the field works" are
+different claims. Check `COL` → `READ_COLUMN_IDS` → `mondayMapping` → `Patient`
+→ `IntakeEdits` → `buildIntakeTasks` → a control. A gap anywhere in that chain
+is silent.
+
+---
+
+## Write-path defects fixed (2026-08-09/10)
+
+All four shipped green, because the only thing that would have caught them is a
+live board. Guarded now by `src/lib/profile/unverifiedWrite.test.ts`.
+
+1. **Approve Stuck was a no-op that reported success.** It wrote Escalation
+   index 2 — the index the patient already carried, since index 2 is what puts
+   them in Final Decisions — then toasted "marked Stuck" and navigated away.
+   The stage had no working terminal exit. Now: stamped note → **group move to
+   `GROUPS.stuck`** → clear escalation. It is a group move, not a status flip,
+   because `Move to Onboarding` has no Stuck option on this board. A failed move
+   bails **without** clearing the escalation.
+2. **The page's own Propose Stuck ignored the ladder and the toast lied** —
+   always wrote Manager Intervention while claiming Final Decisions. Now
+   computes `proposeStuckLevel` once and uses it for the write and the message.
+3. **An advance verified only the doctor columns.** The left pane (~30 cols) and
+   verified insurance (5) went out as loose `allSettled` passes before the
+   advancer flipped, so of the 52 columns automation **7917676280** copies, only
+   the doctor block was guaranteed indexed. Worse, with no doctor picked
+   `buildDoctorTasks` returned `[]` and `verifiedWrite` skips snapshot+read-back
+   entirely (`verifyColIds.length > 0`), firing the advancer unverified. All
+   three families are one task list now; an empty list is refused.
+4. **A partial save still advanced the patient** — `save()` reports failures
+   instead of throwing, so "Saved, except: X" was overwritten by "Advanced".
+   Folding the writes into the single verified transaction fixed it.
+
+### Two traps worth knowing
+
+- **`buildAdvanceTasks` de-duplicates by column, last wins.** Clinic Address is
+  emitted by *two* builders (left pane + `buildDoctorTasks`). Both firing in one
+  transaction is a race deciding the patient's address, verified against
+  whichever landed. Doctor block is appended last, so the **picked provider
+  wins over what the patient said** — that ordering is the contract.
+- **Notes are append-only.** `notes` was in `IntakeEdits`, written with a plain
+  `text()` overwrite. Inert only because nothing rendered a notes box — binding
+  Call Log & Notes to it would have replaced the whole history on first save.
+  It is removed from `IntakeEdits` (a test pins that) and appends through
+  `appendIntakeNote` → `appendStampedNote` (§9: ET + stage + initials).
+
+---
+
+## Patient Messages — read this before touching it
+
+Text goes through the **gateway** (`messagingApi.sendMessage`), never straight
+to RingCentral, so the sender comes off the verified Google token server-side.
+Email reuses `sendViaWorker`, the same route Send Request uses.
+
+⚠️ **Sending is blocked on `consentState` (TCPA/CTIA) and must stay that way.**
+Our sends use the plain `/sms` endpoint, not High Volume SMS, so nothing
+upstream stops a rep texting someone who replied STOP. A thread that fails to
+load sets `complete = false`, which also blocks: "no STOP found" in a truncated
+history is the absence of evidence, not consent.
+
+There is deliberately **no merged message history** — the SMS thread is real,
+sent email has no per-patient store to read back, and a combined list would
+imply a record we don't keep.
+
+---
+
+## CSS: one selector, two meanings
+
+`intake.css` defined `.pf-root .why` **twice** — the always-visible reasoning
+note (line ~122) and §4's ⓘ hover circle (line ~272). Later won, so the note
+rendered into a 16px italic circle and its text overflowed across the Save
+button and the next card's header. The hover one is now `.whyicon`.
+
+Both style sets are kept because **the §4 ruling is still open** (below). No
+other selector is duplicated inside `intake.css`. Five are defined in both
+`intake.css` and `redesign.css` — `.file-row`, `.route`, `.route-grid`,
+`.step-head`, `.step-num` — which is fine: `intake.css` imports second and
+either augments or repeats. Note `.route` gets `opacity:.6` from `redesign.css`
+with `.route.on` restoring it, so a route card without `on` is dimmed. That is
+the mockup's own behaviour for the inactive Advance card.
+
+---
+
+## Open — needs Josh, don't guess
+
+1. 🔴 **§4: the confidence pill.** §4 says remove the confidence label and put
+   the engine's reasoning behind an ⓘ hover. Josh asked in-session for it
+   readable *without* clicking in. What ships is always-visible **and** keeps a
+   `HIGH CONFIDENCE` pill — which is the specific thing §4 says to drop.
+   Whichever way this goes it is a markup swap; both style sets exist.
+2. **Queue definition.** Verified Referrals keyed off `1. Intake`, Patient
+   Intake off the two form groups. **Not done** — it moves ~90 live patients
+   between queues, and `1. Intake` holds ~100 items with `Drop-off Step` and
+   `Form Session ID` empty (they predate the new form). Their partial/completed
+   state lives on **DTC Intake `18392794310`**. Josh said he'll sort the board.
    5-file change per §5.10.
-2. **Monday automation `7921666432`** — *when item created + Referral Source is
-   CareCentrix → move to New Form — Completed*. Josh fixed its condition by
-   hand after the MCP tool built it with the wrong value; **verify before
-   trusting it**.
-3. **Insurance card photo** (`file_mm5zhy1`) is fetched but never mapped into
-   `Patient`, so the rep can't view it. Josh explicitly deprioritised this.
-4. **`Approve Stuck` is close to a no-op here** — it writes index 2, which the
-   patient already has, and never moves them to the Stuck group.
-5. **`intakeCallComplete` can't be un-ticked** (write-only-when-truthy).
-6. 23 pre-existing typecheck errors on `main`, none in this slice.
+3. **Monday automation `7921666432`** — *when item created + Referral Source is
+   CareCentrix → move to New Form — Completed*. Built by an MCP tool with the
+   wrong condition value and hand-fixed by Josh; **verify before trusting it.**
+4. §5.2 wants the four product dropdowns sourced from `settings_str` at runtime
+   with the hardcoded maps as fallback. **The data-loss half is fixed** — a
+   board value the picker doesn't offer renders as a disabled "not selectable"
+   option (`selectOptions.ts`) instead of a blank select — but the lists are
+   still hardcoded.
+5. §7.1 questions still unanswered: is **CGM Data & Doctor Awareness**
+   conditional on CGM Coverage Path = `Hypoglycemia`, or always shown with the
+   CGM category? Is **Cost & Coverage** gated on Reason = pharmacy cost?
+6. **`intakeCallComplete` can't be un-ticked** (write-only-when-truthy). Same
+   one-way trap the new `Pills`/`Seg` controls deliberately avoid by clearing on
+   a second click of the active option.
+7. 23 pre-existing typecheck errors on `main`, none in this slice. `npm run
+   typecheck` (`tsc -b`) is the real check — bare `tsc --noEmit` reports 0
+   because the root tsconfig is `"files": []` with references.
 
 ---
 
@@ -147,105 +204,40 @@ Two fake patients in **New Form — Completed** (`group_mm5zgeak`), safe to dele
 
 | Name | Item | Use |
 |---|---|---|
-| `ZZ TEST - Locked Pane (delete me)` | `12749042292` | Proceed Preference = *Wants a call first* → right pane **locked**, one tick from unlocking |
-| `ZZ TEST - Unlocked Pane (delete me)` | `12749065376` | *Send request now* + full fake Stedi → right pane **open** |
+| `ZZ TEST - Locked Pane (delete me)` | `12749042292` | *Wants a call first* → right pane locked, one tick from unlocking |
+| `ZZ TEST - Unlocked Pane (delete me)` | `12749065376` | *Send request now* + full fake Stedi → right pane open |
 
 Both count in the role bar and burndown while they exist.
 
-**The doctor write has not been exercised against a live patient** — it needs a
-browser session with the Monday token. Use the unlocked one: pick a provider in
-step 3, hit Advance to MN, then confirm Doctor Name / NPI / Fax are populated on
-the board *before* the item moves to Completed.
+### Never exercised against a live board
+
+Unit-tested only — all of these need a browser session with a Monday token:
+
+- **The doctor write and the verified advance.** Pick a provider in step 3, hit
+  Advance to MN, confirm Doctor Name / NPI / Fax are populated **before** the
+  item moves to Completed.
+- **`approveIntakeStuck`'s group move** (note → move → clear, and that a failed
+  move leaves the escalation alone). Its ordering has no test — this repo has no
+  `vi.mock` precedent in 1000+ tests, so the write-path tests cover only pure
+  functions and paths that short-circuit before the first network call.
+- **Both baseline generators** (`scripts/snapshot-baseline.mjs`,
+  `services/baseline-cron/index.mjs`) — they need a gateway token and were
+  verified by line-by-line match against `useRoleCounts` only.
+- **Patient Messages.** Texting needs `VITE_MONDAY_GATEWAY_URL`; email needs a
+  signed-in medicallymodern.com session. ⚠️ Unlike everything else here, these
+  send **externally to a real person** — the ZZ TEST patients have fake contact
+  details, so a send fails at the transport rather than reaching anyone.
 
 ---
 
 ## Conventions this stage follows
 
-- Status columns are written **by index, never by label** (§5.2) — a label
-  rename would break a label write silently, because Monday drops an unknown
-  label without erroring. All 18 index maps were verified against the live board.
-- **Provided ≠ verified** (§6.0): `writeIntakeEdits` never touches the verified
-  doctor columns; the patient's own answers live in the `Provided *` columns.
+- Status columns are written **by index, never by label** (§5.2) — Monday drops
+  an unknown label without erroring. All index maps verified against the board.
+- **Provided ≠ verified** (§6.0) — `writeIntakeEdits` doesn't touch the verified
+  doctor columns. Clinic Address is the one authorised exception (above).
 - Every write is a separate task with `Promise.allSettled`, so one rejected
   column can't discard the rest — the UI reports "Saved, except: X".
 - A blank field means *"not set"*, never *"clear the board"*. Guard every task.
-
-
----
-
-## Spec conflicts found by actually reading HANDOFF_PATIENT_INTAKE.md
-
-Added after re-reading the spec end to end. These are places the shipped code
-disagrees with it — each cites the section.
-
-### 1. Dropdown options must come from the BOARD, not hardcoded maps (§5.2)
-
-CGM Type, Pump Type, CGM Coverage Path and Insulin Pump Coverage Path should
-read their options from `columns { settings_str }` at runtime, so a board rename
-or a new label flows through without a code edit. Shipped code uses the
-hardcoded `*_INDEX` maps — the spec says outright "the filter is right; the
-**source** is wrong."
-
-Required shape: fetch settings once per session and cache · build a live
-label↔index map · render sorted by `labels_positions_v2` · drop empty slots ·
-filter `HIDDEN_LABELS = ["Not Serving"]` · **write by index** · keep the
-hardcoded maps as a fallback so the dropdown is never empty.
-
-> ⚠️ **The bug this creates today.** `noNotServing()` removes "Not Serving" from
-> the OPTIONS entirely. The spec is explicit: if an item's current value IS a
-> hidden label it must still render, greyed and unselectable — otherwise the
-> select shows blank and a later save can wipe a real value. "Not Serving" is a
-> legitimate written value (the cross-sell derivation writes it), it is only
-> hidden from the *picker*. **Never apply the filter on the write path.**
-
-### 2. The engine's reasoning is an ⓘ HOVER, and the confidence label is furniture (§4)
-
-§4 says to remove "the suggestion chip, the confidence label, the state pin, the
-runner-up alternates" and put the reasoning behind an ⓘ next to **Primary
-Insurance** and **Serving**. The shipped `.why` note is always-visible and keeps
-a `HIGH CONFIDENCE` pill.
-
-⚠️ This is a genuine conflict, not an oversight: Josh asked in-session for the
-reasoning to be readable *without clicking in*. The always-visible note is what
-he asked for; the confidence pill is what §4 says to drop. **Get a ruling before
-changing it.** Either way, hard blocks and MSP/MA/facility warnings stay as
-visible banners — the hover is for explaining a normal pick, never for hiding a
-problem.
-
-### 3. Member ID 2 blocks the advance when Secondary = NY Medicaid (§4)
-
-`writeVerifiedInsurance` refuses the write, but the step-4 **Ready to Send Off?**
-checklist has no row for it — the mockup does ("Member ID 2 (required for NY
-Medicaid)"). Add it so the block is visible before the rep hits Advance.
-
-### 4. Product categories hide their whole column (§7.1)
-
-"An unselected product category hides its **entire column**" — it does not grey
-out, and the individual field boxes are not highlighted because the category
-toggle carries the selected state. This is the checkbox-reveal behaviour in the
-mockup's *What They Need*; shipped code has flat dropdowns.
-
-### 5. Not built at all, and specced in detail
-
-- **Calendly (§7, §7.2)** — real integration, next 2–3 days of availability, ~2h
-  buffer. The booking-override dropdown and the form's slot picker must read the
-  SAME live openings so they can't disagree. 🟡 OPEN: can the rep *book* from the
-  UI, or only view the patient's booking?
-- **CGM data upload (§8.3)** — "Send photo upload link to patient" generates a
-  tokenized URL scoped to one Monday item; the patient uploads from their phone;
-  the file lands in `CGM Data File` (`file_mm5zhsxh`, exists, currently unread)
-  and appears in the left pane using the standard file-row + viewer + drop-zone
-  pattern. 🟡 OPEN: channel, expiry, append-or-replace.
-
-### 6. Still awaiting Josh (§7.1)
-
-- Is **CGM Data & Doctor Awareness** conditional on CGM Coverage Path =
-  `Hypoglycemia`, or always shown when the CGM category is on?
-- Is **Cost & Coverage** gated on Reason = pharmacy cost, or always visible and
-  merely highlighted?
-
-### 7. Where the spec is now STALE
-
-§9 says *Care Assessment* and *Cost & Coverage* "have no backing columns at all".
-They do now — `color_mm5z31hs` and `text_mm5zj2q1` — and the page writes both.
-Same for every other `NEW COLUMN NEEDED` stamp. Trust the live board over §9.
+- **Monday dates are timezone-naive ET.** Use `etToday()`, never a bare
+  `new Date()` — in a UTC runtime anything after 8pm ET dates to tomorrow.

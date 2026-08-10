@@ -439,6 +439,15 @@ const UnverifiedReferralsPage = () => {
       { label: "Member ID 1", ok: !!(verified.memberId1 ?? "").trim() },
       { label: "Serving", ok: !!serving },
     ];
+    // writeVerifiedInsurance REFUSES the advance without this, so it has to be
+    // visible here — otherwise the rep only learns about it from an error after
+    // pressing Advance. The mockup lists the same row.
+    if ((verified.secondaryInsurance ?? "").trim() === "NY Medicaid") {
+      items.push({
+        label: "Member ID 2 (required for NY Medicaid)",
+        ok: !!(verified.memberId2 ?? "").trim(),
+      });
+    }
     if (/CGM/i.test(serving)) {
       items.push({ label: "CGM Coverage Path", ok: !!(selected.cgmCoveragePath ?? "").trim() });
     }
@@ -451,7 +460,8 @@ const UnverifiedReferralsPage = () => {
     // The doctor carries to Medical Necessity and is what Send Request needs.
     items.push({ label: "Doctor selected", ok: !!(selected.doctorNpi ?? "").trim() });
     return items;
-  }, [selected, verified.primaryInsurance, verified.memberId1]);
+  }, [selected, verified.primaryInsurance, verified.memberId1,
+      verified.secondaryInsurance, verified.memberId2]);
 
   const readyMissing = readiness.filter((i) => !i.ok).length;
 
