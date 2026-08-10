@@ -1,5 +1,13 @@
 import { describe, it, expect } from "vitest";
-import { INTAKE_STATUS_INDEX, statusIndexFor } from "./unverifiedWrite";
+import {
+  INTAKE_STATUS_INDEX, statusIndexFor,
+  verifiedInsuranceBlocker, buildAdvanceTasks, buildIntakeTasks,
+  buildVerifiedInsuranceTasks, advanceToMedicalNecessity,
+  type AdvanceInput,
+} from "./unverifiedWrite";
+import { COL } from "./mondayApi";
+import { proposeStuckLevel } from "../shared/stageActions";
+import type { Patient } from "./workflow";
 
 /**
  * These indices are the contract between this app and board 18406352652.
@@ -85,5 +93,132 @@ describe("statusIndexFor", () => {
     // silently drop every "High" / "Yes" / "Send request now".
     expect(statusIndexFor("intakeCallComplete", "Yes")).toBe(0);
     expect(statusIndexFor("intakeCallComplete", "Yes")).not.toBeUndefined();
+  });
+});
+
+/**
+ * The advance path.
+ *
+ * Every test below runs WITHOUT a Monday token: each exercises either a pure
+ * function or a path that short-circuits before the first network call. That's
+ * deliberate — the defects these cover all shipped green, because the only
+ * thing that would have caught them was a live board.
+ */
+
+const patient = (over: Partial<Patient> = {}) =>
+  ({ id: "123", name: "Test Patient", ...over }) as unknown as Patient;
+
+const columnsOf = (tasks: { columnId: string }[]) => tasks.map((t) => t.columnId);
+
+describe("verifiedInsuranceBlocker", () => {
+  it("refuses NY Medicaid with no Member ID 2", () => {
+    expect(verifiedInsuranceBlocker({ secondaryInsurance: "NY Medicaid" })?.columnId).toBe(COL.memberId2);
+  });
+
+  it("allows NY Medicaid once Member ID 2 is filled", () => {
+    expect(verifiedInsuranceBlocker({ secondaryInsurance: "NY Medicaid", memberId2: "M123" })).toBeNull();
+  });
+
+  it("treats a whitespace-only Member ID 2 as missing", () => {
+    expect(verifiedInsuranceBlocker({ secondaryInsurance: "NY Medicaid", memberId2: "   " })).not.toBeNull();
+  });
+
+  it("does not block any other secondary", () => {
+    expect(verifiedInsuranceBlocker({ secondaryInsurance: "Aetna" })).toBeNull();
+  });
+});
+
+describe("buildAdvanceTasks", () => {
+  const input: AdvanceInput = {
+    edits: { dob: "01/02/1990" },
+    verified: { primaryInsurance: "Aetna Commercial", memberId1: "M1" },
+  };
+
+  it("carries the left pane, the verified insurance AND the doctor in ONE list", () => {
+    // The regression: these were three separate passes, and only the doctor
+    // block was verified before the advancer flipped. Automation 7917676280
+    // reads all of them.
+    const cols = columnsOf(buildAdvanceTasks(patient({ doctorName: "Dr Who", doctorNpi: "1234567890" }), input));
+    expect(cols).toContain(COL.dob);              // left pane
+    expect(cols).toContain(COL.primaryInsurance); // verified insurance
+    expect(cols).toContain(COL.memberId1);
+    expect(cols).toContain(COL.doctorName);       // doctor
+    expect(cols).toContain(COL.doctorNpi);
+  });
+
+  it("never includes the stage advancer — verifiedWrite has to hold that back itself", () => {
+    const cols = columnsOf(buildAdvanceTasks(patient({ doctorName: "Dr Who" }), input));
+    expect(cols).not.toContain(COL.moveToOnboarding);
+  });
+
+  it("is empty when there is nothing to write", () => {
+    expect(buildAdvanceTasks(patient(), { edits: {}, verified: {} })).toEqual([]);
+  });
+});
+
+describe("advanceToMedicalNecessity refusals", () => {
+  // Both return before any network call, so they are safe to assert on with no
+  // token and no mocking.
+  it("refuses before writing anything when Member ID 2 is missing for NY Medicaid", async () => {
+    const res = await advanceToMedicalNecessity(patient({ doctorName: "Dr Who" }), {
+      edits: { dob: "01/02/1990" },
+      verified: { secondaryInsurance: "NY Medicaid" },
+    });
+    expect(res.ok).toBe(false);
+    expect(res.errors[0].columnId).toBe(COL.memberId2);
+  });
+
+  it("refuses to advance when there is no data column to verify first", async () => {
+    // verifiedWrite skips its snapshot and read-back phases when there are no
+    // data columns, so this shape would fire the advancer completely unverified.
+    const res = await advanceToMedicalNecessity(patient(), { edits: {}, verified: {} });
+    expect(res.ok).toBe(false);
+    expect(res.errors[0].columnId).toBe(COL.moveToOnboarding);
+    expect(res.errors[0].error).toMatch(/refusing to advance/i);
+  });
+});
+
+describe("intake task builders keep provided and verified apart", () => {
+  it("never lets a left-pane save touch the verified doctor columns (HANDOFF §6.0)", () => {
+    const cols = columnsOf(buildIntakeTasks("123", {
+      formProvidedDoctorName: "Dr Patient-Said",
+      formProvidedClinicPhone: "3475550101",
+    }));
+    expect(cols).toContain(COL.formProvidedDoctorName);
+    expect(cols).not.toContain(COL.doctorName);
+    expect(cols).not.toContain(COL.doctorPhone);
+  });
+
+  it("skips a field the rep never touched rather than blanking the board", () => {
+    expect(buildIntakeTasks("123", {})).toEqual([]);
+    expect(buildVerifiedInsuranceTasks("123", {})).toEqual([]);
+  });
+
+  it("treats an empty string as a deliberate clear, unlike undefined", () => {
+    expect(columnsOf(buildIntakeTasks("123", { dob: "" }))).toContain(COL.dob);
+    expect(columnsOf(buildIntakeTasks("123", { dob: undefined }))).not.toContain(COL.dob);
+  });
+
+  it("SKIPS a status label it doesn't know rather than guessing an index", () => {
+    // Writing the wrong index would file the patient under the wrong answer, so
+    // an unrecognised label is dropped. Worth pinning: it means a label renamed
+    // on the board stops being written with no error anywhere (§5.2).
+    expect(buildVerifiedInsuranceTasks("123", { primaryInsurance: "Aetna" })).toEqual([]);
+    expect(columnsOf(buildVerifiedInsuranceTasks("123", { primaryInsurance: "Aetna Commercial" })))
+      .toContain(COL.primaryInsurance);
+  });
+});
+
+describe("intake climbs the shared Propose Stuck ladder", () => {
+  it("starts a rep's proposal at Manager Intervention", () => {
+    expect(proposeStuckLevel("unverified-intake", null, "")).toBe("manager");
+  });
+
+  it("promotes to Final when a manager proposes from Manager Intervention", () => {
+    expect(proposeStuckLevel("unverified-intake", "manager-intervention", "")).toBe("final");
+  });
+
+  it("promotes to Final when the patient is already escalated", () => {
+    expect(proposeStuckLevel("unverified-intake", null, "Manager Escalation Required")).toBe("final");
   });
 });

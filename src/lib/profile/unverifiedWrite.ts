@@ -19,9 +19,9 @@
  */
 
 import {
-  COL, writeStatusIndex, writeText, writeNumber, writeLongText, writeItemName,
+  COL, GROUPS, writeStatusIndex, writeText, writeNumber, writeLongText, writeItemName,
   writePhone, writeEmail, writeLocation, writeDropdownIds, writeDropdownLabels,
-  readColumnTexts,
+  readColumnTexts, moveItemToGroup,
 } from "./mondayApi";
 import { executeWritesWithVerification } from "../shared/verifiedWrite";
 import { CLINICALS_METHOD_INDEX } from "./mondayMapping";
@@ -170,12 +170,16 @@ export interface IntakeEdits {
 }
 
 /**
- * Persist a rep's edits. Every field is written independently so one rejected
- * column can't discard the rest of the save — the same reason the intake
- * backend falls back to per-column writes. Returns what failed instead of
- * throwing, so the UI can show "saved, except X" rather than a blanket error.
+ * The write tasks for a rep's edits, built but NOT run.
+ *
+ * Exposed separately from `writeIntakeEdits` because the Save button and the
+ * Advance need the same columns written through different machinery: Save runs
+ * them loose (one bad column shouldn't discard the rest of a rep's typing),
+ * while Advance has to hand them to `executeWritesWithVerification` so they are
+ * read back BEFORE the stage advancer fires. Two call sites, one list — a
+ * second copy is how a column ends up saved on one path and dropped on the other.
  */
-export async function writeIntakeEdits(itemId: string, edits: IntakeEdits): Promise<IntakeWriteResult> {
+export function buildIntakeTasks(itemId: string, edits: IntakeEdits): WriteTask[] {
   const tasks: WriteTask[] = [];
 
   const text = (label: string, columnId: string, value: string | undefined) => {
@@ -275,6 +279,13 @@ export async function writeIntakeEdits(itemId: string, edits: IntakeEdits): Prom
 
   text("Notes", COL.notes, edits.notes);
 
+  return tasks;
+}
+
+/** Run a task list to completion, collecting per-column failures rather than
+ *  throwing on the first one — so one rejected column can't discard the rest of
+ *  a save, and the UI can name exactly what didn't land. */
+async function runTasks(tasks: WriteTask[]): Promise<IntakeWriteResult> {
   const settled = await Promise.allSettled(tasks.map((t) => t.fn()));
   const errors: IntakeWriteResult["errors"] = [];
   settled.forEach((r, i) => {
@@ -286,8 +297,17 @@ export async function writeIntakeEdits(itemId: string, edits: IntakeEdits): Prom
       });
     }
   });
-
   return { ok: errors.length === 0, errors };
+}
+
+/**
+ * Persist a rep's edits (the Save button). Every field is written
+ * independently so one rejected column can't discard the rest of the save.
+ * Returns what failed instead of throwing, so the UI can show "saved, except X"
+ * rather than a blanket error.
+ */
+export function writeIntakeEdits(itemId: string, edits: IntakeEdits): Promise<IntakeWriteResult> {
+  return runTasks(buildIntakeTasks(itemId, edits));
 }
 
 /** Bump the unified attempt counter. Automated email/text, autodialer and
@@ -317,21 +337,26 @@ export interface VerifiedEdits {
  * half-applied, because a Medicaid secondary with no ID fails downstream in a
  * way nobody traces back to here.
  */
-export async function writeVerifiedInsurance(
-  itemId: string,
-  edits: VerifiedEdits,
-): Promise<IntakeWriteResult> {
+/**
+ * The one thing that refuses a verified-insurance write outright, returned as a
+ * blocker rather than thrown so both the Save and the Advance can report it the
+ * same way. Advance checks it FIRST — before any column is written — so a
+ * refused advance doesn't leave a half-applied save behind it.
+ */
+export function verifiedInsuranceBlocker(edits: VerifiedEdits): IntakeWriteResult["errors"][number] | null {
   if ((edits.secondaryInsurance ?? "").trim() === "NY Medicaid" && !(edits.memberId2 ?? "").trim()) {
     return {
-      ok: false,
-      errors: [{
-        label: "Member ID 2",
-        columnId: COL.memberId2,
-        error: "Required when Secondary Insurance is NY Medicaid.",
-      }],
+      label: "Member ID 2",
+      columnId: COL.memberId2,
+      error: "Required when Secondary Insurance is NY Medicaid.",
     };
   }
+  return null;
+}
 
+/** The verified-insurance write tasks, built but NOT run — same split, and for
+ *  the same reason, as `buildIntakeTasks`. */
+export function buildVerifiedInsuranceTasks(itemId: string, edits: VerifiedEdits): WriteTask[] {
   const tasks: WriteTask[] = [];
   const status = (label: string, columnId: string, map: Record<string, number>, value?: string) => {
     if (value === undefined) return;
@@ -350,18 +375,17 @@ export async function writeVerifiedInsurance(
     tasks.push({ label: "Member ID 2", columnId: COL.memberId2, fn: () => writeText(itemId, COL.memberId2, edits.memberId2 as string) });
   }
 
-  const settled = await Promise.allSettled(tasks.map((t) => t.fn()));
-  const errors: IntakeWriteResult["errors"] = [];
-  settled.forEach((r, i) => {
-    if (r.status === "rejected") {
-      errors.push({
-        label: tasks[i].label,
-        columnId: tasks[i].columnId,
-        error: r.reason instanceof Error ? r.reason.message : String(r.reason),
-      });
-    }
-  });
-  return { ok: errors.length === 0, errors };
+  return tasks;
+}
+
+/** Persist the verified insurance decision on its own (the right pane's Save). */
+export async function writeVerifiedInsurance(
+  itemId: string,
+  edits: VerifiedEdits,
+): Promise<IntakeWriteResult> {
+  const blocker = verifiedInsuranceBlocker(edits);
+  if (blocker) return { ok: false, errors: [blocker] };
+  return runTasks(buildVerifiedInsuranceTasks(itemId, edits));
 }
 
 // ── Stage exits ─────────────────────────────────────────────────────────────
@@ -469,11 +493,64 @@ function buildDoctorTasks(p: Patient, clinicLabelId: number | null): WriteTask[]
  * throws and does NOT advance, which surfaces the problem instead of shipping
  * a half-built patient downstream.
  */
+export interface AdvanceInput {
+  /** The left pane's edits — written inside the verified transaction, not before it. */
+  edits: IntakeEdits;
+  /** The right pane's verified insurance — likewise. */
+  verified: VerifiedEdits;
+  clinicLabelId?: number | null;
+}
+
+/**
+ * Every data column an advance writes, in one list — the left pane, the
+ * verified insurance and the doctor.
+ *
+ * These used to be three separate passes: two un-verified ones fired by the
+ * page, then a verified one covering the doctor columns alone. So of the 52
+ * columns automation 7917676280 copies on the advancer, only the doctor block
+ * was guaranteed indexed when it read them (CLAUDE.md §5.2 / §9).
+ *
+ * Split out from `advanceToMedicalNecessity` so the composition is testable
+ * without a Monday token: the property that matters is that all three families
+ * are in the SAME list, because that list is what gets read back before the
+ * advancer is allowed to fire. The advancer itself is deliberately NOT here —
+ * `executeWritesWithVerification` must receive it separately to hold it back.
+ */
+export function buildAdvanceTasks(p: Patient, opts: AdvanceInput): WriteTask[] {
+  return [
+    ...buildIntakeTasks(p.id, opts.edits),
+    ...buildVerifiedInsuranceTasks(p.id, opts.verified),
+    ...buildDoctorTasks(p, opts.clinicLabelId ?? null),
+  ];
+}
+
 export async function advanceToMedicalNecessity(
   p: Patient,
-  clinicLabelId: number | null = null,
+  opts: AdvanceInput,
 ): Promise<IntakeWriteResult> {
-  const tasks: WriteTask[] = buildDoctorTasks(p, clinicLabelId);
+  // Refuse BEFORE writing anything. This used to run inside
+  // writeVerifiedInsurance, which the page called after a full left-pane save —
+  // so a blocked advance still left ~30 columns written behind it.
+  const blocker = verifiedInsuranceBlocker(opts.verified);
+  if (blocker) return { ok: false, errors: [blocker] };
+
+  const tasks: WriteTask[] = buildAdvanceTasks(p, opts);
+
+  // With no data columns, verifiedWrite skips its snapshot and read-back phases
+  // entirely (`if (verifyColIds.length > 0)`) and the advancer fires unverified
+  // — the one shape that silently defeats the whole protocol. Refuse instead:
+  // an advance with nothing to carry forward is a bug in the caller, not a
+  // patient who is ready.
+  if (tasks.length === 0) {
+    return {
+      ok: false,
+      errors: [{
+        label: "Advance to MN",
+        columnId: COL.moveToOnboarding,
+        error: "Nothing to write — refusing to advance without verifying any data first.",
+      }],
+    };
+  }
 
   // The advancer goes in LAST — executeWritesWithVerification holds it back
   // until every task above it verifies.
@@ -509,10 +586,20 @@ export async function advanceToMedicalNecessity(
   }
 }
 
-async function setEscalation(
-  itemId: string, index: number, note: string, existingNotes?: string,
-): Promise<IntakeWriteResult> {
-  const errors: IntakeWriteResult["errors"] = [];
+/**
+ * Append one decision to the escalation log. Split out of `setEscalation` so
+ * Approve Stuck can stamp its reason and then do something other than write an
+ * escalation index.
+ *
+ * Notes go first everywhere they're used: if the state change lands and the
+ * note doesn't, a manager sees a decision with no reason attached.
+ */
+async function writeEscalationNote(
+  itemId: string,
+  note: string,
+  existingNotes: string | undefined,
+  errors: IntakeWriteResult["errors"],
+): Promise<void> {
   // Read the CURRENT log rather than trusting the caller to have passed it.
   // StageActionBar can't know it, and calling appendNote(undefined, …) writes
   // only the new line — silently destroying every earlier escalation note.
@@ -527,8 +614,6 @@ async function setEscalation(
       prior = "";
     }
   }
-  // Notes first: if the status lands and the note doesn't, a manager sees an
-  // escalation with no reason attached.
   try {
     await writeLongText(itemId, COL.intakeEscalationNotes, appendNote(prior, note));
   } catch (e) {
@@ -537,6 +622,13 @@ async function setEscalation(
       error: e instanceof Error ? e.message : String(e),
     });
   }
+}
+
+async function setEscalation(
+  itemId: string, index: number, note: string, existingNotes?: string,
+): Promise<IntakeWriteResult> {
+  const errors: IntakeWriteResult["errors"] = [];
+  await writeEscalationNote(itemId, note, existingNotes, errors);
   try {
     await writeStatusIndex(itemId, COL.intakeEscalation, index);
   } catch (e) {
@@ -581,13 +673,57 @@ export function returnIntakeToPipeline(itemId: string, note: string, existingNot
   return setEscalation(itemId, INTAKE_ESCALATION_INDEX.done, `Returned to pipeline: ${note}`, existingNotes);
 }
 
-/** Manager approves the rep's proposal — the patient really is Stuck. Keeps
- *  the Final Escalation index and records the decision in the note log. */
-export function approveIntakeStuck(itemId: string, note: string, existingNotes?: string) {
-  return setEscalation(
+/**
+ * Manager approves the rep's proposal — the patient really is Stuck, and leaves
+ * the pipeline. Mirrors `oversightApi.approveProposedStuck`: stamped note, then
+ * the exit, then clear the escalation.
+ *
+ * This used to write escalation index 2 — the index the patient ALREADY carried,
+ * since index 2 is what put them in Final Decisions in the first place. So it
+ * was a no-op that appended a note, toasted "marked Stuck" and navigated the
+ * manager away, while the patient stayed in Final Decisions permanently. The
+ * stage had no working terminal exit.
+ *
+ * The exit is a GROUP MOVE, not a status flip: unlike Medical Evaluation and
+ * Insurance, this board's advancer (Move to Onboarding) has no "Stuck" option —
+ * its labels are Already Serving / Advance to MN / Send Back To Referral /
+ * Need More Info. The Stuck group is the board's own idiom for it, the same
+ * `moveItemToGroup` the send-off's "Send back to Patient Intake" uses.
+ */
+export async function approveIntakeStuck(
+  itemId: string, note: string, existingNotes?: string,
+): Promise<IntakeWriteResult> {
+  const errors: IntakeWriteResult["errors"] = [];
+  await writeEscalationNote(
     itemId,
-    INTAKE_ESCALATION_INDEX.finalRequired,
     `Stuck approved${note.trim() ? `: ${note.trim()}` : ""}`,
     existingNotes,
+    errors,
   );
+
+  try {
+    await moveItemToGroup(itemId, GROUPS.stuck);
+  } catch (e) {
+    errors.push({
+      label: "Move to Stuck", columnId: GROUPS.stuck,
+      error: e instanceof Error ? e.message : String(e),
+    });
+    // Bail WITHOUT clearing the escalation. Clearing it here would drop a
+    // patient who never actually left back into the rep's queue while the
+    // manager has been told they're stuck; leaving it means the row stays in
+    // Final Decisions and the manager can simply retry.
+    return { ok: false, errors };
+  }
+
+  // Clear the escalation LAST — it is what removes the row from Final
+  // Decisions, so it must not happen unless the patient really has moved.
+  try {
+    await writeStatusIndex(itemId, COL.intakeEscalation, INTAKE_ESCALATION_INDEX.done);
+  } catch (e) {
+    errors.push({
+      label: "Intake Escalation", columnId: COL.intakeEscalation,
+      error: e instanceof Error ? e.message : String(e),
+    });
+  }
+  return { ok: errors.length === 0, errors };
 }

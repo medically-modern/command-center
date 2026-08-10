@@ -50,6 +50,9 @@ import { optionsWithCurrent } from "@/lib/profile/selectOptions";
 // literally the same component and copy Medical Evaluation uses — not a
 // lookalike that can drift from it.
 import { StageActionBar } from "@/components/shared/StageActionBar";
+// The ladder itself, so this page's own Propose Stuck button and the bar's
+// cannot disagree about which rung a proposal lands on.
+import { proposeStuckLevel } from "@/lib/shared/stageActions";
 // The live sidebar and header, so this page sits in the same chrome as every
 // other Command Center stage instead of inventing its own.
 import { PatientsSidebar } from "@/components/profile/PatientsSidebar";
@@ -176,6 +179,50 @@ function Card({
       {children}
     </section>
   );
+}
+
+/**
+ * The left pane's edits, as the write layer wants them.
+ *
+ * Module-level and shared by BOTH the Save button and Advance, deliberately:
+ * Advance used to call `save()` and then advance separately, so the two paths
+ * each had their own idea of which columns to send. One list means a field
+ * can't be saved by one and dropped by the other.
+ */
+function intakeEditsFor(p: Patient): IntakeEdits {
+  return {
+    name: p.name,
+    ptPhone: p.ptPhone,
+    dob: p.dob,
+    email: p.email,
+    formState: p.formState,
+    referralType: p.referralType,
+    referralSource: p.referralSource,
+    // Product decision — shared with the right pane's Serving & Coverage card.
+    requestType: p.requestType,
+    cgmCoveragePath: p.cgmCoveragePath,
+    insulinPumpCoveragePath: p.insulinPumpCoveragePath,
+    workingMemberId: p.workingMemberId,
+    generalInsurance: p.generalInsurance,
+    formInsuranceVia: p.formInsuranceVia,
+    formInsuranceOther: p.formInsuranceOther,
+    formSecondaryProvided: p.formSecondaryProvided,
+    formSecondaryMemberId: p.formSecondaryMemberId,
+    formReasonForInquiry: p.formReasonForInquiry,
+    formPumpNeed: p.formPumpNeed,
+    formCgmPreference: p.formCgmPreference,
+    formPumpPreference: p.formPumpPreference,
+    formProvidedDoctorName: p.formProvidedDoctorName,
+    formProvidedClinicPhone: p.formProvidedClinicPhone,
+    formProceedPreference: p.formProceedPreference,
+    formCallSlot: p.formCallSlot,
+    formBookingStatus: p.formBookingStatus,
+    intakeCallComplete: (p.intakeCallComplete ?? "").trim().toLowerCase() === "yes",
+    selfAdvocacy: p.selfAdvocacy,
+    currentOopCost: p.currentOopCost,
+    cgmDataAwareness: p.cgmDataAwareness,
+    notes: p.notes,
+  };
 }
 
 const UnverifiedReferralsPage = () => {
@@ -341,39 +388,7 @@ const UnverifiedReferralsPage = () => {
     if (!selected) return;
     setSaving(true);
     setSaveNote(null);
-    const edits: IntakeEdits = {
-      name: selected.name,
-      ptPhone: selected.ptPhone,
-      dob: selected.dob,
-      email: selected.email,
-      formState: selected.formState,
-      referralType: selected.referralType,
-      referralSource: selected.referralSource,
-      // Product decision — shared with the right pane's Serving & Coverage card.
-      requestType: selected.requestType,
-      cgmCoveragePath: selected.cgmCoveragePath,
-      insulinPumpCoveragePath: selected.insulinPumpCoveragePath,
-      workingMemberId: selected.workingMemberId,
-      generalInsurance: selected.generalInsurance,
-      formInsuranceVia: selected.formInsuranceVia,
-      formInsuranceOther: selected.formInsuranceOther,
-      formSecondaryProvided: selected.formSecondaryProvided,
-      formSecondaryMemberId: selected.formSecondaryMemberId,
-      formReasonForInquiry: selected.formReasonForInquiry,
-      formPumpNeed: selected.formPumpNeed,
-      formCgmPreference: selected.formCgmPreference,
-      formPumpPreference: selected.formPumpPreference,
-      formProvidedDoctorName: selected.formProvidedDoctorName,
-      formProvidedClinicPhone: selected.formProvidedClinicPhone,
-      formProceedPreference: selected.formProceedPreference,
-      formCallSlot: selected.formCallSlot,
-      formBookingStatus: selected.formBookingStatus,
-      intakeCallComplete: (selected.intakeCallComplete ?? "").trim().toLowerCase() === "yes",
-      selfAdvocacy: selected.selfAdvocacy,
-      currentOopCost: selected.currentOopCost,
-      cgmDataAwareness: selected.cgmDataAwareness,
-      notes: selected.notes,
-    };
+    const edits: IntakeEdits = intakeEditsFor(selected);
     try {
       const res = await writeIntakeEdits(selected.id, edits);
       // Partial success is reported, not swallowed — the rep needs to know
@@ -419,39 +434,47 @@ const UnverifiedReferralsPage = () => {
       setSaveNote(null);
       try {
         const notes = selected.intakeEscalationNotes;
-        // "Write everything, then flip the advancer" — the same contract
-        // Verified Referrals' send-off has. The left pane's edits and the
-        // verified insurance go first; advanceToMedicalNecessity then writes
-        // the doctor columns, reads every column back, and only writes Move to
-        // Onboarding once they have all landed.
-        if (kind === "advance") {
-          await save();
-          const ins = await writeVerifiedInsurance(selected.id, { ...verified, serving: selected.serving });
-          if (!ins.ok) {
-            setSaveNote(`Not advanced — ${ins.errors.map((e) => `${e.label}: ${e.error}`).join(" · ")}`);
-            setSaving(false);
-            return;
-          }
-        }
+        // The SAME ladder the shared StageActionBar climbs. This call used to
+        // omit the level, so it always wrote Manager Intervention while the
+        // message below told the rep it had gone to Final Decisions. Computed
+        // once and used for both the write and what we claim about it.
+        const stuckLevel = proposeStuckLevel(
+          "unverified-intake", managerOrigin, selected.intakeEscalation,
+        );
         const res =
-          kind === "advance" ? await advanceToMedicalNecessity(selected, clinicLabelId)
+          // ONE verified transaction. The left pane, the verified insurance and
+          // the doctor columns are now all written and read back BEFORE Move to
+          // Onboarding flips — nothing is written ahead of it. Previously the
+          // first two went out unverified and a partial failure still advanced
+          // the patient, because save() reports its errors instead of throwing.
+          kind === "advance" ? await advanceToMedicalNecessity(selected, {
+            edits: intakeEditsFor(selected),
+            verified: { ...verified, serving: selected.serving },
+            clinicLabelId,
+          })
           : kind === "escalate" ? await escalateIntake(selected.id, escalateReason, notes)
-          : kind === "proposeStuck" ? await proposeIntakeStuck(selected.id, escalateReason, notes)
+          : kind === "proposeStuck"
+            ? await proposeIntakeStuck(selected.id, escalateReason, notes, stuckLevel)
           : await returnIntakeToPipeline(selected.id, escalateReason, notes);
         setSaveNote(
           res.ok
             ? kind === "advance" ? "Advanced to Medical Necessity."
               : kind === "escalate" ? "Escalated to Manager Intervention."
-              : kind === "proposeStuck" ? "Proposed stuck — sent to Final Decisions."
+              : kind === "proposeStuck"
+                ? stuckLevel === "final"
+                  ? "Proposed stuck — sent to Final Decisions."
+                  : "Proposed stuck — sent to Manager Intervention."
               : "Sent back to the pipeline."
-            : res.errors.map((e) => `${e.label}: ${e.error}`).join(" · "),
+            : kind === "advance"
+              ? `Not advanced — ${res.errors.map((e) => `${e.label}: ${e.error}`).join(" · ")}`
+              : res.errors.map((e) => `${e.label}: ${e.error}`).join(" · "),
         );
         if (res.ok) { setEscalateReason(""); await refetch(true); }
       } finally {
         setSaving(false);
       }
     },
-    [selected, escalateReason, refetch, save, verified, clinicLabelId],
+    [selected, escalateReason, refetch, verified, clinicLabelId, managerOrigin],
   );
 
   // Declared after save() deliberately: naming it in the dependency array
