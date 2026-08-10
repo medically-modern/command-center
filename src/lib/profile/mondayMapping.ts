@@ -11,6 +11,30 @@ function col(item: MondayItem, colId: string): string {
 }
 
 /**
+ * Asset IDs on a FILE column, comma-joined.
+ *
+ * A file column's `text` is a URL, and its `value` is
+ * `{"files":[{"assetId":123,"name":"card.jpg",…}]}`. The ID is the only
+ * reliable join to `fetchItemAssets` — matching on a name parsed out of the
+ * URL works until a filename is re-encoded or duplicated, and matching on the
+ * URL itself is worse: the column's `protected_static` link needs a Monday
+ * session, where the asset's `public_url` is signed and just opens.
+ */
+function fileAssetIds(item: MondayItem, colId: string): string {
+  const cv = item.column_values.find((c: MondayColumnValue) => c.id === colId);
+  if (!cv?.value) return "";
+  try {
+    const parsed = JSON.parse(cv.value) as { files?: { assetId?: number | string }[] };
+    return (parsed.files ?? [])
+      .map((f) => String(f.assetId ?? "").trim())
+      .filter(Boolean)
+      .join(",");
+  } catch {
+    return "";
+  }
+}
+
+/**
  * Convert a Monday board item into a Patient object.
  */
 export function mondayItemToPatient(item: MondayItem): Patient {
@@ -44,6 +68,8 @@ export function mondayItemToPatient(item: MondayItem): Patient {
     // could not see the card photo the patient uploaded.
     formCardPhoto: col(item, COL.formCardPhoto),
     cgmDataFile: col(item, COL.cgmDataFile),
+    formCardPhotoIds: fileAssetIds(item, COL.formCardPhoto),
+    cgmDataFileIds: fileAssetIds(item, COL.cgmDataFile),
     formInsuranceVia: col(item, COL.formInsuranceVia),
     formInsuranceOther: col(item, COL.formInsuranceOther),
     formSecondaryProvided: col(item, COL.formSecondaryProvided),

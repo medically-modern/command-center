@@ -42,6 +42,10 @@ export interface Patient {
    *  the item's assets to open them in the viewer. */
   formCardPhoto: string;
   cgmDataFile: string;
+  /** Comma-joined asset IDs on those two file columns — the reliable join to
+   *  fetchItemAssets, and therefore to a signed URL the viewer can open. */
+  formCardPhotoIds: string;
+  cgmDataFileIds: string;
   formInsuranceVia: string;
   formInsuranceOther: string;
   formSecondaryProvided: string;

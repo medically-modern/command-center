@@ -270,12 +270,40 @@ function Seg({
  * nothing would read as "the patient never sent one".
  */
 function FileColumnRow({
-  label, filename, assets,
+  label, filename, assetIds, assets,
 }: {
-  label: string; filename?: string; assets: MondayAsset[] | null;
+  label: string; filename?: string; assetIds?: string; assets: MondayAsset[] | null;
 }) {
   const raw = (filename ?? "").trim();
   if (!raw) return null;
+
+  // PREFERRED path: join on the column's asset IDs. Exact, and it yields the
+  // asset's SIGNED public_url — the column's own protected_static link needs a
+  // Monday session, which is why clicking it can never work on its own.
+  const ids = (assetIds ?? "").split(",").map((s) => s.trim()).filter(Boolean);
+  if (ids.length && assets) {
+    const matched = ids
+      .map((id) => assets.find((a) => String(a.id) === id))
+      .filter((a): a is MondayAsset => !!a);
+    if (matched.length) {
+      return (
+        <div style={{ marginBottom: 16 }}>
+          <div className="flabel">{label}</div>
+          {matched.map((a) => (
+            <div
+              key={a.id}
+              className="file-row"
+              title="Click to preview"
+              onClick={() => openFileViewer({ url: a.public_url || a.url, name: a.name })}
+            >
+              <span className="fname">{a.name}</span>
+              <span className="fmeta">{a.name.includes(".") ? a.name.split(".").pop() : ""}</span>
+            </div>
+          ))}
+        </div>
+      );
+    }
+  }
 
   // ⚠️ A Monday FILE column's `text` is a URL, not a filename —
   // "https://…/protected_static/…/card.jpg". Matching that against asset
@@ -1485,6 +1513,7 @@ const UnverifiedReferralsPage = () => {
                     <FileColumnRow
                       label="CGM Data File"
                       filename={selected.cgmDataFile}
+                      assetIds={selected.cgmDataFileIds}
                       assets={assets}
                     />
                     {/* Name the file AND the destination. "attach the file"
@@ -1566,6 +1595,7 @@ const UnverifiedReferralsPage = () => {
                 <FileColumnRow
                   label="Insurance Card Photo"
                   filename={selected.formCardPhoto}
+                  assetIds={selected.formCardPhotoIds}
                   assets={assets}
                 />
                 {!(selected.formCardPhoto ?? "").trim()
