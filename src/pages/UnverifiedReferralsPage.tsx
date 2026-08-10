@@ -35,12 +35,12 @@ import {
   CGM_TYPE_INDEX, PUMP_TYPE_INDEX,
 } from "@/lib/profile/mondayMapping";
 import {
-  writeIntakeEdits, writeVerifiedInsurance, logContactAttempt,
+  writeIntakeEdits, writeVerifiedInsurance, logContactAttempt, appendIntakeNote,
   advanceToMedicalNecessity, escalateIntake, proposeIntakeStuck, returnIntakeToPipeline,
   type IntakeEdits, type VerifiedEdits,
 } from "@/lib/profile/unverifiedWrite";
 import {
-  fetchUpdates, fetchItemAssets, createUpdate, writeLongText, COL,
+  fetchUpdates, fetchItemAssets, createUpdate, COL,
   type MondayUpdate, type MondayAsset,
 } from "@/lib/profile/mondayApi";
 // The worker's multipart relay to Monday's file API. Board-agnostic (item id +
@@ -48,10 +48,11 @@ import {
 import { uploadFileToColumn } from "@/lib/masheke/mondayApi";
 import { openFileViewer } from "@/components/shared/FileViewerModal";
 import { IntakeMessages } from "@/components/profile/IntakeMessages";
-// Evaluate's notes panel and its Call + Text buttons, reused as-is so this
-// stage stamps, appends and toasts identically rather than approximately.
-import { NotesPanel } from "@/components/masheke/NotesPanel";
+// Evaluate's Call + Text buttons, reused as-is.
 import { PatientContact } from "@/components/masheke/mmKit";
+// The same stamped-note renderer Verified Referrals uses, so the two stages
+// display an identical log.
+import { NoteLog } from "@/components/profile/NoteLog";
 import { useStediRun, STEDI_POLL_MS } from "@/hooks/profile/useStediRun";
 import {
   suggestPrimary, suggestSecondary, buildSuggestionInputs,
@@ -711,14 +712,47 @@ const UnverifiedReferralsPage = () => {
    * section. Reaching out to someone is not the same as deferring them.
    */
   const [followUpTextOpen, setFollowUpTextOpen] = useState(false);
-  useEffect(() => { setFollowUpTextOpen(false); }, [selected?.id]);
-  const followUpText = useMemo(() => {
+  /** Only set when the follow-up BUTTON opens the composer. The plain Text
+   *  button beside the patient's name must open an empty box — a rep texting
+   *  about something else shouldn't have to clear a template first. */
+  const [followUpPrefill, setFollowUpPrefill] = useState<string | undefined>();
+  useEffect(() => {
+    setFollowUpTextOpen(false);
+    setFollowUpPrefill(undefined);
+  }, [selected?.id]);
+  const followUpTemplate = useCallback(() => {
     const first = splitName(selected?.name).first || "there";
     return `Hi ${first}, it's the team at Medically Modern! We're working on your insurance `
       + `benefits for your diabetes supplies. Has anything changed with your coverage or plan `
       + `recently — new card, new insurance, anything like that? Just reply here and we'll take `
       + `care of the rest. Thank you!`;
   }, [selected?.name]);
+  /** Append one stamped line to the Call Log and write it straight to Monday. */
+  const [noteDraft, setNoteDraft] = useState("");
+  useEffect(() => { setNoteDraft(""); }, [selected?.id]);
+  const addNote = useCallback(async () => {
+    if (!selected || !noteDraft.trim()) return;
+    setSaving(true);
+    try {
+      const res = await appendIntakeNote(selected.id, noteDraft, selected.notes);
+      if (res.ok) {
+        toast.success("Note added to Monday");
+        setNoteDraft("");
+        await refetch(true);
+      } else {
+        toast.error("Couldn't add the note", {
+          description: res.errors.map((e) => e.error).join(" · "),
+        });
+      }
+    } finally {
+      setSaving(false);
+    }
+  }, [selected, noteDraft, refetch]);
+
+  const startInsuranceFollowUp = useCallback(() => {
+    setFollowUpPrefill(followUpTemplate());
+    setFollowUpTextOpen(true);
+  }, [followUpTemplate]);
 
   // ── Referral email (Monday updates) + Files (item assets) ────────────────
   // Both fetchers already existed and had no caller. Loaded per patient and
@@ -852,7 +886,14 @@ const UnverifiedReferralsPage = () => {
           needs a definite height to shrink against. With min-h-screen the
           chain has no upper bound, the panes grow to content, and the wheel
           stops working over them entirely. */}
-      <div className="pf-root h-screen overflow-hidden flex w-full bg-gradient-subtle">
+      {/* ⚠️ `.pf-root` deliberately does NOT wrap the sidebar or the header.
+          redesign.css resets bare elements under it — `.pf-root button` clears
+          background, border and colour outright — which beats a Tailwind class
+          on specificity. With the whole page wrapped, every shadcn control in
+          the sidebar and the header rendered stripped, which is what made the
+          chrome look unlike the rest of Command Center. ProfilePage scopes it
+          to the stepped content for the same reason; match that. */}
+      <div className="h-screen overflow-hidden flex w-full bg-gradient-subtle">
         <PatientsSidebar
           patients={visible}
           selectedId={selectedId}
@@ -885,10 +926,7 @@ const UnverifiedReferralsPage = () => {
           ))}
         />
 
-        {/* panes-host is the CONTAINER the two-pane split queries against, so
-            the layout keys off the width the panes actually have rather than
-            the window's — the sidebar takes ~256px of that, and collapses. */}
-        <div className="panes-host flex-1 flex flex-col min-w-0">
+        <div className="flex-1 flex flex-col min-w-0">
           <header className="bg-gradient-navy text-navy-foreground border-b border-sidebar-border flex-none">
             <div className="px-6 py-5 flex items-center justify-between gap-4 flex-wrap">
               {/* Same shape as Verified Referrals' header (ProfilePage), which
@@ -932,39 +970,36 @@ const UnverifiedReferralsPage = () => {
             </div>
           )}
 
-          {/* Patient header strip — who you are working, and how many times
-              anyone has tried to reach them. The badge goes solid teal once a
-              call has actually been logged. */}
+          {/* Contact strip. The NAME is not repeated here — it's already the
+              header subtitle, and printing it twice at two sizes is most of
+              what made this look unlike the other roles. Outside `.pf-root`
+              so Evaluate's Call/Text buttons keep their own styling. */}
           {selected && (
-            <div className="phdr">
-              <div className="who">
-                <div className="nm">{selected.name}</div>
-                <div className="sub">
-                  {[selected.dob, selected.email].filter(Boolean).join(" · ") || "—"}
-                </div>
-                {/* Evaluate's Call + Text buttons, the same component. The Text
-                    dialog is also what "Start Insurance Follow-Up" opens, which
-                    is why its open state is lifted here. */}
-                <div className="mt-1.5">
-                  <PatientContact
-                    phone={selected.ptPhone}
-                    textPrefill={followUpText}
-                    textOpen={followUpTextOpen}
-                    onTextOpenChange={setFollowUpTextOpen}
-                  />
-                </div>
-              </div>
-              <div className="spacer" />
-              <span className={attempts > 0 ? "attempt-badge" : "attempt-badge auto"}>
-                <span className="dot" />
+            <div className="flex items-center gap-3 flex-wrap border-b bg-card px-6 py-3 flex-none">
+              <PatientContact
+                phone={selected.ptPhone}
+                textPrefill={followUpPrefill}
+                textOpen={followUpTextOpen}
+                onTextOpenChange={(o) => {
+                  setFollowUpTextOpen(o);
+                  // Drop the template once the dialog closes, so the next
+                  // plain "Text" click opens an empty composer.
+                  if (!o) setFollowUpPrefill(undefined);
+                }}
+              />
+              <span className="text-sm text-muted-foreground">
+                {[selected.dob, selected.email].filter(Boolean).join(" · ") || "—"}
+              </span>
+              <span className="ml-auto text-xs font-semibold text-muted-foreground">
                 {attempts === 0 ? "No contact attempts yet" : `Attempt ${attempts}`}
               </span>
             </div>
           )}
 
           {!selected ? (
-            <div className="sect m-6 text-sm text-muted-foreground">Select a patient.</div>
+            <div className="m-6 text-sm text-muted-foreground">Select a patient.</div>
           ) : (
+            <div className="pf-root panes-host flex-1 flex flex-col min-w-0 overflow-hidden">
             <div className="panes">
               {/* ── LEFT: Patient Info. Collection ── */}
               <div className="pane">
@@ -1362,7 +1397,7 @@ const UnverifiedReferralsPage = () => {
                     {stedi.isRunning ? "Running benefits check…" : "Run benefits check"}
                   </button>
                   <button
-                    onClick={() => setFollowUpTextOpen(true)}
+                    onClick={startInsuranceFollowUp}
                     disabled={saving || !(selected.ptPhone ?? "").trim()}
                     className="btn secondary sm"
                     title={
@@ -1423,11 +1458,6 @@ const UnverifiedReferralsPage = () => {
                     onChange={(v) => edit({ clinicAddress: v })}
                   />
                 </div>
-                <p className="mt-2 text-[11px] text-muted-foreground">
-                  Write-once reference. Picking a provider on the right does not overwrite the name
-                  or phone. Clinic Address is the exception — it writes the verified column, so a
-                  provider picked in step 3 replaces what you type here.
-                </p>
 
                 {/* The mockup's "Helpful Links / Identification Info" IS Doctor
                     Notes (Josh) — but the right pane's Select Correct Provider
@@ -1562,28 +1592,42 @@ const UnverifiedReferralsPage = () => {
                   the verified token server-side), Email via the same worker
                   route Send Request uses. Sending is blocked on the shared
                   TCPA/CTIA opt-out guard. */}
-              <IntakeMessages
-                patientId={selected.id}
-                phone={selected.ptPhone}
-                email={selected.email}
-              />
+              <IntakeMessages patientId={selected.id} email={selected.email} />
 
               {/* ── Call Log & Notes ── append-only and stamped, per the note
                   under the mockup's card and CLAUDE.md §9. The log is rendered
                   read-only; the box below appends ONE line. Binding a textarea
                   straight to `notes` would replace the history on first save. */}
-              {/* Evaluate's notes panel, the same component — so the stamping
-                  (ET time · stage · initials), the append-only behaviour and
-                  the "saved to Monday" toast are literally one implementation
-                  rather than a lookalike that drifts. It owns its own write, so
-                  `notes` stays out of the bulk save. */}
+              {/* Same BEHAVIOUR as Evaluate's notes — append-only, stamped
+                  "[ET time] Patient Intake: … —XX" through the one shared
+                  `appendStampedNote`, saved to Monday with a toast — but in
+                  this page's own markup.
+
+                  Evaluate's NotesPanel is built from shadcn controls, and
+                  `.pf-root button` strips background/border off every button
+                  under it, so dropping it in here rendered as bare text on a
+                  bare box. Sharing the stamping function rather than the
+                  component is what keeps the two consistent where it counts. */}
               <Card title="Call Log & Notes">
-                <NotesPanel
-                  notes={selected.notes ?? ""}
-                  onNotesChange={(v) => edit({ notes: v })}
-                  onSaveToMonday={(v) => writeLongText(selected.id, COL.notes, v)}
-                  notePrefix="Patient Intake"
-                />
+                {(selected.notes ?? "").trim() ? (
+                  <NoteLog text={selected.notes ?? ""} />
+                ) : (
+                  <p className="sugg-note">No notes yet.</p>
+                )}
+                <div className="note-add">
+                  <textarea
+                    value={noteDraft}
+                    placeholder="Add a note…"
+                    onChange={(e) => setNoteDraft(e.target.value)}
+                  />
+                  <button
+                    className="btn primary sm"
+                    disabled={saving || !noteDraft.trim()}
+                    onClick={addNote}
+                  >
+                    + Add
+                  </button>
+                </div>
               </Card>
 
               {/* HANDOFF §2 "Left-pane exits" — all three live here, at the
@@ -1928,6 +1972,7 @@ const UnverifiedReferralsPage = () => {
               )}
               </div>
             </div>
+          </div>
           </div>
         )}
         </div>
