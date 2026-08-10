@@ -1440,9 +1440,14 @@ const UnverifiedReferralsPage = () => {
                       filename={selected.cgmDataFile}
                       assets={assets}
                     />
+                    {/* Name the file AND the destination. "attach the file"
+                        alone reads as the insurance card, which is a different
+                        column with a different source. */}
                     <p className="mb-2 text-[11px] text-muted-foreground">
-                      Sending the patient an upload link isn’t built yet (§8.3) — for now, attach the
-                      file yourself once they email or text it over.
+                      This is the patient’s <strong>CGM data</strong> — a glucose report, hypo log or
+                      screenshot. Sending them an upload link isn’t built yet (§8.3), so until it is,
+                      attach what they email or text over using the box below. Saves to the{" "}
+                      <strong>CGM Data File</strong> column.
                     </p>
                     <label
                       className={cgmDragOver ? "upzone show over" : "upzone show"}
@@ -1456,11 +1461,15 @@ const UnverifiedReferralsPage = () => {
                       }}
                     >
                       <div className="uz-t">
-                        {cgmUploading ? "Uploading…" : "Drop a file here, or click to choose"}
+                        {cgmUploading ? "Uploading…" : "Drop CGM data here, or click to choose"}
                       </div>
-                      <div className="sugg-note">PDF, CSV, or an exported report / screenshot</div>
+                      <div className="sugg-note">
+                        PDF, CSV, photo or an exported report → CGM Data File
+                      </div>
                       <input
                         type="file"
+                        multiple
+                        accept=".jpg,.jpeg,.png,.heic,.pdf,.csv"
                         style={{ display: "none" }}
                         disabled={cgmUploading}
                         onChange={(e) => {
@@ -1512,6 +1521,14 @@ const UnverifiedReferralsPage = () => {
                   filename={selected.formCardPhoto}
                   assets={assets}
                 />
+                {!(selected.formCardPhoto ?? "").trim()
+                  && (selected.formInsuranceVia ?? "") === "Photo of card" && (
+                  <p className="mb-3 text-[11px] text-amber-700">
+                    Provided Via says “Photo of card” but no card is attached. If they texted or
+                    emailed it, add it with <strong>Upload insurance card</strong> in the Files card
+                    at the top.
+                  </p>
+                )}
                 <div className="fgrid">
                   {/* Editable, and written by Save — which the benefits check
                       runs FIRST, because Stedi reads this column off the board
