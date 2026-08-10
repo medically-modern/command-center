@@ -88,7 +88,9 @@ describe("checkPack — serving & product", () => {
   scenario("t:slim x Mio", { serving: "Insulin Pump", pumpType: "t:slim", infusionSet1: 'Mio Advance Clear 9mm 23"', infusionSet1Index: 102, qtyInf1: "10" }, ["C24_SET_INCOMPATIBLE"]);
   scenario("iLet x AutoSoft", { serving: "Insulin Pump", pumpType: "iLet", infusionSet1: 'AutoSoft XC 6 mm 23"', infusionSet1Index: 0, qtyInf1: "10" }, ["C24_SET_INCOMPATIBLE"]);
   scenario("iLet + Contact ok", { serving: "Insulin Pump", pumpType: "iLet", infusionSet1: 'Contact 6mm 23"', infusionSet1Index: 13, qtyInf1: "10" }, [], ["C24_SET_INCOMPATIBLE"]);
-  scenario("Mobi tubing", { serving: "Insulin Pump", pumpType: "Mobi", infusionSet1: 'AutoSoft XC 6 mm 23"', infusionSet1Index: 0, qtyInf1: "10" }, ["C24_MOBI_TUBING"], ["C24_SET_INCOMPATIBLE"]);
+  // The 5" rule is one-way: 5" implies Mobi, Mobi does NOT imply 5". Both
+  // tubing lengths on a Mobi are silent (Brandon, 2026-08-10).
+  scenario("Mobi + 23in ok", { serving: "Insulin Pump", pumpType: "Mobi", infusionSet1: 'AutoSoft XC 6 mm 23"', infusionSet1Index: 0, qtyInf1: "10" }, [], ["C24_MOBI_TUBING", "C24_FIVE_INCH_NOT_MOBI", "C24_SET_INCOMPATIBLE"]);
   scenario("Mobi + 5in ok", { serving: "Insulin Pump", pumpType: "Mobi", infusionSet1: 'AutoSoft XC 6 mm 5"', infusionSet1Index: 15, qtyInf1: "10" }, [], ["C24_MOBI_TUBING", "C24_SET_INCOMPATIBLE"]);
   scenario("t:slim x 5in", { serving: "Insulin Pump", pumpType: "t:slim", infusionSet1: 'AutoSoft XC 6 mm 5"', infusionSet1Index: 15, qtyInf1: "10" }, ["C24_FIVE_INCH_NOT_MOBI"], ["C24_SET_INCOMPATIBLE"]);
   scenario("780G x 5in", { serving: "Insulin Pump", pumpType: "Minimed 780G", infusionSet1: 'AutoSoft XC 6 mm 5"', infusionSet1Index: 15, qtyInf1: "10" }, ["C24_SET_INCOMPATIBLE"]);

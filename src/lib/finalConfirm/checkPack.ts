@@ -131,7 +131,12 @@ const NY_CIN_RX = /^[A-Z]{2}\d{5}[A-Z]$/;
  *  - 5" tubing sets: Mobi ONLY — any other pump + a 5" set fires red
  *  - iLet (Beta Bionics):           Contact, Inset
  *  - Minimed 780G (Medtronic):      Mio Advance
- * Plus an info-level nudge when Mobi is paired with non-5" tubing.
+ *
+ * The 5" rule is ONE-WAY (Brandon, 2026-08-10). "5" is Mobi-only" does NOT
+ * mean "Mobi is 5"-only": a Mobi on standard-length tubing is a perfectly
+ * normal order. An info-level `C24_MOBI_TUBING` nudge used to fire on exactly
+ * that and was removed — it flagged the common case, which is how a check pack
+ * teaches reps to click past its reds.
  */
 type SetFamily = "tandem" | "ilet" | "medtronic" | "unknown";
 
@@ -441,12 +446,6 @@ export function runFinalChecks(p: Patient): CheckFinding[] {
           id: "C24_FIVE_INCH_NOT_MOBI", severity: "red", field: slot.field,
           title: `5" tubing is Mobi-only`,
           detail: `${slot.label} — 5" tubing sets are for the Mobi only; they can't be used with a ${p.pumpType}. Pick a standard-length set.`,
-        });
-      } else if (p.pumpType === "Mobi" && fam === "tandem" && !FIVE_INCH_RX.test(slot.label)) {
-        add({
-          id: "C24_MOBI_TUBING", severity: "info", field: slot.field,
-          title: "Mobi usually takes 5\" tubing",
-          detail: `${slot.label} — Mobi is typically ordered with 5" tubing sets; confirm the length is intentional.`,
         });
       }
     }
