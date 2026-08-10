@@ -562,6 +562,45 @@ const UnverifiedReferralsPage = () => {
     updateLocal(selected.id, patch);
   }, [selected, updateLocal]);
 
+  /**
+   * Two rep-entered facts that also belong in the Call Log: Current
+   * Out-of-Pocket Cost and Self Advocacy (Josh, 2026-08-10). They keep their
+   * own columns — this just mirrors them into the log, so a manager reading it
+   * sees what was learned on the call without cross-referencing two columns.
+   *
+   * Snapshotted per patient so a line is appended only when the value CHANGED.
+   * Appending on every save would restamp the same fact each time the rep
+   * pressed Save and bury the actual call notes.
+   *
+   * Declared ABOVE save() on purpose — naming it in save's dependency array
+   * before the const initialises throws on first render.
+   */
+  const loggedFacts = useRef<{ oop: string; adv: string }>({ oop: "", adv: "" });
+  useEffect(() => {
+    loggedFacts.current = {
+      oop: (selected?.currentOopCost ?? "").trim(),
+      adv: (selected?.selfAdvocacy ?? "").trim(),
+    };
+  }, [selected?.id]);
+
+  const logChangedFacts = useCallback(async (p: Patient) => {
+    const oop = (p.currentOopCost ?? "").trim();
+    const adv = (p.selfAdvocacy ?? "").trim();
+    const lines: string[] = [];
+    if (oop && oop !== loggedFacts.current.oop) lines.push(`Current Out-of-Pocket Cost: ${oop}`);
+    if (adv && adv !== loggedFacts.current.adv) lines.push(`Self Advocacy: ${adv}`);
+    if (!lines.length) return;
+    // Sequential: appendIntakeNote reads the log back before appending, so
+    // firing both at once would have the second overwrite the first.
+    let prior: string | undefined = p.notes;
+    for (const line of lines) {
+      const res = await appendIntakeNote(p.id, line, prior);
+      if (!res.ok) return; // snapshot untouched, so the next save retries
+      prior = undefined; // force a re-read for the second line
+    }
+    loggedFacts.current = { oop, adv };
+  }, []);
+
   const save = useCallback(async () => {
     if (!selected) return;
     setSaving(true);
@@ -575,6 +614,8 @@ const UnverifiedReferralsPage = () => {
       // sits at the bottom of a long pane where a rep saving from the header
       // never sees it.
       if (res.ok) {
+        // Cost + Self Advocacy also go into the Call Log, once, on change.
+        await logChangedFacts(selected);
         toast.success("Saved to Monday");
         setSaveNote("Saved.");
       } else {
@@ -590,7 +631,7 @@ const UnverifiedReferralsPage = () => {
     } finally {
       setSaving(false);
     }
-  }, [selected, refetch]);
+  }, [selected, refetch, logChangedFacts]);
 
   const [escalateReason, setEscalateReason] = useState("");
   const { goBack } = useBackNavigation();
@@ -813,25 +854,40 @@ const UnverifiedReferralsPage = () => {
    */
   const [cgmDragOver, setCgmDragOver] = useState(false);
   const [cgmUploading, setCgmUploading] = useState(false);
-  const uploadCgmFile = useCallback(async (file: File) => {
+  const [cardUploading, setCardUploading] = useState(false);
+
+  /** Shared by both upload affordances — the CGM drop zone and the Files
+   *  card's attach button. Only the target column differs. */
+  const uploadTo = useCallback(async (
+    columnId: string, file: File, setBusy: (b: boolean) => void,
+  ) => {
     if (!selected) return;
-    setCgmUploading(true);
-    setSaveNote(null);
+    setBusy(true);
     try {
       const bytes = new Uint8Array(await file.arrayBuffer());
       await uploadFileToColumn(
-        selected.id, COL.cgmDataFile, bytes, file.name,
+        selected.id, columnId, bytes, file.name,
         file.type || "application/octet-stream",
       );
-      setSaveNote(`Attached ${file.name}.`);
+      toast.success(`Attached ${file.name}`);
       setAssets(null); // re-fetch so it appears in the Files card
       await refetch(true);
     } catch (e) {
-      setSaveNote(e instanceof Error ? `Upload failed — ${e.message}` : "Upload failed.");
+      const msg = e instanceof Error ? e.message : String(e);
+      toast.error("Upload failed", { description: msg });
     } finally {
-      setCgmUploading(false);
+      setBusy(false);
     }
   }, [selected, refetch]);
+
+  const uploadCgmFile = useCallback(
+    (file: File) => uploadTo(COL.cgmDataFile, file, setCgmUploading),
+    [uploadTo],
+  );
+  const uploadCardFile = useCallback(
+    (file: File) => uploadTo(COL.formCardPhoto, file, setCardUploading),
+    [uploadTo],
+  );
 
   /** Paste a referral email → post it as a Monday update, which is where the
    *  referral already lives (the card above reads updates, not a column). */
@@ -1049,6 +1105,10 @@ const UnverifiedReferralsPage = () => {
                     <Field label="Referral Type" value={selected.referralType} />
                     <Field label="Referral Source" value={selected.referralSource} />
                   </div>
+                  {/* Josh, 2026-08-10: not needed. Left in place rather than
+                      deleted — the updates fetch and the render below are still
+                      wired, so this is the only line to restore if the referral
+                      body is ever wanted on the page again.
                   <button
                     className="btn secondary sm"
                     style={{ marginTop: 12 }}
@@ -1056,6 +1116,7 @@ const UnverifiedReferralsPage = () => {
                   >
                     {refOpen ? "Hide referral email / updates" : "Show referral email / updates"}
                   </button>
+                  */}
                   {refOpen && (
                     <div style={{ marginTop: 12 }}>
                       <div className="rail-updates">
@@ -1134,6 +1195,31 @@ const UnverifiedReferralsPage = () => {
                     ))
                   )}
                 </div>
+                {/* Attach a file to the patient.
+                    ⚠️ Monday files live IN A COLUMN, not loose on the item, and
+                    this board has exactly two: Insurance Card Photo and CGM
+                    Data File. CGM has its own drop zone under What They Need,
+                    so this one lands on the card-photo column and says so
+                    rather than picking silently. A genuinely generic
+                    attachment would need a new Files column on the board. */}
+                <label className="upzone" style={{ marginTop: 10 }}>
+                  <div className="uz-t">
+                    {cardUploading ? "Uploading…" : "Attach a file — insurance card"}
+                  </div>
+                  <div className="sugg-note">
+                    Photo or PDF. Saves to Insurance Card Photo and appears above.
+                  </div>
+                  <input
+                    type="file"
+                    style={{ display: "none" }}
+                    disabled={cardUploading}
+                    onChange={(e) => {
+                      const f = e.target.files?.[0];
+                      if (f) void uploadCardFile(f);
+                      e.target.value = "";
+                    }}
+                  />
+                </label>
               </div>
 
               <Card title="Referral Routing" tone="lead">
@@ -1256,7 +1342,7 @@ const UnverifiedReferralsPage = () => {
                       options={CGM_PATH_OPTS}
                     />
                     <EditSelect
-                      label="CGM preference (patient's answer)"
+                      label="CGM Preference"
                       value={selected.formCgmPreference ?? ""}
                       onChange={(v) => edit({ formCgmPreference: v })}
                       options={["Freestyle Libre 3 Plus", "Dexcom G7", "Medtronic Guardian 4", "Any will work"]}
@@ -1277,7 +1363,7 @@ const UnverifiedReferralsPage = () => {
                       options={PUMP_TYPE_OPTS}
                     />
                     <EditSelect
-                      label="Pump preference (patient's answer)"
+                      label="Pump Preference"
                       value={selected.formPumpPreference ?? ""}
                       onChange={(v) => edit({ formPumpPreference: v })}
                       options={["Tandem t:slim X2", "Tandem Mobi", "Beta Bionics iLet", "Not sure"]}
@@ -1354,7 +1440,7 @@ const UnverifiedReferralsPage = () => {
                 <div className="mt-4">
                   <EditSelect
                     full
-                    label="Request Type — shared with Serving & Coverage on the right"
+                    label="Request Type"
                     value={selected.requestType ?? ""}
                     onChange={(v) => edit({ requestType: v })}
                     options={REQUEST_TYPE_OPTS}
