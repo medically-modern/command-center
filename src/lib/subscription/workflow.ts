@@ -223,6 +223,12 @@ export const PRIMARY_INSURANCE_OPTIONS = [
   { index: 13, label: "Aetna Commercial" },
   { index: 1, label: "Anthem BCBS Commercial" },
   { index: 17, label: "Anthem BCBS Medicare" },
+  // Label + index read back from the live column 2026-08-10, not assumed — the
+  // string is verbatim board spelling (misspelling included) so a rep sees the
+  // same text here and on Monday. Added to Subscription + Order only: CDPHP
+  // reaches this board via an insurance CHANGE on an existing subscriber, not
+  // via a new referral. See INSURANCE_LABEL_AUDIT.md §9.
+  { index: 107, label: "CDPHP (capital district physicans' healthcare network)" },
   { index: 2, label: "Cigna" },
   { index: 3, label: "Fidelis Medicaid" },
   { index: 15, label: "Fidelis Commercial" },

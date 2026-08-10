@@ -55,6 +55,7 @@ at **7** where the other two use **108**.
 | Label | Profile | Masheke | Insurance | Welcome Call | Subscription | Order | distinct |
 |---|---|---|---|---|---|---|---|
 | Aetna Commercial | 8 | 13 | 13 | 13 | 13 | 10 | 3 |
+| CDPHP (capital district physicans' healthcare network) | — | — | — | — | 107 | 153 | 2 |
 | Aetna Medicare | 9 | 14 | 14 | 14 | 14 | 11 | 3 |
 | Anthem BCBS Commercial | 105 | 105 | 105 | 105 | 1 | 3 | 3 |
 | Anthem BCBS Low-Cost (JLJ) | 108 | 109 | 109 | 109 | 9 | 109 | 3 |
@@ -383,34 +384,53 @@ Requested by Josh: add **CDPHP** as a Primary Insurance option on the **Subscrip
 board** and the **Order board**, and as an option in the **Cardinal API ordering
 service**.
 
-Agreed label string: **`CDPHP`**. It matches the existing single-token carrier
-convention (`Cigna`, `Humana`, `Wellcare`, `NYSHIP`, `UMR`, `Oregon Care`), and it
-contains neither `medicare` nor `medicaid`, so the substring rules in §8 treat it as
-commercial. If MM later serves CDPHP's Medicare Advantage or Medicaid lines, those
-need **separate** labels — the HCPC supply group and the Cardinal type differ by
-plan line, and one label cannot carry both.
+**Applied.** The board label Josh created is:
+
+```
+CDPHP (capital district physicans' healthcare network)
+```
+
+54 characters, plain ASCII apostrophe, **byte-identical on both boards** — verified
+against `settings_str`, so the Subscription → Order copy matches and does not blank
+(§2).
 
 | Step | State |
 |---|---|
-| Cardinal `insurancemap.js` `ROUTING` row | **done** — `split('CDPHP', 'Managed Medicaid', 'Managed Medicaid')` |
-| Subscription board label `color_mm254qxj` | **Josh is adding it in the Monday UI** |
-| Order board label `color_mm18jhq5` | **Josh is adding it in the Monday UI** |
-| `subscription/workflow.ts` `PRIMARY_INSURANCE_OPTIONS` entry | **open** — needs the index Monday assigns, read back from `settings_str` (§1.1). Until then a rep cannot select CDPHP in the Command Center, though a value set on the board displays correctly (§3.1). |
+| Subscription board `color_mm254qxj` | **done** — index **107** |
+| Order board `color_mm18jhq5` | **done** — index **153** |
+| `subscription/workflow.ts` `PRIMARY_INSURANCE_OPTIONS` | **done** — `{ index: 107, label: "CDPHP (capital district physicans' healthcare network)" }`, index read back from the live column, not assumed |
+| Cardinal `insurancemap.js` `ROUTING` | **done** — keyed on the full board label **and** on bare `CDPHP`, both → `split('CDPHP', 'Managed Medicaid', 'Managed Medicaid')` |
 
 **Cardinal type.** Confirmed by Josh 2026-08-10: `Managed Medicaid` in **both**
-buckets. Because the two buckets are equal, `classifyInsurance` needs no DOB and a
-missing or unparseable DOB cannot block a CDPHP order — the same shape as `NYSHIP`,
-`UMR`, `BCBS WY` and `Oregon Care`. Covered by a new case in
-`cardinal-api/test/transform.test.js`; suite green at 43 passed, 0 failed.
+buckets — the same shape as `NYSHIP`, `UMR`, `BCBS WY` and `Oregon Care`. Because
+the buckets are equal, `classifyInsurance` needs no DOB, so a missing or
+unparseable DOB cannot block a CDPHP order. Cardinal receives `name: "CDPHP"`
+regardless of which spelling the board carries.
 
-> ⚠️ **The two board labels must be spelled `CDPHP` identically on both boards.**
-> The Subscription → Order automation copies by matching label **text**, so any
-> difference — including a trailing space or a different capitalisation — makes the
-> value **blank on the hop with no error** (§2). That is the single most likely way
-> this addition goes wrong, and nothing in the stack will report it. After both
-> labels exist, `npm run check:labels` in `cardinal-api` is the tool that would
-> catch it, once its `COLUMNS`/`HOPS` are extended to the insurance columns
-> (§7 item 2).
+> **This document's own thesis caught a live bug during this change.** The Cardinal
+> row was first written keyed on `'CDPHP'`, on the assumption that the board label
+> would be the short brand. The label Josh actually created is the long
+> parenthetical, and `normalizeLabel` folds only case and whitespace — so
+> `classifyInsurance` returned `type: ""` and **every CDPHP order would have been
+> blocked**. Caught by reading the label back from `settings_str` instead of
+> assuming it. The routing table is now keyed on both spellings.
+
+**Two known-imperfect things about the label, deliberately left alone:**
+
+1. `physicans'` is misspelled (should be `physicians'`), and the payer's real name
+   is Capital District Physicians' Health **Plan**, not "healthcare network".
+2. At 54 characters it is nearly 3× the longest existing label
+   (`Anthem BCBS Medicaid (JLJ)`, 26) and will wrap in the Subscription dropdown.
+
+Neither is worth an unplanned board edit. **Shortening it to `CDPHP` is the
+recommended cleanup** — it matches every other carrier on these columns, and while
+no item carries the value yet a rename is free (a status rename keeps the index).
+If it is done, exactly two things change: the `label` string in
+`subscription/workflow.ts` (display-only, the index is the binding), and
+`CDPHP_BOARD_LABEL` in `cardinal-api/test/transform.test.js`. The Cardinal
+`ROUTING` table already carries the bare `CDPHP` key for precisely this reason and
+needs no edit. **Rename both boards together or not at all** — renaming one blanks
+the hop.
 
 **Scope is deliberately partial** (confirmed by Josh): CDPHP is being added to the
 Subscription and Order boards **only**. A CDPHP patient therefore cannot be entered
