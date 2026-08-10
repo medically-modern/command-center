@@ -321,14 +321,14 @@ const RAW_CHART_DEFS: ChartDef[] = [
   },
   {
     id: "profile-send-off-unverified",
-    title: "Profile Send Off — Unverified Referrals",
+    title: "Patient Intake — DTC & CareCentrix",
     boardId: 18406352652,
     notesColId: "text_mm389fs",
     drilldownCols: PROFILE_COLS,
   },
   {
     id: "profile-send-off-unverified-escalated",
-    title: "Unverified Referrals (Escalated)",
+    title: "Patient Intake (Escalated)",
     boardId: 18406352652,
     notesColId: "long_text_mm5z3sq9",
     rowOf: "profile-send-off-unverified",
@@ -336,7 +336,7 @@ const RAW_CHART_DEFS: ChartDef[] = [
   },
   {
     id: "profile-send-off-unverified-stuck",
-    title: "Unverified Referrals (Proposed Stuck)",
+    title: "Patient Intake (Proposed Stuck)",
     boardId: 18406352652,
     notesColId: "long_text_mm5z3sq9",
     rowOf: "profile-send-off-unverified",

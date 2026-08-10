@@ -1621,6 +1621,14 @@ const UnverifiedReferralsPage = () => {
                     value={selected.workingMemberId ?? ""}
                     onChange={(v) => edit({ workingMemberId: v })}
                   />
+                  {/* Primary Insurance — READ-ONLY here, and only when the
+                      board actually has one. It's the VERIFIED payer, owned by
+                      step 1 on the right; showing it blank would read as a
+                      field the rep forgot to fill, and making it editable
+                      would give one value two owners. */}
+                  {(selected.primaryInsurance ?? "").trim() && (
+                    <Field label="Primary Insurance (verified)" value={selected.primaryInsurance} />
+                  )}
                   <EditText
                     label="Insurance (Other) — as typed"
                     value={selected.formInsuranceOther ?? ""}
