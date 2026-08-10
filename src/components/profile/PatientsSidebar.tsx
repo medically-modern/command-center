@@ -44,9 +44,18 @@ interface Props {
    *  column, so the split belongs next to the list it filters. Omitted by
    *  Verified Referrals, which has a single pool. */
   filters?: React.ReactNode;
+  /** Hide the Follow Up section at the bottom of the list.
+   *
+   *  Patient Intake sets this. The section is driven by the Follow Up column,
+   *  which on that stage is the SNOOZE the "log call attempt" action writes —
+   *  so every patient a rep defers would pile up in a second list under the
+   *  one they work from, with a clear-it button that silently un-snoozes them
+   *  back onto the burndown. Verified Referrals and Already In System use the
+   *  column as a genuine follow-up flag and keep the section. */
+  hideFollowUp?: boolean;
 }
 
-export function PatientsSidebar({ patients, selectedId, onSelect, loading, error, onRefresh, hasOverlay, filters }: Props) {
+export function PatientsSidebar({ patients, selectedId, onSelect, loading, error, onRefresh, hasOverlay, filters, hideFollowUp }: Props) {
   const { state } = useSidebar();
   const [searchQuery, setSearchQuery] = useState("");
 
@@ -190,7 +199,7 @@ export function PatientsSidebar({ patients, selectedId, onSelect, loading, error
         )}
 
         {/* Follow Up section */}
-        {followUpPatients.length > 0 && !collapsed && (
+        {!hideFollowUp && followUpPatients.length > 0 && !collapsed && (
           <SidebarGroup>
             <SidebarGroupLabel className="text-[10px] uppercase tracking-wider text-blue-500 font-semibold flex items-center gap-1.5">
               <Clock className="h-3 w-3" />

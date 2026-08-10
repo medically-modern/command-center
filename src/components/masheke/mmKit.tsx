@@ -553,7 +553,19 @@ export function DaysInStagePill({ value }: { value?: string }) {
 
 /** Patient phone shown as a Call button (with the number) + a Text button.
  *  Uses tel:/sms: so the rep's device handles it. */
-export function PatientContact({ phone }: { phone?: string }) {
+export function PatientContact({
+  phone, textPrefill, textOpen, onTextOpenChange,
+}: {
+  phone?: string;
+  /** Seeds the composer the first time it opens — e.g. an insurance follow-up
+   *  template. Never overwrites something the rep has already typed. */
+  textPrefill?: string;
+  /** Lets a button elsewhere on the page open the composer (Patient Intake's
+   *  "Start Insurance Follow-Up"). Optional: omitted, the Text button is the
+   *  only way in, exactly as before. */
+  textOpen?: boolean;
+  onTextOpenChange?: (open: boolean) => void;
+}) {
   const tel = (phone ?? "").replace(/[^\d+]/g, "");
   if (!tel) return <span className="text-base text-muted-foreground">No phone on file</span>;
   const display = formatPhoneNice(phone);
@@ -565,7 +577,13 @@ export function PatientContact({ phone }: { phone?: string }) {
       >
         <Phone className="h-3.5 w-3.5 shrink-0" /> {display}
       </a>
-      <TextCompose tel={tel} display={display} />
+      <TextCompose
+        tel={tel}
+        display={display}
+        prefill={textPrefill}
+        openSignal={textOpen}
+        onOpenChange={onTextOpenChange}
+      />
     </span>
   );
 }
@@ -573,7 +591,14 @@ export function PatientContact({ phone }: { phone?: string }) {
 /** "Text" → opens the full SMS conversation (pulled from RingCentral) in a
  *  scrollable pop-up, with a reply box at the bottom. Sending refreshes the
  *  thread so the new message shows immediately. */
-function TextCompose({ tel, display }: { tel: string; display: string }) {
+function TextCompose({
+  tel, display, prefill, openSignal, onOpenChange,
+}: {
+  tel: string; display: string;
+  prefill?: string;
+  openSignal?: boolean;
+  onOpenChange?: (open: boolean) => void;
+}) {
   const [open, setOpen] = useState(false);
   const [msg, setMsg] = useState("");
   const [sending, setSending] = useState(false);
@@ -593,6 +618,17 @@ function TextCompose({ tel, display }: { tel: string; display: string }) {
       setLoading(false);
     }
   };
+
+  // An outside button (Patient Intake's "Start Insurance Follow-Up") pushing
+  // the composer open. One-way: the dialog still closes itself.
+  useEffect(() => {
+    if (openSignal) setOpen(true);
+  }, [openSignal]);
+
+  // Seed the draft once, and never over what the rep has already typed.
+  useEffect(() => {
+    if (open && prefill) setMsg((m) => m || prefill);
+  }, [open, prefill]);
 
   // Pull the conversation each time the pop-up opens.
   useEffect(() => {
@@ -629,7 +665,10 @@ function TextCompose({ tel, display }: { tel: string; display: string }) {
   };
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog
+      open={open}
+      onOpenChange={(v) => { setOpen(v); onOpenChange?.(v); }}
+    >
       <DialogTrigger asChild>
         <button
           type="button"

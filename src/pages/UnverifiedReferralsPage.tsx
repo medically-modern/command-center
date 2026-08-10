@@ -14,7 +14,11 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { AlertTriangle, ClipboardCheck, Lock, Check, X } from "lucide-react";
+import { AlertTriangle, ClipboardCheck, Lock, Check, X, ArrowLeft } from "lucide-react";
+import { Button } from "@/components/ui/button";
+// History-first Back, same as every other stage page — returns a manager to
+// their Oversight drill-down rather than a hardcoded home route (§9).
+import { useBackNavigation } from "@/hooks/useBackNavigation";
 
 import { useMondayPatients } from "@/hooks/profile/useMondayPatients";
 import { GROUPS, fetchClinicLabels } from "@/lib/profile/mondayApi";
@@ -31,12 +35,12 @@ import {
   CGM_TYPE_INDEX, PUMP_TYPE_INDEX,
 } from "@/lib/profile/mondayMapping";
 import {
-  writeIntakeEdits, writeVerifiedInsurance, logContactAttempt, appendIntakeNote,
+  writeIntakeEdits, writeVerifiedInsurance, logContactAttempt,
   advanceToMedicalNecessity, escalateIntake, proposeIntakeStuck, returnIntakeToPipeline,
   type IntakeEdits, type VerifiedEdits,
 } from "@/lib/profile/unverifiedWrite";
 import {
-  fetchUpdates, fetchItemAssets, createUpdate, COL,
+  fetchUpdates, fetchItemAssets, createUpdate, writeLongText, COL,
   type MondayUpdate, type MondayAsset,
 } from "@/lib/profile/mondayApi";
 // The worker's multipart relay to Monday's file API. Board-agnostic (item id +
@@ -44,10 +48,10 @@ import {
 import { uploadFileToColumn } from "@/lib/masheke/mondayApi";
 import { openFileViewer } from "@/components/shared/FileViewerModal";
 import { IntakeMessages } from "@/components/profile/IntakeMessages";
-// The mockup's "Helpful Links / Identification Info" is Doctor Notes (Josh) —
-// the MM Doctor Database record keyed by NPI, shared with the Medical
-// Necessity tabs rather than a column on this patient.
-import { DoctorNotesPanel } from "@/components/shared/DoctorNotesPanel";
+// Evaluate's notes panel and its Call + Text buttons, reused as-is so this
+// stage stamps, appends and toasts identically rather than approximately.
+import { NotesPanel } from "@/components/masheke/NotesPanel";
+import { PatientContact } from "@/components/masheke/mmKit";
 import { useStediRun, STEDI_POLL_MS } from "@/hooks/profile/useStediRun";
 import {
   suggestPrimary, suggestSecondary, buildSuggestionInputs,
@@ -65,7 +69,8 @@ import { optionsWithCurrent } from "@/lib/profile/selectOptions";
 import { splitName, joinName } from "@/lib/profile/nameParts";
 // Monday dates are timezone-naive ET — never date a board column from a bare
 // `new Date()` in a UTC runtime (CLAUDE.md §9).
-import { etToday } from "@/lib/masheke/etDate";
+import { etToday, addBusinessDaysIso } from "@/lib/masheke/etDate";
+import { toast } from "sonner";
 // The shared bar, so this stage's Propose Stuck / Send back to pipeline are
 // literally the same component and copy Medical Evaluation uses — not a
 // lookalike that can drift from it.
@@ -562,20 +567,36 @@ const UnverifiedReferralsPage = () => {
       const res = await writeIntakeEdits(selected.id, edits);
       // Partial success is reported, not swallowed — the rep needs to know
       // exactly which field didn't make it rather than a blanket "saved".
-      setSaveNote(
-        res.ok
-          ? "Saved."
-          : `Saved, except: ${res.errors.map((e) => e.label).join(", ")}`,
-      );
+      // Toasted as well as inlined: this writes to Monday, and the inline note
+      // sits at the bottom of a long pane where a rep saving from the header
+      // never sees it.
+      if (res.ok) {
+        toast.success("Saved to Monday");
+        setSaveNote("Saved.");
+      } else {
+        const failed = res.errors.map((e) => e.label).join(", ");
+        toast.error("Saved, except some columns", { description: failed });
+        setSaveNote(`Saved, except: ${failed}`);
+      }
       await refetch(true);
     } catch (e) {
-      setSaveNote(e instanceof Error ? `Save failed — ${e.message}` : "Save failed.");
+      const msg = e instanceof Error ? e.message : String(e);
+      toast.error("Save failed", { description: msg });
+      setSaveNote(`Save failed — ${msg}`);
     } finally {
       setSaving(false);
     }
   }, [selected, refetch]);
 
   const [escalateReason, setEscalateReason] = useState("");
+  const { goBack } = useBackNavigation();
+
+  /** Which rung a Propose Stuck from here lands on. Hoisted out of the click
+   *  handler so the card can NAME the destination — the previous copy told the
+   *  rep "Final Decisions" while the write went to Manager Intervention. */
+  const stuckLevel = proposeStuckLevel(
+    "unverified-intake", managerOrigin, selected?.intakeEscalation,
+  );
 
   /** First/Last are two boxes over one Monday value (the item name). */
   const nameParts = useMemo(() => splitName(selected?.name), [selected?.name]);
@@ -632,13 +653,6 @@ const UnverifiedReferralsPage = () => {
       setSaveNote(null);
       try {
         const notes = selected.intakeEscalationNotes;
-        // The SAME ladder the shared StageActionBar climbs. This call used to
-        // omit the level, so it always wrote Manager Intervention while the
-        // message below told the rep it had gone to Final Decisions. Computed
-        // once and used for both the write and what we claim about it.
-        const stuckLevel = proposeStuckLevel(
-          "unverified-intake", managerOrigin, selected.intakeEscalation,
-        );
         const res =
           // ONE verified transaction. The left pane, the verified insurance and
           // the doctor columns are now all written and read back BEFORE Move to
@@ -672,7 +686,7 @@ const UnverifiedReferralsPage = () => {
         setSaving(false);
       }
     },
-    [selected, escalateReason, refetch, verified, clinicLabelId, managerOrigin],
+    [selected, escalateReason, refetch, verified, clinicLabelId, stuckLevel],
   );
 
   // Declared after save() deliberately: naming it in the dependency array
@@ -687,31 +701,24 @@ const UnverifiedReferralsPage = () => {
   }, [selected, stedi, save]);
 
   /**
-   * Flag the patient for insurance follow-up, dated TODAY in ET.
+   * "Start Insurance Follow-Up" opens the SAME text composer Evaluate uses,
+   * prefilled with a friendly check-in.
    *
-   * Monday dates are timezone-naive ET (CLAUDE.md §9), so this uses etToday()
-   * rather than a bare `new Date()` — in a UTC container the latter dates
-   * anything after 8pm ET as tomorrow.
+   * It used to write Follow Up + Follow Up Date. That was wrong: on this board
+   * Follow Up is the SNOOZE, and `useRoleCounts` treats an intake patient as
+   * active only while it's unset — so "start a follow-up" quietly took the
+   * patient off today's burndown and parked them in the sidebar's Follow Up
+   * section. Reaching out to someone is not the same as deferring them.
    */
-  const startFollowUp = useCallback(async () => {
-    if (!selected) return;
-    setSaving(true);
-    setSaveNote(null);
-    try {
-      const res = await writeIntakeEdits(selected.id, {
-        followUp: "Follow Up",
-        followUpDate: etToday(),
-      });
-      setSaveNote(
-        res.ok
-          ? "Insurance follow-up started — flagged and dated today."
-          : res.errors.map((e) => `${e.label}: ${e.error}`).join(" · "),
-      );
-      if (res.ok) await refetch(true);
-    } finally {
-      setSaving(false);
-    }
-  }, [selected, refetch]);
+  const [followUpTextOpen, setFollowUpTextOpen] = useState(false);
+  useEffect(() => { setFollowUpTextOpen(false); }, [selected?.id]);
+  const followUpText = useMemo(() => {
+    const first = splitName(selected?.name).first || "there";
+    return `Hi ${first}, it's the team at Medically Modern! We're working on your insurance `
+      + `benefits for your diabetes supplies. Has anything changed with your coverage or plan `
+      + `recently — new card, new insurance, anything like that? Just reply here and we'll take `
+      + `care of the rest. Thank you!`;
+  }, [selected?.name]);
 
   // ── Referral email (Monday updates) + Files (item assets) ────────────────
   // Both fetchers already existed and had no caller. Loaded per patient and
@@ -790,32 +797,44 @@ const UnverifiedReferralsPage = () => {
     }
   }, [selected, refDraft]);
 
-  /** Append one stamped line to the Call Log. */
-  const [noteDraft, setNoteDraft] = useState("");
-  useEffect(() => { setNoteDraft(""); }, [selected?.id]);
-  const addNote = useCallback(async () => {
-    if (!selected || !noteDraft.trim()) return;
-    setSaving(true);
-    setSaveNote(null);
-    try {
-      const res = await appendIntakeNote(selected.id, noteDraft, selected.notes);
-      setSaveNote(res.ok ? "Note added." : res.errors.map((e) => `${e.label}: ${e.error}`).join(" · "));
-      if (res.ok) { setNoteDraft(""); await refetch(true); }
-    } finally {
-      setSaving(false);
-    }
-  }, [selected, noteDraft, refetch]);
-
+  /**
+   * Log a contact attempt and snooze the patient to the next business day.
+   *
+   * This board has no Next Action Date column — Follow Up (`color_mm3822qq`)
+   * + Follow Up Date (`date_mm3874an`) ARE its next-action mechanism.
+   * `useRoleCounts` counts an intake patient as active only while Follow Up
+   * isn't set, so writing the pair is what takes them off today's burndown bar
+   * and puts them in the sidebar's Follow Up section until the date lands.
+   *
+   * Business days, not calendar: a Friday attempt should surface on Monday,
+   * not Saturday. ET, because Monday's dates are timezone-naive ET (§9).
+   */
   const logAttempt = useCallback(async () => {
     if (!selected) return;
     setSaving(true);
     try {
       const next = await logContactAttempt(selected.id, selected.attemptCounter);
-      edit({ attemptCounter: String(next) });
-      setSaveNote(`Attempt ${next} logged.`);
+      const due = addBusinessDaysIso(etToday(), 1);
+      const res = await writeIntakeEdits(selected.id, {
+        followUp: "Follow Up",
+        followUpDate: due,
+      });
+      edit({ attemptCounter: String(next), followUp: "Follow Up", followUpDate: due });
+      if (res.ok) {
+        toast.success(`Attempt ${next} logged`, { description: `Back in the queue ${due}.` });
+        setSaveNote(`Attempt ${next} logged — snoozed to ${due}.`);
+      } else {
+        // The attempt landed but the snooze didn't; say so rather than implying
+        // the patient has left today's queue when they haven't.
+        const failed = res.errors.map((e) => e.label).join(", ");
+        toast.error(`Attempt ${next} logged, but not snoozed`, { description: failed });
+        setSaveNote(`Attempt ${next} logged, but the follow-up date didn't save: ${failed}`);
+      }
       await refetch(true);
     } catch (e) {
-      setSaveNote(e instanceof Error ? `Could not log attempt — ${e.message}` : "Could not log attempt.");
+      const msg = e instanceof Error ? e.message : String(e);
+      toast.error("Could not log attempt", { description: msg });
+      setSaveNote(`Could not log attempt — ${msg}`);
     } finally {
       setSaving(false);
     }
@@ -845,6 +864,10 @@ const UnverifiedReferralsPage = () => {
              unsaved-edit marker. Without it this sidebar silently loses a
              cue reps rely on, which is most of why it read as "odd". */
           hasOverlay={hasOverlay}
+          /* On this stage Follow Up is the snooze that "log call attempt"
+             writes, so the section would just mirror the deferred patients
+             into a second list with a button that un-snoozes them. */
+          hideFollowUp
           filters={(Object.keys(SOURCE_GROUP) as Source[]).map((sKey) => (
             <button
               key={sKey}
@@ -868,15 +891,37 @@ const UnverifiedReferralsPage = () => {
         <div className="panes-host flex-1 flex flex-col min-w-0">
           <header className="bg-gradient-navy text-navy-foreground border-b border-sidebar-border flex-none">
             <div className="px-6 py-5 flex items-center justify-between gap-4 flex-wrap">
+              {/* Same shape as Verified Referrals' header (ProfilePage), which
+                  is also what the mockup's own chrome note specifies: back
+                  button, app tile, eyebrow, title, patient subtitle, and the
+                  emerald Save on the right. */}
               <div className="flex items-center gap-3">
                 <SidebarTrigger className="text-navy-foreground hover:bg-white/10" />
+                <button
+                  onClick={() => goBack()}
+                  className="p-1.5 rounded-md hover:bg-white/10 transition-colors"
+                >
+                  <ArrowLeft className="h-5 w-5" />
+                </button>
                 <div className="h-10 w-10 rounded-lg bg-gradient-primary flex items-center justify-center shadow-elevate">
                   <ClipboardCheck className="h-5 w-5 text-primary-foreground" />
                 </div>
                 <div className="min-w-0">
                   <p className="text-[10px] uppercase tracking-[0.2em] opacity-70">Medically Modern</p>
                   <h1 className="text-2xl font-bold">Patient Intake — DTC &amp; CareCentrix</h1>
+                  {selected && (
+                    <p className="text-sm opacity-80 mt-0.5">{selected.name}</p>
+                  )}
                 </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  onClick={save}
+                  disabled={!selected || saving}
+                  className="bg-gradient-primary text-primary-foreground shadow-elevate"
+                >
+                  {saving ? "Saving…" : "Save"}
+                </Button>
               </div>
             </div>
           </header>
@@ -895,7 +940,18 @@ const UnverifiedReferralsPage = () => {
               <div className="who">
                 <div className="nm">{selected.name}</div>
                 <div className="sub">
-                  {[selected.dob, selected.ptPhone, selected.email].filter(Boolean).join(" · ") || "—"}
+                  {[selected.dob, selected.email].filter(Boolean).join(" · ") || "—"}
+                </div>
+                {/* Evaluate's Call + Text buttons, the same component. The Text
+                    dialog is also what "Start Insurance Follow-Up" opens, which
+                    is why its open state is lifted here. */}
+                <div className="mt-1.5">
+                  <PatientContact
+                    phone={selected.ptPhone}
+                    textPrefill={followUpText}
+                    textOpen={followUpTextOpen}
+                    onTextOpenChange={setFollowUpTextOpen}
+                  />
                 </div>
               </div>
               <div className="spacer" />
@@ -1029,11 +1085,6 @@ const UnverifiedReferralsPage = () => {
                     options={REFERRAL_TYPE_OPTS}
                   />
                 </div>
-                <p className="mt-2 text-[11px] text-muted-foreground">
-                  These two decide which intake queue the patient lands in — Referral
-                  Type “Patient” or Source “CareCentrix” is what makes this an Unverified
-                  Referral. Changing them can move the patient to another queue.
-                </p>
               </Card>
 
               <Card title="Patient Demographics" tone="lead">
@@ -1299,7 +1350,10 @@ const UnverifiedReferralsPage = () => {
                     onChange={(v) => edit({ formSecondaryMemberId: v })}
                   />
                 </div>
-                <div className="mt-3 flex items-center gap-2">
+                {/* Two actions on one row, each with its own status line below
+                    rather than jammed in beside it — the messages are what made
+                    this wrap raggedly. */}
+                <div className="mt-4 flex flex-wrap items-center gap-2">
                   <button
                     onClick={runBenefitsCheck}
                     disabled={saving || stedi.isRunning || !(selected.generalInsurance ?? "").trim()}
@@ -1307,33 +1361,32 @@ const UnverifiedReferralsPage = () => {
                   >
                     {stedi.isRunning ? "Running benefits check…" : "Run benefits check"}
                   </button>
-                  {stedi.state.message && (
-                    <span className={"text-xs " + (stedi.state.phase === "error" ? "text-destructive" : "text-muted-foreground")}>
-                      {stedi.state.message}
-                    </span>
-                  )}
-                  {!(selected.generalInsurance ?? "").trim() && (
-                    <span className="text-xs text-muted-foreground">Needs General Insurance first.</span>
-                  )}
-                  {/* Both columns were already read into Patient and nothing
-                      ever wrote them — this is the button they were waiting
-                      for. Flags Follow Up and dates it today; the mockup's
-                      "follow-up text sent" half needs the messaging wiring
-                      that Patient Messages also needs. */}
                   <button
-                    onClick={startFollowUp}
-                    disabled={saving}
+                    onClick={() => setFollowUpTextOpen(true)}
+                    disabled={saving || !(selected.ptPhone ?? "").trim()}
                     className="btn secondary sm"
-                    title="Flag this patient for insurance follow-up, dated today"
+                    title={
+                      (selected.ptPhone ?? "").trim()
+                        ? "Open the text composer with an insurance check-in ready to send"
+                        : "No phone number on file"
+                    }
                   >
                     Start Insurance Follow-Up
                   </button>
-                  {(selected.followUp ?? "").trim() && (
-                    <span className="text-xs text-muted-foreground">
-                      Following up{(selected.followUpDate ?? "").trim() ? ` · ${selected.followUpDate}` : ""}
-                    </span>
-                  )}
                 </div>
+                {!(selected.generalInsurance ?? "").trim() && (
+                  <p className="mt-2 text-xs text-muted-foreground">
+                    The benefits check needs General Insurance first.
+                  </p>
+                )}
+                {stedi.state.message && (
+                  <p className={
+                    "mt-2 text-xs " +
+                    (stedi.state.phase === "error" ? "text-destructive" : "text-muted-foreground")
+                  }>
+                    {stedi.state.message}
+                  </p>
+                )}
                 {selected.stediErrorDescription?.trim() && (
                   <p className="mt-2 rounded-md bg-red-50 border border-red-200 px-3 py-2 text-xs text-red-800">
                     Last check failed: {selected.stediErrorDescription}
@@ -1376,24 +1429,12 @@ const UnverifiedReferralsPage = () => {
                   provider picked in step 3 replaces what you type here.
                 </p>
 
-                {/* The mockup's "Helpful Links / Identification Info" (Josh):
-                    it's Doctor Notes, the same panel the Medical Necessity tabs
-                    carry. Lives on the MM Doctor Database keyed by NPI, so it's
-                    per-DOCTOR and shared with every patient who sees them —
-                    not a field on this patient, which is why it needs no
-                    column here.
-
-                    It therefore activates only once step 3 supplies an NPI;
-                    the panel renders its own "enter the NPI" hint until then,
-                    which is the behaviour it was built for ("common at the
-                    Profile/intake stage"). */}
-                <div className="mt-3">
-                  <DoctorNotesPanel
-                    doctorNpi={selected.doctorNpi ?? ""}
-                    doctorName={selected.doctorName || selected.formProvidedDoctorName}
-                    compact
-                  />
-                </div>
+                {/* The mockup's "Helpful Links / Identification Info" IS Doctor
+                    Notes (Josh) — but the right pane's Select Correct Provider
+                    already carries that panel, and it's the same MM Doctor
+                    Database record either way (keyed by NPI, per-DOCTOR). A
+                    second copy on this card is the same notes twice on one
+                    screen, so it lives on the right only. */}
               </Card>
 
               {/* Two cards, not one. "On the call" was invented by an earlier
@@ -1531,34 +1572,18 @@ const UnverifiedReferralsPage = () => {
                   under the mockup's card and CLAUDE.md §9. The log is rendered
                   read-only; the box below appends ONE line. Binding a textarea
                   straight to `notes` would replace the history on first save. */}
+              {/* Evaluate's notes panel, the same component — so the stamping
+                  (ET time · stage · initials), the append-only behaviour and
+                  the "saved to Monday" toast are literally one implementation
+                  rather than a lookalike that drifts. It owns its own write, so
+                  `notes` stays out of the bulk save. */}
               <Card title="Call Log & Notes">
-                <div>
-                  {(selected.notes ?? "").trim()
-                    ? (selected.notes ?? "")
-                        .split("\n")
-                        .filter((l) => l.trim())
-                        .map((line, i) => (
-                          <div key={i} className="note-entry">{line}</div>
-                        ))
-                    : <div className="text-xs text-muted-foreground">No notes yet.</div>}
-                </div>
-                <div className="note-add">
-                  <textarea
-                    value={noteDraft}
-                    placeholder="Add a note…"
-                    onChange={(e) => setNoteDraft(e.target.value)}
-                  />
-                  <button
-                    className="btn primary sm"
-                    disabled={saving || !noteDraft.trim()}
-                    onClick={addNote}
-                  >
-                    + Add
-                  </button>
-                </div>
-                <p className="mt-2 text-[11px] text-muted-foreground">
-                  Append-only. Each line is stamped with the ET time, the stage and your initials.
-                </p>
+                <NotesPanel
+                  notes={selected.notes ?? ""}
+                  onNotesChange={(v) => edit({ notes: v })}
+                  onSaveToMonday={(v) => writeLongText(selected.id, COL.notes, v)}
+                  notePrefix="Patient Intake"
+                />
               </Card>
 
               {/* HANDOFF §2 "Left-pane exits" — all three live here, at the
@@ -1614,23 +1639,36 @@ const UnverifiedReferralsPage = () => {
                             </li>
                           ))}
                         </ul>
-                        {/* The pane itself unlocks from the four conditions
-                            (HANDOFF §2: "not unlocked by a button click"), so
-                            this takes the rep TO the unlocked pane rather than
-                            gating it a second time. */}
+                        {/* NOT an advance. The right pane unlocks from the
+                            conditions above on its own (HANDOFF §2: "not
+                            unlocked by a button click"), so all this does is
+                            scroll there — and calling it "Advance" made reps
+                            look for an action that doesn't exist. Reworded to
+                            say what it does. */}
                         <button
                           onClick={() => cleanUpRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })}
                           disabled={!unlock.unlocked || saving}
                           className="btn primary"
-                          title={unlock.unlocked ? undefined : "Blocked by the checklist above"}
+                          title={
+                            unlock.unlocked
+                              ? "Jump to the Profile Clean-Up pane"
+                              : "Blocked by the checklist above"
+                          }
                         >
-                          Advance to Profile Clean-Up →
+                          {unlock.unlocked ? "Go to Profile Clean-Up →" : "Profile Clean-Up locked"}
                         </button>
+                        <p className="mt-2 text-[11px] text-muted-foreground">
+                          The pane on the right unlocks by itself once these pass — this just takes
+                          you there. The send-off happens over there.
+                        </p>
                       </div>
 
                       <div className="route intake on">
                         <h4>Insufficient — log call</h4>
-                        <p>Missing info → call the patient, collect it above, then log the attempt.</p>
+                        <p>
+                          Missing info → call the patient, collect it above, then log the attempt.
+                          Snoozes them to the next business day.
+                        </p>
                         <div className="flex flex-wrap items-center gap-2">
                           <button onClick={logAttempt} disabled={saving} className="btn amber">
                             Log call attempt
@@ -1642,35 +1680,32 @@ const UnverifiedReferralsPage = () => {
                       </div>
 
                       <div className="route esc on">
-                        <h4>Escalate — doesn't qualify</h4>
+                        <h4>Propose Stuck</h4>
                         <p>
-                          Patient doesn't meet criteria for this request → flag for supervisor review
-                          instead of advancing.
+                          Patient doesn't meet criteria for this request → send to{" "}
+                          {stuckLevel === "final" ? "Final Decisions" : "Manager Intervention"} for
+                          review instead of advancing.
                         </p>
                         {/* Reason is required — a manager can't action a blank
-                            escalation. */}
+                            proposal, and the reason is the whole handover. */}
                         <div className="inline-panel" style={{ display: "block" }}>
                           <textarea
                             value={escalateReason}
-                            placeholder="Add context for the reviewer…"
+                            placeholder="Why is this patient stuck?"
                             onChange={(e) => setEscalateReason(e.target.value)}
                           />
                           <button
-                            onClick={() => runStageAction("escalate")}
+                            onClick={() => runStageAction("proposeStuck")}
                             disabled={saving || !escalateReason.trim()}
                             className="btn rose sm"
                             style={{ marginTop: 9 }}
                           >
-                            Submit escalation
+                            Propose Stuck
                           </button>
                         </div>
                       </div>
                     </div>
 
-                    <p className="mt-3 text-[11px] text-muted-foreground">
-                      Advancing moves the patient into Verified Referrals (1. Intake). That stage
-                      finishes the send-off and is what advances them to Medical Necessity.
-                    </p>
                   </>
                 )}
                 {(saveNote || loading) && (
