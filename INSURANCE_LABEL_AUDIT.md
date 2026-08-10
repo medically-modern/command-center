@@ -383,24 +383,49 @@ Requested by Josh: add **CDPHP** as a Primary Insurance option on the **Subscrip
 board** and the **Order board**, and as an option in the **Cardinal API ordering
 service**.
 
-Status: **not yet applied — blocked on two decisions.**
-
-| Step | State | Blocker |
-|---|---|---|
-| Subscription board label | not applied | The only API path is `update_status_column`, whose `settings.labels` input **replaces the entire label set**, and whose `StatusColumnColors` enum does not map onto the legacy `var_name`s these columns carry (`green-shadow`, `blue-links`, `mustered`, `trolley-grey` …). A wrong replace blanks Primary Insurance for every item on the board. Needs either a UI add or an explicit decision to attempt the replace. |
-| Order board label | not applied | Same. |
-| `subscription/workflow.ts` entry | not applied | Depends on the index Monday assigns — must be read back, not assumed (§1.1). |
-| `insurancemap.js` `ROUTING` row | not applied | Needs the Cardinal `insuranceInfo.type` and whether it is `direct` or `split`, from the Cardinal Insurance Type Mapping sheet. `insurancemap.js` states **"never guess"**, and until a row exists Cardinal fails safe — CDPHP orders are **blocked**, not mis-sent. |
-
-Suggested label string: **`CDPHP`**. It matches the existing single-token carrier
+Agreed label string: **`CDPHP`**. It matches the existing single-token carrier
 convention (`Cigna`, `Humana`, `Wellcare`, `NYSHIP`, `UMR`, `Oregon Care`), and it
 contains neither `medicare` nor `medicaid`, so the substring rules in §8 treat it as
 commercial. If MM later serves CDPHP's Medicare Advantage or Medicaid lines, those
 need **separate** labels — the HCPC supply group and the Cardinal type differ by
 plan line, and one label cannot carry both.
 
-Note that adding CDPHP to Subscription and Order **only** is a deliberate partial
-state: a CDPHP patient cannot be entered at Profile Send Off, Welcome Call, or
-Insurance, so the payer supports the *existing-subscriber-changed-insurance* path
-(the `Insurance Change?` column, `color_mm2p8v3m`) but not a new referral. That is a
-valid scope — it is recorded here so it is not later mistaken for an oversight.
+| Step | State |
+|---|---|
+| Cardinal `insurancemap.js` `ROUTING` row | **done** — `split('CDPHP', 'Managed Medicaid', 'Managed Medicaid')` |
+| Subscription board label `color_mm254qxj` | **Josh is adding it in the Monday UI** |
+| Order board label `color_mm18jhq5` | **Josh is adding it in the Monday UI** |
+| `subscription/workflow.ts` `PRIMARY_INSURANCE_OPTIONS` entry | **open** — needs the index Monday assigns, read back from `settings_str` (§1.1). Until then a rep cannot select CDPHP in the Command Center, though a value set on the board displays correctly (§3.1). |
+
+**Cardinal type.** Confirmed by Josh 2026-08-10: `Managed Medicaid` in **both**
+buckets. Because the two buckets are equal, `classifyInsurance` needs no DOB and a
+missing or unparseable DOB cannot block a CDPHP order — the same shape as `NYSHIP`,
+`UMR`, `BCBS WY` and `Oregon Care`. Covered by a new case in
+`cardinal-api/test/transform.test.js`; suite green at 43 passed, 0 failed.
+
+> ⚠️ **The two board labels must be spelled `CDPHP` identically on both boards.**
+> The Subscription → Order automation copies by matching label **text**, so any
+> difference — including a trailing space or a different capitalisation — makes the
+> value **blank on the hop with no error** (§2). That is the single most likely way
+> this addition goes wrong, and nothing in the stack will report it. After both
+> labels exist, `npm run check:labels` in `cardinal-api` is the tool that would
+> catch it, once its `COLUMNS`/`HOPS` are extended to the insurance columns
+> (§7 item 2).
+
+**Scope is deliberately partial** (confirmed by Josh): CDPHP is being added to the
+Subscription and Order boards **only**. A CDPHP patient therefore cannot be entered
+at Profile Send Off, Welcome Call, or Insurance — the payer supports the
+*existing-subscriber-changed-insurance* path (the `Insurance Change?` column,
+`color_mm2p8v3m`) but **not a new referral**. Recorded here so it is not later
+mistaken for an oversight. Consequences that follow from that scope, none of which
+are bugs:
+
+- No `hcpcRules.ts` entry, so CDPHP has no HCPC supply group. Correct while no
+  CDPHP patient reaches the Insurance board.
+- No `PAYER_RATE_SCHEDULE` row, so no OOP estimate. Same reasoning — and 8 existing
+  payers are already in that state (§3.5).
+- No `primaryInsurance.ts` suggestion mapping, so a Stedi check naming CDPHP returns
+  "New carrier — verify". Correct: Profile Send-Off is not a CDPHP entry point.
+
+Widening the scope later means working the full §8 checklist, not just adding four
+more board labels.
