@@ -1187,7 +1187,13 @@ function dateToBucket(dateStr: string): DayBucketLabel | "Unknown" {
 
 /** Which groups to fetch per board */
 const BOARD_GROUPS: Record<number, string[]> = {
-  18406352652: ["group_mm1xf2jb"],
+  // 1. Intake (Verified + Already In System) plus the DTC form's own two
+  // groups (Patient Intake). The form groups were MISSING here, so the whole
+  // Patient Intake population was never fetched — the chart quietly showed
+  // only whatever it could match in 1. Intake. A chart whose filter names a
+  // group that isn't in this list renders 0 with no error; same class of bug
+  // as the DVS group note below.
+  18406352652: ["group_mm1xf2jb", ...PROFILE_FORM_GROUPS],
   18406060017: ["group_mm1xf2jb"],
   // group_mm5gp2r2 = DVS: added 2026-07 when DVS got its own group (a
   // group-move automation). Without it the DVS-stage items are never fetched,
@@ -1268,6 +1274,14 @@ function columnsForBoard(boardId: number): string[] {
   // Board 18406352652 needs the intake date for day-bucket derivation
   if (boardId === 18406352652) {
     set.add("date_mm1wf43j");
+    // Intake Escalation backs the Manager Intervention (index 0) and Final
+    // Decisions (index 2) charts. It was filtered on but never FETCHED, so
+    // colIndex was undefined for every patient and both charts matched
+    // nobody — permanently empty since the day they were added, with no
+    // error. An escalated intake patient is out of the rep queue and out of
+    // the role count, so those two charts were the only place left to see
+    // them (§7).
+    set.add("color_mm5zww42");
   }
 
   // Medical Necessity board — the consolidated ask list feeds the "Requesting"
