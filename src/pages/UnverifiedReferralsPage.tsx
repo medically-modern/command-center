@@ -43,6 +43,9 @@ import type { Patient } from "@/lib/profile/workflow";
 // helper rather than a hand-rolled param name, which is how this page ended
 // up looking for a "?origin=" nothing ever wrote.
 import { managerOriginFromParams } from "@/lib/shared/managerOrigin";
+// §5.2: a value the board holds but the picker doesn't offer must still be
+// visible, or the select renders blank and the field looks empty when it isn't.
+import { optionsWithCurrent } from "@/lib/profile/selectOptions";
 // The shared bar, so this stage's Propose Stuck / Send back to pipeline are
 // literally the same component and copy Medical Evaluation uses — not a
 // lookalike that can drift from it.
@@ -74,13 +77,14 @@ const SOURCE_LABEL: Record<Source, string> = {
   partial: "Partial forms",
 };
 
-/** "Not Serving" is a real board label but never a pickable option — same rule
- *  ProfilePage applies, so the two pages offer identical choices. */
-const noNotServing = (labels: string[]) => labels.filter((l) => l !== "Not Serving");
-const SERVING_OPTS = noNotServing(Object.keys(SERVING_INDEX));
-const REQUEST_TYPE_OPTS = noNotServing(Object.keys(REQUEST_TYPE_INDEX));
-const CGM_PATH_OPTS = noNotServing(Object.keys(CGM_COVERAGE_PATH_INDEX));
-const IP_PATH_OPTS = noNotServing(Object.keys(INSULIN_PUMP_COVERAGE_PATH_INDEX));
+/** Full board label sets. "Not Serving" is NOT stripped here — `optionsWithCurrent`
+ *  hides it from the picker while keeping it visible when it's the patient's
+ *  current value (§5.2), and the WRITE path uses the complete index maps, so a
+ *  legitimate "Not Serving" can still be written and read back. */
+const SERVING_OPTS = Object.keys(SERVING_INDEX);
+const REQUEST_TYPE_OPTS = Object.keys(REQUEST_TYPE_INDEX);
+const CGM_PATH_OPTS = Object.keys(CGM_COVERAGE_PATH_INDEX);
+const IP_PATH_OPTS = Object.keys(INSULIN_PUMP_COVERAGE_PATH_INDEX);
 const GENERAL_INSURANCE_OPTS = Object.keys(GENERAL_INSURANCE_INDEX);
 const REFERRAL_TYPE_OPTS = Object.keys(REFERRAL_TYPE_INDEX);
 const REFERRAL_SOURCE_OPTS = Object.keys(REFERRAL_SOURCE_INDEX);
@@ -137,10 +141,8 @@ function EditSelect({
         onChange={(e) => onChange(e.target.value)}
       >
         <option value="">—</option>
-        {/* Blank board labels are dropped: Monday leaves an empty slot behind
-            when a status is removed, and it would render as a nameless option. */}
-        {options.filter((o) => o.trim() !== "").map((o) => (
-          <option key={o} value={o}>{o}</option>
+        {optionsWithCurrent(options, value).map((o) => (
+          <option key={o.value} value={o.value} disabled={o.disabled}>{o.label}</option>
         ))}
       </select>
     </label>
