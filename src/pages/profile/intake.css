@@ -269,15 +269,26 @@
 .pf-root .doclab { font-size:.72rem; font-weight:600; text-transform:uppercase; letter-spacing:.04em;
   color:var(--muted-foreground) }
 .pf-root .para-row.sel { background:oklch(0.973 0.011 175) }
-.pf-root .why { position:relative; display:inline-grid; place-items:center; width:16px; height:16px;
+/* §4's ⓘ hover affordance — the 16px circle that reveals .whycard.
+   NOT BUILT and currently unused: the shipped reasoning note is always-visible
+   (.why above), which is what Josh asked for in-session, while §4 asks for this
+   hover. That ruling is still open, so this is kept rather than deleted.
+
+   ⚠️ It was called `.why` — the SAME selector as the always-visible note 150
+   lines above — and being later in the file it won. The note was rendered into
+   a 16px italic circle: "Why Fidelis Low-Cost?" wrapped one word per line and
+   overflowed across the Save button and the next card's header. Renamed to
+   `.whyicon` so the two can coexist until the ruling lands. If §4 wins, the
+   markup switches to this class; don't re-merge the names. */
+.pf-root .whyicon { position:relative; display:inline-grid; place-items:center; width:16px; height:16px;
   border-radius:50%; background:oklch(0.9 0.01 250); color:var(--muted-foreground); font-size:.6rem;
   font-weight:800; cursor:help; text-transform:none; letter-spacing:0; font-style:italic; flex:none }
-.pf-root .why:hover, .pf-root .why:focus { background:var(--mm-green); color:#fff; outline:none }
+.pf-root .whyicon:hover, .pf-root .whyicon:focus { background:var(--mm-green); color:#fff; outline:none }
 .pf-root .whycard { display:none; position:absolute; z-index:60; top:calc(100% + 8px); left:-10px;
   width:330px; background:#fff; border:1px solid var(--border); border-radius:12px; padding:13px 15px;
   box-shadow:0 18px 44px -16px rgba(0,0,0,.4); font-size:.8rem; font-weight:400; font-style:normal;
   line-height:1.55; color:var(--foreground); text-align:left; text-transform:none; letter-spacing:0 }
-.pf-root .why:hover .whycard, .pf-root .why:focus .whycard { display:block }
+.pf-root .whyicon:hover .whycard, .pf-root .whyicon:focus .whycard { display:block }
 .pf-root .whycard b { color:var(--mm-teal); font-weight:700 }
 .pf-root .whycard .wl { display:block; font-size:.63rem; font-weight:800; text-transform:uppercase;
   letter-spacing:.06em; color:var(--muted-foreground); margin-bottom:7px }
