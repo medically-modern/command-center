@@ -864,33 +864,44 @@ const UnverifiedReferralsPage = () => {
   /** Shared by both upload affordances — the CGM drop zone and the Files
    *  card's attach button. Only the target column differs. */
   const uploadTo = useCallback(async (
-    columnId: string, file: File, setBusy: (b: boolean) => void,
+    columnId: string, files: File[], setBusy: (b: boolean) => void,
   ) => {
-    if (!selected) return;
+    if (!selected || !files.length) return;
     setBusy(true);
+    const failed: string[] = [];
     try {
-      const bytes = new Uint8Array(await file.arrayBuffer());
-      await uploadFileToColumn(
-        selected.id, columnId, bytes, file.name,
-        file.type || "application/octet-stream",
-      );
-      toast.success(`Attached ${file.name}`);
-      setAssets(null); // re-fetch so it appears in the Files card
+      // Sequential: Monday's file API is a multipart POST per file, and firing
+      // several at one column races them.
+      for (const file of files) {
+        try {
+          const bytes = new Uint8Array(await file.arrayBuffer());
+          await uploadFileToColumn(
+            selected.id, columnId, bytes, file.name,
+            file.type || "application/octet-stream",
+          );
+        } catch (e) {
+          console.error("[intake upload]", file.name, e);
+          failed.push(file.name);
+        }
+      }
+      const ok = files.length - failed.length;
+      if (ok > 0) toast.success(`Attached ${ok} file${ok === 1 ? "" : "s"}`);
+      if (failed.length) {
+        toast.error(`Couldn't attach ${failed.length}`, { description: failed.join(", ") });
+      }
+      setAssets(null); // re-fetch so they appear in the Files card
       await refetch(true);
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      toast.error("Upload failed", { description: msg });
     } finally {
       setBusy(false);
     }
   }, [selected, refetch]);
 
   const uploadCgmFile = useCallback(
-    (file: File) => uploadTo(COL.cgmDataFile, file, setCgmUploading),
+    (files: File[]) => uploadTo(COL.cgmDataFile, files, setCgmUploading),
     [uploadTo],
   );
   const uploadCardFile = useCallback(
-    (file: File) => uploadTo(COL.formCardPhoto, file, setCardUploading),
+    (files: File[]) => uploadTo(COL.formCardPhoto, files, setCardUploading),
     [uploadTo],
   );
 
@@ -1200,31 +1211,36 @@ const UnverifiedReferralsPage = () => {
                     ))
                   )}
                 </div>
-                {/* Attach a file to the patient.
-                    ⚠️ Monday files live IN A COLUMN, not loose on the item, and
-                    this board has exactly two: Insurance Card Photo and CGM
-                    Data File. CGM has its own drop zone under What They Need,
-                    so this one lands on the card-photo column and says so
-                    rather than picking silently. A genuinely generic
-                    attachment would need a new Files column on the board. */}
-                <label className="upzone" style={{ marginTop: 10 }}>
-                  <div className="uz-t">
-                    {cardUploading ? "Uploading…" : "Attach a file — insurance card"}
-                  </div>
-                  <div className="sugg-note">
-                    Photo or PDF. Saves to Insurance Card Photo and appears above.
-                  </div>
-                  <input
-                    type="file"
-                    style={{ display: "none" }}
-                    disabled={cardUploading}
-                    onChange={(e) => {
-                      const f = e.target.files?.[0];
-                      if (f) void uploadCardFile(f);
-                      e.target.value = "";
-                    }}
-                  />
-                </label>
+                {/* Upload documents.
+                    ⚠️ A <label>, not a <button>: `.pf-root button` strips
+                    background/border off bare buttons, and `.upzone` — the
+                    mockup's drop zone — is `display:none` until JS adds
+                    `.show`, which is why the first attempt at this was
+                    invisible on the page.
+                    ⚠️ Monday files live IN A COLUMN, not loose on the item,
+                    and this board has exactly two: Insurance Card Photo and
+                    CGM Data File. CGM has its own zone under What They Need,
+                    so these land on the card-photo column. A genuinely
+                    untyped attachment would need a new Files column. */}
+                <div style={{ padding: "0 8px 10px" }}>
+                  <label
+                    className="btn secondary sm"
+                    style={{ display: "inline-flex", cursor: cardUploading ? "wait" : "pointer" }}
+                  >
+                    {cardUploading ? "Uploading…" : "Upload documents"}
+                    <input
+                      type="file"
+                      multiple
+                      style={{ display: "none" }}
+                      disabled={cardUploading}
+                      onChange={(e) => {
+                        const files = Array.from(e.target.files ?? []);
+                        if (files.length) void uploadCardFile(files);
+                        e.target.value = "";
+                      }}
+                    />
+                  </label>
+                </div>
               </div>
 
               <Card title="Referral Routing" tone="lead">
@@ -1405,14 +1421,14 @@ const UnverifiedReferralsPage = () => {
                       file yourself once they email or text it over.
                     </p>
                     <label
-                      className={cgmDragOver ? "upzone over" : "upzone"}
+                      className={cgmDragOver ? "upzone show over" : "upzone show"}
                       onDragOver={(e) => { e.preventDefault(); setCgmDragOver(true); }}
                       onDragLeave={() => setCgmDragOver(false)}
                       onDrop={(e) => {
                         e.preventDefault();
                         setCgmDragOver(false);
-                        const f = e.dataTransfer.files?.[0];
-                        if (f) void uploadCgmFile(f);
+                        const fs = Array.from(e.dataTransfer.files ?? []);
+                        if (fs.length) void uploadCgmFile(fs);
                       }}
                     >
                       <div className="uz-t">
@@ -1424,8 +1440,8 @@ const UnverifiedReferralsPage = () => {
                         style={{ display: "none" }}
                         disabled={cgmUploading}
                         onChange={(e) => {
-                          const f = e.target.files?.[0];
-                          if (f) void uploadCgmFile(f);
+                          const fs = Array.from(e.target.files ?? []);
+                          if (fs.length) void uploadCgmFile(fs);
                           e.target.value = "";
                         }}
                       />
@@ -1433,10 +1449,10 @@ const UnverifiedReferralsPage = () => {
                   </div>
                 )}
 
-                <div className="derived-strip">
-                  <span className="dlabel">Request Type</span>
-                  <span className="sugg-chip2">{selected.requestType?.trim() || "—"}</span>
-                </div>
+                {/* The mockup's derived Request Type chip is gone. It printed
+                    the same value as the editable field right below it, so the
+                    card read "Request Type" twice. Nothing computes the value
+                    yet, so the editable field is the real one. */}
 
                 {/* Request Type is DERIVED from the categories above in the
                     mockup ("computed — never typed"), but nothing computes it
