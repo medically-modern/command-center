@@ -44,6 +44,10 @@ import {
 import { uploadFileToColumn } from "@/lib/masheke/mondayApi";
 import { openFileViewer } from "@/components/shared/FileViewerModal";
 import { IntakeMessages } from "@/components/profile/IntakeMessages";
+// The mockup's "Helpful Links / Identification Info" is Doctor Notes (Josh) —
+// the MM Doctor Database record keyed by NPI, shared with the Medical
+// Necessity tabs rather than a column on this patient.
+import { DoctorNotesPanel } from "@/components/shared/DoctorNotesPanel";
 import { useStediRun, STEDI_POLL_MS } from "@/hooks/profile/useStediRun";
 import {
   suggestPrimary, suggestSecondary, buildSuggestionInputs,
@@ -1357,8 +1361,29 @@ const UnverifiedReferralsPage = () => {
                   />
                 </div>
                 <p className="mt-2 text-[11px] text-muted-foreground">
-                  Write-once reference. Picking a provider on the right does not overwrite these.
+                  Write-once reference. Picking a provider on the right does not overwrite the name
+                  or phone. Clinic Address is the exception — it writes the verified column, so a
+                  provider picked in step 3 replaces what you type here.
                 </p>
+
+                {/* The mockup's "Helpful Links / Identification Info" (Josh):
+                    it's Doctor Notes, the same panel the Medical Necessity tabs
+                    carry. Lives on the MM Doctor Database keyed by NPI, so it's
+                    per-DOCTOR and shared with every patient who sees them —
+                    not a field on this patient, which is why it needs no
+                    column here.
+
+                    It therefore activates only once step 3 supplies an NPI;
+                    the panel renders its own "enter the NPI" hint until then,
+                    which is the behaviour it was built for ("common at the
+                    Profile/intake stage"). */}
+                <div className="mt-3">
+                  <DoctorNotesPanel
+                    doctorNpi={selected.doctorNpi ?? ""}
+                    doctorName={selected.doctorName || selected.formProvidedDoctorName}
+                    compact
+                  />
+                </div>
               </Card>
 
               {/* Two cards, not one. "On the call" was invented by an earlier
