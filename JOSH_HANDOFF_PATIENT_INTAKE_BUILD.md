@@ -69,6 +69,15 @@ buttons. Both look like "unstyled" and neither is.
 |---|---|
 | **Benefits Check Output** | §3/§10 — pending Corey's plan-level research. **Do not build.** Leave the Stedi plumbing alone. |
 | **Calendly booking picker** (§7/§7.2) | No integration. The override is free text + an explicit Confirm — a dropdown of invented times is worse than none, because the rep would believe those openings exist. 🟡 OPEN: can the rep *book*, or only view? |
+
+⚠️ **Call Booking is ONE column (`text_mm5za6zx`) doing two jobs** — the form's
+answer and the rep's override — so confirming a different opening overwrites
+what the patient asked for. Rather than add a second column: *Selected on form*
+reads the as-received snapshot (`getReceived`), not `selected`, so it keeps
+showing the patient's own pick while the rep types over it; and the change is
+stamped into the Call Log naming **both** sides, so the original survives the
+overwrite on the board too. If a Calendly integration ever lands, that pair is
+the behaviour to preserve.
 | **Send photo upload link to patient** (§8.3) | Needs the tokenized-URL service. The **rep-side** upload is built, so the file half works — see Files below. |
 
 ### Files
@@ -83,6 +92,15 @@ exactly two — so an upload has to pick one and the UI names which:
 
 A genuinely untyped "patient documents" bucket would need a **new Files column
 on the board** — a board change, not a UI one.
+
+⚠️ **Removal is per-COLUMN, not per-file, and that is Monday's limit, not a
+shortcut.** `add_file_to_column` only appends; `update_assets_on_item` takes
+fresh uploads, not existing asset ids; there is no delete-one-asset mutation.
+The only removal the API offers is `change_column_value` with
+`{"clearAll": true}` (`clearFileColumn`). So the ✕ sits beside the column
+LABEL, not on each row — a per-row ✕ on a two-file column would offer two
+controls that both clear both files — and it says how many it will take.
+Confirmed before it fires, and stamped into the Call Log after.
 
 ---
 
@@ -256,9 +274,31 @@ writes BOTH the escalation column (the manager's audit trail) and the Call Log �
 one implementation, so a path added later can't write one and forget the other.
 
 Propose Stuck stamps its rung: nothing for a processor, `— Manager Escalation`,
-`— Final Escalation` (`proposeStuckNoteLine`, tested). Cost and Self Advocacy
-mirror in on save, once, only on change. Sent **emails** log too (a text keeps
-its RingCentral thread; email has no per-patient store).
+`— Final Escalation` (`proposeStuckNoteLine`, tested). Cost, Self Advocacy and
+the **call slot** mirror in on save, once, only on change. Sent **emails** log
+too (a text keeps its RingCentral thread; email has no per-patient store).
+Removing a file logs too — the file is gone from Monday and nothing else would
+say who took it.
+
+### Care Coordinator lives here, not in a column
+
+Brandon §9 asks for a `Care Coordinator Owner` column so a later phase can route
+by owner. Josh's call (2026-08-10): **don't add one.** The rep picks a
+coordinator from the Command Center roster (`access.json` — managers plus
+processors, de-duplicated) and the pick is stamped into the Call Log.
+
+⚠️ **The vehicle is the whole decision, and "updates" would NOT have worked.**
+Advance to MN does not move this item — the automation CREATES a new item on
+Medical Evaluation and copies **columns**. Monday updates don't come along, so a
+stamp posted as an update would sit on Profile Send Off and be invisible exactly
+where Phase 3 wants to read it. The Call Log does carry: `text_mm389fs` →
+masheke `text_mm3xdze1`, which Evaluate already renders as prior-stage notes.
+
+`lib/profile/careCoordinator.ts` owns both halves — `coordinatorNoteLine` writes
+it, `extractCoordinator` reads the current owner back (LAST line wins, so a
+reassignment appends rather than replacing and the history stays readable).
+**The line is the contract**, same rule as the Doctor Appointments attempt line
+(§5.12): a downstream stage will match on it.
 
 ## Open — needs Josh, don't guess
 
@@ -273,11 +313,19 @@ its RingCentral thread; email has no per-patient store).
    CareCentrix*, action *move to New Form — Completed*. Correct. Note it has
    never actually fired: there are **zero** CareCentrix-sourced items on the
    board, so the first real CCX referral is still its first test.
-4. §5.2 wants the four product dropdowns sourced from `settings_str` at runtime
-   with the hardcoded maps as fallback. **The data-loss half is fixed** — a
-   board value the picker doesn't offer renders as a disabled "not selectable"
-   option (`selectOptions.ts`) instead of a blank select — but the lists are
-   still hardcoded.
+4. ~~§5.2 live product dropdowns.~~ **DONE 2026-08-10** —
+   `lib/profile/boardLabels.ts` reads `settings_str` for CGM Type, Pump Type
+   and the two Coverage Paths, session-cached, and never throws: a failed fetch
+   resolves to `{}` so the page degrades to the hardcoded maps rather than to
+   an empty select. Two halves, deliberately different shapes: `options` (the
+   picker's list, sorted by `labels_positions_v2`, `Not Serving` filtered out)
+   and `index` (the FULL label→index map, hidden labels included, threaded into
+   `buildIntakeTasks`/`buildAdvanceTasks` as `liveIndex`).
+   ⚠️ **Both halves are load-bearing.** Wiring only the picker is worse than
+   wiring neither: the rep picks a newly-added label, `mapped()` doesn't
+   recognise it, and the write is silently skipped — right dropdown, no write,
+   no error. And filtering the write map would break the cross-sell derivation,
+   which legitimately writes the label the picker hides.
 5. §7.1 questions still unanswered: is **CGM Data & Doctor Awareness**
    conditional on CGM Coverage Path = `Hypoglycemia`, or always shown with the
    CGM category? Is **Cost & Coverage** gated on Reason = pharmacy cost?
@@ -319,6 +367,13 @@ Unit-tested only — all of these need a browser session with a Monday token:
   signed-in medicallymodern.com session. ⚠️ Unlike everything else here, these
   send **externally to a real person** — the ZZ TEST patients have fake contact
   details, so a send fails at the transport rather than reaching anyone.
+- **The live-label fetch** (`fetchBoardLabels`). The parse is tested against
+  real `settings_str` shapes and the write path is tested against a stubbed
+  index, but the query itself has never run. Worth one look: open a patient,
+  confirm the four product dropdowns still list what they listed before, then
+  rename a label on the board and confirm it appears without a rebuild.
+- **`clearFileColumn`.** `{"clearAll": true}` is the documented shape but has
+  not been fired at this board. Try it on a ZZ TEST patient before a real one.
 
 ---
 

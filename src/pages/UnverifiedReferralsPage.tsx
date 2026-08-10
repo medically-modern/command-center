@@ -21,7 +21,7 @@ import { Button } from "@/components/ui/button";
 import { useBackNavigation } from "@/hooks/useBackNavigation";
 
 import { useMondayPatients } from "@/hooks/profile/useMondayPatients";
-import { GROUPS, fetchClinicLabels } from "@/lib/profile/mondayApi";
+import { GROUPS, fetchClinicLabels, clearFileColumn } from "@/lib/profile/mondayApi";
 // §6.1: this is the EXISTING component, unchanged. Search, Parachute panel,
 // location grid, order count and notes all behave exactly as on /profile —
 // rebuilding it would fork behaviour reps already rely on.
@@ -82,6 +82,10 @@ import { proposeStuckLevel } from "@/lib/shared/stageActions";
 // The live sidebar and header, so this page sits in the same chrome as every
 // other Command Center stage instead of inventing its own.
 import { PatientsSidebar } from "@/components/profile/PatientsSidebar";
+import { useAccessContext } from "@/components/AccessProvider";
+import { managerPeople, processorPeople } from "@/lib/people";
+import { coordinatorNoteLine, extractCoordinator } from "@/lib/profile/careCoordinator";
+import { fetchBoardLabels, HIDDEN_LABELS, type LiveLabels } from "@/lib/profile/boardLabels";
 import { PageLoadingOverlay } from "@/components/shared/PageLoadingOverlay";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 // redesign.css is the shared design system (DoctorSection's markup is scoped
@@ -270,12 +274,51 @@ function Seg({
  * nothing would read as "the patient never sent one".
  */
 function FileColumnRow({
-  label, filename, assetIds, assets,
+  label, filename, assetIds, assets, onRemove,
 }: {
   label: string; filename?: string; assetIds?: string; assets: MondayAsset[] | null;
+  /** Clears the WHOLE column (see `remove`). Omit to render without a ✕. */
+  onRemove?: () => void | Promise<void>;
 }) {
   const raw = (filename ?? "").trim();
   if (!raw) return null;
+
+  /**
+   * ⚠️ Monday has no per-ASSET delete for file columns. `add_file_to_column`
+   * appends and `update_assets_on_item` takes fresh uploads, not existing
+   * asset ids — the only removal the API offers is `{"clearAll": true}`, which
+   * empties the column. So the ✕ is honest about its blast radius: on a
+   * single-file column it reads "remove this file" because that IS the whole
+   * column, and on a multi-file one it says how many it will take with it.
+   * Confirmed either way — these are a patient's documents.
+   */
+  const remove = (count: number) => {
+    const msg = count > 1
+      ? `Remove all ${count} files from ${label}?\n\nMonday can only clear this column as a whole — there's no way to delete just one file.`
+      : `Remove this file from ${label}?`;
+    if (!window.confirm(msg)) return;
+    void onRemove?.();
+  };
+
+  /** Label + the column-level ✕. Deliberately ONE button beside the label
+   *  rather than one per row: a per-row ✕ on a two-file column would offer two
+   *  controls that both do the same thing (clear both). */
+  const head = (count: number) => (
+    <div className="flabel" style={{ display: "flex", alignItems: "center", gap: 8 }}>
+      <span>{label}</span>
+      {onRemove && (
+        <button
+          type="button"
+          className="frm"
+          title={count > 1 ? `Clear all ${count} files on this column` : "Remove this file"}
+          aria-label={count > 1 ? `Remove all ${count} files from ${label}` : `Remove file from ${label}`}
+          onClick={() => remove(count)}
+        >
+          ✕ {count > 1 ? `Remove all ${count}` : "Remove"}
+        </button>
+      )}
+    </div>
+  );
 
   // PREFERRED path: join on the column's asset IDs. Exact, and it yields the
   // asset's SIGNED public_url — the column's own protected_static link needs a
@@ -288,7 +331,7 @@ function FileColumnRow({
     if (matched.length) {
       return (
         <div style={{ marginBottom: 16 }}>
-          <div className="flabel">{label}</div>
+          {head(matched.length)}
           {matched.map((a) => (
             <div
               key={a.id}
@@ -329,7 +372,7 @@ function FileColumnRow({
 
   return (
     <div style={{ marginBottom: 16 }}>
-      <div className="flabel">{label}</div>
+      {head(entries.length)}
       {entries.map((e, i) => {
         // Prefer the asset: its public_url is signed, where the column's raw
         // URL is a protected_static path that can 403 on its own.
@@ -454,7 +497,7 @@ const UnverifiedReferralsPage = () => {
   const source: Source = sourceParam === "partial" ? "partial" : "completed";
 
   const {
-    patients, loading, initialLoading, error, refetch, updateLocal, hasOverlay,
+    patients, loading, initialLoading, error, refetch, updateLocal, hasOverlay, getReceived,
   } = useMondayPatients(searchParams.get("patientId"), SOURCE_GROUP[source]);
 
   const [selectedId, setSelectedId] = useState<string | null>(searchParams.get("patientId"));
@@ -617,32 +660,100 @@ const UnverifiedReferralsPage = () => {
   }, [selected, updateLocal]);
 
   /**
-   * Two rep-entered facts that also belong in the Call Log: Current
-   * Out-of-Pocket Cost and Self Advocacy (Josh, 2026-08-10). They keep their
-   * own columns — this just mirrors them into the log, so a manager reading it
-   * sees what was learned on the call without cross-referencing two columns.
+   * §5.2 — the four product dropdowns read their options from the BOARD, so a
+   * status added or renamed on Monday appears without a code edit. The
+   * hardcoded maps stay as the fallback: a failed fetch must degrade to
+   * today's behaviour, never to an empty select.
+   *
+   * Everything from here to logChangedFacts is declared ABOVE save() and the
+   * action handler on purpose: both name these in a dependency array, which is
+   * evaluated during render, so a later `const` would throw on first render.
+   */
+  const [liveLabels, setLiveLabels] = useState<Record<string, LiveLabels>>({});
+  useEffect(() => {
+    let alive = true;
+    fetchBoardLabels([COL.cgmType, COL.pumpType, COL.cgmCoveragePath, COL.insulinPumpCoveragePath])
+      .then((l) => { if (alive) setLiveLabels(l); })
+      .catch(() => { /* hardcoded fallback already in place */ });
+    return () => { alive = false; };
+  }, []);
+  /** Options for one product dropdown: live if we have them, hardcoded if not.
+   *  Hidden labels are filtered for DISPLAY only. */
+  const productOptions = useCallback(
+    (columnId: string, fallback: string[]) =>
+      liveLabels[columnId]?.options ?? fallback.filter((l) => !HIDDEN_LABELS.includes(l)),
+    [liveLabels],
+  );
+  /**
+   * The WRITE half of the same fetch, and deliberately a different shape from
+   * `productOptions`: the full label→index map per column, hidden labels
+   * included. A label the picker hides ("Not Serving") is still written by the
+   * cross-sell derivation, so filtering here would silently drop that write
+   * (§5.2). Empty until the fetch lands — buildIntakeTasks falls back to the
+   * hardcoded maps for any column it doesn't find.
+   */
+  const liveIndex = useMemo(() => {
+    const out: Record<string, Record<string, number>> = {};
+    for (const [id, l] of Object.entries(liveLabels)) out[id] = l.index;
+    return out;
+  }, [liveLabels]);
+
+  /**
+   * The call slot the PATIENT picked on the form.
+   *
+   * Call Booking is one Monday column (`text_mm5za6zx`) doing two jobs — the
+   * form's answer and the rep's override — so confirming a different opening
+   * overwrites the patient's pick with no record that they ever asked for
+   * something else. Rather than add a second column, the as-received snapshot
+   * keeps the original on SCREEN and the Call Log keeps it on the BOARD (see
+   * logChangedFacts), which is where §9 says free text belongs anyway.
+   */
+  const currentPatientId = selected?.id;
+  const formSlotAsReceived = useMemo(
+    // getReceived is a stable ref reader; the snapshot only changes with the patient.
+    () => (currentPatientId ? (getReceived(currentPatientId)?.formCallSlot ?? "").trim() : ""),
+    [currentPatientId, getReceived],
+  );
+
+  /**
+   * Rep-entered facts that also belong in the Call Log: Current Out-of-Pocket
+   * Cost, Self Advocacy (Josh, 2026-08-10) and the call slot. They keep their
+   * own columns — this mirrors them into the log, so a manager reading it sees
+   * what was learned on the call without cross-referencing three columns.
    *
    * Snapshotted per patient so a line is appended only when the value CHANGED.
    * Appending on every save would restamp the same fact each time the rep
    * pressed Save and bury the actual call notes.
-   *
-   * Declared ABOVE save() on purpose — naming it in save's dependency array
-   * before the const initialises throws on first render.
    */
-  const loggedFacts = useRef<{ oop: string; adv: string }>({ oop: "", adv: "" });
+  const loggedFacts = useRef<{ oop: string; adv: string; slot: string }>(
+    { oop: "", adv: "", slot: "" },
+  );
   useEffect(() => {
     loggedFacts.current = {
       oop: (selected?.currentOopCost ?? "").trim(),
       adv: (selected?.selfAdvocacy ?? "").trim(),
+      slot: (selected?.formCallSlot ?? "").trim(),
     };
   }, [selected?.id]);
 
   const logChangedFacts = useCallback(async (p: Patient) => {
     const oop = (p.currentOopCost ?? "").trim();
     const adv = (p.selfAdvocacy ?? "").trim();
+    const slot = (p.formCallSlot ?? "").trim();
     const lines: string[] = [];
     if (oop && oop !== loggedFacts.current.oop) lines.push(`Current Out-of-Pocket Cost: ${oop}`);
     if (adv && adv !== loggedFacts.current.adv) lines.push(`Self Advocacy: ${adv}`);
+    // The override is destructive to the column, so the log is the only place
+    // the patient's own answer survives. Name BOTH sides on one line — "call
+    // slot changed" without the previous value tells a manager nothing.
+    if (slot !== loggedFacts.current.slot) {
+      const was = loggedFacts.current.slot || formSlotAsReceived;
+      lines.push(
+        was
+          ? `Call slot changed to "${slot || "(cleared)"}" — patient's form pick was "${was}"`
+          : `Call slot set to "${slot}"`,
+      );
+    }
     if (!lines.length) return;
     // Sequential: appendIntakeNote reads the log back before appending, so
     // firing both at once would have the second overwrite the first.
@@ -652,8 +763,8 @@ const UnverifiedReferralsPage = () => {
       if (!res.ok) return; // snapshot untouched, so the next save retries
       prior = undefined; // force a re-read for the second line
     }
-    loggedFacts.current = { oop, adv };
-  }, []);
+    loggedFacts.current = { oop, adv, slot };
+  }, [formSlotAsReceived]);
 
   const save = useCallback(async () => {
     if (!selected) return;
@@ -661,7 +772,7 @@ const UnverifiedReferralsPage = () => {
     setSaveNote(null);
     const edits: IntakeEdits = intakeEditsFor(selected);
     try {
-      const res = await writeIntakeEdits(selected.id, edits);
+      const res = await writeIntakeEdits(selected.id, edits, liveIndex);
       // Partial success is reported, not swallowed — the rep needs to know
       // exactly which field didn't make it rather than a blanket "saved".
       // Toasted as well as inlined: this writes to Monday, and the inline note
@@ -685,7 +796,7 @@ const UnverifiedReferralsPage = () => {
     } finally {
       setSaving(false);
     }
-  }, [selected, refetch, logChangedFacts]);
+  }, [selected, refetch, logChangedFacts, liveIndex]);
 
   const [escalateReason, setEscalateReason] = useState("");
   const { goBack } = useBackNavigation();
@@ -772,6 +883,12 @@ const UnverifiedReferralsPage = () => {
       setSaving(true);
       setSaveNote(null);
       try {
+        // BEFORE the transaction, not after: the advancer triggers the Move to
+        // Onboarding automation, which copies columns to a fresh Masheke item.
+        // A note appended afterwards lands on an item nobody works again.
+        // logChangedFacts reports nothing on failure by design — a note that
+        // didn't land must not stop a patient advancing.
+        if (kind === "advance") await logChangedFacts(selected);
         const notes = selected.intakeEscalationNotes;
         const res =
           // ONE verified transaction. The left pane, the verified insurance and
@@ -783,6 +900,7 @@ const UnverifiedReferralsPage = () => {
             edits: intakeEditsFor(selected),
             verified: { ...verified, serving: selected.serving },
             clinicLabelId,
+            liveIndex,
           })
           : kind === "escalate" ? await escalateIntake(selected.id, escalateReason, notes)
           : kind === "proposeStuck"
@@ -811,7 +929,8 @@ const UnverifiedReferralsPage = () => {
         setSaving(false);
       }
     },
-    [selected, escalateReason, refetch, verified, clinicLabelId, stuckLevel],
+    [selected, escalateReason, refetch, verified, clinicLabelId, stuckLevel, liveIndex,
+      logChangedFacts],
   );
 
   // Declared after save() deliberately: naming it in the dependency array
@@ -872,6 +991,47 @@ const UnverifiedReferralsPage = () => {
       setSaving(false);
     }
   }, [selected, noteDraft, refetch]);
+
+  /**
+   * Care Coordinator — §9's "who owns this patient", assigned by the rep and
+   * stamped into the Call Log instead of a new column (see careCoordinator.ts
+   * for why notes and not updates).
+   *
+   * The roster is everyone with Command Center access: managers plus
+   * processors, de-duplicated by email because a dual person appears in both
+   * lists. Names come from access.json, so the picker follows the team without
+   * a second list to maintain.
+   */
+  const { config: accessConfig } = useAccessContext();
+  const coordinatorRoster = useMemo(() => {
+    const byEmail = new Map<string, string>();
+    for (const p of [...managerPeople(accessConfig), ...processorPeople(accessConfig)]) {
+      if (!byEmail.has(p.email)) byEmail.set(p.email, p.name);
+    }
+    return [...byEmail.values()].sort((a, b) => a.localeCompare(b));
+  }, [accessConfig]);
+  /** Currently assigned, read back out of the log — there is no column. */
+  const coordinator = useMemo(
+    () => extractCoordinator(selected?.notes),
+    [selected?.notes],
+  );
+  const assignCoordinator = useCallback(async (name: string) => {
+    if (!selected || !name.trim() || name === coordinator) return;
+    setSaving(true);
+    try {
+      const res = await appendIntakeNote(selected.id, coordinatorNoteLine(name), selected.notes);
+      if (res.ok) {
+        toast.success(`Care Coordinator set to ${name}`);
+        await refetch(true);
+      } else {
+        toast.error("Couldn't assign the coordinator", {
+          description: res.errors.map((e) => e.error).join(" · "),
+        });
+      }
+    } finally {
+      setSaving(false);
+    }
+  }, [selected, coordinator, refetch]);
 
   const startInsuranceFollowUp = useCallback(() => {
     setFollowUpPrefill(followUpTemplate());
@@ -958,6 +1118,24 @@ const UnverifiedReferralsPage = () => {
     (files: File[]) => uploadTo(COL.formCardPhoto, files, setCardUploading),
     [uploadTo],
   );
+
+  /** Backs the ✕ on a file row. Clears the whole column — see FileColumnRow
+   *  for why per-file removal isn't on offer. Stamped into the Call Log,
+   *  because deleting a patient's document should leave a trace: the file is
+   *  gone from Monday and nothing else would say who took it or when. */
+  const clearFiles = useCallback(async (columnId: string, label: string) => {
+    if (!selected) return;
+    try {
+      await clearFileColumn(selected.id, columnId);
+      await appendIntakeNote(selected.id, `Removed file(s) from ${label}`, selected.notes);
+      setAssets(null);
+      await refetch(true);
+      toast.success(`${label} cleared`);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      toast.error(`Couldn't clear ${label}`, { description: msg });
+    }
+  }, [selected, refetch]);
 
   /** Paste a referral email → post it as a Monday update, which is where the
    *  referral already lives (the card above reads updates, not a column). */
@@ -1453,13 +1631,13 @@ const UnverifiedReferralsPage = () => {
                       label="CGM Type"
                       value={selected.cgmType ?? ""}
                       onChange={(v) => edit({ cgmType: v })}
-                      options={CGM_TYPE_OPTS}
+                      options={productOptions(COL.cgmType, CGM_TYPE_OPTS)}
                     />
                     <EditSelect
                       label="CGM Coverage Path"
                       value={selected.cgmCoveragePath ?? ""}
                       onChange={(v) => edit({ cgmCoveragePath: v })}
-                      options={CGM_PATH_OPTS}
+                      options={productOptions(COL.cgmCoveragePath, CGM_PATH_OPTS)}
                     />
                     <EditSelect
                       label="CGM Preference"
@@ -1480,7 +1658,7 @@ const UnverifiedReferralsPage = () => {
                       label="Pump Type"
                       value={selected.pumpType ?? ""}
                       onChange={(v) => edit({ pumpType: v })}
-                      options={PUMP_TYPE_OPTS}
+                      options={productOptions(COL.pumpType, PUMP_TYPE_OPTS)}
                     />
                     <EditSelect
                       label="Pump Preference"
@@ -1498,7 +1676,7 @@ const UnverifiedReferralsPage = () => {
                       label="Insulin Pump Coverage Path"
                       value={selected.insulinPumpCoveragePath ?? ""}
                       onChange={(v) => edit({ insulinPumpCoveragePath: v })}
-                      options={IP_PATH_OPTS}
+                      options={productOptions(COL.insulinPumpCoveragePath, IP_PATH_OPTS)}
                     />
                   </div>
                 </div>
@@ -1515,6 +1693,7 @@ const UnverifiedReferralsPage = () => {
                       filename={selected.cgmDataFile}
                       assetIds={selected.cgmDataFileIds}
                       assets={assets}
+                      onRemove={() => clearFiles(COL.cgmDataFile, "CGM Data File")}
                     />
                     {/* Name the file AND the destination. "attach the file"
                         alone reads as the insurance card, which is a different
@@ -1597,6 +1776,7 @@ const UnverifiedReferralsPage = () => {
                   filename={selected.formCardPhoto}
                   assetIds={selected.formCardPhotoIds}
                   assets={assets}
+                  onRemove={() => clearFiles(COL.formCardPhoto, "Insurance Card Photo")}
                 />
                 {!(selected.formCardPhoto ?? "").trim()
                   && (selected.formInsuranceVia ?? "") === "Photo of card" && (
@@ -1790,7 +1970,13 @@ const UnverifiedReferralsPage = () => {
                     <div className="bookrow">
                       <div>
                         <div className="eyebrow-xs">Selected on form</div>
-                        <div className="bookval">{selected.formCallSlot?.trim() || "—"}</div>
+                        {/* The patient's OWN pick, read from the as-received
+                            snapshot rather than from `selected` — the override
+                            box below edits the same single Monday column, so
+                            reading the live value made this line change under
+                            the rep as they typed and the form answer was gone
+                            from the screen before it was gone from the board. */}
+                        <div className="bookval">{formSlotAsReceived || "—"}</div>
                       </div>
                       {(selected.formBookingStatus ?? "").trim() && (
                         <span className={
@@ -1903,6 +2089,33 @@ const UnverifiedReferralsPage = () => {
                     + Add
                   </button>
                 </div>
+              </Card>
+
+              {/* Brandon §9 asked for a Care Coordinator Owner COLUMN so a
+                  later phase could route by owner. Josh's call: no new column
+                  — the assignment is stamped into the log above, which is the
+                  one free-text field that survives the hop to Medical
+                  Necessity, so any later stage can key off the stamp. */}
+              <Card title="Care Coordinator">
+                <div className="bookrow" style={{ marginBottom: 12 }}>
+                  <div>
+                    <div className="eyebrow-xs">Assigned</div>
+                    <div className="bookval">{coordinator || "Nobody yet"}</div>
+                  </div>
+                  {coordinator && <span className="mp green">Owned</span>}
+                </div>
+                <EditSelect
+                  full
+                  label={coordinator ? "Reassign" : "Assign a coordinator"}
+                  value=""
+                  options={coordinatorRoster}
+                  onChange={(v) => { void assignCoordinator(v); }}
+                />
+                <p className="sugg-note" style={{ marginTop: 8 }}>
+                  Writes straight to the Call Log — it doesn’t wait for Save, and it travels
+                  with the patient into Medical Necessity. Reassigning appends a new line
+                  rather than replacing the old one, so the history stays readable.
+                </p>
               </Card>
 
               {/* HANDOFF §2 "Left-pane exits" — all three live here, at the

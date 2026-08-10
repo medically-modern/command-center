@@ -217,7 +217,21 @@ export interface IntakeEdits {
  * read back BEFORE the stage advancer fires. Two call sites, one list — a
  * second copy is how a column ends up saved on one path and dropped on the other.
  */
-export function buildIntakeTasks(itemId: string, edits: IntakeEdits): WriteTask[] {
+export function buildIntakeTasks(
+  itemId: string,
+  edits: IntakeEdits,
+  /**
+   * §5.2 — live label→index maps read off the board, keyed by column id.
+   *
+   * ⚠️ Required for correctness once the PICKER is live: a label renamed on
+   * Monday appears in the dropdown immediately, but the hardcoded map has
+   * never heard of it, and `mapped()` SKIPS an unknown label rather than
+   * guessing an index. The rep would pick the new label, hit Save, and the
+   * column would silently keep its old value. Live map first, hardcoded
+   * fallback second.
+   */
+  liveIndex: Record<string, Record<string, number>> = {},
+): WriteTask[] {
   const tasks: WriteTask[] = [];
 
   const text = (label: string, columnId: string, value: string | undefined) => {
@@ -236,7 +250,10 @@ export function buildIntakeTasks(itemId: string, edits: IntakeEdits): WriteTask[
    *  send-off page), rather than this file's own INTAKE_STATUS_INDEX. */
   const mapped = (label: string, columnId: string, map: Record<string, number>, value?: string) => {
     if (value === undefined) return;
-    const idx = map[value.trim()];
+    // Live map wins — it knows labels added or renamed on the board since this
+    // code was written. Falls back to the hardcoded one when the settings
+    // fetch failed, so the write path degrades exactly like the picker does.
+    const idx = liveIndex[columnId]?.[value.trim()] ?? map[value.trim()];
     if (idx === undefined) return;
     tasks.push({ label, columnId, fn: () => writeStatusIndex(itemId, columnId, idx) });
   };
@@ -427,8 +444,12 @@ async function runTasks(tasks: WriteTask[]): Promise<IntakeWriteResult> {
  * Returns what failed instead of throwing, so the UI can show "saved, except X"
  * rather than a blanket error.
  */
-export function writeIntakeEdits(itemId: string, edits: IntakeEdits): Promise<IntakeWriteResult> {
-  return runTasks(buildIntakeTasks(itemId, edits));
+export function writeIntakeEdits(
+  itemId: string,
+  edits: IntakeEdits,
+  liveIndex: Record<string, Record<string, number>> = {},
+): Promise<IntakeWriteResult> {
+  return runTasks(buildIntakeTasks(itemId, edits, liveIndex));
 }
 
 /** Bump the unified attempt counter. Automated email/text, autodialer and
@@ -617,6 +638,8 @@ function buildDoctorTasks(p: Patient, clinicLabelId: number | null): WriteTask[]
 export interface AdvanceInput {
   /** The left pane's edits — written inside the verified transaction, not before it. */
   edits: IntakeEdits;
+  /** Live label→index maps (§5.2). Same reason as buildIntakeTasks. */
+  liveIndex?: Record<string, Record<string, number>>;
   /** The right pane's verified insurance — likewise. */
   verified: VerifiedEdits;
   clinicLabelId?: number | null;
@@ -639,7 +662,7 @@ export interface AdvanceInput {
  */
 export function buildAdvanceTasks(p: Patient, opts: AdvanceInput): WriteTask[] {
   const all = [
-    ...buildIntakeTasks(p.id, opts.edits),
+    ...buildIntakeTasks(p.id, opts.edits, opts.liveIndex ?? {}),
     ...buildVerifiedInsuranceTasks(p.id, opts.verified),
     ...buildDoctorTasks(p, opts.clinicLabelId ?? null),
   ];

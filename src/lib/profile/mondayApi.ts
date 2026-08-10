@@ -382,6 +382,22 @@ export async function writeDate(itemId: string, columnId: string, date: string):
   await gql(query, { boardId: BOARD_ID, itemId, columnId, value: JSON.stringify({ date }) });
 }
 
+/**
+ * Clear a FILE column — removes every asset on it.
+ *
+ * `{"clearAll": true}` is the only shape Monday accepts here; a blank string
+ * or `null` is rejected the way any other wrong-shaped value is. Backs the ✕
+ * on a file row (HANDOFF §8.3).
+ */
+export async function clearFileColumn(itemId: string, columnId: string): Promise<void> {
+  const query = `
+    mutation ($boardId: ID!, $itemId: ID!, $columnId: String!, $value: JSON!) {
+      change_column_value(board_id: $boardId, item_id: $itemId, column_id: $columnId, value: $value) { id }
+    }
+  `;
+  await gql(query, { boardId: BOARD_ID, itemId, columnId, value: JSON.stringify({ clearAll: true }) });
+}
+
 /** Clear a date column (set it back to no value / blank). */
 export async function clearDateColumn(itemId: string, columnId: string): Promise<void> {
   const query = `

@@ -145,6 +145,12 @@
 .pf-root .file-row svg { color:var(--mm-teal);flex-shrink:0 }
 .pf-root .file-row .fname { font-size:.92rem;font-weight:600;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap }
 .pf-root .file-row .fmeta { font-size:.75rem;color:var(--muted-foreground);text-transform:uppercase }
+/* Column-level "remove files" — deliberately quiet until hovered: it clears
+   every file on the column and sits next to a label, not behind a menu. */
+.pf-root .frm { margin-left:auto;display:inline-flex;align-items:center;gap:4px;border:1px solid transparent;
+  border-radius:7px;padding:2px 7px;font-size:.7rem;font-weight:600;letter-spacing:.02em;
+  text-transform:none;color:var(--muted-foreground);background:transparent;cursor:pointer;transition:.12s }
+.pf-root .frm:hover { color:oklch(0.52 0.19 25);border-color:oklch(0.52 0.19 25 / 0.35);background:oklch(0.97 0.02 25) }
 .pf-root .res-grid { display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:16px }
 .pf-root .rcell { border:1px solid var(--border);border-radius:10px;padding:12px 13px;background:oklch(0.985 0.003 247) }
 .pf-root .rcell .rl { font-size:.68rem;font-weight:600;text-transform:uppercase;letter-spacing:.04em;color:var(--muted-foreground) }

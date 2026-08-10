@@ -323,3 +323,92 @@ describe("intake climbs the shared Propose Stuck ladder", () => {
     expect(proposeStuckLevel("unverified-intake", null, "Manager Escalation Required")).toBe("final");
   });
 });
+
+/**
+ * §5.2 — the four product dropdowns now take their options from the board, so
+ * the WRITE path has to resolve against the same live map. Without this the
+ * picker offers a label the hardcoded map has never heard of, `mapped()` skips
+ * it, and the rep's choice is silently discarded: right dropdown, no write, no
+ * error. These pin that the live map wins and that the hardcoded one is still
+ * the fallback when the settings fetch failed.
+ */
+describe("live board labels drive the status write (§5.2)", () => {
+  /** Run one task against a stubbed fetch and return the index it POSTed.
+   *  The index is the whole point — asserting only that a task EXISTS would
+   *  pass just as happily with the stale hardcoded value. */
+  const indexWritten = async (
+    tasks: { columnId: string; fn: () => Promise<unknown> }[],
+    columnId: string,
+  ): Promise<number> => {
+    const task = tasks.find((t) => t.columnId === columnId);
+    if (!task) throw new Error(`no task for ${columnId}`);
+    let body = "";
+    const real = globalThis.fetch;
+    // gql() refuses to run without a token, and in direct mode it reads one
+    // straight off import.meta.env.
+    const env = import.meta.env as Record<string, unknown>;
+    const realToken = env.VITE_MONDAY_API_TOKEN;
+    env.VITE_MONDAY_API_TOKEN = "test-token";
+    globalThis.fetch = ((_url: string, init: { body: string }) => {
+      body = init.body;
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({ data: {} }) });
+    }) as unknown as typeof fetch;
+    try {
+      await task.fn();
+    } finally {
+      globalThis.fetch = real;
+      env.VITE_MONDAY_API_TOKEN = realToken;
+    }
+    return JSON.parse(JSON.parse(body).variables.value).index;
+  };
+
+  it("writes a label the hardcoded map has never heard of", () => {
+    // Nothing here without the live map — this is the regression.
+    expect(columnsOf(buildIntakeTasks("123", { cgmType: "Dexcom G8" }))).not.toContain(COL.cgmType);
+    const live = { [COL.cgmType]: { "Dexcom G8": 9 } };
+    expect(columnsOf(buildIntakeTasks("123", { cgmType: "Dexcom G8" }, live)))
+      .toContain(COL.cgmType);
+  });
+
+  it("prefers the live index over the hardcoded one for the SAME label", async () => {
+    // A board can renumber a label; the live read is the newer truth. Dexcom
+    // G7 is 6 in the hardcoded map, so 3 can only have come from the live one.
+    const live = { [COL.cgmType]: { "Dexcom G7": 3 } };
+    expect(await indexWritten(buildIntakeTasks("123", { cgmType: "Dexcom G7" }, live), COL.cgmType))
+      .toBe(3);
+    expect(await indexWritten(buildIntakeTasks("123", { cgmType: "Dexcom G7" }), COL.cgmType))
+      .toBe(6);
+  });
+
+  it("falls back to the hardcoded map for a column the fetch didn't return", () => {
+    // A partial fetch must not take out the columns it did not cover.
+    const live = { [COL.cgmType]: { "Dexcom G7": 3 } };
+    expect(columnsOf(buildIntakeTasks("123", { pumpType: "Mobi" }, live))).toContain(COL.pumpType);
+  });
+
+  it("degrades to today's behaviour when the fetch failed entirely", () => {
+    expect(columnsOf(buildIntakeTasks("123", { cgmType: "Dexcom G7" }, {})))
+      .toContain(COL.cgmType);
+  });
+
+  it("still skips a label neither map knows", () => {
+    const live = { [COL.cgmType]: { "Dexcom G8": 9 } };
+    expect(columnsOf(buildIntakeTasks("123", { cgmType: "Not A Real Device" }, live)))
+      .not.toContain(COL.cgmType);
+  });
+
+  it("carries the live map through the advance transaction too", () => {
+    // buildAdvanceTasks wraps buildIntakeTasks — an advance that dropped the
+    // live map would write a stale index on the way out of the stage, which is
+    // the worst possible moment for it.
+    const p = { id: "123" } as Patient;
+    const opts: AdvanceInput = {
+      edits: { cgmType: "Dexcom G8" },
+      verified: {},
+      liveIndex: { [COL.cgmType]: { "Dexcom G8": 9 } },
+    };
+    expect(columnsOf(buildAdvanceTasks(p, opts))).toContain(COL.cgmType);
+    expect(columnsOf(buildAdvanceTasks(p, { ...opts, liveIndex: undefined })))
+      .not.toContain(COL.cgmType);
+  });
+});
