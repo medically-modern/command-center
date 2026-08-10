@@ -38,6 +38,12 @@ export function mondayItemToPatient(item: MondayItem): Patient {
     formPumpPreference: col(item, COL.formPumpPreference),
     formProvidedDoctorName: col(item, COL.formProvidedDoctorName),
     formProvidedClinicPhone: col(item, COL.formProvidedClinicPhone),
+    // File columns. `text` on a Monday file column is the filename(s) — enough
+    // to name the row; the UI matches it against the item's assets to get a
+    // URL for the viewer. Read but unmapped until now, which is why the rep
+    // could not see the card photo the patient uploaded.
+    formCardPhoto: col(item, COL.formCardPhoto),
+    cgmDataFile: col(item, COL.cgmDataFile),
     formInsuranceVia: col(item, COL.formInsuranceVia),
     formInsuranceOther: col(item, COL.formInsuranceOther),
     formSecondaryProvided: col(item, COL.formSecondaryProvided),

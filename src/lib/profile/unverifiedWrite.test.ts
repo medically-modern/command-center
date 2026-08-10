@@ -146,6 +146,23 @@ describe("buildAdvanceTasks", () => {
     expect(cols).toContain(COL.doctorNpi);
   });
 
+  it("emits ONE task per column, with the picked provider winning Clinic Address", () => {
+    // Two builders write location_mm1xjnfv: the left pane's Provided Doctor
+    // Info, and buildDoctorTasks from the step-3 pick. Both firing inside one
+    // transaction is a race whose winner decides the patient's clinic address.
+    const tasks = buildAdvanceTasks(
+      patient({ doctorName: "Dr Who", clinicAddress: "9 Verified Way" }),
+      { edits: { clinicAddress: "1 Patient Said St" }, verified: {} },
+    );
+    const addressTasks = tasks.filter((t) => t.columnId === COL.clinicAddress);
+    expect(addressTasks).toHaveLength(1);
+    // Last wins, and the doctor block is appended last.
+    expect(addressTasks[0].label).toBe("Clinic Address");
+
+    const ids = columnsOf(tasks);
+    expect(new Set(ids).size).toBe(ids.length);
+  });
+
   it("never includes the stage advancer — verifiedWrite has to hold that back itself", () => {
     const cols = columnsOf(buildAdvanceTasks(patient({ doctorName: "Dr Who" }), input));
     expect(cols).not.toContain(COL.moveToOnboarding);

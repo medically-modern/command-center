@@ -232,6 +232,9 @@ export const READ_COLUMN_IDS: string[] = [
   COL.formProvidedDoctorName, COL.formProvidedClinicPhone,
   COL.formInsuranceVia, COL.formInsuranceOther,
   COL.formSecondaryProvided, COL.formSecondaryMemberId, COL.formCardPhoto,
+  // Both file columns are READ so the rep can see what the patient sent. They
+  // were fetched but never mapped into Patient, so nothing could render them.
+  COL.cgmDataFile,
   COL.formProceedPreference, COL.formCallSlot, COL.formBookingStatus,
   // Rep-entered on the intake call
   COL.selfAdvocacy, COL.currentOopCost, COL.cgmDataAwareness,

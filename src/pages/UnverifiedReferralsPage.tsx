@@ -250,6 +250,50 @@ function Seg({
   );
 }
 
+/**
+ * One named file column, rendered as the mockup's `.file-row`.
+ *
+ * A Monday file column's `text` is the filename, not a URL, so the row is
+ * matched against the item's assets to get something the viewer can open. When
+ * there's no match the name still renders, greyed and unclickable — the file IS
+ * on the column, we just couldn't resolve a URL for it, and silently showing
+ * nothing would read as "the patient never sent one".
+ */
+function FileColumnRow({
+  label, filename, assets,
+}: {
+  label: string; filename?: string; assets: MondayAsset[] | null;
+}) {
+  const name = (filename ?? "").trim();
+  if (!name) return null;
+  // The column can list several; the assets list is the source of truth for
+  // what's actually attached.
+  const names = name.split(",").map((n) => n.trim()).filter(Boolean);
+  return (
+    <div style={{ marginBottom: 16 }}>
+      <div className="flabel">{label}</div>
+      {names.map((n) => {
+        const asset = assets?.find((a) => a.name === n) ?? null;
+        return asset ? (
+          <div
+            key={n}
+            className="file-row"
+            onClick={() => openFileViewer({ url: asset.public_url || asset.url, name: asset.name })}
+          >
+            <span className="fname">{n}</span>
+            <span className="fmeta">{n.split(".").pop() ?? ""}</span>
+          </div>
+        ) : (
+          <div key={n} className="file-row" style={{ opacity: 0.6, cursor: "default" }}>
+            <span className="fname">{n}</span>
+            <span className="fmeta">{assets === null ? "loading" : "no preview"}</span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 /** A section card inside a pane. `tone` maps to the mockup's coloured left
  *  border: lead = green (what we already know), decide = teal (an action). */
 function Card({
@@ -318,6 +362,9 @@ function intakeEditsFor(p: Patient): IntakeEdits {
     formPumpPreference: p.formPumpPreference,
     formProvidedDoctorName: p.formProvidedDoctorName,
     formProvidedClinicPhone: p.formProvidedClinicPhone,
+    clinicAddress: p.clinicAddress,
+    clinicAddressLat: p.clinicAddressLat,
+    clinicAddressLng: p.clinicAddressLng,
     formProceedPreference: p.formProceedPreference,
     formCallSlot: p.formCallSlot,
     formBookingStatus: p.formBookingStatus,
@@ -1126,7 +1173,11 @@ const UnverifiedReferralsPage = () => {
                     doesn't exist. */}
                 {cgmOn && (
                   <div style={{ marginTop: 20, paddingTop: 18, borderTop: "1px dashed var(--border)" }}>
-                    <div className="flabel">CGM Data File</div>
+                    <FileColumnRow
+                      label="CGM Data File"
+                      filename={selected.cgmDataFile}
+                      assets={assets}
+                    />
                     <p className="mb-2 text-[11px] text-muted-foreground">
                       Sending the patient an upload link isn’t built yet (§8.3) — for now, attach the
                       file yourself once they email or text it over.
@@ -1191,6 +1242,14 @@ const UnverifiedReferralsPage = () => {
                     options={["Photo of card", "Entered manually", "Not provided"]}
                   />
                 </div>
+                {/* What the patient actually sent, where the mockup puts it —
+                    the Files rail-card lists every asset on the item, but the
+                    rep shouldn't have to work out which one is the card. */}
+                <FileColumnRow
+                  label="Insurance Card Photo"
+                  filename={selected.formCardPhoto}
+                  assets={assets}
+                />
                 <div className="fgrid">
                   {/* Editable, and written by Save — which the benefits check
                       runs FIRST, because Stedi reads this column off the board
@@ -1284,6 +1343,17 @@ const UnverifiedReferralsPage = () => {
                     label="Provided Clinic Phone / Location"
                     value={selected.formProvidedClinicPhone ?? ""}
                     onChange={(v) => edit({ formProvidedClinicPhone: v })}
+                  />
+                  {/* Writes the VERIFIED clinic address column
+                      (location_mm1xjnfv) — Josh's call: there is no separate
+                      provided-address column and one isn't wanted. Picking a
+                      provider in step 3 overwrites this, which is intended. */}
+                  <EditText
+                    full
+                    label="Clinic Address"
+                    placeholder="Collect on call"
+                    value={selected.clinicAddress ?? ""}
+                    onChange={(v) => edit({ clinicAddress: v })}
                   />
                 </div>
                 <p className="mt-2 text-[11px] text-muted-foreground">

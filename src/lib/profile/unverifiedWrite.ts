@@ -169,6 +169,19 @@ export interface IntakeEdits {
   // These are NOT the verified doctor columns.
   formProvidedDoctorName?: string;
   formProvidedClinicPhone?: string;
+  /**
+   * The one exception to "provided ≠ verified" (§6.0), on Josh's call: the
+   * mockup's Provided Doctor Info → Clinic Address writes the VERIFIED clinic
+   * address column, `location_mm1xjnfv`. There is no separate provided-address
+   * column and one isn't wanted.
+   *
+   * That means two builders can emit a task for this column — here, and
+   * buildDoctorTasks when a provider is picked in step 3. `buildAdvanceTasks`
+   * de-duplicates so the provider's wins; see the note there.
+   */
+  clinicAddress?: string;
+  clinicAddressLat?: number | null;
+  clinicAddressLng?: number | null;
 
   // Call handling
   formProceedPreference?: string;
@@ -293,6 +306,15 @@ export function buildIntakeTasks(itemId: string, edits: IntakeEdits): WriteTask[
   // Provided doctor info (never the verified columns)
   text("Provided Doctor Name", COL.formProvidedDoctorName, edits.formProvidedDoctorName);
   text("Provided Clinic Phone", COL.formProvidedClinicPhone, edits.formProvidedClinicPhone);
+  if (edits.clinicAddress !== undefined) {
+    const addr = edits.clinicAddress;
+    const lat = edits.clinicAddressLat ?? 0;
+    const lng = edits.clinicAddressLng ?? 0;
+    tasks.push({
+      label: "Clinic Address", columnId: COL.clinicAddress,
+      fn: () => writeLocation(itemId, COL.clinicAddress, addr, lat, lng),
+    });
+  }
 
   // Call handling
   status("Proceed Preference", COL.formProceedPreference, "formProceedPreference", edits.formProceedPreference);
@@ -610,11 +632,25 @@ export interface AdvanceInput {
  * `executeWritesWithVerification` must receive it separately to hold it back.
  */
 export function buildAdvanceTasks(p: Patient, opts: AdvanceInput): WriteTask[] {
-  return [
+  const all = [
     ...buildIntakeTasks(p.id, opts.edits),
     ...buildVerifiedInsuranceTasks(p.id, opts.verified),
     ...buildDoctorTasks(p, opts.clinicLabelId ?? null),
   ];
+
+  // One task per column, LAST wins.
+  //
+  // Clinic Address is emitted by two builders — the left pane's Provided Doctor
+  // Info writes `location_mm1xjnfv` (Josh: no separate provided-address column,
+  // write the verified one), and buildDoctorTasks writes it again from the
+  // provider picked in step 3. Without this, both would fire concurrently at
+  // the same column inside one transaction: a race whose winner decides the
+  // patient's clinic address, and a column verified against whichever landed.
+  // Last wins because the doctor block is appended last, and a provider the rep
+  // actually picked outranks what the patient told us.
+  const byColumn = new Map<string, WriteTask>();
+  for (const t of all) byColumn.set(t.columnId, t);
+  return [...byColumn.values()];
 }
 
 export async function advanceToMedicalNecessity(

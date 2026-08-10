@@ -38,6 +38,10 @@ export interface Patient {
   formPumpPreference: string;
   formProvidedDoctorName: string;
   formProvidedClinicPhone: string;
+  /** Filename(s) on the two intake file columns — the UI matches these against
+   *  the item's assets to open them in the viewer. */
+  formCardPhoto: string;
+  cgmDataFile: string;
   formInsuranceVia: string;
   formInsuranceOther: string;
   formSecondaryProvided: string;
