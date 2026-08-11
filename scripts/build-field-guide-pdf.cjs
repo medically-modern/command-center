@@ -7,6 +7,7 @@ const SRC = process.argv[2], OUT = process.argv[3];
   p.on('pageerror', e => errs.push('pageerror: ' + e.message));
   p.on('console', m => { if (m.type() === 'error') errs.push('console: ' + m.text()); });
   await p.goto('file://' + SRC, { waitUntil: 'networkidle' });
+  const docTitle = (await p.title()) || 'Command Center';
   await p.emulateMedia({ media: 'print', colorScheme: 'light' });
   await p.pdf({
     path: OUT, format: 'A4', printBackground: true,
@@ -15,7 +16,7 @@ const SRC = process.argv[2], OUT = process.argv[3];
     headerTemplate: '<div></div>',
     footerTemplate:
       '<div style="width:100%;font-family:-apple-system,Segoe UI,sans-serif;font-size:7.5pt;color:#77828F;padding:0 14mm;display:flex;justify-content:space-between;">' +
-      '<span>Command Center Field Guide &middot; v1.1 &middot; 11 Aug 2026</span>' +
+      '<span>' + docTitle.replace(/&/g, '&amp;').replace(/</g, '&lt;') + '</span>' +
       '<span class="pageNumber"></span></div>',
   });
   await b.close();

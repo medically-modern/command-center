@@ -1,0 +1,943 @@
+<title>Command Center — Role Handoff</title>
+
+<style>
+  :root {
+    --ground:#FFFFFF; --sunk:#F4F6FA; --card:#FFFFFF;
+    --ink:#0C1017; --ink-2:#48525F; --ink-3:#7A8493;
+    --rule:#DCE2EA; --hair:#EBEFF4;
+    --accent:#1D4ED8; --accent-bg:#E9EFFE;
+    --fwd:#0F7A42;  --fwd-bg:#E3F4E9;
+    --hold:#8A5806; --hold-bg:#FBF0DA;
+    --esc:#B02248;  --esc-bg:#FCE4EA;
+    --bot:#6B3BB5;  --bot-bg:#EEE6FB;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+    --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,"Liberation Mono",monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground:#0C1016; --sunk:#151B24; --card:#151B24;
+      --ink:#EEF2F8; --ink-2:#A5B1C0; --ink-3:#76818F;
+      --rule:#28313D; --hair:#1F2732;
+      --accent:#82A8FF; --accent-bg:#16233A;
+      --fwd:#4FCB86; --fwd-bg:#0F2C1C;
+      --hold:#DFAA45; --hold-bg:#2E2411;
+      --esc:#F58AA6; --esc-bg:#331420;
+      --bot:#B79AEE; --bot-bg:#221A35;
+    }
+  }
+  :root[data-theme="dark"] {
+    --ground:#0C1016; --sunk:#151B24; --card:#151B24;
+    --ink:#EEF2F8; --ink-2:#A5B1C0; --ink-3:#76818F;
+    --rule:#28313D; --hair:#1F2732;
+    --accent:#82A8FF; --accent-bg:#16233A;
+    --fwd:#4FCB86; --fwd-bg:#0F2C1C;
+    --hold:#DFAA45; --hold-bg:#2E2411;
+    --esc:#F58AA6; --esc-bg:#331420;
+    --bot:#B79AEE; --bot-bg:#221A35;
+  }
+
+  body { background:var(--ground); color:var(--ink); font-family:var(--sans);
+         font-size:15px; line-height:1.55; -webkit-font-smoothing:antialiased; }
+  .wrap { max-width:1000px; margin:0 auto; padding:0 24px 90px; }
+  p { margin:0 0 11px; }
+  code { font-family:var(--mono); font-size:.85em; font-weight:600;
+         background:var(--sunk); border:1px solid var(--hair); border-radius:4px;
+         padding:.08em .34em; white-space:nowrap; }
+  a { color:var(--accent); }
+  a:focus-visible { outline:2px solid var(--accent); outline-offset:3px; }
+
+  /* Masthead */
+  .mast { padding:44px 0 22px; border-bottom:3px solid var(--ink); margin-bottom:34px; }
+  .kick { font-family:var(--mono); font-size:.7rem; font-weight:700; letter-spacing:.16em;
+          text-transform:uppercase; color:var(--accent); margin:0 0 12px; }
+  h1 { font-size:clamp(2.1rem,5.4vw,3rem); line-height:1.02; font-weight:800;
+       letter-spacing:-.028em; margin:0 0 14px; }
+  .mast p { font-size:1.05rem; color:var(--ink-2); max-width:62ch; margin:0 0 18px; }
+  .meta { display:flex; flex-wrap:wrap; gap:6px 26px; font-family:var(--mono);
+          font-size:.72rem; color:var(--ink-3); }
+  .meta b { color:var(--ink); font-weight:700; }
+
+  /* Section heads */
+  h2 { font-size:1.5rem; font-weight:800; letter-spacing:-.018em; margin:0;
+       display:flex; align-items:center; gap:12px; }
+  .shead { margin:52px 0 8px; padding-bottom:10px; border-bottom:2px solid var(--ink); }
+  .snum { font-family:var(--mono); font-size:.74rem; font-weight:700; flex:none;
+          background:var(--ink); color:var(--ground); padding:.26em .5em; border-radius:4px; }
+  .snote { color:var(--ink-2); font-size:.94rem; margin:0 0 22px; max-width:74ch; }
+  h3 { font-size:1.1rem; font-weight:800; margin:30px 0 10px; letter-spacing:-.01em; }
+
+  /* Board banner */
+  .board {
+    display:flex; align-items:baseline; gap:14px; flex-wrap:wrap;
+    background:var(--sunk); border-left:5px solid var(--accent); border-radius:0 8px 8px 0;
+    padding:12px 18px; margin:38px 0 16px;
+  }
+  .board h3 { margin:0; font-size:1.12rem; }
+  .board .bid { font-family:var(--mono); font-size:.74rem; color:var(--ink-3); }
+
+  /* Role spec block */
+  .role { border:1px solid var(--rule); border-radius:10px; margin-bottom:20px;
+          background:var(--card); overflow:hidden; }
+  .role-h { display:flex; justify-content:space-between; align-items:baseline;
+            gap:14px; flex-wrap:wrap; padding:15px 20px; border-bottom:1px solid var(--rule);
+            background:var(--sunk); }
+  .role-h h4 { margin:0; font-size:1.15rem; font-weight:800; letter-spacing:-.014em; }
+  .role-h .rt { font-family:var(--mono); font-size:.76rem; color:var(--ink-3); }
+  .role-b { padding:6px 20px 16px; }
+
+  /* Field rows */
+  .f { display:grid; grid-template-columns:96px 1fr; gap:16px; padding:11px 0;
+       border-bottom:1px solid var(--hair); }
+  .f:last-child { border-bottom:none; }
+  .f dt { font-family:var(--mono); font-size:.66rem; font-weight:700; letter-spacing:.11em;
+          text-transform:uppercase; color:var(--ink-3); padding-top:2px; }
+  .f dd { margin:0; font-size:.94rem; }
+  .f dd p { margin:0 0 6px; }
+  .f dd p:last-child { margin:0; }
+  .f ul { margin:0; padding-left:18px; }
+  .f li { margin-bottom:5px; }
+  .f li:last-child { margin-bottom:0; }
+  @media (max-width:620px) { .f { grid-template-columns:1fr; gap:3px; } }
+
+  /* Exit table */
+  .exits { width:100%; border-collapse:collapse; font-size:.9rem; margin-top:2px; }
+  .exits th { font-family:var(--mono); font-size:.63rem; font-weight:700; letter-spacing:.1em;
+              text-transform:uppercase; color:var(--ink-3); text-align:left;
+              padding:5px 10px 5px 0; border-bottom:1px solid var(--rule); }
+  .exits td { padding:9px 10px 9px 0; border-bottom:1px solid var(--hair); vertical-align:top; }
+  .exits tr:last-child td { border-bottom:none; }
+  .exits td:first-child { width:34%; font-weight:650; }
+  .exits td:last-child { width:30%; }
+  .dest { font-family:var(--mono); font-size:.78rem; font-weight:700;
+          padding:.24em .5em; border-radius:4px; display:inline-block; }
+  .d-fwd  { color:var(--fwd);  background:var(--fwd-bg);  }
+  .d-hold { color:var(--hold); background:var(--hold-bg); }
+  .d-esc  { color:var(--esc);  background:var(--esc-bg);  }
+  .d-bot  { color:var(--bot);  background:var(--bot-bg);  }
+
+  /* Callouts */
+  .note { border-left:4px solid var(--hold); background:var(--hold-bg);
+          border-radius:0 7px 7px 0; padding:12px 16px; margin:14px 0; font-size:.92rem; }
+  .note.gate { border-left-color:var(--accent); background:var(--accent-bg); }
+  .note.warn { border-left-color:var(--esc); background:var(--esc-bg); }
+  .note p { margin:0; }
+  .note p + p { margin-top:7px; }
+  .note b.lbl { font-family:var(--mono); font-size:.66rem; letter-spacing:.11em;
+                text-transform:uppercase; display:block; margin-bottom:5px; color:var(--ink-2); }
+
+  .src { font-family:var(--mono); font-size:.68rem; color:var(--ink-3);
+         margin:12px 0 0; padding-top:9px; border-top:1px solid var(--hair); }
+
+  /* Figures */
+  figure { margin:22px 0; }
+  .fs { overflow-x:auto; }
+  figure svg { max-width:100%; height:auto; display:block; }
+  figcaption { color:var(--ink-2); font-size:.88rem; margin-top:11px; }
+  .dg .box{fill:var(--card);stroke:var(--ink-2);stroke-width:1.5;}
+  .dg .hub{fill:var(--accent-bg);stroke:var(--accent);stroke-width:2.2;}
+  .dg .dec{fill:var(--sunk);stroke:var(--ink-2);stroke-width:1.5;}
+  .dg .ok {fill:var(--fwd-bg);stroke:var(--fwd);stroke-width:1.8;}
+  .dg .hd2{fill:var(--hold-bg);stroke:var(--hold);stroke-width:1.8;}
+  .dg .bd {fill:var(--esc-bg);stroke:var(--esc);stroke-width:1.8;}
+  .dg .bt {fill:var(--bot-bg);stroke:var(--bot);stroke-width:1.8;}
+  .dg .fl {fill:none;stroke:var(--ink);stroke-width:1.7;}
+  .dg .fx {fill:none;stroke:var(--esc);stroke-width:1.7;stroke-dasharray:5 4;}
+  .dg text{font-family:var(--sans);fill:var(--ink);}
+  .dg .t {font-size:12.5px;font-weight:700;}
+  .dg .s {font-size:10.5px;fill:var(--ink-2);}
+  .dg .m {font-family:var(--mono);font-size:10px;font-weight:700;fill:var(--ink-2);}
+  .dg .mx{font-family:var(--mono);font-size:10px;font-weight:700;fill:var(--esc);}
+  .dg .mk{fill:var(--ink);} .dg .mkx{fill:var(--esc);}
+
+  table.plain { width:100%; border-collapse:collapse; font-size:.9rem; margin:14px 0; }
+  table.plain th { font-family:var(--mono); font-size:.64rem; font-weight:700; letter-spacing:.1em;
+                   text-transform:uppercase; color:var(--ink-3); text-align:left;
+                   padding:7px 12px 7px 0; border-bottom:1px solid var(--rule); }
+  table.plain td { padding:9px 12px 9px 0; border-bottom:1px solid var(--hair); vertical-align:top; }
+  table.plain tr:last-child td { border-bottom:none; }
+  .t-scroll { overflow-x:auto; }
+
+  ul.tight { padding-left:19px; margin:10px 0; }
+  ul.tight li { margin-bottom:6px; }
+
+  .foot { margin-top:52px; padding-top:18px; border-top:1px solid var(--rule);
+          color:var(--ink-3); font-size:.85rem; }
+
+  @media print {
+    :root {
+      --ground:#FFF; --sunk:#F3F6FA; --card:#FFF;
+      --ink:#0A0E14; --ink-2:#414B58; --ink-3:#6C7684;
+      --rule:#CDD5DF; --hair:#E3E8EE;
+      --accent:#173CA6; --accent-bg:#E9EFFE;
+      --fwd:#0C6B39; --fwd-bg:#E4F4EA;
+      --hold:#7A4D05; --hold-bg:#FBF1DC;
+      --esc:#9B1E40; --esc-bg:#FCE6EC;
+      --bot:#5C31A0; --bot-bg:#EFE8FB;
+    }
+    body { font-size:9.6pt; line-height:1.42; }
+    .wrap { max-width:none; padding:0; }
+    h1 { font-size:27pt; } h2 { font-size:15pt; }
+    .role, figure, .note, .board, tr, .f { break-inside:avoid; page-break-inside:avoid; }
+    .shead, h3, .board { break-after:avoid; page-break-after:avoid; }
+    section.brk { break-before:page; page-break-before:page; }
+    a { color:var(--ink); text-decoration:none; }
+  }
+</style>
+
+<div class="wrap">
+
+<header class="mast">
+  <p class="kick">Medically Modern · Engineering Handoff</p>
+  <h1>Command Center<br>Role &amp; Routing Spec</h1>
+  <p>Every role: what puts a patient in the queue, what the rep must complete before the stage can advance, and exactly where each outcome sends them. Read from the code, not from prior docs.</p>
+  <div class="meta">
+    <span><b>Version</b> 1.0</span>
+    <span><b>Issued</b> 11 Aug 2026</span>
+    <span><b>Source</b> commit b5a5f8f</span>
+  </div>
+</header>
+
+<!-- ═══ 00 · CONVENTIONS ═══════════════════════════════════ -->
+<section id="conventions">
+  <div class="shead"><h2><span class="snum">00</span>How to read this</h2></div>
+
+  <p>Each role is one spec block with the same six fields. <b>Entry</b> is the predicate that puts a patient in the queue. <b>Due</b> is the snooze rule that decides whether they surface today. <b>Gates</b> are what must be filled before the primary action unlocks. <b>Exits</b> is the routing table — every outcome, the columns it writes, and the destination.</p>
+
+  <h3>Three rules apply to every role</h3>
+
+  <div class="note gate">
+    <p><b class="lbl">1 · The advancer is written last</b></p>
+    <p>Every "Send to Monday" runs <code>executeWritesWithVerification</code>: snapshot → write data columns → poll read-back (8 tries, ~12s) → <b>only then</b> write the stage advancer. If verification times out it throws and <b>the advancer is never written</b>. The patient stays put by design, because the automation would otherwise read stale siblings.</p>
+  </div>
+
+  <div class="note gate">
+    <p><b class="lbl">2 · Escalation removes a patient from the rep</b></p>
+    <p>An escalated patient leaves the role's list <em>and</em> its count and appears in a manager column. <b>DVS is the only exception</b> — it ignores escalation entirely. On the Medical Evaluation board, escalation index <code>2</code> (proposed stuck) is excluded from <em>both</em> the active and the escalated counts.</p>
+  </div>
+
+  <div class="note gate">
+    <p><b class="lbl">3 · Movement between boards is a Monday automation</b></p>
+    <p>The app only ever flips a status column. Board-to-board movement, item creation on the next board, and group moves are board automations. On the <b>Medical Evaluation board this is not true of sub-stages</b>: <code>Sub-Stage color_mm1wyr92</code> <em>is</em> the advancer, so moving between Evaluate → Send Request → Confirm Receipt → Chase → Doctor Appointment needs no automation at all.</p>
+  </div>
+
+  <h3>Destination legend</h3>
+  <p style="margin-bottom:14px;">
+    <span class="dest d-fwd">ADVANCES</span> &nbsp;moves to the next stage &nbsp;·&nbsp;
+    <span class="dest d-hold">STAYS</span> &nbsp;remains in this queue, usually snoozed &nbsp;·&nbsp;
+    <span class="dest d-esc">ESCALATES</span> &nbsp;leaves for a manager column &nbsp;·&nbsp;
+    <span class="dest d-bot">TO A BOT</span> &nbsp;handed to an automated stage
+  </p>
+</section>
+
+<!-- ═══ 01 · PIPELINE ══════════════════════════════════════ -->
+<section id="pipeline" class="brk">
+  <div class="shead"><h2><span class="snum">01</span>The pipeline</h2></div>
+  <p class="snote">Five boards, nineteen roles. Everything below is a detail of this picture.</p>
+
+  <figure class="dg">
+    <div class="fs">
+      <svg viewBox="0 0 960 300" role="img" aria-label="Patients flow through Profile Send Off, Welcome Call, Medical Evaluation, Insurance and Subscription boards, with the roles on each listed beneath.">
+        <defs><marker id="p1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse"><path class="mk" d="M 0 0 L 10 5 L 0 10 z"/></marker></defs>
+        <g class="fl" marker-end="url(#p1)">
+          <line x1="176" y1="52" x2="204" y2="52"/>
+          <line x1="360" y1="52" x2="388" y2="52"/>
+          <line x1="544" y1="52" x2="572" y2="52"/>
+          <line x1="728" y1="52" x2="756" y2="52"/>
+        </g>
+
+        <rect class="box" x="16" y="22" width="160" height="60" rx="7"/>
+        <text class="t" x="96" y="48" text-anchor="middle">Profile Send Off</text>
+        <text class="s" x="96" y="66" text-anchor="middle">18406352652</text>
+
+        <rect class="box" x="204" y="22" width="156" height="60" rx="7"/>
+        <text class="t" x="282" y="48" text-anchor="middle">Welcome Call</text>
+        <text class="s" x="282" y="66" text-anchor="middle">18410804557</text>
+
+        <rect class="box" x="388" y="22" width="156" height="60" rx="7"/>
+        <text class="t" x="466" y="42" text-anchor="middle">Medical Evaluation</text>
+        <text class="s" x="466" y="60" text-anchor="middle">18406060017</text>
+        <text class="s" x="466" y="75" text-anchor="middle">"Masheke"</text>
+
+        <rect class="box" x="572" y="22" width="156" height="60" rx="7"/>
+        <text class="t" x="650" y="42" text-anchor="middle">Insurance</text>
+        <text class="s" x="650" y="60" text-anchor="middle">18410601299</text>
+        <text class="s" x="650" y="75" text-anchor="middle">"Samantha"</text>
+
+        <rect class="box" x="756" y="22" width="188" height="60" rx="7"/>
+        <text class="t" x="850" y="48" text-anchor="middle">Subscription + Claims</text>
+        <text class="s" x="850" y="66" text-anchor="middle">18407459988</text>
+
+        <g class="s">
+          <text x="96" y="112" text-anchor="middle">Verified Referrals</text>
+          <text x="96" y="128" text-anchor="middle">Already In System</text>
+          <text x="96" y="144" text-anchor="middle">Patient Intake</text>
+          <text x="96" y="160" text-anchor="middle">Scheduled Calls</text>
+
+          <text x="282" y="112" text-anchor="middle">Welcome Call</text>
+          <text x="282" y="128" text-anchor="middle">Final Confirmation</text>
+
+          <text x="466" y="112" text-anchor="middle">Evaluate</text>
+          <text x="466" y="128" text-anchor="middle">Send Request</text>
+          <text x="466" y="144" text-anchor="middle">Confirm Receipt</text>
+          <text x="466" y="160" text-anchor="middle">Chase — Fax</text>
+          <text x="466" y="176" text-anchor="middle">Chase — Email &amp; Parachute</text>
+          <text x="466" y="192" text-anchor="middle">Doctor Appointments</text>
+
+          <text x="650" y="112" text-anchor="middle">Benefits</text>
+          <text x="650" y="128" text-anchor="middle">Submit Auth</text>
+          <text x="650" y="144" text-anchor="middle">Auth Outstanding</text>
+          <text x="650" y="160" text-anchor="middle">DVS (bot)</text>
+          <text x="650" y="176" text-anchor="middle">Auth Denied (unbuilt)</text>
+
+          <text x="850" y="112" text-anchor="middle">Subscription</text>
+          <text x="850" y="128" text-anchor="middle">Update Clinicals</text>
+          <text x="850" y="144" text-anchor="middle">Patient Questions</text>
+        </g>
+
+        <line x1="16" y1="230" x2="944" y2="230" stroke="var(--rule)" stroke-width="1"/>
+        <text class="m" x="16" y="252" text-anchor="start">STAGE ADVANCER PER BOARD</text>
+        <g class="s">
+          <text x="16" y="272" text-anchor="start">Profile: Move to Onboarding · Welcome Call: Stage Advancer · Medical Evaluation: Sub-Stage color_mm1wyr92 (no automation needed)</text>
+          <text x="16" y="288" text-anchor="start">Insurance: Stage Advancer color_mm1ws96t — index 0 Auth Denied · 1 DVS · 2 Stuck · 3 Benefits/SoS · 4 Submit Auth · 6 Auth Outstanding · 7 Complete</text>
+        </g>
+      </svg>
+    </div>
+  </figure>
+</section>
+
+<!-- ═══ 02 · PROFILE SEND OFF ══════════════════════════════ -->
+<section id="profile" class="brk">
+  <div class="shead"><h2><span class="snum">02</span>Profile Send Off</h2></div>
+
+  <div class="board">
+    <h3>Board 18406352652</h3>
+    <span class="bid">groups: <code>1. Intake</code> group_mm1xf2jb · DTC form <code>group_mm5zgeak</code> <code>group_mm5z87zt</code> · <code>Patient Intake</code> group_mm4vhqff</span>
+  </div>
+
+  <div class="note warn">
+    <p><b class="lbl">Corrected 10 Aug 2026 — CLAUDE.md §5.10 is stale on this</b></p>
+    <p>The <code>1. Intake</code> group is <b>no longer split by referral type or source</b>. Patient Intake is now the DTC form's own two groups and nothing else. <code>referralSplit.ts</code> retains <code>isUnverified</code> but the counts hook explicitly discards it (<code>void isUnverified</code>) — it survives only because Oversight still labels by it.</p>
+  </div>
+
+  <div class="role">
+    <div class="role-h"><h4>Verified Referrals</h4><span class="rt">id <code>profile</code> · <code>/profile</code></span></div>
+    <div class="role-b"><dl>
+      <div class="f"><dt>Entry</dt><dd>Group <code>1. Intake</code>, and <em>Already In System</em> <code>color_mm2xe7r8</code> ≠ <code>Yes</code>.</dd></div>
+      <div class="f"><dt>Due</dt><dd><em>Follow Up</em> <code>color_mm3822qq</code> ≠ <code>Done</code>.</dd></div>
+      <div class="f"><dt>Gates</dt><dd>
+        <p><b>Run Stedi Check is gated on the profile writing first.</b> <code>writePatientProfile</code> then <code>verifyProfileWritten</code> (≤3 tries) must succeed — Stedi reads Name, DOB, General Insurance and Member ID <code>text_mm4t8gbq</code> <em>from Monday</em>, so if verification fails the run aborts and <b>Stedi never fires</b>.</p>
+        <p>Results are polled every 4s and revealed only after the full result-column set has been stable for 10s. Hard timeout 95s.</p>
+      </dd></div>
+      <div class="f"><dt>Exits</dt><dd>
+        <table class="exits">
+          <thead><tr><th>Outcome</th><th>Writes</th><th>Destination</th></tr></thead>
+          <tbody>
+            <tr><td>Advance to MN</td><td>Profile data columns, then <em>Move to Onboarding</em> = <code>Advance to MN</code> (written last)</td><td><span class="dest d-fwd">ADVANCES</span> automation creates the Medical Evaluation item and moves this one to Completed</td></tr>
+            <tr><td>Send back to Patient Intake</td><td><code>moveItemToGroup(group_mm4vhqff)</code> — <b>not</b> a Move to Onboarding write</td><td><span class="dest d-hold">STAYS</span> on this board, different group</td></tr>
+          </tbody>
+        </table>
+      </dd></div>
+      <div class="f"><dt>Notes</dt><dd>The Stedi UI is <b>inline in <code>ProfilePage.tsx</code></b>. <code>components/profile/StediPanel.tsx</code> is dead code with zero importers — editing it changes nothing. Adding a Stedi result column touches 5 places, all listed in CLAUDE.md §5.11.</dd></div>
+    </dl>
+    <p class="src">lib/profile/mondayWrite.ts · lib/profile/referralSplit.ts · pages/ProfilePage.tsx</p></div>
+  </div>
+
+  <div class="role">
+    <div class="role-h"><h4>Already In System</h4><span class="rt">id <code>inSystemReferrals</code> · <code>/in-system-referrals</code></span></div>
+    <div class="role-b"><dl>
+      <div class="f"><dt>Entry</dt><dd>Group <code>1. Intake</code>, <em>Already In System</em> = <code>Yes</code>. Checked <b>before</b> everything else, so it wins over any other classification.</dd></div>
+      <div class="f"><dt>Due</dt><dd><em>Follow Up</em> ≠ <code>Done</code>.</dd></div>
+      <div class="f"><dt>Exits</dt><dd>Same two as Verified Referrals — the page is the same component with a different <code>variant</code>.</dd></div>
+      <div class="f"><dt>Notes</dt><dd>A blank <em>Already In System</em> counts as <b>not</b> in system. The column is not always set.</dd></div>
+    </dl></div>
+  </div>
+
+  <div class="role">
+    <div class="role-h"><h4>Patient Intake — DTC &amp; CareCentrix</h4><span class="rt">id <code>unverifiedReferrals</code> · <code>/unverified-referrals</code></span></div>
+    <div class="role-b"><dl>
+      <div class="f"><dt>Entry</dt><dd>The <b>two DTC form groups</b> (<code>group_mm5zgeak</code>, <code>group_mm5z87zt</code>). Every item there came from the form, so no referral split is applied — they are unverified by definition.</dd></div>
+      <div class="f"><dt>Due</dt><dd><em>Follow Up</em> ≠ <code>Done</code> <b>and</b> not intake-escalated (<code>color_mm5zww42</code> ∉ {Manager Escalation Required, Final Escalation Required}).</dd></div>
+      <div class="f"><dt>Notes</dt><dd>The role id stays <code>unverifiedReferrals</code> so existing <code>access.json</code> assignments keep working. Same reason <code>profile</code> kept its id when relabelled.</dd></div>
+    </dl></div>
+  </div>
+
+  <div class="role">
+    <div class="role-h"><h4>Patient Intake — Scheduled Calls</h4><span class="rt">id <code>scheduledCalls</code> · <code>/scheduled-calls</code></span></div>
+    <div class="role-b"><dl>
+      <div class="f"><dt>Entry</dt><dd>The same two DTC form groups, but counted by <b>clock, not by a follow-up rule</b>.</dd></div>
+      <div class="f"><dt>Due</dt><dd>Booked date <code>date_mm63na19</code> = today <b>and</b> booked time ≥ now (ET) <b>and</b> booking status <code>color_mm5zrbn3</code> ≠ <code>Canceled</code>. Booked today with <b>no time on file still counts</b> — it can't be sequenced, so it can never be "passed".</dd></div>
+      <div class="f"><dt>Notes</dt><dd>The count falls through the day as start times pass. The 9 AM baseline lands before any appointment has passed, so it captures the day's full total and this is a real burndown rather than a coincidence.</dd></div>
+    </dl>
+    <p class="src">lib/scheduledCalls/workflow.ts <code>remainingToday</code> · hooks/useRoleCounts.ts</p></div>
+  </div>
+</section>
+
+<!-- ═══ 03 · MEDICAL EVALUATION ════════════════════════════ -->
+<section id="masheke" class="brk">
+  <div class="shead"><h2><span class="snum">03</span>Medical Evaluation</h2></div>
+
+  <div class="board">
+    <h3>Board 18406060017 · "Masheke"</h3>
+    <span class="bid">one group, five sub-stages. <em>Sub-Stage</em> <code>color_mm1wyr92</code> IS the advancer</span>
+  </div>
+
+  <p class="snote">Six roles on one group. Sub-Stage indices are <b>not sequential</b>: Evaluate 8, Send Request 9, Confirm Receipt 10, Chase 11, <b>Doctor Appointment 0</b>, Completed 14. Index 0 is not a typo — Monday assigned the lowest free slot when the label was created in the UI. A status write by index is <b>silent</b> if the index has no label, so verify <code>settings_str</code> before changing it.</p>
+
+  <figure class="dg">
+    <div class="fs">
+      <svg viewBox="0 0 960 330" role="img" aria-label="The Medical Evaluation sub-stage chain: Evaluate to Send Request to Confirm Receipt to Chase Clinicals, which splits by Clinicals Method and can divert to Doctor Appointments or escalate.">
+        <defs>
+          <marker id="m5" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse"><path class="mk" d="M 0 0 L 10 5 L 0 10 z"/></marker>
+          <marker id="m5x" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse"><path class="mkx" d="M 0 0 L 10 5 L 0 10 z"/></marker>
+        </defs>
+        <g class="fl" marker-end="url(#m5)">
+          <line x1="152" y1="56" x2="186" y2="56"/>
+          <line x1="322" y1="56" x2="356" y2="56"/>
+          <line x1="492" y1="56" x2="526" y2="56"/>
+          <line x1="662" y1="56" x2="810" y2="56"/>
+          <line x1="622" y1="82" x2="622" y2="138"/>
+          <line x1="552" y1="138" x2="552" y2="84"/>
+        </g>
+        <g class="fx" marker-end="url(#m5x)">
+          <line x1="770" y1="200" x2="770" y2="234"/>
+        </g>
+
+        <rect class="box" x="16" y="30" width="136" height="52" rx="7"/>
+        <text class="t" x="84" y="52" text-anchor="middle">Evaluate</text>
+        <text class="s" x="84" y="70" text-anchor="middle">Sub-Stage 8</text>
+
+        <rect class="box" x="186" y="30" width="136" height="52" rx="7"/>
+        <text class="t" x="254" y="52" text-anchor="middle">Send Request</text>
+        <text class="s" x="254" y="70" text-anchor="middle">Sub-Stage 9</text>
+
+        <rect class="box" x="356" y="30" width="136" height="52" rx="7"/>
+        <text class="t" x="424" y="52" text-anchor="middle">Confirm Receipt</text>
+        <text class="s" x="424" y="70" text-anchor="middle">Sub-Stage 10</text>
+
+        <rect class="box" x="526" y="30" width="136" height="52" rx="7"/>
+        <text class="t" x="594" y="52" text-anchor="middle">Chase Clinicals</text>
+        <text class="s" x="594" y="70" text-anchor="middle">Sub-Stage 11</text>
+
+        <rect class="ok" x="810" y="30" width="134" height="52" rx="7"/>
+        <text class="t" x="877" y="52" text-anchor="middle">Completed</text>
+        <text class="s" x="877" y="70" text-anchor="middle">Sub-Stage 14</text>
+
+        <rect class="hd2" x="380" y="140" width="428" height="60" rx="7"/>
+        <text class="t" x="594" y="164" text-anchor="middle">Doctor Appointments — Sub-Stage 0</text>
+        <text class="s" x="594" y="183" text-anchor="middle">entered only via the Doctor Appointment Required dialog on either chase page</text>
+
+        <rect class="bd" x="596" y="236" width="348" height="56" rx="7"/>
+        <text class="t" x="770" y="258" text-anchor="middle">Escalation color_mm1x7997</text>
+        <text class="s" x="770" y="277" text-anchor="middle">index 0 Manager Intervention · index 2 proposed stuck</text>
+
+        <g class="m">
+          <text x="169" y="46" text-anchor="middle">2A</text>
+          <text x="339" y="46" text-anchor="middle">2B</text>
+          <text x="509" y="46" text-anchor="middle">2C</text>
+          <text x="736" y="46" text-anchor="middle">2D · clinicals received</text>
+          <text x="632" y="116" text-anchor="start">office wants a visit</text>
+          <text x="542" y="116" text-anchor="end">appt date set</text>
+        </g>
+        <g class="mx"><text x="782" y="222" text-anchor="start">3 attempts spent</text></g>
+
+        <text class="s" x="16" y="316" text-anchor="start">Chase splits into two roles by Clinicals Method color_mm1xw7y5 — set back at Send Request. Parachute or Email → Email &amp; Parachute; everything else including blank → Fax.</text>
+      </svg>
+    </div>
+  </figure>
+
+  <div class="role">
+    <div class="role-h"><h4>Evaluate</h4><span class="rt">id <code>evaluate</code> · <code>/evaluate</code> · Sub-Stage <code>Evaluate MN</code></span></div>
+    <div class="role-b"><dl>
+      <div class="f"><dt>Entry</dt><dd>Sub-Stage text exactly <code>Evaluate MN</code>.</dd></div>
+      <div class="f"><dt>Due</dt><dd><em>Next Action Date</em> <code>date_mm1wadgs</code> blank, today, or past. Escalation index 0 → escalated list; index 2 → counted nowhere.</dd></div>
+      <div class="f"><dt>Gates</dt><dd>
+        <p>The Send button is blocked until <code>deriveValidity</code> resolves every visible requirement. The value written to <em>Medical Necessity</em> comes from the same derivation, so <b>the stage move can never disagree with the written column</b>.</p>
+        <p><b>Render gate:</b> the CGM/IP Coverage Path and Language controls only appear once that product's script is Received (Yes) or Invalid. Already-saved values still write on send via <code>buildScriptCoverageWrites</code>.</p>
+      </dd></div>
+      <div class="f"><dt>Exits</dt><dd>
+        <table class="exits">
+          <thead><tr><th>Outcome</th><th>Writes</th><th>Destination</th></tr></thead>
+          <tbody>
+            <tr><td>Send to Monday</td><td>~16 eval status columns + MN notes, then <em>Advancer 2A</em> → Complete and <em>Sub-Stage</em> → 9</td><td><span class="dest d-fwd">ADVANCES</span> Send Request</td></tr>
+            <tr><td>Propose Stuck</td><td>Escalation → index 2, reason stamped into MN notes as <code>[Proposed Stuck …]</code></td><td><span class="dest d-esc">ESCALATES</span> Final Decisions</td></tr>
+          </tbody>
+        </table>
+      </dd></div>
+      <div class="f"><dt>Notes</dt><dd><b>"Option A" encoding:</b> the board has no per-requirement columns. Per-requirement Yes/No/Invalid answers round-trip through two existing dropdowns (<em>IP MN Invalid Reasons</em>, <em>IP MN No Reasons</em>) by <b>exact label-string match</b>. A casing mismatch makes Monday silently create a duplicate label. Edit <code>IP_REQ_LABELS</code> only against the live board; two round-trip test suites guard it.</dd></div>
+    </dl>
+    <p class="src">lib/masheke/evalState.ts · mondayWrite.ts <code>sendPatientToMonday("evaluate")</code></p></div>
+  </div>
+
+  <div class="role">
+    <div class="role-h"><h4>Send Request</h4><span class="rt">id <code>sendRequest</code> · <code>/send-request</code> · Sub-Stage <code>Send Request</code></span></div>
+    <div class="role-b"><dl>
+      <div class="f"><dt>Entry</dt><dd>Sub-Stage text exactly <code>Send Request</code>.</dd></div>
+      <div class="f"><dt>Due</dt><dd>Next Action Date rule, as above.</dd></div>
+      <div class="f"><dt>Exits</dt><dd>
+        <table class="exits">
+          <thead><tr><th>Outcome</th><th>Writes</th><th>Destination</th></tr></thead>
+          <tbody>
+            <tr><td>Send to Monday</td><td>Generate CGM Script, Generate IP Script, <b>Clinicals Method</b>, MN notes, then <em>Advancer 2B</em> → Complete and <em>Sub-Stage</em> → 10</td><td><span class="dest d-fwd">ADVANCES</span> Confirm Receipt</td></tr>
+          </tbody>
+        </table>
+      </dd></div>
+      <div class="f"><dt>Notes</dt><dd>
+        <div class="note gate" style="margin:0;">
+          <p><b class="lbl">This action gates a later one</b></p>
+          <p><b>Clinicals Method is set here and decides which Chase queue the patient lands in two stages later.</b> Leaving it blank is not neutral — blank routes to Chase&nbsp;—&nbsp;Fax. That is deliberate (nobody falls through the cracks), but it means a Parachute patient whose method was never set will be worked as a fax patient.</p>
+        </div>
+        <p style="margin-top:10px;">Dispatch is via the Cloudflare worker <code>POST /send-message</code>. Recipients may be normal emails or <code>&lt;number&gt;@rcfax.com</code>, which RingCentral converts to a fax. All email recipients go out as <b>one grouped message</b>; each rcfax recipient gets its own, so the fax addresses are never exposed to human recipients.</p>
+      </dd></div>
+    </dl></div>
+  </div>
+
+  <div class="role">
+    <div class="role-h"><h4>Confirm Receipt</h4><span class="rt">id <code>confirmReceipt</code> · <code>/confirm-receipt</code> · Sub-Stage <code>Confirm Receipt</code></span></div>
+    <div class="role-b"><dl>
+      <div class="f"><dt>Entry</dt><dd>Sub-Stage text exactly <code>Confirm Receipt</code>.</dd></div>
+      <div class="f"><dt>Exits</dt><dd>
+        <table class="exits">
+          <thead><tr><th>Outcome</th><th>Writes</th><th>Destination</th></tr></thead>
+          <tbody>
+            <tr><td>Send to Monday</td><td>MRs/Clinicals, MN Attempts, Receipt Confirmed Date + Name, notes, then <em>Advancer 2C</em> → Complete and <em>Sub-Stage</em> → 11</td><td><span class="dest d-fwd">ADVANCES</span> Chase Clinicals</td></tr>
+          </tbody>
+        </table>
+      </dd></div>
+      <div class="f"><dt>Notes</dt><dd>
+        <p>One of two panels using <b>blocking saves</b> (<code>requireDone</code> + <code>SaveProgressOverlay</code>): the screen is locked, sidebar included, until Monday confirms. This exists because of the July 2026 dropped-date incident — a mid-save patient switch clobbered panel state and silently dropped the Next Action Date, so completed patients never left the due queue and burned attempts.</p>
+        <p>The follow-up date is computed <b>at save time</b>, never from component state, and a missing date aborts the save loudly.</p>
+      </dd></div>
+    </dl></div>
+  </div>
+
+  <div class="role">
+    <div class="role-h"><h4>Chase Clinicals — Fax &nbsp;/&nbsp; Email &amp; Parachute</h4><span class="rt">ids <code>chaseFax</code> <code>chaseParachute</code> · <code>/chase-fax</code> <code>/chase-parachute</code></span></div>
+    <div class="role-b"><dl>
+      <div class="f"><dt>Entry</dt><dd>Sub-Stage <code>Chase Clinicals</code>, then split on <em>Clinicals Method</em> <code>color_mm1xw7y5</code>: <code>Parachute</code> or <code>Email</code> → <b>chaseParachute</b>; everything else <b>including blank</b> → <b>chaseFax</b>.</dd></div>
+      <div class="f"><dt>Due</dt><dd>Next Action Date blank/today/past.</dd></div>
+      <div class="f"><dt>Gates</dt><dd>The attempt counter is <em>MN Attempts</em> <code>color_mm1wz0vg</code>, advancing Attempt&nbsp;1 → 2 → 3 → <code>Escalate</code>. Once it reads <code>Escalate</code> the panel is <b>locked to reps</b> and only a manager can act.</dd></div>
+      <div class="f"><dt>Exits</dt><dd>
+        <table class="exits">
+          <thead><tr><th>Outcome</th><th>Writes</th><th>Destination</th></tr></thead>
+          <tbody>
+            <tr><td>Log attempt 1 or 2</td><td>MN Attempts → next slot, Next Action Date <b>+3 business days</b>, note appended</td><td><span class="dest d-hold">STAYS</span> snoozed 3 business days</td></tr>
+            <tr><td>Log attempt 3</td><td>MN Attempts → <code>Escalate</code>, Escalation → index 0</td><td><span class="dest d-esc">ESCALATES</span> Manager Intervention</td></tr>
+            <tr><td>Clinicals received</td><td>MRs/Clinicals → MR Received, <em>Advancer 2D</em> → Complete</td><td><span class="dest d-fwd">ADVANCES</span> Completed → Insurance board</td></tr>
+            <tr><td>Doctor Appointment Required, <b>no</b> date</td><td>Sub-Stage → 0, Escalation → <b>Done</b></td><td><span class="dest d-hold">STAYS</span> Doctor Appointments queue</td></tr>
+            <tr><td>Doctor Appointment Required, date known</td><td>Appointment Date <code>date_mm5w2vsf</code>, NAD = appt+1 (weekend-clamped), Escalation → Done</td><td><span class="dest d-hold">STAYS</span> in Chase, snoozed to the visit</td></tr>
+          </tbody>
+        </table>
+      </dd></div>
+      <div class="f"><dt>Notes</dt><dd>
+        <p><b>+3 business days applies to every Clinicals Method</b> — Fax, Email, Parachute and blank alike (<code>nadBumpDays = 3</code>).</p>
+        <p>Email deliberately queues with Parachute but is still <b>sent by email</b>; the optional re-send box keys off the panel's <code>roleMethod</code>, so Email patients never see the fax re-send path. This grouping is applied in <b>five</b> places that must agree — role page, <code>useRoleCounts</code>, Oversight <code>CHART_FILTERS</code>, and both baseline generators.</p>
+        <p>Also a blocking save (<code>requireDone</code> + overlay), same incident as Confirm Receipt.</p>
+      </dd></div>
+    </dl>
+    <p class="src">components/masheke/ChaseClinicalsPanel.tsx · pages/ChaseClinicalsPage.tsx</p></div>
+  </div>
+
+  <div class="role">
+    <div class="role-h"><h4>Doctor Appointments</h4><span class="rt">id <code>doctorAppointments</code> · <code>/doctor-appointments</code> · Sub-Stage <code>Doctor Appointment</code> (index 0)</span></div>
+    <div class="role-b"><dl>
+      <div class="f"><dt>Entry</dt><dd><b>Only</b> via the Doctor Appointment Required dialog on a chase page. There is deliberately no way for a rep to set this on their own judgment. One rule is the entire state machine: <b>Appointment Date set ⇒ a normal Chase patient snoozed to appt+1. Blank ⇒ this queue.</b></dd></div>
+      <div class="f"><dt>Due</dt><dd>Next Action Date rule. A patient whose Appointment Date is today-or-later is in <em>Scheduled</em> and nowhere else, whatever their NAD says.</dd></div>
+      <div class="f"><dt>Gates</dt><dd>
+        <p><b>A note is mandatory on every attempt</b> (<code>canLogAttempt</code>). The attempt count is derived by parsing lines out of MN Workflow Notes — there are no per-attempt columns — so a note-less save would be indistinguishable from no attempt and hand the rep unlimited retries.</p>
+        <p>The 3-attempt cap is a <b>rep guardrail only</b> (<code>apptCapApplies</code>). An escalated patient has no limit; the manager working them logs as many as it takes.</p>
+      </dd></div>
+      <div class="f"><dt>Exits</dt><dd>
+        <p style="margin-bottom:8px;"><b>Three ways out, and only three.</b></p>
+        <table class="exits">
+          <thead><tr><th>Outcome</th><th>Writes</th><th>Destination</th></tr></thead>
+          <tbody>
+            <tr><td>Patient booked an appointment</td><td>Appointment Date, Sub-Stage → 11, NAD = appt+1 (floored at today), Escalation → Done</td><td><span class="dest d-fwd">ADVANCES</span> back to Chase</td></tr>
+            <tr><td>Third attempt spent</td><td>Escalation → <b>index 0</b>, never index 2</td><td><span class="dest d-esc">ESCALATES</span> Manager Intervention</td></tr>
+            <tr><td>Won't schedule / wants to cancel</td><td>Propose Stuck at <b>any</b> attempt — climbs the shared ladder, reason stamped with stage and attempt number</td><td><span class="dest d-esc">ESCALATES</span> one rung up</td></tr>
+            <tr><td>No answer · left message</td><td>Attempt line appended, NAD +1 business day</td><td><span class="dest d-hold">STAYS</span> snoozed 1 business day</td></tr>
+            <tr><td>Spoke — patient will call the office</td><td>Attempt line appended, NAD <b>+7 calendar days</b></td><td><span class="dest d-hold">STAYS</span> snoozed one week</td></tr>
+          </tbody>
+        </table>
+      </dd></div>
+      <div class="f"><dt>Notes</dt><dd>
+        <p><b>The attempt line is the counter.</b> Format is exactly <code>8/3/26, 1:38 PM · Phone call — No answer / no response · &lt;note&gt; —JH</code>. <code>apptAttemptsFromNotes</code> matches <code>{known method} — {known outcome}</code> and numbers by position. A format change not mirrored in the parser does not error — it <b>silently resets the count</b>.</p>
+        <p>The count is read only from lines <b>after the last reset marker</b> (stage-entry stamp, or <code>[Returned to queue</code>). Without that, a patient re-entering the stage or handed back by a manager would arrive already capped.</p>
+        <p><b>Why a refusal doesn't wait for the third attempt:</b> it's a rep judgment about what they were told, not a counter running out. It climbs one rung rather than jumping to Final so a manager reviews the refusal before the patient can leave the pipeline.</p>
+        <p><b>Entry clears escalation</b> because the column is shared. Without it, a manager working an escalated chase patient who clicks the button delivers them into this queue already escalated — and escalated patients are hidden from this sidebar, so they'd be invisible on arrival with no error.</p>
+        <p>Sidebar sections differ by <b>view, not access level</b>: <em>Awaiting reply</em> and <em>Scheduled</em> render only when <code>?mv=</code> is present (set by every Oversight column and nothing else). The manager view lists <b>every</b> patient in the stage including escalated ones.</p>
+      </dd></div>
+    </dl>
+    <p class="src">lib/masheke/apptOutreach.ts (+ tests) · mondayWrite.ts <code>enterDoctorAppointments</code>, <code>returnToChaseWithAppointment</code>, <code>scheduleAppointmentFromChase</code></p></div>
+  </div>
+</section>
+
+<!-- ═══ 04 · INSURANCE ═════════════════════════════════════ -->
+<section id="insurance" class="brk">
+  <div class="shead"><h2><span class="snum">04</span>Insurance</h2></div>
+
+  <div class="board">
+    <h3>Board 18410601299 · "Samantha"</h3>
+    <span class="bid">Stage Advancer <code>color_mm1ws96t</code> · Escalation <code>color_mm2vsh2f</code> · Follow Up <code>color_mm34jz1x</code> / date <code>date_mm34m2dz</code></span>
+  </div>
+
+  <p class="snote">Unlike Medical Evaluation, the Stage Advancer here <b>does</b> drive board automations, and the routing is computed rather than linear. Stage-DVS items are dropped from the Benefits / Submit Auth / Auth Outstanding counts even though they linger in those groups — there is no group-move automation.</p>
+
+  <figure class="dg">
+    <div class="fs">
+      <svg viewBox="0 0 960 340" role="img" aria-label="Insurance routing: Benefits branches to Complete, Submit Auth, DVS or stays with an escalation. Submit Auth goes to DVS or Auth Outstanding. Auth Outstanding branches to Auth Denied, DVS, Complete or holds.">
+        <defs>
+          <marker id="m6" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse"><path class="mk" d="M 0 0 L 10 5 L 0 10 z"/></marker>
+          <marker id="m6x" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse"><path class="mkx" d="M 0 0 L 10 5 L 0 10 z"/></marker>
+        </defs>
+
+        <rect class="hub" x="16" y="130" width="128" height="56" rx="7"/>
+        <text class="t" x="80" y="154" text-anchor="middle">Benefits</text>
+        <text class="s" x="80" y="172" text-anchor="middle">stage 3</text>
+
+        <rect class="box" x="290" y="130" width="128" height="56" rx="7"/>
+        <text class="t" x="354" y="154" text-anchor="middle">Submit Auth</text>
+        <text class="s" x="354" y="172" text-anchor="middle">stage 4</text>
+
+        <rect class="box" x="556" y="130" width="140" height="56" rx="7"/>
+        <text class="t" x="626" y="154" text-anchor="middle">Auth Outstanding</text>
+        <text class="s" x="626" y="172" text-anchor="middle">stage 6</text>
+
+        <rect class="ok" x="816" y="130" width="128" height="56" rx="7"/>
+        <text class="t" x="880" y="154" text-anchor="middle">Complete</text>
+        <text class="s" x="880" y="172" text-anchor="middle">stage 7</text>
+
+        <rect class="bt" x="290" y="30" width="406" height="48" rx="7"/>
+        <text class="t" x="493" y="52" text-anchor="middle">DVS — stage 1 · bot-run, read-only page</text>
+        <text class="s" x="493" y="68" text-anchor="middle">every served product bills straight Medicaid</text>
+
+        <rect class="bd" x="556" y="252" width="140" height="52" rx="7"/>
+        <text class="t" x="626" y="274" text-anchor="middle">Auth Denied</text>
+        <text class="s" x="626" y="292" text-anchor="middle">stage 0 · no UI built</text>
+
+        <rect class="bd" x="16" y="252" width="380" height="52" rx="7"/>
+        <text class="t" x="206" y="274" text-anchor="middle">Stays at Benefits + escalates</text>
+        <text class="s" x="206" y="292" text-anchor="middle">universal check failed → Final · pump SoS not clear → Manager</text>
+
+        <g class="fl" marker-end="url(#m6)">
+          <line x1="144" y1="158" x2="288" y2="158"/>
+          <line x1="418" y1="158" x2="554" y2="158"/>
+          <line x1="696" y1="158" x2="814" y2="158"/>
+          <line x1="80"  y1="130" x2="80"  y2="54"/>
+          <line x1="80"  y1="54"  x2="288" y2="54"/>
+          <line x1="354" y1="130" x2="354" y2="80"/>
+          <line x1="626" y1="130" x2="626" y2="80"/>
+        </g>
+        <g class="fx" marker-end="url(#m6x)">
+          <line x1="80"  y1="186" x2="80"  y2="250"/>
+          <line x1="626" y1="186" x2="626" y2="250"/>
+        </g>
+
+        <g class="m">
+          <text x="216" y="150" text-anchor="middle">auth required</text>
+          <text x="486" y="150" text-anchor="middle">always</text>
+          <text x="755" y="150" text-anchor="middle">all resolved</text>
+          <text x="184" y="46" text-anchor="middle">all-clear, or all products Medicaid</text>
+          <text x="364" y="104" text-anchor="start">all DVS-routed</text>
+          <text x="636" y="104" text-anchor="start">has DVS products</text>
+        </g>
+        <g class="mx">
+          <text x="90" y="224" text-anchor="start">blocker</text>
+          <text x="636" y="224" text-anchor="start">any denied</text>
+        </g>
+
+        <text class="s" x="16" y="328" text-anchor="start">Benefits writes Escalation unconditionally (including Done) because it is DERIVED from the universal checks. Submit Auth never writes it. Auth Outstanding writes it only when an auto rule fires.</text>
+      </svg>
+    </div>
+  </figure>
+
+  <div class="role">
+    <div class="role-h"><h4>Benefits</h4><span class="rt">id <code>benefits</code> · <code>/benefits</code> · stage index 3</span></div>
+    <div class="role-b"><dl>
+      <div class="f"><dt>Entry</dt><dd>Benefits group, and Stage Advancer text ≠ <code>DVS</code>.</dd></div>
+      <div class="f"><dt>Due</dt><dd>Snoozed only when <em>Follow Up</em> = <code>Follow Up</code> <b>AND</b> the Follow Up Date is blank or in the future. <b>A "Follow Up" whose date has arrived is due again.</b></dd></div>
+      <div class="f"><dt>Gates</dt><dd>
+        <p><code>validateBenefitsForSubmit</code> returns a list of missing labels; a non-empty list blocks the send:</p>
+        <ul class="tight">
+          <li>All <b>three universal checks</b> picked: In-Network Confirmed, Insurance Active, DME Benefits Confirmed.</li>
+          <li>Each <b>visible</b> served product must have <b>both</b> Auth Requirements and Same or Similar. Medicaid-routed supplies are hidden and auto-filled, so they're skipped.</li>
+        </ul>
+      </dd></div>
+      <div class="f"><dt>Exits</dt><dd>
+        <p style="margin-bottom:8px;">Computed by <code>deriveInsuranceOutcome</code>, evaluated in this order:</p>
+        <table class="exits">
+          <thead><tr><th>Outcome</th><th>Condition</th><th>Destination</th></tr></thead>
+          <tbody>
+            <tr><td>blocker</td><td>Any universal check explicitly not confirmed, <b>or</b> pump SoS = not clear</td><td><span class="dest d-esc">ESCALATES</span> stays at stage 3; universal fail → Final, pump-SoS-only → Manager</td></tr>
+            <tr><td>incomplete</td><td>Checks pending, or any served product missing Auth or SoS</td><td><span class="dest d-hold">STAYS</span> stage 3</td></tr>
+            <tr><td>auth-required</td><td>Any product Auth = required</td><td><span class="dest d-fwd">ADVANCES</span> Submit Auth, stage 4</td></tr>
+            <tr><td>all-clear</td><td>Everything confirmed, no auth needed</td><td><span class="dest d-fwd">ADVANCES</span> Complete, stage 7</td></tr>
+            <tr><td>all products DVS-routed</td><td>Overrides the two above when outcome is neither blocker nor incomplete</td><td><span class="dest d-bot">TO A BOT</span> DVS, stage 1</td></tr>
+          </tbody>
+        </table>
+      </dd></div>
+      <div class="f"><dt>Notes</dt><dd>
+        <p><b>Benefits is the one stage that writes Escalation unconditionally, "Done" included.</b> Escalation here is derived from the universal checks, so clearing it by fixing the facts and re-sending is the design. Every other Insurance stage leaves the column alone unless an auto rule fires.</p>
+        <p>Landing at DVS also auto-flips a bot trigger by serving: pump first for straight-Medicaid pump patients, supplies otherwise.</p>
+        <p><code>BenefitsPatientHeader</code> is <b>read-only for everyone, managers included</b>. A manager edit dialog existed from 2026-07-30 and was removed — changing the payer means re-verifying eligibility, and the Insurance board cannot run a Stedi check (no trigger column, neither input column, only ~9 of 33 result columns). Corrections go back through Profile Send Off.</p>
+      </dd></div>
+    </dl>
+    <p class="src">lib/samantha/workflow.ts <code>deriveInsuranceOutcome</code>, <code>validateBenefitsForSubmit</code> · mondayWrite.ts</p></div>
+  </div>
+
+  <div class="role">
+    <div class="role-h"><h4>Submit Auth</h4><span class="rt">id <code>submitAuth</code> · <code>/submit-auth</code> · stage index 4</span></div>
+    <div class="role-b"><dl>
+      <div class="f"><dt>Entry</dt><dd>Submit Auth group, Stage ≠ <code>DVS</code>.</dd></div>
+      <div class="f"><dt>Due</dt><dd>Same status-plus-date rule as Benefits.</dd></div>
+      <div class="f"><dt>Gates</dt><dd>
+        <p><code>validateSubmitAuthForSubmit</code>, per submission card:</p>
+        <ul class="tight">
+          <li>Submission Method must be picked.</li>
+          <li>If the method is <code>Call</code> or <code>Fax</code>, a number is required.</li>
+          <li>Submission Date is required.</li>
+        </ul>
+      </dd></div>
+      <div class="f"><dt>Exits</dt><dd>
+        <table class="exits">
+          <thead><tr><th>Outcome</th><th>Condition</th><th>Destination</th></tr></thead>
+          <tbody>
+            <tr><td>Auth Submission Complete</td><td>Any product not DVS-routed</td><td><span class="dest d-fwd">ADVANCES</span> Auth Outstanding, stage 6</td></tr>
+            <tr><td>Auth Submission Complete</td><td><code>allProductsDvsRouted</code> — zero submission cards because everything bills straight Medicaid</td><td><span class="dest d-bot">TO A BOT</span> DVS, stage 1</td></tr>
+            <tr><td>Propose Stuck</td><td>Rep action, any time</td><td><span class="dest d-esc">ESCALATES</span> Manager Intervention</td></tr>
+          </tbody>
+        </table>
+      </dd></div>
+      <div class="f"><dt>Notes</dt><dd>
+        <p><b>The send never touches Escalation.</b> Submit Auth has no auto rule and no toggle, which is exactly what keeps a rep's Propose Stuck sitting at Manager until a manager actually reviews it.</p>
+        <p>The send sets <b>Follow Up Date = today (ET)</b>, not +1 — many auths approve immediately. This is the prerequisite for the Auth Outstanding date bucket. The Follow Up <em>status</em> column is deliberately left alone.</p>
+      </dd></div>
+    </dl>
+    <p class="src">lib/samantha/submitAuthRules.ts · mondayWrite.ts</p></div>
+  </div>
+
+  <div class="role">
+    <div class="role-h"><h4>Auth Outstanding</h4><span class="rt">id <code>authOutstanding</code> · <code>/auth-outstanding</code> · stage index 6</span></div>
+    <div class="role-b"><dl>
+      <div class="f"><dt>Entry</dt><dd>Auth Outstanding group, Stage ≠ <code>DVS</code>.</dd></div>
+      <div class="f"><dt>Due</dt><dd><b>Pure date bucket.</b> Snoozed only when Follow Up Date is in the future. The Follow Up <em>status</em> column is ignored entirely and a <b>blank date counts as due</b>.</dd></div>
+      <div class="f"><dt>Gates</dt><dd>Cards appear for products whose board auth status is exactly <code>Submitted</code>, or <code>No Auth Needed</code> while still SoS-deferred. DVS-routed products never get a card.</dd></div>
+      <div class="f"><dt>Exits</dt><dd>
+        <p style="margin-bottom:8px;"><code>authOutstandingOutcome</code> — a strict priority ladder, first match wins:</p>
+        <table class="exits">
+          <thead><tr><th>Condition</th><th>Stage write</th><th>Destination</th></tr></thead>
+          <tbody>
+            <tr><td>1 · Any product denied</td><td>stage 0</td><td><span class="dest d-esc">ESCALATES</span> Auth Denied + Escalation → Manager</td></tr>
+            <tr><td>2 · Pump SoS not clear</td><td><b>none</b> — stage left alone</td><td><span class="dest d-esc">ESCALATES</span> Final Decisions</td></tr>
+            <tr><td>3 · All resolved, has DVS-routed products</td><td>stage 1</td><td><span class="dest d-bot">TO A BOT</span> DVS</td></tr>
+            <tr><td>3 · All resolved, no DVS products</td><td>stage 7</td><td><span class="dest d-fwd">ADVANCES</span> Complete</td></tr>
+            <tr><td>4 · All remaining are DVS-routed</td><td>stage 1</td><td><span class="dest d-bot">TO A BOT</span> DVS</td></tr>
+            <tr><td>5 · Otherwise</td><td>none</td><td><span class="dest d-hold">STAYS</span> re-dated, no escalation</td></tr>
+          </tbody>
+        </table>
+      </dd></div>
+      <div class="f"><dt>Notes</dt><dd>
+        <p>A denial writes <b>Manager</b>, not Final — the patient leaves for the unbuilt Auth Denied stage, so choosing Final would pre-judge a design nobody has done.</p>
+        <p>Auth Outstanding is the one Insurance stage with <b>only a Final Decisions manager chart</b>, no Manager Intervention chart. Because that single chart must catch everything, its population rule accepts <b>either</b> escalation index.</p>
+        <p>A nightly job recalculates <em>Days Auth Outstanding</em> <code>numeric_mm5f5ars</code> as days since the earliest per-product Auth Submission Date. Idempotent recalc, not an increment.</p>
+      </dd></div>
+    </dl>
+    <p class="src">lib/samantha/authOutstandingReview.ts <code>authOutstandingOutcome</code> · authOutstandingDays.ts</p></div>
+  </div>
+
+  <div class="role">
+    <div class="role-h"><h4>DVS</h4><span class="rt">id <code>dvs</code> · <code>/dvs</code> · stage index 1</span></div>
+    <div class="role-b"><dl>
+      <div class="f"><dt>Entry</dt><dd>Stage Advancer index 1 <b>board-wide</b> — there is no dedicated group, so items are found by the status value alone.</dd></div>
+      <div class="f"><dt>Due</dt><dd>Date-only, same as Auth Outstanding.</dd></div>
+      <div class="f"><dt>Exits</dt><dd>None from the app. <b>The page is a read-only monitor; the bot does the work.</b> Four board automations escalate on failure — Trigger Supplies DVS, Trigger Pump DVS, S Claims Status, IP Claims Status — each writing Escalation = Manager Escalation Required.</dd></div>
+      <div class="f"><dt>Notes</dt><dd>
+        <div class="note warn" style="margin:0 0 10px;">
+          <p><b class="lbl">The one exception to the escalation rule</b></p>
+          <p><b>Escalated patients stay in the DVS queue and the DVS count.</b> The queue keys purely off the DVS and claims status columns, and no automation flips DVS patients to a manager escalation, so a label carried in from an earlier stage must not hide them. The escalated count is reported as <code>0</code> deliberately — the "all" filter sums active + escalated and relies on them being disjoint.</p>
+        </div>
+        <p>Supplies and pump claims are <b>separate columns</b> (<code>S Claims Status</code> / <code>IP Claims Status</code>). The pump half was unread by the entire SPA until 2026-08-02.</p>
+      </dd></div>
+    </dl></div>
+  </div>
+
+  <div class="role">
+    <div class="role-h"><h4>Auth Denied</h4><span class="rt">id <code>authDenied</code> · no route · stage index 0</span></div>
+    <div class="role-b"><dl>
+      <div class="f"><dt>Status</dt><dd><b>Under construction. Do not build UI for it.</b> It has no manager charts at all, and since any denial escalates, those patients are worked directly on the board. This is a deliberate carve-out asserted by name in <code>insuranceCoverage.test.ts</code>.</dd></div>
+    </dl></div>
+  </div>
+</section>
+
+<!-- ═══ 05 · WELCOME CALL + SUBSCRIPTION ═══════════════════ -->
+<section id="rest" class="brk">
+  <div class="shead"><h2><span class="snum">05</span>Welcome Call &amp; Subscription</h2></div>
+
+  <div class="board">
+    <h3>Board 18410804557 · Welcome Call</h3>
+    <span class="bid">two roles, two groups · Escalation <code>color_mm1x7997</code>, label <code>Escalation Required</code></span>
+  </div>
+
+  <div class="role">
+    <div class="role-h"><h4>Welcome Call</h4><span class="rt">id <code>welcomeCall</code> · <code>/welcome-call</code> · group_mm1wvq8p</span></div>
+    <div class="role-b"><dl>
+      <div class="f"><dt>Entry</dt><dd>Welcome Call group.</dd></div>
+      <div class="f"><dt>Due</dt><dd>Not escalated <b>and</b> <em>Follow Up</em> <code>color_mm38w2tk</code> ≠ <code>Done</code>.</dd></div>
+      <div class="f"><dt>Exits</dt><dd>
+        <table class="exits">
+          <thead><tr><th>Outcome</th><th>Writes</th><th>Destination</th></tr></thead>
+          <tbody>
+            <tr><td>Send to Monday</td><td>Call data columns, then Stage Advancer → <code>Review Profile</code></td><td><span class="dest d-fwd">ADVANCES</span> Final Profile Confirmation</td></tr>
+          </tbody>
+        </table>
+      </dd></div>
+      <div class="f"><dt>Notes</dt><dd>Out-of-pocket estimates come from <code>lib/welcomeCall/oopEstimator.ts</code>, which <b>mirrors Python on Railway by hand</b>. <code>PAYER_RATE_SCHEDULE</code> and the Medicaid / Medicare / NYSHIP / Humana special cases must be hand-synced with that backend — there is no automated drift check.</dd></div>
+    </dl></div>
+  </div>
+
+  <div class="role">
+    <div class="role-h"><h4>Final Profile Confirmation</h4><span class="rt">id <code>finalConfirm</code> · <code>/final-confirm</code> · group_mm2x8jtj</span></div>
+    <div class="role-b"><dl>
+      <div class="f"><dt>Entry</dt><dd>Final Confirm group.</dd></div>
+      <div class="f"><dt>Due</dt><dd><b>Not escalated. That is the entire rule</b> — this group has <b>no follow-up filter at all</b>, unlike every other queue.</dd></div>
+      <div class="f"><dt>Exits</dt><dd>
+        <table class="exits">
+          <thead><tr><th>Outcome</th><th>Writes</th><th>Destination</th></tr></thead>
+          <tbody>
+            <tr><td>Confirm</td><td>Profile + order columns, then Stage Advancer → index <b>4</b> (Completed)</td><td><span class="dest d-fwd">ADVANCES</span> automations move the patient on</td></tr>
+          </tbody>
+        </table>
+      </dd></div>
+      <div class="f"><dt>Notes</dt><dd>The split-order duplicate path races a Monday "new item created" automation; the code re-writes flags defensively afterward (audit M6). Treat that path as known-fragile.</dd></div>
+    </dl></div>
+  </div>
+
+  <div class="board">
+    <h3>Board 18407459988 · Subscription</h3>
+    <span class="bid">group <code>topics</code></span>
+  </div>
+
+  <div class="role">
+    <div class="role-h"><h4>Subscription &nbsp;/&nbsp; Update Clinicals</h4><span class="rt">ids <code>subscription</code> <code>updateClinicals</code></span></div>
+    <div class="role-b"><dl>
+      <div class="f"><dt>Entry</dt><dd>Every item in the group. <b>Both roles report the same number</b> — the raw group size.</dd></div>
+      <div class="f"><dt>Due</dt><dd><b>No rule.</b> Nothing is filtered out.</dd></div>
+      <div class="f"><dt>Notes</dt><dd>
+        <div class="note warn" style="margin:0;">
+          <p><b class="lbl">Known risk — audit H6</b></p>
+          <p>The Subscription send writes ~20 columns with retry but <b>no read-back verification</b>, and confetti fires even on partial failure. It does not use the four-phase protocol. Treat a green UI here as unverified.</p>
+        </div>
+      </dd></div>
+    </dl></div>
+  </div>
+</section>
+
+<!-- ═══ 06 · ESCALATION ════════════════════════════════════ -->
+<section id="escalation" class="brk">
+  <div class="shead"><h2><span class="snum">06</span>The shared escalation ladder</h2></div>
+  <p class="snote">Cross-cutting. Submit Auth, DVS and Doctor Appointments all use the same <code>stageActions.proposeStuckLevel</code>.</p>
+
+  <figure class="dg">
+    <div class="fs">
+      <svg viewBox="0 0 900 250" role="img" aria-label="Propose Stuck writes one rung above wherever the patient already is: processor queue to Manager Intervention to Final Decisions. Managers can return patients down the ladder.">
+        <defs>
+          <marker id="m7" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse"><path class="mk" d="M 0 0 L 10 5 L 0 10 z"/></marker>
+        </defs>
+        <rect class="ok"  x="20"  y="70" width="240" height="92" rx="8"/>
+        <text class="t" x="140" y="100" text-anchor="middle">Processor queue</text>
+        <text class="s" x="140" y="122" text-anchor="middle">no escalation label</text>
+        <text class="s" x="140" y="140" text-anchor="middle">the rep works them</text>
+
+        <rect class="hd2" x="330" y="70" width="240" height="92" rx="8"/>
+        <text class="t" x="450" y="100" text-anchor="middle">Manager Intervention</text>
+        <text class="s" x="450" y="122" text-anchor="middle">index 0</text>
+        <text class="s" x="450" y="140" text-anchor="middle">invisible to the rep</text>
+
+        <rect class="bd" x="640" y="70" width="240" height="92" rx="8"/>
+        <text class="t" x="760" y="100" text-anchor="middle">Final Decisions</text>
+        <text class="s" x="760" y="122" text-anchor="middle">index 2</text>
+        <text class="s" x="760" y="140" text-anchor="middle">approve or return</text>
+
+        <g class="fl" marker-end="url(#m7)">
+          <line x1="260" y1="96" x2="328" y2="96"/>
+          <line x1="570" y1="96" x2="638" y2="96"/>
+          <line x1="638" y1="140" x2="570" y2="140"/>
+          <line x1="328" y1="140" x2="260" y2="140"/>
+        </g>
+        <g class="m">
+          <text x="294" y="88" text-anchor="middle">up</text>
+          <text x="604" y="88" text-anchor="middle">up</text>
+          <text x="294" y="158" text-anchor="middle">back</text>
+          <text x="604" y="158" text-anchor="middle">back</text>
+          <text x="450" y="40" text-anchor="middle">UP — Propose Stuck writes ONE RUNG above wherever the patient already is</text>
+          <text x="450" y="206" text-anchor="middle">BACK — clears the escalation and sets Next Action Date = today</text>
+          <text x="450" y="228" text-anchor="middle">Manager Intervention's return REQUIRES a note; Final Decisions' is optional</text>
+        </g>
+      </svg>
+    </div>
+  </figure>
+
+  <div class="t-scroll">
+    <table class="plain">
+      <thead><tr><th>Action</th><th>Who</th><th>Effect</th></tr></thead>
+      <tbody>
+        <tr><td><b>Propose Stuck</b></td><td>Rep or manager</td><td>Writes one rung up from the patient's <em>current</em> label. An existing escalation, or a click from Manager Intervention, promotes to Final. Otherwise Submit Auth and DVS start at Manager; Benefits and Auth Outstanding go straight to Final. Reason stamped into the notes as <code>[Proposed Stuck …]</code>.</td></tr>
+        <tr><td><b>Approve Stuck</b></td><td>Manager, Final Decisions</td><td>Main Stage Advancer → Stuck, <b>then</b> clear the escalation — in that order.</td></tr>
+        <tr><td><b>Send back to pipeline</b></td><td>Manager, either column</td><td>Optional stamped note (<b>required</b> in Manager Intervention), Next Action Date = today, escalation cleared. An escalated patient is invisible to the rep, so this is the only way back.</td></tr>
+        <tr><td><b>Send back to manager</b></td><td>Final Decisions, <b>DVS rows only</b></td><td>Final → Manager index 0. The only Final→Manager transition in the system; everything else raises or clears.</td></tr>
+        <tr><td><b>Manager resolve</b></td><td>Manager working the patient</td><td>The three Insurance stage pages pass <code>managerResolve</code> when <code>?manager=1</code>. Completing the form clears the escalation and hands the patient back. Auto rules still run afterward, so a review that comes back denied re-escalates on the new facts.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="note warn">
+    <p><b class="lbl">The invariant that must not break</b></p>
+    <p><b>Every escalated patient must land in some manager chart.</b> Escalation removes them from the rep's queue and the role count, so a state matching no chart is invisible in the entire app. Manager chart bars key on board <em>facts</em> while escalations are <em>labels</em>, so the two drift — which is why each Insurance manager chart carries a population rule <b>wider</b> than its bars. <code>lib/oversight/insuranceCoverage.test.ts</code> enumerates the reachable (stage × escalation) states and fails if one goes blind.</p>
+    <p><b>There is no Escalate toggle in the Insurance UI and one must not be reintroduced.</b> <code>components/samantha/EscalateButton.tsx</code> was deleted. A send writes the Escalation column only when an auto rule decides one; an auto rule only ever <em>raises</em>. The previous "manual toggle is the floor" rule read <code>p.escalated</code>, which is hydrated <em>from the board</em>, and re-wrote it on every send — silently promoting pending proposals past review, and silently clearing flags raised since the last poll.</p>
+  </div>
+</section>
+
+<!-- ═══ 07 · KEEP IN AGREEMENT ═════════════════════════════ -->
+<section id="agreement" class="brk">
+  <div class="shead"><h2><span class="snum">07</span>Rules that live in more than one place</h2></div>
+  <p class="snote">The counting contract. Change any of these and you change all of them in the same commit, or the queue and the count disagree with no error.</p>
+
+  <div class="t-scroll">
+    <table class="plain">
+      <thead><tr><th>Rule</th><th>Must agree across</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><b>Any queue / due / escalation rule</b></td>
+          <td>
+            1. the role page (its <code>useMondayPatients</code> hook)<br>
+            2. <code>src/hooks/useRoleCounts.ts</code><br>
+            3. <code>src/lib/oversight/oversightApi.ts</code> <code>CHART_FILTERS</code><br>
+            4. <code>scripts/snapshot-baseline.mjs</code><br>
+            5. <code>services/baseline-cron/index.mjs</code>
+          </td>
+        </tr>
+        <tr><td><b>Chase Fax vs Email &amp; Parachute split</b></td><td>All five above. This one has already regressed once — Email was moved back to chaseFax in the build-time baseline.</td></tr>
+        <tr><td><b>Profile Send Off split</b></td><td>All five, plus <code>CHART_ROUTES</code> in <code>OversightTab.tsx</code>.</td></tr>
+        <tr><td><b>Doctor Appointments sub-stage</b></td><td>All five. <b>Without the branch in <code>useRoleCounts</code> the sub-stage falls through <code>if (!roleId) continue</code> and the patient is counted nowhere</b> — no error, just invisible.</td></tr>
+        <tr><td><b>DVS chart label sets</b></td><td>The four board automations and the <code>dvs-manual-review</code> filter's <code>anyCols</code>. Disagreement escalates a patient into a chart that cannot list them.</td></tr>
+        <tr><td><b>A new Stedi result column</b></td><td>5 places inside the profile slice — <code>COL</code> <b>and</b> <code>READ_COLUMN_IDS</code>, the <code>Patient</code> type, <code>mondayItemToPatient</code>, <code>STEDI_SIGNATURE_KEYS</code>, and the render.</td></tr>
+        <tr><td><b>OOP estimator rates</b></td><td><code>oopEstimator.ts</code> and the Railway financial backend. Hand-synced, no drift check.</td></tr>
+        <tr><td><b>HCPC modifiers</b></td><td><code>submitAuthRules.ts</code> and the <code>claims-ui-tool</code> repo. Hand-synced.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>Board-side rules the app depends on</h3>
+  <ul class="tight">
+    <li><b>Rename columns freely; never delete and recreate one.</b> Column IDs are the contract. A rename keeps the ID and reads keep working; a recreate assigns a new ID and reads return empty <b>silently</b>.</li>
+    <li><b>Status label text is load-bearing in specific places.</b> Sub-Stage matching, the Evaluate "Option A" dropdowns, and Clinicals Method all compare exact strings. Prefer index writes; where a label is compared, a casing change makes Monday create a duplicate label rather than fail.</li>
+    <li><b>A status write by index is silent if the index has no label.</b> Verify <code>settings_str</code> before adding an index — this is why Doctor Appointment is index 0 and not 12.</li>
+    <li><b>Never route a machine-parsed date through a text column across boards.</b> Monday's create-item automations type-sniff TEXT tokens: <code>2022-01-01</code> is re-rendered as <code>01 January 2022</code>. Dates ride in DATE columns, which copy verbatim.</li>
+    <li><b>Monday dates are timezone-naive ET.</b> Compare in ET, never with a bare <code>new Date()</code> in a UTC runtime — which is what Railway and CI are.</li>
+  </ul>
+
+  <div class="foot">
+    <p>Read from the source on 11 August 2026, commit <code>b5a5f8f</code>. Where this contradicts <code>CLAUDE.md</code> — notably §5.10 on the Profile Send Off split — this document reflects the code as of that commit.</p>
+  </div>
+</section>
+
+</div>
