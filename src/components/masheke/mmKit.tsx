@@ -29,6 +29,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
+import { draftOnOpen, draftAfterClose } from "@/lib/shared/textDraft";
 // Sends go through the gateway (not RingCentral directly) so WHO sent the text
 // is recorded from the verified token. This popup is behind every Text button in
 // the app, so routing it here is what makes the attribution log complete.
@@ -654,9 +655,17 @@ function TextCompose({
     if (openSignal) setOpen(true);
   }, [openSignal]);
 
-  // Seed the draft once, and never over what the rep has already typed.
+  /** The template WE put in the box, so a close can tell an untouched template
+   *  apart from words the rep actually wrote. */
+  const seeded = useRef<string | null>(null);
+
+  // Seed the draft, and never over what the rep has already typed. The rule is
+  // in lib/shared/textDraft.ts with the close rule it has to agree with —
+  // getting this pair wrong shows the WRONG TEMPLATE with no error at all.
   useEffect(() => {
-    if (open && prefill) setMsg((m) => m || prefill);
+    if (!open || !prefill) return;
+    setMsg((m) => draftOnOpen(m, prefill));
+    seeded.current = prefill;
   }, [open, prefill]);
 
   // Pull the conversation each time the pop-up opens.
@@ -702,7 +711,25 @@ function TextCompose({
   return (
     <Dialog
       open={open}
-      onOpenChange={(v) => { setOpen(v); onOpenChange?.(v); }}
+      onOpenChange={(v) => {
+        // Closing on an UNTOUCHED template throws it away. The seeding effect
+        // above only fills an empty box, and `msg` outlives the dialog — so
+        // without this the first template a rep opened stuck forever: open
+        // Generate CGM link, close it, then click Start Insurance Follow-Up and
+        // the CGM text is still sitting there, because the box was no longer
+        // empty for the insurance template to land in. Two templates, one
+        // visible, no error.
+        //
+        // Anything the rep actually typed survives the close — an outside click
+        // or Esc must not eat their words.
+        if (!v) {
+          const t = seeded.current;
+          seeded.current = null;
+          setMsg((m) => draftAfterClose(m, t));
+        }
+        setOpen(v);
+        onOpenChange?.(v);
+      }}
     >
       <DialogTrigger asChild>
         <button
