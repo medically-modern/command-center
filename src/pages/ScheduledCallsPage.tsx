@@ -13,7 +13,7 @@
  */
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { CalendarClock, ChevronLeft, ChevronRight, RefreshCw } from "lucide-react";
+import { CalendarClock, ChevronLeft, ChevronRight, Plus, RefreshCw } from "lucide-react";
 
 import { fetchScheduledCalls } from "@/lib/scheduledCalls/mondayApi";
 import {
@@ -22,6 +22,7 @@ import {
   type ScheduledCall,
 } from "@/lib/scheduledCalls/workflow";
 import { etToday, addCalendarDaysIso } from "@/lib/masheke/etDate";
+import BookingLinkDialog from "@/components/scheduledCalls/BookingLinkDialog";
 import { cn } from "@/lib/utils";
 
 /** The grid's vertical extent. Bookings outside it still render, clamped. */
@@ -66,6 +67,7 @@ export default function ScheduledCallsPage() {
    */
   const [viewDate, setViewDate] = useState(today);
   const isToday = viewDate === today;
+  const [linkOpen, setLinkOpen] = useState(false);
 
   const load = useCallback(async (quiet = false) => {
     if (!quiet) setLoading(true);
@@ -109,6 +111,7 @@ export default function ScheduledCallsPage() {
 
   return (
     <div className="mx-auto max-w-4xl px-4 py-6">
+      <BookingLinkDialog open={linkOpen} onOpenChange={setLinkOpen} />
       <header className="mb-5">
         <div className="flex flex-wrap items-baseline justify-between gap-3">
           <div>
@@ -124,6 +127,15 @@ export default function ScheduledCallsPage() {
             </p>
           </div>
           <div className="flex items-center gap-1.5">
+            <button
+              onClick={() => setLinkOpen(true)}
+              title="Send someone a booking link"
+              className="flex items-center gap-1 rounded-md bg-sky-600 px-2.5 py-1.5 text-sm font-medium text-white hover:bg-sky-700"
+            >
+              <Plus className="h-4 w-4" />
+              Booking link
+            </button>
+            <span className="mx-1 h-5 w-px bg-border" />
             <button
               aria-label="Previous day"
               onClick={() => setViewDate((d) => addCalendarDaysIso(d, -1))}
