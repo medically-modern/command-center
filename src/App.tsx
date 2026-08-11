@@ -6,6 +6,7 @@ import { lazyWithReload } from "./lib/shared/chunkReload";
 import Index from "./pages/Index";
 import { FileViewerHost } from "./components/shared/FileViewerModal";
 import IncomingCallHost from "./components/inboundCalls/IncomingCallHost";
+import ScheduledCallHost from "./components/scheduledCalls/ScheduledCallHost";
 import AuthGate from "./components/AuthGate";
 import AccessProvider from "./components/AccessProvider";
 
@@ -86,6 +87,11 @@ const App = () => (
         so this cannot live on the texting page. See IncomingCallHost.tsx. */}
     <IncomingCallHost />
     <BrowserRouter basename={basename}>
+      {/* The ten-minute warning before a booked intake call. App-wide for the
+          same reason as IncomingCallHost — the rep is working elsewhere when it
+          comes due — but gated to people who hold the role, and INSIDE the
+          router because its toast navigates to the patient. */}
+      <ScheduledCallHost />
       <Suspense fallback={<Loading />}>
         <Routes>
           <Route path="/" element={<Index />} />

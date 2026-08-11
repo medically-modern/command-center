@@ -11,15 +11,14 @@
  * rep works and takes notes on that page, and its note log already stamps
  * every line with the stage.
  */
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { CalendarClock, Phone, RefreshCw } from "lucide-react";
-import { toast } from "sonner";
+import { CalendarClock, RefreshCw } from "lucide-react";
 
 import { fetchScheduledCalls } from "@/lib/scheduledCalls/mondayApi";
 import {
   callsOn, dayView, displayTime, minutesOfDay, nowMinutesEt,
-  dueForReminder, minutesUntil, REMINDER_LEAD_MIN,
+  dueForReminder, REMINDER_LEAD_MIN,
   type ScheduledCall,
 } from "@/lib/scheduledCalls/workflow";
 import { etToday } from "@/lib/masheke/etDate";
@@ -85,32 +84,10 @@ export default function ScheduledCallsPage() {
     navigate(`/unverified-referrals?patientId=${encodeURIComponent(c.id)}&from=scheduled-calls`);
   }, [navigate]);
 
-  /**
-   * The ten-minute warning.
-   *
-   * Deliberately the same top-right toast an inbound call uses: a rep learns
-   * one place to look for "something needs you now". Fired once per patient per
-   * day — `announced` is keyed by id so a poll, a re-render or a tab waking up
-   * cannot repeat it.
-   */
-  const announced = useRef<Set<string>>(new Set());
-  useEffect(() => { announced.current = new Set(); }, [today]);
-
-  useEffect(() => {
-    for (const c of todays) {
-      if (announced.current.has(c.id)) continue;
-      if (!dueForReminder(c, nowMinutes)) continue;
-      announced.current.add(c.id);
-
-      const mins = minutesUntil(c, nowMinutes) ?? 0;
-      toast(`Call ${c.name} ${mins <= 0 ? "now" : `in ${mins} min`}`, {
-        description: `${displayTime(c.callTime)} · ${c.phone || "no phone on file"}`,
-        duration: 60_000,
-        icon: <Phone className="h-4 w-4" />,
-        action: { label: "Open", onClick: () => openPatient(c) },
-      });
-    }
-  }, [todays, nowMinutes, openPatient]);
+  // The ten-minute warning lives in ScheduledCallHost, mounted app-wide and
+  // gated to people who hold this role. Firing it here as well would double
+  // every reminder for the rep who happens to have the page open — and this
+  // page is exactly where they will be.
 
   const gridHeight = (DAY_END_HOUR - DAY_START_HOUR) * 60 * PX_PER_MIN;
   const topFor = (mins: number) => (mins - DAY_START_HOUR * 60) * PX_PER_MIN;

@@ -104,38 +104,47 @@ const PAGE = 200;
  * place — the same reason the counting contract exists.
  */
 export async function fetchScheduledCalls(): Promise<ScheduledCall[]> {
-  const query = `
-    query ($boardId: ID!, $cols: [String!], $groups: [String!]) {
-      boards(ids: [$boardId]) {
-        items_page(limit: ${PAGE}, query_params: { rules: [{ column_id: "group", compare_value: $groups, operator: any_of }] }) {
-          cursor
-          items { id name column_values(ids: $cols) { id text } }
+  const groups = [GROUPS.completed, GROUPS.partial];
+  const all: MondayItem[] = [];
+
+  for (const groupId of groups) {
+    // ⚠️ `compare_value` is a CompareValue!, not a list — passing a `[String!]`
+    // variable is rejected outright ("used in position expecting type
+    // CompareValue!"). Every working query in this codebase INLINES the value,
+    // so this one does too rather than inventing a third spelling.
+    const query = `
+      query ($boardId: ID!, $cols: [String!]) {
+        boards(ids: [$boardId]) {
+          items_page(limit: ${PAGE}, query_params: { rules: [{ column_id: "group", compare_value: ${JSON.stringify([groupId])} }] }) {
+            cursor
+            items { id name column_values(ids: $cols) { id text } }
+          }
         }
       }
-    }
-  `;
-  const data = await gql<{ boards: { items_page: { cursor: string | null; items: MondayItem[] } }[] }>(
-    query,
-    { boardId: BOARD_ID, cols: READ_COLUMN_IDS, groups: [GROUPS.completed, GROUPS.partial] },
-  );
-
-  const page = data.boards?.[0]?.items_page;
-  const items: MondayItem[] = [...(page?.items ?? [])];
-  let cursor = page?.cursor ?? null;
-
-  while (cursor) {
-    const next = await gql<{ next_items_page: { cursor: string | null; items: MondayItem[] } }>(
-      `query ($cursor: String!, $cols: [String!]) {
-         next_items_page(limit: ${PAGE}, cursor: $cursor) {
-           cursor
-           items { id name column_values(ids: $cols) { id text } }
-         }
-       }`,
-      { cursor, cols: READ_COLUMN_IDS },
+    `;
+    const data = await gql<{ boards: { items_page: { cursor: string | null; items: MondayItem[] } }[] }>(
+      query,
+      { boardId: BOARD_ID, cols: READ_COLUMN_IDS },
     );
-    items.push(...(next.next_items_page?.items ?? []));
-    cursor = next.next_items_page?.cursor ?? null;
+
+    const page = data.boards?.[0]?.items_page;
+    all.push(...(page?.items ?? []));
+    let cursor = page?.cursor ?? null;
+
+    while (cursor) {
+      const next = await gql<{ next_items_page: { cursor: string | null; items: MondayItem[] } }>(
+        `query ($cursor: String!, $cols: [String!]) {
+           next_items_page(limit: ${PAGE}, cursor: $cursor) {
+             cursor
+             items { id name column_values(ids: $cols) { id text } }
+           }
+         }`,
+        { cursor, cols: READ_COLUMN_IDS },
+      );
+      all.push(...(next.next_items_page?.items ?? []));
+      cursor = next.next_items_page?.cursor ?? null;
+    }
   }
 
-  return items.map(toScheduledCall);
+  return all.map(toScheduledCall);
 }
