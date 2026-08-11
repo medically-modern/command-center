@@ -1145,6 +1145,32 @@ const UnverifiedReferralsPage = () => {
    * outreach that didn't happen — so the note is written by the SEND path
    * (`PatientContact`'s composer), not here.
    */
+  /**
+   * Stamp the Call Log whenever a text goes out from this page (Josh,
+   * 2026-08-11 — §8.3's "log link sent").
+   *
+   * The RingCentral thread already holds the message, but the Call Log is what
+   * a rep reads on THIS screen and what carries to Medical Necessity, so an
+   * outreach that only exists in RingCentral is invisible where it matters.
+   *
+   * The FILE coming back deliberately gets no line of its own: it lands in the
+   * CGM Data File column, shows in the Files card labelled "from patient", and
+   * carries Monday's own timestamp — receipt is evidenced by the file itself
+   * rather than by a note claiming it.
+   *
+   * Best-effort: the text is already sent, so a failed note must never read as
+   * a failed send. It is logged and swallowed.
+   */
+  const logTextSent = useCallback((body: string) => {
+    if (!selected) return;
+    const line = body.includes("/u/")
+      ? `Texted CGM data upload link to the patient — ${body}`
+      : `Text to patient: ${body}`;
+    void appendIntakeNote(selected.id, line, selected.notes)
+      .then((res) => { if (res.ok) void refetch(true); })
+      .catch((e) => console.error("[intake] couldn't log sent text", e));
+  }, [selected, refetch]);
+
   const [linkGenerating, setLinkGenerating] = useState(false);
   const generateCgmLink = useCallback(async () => {
     if (!selected || linkGenerating) return;
@@ -1371,6 +1397,7 @@ const UnverifiedReferralsPage = () => {
                       phone={selected.ptPhone}
                       textPrefill={textPrefill}
                       textOpen={textComposerOpen}
+                      onTextSent={logTextSent}
                       onTextOpenChange={(o) => {
                         setTextComposerOpen(o);
                         // Drop the template once the dialog closes, so the next
@@ -1497,16 +1524,32 @@ const UnverifiedReferralsPage = () => {
                   ) : assets.length === 0 ? (
                     <div className="text-xs text-muted-foreground px-1 py-2">No files on this item.</div>
                   ) : (
-                    assets.map((a) => (
-                      <div
-                        key={a.id}
-                        className="file-row"
-                        onClick={() => openFileViewer({ url: a.public_url || a.url, name: a.name })}
-                      >
-                        <span className="fname">{a.name}</span>
-                        <span className="fmeta">{a.name.split(".").pop() ?? ""}</span>
-                      </div>
-                    ))
+                    assets.map((a) => {
+                      /* Say WHERE each file came from, not just its extension.
+                         An item carries referral-email attachments, the card
+                         photo and the patient's CGM upload side by side, and
+                         "png" tells the rep nothing about which is which — the
+                         one they're waiting on mid-call is the CGM one. Matched
+                         on the file column's own asset ids (`fileAssetIds`), so
+                         a rename can't break it. */
+                      const inCol = (ids: string | undefined) =>
+                        (ids ?? "").split(",").filter(Boolean).includes(String(a.id));
+                      const source = inCol(selected.cgmDataFileIds)
+                        ? "CGM data — from patient"
+                        : inCol(selected.formCardPhotoIds)
+                          ? "Insurance card"
+                          : (a.name.split(".").pop() ?? "");
+                      return (
+                        <div
+                          key={a.id}
+                          className="file-row"
+                          onClick={() => openFileViewer({ url: a.public_url || a.url, name: a.name })}
+                        >
+                          <span className="fname">{a.name}</span>
+                          <span className="fmeta">{source}</span>
+                        </div>
+                      );
+                    })
                   )}
                 </div>
                 {/* Two affordances, and they are NOT symmetrical:

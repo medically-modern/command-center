@@ -557,7 +557,7 @@ export function DaysInStagePill({ value }: { value?: string }) {
 /** Patient phone shown as a Call button (with the number) + a Text button.
  *  Uses tel:/sms: so the rep's device handles it. */
 export function PatientContact({
-  phone, textPrefill, textOpen, onTextOpenChange,
+  phone, textPrefill, textOpen, onTextOpenChange, onTextSent,
 }: {
   phone?: string;
   /** Seeds the composer the first time it opens — e.g. an insurance follow-up
@@ -568,6 +568,10 @@ export function PatientContact({
    *  only way in, exactly as before. */
   textOpen?: boolean;
   onTextOpenChange?: (open: boolean) => void;
+  /** Fired after a text is actually sent, with its body. Patient Intake stamps
+   *  the Call Log from this so a texted upload link leaves a record on the
+   *  patient; omit it and nothing is written, as before. */
+  onTextSent?: (body: string) => void;
 }) {
   const tel = (phone ?? "").replace(/[^\d+]/g, "");
   if (!tel) return <span className="text-base text-muted-foreground">No phone on file</span>;
@@ -586,6 +590,7 @@ export function PatientContact({
         prefill={textPrefill}
         openSignal={textOpen}
         onOpenChange={onTextOpenChange}
+        onSent={onTextSent}
       />
     </span>
   );
@@ -595,12 +600,16 @@ export function PatientContact({
  *  scrollable pop-up, with a reply box at the bottom. Sending refreshes the
  *  thread so the new message shows immediately. */
 function TextCompose({
-  tel, display, prefill, openSignal, onOpenChange,
+  tel, display, prefill, openSignal, onOpenChange, onSent,
 }: {
   tel: string; display: string;
   prefill?: string;
   openSignal?: boolean;
   onOpenChange?: (open: boolean) => void;
+  /** Called with the sent body after RingCentral accepts it. Patient Intake
+   *  uses this to stamp the Call Log; every other caller omits it and the
+   *  RingCentral thread stays the only record, exactly as before. */
+  onSent?: (body: string) => void;
 }) {
   const [open, setOpen] = useState(false);
   const [msg, setMsg] = useState("");
@@ -665,8 +674,14 @@ function TextCompose({
     if (!msg.trim() || consent.optedOut) return;
     setSending(true);
     try {
-      await sendMessage({ to: tel, text: msg.trim() });
+      const body = msg.trim();
+      await sendMessage({ to: tel, text: body });
       setMsg("");
+      // Fired only AFTER RingCentral accepted it, so a caller logging the send
+      // can never record a text that didn't go. Best-effort by contract: a
+      // listener that throws must not surface as a failed send, because the
+      // patient has the message either way.
+      try { onSent?.(body); } catch { /* caller's problem, not the send's */ }
       await load(); // refresh so the sent text appears in the thread
     } catch (e) {
       toast.error("Couldn't send text", { description: e instanceof Error ? e.message : String(e) });
