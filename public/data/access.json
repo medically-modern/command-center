@@ -62,7 +62,8 @@
         "inSystemReferrals",
         "doctorAppointments",
         "assignedPatients",
-        "scheduledCalls"
+        "scheduledCalls",
+        "profile"
       ],
       "roleOrder": {},
       "roleFilters": {},
