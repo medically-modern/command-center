@@ -18,11 +18,36 @@
 
 import { splitName } from "./nameParts";
 
-/** dtc-mm-form-api origin. No trailing slash. */
-const API_BASE = ((import.meta.env.VITE_DTC_FORM_API_URL as string | undefined) ?? "")
-  .trim()
-  .replace(/\/$/, "");
+/**
+ * dtc-mm-form-api origin. No trailing slash.
+ *
+ * ⚠️ HARDCODED ON PURPOSE — do NOT turn this into a required build secret.
+ *
+ * This is a public hostname, not a credential: the patient's own upload link
+ * points at it, and the intake form (a public GitHub Pages page) has the same
+ * string in its source at `index.html`'s `API_BASE`. Nothing here authenticates
+ * anything, so there is nothing to leak.
+ *
+ * Making it a `VITE_*` secret would cost real things and buy none: every
+ * `VITE_*` has to be re-added to the PROD repo's Actions secrets by hand
+ * (CLAUDE.md §8 — the one that bites), it can only change by rebuilding, and it
+ * pushes the Command Center back toward the bundled-config model the Railway
+ * gateway exists to get away from. The Railway services are ONE instance
+ * serving both test and prod, so there is no per-environment value to inject —
+ * same reason board IDs are constants in this codebase.
+ *
+ * The env var stays as an OPTIONAL override for pointing a local dev build at a
+ * different instance. Unset, which is the normal case, the constant wins.
+ */
+const DEFAULT_API_BASE = "https://dtc-mm-form-api-production.up.railway.app";
 
+const API_BASE = (((import.meta.env.VITE_DTC_FORM_API_URL as string | undefined) ?? "").trim()
+  || DEFAULT_API_BASE
+).replace(/\/$/, "");
+
+/** Always true in a normal build — the origin is a constant. Kept as a function
+ *  so an override set to empty still degrades to "hide the button" rather than
+ *  posting to a relative URL on the Pages host. */
 export function uploadLinksConfigured(): boolean {
   return API_BASE !== "";
 }
@@ -45,7 +70,7 @@ export interface UploadLink {
 export async function generateUploadLink(itemId: string): Promise<UploadLink> {
   if (!API_BASE) {
     throw new UploadLinkError(
-      "Upload links aren't configured — VITE_DTC_FORM_API_URL is unset in this build.",
+      "Upload links aren't configured — VITE_DTC_FORM_API_URL is overridden to an empty value.",
     );
   }
 
