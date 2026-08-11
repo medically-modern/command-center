@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   minutesOfDay, isLiveBooking, callState, remainingToday,
   sortByTime, displayTime, dayView, nowMinutesEt,
+  callsOn, dueForReminder, minutesUntil, REMINDER_LEAD_MIN,
   type ScheduledCall,
 } from "./workflow";
 
@@ -186,6 +187,66 @@ describe("dayView", () => {
       const seen = [...v.passed, ...v.now, ...v.upcoming].map((c) => c.id).sort();
       expect(seen).toEqual(["a", "b", "c", "d"]);
     }
+  });
+});
+
+describe("callsOn", () => {
+  const week = [
+    call({ id: "yest", callDate: "2026-08-10" }),
+    call({ id: "today", callDate: "2026-08-11" }),
+    call({ id: "tmrw", callDate: "2026-08-12" }),
+    call({ id: "cancelled-today", callDate: "2026-08-11", bookingStatus: "Canceled" }),
+  ];
+
+  it("is one day only, and excludes cancellations", () => {
+    expect(callsOn(week, "2026-08-11").map((c) => c.id)).toEqual(["today"]);
+  });
+
+  it("returns nothing for a day with no bookings", () => {
+    expect(callsOn(week, "2026-08-13")).toEqual([]);
+  });
+});
+
+describe("dueForReminder", () => {
+  const c = call({ callTime: "14:00:00" });
+
+  it("stays quiet until the lead time", () => {
+    expect(dueForReminder(c, at(13, 49))).toBe(false);
+  });
+
+  it("fires across the whole lead window, not on one exact minute", () => {
+    // The page polls, tabs sleep, laptops suspend. A check for "exactly ten
+    // minutes out" fires only if a tick lands on that minute — so a patient
+    // whose reminder was due while the tab was asleep would never be announced.
+    for (const m of [50, 51, 55, 59]) expect(dueForReminder(c, at(13, m))).toBe(true);
+    expect(dueForReminder(c, at(14, 0))).toBe(true);
+  });
+
+  it("stops once the appointment has started", () => {
+    expect(dueForReminder(c, at(14, 1))).toBe(false);
+    expect(dueForReminder(c, at(16))).toBe(false);
+  });
+
+  it("never fires for a cancellation or a timeless booking", () => {
+    expect(dueForReminder(call({ callTime: "14:00:00", bookingStatus: "Canceled" }), at(13, 55))).toBe(false);
+    expect(dueForReminder(call({ callTime: "" }), at(13, 55))).toBe(false);
+  });
+
+  it("uses the documented lead time", () => {
+    expect(dueForReminder(c, at(14 * 60 - REMINDER_LEAD_MIN >= 0 ? 13 : 13, 50))).toBe(true);
+  });
+});
+
+describe("minutesUntil", () => {
+  it("counts down and then goes negative", () => {
+    const c = call({ callTime: "14:00:00" });
+    expect(minutesUntil(c, at(13, 30))).toBe(30);
+    expect(minutesUntil(c, at(14))).toBe(0);
+    expect(minutesUntil(c, at(14, 15))).toBe(-15);
+  });
+
+  it("is null when there is no time to count to", () => {
+    expect(minutesUntil(call({ callTime: "" }), at(9))).toBeNull();
   });
 });
 

@@ -304,6 +304,58 @@ async function countFinalConfirm() {
  *  "CareCentrix"), then profile (Verified Referrals). Mirrors
  *  src/lib/profile/referralSplit.ts — only the TYPE column routes "Patient";
  *  the SOURCE column has its own "Patient" label that must NOT match. */
+// --- Scheduled Calls ------------------------------------------------------
+// Booked intake calls still AHEAD of you today. The only role counted by the
+// CLOCK rather than a follow-up rule, so it falls by one as each start time
+// passes. Mirrors src/lib/scheduledCalls/workflow.js `remainingToday` and the
+// useRoleCounts branch — change all three together (CLAUDE.md §5.8).
+//
+// At the 9 AM run nothing has passed yet, so the baseline captures the day's
+// full total and the live count burns down from it. That is the intended
+// shape, not an accident of when the cron happens to fire.
+const SCHED_CALL_TIME_COL = "date_mm63na19";
+const SCHED_BOOKING_STATUS_COL = "color_mm5zrbn3";
+
+function etNowMinutes(now = new Date()) {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/New_York", hour: "2-digit", minute: "2-digit", hour12: false,
+  }).formatToParts(now);
+  const get = (t) => Number(parts.find((p) => p.type === t)?.value ?? "0");
+  const h = get("hour");
+  return (h === 24 ? 0 : h) * 60 + get("minute");
+}
+
+async function countScheduledCalls() {
+  const items = [];
+  for (const gid of PROF_FORM_GROUPS) {
+    try {
+      items.push(...await fetchGroupItems(PROF_BOARD, gid, [SCHED_CALL_TIME_COL, SCHED_BOOKING_STATUS_COL]));
+    } catch (e) {
+      console.error(`[countScheduledCalls] form group ${gid} failed:`, e.message);
+    }
+  }
+
+  const today = new Date().toLocaleDateString("en-CA", { timeZone: "America/New_York" });
+  const nowMin = etNowMinutes();
+
+  const due = items.filter((i) => {
+    const raw = (i.cols[SCHED_CALL_TIME_COL] ?? "").trim();
+    if (!raw) return false;
+    // A canceled booking keeps its row. Counting it puts a call in the
+    // burndown that nobody is going to make.
+    if ((i.cols[SCHED_BOOKING_STATUS_COL] ?? "").trim().toLowerCase() === "canceled") return false;
+    const [date, time = ""] = raw.split(/\s+/);
+    if (date !== today) return false;
+    const m = /^(\d{1,2}):(\d{2})/.exec(time);
+    // Booked today with no time on file cannot be sequenced, so it can never
+    // be "passed" — it stays work.
+    if (!m) return true;
+    return Number(m[1]) * 60 + Number(m[2]) >= nowMin;
+  });
+
+  return { counts: { scheduledCalls: due.length } };
+}
+
 async function countProfile() {
   const items = await fetchGroupItems(PROF_BOARD, PROF_GROUP, [
     PROF_FOLLOWUP_COL, PROF_REFERRAL_TYPE_COL, PROF_REFERRAL_SOURCE_COL, PROF_IN_SYSTEM_COL,
@@ -569,7 +621,7 @@ async function main() {
     mashekeResult,
     dvsResult,
     welcomeCallResult, finalConfirmResult,
-    profileResult, subscriptionResult,
+    profileResult, scheduledCallsResult, subscriptionResult,
     systemMgmtCount,
   ] = await Promise.all([
     countSamGroup(SAM_GROUPS.benefits, easternDate),
@@ -580,6 +632,7 @@ async function main() {
     countWelcomeCall(),
     countFinalConfirm(),
     countProfile(),
+    countScheduledCalls(),
     countSubscription(),
     countEscalations(),
   ]);
@@ -593,6 +646,7 @@ async function main() {
     welcomeCall: welcomeCallResult.count,
     finalConfirm: finalConfirmResult.count,
     ...profileResult.counts,
+    ...scheduledCallsResult.counts,
     subscription: subscriptionResult.count,
     systemMgmt: systemMgmtCount,
   };

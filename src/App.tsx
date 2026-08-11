@@ -24,6 +24,7 @@ const ProfilePage = lazyWithReload(() => import("./pages/ProfilePage"));
 // change the Verified Referrals send-off, and separate components is the
 // only way to guarantee that.
 const UnverifiedReferralsPage = lazyWithReload(() => import("./pages/UnverifiedReferralsPage"));
+const ScheduledCallsPage = lazyWithReload(() => import("./pages/ScheduledCallsPage"));
 const SubmitAuthPage = lazyWithReload(() => import("./pages/SubmitAuthPage"));
 const AuthOutstandingPage = lazyWithReload(() => import("./pages/AuthOutstandingPage"));
 const DvsPage = lazyWithReload(() => import("./pages/DvsPage"));
@@ -106,6 +107,7 @@ const App = () => (
           <Route path="/profile" element={<ProfilePage variant="verified" />} />
           <Route path="/unverified-referrals" element={<UnverifiedReferralsPage />} />
           <Route path="/in-system-referrals" element={<ProfilePage variant="inSystem" />} />
+          <Route path="/scheduled-calls" element={<ScheduledCallsPage />} />
           <Route path="/submit-auth" element={<SubmitAuthPage />} />
           <Route path="/auth-outstanding" element={<AuthOutstandingPage />} />
           <Route path="/dvs" element={<DvsPage />} />

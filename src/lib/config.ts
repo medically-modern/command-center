@@ -22,6 +22,12 @@ export const ROLES: RoleConfig[] = [
   // kept its id when it was relabelled "Verified Referrals" (CLAUDE.md §5.10).
   { id: "unverifiedReferrals", label: "Patient Intake — DTC & CareCentrix", color: "bg-sky-500", icon: "UserSearch",   route: "/unverified-referrals" },
   { id: "inSystemReferrals", label: "Already In System", color: "bg-red-600",   icon: "UserRoundCheck", route: "/in-system-referrals" },
+  // Scheduled Calls is the one role ordered by TIME OF DAY rather than a Next
+  // Action Date: its count is "how many appointments are still ahead of you
+  // today", falling by one as each start time passes. See
+  // lib/scheduledCalls/workflow.ts `remainingToday` — the counting contract
+  // (CLAUDE.md §5.8) points here rather than at a follow-up rule.
+  { id: "scheduledCalls",  label: "Patient Intake — Scheduled Calls", color: "bg-sky-600", icon: "CalendarClock", route: "/scheduled-calls" },
   { id: "evaluate",        label: "Evaluate",           color: "bg-violet-500",  icon: "ClipboardCheck", route: "/evaluate"         },
   { id: "sendRequest",     label: "Send Request",       color: "bg-cyan-500",    icon: "Send",           route: "/send-request"     },
   { id: "confirmReceipt",  label: "Confirm Receipt",    color: "bg-emerald-500", icon: "CheckCircle",    route: "/confirm-receipt"  },

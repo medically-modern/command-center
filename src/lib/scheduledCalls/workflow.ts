@@ -140,6 +140,37 @@ export function nowMinutesEt(now: Date = new Date()): number {
   return (h === 24 ? 0 : h) * 60 + get("minute");
 }
 
+/** Today's bookings, in Eastern. `etDate` is passed in to keep this pure. */
+export function callsOn(calls: ScheduledCall[], etDate: string): ScheduledCall[] {
+  return calls.filter((c) => isLiveBooking(c) && c.callDate === etDate);
+}
+
+/** How long before the call the rep gets warned. */
+export const REMINDER_LEAD_MIN = 10;
+
+/**
+ * Should this call be announced right now?
+ *
+ * A window, not an instant: the page polls, tabs sleep, and laptops suspend, so
+ * a check for "exactly ten minutes out" fires only if a tick happens to land on
+ * that minute. Anything from the lead time down to the appointment itself
+ * counts, and the caller remembers what it has already shown so the reminder
+ * appears once rather than on every tick.
+ */
+export function dueForReminder(c: ScheduledCall, nowMinutes: number): boolean {
+  if (!isLiveBooking(c)) return false;
+  const at = minutesOfDay(c.callTime);
+  if (at === null) return false;
+  const until = at - nowMinutes;
+  return until <= REMINDER_LEAD_MIN && until >= 0;
+}
+
+/** Minutes until the appointment; negative once it has passed. */
+export function minutesUntil(c: ScheduledCall, nowMinutes: number): number | null {
+  const at = minutesOfDay(c.callTime);
+  return at === null ? null : at - nowMinutes;
+}
+
 /**
  * The day view, grouped for rendering.
  *

@@ -45,6 +45,21 @@ const WC_BOARD_ID = 18410804557;
 const WC_GROUP_ID = "group_mm1wvq8p";
 const FINAL_CONFIRM_GROUP_ID = "group_mm2x8jtj";
 const PROFILE_BOARD_ID = 18406352652;
+
+// Scheduled Calls — the Calendly mirror the dtc-mm-form backend writes.
+const SCHED_CALL_TIME_COL = "date_mm63na19";
+const SCHED_BOOKING_STATUS_COL = "color_mm5zrbn3";
+
+/** Minutes past Eastern midnight. Railway and most CI run UTC, so a bare
+ *  getHours() here would bucket the whole afternoon wrong. */
+function etNowMinutes(now: Date = new Date()): number {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/New_York", hour: "2-digit", minute: "2-digit", hour12: false,
+  }).formatToParts(now);
+  const get = (t: string) => Number(parts.find((p) => p.type === t)?.value ?? "0");
+  const h = get("hour");
+  return (h === 24 ? 0 : h) * 60 + get("minute");
+}
 const PROFILE_GROUP_ID = "group_mm1xf2jb";
 // DTC intake form groups. Unverified Referrals is the DTC + CareCentrix queue,
 // so form patients count toward it as one number alongside the 1. Intake
@@ -605,6 +620,54 @@ export function useRoleCounts(opts?: { roleIds?: string[] }) {
               inSystemReferrals: inSystem.map((i) => i.id),
             },
           );
+        })(),
+      );
+    }
+
+    if (needAny("scheduledCalls")) {
+      boardTasks.push(
+        (async () => {
+          // Same DTC-form groups as Patient Intake, counted by CLOCK rather
+          // than by a follow-up rule: how many booked calls are still ahead of
+          // you today. Mirrors lib/scheduledCalls/workflow.ts `remainingToday`
+          // — change the two together, plus BOTH baseline generators (§5.8).
+          //
+          // The 9 AM baseline lands before any appointment has passed, so it
+          // captures the day's full total and the live count falls from it as
+          // the day runs. That is a real burndown rather than a coincidence,
+          // and it is why this role needs no special handling in OperationsTab.
+          const items = (
+            await Promise.all(
+              PROFILE_FORM_GROUP_IDS.map((gid) =>
+                fetchBoardGroupItemsLight(PROFILE_BOARD_ID, gid, [
+                  SCHED_CALL_TIME_COL,
+                  SCHED_BOOKING_STATUS_COL,
+                ]).catch(() => [] as LightItem[]),
+              ),
+            )
+          ).flat();
+
+          const today = etToday();
+          const nowMin = etNowMinutes();
+
+          const due = items.filter((i) => {
+            const raw = (i.cols[SCHED_CALL_TIME_COL] ?? "").trim();
+            if (!raw) return false;
+            // A canceled booking keeps its row; counting it would have the rep
+            // chasing somebody who called off.
+            if ((i.cols[SCHED_BOOKING_STATUS_COL] ?? "").trim().toLowerCase() === "canceled") return false;
+
+            const [date, time = ""] = raw.split(/\s+/);
+            if (date !== today) return false;
+
+            const m = /^(\d{1,2}):(\d{2})/.exec(time);
+            // Booked today with no time on file is still work — it cannot be
+            // sequenced, so it can never be "passed".
+            if (!m) return true;
+            return Number(m[1]) * 60 + Number(m[2]) >= nowMin;
+          });
+
+          merge({ scheduledCalls: due.length }, { scheduledCalls: 0 }, { scheduledCalls: due.map((i) => i.id) });
         })(),
       );
     }
