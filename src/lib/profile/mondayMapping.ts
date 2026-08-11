@@ -77,6 +77,7 @@ export function mondayItemToPatient(item: MondayItem): Patient {
     formProceedPreference: col(item, COL.formProceedPreference),
     formCallSlot: col(item, COL.formCallSlot),
     formBookingStatus: col(item, COL.formBookingStatus),
+    scheduledCallTime: col(item, COL.scheduledCallTime),
 
     // Rep-entered on the intake call
     selfAdvocacy: col(item, COL.selfAdvocacy),

@@ -70,6 +70,7 @@ import { optionsWithCurrent } from "@/lib/profile/selectOptions";
 import { splitName, joinName } from "@/lib/profile/nameParts";
 import {
   generateUploadLink, uploadLinkMessage, uploadLinksConfigured,
+  getRescheduleLink, formatBookedCall,
 } from "@/lib/profile/uploadLink";
 // Monday dates are timezone-naive ET — never date a board column from a bare
 // `new Date()` in a UTC runtime (CLAUDE.md §9).
@@ -129,7 +130,32 @@ const REFERRAL_SOURCE_OPTS = Object.keys(REFERRAL_SOURCE_INDEX);
 
 /** Read-only field. Used for anything the patient told us that the rep is not
  *  expected to retype — the left pane should be a confirmation, not data entry. */
-function Field({ label, value, full }: { label: string; value?: string; full?: boolean }) {
+/**
+ * A read-only value.
+ *
+ * `boxed` is for the ones that sit INSIDE a field grid next to real inputs
+ * (Date of Intake, verified Primary Insurance). The bare label-over-text form
+ * is shorter than an input and has no border, so it broke the row: one cell
+ * floating at a different height and weight than its neighbours. Boxed matches
+ * the input's metrics exactly — same padding, radius and height — while a
+ * dashed border and muted fill say "you can't type here", so the grid reads as
+ * one thing without pretending the value is editable.
+ *
+ * Unboxed stays the default: in the rail-card `.kv` lists there are no inputs
+ * to line up with, and a box there would be noise.
+ */
+function Field(
+  { label, value, full, boxed }:
+  { label: string; value?: string; full?: boolean; boxed?: boolean },
+) {
+  if (boxed) {
+    return (
+      <div className={full ? "fld full" : "fld"}>
+        <div className="flabel">{label}</div>
+        <div className="ro">{value?.trim() || "—"}</div>
+      </div>
+    );
+  }
   return (
     <div className={full ? "f full" : "f"}>
       <div className="k">{label}</div>
@@ -476,8 +502,13 @@ function intakeEditsFor(p: Patient): IntakeEdits {
     // the step-3 provider put there. buildDoctorTasks still writes it from the
     // picked provider on advance, which is the only thing that should.
     formProceedPreference: p.formProceedPreference,
-    formCallSlot: p.formCallSlot,
-    formBookingStatus: p.formBookingStatus,
+    // Call Slot and Booking Status are NOT sent, for the same reason
+    // clinicAddress isn't: nothing on this page edits them any more. They are
+    // owned by the dtc-mm-form Calendly webhook now, and this passed the
+    // HYDRATED value straight back — so a rep who loaded the page, watched the
+    // patient book, and then hit Save would overwrite "Scheduled" with the
+    // "Unscheduled" their tab was still holding. A booking erased by an
+    // unrelated Save, with nothing shown. Read-only here; the webhook writes.
     intakeCallComplete: (p.intakeCallComplete ?? "").trim().toLowerCase() === "yes",
     selfAdvocacy: p.selfAdvocacy,
     currentOopCost: p.currentOopCost,
@@ -728,35 +759,25 @@ const UnverifiedReferralsPage = () => {
    * Appending on every save would restamp the same fact each time the rep
    * pressed Save and bury the actual call notes.
    */
-  const loggedFacts = useRef<{ oop: string; adv: string; slot: string }>(
-    { oop: "", adv: "", slot: "" },
-  );
+  const loggedFacts = useRef<{ oop: string; adv: string }>({ oop: "", adv: "" });
   useEffect(() => {
     loggedFacts.current = {
       oop: (selected?.currentOopCost ?? "").trim(),
       adv: (selected?.selfAdvocacy ?? "").trim(),
-      slot: (selected?.formCallSlot ?? "").trim(),
     };
   }, [selected?.id]);
 
   const logChangedFacts = useCallback(async (p: Patient) => {
     const oop = (p.currentOopCost ?? "").trim();
     const adv = (p.selfAdvocacy ?? "").trim();
-    const slot = (p.formCallSlot ?? "").trim();
     const lines: string[] = [];
     if (oop && oop !== loggedFacts.current.oop) lines.push(`Current Out-of-Pocket Cost: ${oop}`);
     if (adv && adv !== loggedFacts.current.adv) lines.push(`Self Advocacy: ${adv}`);
-    // The override is destructive to the column, so the log is the only place
-    // the patient's own answer survives. Name BOTH sides on one line — "call
-    // slot changed" without the previous value tells a manager nothing.
-    if (slot !== loggedFacts.current.slot) {
-      const was = loggedFacts.current.slot || formSlotAsReceived;
-      lines.push(
-        was
-          ? `Call slot changed to "${slot || "(cleared)"}" — patient's form pick was "${was}"`
-          : `Call slot set to "${slot}"`,
-      );
-    }
+    // Call-slot logging lived here because the old free-text override
+    // overwrote the patient's own answer, so the log was the only surviving
+    // copy. Rescheduling now happens in Calendly, which keeps its own history
+    // and re-mirrors the result — nothing on this page can change the slot, so
+    // the branch could never fire.
     if (!lines.length) return;
     // Sequential: appendIntakeNote reads the log back before appending, so
     // firing both at once would have the second overwrite the first.
@@ -766,8 +787,8 @@ const UnverifiedReferralsPage = () => {
       if (!res.ok) return; // snapshot untouched, so the next save retries
       prior = undefined; // force a re-read for the second line
     }
-    loggedFacts.current = { oop, adv, slot };
-  }, [formSlotAsReceived]);
+    loggedFacts.current = { oop, adv };
+  }, []);
 
   const save = useCallback(async () => {
     if (!selected) return;
@@ -1170,6 +1191,40 @@ const UnverifiedReferralsPage = () => {
       .then((res) => { if (res.ok) void refetch(true); })
       .catch((e) => console.error("[intake] couldn't log sent text", e));
   }, [selected, refetch]);
+
+  /**
+   * "Reschedule appointment" — open Calendly's own page for this booking.
+   *
+   * A new tab rather than an embed: the rep is on the phone, Calendly's page
+   * wants room, and a popup blocked inside a dialog is a support ticket. The
+   * tab is opened SYNCHRONOUSLY on the click and its location set after the
+   * fetch — opening it in the promise instead is what Safari blocks.
+   */
+  const [rescheduling, setRescheduling] = useState(false);
+  const openReschedule = useCallback(async () => {
+    if (!selected || rescheduling) return;
+    const tab = window.open("", "_blank", "noopener");
+    setRescheduling(true);
+    try {
+      const r = await getRescheduleLink(selected.id);
+      if ("noBooking" in r) {
+        tab?.close();
+        toast.info("No appointment is booked yet", {
+          description: "Send them a booking link from Scheduled Calls, or have them pick a time.",
+        });
+        return;
+      }
+      if (tab) tab.location.href = r.url;
+      else window.open(r.url, "_blank", "noopener"); // popup blocked — try once more
+    } catch (e) {
+      tab?.close();
+      toast.error("Couldn't open the reschedule page", {
+        description: e instanceof Error ? e.message : String(e),
+      });
+    } finally {
+      setRescheduling(false);
+    }
+  }, [selected, rescheduling]);
 
   const [linkGenerating, setLinkGenerating] = useState(false);
   const generateCgmLink = useCallback(async () => {
@@ -1666,7 +1721,7 @@ const UnverifiedReferralsPage = () => {
                     onChange={(v) => edit({ patientAddress: v })}
                   />
                   <EditText label="State" value={selected.formState ?? ""} onChange={(v) => edit({ formState: v })} />
-                  <Field label="Date of Intake" value={selected.dateOfIntake} />
+                  <Field boxed label="Date of Intake" value={selected.dateOfIntake} />
                 </div>
                 {!(selected.patientAddress ?? "").trim() && (
                   <p className="mt-2 text-[11px] text-amber-700">
@@ -1798,8 +1853,7 @@ const UnverifiedReferralsPage = () => {
                       This is the patient’s <strong>CGM data</strong> — a glucose report, hypo log or
                       screenshot. On a call, <strong>Generate CGM data link</strong> in the Files card
                       texts them a link they can upload from their phone; whatever they send lands
-                      here. Use the box below to attach it yourself instead. Saves to the{" "}
-                      <strong>CGM Data File</strong> column.
+                      here. Use the box below to attach it yourself instead.
                     </p>
                     <label
                       className={cgmDragOver ? "upzone show over" : "upzone show"}
@@ -1904,7 +1958,7 @@ const UnverifiedReferralsPage = () => {
                       field the rep forgot to fill, and making it editable
                       would give one value two owners. */}
                   {(selected.primaryInsurance ?? "").trim() && (
-                    <Field label="Primary Insurance (verified)" value={selected.primaryInsurance} />
+                    <Field boxed label="Primary Insurance (verified)" value={selected.primaryInsurance} />
                   )}
                   <EditText
                     label="Insurance (Other) — as typed"
@@ -2066,14 +2120,20 @@ const UnverifiedReferralsPage = () => {
                     <div className="flabel">Call Booking</div>
                     <div className="bookrow">
                       <div>
-                        <div className="eyebrow-xs">Selected on form</div>
-                        {/* The patient's OWN pick, read from the as-received
-                            snapshot rather than from `selected` — the override
-                            box below edits the same single Monday column, so
-                            reading the live value made this line change under
-                            the rep as they typed and the form answer was gone
-                            from the screen before it was gone from the board. */}
-                        <div className="bookval">{formSlotAsReceived || "—"}</div>
+                        {/* The BOOKING, from the Calendly mirror — the same
+                            column the Scheduled Calls day grid reads, so the
+                            two can never tell the rep different things. The
+                            form's own answer is shown underneath as the raw
+                            claim, not as the appointment. */}
+                        <div className="eyebrow-xs">Booked appointment</div>
+                        <div className="bookval">
+                          {formatBookedCall(selected.scheduledCallTime) || "Not booked"}
+                        </div>
+                        {formSlotAsReceived && (
+                          <div className="sugg-note" style={{ marginTop: 4 }}>
+                            Asked for on the form: {formSlotAsReceived}
+                          </div>
+                        )}
                       </div>
                       {(selected.formBookingStatus ?? "").trim() && (
                         <span className={
@@ -2084,43 +2144,35 @@ const UnverifiedReferralsPage = () => {
                       )}
                     </div>
 
-                    {/* The mockup's override is a picker of LIVE Calendly
-                        openings. There is no Calendly integration, so this is
-                        a free-text slot plus an explicit Confirm — the half
-                        that works without one. A dropdown of invented times
-                        would be worse than no dropdown: the rep would think
-                        those openings were real. */}
-                    <div style={{ marginTop: 14 }}>
-                      <EditText
-                        full
-                        label="Override — enter a different opening"
-                        placeholder="e.g. Thu 11:00 AM"
-                        value={selected.formCallSlot ?? ""}
-                        onChange={(v) => edit({ formCallSlot: v })}
-                      />
-                      <div className="mt-3 flex items-center gap-2">
-                        <button
-                          className="btn primary sm"
-                          disabled={saving || !(selected.formCallSlot ?? "").trim()}
-                          onClick={() => edit({ formBookingStatus: "Scheduled" })}
-                          title={
-                            (selected.formCallSlot ?? "").trim()
-                              ? "Mark this slot Scheduled — Save writes it"
-                              : "Enter a slot first"
-                          }
-                        >
-                          Confirm booking
-                        </button>
-                        {(selected.formBookingStatus ?? "") !== "Scheduled" && (
-                          <button
-                            className="btn secondary sm"
-                            disabled={saving}
-                            onClick={() => edit({ formBookingStatus: "Unscheduled" })}
-                          >
-                            Mark unscheduled
-                          </button>
-                        )}
-                      </div>
+                    {/* Reschedule, for real.
+                        The rep is only on this page with the patient on the
+                        phone or mid-text, so "move my appointment" has to be
+                        answerable here — but it has to MOVE THE BOOKING, not
+                        describe one. This opens Calendly's own reschedule page
+                        for that invitee; Calendly swaps the event and its
+                        webhook updates the mirror below.
+
+                        ⚠️ What used to be here was a free-text slot plus a
+                        Confirm button that wrote Booking Status = Scheduled.
+                        Nothing about that created a Calendly event, so the
+                        patient read "Scheduled" here while never appearing in
+                        the Scheduled Calls day grid — which reads the mirror,
+                        not this text — and the call simply never happened.
+                        Don't reintroduce a typed time: the Scheduling API is
+                        off on this account, so a local time can never become a
+                        real booking. */}
+                    <div style={{ marginTop: 14 }} className="flex items-center gap-2 flex-wrap">
+                      <button
+                        className="btn secondary sm"
+                        disabled={rescheduling}
+                        onClick={() => void openReschedule()}
+                        title="Open this patient's Calendly booking to move it"
+                      >
+                        {rescheduling ? "Opening…" : "Reschedule appointment"}
+                      </button>
+                      <span className="sugg-note">
+                        Opens Calendly — the new time syncs back on its own.
+                      </span>
                     </div>
                   </div>
                 )}
@@ -2208,11 +2260,6 @@ const UnverifiedReferralsPage = () => {
                   options={coordinatorRoster}
                   onChange={(v) => { void assignCoordinator(v); }}
                 />
-                <p className="sugg-note" style={{ marginTop: 8 }}>
-                  Writes straight to the Call Log — it doesn’t wait for Save, and it travels
-                  with the patient into Medical Necessity. Reassigning appends a new line
-                  rather than replacing the old one, so the history stays readable.
-                </p>
               </Card>
 
               {/* HANDOFF §2 "Left-pane exits" — all three live here, at the

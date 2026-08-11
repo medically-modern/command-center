@@ -53,6 +53,9 @@ export interface Patient {
   formProceedPreference: string;
   formCallSlot: string;
   formBookingStatus: string;
+  /** "YYYY-MM-DD HH:mm:ss" ET, or blank. The Calendly mirror — the booking that
+   *  actually exists, as opposed to `formCallSlot`'s raw form answer. */
+  scheduledCallTime: string;
 
   // ── Rep-entered on the intake call (not on the patient form) ──
   selfAdvocacy: string;

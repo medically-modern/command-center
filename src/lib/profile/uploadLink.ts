@@ -19,6 +19,33 @@
 import { splitName } from "./nameParts";
 
 /**
+ * "2026-08-14 15:30:00" (naive Eastern, as Monday stores it) → "Thu Aug 14, 3:30 PM".
+ *
+ * ⚠️ Formatted by STRING SURGERY, never `new Date(...)`. The column is
+ * timezone-naive Eastern wall-clock; parsing it into a Date reinterprets it in
+ * the viewer's zone, which is the exact bug that had the old form booking
+ * people three hours out (CLAUDE.md §9). The weekday is the one part that needs
+ * a real date, so it is built at UTC noon where no offset can shift the day.
+ */
+export function formatBookedCall(raw: string | undefined): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2}):(\d{2}))?/.exec((raw ?? "").trim());
+  if (!m) return "";
+  const [, y, mo, d, hh, mm] = m;
+  // Weekday and date are formatted SEPARATELY so the punctuation is ours:
+  // asking for all three at once yields "Fri, Aug 14", which then reads
+  // "Fri, Aug 14, 3:30 PM" once the time is appended.
+  const at = new Date(Date.UTC(+y, +mo - 1, +d, 12));
+  const wd = at.toLocaleDateString("en-US", { weekday: "short", timeZone: "UTC" });
+  const md = at.toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
+  const weekday = `${wd} ${md}`;
+  if (hh === undefined) return weekday;
+  const h = +hh;
+  const suffix = h < 12 ? "AM" : "PM";
+  const h12 = h % 12 === 0 ? 12 : h % 12;
+  return `${weekday}, ${h12}:${mm} ${suffix}`;
+}
+
+/**
  * dtc-mm-form-api origin. No trailing slash.
  *
  * ⚠️ HARDCODED ON PURPOSE — do NOT turn this into a required build secret.
@@ -123,6 +150,55 @@ export async function generateUploadLink(itemId: string): Promise<UploadLink> {
   }
 
   return { url: body.url, expiresAt: body.expiresAt ?? "" };
+}
+
+/**
+ * Calendly's reschedule page for this patient's booking.
+ *
+ * The rep opens it WITH the patient on the phone and moves the time there.
+ * Calendly swaps the booking and fires the webhook that updates the Monday
+ * mirror, so the intake page and the Scheduled Calls grid stay in agreement.
+ *
+ * ⚠️ There is deliberately no "type a new time" path. The Scheduling API is
+ * off on this account, so a locally-entered time could never become a real
+ * booking — it would only mark the patient Scheduled while no call existed.
+ *
+ * `noBooking` is not a failure: most intake patients have never booked.
+ */
+export async function getRescheduleLink(
+  itemId: string,
+): Promise<{ url: string } | { noBooking: true }> {
+  if (!API_BASE) throw new UploadLinkError("The intake service isn't configured in this build.");
+
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), MINT_TIMEOUT_MS);
+  let res: Response;
+  try {
+    res = await fetch(
+      `${API_BASE}/api/intake/reschedule-link?itemId=${encodeURIComponent(itemId)}`,
+      { signal: ctl.signal },
+    );
+  } catch (e) {
+    throw new UploadLinkError(
+      (e as Error)?.name === "AbortError"
+        ? "The intake service didn't respond in time — try once more."
+        : "Couldn't reach the intake service.",
+    );
+  } finally {
+    clearTimeout(timer);
+  }
+
+  let body: { ok?: boolean; url?: string; error?: string; noBooking?: boolean } = {};
+  try {
+    body = await res.json();
+  } catch {
+    /* handled below */
+  }
+  if (body.noBooking) return { noBooking: true };
+  if (!res.ok || !body.ok || !body.url) {
+    throw new UploadLinkError(body.error || `Couldn't get a reschedule link (${res.status}).`);
+  }
+  return { url: body.url };
 }
 
 /**

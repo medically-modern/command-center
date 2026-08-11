@@ -205,6 +205,18 @@
 .pf-root .devcol.off { display:none }
 .pf-root .fld .flabel { margin-bottom:6px }
 
+/* Read-only value that has to line up with real inputs in the same grid.
+   Metrics are copied from `.pf-root input[type=text]` in redesign.css — padding,
+   border width, radius, font-size — so the row is even; if that rule changes,
+   change this with it. Dashed + muted is the "not editable" signal, and
+   min-height matches the 44px select so a one-line value never sits short. */
+.pf-root .fld .ro {
+  font-size:.95rem; width:100%; padding:10px 13px; min-height:44px;
+  display:flex; align-items:center;
+  border:1.5px dashed var(--input); border-radius:8px;
+  background:oklch(0.97 0 0 / .6); color:var(--foreground); font-weight:600;
+}
+
 /* ---- compact flat chip (used in the attachment row) ---- */
 .pf-root .chip-sm { font-size:.62rem; font-weight:800; text-transform:uppercase; letter-spacing:.05em;
   border-radius:5px; padding:3px 7px; background:#fff; color:var(--mm-teal);

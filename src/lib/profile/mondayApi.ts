@@ -44,6 +44,11 @@ export const COL = {
   formProceedPreference: "color_mm5zp6rt",
   formCallSlot: "text_mm5za6zx",
   formBookingStatus: "color_mm5zrbn3",
+  /** The REAL booked call, written by the dtc-mm-form Calendly webhook — the
+   *  same column the Scheduled Calls day grid reads. `formCallSlot` above is
+   *  only what the patient typed/picked on the form; this is what Calendly
+   *  actually holds, so it is what the rep must see. */
+  scheduledCallTime: "date_mm63na19",
 
   /** Mirrors the Medical Evaluation escalation model exactly:
    *  0 = "Manager Escalation Required" (→ Manager Intervention)
@@ -236,6 +241,7 @@ export const READ_COLUMN_IDS: string[] = [
   // were fetched but never mapped into Patient, so nothing could render them.
   COL.cgmDataFile,
   COL.formProceedPreference, COL.formCallSlot, COL.formBookingStatus,
+  COL.scheduledCallTime,
   // Rep-entered on the intake call
   COL.selfAdvocacy, COL.currentOopCost, COL.cgmDataAwareness,
   COL.attemptCounter, COL.intakeCallComplete,
