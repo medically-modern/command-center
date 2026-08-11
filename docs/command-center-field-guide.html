@@ -1,67 +1,54 @@
 <title>Command Center — Field Guide</title>
 
 <style>
-  /* ══ Tokens — light is the base set ═══════════════════════════ */
+  /* ══ Tokens ═══════════════════════════════════════════════════ */
   :root {
-    --ground:      #F5F7FA;
-    --surface:     #FFFFFF;
-    --surface-2:   #EAEEF4;
-    --ink:         #131820;
-    --ink-soft:    #56606F;
-    --rule:        #D7DEE7;
-    --rule-soft:   #E5EAF1;
-    --accent:      #2E4C86;
-    --accent-soft: #E6ECF7;
+    --ground:    #FFFFFF;
+    --sunk:      #F2F5F9;
+    --card:      #FFFFFF;
+    --ink:       #0B0E13;
+    --ink-2:     #4A5563;
+    --ink-3:     #7C8797;
+    --rule:      #DDE3EB;
+    --accent:    #1B4FD8;
+    --accent-bg: #E8EEFF;
 
-    --ok:   #1B6E4A;  --ok-bg:   #E0F1E8;
-    --warn: #8A5A08;  --warn-bg: #F8EEDB;
-    --stop: #A32B2B;  --stop-bg: #FAE6E6;
+    --ok:    #0F7D3B;  --ok-bg:    #E2F4E5;
+    --data:  #1359AC;  --data-bg:  #E1EDFB;
+    --setup: #6B37B8;  --setup-bg: #EDE4FC;
+    --bot:   #94590A;  --bot-bg:   #FBEFD6;
+    --save:  #0B6982;  --save-bg:  #DBEFF6;
+    --app:   #B3204C;  --app-bg:   #FCE3EA;
 
-    --own-data:  #1F5FA8;  --own-data-bg:  #E4EEF9;
-    --own-setup: #64459E;  --own-setup-bg: #EDE7F8;
-    --own-bot:   #8A5A08;  --own-bot-bg:   #F8EEDB;
-    --own-save:  #10665D;  --own-save-bg:  #DDF0EC;
-    --own-app:   #9C2F54;  --own-app-bg:   #FAE5EC;
-
-    --shadow: 0 1px 2px rgba(19,24,32,.06), 0 5px 16px rgba(19,24,32,.05);
-
-    --serif: "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua", Georgia, serif;
     --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
     --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
   }
 
   @media (prefers-color-scheme: dark) {
     :root:not([data-theme="light"]) {
-      --ground: #0F131A;  --surface: #161C26;  --surface-2: #1D2531;
-      --ink: #E7ECF3;     --ink-soft: #9BA7B8;
-      --rule: #2A3442;    --rule-soft: #222B37;
-      --accent: #8FB2E8;  --accent-soft: #1B2637;
-      --ok: #55C08C;   --ok-bg:   #12301F;
-      --warn: #D9A63C; --warn-bg: #322715;
-      --stop: #E8899A; --stop-bg: #351B1E;
-      --own-data: #79AEE8;  --own-data-bg:  #16273A;
-      --own-setup: #B69BE0; --own-setup-bg: #251E38;
-      --own-bot: #D9A63C;   --own-bot-bg:   #322715;
-      --own-save: #4FBFAE;  --own-save-bg:  #12302C;
-      --own-app: #E88AA5;   --own-app-bg:   #351B25;
-      --shadow: 0 1px 2px rgba(0,0,0,.4), 0 5px 16px rgba(0,0,0,.3);
+      --ground: #0D1117;  --sunk: #161C25;  --card: #161C25;
+      --ink: #F0F4F9;     --ink-2: #A8B4C4;  --ink-3: #78849A;
+      --rule: #2A3340;
+      --accent: #7FA6FF;  --accent-bg: #17233D;
+      --ok:    #58D47B;  --ok-bg:    #102C18;
+      --data:  #6FB0F5;  --data-bg:  #10263D;
+      --setup: #BE9BF0;  --setup-bg: #241A38;
+      --bot:   #E0AC42;  --bot-bg:   #302512;
+      --save:  #4CBEDC;  --save-bg:  #0C2A33;
+      --app:   #F589A8;  --app-bg:   #34141F;
     }
   }
-
   :root[data-theme="dark"] {
-    --ground: #0F131A;  --surface: #161C26;  --surface-2: #1D2531;
-    --ink: #E7ECF3;     --ink-soft: #9BA7B8;
-    --rule: #2A3442;    --rule-soft: #222B37;
-    --accent: #8FB2E8;  --accent-soft: #1B2637;
-    --ok: #55C08C;   --ok-bg:   #12301F;
-    --warn: #D9A63C; --warn-bg: #322715;
-    --stop: #E8899A; --stop-bg: #351B1E;
-    --own-data: #79AEE8;  --own-data-bg:  #16273A;
-    --own-setup: #B69BE0; --own-setup-bg: #251E38;
-    --own-bot: #D9A63C;   --own-bot-bg:   #322715;
-    --own-save: #4FBFAE;  --own-save-bg:  #12302C;
-    --own-app: #E88AA5;   --own-app-bg:   #351B25;
-    --shadow: 0 1px 2px rgba(0,0,0,.4), 0 5px 16px rgba(0,0,0,.3);
+    --ground: #0D1117;  --sunk: #161C25;  --card: #161C25;
+    --ink: #F0F4F9;     --ink-2: #A8B4C4;  --ink-3: #78849A;
+    --rule: #2A3340;
+    --accent: #7FA6FF;  --accent-bg: #17233D;
+    --ok:    #58D47B;  --ok-bg:    #102C18;
+    --data:  #6FB0F5;  --data-bg:  #10263D;
+    --setup: #BE9BF0;  --setup-bg: #241A38;
+    --bot:   #E0AC42;  --bot-bg:   #302512;
+    --save:  #4CBEDC;  --save-bg:  #0C2A33;
+    --app:   #F589A8;  --app-bg:   #34141F;
   }
 
   /* ══ Base ═════════════════════════════════════════════════════ */
@@ -69,1243 +56,869 @@
     background: var(--ground);
     color: var(--ink);
     font-family: var(--sans);
-    font-size: 15.5px;
-    line-height: 1.62;
+    font-size: 17px;
+    line-height: 1.5;
     -webkit-font-smoothing: antialiased;
   }
-  .wrap { max-width: 1120px; margin: 0 auto; padding: 0 26px 90px; }
-  .col { max-width: 750px; }
-  p, li { color: var(--ink); }
-  a { color: var(--accent); text-underline-offset: 2px; }
-  a:focus-visible, summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
-
-  code, .mono {
-    font-family: var(--mono); font-size: .845em;
-    background: var(--surface-2); border: 1px solid var(--rule-soft);
-    border-radius: 4px; padding: .06em .34em; white-space: nowrap;
+  .wrap { max-width: 780px; margin: 0 auto; padding: 0 22px 100px; }
+  p { margin: 0 0 12px; }
+  b, strong { font-weight: 700; }
+  code {
+    font-family: var(--mono); font-size: .84em; font-weight: 600;
+    background: var(--sunk); border-radius: 4px; padding: .1em .38em; white-space: nowrap;
   }
+  a { color: var(--accent); }
+  a:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
 
-  /* ══ Cover ════════════════════════════════════════════════════ */
-  .cover { padding: 60px 0 40px; border-bottom: 2px solid var(--ink); margin-bottom: 14px; }
-  .eyebrow {
-    font-family: var(--mono); font-size: .7rem; letter-spacing: .15em;
-    text-transform: uppercase; color: var(--ink-soft); margin: 0 0 20px;
+  /* ══ Masthead ═════════════════════════════════════════════════ */
+  .mast { padding: 46px 0 26px; }
+  .kicker {
+    font-family: var(--mono); font-size: .72rem; font-weight: 700;
+    letter-spacing: .16em; text-transform: uppercase; color: var(--accent);
+    margin: 0 0 14px;
   }
   h1 {
-    font-family: var(--serif); font-size: clamp(2.3rem, 5.2vw, 3.3rem);
-    line-height: 1.06; font-weight: 600; letter-spacing: -.014em;
-    margin: 0 0 20px; text-wrap: balance;
+    font-size: clamp(2.5rem, 7vw, 3.6rem); line-height: .98;
+    font-weight: 800; letter-spacing: -.033em; margin: 0 0 16px;
   }
-  .cover .lead { font-size: 1.14rem; color: var(--ink-soft); max-width: 60ch; margin: 0 0 34px; }
-  .stamp {
-    display: flex; flex-wrap: wrap; gap: 8px 32px;
-    font-family: var(--mono); font-size: .74rem; color: var(--ink-soft);
-    border-top: 1px solid var(--rule); padding-top: 16px;
-  }
-  .stamp b { color: var(--ink); font-weight: 600; }
+  .mast p { font-size: 1.12rem; color: var(--ink-2); margin: 0; max-width: 30em; }
 
-  /* ══ Contents ═════════════════════════════════════════════════ */
-  .toc { margin: 0 0 56px; max-width: 750px; }
-  .toc ol { list-style: none; padding: 0; margin: 14px 0 0; counter-reset: t; }
-  .toc li {
-    counter-increment: t; display: flex; gap: 14px; align-items: baseline;
-    padding: 8px 0; border-bottom: 1px solid var(--rule-soft);
+  /* ══ Section headers — big, unmissable ════════════════════════ */
+  section { margin: 0 0 20px; scroll-margin-top: 16px; }
+  .shead {
+    display: flex; align-items: center; gap: 14px;
+    margin: 56px 0 22px; padding-bottom: 12px;
+    border-bottom: 3px solid var(--ink);
   }
-  .toc li::before {
-    content: counter(t, decimal-leading-zero);
-    font-family: var(--mono); font-size: .74rem; color: var(--accent); flex: none;
-  }
-  .toc a { text-decoration: none; font-weight: 550; }
-  .toc span { color: var(--ink-soft); font-size: .9rem; }
-
-  /* ══ Sections ═════════════════════════════════════════════════ */
-  section { margin: 0 0 62px; scroll-margin-top: 20px; }
-  .part { display: flex; align-items: baseline; gap: 13px; margin: 0 0 10px; }
-  .part-no {
-    font-family: var(--mono); font-size: .72rem; letter-spacing: .1em;
-    color: var(--accent); background: var(--accent-soft);
-    border-radius: 3px; padding: .2em .5em; flex: none;
+  .snum {
+    font-family: var(--mono); font-size: .82rem; font-weight: 700;
+    background: var(--ink); color: var(--ground);
+    padding: .28em .55em; border-radius: 5px; flex: none;
   }
   h2 {
-    font-family: var(--serif); font-size: clamp(1.5rem, 3.1vw, 1.95rem);
-    line-height: 1.16; font-weight: 600; letter-spacing: -.008em;
-    margin: 0; text-wrap: balance;
+    font-size: clamp(1.5rem, 4vw, 2rem); line-height: 1.06;
+    font-weight: 800; letter-spacing: -.02em; margin: 0;
   }
-  .sub { color: var(--ink-soft); margin: 0 0 26px; max-width: 66ch; }
-  h3 {
-    font-size: 1.02rem; font-weight: 650; margin: 34px 0 10px;
-    padding-bottom: 6px; border-bottom: 1px solid var(--rule-soft); max-width: 750px;
-  }
-  h4 { font-size: .97rem; font-weight: 650; margin: 24px 0 8px; }
-
-  /* ══ Callouts ═════════════════════════════════════════════════ */
-  .key {
-    background: var(--surface); border: 1px solid var(--rule);
-    border-left: 3px solid var(--accent); border-radius: 6px;
-    padding: 17px 21px; margin: 24px 0; box-shadow: var(--shadow); max-width: 750px;
-  }
-  .key.stop { border-left-color: var(--stop); }
-  .key.warn { border-left-color: var(--warn); }
-  .key p { margin: 0; }
-  .key p + p { margin-top: 9px; }
-  .key-label {
-    font-family: var(--mono); font-size: .69rem; letter-spacing: .12em;
-    text-transform: uppercase; color: var(--ink-soft); display: block; margin-bottom: 7px;
+  .shead-note {
+    font-size: .95rem; color: var(--ink-2); margin: -8px 0 24px;
   }
 
-  .src {
-    font-family: var(--mono); font-size: .72rem; color: var(--ink-soft);
-    margin: 10px 0 0; line-height: 1.5;
+  /* ══ The big answer block ═════════════════════════════════════ */
+  .headline {
+    background: var(--accent-bg);
+    border: 2px solid var(--accent);
+    border-radius: 12px;
+    padding: 26px 28px;
+    margin: 0 0 22px;
   }
-  .src code { background: none; border: none; padding: 0; font-size: 1em; }
-
-  /* ══ Figures / diagrams ═══════════════════════════════════════ */
-  figure { margin: 30px 0; max-width: 980px; }
-  .fig-scroll { overflow-x: auto; padding-bottom: 4px; }
-  figure svg { max-width: 100%; height: auto; display: block; }
-  figcaption {
-    color: var(--ink-soft); font-size: .89rem; margin-top: 14px;
-    max-width: 68ch; line-height: 1.58;
+  .headline .lbl {
+    font-family: var(--mono); font-size: .72rem; font-weight: 700;
+    letter-spacing: .14em; text-transform: uppercase; color: var(--accent);
+    display: block; margin-bottom: 12px;
   }
-  .fig-n {
-    font-family: var(--mono); font-size: .69rem; letter-spacing: .1em;
-    text-transform: uppercase; color: var(--accent); display: block; margin-bottom: 5px;
+  .headline .big {
+    font-size: clamp(1.35rem, 3.6vw, 1.7rem); line-height: 1.2;
+    font-weight: 800; letter-spacing: -.018em; margin: 0 0 14px;
   }
+  .headline p:last-child { margin: 0; color: var(--ink-2); font-size: 1rem; }
 
-  /* diagram element styling (page CSS, not inside the SVG) */
-  .dg .box   { fill: var(--surface); stroke: var(--ink-soft); stroke-width: 1.4; }
-  .dg .hub   { fill: var(--accent-soft); stroke: var(--accent); stroke-width: 2; }
-  .dg .dec   { fill: var(--surface-2); stroke: var(--ink-soft); stroke-width: 1.4; }
-  .dg .ok    { fill: var(--ok-bg); stroke: var(--ok); stroke-width: 1.6; }
-  .dg .bad   { fill: var(--stop-bg); stroke: var(--stop); stroke-width: 1.6; }
-  .dg .soft  { fill: var(--warn-bg); stroke: var(--warn); stroke-width: 1.6; }
-  .dg .flow  { fill: none; stroke: var(--ink); stroke-width: 1.5; opacity: .8; }
-  .dg .flow-bad { fill: none; stroke: var(--stop); stroke-width: 1.5; stroke-dasharray: 5 4; }
-  .dg text   { font-family: var(--sans); fill: var(--ink); }
-  .dg .t     { font-size: 12.5px; font-weight: 600; }
-  .dg .s     { font-size: 10.8px; opacity: .74; }
-  .dg .al    { font-family: var(--mono); font-size: 10px; opacity: .78; }
-  .dg .al-bad { font-family: var(--mono); font-size: 10px; fill: var(--stop); }
-  .dg .hd    { font-family: var(--mono); font-size: 10px; letter-spacing: .1em; opacity: .7; }
-  .dg .accent-txt { fill: var(--accent); opacity: 1; }
-  /* Arrowheads: marker content does not inherit from the referencing element,
-     so each colour gets its own marker rather than relying on context-stroke. */
-  .dg .mk    { fill: var(--ink); opacity: .8; }
-  .dg .mkb   { fill: var(--stop); }
+  /* ══ Split (two outcomes) ═════════════════════════════════════ */
+  .split { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin: 22px 0; }
+  @media (max-width: 640px) { .split { grid-template-columns: 1fr; } }
+  .half {
+    border: 2px solid var(--rule); border-radius: 10px;
+    padding: 18px 20px; background: var(--card);
+  }
+  .half h4 { margin: 0 0 8px; font-size: 1.08rem; font-weight: 800; letter-spacing: -.012em; }
+  .half p { margin: 0; font-size: .96rem; color: var(--ink-2); }
+  .half.a { border-color: var(--app); }
+  .half.a h4 { color: var(--app); }
+  .half.b { border-color: var(--data); }
+  .half.b h4 { color: var(--data); }
 
-  /* ══ Owner chips ══════════════════════════════════════════════ */
+  /* ══ Chips ════════════════════════════════════════════════════ */
   .chip {
-    display: inline-flex; align-items: center; gap: 6px;
-    font-family: var(--mono); font-size: .67rem; letter-spacing: .07em;
-    text-transform: uppercase; padding: .3em .58em; border-radius: 4px;
-    white-space: nowrap; font-weight: 500;
+    display: inline-block;
+    font-family: var(--mono); font-size: .66rem; font-weight: 700;
+    letter-spacing: .1em; text-transform: uppercase;
+    padding: .34em .6em; border-radius: 5px; white-space: nowrap;
   }
-  .chip::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; flex: none; }
-  .c-data  { color: var(--own-data);  background: var(--own-data-bg);  }
-  .c-setup { color: var(--own-setup); background: var(--own-setup-bg); }
-  .c-bot   { color: var(--own-bot);   background: var(--own-bot-bg);   }
-  .c-save  { color: var(--own-save);  background: var(--own-save-bg);  }
-  .c-app   { color: var(--own-app);   background: var(--own-app-bg);   }
+  .k-ok    { color: var(--ok);    background: var(--ok-bg);    }
+  .k-data  { color: var(--data);  background: var(--data-bg);  }
+  .k-setup { color: var(--setup); background: var(--setup-bg); }
+  .k-bot   { color: var(--bot);   background: var(--bot-bg);   }
+  .k-save  { color: var(--save);  background: var(--save-bg);  }
+  .k-app   { color: var(--app);   background: var(--app-bg);   }
 
-  .owners { display: grid; grid-template-columns: repeat(auto-fit, minmax(255px, 1fr)); gap: 13px; margin: 26px 0 8px; max-width: 980px; }
-  .owner { background: var(--surface); border: 1px solid var(--rule); border-radius: 7px; padding: 15px 17px; }
-  .owner p { margin: 9px 0 0; font-size: .89rem; color: var(--ink-soft); line-height: 1.52; }
+  /* ══ Symptom rows — the index ═════════════════════════════════ */
+  .grp {
+    font-family: var(--mono); font-size: .74rem; font-weight: 700;
+    letter-spacing: .13em; text-transform: uppercase; color: var(--ink-3);
+    margin: 34px 0 12px;
+  }
+  .sym {
+    background: var(--card);
+    border: 1px solid var(--rule);
+    border-left: 6px solid var(--ink-3);
+    border-radius: 8px;
+    padding: 16px 20px;
+    margin-bottom: 11px;
+  }
+  .sym.d-ok    { border-left-color: var(--ok); background: var(--ok-bg); }
+  .sym.d-data  { border-left-color: var(--data);  }
+  .sym.d-setup { border-left-color: var(--setup); }
+  .sym.d-bot   { border-left-color: var(--bot);   }
+  .sym.d-save  { border-left-color: var(--save);  }
+  .sym.d-app   { border-left-color: var(--app);   }
+  .sym-top {
+    display: flex; justify-content: space-between; align-items: flex-start;
+    gap: 14px; flex-wrap: wrap; margin-bottom: 7px;
+  }
+  .sym-top h4 {
+    margin: 0; font-size: 1.09rem; font-weight: 800;
+    letter-spacing: -.014em; line-height: 1.22; flex: 1 1 260px;
+  }
+  .sym p { margin: 0; font-size: .97rem; color: var(--ink-2); line-height: 1.48; }
+  .sym p + p { margin-top: 6px; }
+  .sym p b { color: var(--ink); }
 
-  /* ══ Rule blocks ══════════════════════════════════════════════ */
-  .rules { display: grid; gap: 15px; margin: 22px 0; max-width: 900px; }
-  .rule { background: var(--surface); border: 1px solid var(--rule); border-radius: 7px; padding: 19px 21px; box-shadow: var(--shadow); }
-  .rule-head { display: flex; align-items: baseline; gap: 12px; margin-bottom: 8px; flex-wrap: wrap; }
-  .rule-n { font-family: var(--mono); font-size: .69rem; letter-spacing: .1em; color: var(--ink-soft); flex: none; }
-  .rule-head strong { font-size: 1rem; font-weight: 650; }
-  .rule > p { margin: 0 0 4px; }
-  .rule p.note { color: var(--ink-soft); font-size: .91rem; margin-top: 11px; }
+  /* ══ Rule cards (the three gates) ═════════════════════════════ */
+  .gate {
+    background: var(--card); border: 1px solid var(--rule);
+    border-radius: 10px; padding: 22px 24px; margin-bottom: 16px;
+  }
+  .gate-h { display: flex; align-items: baseline; gap: 12px; margin-bottom: 4px; flex-wrap: wrap; }
+  .gate-n {
+    font-family: var(--mono); font-size: .7rem; font-weight: 700;
+    letter-spacing: .12em; color: var(--ground); background: var(--ink);
+    padding: .26em .5em; border-radius: 4px;
+  }
+  .gate-h h3 { margin: 0; font-size: 1.22rem; font-weight: 800; letter-spacing: -.016em; }
+  .gate > p { font-size: 1rem; }
+  .gate p:last-child { margin-bottom: 0; }
 
-  /* ══ Tables ═══════════════════════════════════════════════════ */
-  .t-scroll { overflow-x: auto; margin: 18px 0 8px; max-width: 980px; }
-  table { border-collapse: collapse; width: 100%; min-width: 580px; font-size: .9rem; }
-  th, td { text-align: left; padding: 10px 13px; border-bottom: 1px solid var(--rule-soft); vertical-align: top; }
+  /* Due-rule mini cards */
+  .due { display: grid; gap: 10px; margin: 16px 0 4px; }
+  .due-row {
+    display: grid; grid-template-columns: 190px 1fr; gap: 16px;
+    background: var(--sunk); border-radius: 8px; padding: 13px 16px;
+  }
+  @media (max-width: 640px) { .due-row { grid-template-columns: 1fr; gap: 5px; } }
+  .due-row .who { font-weight: 800; font-size: .93rem; line-height: 1.32; }
+  .due-row .what { font-size: .93rem; color: var(--ink-2); line-height: 1.45; }
+  .due-row .what b { color: var(--ink); }
+
+  /* ══ Alerts ═══════════════════════════════════════════════════ */
+  .alert {
+    border-radius: 10px; padding: 18px 22px; margin: 20px 0;
+    border: 2px solid var(--app); background: var(--app-bg);
+  }
+  .alert.warn { border-color: var(--bot); background: var(--bot-bg); }
+  .alert .lbl {
+    font-family: var(--mono); font-size: .7rem; font-weight: 700;
+    letter-spacing: .13em; text-transform: uppercase;
+    display: block; margin-bottom: 9px; color: var(--app);
+  }
+  .alert.warn .lbl { color: var(--bot); }
+  .alert p { margin: 0; font-size: 1rem; }
+  .alert p + p { margin-top: 9px; }
+
+  /* ══ Toast table ══════════════════════════════════════════════ */
+  .toast {
+    border: 1px solid var(--rule); border-left: 6px solid var(--ink-3);
+    border-radius: 8px; padding: 17px 20px; margin-bottom: 11px; background: var(--card);
+  }
+  .toast.t-ok   { border-left-color: var(--ok);   }
+  .toast.t-wait { border-left-color: var(--bot);  }
+  .toast.t-bad  { border-left-color: var(--app);  }
+  .toast .msg {
+    font-family: var(--mono); font-size: .93rem; font-weight: 700;
+    margin: 0 0 8px; line-height: 1.35;
+  }
+  .toast .msg.m-ok   { color: var(--ok);   }
+  .toast .msg.m-wait { color: var(--bot);  }
+  .toast .msg.m-bad  { color: var(--app);  }
+  .toast p { margin: 0; font-size: .97rem; color: var(--ink-2); }
+  .toast p b { color: var(--ink); }
+
+  /* ══ Figures ══════════════════════════════════════════════════ */
+  figure { margin: 24px 0; }
+  .fig-scroll { overflow-x: auto; }
+  figure svg { max-width: 100%; height: auto; display: block; }
+  figcaption { color: var(--ink-2); font-size: .92rem; margin-top: 12px; line-height: 1.45; }
+  .dg .box  { fill: var(--card); stroke: var(--ink-2); stroke-width: 1.6; }
+  .dg .hub  { fill: var(--accent-bg); stroke: var(--accent); stroke-width: 2.4; }
+  .dg .dec  { fill: var(--sunk); stroke: var(--ink-2); stroke-width: 1.6; }
+  .dg .good { fill: var(--ok-bg); stroke: var(--ok); stroke-width: 2; }
+  .dg .stop { fill: var(--app-bg); stroke: var(--app); stroke-width: 2; }
+  .dg .hold { fill: var(--bot-bg); stroke: var(--bot); stroke-width: 2; }
+  .dg .flow { fill: none; stroke: var(--ink); stroke-width: 1.9; }
+  .dg .flow-x { fill: none; stroke: var(--app); stroke-width: 1.9; stroke-dasharray: 6 4; }
+  .dg text  { font-family: var(--sans); fill: var(--ink); }
+  .dg .t    { font-size: 14px; font-weight: 800; }
+  .dg .s    { font-size: 11.5px; fill: var(--ink-2); }
+  .dg .al   { font-family: var(--mono); font-size: 11px; font-weight: 700; fill: var(--ink-2); }
+  .dg .al-x { font-family: var(--mono); font-size: 11px; font-weight: 700; fill: var(--app); }
+  .dg .mk   { fill: var(--ink); }
+  .dg .mkx  { fill: var(--app); }
+
+  /* ══ Report template ══════════════════════════════════════════ */
+  .tpl {
+    background: var(--sunk); border-radius: 10px; padding: 20px 22px;
+    font-family: var(--mono); font-size: .87rem; font-weight: 600;
+    line-height: 1.95; white-space: pre-wrap; color: var(--ink);
+  }
+
+  /* ══ Lookup (de-emphasised) ═══════════════════════════════════ */
+  details.lookup {
+    border: 1px solid var(--rule); border-radius: 10px;
+    margin-bottom: 12px; background: var(--card);
+  }
+  details.lookup > summary {
+    cursor: pointer; padding: 16px 20px; font-weight: 800; font-size: 1.05rem;
+    list-style: none; display: flex; justify-content: space-between; align-items: center; gap: 12px;
+  }
+  details.lookup > summary::-webkit-details-marker { display: none; }
+  details.lookup > summary::after {
+    content: "＋"; font-family: var(--mono); color: var(--ink-3); font-weight: 700; flex: none;
+  }
+  details.lookup[open] > summary::after { content: "－"; }
+  details.lookup[open] > summary { border-bottom: 1px solid var(--rule); }
+  .lookup-body { padding: 6px 20px 18px; }
+
+  .t-scroll { overflow-x: auto; }
+  table { border-collapse: collapse; width: 100%; font-size: .9rem; }
+  th, td { text-align: left; padding: 9px 11px; border-bottom: 1px solid var(--rule); vertical-align: top; }
   th {
-    font-family: var(--mono); font-size: .66rem; letter-spacing: .1em;
-    text-transform: uppercase; color: var(--ink-soft); font-weight: 500;
-    border-bottom: 1px solid var(--rule);
+    font-family: var(--mono); font-size: .66rem; font-weight: 700; letter-spacing: .1em;
+    text-transform: uppercase; color: var(--ink-3);
   }
   tbody tr:last-child td { border-bottom: none; }
-  td strong { font-weight: 650; }
-  .hl { background: var(--accent-soft); }
 
-  /* ══ Triage cards ═════════════════════════════════════════════ */
-  .family {
-    font-family: var(--mono); font-size: .71rem; letter-spacing: .12em;
-    text-transform: uppercase; color: var(--ink-soft);
-    margin: 36px 0 13px; padding-bottom: 7px;
-    border-bottom: 1px solid var(--rule); max-width: 980px;
+  .gl { display: grid; }
+  .gl div { display: grid; grid-template-columns: 175px 1fr; gap: 16px; padding: 10px 0; border-bottom: 1px solid var(--rule); }
+  .gl div:last-child { border-bottom: none; }
+  .gl dt { font-weight: 800; font-size: .93rem; }
+  .gl dd { margin: 0; color: var(--ink-2); font-size: .93rem; line-height: 1.45; }
+  @media (max-width: 620px) { .gl div { grid-template-columns: 1fr; gap: 3px; } }
+
+  .src {
+    font-family: var(--mono); font-size: .69rem; color: var(--ink-3);
+    margin: 12px 0 0; line-height: 1.45;
   }
-  .cards { display: grid; gap: 13px; max-width: 980px; }
-  .card { background: var(--surface); border: 1px solid var(--rule); border-radius: 7px; padding: 17px 19px; box-shadow: var(--shadow); }
-  .card-top { display: flex; gap: 13px; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; margin-bottom: 11px; }
-  .card-top h4 { margin: 0; font-size: 1rem; font-weight: 650; line-height: 1.33; flex: 1 1 290px; }
-  .card dl { margin: 0; display: grid; gap: 8px; }
-  .card dt {
-    font-family: var(--mono); font-size: .65rem; letter-spacing: .1em;
-    text-transform: uppercase; color: var(--ink-soft); margin-bottom: 1px;
-  }
-  .card dd { margin: 0; font-size: .93rem; line-height: 1.52; }
+  .src code { background: none; padding: 0; font-size: 1em; font-weight: 600; }
 
-  .tpl {
-    background: var(--surface-2); border: 1px solid var(--rule); border-radius: 7px;
-    padding: 19px 21px; font-family: var(--mono); font-size: .82rem;
-    line-height: 1.8; max-width: 720px; white-space: pre-wrap; color: var(--ink);
-  }
-
-  /* ══ Glossary ═════════════════════════════════════════════════ */
-  .gloss { display: grid; max-width: 860px; margin-top: 6px; }
-  .gloss div { display: grid; grid-template-columns: 205px 1fr; gap: 20px; padding: 12px 0; border-bottom: 1px solid var(--rule-soft); }
-  .gloss dt { font-weight: 650; font-size: .93rem; }
-  .gloss dd { margin: 0; color: var(--ink-soft); font-size: .92rem; line-height: 1.52; }
-  @media (max-width: 620px) { .gloss div { grid-template-columns: 1fr; gap: 3px; } }
-
-  ul.tight { padding-left: 20px; margin: 11px 0; }
-  ul.tight li { margin-bottom: 6px; }
-  .afterword { color: var(--ink-soft); font-size: .93rem; margin-top: 16px; max-width: 68ch; }
-
-  .foot {
-    border-top: 1px solid var(--rule); padding-top: 22px; margin-top: 60px;
-    color: var(--ink-soft); font-size: .88rem; max-width: 750px;
+  .endnote {
+    margin-top: 50px; padding-top: 18px; border-top: 1px solid var(--rule);
+    color: var(--ink-3); font-size: .86rem;
   }
 
   /* ══ Print ════════════════════════════════════════════════════ */
   @media print {
     :root {
-      --ground: #FFFFFF;  --surface: #FFFFFF;  --surface-2: #F1F4F8;
-      --ink: #10151C;     --ink-soft: #4E5866;
-      --rule: #C8D1DC;    --rule-soft: #DDE3EB;
-      --accent: #23406F;  --accent-soft: #E8EEF8;
-      --ok: #1B6E4A;   --ok-bg:   #E3F2EA;
-      --warn: #7C5107; --warn-bg: #F9F0DD;
-      --stop: #942323; --stop-bg: #FAE7E7;
-      --own-data: #1B5697;  --own-data-bg:  #E6EFF9;
-      --own-setup: #5B3E92; --own-setup-bg: #EEE9F8;
-      --own-bot: #7C5107;   --own-bot-bg:   #F9F0DD;
-      --own-save: #0D5B53;  --own-save-bg:  #E0F1EE;
-      --own-app: #8E2A4C;   --own-app-bg:   #FBE7EE;
-      --shadow: none;
+      --ground: #FFFFFF; --sunk: #F1F4F9; --card: #FFFFFF;
+      --ink: #0A0D12;    --ink-2: #414B59; --ink-3: #6E7A8A;
+      --rule: #CFD7E1;
+      --accent: #163FB0; --accent-bg: #E9EEFF;
+      --ok: #0D6E34;   --ok-bg:    #E3F4E6;
+      --data: #10508F; --data-bg:  #E3EEFA;
+      --setup: #5C2FA0; --setup-bg: #EEE6FC;
+      --bot: #7F4C08;  --bot-bg:   #FBF0DA;
+      --save: #075B70; --save-bg:  #DEF0F7;
+      --app: #9C1C42;  --app-bg:   #FCE5EB;
     }
-    body { background: #fff; font-size: 10.2pt; line-height: 1.5; }
+    body { font-size: 10.5pt; line-height: 1.42; }
     .wrap { max-width: none; padding: 0; }
-    .col, .key, .cards, .rules, .t-scroll, figure, .gloss, .owners, .foot, h3 { max-width: none; }
-    .fig-scroll { overflow: visible; }
-    table { min-width: 0; font-size: 8.8pt; }
-    .t-scroll { overflow: visible; }
-    .card, .rule, .key, .owner { box-shadow: none; break-inside: avoid; page-break-inside: avoid; }
-    figure { break-inside: avoid; page-break-inside: avoid; }
-    .gloss div, tr { break-inside: avoid; page-break-inside: avoid; }
-    h2, h3, h4 { break-after: avoid; page-break-after: avoid; }
-    section { break-before: page; page-break-before: page; margin-bottom: 0; }
-    section#intro { break-before: avoid; page-break-before: avoid; }
-    .cover { break-after: page; page-break-after: page; border-bottom: none; padding-top: 0; }
-    .toc { break-after: page; page-break-after: page; }
     h1 { font-size: 30pt; }
-    h2 { font-size: 16pt; }
+    h2 { font-size: 17pt; }
+    .mast { padding: 0 0 12px; }
+    .shead { break-after: avoid; page-break-after: avoid; margin-top: 26px; }
+    .grp { break-after: avoid; page-break-after: avoid; }
+    .sym, .gate, .toast, .alert, .headline, .half, figure, .due-row, .tpl, .gl div, tr {
+      break-inside: avoid; page-break-inside: avoid;
+    }
+    section.brk { break-before: page; page-break-before: page; }
+    details.lookup { border: none; }
+    details.lookup > summary { padding: 12px 0; border-bottom: 2px solid var(--ink); }
+    details.lookup > summary::after { content: ""; }
+    .lookup-body { padding: 10px 0 0; }
     a { color: var(--ink); text-decoration: none; }
-    .family { break-after: avoid; page-break-after: avoid; }
   }
 </style>
 
 <div class="wrap">
 
-  <!-- ══ COVER ══════════════════════════════════════════════ -->
-  <header class="cover">
-    <p class="eyebrow">Medically Modern · Internal Operations</p>
-    <h1>The Command Center<br>Field Guide</h1>
-    <p class="lead">How the system is put together, the exact rules that decide where a patient appears, and how to trace a problem back to whoever can fix it.</p>
-    <div class="stamp">
-      <span><b>Version</b> 1.1</span>
-      <span><b>Issued</b> 11 August 2026</span>
-      <span><b>Verified against</b> commit b5a5f8f</span>
-      <span><b>Audience</b> Operations</span>
-    </div>
+  <header class="mast">
+    <p class="kicker">Medically Modern</p>
+    <h1>Command Center<br>Field Guide</h1>
+    <p>Something looks wrong. This tells you where it came from and who fixes it.</p>
   </header>
 
-  <!-- ══ CONTENTS ═══════════════════════════════════════════ -->
-  <nav class="toc">
-    <h2 style="font-size:1.25rem;">Contents</h2>
-    <ol>
-      <li><a href="#intro">What this document is</a> <span>— and what it deliberately leaves out</span></li>
-      <li><a href="#model">What the Command Center is</a> <span>— the app, the boards, and who writes what</span></li>
-      <li><a href="#owners">The five owners</a> <span>— who can fix which kind of problem</span></li>
-      <li><a href="#queue">How a patient reaches a queue</a> <span>— the three gates, in order</span></li>
-      <li><a href="#save">What happens when you save</a> <span>— the four phases and the abort</span></li>
-      <li><a href="#triage">Triage</a> <span>— symptom to owner</span></li>
-      <li><a href="#fiveplaces">Why a fix sometimes half-works</a></li>
-      <li><a href="#looking">Where to look, and how to report</a></li>
-      <li><a href="#appendix">Reference</a> <span>— roles, boards, routes, glossary</span></li>
-    </ol>
-  </nav>
+  <!-- ══ 1 · THE ONE MOVE ═══════════════════════════════════ -->
+  <section id="start">
+    <div class="shead"><span class="snum">01</span><h2>Start here. Always.</h2></div>
 
-  <!-- ══ 1 · INTRO ══════════════════════════════════════════ -->
-  <section id="intro">
-    <div class="col">
-      <div class="part"><span class="part-no">01</span><h2>What this document is</h2></div>
+    <div class="headline">
+      <span class="lbl">Before anything else</span>
+      <p class="big">Open the patient on Monday. Read the actual columns.</p>
+      <p>This one look splits every problem in half. Do it before you ask anyone anything.</p>
+    </div>
 
-      <p>This guide states <strong>only rules that are actually defined in the system</strong> — a named column, a named role, a specific comparison the code performs. Every rule block cites the file it comes from so you can have someone check it.</p>
-
-      <p>Where a behaviour is a judgement call rather than a defined rule, this guide says so explicitly instead of guessing. Where a number appears (30 seconds, 8 attempts, 95 seconds), it is read from the code, not estimated.</p>
-
-      <h3>What it does not cover</h3>
-      <ul class="tight">
-        <li><strong>How to do your job in each stage.</strong> This is about the machinery, not the clinical or insurance work.</li>
-        <li><strong>Monday automations individually.</strong> They are configured on the boards, not in code, so they can't be read the same way. This guide tells you when to suspect one.</li>
-        <li><strong>The Railway services' internals.</strong> They own certain columns; this guide names which, and stops there.</li>
-        <li><strong>Auth Denied.</strong> That stage is under construction and deliberately has no manager views built for it.</li>
-      </ul>
-
-      <div class="key warn">
-        <span class="key-label">A note on the engineering docs</span>
-        <p>The repository's <code>CLAUDE.md</code> is the engineering reference, and it is far more detailed than this. It can also fall behind the code: while preparing this guide, its description of the Patient Intake split was found to describe a rule that was <strong>changed on 10 August 2026</strong>. Where this guide and <code>CLAUDE.md</code> disagree, the rules stated here were read from the code on the date on the cover.</p>
+    <div class="split">
+      <div class="half b">
+        <h4>Board is wrong</h4>
+        <p>Something wrote badly, or nothing wrote. <b>Now open the Activity Log</b> — it shows who changed what, and when.</p>
       </div>
+      <div class="half a">
+        <h4>Board is right</h4>
+        <p>Data's fine. The <b>app is filtering or counting it wrong</b>. Go to section 03.</p>
+      </div>
+    </div>
+
+    <div class="alert warn">
+      <span class="lbl">Rule these out first — they are not bugs</span>
+      <p><b>Numbers lag.</b> Lists refresh every 30 seconds. Counts every 60. Wait a minute before believing a mismatch.</p>
+      <p><b>Blank screen?</b> Reload once. A tab left open across a release does this.</p>
+      <p><b>FAX says "Done!" with faxes waiting?</b> Once it hits zero it stays Done until midnight. Use the Fax Inbox page.</p>
     </div>
   </section>
 
-  <!-- ══ 2 · MODEL ══════════════════════════════════════════ -->
-  <section id="model">
-    <div class="col">
-      <div class="part"><span class="part-no">02</span><h2>What the Command Center is</h2></div>
-      <p class="sub">One paragraph that the rest of the document depends on.</p>
-
-      <p>The Command Center is <strong>a web app that reads and writes Monday.com columns</strong>. It has no patient database of its own — every patient fact you see on screen is a column on a Monday board, fetched moments ago. (It does keep two small things of its own: a cache of the role-bar numbers in your browser, and the list of who can see what, stored in a file in GitHub.)</p>
-
-      <p>Patients move between stages through <strong>Monday's own automations</strong>. Each board has a status column acting as the <strong>Stage Advancer</strong>; automations configured on the board watch it and move the item. The app writes the stage data first, confirms it landed, and writes the Stage Advancer last.</p>
-    </div>
+  <!-- ══ 2 · WHY PATIENTS DISAPPEAR ═════════════════════════ -->
+  <section id="gates" class="brk">
+    <div class="shead"><span class="snum">02</span><h2>Why a patient disappears</h2></div>
+    <p class="shead-note">Three gates. A patient must pass all three to show up in someone's list.</p>
 
     <figure class="dg">
-      <span class="fig-n">Figure 1</span>
       <div class="fig-scroll">
-        <svg viewBox="0 0 980 500" role="img" aria-label="Monday boards at the center are the source of truth. The Command Center reads and writes through the gateway. Monday automations and Railway bots also write to the same boards. RingCentral and Gmail connect only to the browser.">
+        <svg viewBox="0 0 720 560" role="img" aria-label="Three gates in order: which queue, due today, escalated. Failing any one diverts the patient to no queue at all, to a snooze, or to a manager column.">
           <defs>
-            <marker id="a1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
-              <path class="mk" d="M 0 0 L 10 5 L 0 10 z"/>
-            </marker>
+            <marker id="m1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse"><path class="mk" d="M 0 0 L 10 5 L 0 10 z"/></marker>
+            <marker id="m1x" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse"><path class="mkx" d="M 0 0 L 10 5 L 0 10 z"/></marker>
           </defs>
 
-          <g class="flow" marker-end="url(#a1)">
-            <line x1="222" y1="228" x2="280" y2="228"/>
-            <line x1="412" y1="228" x2="470" y2="228"/>
-            <line x1="470" y1="272" x2="412" y2="272"/>
-            <line x1="280" y1="272" x2="222" y2="272"/>
-            <line x1="786" y1="250" x2="734" y2="250"/>
-            <line x1="545" y1="188" x2="545" y2="130"/>
-            <line x1="665" y1="130" x2="665" y2="188"/>
-            <line x1="126" y1="376" x2="126" y2="302"/>
+          <g class="flow" marker-end="url(#m1)">
+            <line x1="250" y1="52" x2="250" y2="84"/>
+            <line x1="250" y1="166" x2="250" y2="216"/>
+            <line x1="250" y1="298" x2="250" y2="348"/>
+            <line x1="250" y1="430" x2="250" y2="480"/>
+          </g>
+          <g class="flow-x" marker-end="url(#m1x)">
+            <line x1="380" y1="125" x2="446" y2="125"/>
+            <line x1="380" y1="257" x2="446" y2="257"/>
+            <line x1="380" y1="389" x2="446" y2="389"/>
           </g>
 
+          <text class="t" x="250" y="30" text-anchor="middle">A patient on a board</text>
+
+          <polygon class="dec" points="250,86 380,125 250,164 120,125"/>
+          <text class="t" x="250" y="122" text-anchor="middle">Which queue?</text>
+          <text class="s" x="250" y="141" text-anchor="middle">board + group + splitter</text>
+
+          <polygon class="dec" points="250,218 380,257 250,296 120,257"/>
+          <text class="t" x="250" y="254" text-anchor="middle">Due today?</text>
+          <text class="s" x="250" y="273" text-anchor="middle">rule differs by board</text>
+
+          <polygon class="dec" points="250,350 380,389 250,428 120,389"/>
+          <text class="t" x="250" y="386" text-anchor="middle">Escalated?</text>
+          <text class="s" x="250" y="405" text-anchor="middle">except on DVS</text>
+
+          <rect class="stop" x="446" y="98" width="262" height="54" rx="8"/>
+          <text class="t" x="577" y="120" text-anchor="middle" style="fill:var(--app)">IN NO QUEUE AT ALL</text>
+          <text class="s" x="577" y="139" text-anchor="middle">nothing reports this</text>
+
+          <rect class="hold" x="446" y="230" width="262" height="54" rx="8"/>
+          <text class="t" x="577" y="252" text-anchor="middle">Snoozed</text>
+          <text class="s" x="577" y="271" text-anchor="middle">back on its follow-up date</text>
+
+          <rect class="hold" x="446" y="362" width="262" height="54" rx="8"/>
+          <text class="t" x="577" y="384" text-anchor="middle">Manager column</text>
+          <text class="s" x="577" y="403" text-anchor="middle">see it in Oversight</text>
+
+          <rect class="good" x="104" y="480" width="292" height="58" rx="8"/>
+          <text class="t" x="250" y="505" text-anchor="middle" style="fill:var(--ok)">IN THE REP'S LIST</text>
+          <text class="s" x="250" y="524" text-anchor="middle">the only outcome that means "work today"</text>
+
+          <g class="al-x">
+            <text x="413" y="117" text-anchor="middle">none</text>
+            <text x="413" y="249" text-anchor="middle">no</text>
+            <text x="413" y="381" text-anchor="middle">yes</text>
+          </g>
           <g class="al">
-            <text x="251" y="220" text-anchor="middle">writes</text>
-            <text x="441" y="220" text-anchor="middle">writes</text>
-            <text x="251" y="290" text-anchor="middle">reads</text>
-            <text x="441" y="290" text-anchor="middle">reads</text>
-            <text x="760" y="240" text-anchor="middle">writes</text>
-            <text x="536" y="152" text-anchor="end">Stage Advancer flips</text>
-            <text x="676" y="146" text-anchor="start">moves the patient</text>
-            <text x="676" y="164" text-anchor="start">to the next stage</text>
-            <text x="140" y="344" text-anchor="start">fax · text · calls · email</text>
+            <text x="262" y="196" text-anchor="start">yes</text>
+            <text x="262" y="328" text-anchor="start">yes</text>
+            <text x="262" y="460" text-anchor="start">no</text>
           </g>
-
-          <rect class="hub" x="470" y="188" width="264" height="124" rx="8"/>
-          <text class="t" x="602" y="230" text-anchor="middle" style="font-size:16px">Monday boards</text>
-          <text class="hd accent-txt" x="602" y="252" text-anchor="middle">THE SOURCE OF TRUTH</text>
-          <text class="s" x="602" y="278" text-anchor="middle">every patient fact is a column here</text>
-
-          <rect class="box" x="32" y="204" width="190" height="98" rx="7"/>
-          <text class="t" x="127" y="242" text-anchor="middle">Command Center</text>
-          <text class="s" x="127" y="262" text-anchor="middle">your screen</text>
-          <text class="s" x="127" y="280" text-anchor="middle">lists 30s · counts 60s</text>
-
-          <rect class="box" x="280" y="204" width="132" height="98" rx="7"/>
-          <text class="t" x="346" y="240" text-anchor="middle">Gateway</text>
-          <text class="s" x="346" y="260" text-anchor="middle">holds the</text>
-          <text class="s" x="346" y="276" text-anchor="middle">credentials, logs</text>
-
-          <rect class="box" x="786" y="204" width="162" height="98" rx="7"/>
-          <text class="t" x="867" y="240" text-anchor="middle">Bots</text>
-          <text class="s" x="867" y="260" text-anchor="middle">Stedi · DVS ·</text>
-          <text class="s" x="867" y="276" text-anchor="middle">doctor lookup</text>
-
-          <rect class="box" x="470" y="42" width="264" height="88" rx="7"/>
-          <text class="t" x="602" y="78" text-anchor="middle">Monday automations</text>
-          <text class="s" x="602" y="100" text-anchor="middle">configured on the board, not in code</text>
-
-          <rect class="box" x="32" y="376" width="190" height="86" rx="7"/>
-          <text class="t" x="127" y="410" text-anchor="middle">RingCentral · Gmail</text>
-          <text class="s" x="127" y="432" text-anchor="middle">never touch the boards</text>
         </svg>
       </div>
-      <figcaption><strong>Four different things write to the same columns</strong> — the app, the board's automations, the Railway bots, and anyone editing the board by hand. The app only ever reads them back, on a timer. That is why “the board is right but my screen is wrong” and “my screen looked right but the board is blank” are unrelated problems with different owners.</figcaption>
+      <figcaption>Top right is the dangerous one. A patient matching no rule is listed nowhere, counted nowhere, and <b>nothing anywhere reports it</b>.</figcaption>
     </figure>
 
-    <div class="col">
-      <h3>The refresh delay is real, and it is two different numbers</h3>
-      <p>The patient <em>lists</em> on a role page refresh every <strong>30 seconds</strong>. The <em>numbers</em> on the role bars refresh every <strong>60 seconds</strong>. Neither is instant, and they are not in step with each other.</p>
-      <p>So a list and its own count can legitimately disagree for up to a minute after something changes. Before reporting a mismatch, reload and look again.</p>
-      <p class="src">Defined in <code>src/hooks/masheke/useMondayPatients.ts</code>, <code>src/hooks/samantha/useMondayPatients.ts</code> (<code>POLL_MS = 30_000</code>) and <code>src/hooks/useRoleCounts.ts</code> (<code>POLL_MS = 60_000</code>).</p>
+    <div class="gate">
+      <div class="gate-h"><span class="gate-n">GATE 1</span><h3>Which queue</h3></div>
+      <p>Board and group get you most of the way. Three places split further:</p>
+      <div class="due">
+        <div class="due-row">
+          <span class="who">Medical Evaluation</span>
+          <span class="what">Splits by <b>Stage Advancer</b>, matched exactly: <code>Evaluate MN</code>, <code>Send Request</code>, <code>Confirm Receipt</code>, <code>Chase Clinicals</code>, <code>Doctor Appointment</code>.</span>
+        </div>
+        <div class="due-row">
+          <span class="who">Chase Clinicals</span>
+          <span class="what"><b>Clinicals Method.</b> <code>Parachute</code> or <code>Email</code> → Email &amp; Parachute. <b>Everything else, blank included</b> → Fax.</span>
+        </div>
+        <div class="due-row">
+          <span class="who">Profile Send Off</span>
+          <span class="what"><b>Already In System = Yes</b> gets its own queue. Everything else in <code>1. Intake</code> is Verified Referrals.</span>
+        </div>
+      </div>
+      <div class="alert" style="margin-bottom:0;">
+        <span class="lbl">If you were told otherwise — this changed 10 Aug</span>
+        <p><b>Referral Type and Referral Source no longer route anybody.</b> Patient Intake is now the DTC form's own two groups and nothing else. A "Patient" referral type does <b>not</b> move someone there any more.</p>
+      </div>
+      <p class="src">src/lib/profile/referralSplit.ts · src/hooks/useRoleCounts.ts</p>
+    </div>
+
+    <div class="gate">
+      <div class="gate-h"><span class="gate-n">GATE 2</span><h3>Due today</h3></div>
+      <p><b>There is no single rule.</b> This is where most confusion comes from — check which column controls the stage you're in.</p>
+      <div class="due">
+        <div class="due-row">
+          <span class="who">Evaluate · Send Request · Confirm Receipt · Chase · Doctor Appts</span>
+          <span class="what"><b>Next Action Date.</b> Hidden only when the date is in the future. Blank, today, past = due.</span>
+        </div>
+        <div class="due-row">
+          <span class="who">Benefits · Submit Auth</span>
+          <span class="what"><b>Status AND date together.</b> Hidden when status is <code>Follow Up</code> and the date is blank or future. Once the date arrives, they're due again.</span>
+        </div>
+        <div class="due-row">
+          <span class="who">Auth Outstanding · DVS</span>
+          <span class="what"><b>Date only.</b> Status is ignored completely. <b>Blank date = due now.</b></span>
+        </div>
+        <div class="due-row">
+          <span class="who">Welcome Call · all three Profile queues</span>
+          <span class="what"><b>Follow Up status.</b> Hidden when it's <code>Done</code>.</span>
+        </div>
+        <div class="due-row">
+          <span class="who">Final Confirmation</span>
+          <span class="what"><b>No rule at all.</b> Only escalation removes anyone.</span>
+        </div>
+        <div class="due-row">
+          <span class="who">Scheduled Calls</span>
+          <span class="what"><b>The clock.</b> Drops off when the booked time passes, or if the booking is <code>Canceled</code>.</span>
+        </div>
+      </div>
+      <p class="src">src/hooks/useRoleCounts.ts</p>
+    </div>
+
+    <div class="gate">
+      <div class="gate-h"><span class="gate-n">GATE 3</span><h3>Escalated</h3></div>
+      <p>Escalating <b>removes a patient from the rep's list and count</b> and puts them in a manager column. That's the point of it. Two rungs:</p>
+      <div class="due">
+        <div class="due-row">
+          <span class="who">Manager Escalation Required</span>
+          <span class="what">→ <b>Manager Intervention</b> column.</span>
+        </div>
+        <div class="due-row">
+          <span class="who">Final Escalation Required</span>
+          <span class="what">→ <b>Final Decisions</b> column. On Medical Evaluation this means a rep <b>proposed</b> the patient be marked stuck. It's a proposal, not a decision.</span>
+        </div>
+      </div>
+      <p style="margin-top:14px;">Only a manager sends someone back down. Doing so clears the escalation — that's what returns them to the rep.</p>
+      <div class="alert warn" style="margin-bottom:0;">
+        <span class="lbl">Two exceptions worth knowing</span>
+        <p><b>DVS ignores escalation entirely.</b> Escalated patients stay in that queue and that count.</p>
+        <p><b>Proposed-stuck on Medical Evaluation is counted nowhere</b> — not in the active count, not in the escalated count. Reach them through the manager views.</p>
+      </div>
+      <p class="src">src/hooks/useRoleCounts.ts</p>
+    </div>
+
+    <div class="alert">
+      <span class="lbl">The failure this system is prone to</span>
+      <p><b>A patient can end up in no queue at all, and nothing will tell you.</b> No error. No warning. No red number. They just stop being worked.</p>
+      <p>So "nothing looks wrong" proves nothing. <b>If a patient feels stuck, report it</b> even if you can't point at anything.</p>
+    </div>
+  </section>
+
+  <!-- ══ 3 · SAVE MESSAGES ══════════════════════════════════ -->
+  <section id="save" class="brk">
+    <div class="shead"><span class="snum">03</span><h2>What the save message meant</h2></div>
+    <p class="shead-note">The toast after a save is the single most useful clue in the app. There are three and they mean completely different things.</p>
+
+    <div class="toast t-ok">
+      <p class="msg m-ok">"… — confirmed in Monday"</p>
+      <p><b>Done and durable.</b> Everything wrote and was read back. Nothing to do.</p>
+    </div>
+
+    <div class="toast t-wait">
+      <p class="msg m-wait">"Data in server — Monday confirmation still pending"</p>
+      <p><b>It will run.</b> The job is queued on the server and is not lost.</p>
+      <p><b>Do NOT save again.</b> Repeating it writes twice. Wait, then check the board.</p>
+    </div>
+
+    <div class="toast t-bad">
+      <p class="msg m-bad">"Save failed — nothing was written"</p>
+      <p><b>The patient did not advance.</b> Retry. If it fails twice, report it with the item link and the time.</p>
+    </div>
+
+    <div class="alert warn">
+      <span class="lbl">No toast at all?</span>
+      <p>Some smaller actions — logging an attempt, marking complete, the Subscription save — write more directly and confirm less. <b>If you saw no message, check the board.</b></p>
+    </div>
+
+    <h3 style="margin:36px 0 4px; font-size:1.15rem; font-weight:800;">Why a save can refuse to advance someone</h3>
+    <p class="shead-note">Useful when a rep insists they saved and the patient didn't move.</p>
+
+    <figure class="dg">
+      <div class="fig-scroll">
+        <svg viewBox="0 0 720 400" role="img" aria-label="The save writes the data, reads it back to confirm, and only then flips the Stage Advancer. If it cannot confirm within about twelve seconds it aborts and never flips it.">
+          <defs>
+            <marker id="m2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse"><path class="mk" d="M 0 0 L 10 5 L 0 10 z"/></marker>
+            <marker id="m2x" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse"><path class="mkx" d="M 0 0 L 10 5 L 0 10 z"/></marker>
+          </defs>
+
+          <rect class="box" x="30" y="18" width="300" height="50" rx="8"/>
+          <text class="t" x="180" y="49" text-anchor="middle">1 · Write the data</text>
+
+          <rect class="box" x="30" y="94" width="300" height="50" rx="8"/>
+          <text class="t" x="180" y="125" text-anchor="middle">2 · Read it back</text>
+
+          <polygon class="dec" points="180,170 330,213 180,256 30,213"/>
+          <text class="t" x="180" y="209" text-anchor="middle">Confirmed?</text>
+          <text class="s" x="180" y="228" text-anchor="middle">~12 seconds to prove it</text>
+
+          <rect class="box" x="30" y="282" width="300" height="50" rx="8"/>
+          <text class="t" x="180" y="313" text-anchor="middle">3 · Flip the Stage Advancer</text>
+
+          <rect class="good" x="30" y="348" width="300" height="44" rx="8"/>
+          <text class="t" x="180" y="376" text-anchor="middle" style="fill:var(--ok)">Patient moves on</text>
+
+          <rect class="stop" x="404" y="164" width="292" height="98" rx="8"/>
+          <text class="t" x="424" y="192" text-anchor="start" style="fill:var(--app)">STOPS HERE</text>
+          <text class="s" x="424" y="216" text-anchor="start">The Stage Advancer is never flipped.</text>
+          <text class="s" x="424" y="236" text-anchor="start">The patient stays put — on purpose.</text>
+          <text class="s" x="424" y="254" text-anchor="start">This is the safety net, not a bug.</text>
+
+          <g class="flow" marker-end="url(#m2)">
+            <line x1="180" y1="68"  x2="180" y2="92"/>
+            <line x1="180" y1="144" x2="180" y2="168"/>
+            <line x1="180" y1="256" x2="180" y2="280"/>
+            <line x1="180" y1="332" x2="180" y2="346"/>
+          </g>
+          <g class="flow-x" marker-end="url(#m2x)">
+            <line x1="330" y1="213" x2="402" y2="213"/>
+          </g>
+          <g class="al"><text x="192" y="273" text-anchor="start">yes</text></g>
+          <g class="al-x"><text x="366" y="205" text-anchor="middle">no</text></g>
+        </svg>
+      </div>
+      <figcaption>The app refuses to trigger the Monday automation unless it can prove the data landed first — otherwise the automation carries <b>stale values</b> to the next stage.</figcaption>
+    </figure>
+  </section>
+
+  <!-- ══ 4 · SYMPTOM INDEX ══════════════════════════════════ -->
+  <section id="index" class="brk">
+    <div class="shead"><span class="snum">04</span><h2>Find your symptom</h2></div>
+    <p class="shead-note">Colour on the left = who fixes it. Skim the bold headings.</p>
+
+    <p class="grp">Patient is missing or in the wrong place</p>
+
+    <div class="sym d-data">
+      <div class="sym-top"><h4>Patient vanished from a queue</h4><span class="chip k-data">Board data</span></div>
+      <p>Check <b>Escalation</b> first. If it's set, they're in a manager column — working as designed.</p>
+      <p>Not escalated? Check the due-rule column for that stage (Gate 2).</p>
+    </div>
+
+    <div class="sym d-app">
+      <div class="sym-top"><h4>Patient is in no queue and no count</h4><span class="chip k-app">App rules</span></div>
+      <p>The <b>Stage Advancer</b> holds a value no rule matches. Every filter skips them silently.</p>
+      <p><b>Report it with the item link.</b> This never fixes itself.</p>
+    </div>
+
+    <div class="sym d-data">
+      <div class="sym-top"><h4>Right board, wrong queue</h4><span class="chip k-data">Board data</span></div>
+      <p>Check the splitter: <b>Clinicals Method</b> for Chase, <b>Already In System</b> for Profile.</p>
+      <p>A blank Clinicals Method routes to Fax deliberately, so nobody falls through.</p>
+    </div>
+
+    <div class="sym d-app">
+      <div class="sym-top"><h4>Escalated, but in no manager column</h4><span class="chip k-app">App rules</span></div>
+      <p>They're invisible to everyone — the rep can't see them and no manager chart lists them.</p>
+      <p><b>Highest-priority bug in the system. Report immediately.</b></p>
+    </div>
+
+    <p class="grp">Saved it and it didn't stick</p>
+
+    <div class="sym d-save">
+      <div class="sym-top"><h4>Rep saved it, board is blank</h4><span class="chip k-save">The save</span></div>
+      <p>Ask <b>what the toast said</b> (section 03). Then read the item's <b>Activity Log</b>.</p>
+      <p>No write logged = it never reached Monday. Written then changed = an automation or bot overwrote it.</p>
+    </div>
+
+    <div class="sym d-setup">
+      <div class="sym-top"><h4>Saved, but the patient never advanced</h4><span class="chip k-setup">Board setup</span></div>
+      <p>Did the <b>Stage Advancer</b> actually change on the item?</p>
+      <p>No = the save aborted on purpose; retry. Yes = the <b>Monday automation is broken</b>.</p>
+    </div>
+
+    <div class="sym d-setup">
+      <div class="sym-top"><h4>One column is blank for every patient</h4><span class="chip k-setup">Board setup</span></div>
+      <p>That column was <b>deleted and recreated</b>. It got a new hidden ID and the app is still asking for the old one.</p>
+      <p><b>Renaming a column is safe. Deleting and recreating one silently breaks it.</b></p>
+    </div>
+
+    <div class="sym d-setup">
+      <div class="sym-top"><h4>Duplicate-looking status labels appeared</h4><span class="chip k-setup">Board setup</span></div>
+      <p>A label was renamed. Some writes match <b>exact text</b>, so Monday made a new label instead of failing.</p>
+      <p>Flag status-label renames <b>before</b> they happen.</p>
+    </div>
+
+    <p class="grp">Numbers don't agree</p>
+
+    <div class="sym d-ok">
+      <div class="sym-top"><h4>A list and its own count disagree</h4><span class="chip k-ok">Not a bug</span></div>
+      <p>Lists refresh at 30 seconds, counts at 60. <b>Wait a minute and reload.</b></p>
+      <p>Only report it if it survives that.</p>
+    </div>
+
+    <div class="sym d-app">
+      <div class="sym-top"><h4>Role bar and Oversight chart disagree</h4><span class="chip k-app">App rules</span></div>
+      <p>The same rule lives in five places and one copy drifted (section 05).</p>
+      <p><b>Report every number you can see</b> — bar, list, chart. The pattern identifies which one.</p>
+    </div>
+
+    <div class="sym d-app">
+      <div class="sym-top"><h4>Burndown says a role is "not connected"</h4><span class="chip k-app">App rules</span></div>
+      <p>The morning snapshot has no entry for that role. It says "not connected" rather than a misleading zero — that part is deliberate.</p>
+    </div>
+
+    <div class="sym d-ok">
+      <div class="sym-top"><h4>FAX bar says "Done!" but faxes are waiting</h4><span class="chip k-ok">Not a bug</span></div>
+      <p>Once the count hits zero it stays "Done!" until midnight, even as new faxes arrive.</p>
+      <p>Work from the <b>Fax Inbox page</b> instead of the bar.</p>
+    </div>
+
+    <p class="grp">Outside systems</p>
+
+    <div class="sym d-bot">
+      <div class="sym-top"><h4>Eligibility results stay blank</h4><span class="chip k-bot">A bot</span></div>
+      <p><b>The app never writes those columns</b> — a separate service does.</p>
+      <p>First check Name, DOB, insurance and Member ID were filled in <b>before</b> the check ran. If they weren't, it never fired.</p>
+    </div>
+
+    <div class="sym d-bot">
+      <div class="sym-top"><h4>DVS or claims not progressing</h4><span class="chip k-bot">A bot</span></div>
+      <p>DVS is automatic and that page is a read-only monitor.</p>
+      <p><b>Supplies and pump claims are separate columns.</b> A pump problem won't show in the supplies one.</p>
+    </div>
+
+    <div class="sym d-bot">
+      <div class="sym-top"><h4>Fax or email didn't send</h4><span class="chip k-bot">A bot</span></div>
+      <p>Sending never touches Monday. Check the address or fax number on the item, and that the person is signed in.</p>
+    </div>
+
+    <div class="sym d-bot">
+      <div class="sym-top"><h4>Incoming calls stopped appearing</h4><span class="chip k-bot">A bot</span></div>
+      <p>Check that person's ring setting: <code>all</code>, <code>list</code>, or <code>off</code>.</p>
+      <p>Narrowing it silences <b>their screen only</b> — it can never make a call unanswerable by someone else.</p>
+    </div>
+
+    <div class="sym d-ok">
+      <div class="sym-top"><h4>Blank screen or a page won't load</h4><span class="chip k-ok">Not a bug</span></div>
+      <p><b>Reload once.</b> A tab left open across a release does this. Report it only if reloading doesn't fix it.</p>
+    </div>
+  </section>
+
+  <!-- ══ 5 · FIVE PLACES ════════════════════════════════════ -->
+  <section id="five" class="brk">
+    <div class="shead"><span class="snum">05</span><h2>Why a fix sometimes half-works</h2></div>
+
+    <div class="headline">
+      <span class="lbl">The pattern behind most count bugs</span>
+      <p class="big">One rule is written in five separate places.</p>
+      <p>Change four of the five and nothing errors — you just get a list that's right and a count that's wrong.</p>
     </div>
 
     <figure class="dg">
-      <span class="fig-n">Figure 2</span>
       <div class="fig-scroll">
-        <svg viewBox="0 0 960 210" role="img" aria-label="Patients flow left to right across six Monday boards: DTC Intake, Profile Send Off, Welcome Call, Medical Evaluation, Insurance, then Subscription and Claims.">
+        <svg viewBox="0 0 720 300" role="img" aria-label="One rule feeds five consumers: the role page, the role bar count, the Oversight charts, the build-time snapshot and the 9 AM snapshot.">
           <defs>
-            <marker id="a2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
-              <path class="mk" d="M 0 0 L 10 5 L 0 10 z"/>
-            </marker>
+            <marker id="m3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse"><path class="mk" d="M 0 0 L 10 5 L 0 10 z"/></marker>
           </defs>
-          <g class="flow" marker-end="url(#a2)">
-            <line x1="150" y1="72" x2="176" y2="72"/>
-            <line x1="306" y1="72" x2="332" y2="72"/>
-            <line x1="462" y1="72" x2="488" y2="72"/>
-            <line x1="618" y1="72" x2="644" y2="72"/>
-            <line x1="774" y1="72" x2="800" y2="72"/>
+          <rect class="hub" x="16" y="106" width="190" height="88" rx="9"/>
+          <text class="t" x="111" y="142" text-anchor="middle">ONE RULE</text>
+          <text class="s" x="111" y="164" text-anchor="middle">e.g. "Email goes with</text>
+          <text class="s" x="111" y="181" text-anchor="middle">Parachute, not Fax"</text>
+
+          <g class="flow" marker-end="url(#m3)">
+            <path d="M 206 150 L 250 150 L 250 32  L 292 32"/>
+            <path d="M 206 150 L 250 150 L 250 91  L 292 91"/>
+            <path d="M 206 150 L 292 150"/>
+            <path d="M 206 150 L 250 150 L 250 209 L 292 209"/>
+            <path d="M 206 150 L 250 150 L 250 268 L 292 268"/>
           </g>
 
           <g>
-            <rect class="box" x="20" y="38" width="130" height="68" rx="6"/>
-            <text class="t" x="85" y="66" text-anchor="middle" style="font-size:11.5px">DTC Intake</text>
-            <text class="s" x="85" y="84" text-anchor="middle" style="font-size:9.5px">top of funnel</text>
-
-            <rect class="box" x="176" y="38" width="130" height="68" rx="6"/>
-            <text class="t" x="241" y="60" text-anchor="middle" style="font-size:11.5px">Profile</text>
-            <text class="t" x="241" y="74" text-anchor="middle" style="font-size:11.5px">Send Off</text>
-            <text class="s" x="241" y="92" text-anchor="middle" style="font-size:9.5px">4 roles</text>
-
-            <rect class="box" x="332" y="38" width="130" height="68" rx="6"/>
-            <text class="t" x="397" y="66" text-anchor="middle" style="font-size:11.5px">Welcome Call</text>
-            <text class="s" x="397" y="84" text-anchor="middle" style="font-size:9.5px">2 roles</text>
-
-            <rect class="box" x="488" y="38" width="130" height="68" rx="6"/>
-            <text class="t" x="553" y="60" text-anchor="middle" style="font-size:11.5px">Medical</text>
-            <text class="t" x="553" y="74" text-anchor="middle" style="font-size:11.5px">Evaluation</text>
-            <text class="s" x="553" y="92" text-anchor="middle" style="font-size:9.5px">6 roles</text>
-
-            <rect class="box" x="644" y="38" width="130" height="68" rx="6"/>
-            <text class="t" x="709" y="66" text-anchor="middle" style="font-size:11.5px">Insurance</text>
-            <text class="s" x="709" y="84" text-anchor="middle" style="font-size:9.5px">5 roles</text>
-
-            <rect class="box" x="800" y="38" width="140" height="68" rx="6"/>
-            <text class="t" x="870" y="60" text-anchor="middle" style="font-size:11.5px">Subscription</text>
-            <text class="t" x="870" y="74" text-anchor="middle" style="font-size:11.5px">+ Claims</text>
-            <text class="s" x="870" y="92" text-anchor="middle" style="font-size:9.5px">recurring</text>
-          </g>
-
-          <g class="s" style="font-size:10px">
-            <text x="85"  y="132" text-anchor="middle">read-only here</text>
-            <text x="241" y="132" text-anchor="middle">Verified · Already In System</text>
-            <text x="241" y="147" text-anchor="middle">Patient Intake · Scheduled Calls</text>
-            <text x="397" y="132" text-anchor="middle">Welcome Call</text>
-            <text x="397" y="147" text-anchor="middle">Final Confirmation</text>
-            <text x="553" y="132" text-anchor="middle">Evaluate · Send Request</text>
-            <text x="553" y="147" text-anchor="middle">Confirm Receipt · Chase ×2</text>
-            <text x="553" y="162" text-anchor="middle">Doctor Appointments</text>
-            <text x="709" y="132" text-anchor="middle">Benefits · Submit Auth</text>
-            <text x="709" y="147" text-anchor="middle">Auth Outstanding · DVS</text>
-            <text x="709" y="162" text-anchor="middle">Auth Denied</text>
-            <text x="870" y="132" text-anchor="middle">Subscription</text>
-            <text x="870" y="147" text-anchor="middle">Update Clinicals</text>
+            <rect class="box" x="292" y="12" width="412" height="40" rx="7"/>
+            <text class="t" x="308" y="37" text-anchor="start" style="font-size:12.5px">The role page — what's in the rep's list</text>
+            <rect class="box" x="292" y="71" width="412" height="40" rx="7"/>
+            <text class="t" x="308" y="96" text-anchor="start" style="font-size:12.5px">The role bar — the number on the dashboard</text>
+            <rect class="box" x="292" y="130" width="412" height="40" rx="7"/>
+            <text class="t" x="308" y="155" text-anchor="start" style="font-size:12.5px">Oversight charts — which manager sees them</text>
+            <rect class="box" x="292" y="189" width="412" height="40" rx="7"/>
+            <text class="t" x="308" y="214" text-anchor="start" style="font-size:12.5px">Build-time snapshot — early-morning baseline</text>
+            <rect class="box" x="292" y="248" width="412" height="40" rx="7"/>
+            <text class="t" x="308" y="273" text-anchor="start" style="font-size:12.5px">9 AM snapshot — the usual baseline</text>
           </g>
         </svg>
       </div>
-      <figcaption>The six boards a patient passes through, and the roles that work each one. Movement between boards is performed by Monday automations, not by the app.</figcaption>
+      <figcaption>When a number and a list disagree and the refresh delay has passed, this is the mechanism to suspect.</figcaption>
     </figure>
+
+    <p><b>What this means for you:</b> when reporting a counting problem, name <b>every</b> place you saw it. "Bar says 12, list shows 9, chart says 14" identifies which copy drifted. "The count is wrong" doesn't.</p>
   </section>
 
-  <!-- ══ 3 · OWNERS ═════════════════════════════════════════ -->
-  <section id="owners">
-    <div class="col">
-      <div class="part"><span class="part-no">03</span><h2>The five owners</h2></div>
-      <p class="sub">Every problem in this system belongs to one of five categories. Naming the category is most of the diagnosis, because it decides who can fix it.</p>
-    </div>
+  <!-- ══ 6 · REPORT ═════════════════════════════════════════ -->
+  <section id="report" class="brk">
+    <div class="shead"><span class="snum">06</span><h2>How to report it</h2></div>
+    <p class="shead-note">Copy this. The last three lines are what make it fixable same-day.</p>
 
-    <div class="owners">
-      <div class="owner">
-        <span class="chip c-data">Board data</span>
-        <p>A value in a column is wrong, missing, or was never set. Fixed <strong>on the board</strong> by anyone with access.</p>
-      </div>
-      <div class="owner">
-        <span class="chip c-setup">Board setup</span>
-        <p>A column, a status label, or an automation was renamed, deleted, or switched off. Fixed <strong>in Monday by a board admin</strong>. No code.</p>
-      </div>
-      <div class="owner">
-        <span class="chip c-bot">A bot</span>
-        <p>A Railway service owns those columns — eligibility, DVS, doctor lookup, texting. <strong>Backend work</strong>; the app cannot fix it.</p>
-      </div>
-      <div class="owner">
-        <span class="chip c-save">The save</span>
-        <p>The app attempted a write and it did not land, or has not landed yet. <strong>Check what the toast said</strong>, then retry or escalate.</p>
-      </div>
-      <div class="owner">
-        <span class="chip c-app">App rules</span>
-        <p>Which queue a patient lands in, whether they're counted, which chart shows them. <strong>Code change</strong> — and see section 07.</p>
-      </div>
-    </div>
+    <div class="tpl">Patient:      [name + Monday item link]
+Where:        [page, chart or role bar]
+Expected:     [what you thought would happen]
+Saw:          [what actually happened]
+When:         [date + rough time]
 
-    <div class="key col">
-      <span class="key-label">The fork every diagnosis starts at</span>
-      <p><strong>Open the patient's item on the Monday board and read the columns themselves.</strong></p>
-      <p>If the board is wrong, something wrote the wrong value or nothing wrote at all — that is Board data, Board setup, A bot, or The save. If the board is right and the screen disagrees, the data is fine and a rule is filtering or counting it — that is App rules. One look splits the problem in half.</p>
+Toast:        [exact words, if any]
+On the board: [what the columns say right now]
+Also seen in: [any other count or chart that disagrees]</div>
+
+    <div class="split" style="margin-top:22px;">
+      <div class="half">
+        <h4>Where to look yourself</h4>
+        <p><b>Activity Log</b> on the Monday item — who changed what, when. Needs no special access and answers most questions.</p>
+      </div>
+      <div class="half">
+        <h4>Where to escalate</h4>
+        <p><b>Pipeline Oversight</b> for escalated patients. Beyond that — the audit log and health checks — ask Josh.</p>
+      </div>
     </div>
   </section>
 
-  <!-- ══ 4 · QUEUE ══════════════════════════════════════════ -->
-  <section id="queue">
-    <div class="col">
-      <div class="part"><span class="part-no">04</span><h2>How a patient reaches a queue</h2></div>
-      <p class="sub">A patient must pass three gates in order to appear in somebody's work list. Nearly every “where did they go?” question is one of these three.</p>
-    </div>
+  <!-- ══ 7 · LOOKUP ═════════════════════════════════════════ -->
+  <section id="lookup" class="brk">
+    <div class="shead"><span class="snum">07</span><h2>Lookup</h2></div>
+    <p class="shead-note">Don't read these. Open one when you need it.</p>
 
-    <figure class="dg">
-      <span class="fig-n">Figure 3</span>
-      <div class="fig-scroll">
-        <svg viewBox="0 0 800 660" role="img" aria-label="A patient item passes three gates in order: which queue, due today, and escalated. Failing any gate diverts them off the rep's list — to no queue at all, to a snooze, or to a manager column.">
-          <defs>
-            <marker id="a3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
-              <path class="mk" d="M 0 0 L 10 5 L 0 10 z"/>
-            </marker>
-            <marker id="a3b" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
-              <path class="mkb" d="M 0 0 L 10 5 L 0 10 z"/>
-            </marker>
-          </defs>
-
-          <rect class="box" x="205" y="16" width="250" height="52" rx="7"/>
-          <text class="t" x="330" y="39" text-anchor="middle">A patient item on a board</text>
-          <text class="s" x="330" y="57" text-anchor="middle">fetched on the 30-second poll</text>
-
-          <g class="flow" marker-end="url(#a3)">
-            <line x1="330" y1="68" x2="330" y2="102"/>
-            <line x1="330" y1="196" x2="330" y2="272"/>
-            <line x1="330" y1="366" x2="330" y2="422"/>
-            <line x1="330" y1="516" x2="330" y2="568"/>
-          </g>
-          <g class="flow-bad" marker-end="url(#a3b)">
-            <line x1="465" y1="150" x2="528" y2="150"/>
-            <line x1="465" y1="320" x2="528" y2="320"/>
-            <line x1="465" y1="470" x2="528" y2="470"/>
-          </g>
-
-          <polygon class="dec" points="330,104 465,150 330,196 195,150"/>
-          <text class="hd" x="330" y="138" text-anchor="middle">GATE 1</text>
-          <text class="t" x="330" y="158" text-anchor="middle">Which queue?</text>
-
-          <polygon class="dec" points="330,274 465,320 330,366 195,320"/>
-          <text class="hd" x="330" y="308" text-anchor="middle">GATE 2</text>
-          <text class="t" x="330" y="328" text-anchor="middle">Due today?</text>
-
-          <polygon class="dec" points="330,424 465,470 330,516 195,470"/>
-          <text class="hd" x="330" y="458" text-anchor="middle">GATE 3</text>
-          <text class="t" x="330" y="478" text-anchor="middle">Escalated?</text>
-
-          <rect class="bad"  x="528" y="122" width="256" height="56" rx="7"/>
-          <text class="t" x="656" y="145" text-anchor="middle">In no queue at all</text>
-          <text class="s" x="656" y="163" text-anchor="middle">counted nowhere · no error shown</text>
-
-          <rect class="soft" x="528" y="292" width="256" height="56" rx="7"/>
-          <text class="t" x="656" y="315" text-anchor="middle">Snoozed</text>
-          <text class="s" x="656" y="333" text-anchor="middle">returns on its follow-up date</text>
-
-          <rect class="soft" x="528" y="442" width="256" height="56" rx="7"/>
-          <text class="t" x="656" y="465" text-anchor="middle">A manager column</text>
-          <text class="s" x="656" y="483" text-anchor="middle">visible in Pipeline Oversight</text>
-
-          <rect class="ok" x="180" y="568" width="300" height="60" rx="7"/>
-          <text class="t" x="330" y="592" text-anchor="middle">In the rep's list and count</text>
-          <text class="s" x="330" y="611" text-anchor="middle">the only outcome that is “work today”</text>
-
-          <g class="al">
-            <text x="341" y="90" text-anchor="start">every patient</text>
-            <text x="341" y="238" text-anchor="start">matched a role</text>
-            <text x="341" y="398" text-anchor="start">yes</text>
-            <text x="341" y="548" text-anchor="start">no</text>
-          </g>
-          <g class="al-bad">
-            <text x="496" y="142" text-anchor="middle">none</text>
-            <text x="496" y="312" text-anchor="middle">no</text>
-            <text x="496" y="462" text-anchor="middle">yes</text>
-          </g>
-        </svg>
-      </div>
-      <figcaption>The three gates, in the order the code applies them. The top-right outcome is the dangerous one: a patient who matches no role is counted nowhere and listed nowhere, and nothing anywhere reports it.</figcaption>
-    </figure>
-
-    <div class="rules">
-      <div class="rule">
-        <div class="rule-head"><span class="rule-n">GATE 1</span><strong>Which queue — board, group, and for some stages a splitter column</strong></div>
-        <p>Most stages are simply “this board, this group”. Three places split one group into more than one role:</p>
-        <ul class="tight">
-          <li><strong>Medical Evaluation</strong> is one group split by the <em>Stage Advancer</em> text, matched exactly: <code>Evaluate MN</code>, <code>Send Request</code>, <code>Confirm Receipt</code>, <code>Chase Clinicals</code>, <code>Doctor Appointment</code>.</li>
-          <li><strong>Chase Clinicals</strong> splits again on <em>Clinicals Method</em>: <code>Parachute</code> or <code>Email</code> go to <strong>Chase — Email &amp; Parachute</strong>; <strong>everything else, including blank</strong>, goes to <strong>Chase — Fax</strong>.</li>
-          <li><strong>Profile Send Off</strong> separates <em>Already In System</em> = <code>Yes</code> into its own role. Everything else in the <code>1. Intake</code> group is Verified Referrals.</li>
-        </ul>
-        <div class="key stop" style="margin:16px 0 4px;">
-          <span class="key-label">Corrected — changed 10 August 2026</span>
-          <p><strong>Patient Intake is no longer a split of the <code>1. Intake</code> group.</strong> It is now the DTC form's own two groups on the same board, and nothing else. Referral Type and Referral Source no longer route anyone to it — they are still shown and still labelled in Oversight, but they no longer decide the queue.</p>
-          <p>If you have been told that a “Patient” referral type moves someone to Patient Intake, that is out of date.</p>
-        </div>
-        <p class="src">Defined in <code>src/lib/profile/referralSplit.ts</code> and duplicated in <code>src/hooks/useRoleCounts.ts</code>.</p>
-      </div>
-
-      <div class="rule">
-        <div class="rule-head"><span class="rule-n">GATE 2</span><strong>Due today — and there are three different rules</strong></div>
-        <p>This is the most common source of confusion, because the rule is not the same on every board. There are three distinct shapes:</p>
+    <details class="lookup">
+      <summary>Every role, and which board it's on</summary>
+      <div class="lookup-body">
         <div class="t-scroll">
           <table>
-            <thead><tr><th>Stage</th><th>Controlling column</th><th>Hidden from the queue when…</th></tr></thead>
+            <thead><tr><th>Role</th><th>Board</th><th>Worth knowing</th></tr></thead>
             <tbody>
-              <tr>
-                <td><strong>Evaluate, Send Request,<br>Confirm Receipt, Chase ×2,<br>Doctor Appointments</strong></td>
-                <td class="hl">Next Action Date</td>
-                <td>The date is <strong>in the future</strong>. Blank, today, or past all count as due.</td>
-              </tr>
-              <tr>
-                <td><strong>Benefits, Submit Auth</strong></td>
-                <td class="hl">Follow Up <em>status</em> and Follow Up Date together</td>
-                <td>Status is <code>Follow Up</code> <strong>and</strong> the date is blank or in the future. A <code>Follow Up</code> whose date has arrived is due again.</td>
-              </tr>
-              <tr>
-                <td><strong>Auth Outstanding, DVS</strong></td>
-                <td class="hl">Follow Up Date only</td>
-                <td>The date is in the future. The status column is <strong>ignored entirely</strong>, and a <strong>blank date counts as due</strong>.</td>
-              </tr>
-              <tr>
-                <td><strong>Welcome Call</strong></td>
-                <td class="hl">Follow Up status</td>
-                <td>Status is <code>Done</code>.</td>
-              </tr>
-              <tr>
-                <td><strong>Final Confirmation</strong></td>
-                <td class="hl">— none —</td>
-                <td>Never. This group has <strong>no follow-up rule at all</strong>; only escalation removes a patient.</td>
-              </tr>
-              <tr>
-                <td><strong>Verified Referrals,<br>Already In System,<br>Patient Intake</strong></td>
-                <td class="hl">Follow Up status</td>
-                <td>Status is <code>Done</code>.</td>
-              </tr>
-              <tr>
-                <td><strong>Scheduled Calls</strong></td>
-                <td class="hl">Booked time of day</td>
-                <td>The booked time has passed, or the booking is <code>Canceled</code>. Booked today with no time on file still counts.</td>
-              </tr>
-              <tr>
-                <td><strong>Subscription, Update Clinicals</strong></td>
-                <td class="hl">— none —</td>
-                <td>Never. These count every item in the group.</td>
-              </tr>
+              <tr><td><b>Verified Referrals</b></td><td>Profile Send Off</td><td><code>1. Intake</code>, minus already-in-system</td></tr>
+              <tr><td><b>Patient Intake — DTC &amp; CareCentrix</b></td><td>Profile Send Off</td><td>The DTC form's own two groups</td></tr>
+              <tr><td><b>Already In System</b></td><td>Profile Send Off</td><td>Already In System = <code>Yes</code></td></tr>
+              <tr><td><b>Patient Intake — Scheduled Calls</b></td><td>Profile Send Off</td><td>Counted by the clock</td></tr>
+              <tr><td><b>Evaluate</b></td><td>Medical Evaluation</td><td>Stage = <code>Evaluate MN</code></td></tr>
+              <tr><td><b>Send Request</b></td><td>Medical Evaluation</td><td></td></tr>
+              <tr><td><b>Confirm Receipt</b></td><td>Medical Evaluation</td><td></td></tr>
+              <tr><td><b>Chase Clinicals — Fax</b></td><td>Medical Evaluation</td><td>Method <code>Fax</code> <b>or blank</b></td></tr>
+              <tr><td><b>Chase — Email &amp; Parachute</b></td><td>Medical Evaluation</td><td>Method <code>Parachute</code> or <code>Email</code></td></tr>
+              <tr><td><b>Doctor Appointments</b></td><td>Medical Evaluation</td><td>Calling the patient, not the office</td></tr>
+              <tr><td><b>Benefits</b></td><td>Insurance</td><td></td></tr>
+              <tr><td><b>Submit Auth</b></td><td>Insurance</td><td></td></tr>
+              <tr><td><b>Auth Outstanding</b></td><td>Insurance</td><td>Date-only snooze</td></tr>
+              <tr><td><b>DVS</b></td><td>Insurance</td><td>Read-only. Ignores escalation</td></tr>
+              <tr><td><b>Auth Denied</b></td><td>Insurance</td><td><b>Under construction</b> — worked on the board</td></tr>
+              <tr><td><b>Welcome Call</b></td><td>Welcome Call</td><td></td></tr>
+              <tr><td><b>Final Profile Confirmation</b></td><td>Welcome Call</td><td>No follow-up rule</td></tr>
+              <tr><td><b>Subscription</b></td><td>Subscription</td><td>Counts the whole group</td></tr>
+              <tr><td><b>Update Clinicals</b></td><td>Subscription</td><td>Counts the whole group</td></tr>
+              <tr><td><b>Patient Texting</b></td><td>—</td><td>Not a stage. Look up anyone</td></tr>
+              <tr><td><b>Patient Questions</b></td><td>Subscription + Claims</td><td>Inbox from two boards</td></tr>
+              <tr><td><b>FAX</b></td><td>—</td><td>Count only. Not clickable</td></tr>
             </tbody>
           </table>
         </div>
-        <p class="note">So “why is this still showing?” and “why did this vanish?” have different answers depending on which stage you are standing in. Check which column actually controls that stage before concluding anything.</p>
-        <p class="src">Defined in <code>src/hooks/useRoleCounts.ts</code>; the role pages mirror it via each role's <code>useMondayPatients</code> hook.</p>
       </div>
+    </details>
 
-      <div class="rule">
-        <div class="rule-head"><span class="rule-n">GATE 3</span><strong>Escalation removes the patient from the rep — with one exception</strong></div>
-        <p>An escalated patient leaves the rep's list <em>and</em> the rep's count, and appears in a manager column in Pipeline Oversight. That is what escalating is for. There are two rungs:</p>
-        <ul class="tight">
-          <li><strong>Manager Escalation Required</strong> — the <em>Manager Intervention</em> column.</li>
-          <li><strong>Final Escalation Required</strong> — the <em>Final Decisions</em> column. On the Medical Evaluation board this specifically means a rep has <strong>proposed</strong> that the patient be marked stuck; a manager approves or returns it. It is a proposal, not a decision.</li>
-        </ul>
-        <p class="note"><strong>On the Medical Evaluation board, a proposed-stuck patient is counted in neither the active count nor the escalated count.</strong> They are skipped entirely, and are reached through the manager views.</p>
-        <div class="key warn" style="margin:16px 0 4px;">
-          <span class="key-label">The exception</span>
-          <p><strong>DVS ignores escalation.</strong> Escalated patients stay in the DVS queue and the DVS count, because the DVS queue keys off the DVS and claims status columns instead. An escalation label carried in from an earlier stage must not hide them.</p>
-        </div>
-        <p class="src">Defined in <code>src/hooks/useRoleCounts.ts</code>. Escalation columns: Medical Evaluation <code>color_mm1x7997</code>, Insurance <code>color_mm2vsh2f</code>, Welcome Call <code>color_mm1x7997</code>.</p>
-      </div>
-    </div>
-
-    <figure class="dg">
-      <span class="fig-n">Figure 4</span>
-      <div class="fig-scroll">
-        <svg viewBox="0 0 800 250" role="img" aria-label="The escalation ladder: a patient moves from the processor queue to Manager Intervention, then to Final Decisions, and can be sent back down at each step.">
-          <defs>
-            <marker id="a4" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
-              <path class="mk" d="M 0 0 L 10 5 L 0 10 z"/>
-            </marker>
-          </defs>
-
-          <rect class="ok"  x="24"  y="86" width="212" height="88" rx="7"/>
-          <text class="t" x="130" y="118" text-anchor="middle">Processor queue</text>
-          <text class="s" x="130" y="138" text-anchor="middle">no escalation set</text>
-          <text class="s" x="130" y="155" text-anchor="middle">the rep works them</text>
-
-          <rect class="soft" x="294" y="86" width="212" height="88" rx="7"/>
-          <text class="t" x="400" y="112" text-anchor="middle">Manager Intervention</text>
-          <text class="s" x="400" y="132" text-anchor="middle">“Manager Escalation</text>
-          <text class="s" x="400" y="148" text-anchor="middle">Required”</text>
-          <text class="s" x="400" y="165" text-anchor="middle">invisible to the rep</text>
-
-          <rect class="bad" x="564" y="86" width="212" height="88" rx="7"/>
-          <text class="t" x="670" y="112" text-anchor="middle">Final Decisions</text>
-          <text class="s" x="670" y="132" text-anchor="middle">“Final Escalation</text>
-          <text class="s" x="670" y="148" text-anchor="middle">Required”</text>
-          <text class="s" x="670" y="165" text-anchor="middle">a proposal awaiting a call</text>
-
-          <g class="flow" marker-end="url(#a4)">
-            <line x1="236" y1="112" x2="292" y2="112"/>
-            <line x1="506" y1="112" x2="562" y2="112"/>
-            <line x1="562" y1="152" x2="506" y2="152"/>
-            <line x1="292" y1="152" x2="236" y2="152"/>
-          </g>
-
-          <g class="al">
-            <text x="264" y="104" text-anchor="middle">up</text>
-            <text x="534" y="104" text-anchor="middle">up</text>
-            <text x="264" y="172" text-anchor="middle">back</text>
-            <text x="534" y="172" text-anchor="middle">back</text>
-            <text x="400" y="42" text-anchor="middle">UP — Propose Stuck, or an automatic rule on the board facts</text>
-            <text x="400" y="216" text-anchor="middle">BACK — a manager returns them; the escalation is cleared and the date reset to today</text>
-          </g>
-        </svg>
-      </div>
-      <figcaption>Escalation is a ladder, not a switch. A rep can only push a patient up; only a manager sends one back down. Sending a patient back clears the escalation, which is what returns them to the rep's list.</figcaption>
-    </figure>
-
-    <div class="key stop col">
-      <span class="key-label">The failure mode this system is prone to</span>
-      <p><strong>A patient can end up in no queue at all, and nothing will report it.</strong> If a patient reaches a state that no rule accounts for — a Stage Advancer value nobody wrote a branch for, say — every filter skips them. No error, no warning, no red count.</p>
-      <p>This is why “nothing looks wrong” is not evidence that nothing is wrong, and why a patient who <em>feels</em> stuck is worth reporting even when you cannot point at anything specific.</p>
-    </div>
-  </section>
-
-  <!-- ══ 5 · SAVE ═══════════════════════════════════════════ -->
-  <section id="save">
-    <div class="col">
-      <div class="part"><span class="part-no">05</span><h2>What happens when you save</h2></div>
-      <p class="sub">The main “Send to Monday” actions run a four-phase transaction. Knowing its shape tells you what a failure means.</p>
-
-      <p>Monday's API confirms a write <em>before</em> the value is searchable. If the app flipped the Stage Advancer immediately, the automation could fire and read the <strong>old</strong> values of the other columns — sending stale data to the next stage. The four phases exist to prevent exactly that.</p>
-    </div>
-
-    <figure class="dg">
-      <span class="fig-n">Figure 5</span>
-      <div class="fig-scroll">
-        <svg viewBox="0 0 800 560" role="img" aria-label="The save runs four phases: snapshot, write, read back to confirm, then write the Stage Advancer. If confirmation does not arrive, it aborts and the Stage Advancer is never written.">
-          <defs>
-            <marker id="a5" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
-              <path class="mk" d="M 0 0 L 10 5 L 0 10 z"/>
-            </marker>
-            <marker id="a5b" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
-              <path class="mkb" d="M 0 0 L 10 5 L 0 10 z"/>
-            </marker>
-          </defs>
-
-          <rect class="box" x="40" y="16" width="330" height="56" rx="7"/>
-          <text class="hd" x="56" y="38" text-anchor="start">PHASE 0</text>
-          <text class="t" x="56" y="58" text-anchor="start">Snapshot every data column</text>
-
-          <rect class="box" x="40" y="104" width="330" height="56" rx="7"/>
-          <text class="hd" x="56" y="126" text-anchor="start">PHASE 1</text>
-          <text class="t" x="56" y="146" text-anchor="start">Write all data columns</text>
-
-          <rect class="box" x="40" y="192" width="330" height="56" rx="7"/>
-          <text class="hd" x="56" y="214" text-anchor="start">PHASE 2</text>
-          <text class="t" x="56" y="234" text-anchor="start">Read back until confirmed</text>
-
-          <polygon class="dec" points="205,280 370,326 205,372 40,326"/>
-          <text class="t" x="205" y="322" text-anchor="middle">Confirmed?</text>
-          <text class="s" x="205" y="340" text-anchor="middle">8 tries, ~12 seconds</text>
-
-          <rect class="box" x="40" y="404" width="330" height="56" rx="7"/>
-          <text class="hd" x="56" y="426" text-anchor="start">PHASE 3</text>
-          <text class="t" x="56" y="446" text-anchor="start">Write the Stage Advancer — last</text>
-
-          <rect class="ok" x="40" y="492" width="330" height="52" rx="7"/>
-          <text class="t" x="205" y="514" text-anchor="middle">The automation moves the patient</text>
-          <text class="s" x="205" y="532" text-anchor="middle">toast: “… — confirmed in Monday”</text>
-
-          <rect class="bad" x="430" y="272" width="330" height="108" rx="7"/>
-          <text class="t" x="450" y="298" text-anchor="start">Aborts</text>
-          <text class="s" x="450" y="318" text-anchor="start">The Stage Advancer is NEVER written.</text>
-          <text class="s" x="450" y="336" text-anchor="start">Data columns keep whatever landed.</text>
-          <text class="s" x="450" y="360" text-anchor="start">toast: “Save failed — nothing was written”</text>
-
-          <g class="flow" marker-end="url(#a5)">
-            <line x1="205" y1="72"  x2="205" y2="102"/>
-            <line x1="205" y1="160" x2="205" y2="190"/>
-            <line x1="205" y1="248" x2="205" y2="278"/>
-            <line x1="205" y1="372" x2="205" y2="402"/>
-            <line x1="205" y1="460" x2="205" y2="490"/>
-          </g>
-          <g class="flow-bad" marker-end="url(#a5b)">
-            <line x1="370" y1="326" x2="428" y2="326"/>
-          </g>
-
-          <g class="al">
-            <text x="216" y="392" text-anchor="start">yes</text>
-          </g>
-          <g class="al-bad">
-            <text x="399" y="318" text-anchor="middle">no</text>
-          </g>
-        </svg>
-      </div>
-      <figcaption>The abort on the right is the safety net working, not a bug. It means the app could not prove the data had landed, so it refused to trigger the automation — which would have carried stale values to the next stage.</figcaption>
-    </figure>
-
-    <div class="col">
-      <h3>The three toasts, and exactly what each one means</h3>
-      <p>The message you get after a save is the single most useful piece of diagnostic information in the app. There are three, and they are not interchangeable:</p>
-    </div>
-
-    <div class="t-scroll">
-      <table>
-        <thead><tr><th>What you saw</th><th>What it means</th><th>What to do</th></tr></thead>
-        <tbody>
-          <tr>
-            <td><strong>“… — confirmed in Monday”</strong></td>
-            <td>Everything wrote and was read back successfully. The Stage Advancer was written last.</td>
-            <td>Nothing. It is durable.</td>
-          </tr>
-          <tr>
-            <td><strong>“Data in server — Monday confirmation still pending”</strong></td>
-            <td>The gateway has durably accepted the job and <strong>it will run</strong>. The app stopped waiting for Monday to confirm.</td>
-            <td><strong>Do not repeat the save.</strong> Repeating it writes twice. Check the board in a few minutes.</td>
-          </tr>
-          <tr>
-            <td><strong>“Save failed — nothing was written”</strong></td>
-            <td>The transaction aborted. The Stage Advancer was <strong>not</strong> written, so the patient did not advance.</td>
-            <td>Retry. If it fails again, report it — the item link and the time are what's needed.</td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
-
-    <div class="col">
-      <p class="src">Defined in <code>src/lib/shared/verifiedWrite.ts</code>. The pending case is <code>GatewayPendingError</code>; the panels that surface it are Chase Clinicals, Confirm Receipt, and the Doctor Appointments panel and dialog.</p>
-
-      <div class="key warn">
-        <span class="key-label">Worth knowing</span>
-        <p>Not every action in the app runs this four-phase transaction. The six main “Send to Monday” flows do. Some smaller inline actions — logging an attempt, marking complete, the escalation dialog, the Subscription save — write more directly and have less verification behind them. That difference is documented for engineers in the repository's write-reliability audit; operationally, it means <strong>a save that showed no toast at all is worth checking on the board.</strong></p>
-      </div>
-    </div>
-  </section>
-
-  <!-- ══ 6 · TRIAGE ═════════════════════════════════════════ -->
-  <section id="triage">
-    <div class="col">
-      <div class="part"><span class="part-no">06</span><h2>Triage — symptom to owner</h2></div>
-      <p class="sub">Find the symptom, do the one check, read the chip.</p>
-    </div>
-
-    <figure class="dg">
-      <span class="fig-n">Figure 6</span>
-      <div class="fig-scroll">
-        <svg viewBox="0 0 820 380" role="img" aria-label="Triage tree: open the item on Monday. If the board is wrong, the Activity Log distinguishes a missing write from a write that was later overwritten. If the board is right, it is an app rule.">
-          <defs>
-            <marker id="a6" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
-              <path class="mk" d="M 0 0 L 10 5 L 0 10 z"/>
-            </marker>
-          </defs>
-
-          <rect class="hub" x="250" y="14" width="320" height="58" rx="7"/>
-          <text class="t" x="410" y="38" text-anchor="middle">Open the item on Monday</text>
-          <text class="s" x="410" y="57" text-anchor="middle">read the columns themselves</text>
-
-          <rect class="box" x="30" y="130" width="336" height="52" rx="7"/>
-          <text class="t" x="198" y="152" text-anchor="middle">The board is wrong</text>
-          <text class="s" x="198" y="170" text-anchor="middle">now open its Activity Log</text>
-
-          <rect class="box" x="452" y="130" width="336" height="52" rx="7"/>
-          <text class="t" x="620" y="152" text-anchor="middle">The board is right</text>
-          <text class="s" x="620" y="170" text-anchor="middle">but the screen disagrees</text>
-
-          <rect class="box" x="30" y="248" width="160" height="98" rx="7"/>
-          <text class="t" x="110" y="272" text-anchor="middle">No write</text>
-          <text class="s" x="110" y="290" text-anchor="middle">at that time</text>
-          <text class="s" x="110" y="316" text-anchor="middle">it never reached</text>
-          <text class="s" x="110" y="332" text-anchor="middle">Monday</text>
-
-          <rect class="box" x="206" y="248" width="160" height="98" rx="7"/>
-          <text class="t" x="286" y="272" text-anchor="middle">Written, then</text>
-          <text class="t" x="286" y="288" text-anchor="middle">changed</text>
-          <text class="s" x="286" y="314" text-anchor="middle">an automation or</text>
-          <text class="s" x="286" y="330" text-anchor="middle">a bot overwrote it</text>
-
-          <rect class="box" x="452" y="248" width="336" height="98" rx="7"/>
-          <text class="t" x="620" y="274" text-anchor="middle">A queue, count or chart rule</text>
-          <text class="s" x="620" y="296" text-anchor="middle">check the three gates in section 04 first —</text>
-          <text class="s" x="620" y="312" text-anchor="middle">escalation and the due rule explain most of these</text>
-          <text class="s" x="620" y="332" text-anchor="middle">then report it with every place you saw it</text>
-
-          <g class="flow" marker-end="url(#a6)">
-            <path d="M 340 72 L 198 100 L 198 128"/>
-            <path d="M 480 72 L 620 100 L 620 128"/>
-            <line x1="110" y1="182" x2="110" y2="246"/>
-            <line x1="286" y1="182" x2="286" y2="246"/>
-            <line x1="620" y1="182" x2="620" y2="246"/>
-          </g>
-        </svg>
-      </div>
-      <figcaption>Two looks — the columns, then the Activity Log — narrow any problem to one of the five owners. The Activity Log is built into Monday and shows who changed which column, to what, and when.</figcaption>
-    </figure>
-
-    <p class="family">Family A — “Where is my patient?”</p>
-    <div class="cards">
-      <div class="card">
-        <div class="card-top"><h4>A patient disappeared from a rep's queue</h4><span class="chip c-data">Board data</span></div>
-        <dl>
-          <dt>Check</dt><dd>The <strong>Escalation</strong> column, then the controlling column for that stage (Gate 2 table).</dd>
-          <dt>If escalated</dt><dd>They are in a manager column. This is the designed behaviour, not a fault.</dd>
-          <dt>If snoozed</dt><dd>They return on the follow-up date. Note that Auth Outstanding and DVS ignore the status column entirely.</dd>
+    <details class="lookup">
+      <summary>Words you'll hear</summary>
+      <div class="lookup-body">
+        <dl class="gl">
+          <div><dt>Stage Advancer</dt><dd>The one column Monday's automations watch. Changing it moves the patient. The app writes it last.</dd></div>
+          <div><dt>Next Action Date</dt><dd>Controls the Medical Evaluation queue. Only a future date hides someone.</dd></div>
+          <div><dt>Follow Up / Follow Up Date</dt><dd>The snooze on the other boards. Which one controls the queue depends on the stage — see Gate 2.</dd></div>
+          <div><dt>Escalation</dt><dd>Moves a patient from the rep to a manager column. DVS ignores it.</dd></div>
+          <div><dt>Propose Stuck</dt><dd>A rep asking that a patient leave the pipeline. A proposal — a manager decides.</dd></div>
+          <div><dt>Gateway</dt><dd>The server the app talks to Monday through. Holds the credentials, logs every request.</dd></div>
+          <div><dt>Baseline</dt><dd>The morning count snapshot the burndown compares against.</dd></div>
+          <div><dt>Stedi</dt><dd>The eligibility check. A separate service runs it and writes the results.</dd></div>
+          <div><dt>DVS</dt><dd>Automatic Medicaid verification. Bot-run; the page just watches.</dd></div>
+          <div><dt>Parachute</dt><dd>An outside source for clinical documents. Shares a queue with Email.</dd></div>
+          <div><dt>Masheke / Samantha</dt><dd>Old internal nicknames for the Medical Evaluation and Insurance boards.</dd></div>
         </dl>
       </div>
+    </details>
 
-      <div class="card">
-        <div class="card-top"><h4>A patient is in no queue and in no count</h4><span class="chip c-app">App rules</span></div>
-        <dl>
-          <dt>Check</dt><dd>The <strong>Stage Advancer</strong> value. Is it one of the five exact strings listed under Gate 1?</dd>
-          <dt>Meaning</dt><dd>A value with no matching branch is skipped by every filter. Nothing reports it.</dd>
-          <dt>Fix</dt><dd>Either the value is wrong on the board (Board data), or the app is missing a branch (App rules). Report with the item link.</dd>
-        </dl>
+    <details class="lookup">
+      <summary>How the pieces fit together</summary>
+      <div class="lookup-body">
+        <p style="font-size:.97rem; color:var(--ink-2);">The app has <b>no patient database</b>. Every fact on screen is a Monday column, read moments ago. Four things write to those columns — the app, Monday's automations, the Railway bots, and anyone editing the board by hand.</p>
+        <figure class="dg" style="margin:16px 0 0;">
+          <div class="fig-scroll">
+            <svg viewBox="0 0 700 300" role="img" aria-label="The Command Center reads and writes Monday boards through the gateway. Monday automations and Railway bots also write to the same boards.">
+              <defs>
+                <marker id="m4" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse"><path class="mk" d="M 0 0 L 10 5 L 0 10 z"/></marker>
+              </defs>
+              <g class="flow" marker-end="url(#m4)">
+                <line x1="166" y1="146" x2="206" y2="146"/>
+                <line x1="304" y1="146" x2="344" y2="146"/>
+                <line x1="344" y1="186" x2="304" y2="186"/>
+                <line x1="206" y1="186" x2="166" y2="186"/>
+                <line x1="600" y1="166" x2="562" y2="166"/>
+                <line x1="412" y1="120" x2="412" y2="82"/>
+                <line x1="494" y1="82" x2="494" y2="120"/>
+              </g>
+              <rect class="hub" x="344" y="120" width="218" height="92" rx="9"/>
+              <text class="t" x="453" y="156" text-anchor="middle">Monday boards</text>
+              <text class="s" x="453" y="178" text-anchor="middle">every patient fact lives here</text>
+
+              <rect class="box" x="20" y="122" width="146" height="88" rx="8"/>
+              <text class="t" x="93" y="156" text-anchor="middle" style="font-size:12.5px">The app</text>
+              <text class="s" x="93" y="177" text-anchor="middle">your screen</text>
+
+              <rect class="box" x="206" y="122" width="98" height="88" rx="8"/>
+              <text class="t" x="255" y="156" text-anchor="middle" style="font-size:12.5px">Gateway</text>
+              <text class="s" x="255" y="177" text-anchor="middle">logs it</text>
+
+              <rect class="box" x="600" y="122" width="90" height="88" rx="8"/>
+              <text class="t" x="645" y="156" text-anchor="middle" style="font-size:12.5px">Bots</text>
+              <text class="s" x="645" y="177" text-anchor="middle">Stedi, DVS</text>
+
+              <rect class="box" x="344" y="22" width="218" height="60" rx="8"/>
+              <text class="t" x="453" y="48" text-anchor="middle" style="font-size:12.5px">Monday automations</text>
+              <text class="s" x="453" y="68" text-anchor="middle">set up on the board, not in code</text>
+
+              <g class="al">
+                <text x="186" y="138" text-anchor="middle">write</text>
+                <text x="324" y="138" text-anchor="middle">write</text>
+                <text x="186" y="204" text-anchor="middle">read</text>
+                <text x="324" y="204" text-anchor="middle">read</text>
+                <text x="581" y="158" text-anchor="middle">write</text>
+                <text x="504" y="106" text-anchor="start">moves patients</text>
+              </g>
+              <text class="s" x="93" y="256" text-anchor="middle">lists refresh 30s</text>
+              <text class="s" x="93" y="273" text-anchor="middle">counts refresh 60s</text>
+            </svg>
+          </div>
+        </figure>
       </div>
+    </details>
 
-      <div class="card">
-        <div class="card-top"><h4>A patient is on the right board but in the wrong queue</h4><span class="chip c-data">Board data</span></div>
-        <dl>
-          <dt>Check</dt><dd>The splitter for that stage — <em>Clinicals Method</em> for Chase, <em>Already In System</em> for Profile Send Off.</dd>
-          <dt>Note</dt><dd>A <strong>blank</strong> Clinicals Method routes to Chase — Fax by design, so that nobody falls through.</dd>
-          <dt>Fix</dt><dd>Set the column on the board; the patient moves queues within a minute.</dd>
-        </dl>
-      </div>
-
-      <div class="card">
-        <div class="card-top"><h4>An escalated patient is not in any manager column</h4><span class="chip c-app">App rules</span></div>
-        <dl>
-          <dt>Check</dt><dd>Which escalation label the item carries, and which stage it is in.</dd>
-          <dt>Why it matters</dt><dd>Escalation removes a patient from the rep's list. If no manager chart also matches them, they are invisible everywhere.</dd>
-          <dt>Fix</dt><dd>Report it. This is the highest-priority class of bug in the system.</dd>
-        </dl>
-      </div>
-    </div>
-
-    <p class="family">Family B — “I saved it and it didn't stick”</p>
-    <div class="cards">
-      <div class="card">
-        <div class="card-top"><h4>A rep says they saved it; the board is blank</h4><span class="chip c-save">The save</span></div>
-        <dl>
-          <dt>Check</dt><dd>Ask what the toast said (section 05), then read the item's <strong>Activity Log</strong>.</dd>
-          <dt>No write logged</dt><dd>It never reached Monday. Redo it and watch the toast.</dd>
-          <dt>Written, then changed</dt><dd>An automation or a bot overwrote it — that is Board setup or A bot, not the app.</dd>
-        </dl>
-      </div>
-
-      <div class="card">
-        <div class="card-top"><h4>It saved, but the patient never advanced</h4><span class="chip c-setup">Board setup</span></div>
-        <dl>
-          <dt>Check</dt><dd>Whether the <strong>Stage Advancer</strong> actually changed on the item.</dd>
-          <dt>It didn't change</dt><dd>The save aborted at Phase 2 on purpose — see Figure 5. Retry.</dd>
-          <dt>It changed, nothing moved</dt><dd>The Monday automation is off, deleted, or erroring. A board admin checks it.</dd>
-        </dl>
-      </div>
-
-      <div class="card">
-        <div class="card-top"><h4>“Data in server — Monday confirmation still pending”</h4><span class="chip c-save">The save</span></div>
-        <dl>
-          <dt>Meaning</dt><dd>The job is durably queued on the server and <strong>will</strong> run. It is not lost.</dd>
-          <dt>Do</dt><dd>Wait, then check the board.</dd>
-          <dt>Do not</dt><dd><strong>Do not redo the save.</strong> Repeating it writes twice.</dd>
-        </dl>
-      </div>
-
-      <div class="card">
-        <div class="card-top"><h4>One column reads blank for every patient</h4><span class="chip c-setup">Board setup</span></div>
-        <dl>
-          <dt>Check</dt><dd>Whether that column was recently deleted and re-added on the board.</dd>
-          <dt>Meaning</dt><dd>Columns are matched by a hidden ID, not by their title. Deleting and recreating a column gives it a new ID; the app keeps asking for the old one and gets nothing, with no error.</dd>
-          <dt>Rule</dt><dd><strong>Rename columns freely. Never delete and recreate one.</strong> A rename is safe; a recreate silently breaks reads.</dd>
-        </dl>
-      </div>
-
-      <div class="card">
-        <div class="card-top"><h4>A status label has a near-duplicate on the board</h4><span class="chip c-setup">Board setup</span></div>
-        <dl>
-          <dt>Check</dt><dd>The label list for that column — look for two entries differing only in spacing or capitalization.</dd>
-          <dt>Meaning</dt><dd>Some writes match labels by exact text. If the text no longer matches, Monday creates a new label rather than failing.</dd>
-          <dt>Rule</dt><dd>Flag any status-label rename <em>before</em> it happens. Several rules compare exact strings such as <code>Chase Clinicals</code> and <code>Parachute</code>.</dd>
-        </dl>
-      </div>
-    </div>
-
-    <p class="family">Family C — “The numbers don't agree”</p>
-    <div class="cards">
-      <div class="card">
-        <div class="card-top"><h4>A list and its own count disagree</h4><span class="chip c-save">The save</span></div>
-        <dl>
-          <dt>Check</dt><dd>Reload and wait a minute. Lists refresh every 30 seconds, counts every 60.</dd>
-          <dt>Meaning</dt><dd>A gap of up to a minute after any change is expected and not a fault.</dd>
-          <dt>If it persists</dt><dd>Then it is worth reporting as App rules.</dd>
-        </dl>
-      </div>
-
-      <div class="card">
-        <div class="card-top"><h4>A role bar and an Oversight chart disagree</h4><span class="chip c-app">App rules</span></div>
-        <dl>
-          <dt>Check</dt><dd>Whether the patients in the gap are escalated, and by how many the two differ.</dd>
-          <dt>Meaning</dt><dd>The same rule is written in several places and one copy has drifted. See section 07.</dd>
-          <dt>Report</dt><dd>Give every number you can see — bar, list, and chart. The pattern of disagreement identifies which copy drifted.</dd>
-        </dl>
-      </div>
-
-      <div class="card">
-        <div class="card-top"><h4>The burndown shows a role as “not connected”</h4><span class="chip c-app">App rules</span></div>
-        <dl>
-          <dt>Check</dt><dd>Whether it is a recently added role.</dd>
-          <dt>Meaning</dt><dd>The start-of-day snapshot has no entry for that role, so it shows “not connected” rather than a misleading zero. That is deliberate.</dd>
-          <dt>Fix</dt><dd>Code, in both snapshot generators.</dd>
-        </dl>
-      </div>
-
-      <div class="card">
-        <div class="card-top"><h4>Start-of-day numbers look wrong all day</h4><span class="chip c-app">App rules</span></div>
-        <dl>
-          <dt>Check</dt><dd>Whether the live counts look right. If only the comparison is off, it is the snapshot.</dd>
-          <dt>Meaning</dt><dd>The snapshot is taken once each weekday morning. If its rules drift from the live ones you get phantom in/out movement all day.</dd>
-          <dt>Fix</dt><dd>Code. It corrects itself the next morning once the underlying rule is fixed.</dd>
-        </dl>
-      </div>
-
-      <div class="card">
-        <div class="card-top"><h4>The FAX bar says “Done!” but faxes are in the inbox</h4><span class="chip c-data">Board data</span></div>
-        <dl>
-          <dt>Meaning</dt><dd>Once the unread count first reaches zero on a given day, the bar stays “Done!” until midnight Eastern, even as new faxes arrive.</dd>
-          <dt>Fix</dt><dd>Nothing — this is the defined behaviour. Work the Fax Inbox page directly rather than the bar.</dd>
-        </dl>
-      </div>
-    </div>
-
-    <p class="family">Family D — “An outside system didn't do its job”</p>
-    <div class="cards">
-      <div class="card">
-        <div class="card-top"><h4>Eligibility results stay blank</h4><span class="chip c-bot">A bot</span></div>
-        <dl>
-          <dt>Check</dt><dd>That Name, DOB, insurance and Member ID were filled in <strong>before</strong> the check ran. If they weren't, the run is aborted on purpose and the check never fires.</dd>
-          <dt>Timing</dt><dd>Results are polled every 4 seconds and revealed once they have been stable for 10 seconds. The whole run times out at 95 seconds.</dd>
-          <dt>Meaning</dt><dd>The app never writes eligibility results — a separate service does. A permanently blank field means that service did not write it.</dd>
-          <dt>Fix</dt><dd>Backend. Corrections are made through Profile Send Off; the Insurance board cannot run an eligibility check at all.</dd>
-        </dl>
-      </div>
-
-      <div class="card">
-        <div class="card-top"><h4>DVS or claims are not progressing</h4><span class="chip c-bot">A bot</span></div>
-        <dl>
-          <dt>Check</dt><dd>The DVS and claims status columns on the item.</dd>
-          <dt>Meaning</dt><dd>DVS is automatic — that page is a read-only monitor. A failed or manual-review result escalates the patient by board automation.</dd>
-          <dt>Note</dt><dd>Supplies and pump claims are <strong>separate columns</strong>. A pump problem will not show in the supplies column.</dd>
-        </dl>
-      </div>
-
-      <div class="card">
-        <div class="card-top"><h4>A fax or email did not send</h4><span class="chip c-bot">A bot</span></div>
-        <dl>
-          <dt>Check</dt><dd>The recipient address or fax number on the item, and that the person is signed in.</dd>
-          <dt>Meaning</dt><dd>Sending runs through a separate mail service and RingCentral, and does not touch Monday.</dd>
-          <dt>Note</dt><dd>Email recipients receive <strong>one grouped message</strong>; each fax number receives its own separate message.</dd>
-        </dl>
-      </div>
-
-      <div class="card">
-        <div class="card-top"><h4>Incoming calls stopped appearing on screen</h4><span class="chip c-bot">A bot</span></div>
-        <dl>
-          <dt>Check</dt><dd>That person's own ring setting: <code>all</code>, <code>list</code>, or <code>off</code>.</dd>
-          <dt>Important</dt><dd>A narrowed setting silences <strong>that person's screen only</strong>. It can never make a call unanswerable by someone else.</dd>
-          <dt>If it's everyone</dt><dd>The call feed itself is down. There is a health check for exactly this — ask Josh.</dd>
-        </dl>
-      </div>
-
-      <div class="card">
-        <div class="card-top"><h4>Blank screen, or a page will not load</h4><span class="chip c-save">The save</span></div>
-        <dl>
-          <dt>Do</dt><dd>Reload the tab once.</dd>
-          <dt>Meaning</dt><dd>A tab left open across a new release loses the files it was going to load next. The app reloads itself once automatically when it detects this; a manual refresh does the same.</dd>
-          <dt>If a reload doesn't fix it</dt><dd>Then report it.</dd>
-        </dl>
-      </div>
-    </div>
-  </section>
-
-  <!-- ══ 7 · FIVE PLACES ════════════════════════════════════ -->
-  <section id="fiveplaces">
-    <div class="col">
-      <div class="part"><span class="part-no">07</span><h2>Why a fix sometimes half-works</h2></div>
-      <p class="sub">This explains a specific, recurring pattern of confusion, and it is worth knowing even if you never open the code.</p>
-
-      <p>A queue rule is not written once. The same rule is repeated in <strong>five separate places</strong>, because five parts of the system answer five different questions — and three of them cannot share code with the others.</p>
-    </div>
-
-    <figure class="dg">
-      <span class="fig-n">Figure 7</span>
-      <div class="fig-scroll">
-        <svg viewBox="0 0 800 336" role="img" aria-label="One rule feeds five separate consumers: the role page list, the role bar count, the Oversight charts, the build-time baseline and the 9 AM baseline. Each one must be changed together.">
-          <defs>
-            <marker id="a7" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
-              <path class="mk" d="M 0 0 L 10 5 L 0 10 z"/>
-            </marker>
-          </defs>
-
-          <rect class="hub" x="20" y="118" width="196" height="100" rx="7"/>
-          <text class="t" x="118" y="152" text-anchor="middle">One rule</text>
-          <text class="s" x="118" y="174" text-anchor="middle">e.g. “Email belongs</text>
-          <text class="s" x="118" y="190" text-anchor="middle">with Parachute,</text>
-          <text class="s" x="118" y="206" text-anchor="middle">not with Fax”</text>
-
-          <g class="flow" marker-end="url(#a7)">
-            <path d="M 216 168 L 280 168 L 280 40  L 336 40"/>
-            <path d="M 216 168 L 280 168 L 280 104 L 336 104"/>
-            <path d="M 216 168 L 336 168"/>
-            <path d="M 216 168 L 280 168 L 280 232 L 336 232"/>
-            <path d="M 216 168 L 280 168 L 280 296 L 336 296"/>
-          </g>
-
-          <g>
-            <rect class="box" x="336" y="18"  width="440" height="44" rx="6"/>
-            <text class="t" x="352" y="38" text-anchor="start">The role page</text>
-            <text class="s" x="352" y="54" text-anchor="start">which patients are in the rep's list right now</text>
-
-            <rect class="box" x="336" y="82"  width="440" height="44" rx="6"/>
-            <text class="t" x="352" y="102" text-anchor="start">The role bar count</text>
-            <text class="s" x="352" y="118" text-anchor="start">the number the rep sees on the dashboard</text>
-
-            <rect class="box" x="336" y="146" width="440" height="44" rx="6"/>
-            <text class="t" x="352" y="166" text-anchor="start">The Oversight charts</text>
-            <text class="s" x="352" y="182" text-anchor="start">which manager chart the patient lands on</text>
-
-            <rect class="box" x="336" y="210" width="440" height="44" rx="6"/>
-            <text class="t" x="352" y="230" text-anchor="start">The build-time snapshot</text>
-            <text class="s" x="352" y="246" text-anchor="start">start-of-day baseline, early morning fallback</text>
-
-            <rect class="box" x="336" y="274" width="440" height="44" rx="6"/>
-            <text class="t" x="352" y="294" text-anchor="start">The 9 AM snapshot</text>
-            <text class="s" x="352" y="310" text-anchor="start">start-of-day baseline, the one used most days</text>
-          </g>
-        </svg>
-      </div>
-      <figcaption>Change four of the five and nothing errors. You get a list that is right and a count that is wrong, or a chart showing a patient the list does not. That mismatch is a signature: when a number and a list disagree and the refresh delay has already passed, this is the mechanism to suspect.</figcaption>
-    </figure>
-
-    <div class="col">
-      <p>What this means for you in practice: when reporting a counting problem, <strong>name every place you saw it</strong>. “The bar says 12, the list shows 9, and the Oversight chart says 14” identifies which copy drifted. “The count is wrong” does not.</p>
-      <p class="src">The rule files themselves carry this warning. See the header comments in <code>src/lib/profile/referralSplit.ts</code> and <code>src/hooks/useRoleCounts.ts</code>.</p>
-    </div>
-  </section>
-
-  <!-- ══ 8 · LOOKING ════════════════════════════════════════ -->
-  <section id="looking">
-    <div class="col">
-      <div class="part"><span class="part-no">08</span><h2>Where to look, and how to report</h2></div>
-      <p class="sub">Four places, in the order you should reach for them.</p>
-    </div>
-
-    <div class="t-scroll">
-      <table>
-        <thead><tr><th>Tool</th><th>Answers</th><th>Who</th></tr></thead>
-        <tbody>
-          <tr>
-            <td><strong>The item's Activity Log</strong><br><span style="color:var(--ink-soft)">built into Monday</span></td>
-            <td>Who changed which column, to what, and exactly when. The most useful diagnostic in the whole system, and it requires no special access.</td>
-            <td>Anyone with board access</td>
-          </tr>
-          <tr>
-            <td><strong>Pipeline Oversight</strong><br><span style="color:var(--ink-soft)">System Management → Oversight</span></td>
-            <td>Where escalated patients went, and which manager column holds them. Every escalated patient is meant to land in one of these columns; one that lands in none is invisible app-wide.</td>
-            <td>Managers</td>
-          </tr>
-          <tr>
-            <td><strong>The gateway audit log</strong></td>
-            <td>Every request the app made — so you can establish whether a save was even attempted. Records metadata only; no patient data is stored there.</td>
-            <td>Josh — it is key-protected</td>
-          </tr>
-          <tr>
-            <td><strong>The health checks</strong></td>
-            <td>Whether the plumbing is alive. The gateway, the texting service and the incoming-call feed each have one.</td>
-            <td>Josh</td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
-
-    <div class="col">
-      <h3>Reporting so it can be fixed the same day</h3>
-      <p>The fastest reports answer the fork in section 03 before anyone has to ask:</p>
-    </div>
-
-    <div class="tpl">Patient:       [name + link to the Monday item]
-Stage/queue:   [which page, chart or role bar]
-Expected:      [what you thought would happen]
-Saw:           [what actually happened]
-Toast:         [exact wording, if there was one]
-When:          [date + roughly what time]
-On the board:  [what the relevant columns say right now]
-Also seen in:  [any other count, list or chart that disagrees]</div>
-
-    <div class="col">
-      <p class="afterword">The last three lines save the most time. <strong>Toast</strong> distinguishes the three save outcomes in section 05. <strong>On the board</strong> settles whether it is a data problem or an app problem. <strong>Also seen in</strong> points straight at the section 07 mismatch.</p>
-    </div>
-  </section>
-
-  <!-- ══ 9 · REFERENCE ══════════════════════════════════════ -->
-  <section id="appendix">
-    <div class="col">
-      <div class="part"><span class="part-no">09</span><h2>Reference</h2></div>
-      <p class="sub">Every role defined in the system, and the words you will hear.</p>
-    </div>
-
-    <h3>Roles, boards and routes</h3>
-    <div class="t-scroll">
-      <table>
-        <thead><tr><th>Role as shown</th><th>Board</th><th>Page</th><th>Notes</th></tr></thead>
-        <tbody>
-          <tr><td><strong>Verified Referrals</strong></td><td>Profile Send Off</td><td><code>/profile</code></td><td>The <code>1. Intake</code> group, minus already-in-system</td></tr>
-          <tr><td><strong>Patient Intake — DTC &amp; CareCentrix</strong></td><td>Profile Send Off</td><td><code>/unverified-referrals</code></td><td>The DTC form's own two groups</td></tr>
-          <tr><td><strong>Already In System</strong></td><td>Profile Send Off</td><td><code>/in-system-referrals</code></td><td><em>Already In System</em> = <code>Yes</code></td></tr>
-          <tr><td><strong>Patient Intake — Scheduled Calls</strong></td><td>Profile Send Off</td><td><code>/scheduled-calls</code></td><td>Counted by clock, not by a follow-up date</td></tr>
-          <tr><td><strong>Evaluate</strong></td><td>Medical Evaluation</td><td><code>/evaluate</code></td><td>Stage Advancer = <code>Evaluate MN</code></td></tr>
-          <tr><td><strong>Send Request</strong></td><td>Medical Evaluation</td><td><code>/send-request</code></td><td></td></tr>
-          <tr><td><strong>Confirm Receipt</strong></td><td>Medical Evaluation</td><td><code>/confirm-receipt</code></td><td></td></tr>
-          <tr><td><strong>Chase Clinicals — Fax</strong></td><td>Medical Evaluation</td><td><code>/chase-fax</code></td><td>Method <code>Fax</code> <strong>or blank</strong></td></tr>
-          <tr><td><strong>Chase Clinicals — Email &amp; Parachute</strong></td><td>Medical Evaluation</td><td><code>/chase-parachute</code></td><td>Method <code>Parachute</code> or <code>Email</code></td></tr>
-          <tr><td><strong>Doctor Appointments</strong></td><td>Medical Evaluation</td><td><code>/doctor-appointments</code></td><td>Patient outreach when the office needs a visit</td></tr>
-          <tr><td><strong>Benefits</strong></td><td>Insurance</td><td><code>/benefits</code></td><td></td></tr>
-          <tr><td><strong>Submit Auth</strong></td><td>Insurance</td><td><code>/submit-auth</code></td><td></td></tr>
-          <tr><td><strong>Auth Outstanding</strong></td><td>Insurance</td><td><code>/auth-outstanding</code></td><td>Date-only snooze</td></tr>
-          <tr><td><strong>DVS</strong></td><td>Insurance</td><td><code>/dvs</code></td><td>Read-only monitor; escalation ignored</td></tr>
-          <tr><td><strong>Auth Denied</strong></td><td>Insurance</td><td>—</td><td><strong>Under construction.</strong> Worked on the board</td></tr>
-          <tr><td><strong>Welcome Call</strong></td><td>Welcome Call</td><td><code>/welcome-call</code></td><td></td></tr>
-          <tr><td><strong>Final Profile Confirmation</strong></td><td>Welcome Call</td><td><code>/final-confirm</code></td><td>No follow-up rule; escalation only</td></tr>
-          <tr><td><strong>Subscription</strong></td><td>Subscription</td><td><code>/subscription</code></td><td>Counts the whole group</td></tr>
-          <tr><td><strong>Update Clinicals</strong></td><td>Subscription</td><td><code>/update-clinicals</code></td><td>Counts the whole group</td></tr>
-          <tr><td><strong>Patient Texting</strong></td><td>—</td><td><code>/assigned-patients</code></td><td>Not a stage; look up any patient</td></tr>
-          <tr><td><strong>Patient Questions</strong></td><td>Subscription + Claims</td><td><code>/patient-questions</code></td><td>Inbox merged from two boards</td></tr>
-          <tr><td><strong>FAX</strong></td><td>—</td><td>—</td><td>Count only, from RingCentral. Not clickable</td></tr>
-        </tbody>
-      </table>
-    </div>
-
-    <h3>Words you will hear</h3>
-    <dl class="gloss">
-      <div><dt>Stage Advancer</dt><dd>The one status column per board that Monday's automations watch. Changing it is what moves a patient to the next stage. The app writes it last, after confirming everything else landed.</dd></div>
-      <div><dt>Next Action Date</dt><dd>Controls the queue on the Medical Evaluation board. Blank, today or past all mean due now; only a future date hides the patient.</dd></div>
-      <div><dt>Follow Up / Follow Up Date</dt><dd>The snooze mechanism on the other boards. Which of the two actually controls the queue depends on the stage — see the Gate 2 table.</dd></div>
-      <div><dt>Escalation</dt><dd>Removes a patient from the rep's list and count, and puts them in a manager column. DVS is the exception and ignores it.</dd></div>
-      <div><dt>Propose Stuck</dt><dd>A rep's request that a patient leave the pipeline. It is a proposal only; a manager approves or returns it. It appears as “Final Escalation Required”.</dd></div>
-      <div><dt>Manager Intervention / Final Decisions</dt><dd>The two manager columns in Pipeline Oversight, corresponding to the two escalation labels.</dd></div>
-      <div><dt>Verified write</dt><dd>The four-phase save in section 05: snapshot, write, read back to confirm, then flip the Stage Advancer. If it cannot confirm, it aborts rather than advancing.</dd></div>
-      <div><dt>Gateway</dt><dd>The server the app talks to Monday through. It holds the credentials and logs every request, which is what makes an audit possible.</dd></div>
-      <div><dt>Baseline</dt><dd>The start-of-day count snapshot the burndown compares against, taken each weekday morning.</dd></div>
-      <div><dt>Stedi</dt><dd>The insurance eligibility check. A separate service runs it and writes the results to Monday; the app requests it and waits.</dd></div>
-      <div><dt>DVS</dt><dd>The automatic Medicaid verification stage. Bot-run; the page is a read-only monitor.</dd></div>
-      <div><dt>Parachute</dt><dd>An outside source for clinical documents. In the app, Email and Parachute share one queue.</dd></div>
-      <div><dt>Masheke / Samantha</dt><dd>Long-standing internal nicknames for the Medical Evaluation board and the Insurance board respectively. Same boards, older names.</dd></div>
-    </dl>
-
-    <div class="foot">
-      <p>Prepared for Medically Modern operations. Every rule in this document was read from the source on 11 August 2026 at commit <code>b5a5f8f</code>. Rules change — when something here stops matching what you see, that is worth reporting too.</p>
-      <p style="margin-top:10px;">The engineering reference is <code>CLAUDE.md</code> in the Command Center repository.</p>
+    <div class="endnote">
+      <p>Every rule here was read from the code on 11 August 2026 (commit b5a5f8f). Rules change — if something stops matching what you see, that's worth reporting too.</p>
     </div>
   </section>
 
