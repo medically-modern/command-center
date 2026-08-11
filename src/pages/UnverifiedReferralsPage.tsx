@@ -26,6 +26,7 @@ import { GROUPS, fetchClinicLabels, clearFileColumn } from "@/lib/profile/monday
 // location grid, order count and notes all behave exactly as on /profile —
 // rebuilding it would fork behaviour reps already rely on.
 import { DoctorSection } from "@/components/profile/DoctorSection";
+import { AddressAutocomplete } from "@/components/profile/AddressAutocomplete";
 import BookingLinkDialog from "@/components/scheduledCalls/BookingLinkDialog";
 import { evaluateUnlock } from "@/lib/profile/intakeUnlock";
 import {
@@ -186,6 +187,39 @@ function EditText({
         value={value}
         placeholder={placeholder}
         onChange={(e) => onChange(e.target.value)}
+      />
+    </label>
+  );
+}
+
+/**
+ * Address, with Google Places completion — the same widget Welcome Call and the
+ * Doctor card use, not a second implementation of it.
+ *
+ * Worth the wiring here more than anywhere else on the page: the intake form
+ * never asks for an address, so this one is ALWAYS typed on the call, from
+ * someone reading it aloud — and it's the field a shipment bounces on. Places
+ * also returns lat/lng, which is what makes the column a real Monday location
+ * pin rather than a string; hand-typed, it was always 0,0.
+ */
+function EditAddress({
+  label, value, placeholder, onChange,
+}: {
+  label: string; value: string; placeholder?: string;
+  onChange: (r: { address: string; lat: number; lng: number }) => void;
+}) {
+  return (
+    <label className="fld full">
+      <div className="flabel">{label}</div>
+      {/* .pf-input, not the bare `input[type=text]` rule: the widget renders an
+          UNTYPED <input>, which that attribute selector doesn't match, so
+          without this the field loses its border and padding entirely.
+          redesign.css keeps .pf-input in step with it for exactly this. */}
+      <AddressAutocomplete
+        value={value}
+        placeholder={placeholder}
+        className={value.trim() ? "pf-input filled" : "pf-input"}
+        onChange={onChange}
       />
     </label>
   );
@@ -538,7 +572,13 @@ const UnverifiedReferralsPage = () => {
 
   const [selectedId, setSelectedId] = useState<string | null>(searchParams.get("patientId"));
   const [saving, setSaving] = useState(false);
-  const [saveNote, setSaveNote] = useState<string | null>(null);
+  // Outcomes are TOASTS, like every other role. There used to be a `saveNote`
+  // string rendered as grey text at the bottom of the left pane — which on a
+  // full patient sits below the fold, so "Advanced to Medical Necessity." was
+  // invisible at the one moment the rep needed it. Half the call sites already
+  // fired a toast AND set the note, so the same outcome appeared twice for some
+  // actions and nowhere visible for others. Don't reintroduce an inline status
+  // line: if an outcome is worth saying, it goes to the toaster.
 
   // An escalated patient is a manager's problem, not the rep's — same rule the
   // Medical Evaluation queues apply. Managers clicking in from an oversight
@@ -659,7 +699,6 @@ const UnverifiedReferralsPage = () => {
   const saveVerified = useCallback(async () => {
     if (!selected) return;
     setSaving(true);
-    setSaveNote(null);
     try {
       // Serving rides along from the patient, not from `verified` — same value
       // the left pane and the Serving & Coverage card both edit.
@@ -667,7 +706,12 @@ const UnverifiedReferralsPage = () => {
         ...verified,
         serving: selected.serving,
       });
-      setSaveNote(res.ok ? "Verified insurance saved." : res.errors.map((e) => `${e.label}: ${e.error}`).join(" · "));
+      if (res.ok) toast.success("Verified insurance saved");
+      else {
+        toast.error("Couldn't save verified insurance", {
+          description: res.errors.map((e) => `${e.label}: ${e.error}`).join(" · "),
+        });
+      }
       if (res.ok) await refetch(true);
     } finally {
       setSaving(false);
@@ -687,7 +731,6 @@ const UnverifiedReferralsPage = () => {
     params.delete("patientId");
     setSearchParams(params, { replace: true });
     setSelectedId(null);
-    setSaveNote(null);
   }, [searchParams, setSearchParams]);
 
   const edit = useCallback((patch: Partial<Patient>) => {
@@ -825,14 +868,12 @@ const UnverifiedReferralsPage = () => {
   const saveLocal = useCallback(() => {
     if (!selected) return;
     saveOverlay(selected.id);
-    setSaveNote(null);
     toast.success("Progress saved — you can leave and come back");
   }, [selected, saveOverlay]);
 
   const save = useCallback(async () => {
     if (!selected) return;
     setSaving(true);
-    setSaveNote(null);
     const edits: IntakeEdits = intakeEditsFor(selected);
     try {
       const res = await writeIntakeEdits(selected.id, edits, liveIndex);
@@ -851,17 +892,14 @@ const UnverifiedReferralsPage = () => {
         // the columns that didn't land are still there to retry.
         clearOverlay(selected.id);
         toast.success("Saved to Monday");
-        setSaveNote("Saved.");
       } else {
         const failed = res.errors.map((e) => e.label).join(", ");
         toast.error("Saved, except some columns", { description: failed });
-        setSaveNote(`Saved, except: ${failed}`);
       }
       await refetch(true);
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       toast.error("Save failed", { description: msg });
-      setSaveNote(`Save failed — ${msg}`);
     } finally {
       setSaving(false);
     }
@@ -946,12 +984,13 @@ const UnverifiedReferralsPage = () => {
     async (kind: "advance" | "escalate" | "proposeStuck" | "return") => {
       if (!selected) return;
       if (kind !== "advance" && !escalateReason.trim()) {
-        setSaveNote("Add a reason first — a manager can't action a blank escalation.");
+        toast.error("Add a reason first", {
+          description: "A manager can't action a blank escalation.",
+        });
         return;
       }
       setSaving(true);
-      setSaveNote(null);
-      try {
+        try {
         // BEFORE the transaction, not after: the advancer triggers the Move to
         // Onboarding automation, which copies columns to a fresh Masheke item.
         // A note appended afterwards lands on an item nobody works again.
@@ -979,19 +1018,25 @@ const UnverifiedReferralsPage = () => {
                 : "processor",
               )
           : await returnIntakeToPipeline(selected.id, escalateReason);
-        setSaveNote(
-          res.ok
-            ? kind === "advance" ? "Advanced to Medical Necessity."
-              : kind === "escalate" ? "Escalated to Manager Intervention."
+        if (res.ok) {
+          // Where the patient WENT, not "done" — each of these removes them
+          // from this queue, and the rep's next question is always which
+          // column they'll find them in.
+          toast.success(
+            kind === "advance" ? "Advanced to Medical Necessity"
+              : kind === "escalate" ? "Escalated to Manager Intervention"
               : kind === "proposeStuck"
                 ? stuckLevel === "final"
-                  ? "Proposed stuck — sent to Final Decisions."
-                  : "Proposed stuck — sent to Manager Intervention."
-              : "Sent back to the pipeline."
-            : kind === "advance"
-              ? `Not advanced — ${res.errors.map((e) => `${e.label}: ${e.error}`).join(" · ")}`
-              : res.errors.map((e) => `${e.label}: ${e.error}`).join(" · "),
-        );
+                  ? "Proposed stuck — sent to Final Decisions"
+                  : "Proposed stuck — sent to Manager Intervention"
+              : "Sent back to the pipeline",
+          );
+        } else {
+          toast.error(
+            kind === "advance" ? "Not advanced" : "That didn't go through",
+            { description: res.errors.map((e) => `${e.label}: ${e.error}`).join(" · ") },
+          );
+        }
         if (res.ok) {
           setEscalateReason("");
           // Advance is the other path that writes the left pane, so it owns the
@@ -1013,7 +1058,6 @@ const UnverifiedReferralsPage = () => {
   // before the const initialises would throw on first render.
   const runBenefitsCheck = useCallback(async () => {
     if (!selected) return;
-    setSaveNote(null);
     // Persist the rep's edits first — the check reads General Insurance and
     // Member ID off the BOARD, not off this page's local state.
     await save();
@@ -1334,15 +1378,16 @@ const UnverifiedReferralsPage = () => {
   const addReferralEmail = useCallback(async () => {
     if (!selected || !refDraft.trim()) return;
     setSaving(true);
-    setSaveNote(null);
     try {
       await createUpdate(selected.id, refDraft.trim());
       setRefDraft("");
       setAddRefOpen(false);
       setUpdates(null); // force the list to re-fetch so the new one shows
-      setSaveNote("Referral email posted as a Monday update.");
+      toast.success("Referral email posted as a Monday update");
     } catch (e) {
-      setSaveNote(e instanceof Error ? `Couldn't post it — ${e.message}` : "Couldn't post it.");
+      toast.error("Couldn't post the referral email", {
+        description: e instanceof Error ? e.message : String(e),
+      });
     } finally {
       setSaving(false);
     }
@@ -1373,19 +1418,16 @@ const UnverifiedReferralsPage = () => {
       edit({ attemptCounter: String(next), followUp: "Follow Up", followUpDate: due });
       if (res.ok) {
         toast.success(`Attempt ${next} logged`, { description: `Back in the queue ${due}.` });
-        setSaveNote(`Attempt ${next} logged — snoozed to ${due}.`);
       } else {
         // The attempt landed but the snooze didn't; say so rather than implying
         // the patient has left today's queue when they haven't.
         const failed = res.errors.map((e) => e.label).join(", ");
         toast.error(`Attempt ${next} logged, but not snoozed`, { description: failed });
-        setSaveNote(`Attempt ${next} logged, but the follow-up date didn't save: ${failed}`);
       }
       await refetch(true);
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       toast.error("Could not log attempt", { description: msg });
-      setSaveNote(`Could not log attempt — ${msg}`);
     } finally {
       setSaving(false);
     }
@@ -1543,12 +1585,16 @@ const UnverifiedReferralsPage = () => {
                         deliberately not a disabled button: a greyed-out
                         "Booking link" reads as "this is broken" rather than
                         "this is done", and the rep goes hunting for why. */}
+                    {/* The booked time is ON the chip, not in a tooltip.
+                        "Booked" alone answers the wrong question — the rep
+                        already knows they're calling about a booking; what
+                        they need off this row is WHEN, and a hover doesn't
+                        survive reading it aloud to the patient. */}
                     {bookedCall ? (
-                      <span
-                        className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-600/30 bg-emerald-600/10 px-3 py-1.5 text-sm font-semibold text-emerald-700 dark:text-emerald-400"
-                        title={`Intake call booked for ${bookedCall}`}
-                      >
-                        <Check className="h-3.5 w-3.5 shrink-0" /> Booked
+                      <span className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-600/30 bg-emerald-600/10 px-3 py-1.5 text-sm font-semibold text-emerald-700 dark:text-emerald-400">
+                        <Check className="h-3.5 w-3.5 shrink-0" />
+                        Booked
+                        <span className="font-bold">{bookedCall}</span>
                       </span>
                     ) : (
                       <button
@@ -1813,12 +1859,21 @@ const UnverifiedReferralsPage = () => {
                     onChange={(v) => edit({ gender: v })}
                     options={["Male", "Female", "Unknown"]}
                   />
-                  <EditText
-                    full
+                  <EditAddress
                     label="Address"
                     placeholder="122 Elderberry Ln, Central Square, NY 13036"
                     value={selected.patientAddress ?? ""}
-                    onChange={(v) => edit({ patientAddress: v })}
+                    onChange={({ address, lat, lng }) =>
+                      // Coordinates travel with the address or not at all. The
+                      // column is a Monday LOCATION (writeLocation), so a
+                      // hand-edited line keeping the old pin would put the map
+                      // on the previous address — worse than an unpinned one.
+                      edit({
+                        patientAddress: address,
+                        patientAddressLat: lat || null,
+                        patientAddressLng: lng || null,
+                      })
+                    }
                   />
                   <EditText label="State" value={selected.formState ?? ""} onChange={(v) => edit({ formState: v })} />
                   <Field boxed label="Date of Intake" value={selected.dateOfIntake} />
@@ -2514,12 +2569,6 @@ const UnverifiedReferralsPage = () => {
 
                   </>
                 )}
-                {(saveNote || loading) && (
-                  <div className="mt-3 flex items-center gap-2">
-                    {saveNote && <span className="text-sm text-muted-foreground">{saveNote}</span>}
-                    {loading && <span className="text-xs text-muted-foreground">refreshing…</span>}
-                  </div>
-                )}
               </Card>
             </div>
 
@@ -2607,13 +2656,19 @@ const UnverifiedReferralsPage = () => {
                       </p>
                     ))}
 
-                    <button
-                      onClick={saveVerified}
-                      disabled={saving}
-                      className="btn primary mt-3"
-                    >
-                      Save verified insurance
-                    </button>
+                    {/* Set off from the fields above with the same dashed rule
+                        the rest of the page uses for "this is an action, not
+                        another input". Butted straight under the engine's
+                        reasoning box it read as part of that box. */}
+                    <div style={{ marginTop: 18, paddingTop: 14, borderTop: "1px dashed var(--border)" }}>
+                      <button
+                        onClick={saveVerified}
+                        disabled={saving}
+                        className="btn primary"
+                      >
+                        Save verified insurance
+                      </button>
+                    </div>
                   </Card>
 
                   {/* Step 2 — the one decision this card owns. The mockup has
@@ -2680,6 +2735,36 @@ const UnverifiedReferralsPage = () => {
                         </li>
                       ))}
                     </ul>
+
+                    {/* Address, loudly, at the last moment it is cheap to fix.
+                        WARNS, never blocks — the intake form doesn't ask for an
+                        address, so a blocking row would stop literally every
+                        patient and reps would learn to ignore the checklist.
+                        It sits here rather than only beside the input on the
+                        left because that note is two panes away from the button
+                        that ships the patient: once they're on the Medical
+                        Necessity board, getting an address means calling them
+                        back, and by then nobody remembers whether we ever had
+                        one. Amber elsewhere on this page means "worth a look";
+                        this one is rose because it costs a phone call later. */}
+                    {!(selected.patientAddress ?? "").trim() && (
+                      <div
+                        className="mt-4 flex items-start gap-3 rounded-lg border-2 border-rose-300 bg-rose-50 px-4 py-3"
+                        role="alert"
+                      >
+                        <AlertTriangle className="h-6 w-6 shrink-0 text-rose-600" />
+                        <div>
+                          <div className="text-sm font-black uppercase tracking-wide text-rose-800">
+                            No address on file
+                          </div>
+                          <p className="mt-0.5 text-sm text-rose-900">
+                            The form never asks for one. Get it on this call — Medical Necessity
+                            and every stage after it need it to ship, and chasing it later means
+                            calling the patient back.
+                          </p>
+                        </div>
+                      </div>
+                    )}
 
                     {/* The stage's two real exits, as the mockup lays them out. */}
                     <div className="route-grid" style={{ gridTemplateColumns: "1fr" }}>
