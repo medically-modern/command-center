@@ -14,7 +14,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { AlertTriangle, ClipboardCheck, Lock, Check, X, ArrowLeft, CalendarClock } from "lucide-react";
+import { AlertTriangle, ClipboardCheck, Lock, Check, X, ArrowLeft, CalendarClock, Save } from "lucide-react";
 import { Button } from "@/components/ui/button";
 // History-first Back, same as every other stage page — returns a manager to
 // their Oversight drill-down rather than a hardcoded home route (§9).
@@ -533,6 +533,7 @@ const UnverifiedReferralsPage = () => {
 
   const {
     patients, loading, initialLoading, error, refetch, updateLocal, hasOverlay, getReceived,
+    saveOverlay, clearOverlay,
   } = useMondayPatients(searchParams.get("patientId"), SOURCE_GROUP[source]);
 
   const [selectedId, setSelectedId] = useState<string | null>(searchParams.get("patientId"));
@@ -805,6 +806,29 @@ const UnverifiedReferralsPage = () => {
     loggedFacts.current = { oop, adv };
   }, []);
 
+  /**
+   * The HEADER Save — local only, matching every other role (ProfilePage's
+   * `handleSave` is the same two lines).
+   *
+   * Edits already live in the in-memory overlay via `edit()`; this persists
+   * that overlay so the rep can leave the page, or reload, and come back to
+   * their work. It writes NOTHING to Monday.
+   *
+   * The header and the left pane both called the Monday save before this, so
+   * the same button meant "push to Monday" in one place and — by every other
+   * role's convention — "keep my progress" in the other. A rep who pressed the
+   * familiar one mid-call was writing a half-filled record to the board.
+   *
+   * Monday writes live where the work ends: the left pane's Save, Advance to
+   * Medical Necessity, Save verified insurance, and the Call Log.
+   */
+  const saveLocal = useCallback(() => {
+    if (!selected) return;
+    saveOverlay(selected.id);
+    setSaveNote(null);
+    toast.success("Progress saved — you can leave and come back");
+  }, [selected, saveOverlay]);
+
   const save = useCallback(async () => {
     if (!selected) return;
     setSaving(true);
@@ -814,12 +838,18 @@ const UnverifiedReferralsPage = () => {
       const res = await writeIntakeEdits(selected.id, edits, liveIndex);
       // Partial success is reported, not swallowed — the rep needs to know
       // exactly which field didn't make it rather than a blanket "saved".
-      // Toasted as well as inlined: this writes to Monday, and the inline note
-      // sits at the bottom of a long pane where a rep saving from the header
-      // never sees it.
+      // Toasted as well as inlined: the inline note sits at the bottom of a
+      // long pane, so a rep who scrolled away would otherwise miss it.
       if (res.ok) {
         // Cost + Self Advocacy also go into the Call Log, once, on change.
         await logChangedFacts(selected);
+        // These edits ARE Monday's now, so drop the local copy — including any
+        // the header's Save persisted. Left in place it would keep masking the
+        // board's own values on every reload, and the rep would be looking at
+        // a snapshot of their own typing rather than at the record.
+        // Only on a CLEAN save: a partial failure leaves the overlay alone so
+        // the columns that didn't land are still there to retry.
+        clearOverlay(selected.id);
         toast.success("Saved to Monday");
         setSaveNote("Saved.");
       } else {
@@ -835,7 +865,7 @@ const UnverifiedReferralsPage = () => {
     } finally {
       setSaving(false);
     }
-  }, [selected, refetch, logChangedFacts, liveIndex]);
+  }, [selected, refetch, logChangedFacts, liveIndex, clearOverlay]);
 
   const [escalateReason, setEscalateReason] = useState("");
   const { goBack } = useBackNavigation();
@@ -962,13 +992,21 @@ const UnverifiedReferralsPage = () => {
               ? `Not advanced — ${res.errors.map((e) => `${e.label}: ${e.error}`).join(" · ")}`
               : res.errors.map((e) => `${e.label}: ${e.error}`).join(" · "),
         );
-        if (res.ok) { setEscalateReason(""); await refetch(true); }
+        if (res.ok) {
+          setEscalateReason("");
+          // Advance is the other path that writes the left pane, so it owns the
+          // same overlay clear the plain Save does — otherwise the local copy
+          // outlives the patient's departure from this stage. The escalation
+          // exits don't touch those columns, so their edits stay pending.
+          if (kind === "advance") clearOverlay(selected.id);
+          await refetch(true);
+        }
       } finally {
         setSaving(false);
       }
     },
     [selected, escalateReason, refetch, verified, clinicLabelId, stuckLevel, liveIndex,
-      logChangedFacts],
+      logChangedFacts, clearOverlay],
   );
 
   // Declared after save() deliberately: naming it in the dependency array
@@ -1432,12 +1470,16 @@ const UnverifiedReferralsPage = () => {
                 </div>
               </div>
               <div className="flex items-center gap-2">
+                {/* LOCAL save, like every other role's header. Disabled with
+                    nothing pending, so it reads as "you have unsaved work"
+                    rather than a button that always looks available. */}
                 <Button
-                  onClick={save}
-                  disabled={!selected || saving}
-                  className="bg-gradient-primary text-primary-foreground shadow-elevate"
+                  onClick={saveLocal}
+                  disabled={!selected || !hasOverlay(selected.id)}
+                  className="gap-2 bg-emerald-600 text-white hover:bg-emerald-700 shadow-elevate"
+                  title="Keeps your edits on this device — the left pane's Save writes them to Monday"
                 >
-                  {saving ? "Saving…" : "Save"}
+                  <Save className="h-4 w-4" /> Save
                 </Button>
               </div>
             </div>
@@ -2366,11 +2408,13 @@ const UnverifiedReferralsPage = () => {
                         that used to sit below this is folded into the third
                         route; the mockup has no separate escalation section. */}
                     <div className="mt-2 flex flex-wrap items-center gap-2">
+                      {/* THE Monday write for the left pane. Named so it can't
+                          be mistaken for the header's local Save. */}
                       <button onClick={save} disabled={saving} className="btn primary">
-                        {saving ? "Saving…" : "Save"}
+                        {saving ? "Saving…" : "Save to Monday"}
                       </button>
                       <span className="text-xs text-muted-foreground">
-                        Saves the left pane without advancing.
+                        Writes the left pane to the board without advancing.
                       </span>
                     </div>
 
