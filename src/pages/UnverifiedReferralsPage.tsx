@@ -1532,15 +1532,34 @@ const UnverifiedReferralsPage = () => {
                         a call first" — and the patients most worth sending a
                         booking link to are the ones who never answered that
                         question. This is a per-patient action like the other
-                        two, so it belongs beside them. */}
-                    <button
-                      type="button"
-                      className="inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm font-semibold hover:bg-accent"
-                      onClick={() => setBookingLinkOpen(true)}
-                      title="Text or email this patient a link to book a call"
-                    >
-                      <CalendarClock className="h-3.5 w-3.5 shrink-0" /> Booking link
-                    </button>
+                        two, so it belongs beside them.
+
+                        A patient who already has a call gets a STATUS in the
+                        same slot instead of the action. The button offered the
+                        one thing that shouldn't happen to them — a second
+                        booking link, which Calendly answers with a second
+                        event, and now the rep has two appointments and no way
+                        to tell which one the patient will show up to. It is
+                        deliberately not a disabled button: a greyed-out
+                        "Booking link" reads as "this is broken" rather than
+                        "this is done", and the rep goes hunting for why. */}
+                    {bookedCall ? (
+                      <span
+                        className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-600/30 bg-emerald-600/10 px-3 py-1.5 text-sm font-semibold text-emerald-700 dark:text-emerald-400"
+                        title={`Intake call booked for ${bookedCall}`}
+                      >
+                        <Check className="h-3.5 w-3.5 shrink-0" /> Booked
+                      </span>
+                    ) : (
+                      <button
+                        type="button"
+                        className="inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm font-semibold hover:bg-accent"
+                        onClick={() => setBookingLinkOpen(true)}
+                        title="Text or email this patient a link to book a call"
+                      >
+                        <CalendarClock className="h-3.5 w-3.5 shrink-0" /> Booking link
+                      </button>
+                    )}
                   </div>
                   {selected.email?.trim() && (
                     <p className="mt-1 text-sm text-muted-foreground truncate">{selected.email}</p>
