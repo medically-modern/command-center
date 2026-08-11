@@ -181,7 +181,7 @@ export function StageActionBar({ stage, board, patientId, patientName, escalatio
                       // proposal lands in Manager Intervention, a manager's
                       // proposal from there promotes to Final Decisions.
                       await proposeIntakeStuck(
-                        patientId, reason, undefined,
+                        patientId, reason,
                         proposeStuckLevel(stage, origin, escalationLabel),
                         // Stamps the Call Log with which rung this came from —
                         // nothing for a processor, named for the two manager

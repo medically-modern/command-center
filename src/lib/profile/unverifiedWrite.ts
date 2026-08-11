@@ -545,20 +545,6 @@ export const INTAKE_ESCALATION_INDEX = {
   finalRequired: 2,
 } as const;
 
-/**
- * Append a decision to the escalation log in the app's ONE note format
- * (`lib/shared/noteStamp`): `[ET timestamp] Patient Intake: <text> —<initials>`.
- *
- * This rolled its own stamp from `new Date().toISOString()`, which is UTC —
- * four hours ahead of the ET the boards are keyed to (CLAUDE.md §9), so an
- * escalation logged after 8pm ET was dated the NEXT DAY. It also carried no
- * initials and no stage label, which is exactly what a manager needs to act on
- * an escalation: who raised it, and from where.
- */
-function appendNote(existing: string | undefined, note: string): string {
-  return appendStampedNote(existing, note, "Patient Intake", { initials: userInitials() });
-}
-
 const MAX_RETRIES = 2;
 const RETRY_DELAY_MS = 800;
 
@@ -745,72 +731,38 @@ export async function advanceToMedicalNecessity(
 }
 
 /**
- * Append one decision to the escalation log. Split out of `setEscalation` so
- * Approve Stuck can stamp its reason and then do something other than write an
- * escalation index.
+ * Record ONE stage decision, in the Call Log.
  *
- * Notes go first everywhere they're used: if the state change lands and the
- * note doesn't, a manager sees a decision with no reason attached.
- */
-async function writeEscalationNote(
-  itemId: string,
-  note: string,
-  existingNotes: string | undefined,
-  errors: IntakeWriteResult["errors"],
-): Promise<void> {
-  // Read the CURRENT log rather than trusting the caller to have passed it.
-  // StageActionBar can't know it, and calling appendNote(undefined, …) writes
-  // only the new line — silently destroying every earlier escalation note.
-  let prior = existingNotes;
-  if (prior === undefined) {
-    try {
-      const cols = await readColumnTexts(itemId, [COL.intakeEscalationNotes]);
-      prior = cols.find((c) => c.id === COL.intakeEscalationNotes)?.text ?? "";
-    } catch {
-      // Couldn't read it — append to nothing rather than fail the escalation,
-      // but never overwrite on a read we didn't get.
-      prior = "";
-    }
-  }
-  try {
-    await writeLongText(itemId, COL.intakeEscalationNotes, appendNote(prior, note));
-  } catch (e) {
-    errors.push({
-      label: "Escalation notes", columnId: COL.intakeEscalationNotes,
-      error: e instanceof Error ? e.message : String(e),
-    });
-  }
-}
-
-/**
- * Record ONE decision in BOTH logs.
+ * Josh, 2026-08-11: there is no separate escalation-notes column any more.
+ * Every decision lands in the ONE notes column with its rung named in the
+ * line, the same way Medical Evaluation and Insurance stamp theirs.
  *
- * Josh, 2026-08-10: the Call Log is where all free text lives for future
- * reference. The escalation column is a manager's audit trail — useful, but
- * it's a column you have to know to open, and a patient vanishing from the
- * queue with the reason recorded only there is how "why did this stop?"
- * becomes a question nobody can answer.
+ * Two logs was the earlier design and it cost more than it gave: a manager had
+ * to know which column to open, the two could disagree once either write
+ * failed on its own, and the escalation copy did not travel to Medical
+ * Necessity — the Call Log does, because `text_mm389fs` is copied into
+ * masheke's `text_mm3xdze1` by the hop automation.
  *
- * Every stage decision goes through here, so no path can be added later that
- * writes one log and forgets the other. appendIntakeNote re-reads the Call Log
- * itself, so it can't clobber a line written between the two writes.
+ * No snapshot is passed in on purpose. appendIntakeNote re-reads the log
+ * itself, which is what stops a line written between two saves being clobbered
+ * — and the old signature took the ESCALATION log, so a caller that kept
+ * passing it after this change would have handed the wrong column's text to
+ * the Call Log writer.
  */
 async function logDecision(
   itemId: string,
   line: string,
-  existingNotes: string | undefined,
   errors: IntakeWriteResult["errors"],
 ): Promise<void> {
-  await writeEscalationNote(itemId, line, existingNotes, errors);
   const note = await appendIntakeNote(itemId, line);
   if (!note.ok) errors.push(...note.errors);
 }
 
 async function setEscalation(
-  itemId: string, index: number, note: string, existingNotes?: string,
+  itemId: string, index: number, note: string,
 ): Promise<IntakeWriteResult> {
   const errors: IntakeWriteResult["errors"] = [];
-  await logDecision(itemId, note, existingNotes, errors);
+  await logDecision(itemId, note, errors);
   try {
     await writeStatusIndex(itemId, COL.intakeEscalation, index);
   } catch (e) {
@@ -823,8 +775,8 @@ async function setEscalation(
 }
 
 /** Rep → Manager Intervention. */
-export function escalateIntake(itemId: string, reason: string, existingNotes?: string) {
-  return setEscalation(itemId, INTAKE_ESCALATION_INDEX.required, `Escalated: ${reason}`, existingNotes);
+export function escalateIntake(itemId: string, reason: string) {
+  return setEscalation(itemId, INTAKE_ESCALATION_INDEX.required, `Escalated: ${reason}`);
 }
 
 /**
@@ -859,20 +811,18 @@ export function proposeStuckNoteLine(reason: string, origin: ProposeStuckOrigin)
 export async function proposeIntakeStuck(
   itemId: string,
   reason: string,
-  existingNotes?: string,
   level: "manager" | "final" = "manager",
   origin: ProposeStuckOrigin = "processor",
 ): Promise<IntakeWriteResult> {
   const index = level === "final"
     ? INTAKE_ESCALATION_INDEX.finalRequired
     : INTAKE_ESCALATION_INDEX.required;
-  // setEscalation records this in BOTH logs — see logDecision.
-  return setEscalation(itemId, index, proposeStuckNoteLine(reason, origin), existingNotes);
+  return setEscalation(itemId, index, proposeStuckNoteLine(reason, origin));
 }
 
 /** Manager sends the patient back into the rep pipeline. */
-export function returnIntakeToPipeline(itemId: string, note: string, existingNotes?: string) {
-  return setEscalation(itemId, INTAKE_ESCALATION_INDEX.done, `Returned to pipeline: ${note}`, existingNotes);
+export function returnIntakeToPipeline(itemId: string, note: string) {
+  return setEscalation(itemId, INTAKE_ESCALATION_INDEX.done, `Returned to pipeline: ${note}`);
 }
 
 /**
@@ -893,13 +843,12 @@ export function returnIntakeToPipeline(itemId: string, note: string, existingNot
  * `moveItemToGroup` the send-off's "Send back to Patient Intake" uses.
  */
 export async function approveIntakeStuck(
-  itemId: string, note: string, existingNotes?: string,
+  itemId: string, note: string,
 ): Promise<IntakeWriteResult> {
   const errors: IntakeWriteResult["errors"] = [];
   await logDecision(
     itemId,
     `Stuck approved${note.trim() ? `: ${note.trim()}` : ""}`,
-    existingNotes,
     errors,
   );
 

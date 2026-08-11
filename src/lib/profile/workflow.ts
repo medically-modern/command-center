@@ -65,7 +65,6 @@ export interface Patient {
   intakeCallComplete: string;
   /** "Manager Escalation Required" | "Done" | "Final Escalation Required" */
   intakeEscalation: string;
-  intakeEscalationNotes: string;
 
   // ── Follow Up ──
   followUp: string;

@@ -751,6 +751,20 @@ const UnverifiedReferralsPage = () => {
   );
 
   /**
+   * The one fact that decides whether a booking exists.
+   *
+   * Derived from the Calendly mirror, never from Booking Status: the form sets
+   * that column to "Scheduled" as soon as the patient picks a time STRING, and
+   * a genuine booking sets the same label later, so it cannot tell the two
+   * apart. Blank here means no Calendly event — nothing to reschedule, and
+   * nothing the Scheduled Calls day grid will ever show.
+   */
+  const bookedCall = useMemo(
+    () => formatBookedCall(selected?.scheduledCallTime),
+    [selected?.scheduledCallTime],
+  );
+
+  /**
    * Rep-entered facts that also belong in the Call Log: Current Out-of-Pocket
    * Cost, Self Advocacy (Josh, 2026-08-10) and the call slot. They keep their
    * own columns — this mirrors them into the log, so a manager reading it sees
@@ -914,7 +928,6 @@ const UnverifiedReferralsPage = () => {
         // logChangedFacts reports nothing on failure by design — a note that
         // didn't land must not stop a patient advancing.
         if (kind === "advance") await logChangedFacts(selected);
-        const notes = selected.intakeEscalationNotes;
         const res =
           // ONE verified transaction. The left pane, the verified insurance and
           // the doctor columns are now all written and read back BEFORE Move to
@@ -927,15 +940,15 @@ const UnverifiedReferralsPage = () => {
             clinicLabelId,
             liveIndex,
           })
-          : kind === "escalate" ? await escalateIntake(selected.id, escalateReason, notes)
+          : kind === "escalate" ? await escalateIntake(selected.id, escalateReason)
           : kind === "proposeStuck"
             ? await proposeIntakeStuck(
-                selected.id, escalateReason, notes, stuckLevel,
+                selected.id, escalateReason, stuckLevel,
                 managerOrigin === "manager-intervention" ? "manager-intervention"
                 : managerOrigin === "final-decisions" ? "final-decisions"
                 : "processor",
               )
-          : await returnIntakeToPipeline(selected.id, escalateReason, notes);
+          : await returnIntakeToPipeline(selected.id, escalateReason);
         setSaveNote(
           res.ok
             ? kind === "advance" ? "Advanced to Medical Necessity."
@@ -1193,36 +1206,43 @@ const UnverifiedReferralsPage = () => {
       .catch((e) => console.error("[intake] couldn't log sent text", e));
   }, [selected, refetch]);
 
-  /**
-   * "Reschedule appointment" — open Calendly's own page for this booking.
-   *
-   * A new tab rather than an embed: the rep is on the phone, Calendly's page
-   * wants room, and a popup blocked inside a dialog is a support ticket. The
-   * tab is opened SYNCHRONOUSLY on the click and its location set after the
-   * fetch — opening it in the promise instead is what Safari blocks.
-   */
   /** "Booking link" in the header — for a patient with no appointment yet. */
   const [bookingLinkOpen, setBookingLinkOpen] = useState(false);
   useEffect(() => { setBookingLinkOpen(false); }, [selected?.id]);
 
+  /**
+   * "Reschedule appointment" — open Calendly's own page for this booking.
+   *
+   * ⚠️ The link is fetched BEFORE any tab is opened. The first cut opened a
+   * blank tab synchronously and set its location afterwards, to dodge popup
+   * blocking — so every failure showed the rep a blank page instead of the
+   * reason, and the commonest failure is "this patient never actually booked".
+   * A blank tab reads as a broken feature; a toast reads as an answer.
+   *
+   * Popup blocking is handled where it happens instead: if `window.open`
+   * returns null, the toast carries the link, and the rep's click on THAT is a
+   * fresh user gesture no browser blocks.
+   */
   const [rescheduling, setRescheduling] = useState(false);
   const openReschedule = useCallback(async () => {
     if (!selected || rescheduling) return;
-    const tab = window.open("", "_blank", "noopener");
     setRescheduling(true);
     try {
       const r = await getRescheduleLink(selected.id);
       if ("noBooking" in r) {
-        tab?.close();
         toast.info("No appointment is booked yet", {
-          description: "Send them a booking link from Scheduled Calls, or have them pick a time.",
+          description: "Send them a booking link and they'll pick a time.",
+          action: { label: "Send link", onClick: () => setBookingLinkOpen(true) },
         });
         return;
       }
-      if (tab) tab.location.href = r.url;
-      else window.open(r.url, "_blank", "noopener"); // popup blocked — try once more
+      if (!window.open(r.url, "_blank", "noopener")) {
+        toast.warning("Your browser blocked the pop-up", {
+          description: "Open Calendly to move this appointment.",
+          action: { label: "Open Calendly", onClick: () => { window.open(r.url, "_blank", "noopener"); } },
+        });
+      }
     } catch (e) {
-      tab?.close();
       toast.error("Couldn't open the reschedule page", {
         description: e instanceof Error ? e.message : String(e),
       });
@@ -2139,28 +2159,31 @@ const UnverifiedReferralsPage = () => {
                     <div className="flabel">Call Booking</div>
                     <div className="bookrow">
                       <div>
-                        {/* The BOOKING, from the Calendly mirror — the same
-                            column the Scheduled Calls day grid reads, so the
-                            two can never tell the rep different things. The
-                            form's own answer is shown underneath as the raw
-                            claim, not as the appointment. */}
+                        {/* Booked-or-not is derived from the Calendly MIRROR —
+                            the same column the Scheduled Calls day grid reads,
+                            so the two can never tell the rep different things.
+
+                            ⚠️ The Booking Status column is deliberately NOT
+                            shown. The form writes it "Scheduled" the moment the
+                            patient picks a time STRING (server.js buildColumns:
+                            `callBooked ? 'Scheduled' : 'Unscheduled'`), which
+                            happens before any Calendly event exists — and the
+                            real mirror writes the same label later. One label,
+                            two meanings. Rendering it produced "Not booked"
+                            beside a green "Scheduled" pill on the same row. */}
                         <div className="eyebrow-xs">Booked appointment</div>
-                        <div className="bookval">
-                          {formatBookedCall(selected.scheduledCallTime) || "Not booked"}
-                        </div>
+                        <div className="bookval">{bookedCall || "Not booked"}</div>
                         {formSlotAsReceived && (
                           <div className="sugg-note" style={{ marginTop: 4 }}>
-                            Asked for on the form: {formSlotAsReceived}
+                            {bookedCall
+                              ? `Asked for on the form: ${formSlotAsReceived}`
+                              : `They asked for ${formSlotAsReceived} on the form, but never confirmed a time — send them a booking link.`}
                           </div>
                         )}
                       </div>
-                      {(selected.formBookingStatus ?? "").trim() && (
-                        <span className={
-                          (selected.formBookingStatus ?? "").trim() === "Scheduled" ? "mp green" : "mp"
-                        }>
-                          {selected.formBookingStatus}
-                        </span>
-                      )}
+                      <span className={bookedCall ? "mp green" : "mp"}>
+                        {bookedCall ? "Booked" : "Not booked"}
+                      </span>
                     </div>
 
                     {/* Reschedule, for real.
@@ -2180,19 +2203,36 @@ const UnverifiedReferralsPage = () => {
                         Don't reintroduce a typed time: the Scheduling API is
                         off on this account, so a local time can never become a
                         real booking. */}
-                    <div style={{ marginTop: 14 }} className="flex items-center gap-2 flex-wrap">
-                      <button
-                        className="btn secondary sm"
-                        disabled={rescheduling}
-                        onClick={() => void openReschedule()}
-                        title="Open this patient's Calendly booking to move it"
-                      >
-                        {rescheduling ? "Opening…" : "Reschedule appointment"}
-                      </button>
-                      <span className="sugg-note">
-                        Opens Calendly — the new time syncs back on its own.
-                      </span>
-                    </div>
+                    {/* Only when there is something to move. Offering
+                        "Reschedule" against no booking is what sent a rep to a
+                        blank tab — the button has nothing to open. */}
+                    {bookedCall ? (
+                      <div style={{ marginTop: 14 }} className="flex items-center gap-2 flex-wrap">
+                        <button
+                          className="btn secondary sm"
+                          disabled={rescheduling}
+                          onClick={() => void openReschedule()}
+                          title="Open this patient's Calendly booking to move it"
+                        >
+                          {rescheduling ? "Opening…" : "Reschedule appointment"}
+                        </button>
+                        <span className="sugg-note">
+                          Opens Calendly — the new time syncs back on its own.
+                        </span>
+                      </div>
+                    ) : (
+                      <div style={{ marginTop: 14 }} className="flex items-center gap-2 flex-wrap">
+                        <button
+                          className="btn secondary sm"
+                          onClick={() => setBookingLinkOpen(true)}
+                        >
+                          Send booking link
+                        </button>
+                        <span className="sugg-note">
+                          They pick a time; it appears here once they book.
+                        </span>
+                      </div>
+                    )}
                   </div>
                 )}
 
@@ -2615,12 +2655,14 @@ const UnverifiedReferralsPage = () => {
                   />
                   {/* "Escalate — doesn't qualify" is a LEFT-pane exit (§2) and
                       lives in Ready to Advance?. What stays here is the shared
-                      manager ladder: Propose Stuck / Approve / Send back. */}
-                  {selected.intakeEscalationNotes?.trim() && (
-                    <pre className="mt-3 max-h-40 overflow-y-auto whitespace-pre-wrap rounded-md bg-muted/40 px-3 py-2 text-[11px]">
-                      {selected.intakeEscalationNotes}
-                    </pre>
-                  )}
+                      manager ladder: Propose Stuck / Approve / Send back.
+
+                      The escalation log used to be echoed here from its own
+                      column. That column is gone (Josh, 2026-08-11) — decisions
+                      are stamped into the Call Log with their rung named, so
+                      the reason sits in the same place as every other note on
+                      this patient rather than in a second box saying the same
+                      thing twice. */}
                 </Card>
               </div>
 

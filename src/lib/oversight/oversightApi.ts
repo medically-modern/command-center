@@ -330,7 +330,11 @@ const RAW_CHART_DEFS: ChartDef[] = [
     id: "profile-send-off-unverified-escalated",
     title: "Patient Intake (Escalated)",
     boardId: 18406352652,
-    notesColId: "long_text_mm5z3sq9",
+    // The Call Log, not the retired Intake Escalation Notes column
+    // (`long_text_mm5z3sq9`, dropped 2026-08-11). Every stage decision was
+    // already written to BOTH, so nothing escalated before the change loses
+    // its reason here.
+    notesColId: "text_mm389fs",
     rowOf: "profile-send-off-unverified",
     drilldownCols: PROFILE_COLS,
   },
@@ -338,9 +342,13 @@ const RAW_CHART_DEFS: ChartDef[] = [
     id: "profile-send-off-unverified-stuck",
     title: "Patient Intake (Proposed Stuck)",
     boardId: 18406352652,
-    notesColId: "long_text_mm5z3sq9",
+    // The Call Log, not the retired Intake Escalation Notes column
+    // (`long_text_mm5z3sq9`, dropped 2026-08-11). Every stage decision was
+    // already written to BOTH, so nothing escalated before the change loses
+    // its reason here.
+    notesColId: "text_mm389fs",
     rowOf: "profile-send-off-unverified",
-    reasonColId: "long_text_mm5z3sq9",
+    reasonColId: "text_mm389fs",
     drilldownCols: PROFILE_COLS,
   },
   {

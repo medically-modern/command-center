@@ -86,7 +86,6 @@ export function mondayItemToPatient(item: MondayItem): Patient {
     attemptCounter: col(item, COL.attemptCounter),
     intakeCallComplete: col(item, COL.intakeCallComplete),
     intakeEscalation: col(item, COL.intakeEscalation),
-    intakeEscalationNotes: col(item, COL.intakeEscalationNotes),
 
     // Status
     alreadyInSystem: col(item, COL.alreadyInSystem),

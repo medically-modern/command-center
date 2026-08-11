@@ -55,7 +55,6 @@ export const COL = {
    *  1 = "Done" (resolved / back in the rep pipeline)
    *  2 = "Final Escalation Required" (Proposed Stuck → Final Decisions) */
   intakeEscalation: "color_mm5zww42",
-  intakeEscalationNotes: "long_text_mm5z3sq9",
 
   // ── Rep-entered on the intake call (HANDOFF §9) ──
   // Deliberately NOT on the patient form — these are phone-call answers.
@@ -245,7 +244,7 @@ export const READ_COLUMN_IDS: string[] = [
   // Rep-entered on the intake call
   COL.selfAdvocacy, COL.currentOopCost, COL.cgmDataAwareness,
   COL.attemptCounter, COL.intakeCallComplete,
-  COL.intakeEscalation, COL.intakeEscalationNotes,
+  COL.intakeEscalation,
 ];
 
 export interface MondayColumnValue {
