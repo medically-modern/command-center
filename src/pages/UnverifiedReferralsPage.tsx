@@ -68,6 +68,9 @@ import { optionsWithCurrent } from "@/lib/profile/selectOptions";
 // First/Last are two boxes over one Monday value — this board has no name
 // columns, the item name IS the name, so the split has to round-trip.
 import { splitName, joinName } from "@/lib/profile/nameParts";
+import {
+  generateUploadLink, uploadLinkMessage, uploadLinksConfigured,
+} from "@/lib/profile/uploadLink";
 // Monday dates are timezone-naive ET — never date a board column from a bare
 // `new Date()` in a UTC runtime (CLAUDE.md §9).
 import { etToday, addBusinessDaysIso } from "@/lib/masheke/etDate";
@@ -954,14 +957,18 @@ const UnverifiedReferralsPage = () => {
    * patient off today's burndown and parked them in the sidebar's Follow Up
    * section. Reaching out to someone is not the same as deferring them.
    */
-  const [followUpTextOpen, setFollowUpTextOpen] = useState(false);
-  /** Only set when the follow-up BUTTON opens the composer. The plain Text
-   *  button beside the patient's name must open an empty box — a rep texting
-   *  about something else shouldn't have to clear a template first. */
-  const [followUpPrefill, setFollowUpPrefill] = useState<string | undefined>();
+  /** Shared by every button that opens the composer with something in it —
+   *  Start Insurance Follow-Up and Generate CGM data link (§8.3). Named for
+   *  what it is rather than for the first feature that used it, so the next one
+   *  doesn't add a third parallel pair of flags. */
+  const [textComposerOpen, setTextComposerOpen] = useState(false);
+  /** Only set when a BUTTON opens the composer. The plain Text button beside
+   *  the patient's name must open an empty box — a rep texting about something
+   *  else shouldn't have to clear a template first. */
+  const [textPrefill, setTextPrefill] = useState<string | undefined>();
   useEffect(() => {
-    setFollowUpTextOpen(false);
-    setFollowUpPrefill(undefined);
+    setTextComposerOpen(false);
+    setTextPrefill(undefined);
   }, [selected?.id]);
   const followUpTemplate = useCallback(() => {
     const first = splitName(selected?.name).first || "there";
@@ -1034,8 +1041,8 @@ const UnverifiedReferralsPage = () => {
   }, [selected, coordinator, refetch]);
 
   const startInsuranceFollowUp = useCallback(() => {
-    setFollowUpPrefill(followUpTemplate());
-    setFollowUpTextOpen(true);
+    setTextPrefill(followUpTemplate());
+    setTextComposerOpen(true);
   }, [followUpTemplate]);
 
   // ── Referral email (Monday updates) + Files (item assets) ────────────────
@@ -1064,12 +1071,18 @@ const UnverifiedReferralsPage = () => {
   }, [selected]);
 
   /**
-   * Attach a CGM data file to the item's file column.
+   * Attach a file to one of the item's file columns, as the rep.
    *
-   * The mockup's flow is the PATIENT uploading from their phone via a tokenized
-   * link (§8.3), which needs a service that doesn't exist. This is the half
-   * that works today: the worker already relays multipart uploads to Monday's
-   * file API, so the rep can attach what the patient emails or texts over.
+   * The patient-side half — they upload from their phone via a texted link —
+   * is `generateCgmLink` below (§8.3). This stays as the manual fallback for
+   * when the patient can't use the link, which §8.3 asks for explicitly.
+   *
+   * ⚠️ What makes a patient's upload APPEAR without a refresh (a §8.3
+   * requirement — the rep is still on the call) is the 15s `useMondayPatients`
+   * poll: it rebuilds `selected`, and the assets effect above keys on it. If
+   * that effect is ever memoised on `selected.id` instead, this stops working
+   * and nothing errors — the file just never shows up until the rep clicks away
+   * and back.
    */
   const [cgmDragOver, setCgmDragOver] = useState(false);
   const [cgmUploading, setCgmUploading] = useState(false);
@@ -1118,6 +1131,38 @@ const UnverifiedReferralsPage = () => {
     (files: File[]) => uploadTo(COL.formCardPhoto, files, setCardUploading),
     [uploadTo],
   );
+
+  /**
+   * "Generate CGM data link" — §8.3, the patient-side half.
+   *
+   * Mint a one-off link on the dtc-mm-form service, then open the ordinary text
+   * composer with it. Deliberately TWO steps rather than one auto-send: the
+   * composer is where the opt-out guard lives and where the rep can see the
+   * thread, and a button that fired a text on its own would bypass both.
+   *
+   * The mint is not written to Monday. A link the rep never sent is not a fact
+   * about the patient, and stamping one would leave the Call Log claiming an
+   * outreach that didn't happen — so the note is written by the SEND path
+   * (`PatientContact`'s composer), not here.
+   */
+  const [linkGenerating, setLinkGenerating] = useState(false);
+  const generateCgmLink = useCallback(async () => {
+    if (!selected || linkGenerating) return;
+    setLinkGenerating(true);
+    try {
+      const { url } = await generateUploadLink(selected.id);
+      setTextPrefill(uploadLinkMessage(selected.name, url));
+      setTextComposerOpen(true);
+    } catch (e) {
+      // Every failure here is actionable by the rep (wrong stage, service
+      // unreachable, unconfigured build), so the reason is the message.
+      toast.error("Couldn't generate an upload link", {
+        description: e instanceof Error ? e.message : String(e),
+      });
+    } finally {
+      setLinkGenerating(false);
+    }
+  }, [selected, linkGenerating]);
 
   /** Backs the ✕ on a file row. Clears the whole column — see FileColumnRow
    *  for why per-file removal isn't on offer. Stamped into the Call Log,
@@ -1324,13 +1369,13 @@ const UnverifiedReferralsPage = () => {
                     </span>
                     <PatientContact
                       phone={selected.ptPhone}
-                      textPrefill={followUpPrefill}
-                      textOpen={followUpTextOpen}
+                      textPrefill={textPrefill}
+                      textOpen={textComposerOpen}
                       onTextOpenChange={(o) => {
-                        setFollowUpTextOpen(o);
+                        setTextComposerOpen(o);
                         // Drop the template once the dialog closes, so the next
                         // plain "Text" click opens an empty composer.
-                        if (!o) setFollowUpPrefill(undefined);
+                        if (!o) setTextPrefill(undefined);
                       }}
                     />
                   </div>
@@ -1464,20 +1509,22 @@ const UnverifiedReferralsPage = () => {
                     ))
                   )}
                 </div>
-                {/* TWO buttons, one per file column — Monday files live IN A
-                    COLUMN, so an upload has to pick one and a single "Upload
-                    documents" button could only guess. The two are different
-                    things from different sources:
+                {/* Two affordances, and they are NOT symmetrical:
                       Insurance Card Photo — the patient can attach this on the
-                        intake FORM, so it often arrives on its own.
-                      CGM Data File — never from the form. HANDOFF §8.3: the rep
-                        sends the patient a tokenized upload link ON THE CALL
-                        and they upload from their phone. That link isn't built,
-                        so this button is how the file gets there today.
-                    ⚠️ <label>, not <button>: `.pf-root button` strips
-                    background/border off bare buttons. And do NOT reach for
-                    `.upzone` here — it is display:none until something adds
-                    `.show`, which is why the first cut of this was invisible. */}
+                        intake FORM, so it often arrives on its own; the rep
+                        uploads it here when it didn't.
+                      CGM Data File — never from the form (§8.2 keeps it
+                        phone-call only), so the rep sends the patient a link
+                        mid-call and they upload from their phone (§8.3). The
+                        manual fallback for this column is the drop zone in What
+                        They Need — deliberately not a second button here, which
+                        is what this slot used to hold.
+                    ⚠️ <label>, not <button>, for the UPLOAD one: `.pf-root
+                    button` strips background/border off bare buttons, so the
+                    link button below carries `btn secondary sm` explicitly. And
+                    do NOT reach for `.upzone` here — it is display:none until
+                    something adds `.show`, which is why the first cut of this
+                    was invisible. */}
                 <div style={{ padding: "0 8px 10px", display: "flex", gap: 8, flexWrap: "wrap" }}>
                   <label
                     className="btn secondary sm"
@@ -1498,25 +1545,31 @@ const UnverifiedReferralsPage = () => {
                       }}
                     />
                   </label>
-                  <label
-                    className="btn secondary sm"
-                    style={{ display: "inline-flex", cursor: cgmUploading ? "wait" : "pointer" }}
-                    title="Saves to the CGM Data File column"
-                  >
-                    {cgmUploading ? "Uploading…" : "Upload CGM data"}
-                    <input
-                      type="file"
-                      multiple
-                      accept=".jpg,.jpeg,.png,.heic,.pdf,.csv"
-                      style={{ display: "none" }}
-                      disabled={cgmUploading}
-                      onChange={(e) => {
-                        const files = Array.from(e.target.files ?? []);
-                        if (files.length) void uploadCgmFile(files);
-                        e.target.value = "";
-                      }}
-                    />
-                  </label>
+                  {/* Hidden rather than disabled when the build has no service
+                      URL: a permanently dead button invites a support ticket,
+                      and the drop zone below still covers the column. */}
+                  {uploadLinksConfigured() && (
+                    <button
+                      type="button"
+                      className="btn secondary sm"
+                      style={{ display: "inline-flex", alignItems: "center", gap: 6 }}
+                      onClick={() => void generateCgmLink()}
+                      disabled={linkGenerating || !(selected.ptPhone ?? "").trim()}
+                      title={
+                        (selected.ptPhone ?? "").trim()
+                          ? "Create a one-off upload link and open the text composer with it"
+                          : "No phone number on file to text"
+                      }
+                    >
+                      {linkGenerating && (
+                        <span
+                          className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-current border-t-transparent"
+                          aria-hidden
+                        />
+                      )}
+                      {linkGenerating ? "Generating…" : "Generate CGM data link"}
+                    </button>
+                  )}
                 </div>
               </div>
 
@@ -1683,9 +1736,9 @@ const UnverifiedReferralsPage = () => {
 
                 {/* CGM data collection — full width, below the aligned rows,
                     and only while the CGM category is on (as the mockup gates
-                    it). The rep-side upload works today; the patient-side
-                    "send them a link" half is §8.3 and needs a service that
-                    doesn't exist. */}
+                    it). Both halves of §8.3 now exist: the patient uploads from
+                    a texted link (Generate CGM data link, in the Files card),
+                    and this drop zone is the rep's manual fallback. */}
                 {cgmOn && (
                   <div style={{ marginTop: 20, paddingTop: 18, borderTop: "1px dashed var(--border)" }}>
                     <FileColumnRow
@@ -1700,8 +1753,9 @@ const UnverifiedReferralsPage = () => {
                         column with a different source. */}
                     <p className="mb-2 text-[11px] text-muted-foreground">
                       This is the patient’s <strong>CGM data</strong> — a glucose report, hypo log or
-                      screenshot. Sending them an upload link isn’t built yet (§8.3), so until it is,
-                      attach what they email or text over using the box below. Saves to the{" "}
+                      screenshot. On a call, <strong>Generate CGM data link</strong> in the Files card
+                      texts them a link they can upload from their phone; whatever they send lands
+                      here. Use the box below to attach it yourself instead. Saves to the{" "}
                       <strong>CGM Data File</strong> column.
                     </p>
                     <label
