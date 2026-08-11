@@ -61,7 +61,8 @@
         "authOutstanding",
         "inSystemReferrals",
         "doctorAppointments",
-        "assignedPatients"
+        "assignedPatients",
+        "scheduledCalls"
       ],
       "roleOrder": {},
       "roleFilters": {},
