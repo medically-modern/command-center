@@ -43,8 +43,18 @@ function defaultMessage(url: string, name: string): string {
 }
 
 export default function BookingLinkDialog({
-  open, onOpenChange,
-}: { open: boolean; onOpenChange: (v: boolean) => void }) {
+  open, onOpenChange, patientName, phone, email,
+}: {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  /** Optional prefill. Scheduled Calls opens this with no patient in hand and
+   *  passes nothing, so it behaves exactly as before. Patient Intake opens it
+   *  from a record already on screen — making the rep retype the name and
+   *  number they are looking at is how a button goes unused. */
+  patientName?: string;
+  phone?: string;
+  email?: string;
+}) {
   const [url, setUrl] = useState(FALLBACK_URL);
   const [mode, setMode] = useState<Mode>("text");
   const [name, setName] = useState("");
@@ -59,6 +69,27 @@ export default function BookingLinkDialog({
       .then((r) => r.json())
       .then((d) => { if (d?.enabled && d.url) setUrl(d.url); })
       .catch(() => { /* fallback already in state */ });
+  }, [open]);
+
+  /**
+   * Seed from the patient ON OPEN only.
+   *
+   * Keyed to `open` rather than to the props so a poll that re-renders the
+   * parent mid-compose cannot overwrite a recipient the rep has corrected —
+   * the intake page refreshes every 15s, so that would happen constantly.
+   * Defaults to whichever channel we actually have, since texting an empty
+   * box is the same dead end as before.
+   */
+  useEffect(() => {
+    if (!open) return;
+    const p = digits(phone ?? "");
+    const e = (email ?? "").trim();
+    setName(patientName ?? "");
+    setTouched(false);
+    if (p.length >= 10) { setMode("text"); setTo(p); }
+    else if (e) { setMode("email"); setTo(e); }
+    // No contact details at all: leave the picker as-is and let the rep type.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- open is the trigger; see above
   }, [open]);
 
   // Keep the draft in step with the link and the name until the rep edits it —

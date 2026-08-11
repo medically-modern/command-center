@@ -14,7 +14,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { AlertTriangle, ClipboardCheck, Lock, Check, X, ArrowLeft } from "lucide-react";
+import { AlertTriangle, ClipboardCheck, Lock, Check, X, ArrowLeft, CalendarClock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 // History-first Back, same as every other stage page — returns a manager to
 // their Oversight drill-down rather than a hardcoded home route (§9).
@@ -26,6 +26,7 @@ import { GROUPS, fetchClinicLabels, clearFileColumn } from "@/lib/profile/monday
 // location grid, order count and notes all behave exactly as on /profile —
 // rebuilding it would fork behaviour reps already rely on.
 import { DoctorSection } from "@/components/profile/DoctorSection";
+import BookingLinkDialog from "@/components/scheduledCalls/BookingLinkDialog";
 import { evaluateUnlock } from "@/lib/profile/intakeUnlock";
 import {
   PRIMARY_INSURANCE_INDEX, SECONDARY_INSURANCE_INDEX, SERVING_INDEX,
@@ -1200,6 +1201,10 @@ const UnverifiedReferralsPage = () => {
    * tab is opened SYNCHRONOUSLY on the click and its location set after the
    * fetch — opening it in the promise instead is what Safari blocks.
    */
+  /** "Booking link" in the header — for a patient with no appointment yet. */
+  const [bookingLinkOpen, setBookingLinkOpen] = useState(false);
+  useEffect(() => { setBookingLinkOpen(false); }, [selected?.id]);
+
   const [rescheduling, setRescheduling] = useState(false);
   const openReschedule = useCallback(async () => {
     if (!selected || rescheduling) return;
@@ -1460,6 +1465,20 @@ const UnverifiedReferralsPage = () => {
                         if (!o) setTextPrefill(undefined);
                       }}
                     />
+                    {/* Up here with Call and Text rather than in the booking
+                        block below, because that block only renders for "Wants
+                        a call first" — and the patients most worth sending a
+                        booking link to are the ones who never answered that
+                        question. This is a per-patient action like the other
+                        two, so it belongs beside them. */}
+                    <button
+                      type="button"
+                      className="inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm font-semibold hover:bg-accent"
+                      onClick={() => setBookingLinkOpen(true)}
+                      title="Text or email this patient a link to book a call"
+                    >
+                      <CalendarClock className="h-3.5 w-3.5 shrink-0" /> Booking link
+                    </button>
                   </div>
                   {selected.email?.trim() && (
                     <p className="mt-1 text-sm text-muted-foreground truncate">{selected.email}</p>
@@ -2203,6 +2222,17 @@ const UnverifiedReferralsPage = () => {
                   route Send Request uses. Sending is blocked on the shared
                   TCPA/CTIA opt-out guard. */}
               <IntakeMessages patientId={selected.id} email={selected.email} />
+
+              {/* Opened from the header button. Prefilled from the patient on
+                  screen; the booking lands on the board via the Calendly
+                  webhook, so nothing here writes to Monday. */}
+              <BookingLinkDialog
+                open={bookingLinkOpen}
+                onOpenChange={setBookingLinkOpen}
+                patientName={selected.name}
+                phone={selected.ptPhone}
+                email={selected.email}
+              />
 
               {/* ── Call Log & Notes ── append-only and stamped, per the note
                   under the mockup's card and CLAUDE.md §9. The log is rendered
