@@ -1,6 +1,6 @@
 // Batch writer for Medical Necessity "Send to Monday"
 
-import { writeStatusIndex, writeText, writeLongText, writeDate, writeDateTime, writeStatusLabel, readColumnTexts, COL } from "./mondayApi";
+import { writeStatusIndex, writeText, writeLongText, writeDate, writeDateTime, writeStatusLabel, readColumnTexts, fetchStatusOptions, COL } from "./mondayApi";
 import { executeWritesWithVerification, type WriteProgressPhase } from "../shared/verifiedWrite";
 import { etNow, etToday, clampToBusinessDay } from "./etDate";
 import {
@@ -90,6 +90,12 @@ export async function runVerifiedSend(opts: {
     readColumns: readColumnTexts,
     createLabelsIfMissing: opts.createLabelsIfMissing,
     writeDebug: (id, msg) => writeText(id, COL.joshDebug, msg),
+    // Turns "verification timed out" into "Monday never created label X" when
+    // that's what actually happened. Deliberately an UNCACHED read: it only runs
+    // after a failure, and a stale label list would accuse the board of losing a
+    // label that was in fact just created (see MissingBoardLabelError).
+    readColumnLabels: async (columnId) =>
+      (await fetchStatusOptions(columnId)).map((o) => o.label).filter(Boolean),
     onProgress: opts.onProgress,
     requireDone: opts.requireDone,
     waitForDoneMs: opts.waitForDoneMs,

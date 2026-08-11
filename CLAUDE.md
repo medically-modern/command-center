@@ -127,6 +127,33 @@ clobber panel state and silently drop the Next Action Date from the transaction,
 patients never left the due queue and burned attempts. Those panels also compute the follow-up
 date **at save time**, never from component state, and a missing date now aborts the save loudly.
 
+**Ghost labels — a permanent failure that used to read as "Monday is slow" (2026-08-11).** A write
+with `create_labels_if_missing` can leave Monday stamping the item with a label **index that has no
+text**: the column then reads back `""` forever, exact-match (`expectedText`) verification fails
+every attempt, and the stage advancer is never written. It happened on Evaluate's **Diagnosis**
+`color_mm1wf7rv` (the one status column reps may add labels to) when a rep typed a new ICD-10 code:
+Monday allocated **index 5** — a stale slot that has a `labels_positions_v2` entry and no label on
+**all three** boards duplicated from the same template (Masheke, Insurance, Welcome Call) — and never
+persisted the text. Unlike the snapshot-diff path, exact-match has **no stable-read escape hatch**, so
+it is deterministic: the rep retried five times on a message telling them to retry. Both engines now
+diagnose it — `findMissingBoardLabels` + **`MissingBoardLabelError`** client-side (fed by the
+`readColumnLabels` adapter, an **uncached** board read so a stale list can't accuse the board of losing
+a label just created) and the mirrored `findMissingLabels` in the gateway's `send.mjs`. The check is
+deliberately **conservative**: an unreadable or unparseable label set falls back to the generic timeout,
+because a wrong "add this label" is worse than a vague message. ⚠️ Adding a label to a status column is
+still **not** something to do blind — verify it landed in the column settings, never just that the write
+returned 200.
+
+**A handed-off send can't fail silently any more (same incident).** The gateway fast path returns
+`"submitted"` when a job outlives the ~20s foreground poll, and every flow WITHOUT `requireDone`
+reports that as success (`if (outcome === "done" || !requireDone) return []`). Fine while the job
+succeeds — it's durable and idempotent — but a job that then FAILS surfaced **nowhere**, which is
+exactly what a manager saw: "didn't get the error message, but it also did not advance."
+`submitSend` now hands every un-awaited job to `watchSendInBackground`, and
+`components/shared/SendFailureHost.tsx` (mounted app-wide in `App.tsx`, like `IncomingCallHost`)
+toasts the server's own error with `duration: Infinity`. Failure-only on purpose — alarming on a
+merely-slow job would train people to ignore it.
+
 The six main "Send to Monday" flows use this correctly. **Inline panel actions** (attempt saves,
 mark-complete, escalation modal, notes, Subscription's big write) historically bypassed it — see
 `WRITE_RELIABILITY_AUDIT.md` for the H1–H6 / M-series findings before touching those paths.

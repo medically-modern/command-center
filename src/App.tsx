@@ -5,6 +5,7 @@ import { Suspense } from "react";
 import { lazyWithReload } from "./lib/shared/chunkReload";
 import Index from "./pages/Index";
 import { FileViewerHost } from "./components/shared/FileViewerModal";
+import SendFailureHost from "./components/shared/SendFailureHost";
 import AuthGate from "./components/AuthGate";
 import AccessProvider from "./components/AccessProvider";
 
@@ -76,6 +77,9 @@ const App = () => (
     {/* Bottom-right: top-right toasts covered the file preview's close button. */}
     <Toaster position="bottom-right" />
     <FileViewerHost />
+    {/* App-wide: a send that fails after the panel stopped watching resolves
+        long after the rep has moved on. See SendFailureHost.tsx. */}
+    <SendFailureHost />
     <BrowserRouter basename={basename}>
       <Suspense fallback={<Loading />}>
         <Routes>

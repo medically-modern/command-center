@@ -60,6 +60,45 @@ async function readColumnTexts(itemId, colIds) {
   return new Map(cvs.map((c) => [c.id, c.text ?? ""]));
 }
 
+/** Live label set of one or more status columns, keyed by column id.
+ *  Unreadable / unparseable columns are simply absent from the map. */
+async function readColumnLabels(boardId, colIds) {
+  const out = new Map();
+  if (!colIds.length) return out;
+  const data = await callMonday(
+    `query($board:[ID!],$cols:[String!]){boards(ids:$board){columns(ids:$cols){id settings_str}}}`,
+    { board: [String(boardId)], cols: colIds },
+  );
+  for (const c of data?.boards?.[0]?.columns || []) {
+    try {
+      const labels = JSON.parse(c.settings_str || "{}").labels;
+      if (!labels) continue;
+      // Status columns: { "0": "Yes", ... }. Anything else (e.g. a dropdown's
+      // array shape) yields no usable strings and stays out of the map, so a
+      // shape we don't understand can never produce a false accusation.
+      const vals = Object.values(labels)
+        .map((v) => (typeof v === "string" ? v : v?.label ?? ""))
+        .filter(Boolean);
+      if (vals.length) out.set(c.id, vals);
+    } catch { /* unparseable → absent → stays quiet */ }
+  }
+  return out;
+}
+
+/** Which exact-match label writes are asking for a label the board lacks.
+ *  `current` is the latest read-back, so a value that DID land is never
+ *  reported even if the verify loop timed out on a different column. */
+async function findMissingLabels(boardId, verify, current) {
+  const wanted = (verify || []).filter(
+    (v) => v && v.expectedText && (current.get(v.columnId) ?? "") !== v.expectedText,
+  );
+  if (!wanted.length) return [];
+  const known = await readColumnLabels(boardId, [...new Set(wanted.map((v) => v.columnId))]);
+  return wanted
+    .filter((v) => known.has(v.columnId) && !known.get(v.columnId).includes(v.expectedText))
+    .map((v) => ({ columnId: v.columnId, label: v.expectedText }));
+}
+
 function writeMultiple(itemId, boardId, valuesObj, createLabels = false) {
   // create_labels_if_missing lets specific flows (e.g. Evaluate's Diagnosis +
   // consolidated ask) create new status/dropdown labels server-side. OFF by
@@ -105,7 +144,28 @@ async function executeSend(payload) {
       if (!pending.length) { ok = true; break; }
       if (a < VERIFY_ATTEMPTS) await sleep(VERIFY_INTERVAL_MS);
     }
-    if (!ok) throw new Error(`verify timeout after ~${Math.round((VERIFY_ATTEMPTS * VERIFY_INTERVAL_MS) / 1000)}s`);
+    if (!ok) {
+      // Before blaming latency, check the one cause latency can never resolve:
+      // a create_labels_if_missing write where Monday stamped the item with a
+      // label index but never wrote the label into the column's settings. The
+      // column then reads back "" forever, so exact-match verification fails
+      // identically on every attempt and every retry (2026-08-11 incident — a
+      // new ICD-10 code on Evaluate; the rep retried five times on a "Monday
+      // may be slow" message that could never come true). Mirrors
+      // findMissingBoardLabels in src/lib/shared/verifiedWrite.ts.
+      const missing = createLabelsIfMissing
+        ? await findMissingLabels(boardId, verify, await readColumnTexts(itemId, dataIds))
+        : [];
+      if (missing.length) {
+        const m = missing[0];
+        throw new Error(
+          `Monday did not create the label "${m.label}" on column ${m.columnId} — the column has no such ` +
+            `label, so the value can't be read back and the stage was NOT advanced. Retrying will not help. ` +
+            `Add "${m.label}" to that column on the board, then pick it from the list and send again.`,
+        );
+      }
+      throw new Error(`verify timeout after ~${Math.round((VERIFY_ATTEMPTS * VERIFY_INTERVAL_MS) / 1000)}s`);
+    }
   }
 
   // Phase 3: stage advancer(s) last

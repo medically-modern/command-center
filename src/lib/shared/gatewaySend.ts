@@ -92,6 +92,65 @@ async function pollDone(jobId: string | number, ms = 20000): Promise<{ status: s
   return { status: "pending" };
 }
 
+// ── Background failure watch ───────────────────────────────────
+//
+// A send that outlives the foreground poll window returns "submitted", and
+// callers WITHOUT `requireDone` report that to the user as success (see
+// verifiedWrite's gateway fast path). That is right for the common case — the
+// job is durable and idempotent, so it will still run — but it means a job
+// that ultimately FAILS server-side surfaces nowhere: the panel already showed
+// a clean send and the browser moved on. That is exactly how a stuck Evaluate
+// send looked to a manager on 2026-08-11 — no error, no advance, five repeats.
+//
+// So whenever we stop watching in the foreground, keep watching in the
+// background and shout if the job fails. Deliberately failure-only: a job still
+// pending after the window is usually just a slow queue, and alarming on that
+// would train people to ignore the alarm.
+
+export interface SendFailureInfo {
+  jobId: string | number;
+  /** Human label for the transaction, e.g. "Evaluate send". */
+  label?: string;
+  /** Server-side error text (e.g. the verify-timeout / missing-label message). */
+  error?: string;
+}
+
+type SendFailureListener = (info: SendFailureInfo) => void;
+const failureListeners = new Set<SendFailureListener>();
+
+/** Subscribe to sends that failed AFTER we stopped watching in the foreground.
+ *  Mounted app-wide (App.tsx) so the toast reaches whoever is still at the
+ *  keyboard, whatever page they moved on to. Returns an unsubscribe fn. */
+export function subscribeSendFailures(cb: SendFailureListener): () => void {
+  failureListeners.add(cb);
+  return () => failureListeners.delete(cb);
+}
+
+function emitSendFailure(info: SendFailureInfo) {
+  for (const cb of failureListeners) {
+    try { cb(info); } catch { /* one bad listener must not silence the rest */ }
+  }
+}
+
+/** How long to keep watching a handed-off job. Long enough to cover the
+ *  gateway's own retries (MAX_JOB_ATTEMPTS × ~12s verify), short enough that
+ *  the timer dies with a normal working session. */
+const BACKGROUND_WATCH_MS = 180_000;
+
+/** Watch a job we've stopped waiting on; notify subscribers if it FAILS.
+ *  Fire-and-forget by design — never awaited, never throws. */
+export function watchSendInBackground(
+  jobId: string | number,
+  label?: string,
+  ms = BACKGROUND_WATCH_MS,
+): void {
+  void pollDone(jobId, ms)
+    .then((fin) => {
+      if (fin.status === "failed") emitSendFailure({ jobId, label, error: fin.error });
+    })
+    .catch(() => { /* best-effort: a dead network here is already visible elsewhere */ });
+}
+
 /**
  * Decide what to do when the gateway POST never got a successful ACK (H1).
  * Pure + exported so the no-double-write guarantee is unit-testable.
@@ -168,8 +227,14 @@ export async function submitSend(
       opts?.onPhase?.("confirmed");
       return "done";
     }
+    // Ran out of foreground patience while the job is still queued/processing.
+    // Callers without `requireDone` report this as success, so hand the job to
+    // the background watcher — otherwise a later server-side failure is silent.
+    watchSendInBackground(posted.jobId, p.label);
     return "submitted";
   }
+  // Never waited at all — same reasoning, same safety net.
+  watchSendInBackground(posted.jobId, p.label);
   return "submitted";
 }
 

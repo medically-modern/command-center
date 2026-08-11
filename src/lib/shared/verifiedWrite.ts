@@ -51,6 +51,64 @@ export class GatewayPendingError extends Error {
   }
 }
 
+/**
+ * Thrown when a status/dropdown write asked Monday to create a label and Monday
+ * did NOT actually create it — the item ends up pointing at a label index that
+ * carries no text, so every read-back returns "" and exact-match verification
+ * can never pass.
+ *
+ * Why this needs its own error (2026-08-11 incident): a rep added a new ICD-10
+ * code on the Evaluate panel, Monday stamped the item with index 5 but never
+ * wrote the label into the column's settings (index 5 is a stale slot on that
+ * board — it has a `labels_positions_v2` entry and no label, inherited by every
+ * board duplicated from the same template). Verification then failed
+ * identically on all 8 attempts and the stage advancer was never written. The
+ * generic timeout message said "Monday may be unusually slow — retry the send",
+ * so the rep retried five times, which could never work. This state is
+ * permanent until someone adds the label to the board, and the message has to
+ * say so.
+ */
+export class MissingBoardLabelError extends Error {
+  constructor(
+    readonly columnLabel: string,
+    readonly columnId: string,
+    readonly missingLabel: string,
+  ) {
+    super(
+      `Monday did not create the ${columnLabel} label "${missingLabel}" — the column has no such label, ` +
+        `so the value can't be read back and the stage was NOT advanced. Retrying will not help. ` +
+        `Add "${missingLabel}" to the ${columnLabel} column on the board, then pick it from the list and send again.`,
+    );
+    this.name = "MissingBoardLabelError";
+  }
+}
+
+/**
+ * Which label writes landed on a label the board doesn't actually have.
+ *
+ * Pure so the diagnosis is unit-testable without a live board. Only considers
+ * tasks that asked for a NON-EMPTY exact text: a clear (expectedText "") that
+ * failed to verify is an ordinary timeout, not a missing label.
+ */
+export function findMissingBoardLabels(
+  unverified: { label: string; columnId: string; expectedText?: string }[],
+  labelsByColumn: Map<string, string[]>,
+): { label: string; columnId: string; missingLabel: string }[] {
+  const out: { label: string; columnId: string; missingLabel: string }[] = [];
+  for (const t of unverified) {
+    const want = t.expectedText;
+    if (!want) continue; // undefined (snapshot-diff) or "" (a clear)
+    const known = labelsByColumn.get(t.columnId);
+    // No entry = unreadable column. Empty list = we read something we couldn't
+    // parse (e.g. a dropdown's settings shape). Either way we don't know enough
+    // to accuse the board, so fall through to the generic timeout message —
+    // a wrong "add this label" is worse than a vague one.
+    if (!known || known.length === 0) continue;
+    if (!known.includes(want)) out.push({ label: t.label, columnId: t.columnId, missingLabel: want });
+  }
+  return out;
+}
+
 export interface WriteTask {
   label: string;
   columnId: string;
@@ -105,6 +163,13 @@ interface VerifiedWriteOpts {
   stableReadsThreshold?: number;
   /** Optional: write a debug message on failure. */
   writeDebug?: (itemId: string, msg: string) => Promise<void>;
+  /** Reads a status/dropdown column's live label set from the board settings.
+   *  Used ONLY to explain a verification failure: if an exact-match write never
+   *  landed and the label isn't on the column, Monday failed to create it and
+   *  no amount of retrying will fix it (see MissingBoardLabelError). Supply it
+   *  wherever `createLabelsIfMissing` is used; without it the engine falls back
+   *  to the generic timeout message. */
+  readColumnLabels?: (columnId: string) => Promise<string[]>;
   /** Forwarded to the gateway /send so specific flows (e.g. Evaluate's
    *  Diagnosis + consolidated ask) can create new labels server-side. The
    *  client-side fallback path creates labels via each task's own `fn`, so this
@@ -139,6 +204,7 @@ export async function executeWritesWithVerification(
     verifyIntervalMs = 1500,
     stableReadsThreshold = 3,
     writeDebug,
+    readColumnLabels,
     boardId,
     label,
     createLabelsIfMissing,
@@ -258,12 +324,16 @@ export async function executeWritesWithVerification(
     // we assume a same-value write and stop waiting.
     const stableCount = new Map<string, number>();
     let verified = false;
+    // The tasks still unverified on the LAST attempt — used to explain the
+    // failure (missing board label vs. genuinely slow indexing).
+    let pendingTasks: WriteTask[] = [];
 
     for (let attempt = 1; attempt <= maxVerifyAttempts; attempt++) {
       const snapshot = await readColumns(itemId, verifyColIds);
       const actual = new Map(snapshot.map((c) => [c.id, c.text ?? ""]));
 
       const pending: string[] = [];
+      pendingTasks = [];
 
       for (const task of dataTasks) {
         const colId = task.columnId;
@@ -274,6 +344,7 @@ export async function executeWritesWithVerification(
         if (task.expectedText !== undefined) {
           if (currentVal === task.expectedText) continue; // verified
           pending.push(`${task.label}: expected "${task.expectedText}", got "${currentVal}"`);
+          pendingTasks.push(task);
           continue;
         }
 
@@ -295,6 +366,7 @@ export async function executeWritesWithVerification(
         }
 
         pending.push(`${task.label}: unchanged from snapshot "${beforeVal}" (stable read ${newStable}/${stableReadsThreshold})`);
+        pendingTasks.push(task);
       }
 
       if (pending.length === 0) {
@@ -316,12 +388,38 @@ export async function executeWritesWithVerification(
     }
 
     if (!verified) {
-      const msg = `Stage advancer NOT written: column(s) failed read-back verification after ${maxVerifyAttempts} attempts (~${Math.round((maxVerifyAttempts * verifyIntervalMs) / 1000)}s). Monday may be unusually slow — retry the send.`;
+      // Before blaming latency, check the one cause that latency can never
+      // resolve: the write asked Monday to create a label and Monday didn't,
+      // so the column holds a text-less index that will read back "" forever.
+      let missingLabelMsg: string | null = null;
+      let missingLabelErr: MissingBoardLabelError | null = null;
+      if (readColumnLabels && pendingTasks.some((t) => t.expectedText)) {
+        try {
+          const cols = [...new Set(pendingTasks.filter((t) => t.expectedText).map((t) => t.columnId))];
+          const labelsByColumn = new Map<string, string[]>();
+          await Promise.all(
+            cols.map(async (id) => {
+              try { labelsByColumn.set(id, await readColumnLabels(id)); }
+              catch { /* unreadable column → stays out of the map, stays quiet */ }
+            }),
+          );
+          const missing = findMissingBoardLabels(pendingTasks, labelsByColumn);
+          if (missing.length > 0) {
+            const m = missing[0];
+            missingLabelErr = new MissingBoardLabelError(m.label, m.columnId, m.missingLabel);
+            missingLabelMsg = missingLabelErr.message;
+          }
+        } catch { /* diagnosis is best-effort — never mask the original failure */ }
+      }
+
+      const msg =
+        missingLabelMsg ??
+        `Stage advancer NOT written: column(s) failed read-back verification after ${maxVerifyAttempts} attempts (~${Math.round((maxVerifyAttempts * verifyIntervalMs) / 1000)}s). Monday may be unusually slow — retry the send.`;
       console.error(`[verifiedWrite] ${msg}`);
       if (writeDebug) {
         try { await writeDebug(itemId, `[${new Date().toISOString().slice(0, 19)}] ${msg}`); } catch { /* best-effort */ }
       }
-      throw new Error(msg);
+      throw missingLabelErr ?? new Error(msg);
     }
   }
 
