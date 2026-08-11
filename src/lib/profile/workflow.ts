@@ -321,18 +321,68 @@ export function hasValidZip(address: string): boolean {
 }
 
 /**
+ * Every USPS state / territory / military code.
+ *
+ * Deliberately NOT `shared/pos.ts`'s state map: that one exists to resolve an
+ * insurance FOOTPRINT and carries the 50 states + DC only. A mailing address
+ * can legitimately be Puerto Rico or an APO, and widening the POS map to let
+ * those through here would change which plans read as in-footprint.
+ */
+const USPS_STATE_CODES = new Set([
+  "AL", "AK", "AZ", "AR", "CA", "CO", "CT", "DE", "DC", "FL", "GA", "HI", "ID",
+  "IL", "IN", "IA", "KS", "KY", "LA", "ME", "MD", "MA", "MI", "MN", "MS", "MO",
+  "MT", "NE", "NV", "NH", "NJ", "NM", "NY", "NC", "ND", "OH", "OK", "OR", "PA",
+  "RI", "SC", "SD", "TN", "TX", "UT", "VT", "VA", "WA", "WV", "WI", "WY",
+  "AS", "GU", "MP", "PR", "VI", "AE", "AA", "AP",
+]);
+
+/**
+ * True when the address reads `Street, City, ST 12345` — the exact shape the
+ * Places matcher emits (`AddressAutocomplete.buildFullAddress`), which is what
+ * makes the shape a proxy for "someone picked this from the suggestions"
+ * rather than typing it off a call. A trailing ", USA" is tolerated: Places
+ * appends it whenever it falls back to `formatted_address`.
+ *
+ * A hand-typed address in that shape passes too, on purpose — the rule is the
+ * FORMAT, not the matcher, so no patient can be stranded behind a Places
+ * lookup that won't find their house.
+ */
+function hasCanonicalAddressShape(address: string): boolean {
+  const parts = address
+    .replace(/,?\s*(?:USA|U\.S\.A\.|United States)\.?$/i, "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  if (parts.length < 3) return false; // street, city, state+zip
+  const stateZip = parts[parts.length - 1].match(/^([A-Za-z]{2})\s+(\d{5})$/);
+  return !!stateZip && USPS_STATE_CODES.has(stateZip[1].toUpperCase());
+}
+
+/**
  * Inline warning for an address field, or undefined when it looks fine.
- * Flags: ZIP+4 ("12345-6789" — must be plain 5 digits), a missing/short zip,
- * and full or PARTIAL ALL-CAPS (e.g. "1746 45th Street, BROOKLYN, NY 11204")
- * — caps words mean the address didn't come from the address matcher, so it
- * should be re-picked from the suggestions. Words under 4 letters are exempt
- * (state codes "NY", "USA", "APT", "FL 2" are legitimate caps).
+ * Flags, in order of how specific the message can be:
+ *   1. ZIP+4 ("12345-6789" — must be plain 5 digits)
+ *   2. a missing/short zip
+ *   3. anything not shaped `Street, City, ST 12345` — a missing state code
+ *      ("…Jamestown New York, 14702"), a state spelled out, a missing city, or
+ *      no commas at all. This is the check that catches an address typed off a
+ *      call instead of picked from the suggestions.
+ *   4. full or PARTIAL ALL-CAPS (e.g. "1746 45th Street, BROOKLYN, NY 11204").
+ *      Words under 4 letters are exempt ("NY", "USA", "APT", "FL 2" are
+ *      legitimate caps) — the same threshold `titleCaseAddress` uses.
+ *
+ * ⚠️ (3) carries the weight, because ProfilePage title-cases the address on
+ * patient load: an ALL-CAPS intake address is silently prettified before (4)
+ * ever sees it, so caps alone stopped catching scraped addresses.
  */
 export function addressWarning(address: string): string | undefined {
   const a = (address || "").trim();
   if (!a) return undefined;
   if (/\b\d{5}-\d{4}\b/.test(a)) return "Zip is in XXXXX-XXXX format — use the plain 5-digit zip";
   if (!/\b\d{5}\b/.test(a)) return "Address must include a 5-digit zip code (XXXXX)";
+  if (!hasCanonicalAddressShape(a)) {
+    return "Address must read “Street, City, ST 12345” (2-letter state, comma before the city) — re-pick it from the address suggestions";
+  }
   const capsWord = (a.match(/[a-zA-Z]+/g) ?? []).some(
     (w) => w.length >= 4 && w === w.toUpperCase(),
   );

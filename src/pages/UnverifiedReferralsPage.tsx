@@ -60,6 +60,7 @@ import {
   suggestPrimary, suggestSecondary, buildSuggestionInputs,
 } from "@/lib/profile/primaryInsurance";
 import type { Patient } from "@/lib/profile/workflow";
+import { addressWarning } from "@/lib/profile/workflow";
 // The oversight columns deep-link with ?mv= — read it through the shared
 // helper rather than a hand-rolled param name, which is how this page ended
 // up looking for a "?origin=" nothing ever wrote.
@@ -646,6 +647,14 @@ const UnverifiedReferralsPage = () => {
       verified.secondaryInsurance, verified.memberId2]);
 
   const readyMissing = readiness.filter((i) => !i.ok).length;
+
+  // An address that's on file but won't ship — a missing state code, no comma
+  // before the city, a bare zip. Surfaced beside the input AND at the send-off
+  // block; unlike the profile role this page only warns, since its exits stay
+  // open by design.
+  const addressIssue = (selected?.patientAddress ?? "").trim()
+    ? addressWarning(selected!.patientAddress)
+    : undefined;
 
   // ── Benefits check ──────────────────────────────────────────────────────
   const stedi = useStediRun();
@@ -1878,12 +1887,14 @@ const UnverifiedReferralsPage = () => {
                   <EditText label="State" value={selected.formState ?? ""} onChange={(v) => edit({ formState: v })} />
                   <Field boxed label="Date of Intake" value={selected.dateOfIntake} />
                 </div>
-                {!(selected.patientAddress ?? "").trim() && (
+                {!(selected.patientAddress ?? "").trim() ? (
                   <p className="mt-2 text-[11px] text-amber-700">
                     No address on file. The form doesn’t collect one, and downstream stages need it to ship —
                     collect it on the call.
                   </p>
-                )}
+                ) : addressIssue ? (
+                  <p className="mt-2 text-[11px] text-amber-700">{addressIssue}</p>
+                ) : null}
               </Card>
 
               <Card title="What They Need" tone="lead">
@@ -2762,6 +2773,26 @@ const UnverifiedReferralsPage = () => {
                             and every stage after it need it to ship, and chasing it later means
                             calling the patient back.
                           </p>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* An address that IS on file but won't ship. Same rose, same
+                        reason — a bad address costs the same call-back as no
+                        address, and it is likelier to slip through because the
+                        box looks full. Warns, never blocks, like its neighbour:
+                        this page's exits stay open by design. */}
+                    {addressIssue && (
+                      <div
+                        className="mt-4 flex items-start gap-3 rounded-lg border-2 border-rose-300 bg-rose-50 px-4 py-3"
+                        role="alert"
+                      >
+                        <AlertTriangle className="h-6 w-6 shrink-0 text-rose-600" />
+                        <div>
+                          <div className="text-sm font-black uppercase tracking-wide text-rose-800">
+                            Address won’t ship
+                          </div>
+                          <p className="mt-0.5 text-sm text-rose-900">{addressIssue}</p>
                         </div>
                       </div>
                     )}

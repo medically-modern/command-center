@@ -257,12 +257,27 @@ const ProfilePage = ({ variant }: ProfilePageProps) => {
   }, [selected, stediRunningId, stopStediPolling]);
 
 
+  // A malformed address FAILS the send-off checklist, it isn't merely noted
+  // beside the input (Brandon, 2026-08-11 — a batch of five reached Medical
+  // Necessity un-shippable). The row used to be a presence check, so
+  // "300 east 3rd street, suite 3114 Jamestown New York, 14702" read ✓ ok and
+  // Advance stayed lit. This blocks, unlike the missing-address warning on the
+  // Unverified page: the address is already HERE and one re-pick fixes it,
+  // whereas a missing one needs a phone call and would stop every patient.
+  const addressIssue = selected?.patientAddress?.trim()
+    ? addressWarning(selected.patientAddress)
+    : undefined;
+
   const checklist = useMemo(() => {
-    if (!selected) return [] as { label: string; ok: boolean }[];
+    if (!selected) return [] as ChecklistItem[];
     const serv = selected.serving || "";
-    const items: { label: string; ok: boolean }[] = [
+    const items: ChecklistItem[] = [
       { label: "Gender", ok: !!selected.gender?.trim() },
-      { label: "Address", ok: !!selected.patientAddress?.trim() },
+      {
+        label: "Address",
+        ok: !!selected.patientAddress?.trim() && !addressIssue,
+        tag: addressIssue ? "check format" : undefined,
+      },
       { label: "Phone", ok: !!selected.ptPhone?.trim() },
       { label: "Primary Insurance", ok: !!selected.primaryInsurance?.trim() },
       { label: "Member ID 1", ok: !!(selected.memberId1?.trim() || selected.workingMemberId?.trim()) },
@@ -288,7 +303,7 @@ const ProfilePage = ({ variant }: ProfilePageProps) => {
     }
     if (selected.clinicalsMethod === "Fax") items.push({ label: "Doctor Fax", ok: !!selected.doctorFax?.trim() });
     return items;
-  }, [selected]);
+  }, [selected, addressIssue]);
 
   const missing = checklist.filter((i) => !i.ok);
   const canSubmit = missing.length === 0;
@@ -541,7 +556,8 @@ const ProfilePage = ({ variant }: ProfilePageProps) => {
                 onCalcOop={handleCalcOop}
                 checklist={checklist}
                 canSubmit={canSubmit}
-                missing={missing.map((m) => m.label)}
+                missing={missing.map((m) => (m.tag ? `${m.label} — ${m.tag}` : m.label))}
+                addressIssue={addressIssue}
                 submitting={submitting}
                 sendingBack={sendingBack}
                 onAdvance={handleAdvance}
@@ -557,6 +573,11 @@ const ProfilePage = ({ variant }: ProfilePageProps) => {
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
+
+/** A send-off checklist row. `tag` overrides the right-hand chip for a row
+ *  that isn't blank but isn't usable either — "missing" would be a lie for an
+ *  address the rep can see in the box. */
+type ChecklistItem = { label: string; ok: boolean; tag?: string };
 
 interface BodyProps {
   patient: Patient;
@@ -575,9 +596,12 @@ interface BodyProps {
   onRunStedi: () => void;
   calcOop: boolean;
   onCalcOop: () => void;
-  checklist: { label: string; ok: boolean }[];
+  checklist: ChecklistItem[];
   canSubmit: boolean;
   missing: string[];
+  /** Full text of the address problem, when there is one — rendered beside
+   *  Advance to MN as well as at the field, which is two panes away. */
+  addressIssue?: string;
   submitting: boolean;
   sendingBack: boolean;
   onAdvance: () => void;
@@ -1352,7 +1376,7 @@ function ProfileBody(p: BodyProps) {
                       {p.checklist.map((it) => (
                         <div key={it.label} className={`ci ${it.ok ? "done" : ""}`}>
                           <span className="cb">{it.ok ? "✓" : "✕"}</span><span>{it.label}</span>
-                          <span className="ctag">{it.ok ? "ok" : "missing"}</span>
+                          <span className="ctag">{it.ok ? "ok" : (it.tag ?? "missing")}</span>
                         </div>
                       ))}
                     </div>
@@ -1361,6 +1385,17 @@ function ProfileBody(p: BodyProps) {
                         ? p.missing.map((m) => <span key={m} className="mp">{m}</span>)
                         : <span className="mp green">Nothing outstanding — ready to advance</span>}
                     </div>
+                  </div>
+                )}
+                {/* The address problem, in full, at the last moment it is cheap
+                    to fix. The note beside the input is two panes away from the
+                    button that ships the patient, and once they are on the
+                    Medical Necessity board a bad address is only found by a
+                    bounced shipment. The checklist chip says "check format";
+                    this says what the format is. */}
+                {p.addressIssue && (
+                  <div className="warn-banner" style={{ marginTop: 16 }}>
+                    <span><b>Address needs fixing</b> — {p.addressIssue}</span>
                   </div>
                 )}
                 <div className="route-grid">
