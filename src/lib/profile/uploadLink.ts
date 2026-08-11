@@ -54,6 +54,10 @@ export function uploadLinksConfigured(): boolean {
 
 export class UploadLinkError extends Error {}
 
+/** Long enough for a Railway cold start, short enough that the rep finds out
+ *  the service is down while the patient is still on the phone. */
+const MINT_TIMEOUT_MS = 20_000;
+
 export interface UploadLink {
   url: string;
   /** ISO 8601. Links last 24h — the server owns that, not this. */
@@ -74,17 +78,32 @@ export async function generateUploadLink(itemId: string): Promise<UploadLink> {
     );
   }
 
+  // Without this the button spins forever against a stalled or cold-starting
+  // service, and the rep is left on the phone with no error and no way out.
+  // Generous enough to cover a Railway cold start, short enough that a dead
+  // service is obvious while the patient is still on the line.
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), MINT_TIMEOUT_MS);
+
   let res: Response;
   try {
     res = await fetch(`${API_BASE}/api/intake/upload-link`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ itemId }),
+      signal: ctl.signal,
     });
-  } catch {
-    // A network-level failure here is usually the service being asleep or a
-    // CORS origin that was never added, and both look identical to the rep.
-    throw new UploadLinkError("Couldn't reach the intake service to generate a link.");
+  } catch (e) {
+    // Distinguish the two, because they lead the rep somewhere different: a
+    // timeout means try once more, a hard failure means the service or its CORS
+    // origin is wrong and retrying will not help.
+    throw new UploadLinkError(
+      (e as Error)?.name === "AbortError"
+        ? "The intake service didn't respond in time — try once more."
+        : "Couldn't reach the intake service to generate a link.",
+    );
+  } finally {
+    clearTimeout(timer);
   }
 
   let body: { ok?: boolean; url?: string; expiresAt?: string; error?: string } = {};
