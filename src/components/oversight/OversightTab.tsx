@@ -29,6 +29,12 @@ import {
   type ChartDef,
   type DayBucketLabel,
 } from "@/lib/oversight/oversightApi";
+// Patient Intake's decisions live with that stage's writer, not in oversightApi:
+// they share the escalation ladder and the Call Log stamp with the role page, so
+// a second copy here is exactly the drift the keep-in-agreement rules exist for.
+import {
+  approveIntakeStuck, returnIntakeToPipeline, proposeIntakeStuck,
+} from "@/lib/profile/unverifiedWrite";
 import { fuzzyNameMatch } from "@/lib/oversight/fuzzyName";
 import { extractProposedStuckReason } from "@/lib/masheke/proposedStuck";
 import { etTodayYmd } from "@/lib/samantha/benefitsDerive";
@@ -948,7 +954,12 @@ function DrilldownModal({
   // Manager Intervention Submit Auth chart: the only action is Escalate to
   // Final Decisions, and only Propose Stuck rows get it (a DVS retry/manual
   // row is a bot state — there's nothing to escalate).
-  const isEscalateChart = chart.decision === "submit-auth-manager";
+  const isEscalateChart = chart.decision === "submit-auth-manager" || chart.decision === "intake-manager";
+  /** ⚠️ The bot-owned exemption is INSURANCE-only. A DVS retry/manual row has
+   *  nothing for a manager to decide; every Patient Intake escalation is a
+   *  human's, so every row there gets buttons — and must, since the escalation
+   *  is what took the patient out of the rep's queue. */
+  const skipBotRows = chart.decision === "submit-auth-manager";
   // The proposal is stamped into the reason source, which is NOT always the
   // chart's notesColId (Chase charts stamp the MN notes) — show the column the
   // manager is actually deciding from.
@@ -1521,7 +1532,7 @@ function DrilldownModal({
                             // way back. Since an escalation is what removes a
                             // patient from the rep's queue, a visible row a
                             // manager cannot clear is still a stranded patient.
-                            !isBotOwnedRow(reasonsByPatient.get(patient.id) ?? []) ? (
+                            !skipBotRows || !isBotOwnedRow(reasonsByPatient.get(patient.id) ?? []) ? (
                               <span className="flex flex-wrap gap-1.5" onClick={(e) => e.stopPropagation()}>
                                 <button
                                   onClick={() => decide(patient.id, "escalate")}
@@ -2051,9 +2062,22 @@ export default function OversightTab() {
   // Stuck also stamps the manager's optional note into the MN notes). The row
   // disappears optimistically; the silent refetch reconciles.
   const handleDecision = useCallback(
-    async (patientId: string, action: "approve" | "return" | "escalate", kind: "proposed-stuck" | "insurance-final" | "submit-auth-manager", chartId: string, appendNote?: string) => {
+    async (patientId: string, action: "approve" | "return" | "escalate", kind: NonNullable<ChartDef["decision"]>, chartId: string, appendNote?: string) => {
       try {
-        if (kind === "submit-auth-manager") {
+        if (kind === "intake-manager") {
+          // Patient Intake, Manager Intervention. Escalate promotes to Final
+          // Decisions by writing the SAME Propose Stuck the rep's dialog does,
+          // one rung up — so the reason lands in the Call Log in the shape
+          // Final Decisions already reads, rather than a second format.
+          if (action === "escalate") {
+            await proposeIntakeStuck(patientId, appendNote ?? "", "final", "manager-intervention");
+          } else {
+            await returnIntakeToPipeline(patientId, appendNote ?? "Returned by a manager");
+          }
+        } else if (kind === "intake-final") {
+          if (action === "approve") await approveIntakeStuck(patientId, appendNote ?? "");
+          else await returnIntakeToPipeline(patientId, appendNote ?? "Returned by a manager");
+        } else if (kind === "submit-auth-manager") {
           // Manager Intervention Submit Auth: Escalate to Final Decisions
           // (required note — enforced by the modal AND the API, belt and
           // braces on a status flip) or Return to Queue (same clear-and-
@@ -2080,7 +2104,7 @@ export default function OversightTab() {
         // refetch). Keyed on the chart id rather than the kind — several
         // Manager Intervention charts share the "submit-auth-manager" kind.
         const leaves = (k: string) =>
-          kind === "submit-auth-manager"
+          kind === "submit-auth-manager" || kind === "intake-manager" || kind === "intake-final"
             ? k === chartId
             : k.endsWith(kind === "insurance-final" ? "-final-escalation" : "-proposed-stuck");
         setData((prev) => {

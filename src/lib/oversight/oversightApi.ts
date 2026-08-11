@@ -141,7 +141,15 @@ export interface ChartDef {
    *  "insurance-final" = Final Decisions (Approve Stuck / Return to Queue);
    *  "submit-auth-manager" = the Manager Intervention Submit Auth chart's
    *  Escalate to Final Decisions button (required note). */
-  decision?: "proposed-stuck" | "insurance-final" | "submit-auth-manager";
+  decision?:
+    | "proposed-stuck"
+    | "insurance-final"
+    | "submit-auth-manager"
+    /** Patient Intake, Manager Intervention rung (escalation index 0):
+     *  Escalate to Final / Send back to pipeline. */
+    | "intake-manager"
+    /** Patient Intake, Proposed Stuck (index 2): Approve Stuck / Return. */
+    | "intake-final";
   /** Reason-bucketed chart (Katie 2026-07-29): the x-axis is one bar per
    *  REASON, not the day buckets. Each bucket names a CHART_FILTERS rule; a
    *  patient can match several buckets and is counted in each (the header
@@ -336,7 +344,18 @@ const RAW_CHART_DEFS: ChartDef[] = [
     // its reason here.
     notesColId: "text_mm389fs",
     rowOf: "profile-send-off-unverified",
-    drilldownCols: PROFILE_COLS,
+    // An escalation is what REMOVES the patient from the rep's queue, so a row
+    // a manager can see but not clear is a stranded patient — the same reason
+    // the Insurance Manager Intervention chart carries these two.
+    decision: "intake-manager",
+    // Proposed Reason first: it is why the manager is looking. The reason is
+    // sliced out of the Call Log's stamped line, which is where intake
+    // decisions land now that the escalation-notes column is gone.
+    reasonColId: "text_mm389fs",
+    drilldownCols: [
+      { colId: "__proposedReason__", label: "Escalation Reason" },
+      ...PROFILE_COLS,
+    ],
   },
   {
     id: "profile-send-off-unverified-stuck",
@@ -349,7 +368,11 @@ const RAW_CHART_DEFS: ChartDef[] = [
     notesColId: "text_mm389fs",
     rowOf: "profile-send-off-unverified",
     reasonColId: "text_mm389fs",
-    drilldownCols: PROFILE_COLS,
+    decision: "intake-final",
+    drilldownCols: [
+      { colId: "__proposedReason__", label: "Proposed Reason" },
+      ...PROFILE_COLS,
+    ],
   },
   {
     id: "profile-send-off-in-system",

@@ -21,13 +21,14 @@
 import {
   COL, GROUPS, writeStatusIndex, writeText, writeNumber, writeLongText, writeItemName,
   writePhone, writeEmail, writeLocation, writeDropdownIds, writeDropdownLabels,
-  readColumnTexts, moveItemToGroup, writeDate,
+  readColumnTexts, moveItemToGroup, writeDate, clearStatusColumn,
 } from "./mondayApi";
 import { executeWritesWithVerification } from "../shared/verifiedWrite";
 import { CLINICALS_METHOD_INDEX } from "./mondayMapping";
 import type { Patient } from "./workflow";
 import { appendStampedNote } from "../shared/noteStamp";
 import { userInitials } from "../shared/auth";
+import { etToday } from "../masheke/etDate";
 import {
   GENERAL_INSURANCE_INDEX, PRIMARY_INSURANCE_INDEX,
   SECONDARY_INSURANCE_INDEX, SERVING_INDEX, MOVE_TO_ONBOARDING_INDEX,
@@ -820,9 +821,31 @@ export async function proposeIntakeStuck(
   return setEscalation(itemId, index, proposeStuckNoteLine(reason, origin));
 }
 
-/** Manager sends the patient back into the rep pipeline. */
-export function returnIntakeToPipeline(itemId: string, note: string) {
-  return setEscalation(itemId, INTAKE_ESCALATION_INDEX.done, `Returned to pipeline: ${note}`);
+/**
+ * Manager sends the patient back into the rep pipeline.
+ *
+ * ⚠️ Clearing the escalation is NOT enough on this stage. Follow Up is the
+ * snooze "Insufficient — log call attempt" writes, and the intake sidebar is
+ * rendered with `hideFollowUp` — so a snoozed patient is not merely demoted
+ * there, they are absent. Returning one without lifting the snooze hands them
+ * back into a queue that will not show them: invisible to the rep, gone from
+ * the manager's chart, with nothing anywhere saying so.
+ *
+ * So the return lifts the snooze and re-dates to today, which is what Medical
+ * Evaluation's Return to Queue does with the Next Action Date. Both are
+ * best-effort: the escalation clear is the decision, and a patient who is back
+ * in the queue but still carrying yesterday's date is far better than one whose
+ * return failed because a date write did.
+ */
+export async function returnIntakeToPipeline(itemId: string, note: string) {
+  const res = await setEscalation(itemId, INTAKE_ESCALATION_INDEX.done, `Returned to pipeline: ${note}`);
+  try {
+    await clearStatusColumn(itemId, COL.followUp);
+    await writeDate(itemId, COL.followUpDate, etToday());
+  } catch (e) {
+    console.warn("[intake] returned to pipeline but couldn't lift the snooze", e);
+  }
+  return res;
 }
 
 /**
