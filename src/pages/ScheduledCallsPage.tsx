@@ -13,7 +13,7 @@
  */
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { CalendarClock, RefreshCw } from "lucide-react";
+import { CalendarClock, ChevronLeft, ChevronRight, RefreshCw } from "lucide-react";
 
 import { fetchScheduledCalls } from "@/lib/scheduledCalls/mondayApi";
 import {
@@ -21,7 +21,7 @@ import {
   dueForReminder, REMINDER_LEAD_MIN,
   type ScheduledCall,
 } from "@/lib/scheduledCalls/workflow";
-import { etToday } from "@/lib/masheke/etDate";
+import { etToday, addCalendarDaysIso } from "@/lib/masheke/etDate";
 import { cn } from "@/lib/utils";
 
 /** The grid's vertical extent. Bookings outside it still render, clamped. */
@@ -56,6 +56,17 @@ export default function ScheduledCallsPage() {
   const nowMinutes = useNowMinutes();
   const today = etToday();
 
+  /**
+   * The day being looked at. Defaults to today — that is the job — but a rep
+   * checking tomorrow's load before they leave, or looking back at what they
+   * were meant to have called, both want the same grid pointed elsewhere.
+   *
+   * The reminder host is deliberately NOT affected: it only ever announces
+   * today, whatever this page is showing.
+   */
+  const [viewDate, setViewDate] = useState(today);
+  const isToday = viewDate === today;
+
   const load = useCallback(async (quiet = false) => {
     if (!quiet) setLoading(true);
     try {
@@ -74,8 +85,10 @@ export default function ScheduledCallsPage() {
     return () => clearInterval(id);
   }, [load]);
 
-  const todays = useMemo(() => callsOn(all, today), [all, today]);
-  const view = useMemo(() => dayView(todays, nowMinutes), [todays, nowMinutes]);
+  const todays = useMemo(() => callsOn(all, viewDate), [all, viewDate]);
+  // On any day but today, "now" is meaningless — anchor to the start of the
+  // day so nothing is greyed out as passed and the count reads as the total.
+  const view = useMemo(() => dayView(todays, isToday ? nowMinutes : 0), [todays, nowMinutes, isToday]);
 
   const openPatient = useCallback((c: ScheduledCall) => {
     // The DTC intake queue defaults to the Completed forms group and injects a
@@ -104,18 +117,45 @@ export default function ScheduledCallsPage() {
               Scheduled Calls
             </h1>
             <p className="mt-1 text-sm text-muted-foreground">
-              {new Date(`${today}T12:00:00`).toLocaleDateString(undefined, {
+              {new Date(`${viewDate}T12:00:00`).toLocaleDateString(undefined, {
                 weekday: "long", month: "long", day: "numeric",
               })}
+              {!isToday && <span className="ml-2 text-xs">(not today)</span>}
             </p>
           </div>
-          <button
-            onClick={() => void load()}
-            className="flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-sm hover:bg-accent"
-          >
-            <RefreshCw className={cn("h-3.5 w-3.5", loading && "animate-spin")} />
-            Refresh
-          </button>
+          <div className="flex items-center gap-1.5">
+            <button
+              aria-label="Previous day"
+              onClick={() => setViewDate((d) => addCalendarDaysIso(d, -1))}
+              className="rounded-md border p-1.5 hover:bg-accent"
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </button>
+            <button
+              onClick={() => setViewDate(today)}
+              disabled={isToday}
+              className={cn(
+                "rounded-md border px-2.5 py-1.5 text-sm hover:bg-accent",
+                isToday && "opacity-50",
+              )}
+            >
+              Today
+            </button>
+            <button
+              aria-label="Next day"
+              onClick={() => setViewDate((d) => addCalendarDaysIso(d, 1))}
+              className="rounded-md border p-1.5 hover:bg-accent"
+            >
+              <ChevronRight className="h-4 w-4" />
+            </button>
+            <button
+              onClick={() => void load()}
+              className="ml-1 flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-sm hover:bg-accent"
+            >
+              <RefreshCw className={cn("h-3.5 w-3.5", loading && "animate-spin")} />
+              Refresh
+            </button>
+          </div>
         </div>
 
         {/* Burndown. Counts what is still AHEAD of you — it falls by one as each
@@ -123,10 +163,14 @@ export default function ScheduledCallsPage() {
             today" rather than "how many did I make". */}
         <div className="mt-4 rounded-lg border bg-card p-4">
           <div className="flex items-baseline justify-between">
-            <span className="text-sm font-medium">Calls remaining today</span>
+            <span className="text-sm font-medium">
+              {isToday ? "Calls remaining today" : "Calls booked"}
+            </span>
             <span className="text-2xl font-semibold tabular-nums">
-              {view.remaining}
-              <span className="ml-1 text-sm font-normal text-muted-foreground">/ {view.total}</span>
+              {isToday ? view.remaining : view.total}
+              {isToday && (
+                <span className="ml-1 text-sm font-normal text-muted-foreground">/ {view.total}</span>
+              )}
             </span>
           </div>
           <div className="mt-2 h-2 overflow-hidden rounded-full bg-muted">
@@ -146,7 +190,7 @@ export default function ScheduledCallsPage() {
 
       {!loading && !view.total && (
         <div className="rounded-lg border border-dashed p-10 text-center text-sm text-muted-foreground">
-          No calls booked for today.
+          {isToday ? "No calls booked for today." : "No calls booked for this day."}
         </div>
       )}
 
@@ -171,7 +215,7 @@ export default function ScheduledCallsPage() {
             })}
 
             {/* Now line — the anchor that makes the grid readable at a glance */}
-            {nowVisible && (
+            {isToday && nowVisible && (
               <div className="pointer-events-none absolute left-16 right-0 z-20" style={{ top: nowTop }}>
                 <div className="relative h-px bg-red-500">
                   <span className="absolute -left-1 -top-[3px] h-[7px] w-[7px] rounded-full bg-red-500" />
@@ -183,8 +227,8 @@ export default function ScheduledCallsPage() {
             {todays.map((c) => {
               const at = minutesOfDay(c.callTime);
               if (at === null) return null;
-              const past = at + ASSUMED_DURATION_MIN < nowMinutes;
-              const soon = dueForReminder(c, nowMinutes);
+              const past = isToday && at + ASSUMED_DURATION_MIN < nowMinutes;
+              const soon = isToday && dueForReminder(c, nowMinutes);
               return (
                 <button
                   key={c.id}
@@ -223,7 +267,7 @@ export default function ScheduledCallsPage() {
       {todays.some((c) => minutesOfDay(c.callTime) === null) && (
         <div className="mt-4 rounded-lg border p-3">
           <div className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-            Booked today, no time on file
+            Booked this day, no time on file
           </div>
           {todays.filter((c) => minutesOfDay(c.callTime) === null).map((c) => (
             <button
