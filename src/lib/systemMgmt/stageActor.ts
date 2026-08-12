@@ -16,8 +16,6 @@
  *   or by hand on the Monday board. The UI must simply omit the name; a
  *   confident wrong email is worse than no email.
  */
-import { getIdToken } from "../shared/auth";
-
 const GATEWAY =
   (import.meta.env.VITE_MONDAY_GATEWAY_URL as string | undefined)?.replace(/\/+$/, "") || "";
 
@@ -57,10 +55,7 @@ export async function fetchStageCompletedBy(
   if (columnId) params.set("column", columnId);
 
   try {
-    const token = getIdToken();
-    const res = await fetch(`${GATEWAY}/audit/stage-completion?${params.toString()}`, {
-      headers: token ? { "X-MM-Auth": token } : {},
-    });
+    const res = await fetch(`${GATEWAY}/audit/stage-completion?${params.toString()}`);
     if (!res.ok) return null;
     const json = (await res.json()) as Partial<StageCompletionActor> & { actor?: string | null };
     if (!json?.actor) return null;

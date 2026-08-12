@@ -93,26 +93,15 @@ export function pickCompletionActor(rows, columnId) {
  * GET /audit/stage-completion?item=&at=&column=
  *   → { actor, verified, at, matchedColumn } | { actor: null, reason }
  *
- * Unlike /gql and /send — which verify a token when present but never block,
- * because sign-in is enforced at the website gate — this route DOES block when
- * auth is configured. Its whole output is an employee's name, and the gateway
- * is a public URL.
- *
- * It blocks with the expiry-ignoring verifier (`verifyGoogleIdentity`), never
- * `verifyGoogleToken`: the SPA has no background token refresh (CLAUDE.md
- * §5.4), so enforcing `exp` would 401 every rep about an hour after they signed
- * in.
+ * No auth gate, matching /gql and /send: auth is enforced once at the website's
+ * Google sign-in gate, not per request (Josh, 2026-08-12). Anyone working in the
+ * Command Center sees who did what, the same as every other fact the app shows
+ * them — and this route returns one internal email for an item id the caller
+ * already has, next to a /gql that will forward arbitrary GraphQL to the whole
+ * account.
  */
-export function registerStageActor({ app, pool, authEnforced, verifyGoogleIdentity }) {
+export function registerStageActor({ app, pool }) {
   app.get("/audit/stage-completion", async (req, res) => {
-    if (authEnforced?.()) {
-      const who = await verifyGoogleIdentity(req.headers["x-mm-auth"]);
-      if (!who) {
-        return res
-          .status(401)
-          .json({ error: "Sign in with your medicallymodern.com account is required" });
-      }
-    }
     if (!pool) return res.status(503).json({ error: "No database configured" });
 
     const item = String(req.query.item ?? "").trim();

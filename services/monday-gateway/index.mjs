@@ -48,7 +48,7 @@ import { registerRingCentral } from "./ringcentral.mjs";
 import { registerMessaging } from "./messaging.mjs";
 import { registerInboundCalls } from "./inboundCalls.mjs";
 import { registerStageActor } from "./stageActor.mjs";
-import { verifyGoogleToken, verifyGoogleIdentity, authEnforced } from "./auth.mjs";
+import { verifyGoogleToken, authEnforced } from "./auth.mjs";
 import { extractColumns } from "./columns.mjs";
 import { buildAuditQuery } from "./auditQuery.mjs";
 
@@ -626,7 +626,7 @@ app.get("/audit.json", async (req, res) => {
 // "Who marked this stage complete?" — the audit log is the only place that
 // answers it, since every Monday write carries the same API token. Read by the
 // completed-stage banner (components/shared/CompletedStageBanner).
-registerStageActor({ app, pool, authEnforced, verifyGoogleIdentity });
+registerStageActor({ app, pool });
 
 // ── Phase 2: server-side transactional /send (durable, idempotent) ──
 registerSend({ app, pool, clientIp });

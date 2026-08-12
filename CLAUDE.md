@@ -899,11 +899,11 @@ columns" automation on duplicated items). The SPA only flips the advancer; verif
   (the signed-in email, §5.1) is the only place the person exists. `GET /audit/stage-completion
   ?item=&at=&column=` takes the completion instant computed above and picks the mutation that wrote
   the advancer, falling back to the latest attributed write in a −30min/+2min window (a send is a
-  transaction, not an instant) flagged `matchedColumn:false`. ⚠️ Unlike `/gql` and `/send` — which
-  verify a token when present but never block — this route **blocks** when `GOOGLE_CLIENT_ID` is
-  set: its entire output is an employee's name and the gateway is a public URL. It blocks with
-  `verifyGoogleIdentity` (expiry-ignoring), never `verifyGoogleToken`, or every rep 401s an hour
-  after signing in (§5.4). `actor_verified` is **NULL on the /send path**, i.e. on most real
+  transaction, not an instant) flagged `matchedColumn:false`. **No auth gate** — same posture as
+  `/gql` and `/send`: auth is enforced once at the website's sign-in gate, and anyone working in
+  the Command Center sees who did what like any other fact the app shows them (Josh, 2026-08-12 —
+  a per-request 401 was tried and removed; don't re-add one).
+  `actor_verified` is **NULL on the /send path**, i.e. on most real
   completions, so the banner shows the email either way and puts the provenance in a tooltip —
   the flag says how the attribution was obtained, not whether it's plausible. Direct (no-gateway)
   builds have no audit log at all: `stageActorConfigured()` is false and the name is simply omitted.
