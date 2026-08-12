@@ -28,7 +28,7 @@ import {
   type MondayAsset, type MondayUpdate,
 } from "@/lib/profile/mondayApi";
 import {
-  sendPatientToMonday, sendBackToPatientIntake, writePatientProfile,
+  sendPatientToMonday, sendBackToPatientIntake, markStuck, writePatientProfile,
   verifyProfileWritten, writeOopEstimate, triggerStediRun, writeProfileNotes,
 } from "@/lib/profile/mondayWrite";
 import { NoteLog, stampNote } from "@/components/profile/NoteLog";
@@ -51,6 +51,10 @@ import { PatientsSidebar } from "@/components/profile/PatientsSidebar";
 import { PageLoadingOverlay } from "@/components/shared/PageLoadingOverlay";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle,
+} from "@/components/ui/dialog";
 import { useBackNavigation } from "@/hooks/useBackNavigation";
 import { ReportIssueButton } from "@/components/shared/ReportIssueButton";
 import { ClipboardCheck, ArrowLeft, Save, AlertTriangle, ChevronDown } from "lucide-react";
@@ -475,6 +479,31 @@ const ProfilePage = ({ variant }: ProfilePageProps) => {
     } finally { setSendingBack(false); }
   };
 
+  // ── Mark as Stuck ─────────────────────────────────────────────
+  // Already In System is a dead end for most of the patients in it — they're
+  // already being served — so the queue needs a way OUT that isn't "advance to
+  // MN" or "send back to intake". The board's Stuck group is that exit.
+  const [stuckOpen, setStuckOpen] = useState(false);
+  const [stuckReason, setStuckReason] = useState("");
+  const [markingStuck, setMarkingStuck] = useState(false);
+
+  const handleMarkStuck = async () => {
+    if (!selected || !stuckReason.trim()) return;
+    setMarkingStuck(true);
+    try {
+      await markStuck(selected, stuckReason, VARIANT_LABEL[variant]);
+      clearOverlay(selected.id);
+      toast.success(`${selected.name} moved to Stuck`);
+      setStuckOpen(false);
+      setStuckReason("");
+      setSelectedId(patients.find((p) => p.id !== selected.id)?.id ?? null);
+      setTimeout(refetch, 1500);
+    } catch (e) {
+      // Edits stay in the overlay, same as the other two routes.
+      toast.error("Couldn't mark stuck", { description: e instanceof Error ? e.message : String(e) });
+    } finally { setMarkingStuck(false); }
+  };
+
   const openAsset = (a: MondayAsset) => {
     try { openFileViewer({ url: a.public_url || a.url, name: a.name }); }
     catch { toast.error("Could not open file"); }
@@ -591,11 +620,51 @@ const ProfilePage = ({ variant }: ProfilePageProps) => {
                 onSendBack={handleSendBack}
                 onAddNote={handleAppendNote}
                 reviewMode={reviewMode}
+                onMarkStuck={variant === "inSystem" ? () => setStuckOpen(true) : undefined}
+                markingStuck={markingStuck}
               />
             )}
           </main>
         </div>
       </div>
+
+      {/* Mark as Stuck — the reason is REQUIRED because the Stuck group is the
+          only marker this board has (no Stuck status label), so without it a
+          manager finds a patient parked there with nothing saying why. */}
+      <Dialog open={stuckOpen} onOpenChange={(o) => { if (!markingStuck) { setStuckOpen(o); if (!o) setStuckReason(""); } }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-amber-500" />
+              Mark {selected?.name ?? "this patient"} as stuck?
+            </DialogTitle>
+            <DialogDescription>
+              They move to the board&rsquo;s Stuck group and drop out of this queue.
+              The reason is saved on the item — it&rsquo;s the only record of why.
+            </DialogDescription>
+          </DialogHeader>
+          <Textarea
+            value={stuckReason}
+            onChange={(e) => setStuckReason(e.target.value)}
+            placeholder="Why is this patient stuck? e.g. already served by another DME, patient declined"
+            rows={3}
+            autoFocus
+          />
+          <div className="flex justify-end gap-2 pt-1">
+            <Button variant="outline" size="sm" onClick={() => setStuckOpen(false)} disabled={markingStuck}>
+              Cancel
+            </Button>
+            <Button
+              size="sm"
+              onClick={handleMarkStuck}
+              disabled={!stuckReason.trim() || markingStuck}
+              className="gap-2 bg-amber-600 text-white hover:bg-amber-700"
+            >
+              {markingStuck ? "Moving…" : "Move to Stuck"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </SidebarProvider>
   );
 };
@@ -635,6 +704,10 @@ interface BodyProps {
   /** Viewing a stage this patient already finished — the send-off routes are
    *  off, because both of them MOVE a record that has already moved. */
   reviewMode?: boolean;
+  /** Open the Mark-as-Stuck dialog. Undefined ⇒ this role has no such exit,
+   *  and the card isn't rendered (Already In System only, for now). */
+  onMarkStuck?: () => void;
+  markingStuck?: boolean;
   onAdvance: () => void;
   onSendBack: () => void;
   onAddNote: (fullText: string) => Promise<void>;
@@ -1452,6 +1525,19 @@ function ProfileBody(p: BodyProps) {
                       {p.sendingBack ? "Sending…" : "Send back to Patient Intake"}
                     </button>
                   </div>
+                  {p.onMarkStuck && (
+                    <div className="route on">
+                      <h4>Mark as Stuck</h4>
+                      <p>Not proceeding → move to the board&rsquo;s Stuck group and out of this queue.</p>
+                      <button
+                        className="btn"
+                        onClick={p.onMarkStuck}
+                        disabled={p.submitting || p.sendingBack || p.markingStuck || p.reviewMode}
+                      >
+                        {p.markingStuck ? "Moving…" : "Mark as Stuck"}
+                      </button>
+                    </div>
+                  )}
                 </div>
               </section>
             </div>

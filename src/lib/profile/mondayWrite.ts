@@ -11,8 +11,8 @@ import {
   writeLocation, writeItemName, writeDropdownIds, writeDropdownLabels, writeDate,
   fetchItem, clearStatusColumn, readColumnTexts, moveItemToGroup, GROUPS, COL,
 } from "./mondayApi";
-import { GENERAL_INSURANCE_INDEX } from "./mondayMapping";
 import { executeWritesWithVerification } from "../shared/verifiedWrite";
+import { stampNoteEntry } from "../shared/noteStamp";
 import type { Patient } from "./workflow";
 import {
   PRIMARY_INSURANCE_INDEX, GENERAL_INSURANCE_INDEX, SECONDARY_INSURANCE_INDEX,
@@ -267,6 +267,29 @@ export async function sendBackToPatientIntake(
     );
   }
   await moveItemToGroup(p.id, GROUPS.patientIntake);
+}
+
+/**
+ * Take a patient out of the send-off queue: stamp why, then move them to the
+ * board's **Stuck group**.
+ *
+ * The group IS the marker. Profile Send Off has no "Stuck" status label — its
+ * Move to Onboarding column only offers Already Serving / Advance to MN / Send
+ * Back To Referral / Need More Info — so nothing about the item says "stuck"
+ * except which group it sits in. That also means the reason has nowhere else
+ * to live, which is why it's required and stamped with who and when: every
+ * item already in that group has an empty `stuck reason`, and a manager
+ * looking at one later has no way to find out why it stopped.
+ *
+ * Reason first, move second: a failed move leaves a stamped patient still in
+ * the queue (visible, retryable), where the other order would leave a patient
+ * parked in Stuck with no explanation.
+ */
+export async function markStuck(p: Patient, reason: string, stage: string): Promise<void> {
+  const text = reason.trim();
+  if (!text) throw new Error("A reason is required to mark a patient stuck");
+  await writeText(p.id, COL.stuckReason, stampNoteEntry(text, stage));
+  await moveItemToGroup(p.id, GROUPS.stuck);
 }
 
 /**

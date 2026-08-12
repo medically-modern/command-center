@@ -323,6 +323,16 @@ and **Referral Source `color_mm1w5wxr`**, evaluated in that order:
 - **`profile`** (`/profile`, relabelled **"Verified Referrals"**, id unchanged so existing
   access.json role assignments keep working) — **everyone else**.
 
+**Already In System has a third exit: Mark as Stuck** (2026-08-12). Most patients in that queue
+are already being served, so "Advance to MN" and "Send back to Patient Intake" are both wrong for
+them and they had no way out. It stamps `text_mm2vf40t` (**stuck reason**) and then moves the item
+to `GROUPS.stuck` (`group_mm1xyczx`) — reason FIRST, so a failed move leaves a stamped patient
+still in the queue rather than one parked in Stuck with no explanation. ⚠️ The **group is the only
+marker**: Move to Onboarding `color_mm1zmeb3` has no Stuck label (its labels are Already Serving ·
+Advance to MN · Send Back To Referral · Need More Info), so nothing on the item says "stuck" except
+which group it sits in — which is why the reason is required and stamped with who/when. Scoped to
+the `inSystem` variant via `BodyProps.onMarkStuck`; the other two roles don't render the card.
+
 The three are **mutually exclusive and exhaustive** — every active intake patient is in exactly
 one queue, so role counts still sum to the group total (§5.8) and no patient is worked twice.
 A blank Already In System counts as NOT in system (the column isn't always set).

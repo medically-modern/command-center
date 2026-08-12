@@ -27,6 +27,10 @@ export const GROUPS = {
 } as const;
 
 export const COL = {
+  /** Free-text "why did this patient stop here". Write-only from the app —
+   *  the Stuck GROUP is the marker (this board has no Stuck status label), so
+   *  this column is the only record of the reason. */
+  stuckReason: "text_mm2vf40t",
   // ── DTC intake form (written by dtc-mm-form-api) ──
   // "Provided *" columns hold what the PATIENT told us and are never
   // overwritten by Select Correct Provider — the verified doctor columns
