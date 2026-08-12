@@ -636,6 +636,7 @@ const ProfilePage = ({ variant }: ProfilePageProps) => {
                 addressIssue={addressIssue}
                 submitting={submitting}
                 sendingBack={sendingBack}
+                canSendBack={variant !== "inSystem"}
                 onAdvance={handleAdvance}
                 onSendBack={handleSendBack}
                 onAddNote={handleAppendNote}
@@ -728,6 +729,12 @@ interface BodyProps {
    *  and the card isn't rendered (Already In System only, for now). */
   onMarkStuck?: () => void;
   markingStuck?: boolean;
+  /** Whether this role may bounce the referral back to Patient Intake.
+   *  False for Already In System: that queue's question is "is this the same
+   *  patient?", and the answer is never "the referral is missing information" —
+   *  sending it back would put a known duplicate in front of intake again
+   *  instead of resolving it. Mark as Stuck is that role's second exit. */
+  canSendBack: boolean;
   onAdvance: () => void;
   onSendBack: () => void;
   onAddNote: (fullText: string) => Promise<void>;
@@ -1538,13 +1545,15 @@ function ProfileBody(p: BodyProps) {
                       {p.submitting ? "Advancing…" : "Advance to MN →"}
                     </button>
                   </div>
-                  <div className="route intake on">
-                    <h4>Send back to Patient Intake</h4>
-                    <p>Still missing info → move back to Patient Intake.</p>
-                    <button className="btn amber" onClick={p.onSendBack} disabled={p.submitting || p.sendingBack || p.reviewMode}>
-                      {p.sendingBack ? "Sending…" : "Send back to Patient Intake"}
-                    </button>
-                  </div>
+                  {p.canSendBack && (
+                    <div className="route intake on">
+                      <h4>Send back to Patient Intake</h4>
+                      <p>Still missing info → move back to Patient Intake.</p>
+                      <button className="btn amber" onClick={p.onSendBack} disabled={p.submitting || p.sendingBack || p.reviewMode}>
+                        {p.sendingBack ? "Sending…" : "Send back to Patient Intake"}
+                      </button>
+                    </div>
+                  )}
                   {p.onMarkStuck && (
                     <div className="route on">
                       <h4>Mark as Stuck</h4>
