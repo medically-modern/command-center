@@ -15,7 +15,7 @@ import {
 } from "@/hooks/systemMgmt/useSystemPatients";
 import type { CompletedStage, SystemPatient } from "@/lib/systemMgmt/mondayApi";
 import { writeStageAdvancer, STAGE_OPTIONS, STUCK_LABELS } from "@/lib/systemMgmt/mondayApi";
-import { completedStageUrl } from "@/lib/systemMgmt/stageCompletion";
+import { completedStageForPatient, completedStageUrl } from "@/lib/systemMgmt/stageCompletion";
 import { EscalationDetailModal } from "@/components/shared/EscalationDetailModal";
 import {
   Dialog,
@@ -161,6 +161,14 @@ const SystemMgmtPage = () => {
   }, [escalated]);
 
   const handlePatientClick = (patient: SystemPatient, fromEscalation = false) => {
+    // A finished board is a row of its own here, and `hasPage` is false for
+    // everything in a Completed group — so this row used to dead-end on a
+    // toast. It holds exactly the record a completion badge opens, so open it.
+    const completed = completedStageForPatient(patient);
+    if (completed) {
+      navigate(completedStageUrl(completed));
+      return;
+    }
     if (!patient.hasPage) {
       toast.info(`${patient.pipelineStage} doesn't have a dedicated page yet`, {
         description: `${patient.name} is on the ${patient.boardName}`,
@@ -1169,12 +1177,21 @@ function PatientRow({
   const noteEntries = useMemo(() => parseNoteEntriesNewestFirst(patient.notes), [patient.notes]);
   const mostRecent = noteEntries[0] ?? null;
   const recentThree = noteEntries.slice(0, 3);
+  /** This row IS a board the patient has finished — history, not live work. */
+  const completed = patient.isCompleted;
+  /** …and whether that finished board has a page to open it on. Kept separate
+   *  from `completed` so a board without a review route still READS as
+   *  finished, but doesn't show an arrow that dead-ends on a toast. */
+  const opensRecord = !!completedStageForPatient(patient);
 
   return (
     <div
       className={cn(
         "w-full flex items-stretch gap-0 rounded-lg border bg-card shadow-sm hover:shadow-md hover:border-primary/30 transition-all text-left",
         patient.escalated && "border-red-300 bg-red-50/50 dark:bg-red-950/20",
+        // Last, so it wins: a finished board is finished whatever flags the
+        // item still carries, and the whole row should read that way.
+        completed && "border-green-300 dark:border-green-800 bg-green-50/60 dark:bg-green-950/20",
       )}
     >
       {/* Left: avatar + name + days badge — clickable to navigate to the
@@ -1195,19 +1212,42 @@ function PatientRow({
           <div className="flex-1 min-w-0 flex flex-col gap-1">
             <div className="flex items-center gap-1.5">
               <span className="text-sm font-semibold truncate leading-tight">{patient.name}</span>
-              {patient.escalated && (
+              {patient.escalated && !completed && (
                 <span className="shrink-0 inline-flex items-center gap-0.5 bg-red-100 dark:bg-red-900/50 text-red-600 dark:text-red-400 text-[9px] font-bold px-1.5 py-0.5 rounded">
                   <AlertTriangle className="w-2.5 h-2.5" />
                   ESC
                 </span>
               )}
             </div>
-            <span
-              className="self-start inline-flex items-center px-2 py-0.5 rounded text-white text-[10px] font-bold leading-none tracking-wide"
-              style={{ backgroundColor: getDayBucketColor(patient.daysSinceStage) }}
-            >
-              {patient.daysSinceStage || "Unknown"}
-            </span>
+            {/* Status + days share a line, and the name gets the one above it
+                to itself — this column is a fixed 260px, and a tag beside the
+                name truncated exactly the thing people are scanning for. */}
+            <div className="flex items-center gap-1.5 flex-wrap">
+              {/* Is this row live work, or a record of a board they finished?
+                  Search lists both and they look identical otherwise. */}
+              {completed ? (
+                <span className="shrink-0 inline-flex items-center gap-0.5 bg-green-600 text-white text-[9px] font-bold px-1.5 py-0.5 rounded leading-none">
+                  <CheckCircle2 className="w-2.5 h-2.5" />
+                  COMPLETED
+                </span>
+              ) : (
+                <span className="shrink-0 inline-flex items-center bg-primary/10 text-primary text-[9px] font-bold px-1.5 py-0.5 rounded leading-none">
+                  ACTIVE
+                </span>
+              )}
+              {/* Days-in-stage is a live urgency signal. On a finished board it
+                  is a frozen number, so it keeps the text and loses the alarm
+                  colour rather than sitting there in red inside a green row. */}
+              <span
+                className={cn(
+                  "inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold leading-none tracking-wide",
+                  completed ? "bg-muted text-muted-foreground" : "text-white",
+                )}
+                style={completed ? undefined : { backgroundColor: getDayBucketColor(patient.daysSinceStage) }}
+              >
+                {patient.daysSinceStage || "Unknown"}
+              </span>
+            </div>
           </div>
         </button>
         <CompletionBadges
@@ -1303,8 +1343,8 @@ function PatientRow({
 
       {/* Arrow */}
       <button onClick={onClick} className="shrink-0 flex items-center px-2 hover:bg-muted/30 transition-colors rounded-r-lg">
-        {patient.hasPage ? (
-          <ChevronRight className="w-4 h-4 text-muted-foreground" />
+        {patient.hasPage || opensRecord ? (
+          <ChevronRight className={cn("w-4 h-4", opensRecord ? "text-green-600 dark:text-green-500" : "text-muted-foreground")} />
         ) : (
           <span className="text-[10px] text-muted-foreground">No page</span>
         )}

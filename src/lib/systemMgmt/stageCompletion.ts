@@ -69,13 +69,38 @@ export const STAGE_COMPLETION_COLUMNS: Record<number, { columnId: string; labels
  * review mode — banner on, advance off. `from` keeps Back returning to System
  * Management (§9, history-first back-nav).
  */
-export function completedStageUrl(stage: CompletedStage): string {
+export function completedStageUrl(
+  stage: Pick<CompletedStage, "itemId" | "boardId" | "route">,
+): string {
   const params = new URLSearchParams({
     patientId: stage.itemId,
     completedStage: String(stage.boardId),
     from: "system-mgmt",
   });
   return `${stage.route}?${params.toString()}`;
+}
+
+/**
+ * The completed record a patient's OWN row opens, when that row IS the finished
+ * item (Search lists every board a patient sits on, so a completed one appears
+ * as a row in its own right).
+ *
+ * Such a row used to be a dead end — `hasPage` is false for anything in a
+ * Completed group, so it toasted "no dedicated page yet". It has exactly the
+ * record the completion badges open, so it opens the same thing.
+ *
+ * Null when the board has no review page, which keeps the old toast for it.
+ */
+export function completedStageForPatient(p: {
+  id: string;
+  boardId: number;
+  boardName: string;
+  isCompleted: boolean;
+}): CompletedStage | null {
+  if (!p.isCompleted) return null;
+  const route = COMPLETED_STAGE_ROUTES[p.boardId];
+  if (!route) return null;
+  return { label: p.boardName, itemId: p.id, boardId: p.boardId, boardName: p.boardName, route };
 }
 
 /** A row of `boards { activity_logs { … } }`, as Monday returns it. */

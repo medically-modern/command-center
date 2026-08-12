@@ -874,8 +874,12 @@ columns" automation on duplicated items). The SPA only flips the advancer; verif
   data (`COMPLETED_STAGE_ROUTES`: Profile → `/profile`, MN → `/evaluate`, Insurance → `/benefits`,
   Welcome Call → `/welcome-call`), via `?patientId=<completed item>&completedStage=<boardId>`.
   Every role hook already injects a deep-linked `?patientId=` that isn't in its queue, so the
-  completed record loads with no hook changes. This is also the only way into a completed
-  patient — a completed row's own click still says "no page".
+  completed record loads with no hook changes. A **completed row opens its own record too**
+  (`completedStageForPatient`) — `hasPage` is false for anything in a Completed group, so those
+  rows used to dead-end on a "no dedicated page yet" toast. Search rows are **tagged
+  COMPLETED (green-tinted row) / ACTIVE**, and a completed row's days-in-stage chip drops the
+  urgency colour: it's a frozen number, and a red "30+ Days" inside a finished record reads as
+  work nobody is doing.
   ⚠️ **`completedStage` is a WRITE GATE, not just a banner flag.** `useCompletedStageReview`
   (`components/shared/CompletedStageBanner`) drives `reviewMode` on those four pages, which
   disables the stage-advancing send (`EvaluatePanel` `sendBlocked`, `BenefitsPanel`, Welcome
