@@ -56,8 +56,19 @@ async function gql<T>(query: string, variables: Record<string, unknown> = {}): P
 export interface BoardDef {
   boardId: number;
   boardName: string;
-  /** Active groups to query (skip Completed/Stuck groups) */
-  activeGroups: { id: string; title: string; roleRoute: string; isCompleted?: boolean }[];
+  /**
+   * Where a row NAVIGATES, per group — **not** a list of what to search.
+   *
+   * Search reads every group on the board (see `fetchBoardItems`). This map
+   * only answers "clicking this row goes where", and a group missing from it
+   * simply isn't clickable. That asymmetry is deliberate: this list was the
+   * fetch filter until 2026-08-12, and every group added to a board after it
+   * was written — Insurance's DVS and Stuck, Profile Send Off's Already In
+   * System and the two New Form groups, the Stuck group on three boards —
+   * became invisible to search with no error. The same class of bug §5.10
+   * documents. A list that has to be updated when a board changes will not be.
+   */
+  groupRoutes: { id: string; title: string; roleRoute: string; isCompleted?: boolean }[];
   /** Column ID for escalation status (null = board has no escalation) */
   escalationColId: string | null;
   /** Column ID for escalation notes long_text (null = board has no escalation notes) */
@@ -91,6 +102,11 @@ export const INSURANCE_STAGE_ROUTES: Record<string, string> = {
   "Submit Auth.":      "/submit-auth",
   "Auth. Outstanding": "/auth-outstanding",
   "Auth Denied":       "/auth-denied",
+  // DVS is a STAGE first and a group second: stage-DVS items linger in
+  // whichever group the last automation left them (§5.8), so keying off the
+  // group alone sent them to /benefits — the one queue useRoleCounts
+  // deliberately excludes them from.
+  "DVS":               "/dvs",
 };
 
 /** Welcome Call board Stage Advancer → route */
@@ -109,10 +125,59 @@ const STAGE_ROUTE_MAPS: Record<number, Record<string, string>> = {
 
 export const BOARDS: BoardDef[] = [
   {
+    // Top of the funnel. Read-only here (§3) — no group has a role page — but a
+    // patient who hasn't reached Profile Send Off yet is still a patient
+    // somebody will search for.
+    boardId: 18392794310,
+    boardName: "DTC Intake",
+    groupRoutes: [
+      { id: "group_mkywy9dj", title: "Send To Medical Necessity", roleRoute: "" },
+      { id: "group_mkpehq9q", title: "Raw Intake Data",           roleRoute: "" },
+      { id: "group_mm2mdqq2", title: "Partial Leads",             roleRoute: "" },
+      { id: "group_mkzcvr7a", title: "Cold Lead Campaign",        roleRoute: "" },
+      { id: "group_mm1cb9hs", title: "Cold Leads",                roleRoute: "" },
+      { id: "group_mkyw7wy8", title: "Stuck Final Review",        roleRoute: "" },
+      { id: "group_mkzcc2wg", title: "Can't Proceed / Stuck",     roleRoute: "" },
+      { id: "group_mkzcb7bx", title: "Ordered",                   roleRoute: "", isCompleted: true },
+    ],
+    escalationColId: null,
+    escalationNotesColId: null,
+    phoneColId: "phone_mkwrkc73",
+    stageAdvancerColId: "color_mkyw6287",
+    daysSinceStageColId: "color_mkxn3nm5",
+    notesColId: "long_text_mm1b4jf7",
+    nextActionDateColId: null,
+  },
+  {
+    // Second source for Patient Questions (§7); its patients were unfindable
+    // from Search even though the app already reads the board.
+    boardId: 18413019028,
+    boardName: "Secondary Claims",
+    groupRoutes: [
+      { id: "group_mm3bydwh", title: "Confirm Secondary Payor",           roleRoute: "" },
+      { id: "group_mkpehq9q", title: "Submit Claim",                      roleRoute: "" },
+      { id: "group_mm3ba7x1", title: "Send Invoice",                      roleRoute: "" },
+      { id: "group_mm2mhysd", title: "Denied",                            roleRoute: "" },
+      { id: "group_mkwta260", title: "Patient Responsibility Outstanding", roleRoute: "" },
+      { id: "group_mm332zns", title: "Insurance Outstanding",             roleRoute: "" },
+      { id: "group_mm3qkck6", title: "Paid but need to EFT",              roleRoute: "" },
+      { id: "group_mkxsng4r", title: "Paid And Closed",                   roleRoute: "", isCompleted: true },
+      { id: "group_mkp19fyp", title: "Bad Debt",                          roleRoute: "" },
+    ],
+    escalationColId: null,
+    escalationNotesColId: null,
+    phoneColId: "phone_mm1znnww",
+    stageAdvancerColId: null,
+    daysSinceStageColId: "color_mm29awe7",
+    notesColId: "long_text_mkzrx7ke",
+    nextActionDateColId: "date_mkxpynj",
+  },
+  {
     boardId: 18407459988,
     boardName: "Subscription Board",
-    activeGroups: [
-      { id: "topics", title: "Subscriptions", roleRoute: "/subscription" },
+    groupRoutes: [
+      { id: "topics",          title: "Subscriptions",       roleRoute: "/subscription" },
+      { id: "group_mkp19fyp",  title: "Not Active Patients", roleRoute: "" },
     ],
     escalationColId: null,
     escalationNotesColId: null,
@@ -125,9 +190,17 @@ export const BOARDS: BoardDef[] = [
   {
     boardId: 18406352652,
     boardName: "Profile Send Off",
-    activeGroups: [
-      { id: "group_mm1xf2jb", title: "Intake", roleRoute: "/profile" },
-      { id: "group_mm1y57sz", title: "Completed", roleRoute: "", isCompleted: true },
+    groupRoutes: [
+      { id: "group_mm1xf2jb", title: "Intake",                   roleRoute: "/profile" },
+      // Already In System is its own group as of 2026-08-12 (§5.10) and routes
+      // to its own role page.
+      { id: "group_mm64b83h", title: "Already In System",       roleRoute: "/in-system-referrals" },
+      { id: "group_mm5z87zt", title: "New Form — Partial Leads", roleRoute: "" },
+      { id: "group_mm5zgeak", title: "New Form — Completed",     roleRoute: "" },
+      { id: "group_mm4vhqff", title: "Patient Intake",           roleRoute: "" },
+      { id: "group_mm1wvq8p", title: "Tests",                    roleRoute: "" },
+      { id: "group_mm1xyczx", title: "Stuck",                    roleRoute: "" },
+      { id: "group_mm1y57sz", title: "Completed",                roleRoute: "", isCompleted: true },
     ],
     escalationColId: null,
     escalationNotesColId: null,
@@ -140,8 +213,10 @@ export const BOARDS: BoardDef[] = [
   {
     boardId: 18406060017,
     boardName: "Medical Evaluation",
-    activeGroups: [
+    groupRoutes: [
       { id: "group_mm1xf2jb", title: "Medical Necessity", roleRoute: "/evaluate" },
+      { id: "group_mm1xyczx", title: "Stuck",             roleRoute: "" },
+      { id: "group_mm33pdpm", title: "Escalations",       roleRoute: "" },
       { id: "group_mm1x5q4e", title: "Completed",         roleRoute: "", isCompleted: true },
     ],
     escalationColId: "color_mm1x7997",
@@ -155,11 +230,14 @@ export const BOARDS: BoardDef[] = [
   {
     boardId: 18410601299,
     boardName: "Insurance",
-    activeGroups: [
+    groupRoutes: [
       { id: "group_mm1xr3q3", title: "Benefits",         roleRoute: "/benefits" },
       { id: "group_mm1x1416", title: "Submit Auth",       roleRoute: "/submit-auth" },
       { id: "group_mm2v6d1z", title: "Auth Outstanding",  roleRoute: "/auth-outstanding" },
+      { id: "group_mm5gp2r2", title: "DVS",               roleRoute: "/dvs" },
       { id: "group_mm316hg2", title: "Auth Denied",       roleRoute: "" },
+      { id: "group_mm2vg9gn", title: "Escalations",       roleRoute: "" },
+      { id: "group_mm5g7twt", title: "Stuck",             roleRoute: "" },
       { id: "group_mm2vw3c0", title: "Completed",         roleRoute: "", isCompleted: true },
     ],
     escalationColId: "color_mm2vsh2f",
@@ -173,9 +251,11 @@ export const BOARDS: BoardDef[] = [
   {
     boardId: 18410804557,
     boardName: "Welcome Call",
-    activeGroups: [
+    groupRoutes: [
       { id: "group_mm1wvq8p", title: "Welcome Call",               roleRoute: "/welcome-call" },
       { id: "group_mm2x8jtj", title: "Final Profile Confirmation", roleRoute: "/final-confirm" },
+      { id: "group_mm1xyczx", title: "Stuck",                      roleRoute: "" },
+      { id: "group_mm1x5c0",  title: "Escalation",                 roleRoute: "" },
       { id: "group_mm1x5s5d", title: "Completed",                  roleRoute: "", isCompleted: true },
     ],
     escalationColId: "color_mm1x7997",
@@ -231,9 +311,17 @@ interface RawItem {
   column_values: { id: string; text: string | null; value: string | null }[];
 }
 
+/**
+ * Every item on the board — ALL groups, deliberately.
+ *
+ * This used to filter to a hardcoded group list, which is how Insurance's DVS
+ * group, three Stuck groups and Profile Send Off's four newer groups became
+ * unsearchable the day the board changed. Search is the one place in the app
+ * that should never have a queue rule: if a patient is on a board the Command
+ * Center works, somebody must be able to find them.
+ */
 async function fetchBoardItems(board: BoardDef): Promise<SystemPatient[]> {
   const PAGE = 500;
-  const groupIds = board.activeGroups.map((g) => g.id);
   const colIds = [board.phoneColId];
   if (board.escalationColId) colIds.push(board.escalationColId);
   if (board.escalationNotesColId) colIds.push(board.escalationNotesColId);
@@ -242,11 +330,10 @@ async function fetchBoardItems(board: BoardDef): Promise<SystemPatient[]> {
   if (board.notesColId) colIds.push(board.notesColId);
   if (board.nextActionDateColId) colIds.push(board.nextActionDateColId);
 
-  const compareValue = JSON.stringify(groupIds);
   const query = `
     query ($bid: ID!, $cols: [String!]) {
       boards(ids: [$bid]) {
-        items_page(limit: ${PAGE}, query_params: { rules: [{ column_id: "group", compare_value: ${compareValue} }] }) {
+        items_page(limit: ${PAGE}) {
           cursor
           items {
             id
@@ -288,6 +375,52 @@ async function fetchBoardItems(board: BoardDef): Promise<SystemPatient[]> {
   }
 
   return allItems.map((item) => mapToSystemPatient(item, board));
+}
+
+export interface RowRouting {
+  /** Human-readable stage for the row. */
+  pipelineStage: string;
+  /** Role page this row opens, or "" for none. */
+  roleRoute: string;
+  isCompleted: boolean;
+  /** Whether the row has a live page to open (completed rows open their record
+   *  through `completedStageForPatient` instead — see stageCompletion.ts). */
+  hasPage: boolean;
+}
+
+/**
+ * Where one search row points. Pure, because it is the part with real rules and
+ * a wrong answer here is silent — the row just goes somewhere unhelpful.
+ *
+ * Group gives the baseline; the **Stage Advancer wins** when it names a stage
+ * with its own page, because a board's automations leave items in whichever
+ * group they were last moved to. That's what routes a stage-DVS patient sitting
+ * in the Benefits group to /dvs, matching the rule useRoleCounts already uses.
+ *
+ * ⚠️ An unknown group routes NOWHERE, not to "/". Now that search reads every
+ * group, unknown ones are routine (a board grows a group, or one is renamed),
+ * and the old "/" default would have quietly sent a rep to the app's home page
+ * as if the click had worked.
+ */
+export function rowRouting(
+  board: BoardDef,
+  group: { id: string; title: string },
+  stageAdvancerText: string,
+): RowRouting {
+  const def = board.groupRoutes.find((g) => g.id === group.id);
+  const isCompleted = def?.isCompleted ?? false;
+  let pipelineStage = def?.title ?? group.title;
+  let roleRoute = def?.roleRoute ?? "";
+
+  const routeMap = STAGE_ROUTE_MAPS[board.boardId] ?? {};
+  // Not for completed rows: their advancer reads "Completed"/"Complete", and a
+  // finished record must never be described by a live stage.
+  if (!isCompleted && stageAdvancerText && routeMap[stageAdvancerText]) {
+    roleRoute = routeMap[stageAdvancerText];
+    pipelineStage = stageAdvancerText;
+  }
+
+  return { pipelineStage, roleRoute, isCompleted, hasPage: roleRoute !== "" && !isCompleted };
 }
 
 function mapToSystemPatient(item: RawItem, board: BoardDef): SystemPatient {
@@ -334,27 +467,17 @@ function mapToSystemPatient(item: RawItem, board: BoardDef): SystemPatient {
     ((board.boardId === 18406060017 || board.boardId === 18410601299) &&
       (escIndex === 0 || escIndex === 2));
 
-  // Determine pipeline stage + route
-  const groupDef = board.activeGroups.find((g) => g.id === item.group.id);
-  let pipelineStage = groupDef?.title ?? item.group.title;
-  let roleRoute = groupDef?.roleRoute ?? "/";
-  const isCompleted = groupDef?.isCompleted ?? false;
-
   const nextActionDate = board.nextActionDateColId
     ? colVal(board.nextActionDateColId)
     : "";
-
-  // Use Stage Advancer to determine sub-route and pipeline stage.
-  let stageAdvancerText = "";
-  if (board.stageAdvancerColId) {
-    const stageText = colVal(board.stageAdvancerColId);
-    stageAdvancerText = stageText;
-    const routeMap = STAGE_ROUTE_MAPS[board.boardId] ?? {};
-    if (stageText && routeMap[stageText]) {
-      roleRoute = routeMap[stageText];
-      pipelineStage = stageText;
-    }
-  }
+  const stageAdvancerText = board.stageAdvancerColId
+    ? colVal(board.stageAdvancerColId)
+    : "";
+  const { pipelineStage, roleRoute, isCompleted, hasPage } = rowRouting(
+    board,
+    item.group,
+    stageAdvancerText,
+  );
 
   return {
     id: item.id,
@@ -369,7 +492,7 @@ function mapToSystemPatient(item: RawItem, board: BoardDef): SystemPatient {
     escalated,
     escalationText,
     escalationNotes,
-    hasPage: roleRoute !== "" && !isCompleted,
+    hasPage,
     isCompleted,
     daysSinceStage,
     notes,
@@ -605,7 +728,7 @@ export async function fetchStageCompletedAt(
 
   const logs = data.boards?.[0]?.activity_logs ?? [];
   return completedAtFromLogs(logs, {
-    completedGroupIds: board.activeGroups.filter((g) => g.isCompleted).map((g) => g.id),
+    completedGroupIds: board.groupRoutes.filter((g) => g.isCompleted).map((g) => g.id),
     column: STAGE_COMPLETION_COLUMNS[boardId] ?? null,
   });
 }

@@ -26,10 +26,31 @@ function loadCachedPatients(): SystemPatient[] {
   } catch { return []; }
 }
 
+/** Longest note kept in the cache — see persistPatientCache. */
+const CACHED_NOTE_CHARS = 400;
+
 function persistPatientCache(patients: SystemPatient[]): void {
   try {
     localStorage.setItem(LS_CACHE_KEY, JSON.stringify(patients));
-  } catch { /* quota exceeded or private browsing — ignore */ }
+    return;
+  } catch { /* fall through to the trimmed retry */ }
+  // Search covers every group on every board (~3k patients), and notes are by
+  // far the largest field — enough to blow the ~5MB quota and lose the cache
+  // entirely, which turns every return visit into a cold load. Retry with notes
+  // trimmed: the row preview still has something to show for the second or two
+  // before the live fetch lands, and the sidebar's full notes come from that.
+  try {
+    localStorage.setItem(
+      LS_CACHE_KEY,
+      JSON.stringify(
+        patients.map((p) =>
+          p.notes.length > CACHED_NOTE_CHARS
+            ? { ...p, notes: p.notes.slice(0, CACHED_NOTE_CHARS) }
+            : p,
+        ),
+      ),
+    );
+  } catch { /* still too big, or private browsing — go without a cache */ }
 }
 
 export function useSystemPatients() {

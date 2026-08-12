@@ -52,7 +52,7 @@ The Python backends the SPA mirrors (financial estimate, DVS automations) live o
 | **DTC Intake** | `18392794310` | Top of funnel; "Send To Medical Necessity" group feeds the pipeline. Read-only here (oversight/system-mgmt). |
 | **Profile Send Off** | `18406352652` | `profile` ("Verified Referrals") + `unverifiedReferrals` ("Unverified Referrals") + `inSystemReferrals` ("Already In System") — three roles, same board/group, split by Already In System then Referral Type/Source (see §5.10). Its own board (groups: *Patient Intake → 1. Intake → Tests → Stuck → Completed*). All three roles work **1. Intake** (`group_mm1xf2jb`); two send-off exits: **Advance to MN** (`Move to Onboarding` → automation creates the Masheke item + moves to Completed) and **Send back to Patient Intake** (`moveItemToGroup` → `group_mm4vhqff`). **Not** the Welcome Call board. |
 | **Medical Evaluation** ("Masheke") | `18406060017` | `evaluate`, `sendRequest`, `confirmReceipt`, `chaseFax`, `chaseParachute`, `doctorAppointments` (§5.12). Medical-necessity document collection. Stuck is propose→approve: reps flip **Escalation `color_mm1x7997` → "Final Escalation Required" (index 2)** and the reason is appended to the **MN notes `long_text_mm27zjt2`** (stamped `[Proposed Stuck …]`); managers approve/return from Oversight. (The old `color_mm5f37ve`/`text_mm5frng6` columns are retired.) |
-| **Insurance** ("Samantha") | `18410601299` | `benefits`, `submitAuth`, `authOutstanding`, `authDenied`, `dvs` (stage-based, no group — Stage Advancer index 1 "DVS", read-only monitor at `/dvs`). Groups: Benefits, Submit Auth, Auth Outstanding, Auth Denied, Escalations, Complete/Stuck. |
+| **Insurance** ("Samantha") | `18410601299` | `benefits`, `submitAuth`, `authOutstanding`, `authDenied`, `dvs` (**stage**-based — Stage Advancer index 1 "DVS", read-only monitor at `/dvs`). Groups: Benefits, Submit Auth, Auth Outstanding, **DVS**, Auth Denied, Escalations, Complete, Stuck. ⚠️ The board grew a **DVS group** (`group_mm5gp2r2`, Aug 2026) but the role is still **stage**-defined: stage-DVS items linger in whichever group an automation last left them, so `useDvsPatients`/`useRoleCounts` read the STAGE board-wide and must not be "fixed" to filter on the group. |
 | **Welcome Call** | `18410804557` | `welcomeCall` + `finalConfirm` (two roles, same board, different groups). See `BOARD_SCHEMA.md`. |
 | **Subscription Board - Updated** | `18407459988` | `subscription` role + one source for Patient Questions. |
 | **Secondary Claims Board** | `18413019028` | Second source for Patient Questions inbox. |
@@ -867,6 +867,20 @@ columns" automation on duplicated items). The SPA only flips the advancer; verif
 - **System Management** (`/system-mgmt`, `lib/systemMgmt/mondayApi.ts`) aggregates counts/pipeline
   across *all* boards (hardcoded board + stage-advancer column IDs); `OperationsTab` + `PipelineChart`
   render burndown and day-bucket distributions.
+  ⚠️ **Search reads EVERY group on EVERY patient board — never add a group filter** (2026-08-12).
+  `BOARDS[].groupRoutes` is navigation metadata ("clicking this row goes where"), **not** the fetch
+  list; `fetchBoardItems` queries `items_page` unfiltered. It *was* the fetch list, and every group
+  added to a board afterwards went invisible with no error: Insurance's **DVS** group (the reported
+  bug) and its Stuck group, Profile Send Off's **Already In System** + two New Form groups + Stuck,
+  and the Stuck group on ME and Welcome Call. Two whole boards were missing too — **DTC Intake**
+  and **Secondary Claims** — so ~1,250 patients the app works were unfindable. This is the §5.10
+  bug class: a list that must be updated when a board changes will not be. Search is the one place
+  in the app with no queue rule, and `searchCoverage.test.ts` asserts the board set.
+  A group missing from `groupRoutes` is still searched; it just isn't clickable (`rowRouting`
+  returns route `""`). ⚠️ That default used to be **`/`**, which sent a rep to the app's home page
+  as if the click had worked. `rowRouting` also lets the **Stage Advancer win over the group**, so a
+  stage-DVS patient parked in the Benefits group opens `/dvs` — matching the rule `useRoleCounts`
+  already uses (§5.8), rather than the one queue that deliberately excludes them.
   **Search's green completion badges are LINKS into the finished stage** (Aug 2026,
   `lib/systemMgmt/stageCompletion.ts`). A patient is a different item on every board (§6), so
   `buildCompletionMap` — name-keyed, because that's all the boards share — now carries each
