@@ -893,6 +893,20 @@ columns" automation on duplicated items). The SPA only flips the advancer; verif
   digits** — reading it as ms lands ~50,000 years out, which renders as a plausible date rather
   than an obvious bug. Monday prunes activity by plan retention, so the lookup can come back empty
   and the banner must say "date unavailable" rather than guess.
+  **WHO completed it comes from the GATEWAY's audit log, not Monday** (`services/monday-gateway/
+  stageActor.mjs` ← `lib/systemMgmt/stageActor.ts`). Every SPA write carries the same Monday API
+  token, so the board's activity log names one service account for all of them — `gql_log.actor`
+  (the signed-in email, §5.1) is the only place the person exists. `GET /audit/stage-completion
+  ?item=&at=&column=` takes the completion instant computed above and picks the mutation that wrote
+  the advancer, falling back to the latest attributed write in a −30min/+2min window (a send is a
+  transaction, not an instant) flagged `matchedColumn:false`. ⚠️ Unlike `/gql` and `/send` — which
+  verify a token when present but never block — this route **blocks** when `GOOGLE_CLIENT_ID` is
+  set: its entire output is an employee's name and the gateway is a public URL. It blocks with
+  `verifyGoogleIdentity` (expiry-ignoring), never `verifyGoogleToken`, or every rep 401s an hour
+  after signing in (§5.4). `actor_verified` is **NULL on the /send path**, i.e. on most real
+  completions, so the banner shows the email either way and puts the provenance in a tooltip —
+  the flag says how the attribution was obtained, not whether it's plausible. Direct (no-gateway)
+  builds have no audit log at all: `stageActorConfigured()` is false and the name is simply omitted.
 - **Patient Questions** (`/patient-questions`) is an inbox merging "patient message" columns from
   the Subscription + Secondary Claims boards. **Mark completed** stamps a "Question Handled At"
   date column (Subscription `date_mm57yzmb`, Claims `date_mm57skrd`); an item shows only while

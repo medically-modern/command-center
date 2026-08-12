@@ -19,7 +19,11 @@ import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { CheckCircle2, Loader2 } from "lucide-react";
 import { BOARDS, fetchStageCompletedAt } from "@/lib/systemMgmt/mondayApi";
-import { formatStageCompletedAt } from "@/lib/systemMgmt/stageCompletion";
+import {
+  formatStageCompletedAt,
+  STAGE_COMPLETION_COLUMNS,
+} from "@/lib/systemMgmt/stageCompletion";
+import { fetchStageCompletedBy, type StageCompletionActor } from "@/lib/systemMgmt/stageActor";
 
 /**
  * The completed record this page was opened on, or null for ordinary work.
@@ -46,6 +50,7 @@ export function useCompletedStageReview(
 export function CompletedStageBanner({ patientId }: { patientId?: string | null }) {
   const review = useCompletedStageReview(patientId);
   const [completedAt, setCompletedAt] = useState<string | null>(null);
+  const [actor, setActor] = useState<StageCompletionActor | null>(null);
   const [loading, setLoading] = useState(false);
 
   const boardId = review?.boardId ?? 0;
@@ -56,8 +61,22 @@ export function CompletedStageBanner({ patientId }: { patientId?: string | null 
     let cancelled = false;
     setLoading(true);
     setCompletedAt(null);
+    setActor(null);
     fetchStageCompletedAt(boardId, itemId)
-      .then((at) => { if (!cancelled) setCompletedAt(at); })
+      .then(async (at) => {
+        if (cancelled || !at) return;
+        setCompletedAt(at);
+        // WHO comes from the gateway's audit log, and only makes sense once we
+        // know WHEN — it's the write nearest that instant. Chained, not
+        // parallel, and never allowed to fail the date: the banner's real job
+        // is saying the stage is finished.
+        const by = await fetchStageCompletedBy(
+          itemId,
+          at,
+          STAGE_COMPLETION_COLUMNS[boardId]?.columnId,
+        );
+        if (!cancelled) setActor(by);
+      })
       .catch(() => { /* leave it unknown — the banner says so */ })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
@@ -80,6 +99,22 @@ export function CompletedStageBanner({ patientId }: { patientId?: string | null 
           ) : completedAt ? (
             <span className="font-normal text-emerald-700 dark:text-emerald-300">
               — marked complete {formatStageCompletedAt(completedAt)} ET
+              {actor && (
+                <>
+                  {" by "}
+                  <span
+                    className="font-medium underline decoration-dotted underline-offset-2"
+                    title={
+                      (actor.matchedColumn
+                        ? "Signed-in user who wrote the stage advancer, from the Command Center audit log."
+                        : "Signed-in user who was writing to this patient at that moment, from the Command Center audit log — the advancer write itself wasn't attributed.") +
+                      (actor.verified ? "" : " Their sign-in wasn't re-verified on this write.")
+                    }
+                  >
+                    {actor.actor}
+                  </span>
+                </>
+              )}
             </span>
           ) : (
             <span className="font-normal text-emerald-700 dark:text-emerald-300">
