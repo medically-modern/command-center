@@ -229,6 +229,7 @@ export function mondayItemToPatient(item: MondayItem): Patient {
   const doctorFax = readEmailCell(cv(COL.doctorFax));
   const clinicalsMethod = cv(COL.clinicalsMethod)?.text ?? "";
   const clinic = cv(COL.clinicName)?.text ?? "";
+  const clinicAddress = cv(COL.clinicAddress)?.text ?? "";
   const notes = cv(COL.callReferenceNotes)?.text ?? "";
   const memberId1 = cv(COL.memberId1)?.text ?? "";
   const memberId2 = cv(COL.memberId2)?.text ?? "";
@@ -456,6 +457,7 @@ export function mondayItemToPatient(item: MondayItem): Patient {
     doctorFax,
     clinicalsMethod,
     clinicName: clinic,
+    clinicAddress,
     contactMethod: "parachute",
     stage: "advanced",
     pillars: { rx: false, records: false, diagnosis: false },

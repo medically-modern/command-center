@@ -5,8 +5,12 @@
  * READ-ONLY MONITOR: the Stage Advancer flipping to "DVS" is the trigger
  * (the app's sends also auto-flip the right Trigger DVS column for today's
  * bots — dvsRouting.dvsAutoTrigger). This page polls the board and narrates
- * what the automation did. The only writes here: the manual-review Re-run
- * buttons and Reference Notes. (The rail's +1d follow-up snooze was removed
+ * what the automation did. The writes here: the manual-review Re-run buttons,
+ * Reference Notes, and the DOCTOR details on the profile card — a dead fax or a
+ * missing NPI is what a rep is on this page to fix, and it was the one Insurance
+ * page with no way to. Identity and insurance stay read-only (`editScope`), for
+ * the reason §7 gives: changing the payer means re-verifying eligibility, which
+ * this board can't do. (The rail's +1d follow-up snooze was removed
  * 2026-07 — DVS is automated, so there is nothing for a rep to defer. The
  * due/snoozed split below is KEPT: a Follow Up Date set elsewhere still hides
  * a patient from the rail, matching useRoleCounts' dvs rule.)
@@ -21,7 +25,7 @@
  * DVS runs on the CIN — the Medicaid ID in XX11111X format on Member ID 1
  * or Member ID 2 (nyMedicaidCin). UI language is always "Medicaid ID".
  */
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useDvsPatients } from "@/hooks/dvs/useDvsPatients";
 import type { Patient } from "@/lib/samantha/workflow";
@@ -37,12 +41,68 @@ import { managerChartFromParams, managerBucketFromParams } from "@/lib/shared/ma
 import { railFilterFor } from "@/lib/samantha/managerRail";
 import { resolveHcpcs, isAutoFilledMedicaidSupply, PRODUCT_LABELS, type ProductId } from "@/lib/samantha/hcpcRules";
 import { allProductsDvsRouted, isStraightMedicaidPrimary, nyMedicaidCin, pumpClaimStatus } from "@/lib/samantha/dvsRouting";
-import { writeStatusIndex, writeLongText, COL } from "@/lib/samantha/mondayApi";
+import {
+  writeStatusIndex, writeLongText, writeText, writePhone, writeEmail,
+  writeDropdownLabels, writeLocation, writeSimpleValue, COL,
+} from "@/lib/samantha/mondayApi";
+import { ClinicalsDownloadButton } from "@/components/samantha/ClinicalsDownloadButton";
+import { planEmailWrite } from "@/lib/shared/emailCell";
+import { planPhoneWrite } from "@/lib/shared/phoneCell";
 import { TRIGGER_DVS_INDEX, TRIGGER_PUMP_DVS_INDEX } from "@/lib/samantha/mondayMapping";
 import { etTodayYmd, ymdToUs } from "@/lib/samantha/benefitsDerive";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { AlertTriangle, ArrowLeft, Clock, Loader2, RefreshCw, RotateCw, Search, User, Zap } from "lucide-react";
+
+/**
+ * Saving a doctor edit, field by field.
+ *
+ * DVS has no overlay and no Send button — it's a monitor that makes a few
+ * explicit writes (the Re-run buttons, Reference Notes), so an edit here goes
+ * straight to the board. Each field needs its own writer because the columns
+ * are five different Monday types, and writing a phone or an email as plain
+ * text silently produces a cell the rest of the app can't read back.
+ *
+ * None of these columns triggers a board automation, so they don't need the
+ * verified-write protocol (§5.2) — that guards the stage advancer, and this
+ * page never touches it.
+ */
+const DOCTOR_WRITERS: Record<string, (itemId: string, value: string) => Promise<void>> = {
+  doctorName:      (id, v) => writeText(id, COL.doctorName, v),
+  doctorNpi:       (id, v) => writeText(id, COL.doctorNpi, v),
+  doctorPhone:     (id, v) => writePhone(id, COL.doctorPhone, v),
+  doctorEmail:     (id, v) => writeEmail(id, COL.doctorEmail, v),
+  doctorFax:       (id, v) => writeEmail(id, COL.doctorFax, v),
+  clinicalsMethod: (id, v) => writeSimpleValue(id, COL.clinicalsMethod, v),
+  // create_labels_if_missing: a clinic the board hasn't seen is a normal thing
+  // for a rep to type, and the alternative is the edit silently doing nothing.
+  clinicName:      (id, v) => writeDropdownLabels(id, COL.clinicName, v ? [v] : [], true),
+  clinicAddress:   (id, v) => writeLocation(id, COL.clinicAddress, v),
+};
+
+/** Fields staged in the card but not yet written. */
+type DoctorDraft = Partial<Record<keyof typeof DOCTOR_WRITERS, string>>;
+
+/**
+ * Which staged fields Monday would silently DROP, by label.
+ *
+ * `writeEmail`/`writePhone` skip a value they can't parse — they don't throw.
+ * So "drsmith@" or a 9-digit phone saves green while writing nothing, which is
+ * the "optimistic UI, no durable write" trap §10 lists. Checked before the
+ * first write so a bad field can't leave a half-saved record either.
+ */
+export function unwritableDoctorFields(draft: DoctorDraft): string[] {
+  const bad: string[] = [];
+  if (draft.doctorPhone !== undefined && planPhoneWrite(draft.doctorPhone).action === "skip") {
+    bad.push("Phone (needs 10 digits)");
+  }
+  for (const [field, label] of [["doctorEmail", "Email"], ["doctorFax", "Fax"]] as const) {
+    if (draft[field] !== undefined && planEmailWrite(draft[field]).action === "skip") {
+      bad.push(`${label} (not a valid address)`);
+    }
+  }
+  return bad;
+}
 
 /* ── status-chip tone mapping (live bot labels) ───────────────────── */
 
@@ -112,6 +172,10 @@ const DvsPage = () => {
   const { goBack } = useBackNavigation();
   const [searchParams] = useSearchParams();
   const { patients, loading, initialLoading, error, refetch } = useDvsPatients(searchParams.get("patientId"));
+  // Staged doctor edits for the selected patient. Keyed by nothing — switching
+  // patients clears it (below), so a half-typed name can't land on somebody
+  // else's record.
+  const [doctorDraft, setDoctorDraft] = useState<DoctorDraft>({});
   const [selectedId, setSelectedId] = useState<string | null>(searchParams.get("patientId"));
   const [search, setSearch] = useState("");
   const [rerunning, setRerunning] = useState<string | null>(null);
@@ -156,6 +220,47 @@ const DvsPage = () => {
     }
     return byId ?? duePatients[0] ?? snoozedPatients[0];
   }, [patients, selectedId, duePatients, snoozedPatients, searchParams]);
+
+  // Switching patients drops anything unsaved — see the draft's comment.
+  const selectedIdForDraft = selected?.id ?? null;
+  const draftOwnerRef = useRef<string | null>(selectedIdForDraft);
+  if (draftOwnerRef.current !== selectedIdForDraft) {
+    draftOwnerRef.current = selectedIdForDraft;
+    if (Object.keys(doctorDraft).length) setDoctorDraft({});
+  }
+
+  /** What the card renders: board values with the staged edits laid over. */
+  const selectedWithDraft: Patient | undefined = useMemo(
+    () => (selected ? { ...selected, ...doctorDraft } : undefined),
+    [selected, doctorDraft],
+  );
+
+  const saveDoctorEdits = async () => {
+    if (!selected) return;
+    const entries = Object.entries(doctorDraft) as [keyof typeof DOCTOR_WRITERS, string][];
+    if (!entries.length) return;
+    const unwritable = unwritableDoctorFields(doctorDraft);
+    if (unwritable.length) {
+      toast.error("Fix these before saving", { description: unwritable.join(" · ") });
+      throw new Error("invalid doctor fields"); // holds edit mode + the draft
+    }
+    try {
+      // Sequential, not parallel: these are eight columns on one item, and
+      // Monday rate-limits per item — a burst is how you get a partial save
+      // with no error to show for it.
+      for (const [field, value] of entries) {
+        await DOCTOR_WRITERS[field]?.(selected.id, value ?? "");
+      }
+      setDoctorDraft({});
+      toast.success("Doctor details saved");
+      refetch(true);
+    } catch (e) {
+      toast.error("Couldn't save doctor details", {
+        description: e instanceof Error ? e.message : String(e),
+      });
+      throw e; // keeps the card in edit mode with the draft intact
+    }
+  };
 
   const straight = selected ? isStraightMedicaidPrimary(selected) : false;
   const cin = selected ? nyMedicaidCin(selected) : null;
@@ -332,8 +437,33 @@ const DvsPage = () => {
                     </div>
                   )}
 
-                  {/* no onUpdate — read-only monitor, so no Edit pencil */}
-                  <PatientProfileCard patient={selected} />
+                  {/* The stage is automated, but the DOCTOR details on it are
+                      not: a bad fax or a missing NPI is what a rep is here to
+                      fix, and this was the one Insurance page with no way to.
+                      Edits write straight to the board (no Send on this page),
+                      batched behind the card's Save. */}
+                  <PatientProfileCard
+                    patient={selectedWithDraft ?? selected}
+                    editScope="doctor"
+                    // Defensive: only stage what we can actually write. The card
+                    // is shared, so a field added to it later must not land in
+                    // a draft with no writer and take the page down on Save.
+                    onUpdate={(p) =>
+                      setDoctorDraft((d) => {
+                        const next = { ...d };
+                        for (const [k, v] of Object.entries(p)) {
+                          if (k in DOCTOR_WRITERS) next[k as keyof DoctorDraft] = String(v ?? "");
+                        }
+                        return next;
+                      })
+                    }
+                    onSave={saveDoctorEdits}
+                    dirty={Object.keys(doctorDraft).length > 0}
+                  />
+
+                  <div className="flex justify-end">
+                    <ClinicalsDownloadButton itemId={selected.id} />
+                  </div>
 
                   {/* entry-path cards (§1) — a supplies-only managed dual
                       never rode the payer rail either, so it highlights the

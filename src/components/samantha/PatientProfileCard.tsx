@@ -3,6 +3,7 @@ import type { Patient } from "@/lib/samantha/workflow";
 import { PRIMARY_INSURANCE_OPTIONS, SECONDARY_INSURANCE_OPTIONS_SAMANTHA } from "@/lib/samantha/hcpcRules";
 import type { PrimaryInsurance } from "@/lib/samantha/hcpcRules";
 import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 import {
   Select,
   SelectContent,
@@ -29,12 +30,37 @@ import {
   Cpu,
   Pencil,
   X,
+  Save,
+  Loader2,
 } from "lucide-react";
 import { DoctorNotesPanel } from "@/components/shared/DoctorNotesPanel";
 
 interface Props {
   patient: Patient;
+  /** Stage an edit. Callers hold the draft — see DvsPage. */
   onUpdate?: (patch: Partial<Patient>) => void;
+  /**
+   * Commit the staged edits. Present ⇒ the header shows Save while editing.
+   *
+   * The card's inputs fire `onUpdate` on every keystroke, so a caller that
+   * writes straight to Monday (rather than into a page overlay flushed by a
+   * Send button) MUST take this and batch — otherwise typing a doctor's name
+   * is a dozen board writes.
+   */
+  onSave?: () => Promise<void>;
+  /** Whether anything is staged — Save is inert without it. */
+  dirty?: boolean;
+  /**
+   * What the pencil opens. `"doctor"` leaves identity and insurance read-only.
+   *
+   * DVS uses that: the doctor details on an automated stage are exactly what a
+   * rep is there to fix (a dead fax, a missing NPI), while Primary Insurance
+   * and the Member IDs are the inputs the whole rail is derived from, and §7
+   * keeps them read-only everywhere in Insurance for a reason — changing the
+   * payer means re-running eligibility, which this board can't do. Corrections
+   * to those go back through Profile Send-Off.
+   */
+  editScope?: "all" | "doctor";
 }
 
 /* ── Read-only field ─────────────────────────────────────────────── */
@@ -69,6 +95,50 @@ function Field({
 }
 
 /* ── Editable field ──────────────────────────────────────────────── */
+
+/** Live Clinicals Method labels (§5.9). Blank clears the column. */
+const CLINICALS_METHODS = ["Fax", "Parachute", "Email"];
+
+function EditableChoice({
+  icon,
+  label,
+  value,
+  options,
+  onChange,
+  className,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  value: string;
+  options: string[];
+  onChange: (v: string) => void;
+  className?: string;
+}) {
+  return (
+    <div className={`flex items-start gap-2 min-w-0 ${className ?? ""}`}>
+      <div className="h-8 w-8 rounded-md bg-muted flex items-center justify-center text-muted-foreground shrink-0 mt-1">
+        {icon}
+      </div>
+      <div className="min-w-0 flex-1">
+        <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
+          {label}
+        </p>
+        <select
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          className="mt-0.5 h-7 w-full rounded-md border border-input bg-background px-2 text-sm"
+        >
+          <option value="">—</option>
+          {/* A value the board has but this list doesn't still shows, so an
+              unrelated edit can't silently blank it. */}
+          {(options.includes(value) || !value ? options : [value, ...options]).map((o) => (
+            <option key={o} value={o}>{o}</option>
+          ))}
+        </select>
+      </div>
+    </div>
+  );
+}
 
 function EditableField({
   icon,
@@ -121,7 +191,7 @@ function formatPhone(raw: string): string {
 
 /* ── Main component ──────────────────────────────────────────────── */
 
-export function PatientProfileCard({ patient, onUpdate }: Props) {
+export function PatientProfileCard({ patient, onUpdate, onSave, dirty, editScope = "all" }: Props) {
   const hasMember2 = !!patient.memberId2 && patient.memberId2.trim().length > 0;
   const [doctorOpen, setDoctorOpen] = useState(false);
   const [editing, setEditing] = useState(false);
@@ -142,6 +212,23 @@ export function PatientProfileCard({ patient, onUpdate }: Props) {
   };
 
   const patch = (p: Partial<Patient>) => onUpdate?.(p);
+  /** Identity + insurance rows: only when the caller allows that scope. */
+  const editingProfile = editing && editScope === "all";
+
+  const [saving, setSaving] = useState(false);
+  const handleSave = async () => {
+    if (!onSave || saving) return;
+    setSaving(true);
+    try {
+      await onSave();
+      setEditing(false);
+    } catch {
+      // The caller surfaced the reason (a toast). Stay in edit mode with the
+      // draft intact so the rep can fix the field rather than retype it.
+    } finally {
+      setSaving(false);
+    }
+  };
 
   return (
     <div className="rounded-xl bg-card border shadow-card p-4 space-y-4">
@@ -150,6 +237,17 @@ export function PatientProfileCard({ patient, onUpdate }: Props) {
           Patient Profile
         </p>
         <div className="flex items-center gap-2">
+        {canEdit && editing && onSave && (
+          <Button
+            size="sm"
+            onClick={handleSave}
+            disabled={!dirty || saving}
+            className="h-7 gap-1.5 bg-emerald-600 text-white hover:bg-emerald-700"
+          >
+            {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
+            {saving ? "Saving…" : "Save"}
+          </Button>
+        )}
         {canEdit && (
           <button
             onClick={toggleEdit}
@@ -158,7 +256,7 @@ export function PatientProfileCard({ patient, onUpdate }: Props) {
                 ? "bg-destructive/10 text-destructive hover:bg-destructive/20"
                 : "text-muted-foreground hover:bg-muted hover:text-foreground"
             }`}
-            title={editing ? "Stop editing" : "Edit profile"}
+            title={editing ? "Stop editing" : editScope === "doctor" ? "Edit doctor details" : "Edit profile"}
           >
             {editing ? <X className="h-4 w-4" /> : <Pencil className="h-4 w-4" />}
           </button>
@@ -168,7 +266,7 @@ export function PatientProfileCard({ patient, onUpdate }: Props) {
 
       {/* Row 1 */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-        {editing ? (
+        {editingProfile ? (
           <EditableField
             icon={<User className="h-4 w-4" />}
             label="Name"
@@ -179,7 +277,7 @@ export function PatientProfileCard({ patient, onUpdate }: Props) {
           <Field icon={<User className="h-4 w-4" />} label="Name" value={patient.name} />
         )}
 
-        {editing ? (
+        {editingProfile ? (
           <EditableField
             icon={<CalendarDays className="h-4 w-4" />}
             label="Date of Birth"
@@ -200,7 +298,7 @@ export function PatientProfileCard({ patient, onUpdate }: Props) {
 
       {/* Row 1b — Patient Phone, Address, Pump Brand */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-        {editing ? (
+        {editingProfile ? (
           <EditableField
             icon={<Phone className="h-4 w-4" />}
             label="Patient Phone"
@@ -215,7 +313,7 @@ export function PatientProfileCard({ patient, onUpdate }: Props) {
             value={formatPhone(patient.patientPhone ?? "")}
           />
         )}
-        {editing ? (
+        {editingProfile ? (
           <EditableField
             icon={<MapPin className="h-4 w-4" />}
             label="Patient Address"
@@ -250,7 +348,7 @@ export function PatientProfileCard({ patient, onUpdate }: Props) {
       {/* Row 2 */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         {/* Primary Insurance — editable via pencil toggle */}
-        {editing ? (
+        {editingProfile ? (
           <div className="flex items-start gap-2 min-w-0">
             <div className="h-8 w-8 rounded-md bg-muted flex items-center justify-center text-muted-foreground shrink-0 mt-1">
               <ShieldCheck className="h-4 w-4" />
@@ -280,7 +378,7 @@ export function PatientProfileCard({ patient, onUpdate }: Props) {
           <Field icon={<ShieldCheck className="h-4 w-4" />} label="Primary Insurance" value={patient.primaryInsurance ?? ""} />
         )}
 
-        {editing ? (
+        {editingProfile ? (
           <EditableField
             icon={<IdCard className="h-4 w-4" />}
             label="Member ID"
@@ -291,7 +389,7 @@ export function PatientProfileCard({ patient, onUpdate }: Props) {
           <Field icon={<IdCard className="h-4 w-4" />} label="Member ID" value={patient.memberId1 ?? ""} />
         )}
 
-        {editing ? (
+        {editingProfile ? (
           <EditableField
             icon={<Activity className="h-4 w-4" />}
             label="Diagnosis"
@@ -303,7 +401,7 @@ export function PatientProfileCard({ patient, onUpdate }: Props) {
         )}
 
         {/* Secondary Insurance — read-only by default, editable via the pencil */}
-        {editing ? (
+        {editingProfile ? (
           <div className="flex items-start gap-2 min-w-0">
             <div className="h-8 w-8 rounded-md bg-muted flex items-center justify-center text-muted-foreground shrink-0 mt-1">
               <ShieldCheck className="h-4 w-4" />
@@ -334,7 +432,7 @@ export function PatientProfileCard({ patient, onUpdate }: Props) {
         )}
 
         {/* Member ID 2 — read-only by default, editable via the pencil */}
-        {editing ? (
+        {editingProfile ? (
           <EditableField
             icon={<IdCard className="h-4 w-4" />}
             label="Member ID 2"
@@ -418,6 +516,12 @@ export function PatientProfileCard({ patient, onUpdate }: Props) {
               value={patient.clinicName ?? ""}
               className="sm:col-span-2"
             />
+            <Field
+              icon={<MapPin className="h-4 w-4" />}
+              label="Clinic Address"
+              value={patient.clinicAddress ?? ""}
+              className="sm:col-span-2"
+            />
           </div>
         )}
 
@@ -429,10 +533,15 @@ export function PatientProfileCard({ patient, onUpdate }: Props) {
               value={patient.doctorName ?? ""}
               onChange={(v) => patch({ doctorName: v })}
             />
-            <EditableField
+            {/* A status column, so it picks from the board's labels rather
+                than taking free text: a typo'd label doesn't fail, it creates
+                a duplicate on the board (§9) — and Clinicals Method is the
+                column that splits the two Chase roles (§5.9). */}
+            <EditableChoice
               icon={<Send className="h-4 w-4" />}
               label="Clinicals Method"
               value={patient.clinicalsMethod ?? ""}
+              options={CLINICALS_METHODS}
               onChange={(v) => patch({ clinicalsMethod: v })}
             />
             <EditableField
@@ -464,6 +573,13 @@ export function PatientProfileCard({ patient, onUpdate }: Props) {
               label="Clinic"
               value={patient.clinicName ?? ""}
               onChange={(v) => patch({ clinicName: v })}
+              className="sm:col-span-2"
+            />
+            <EditableField
+              icon={<MapPin className="h-4 w-4" />}
+              label="Clinic Address"
+              value={patient.clinicAddress ?? ""}
+              onChange={(v) => patch({ clinicAddress: v })}
               className="sm:col-span-2"
             />
           </div>

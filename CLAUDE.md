@@ -776,6 +776,17 @@ columns" automation on duplicated items). The SPA only flips the advancer; verif
   case. Monday cannot express *dropdown contains Insulin Pump* — the only trigger available is the
   whole column changing, which would escalate a patient whose CGM Sensors came back Not Clear, a
   case `deriveInsuranceOutcome` deliberately does NOT treat as a blocker. The app write is exact.
+  **The DVS page edits DOCTOR details and downloads clinicals** (2026-08-12). It stays a
+  read-only *monitor* of what the bot did, but the doctor block on `samantha/PatientProfileCard`
+  is editable there — all eight columns (name · Clinicals Method · NPI · phone · fax · email ·
+  clinic · clinic address, `COL.clinicAddress` added then) — plus `ClinicalsDownloadButton`. The
+  card takes **`editScope="doctor"`**, which leaves identity + insurance read-only: those are the
+  inputs the whole rail derives from, and the Stedi argument below applies unchanged. Edits go
+  **straight to the board** (this page has no overlay and no Send), batched behind the card's Save
+  — its inputs fire on every keystroke, so a per-change write would be a dozen board writes per
+  name. ⚠️ `writeEmail`/`writePhone` **skip** a value they can't parse rather than throwing, so
+  `unwritableDoctorFields` checks the draft BEFORE the first write — otherwise a typo'd fax saves
+  green having written nothing (§10's optimistic-UI trap), or leaves a half-saved record.
   ⚠️ **There is NO Escalate toggle in the Insurance UI — don't reintroduce one** (Josh,
   2026-08-03). The only escalation affordance is the **Propose Stuck popup**, plus the manager
   decision buttons and the board automations. `components/samantha/EscalateButton.tsx` had zero

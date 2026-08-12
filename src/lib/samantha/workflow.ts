@@ -513,6 +513,7 @@ export interface Patient {
   doctorFax?: string;
   clinicalsMethod?: string;
   clinicName?: string;
+  clinicAddress?: string;
   /** "Days Since Stage Started" status label, e.g. "0–2 Days", "6–8 Days". */
   daysSinceStage?: string;
   /** Numeric index of the daysSinceStage status (higher = longer). */

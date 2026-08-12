@@ -28,6 +28,7 @@ export const COL = {
   doctorFax: "email_mm1xdzcj",
   clinicalsMethod: "color_mm1xw7y5",
   clinicName: "dropdown_mm1xbvas",
+  clinicAddress: "location_mm1xjnfv",
   dob: "text_mm1xvxst",
   patientPhone: "phone_mm1x44yk",
   patientAddress: "location_mm1xhw17",
@@ -271,6 +272,7 @@ export const READ_COLUMN_IDS = [
   COL.doctorFax,
   COL.clinicalsMethod,
   COL.clinicName,
+  COL.clinicAddress,
   // Stage Advancer — needed to determine which view an escalated patient belongs to.
   COL.stageAdvancer,
   // Escalation column hydrates the Escalate-button toggle on all 3 pages.
