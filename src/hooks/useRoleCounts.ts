@@ -65,6 +65,9 @@ const PROFILE_GROUP_ID = "group_mm1xf2jb";
 // so form patients count toward it as one number alongside the 1. Intake
 // unverified split — they are the same role, just a different source.
 const PROFILE_FORM_GROUP_IDS = ["group_mm5zgeak", "group_mm5z87zt"];
+/** "Already In System" — its own group on the board, alongside the status
+ *  column. Both feed the inSystemReferrals role (§5.10). */
+const PROFILE_IN_SYSTEM_GROUP_ID = "group_mm64b83h";
 // Intake Escalation. Index 0 = with a manager, 2 = proposed stuck. Both leave
 // the rep's queue and her count — that is what escalating is FOR. Mirrors how
 // the Medical Evaluation counts treat color_mm1x7997.
@@ -579,7 +582,21 @@ export function useRoleCounts(opts?: { roleIds?: string[] }) {
             !isInSystem(i) &&
             ((i.cols[PROF_REFERRAL_TYPE_COL] ?? "").trim().toLowerCase() === "patient" ||
               (i.cols[PROF_REFERRAL_SOURCE_COL] ?? "").trim().toLowerCase() === "carecentrix");
-          const inSystem = active.filter(isInSystem);
+          // Already In System is a GROUP as well as a status (Brandon,
+          // 2026-08-12). Items moved there stopped being counted at all — this
+          // fetch only ever read 1. Intake — so the role bar undercounted by
+          // however many the board had moved, and Oversight's chart read 0.
+          // Group membership IS the marker there: an item can arrive with the
+          // status column still blank, so nothing is filtered on it.
+          const inSystemGroupItems = await fetchBoardGroupItemsLight(
+            PROFILE_BOARD_ID,
+            PROFILE_IN_SYSTEM_GROUP_ID,
+            [PROF_FOLLOWUP_COL],
+          ).catch(() => [] as LightItem[]);
+          const inSystem = [
+            ...active.filter(isInSystem),
+            ...inSystemGroupItems.filter((i) => i.cols[PROF_FOLLOWUP_COL] !== "Done"),
+          ];
           const isIntakeEscalated = (i: LightItem) =>
             PROF_ESCALATED_LABELS.includes((i.cols[PROF_INTAKE_ESC_COL] ?? "").trim());
           // 1. Intake is ALL Verified Referrals now (Josh, 2026-08-10) —

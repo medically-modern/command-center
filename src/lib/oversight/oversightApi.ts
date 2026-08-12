@@ -298,6 +298,10 @@ const CONFIRM_COLS: { colId: string; label: string; pill?: boolean }[] = [
  * came from the form, so the group IS the queue.
  */
 const PROFILE_FORM_GROUPS = ["group_mm5zgeak", "group_mm5z87zt"];
+/** "Already In System" — its own group on the Profile Send Off board. Items
+ *  land here instead of 1. Intake, so it has to be fetched or the role's whole
+ *  population is missing (see the `profile-send-off-in-system` filter). */
+export const PROFILE_IN_SYSTEM_GROUP = "group_mm64b83h";
 /** Which form group a patient is in, for the drill-down's All/Partial/
  *  Completed toggle. */
 export const PROFILE_FORM_GROUP_COMPLETED = "group_mm5zgeak";
@@ -1224,7 +1228,7 @@ const BOARD_GROUPS: Record<number, string[]> = {
   // only whatever it could match in 1. Intake. A chart whose filter names a
   // group that isn't in this list renders 0 with no error; same class of bug
   // as the DVS group note below.
-  18406352652: ["group_mm1xf2jb", ...PROFILE_FORM_GROUPS],
+  18406352652: ["group_mm1xf2jb", ...PROFILE_FORM_GROUPS, PROFILE_IN_SYSTEM_GROUP],
   18406060017: ["group_mm1xf2jb"],
   // group_mm5gp2r2 = DVS: added 2026-07 when DVS got its own group (a
   // group-move automation). Without it the DVS-stage items are never fetched,
@@ -1588,18 +1592,47 @@ const CHART_FILTERS: Record<string, FilterRule> = {
   "profile-send-off-unverified-escalated": { type: "group", groupId: PROFILE_FORM_GROUPS, andCols: [{ colId: "color_mm2xe7r8", value: "Yes", not: true }, { colId: "color_mm5zww42", index: [0] }] },
   // Final Decisions — the rep proposed the patient is stuck.
   "profile-send-off-unverified-stuck": { type: "group", groupId: PROFILE_FORM_GROUPS, andCols: [{ colId: "color_mm2xe7r8", value: "Yes", not: true }, { colId: "color_mm5zww42", index: [2] }] },
-  "profile-send-off-in-system":  { type: "group", groupId: "group_mm1xf2jb", andCols: [{ colId: "color_mm2xe7r8", value: "Yes" }] },
-  "evaluate":           { type: "stageAdvancer", boardId: 18406060017, value: "Evaluate MN", andCols: [{ colId: "color_mm1x7997", index: [2], not: true }] },
-  "send-request":       { type: "stageAdvancer", boardId: 18406060017, value: "Send Request", andCols: [{ colId: "color_mm1x7997", index: [2], not: true }] },
-  "confirm-receipt":    { type: "stageAdvancer", boardId: 18406060017, value: "Confirm Receipt", andCols: [{ colId: "color_mm1x7997", index: [2], not: true }] },
+  // Already In System is BOTH a group and a status (Brandon, 2026-08-12). The
+  // board grew an "Already In System" group (`group_mm64b83h`) that nothing in
+  // the SPA read — not this fetch, not useRoleCounts, not either baseline
+  // generator — so the ten patients sitting in it were invisible everywhere and
+  // this chart read a permanent 0. Matching on the group alone would repeat the
+  // mistake in reverse, since an item can still be flagged Yes while sitting in
+  // 1. Intake or a form group, so the rule takes EITHER: in that group, or
+  // flagged Yes in one of the queues Oversight already covers. The other two
+  // intake charts AND it out (Yes wins first, §5.10), so the three stay
+  // mutually exclusive and still sum to the section total.
+  "profile-send-off-in-system": {
+    type: "any",
+    of: [
+      { type: "group", groupId: PROFILE_IN_SYSTEM_GROUP },
+      { type: "group", groupId: ["group_mm1xf2jb", ...PROFILE_FORM_GROUPS], andCols: [{ colId: "color_mm2xe7r8", value: "Yes" }] },
+    ],
+  },
+  // ── Medical Evaluation Processor Overview (column 1) ──
+  // NON-ESCALATED ONLY (Brandon, 2026-08-12), matching the Insurance column and
+  // the Doctor Appointments row. These used to exclude index 2 alone, so a
+  // patient at index 0 ("Manager Escalation Required") sat in Processor
+  // Overview AND in Manager Intervention at the same time — 20 of them on the
+  // day it was reported, Ruben Dickens among them. Both halves of that were
+  // wrong: an escalation takes the patient off the rep's sidebar and out of her
+  // burndown count (useRoleCounts + both baseline generators, §5.8), so the
+  // processor column was showing work nobody was doing, and every manager
+  // number double-counted against it.
+  // Escalation color_mm1x7997: 0 = Manager Escalation Required, 2 = Final
+  // Escalation Required (a stuck PROPOSAL). Matched by INDEX so a board rename
+  // can't silently reopen the queue.
+  "evaluate":           { type: "stageAdvancer", boardId: 18406060017, value: "Evaluate MN", andCols: [{ colId: "color_mm1x7997", index: [0, 2], not: true }] },
+  "send-request":       { type: "stageAdvancer", boardId: 18406060017, value: "Send Request", andCols: [{ colId: "color_mm1x7997", index: [0, 2], not: true }] },
+  "confirm-receipt":    { type: "stageAdvancer", boardId: 18406060017, value: "Confirm Receipt", andCols: [{ colId: "color_mm1x7997", index: [0, 2], not: true }] },
   // Chase Clinicals split by method: Fax (= NOT Email/Parachute, so a blank
   // method still shows under Fax) vs Email & Parachute (either). Method col = color_mm1xw7y5.
   // A chase patient WAITING on a booked visit is excluded here and shown on the
   // Doctor Appointments row instead — otherwise they'd be counted twice, and
   // they'd sit in the chase day buckets drifting toward "30+ Days" while
   // legitimately parked.
-  "chase-fax":             { type: "stageAdvancer", boardId: 18406060017, value: "Chase Clinicals", andCols: [{ colId: "color_mm1x7997", index: [2], not: true }, { colId: "color_mm1xw7y5", value: ["Email", "Parachute"], not: true }, { colId: "date_mm5w2vsf", dateOnOrAfterToday: true, not: true }] },
-  "chase-email-parachute": { type: "stageAdvancer", boardId: 18406060017, value: "Chase Clinicals", andCols: [{ colId: "color_mm1x7997", index: [2], not: true }, { colId: "color_mm1xw7y5", value: ["Email", "Parachute"] }, { colId: "date_mm5w2vsf", dateOnOrAfterToday: true, not: true }] },
+  "chase-fax":             { type: "stageAdvancer", boardId: 18406060017, value: "Chase Clinicals", andCols: [{ colId: "color_mm1x7997", index: [0, 2], not: true }, { colId: "color_mm1xw7y5", value: ["Email", "Parachute"], not: true }, { colId: "date_mm5w2vsf", dateOnOrAfterToday: true, not: true }] },
+  "chase-email-parachute": { type: "stageAdvancer", boardId: 18406060017, value: "Chase Clinicals", andCols: [{ colId: "color_mm1x7997", index: [0, 2], not: true }, { colId: "color_mm1xw7y5", value: ["Email", "Parachute"] }, { colId: "date_mm5w2vsf", dateOnOrAfterToday: true, not: true }] },
   // Doctor Appointments — one sub-stage, three states, one per manager column.
   // Between them they cover EVERY escalation value, which is what keeps an
   // outreach patient visible in all of them (§7: a state matching no chart is
@@ -1645,9 +1678,19 @@ const CHART_FILTERS: Record<string, FilterRule> = {
   // Intervention at once. Nobody goes blind — `doctor-appointments-manager`
   // and `-final` already partition escalation indices 0 and 2 over exactly this
   // population.
-  "confirm-receipt-escalations":       { type: "stageAdvancer", boardId: 18406060017, value: "Confirm Receipt", andCols: [{ colId: "color_mm1x7997", index: [2], not: true }, { colId: "color_mm1wz0vg", value: "Escalate" }] },
-  "chase-fax-escalations":             { type: "stageAdvancer", boardId: 18406060017, value: "Chase Clinicals", andCols: [{ colId: "color_mm1x7997", index: [2], not: true }, { colId: "color_mm1xw7y5", value: ["Email", "Parachute"], not: true }, { colId: "color_mm1wz0vg", value: "Escalate" }, { colId: "date_mm5w2vsf", dateOnOrAfterToday: true, not: true }] },
-  "chase-email-parachute-escalations": { type: "stageAdvancer", boardId: 18406060017, value: "Chase Clinicals", andCols: [{ colId: "color_mm1x7997", index: [2], not: true }, { colId: "color_mm1xw7y5", value: ["Email", "Parachute"] }, { colId: "color_mm1wz0vg", value: "Escalate" }, { colId: "date_mm5w2vsf", dateOnOrAfterToday: true, not: true }] },
+  //
+  // The escalation index [0] condition (Brandon, 2026-08-12) is what keeps this
+  // column and Processor Overview disjoint. MN Attempts and the Escalation
+  // column are written together when a chase burns its 4th attempt, but they
+  // come apart again the moment a manager hands the patient back: Return to
+  // Queue clears the Escalation and deliberately leaves MN Attempts alone (it
+  // is the attempt history, not a queue flag). Without this condition that
+  // returned patient stayed on the manager's bar forever while also being back
+  // in the rep's — the same shape as the Insurance ">5 days" bar, which has
+  // keyed on the label since it was written.
+  "confirm-receipt-escalations":       { type: "stageAdvancer", boardId: 18406060017, value: "Confirm Receipt", andCols: [{ colId: "color_mm1x7997", index: [0] }, { colId: "color_mm1wz0vg", value: "Escalate" }] },
+  "chase-fax-escalations":             { type: "stageAdvancer", boardId: 18406060017, value: "Chase Clinicals", andCols: [{ colId: "color_mm1x7997", index: [0] }, { colId: "color_mm1xw7y5", value: ["Email", "Parachute"], not: true }, { colId: "color_mm1wz0vg", value: "Escalate" }, { colId: "date_mm5w2vsf", dateOnOrAfterToday: true, not: true }] },
+  "chase-email-parachute-escalations": { type: "stageAdvancer", boardId: 18406060017, value: "Chase Clinicals", andCols: [{ colId: "color_mm1x7997", index: [0] }, { colId: "color_mm1xw7y5", value: ["Email", "Parachute"] }, { colId: "color_mm1wz0vg", value: "Escalate" }, { colId: "date_mm5w2vsf", dateOnOrAfterToday: true, not: true }] },
   // 3rd+ Attempt escalations = same stage AND Escalation = Manager Escalation
   // Required (color_mm1x7997 index 0) AND Evaluation Counter ≥ 3. The Evaluate
   // SOP escalates at counter ≥ 3 and the patient stays in Evaluate MN, so the
@@ -1661,6 +1704,27 @@ const CHART_FILTERS: Record<string, FilterRule> = {
   // chase chart — they are on the Doctor Appointments row instead.
   "chase-fax-escalated-3rd":               { type: "stageAdvancer", boardId: 18406060017, value: "Chase Clinicals", andCols: [{ colId: "color_mm1xw7y5", value: ["Email", "Parachute"], not: true }, { colId: "color_mm1x7997", index: [0] }, { colId: "numeric_mm4bhjc8", gte: 3 }, { colId: "date_mm5w2vsf", dateOnOrAfterToday: true, not: true }] },
   "chase-email-parachute-escalated-3rd":   { type: "stageAdvancer", boardId: 18406060017, value: "Chase Clinicals", andCols: [{ colId: "color_mm1xw7y5", value: ["Email", "Parachute"] }, { colId: "color_mm1x7997", index: [0] }, { colId: "numeric_mm4bhjc8", gte: 3 }, { colId: "date_mm5w2vsf", dateOnOrAfterToday: true, not: true }] },
+  // ── Manager Intervention POPULATION (Brandon, 2026-08-12) ──
+  // Each merged chart draws two series — Attempt 4+ and 3rd+ round — and those
+  // two say WHY a patient is on a manager's desk. They do not, between them,
+  // cover every way the Escalation column reaches index 0: a chase escalation
+  // carried into Evaluate on a re-entry, a manager's own flip on the board, a
+  // future automation. Before Processor Overview excluded index 0 that gap was
+  // invisible, because the processor chart still listed those patients. Now it
+  // doesn't — so without a population of its own this column would drop them
+  // and they would match NO chart in the app (§7), which is the one failure
+  // this dashboard must never have.
+  // These rules are unioned with the series by `patientMatchesChart`, so they
+  // only ever ADD: an escalated patient in neither series is in the chart's
+  // count and drill-down, and StackedStageChart footnotes them as "+N other".
+  "evaluate-escalated-merged":              { type: "stageAdvancer", boardId: 18406060017, value: "Evaluate MN",     andCols: [{ colId: "color_mm1x7997", index: [0] }] },
+  "send-request-escalated-merged":          { type: "stageAdvancer", boardId: 18406060017, value: "Send Request",    andCols: [{ colId: "color_mm1x7997", index: [0] }] },
+  "confirm-receipt-escalated-merged":       { type: "stageAdvancer", boardId: 18406060017, value: "Confirm Receipt", andCols: [{ colId: "color_mm1x7997", index: [0] }] },
+  // The chase pair keeps the §5.9 method split and drops patients waiting on a
+  // booked visit — `doctor-appointments-manager` claims those, same as it does
+  // for the two series.
+  "chase-fax-escalated-merged":             { type: "stageAdvancer", boardId: 18406060017, value: "Chase Clinicals", andCols: [{ colId: "color_mm1x7997", index: [0] }, { colId: "color_mm1xw7y5", value: ["Email", "Parachute"], not: true }, { colId: "date_mm5w2vsf", dateOnOrAfterToday: true, not: true }] },
+  "chase-email-parachute-escalated-merged": { type: "stageAdvancer", boardId: 18406060017, value: "Chase Clinicals", andCols: [{ colId: "color_mm1x7997", index: [0] }, { colId: "color_mm1xw7y5", value: ["Email", "Parachute"] }, { colId: "date_mm5w2vsf", dateOnOrAfterToday: true, not: true }] },
   // ── Insurance Processor Overview (column 1) ──
   // NON-ESCALATED ONLY (Josh 2026-07-30): this column is the processors' own
   // working queue, so a patient flagged for a manager — either level — belongs
@@ -1739,6 +1803,16 @@ const CHART_FILTERS: Record<string, FilterRule> = {
   "benefits-manager-escalation": { type: "stageAdvancer", boardId: 18410601299, value: "Benefits / SoS", andCols: [{ colId: "color_mm2vsh2f", index: [0] }] },
   //
   // Inactive insurance: Active? = Inactive (index 2 — the column split).
+  //
+  // ⚠️ These two bars deliberately take NO escalation condition (Katie/Josh,
+  // 2026-07-29; `reasonBuckets.test.ts` asserts it), unlike the ">5 days" bar
+  // below. That is the one place the Insurance columns are knowingly not
+  // disjoint: a Benefits patient whose insurance is Inactive but who carries no
+  // escalation label is in the rep's Processor Overview AND on this bar. The
+  // trade is intentional — the bar catches the FACT even when the label is
+  // missing — but it is the same shape as the Medical Evaluation bug fixed on
+  // 2026-08-12, arrived at from the other side, so if it is ever revisited
+  // change the bars and that test together rather than one of them.
   "benefits-manager-inactive": { type: "stageAdvancer", boardId: 18410601299, value: "Benefits / SoS", andCols: [{ colId: "color_mm5q9y3", index: [2] }] },
   // Pump SoS: same-or-similar Not Clear on the insulin pump specifically —
   // the Not Clear Products dropdown (comma-joined labels) contains it. Other

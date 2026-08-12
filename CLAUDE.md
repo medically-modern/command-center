@@ -308,6 +308,12 @@ Same pattern as §5.9: **one Monday stage** (Profile Send Off board `18406352652
 and **Referral Source `color_mm1w5wxr`**, evaluated in that order:
 - **`inSystemReferrals`** (`/in-system-referrals`, "Already In System", added 2026-07-31) —
   Already In System **`Yes`**, whatever the referral type/source. Checked **first**.
+  ⚠️ Also its **own group** now (`group_mm64b83h` "Already In System", wired up 2026-08-12).
+  Nothing in the SPA read that group — not the Oversight fetch, not `useRoleCounts`, not either
+  baseline generator — so the ten patients the board had moved there were invisible **everywhere**
+  and the Oversight chart sat at a permanent 0. The role is **group OR status**: membership is the
+  marker (an item can arrive with the column still blank), and the flag still counts on its own for
+  items left in 1. Intake or a form group. Both routes are asserted in `columnExclusivity.test.ts`.
 - **`unverifiedReferrals`** (`/unverified-referrals`, "Unverified Referrals") — Referral Type
   **`Patient`** OR Referral Source **`CareCentrix`** (and not already in system).
 - **`profile`** (`/profile`, relabelled **"Verified Referrals"**, id unchanged so existing
@@ -737,6 +743,25 @@ columns" automation on duplicated items). The SPA only flips the advancer; verif
   carved out by name, and Auth Outstanding's Final-only shape via `FINAL_ONLY_ROWS` — both asserted
   as carve-outs); `lib/samantha/managerRail` mirrors these populations for the destination page's
   sidebar — change the two together.
+  ⚠️ **The three columns must PARTITION the stage — nobody in two, nobody in none** (Brandon,
+  2026-08-12). `insuranceCoverage.test.ts` guards the "none" half; `lib/oversight/
+  columnExclusivity.test.ts` guards the "two" half, over ME · Insurance · Intake, from the real
+  chart defs. Medical Evaluation had the second failure for as long as the manager views existed:
+  its Processor Overview charts excluded escalation index 2 but **not index 0**, so 20 escalated
+  patients (Ruben Dickens the reported one) were counted in the processor column AND a manager
+  column, while being absent from the rep's sidebar and burndown — the processor bar was showing
+  work nobody was doing. All five now exclude **[0, 2]**, matching Insurance and Doctor
+  Appointments. Two consequences that must move together: the `*-escalations` ("Attempt 4+")
+  filters now require index 0 (**MN Attempts is history, not a queue flag** — Return to Queue
+  clears the escalation and deliberately leaves it set, which used to strand the patient on both
+  bars), and each `*-escalated-merged` chart gained a **population rule** (stage + index 0) unioned
+  with its two series, because the series don't cover every route to index 0 and Processor Overview
+  no longer catches the remainder. `StackedStageChart` footnotes those as **"+N other escalation"**
+  and lists them in the drill-down. **One knowing exception, recorded in both tests:** the Benefits
+  Manager Intervention bars *Inactive insurance* and *Pump SoS* take no escalation condition
+  (Katie/Josh, 2026-07-29) so they catch the FACT when the label is missing — which means a
+  non-escalated Benefits patient can still sit in two columns. That is a product decision, not a
+  bug; change the bars and `reasonBuckets.test.ts` together or leave both alone.
   ⚠️ **There is NO Escalate toggle in the Insurance UI — don't reintroduce one** (Josh,
   2026-08-03). The only escalation affordance is the **Propose Stuck popup**, plus the manager
   decision buttons and the board automations. `components/samantha/EscalateButton.tsx` had zero

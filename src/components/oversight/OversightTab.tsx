@@ -171,6 +171,35 @@ const LS_CACHE_KEY = "oversight-cache";
 // rather than shrinking the charts to fit. Gap matches the old 2-column gap-x-12.
 const OVERSIGHT_COL_GAP = 48; // px between the fluid manager-view columns
 
+// ── One card frame for all three chart kinds (Brandon, 2026-08-12) ──
+// The cards used to size themselves to their content, so a row's three columns
+// came out at three different heights: the stacked Manager Intervention chart
+// carries a legend line under its title, and the reason charts grow a footnote
+// only when there is something to footnote. `h-full` makes every card fill its
+// grid row (grid items stretch, so the row is the tallest card) and the plot
+// area takes the slack — which also lines the x-axis labels up across the row.
+// Any new chart kind must use these two or it will be the odd one out again.
+const CHART_CARD_CLASS =
+  "h-full flex flex-col rounded-2xl border bg-card shadow-sm p-4 transition-all duration-200 border-border hover:shadow-md hover:ring-1 hover:ring-foreground/10";
+/** The bars. min-h keeps the old 200px floor when a row has nothing taller. */
+const CHART_PLOT_CLASS = "flex items-end gap-1.5 flex-1 min-h-[200px]";
+
+/**
+ * The "+N unknown" / "+N in no bar" line under a chart.
+ *
+ * Always rendered, even with nothing to say: an appearing/disappearing line
+ * changes the card's height, which is half of what made the columns ragged.
+ * Empty parts are dropped, and an empty line still holds its row.
+ */
+function ChartFootnote({ parts }: { parts: string[] }) {
+  const text = parts.filter(Boolean).join(" · ");
+  return (
+    <p className="text-[9px] text-muted-foreground mt-1.5 text-right min-h-[0.875rem]" aria-hidden={!text}>
+      {text}
+    </p>
+  );
+}
+
 /**
  * Placeholder for one bar chart while Monday is queried. Mirrors StageChart's
  * frame (card, title row, count, 8 day-bucket bars) so the real charts drop
@@ -181,7 +210,7 @@ const OVERSIGHT_COL_GAP = 48; // px between the fluid manager-view columns
  */
 function ChartSkeleton({ seed }: { seed: number }) {
   return (
-    <div className="rounded-xl bg-card border shadow-card p-4">
+    <div className="h-full rounded-xl bg-card border shadow-card p-4">
       <div className="flex items-center justify-between mb-3">
         <Skeleton className="h-4 w-28" />
         <Skeleton className="h-4 w-8" />
@@ -374,13 +403,7 @@ function StageChart({ chart, patients: allPatients, priorityConfig, onChartClick
   );
 
   return (
-    <div
-      className={cn(
-        "rounded-2xl border bg-card shadow-sm p-4 transition-all duration-200",
-        "text-left w-full",
-        "border-border hover:shadow-md hover:ring-1 hover:ring-foreground/10",
-      )}
-    >
+    <div className={cn(CHART_CARD_CLASS, "text-left w-full")}>
       {showsFormToggle && (
         <div className="mb-3 inline-flex rounded-lg border bg-muted/40 p-0.5">
           {FORM_GROUP_FILTERS.map((f) => (
@@ -428,7 +451,7 @@ function StageChart({ chart, patients: allPatients, priorityConfig, onChartClick
       </button>
 
       {/* Bar chart — each bar clickable to filter */}
-      <div className="flex items-end gap-1.5 h-[200px]">
+      <div className={CHART_PLOT_CLASS}>
         {DAY_BUCKET_LABELS.map((label) => {
           const count = counts[label];
           const vip = vipCounts[label];
@@ -554,11 +577,7 @@ function StageChart({ chart, patients: allPatients, priorityConfig, onChartClick
       </div>
 
       {/* Unknown note */}
-      {unknownCount > 0 && (
-        <p className="text-[9px] text-muted-foreground mt-1.5 text-right">
-          +{unknownCount} unknown
-        </p>
-      )}
+      <ChartFootnote parts={[unknownCount > 0 ? `+${unknownCount} unknown` : ""]} />
     </div>
   );
 }
@@ -615,13 +634,7 @@ function ReasonStageChart({
   const maxCount = Math.max(1, ...buckets.map((b) => counts[b.label] ?? 0));
 
   return (
-    <div
-      className={cn(
-        "rounded-2xl border bg-card shadow-sm p-4 transition-all duration-200",
-        "text-left w-full",
-        "border-border hover:shadow-md hover:ring-1 hover:ring-foreground/10",
-      )}
-    >
+    <div className={cn(CHART_CARD_CLASS, "text-left w-full")}>
       <button
         onClick={onChartClick}
         className="flex items-center justify-between mb-3 w-full text-left group cursor-pointer"
@@ -647,7 +660,7 @@ function ReasonStageChart({
       </button>
 
       {/* Reason bars — wider than day buckets (2–3 bars), each clickable */}
-      <div className="flex items-end gap-3 h-[200px] px-2">
+      <div className={cn(CHART_PLOT_CLASS, "gap-3 px-2")}>
         {buckets.map((b) => {
           const count = counts[b.label] ?? 0;
           const vip = vipCounts[b.label] ?? 0;
@@ -703,16 +716,12 @@ function ReasonStageChart({
       {/* A patient can match several reasons (bars sum past the header) or —
           on categorize-mode charts — none (bars sum under it). Say so instead
           of leaving the arithmetic looking broken. */}
-      {(overlap > 0 || uncategorized > 0) && (
-        <p className="text-[9px] text-muted-foreground mt-1.5 text-right">
-          {[
-            overlap > 0 ? `${overlap} in multiple bars` : "",
-            uncategorized > 0 ? `+${uncategorized} in no bar` : "",
-          ]
-            .filter(Boolean)
-            .join(" · ")}
-        </p>
-      )}
+      <ChartFootnote
+        parts={[
+          overlap > 0 ? `${overlap} in multiple bars` : "",
+          uncategorized > 0 ? `+${uncategorized} in no bar` : "",
+        ]}
+      />
     </div>
   );
 }
@@ -727,6 +736,7 @@ function StackedStageChart({
   chart,
   seriesA,
   seriesB,
+  others,
   onChartClick,
   onBarClick,
 }: {
@@ -735,6 +745,9 @@ function StackedStageChart({
   seriesA: OversightPatient[];
   /** 3rd+ round pool (wins the dedup). */
   seriesB: OversightPatient[];
+  /** Escalated at this stage but matching NEITHER series — footnoted rather
+   *  than dropped, because Processor Overview no longer holds them either. */
+  others: OversightPatient[];
   onChartClick: () => void;
   onBarClick: (bucket: DayBucketLabel) => void;
 }) {
@@ -759,10 +772,12 @@ function StackedStageChart({
     return { aCounts: a, bCounts: b, maxCount: max, unknownCount: unknown };
   }, [seriesA, seriesB]);
 
-  const total = seriesA.length + seriesB.length;
+  // Others count in the header — they ARE on this manager's desk; they just
+  // have no series to sit in. The drill-down lists them with the rest.
+  const total = seriesA.length + seriesB.length + others.length;
 
   return (
-    <div className="rounded-2xl border bg-card shadow-sm p-4 transition-all duration-200 text-left w-full border-border hover:shadow-md hover:ring-1 hover:ring-foreground/10">
+    <div className={cn(CHART_CARD_CLASS, "text-left w-full")}>
       <button
         onClick={onChartClick}
         className="flex items-start justify-between mb-3 w-full text-left group cursor-pointer"
@@ -793,7 +808,7 @@ function StackedStageChart({
         </span>
       </button>
 
-      <div className="flex items-end gap-1.5 h-[200px]">
+      <div className={CHART_PLOT_CLASS}>
         {DAY_BUCKET_LABELS.map((label) => {
           const a = aCounts[label];
           const b = bCounts[label];
@@ -837,13 +852,41 @@ function StackedStageChart({
         })}
       </div>
 
-      {unknownCount > 0 && (
-        <p className="text-[9px] text-muted-foreground mt-1.5 text-right">
-          +{unknownCount} unknown
-        </p>
-      )}
+      <ChartFootnote
+        parts={[
+          others.length > 0 ? `+${others.length} other escalation${others.length !== 1 ? "s" : ""}` : "",
+          unknownCount > 0 ? `+${unknownCount} unknown` : "",
+        ]}
+      />
     </div>
   );
+}
+
+/**
+ * The three pools behind a merged Manager Intervention chart, from one place so
+ * the bars, the header count and the drill-down can never disagree.
+ *
+ * `b` (3rd+ round) wins the dedup over `a` (Attempt 4+), as the bars do. The
+ * third pool is everyone the chart's own population rule claims — every patient
+ * escalated at this stage — who is in neither series. That used to be nobody's:
+ * the series were the whole chart, and Processor Overview picked up the
+ * remainder because it did not exclude escalated patients. It does now, so
+ * anyone missing here is missing from the entire app.
+ */
+function stackedSeries(
+  def: ChartDef,
+  data: Map<string, OversightPatient[]> | null,
+  bySearch: (list: OversightPatient[]) => OversightPatient[],
+): { a: OversightPatient[]; b: OversightPatient[]; others: OversightPatient[] } {
+  const st = def.stacked!;
+  const b = bySearch(data?.get(st.bId) ?? []);
+  const seen = new Set(b.map((p) => p.id));
+  const a = st.aId
+    ? bySearch(data?.get(st.aId) ?? []).filter((p) => !seen.has(p.id))
+    : [];
+  for (const p of a) seen.add(p.id);
+  const others = bySearch(data?.get(def.id) ?? []).filter((p) => !seen.has(p.id));
+  return { a, b, others };
 }
 
 // ── DrilldownModal (overlay) ──────────────────────────────────────────────
@@ -2020,17 +2063,15 @@ export default function OversightTab() {
     if (!expandedChart || !data) return [];
     const def = CHART_DEFS.find((c) => c.id === expandedChart);
     if (def?.stacked) {
-      // Merged chart: union of both series, tagged via the synthetic
-      // __series__ column (red 3rd+ wins the dedup, same as the bars).
+      // Merged chart: union of both series plus the escalated-but-unclassified
+      // remainder, tagged via the synthetic __series__ column (red 3rd+ wins
+      // the dedup, same as the bars).
       const st = def.stacked;
-      const b = bySearch(data.get(st.bId) ?? []);
-      const bIds = new Set(b.map((p) => p.id));
-      const aOnly = st.aId
-        ? bySearch(data.get(st.aId) ?? []).filter((p) => !bIds.has(p.id))
-        : [];
+      const { a, b, others } = stackedSeries(def, data, bySearch);
       return [
         ...b.map((p) => ({ ...p, cols: { ...p.cols, __series__: st.bLabel } })),
-        ...aOnly.map((p) => ({ ...p, cols: { ...p.cols, __series__: st.aLabel } })),
+        ...a.map((p) => ({ ...p, cols: { ...p.cols, __series__: st.aLabel } })),
+        ...others.map((p) => ({ ...p, cols: { ...p.cols, __series__: "Other escalation" } })),
       ];
     }
     let list = bySearch(data.get(expandedChart) ?? []);
@@ -2293,16 +2334,13 @@ export default function OversightTab() {
           if (chart.stacked) {
             // Two-series merged chart: series B (3rd+ round, red) wins the
             // dedup — a patient matching both pools counts once, in red.
-            const b = bySearch(data?.get(chart.stacked.bId) ?? []);
-            const bIds = new Set(b.map((p) => p.id));
-            const aOnly = chart.stacked.aId
-              ? bySearch(data?.get(chart.stacked.aId) ?? []).filter((p) => !bIds.has(p.id))
-              : [];
+            const { a, b, others } = stackedSeries(chart, data ?? null, bySearch);
             return (
               <StackedStageChart
                 chart={chart}
-                seriesA={aOnly}
+                seriesA={a}
                 seriesB={b}
+                others={others}
                 onChartClick={() => handleChartClick(chart.id)}
                 onBarClick={(bucket) => handleBarClick(chart.id, bucket)}
               />

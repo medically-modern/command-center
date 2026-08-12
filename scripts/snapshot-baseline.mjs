@@ -82,6 +82,10 @@ const PROF_GROUP  = "group_mm1xf2jb";
 // The DTC intake form's own groups on the same board. §5.8 counting contract:
 // these must match useRoleCounts.ts PROFILE_FORM_GROUP_IDS exactly.
 const PROF_FORM_GROUPS = ["group_mm5zgeak", "group_mm5z87zt"];
+// "Already In System" — its own group, alongside the status column. Must match
+// useRoleCounts.ts PROFILE_IN_SYSTEM_GROUP_ID and oversightApi's
+// PROFILE_IN_SYSTEM_GROUP (§5.8 counting contract).
+const PROF_IN_SYSTEM_GROUP = "group_mm64b83h";
 const PROF_INTAKE_ESC_COL = "color_mm5zww42";
 const PROF_ESCALATED_LABELS = ["Manager Escalation Required", "Final Escalation Required"];
 const PROF_FOLLOWUP_COL = "color_mm3822qq"; // Follow Up
@@ -356,7 +360,20 @@ async function countProfile() {
   // are where they show up. Mirrors useRoleCounts.
   const isIntakeEscalated = (i) =>
     PROF_ESCALATED_LABELS.includes((i.cols[PROF_INTAKE_ESC_COL] ?? "").trim());
-  const inSystem = active.filter(isInSystem);
+  // Already In System is a GROUP as well as a status (Brandon, 2026-08-12).
+  // Items moved there were counted by nothing — this generator, useRoleCounts
+  // and Oversight all read 1. Intake only. Group membership IS the marker: an
+  // item can land there with the status column still blank.
+  let inSystemGroupItems = [];
+  try {
+    inSystemGroupItems = await fetchGroupItems(PROF_BOARD, PROF_IN_SYSTEM_GROUP, [PROF_FOLLOWUP_COL]);
+  } catch (e) {
+    console.error(`[countProfile] in-system group failed:`, e.message);
+  }
+  const inSystem = [
+    ...active.filter(isInSystem),
+    ...inSystemGroupItems.filter((i) => i.cols[PROF_FOLLOWUP_COL] !== "Done"),
+  ];
   // 1. Intake is ALL Verified Referrals now (Josh, 2026-08-10) — Patient
   // Intake is the DTC form's two groups and nothing else. Mirrors
   // useRoleCounts and oversightApi's CHART_FILTERS; change all three together.
