@@ -136,7 +136,7 @@ const VARIANT_GROUPS: Record<ProfileReferralRole, string | string[]> = {
 
 const ProfilePage = ({ variant }: ProfilePageProps) => {
   const { goBack } = useBackNavigation();
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   // Already In System is a group as well as a status (Brandon, 2026-08-12), so
   // that role reads BOTH: the board moves items into `alreadyInSystem`, and a
   // patient still sitting in 1. Intake can carry the flag. Every other role
@@ -163,6 +163,23 @@ const ProfilePage = ({ variant }: ProfilePageProps) => {
       ),
     [allProfilePatients, variant, deepLinkedId],
   );
+
+  /**
+   * Drop `?patientId=` once the patient has left this queue.
+   *
+   * All three exits move the item to another group, so the next fetch won't
+   * return it — but a deep link (from Search or an Oversight drill-down) is
+   * re-injected by `useMondayPatients` on EVERY poll, and is exempt from the
+   * role split above. Left in place, the rep watches a patient they just sent
+   * away sit in the sidebar indefinitely. Replace, not push: the consumed deep
+   * link shouldn't become a Back destination.
+   */
+  const clearDeepLink = useCallback(() => {
+    if (!searchParams.get("patientId")) return;
+    const next = new URLSearchParams(searchParams);
+    next.delete("patientId");
+    setSearchParams(next, { replace: true });
+  }, [searchParams, setSearchParams]);
 
   const [selectedId, setSelectedId] = useState<string | null>(searchParams.get("patientId") ?? null);
   const [submitting, setSubmitting] = useState(false);
@@ -453,6 +470,7 @@ const ProfilePage = ({ variant }: ProfilePageProps) => {
       await sendPatientToMonday(selected, selectedClinicId);
       clearOverlay(selected.id);
       toast.success(`${selected.name} advanced to MN`);
+      clearDeepLink();
       setSelectedId(patients.find((p) => p.id !== selected.id)?.id ?? null);
       setTimeout(refetch, 1500);
     } catch (e) {
@@ -470,6 +488,7 @@ const ProfilePage = ({ variant }: ProfilePageProps) => {
       // partial save.
       clearOverlay(selected.id);
       toast.success(`${selected.name} sent back to Patient Intake`);
+      clearDeepLink();
       setSelectedId(patients.find((p) => p.id !== selected.id)?.id ?? null);
       setTimeout(refetch, 1500);
     } catch (e) {
@@ -494,6 +513,7 @@ const ProfilePage = ({ variant }: ProfilePageProps) => {
       await markStuck(selected, stuckReason, VARIANT_LABEL[variant]);
       clearOverlay(selected.id);
       toast.success(`${selected.name} moved to Stuck`);
+      clearDeepLink();
       setStuckOpen(false);
       setStuckReason("");
       setSelectedId(patients.find((p) => p.id !== selected.id)?.id ?? null);

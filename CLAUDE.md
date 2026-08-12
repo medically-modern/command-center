@@ -332,6 +332,12 @@ marker**: Move to Onboarding `color_mm1zmeb3` has no Stuck label (its labels are
 Advance to MN · Send Back To Referral · Need More Info), so nothing on the item says "stuck" except
 which group it sits in — which is why the reason is required and stamped with who/when. Scoped to
 the `inSystem` variant via `BodyProps.onMarkStuck`; the other two roles don't render the card.
+⚠️ All three exits now **drop `?patientId=` on success** (`clearDeepLink`): the item moves to
+another group so the next fetch won't return it, but a deep link is re-injected by
+`useMondayPatients` on every poll AND is exempt from the role split — so a rep watched a patient
+they'd just sent away sit in the sidebar. Clearing the URL only works because the hook now reads
+the deep link through a **ref**: `refetch` is deliberately stable, so it had captured the
+first-render id and kept re-injecting it no matter what the URL said.
 
 The three are **mutually exclusive and exhaustive** — every active intake patient is in exactly
 one queue, so role counts still sum to the group total (§5.8) and no patient is worked twice.

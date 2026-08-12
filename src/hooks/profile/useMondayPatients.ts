@@ -76,6 +76,10 @@ function persistPatientCache(patients: Patient[], groupId?: GroupSelector): void
 }
 
 export function useMondayPatients(injectedPatientId?: string | null, groupId?: GroupSelector) {
+  // The deep link the page currently has. Kept current here so the stable
+  // `refetch` above can read it without becoming order-dependent on renders.
+  const injectedIdRef = useRef(injectedPatientId);
+  useEffect(() => { injectedIdRef.current = injectedPatientId; }, [injectedPatientId]);
   const cachedRef = useRef(loadCachedPatients(groupId));
   // Held in a ref so switching groups doesn't rebuild `refetch` (which the
   // poll interval depends on) — the effect below drives the re-fetch instead.
@@ -130,9 +134,16 @@ export function useMondayPatients(injectedPatientId?: string | null, groupId?: G
       }
       const merged = applyOverlays(ps);
 
-      if (injectedPatientId && !merged.some((p) => p.id === injectedPatientId)) {
+      // Read through a ref: `refetch` is deliberately stable (recreating it
+      // restarts the poll and re-raises the blocking overlay — see the groupKey
+      // note below), so a captured `injectedPatientId` would be frozen at its
+      // first-render value. It was: a patient who LEFT this queue, and whose
+      // ?patientId= the page had since dropped, kept being re-injected on every
+      // poll and sat in the sidebar forever.
+      const injectedId = injectedIdRef.current;
+      if (injectedId && !merged.some((p) => p.id === injectedId)) {
         try {
-          const item = await fetchItemById(injectedPatientId);
+          const item = await fetchItemById(injectedId);
           if (item) {
             const injected = mondayItemToPatient(item);
             if (!receivedRef.current[injected.id]) receivedRef.current[injected.id] = injected;
