@@ -72,26 +72,34 @@ describe("Benefits · Manager Intervention (reason union)", () => {
     ]);
   });
 
-  it("Inactive insurance = Active? at index 2, at the Benefits stage", () => {
-    const p = atBenefits({ [ACTIVE_COL]: "Inactive" }, { [ACTIVE_COL]: 2 });
+  // Board automation 7921298383 (active, verified live): when Days changes to
+  // "6–8 Days" at the Benefits stage, Escalation → Manager Escalation
+  // Required. Declared up here because all three bars now take the label.
+  const MGR = { [ESC_COL]: "Manager Escalation Required" };
+  const MGR_IDX = { [ESC_COL]: 0 };
+
+  it("Inactive insurance = Active? at index 2, at the Benefits stage, WITH the label", () => {
+    const p = atBenefits({ ...MGR, [ACTIVE_COL]: "Inactive" }, { ...MGR_IDX, [ACTIVE_COL]: 2 });
     expect(patientMatchesChart(c, p)).toBe(true);
     expect(reasonBucketsFor(c, p)).toEqual(["Inactive insurance"]);
     // Active (index 1) or unanswered → not in the chart at all.
-    expect(patientMatchesChart(c, atBenefits({}, { [ACTIVE_COL]: 1 }))).toBe(false);
+    expect(patientMatchesChart(c, atBenefits(MGR, { ...MGR_IDX, [ACTIVE_COL]: 1 }))).toBe(true); // label alone still counts
+    expect(reasonBucketsFor(c, atBenefits(MGR, { ...MGR_IDX, [ACTIVE_COL]: 1 }))).toEqual([]);
     expect(patientMatchesChart(c, atBenefits())).toBe(false);
   });
 
   it("Pump SoS = Not Clear Products contains Insulin Pump — other products don't count", () => {
-    const pump = atBenefits({ [NOT_CLEAR_COL]: "Insulin Pump, CGM Sensors" });
+    const pump = atBenefits({ ...MGR, [NOT_CLEAR_COL]: "Insulin Pump, CGM Sensors" }, MGR_IDX);
     expect(reasonBucketsFor(c, pump)).toEqual(["Pump SoS"]);
-    const sensorsOnly = atBenefits({ [NOT_CLEAR_COL]: "CGM Sensors" });
-    expect(patientMatchesChart(c, sensorsOnly)).toBe(false);
+    const sensorsOnly = atBenefits({ ...MGR, [NOT_CLEAR_COL]: "CGM Sensors" }, MGR_IDX);
+    expect(reasonBucketsFor(c, sensorsOnly)).toEqual([]);
+    // …and with no escalation at all, a Not Clear pump is not in this chart:
+    // that patient is still the rep's, in Processor Overview.
+    expect(patientMatchesChart(c, atBenefits({ [NOT_CLEAR_COL]: "Insulin Pump" }))).toBe(false);
   });
 
-  // Board automation 7921298383 (active, verified live): when Days changes to
-  // "6–8 Days" at the Benefits stage, Escalation → Manager Escalation
-  // Required. The bar = that label AND days ≥ 6–8 (Josh 2026-07-29).
-  const MGR_ESC = { [ESC_COL]: "Manager Escalation Required" };
+  // The bar = that label AND days ≥ 6–8 (Josh 2026-07-29).
+  const MGR_ESC = MGR;
 
   it("Check outstanding >5d = Manager escalation AND Days at 6–8 or beyond", () => {
     for (const idx of [2, 3, 4, 6, 7, 8]) {
@@ -113,15 +121,27 @@ describe("Benefits · Manager Intervention (reason union)", () => {
     ).toBe(false);
   });
 
-  it("Inactive and Pump SoS stay pure board facts — no escalation label needed", () => {
-    expect(patientMatchesChart(c, atBenefits({}, { [ACTIVE_COL]: 2 }))).toBe(true);
-    expect(patientMatchesChart(c, atBenefits({ [NOT_CLEAR_COL]: "Insulin Pump" }))).toBe(true);
+  // Reversed 2026-08-12 (Brandon). The bars were board FACTS with no escalation
+  // condition, which caught a patient whose label was missing — but a fact
+  // outlives the escalation it caused, so a manager's Return to Queue handed
+  // the patient back to the rep and left them on this bar anyway, uncleanable
+  // and counted in two columns. All three facts already write the label (the
+  // Benefits send for Inactive and pump SoS, automation 7921298383 for days),
+  // so keying on it loses nothing: a fact set directly on the board without a
+  // label leaves the patient in Processor Overview, visible and being worked.
+  it("Inactive and Pump SoS require the escalation label — a fact alone is the REP's", () => {
+    expect(patientMatchesChart(c, atBenefits({}, { [ACTIVE_COL]: 2 }))).toBe(false);
+    expect(patientMatchesChart(c, atBenefits({ [NOT_CLEAR_COL]: "Insulin Pump" }))).toBe(false);
+    // A manager clearing the escalation takes the row off the chart entirely —
+    // the whole point: it is how they hand the patient back.
+    const cleared = atBenefits({ [ESC_COL]: "Done", [NOT_CLEAR_COL]: "Insulin Pump" }, { [ESC_COL]: 1, [ACTIVE_COL]: 2 });
+    expect(patientMatchesChart(c, cleared)).toBe(false);
   });
 
   it("a patient can be in several bars at once; a non-Benefits stage is never in the chart", () => {
     const multi = atBenefits(
       { ...MGR_ESC, [NOT_CLEAR_COL]: "Insulin Pump" },
-      { [ACTIVE_COL]: 2, [DAYS_COL]: 3 },
+      { ...MGR_IDX, [ACTIVE_COL]: 2, [DAYS_COL]: 3 },
     );
     expect(reasonBucketsFor(c, multi)).toEqual([
       "Inactive insurance",

@@ -761,11 +761,21 @@ columns" automation on duplicated items). The SPA only flips the advancer; verif
   bars), and each `*-escalated-merged` chart gained a **population rule** (stage + index 0) unioned
   with its two series, because the series don't cover every route to index 0 and Processor Overview
   no longer catches the remainder. `StackedStageChart` footnotes those as **"+N other escalation"**
-  and lists them in the drill-down. **One knowing exception, recorded in both tests:** the Benefits
-  Manager Intervention bars *Inactive insurance* and *Pump SoS* take no escalation condition
-  (Katie/Josh, 2026-07-29) so they catch the FACT when the label is missing — which means a
-  non-escalated Benefits patient can still sit in two columns. That is a product decision, not a
-  bug; change the bars and `reasonBuckets.test.ts` together or leave both alone.
+  and lists them in the drill-down. **Insurance got the same treatment the same day**: the Benefits
+  Manager Intervention bars *Inactive insurance* and *Pump SoS* keyed on the board FACT with no
+  escalation condition (Katie/Josh, 2026-07-29), which put a non-escalated patient in two columns —
+  and worse, made the row **uncleanable**: Return to Queue drops the label and hands the patient
+  back to the rep, but the insurance is still Inactive, so they stayed on the manager's bar forever.
+  All three bars now require Escalation index 0. Nothing is lost by that, because **every one of the
+  three facts already writes the label**: `universalEscalationLevel` → manager for Inactive;
+  `deriveInsuranceOutcome` → `blocker` for a not-clear pump (`workflow.ts`), which
+  `mondayWrite` turns into manager when no universal check failed; and board automation
+  **7921298383** for the days bucket. A fact set directly on the board without a label leaves the
+  patient in Processor Overview — visible, and the rep's.
+  ⚠️ **Do NOT add a Monday automation on the Not Clear Products dropdown** to "cover" the pump
+  case. Monday cannot express *dropdown contains Insulin Pump* — the only trigger available is the
+  whole column changing, which would escalate a patient whose CGM Sensors came back Not Clear, a
+  case `deriveInsuranceOutcome` deliberately does NOT treat as a blocker. The app write is exact.
   ⚠️ **There is NO Escalate toggle in the Insurance UI — don't reintroduce one** (Josh,
   2026-08-03). The only escalation affordance is the **Propose Stuck popup**, plus the manager
   decision buttons and the board automations. `components/samantha/EscalateButton.tsx` had zero

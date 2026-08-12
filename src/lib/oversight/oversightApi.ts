@@ -1804,20 +1804,37 @@ const CHART_FILTERS: Record<string, FilterRule> = {
   //
   // Inactive insurance: Active? = Inactive (index 2 — the column split).
   //
-  // ⚠️ These two bars deliberately take NO escalation condition (Katie/Josh,
-  // 2026-07-29; `reasonBuckets.test.ts` asserts it), unlike the ">5 days" bar
-  // below. That is the one place the Insurance columns are knowingly not
-  // disjoint: a Benefits patient whose insurance is Inactive but who carries no
-  // escalation label is in the rep's Processor Overview AND on this bar. The
-  // trade is intentional — the bar catches the FACT even when the label is
-  // missing — but it is the same shape as the Medical Evaluation bug fixed on
-  // 2026-08-12, arrived at from the other side, so if it is ever revisited
-  // change the bars and that test together rather than one of them.
-  "benefits-manager-inactive": { type: "stageAdvancer", boardId: 18410601299, value: "Benefits / SoS", andCols: [{ colId: "color_mm5q9y3", index: [2] }] },
+  // ── All three bars are KEYED ON THE LABEL (Brandon, 2026-08-12) ──
+  // These two used to match the board fact alone (Katie/Josh, 2026-07-29), so
+  // the bar caught a patient even when the escalation label was missing. The
+  // cost was that a manager could never clear the row: Return to Queue drops
+  // the label and hands the patient back to the rep — into Processor Overview,
+  // which excludes only ESCALATED patients — while the insurance was still
+  // Inactive and the pump still Not Clear, so they stayed on this bar forever,
+  // in two columns at once. Same double-count as the Medical Evaluation bug
+  // fixed the same day, arrived at from the other side.
+  //
+  // Requiring the label is safe because every one of the three facts already
+  // writes it, so nothing is lost by keying on it:
+  //   • Inactive        → `universalEscalationLevel` returns "manager" and the
+  //                       Benefits send always writes the column.
+  //   • Pump SoS        → `deriveInsuranceOutcome` returns "blocker" for a
+  //                       not-clear pump (workflow.ts), and a blocker with no
+  //                       failed universal check writes "manager" too.
+  //   • >5 days         → board automation 7921298383.
+  // A board-side edit that sets a fact without the label leaves the patient in
+  // the rep's queue, where they are visible and being worked — not invisible.
+  //
+  // ⚠️ Do NOT add a Monday automation on the Not Clear Products dropdown to
+  // "cover" the pump case. Monday cannot express "dropdown contains Insulin
+  // Pump"; the only available trigger is the whole column changing, which would
+  // escalate a patient whose CGM Sensors came back Not Clear — a case the app
+  // deliberately does NOT treat as a blocker. The app write above is exact.
+  "benefits-manager-inactive": { type: "stageAdvancer", boardId: 18410601299, value: "Benefits / SoS", andCols: [{ colId: "color_mm2vsh2f", index: [0] }, { colId: "color_mm5q9y3", index: [2] }] },
   // Pump SoS: same-or-similar Not Clear on the insulin pump specifically —
   // the Not Clear Products dropdown (comma-joined labels) contains it. Other
   // products being Not Clear deliberately do NOT put a patient here.
-  "benefits-manager-pump-sos": { type: "stageAdvancer", boardId: 18410601299, value: "Benefits / SoS", andCols: [{ colId: "dropdown_mm2vez5a", containsAny: ["Insulin Pump"] }] },
+  "benefits-manager-pump-sos": { type: "stageAdvancer", boardId: 18410601299, value: "Benefits / SoS", andCols: [{ colId: "color_mm2vsh2f", index: [0] }, { colId: "dropdown_mm2vez5a", containsAny: ["Insulin Pump"] }] },
   // Check outstanding >5 days (Josh 2026-07-29): Escalation = Manager
   // Escalation Required AND Days in Stage at "6–8 Days" or beyond. Board
   // automation 7921298383 (active, verified) flips the escalation when the

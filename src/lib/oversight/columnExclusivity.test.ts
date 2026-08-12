@@ -236,11 +236,30 @@ function insPatient(stage: string, escIndex?: number, cols: Record<string, strin
 
 describe("Insurance columns partition the stage", () => {
   const STAGES = ["Benefits / SoS", "Submit Auth.", "Auth. Outstanding"];
+  /** The board facts the Benefits manager bars key on, in every combination. */
+  const FACTS: [string, Record<string, string>, Record<string, number>][] = [
+    ["none", {}, {}],
+    ["inactive", { color_mm5q9y3: "Inactive" }, { color_mm5q9y3: 2 }],
+    ["pump SoS", { dropdown_mm2vez5a: "Insulin Pump" }, {}],
+    ["overdue", {}, { color_mm1wwm05: 3 }],
+    ["stamped", { long_text_mm2ffsme: "[Proposed Stuck · JR] payer won't budge" }, {}],
+    [
+      "all",
+      { color_mm5q9y3: "Inactive", dropdown_mm2vez5a: "Insulin Pump", long_text_mm2ffsme: "[Proposed Stuck · JR] x" },
+      { color_mm5q9y3: 2, color_mm1wwm05: 3 },
+    ],
+  ];
 
-  it.each(STAGES)("%s: a patient with no board facts is in exactly one column", (stage) => {
+  it.each(STAGES)("%s: exactly one column, at every escalation × board-fact combination", (stage) => {
     for (const escIndex of [undefined, 1, 0, 2]) {
-      const p = insPatient(stage, escIndex);
-      expect(columnsHolding("insurance", p), `esc ${escIndex ?? "unset"}`).toHaveLength(1);
+      for (const [label, cols, idx] of FACTS) {
+        const p = insPatient(stage, escIndex, cols);
+        Object.assign(p.colIndex, idx);
+        expect(
+          columnsHolding("insurance", p),
+          `${stage} · esc ${escIndex ?? "unset"} · facts: ${label}`,
+        ).toHaveLength(1);
+      }
     }
   });
 
@@ -252,24 +271,42 @@ describe("Insurance columns partition the stage", () => {
     }
   });
 
-  // ⚠️ THE KNOWN EXCEPTION, recorded rather than fixed (Katie/Josh,
-  // 2026-07-29; `reasonBuckets.test.ts` asserts the rule this depends on).
-  // The Benefits Manager Intervention bars "Inactive insurance" and "Pump SoS"
-  // are pure board FACTS with no escalation condition, so they catch a patient
-  // whose label is missing — at the cost of also holding one who is still in
-  // the rep's queue. That is the same double-count shape as the Medical
-  // Evaluation bug above, arrived at from the other side, and it is a product
-  // decision rather than an oversight: the fact is what a manager acts on.
-  //
-  // If it is ever revisited, delete this test and add the escalation condition
-  // to both bars — do not weaken it into passing.
-  it("a NON-escalated Benefits patient with a manager FACT is knowingly in two columns", () => {
-    const inactive = insPatient("Benefits / SoS", undefined, { color_mm5q9y3: "Inactive" });
-    inactive.colIndex.color_mm5q9y3 = 2;
-    expect(columnsHolding("insurance", inactive)).toEqual([
-      "Processor Overview",
-      "Manager Intervention",
-    ]);
+  // Closed 2026-08-12 (Brandon). The Benefits Manager Intervention bars
+  // "Inactive insurance" and "Pump SoS" used to be pure board FACTS with no
+  // escalation condition, which put a non-escalated patient in two columns —
+  // the same shape as the Medical Evaluation bug above, from the other side.
+  // Every one of those facts already writes the label, so the bars now require
+  // it and the three Insurance columns partition the stage like ME's do.
+  it.each([
+    ["Inactive insurance", { color_mm5q9y3: "Inactive" }, { color_mm5q9y3: 2 }],
+    ["Pump SoS", { dropdown_mm2vez5a: "Insulin Pump" }, {}],
+    ["Days in stage", {}, { color_mm1wwm05: 3 }],
+  ])("a Benefits patient with the %s FACT but no label is the REP's alone", (_label, cols, idx) => {
+    const p = insPatient("Benefits / SoS", undefined, cols);
+    Object.assign(p.colIndex, idx);
+    expect(columnsHolding("insurance", p)).toEqual(["Processor Overview"]);
+  });
+
+  // The manager's way out. Return to Queue clears the escalation, and the row
+  // has to leave their column — with the fact still on the board, which is why
+  // keying the bars on the fact made it uncleanable.
+  it("clearing the escalation hands a factful patient back to the rep", () => {
+    const p = insPatient("Benefits / SoS", 1, {
+      color_mm5q9y3: "Inactive",
+      dropdown_mm2vez5a: "Insulin Pump",
+    });
+    p.colIndex.color_mm5q9y3 = 2;
+    expect(columnsHolding("insurance", p)).toEqual(["Processor Overview"]);
+  });
+
+  // Brandon, 2026-08-12: "any profile with that status should show up in that
+  // middle column if the manager escalation status is checked". The chart's
+  // population rule is the label itself, so a patient carrying it is listed
+  // even when no bar describes why — footnoted as "+N in no bar".
+  it("the label ALONE puts a Benefits patient in Manager Intervention", () => {
+    const bare = insPatient("Benefits / SoS", 0);
+    expect(columnsHolding("insurance", bare)).toEqual(["Manager Intervention"]);
+    expect(patientMatchesChart(chart("benefits-manager-escalation"), bare)).toBe(true);
   });
 });
 
