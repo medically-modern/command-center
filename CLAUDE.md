@@ -867,6 +867,32 @@ columns" automation on duplicated items). The SPA only flips the advancer; verif
 - **System Management** (`/system-mgmt`, `lib/systemMgmt/mondayApi.ts`) aggregates counts/pipeline
   across *all* boards (hardcoded board + stage-advancer column IDs); `OperationsTab` + `PipelineChart`
   render burndown and day-bucket distributions.
+  **Search's green completion badges are LINKS into the finished stage** (Aug 2026,
+  `lib/systemMgmt/stageCompletion.ts`). A patient is a different item on every board (§6), so
+  `buildCompletionMap` — name-keyed, because that's all the boards share — now carries each
+  completed item's own **id + board**, and the badge opens THAT item on the page that gathered the
+  data (`COMPLETED_STAGE_ROUTES`: Profile → `/profile`, MN → `/evaluate`, Insurance → `/benefits`,
+  Welcome Call → `/welcome-call`), via `?patientId=<completed item>&completedStage=<boardId>`.
+  Every role hook already injects a deep-linked `?patientId=` that isn't in its queue, so the
+  completed record loads with no hook changes. This is also the only way into a completed
+  patient — a completed row's own click still says "no page".
+  ⚠️ **`completedStage` is a WRITE GATE, not just a banner flag.** `useCompletedStageReview`
+  (`components/shared/CompletedStageBanner`) drives `reviewMode` on those four pages, which
+  disables the stage-advancing send (`EvaluatePanel` `sendBlocked`, `BenefitsPanel`, Welcome
+  Call's `SendToMondayButton`, Profile's two send-off routes). Without it a rep reading history
+  could re-advance an item that already moved on — the advancer is what board automations key on,
+  so it would move a finished patient back into the pipeline. Notes/inline saves are deliberately
+  still live (harmless, and sometimes wanted). It is gated on the **selected patient**, not the URL
+  alone: `?patientId=` survives a sidebar click, so keying only off the URL left the banner and the
+  lock sitting on the next LIVE patient the rep opened.
+  **"When was it completed" comes from the ACTIVITY LOG** — no board has a completion date column.
+  `completedAtFromLogs` takes the latest of (move into the board's Completed group) and (the
+  board's own completion status write — Insurance says `Complete`, Welcome Call/ME `Completed`,
+  Profile Send Off exits via `Move to Onboarding` = `Advance to MN`). Both signals are needed:
+  a batch move logs no `move_pulse_*` event at all. ⚠️ `created_at` there is **100-ns ticks, 17
+  digits** — reading it as ms lands ~50,000 years out, which renders as a plausible date rather
+  than an obvious bug. Monday prunes activity by plan retention, so the lookup can come back empty
+  and the banner must say "date unavailable" rather than guess.
 - **Patient Questions** (`/patient-questions`) is an inbox merging "patient message" columns from
   the Subscription + Secondary Claims boards. **Mark completed** stamps a "Question Handled At"
   date column (Subscription `date_mm57yzmb`, Claims `date_mm57skrd`); an item shows only while

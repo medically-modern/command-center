@@ -6,7 +6,16 @@
  */
 
 import { MONDAY_API_URL, mondayIdentityHeaders } from "../shared/mondayEndpoint";
+import {
+  COMPLETED_STAGE_ROUTES,
+  STAGE_COMPLETION_COLUMNS,
+  completedAtFromLogs,
+  type ActivityLogEntry,
+  type CompletedStage,
+} from "./stageCompletion";
 const MONDAY_API_VERSION = "2024-10";
+
+export type { CompletedStage };
 
 function getToken(): string {
   return (import.meta.env.VITE_MONDAY_API_TOKEN as string | undefined) ?? "";
@@ -536,20 +545,67 @@ const BOARD_COMPLETION_LABELS: Record<number, string> = {
 };
 
 /**
- * Build a map of patient name → list of completed board labels.
- * Used to show completion badges on search results.
+ * Build a map of patient name → the boards they've already finished.
+ *
+ * Keyed by NAME because a patient is a different Monday item on every board
+ * (§6) — the completed Medical Evaluation item and the live Insurance item
+ * share nothing but the name. Each entry carries that completed item's own id
+ * and board so a badge can open the record it stands for.
  */
 export function buildCompletionMap(
   patients: SystemPatient[],
-): Map<string, string[]> {
-  const map = new Map<string, string[]>();
+): Map<string, CompletedStage[]> {
+  const map = new Map<string, CompletedStage[]>();
   for (const p of patients) {
     if (!p.isCompleted) continue;
     const label = BOARD_COMPLETION_LABELS[p.boardId] ?? p.boardName;
     const key = p.name.trim().toLowerCase();
     if (!map.has(key)) map.set(key, []);
     const arr = map.get(key)!;
-    if (!arr.includes(label)) arr.push(label);
+    // One badge per board: a patient who ran a board twice leaves two completed
+    // items, and the badge stands for the stage, not the attempt.
+    if (arr.some((s) => s.label === label)) continue;
+    arr.push({
+      label,
+      itemId: p.id,
+      boardId: p.boardId,
+      boardName: p.boardName,
+      route: COMPLETED_STAGE_ROUTES[p.boardId] ?? "",
+    });
   }
   return map;
+}
+
+// ── "When was this stage completed?" ─────────────────────────
+
+/**
+ * Read the completion instant for one finished item out of Monday's activity
+ * log. Returns null when the log has aged out — no board carries a "completed
+ * on" column, so this lookup is the only source and the caller must be able to
+ * render "date unavailable".
+ *
+ * One request per lookup, made on demand when a completed record is opened.
+ */
+export async function fetchStageCompletedAt(
+  boardId: number,
+  itemId: string,
+): Promise<string | null> {
+  if (!hasToken()) return null;
+  const board = BOARDS.find((b) => b.boardId === boardId);
+  if (!board) return null;
+
+  const data = await gql<{ boards: { activity_logs: ActivityLogEntry[] }[] }>(
+    `query ($bid: ID!, $iid: ID!) {
+      boards(ids: [$bid]) {
+        activity_logs(limit: 200, item_ids: [$iid]) { event created_at data }
+      }
+    }`,
+    { bid: boardId, iid: itemId },
+  );
+
+  const logs = data.boards?.[0]?.activity_logs ?? [];
+  return completedAtFromLogs(logs, {
+    completedGroupIds: board.activeGroups.filter((g) => g.isCompleted).map((g) => g.id),
+    column: STAGE_COMPLETION_COLUMNS[boardId] ?? null,
+  });
 }

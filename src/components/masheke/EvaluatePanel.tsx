@@ -125,6 +125,10 @@ interface Props {
   resetVersion?: number;
   onUpdate: (patch: Partial<Patient>) => void;
   onOpenForm?: () => void;
+  /** Viewing a stage this patient already finished (opened from a System
+   *  Management completion badge). The panel still renders every answer the rep
+   *  gave — it just can't re-advance an item that has already moved on. */
+  reviewMode?: boolean;
 }
 
 // Compute "today + N months" — used for MR Expiry Date
@@ -146,7 +150,7 @@ function formatDate(iso?: string): string {
   return d.toLocaleDateString("en-US", { month: "2-digit", day: "2-digit", year: "numeric" });
 }
 
-export function EvaluatePanel({ patient, resetVersion = 0, onUpdate, onOpenForm }: Props) {
+export function EvaluatePanel({ patient, resetVersion = 0, onUpdate, onOpenForm, reviewMode = false }: Props) {
   const accent = getServingAccent(patient.serving);
   // Monday is the source of truth: local drafts are merged UNDER Monday's
   // current column values (loadEvalStateForPatient), never over them.
@@ -702,7 +706,7 @@ export function EvaluatePanel({ patient, resetVersion = 0, onUpdate, onOpenForm 
   const missingFields = getMissingRequiredFields(state, showCgm, showIp);
   const hasPendingNote = pendingNoteText.trim().length > 0;
   const noteBlocked = !noteAdded || hasPendingNote;
-  const sendBlocked = missingFields.length > 0 || noteBlocked || filesUploading;
+  const sendBlocked = missingFields.length > 0 || noteBlocked || filesUploading || reviewMode;
   // Live per-file upload status so the rep watches each file go Uploading →
   // Confirming → Confirmed (or Error) instead of guessing whether it landed.
   const uploadFiles = [...clinicalUpload.files, ...finalClinicalUpload.files];
@@ -1046,8 +1050,15 @@ export function EvaluatePanel({ patient, resetVersion = 0, onUpdate, onOpenForm 
             ))}
           </div>
         )}
-        {/* Why Send is blocked (fields / note / uploading) */}
-        {missingFields.length > 0 && (
+        {/* Why Send is blocked (fields / note / uploading). In review mode the
+            stage is already finished, so the "you still owe us a note" nags are
+            noise — one line saying why the button is off replaces them. */}
+        {reviewMode && (
+          <span className="text-xs font-medium text-right text-muted-foreground">
+            Completed stage — this is what the rep filled out, so there is nothing left to send.
+          </span>
+        )}
+        {!reviewMode && missingFields.length > 0 && (
           <span
             className="text-xs font-medium text-right"
             style={{ color: "var(--mm-rose)" }}
@@ -1058,7 +1069,7 @@ export function EvaluatePanel({ patient, resetVersion = 0, onUpdate, onOpenForm 
             {missingFields.length > 4 ? "…" : ""}
           </span>
         )}
-        {noteBlocked && (
+        {!reviewMode && noteBlocked && (
           <span className="text-xs font-medium text-right" style={{ color: "var(--mm-rose)" }}>
             {hasPendingNote
               ? "Press Add on your note before sending"

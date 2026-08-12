@@ -13,8 +13,9 @@ import {
   useSystemPatients,
   searchPatients,
 } from "@/hooks/systemMgmt/useSystemPatients";
-import type { SystemPatient } from "@/lib/systemMgmt/mondayApi";
+import type { CompletedStage, SystemPatient } from "@/lib/systemMgmt/mondayApi";
 import { writeStageAdvancer, STAGE_OPTIONS, STUCK_LABELS } from "@/lib/systemMgmt/mondayApi";
+import { completedStageUrl } from "@/lib/systemMgmt/stageCompletion";
 import { EscalationDetailModal } from "@/components/shared/EscalationDetailModal";
 import {
   Dialog,
@@ -172,6 +173,17 @@ const SystemMgmtPage = () => {
     navigate(`${patient.roleRoute}?${params.toString()}`);
   };
 
+  /**
+   * A completion badge opens the COMPLETED item — a different Monday item on a
+   * different board from the search row (§6), so the id comes from the badge,
+   * never from the row. `completedStage` is what puts the destination page into
+   * review mode: banner on, advance off.
+   */
+  const handleCompletedStageClick = (stage: CompletedStage) => {
+    if (!stage.route) return;
+    navigate(completedStageUrl(stage));
+  };
+
   const handleRemoveEscalation = async (patient: SystemPatient) => {
     setRemovingId(patient.id);
     try {
@@ -314,6 +326,7 @@ const SystemMgmtPage = () => {
               totalCount={patients.length}
               onPatientClick={handlePatientClick}
               completionMap={completionMap}
+              onCompletedStageClick={handleCompletedStageClick}
               chartPatients={chartPatients}
               onChartSegmentClick={handleChartSegmentClick}
               chartSelectionActive={chartSelection !== null}
@@ -331,6 +344,7 @@ const SystemMgmtPage = () => {
               onRemoveEscalation={handleRemoveEscalation}
               removingId={removingId}
               completionMap={completionMap}
+              onCompletedStageClick={handleCompletedStageClick}
               onViewDetails={(p) => {
                 const isAttemptStage = p.pipelineStage === "Chase Clinicals" || p.pipelineStage === "Confirm Receipt";
                 if (isAttemptStage) {
@@ -451,6 +465,7 @@ function SearchView({
   totalCount,
   onPatientClick,
   completionMap,
+  onCompletedStageClick,
   chartPatients,
   onChartSegmentClick,
   chartSelectionActive,
@@ -466,7 +481,8 @@ function SearchView({
   results: SystemPatient[];
   totalCount: number;
   onPatientClick: (p: SystemPatient) => void;
-  completionMap: Map<string, string[]>;
+  completionMap: Map<string, CompletedStage[]>;
+  onCompletedStageClick: (stage: CompletedStage) => void;
   chartPatients: SystemPatient[];
   onChartSegmentClick: (patients: SystemPatient[]) => void;
   chartSelectionActive: boolean;
@@ -547,6 +563,7 @@ function SearchView({
               patient={p}
               onClick={() => onPatientClick(p)}
               completedStages={completionMap.get(p.name.trim().toLowerCase()) ?? []}
+              onCompletedStageClick={onCompletedStageClick}
               onNotesClick={onNotesClick}
               onEscalationClick={onEscalationClick}
               onStageClick={onStageClick}
@@ -566,6 +583,7 @@ function EscalationView({
   onRemoveEscalation,
   removingId,
   completionMap,
+  onCompletedStageClick,
   onViewDetails,
   onMarkStuck,
 }: {
@@ -573,7 +591,8 @@ function EscalationView({
   onPatientClick: (p: SystemPatient, fromEscalation?: boolean) => void;
   onRemoveEscalation: (p: SystemPatient) => void;
   removingId: string | null;
-  completionMap: Map<string, string[]>;
+  completionMap: Map<string, CompletedStage[]>;
+  onCompletedStageClick: (stage: CompletedStage) => void;
   onViewDetails: (p: SystemPatient) => void;
   onMarkStuck: (p: SystemPatient) => void;
 }) {
@@ -622,26 +641,34 @@ function EscalationView({
                 key={`${p.boardId}-${p.id}`}
                 className={`flex items-center gap-3 px-4 py-3 transition-colors hover:brightness-95 dark:hover:brightness-110 ${rowBg}`}
               >
-                <button
-                  onClick={() => onPatientClick(p, true)}
-                  className="flex-1 flex items-center gap-3 text-left min-w-0"
-                >
-                  <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs shrink-0 ${avatarBg}`}>
-                    {p.name[0]}
-                  </div>
-                  <div className="min-w-0">
-                    <div className="text-sm font-medium truncate">{p.name}</div>
-                    <div className="text-xs text-muted-foreground truncate">
-                      {p.phone || "No phone"} · {p.pipelineStage}
+                {/* The completion badges are links of their own, so they sit
+                    OUTSIDE the row button rather than nested inside it. */}
+                <div className="flex-1 min-w-0">
+                  <button
+                    onClick={() => onPatientClick(p, true)}
+                    className="w-full flex items-center gap-3 text-left min-w-0"
+                  >
+                    <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs shrink-0 ${avatarBg}`}>
+                      {p.name[0]}
                     </div>
-                    <CompletionBadges stages={completionMap.get(p.name.trim().toLowerCase()) ?? []} />
-                  </div>
-                  {p.hasPage ? (
-                    <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0 ml-auto" />
-                  ) : (
-                    <span className="text-[10px] text-muted-foreground shrink-0 ml-auto">No page</span>
-                  )}
-                </button>
+                    <div className="min-w-0">
+                      <div className="text-sm font-medium truncate">{p.name}</div>
+                      <div className="text-xs text-muted-foreground truncate">
+                        {p.phone || "No phone"} · {p.pipelineStage}
+                      </div>
+                    </div>
+                    {p.hasPage ? (
+                      <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0 ml-auto" />
+                    ) : (
+                      <span className="text-[10px] text-muted-foreground shrink-0 ml-auto">No page</span>
+                    )}
+                  </button>
+                  <CompletionBadges
+                    stages={completionMap.get(p.name.trim().toLowerCase()) ?? []}
+                    onStageClick={onCompletedStageClick}
+                    className="pl-11"
+                  />
+                </div>
                 <Button
                   variant="outline"
                   size="sm"
@@ -1006,19 +1033,55 @@ function StageManagerView({
 
 // ── Patient Row (search results) ─────────────────────────────
 
-function CompletionBadges({ stages }: { stages: string[] }) {
+/**
+ * The green "already finished this stage" badges.
+ *
+ * Each badge is a link into that board's completed record — the patient's item
+ * on the board the badge names, opened on the role page that gathered the data
+ * (see `lib/systemMgmt/stageCompletion`). A badge without a route (an unmapped
+ * board) stays a plain label rather than a dead button.
+ */
+function CompletionBadges({
+  stages,
+  onStageClick,
+  className,
+}: {
+  stages: CompletedStage[];
+  onStageClick?: (stage: CompletedStage) => void;
+  className?: string;
+}) {
   if (stages.length === 0) return null;
   return (
-    <div className="flex flex-wrap gap-1 mt-1">
-      {stages.map((s) => (
-        <span
-          key={s}
-          className="inline-flex items-center gap-0.5 bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-400 text-[10px] font-medium px-1.5 py-0.5 rounded"
-        >
-          <CheckCircle2 className="w-2.5 h-2.5" />
-          {s}
-        </span>
-      ))}
+    <div className={cn("flex flex-wrap gap-1 mt-1", className)}>
+      {stages.map((s) => {
+        const clickable = !!s.route && !!onStageClick;
+        const content = (
+          <>
+            <CheckCircle2 className="w-2.5 h-2.5" />
+            {s.label}
+          </>
+        );
+        return clickable ? (
+          <button
+            key={s.label}
+            onClick={(e) => {
+              e.stopPropagation();
+              onStageClick(s);
+            }}
+            title={`View what the rep filled out at ${s.boardName}`}
+            className="inline-flex items-center gap-0.5 bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-400 text-[10px] font-medium px-1.5 py-0.5 rounded hover:bg-green-200 dark:hover:bg-green-900/70 hover:text-green-900 dark:hover:text-green-300 hover:underline transition-colors"
+          >
+            {content}
+          </button>
+        ) : (
+          <span
+            key={s.label}
+            className="inline-flex items-center gap-0.5 bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-400 text-[10px] font-medium px-1.5 py-0.5 rounded"
+          >
+            {content}
+          </span>
+        );
+      })}
     </div>
   );
 }
@@ -1087,13 +1150,15 @@ function PatientRow({
   patient,
   onClick,
   completedStages,
+  onCompletedStageClick,
   onNotesClick,
   onEscalationClick,
   onStageClick,
 }: {
   patient: SystemPatient;
   onClick: () => void;
-  completedStages: string[];
+  completedStages: CompletedStage[];
+  onCompletedStageClick?: (stage: CompletedStage) => void;
   onNotesClick?: (p: SystemPatient) => void;
   onEscalationClick?: (p: SystemPatient) => void;
   onStageClick?: (stage: string) => void;
@@ -1112,37 +1177,45 @@ function PatientRow({
         patient.escalated && "border-red-300 bg-red-50/50 dark:bg-red-950/20",
       )}
     >
-      {/* Left: avatar + name + days badge + completion — clickable to navigate */}
-      <button onClick={onClick} className="flex gap-3 px-4 py-3 min-w-0 shrink-0 w-[260px]">
-        <div
-          className={cn(
-            "w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs shrink-0 mt-0.5",
-            patient.escalated
-              ? "bg-red-100 dark:bg-red-900/40 text-red-600 dark:text-red-400"
-              : "bg-primary/10 text-primary",
-          )}
-        >
-          {patient.name?.[0] ?? "?"}
-        </div>
-        <div className="flex-1 min-w-0 flex flex-col gap-1">
-          <div className="flex items-center gap-1.5">
-            <span className="text-sm font-semibold truncate leading-tight">{patient.name}</span>
-            {patient.escalated && (
-              <span className="shrink-0 inline-flex items-center gap-0.5 bg-red-100 dark:bg-red-900/50 text-red-600 dark:text-red-400 text-[9px] font-bold px-1.5 py-0.5 rounded">
-                <AlertTriangle className="w-2.5 h-2.5" />
-                ESC
-              </span>
+      {/* Left: avatar + name + days badge — clickable to navigate to the
+          patient's CURRENT stage. The completion badges below are their own
+          links (each opens a finished stage), so they sit outside the button. */}
+      <div className="flex flex-col px-4 py-3 min-w-0 shrink-0 w-[260px]">
+        <button onClick={onClick} className="flex gap-3 min-w-0 text-left">
+          <div
+            className={cn(
+              "w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs shrink-0 mt-0.5",
+              patient.escalated
+                ? "bg-red-100 dark:bg-red-900/40 text-red-600 dark:text-red-400"
+                : "bg-primary/10 text-primary",
             )}
-          </div>
-          <span
-            className="self-start inline-flex items-center px-2 py-0.5 rounded text-white text-[10px] font-bold leading-none tracking-wide"
-            style={{ backgroundColor: getDayBucketColor(patient.daysSinceStage) }}
           >
-            {patient.daysSinceStage || "Unknown"}
-          </span>
-          <CompletionBadges stages={completedStages} />
-        </div>
-      </button>
+            {patient.name?.[0] ?? "?"}
+          </div>
+          <div className="flex-1 min-w-0 flex flex-col gap-1">
+            <div className="flex items-center gap-1.5">
+              <span className="text-sm font-semibold truncate leading-tight">{patient.name}</span>
+              {patient.escalated && (
+                <span className="shrink-0 inline-flex items-center gap-0.5 bg-red-100 dark:bg-red-900/50 text-red-600 dark:text-red-400 text-[9px] font-bold px-1.5 py-0.5 rounded">
+                  <AlertTriangle className="w-2.5 h-2.5" />
+                  ESC
+                </span>
+              )}
+            </div>
+            <span
+              className="self-start inline-flex items-center px-2 py-0.5 rounded text-white text-[10px] font-bold leading-none tracking-wide"
+              style={{ backgroundColor: getDayBucketColor(patient.daysSinceStage) }}
+            >
+              {patient.daysSinceStage || "Unknown"}
+            </span>
+          </div>
+        </button>
+        <CompletionBadges
+          stages={completedStages}
+          onStageClick={onCompletedStageClick}
+          className="pl-11"
+        />
+      </div>
 
       {/* Center: notes preview — large, uses available space. Click opens sidebar (or escalation form for escalated patients). */}
       <div

@@ -11,6 +11,7 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import type { ReactNode } from "react";
 import { EmptyPatientPane } from "@/components/shared/EmptyPatientPane";
+import { CompletedStageBanner, useCompletedStageReview } from "@/components/shared/CompletedStageBanner";
 import { useSearchParams } from "react-router-dom";
 import { useMondayPatients } from "@/hooks/profile/useMondayPatients";
 import { useAutoSelectPatient } from "@/hooks/useAutoSelectPatient";
@@ -202,6 +203,12 @@ const ProfilePage = ({ variant }: ProfilePageProps) => {
   const selected: Patient | undefined = useMemo(
     () => patients.find((p) => p.id === selectedId), [patients, selectedId],
   );
+
+  /** Opened from a completion badge in System Management → Search: this item
+   *  already left Profile Send Off, so the page reads as history and cannot advance.
+   *  Tied to the SELECTED patient, so picking a live one off the sidebar hands
+   *  the page back. */
+  const reviewMode = !!useCompletedStageReview(selected?.id);
 
   useEffect(() => {
     if (!selected) { setAssets([]); return; }
@@ -548,6 +555,11 @@ const ProfilePage = ({ variant }: ProfilePageProps) => {
           </header>
 
           <main className="flex-1 min-w-0">
+            {reviewMode && (
+              <div style={{ padding: "16px 24px 0" }}>
+                <CompletedStageBanner patientId={selected?.id} />
+              </div>
+            )}
             {!selected ? (
               <div style={{ padding: 40 }}>
                 <EmptyPatientPane loading={loading} error={error} queueEmpty={visiblePatients.length === 0} hint="No referrals are due to work right now." selectPrompt="Select a patient to begin." />
@@ -578,6 +590,7 @@ const ProfilePage = ({ variant }: ProfilePageProps) => {
                 onAdvance={handleAdvance}
                 onSendBack={handleSendBack}
                 onAddNote={handleAppendNote}
+                reviewMode={reviewMode}
               />
             )}
           </main>
@@ -619,6 +632,9 @@ interface BodyProps {
   addressIssue?: string;
   submitting: boolean;
   sendingBack: boolean;
+  /** Viewing a stage this patient already finished — the send-off routes are
+   *  off, because both of them MOVE a record that has already moved. */
+  reviewMode?: boolean;
   onAdvance: () => void;
   onSendBack: () => void;
   onAddNote: (fullText: string) => Promise<void>;
@@ -1413,18 +1429,26 @@ function ProfileBody(p: BodyProps) {
                     <span><b>Address needs fixing</b> — {p.addressIssue}</span>
                   </div>
                 )}
+                {p.reviewMode && (
+                  <div className="warn-banner" style={{ marginTop: 16 }}>
+                    <span>
+                      <b>Completed stage</b> — this is what the rep filled out. Both send-off
+                      routes move the record, so they&rsquo;re off here.
+                    </span>
+                  </div>
+                )}
                 <div className="route-grid">
                   <div className={`route adv ${p.canSubmit ? "on" : ""}`}>
                     <h4>Advance to MN</h4>
                     <p>Everything checks out → save to Monday and move to Medical Necessity.</p>
-                    <button className="btn primary" onClick={p.onAdvance} disabled={!p.canSubmit || p.submitting || p.sendingBack}>
+                    <button className="btn primary" onClick={p.onAdvance} disabled={!p.canSubmit || p.submitting || p.sendingBack || p.reviewMode}>
                       {p.submitting ? "Advancing…" : "Advance to MN →"}
                     </button>
                   </div>
                   <div className="route intake on">
                     <h4>Send back to Patient Intake</h4>
                     <p>Still missing info → move back to Patient Intake.</p>
-                    <button className="btn amber" onClick={p.onSendBack} disabled={p.submitting || p.sendingBack}>
+                    <button className="btn amber" onClick={p.onSendBack} disabled={p.submitting || p.sendingBack || p.reviewMode}>
                       {p.sendingBack ? "Sending…" : "Send back to Patient Intake"}
                     </button>
                   </div>

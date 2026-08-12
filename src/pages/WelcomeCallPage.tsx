@@ -36,6 +36,7 @@ import { writeStatusIndex, writeLongText, COL } from "@/lib/welcomeCall/mondayAp
 import { EscalationFormModal } from "@/components/shared/EscalationFormModal";
 import { PageLoadingOverlay } from "@/components/shared/PageLoadingOverlay";
 import { EmptyPatientPane } from "@/components/shared/EmptyPatientPane";
+import { CompletedStageBanner, useCompletedStageReview } from "@/components/shared/CompletedStageBanner";
 import { validatePatientForSend } from "@/lib/welcomeCall/workflow";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useBackNavigation } from "@/hooks/useBackNavigation";
@@ -72,6 +73,12 @@ const WelcomeCallPage = () => {
     () => patients.find((p) => p.id === selectedId),
     [patients, selectedId],
   );
+
+  /** Opened from a completion badge in System Management → Search: this item
+   *  already left Welcome Call, so the page reads as history and cannot advance.
+   *  Tied to the SELECTED patient, so picking a live one off the sidebar hands
+   *  the page back. */
+  const reviewMode = !!useCompletedStageReview(selected?.id);
 
   const validation = useMemo(
     () => selected ? validatePatientForSend(selected) : { valid: false, errors: [] },
@@ -249,6 +256,7 @@ const WelcomeCallPage = () => {
 
           <main className="flex-1 px-3 sm:px-6 py-6 overflow-y-auto">
             <section className="max-w-5xl xl:max-w-7xl 2xl:max-w-[1800px] mx-auto space-y-5">
+              <CompletedStageBanner patientId={selected?.id} />
               {!selected && (
                 <div className="rounded-xl bg-card border shadow-card p-10 text-center">
                   <EmptyPatientPane loading={loading} error={error} queueEmpty={visiblePatients.length === 0} hint="No welcome calls are due right now." />
@@ -277,7 +285,7 @@ const WelcomeCallPage = () => {
                   />
                   <ReviewPanel patient={selected} />
                   <EscalateButton escalated={selected.escalated} onToggle={toggleEscalate} disabled={!selected} onOpenForm={() => setEscalationModalOpen(true)} />
-                  <SendToMondayButton onSend={handleSend} disabled={!selected || !validation.valid} validationErrors={validation.errors} />
+                  <SendToMondayButton onSend={handleSend} disabled={!selected || !validation.valid || reviewMode} validationErrors={reviewMode ? ["Completed stage — this is what the rep filled out, so there is nothing left to send."] : validation.errors} />
                 </>
               )}
             </section>

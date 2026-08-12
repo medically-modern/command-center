@@ -52,6 +52,7 @@ import { viewFilterFromParams } from "@/lib/roleView";
 import { managerOriginFromParams, managerChartFromParams, managerBucketFromParams } from "@/lib/shared/managerOrigin";
 import { railFilterFor, applyRail } from "@/lib/samantha/managerRail";
 import { sidebarVisibleList } from "@/lib/samantha/sidebarList";
+import { CompletedStageBanner, useCompletedStageReview } from "@/components/shared/CompletedStageBanner";
 
 const ChaseBenefitsPage = () => {
   const { goBack } = useBackNavigation();
@@ -106,6 +107,12 @@ const ChaseBenefitsPage = () => {
     () => patients.find((p) => p.id === selectedId),
     [patients, selectedId],
   );
+
+  /** Opened from a completion badge in System Management → Search: this item
+   *  already left Insurance, so the page reads as history and cannot advance.
+   *  Tied to the SELECTED patient, so picking a live one off the sidebar hands
+   *  the page back. */
+  const reviewMode = !!useCompletedStageReview(selected?.id);
 
   const onUniversalChange = (id: "in-network" | "active" | "dme-benefits", value: UniversalChoice) => {
     if (!selected) return;
@@ -261,6 +268,7 @@ const ChaseBenefitsPage = () => {
           <main className="flex-1 px-3 sm:px-6 py-6">
             <section className="max-w-5xl xl:max-w-7xl 2xl:max-w-[1800px] mx-auto">
               <div className="bnr">
+                <CompletedStageBanner patientId={selected?.id} />
                 {!selected && (
                   <div className="rounded-xl bg-card border shadow-card p-10 text-center">
                     <EmptyPatientPane loading={loading} error={error} queueEmpty={visiblePatients.length === 0} hint="No benefits checks are due right now." />
@@ -291,6 +299,7 @@ const ChaseBenefitsPage = () => {
                           onCallLogChange={updateCallLog}
                           missing={benefitsMissing}
                           onSend={handleSend}
+                          reviewMode={reviewMode}
                         />
                       )}
                     </div>

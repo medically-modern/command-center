@@ -26,6 +26,7 @@ import { ESCALATION_INDEX, isEscalatedIndex } from "@/lib/masheke/mondayMapping"
 import { useBackNavigation } from "@/hooks/useBackNavigation";
 import { ReportIssueButton } from "@/components/shared/ReportIssueButton";
 import { StageActionBar } from "@/components/shared/StageActionBar";
+import { CompletedStageBanner, useCompletedStageReview } from "@/components/shared/CompletedStageBanner";
 
 const EvaluatePage = () => {
   const navigate = useNavigate();
@@ -58,6 +59,12 @@ const EvaluatePage = () => {
     () => patients.find((p) => p.id === selectedId),
     [patients, selectedId],
   );
+
+  /** Opened from a completion badge in System Management → Search: this item
+   *  already left the stage, so the page reads as history and cannot advance.
+   *  Tied to the SELECTED patient, so picking a live one off the sidebar hands
+   *  the page back. */
+  const reviewMode = !!useCompletedStageReview(selected?.id);
 
   const resetForNewPatient = () => {
     if (!selected) return;
@@ -139,6 +146,7 @@ const EvaluatePage = () => {
 
           <main className="flex-1 px-3 sm:px-6 py-6">
             <section className="max-w-5xl xl:max-w-7xl 2xl:max-w-[1800px] mx-auto space-y-5">
+              <CompletedStageBanner patientId={selected?.id} />
               {!selected && (
                 <div className="rounded-xl bg-card border shadow-card p-10 text-center">
                   <EmptyPatientPane loading={loading} error={error} queueEmpty={visiblePatients.length === 0} hint="Nothing is due to evaluate right now." />
@@ -147,7 +155,7 @@ const EvaluatePage = () => {
               {selected && (
                 <>
                   <PatientProfileCard patient={selected} onDoctorEdit={(patch) => update(selected.id, patch)} />
-                  <EvaluatePanel patient={selected} resetVersion={resetVersion} onUpdate={(patch) => update(selected.id, patch)} onOpenForm={() => setEscalationModalOpen(true)} />
+                  <EvaluatePanel patient={selected} resetVersion={resetVersion} onUpdate={(patch) => update(selected.id, patch)} onOpenForm={() => setEscalationModalOpen(true)} reviewMode={reviewMode} />
                 </>
               )}
             </section>

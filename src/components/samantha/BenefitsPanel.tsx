@@ -59,6 +59,10 @@ interface Props {
   onCallLogChange: (section: "callsUniversal" | "callsSosAuth", rows: CallLogRow[]) => void;
   missing: string[];
   onSend: () => Promise<void>;
+  /** Viewing a stage this patient already finished (opened from a System
+   *  Management completion badge) — every answer still renders, but a record
+   *  that has already moved on cannot be re-sent. */
+  reviewMode?: boolean;
 }
 
 /* ── Step 1 — universal checks ────────────────────────────────────── */
@@ -312,6 +316,7 @@ export function BenefitsPanel({
   onCallLogChange,
   missing,
   onSend,
+  reviewMode = false,
 }: Props) {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [sendState, setSendState] = useState<"idle" | "sending" | "success" | "error">("idle");
@@ -651,7 +656,7 @@ export function BenefitsPanel({
         <div className="foot-actions">
           <button
             className={`send-btn ${sendState === "error" ? "err" : ""}`}
-            disabled={missing.length > 0 || sendState === "sending"}
+            disabled={missing.length > 0 || sendState === "sending" || reviewMode}
             onClick={handleSend}
           >
             {sendState === "sending"
@@ -667,7 +672,14 @@ export function BenefitsPanel({
                     : "Benefit Check Complete"}
           </button>
         </div>
-        {missing.length > 0 && (
+        {reviewMode ? (
+          <div className="missing-box">
+            <div className="mb-title">Completed stage</div>
+            <div className="mb-list">
+              This is what the rep filled out — there is nothing left to send.
+            </div>
+          </div>
+        ) : missing.length > 0 && (
           <div className="missing-box">
             <div className="mb-title">Missing before send</div>
             <div className="mb-list">{missing.join(" · ")}</div>
