@@ -23,7 +23,7 @@ import {
   titleCaseName, titleCaseAddress, normalizeEmailCase,
 } from "@/lib/profile/workflow";
 import {
-  fetchClinicLabels, fetchItemAssets, fetchUpdates, createUpdate,
+  fetchClinicLabels, fetchItemAssets, fetchUpdates, createUpdate, GROUPS,
   type MondayAsset, type MondayUpdate,
 } from "@/lib/profile/mondayApi";
 import {
@@ -120,13 +120,28 @@ const VARIANT_LABEL: Record<ProfileReferralRole, string> = {
   verified: "Verified Referrals",
 };
 
+/** Which board group(s) each role's list is drawn from. Only Already In System
+ *  spans two — see the hook call below. Frozen at module scope so the array
+ *  identity never changes between renders. */
+const VARIANT_GROUPS: Record<ProfileReferralRole, string | string[]> = {
+  inSystem: [GROUPS.intake, GROUPS.alreadyInSystem],
+  unverified: GROUPS.intake,
+  verified: GROUPS.intake,
+};
+
 const ProfilePage = ({ variant }: ProfilePageProps) => {
   const { goBack } = useBackNavigation();
   const [searchParams] = useSearchParams();
+  // Already In System is a group as well as a status (Brandon, 2026-08-12), so
+  // that role reads BOTH: the board moves items into `alreadyInSystem`, and a
+  // patient still sitting in 1. Intake can carry the flag. Every other role
+  // reads 1. Intake alone, exactly as before. Module-level constants, so the
+  // array identity is stable across renders (the hook keys off its contents,
+  // but there is no reason to hand it a fresh one every time).
   const {
     patients: allProfilePatients, loading, initialLoading, error, refetch,
     updateLocal, clearOverlay, removeOverlayKeys, saveOverlay, hasOverlay, getReceived,
-  } = useMondayPatients(searchParams.get("patientId"));
+  } = useMondayPatients(searchParams.get("patientId"), VARIANT_GROUPS[variant]);
 
   // Role split (three-way, mutually exclusive): inSystem = Already In System
   // "Yes"; unverified = Referral Type "Patient" OR Referral Source
@@ -139,7 +154,7 @@ const ProfilePage = ({ variant }: ProfilePageProps) => {
       allProfilePatients.filter(
         (p) =>
           p.id === deepLinkedId ||
-          profileReferralRole(p.referralType, p.referralSource, p.alreadyInSystem) === variant,
+          profileReferralRole(p.referralType, p.referralSource, p.alreadyInSystem, p.groupId) === variant,
       ),
     [allProfilePatients, variant, deepLinkedId],
   );

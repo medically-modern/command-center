@@ -58,11 +58,27 @@ export function isUnverifiedReferral(
   );
 }
 
+/** The board's own "Already In System" group. Items are MOVED here, so
+ *  membership marks the role on its own — the status column is not always
+ *  written on the way in. Must match `GROUPS.alreadyInSystem`,
+ *  oversightApi's `PROFILE_IN_SYSTEM_GROUP` and useRoleCounts'
+ *  `PROFILE_IN_SYSTEM_GROUP_ID`. */
+export const IN_SYSTEM_GROUP = "group_mm64b83h";
+
 /** True when the Already In System status column says "Yes" (blank/"No"/any
  *  other value = not in system, so an unset column can never hide a patient
  *  from the verified/unverified queues). */
 export function isAlreadyInSystem(alreadyInSystem: string | null | undefined): boolean {
   return (alreadyInSystem ?? "").trim().toLowerCase() === IN_SYSTEM_YES.toLowerCase();
+}
+
+/** In the Already In System queue by EITHER route: the group the board moved
+ *  them to, or the status flag on a patient still sitting in another group. */
+export function isInSystemQueue(
+  alreadyInSystem: string | null | undefined,
+  groupId?: string | null,
+): boolean {
+  return isAlreadyInSystem(alreadyInSystem) || (groupId ?? "") === IN_SYSTEM_GROUP;
 }
 
 /**
@@ -73,8 +89,12 @@ export function profileReferralRole(
   referralType: string | null | undefined,
   referralSource: string | null | undefined,
   alreadyInSystem: string | null | undefined,
+  /** Board group, when known. Optional so existing callers (and the two plain-JS
+   *  baseline generators, which read 1. Intake and the in-system group
+   *  separately) keep working unchanged. */
+  groupId?: string | null,
 ): ProfileReferralRole {
-  if (isAlreadyInSystem(alreadyInSystem)) return "inSystem";
+  if (isInSystemQueue(alreadyInSystem, groupId)) return "inSystem";
   // ⚠️ 1. Intake NO LONGER SPLITS on referral type/source (Josh, 2026-08-10).
   // Patient Intake is the DTC form's own two GROUPS and nothing else, so
   // everything left in 1. Intake that isn't already in the system is Verified

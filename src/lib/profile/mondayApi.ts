@@ -18,6 +18,10 @@ export const GROUPS = {
   // alongside finished ones. Both feed the Unverified Referrals role.
   newFormPartial: "group_mm5z87zt",
   newFormCompleted: "group_mm5zgeak",
+  // "Already In System" — the board moves these out of 1. Intake, so the role
+  // is group OR the status flag (§5.10). Must match oversightApi's
+  // PROFILE_IN_SYSTEM_GROUP and useRoleCounts' PROFILE_IN_SYSTEM_GROUP_ID.
+  alreadyInSystem: "group_mm64b83h",
   stuck: "group_mm1xyczx",
   completed: "group_mm1y57sz",
 } as const;
@@ -256,6 +260,8 @@ export interface MondayColumnValue {
 export interface MondayItem {
   id: string;
   name: string;
+  /** Absent on the single-item deep-link fetch, which doesn't need it. */
+  group?: { id: string };
   column_values: MondayColumnValue[];
 }
 
@@ -295,18 +301,30 @@ async function gql<T>(query: string, variables: Record<string, unknown> = {}): P
 
 const PAGE = 200;
 
+/**
+ * Items in one group, or in SEVERAL — Already In System is both a status and a
+ * group of its own (`GROUPS.alreadyInSystem`), so that role's page has to read
+ * two groups to see its whole queue (§5.10). Monday's `group` rule takes a list
+ * and ORs it, so this stays one paged query rather than N.
+ *
+ * The item's own group comes back with it: group membership is what marks an
+ * Already-In-System patient when the status column was never written, so the
+ * page can't route without it.
+ */
 export async function fetchGroupItems(
-  groupId: string = GROUPS.intake,
+  groupId: string | string[] = GROUPS.intake,
   onMore?: (items: MondayItem[]) => void,
 ): Promise<MondayItem[]> {
+  const groupIds = Array.isArray(groupId) ? groupId : [groupId];
   const query = `
     query ($boardId: ID!, $cols: [String!]) {
       boards(ids: [$boardId]) {
-        items_page(limit: ${PAGE}, query_params: { rules: [{ column_id: "group", compare_value: ${JSON.stringify([groupId])} }] }) {
+        items_page(limit: ${PAGE}, query_params: { rules: [{ column_id: "group", compare_value: ${JSON.stringify(groupIds)} }] }) {
           cursor
           items {
             id
             name
+            group { id }
             column_values(ids: $cols) { id text value }
           }
         }
@@ -328,7 +346,7 @@ export async function fetchGroupItems(
         query ($cursor: String!, $cols: [String!]) {
           next_items_page(limit: ${PAGE}, cursor: $cursor) {
             cursor
-            items { id name column_values(ids: $cols) { id text value } }
+            items { id name group { id } column_values(ids: $cols) { id text value } }
           }
         }
       `;
@@ -696,6 +714,7 @@ export async function fetchItemById(itemId: string): Promise<MondayItem | null> 
       items(ids: $itemId) {
         id
         name
+        group { id }
         column_values(ids: $cols) { id text value }
       }
     }

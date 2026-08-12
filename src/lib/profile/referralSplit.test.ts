@@ -1,5 +1,11 @@
 import { describe, it, expect } from "vitest";
-import { isAlreadyInSystem, isUnverifiedReferral, profileReferralRole } from "./referralSplit";
+import {
+  IN_SYSTEM_GROUP,
+  isAlreadyInSystem,
+  isInSystemQueue,
+  isUnverifiedReferral,
+  profileReferralRole,
+} from "./referralSplit";
 
 describe("isUnverifiedReferral (Verified vs Unverified role split)", () => {
   it("routes Referral Type 'Patient' to Unverified regardless of source", () => {
@@ -74,6 +80,28 @@ describe("profileReferralRole (three-way intake split)", () => {
     expect(profileReferralRole("Manufacturer", "Tandem", "No")).toBe("verified");
     expect(profileReferralRole("Doctor", "Patient", null)).toBe("verified");
     expect(profileReferralRole(null, undefined, undefined)).toBe("verified");
+  });
+
+  // The board MOVES already-in-system patients into their own group, and the
+  // status column is not always written on the way (Brandon, 2026-08-12). The
+  // group therefore routes on its own — without this, ten patients showed on
+  // the Oversight chart but not in the role's own list.
+  it("routes the Already In System GROUP even with the status column blank", () => {
+    expect(profileReferralRole("Manufacturer", "Tandem", "", IN_SYSTEM_GROUP)).toBe("inSystem");
+    expect(profileReferralRole(null, null, null, IN_SYSTEM_GROUP)).toBe("inSystem");
+    expect(isInSystemQueue("", IN_SYSTEM_GROUP)).toBe(true);
+  });
+
+  it("still routes the FLAG for a patient left in another group", () => {
+    expect(profileReferralRole("Manufacturer", "Tandem", "Yes", "group_mm1xf2jb")).toBe("inSystem");
+    expect(isInSystemQueue("Yes", "group_mm1xf2jb")).toBe(true);
+  });
+
+  it("a patient in neither the group nor the flag is untouched by both routes", () => {
+    expect(profileReferralRole("Manufacturer", "Tandem", "No", "group_mm1xf2jb")).toBe("verified");
+    expect(isInSystemQueue("No", "group_mm1xf2jb")).toBe(false);
+    expect(isInSystemQueue(null, null)).toBe(false);
+    expect(isInSystemQueue(null, undefined)).toBe(false);
   });
 
   it("still answers 'is this an unverified referral?' for labelling", () => {

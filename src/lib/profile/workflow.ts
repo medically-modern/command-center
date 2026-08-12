@@ -5,6 +5,10 @@
 export interface Patient {
   id: string;
   name: string;
+  /** Board group the item sits in. Optional because older cached patients (and
+   *  hand-built test fixtures) predate it; the Already In System split treats a
+   *  missing group as "not in that group" and falls back to the status flag. */
+  groupId?: string;
 
   // ── Demographics ──
   dob: string;

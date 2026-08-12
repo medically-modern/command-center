@@ -41,6 +41,10 @@ export function mondayItemToPatient(item: MondayItem): Patient {
   return {
     id: item.id,
     name: item.name,
+    // Which board group the item is in. Already In System is a group as well as
+    // a status column, and items land there with the column sometimes still
+    // blank — so the queue split needs the group, not just the flag (§5.10).
+    groupId: item.group?.id ?? "",
 
     // Demographics
     dob: col(item, COL.dob),

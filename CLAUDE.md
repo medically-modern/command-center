@@ -314,6 +314,10 @@ and **Referral Source `color_mm1w5wxr`**, evaluated in that order:
   and the Oversight chart sat at a permanent 0. The role is **group OR status**: membership is the
   marker (an item can arrive with the column still blank), and the flag still counts on its own for
   items left in 1. Intake or a form group. Both routes are asserted in `columnExclusivity.test.ts`.
+  The page reads both groups too — `ProfilePage`'s `VARIANT_GROUPS` hands this one variant a LIST
+  and `fetchGroupItems` ORs it in a single paged query; the item's `group { id }` rides along
+  because `profileReferralRole`'s 4th argument is what routes a patient whose status column was
+  never written. Every other role still reads 1. Intake alone.
 - **`unverifiedReferrals`** (`/unverified-referrals`, "Unverified Referrals") — Referral Type
   **`Patient`** OR Referral Source **`CareCentrix`** (and not already in system).
 - **`profile`** (`/profile`, relabelled **"Verified Referrals"**, id unchanged so existing

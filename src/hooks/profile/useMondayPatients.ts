@@ -10,8 +10,26 @@ const LS_CACHE_KEY_BASE = "prof-patients-cache";
 // fetch lands. Derived per call rather than held in a module-level variable —
 // two pages using this hook during a lazy route transition would otherwise
 // race on it and read each other's cache.
-function cacheKeyFor(groupId?: string): string {
-  return groupId ? `${LS_CACHE_KEY_BASE}:${groupId}` : LS_CACHE_KEY_BASE;
+function cacheKeyFor(groupId?: GroupSelector): string {
+  const key = groupKeyOf(groupId);
+  return key ? `${LS_CACHE_KEY_BASE}:${key}` : LS_CACHE_KEY_BASE;
+}
+
+/** One group, or several — Already In System spans 1. Intake and its own
+ *  board group (§5.10). */
+type GroupSelector = string | string[];
+
+/**
+ * Stable identity for a group selection.
+ *
+ * A caller passing an ARRAY builds a fresh one every render, so the
+ * change-detection below has to compare contents, not the reference — comparing
+ * references would re-fetch (and re-raise the blocking overlay) on every single
+ * render of the page.
+ */
+function groupKeyOf(groupId?: GroupSelector): string {
+  if (!groupId) return "";
+  return Array.isArray(groupId) ? groupId.join(",") : groupId;
 }
 const LS_OVERLAY_KEY = "prof-overlays";
 
@@ -43,7 +61,7 @@ function removePersistedOverlay(id: string): void {
   }
 }
 
-function loadCachedPatients(groupId?: string): Patient[] {
+function loadCachedPatients(groupId?: GroupSelector): Patient[] {
   try {
     const raw = localStorage.getItem(cacheKeyFor(groupId));
     if (!raw) return [];
@@ -51,13 +69,13 @@ function loadCachedPatients(groupId?: string): Patient[] {
   } catch { return []; }
 }
 
-function persistPatientCache(patients: Patient[], groupId?: string): void {
+function persistPatientCache(patients: Patient[], groupId?: GroupSelector): void {
   try {
     localStorage.setItem(cacheKeyFor(groupId), JSON.stringify(patients));
   } catch { /* ignore */ }
 }
 
-export function useMondayPatients(injectedPatientId?: string | null, groupId?: string) {
+export function useMondayPatients(injectedPatientId?: string | null, groupId?: GroupSelector) {
   const cachedRef = useRef(loadCachedPatients(groupId));
   // Held in a ref so switching groups doesn't rebuild `refetch` (which the
   // poll interval depends on) — the effect below drives the re-fetch instead.
@@ -138,14 +156,23 @@ export function useMondayPatients(injectedPatientId?: string | null, groupId?: s
     }
   }, [applyOverlays]);
 
+  // Keyed on the group CONTENTS: a caller selecting several groups passes a new
+  // array each render, and comparing references would re-fetch every time —
+  // re-raising the blocking overlay on each render and never settling.
+  const groupKey = groupKeyOf(groupId);
+  const groupKeyRef = useRef(groupKey);
   useEffect(() => {
-    if (groupIdRef.current === groupId) return;
+    if (groupKeyRef.current === groupKey) return;
+    groupKeyRef.current = groupKey;
     groupIdRef.current = groupId;
     cachedRef.current = loadCachedPatients(groupId);
     setPatients(cachedRef.current);
     setInitialLoading(true);
     refetch(false);
-  }, [groupId, refetch]);
+    // `groupId` is deliberately not a dependency — `groupKey` is its stable
+    // identity, and adding the array itself would defeat the point.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [groupKey, refetch]);
 
   useEffect(() => {
     mountedRef.current = true;
