@@ -10,7 +10,7 @@
  * other composer texts through, and the Cloudflare worker every panel emails
  * through. Nothing new is sent from the browser.
  */
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Loader2, Mail, MessageSquare, Send } from "lucide-react";
 import { toast } from "sonner";
 
@@ -20,6 +20,9 @@ import {
 import { sendMessage, fetchConversation, messagingConfigured } from "@/lib/assignedPatients/messagingApi";
 import { isOptedOut } from "@/lib/assignedPatients/optOut";
 import { sendViaWorker, SendValidationError } from "@/lib/shared/sendViaWorker";
+// The prefill is what lets the booking find its way back to the patient's row —
+// see the module for why the mirror can't work without it.
+import { bookingLinkFor } from "@/lib/scheduledCalls/bookingLink";
 import { cn } from "@/lib/utils";
 
 /**
@@ -92,15 +95,31 @@ export default function BookingLinkDialog({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- open is the trigger; see above
   }, [open]);
 
+  /**
+   * The address Calendly should prefill — the one the booking will be matched
+   * on. The patient's own row wins; failing that, in EMAIL mode, whatever the
+   * rep is sending to, which is the best available guess at who they are (and
+   * is often the row's address anyway, looked up by hand). Never `to` in text
+   * mode: that's a phone number.
+   */
+  const prefillEmail = (email ?? "").trim() || (mode === "email" ? to.trim() : "");
+  const link = useMemo(
+    () => bookingLinkFor(url, { name, email: prefillEmail }),
+    [url, name, prefillEmail],
+  );
+
+  /** Opened from a patient's record rather than cold from Scheduled Calls. */
+  const hasPatient = Boolean((patientName ?? "").trim() || (phone ?? "").trim() || (email ?? "").trim());
+
   // Keep the draft in step with the link and the name until the rep edits it —
   // after that it is theirs, and rewriting what somebody typed is worse than a
   // slightly stale opener.
   useEffect(() => {
-    if (!touched) setBody(defaultMessage(url, name));
-  }, [url, name, touched]);
+    if (!touched) setBody(defaultMessage(link, name));
+  }, [link, name, touched]);
 
   const reset = () => {
-    setName(""); setTo(""); setTouched(false); setBody(defaultMessage(url, ""));
+    setName(""); setTo(""); setTouched(false); setBody(defaultMessage(link, ""));
   };
 
   async function send() {
@@ -214,6 +233,20 @@ export default function BookingLinkDialog({
               {body.length} characters{mode === "text" && body.length > 300 ? " — long for one text" : ""}
             </span>
           </label>
+
+          {/* The one case the prefill can't cover, said plainly. A booking is
+              matched to a patient by the invitee's email against their row, so
+              with no address on file there is nothing to match on and the
+              appointment lands in Calendly alone — silently. Only shown when we
+              opened with a patient: sent cold from Scheduled Calls there is no
+              record to link to and the note would be noise. */}
+          {hasPatient && !prefillEmail && (
+            <p className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200">
+              No email on file for this patient, so their booking won't link back to this record on
+              its own. Add one on the intake page first if you can — otherwise watch for the
+              appointment in Calendly.
+            </p>
+          )}
 
           <div className="flex justify-end gap-2">
             <button
