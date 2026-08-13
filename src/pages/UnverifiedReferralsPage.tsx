@@ -31,7 +31,11 @@ import BookingLinkDialog from "@/components/scheduledCalls/BookingLinkDialog";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
 } from "@/components/ui/dialog";
-import { evaluateUnlock } from "@/lib/profile/intakeUnlock";
+// `coverageActive` / `inNetwork` are imported so the benefits-check readout
+// renders from the SAME predicates the unlock checklist gates on — a second
+// copy of "is this in network" is how a green readout ends up sitting next to
+// a blocked advance.
+import { evaluateUnlock, coverageActive, inNetwork } from "@/lib/profile/intakeUnlock";
 import {
   PRIMARY_INSURANCE_INDEX, SECONDARY_INSURANCE_INDEX, SERVING_INDEX,
   GENERAL_INSURANCE_INDEX,
@@ -60,7 +64,7 @@ import { PatientContact } from "@/components/masheke/mmKit";
 import { NoteLog } from "@/components/profile/NoteLog";
 import { useStediRun, STEDI_POLL_MS } from "@/hooks/profile/useStediRun";
 import {
-  suggestPrimary, suggestSecondary, buildSuggestionInputs,
+  suggestPrimary, suggestSecondary, buildSuggestionInputs, isNyMedicaidId,
 } from "@/lib/profile/primaryInsurance";
 import type { Patient } from "@/lib/profile/workflow";
 import { addressWarning } from "@/lib/profile/workflow";
@@ -124,6 +128,18 @@ const SOURCE_LABEL: Record<Source, string> = {
  *  hides it from the picker while keeping it visible when it's the patient's
  *  current value (§5.2), and the WRITE path uses the complete index maps, so a
  *  legitimate "Not Serving" can still be written and read back. */
+/**
+ * Yes / No for a Stedi flag — or "—" when the column is blank.
+ *
+ * ⚠️ Blank must NOT render as "No". An empty column means the check hasn't
+ * produced an answer for that field; "No" is a negative RESULT, and on this
+ * card the difference is "we don't know yet" vs "this plan is out of network".
+ * The predicates themselves are boolean and can't express the gap, so the raw
+ * value is what decides whether there is anything to report.
+ */
+const stediYesNo = (raw: string | undefined, decided: boolean): string =>
+  (raw ?? "").trim() ? (decided ? "Yes" : "No") : "—";
+
 const SERVING_OPTS = Object.keys(SERVING_INDEX);
 // No REQUEST_TYPE_OPTS: Request Type is display-only on this page (it arrives
 // set from the referral and drives four board automations), so there is no
@@ -2290,6 +2306,55 @@ const UnverifiedReferralsPage = () => {
                   <p className="mt-2 rounded-md bg-red-50 border border-red-200 px-3 py-2 text-xs text-red-800">
                     Last check failed: {selected.stediErrorDescription}
                   </p>
+                )}
+
+                {/* ── Benefits check output ──
+                    FOUR fields, deliberately (Josh, 2026-08-13). The board
+                    carries ~33 `stedi*` columns and every other one stays
+                    hidden: HANDOFF §3 defers the full eligibility grid, cost
+                    sharing and the OOP estimate pending Corey's plan-level
+                    research, so this is an unhide of what's useful on a call,
+                    not the redesign of this section.
+
+                    Nothing was added to the read path — all four were already
+                    in READ_COLUMN_IDS and on the Patient, just never rendered.
+
+                    ⚠️ Yes/No comes from `inNetwork()` / `coverageActive()`, the
+                    same predicates `evaluateUnlock` gates the advance on, so
+                    this readout cannot disagree with the blocker list. */}
+                {[
+                  selected.stediInNetwork,
+                  selected.stediEligibilityActive,
+                  selected.stediPrimaryPayer,
+                ].some((v) => (v ?? "").trim()) && (
+                  <div className="fgrid" style={{ marginTop: 18 }}>
+                    <Field
+                      boxed
+                      label="In Network"
+                      value={stediYesNo(selected.stediInNetwork, inNetwork(selected))}
+                    />
+                    <Field
+                      boxed
+                      label="Active"
+                      value={stediYesNo(selected.stediEligibilityActive, coverageActive(selected))}
+                    />
+                    <Field boxed full label="Primary Payor" value={selected.stediPrimaryPayer ?? ""} />
+                    {/* Only when it's a real NY Medicaid CIN — 2 letters, 5
+                        digits, 1 letter. Payers return other identifiers in
+                        this field, and one rendered under a "Medicaid ID"
+                        label is worse than nothing: a rep would read it as a
+                        Medicaid enrolment the patient may not have.
+                        `isNyMedicaidId` is the same test the insurance
+                        suggestion engine already uses to decide exactly that. */}
+                    {isNyMedicaidId(selected.stediSecondaryMedicaidId ?? "") && (
+                      <Field
+                        boxed
+                        full
+                        label="Stedi Secondary / Medicaid ID"
+                        value={selected.stediSecondaryMedicaidId ?? ""}
+                      />
+                    )}
+                  </div>
                 )}
                 {(selected.formInsuranceVia ?? "") === "Not provided" && (
                   <p className="mt-3 rounded-md bg-amber-50 border border-amber-200 px-3 py-2 text-xs text-amber-900">
