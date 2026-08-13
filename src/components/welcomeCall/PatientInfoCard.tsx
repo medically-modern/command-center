@@ -15,6 +15,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { DoctorNotesPanel } from "@/components/shared/DoctorNotesPanel";
+import { CallHistoryButton } from "@/components/shared/CallHistoryButton";
 
 interface Props {
   patient: Patient;
@@ -434,6 +435,7 @@ function PhoneField({
           <a href={`tel:${displayPhone}`} className="text-lg font-semibold text-primary hover:underline">
             {formatPhone(displayPhone)}
           </a>
+          <CallHistoryButton phone={displayPhone} display={formatPhone(displayPhone)} />
           <button
             onClick={() => setEditing(true)}
             className="p-1 rounded hover:bg-muted/60 text-muted-foreground hover:text-foreground transition-colors"

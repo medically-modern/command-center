@@ -28,6 +28,7 @@ import { ChevronDown } from "lucide-react";
 import { DoctorNotesPanel } from "@/components/shared/DoctorNotesPanel";
 import type { Patient } from "@/lib/samantha/workflow";
 import { authHomePlan } from "@/lib/samantha/submitAuthRules";
+import { CallHistoryButton } from "@/components/shared/CallHistoryButton";
 import "./benefitsRedesign.css";
 
 function formatPhone(raw: string): string {
@@ -81,6 +82,12 @@ export function BenefitsPatientHeader({ patient }: Props) {
         <div className="ph-dob">
           DOB <span style={{ userSelect: "all" }}>{patient.dob || "—"}</span> ·{" "}
           <span style={{ userSelect: "all" }}>{formatPhone(patient.patientPhone ?? "") || "—"}</span>
+        </div>
+        <div className="mt-1.5">
+          <CallHistoryButton
+            phone={patient.patientPhone ?? ""}
+            display={formatPhone(patient.patientPhone ?? "")}
+          />
         </div>
       </div>
 

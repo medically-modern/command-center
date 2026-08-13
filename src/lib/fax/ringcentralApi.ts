@@ -10,6 +10,7 @@
  */
 
 import { getIdToken } from "../shared/auth";
+import { toPatientCalls, type PatientCall, type RcCallLogRecord } from "../callHistory/callHistory";
 
 const GATEWAY =
   (import.meta.env.VITE_MONDAY_GATEWAY_URL as string | undefined)?.replace(/\/+$/, "") || "";
@@ -304,6 +305,70 @@ export async function startRingOut(opts: { from: string; to: string; callerId?: 
 /** The number patients see on texts and calls from the Command Center. */
 export function mmPhoneNumber(): string {
   return RC_SMS_FROM;
+}
+
+/**
+ * Every call between the MM line and one patient, newest first.
+ *
+ * `view=Detailed` is NOT optional — it is what returns `legs`, and the legs are
+ * the only way to tell that a claimed (forwarded) call was answered rather than
+ * missed. See `callConnected` in lib/callHistory.
+ *
+ * ⚠️ `dateFrom` is explicit for the same reason `fetchUnreadFaxCount` sets it:
+ * RingCentral's default window is roughly the last day, so without it a
+ * patient's call history silently starts at "yesterday" (CLAUDE.md §5.5).
+ */
+export async function fetchPatientCallHistory(
+  phone: string,
+  opts: { sinceDays?: number; perPage?: number } = {},
+): Promise<PatientCall[]> {
+  const num = toE164(phone);
+  if (!num) return [];
+  const dateFrom = new Date(Date.now() - (opts.sinceDays ?? 365) * 24 * 60 * 60_000).toISOString();
+  const path =
+    `/restapi/v1.0/account/~/extension/~/call-log` +
+    `?phoneNumber=${encodeURIComponent(num)}&type=Voice&view=Detailed&direction=Inbound&direction=Outbound` +
+    `&dateFrom=${encodeURIComponent(dateFrom)}&perPage=${opts.perPage ?? 100}`;
+  const res = await rcFetch(path);
+  if (!res.ok) {
+    // A 403 here is nearly always the app record, not the request: reading the
+    // call log needs the ReadCallLog permission on the RingCentral OAuth app,
+    // and RingCentral's own message for it is opaque. Name it, or this looks
+    // like a bug in the app (CLAUDE.md §5.13 — RC permissions fail one at a
+    // time and each one needs its own diagnosis).
+    if (res.status === 403) {
+      throw new Error(
+        "RingCentral rejected the call-log read (403). The app record is probably missing the ReadCallLog permission.",
+      );
+    }
+    throw new Error(`RingCentral call history failed (${res.status})`);
+  }
+  const json = (await res.json()) as { records?: RcCallLogRecord[] };
+  return toPatientCalls(json.records ?? [], num);
+}
+
+/**
+ * Download a call recording (through the gateway) and return a blob: URL.
+ * Caller should URL.revokeObjectURL when done.
+ *
+ * Recordings are best-effort by design: the account has to actually record
+ * calls, and the OAuth app needs ReadCallRecording. When either is missing the
+ * call-log simply carries no `recording` and no button is drawn, so this only
+ * runs for audio RingCentral has already told us exists.
+ */
+export async function fetchRecordingBlobUrl(contentUri: string): Promise<string> {
+  if (!contentUri) throw new Error("No recording attached to this call");
+  const res = await rcFetch(contentUri);
+  if (!res.ok) {
+    if (res.status === 403) {
+      throw new Error(
+        "RingCentral rejected the recording download (403). The app record is probably missing the ReadCallRecording permission.",
+      );
+    }
+    throw new Error(`RingCentral recording download failed (${res.status})`);
+  }
+  const blob = await res.blob();
+  return URL.createObjectURL(blob);
 }
 
 export interface InboundFax {

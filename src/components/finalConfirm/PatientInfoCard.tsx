@@ -79,6 +79,7 @@ import {
   DollarSign,
 } from "lucide-react";
 import { DoctorNotesPanel } from "@/components/shared/DoctorNotesPanel";
+import { CallHistoryButton } from "@/components/shared/CallHistoryButton";
 
 interface Props {
   patient: Patient;
@@ -650,9 +651,15 @@ export function PatientInfoCard({ patient, onFieldChange, findings = [] }: Props
         {patient.phone && (
           <div className="text-right">
             <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1">Phone</p>
-            <a href={`tel:${patient.phone}`} className="text-lg font-semibold text-primary hover:underline">
-              {formatPhone(patient.phoneEdited ?? patient.phone)}
-            </a>
+            <div className="flex items-center justify-end gap-1.5">
+              <a href={`tel:${patient.phone}`} className="text-lg font-semibold text-primary hover:underline">
+                {formatPhone(patient.phoneEdited ?? patient.phone)}
+              </a>
+              <CallHistoryButton
+                phone={patient.phoneEdited ?? patient.phone}
+                display={formatPhone(patient.phoneEdited ?? patient.phone)}
+              />
+            </div>
           </div>
         )}
       </Card>

@@ -12,6 +12,7 @@ import { useState } from "react";
 import type { Patient } from "@/lib/masheke/workflow";
 import { DoctorEditGrid, EditToggle } from "@/components/masheke/mmKit";
 import { DoctorNotesPanel } from "@/components/shared/DoctorNotesPanel";
+import { CallHistoryButton } from "@/components/shared/CallHistoryButton";
 
 /** Format raw phone digits into (xxx)-xxx-xxxx or +1 (xxx)-xxx-xxxx
  *  (same format as PatientProfileCard). */
@@ -70,6 +71,9 @@ export function ConfirmReceiptHeaderCard({
         {patient.gender ? ` · ${patient.gender}` : ""}
         {` · ${formatPhone(patient.phone)}`}
       </p>
+      <div className="mt-2">
+        <CallHistoryButton phone={patient.phone} display={formatPhone(patient.phone)} />
+      </div>
 
       {/* three info groups */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mt-5">

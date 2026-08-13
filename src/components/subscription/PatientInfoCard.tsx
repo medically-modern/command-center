@@ -13,6 +13,7 @@ import { Pencil } from "lucide-react";
 import { AddressAutocomplete } from "@/components/welcomeCall/AddressAutocomplete";
 import type { AddressResult } from "@/components/welcomeCall/AddressAutocomplete";
 import { MnDocsPanel } from "@/components/subscription/MnDocsPanel";
+import { CallHistoryButton } from "@/components/shared/CallHistoryButton";
 
 interface Props {
   patient: Patient;
@@ -59,6 +60,7 @@ function PhoneField({
           <a href={`tel:${displayPhone}`} className="text-lg font-semibold text-primary hover:underline">
             {formatPhone(displayPhone)}
           </a>
+          <CallHistoryButton phone={displayPhone} display={formatPhone(displayPhone)} />
           <button onClick={() => setEditing(true)} className="p-1 rounded hover:bg-muted/60 text-muted-foreground hover:text-foreground transition-colors" title="Edit phone number">
             <Pencil className="h-3.5 w-3.5" />
           </button>

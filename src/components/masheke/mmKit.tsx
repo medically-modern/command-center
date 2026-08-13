@@ -23,6 +23,7 @@ import {
 } from "lucide-react";
 import type { MondayFileEntry } from "@/lib/masheke/mondayApi";
 import { openFileViewer } from "@/components/shared/FileViewerModal";
+import { CallHistoryButton } from "@/components/shared/CallHistoryButton";
 import { ConfirmDeleteDialog } from "@/components/shared/ConfirmDeleteDialog";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -593,6 +594,7 @@ export function PatientContact({
         onOpenChange={onTextOpenChange}
         onSent={onTextSent}
       />
+      <CallHistoryButton phone={tel} display={display} />
     </span>
   );
 }

@@ -823,6 +823,50 @@ not the gate. It also fires only while a Command Center tab is open, and announc
 per day (`announced` resets at ET midnight, or a tab left open overnight carries yesterday's set
 into today and the first morning call goes unannounced).
 
+### 5.16 Patient call history — the "Calls" button in every stage header (Aug 2026)
+A **Calls** button sits beside the Call and Text buttons on every patient header and opens the
+patient's call history with the MM line: both directions, how long each call lasted, and a player
+for any call RingCentral recorded. Pure logic in **`lib/callHistory/callHistory.ts`** (+ tests),
+REST in `lib/fax/ringcentralApi.ts` (`fetchPatientCallHistory` / `fetchRecordingBlobUrl`), UI in
+**`components/shared/CallHistoryButton.tsx`**.
+
+**⚠️ `result` cannot be read literally — read the LEGS.** Claiming an inbound call forwards it,
+which tears down the original leg, so a call a rep actually TOOK can arrive stamped with a
+terminal-looking result. This is the same trap §5.13 documents for the live-call cards, and it
+shows up again here: `callConnected` treats *any connected leg* as a connected call. A recording
+also hangs off the leg that carried the audio, not the parent, on exactly those calls.
+
+**⚠️ A named result outranks the duration heuristic.** RingCentral reports ring time in `duration`
+on some missed calls, so "duration > 0 ⇒ somebody talked" — true for an unlabelled result — turns
+an 18-second ring into an 18-second conversation. `MISSED_RESULTS` wins over the fallback; the
+fallback exists only for labels we don't recognise. Results are matched **exactly**, never by
+substring: "Answered Not Accepted" is a MISSED call that contains "answered".
+
+**Fetched on OPEN, never on render** — the call-log is one of RingCentral's more rate-limited
+endpoints and a header renders for every patient a rep clicks through. That's the deliberate trade
+behind the button showing no missed-count badge until it's opened.
+
+**Two external dependencies, both of which fail silently as "no data":**
+- **`ReadCallLog`** on the RingCentral app record, or the call-log 403s. The SPA names that
+  permission in the error rather than surfacing a bare 403 (§5.13 — RC permissions fail one at a
+  time and each needs its own diagnosis).
+- **`ReadCallRecording`** + recording actually enabled on the account, or the log simply carries no
+  `recording` and no Play button is drawn. Absent recordings are the NORMAL case, not an error.
+
+**Gateway allowlist (`services/monday-gateway/rcAllowlist.mjs`)** — split out of `ringcentral.mjs`
+so the proxy's security boundary is unit-testable without its express/google-auth-library imports
+(same split as `callRules.mjs` vs `inboundCalls.mjs`). Two widenings: `call-log` on the path
+allowlist, and recording content on `/rc/fetch`. ⚠️ The two media URL shapes differ in their TAIL —
+a fax attachment ends `/content/{attachmentId}`, a recording ends AT `/content` — so reusing the
+fax pattern silently 403s every recording. `rcAllowlist.test.mjs` pins both, plus host-suffix
+smuggling (`notringcentral.com`, `ringcentral.com.evil.com`).
+
+`PatientContact` (masheke/mmKit) carries the button, so the five headers that already use it get it
+for free; the other five render it directly — welcomeCall / finalConfirm / subscription
+`PatientInfoCard`, `samantha/BenefitsPatientHeader` (Benefits · Submit Auth · Auth Outstanding) and
+`masheke/ConfirmReceiptHeaderCard`. The button self-hides when there's no number on file, so a
+header can drop it in unconditionally.
+
 ---
 
 ## 6. Patient flow across boards (the big picture)

@@ -16,27 +16,17 @@
  * Optional env:  RC_SERVER (default https://platform.ringcentral.com)
  */
 import { verifyGoogleToken, authEnforced } from "./auth.mjs";
+import { pathAllowed, fetchUrlAllowed } from "./rcAllowlist.mjs";
 
 const RC_SERVER = (process.env.RC_SERVER || "https://platform.ringcentral.com").replace(/\/+$/, "");
 const { RC_CLIENT_ID, RC_CLIENT_SECRET, RC_JWT } = process.env;
 
 const rcConfigured = () => !!(RC_CLIENT_ID && RC_CLIENT_SECRET && RC_JWT);
 
-// Only the RingCentral paths the SPA actually uses. Keeps this from becoming an
-// open proxy to the rest of the account's RingCentral API.
-//   message-store — fax + SMS reads, mark-read, and the Assigned Patients inbox
-//   sms           — send
-//   ring-out      — outbound click-to-call (two-legged; no WebRTC, no Digital
-//                   Line). NOTE: cancelling a RingOut is DELETE, which the
-//                   gateway's method allowlist and CORS layer both exclude — so
-//                   there is deliberately no cancel. Starting a call and letting
-//                   it ring is the whole feature.
-//
-// message-sync (incremental SMS sync with a sync token) is the eventual upgrade
-// for the inbox poll, but it is deliberately NOT allowlisted yet: nothing calls
-// it, and this proxy should only ever expose paths in use.
-const ALLOWED_PATH =
-  /^\/restapi\/v1\.0\/account\/[^/]+\/extension\/[^/]+\/(message-store|sms|ring-out)(\/|\?|$)/;
+// The path + URL allowlists live in rcAllowlist.mjs — pure, so they can be
+// unit-tested without this module's express/google-auth-library imports (same
+// split as callRules.mjs vs inboundCalls.mjs). Re-exported for callers.
+export { ALLOWED_PATH, pathAllowed, fetchUrlAllowed } from "./rcAllowlist.mjs";
 
 // client-info/sip-provision sits OUTSIDE the /account/~/extension/~/ tree, so it
 // needs its own rule. It hands back the SIP credentials the browser softphone
@@ -118,16 +108,19 @@ export function registerRingCentral({ app }) {
       return res.status(405).json({ error: "method not allowed" });
     }
 
-    // Fax attachment content lives on media.ringcentral.com (a DIFFERENT host
-    // from the platform API). The SPA sends the absolute URL to /rc/fetch?url=…;
-    // forward it to that exact RingCentral host with the bearer token.
+    // Fax attachment + call recording content live on media.ringcentral.com (a
+    // DIFFERENT host from the platform API). The SPA sends the absolute URL to
+    // /rc/fetch?url=…; forward it to that exact RingCentral host with the
+    // bearer token.
+    //
+    // Two shapes, and they differ in their tail — a fax attachment ends
+    // /content/{attachmentId} while a recording ends at /content, so one regex
+    // with a trailing slash would silently 403 every recording.
     if (req.path === "/rc/fetch") {
       let u;
       try { u = new URL(String((req.query && req.query.url) || "")); }
       catch { return res.status(400).json({ error: "bad url" }); }
-      if (u.protocol !== "https:" ||
-          !/(^|\.)ringcentral\.com$/.test(u.hostname) ||
-          !/\/message-store\/\d+\/content\//.test(u.pathname)) {
+      if (!fetchUrlAllowed(u)) {
         return res.status(403).json({ error: "url not allowed" });
       }
       const pull = (token) => fetch(u.toString(), { headers: { Authorization: `Bearer ${token}` } });
@@ -143,7 +136,7 @@ export function registerRingCentral({ app }) {
       }
     }
     const rcPath = req.originalUrl.replace(/^\/rc/, "");
-    if (!ALLOWED_PATH.test(rcPath.split("?")[0])) {
+    if (!pathAllowed(rcPath)) {
       return res.status(403).json({ error: "RingCentral path not allowed" });
     }
     const method = req.method.toUpperCase();
