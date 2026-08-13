@@ -2619,24 +2619,19 @@ const UnverifiedReferralsPage = () => {
                       </span>
                     </div>
 
-                    {/* The stage's three exits as ONE row (Katie, 2026-08-13),
-                        replacing the stack of three description cards. Log call
-                        and Propose Stuck each need a sentence from the rep, so
-                        they open a popup; Advance takes no input and simply
-                        runs when it can. */}
+                    {/* This pane's exits, as one row (Katie, 2026-08-13),
+                        replacing the stack of description cards. Both need a
+                        sentence from the rep, so both open a popup.
+
+                        ⚠️ ADVANCE IS DELIBERATELY NOT HERE (Josh, 2026-08-13).
+                        There is exactly ONE advance button and it lives at the
+                        bottom of the right pane, where the profile work ends.
+                        A copy here was the same action under the same gate in
+                        two places — which is how the two drift apart and start
+                        disagreeing about whether the patient may leave. What
+                        stays on this side is the READINESS summary below, plus
+                        a shortcut to the pane that owns the action. */}
                     <div className="exit-row">
-                      <button
-                        onClick={() => { void runStageAction("advance"); }}
-                        disabled={!canAdvance || saving}
-                        className="btn primary"
-                        title={
-                          canAdvance
-                            ? "Send this patient to Medical Necessity"
-                            : "Complete the checklist below first"
-                        }
-                      >
-                        {saving ? "Working…" : "Advance"}
-                      </button>
                       <button
                         onClick={() => setAttemptOpen(true)}
                         disabled={saving}
@@ -2656,13 +2651,12 @@ const UnverifiedReferralsPage = () => {
                       </span>
                     </div>
 
-                    {/* A disabled button with no explanation is the thing reps
-                        escalate about (§2), so what's blocking stays on screen
-                        rather than living in a tooltip. Both panes' blockers,
-                        because Advance is gated on both. */}
+                    {/* What's blocking stays on screen rather than living in a
+                        tooltip on a greyed-out button (§2) — and it covers BOTH
+                        panes, because that is what the advance is gated on. */}
                     {canAdvance ? (
                       <p className="mt-3 text-sm text-emerald-700">
-                        Everything's in — Advance sends this patient to Medical Necessity.
+                        Everything's in — advance from the Profile Clean-Up pane.
                       </p>
                     ) : (
                       <>
@@ -2680,20 +2674,23 @@ const UnverifiedReferralsPage = () => {
                             </li>
                           ))}
                         </ul>
-                        {/* The right pane still unlocks on its own from the
-                            left pane's conditions (HANDOFF §2: "not unlocked by
-                            a button click"); this is only a shortcut to it, for
-                            when what's left to do is over there. */}
-                        {unlock.unlocked && (
-                          <button
-                            onClick={() => cleanUpRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })}
-                            className="btn secondary sm"
-                            style={{ marginTop: 6 }}
-                          >
-                            Go to Profile Clean-Up →
-                          </button>
-                        )}
                       </>
+                    )}
+
+                    {/* The right pane still unlocks on its own from the left
+                        pane's conditions (HANDOFF §2: "not unlocked by a button
+                        click") — this only scrolls there. It shows whenever the
+                        pane is open, INCLUDING when everything passes: that is
+                        exactly when the rep wants to go press Advance, and the
+                        button is now only over there. */}
+                    {unlock.unlocked && (
+                      <button
+                        onClick={() => cleanUpRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })}
+                        className="btn secondary sm"
+                        style={{ marginTop: 10 }}
+                      >
+                        Go to Profile Clean-Up →
+                      </button>
                     )}
 
                   </>
@@ -3022,15 +3019,15 @@ const UnverifiedReferralsPage = () => {
                       </div>
                     )}
 
-                    {/* The same advance as the left pane's Advance button, kept
-                        here because this is where the right-pane work ENDS —
-                        finishing the profile and then having to scroll back up
-                        to act on it is the worse option.
-                        ⚠️ It shares `canAdvance` deliberately: it used to gate
-                        on `readyMissing` alone, so this button could be live
-                        while the left pane's unlock conditions still failed —
-                        two buttons for one action with two different answers
-                        about whether it was allowed. */}
+                    {/* THE advance — the only one on the page (Josh,
+                        2026-08-13). It lives here because this is where the
+                        profile work ends; the left pane shows what's still
+                        blocking and links down to it.
+                        ⚠️ Gated on `canAdvance`, not `readyMissing`. Keying on
+                        readiness alone let this button go live while the left
+                        pane's unlock conditions still failed, so the patient
+                        could leave the stage without the checks the pane exists
+                        to enforce. */}
                     <div className="route-grid" style={{ gridTemplateColumns: "1fr" }}>
                       <div className={canAdvance ? "route adv on" : "route adv"}>
                         <h4>Advance to MN</h4>
