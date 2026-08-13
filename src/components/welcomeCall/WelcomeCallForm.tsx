@@ -9,6 +9,8 @@ import {
   isCrossSell,
   isInfusionSelling,
   needsPriorPumpDate,
+  needsMonitorPurchaseDate,
+  deriveMonitorPurchaseDate,
   expectedSubscriptionType,
 } from "@/lib/welcomeCall/workflow";
 import { BOARD_ID, COL } from "@/lib/welcomeCall/mondayApi";
@@ -219,6 +221,35 @@ export function WelcomeCallForm({ patient, onFieldChange, onSendWelcomeCallText 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [patient.id, showPump, patient.qtyCartridge]);
 
+  // Monitor Purchase Date is DERIVED, not typed from scratch (Brandon,
+  // 2026-08-13). Pushing it into local state rather than computing it at save
+  // time is deliberate: the rep has to see the date that is about to be written
+  // so they can correct it on the call. `deriveMonitorPurchaseDate` keeps any
+  // value already present, so this can never clobber what they typed — and it
+  // returns "" once the patient stops being eligible, which is what clears the
+  // board cell (the pump date needs a separate effect for that; this rule folds
+  // the clear into the same call).
+  const derivedMonitorPurchaseDate = deriveMonitorPurchaseDate({
+    current: patient.monitorPurchaseDate,
+    primaryInsurance: effectivePrimaryInsurance,
+    monitorQty: patient.monitorQty,
+    serving: effectiveServing,
+    sosLastBillMonitor: patient.sosLastBillMonitor,
+    sosNeverBilledMonitor: patient.sosNeverBilledMonitor,
+  });
+  useEffect(() => {
+    if (derivedMonitorPurchaseDate !== patient.monitorPurchaseDate) {
+      onFieldChange("monitorPurchaseDate", derivedMonitorPurchaseDate);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [patient.id, derivedMonitorPurchaseDate, patient.monitorPurchaseDate]);
+
+  const showMonitorPurchaseDate = needsMonitorPurchaseDate(
+    effectivePrimaryInsurance,
+    patient.monitorQty,
+    effectiveServing,
+  );
+
   return (
     <div className="space-y-5">
       {/* Header */}
@@ -247,7 +278,7 @@ export function WelcomeCallForm({ patient, onFieldChange, onSendWelcomeCallText 
               </Button>
             )}
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+          <div className={`grid grid-cols-1 ${showMonitorPurchaseDate ? "sm:grid-cols-3" : "sm:grid-cols-2"} gap-6`}>
             {/* CGM Type — editable dropdown */}
             <div>
               <label className="text-xs uppercase tracking-wider text-muted-foreground font-semibold block mb-2">
@@ -301,6 +332,31 @@ export function WelcomeCallForm({ patient, onFieldChange, onSendWelcomeCallText 
                 </div>
               )}
             </div>
+
+            {/* Monitor Purchase Date — Original Medicare + Monitor Qty 0 + CGM serving only */}
+            {showMonitorPurchaseDate && (
+              <div>
+                <label className="text-xs uppercase tracking-wider text-muted-foreground font-semibold block mb-1">
+                  Monitor Purchase Date
+                </label>
+                <Input
+                  className="h-10"
+                  value={patient.monitorPurchaseDate}
+                  onChange={(e) => onFieldChange("monitorPurchaseDate", e.target.value)}
+                  placeholder="MM/YYYY"
+                />
+                <div className="mt-2 flex items-start gap-1.5 rounded-md border border-amber-300 bg-amber-50 dark:bg-amber-950/30 px-2.5 py-1.5">
+                  <Lightbulb className="h-3.5 w-3.5 text-amber-600 shrink-0 mt-0.5" />
+                  <span className="text-xs font-medium text-amber-700 dark:text-amber-300">
+                    {patient.sosLastBillMonitor
+                      ? "Filled from the monitor's SoS last bill date — confirm with the patient if it looks wrong."
+                      : patient.sosNeverBilledMonitor
+                        ? "Estimated — SoS shows no billing history for the monitor. Replace it if the patient knows when they got it."
+                        : "Ask the patient roughly when they got their current monitor."}
+                  </span>
+                </div>
+              </div>
+            )}
           </div>
         </Card>
       ) : (

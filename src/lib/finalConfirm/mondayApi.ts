@@ -71,6 +71,16 @@ export const COL = {
   pumpQty: "numeric_mm1xa0z2",
   /** "Medicare Prior Pump Date" (text) — MM/YYYY, Original-Medicare-only field. */
   medicarePriorPumpDate: "text_mm58k9x9",
+  /** "Monitor Purchase Date" (text) — MM/YYYY, Original-Medicare-only, the CGM
+   *  twin of the pump date above. Auto-derived; see shared/monitorPurchaseDate.ts. */
+  monitorPurchaseDate: "text_mm6693sn",
+  /** Per-product monitor SoS facts, copied from the Insurance board by the
+   *  create-item automation 7918324247 — the inputs to Monitor Purchase Date.
+   *  Deliberately the per-product columns rather than the "Never billed CGM"
+   *  rollup, which conflates sensors with the monitor and can never be un-set
+   *  (CLAUDE.md §10 / audit B5). */
+  sosNeverBilledMonitor: "boolean_mm5ad9rm",
+  sosLastBillMonitor: "date_mm599gk8",
   orderHandling: "color_mm2776fg",
 
   /** "POS" (Office = 0 | Home = 1). Written automatically at Welcome Call from
@@ -151,6 +161,7 @@ export const READ_COLUMN_IDS = [
   COL.subscriptionType, COL.infusionSet1, COL.qtyInf1,
   COL.infusionSet2, COL.qtyInf2, COL.qtyCartridge, COL.monitorQty, COL.pumpQty,
   COL.medicarePriorPumpDate,
+  COL.monitorPurchaseDate, COL.sosNeverBilledMonitor, COL.sosLastBillMonitor,
   COL.orderHandling, COL.pos,
   COL.cgmAuthResult, COL.sensorsAuthResult, COL.ipAuthResult,
   COL.infusionSetAuthResult, COL.cartridgeAuthResult,

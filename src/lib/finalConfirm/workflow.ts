@@ -85,6 +85,14 @@ export interface Patient {
   /** Medicare Prior Pump Date (MM/YYYY free text). Shown only for Original
    *  Medicare patients with Pump Qty 0. Board col text_mm58k9x9. */
   medicarePriorPumpDate: string;
+  /** Monitor Purchase Date (MM/YYYY free text). Shown only for Original
+   *  Medicare patients with Monitor Qty 0. Auto-derived from the monitor SoS
+   *  facts below. Board col text_mm6693sn. */
+  monitorPurchaseDate: string;
+  /** "CGM Monitor SoS No Billing History" (read-only, from the Insurance board). */
+  sosNeverBilledMonitor: boolean;
+  /** "CGM Monitor SoS Last Bill" — YYYY-MM-DD or "" (read-only). */
+  sosLastBillMonitor: string;
   orderHandling: string;
   orderHandlingIndex: number | null;
   /** Place of Service — "Office" | "Home" | "". Auto-computed and written at
@@ -259,6 +267,15 @@ export function needsPriorPumpDate(primaryInsurance: string, pumpQty: string, se
   if (!isOriginalMedicare(primaryInsurance) || pumpQty === "1") return false;
   return serving.trim() === "" || servingIncludesPump(serving);
 }
+
+/** Monitor Purchase Date — the CGM twin of the pump date above. Unlike the pump
+ *  rule this one is NOT duplicated per role: both Welcome Call and Final Confirm
+ *  re-export the single shared implementation so they cannot drift. */
+export {
+  needsMonitorPurchaseDate,
+  deriveMonitorPurchaseDate,
+  MONITOR_PLACEHOLDER_MONTHS_BACK,
+} from "@/lib/shared/monitorPurchaseDate";
 
 export const SECONDARY_INSURANCE_OPTIONS = [
   { index: 0, label: "None" },
@@ -644,6 +661,9 @@ export function getSplitOverrides(
       // Clear (not zero) — Monday automations gated on "is empty" only fire
       // when the cell is cleared, not when it holds 0.
       monitorQty: "",
+      // Monitor Purchase Date is a CGM-side fact — it follows the monitor onto
+      // the sensors half, not this one (mirror of medicarePriorPumpDate below).
+      monitorPurchaseDate: "",
       lastBillDateSensors: "",
       lastBillDateMonitor: "",
       nextOrderDateSensors: "",
@@ -726,6 +746,7 @@ export function getSplitOverrides(
     cgmCoveragePathIndex: original.cgmCoveragePathIndex,
     cgmCoveragePath: original.cgmCoveragePath,
     monitorQty: original.monitorQty,
+    monitorPurchaseDate: original.monitorPurchaseDate,
     cgmAuthResultIndex: original.cgmAuthResultIndex,
     cgmAuthResult: original.cgmAuthResult,
     sensorsAuthResultIndex: original.sensorsAuthResultIndex,

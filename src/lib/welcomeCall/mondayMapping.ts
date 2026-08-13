@@ -80,6 +80,7 @@ export function mondayItemToPatient(item: MondayItem): Patient {
     infusionSet2Index: statusIndex(COL.infusionSet2),
     qtyCartridge: txt(COL.qtyCartridge),
     medicarePriorPumpDate: txt(COL.medicarePriorPumpDate),
+    monitorPurchaseDate: txt(COL.monitorPurchaseDate),
     subscriptionType: txt(COL.subscriptionType),
     subscriptionTypeIndex: statusIndex(COL.subscriptionType),
     welcomeCallText: txt(COL.welcomeCallText),
@@ -125,6 +126,9 @@ export function mondayItemToPatient(item: MondayItem): Patient {
     lastUpdated: new Date().toISOString(),
     neverBilledIsCar: !!txt(COL.neverBilledIsCar),
     neverBilledCgm: !!txt(COL.neverBilledCgm),
+    // Checkbox: Monday renders a checked box as non-empty text, blank when clear.
+    sosNeverBilledMonitor: !!txt(COL.sosNeverBilledMonitor),
+    sosLastBillMonitor: txt(COL.sosLastBillMonitor),
   };
 }
 

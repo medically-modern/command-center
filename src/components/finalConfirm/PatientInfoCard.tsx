@@ -16,6 +16,8 @@ import {
   AUTH_RESULT_OPTIONS,
   POS_OPTIONS,
   needsPriorPumpDate,
+  needsMonitorPurchaseDate,
+  deriveMonitorPurchaseDate,
   formatPhone,
   formatDateMDY,
 } from "@/lib/finalConfirm/workflow";
@@ -593,6 +595,31 @@ export function PatientInfoCard({ patient, onFieldChange, findings = [] }: Props
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [patient.id, showPriorPumpDate, patient.medicarePriorPumpDate]);
 
+  // Monitor Purchase Date is DERIVED (Brandon, 2026-08-13) — see
+  // lib/shared/monitorPurchaseDate.ts. One call both fills and clears: it keeps
+  // any value already present, so it can never overwrite what the rep typed,
+  // and returns "" once the patient stops being eligible, which is what clears
+  // the Monday cell on save (this stage always writes the column).
+  const showMonitorPurchaseDate = needsMonitorPurchaseDate(
+    patient.primaryInsurance,
+    patient.monitorQty,
+    patient.serving,
+  );
+  const derivedMonitorPurchaseDate = deriveMonitorPurchaseDate({
+    current: patient.monitorPurchaseDate,
+    primaryInsurance: patient.primaryInsurance,
+    monitorQty: patient.monitorQty,
+    serving: patient.serving,
+    sosLastBillMonitor: patient.sosLastBillMonitor,
+    sosNeverBilledMonitor: patient.sosNeverBilledMonitor,
+  });
+  useEffect(() => {
+    if (derivedMonitorPurchaseDate !== patient.monitorPurchaseDate) {
+      onFieldChange("monitorPurchaseDate", derivedMonitorPurchaseDate);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [patient.id, derivedMonitorPurchaseDate, patient.monitorPurchaseDate]);
+
   // Infusion set validation: if serving requires supplies, infusion set 1 must be selected with qty
   const isCgmOnly = patient.serving === "CGM";
   const servingRequiresInfusion = ["Insulin Pump", "Supplies Only", "Supplies + CGM", "Insulin Pump + CGM"].includes(patient.serving);
@@ -1036,8 +1063,16 @@ export function PatientInfoCard({ patient, onFieldChange, findings = [] }: Props
 
         <div className="h-px bg-border" />
 
-        {/* Monitor Qty + Pump Qty (+ Prior Pump Purchase Date for Original Medicare) */}
-        <div className={`grid grid-cols-1 ${showPriorPumpDate ? "sm:grid-cols-3" : "sm:grid-cols-2"} gap-4`}>
+        {/* Monitor Qty + Pump Qty (+ the two Original-Medicare purchase dates) */}
+        <div
+          className={`grid grid-cols-1 ${
+            showPriorPumpDate && showMonitorPurchaseDate
+              ? "sm:grid-cols-2 lg:grid-cols-4"
+              : showPriorPumpDate || showMonitorPurchaseDate
+                ? "sm:grid-cols-3"
+                : "sm:grid-cols-2"
+          } gap-4`}
+        >
           <div className="flex items-start gap-2 min-w-0 rounded-lg p-1.5 -m-1.5">
             <div className="h-8 w-8 rounded-md flex items-center justify-center shrink-0 bg-muted text-muted-foreground">
               <Package className="h-4 w-4" />
@@ -1086,6 +1121,34 @@ export function PatientInfoCard({ patient, onFieldChange, findings = [] }: Props
                 <p className="mt-1 flex items-start gap-1 text-[10px] text-amber-700 dark:text-amber-400 leading-snug">
                   <Lightbulb className="h-3 w-3 shrink-0 mt-0.5" />
                   <span>If SoS is completely clear for Insulin Pump and Supplies, ask patient for approximate date they got their pump</span>
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* Monitor Purchase Date — Original Medicare + Monitor Qty 0 + CGM serving only */}
+          {showMonitorPurchaseDate && (
+            <div className="flex items-start gap-2 min-w-0 rounded-lg p-1.5 -m-1.5">
+              <div className="h-8 w-8 rounded-md flex items-center justify-center shrink-0 bg-muted text-muted-foreground">
+                <Package className="h-4 w-4" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1">Monitor Purchase Date</p>
+                <Input
+                  className="h-8 text-sm"
+                  value={patient.monitorPurchaseDate}
+                  onChange={(e) => onFieldChange("monitorPurchaseDate", e.target.value)}
+                  placeholder="MM/YYYY"
+                />
+                <p className="mt-1 flex items-start gap-1 text-[10px] text-amber-700 dark:text-amber-400 leading-snug">
+                  <Lightbulb className="h-3 w-3 shrink-0 mt-0.5" />
+                  <span>
+                    {patient.sosLastBillMonitor
+                      ? "Filled from the monitor's SoS last bill date — confirm with the patient if it looks wrong."
+                      : patient.sosNeverBilledMonitor
+                        ? "Estimated — SoS shows no billing history for the monitor. Replace it if the patient knows when they got it."
+                        : "Ask patient for the approximate date they got their current monitor"}
+                  </span>
                 </p>
               </div>
             </div>

@@ -60,6 +60,10 @@ export interface Patient {
   /** Medicare Prior Pump Date (MM/YYYY free text). Shown only for Original
    *  Medicare patients with Pump Qty 0. Board col text_mm58k9x9. */
   medicarePriorPumpDate: string;
+  /** Monitor Purchase Date (MM/YYYY free text). Shown only for Original
+   *  Medicare patients with Monitor Qty 0. Auto-derived from the monitor SoS
+   *  facts below. Board col text_mm6693sn. */
+  monitorPurchaseDate: string;
   subscriptionType: string;
   subscriptionTypeIndex: number | null;
   welcomeCallText: string;
@@ -111,6 +115,12 @@ export interface Patient {
   // Never Billed attestations (read-only, mirrored from Samantha board)
   neverBilledIsCar: boolean;
   neverBilledCgm: boolean;
+  /** Per-product monitor SoS facts (read-only, mirrored from the Insurance
+   *  board). Inputs to Monitor Purchase Date — see shared/monitorPurchaseDate.ts
+   *  for why these beat the `neverBilledCgm` rollup. */
+  sosNeverBilledMonitor: boolean;
+  /** "CGM Monitor SoS Last Bill" — YYYY-MM-DD or "". */
+  sosLastBillMonitor: string;
 }
 
 // Infusion Set 1 / 2 options are NOT hardcoded here any more.
@@ -241,6 +251,15 @@ export function needsPriorPumpDate(primaryInsurance: string, pumpQty: string, se
   if (!isOriginalMedicare(primaryInsurance) || pumpQty === '1') return false;
   return serving.trim() === '' || servingIncludesPump(serving);
 }
+
+/** Monitor Purchase Date — the CGM twin of the pump date above. Unlike the pump
+ *  rule this one is NOT duplicated per role: both Welcome Call and Final Confirm
+ *  re-export the single shared implementation so they cannot drift. */
+export {
+  needsMonitorPurchaseDate,
+  deriveMonitorPurchaseDate,
+  MONITOR_PLACEHOLDER_MONTHS_BACK,
+} from '@/lib/shared/monitorPurchaseDate';
 
 /* ─── Cross-Sell + Subscription consistency helpers ─── */
 

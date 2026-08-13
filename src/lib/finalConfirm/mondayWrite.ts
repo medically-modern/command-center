@@ -239,6 +239,13 @@ export async function sendPatientToMonday(p: Patient): Promise<void> {
     fn: () => writeText(p.id, COL.medicarePriorPumpDate, p.medicarePriorPumpDate),
   });
 
+  // Monitor Purchase Date — same always-write contract, same reason.
+  tasks.push({
+    label: "Monitor Purchase Date",
+    columnId: COL.monitorPurchaseDate,
+    fn: () => writeText(p.id, COL.monitorPurchaseDate, p.monitorPurchaseDate),
+  });
+
   if (p.orderHandlingIndex !== null)
     tasks.push({ label: "Order Handling", columnId: COL.orderHandling, fn: () => writeStatusIndex(p.id, COL.orderHandling, p.orderHandlingIndex!) });
 

@@ -28,7 +28,7 @@ export const basePatient = (): Patient => {
     "serving", "pumpType", "cgmType", "requestType", "referralType", "referralSource",
     "carecentrixIntakeId", "subscriptionType", "infusionSet1", "qtyInf1",
     "infusionSet2", "qtyInf2", "qtyCartridge", "monitorQty", "pumpQty",
-    "medicarePriorPumpDate", "orderHandling", "pos",
+    "medicarePriorPumpDate", "monitorPurchaseDate", "sosLastBillMonitor", "orderHandling", "pos",
     "sosMonitor", "sosSensors", "sosIp", "sosInfusionSet", "sosCartridge",
     "lastBillDateMonitor", "lastBillDateSensors", "lastBillDateIp",
     "lastBillDateInfusionSet", "lastBillDateCartridge",

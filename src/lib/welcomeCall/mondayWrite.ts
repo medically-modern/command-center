@@ -86,6 +86,11 @@ export async function sendPatientToMonday(p: Patient): Promise<void> {
   // and then reversed in-session is cleared on the board instead of persisting.
   tasks.push({ label: "Medicare Prior Pump Date", columnId: COL.medicarePriorPumpDate, fn: () => writeText(p.id, COL.medicarePriorPumpDate, p.medicarePriorPumpDate) });
 
+  // Monitor Purchase Date — same always-write contract as the pump date above,
+  // for the same reason: the form zeroes local state once the field stops being
+  // eligible, so writing unconditionally is what clears the board cell.
+  tasks.push({ label: "Monitor Purchase Date", columnId: COL.monitorPurchaseDate, fn: () => writeText(p.id, COL.monitorPurchaseDate, p.monitorPurchaseDate) });
+
   if (p.infusionSet1Index !== null)
     tasks.push({ label: "Infusion Set 1", columnId: COL.infusionSet1, fn: () => writeStatusIndex(p.id, COL.infusionSet1, p.infusionSet1Index!) });
   if (p.infusionSet2Index !== null)

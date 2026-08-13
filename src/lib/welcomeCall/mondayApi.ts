@@ -64,6 +64,9 @@ export const COL = {
   qtyCartridge: "numeric_mm515sqv",
   /** "Medicare Prior Pump Date" (text) — MM/YYYY, Original-Medicare-only field. */
   medicarePriorPumpDate: "text_mm58k9x9",
+  /** "Monitor Purchase Date" (text) — MM/YYYY, Original-Medicare-only, the CGM
+   *  twin of the pump date above. Auto-derived; see shared/monitorPurchaseDate.ts. */
+  monitorPurchaseDate: "text_mm6693sn",
   subscriptionType: "color_mm1xbqth",
   welcomeCallText: "color_mm1xtqvv",
   orderHandling: "color_mm2776fg",
@@ -106,6 +109,16 @@ export const COL = {
   neverBilledIsCar: "color_mm3zn2qy",
   neverBilledCgm: "color_mm3z8rw0",
 
+  // Per-product monitor SoS facts, copied from the Insurance board by the
+  // create-item automation 7918324247. These drive Monitor Purchase Date.
+  // ⚠ Read the per-product columns, NOT the `neverBilledCgm` rollup above: the
+  // rollup covers sensors AND monitor together, and is only ever written when
+  // truthy, so it can never be un-set (CLAUDE.md §10 / audit B5) — a patient
+  // whose SoS later came back billed would keep a stale placeholder forever.
+  // These two are rewritten on every Benefits send, so they self-correct.
+  sosNeverBilledMonitor: "boolean_mm5ad9rm",
+  sosLastBillMonitor: "date_mm599gk8",
+
   // Stage
   stageAdvancer: "color_mm1ws96t",
   escalation: "color_mm1x7997",
@@ -119,7 +132,8 @@ export const READ_COLUMN_IDS = [
   COL.referralSource, COL.referralReceivedDate,
   COL.diagnosis, COL.notes, COL.profileSendOffNotes, COL.mnWorkflowNotes, COL.insuranceNotes,
   COL.monitorQty, COL.pumpQty, COL.qtyInf1, COL.infusionSet1,
-  COL.qtyInf2, COL.infusionSet2, COL.qtyCartridge, COL.medicarePriorPumpDate, COL.subscriptionType, COL.welcomeCallText,
+  COL.qtyInf2, COL.infusionSet2, COL.qtyCartridge, COL.medicarePriorPumpDate, COL.monitorPurchaseDate,
+  COL.subscriptionType, COL.welcomeCallText,
   COL.orderHandling, COL.advanceDecision,
   COL.callAttempts,
   COL.cgmAuthResult, COL.sensorsAuthResult, COL.ipAuthResult,
@@ -131,6 +145,7 @@ export const READ_COLUMN_IDS = [
   COL.followUp, COL.followUpDate,
   COL.escalationNotes,
   COL.neverBilledIsCar, COL.neverBilledCgm,
+  COL.sosNeverBilledMonitor, COL.sosLastBillMonitor,
 ];
 
 export interface MondayColumnValue {

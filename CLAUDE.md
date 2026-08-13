@@ -684,6 +684,46 @@ Railway variable).
 > **`POST /calls/resubscribe`** (authenticated) forces a reconcile, so iterating on RC console
 > settings costs neither a gateway redeploy nor the hourly wait.
 
+### 5.14 Monitor Purchase Date — the CGM twin of Prior Pump Purchase Date (Aug 2026)
+Medicare needs an obtained-date on file to bill CGM sensors (A4239) against a patient-owned
+monitor (E2103), exactly as it does for pump supplies against a patient-owned pump. So Welcome
+Call + Final Confirm carry **Monitor Purchase Date `text_mm6693sn`** (MM/YYYY text) beside the
+existing **Medicare Prior Pump Date `text_mm58k9x9`**, gated the same way — Original Medicare
+(`Medicare A&B` exactly, Advantage plans excluded) + product Qty ≠ 1 + a serving that includes the
+product. Blank serving is trusted as served, so a column that failed to read can't hide the field
+and wipe a collected date. Canonical rule: **`lib/shared/monitorPurchaseDate.ts`** (+ tests).
+
+**⚠️ It AUTO-FILLS, and the pump deliberately does not — don't "align" them.** The pump path
+writes the literal `TBD` and makes the rep ask the patient. The monitor stamps a value instead
+(Brandon via Josh, 2026-08-13, asked for and confirmed explicitly), in this precedence:
+a real **CGM Monitor SoS Last Bill** date → else, if SoS says never-billed, a **rolling
+today−24-months** placeholder → else blank. A monitor's reasonable useful lifetime is 5 years
+(`sosLookbackDays`), so a two-year-old date sits inside the lifetime, which is what asserts the
+patient owns a current monitor. The window is **rolling, not the fixed 05/2024** from the original
+request — a hardcoded constant drifts further from "two years ago" every month.
+> A value already in the field always wins, so the derivation can never clobber the rep's answer;
+> because it keys on emptiness, **clearing the field re-fills it** (Josh's call) — the escape hatch
+> is to overwrite, not to blank. It returns `""` once the patient stops being eligible, which is
+> what clears the board cell (both stages always write the column). That is one call doing both
+> jobs, unlike the pump, which needs a separate clear effect.
+
+**⚠️ Read the PER-PRODUCT SoS columns, never the `Never billed CGM` rollup.** The inputs are
+**`boolean_mm5ad9rm`** (CGM Monitor SoS No Billing History) and **`date_mm599gk8`** (CGM Monitor
+SoS Last Bill), copied from Insurance `boolean_mm5a6haz` / `date_mm59tx2g` by create-item
+automation `7918324247`. The tempting `color_mm3z8rw0` "Never billed CGM" is wrong twice: it's a
+Medicare rollup covering **sensors AND monitor together**, and it is only ever written when truthy
+so it **can never be un-set** (§10 / audit B5) — a patient whose SoS later came back billed would
+keep a fabricated date forever. The per-product columns are rewritten on every Benefits send, so
+they self-correct.
+
+Unlike `needsPriorPumpDate` (duplicated per role, kept honest by `priorPumpDate.test.ts`), this
+rule is **one shared module both roles re-export**, so they can't drift; the test still pins it
+against both roles' own `isOriginalMedicare` / `servingIncludesCgm`. On a **split order** the date
+follows the monitor onto the **sensors** half and is cleared on the supplies half — the mirror of
+what `medicarePriorPumpDate` does. Both writes ride the verified batch with the Stage Advancer as
+`stageColumnId`, which is what guarantees the value is indexed before Final Confirm's advancer
+fires the create-item hop to **Subscription `text_mm66werp`**.
+
 ---
 
 ## 6. Patient flow across boards (the big picture)

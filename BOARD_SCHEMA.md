@@ -792,3 +792,37 @@
 ### Stedi Coinsurance %
 - **ID:** `text_mm391jq8`
 - **Type:** `text`
+
+---
+
+## Added after the 2026-05-13 pull
+
+The dump above is a point-in-time snapshot; these were added later and are
+documented here rather than by re-pulling the whole board.
+
+### Medicare Prior Pump Date
+- **ID:** `text_mm58k9x9`
+- **Type:** `text`
+- MM/YYYY free text. Original Medicare (Medicare A&B) + Pump Qty ≠ 1 +
+  pump/supplies serving. Benefits seeds the literal `TBD`; the rep replaces it
+  with the real date. Copied on to Subscription `text_mm58erk3`.
+
+### Monitor Purchase Date
+- **ID:** `text_mm6693sn`
+- **Type:** `text`
+- MM/YYYY free text, added 2026-08-13. The CGM twin of the pump date above:
+  Original Medicare + Monitor Qty ≠ 1 + CGM serving. **Auto-derived**, unlike
+  the pump — see `src/lib/shared/monitorPurchaseDate.ts` and CLAUDE.md §5.14.
+  Copied on to Subscription `text_mm66werp`.
+
+### CGM Monitor SoS No Billing History
+- **ID:** `boolean_mm5ad9rm`
+- **Type:** `checkbox`
+- Copied from Insurance `boolean_mm5a6haz` by create-item automation
+  `7918324247`. Input to Monitor Purchase Date.
+
+### CGM Monitor SoS Last Bill
+- **ID:** `date_mm599gk8`
+- **Type:** `date`
+- Copied from Insurance `date_mm59tx2g` by the same automation. Input to
+  Monitor Purchase Date.
