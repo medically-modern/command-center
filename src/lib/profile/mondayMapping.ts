@@ -206,7 +206,12 @@ export const GENERAL_INSURANCE_INDEX: Record<string, number> = {
   "Anthem / BCBS": 0, "Aetna": 1, "Cigna": 2, "Fidelis": 3, "Medicare A&B": 4,
   "Medicaid": 6, "NYSHIP Empire": 7, "UMR": 8, "Wellcare": 9,
   "United Healthcare": 10, "Humana": 11, "MagnaCare": 12, "Midlands Choice": 13,
-  "Stedi": 14,
+  // "Stedi" (14) is our ELIGIBILITY VENDOR, not a payer — it was being offered
+  // to reps as if it were a health plan (Katie, 2026-08-13). Index 15 is the
+  // board's "Other" label (the slot the old "Horizon BCBS" was renamed into),
+  // so this is a picker change only: no board edit, and no patient to migrate
+  // — nothing on the board was set to Stedi when this was swapped.
+  "Other": 15,
 };
 
 // Live board labels (checked 2026-07): 0=NY Medicaid, 1=Medicare Supplement, 3=None.

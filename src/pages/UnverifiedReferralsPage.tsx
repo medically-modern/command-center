@@ -28,10 +28,13 @@ import { GROUPS, fetchClinicLabels, clearFileColumn } from "@/lib/profile/monday
 import { DoctorSection } from "@/components/profile/DoctorSection";
 import { AddressAutocomplete } from "@/components/profile/AddressAutocomplete";
 import BookingLinkDialog from "@/components/scheduledCalls/BookingLinkDialog";
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
+} from "@/components/ui/dialog";
 import { evaluateUnlock } from "@/lib/profile/intakeUnlock";
 import {
   PRIMARY_INSURANCE_INDEX, SECONDARY_INSURANCE_INDEX, SERVING_INDEX,
-  GENERAL_INSURANCE_INDEX, REQUEST_TYPE_INDEX,
+  GENERAL_INSURANCE_INDEX,
   CGM_COVERAGE_PATH_INDEX, INSULIN_PUMP_COVERAGE_PATH_INDEX,
   REFERRAL_TYPE_INDEX, REFERRAL_SOURCE_INDEX,
   CGM_TYPE_INDEX, PUMP_TYPE_INDEX,
@@ -122,7 +125,9 @@ const SOURCE_LABEL: Record<Source, string> = {
  *  current value (§5.2), and the WRITE path uses the complete index maps, so a
  *  legitimate "Not Serving" can still be written and read back. */
 const SERVING_OPTS = Object.keys(SERVING_INDEX);
-const REQUEST_TYPE_OPTS = Object.keys(REQUEST_TYPE_INDEX);
+// No REQUEST_TYPE_OPTS: Request Type is display-only on this page (it arrives
+// set from the referral and drives four board automations), so there is no
+// picker to build.
 const CGM_PATH_OPTS = Object.keys(CGM_COVERAGE_PATH_INDEX);
 const IP_PATH_OPTS = Object.keys(INSULIN_PUMP_COVERAGE_PATH_INDEX);
 const GENERAL_INSURANCE_OPTS = Object.keys(GENERAL_INSURANCE_INDEX);
@@ -516,7 +521,13 @@ function intakeEditsFor(p: Patient): IntakeEdits {
     referralType: p.referralType,
     referralSource: p.referralSource,
     // Product decision — shared with the right pane's Serving & Coverage card.
-    requestType: p.requestType,
+    // requestType is NOT sent, for the same reason clinicAddress and Call Slot
+    // aren't: nothing on this page edits it any more (it's display-only now),
+    // so passing the hydrated value back would let a Save overwrite whatever
+    // the board holds with whatever this tab loaded. That matters more here
+    // than elsewhere — Request Type is the CONDITION on four board automations
+    // and gets copied forward to Medical Evaluation, so a stale re-write
+    // re-drives them. The referral owns this column.
     cgmCoveragePath: p.cgmCoveragePath,
     insulinPumpCoveragePath: p.insulinPumpCoveragePath,
     cgmType: p.cgmType,
@@ -917,6 +928,20 @@ const UnverifiedReferralsPage = () => {
   const [escalateReason, setEscalateReason] = useState("");
   const { goBack } = useBackNavigation();
 
+  /* The two exits that need detail before they can run open a popup (Katie,
+     2026-08-13); Advance takes no input, so it has none. Both are reset on a
+     patient change — a reason typed for one patient must never be sitting in
+     the box armed against the next one. */
+  const [attemptOpen, setAttemptOpen] = useState(false);
+  const [attemptNote, setAttemptNote] = useState("");
+  const [stuckOpen, setStuckOpen] = useState(false);
+  useEffect(() => {
+    setAttemptOpen(false);
+    setAttemptNote("");
+    setStuckOpen(false);
+    setEscalateReason("");
+  }, [selected?.id]);
+
   /** The unlock checklist. One definition, rendered by BOTH branches of Ready
    *  to Advance — the badge counts blockers on a partial as well, so hiding
    *  the list there left a number nobody could act on. */
@@ -937,6 +962,24 @@ const UnverifiedReferralsPage = () => {
       ))}
     </ul>
   );
+
+  /**
+   * Everything standing between this patient and Medical Necessity — from BOTH
+   * panes.
+   *
+   * Advance now performs the real stage exit rather than scrolling to the right
+   * pane (Katie, 2026-08-13: "the advance button which just does it if its
+   * possible"), so its gate has to be the gate the send-off itself uses: the
+   * left pane's unlock conditions AND the right pane's profile readiness. The
+   * button previously keyed off `unlock` alone, which is only half the answer —
+   * greying it out for a reason listed somewhere the rep isn't looking is the
+   * thing they escalate about.
+   */
+  const advanceBlockers = [
+    ...unlock.conditions.filter((c) => !c.passed).map((c) => ({ label: c.label, hint: c.hint })),
+    ...readiness.filter((i) => !i.ok).map((i) => ({ label: i.label, hint: undefined as string | undefined })),
+  ];
+  const canAdvance = advanceBlockers.length === 0;
 
   /** Which rung a Propose Stuck from here lands on. Hoisted out of the click
    *  handler so the card can NAME the destination — the previous copy told the
@@ -990,13 +1033,17 @@ const UnverifiedReferralsPage = () => {
   }, []);
 
   const runStageAction = useCallback(
-    async (kind: "advance" | "escalate" | "proposeStuck" | "return") => {
-      if (!selected) return;
+    // Returns whether the action actually landed, so the popups that trigger
+    // these can close on success and STAY OPEN on failure with the rep's typed
+    // reason still in the box — closing regardless would throw away the text
+    // they'd have to retype.
+    async (kind: "advance" | "escalate" | "proposeStuck" | "return"): Promise<boolean> => {
+      if (!selected) return false;
       if (kind !== "advance" && !escalateReason.trim()) {
         toast.error("Add a reason first", {
           description: "A manager can't action a blank escalation.",
         });
-        return;
+        return false;
       }
       setSaving(true);
         try {
@@ -1055,6 +1102,7 @@ const UnverifiedReferralsPage = () => {
           if (kind === "advance") clearOverlay(selected.id);
           await refetch(true);
         }
+        return res.ok;
       } finally {
         setSaving(false);
       }
@@ -1414,29 +1462,55 @@ const UnverifiedReferralsPage = () => {
    * Business days, not calendar: a Friday attempt should surface on Monday,
    * not Saturday. ET, because Monday's dates are timezone-naive ET (§9).
    */
-  const logAttempt = useCallback(async () => {
-    if (!selected) return;
+  const logAttempt = useCallback(async (note: string): Promise<boolean> => {
+    if (!selected) return false;
+    const body = note.trim();
+    // A note is REQUIRED on every attempt (Katie, 2026-08-13) — the same rule
+    // Doctor Appointments enforces in `canLogAttempt`. The counter alone
+    // records THAT someone called, never what was said, so a note-less attempt
+    // is indistinguishable from no attempt to whoever picks the patient up
+    // next. The dialog disables its own button; this is the backstop.
+    if (!body) {
+      toast.error("Add a note first", {
+        description: "Every call attempt has to say what happened.",
+      });
+      return false;
+    }
     setSaving(true);
     try {
       const next = await logContactAttempt(selected.id, selected.attemptCounter);
+      // Stamped into the Call Log — the one free-text field that carries to
+      // Medical Necessity. Written BEFORE the snooze: if the snooze fails the
+      // rep still has a record of the call, whereas a note skipped behind a
+      // failed snooze is gone for good.
+      const noted = await appendIntakeNote(
+        selected.id, `Call attempt ${next} — ${body}`, selected.notes,
+      );
       const due = addBusinessDaysIso(etToday(), 1);
       const res = await writeIntakeEdits(selected.id, {
         followUp: "Follow Up",
         followUpDate: due,
       });
       edit({ attemptCounter: String(next), followUp: "Follow Up", followUpDate: due });
-      if (res.ok) {
+      // Name whichever half fell over rather than implying the patient has left
+      // today's queue when they haven't — or that the note landed when it didn't.
+      const problems = [
+        ...(noted.ok ? [] : ["note not saved"]),
+        ...(res.ok ? [] : res.errors.map((e) => e.label)),
+      ];
+      if (problems.length === 0) {
         toast.success(`Attempt ${next} logged`, { description: `Back in the queue ${due}.` });
       } else {
-        // The attempt landed but the snooze didn't; say so rather than implying
-        // the patient has left today's queue when they haven't.
-        const failed = res.errors.map((e) => e.label).join(", ");
-        toast.error(`Attempt ${next} logged, but not snoozed`, { description: failed });
+        toast.error(`Attempt ${next} logged, with problems`, {
+          description: problems.join(", "),
+        });
       }
       await refetch(true);
+      return true;
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       toast.error("Could not log attempt", { description: msg });
+      return false;
     } finally {
       setSaving(false);
     }
@@ -1942,20 +2016,26 @@ const UnverifiedReferralsPage = () => {
                       it does not grey out, and the fields inside are not
                       individually highlighted. `.devcol.off` is that rule. */}
                   <div className={cgmOn ? "devcol" : "devcol off"}>
-                    {/* The DEVICE, first in the column as the mockup has it —
-                        distinct from the patient's stated preference below. */}
-                    <EditSelect
-                      label="CGM Type"
-                      value={selected.cgmType ?? ""}
-                      onChange={(v) => edit({ cgmType: v })}
-                      options={productOptions(COL.cgmType, CGM_TYPE_OPTS)}
-                    />
+                    {/* QUALIFIER FIRST, then the device (Katie, 2026-08-13).
+                        The coverage path is what the patient is eligible for and
+                        it gates everything under it, so asking "which sensor"
+                        before "do they even qualify" is backwards on a live
+                        call. The pump column leads with Pump Need for the same
+                        reason, which keeps the two `.devcol` columns paired
+                        row-for-row: qualifier / device / preference / extra. */}
                     <EditSelect
                       label="CGM Coverage Path"
                       value={selected.cgmCoveragePath ?? ""}
                       onChange={(v) => edit({ cgmCoveragePath: v })}
                       options={productOptions(COL.cgmCoveragePath, CGM_PATH_OPTS)}
                     />
+                    <EditSelect
+                      label="CGM Type"
+                      value={selected.cgmType ?? ""}
+                      onChange={(v) => edit({ cgmType: v })}
+                      options={productOptions(COL.cgmType, CGM_TYPE_OPTS)}
+                    />
+
                     <EditSelect
                       label="CGM Preference"
                       value={selected.formCgmPreference ?? ""}
@@ -1971,6 +2051,16 @@ const UnverifiedReferralsPage = () => {
                   </div>
 
                   <div className={pumpOn ? "devcol" : "devcol off"}>
+                    {/* Pump Need leads the column (Katie, 2026-08-13): "new pump
+                        vs supplies only" decides what the rest of these fields
+                        even mean — it is the input to Request Type and forces
+                        `Supplies Only` on the coverage path below. */}
+                    <EditSelect
+                      label="Pump Need"
+                      value={selected.formPumpNeed ?? ""}
+                      onChange={(v) => edit({ formPumpNeed: v })}
+                      options={["Need a new pump", "Only need supplies"]}
+                    />
                     <EditSelect
                       label="Pump Type"
                       value={selected.pumpType ?? ""}
@@ -1983,12 +2073,7 @@ const UnverifiedReferralsPage = () => {
                       onChange={(v) => edit({ formPumpPreference: v })}
                       options={["Tandem t:slim X2", "Tandem Mobi", "Beta Bionics iLet", "Not sure"]}
                     />
-                    <EditSelect
-                      label="Pump Need"
-                      value={selected.formPumpNeed ?? ""}
-                      onChange={(v) => edit({ formPumpNeed: v })}
-                      options={["Need a new pump", "Only need supplies"]}
-                    />
+
                     <EditSelect
                       label="Insulin Pump Coverage Path"
                       value={selected.insulinPumpCoveragePath ?? ""}
@@ -2054,23 +2139,35 @@ const UnverifiedReferralsPage = () => {
                   </div>
                 )}
 
-                {/* The mockup's derived Request Type chip is gone. It printed
-                    the same value as the editable field right below it, so the
-                    card read "Request Type" twice. Nothing computes the value
-                    yet, so the editable field is the real one. */}
+                {/* READ-ONLY, because Monday already owns this value (Katie,
+                    2026-08-13 — "Request type is auto-populated").
 
-                {/* Request Type is DERIVED from the categories above in the
-                    mockup ("computed — never typed"), but nothing computes it
-                    yet, so it stays editable below the strip rather than
-                    becoming a read-only chip that no longer has a source. */}
+                    It is NOT computed here and must not be: it arrives with the
+                    referral. The intake form writes DTC Intake's `Request`
+                    (`color_mky1a991`), and the board's "Move to Intake Board"
+                    automation copies it into Request Type `color_mm1w1978` when
+                    the Profile Send Off item is created — every item in the
+                    intake group has it populated before a rep ever opens it.
+
+                    ⚠️ It is also an automation INPUT, not just a field: FOUR
+                    board automations read `color_mm1w1978` as their condition
+                    (7917886676 pump/supplies, 7917886678 cgm-already-serving,
+                    7917886811 + 7917886813 → Serving `color_mm1w1cm9`), and
+                    7917676280 copies it forward to Medical Evaluation. A rep
+                    overwriting it here silently re-drives all of that, which is
+                    why this is display-only rather than an editable dropdown.
+                    Corrections belong upstream on the referral. */}
                 <div className="mt-4">
-                  <EditSelect
+                  <Field
                     full
+                    boxed
                     label="Request Type"
                     value={selected.requestType ?? ""}
-                    onChange={(v) => edit({ requestType: v })}
-                    options={REQUEST_TYPE_OPTS}
                   />
+                  <p className="sugg-note" style={{ marginTop: 6 }}>
+                    Set from the referral before it reaches this queue — board
+                    automations key off it, so it isn't editable here.
+                  </p>
                 </div>
               </Card>
 
@@ -2384,11 +2481,22 @@ const UnverifiedReferralsPage = () => {
                 )}
               </Card>
 
-              {/* ── Patient Messages ── Text via the gateway (sender taken from
-                  the verified token server-side), Email via the same worker
-                  route Send Request uses. Sending is blocked on the shared
-                  TCPA/CTIA opt-out guard. */}
-              <IntakeMessages patientId={selected.id} email={selected.email} />
+              {/* ── Patient Messages ── Tabbed Text / Email (Katie,
+                  2026-08-13). The Text tab shows the recent RingCentral thread
+                  inline so the rep can read the conversation while working the
+                  fields, instead of opening the header's Text popup over them.
+                  That popup stays — both send through the same helpers, both
+                  honour the opt-out guard, and both stamp the Call Log via
+                  `logTextSent`, so neither is a composer without a history.
+                  Text goes through the gateway (sender taken from the verified
+                  token server-side); Email uses the same worker route Send
+                  Request does. */}
+              <IntakeMessages
+                patientId={selected.id}
+                email={selected.email}
+                phone={selected.ptPhone}
+                onTextSent={logTextSent}
+              />
 
               {/* Opened from the header button. Prefilled from the patient on
                   screen; the booking lands on the board via the Calendly
@@ -2465,9 +2573,21 @@ const UnverifiedReferralsPage = () => {
                 title="Ready to Advance?"
                 tone="decide"
                 right={
-                  <span className={unlock.unlocked ? "pill ok" : "pill warn"}>
-                    {unlock.unlocked ? "Ready" : `${unlock.conditions.filter((c) => !c.passed).length} blocking`}
-                  </span>
+                  /* The badge counts whichever list is actually rendered below
+                     it: a partial shows the unlock conditions, everyone else
+                     shows the full advance gate (both panes). A number that
+                     doesn't match the list under it is worse than no number. */
+                  isPartial ? (
+                    <span className={unlock.unlocked ? "pill ok" : "pill warn"}>
+                      {unlock.unlocked
+                        ? "Ready"
+                        : `${unlock.conditions.filter((c) => !c.passed).length} blocking`}
+                    </span>
+                  ) : (
+                    <span className={canAdvance ? "pill ok" : "pill warn"}>
+                      {canAdvance ? "Ready" : `${advanceBlockers.length} blocking`}
+                    </span>
+                  )
                 }
               >
                 {isPartial ? (
@@ -2488,10 +2608,6 @@ const UnverifiedReferralsPage = () => {
                   </>
                 ) : (
                   <>
-                    {/* Three `.route` cards, as the mockup has them — one per
-                        exit — instead of a flat button row. The Escalation card
-                        that used to sit below this is folded into the third
-                        route; the mockup has no separate escalation section. */}
                     <div className="mt-2 flex flex-wrap items-center gap-2">
                       {/* THE Monday write for the left pane. Named so it can't
                           be mistaken for the header's local Save. */}
@@ -2503,84 +2619,193 @@ const UnverifiedReferralsPage = () => {
                       </span>
                     </div>
 
-                    <div className="route-stack" style={{ marginTop: 14 }}>
-                      <div className={unlock.unlocked ? "route adv on" : "route adv"}>
-                        <h4>Advance to Profile Clean-Up</h4>
-                        <p>Referral info is sufficient → unlock the profile checklist on the right.</p>
-                        {/* A disabled button with no explanation is the thing
-                            reps escalate about (§2), so the blockers stay
-                            visible rather than living in a tooltip. */}
-                        {blockerList}
-                        {/* NOT an advance. The right pane unlocks from the
-                            conditions above on its own (HANDOFF §2: "not
-                            unlocked by a button click"), so all this does is
-                            scroll there — and calling it "Advance" made reps
-                            look for an action that doesn't exist. Reworded to
-                            say what it does. */}
-                        <button
-                          onClick={() => cleanUpRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })}
-                          disabled={!unlock.unlocked || saving}
-                          className="btn primary"
-                          title={
-                            unlock.unlocked
-                              ? "Jump to the Profile Clean-Up pane"
-                              : "Blocked by the checklist above"
-                          }
-                        >
-                          {unlock.unlocked ? "Go to Profile Clean-Up →" : "Profile Clean-Up locked"}
-                        </button>
-                        <p className="mt-2 text-[11px] text-muted-foreground">
-                          The pane on the right unlocks by itself once these pass — this just takes
-                          you there. The send-off happens over there.
-                        </p>
-                      </div>
-
-                      <div className="route intake on">
-                        <h4>Insufficient — log call</h4>
-                        <p>
-                          Missing info → call the patient, collect it above, then log the attempt.
-                          Snoozes them to the next business day.
-                        </p>
-                        <div className="flex flex-wrap items-center gap-2">
-                          <button onClick={logAttempt} disabled={saving} className="btn amber">
-                            Log call attempt
-                          </button>
-                          <span className="text-xs text-muted-foreground">
-                            {attempts} attempt{attempts === 1 ? "" : "s"} logged
-                          </span>
-                        </div>
-                      </div>
-
-                      <div className="route esc on">
-                        <h4>Propose Stuck</h4>
-                        <p>
-                          Patient doesn't meet criteria for this request → send to{" "}
-                          {stuckLevel === "final" ? "Final Decisions" : "Manager Intervention"} for
-                          review instead of advancing.
-                        </p>
-                        {/* Reason is required — a manager can't action a blank
-                            proposal, and the reason is the whole handover. */}
-                        <div className="inline-panel" style={{ display: "block" }}>
-                          <textarea
-                            value={escalateReason}
-                            placeholder="Why is this patient stuck?"
-                            onChange={(e) => setEscalateReason(e.target.value)}
-                          />
-                          <button
-                            onClick={() => runStageAction("proposeStuck")}
-                            disabled={saving || !escalateReason.trim()}
-                            className="btn rose sm"
-                            style={{ marginTop: 9 }}
-                          >
-                            Propose Stuck
-                          </button>
-                        </div>
-                      </div>
+                    {/* The stage's three exits as ONE row (Katie, 2026-08-13),
+                        replacing the stack of three description cards. Log call
+                        and Propose Stuck each need a sentence from the rep, so
+                        they open a popup; Advance takes no input and simply
+                        runs when it can. */}
+                    <div className="exit-row">
+                      <button
+                        onClick={() => { void runStageAction("advance"); }}
+                        disabled={!canAdvance || saving}
+                        className="btn primary"
+                        title={
+                          canAdvance
+                            ? "Send this patient to Medical Necessity"
+                            : "Complete the checklist below first"
+                        }
+                      >
+                        {saving ? "Working…" : "Advance"}
+                      </button>
+                      <button
+                        onClick={() => setAttemptOpen(true)}
+                        disabled={saving}
+                        className="btn amber"
+                      >
+                        Log call attempt
+                      </button>
+                      <button
+                        onClick={() => setStuckOpen(true)}
+                        disabled={saving}
+                        className="btn rose"
+                      >
+                        Propose Stuck
+                      </button>
+                      <span className="text-xs text-muted-foreground">
+                        {attempts} attempt{attempts === 1 ? "" : "s"} logged
+                      </span>
                     </div>
+
+                    {/* A disabled button with no explanation is the thing reps
+                        escalate about (§2), so what's blocking stays on screen
+                        rather than living in a tooltip. Both panes' blockers,
+                        because Advance is gated on both. */}
+                    {canAdvance ? (
+                      <p className="mt-3 text-sm text-emerald-700">
+                        Everything's in — Advance sends this patient to Medical Necessity.
+                      </p>
+                    ) : (
+                      <>
+                        <p className="mt-3 mb-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                          Blocking the advance
+                        </p>
+                        <ul className="space-y-2" style={{ margin: "4px 0 4px" }}>
+                          {advanceBlockers.map((b) => (
+                            <li key={b.label} className="flex items-start gap-2 text-sm">
+                              <X className="h-4 w-4 mt-0.5 text-muted-foreground shrink-0" />
+                              <div className="min-w-0">
+                                <div className="text-muted-foreground">{b.label}</div>
+                                {b.hint && <div className="text-[11px] text-amber-700">{b.hint}</div>}
+                              </div>
+                            </li>
+                          ))}
+                        </ul>
+                        {/* The right pane still unlocks on its own from the
+                            left pane's conditions (HANDOFF §2: "not unlocked by
+                            a button click"); this is only a shortcut to it, for
+                            when what's left to do is over there. */}
+                        {unlock.unlocked && (
+                          <button
+                            onClick={() => cleanUpRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })}
+                            className="btn secondary sm"
+                            style={{ marginTop: 6 }}
+                          >
+                            Go to Profile Clean-Up →
+                          </button>
+                        )}
+                      </>
+                    )}
 
                   </>
                 )}
               </Card>
+
+              {/* ── The two exits that need a sentence from the rep ──
+                  Popups rather than inline panels (Katie, 2026-08-13). Both
+                  render through the shadcn Dialog, which portals to the body —
+                  outside `.pf-root`, so its own button styling survives (the
+                  trap that keeps shadcn panels off this page otherwise).
+                  Neither closes on failure: the rep's typed text stays in the
+                  box so a retry doesn't mean retyping it. */}
+              <Dialog open={attemptOpen} onOpenChange={setAttemptOpen}>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>Log a call attempt</DialogTitle>
+                    <DialogDescription>
+                      Snoozes {selected.name || "this patient"} to the next business day and adds
+                      attempt {attempts + 1} to the Call Log.
+                    </DialogDescription>
+                  </DialogHeader>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium" htmlFor="attempt-note">
+                      What happened on the call?
+                    </label>
+                    <textarea
+                      id="attempt-note"
+                      className="w-full min-h-[96px] rounded-md border border-input bg-background p-2 text-sm"
+                      value={attemptNote}
+                      placeholder="No answer, left voicemail…"
+                      onChange={(e) => setAttemptNote(e.target.value)}
+                    />
+                    {/* Required, and said out loud — the counter on its own
+                        never records what was said. */}
+                    <p className="text-xs text-muted-foreground">
+                      Required. The attempt counter records that someone called; this is the only
+                      record of what came of it.
+                    </p>
+                  </div>
+                  <DialogFooter>
+                    <button
+                      className="btn secondary sm"
+                      disabled={saving}
+                      onClick={() => setAttemptOpen(false)}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      className="btn amber sm"
+                      disabled={saving || !attemptNote.trim()}
+                      onClick={() => {
+                        void logAttempt(attemptNote).then((ok) => {
+                          if (ok) { setAttemptNote(""); setAttemptOpen(false); }
+                        });
+                      }}
+                    >
+                      {saving ? "Logging…" : "Log attempt"}
+                    </button>
+                  </DialogFooter>
+                </DialogContent>
+              </Dialog>
+
+              <Dialog open={stuckOpen} onOpenChange={setStuckOpen}>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>Propose stuck</DialogTitle>
+                    <DialogDescription>
+                      Sends {selected.name || "this patient"} to{" "}
+                      {stuckLevel === "final" ? "Final Decisions" : "Manager Intervention"} for
+                      review instead of advancing. They leave your queue.
+                    </DialogDescription>
+                  </DialogHeader>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium" htmlFor="stuck-reason">
+                      Why is this patient stuck?
+                    </label>
+                    <textarea
+                      id="stuck-reason"
+                      className="w-full min-h-[96px] rounded-md border border-input bg-background p-2 text-sm"
+                      value={escalateReason}
+                      placeholder="Doesn't meet criteria because…"
+                      onChange={(e) => setEscalateReason(e.target.value)}
+                    />
+                    {/* Required: a manager can't action a blank proposal, and
+                        the reason IS the handover — it's all they'll see. */}
+                    <p className="text-xs text-muted-foreground">
+                      Required. This is what the reviewing manager sees.
+                    </p>
+                  </div>
+                  <DialogFooter>
+                    <button
+                      className="btn secondary sm"
+                      disabled={saving}
+                      onClick={() => setStuckOpen(false)}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      className="btn rose sm"
+                      disabled={saving || !escalateReason.trim()}
+                      onClick={() => {
+                        void runStageAction("proposeStuck").then((ok) => {
+                          if (ok) setStuckOpen(false);
+                        });
+                      }}
+                    >
+                      {saving ? "Sending…" : "Propose Stuck"}
+                    </button>
+                  </DialogFooter>
+                </DialogContent>
+              </Dialog>
             </div>
 
             {/* ── RIGHT: Patient Profile Clean-Up ──
@@ -2797,14 +3022,22 @@ const UnverifiedReferralsPage = () => {
                       </div>
                     )}
 
-                    {/* The stage's two real exits, as the mockup lays them out. */}
+                    {/* The same advance as the left pane's Advance button, kept
+                        here because this is where the right-pane work ENDS —
+                        finishing the profile and then having to scroll back up
+                        to act on it is the worse option.
+                        ⚠️ It shares `canAdvance` deliberately: it used to gate
+                        on `readyMissing` alone, so this button could be live
+                        while the left pane's unlock conditions still failed —
+                        two buttons for one action with two different answers
+                        about whether it was allowed. */}
                     <div className="route-grid" style={{ gridTemplateColumns: "1fr" }}>
-                      <div className={readyMissing === 0 ? "route adv on" : "route adv"}>
+                      <div className={canAdvance ? "route adv on" : "route adv"}>
                         <h4>Advance to MN</h4>
                         <p>Profile is complete — hand the patient to Medical Necessity.</p>
                         <button
-                          onClick={() => runStageAction("advance")}
-                          disabled={readyMissing > 0 || saving}
+                          onClick={() => { void runStageAction("advance"); }}
+                          disabled={!canAdvance || saving}
                           className="btn primary justify-center"
                         >
                           Advance to MN →
