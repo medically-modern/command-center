@@ -980,22 +980,27 @@ const UnverifiedReferralsPage = () => {
   );
 
   /**
-   * Everything standing between this patient and Medical Necessity — from BOTH
-   * panes.
+   * What the LEFT pane is responsible for: the unlock conditions, and nothing
+   * else.
    *
-   * Advance now performs the real stage exit rather than scrolling to the right
-   * pane (Katie, 2026-08-13: "the advance button which just does it if its
-   * possible"), so its gate has to be the gate the send-off itself uses: the
-   * left pane's unlock conditions AND the right pane's profile readiness. The
-   * button previously keyed off `unlock` alone, which is only half the answer —
-   * greying it out for a reason listed somewhere the rep isn't looking is the
-   * thing they escalate about.
+   * ⚠️ Serving, Member IDs, coverage paths and the doctor are the RIGHT pane's
+   * checklist ("Ready for send off") and are deliberately NOT repeated here
+   * (Josh, 2026-08-13). This card asks "is the patient info done" — the profile
+   * being built is a different question, asked next to the fields that answer
+   * it. Listing them in both places had the left pane demanding a confirmed
+   * doctor before the rep had reached the pane that picks one.
    */
-  const advanceBlockers = [
-    ...unlock.conditions.filter((c) => !c.passed).map((c) => ({ label: c.label, hint: c.hint })),
-    ...readiness.filter((i) => !i.ok).map((i) => ({ label: i.label, hint: undefined as string | undefined })),
-  ];
-  const canAdvance = advanceBlockers.length === 0;
+  const intakeBlockers = unlock.conditions
+    .filter((c) => !c.passed)
+    .map((c) => ({ label: c.label, hint: c.hint }));
+
+  /**
+   * The advance itself still needs BOTH halves — it is the exit from the whole
+   * stage. It fires from the right pane's button, which sits beside the
+   * readiness list, so the half a rep can't see from there is the half this
+   * gate already showed them on the way in.
+   */
+  const canAdvance = unlock.unlocked && readyMissing === 0;
 
   /** Which rung a Propose Stuck from here lands on. Hoisted out of the click
    *  handler so the card can NAME the destination — the previous copy told the
@@ -2426,9 +2431,9 @@ const UnverifiedReferralsPage = () => {
                   value={selected.currentOopCost ?? ""}
                   onChange={(v) => edit({ currentOopCost: v })}
                 />
-                <p className="mt-2 text-[11px] text-muted-foreground">
-                  Free text, not a number — the board column is text, so “$75/month” is the expected shape.
-                </p>
+                {/* No "free text, not a number" note — the placeholder already
+                    shows the expected shape, and the column being text is a
+                    fact about the board, not something the rep needs told. */}
               </Card>
 
               <Card title="Proceed Preference" tone="lead">
@@ -2638,21 +2643,12 @@ const UnverifiedReferralsPage = () => {
                 title="Ready to Advance?"
                 tone="decide"
                 right={
-                  /* The badge counts whichever list is actually rendered below
-                     it: a partial shows the unlock conditions, everyone else
-                     shows the full advance gate (both panes). A number that
-                     doesn't match the list under it is worse than no number. */
-                  isPartial ? (
-                    <span className={unlock.unlocked ? "pill ok" : "pill warn"}>
-                      {unlock.unlocked
-                        ? "Ready"
-                        : `${unlock.conditions.filter((c) => !c.passed).length} blocking`}
-                    </span>
-                  ) : (
-                    <span className={canAdvance ? "pill ok" : "pill warn"}>
-                      {canAdvance ? "Ready" : `${advanceBlockers.length} blocking`}
-                    </span>
-                  )
+                  /* Counts the list actually rendered below it — this pane's
+                     conditions — on both branches. A number that doesn't match
+                     the list under it is worse than no number. */
+                  <span className={intakeBlockers.length === 0 ? "pill ok" : "pill warn"}>
+                    {intakeBlockers.length === 0 ? "Ready" : `${intakeBlockers.length} still needed`}
+                  </span>
                 }
               >
                 {isPartial ? (
@@ -2673,30 +2669,78 @@ const UnverifiedReferralsPage = () => {
                   </>
                 ) : (
                   <>
-                    <div className="mt-2 flex flex-wrap items-center gap-2">
+                    {/* ── The gate, ABOVE the actions ──
+                        What's blocking is the thing a rep reads first and acts
+                        on, so it leads the card in a panel of its own instead
+                        of trailing the buttons as 11px grey text. Set at
+                        readable size, and the panel itself carries the state:
+                        amber while something is outstanding, mint once it
+                        isn't. Covers BOTH panes, because that is what the
+                        advance is gated on. */}
+                    <div className={intakeBlockers.length === 0 ? "gate ready" : "gate blocking"}>
+                      <div className="gate-head">
+                        {intakeBlockers.length === 0 ? (
+                          <><Check className="h-4 w-4" /> Patient info complete</>
+                        ) : (
+                          <><X className="h-4 w-4" /> Still needed
+                            <span className="gate-count">{intakeBlockers.length}</span></>
+                        )}
+                      </div>
+
+                      {intakeBlockers.length === 0 ? (
+                        <p className="gate-note">
+                          {canAdvance
+                            ? "Profile is built too — advance from the Profile Clean-Up pane."
+                            : "Finish the profile on the right, then advance from there."}
+                        </p>
+                      ) : (
+                        <ul className="gate-list">
+                          {intakeBlockers.map((b) => (
+                            <li key={b.label}>
+                              <X className="h-4 w-4 shrink-0" />
+                              <div className="min-w-0">
+                                <div className="gl-label">{b.label}</div>
+                                {b.hint && <div className="gl-hint">{b.hint}</div>}
+                              </div>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+
+                      {/* The right pane still unlocks on its own from the left
+                          pane's conditions (HANDOFF §2: "not unlocked by a
+                          button click") — this only scrolls there. Shown
+                          whenever the pane is open, INCLUDING when everything
+                          passes: that is exactly when the rep wants to go press
+                          Advance, and the button is only over there. */}
+                      {unlock.unlocked && (
+                        <button
+                          onClick={() => cleanUpRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })}
+                          className="btn secondary sm"
+                        >
+                          Go to Profile Clean-Up →
+                        </button>
+                      )}
+                    </div>
+
+                    {/* ── The three actions, one even row ──
+                        Equal widths, side by side, nothing interleaved between
+                        them: the captions that used to sit inline are collected
+                        underneath, which is what let the row read as three
+                        different-sized things.
+
+                        ⚠️ ADVANCE IS DELIBERATELY NOT HERE (Josh, 2026-08-13).
+                        There is exactly ONE advance button and it lives at the
+                        bottom of the right pane, where the profile work ends. A
+                        copy here was the same action under the same gate in two
+                        places — which is how the two drift apart and start
+                        disagreeing about whether the patient may leave. */}
+                    <div className="exit-row">
                       {/* THE Monday write for the left pane. Named so it can't
                           be mistaken for the header's local Save. */}
                       <button onClick={save} disabled={saving} className="btn primary">
                         {saving ? "Saving…" : "Save to Monday"}
                       </button>
-                      <span className="text-xs text-muted-foreground">
-                        Writes the left pane to the board without advancing.
-                      </span>
-                    </div>
-
-                    {/* This pane's exits, as one row (Katie, 2026-08-13),
-                        replacing the stack of description cards. Both need a
-                        sentence from the rep, so both open a popup.
-
-                        ⚠️ ADVANCE IS DELIBERATELY NOT HERE (Josh, 2026-08-13).
-                        There is exactly ONE advance button and it lives at the
-                        bottom of the right pane, where the profile work ends.
-                        A copy here was the same action under the same gate in
-                        two places — which is how the two drift apart and start
-                        disagreeing about whether the patient may leave. What
-                        stays on this side is the READINESS summary below, plus
-                        a shortcut to the pane that owns the action. */}
-                    <div className="exit-row">
                       <button
                         onClick={() => setAttemptOpen(true)}
                         disabled={saving}
@@ -2711,52 +2755,12 @@ const UnverifiedReferralsPage = () => {
                       >
                         Propose Stuck
                       </button>
-                      <span className="text-xs text-muted-foreground">
-                        {attempts} attempt{attempts === 1 ? "" : "s"} logged
-                      </span>
                     </div>
-
-                    {/* What's blocking stays on screen rather than living in a
-                        tooltip on a greyed-out button (§2) — and it covers BOTH
-                        panes, because that is what the advance is gated on. */}
-                    {canAdvance ? (
-                      <p className="mt-3 text-sm text-emerald-700">
-                        Everything's in — advance from the Profile Clean-Up pane.
-                      </p>
-                    ) : (
-                      <>
-                        <p className="mt-3 mb-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                          Blocking the advance
-                        </p>
-                        <ul className="space-y-2" style={{ margin: "4px 0 4px" }}>
-                          {advanceBlockers.map((b) => (
-                            <li key={b.label} className="flex items-start gap-2 text-sm">
-                              <X className="h-4 w-4 mt-0.5 text-muted-foreground shrink-0" />
-                              <div className="min-w-0">
-                                <div className="text-muted-foreground">{b.label}</div>
-                                {b.hint && <div className="text-[11px] text-amber-700">{b.hint}</div>}
-                              </div>
-                            </li>
-                          ))}
-                        </ul>
-                      </>
-                    )}
-
-                    {/* The right pane still unlocks on its own from the left
-                        pane's conditions (HANDOFF §2: "not unlocked by a button
-                        click") — this only scrolls there. It shows whenever the
-                        pane is open, INCLUDING when everything passes: that is
-                        exactly when the rep wants to go press Advance, and the
-                        button is now only over there. */}
-                    {unlock.unlocked && (
-                      <button
-                        onClick={() => cleanUpRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })}
-                        className="btn secondary sm"
-                        style={{ marginTop: 10 }}
-                      >
-                        Go to Profile Clean-Up →
-                      </button>
-                    )}
+                    <p className="exit-note">
+                      Save writes the left pane to the board without advancing
+                      <span className="dot">·</span>
+                      {attempts} attempt{attempts === 1 ? "" : "s"} logged
+                    </p>
 
                   </>
                 )}

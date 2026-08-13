@@ -50,7 +50,7 @@
 .pf-root .rail-updates { max-height:calc(100vh - 240px);overflow-y:auto;overscroll-behavior:contain;padding-right:4px }
 .pf-root .rail-updates img { max-width:100%;height:auto }
 .pf-root .rail-updates table { max-width:100%;table-layout:fixed;word-break:break-word }
-.pf-root .rail-updates .note-entry { overflow-wrap:anywhere }
+/* (the rail's own overflow-wrap moved to the base .note-entry rule below) */
 .pf-root .rail-files { padding:8px }
 .pf-root .card { background:var(--card);border:1px solid var(--border);border-radius:16px;padding:24px;box-shadow:0 1px 2px 0 rgb(0 0 0 / .05) }
 .pf-root .step-card { border-left:4px solid var(--mm-green) }
@@ -290,7 +290,11 @@
 .pf-root .miss-pills { display:flex;flex-wrap:wrap;gap:7px;margin-top:12px }
 .pf-root .mp { font-size:.78rem;font-weight:600;padding:4px 11px;border-radius:999px;background:var(--mm-rose-soft);color:var(--mm-rose);box-shadow:inset 0 0 0 1px oklch(0.62 0.13 18 / 0.3) }
 .pf-root .mp.green { background:oklch(0.94 0.02 175 / 0.7);color:var(--mm-teal);box-shadow:inset 0 0 0 1px var(--mm-mint-ring) }
-.pf-root .note-entry { font-size:.9rem;background:oklch(0.968 0.007 247.896 / 0.4);border-radius:9px;padding:10px 14px;margin-top:8px }
+/* `overflow-wrap:anywhere` is on the BASE rule, not just the rail (Josh,
+   2026-08-13). Notes routinely carry a tokenized upload link — one unbreakable
+   ~200-char word — and without it the Call Log ran off the side of the card
+   and took the page's horizontal scroll with it. */
+.pf-root .note-entry { font-size:.9rem;background:oklch(0.968 0.007 247.896 / 0.4);border-radius:9px;padding:10px 14px;margin-top:8px;overflow-wrap:anywhere }
 .pf-root .note-entry .ts { color:var(--muted-foreground);font-size:.8rem }
 .pf-root .note-add { display:flex;gap:10px;align-items:flex-start;margin-top:12px }
 .pf-root .note-add textarea { min-height:58px;resize:vertical }
