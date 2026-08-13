@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   callConnected,
+  callLogPhoneParam,
   callOutcomeLabel,
   formatCallDuration,
   isVoicemail,
@@ -119,6 +120,28 @@ describe("toPatientCalls", () => {
   it("matches on the last 10 digits, however the number was typed", () => {
     const rows = [call({ from: { phoneNumber: "3475550101" } })];
     expect(toPatientCalls(rows, "+1 (347) 555-0101")).toHaveLength(1);
+  });
+});
+
+describe("callLogPhoneParam", () => {
+  // Regression: the first build queried the call-log with toE164() output. The
+  // filter returns 200 + an EMPTY LIST for a leading "+", so every patient read
+  // as "no calls in the last year" — including one we had called 13 times that
+  // week. Verified live: "+17174242514" → 0 records, "17174242514" → 13.
+  it("strips the + — the call-log filter silently returns nothing with it", () => {
+    expect(callLogPhoneParam("+17174242514")).toBe("17174242514");
+    expect(callLogPhoneParam("+17174242514")).not.toContain("+");
+  });
+
+  it("reduces any formatting to bare digits", () => {
+    expect(callLogPhoneParam("(717) 424-2514")).toBe("7174242514");
+    expect(callLogPhoneParam("717-424-2514")).toBe("7174242514");
+    expect(callLogPhoneParam("7174242514")).toBe("7174242514");
+  });
+
+  it("is empty-safe", () => {
+    expect(callLogPhoneParam("")).toBe("");
+    expect(callLogPhoneParam(undefined as unknown as string)).toBe("");
   });
 });
 

@@ -830,6 +830,21 @@ for any call RingCentral recorded. Pure logic in **`lib/callHistory/callHistory.
 REST in `lib/fax/ringcentralApi.ts` (`fetchPatientCallHistory` / `fetchRecordingBlobUrl`), UI in
 **`components/shared/CallHistoryButton.tsx`**.
 
+**⚠️ The call-log `phoneNumber` filter takes DIGITS, not E.164 — a leading `+` returns NOTHING.**
+Not an error: **HTTP 200 with an empty `records` list**, which is indistinguishable from a patient
+nobody has ever called. `message-store` (SMS + fax) is the exact opposite — it *wants* the `+` —
+so `toE164()` output is right for texting and wrong here, on the same API, with no signal either
+way. This shipped, and every patient read "No calls with this number in the last year" while the
+same window held 13 calls. Verified live: `+17174242514` → 0 records, `17174242514` → 13,
+`(717) 424-2514` → 0. `callLogPhoneParam` is the one place that strips it; don't "tidy" it back to
+`toE164`. The E.164 form is still what the local re-match and the display use — only the QUERY
+differs. (`direction` is deliberately not passed: both directions is the default.)
+
+> **Why the local re-match in `toPatientCalls` still matters:** the shared MM line does ~1000 voice
+> calls every three weeks, so client-side filtering of an unfiltered log is not an option (a year
+> would be ~17 pages of the whole office's calls shipped to a browser). RingCentral's filter does
+> the work; the last-10 re-match is the guard that one patient's card can never show another's call.
+
 **⚠️ `result` cannot be read literally — read the LEGS.** Claiming an inbound call forwards it,
 which tears down the original leg, so a call a rep actually TOOK can arrive stamped with a
 terminal-looking result. This is the same trap §5.13 documents for the live-call cards, and it

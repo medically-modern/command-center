@@ -127,6 +127,29 @@ export interface RcCallLogRecord {
 const last10 = (s: unknown) => String(s ?? "").replace(/\D/g, "").slice(-10);
 
 /**
+ * The `phoneNumber` value RingCentral's CALL-LOG filter accepts. **Digits
+ * only — NOT E.164.**
+ *
+ * ⚠️ The call-log filter returns ZERO records for a leading "+": HTTP 200, an
+ * empty list, no error, no warning. The message-store filter (SMS + fax) is
+ * the exact opposite — it wants the "+" and works fine with it, which is why
+ * texting and the fax inbox have always been correct. Two filters on the same
+ * API with opposite expectations, and the call-log's way of disagreeing is to
+ * look precisely like a patient nobody has ever called.
+ *
+ * Verified against the live account, same patient, same window:
+ *   "+17174242514" → 0 records      "17174242514" → 13
+ *   "(717) 424-2514" → 0 records    "7174242514"  → 13
+ *
+ * So formatting is not cosmetic here — do not "tidy" this back to toE164(),
+ * and do not reuse `toE164` output for a call-log query. The E.164 form is
+ * still what the local re-match and the display use; only the QUERY differs.
+ */
+export function callLogPhoneParam(phone: string): string {
+  return String(phone ?? "").replace(/\D/g, "");
+}
+
+/**
  * Normalise one RingCentral record. Returns null for a record we can't place in
  * time, because a call with no timestamp can't be sorted or shown honestly.
  */

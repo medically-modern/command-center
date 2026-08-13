@@ -10,7 +10,12 @@
  */
 
 import { getIdToken } from "../shared/auth";
-import { toPatientCalls, type PatientCall, type RcCallLogRecord } from "../callHistory/callHistory";
+import {
+  callLogPhoneParam,
+  toPatientCalls,
+  type PatientCall,
+  type RcCallLogRecord,
+} from "../callHistory/callHistory";
 
 const GATEWAY =
   (import.meta.env.VITE_MONDAY_GATEWAY_URL as string | undefined)?.replace(/\/+$/, "") || "";
@@ -327,7 +332,12 @@ export async function fetchPatientCallHistory(
   const dateFrom = new Date(Date.now() - (opts.sinceDays ?? 365) * 24 * 60 * 60_000).toISOString();
   const path =
     `/restapi/v1.0/account/~/extension/~/call-log` +
-    `?phoneNumber=${encodeURIComponent(num)}&type=Voice&view=Detailed&direction=Inbound&direction=Outbound` +
+    // ⚠️ DIGITS, not E.164 — a leading "+" makes this filter return an empty
+    // list with a 200. See callLogPhoneParam. (`num` stays E.164 for the local
+    // re-match below, which is what actually guarantees one patient's calls.)
+    `?phoneNumber=${encodeURIComponent(callLogPhoneParam(num))}&type=Voice&view=Detailed` +
+    // No `direction` filter: both directions is the default, and the history
+    // wants both. Passing it twice worked but bought nothing.
     `&dateFrom=${encodeURIComponent(dateFrom)}&perPage=${opts.perPage ?? 100}`;
   const res = await rcFetch(path);
   if (!res.ok) {
