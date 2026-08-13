@@ -5,11 +5,11 @@
 // then unknown/other sources alphabetically — followed by the dimmed Follow Up
 // section. Run: npx vitest run src/lib/profile/sidebarList.test.ts
 import { describe, it, expect } from "vitest";
-import { sidebarSections, sidebarVisibleList } from "./sidebarList";
+import { attemptCount, sidebarSections, sidebarVisibleList } from "./sidebarList";
 import type { Patient } from "./workflow";
 
 const p = (over: Partial<Patient>): Patient =>
-  ({ id: "x", name: "n", followUp: "", referralSource: "", ...over } as Patient);
+  ({ id: "x", name: "n", followUp: "", referralSource: "", attemptCounter: "", ...over } as Patient);
 
 const ids = (list: Patient[]) => list.map((x) => x.id);
 
@@ -118,6 +118,65 @@ describe("ignoreFollowUp — Patient Intake, which has no snooze", () => {
   it("carries through sidebarVisibleList, so page auto-select matches", () => {
     expect(ids(sidebarVisibleList(patients, "nonEscalated", { ignoreFollowUp: true })))
       .toEqual(["parked", "live"]);
+  });
+});
+
+describe("sortByAttempts — Patient Intake, where nothing ages a patient out", () => {
+  // With no snooze the queue only grows, so it needs an order or a rep working
+  // top-down re-rings the same people and the bottom never gets touched.
+  const patients = [
+    p({ id: "three", attemptCounter: "3", referralSource: "Patient" }),
+    p({ id: "none", attemptCounter: "", referralSource: "Patient" }),
+    p({ id: "one", attemptCounter: "1", referralSource: "Patient" }),
+  ];
+
+  it("puts the least-tried first", () => {
+    const s = sidebarSections(patients, { sortByAttempts: true });
+    expect(ids(s.sourceGroups[0].patients)).toEqual(["none", "one", "three"]);
+  });
+
+  it("keeps Monday's order among equals, so the oldest untried is called first", () => {
+    // Stable sort. Newest-first among the untried would leave the oldest
+    // untried patient permanently last — the exact rot this ordering prevents.
+    const sameCount = [
+      p({ id: "older", attemptCounter: "", referralSource: "Patient" }),
+      p({ id: "newer", attemptCounter: "0", referralSource: "Patient" }),
+    ];
+    const s = sidebarSections(sameCount, { sortByAttempts: true });
+    expect(ids(s.sourceGroups[0].patients)).toEqual(["older", "newer"]);
+  });
+
+  it("orders WITHIN each referral-source group, not just across the flat list", () => {
+    const mixed = [
+      p({ id: "t-tried", attemptCounter: "2", referralSource: "Tandem" }),
+      p({ id: "p-tried", attemptCounter: "5", referralSource: "Patient" }),
+      p({ id: "t-fresh", attemptCounter: "", referralSource: "Tandem" }),
+      p({ id: "p-fresh", attemptCounter: "", referralSource: "Patient" }),
+    ];
+    const s = sidebarSections(mixed, { sortByAttempts: true });
+    expect(s.sourceGroups.map((g) => g.source)).toEqual(["Tandem", "Patient"]);
+    expect(ids(s.sourceGroups[0].patients)).toEqual(["t-fresh", "t-tried"]);
+    expect(ids(s.sourceGroups[1].patients)).toEqual(["p-fresh", "p-tried"]);
+  });
+
+  it("treats an unreadable counter as untried rather than hiding it at the bottom", () => {
+    const odd = [
+      p({ id: "junk", attemptCounter: "n/a", referralSource: "Patient" }),
+      p({ id: "two", attemptCounter: "2", referralSource: "Patient" }),
+    ];
+    expect(attemptCount(odd[0])).toBe(0);
+    expect(ids(sidebarSections(odd, { sortByAttempts: true }).sourceGroups[0].patients))
+      .toEqual(["junk", "two"]);
+  });
+
+  it("leaves the order alone by default, for the two roles with no counter", () => {
+    const s = sidebarSections(patients);
+    expect(ids(s.sourceGroups[0].patients)).toEqual(["three", "none", "one"]);
+  });
+
+  it("is what sidebarVisibleList returns, so page auto-select opens the top row", () => {
+    expect(ids(sidebarVisibleList(patients, "all", { sortByAttempts: true })))
+      .toEqual(["none", "one", "three"]);
   });
 });
 

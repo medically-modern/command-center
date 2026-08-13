@@ -15,7 +15,7 @@ import { Button } from "@/components/ui/button";
 import { Clock, Loader2, RefreshCw, User, AlertCircle, Undo2, Search, X, ChevronRight } from "lucide-react";
 import type { Patient } from "@/lib/profile/workflow";
 import { titleCaseName } from "@/lib/profile/workflow";
-import { sidebarSections } from "@/lib/profile/sidebarList";
+import { attemptCount, sidebarSections } from "@/lib/profile/sidebarList";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { clearStatusColumn, clearDateColumn, COL } from "@/lib/profile/mondayApi";
@@ -56,9 +56,13 @@ interface Props {
    *  Referrals and Already In System use the column as a genuine follow-up flag
    *  and keep the split. */
   ignoreFollowUp?: boolean;
+  /** Order each group least-tried-first and show the count on the row. Patient
+   *  Intake sets this — see `SidebarOptions.sortByAttempts` for why that queue
+   *  needs an order at all. */
+  sortByAttempts?: boolean;
 }
 
-export function PatientsSidebar({ patients, selectedId, onSelect, loading, error, onRefresh, hasOverlay, filters, ignoreFollowUp }: Props) {
+export function PatientsSidebar({ patients, selectedId, onSelect, loading, error, onRefresh, hasOverlay, filters, ignoreFollowUp, sortByAttempts }: Props) {
   const { state } = useSidebar();
   const [searchQuery, setSearchQuery] = useState("");
 
@@ -71,8 +75,8 @@ export function PatientsSidebar({ patients, selectedId, onSelect, loading, error
   // Active patients grouped by referral source + Follow Up section — the
   // shared list math lives in sidebarList.ts so page auto-select matches.
   const { sourceGroups: groupedBySource, followUpPatients } = useMemo(
-    () => sidebarSections(filteredBySearch, { ignoreFollowUp }),
-    [filteredBySearch, ignoreFollowUp],
+    () => sidebarSections(filteredBySearch, { ignoreFollowUp, sortByAttempts }),
+    [filteredBySearch, ignoreFollowUp, sortByAttempts],
   );
 
   // Track which groups are collapsed (all open by default)
@@ -182,8 +186,23 @@ export function PatientsSidebar({ patients, selectedId, onSelect, loading, error
                                   <span className="h-2 w-2 rounded-full bg-amber-400 shrink-0" title="Unsaved edits" />
                                 )}
                               </div>
+                              {/* The count the list is ORDERED by, on the row
+                                  that carries it. Untried is called out rather
+                                  than printed as "0 tries": it is the state a
+                                  rep is scanning for, and it is what the sort
+                                  puts at the top. */}
                               <p className="text-[11px] text-muted-foreground truncate">
                                 {p.dateOfIntake || "—"}
+                                {sortByAttempts && (
+                                  <>
+                                    {" · "}
+                                    {attemptCount(p) === 0 ? (
+                                      <span className="font-semibold text-emerald-600">not tried yet</span>
+                                    ) : (
+                                      `${attemptCount(p)} ${attemptCount(p) === 1 ? "try" : "tries"}`
+                                    )}
+                                  </>
+                                )}
                               </p>
                             </div>
                           )}

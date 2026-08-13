@@ -93,6 +93,7 @@ import { proposeStuckLevel } from "@/lib/shared/stageActions";
 // The live sidebar and header, so this page sits in the same chrome as every
 // other Command Center stage instead of inventing its own.
 import { PatientsSidebar } from "@/components/profile/PatientsSidebar";
+import { sidebarVisibleList } from "@/lib/profile/sidebarList";
 import { useAccessContext } from "@/components/AccessProvider";
 import { managerPeople, processorPeople } from "@/lib/people";
 import { coordinatorNoteLine, extractCoordinator } from "@/lib/profile/careCoordinator";
@@ -110,6 +111,18 @@ import "./profile/intake.css";
  *  Verified Referrals' queue, and it is where this stage ADVANCES patients to,
  *  so listing it here showed reps the stage they'd already handed off to. */
 type Source = "completed" | "partial";
+
+/**
+ * How this queue's sidebar behaves, in one place: the page's auto-select and
+ * the sidebar itself both read it, so the row a rep looks at first and the
+ * patient the page opens on cannot drift apart.
+ *
+ * `ignoreFollowUp` — this stage has no snooze, so the column is not part of its
+ * model (and a patient parked by the old one has to come back).
+ * `sortByAttempts` — nothing ages a patient out of here, so least-tried-first
+ * is what stops the bottom of a growing list never being called.
+ */
+const SIDEBAR_OPTIONS = { ignoreFollowUp: true, sortByAttempts: true } as const;
 
 const SOURCE_GROUP: Record<Source, string> = {
   completed: GROUPS.newFormCompleted,
@@ -621,9 +634,25 @@ const UnverifiedReferralsPage = () => {
     return patients.filter((p) => !escalated(p));
   }, [patients, managerOrigin]);
 
+  /**
+   * The default patient is the one the SIDEBAR puts first, not whichever
+   * happens to be first out of Monday.
+   *
+   * `sidebarVisibleList` flattens the sidebar top-to-bottom under the same
+   * options the sidebar renders with, so the two can't disagree. That was
+   * cosmetic while the list came back in fetch order; it stopped being
+   * cosmetic when the queue gained an order of its own (least-tried first),
+   * because the page would otherwise open on someone several rows down while
+   * the row the rep is looking at goes unselected.
+   */
+  const ordered = useMemo(
+    () => sidebarVisibleList(visible, "all", SIDEBAR_OPTIONS),
+    [visible],
+  );
+
   const selected = useMemo(
-    () => visible.find((p) => p.id === selectedId) ?? visible[0] ?? null,
-    [visible, selectedId],
+    () => ordered.find((p) => p.id === selectedId) ?? ordered[0] ?? null,
+    [ordered, selectedId],
   );
 
   const unlock = useMemo(() => evaluateUnlock(selected), [selected]);
@@ -1557,10 +1586,10 @@ const UnverifiedReferralsPage = () => {
              unsaved-edit marker. Without it this sidebar silently loses a
              cue reps rely on, which is most of why it read as "odd". */
           hasOverlay={hasOverlay}
-          /* This stage has no snooze, so Follow Up is not part of its model —
-             and a patient still carrying "Done" from the old one has to come
-             back rather than sit in a section this page doesn't draw. */
-          ignoreFollowUp
+          /* Both flags live in SIDEBAR_OPTIONS, which the page's own
+             auto-select reads too — see there for what each one is for. */
+          ignoreFollowUp={SIDEBAR_OPTIONS.ignoreFollowUp}
+          sortByAttempts={SIDEBAR_OPTIONS.sortByAttempts}
           filters={(Object.keys(SOURCE_GROUP) as Source[]).map((sKey) => (
             <button
               key={sKey}

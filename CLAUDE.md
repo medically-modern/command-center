@@ -367,6 +367,17 @@ Verified Referrals and Already In System still use the column as a genuine follo
 keep the split — this is a Patient-Intake-only rule. `returnIntakeToPipeline` clears a stale
 Follow Up as a heal, not as part of the return.
 
+**Which is why this queue is ORDERED least-tried-first** (`SidebarOptions.sortByAttempts`, both
+flags together in the page's `SIDEBAR_OPTIONS`). Nothing ages a patient out of a stage with no
+snooze, so the list only grows, and a rep working it top-down would re-ring the same people while
+the bottom never got touched. Ascending, and the tie-break carries as much weight as the sort:
+`Array.prototype.sort` is stable, so equal counts keep Monday's own order — **oldest submission
+first**. Newest-first among the untried reads as "speed to lead" and produces exactly the rot this
+prevents. The count renders on the row (`attemptCount`, "not tried yet" called out) — ordering a
+list by a number the rep can't see is its own unexplained behaviour. The page's auto-select reads
+`sidebarVisibleList` under the same options, so the row a rep looks at first and the patient the
+page opens on can't drift apart.
+
 ⚠️ Referral **Source** also has a `Patient` label — only the **Type** column routes `Patient`
 to Unverified. Canonical rule: `src/lib/profile/referralSplit.ts` `profileReferralRole`
 (+ tests). The rule is applied in **five** places that must stay in agreement (same drill as §5.9):
@@ -747,6 +758,70 @@ follows the monitor onto the **sensors** half and is cleared on the supplies hal
 what `medicarePriorPumpDate` does. Both writes ride the verified batch with the Stage Advancer as
 `stageColumnId`, which is what guarantees the value is indexed before Final Confirm's advancer
 fires the create-item hop to **Subscription `text_mm66werp`**.
+
+### 5.15 Scheduled Calls + the booking path — Calendly owns the appointment (Aug 2026)
+A DTC patient can book a 10-minute intake call. **Calendly is the system of record**; the Profile
+Send Off board carries a **mirror** — Scheduled Call Time **`date_mm63na19`**, Booking Status
+**`color_mm5zrbn3`** (*Scheduled · Unscheduled · Canceled*), Calendly Event URI
+**`text_mm63e086`** — written by the **dtc-mm-form** backend and corrected by its Calendly webhook.
+The `scheduledCalls` role (`/scheduled-calls`) reads that mirror with an ordinary board query, so
+the SPA needs no Calendly credentials and the role counts like any other (§5.8).
+
+**⚠️ The mirror joins on the invitee's EMAIL and nothing else.** `booking.js` `findPatientRow`
+looks the invitee's address up against the row's Email column `text_mm1xc140`, scoped to the two
+DTC form groups; `handleWebhookEvent` gives up with "no matching row" otherwise, and
+`reconcileDay` — the repair for a missed webhook — uses the same lookup. So a patient who books
+with a different address than the board holds gets a real appointment that exists in Calendly and
+**nowhere else**: the intake page still reads "Not booked", the day grid never lists them, no
+reminder fires, and nothing errors anywhere.
+> **That is why the booking link is PREFILLED, and why the prefill must not be "tidied away".**
+> Both senders append Calendly's `name` + `email` parameters — the form's own embed
+> (`index.html mountCalendly`) and the rep's **`components/scheduledCalls/BookingLinkDialog`** via
+> **`lib/scheduledCalls/bookingLink.ts`** (+ tests). It looks like cosmetic URL decoration and is
+> in fact the only thing holding the patient to the address we know them by. The dialog prefills
+> from the patient's row, or — in **email mode only**, never text, where that field is a phone —
+> whatever the rep is sending to. It narrows the failure rather than closing it (Calendly lets an
+> invitee edit a prefilled field), so the dialog also says so on screen when the row has **no**
+> email, which is the case prefill cannot cover.
+
+**There is no "type a new time" path anywhere, on purpose.** The Scheduling API is off on this
+account — `POST /invitees` is refused with `invalid_location_choice` for every location shape — so
+a locally-entered time could never become a real booking. `/api/intake/book` is kept because it is
+correct against the documented API, but is **unreachable**; the form embeds Calendly's page, and a
+rep reschedules through **`GET /api/intake/reschedule-link`** → Calendly's own per-invitee
+reschedule URL, which swaps the event and fires the webhook that re-mirrors it. What this replaced
+was a free-text slot plus a Confirm button that wrote Booking Status = Scheduled: it marked people
+scheduled with no Calendly event, so they never appeared in this queue and the call never happened.
+⚠️ **Booking Status cannot tell the two apart** and is therefore never rendered as truth —
+the form writes `Scheduled` the moment a patient picks a time STRING, before any event exists.
+`formatBookedCall(p.scheduledCallTime)` (the Calendly mirror) is the one fact that decides
+whether a booking exists, on the intake page and in the day grid alike.
+
+**Counted by CLOCK, not by a follow-up rule** — the only role that is. `remainingToday` is "how
+many appointments are still ahead of you today", falling by one as each start time passes, so it
+reaches zero at day's end whether or not a single call was made; that is understood and accepted
+(Josh, 2026-08-10). Nothing marks a call done. The 9 AM baseline lands before any appointment has
+passed, so it captures the day's full total and the live count burns down from it. Keep-in-agreement
+(§5.8): `lib/scheduledCalls/workflow.ts` `remainingToday` · `useRoleCounts.ts` · **both** baseline
+generators. ⚠️ A **canceled** booking keeps its row, so every one of them filters it out — and a
+cancel clears the time column too, since a mirror still showing the old slot is what makes a rep
+ring somebody who called off.
+> Times are **naive Eastern wall-clock**: Monday stores the date column in UTC and returns `text`
+> already rendered in the account's zone, so what comes back IS Eastern and needs no conversion.
+> Everything here compares **minutes-in-the-day**, never `Date` objects — building a Date from a
+> board value in a UTC container is the bug that had the old form booking people three hours out.
+> `minutesOfDay` is anchored at both ends for the same reason: a loose match reads a display
+> string like `2:00 PM` as 02:00.
+
+**The ten-minute reminder is `components/scheduledCalls/ScheduledCallHost`**, mounted **app-wide**
+in `App.tsx` beside `IncomingCallHost` — a rep is working somewhere else when a call comes due.
+⚠️ It is gated to people who actually **hold the role** (`access.type === "processor"` + the role),
+so managers deliberately get the queue on the page rather than the interruption — but the page
+prints "You'll get a reminder 10 minutes before each call" to everyone, which is a promise it does
+not keep for them (or for anyone, in bootstrap mode, where everyone is a manager). Fix the copy,
+not the gate. It also fires only while a Command Center tab is open, and announces once per call
+per day (`announced` resets at ET midnight, or a tab left open overnight carries yesterday's set
+into today and the first morning call goes unannounced).
 
 ---
 
@@ -1161,6 +1236,8 @@ these services; when their math changes, `oopEstimator.ts` must be updated to ma
 | Cost estimate wrong | `lib/welcomeCall/oopEstimator.ts` (sync vs Railway financial backend) |
 | Who can see what | `lib/accessStore.ts`, `lib/roleView.ts`, `components/AccessProvider.tsx` |
 | Files won't load / PDF viewer | `lib/shared/mondayAssets.ts`, `components/shared/FileViewerModal.tsx`, `worker/src/index.js` |
+| A booking didn't show up in Scheduled Calls | §5.15 — the mirror joins on the invitee's EMAIL. `lib/scheduledCalls/bookingLink.ts` (the prefill), then dtc-mm-form `server/src/booking.js` |
+| Booked-call queue / the 10-min reminder | `lib/scheduledCalls/workflow.ts` + `pages/ScheduledCallsPage.tsx` + `components/scheduledCalls/ScheduledCallHost.tsx` (§5.15) |
 | Fax/email send | `components/masheke/SendRequestPanel.tsx`, `worker/src/index.js`, `lib/fax/ringcentralApi.ts` |
 | Audit a write that "disappeared" | gateway `/audit` (Postgres `gql_log` / `send_jobs`) |
 | Manager pipeline / oversight charts | `components/oversight/OversightTab.tsx` + `lib/oversight/oversightApi.ts` (+ `priority.ts`); reached via `/system-mgmt?tab=oversight` |

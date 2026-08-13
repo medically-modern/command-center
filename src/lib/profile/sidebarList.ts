@@ -26,6 +26,18 @@ export interface SidebarSections {
   followUpPatients: Patient[];
 }
 
+/**
+ * The Attempt Counter as a number.
+ *
+ * Blank or unparseable is 0: a patient nobody has called and one whose counter
+ * failed to read are the same thing to a rep deciding who to ring next, and
+ * both belong at the top of the list rather than silently at the bottom.
+ */
+export function attemptCount(p: Patient): number {
+  const n = Number((p.attemptCounter ?? "").trim());
+  return Number.isFinite(n) && n > 0 ? n : 0;
+}
+
 export interface SidebarOptions {
   /**
    * Treat Follow Up as none of this queue's business: everyone is active and
@@ -39,19 +51,43 @@ export interface SidebarOptions {
    * column as a genuine follow-up flag and keep the split.
    */
   ignoreFollowUp?: boolean;
+  /**
+   * Order each group by Attempt Counter, least-tried first.
+   *
+   * Patient Intake passes this, and it exists because that stage has no snooze
+   * (see above): nothing ages a patient out, so the queue only grows and a
+   * rep working it top-down would re-ring the same people while the bottom
+   * never got touched. Least-tried-first is what stops anyone rotting there.
+   *
+   * ⚠️ Ascending on purpose, and the tie-break matters as much as the sort:
+   * `Array.prototype.sort` is stable, so patients on the same count keep
+   * Monday's own order — oldest submission first. Newest-first among the
+   * untried would read as "speed to lead" and produce exactly the failure this
+   * is for, with the oldest untried patient permanently last.
+   *
+   * The count is rendered on the row too. Sorting a list by a number the rep
+   * can't see is its own kind of unexplained behaviour.
+   */
+  sortByAttempts?: boolean;
 }
 
 /** Split the raw patient list into the sidebar's sections. */
 export function sidebarSections(
   patients: Patient[],
-  { ignoreFollowUp = false }: SidebarOptions = {},
+  { ignoreFollowUp = false, sortByAttempts = false }: SidebarOptions = {},
 ): SidebarSections {
-  const activePatients = ignoreFollowUp
+  const active = ignoreFollowUp
     ? patients
     : patients.filter((p) => p.followUp !== "Done");
   const followUpPatients = ignoreFollowUp
     ? []
     : patients.filter((p) => p.followUp === "Done");
+
+  // Sorted BEFORE grouping, so the order holds inside each referral-source
+  // group rather than only across the flat list.
+  const activePatients = sortByAttempts
+    ? [...active].sort((a, b) => attemptCount(a) - attemptCount(b))
+    : active;
 
   const groups: Record<string, Patient[]> = {};
   for (const p of activePatients) {
