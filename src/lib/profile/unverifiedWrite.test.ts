@@ -250,27 +250,24 @@ describe("write paths added for the mockup port", () => {
     expect(COL.pumpType).not.toBe(COL.formPumpPreference);
   });
 
-  it("writes the Follow Up flag and its date", () => {
-    const cols = columnsOf(buildIntakeTasks("123", { followUp: "Follow Up", followUpDate: "2026-08-10" }));
-    expect(cols).toContain(COL.followUp);
-    expect(cols).toContain(COL.followUpDate);
-  });
-
-  it("does not raise the Follow Up flag for a blank value", () => {
-    // The column has a single label, so "" means "leave it alone" — writing
-    // index 1 anyway would flag every patient whose save touched the field.
-    expect(columnsOf(buildIntakeTasks("123", { followUp: "" }))).not.toContain(COL.followUp);
-  });
-
-  it("never lets a bulk save clear the snooze", () => {
-    // followUp/followUpDate belong to logAttempt. writeDate with a blank string
-    // CLEARS the column, so round-tripping them through Save is a way to
-    // un-snooze a patient back onto the burndown by accident.
-    const cols = columnsOf(buildIntakeTasks("123", { dob: "01/02/1990", followUpDate: "" }));
-    expect(cols).toContain(COL.followUpDate); // explicit callers still can
-    const save = columnsOf(buildIntakeTasks("123", { dob: "01/02/1990" }));
-    expect(save).not.toContain(COL.followUpDate);
-    expect(save).not.toContain(COL.followUp);
+  it("NEVER writes Follow Up or its date — this stage has no snooze", () => {
+    // Josh, 2026-08-13. Follow Up is the flag every list on this board uses to
+    // decide who is active, and nothing anywhere reads the Follow Up Date, so
+    // writing the pair removed a patient from the queue for good on the first
+    // unanswered call. A call attempt now bumps the Attempt Counter and leaves
+    // the patient where they are. Passing the fields is a type error; this
+    // guards the runtime shape against a re-add through a wider object.
+    const everything = buildIntakeTasks("123", {
+      dob: "01/02/1990",
+      attemptCounter: 3,
+      selfAdvocacy: "High",
+      ...({ followUp: "Follow Up", followUpDate: "2026-08-10" } as Record<string, never>),
+    });
+    const cols = columnsOf(everything);
+    expect(cols).not.toContain(COL.followUp);
+    expect(cols).not.toContain(COL.followUpDate);
+    // The attempt counter is what a logged attempt actually moves.
+    expect(cols).toContain(COL.attemptCounter);
   });
 
   it("NEVER writes the notes column from a bulk save", () => {
@@ -279,7 +276,7 @@ describe("write paths added for the mockup port", () => {
     // the entire history with one line.
     const everything = buildIntakeTasks("123", {
       name: "Richard Clark", dob: "01/02/1990", gender: "Male",
-      patientAddress: "1 Main St", followUp: "Follow Up", followUpDate: "2026-08-10",
+      patientAddress: "1 Main St",
       selfAdvocacy: "High", currentOopCost: "$75/month",
     });
     expect(columnsOf(everything)).not.toContain(COL.notes);

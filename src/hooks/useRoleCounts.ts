@@ -609,19 +609,28 @@ export function useRoleCounts(opts?: { roleIds?: string[] }) {
           // Form patients live in their own groups but belong to the same role.
           // Every item there came from the DTC form, so no referral split is
           // needed — they are unverified by definition.
+          //
+          // ⚠️ Follow Up is deliberately NOT consulted here (Josh, 2026-08-13).
+          // Patient Intake has no snooze: a call attempt bumps the Attempt
+          // Counter and the patient stays put. Filtering on that column is what
+          // made one unanswered call remove them from this count — and from the
+          // sidebar and the burndown — permanently, since nothing ever read the
+          // Follow Up Date that was supposed to bring them back. Escalation is
+          // still excluded: that one really does hand the patient to a manager,
+          // and Oversight's two intake manager charts pick them up.
+          // Mirrors `sidebarSections(…, { ignoreFollowUp: true })` + BOTH
+          // baseline generators (§5.8 counting contract — change together).
           const formItems = (
             await Promise.all(
               PROFILE_FORM_GROUP_IDS.map((gid) =>
-                fetchBoardGroupItemsLight(PROFILE_BOARD_ID, gid, [PROF_FOLLOWUP_COL, PROF_INTAKE_ESC_COL]).catch(
+                fetchBoardGroupItemsLight(PROFILE_BOARD_ID, gid, [PROF_INTAKE_ESC_COL]).catch(
                   () => [] as LightItem[],
                 ),
               ),
             )
           ).flat();
           const formActive = formItems.filter(
-            (i) =>
-              i.cols[PROF_FOLLOWUP_COL] !== "Done" &&
-              !PROF_ESCALATED_LABELS.includes((i.cols[PROF_INTAKE_ESC_COL] ?? "").trim()),
+            (i) => !PROF_ESCALATED_LABELS.includes((i.cols[PROF_INTAKE_ESC_COL] ?? "").trim()),
           );
 
           merge(

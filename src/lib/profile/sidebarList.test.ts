@@ -92,6 +92,35 @@ describe("sidebarVisibleList — Follow Up section", () => {
   });
 });
 
+describe("ignoreFollowUp — Patient Intake, which has no snooze", () => {
+  // Josh, 2026-08-13: a call attempt on that stage bumps the Attempt Counter
+  // and nothing else, so Follow Up is not part of its model. The page must
+  // IGNORE the column, not merely hide the section — patients parked by the
+  // old snooze carry "Done" and would otherwise stay missing from the sidebar
+  // with no way for a rep to reach them.
+  const patients = [
+    p({ id: "parked", followUp: "Done", referralSource: "Patient" }),
+    p({ id: "live", referralSource: "Patient" }),
+  ];
+
+  it("keeps a 'Done' patient in the main list instead of a section", () => {
+    const s = sidebarSections(patients, { ignoreFollowUp: true });
+    expect(ids(s.followUpPatients)).toEqual([]);
+    expect(ids(s.sourceGroups[0].patients)).toEqual(["parked", "live"]);
+  });
+
+  it("still splits by default, so the other two profile roles are untouched", () => {
+    const s = sidebarSections(patients);
+    expect(ids(s.followUpPatients)).toEqual(["parked"]);
+    expect(ids(s.sourceGroups[0].patients)).toEqual(["live"]);
+  });
+
+  it("carries through sidebarVisibleList, so page auto-select matches", () => {
+    expect(ids(sidebarVisibleList(patients, "nonEscalated", { ignoreFollowUp: true })))
+      .toEqual(["parked", "live"]);
+  });
+});
+
 describe("sidebarVisibleList — view filter", () => {
   it("has no escalation split, so every filter returns the same list", () => {
     const patients = [

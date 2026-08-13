@@ -82,9 +82,6 @@ import {
   generateUploadLink, uploadLinkMessage, uploadLinksConfigured,
   getRescheduleLink, formatBookedCall,
 } from "@/lib/profile/uploadLink";
-// Monday dates are timezone-naive ET — never date a board column from a bare
-// `new Date()` in a UTC runtime (CLAUDE.md §9).
-import { etToday, addBusinessDaysIso } from "@/lib/masheke/etDate";
 import { toast } from "sonner";
 // The shared bar, so this stage's Propose Stuck / Send back to pipeline are
 // literally the same component and copy Medical Evaluation uses — not a
@@ -576,11 +573,9 @@ function intakeEditsFor(p: Patient): IntakeEdits {
     selfAdvocacy: p.selfAdvocacy,
     currentOopCost: p.currentOopCost,
     cgmDataAwareness: p.cgmDataAwareness,
-    // followUp / followUpDate are NOT sent either. `logAttempt` owns the
-    // snooze and writes both explicitly. Round-tripping them through every
-    // Save only creates a way to lose one: writeDate with a blank string
-    // CLEARS the column, so a save whose local copy of the date was stale
-    // would silently un-snooze the patient back onto the burndown.
+    // followUp / followUpDate are NOT sent, and `IntakeEdits` no longer even
+    // carries them: this stage has no snooze, and the pair is what used to
+    // remove a patient from the queue for good on the first missed call.
     // `notes` is NOT sent. The Call Log appends through appendIntakeNote —
     // including it here would write the whole log back over itself, and the
     // moment a textarea was bound to it, replace the log with one line.
@@ -1472,16 +1467,17 @@ const UnverifiedReferralsPage = () => {
   }, [selected, refDraft]);
 
   /**
-   * Log a contact attempt and snooze the patient to the next business day.
+   * Log a contact attempt: bump the Attempt Counter, append the note. That is
+   * the whole action (Josh, 2026-08-13).
    *
-   * This board has no Next Action Date column — Follow Up (`color_mm3822qq`)
-   * + Follow Up Date (`date_mm3874an`) ARE its next-action mechanism.
-   * `useRoleCounts` counts an intake patient as active only while Follow Up
-   * isn't set, so writing the pair is what takes them off today's burndown bar
-   * and puts them in the sidebar's Follow Up section until the date lands.
-   *
-   * Business days, not calendar: a Friday attempt should surface on Monday,
-   * not Saturday. ET, because Monday's dates are timezone-naive ET (§9).
+   * ⚠️ There is NO snooze on this stage, and adding one back needs a
+   * next-action mechanism first. It used to write Follow Up
+   * (`color_mm3822qq`) + Follow Up Date (`date_mm3874an`), and Follow Up is
+   * the flag EVERY list on this board uses to decide who is active — while
+   * the date was read by nothing at all. So one unanswered call removed the
+   * patient from the sidebar, the role bar and the burndown permanently, and
+   * the toast told the rep they'd be back on a named day. The patient stays
+   * in the queue now; the attempt count is what says how hard we've tried.
    */
   const logAttempt = useCallback(async (note: string): Promise<boolean> => {
     if (!selected) return false;
@@ -1501,29 +1497,22 @@ const UnverifiedReferralsPage = () => {
     try {
       const next = await logContactAttempt(selected.id, selected.attemptCounter);
       // Stamped into the Call Log — the one free-text field that carries to
-      // Medical Necessity. Written BEFORE the snooze: if the snooze fails the
-      // rep still has a record of the call, whereas a note skipped behind a
-      // failed snooze is gone for good.
+      // Medical Necessity, and the only record of what was actually said. The
+      // counter alone says somebody called.
       const noted = await appendIntakeNote(
         selected.id, `Call attempt ${next} — ${body}`, selected.notes,
       );
-      const due = addBusinessDaysIso(etToday(), 1);
-      const res = await writeIntakeEdits(selected.id, {
-        followUp: "Follow Up",
-        followUpDate: due,
-      });
-      edit({ attemptCounter: String(next), followUp: "Follow Up", followUpDate: due });
-      // Name whichever half fell over rather than implying the patient has left
-      // today's queue when they haven't — or that the note landed when it didn't.
-      const problems = [
-        ...(noted.ok ? [] : ["note not saved"]),
-        ...(res.ok ? [] : res.errors.map((e) => e.label)),
-      ];
-      if (problems.length === 0) {
-        toast.success(`Attempt ${next} logged`, { description: `Back in the queue ${due}.` });
+      edit({ attemptCounter: String(next) });
+      if (noted.ok) {
+        toast.success(`Attempt ${next} logged`, {
+          description: `${selected.name || "The patient"} stays in your queue.`,
+        });
       } else {
-        toast.error(`Attempt ${next} logged, with problems`, {
-          description: problems.join(", "),
+        // The counter moved and the note didn't, so the attempt now exists with
+        // nothing saying what came of it — say so rather than reporting a
+        // clean save.
+        toast.error(`Attempt ${next} logged, but the note didn't save`, {
+          description: noted.errors.map((e) => e.error).join(" · "),
         });
       }
       await refetch(true);
@@ -1568,10 +1557,10 @@ const UnverifiedReferralsPage = () => {
              unsaved-edit marker. Without it this sidebar silently loses a
              cue reps rely on, which is most of why it read as "odd". */
           hasOverlay={hasOverlay}
-          /* On this stage Follow Up is the snooze that "log call attempt"
-             writes, so the section would just mirror the deferred patients
-             into a second list with a button that un-snoozes them. */
-          hideFollowUp
+          /* This stage has no snooze, so Follow Up is not part of its model —
+             and a patient still carrying "Done" from the old one has to come
+             back rather than sit in a section this page doesn't draw. */
+          ignoreFollowUp
           filters={(Object.keys(SOURCE_GROUP) as Source[]).map((sKey) => (
             <button
               key={sKey}
@@ -2778,8 +2767,8 @@ const UnverifiedReferralsPage = () => {
                   <DialogHeader>
                     <DialogTitle>Log a call attempt</DialogTitle>
                     <DialogDescription>
-                      Snoozes {selected.name || "this patient"} to the next business day and adds
-                      attempt {attempts + 1} to the Call Log.
+                      Records attempt {attempts + 1} against {selected.name || "this patient"} and
+                      adds your note to the Call Log. They stay in your queue.
                     </DialogDescription>
                   </DialogHeader>
                   <div className="space-y-2">

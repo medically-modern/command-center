@@ -26,10 +26,32 @@ export interface SidebarSections {
   followUpPatients: Patient[];
 }
 
+export interface SidebarOptions {
+  /**
+   * Treat Follow Up as none of this queue's business: everyone is active and
+   * `followUpPatients` comes back empty.
+   *
+   * Patient Intake (DTC) passes this. That stage has no snooze at all — a call
+   * attempt bumps the attempt counter and nothing else (Josh, 2026-08-13) — so
+   * the column is not part of its model, and a patient carrying a stale "Done"
+   * from the old snooze must come back rather than sit in a section this page
+   * doesn't render. Verified Referrals and Already In System still use the
+   * column as a genuine follow-up flag and keep the split.
+   */
+  ignoreFollowUp?: boolean;
+}
+
 /** Split the raw patient list into the sidebar's sections. */
-export function sidebarSections(patients: Patient[]): SidebarSections {
-  const activePatients = patients.filter((p) => p.followUp !== "Done");
-  const followUpPatients = patients.filter((p) => p.followUp === "Done");
+export function sidebarSections(
+  patients: Patient[],
+  { ignoreFollowUp = false }: SidebarOptions = {},
+): SidebarSections {
+  const activePatients = ignoreFollowUp
+    ? patients
+    : patients.filter((p) => p.followUp !== "Done");
+  const followUpPatients = ignoreFollowUp
+    ? []
+    : patients.filter((p) => p.followUp === "Done");
 
   const groups: Record<string, Patient[]> = {};
   for (const p of activePatients) {
@@ -57,7 +79,11 @@ export function sidebarSections(patients: Patient[]): SidebarSections {
  *  Follow Up section. The Profile sidebar has no escalation split, so the
  *  view filter never changes the list — it's accepted only to match the
  *  shared role-page signature. */
-export function sidebarVisibleList(patients: Patient[], _viewFilter: RoleFilter): Patient[] {
-  const { sourceGroups, followUpPatients } = sidebarSections(patients);
+export function sidebarVisibleList(
+  patients: Patient[],
+  _viewFilter: RoleFilter,
+  options?: SidebarOptions,
+): Patient[] {
+  const { sourceGroups, followUpPatients } = sidebarSections(patients, options);
   return [...sourceGroups.flatMap((g) => g.patients), ...followUpPatients];
 }

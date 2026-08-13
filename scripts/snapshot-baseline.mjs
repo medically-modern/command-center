@@ -384,17 +384,21 @@ async function countProfile() {
   // referral split applies — they are Patient Intake by definition. Missing
   // these was why the Operations tab showed phantom "+N in" chips for this
   // role all day: the live hook counted them and the baseline did not.
+  //
+  // ⚠️ Follow Up is NOT a filter here (Josh, 2026-08-13). Patient Intake has no
+  // snooze — a call attempt bumps the Attempt Counter and the patient stays in
+  // the queue — so consulting that column removed anyone a rep had failed to
+  // reach, permanently, with nothing to bring them back. Escalation still
+  // counts them out; Oversight's intake manager charts hold those.
   const formItems = [];
   for (const gid of PROF_FORM_GROUPS) {
     try {
-      formItems.push(...await fetchGroupItems(PROF_BOARD, gid, [PROF_FOLLOWUP_COL, PROF_INTAKE_ESC_COL]));
+      formItems.push(...await fetchGroupItems(PROF_BOARD, gid, [PROF_INTAKE_ESC_COL]));
     } catch (e) {
       console.error(`[countProfile] form group ${gid} failed:`, e.message);
     }
   }
-  const formActive = formItems.filter(
-    (i) => i.cols[PROF_FOLLOWUP_COL] !== "Done" && !isIntakeEscalated(i),
-  );
+  const formActive = formItems.filter((i) => !isIntakeEscalated(i));
 
   return {
     counts: {

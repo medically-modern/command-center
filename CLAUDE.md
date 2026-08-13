@@ -343,6 +343,30 @@ The three are **mutually exclusive and exhaustive** — every active intake pati
 one queue, so role counts still sum to the group total (§5.8) and no patient is worked twice.
 A blank Already In System counts as NOT in system (the column isn't always set).
 
+⚠️ **Patient Intake has NO SNOOZE — do not give it one without building a next-action
+mechanism first** (Josh, 2026-08-13). "Log call attempt" bumps the **Attempt Counter
+`numeric_mm5ze82q`**, appends the note to the Call Log, and stops. The patient stays in the
+queue; the attempt count is the only signal of how hard we've tried.
+It used to write **Follow Up `color_mm3822qq` + Follow Up Date `date_mm3874an`**, and that pair
+is a **one-way door on this board**: Follow Up is the flag every list uses to decide who is
+active (`followUp !== "Done"`), while the DATE is read by *nothing* — not `sidebarList`, not
+`useRoleCounts`, not either baseline generator, not a board automation. So one unanswered call
+removed the patient from the sidebar, the role bar and the burndown **permanently**, while the
+toast promised them back on a named day. (The column's index 1 is **"Done"** on the live board,
+not the "Follow Up" the old code's comment claimed — its labels are *Working on it · Done ·
+Stuck* — so the row also read as a finished patient.) `IntakeEdits` no longer carries the two
+fields at all, and `unverifiedWrite.test.ts` asserts neither column can be written.
+Four places implement "this queue ignores Follow Up" and must stay in agreement (§5.8):
+1. **Sidebar** — `sidebarSections(patients, { ignoreFollowUp: true })`, passed by the page as
+   `PatientsSidebar ignoreFollowUp`. ⚠️ It must IGNORE the column, not hide the section: the
+   split moves `"Done"` patients OUT of the source groups, so hiding alone drops them entirely.
+2. **Role counts** — `useRoleCounts.ts` `formActive` (escalation only).
+3. **Baseline (build time)** — `scripts/snapshot-baseline.mjs` `countProfile`.
+4. **Baseline (9 AM cron)** — `services/baseline-cron/index.mjs` `countProfile`.
+Verified Referrals and Already In System still use the column as a genuine follow-up flag and
+keep the split — this is a Patient-Intake-only rule. `returnIntakeToPipeline` clears a stale
+Follow Up as a heal, not as part of the return.
+
 ⚠️ Referral **Source** also has a `Patient` label — only the **Type** column routes `Patient`
 to Unverified. Canonical rule: `src/lib/profile/referralSplit.ts` `profileReferralRole`
 (+ tests). The rule is applied in **five** places that must stay in agreement (same drill as §5.9):

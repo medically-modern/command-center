@@ -44,18 +44,21 @@ interface Props {
    *  column, so the split belongs next to the list it filters. Omitted by
    *  Verified Referrals, which has a single pool. */
   filters?: React.ReactNode;
-  /** Hide the Follow Up section at the bottom of the list.
+  /** Ignore the Follow Up column entirely: no dimmed section, and its patients
+   *  stay in the main list with everyone else.
    *
-   *  Patient Intake sets this. The section is driven by the Follow Up column,
-   *  which on that stage is the SNOOZE the "log call attempt" action writes —
-   *  so every patient a rep defers would pile up in a second list under the
-   *  one they work from, with a clear-it button that silently un-snoozes them
-   *  back onto the burndown. Verified Referrals and Already In System use the
-   *  column as a genuine follow-up flag and keep the section. */
-  hideFollowUp?: boolean;
+   *  Patient Intake sets this, because that stage has no snooze — a call
+   *  attempt bumps the attempt counter and nothing else. ⚠️ It must IGNORE the
+   *  column rather than merely hide the section: `sidebarSections` moves
+   *  `followUp === "Done"` patients out of the source groups, so hiding the
+   *  section alone dropped them from the sidebar altogether — which is exactly
+   *  what happened to every patient the old snooze had parked. Verified
+   *  Referrals and Already In System use the column as a genuine follow-up flag
+   *  and keep the split. */
+  ignoreFollowUp?: boolean;
 }
 
-export function PatientsSidebar({ patients, selectedId, onSelect, loading, error, onRefresh, hasOverlay, filters, hideFollowUp }: Props) {
+export function PatientsSidebar({ patients, selectedId, onSelect, loading, error, onRefresh, hasOverlay, filters, ignoreFollowUp }: Props) {
   const { state } = useSidebar();
   const [searchQuery, setSearchQuery] = useState("");
 
@@ -68,8 +71,8 @@ export function PatientsSidebar({ patients, selectedId, onSelect, loading, error
   // Active patients grouped by referral source + Follow Up section — the
   // shared list math lives in sidebarList.ts so page auto-select matches.
   const { sourceGroups: groupedBySource, followUpPatients } = useMemo(
-    () => sidebarSections(filteredBySearch),
-    [filteredBySearch],
+    () => sidebarSections(filteredBySearch, { ignoreFollowUp }),
+    [filteredBySearch, ignoreFollowUp],
   );
 
   // Track which groups are collapsed (all open by default)
@@ -198,8 +201,9 @@ export function PatientsSidebar({ patients, selectedId, onSelect, loading, error
           <p className="px-3 py-4 text-xs text-muted-foreground">No active patients.</p>
         )}
 
-        {/* Follow Up section */}
-        {!hideFollowUp && followUpPatients.length > 0 && !collapsed && (
+        {/* Follow Up section. Empty by construction when `ignoreFollowUp` is
+            set, so this needs no second guard. */}
+        {followUpPatients.length > 0 && !collapsed && (
           <SidebarGroup>
             <SidebarGroupLabel className="text-[10px] uppercase tracking-wider text-blue-500 font-semibold flex items-center gap-1.5">
               <Clock className="h-3 w-3" />

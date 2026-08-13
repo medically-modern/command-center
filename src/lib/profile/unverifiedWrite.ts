@@ -21,19 +21,18 @@
 import {
   COL, GROUPS, writeStatusIndex, writeText, writeNumber, writeLongText, writeItemName,
   writePhone, writeEmail, writeLocation, writeDropdownIds, writeDropdownLabels,
-  readColumnTexts, moveItemToGroup, writeDate, clearStatusColumn,
+  readColumnTexts, moveItemToGroup, clearStatusColumn,
 } from "./mondayApi";
 import { executeWritesWithVerification } from "../shared/verifiedWrite";
 import { CLINICALS_METHOD_INDEX } from "./mondayMapping";
 import type { Patient } from "./workflow";
 import { appendStampedNote } from "../shared/noteStamp";
 import { userInitials } from "../shared/auth";
-import { etToday } from "../masheke/etDate";
 import {
   GENERAL_INSURANCE_INDEX, PRIMARY_INSURANCE_INDEX,
   SECONDARY_INSURANCE_INDEX, SERVING_INDEX, MOVE_TO_ONBOARDING_INDEX,
   REQUEST_TYPE_INDEX, CGM_COVERAGE_PATH_INDEX, INSULIN_PUMP_COVERAGE_PATH_INDEX,
-  REFERRAL_TYPE_INDEX, REFERRAL_SOURCE_INDEX, GENDER_INDEX, FOLLOW_UP_INDEX,
+  REFERRAL_TYPE_INDEX, REFERRAL_SOURCE_INDEX, GENDER_INDEX,
   CGM_TYPE_INDEX, PUMP_TYPE_INDEX,
 } from "./mondayMapping";
 
@@ -191,11 +190,18 @@ export interface IntakeEdits {
   intakeCallComplete?: boolean;
   attemptCounter?: number;
 
-  // Insurance follow-up. Both columns were already READ into Patient; nothing
-  // ever wrote them, so the mockup's "Start Insurance Follow-Up" had a place to
-  // land and no way to get there.
-  followUp?: string;
-  followUpDate?: string;
+  // ⚠️ followUp / followUpDate are deliberately NOT here, and must not come
+  // back (Josh, 2026-08-13). This stage has no snooze: a call attempt bumps
+  // the Attempt Counter and appends a note, and the patient stays in the queue.
+  //
+  // They were here to back a "log call attempt" snooze that wrote Follow Up +
+  // a return date. Nothing ever read that date — not the sidebar, not
+  // useRoleCounts, not either baseline generator, not a board automation — and
+  // Follow Up is the flag every list on this board uses to decide who is
+  // active, so the pair removed the patient from the queue for good while the
+  // toast promised them back on a named day. (Worse: the column's index 1 is
+  // "Done" on the live board, not the "Follow Up" the old comment claimed, so
+  // it also read as a finished patient.)
 
   // Care assessment / cost — rep-entered on the call
   selfAdvocacy?: string;
@@ -353,22 +359,6 @@ export function buildIntakeTasks(
   status("Self Advocacy", COL.selfAdvocacy, "selfAdvocacy", edits.selfAdvocacy);
   text("Current Out-of-Pocket Cost", COL.currentOopCost, edits.currentOopCost);
   status("CGM Data & Doctor Awareness", COL.cgmDataAwareness, "cgmDataAwareness", edits.cgmDataAwareness);
-
-  // Insurance follow-up. The status column has exactly one label ("Follow Up",
-  // index 1), so this is a flag rather than a choice — the DATE is the payload.
-  if (edits.followUp !== undefined) {
-    const on = edits.followUp.trim() !== "";
-    if (on) {
-      tasks.push({
-        label: "Follow Up", columnId: COL.followUp,
-        fn: () => writeStatusIndex(itemId, COL.followUp, FOLLOW_UP_INDEX.followUp),
-      });
-    }
-  }
-  if (edits.followUpDate !== undefined) {
-    const d = edits.followUpDate;
-    tasks.push({ label: "Follow Up Date", columnId: COL.followUpDate, fn: () => writeDate(itemId, COL.followUpDate, d) });
-  }
 
   return tasks;
 }
@@ -824,26 +814,21 @@ export async function proposeIntakeStuck(
 /**
  * Manager sends the patient back into the rep pipeline.
  *
- * ⚠️ Clearing the escalation is NOT enough on this stage. Follow Up is the
- * snooze "Insufficient — log call attempt" writes, and the intake sidebar is
- * rendered with `hideFollowUp` — so a snoozed patient is not merely demoted
- * there, they are absent. Returning one without lifting the snooze hands them
- * back into a queue that will not show them: invisible to the rep, gone from
- * the manager's chart, with nothing anywhere saying so.
+ * Clearing the escalation is the decision. The Follow Up clear that rides along
+ * is a HEAL, not part of the return: this stage no longer writes that column at
+ * all, but a patient parked by the old snooze still carries "Done", and the
+ * sidebar's own `ignoreFollowUp` only covers the two form groups. Clearing it
+ * costs nothing and guarantees the patient is visible wherever they land.
  *
- * So the return lifts the snooze and re-dates to today, which is what Medical
- * Evaluation's Return to Queue does with the Next Action Date. Both are
- * best-effort: the escalation clear is the decision, and a patient who is back
- * in the queue but still carrying yesterday's date is far better than one whose
- * return failed because a date write did.
+ * Best-effort on purpose — a return that failed because a status clear did
+ * would leave the patient escalated, which is strictly worse.
  */
 export async function returnIntakeToPipeline(itemId: string, note: string) {
   const res = await setEscalation(itemId, INTAKE_ESCALATION_INDEX.done, `Returned to pipeline: ${note}`);
   try {
     await clearStatusColumn(itemId, COL.followUp);
-    await writeDate(itemId, COL.followUpDate, etToday());
   } catch (e) {
-    console.warn("[intake] returned to pipeline but couldn't lift the snooze", e);
+    console.warn("[intake] returned to pipeline but couldn't clear a stale Follow Up", e);
   }
   return res;
 }
