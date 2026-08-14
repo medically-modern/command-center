@@ -32,6 +32,7 @@ import { toast } from "sonner";
 import type { Patient } from "@/lib/masheke/workflow";
 import { COL, hasToken } from "@/lib/masheke/mondayApi";
 import {
+  buildFreshChaseRound,
   enterDoctorAppointments,
   scheduleAppointmentFromChase,
 } from "@/lib/masheke/mondayWrite";
@@ -114,13 +115,22 @@ export function DoctorAppointmentRequiredDialog({
     });
     const nextNotes = appendNoteLine(patient.mnEvalNotes, line);
     const nextAction = snoozeUntilAfterAppointment(apptDate, today);
+    // The visit restarts the chase: fold the spent chase attempts into the
+    // notes and reset the counter, or this patient comes back off the snooze to
+    // a panel locked on MN Attempts (see buildFreshChaseRound). Computed ONCE so
+    // the write and this optimistic patch agree on what the notes now say.
+    const round = buildFreshChaseRound(nextNotes, patient);
     const patch: Partial<Patient> = {
       appointmentDate: apptDate,
-      mnEvalNotes: nextNotes,
+      mnEvalNotes: round.notes,
       nextActionDate: nextAction,
       // A booked visit answers the escalation — see scheduleAppointmentFromChase.
       escalation: "Done",
       escalationIndex: 1,
+      mnAttempts: "Attempt 1",
+      ...(round.hasAttempts
+        ? { chaseAttempt1: undefined, chaseAttempt2: undefined, chaseAttempt3: undefined }
+        : {}),
     };
     const toastId = `appt-sched-${patient.id}`;
     setSaving(true);
@@ -131,7 +141,8 @@ export function DoctorAppointmentRequiredDialog({
         itemId: patient.id,
         appointmentDate: apptDate,
         nextActionDate: nextAction,
-        notes: nextNotes,
+        notes: round.notes,
+        clearChaseAttempts: round.hasAttempts,
         onProgress,
         requireDone: true,
         waitForDoneMs: SAVE_CONFIRM_MS,

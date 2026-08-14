@@ -473,6 +473,28 @@ advancer on this board (`mondayWrite.recordAndAdvanceVerified` passes it as `sta
 > now write Escalation → Done. This is not the Insurance-board anti-pattern §7 warns about: it's an
 > explicit act by the person recording the date, not a hydrated flag re-written on every send, and
 > the rep's own re-send re-raises it if the visit doesn't produce clinicals.
+>
+> ⚠️ **Clearing the escalation was only half of it — a booked visit RESTARTS THE CHASE ROUND**
+> (Josh, 2026-08-14; `mondayWrite.buildFreshChaseRound` + `freshChaseRoundTasks`, tested). Both
+> paths that land an appointment date (`scheduleAppointmentFromChase` and
+> `returnToChaseWithAppointment`) put the patient back in a CHASE queue, and both left **MN
+> Attempts `color_mm1wz0vg`** exactly where the pre-visit chase left it. That column — not which
+> attempt columns are filled — is what `ChaseClinicalsPanel` derives the current slot from, so a
+> patient whose button was pressed at attempt 4+ came back off the snooze to a **locked** panel:
+> no attempt, no re-send, no way to move the date. Same dead end §7 documents for the manager's
+> return. Both writes now roll the spent chase attempts into MN Workflow Notes, blank those three
+> columns and reset MN Attempts → **Attempt 1**.
+> ⚠️ **The clears are not optional once the counter moves.** Resetting MN Attempts while the chase
+> columns still hold text is WORSE than leaving both: `handleSave` writes into the slot the COUNTER
+> names (`chaseAttempt1`) while the cards render from the COLUMNS, so the next attempt would
+> silently overwrite the old attempt 1 note.
+> ⚠️ **Confirm Receipt's three columns are deliberately untouched** — the chase page parses them
+> for its "who actually confirmed receipt" banner (the same reasoning as `attemptRollup`'s
+> `chaseOnly` scope). Pinned by `freshChaseRound.test.ts`.
+> The rollup is computed by the CALLER (`buildFreshChaseRound`) and handed to the write as the
+> final `notes` plus a `clearChaseAttempts` flag — one computation, so the board write and the
+> panel's optimistic patch can never disagree about what the notes now say. An overlay holding a
+> pre-rollup body would be re-written by the next stage's send and lose the history.
 
 **Cadence** — `APPT_ATTEMPT_SNOOZE_BUSINESS_DAYS` = **1 business day** for every logged attempt
 (Brandon's v3 matrix), with **one** per-outcome exception: *"Spoke — patient will call the office"*

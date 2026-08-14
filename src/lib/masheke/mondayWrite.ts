@@ -10,7 +10,9 @@ import {
   ADVANCER_2C_INDEX,
   ADVANCER_2D_INDEX,
   ESCALATION_INDEX,
+  MN_ATTEMPTS_INDEX,
 } from "./mondayMapping";
+import { buildAttemptRollup, type AttemptSlots } from "./attemptRollup";
 import {
   labelToIndex,
   STANDARD_EVAL,
@@ -404,6 +406,63 @@ export async function recordAndAdvanceVerified(
 // =====================================================================
 
 /**
+ * A booked visit STARTS A FRESH CHASE ROUND (Josh, 2026-08-14).
+ *
+ * Both paths that put an appointment date on a Chase patient land them back in
+ * the rep's queue when the snooze expires — and both used to leave **MN
+ * Attempts** exactly where the pre-visit chase left it. That column is what
+ * `ChaseClinicalsPanel` derives the current slot from, so a patient whose
+ * "Doctor Appointment Required" was pressed at attempt 4+ (MN Attempts =
+ * `Escalate`) came back to a LOCKED panel: no attempt, no re-send, no way to
+ * move the date. The visit is precisely the event that should restart the
+ * chase, so the round resets.
+ *
+ * ⚠️ THE CLEARS ARE NOT OPTIONAL ONCE THE COUNTER MOVES. Resetting MN Attempts
+ * while the three chase columns still hold text is worse than leaving both
+ * alone: `handleSave` writes into the slot the COUNTER names (`chaseAttempt1`),
+ * while the cards render from the COLUMNS — so the next attempt would silently
+ * overwrite the old attempt 1 note. The caller therefore runs
+ * `buildAttemptRollup` FIRST, passes the merged body as `notes`, and sets
+ * `clearChaseAttempts` from the same result — one computation, so the write and
+ * the caller's optimistic patch can't disagree about what the notes now say.
+ *
+ * Confirm Receipt's columns are deliberately untouched: the chase page reads
+ * them for its "who actually confirmed receipt" banner, and the patient is not
+ * going back through that stage (same reasoning as attemptRollup's `chaseOnly`).
+ */
+function freshChaseRoundTasks(itemId: string, clearChaseAttempts: boolean): WriteTask[] {
+  const tasks: WriteTask[] = [
+    {
+      label: "MN Attempts → Attempt 1",
+      columnId: COL.mnAttempts,
+      value: { index: MN_ATTEMPTS_INDEX.attempt1 },
+      fn: () => writeStatusIndex(itemId, COL.mnAttempts, MN_ATTEMPTS_INDEX.attempt1),
+    },
+  ];
+  if (clearChaseAttempts) {
+    for (const col of [COL.chaseAttempt1, COL.chaseAttempt2, COL.chaseAttempt3]) {
+      tasks.push({ label: `Clear ${col}`, columnId: col, value: "", expectedText: "", fn: () => writeText(itemId, col, "") });
+    }
+  }
+  return tasks;
+}
+
+/**
+ * The chase-round rollup a caller runs before either appointment write: fold
+ * the spent chase attempts into the notes body it already composed, and learn
+ * whether the columns need blanking. Lives here so both dialogs call one thing.
+ */
+export function buildFreshChaseRound(notes: string, p: Pick<Patient, "chaseAttempt1" | "chaseAttempt2" | "chaseAttempt3">) {
+  const blank: AttemptSlots = [undefined, undefined, undefined];
+  return buildAttemptRollup({
+    notes,
+    confirm: blank,
+    chase: [p.chaseAttempt1, p.chaseAttempt2, p.chaseAttempt3],
+    dateStr: etToday(),
+  });
+}
+
+/**
  * Chase → "the office says a visit is already booked".
  *
  * The patient does NOT move — they stay a normal Chase patient, just snoozed
@@ -426,10 +485,17 @@ export async function scheduleAppointmentFromChase(opts: {
   appointmentDate: string;
   nextActionDate: string;
   notes: string;
+  /** Blank the three chase attempt columns — set from `buildFreshChaseRound`'s
+   *  `hasAttempts`, whose merged body must also be what `notes` carries. */
+  clearChaseAttempts?: boolean;
   onProgress?: (phase: WriteProgressPhase) => void;
   requireDone?: boolean;
   waitForDoneMs?: number;
 }): Promise<void> {
+  // The visit restarts the chase, so the counter goes back to Attempt 1 and the
+  // spent columns fold into the notes — otherwise a patient whose button was
+  // pressed at attempt 4+ comes back off the snooze to a locked panel.
+  const fresh = freshChaseRoundTasks(opts.itemId, opts.clearChaseAttempts === true);
   await runVerifiedSend({
     itemId: opts.itemId,
     label: "Chase → appointment scheduled",
@@ -446,6 +512,7 @@ export async function scheduleAppointmentFromChase(opts: {
         value: { text: opts.notes },
         fn: () => writeLongText(opts.itemId, COL.mnEvalNotes, opts.notes),
       },
+      ...fresh,
       {
         label: "Escalation → Done",
         columnId: COL.escalation,
@@ -627,10 +694,16 @@ export async function returnToChaseWithAppointment(opts: {
   appointmentDate: string;
   nextActionDate: string;
   notes: string;
+  /** Blank the three chase attempt columns — set from `buildFreshChaseRound`'s
+   *  `hasAttempts`, whose merged body must also be what `notes` carries. */
+  clearChaseAttempts?: boolean;
   onProgress?: (phase: WriteProgressPhase) => void;
   requireDone?: boolean;
   waitForDoneMs?: number;
 }): Promise<void> {
+  // Same reset as scheduleAppointmentFromChase: this patient is being handed
+  // BACK to the chase queue, and the pre-visit round is over.
+  const fresh = freshChaseRoundTasks(opts.itemId, opts.clearChaseAttempts === true);
   const tasks: WriteTask[] = [];
   tasks.push(
     {
@@ -645,6 +718,7 @@ export async function returnToChaseWithAppointment(opts: {
       value: { text: opts.notes },
       fn: () => writeLongText(opts.itemId, COL.mnEvalNotes, opts.notes),
     },
+    ...fresh,
     {
       label: "Escalation → Done",
       columnId: COL.escalation,

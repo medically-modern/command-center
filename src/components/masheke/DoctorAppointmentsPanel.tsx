@@ -50,7 +50,7 @@ import { MissingChecklist } from "@/components/masheke/MissingChecklist";
 import { PriorStageNotes } from "@/components/shared/PriorStageNotes";
 import { SaveProgressOverlay } from "@/components/shared/SaveProgressOverlay";
 import { hasToken } from "@/lib/masheke/mondayApi";
-import { logApptAttemptVerified, returnToChaseWithAppointment } from "@/lib/masheke/mondayWrite";
+import { buildFreshChaseRound, logApptAttemptVerified, returnToChaseWithAppointment } from "@/lib/masheke/mondayWrite";
 import { GatewayPendingError, type WriteProgressPhase } from "@/lib/shared/verifiedWrite";
 import { userInitials } from "@/lib/shared/auth";
 import { etNow, etToday, formatDateShort, formatDateTimeShort } from "@/lib/masheke/etDate";
@@ -259,8 +259,15 @@ export function DoctorAppointmentsPanel({ patient, onUpdate, managerMode = false
       );
     }
 
+    // Booked only: the visit restarts the chase these patients came from, so
+    // the spent chase attempts fold into the notes and MN Attempts resets —
+    // otherwise they land back in Chase on a panel locked by that counter
+    // (see buildFreshChaseRound). Computed ONCE, so the write and this
+    // optimistic patch agree on what the notes now say.
+    const round = effect.kind === "booked" ? buildFreshChaseRound(notes, patient) : null;
+
     const patch: Partial<Patient> = {
-      mnEvalNotes: notes,
+      mnEvalNotes: round ? round.notes : notes,
       ...(effect.kind === "booked"
         ? {
             appointmentDate: apptDate,
@@ -268,6 +275,10 @@ export function DoctorAppointmentsPanel({ patient, onUpdate, managerMode = false
             subStage: "Chase Clinicals",
             escalation: "Done",
             escalationIndex: 1,
+            mnAttempts: "Attempt 1",
+            ...(round?.hasAttempts
+              ? { chaseAttempt1: undefined, chaseAttempt2: undefined, chaseAttempt3: undefined }
+              : {}),
           }
         : effect.kind === "escalate"
           ? { escalation: "Manager Escalation Required", escalationIndex: 0 }
@@ -294,7 +305,8 @@ export function DoctorAppointmentsPanel({ patient, onUpdate, managerMode = false
           itemId: patient.id,
           appointmentDate: apptDate,
           nextActionDate: effect.nextActionDate!,
-          notes,
+          notes: round!.notes,
+          clearChaseAttempts: round!.hasAttempts,
           onProgress,
           requireDone: true,
           waitForDoneMs: SAVE_CONFIRM_MS,
