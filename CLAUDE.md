@@ -923,7 +923,30 @@ columns" automation on duplicated items). The SPA only flips the advancer; verif
   then clear the escalation — in that order) / Return to Queue (a modal that shows the MN notes,
   takes an OPTIONAL stamped note, sets Next Action Date = today, and clears the escalation so the
   patient re-enters the rep's queue). Every ME manager chart (incl. Proposed Stuck) opens the
-  patient in the stage page (manager mode) to view/work in UI. **Insurance columns 2/3 are
+  patient in the stage page (manager mode) to view/work in UI.
+  ⚠️ **A return from EVALUATE additionally resets the outreach budget** (Josh, 2026-08-14;
+  `lib/masheke/attemptRollup.ts` + tests, applied by `returnProposedToQueue`). That button puts the
+  patient at the TOP of the loop — re-evaluate, new request, call the office again — but the six
+  Confirm Receipt / Chase attempt columns (`text_mm2yd068`/`mm2y9h4a`/`mm2ymtsk` ·
+  `text_mm2yhpjt`/`mm2yb3rv`/`mm2ybk06`) still hold the cycle that just ended, and **MN Attempts
+  `color_mm1wz0vg` still reads `Escalate`, which LOCKS both panels for a rep** (`currentAttempt`
+  is derived from that column, not from which slots are filled). So the returned patient used to
+  arrive with no way to log the outreach the manager had just asked for — three greyed-out cards
+  and a disabled Save. The return now folds those six columns into the **MN Workflow Notes**
+  under a dated header, blanks them, and writes MN Attempts back to **Attempt 1**
+  (`MN_ATTEMPTS_INDEX.attempt1` = index **2** — this column's labels are not in numeric order).
+  The counter reset is unconditional; the six clears fire only when something was there.
+  ⚠️ **Append + clears ride ONE `change_multiple_column_values`** (all-or-nothing), so a cycle's
+  notes can never be deleted without having landed in the history first — the same reasoning the
+  rep-side re-eval rollup in `EvaluatePanel` carries, and both now call `buildAttemptRollup` so the
+  headers they write into that shared column can't drift. The escalation flip stays LAST and
+  separate: it is what makes the patient visible to the rep, so it must not fire before the data.
+  ⚠️ **EVALUATE ONLY** (`returnResetsAttempts`, asserted per stage). Both entry points pass it —
+  the page's `StageActionBar` from its `stage` prop, the drill-down from the chart's `rowOf`. A
+  return to Chase / Confirm Receipt drops the patient back into the SAME cycle, so their spent
+  attempts and `MN Attempts = Escalate` stay put — which is exactly what the Attempt 4+ charts
+  below rely on ("MN Attempts is history, not a queue flag"). Resetting board-wide would hand a
+  rep three more chases on a request the office has already refused three times. **Insurance columns 2/3 are
   REASON-BUCKETED (2026-07-29, `OVERSIGHT_CHART_RULES.md` §3):** the x-axis is one bar per reason
   (a patient can be in several bars; header count = distinct patients), driven by
   `ChartDef.reasonBuckets` + `reasonBucketsFor`. Column 2: Benefits (Inactive insurance · Pump SoS ·
@@ -1291,6 +1314,7 @@ these services; when their math changes, `oopEstimator.ts` must be updated to ma
 | A role's page behaves wrong | `src/pages/<Role>Page.tsx` → `hooks/<role>/useMondayPatients.ts` → `lib/<role>/workflow.ts` |
 | A value isn't saving to Monday | `lib/<role>/mondayWrite.ts` + `lib/shared/verifiedWrite.ts`; cross-check `mondayMapping.ts` column IDs |
 | Medical-necessity logic | `lib/masheke/evalState.ts` (+ ipPaths, requestTemplate, mnRequestPdf) |
+| A returned patient can't log an attempt (cards greyed, Save disabled) | `lib/masheke/attemptRollup.ts` → `oversightApi.returnProposedToQueue`; the gate is **MN Attempts** `color_mm1wz0vg`, not the attempt columns (§7) |
 | Stedi check output / eligibility results | **inline in `src/pages/ProfilePage.tsx`** — NOT `components/profile/StediPanel.tsx` (dead, §5.11) |
 | Cost estimate wrong | `lib/welcomeCall/oopEstimator.ts` (sync vs Railway financial backend) |
 | Who can see what | `lib/accessStore.ts`, `lib/roleView.ts`, `components/AccessProvider.tsx` |

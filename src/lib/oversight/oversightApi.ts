@@ -7,6 +7,8 @@ import { etTodayYmd } from "@/lib/samantha/benefitsDerive";
 import { MONDAY_API_URL, mondayIdentityHeaders } from "../shared/mondayEndpoint";
 import { etToday } from "../masheke/etDate";
 import { stampReturnedToQueue, stampReturnedToManager, stampApprovedStuck, stampEscalatedToFinal, appendStampedLine } from "../masheke/proposedStuck";
+import { buildAttemptRollup } from "../masheke/attemptRollup";
+import { MN_ATTEMPTS_INDEX } from "../masheke/mondayMapping";
 import { userInitials } from "../shared/auth";
 const MONDAY_API_VERSION = "2024-10";
 
@@ -2067,6 +2069,17 @@ const MASHEKE_ESC_COL = "color_mm1x7997";       // Escalation (index 2 = propose
 const MASHEKE_ESC_DONE_INDEX = 1;               // "Done" — clears an escalation/proposal
 const MASHEKE_NAD_COL = "date_mm1wadgs";        // Next Action Date
 const MASHEKE_NOTES_COL = "long_text_mm27zjt2"; // MN workflow notes (carry the stamped reason)
+/** MN Attempts — the counter that decides which attempt SLOT the next Confirm
+ *  Receipt / Chase save writes into, and whose "Escalate" value locks both
+ *  panels for a rep. masheke COL.mnAttempts; MN_ATTEMPTS_INDEX lives in
+ *  masheke/mondayMapping and is imported rather than re-spelt (index 2 is
+ *  "Attempt 1" — the labels are not in numeric order on this board). */
+const MASHEKE_MN_ATTEMPTS_COL = "color_mm1wz0vg";
+/** The six per-attempt TEXT columns, slot 1 → 3 (masheke COL.confirmAttempt1..3
+ *  / COL.chaseAttempt1..3). Emptied — into the notes — when a manager sends an
+ *  Evaluate patient back to the pipeline; see `returnProposedToQueue`. */
+const MASHEKE_CONFIRM_ATTEMPT_COLS = ["text_mm2yd068", "text_mm2y9h4a", "text_mm2ymtsk"] as const;
+const MASHEKE_CHASE_ATTEMPT_COLS = ["text_mm2yhpjt", "text_mm2yb3rv", "text_mm2ybk06"] as const;
 
 async function writeStatusIndexOnBoard(boardId: number, itemId: string, columnId: string, index: number | null): Promise<void> {
   const query = `
@@ -2115,6 +2128,45 @@ async function readItemColumnText(itemId: string, columnId: string): Promise<str
   return data.items?.[0]?.column_values?.[0]?.text ?? "";
 }
 
+/** Read several columns' text in ONE query, keyed by column id (missing → ""). */
+async function readItemColumnTexts(itemId: string, columnIds: readonly string[]): Promise<Record<string, string>> {
+  const query = `
+    query ($ids: [ID!]!, $cols: [String!]) {
+      items(ids: $ids) { column_values(ids: $cols) { id text } }
+    }
+  `;
+  const data = await gql<{ items: { column_values: { id: string; text: string | null }[] }[] }>(
+    query, { ids: [itemId], cols: [...columnIds] },
+  );
+  const out: Record<string, string> = {};
+  for (const id of columnIds) out[id] = "";
+  for (const cv of data.items?.[0]?.column_values ?? []) out[cv.id] = cv.text ?? "";
+  return out;
+}
+
+/**
+ * Write several columns in ONE mutation. `change_multiple_column_values` is
+ * all-or-nothing, which is the whole point wherever an append and a clear have
+ * to happen together: a pair of single-column writes can land the clear without
+ * the append and silently destroy the notes it was supposed to preserve.
+ *
+ * Values take the raw Monday shapes the write layer uses elsewhere — `{ text }`
+ * for long text, `{ index }` for a status, `{ date }` for a date, and a plain
+ * `""` to blank a text column.
+ */
+async function writeColumnsOnBoard(
+  boardId: number,
+  itemId: string,
+  values: Record<string, unknown>,
+): Promise<void> {
+  const query = `
+    mutation ($boardId: ID!, $itemId: ID!, $vals: JSON!) {
+      change_multiple_column_values(board_id: $boardId, item_id: $itemId, column_values: $vals) { id }
+    }
+  `;
+  await gql(query, { boardId: String(boardId), itemId, vals: JSON.stringify(values) });
+}
+
 /**
  * Approve a stuck proposal: the patient moves to the Stuck stage and the
  * escalation clears. The manager may append an OPTIONAL stamped note first —
@@ -2137,16 +2189,77 @@ export async function approveProposedStuck(itemId: string, appendNote?: string):
  * OPTIONAL note (stamped) to the MN workflow notes; then the Next Action Date is
  * set to today and the Escalation is cleared (→ Done, which also clears the
  * index-2 stuck proposal) so the patient reappears in the due-now queue.
+ *
+ * **`resetAttempts` — the Evaluate case (Josh, 2026-08-14).** Sending an
+ * EVALUATE patient back to the pipeline puts them at the top of a fresh loop:
+ * re-evaluate → send request → call the office again. But the six Confirm
+ * Receipt / Chase attempt columns still hold the cycle that just ended, and MN
+ * Attempts still reads whatever it reached — usually "Escalate", which LOCKS
+ * both panels for a rep and greys out all three cards. So the returned patient
+ * would arrive with no way to log the outreach the manager just asked for.
+ * With the flag on, this call rolls those six columns into the MN Workflow
+ * Notes (dated header, `buildAttemptRollup`), blanks them, and puts MN Attempts
+ * back to Attempt 1 — three fresh reach-outs per stage, with the old ones
+ * preserved in the history.
+ *
+ * ⚠️ The rollup and the clears ride ONE `change_multiple_column_values`, which
+ * is all-or-nothing: a cycle's notes can never be deleted without having landed
+ * in the history first. The escalation flip stays LAST and separate — it is what
+ * makes the patient visible to the rep, so it must not fire before the data it
+ * hands them is in place.
+ *
+ * The counter is reset unconditionally when the flag is on, not only when there
+ * were attempts to roll up: a patient can reach Evaluate with empty attempt
+ * columns (an earlier send already rolled them up) and MN Attempts still at
+ * "Escalate". Writing Attempt 1 is idempotent.
+ *
+ * ⚠️ Callers pass the flag from `returnResetsAttempts(stage)` — see there for
+ * why every OTHER stage deliberately keeps its spent attempts.
  */
-export async function returnProposedToQueue(itemId: string, appendNote?: string): Promise<void> {
+export async function returnProposedToQueue(
+  itemId: string,
+  appendNote?: string,
+  opts?: { resetAttempts?: boolean },
+): Promise<void> {
   const note = appendNote?.trim();
-  if (note) {
-    // Read the notes fresh so a concurrent edit isn't clobbered, then append.
-    const existing = await readItemColumnText(itemId, MASHEKE_NOTES_COL);
-    const stamped = stampReturnedToQueue(note, etToday(), userInitials());
-    await writeLongTextOnBoard(MASHEKE_BOARD_ID, itemId, MASHEKE_NOTES_COL, appendStampedLine(existing, stamped));
+  const today = etToday();
+
+  if (opts?.resetAttempts) {
+    const attemptCols = [...MASHEKE_CONFIRM_ATTEMPT_COLS, ...MASHEKE_CHASE_ATTEMPT_COLS];
+    // Read the notes AND the six attempt columns fresh in one query — the rep
+    // may have logged something since the manager's page last polled.
+    const cur = await readItemColumnTexts(itemId, [MASHEKE_NOTES_COL, ...attemptCols]);
+    const rollup = buildAttemptRollup({
+      notes: cur[MASHEKE_NOTES_COL],
+      confirm: [cur[MASHEKE_CONFIRM_ATTEMPT_COLS[0]], cur[MASHEKE_CONFIRM_ATTEMPT_COLS[1]], cur[MASHEKE_CONFIRM_ATTEMPT_COLS[2]]],
+      chase: [cur[MASHEKE_CHASE_ATTEMPT_COLS[0]], cur[MASHEKE_CHASE_ATTEMPT_COLS[1]], cur[MASHEKE_CHASE_ATTEMPT_COLS[2]]],
+      dateStr: today,
+    });
+    let notes = rollup.notes;
+    if (note) {
+      const stamped = stampReturnedToQueue(note, today, userInitials());
+      // Guard the retry case: a first run that wrote the columns but failed on
+      // the escalation flip below leaves the manager pressing the button again.
+      if (!notes.includes(stamped)) notes = appendStampedLine(notes, stamped);
+    }
+    const values: Record<string, unknown> = {
+      [MASHEKE_NOTES_COL]: { text: notes },
+      [MASHEKE_MN_ATTEMPTS_COL]: { index: MN_ATTEMPTS_INDEX.attempt1 },
+      [MASHEKE_NAD_COL]: { date: today },
+    };
+    // Only blank columns that actually held something — six no-op writes on
+    // every return would be pure noise in the board's activity log.
+    if (rollup.hasAttempts) for (const c of attemptCols) values[c] = "";
+    await writeColumnsOnBoard(MASHEKE_BOARD_ID, itemId, values);
+  } else {
+    if (note) {
+      // Read the notes fresh so a concurrent edit isn't clobbered, then append.
+      const existing = await readItemColumnText(itemId, MASHEKE_NOTES_COL);
+      const stamped = stampReturnedToQueue(note, today, userInitials());
+      await writeLongTextOnBoard(MASHEKE_BOARD_ID, itemId, MASHEKE_NOTES_COL, appendStampedLine(existing, stamped));
+    }
+    await writeDateOnBoard(MASHEKE_BOARD_ID, itemId, MASHEKE_NAD_COL, today);
   }
-  await writeDateOnBoard(MASHEKE_BOARD_ID, itemId, MASHEKE_NAD_COL, etToday());
   await writeStatusIndexOnBoard(MASHEKE_BOARD_ID, itemId, MASHEKE_ESC_COL, MASHEKE_ESC_DONE_INDEX);
 }
 

@@ -88,6 +88,7 @@ import { runVerifiedSend } from "@/lib/masheke/mondayWrite";
 import type { WriteTask } from "@/lib/shared/verifiedWrite";
 import { GEN_SCRIPT_STATUS, ESCALATION_INDEX } from "@/lib/masheke/mondayMapping";
 import { etToday } from "@/lib/masheke/etDate";
+import { buildAttemptRollup } from "@/lib/masheke/attemptRollup";
 import { EscalateButton } from "@/components/masheke/EscalateButton";
 import { openFileViewer } from "@/components/shared/FileViewerModal";
 import { ConfirmDeleteDialog } from "@/components/shared/ConfirmDeleteDialog";
@@ -461,18 +462,15 @@ export function EvaluatePanel({ patient, resetVersion = 0, onUpdate, onOpenForm,
     // cards start clean. Both the append and the clears ride this one verified
     // /send mutation (change_multiple_column_values is all-or-nothing), so a
     // note can NEVER be lost — unlike a parallel append-then-clear.
-    const leftoverConfirm = [patient.confirmAttempt1, patient.confirmAttempt2, patient.confirmAttempt3]
-      .map((s, i) => (s ? `Attempt ${i + 1}: ${s}` : null))
-      .filter(Boolean) as string[];
-    const leftoverChase = [patient.chaseAttempt1, patient.chaseAttempt2, patient.chaseAttempt3]
-      .map((s, i) => (s ? `Attempt ${i + 1}: ${s}` : null))
-      .filter(Boolean) as string[];
-    const hasLeftover = leftoverConfirm.length > 0 || leftoverChase.length > 0;
-    let mergedNotes = patient.mnEvalNotes ?? "";
-    if (leftoverConfirm.length)
-      mergedNotes += `${mergedNotes ? "\n\n" : ""}--- Confirm Receipt notes (cycle thru ${etToday()}) ---\n${leftoverConfirm.join("\n")}`;
-    if (leftoverChase.length)
-      mergedNotes += `${mergedNotes ? "\n\n" : ""}--- Chase Clinicals notes (cycle thru ${etToday()}) ---\n${leftoverChase.join("\n")}`;
+    // The merge itself lives in lib/masheke/attemptRollup so this send and the
+    // manager's "Send back to pipeline" (oversightApi.returnProposedToQueue)
+    // write the same headers into the same notes column.
+    const { hasAttempts: hasLeftover, notes: mergedNotes } = buildAttemptRollup({
+      notes: patient.mnEvalNotes,
+      confirm: [patient.confirmAttempt1, patient.confirmAttempt2, patient.confirmAttempt3],
+      chase: [patient.chaseAttempt1, patient.chaseAttempt2, patient.chaseAttempt3],
+      dateStr: etToday(),
+    });
     tasks.push({
       label: "MN Workflow Notes",
       columnId: COL.mnEvalNotes,
