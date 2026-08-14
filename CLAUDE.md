@@ -1394,6 +1394,23 @@ these services; when their math changes, `oopEstimator.ts` must be updated to ma
 - **"Never billed" attestations** can't be un-set from the UI (code only writes when truthy).
 - **Split-order duplicate** (Final Confirm) races a Monday "new item created" automation; the code
   re-writes flags "defensively" afterward (audit M6).
+- **Monday long-text columns hold 2000 chars and TRUNCATE SILENTLY** (found 2026-08-14 while
+  repairing three patients). A `change_column_value` / `change_multiple_column_values` write with a
+  longer body returns **success** and stores only the FIRST 2000 characters — no error, nothing in
+  the response. Because every notes column here is append-only (history first, newest last), what
+  gets dropped is always the note somebody just wrote. ⚠️ The all-or-nothing property of
+  `change_multiple_column_values` does NOT help: it guarantees the transaction doesn't half-apply,
+  not that the value is stored in full. A scan of the ME board found **9 items already sitting at
+  exactly 2000** — every note appended to those is currently being thrown away. ⚠️ **Worst case is
+  Doctor Appointments**, where the attempt LINES in MN Workflow Notes *are* the counter
+  (`apptAttemptsFromNotes`): truncation drops the newest lines, so the counter freezes, the rep gets
+  unlimited retries and the third-attempt escalation never fires. `lib/shared/longText.ts`
+  (`assertLongTextFits`) now makes the big-append paths fail LOUDLY instead — the four masheke
+  appointment/chase writers, `returnProposedToQueue` (both branches) and `EvaluatePanel`'s re-eval
+  rollup. **Still unguarded:** every role's NotesPanel `appendStampedNote`, and the Insurance /
+  profile / welcomeCall note writers. Deliberate detect-and-warn only (Josh, 2026-08-14) — trimming
+  old history to make room is the same harm, just chosen by us. The escape hatch for a body that
+  genuinely no longer fits is a Monday **item update**, which has no limit.
 - **Welcome Call + Final Confirm escalation is WRITE-ONLY, and those two stages need a REWRITE —
   don't patch it piecemeal** (Josh, 2026-08-14, from the escalation audit). `mondayMapping`
   hardcodes **`escalated: false`** and `COL.escalation` (`color_mm1x7997`) is **not in the read

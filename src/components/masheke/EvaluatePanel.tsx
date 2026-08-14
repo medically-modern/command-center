@@ -89,6 +89,7 @@ import type { WriteTask } from "@/lib/shared/verifiedWrite";
 import { GEN_SCRIPT_STATUS, ESCALATION_INDEX } from "@/lib/masheke/mondayMapping";
 import { etToday } from "@/lib/masheke/etDate";
 import { buildAttemptRollup } from "@/lib/masheke/attemptRollup";
+import { assertLongTextFits } from "@/lib/shared/longText";
 import { EscalateButton } from "@/components/masheke/EscalateButton";
 import { openFileViewer } from "@/components/shared/FileViewerModal";
 import { ConfirmDeleteDialog } from "@/components/shared/ConfirmDeleteDialog";
@@ -471,6 +472,9 @@ export function EvaluatePanel({ patient, resetVersion = 0, onUpdate, onOpenForm,
       chase: [patient.chaseAttempt1, patient.chaseAttempt2, patient.chaseAttempt3],
       dateStr: etToday(),
     });
+    // Monday silently truncates a long_text body over 2000 chars, dropping the
+    // NEWEST content — this rollup can add ~700 in one go (lib/shared/longText).
+    assertLongTextFits(mergedNotes, "MN Workflow Notes");
     tasks.push({
       label: "MN Workflow Notes",
       columnId: COL.mnEvalNotes,
