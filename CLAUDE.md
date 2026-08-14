@@ -50,7 +50,7 @@ The Python backends the SPA mirrors (financial estimate, DVS automations) live o
 | Board | ID | Roles / purpose |
 |---|---|---|
 | **DTC Intake** | `18392794310` | Top of funnel; "Send To Medical Necessity" group feeds the pipeline. Read-only here (oversight/system-mgmt). |
-| **Profile Send Off** | `18406352652` | `profile` ("Verified Referrals") + `unverifiedReferrals` ("Unverified Referrals") + `inSystemReferrals` ("Already In System") — three roles, same board/group, split by Already In System then Referral Type/Source (see §5.10). Its own board (groups: *Patient Intake → 1. Intake → Tests → Stuck → Completed*). All three roles work **1. Intake** (`group_mm1xf2jb`); two send-off exits: **Advance to MN** (`Move to Onboarding` → automation creates the Masheke item + moves to Completed) and **Send back to Patient Intake** (`moveItemToGroup` → `group_mm4vhqff`). **Not** the Welcome Call board. |
+| **Profile Send Off** | `18406352652` | `profile` ("Verified Referrals") + `unverifiedReferrals` ("Unverified Referrals") + `inSystemReferrals` ("Already In System") — three roles, same board/group, split by Already In System then Referral Type/Source (see §5.10). Its own board (groups: *Patient Intake → 1. Intake → Tests → Stuck → Completed*). All three roles work **1. Intake** (`group_mm1xf2jb`); the send-off exit is **Advance to MN** (`Move to Onboarding` → automation creates the Masheke item + moves to Completed), plus **Mark as Stuck** for Already In System. ⚠️ **Send back to Patient Intake was REMOVED** (Josh, 2026-08-14) — see §5.10. **Not** the Welcome Call board. |
 | **Medical Evaluation** ("Masheke") | `18406060017` | `evaluate`, `sendRequest`, `confirmReceipt`, `chaseFax`, `chaseParachute`, `doctorAppointments` (§5.12). Medical-necessity document collection. Stuck is propose→approve: reps flip **Escalation `color_mm1x7997` → "Final Escalation Required" (index 2)** and the reason is appended to the **MN notes `long_text_mm27zjt2`** (stamped `[Proposed Stuck …]`); managers approve/return from Oversight. (The old `color_mm5f37ve`/`text_mm5frng6` columns are retired.) |
 | **Insurance** ("Samantha") | `18410601299` | `benefits`, `submitAuth`, `authOutstanding`, `authDenied`, `dvs` (**stage**-based — Stage Advancer index 1 "DVS", read-only monitor at `/dvs`). Groups: Benefits, Submit Auth, Auth Outstanding, **DVS**, Auth Denied, Escalations, Complete, Stuck. ⚠️ The board grew a **DVS group** (`group_mm5gp2r2`, Aug 2026) but the role is still **stage**-defined: stage-DVS items linger in whichever group an automation last left them, so `useDvsPatients`/`useRoleCounts` read the STAGE board-wide and must not be "fixed" to filter on the group. |
 | **Welcome Call** | `18410804557` | `welcomeCall` + `finalConfirm` (two roles, same board, different groups). See `BOARD_SCHEMA.md`. |
@@ -323,16 +323,32 @@ and **Referral Source `color_mm1w5wxr`**, evaluated in that order:
 - **`profile`** (`/profile`, relabelled **"Verified Referrals"**, id unchanged so existing
   access.json role assignments keep working) — **everyone else**.
 
+⚠️ **"Send back to Patient Intake" was REMOVED from `ProfilePage` (Josh, 2026-08-14) — do not
+rebuild it.** It rendered only on **`/profile`** (Verified Referrals): `canSendBack` was
+`variant !== "inSystem"`, and `/unverified-referrals` is served by its own page, not this one. Two
+things were wrong with it, both surfaced by the return-button audit. It moved the item to
+`GROUPS.patientIntake` (`group_mm4vhqff`), a group **no SPA queue reads** — not `VARIANT_GROUPS`,
+not `useRoleCounts`' `PROFILE_GROUP_ID`, neither baseline generator — so the patient left the app's
+pipeline entirely with nothing tracking them. And it **never touched Intake Escalation**
+`color_mm5zww42`, so an escalated referral was moved out carrying the flag; anything that later put
+them back in *1. Intake* would have delivered them hidden from Unverified Referrals (`formActive`
+excludes escalated labels) and from that page's rep view — the same stale-carry-over class
+`enterDoctorAppointments` clears on entry to guard against (§5.12). Removed with its writer
+(`profile/mondayWrite.sendBackToPatientIntake`), the `sendingBack`/`canSendBack`/`onSendBack`
+plumbing and the now-orphaned `.route.intake` / `.route.outreach` CSS. `GROUPS.patientIntake`
+survives as board schema only. **Verified Referrals now has exactly one exit, Advance to MN**, which
+is gated on the readiness checklist — so a referral that is genuinely missing information has no
+in-app route out of that queue; that is the accepted consequence, not an oversight.
+
 **Already In System has a third exit: Mark as Stuck** (2026-08-12). Most patients in that queue
-are already being served, so "Advance to MN" and "Send back to Patient Intake" are both wrong for
-them and they had no way out. It stamps `text_mm2vf40t` (**stuck reason**) and then moves the item
+are already being served, so "Advance to MN" is wrong for them and they had no way out. It stamps `text_mm2vf40t` (**stuck reason**) and then moves the item
 to `GROUPS.stuck` (`group_mm1xyczx`) — reason FIRST, so a failed move leaves a stamped patient
 still in the queue rather than one parked in Stuck with no explanation. ⚠️ The **group is the only
 marker**: Move to Onboarding `color_mm1zmeb3` has no Stuck label (its labels are Already Serving ·
 Advance to MN · Send Back To Referral · Need More Info), so nothing on the item says "stuck" except
 which group it sits in — which is why the reason is required and stamped with who/when. Scoped to
 the `inSystem` variant via `BodyProps.onMarkStuck`; the other two roles don't render the card.
-⚠️ All three exits now **drop `?patientId=` on success** (`clearDeepLink`): the item moves to
+⚠️ Both remaining exits **drop `?patientId=` on success** (`clearDeepLink`): the item moves to
 another group so the next fetch won't return it, but a deep link is re-injected by
 `useMondayPatients` on every poll AND is exempt from the role split — so a rep watched a patient
 they'd just sent away sit in the sidebar. Clearing the URL only works because the hook now reads

@@ -9,7 +9,11 @@ const MONDAY_API_VERSION = "2024-10";
 export const BOARD_ID = 18406352652;
 
 export const GROUPS = {
-  // "Send back to Patient Intake" target — the upstream stage group (top of board).
+  // The upstream stage group (top of board). The SPA no longer writes to it:
+  // the "Send back to Patient Intake" route was removed from ProfilePage
+  // (2026-08-14) — it moved the item into a group NO role queue reads, and it
+  // left the Intake Escalation column untouched, so a returned patient could
+  // come back carrying a stale flag. Kept here as board schema only.
   patientIntake: "group_mm4vhqff",
   intake: "group_mm1xf2jb",
   tests: "group_mm1wvq8p",

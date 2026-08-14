@@ -28,7 +28,7 @@ import {
   type MondayAsset, type MondayUpdate,
 } from "@/lib/profile/mondayApi";
 import {
-  sendPatientToMonday, sendBackToPatientIntake, markStuck, writePatientProfile,
+  sendPatientToMonday, markStuck, writePatientProfile,
   verifyProfileWritten, writeOopEstimate, triggerStediRun, writeProfileNotes,
 } from "@/lib/profile/mondayWrite";
 import { NoteLog, stampNote } from "@/components/profile/NoteLog";
@@ -183,7 +183,6 @@ const ProfilePage = ({ variant }: ProfilePageProps) => {
 
   const [selectedId, setSelectedId] = useState<string | null>(searchParams.get("patientId") ?? null);
   const [submitting, setSubmitting] = useState(false);
-  const [sendingBack, setSendingBack] = useState(false);
   // Which patient a Stedi run is in-flight for (null = none). Kept per-patient
   // so switching patients while a check polls doesn't leak the spinner.
   const [stediRunningId, setStediRunningId] = useState<string | null>(null);
@@ -478,26 +477,6 @@ const ProfilePage = ({ variant }: ProfilePageProps) => {
     } finally { setSubmitting(false); }
   };
 
-  const handleSendBack = async () => {
-    if (!selected) return;
-    setSendingBack(true);
-    try {
-      await sendBackToPatientIntake(selected, selectedClinicId);
-      // Only reached when every field saved AND the group move succeeded — safe
-      // to wipe the overlay. A failed write throws above, so we never clear on a
-      // partial save.
-      clearOverlay(selected.id);
-      toast.success(`${selected.name} sent back to Patient Intake`);
-      clearDeepLink();
-      setSelectedId(patients.find((p) => p.id !== selected.id)?.id ?? null);
-      setTimeout(refetch, 1500);
-    } catch (e) {
-      // Edits are intentionally NOT cleared here — they stay in the overlay so
-      // the rep can retry without re-typing.
-      toast.error("Send back failed — your edits are kept", { description: e instanceof Error ? e.message : String(e) });
-    } finally { setSendingBack(false); }
-  };
-
   // ── Mark as Stuck ─────────────────────────────────────────────
   // Already In System is a dead end for most of the patients in it — they're
   // already being served — so the queue needs a way OUT that isn't "advance to
@@ -635,10 +614,7 @@ const ProfilePage = ({ variant }: ProfilePageProps) => {
                 missing={missing.map((m) => (m.tag ? `${m.label} — ${m.tag}` : m.label))}
                 addressIssue={addressIssue}
                 submitting={submitting}
-                sendingBack={sendingBack}
-                canSendBack={variant !== "inSystem"}
                 onAdvance={handleAdvance}
-                onSendBack={handleSendBack}
                 onAddNote={handleAppendNote}
                 reviewMode={reviewMode}
                 onMarkStuck={variant === "inSystem" ? () => setStuckOpen(true) : undefined}
@@ -721,22 +697,14 @@ interface BodyProps {
    *  Advance to MN as well as at the field, which is two panes away. */
   addressIssue?: string;
   submitting: boolean;
-  sendingBack: boolean;
   /** Viewing a stage this patient already finished — the send-off routes are
-   *  off, because both of them MOVE a record that has already moved. */
+   *  off, because they MOVE a record that has already moved. */
   reviewMode?: boolean;
   /** Open the Mark-as-Stuck dialog. Undefined ⇒ this role has no such exit,
    *  and the card isn't rendered (Already In System only, for now). */
   onMarkStuck?: () => void;
   markingStuck?: boolean;
-  /** Whether this role may bounce the referral back to Patient Intake.
-   *  False for Already In System: that queue's question is "is this the same
-   *  patient?", and the answer is never "the referral is missing information" —
-   *  sending it back would put a known duplicate in front of intake again
-   *  instead of resolving it. Mark as Stuck is that role's second exit. */
-  canSendBack: boolean;
   onAdvance: () => void;
-  onSendBack: () => void;
   onAddNote: (fullText: string) => Promise<void>;
 }
 
@@ -1532,7 +1500,7 @@ function ProfileBody(p: BodyProps) {
                 {p.reviewMode && (
                   <div className="warn-banner" style={{ marginTop: 16 }}>
                     <span>
-                      <b>Completed stage</b> — this is what the rep filled out. Both send-off
+                      <b>Completed stage</b> — this is what the rep filled out. The send-off
                       routes move the record, so they&rsquo;re off here.
                     </span>
                   </div>
@@ -1541,19 +1509,10 @@ function ProfileBody(p: BodyProps) {
                   <div className={`route adv ${p.canSubmit ? "on" : ""}`}>
                     <h4>Advance to MN</h4>
                     <p>Everything checks out → save to Monday and move to Medical Necessity.</p>
-                    <button className="btn primary" onClick={p.onAdvance} disabled={!p.canSubmit || p.submitting || p.sendingBack || p.reviewMode}>
+                    <button className="btn primary" onClick={p.onAdvance} disabled={!p.canSubmit || p.submitting || p.reviewMode}>
                       {p.submitting ? "Advancing…" : "Advance to MN →"}
                     </button>
                   </div>
-                  {p.canSendBack && (
-                    <div className="route intake on">
-                      <h4>Send back to Patient Intake</h4>
-                      <p>Still missing info → move back to Patient Intake.</p>
-                      <button className="btn amber" onClick={p.onSendBack} disabled={p.submitting || p.sendingBack || p.reviewMode}>
-                        {p.sendingBack ? "Sending…" : "Send back to Patient Intake"}
-                      </button>
-                    </div>
-                  )}
                   {p.onMarkStuck && (
                     <div className="route on">
                       <h4>Mark as Stuck</h4>
@@ -1561,7 +1520,7 @@ function ProfileBody(p: BodyProps) {
                       <button
                         className="btn"
                         onClick={p.onMarkStuck}
-                        disabled={p.submitting || p.sendingBack || p.markingStuck || p.reviewMode}
+                        disabled={p.submitting || p.markingStuck || p.reviewMode}
                       >
                         {p.markingStuck ? "Moving…" : "Mark as Stuck"}
                       </button>
