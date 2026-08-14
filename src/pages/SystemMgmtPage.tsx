@@ -16,14 +16,18 @@ import {
 import type { CompletedStage, SystemPatient } from "@/lib/systemMgmt/mondayApi";
 import { writeStageAdvancer, STAGE_OPTIONS, STUCK_LABELS } from "@/lib/systemMgmt/mondayApi";
 import { completedStageForPatient, completedStageUrl } from "@/lib/systemMgmt/stageCompletion";
-import { EscalationDetailModal } from "@/components/shared/EscalationDetailModal";
+import { EscalationDetailModal } from "@/components/systemMgmt/EscalationDetailModal";
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { parseEscalation } from "@/lib/shared/escalation";
+import {
+  LEVEL_BADGE,
+  LEVEL_LABEL,
+  parseNoteEntriesNewestFirst,
+} from "@/lib/systemMgmt/escalationDetail";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
@@ -43,8 +47,6 @@ import {
   FileText,
   X,
   ArrowRightLeft,
-  Clock,
-  MessageSquare,
   Ban,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -87,7 +89,6 @@ const SystemMgmtPage = () => {
   const [chartSelection, setChartSelection] = useState<SystemPatient[] | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [notesPatient, setNotesPatient] = useState<SystemPatient | null>(null);
-  const [attemptNotesPatient, setAttemptNotesPatient] = useState<SystemPatient | null>(null);
   const [stageFilter, setStageFilter] = useState<string | null>(null);
 
   const handleChartSegmentClick = (segmentPatients: SystemPatient[]) => {
@@ -353,14 +354,11 @@ const SystemMgmtPage = () => {
               removingId={removingId}
               completionMap={completionMap}
               onCompletedStageClick={handleCompletedStageClick}
-              onViewDetails={(p) => {
-                const isAttemptStage = p.pipelineStage === "Chase Clinicals" || p.pipelineStage === "Confirm Receipt";
-                if (isAttemptStage) {
-                  setAttemptNotesPatient(p);
-                } else {
-                  setDetailPatient(p);
-                }
-              }}
+              // One modal for every stage: it shows the Propose Stuck reason,
+              // the manager decisions AND the attempt log, so Chase / Confirm
+              // Receipt no longer need a separate attempt-only view that hid
+              // the stated reason from them.
+              onViewDetails={setDetailPatient}
               onMarkStuck={(p) => setStuckConfirmPatient(p)}
             />
           )}
@@ -370,13 +368,7 @@ const SystemMgmtPage = () => {
     <EscalationDetailModal
       open={!!detailPatient}
       onOpenChange={(open) => { if (!open) setDetailPatient(null); }}
-      patientName={detailPatient?.name ?? ""}
-      data={parseEscalation(detailPatient?.escalationNotes)}
-    />
-    <AttemptNotesModal
-      open={!!attemptNotesPatient}
-      onOpenChange={(open) => { if (!open) setAttemptNotesPatient(null); }}
-      patient={attemptNotesPatient}
+      patient={detailPatient}
     />
     {/* Stuck confirmation popup */}
     <Dialog open={!!stuckConfirmPatient} onOpenChange={(open) => { if (!open) setStuckConfirmPatient(null); }}>
@@ -625,25 +617,29 @@ function EscalationView({
               {stage}
             </h3>
             <span className="ml-auto text-xs text-red-500 font-medium">
-              {pts.length} escalated
+              {pts.length} escalated{levelSplit(pts)}
             </span>
           </div>
           <div className="divide-y divide-border">
             {pts.map((p) => {
-              const esc = parseEscalation(p.escalationNotes);
-              const urgency = esc?.urgency ?? "Medium";
-              const rowBg = {
-                Low:    "bg-gray-50 dark:bg-gray-900/30 border-l-4 border-l-gray-400",
-                Medium: "bg-yellow-50 dark:bg-yellow-950/20 border-l-4 border-l-yellow-400",
-                High:   "bg-orange-50 dark:bg-orange-950/20 border-l-4 border-l-orange-400",
-                Urgent: "bg-red-50 dark:bg-red-950/25 border-l-4 border-l-red-500",
-              }[urgency];
-              const avatarBg = {
-                Low:    "bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200",
-                Medium: "bg-yellow-200 dark:bg-yellow-800/60 text-yellow-800 dark:text-yellow-200",
-                High:   "bg-orange-200 dark:bg-orange-800/60 text-orange-800 dark:text-orange-200",
-                Urgent: "bg-red-200 dark:bg-red-800/60 text-red-800 dark:text-red-200",
-              }[urgency];
+              /**
+               * The row colour is the escalation RUNG — orange for Manager
+               * Intervention, red for Final Decisions.
+               *
+               * It used to be an "urgency" parsed out of the retired Escalation
+               * Notes column. That parse returned null for all but three
+               * patients in the system, so every row fell through to the
+               * `"Medium"` default and the whole tab rendered one flat yellow:
+               * the colour-coding never fired once. The rung is a fact the
+               * board actually carries, so this can't silently go uniform again.
+               */
+              const level = p.escalationLevel;
+              const rowBg = level === "manager"
+                ? "bg-orange-50 dark:bg-orange-950/20 border-l-4 border-l-orange-400"
+                : "bg-red-50 dark:bg-red-950/25 border-l-4 border-l-red-500";
+              const avatarBg = level === "manager"
+                ? "bg-orange-200 dark:bg-orange-800/60 text-orange-800 dark:text-orange-200"
+                : "bg-red-200 dark:bg-red-800/60 text-red-800 dark:text-red-200";
               return (
               <div
                 key={`${p.boardId}-${p.id}`}
@@ -660,7 +656,19 @@ function EscalationView({
                       {p.name[0]}
                     </div>
                     <div className="min-w-0">
-                      <div className="text-sm font-medium truncate">{p.name}</div>
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <span className="text-sm font-medium truncate">{p.name}</span>
+                        {level && (
+                          <span
+                            className={cn(
+                              "shrink-0 text-[9px] font-bold px-1.5 py-0.5 rounded leading-none",
+                              LEVEL_BADGE[level],
+                            )}
+                          >
+                            {LEVEL_LABEL[level]}
+                          </span>
+                        )}
+                      </div>
                       <div className="text-xs text-muted-foreground truncate">
                         {p.phone || "No phone"} · {p.pipelineStage}
                       </div>
@@ -727,6 +735,17 @@ function EscalationView({
   );
 }
 
+
+/**
+ * " · 14 manager · 2 final" for a stage group, or "" on a board whose Escalation
+ * column never split (Welcome Call), where the breakdown would say nothing.
+ */
+function levelSplit(pts: SystemPatient[]): string {
+  const manager = pts.filter((p) => p.escalationLevel === "manager").length;
+  const final = pts.filter((p) => p.escalationLevel === "final").length;
+  if (manager + final === 0) return "";
+  return ` · ${manager} manager · ${final} final`;
+}
 
 // ── Notes Side Panel ─────────────────────────────────────────
 
@@ -1103,57 +1122,6 @@ function getDayBucketColor(daysSinceStage: string): string {
   return bucket?.color ?? UNKNOWN_COLOR;
 }
 
-/**
- * Parse notes into individual entries.
- * Handles bracketed headers like [May 14, 2026, 12:04 PM] and also
- * date-like patterns (MM/DD/YYYY) or plain paragraphs for older notes.
- */
-function parseNoteEntries(notes: string): { header: string; body: string }[] {
-  if (!notes) return [];
-  const text = notes.trim();
-
-  // Try splitting on bracketed date headers first: [May 14, 2026, 12:04 PM]
-  const bracketParts = text.split(/(?=\[[^\]]*\d{4}[^\]]*\])/);
-  if (bracketParts.length > 1 || /^\[[^\]]*\d{4}[^\]]*\]/.test(text)) {
-    const entries = bracketParts
-      .filter((p) => p.trim().length > 0)
-      .map((entry) => {
-        const headerMatch = entry.match(/^\[([^\]]+)\]/);
-        const header = headerMatch ? headerMatch[1].trim() : "";
-        const body = headerMatch ? entry.slice(headerMatch[0].length).trim() : entry.trim();
-        return { header, body };
-      });
-    if (entries.length > 0) return entries;
-  }
-
-  // Fallback: try splitting on date patterns like MM/DD/YYYY or YYYY-MM-DD
-  const dateParts = text.split(/(?=(?:\d{1,2}\/\d{1,2}\/\d{4}|\d{4}-\d{2}-\d{2}))/);
-  if (dateParts.length > 1) {
-    return dateParts
-      .filter((p) => p.trim().length > 0)
-      .map((entry) => {
-        const dateMatch = entry.match(/^(\d{1,2}\/\d{1,2}\/\d{4}|\d{4}-\d{2}-\d{2})/);
-        const header = dateMatch ? dateMatch[1] : "";
-        const body = dateMatch ? entry.slice(dateMatch[0].length).trim() : entry.trim();
-        return { header, body };
-      });
-  }
-
-  // Final fallback: split on double newlines as separate entries
-  const paragraphs = text.split(/\n\s*\n/).filter((p) => p.trim().length > 0);
-  if (paragraphs.length > 1) {
-    return paragraphs.map((p) => ({ header: "", body: p.trim() }));
-  }
-
-  // Single block of text
-  return [{ header: "", body: text }];
-}
-
-/** Reverse so most recent (last in Monday text) comes first */
-function parseNoteEntriesNewestFirst(notes: string): { header: string; body: string }[] {
-  return parseNoteEntries(notes).reverse();
-}
-
 function PatientRow({
   patient,
   onClick,
@@ -1350,97 +1318,5 @@ function PatientRow({
         )}
       </button>
     </div>
-  );
-}
-
-// ── Attempt Notes Modal (Chase Clinicals / Confirm Receipt) ──
-
-// Full stage names (current) + legacy abbreviations (old notes still on Monday)
-const ATTEMPT_PREFIXES = [
-  "Chase Clinicals Attempt",
-  "Confirm Receipt Attempt",
-  "Send Request Attempt",
-  "C.C. Attempt",
-  "C.R. Attempt",
-  "S.R. Attempt",
-];
-
-function parseAttemptNotes(notes: string): { timestamp: string; label: string; body: string }[] {
-  if (!notes) return [];
-  const entries = parseNoteEntries(notes);
-  return entries
-    .filter((e) => ATTEMPT_PREFIXES.some((pfx) => e.body.startsWith(pfx)))
-    .map((e) => {
-      const colonIdx = e.body.indexOf(":");
-      const label = colonIdx > -1 ? e.body.slice(0, colonIdx).trim() : e.body.trim();
-      const body = colonIdx > -1 ? e.body.slice(colonIdx + 1).trim() : "";
-      return { timestamp: e.header, label, body };
-    });
-}
-
-function AttemptNotesModal({
-  open,
-  onOpenChange,
-  patient,
-}: {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  patient: SystemPatient | null;
-}) {
-  const attempts = useMemo(
-    () => (patient ? parseAttemptNotes(patient.notes) : []),
-    [patient],
-  );
-
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <MessageSquare className="h-5 w-5 text-amber-500" />
-            Attempt History — {patient?.name ?? ""}
-          </DialogTitle>
-        </DialogHeader>
-
-        <div className="space-y-3 pt-1">
-          <div className="text-xs text-muted-foreground">
-            {patient?.pipelineStage} · {attempts.length} attempt{attempts.length !== 1 ? "s" : ""} logged
-          </div>
-
-          {attempts.length === 0 ? (
-            <div className="rounded-lg border bg-muted/30 p-6 text-center">
-              <p className="text-sm text-muted-foreground">
-                No attempt notes found for this patient.
-              </p>
-            </div>
-          ) : (
-            attempts.map((attempt, i) => (
-              <div
-                key={i}
-                className={cn(
-                  "rounded-lg border p-4 space-y-1.5",
-                  i === attempts.length - 1
-                    ? "bg-red-50/50 dark:bg-red-950/20 border-red-200 dark:border-red-800"
-                    : "bg-muted/30",
-                )}
-              >
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-sm font-semibold">{attempt.label}</span>
-                  {attempt.timestamp && (
-                    <span className="text-xs text-muted-foreground flex items-center gap-1 shrink-0">
-                      <Clock className="h-3 w-3" />
-                      {attempt.timestamp}
-                    </span>
-                  )}
-                </div>
-                <p className="text-sm whitespace-pre-wrap">
-                  {attempt.body || <span className="text-muted-foreground italic">No notes recorded</span>}
-                </p>
-              </div>
-            ))
-          )}
-        </div>
-      </DialogContent>
-    </Dialog>
   );
 }

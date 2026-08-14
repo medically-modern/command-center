@@ -6,6 +6,7 @@
  */
 
 import { MONDAY_API_URL, mondayIdentityHeaders } from "../shared/mondayEndpoint";
+import { escalationLevelFrom, type EscalationLevel } from "./escalationDetail";
 import {
   COMPLETED_STAGE_ROUTES,
   STAGE_COMPLETION_COLUMNS,
@@ -286,7 +287,19 @@ export interface SystemPatient {
   escalated: boolean;
   /** Raw escalation text (e.g. "Escalation Required") */
   escalationText: string;
-  /** Raw escalation notes text (from the dedicated long_text column) */
+  /**
+   * Which rung of the ladder — Manager Intervention vs Final Decisions — or
+   * `flat` on a board that never split the column. Null iff `escalated` is
+   * false; `escalationDetail.test.ts` pins the two against each other.
+   */
+  escalationLevel: EscalationLevel | null;
+  /**
+   * Raw escalation notes text (from the retired per-board long_text column).
+   *
+   * ⚠️ Kept only so the handful of patients carrying a legacy `[ESCALATION
+   * FORM]` block can still be read. It is NOT where an escalation's reason
+   * lives today — see `escalationDetail.ts`.
+   */
   escalationNotes: string;
   /** Whether this patient's role has a dedicated page to navigate to */
   hasPage: boolean;
@@ -466,6 +479,12 @@ function mapToSystemPatient(item: RawItem, board: BoardDef): SystemPatient {
     escalationText === "Final Escalation Required" ||
     ((board.boardId === 18406060017 || board.boardId === 18410601299) &&
       (escIndex === 0 || escIndex === 2));
+  // Same inputs as the flag above, so the two can never disagree about who is
+  // escalated — a level on a non-escalated row would colour a row nobody
+  // escalated, and a null level on an escalated one renders a blank badge.
+  const escalationLevel = escalated
+    ? escalationLevelFrom(board.boardId, escalationText, escIndex)
+    : null;
 
   const nextActionDate = board.nextActionDateColId
     ? colVal(board.nextActionDateColId)
@@ -491,6 +510,7 @@ function mapToSystemPatient(item: RawItem, board: BoardDef): SystemPatient {
     pipelineStage,
     escalated,
     escalationText,
+    escalationLevel,
     escalationNotes,
     hasPage,
     isCompleted,

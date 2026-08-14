@@ -1235,6 +1235,35 @@ columns" automation on duplicated items). The SPA only flips the advancer; verif
   completions, so the banner shows the email either way and puts the provenance in a tooltip —
   the flag says how the attribution was obtained, not whether it's plausible. Direct (no-gateway)
   builds have no audit log at all: `stageActorConfigured()` is false and the name is simply omitted.
+  **The Escalations tab** (`?tab=escalations`) is a filter over the same cross-board fetch as
+  Search — **not** a group, and not its own query. Membership is ONE status column per board
+  (`BoardDef.escalationColId`): ME + Welcome Call `color_mm1x7997`, Insurance `color_mm2vsh2f`,
+  matched by exact label OR — on the two split boards only — raw index 0/2, so a rename can't
+  blind it. The other four boards have `escalationColId: null`, so **nothing on DTC Intake,
+  Secondary Claims, Subscription or Profile Send Off can ever appear there**. The Monday groups
+  literally named "Escalations" are irrelevant to it.
+  ⚠️ **The reason lives in the NOTES column, never in an escalation column** (rebuilt 2026-08-14,
+  `lib/systemMgmt/escalationDetail.ts` + tests). The tab used to describe an escalation from a
+  per-board **Escalation Notes** long_text parsed for a `[ESCALATION FORM]` block
+  (`lib/shared/escalation.ts`). Audited against the live boards that column held data for **3 of
+  58** escalated patients: the Details modal said "no escalation form data found" for 35 of the 38
+  that reached it, and since `parseEscalation` returned null the row colour fell through to its
+  `"Medium"` urgency default — **every row in the tab rendered the same yellow, the colour-coding
+  had never once fired.** Escalations are raised two ways today and neither writes that column:
+  **Propose Stuck** stamps the reason into the stage's notes (`lib/masheke/proposedStuck.ts`), and
+  the **auto rules** (attempt 4+, days outstanding, a denial, the four DVS automations) write the
+  status and nothing else. So a patient with no stamp is NORMAL, not missing data — their attempt
+  log is the explanation, and reporting it as absent is what made the tab useless. Row colour and
+  the badge are now the **rung** (`escalationLevel`, orange = index 0 Manager Intervention, red =
+  index 2 Final Decisions, `flat` for Welcome Call which never split) — derived from the same
+  inputs as the membership flag so the two can't disagree. The legacy form block is still rendered
+  when present, so the three patients carrying one lose nothing.
+  ⚠️ Its **Remove** button is still the blunt one — Escalation → Done + Next Action Date = today,
+  with **no stamped note and no attempt reset**, unlike Oversight's `returnProposedToQueue`
+  (§7 above). Known gap, deliberately left; don't assume clearing here leaves the same trail.
+  ⚠️ The retired **`EscalationFormModal`** is commented out on the four ME pages but **still live
+  on `WelcomeCallPage` + `FinalConfirmPage`**, so those two stages can still write the dead column.
+  Left in place (Josh, 2026-08-14) pending a Propose Stuck equivalent for Welcome Call.
 - **Patient Questions** (`/patient-questions`) is an inbox merging "patient message" columns from
   the Subscription + Secondary Claims boards. **Mark completed** stamps a "Question Handled At"
   date column (Subscription `date_mm57yzmb`, Claims `date_mm57skrd`); an item shows only while
