@@ -44,7 +44,7 @@ import {
   proposeIntakeStuck, returnIntakeToPipeline, approveIntakeStuck,
 } from "@/lib/profile/unverifiedWrite";
 import { actionsFor, proposeStuckLevel, type StageAction, type StageKey } from "@/lib/shared/stageActions";
-import { returnResetsAttempts } from "@/lib/masheke/attemptRollup";
+import { returnAttemptReset } from "@/lib/masheke/attemptRollup";
 import { useBackNavigation } from "@/hooks/useBackNavigation";
 import { ProposeStuckModal } from "@/components/masheke/ProposeStuckModal";
 import { ProposeStuckButton } from "@/components/samantha/ProposeStuckButton";
@@ -118,11 +118,12 @@ export function StageActionBar({ stage, board, patientId, patientName, escalatio
       } else {
         switch (board) {
           case "insurance": await returnInsuranceToQueue(patientId, note); break;
-          // Evaluate is the one stage whose return hands the rep a fresh set of
-          // outreach attempts — the patient is going back to the TOP of the
-          // loop, so the spent Confirm Receipt / Chase attempts are rolled into
-          // the notes and the counter is reset (lib/masheke/attemptRollup).
-          case "masheke":   await returnProposedToQueue(patientId, note, { resetAttempts: returnResetsAttempts(stage) }); break;
+          // Every ME stage whose panel gates on MN Attempts hands the rep a
+          // fresh set of outreach attempts on the way back: the spent columns
+          // are rolled into the notes and the counter is reset. The scope is
+          // per-stage — a Chase return keeps Confirm Receipt's columns
+          // (lib/masheke/attemptRollup).
+          case "masheke":   await returnProposedToQueue(patientId, note, { resetScope: returnAttemptReset(stage) }); break;
           case "profile":   await returnIntakeToPipeline(patientId, note ?? "Returned by a manager"); break;
           default: unhandledBoard(board);
         }

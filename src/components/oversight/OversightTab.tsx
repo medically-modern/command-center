@@ -37,7 +37,7 @@ import {
 } from "@/lib/profile/unverifiedWrite";
 import { fuzzyNameMatch } from "@/lib/oversight/fuzzyName";
 import { extractProposedStuckReason } from "@/lib/masheke/proposedStuck";
-import { returnResetsAttempts } from "@/lib/masheke/attemptRollup";
+import { returnAttemptReset } from "@/lib/masheke/attemptRollup";
 import { etTodayYmd } from "@/lib/samantha/benefitsDerive";
 import { MANAGER_ORIGIN_PARAM, MANAGER_CHART_PARAM, MANAGER_BUCKET_PARAM } from "@/lib/shared/managerOrigin";
 import { Loader2, BarChart3, X, ExternalLink, StickyNote, Search, ArrowUp, ArrowDown, ArrowUpDown, Star, SlidersHorizontal, Plus, Trash2, RotateCcw, Flag } from "lucide-react";
@@ -2131,13 +2131,12 @@ export default function OversightTab() {
           else await returnInsuranceToQueue(patientId, appendNote);
         } else {
           if (action === "approve") await approveProposedStuck(patientId, appendNote);
-          // Same rule as the Evaluate page's own action bar: a return from the
-          // EVALUATE chart puts the patient at the top of a fresh loop, so the
-          // spent Confirm Receipt / Chase attempts roll into the notes and the
-          // counter resets. `rowOf` is the stage key the chart belongs to —
-          // every other ME chart keeps its attempts (lib/masheke/attemptRollup).
+          // Same rule as the stage pages' own action bar: a return hands the rep
+          // a working queue back, which means rolling the spent attempt columns
+          // into the notes and resetting MN Attempts. `rowOf` is the stage key
+          // the chart belongs to, and picks the scope (lib/masheke/attemptRollup).
           else await returnProposedToQueue(patientId, appendNote, {
-            resetAttempts: returnResetsAttempts(CHART_DEFS.find((c) => c.id === chartId)?.rowOf),
+            resetScope: returnAttemptReset(CHART_DEFS.find((c) => c.id === chartId)?.rowOf),
           });
         }
         toast.success(

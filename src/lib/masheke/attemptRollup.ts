@@ -98,26 +98,63 @@ export function buildAttemptRollup(input: AttemptRollupInput): AttemptRollup {
 }
 
 /**
- * Does this stage's "Send back to pipeline" hand the rep a fresh set of
- * attempts? **Evaluate only** (Josh, 2026-08-14).
+ * Which attempt columns a stage's "Send back to pipeline" clears — and with
+ * them, whether MN Attempts goes back to Attempt 1 (Josh, 2026-08-14).
  *
- * A manager returning an EVALUATE patient is putting them back at the TOP of
- * the loop: they will be re-evaluated, a new request will go out, and the
- * office will be called again from scratch. Their spent attempts belong to the
- * cycle that just ended, so the rollup runs and the counter goes back to
- * Attempt 1.
+ * ── WHY ANY OF THIS IS NEEDED ──
+ * MN Attempts (`color_mm1wz0vg`) is what Confirm Receipt and Chase derive the
+ * current slot from — NOT which columns are filled. `Escalate` means
+ * `currentAttempt === null` ⇒ `isEscalated` ⇒ `locked = isEscalated &&
+ * !managerMode`, and `managerMode` is only ever `?manager=1`, which a
+ * processor's own role bar never sets. So a returned patient landed in the
+ * rep's sidebar, due today, showing a rose card reading "Escalated — all 3
+ * attempts came back unsuccessful" while the escalation had in fact just been
+ * cleared. The rep could edit notes and nothing else: no attempt, no re-send,
+ * no way to move the Next Action Date. The patient sat there forever.
  *
- * ⚠️ Every other stage is the opposite, on purpose. Returning a patient to
- * Chase or Confirm Receipt drops them back into the SAME cycle they were
- * escalated out of — the attempts they show are the ones they just spent, and
- * MN Attempts stays where it is. That is the documented rule the Oversight
- * charts already lean on ("MN Attempts is history, not a queue flag" — CLAUDE.md
- * §7): the Attempt 4+ charts key on escalation index 0 precisely BECAUSE a
- * returned chase patient keeps `MN Attempts = Escalate`. Resetting it here for
- * every stage would hand a rep three more chases on a request the office has
- * already refused three times, and would empty the two charts that are supposed
- * to remember it.
+ * ── THE SCOPES ──
+ *  - `"all"` — Evaluate, Send Request, Confirm Receipt. The whole outreach loop
+ *    restarts from the top: a new request goes out and the office is called
+ *    from scratch, so both stages' columns belong to the cycle that just ended.
+ *  - `"chaseOnly"` — the two Chase roles. The rep is being sent back to chase
+ *    again, not to re-confirm receipt. ⚠️ The Confirm Receipt columns must
+ *    SURVIVE: `ChaseClinicalsPanel` parses them for the "who actually confirmed
+ *    receipt" banner it shows the chase rep, and clearing them would silently
+ *    blank that.
+ *  - `null` — Doctor Appointments and every non-ME stage. Doctor Appointments
+ *    keeps no attempt columns at all: its counter is the attempt LINES in the
+ *    notes, reset by the `[Returned to queue` stamp that every return now
+ *    writes (`apptOutreach.RESET_MARKERS`).
+ *
+ * Nothing is lost by clearing: the columns are folded into the MN Workflow
+ * Notes in the same all-or-nothing mutation first.
+ *
+ * ⚠️ This does NOT disturb the Oversight "Attempt 4+" charts, despite CLAUDE.md
+ * §7's note that MN Attempts survives a return. Those charts require escalation
+ * index 0, and a return clears the escalation — so a returned patient is off
+ * them either way, whatever the counter says.
  */
-export function returnResetsAttempts(stage: string | undefined | null): boolean {
-  return stage === "evaluate";
+export type AttemptResetScope = "all" | "chaseOnly";
+
+/**
+ * ⚠️ TWO VOCABULARIES, one table. The stage pages pass a `StageKey`
+ * (`lib/shared/stageActions`) and the Oversight drill-down passes the chart's
+ * `rowOf` — and the Email & Parachute chase is called **`chase-parachute`** in
+ * the first and **`chase-email-parachute`** in the second. A table holding only
+ * one spelling doesn't error on the other, it silently returns null: the
+ * manager's return looks like it worked and the rep is still locked out. Both
+ * spellings are listed, and `attemptRollup.test.ts` pins every key from both
+ * sources.
+ */
+const RESET_SCOPES: Record<string, AttemptResetScope> = {
+  evaluate: "all",
+  "send-request": "all",
+  "confirm-receipt": "all",
+  "chase-fax": "chaseOnly",
+  "chase-parachute": "chaseOnly",        // StageKey spelling
+  "chase-email-parachute": "chaseOnly",  // Oversight ChartDef.rowOf spelling
+};
+
+export function returnAttemptReset(stage: string | undefined | null): AttemptResetScope | null {
+  return (stage && RESET_SCOPES[stage]) || null;
 }

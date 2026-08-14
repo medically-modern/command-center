@@ -210,6 +210,15 @@ export function parseApptAttempt(slot: 1 | 2 | 3, raw: string): ApptAttempt {
  *    would otherwise hand them back with the counter already spent, including
  *    all the attempts the MANAGER logged while they were escalated.
  *
+ * ⚠️ THE SECOND MARKER IS ONLY AS RELIABLE AS THE STAMP THAT WRITES IT. The
+ * manager's note is an OPTIONAL box, and `returnProposedToQueue` used to append
+ * the `[Returned to queue …]` line only when it was filled in — so a manager who
+ * just pressed the button left no marker, the three spent attempts kept
+ * counting, and this stage locked the rep out exactly as the paragraph below
+ * warns. That call now stamps unconditionally (defaulting the body to "Returned
+ * by a manager"), which is what makes this reset actually unconditional. Don't
+ * "tidy" the stamp back to note-only.
+ *
  * Without this, both cases silently lock the processor out of a patient they
  * are supposed to be working, with no error and no way to tell why.
  */

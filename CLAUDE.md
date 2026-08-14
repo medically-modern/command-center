@@ -924,29 +924,46 @@ columns" automation on duplicated items). The SPA only flips the advancer; verif
   takes an OPTIONAL stamped note, sets Next Action Date = today, and clears the escalation so the
   patient re-enters the rep's queue). Every ME manager chart (incl. Proposed Stuck) opens the
   patient in the stage page (manager mode) to view/work in UI.
-  ⚠️ **A return from EVALUATE additionally resets the outreach budget** (Josh, 2026-08-14;
-  `lib/masheke/attemptRollup.ts` + tests, applied by `returnProposedToQueue`). That button puts the
-  patient at the TOP of the loop — re-evaluate, new request, call the office again — but the six
-  Confirm Receipt / Chase attempt columns (`text_mm2yd068`/`mm2y9h4a`/`mm2ymtsk` ·
-  `text_mm2yhpjt`/`mm2yb3rv`/`mm2ybk06`) still hold the cycle that just ended, and **MN Attempts
-  `color_mm1wz0vg` still reads `Escalate`, which LOCKS both panels for a rep** (`currentAttempt`
-  is derived from that column, not from which slots are filled). So the returned patient used to
-  arrive with no way to log the outreach the manager had just asked for — three greyed-out cards
-  and a disabled Save. The return now folds those six columns into the **MN Workflow Notes**
-  under a dated header, blanks them, and writes MN Attempts back to **Attempt 1**
+  ⚠️ **A return RESETS THE OUTREACH BUDGET, or the rep gets a patient they cannot work**
+  (Josh, 2026-08-14; `lib/masheke/attemptRollup.ts` + tests, applied by `returnProposedToQueue`).
+  Clearing the escalation is only half the job. **MN Attempts `color_mm1wz0vg` is what Confirm
+  Receipt and Chase derive the current slot from — NOT which attempt columns are filled**
+  (`currentAttempt` ← that column; `Escalate` ⇒ `isEscalated` ⇒ `locked = isEscalated &&
+  !managerMode`, and `managerMode` is only ever `?manager=1`, which a processor's own role bar
+  never sets). A returned patient therefore landed in the rep's sidebar, due today, counted in the
+  burndown, showing a rose **"Escalated — all 3 attempts came back unsuccessful"** card *while the
+  escalation had just been cleared*: notes editable, but no attempt, no fax/email re-send, no way
+  to move the Next Action Date. They sat there forever. A **simulation across all six ME stages**
+  (kept out of the repo; gates = queue · sidebar · role count · can-actually-work) found Evaluate,
+  Confirm Receipt and both Chase roles dead on gate 4, and Doctor Appointments dead whenever the
+  manager left the note box blank. The return now folds the spent attempt columns
+  (`text_mm2yd068`/`mm2y9h4a`/`mm2ymtsk` · `text_mm2yhpjt`/`mm2yb3rv`/`mm2ybk06`) into the **MN
+  Workflow Notes** under a dated header, blanks them, and writes MN Attempts back to **Attempt 1**
   (`MN_ATTEMPTS_INDEX.attempt1` = index **2** — this column's labels are not in numeric order).
-  The counter reset is unconditional; the six clears fire only when something was there.
+  The counter reset is unconditional; the clears fire only when something was there.
+  **Scope is per stage** (`returnAttemptReset`): `all` for Evaluate / Send Request / Confirm
+  Receipt (the whole loop restarts from the top), **`chaseOnly` for the two Chase roles** — a chase
+  return must NOT wipe the Confirm Receipt columns, because `ChaseClinicalsPanel` parses them for
+  its "who actually confirmed receipt" banner. Doctor Appointments is `null`: it has no attempt
+  columns, its counter is the attempt LINES in the notes.
+  ⚠️ **The stamped `[Returned to queue …]` note is now written even when the manager leaves the box
+  blank** (body defaults to "Returned by a manager", same as Patient Intake's
+  `returnIntakeToPipeline` always did). That stamp is Doctor Appointments' **attempt-counter reset
+  marker** (`apptOutreach.RESET_MARKERS`), so a note-less return used to leave three spent attempts
+  counting and lock the rep out — silently, exactly as that module's own comment warns.
   ⚠️ **Append + clears ride ONE `change_multiple_column_values`** (all-or-nothing), so a cycle's
   notes can never be deleted without having landed in the history first — the same reasoning the
-  rep-side re-eval rollup in `EvaluatePanel` carries, and both now call `buildAttemptRollup` so the
+  rep-side re-eval rollup in `EvaluatePanel` carries, and both call `buildAttemptRollup` so the
   headers they write into that shared column can't drift. The escalation flip stays LAST and
   separate: it is what makes the patient visible to the rep, so it must not fire before the data.
-  ⚠️ **EVALUATE ONLY** (`returnResetsAttempts`, asserted per stage). Both entry points pass it —
-  the page's `StageActionBar` from its `stage` prop, the drill-down from the chart's `rowOf`. A
-  return to Chase / Confirm Receipt drops the patient back into the SAME cycle, so their spent
-  attempts and `MN Attempts = Escalate` stay put — which is exactly what the Attempt 4+ charts
-  below rely on ("MN Attempts is history, not a queue flag"). Resetting board-wide would hand a
-  rep three more chases on a request the office has already refused three times. **Insurance columns 2/3 are
+  ⚠️ **`returnAttemptReset` is keyed by TWO vocabularies.** The stage page passes a `StageKey`, the
+  drill-down passes the chart's `rowOf`, and the Email & Parachute chase is **`chase-parachute`** in
+  one and **`chase-email-parachute`** in the other. A table holding one spelling doesn't error on
+  the other — it returns null, the return looks like it worked, and the rep stays locked out. Both
+  are listed and pinned by tests.
+  ⚠️ This does **not** disturb the Attempt 4+ charts described below, despite their reliance on
+  "MN Attempts is history, not a queue flag": those charts require escalation index 0, and a return
+  clears the escalation, so a returned patient is off them either way. **Insurance columns 2/3 are
   REASON-BUCKETED (2026-07-29, `OVERSIGHT_CHART_RULES.md` §3):** the x-axis is one bar per reason
   (a patient can be in several bars; header count = distinct patients), driven by
   `ChartDef.reasonBuckets` + `reasonBucketsFor`. Column 2: Benefits (Inactive insurance · Pump SoS ·

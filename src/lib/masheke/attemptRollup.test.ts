@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { buildAttemptRollup, returnResetsAttempts, type AttemptSlots } from "./attemptRollup";
+import { buildAttemptRollup, returnAttemptReset, type AttemptSlots } from "./attemptRollup";
 
 const NONE: AttemptSlots = [undefined, undefined, undefined];
 const DATE = "2026-08-14";
@@ -75,23 +75,40 @@ describe("buildAttemptRollup", () => {
   });
 });
 
-describe("returnResetsAttempts", () => {
-  it("resets on Evaluate — the patient is going back to the top of the loop", () => {
-    expect(returnResetsAttempts("evaluate")).toBe(true);
-  });
-
-  it("does NOT reset on any other Medical Evaluation stage", () => {
-    // Chase/Confirm returns land back in the SAME cycle: the attempts on screen
-    // are the ones just spent, and MN Attempts stays "Escalate" so the Oversight
-    // Attempt 4+ charts keep remembering them (CLAUDE.md §7).
-    for (const stage of ["send-request", "confirm-receipt", "chase-fax", "chase-parachute", "doctor-appointments"]) {
-      expect(returnResetsAttempts(stage)).toBe(false);
+describe("returnAttemptReset", () => {
+  it("restarts the whole loop from Evaluate, Send Request and Confirm Receipt", () => {
+    // A new request goes out and the office is called from scratch, so both
+    // stages' columns belong to the cycle that just ended.
+    for (const stage of ["evaluate", "send-request", "confirm-receipt"]) {
+      expect(returnAttemptReset(stage)).toBe("all");
     }
   });
 
-  it("does not reset for the other boards' stages, or for a missing stage", () => {
+  it("keeps Confirm Receipt's columns on a Chase return", () => {
+    // ChaseClinicalsPanel parses them for the "who actually confirmed receipt"
+    // banner — clearing them would silently blank it.
+    expect(returnAttemptReset("chase-fax")).toBe("chaseOnly");
+    expect(returnAttemptReset("chase-parachute")).toBe("chaseOnly");
+  });
+
+  it("covers BOTH spellings of the Email & Parachute chase", () => {
+    // The stage page passes the StageKey, the Oversight drill-down passes the
+    // chart's rowOf, and the two disagree on this one name. A table missing
+    // either spelling returns null silently — the return looks like it worked
+    // and the rep stays locked out.
+    expect(returnAttemptReset("chase-parachute")).toBe("chaseOnly");
+    expect(returnAttemptReset("chase-email-parachute")).toBe("chaseOnly");
+  });
+
+  it("does nothing for Doctor Appointments — its counter is the notes, not columns", () => {
+    // The reset there is the "[Returned to queue" stamp, which every return now
+    // writes (apptOutreach.RESET_MARKERS).
+    expect(returnAttemptReset("doctor-appointments")).toBeNull();
+  });
+
+  it("does nothing for the other boards' stages, or for a missing stage", () => {
     for (const stage of ["benefits", "submit-auth", "auth-outstanding", "dvs", "unverified-intake", undefined, null, ""]) {
-      expect(returnResetsAttempts(stage)).toBe(false);
+      expect(returnAttemptReset(stage)).toBeNull();
     }
   });
 });

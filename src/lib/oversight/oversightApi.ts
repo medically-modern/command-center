@@ -7,7 +7,7 @@ import { etTodayYmd } from "@/lib/samantha/benefitsDerive";
 import { MONDAY_API_URL, mondayIdentityHeaders } from "../shared/mondayEndpoint";
 import { etToday } from "../masheke/etDate";
 import { stampReturnedToQueue, stampReturnedToManager, stampApprovedStuck, stampEscalatedToFinal, appendStampedLine } from "../masheke/proposedStuck";
-import { buildAttemptRollup } from "../masheke/attemptRollup";
+import { buildAttemptRollup, type AttemptResetScope } from "../masheke/attemptRollup";
 import { MN_ATTEMPTS_INDEX } from "../masheke/mondayMapping";
 import { userInitials } from "../shared/auth";
 const MONDAY_API_VERSION = "2024-10";
@@ -2190,17 +2190,21 @@ export async function approveProposedStuck(itemId: string, appendNote?: string):
  * set to today and the Escalation is cleared (→ Done, which also clears the
  * index-2 stuck proposal) so the patient reappears in the due-now queue.
  *
- * **`resetAttempts` — the Evaluate case (Josh, 2026-08-14).** Sending an
- * EVALUATE patient back to the pipeline puts them at the top of a fresh loop:
- * re-evaluate → send request → call the office again. But the six Confirm
- * Receipt / Chase attempt columns still hold the cycle that just ended, and MN
- * Attempts still reads whatever it reached — usually "Escalate", which LOCKS
- * both panels for a rep and greys out all three cards. So the returned patient
- * would arrive with no way to log the outreach the manager just asked for.
- * With the flag on, this call rolls those six columns into the MN Workflow
- * Notes (dated header, `buildAttemptRollup`), blanks them, and puts MN Attempts
- * back to Attempt 1 — three fresh reach-outs per stage, with the old ones
- * preserved in the history.
+ * **`resetScope` — handing the rep a working queue back (Josh, 2026-08-14).**
+ * Sending a Medical Evaluation patient back to the pipeline is supposed to mean
+ * they can be worked again. But the six Confirm Receipt / Chase attempt columns
+ * still hold the cycle that just ended, and MN Attempts still reads whatever it
+ * reached — usually "Escalate", which is what BOTH panels derive the current
+ * slot from. A returned patient therefore arrived in the rep's sidebar, due
+ * today, showing a rose "Escalated — all 3 attempts came back unsuccessful"
+ * card with no Save: nothing to log, nothing to re-send, no way to move the
+ * Next Action Date. With a scope set, this call rolls the relevant columns into
+ * the MN Workflow Notes (dated header, `buildAttemptRollup`), blanks them, and
+ * puts MN Attempts back to Attempt 1.
+ *
+ * `"all"` clears both stages' columns; `"chaseOnly"` leaves Confirm Receipt's
+ * alone, because the chase page reads them for its "who confirmed receipt"
+ * banner. `returnAttemptReset(stage)` picks; see there for the per-stage rule.
  *
  * ⚠️ The rollup and the clears ride ONE `change_multiple_column_values`, which
  * is all-or-nothing: a cycle's notes can never be deleted without having landed
@@ -2208,54 +2212,67 @@ export async function approveProposedStuck(itemId: string, appendNote?: string):
  * makes the patient visible to the rep, so it must not fire before the data it
  * hands them is in place.
  *
- * The counter is reset unconditionally when the flag is on, not only when there
- * were attempts to roll up: a patient can reach Evaluate with empty attempt
- * columns (an earlier send already rolled them up) and MN Attempts still at
- * "Escalate". Writing Attempt 1 is idempotent.
+ * The counter is reset whenever a scope is set, not only when there were
+ * attempts to roll up: a patient can arrive with empty attempt columns (an
+ * earlier send already rolled them up) and MN Attempts still at "Escalate".
+ * Writing Attempt 1 is idempotent.
  *
- * ⚠️ Callers pass the flag from `returnResetsAttempts(stage)` — see there for
- * why every OTHER stage deliberately keeps its spent attempts.
+ * ⚠️ **The stamped return note is written even when the manager leaves the box
+ * blank**, defaulting to "Returned by a manager" — the same thing the Patient
+ * Intake board's `returnIntakeToPipeline` has always done. It is not decoration:
+ * `[Returned to queue` is Doctor Appointments' attempt-counter RESET MARKER
+ * (`apptOutreach.RESET_MARKERS`), so a note-less return used to leave that
+ * stage's three spent attempts counting and lock the rep out of the patient —
+ * silently, exactly as that module's comment warns. The stamp is what makes the
+ * reset unconditional there, and it costs the other stages one honest line of
+ * history.
  */
 export async function returnProposedToQueue(
   itemId: string,
   appendNote?: string,
-  opts?: { resetAttempts?: boolean },
+  opts?: { resetScope?: AttemptResetScope | null },
 ): Promise<void> {
-  const note = appendNote?.trim();
+  const note = appendNote?.trim() || "Returned by a manager";
   const today = etToday();
+  const stamped = stampReturnedToQueue(note, today, userInitials());
+  const scope = opts?.resetScope ?? null;
 
-  if (opts?.resetAttempts) {
-    const attemptCols = [...MASHEKE_CONFIRM_ATTEMPT_COLS, ...MASHEKE_CHASE_ATTEMPT_COLS];
-    // Read the notes AND the six attempt columns fresh in one query — the rep
-    // may have logged something since the manager's page last polled.
+  if (scope) {
+    // Which columns this stage's restart owns. Chase returns deliberately leave
+    // Confirm Receipt's alone — see returnAttemptReset.
+    const attemptCols = scope === "all"
+      ? [...MASHEKE_CONFIRM_ATTEMPT_COLS, ...MASHEKE_CHASE_ATTEMPT_COLS]
+      : [...MASHEKE_CHASE_ATTEMPT_COLS];
+    const blank = ["", "", ""] as const;
+    // Read the notes AND those columns fresh in one query — the rep may have
+    // logged something since the manager's page last polled.
     const cur = await readItemColumnTexts(itemId, [MASHEKE_NOTES_COL, ...attemptCols]);
     const rollup = buildAttemptRollup({
       notes: cur[MASHEKE_NOTES_COL],
-      confirm: [cur[MASHEKE_CONFIRM_ATTEMPT_COLS[0]], cur[MASHEKE_CONFIRM_ATTEMPT_COLS[1]], cur[MASHEKE_CONFIRM_ATTEMPT_COLS[2]]],
+      // Only roll up what is about to be cleared — a column left on the board
+      // must not also be copied into the history.
+      confirm: scope === "all"
+        ? [cur[MASHEKE_CONFIRM_ATTEMPT_COLS[0]], cur[MASHEKE_CONFIRM_ATTEMPT_COLS[1]], cur[MASHEKE_CONFIRM_ATTEMPT_COLS[2]]]
+        : blank,
       chase: [cur[MASHEKE_CHASE_ATTEMPT_COLS[0]], cur[MASHEKE_CHASE_ATTEMPT_COLS[1]], cur[MASHEKE_CHASE_ATTEMPT_COLS[2]]],
       dateStr: today,
     });
-    let notes = rollup.notes;
-    if (note) {
-      const stamped = stampReturnedToQueue(note, today, userInitials());
-      // Guard the retry case: a first run that wrote the columns but failed on
-      // the escalation flip below leaves the manager pressing the button again.
-      if (!notes.includes(stamped)) notes = appendStampedLine(notes, stamped);
-    }
+    // Guard the retry case: a first run that wrote the columns but failed on
+    // the escalation flip below leaves the manager pressing the button again.
+    const notes = rollup.notes.includes(stamped) ? rollup.notes : appendStampedLine(rollup.notes, stamped);
     const values: Record<string, unknown> = {
       [MASHEKE_NOTES_COL]: { text: notes },
       [MASHEKE_MN_ATTEMPTS_COL]: { index: MN_ATTEMPTS_INDEX.attempt1 },
       [MASHEKE_NAD_COL]: { date: today },
     };
-    // Only blank columns that actually held something — six no-op writes on
-    // every return would be pure noise in the board's activity log.
+    // Only blank columns that actually held something — no-op writes on every
+    // return would be pure noise in the board's activity log.
     if (rollup.hasAttempts) for (const c of attemptCols) values[c] = "";
     await writeColumnsOnBoard(MASHEKE_BOARD_ID, itemId, values);
   } else {
-    if (note) {
-      // Read the notes fresh so a concurrent edit isn't clobbered, then append.
-      const existing = await readItemColumnText(itemId, MASHEKE_NOTES_COL);
-      const stamped = stampReturnedToQueue(note, today, userInitials());
+    // Read the notes fresh so a concurrent edit isn't clobbered, then append.
+    const existing = await readItemColumnText(itemId, MASHEKE_NOTES_COL);
+    if (!existing.includes(stamped)) {
       await writeLongTextOnBoard(MASHEKE_BOARD_ID, itemId, MASHEKE_NOTES_COL, appendStampedLine(existing, stamped));
     }
     await writeDateOnBoard(MASHEKE_BOARD_ID, itemId, MASHEKE_NAD_COL, today);
