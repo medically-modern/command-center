@@ -1033,8 +1033,15 @@ columns" automation on duplicated items). The SPA only flips the advancer; verif
   escalates those patients are worked on the board until the stage is built; don't "fix" this. (The
   Auth Outstanding send still writes **Manager** on a denial — the patient leaves for that unbuilt
   stage, so choosing Final would pre-judge a design nobody has done.) Manager
-  Intervention decision buttons show on **every row except a bot-owned DVS one** — a row a manager
-  can see but not clear is still a stranded patient. `lib/oversight/insuranceCoverage.test.ts`
+  Intervention decision buttons are the intent on every row except a bot-owned DVS one — a row a
+  manager can see but not clear is still a stranded patient.
+  ⚠️ **In practice only 2 of the 9 Manager Intervention charts carry them** (audited 2026-08-14):
+  `submit-auth-manager` and `profile-send-off-unverified-escalated`. `benefits-manager-escalation`,
+  all five ME `*-escalated-merged` and `doctor-appointments-manager` have **no `decision`**, and the
+  drill-down renders its buttons from `ChartDef.decision` alone — so those seven offer no inline
+  Return to Queue. Nobody is stranded (every one routes to the stage page with `?mv=`, where
+  `StageActionBar` does offer Send back to pipeline), but it is an extra hop and the asymmetry with
+  Final Decisions — where **every** chart has a decision — is not deliberate. `lib/oversight/insuranceCoverage.test.ts`
   enumerates the reachable (stage × escalation) states and fails if one goes blind (Auth Denied is
   carved out by name, and Auth Outstanding's Final-only shape via `FINAL_ONLY_ROWS` — both asserted
   as carve-outs); `lib/samantha/managerRail` mirrors these populations for the destination page's
@@ -1358,6 +1365,24 @@ these services; when their math changes, `oopEstimator.ts` must be updated to ma
 - **"Never billed" attestations** can't be un-set from the UI (code only writes when truthy).
 - **Split-order duplicate** (Final Confirm) races a Monday "new item created" automation; the code
   re-writes flags "defensively" afterward (audit M6).
+- **Welcome Call + Final Confirm escalation is WRITE-ONLY, and those two stages need a REWRITE —
+  don't patch it piecemeal** (Josh, 2026-08-14, from the escalation audit). `mondayMapping`
+  hardcodes **`escalated: false`** and `COL.escalation` (`color_mm1x7997`) is **not in the read
+  set**, so the column is never read back; `mondayWrite` writes index 0 only `if (p.escalated)` and
+  has no `→ Done` branch. Consequences, all live: a rep escalates, the send writes the board, the
+  next poll shows them un-escalated — so `sidebarSections` (which keys on `p.escalated`) leaves them
+  in the **active** list while `useRoleCounts` reads the BOARD column and drops them from the active
+  count, i.e. **the sidebar and the burndown disagree**; the `escalated` filter view is
+  **permanently empty** while the role bar reports a non-zero escalated count; there are no
+  Oversight charts for these stages; and **nothing in the app can clear the flag**. The board has no
+  index 2 either (labels are *Escalation Required · Done*), so it was never wired for the three-rung
+  ladder. One patient sits in this state today.
+- **Subscription's Escalate button never persists anything** (same audit). The mapping hardcodes
+  `escalated: false`, `COL.authEscalation` (`color_mm2n237s`) is defined but **never written by
+  `mondayWrite`**, and `toggleEscalate` only touches the local overlay — the button reverts on
+  refetch. The board column has a **single label `Escalate` and no `Done`**, so it could not be
+  cleared by index even if it were written. 36 items carry it, set outside the SPA. Left as-is
+  deliberately.
 - `README.md` points here; keep this file current as the architecture moves.
 
 ---
