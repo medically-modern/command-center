@@ -306,26 +306,27 @@
 .pf-root .gate-list .gl-hint { font-size:.8rem; color:var(--muted-foreground); margin-top:1px }
 .pf-root .gate-note { font-size:.92rem; font-weight:600; color:var(--mm-teal); margin:0 }
 
-/* The three actions: equal widths, adjacent, nothing interleaved. `flex:1`
-   with a floor so they stay even; below the floor they wrap to full width
-   rather than shrinking until the verbs are unreadable — these are the most
-   consequential clicks on the page. */
+/* The three actions: equal thirds, ALWAYS one line (Josh, 2026-08-17). They
+   used to wrap to 2+1 below a 160px floor, and that state read as a mess
+   next to the footnotes. min-width:0 lets a narrow pane shrink the columns
+   instead, with the verbs wrapping INSIDE their buttons. */
 .pf-root .exit-row {
-  display:flex; flex-wrap:wrap; gap:10px; margin-top:14px;
+  display:flex; gap:10px; margin-top:14px;
 }
-.pf-root .exit-row > .btn { flex:1 1 160px; justify-content:center }
+.pf-root .exit-row > .btn { flex:1 1 0; min-width:0; justify-content:center }
 /* Below the row: two footnotes, two blocks. The Save caption and the attempt
    counter used to share one dot-joined line and read as a run-on sentence.
-   space-between holds them apart as their own sections; wrap stacks them
-   when the pane is narrow. The counter is the dynamic one, so it's a chip —
-   quiet while zero, amber (the Log-call-attempt colour) once attempts exist. */
+   The counter is the dynamic one, so it's a chip — quiet while zero, amber
+   (the Log-call-attempt colour) once attempts exist — and it stays pinned
+   lower-right at EVERY width (Josh, 2026-08-17: no wrapping onto its own
+   left-aligned row); the caption is what gives way, wrapping its text. */
 .pf-root .exit-foot {
   margin-top:10px; display:flex; align-items:center; justify-content:space-between;
-  gap:8px 18px; flex-wrap:wrap;
+  gap:8px 18px;
 }
-.pf-root .exit-note { margin:0; font-size:.78rem; color:var(--muted-foreground) }
+.pf-root .exit-note { margin:0; font-size:.78rem; color:var(--muted-foreground); min-width:0 }
 .pf-root .attempt-tally {
-  display:inline-flex; align-items:center; gap:7px;
+  display:inline-flex; align-items:center; gap:7px; flex:none; white-space:nowrap;
   border-radius:999px; padding:4px 12px;
   font-size:.78rem; font-weight:600; color:var(--muted-foreground);
   background:oklch(0.968 0.007 247.896 / .45);

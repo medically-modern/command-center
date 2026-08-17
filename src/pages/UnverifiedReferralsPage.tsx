@@ -2379,11 +2379,6 @@ const UnverifiedReferralsPage = () => {
                     )}
                   </div>
                 )}
-                {(selected.formInsuranceVia ?? "") === "Not provided" && (
-                  <p className="mt-3 rounded-md bg-amber-50 border border-amber-200 px-3 py-2 text-xs text-amber-900">
-                    No card provided — the patient was asked to text a photo to (347) 503-7148.
-                  </p>
-                )}
               </Card>
 
               <Card title="Provided Doctor Info">
