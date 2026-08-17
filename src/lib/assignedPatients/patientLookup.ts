@@ -121,7 +121,7 @@ export async function findPatientByPhone(phone: string): Promise<PatientRef | nu
     BOARDS.map(async (b) => {
       try {
         const data = await gql<{ boards: Array<{ items_page?: { items: RawItem[] } }> }>(
-          `query ($board: [ID!], $q: CompareValue!, $cols: [String!], $col: String!) {
+          `query ($board: [ID!], $q: CompareValue!, $cols: [String!], $col: ID!) {
              boards (ids: $board) {
                items_page (
                  limit: 50,
