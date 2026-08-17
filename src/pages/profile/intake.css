@@ -314,11 +314,29 @@
   display:flex; flex-wrap:wrap; gap:10px; margin-top:14px;
 }
 .pf-root .exit-row > .btn { flex:1 1 160px; justify-content:center }
-.pf-root .exit-note {
-  margin:9px 0 0; font-size:.78rem; color:var(--muted-foreground);
-  display:flex; flex-wrap:wrap; gap:6px;
+/* Below the row: two footnotes, two blocks. The Save caption and the attempt
+   counter used to share one dot-joined line and read as a run-on sentence.
+   space-between holds them apart as their own sections; wrap stacks them
+   when the pane is narrow. The counter is the dynamic one, so it's a chip —
+   quiet while zero, amber (the Log-call-attempt colour) once attempts exist. */
+.pf-root .exit-foot {
+  margin-top:10px; display:flex; align-items:center; justify-content:space-between;
+  gap:8px 18px; flex-wrap:wrap;
 }
-.pf-root .exit-note .dot { opacity:.55 }
+.pf-root .exit-note { margin:0; font-size:.78rem; color:var(--muted-foreground) }
+.pf-root .attempt-tally {
+  display:inline-flex; align-items:center; gap:7px;
+  border-radius:999px; padding:4px 12px;
+  font-size:.78rem; font-weight:600; color:var(--muted-foreground);
+  background:oklch(0.968 0.007 247.896 / .45);
+  box-shadow:inset 0 0 0 1px var(--border);
+}
+.pf-root .attempt-tally.logged {
+  color:var(--amber); font-weight:700;
+  background:var(--amber-soft);
+  box-shadow:inset 0 0 0 1px var(--amber-ring);
+}
+.pf-root .attempt-tally b { font-size:.85rem; font-weight:800; line-height:1 }
 
 .pf-root .inline-panel { display:none; margin-top:13px }
 .pf-root .inline-panel.show { display:block }

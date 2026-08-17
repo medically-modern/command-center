@@ -14,7 +14,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { AlertTriangle, ClipboardCheck, Lock, Check, X, ArrowLeft, CalendarClock, Save } from "lucide-react";
+import { AlertTriangle, ClipboardCheck, Lock, Check, X, ArrowLeft, CalendarClock, Save, Phone } from "lucide-react";
 import { Button } from "@/components/ui/button";
 // History-first Back, same as every other stage page — returns a manager to
 // their Oversight drill-down rather than a hardcoded home route (§9).
@@ -2774,11 +2774,28 @@ const UnverifiedReferralsPage = () => {
                         Propose Stuck
                       </button>
                     </div>
-                    <p className="exit-note">
-                      Save writes the left pane to the board without advancing
-                      <span className="dot">·</span>
-                      {attempts} attempt{attempts === 1 ? "" : "s"} logged
-                    </p>
+                    {/* Two footnotes, two blocks — not one dot-joined line,
+                        which read as a single run-on sentence. The Save
+                        caption stays quiet; the attempt counter is the
+                        dynamic half, so it gets the weight: a chip that
+                        turns amber once attempts exist (the colour of the
+                        button that logs them) and says "none yet" in words
+                        rather than a bare zero. */}
+                    <div className="exit-foot">
+                      <p className="exit-note">
+                        Save writes the left pane to the board without advancing
+                      </p>
+                      <span className={attempts > 0 ? "attempt-tally logged" : "attempt-tally"}>
+                        <Phone className="h-3.5 w-3.5 shrink-0" />
+                        {attempts === 0 ? (
+                          "No call attempts logged yet"
+                        ) : (
+                          <>
+                            <b>{attempts}</b> call attempt{attempts === 1 ? "" : "s"} logged
+                          </>
+                        )}
+                      </span>
+                    </div>
 
                   </>
                 )}
