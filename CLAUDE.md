@@ -725,10 +725,15 @@ like a quiet afternoon:
 3. **`services/calls-monitor`** — Railway cron (`*/10 * * * *`) → ntfy. Proves the chain up to
    delivery; it cannot prove delivery itself (only a real call does, and we don't place synthetic
    ones into a production line). `faults()` is pure + tested — an alert that stays quiet during an
-   outage is worse than none, since it reads as an all-clear. Its `BUSINESS_HOURS` check runs in
-   **ET, not the container clock** (Railway is UTC — a naive hour check alarms every night until
-   someone mutes it). ⚠️ Its ntfy topic is the only thing protecting the alerts and is deliberately
-   **not in this repo** — Railway variable only.
+   outage is worse than none, since it reads as an all-clear. ⚠️ Its ntfy topic is the only thing
+   protecting the alerts and is deliberately **not in this repo** — Railway variable only.
+   **The "no Command Center browser is connected" check was removed (Josh, 2026-08-17)** — it
+   paged every time nobody happened to have a tab open, which is normal, not an outage. `faults()`
+   no longer reads `health.subscribers` at all, and the `BUSINESS_HOURS`/`inBusinessHours` gate
+   went with it (it existed only to keep that one check quiet outside work hours). The gateway
+   still reports `subscribers` in `/calls/health` for humans reading the endpoint directly; the
+   monitor just doesn't alert on it. Don't re-add this check without also re-adding some form of
+   the business-hours gate, or it'll page overnight again.
 
 **A pin can't ring if the rep's mode is `off`**, and that silent no-op is the likeliest support
 question the bell will generate — so `WatchCallbackButton` warns on add and renders the watched-but-

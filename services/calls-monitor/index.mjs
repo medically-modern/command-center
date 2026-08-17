@@ -16,12 +16,11 @@
  * It CANNOT prove delivery. Only a real inbound call does that, and we don't
  * place synthetic ones into a production line. What it proves is the chain
  * up to delivery: the gateway is up, RingCentral still calls the subscription
- * Active *right now* (not "we created one once"), the webhook URL still answers
- * RingCentral's handshake, and somebody's browser is actually attached.
+ * Active *right now* (not "we created one once"), and the webhook URL still
+ * answers RingCentral's handshake.
  *
  * Required env:  CALLS_HEALTH_URL, NTFY_URL, NTFY_TOPIC
  * Optional env:  CALLS_WEBHOOK_URL   probe the handshake too (recommended)
- *                BUSINESS_HOURS      "9-18" ET, default; "" disables that check
  *                DRY_RUN=1           print, don't notify
  */
 
@@ -30,7 +29,6 @@ const {
   CALLS_WEBHOOK_URL,
   NTFY_URL,
   NTFY_TOPIC,
-  BUSINESS_HOURS = "9-18",
   DRY_RUN,
 } = process.env;
 
@@ -52,25 +50,6 @@ async function get(url, init = {}) {
   } finally {
     clearTimeout(t);
   }
-}
-
-/**
- * Is it a weekday working hour in EASTERN time?
- *
- * ⚠️ ET, not the container's clock. Railway runs UTC, so a naive `getHours()`
- * would put the "is anyone working?" window in the middle of the night and the
- * zero-subscribers alarm would fire every evening until someone muted it — at
- * which point it stops being a monitor.
- */
-function inBusinessHours(now = new Date()) {
-  if (!BUSINESS_HOURS) return false;
-  const [from, to] = BUSINESS_HOURS.split("-").map((n) => parseInt(n, 10));
-  if (Number.isNaN(from) || Number.isNaN(to)) return false;
-  const et = new Date(now.toLocaleString("en-US", { timeZone: "America/New_York" }));
-  const day = et.getDay();
-  if (day === 0 || day === 6) return false;
-  const h = et.getHours();
-  return h >= from && h < to;
 }
 
 /** Does the webhook URL still answer RingCentral's validation handshake?
@@ -105,7 +84,7 @@ async function notify(title, message, priority = "high") {
 }
 
 /** Everything wrong right now, as human sentences. Empty means healthy. */
-export function faults(health, { handshake, businessHours }) {
+export function faults(health, { handshake }) {
   const out = [];
   if (!health) return ["The gateway did not respond — inbound calls are down."];
 
@@ -131,10 +110,6 @@ export function faults(health, { handshake, businessHours }) {
     out.push(`All ${ev.seen} RingCentral events were unparseable — the payload shape has changed.`);
   }
 
-  // Nobody attached means nobody can see a call, however healthy the rest is.
-  if (businessHours && !health.subscribers) {
-    out.push("No Command Center browser is connected — nobody would see an incoming call.");
-  }
   return out;
 }
 
@@ -155,8 +130,7 @@ async function main() {
   }
 
   const handshake = await handshakeOk(CALLS_WEBHOOK_URL);
-  const businessHours = inBusinessHours();
-  const problems = faults(health, { handshake, businessHours });
+  const problems = faults(health, { handshake });
 
   if (!problems.length) {
     console.log(

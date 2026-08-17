@@ -20,7 +20,7 @@ const healthy = {
   subscribers: 2,
   events: { seen: 40, rings: 6, unparsed: 0 },
 };
-const ctx = { handshake: true, businessHours: true };
+const ctx = { handshake: true };
 
 describe("faults", () => {
   it("stays quiet when everything is healthy", () => {
@@ -65,17 +65,6 @@ describe("faults", () => {
     expect(faults({ ...healthy, events: { seen: 10, rings: 2, unparsed: 3 } }, ctx)).toEqual([]);
   });
 
-  it("catches nobody being connected during business hours", () => {
-    const f = faults({ ...healthy, subscribers: 0 }, ctx);
-    expect(f.join(" ")).toMatch(/No Command Center browser/);
-  });
-
-  // Otherwise it pages someone every single night, and a monitor people mute
-  // is not a monitor.
-  it("stays quiet about nobody connected outside business hours", () => {
-    expect(faults({ ...healthy, subscribers: 0 }, { ...ctx, businessHours: false })).toEqual([]);
-  });
-
   it("reports a gateway that says it is unconfigured", () => {
     expect(faults({ ...healthy, configured: false }, ctx).join(" ")).toMatch(/not configured/);
   });
@@ -86,7 +75,7 @@ describe("faults", () => {
   });
 
   it("reports several problems at once rather than only the first", () => {
-    const f = faults({ ...healthy, subscriptionStatus: "Suspended", subscribers: 0 }, ctx);
+    const f = faults({ ...healthy, subscriptionStatus: "Suspended", configured: false }, ctx);
     expect(f.length).toBe(2);
   });
 });

@@ -25,7 +25,6 @@ delivery:
 - the webhook URL still answers RingCentral's `Validation-Token` handshake
 - events that arrive are parseable (`seen > 0 && unparsed === seen` is the
   envelope-bug signature)
-- somebody's browser is attached, during business hours
 
 The individual case — *this* rep's tab fell off — is not visible from here.
 That is what `components/inboundCalls/CallStreamStatus.tsx` covers, in the tab
@@ -41,18 +40,12 @@ Deploy `services/calls-monitor` with **cron** `*/10 * * * *`.
 | `CALLS_WEBHOOK_URL` | `https://monday-gateway-production.up.railway.app/calls/webhook` |
 | `NTFY_URL` | `https://ntfy-production-d31f.up.railway.app` |
 | `NTFY_TOPIC` | the private topic (see below) |
-| `BUSINESS_HOURS` | `9-18` (ET). Set empty to disable the "nobody connected" check |
 | `DRY_RUN` | `1` to print instead of notifying |
 
 ⚠️ **The ntfy topic is the only thing protecting these alerts.** An ntfy topic
 is readable by anyone who knows its name, so it is generated with ~145 bits of
 entropy and kept OUT of this repo — it lives in the Railway variable and on the
 phones subscribed to it. Don't paste it into code, commits, or issues.
-
-`BUSINESS_HOURS` is evaluated in **Eastern**, not the container's clock. Railway
-runs UTC; a naive hour check would put the window in the middle of the night and
-alarm every evening until someone muted it — at which point it stops being a
-monitor.
 
 ## Note on repo visibility
 
