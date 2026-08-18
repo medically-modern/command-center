@@ -355,6 +355,24 @@ they'd just sent away sit in the sidebar. Clearing the URL only works because th
 the deep link through a **ref**: `refetch` is deliberately stable, so it had captured the
 first-render id and kept re-injecting it no matter what the URL said.
 
+**Already In System flags DTC-form twins** (Josh, 2026-08-18). A doctor (or manufacturer) referral
+in that queue often has a SECOND item for the same human that the patient submitted through the DTC
+form. The page shows a "DTC Form Filled Out" header pill + a banner naming the matched form item(s)
+with a "View form" link (form groups → `/unverified-referrals` with the right `source`; a 1. Intake
+patient-form item → `/profile`) or an in-place select when the twin already sits in this queue.
+Canonical logic: **`lib/profile/dtcFormFlag.ts`** (+ tests) — a match is email OR full-10-digit
+phone OR name+DOB together (never name alone), and the flag is suppressed on items whose own
+Referral Type is "Patient" (TYPE only — referralSplit's vocabulary rule; the Source column's
+"Patient" label decides nothing). Leads = a slim 60s poll of the two New Form groups
+(`fetchDtcFormLeads` / `useDtcFormLeads`) PLUS patient-form items already inside the page's own
+queue fetch — a form row marked "Yes" is MOVED into the in-system group and leaves the form groups
+(the Ivy Gushea pair, 2026-07-28), so the poll alone would miss exactly the twin the flag exists
+for. ⚠️ **READ-ONLY DISPLAY**: no queue membership, role count, baseline or board write changes,
+which is why — unlike the splits above — it has NO keep-in-agreement list. Do not "promote" the
+form groups into the queue fetch to feed it: `profileReferralRole` would route a flag-"Yes" form
+row into this sidebar while `useRoleCounts` still counts it as Unverified — the §5.8
+sidebar-vs-burndown drift.
+
 The three are **mutually exclusive and exhaustive** — every active intake patient is in exactly
 one queue, so role counts still sum to the group total (§5.8) and no patient is worked twice.
 A blank Already In System counts as NOT in system (the column isn't always set).

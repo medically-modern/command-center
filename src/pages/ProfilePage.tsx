@@ -12,10 +12,15 @@ import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import type { ReactNode } from "react";
 import { EmptyPatientPane } from "@/components/shared/EmptyPatientPane";
 import { CompletedStageBanner, useCompletedStageReview } from "@/components/shared/CompletedStageBanner";
-import { useSearchParams } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { useMondayPatients } from "@/hooks/profile/useMondayPatients";
+import { useDtcFormLeads } from "@/hooks/profile/useDtcFormLeads";
 import { useAutoSelectPatient } from "@/hooks/useAutoSelectPatient";
 import { profileReferralRole, type ProfileReferralRole } from "@/lib/profile/referralSplit";
+import {
+  dtcFormMatchesFor, queueLeadsFrom, dtcLeadKindLabel, dtcLeadRoute,
+  type DtcFormMatch, type DtcMatchReason,
+} from "@/lib/profile/dtcFormFlag";
 import { sidebarVisibleList } from "@/lib/profile/sidebarList";
 import { viewFilterFromParams } from "@/lib/roleView";
 import type { Patient } from "@/lib/profile/workflow";
@@ -57,7 +62,7 @@ import {
 } from "@/components/ui/dialog";
 import { useBackNavigation } from "@/hooks/useBackNavigation";
 import { ReportIssueButton } from "@/components/shared/ReportIssueButton";
-import { ClipboardCheck, ArrowLeft, Save, AlertTriangle, ChevronDown } from "lucide-react";
+import { ClipboardCheck, ArrowLeft, Save, AlertTriangle, ChevronDown, FileText } from "lucide-react";
 import { toast } from "sonner";
 import "./profile/redesign.css";
 
@@ -222,6 +227,26 @@ const ProfilePage = ({ variant }: ProfilePageProps) => {
 
   const selected: Patient | undefined = useMemo(
     () => patients.find((p) => p.id === selectedId), [patients, selectedId],
+  );
+
+  // "Patient has filled out a DTC form" (Josh, 2026-08-18): a doctor or
+  // manufacturer referral in the Already In System queue often has a twin the
+  // patient submitted themselves. Leads = the two DTC form groups (their own
+  // slim 60s poll) + any patient-form items already inside this page's queue
+  // fetch — a form row marked "Yes" is MOVED into the in-system group and
+  // leaves the form groups, so the poll alone would miss exactly that twin.
+  // Display only; queue membership and counts are untouched (dtcFormFlag.ts).
+  const dtcFormGroupLeads = useDtcFormLeads(variant === "inSystem");
+  const dtcLeads = useMemo(
+    () =>
+      variant === "inSystem"
+        ? [...dtcFormGroupLeads, ...queueLeadsFrom(allProfilePatients)]
+        : [],
+    [variant, dtcFormGroupLeads, allProfilePatients],
+  );
+  const dtcMatches = useMemo(
+    () => (variant === "inSystem" && selected ? dtcFormMatchesFor(selected, dtcLeads) : []),
+    [variant, selected, dtcLeads],
   );
 
   /** Opened from a completion badge in System Management → Search: this item
@@ -565,6 +590,11 @@ const ProfilePage = ({ variant }: ProfilePageProps) => {
                           <AlertTriangle className="h-4 w-4" /> Already In System
                         </span>
                       )}
+                      {dtcMatches.length > 0 && (
+                        <span className="inline-flex items-center gap-1.5 rounded-full bg-white text-blue-800 text-sm font-extrabold uppercase tracking-wide px-3 py-1 shadow">
+                          <FileText className="h-4 w-4" /> DTC Form Filled Out
+                        </span>
+                      )}
                     </p>
                   )}
                 </div>
@@ -586,6 +616,11 @@ const ProfilePage = ({ variant }: ProfilePageProps) => {
             {reviewMode && (
               <div style={{ padding: "16px 24px 0" }}>
                 <CompletedStageBanner patientId={selected?.id} />
+              </div>
+            )}
+            {selected && dtcMatches.length > 0 && (
+              <div style={{ padding: "16px 24px 0" }}>
+                <DtcFormFlagBanner matches={dtcMatches} onSelectInQueue={setSelectedId} />
               </div>
             )}
             {!selected ? (
@@ -667,6 +702,83 @@ const ProfilePage = ({ variant }: ProfilePageProps) => {
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
+
+const DTC_MATCH_REASON_LABEL: Record<DtcMatchReason, string> = {
+  email: "email",
+  phone: "phone",
+  "name+dob": "name & DOB",
+};
+
+/** "8/14/2026" from either an ISO timestamp (the form groups' created_at) or a
+ *  yyyy-mm-dd board date. The yyyy-mm-dd form is parsed by hand — `new Date`
+ *  reads it as UTC midnight, which is the previous day in ET (§9). */
+function formatSubmittedOn(raw?: string): string {
+  const s = (raw ?? "").trim();
+  if (!s) return "";
+  const ymd = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s);
+  if (ymd) return `${Number(ymd[2])}/${Number(ymd[3])}/${ymd[1]}`;
+  if (/^\d{4}-\d{2}-\d{2}T/.test(s)) {
+    const d = new Date(s);
+    if (!Number.isNaN(d.getTime())) {
+      return d.toLocaleDateString("en-US", { timeZone: "America/New_York" });
+    }
+  }
+  return s;
+}
+
+/** "Patient has filled out a DTC form" — shown on the Already In System queue
+ *  when a doctor/manufacturer referral has a matching item the patient
+ *  submitted themselves (lib/profile/dtcFormFlag.ts). Display only: nothing
+ *  here writes to Monday or changes any queue. Each match names the form item
+ *  and its evidence, so a household-shared phone/email explains itself. */
+function DtcFormFlagBanner({
+  matches, onSelectInQueue,
+}: {
+  matches: DtcFormMatch[];
+  /** A matched lead living in THIS queue is selected in place (it's already in
+   *  the sidebar) rather than navigated to. */
+  onSelectInQueue: (id: string) => void;
+}) {
+  return (
+    <div className="rounded-lg border border-blue-300 bg-blue-50 px-4 py-3">
+      <div className="flex items-center gap-2 font-semibold text-blue-900">
+        <FileText className="h-4 w-4 shrink-0" />
+        This patient has also filled out a DTC form
+      </div>
+      <ul className="mt-1.5 space-y-1 text-sm text-blue-900/90">
+        {matches.map(({ lead, matchedOn }) => {
+          const route = dtcLeadRoute(lead);
+          const when = formatSubmittedOn(lead.submittedOn);
+          return (
+            <li key={lead.id} className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+              <span className="font-medium">{lead.name}</span>
+              <span>
+                — {dtcLeadKindLabel(lead)}
+                {when ? `, submitted ${when}` : ""}
+              </span>
+              <span className="opacity-70">
+                (matched on {matchedOn.map((r) => DTC_MATCH_REASON_LABEL[r]).join(", ")})
+              </span>
+              {route ? (
+                <Link to={route} className="font-semibold underline underline-offset-2 hover:opacity-80">
+                  View form
+                </Link>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => onSelectInQueue(lead.id)}
+                  className="font-semibold underline underline-offset-2 hover:opacity-80"
+                >
+                  View in this queue
+                </button>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+    </div>
+  );
+}
 
 /** A send-off checklist row. `tag` overrides the right-hand chip for a row
  *  that isn't blank but isn't usable either — "missing" would be a lie for an

@@ -4,6 +4,7 @@
 import { MONDAY_API_URL, mondayIdentityHeaders } from "../shared/mondayEndpoint";
 import { planPhoneWrite } from "../shared/phoneCell";
 import { planEmailWrite } from "../shared/emailCell";
+import type { DtcFormLead } from "./dtcFormFlag";
 const MONDAY_API_VERSION = "2024-10";
 
 export const BOARD_ID = 18406352652;
@@ -369,6 +370,84 @@ export async function fetchGroupItems(
   }
 
   return allItems;
+}
+
+// ── DTC-form leads (the "patient has filled out a DTC form" flag, §5.10) ──
+
+/** Identity columns the flag matches on (lib/profile/dtcFormFlag.ts). Slim on
+ *  purpose — this poll rides alongside the Already In System page's normal
+ *  queue poll, so it fetches nothing the matcher doesn't need. */
+const DTC_LEAD_COLUMN_IDS: string[] = [COL.dob, COL.email, COL.ptPhone];
+
+interface MondayLeadItem extends MondayItem {
+  /** ISO timestamp — when the patient's form created the item. */
+  created_at?: string | null;
+}
+
+/**
+ * Every item in the two DTC form groups, reduced to matching identity. Used by
+ * `useDtcFormLeads` to flag Already In System referrals whose patient also
+ * submitted the form themselves. Read-only display data — these items must
+ * NEVER be merged into a queue list (see dtcFormFlag.ts).
+ */
+export async function fetchDtcFormLeads(): Promise<DtcFormLead[]> {
+  const groupIds = [GROUPS.newFormPartial, GROUPS.newFormCompleted];
+  const query = `
+    query ($boardId: ID!, $cols: [String!]) {
+      boards(ids: [$boardId]) {
+        items_page(limit: ${PAGE}, query_params: { rules: [{ column_id: "group", compare_value: ${JSON.stringify(groupIds)} }] }) {
+          cursor
+          items {
+            id
+            name
+            created_at
+            group { id }
+            column_values(ids: $cols) { id text value }
+          }
+        }
+      }
+    }
+  `;
+  const data = await gql<{ boards: { items_page: { cursor: string | null; items: MondayLeadItem[] } }[] }>(query, {
+    boardId: BOARD_ID,
+    cols: DTC_LEAD_COLUMN_IDS,
+  });
+  const items: MondayLeadItem[] = [...(data.boards?.[0]?.items_page?.items ?? [])];
+  let cursor = data.boards?.[0]?.items_page?.cursor ?? null;
+
+  while (cursor) {
+    try {
+      const nextQuery = `
+        query ($cursor: String!, $cols: [String!]) {
+          next_items_page(limit: ${PAGE}, cursor: $cursor) {
+            cursor
+            items { id name created_at group { id } column_values(ids: $cols) { id text value } }
+          }
+        }
+      `;
+      const next = await gql<{ next_items_page: { cursor: string | null; items: MondayLeadItem[] } }>(
+        nextQuery,
+        { cursor, cols: DTC_LEAD_COLUMN_IDS },
+      );
+      items.push(...(next.next_items_page?.items ?? []));
+      cursor = next.next_items_page?.cursor ?? null;
+    } catch (e) {
+      console.error("[fetchDtcFormLeads] pagination error", e);
+      break;
+    }
+  }
+
+  const text = (it: MondayLeadItem, colId: string): string =>
+    it.column_values.find((c) => c.id === colId)?.text ?? "";
+  return items.map((it) => ({
+    id: it.id,
+    name: it.name,
+    groupId: it.group?.id ?? "",
+    dob: text(it, COL.dob),
+    email: text(it, COL.email),
+    phone: text(it, COL.ptPhone),
+    submittedOn: it.created_at ?? "",
+  }));
 }
 
 /** Move an item to a different group on the same board. */
