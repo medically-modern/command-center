@@ -198,9 +198,11 @@
 .pf-root .needs2 { display:grid; grid-template-columns:1fr 1fr; gap:18px 22px; align-items:start }
 /* Explicit columns so hiding one side never reflows the other into column 1.
    The mockup pinned these by id (#catCgm/#cgmBlock); classes here, since the
-   React tree renders the same node in both slots. */
+   React tree renders the same node in both slots. The divider makes the
+   pinning legible (Josh, 2026-08-18): on a pump-only patient the left half is
+   deliberately empty, and without the line that read as a layout bug. */
 .pf-root .needs2 > .col-cgm  { grid-column:1 }
-.pf-root .needs2 > .col-pump { grid-column:2 }
+.pf-root .needs2 > .col-pump { grid-column:2; border-left:1px solid var(--border); padding-left:22px }
 .pf-root .devcol { display:flex; flex-direction:column; gap:16px }
 .pf-root .devcol.off { display:none }
 .pf-root .fld .flabel { margin-bottom:6px }
@@ -216,6 +218,18 @@
   border:1.5px dashed var(--input); border-radius:8px;
   background:oklch(0.97 0 0 / .6); color:var(--foreground); font-weight:600;
 }
+/* The healthy benefits answers (In Network Yes · Active Yes) read green at a
+   glance. Applied by Field's `good` prop — only a Yes ever gets it. */
+.pf-root .fld .ro.good, .pf-root .f .v.good { color:var(--mm-green); font-weight:700 }
+
+/* ---- benefits-check failure callout ---- */
+.pf-root .bfail { margin-top:12px; border-left:4px solid var(--mm-rose);
+  background:var(--mm-rose-soft); border-radius:10px; padding:11px 14px }
+.pf-root .bfail-head { font-size:.66rem; font-weight:800; text-transform:uppercase;
+  letter-spacing:.07em; color:var(--mm-rose); margin-bottom:4px }
+.pf-root .bfail-cause { font-size:.84rem; font-weight:700; color:var(--mm-rose);
+  line-height:1.45; overflow-wrap:anywhere }
+.pf-root .bfail-fix { margin-top:5px; font-size:.76rem; color:var(--muted-foreground); line-height:1.5 }
 
 /* ---- compact flat chip (used in the attachment row) ---- */
 .pf-root .chip-sm { font-size:.62rem; font-weight:800; text-transform:uppercase; letter-spacing:.05em;

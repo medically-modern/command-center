@@ -36,6 +36,7 @@ import {
 // copy of "is this in network" is how a green readout ends up sitting next to
 // a blocked advance.
 import { evaluateUnlock, coverageActive, inNetwork } from "@/lib/profile/intakeUnlock";
+import { formatBenefitsFailure } from "@/lib/profile/benefitsFailure";
 import {
   PRIMARY_INSURANCE_INDEX, SECONDARY_INSURANCE_INDEX, SERVING_INDEX,
   GENERAL_INSURANCE_INDEX,
@@ -179,21 +180,24 @@ const REFERRAL_SOURCE_OPTS = Object.keys(REFERRAL_SOURCE_INDEX);
  * to line up with, and a box there would be noise.
  */
 function Field(
-  { label, value, full, boxed }:
-  { label: string; value?: string; full?: boolean; boxed?: boolean },
+  { label, value, full, boxed, good }:
+  /** `good` renders the VALUE green — for the benefits readout's healthy
+   *  answers (In Network Yes, Active Yes), where the rep is scanning for
+   *  go/no-go. The caller decides; this component doesn't know Yes from No. */
+  { label: string; value?: string; full?: boolean; boxed?: boolean; good?: boolean },
 ) {
   if (boxed) {
     return (
       <div className={full ? "fld full" : "fld"}>
         <div className="flabel">{label}</div>
-        <div className="ro">{value?.trim() || "—"}</div>
+        <div className={good ? "ro good" : "ro"}>{value?.trim() || "—"}</div>
       </div>
     );
   }
   return (
     <div className={full ? "f full" : "f"}>
       <div className="k">{label}</div>
-      <div className="v">{value?.trim() || "—"}</div>
+      <div className={good ? "v good" : "v"}>{value?.trim() || "—"}</div>
     </div>
   );
 }
@@ -1875,22 +1879,14 @@ const UnverifiedReferralsPage = () => {
                     })
                   )}
                 </div>
-                {/* Two affordances, and they are NOT symmetrical:
-                      Insurance Card Photo — the patient can attach this on the
-                        intake FORM, so it often arrives on its own; the rep
-                        uploads it here when it didn't.
-                      CGM Data File — never from the form (§8.2 keeps it
-                        phone-call only), so the rep sends the patient a link
-                        mid-call and they upload from their phone (§8.3). The
-                        manual fallback for this column is the drop zone in What
-                        They Need — deliberately not a second button here, which
-                        is what this slot used to hold.
-                    ⚠️ <label>, not <button>, for the UPLOAD one: `.pf-root
-                    button` strips background/border off bare buttons, so the
-                    link button below carries `btn secondary sm` explicitly. And
-                    do NOT reach for `.upzone` here — it is display:none until
-                    something adds `.show`, which is why the first cut of this
-                    was invisible. */}
+                {/* One affordance here, not two: the Insurance Card Photo can
+                    arrive on its own from the intake FORM, so the rep uploads
+                    it here only when it didn't. Everything CGM-data lives with
+                    the drop zone in What They Need — Generate CGM data link
+                    moved there 2026-08-18 (Brandon: "makes sense there"),
+                    beside the manual drop zone it is the texted twin of.
+                    ⚠️ <label>, not <button>: `.pf-root button` strips
+                    background/border off bare buttons. */}
                 <div style={{ padding: "0 8px 10px", display: "flex", gap: 8, flexWrap: "wrap" }}>
                   <label
                     className="btn secondary sm"
@@ -1911,31 +1907,6 @@ const UnverifiedReferralsPage = () => {
                       }}
                     />
                   </label>
-                  {/* Hidden rather than disabled when the build has no service
-                      URL: a permanently dead button invites a support ticket,
-                      and the drop zone below still covers the column. */}
-                  {uploadLinksConfigured() && (
-                    <button
-                      type="button"
-                      className="btn secondary sm"
-                      style={{ display: "inline-flex", alignItems: "center", gap: 6 }}
-                      onClick={() => void generateCgmLink()}
-                      disabled={linkGenerating || !(selected.ptPhone ?? "").trim()}
-                      title={
-                        (selected.ptPhone ?? "").trim()
-                          ? "Create a one-off upload link and open the text composer with it"
-                          : "No phone number on file to text"
-                      }
-                    >
-                      {linkGenerating && (
-                        <span
-                          className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-current border-t-transparent"
-                          aria-hidden
-                        />
-                      )}
-                      {linkGenerating ? "Generating…" : "Generate CGM data link"}
-                    </button>
-                  )}
                 </div>
               </div>
 
@@ -2053,8 +2024,14 @@ const UnverifiedReferralsPage = () => {
 
                   {/* An unselected category hides its ENTIRE column (§7.1) —
                       it does not grey out, and the fields inside are not
-                      individually highlighted. `.devcol.off` is that rule. */}
-                  <div className={cgmOn ? "devcol" : "devcol off"}>
+                      individually highlighted. `.devcol.off` is that rule.
+                      `col-cgm` / `col-pump` pin each column to its grid slot
+                      (Josh, 2026-08-18): without them, a pump-only patient's
+                      dropdowns collapsed into the LEFT column — the CGM side —
+                      because auto-placement backfills the gap the hidden
+                      column leaves. Pump answers live right of the divider,
+                      whatever the CGM side is doing. */}
+                  <div className={cgmOn ? "devcol col-cgm" : "devcol col-cgm off"}>
                     {/* QUALIFIER FIRST, then the device (Katie, 2026-08-13).
                         The coverage path is what the patient is eligible for and
                         it gates everything under it, so asking "which sensor"
@@ -2089,7 +2066,7 @@ const UnverifiedReferralsPage = () => {
                     />
                   </div>
 
-                  <div className={pumpOn ? "devcol" : "devcol off"}>
+                  <div className={pumpOn ? "devcol col-pump" : "devcol col-pump off"}>
                     {/* Pump Need leads the column (Katie, 2026-08-13): "new pump
                         vs supplies only" decides what the rest of these fields
                         even mean — it is the input to Request Type and forces
@@ -2124,9 +2101,10 @@ const UnverifiedReferralsPage = () => {
 
                 {/* CGM data collection — full width, below the aligned rows,
                     and only while the CGM category is on (as the mockup gates
-                    it). Both halves of §8.3 now exist: the patient uploads from
-                    a texted link (Generate CGM data link, in the Files card),
-                    and this drop zone is the rep's manual fallback. */}
+                    it). Both halves of §8.3 live TOGETHER here (moved from the
+                    Files card 2026-08-18 — Brandon: "makes sense there"): the
+                    texted link the patient uploads through, and the drop zone
+                    as the rep's manual fallback. */}
                 {cgmOn && (
                   <div style={{ marginTop: 20, paddingTop: 18, borderTop: "1px dashed var(--border)" }}>
                     <FileColumnRow
@@ -2141,10 +2119,38 @@ const UnverifiedReferralsPage = () => {
                         column with a different source. */}
                     <p className="mb-2 text-[11px] text-muted-foreground">
                       This is the patient’s <strong>CGM data</strong> — a glucose report, hypo log or
-                      screenshot. On a call, <strong>Generate CGM data link</strong> in the Files card
-                      texts them a link they can upload from their phone; whatever they send lands
-                      here. Use the box below to attach it yourself instead.
+                      screenshot. On a call, <strong>Generate CGM data link</strong> texts them a link
+                      they can upload from their phone; whatever they send lands here. Or attach it
+                      yourself with the box below.
                     </p>
+                    {/* Hidden rather than disabled when the build has no
+                        service URL: a permanently dead button invites a
+                        support ticket, and the drop zone still covers the
+                        column. */}
+                    {uploadLinksConfigured() && (
+                      <div className="mb-2">
+                        <button
+                          type="button"
+                          className="btn secondary sm"
+                          style={{ display: "inline-flex", alignItems: "center", gap: 6 }}
+                          onClick={() => void generateCgmLink()}
+                          disabled={linkGenerating || !(selected.ptPhone ?? "").trim()}
+                          title={
+                            (selected.ptPhone ?? "").trim()
+                              ? "Create a one-off upload link and open the text composer with it"
+                              : "No phone number on file to text"
+                          }
+                        >
+                          {linkGenerating && (
+                            <span
+                              className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-current border-t-transparent"
+                              aria-hidden
+                            />
+                          )}
+                          {linkGenerating ? "Generating…" : "Generate CGM data link"}
+                        </button>
+                      </div>
+                    )}
                     <label
                       className={cgmDragOver ? "upzone show over" : "upzone show"}
                       onDragOver={(e) => { e.preventDefault(); setCgmDragOver(true); }}
@@ -2325,11 +2331,21 @@ const UnverifiedReferralsPage = () => {
                     {stedi.state.message}
                   </p>
                 )}
-                {selected.stediErrorDescription?.trim() && (
-                  <p className="mt-2 rounded-md bg-red-50 border border-red-200 px-3 py-2 text-xs text-red-800">
-                    Last check failed: {selected.stediErrorDescription}
-                  </p>
-                )}
+                {(() => {
+                  /* Structured, not a wall of red: the column is
+                     "guidance | technical cause", and the HTTP-blob causes
+                     bury their one useful sentence in JSON. Lead with the
+                     cause, keep the guidance as the footnote. */
+                  const fail = formatBenefitsFailure(selected.stediErrorDescription);
+                  if (!fail) return null;
+                  return (
+                    <div className="bfail" role="status">
+                      <div className="bfail-head">Benefits check failed</div>
+                      <div className="bfail-cause">{fail.cause}</div>
+                      {fail.guidance && <div className="bfail-fix">{fail.guidance}</div>}
+                    </div>
+                  );
+                })()}
 
                 {/* ── Benefits check output ──
                     FOUR fields, deliberately (Josh, 2026-08-13). The board
@@ -2351,15 +2367,20 @@ const UnverifiedReferralsPage = () => {
                   selected.stediPrimaryPayer,
                 ].some((v) => (v ?? "").trim()) && (
                   <div className="fgrid" style={{ marginTop: 18 }}>
+                    {/* Green Yes (Josh, 2026-08-18): the two go/no-go answers
+                        read at a glance. Only Yes gets the colour — blank "—"
+                        and No stay neutral. */}
                     <Field
                       boxed
                       label="In Network"
                       value={stediYesNo(selected.stediInNetwork, inNetwork(selected))}
+                      good={stediYesNo(selected.stediInNetwork, inNetwork(selected)) === "Yes"}
                     />
                     <Field
                       boxed
                       label="Active"
                       value={stediYesNo(selected.stediEligibilityActive, coverageActive(selected))}
+                      good={stediYesNo(selected.stediEligibilityActive, coverageActive(selected)) === "Yes"}
                     />
                     <Field boxed full label="Primary Payor" value={selected.stediPrimaryPayer ?? ""} />
                     {/* Only when it's a real NY Medicaid CIN — 2 letters, 5
