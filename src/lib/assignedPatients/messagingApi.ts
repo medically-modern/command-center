@@ -40,6 +40,15 @@ async function json<T>(res: Response, what: string): Promise<T> {
   return (await res.json()) as T;
 }
 
+/** A media part of an MMS — a photo the patient texted back, a PDF, etc. The
+ *  uri needs the RC bearer token, so the browser fetches it through the
+ *  gateway's /rc/fetch proxy (see MessageAttachments). */
+export interface MessageAttachment {
+  id: number;
+  contentType: string;
+  uri: string;
+}
+
 export interface ConversationMessage {
   id: number;
   direction: "Inbound" | "Outbound";
@@ -48,6 +57,8 @@ export interface ConversationMessage {
   /** Which employee sent it. Absent for inbound, and for outbound messages sent
    *  before this tracking existed or from outside the Command Center. */
   sentBy?: string;
+  /** Present on MMS — the message's media parts. */
+  attachments?: MessageAttachment[];
 }
 
 /**

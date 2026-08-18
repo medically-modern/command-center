@@ -22,6 +22,7 @@
  * Log through `onTextSent`. The thread reloads after a send from here, and the
  * popup's own send lands in the same RingCentral history this card reads.
  */
+import { MessageAttachments } from "@/components/shared/MessageAttachments";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { sendViaWorker, SendValidationError } from "@/lib/shared/sendViaWorker";
@@ -247,6 +248,7 @@ export function IntakeMessages({
                       {m.direction === "Outbound" && !m.sentBy ? " · sent outside Command Center" : ""}
                     </div>
                     <div style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{m.text}</div>
+                    <MessageAttachments attachments={m.attachments} />
                   </div>
                 ))
               )}

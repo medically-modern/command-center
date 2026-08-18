@@ -222,9 +222,13 @@ export function registerMessaging({ app }) {
     let complete = false;
     try {
       for (let page = 1; page <= MAX_PAGES; page++) {
+        // SMS AND MMS: a patient who answers with a photo sends an MMS, and an
+        // SMS-only filter dropped that message entirely — no bubble, no photo,
+        // nothing (Josh, 2026-08-18). Repeating the param is RingCentral's
+        // multi-value syntax.
         const up = await rcApiFetch(
           `/restapi/v1.0/account/~/extension/~/message-store` +
-            `?messageType=SMS&phoneNumber=${encodeURIComponent(phone)}` +
+            `?messageType=SMS&messageType=MMS&phoneNumber=${encodeURIComponent(phone)}` +
             `&dateFrom=${encodeURIComponent(dateFrom)}&perPage=${PAGE_SIZE}&page=${page}`,
         );
         if (!up.ok) throw new Error(`RingCentral SMS history failed (${up.status})`);
@@ -234,11 +238,19 @@ export function registerMessaging({ app }) {
           const mine =
             last10(r.from?.phoneNumber) === want || (r.to ?? []).some((t) => last10(t.phoneNumber) === want);
           if (!mine) continue;
+          // The media parts of an MMS. Text parts are skipped — the body
+          // already rides in `subject` — and the uri is the allowlisted
+          // /message-store/{id}/content/{attachmentId} shape, which the
+          // browser fetches through /rc/fetch like a fax page.
+          const attachments = (r.attachments ?? [])
+            .filter((a) => a && a.uri && a.type !== "Text" && !/^text\//i.test(a.contentType || ""))
+            .map((a) => ({ id: a.id, contentType: a.contentType || "", uri: a.uri }));
           messages.push({
             id: r.id,
             direction: r.direction === "Outbound" ? "Outbound" : "Inbound",
             text: r.subject ?? r.text ?? "",
             time: r.creationTime ?? "",
+            ...(attachments.length ? { attachments } : {}),
           });
         }
         if (records.length < PAGE_SIZE) {

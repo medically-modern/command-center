@@ -3,6 +3,7 @@
  * (send-request / confirm-receipt mockup aesthetic). Pure presentation:
  * no Monday writes, no workflow logic.
  */
+import { MessageAttachments } from "@/components/shared/MessageAttachments";
 import { useState, useEffect, useRef } from "react";
 import type { Patient } from "@/lib/masheke/workflow";
 import { Input } from "@/components/ui/input";
@@ -775,6 +776,7 @@ function TextCompose({
                     )}
                   >
                     <div>{m.text}</div>
+                    <MessageAttachments attachments={m.attachments} />
                     <div className={cn("mt-1 text-[10px]", out ? "text-white/70" : "text-muted-foreground")}>{fmtTime(m.time)}</div>
                   </div>
                 </div>

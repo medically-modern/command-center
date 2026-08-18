@@ -366,6 +366,18 @@ export async function fetchPatientCallHistory(
  * call-log simply carries no `recording` and no button is drawn, so this only
  * runs for audio RingCentral has already told us exists.
  */
+/** Bytes for any allowlisted RingCentral content URL — an MMS attachment, a
+ *  fax page — as a blob URL the browser can render. The generic sibling of
+ *  fetchRecordingBlobUrl below: same /rc/fetch proxy, none of the
+ *  recording-specific error copy. Callers own revoking the URL. */
+export async function fetchRcContentBlobUrl(contentUri: string): Promise<string> {
+  if (!contentUri) throw new Error("No attachment content URL");
+  const res = await rcFetch(contentUri);
+  if (!res.ok) throw new Error(`RingCentral attachment download failed (${res.status})`);
+  const blob = await res.blob();
+  return URL.createObjectURL(blob);
+}
+
 export async function fetchRecordingBlobUrl(contentUri: string): Promise<string> {
   if (!contentUri) throw new Error("No recording attached to this call");
   const res = await rcFetch(contentUri);

@@ -10,6 +10,7 @@
  *    configured we fall back to the MM main number and say so, because that
  *    rings the main line rather than this person.
  */
+import { MessageAttachments } from "@/components/shared/MessageAttachments";
 import { useEffect, useRef, useState } from "react";
 import { AlertTriangle, Loader2, Phone, Send, ShieldOff } from "lucide-react";
 import { toast } from "sonner";
@@ -154,6 +155,7 @@ export default function ConversationThread({ phone, patient, onCall, calling }: 
                 )}
               >
                 <p className="whitespace-pre-wrap break-words">{m.text}</p>
+                <MessageAttachments attachments={m.attachments} />
                 <p
                   className={cn(
                     "text-[10px] mt-0.5",
