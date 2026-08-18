@@ -359,8 +359,15 @@ to `GROUPS.stuck` (`group_mm1xyczx`) — reason FIRST, so a failed move leaves a
 still in the queue rather than one parked in Stuck with no explanation. ⚠️ The **group is the only
 marker**: Move to Onboarding `color_mm1zmeb3` has no Stuck label (its labels are Already Serving ·
 Advance to MN · Send Back To Referral · Need More Info), so nothing on the item says "stuck" except
-which group it sits in — which is why the reason is required and stamped with who/when. Scoped to
-the `inSystem` variant via `BodyProps.onMarkStuck`; the other two roles don't render the card.
+which group it sits in — which is why the reason is required and stamped with who/when. ⚠️ Scoped
+via `BodyProps.onMarkStuck`/`onMoveToPipeline` to the **SELECTED PATIENT's** computed role
+(`selectedInSystem` ← `profileReferralRole`, 2026-08-18) — **not** the page variant: Search routes
+every 1. Intake row to `/profile` and a deep-linked `?patientId=` is exempt from the split, so an
+in-system patient opened from Search landed on Verified Referrals offered **Advance to MN** (the
+one exit that's wrong for them) and neither real exit — reported as "Mark as Stuck was removed".
+On the queue pages patient and URL always agree, so queue work is unchanged; the key-off only
+bites on deep links, in both directions (a verified patient deep-linked onto
+`/in-system-referrals` gets Advance to MN, not the in-system exits).
 **Already In System's Advance to MN is REPLACED by "Move to Profile Send Off"** (Josh,
 2026-08-18). That queue's patients never advance straight to MN — the workable ones go back into
 the normal pipeline instead: `mondayWrite.moveToProfileSendOff` writes Already In System → **"No"**

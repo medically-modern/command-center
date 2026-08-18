@@ -229,6 +229,21 @@ const ProfilePage = ({ variant }: ProfilePageProps) => {
     () => patients.find((p) => p.id === selectedId), [patients, selectedId],
   );
 
+  // ── Which EXITS the selected patient gets — the PATIENT decides, not the
+  // URL (Josh, 2026-08-18: "Mark as Stuck disappeared"). Search routes every
+  // 1. Intake row to /profile, and a deep-linked ?patientId= is exempt from
+  // the role split above — so an Already In System patient opened from Search
+  // landed on the Verified Referrals variant, whose exits card offered
+  // "Advance to MN" (the one exit that is WRONG for a patient we already
+  // serve) and neither of their real exits, Move to Profile Send Off and Mark
+  // as Stuck. Keyed on the same canonical rule as the queue filter, so on the
+  // queue pages the split and the URL always agree and normal queue work is
+  // unchanged — this only bites on deep links, in both directions (a verified
+  // patient deep-linked onto /in-system-referrals gets Advance to MN back).
+  const selectedInSystem = !!selected && profileReferralRole(
+    selected.referralType, selected.referralSource, selected.alreadyInSystem, selected.groupId,
+  ) === "inSystem";
+
   // "Patient has filled out a DTC form" (Josh, 2026-08-18): a doctor or
   // manufacturer referral often has a twin the patient submitted themselves.
   // Both queues this page serves get the flag — Verified Referrals and Already
@@ -516,7 +531,10 @@ const ProfilePage = ({ variant }: ProfilePageProps) => {
     if (!selected || !stuckReason.trim()) return;
     setMarkingStuck(true);
     try {
-      await markStuck(selected, stuckReason, VARIANT_LABEL[variant]);
+      // Always stamped as the in-system queue: the action only renders for
+      // patients the split rule puts there, and on a deep link the page's own
+      // variant can be a different route (see selectedInSystem above).
+      await markStuck(selected, stuckReason, VARIANT_LABEL.inSystem);
       clearOverlay(selected.id);
       toast.success(`${selected.name} moved to Stuck`);
       clearDeepLink();
@@ -680,9 +698,9 @@ const ProfilePage = ({ variant }: ProfilePageProps) => {
                 onAdvance={handleAdvance}
                 onAddNote={handleAppendNote}
                 reviewMode={reviewMode}
-                onMarkStuck={variant === "inSystem" ? () => setStuckOpen(true) : undefined}
+                onMarkStuck={selectedInSystem ? () => setStuckOpen(true) : undefined}
                 markingStuck={markingStuck}
-                onMoveToPipeline={variant === "inSystem" ? () => setMoveOpen(true) : undefined}
+                onMoveToPipeline={selectedInSystem ? () => setMoveOpen(true) : undefined}
                 movingToPipeline={movingToPipeline}
               />
             )}
