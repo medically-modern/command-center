@@ -230,23 +230,25 @@ const ProfilePage = ({ variant }: ProfilePageProps) => {
   );
 
   // "Patient has filled out a DTC form" (Josh, 2026-08-18): a doctor or
-  // manufacturer referral in the Already In System queue often has a twin the
-  // patient submitted themselves. Leads = the two DTC form groups (their own
-  // slim 60s poll) + any patient-form items already inside this page's queue
-  // fetch — a form row marked "Yes" is MOVED into the in-system group and
-  // leaves the form groups, so the poll alone would miss exactly that twin.
-  // Display only; queue membership and counts are untouched (dtcFormFlag.ts).
-  const dtcFormGroupLeads = useDtcFormLeads(variant === "inSystem");
+  // manufacturer referral often has a twin the patient submitted themselves.
+  // Both queues this page serves get the flag — Verified Referrals and Already
+  // In System (the unverified route is its own page AND is the form queue
+  // itself, so it has nothing to flag). Leads = the two DTC form groups (their
+  // own slim 60s poll) + any patient-form items already inside this page's
+  // queue fetch — a form row marked "Yes" is MOVED into the in-system group
+  // and leaves the form groups, so the poll alone would miss exactly that
+  // twin. Display only; queue membership and counts are untouched
+  // (dtcFormFlag.ts).
+  const dtcEnabled = variant === "inSystem" || variant === "verified";
+  const dtcFormGroupLeads = useDtcFormLeads(dtcEnabled);
   const dtcLeads = useMemo(
     () =>
-      variant === "inSystem"
-        ? [...dtcFormGroupLeads, ...queueLeadsFrom(allProfilePatients)]
-        : [],
-    [variant, dtcFormGroupLeads, allProfilePatients],
+      dtcEnabled ? [...dtcFormGroupLeads, ...queueLeadsFrom(allProfilePatients)] : [],
+    [dtcEnabled, dtcFormGroupLeads, allProfilePatients],
   );
   const dtcMatches = useMemo(
-    () => (variant === "inSystem" && selected ? dtcFormMatchesFor(selected, dtcLeads) : []),
-    [variant, selected, dtcLeads],
+    () => (dtcEnabled && selected ? dtcFormMatchesFor(selected, dtcLeads) : []),
+    [dtcEnabled, selected, dtcLeads],
   );
 
   /** Opened from a completion badge in System Management → Search: this item
@@ -620,7 +622,7 @@ const ProfilePage = ({ variant }: ProfilePageProps) => {
             )}
             {selected && dtcMatches.length > 0 && (
               <div style={{ padding: "16px 24px 0" }}>
-                <DtcFormFlagBanner matches={dtcMatches} onSelectInQueue={setSelectedId} />
+                <DtcFormFlagBanner matches={dtcMatches} variant={variant} onSelectInQueue={setSelectedId} />
               </div>
             )}
             {!selected ? (
@@ -726,17 +728,19 @@ function formatSubmittedOn(raw?: string): string {
   return s;
 }
 
-/** "Patient has filled out a DTC form" — shown on the Already In System queue
- *  when a doctor/manufacturer referral has a matching item the patient
- *  submitted themselves (lib/profile/dtcFormFlag.ts). Display only: nothing
- *  here writes to Monday or changes any queue. Each match names the form item
- *  and its evidence, so a household-shared phone/email explains itself. */
+/** "Patient has filled out a DTC form" — shown on both referral queues this
+ *  page serves (Verified Referrals + Already In System) when a doctor or
+ *  manufacturer referral has a matching item the patient submitted themselves
+ *  (lib/profile/dtcFormFlag.ts). Display only: nothing here writes to Monday
+ *  or changes any queue. Each match names the form item and its evidence, so
+ *  a household-shared phone/email explains itself. */
 function DtcFormFlagBanner({
-  matches, onSelectInQueue,
+  matches, variant, onSelectInQueue,
 }: {
   matches: DtcFormMatch[];
-  /** A matched lead living in THIS queue is selected in place (it's already in
-   *  the sidebar) rather than navigated to. */
+  /** Which queue the rep is on — a matched lead living in THIS queue is
+   *  selected in place (it's already in the sidebar) rather than navigated to. */
+  variant: ProfileReferralRole;
   onSelectInQueue: (id: string) => void;
 }) {
   return (
@@ -747,7 +751,7 @@ function DtcFormFlagBanner({
       </div>
       <ul className="mt-1.5 space-y-1 text-sm text-blue-900/90">
         {matches.map(({ lead, matchedOn }) => {
-          const route = dtcLeadRoute(lead);
+          const route = dtcLeadRoute(lead, variant);
           const when = formatSubmittedOn(lead.submittedOn);
           return (
             <li key={lead.id} className="flex flex-wrap items-center gap-x-2 gap-y-0.5">

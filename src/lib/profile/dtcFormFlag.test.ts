@@ -183,21 +183,28 @@ describe("queueLeadsFrom — patient-form items already inside the queue fetch",
 });
 
 describe("dtcLeadRoute / dtcLeadKindLabel — where 'View form' goes", () => {
-  it("routes form-group leads to Unverified Referrals with the right source", () => {
-    expect(dtcLeadRoute(lead({ id: "5", groupId: DTC_FORM_GROUP_PARTIAL })))
-      .toBe("/unverified-referrals?source=partial&patientId=5");
-    expect(dtcLeadRoute(lead({ id: "6", groupId: DTC_FORM_GROUP_COMPLETED })))
-      .toBe("/unverified-referrals?patientId=6");
+  it("routes form-group leads to Unverified Referrals with the right source, from either queue", () => {
+    for (const from of ["inSystem", "verified"] as const) {
+      expect(dtcLeadRoute(lead({ id: "5", groupId: DTC_FORM_GROUP_PARTIAL }), from))
+        .toBe("/unverified-referrals?source=partial&patientId=5");
+      expect(dtcLeadRoute(lead({ id: "6", groupId: DTC_FORM_GROUP_COMPLETED }), from))
+        .toBe("/unverified-referrals?patientId=6");
+    }
   });
 
-  it("returns null for leads already in the Already In System queue (either §5.10 route)", () => {
-    expect(dtcLeadRoute(lead({ groupId: IN_SYSTEM_GROUP, alreadyInSystem: "" }))).toBeNull();
-    expect(dtcLeadRoute(lead({ groupId: INTAKE_GROUP, alreadyInSystem: "Yes" }))).toBeNull();
+  it("selects in place (null) when the lead lives in the queue the rep is on", () => {
+    // Already In System, by either §5.10 route (group or status flag)…
+    expect(dtcLeadRoute(lead({ groupId: IN_SYSTEM_GROUP, alreadyInSystem: "" }), "inSystem")).toBeNull();
+    expect(dtcLeadRoute(lead({ groupId: INTAKE_GROUP, alreadyInSystem: "Yes" }), "inSystem")).toBeNull();
+    // …and a 1. Intake patient-form row viewed from Verified Referrals.
+    expect(dtcLeadRoute(lead({ groupId: INTAKE_GROUP, alreadyInSystem: "No" }), "verified")).toBeNull();
   });
 
-  it("routes a 1. Intake patient-form lead (not in system) to Verified Referrals", () => {
-    expect(dtcLeadRoute(lead({ id: "7", groupId: INTAKE_GROUP, alreadyInSystem: "No" })))
+  it("links across queues when the lead belongs to the OTHER one", () => {
+    expect(dtcLeadRoute(lead({ id: "7", groupId: INTAKE_GROUP, alreadyInSystem: "No" }), "inSystem"))
       .toBe("/profile?patientId=7");
+    expect(dtcLeadRoute(lead({ id: "8", groupId: IN_SYSTEM_GROUP, alreadyInSystem: "Yes" }), "verified"))
+      .toBe("/in-system-referrals?patientId=8");
   });
 
   it("labels partial vs completed forms, and queue-sourced leads generically", () => {

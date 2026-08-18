@@ -1,14 +1,13 @@
 /**
- * "Patient has filled out a DTC form" flag for the Already In System queue
- * (Josh, 2026-08-18).
+ * "Patient has filled out a DTC form" flag for the two ProfilePage referral
+ * queues — Verified Referrals AND Already In System (Josh, 2026-08-18).
  *
- * A doctor (or manufacturer) referral for somebody already in the system often
- * has a TWIN: the same patient also filled out the DTC intake form on their
- * own, so a second item for the same human sits in the form groups (§5.10),
- * worked by a different rep with neither knowing about the other. The Already
- * In System page flags the referral item — "this patient has filled out a DTC
- * form" — so the rep sees the patient's own submission before deciding what to
- * do with the referral.
+ * A doctor (or manufacturer) referral often has a TWIN: the same patient also
+ * filled out the DTC intake form on their own, so a second item for the same
+ * human sits in the form groups (§5.10), worked by a different rep with
+ * neither knowing about the other. The referral queues flag the referral item
+ * — "this patient has filled out a DTC form" — so the rep sees the patient's
+ * own submission before deciding what to do with the referral.
  *
  * READ-ONLY DISPLAY. The flag changes no queue membership, no role count, no
  * baseline: it is computed in the browser from the page's own fetch plus a
@@ -26,7 +25,7 @@
  */
 import type { Patient } from "./workflow";
 import { phoneDigits } from "./workflow";
-import { isInSystemQueue } from "./referralSplit";
+import { isInSystemQueue, type ProfileReferralRole } from "./referralSplit";
 
 /** The DTC form's two board groups. Literals, same pattern as
  *  `referralSplit.IN_SYSTEM_GROUP` — must match `GROUPS.newFormPartial` /
@@ -162,17 +161,25 @@ export function dtcLeadKindLabel(lead: DtcFormLead): string {
 }
 
 /**
- * Where "View form" navigates. `null` = the lead is in THIS queue (Already In
- * System, by group or by flag — §5.10's two routes), so the page selects it in
- * place instead of navigating away.
+ * Where "View form" navigates from the queue page the rep is on. `null` = the
+ * lead lives in THAT queue already, so the page selects it in place instead of
+ * navigating away. Form-group leads always link to Unverified Referrals (its
+ * own page, never a ProfilePage variant); queue-group leads route by §5.10's
+ * two Already-In-System markers — group or status flag — else they are
+ * Verified Referrals' (1. Intake no longer splits on referral type).
  */
-export function dtcLeadRoute(lead: DtcFormLead): string | null {
+export function dtcLeadRoute(lead: DtcFormLead, currentVariant: ProfileReferralRole): string | null {
   if (lead.groupId === DTC_FORM_GROUP_PARTIAL) {
     return `/unverified-referrals?source=partial&patientId=${lead.id}`;
   }
   if (lead.groupId === DTC_FORM_GROUP_COMPLETED) {
     return `/unverified-referrals?patientId=${lead.id}`;
   }
-  if (isInSystemQueue(lead.alreadyInSystem, lead.groupId)) return null;
-  return `/profile?patientId=${lead.id}`;
+  const leadRole: ProfileReferralRole = isInSystemQueue(lead.alreadyInSystem, lead.groupId)
+    ? "inSystem"
+    : "verified";
+  if (leadRole === currentVariant) return null;
+  return leadRole === "inSystem"
+    ? `/in-system-referrals?patientId=${lead.id}`
+    : `/profile?patientId=${lead.id}`;
 }

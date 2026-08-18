@@ -355,11 +355,14 @@ they'd just sent away sit in the sidebar. Clearing the URL only works because th
 the deep link through a **ref**: `refetch` is deliberately stable, so it had captured the
 first-render id and kept re-injecting it no matter what the URL said.
 
-**Already In System flags DTC-form twins** (Josh, 2026-08-18). A doctor (or manufacturer) referral
-in that queue often has a SECOND item for the same human that the patient submitted through the DTC
-form. The page shows a "DTC Form Filled Out" header pill + a banner naming the matched form item(s)
-with a "View form" link (form groups → `/unverified-referrals` with the right `source`; a 1. Intake
-patient-form item → `/profile`) or an in-place select when the twin already sits in this queue.
+**Both referral queues flag DTC-form twins** (Josh, 2026-08-18 — Verified Referrals AND Already In
+System; the unverified route is its own page and IS the form queue, so it has nothing to flag). A
+doctor (or manufacturer) referral often has a SECOND item for the same human that the patient
+submitted through the DTC form. The page shows a "DTC Form Filled Out" header pill + a banner
+naming the matched form item(s) with a "View form" link (form groups → `/unverified-referrals` with
+the right `source`; a lead belonging to the OTHER referral queue → that queue's route) or an
+in-place select when the twin already sits in the queue the rep is on (`dtcLeadRoute` takes the
+current variant).
 Canonical logic: **`lib/profile/dtcFormFlag.ts`** (+ tests) — a match is email OR full-10-digit
 phone OR name+DOB together (never name alone), and the flag is suppressed on items whose own
 Referral Type is "Patient" (TYPE only — referralSplit's vocabulary rule; the Source column's
