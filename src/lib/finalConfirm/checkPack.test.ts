@@ -124,7 +124,7 @@ describe("checkPack — C25/C26 Cardinal address format", () => {
       .find((x) => x.id === "C25_ADDRESS_FORMAT");
     expect(f?.severity).toBe("red");
     expect(f?.field).toBe("address");
-    expect(f?.formatHint).toContain("Street, [Apt/Unit,] City, ST ZIP");
+    expect(f?.formatHint).toContain("Street + Apt/Suite on ONE line, City, ST ZIP");
     expect(f?.detail).toContain("comma");
   });
 

@@ -2,15 +2,29 @@
  * lib/shared/cardinalAddress.ts — is an address in the format Cardinal Health
  * orders accept?
  *
- * ⚠️ THIS IS A MIRROR, NOT A NEW RULE. It is a faithful port of the Cardinal
- * ordering service's own parser — `Cardinal-api/src/address.js`
- * `normalizeAddress()` — so the Command Center can tell a rep at Final Profile
- * Confirmation exactly what the order pipeline will say hours later, while the
- * address is still editable and (for the patient address) somebody is on the
- * phone. **Change one, change the other**, same drill as the §5.9/§5.10
- * keep-in-agreement lists: the whole point is that the two answers agree, and a
- * silent divergence here is worse than no check at all (the rep gets a green
- * page and the order still stops).
+ * ⚠️ THIS IS A MIRROR of the Cardinal ordering service's own parser —
+ * `Cardinal-api/src/address.js` `normalizeAddress()` — so the Command Center
+ * can tell a rep at Welcome Call / Final Profile Confirmation what the order
+ * pipeline will say hours later, while the address is still editable and
+ * somebody is on the phone. **Change one, change the other**, same drill as the
+ * §5.9/§5.10 keep-in-agreement lists: a silent divergence is worse than no
+ * check at all, because the rep gets a green page and the order still stops.
+ *
+ * ⚠️ **With ONE deliberate exception, and the direction of it matters.** This
+ * copy is STRICTER by one rule — the city slot has to look like a city
+ * (`isUnitOnlySegment` / `gluedUnitInCity` below). Upstream has no such check,
+ * so it reads `665 Saratoga Rd, Ste 400 Gansevoort, NY 12831` as city
+ * **"STE 400 GANSEVOORT"** and ships the parcel to a city that doesn't exist —
+ * silently, no hard flag, no soft flag, nothing on the board (reported by Josh,
+ * 2026-08-18; verified against the live parser).
+ *
+ * Diverging in THIS direction is safe: we flag something the service would
+ * accept, so a rep fixes an address that would otherwise go out wrong. The
+ * dangerous direction is the opposite — us passing what Cardinal refuses — and
+ * that is what the keep-in-agreement rule protects. So: keep porting changes
+ * from upstream, and do NOT delete this rule to make the two files match.
+ * Upstream still has the bug; fixing it there would make this redundant, not
+ * wrong.
  *
  * What Cardinal does with a bad address (Cardinal-api docs/ADDRESS_VALIDATION.md):
  *  - `hard` on the PATIENT or DOCTOR address ⇒ GATE 1 stops the order. It is
@@ -20,7 +34,9 @@
  * a city, or repairs punctuation. Anything that does not fit the preset is
  * flagged for a person to reformat.
  *
- * The preset:   STREET , [UNIT ,] CITY , ST ZIP [, COUNTRY]
+ * The preset:   STREET [UNIT] , CITY , ST ZIP [, COUNTRY]
+ * A unit in its OWN comma segment still parses (it becomes address line 2), but
+ * reps are taught the one-line form — see CARDINAL_ADDRESS_FORMAT.
  *
  * Why the SPA needs its own copy rather than calling the service: the ordering
  * service reads the *orders* board (18405457690), which the patient only
@@ -40,6 +56,7 @@ export type CardinalIssueCode =
   | "NOT_PRESET"
   | "MISSING_STREET"
   | "MISSING_CITY"
+  | "UNIT_IN_CITY"
   | "EXTRA_SEGMENT"
   | "PO_BOX";
 
@@ -64,9 +81,18 @@ export interface CardinalAddressResult {
   raw: string;
 }
 
-/** What to show a rep who has to fix one. Keep in step with the parser above. */
-export const CARDINAL_ADDRESS_FORMAT = "Street, [Apt/Unit,] City, ST ZIP";
-export const CARDINAL_ADDRESS_EXAMPLE = "123 Main St, Apt 4B, Brooklyn, NY 11201";
+/**
+ * What to show a rep who has to fix one. Keep in step with the parser above.
+ *
+ * ⚠️ **Apt/Suite goes on the STREET line, not on its own** (Josh, 2026-08-18).
+ * The parser accepts a unit as its own comma segment too (it rides on address
+ * line 2), but telling reps that invites the exact typo this format exists to
+ * stop: a comma after the street and none after the unit, which glues the
+ * suite onto the CITY. One line for everything before the city is the shape
+ * with no ambiguous middle at all.
+ */
+export const CARDINAL_ADDRESS_FORMAT = "Street + Apt/Suite on ONE line, City, ST ZIP";
+export const CARDINAL_ADDRESS_EXAMPLE = "123 Main St Ste 400, Brooklyn, NY 11201";
 /**
  * The one wording of the required format, so every place that shows it says the
  * same thing: the Final Confirm check pack (C25/C26 `formatHint`, which the
@@ -118,6 +144,66 @@ function isUnitSegment(seg: string): boolean {
   if (/^\d+[A-Z]{1,3}$/.test(s)) return true; // 1FL, 2D, 3RD
   if (/^(FRONT|REAR|UPPER|LOWER)$/.test(s)) return true;
   return false;
+}
+
+/**
+ * Unit designators, longest-first so the alternation can't match a prefix of a
+ * longer word ("FL" inside "FLOOR"). Same vocabulary as `isUnitSegment`.
+ */
+const UNIT_WORDS = "APARTMENT|BASEMENT|PENTHOUSE|APT|UNIT|SUITE|STE|FLOOR|FLR|FL|ROOM|RM|BLDG|BSMT|PH|LOT|SPACE|SPC|TRLR|DEPT|HANGAR|SLIP|PIER";
+/** A unit identifier: contains a digit ("400", "4B", "12-A") or is a lone letter ("B"). */
+const UNIT_ID = "(?:[A-Z0-9-]*[0-9][A-Z0-9-]*|[A-Z])";
+
+/**
+ * Is this segment a unit and NOTHING else — `Ste 400`, `#5`, `2A`?
+ *
+ * Anchored on purpose. `isUnitSegment` is a loose `\b` word match, which is
+ * right where it is used (a MIDDLE segment: "does this look like a unit, or an
+ * extra place-name we must not guess about") and wrong for the city slot, where
+ * it reads the real city "Space Coast" as a unit because SPACE is in the
+ * vocabulary. The identifier rule does the rest of the work: a unit carries a
+ * digit or is a lone letter, so `Space Coast` has nothing to match.
+ */
+function isUnitOnlySegment(seg: string): boolean {
+  const t = String(seg || "").trim().toUpperCase();
+  if (!t) return false;
+  if (new RegExp(`^(?:${UNIT_WORDS})\\.?\\s*#?\\s*${UNIT_ID}$`).test(t)) return true;
+  if (new RegExp(`^#\\s*${UNIT_ID}$`).test(t)) return true;
+  if (/^[A-Z]?\d+[A-Z]?$/.test(t)) return true; // 12, 2A, 12B, B2
+  if (/^[A-Z]$/.test(t)) return true;            // A
+  return false;
+}
+
+/**
+ * Is the CITY segment actually "<unit> <city>" — e.g. `Ste 400 Gansevoort`?
+ * Returns the unit part, or "".
+ *
+ * ⚠️ **STRICTER THAN THE MIRROR — deliberate, do not "resync" it away.**
+ * `Cardinal-api/src/address.js` has no equivalent check, so it parses
+ * `665 Saratoga Rd, Ste 400 Gansevoort, NY 12831` as **city
+ * "STE 400 GANSEVOORT"**, ships it, and the parcel goes out addressed to a city
+ * that does not exist — no hard flag, no soft flag, nothing on the board. It is
+ * the same silent-wrong-city class as the county-as-city bug that repo's
+ * `docs/ADDRESS_VALIDATION.md` records fixing (26 of 101 records).
+ *
+ * Divergence in THIS direction is the safe one: we flag something the service
+ * would accept, so a rep fixes an address that would otherwise ship wrong. The
+ * dangerous direction — us passing something Cardinal refuses — is what §5.17's
+ * keep-in-agreement rule is about, and this doesn't do that. If the upstream
+ * parser ever grows the same rule, delete nothing; just re-check the wording.
+ *
+ * The identifier has to carry a digit or be a lone letter, which is what keeps
+ * real two-word cities out of it: `Upper Montclair` and `Space Coast` have no
+ * unit id to match, and the designator must be a whole token, so `Floral Park`
+ * is not read as `FL oral Park`.
+ */
+function gluedUnitInCity(seg: string): string {
+  const s = String(seg || "").trim().toUpperCase();
+  const keyword = s.match(new RegExp(`^(?:${UNIT_WORDS})\\.?\\s+#?\\s*${UNIT_ID}(?=\\s+\\S)`));
+  if (keyword) return keyword[0].trim();
+  const hash = s.match(new RegExp(`^#\\s*${UNIT_ID}(?=\\s+\\S)`));
+  if (hash) return hash[0].trim();
+  return "";
 }
 
 /**
@@ -203,6 +289,19 @@ export function checkCardinalAddress(text: string): CardinalAddressResult {
   if (/^THE\s+BRON?X$/.test(city)) city = "BRONX";
   if (!city || /^\d+$/.test(city) || /\d{5}/.test(city)) {
     return flag("MISSING_CITY", "The city is missing or unreadable.");
+  }
+  // Both of these are STRICTER THAN THE MIRROR — see gluedUnitInCity above.
+  // The city slot holding a unit and nothing else ("…, Ste 400, NY 12831")
+  // means there is no city at all; upstream this parses as city "STE 400".
+  if (isUnitOnlySegment(cityRaw)) {
+    return flag("MISSING_CITY", `There is no city — "${cityRaw}" is a unit, not a city.`);
+  }
+  const gluedUnit = gluedUnitInCity(cityRaw);
+  if (gluedUnit) {
+    return flag(
+      "UNIT_IN_CITY",
+      `"${gluedUnit}" is stuck to the city, so the city would be sent as "${city}". Move it onto the street line: "${street} ${gluedUnit}, ${cityRaw.slice(gluedUnit.length).trim()}, ${state} ${zip}".`,
+    );
   }
 
   const poBox = [street, ...middles].find(isPoBoxSegment);

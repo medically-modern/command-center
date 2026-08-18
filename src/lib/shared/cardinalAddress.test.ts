@@ -148,6 +148,71 @@ describe("checkCardinalAddress — soft issues ship, but say so", () => {
   });
 });
 
+describe("the city slot has to be a city — STRICTER THAN THE MIRROR", () => {
+  // Reported by Josh 2026-08-18: `665 Saratoga Rd, Ste 400 Gansevoort, NY 12831`
+  // was accepted. Upstream (Cardinal-api/src/address.js) parses it as city
+  // "STE 400 GANSEVOORT" and ships it — no hard flag, no soft flag. These cases
+  // are the ONE place this file deliberately says more than the mirror, so if a
+  // future sync deletes the rule, these fail. Synthetic addresses, same shapes.
+
+  it("a suite glued to the city is HARD, and the message shows the fix", () => {
+    const r = checkCardinalAddress("800 Riverside Dr, Ste 210 Glenville, NY 12302");
+    expect(r.hard).toBe(true);
+    expect(codes(r.raw)).toContain("UNIT_IN_CITY");
+    const reason = cardinalAddressHardReason(r);
+    expect(reason).toContain("STE 210");
+    // names what would actually be sent, and spells out the corrected address
+    expect(reason).toContain("STE 210 GLENVILLE");
+    expect(reason).toContain("800 Riverside Dr STE 210, Glenville, NY 12302");
+  });
+
+  it("catches every unit spelling glued to the city", () => {
+    for (const seg of ["Apt 4B Brooklyn", "Suite 100 Albany", "Unit B Albany", "#5 Albany", "Fl 3 Albany", "Rm 12 Albany"]) {
+      const r = checkCardinalAddress(`12 Main St, ${seg}, NY 12203`);
+      expect(r.hard, `${seg} should be flagged`).toBe(true);
+      expect(r.issues.some((i) => i.code === "UNIT_IN_CITY")).toBe(true);
+    }
+  });
+
+  it("a city slot holding ONLY a unit means there is no city at all", () => {
+    const r = checkCardinalAddress("800 Riverside Dr, Ste 210, NY 12302");
+    expect(r.hard).toBe(true);
+    expect(codes(r.raw)).toContain("MISSING_CITY");
+    expect(cardinalAddressHardReason(r)).toContain("not a city");
+  });
+
+  it("the SAME address with the unit on the street line is clean — that is the fix", () => {
+    const r = checkCardinalAddress("800 Riverside Dr Ste 210, Glenville, NY 12302");
+    expect(r.hard).toBe(false);
+    expect(r.issues).toEqual([]);
+    expect(r.address1).toBe("800 RIVERSIDE DR STE 210");
+    expect(r.city).toBe("GLENVILLE");
+  });
+
+  it("a unit in its OWN segment still parses — the mirror supports address 2", () => {
+    const r = checkCardinalAddress("800 Riverside Dr, Ste 210, Glenville, NY 12302");
+    expect(r.hard).toBe(false);
+    expect(r.address2).toBe("STE 210");
+    expect(r.city).toBe("GLENVILLE");
+  });
+
+  it("REAL two-word cities are never mistaken for a glued unit", () => {
+    // Each of these contains a word from the unit vocabulary, or looks like one.
+    for (const city of ["Upper Montclair", "Lower Manhattan", "Space Coast", "Floral Park", "Piermont", "Fort Lee", "Lots Creek", "Union City"]) {
+      const r = checkCardinalAddress(`12 Main St, ${city}, NY 12203`);
+      expect(r.hard, `${city} is a city, not a unit`).toBe(false);
+      expect(r.city).toBe(city.toUpperCase());
+    }
+  });
+
+  it("the taught format puts the unit on the street line", () => {
+    expect(CARDINAL_FORMAT_HINT).toContain("ONE line");
+    expect(CARDINAL_FORMAT_HINT).toContain("123 Main St Ste 400, Brooklyn, NY 11201");
+    // and the example it teaches must itself pass
+    expect(checkCardinalAddress("123 Main St Ste 400, Brooklyn, NY 11201").hard).toBe(false);
+  });
+});
+
 describe("shapes seen on the live boards (2026-08-18 audit, synthetic rewrites)", () => {
   // Clinic addresses are the dominant failure: 46 hard on the Cardinal orders
   // board vs 6 patient. Every shape below came off a real row.
@@ -185,7 +250,7 @@ describe("cardinalAddressNote — the inline note both stages render", () => {
     expect(n?.tone).toBe("red");
     expect(n?.reason).toContain("comma");
     expect(n?.hint).toBe(CARDINAL_FORMAT_HINT);
-    expect(n?.hint).toContain("Street, [Apt/Unit,] City, ST ZIP");
+    expect(n?.hint).toContain("ONE line");
   });
 
   it("covers the zip case the old Welcome Call regex used to own", () => {

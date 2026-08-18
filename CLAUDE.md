@@ -940,12 +940,16 @@ else (`lib/welcomeCall/mondayApi.ts`), so the patient address is the whole of it
 Welcome Call equivalent, and giving it one means adding the column to the read set, the `Patient`
 type, the mapping and the form — not a UI change.
 
-**The preset is the whole rule:** `STREET , [UNIT ,] CITY , ST ZIP [, COUNTRY]`. The parse is
-deliberately faithful — it never abbreviates, reorders, guesses a city from a glued street, or
-repairs punctuation. Hard: `EMPTY · MISSING_ZIP · MISSING_STATE · NOT_PRESET` (no comma before the
-city) · `MISSING_STREET` (no house number — a clinic NAME on line 1 is the usual cause) ·
-`MISSING_CITY`. Soft (ships, but says so): `EXTRA_SEGMENT` (an unrecognized middle line — usually a
-valid `C/O`) · `PO_BOX` (parcel carriers can't deliver to one).
+**The preset is the whole rule:** `STREET [UNIT] , CITY , ST ZIP [, COUNTRY]` — **the apt/suite
+goes on the STREET line** (Josh, 2026-08-18). The parser also accepts a unit as its own comma
+segment (it rides on address line 2) and always did, but that is not what reps are taught: telling
+them "Street, Apt, City" invites the exact typo below, where the comma lands after the street and
+not after the unit. One line for everything before the city has no ambiguous middle at all.
+The parse is deliberately faithful — it never abbreviates, reorders, guesses a city from a glued
+street, or repairs punctuation. Hard: `EMPTY · MISSING_ZIP · MISSING_STATE · NOT_PRESET` (no comma
+before the city) · `MISSING_STREET` (no house number — a clinic NAME on line 1 is the usual cause) ·
+`MISSING_CITY` · `UNIT_IN_CITY`. Soft (ships, but says so): `EXTRA_SEGMENT` (an unrecognized middle
+line — usually a valid `C/O`) · `PO_BOX` (parcel carriers can't deliver to one).
 
 ⚠️ **`lib/shared/cardinalAddress.ts` is a MIRROR of `Cardinal-api/src/address.js` — change one,
 change the other.** Same class of hand-synced contract as `oopEstimator.ts` vs the Railway financial
@@ -955,6 +959,19 @@ still stops. `cardinalAddress.test.ts` is ported case-for-case from that repo's
 The SPA cannot simply call the service: the ordering service reads the **orders board**
 (`18405457690`), which the patient only reaches after Welcome Call → Subscription. At Final Confirm
 there is no downstream item to ask about yet.
+
+⚠️ **ONE deliberate divergence, and the DIRECTION of it is the whole argument** (Josh, 2026-08-18).
+The SPA copy is **stricter by one rule**: the city slot has to look like a city
+(`UNIT_IN_CITY` / the unit-only `MISSING_CITY`). Upstream has no such check, so
+`665 Saratoga Rd, Ste 400 Gansevoort, NY 12831` parses there as city **"STE 400 GANSEVOORT"** and
+**ships** — no hard flag, no soft flag, nothing on the board. It is the silent-wrong-city class that
+repo's own `docs/ADDRESS_VALIDATION.md` records fixing once already (county-as-city, 26 of 101).
+Flagging something the service would accept is the SAFE direction — a rep fixes an address that
+would otherwise go out wrong. The dangerous direction is us passing what Cardinal refuses, which is
+what the keep-in-agreement rule above is for. So keep porting upstream changes in, and **do not
+delete this rule to make the two files match**; upstream still has the bug. Live today: it fires on
+one patient and one doctor address on each of Welcome Call, Subscription and the Cardinal orders
+board — small, and one of them is a real order already placed.
 
 **Severity follows the pack's existing rule** — red = positive evidence the profile is wrong, so a
 MALFORMED address is red and a BLANK one is amber (a missing input, like C22's blank DOB). Nothing
@@ -993,7 +1010,8 @@ Repeat the audit with the parser and a board query before changing any of these 
 numbers, not an intuition, are what decided red-vs-amber and blank-vs-silent.
 
 **Keep-in-agreement:**
-1. **The rule** — `src/lib/shared/cardinalAddress.ts` ⇄ `Cardinal-api/src/address.js` (+ both test suites).
+1. **The rule** — `src/lib/shared/cardinalAddress.ts` ⇄ `Cardinal-api/src/address.js` (+ both test
+   suites), minus the one documented divergence above.
 2. **The checks** — `lib/finalConfirm/checkPack.ts` `cardinalAddressFindings` (C25/C26).
 3. **The UI** — `components/shared/CardinalAddressNote.tsx` (the inline note on BOTH stages) +
    `finalConfirm/PatientInfoCard.tsx` (both rings), `welcomeCall/WelcomeCallForm.tsx` (both address
