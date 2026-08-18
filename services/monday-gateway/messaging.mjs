@@ -224,17 +224,27 @@ export function registerMessaging({ app }) {
       for (let page = 1; page <= MAX_PAGES; page++) {
         // SMS AND MMS: a patient who answers with a photo sends an MMS, and an
         // SMS-only filter dropped that message entirely — no bubble, no photo,
-        // nothing (Josh, 2026-08-18). Repeating the param is RingCentral's
-        // multi-value syntax.
+        // nothing (Josh, 2026-08-18).
+        //
+        // ⚠️ NO messageType param at all. The documented multi-value syntax
+        // (`messageType=SMS&messageType=MMS`) comes back 400 on this account —
+        // which didn't just hide MMS, it broke the WHOLE thread load, and with
+        // it texting (an unreadable history reads as unknown consent, which
+        // blocks the composer). Same account-quirk genre as the SMS-500 and
+        // the call-log's digits-only filter. So the query filters by phone
+        // number only and the type check lives below, where it can't 400.
         const up = await rcApiFetch(
           `/restapi/v1.0/account/~/extension/~/message-store` +
-            `?messageType=SMS&messageType=MMS&phoneNumber=${encodeURIComponent(phone)}` +
+            `?phoneNumber=${encodeURIComponent(phone)}` +
             `&dateFrom=${encodeURIComponent(dateFrom)}&perPage=${PAGE_SIZE}&page=${page}`,
         );
         if (!up.ok) throw new Error(`RingCentral SMS history failed (${up.status})`);
         const j = await up.json();
         const records = j.records ?? [];
         for (const r of records) {
+          // The store also holds Fax / VoiceMail rows for this number — a fax
+          // rendered as a text bubble would be worse than the old gap.
+          if (r.type !== "SMS" && r.type !== "MMS") continue;
           const mine =
             last10(r.from?.phoneNumber) === want || (r.to ?? []).some((t) => last10(t.phoneNumber) === want);
           if (!mine) continue;
