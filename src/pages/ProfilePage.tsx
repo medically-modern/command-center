@@ -33,7 +33,7 @@ import {
   type MondayAsset, type MondayUpdate,
 } from "@/lib/profile/mondayApi";
 import {
-  sendPatientToMonday, markStuck, writePatientProfile,
+  sendPatientToMonday, markStuck, moveToProfileSendOff, writePatientProfile,
   verifyProfileWritten, writeOopEstimate, triggerStediRun, writeProfileNotes,
 } from "@/lib/profile/mondayWrite";
 import { NoteLog, stampNote } from "@/components/profile/NoteLog";
@@ -530,6 +530,32 @@ const ProfilePage = ({ variant }: ProfilePageProps) => {
     } finally { setMarkingStuck(false); }
   };
 
+  // ── Move to Profile Send Off (Already In System only) ─────────────────────
+  // The queue's other exit (Josh, 2026-08-18) — this referral turns out to be
+  // workable, so it REPLACES Advance to MN there: clear the flag, return the
+  // item to 1. Intake, and the §5.10 split hands it to Verified Referrals.
+  // Advancing straight to MN from here was wrong for the same reason Mark as
+  // Stuck exists: this queue's patients haven't been through the send-off
+  // checklist as a workable referral.
+  const [moveOpen, setMoveOpen] = useState(false);
+  const [movingToPipeline, setMovingToPipeline] = useState(false);
+
+  const handleMoveToPipeline = async () => {
+    if (!selected) return;
+    setMovingToPipeline(true);
+    try {
+      await moveToProfileSendOff(selected);
+      clearOverlay(selected.id);
+      toast.success(`${selected.name} moved to Profile Send Off — now in Verified Referrals`);
+      clearDeepLink();
+      setMoveOpen(false);
+      setSelectedId(patients.find((p) => p.id !== selected.id)?.id ?? null);
+      setTimeout(refetch, 1500);
+    } catch (e) {
+      toast.error("Couldn't move to Profile Send Off", { description: e instanceof Error ? e.message : String(e) });
+    } finally { setMovingToPipeline(false); }
+  };
+
   const openAsset = (a: MondayAsset) => {
     try { openFileViewer({ url: a.public_url || a.url, name: a.name }); }
     catch { toast.error("Could not open file"); }
@@ -656,6 +682,8 @@ const ProfilePage = ({ variant }: ProfilePageProps) => {
                 reviewMode={reviewMode}
                 onMarkStuck={variant === "inSystem" ? () => setStuckOpen(true) : undefined}
                 markingStuck={markingStuck}
+                onMoveToPipeline={variant === "inSystem" ? () => setMoveOpen(true) : undefined}
+                movingToPipeline={movingToPipeline}
               />
             )}
           </main>
@@ -695,6 +723,37 @@ const ProfilePage = ({ variant }: ProfilePageProps) => {
               className="gap-2 bg-amber-600 text-white hover:bg-amber-700"
             >
               {markingStuck ? "Moving…" : "Move to Stuck"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Move to Profile Send Off — confirm-only (no reason needed: the flag
+          flipping to "No" IS the record, and the patient stays in the app's
+          pipeline rather than parking in a dead-end group). */}
+      <Dialog open={moveOpen} onOpenChange={(o) => { if (!movingToPipeline) setMoveOpen(o); }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <ClipboardCheck className="h-5 w-5 text-emerald-600" />
+              Move {selected?.name ?? "this patient"} to Profile Send Off?
+            </DialogTitle>
+            <DialogDescription>
+              Clears the Already In System flag and returns them to the 1. Intake
+              queue, where they&rsquo;ll be worked as a Verified Referral.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex justify-end gap-2 pt-1">
+            <Button variant="outline" size="sm" onClick={() => setMoveOpen(false)} disabled={movingToPipeline}>
+              Cancel
+            </Button>
+            <Button
+              size="sm"
+              onClick={handleMoveToPipeline}
+              disabled={movingToPipeline}
+              className="gap-2 bg-emerald-600 text-white hover:bg-emerald-700"
+            >
+              {movingToPipeline ? "Moving…" : "Move to Profile Send Off"}
             </Button>
           </div>
         </DialogContent>
@@ -820,6 +879,12 @@ interface BodyProps {
    *  and the card isn't rendered (Already In System only, for now). */
   onMarkStuck?: () => void;
   markingStuck?: boolean;
+  /** Open the Move-to-Profile-Send-Off dialog. Set ⇒ this card REPLACES
+   *  Advance to MN (Already In System only): the queue's patients leave via
+   *  the Verified Referrals pipeline, never straight to MN. Not gated on the
+   *  readiness checklist — it's a routing correction, not a completion. */
+  onMoveToPipeline?: () => void;
+  movingToPipeline?: boolean;
   onAdvance: () => void;
   onAddNote: (fullText: string) => Promise<void>;
 }
@@ -1622,13 +1687,27 @@ function ProfileBody(p: BodyProps) {
                   </div>
                 )}
                 <div className="route-grid">
-                  <div className={`route adv ${p.canSubmit ? "on" : ""}`}>
-                    <h4>Advance to MN</h4>
-                    <p>Everything checks out → save to Monday and move to Medical Necessity.</p>
-                    <button className="btn primary" onClick={p.onAdvance} disabled={!p.canSubmit || p.submitting || p.reviewMode}>
-                      {p.submitting ? "Advancing…" : "Advance to MN →"}
-                    </button>
-                  </div>
+                  {p.onMoveToPipeline ? (
+                    <div className="route adv on">
+                      <h4>Move to Profile Send Off</h4>
+                      <p>Workable after all → clear the Already In System flag and return them to the 1. Intake queue (Verified Referrals).</p>
+                      <button
+                        className="btn primary"
+                        onClick={p.onMoveToPipeline}
+                        disabled={p.submitting || p.movingToPipeline || p.markingStuck || p.reviewMode}
+                      >
+                        {p.movingToPipeline ? "Moving…" : "Move to Profile Send Off →"}
+                      </button>
+                    </div>
+                  ) : (
+                    <div className={`route adv ${p.canSubmit ? "on" : ""}`}>
+                      <h4>Advance to MN</h4>
+                      <p>Everything checks out → save to Monday and move to Medical Necessity.</p>
+                      <button className="btn primary" onClick={p.onAdvance} disabled={!p.canSubmit || p.submitting || p.reviewMode}>
+                        {p.submitting ? "Advancing…" : "Advance to MN →"}
+                      </button>
+                    </div>
+                  )}
                   {p.onMarkStuck && (
                     <div className="route on">
                       <h4>Mark as Stuck</h4>
@@ -1636,7 +1715,7 @@ function ProfileBody(p: BodyProps) {
                       <button
                         className="btn"
                         onClick={p.onMarkStuck}
-                        disabled={p.submitting || p.markingStuck || p.reviewMode}
+                        disabled={p.submitting || p.markingStuck || p.movingToPipeline || p.reviewMode}
                       >
                         {p.markingStuck ? "Moving…" : "Mark as Stuck"}
                       </button>

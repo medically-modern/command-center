@@ -20,6 +20,7 @@ import {
   REFERRAL_SOURCE_INDEX, PUMP_TYPE_INDEX, CGM_TYPE_INDEX, REQUEST_TYPE_INDEX,
   CGM_CROSS_SELL_INDEX, SERVING_INDEX, INSULIN_PUMP_COVERAGE_PATH_INDEX,
   CGM_COVERAGE_PATH_INDEX, GENDER_INDEX, MOVE_TO_ONBOARDING_INDEX,
+  ALREADY_IN_SYSTEM_INDEX,
 } from "./mondayMapping";
 
 const MAX_RETRIES = 2;
@@ -255,6 +256,26 @@ export async function markStuck(p: Patient, reason: string, stage: string): Prom
   if (!text) throw new Error("A reason is required to mark a patient stuck");
   await writeText(p.id, COL.stuckReason, stampNoteEntry(text, stage));
   await moveItemToGroup(p.id, GROUPS.stuck);
+}
+
+/**
+ * The Already In System queue's "workable after all" exit (Josh, 2026-08-18 —
+ * it REPLACES Advance to MN on that page): write Already In System → **"No"**,
+ * then move the item back to **1. Intake**, where the §5.10 split makes it a
+ * Verified Referral. "No" rather than blank on purpose — a rep examined the
+ * referral and answered the question; a cleared column reads as never checked.
+ *
+ * Flag first, move second: either half-failure leaves the patient still
+ * visible in the Already In System queue (that role is group OR status, so an
+ * un-moved item stays by group and a moved-but-still-"Yes" item would stay by
+ * flag), where the rep just retries. No verified-write ceremony needed — the
+ * one board automation on this column (**7922049614**, added 2026-08-18)
+ * fires on a change to "Yes" and moves the item INTO the in-system group;
+ * writing "No" and a direct group move trigger nothing.
+ */
+export async function moveToProfileSendOff(p: Patient): Promise<void> {
+  await writeStatusIndex(p.id, COL.alreadyInSystem, ALREADY_IN_SYSTEM_INDEX["No"]);
+  await moveItemToGroup(p.id, GROUPS.intake);
 }
 
 /**

@@ -50,7 +50,7 @@ The Python backends the SPA mirrors (financial estimate, DVS automations) live o
 | Board | ID | Roles / purpose |
 |---|---|---|
 | **DTC Intake** | `18392794310` | Top of funnel; "Send To Medical Necessity" group feeds the pipeline. Read-only here (oversight/system-mgmt). |
-| **Profile Send Off** | `18406352652` | `profile` ("Verified Referrals") + `unverifiedReferrals` ("Unverified Referrals") + `inSystemReferrals` ("Already In System") — three roles, same board/group, split by Already In System then Referral Type/Source (see §5.10). Its own board (groups: *Patient Intake → 1. Intake → Tests → Stuck → Completed*). All three roles work **1. Intake** (`group_mm1xf2jb`); the send-off exit is **Advance to MN** (`Move to Onboarding` → automation creates the Masheke item + moves to Completed), plus **Mark as Stuck** for Already In System. ⚠️ **Send back to Patient Intake was REMOVED** (Josh, 2026-08-14) — see §5.10. **Not** the Welcome Call board. |
+| **Profile Send Off** | `18406352652` | `profile` ("Verified Referrals") + `unverifiedReferrals` ("Unverified Referrals") + `inSystemReferrals` ("Already In System") — three roles, same board/group, split by Already In System then Referral Type/Source (see §5.10). Its own board (groups: *Patient Intake → 1. Intake → Tests → Stuck → Completed*). All three roles work **1. Intake** (`group_mm1xf2jb`); the send-off exit is **Advance to MN** (`Move to Onboarding` → automation creates the Masheke item + moves to Completed) — except Already In System, whose exits are **Move to Profile Send Off** (flag → No, back to 1. Intake as a Verified Referral; replaced Advance to MN there 2026-08-18) and **Mark as Stuck**. ⚠️ **Send back to Patient Intake was REMOVED** (Josh, 2026-08-14) — see §5.10. **Not** the Welcome Call board. |
 | **Medical Evaluation** ("Masheke") | `18406060017` | `evaluate`, `sendRequest`, `confirmReceipt`, `chaseFax`, `chaseParachute`, `doctorAppointments` (§5.12). Medical-necessity document collection. Stuck is propose→approve: reps flip **Escalation `color_mm1x7997` → "Final Escalation Required" (index 2)** and the reason is appended to the **MN notes `long_text_mm27zjt2`** (stamped `[Proposed Stuck …]`); managers approve/return from Oversight. (The old `color_mm5f37ve`/`text_mm5frng6` columns are retired.) |
 | **Insurance** ("Samantha") | `18410601299` | `benefits`, `submitAuth`, `authOutstanding`, `authDenied`, `dvs` (**stage**-based — Stage Advancer index 1 "DVS", read-only monitor at `/dvs`). Groups: Benefits, Submit Auth, Auth Outstanding, **DVS**, Auth Denied, Escalations, Complete, Stuck. ⚠️ The board grew a **DVS group** (`group_mm5gp2r2`, Aug 2026) but the role is still **stage**-defined: stage-DVS items linger in whichever group an automation last left them, so `useDvsPatients`/`useRoleCounts` read the STAGE board-wide and must not be "fixed" to filter on the group. |
 | **Welcome Call** | `18410804557` | `welcomeCall` + `finalConfirm` (two roles, same board, different groups). See `BOARD_SCHEMA.md`. |
@@ -348,7 +348,22 @@ marker**: Move to Onboarding `color_mm1zmeb3` has no Stuck label (its labels are
 Advance to MN · Send Back To Referral · Need More Info), so nothing on the item says "stuck" except
 which group it sits in — which is why the reason is required and stamped with who/when. Scoped to
 the `inSystem` variant via `BodyProps.onMarkStuck`; the other two roles don't render the card.
-⚠️ Both remaining exits **drop `?patientId=` on success** (`clearDeepLink`): the item moves to
+**Already In System's Advance to MN is REPLACED by "Move to Profile Send Off"** (Josh,
+2026-08-18). That queue's patients never advance straight to MN — the workable ones go back into
+the normal pipeline instead: `mondayWrite.moveToProfileSendOff` writes Already In System → **"No"**
+(an examined answer, not a blank) and then moves the item to **1. Intake**, where the split above
+hands it to Verified Referrals. Flag FIRST, move second — either half-failure leaves the patient
+still in this queue (the role is group OR status), visible and retryable
+(`moveToProfileSendOff.test.ts` pins the order). The inbound half is board automation
+**7922049614** (added the same day): Already In System → "Yes" moves the item INTO the in-system
+group. The button is its exact inverse and triggers nothing — the automation fires on "Yes"
+(index 0) only. Confirm-dialog only, no reason required: the flag flipping to No IS the record,
+and the patient stays in the app's pipeline rather than parking in a dead-end group. Not gated on
+the readiness checklist (it's a routing correction, not a completion) and disabled in
+`reviewMode` like the other movers.
+
+⚠️ Every one of this page's exits (Advance to MN, Move to Profile Send Off, Mark as Stuck)
+**drops `?patientId=` on success** (`clearDeepLink`): the item moves to
 another group so the next fetch won't return it, but a deep link is re-injected by
 `useMondayPatients` on every poll AND is exempt from the role split — so a rep watched a patient
 they'd just sent away sit in the sidebar. Clearing the URL only works because the hook now reads
