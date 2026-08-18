@@ -136,6 +136,9 @@ export function SendWithChecksButton({ findings, onSend, disabled }: Props) {
                 <span className="min-w-0">
                   <span className="block text-xs font-bold leading-tight">{f.title}</span>
                   <span className="block text-xs mt-0.5 opacity-90">{f.detail}</span>
+                  {f.formatHint && (
+                    <span className="block text-xs mt-1 font-mono font-semibold">{f.formatHint}</span>
+                  )}
                 </span>
               </label>
             ))}

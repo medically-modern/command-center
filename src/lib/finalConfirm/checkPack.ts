@@ -27,6 +27,12 @@ import {
   BCBS_FAMILY,
   IN_FOOTPRINT_STATES,
 } from "@/lib/shared/pos";
+import {
+  checkCardinalAddress,
+  cardinalAddressHardReason,
+  CARDINAL_ADDRESS_FORMAT,
+  CARDINAL_ADDRESS_EXAMPLE,
+} from "@/lib/shared/cardinalAddress";
 
 /* ─── Findings model ─── */
 
@@ -44,6 +50,14 @@ export interface CheckFinding {
   title: string;
   /** One-sentence explanation carrying the evidence. */
   detail: string;
+  /**
+   * A "here is the shape it has to be" line, rendered in red directly under
+   * the anchored field (and shown in the panel + send dialog). Present only on
+   * checks whose fix is "retype it like this" — today, the two address-format
+   * checks. Anything carrying this is rendered inline by PatientInfoCard, so
+   * don't add it to a check whose field has no input on the page.
+   */
+  formatHint?: string;
 }
 
 /* ─── Shared helpers (duplicated per codebase convention — sources noted) ─── */
@@ -177,8 +191,61 @@ function daysFromToday(d: Date): number {
   return Math.round((d.getTime() - today.getTime()) / 86400000);
 }
 
-function hasZipCode(address: string): boolean {
-  return /\b\d{5}(-\d{4})?\b/.test(address || "");
+/**
+ * C25 / C26 — will the Cardinal order pipeline accept this address?
+ *
+ * The rule is not ours: `lib/shared/cardinalAddress.ts` mirrors the ordering
+ * service's own parser (`Cardinal-api/src/address.js`), which runs at submit
+ * time on the orders board. A `hard` result there is GATE 1 — the order is
+ * never sent to Cardinal and the row sits in "Needs Review" until a human
+ * reformats the address. This stage is the last place the address is still
+ * editable (and, for the patient address, the last place somebody is on the
+ * phone), so the same verdict is worth a lot more here than it is there.
+ *
+ * Severity follows the pack's rule that red means positive evidence of a wrong
+ * profile: a MALFORMED address is red (we know Cardinal rejects it), a BLANK
+ * one is amber (a missing input, same as C22's blank DOB).
+ *
+ * Live rates when this was added (2026-08-18, over the real boards): 46 of
+ * 1151 rows on the Cardinal orders board carry a doctor address that hard-
+ * fails, against 6 patient addresses — the clinic address was the bigger
+ * problem and was checked nowhere in the app.
+ */
+function cardinalAddressFindings(
+  value: string,
+  opts: { idPrefix: string; field: keyof Patient; label: string; blankTitle: string; blankDetail: string },
+): CheckFinding[] {
+  const { idPrefix, field, label, blankTitle, blankDetail } = opts;
+  const out: CheckFinding[] = [];
+  const formatHint = `Cardinal format: ${CARDINAL_ADDRESS_FORMAT} — e.g. ${CARDINAL_ADDRESS_EXAMPLE}`;
+
+  if (!(value || "").trim()) {
+    out.push({ id: `${idPrefix}_MISSING`, severity: "amber", field, title: blankTitle, detail: blankDetail });
+    return out;
+  }
+
+  const r = checkCardinalAddress(value);
+  if (r.hard) {
+    out.push({
+      id: `${idPrefix}_FORMAT`,
+      severity: "red",
+      field,
+      title: `${label} is not in Cardinal order format`,
+      detail: `${cardinalAddressHardReason(r)} Cardinal blocks the order on this — it is never submitted, and the order row lands in Needs Review.`,
+      formatHint,
+    });
+    return out;
+  }
+  for (const w of r.issues.filter((i) => !i.hard)) {
+    out.push({
+      id: `${idPrefix}_${w.code}`,
+      severity: "amber",
+      field,
+      title: w.code === "PO_BOX" ? `${label} contains a PO Box` : `${label} has an unrecognized line`,
+      detail: `${w.message} The order still goes through.`,
+    });
+  }
+  return out;
 }
 
 /* ─── The check engine ─── */
@@ -189,6 +256,7 @@ export function runFinalChecks(p: Patient): CheckFinding[] {
 
   // Effective (edited-over-original) values, matching the page's own logic.
   const address = (p.addressEdited ?? p.address) || "";
+  const clinicAddress = (p.clinicAddressEdited ?? p.clinicAddress) || "";
   const secondary = (p.secondaryInsuranceEdited ?? p.secondaryInsurance) || "";
   const memberId2 = (p.memberId2Edited ?? p.memberId2) || "";
   const primary = p.primaryInsurance || "";
@@ -558,21 +626,37 @@ export function runFinalChecks(p: Patient): CheckFinding[] {
   /* ── E. Demographics & downstream ─────────────────────────────────── */
 
   // C22 — formatting checks (folds in + extends the existing inline ones).
-  if (address) {
-    if (address === address.toUpperCase() && /[A-Z]/.test(address)) {
-      add({
-        id: "C22_ADDRESS_CAPS", severity: "red", field: "address",
-        title: "Address is ALL CAPS",
-        detail: "Address must be re-entered with correct formatting before send.",
-      });
-    } else if (!hasZipCode(address)) {
-      add({
-        id: "C22_ZIP_MISSING", severity: "amber", field: "address",
-        title: "Zip code missing",
-        detail: "The address has no zip code.",
-      });
-    }
+  // The old `C22_ZIP_MISSING` branch is gone: C25 below runs the ordering
+  // service's own parser, which reports a missing ZIP as a HARD failure with
+  // the exact reason and the required format. Two rows saying the same thing at
+  // two different severities is how a check pack gets ignored.
+  if (address && address === address.toUpperCase() && /[A-Z]/.test(address)) {
+    add({
+      id: "C22_ADDRESS_CAPS", severity: "red", field: "address",
+      title: "Address is ALL CAPS",
+      detail: "Address must be re-entered with correct formatting before send.",
+    });
   }
+
+  // C25 / C26 — Cardinal order-format checks on BOTH addresses that go on the
+  // order: the patient's (shipTo) and the clinic's (doctorInfo). Cardinal
+  // requires and validates both; see cardinalAddressFindings above.
+  for (const f of cardinalAddressFindings(address, {
+    idPrefix: "C25_ADDRESS",
+    field: "address",
+    label: "Patient address",
+    blankTitle: "Patient address is blank",
+    blankDetail: "Nothing can ship without it — the Cardinal order is blocked at submit.",
+  })) add(f);
+
+  for (const f of cardinalAddressFindings(clinicAddress, {
+    idPrefix: "C26_CLINIC_ADDRESS",
+    field: "clinicAddress",
+    label: "Clinic address",
+    blankTitle: "Clinic address is blank",
+    blankDetail: "Cardinal requires the doctor's address on every order (doctorInfo) — a blank one is blocked at submit.",
+  })) add(f);
+
   if (blank(p.dob)) {
     add({
       id: "C22_DOB_MISSING", severity: "amber", field: "dob",

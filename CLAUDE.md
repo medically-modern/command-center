@@ -925,6 +925,71 @@ for free; the other five render it directly — welcomeCall / finalConfirm / sub
 `masheke/ConfirmReceiptHeaderCard`. The button self-hides when there's no number on file, so a
 header can drop it in unconditionally.
 
+### 5.17 Cardinal address format — checked at Final Profile Confirmation (Aug 2026)
+Cardinal Health orders carry **two** addresses and validate both: the patient's (`shipTo`) and the
+**doctor's** (`doctorInfo.address`). The ordering service parses them with its own deterministic
+parser and **GATE 1 stops the order** on a hard failure — nothing is sent to Cardinal, the row lands
+in *Needs Review* on the orders board, and a human has to reformat the address. That is hours (and a
+board hop) downstream of the last stage where the address is still editable and somebody is on the
+phone with the patient. So Final Profile Confirmation now runs **the same parse**, as check-pack
+checks **C25** (patient address) and **C26** (clinic address).
+
+**The preset is the whole rule:** `STREET , [UNIT ,] CITY , ST ZIP [, COUNTRY]`. The parse is
+deliberately faithful — it never abbreviates, reorders, guesses a city from a glued street, or
+repairs punctuation. Hard: `EMPTY · MISSING_ZIP · MISSING_STATE · NOT_PRESET` (no comma before the
+city) · `MISSING_STREET` (no house number — a clinic NAME on line 1 is the usual cause) ·
+`MISSING_CITY`. Soft (ships, but says so): `EXTRA_SEGMENT` (an unrecognized middle line — usually a
+valid `C/O`) · `PO_BOX` (parcel carriers can't deliver to one).
+
+⚠️ **`lib/shared/cardinalAddress.ts` is a MIRROR of `Cardinal-api/src/address.js` — change one,
+change the other.** Same class of hand-synced contract as `oopEstimator.ts` vs the Railway financial
+backend (§5.7), and with the same failure mode if it drifts: the rep gets a green page and the order
+still stops. `cardinalAddress.test.ts` is ported case-for-case from that repo's
+`test/transform.test.js` for exactly this reason — it is the parity suite, not a nice-to-have.
+The SPA cannot simply call the service: the ordering service reads the **orders board**
+(`18405457690`), which the patient only reaches after Welcome Call → Subscription. At Final Confirm
+there is no downstream item to ask about yet.
+
+**Severity follows the pack's existing rule** — red = positive evidence the profile is wrong, so a
+MALFORMED address is red and a BLANK one is amber (a missing input, like C22's blank DOB). Nothing
+blocks Send: red/amber items get the standard per-finding ack in `SendWithChecksButton` and the
+override is stamped into Notes, same as every other check.
+> ⚠️ **The old `C22_ZIP_MISSING` (amber) is retired** — C25 reports a missing ZIP as HARD, with the
+> reason and the required format. Two rows saying the same thing at two severities is how a check
+> pack gets ignored.
+
+**The format is shown, not just the complaint** (Josh's ask, 2026-08-18): a finding may carry
+`CheckFinding.formatHint`, and anything carrying one is rendered **in red directly under the input**
+by `PatientInfoCard` (`AddressFormatNote`), as well as in the findings panel and the send dialog. A
+rep who has to retype an address should not have to go find the shape three cards away. Only the
+address checks set it — don't add a `formatHint` to a check whose field has no input on the page.
+The **Clinic Address field also gained the red/amber ring** the patient address always had; before
+this it had no error state at all, because nothing in the app looked at it.
+
+**Why the clinic address is the point of this** — live audit, 2026-08-18, over the real boards:
+
+| Board | Patient address | Doctor / clinic address |
+|---|---|---|
+| Welcome Call *Completed* (248) | 15 hard | **27 hard**, 23 blank |
+| Subscription (745) | 8 hard | **31 hard**, 7 blank |
+| Cardinal orders (1151) | 6 hard | **46 hard**, 15 blank |
+
+Repeat the audit with the parser and a board query before changing any of these thresholds — the
+numbers, not an intuition, are what decided red-vs-amber and blank-vs-silent.
+
+**Keep-in-agreement:**
+1. **The rule** — `src/lib/shared/cardinalAddress.ts` ⇄ `Cardinal-api/src/address.js` (+ both test suites).
+2. **The checks** — `lib/finalConfirm/checkPack.ts` `cardinalAddressFindings` (C25/C26).
+3. **The UI** — `components/finalConfirm/PatientInfoCard.tsx` (`AddressFormatNote` + both rings),
+   `FinalCheckPanel.tsx`, `SendWithChecksButton.tsx` (all three render `formatHint`).
+4. **Downstream, unchanged** — `Cardinal-api/src/precheck.js` still runs the same parse at order
+   time and writes *Address Flag* on the orders board. This stage does not replace it; it stops most
+   of what it catches from getting that far.
+> Welcome Call, Profile Send Off and the DVS doctor editor write these same two columns
+> (`location_mm1xhw17` · `location_mm1xjnfv`) and do **not** run the check — deliberate scope, not an
+> oversight. Final Confirm is the last gate before the item hops to Subscription and becomes an
+> order; adding it upstream is additive and would only catch things earlier.
+
 ---
 
 ## 6. Patient flow across boards (the big picture)
@@ -1448,6 +1513,7 @@ these services; when their math changes, `oopEstimator.ts` must be updated to ma
 | A returned patient can't log an attempt (cards greyed, Save disabled) | `lib/masheke/attemptRollup.ts` → `oversightApi.returnProposedToQueue`; the gate is **MN Attempts** `color_mm1wz0vg`, not the attempt columns (§7) |
 | Stedi check output / eligibility results | **inline in `src/pages/ProfilePage.tsx`** — NOT `components/profile/StediPanel.tsx` (dead, §5.11) |
 | Cost estimate wrong | `lib/welcomeCall/oopEstimator.ts` (sync vs Railway financial backend) |
+| An address Cardinal won't accept / "Needs Review" on the orders board | §5.17 — `lib/shared/cardinalAddress.ts` (mirror of `Cardinal-api/src/address.js`), surfaced as C25/C26 in `lib/finalConfirm/checkPack.ts` |
 | Who can see what | `lib/accessStore.ts`, `lib/roleView.ts`, `components/AccessProvider.tsx` |
 | Files won't load / PDF viewer | `lib/shared/mondayAssets.ts`, `components/shared/FileViewerModal.tsx`, `worker/src/index.js` |
 | A booking didn't show up in Scheduled Calls | §5.15 — the mirror joins on the invitee's EMAIL. `lib/scheduledCalls/bookingLink.ts` (the prefill), then dtc-mm-form `server/src/booking.js` |

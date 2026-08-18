@@ -90,6 +90,22 @@ interface Props {
   findings?: CheckFinding[];
 }
 
+/**
+ * The check-pack finding whose fix is "retype it in this shape", per anchored
+ * field. Only the Cardinal address-format checks (C25/C26) carry a formatHint,
+ * so this is what gets echoed in red under the input itself rather than only
+ * in the findings panel: the rep is looking at the field they have to fix, and
+ * the required format is useless three cards away.
+ */
+function formatHintByField(findings: CheckFinding[]): Map<keyof Patient, CheckFinding> {
+  const map = new Map<keyof Patient, CheckFinding>();
+  for (const f of findings) {
+    if (!f.field || !f.formatHint) continue;
+    if (!map.has(f.field)) map.set(f.field, f);
+  }
+  return map;
+}
+
 /** Worst severity per anchored field, red > amber > info. */
 function severityByField(findings: CheckFinding[]): Map<keyof Patient, CheckSeverity> {
   const rank: Record<CheckSeverity, number> = { info: 0, amber: 1, red: 2 };
@@ -545,8 +561,24 @@ function DiagnosisCombobox({
   );
 }
 
+/**
+ * The red "here is the shape it has to be" note under an address input.
+ * Rendered from the finding, never re-derived — the check pack owns the rule
+ * (lib/shared/cardinalAddress.ts), so the field and the panel cannot disagree.
+ */
+function AddressFormatNote({ finding }: { finding?: CheckFinding }) {
+  if (!finding?.formatHint) return null;
+  return (
+    <div className="mt-1.5 text-[11px] leading-snug text-red-600 dark:text-red-400">
+      <p className="font-semibold">{finding.detail}</p>
+      <p className="font-mono mt-0.5">{finding.formatHint}</p>
+    </div>
+  );
+}
+
 export function PatientInfoCard({ patient, onFieldChange, findings = [] }: Props) {
   const fieldSeverity = useMemo(() => severityByField(findings), [findings]);
+  const fieldFormatHint = useMemo(() => formatHintByField(findings), [findings]);
   // Infusion-set options are read from the LIVE board, never a hardcoded table.
   // Final Confirm and Welcome Call write the SAME two columns, and their
   // hardcoded tables had already drifted apart from each other ("6mm" here vs
@@ -758,6 +790,7 @@ export function PatientInfoCard({ patient, onFieldChange, findings = [] }: Props
                   onChange={handleAddressChange}
                   placeholder="Start typing address\u2026"
                 />
+                <AddressFormatNote finding={fieldFormatHint.get("address")} />
               </div>
             </div>
           );
@@ -943,12 +976,31 @@ export function PatientInfoCard({ patient, onFieldChange, findings = [] }: Props
               suppressWarning
             />
           </div>
-          {/* Clinic Address — full width with Google autocomplete */}
+          {/* Clinic Address — full width with Google autocomplete.
+              Rings and reads exactly like the patient address above, because it
+              is the SECOND address Cardinal validates on every order
+              (doctorInfo.address) — and the one that fails far more often: 46
+              of 1151 rows on the orders board vs 6 patient addresses, audited
+              2026-08-18. Before that audit nothing in the app looked at it. */}
           {(() => {
             const clinicAddr = patient.clinicAddressEdited ?? patient.clinicAddress;
+            const severity = fieldSeverity.get("clinicAddress");
+            const hasError = severity === "red";
+            const hasWarning = !hasError && severity === "amber";
             return (
-              <div className="flex items-start gap-2 min-w-0 rounded-lg p-1.5 mt-2 transition-colors">
-                <div className="h-8 w-8 rounded-md flex items-center justify-center shrink-0 bg-muted text-muted-foreground">
+              <div className={cn(
+                "flex items-start gap-2 min-w-0 rounded-lg p-1.5 mt-2 transition-colors",
+                hasError && "bg-red-50 dark:bg-red-950/20 ring-1 ring-red-200 dark:ring-red-800/40",
+                hasWarning && "bg-amber-50 dark:bg-amber-950/20 ring-1 ring-amber-200 dark:ring-amber-800/40",
+              )}>
+                <div className={cn(
+                  "h-8 w-8 rounded-md flex items-center justify-center shrink-0",
+                  hasError
+                    ? "bg-red-100 dark:bg-red-900/30 text-red-500"
+                    : hasWarning
+                      ? "bg-amber-100 dark:bg-amber-900/30 text-amber-600"
+                      : "bg-muted text-muted-foreground",
+                )}>
                   <MapPin className="h-4 w-4" />
                 </div>
                 <div className="min-w-0 flex-1">
@@ -958,6 +1010,7 @@ export function PatientInfoCard({ patient, onFieldChange, findings = [] }: Props
                     onChange={handleClinicAddressChange}
                     placeholder="Start typing clinic address…"
                   />
+                  <AddressFormatNote finding={fieldFormatHint.get("clinicAddress")} />
                 </div>
               </div>
             );

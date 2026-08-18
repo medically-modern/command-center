@@ -117,6 +117,13 @@ export function FinalCheckPanel({ findings }: Props) {
                     </span>
                   </p>
                   <p className="text-xs mt-0.5 opacity-90">{f.detail}</p>
+                  {/* Only the address-format checks carry this — the shape the
+                      value has to be retyped in. Shown here as well as under
+                      the field itself, since a rep reading the panel top-down
+                      should not have to scroll to learn what "wrong" means. */}
+                  {f.formatHint && (
+                    <p className="text-xs mt-1 font-mono font-semibold">{f.formatHint}</p>
+                  )}
                 </div>
               </div>
             );

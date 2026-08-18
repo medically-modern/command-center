@@ -110,11 +110,89 @@ describe("checkPack — POS (C23)", () => {
   scenario("POS info fallback", { primaryInsurance: "Horizon BCBS", address: "500 Oak Dr, Dallas, TX 75001" }, ["C23_POS_11"]);
 });
 
+describe("checkPack — C25/C26 Cardinal address format", () => {
+  const GOOD_CLINIC = "9 Medical Park Dr, Albany, NY 12203";
+  const run = (over: Partial<Patient>) => runFinalChecks({ ...basePatient(), ...over });
+  const ids = (over: Partial<Patient>) => run(over).map((f) => f.id);
+
+  // The rule itself is pinned in lib/shared/cardinalAddress.test.ts (the parity
+  // suite against Cardinal-api). These cases pin the WIRING: which severity,
+  // which field anchor, which value wins, and that a good address is silent.
+
+  it("a malformed patient address is RED and carries the format hint", () => {
+    const f = run({ address: "135 E 31st St New York, NY 10016", clinicAddress: GOOD_CLINIC })
+      .find((x) => x.id === "C25_ADDRESS_FORMAT");
+    expect(f?.severity).toBe("red");
+    expect(f?.field).toBe("address");
+    expect(f?.formatHint).toContain("Street, [Apt/Unit,] City, ST ZIP");
+    expect(f?.detail).toContain("comma");
+  });
+
+  it("a malformed CLINIC address is RED too — the second address on every order", () => {
+    const f = run({ address: "12 Cherry Ln, Albany, NY 12203", clinicAddress: "Presbyterian Physicians Care, 1 Park Rd, Parkville, NY 11040" })
+      .find((x) => x.id === "C26_CLINIC_ADDRESS_FORMAT");
+    expect(f?.severity).toBe("red");
+    expect(f?.field).toBe("clinicAddress");
+    expect(f?.formatHint).toBeTruthy();
+  });
+
+  it("a blank address is AMBER, not red — missing input, not evidence of a wrong one", () => {
+    expect(ids({ address: "12 Cherry Ln, Albany, NY 12203", clinicAddress: "" }))
+      .toContain("C26_CLINIC_ADDRESS_MISSING");
+    expect(run({ clinicAddress: "" }).find((f) => f.id === "C26_CLINIC_ADDRESS_MISSING")?.severity)
+      .toBe("amber");
+    expect(ids({ address: "", clinicAddress: GOOD_CLINIC })).toContain("C25_ADDRESS_MISSING");
+  });
+
+  it("a PO Box warns but never blocks (Cardinal ships it)", () => {
+    const got = ids({ address: "278 Main Street, PO Box 562, Richmondville, NY 12149, US", clinicAddress: GOOD_CLINIC });
+    expect(got).toContain("C25_ADDRESS_PO_BOX");
+    expect(got).not.toContain("C25_ADDRESS_FORMAT");
+    expect(run({ address: "278 Main Street, PO Box 562, Richmondville, NY 12149, US" })
+      .find((f) => f.id === "C25_ADDRESS_PO_BOX")?.severity).toBe("amber");
+  });
+
+  it("a C/O line warns on the right field and stays out of the other one", () => {
+    const got = ids({ address: "12 Cherry Ln, Albany, NY 12203", clinicAddress: "49 Hamilton Ave, C/O Billing Office, Auburn, NY 13021" });
+    expect(got).toContain("C26_CLINIC_ADDRESS_EXTRA_SEGMENT");
+    expect(got).not.toContain("C25_ADDRESS_EXTRA_SEGMENT");
+  });
+
+  it("the EDITED value is what gets checked — a rep's fix clears it without saving", () => {
+    const broken = { address: "135 E 31st St New York, NY 10016", clinicAddress: "135 E 31st St New York, NY 10016" };
+    expect(ids(broken)).toEqual(expect.arrayContaining(["C25_ADDRESS_FORMAT", "C26_CLINIC_ADDRESS_FORMAT"]));
+    const fixed = ids({
+      ...broken,
+      addressEdited: "135 E 31st St, New York, NY 10016",
+      clinicAddressEdited: GOOD_CLINIC,
+    });
+    expect(fixed).not.toContain("C25_ADDRESS_FORMAT");
+    expect(fixed).not.toContain("C26_CLINIC_ADDRESS_FORMAT");
+  });
+
+  it("well-formed addresses are silent on both", () => {
+    const got = ids({ address: "12 Cherry Ln, Albany, NY 12203", clinicAddress: GOOD_CLINIC });
+    expect(got.filter((i) => i.startsWith("C25_") || i.startsWith("C26_"))).toEqual([]);
+  });
+
+  it("C22_ZIP_MISSING is retired — a missing ZIP is now C25, red, with the reason", () => {
+    const got = run({ address: "49 Hamilton Avenue, Auburn, NY", clinicAddress: GOOD_CLINIC });
+    expect(got.map((f) => f.id)).not.toContain("C22_ZIP_MISSING");
+    const f = got.find((x) => x.id === "C25_ADDRESS_FORMAT");
+    expect(f?.severity).toBe("red");
+    expect(f?.detail).toContain("ZIP");
+  });
+});
+
 describe("checkPack — silence guards", () => {
-  scenario("Clean profile", { primaryInsurance: "Anthem BCBS Commercial", address: "12 Cherry Ln, Albany, NY 12203", serving: "Insulin Pump + CGM", pumpType: "t:slim", cgmType: "Dexcom G7", requestType: "Insulin Pump + CGM", infusionSet1: 'AutoSoft XC 6 mm 23"', infusionSet1Index: 1, qtyInf1: "10", subscriptionType: "Sensors & Supplies", cgmTypeIndex: 6, cgmCoveragePath: "Insulin", ipCoveragePath: "1st Pump >6M Diagnosed", cgmAuthResult: "No Auth Needed", sensorsAuthResult: "No Auth Needed", ipAuthResult: "No Auth Needed", infusionSetAuthResult: "No Auth Needed", cartridgeAuthResult: "No Auth Needed", dob: "1990-01-01", phone: "5185551234", coInsurance: "20%", deductibleRemaining: "0", oopMaxRemaining: "1200", mrExpiryDate: "2027-06-01", secondaryInsurance: "None" }, [], ["C11_CGM_ONLY_MEDICAID", "C24_SET_INCOMPATIBLE", "C14_CGM_NOT_SERVING", "C15_SUBSCRIPTION_MISMATCH", "C1_HOST_STATE", "C22_ADDRESS_CAPS"]);
+  // Both clean fixtures carry a CLINIC address as well as the patient's: C26
+  // (added 2026-08-18) reads a blank clinic address as an amber, because
+  // Cardinal validates doctorInfo.address on every order and blocks a blank
+  // one at submit. "Clean" has to mean clean for the order too.
+  scenario("Clean profile", { primaryInsurance: "Anthem BCBS Commercial", address: "12 Cherry Ln, Albany, NY 12203", clinicAddress: "9 Medical Park Dr, Albany, NY 12203", serving: "Insulin Pump + CGM", pumpType: "t:slim", cgmType: "Dexcom G7", requestType: "Insulin Pump + CGM", infusionSet1: 'AutoSoft XC 6 mm 23"', infusionSet1Index: 1, qtyInf1: "10", subscriptionType: "Sensors & Supplies", cgmTypeIndex: 6, cgmCoveragePath: "Insulin", ipCoveragePath: "1st Pump >6M Diagnosed", cgmAuthResult: "No Auth Needed", sensorsAuthResult: "No Auth Needed", ipAuthResult: "No Auth Needed", infusionSetAuthResult: "No Auth Needed", cartridgeAuthResult: "No Auth Needed", dob: "1990-01-01", phone: "5185551234", coInsurance: "20%", deductibleRemaining: "0", oopMaxRemaining: "1200", mrExpiryDate: "2027-06-01", secondaryInsurance: "None" }, [], ["C11_CGM_ONLY_MEDICAID", "C24_SET_INCOMPATIBLE", "C14_CGM_NOT_SERVING", "C15_SUBSCRIPTION_MISMATCH", "C1_HOST_STATE", "C22_ADDRESS_CAPS"]);
 
   it("a clean commercial profile produces no findings at all", () => {
-    const clean: Partial<Patient> = { primaryInsurance: "Anthem BCBS Commercial", address: "12 Cherry Ln, Albany, NY 12203", serving: "Insulin Pump + CGM", pumpType: "t:slim", cgmType: "Dexcom G7", requestType: "Insulin Pump + CGM", infusionSet1: 'AutoSoft XC 6 mm 23"', infusionSet1Index: 1, qtyInf1: "10", subscriptionType: "Sensors & Supplies", cgmTypeIndex: 6, cgmCoveragePath: "Insulin", ipCoveragePath: "1st Pump >6M Diagnosed", cgmAuthResult: "No Auth Needed", sensorsAuthResult: "No Auth Needed", ipAuthResult: "No Auth Needed", infusionSetAuthResult: "No Auth Needed", cartridgeAuthResult: "No Auth Needed", dob: "1990-01-01", phone: "5185551234", coInsurance: "20%", deductibleRemaining: "0", oopMaxRemaining: "1200", mrExpiryDate: "2027-06-01", secondaryInsurance: "None", pos: "Home" };
+    const clean: Partial<Patient> = { primaryInsurance: "Anthem BCBS Commercial", address: "12 Cherry Ln, Albany, NY 12203", clinicAddress: "9 Medical Park Dr, Albany, NY 12203", serving: "Insulin Pump + CGM", pumpType: "t:slim", cgmType: "Dexcom G7", requestType: "Insulin Pump + CGM", infusionSet1: 'AutoSoft XC 6 mm 23"', infusionSet1Index: 1, qtyInf1: "10", subscriptionType: "Sensors & Supplies", cgmTypeIndex: 6, cgmCoveragePath: "Insulin", ipCoveragePath: "1st Pump >6M Diagnosed", cgmAuthResult: "No Auth Needed", sensorsAuthResult: "No Auth Needed", ipAuthResult: "No Auth Needed", infusionSetAuthResult: "No Auth Needed", cartridgeAuthResult: "No Auth Needed", dob: "1990-01-01", phone: "5185551234", coInsurance: "20%", deductibleRemaining: "0", oopMaxRemaining: "1200", mrExpiryDate: "2027-06-01", secondaryInsurance: "None", pos: "Home" };
     expect(runFinalChecks({ ...basePatient(), ...clean })).toEqual([]);
   });
 });
