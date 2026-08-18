@@ -32,17 +32,28 @@ import {
   type ConversationMessage,
 } from "@/lib/assignedPatients/messagingApi";
 import { consentState } from "@/lib/assignedPatients/optOut";
+import {
+  fetchEmailThreads, fetchEmailThread, sendEmailReply, replyHeadersFor,
+  GmailScopeMissingError,
+  type EmailThreadSummary, type EmailThreadMessage,
+} from "@/lib/shared/emailThreads";
 
 type Tab = "text" | "email";
 
-const stamp = (iso: string): string => {
-  if (!iso) return "";
-  const d = new Date(iso);
+const stamp = (t: string | number): string => {
+  if (!t) return "";
+  const d = new Date(t);
   return Number.isNaN(d.getTime())
     ? ""
     : d.toLocaleString("en-US", {
         month: "numeric", day: "numeric", hour: "numeric", minute: "2-digit",
       });
+};
+
+/** "Jane Doe <jane@x.com>" → "Jane Doe"; a bare address stays an address. */
+const fromName = (from: string): string => {
+  const m = from.match(/^\s*"?([^"<]*?)"?\s*</);
+  return m?.[1]?.trim() || from.replace(/[<>]/g, "").trim() || "Patient";
 };
 
 export function IntakeMessages({
@@ -137,7 +148,109 @@ export function IntakeMessages({
   const [body, setBody] = useState("");
   const [sending, setSending] = useState(false);
 
-  useEffect(() => { setSubject(""); setBody(""); }, [patientId]);
+  // ── email history (previous Gmail threads with this address) ──────────────
+  const [threads, setThreads] = useState<EmailThreadSummary[]>([]);
+  const [threadsLoaded, setThreadsLoaded] = useState(false);
+  const [threadsLoading, setThreadsLoading] = useState(false);
+  const [threadsError, setThreadsError] = useState<string | null>(null);
+  // The mailbox's token lacks gmail.readonly — setup guidance, not an error.
+  const [needsScope, setNeedsScope] = useState(false);
+  const [openId, setOpenId] = useState<string | null>(null);
+  const [openMsgs, setOpenMsgs] = useState<EmailThreadMessage[]>([]);
+  const [openLoading, setOpenLoading] = useState(false);
+  const [openError, setOpenError] = useState<string | null>(null);
+  const [reply, setReply] = useState("");
+  const [replying, setReplying] = useState(false);
+  // Guards the async loads against a quick thread/patient switch — only the
+  // still-open thread may set messages.
+  const openIdRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    setSubject(""); setBody("");
+    setThreads([]); setThreadsLoaded(false); setThreadsError(null); setNeedsScope(false);
+    setOpenId(null); setOpenMsgs([]); setOpenError(null); setReply("");
+    openIdRef.current = null;
+  }, [patientId, addr]);
+
+  const loadThreads = useCallback(async () => {
+    if (!addr) return;
+    setThreadsLoading(true);
+    setThreadsError(null);
+    setNeedsScope(false);
+    try {
+      setThreads(await fetchEmailThreads(addr));
+    } catch (e) {
+      setThreads([]);
+      if (e instanceof GmailScopeMissingError) setNeedsScope(true);
+      else setThreadsError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setThreadsLoading(false);
+      setThreadsLoaded(true);
+    }
+  }, [addr]);
+
+  // Loaded when the rep first OPENS the email tab — not on mount like the
+  // text thread. Email is the second tab, and a Gmail search per sidebar
+  // click would be waste for a card most opens never flip.
+  useEffect(() => {
+    if (tab === "email" && addr && !threadsLoaded && !threadsLoading) void loadThreads();
+  }, [tab, addr, threadsLoaded, threadsLoading, loadThreads]);
+
+  const openThread = async (id: string) => {
+    if (openId === id) {
+      // Toggle closed.
+      setOpenId(null);
+      openIdRef.current = null;
+      return;
+    }
+    setOpenId(id);
+    openIdRef.current = id;
+    setOpenMsgs([]);
+    setOpenError(null);
+    setReply("");
+    setOpenLoading(true);
+    try {
+      const msgs = await fetchEmailThread(id);
+      if (openIdRef.current === id) setOpenMsgs(msgs);
+    } catch (e) {
+      if (openIdRef.current === id) setOpenError(e instanceof Error ? e.message : String(e));
+    } finally {
+      if (openIdRef.current === id) setOpenLoading(false);
+    }
+  };
+
+  const sendReply = async () => {
+    const bodyTxt = reply.trim();
+    if (!bodyTxt || replying || !openId || !addr) return;
+    setReplying(true);
+    try {
+      const h = replyHeadersFor(openMsgs);
+      await sendEmailReply({
+        threadId: openId, to: addr, subject: h.subject, body: bodyTxt,
+        inReplyTo: h.inReplyTo, references: h.references,
+      });
+      // Same record-keeping as a fresh email, and deliberately AFTER the
+      // send — the reply has gone, so a failed note must not read as a
+      // failed send.
+      try {
+        await appendIntakeNote(patientId, `Email reply to ${addr} — ${h.subject || "(no subject)"}: ${bodyTxt}`);
+      } catch { /* the send itself succeeded */ }
+      setReply("");
+      toast.success(`Reply sent to ${addr}`);
+      // Re-read so the rep sees their reply land in the thread; a failed
+      // refresh just leaves the old view (it shows on the next open).
+      try {
+        const msgs = await fetchEmailThread(openId);
+        if (openIdRef.current === openId) setOpenMsgs(msgs);
+      } catch { /* non-fatal */ }
+    } catch (e) {
+      toast.error("Couldn't send the reply", {
+        description: e instanceof Error ? e.message : String(e),
+      });
+    } finally {
+      setReplying(false);
+    }
+  };
 
   const canSend = !!addr && !!subject.trim() && !!body.trim() && !sending;
 
@@ -293,6 +406,86 @@ export function IntakeMessages({
         <p className="sugg-note">No email address on file.</p>
       ) : (
         <>
+          {/* ── previous conversations with this address ── */}
+          <div className="eth-head">
+            <span>Previous emails</span>
+            <button
+              type="button"
+              className="btn secondary sm"
+              disabled={threadsLoading}
+              onClick={() => { void loadThreads(); }}
+            >
+              {threadsLoading ? "Loading…" : "Reload"}
+            </button>
+          </div>
+          {needsScope ? (
+            <div className="msgbox amber">
+              Email history needs a one-time authorization on the Medically Modern
+              mailbox (Gmail read access). Sending works either way — ask Josh to
+              connect it.
+            </div>
+          ) : threadsError ? (
+            <p className="sugg-note">Couldn't load email history — {threadsError}</p>
+          ) : threadsLoading && !threadsLoaded ? (
+            <p className="sugg-note">Searching the mailbox…</p>
+          ) : threadsLoaded && threads.length === 0 ? (
+            <p className="sugg-note">No previous emails with {addr}.</p>
+          ) : (
+            threads.map((t) => (
+              <div key={t.id} className="eth">
+                <button type="button" className="eth-row" onClick={() => { void openThread(t.id); }}>
+                  <span className="eth-subj">{t.subject || "(no subject)"}</span>
+                  <span className="eth-meta">
+                    {stamp(t.lastAt)} · {t.count} message{t.count === 1 ? "" : "s"}
+                  </span>
+                  {openId !== t.id && !!t.snippet && <span className="eth-snip">{t.snippet}</span>}
+                </button>
+                {openId === t.id && (
+                  <div className="eth-open">
+                    {openLoading ? (
+                      <p className="sugg-note">Loading messages…</p>
+                    ) : openError ? (
+                      <p className="sugg-note">Couldn't open this conversation — {openError}</p>
+                    ) : (
+                      openMsgs.map((m) => (
+                        <div key={m.id} className={m.mine ? "msgbox out" : "msgbox"}>
+                          <div className="ts">
+                            <span className="ch">{m.mine ? "Medically Modern" : fromName(m.from)}</span>
+                            {" · "}
+                            {stamp(m.date)}
+                          </div>
+                          <div style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{m.body}</div>
+                        </div>
+                      ))
+                    )}
+                    {!openLoading && !openError && (
+                      <div className="note-add">
+                        <textarea
+                          value={reply}
+                          placeholder={`Reply to ${addr}…`}
+                          onChange={(e) => setReply(e.target.value)}
+                        />
+                        <button
+                          className="btn primary sm"
+                          disabled={!reply.trim() || replying}
+                          onClick={() => { void sendReply(); }}
+                        >
+                          {replying ? "Sending…" : "Reply"}
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            ))
+          )}
+
+          <div className="divider" />
+
+          {/* ── new email ── */}
+          <div className="eth-head">
+            <span>New email</span>
+          </div>
           <label className="fld full">
             <div className="flabel">Subject</div>
             <input

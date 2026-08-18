@@ -179,6 +179,19 @@ The Cloudflare worker (`monday-file-proxy`) has three routes:
   `cc` form field — Send Request's Cc input) so the Sent folder shows a single email to the
   group; each **@rcfax** recipient still gets its **own** message (a fax is point-to-point, and
   grouping would expose the rcfax addresses to the human recipients).
+- `POST /email-threads` / `/email-thread` / `/email-reply` (Aug 2026) — the intake page's
+  Messages card reads the GMAIL_SENDER mailbox's history with ONE patient address and replies
+  into a thread. Replies use the **JSON** send endpoint with `{raw, threadId}` (not `/upload`) so
+  Gmail files them into the same conversation, plus In-Reply-To/References so the patient's own
+  client threads them too (`replyHeadersFor` in `lib/shared/emailThreads.ts` derives those from
+  the LAST message — tested). Same `verifyIdToken` gate as `/send-message`.
+  ⚠️ **The two READ routes need `GMAIL_REFRESH_TOKEN` minted with `gmail.readonly` on top of
+  `gmail.send`.** Until that one-time re-consent they answer `200 {ok:false, needsScope:true}` —
+  a flagged state, not an error — which the SPA (`GmailScopeMissingError`) renders as an amber
+  setup note in `IntakeMessages`' email tab while sending keeps working. Replies need only
+  `gmail.send`, so they work the moment reading does. Thread bodies are text/plain preferred,
+  HTML crudely tag-stripped otherwise, capped at 20k chars; the threads search is
+  `from:X OR to:X OR cc:X -in:chats`, 10 threads max.
 `ringcentralApi.ts` also reads the **unread-fax count** (FAX dashboard role) and the Fax Inbox.
 > **Gotcha — fax count window:** RingCentral's message store defaults `dateFrom` to **~the last 24h**.
 > Both `fetchUnreadFaxCount` and `fetchInboundFaxes` must pass an explicit `dateFrom` (180-day lookback)

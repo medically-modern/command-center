@@ -14,6 +14,18 @@
  *                         still gets its own message (a fax is point-to-point).
  *                         Gated to signed-in medicallymodern.com users (no
  *                         open relay).
+ *   POST /email-threads → the GMAIL_SENDER mailbox's email threads with ONE
+ *                         patient address (subject/date/snippet per thread).
+ *   POST /email-thread  → one thread's messages as readable text.
+ *   POST /email-reply   → a text reply INTO a thread (JSON {raw, threadId}
+ *                         send + In-Reply-To/References headers).
+ *                         All three take the same sign-in gate as
+ *                         /send-message. ⚠️ The two READ routes need
+ *                         GMAIL_REFRESH_TOKEN minted with gmail.readonly on
+ *                         top of gmail.send — until that one-time re-consent
+ *                         they answer 200 {ok:false, needsScope:true} so the
+ *                         SPA shows setup guidance, not an error. Replies
+ *                         ride the already-granted gmail.send scope.
  *
  * Secrets (wrangler secret put …):
  *   GMAIL_CLIENT_ID  GMAIL_CLIENT_SECRET  GMAIL_REFRESH_TOKEN  GMAIL_SENDER
@@ -167,6 +179,69 @@ function buildMime({ from, to, cc, subject, body, attachments }) {
   }
   L.push(`--${b}--`);
   return L.join("\r\n");
+}
+
+// ── Gmail read helpers (the /email-* routes) ────────────────────────
+/** Plain address: local@domain, no spaces / separators / display names. */
+const EMAIL_ADDR_RE = /^[^\s@,;<>]+@[^\s@,;<>]+$/;
+
+/** base64url (no padding) — what the Gmail JSON send endpoint's `raw` takes. */
+const b64url = (s) => strB64(s).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+
+/** One header value off a Gmail message resource (case-insensitive). */
+function gmailHeader(msg, name) {
+  const want = name.toLowerCase();
+  const h = (msg?.payload?.headers || []).find((x) => (x.name || "").toLowerCase() === want);
+  return h ? String(h.value || "") : "";
+}
+
+/** Decode one base64url-encoded body part to text. */
+function gmailPartText(data) {
+  try {
+    return new TextDecoder().decode(b64urlToBytes(data));
+  } catch {
+    return "";
+  }
+}
+
+/** Crude tag-strip for messages that only carry an HTML part. Fidelity is not
+ *  the goal — a READABLE text body is; layout tables and styling can go. */
+function htmlToText(html) {
+  return String(html || "")
+    .replace(/<style[\s\S]*?<\/style>/gi, " ")
+    .replace(/<script[\s\S]*?<\/script>/gi, " ")
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/(p|div|tr|li|h[1-6]|blockquote)>/gi, "\n")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;|&apos;/gi, "'")
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+/** Walk a Gmail payload tree for the most readable body: text/plain wins,
+ *  else the HTML part stripped to text. Capped so a giant newsletter can't
+ *  ride into every thread open. */
+function gmailBody(payload) {
+  let plain = "";
+  let html = "";
+  const walk = (p) => {
+    if (!p) return;
+    const mt = String(p.mimeType || "");
+    if (p.body && p.body.data) {
+      if (mt.startsWith("text/plain") && !plain) plain = gmailPartText(p.body.data);
+      else if (mt.startsWith("text/html") && !html) html = gmailPartText(p.body.data);
+    }
+    for (const c of p.parts || []) walk(c);
+  };
+  walk(payload);
+  const out = plain.trim() || htmlToText(html);
+  return out.length > 20000 ? out.slice(0, 20000) + "\n…" : out;
 }
 
 // Sign-in is the gate, NOT a ticking token. Google ID tokens expire ~1h after
@@ -459,6 +534,151 @@ export default {
       }
       const allOk = results.every((r) => r.ok);
       return json({ ok: allOk, sender: env.GMAIL_SENDER, actor, results }, allOk ? 200 : 207, cors);
+    }
+
+    // ── POST /email-threads | /email-thread | /email-reply ─────────────
+    //    The GMAIL_SENDER mailbox's email history with ONE patient, and
+    //    threaded replies into it (the intake page's Messages card). Same
+    //    sign-in gate as /send-message. READING needs the refresh token to
+    //    carry gmail.readonly — until that one-time re-consent the read
+    //    routes answer 200 { ok:false, needsScope:true } so the SPA renders
+    //    setup guidance, never an error. REPLIES ride the existing
+    //    gmail.send scope: /email-reply posts JSON { raw, threadId } (the
+    //    JSON send endpoint, not /upload) so Gmail files the message into
+    //    the same conversation, and In-Reply-To/References keep the
+    //    patient's own mail client threading it too.
+    if (
+      request.method === "POST" &&
+      (url.pathname === "/email-threads" || url.pathname === "/email-thread" || url.pathname === "/email-reply")
+    ) {
+      const actor = await verifyIdToken(request.headers.get("X-MM-Auth"), env);
+      if (!actor) {
+        const hadToken = !!request.headers.get("X-MM-Auth");
+        return json(
+          {
+            error: hadToken
+              ? "Your Google sign-in could not be verified — sign out and back in, then retry."
+              : "Sign in with your medicallymodern.com account is required.",
+          },
+          401,
+          cors,
+        );
+      }
+      if (!env.GMAIL_REFRESH_TOKEN || !env.GMAIL_SENDER) {
+        return json({ error: "Gmail is not configured on the server (missing secrets)." }, 503, cors);
+      }
+      let req;
+      try {
+        req = await request.json();
+      } catch {
+        return json({ error: "Expected a JSON body." }, 400, cors);
+      }
+      let accessToken;
+      try {
+        accessToken = await getGmailAccessToken(env);
+      } catch (e) {
+        return json({ error: String(e.message || e) }, 502, cors);
+      }
+      const gmailGet = async (path) => {
+        const r = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/${path}`, {
+          headers: { Authorization: `Bearer ${accessToken}` },
+        });
+        const j = await r.json().catch(() => ({}));
+        return { status: r.status, ok: r.ok, j };
+      };
+      // A 403 on a read = the refresh token wasn't minted with gmail.readonly.
+      // Expected until the one-time re-consent, so it's a flagged state, not
+      // an error (a 401 naming scopes is the same story told differently).
+      const scopeMissing = (r) =>
+        r.status === 403 || (r.status === 401 && /scope/i.test(r.j?.error?.message || ""));
+
+      if (url.pathname === "/email-threads") {
+        const addr = cleanAddr(req.email || "");
+        if (!EMAIL_ADDR_RE.test(addr)) return json({ error: "A patient email address is required." }, 400, cors);
+        // from/to/cc so a thread counts however the patient appeared in it.
+        // Gmail already excludes spam/trash; chats are excluded explicitly.
+        const q = `(from:${addr} OR to:${addr} OR cc:${addr}) -in:chats`;
+        const list = await gmailGet(`threads?q=${encodeURIComponent(q)}&maxResults=10`);
+        if (scopeMissing(list)) {
+          return json({ ok: false, needsScope: true, detail: list.j?.error?.message || null }, 200, cors);
+        }
+        if (!list.ok) return json({ error: list.j?.error?.message || `Gmail HTTP ${list.status}` }, 502, cors);
+        const threads = (
+          await Promise.all(
+            (list.j.threads || []).map(async (t) => {
+              const g = await gmailGet(
+                `threads/${t.id}?format=metadata&metadataHeaders=Subject&metadataHeaders=From&metadataHeaders=Date`,
+              );
+              if (!g.ok) return null;
+              const msgs = g.j.messages || [];
+              const last = msgs[msgs.length - 1];
+              return {
+                id: t.id,
+                subject: gmailHeader(last, "Subject") || gmailHeader(msgs[0], "Subject"),
+                from: gmailHeader(last, "From"),
+                lastAt: Number(last?.internalDate || 0),
+                count: msgs.length,
+                snippet: last?.snippet || "",
+              };
+            }),
+          )
+        ).filter(Boolean);
+        threads.sort((a, b) => b.lastAt - a.lastAt);
+        return json({ ok: true, sender: env.GMAIL_SENDER, threads }, 200, cors);
+      }
+
+      if (url.pathname === "/email-thread") {
+        const id = String(req.id || "").trim();
+        if (!/^[A-Za-z0-9_-]{1,64}$/.test(id)) return json({ error: "A thread id is required." }, 400, cors);
+        const g = await gmailGet(`threads/${id}?format=full`);
+        if (scopeMissing(g)) return json({ ok: false, needsScope: true }, 200, cors);
+        if (!g.ok) return json({ error: g.j?.error?.message || `Gmail HTTP ${g.status}` }, 502, cors);
+        const sender = String(env.GMAIL_SENDER).toLowerCase();
+        const messages = (g.j.messages || []).slice(0, 50).map((m) => ({
+          id: m.id,
+          from: gmailHeader(m, "From"),
+          to: gmailHeader(m, "To"),
+          date: Number(m.internalDate || 0),
+          subject: gmailHeader(m, "Subject"),
+          body: gmailBody(m.payload),
+          // What a reply needs to stay threaded in the PATIENT's client.
+          messageId: gmailHeader(m, "Message-ID") || gmailHeader(m, "Message-Id"),
+          references: gmailHeader(m, "References"),
+          mine: gmailHeader(m, "From").toLowerCase().includes(sender),
+        }));
+        return json({ ok: true, sender: env.GMAIL_SENDER, messages }, 200, cors);
+      }
+
+      // /email-reply — text-only, one recipient, into an existing thread.
+      const to = cleanAddr(req.to || "");
+      const threadId = String(req.threadId || "").trim();
+      const replyBody = String(req.body || "");
+      if (!EMAIL_ADDR_RE.test(to) || /@rcfax\.com$/i.test(to)) {
+        return json({ error: "A plain reply-to email address is required." }, 400, cors);
+      }
+      if (!/^[A-Za-z0-9_-]{1,64}$/.test(threadId)) return json({ error: "A thread id is required." }, 400, cors);
+      if (!replyBody.trim()) return json({ error: "Reply text is required." }, 400, cors);
+      // cleanAddr on the threading headers doubles as header-injection guard
+      // (strips CR/LF); Message-IDs keep their <angle brackets>.
+      const headers = [`From: ${cleanAddr(env.GMAIL_SENDER)}`, `To: ${to}`];
+      const inReplyTo = cleanAddr(req.inReplyTo || "");
+      const references = cleanAddr(req.references || "");
+      if (inReplyTo) headers.push(`In-Reply-To: ${inReplyTo}`);
+      if (references) headers.push(`References: ${references}`);
+      headers.push(`Subject: ${encHeader(req.subject || "")}`, "MIME-Version: 1.0");
+      const mime = [...headers, ...altPart(replyBody)].join("\r\n");
+      const resp = await fetch("https://gmail.googleapis.com/gmail/v1/users/me/messages/send", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ raw: b64url(mime), threadId }),
+      });
+      const jr = await resp.json().catch(() => ({}));
+      if (!resp.ok) return json({ error: jr.error?.message || `Gmail HTTP ${resp.status}` }, 502, cors);
+      return json(
+        { ok: true, sender: env.GMAIL_SENDER, actor, id: jr.id || null, threadId: jr.threadId || threadId },
+        200,
+        cors,
+      );
     }
 
     // ── GET /asset?url=<encoded Monday asset URL> ───────────────────────
