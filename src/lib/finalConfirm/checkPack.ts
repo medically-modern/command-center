@@ -30,8 +30,7 @@ import {
 import {
   checkCardinalAddress,
   cardinalAddressHardReason,
-  CARDINAL_ADDRESS_FORMAT,
-  CARDINAL_ADDRESS_EXAMPLE,
+  CARDINAL_FORMAT_HINT,
 } from "@/lib/shared/cardinalAddress";
 
 /* ─── Findings model ─── */
@@ -217,7 +216,6 @@ function cardinalAddressFindings(
 ): CheckFinding[] {
   const { idPrefix, field, label, blankTitle, blankDetail } = opts;
   const out: CheckFinding[] = [];
-  const formatHint = `Cardinal format: ${CARDINAL_ADDRESS_FORMAT} — e.g. ${CARDINAL_ADDRESS_EXAMPLE}`;
 
   if (!(value || "").trim()) {
     out.push({ id: `${idPrefix}_MISSING`, severity: "amber", field, title: blankTitle, detail: blankDetail });
@@ -232,7 +230,7 @@ function cardinalAddressFindings(
       field,
       title: `${label} is not in Cardinal order format`,
       detail: `${cardinalAddressHardReason(r)} Cardinal blocks the order on this — it is never submitted, and the order row lands in Needs Review.`,
-      formatHint,
+      formatHint: CARDINAL_FORMAT_HINT,
     });
     return out;
   }

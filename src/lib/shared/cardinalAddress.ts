@@ -67,6 +67,13 @@ export interface CardinalAddressResult {
 /** What to show a rep who has to fix one. Keep in step with the parser above. */
 export const CARDINAL_ADDRESS_FORMAT = "Street, [Apt/Unit,] City, ST ZIP";
 export const CARDINAL_ADDRESS_EXAMPLE = "123 Main St, Apt 4B, Brooklyn, NY 11201";
+/**
+ * The one wording of the required format, so every place that shows it says the
+ * same thing: the Final Confirm check pack (C25/C26 `formatHint`, which the
+ * findings panel and the send dialog render), and `CardinalAddressNote`, the
+ * inline note under the address inputs on Final Confirm AND Welcome Call.
+ */
+export const CARDINAL_FORMAT_HINT = `Cardinal format: ${CARDINAL_ADDRESS_FORMAT} — e.g. ${CARDINAL_ADDRESS_EXAMPLE}`;
 
 /* ── Ported verbatim from Cardinal-api/src/address.js ── */
 
@@ -219,4 +226,30 @@ export function cardinalAddressHardReason(r: CardinalAddressResult): string {
 /** The non-blocking notes, in parse order. */
 export function cardinalAddressWarnings(r: CardinalAddressResult): string[] {
   return r.issues.filter((i) => !i.hard).map((i) => i.message);
+}
+
+export interface CardinalAddressNoteData {
+  /** red = Cardinal will refuse the order; amber = it ships, but read this. */
+  tone: "red" | "amber";
+  reason: string;
+  /** Only on a red note — the shape it has to be retyped in. */
+  hint?: string;
+}
+
+/**
+ * The one-line verdict for an address input, or null when there is nothing to
+ * say (blank, or it parses cleanly).
+ *
+ * Deliberately SILENT on a blank value: a rep who has not typed an address yet
+ * is not making a mistake, and both pages already mark a missing address their
+ * own way — Welcome Call prints "No address on file" and blocks the send,
+ * Final Confirm rings the field red and raises `C25_ADDRESS_MISSING`.
+ */
+export function cardinalAddressNote(text: string): CardinalAddressNoteData | null {
+  if (!(text || "").trim()) return null;
+  const r = checkCardinalAddress(text);
+  if (r.hard) return { tone: "red", reason: cardinalAddressHardReason(r), hint: CARDINAL_FORMAT_HINT };
+  const warnings = cardinalAddressWarnings(r);
+  if (warnings.length) return { tone: "amber", reason: warnings.join(" ") };
+  return null;
 }

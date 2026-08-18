@@ -14,6 +14,8 @@ import { describe, it, expect } from "vitest";
 import {
   checkCardinalAddress,
   cardinalAddressHardReason,
+  cardinalAddressNote,
+  CARDINAL_FORMAT_HINT,
   type CardinalIssueCode,
 } from "./cardinalAddress";
 
@@ -161,5 +163,41 @@ describe("shapes seen on the live boards (2026-08-18 audit, synthetic rewrites)"
     const r = checkCardinalAddress("85-30 144th St, Jamaica, NY 11435");
     expect(r.hard).toBe(false);
     expect(r.address1).toBe("85-30 144TH ST");
+  });
+});
+
+describe("cardinalAddressNote — the inline note both stages render", () => {
+  // Welcome Call and Final Confirm share this via components/shared/
+  // CardinalAddressNote, so a rep gets the same words at both stages.
+
+  it("says nothing about a blank address", () => {
+    expect(cardinalAddressNote("")).toBeNull();
+    expect(cardinalAddressNote("   ")).toBeNull();
+  });
+
+  it("says nothing about an address that parses cleanly", () => {
+    expect(cardinalAddressNote("12 Cherry Ln, Albany, NY 12203")).toBeNull();
+    expect(cardinalAddressNote("115 EAST 87TH STREET, APARTMENT 12A, NEW YORK, NY 10128")).toBeNull();
+  });
+
+  it("is RED with the reason and the required format when Cardinal would refuse it", () => {
+    const n = cardinalAddressNote("135 E 31st St New York, NY 10016");
+    expect(n?.tone).toBe("red");
+    expect(n?.reason).toContain("comma");
+    expect(n?.hint).toBe(CARDINAL_FORMAT_HINT);
+    expect(n?.hint).toContain("Street, [Apt/Unit,] City, ST ZIP");
+  });
+
+  it("covers the zip case the old Welcome Call regex used to own", () => {
+    const n = cardinalAddressNote("49 Hamilton Avenue, Auburn, NY");
+    expect(n?.tone).toBe("red");
+    expect(n?.reason).toContain("ZIP");
+  });
+
+  it("is AMBER, with no format hint, for something that still ships", () => {
+    const n = cardinalAddressNote("278 Main Street, PO Box 562, Richmondville, NY 12149, US");
+    expect(n?.tone).toBe("amber");
+    expect(n?.reason).toContain("PO Box");
+    expect(n?.hint).toBeUndefined();
   });
 });

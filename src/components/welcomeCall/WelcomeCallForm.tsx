@@ -42,6 +42,8 @@ import {
 import { AddressAutocomplete, type AddressResult } from "@/components/welcomeCall/AddressAutocomplete";
 import { Check, ChevronsUpDown, MessageSquare, Eye, EyeOff, AlertTriangle, Lightbulb } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { CardinalAddressNote } from "@/components/shared/CardinalAddressNote";
+import { cardinalAddressNote } from "@/lib/shared/cardinalAddress";
 
 interface Props {
   patient: Patient;
@@ -60,11 +62,6 @@ function SectionHeading({ number, title }: { number: number; title: string }) {
       </p>
     </div>
   );
-}
-
-function hasZipCode(address: string): boolean {
-  if (!address) return true; // no address = no warning
-  return /\b\d{5}(-\d{4})?\b/.test(address);
 }
 
 /** Searchable combobox for infusion set selection */
@@ -627,9 +624,14 @@ export function WelcomeCallForm({ patient, onFieldChange, onSendWelcomeCallText 
             <p className="text-sm font-medium px-3 py-2 rounded-md bg-muted/50 border border-input min-h-[40px] flex items-center">
               {patient.address || <span className="text-muted-foreground italic">No address on file</span>}
             </p>
-            {patient.address && !hasZipCode(patient.address) && (
-              <p className="text-xs text-red-600 font-semibold mt-1">Zip code needs to be added!</p>
-            )}
+            {/* Was a zip-only "Zip code needs to be added!" — now the FULL
+                Cardinal order-format verdict (§5.17), which covers the missing
+                zip and the four other ways an address stops the order, and
+                prints the required shape. Welcome Call is the earliest stage
+                that can fix this and the one where somebody is on the phone
+                with the patient. It does NOT block the send: the existing
+                `validatePatientForSend` zip gate is unchanged. */}
+            <CardinalAddressNote address={patient.address} />
           </div>
 
           {/* Google Places autocomplete for editing */}
@@ -647,10 +649,11 @@ export function WelcomeCallForm({ patient, onFieldChange, onSendWelcomeCallText 
               }}
               placeholder="Search for a new address..."
             />
-            {patient.addressEdited !== null && patient.addressEdited !== "" && !hasZipCode(patient.addressEdited) && (
-              <p className="text-xs text-red-600 font-semibold mt-1">Zip code needs to be added!</p>
-            )}
-            {patient.addressEdited !== null && patient.addressEdited !== "" && hasZipCode(patient.addressEdited) && patient.addressEdited !== patient.address && (
+            <CardinalAddressNote address={patient.addressEdited ?? ""} />
+            {/* Still confirms the write on a SOFT note (a PO Box is going to be
+                sent); suppressed only on a red one, where "will be updated"
+                would read as reassurance about an address Cardinal refuses. */}
+            {patient.addressEdited !== null && patient.addressEdited !== "" && cardinalAddressNote(patient.addressEdited)?.tone !== "red" && patient.addressEdited !== patient.address && (
               <p className="text-xs text-amber-600 mt-1">Address will be updated on sync</p>
             )}
           </div>

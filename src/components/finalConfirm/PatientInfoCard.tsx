@@ -80,6 +80,7 @@ import {
 } from "lucide-react";
 import { DoctorNotesPanel } from "@/components/shared/DoctorNotesPanel";
 import { CallHistoryButton } from "@/components/shared/CallHistoryButton";
+import { CardinalAddressNote } from "@/components/shared/CardinalAddressNote";
 
 interface Props {
   patient: Patient;
@@ -88,22 +89,6 @@ interface Props {
    *  anchor to. The findings themselves are rendered by FinalCheckPanel — this
    *  card never restates them, so a rule has exactly one voice on the page. */
   findings?: CheckFinding[];
-}
-
-/**
- * The check-pack finding whose fix is "retype it in this shape", per anchored
- * field. Only the Cardinal address-format checks (C25/C26) carry a formatHint,
- * so this is what gets echoed in red under the input itself rather than only
- * in the findings panel: the rep is looking at the field they have to fix, and
- * the required format is useless three cards away.
- */
-function formatHintByField(findings: CheckFinding[]): Map<keyof Patient, CheckFinding> {
-  const map = new Map<keyof Patient, CheckFinding>();
-  for (const f of findings) {
-    if (!f.field || !f.formatHint) continue;
-    if (!map.has(f.field)) map.set(f.field, f);
-  }
-  return map;
 }
 
 /** Worst severity per anchored field, red > amber > info. */
@@ -561,24 +546,8 @@ function DiagnosisCombobox({
   );
 }
 
-/**
- * The red "here is the shape it has to be" note under an address input.
- * Rendered from the finding, never re-derived — the check pack owns the rule
- * (lib/shared/cardinalAddress.ts), so the field and the panel cannot disagree.
- */
-function AddressFormatNote({ finding }: { finding?: CheckFinding }) {
-  if (!finding?.formatHint) return null;
-  return (
-    <div className="mt-1.5 text-[11px] leading-snug text-red-600 dark:text-red-400">
-      <p className="font-semibold">{finding.detail}</p>
-      <p className="font-mono mt-0.5">{finding.formatHint}</p>
-    </div>
-  );
-}
-
 export function PatientInfoCard({ patient, onFieldChange, findings = [] }: Props) {
   const fieldSeverity = useMemo(() => severityByField(findings), [findings]);
-  const fieldFormatHint = useMemo(() => formatHintByField(findings), [findings]);
   // Infusion-set options are read from the LIVE board, never a hardcoded table.
   // Final Confirm and Welcome Call write the SAME two columns, and their
   // hardcoded tables had already drifted apart from each other ("6mm" here vs
@@ -790,7 +759,7 @@ export function PatientInfoCard({ patient, onFieldChange, findings = [] }: Props
                   onChange={handleAddressChange}
                   placeholder="Start typing address\u2026"
                 />
-                <AddressFormatNote finding={fieldFormatHint.get("address")} />
+                <CardinalAddressNote address={addr} />
               </div>
             </div>
           );
@@ -1010,7 +979,7 @@ export function PatientInfoCard({ patient, onFieldChange, findings = [] }: Props
                     onChange={handleClinicAddressChange}
                     placeholder="Start typing clinic address…"
                   />
-                  <AddressFormatNote finding={fieldFormatHint.get("clinicAddress")} />
+                  <CardinalAddressNote address={clinicAddr} />
                 </div>
               </div>
             );

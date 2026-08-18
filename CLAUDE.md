@@ -925,14 +925,20 @@ for free; the other five render it directly — welcomeCall / finalConfirm / sub
 `masheke/ConfirmReceiptHeaderCard`. The button self-hides when there's no number on file, so a
 header can drop it in unconditionally.
 
-### 5.17 Cardinal address format — checked at Final Profile Confirmation (Aug 2026)
+### 5.17 Cardinal address format — checked at Welcome Call + Final Profile Confirmation (Aug 2026)
 Cardinal Health orders carry **two** addresses and validate both: the patient's (`shipTo`) and the
 **doctor's** (`doctorInfo.address`). The ordering service parses them with its own deterministic
 parser and **GATE 1 stops the order** on a hard failure — nothing is sent to Cardinal, the row lands
 in *Needs Review* on the orders board, and a human has to reformat the address. That is hours (and a
 board hop) downstream of the last stage where the address is still editable and somebody is on the
-phone with the patient. So Final Profile Confirmation now runs **the same parse**, as check-pack
-checks **C25** (patient address) and **C26** (clinic address).
+phone with the patient. So the two stages that can still fix an address now run **the same parse**:
+**Final Profile Confirmation** as check-pack checks **C25** (patient address) and **C26** (clinic
+address), and **Welcome Call** as an inline note under both of its address fields.
+
+⚠️ **Welcome Call has NO clinic address** — that board reads `doctorName` + `doctorNpi` and nothing
+else (`lib/welcomeCall/mondayApi.ts`), so the patient address is the whole of it there. C26 has no
+Welcome Call equivalent, and giving it one means adding the column to the read set, the `Patient`
+type, the mapping and the form — not a UI change.
 
 **The preset is the whole rule:** `STREET , [UNIT ,] CITY , ST ZIP [, COUNTRY]`. The parse is
 deliberately faithful — it never abbreviates, reorders, guesses a city from a glued street, or
@@ -958,13 +964,22 @@ override is stamped into Notes, same as every other check.
 > reason and the required format. Two rows saying the same thing at two severities is how a check
 > pack gets ignored.
 
-**The format is shown, not just the complaint** (Josh's ask, 2026-08-18): a finding may carry
-`CheckFinding.formatHint`, and anything carrying one is rendered **in red directly under the input**
-by `PatientInfoCard` (`AddressFormatNote`), as well as in the findings panel and the send dialog. A
-rep who has to retype an address should not have to go find the shape three cards away. Only the
-address checks set it — don't add a `formatHint` to a check whose field has no input on the page.
+**The format is shown, not just the complaint** (Josh's ask, 2026-08-18). One renderer does it on
+both stages — **`components/shared/CardinalAddressNote`**, driven by `cardinalAddressNote()`: red
+with the blocking reason + the required shape, amber for something that still ships, and **silent on
+a blank or clean address**. Final Confirm's findings ALSO carry `CheckFinding.formatHint` (the same
+`CARDINAL_FORMAT_HINT` string) so the panel and the send dialog print the format too. Don't add a
+`formatHint` to a check whose field has no input on the page.
 The **Clinic Address field also gained the red/amber ring** the patient address always had; before
 this it had no error state at all, because nothing in the app looked at it.
+
+**Neither stage BLOCKS on it.** Final Confirm is warnings-only by design (per-finding ack + a Notes
+override stamp). Welcome Call keeps exactly the send gate it already had — `validatePatientForSend`'s
+*"Address with zip code is required"*, still its own loose `\b\d{5}\b` regex — so this change can
+only ever tell a rep MORE than before, never stop a call they could previously finish. What it did
+replace is that form's two zip-only *"Zip code needs to be added!"* lines, which caught one of the
+six ways an address fails. ⚠️ If you ever promote the format to a hard gate, do it at Welcome Call
+(the rep is on the phone) and expect it to fire on ~6% of patients — see the audit below.
 
 **Why the clinic address is the point of this** — live audit, 2026-08-18, over the real boards:
 
@@ -980,15 +995,16 @@ numbers, not an intuition, are what decided red-vs-amber and blank-vs-silent.
 **Keep-in-agreement:**
 1. **The rule** — `src/lib/shared/cardinalAddress.ts` ⇄ `Cardinal-api/src/address.js` (+ both test suites).
 2. **The checks** — `lib/finalConfirm/checkPack.ts` `cardinalAddressFindings` (C25/C26).
-3. **The UI** — `components/finalConfirm/PatientInfoCard.tsx` (`AddressFormatNote` + both rings),
-   `FinalCheckPanel.tsx`, `SendWithChecksButton.tsx` (all three render `formatHint`).
+3. **The UI** — `components/shared/CardinalAddressNote.tsx` (the inline note on BOTH stages) +
+   `finalConfirm/PatientInfoCard.tsx` (both rings), `welcomeCall/WelcomeCallForm.tsx` (both address
+   fields), `FinalCheckPanel.tsx`, `SendWithChecksButton.tsx` (the last two render `formatHint`).
 4. **Downstream, unchanged** — `Cardinal-api/src/precheck.js` still runs the same parse at order
    time and writes *Address Flag* on the orders board. This stage does not replace it; it stops most
    of what it catches from getting that far.
-> Welcome Call, Profile Send Off and the DVS doctor editor write these same two columns
-> (`location_mm1xhw17` · `location_mm1xjnfv`) and do **not** run the check — deliberate scope, not an
-> oversight. Final Confirm is the last gate before the item hops to Subscription and becomes an
-> order; adding it upstream is additive and would only catch things earlier.
+> **Profile Send Off and the DVS doctor editor** write these same two columns
+> (`location_mm1xhw17` · `location_mm1xjnfv`) and still do **not** run the check — deliberate scope,
+> not an oversight. Both are additive if wanted: Profile Send Off is where a clinic address is first
+> typed, and the DVS editor is where a manager corrects one.
 
 ---
 
