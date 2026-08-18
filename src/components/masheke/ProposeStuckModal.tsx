@@ -42,9 +42,21 @@ interface Props {
    *  rep's reason, it must stamp the note and flip that board's escalation to
    *  its Final/proposed-stuck index. Omitted = the MN behaviour below. */
   onConfirm?: (reason: string) => Promise<void>;
+  /** Which manager column this proposal lands in. The ME default is Final
+   *  Decisions; boards on the shared ladder pass the computed rung so the
+   *  copy names where the patient actually goes. */
+  destination?: "manager" | "final";
+  /** True when the caller's onConfirm writes the page's unsaved edits to
+   *  Monday before proposing — flips the footnote from the old "your form
+   *  will NOT be saved" warning to saying the save happens. */
+  savesFormFirst?: boolean;
 }
 
-export function ProposeStuckModal({ open, onOpenChange, patientId, patientName, onSuccess, onConfirm }: Props) {
+export function ProposeStuckModal({
+  open, onOpenChange, patientId, patientName, onSuccess, onConfirm,
+  destination = "final", savesFormFirst = false,
+}: Props) {
+  const destinationLabel = destination === "manager" ? "Manager Intervention" : "Final Decisions";
   const [reason, setReason] = useState("");
   const [sending, setSending] = useState(false);
 
@@ -69,7 +81,7 @@ export function ProposeStuckModal({ open, onOpenChange, patientId, patientName, 
         await writeLongText(patientId, COL.mnEvalNotes, appended);
         await writeStatusIndex(patientId, COL.escalation, ESCALATION_INDEX.finalRequired);
       }
-      toast.success(`${patientName} proposed as Stuck — sent to the manager for a decision`);
+      toast.success(`${patientName} proposed as Stuck — sent to ${destinationLabel}`);
       onOpenChange(false);
       setReason("");
       onSuccess();
@@ -92,7 +104,7 @@ export function ProposeStuckModal({ open, onOpenChange, patientId, patientName, 
           </DialogTitle>
           <DialogDescription>
             Propose <strong>{patientName}</strong> as stuck. They leave your queue
-            immediately and go to the manager's Final Decisions list — the manager
+            immediately and go to the manager's {destinationLabel} list — the manager
             either approves (patient moves to Stuck) or returns them to your queue.
           </DialogDescription>
         </DialogHeader>
@@ -109,9 +121,15 @@ export function ProposeStuckModal({ open, onOpenChange, patientId, patientName, 
               placeholder="Why is this patient stuck? e.g. doctor unreachable after 6 attempts, patient not responding since 06/12…"
               className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-ring"
             />
-            <p className="text-xs text-amber-600 dark:text-amber-500 mt-1 font-medium">
-              NOTE: If you filled out the form but didn't submit it to Monday, that info will NOT be saved — include everything relevant to the stuck reason here.
-            </p>
+            {savesFormFirst ? (
+              <p className="text-xs text-muted-foreground mt-1">
+                Anything you&apos;ve filled out on the page is saved to Monday along with this proposal.
+              </p>
+            ) : (
+              <p className="text-xs text-amber-600 dark:text-amber-500 mt-1 font-medium">
+                NOTE: If you filled out the form but didn't submit it to Monday, that info will NOT be saved — include everything relevant to the stuck reason here.
+              </p>
+            )}
           </div>
 
           <div className="flex justify-end gap-2">
@@ -121,7 +139,7 @@ export function ProposeStuckModal({ open, onOpenChange, patientId, patientName, 
             <Button
               onClick={handleConfirm}
               disabled={sending || !reason.trim()}
-              className="gap-2 bg-amber-600 hover:bg-amber-700 text-white"
+              className="gap-2 bg-rose-600 hover:bg-rose-700 text-white"
             >
               {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <AlertTriangle className="h-4 w-4" />}
               Propose Stuck

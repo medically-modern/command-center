@@ -102,7 +102,7 @@ export function ProposeStuckButton({
     <>
       <Button
         onClick={() => setOpen(true)}
-        className="gap-2 bg-amber-500 text-white hover:bg-amber-600 shadow-elevate"
+        className="gap-2 bg-rose-600 text-white hover:bg-rose-700 shadow-elevate"
       >
         <Flag className="h-4 w-4" /> Propose Stuck
       </Button>
@@ -154,7 +154,7 @@ export function ProposeStuckButton({
               <Button
                 onClick={confirm}
                 disabled={saving || !reason.trim()}
-                className="gap-2 bg-amber-600 hover:bg-amber-700 text-white"
+                className="gap-2 bg-rose-600 hover:bg-rose-700 text-white"
               >
                 {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <AlertTriangle className="h-4 w-4" />}
                 Propose Stuck

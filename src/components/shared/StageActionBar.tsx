@@ -71,9 +71,16 @@ interface Props {
   escalationLabel?: string;
   /** Refetch the page's patient list after a write. */
   onDone: () => void;
+  /** Runs BEFORE the propose-stuck write — the intake page passes its
+   *  save-to-Monday here so a proposal carries the rep's unsaved form edits
+   *  instead of losing them with the patient (Josh, 2026-08-18). Also flips
+   *  the modal's footnote to say the save happens. */
+  beforeProposeStuck?: () => Promise<void>;
 }
 
-export function StageActionBar({ stage, board, patientId, patientName, escalationLabel, onDone }: Props) {
+export function StageActionBar({
+  stage, board, patientId, patientName, escalationLabel, onDone, beforeProposeStuck,
+}: Props) {
   const [searchParams] = useSearchParams();
   const { goBack } = useBackNavigation();
   const origin = managerOriginFromParams(searchParams);
@@ -168,7 +175,7 @@ export function StageActionBar({ stage, board, patientId, patientName, escalatio
           <>
             <Button
               onClick={() => setProposeOpen(true)}
-              className="gap-2 bg-amber-600 hover:bg-amber-700 text-white shadow-elevate"
+              className="gap-2 bg-rose-600 hover:bg-rose-700 text-white shadow-elevate"
             >
               <AlertTriangle className="h-4 w-4" /> Propose Stuck
             </Button>
@@ -180,13 +187,16 @@ export function StageActionBar({ stage, board, patientId, patientName, escalatio
               patientId={patientId}
               patientName={patientName}
               onSuccess={onDone}
+              destination={board === "profile" ? proposeStuckLevel(stage, origin, escalationLabel) : "final"}
+              savesFormFirst={Boolean(beforeProposeStuck)}
               onConfirm={
                 board === "profile"
                   ? async (reason) => {
+                      await beforeProposeStuck?.();
                       // Same ladder as Insurance/Medical Evaluation: a rep's
                       // proposal lands in Manager Intervention, a manager's
                       // proposal from there promotes to Final Decisions.
-                      await proposeIntakeStuck(
+                      const res = await proposeIntakeStuck(
                         patientId, reason,
                         proposeStuckLevel(stage, origin, escalationLabel),
                         // Stamps the Call Log with which rung this came from —
@@ -196,6 +206,9 @@ export function StageActionBar({ stage, board, patientId, patientName, escalatio
                         : origin === "final-decisions" ? "final-decisions"
                         : "processor",
                       );
+                      if (!res.ok) {
+                        throw new Error(res.errors.map((e) => `${e.label}: ${e.error}`).join(" · "));
+                      }
                     }
                   : undefined
               }

@@ -11,11 +11,31 @@
 import type { Patient } from "./workflow";
 
 export interface UnlockCondition {
-  id: "authorised" | "stediRan" | "active" | "inNetwork";
+  id: "authorised" | "stediRan" | "active" | "inNetwork" | "cgmPath" | "pumpPath";
   label: string;
   passed: boolean;
   /** Shown when the condition fails — what the rep should actually do. */
   hint: string;
+}
+
+/**
+ * Is a product category in play for this patient? Mirrors the page's own
+ * category seeding: any value in that product's column group, or the request
+ * type naming it. A category with nothing behind it doesn't demand a path —
+ * but the moment anything CGM/pump-shaped exists, its coverage path becomes a
+ * blocker (Josh, 2026-08-18).
+ */
+export function cgmInPlay(p: Patient): boolean {
+  return Boolean(
+    (p.cgmCoveragePath ?? "").trim() || (p.formCgmPreference ?? "").trim() ||
+    (p.cgmDataAwareness ?? "").trim() || /cgm|monitor/i.test(p.requestType ?? ""),
+  );
+}
+export function pumpInPlay(p: Patient): boolean {
+  return Boolean(
+    (p.insulinPumpCoveragePath ?? "").trim() || (p.formPumpPreference ?? "").trim() ||
+    (p.formPumpNeed ?? "").trim() || /pump/i.test(p.requestType ?? ""),
+  );
 }
 
 export interface UnlockState {
@@ -90,6 +110,27 @@ export function evaluateUnlock(p: Patient | null | undefined): UnlockState {
       hint: "Out-of-network — this needs escalation, not an advance.",
     },
   ];
+
+  // Coverage paths block the advance (Josh, 2026-08-18) — but only for the
+  // product categories actually in play, so a CGM-only patient is never asked
+  // for a pump path. A category whose only signal IS its path trivially
+  // passes, which is the right degenerate case.
+  if (cgmInPlay(p)) {
+    conditions.push({
+      id: "cgmPath",
+      label: "CGM Coverage Path chosen",
+      passed: truthy(p.cgmCoveragePath),
+      hint: "Pick the CGM Coverage Path in What They Need.",
+    });
+  }
+  if (pumpInPlay(p)) {
+    conditions.push({
+      id: "pumpPath",
+      label: "Insulin Pump Coverage Path chosen",
+      passed: truthy(p.insulinPumpCoveragePath),
+      hint: "Pick the Insulin Pump Coverage Path in What They Need.",
+    });
+  }
 
   return { conditions, unlocked: conditions.every((c) => c.passed) };
 }

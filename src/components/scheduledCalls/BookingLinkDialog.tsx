@@ -61,7 +61,12 @@ export default function BookingLinkDialog({
   const [url, setUrl] = useState(FALLBACK_URL);
   const [mode, setMode] = useState<Mode>("text");
   const [name, setName] = useState("");
-  const [to, setTo] = useState("");
+  /** One recipient PER CHANNEL, so flipping Text ↔ Email never wipes what's
+   *  typed (Josh, 2026-08-18 — the toggle used to clear the box, and with it
+   *  the prefilled phone/email). `to` is whichever the current mode reads. */
+  const [recipients, setRecipients] = useState<{ text: string; email: string }>({ text: "", email: "" });
+  const to = recipients[mode];
+  const setTo = (v: string) => setRecipients((r) => ({ ...r, [mode]: v }));
   const [body, setBody] = useState(defaultMessage(FALLBACK_URL, ""));
   const [touched, setTouched] = useState(false);
   const [sending, setSending] = useState(false);
@@ -89,8 +94,11 @@ export default function BookingLinkDialog({
     const e = (email ?? "").trim();
     setName(patientName ?? "");
     setTouched(false);
-    if (p.length >= 10) { setMode("text"); setTo(p); }
-    else if (e) { setMode("email"); setTo(e); }
+    // BOTH channels seed, whatever mode opens — the toggle then just switches
+    // between two already-filled boxes.
+    setRecipients({ text: p.length >= 10 ? p : "", email: e });
+    if (p.length >= 10) setMode("text");
+    else if (e) setMode("email");
     // No contact details at all: leave the picker as-is and let the rep type.
     // eslint-disable-next-line react-hooks/exhaustive-deps -- open is the trigger; see above
   }, [open]);
@@ -119,7 +127,8 @@ export default function BookingLinkDialog({
   }, [link, name, touched]);
 
   const reset = () => {
-    setName(""); setTo(""); setTouched(false); setBody(defaultMessage(link, ""));
+    setName(""); setRecipients({ text: "", email: "" }); setTouched(false);
+    setBody(defaultMessage(link, ""));
   };
 
   async function send() {
@@ -187,7 +196,7 @@ export default function BookingLinkDialog({
             {(["text", "email"] as Mode[]).map((m) => (
               <button
                 key={m}
-                onClick={() => { setMode(m); setTo(""); }}
+                onClick={() => setMode(m)}
                 className={cn(
                   "flex flex-1 items-center justify-center gap-1.5 rounded-md border px-3 py-2 text-sm",
                   mode === m ? "border-sky-500 bg-sky-50 font-medium dark:bg-sky-950/40" : "hover:bg-accent",

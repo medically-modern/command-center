@@ -14,7 +14,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { AlertTriangle, ClipboardCheck, Lock, Check, X, ArrowLeft, CalendarClock, Save, Phone } from "lucide-react";
+import { AlertTriangle, ClipboardCheck, Lock, Check, X, ArrowLeft, CalendarClock, Save, Phone, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 // History-first Back, same as every other stage page — returns a manager to
 // their Oversight drill-down rather than a hardcoded home route (§9).
@@ -37,6 +37,10 @@ import {
 // a blocked advance.
 import { evaluateUnlock, coverageActive, inNetwork } from "@/lib/profile/intakeUnlock";
 import { formatBenefitsFailure } from "@/lib/profile/benefitsFailure";
+// The serving suggestion engine — the same derivation the pre-rewrite panel
+// auto-filled with (canCrossSellCgm × requestType → deriveServing).
+import { canCrossSellCgm, deriveServing, titleCaseAddress } from "@/lib/profile/workflow";
+import { ProposeStuckModal } from "@/components/masheke/ProposeStuckModal";
 import {
   PRIMARY_INSURANCE_INDEX, SECONDARY_INSURANCE_INDEX, SERVING_INDEX,
   GENERAL_INSURANCE_INDEX,
@@ -151,13 +155,21 @@ const SOURCE_LABEL: Record<Source, string> = {
 const stediYesNo = (raw: string | undefined, decided: boolean): string =>
   (raw ?? "").trim() ? (decided ? "Yes" : "No") : "—";
 
+/** Dropdowns sort alphabetically (Josh, 2026-08-18) so every variant of a
+ *  payer — all the Fidelis plans, all the Anthems — sits together. Only the
+ *  display ORDER changes: the INDEX objects still carry the board's own label
+ *  order, which is what the writes key on. */
+const sortOpts = (opts: string[]) => [...opts].sort((a, b) => a.localeCompare(b));
+
 const SERVING_OPTS = Object.keys(SERVING_INDEX);
+const PRIMARY_INSURANCE_OPTS = sortOpts(Object.keys(PRIMARY_INSURANCE_INDEX));
+const SECONDARY_INSURANCE_OPTS = sortOpts(Object.keys(SECONDARY_INSURANCE_INDEX));
 // No REQUEST_TYPE_OPTS: Request Type is display-only on this page (it arrives
 // set from the referral and drives four board automations), so there is no
 // picker to build.
 const CGM_PATH_OPTS = Object.keys(CGM_COVERAGE_PATH_INDEX);
 const IP_PATH_OPTS = Object.keys(INSULIN_PUMP_COVERAGE_PATH_INDEX);
-const GENERAL_INSURANCE_OPTS = Object.keys(GENERAL_INSURANCE_INDEX);
+const GENERAL_INSURANCE_OPTS = sortOpts(Object.keys(GENERAL_INSURANCE_INDEX));
 const CGM_TYPE_OPTS = Object.keys(CGM_TYPE_INDEX);
 const PUMP_TYPE_OPTS = Object.keys(PUMP_TYPE_INDEX);
 const REFERRAL_TYPE_OPTS = Object.keys(REFERRAL_TYPE_INDEX);
@@ -724,6 +736,83 @@ const UnverifiedReferralsPage = () => {
 
   useEffect(() => { stedi.observe(selected); }, [selected, stedi]);
 
+  /**
+   * A successful benefits check carries the payer's own address and gender —
+   * pour them into the demographics section (Josh, 2026-08-18: VERY
+   * IMPORTANT). Fill-when-blank only: a value the rep typed, or the board
+   * already holds, is never overwritten by the check. Keyed on the stedi
+   * columns rather than the run, so a patient re-opened days later still
+   * gets the fill — and once it lands the target is no longer blank, which
+   * is what stops the effect re-firing.
+   */
+  const [stediFilled, setStediFilled] = useState<{ address?: boolean; gender?: boolean }>({});
+  useEffect(() => { setStediFilled({}); }, [selected?.id]);
+  useEffect(() => {
+    if (!selected) return;
+    const patch: Partial<Patient> = {};
+    const filled: { address?: boolean; gender?: boolean } = {};
+
+    const stediAddr = (selected.stediAddress ?? "").trim();
+    if (stediAddr && !(selected.patientAddress ?? "").trim()) {
+      // Payer addresses arrive SHOUTING; no pin — the payer gives a line, not
+      // coordinates, and a wrong inherited pin is worse than none.
+      patch.patientAddress = titleCaseAddress(stediAddr);
+      patch.patientAddressLat = null;
+      patch.patientAddressLng = null;
+      filled.address = true;
+    }
+
+    const rawGender = (selected.stediGender ?? "").trim();
+    const gender = /^m/i.test(rawGender) ? "Male" : /^f/i.test(rawGender) ? "Female" : "";
+    if (gender && !(selected.gender ?? "").trim()) {
+      patch.gender = gender;
+      filled.gender = true;
+    }
+
+    if (Object.keys(patch).length) {
+      edit(patch);
+      setStediFilled((s) => ({ ...s, ...filled }));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- fill-when-blank; the patch itself ends the loop
+  }, [selected?.id, selected?.stediAddress, selected?.stediGender, selected?.patientAddress, selected?.gender]);
+
+  /**
+   * Serving pre-fills from the suggestion engine (Josh, 2026-08-18 — the same
+   * canCrossSellCgm × requestType derivation the pre-rewrite panel used).
+   * Fill-when-blank only, and the note under the field says where the value
+   * came from. Verified Referrals deliberately keeps its chip-only behaviour
+   * (Josh, 2026-07) — this rule is intake's.
+   */
+  const [servingSuggested, setServingSuggested] = useState(false);
+  useEffect(() => { setServingSuggested(false); }, [selected?.id]);
+  useEffect(() => {
+    if (!selected) return;
+    if ((selected.serving ?? "").trim()) return;
+    const requestType = (selected.requestType ?? "").trim();
+    if (!requestType) return;
+    // The cross-sell status column wins when set; otherwise derive it from the
+    // payer we know the patient by on this page.
+    const payer = (selected.primaryInsurance ?? "").trim() || (selected.generalInsurance ?? "").trim();
+    const crossSell = (selected.cgmCrossSell ?? "").trim()
+      || (payer ? (canCrossSellCgm(payer) ? "Cross-Sell" : "Couldn't Cross-Sell") : "");
+    if (!crossSell) return;
+    const derived = deriveServing(crossSell, requestType) || requestType;
+    if (!derived || !(derived in SERVING_INDEX)) return;
+    edit({ serving: derived });
+    setServingSuggested(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- fill-when-blank; the fill ends the loop
+  }, [selected?.id, selected?.serving, selected?.requestType, selected?.primaryInsurance,
+    selected?.generalInsurance, selected?.cgmCrossSell]);
+
+  /** A new patient opens at the TOP of both panes (Josh, 2026-08-18) — the
+   *  scrollers are reused across the switch, so they kept the previous
+   *  patient's scroll position and the page appeared to open mid-document. */
+  useEffect(() => {
+    for (const sel of [".pf-root .panes", ".pf-root .panes > .pane", ".pf-root .panes > .panewrap"]) {
+      document.querySelector(sel)?.scrollTo({ top: 0 });
+    }
+  }, [selected?.id]);
+
   // ── Right pane pre-fill ─────────────────────────────────────────────────
   // The derived values arrive already entered, not as a chip the rep has to
   // click (HANDOFF §4). The engine resolves home state from patientAddress,
@@ -1159,6 +1248,41 @@ const UnverifiedReferralsPage = () => {
     [selected, escalateReason, refetch, verified, clinicLabelId, stuckLevel, liveIndex,
       logChangedFacts, clearOverlay],
   );
+
+  /**
+   * Propose Stuck SAVES THE PAGE FIRST (Josh, 2026-08-18): anything the rep
+   * filled out rides to the board with the proposal, instead of dying in the
+   * local overlay when the patient leaves this queue — which is what the old
+   * "info will NOT be saved" warning was apologising for. A partial save is
+   * toasted but doesn't hold the proposal hostage; the escalation exits are
+   * exactly when a rep most needs to hand off what they've got.
+   */
+  const saveBeforePropose = useCallback(async () => {
+    if (!selected) return;
+    const res = await writeIntakeEdits(selected.id, intakeEditsFor(selected), liveIndex);
+    if (res.ok) {
+      clearOverlay(selected.id);
+    } else {
+      toast.warning("Some fields didn't save with the proposal", {
+        description: res.errors.map((e) => e.label).join(", "),
+      });
+    }
+  }, [selected, liveIndex, clearOverlay]);
+
+  /** The left pane's Propose Stuck — same shared modal as the header bar's,
+   *  same save-first behaviour. Throws on failure so the modal stays open
+   *  with the rep's reason still typed. */
+  const proposeWithSave = useCallback(async (reason: string) => {
+    if (!selected) return;
+    await saveBeforePropose();
+    const res = await proposeIntakeStuck(
+      selected.id, reason, stuckLevel,
+      managerOrigin === "manager-intervention" ? "manager-intervention"
+        : managerOrigin === "final-decisions" ? "final-decisions"
+        : "processor",
+    );
+    if (!res.ok) throw new Error(res.errors.map((e) => `${e.label}: ${e.error}`).join(" · "));
+  }, [selected, saveBeforePropose, stuckLevel, managerOrigin]);
 
   // Declared after save() deliberately: naming it in the dependency array
   // before the const initialises would throw on first render.
@@ -1971,6 +2095,16 @@ const UnverifiedReferralsPage = () => {
                   <EditText label="State" value={selected.formState ?? ""} onChange={(v) => edit({ formState: v })} />
                   <Field boxed label="Date of Intake" value={selected.dateOfIntake} />
                 </div>
+                {(stediFilled.address || stediFilled.gender) && (
+                  <p className="sugg-note" style={{ marginTop: 8 }}>
+                    {stediFilled.address && stediFilled.gender
+                      ? "Address and gender filled in from the benefits check"
+                      : stediFilled.address
+                        ? "Address filled in from the benefits check"
+                        : "Gender filled in from the benefits check"}
+                    {" "}— Save to Monday keeps it.
+                  </p>
+                )}
                 {!(selected.patientAddress ?? "").trim() ? (
                   <p className="mt-2 text-[11px] text-amber-700">
                     No address on file. The form doesn’t collect one, and downstream stages need it to ship —
@@ -2851,16 +2985,16 @@ const UnverifiedReferralsPage = () => {
                       record of what came of it.
                     </p>
                   </div>
+                  {/* shadcn Buttons, NOT the page's `.btn` classes: this
+                      dialog portals to document.body, outside `.pf-root`,
+                      where those classes match nothing — which is how the
+                      footer shipped as two bare unstyled text labels. */}
                   <DialogFooter>
-                    <button
-                      className="btn secondary sm"
-                      disabled={saving}
-                      onClick={() => setAttemptOpen(false)}
-                    >
+                    <Button variant="outline" disabled={saving} onClick={() => setAttemptOpen(false)}>
                       Cancel
-                    </button>
-                    <button
-                      className="btn amber sm"
+                    </Button>
+                    <Button
+                      className="gap-2 bg-amber-600 hover:bg-amber-700 text-white"
                       disabled={saving || !attemptNote.trim()}
                       onClick={() => {
                         void logAttempt(attemptNote).then((ok) => {
@@ -2868,61 +3002,28 @@ const UnverifiedReferralsPage = () => {
                         });
                       }}
                     >
+                      {saving && <Loader2 className="h-4 w-4 animate-spin" />}
                       {saving ? "Logging…" : "Log attempt"}
-                    </button>
+                    </Button>
                   </DialogFooter>
                 </DialogContent>
               </Dialog>
 
-              <Dialog open={stuckOpen} onOpenChange={setStuckOpen}>
-                <DialogContent>
-                  <DialogHeader>
-                    <DialogTitle>Propose stuck</DialogTitle>
-                    <DialogDescription>
-                      Sends {selected.name || "this patient"} to{" "}
-                      {stuckLevel === "final" ? "Final Decisions" : "Manager Intervention"} for
-                      review instead of advancing. They leave your queue.
-                    </DialogDescription>
-                  </DialogHeader>
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium" htmlFor="stuck-reason">
-                      Why is this patient stuck?
-                    </label>
-                    <textarea
-                      id="stuck-reason"
-                      className="w-full min-h-[96px] rounded-md border border-input bg-background p-2 text-sm"
-                      value={escalateReason}
-                      placeholder="Doesn't meet criteria because…"
-                      onChange={(e) => setEscalateReason(e.target.value)}
-                    />
-                    {/* Required: a manager can't action a blank proposal, and
-                        the reason IS the handover — it's all they'll see. */}
-                    <p className="text-xs text-muted-foreground">
-                      Required. This is what the reviewing manager sees.
-                    </p>
-                  </div>
-                  <DialogFooter>
-                    <button
-                      className="btn secondary sm"
-                      disabled={saving}
-                      onClick={() => setStuckOpen(false)}
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      className="btn rose sm"
-                      disabled={saving || !escalateReason.trim()}
-                      onClick={() => {
-                        void runStageAction("proposeStuck").then((ok) => {
-                          if (ok) setStuckOpen(false);
-                        });
-                      }}
-                    >
-                      {saving ? "Sending…" : "Propose Stuck"}
-                    </button>
-                  </DialogFooter>
-                </DialogContent>
-              </Dialog>
+              {/* ONE Propose Stuck popup for the whole page (Josh, 2026-08-18):
+                  this is the same shared modal the header's StageActionBar
+                  renders, so what the rep sees no longer depends on which side
+                  of the page they clicked. It saves the page to Monday before
+                  proposing — see proposeWithSave. */}
+              <ProposeStuckModal
+                open={stuckOpen}
+                onOpenChange={setStuckOpen}
+                patientId={selected.id}
+                patientName={selected.name || "this patient"}
+                onSuccess={() => { void refetch(true); }}
+                onConfirm={proposeWithSave}
+                destination={stuckLevel}
+                savesFormFirst
+              />
             </div>
 
             {/* ── RIGHT: Patient Profile Clean-Up ──
@@ -2966,7 +3067,7 @@ const UnverifiedReferralsPage = () => {
                         label="Primary Insurance"
                         value={verified.primaryInsurance ?? ""}
                         onChange={(v) => setVerified((s) => ({ ...s, primaryInsurance: v }))}
-                        options={Object.keys(PRIMARY_INSURANCE_INDEX)}
+                        options={PRIMARY_INSURANCE_OPTS}
                       />
                       <EditText
                         label="Member ID 1"
@@ -2977,7 +3078,7 @@ const UnverifiedReferralsPage = () => {
                         label="Secondary Insurance"
                         value={verified.secondaryInsurance ?? ""}
                         onChange={(v) => setVerified((s) => ({ ...s, secondaryInsurance: v }))}
-                        options={Object.keys(SECONDARY_INSURANCE_INDEX)}
+                        options={SECONDARY_INSURANCE_OPTS}
                       />
                       <EditText
                         label={"Member ID 2" + ((verified.secondaryInsurance ?? "") === "NY Medicaid" ? " (required)" : "")}
@@ -3038,6 +3139,11 @@ const UnverifiedReferralsPage = () => {
                         options={SERVING_OPTS}
                       />
                     </div>
+                    {servingSuggested && (
+                      <p className="sugg-note" style={{ marginTop: 6 }}>
+                        Suggested from the request type and insurance — change it if that&apos;s wrong.
+                      </p>
+                    )}
                   </Card>
 
                   {/* Select Correct Provider — turns the free text the patient
@@ -3111,9 +3217,7 @@ const UnverifiedReferralsPage = () => {
                             No address on file
                           </div>
                           <p className="mt-0.5 text-sm text-rose-900">
-                            The form never asks for one. Get it on this call — Medical Necessity
-                            and every stage after it need it to ship, and chasing it later means
-                            calling the patient back.
+                            The form never asks for one. Get it on this call.
                           </p>
                         </div>
                       </div>
@@ -3181,6 +3285,9 @@ const UnverifiedReferralsPage = () => {
                     patientName={selected.name}
                     escalationLabel={selected.intakeEscalation}
                     onDone={() => { void refetch(true); }}
+                    // The bar's Propose Stuck saves this page first too, so the
+                    // two entry points behave identically (Josh, 2026-08-18).
+                    beforeProposeStuck={saveBeforePropose}
                   />
                   {/* "Escalate — doesn't qualify" is a LEFT-pane exit (§2) and
                       lives in Ready to Advance?. What stays here is the shared

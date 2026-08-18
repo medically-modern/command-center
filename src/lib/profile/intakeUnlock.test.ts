@@ -84,3 +84,41 @@ describe("evaluateUnlock", () => {
     expect(evaluateUnlock(null).unlocked).toBe(false);
   });
 });
+
+describe("coverage paths block the advance (Josh, 2026-08-18)", () => {
+  const passing = {
+    formProceedPreference: "Send request now",
+    stediEligibilityActive: "Yes",
+    stediInNetwork: "Yes",
+  };
+
+  it("a pump request with no pump path stays locked, and says which path", () => {
+    const s = evaluateUnlock(p({ ...passing, requestType: "Insulin Pump" }));
+    expect(s.unlocked).toBe(false);
+    const c = s.conditions.find((x) => x.id === "pumpPath");
+    expect(c?.passed).toBe(false);
+    expect(c?.hint).toContain("Insulin Pump Coverage Path");
+  });
+
+  it("a CGM signal without the CGM path stays locked", () => {
+    const s = evaluateUnlock(p({ ...passing, formCgmPreference: "Dexcom G7" }));
+    expect(s.unlocked).toBe(false);
+    expect(s.conditions.find((x) => x.id === "cgmPath")?.passed).toBe(false);
+  });
+
+  it("unlocks once the in-play paths are chosen", () => {
+    const s = evaluateUnlock(p({
+      ...passing,
+      requestType: "Insulin Pump + CGM",
+      insulinPumpCoveragePath: "Medical Necessity",
+      cgmCoveragePath: "Insulin",
+    }));
+    expect(s.unlocked).toBe(true);
+  });
+
+  it("never demands a path for a product that isn't in play", () => {
+    const s = evaluateUnlock(p({ ...passing }));
+    expect(s.conditions.some((x) => x.id === "cgmPath" || x.id === "pumpPath")).toBe(false);
+    expect(s.unlocked).toBe(true);
+  });
+});
