@@ -63,7 +63,8 @@
         "doctorAppointments",
         "assignedPatients",
         "scheduledCalls",
-        "profile"
+        "profile",
+        "intakeCleanup"
       ],
       "roleOrder": {},
       "roleFilters": {},
