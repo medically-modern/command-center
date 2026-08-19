@@ -176,6 +176,9 @@ export function mondayItemToPatient(item: MondayItem): Patient {
     faxParachuteEdited: null,
     notes: txt(COL.subscriptionNotes),
     escalated: false,
+    groupId: item.group?.id,
+    escalationIndex: statusIndex(COL.authEscalation),
+    escalation: txt(COL.authEscalation),
     receivedAt: new Date().toISOString(),
     lastUpdated: new Date().toISOString(),
   };

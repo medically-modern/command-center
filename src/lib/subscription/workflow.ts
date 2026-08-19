@@ -5,6 +5,18 @@
 export interface Patient {
   id: string;
   name: string;
+  /** Board group the item sits in. Optional because hand-built test fixtures
+   *  predate it. Profile Status reads it to report Stuck — that state is a
+   *  GROUP, not a column (lib/shared/profileStatus.ts). */
+  groupId?: string;
+  /** Escalation status INDEX, read straight off the board — 0 manager, 1 done,
+   *  2 final. ⚠️ Separate from `escalated`, which this stage hardcodes to false
+   *  (CLAUDE.md §10). Profile Status is the only consumer; nothing about the
+   *  stage's broken write path changes because this is read. */
+  escalationIndex?: number | null;
+  /** Escalation label TEXT, read alongside the index. Same §10 caveat as
+   *  `escalationIndex`: read-only, Profile Status is the only consumer. */
+  escalation?: string;
 
   // Subscription status
   status: string;                    // Active / Paused / Dead

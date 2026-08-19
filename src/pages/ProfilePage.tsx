@@ -65,6 +65,7 @@ import { ReportIssueButton } from "@/components/shared/ReportIssueButton";
 import { ClipboardCheck, ArrowLeft, Save, AlertTriangle, ChevronDown, FileText } from "lucide-react";
 import { toast } from "sonner";
 import "./profile/redesign.css";
+import { IntakeProfileStatus } from "@/components/shared/PatientProfileStatus";
 
 const noNotServing = (labels: string[]) => labels.filter((l) => l !== "Not Serving");
 const SERVING_OPTS = noNotServing(Object.keys(SERVING_INDEX));
@@ -629,8 +630,9 @@ const ProfilePage = ({ variant }: ProfilePageProps) => {
                     Profile Send-Off — {VARIANT_LABEL[variant]}
                   </h1>
                   {selected && (
-                    <p className="text-sm opacity-80 mt-0.5 flex items-center gap-2">
+                    <p className="text-sm opacity-80 mt-0.5 flex items-center gap-2 flex-wrap">
                       {selected.name}
+                      <IntakeProfileStatus patient={selected} size="sm" />
                       {selected.alreadyInSystem?.toLowerCase() === "yes" && (
                         <span className="inline-flex items-center gap-1.5 rounded-full bg-white text-red-700 text-sm font-extrabold uppercase tracking-wide px-3 py-1 shadow">
                           <AlertTriangle className="h-4 w-4" /> Already In System

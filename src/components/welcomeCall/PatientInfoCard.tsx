@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/select";
 import { DoctorNotesPanel } from "@/components/shared/DoctorNotesPanel";
 import { CallHistoryButton } from "@/components/shared/CallHistoryButton";
+import { WelcomeCallProfileStatus } from "@/components/shared/PatientProfileStatus";
 
 interface Props {
   patient: Patient;
@@ -468,7 +469,10 @@ export function PatientInfoCard({ patient, onFieldChange, onSavePhone, onSaveSec
           <p className="text-xs uppercase tracking-wider text-muted-foreground font-semibold mb-1">
             Patient Name
           </p>
-          <p className="text-lg font-semibold">{patient.name}</p>
+          <div className="flex items-center gap-2 flex-wrap">
+            <p className="text-lg font-semibold">{patient.name}</p>
+            <WelcomeCallProfileStatus patient={patient} size="sm" />
+          </div>
         </div>
 
         {patient.dob && (

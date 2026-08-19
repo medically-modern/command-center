@@ -121,6 +121,7 @@ export function mondayItemToPatient(item: MondayItem): Patient {
   return {
     id: item.id,
     name: item.name,
+    groupId: item.group?.id,
     gender: col(item, "color_mm1x1bdg") || undefined,
     dob: col(item, "text_mm1xvxst"),
     phone: col(item, "phone_mm1x44yk") || undefined,

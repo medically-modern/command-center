@@ -110,6 +110,7 @@ import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 // intake.css adds the two-pane shell and lock that only this page uses.
 import "./profile/redesign.css";
 import "./profile/intake.css";
+import { IntakeProfileStatus } from "@/components/shared/PatientProfileStatus";
 
 /** This queue is the DTC form's two groups and nothing else. "Referrals"
  *  (the 1. Intake group) was a third option here and is gone: that group is
@@ -1797,12 +1798,15 @@ const UnverifiedReferralsPage = () => {
                   <p className="text-sm font-medium uppercase tracking-wide text-muted-foreground">
                     Patient
                   </p>
-                  <h1
-                    className="text-3xl font-black tracking-tight mt-0.5 truncate"
-                    title={selected.name}
-                  >
-                    {selected.name}
-                  </h1>
+                  <div className="mt-0.5 flex items-center gap-3 flex-wrap">
+                    <h1
+                      className="text-3xl font-black tracking-tight truncate"
+                      title={selected.name}
+                    >
+                      {selected.name}
+                    </h1>
+                    <IntakeProfileStatus patient={selected} ignoreFollowUp />
+                  </div>
                   <div className="mt-1 flex items-center gap-3 flex-wrap">
                     <span className="text-lg text-muted-foreground">
                       DOB {selected.dob || "—"}{selected.gender ? ` · ${selected.gender}` : ""}

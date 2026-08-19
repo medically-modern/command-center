@@ -30,6 +30,7 @@ import type { Patient } from "@/lib/samantha/workflow";
 import { authHomePlan } from "@/lib/samantha/submitAuthRules";
 import { CallHistoryButton } from "@/components/shared/CallHistoryButton";
 import "./benefitsRedesign.css";
+import { InsuranceProfileStatus } from "@/components/shared/PatientProfileStatus";
 
 function formatPhone(raw: string): string {
   if (!raw) return "";
@@ -78,7 +79,10 @@ export function BenefitsPatientHeader({ patient }: Props) {
   return (
     <section className="card header-card">
       <div>
-        <div className="ph-name">{patient.name || "—"}</div>
+        <div className="flex items-center gap-3 flex-wrap">
+          <div className="ph-name">{patient.name || "—"}</div>
+          <InsuranceProfileStatus patient={patient} />
+        </div>
         <div className="ph-dob">
           DOB <span style={{ userSelect: "all" }}>{patient.dob || "—"}</span> ·{" "}
           <span style={{ userSelect: "all" }}>{formatPhone(patient.patientPhone ?? "") || "—"}</span>

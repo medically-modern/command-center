@@ -14,6 +14,7 @@ import { AddressAutocomplete } from "@/components/welcomeCall/AddressAutocomplet
 import type { AddressResult } from "@/components/welcomeCall/AddressAutocomplete";
 import { MnDocsPanel } from "@/components/subscription/MnDocsPanel";
 import { CallHistoryButton } from "@/components/shared/CallHistoryButton";
+import { SubscriptionProfileStatus } from "@/components/shared/PatientProfileStatus";
 
 interface Props {
   patient: Patient;
@@ -248,7 +249,10 @@ export function PatientInfoCard({ patient, onFieldChange }: Props) {
       <Card className="p-4 flex items-center justify-between gap-4 flex-wrap">
         <div>
           <p className="text-xs uppercase tracking-wider text-muted-foreground font-semibold mb-1">Patient Name</p>
-          <p className="text-lg font-semibold">{patient.name}</p>
+          <div className="flex items-center gap-2 flex-wrap">
+            <p className="text-lg font-semibold">{patient.name}</p>
+            <SubscriptionProfileStatus patient={patient} size="sm" />
+          </div>
         </div>
         {patient.dob && (
           <div className="text-center">

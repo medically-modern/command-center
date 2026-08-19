@@ -14,6 +14,7 @@ import { ChevronRight } from "lucide-react";
 import type { Patient } from "@/lib/masheke/workflow";
 import { DoctorEditGrid, EditToggle, DaysInStagePill, PatientContact } from "@/components/masheke/mmKit";
 import { DoctorNotesPanel } from "@/components/shared/DoctorNotesPanel";
+import { MashekeProfileStatus } from "@/components/shared/PatientProfileStatus";
 
 function formatPhone(raw?: string): string {
   if (!raw) return "—";
@@ -92,7 +93,10 @@ export function SendRequestHeaderCard({
         </button>
       </div>
       <div className="flex items-start justify-between gap-3">
-        <h1 className="text-3xl font-black tracking-tight">{patient.name}</h1>
+        <div className="flex items-center gap-3 flex-wrap min-w-0">
+          <h1 className="text-3xl font-black tracking-tight">{patient.name}</h1>
+          <MashekeProfileStatus patient={patient} />
+        </div>
         <DaysInStagePill value={patient.daysSinceStageStart} />
       </div>
       <div className="mt-2 flex items-center gap-3 flex-wrap">

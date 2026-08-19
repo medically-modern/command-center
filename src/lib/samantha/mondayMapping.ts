@@ -446,6 +446,7 @@ export function mondayItemToPatient(item: MondayItem): Patient {
   return {
     id: item.id,
     name: item.name,
+    groupId: item.group?.id,
     dob,
     product: "CGM",
     payer: primary || "",

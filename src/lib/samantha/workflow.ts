@@ -423,6 +423,10 @@ export interface AccountabilityLog {
 export interface Patient {
   id: string;
   name: string;
+  /** Board group the item sits in. Optional because hand-built test fixtures
+   *  predate it. Profile Status reads it to report Stuck — that state is a
+   *  GROUP, not a column (lib/shared/profileStatus.ts). */
+  groupId?: string;
   dob: string;
   product: "CGM" | "Pump" | "Supplies" | "CGM + Pump";
   payer: string;

@@ -176,6 +176,9 @@ export function mondayItemToPatient(item: MondayItem): Patient {
 
     // Escalation
     escalated: false,
+    groupId: item.group?.id,
+    escalationIndex: parseIndex(cv(item, COL.escalation)?.value ?? null),
+    escalation: cv(item, COL.escalation)?.text ?? "",
 
     receivedAt: new Date().toISOString(),
     lastUpdated: new Date().toISOString(),

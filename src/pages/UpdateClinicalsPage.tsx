@@ -43,6 +43,12 @@ import { useBackNavigation } from "@/hooks/useBackNavigation";
 import { ReportIssueButton } from "@/components/shared/ReportIssueButton";
 import { PageLoadingOverlay } from "@/components/shared/PageLoadingOverlay";
 import { cn } from "@/lib/utils";
+import { ProfileStatusBadge } from "@/components/shared/ProfileStatusBadge";
+import {
+  mashekeProfileStatus,
+  subscriptionProfileStatus,
+  type ProfileStatus,
+} from "@/lib/shared/profileStatus";
 
 /* ── Unified patient row (both boards) ──────────────────────── */
 
@@ -58,6 +64,10 @@ export interface ClinicalsRow {
   stage: string;
   mr?: string;
   mnExpiry?: string;
+  /** Profile Status, resolved on the row's OWN board. Computed at map time
+   *  because `ClinicalsRow` is a projection — by the time the view has it, the
+   *  board-specific columns the rule needs are gone. */
+  profileStatus?: ProfileStatus | null;
 }
 
 /** Patients from the Medical Necessity board, EXCLUDING the Completed
@@ -91,6 +101,7 @@ function useMnBoardRows() {
           stage: p.subStage || "—",
           mr: p.mrsClinicals || undefined,
           mnExpiry: p.mrExpiryDate || undefined,
+          profileStatus: mashekeProfileStatus(p),
         }));
       setRows(mapped);
     } catch (e) {
@@ -376,7 +387,10 @@ function PatientClinicalsCard({ patient }: { patient: ClinicalsRow }) {
           <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1">
             Patient Name
           </p>
-          <p className="text-lg font-semibold">{patient.name}</p>
+          <div className="flex items-center gap-2 flex-wrap">
+            <p className="text-lg font-semibold">{patient.name}</p>
+            <ProfileStatusBadge status={patient.profileStatus} size="sm" />
+          </div>
           {/* board · stage badge */}
           <span
             className={cn(
@@ -440,6 +454,7 @@ const UpdateClinicalsPage = () => {
       stage: p.status || "—",
       mr: p.mr || undefined,
       mnExpiry: p.mnExpiry || undefined,
+      profileStatus: subscriptionProfileStatus(p),
     }));
     return [...subRows, ...mnRows].sort((a, b) => a.name.localeCompare(b.name));
   }, [subPatients, mnRows]);

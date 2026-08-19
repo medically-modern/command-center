@@ -205,6 +205,9 @@ export interface MondayColumnValue {
 export interface MondayItem {
   id: string;
   name: string;
+  /** Board group the item sits in. Fetched so Profile Status can report Stuck —
+   *  being Stuck is a GROUP, not a column (lib/shared/profileStatus.ts). */
+  group?: { id: string };
   column_values: MondayColumnValue[];
 }
 
@@ -256,6 +259,7 @@ export async function fetchGroupItems(
             items {
               id
               name
+              group { id }
               column_values(ids: $cols) { id text value }
             }
           }
@@ -278,7 +282,7 @@ export async function fetchGroupItems(
         query ($cursor: String!, $cols: [String!]) {
           next_items_page(limit: ${PAGE}, cursor: $cursor) {
             cursor
-            items { id name column_values(ids: $cols) { id text value } }
+            items { id name group { id } column_values(ids: $cols) { id text value } }
           }
         }
       `;
@@ -303,6 +307,7 @@ export async function fetchItemById(itemId: string): Promise<MondayItem | null> 
       items(ids: $itemId) {
         id
         name
+        group { id }
         column_values(ids: $cols) { id text value }
       }
     }

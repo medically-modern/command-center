@@ -1080,6 +1080,111 @@ numbers, not an intuition, are what decided red-vs-amber and blank-vs-silent.
 > not an oversight. Both are additive if wanted: Profile Send Off is where a clinic address is first
 > typed, and the DVS editor is where a manager corrects one.
 
+### 5.18 Profile Status — one status vocabulary on every role, every patient view (Aug 2026)
+Every stage had its own idea of "what is going on with this patient", and none of them agreed:
+masheke reads an escalation **INDEX**, Insurance reads a **LABEL**, Profile Send Off reads a flag
+column, three boards call being asleep `Follow Up = "Done"` while Insurance calls it
+`Follow Up = "Follow Up"` with a **blank date** — and being Stuck is not a column at all, it is
+which **GROUP** the item sits in. A manager on a role page could not tell whether anybody was
+working the patient. **Profile Status** collapses all of it into six words that mean the same thing
+on every page. Canonical rule: **`lib/shared/profileStatus.ts`** (+ tests); looks:
+`components/shared/ProfileStatusBadge.tsx`; per-board wiring:
+`components/shared/PatientProfileStatus.tsx`.
+
+**Precedence — first match wins, and it is the order Josh defined them in.** A patient is routinely
+eligible for several at once, so the order IS the rule:
+
+| # | Status | Fires when |
+|---|---|---|
+| 1 | **Stuck** | the item is in a board's **Stuck group** (`STUCK_GROUP_IDS`) |
+| 2 | **Proposed Stuck** | Escalation index **2**, "Final Escalation Required" |
+| 3 | **Escalated** | Escalation index **0**, "Manager Escalation Required" |
+| 4 | **Paused** | parked with no clock that will wake them up — see below |
+| 5 | **Waiting** | Next Action / Follow Up **Date in the future** (ET) |
+| 6 | **Active** | everything else |
+
+⚠️ An escalated patient snoozed to next Tuesday is **Escalated, not Waiting** — the manager flag is
+the fact somebody must act on, and a date must never hide it.
+
+**Paused has four routes in**, and they share one property: *no date will return the patient on its
+own.* (1) **Already In System** (§5.10). (2) **Doctor Appointments outreach** — Sub-Stage
+`Doctor Appointment` (§5.12). (3) **A booked visit that hasn't happened** — Appointment Date
+today-or-later; a visit in the **PAST is NOT paused** (Josh, 2026-08-19: the chase is live again,
+and `snoozeUntilAfterAppointment` floors those patients at today precisely so they are due now).
+(4) **A dateless sleep** — Insurance's blank-date `Follow Up`, and `Follow Up = "Done"` on Profile
+Send Off / Welcome Call / Final Confirm. ⚠️ Those three were the surprise in the audit: Josh's
+assumption was that only Welcome Call could "sleep" a patient. `isSnoozedFollowUp`'s *"a dateless
+Follow Up stays snoozed until cleared"* is an **indefinite** snooze, and Verified Referrals + Already
+In System use `"Done"` the same way. They read **Paused rather than Waiting** (Josh, 2026-08-19)
+because Waiting promises a date that will bring the patient back and here there isn't one.
+
+**Two populations get NO badge (`null`), and the asymmetry is deliberate.**
+- **Completed** — checked **FIRST, above Stuck**, so a stale escalation label on a finished item
+  can't resurrect it. Search's completion badges deep-link into finished stages (§7), so role pages
+  really do render these; a live-looking badge would be a lie.
+- **Auth Denied** — checked **LAST**, and it only suppresses *Active*. The stage is deliberately
+  unbuilt (§7), so there is no honest Active story — but **any denial escalates**, and an escalated
+  denied patient is live manager work, so rungs 1–5 still report. Completed means "nothing here is
+  actionable"; Auth Denied means "the patient is live, this stage just has no UI yet".
+
+⚠️ **`STUCK_GROUP_IDS` / `COMPLETED_GROUP_IDS` are hand-maintained lists of group ids, i.e. exactly
+the §5.10 bug class.** Monday **reuses group ids across boards** — `group_mm1xyczx` is Stuck on
+Medical Evaluation AND Welcome Call AND Profile Send Off, while `group_mkp19fyp` is "Bad Debt" on
+Secondary Claims and "Not Active Patients" on Subscription — so one id can only be trusted while
+nothing outside the set shares it. `profileStatus.test.ts` asserts both sets against the live
+`BOARDS` registry **in both directions**, and fails if a board grows a Stuck group that isn't listed
+or if a listed id names a working group somewhere. That check is the point.
+
+**Reads added to make the rule honest** (all purely additive — no write path touched):
+- `group { id }` on every patient query on all five board slices, plus `groupId` on each `Patient`.
+  Without it Stuck can never fire, silently.
+- **Welcome Call + Final Confirm + Subscription** now read their escalation column into a new
+  `escalationIndex` field. ⚠️ Deliberately **NOT** wired into `escalated`, which those three
+  hardcode to `false` — that is the write-only escalation §10 says needs a **rewrite, not a
+  piecemeal patch**. Profile Status is the only consumer; sidebars and role counts are unchanged.
+  Without this read an escalated Welcome Call patient's badge would inherit `escalated: false` and
+  read Active.
+  The label TEXT is read alongside the index, because those two boards' indices are inferred from
+  §10 rather than observed: `escalationRung` takes the index first (a rename can't blind it) but an
+  **unrecognised** index falls through to the label instead of reading Active. ⚠️ Monday assigns a
+  status index when the label is *created* and takes the lowest free slot, **not display order** —
+  §5.12's Sub-Stage `Doctor Appointment` landed on **0** while that column's siblings start at 8 —
+  so a board whose escalation labels were created in another order would otherwise mark escalated
+  patients Active silently. Index **1 ("Done")** is the one index that stops the search: it is a
+  positive "not escalated" and must beat a stale label.
+- ⚠️ **Final Confirm reports Paused only via an appointment or the group** — that stage reads no
+  Follow Up column at all (no `COL` entry, no field), and its role count is escalation-only
+  (`useRoleCounts`: *"finalConfirm group (not escalated)"*). The badge matches the app rather than
+  inventing a snooze the stage doesn't have.
+- ⚠️ On Welcome Call the badge now agrees with the **burndown** and disagrees with the **sidebar** —
+  which is the correct side. `useRoleCounts` already reads `color_mm1x7997` off the board while
+  `sidebarSections` keys on `p.escalated`, hardcoded false; that disagreement is §10's, and Profile
+  Status reads the board.
+
+**Where it renders** — the patient header on every role page, via one of five board wrappers in
+`PatientProfileStatus.tsx` (`Masheke` · `Insurance` · `Intake` · `WelcomeCall` · `Subscription`), so
+a header is a one-line change and can never pick the wrong adapter:
+`masheke/PatientProfileCard` (Evaluate) · `masheke/SendRequestHeaderCard` (Send Request · Confirm
+Receipt · both Chase · Doctor Appointments) · `samantha/BenefitsPatientHeader` (Benefits · Submit
+Auth · Auth Outstanding) · `samantha/PatientProfileCard` (DVS) · `welcomeCall`/`finalConfirm`/
+`subscription` `PatientInfoCard` · `ProfilePage` (Verified Referrals · Already In System) ·
+`UnverifiedReferralsPage` · `UpdateClinicalsPage`.
+⚠️ **Patient Intake passes `ignoreFollowUp`**, mirroring the flag the page already hands
+`sidebarSections` (§5.10): that queue's Follow Up pair is a one-way door nothing reads, so honouring
+it would report **Paused** for a patient sitting in everybody's sidebar.
+**System Management → Search** renders it too, via `systemProfileStatus`, replacing a flat "ACTIVE"
+pill that was true of everything the row could ever be. ⚠️ That projection spans seven boards and
+carries only the inputs that generalise — **no Sub-Stage, Appointment Date, Already In System or
+Follow Up** — so a Search row can read **Active** for a patient the role page calls **Paused**. It
+is a NARROWER read, never a contradictory one, and the test pins that. Widening it means adding
+those columns to `BOARDS`' per-board read set, not special-casing the adapter.
+
+**Not wired, deliberately:** *Scheduled Calls* has no patient view of its own (rows deep-link to
+`/unverified-referrals`, which has the badge); *Patient Questions*, *Patient Texting* and *Fax
+Inbox* are message/lookup surfaces, not pipeline stages — Patient Questions in particular spans
+Secondary Claims, which is not a stage in the Active list at all.
+
+
 ---
 
 ## 6. Patient flow across boards (the big picture)
@@ -1598,6 +1703,7 @@ these services; when their math changes, `oopEstimator.ts` must be updated to ma
 | Task | Start here |
 |---|---|
 | A role's page behaves wrong | `src/pages/<Role>Page.tsx` → `hooks/<role>/useMondayPatients.ts` → `lib/<role>/workflow.ts` |
+| A patient's status badge says the wrong thing (or nothing) | §5.18 — `lib/shared/profileStatus.ts` (the rule) → `components/shared/PatientProfileStatus.tsx` (which board adapter that header uses) |
 | A value isn't saving to Monday | `lib/<role>/mondayWrite.ts` + `lib/shared/verifiedWrite.ts`; cross-check `mondayMapping.ts` column IDs |
 | Medical-necessity logic | `lib/masheke/evalState.ts` (+ ipPaths, requestTemplate, mnRequestPdf) |
 | A returned patient can't log an attempt (cards greyed, Save disabled) | `lib/masheke/attemptRollup.ts` → `oversightApi.returnProposedToQueue`; the gate is **MN Attempts** `color_mm1wz0vg`, not the attempt columns (§7) |

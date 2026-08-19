@@ -143,6 +143,12 @@ export const READ_COLUMN_IDS = [
   COL.infusionSetLastBillDate, COL.cartridgeLastBillDate,
   COL.ipNextOrderDate, COL.sensorsNextOrderDate, COL.suppliesNextOrderDate,
   COL.followUp, COL.followUpDate,
+  // Escalation STATUS (read-only). ⚠️ Deliberately NOT wired into `escalated`:
+  // this stage's escalation is write-only and needs a rewrite, not a piecemeal
+  // patch (CLAUDE.md §10). It is read purely so Profile Status can report the
+  // rung — without it, an escalated patient's badge would inherit the
+  // hardcoded `escalated: false` and silently read Active.
+  COL.escalation,
   COL.escalationNotes,
   COL.neverBilledIsCar, COL.neverBilledCgm,
   COL.sosNeverBilledMonitor, COL.sosLastBillMonitor,
@@ -157,6 +163,9 @@ export interface MondayColumnValue {
 export interface MondayItem {
   id: string;
   name: string;
+  /** Board group the item sits in. Fetched so Profile Status can report Stuck —
+   *  being Stuck is a GROUP, not a column (lib/shared/profileStatus.ts). */
+  group?: { id: string };
   column_values: MondayColumnValue[];
 }
 
@@ -207,6 +216,7 @@ export async function fetchGroupItems(
           items {
             id
             name
+            group { id }
             column_values(ids: $cols) { id text value }
           }
         }
@@ -228,7 +238,7 @@ export async function fetchGroupItems(
         query ($cursor: String!, $cols: [String!]) {
           next_items_page(limit: ${PAGE}, cursor: $cursor) {
             cursor
-            items { id name column_values(ids: $cols) { id text value } }
+            items { id name group { id } column_values(ids: $cols) { id text value } }
           }
         }
       `;
@@ -451,6 +461,7 @@ export async function fetchItemById(itemId: string): Promise<MondayItem | null> 
       items(ids: $itemId) {
         id
         name
+        group { id }
         column_values(ids: $cols) { id text value }
       }
     }

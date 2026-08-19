@@ -53,6 +53,8 @@ import { toast } from "sonner";
 import { PipelineChart, DAY_BUCKETS } from "@/components/systemMgmt/PipelineChart";
 import { OperationsTab } from "@/components/systemMgmt/OperationsTab";
 import OversightTab from "@/components/oversight/OversightTab";
+import { ProfileStatusBadge } from "@/components/shared/ProfileStatusBadge";
+import { systemProfileStatus } from "@/lib/shared/profileStatus";
 
 type Tab = "search" | "escalations" | "operations" | "stageManager" | "oversight";
 
@@ -1199,9 +1201,19 @@ function PatientRow({
                   COMPLETED
                 </span>
               ) : (
-                <span className="shrink-0 inline-flex items-center bg-primary/10 text-primary text-[9px] font-bold px-1.5 py-0.5 rounded leading-none">
-                  ACTIVE
-                </span>
+                /* Profile Status — the same vocabulary the role pages show, so a
+                   patient reads the same here as on the page they're worked on.
+                   It replaced a flat "ACTIVE" pill that was true of everything
+                   this row could ever be. ⚠️ Search's cross-board projection
+                   can't see Sub-Stage / Appointment Date / Already In System, so
+                   this is a NARROWER read than the role page's — never a
+                   different one (see `systemProfileStatus`). Renders nothing for
+                   an un-escalated Auth Denied patient, by design. */
+                <ProfileStatusBadge
+                  status={systemProfileStatus(patient)}
+                  size="sm"
+                  showIcon={false}
+                />
               )}
               {/* Days-in-stage is a live urgency signal. On a finished board it
                   is a frozen number, so it keeps the text and loses the alarm

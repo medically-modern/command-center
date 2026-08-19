@@ -81,6 +81,7 @@ import {
 import { DoctorNotesPanel } from "@/components/shared/DoctorNotesPanel";
 import { CallHistoryButton } from "@/components/shared/CallHistoryButton";
 import { CardinalAddressNote } from "@/components/shared/CardinalAddressNote";
+import { WelcomeCallProfileStatus } from "@/components/shared/PatientProfileStatus";
 
 interface Props {
   patient: Patient;
@@ -648,6 +649,7 @@ export function PatientInfoCard({ patient, onFieldChange, findings = [] }: Props
             onChange={(v) => onFieldChange("name", v)}
             icon={<User className="h-4 w-4" />}
           />
+          <WelcomeCallProfileStatus patient={patient} size="sm" className="mt-1.5" />
         </div>
         {patient.phone && (
           <div className="text-right">

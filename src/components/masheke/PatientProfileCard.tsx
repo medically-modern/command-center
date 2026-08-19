@@ -11,6 +11,7 @@ import { Input } from "@/components/ui/input";
 import { DoctorNotesPanel } from "@/components/shared/DoctorNotesPanel";
 import { CollapsiblePanel } from "@/components/shared/CollapsiblePanel";
 import { PatientContact } from "@/components/masheke/mmKit";
+import { MashekeProfileStatus } from "@/components/shared/PatientProfileStatus";
 import { cn } from "@/lib/utils";
 
 interface Props {
@@ -538,9 +539,12 @@ export function PatientProfileCard({
     >
       {/* ── Eyebrow + name + DOB · phone (prototype header) ── */}
       <p className="text-sm font-medium uppercase tracking-wide text-muted-foreground">Patient</p>
-      <h1 className="text-3xl font-black tracking-tight mt-0.5 truncate" title={patient.name}>
-        {patient.name}
-      </h1>
+      <div className="mt-0.5 flex items-center gap-3 flex-wrap">
+        <h1 className="text-3xl font-black tracking-tight truncate" title={patient.name}>
+          {patient.name}
+        </h1>
+        <MashekeProfileStatus patient={patient} />
+      </div>
       <div className="mt-1 flex items-center gap-3 flex-wrap">
         <span className="text-lg text-muted-foreground">
           DOB {patient.dob || "—"}{patient.gender ? ` · ${patient.gender}` : ""}

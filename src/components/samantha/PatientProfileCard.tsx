@@ -34,6 +34,7 @@ import {
   Loader2,
 } from "lucide-react";
 import { DoctorNotesPanel } from "@/components/shared/DoctorNotesPanel";
+import { InsuranceProfileStatus } from "@/components/shared/PatientProfileStatus";
 
 interface Props {
   patient: Patient;
@@ -233,9 +234,12 @@ export function PatientProfileCard({ patient, onUpdate, onSave, dirty, editScope
   return (
     <div className="rounded-xl bg-card border shadow-card p-4 space-y-4">
       <div className="flex items-center justify-between">
-        <p className="text-xs uppercase tracking-wider text-muted-foreground">
-          Patient Profile
-        </p>
+        <div className="flex items-center gap-2 flex-wrap min-w-0">
+          <p className="text-xs uppercase tracking-wider text-muted-foreground">
+            Patient Profile
+          </p>
+          <InsuranceProfileStatus patient={patient} size="sm" />
+        </div>
         <div className="flex items-center gap-2">
         {canEdit && editing && onSave && (
           <Button
