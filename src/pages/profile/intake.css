@@ -222,6 +222,21 @@
    glance. Applied by Field's `good` prop — only a Yes ever gets it. */
 .pf-root .fld .ro.good, .pf-root .f .v.good { color:var(--mm-green); font-weight:700 }
 
+/* ---- field groups inside one card: required vs optional ----
+   The Provided Insurance card carries six payer fields and the benefits check
+   reads exactly two of them (Brandon, 2026-08-19). Flat, the grid said nothing
+   about that, so reps filled in secondary IDs they didn't need before daring to
+   press Run. A band heading per group is deliberately the SMALLEST thing that
+   says it — a second card would have out-shouted the Run button itself, which
+   is the actual subject of the card. */
+.pf-root .fgroup + .fgroup { margin-top:20px; padding-top:17px; border-top:1px dashed var(--border) }
+.pf-root .fgroup-head { display:flex; align-items:center; gap:10px; margin-bottom:11px }
+.pf-root .fgroup-title { font-size:.72rem; font-weight:800; text-transform:uppercase;
+  letter-spacing:.06em; color:var(--mm-teal) }
+/* The optional half reads as a footnote to the required half, not as a rival. */
+.pf-root .fgroup.opt .fgroup-title { color:var(--muted-foreground) }
+.pf-root .fgroup-head .pill { margin-left:auto }
+
 /* ---- benefits-check failure callout ---- */
 .pf-root .bfail { margin-top:12px; border-left:4px solid var(--mm-rose);
   background:var(--mm-rose-soft); border-radius:10px; padding:11px 14px }

@@ -50,7 +50,7 @@ The Python backends the SPA mirrors (financial estimate, DVS automations) live o
 | Board | ID | Roles / purpose |
 |---|---|---|
 | **DTC Intake** | `18392794310` | Top of funnel; "Send To Medical Necessity" group feeds the pipeline. Read-only here (oversight/system-mgmt). |
-| **Profile Send Off** | `18406352652` | `profile` ("Verified Referrals") + `unverifiedReferrals` ("Unverified Referrals") + `inSystemReferrals` ("Already In System") — three roles, same board/group, split by Already In System then Referral Type/Source (see §5.10). Its own board (groups: *Patient Intake → 1. Intake → Tests → Stuck → Completed*). All three roles work **1. Intake** (`group_mm1xf2jb`); the send-off exit is **Advance to MN** (`Move to Onboarding` → automation creates the Masheke item + moves to Completed) — except Already In System, whose exits are **Move to Profile Send Off** (flag → No, back to 1. Intake as a Verified Referral; replaced Advance to MN there 2026-08-18) and **Mark as Stuck**. ⚠️ **Send back to Patient Intake was REMOVED** (Josh, 2026-08-14) — see §5.10. **Not** the Welcome Call board. |
+| **Profile Send Off** | `18406352652` | `profile` ("Referral Intake", relabelled from "Verified Referrals" 2026-08-19) + `unverifiedReferrals` ("Unverified Referrals") + `inSystemReferrals` ("Already In System") — three roles, same board/group, split by Already In System then Referral Type/Source (see §5.10). Its own board (groups: *Patient Intake → 1. Intake → Tests → Stuck → Completed*). All three roles work **1. Intake** (`group_mm1xf2jb`); the send-off exit is **Advance to MN** (`Move to Onboarding` → automation creates the Masheke item + moves to Completed) — except Already In System, whose exits are **Move to Profile Send Off** (flag → No, back to 1. Intake as a Verified Referral; replaced Advance to MN there 2026-08-18) and **Mark as Stuck**. ⚠️ **Send back to Patient Intake was REMOVED** (Josh, 2026-08-14) — see §5.10. **Not** the Welcome Call board. |
 | **Medical Evaluation** ("Masheke") | `18406060017` | `evaluate`, `sendRequest`, `confirmReceipt`, `chaseFax`, `chaseParachute`, `doctorAppointments` (§5.12). Medical-necessity document collection. Stuck is propose→approve: reps flip **Escalation `color_mm1x7997` → "Final Escalation Required" (index 2)** and the reason is appended to the **MN notes `long_text_mm27zjt2`** (stamped `[Proposed Stuck …]`); managers approve/return from Oversight. (The old `color_mm5f37ve`/`text_mm5frng6` columns are retired.) |
 | **Insurance** ("Samantha") | `18410601299` | `benefits`, `submitAuth`, `authOutstanding`, `authDenied`, `dvs` (**stage**-based — Stage Advancer index 1 "DVS", read-only monitor at `/dvs`). Groups: Benefits, Submit Auth, Auth Outstanding, **DVS**, Auth Denied, Escalations, Complete, Stuck. ⚠️ The board grew a **DVS group** (`group_mm5gp2r2`, Aug 2026) but the role is still **stage**-defined: stage-DVS items linger in whichever group an automation last left them, so `useDvsPatients`/`useRoleCounts` read the STAGE board-wide and must not be "fixed" to filter on the group. |
 | **Welcome Call** | `18410804557` | `welcomeCall` + `finalConfirm` (two roles, same board, different groups). See `BOARD_SCHEMA.md`. |
@@ -333,8 +333,11 @@ and **Referral Source `color_mm1w5wxr`**, evaluated in that order:
   never written. Every other role still reads 1. Intake alone.
 - **`unverifiedReferrals`** (`/unverified-referrals`, "Unverified Referrals") — Referral Type
   **`Patient`** OR Referral Source **`CareCentrix`** (and not already in system).
-- **`profile`** (`/profile`, relabelled **"Verified Referrals"**, id unchanged so existing
-  access.json role assignments keep working) — **everyone else**.
+- **`profile`** (`/profile`, labelled **"Referral Intake"** — "Verified Referrals" until Brandon
+  renamed it 2026-08-19; id unchanged through both renames so existing access.json role
+  assignments keep working) — **everyone else**. The label lives in three places that must agree:
+  `config.ts` `ROLES`, `ProfilePage`'s `VARIANT_LABEL`, and the `profile-send-off` chart title in
+  `oversightApi.ts`.
 
 ⚠️ **"Send back to Patient Intake" was REMOVED from `ProfilePage` (Josh, 2026-08-14) — do not
 rebuild it.** It rendered only on **`/profile`** (Verified Referrals): `canSendBack` was
@@ -1075,10 +1078,18 @@ numbers, not an intuition, are what decided red-vs-amber and blank-vs-silent.
 4. **Downstream, unchanged** — `Cardinal-api/src/precheck.js` still runs the same parse at order
    time and writes *Address Flag* on the orders board. This stage does not replace it; it stops most
    of what it catches from getting that far.
-> **Profile Send Off and the DVS doctor editor** write these same two columns
-> (`location_mm1xhw17` · `location_mm1xjnfv`) and still do **not** run the check — deliberate scope,
-> not an oversight. Both are additive if wanted: Profile Send Off is where a clinic address is first
-> typed, and the DVS editor is where a manager corrects one.
+> **The DTC/CareCentrix intake page runs the parse too, from 2026-08-19** —
+> `lib/profile/addressFormat.ts` `addressFormatIssue`, which layers this check UNDER
+> `profile/workflow.addressWarning` (zip · `Street, City, ST 12345` · ALL-CAPS) and reports the
+> first thing either one finds. It runs there and not on the other Profile Send Off routes because
+> that is the stage where an address FIRST EXISTS: the intake form never asks for one, so it
+> usually arrives from the benefits check rather than from a rep (§5.19). ⚠️ It is deliberately
+> **not** pushed down into `addressWarning` itself — Profile Send Off treats that function's result
+> as a readiness **blocker** (`ok: !!address && !addressIssue`), so widening it there would strand
+> patients on a page nobody asked to change. The intake page only ever warns (§5.10).
+> **The DVS doctor editor** writes these same two columns (`location_mm1xhw17` ·
+> `location_mm1xjnfv`) and still does **not** run the check — deliberate scope, not an oversight;
+> it is where a manager corrects a clinic address, so it is additive if wanted.
 
 ### 5.18 Profile Status — one status vocabulary on every role, every patient view (Aug 2026)
 Every stage had its own idea of "what is going on with this patient", and none of them agreed:
@@ -1184,6 +1195,41 @@ those columns to `BOARDS`' per-board read set, not special-casing the adapter.
 Inbox* are message/lookup surfaces, not pipeline stages — Patient Questions in particular spans
 Secondary Claims, which is not a stage in the Active list at all.
 
+
+### 5.19 The benefits-check address — filled in, repaired where possible, flagged where not (Aug 2026)
+The DTC intake form never asks for an address (§5.10), so on `/unverified-referrals` the **benefits
+check is usually where one first appears**: a successful Stedi run carries the payer's mailing line
+in **Stedi Address `text_mm5fqm4s`**, and the page pours it into the empty Address field
+(fill-when-blank, keyed on the columns rather than the run, so a patient re-opened days later still
+gets it). Josh, 2026-08-18: *VERY IMPORTANT*. Brandon, 2026-08-19: it must also **say what it is**.
+
+**Two shapes arrive, and the app used to accept both in silence.** Audited over the 22 Stedi
+addresses on the live board (2026-08-19): **7 carried an extra middle comma segment**, and **not
+one of the 22 raised a warning of any kind** — `addressWarning` accepts three-or-more segments, and
+`checkCardinalAddress` accepts a unit on address line 2. So:
+- **`9 BRENTWOOD RD, APT 6 A, BAY SHORE, NY 11706`** — the apt on its own line. That is not the
+  preset reps are taught (§5.17: *Street + Apt/Suite on ONE line*), but where the unit belongs is
+  **not a guess**, so `foldUnitOntoStreet` moves it onto the street line at fill time. This is the
+  "have it match the format" half of the ask.
+- **`20 Thornton Ave, C/O Julie Vanfleet, Auburn, NY 13021`** — a middle segment that is somebody's
+  NAME. The fold refuses it (guessing where a name goes is what puts a parcel at the wrong door)
+  and `addressFormatIssue` reports it instead, in Cardinal's own words plus `CARDINAL_FORMAT_HINT`.
+
+**Plus a provenance prompt, which is the other half of the ask.** An address that is still the
+payer's line and has never been confirmed shows *"Not confirmed with the patient — re-pick it from
+the address suggestions"* beside the field, and an amber **Address not confirmed** block in *Ready
+to Advance?* (only when no format complaint is already showing there — a rose "Address won't ship"
+says the same thing louder). ⚠️ **The durable half of that test is the MAP PIN, not a render flag.**
+A Places pick always sets lat/lng; the benefits-check fill deliberately never does (a payer gives a
+line, not coordinates, and a wrong inherited pin is worse than none). So the condition is *no pin
+AND the text still matches Stedi* — it survives a reload, a patient switch and a re-open, and
+re-picking from the suggestions is exactly what clears it. A session-scoped `stediFilled` flag
+would have gone quiet the moment the rep clicked another patient.
+
+Canonical logic: **`lib/profile/addressFormat.ts`** (+ tests, whose fixtures are the real board
+values). ⚠️ **Warnings only** — the intake stage's exits stay open by design (§5.10), and this must
+never become a gate there. `isUnitSegment` is imported from `shared/cardinalAddress` rather than
+re-implemented, so the fold and the parser can't disagree about what a unit is.
 
 ---
 
@@ -1629,6 +1675,23 @@ these services; when their math changes, `oopEstimator.ts` must be updated to ma
   (`LOG_PAYLOAD=false`); keep it that way. Don't write patient data to logs/artifacts/commits.
 - **Optimistic UI** in many panels marks state "saved" before Monday confirms; failures rely on a
   toast. Don't assume a green UI means a durable write (esp. Subscription — see §10).
+- **⚠️ Inside `.pf-root`, a shadcn `<Button>` renders UNSTYLED — use the page's `.btn` classes.**
+  `redesign.css` resets `.pf-root button { background:none; border:none; color:inherit;
+  font:inherit }`. That selector is one class + one type, so it **out-specifies every single-class
+  Tailwind utility** the Button carries: `bg-rose-600`, `text-white`, `text-sm` and `font-medium`
+  all lose. Measured in a real browser (2026-08-19) the Propose Stuck button in the intake page's
+  Escalation card computed to `background: rgba(0,0,0,0)`, near-black text, 16px/400 — plain text
+  with a stray drop shadow, which is what "the Propose Stuck button on the right looks funky" was.
+  `.pf-root .btn` is two classes, so it wins; `StageActionBar` takes **`skin="page"`** for exactly
+  this, and any other shared component dropped inside `.pf-root` needs the same treatment. Don't
+  reach for `!important` — the page has a complete button language already.
+- **Toasts are TOP-CENTRE (`App.tsx`), and both other corners are ruled out by past bugs.**
+  Bottom-right is where every stage page puts its primary action, so a toast landed on the button
+  the rep presses next — adding a note on Evaluate popped "Note saved to Monday" over **Completed
+  Evaluation** and swallowed the click (Brandon, 2026-08-19). Top-right covered the file preview's
+  Close button, which is why it had been moved to the bottom in the first place. Page headers are
+  `justify-between` — title left, actions right — so the top centre is the one strip of the
+  viewport with nothing clickable under it.
 - **Stale-tab chunk 404s self-heal** (`lib/shared/chunkReload.ts` + `components/shared/AppErrorBoundary.tsx`,
   added after the 2026-07-14 white-screen incident): every Pages deploy replaces ALL hashed JS chunks, so a
   tab left open across a code deploy 404s its next lazy page load — and React unmounts the whole app on an
@@ -1708,6 +1771,7 @@ these services; when their math changes, `oopEstimator.ts` must be updated to ma
 | Medical-necessity logic | `lib/masheke/evalState.ts` (+ ipPaths, requestTemplate, mnRequestPdf) |
 | A returned patient can't log an attempt (cards greyed, Save disabled) | `lib/masheke/attemptRollup.ts` → `oversightApi.returnProposedToQueue`; the gate is **MN Attempts** `color_mm1wz0vg`, not the attempt columns (§7) |
 | Stedi check output / eligibility results | **inline in `src/pages/ProfilePage.tsx`** — NOT `components/profile/StediPanel.tsx` (dead, §5.11) |
+| The benefits check filled in a bad-looking address / "not confirmed" flag | §5.19 — `lib/profile/addressFormat.ts`, rendered by `pages/UnverifiedReferralsPage.tsx` |
 | Cost estimate wrong | `lib/welcomeCall/oopEstimator.ts` (sync vs Railway financial backend) |
 | An address Cardinal won't accept / "Needs Review" on the orders board | §5.17 — `lib/shared/cardinalAddress.ts` (mirror of `Cardinal-api/src/address.js`), surfaced as C25/C26 in `lib/finalConfirm/checkPack.ts` |
 | Who can see what | `lib/accessStore.ts`, `lib/roleView.ts`, `components/AccessProvider.tsx` |

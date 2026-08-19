@@ -329,7 +329,7 @@ const RAW_CHART_DEFS: ChartDef[] = [
   //    (old drill-down URLs stay valid) but now shows VERIFIED referrals only. ──
   {
     id: "profile-send-off",
-    title: "Profile Send Off — Verified Referrals",
+    title: "Profile Send Off — Referral Intake",
     boardId: 18406352652,
     notesColId: "text_mm389fs",
     drilldownCols: PROFILE_COLS,

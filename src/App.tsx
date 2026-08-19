@@ -80,8 +80,18 @@ const App = () => (
   <AuthGate>
   <AccessProvider>
   <QueryClientProvider client={queryClient}>
-    {/* Bottom-right: top-right toasts covered the file preview's close button. */}
-    <Toaster position="bottom-right" />
+    {/* Top-CENTRE, and both halves of that are load-bearing (Brandon,
+        2026-08-19). Bottom-right is where EVERY stage page puts its primary
+        action — "Completed Evaluation", "Send to Monday", "Advance to MN" — so
+        a toast landed squarely on the button a rep presses next: adding a note
+        on Evaluate popped "Note saved to Monday" over Completed Evaluation and
+        swallowed the click for four seconds. Top-RIGHT is equally out: it used
+        to cover the file preview's Close button, which is why this was moved
+        to the bottom in the first place. The header row is `justify-between`
+        on every page — title left, actions right — and the file viewer's
+        toolbar puts Close at the far right, so the top centre is the one strip
+        of the viewport with nothing clickable under it. */}
+    <Toaster position="top-center" />
     <FileViewerHost />
     {/* App-wide on purpose: a call arrives wherever you happen to be working,
         so this cannot live on the texting page. See IncomingCallHost.tsx. */}

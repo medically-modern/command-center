@@ -16,10 +16,13 @@ export const ROLES: RoleConfig[] = [
   // referrals; Patient-type / CareCentrix-source patients moved to
   // unverifiedReferrals, and Already In System = "Yes" patients (whatever
   // their referral) moved to inSystemReferrals.
-  { id: "profile",         label: "Verified Referrals", color: "bg-blue-500",    icon: "UserCircle",     route: "/profile"          },
+  // Relabelled "Referral Intake" (Brandon, 2026-08-19). The id stays `profile`
+  // for the same reason as below — access.json role assignments key off the id,
+  // never the label, so a rename is display-only.
+  { id: "profile",         label: "Referral Intake",    color: "bg-blue-500",    icon: "UserCircle",     route: "/profile"          },
   // Label matches the page header. The id stays `unverifiedReferrals` so
   // existing access.json role assignments keep working — same reason `profile`
-  // kept its id when it was relabelled "Verified Referrals" (CLAUDE.md §5.10).
+  // kept its id when it was relabelled (CLAUDE.md §5.10).
   { id: "unverifiedReferrals", label: "Patient Intake — DTC & CareCentrix", color: "bg-sky-500", icon: "UserSearch",   route: "/unverified-referrals" },
   { id: "inSystemReferrals", label: "Already In System", color: "bg-red-600",   icon: "UserRoundCheck", route: "/in-system-referrals" },
   // Scheduled Calls is the one role ordered by TIME OF DAY rather than a Next

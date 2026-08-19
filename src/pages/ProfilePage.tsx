@@ -128,7 +128,7 @@ interface ProfilePageProps {
 const VARIANT_LABEL: Record<ProfileReferralRole, string> = {
   inSystem: "Already In System",
   unverified: "Unverified Referrals",
-  verified: "Verified Referrals",
+  verified: "Referral Intake",
 };
 
 /** Which board group(s) each role's list is drawn from. Only Already In System
@@ -565,7 +565,7 @@ const ProfilePage = ({ variant }: ProfilePageProps) => {
     try {
       await moveToProfileSendOff(selected);
       clearOverlay(selected.id);
-      toast.success(`${selected.name} moved to Profile Send Off — now in Verified Referrals`);
+      toast.success(`${selected.name} moved to Profile Send Off — now in Referral Intake`);
       clearDeepLink();
       setMoveOpen(false);
       setSelectedId(patients.find((p) => p.id !== selected.id)?.id ?? null);
@@ -760,7 +760,7 @@ const ProfilePage = ({ variant }: ProfilePageProps) => {
             </DialogTitle>
             <DialogDescription>
               Clears the Already In System flag and returns them to the 1. Intake
-              queue, where they&rsquo;ll be worked as a Verified Referral.
+              queue, where they&rsquo;ll be worked in Referral Intake.
             </DialogDescription>
           </DialogHeader>
           <div className="flex justify-end gap-2 pt-1">
@@ -1710,7 +1710,7 @@ function ProfileBody(p: BodyProps) {
                   {p.onMoveToPipeline ? (
                     <div className="route adv on">
                       <h4>Move to Profile Send Off</h4>
-                      <p>Workable after all → clear the Already In System flag and return them to the 1. Intake queue (Verified Referrals).</p>
+                      <p>Workable after all → clear the Already In System flag and return them to the 1. Intake queue (Referral Intake).</p>
                       <button
                         className="btn primary"
                         onClick={p.onMoveToPipeline}

@@ -40,6 +40,9 @@ import { formatBenefitsFailure } from "@/lib/profile/benefitsFailure";
 // The serving suggestion engine — the same derivation the pre-rewrite panel
 // auto-filled with (canCrossSellCgm × requestType → deriveServing).
 import { canCrossSellCgm, deriveServing, titleCaseAddress } from "@/lib/profile/workflow";
+import {
+  addressFormatIssue, foldUnitOntoStreet, isBenefitsCheckAddress,
+} from "@/lib/profile/addressFormat";
 import { ProposeStuckModal } from "@/components/masheke/ProposeStuckModal";
 import {
   PRIMARY_INSURANCE_INDEX, SECONDARY_INSURANCE_INDEX, SERVING_INDEX,
@@ -72,7 +75,6 @@ import {
   suggestPrimary, suggestSecondary, buildSuggestionInputs, isNyMedicaidId,
 } from "@/lib/profile/primaryInsurance";
 import type { Patient } from "@/lib/profile/workflow";
-import { addressWarning } from "@/lib/profile/workflow";
 // The oversight columns deep-link with ?mv= — read it through the shared
 // helper rather than a hand-rolled param name, which is how this page ended
 // up looking for a "?origin=" nothing ever wrote.
@@ -221,18 +223,31 @@ function Field(
 // design and must NOT appear in production." A <Prov> component that rendered
 // them lived here unused; it is deleted so nobody wires it up by mistake.
 
+/**
+ * What a benefits-check address looks like once the page has finished with it:
+ * de-shouted, and with an apt/suite that arrived as its own comma segment moved
+ * onto the street line (`lib/profile/addressFormat`). Declared once, at module
+ * scope, because it is used in two places that MUST agree — the fill itself and
+ * the "is this still the payer's line?" comparison behind the confirm prompt.
+ */
+const benefitsCheckAddressForm = (raw: string) => foldUnitOntoStreet(titleCaseAddress(raw));
+
 function EditText({
-  label, value, onChange, placeholder, full,
+  label, value, onChange, placeholder, full, required,
 }: {
   label: string; value: string; onChange: (v: string) => void; placeholder?: string;
   full?: boolean;
+  /** Adds the rose asterisk and paints the box rose while it is empty. Used
+   *  only for fields something downstream genuinely cannot run without — on
+   *  this page, the two the benefits check reads. */
+  required?: boolean;
 }) {
   return (
     <label className={full ? "fld full" : "fld"}>
-      <div className="flabel">{label}</div>
+      <div className="flabel">{label}{required && <span className="req-star">*</span>}</div>
       <input
         type="text"
-        className={value.trim() ? "filled" : undefined}
+        className={value.trim() ? "filled" : required ? "need" : undefined}
         value={value}
         placeholder={placeholder}
         onChange={(e) => onChange(e.target.value)}
@@ -275,16 +290,18 @@ function EditAddress({
 }
 
 function EditSelect({
-  label, value, options, onChange, full,
+  label, value, options, onChange, full, required,
 }: {
   label: string; value: string; options: string[]; onChange: (v: string) => void;
   full?: boolean;
+  /** See EditText — same marker, same rose-while-empty box. */
+  required?: boolean;
 }) {
   return (
     <label className={full ? "fld full" : "fld"}>
-      <div className="flabel">{label}</div>
+      <div className="flabel">{label}{required && <span className="req-star">*</span>}</div>
       <select
-        className={value.trim() ? "filled" : undefined}
+        className={value.trim() ? "filled" : required ? "need" : undefined}
         value={value}
         onChange={(e) => onChange(e.target.value)}
       >
@@ -717,14 +734,56 @@ const UnverifiedReferralsPage = () => {
   const readyMissing = readiness.filter((i) => !i.ok).length;
 
   // An address that's on file but won't ship — a missing state code, no comma
-  // before the city, a bare zip. Surfaced beside the input AND at the send-off
-  // block; unlike the profile role this page only warns, since its exits stay
-  // open by design.
+  // before the city, a bare zip, a C/O rider, a PO box, a clinic name where the
+  // house number should be. Surfaced beside the input AND at the send-off block;
+  // unlike the profile role this page only warns, since its exits stay open by
+  // design.
+  //
+  // `addressFormatIssue`, not the bare `addressWarning` it used to call: this is
+  // the first stage where an address exists at all, and it usually arrives from
+  // the benefits check rather than from a rep, so it also runs the Cardinal
+  // guidelines (§5.17) the shipping pipeline will apply later. Deliberately NOT
+  // pushed down into `addressWarning` itself — Profile Send Off treats that
+  // one's result as a readiness BLOCKER, and widening it there would strand
+  // patients on a page nobody asked us to change.
   const addressIssue = (selected?.patientAddress ?? "").trim()
-    ? addressWarning(selected!.patientAddress)
+    ? addressFormatIssue(selected!.patientAddress)
     : undefined;
 
+  /**
+   * The box still holds the payer's own mailing line, exactly as the benefits
+   * check supplied it, and nobody has confirmed it (Brandon, 2026-08-19).
+   *
+   * Two conditions, and the second is what makes this durable rather than a
+   * one-render flash: a Places pick ALWAYS sets a lat/lng, and the benefits-check
+   * fill deliberately never does (a payer gives a line, not coordinates). So
+   * "no pin AND the text still matches Stedi" survives a reload, a patient
+   * switch and a re-open — and re-picking the address from the suggestions is
+   * exactly what clears it.
+   */
+  const addressFromBenefitsCheck = !!selected
+    && !selected.patientAddressLat && !selected.patientAddressLng
+    && isBenefitsCheckAddress(
+      selected.patientAddress, selected.stediAddress, benefitsCheckAddressForm,
+    );
+
   // ── Benefits check ──────────────────────────────────────────────────────
+  /**
+   * The check's ENTIRE input, and the card now says so out loud.
+   * `useStediRun` writes Name / DOB / General Insurance / Member ID, verifies
+   * they landed on the board, and only then triggers the run — so these two are
+   * the only fields on the Provided Insurance card that decide whether a run can
+   * succeed at all. Everything else there is context for whoever verifies the
+   * payer (Brandon, 2026-08-19).
+   */
+  const benefitsMissing = useMemo(() => {
+    const missing: string[] = [];
+    if (!(selected?.generalInsurance ?? "").trim()) missing.push("General Insurance");
+    if (!(selected?.workingMemberId ?? "").trim()) missing.push("Member ID");
+    return missing;
+  }, [selected?.generalInsurance, selected?.workingMemberId]);
+  const benefitsReady = benefitsMissing.length === 0;
+
   const stedi = useStediRun();
 
   // While a run is in flight the service streams results back one column at a
@@ -755,9 +814,14 @@ const UnverifiedReferralsPage = () => {
 
     const stediAddr = (selected.stediAddress ?? "").trim();
     if (stediAddr && !(selected.patientAddress ?? "").trim()) {
-      // Payer addresses arrive SHOUTING; no pin — the payer gives a line, not
-      // coordinates, and a wrong inherited pin is worse than none.
-      patch.patientAddress = titleCaseAddress(stediAddr);
+      // Payer addresses arrive SHOUTING, and roughly a third of them put the
+      // apt/suite in its own comma segment — not the preset reps are taught
+      // (§5.17), and something no check on this page used to notice. De-shout
+      // and fold the unit onto the street line before it lands in the field;
+      // what can't be repaired without guessing is reported by `addressIssue`
+      // instead. Still no pin — the payer gives a line, not coordinates, and a
+      // wrong inherited pin is worse than none.
+      patch.patientAddress = benefitsCheckAddressForm(stediAddr);
       patch.patientAddressLat = null;
       patch.patientAddressLng = null;
       filled.address = true;
@@ -2114,9 +2178,25 @@ const UnverifiedReferralsPage = () => {
                     No address on file. The form doesn’t collect one, and downstream stages need it to ship —
                     collect it on the call.
                   </p>
-                ) : addressIssue ? (
-                  <p className="mt-2 text-[11px] text-amber-700">{addressIssue}</p>
-                ) : null}
+                ) : (
+                  <>
+                    {addressIssue && (
+                      <p className="mt-2 text-[11px] text-amber-700">{addressIssue}</p>
+                    )}
+                    {/* Not a fault — a provenance prompt. The address is on
+                        file and may well be right; what it has never been is
+                        CONFIRMED, and the one action that confirms it is also
+                        the one that gives the column a real map pin. Shown
+                        alongside a format complaint rather than instead of it:
+                        they are different facts, and "re-pick it" answers
+                        both. */}
+                    {addressFromBenefitsCheck && (
+                      <p className="mt-2 text-[11px] text-amber-700">
+                        Not confirmed with the patient — re-pick it from the address suggestions.
+                      </p>
+                    )}
+                  </>
+                )}
               </Card>
 
               <Card title="What They Need" tone="lead">
@@ -2383,48 +2463,82 @@ const UnverifiedReferralsPage = () => {
                     at the top.
                   </p>
                 )}
-                <div className="fgrid">
-                  {/* Editable, and written by Save — which the benefits check
-                      runs FIRST, because Stedi reads this column off the board
-                      rather than off this page. */}
-                  <EditSelect
-                    label="General Insurance"
-                    value={selected.generalInsurance ?? ""}
-                    onChange={(v) => edit({ generalInsurance: v })}
-                    options={GENERAL_INSURANCE_OPTS}
-                  />
-                  <EditText
-                    label="Member ID (Stedi reads this)"
-                    value={selected.workingMemberId ?? ""}
-                    onChange={(v) => edit({ workingMemberId: v })}
-                  />
-                  {/* Primary Insurance — READ-ONLY here, and only when the
-                      board actually has one. It's the VERIFIED payer, owned by
-                      step 1 on the right; showing it blank would read as a
-                      field the rep forgot to fill, and making it editable
-                      would give one value two owners. */}
-                  {(selected.primaryInsurance ?? "").trim() && (
-                    <Field boxed label="Primary Insurance (verified)" value={selected.primaryInsurance} />
-                  )}
-                  <EditText
-                    label="Insurance (Other) — as typed"
-                    value={selected.formInsuranceOther ?? ""}
-                    onChange={(v) => edit({ formInsuranceOther: v })}
-                  />
-                  <EditSelect
-                    label="Secondary (as provided)"
-                    value={selected.formSecondaryProvided ?? ""}
-                    onChange={(v) => edit({ formSecondaryProvided: v })}
-                    options={[
-                      "Anthem or Blue Cross Blue Shield", "UnitedHealthcare", "Aetna", "Cigna",
-                      "Humana", "Medicare", "Fidelis", "NYSHIP Empire", "Other", "None", "NYS Medicaid",
-                    ]}
-                  />
-                  <EditText
-                    label="Secondary Member ID"
-                    value={selected.formSecondaryMemberId ?? ""}
-                    onChange={(v) => edit({ formSecondaryMemberId: v })}
-                  />
+                {/* TWO groups, not one six-field grid (Brandon, 2026-08-19).
+                    The benefits check reads exactly General Insurance + Member
+                    ID off the board (`useStediRun` step 1 → `writePatientProfile`
+                    → `verifyProfileWritten`); the rest of this card is context
+                    for whoever verifies the payer and is never sent. Flat, the
+                    grid said nothing about that, so reps chased down a
+                    secondary member ID before daring to press Run — on a card
+                    whose whole job is to get two fields filled. */}
+                <div className="fgroup">
+                  <div className="fgroup-head">
+                    <span className="fgroup-title">Needed for the benefits check</span>
+                    <span className={benefitsReady ? "pill ok" : "pill warn"}>
+                      {benefitsReady ? "ready to run" : benefitsMissing.join(" + ") + " needed"}
+                    </span>
+                  </div>
+                  <div className="fgrid">
+                    {/* Editable, and written by Save — which the benefits check
+                        runs FIRST, because Stedi reads this column off the board
+                        rather than off this page. */}
+                    <EditSelect
+                      required
+                      label="General Insurance"
+                      value={selected.generalInsurance ?? ""}
+                      onChange={(v) => edit({ generalInsurance: v })}
+                      options={GENERAL_INSURANCE_OPTS}
+                    />
+                    <EditText
+                      required
+                      label="Member ID"
+                      value={selected.workingMemberId ?? ""}
+                      onChange={(v) => edit({ workingMemberId: v })}
+                    />
+                  </div>
+                  <p className="fhint">
+                    These two are the whole input. Fill them in and run the check — everything
+                    below is optional.
+                  </p>
+                </div>
+
+                <div className="fgroup opt">
+                  <div className="fgroup-head">
+                    <span className="fgroup-title">Extra info — optional</span>
+                  </div>
+                  <p className="fhint" style={{ marginTop: 0, marginBottom: 12 }}>
+                    Background for whoever verifies the payer. None of it is sent to the
+                    benefits check, and a blank field never blocks it.
+                  </p>
+                  <div className="fgrid">
+                    {/* Primary Insurance — READ-ONLY here, and only when the
+                        board actually has one. It's the VERIFIED payer, owned by
+                        step 1 on the right; showing it blank would read as a
+                        field the rep forgot to fill, and making it editable
+                        would give one value two owners. */}
+                    {(selected.primaryInsurance ?? "").trim() && (
+                      <Field boxed label="Primary Insurance (verified)" value={selected.primaryInsurance} />
+                    )}
+                    <EditText
+                      label="Insurance (Other) — as typed"
+                      value={selected.formInsuranceOther ?? ""}
+                      onChange={(v) => edit({ formInsuranceOther: v })}
+                    />
+                    <EditSelect
+                      label="Secondary (as provided)"
+                      value={selected.formSecondaryProvided ?? ""}
+                      onChange={(v) => edit({ formSecondaryProvided: v })}
+                      options={[
+                        "Anthem or Blue Cross Blue Shield", "UnitedHealthcare", "Aetna", "Cigna",
+                        "Humana", "Medicare", "Fidelis", "NYSHIP Empire", "Other", "None", "NYS Medicaid",
+                      ]}
+                    />
+                    <EditText
+                      label="Secondary Member ID"
+                      value={selected.formSecondaryMemberId ?? ""}
+                      onChange={(v) => edit({ formSecondaryMemberId: v })}
+                    />
+                  </div>
                 </div>
                 {/* Two actions on one row, each with its own status line below
                     rather than jammed in beside it — the messages are what made
@@ -2438,7 +2552,7 @@ const UnverifiedReferralsPage = () => {
                 >
                   <button
                     onClick={runBenefitsCheck}
-                    disabled={saving || stedi.isRunning || !(selected.generalInsurance ?? "").trim()}
+                    disabled={saving || stedi.isRunning || !benefitsReady}
                     className="btn primary sm"
                   >
                     {stedi.isRunning ? "Running benefits check…" : "Run benefits check"}
@@ -2456,9 +2570,14 @@ const UnverifiedReferralsPage = () => {
                     Start Insurance Follow-Up
                   </button>
                 </div>
-                {!(selected.generalInsurance ?? "").trim() && (
+                {/* Names the field that is actually missing. It used to gate
+                    on General Insurance alone, which let a rep start a 90-second
+                    run with no Member ID — Stedi reads BOTH off the board, so
+                    that run could only ever come back as an eligibility error. */}
+                {!benefitsReady && (
                   <p className="mt-2 text-xs text-muted-foreground">
-                    The benefits check needs General Insurance first.
+                    The benefits check needs {benefitsMissing.join(" and ")} first — nothing else
+                    on this card.
                   </p>
                 )}
                 {stedi.state.message && (
@@ -3247,6 +3366,29 @@ const UnverifiedReferralsPage = () => {
                       </div>
                     )}
 
+                    {/* Amber, not rose, and only when nothing worse is already
+                        showing: the address is probably fine, it has simply
+                        never been checked with the person who lives there. A
+                        format complaint already ends in "re-pick it from the
+                        suggestions", so stacking both would say it twice. */}
+                    {!addressIssue && addressFromBenefitsCheck && (
+                      <div
+                        className="mt-4 flex items-start gap-3 rounded-lg border-2 border-amber-300 bg-amber-50 px-4 py-3"
+                        role="status"
+                      >
+                        <AlertTriangle className="h-6 w-6 shrink-0 text-amber-600" />
+                        <div>
+                          <div className="text-sm font-black uppercase tracking-wide text-amber-800">
+                            Address not confirmed
+                          </div>
+                          <p className="mt-0.5 text-sm text-amber-900">
+                            It came from the benefits check, not from the patient. Read it back to
+                            them and re-pick it from the address suggestions.
+                          </p>
+                        </div>
+                      </div>
+                    )}
+
                     {/* THE advance — the only one on the page (Josh,
                         2026-08-13). It lives here because this is where the
                         profile work ends; the left pane shows what's still
@@ -3275,13 +3417,21 @@ const UnverifiedReferralsPage = () => {
 
               <div className="mt-4">
                 <Card title="Escalation">
+                  {/* The page's own `.msgbox`, not a Tailwind amber box. Inside
+                      `.pf-root` the utility classes lose to the redesign's
+                      resets, so a hand-rolled chip here renders half-styled —
+                      the same trap the action bar below fell into. */}
                   {selected.intakeEscalation?.trim() ? (
-                    <p className="mb-3 rounded-md bg-amber-50 border border-amber-200 px-3 py-2 text-xs text-amber-900">
+                    <div className="msgbox amber" style={{ marginTop: 0, marginBottom: 14 }}>
                       Currently: <strong>{selected.intakeEscalation}</strong>
                       {selected.intakeEscalation === "Manager Escalation Required" && " — with Manager Intervention."}
                       {selected.intakeEscalation === "Final Escalation Required" && " — awaiting a Final Decision."}
-                    </p>
+                    </div>
                   ) : null}
+                  <p className="sugg-note" style={{ marginTop: 0, marginBottom: 12 }}>
+                    Can&rsquo;t move this patient forward? Propose them as stuck and a manager
+                    decides — they leave your queue straight away.
+                  </p>
                   <StageActionBar
                     stage="unverified-intake"
                     board="profile"
@@ -3292,6 +3442,11 @@ const UnverifiedReferralsPage = () => {
                     // The bar's Propose Stuck saves this page first too, so the
                     // two entry points behave identically (Josh, 2026-08-18).
                     beforeProposeStuck={saveBeforePropose}
+                    // MANDATORY here: `.pf-root button` out-specifies every
+                    // Tailwind utility the shadcn Button carries, so the header
+                    // skin renders as unstyled text in this card (Brandon,
+                    // 2026-08-19). See StageActionBar's header comment.
+                    skin="page"
                   />
                   {/* "Escalate — doesn't qualify" is a LEFT-pane exit (§2) and
                       lives in Ready to Advance?. What stays here is the shared

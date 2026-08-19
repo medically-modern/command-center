@@ -133,8 +133,14 @@ function isPoBoxSegment(seg: string): boolean {
   );
 }
 
-/** Is a comma segment a recognizable apartment/unit (vs a place-name we must not guess about)? */
-function isUnitSegment(seg: string): boolean {
+/** Is a comma segment a recognizable apartment/unit (vs a place-name we must not guess about)?
+ *
+ *  Exported (2026-08-19) so `lib/profile/addressFormat` can fold a unit that
+ *  arrived as its own segment onto the street line using THIS vocabulary rather
+ *  than a second copy of it. Exporting changes no behaviour and nothing about
+ *  the parity contract with `Cardinal-api/src/address.js` — the rule is
+ *  untouched, only its visibility. */
+export function isUnitSegment(seg: string): boolean {
   const s = String(seg || "").trim().toUpperCase();
   if (!s) return false;
   if (s.startsWith("#")) return true;
