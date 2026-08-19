@@ -32,6 +32,14 @@ import { isInSystemQueue, type ProfileReferralRole } from "./referralSplit";
  *  `GROUPS.newFormCompleted` in mondayApi.ts. */
 export const DTC_FORM_GROUP_PARTIAL = "group_mm5z87zt";
 export const DTC_FORM_GROUP_COMPLETED = "group_mm5zgeak";
+/** Profile Clean-Up (§5.20) — where a form lead lands once Info Collection
+ *  advances it. NOT a form group: it is deliberately absent from
+ *  `dtcFormGroupIds` below, because those two answer "is this row still an
+ *  un-worked form", which a Clean-Up patient is not. It matters HERE because
+ *  the lead poll DOES read that group (an advanced twin is still a twin), so
+ *  `dtcLeadRoute` has to know where to send the rep. Must match
+ *  `GROUPS.profileCleanUp` / intakeSubStage's `PROFILE_CLEANUP_GROUP`. */
+export const DTC_CLEANUP_GROUP = "group_mm6c3rhb";
 
 /** One patient-submitted form item the flag can match against. */
 export interface DtcFormLead {
@@ -157,6 +165,7 @@ export function queueLeadsFrom(
 export function dtcLeadKindLabel(lead: DtcFormLead): string {
   if (lead.groupId === DTC_FORM_GROUP_PARTIAL) return "partial form";
   if (lead.groupId === DTC_FORM_GROUP_COMPLETED) return "completed form";
+  if (lead.groupId === DTC_CLEANUP_GROUP) return "form, in profile clean-up";
   return "patient-submitted referral";
 }
 
@@ -174,6 +183,13 @@ export function dtcLeadRoute(lead: DtcFormLead, currentVariant: ProfileReferralR
   }
   if (lead.groupId === DTC_FORM_GROUP_COMPLETED) {
     return `/unverified-referrals?patientId=${lead.id}`;
+  }
+  // Advanced to Profile Clean-Up — still a form twin, but no longer in a form
+  // group, so it must NOT fall through to the verified/in-system branch below:
+  // that would deep-link the rep onto /profile, where the patient isn't in the
+  // queue and the exits on offer are the wrong ones (§5.10's deep-link trap).
+  if (lead.groupId === DTC_CLEANUP_GROUP) {
+    return `/profile-cleanup?patientId=${lead.id}`;
   }
   const leadRole: ProfileReferralRole = isInSystemQueue(lead.alreadyInSystem, lead.groupId)
     ? "inSystem"

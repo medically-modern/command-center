@@ -18,7 +18,8 @@ import { GROUPS } from "./mondayApi";
 import { INTAKE_SUB_STAGE_INDEX } from "./mondayMapping";
 import { PROFILE_CLEANUP_GROUP as OVERSIGHT_CLEANUP_GROUP } from "../oversight/oversightApi";
 import { GROUPS as SCHEDULED_CALL_GROUPS } from "../scheduledCalls/mondayApi";
-import { DTC_FORM_GROUP_PARTIAL, DTC_FORM_GROUP_COMPLETED } from "./dtcFormFlag";
+import { DTC_FORM_GROUP_PARTIAL, DTC_FORM_GROUP_COMPLETED, dtcLeadRoute } from "./dtcFormFlag";
+import { BOARDS } from "../systemMgmt/mondayApi";
 
 describe("intakeSubStageRole", () => {
   it("routes the Profile Clean-Up group to the clean-up role", () => {
@@ -91,6 +92,29 @@ describe("keep-in-agreement", () => {
     expect(readsGroup("src/hooks/useRoleCounts.ts"), "useRoleCounts.ts").toBe(true);
     expect(readsGroup("scripts/snapshot-baseline.mjs"), "snapshot-baseline.mjs").toBe(true);
     expect(readsGroup("services/baseline-cron/index.mjs"), "baseline-cron/index.mjs").toBe(true);
+  });
+
+  it("is a clickable Search row, routed to the Clean-Up page", () => {
+    // `groupRoutes` is navigation metadata: a group missing from it is still
+    // SEARCHED, it just isn't clickable (`rowRouting` returns route ""), which
+    // dead-ends the click with no error.
+    const b = BOARDS.find((x) => x.boardId === 18406352652);
+    const g = b?.groupRoutes.find((x) => x.id === PROFILE_CLEANUP_GROUP);
+    expect(g, "Profile Clean-Up missing from BOARDS groupRoutes").toBeTruthy();
+    expect(g?.roleRoute).toBe("/profile-cleanup");
+    expect(g?.isCompleted).toBeFalsy();
+  });
+
+  it("routes a DTC twin that has already advanced to the Clean-Up page", () => {
+    // The lead poll reads this group, so `dtcLeadRoute` has to handle it. Left
+    // to fall through, it returned `/profile` — a page the patient is not in
+    // the queue of, offering the wrong exits (§5.10's deep-link trap).
+    const lead = {
+      id: "9", name: "A", groupId: PROFILE_CLEANUP_GROUP,
+      dob: "", email: "", phone: "", alreadyInSystem: "", submittedOn: "",
+    };
+    expect(dtcLeadRoute(lead, "verified")).toBe("/profile-cleanup?patientId=9");
+    expect(dtcLeadRoute(lead, "inSystem")).toBe("/profile-cleanup?patientId=9");
   });
 
   it("has a role registry entry and a route", () => {
