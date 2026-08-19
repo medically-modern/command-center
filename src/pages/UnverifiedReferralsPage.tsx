@@ -132,6 +132,9 @@ import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import "./profile/redesign.css";
 import "./profile/intake.css";
 import { IntakeProfileStatus } from "@/components/shared/PatientProfileStatus";
+// The duplicate automation's verdict — the ONLY thing a partial form lead
+// carries to say they are already a patient (§5.21).
+import { isAlreadyInSystemResult } from "@/lib/profile/dupCheckFlag";
 
 /** This queue is the DTC form's two groups and nothing else. "Referrals"
  *  (the 1. Intake group) was a third option here and is gone: that group is
@@ -2035,6 +2038,21 @@ const UnverifiedReferralsPage = ({ variant = "infoCollection" }: { variant?: Int
                       {selected.name}
                     </h1>
                     <IntakeProfileStatus patient={selected} ignoreFollowUp />
+                    {/* ⚠️ Reads the DUP CHECK verdict, not `alreadyInSystem`.
+                        A partial lead is flagged and deliberately never filed,
+                        so that column is blank for exactly the patients this
+                        pill exists for (§5.21). Rose, and beside the name
+                        rather than buried in the form: the rep is about to ring
+                        somebody we may already be serving, and that changes the
+                        call before it starts. */}
+                    {isAlreadyInSystemResult(selected.dupCheckResult) && (
+                      <span
+                        className="inline-flex items-center gap-1.5 rounded-full border-2 border-rose-300 bg-rose-50 px-3 py-1 text-xs font-black uppercase tracking-wide text-rose-800"
+                        title={`Duplicate check: ${selected.dupCheckResult}. They already exist on a downstream board — check before working this lead.`}
+                      >
+                        <AlertTriangle className="h-3.5 w-3.5" /> Already In System
+                      </span>
+                    )}
                   </div>
                   <div className="mt-1 flex items-center gap-3 flex-wrap">
                     <span className="text-lg text-muted-foreground">

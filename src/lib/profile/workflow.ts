@@ -69,6 +69,10 @@ export interface Patient {
   intakeCallComplete: string;
   /** "Manager Escalation Required" | "Done" | "Final Escalation Required" */
   intakeEscalation: string;
+  /** The duplicate automation's verdict — "Duplicate" / "New" / "Needs review"
+   *  / … . Written by Railway, never by this app. For a PARTIAL form lead it
+   *  is the only sign they are already a patient (§5.21). */
+  dupCheckResult: string;
   /** "Info Collection" | "Profile Clean-Up" — the board's record of which half
    *  of the intake split this patient is in. Display/audit only: the QUEUE is
    *  decided by `groupId` (lib/profile/intakeSubStage.ts), so a failed group

@@ -93,6 +93,12 @@ export const COL = {
    *  = 7, Profile Clean-Up = 1). Read them from INTAKE_SUB_STAGE_INDEX in
    *  mondayMapping.ts, never assume — CLAUDE.md §5.12. */
   intakeSubStage: "color_mm6ct431",
+  /** Dup Check Result — written by the `duplicate-patient-check` Railway
+   *  automation, never by this app. Read-only here, and the ONLY signal a
+   *  partial form lead carries that they are already a patient: partials are
+   *  deliberately flagged and NOT filed, so `alreadyInSystem` stays blank for
+   *  them (Josh, 2026-08-19). See lib/profile/dupCheckFlag.ts. */
+  dupCheckResult: "color_mm65tv1m",
 
   // ── Stedi ──
   runStediEligibility: "color_mm1yeksx",
@@ -271,7 +277,7 @@ export const READ_COLUMN_IDS: string[] = [
   // Rep-entered on the intake call
   COL.selfAdvocacy, COL.currentOopCost, COL.cgmDataAwareness,
   COL.attemptCounter, COL.intakeCallComplete,
-  COL.intakeEscalation, COL.intakeSubStage,
+  COL.intakeEscalation, COL.intakeSubStage, COL.dupCheckResult,
 ];
 
 export interface MondayColumnValue {

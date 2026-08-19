@@ -1325,6 +1325,54 @@ because that queue is a calling queue with no snooze (§5.10); on Clean-Up the a
 calls made in the *previous* sub-stage and orders nothing, so the list keeps Monday's order (oldest
 first). `ignoreFollowUp` holds on both: neither has a snooze.
 
+
+### 5.21 DTC form leads get a duplicate check — completed filed, partials flagged (Aug 2026)
+The `duplicate-patient-check` webhook (`josh-monday-automations` on Railway) fires on **every**
+create on Profile Send Off, but it gated on the group and accepted only **1. Intake** and **Already
+In System** — so a patient who filled the DTC form was **never duplicate-checked at all**. That was
+recorded in that repo's own `DUPLICATE_ANALYSIS.md` under Known gaps, and the Railway logs said it
+outright on every submission: `created in group group_mm5z87zt … — ignoring`.
+
+⚠️ **A blank result column did NOT mean "checked and clear".** When the check runs and finds
+nothing it *writes* `Already In System = No`. Blank meant it never ran — which is why the gap sat
+there unnoticed. Both new paths preserve that property by stamping something on every outcome.
+
+The two form groups now come in at **two different depths** (Josh, 2026-08-19):
+
+| | New Form — Completed | New Form — Partial Leads |
+|---|---|---|
+| check runs | yes | yes |
+| Claude write-up (notes, docs, diffs) | yes | **no** |
+| writes `Already In System` | **yes** | **NEVER** |
+| result of a match | filed → board automation **7922049614** moves them to Already In System | a pill in the Command Center; patient stays in the calling queue |
+
+**⚠️ `Already In System` is not a flag, it is a MOVE.** Automation 7922049614 is board-wide with no
+group condition, so one write of "Yes" takes the item out of the form groups — off Info
+Collection's queue entirely. That is the whole reason partials get their own path: an abandoned
+form is a lead to ring, not a filing decision. `FLAG_ONLY_GROUPS` in
+`automations/duplicate-patient-check.js` is the single switch that keeps that column out of the
+partial branch, and `test/dtc-form-groups.test.js` pins it.
+
+**The SPA pill reads the VERDICT column, not the flag** — `lib/profile/dupCheckFlag.ts`
+(`isAlreadyInSystemResult`) off **Dup Check Result `color_mm65tv1m`**, rendered in the patient
+header on the intake page. ⚠️ Reading `alreadyInSystem` there would render a pill that is
+**permanently absent for exactly the patients it exists for**, because partials are deliberately
+never filed — and nothing would error. `"New"` (checked, clear), `"Check failed"` and
+`"Needs review"` are deliberately not flagged; the last belongs to the Already In System queue,
+which has its own role and its own banner.
+
+**Labels are pinned to the board.** A status write with a label the board doesn't have is rejected
+outright — a silent production failure until somebody reads the logs — which is what that repo's
+`write-scope.test.js` asserts. The partial path therefore reuses the existing **`Duplicate`** label
+rather than adding one; what distinguishes it from an analysed duplicate is that the item is still
+in the partial-leads GROUP and the Analysis column beside it is empty. Don't "fix" this with
+`create_labels_if_missing` — that defeats the test.
+
+**Still not covered:** the check never searches Profile Send Off itself (its five boards are
+Medical Evaluation, Insurance, Welcome Call and the two Subscription boards), so a form twin of a
+patient sitting on the *same* board is invisible to it. That case is the SPA's own read-only
+`dtcFormFlag` (§5.10), and the two are independent.
+
 ---
 
 ## 6. Patient flow across boards (the big picture)
@@ -1866,6 +1914,7 @@ these services; when their math changes, `oopEstimator.ts` must be updated to ma
 | A returned patient can't log an attempt (cards greyed, Save disabled) | `lib/masheke/attemptRollup.ts` → `oversightApi.returnProposedToQueue`; the gate is **MN Attempts** `color_mm1wz0vg`, not the attempt columns (§7) |
 | Stedi check output / eligibility results | **inline in `src/pages/ProfilePage.tsx`** — NOT `components/profile/StediPanel.tsx` (dead, §5.11) |
 | The benefits check filled in a bad-looking address / "not confirmed" flag | §5.19 — `lib/profile/addressFormat.ts`, rendered by `pages/UnverifiedReferralsPage.tsx` |
+| A DTC form patient wasn't duplicate-checked / the "Already In System" pill is missing | §5.21 — `lib/profile/dupCheckFlag.ts` reads **Dup Check Result**, never `alreadyInSystem`; the service half is `josh-monday-automations` `automations/duplicate-patient-check.js` |
 | A DTC intake patient is in the wrong half of the split / Advance did nothing | §5.20 — `lib/profile/intakeSubStage.ts` (the queue is the GROUP), then `unverifiedWrite.advanceToProfileCleanUp`. Both roles are `UnverifiedReferralsPage` under a `variant` prop |
 | Cost estimate wrong | `lib/welcomeCall/oopEstimator.ts` (sync vs Railway financial backend) |
 | An address Cardinal won't accept / "Needs Review" on the orders board | §5.17 — `lib/shared/cardinalAddress.ts` (mirror of `Cardinal-api/src/address.js`), surfaced as C25/C26 in `lib/finalConfirm/checkPack.ts` |

@@ -91,6 +91,7 @@ export function mondayItemToPatient(item: MondayItem): Patient {
     intakeCallComplete: col(item, COL.intakeCallComplete),
     intakeEscalation: col(item, COL.intakeEscalation),
     intakeSubStage: col(item, COL.intakeSubStage),
+    dupCheckResult: col(item, COL.dupCheckResult),
 
     // Status
     alreadyInSystem: col(item, COL.alreadyInSystem),
