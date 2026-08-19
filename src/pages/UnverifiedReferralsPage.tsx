@@ -1,5 +1,5 @@
 /**
- * Unverified Referrals — the DTC + CareCentrix intake stage.
+ * The DTC + CareCentrix intake stage — BOTH halves of it.
  *
  * A SEPARATE page from ProfilePage on purpose. ProfilePage serves the Verified
  * Referrals send-off and Already In System, and this stage's redesign must not
@@ -7,14 +7,32 @@
  * component. Shared building blocks (DoctorSection, the insurance engine) are
  * imported rather than copied.
  *
- * Two panes (HANDOFF §2):
- *   Left  — Patient Info Collection. Everything the patient gave us, rep-editable.
- *   Right — Patient Profile Clean-Up. Locked until all four unlock conditions pass.
+ * ⚠️ ONE COMPONENT, TWO ROLES (Josh, 2026-08-19). The stage split into two
+ * sub-stages, and the old lock became the boundary between them:
+ *
+ *   variant="infoCollection"  /unverified-referrals   role `unverifiedReferrals`
+ *     The two DTC form groups. LEFT PANE ONLY — the right pane isn't blurred,
+ *     it isn't rendered. The rep collects what the patient told us; once the
+ *     unlock conditions pass, Advance moves them to the Profile Clean-Up group.
+ *
+ *   variant="cleanup"         /profile-cleanup        role `intakeCleanup`
+ *     The Profile Clean-Up group. Left AND right pane, right pane already open
+ *     (passing the gate is how the patient got here). Exits to Medical
+ *     Necessity exactly as the combined page did.
+ *
+ * Two roles off ONE component rather than a fork, because the left pane is
+ * identical on both and a copy would drift — the same reason ProfilePage serves
+ * its own two variants. What differs is which group is fetched, whether the
+ * right pane exists, and which button is the primary exit.
+ *
+ * The queue rule is `lib/profile/intakeSubStage.ts`; the gate is
+ * `evaluateUnlock`, unchanged — it used to unblur a pane, it now enables a
+ * button.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { AlertTriangle, ClipboardCheck, Lock, Check, X, ArrowLeft, CalendarClock, Save, Phone, Loader2 } from "lucide-react";
+import { AlertTriangle, ClipboardCheck, Check, X, ArrowLeft, CalendarClock, Save, Phone, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 // History-first Back, same as every other stage page — returns a manager to
 // their Oversight drill-down rather than a hardcoded home route (§9).
@@ -53,7 +71,8 @@ import {
 } from "@/lib/profile/mondayMapping";
 import {
   writeIntakeEdits, writeVerifiedInsurance, logContactAttempt, appendIntakeNote,
-  advanceToMedicalNecessity, escalateIntake, proposeIntakeStuck, returnIntakeToPipeline,
+  advanceToMedicalNecessity, advanceToProfileCleanUp, escalateIntake, proposeIntakeStuck,
+  returnIntakeToPipeline,
   type IntakeEdits, type VerifiedEdits,
 } from "@/lib/profile/unverifiedWrite";
 import {
@@ -120,6 +139,17 @@ import { IntakeProfileStatus } from "@/components/shared/PatientProfileStatus";
  *  so listing it here showed reps the stage they'd already handed off to. */
 type Source = "completed" | "partial";
 
+/** Which half of the intake split this page is serving. */
+export type IntakeVariant = "infoCollection" | "cleanup";
+
+/** Header title per variant. Must agree with `config.ts` ROLES and the
+ *  oversight chart titles in `oversightApi.ts` — three places, same drill as
+ *  §5.10's VARIANT_LABEL. */
+const VARIANT_LABEL: Record<IntakeVariant, string> = {
+  infoCollection: "Non-Referral Intake — Info Collection",
+  cleanup: "Intake — Profile Clean-Up",
+};
+
 /**
  * How this queue's sidebar behaves, in one place: the page's auto-select and
  * the sidebar itself both read it, so the row a rep looks at first and the
@@ -130,7 +160,18 @@ type Source = "completed" | "partial";
  * `sortByAttempts` — nothing ages a patient out of here, so least-tried-first
  * is what stops the bottom of a growing list never being called.
  */
-const SIDEBAR_OPTIONS = { ignoreFollowUp: true, sortByAttempts: true } as const;
+const SIDEBAR_OPTIONS: Record<IntakeVariant, { ignoreFollowUp: boolean; sortByAttempts: boolean }> = {
+  infoCollection: { ignoreFollowUp: true, sortByAttempts: true },
+  // ⚠️ `sortByAttempts` is Info Collection's, not this stage's. It exists
+  // because that queue is a CALLING queue with no snooze: nothing ages a
+  // patient out, so least-tried-first is what stops the bottom of a growing
+  // list never being rung (§5.10). Clean-Up is desk work — the attempt count is
+  // a record of calls made in the previous sub-stage and orders nothing here,
+  // so the list keeps Monday's own order, i.e. oldest first. `ignoreFollowUp`
+  // still holds: this stage has no snooze either, and `IntakeEdits` cannot
+  // write the column.
+  cleanup: { ignoreFollowUp: true, sortByAttempts: false },
+};
 
 const SOURCE_GROUP: Record<Source, string> = {
   completed: GROUPS.newFormCompleted,
@@ -629,8 +670,80 @@ function intakeEditsFor(p: Patient): IntakeEdits {
   };
 }
 
-const UnverifiedReferralsPage = () => {
+/**
+ * The shared manager ladder — Propose Stuck / Approve Stuck / Send back to
+ * pipeline — plus the patient's current rung.
+ *
+ * ⚠️ ONE definition, rendered on BOTH sub-stages (Josh, 2026-08-19: "the
+ * propose stuck system we have right now should be applied to both of these
+ * stages… works the same"). It used to sit inline in the right pane, which is
+ * exactly where Info Collection stopped rendering — so a manager arriving from
+ * an Oversight column would have found the bar, and Approve Stuck and Send back
+ * to pipeline with it, simply gone. A rep's own Propose Stuck lives in the exit
+ * row and would have hidden that: the affordance a PROCESSOR uses survives, the
+ * one only a MANAGER uses does not.
+ *
+ * Extracted rather than copied into both panes for the obvious reason — two
+ * copies of an escalation ladder is how the two rungs start disagreeing.
+ */
+function EscalationCard({
+  patient, onDone, beforeProposeStuck,
+}: {
+  patient: Patient;
+  onDone: () => void;
+  beforeProposeStuck: () => Promise<void>;
+}) {
+  return (
+    <Card title="Escalation">
+      {/* The page's own `.msgbox`, not a Tailwind amber box. Inside `.pf-root`
+          the utility classes lose to the redesign's resets, so a hand-rolled
+          chip here renders half-styled — the same trap the action bar below
+          fell into. */}
+      {patient.intakeEscalation?.trim() ? (
+        <div className="msgbox amber" style={{ marginTop: 0, marginBottom: 14 }}>
+          Currently: <strong>{patient.intakeEscalation}</strong>
+          {patient.intakeEscalation === "Manager Escalation Required" && " — with Manager Intervention."}
+          {patient.intakeEscalation === "Final Escalation Required" && " — awaiting a Final Decision."}
+        </div>
+      ) : null}
+      <p className="sugg-note" style={{ marginTop: 0, marginBottom: 12 }}>
+        Can&rsquo;t move this patient forward? Propose them as stuck and a manager
+        decides — they leave your queue straight away.
+      </p>
+      <StageActionBar
+        stage="unverified-intake"
+        board="profile"
+        patientId={patient.id}
+        patientName={patient.name}
+        escalationLabel={patient.intakeEscalation}
+        onDone={onDone}
+        // The bar's Propose Stuck saves the page first too, so the two entry
+        // points behave identically (Josh, 2026-08-18).
+        beforeProposeStuck={beforeProposeStuck}
+        // MANDATORY here: `.pf-root button` out-specifies every Tailwind
+        // utility the shadcn Button carries, so the header skin renders as
+        // unstyled text in this card (Brandon, 2026-08-19). See
+        // StageActionBar's header comment.
+        skin="page"
+      />
+      {/* "Escalate — doesn't qualify" is a LEFT-pane exit (§2) and lives in
+          Ready to Advance?. What stays here is the shared manager ladder:
+          Propose Stuck / Approve / Send back.
+
+          The escalation log used to be echoed here from its own column. That
+          column is gone (Josh, 2026-08-11) — decisions are stamped into the
+          Call Log with their rung named, so the reason sits in the same place
+          as every other note on this patient rather than in a second box
+          saying the same thing twice. */}
+    </Card>
+  );
+}
+
+const UnverifiedReferralsPage = ({ variant = "infoCollection" }: { variant?: IntakeVariant }) => {
   const [searchParams, setSearchParams] = useSearchParams();
+  /** Profile Clean-Up: right pane rendered and already open, one group, no
+   *  partial/completed selector. Info Collection: left pane only. */
+  const isCleanUp = variant === "cleanup";
 
   const sourceParam = searchParams.get("source");
   const source: Source = sourceParam === "partial" ? "partial" : "completed";
@@ -638,10 +751,22 @@ const UnverifiedReferralsPage = () => {
   const {
     patients, loading, initialLoading, error, refetch, updateLocal, hasOverlay, getReceived,
     saveOverlay, clearOverlay,
-  } = useMondayPatients(searchParams.get("patientId"), SOURCE_GROUP[source]);
+    // Clean-Up is ONE group, so the form selector doesn't apply there — the
+    // partials never advance, so nothing in that group came from one.
+  } = useMondayPatients(
+    searchParams.get("patientId"),
+    isCleanUp ? GROUPS.profileCleanUp : SOURCE_GROUP[source],
+  );
 
   const [selectedId, setSelectedId] = useState<string | null>(searchParams.get("patientId"));
   const [saving, setSaving] = useState(false);
+  /** WHICH long-running action is in flight, not just that one is.
+   *  `saving` disables the whole exit row (correct — two concurrent writes to
+   *  the same item is exactly the race verifiedWrite exists to prevent), but it
+   *  is also what the buttons read for their label. With Advance and Save now
+   *  sitting side by side, one flag meant pressing either flipped BOTH captions
+   *  — "Advancing…" next to "Saving…" for a plain save. */
+  const [advancing, setAdvancing] = useState(false);
   // Outcomes are TOASTS, like every other role. There used to be a `saveNote`
   // string rendered as grey text at the bottom of the left pane — which on a
   // full patient sits below the fold, so "Advanced to Medical Necessity." was
@@ -680,8 +805,8 @@ const UnverifiedReferralsPage = () => {
    * the row the rep is looking at goes unselected.
    */
   const ordered = useMemo(
-    () => sidebarVisibleList(visible, "all", SIDEBAR_OPTIONS),
-    [visible],
+    () => sidebarVisibleList(visible, "all", SIDEBAR_OPTIONS[variant]),
+    [visible, variant],
   );
 
   const selected = useMemo(
@@ -938,7 +1063,7 @@ const UnverifiedReferralsPage = () => {
 
   /** A partial fill-out is an incomplete form, not a workable referral. The
    *  advance path is meaningless for them — parked until that flow is designed. */
-  const isPartial = source === "partial";
+  const isPartial = !isCleanUp && source === "partial";
 
   const switchSource = useCallback((next: Source) => {
     const params = new URLSearchParams(searchParams);
@@ -1177,12 +1302,24 @@ const UnverifiedReferralsPage = () => {
     .map((c) => ({ label: c.label, hint: c.hint }));
 
   /**
-   * The advance itself still needs BOTH halves — it is the exit from the whole
-   * stage. It fires from the right pane's button, which sits beside the
-   * readiness list, so the half a rep can't see from there is the half this
-   * gate already showed them on the way in.
+   * Advance to MN — Profile Clean-Up's exit, and the exit from the whole stage.
+   * Still needs BOTH halves: it fires from the right pane's button, which sits
+   * beside the readiness list, so the half a rep can't see from there is the
+   * half this gate already showed them on the way in.
    */
   const canAdvance = unlock.unlocked && readyMissing === 0;
+
+  /**
+   * Advance to Profile Clean-Up — Info Collection's exit. Gated on the unlock
+   * conditions ALONE, deliberately: `readyMissing` counts the right pane's
+   * work (verified insurance, the confirmed doctor), which is the stage this
+   * button hands the patient TO. Requiring it here would make the queue
+   * unexitable.
+   *
+   * Partials are excluded for the same reason they have no advance today —
+   * an incomplete form is not a workable referral.
+   */
+  const canAdvanceToCleanUp = unlock.unlocked && !isPartial;
 
   /** Which rung a Propose Stuck from here lands on. Hoisted out of the click
    *  handler so the card can NAME the destination — the previous copy told the
@@ -1240,22 +1377,24 @@ const UnverifiedReferralsPage = () => {
     // these can close on success and STAY OPEN on failure with the rep's typed
     // reason still in the box — closing regardless would throw away the text
     // they'd have to retype.
-    async (kind: "advance" | "escalate" | "proposeStuck" | "return"): Promise<boolean> => {
+    async (kind: "advance" | "advanceCleanUp" | "escalate" | "proposeStuck" | "return"): Promise<boolean> => {
       if (!selected) return false;
-      if (kind !== "advance" && !escalateReason.trim()) {
+      const isAdvance = kind === "advance" || kind === "advanceCleanUp";
+      if (!isAdvance && !escalateReason.trim()) {
         toast.error("Add a reason first", {
           description: "A manager can't action a blank escalation.",
         });
         return false;
       }
       setSaving(true);
+      setAdvancing(isAdvance);
         try {
         // BEFORE the transaction, not after: the advancer triggers the Move to
         // Onboarding automation, which copies columns to a fresh Masheke item.
         // A note appended afterwards lands on an item nobody works again.
         // logChangedFacts reports nothing on failure by design — a note that
         // didn't land must not stop a patient advancing.
-        if (kind === "advance") await logChangedFacts(selected);
+        if (isAdvance) await logChangedFacts(selected);
         const res =
           // ONE verified transaction. The left pane, the verified insurance and
           // the doctor columns are now all written and read back BEFORE Move to
@@ -1266,6 +1405,13 @@ const UnverifiedReferralsPage = () => {
             edits: intakeEditsFor(selected),
             verified: { ...verified, serving: selected.serving },
             clinicLabelId,
+            liveIndex,
+          })
+          // The Info Collection exit. Same verified-write shape one rung
+          // earlier, and deliberately WITHOUT the verified-insurance/doctor
+          // halves: that is the work of the pane this hands the patient to.
+          : kind === "advanceCleanUp" ? await advanceToProfileCleanUp(selected, {
+            edits: intakeEditsFor(selected),
             liveIndex,
           })
           : kind === "escalate" ? await escalateIntake(selected.id, escalateReason)
@@ -1283,6 +1429,7 @@ const UnverifiedReferralsPage = () => {
           // column they'll find them in.
           toast.success(
             kind === "advance" ? "Advanced to Medical Necessity"
+              : kind === "advanceCleanUp" ? "Advanced to Profile Clean-Up"
               : kind === "escalate" ? "Escalated to Manager Intervention"
               : kind === "proposeStuck"
                 ? stuckLevel === "final"
@@ -1292,26 +1439,41 @@ const UnverifiedReferralsPage = () => {
           );
         } else {
           toast.error(
-            kind === "advance" ? "Not advanced" : "That didn't go through",
+            isAdvance ? "Not advanced" : "That didn't go through",
             { description: res.errors.map((e) => `${e.label}: ${e.error}`).join(" · ") },
           );
         }
         if (res.ok) {
           setEscalateReason("");
-          // Advance is the other path that writes the left pane, so it owns the
-          // same overlay clear the plain Save does — otherwise the local copy
-          // outlives the patient's departure from this stage. The escalation
-          // exits don't touch those columns, so their edits stay pending.
-          if (kind === "advance") clearOverlay(selected.id);
+          // Both advances write the left pane, so they own the same overlay
+          // clear the plain Save does — otherwise the local copy outlives the
+          // patient's departure from this stage. The escalation exits don't
+          // touch those columns, so their edits stay pending.
+          if (isAdvance) {
+            clearOverlay(selected.id);
+            // Drop `?patientId=` (§5.10's clearDeepLink). The item has moved to
+            // another group so the next fetch won't return it — but
+            // `useMondayPatients` RE-INJECTS a deep link on every poll, so
+            // without this the rep watches a patient they just advanced sit in
+            // the sidebar. Selection is cleared with it, which is what lets the
+            // page auto-select the next patient in the queue: Josh's flow is a
+            // run of info-collection calls, so the rep should land on the next
+            // one rather than on the patient who just left.
+            const params = new URLSearchParams(searchParams);
+            params.delete("patientId");
+            setSearchParams(params, { replace: true });
+            setSelectedId(null);
+          }
           await refetch(true);
         }
         return res.ok;
       } finally {
         setSaving(false);
+        setAdvancing(false);
       }
     },
     [selected, escalateReason, refetch, verified, clinicLabelId, stuckLevel, liveIndex,
-      logChangedFacts, clearOverlay],
+      logChangedFacts, clearOverlay, searchParams, setSearchParams],
   );
 
   /**
@@ -1781,9 +1943,12 @@ const UnverifiedReferralsPage = () => {
           hasOverlay={hasOverlay}
           /* Both flags live in SIDEBAR_OPTIONS, which the page's own
              auto-select reads too — see there for what each one is for. */
-          ignoreFollowUp={SIDEBAR_OPTIONS.ignoreFollowUp}
-          sortByAttempts={SIDEBAR_OPTIONS.sortByAttempts}
-          filters={(Object.keys(SOURCE_GROUP) as Source[]).map((sKey) => (
+          ignoreFollowUp={SIDEBAR_OPTIONS[variant].ignoreFollowUp}
+          sortByAttempts={SIDEBAR_OPTIONS[variant].sortByAttempts}
+          /* Clean-Up is one group, so there is nothing to filter — and the
+             partial/completed pair describes the FORM, which only the queue
+             upstream of the advance is reading. */
+          filters={isCleanUp ? undefined : (Object.keys(SOURCE_GROUP) as Source[]).map((sKey) => (
             <button
               key={sKey}
               type="button"
@@ -1820,7 +1985,7 @@ const UnverifiedReferralsPage = () => {
                 </div>
                 <div className="min-w-0">
                   <p className="text-[10px] uppercase tracking-[0.2em] opacity-70">Medically Modern</p>
-                  <h1 className="text-2xl font-bold">Patient Intake — DTC &amp; CareCentrix</h1>
+                  <h1 className="text-2xl font-bold">{VARIANT_LABEL[variant]}</h1>
                   {/* No patient name here — the Evaluate-style block directly
                       below carries it at full size. Printing it in both is
                       what made this page look off the first time. */}
@@ -1947,7 +2112,7 @@ const UnverifiedReferralsPage = () => {
                 the container is never named, the query never fires, and the
                 page is permanently stacked with no error anywhere. */}
             <div className="panes-host flex-1 flex flex-col min-w-0">
-            <div className="panes">
+            <div className={isCleanUp ? "panes" : "panes solo"}>
               {/* ── LEFT: Patient Info. Collection ── */}
               <div className="pane">
                 <div className="pane-head">
@@ -2980,9 +3145,11 @@ const UnverifiedReferralsPage = () => {
 
                       {intakeBlockers.length === 0 ? (
                         <p className="gate-note">
-                          {canAdvance
-                            ? "Profile is built too — advance from the Profile Clean-Up pane."
-                            : "Finish the profile on the right, then advance from there."}
+                          {!isCleanUp
+                            ? "Nothing else to collect — Advance hands them to Profile Clean-Up."
+                            : canAdvance
+                              ? "Profile is built too — advance from the Profile Clean-Up pane."
+                              : "Finish the profile on the right, then advance from there."}
                         </p>
                       ) : (
                         <ul className="gate-list">
@@ -2998,13 +3165,14 @@ const UnverifiedReferralsPage = () => {
                         </ul>
                       )}
 
-                      {/* The right pane still unlocks on its own from the left
-                          pane's conditions (HANDOFF §2: "not unlocked by a
-                          button click") — this only scrolls there. Shown
-                          whenever the pane is open, INCLUDING when everything
-                          passes: that is exactly when the rep wants to go press
-                          Advance, and the button is only over there. */}
-                      {unlock.unlocked && (
+                      {/* Clean-Up only — it scrolls to the pane beside it.
+                          Info Collection has no pane to scroll to: its exit is
+                          the Advance button in the row below, which is the one
+                          Josh renamed from "Go to Profile Clean-Up" (2026-08-19).
+                          Shown whenever the pane is open, INCLUDING when
+                          everything passes: that is exactly when the rep wants
+                          to go press Advance, and that button is only over there. */}
+                      {isCleanUp && unlock.unlocked && (
                         <button
                           onClick={() => cleanUpRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })}
                           className="btn secondary sm"
@@ -3014,23 +3182,46 @@ const UnverifiedReferralsPage = () => {
                       )}
                     </div>
 
-                    {/* ── The three actions, one even row ──
+                    {/* ── The actions, one even row ──
                         Equal widths, side by side, nothing interleaved between
                         them: the captions that used to sit inline are collected
-                        underneath, which is what let the row read as three
-                        different-sized things.
+                        underneath, which is what let the row read as different-
+                        sized things.
 
-                        ⚠️ ADVANCE IS DELIBERATELY NOT HERE (Josh, 2026-08-13).
-                        There is exactly ONE advance button and it lives at the
-                        bottom of the right pane, where the profile work ends. A
-                        copy here was the same action under the same gate in two
-                        places — which is how the two drift apart and start
-                        disagreeing about whether the patient may leave. */}
+                        ⚠️ ADVANCE TO MN IS DELIBERATELY NOT HERE (Josh,
+                        2026-08-13). There is exactly ONE of those and it lives
+                        at the bottom of the right pane, where the profile work
+                        ends. A copy here was the same action under the same gate
+                        in two places — which is how the two drift apart and
+                        start disagreeing about whether the patient may leave.
+                        The Advance below is a DIFFERENT exit under a different
+                        gate, and this pane is where its work ends. */}
                     <div className="exit-row">
-                      {/* THE Monday write for the left pane. Named so it can't
-                          be mistaken for the header's local Save. */}
-                      <button onClick={save} disabled={saving} className="btn primary">
-                        {saving ? "Saving…" : "Save to Monday"}
+                      {/* Info Collection's exit, and the main button on the
+                          page — so it leads the row and keeps the green, while
+                          Save gives it up (Josh, 2026-08-19). It saves the left
+                          pane on the way through: a rep who has just finished a
+                          call should not have to press two buttons, and the
+                          save is verified BEFORE the advancer fires, which a
+                          Save-then-Advance pair could never guarantee. */}
+                      {!isCleanUp && (
+                        <button
+                          onClick={() => { void runStageAction("advanceCleanUp"); }}
+                          disabled={!canAdvanceToCleanUp || saving}
+                          className="btn primary"
+                          title={canAdvanceToCleanUp
+                            ? "Saves this pane, then moves the patient to Profile Clean-Up"
+                            : "Finish the checklist above first"}
+                        >
+                          {advancing ? "Advancing…" : "Advance →"}
+                        </button>
+                      )}
+                      {/* THE Monday write for the left pane. Renamed from "Save
+                          to Monday" and stripped of the green, so the row has
+                          exactly one primary action (Josh, 2026-08-19) — this
+                          one parks the patient, it doesn't move them. */}
+                      <button onClick={save} disabled={saving} className="btn secondary">
+                        {saving && !advancing ? "Saving…" : "Save and Finish Later"}
                       </button>
                       <button
                         onClick={() => setAttemptOpen(true)}
@@ -3056,7 +3247,9 @@ const UnverifiedReferralsPage = () => {
                         rather than a bare zero. */}
                     <div className="exit-foot">
                       <p className="exit-note">
-                        Save writes the left pane to the board without advancing
+                        {isCleanUp
+                          ? "Save writes the left pane to the board without advancing"
+                          : "Advance saves and moves them on · Save and Finish Later keeps them in this queue"}
                       </p>
                       <span className={attempts > 0 ? "attempt-tally logged" : "attempt-tally"}>
                         <Phone className="h-3.5 w-3.5 shrink-0" />
@@ -3073,6 +3266,22 @@ const UnverifiedReferralsPage = () => {
                   </>
                 )}
               </Card>
+
+              {/* Info Collection has no right pane, so the manager ladder lives
+                  here — same component, same props, same behaviour as the copy
+                  Clean-Up renders beside its profile work (Josh, 2026-08-19:
+                  Propose Stuck works the same on both). Below Ready to Advance?
+                  for the same reason it sits last over there: it is what you
+                  reach for when the exits above didn't apply. */}
+              {!isCleanUp && (
+                <div className="mt-4">
+                  <EscalationCard
+                    patient={selected}
+                    onDone={() => { void refetch(true); }}
+                    beforeProposeStuck={saveBeforePropose}
+                  />
+                </div>
+              )}
 
               {/* ── The two exits that need a sentence from the rep ──
                   Popups rather than inline panels (Katie, 2026-08-13). Both
@@ -3150,38 +3359,32 @@ const UnverifiedReferralsPage = () => {
             </div>
 
             {/* ── RIGHT: Patient Profile Clean-Up ──
-                The mockup's whole point: the right pane is blurred and inert
-                until the left one is done. `.panewrap.locked` does the blur,
-                the overlay and the pointer-events block in CSS, so there is no
-                second copy of that rule in JSX to drift out of sync. */}
-            <div ref={cleanUpRef} className={unlock.unlocked ? "panewrap" : "panewrap locked"}>
-              <div className="lockover">
-                <div className="lockmsg">
-                  <div className="li"><Lock className="h-6 w-6 mx-auto" /></div>
-                  <div className="lt">Finish Patient Info. Collection</div>
-                  <div className="ls">
-                    {unlock.conditions.find((c) => !c.passed)?.hint
-                      ?? "Complete the checklist on the left to unlock this pane."}
-                  </div>
-                </div>
-              </div>
+                ⚠️ NOT RENDERED AT ALL on Info Collection (Josh, 2026-08-19).
+                This pane used to sit here blurred behind `.panewrap.locked`,
+                and passing the unlock conditions un-blurred it. The lock is now
+                a STAGE boundary instead: the same conditions enable Advance,
+                and the patient arrives here as a different role, on a different
+                queue, in a different board group.
 
+                Which means it is never locked any more — a patient can only be
+                in this group by having passed the gate. The blur, the overlay
+                and the "Locked" chip went with it; keeping them would render a
+                lock that nothing on this page can open. The unlock rule is
+                still computed, because `canAdvance` (Advance to MN) needs it —
+                if a fact regresses after the patient got here, the Ready to
+                Advance? card on the left says which one. */}
+            {isCleanUp && (
+            <div ref={cleanUpRef} className="panewrap">
               <div className="pane pane-inner">
                 <div className="pane-head">
                   <h2>Patient Profile Clean-Up</h2>
-                  <span className={unlock.unlocked ? "st open" : "st"}>
-                    {unlock.unlocked ? "Open" : "Locked"}
-                  </span>
+                  <span className="st open">Open</span>
                 </div>
 
-              {/* The advance decision lives at the bottom of the LEFT pane
-                  ("Ready to Advance?"), which is where HANDOFF §2 puts all
-                  three of this stage's exits. This pane is the work you do
-                  AFTER advancing is unblocked, not the place you trigger it. */}
-
-              {/* The blur + pointer-events block now come from
-                  .panewrap.locked on the pane itself, so this no longer
-                  hand-rolls a second overlay that could disagree with it. */}
+              {/* Advance to MN sits at the BOTTOM of this pane, in step 4,
+                  where the profile work ends. The left pane's "Ready to
+                  Advance?" card carries the stage's other exits (Save, Log call
+                  attempt, Propose Stuck) and links down to it. */}
               <div className="stack">
                 <div>
                   <Card step={1} title="Verified Insurance" tone="lead">
@@ -3416,49 +3619,11 @@ const UnverifiedReferralsPage = () => {
               </div>
 
               <div className="mt-4">
-                <Card title="Escalation">
-                  {/* The page's own `.msgbox`, not a Tailwind amber box. Inside
-                      `.pf-root` the utility classes lose to the redesign's
-                      resets, so a hand-rolled chip here renders half-styled —
-                      the same trap the action bar below fell into. */}
-                  {selected.intakeEscalation?.trim() ? (
-                    <div className="msgbox amber" style={{ marginTop: 0, marginBottom: 14 }}>
-                      Currently: <strong>{selected.intakeEscalation}</strong>
-                      {selected.intakeEscalation === "Manager Escalation Required" && " — with Manager Intervention."}
-                      {selected.intakeEscalation === "Final Escalation Required" && " — awaiting a Final Decision."}
-                    </div>
-                  ) : null}
-                  <p className="sugg-note" style={{ marginTop: 0, marginBottom: 12 }}>
-                    Can&rsquo;t move this patient forward? Propose them as stuck and a manager
-                    decides — they leave your queue straight away.
-                  </p>
-                  <StageActionBar
-                    stage="unverified-intake"
-                    board="profile"
-                    patientId={selected.id}
-                    patientName={selected.name}
-                    escalationLabel={selected.intakeEscalation}
-                    onDone={() => { void refetch(true); }}
-                    // The bar's Propose Stuck saves this page first too, so the
-                    // two entry points behave identically (Josh, 2026-08-18).
-                    beforeProposeStuck={saveBeforePropose}
-                    // MANDATORY here: `.pf-root button` out-specifies every
-                    // Tailwind utility the shadcn Button carries, so the header
-                    // skin renders as unstyled text in this card (Brandon,
-                    // 2026-08-19). See StageActionBar's header comment.
-                    skin="page"
-                  />
-                  {/* "Escalate — doesn't qualify" is a LEFT-pane exit (§2) and
-                      lives in Ready to Advance?. What stays here is the shared
-                      manager ladder: Propose Stuck / Approve / Send back.
-
-                      The escalation log used to be echoed here from its own
-                      column. That column is gone (Josh, 2026-08-11) — decisions
-                      are stamped into the Call Log with their rung named, so
-                      the reason sits in the same place as every other note on
-                      this patient rather than in a second box saying the same
-                      thing twice. */}
-                </Card>
+                <EscalationCard
+                  patient={selected}
+                  onDone={() => { void refetch(true); }}
+                  beforeProposeStuck={saveBeforePropose}
+                />
               </div>
 
               {(selected.alreadyInSystem ?? "").toLowerCase() === "yes" && (
@@ -3468,6 +3633,7 @@ const UnverifiedReferralsPage = () => {
               )}
               </div>
             </div>
+            )}
           </div>
           </div>
           </div>

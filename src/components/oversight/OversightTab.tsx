@@ -74,6 +74,12 @@ const CHART_ROUTES: Record<string, string | null> = {
   // escalated patient on the bar and had no way to open them.
   "profile-send-off-unverified-escalated": "/unverified-referrals",
   "profile-send-off-unverified-stuck": "/unverified-referrals",
+  // §5.20 — Clean-Up's three route to the page that renders the RIGHT pane.
+  // Sending a manager to /unverified-referrals would show them the left pane
+  // alone, i.e. not the work the chart is about.
+  "profile-send-off-cleanup": "/profile-cleanup",
+  "profile-send-off-cleanup-escalated": "/profile-cleanup",
+  "profile-send-off-cleanup-stuck": "/profile-cleanup",
   "evaluate": "/evaluate",
   "send-request": "/send-request",
   "confirm-receipt": "/confirm-receipt",

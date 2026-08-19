@@ -33,7 +33,7 @@ import {
   SECONDARY_INSURANCE_INDEX, SERVING_INDEX, MOVE_TO_ONBOARDING_INDEX,
   REQUEST_TYPE_INDEX, CGM_COVERAGE_PATH_INDEX, INSULIN_PUMP_COVERAGE_PATH_INDEX,
   REFERRAL_TYPE_INDEX, REFERRAL_SOURCE_INDEX, GENDER_INDEX,
-  CGM_TYPE_INDEX, PUMP_TYPE_INDEX,
+  CGM_TYPE_INDEX, PUMP_TYPE_INDEX, INTAKE_SUB_STAGE_INDEX,
 } from "./mondayMapping";
 
 /** label → index for every status column this stage writes.
@@ -719,6 +719,105 @@ export async function advanceToMedicalNecessity(
       }],
     };
   }
+}
+
+/**
+ * Advance from Info Collection to Profile Clean-Up (Josh, 2026-08-19).
+ *
+ * The gate is unchanged — `evaluateUnlock` is what used to unblur the right
+ * pane and is now what enables this button — but passing it moves the patient
+ * to a different GROUP and a different role, instead of revealing a pane.
+ *
+ * Same hazard as `advanceToMedicalNecessity`, one rung earlier: the left pane's
+ * columns are what the Clean-Up rep (and eventually the Move to Onboarding
+ * automation) reads, and Monday returns 200 on a column write before the value
+ * is indexed. So every data column is written and READ BACK first, and Intake
+ * Sub-Stage — the advancer — fires only once they have all landed. A
+ * verification timeout throws and does NOT advance.
+ *
+ * ⚠️ ORDER: sub-stage column, THEN the group move. The group is what decides
+ * the queue (lib/profile/intakeSubStage.ts), so if the move fails the patient
+ * is still sitting in the rep's own Info Collection list with the button that
+ * retries it. The reverse order would hand them to Clean-Up and leave the
+ * board's own record saying Info Collection. Neither half can strand them.
+ *
+ * There is no verified-insurance or doctor half here, unlike the MN advance:
+ * that work is the right pane's, and the right pane is the stage this button
+ * hands the patient TO.
+ */
+export async function advanceToProfileCleanUp(
+  p: Patient,
+  opts: { edits: IntakeEdits; liveIndex?: Record<string, Record<string, number>> },
+): Promise<IntakeWriteResult> {
+  const tasks: WriteTask[] = buildIntakeTasks(p.id, opts.edits, opts.liveIndex ?? {});
+
+  // With no data columns, verifiedWrite skips its snapshot and read-back phases
+  // entirely and the advancer fires unverified — the one shape that silently
+  // defeats the whole protocol. Same refusal advanceToMedicalNecessity carries.
+  if (tasks.length === 0) {
+    return {
+      ok: false,
+      errors: [{
+        label: "Advance to Profile Clean-Up",
+        columnId: COL.intakeSubStage,
+        error: "Nothing to write — refusing to advance without verifying any data first.",
+      }],
+    };
+  }
+
+  // Held back by executeWritesWithVerification until every task above verifies.
+  tasks.push({
+    label: "Intake Sub-Stage",
+    columnId: COL.intakeSubStage,
+    fn: () => writeStatusIndex(
+      p.id, COL.intakeSubStage, INTAKE_SUB_STAGE_INDEX["Profile Clean-Up"],
+    ),
+  });
+
+  try {
+    const failures = await executeWritesWithVerification({
+      itemId: p.id,
+      tasks,
+      stageColumnId: COL.intakeSubStage,
+      executeWithRetry,
+      readColumns: readColumnTexts,
+    });
+    if (failures.length > 0) {
+      return {
+        ok: false,
+        errors: failures.map((f) => ({ label: f.split(":")[0], columnId: "", error: f })),
+      };
+    }
+  } catch (e) {
+    return {
+      ok: false,
+      errors: [{
+        label: "Advance to Profile Clean-Up", columnId: COL.intakeSubStage,
+        error: e instanceof Error ? e.message : String(e),
+      }],
+    };
+  }
+
+  // Only now — and reported separately, because a patient whose columns landed
+  // but whose move failed is in a DIFFERENT state from one who never advanced:
+  // the board says Profile Clean-Up while the queue still says Info Collection.
+  // Naming that is what tells the rep to press Advance again rather than
+  // wonder where the patient went.
+  try {
+    await moveItemToGroup(p.id, GROUPS.profileCleanUp);
+  } catch (e) {
+    return {
+      ok: false,
+      errors: [{
+        label: "Move to Profile Clean-Up", columnId: "",
+        error: `Saved and marked Profile Clean-Up, but the item did not move groups (${
+          e instanceof Error ? e.message : String(e)
+        }). The patient is still in your queue — press Advance again.`,
+      }],
+    };
+  }
+
+  return { ok: true, errors: [] };
 }
 
 /**

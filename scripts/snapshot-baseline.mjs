@@ -82,6 +82,18 @@ const PROF_GROUP  = "group_mm1xf2jb";
 // The DTC intake form's own groups on the same board. §5.8 counting contract:
 // these must match useRoleCounts.ts PROFILE_FORM_GROUP_IDS exactly.
 const PROF_FORM_GROUPS = ["group_mm5zgeak", "group_mm5z87zt"];
+/** Profile Clean-Up — the second half of the Patient Intake split (§5.20).
+ *  Mirrors useRoleCounts' PROFILE_CLEANUP_GROUP_ID and
+ *  lib/profile/intakeSubStage.ts. */
+const PROF_CLEANUP_GROUP = "group_mm6c3rhb";
+/** The groups a booked intake call can be sitting in. The two DTC form groups
+ *  PLUS Profile Clean-Up (§5.20) — an advance moves the item to a new group,
+ *  and a booked call must not vanish from this queue because the rep advanced
+ *  the patient before the call happened. That is possible: the unlock gate
+ *  accepts "Send request now" without an intake call, so a patient can hold a
+ *  Calendly booking and still be advanced. Dropping them here would leave a
+ *  real appointment nobody is reminded about (§5.15). */
+const PROF_SCHED_GROUPS = [...PROF_FORM_GROUPS, PROF_CLEANUP_GROUP];
 // "Already In System" — its own group, alongside the status column. Must match
 // useRoleCounts.ts PROFILE_IN_SYSTEM_GROUP_ID and oversightApi's
 // PROFILE_IN_SYSTEM_GROUP (§5.8 counting contract).
@@ -315,7 +327,7 @@ function etNowMinutes(now = new Date()) {
 
 async function countScheduledCalls() {
   const items = [];
-  for (const gid of PROF_FORM_GROUPS) {
+  for (const gid of PROF_SCHED_GROUPS) {
     try {
       items.push(...await fetchGroupItems(PROF_BOARD, gid, [SCHED_CALL_TIME_COL, SCHED_BOOKING_STATUS_COL]));
     } catch (e) {
@@ -400,16 +412,29 @@ async function countProfile() {
   }
   const formActive = formItems.filter((i) => !isIntakeEscalated(i));
 
+  // Profile Clean-Up (§5.20) — same stage one sub-stage on, so the same rule:
+  // escalated patients are the manager's, and Follow Up is ignored because
+  // this stage has no snooze. Mirrors useRoleCounts' `cleanUpActive`.
+  let cleanUpItems = [];
+  try {
+    cleanUpItems = await fetchGroupItems(PROF_BOARD, PROF_CLEANUP_GROUP, [PROF_INTAKE_ESC_COL]);
+  } catch (e) {
+    console.error(`[countProfile] clean-up group failed:`, e.message);
+  }
+  const cleanUpActive = cleanUpItems.filter((i) => !isIntakeEscalated(i));
+
   return {
     counts: {
       profile: verified.length,
       unverifiedReferrals: formActive.length,
       inSystemReferrals: inSystem.length,
+      intakeCleanup: cleanUpActive.length,
     },
     ids: {
       profile: verified.map((i) => i.id),
       unverifiedReferrals: formActive.map((i) => i.id),
       inSystemReferrals: inSystem.map((i) => i.id),
+      intakeCleanup: cleanUpActive.map((i) => i.id),
     },
   };
 }

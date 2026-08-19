@@ -196,8 +196,13 @@ export const BOARDS: BoardDef[] = [
       // Already In System is its own group as of 2026-08-12 (§5.10) and routes
       // to its own role page.
       { id: "group_mm64b83h", title: "Already In System",       roleRoute: "/in-system-referrals" },
-      { id: "group_mm5z87zt", title: "New Form — Partial Leads", roleRoute: "" },
-      { id: "group_mm5zgeak", title: "New Form — Completed",     roleRoute: "" },
+      // §5.20 — the intake split. Both form groups are Info Collection's queue
+      // and Profile Clean-Up is its own. These two had `roleRoute: ""` and so
+      // dead-ended a Search click on ~every DTC patient; they have a page, so
+      // they get its route.
+      { id: "group_mm5z87zt", title: "New Form — Partial Leads", roleRoute: "/unverified-referrals" },
+      { id: "group_mm5zgeak", title: "New Form — Completed",     roleRoute: "/unverified-referrals" },
+      { id: "group_mm6c3rhb", title: "Profile Clean-Up",         roleRoute: "/profile-cleanup" },
       { id: "group_mm4vhqff", title: "Patient Intake",           roleRoute: "" },
       { id: "group_mm1wvq8p", title: "Tests",                    roleRoute: "" },
       { id: "group_mm1xyczx", title: "Stuck",                    roleRoute: "" },

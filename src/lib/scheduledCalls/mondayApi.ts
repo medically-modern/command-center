@@ -11,10 +11,19 @@ import type { ScheduledCall } from "./workflow";
 
 export const BOARD_ID = 18406352652;
 
-/** The DTC form's own groups. Nothing lands in Patient Intake. */
+/** The DTC form's own groups. Nothing lands in Patient Intake.
+ *
+ *  ⚠️ `profileCleanUp` is in here on purpose (§5.20). An intake advance moves
+ *  the item to that group, and the unlock gate accepts "Send request now"
+ *  without an intake call — so a patient can hold a real Calendly booking and
+ *  still be advanced. Reading only the form groups would drop that appointment
+ *  out of this queue and out of the 10-minute reminder, with nothing erroring:
+ *  a booked call nobody makes, which is the exact failure §5.15 exists to
+ *  prevent. Mirrors PROF_SCHED_GROUPS in BOTH baseline generators. */
 export const GROUPS = {
   completed: "group_mm5zgeak",
   partial: "group_mm5z87zt",
+  profileCleanUp: "group_mm6c3rhb",
 };
 
 export const COL = {
@@ -104,7 +113,7 @@ const PAGE = 200;
  * place — the same reason the counting contract exists.
  */
 export async function fetchScheduledCalls(): Promise<ScheduledCall[]> {
-  const groups = [GROUPS.completed, GROUPS.partial];
+  const groups = [GROUPS.completed, GROUPS.partial, GROUPS.profileCleanUp];
   const all: MondayItem[] = [];
 
   for (const groupId of groups) {

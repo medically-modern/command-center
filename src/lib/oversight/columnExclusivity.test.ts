@@ -21,6 +21,7 @@
  * The known exception is recorded, not hidden — see the Insurance block.
  */
 import { describe, it, expect } from "vitest";
+import { readFileSync } from "node:fs";
 import {
   CHART_DEFS,
   OVERSIGHT_SECTIONS,
@@ -313,6 +314,9 @@ describe("Insurance columns partition the stage", () => {
 // ── Patient Intake ───────────────────────────────────────────────────────
 
 const INTAKE_FORM_GROUP = "group_mm5zgeak";
+/** Profile Clean-Up — the intake stage's second sub-stage (§5.20). It has its
+ *  own row of three charts, so it has to partition exactly like the others. */
+const INTAKE_CLEANUP_GROUP = "group_mm6c3rhb";
 const INTAKE_ESC_COL = "color_mm5zww42";
 
 function intakePatient(groupId: string, escIndex?: number, inSystem = ""): OversightPatient {
@@ -329,7 +333,9 @@ function intakePatient(groupId: string, escIndex?: number, inSystem = ""): Overs
 
 describe("Patient Intake columns partition the stage", () => {
   it("the three intake queues stay mutually exclusive", () => {
-    for (const groupId of ["group_mm1xf2jb", INTAKE_FORM_GROUP, PROFILE_IN_SYSTEM_GROUP]) {
+    for (const groupId of [
+      "group_mm1xf2jb", INTAKE_FORM_GROUP, INTAKE_CLEANUP_GROUP, PROFILE_IN_SYSTEM_GROUP,
+    ]) {
       for (const inSystem of ["", "No", "Yes"]) {
         for (const escIndex of [undefined, 1, 0, 2]) {
           const p = intakePatient(groupId, escIndex, inSystem);
@@ -338,6 +344,35 @@ describe("Patient Intake columns partition the stage", () => {
             .toBeLessThanOrEqual(1);
         }
       }
+    }
+  });
+
+  // Every escalation state of a Clean-Up patient must match SOME chart, or the
+  // patient is invisible app-wide (§7): an escalation takes them off the rep's
+  // sidebar AND out of useRoleCounts, so a chart is the only place left.
+  it("Profile Clean-Up patients land in exactly one column at every rung", () => {
+    for (const escIndex of [undefined, 1, 0, 2]) {
+      const p = intakePatient(INTAKE_CLEANUP_GROUP, escIndex);
+      expect(
+        columnsHolding("intake", p),
+        `clean-up · esc ${escIndex ?? "unset"}`,
+      ).toHaveLength(1);
+    }
+  });
+
+  it("routes the Clean-Up charts to the page that renders the right pane", () => {
+    // /unverified-referrals renders the LEFT pane only, so a manager sent
+    // there would not see the work the chart is about. Read as TEXT rather
+    // than imported: CHART_ROUTES lives in a .tsx component and this suite is
+    // deliberately node-only.
+    const tab = readFileSync("src/components/oversight/OversightTab.tsx", "utf8");
+    const routes = tab.slice(tab.indexOf("const CHART_ROUTES"));
+    for (const id of [
+      "profile-send-off-cleanup",
+      "profile-send-off-cleanup-escalated",
+      "profile-send-off-cleanup-stuck",
+    ]) {
+      expect(routes, id).toContain(`"${id}": "/profile-cleanup"`);
     }
   });
 

@@ -27,7 +27,11 @@
  * Profile board (18406352652): intake group — active = followUp !== "Done",
  *   split three ways: inSystemReferrals (Already In System "Yes"), then
  *   unverifiedReferrals (Referral Type "Patient" OR Referral Source
- *   "CareCentrix"), then profile (verified) — lib/profile/referralSplit.ts
+ *   "CareCentrix"), then profile (verified) — lib/profile/referralSplit.ts.
+ *   The DTC form groups are their own sub-stage split (lib/profile/
+ *   intakeSubStage.ts): the two form groups are unverifiedReferrals (Info
+ *   Collection), the Profile Clean-Up group is intakeCleanup. Neither reads
+ *   Follow Up — that stage has no snooze.
  * Subscription board (18407459988): Subscriptions group — all items
  */
 import { useEffect, useState, useCallback, useRef } from "react";
@@ -65,6 +69,12 @@ const PROFILE_GROUP_ID = "group_mm1xf2jb";
 // so form patients count toward it as one number alongside the 1. Intake
 // unverified split — they are the same role, just a different source.
 const PROFILE_FORM_GROUP_IDS = ["group_mm5zgeak", "group_mm5z87zt"];
+/** Profile Clean-Up — the second half of the Patient Intake split (§5.20).
+ *  Must match `GROUPS.profileCleanUp`, intakeSubStage's
+ *  `PROFILE_CLEANUP_GROUP` and oversightApi's `PROFILE_CLEANUP_GROUP`.
+ *  ⚠️ Without this branch the group falls through every count task and its
+ *  patients are counted NOWHERE — no error, just an invisible queue. */
+const PROFILE_CLEANUP_GROUP_ID = "group_mm6c3rhb";
 /** "Already In System" — its own group on the board, alongside the status
  *  column. Both feed the inSystemReferrals role (§5.10). */
 const PROFILE_IN_SYSTEM_GROUP_ID = "group_mm64b83h";
@@ -562,7 +572,7 @@ export function useRoleCounts(opts?: { roleIds?: string[] }) {
       );
     }
 
-    if (needAny("profile", "unverifiedReferrals", "inSystemReferrals")) {
+    if (needAny("profile", "unverifiedReferrals", "inSystemReferrals", "intakeCleanup")) {
       boardTasks.push(
         (async () => {
           const items = await fetchBoardGroupItemsLight(
@@ -633,17 +643,34 @@ export function useRoleCounts(opts?: { roleIds?: string[] }) {
             (i) => !PROF_ESCALATED_LABELS.includes((i.cols[PROF_INTAKE_ESC_COL] ?? "").trim()),
           );
 
+          // Profile Clean-Up — the same stage one sub-stage on, so the same
+          // counting rule: escalated patients are the manager's, and Follow Up
+          // is ignored because this stage still has no snooze (§5.10 — the
+          // column pair is a one-way door nothing reads, and `IntakeEdits`
+          // cannot write it). Mirrors `sidebarSections(…, {ignoreFollowUp})`
+          // and BOTH baseline generators — change together (§5.8).
+          const cleanUpItems = await fetchBoardGroupItemsLight(
+            PROFILE_BOARD_ID,
+            PROFILE_CLEANUP_GROUP_ID,
+            [PROF_INTAKE_ESC_COL],
+          ).catch(() => [] as LightItem[]);
+          const cleanUpActive = cleanUpItems.filter(
+            (i) => !PROF_ESCALATED_LABELS.includes((i.cols[PROF_INTAKE_ESC_COL] ?? "").trim()),
+          );
+
           merge(
             {
               profile: verified.length,
               unverifiedReferrals: formActive.length,
               inSystemReferrals: inSystem.length,
+              intakeCleanup: cleanUpActive.length,
             },
-            { profile: 0, unverifiedReferrals: 0, inSystemReferrals: 0 },
+            { profile: 0, unverifiedReferrals: 0, inSystemReferrals: 0, intakeCleanup: 0 },
             {
               profile: verified.map((i) => i.id),
               unverifiedReferrals: formActive.map((i) => i.id),
               inSystemReferrals: inSystem.map((i) => i.id),
+              intakeCleanup: cleanUpActive.map((i) => i.id),
             },
           );
         })(),
@@ -653,10 +680,12 @@ export function useRoleCounts(opts?: { roleIds?: string[] }) {
     if (needAny("scheduledCalls")) {
       boardTasks.push(
         (async () => {
-          // Same DTC-form groups as Patient Intake, counted by CLOCK rather
-          // than by a follow-up rule: how many booked calls are still ahead of
-          // you today. Mirrors lib/scheduledCalls/workflow.ts `remainingToday`
-          // — change the two together, plus BOTH baseline generators (§5.8).
+          // Same groups as Patient Intake — BOTH sub-stages (§5.20), because
+          // an advance moves the item and a booked call must not vanish with
+          // it. Counted by CLOCK rather than by a follow-up rule: how many
+          // booked calls are still ahead of you today. Mirrors
+          // lib/scheduledCalls/workflow.ts `remainingToday` and that module's
+          // GROUPS — change them together, plus BOTH baseline generators (§5.8).
           //
           // The 9 AM baseline lands before any appointment has passed, so it
           // captures the day's full total and the live count falls from it as
@@ -664,7 +693,7 @@ export function useRoleCounts(opts?: { roleIds?: string[] }) {
           // and it is why this role needs no special handling in OperationsTab.
           const items = (
             await Promise.all(
-              PROFILE_FORM_GROUP_IDS.map((gid) =>
+              [...PROFILE_FORM_GROUP_IDS, PROFILE_CLEANUP_GROUP_ID].map((gid) =>
                 fetchBoardGroupItemsLight(PROFILE_BOARD_ID, gid, [
                   SCHED_CALL_TIME_COL,
                   SCHED_BOOKING_STATUS_COL,

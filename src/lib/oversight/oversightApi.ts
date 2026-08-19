@@ -309,6 +309,12 @@ export const PROFILE_IN_SYSTEM_GROUP = "group_mm64b83h";
  *  Completed toggle. */
 export const PROFILE_FORM_GROUP_COMPLETED = "group_mm5zgeak";
 export const PROFILE_FORM_GROUP_PARTIAL = "group_mm5z87zt";
+/** Profile Clean-Up — the second sub-stage of Patient Intake (§5.20). Its own
+ *  group, its own role, and therefore its own ROW here: an escalation raised
+ *  from Clean-Up matches none of the form-group charts, and a state that
+ *  matches no chart is invisible in the whole app (§7). Must match
+ *  `GROUPS.profileCleanUp` and intakeSubStage's `PROFILE_CLEANUP_GROUP`. */
+export const PROFILE_CLEANUP_GROUP = "group_mm6c3rhb";
 
 const PROFILE_COLS: { colId: string; label: string; pill?: boolean }[] = [
   { colId: "date_mm1wf43j", label: "Intake Date" },
@@ -336,14 +342,14 @@ const RAW_CHART_DEFS: ChartDef[] = [
   },
   {
     id: "profile-send-off-unverified",
-    title: "Patient Intake — DTC & CareCentrix",
+    title: "Non-Referral Intake — Info Collection",
     boardId: 18406352652,
     notesColId: "text_mm389fs",
     drilldownCols: PROFILE_COLS,
   },
   {
     id: "profile-send-off-unverified-escalated",
-    title: "Patient Intake (Escalated)",
+    title: "Info Collection (Escalated)",
     boardId: 18406352652,
     // The Call Log, not the retired Intake Escalation Notes column
     // (`long_text_mm5z3sq9`, dropped 2026-08-11). Every stage decision was
@@ -366,7 +372,7 @@ const RAW_CHART_DEFS: ChartDef[] = [
   },
   {
     id: "profile-send-off-unverified-stuck",
-    title: "Patient Intake (Proposed Stuck)",
+    title: "Info Collection (Proposed Stuck)",
     boardId: 18406352652,
     // The Call Log, not the retired Intake Escalation Notes column
     // (`long_text_mm5z3sq9`, dropped 2026-08-11). Every stage decision was
@@ -374,6 +380,46 @@ const RAW_CHART_DEFS: ChartDef[] = [
     // its reason here.
     notesColId: "text_mm389fs",
     rowOf: "profile-send-off-unverified",
+    reasonColId: "text_mm389fs",
+    decision: "intake-final",
+    drilldownCols: [
+      { colId: "__proposedReason__", label: "Proposed Reason" },
+      ...PROFILE_COLS,
+    ],
+  },
+  // ── Patient Intake, second sub-stage (§5.20) ──
+  // Its own row rather than bars folded into the Info Collection charts: the
+  // two are different roles with different queues, and CHART_ROUTES has to send
+  // a manager to the page that shows the work they're looking at. Propose Stuck
+  // is the SAME system on both (Josh, 2026-08-19) — same ladder, same modal,
+  // same decisions — which is why these three mirror the Info Collection three
+  // exactly rather than inventing a second flow.
+  {
+    id: "profile-send-off-cleanup",
+    title: "Intake — Profile Clean-Up",
+    boardId: 18406352652,
+    notesColId: "text_mm389fs",
+    drilldownCols: PROFILE_COLS,
+  },
+  {
+    id: "profile-send-off-cleanup-escalated",
+    title: "Profile Clean-Up (Escalated)",
+    boardId: 18406352652,
+    notesColId: "text_mm389fs",
+    rowOf: "profile-send-off-cleanup",
+    decision: "intake-manager",
+    reasonColId: "text_mm389fs",
+    drilldownCols: [
+      { colId: "__proposedReason__", label: "Escalation Reason" },
+      ...PROFILE_COLS,
+    ],
+  },
+  {
+    id: "profile-send-off-cleanup-stuck",
+    title: "Profile Clean-Up (Proposed Stuck)",
+    boardId: 18406352652,
+    notesColId: "text_mm389fs",
+    rowOf: "profile-send-off-cleanup",
     reasonColId: "text_mm389fs",
     decision: "intake-final",
     drilldownCols: [
@@ -1124,12 +1170,19 @@ export const OVERSIGHT_SECTIONS: OversightSection[] = [
   {
     id: "intake",
     title: "Patient Intake",
-    chartIds: ["profile-send-off-unverified", "profile-send-off", "profile-send-off-in-system"],
+    chartIds: [
+      "profile-send-off-unverified", "profile-send-off-cleanup",
+      "profile-send-off", "profile-send-off-in-system",
+    ],
     primaryTitle: "Processor Overview",
     secondaryTitle: "Manager Intervention",
-    secondaryChartIds: ["profile-send-off-unverified-escalated"],
+    secondaryChartIds: [
+      "profile-send-off-unverified-escalated", "profile-send-off-cleanup-escalated",
+    ],
     tertiaryTitle: "Final Decisions",
-    tertiaryChartIds: ["profile-send-off-unverified-stuck"],
+    tertiaryChartIds: [
+      "profile-send-off-unverified-stuck", "profile-send-off-cleanup-stuck",
+    ],
   },
   // Manager views (Brandon 2026-07-20): both stages share the 3-column
   // scheme — Processor Overview / Manager Intervention / Final Decisions —
@@ -1231,7 +1284,7 @@ const BOARD_GROUPS: Record<number, string[]> = {
   // only whatever it could match in 1. Intake. A chart whose filter names a
   // group that isn't in this list renders 0 with no error; same class of bug
   // as the DVS group note below.
-  18406352652: ["group_mm1xf2jb", ...PROFILE_FORM_GROUPS, PROFILE_IN_SYSTEM_GROUP],
+  18406352652: ["group_mm1xf2jb", ...PROFILE_FORM_GROUPS, PROFILE_IN_SYSTEM_GROUP, PROFILE_CLEANUP_GROUP],
   18406060017: ["group_mm1xf2jb"],
   // group_mm5gp2r2 = DVS: added 2026-07 when DVS got its own group (a
   // group-move automation). Without it the DVS-stage items are never fetched,
@@ -1595,6 +1648,13 @@ const CHART_FILTERS: Record<string, FilterRule> = {
   "profile-send-off-unverified-escalated": { type: "group", groupId: PROFILE_FORM_GROUPS, andCols: [{ colId: "color_mm2xe7r8", value: "Yes", not: true }, { colId: "color_mm5zww42", index: [0] }] },
   // Final Decisions — the rep proposed the patient is stuck.
   "profile-send-off-unverified-stuck": { type: "group", groupId: PROFILE_FORM_GROUPS, andCols: [{ colId: "color_mm2xe7r8", value: "Yes", not: true }, { colId: "color_mm5zww42", index: [2] }] },
+  // Profile Clean-Up (§5.20) — the same three rungs one sub-stage on. The
+  // Already In System exclusion rides along for the same reason the Info
+  // Collection charts carry it: that flag wins over everything (§5.10), so a
+  // patient carrying it belongs to the in-system chart and nowhere else.
+  "profile-send-off-cleanup": { type: "group", groupId: PROFILE_CLEANUP_GROUP, andCols: [{ colId: "color_mm2xe7r8", value: "Yes", not: true }, { colId: "color_mm5zww42", index: [0, 2], not: true }] },
+  "profile-send-off-cleanup-escalated": { type: "group", groupId: PROFILE_CLEANUP_GROUP, andCols: [{ colId: "color_mm2xe7r8", value: "Yes", not: true }, { colId: "color_mm5zww42", index: [0] }] },
+  "profile-send-off-cleanup-stuck": { type: "group", groupId: PROFILE_CLEANUP_GROUP, andCols: [{ colId: "color_mm2xe7r8", value: "Yes", not: true }, { colId: "color_mm5zww42", index: [2] }] },
   // Already In System is BOTH a group and a status (Brandon, 2026-08-12). The
   // board grew an "Already In System" group (`group_mm64b83h`) that nothing in
   // the SPA read — not this fetch, not useRoleCounts, not either baseline
@@ -1609,7 +1669,7 @@ const CHART_FILTERS: Record<string, FilterRule> = {
     type: "any",
     of: [
       { type: "group", groupId: PROFILE_IN_SYSTEM_GROUP },
-      { type: "group", groupId: ["group_mm1xf2jb", ...PROFILE_FORM_GROUPS], andCols: [{ colId: "color_mm2xe7r8", value: "Yes" }] },
+      { type: "group", groupId: ["group_mm1xf2jb", ...PROFILE_FORM_GROUPS, PROFILE_CLEANUP_GROUP], andCols: [{ colId: "color_mm2xe7r8", value: "Yes" }] },
     ],
   },
   // ── Medical Evaluation Processor Overview (column 1) ──

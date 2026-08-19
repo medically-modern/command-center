@@ -121,7 +121,10 @@ const App = () => (
               and already-in-system referrals, split by Already In System then
               Referral Type/Source (lib/profile/referralSplit) */}
           <Route path="/profile" element={<ProfilePage variant="verified" />} />
-          <Route path="/unverified-referrals" element={<UnverifiedReferralsPage />} />
+          <Route path="/unverified-referrals" element={<UnverifiedReferralsPage variant="infoCollection" />} />
+          {/* The second half of the intake split (§5.20) — same component, right
+              pane rendered and already open. */}
+          <Route path="/profile-cleanup" element={<UnverifiedReferralsPage variant="cleanup" />} />
           <Route path="/in-system-referrals" element={<ProfilePage variant="inSystem" />} />
           <Route path="/scheduled-calls" element={<ScheduledCallsPage />} />
           <Route path="/submit-auth" element={<SubmitAuthPage />} />

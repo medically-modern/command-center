@@ -27,6 +27,14 @@ export const GROUPS = {
   // is group OR the status flag (§5.10). Must match oversightApi's
   // PROFILE_IN_SYSTEM_GROUP and useRoleCounts' PROFILE_IN_SYSTEM_GROUP_ID.
   alreadyInSystem: "group_mm64b83h",
+  // The second half of the Patient Intake split (Josh, 2026-08-19). Info
+  // Collection works the two form groups above; passing the unlock gate moves
+  // the item HERE, where Profile Clean-Up works it. THE GROUP IS THE QUEUE
+  // MARKER — `COL.intakeSubStage` is the board-visible record and the verified
+  // write's advancer, but membership is decided by which group the item sits
+  // in, so a sub-stage write that lands while the move fails leaves the patient
+  // in the rep's own queue rather than in limbo. See lib/profile/intakeSubStage.ts.
+  profileCleanUp: "group_mm6c3rhb",
   stuck: "group_mm1xyczx",
   completed: "group_mm1y57sz",
 } as const;
@@ -79,6 +87,12 @@ export const COL = {
   /** Rep-side equivalent of the patient choosing "Send request now" —
    *  satisfies condition 1 of the advance-unlock rule (§2, §7.2). */
   intakeCallComplete: "color_mm5z6eze",
+  /** Intake Sub-Stage — the stage advancer for the Info Collection ->
+   *  Profile Clean-Up split. ⚠️ Its label indices are NOT 0/1: Monday assigned
+   *  them when the labels were created and took its own slots (Info Collection
+   *  = 7, Profile Clean-Up = 1). Read them from INTAKE_SUB_STAGE_INDEX in
+   *  mondayMapping.ts, never assume — CLAUDE.md §5.12. */
+  intakeSubStage: "color_mm6ct431",
 
   // ── Stedi ──
   runStediEligibility: "color_mm1yeksx",
@@ -257,7 +271,7 @@ export const READ_COLUMN_IDS: string[] = [
   // Rep-entered on the intake call
   COL.selfAdvocacy, COL.currentOopCost, COL.cgmDataAwareness,
   COL.attemptCounter, COL.intakeCallComplete,
-  COL.intakeEscalation,
+  COL.intakeEscalation, COL.intakeSubStage,
 ];
 
 export interface MondayColumnValue {
@@ -391,7 +405,12 @@ interface MondayLeadItem extends MondayItem {
  * NEVER be merged into a queue list (see dtcFormFlag.ts).
  */
 export async function fetchDtcFormLeads(): Promise<DtcFormLead[]> {
-  const groupIds = [GROUPS.newFormPartial, GROUPS.newFormCompleted];
+  // ⚠️ Profile Clean-Up is in this list on purpose. A DTC form twin that has
+  // been advanced out of the form groups is still the same human, so dropping
+  // the group here would make the flag on /profile and /in-system-referrals go
+  // quiet exactly when the twin starts being worked — the silent-miss this
+  // flag exists to prevent (the Ivy Gushea pair, §5.10).
+  const groupIds = [GROUPS.newFormPartial, GROUPS.newFormCompleted, GROUPS.profileCleanUp];
   const query = `
     query ($boardId: ID!, $cols: [String!]) {
       boards(ids: [$boardId]) {

@@ -73,9 +73,11 @@
   /* the two scroll containers — only meaningful side by side, so the grid
      itself stops scrolling and hands that job to each column. */
   .pf-root .panes { grid-template-columns:1fr 1fr; overflow:hidden }
+  /* Info Collection renders no right pane at all (Josh, 2026-08-19), so the
+     left one takes the width rather than sitting in a half-empty grid. */
+  .pf-root .panes.solo { grid-template-columns:1fr }
   .pf-root .panes > .pane      { overflow-y:auto; overscroll-behavior:contain; padding:0 11px 110px 26px }
   .pf-root .panes > .panewrap  { overflow-y:auto; overscroll-behavior:contain; padding:0 26px 110px 11px }
-  .pf-root .panewrap.locked .lockover { padding-top:110px }
 }
 .pf-root .panes > .pane::-webkit-scrollbar,
 .pf-root .panes > .panewrap::-webkit-scrollbar { width:10px }
@@ -94,18 +96,16 @@
   color:var(--muted-foreground); box-shadow:inset 0 0 0 1px var(--border) }
 .pf-root .pane-head .st.open { color:var(--mm-teal); box-shadow:inset 0 0 0 1px var(--mm-mint-ring) }
 
-/* ---- lock overlay on the right pane ---- */
+/* ---- the right pane's wrapper ---- */
+/* ⚠️ The .locked / .lockover / .lockmsg layer is GONE (Josh, 2026-08-19). The
+   right pane used to sit here blurred behind an overlay until the unlock
+   conditions passed. That lock is now a STAGE boundary: the same conditions
+   enable Advance on Info Collection, and Profile Clean-Up is a separate role
+   whose pane can never be locked — a patient can only reach that group by
+   having passed the gate. Deleted rather than left unused, because a blur rule
+   nothing sets is an invitation to re-lock a pane the app has no way to
+   unlock. See UnverifiedReferralsPage's RIGHT pane comment. */
 .pf-root .panewrap { position:relative; min-width:0 }
-.pf-root .panewrap.locked .pane-inner { filter:blur(2px); opacity:.4; pointer-events:none; user-select:none }
-.pf-root .lockover { display:none; position:absolute; inset:0; z-index:25; justify-content:center;
-  align-items:flex-start; padding-top:60px }
-.pf-root .panewrap.locked .lockover { display:flex }
-.pf-root .lockmsg { position:sticky; top:110px; background:#fff; border:1px solid var(--border);
-  border-radius:14px; padding:24px 28px; text-align:center; max-width:320px;
-  box-shadow:0 14px 40px -14px rgb(0 0 0 / .3) }
-.pf-root .lockmsg .li { font-size:1.5rem; margin-bottom:8px }
-.pf-root .lockmsg .lt { font-size:.95rem; font-weight:800 }
-.pf-root .lockmsg .ls { font-size:.82rem; color:var(--muted-foreground); margin-top:5px; line-height:1.5 }
 
 /* ---- section card inside a pane ---- */
 .pf-root .sect { background:#fff; border:1px solid var(--border); border-radius:14px; padding:20px 22px;

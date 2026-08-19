@@ -50,7 +50,7 @@ The Python backends the SPA mirrors (financial estimate, DVS automations) live o
 | Board | ID | Roles / purpose |
 |---|---|---|
 | **DTC Intake** | `18392794310` | Top of funnel; "Send To Medical Necessity" group feeds the pipeline. Read-only here (oversight/system-mgmt). |
-| **Profile Send Off** | `18406352652` | `profile` ("Referral Intake", relabelled from "Verified Referrals" 2026-08-19) + `unverifiedReferrals` ("Unverified Referrals") + `inSystemReferrals` ("Already In System") — three roles, same board/group, split by Already In System then Referral Type/Source (see §5.10). Its own board (groups: *Patient Intake → 1. Intake → Tests → Stuck → Completed*). All three roles work **1. Intake** (`group_mm1xf2jb`); the send-off exit is **Advance to MN** (`Move to Onboarding` → automation creates the Masheke item + moves to Completed) — except Already In System, whose exits are **Move to Profile Send Off** (flag → No, back to 1. Intake as a Verified Referral; replaced Advance to MN there 2026-08-18) and **Mark as Stuck**. ⚠️ **Send back to Patient Intake was REMOVED** (Josh, 2026-08-14) — see §5.10. **Not** the Welcome Call board. |
+| **Profile Send Off** | `18406352652` | `profile` ("Referral Intake", relabelled from "Verified Referrals" 2026-08-19) + `unverifiedReferrals` ("Non-Referral Intake — Info Collection", §5.20) + `intakeCleanup` ("Intake — Profile Clean-Up", group `group_mm6c3rhb`, §5.20) + `inSystemReferrals` ("Already In System") — FOUR roles on one board, split by Already In System then Referral Type/Source (§5.10), and the DTC form queue split again into two sub-stages (§5.20). Its own board (groups: *Patient Intake → 1. Intake → New Form Partial/Completed → Profile Clean-Up → Already In System → Tests → Stuck → Completed*). `profile` and `inSystemReferrals` work **1. Intake** (`group_mm1xf2jb`); the send-off exit is **Advance to MN** (`Move to Onboarding` → automation creates the Masheke item + moves to Completed) — except Already In System, whose exits are **Move to Profile Send Off** (flag → No, back to 1. Intake as a Verified Referral; replaced Advance to MN there 2026-08-18) and **Mark as Stuck**. ⚠️ **Send back to Patient Intake was REMOVED** (Josh, 2026-08-14) — see §5.10. **Not** the Welcome Call board. |
 | **Medical Evaluation** ("Masheke") | `18406060017` | `evaluate`, `sendRequest`, `confirmReceipt`, `chaseFax`, `chaseParachute`, `doctorAppointments` (§5.12). Medical-necessity document collection. Stuck is propose→approve: reps flip **Escalation `color_mm1x7997` → "Final Escalation Required" (index 2)** and the reason is appended to the **MN notes `long_text_mm27zjt2`** (stamped `[Proposed Stuck …]`); managers approve/return from Oversight. (The old `color_mm5f37ve`/`text_mm5frng6` columns are retired.) |
 | **Insurance** ("Samantha") | `18410601299` | `benefits`, `submitAuth`, `authOutstanding`, `authDenied`, `dvs` (**stage**-based — Stage Advancer index 1 "DVS", read-only monitor at `/dvs`). Groups: Benefits, Submit Auth, Auth Outstanding, **DVS**, Auth Denied, Escalations, Complete, Stuck. ⚠️ The board grew a **DVS group** (`group_mm5gp2r2`, Aug 2026) but the role is still **stage**-defined: stage-DVS items linger in whichever group an automation last left them, so `useDvsPatients`/`useRoleCounts` read the STAGE board-wide and must not be "fixed" to filter on the group. |
 | **Welcome Call** | `18410804557` | `welcomeCall` + `finalConfirm` (two roles, same board, different groups). See `BOARD_SCHEMA.md`. |
@@ -417,6 +417,11 @@ sidebar-vs-burndown drift.
 The three are **mutually exclusive and exhaustive** — every active intake patient is in exactly
 one queue, so role counts still sum to the group total (§5.8) and no patient is worked twice.
 A blank Already In System counts as NOT in system (the column isn't always set).
+
+> **The DTC form queue is itself split in two from 2026-08-19 — see §5.20.** The two form groups
+> are *Info Collection* (`unverifiedReferrals`, left pane only) and the Profile Clean-Up group is
+> *`intakeCleanup`*. Everything in this sub-section applies to BOTH: same board, same columns, same
+> no-snooze rule, same Propose Stuck ladder.
 
 ⚠️ **Patient Intake has NO SNOOZE — do not give it one without building a next-action
 mechanism first** (Josh, 2026-08-13). "Log call attempt" bumps the **Attempt Counter
@@ -1231,6 +1236,95 @@ values). ⚠️ **Warnings only** — the intake stage's exits stay open by desi
 never become a gate there. `isUnitSegment` is imported from `shared/cardinalAddress` rather than
 re-implemented, so the fold and the parser can't disagree about what a unit is.
 
+
+### 5.20 Patient Intake split in two — Info Collection · Profile Clean-Up (Aug 2026)
+The DTC/CareCentrix intake page was **one page with two panes**: the left one collected what the
+patient told us, the right one (Patient Profile Clean-Up) sat **blurred behind a lock** until
+`evaluateUnlock` passed. Masani does a run of info-collection calls and cleans the profiles up
+later, so those are two jobs, not two halves of one screen. **The lock became a STAGE BOUNDARY**
+(Josh, 2026-08-19): the same conditions now enable an **Advance** button, and passing it moves the
+patient to another group and another role. Canonical rule: **`lib/profile/intakeSubStage.ts`** (+ tests).
+
+| | Info Collection | Profile Clean-Up |
+|---|---|---|
+| role id | **`unverifiedReferrals`** (unchanged) | **`intakeCleanup`** (new) |
+| label | Non-Referral Intake — Info Collection | Intake — Profile Clean-Up |
+| route | `/unverified-referrals` | `/profile-cleanup` |
+| queue | the two DTC form groups | **`group_mm6c3rhb`** "Profile Clean-Up" |
+| panes | LEFT ONLY — the right one isn't blurred, it isn't rendered | left + right, right always open |
+| partial/completed selector | yes | no (one group; partials never advance) |
+| exit | **Advance** → Clean-Up | Advance to MN (unchanged) |
+
+⚠️ **The id follows the QUEUE, not the screen.** Clean-Up is the half that looks like the old page,
+but `unverifiedReferrals` stayed with the half that kept reading the form groups — so no patient
+changed bucket on deploy day and every `access.json` assignment kept working. The new id has to be
+assigned by an admin in `/access`, or the second bar never appears.
+
+**Two board changes, no new automation.** New group `group_mm6c3rhb`, and one new status column
+**Intake Sub-Stage `color_mm6ct431`** — the advancer, which `executeWritesWithVerification`
+*requires*: without a stage column to hold back there is nothing to verify against and the advance
+fires unverified. ⚠️ **Its indices are `Info Collection` = 7 and `Profile Clean-Up` = 1**, not 0/1 —
+the column was created asking for 0 and 1 and Monday assigned its own slots (§5.12's trap; read back
+from `settings_str`, and Monday drops a write to a non-existent index **without erroring**).
+The SPA does the group move itself rather than via a "status → move item" automation like
+**7922049614**, because an automation adds an async window where the sub-stage says one thing and
+the group says another. Verified first: **7917676280** (Move to Onboarding → create the Masheke item)
+is board-wide with **no group condition**, so a new group cannot break Advance to MN.
+
+**⚠️ THE GROUP IS THE QUEUE MARKER, THE COLUMN IS THE RECORD — and the order follows from it.**
+`advanceToProfileCleanUp` writes every left-pane column, reads them back, fires the sub-stage
+advancer, and moves the item **last** (`advanceToProfileCleanUp.test.ts` pins all three). If the move
+fails the patient is still in a form group, so they are still in the rep's **own** sidebar with the
+button that retries — and the error says exactly that. Keying membership off the column instead would
+hand a half-advanced patient to a queue whose group they aren't in. Nothing but this app writes the
+column, so unlike Already In System (§5.10) there is no "arrived with it blank" case to tolerate.
+The Advance gate is `unlock.unlocked` **alone** — `readyMissing` counts the right pane's work, which
+is the stage this button hands the patient *to*, so requiring it would make the queue unexitable.
+
+**Propose Stuck is the SAME system on both** (Josh, 2026-08-19 — "doesn't matter if they came from
+either of the new roles"). Same ladder, same modal, same manager decisions. ⚠️ Which is why
+`EscalationCard` (the `StageActionBar`) was **extracted to one component rendered on both panes**:
+it lived inline in the right pane, i.e. exactly where Info Collection stopped rendering, so a manager
+arriving from an Oversight column would have lost Approve Stuck and Send back to pipeline. The rep's
+own Propose Stuck sits in the exit row and would have masked it — the affordance a PROCESSOR uses
+survives, the one only a MANAGER uses does not.
+
+**Buttons** (Josh, 2026-08-19): the exit row's **"Save to Monday" is now "Save and Finish Later"**
+and gives up the green (`.btn primary` → `.btn secondary`) — the row gets exactly one primary action,
+and **Advance** takes the green because it is the button to press. Advance **saves on the way
+through**, which a Save-then-Advance pair could never guarantee: the save is what gets verified
+before the advancer fires. The old "Go to Profile Clean-Up →" scroll link survives on Clean-Up only.
+The `.locked`/`.lockover`/`.lockmsg` CSS layer was **deleted**, not left unused — a blur rule nothing
+sets is an invitation to re-lock a pane the app has no way to unlock.
+
+**Keep-in-agreement (§5.8 counting contract) — 12 places.** A group that isn't added everywhere makes
+patients **invisible**, not wrong:
+1. **Role registry** — `config.ts` `ROLES` · 2. **Route** — `App.tsx` (`lazyWithReload`) ·
+3. **Role counts** — `useRoleCounts.ts` `PROFILE_CLEANUP_GROUP_ID` ·
+4. **Baseline (build)** — `scripts/snapshot-baseline.mjs` `countProfile` ·
+5. **Baseline (cron)** — `services/baseline-cron/index.mjs` `countProfile` ·
+6. **Oversight** — `oversightApi.ts`: its own ROW of three charts (`profile-send-off-cleanup` /
+   `-escalated` / `-stuck`), their `CHART_FILTERS`, the `intake` section's chart lists, **and the
+   board-groups fetch list** — miss that last one and every chart reads a permanent 0 ·
+7. **Chart routes** — `OversightTab.tsx` `CHART_ROUTES` (all three → `/profile-cleanup`; sending a
+   manager to `/unverified-referrals` shows them the left pane alone) ·
+8. **Search** — `systemMgmt/mondayApi.ts` `groupRoutes` ·
+9. **Profile Status** — `shared/profileStatus.ts` (neither Stuck nor Completed; its bidirectional
+   test fails otherwise) · 10. **`fetchDtcFormLeads`** — a twin that has advanced is still a twin,
+   so the flag on `/profile` would go quiet exactly when the twin starts being worked ·
+11. **`scheduledCalls/mondayApi.ts` GROUPS + both baselines' `PROF_SCHED_GROUPS`** — the unlock gate
+   accepts "Send request now" with no intake call, so a patient can hold a real Calendly booking and
+   still be advanced; reading only the form groups would drop that appointment and its 10-minute
+   reminder with nothing erroring (§5.15) · 12. **`columnExclusivity.test.ts`** — the new group joins
+   the intake partition.
+
+Clean-Up needs its **own** escalated + proposed-stuck charts, not bars folded into Info Collection's:
+an escalation raised there would otherwise match no chart, and a state that matches no chart is
+invisible app-wide (§7). ⚠️ `sortByAttempts` is **Info Collection's only** — least-tried-first exists
+because that queue is a calling queue with no snooze (§5.10); on Clean-Up the attempt count records
+calls made in the *previous* sub-stage and orders nothing, so the list keeps Monday's order (oldest
+first). `ignoreFollowUp` holds on both: neither has a snooze.
+
 ---
 
 ## 6. Patient flow across boards (the big picture)
@@ -1772,6 +1866,7 @@ these services; when their math changes, `oopEstimator.ts` must be updated to ma
 | A returned patient can't log an attempt (cards greyed, Save disabled) | `lib/masheke/attemptRollup.ts` → `oversightApi.returnProposedToQueue`; the gate is **MN Attempts** `color_mm1wz0vg`, not the attempt columns (§7) |
 | Stedi check output / eligibility results | **inline in `src/pages/ProfilePage.tsx`** — NOT `components/profile/StediPanel.tsx` (dead, §5.11) |
 | The benefits check filled in a bad-looking address / "not confirmed" flag | §5.19 — `lib/profile/addressFormat.ts`, rendered by `pages/UnverifiedReferralsPage.tsx` |
+| A DTC intake patient is in the wrong half of the split / Advance did nothing | §5.20 — `lib/profile/intakeSubStage.ts` (the queue is the GROUP), then `unverifiedWrite.advanceToProfileCleanUp`. Both roles are `UnverifiedReferralsPage` under a `variant` prop |
 | Cost estimate wrong | `lib/welcomeCall/oopEstimator.ts` (sync vs Railway financial backend) |
 | An address Cardinal won't accept / "Needs Review" on the orders board | §5.17 — `lib/shared/cardinalAddress.ts` (mirror of `Cardinal-api/src/address.js`), surfaced as C25/C26 in `lib/finalConfirm/checkPack.ts` |
 | Who can see what | `lib/accessStore.ts`, `lib/roleView.ts`, `components/AccessProvider.tsx` |

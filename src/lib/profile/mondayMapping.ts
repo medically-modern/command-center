@@ -90,6 +90,7 @@ export function mondayItemToPatient(item: MondayItem): Patient {
     attemptCounter: col(item, COL.attemptCounter),
     intakeCallComplete: col(item, COL.intakeCallComplete),
     intakeEscalation: col(item, COL.intakeEscalation),
+    intakeSubStage: col(item, COL.intakeSubStage),
 
     // Status
     alreadyInSystem: col(item, COL.alreadyInSystem),
@@ -283,6 +284,21 @@ export const ALREADY_IN_SYSTEM_INDEX: Record<string, number> = {
 export const FOLLOW_UP_INDEX = {
   followUp: 1,
 } as const;
+
+/**
+ * Intake Sub-Stage (`color_mm6ct431`) — the Info Collection / Profile Clean-Up
+ * advancer.
+ *
+ * ⚠️ THESE ARE NOT 0 AND 1, and the reason is CLAUDE.md §5.12's: Monday assigns
+ * a status index when the LABEL IS CREATED and picks its own slot, not the
+ * display order you asked for. The column was created with the two labels in
+ * this order and Monday returned `{"1":"Profile Clean-Up","7":"Info Collection"}`
+ * — read back from `settings_str`, not assumed. Writing index 0 here would set
+ * a label that does not exist.
+ */
+export const INTAKE_SUB_STAGE_INDEX: Record<string, number> = {
+  "Info Collection": 7, "Profile Clean-Up": 1,
+};
 
 export const MOVE_TO_ONBOARDING_INDEX: Record<string, number> = {
   "Already Serving": 0, "Advance to MN": 1, "Send Back To Referral": 2, "Need More Info.": 3,

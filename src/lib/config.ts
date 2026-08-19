@@ -23,7 +23,18 @@ export const ROLES: RoleConfig[] = [
   // Label matches the page header. The id stays `unverifiedReferrals` so
   // existing access.json role assignments keep working — same reason `profile`
   // kept its id when it was relabelled (CLAUDE.md §5.10).
-  { id: "unverifiedReferrals", label: "Patient Intake — DTC & CareCentrix", color: "bg-sky-500", icon: "UserSearch",   route: "/unverified-referrals" },
+  // ⚠️ THE ID FOLLOWS THE QUEUE, NOT THE SCREEN (Josh, 2026-08-19). The DTC
+  // intake stage split in two, and `unverifiedReferrals` stayed with the half
+  // that kept reading the two DTC form groups — so every patient in the app
+  // today stays in the same bucket with the same reps assigned, and existing
+  // access.json assignments keep working. Profile Clean-Up is the NEW id
+  // (`intakeCleanup`) even though it is the screen that looks like the old
+  // page, because its group starts empty and an admin has to assign it.
+  { id: "unverifiedReferrals", label: "Non-Referral Intake — Info Collection", color: "bg-sky-500", icon: "UserSearch",   route: "/unverified-referrals" },
+  // The second sub-stage: left AND right pane, right pane already open. Its
+  // queue is the Profile Clean-Up group; the Advance button on Info Collection
+  // is the only way in. Rule: lib/profile/intakeSubStage.ts.
+  { id: "intakeCleanup",   label: "Intake — Profile Clean-Up", color: "bg-sky-700", icon: "UserRoundCog", route: "/profile-cleanup" },
   { id: "inSystemReferrals", label: "Already In System", color: "bg-red-600",   icon: "UserRoundCheck", route: "/in-system-referrals" },
   // Scheduled Calls is the one role ordered by TIME OF DAY rather than a Next
   // Action Date: its count is "how many appointments are still ahead of you
