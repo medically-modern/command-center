@@ -342,22 +342,50 @@ export function OperationsTab() {
         </div>
       </div>
 
-      {/* Burndown bars, grouped by pipeline stage — see lib/systemMgmt/operationsGroups */}
-      <div className="space-y-6">
-        {groupedBars.map((group) => (
-        <div key={group.title} className="space-y-2.5">
-          {/* Deliberately quiet: this is a divider between stages, not a
-              headline competing with the role labels underneath it. */}
-          <h3 className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground/70">
-            {group.title}
-          </h3>
+      {/* Burndown bars, grouped by pipeline stage — see lib/systemMgmt/operationsGroups.
+          Each stage is a BOUNDED CARD rather than bars under a heading: with 23
+          rows a bare label just floats above the list and the eye still reads
+          one long column. The border is what actually separates them; the
+          tinted header bar gives the title something to sit on, and the count
+          on the right anchors the group as a unit. Chrome stays neutral on
+          purpose — every bar already carries its own role colour, so tinting
+          the sections too would be two colour systems fighting. */}
+      <div className="space-y-3">
+        {groupedBars.map((group) => {
+          // Sum of the CURRENT column for this stage. ⚠️ "Other" mixes units —
+          // `fax` counts unread faxes, not patients — which is why the label is
+          // a bare number with a tooltip rather than "N patients". The global
+          // total in the header above has always had the same mix.
+          const groupTotal = group.bars.reduce((sum, b) => sum + b.current, 0);
+          return (
+        <section
+          key={group.title}
+          className="rounded-xl border border-border/70 bg-card/40 overflow-hidden"
+        >
+          <header className="flex items-baseline justify-between gap-3 px-3.5 py-2 border-b border-border/60 bg-muted/40">
+            <h3 className="text-[11px] font-bold uppercase tracking-[0.16em] text-foreground/75">
+              {group.title}
+            </h3>
+            <span
+              className="text-[11px] font-medium tabular-nums text-muted-foreground/80"
+              title={`Current total across ${group.title}`}
+            >
+              {countsLoading ? "…" : groupTotal}
+            </span>
+          </header>
+          <div className="p-2 space-y-2">
         {group.bars.map((d) => {
           // Flat index across every group, so the cascade runs down the whole
           // page instead of restarting at each heading.
           const i = d.i;
           const hex = COLOR_MAP[d.role.color] ?? "#6366f1";
+          // The 4% floor keeps a 1-patient role visible, but it must not apply
+          // to a role at zero: that painted a small coloured nub on a "0 → 0"
+          // row, reading as "a little something" where there is nothing. Only
+          // visible since empty rows started rendering (they were filtered out
+          // before), so the floor and the empty case have to be separated.
           const ghostPct =
-            maxSqrt > 0
+            maxSqrt > 0 && d.full > 0
               ? Math.max((sqrtScale(d.full) / maxSqrt) * 100, 4)
               : 0;
           const currentPct =
@@ -373,7 +401,11 @@ export function OperationsTab() {
             <button
               key={d.role.id}
               className={cn(
-                "w-full text-left group rounded-lg px-3 py-2 -mx-3 hover:bg-muted/30 transition-colors",
+                // No negative margin any more: `w-full` plus `-mx-3` overflowed
+                // the row 12px to the right, which the section card's
+                // `overflow-hidden` would clip straight through the counts.
+                // The card's own padding gives the hover its inset instead.
+                "w-full text-left group rounded-lg px-2.5 py-2 hover:bg-muted/40 transition-colors",
                 hasRoute ? "cursor-pointer" : "cursor-default",
               )}
               onClick={() => {
@@ -455,8 +487,10 @@ export function OperationsTab() {
             </button>
           );
         })}
-        </div>
-        ))}
+          </div>
+        </section>
+          );
+        })}
       </div>
 
       {/* Footer */}
