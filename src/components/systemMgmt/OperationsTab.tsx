@@ -10,6 +10,9 @@
  */
 import { useEffect, useState, useRef, useMemo } from "react";
 import { ROLES } from "@/lib/config";
+// The stage grouping + its fallback live in lib so they are testable without
+// rendering this component — see operationsGroups.test.ts.
+import { groupRoleRows } from "@/lib/systemMgmt/operationsGroups";
 import { useRoleCounts, type RoleCounts, type RolePatientIds } from "@/hooks/useRoleCounts";
 import { useServerBaseline } from "@/hooks/useServerBaseline";
 import { cn } from "@/lib/utils";
@@ -175,8 +178,13 @@ export function OperationsTab() {
     });
   }, [roleCounts, countsLoading, serverBaseline, serverLoading, timeWindow]);
 
-  // All roles (exclude authDenied)
-  const allRoles = ROLES.filter((r) => r.id !== "authDenied");
+  // EVERY role in the registry, authDenied included (Josh, 2026-08-20 — "make
+  // sure this tab has all of the roles"). It used to be filtered out here
+  // because the stage is unbuilt (§7), but this tab is the manager's inventory
+  // of where patients are, and a denied patient is still a patient somebody
+  // has to work — on the board, since there's no page. It stays unclickable
+  // below; `hasRoute` is what governs that, not membership.
+  const allRoles = ROLES;
 
   /** Can we do ID-level movement tracking? */
   const hasIdTracking = !!(snapshot?.patientIds && Object.keys(currentPatientIds).length > 0);
@@ -215,9 +223,22 @@ export function OperationsTab() {
         }
 
         return { role, connected, baseline, current, delta, full, inCount, outCount };
-      })
-      .filter((d) => d.full > 0 || d.baseline > 0);
+      });
+    // NO empty-bar filter (Josh, 2026-08-20). It used to drop any role sitting
+    // at 0 with no baseline, which is why roles kept "missing" from this tab —
+    // an empty queue and a role that isn't wired up looked identical, i.e. the
+    // reader could not tell "nobody is waiting" from "this bar is lying".
+    // A zero row now renders like any other; where there is also no baseline it
+    // carries the existing "not connected" chip, which is the honest reading.
   }, [allRoles, snapshot, roleCounts, currentPatientIds]);
+
+  /**
+   * Bars sorted into their pipeline-stage sections. The table, the fallback
+   * that keeps an unlisted role visible, and the flat stagger index all live
+   * in lib/systemMgmt/operationsGroups.ts so they can be tested without
+   * rendering this component.
+   */
+  const groupedBars = useMemo(() => groupRoleRows(barData), [barData]);
 
   const sqrtScale = (v: number) => Math.sqrt(Math.max(v, 0));
   const maxSqrt = Math.max(...barData.map((d) => sqrtScale(d.full)), 1);
@@ -321,9 +342,19 @@ export function OperationsTab() {
         </div>
       </div>
 
-      {/* Burndown bars */}
-      <div className="space-y-2.5">
-        {barData.map((d, i) => {
+      {/* Burndown bars, grouped by pipeline stage — see lib/systemMgmt/operationsGroups */}
+      <div className="space-y-6">
+        {groupedBars.map((group) => (
+        <div key={group.title} className="space-y-2.5">
+          {/* Deliberately quiet: this is a divider between stages, not a
+              headline competing with the role labels underneath it. */}
+          <h3 className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground/70">
+            {group.title}
+          </h3>
+        {group.bars.map((d) => {
+          // Flat index across every group, so the cascade runs down the whole
+          // page instead of restarting at each heading.
+          const i = d.i;
           const hex = COLOR_MAP[d.role.color] ?? "#6366f1";
           const ghostPct =
             maxSqrt > 0
@@ -424,6 +455,8 @@ export function OperationsTab() {
             </button>
           );
         })}
+        </div>
+        ))}
       </div>
 
       {/* Footer */}

@@ -1994,17 +1994,25 @@ const UnverifiedReferralsPage = ({ variant = "infoCollection" }: { variant?: Int
                 </div>
               </div>
               <div className="flex items-center gap-2">
-                {/* LOCAL save, like every other role's header. Disabled with
-                    nothing pending, so it reads as "you have unsaved work"
-                    rather than a button that always looks available. */}
-                <Button
+                {/* HEADER SAVE — commented out on BOTH intake roles (Josh,
+                    2026-08-20). It was a LOCAL save (overlay only, never a
+                    Monday write), sitting in the top-right where every other
+                    role puts a real save, one scroll above the left pane's
+                    "Save and Finish Later" — which IS the Monday write. Two
+                    buttons both saying Save, meaning different things, with
+                    the weaker one given the emerald.
+                    `saveLocal` is deliberately left defined just below the
+                    note that explains it: putting this back is uncommenting
+                    this block, nothing else. The overlay still persists
+                    through `edit()` either way, so no rep work is lost. */}
+                {/* <Button
                   onClick={saveLocal}
                   disabled={!selected || !hasOverlay(selected.id)}
                   className="gap-2 bg-emerald-600 text-white hover:bg-emerald-700 shadow-elevate"
                   title="Keeps your edits on this device — the left pane's Save writes them to Monday"
                 >
                   <Save className="h-4 w-4" /> Save
-                </Button>
+                </Button> */}
               </div>
             </div>
           </header>
@@ -3182,21 +3190,19 @@ const UnverifiedReferralsPage = ({ variant = "infoCollection" }: { variant?: Int
                         </ul>
                       )}
 
-                      {/* Clean-Up only — it scrolls to the pane beside it.
-                          Info Collection has no pane to scroll to: its exit is
-                          the Advance button in the row below, which is the one
-                          Josh renamed from "Go to Profile Clean-Up" (2026-08-19).
-                          Shown whenever the pane is open, INCLUDING when
-                          everything passes: that is exactly when the rep wants
-                          to go press Advance, and that button is only over there. */}
-                      {isCleanUp && unlock.unlocked && (
+                      {/* "Go to Profile Clean-Up →" — commented out (Josh,
+                          2026-08-20). A scroll link to a pane already on the
+                          same screen; on Clean-Up the rep can just look right.
+                          `cleanUpRef` stays attached to that pane below, so
+                          uncommenting this block is all it takes to restore. */}
+                      {/* {isCleanUp && unlock.unlocked && (
                         <button
                           onClick={() => cleanUpRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })}
                           className="btn secondary sm"
                         >
                           Go to Profile Clean-Up →
                         </button>
-                      )}
+                      )} */}
                     </div>
 
                     {/* ── The actions, one even row ──
@@ -3247,13 +3253,27 @@ const UnverifiedReferralsPage = ({ variant = "infoCollection" }: { variant?: Int
                       >
                         Log call attempt
                       </button>
-                      <button
-                        onClick={() => setStuckOpen(true)}
-                        disabled={saving}
-                        className="btn rose"
-                      >
-                        Propose Stuck
-                      </button>
+                      {/* ONE Propose Stuck per screen (Josh, 2026-08-20).
+                          Clean-Up renders BOTH panes, and the right one
+                          carries the shared manager ladder (EscalationCard) —
+                          whose Propose Stuck runs `beforeProposeStuck` and the
+                          same modal, so the two were the same action twice.
+                          The RIGHT one survives, because it is the only route
+                          to Approve Stuck / Send back to pipeline; dropping it
+                          instead would strand a manager arriving from an
+                          Oversight column (§5.20).
+                          Info Collection has no right pane, so it keeps this
+                          button — there the ladder sits under the left pane's
+                          "Ready to Advance?" rather than beside it. */}
+                      {!isCleanUp && (
+                        <button
+                          onClick={() => setStuckOpen(true)}
+                          disabled={saving}
+                          className="btn rose"
+                        >
+                          Propose Stuck
+                        </button>
+                      )}
                     </div>
                     {/* Two footnotes, two blocks — not one dot-joined line,
                         which read as a single run-on sentence. The Save
