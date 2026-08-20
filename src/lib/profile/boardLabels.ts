@@ -12,10 +12,13 @@
  *     rename breaks any label-based write — silently, because Monday drops a
  *     status write for an unknown label without erroring. The index survives
  *     renames.
- *  2. **"Not Serving" stays writable.** It is hidden from the rep's PICKER
- *     only; the cross-sell derivation still writes it. The filter must never
- *     touch the write path — which is why this module returns the FULL map for
- *     writing and a filtered list for display, as two separate things.
+ *  2. **The board's labels ARE the picker's labels.** There is no hide-list
+ *     any more (Josh, 2026-08-20): "Not Serving" used to be filtered out of
+ *     the options, which let a rep read that value on a patient but never set
+ *     one or correct one the cross-sell derivation had written. Display and
+ *     write are still returned as two separate things — an ordered list and
+ *     the full label→index map — because a display rule must never be able to
+ *     reach the write path.
  *  3. **Never render an empty dropdown.** A failed fetch falls back to the
  *     hardcoded maps, so the page degrades to today's behaviour rather than to
  *     a blank select.
@@ -31,12 +34,10 @@ const MONDAY_API_VERSION = "2024-10";
 export interface LiveLabels {
   /** label → index, the FULL set including hidden ones. Writes use this. */
   index: Record<string, number>;
-  /** Display order, already filtered and sorted. Pickers use this. */
+  /** Display order, sorted by the board's own label positions. Pickers use
+   *  this — it holds every label the column has. */
   options: string[];
 }
-
-/** Hidden from the picker, never from the write path (§5.2). */
-export const HIDDEN_LABELS = ["Not Serving"];
 
 interface Settings {
   labels?: Record<string, string>;
@@ -63,7 +64,6 @@ export function parseSettings(settingsStr: string | null | undefined): LiveLabel
 
   const pos = s.labels_positions_v2 ?? {};
   const options = entries
-    .filter((e) => !HIDDEN_LABELS.includes(e.label))
     .sort((a, b) => (pos[String(a.idx)] ?? a.idx) - (pos[String(b.idx)] ?? b.idx))
     .map((e) => e.label);
 

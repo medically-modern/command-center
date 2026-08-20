@@ -1,31 +1,34 @@
 import { describe, it, expect } from "vitest";
-import { optionsWithCurrent, HIDDEN_LABELS } from "./selectOptions";
+import { optionsWithCurrent } from "./selectOptions";
 
-const PATHS = ["Insulin", "Hypoglycemia", "Not Serving"];
+const PATHS = ["Insulin", "Hypoglycemia", "Not Serving", "Neither Applies"];
 
 describe("optionsWithCurrent", () => {
-  it("hides Not Serving from the picker", () => {
-    expect(optionsWithCurrent(PATHS, "Insulin").map((o) => o.value))
-      .toEqual(["Insulin", "Hypoglycemia"]);
+  it("offers every label the board has, hiding nothing", () => {
+    // Josh, 2026-08-20: "Not Serving" used to be stripped out here, so a rep
+    // could read it on a patient but never set or correct one.
+    expect(optionsWithCurrent(PATHS, "Insulin").map((o) => o.value)).toEqual(PATHS);
   });
 
-  it("STILL SHOWS Not Serving when it is the item's current value (§5.2)", () => {
-    // The whole point: filtering it out entirely would render a blank select,
-    // which tells the rep the field is empty when the board holds a real value.
-    const opts = optionsWithCurrent(PATHS, "Not Serving");
-    const current = opts.find((o) => o.value === "Not Serving");
-    expect(current).toBeDefined();
-    expect(current?.disabled).toBe(true);
-    expect(current?.label).toContain("not selectable");
+  it("makes Not Serving a normal, pickable option", () => {
+    const opt = optionsWithCurrent(PATHS, "Not Serving").find((o) => o.value === "Not Serving");
+    expect(opt).toBeDefined();
+    expect(opt?.disabled).toBeUndefined();
+    expect(opt?.label).toBe("Not Serving");
   });
 
-  it("pins the current value first, so it reads as current state", () => {
-    expect(optionsWithCurrent(PATHS, "Not Serving")[0].value).toBe("Not Serving");
+  it("does not pin a value that is already in the list", () => {
+    // Pinning is for labels the build does not know — a value in the options
+    // must not be duplicated at the front.
+    expect(optionsWithCurrent(PATHS, "Not Serving").filter((o) => o.value === "Not Serving"))
+      .toHaveLength(1);
   });
 
   it("keeps ANY board value the code's list doesn't know", () => {
-    // Not a hidden label — just a label the hardcoded map is missing, e.g.
-    // General Insurance "Other" (index 15), or one added on Monday today.
+    // A label the hardcoded map is missing, e.g. General Insurance "Other"
+    // (index 15), or one added on Monday today. Pinned disabled rather than
+    // dropped: a select whose value matches no option renders blank, and the
+    // next save wipes what the board held.
     const opts = optionsWithCurrent(["Aetna", "Cigna"], "Other");
     expect(opts[0]).toMatchObject({ value: "Other", disabled: true });
     expect(opts.map((o) => o.value)).toContain("Aetna");
@@ -41,11 +44,7 @@ describe("optionsWithCurrent", () => {
   });
 
   it("handles a blank/undefined current value", () => {
-    expect(optionsWithCurrent(PATHS, "")).toHaveLength(2);
-    expect(optionsWithCurrent(PATHS, undefined)).toHaveLength(2);
-  });
-
-  it("treats Not Serving as the one hidden label", () => {
-    expect(HIDDEN_LABELS).toEqual(["Not Serving"]);
+    expect(optionsWithCurrent(PATHS, "")).toHaveLength(PATHS.length);
+    expect(optionsWithCurrent(PATHS, undefined)).toHaveLength(PATHS.length);
   });
 });

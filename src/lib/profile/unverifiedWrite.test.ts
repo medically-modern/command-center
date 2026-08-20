@@ -458,10 +458,11 @@ describe("CGM Coverage Path label set", () => {
       .not.toContain(COL.cgmCoveragePath);
   });
 
-  it("offers it to the rep, after the two qualifying paths", () => {
+  it("offers it to the rep, alongside every other label the column has", () => {
     // Both intake panes and ProfilePage build their picker from these keys, so
-    // the insertion order here is the order a rep reads.
+    // the insertion order here is the order a rep reads. Nothing is filtered
+    // out any more — "Not Serving" included (Josh, 2026-08-20).
     expect(optionsWithCurrent(Object.keys(CGM_COVERAGE_PATH_INDEX), "").map((o) => o.value))
-      .toEqual(["Insulin", "Hypoglycemia", "Neither Applies"]);
+      .toEqual(["Insulin", "Hypoglycemia", "Not Serving", "Neither Applies"]);
   });
 });

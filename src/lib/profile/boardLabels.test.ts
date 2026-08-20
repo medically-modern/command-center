@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { parseSettings, HIDDEN_LABELS } from "./boardLabels";
+import { parseSettings } from "./boardLabels";
 
 /** Shaped like a real Monday status column's settings_str. */
 const settings = (labels: Record<string, string>, pos?: Record<string, number>) =>
@@ -25,13 +25,15 @@ describe("parseSettings", () => {
     expect(r?.options).toEqual(["iLet", "Mobi", "Minimed 780G"]);
   });
 
-  it("hides 'Not Serving' from the picker but KEEPS it writable", () => {
-    // The whole §5.2 trap: filtering it out of the write map would stop the
-    // cross-sell derivation being able to write it.
-    const r = parseSettings(settings({ "0": "Insulin", "1": "Hypoglycemia", "2": "Not Serving" }));
-    expect(r?.options).toEqual(["Insulin", "Hypoglycemia"]);
+  it("offers every label the column has — nothing is hidden from the rep", () => {
+    // Josh, 2026-08-20. "Not Serving" was filtered out of the options here,
+    // which left a rep able to READ it on a patient and never set or correct
+    // one. The board's set is the picker's set now.
+    const r = parseSettings(settings({
+      "0": "Insulin", "1": "Hypoglycemia", "2": "Not Serving", "3": "Neither Applies",
+    }));
+    expect(r?.options).toEqual(["Insulin", "Hypoglycemia", "Not Serving", "Neither Applies"]);
     expect(r?.index["Not Serving"]).toBe(2);
-    expect(HIDDEN_LABELS).toContain("Not Serving");
   });
 
   it("drops empty label slots Monday leaves behind", () => {

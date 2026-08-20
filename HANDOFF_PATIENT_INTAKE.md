@@ -238,6 +238,17 @@ Examples of where the source differs:
 
 ### 5.2 ✅ DECIDED — dropdowns read their options from Monday, minus a hide-list
 
+> ⚠️ **SUPERSEDED IN PART, 2026-08-20 (Josh): there is no hide-list any more.** Everything below
+> about reading options from the board at runtime still stands and is built. The one reversed
+> decision is *"`Not Serving` is never offered to the rep"* — hiding it meant a rep could READ that
+> value on a patient and never set it, or correct one the cross-sell derivation had written. Every
+> picker now offers the column's whole label set, on both intake panes and on Referral Intake /
+> Already In System. `HIDDEN_LABELS` is gone from `lib/profile/selectOptions.ts` and
+> `lib/profile/boardLabels.ts`, and `ProfilePage`'s `noNotServing` with it. What survives is the
+> rule underneath it: a current value that is not in the option list is still displayed (pinned,
+> disabled), because a `<select>` matching no option renders blank and the next save wipes it.
+
+
 **Yes, this is doable and it's the way to build it.** For **CGM Type**, **Pump Type**,
 **CGM Coverage Path** and **Insulin Pump Coverage Path**, the options should come from the
 board's own column settings at runtime — so adding or renaming a status on Monday flows straight

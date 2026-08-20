@@ -123,7 +123,7 @@ import { sidebarVisibleList } from "@/lib/profile/sidebarList";
 import { useAccessContext } from "@/components/AccessProvider";
 import { managerPeople, processorPeople } from "@/lib/people";
 import { coordinatorNoteLine, extractCoordinator } from "@/lib/profile/careCoordinator";
-import { fetchBoardLabels, HIDDEN_LABELS, type LiveLabels } from "@/lib/profile/boardLabels";
+import { fetchBoardLabels, type LiveLabels } from "@/lib/profile/boardLabels";
 import { PageLoadingOverlay } from "@/components/shared/PageLoadingOverlay";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 // redesign.css is the shared design system (DoctorSection's markup is scoped
@@ -186,10 +186,9 @@ const SOURCE_LABEL: Record<Source, string> = {
   partial: "Partial forms",
 };
 
-/** Full board label sets. "Not Serving" is NOT stripped here — `optionsWithCurrent`
- *  hides it from the picker while keeping it visible when it's the patient's
- *  current value (§5.2), and the WRITE path uses the complete index maps, so a
- *  legitimate "Not Serving" can still be written and read back. */
+/** Full board label sets — the fallback for a failed settings fetch. Nothing is
+ *  stripped, here or downstream: the rep picks from every label the column has
+ *  (Josh, 2026-08-20), and the WRITE path uses the complete index maps. */
 /**
  * Yes / No for a Stedi flag — or "—" when the column is blank.
  *
@@ -1103,19 +1102,19 @@ const UnverifiedReferralsPage = ({ variant = "infoCollection" }: { variant?: Int
     return () => { alive = false; };
   }, []);
   /** Options for one product dropdown: live if we have them, hardcoded if not.
-   *  Hidden labels are filtered for DISPLAY only. */
+   *  Either way it is the column's whole label set — the picker hides nothing. */
   const productOptions = useCallback(
-    (columnId: string, fallback: string[]) =>
-      liveLabels[columnId]?.options ?? fallback.filter((l) => !HIDDEN_LABELS.includes(l)),
+    (columnId: string, fallback: string[]) => liveLabels[columnId]?.options ?? fallback,
     [liveLabels],
   );
   /**
    * The WRITE half of the same fetch, and deliberately a different shape from
-   * `productOptions`: the full label→index map per column, hidden labels
-   * included. A label the picker hides ("Not Serving") is still written by the
-   * cross-sell derivation, so filtering here would silently drop that write
-   * (§5.2). Empty until the fetch lands — buildIntakeTasks falls back to the
-   * hardcoded maps for any column it doesn't find.
+   * `productOptions`: the full label→index map per column. The picker no longer
+   * hides anything, but these must stay two separate things regardless — the
+   * cross-sell derivation writes labels nobody picked, so a display rule that
+   * could reach this map would silently drop those writes (§5.2). Empty until
+   * the fetch lands — buildIntakeTasks falls back to the hardcoded maps for any
+   * column it doesn't find.
    */
   const liveIndex = useMemo(() => {
     const out: Record<string, Record<string, number>> = {};
