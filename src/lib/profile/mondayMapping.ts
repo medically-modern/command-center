@@ -265,8 +265,27 @@ export const INSULIN_PUMP_COVERAGE_PATH_INDEX: Record<string, number> = {
   "1st Pump >6M Diagnosed": 4, "1st Pump <6M Diagnosed": 6, "Supplies Only": 7,
 };
 
+/**
+ * CGM Coverage Path `color_mm1w7e5q` **on the Profile Send Off board**, read
+ * back from the column's own `settings_str` (2026-08-20) — the only place the
+ * indices are real. "Neither Applies" is Josh's addition of that date: the DTC
+ * form has always offered the patient a third answer ("neither applies") and
+ * the board had nowhere to put it, so it was landing as nothing at all.
+ *
+ * ⚠️ **Two boards, one column id, different labels.** Medical Evaluation
+ * carries `color_mm1w7e5q` too, and its index 3 is `Hypo Invalid` — it has no
+ * "Neither Applies" at all. So this map is Profile-Send-Off-only; masheke has
+ * its own (`lib/masheke/fieldOptions.ts` `CGM_COVERAGE_OPTS`) and the two must
+ * never be merged. `unverifiedWrite.test.ts` pins the divergence.
+ *
+ * ⚠️ **The Advance-to-MN hop copies this column BY LABEL** — board automation
+ * 7917676280 maps `item.color_mm1w7e5q.label` onto the created Medical
+ * Evaluation item — so "Neither Applies" arrives there as nothing until that
+ * board's column grows the same label. (That is why Medical Evaluation carries
+ * both `Hypo` and `Hypoglycemia`: the second exists to receive this copy.)
+ */
 export const CGM_COVERAGE_PATH_INDEX: Record<string, number> = {
-  "Insulin": 0, "Hypoglycemia": 1, "Not Serving": 2,
+  "Insulin": 0, "Hypoglycemia": 1, "Not Serving": 2, "Neither Applies": 3,
 };
 
 export const GENDER_INDEX: Record<string, number> = {

@@ -6,6 +6,9 @@ import {
   type AdvanceInput,
 } from "./unverifiedWrite";
 import { COL } from "./mondayApi";
+import { CGM_COVERAGE_PATH_INDEX } from "./mondayMapping";
+import { optionsWithCurrent } from "./selectOptions";
+import { CGM_COVERAGE_OPTS } from "../masheke/fieldOptions";
 import { proposeStuckLevel } from "../shared/stageActions";
 import type { Patient } from "./workflow";
 
@@ -407,5 +410,58 @@ describe("live board labels drive the status write (§5.2)", () => {
     expect(columnsOf(buildAdvanceTasks(p, opts))).toContain(COL.cgmType);
     expect(columnsOf(buildAdvanceTasks(p, { ...opts, liveIndex: undefined })))
       .not.toContain(COL.cgmType);
+  });
+});
+
+
+/**
+ * CGM Coverage Path — the one status column on this board whose label set is
+ * shared, by id, with a board that means something else by it.
+ *
+ * Read back from board 18406352652's own `settings_str` on 2026-08-20, the day
+ * "Neither Applies" was added. Same reasoning as the map above: the INDEX is
+ * the contract, and a wrong one files the patient under a different answer
+ * with nothing erroring.
+ */
+describe("CGM Coverage Path label set", () => {
+  it("carries every label the board has, on the indices the board assigned", () => {
+    expect(CGM_COVERAGE_PATH_INDEX).toEqual({
+      "Insulin": 0,
+      "Hypoglycemia": 1,
+      "Not Serving": 2,
+      "Neither Applies": 3,
+    });
+  });
+
+  /**
+   * ⚠️ Medical Evaluation carries a column with the SAME id (`color_mm1w7e5q`)
+   * and a different vocabulary — its index 3 is "Hypo Invalid". Merging the two
+   * maps, or reusing one against the other board, writes a real but WRONG
+   * answer. This test fails the moment someone tries to "align" them.
+   */
+  it("is NOT the Medical Evaluation vocabulary, despite the shared column id", () => {
+    expect(CGM_COVERAGE_PATH_INDEX["Neither Applies"]).toBe(3);
+    expect(CGM_COVERAGE_OPTS.find((o) => o.index === 3)?.label).toBe("Hypo Invalid");
+    expect(CGM_COVERAGE_OPTS.some((o) => o.label === "Neither Applies")).toBe(false);
+  });
+
+  it("writes Neither Applies instead of dropping it", () => {
+    expect(columnsOf(buildIntakeTasks("123", { cgmCoveragePath: "Neither Applies" })))
+      .toContain(COL.cgmCoveragePath);
+  });
+
+  it("is case-sensitive, like every other status write here", () => {
+    // The form's own copy says "neither applies" in lower case. The board label
+    // is "Neither Applies", and an unknown label is skipped rather than guessed
+    // (§5.2) — so the casing in the map is the thing that makes the write land.
+    expect(columnsOf(buildIntakeTasks("123", { cgmCoveragePath: "Neither applies" })))
+      .not.toContain(COL.cgmCoveragePath);
+  });
+
+  it("offers it to the rep, after the two qualifying paths", () => {
+    // Both intake panes and ProfilePage build their picker from these keys, so
+    // the insertion order here is the order a rep reads.
+    expect(optionsWithCurrent(Object.keys(CGM_COVERAGE_PATH_INDEX), "").map((o) => o.value))
+      .toEqual(["Insulin", "Hypoglycemia", "Neither Applies"]);
   });
 });
