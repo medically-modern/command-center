@@ -66,7 +66,7 @@ import { ClipboardCheck, ArrowLeft, Save, AlertTriangle, ChevronDown, FileText }
 import { toast } from "sonner";
 import "./profile/redesign.css";
 import { IntakeProfileStatus } from "@/components/shared/PatientProfileStatus";
-import { optionsWithCurrent } from "@/lib/profile/selectOptions";
+import { optionsWithCurrent, displayFor } from "@/lib/profile/selectOptions";
 
 // Every label the board has. These used to run through a `noNotServing`
 // filter, which meant a rep could read "Not Serving" on a patient but never
@@ -1588,7 +1588,7 @@ function ProfileBody(p: BodyProps) {
                   <div className="f"><div className="k">Request Type</div><div className="v">{rcv.requestType || "—"}</div></div>
                   <div className="f"><div className="k">Referral Source</div><div className="v">{rcv.referralSource || "—"}</div></div>
                   <div className="f"><div className="k">CGM Type (provided)</div><div className="v">{rcv.cgmType || "—"}</div></div>
-                  <div className="f"><div className="k">CGM Coverage Path (provided)</div><div className="v">{rcv.cgmCoveragePath || "—"}</div></div>
+                  <div className="f"><div className="k">CGM Coverage Path (provided)</div><div className="v">{rcv.cgmCoveragePath ? displayFor(rcv.cgmCoveragePath) : "—"}</div></div>
                   <div className="f"><div className="k">Pump Type (provided)</div><div className="v">{rcv.pumpType || "—"}</div></div>
                   <div className="f"><div className="k">IP Coverage Path (provided)</div><div className="v">{rcv.insulinPumpCoveragePath || "—"}</div></div>
                 </div>

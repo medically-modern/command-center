@@ -304,7 +304,7 @@ appear and renames propagate.
 | Pump Type `color_mm1wjjtk` | Tandem t:slim X2 · Tandem Mobi · Beta Bionics iLet | `t:slim` · `Mobi` · `iLet` · `Minimed 780G` · `Not Serving` |
 | CGM Type `color_mm1w7pmf` | Medtronic Guardian 4 · "Any will work" | `Guardian 4` · `FreeStyle Libre 3 Plus` · `FreeStyle Libre 2 Plus` · `FreeStyle Libre 14-Day` · `Dexcom G7` · `Dexcom G7 15-Day` · `Dexcom G6` · `Instinct` · `Not Serving` |
 | IP Coverage Path `color_mm1w5xn1` | Replacement (lost/damaged) · Warranty replacement · Upgrade from current pump | `1st Pump <6M Diagnosed` · `1st Pump >6M Diagnosed` · `OOW Pump` · `IW New Insurance` · `Omnipod Switch` · `Supplies Only` · `Not Serving` |
-| CGM Coverage Path `color_mm1w7e5q` | Injecting insulin · Hypoglycemic event · Neither applies | `Insulin` · `Hypoglycemia` · `Neither Applies` (added to the board 2026-08-20 — the form's third answer had nowhere to land before that) · `Not Serving` |
+| CGM Coverage Path `color_mm1w7e5q` | Injecting insulin · Hypoglycemic event · Neither applies | `Insulin` · `Hypo` (reps read "Hypoglycemia" — display alias, `selectOptions.displayFor`) · `Neither Applies` · `Not Serving`. Both changed 2026-08-20: the form's third answer got a label of its own, and index 1 was renamed `Hypoglycemia` → `Hypo` so this board matches every board downstream and the value stops being blanked at Evaluate. |
 | General Insurance `color_mm24ap4j` | Anthem or Blue Cross Blue Shield · UnitedHealthcare · NYS Medicaid · Medicare · Other | `Anthem / BCBS` · `United Healthcare` · `Medicaid` · `Medicare A&B` (+ `UMR`, `Wellcare`, `MagnaCare`, `Midlands Choice`; **no "Other"**) |
 | Secondary Insurance `color_mm1zbrx0` | + Other | `NY Medicaid` · `Medicare Supplement` · `None` |
 

@@ -7,7 +7,7 @@ import {
 } from "./unverifiedWrite";
 import { COL } from "./mondayApi";
 import { CGM_COVERAGE_PATH_INDEX } from "./mondayMapping";
-import { optionsWithCurrent } from "./selectOptions";
+import { optionsWithCurrent, displayFor } from "./selectOptions";
 import { CGM_COVERAGE_OPTS } from "../masheke/fieldOptions";
 import { proposeStuckLevel } from "../shared/stageActions";
 import type { Patient } from "./workflow";
@@ -427,7 +427,7 @@ describe("CGM Coverage Path label set", () => {
   it("carries every label the board has, on the indices the board assigned", () => {
     expect(CGM_COVERAGE_PATH_INDEX).toEqual({
       "Insulin": 0,
-      "Hypoglycemia": 1,
+      "Hypo": 1,
       "Not Serving": 2,
       "Neither Applies": 3,
     });
@@ -458,11 +458,27 @@ describe("CGM Coverage Path label set", () => {
       .not.toContain(COL.cgmCoveragePath);
   });
 
+  /**
+   * Index 1 was renamed `Hypoglycemia` → `Hypo` on 2026-08-20 so this board
+   * matches every board downstream, which is what stops the Evaluate stage
+   * blanking the value on arrival. The rename kept the index — that is the
+   * whole reason no item needed migrating — so this assertion is what catches
+   * anyone "restoring" the long word into the map instead of the display layer.
+   */
+  it("speaks the pipeline's vocabulary: Hypo, not Hypoglycemia", () => {
+    expect(CGM_COVERAGE_PATH_INDEX["Hypo"]).toBe(1);
+    expect(CGM_COVERAGE_PATH_INDEX["Hypoglycemia"]).toBeUndefined();
+    // ...while the rep still READS the long word. Display only, never the value.
+    expect(displayFor("Hypo")).toBe("Hypoglycemia");
+    expect(optionsWithCurrent(["Insulin", "Hypo"], "Hypo").map((o) => o.label))
+      .toEqual(["Insulin", "Hypoglycemia"]);
+  });
+
   it("offers it to the rep, alongside every other label the column has", () => {
     // Both intake panes and ProfilePage build their picker from these keys, so
     // the insertion order here is the order a rep reads. Nothing is filtered
     // out any more — "Not Serving" included (Josh, 2026-08-20).
     expect(optionsWithCurrent(Object.keys(CGM_COVERAGE_PATH_INDEX), "").map((o) => o.value))
-      .toEqual(["Insulin", "Hypoglycemia", "Not Serving", "Neither Applies"]);
+      .toEqual(["Insulin", "Hypo", "Not Serving", "Neither Applies"]);
   });
 });

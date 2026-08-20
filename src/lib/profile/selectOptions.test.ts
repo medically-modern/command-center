@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
-import { optionsWithCurrent } from "./selectOptions";
+import { optionsWithCurrent, displayFor } from "./selectOptions";
 
-const PATHS = ["Insulin", "Hypoglycemia", "Not Serving", "Neither Applies"];
+const PATHS = ["Insulin", "Hypo", "Not Serving", "Neither Applies"];
 
 describe("optionsWithCurrent", () => {
   it("offers every label the board has, hiding nothing", () => {
@@ -46,5 +46,39 @@ describe("optionsWithCurrent", () => {
   it("handles a blank/undefined current value", () => {
     expect(optionsWithCurrent(PATHS, "")).toHaveLength(PATHS.length);
     expect(optionsWithCurrent(PATHS, undefined)).toHaveLength(PATHS.length);
+  });
+});
+
+/**
+ * The board stores `Hypo` (index 1, renamed from `Hypoglycemia` on 2026-08-20
+ * so this board matches every board downstream). Reps kept the long word.
+ *
+ * The split matters: the VALUE is what the index maps are keyed on and what a
+ * write resolves through, so aliasing it instead of the label would stop the
+ * write landing — silently, the way monday drops a status label it doesn't
+ * have.
+ */
+describe("displayFor", () => {
+  it("shows Hypoglycemia for the board's Hypo", () => {
+    expect(displayFor("Hypo")).toBe("Hypoglycemia");
+  });
+
+  it("leaves every other label alone", () => {
+    for (const l of ["Insulin", "Not Serving", "Neither Applies", "Aetna", ""]) {
+      expect(displayFor(l)).toBe(l);
+    }
+  });
+
+  it("aliases the LABEL and never the value", () => {
+    const opt = optionsWithCurrent(PATHS, "Hypo").find((o) => o.label === "Hypoglycemia");
+    expect(opt?.value).toBe("Hypo");
+  });
+
+  it("aliases a pinned unknown value too, so the rep reads one word throughout", () => {
+    // A board value this build's list doesn't carry still gets pinned on — and
+    // it must not suddenly read "Hypo" when every other row says Hypoglycemia.
+    const [pinned] = optionsWithCurrent(["Insulin"], "Hypo");
+    expect(pinned).toMatchObject({ value: "Hypo", disabled: true });
+    expect(pinned.label).toContain("Hypoglycemia");
   });
 });

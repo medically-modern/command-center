@@ -931,7 +931,7 @@ Attachments: order form, recent chart notes.</div>
               <div class="fld">
                 <div class="flabel">CGM Coverage Path</div>
                 <select id="cgmPathIn" onchange="onCgmPath()">
-                  <option>Insulin</option><option selected>Hypoglycemia</option><option>Neither Applies</option><option>Not Serving</option>
+                  <option>Insulin</option><option value="Hypo" selected>Hypoglycemia</option><option>Neither Applies</option><option>Not Serving</option>
                 </select>
                 <div class="prov"><span class="src form">From form</span><span class="arw">→</span>
                   <span class="col">color_mm1w7e5q</span></div>
@@ -1604,7 +1604,7 @@ Attachments: order form, recent chart notes.</div>
 <tr><td>Pump Type<br><code>color_mm1wjjtk</code></td><td class="was">Tandem t:slim X2 · Tandem Mobi · Beta Bionics iLet · Not sure which type is right</td><td class="now">t:slim · Mobi · iLet · Minimed 780G · Not Serving</td></tr>
 <tr><td>CGM Type<br><code>color_mm1w7pmf</code></td><td class="was">Freestyle Libre 3 Plus · Dexcom G7 · Medtronic Guardian 4 · Any will work</td><td class="now">FreeStyle Libre 3 Plus · FreeStyle Libre 2 Plus · FreeStyle Libre 14-Day · Dexcom G7 · Dexcom G7 15-Day · Dexcom G6 · Guardian 4 · Instinct · Not Serving</td></tr>
 <tr><td>Insulin Pump Coverage Path<br><code>color_mm1w5xn1</code></td><td class="was">1st pump ≤6mo · 1st pump &gt;6mo · <b>Replacement (lost/damaged)</b> · <b>Warranty replacement</b> · <b>Upgrade from current pump</b></td><td class="now">1st Pump &lt;6M Diagnosed · 1st Pump &gt;6M Diagnosed · OOW Pump · IW New Insurance · Omnipod Switch · Supplies Only · Not Serving</td></tr>
-<tr><td>CGM Coverage Path<br><code>color_mm1w7e5q</code></td><td class="was">Injecting insulin · Hypoglycemic event · Neither applies</td><td class="now">Insulin · Hypoglycemia · Neither Applies · Not Serving <em>(the board gained "Neither Applies" on 2026-08-20 — the form's third answer now has a home of its own instead of being filed as Not Serving)</em></td></tr>
+<tr><td>CGM Coverage Path<br><code>color_mm1w7e5q</code></td><td class="was">Injecting insulin · Hypoglycemic event · Neither applies</td><td class="now">Insulin · Hypo <em>(shown to reps as "Hypoglycemia")</em> · Neither Applies · Not Serving <em>(both changed 2026-08-20: the form's third answer got a label of its own instead of being filed as Not Serving, and index 1 was renamed Hypoglycemia&nbsp;→&nbsp;Hypo so this board matches every board downstream)</em></td></tr>
 <tr><td>Insurance dropdown<br><code>color_mm24ap4j</code></td><td class="was">Anthem or Blue Cross Blue Shield · UnitedHealthcare · NYS Medicaid · Medicare · Other</td><td class="now">Anthem / BCBS · United Healthcare · Medicaid · Medicare A&amp;B (+ UMR, Wellcare, MagnaCare, Midlands Choice; no "Other")</td></tr>
 <tr><td>Secondary Insurance<br><code>color_mm1zbrx0</code></td><td class="was">None · NY Medicaid · Medicare Supplement · <b>Other</b></td><td class="now">NY Medicaid · Medicare Supplement · None</td></tr>
 </table>
@@ -1659,7 +1659,10 @@ const BOARD_LABELS = {
   color_mm1wjjtk: { title:'Pump Type', labels:{
     0:'iLet', 1:'Mobi', 2:'t:slim', 3:'Not Serving', 4:'Minimed 780G' } },
   color_mm1w7e5q: { title:'CGM Coverage Path', labels:{
-    0:'Insulin', 1:'Hypoglycemia', 2:'Not Serving', 3:'Neither Applies' } },
+    /* Index 1 is 'Hypo' on the board (renamed 2026-08-20 to match every board
+       downstream); the rep still READS "Hypoglycemia" — see
+       selectOptions.displayFor. Alias the display, never the value. */
+    0:'Insulin', 1:'Hypo', 2:'Not Serving', 3:'Neither Applies' } },
   color_mm1w5xn1: { title:'Insulin Pump Coverage Path', labels:{
     0:'Not Serving', 1:'IW New Insurance', 2:'Omnipod Switch', 3:'OOW Pump',
     4:'1st Pump >6M Diagnosed', 6:'1st Pump <6M Diagnosed', 7:'Supplies Only' } },

@@ -267,39 +267,51 @@ export const INSULIN_PUMP_COVERAGE_PATH_INDEX: Record<string, number> = {
 
 /**
  * CGM Coverage Path `color_mm1w7e5q` **on the Profile Send Off board**, read
- * back from the column's own `settings_str` (2026-08-20) — the only place the
- * indices are real. "Neither Applies" is Josh's addition of that date: the DTC
- * form has always offered the patient a third answer ("neither applies") and
- * the board had nowhere to put it, so it was landing as nothing at all.
+ * back from the column's own `settings_str` — the only place the indices are
+ * real.
  *
- * ⚠️ **Two boards, one column id, different labels.** Medical Evaluation
- * carries `color_mm1w7e5q` too, and its index 3 is `Hypo Invalid` — it has no
- * "Neither Applies" at all. So this map is Profile-Send-Off-only; masheke has
- * its own (`lib/masheke/fieldOptions.ts` `CGM_COVERAGE_OPTS`) and the two must
- * never be merged. `unverifiedWrite.test.ts` pins the divergence.
+ * Two changes on 2026-08-20, both Josh's:
  *
- * ⚠️ **The Advance-to-MN hop copies this column BY LABEL** — board automation
- * 7917676280 maps `item.color_mm1w7e5q.label` onto the created Medical
- * Evaluation item. What happens to a label the destination lacks is NOT
- * settled, and the evidence points AWAY from the obvious answer: Medical
- * Evaluation's copy of this column carries `Hypoglycemia` (index 6) and
- * `Invalid` (4), and nothing in the masheke slice writes either — its picker's
- * "Hypoglycemia" option writes the value `Hypo` (`EvaluatePanel` CgmPathSelect),
- * and `CGM_COVERAGE_OPTS` has no `Invalid`. This copy is the only plausible
- * author of that label, which suggests the automation CREATES a missing one on
- * the destination rather than dropping the write. So expect a "Neither Applies"
- * patient advanced to MN to add the label to that board — the opposite of
- * leaving it alone. Verify against the board before relying on either outcome.
+ *  - **`Neither Applies` (index 3).** The DTC form has always offered a third
+ *    answer to the qualifying question and the board had nowhere to put it, so
+ *    it was filed as `Not Serving` — the label the cross-sell rule writes, and
+ *    one the picker used to hide, so the patient's own answer arrived looking
+ *    system-derived. Deliberately THIS BOARD ONLY: those patients don't go on
+ *    to Medical Necessity, so no board downstream needs the word.
+ *  - **Index 1 renamed `Hypoglycemia` → `Hypo`.** Every board downstream —
+ *    Medical Evaluation, Insurance, Welcome Call, Subscription — already said
+ *    `Hypo`. This board was the odd one out, and it is the board that
+ *    ORIGINATES the value. The rename kept the index, so nothing needed
+ *    migrating.
  *
- * Either way the Evaluate stage does not understand the value: `evalState`'s
- * seed accepts only Insulin / Hypo / Hypo Invalid / Missing — it already
- * ignores `Hypoglycemia` for exactly this reason — and `mnRequestPdf`'s
- * `cgmBlock` returns null for anything else, which drops the CGM section from
- * the doctor's MN request. A patient who reaches MN on this path needs a rep to
- * pick a real coverage path there.
+ * ⚠️ **That rename is a data fix, not a tidy-up.** The Advance-to-MN hop copies
+ * this column BY LABEL (board automation 7917676280 maps
+ * `item.color_mm1w7e5q.label`), and `evalState`'s seed accepts only
+ * Insulin / Hypo / Hypo Invalid / Missing — so a copied `Hypoglycemia` never
+ * loaded into the Evaluate panel, and the panel's first send wrote null
+ * straight over it. The Medical Evaluation board's activity log holds **26 of
+ * those clears between May and August**: the most common single transition on
+ * that column, on a board whose own picker never writes that word. `Hypo`
+ * seeds, so it survives the hop.
+ *
+ * ⚠️ **Reps still read "Hypoglycemia."** The board value is `Hypo`; the word on
+ * screen comes from `selectOptions.displayFor`. Alias the DISPLAY, never the
+ * value — this map is what the writes key on.
+ *
+ * ⚠️ **Two boards, one column id.** Medical Evaluation carries
+ * `color_mm1w7e5q` too, with a different vocabulary: its index 3 is
+ * `Hypo Invalid` and it has no `Neither Applies` at all. This map is
+ * Profile-Send-Off-only — masheke has its own (`lib/masheke/fieldOptions.ts`
+ * `CGM_COVERAGE_OPTS`) and the two must never be merged.
+ * `unverifiedWrite.test.ts` pins the divergence. If a `Neither Applies` patient
+ * ever IS advanced by mistake, the copy automation mints the label on that
+ * board (it demonstrably does this — an ME item was created carrying
+ * `Hypoglycemia` at an index its label set lacked days earlier) and the next
+ * Evaluate send blanks it. Silent, and accepted: those patients aren't meant to
+ * be there.
  */
 export const CGM_COVERAGE_PATH_INDEX: Record<string, number> = {
-  "Insulin": 0, "Hypoglycemia": 1, "Not Serving": 2, "Neither Applies": 3,
+  "Insulin": 0, "Hypo": 1, "Not Serving": 2, "Neither Applies": 3,
 };
 
 export const GENDER_INDEX: Record<string, number> = {
