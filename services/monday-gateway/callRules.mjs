@@ -60,6 +60,10 @@ export function unwrapEvent(payload) {
 /**
  * The inbound, still-ringing party of a telephony session event — or null.
  *
+ * `selfNumbers` are OUR OWN numbers — the caller ID the softphone presents on
+ * every outbound call. See the fourth bullet: without them this returns our own
+ * click-to-call legs and the whole office gets popped.
+ *
  * ⚠️ Three things this has to get right, because each one silently produces a
  * feature that "works" while showing the wrong thing:
  *
@@ -71,14 +75,34 @@ export function unwrapEvent(payload) {
  *    somebody is on, not an offer.
  *  · `from.phoneNumber` is the CALLER. Reading `to` instead would key the whole
  *    feature on our own main line and match every call to the same "patient".
+ *  · ⚠️ **A party whose `from` is OUR OWN number is our own outbound call**
+ *    (Josh, 2026-08-20 — reps were being popped by their own click-to-calls).
+ *    The `direction` check above is necessary and NOT sufficient: the softphone
+ *    dials as the shared extension presenting the MM main line as caller ID
+ *    (`useWebPhone` → `wp.call(phone, mmPhoneNumber())`), and the session that
+ *    produces carries a party RingCentral marks `Inbound` and ringing whose
+ *    `from` is that same main line. It passed every test above, so every rep's
+ *    screen lit up on every outbound call — and because the number was always
+ *    ours, the browser matched it to whichever board row happens to carry the
+ *    MM number, putting the SAME patient's name on every card. That is the
+ *    "collapsing every caller onto one patient" failure this module's own
+ *    header warns about, arriving through `from` rather than `to`.
+ *    The check is safe in the one direction that matters: a patient can never
+ *    ring us FROM our own line, so this can only ever drop our own calls.
  */
-export function pickInboundParty(event) {
+export function pickInboundParty(event, selfNumbers = []) {
   const parties = Array.isArray(event?.parties) ? event.parties : [];
+  const mine = new Set(
+    (Array.isArray(selfNumbers) ? selfNumbers : [selfNumbers])
+      .map((n) => digitsOf(n))
+      .filter(Boolean),
+  );
   for (const p of parties) {
     if (String(p?.direction || "") !== "Inbound") continue;
     if (!isRinging(p?.status?.code)) continue;
     const from = String(p?.from?.phoneNumber || "");
     if (!from) continue;
+    if (mine.has(digitsOf(from))) continue;
     return {
       partyId: String(p.id || ""),
       from,
@@ -143,6 +167,16 @@ export function shouldNotify(prefs, facts = {}) {
   if (p.mode === "off") return false;
   if (p.mode === "all") return true;
   return !!facts.pinned;
+}
+
+/** Digits only, so a comparison survives the shape a number arrives in —
+ *  `+13475037148`, `13475037148` and `(347) 503-7148` are one number. Kept
+ *  local rather than importing phoneHash's `toE164`, which returns "" for
+ *  anything it can't place and would make two unparseable numbers compare
+ *  equal. */
+function digitsOf(raw) {
+  const d = String(raw ?? "").replace(/\D/g, "");
+  return d.length === 11 && d.startsWith("1") ? d.slice(1) : d;
 }
 
 /** Last four digits, the only part of a number the allow list stores in the

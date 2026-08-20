@@ -78,6 +78,50 @@ describe("pickInboundParty", () => {
     expect(pickInboundParty(evt([{ ...inboundRinging, status: { code: "Answered" } }]))).toBeNull();
   });
 
+  /**
+   * Josh, 2026-08-20 — reps were popped by their own click-to-calls, and every
+   * card carried the SAME patient's name.
+   *
+   * The softphone dials as the shared extension presenting the MM main line as
+   * caller ID, so the session carries a party RingCentral marks Inbound and
+   * ringing whose `from` is our own number. It satisfied direction, status and
+   * "has a from", so a card went to all 22 attached browsers — and since the
+   * number was always ours, the browser resolved it to whichever board row
+   * holds the MM number, putting one name on every call.
+   */
+  it("ignores our own outbound leg — a call FROM our own number is us", () => {
+    const ourLeg = evt([
+      { ...inboundRinging, from: { phoneNumber: "+13475037148" }, to: { phoneNumber: "+13475550101" } },
+    ]);
+    expect(pickInboundParty(ourLeg, ["+13475037148"])).toBeNull();
+  });
+
+  it("still rings for a real patient call on the same line", () => {
+    // The half that must not regress: the suppression keys on WHO IS CALLING,
+    // never on the line being called, so an ordinary inbound call is untouched.
+    expect(pickInboundParty(evt([inboundRinging]), ["+13475037148"])?.from).toBe("+13475550101");
+  });
+
+  it("compares numbers by digits, so the shape it arrives in doesn't matter", () => {
+    for (const mine of ["3475037148", "13475037148", "(347) 503-7148", "+1 347-503-7148"]) {
+      const leg = evt([{ ...inboundRinging, from: { phoneNumber: mine } }]);
+      expect(pickInboundParty(leg, ["+13475037148"]), mine).toBeNull();
+    }
+  });
+
+  it("takes several of our numbers, for an account presenting more than one DID", () => {
+    const leg = evt([{ ...inboundRinging, from: { phoneNumber: "+18005551212" } }]);
+    expect(pickInboundParty(leg, ["+13475037148", "+18005551212"])).toBeNull();
+    expect(pickInboundParty(leg, ["+13475037148"])?.from).toBe("+18005551212");
+  });
+
+  it("behaves exactly as before when no self numbers are supplied", () => {
+    // Back-compat, and it says what the default costs: with no list, our own
+    // legs come straight back through.
+    expect(pickInboundParty(evt([{ ...inboundRinging, from: { phoneNumber: "+13475037148" } }]))?.from)
+      .toBe("+13475037148");
+  });
+
   it("finds the ringing party among several legs of one session", () => {
     const p = pickInboundParty(
       evt([

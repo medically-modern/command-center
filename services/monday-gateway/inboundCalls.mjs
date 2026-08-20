@@ -61,6 +61,27 @@ import {
 
 const { ASSIGNMENTS_DATABASE_URL } = process.env;
 
+/**
+ * OUR OWN numbers — what a call has to be FROM for us to know it is ours.
+ *
+ * The softphone dials as the shared extension presenting the MM main line as
+ * caller ID (`useWebPhone` → `wp.call(phone, mmPhoneNumber())`), so every
+ * click-to-call raises a session carrying an Inbound, ringing party whose
+ * `from` is this number. Without this list those legs became ring cards on all
+ * 22 attached browsers, each labelled with whichever patient row happens to
+ * hold the MM number — the same name on every card (Josh, 2026-08-20).
+ *
+ * Default matches messaging.mjs's `RC_SMS_FROM` so the two can't drift; add a
+ * comma-separated `CALLS_SELF_NUMBERS` if the account ever presents more DIDs.
+ */
+const SELF_NUMBERS = [
+  process.env.RC_SMS_FROM || "+13475037148",
+  ...String(process.env.CALLS_SELF_NUMBERS || "")
+    .split(",")
+    .map((n) => n.trim())
+    .filter(Boolean),
+];
+
 const EVENT_FILTER = "/restapi/v1.0/account/~/telephony/sessions";
 /** RingCentral's maximum is 7 days; we renew well before that (see below). */
 const SUBSCRIPTION_TTL_S = 604800;
@@ -261,7 +282,7 @@ function broadcastUpdate(call) {
  * INVISIBLE: RingCentral delivered 33 events, every one was acked 200, every
  * one was dropped, and "parsed nothing" looked exactly like "was never sent".
  */
-const eventStats = { seen: 0, rings: 0, unparsed: 0, lastAt: 0 };
+const eventStats = { seen: 0, rings: 0, unparsed: 0, selfCalls: 0, lastAt: 0 };
 
 async function handleEvent(payload) {
   eventStats.seen++;
@@ -302,8 +323,15 @@ async function handleEvent(payload) {
   }
 
   if (outcome) return; // finished before we ever saw it ring
-  const party = pickInboundParty(body);
-  if (!party) return;
+  const party = pickInboundParty(body, SELF_NUMBERS);
+  if (!party) {
+    // Was it OUR OWN outbound leg? Asking the same pure function again without
+    // the self list is cheaper than duplicating its matching rules here, and it
+    // keeps the counter honest: `selfCalls` climbing is the click-to-call
+    // suppression doing its job, not events going missing.
+    if (pickInboundParty(body)) eventStats.selfCalls++;
+    return;
+  }
 
   const from = toE164(party.from) || party.from;
   const call = {
@@ -839,6 +867,10 @@ export function registerInboundCalls({ app }) {
         seen: eventStats.seen,
         rings: eventStats.rings,
         unparsed: eventStats.unparsed,
+        // Our own click-to-calls, correctly NOT rung. Expected to climb during
+        // the working day; if it climbs while `rings` stays flat, look for a
+        // real inbound call being mistaken for one of ours.
+        selfCalls: eventStats.selfCalls,
         lastAt: eventStats.lastAt ? new Date(eventStats.lastAt).toISOString() : null,
       },
     });
