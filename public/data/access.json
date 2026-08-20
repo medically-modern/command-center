@@ -109,7 +109,6 @@
     "masani@medicallymodern.com": {
       "name": "Masani",
       "roles": [
-        "unverifiedReferrals",
         "scheduledCalls"
       ]
     }
