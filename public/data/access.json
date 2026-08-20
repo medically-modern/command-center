@@ -108,9 +108,7 @@
     },
     "masani@medicallymodern.com": {
       "name": "Masani",
-      "roles": [
-        "scheduledCalls"
-      ]
+      "roles": []
     }
   }
 }
