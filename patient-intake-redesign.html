@@ -931,7 +931,7 @@ Attachments: order form, recent chart notes.</div>
               <div class="fld">
                 <div class="flabel">CGM Coverage Path</div>
                 <select id="cgmPathIn" onchange="onCgmPath()">
-                  <option>Insulin</option><option selected>Hypoglycemia</option><option>Not Serving</option>
+                  <option>Insulin</option><option selected>Hypoglycemia</option><option>Neither Applies</option><option>Not Serving</option>
                 </select>
                 <div class="prov"><span class="src form">From form</span><span class="arw">→</span>
                   <span class="col">color_mm1w7e5q</span></div>
@@ -1604,7 +1604,7 @@ Attachments: order form, recent chart notes.</div>
 <tr><td>Pump Type<br><code>color_mm1wjjtk</code></td><td class="was">Tandem t:slim X2 · Tandem Mobi · Beta Bionics iLet · Not sure which type is right</td><td class="now">t:slim · Mobi · iLet · Minimed 780G · Not Serving</td></tr>
 <tr><td>CGM Type<br><code>color_mm1w7pmf</code></td><td class="was">Freestyle Libre 3 Plus · Dexcom G7 · Medtronic Guardian 4 · Any will work</td><td class="now">FreeStyle Libre 3 Plus · FreeStyle Libre 2 Plus · FreeStyle Libre 14-Day · Dexcom G7 · Dexcom G7 15-Day · Dexcom G6 · Guardian 4 · Instinct · Not Serving</td></tr>
 <tr><td>Insulin Pump Coverage Path<br><code>color_mm1w5xn1</code></td><td class="was">1st pump ≤6mo · 1st pump &gt;6mo · <b>Replacement (lost/damaged)</b> · <b>Warranty replacement</b> · <b>Upgrade from current pump</b></td><td class="now">1st Pump &lt;6M Diagnosed · 1st Pump &gt;6M Diagnosed · OOW Pump · IW New Insurance · Omnipod Switch · Supplies Only · Not Serving</td></tr>
-<tr><td>CGM Coverage Path<br><code>color_mm1w7e5q</code></td><td class="was">Injecting insulin · Hypoglycemic event · Neither applies</td><td class="now">Insulin · Hypoglycemia · Not Serving</td></tr>
+<tr><td>CGM Coverage Path<br><code>color_mm1w7e5q</code></td><td class="was">Injecting insulin · Hypoglycemic event · Neither applies</td><td class="now">Insulin · Hypoglycemia · Neither Applies · Not Serving <em>(the board gained "Neither Applies" on 2026-08-20 — the form's third answer now has a home of its own instead of being filed as Not Serving)</em></td></tr>
 <tr><td>Insurance dropdown<br><code>color_mm24ap4j</code></td><td class="was">Anthem or Blue Cross Blue Shield · UnitedHealthcare · NYS Medicaid · Medicare · Other</td><td class="now">Anthem / BCBS · United Healthcare · Medicaid · Medicare A&amp;B (+ UMR, Wellcare, MagnaCare, Midlands Choice; no "Other")</td></tr>
 <tr><td>Secondary Insurance<br><code>color_mm1zbrx0</code></td><td class="was">None · NY Medicaid · Medicare Supplement · <b>Other</b></td><td class="now">NY Medicaid · Medicare Supplement · None</td></tr>
 </table>
@@ -1644,7 +1644,7 @@ Attachments: order form, recent chart notes.</div>
    BOARD-DRIVEN DROPDOWNS
    Options are built from Monday's own column settings, not from a
    hardcoded list — so adding/renaming a status on the board flows
-   through automatically. Labels on HIDDEN_LABELS are never offered.
+   through automatically. Nothing is filtered out of the picker.
 
    In production this object is the parsed `settings_str` from
      boards(ids:[...]) { columns { id title settings_str } }
@@ -1659,16 +1659,20 @@ const BOARD_LABELS = {
   color_mm1wjjtk: { title:'Pump Type', labels:{
     0:'iLet', 1:'Mobi', 2:'t:slim', 3:'Not Serving', 4:'Minimed 780G' } },
   color_mm1w7e5q: { title:'CGM Coverage Path', labels:{
-    0:'Insulin', 1:'Hypoglycemia', 2:'Not Serving' } },
+    0:'Insulin', 1:'Hypoglycemia', 2:'Not Serving', 3:'Neither Applies' } },
   color_mm1w5xn1: { title:'Insulin Pump Coverage Path', labels:{
     0:'Not Serving', 1:'IW New Insurance', 2:'Omnipod Switch', 3:'OOW Pump',
     4:'1st Pump >6M Diagnosed', 6:'1st Pump <6M Diagnosed', 7:'Supplies Only' } },
 };
 
-/* Never offered to the rep. "Not Serving" stays a real, writable board value —
-   the cross-sell derivation still WRITES it — it is only hidden from the picker.
-   Blank label slots are dropped too. */
-const HIDDEN_LABELS = ['Not Serving'];
+/* ⚠️ THE HIDE-LIST IS GONE (Josh, 2026-08-20) — do not rebuild it from this file.
+   "Not Serving" used to be filtered out here and in the shipped app, on the
+   grounds that the cross-sell derivation writes it rather than a rep. The cost
+   was the other half: a rep could READ that value on a patient and never set
+   it, or correct one the derivation had got wrong. Every label the column has
+   is offered now. Blank label slots are still dropped — Monday leaves a hole
+   behind when a status is deleted, and it would render as a nameless option. */
+const HIDDEN_LABELS = [];
 
 function boardOptions(colId){
   const src = BOARD_LABELS[colId];
