@@ -280,9 +280,23 @@ export const INSULIN_PUMP_COVERAGE_PATH_INDEX: Record<string, number> = {
  *
  * ⚠️ **The Advance-to-MN hop copies this column BY LABEL** — board automation
  * 7917676280 maps `item.color_mm1w7e5q.label` onto the created Medical
- * Evaluation item — so "Neither Applies" arrives there as nothing until that
- * board's column grows the same label. (That is why Medical Evaluation carries
- * both `Hypo` and `Hypoglycemia`: the second exists to receive this copy.)
+ * Evaluation item. What happens to a label the destination lacks is NOT
+ * settled, and the evidence points AWAY from the obvious answer: Medical
+ * Evaluation's copy of this column carries `Hypoglycemia` (index 6) and
+ * `Invalid` (4), and nothing in the masheke slice writes either — its picker's
+ * "Hypoglycemia" option writes the value `Hypo` (`EvaluatePanel` CgmPathSelect),
+ * and `CGM_COVERAGE_OPTS` has no `Invalid`. This copy is the only plausible
+ * author of that label, which suggests the automation CREATES a missing one on
+ * the destination rather than dropping the write. So expect a "Neither Applies"
+ * patient advanced to MN to add the label to that board — the opposite of
+ * leaving it alone. Verify against the board before relying on either outcome.
+ *
+ * Either way the Evaluate stage does not understand the value: `evalState`'s
+ * seed accepts only Insulin / Hypo / Hypo Invalid / Missing — it already
+ * ignores `Hypoglycemia` for exactly this reason — and `mnRequestPdf`'s
+ * `cgmBlock` returns null for anything else, which drops the CGM section from
+ * the doctor's MN request. A patient who reaches MN on this path needs a rep to
+ * pick a real coverage path there.
  */
 export const CGM_COVERAGE_PATH_INDEX: Record<string, number> = {
   "Insulin": 0, "Hypoglycemia": 1, "Not Serving": 2, "Neither Applies": 3,
