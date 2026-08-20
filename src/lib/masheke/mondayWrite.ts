@@ -25,6 +25,7 @@ import {
   GEN_SCRIPT_OPTS,
   CLINICALS_METHOD_OPTS,
   MN_ATTEMPTS_OPTS,
+  YES_NO_MONDAY_OPTS,
 } from "./fieldOptions";
 import type { Patient } from "./workflow";
 import type { StatusOption } from "@/components/masheke/StatusSelect";
@@ -124,6 +125,21 @@ function pushStatus(
 
 export type TabContext = "evaluate" | "sendRequest" | "confirmReceipt" | "chase";
 
+/**
+ * ⚠️ NOT WIRED UP — and it would have thrown on the first call.
+ *
+ * Every masheke panel sends through `runVerifiedSend` / `recordAndAdvanceVerified`
+ * instead (EvaluatePanel, ConfirmReceiptPanel, ChaseClinicalsPanel,
+ * SendRequestPanel); nothing has imported this function in a long time. It
+ * referenced `YES_NO_MONDAY_OPTS` without importing it, so the Evaluate branch
+ * below was a guaranteed `ReferenceError` the moment anybody called it.
+ *
+ * Found 2026-08-20 by reading the TypeScript errors that CI does not check —
+ * `deploy.yml` runs `tsc --noEmit` against a solution-style root tsconfig, which
+ * checks zero files and always passes (see CLAUDE.md §10). The import is added
+ * rather than the function deleted: a dead writer is harmless, but one that
+ * crashes on first use is a trap for whoever wires it up next.
+ */
 export async function sendPatientToMonday(
   p: Patient,
   context: TabContext,
