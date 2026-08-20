@@ -105,6 +105,10 @@
       "roles": [
         "doctorAppointments"
       ]
+    },
+    "masani@medicallymodern.com": {
+      "name": "Masani",
+      "roles": []
     }
   }
 }
