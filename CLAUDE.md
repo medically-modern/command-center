@@ -827,7 +827,15 @@ so `seen` climbing while `rings` stays 0 names this failure instantly.
   took the call.
 - **Reconcile the subscription, never blindly create it.** The gateway redeploys on every push to
   `main`; create-on-boot leaves a trail of subscriptions at the same URL and every call fans out
-  two, three, five times.
+  two, three, five times. ⚠️ **A FAILED pass retries on a short bounded ladder** (2026-08-20,
+  `reconcileBackoff.mjs` + tests: 30s · 1m · 2m · 4m · 8m, honouring RingCentral's `Retry-After`
+  where that is longer, then the hourly pass takes over and re-arms). Boot-and-hourly used to be
+  the whole recovery story, so one throttled lookup cost a full HOUR of the gateway not knowing its
+  own subscription — which is what turned a single 429 into six pages. The ladder is bounded
+  deliberately: what it recovers from is usually a throttle, and a hot retry loop is how you keep
+  one alive. Passes are also coalesced now (hourly tick · retry · `/calls/resubscribe` can land
+  together, and two at once would race the delete-the-extras step into deleting the subscription the
+  other just adopted).
 - **Ack the webhook FIRST**, then do the work — RingCentral retries and eventually blacklists a slow
   endpoint.
 
@@ -859,6 +867,20 @@ like a quiet afternoon:
    still reports `subscribers` in `/calls/health` for humans reading the endpoint directly; the
    monitor just doesn't alert on it. Don't re-add this check without also re-adding some form of
    the business-hours gate, or it'll page overnight again.
+   ⚠️ **A null `subscriptionId` is the GATEWAY's memory, never RingCentral's record** (fixed
+   2026-08-20). The two fail apart: that memory is per-process and is filled by a reconcile pass
+   which can fail for reasons that have nothing to do with the subscription — a **429 on the
+   lookup** being the one that happens. So a redeploy plus a throttled first pass read as "no
+   subscription" while RingCentral went on delivering webhooks to that very container: six pages
+   saying *"no calls will arrive"*, four real calls ringing through, the last of them **one minute
+   before an alert**. `faults()` now picks its sentence by what it can actually support — webhooks
+   arriving inside `DELIVERING_WITHIN_MS` (20 min) prove the subscription is ALIVE and it says so;
+   a stated gateway error means we could not CHECK and it claims nothing; only a null id with no
+   reason offered keeps the blunt verdict. The inference runs ONE WAY — no recent events prove
+   nothing, since that is just a quiet afternoon. It still reports the fault in every case (a
+   gateway out of sync with its own subscription is real); only the verdict changed. An alert that
+   declares an outage it has not established is the mirror image of the silence this monitor exists
+   to break — it teaches everyone to swipe these away.
 
 **A pin can't ring if the rep's mode is `off`**, and that silent no-op is the likeliest support
 question the bell will generate — so `WatchCallbackButton` warns on add and renders the watched-but-

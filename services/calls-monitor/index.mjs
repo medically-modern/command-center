@@ -34,6 +34,16 @@ const {
 
 const FETCH_TIMEOUT_MS = 15_000;
 
+/**
+ * How recent a delivered event has to be to PROVE RingCentral is still sending
+ * us calls. The check runs every 10 minutes, so this is one cycle plus slack.
+ *
+ * The inference only runs one way: a recent event proves the subscription is
+ * alive, but no recent events prove nothing at all — that is a quiet afternoon,
+ * which is the whole reason this monitor exists.
+ */
+const DELIVERING_WITHIN_MS = 20 * 60_000;
+
 function required(name, value) {
   if (!value) {
     console.error(`FATAL: ${name} is not set`);
@@ -83,8 +93,50 @@ async function notify(title, message, priority = "high") {
   }
 }
 
+/**
+ * What a null `subscriptionId` actually licenses us to say.
+ *
+ * ⚠️ It is the GATEWAY's memory of a subscription, not RingCentral's record of
+ * one, and the two fail apart. That memory is per-process and is filled by a
+ * reconcile pass which can fail for reasons that have nothing to do with the
+ * subscription — a 429 on the lookup being the one that happens. So a redeploy
+ * plus a throttled first pass reads as "no subscription" while RingCentral is
+ * still delivering webhooks to that very container.
+ *
+ * That is not a hypothetical: on 2026-08-20 it paged six times with "no calls
+ * will arrive" while three real calls rang through, the last of them one minute
+ * before an alert. An alert that declares an outage it has not established is
+ * the mirror image of the silence this monitor exists to break — it is worse
+ * than useless, because it teaches everyone to swipe these away.
+ *
+ * So the sentence is chosen by what we can actually support:
+ *   · webhooks arriving right now  → the subscription is provably ALIVE; the
+ *                                    gateway is out of sync, calls are fine
+ *   · the gateway told us why      → we could not CHECK; say so, claim nothing
+ *   · no id and no reason given    → the original hard verdict stands
+ */
+function missingSubscriptionFault(health, now) {
+  const lastAt = Date.parse(health.events?.lastAt || "");
+  if (Number.isFinite(lastAt) && now - lastAt < DELIVERING_WITHIN_MS) {
+    const mins = Math.max(0, Math.round((now - lastAt) / 60_000));
+    return (
+      "The gateway has lost track of its RingCentral subscription, but webhooks are " +
+      `STILL ARRIVING (last one ${mins} min ago) — calls ARE getting through. It should ` +
+      "re-sync on its own; if these keep coming, POST /calls/resubscribe."
+    );
+  }
+  if (health.error) {
+    return (
+      "Could not confirm a RingCentral subscription — the gateway's own lookup failed " +
+      "(see the error above), so this is NOT evidence that calls have stopped. Check " +
+      "whether any are arriving before treating it as an outage."
+    );
+  }
+  return "No RingCentral subscription exists — no calls will arrive.";
+}
+
 /** Everything wrong right now, as human sentences. Empty means healthy. */
-export function faults(health, { handshake }) {
+export function faults(health, { handshake, now = Date.now() }) {
   const out = [];
   if (!health) return ["The gateway did not respond — inbound calls are down."];
 
@@ -94,7 +146,7 @@ export function faults(health, { handshake }) {
   // The load-bearing check. `subscriptionId` only says we created one once;
   // RingCentral blacklists a webhook after repeated failures and the id stays
   // exactly the same, so the STATUS is the thing that matters.
-  if (!health.subscriptionId) out.push("No RingCentral subscription exists — no calls will arrive.");
+  if (!health.subscriptionId) out.push(missingSubscriptionFault(health, now));
   else if (health.subscriptionStatus && health.subscriptionStatus !== "Active") {
     out.push(`RingCentral subscription is ${health.subscriptionStatus}, not Active — no calls will arrive.`);
   }

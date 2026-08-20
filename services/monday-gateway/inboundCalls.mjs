@@ -58,6 +58,7 @@ import {
   shouldNotify,
   unwrapEvent,
 } from "./callRules.mjs";
+import { RETRY_STEPS_MS, retryAfterMs, retryDelayMs } from "./reconcileBackoff.mjs";
 
 const { ASSIGNMENTS_DATABASE_URL } = process.env;
 
@@ -361,6 +362,79 @@ async function handleEvent(payload) {
 
 let subscriptionState = { id: null, expiresAt: 0, error: null };
 
+/** RingCentral's own Retry-After from the last failure, if it sent one. */
+let lastRetryAfterMs = 0;
+/** The in-flight pass, so concurrent callers share one. */
+let reconciling = null;
+/** The armed backoff retry, and where we are on the ladder. */
+let retryTimer = null;
+let retryAttempt = 0;
+
+/**
+ * Reconcile now — and if it failed, come back and try again SOON.
+ *
+ * ⚠️ Coalesced, because the hourly tick, a backoff retry and /calls/resubscribe
+ * can all land together, and two passes running at once would race the
+ * delete-the-extras step into deleting the subscription the other one just
+ * adopted. Callers await the same promise.
+ */
+async function reconcileSubscription() {
+  if (reconciling) return reconciling;
+  reconciling = reconcileOnce();
+  try {
+    await reconciling;
+  } finally {
+    reconciling = null;
+  }
+  scheduleReconcileRetry();
+}
+
+/**
+ * Arm the next retry after a failed pass, or stand down after a good one.
+ *
+ * The hourly pass alone used to be the whole recovery story, which meant a
+ * single throttled lookup cost an hour of the gateway not knowing its own
+ * subscription — see reconcileBackoff.mjs for the 2026-08-20 incident that is.
+ * The ladder is bounded: once it is spent we reset to the top and let the
+ * hourly pass take over, so a LONG outage still gets a fresh ladder every hour
+ * without any of them turning into a hot loop against a rate limit.
+ */
+function scheduleReconcileRetry() {
+  if (retryTimer) {
+    clearTimeout(retryTimer);
+    retryTimer = null;
+  }
+  if (subscriptionState.id && !subscriptionState.error) {
+    retryAttempt = 0;
+    return;
+  }
+  const wait = retryDelayMs(retryAttempt, lastRetryAfterMs);
+  if (wait === null) {
+    retryAttempt = 0;
+    return;
+  }
+  retryAttempt += 1;
+  console.log(
+    `Inbound calls: reconcile failed, retrying in ${Math.round(wait / 1000)}s ` +
+      `(attempt ${retryAttempt} of ${RETRY_STEPS_MS.length})`,
+  );
+  retryTimer = setTimeout(() => {
+    retryTimer = null;
+    void reconcileSubscription();
+  }, wait);
+  retryTimer.unref?.();
+}
+
+/**
+ * An Error carrying RingCentral's own Retry-After, so a throttled pass waits
+ * the time RC asked for rather than a number we invented.
+ */
+function rcFailure(message, res) {
+  const e = new Error(message);
+  e.retryAfterMs = retryAfterMs(res?.headers?.get?.("retry-after"));
+  return e;
+}
+
 /**
  * Make sure exactly one live subscription points at this gateway.
  *
@@ -368,7 +442,8 @@ let subscriptionState = { id: null, expiresAt: 0, error: null };
  * main; a create-on-boot would leave a trail of subscriptions all pointing at
  * the same URL, and every inbound call would fan out two, three, five times.
  */
-async function reconcileSubscription() {
+async function reconcileOnce() {
+  lastRetryAfterMs = 0;
   const url = webhookUrl();
   if (!url) {
     subscriptionState.error = "No webhook URL (set CALLS_WEBHOOK_URL or RAILWAY_PUBLIC_DOMAIN).";
@@ -388,7 +463,7 @@ async function reconcileSubscription() {
 
   try {
     const listRes = await rcApiFetch("/restapi/v1.0/subscription");
-    if (!listRes.ok) throw new Error(`list subscriptions failed (${listRes.status})`);
+    if (!listRes.ok) throw rcFailure(`list subscriptions failed (${listRes.status})`, listRes);
     const list = await listRes.json();
     const mine = (list.records || []).filter(
       (r) => r?.deliveryMode?.address === url && (r.eventFilters || []).some((f) => f.includes("/telephony/sessions")),
@@ -445,13 +520,14 @@ async function reconcileSubscription() {
       } catch {
         /* keep the snippet */
       }
-      throw new Error(reason);
+      throw rcFailure(reason, post);
     }
     const j = JSON.parse(text);
     subscriptionState = { id: j.id, expiresAt: new Date(j.expirationTime || 0).getTime(), error: null };
     console.log(`Inbound calls: subscribed (${j.id}) → ${url}`);
   } catch (e) {
     subscriptionState.error = String((e && e.message) || e);
+    lastRetryAfterMs = Number(e && e.retryAfterMs) || 0;
     console.error("Inbound calls: subscription failed:", subscriptionState.error);
   }
 }

@@ -78,4 +78,67 @@ describe("faults", () => {
     const f = faults({ ...healthy, subscriptionStatus: "Suspended", configured: false }, ctx);
     expect(f.length).toBe(2);
   });
+  /**
+   * The 2026-08-20 page storm. A redeploy landed while RingCentral was
+   * throttling the subscription API, so the fresh container's first reconcile
+   * took a 429 and its `subscriptionId` stayed null — while RingCentral went on
+   * delivering webhooks to that same container. Six alerts said "no calls will
+   * arrive"; three real calls rang through, the last of them one minute before
+   * an alert. A null id is the GATEWAY's memory, never RingCentral's record.
+   */
+  describe("a null subscription id it cannot account for", () => {
+    const now = Date.parse("2026-08-20T18:10:00.000Z");
+    const lostTrack = {
+      ...healthy,
+      subscriptionId: null,
+      subscriptionStatus: null,
+      error: "list subscriptions failed (429)",
+    };
+    const at = (msAgo) => new Date(now - msAgo).toISOString();
+
+    it("does not claim an outage while webhooks are still arriving", () => {
+      const f = faults(
+        { ...lostTrack, events: { seen: 22, rings: 3, unparsed: 0, lastAt: at(60_000) } },
+        { ...ctx, now },
+      ).join(" ");
+      expect(f).not.toMatch(/no calls will arrive/i);
+      expect(f).toMatch(/STILL ARRIVING/);
+      expect(f).toMatch(/1 min ago/);
+    });
+
+    // Still reported — a gateway out of sync with its own subscription is a
+    // real fault. Only the verdict changes, never the fact that it speaks up.
+    it("still reports it, and still passes the underlying error through", () => {
+      const f = faults(
+        { ...lostTrack, events: { seen: 22, rings: 3, unparsed: 0, lastAt: at(60_000) } },
+        { ...ctx, now },
+      );
+      expect(f.length).toBe(2);
+      expect(f.join(" ")).toMatch(/list subscriptions failed \(429\)/);
+    });
+
+    // No recent events proves nothing either way — that is just a quiet
+    // afternoon — so this says "could not check", not "it is down".
+    it("says it could not confirm when nothing has arrived lately", () => {
+      const f = faults({ ...lostTrack, events: { seen: 0, rings: 0, unparsed: 0 } }, { ...ctx, now }).join(" ");
+      expect(f).toMatch(/Could not confirm/);
+      expect(f).not.toMatch(/no calls will arrive/i);
+    });
+
+    it("does not read a stale event as proof the subscription is alive", () => {
+      const f = faults(
+        { ...lostTrack, events: { seen: 22, rings: 3, unparsed: 0, lastAt: at(3 * 60 * 60_000) } },
+        { ...ctx, now },
+      ).join(" ");
+      expect(f).toMatch(/Could not confirm/);
+      expect(f).not.toMatch(/STILL ARRIVING/);
+    });
+
+    // The hard verdict is not softened away: with no id AND no reason offered,
+    // there is nothing to explain it and the original sentence stands.
+    it("keeps the blunt verdict when the gateway offers no reason", () => {
+      const f = faults({ ...healthy, subscriptionId: null }, { ...ctx, now }).join(" ");
+      expect(f).toMatch(/No RingCentral subscription exists — no calls will arrive/);
+    });
+  });
 });
