@@ -12,7 +12,7 @@
  */
 import { describe, it, expect } from "vitest";
 
-import { runFinalChecks } from "./checkPack";
+import { runFinalChecks, droppedProducts } from "./checkPack";
 import type { Patient } from "./workflow";
 
 /** Every string field "", every index/nullable null, booleans false. */
@@ -95,6 +95,52 @@ describe("checkPack — serving & product", () => {
   scenario("t:slim x 5in", { serving: "Insulin Pump", pumpType: "t:slim", infusionSet1: 'AutoSoft XC 6 mm 5"', infusionSet1Index: 15, qtyInf1: "10" }, ["C24_FIVE_INCH_NOT_MOBI"], ["C24_SET_INCOMPATIBLE"]);
   scenario("780G x 5in", { serving: "Insulin Pump", pumpType: "Minimed 780G", infusionSet1: 'AutoSoft XC 6 mm 5"', infusionSet1Index: 15, qtyInf1: "10" }, ["C24_SET_INCOMPATIBLE"]);
   scenario("Sub mismatch", { cgmTypeIndex: 6, cgmType: "Dexcom G7", serving: "CGM", subscriptionType: "Supplies", primaryInsurance: "Cigna" }, ["C15_SUBSCRIPTION_MISMATCH"]);
+});
+
+/**
+ * C13 fires on a DROP, never on a cross-sell (Brandon, 2026-08-20).
+ *
+ * The old rule was `requestType !== serving`, which fired on the single most
+ * ordinary outcome of the intake stage — a referral for one product leaving
+ * with CGM added — and that noise is what got the check complained about. A
+ * check pack that cries wolf gets ignored, and then the reds get ignored too.
+ */
+describe("checkPack — C13 serving vs request", () => {
+  const C13 = "C13_SERVING_VS_REQUEST";
+
+  // Brandon's own example, both ways round: adding a product is a cross-sell.
+  scenario("Cross-sell CGM onto a pump referral", { requestType: "Insulin Pump", serving: "Insulin Pump + CGM" }, [], [C13]);
+  scenario("Cross-sell CGM onto a supplies referral", { requestType: "Supplies Only", serving: "Supplies + CGM" }, [], [C13]);
+  scenario("Cross-sell pump onto a CGM referral", { requestType: "CGM", serving: "Insulin Pump + CGM" }, [], [C13]);
+  scenario("Unchanged", { requestType: "Insulin Pump + CGM", serving: "Insulin Pump + CGM" }, [], [C13]);
+
+  // The two concerns Brandon named: a requested product we stopped serving.
+  scenario("CGM dropped", { requestType: "Insulin Pump + CGM", serving: "Insulin Pump" }, [C13]);
+  scenario("CGM referral served pump only", { requestType: "CGM", serving: "Insulin Pump" }, [C13]);
+  scenario("Pump dropped", { requestType: "Insulin Pump", serving: "CGM" }, [C13]);
+  scenario("Supplies dropped", { requestType: "Supplies + CGM", serving: "CGM" }, [C13]);
+
+  // Blank either side is a missing input, not evidence of a drop.
+  scenario("No request type", { requestType: "", serving: "CGM" }, [], [C13]);
+  scenario("No serving", { requestType: "Insulin Pump", serving: "" }, [], [C13]);
+
+  // Pump and supplies are ONE family per Brandon's rule — a demotion inside it
+  // is silent. Pinned so the choice is deliberate, not an accident of the
+  // `servingIncludesPump` substring test.
+  scenario("Pump → supplies stays silent", { requestType: "Insulin Pump", serving: "Supplies Only" }, [], [C13]);
+  scenario("Supplies → pump stays silent", { requestType: "Supplies Only", serving: "Insulin Pump" }, [], [C13]);
+
+  it("names every dropped product, not just the first", () => {
+    expect(droppedProducts("Insulin Pump + CGM", "")).toEqual([]);
+    expect(droppedProducts("Insulin Pump + CGM", "Insulin Pump")).toEqual(["CGM"]);
+    expect(droppedProducts("Insulin Pump + CGM", "CGM")).toEqual(["pump/supplies"]);
+  });
+
+  it("says WHICH product was dropped", () => {
+    const f = runFinalChecks({ ...basePatient(), requestType: "Insulin Pump + CGM", serving: "Insulin Pump" })
+      .find((x) => x.id === C13);
+    expect(f?.detail).toContain("CGM is no longer being served");
+  });
 });
 
 describe("checkPack — auth & demographics", () => {

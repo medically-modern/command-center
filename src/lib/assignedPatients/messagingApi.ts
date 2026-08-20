@@ -7,6 +7,7 @@
  * patient" is the whole point of the record.
  */
 import { getIdToken } from "../shared/auth";
+import { smsFailureReason } from "../shared/smsDelivery";
 
 const GATEWAY =
   (import.meta.env.VITE_MONDAY_GATEWAY_URL as string | undefined)?.replace(/\/+$/, "") || "";
@@ -59,6 +60,17 @@ export interface ConversationMessage {
   sentBy?: string;
   /** Present on MMS — the message's media parts. */
   attachments?: MessageAttachment[];
+  /**
+   * RingCentral's delivery verdict, passed through verbatim by the gateway:
+   * `Queued` · `Sent` · `Delivered` · `SendingFailed` · `DeliveryFailed` ·
+   * `Received`. ⚠️ Load-bearing — a text to an unusable number is ACCEPTED on
+   * send and only fails here seconds later, so this is the only place that
+   * outcome is ever visible. Read it through `lib/shared/smsDelivery.ts`, never
+   * by comparing strings at the call site.
+   */
+  messageStatus?: string;
+  /** RingCentral's `deliveryErrorCode` on a failed send, e.g. `SMS-RC-410`. */
+  deliveryError?: string;
 }
 
 /**
@@ -77,12 +89,32 @@ export async function fetchConversation(
   return json<{ messages: ConversationMessage[]; complete: boolean }>(res, "Loading conversation");
 }
 
-/** Send a text from the MM number, recording who sent it. */
+/**
+ * Send a text from the MM number, recording who sent it.
+ *
+ * ⚠️ Resolving means RingCentral ACCEPTED the message, not that it arrived — an
+ * undeliverable number usually fails a few seconds later and shows up as a
+ * failed bubble in the thread. When the gateway does manage to catch that
+ * rejection in time it returns a `deliveryError` code, and the thrown message
+ * carries the plain-English reason rather than a bare carrier code.
+ */
 export async function sendMessage(opts: {
   to: string;
   text: string;
   mondayItemId?: string;
 }): Promise<void> {
   const res = await call("/messaging/send", { method: "POST", body: JSON.stringify(opts) });
-  await json<{ ok: boolean }>(res, "Sending message");
+  if (res.ok) return;
+  let msg = `Sending message failed (${res.status})`;
+  try {
+    const e = (await res.json()) as { error?: string; deliveryError?: string };
+    if (e?.error) msg = e.error;
+    // A delivery verdict replaces the generic error outright: a code alone
+    // ("SMS-RC-410") tells a rep nothing they can act on, and the reasons are
+    // worded to follow this lead.
+    if (e?.deliveryError !== undefined) msg = `Not delivered — ${smsFailureReason(e.deliveryError)}`;
+  } catch {
+    /* keep default */
+  }
+  throw new Error(msg);
 }

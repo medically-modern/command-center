@@ -205,6 +205,39 @@ The Cloudflare worker (`monday-file-proxy`) has three routes:
 > double-text patients. The masheke Text popup (`components/masheke/mmKit.tsx` `TextCompose`) rides
 > on this. The RC OAuth app also needs the **Read Messages** scope or the popup's thread read fails.
 
+> **Gotcha — an ACCEPTED text is not a DELIVERED text** (Brandon, 2026-08-20). RingCentral's own
+> guide says it outright: a successful `POST /sms` "only confirms that the request was accepted by
+> the system. It does not guarantee that the messages will be delivered." A text to a landline or a
+> dead number is accepted, queued, and only *seconds later* flips to **`messageStatus:
+> "SendingFailed"`** with a **`deliveryErrorCode`** (`SMS-RC-410`, `SMS-UP-410`, `SMS-CAR-411`, …).
+> The RingCentral app shows that as a red failure on the bubble; the Command Center showed an
+> ordinary sent bubble, because the conversation payload dropped both fields — so a rep who texted a
+> wrong number got a green toast and never learned the patient heard nothing. Nothing errored.
+> **The THREAD is the only surface that late verdict ever reaches**, which makes three things
+> load-bearing:
+> 1. `/messaging/conversation` passes `messageStatus` + `deliveryError` through **verbatim** — every
+>    reading of them lives in **`lib/shared/smsDelivery.ts`**, so there is no mirrored carrier-code
+>    table on the gateway to drift (the §5.7/§5.17 hand-synced-mirror hazard, deliberately avoided).
+> 2. ⚠️ **STATUS decides, CODE only explains.** Deriving failure from the code inverts on
+>    `SMS-CAR-104`/`-199` ("carrier never reported"), which ride on messages that were fine — and an
+>    *unrecognised* code must never downgrade a real `SendingFailed` to silence. An unknown status is
+>    **pending**, never failed: marking an in-flight message undelivered makes the rep double-text.
+> 3. The failure arrives AFTER the post-send refresh, so `hooks/useDeliveryRecheck.ts` re-reads the
+>    thread at +6s and +20s. ⚠️ Its `cancel()` is **correctness, not tidiness** — each reload is bound
+>    to the patient who was open at send time, so a timer surviving a patient switch paints the
+>    PREVIOUS patient's conversation into the open one. Cancel on every phone/patient change.
+>
+> Rendered by **one** component on all three texting surfaces —
+> `components/shared/SmsDeliveryNote.tsx`, used by `assignedPatients/ConversationThread`, the
+> `masheke/mmKit` `TextCompose` pop-up and `profile/IntakeMessages`; a rep can text from any of them,
+> so a marker on one alone is the same gap one surface further along. ⚠️ It takes **`skin="page"`**
+> inside `.pf-root` for the §9 reason (`.pf-root *` zeroes margin/padding and forces `border-color`,
+> which ties with a single-class Tailwind utility and then wins on source order — the note would
+> render as a stray line of grey text). `smsSend.confirmSmsAccepted` now returns
+> `{accepted, failed, deliveryError}` rather than a bare boolean, so the 5xx path can't report a
+> message RingCentral has *already* given up on as sent — best-effort only, since a carrier
+> rejection often lands after its ~6s window.
+
 **In-app file viewer** (`components/shared/FileViewerModal.tsx`): a "View" button calls
 `openFileViewer({url,name})`; bytes are fetched via `shared/mondayAssets.ts` `fetchAssetBytes`
 (direct CORS fetch → worker `/asset` proxy fallback) and PDFs render with **pdf.js** (`pdfjs-dist`,
@@ -1923,6 +1956,8 @@ these services; when their math changes, `oopEstimator.ts` must be updated to ma
 | A booking didn't show up in Scheduled Calls | §5.15 — the mirror joins on the invitee's EMAIL. `lib/scheduledCalls/bookingLink.ts` (the prefill), then dtc-mm-form `server/src/booking.js` |
 | Booked-call queue / the 10-min reminder | `lib/scheduledCalls/workflow.ts` + `pages/ScheduledCallsPage.tsx` + `components/scheduledCalls/ScheduledCallHost.tsx` (§5.15) |
 | Fax/email send | `components/masheke/SendRequestPanel.tsx`, `worker/src/index.js`, `lib/fax/ringcentralApi.ts` |
+| A text was sent but the patient never got it | §5.5 — `lib/shared/smsDelivery.ts` (status decides, code explains), rendered by `components/shared/SmsDeliveryNote.tsx`; the gateway half is `/messaging/conversation` in `services/monday-gateway/messaging.mjs` |
+| "Serving ≠ requested" fires on a normal cross-sell | `lib/finalConfirm/checkPack.ts` `droppedProducts` — C13 fires on a DROPPED product only; adding one is a cross-sell and is silent |
 | Audit a write that "disappeared" | gateway `/audit` (Postgres `gql_log` / `send_jobs`) |
 | Manager pipeline / oversight charts | `components/oversight/OversightTab.tsx` + `lib/oversight/oversightApi.ts` (+ `priority.ts`); reached via `/system-mgmt?tab=oversight` |
 

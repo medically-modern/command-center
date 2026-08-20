@@ -150,6 +150,10 @@ export function registerMessaging({ app }) {
 
     let rcId = null;
     let ok = false;
+    // Set when RingCentral has already given up on the message: the send is a
+    // failure the rep must be told about, but it DID reach RingCentral, so the
+    // attribution row below is still written before we report it.
+    let deliveryFailure = null;
     try {
       const up = await rcApiFetch(`/restapi/v1.0/account/~/extension/~/sms`, {
         method: "POST",
@@ -168,9 +172,17 @@ export function registerMessaging({ app }) {
         // ⚠️ This account's POST /sms returns a bare 500 while still ACCEPTING
         // the message (CLAUDE.md §5.5). Confirm against the message store
         // before reporting failure, or reps re-send and double-text patients.
-        ok = await confirmSmsAccepted({ rcFetch: (path) => rcApiFetch(path), to, text });
+        const found = await confirmSmsAccepted({ rcFetch: (path) => rcApiFetch(path), to, text });
+        ok = found.accepted;
+        // Found it, but RingCentral had ALREADY given up on it — the number is
+        // undeliverable. Report that instead of the bare 500, which reads as a
+        // transient glitch and invites exactly the re-send that can't work.
+        // ⚠️ Fall THROUGH rather than returning here: the message exists in
+        // RingCentral, so it will render in the thread, and skipping the insert
+        // below would leave that bubble reading "sent outside Command Center".
+        if (found.failed) deliveryFailure = found.deliveryError || "";
       }
-      if (!ok) {
+      if (deliveryFailure === null && !ok) {
         let msg = `RingCentral SMS failed (${up.status})`;
         try {
           const e = JSON.parse(body);
@@ -194,6 +206,9 @@ export function registerMessaging({ app }) {
       // The text HAS gone out. Losing the attribution row must not report a
       // failure that makes a rep send it twice.
       console.error("sent_messages insert failed:", e.message);
+    }
+    if (deliveryFailure !== null) {
+      return res.status(502).json({ error: "Not delivered", deliveryError: deliveryFailure });
     }
     res.json({ ok: true, id: rcId });
   });
@@ -260,6 +275,17 @@ export function registerMessaging({ app }) {
             direction: r.direction === "Outbound" ? "Outbound" : "Inbound",
             text: r.subject ?? r.text ?? "",
             time: r.creationTime ?? "",
+            // ⚠️ Delivery outcome. A successful POST /sms only means ACCEPTED —
+            // an undeliverable number flips to `SendingFailed` in the store a
+            // few seconds later, which is why RingCentral's own app showed a
+            // failure and the Command Center showed an ordinary sent bubble
+            // (Brandon, 2026-08-20). The thread is the ONLY place that late
+            // verdict ever surfaces, so it has to ride along with the message.
+            // Passed through verbatim: every reading of these lives in
+            // src/lib/shared/smsDelivery.ts, so there is no mirrored table of
+            // carrier codes here to drift out of step with it.
+            messageStatus: r.messageStatus ?? "",
+            ...(r.deliveryErrorCode ? { deliveryError: String(r.deliveryErrorCode) } : {}),
             ...(attachments.length ? { attachments } : {}),
           });
         }

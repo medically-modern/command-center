@@ -72,6 +72,40 @@ function servingIncludesPump(serving: string): boolean {
   return s.includes("pump") || s.includes("supplies");
 }
 
+/**
+ * Which of the referral's products the profile is NO LONGER serving (C13).
+ *
+ * Request Type and Serving share one five-label vocabulary — Insulin Pump ·
+ * Supplies Only · CGM · Insulin Pump + CGM · Supplies + CGM — so comparing the
+ * LABELS makes every change look equal. They aren't: what matters is which
+ * product FAMILIES survive the trip.
+ *
+ *  - Added a family  → cross-sell. Silent: "Insulin Pump" → "Insulin Pump +
+ *    CGM" is the intended output of the CGM cross-sell step, not a mistake.
+ *  - Dropped a family → the patient asked for something they now won't get.
+ *    That is the whole concern, and the only thing that fires.
+ *
+ * ⚠️ Pump and supplies are ONE family here, per Brandon's rule ("requested
+ * insulin pump/supplies and we weren't serving them anymore"), so a demotion
+ * from "Insulin Pump" to "Supplies Only" is deliberately silent — they are
+ * still served, just without new pump hardware. Splitting those two apart is a
+ * one-line change to PRODUCTS below if that turns out to want flagging.
+ */
+const PRODUCTS: Array<{ label: string; inLabel: (v: string) => boolean }> = [
+  { label: "CGM", inLabel: servingIncludesCgm },
+  { label: "pump/supplies", inLabel: servingIncludesPump },
+];
+
+export function droppedProducts(requestType: string, serving: string): string[] {
+  // Positive evidence only: with either side blank there is nothing to compare
+  // and the check stands down rather than guessing (check-pack design rule).
+  if (!requestType.trim() || !serving.trim()) return [];
+  return PRODUCTS.filter((x) => x.inLabel(requestType) && !x.inLabel(serving)).map((x) => x.label);
+}
+
+const listAnd = (xs: string[]): string =>
+  xs.length < 2 ? (xs[0] ?? "") : `${xs.slice(0, -1).join(", ")} and ${xs[xs.length - 1]}`;
+
 const CGM_NOT_SERVING_INDEX = 9;
 const INFUSION_NOT_SERVING_INDEX = 101;
 
@@ -384,12 +418,22 @@ export function runFinalChecks(p: Patient): CheckFinding[] {
     });
   }
 
-  // C13 — Serving vs Request Type (info; legitimate demotions are common).
-  if (p.requestType && p.serving && p.requestType !== p.serving && !isSplitProfile) {
+  // C13 — a product the referral asked for that we are no longer serving.
+  //
+  // ⚠️ This is NOT "serving ≠ requested" — that is what it used to be, and it
+  // made the check noise (Brandon, 2026-08-20). ADDING a product is a
+  // cross-sell, which is the normal, wanted outcome: a referral for Insulin
+  // Pump that leaves as Insulin Pump + CGM is the whole point of the CGM
+  // cross-sell step (`profile/workflow.deriveServing`), not something a rep
+  // should have to confirm. Only a DROP is a concern — the patient asked for
+  // something they are now not getting. Both product families count: CGM, and
+  // pump/supplies.
+  const dropped = droppedProducts(p.requestType, p.serving);
+  if (dropped.length && !isSplitProfile) {
     add({
       id: "C13_SERVING_VS_REQUEST", severity: "info", field: "serving",
-      title: "Serving ≠ requested",
-      detail: `Referral requested ${p.requestType}; profile is serving ${p.serving} — confirm the change is intentional.`,
+      title: "Requested product not served",
+      detail: `Referral requested ${p.requestType}; profile is serving ${p.serving} — ${listAnd(dropped)} ${dropped.length > 1 ? "are" : "is"} no longer being served. Confirm the drop is intentional.`,
     });
   }
 

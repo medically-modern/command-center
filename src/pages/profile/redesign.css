@@ -358,4 +358,12 @@
 .pf-root .stedi-spinner { flex-shrink:0;width:20px;height:20px;border-radius:50%;border:2.5px solid var(--mm-mint-ring);border-top-color:var(--mm-teal);animation:pfspin .7s linear infinite }
 @keyframes pfspin { to { transform:rotate(360deg) } }
 
+/* Undeliverable text marker under a message bubble (SmsDeliveryNote
+   skin="page"). Needed because `.pf-root *` zeroes margin/padding and forces
+   border-color, which ties with — and then beats — the component's Tailwind
+   utilities. Two classes here, so this wins. */
+.pf-root .sms-fail { margin-top:6px;display:flex;align-items:flex-start;gap:6px;border:1px solid oklch(0.62 0.13 18 / 0.4);border-radius:8px;background:var(--mm-rose-soft);padding:6px 9px;font-size:.75rem;line-height:1.35;color:var(--mm-rose) }
+.pf-root .sms-fail strong { font-weight:800 }
+.pf-root .sms-fail-icon { flex-shrink:0;width:13px;height:13px;margin-top:1px }
+
 /* deploy bump 7126c6b */

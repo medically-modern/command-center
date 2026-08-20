@@ -23,6 +23,8 @@
  * popup's own send lands in the same RingCentral history this card reads.
  */
 import { MessageAttachments } from "@/components/shared/MessageAttachments";
+import SmsDeliveryNote from "@/components/shared/SmsDeliveryNote";
+import { useDeliveryRecheck } from "@/hooks/useDeliveryRecheck";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { sendViaWorker, SendValidationError } from "@/lib/shared/sendViaWorker";
@@ -85,6 +87,8 @@ export function IntakeMessages({
   const bottomRef = useRef<HTMLDivElement>(null);
 
   const configured = messagingConfigured();
+  // A delivery failure lands seconds AFTER the send resolves — see the hook.
+  const recheck = useDeliveryRecheck();
 
   const loadThread = useCallback(async (showSpinner: boolean) => {
     if (!tel || !configured) return;
@@ -106,13 +110,16 @@ export function IntakeMessages({
   // Load as soon as the card mounts for this patient — "instantly viewable"
   // is the whole point of the card, so it must not wait on a click.
   useEffect(() => {
+    // ⚠️ Before anything else: a recheck armed for the PREVIOUS patient would
+    // fetch their conversation and paint it into this one.
+    recheck.cancel();
     setMessages([]);
     setHistoryComplete(false);
     setThreadError(null);
     setText("");
     setTab("text");
     void loadThread(true);
-  }, [patientId, loadThread]);
+  }, [patientId, loadThread, recheck]);
 
   // Newest at the bottom, scrolled into view, so the recent exchange is what
   // the rep sees without touching the scrollbar.
@@ -131,6 +138,8 @@ export function IntakeMessages({
       await sendMessage({ to: tel, text: body, mondayItemId: patientId });
       setText("");
       await loadThread(false);
+      // This first read shows it Queued; the failure, if any, arrives later.
+      recheck.schedule(() => loadThread(false));
       // Best-effort, and deliberately after the send: the text has gone, so a
       // failed note must never read as a failed send.
       onTextSent?.(body);
@@ -362,6 +371,14 @@ export function IntakeMessages({
                     </div>
                     <div style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{m.text}</div>
                     <MessageAttachments attachments={m.attachments} />
+                    {/* A text RingCentral could not deliver. skin="page" is
+                        required in here — see the component's own note. */}
+                    <SmsDeliveryNote
+                      direction={m.direction}
+                      messageStatus={m.messageStatus}
+                      deliveryError={m.deliveryError}
+                      skin="page"
+                    />
                   </div>
                 ))
               )}

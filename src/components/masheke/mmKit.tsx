@@ -26,6 +26,8 @@ import type { MondayFileEntry } from "@/lib/masheke/mondayApi";
 import { openFileViewer } from "@/components/shared/FileViewerModal";
 import { CallHistoryButton } from "@/components/shared/CallHistoryButton";
 import { ConfirmDeleteDialog } from "@/components/shared/ConfirmDeleteDialog";
+import SmsDeliveryNote from "@/components/shared/SmsDeliveryNote";
+import { useDeliveryRecheck } from "@/hooks/useDeliveryRecheck";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
@@ -625,6 +627,8 @@ function TextCompose({
    *  treats an incomplete history as consent UNKNOWN and blocks on it. */
   const [historyComplete, setHistoryComplete] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+  // A delivery failure lands seconds AFTER the send resolves — see the hook.
+  const recheck = useDeliveryRecheck();
 
   const load = async () => {
     setLoading(true);
@@ -671,11 +675,21 @@ function TextCompose({
     seeded.current = prefill;
   }, [open, prefill]);
 
-  // Pull the conversation each time the pop-up opens.
+  // Pull the conversation each time the pop-up opens, and drop any pending
+  // delivery recheck on close — this component outlives the dialog, so a timer
+  // left running would reload a thread nobody is looking at (and, after a
+  // patient switch, the WRONG one).
   useEffect(() => {
     if (open) void load();
+    else recheck.cancel();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
+
+  // Same guard for a patient switch behind an open dialog.
+  useEffect(() => {
+    recheck.cancel();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tel]);
 
   // Keep the newest message in view.
   useEffect(() => {
@@ -695,6 +709,9 @@ function TextCompose({
       // patient has the message either way.
       try { onSent?.(body); } catch { /* caller's problem, not the send's */ }
       await load(); // refresh so the sent text appears in the thread
+      // ...which shows it Queued. A failed delivery only lands a few seconds
+      // later, so look again while the rep still has the pop-up open.
+      recheck.schedule(load);
     } catch (e) {
       toast.error("Couldn't send text", { description: e instanceof Error ? e.message : String(e) });
     } finally {
@@ -768,7 +785,7 @@ function TextCompose({
             messages.map((m) => {
               const out = m.direction === "Outbound";
               return (
-                <div key={m.id} className={cn("flex", out ? "justify-end" : "justify-start")}>
+                <div key={m.id} className={cn("flex flex-col", out ? "items-end" : "items-start")}>
                   <div
                     className={cn(
                       "max-w-[78%] rounded-2xl px-3 py-2 text-sm whitespace-pre-wrap break-words",
@@ -779,6 +796,14 @@ function TextCompose({
                     <MessageAttachments attachments={m.attachments} />
                     <div className={cn("mt-1 text-[10px]", out ? "text-white/70" : "text-muted-foreground")}>{fmtTime(m.time)}</div>
                   </div>
+                  {/* Undeliverable texts, marked the way RingCentral marks them.
+                      Outside the teal bubble so the red actually reads. */}
+                  <SmsDeliveryNote
+                    direction={m.direction}
+                    messageStatus={m.messageStatus}
+                    deliveryError={m.deliveryError}
+                    className="max-w-[78%]"
+                  />
                 </div>
               );
             })

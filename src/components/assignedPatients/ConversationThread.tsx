@@ -20,6 +20,8 @@ import { consentState } from "@/lib/assignedPatients/optOut";
 import type { PatientRef } from "@/lib/assignedPatients/patientLookup";
 import { fmtPhone, senderColor, senderName } from "@/lib/assignedPatients/format";
 import WatchCallbackButton from "@/components/inboundCalls/WatchCallbackButton";
+import SmsDeliveryNote from "@/components/shared/SmsDeliveryNote";
+import { useDeliveryRecheck } from "@/hooks/useDeliveryRecheck";
 import { cn } from "@/lib/utils";
 
 interface Props {
@@ -45,6 +47,8 @@ export default function ConversationThread({ phone, patient, onCall, calling }: 
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
+  // A delivery failure lands seconds AFTER the send resolves — see the hook.
+  const recheck = useDeliveryRecheck();
 
   const load = async (showSpinner: boolean) => {
     if (showSpinner) setLoading(true);
@@ -64,6 +68,9 @@ export default function ConversationThread({ phone, patient, onCall, calling }: 
 
   useEffect(() => {
     let alive = true;
+    // ⚠️ A recheck armed for the previous number would paint that
+    // conversation into this one.
+    recheck.cancel();
     setMessages([]);
     setHistoryComplete(false);
     void (async () => {
@@ -89,6 +96,8 @@ export default function ConversationThread({ phone, patient, onCall, calling }: 
       await sendMessage({ to: phone, text, mondayItemId: patient?.itemId || undefined });
       setDraft("");
       await load(false);
+      // This first read shows it Queued; the failure, if any, arrives later.
+      recheck.schedule(() => load(false));
     } catch (e) {
       toast.error(e instanceof Error ? e.message : String(e));
     } finally {
@@ -169,6 +178,15 @@ export default function ConversationThread({ phone, patient, onCall, calling }: 
                   {m.direction === "Outbound" && !m.sentBy ? " · sent outside Command Center" : ""}
                 </p>
               </div>
+              {/* A text RingCentral could not deliver. Outside the bubble on
+                  purpose: inside a sender-tinted bubble the red is unreadable,
+                  and this is the one line in the thread a rep has to act on. */}
+              <SmsDeliveryNote
+                direction={m.direction}
+                messageStatus={m.messageStatus}
+                deliveryError={m.deliveryError}
+                className="max-w-[75%]"
+              />
             </div>
           ))
         )}
