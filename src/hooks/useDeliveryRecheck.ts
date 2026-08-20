@@ -17,7 +17,7 @@
  * So callers must `cancel()` on every phone/patient change; unmount is handled
  * here.
  */
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 
 /**
  * When to look again, in ms after the send resolves. Two passes: most
@@ -53,5 +53,22 @@ export function useDeliveryRecheck(): {
 
   useEffect(() => cancel, [cancel]);
 
-  return { schedule, cancel };
+  // ⚠️ ONE object identity for the life of the component — memoized, not a
+  // fresh literal. `schedule` and `cancel` are already stable, but the OBJECT
+  // holding them was rebuilt on every render, and a caller that (correctly)
+  // lists this hook's result in an effect's dependency array then has an effect
+  // whose deps change every render: effect runs → it setStates → render → new
+  // object → effect runs again, unbounded, at render speed.
+  //
+  // That is not hypothetical. IntakeMessages did exactly this on 2026-08-20 and
+  // fired `POST /messaging/conversation` thousands of times a second until the
+  // browser ran out of sockets (`ERR_INSUFFICIENT_RESOURCES`) — and the flood
+  // pushed the shared RingCentral account over its rate limit, which took the
+  // INBOUND CALL subscription lookups down with it (429), which paged everyone
+  // about an outage that was never happening. One render loop, three systems.
+  //
+  // The consumer was fixed too. This is the half that protects the NEXT caller:
+  // depending on the whole object is the natural thing to write, and it must be
+  // safe rather than merely discouraged.
+  return useMemo(() => ({ schedule, cancel }), [schedule, cancel]);
 }

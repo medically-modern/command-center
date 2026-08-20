@@ -88,7 +88,10 @@ export function IntakeMessages({
 
   const configured = messagingConfigured();
   // A delivery failure lands seconds AFTER the send resolves — see the hook.
-  const recheck = useDeliveryRecheck();
+  // ⚠️ Destructured on purpose. The effect below needs `cancel`, and listing
+  // the whole hook result there is what looped this card (see the hook). The
+  // functions are stable; the object was not — and now both are.
+  const { schedule: scheduleRecheck, cancel: cancelRecheck } = useDeliveryRecheck();
 
   const loadThread = useCallback(async (showSpinner: boolean) => {
     if (!tel || !configured) return;
@@ -112,14 +115,14 @@ export function IntakeMessages({
   useEffect(() => {
     // ⚠️ Before anything else: a recheck armed for the PREVIOUS patient would
     // fetch their conversation and paint it into this one.
-    recheck.cancel();
+    cancelRecheck();
     setMessages([]);
     setHistoryComplete(false);
     setThreadError(null);
     setText("");
     setTab("text");
     void loadThread(true);
-  }, [patientId, loadThread, recheck]);
+  }, [patientId, loadThread, cancelRecheck]);
 
   // Newest at the bottom, scrolled into view, so the recent exchange is what
   // the rep sees without touching the scrollbar.
@@ -139,7 +142,7 @@ export function IntakeMessages({
       setText("");
       await loadThread(false);
       // This first read shows it Queued; the failure, if any, arrives later.
-      recheck.schedule(() => loadThread(false));
+      scheduleRecheck(() => loadThread(false));
       // Best-effort, and deliberately after the send: the text has gone, so a
       // failed note must never read as a failed send.
       onTextSent?.(body);
