@@ -47,7 +47,7 @@ import pkg from "pg";
 const { Pool } = pkg;
 
 import { verifyGoogleIdentity } from "./auth.mjs";
-import { rcApiFetch } from "./ringcentral.mjs";
+import { rcApiFetch, rcGuardSnapshot } from "./ringcentral.mjs";
 import { toE164, phoneHmac, hashingConfigured } from "./phoneHash.mjs";
 import {
   isRinging,
@@ -462,7 +462,7 @@ async function reconcileOnce() {
   };
 
   try {
-    const listRes = await rcApiFetch("/restapi/v1.0/subscription");
+    const listRes = await rcApiFetch("/restapi/v1.0/subscription", {}, { tier: "background" });
     if (!listRes.ok) throw rcFailure(`list subscriptions failed (${listRes.status})`, listRes);
     const list = await listRes.json();
     const mine = (list.records || []).filter(
@@ -477,7 +477,7 @@ async function reconcileOnce() {
     mine.sort((a, b) => (String(b.status) === "Active") - (String(a.status) === "Active"));
 
     for (const extra of mine.slice(1)) {
-      await rcApiFetch(`/restapi/v1.0/subscription/${extra.id}`, { method: "DELETE" }).catch(() => {});
+      await rcApiFetch(`/restapi/v1.0/subscription/${extra.id}`, { method: "DELETE" }, { tier: "background" }).catch(() => {});
     }
 
     const current = mine[0];
@@ -550,7 +550,9 @@ async function liveSubscriptionStatus() {
   if (!subscriptionState.id) return { status: null, error: subscriptionState.error };
   if (Date.now() - _liveStatus.at < 60_000) return _liveStatus;
   try {
-    const up = await rcApiFetch(`/restapi/v1.0/subscription/${subscriptionState.id}`);
+    const up = await rcApiFetch(
+      `/restapi/v1.0/subscription/${subscriptionState.id}`, {}, { tier: "background" },
+    );
     if (!up.ok) {
       _liveStatus = { at: Date.now(), status: null, error: `RingCentral says ${up.status}` };
       return _liveStatus;
@@ -725,6 +727,12 @@ export function registerInboundCalls({ app }) {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ phoneNumber: target }),
         },
+        // ⚠️ CRITICAL, and the clearest case for the tier existing at all: this
+        // forwards a call that is RINGING RIGHT NOW. There is no retry, the
+        // patient is on the line, and a limiter that sheds this would make an
+        // incident into a missed call. Human-initiated and rare, so it can
+        // never be the source of a flood.
+        { tier: "critical", caller: who },
       );
       const text = await up.text();
       if (!up.ok) {
@@ -936,6 +944,12 @@ export function registerInboundCalls({ app }) {
       // reads as "connected" if you only count them.
       subscriberAges: [...subscribers.values()].map((s) => Math.round((now - s.connectedAt) / 1000)),
       ringing: [...calls.values()].filter((c) => c.state === "ringing").length,
+      // The gateway's own speed limit on RingCentral (rcLimiter.mjs). Counts
+      // only, no identities — this route is unauthenticated. `breakerOpen` or a
+      // climbing `shed` is the signal that something is hammering RingCentral;
+      // before this existed, a flood was visible only as everything else
+      // mysteriously failing.
+      rcGuard: rcGuardSnapshot(),
       // `seen` climbing while `rings` stays 0 means deliveries are arriving and
       // being discarded — the failure that is otherwise indistinguishable from
       // RingCentral never sending anything.

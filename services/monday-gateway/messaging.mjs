@@ -155,11 +155,13 @@ export function registerMessaging({ app }) {
     // attribution row below is still written before we report it.
     let deliveryFailure = null;
     try {
+      // CRITICAL: a rep typed this and pressed Send. Shedding it loses a
+      // message a human is waiting on; it can't be a flood source.
       const up = await rcApiFetch(`/restapi/v1.0/account/~/extension/~/sms`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ from: { phoneNumber: RC_SMS_FROM }, to: [{ phoneNumber: to }], text }),
-      });
+      }, { tier: "critical", caller: who || "anon" });
       const body = await up.text();
       if (up.ok) {
         ok = true;
@@ -172,7 +174,13 @@ export function registerMessaging({ app }) {
         // ⚠️ This account's POST /sms returns a bare 500 while still ACCEPTING
         // the message (CLAUDE.md §5.5). Confirm against the message store
         // before reporting failure, or reps re-send and double-text patients.
-        const found = await confirmSmsAccepted({ rcFetch: (path) => rcApiFetch(path), to, text });
+        // Critical too: this is the read that decides whether a 5xx really
+        // failed. Shedding it reports a DELIVERED text as failed, and the rep
+        // sends it twice.
+        const found = await confirmSmsAccepted({
+          rcFetch: (path) => rcApiFetch(path, {}, { tier: "critical", caller: who || "anon" }),
+          to, text,
+        });
         ok = found.accepted;
         // Found it, but RingCentral had ALREADY given up on it — the number is
         // undeliverable. Report that instead of the bare 500, which reads as a
@@ -252,6 +260,12 @@ export function registerMessaging({ app }) {
           `/restapi/v1.0/account/~/extension/~/message-store` +
             `?phoneNumber=${encodeURIComponent(phone)}` +
             `&dateFrom=${encodeURIComponent(dateFrom)}&perPage=${PAGE_SIZE}&page=${page}`,
+          {},
+          // A human opened a thread, so it outranks polling — but it is still
+          // budgeted, and this is the exact route that caused the 2026-08-20
+          // incident: it pages up to MAX_PAGES deep, so one request here is up
+          // to ten RingCentral calls.
+          { tier: "interactive", caller: who || "anon" },
         );
         if (!up.ok) throw new Error(`RingCentral SMS history failed (${up.status})`);
         const j = await up.json();
