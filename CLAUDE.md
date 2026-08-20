@@ -385,9 +385,15 @@ excludes escalated labels) and from that page's rep view — the same stale-carr
 `enterDoctorAppointments` clears on entry to guard against (§5.12). Removed with its writer
 (`profile/mondayWrite.sendBackToPatientIntake`), the `sendingBack`/`canSendBack`/`onSendBack`
 plumbing and the now-orphaned `.route.intake` / `.route.outreach` CSS. `GROUPS.patientIntake`
-survives as board schema only. **Verified Referrals now has exactly one exit, Advance to MN**, which
-is gated on the readiness checklist — so a referral that is genuinely missing information has no
-in-app route out of that queue; that is the accepted consequence, not an oversight.
+survives as board schema only. That left **Verified Referrals with exactly one exit, Advance to MN**,
+gated on the readiness checklist — so a referral that is genuinely missing information had no in-app
+route out of that queue. This doc recorded that as "the accepted consequence, not an oversight".
+⚠️ **It was not accepted — REVERSED 2026-08-20** (Josh, second report from the floor): patients whose
+insurance came back inactive and who wouldn't answer the phone (Richard Clark the reported one) piled
+up in the queue with a greyed-out Advance to MN and nothing else to press. **Mark as Stuck now renders
+on BOTH of this page's queues**, and the fix is deliberately the DIRECT exit, not the Propose Stuck
+ladder — Josh, same day: *"no propose stuck anywhere"*. The rep decides, a reason is required, the
+patient moves to the Stuck group. Do not re-narrow this to Already In System.
 
 **Already In System has a third exit: Mark as Stuck** (2026-08-12). Most patients in that queue
 are already being served, so "Advance to MN" is wrong for them and they had no way out. It stamps `text_mm2vf40t` (**stuck reason**) and then moves the item
@@ -395,9 +401,15 @@ to `GROUPS.stuck` (`group_mm1xyczx`) — reason FIRST, so a failed move leaves a
 still in the queue rather than one parked in Stuck with no explanation. ⚠️ The **group is the only
 marker**: Move to Onboarding `color_mm1zmeb3` has no Stuck label (its labels are Already Serving ·
 Advance to MN · Send Back To Referral · Need More Info), so nothing on the item says "stuck" except
-which group it sits in — which is why the reason is required and stamped with who/when. ⚠️ Scoped
-via `BodyProps.onMarkStuck`/`onMoveToPipeline` to the **SELECTED PATIENT's** computed role
-(`selectedInSystem` ← `profileReferralRole`, 2026-08-18) — **not** the page variant: Search routes
+which group it sits in — which is why the reason is required and stamped with who/when.
+⚠️ **`onMarkStuck` is UNCONDITIONAL from 2026-08-20** — both queues this page serves get it (see the
+reversal above); only `onMoveToPipeline` is still Already-In-System-only. The stamp's stage label
+therefore follows `selectedRole`, not `VARIANT_LABEL.inSystem` as it did while the button was
+in-system-only: a deep-linked patient is exempt from the split, so the URL is not evidence of which
+queue they are in, and this column is the only record of why they stopped.
+⚠️ `onMoveToPipeline` stays scoped
+via `BodyProps` to the **SELECTED PATIENT's** computed role
+(`selectedRole` ← `profileReferralRole`, 2026-08-18) — **not** the page variant: Search routes
 every 1. Intake row to `/profile` and a deep-linked `?patientId=` is exempt from the split, so an
 in-system patient opened from Search landed on Verified Referrals offered **Advance to MN** (the
 one exit that's wrong for them) and neither real exit — reported as "Mark as Stuck was removed".

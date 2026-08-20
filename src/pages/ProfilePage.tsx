@@ -260,9 +260,12 @@ const ProfilePage = ({ variant }: ProfilePageProps) => {
   // queue pages the split and the URL always agree and normal queue work is
   // unchanged — this only bites on deep links, in both directions (a verified
   // patient deep-linked onto /in-system-referrals gets Advance to MN back).
-  const selectedInSystem = !!selected && profileReferralRole(
-    selected.referralType, selected.referralSource, selected.alreadyInSystem, selected.groupId,
-  ) === "inSystem";
+  const selectedRole: ProfileReferralRole | null = selected
+    ? profileReferralRole(
+        selected.referralType, selected.referralSource, selected.alreadyInSystem, selected.groupId,
+      )
+    : null;
+  const selectedInSystem = selectedRole === "inSystem";
 
   // "Patient has filled out a DTC form" (Josh, 2026-08-18): a doctor or
   // manufacturer referral often has a twin the patient submitted themselves.
@@ -544,6 +547,16 @@ const ProfilePage = ({ variant }: ProfilePageProps) => {
   // Already In System is a dead end for most of the patients in it — they're
   // already being served — so the queue needs a way OUT that isn't "advance to
   // MN" or "send back to intake". The board's Stuck group is that exit.
+  //
+  // ⚠️ BOTH of this page's queues have it now (Josh, 2026-08-20). Referral
+  // Intake was left with exactly ONE exit when "Send back to Patient Intake"
+  // was removed (2026-08-14), and Advance to MN is gated on the readiness
+  // checklist — so a referral that CANNOT be completed (insurance came back
+  // inactive, patient unreachable) had no route out of the queue at all and
+  // sat there forever. §5.10 recorded that as an accepted consequence; it was
+  // reported twice from the floor, so it isn't one. This is the direct exit,
+  // NOT the Propose Stuck ladder (Josh: "no propose stuck anywhere") — the rep
+  // decides, the reason is required, and the patient leaves the queue.
   const [stuckOpen, setStuckOpen] = useState(false);
   const [stuckReason, setStuckReason] = useState("");
   const [markingStuck, setMarkingStuck] = useState(false);
@@ -552,10 +565,12 @@ const ProfilePage = ({ variant }: ProfilePageProps) => {
     if (!selected || !stuckReason.trim()) return;
     setMarkingStuck(true);
     try {
-      // Always stamped as the in-system queue: the action only renders for
-      // patients the split rule puts there, and on a deep link the page's own
-      // variant can be a different route (see selectedInSystem above).
-      await markStuck(selected, stuckReason, VARIANT_LABEL.inSystem);
+      // Stamped with the SELECTED patient's own queue, not the page variant:
+      // the action renders on both routes now, and a deep-linked patient is
+      // exempt from the split, so the URL is not evidence of which queue they
+      // are in (see selectedRole above). A note that names the wrong stage is
+      // worse than none — this column is the only record of why they stopped.
+      await markStuck(selected, stuckReason, VARIANT_LABEL[selectedRole ?? "verified"]);
       clearOverlay(selected.id);
       toast.success(`${selected.name} moved to Stuck`);
       clearDeepLink();
@@ -720,7 +735,7 @@ const ProfilePage = ({ variant }: ProfilePageProps) => {
                 onAdvance={handleAdvance}
                 onAddNote={handleAppendNote}
                 reviewMode={reviewMode}
-                onMarkStuck={selectedInSystem ? () => setStuckOpen(true) : undefined}
+                onMarkStuck={() => setStuckOpen(true)}
                 markingStuck={markingStuck}
                 onMoveToPipeline={selectedInSystem ? () => setMoveOpen(true) : undefined}
                 movingToPipeline={movingToPipeline}
