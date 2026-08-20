@@ -96,7 +96,8 @@
       "roles": [
         "profile",
         "unverifiedReferrals",
-        "doctorAppointments"
+        "doctorAppointments",
+        "intakeCleanup"
       ]
     },
     "janelle@medicallymodern.com": {
