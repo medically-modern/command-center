@@ -12,12 +12,20 @@ export const GROUPS = {
   welcomeCall: "group_mm1wvq8p",
   completed: "group_mm1x5s5d",
   stuck: "group_mm1xyczx",
-  // Debug
-  joshDebug: "text_mm35b391",
 } as const;
 
 // Read columns — everything we need to display
 export const COL = {
+  // Debug breadcrumb for verifiedWrite's `writeDebug` — a COLUMN id, so it
+  // belongs here. It sat in GROUPS until 2026-08-20, which made
+  // `COL.joshDebug` undefined: every writeDebug call sent a mutation with a
+  // missing `$columnId: String!` and failed, silently, because verifiedWrite
+  // swallows debug failures ("best-effort"). The send's own error text tells
+  // the rep to "Check the Josh Debug column" — which nothing had ever
+  // written to. Caught by `tsc -b`, never by CI's `tsc --noEmit` (see the
+  // Typecheck step in deploy.yml: the root tsconfig is solution-style, so
+  // that command checks zero files).
+  joshDebug: "text_mm35b391",
   // Demographics (read-only)
   dob: "text_mm1xvxst",
   phone: "phone_mm1x44yk",
