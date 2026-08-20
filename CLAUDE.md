@@ -1982,6 +1982,16 @@ these services; when their math changes, `oopEstimator.ts` must be updated to ma
   refetch. The board column has a **single label `Escalate` and no `Done`**, so it could not be
   cleared by index even if it were written. 36 items carry it, set outside the SPA. Left as-is
   deliberately.
+- **A runaway React component can exhaust the shared RingCentral account** — it did, on
+  2026-08-20, at ~1,166 req/sec from ONE browser, taking down texting, the fax count and
+  the call log across **both test and prod** (one gateway, one RC app, §8). The gateway now
+  has a limiter (`services/monday-gateway/rcLimiter.mjs`, §5.13) so the same shape can't
+  reach RingCentral again, but the SPA still has no client-side guard. Full write-up:
+  [`INCIDENT_2026-08-20_RINGCENTRAL.md`](INCIDENT_2026-08-20_RINGCENTRAL.md) — read rule 2
+  there before putting a hook's return value in a dependency array.
+- **CI's typecheck is a NO-OP.** `deploy.yml` runs `npx tsc --noEmit`, but the root tsconfig
+  is solution-style (`"files": []` + project references), which `--noEmit` does not follow —
+  it checks zero files and always exits 0. 23 real TS errors sit in the tree. Use `tsc -b`.
 - `README.md` points here; keep this file current as the architecture moves.
 
 ---

@@ -2,7 +2,7 @@
 // CGM Template, IP Template. Also reads the Generate CGM/IP Script status text
 // so the toggle can mirror Monday directly.
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   COL,
   fetchItemColumnTexts,
@@ -113,7 +113,13 @@ export function useMondayFiles(
     return () => clearInterval(id);
   }, [itemId, pollingIntervalMs, refetch]);
 
-  return {
+  // ⚠️ Memoized. A hook that hands back a fresh object every render is a render
+  // loop waiting for a caller to (correctly) list it in an effect's dependency
+  // array — see src/hooks/useDeliveryRecheck.ts for the 2026-08-20 incident
+  // where exactly that sent ~1,166 requests/sec at a production phone system.
+  // SendRequestPanel lists this object in useCallback deps, which cannot loop —
+  // but it silently defeated the memoization on every callback that took it.
+  return useMemo(() => ({
     clinicalFiles: data[COL.clinicalFiles] ?? EMPTY,
     finalClinicals: data[COL.finalClinicals] ?? EMPTY,
     cgmTemplate: data[COL.cgmTemplate] ?? EMPTY,
@@ -124,5 +130,5 @@ export function useMondayFiles(
     loading,
     error,
     refetch,
-  };
+  }), [data, statuses, loading, error, refetch]);
 }

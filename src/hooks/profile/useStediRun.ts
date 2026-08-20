@@ -22,7 +22,7 @@
  * re-fetching (it already polls Monday) and feeds each fresh patient in.
  */
 
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import type { Patient } from "@/lib/profile/workflow";
 import { writePatientProfile, verifyProfileWritten, triggerStediRun } from "@/lib/profile/mondayWrite";
 
@@ -175,5 +175,18 @@ export function useStediRun() {
     return false;
   }, [state.phase, state.runningId]);
 
-  return { state, start, observe, reset, isRunning: state.phase === "writing" || state.phase === "verifying" || state.phase === "running" };
+  // ⚠️ Memoized. A hook that hands back a fresh object every render is a render
+  // loop waiting for a caller to (correctly) list it in an effect's dependency
+  // array — see src/hooks/useDeliveryRecheck.ts for the 2026-08-20 incident
+  // where exactly that sent ~1,166 requests/sec at a production phone system.
+  // UnverifiedReferralsPage does exactly that: `useEffect(… , [selected, stedi])`.
+  // It does not loop today only because `observe` returns before any setState
+  // unless a check is running — one line of change away from the same outage.
+  return useMemo(
+    () => ({
+      state, start, observe, reset,
+      isRunning: state.phase === "writing" || state.phase === "verifying" || state.phase === "running",
+    }),
+    [state, start, observe, reset],
+  );
 }
