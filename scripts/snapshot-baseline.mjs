@@ -108,6 +108,23 @@ const PROF_IN_SYSTEM_COL = "color_mm2xe7r8";       // Already In System (role sp
 const SUB_BOARD   = 18407459988;
 const SUB_GROUP   = "topics";
 
+/* ── Patient Questions (inbox over TWO boards) ─────────────
+ * Mirrors lib/patientQuestions/mondayApi.ts `fetchPatientQuestions` +
+ * lib/patientQuestions/handled.ts `isQuestionOpen`. A question is OPEN while
+ * its message is newer than the board's "Question Handled At" stamp, so a
+ * patient writing again after completion reopens it with no status column
+ * involved. Counted here so the Operations tab has a 9 AM figure to burn down
+ * against — without one the bar reads "not connected" all day.
+ * SS5.8 counting contract: this block is duplicated in the OTHER baseline
+ * generator and must match it and useRoleCounts exactly. */
+const PQ_CLAIMS_BOARD = 18413019028;          // Secondary Claims
+const PQ_SUB_MSG_COL = "long_text_mm3xnb6k";  // Patient Help Message
+const PQ_SUB_TS_COL = "text_mm3kt9bs";        // order-response timestamp (fallback)
+const PQ_SUB_HANDLED_COL = "date_mm57yzmb";
+const PQ_CLAIMS_MSG_COL = "long_text_mm3yqgyt";
+const PQ_CLAIMS_HANDLED_COL = "date_mm57skrd";
+
+
 const ESC_REQUIRED = "Escalation Required";
 // Insurance board escalation split into two labels (2026-07) — either counts as
 // escalated. Masheke + Welcome Call still use the single ESC_REQUIRED above.
@@ -445,6 +462,134 @@ async function countSubscription() {
   return { count: items.length, ids: items.map((i) => i.id) };
 }
 
+/* ── Patient Questions ─────────────────────────────────────
+ * Ported from lib/patientQuestions/*.ts — see the constants block above for
+ * the SS5.8 keep-in-agreement rule. */
+
+/** long_text column -> { text, updatedAt } (updatedAt is Monday's changed_at). */
+function pqLongTextParts(item, id) {
+  const text = item.cols?.[id] ?? "";
+  const raw = item.vals?.[id];
+  if (!raw) return { text, updatedAt: "" };
+  try {
+    const p = JSON.parse(raw);
+    return { text: p.text ?? text, updatedAt: p.changed_at ?? p.updated_at ?? "" };
+  } catch {
+    return { text, updatedAt: "" };
+  }
+}
+
+/** Monday date-column value JSON ({"date","time"}, time is UTC) -> ISO. */
+function pqDateValueToIso(value) {
+  if (!value) return "";
+  try {
+    const p = JSON.parse(value);
+    if (!p?.date) return "";
+    return `${p.date}T${p.time || "00:00:00"}Z`;
+  } catch {
+    return "";
+  }
+}
+
+/** Newest parseable timestamp among the candidates ("" if none). */
+function pqNewestTimestamp(...candidates) {
+  let best = "";
+  let bestMs = -Infinity;
+  for (const c of candidates) {
+    const ms = Date.parse(c);
+    if (!isNaN(ms) && ms > bestMs) { bestMs = ms; best = c; }
+  }
+  return best;
+}
+
+/** Open iff the message is newer than the handled stamp. Never hide a question
+ *  over an unreadable mark; with no reliable message time, trust the mark. */
+function pqIsOpen(messageUpdatedAt, handledAt) {
+  if (!handledAt) return true;
+  const handled = Date.parse(handledAt);
+  if (isNaN(handled)) return true;
+  const message = Date.parse(messageUpdatedAt);
+  if (isNaN(message)) return false;
+  return message > handled;
+}
+
+/** Every item on a board (no group filter), cursor-paginated. */
+async function fetchAllBoardItems(boardId, columnIds) {
+  const query = `
+    query ($bid: ID!, $cols: [String!]) {
+      boards(ids: [$bid]) {
+        items_page(limit: ${PAGE}) {
+          cursor items { id column_values(ids: $cols) { id text value } }
+        }
+      }
+    }`;
+  const toLight = (items) =>
+    items.map((i) => ({
+      id: String(i.id),
+      cols: Object.fromEntries((i.column_values ?? []).map((c) => [c.id, c.text ?? ""])),
+      vals: Object.fromEntries((i.column_values ?? []).map((c) => [c.id, c.value ?? ""])),
+    }));
+
+  const data = await gql(query, { bid: boardId, cols: columnIds });
+  const page = data?.boards?.[0]?.items_page;
+  const out = toLight(page?.items ?? []);
+  let cursor = page?.cursor ?? null;
+
+  while (cursor) {
+    const next = await gql(
+      `query ($cursor: String!, $cols: [String!]) {
+        next_items_page(limit: ${PAGE}, cursor: $cursor) {
+          cursor items { id column_values(ids: $cols) { id text value } }
+        }
+      }`,
+      { cursor, cols: columnIds },
+    );
+    out.push(...toLight(next?.next_items_page?.items ?? []));
+    cursor = next?.next_items_page?.cursor ?? null;
+  }
+  return out;
+}
+
+/**
+ * Open patient questions across the Subscription + Secondary Claims boards.
+ *
+ * No patientIds: the SPA hook doesn't publish them either (it merges an empty
+ * id map), so the Operations tab estimates movement from the net delta for
+ * this role. Publishing ids on ONE side of that comparison would manufacture
+ * phantom +in/-out chips, which is the SS5.8 drift this contract exists to stop.
+ *
+ * Each board is caught independently — one unreachable board must not zero the
+ * whole count, mirroring the SPA's per-board `.catch(() => [])`.
+ */
+async function countPatientQuestions() {
+  const [subItems, claimsItems] = await Promise.all([
+    fetchAllBoardItems(SUB_BOARD, [PQ_SUB_MSG_COL, PQ_SUB_TS_COL, PQ_SUB_HANDLED_COL]).catch(() => []),
+    fetchAllBoardItems(PQ_CLAIMS_BOARD, [PQ_CLAIMS_MSG_COL, PQ_CLAIMS_HANDLED_COL]).catch(() => []),
+  ]);
+
+  let count = 0;
+
+  for (const item of subItems) {
+    const msg = pqLongTextParts(item, PQ_SUB_MSG_COL);
+    if (!msg.text.trim()) continue;
+    const handledAt = pqDateValueToIso(item.vals?.[PQ_SUB_HANDLED_COL]);
+    const messageAt = pqNewestTimestamp(item.cols?.[PQ_SUB_TS_COL] ?? "", msg.updatedAt);
+    if (!pqIsOpen(messageAt, handledAt)) continue;
+    count++;
+  }
+
+  for (const item of claimsItems) {
+    const msg = pqLongTextParts(item, PQ_CLAIMS_MSG_COL);
+    if (!msg.text.trim()) continue;
+    const handledAt = pqDateValueToIso(item.vals?.[PQ_CLAIMS_HANDLED_COL]);
+    if (!pqIsOpen(msg.updatedAt, handledAt)) continue;
+    count++;
+  }
+
+  return count;
+}
+
+
 /**
  * Count escalated patients across all boards that have an escalation column.
  * Mirrors the systemMgmt count.
@@ -545,6 +690,7 @@ async function main() {
     scheduledCallsResult,
     subscriptionResult,
     systemMgmtCount,
+    patientQuestionsCount,
   ] = await Promise.all([
     countSamGroup(SAM_GROUPS.benefits, easternDate),
     countSamGroup(SAM_GROUPS.submitAuth, easternDate),
@@ -557,6 +703,7 @@ async function main() {
     countScheduledCalls(),
     countSubscription(),
     countEscalations(),
+    countPatientQuestions(),
   ]);
 
   const counts = {
@@ -570,6 +717,10 @@ async function main() {
     ...profileResult.counts,
     ...scheduledCallsResult.counts,
     subscription: subscriptionResult.count,
+    // Update Clinicals reads the SAME Subscription group as `subscription`
+    // (useRoleCounts derives both from one fetch) — not a copy-paste slip.
+    updateClinicals: subscriptionResult.count,
+    patientQuestions: patientQuestionsCount,
     systemMgmt: systemMgmtCount,
   };
 
@@ -583,6 +734,7 @@ async function main() {
     finalConfirm: finalConfirmResult.ids,
     ...profileResult.ids,
     subscription: subscriptionResult.ids,
+    updateClinicals: [...subscriptionResult.ids],
   };
 
   const baseline = {

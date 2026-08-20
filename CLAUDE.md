@@ -85,8 +85,13 @@ Shared, cross-role code lives in `src/lib/shared/*`, `src/components/shared/*`,
 `src/components/ui/*` (shadcn), and root hooks `src/hooks/use*.ts`.
 
 `src/lib/config.ts` is the **role registry** (`ROLES[]`: id, label, color, icon, route).
-`fax` and `authDenied` are **count-only** roles with no clickable route (intentional —
-`DailyBurndown`/`OperationsTab` exclude them from navigation). `systemMgmt` is deliberately
+`fax` and `authDenied` are **count-only** roles with an empty `route` (intentional). They are
+NOT equivalent in the UI, though: **`fax` IS clickable** in both burndowns and opens
+**`/fax-inbox`**, special-cased by role id in `DailyBurndown`'s `openBar` and `OperationsTab`'s
+`isFax` (2026-08-20). Keep it a special case rather than filling in `route` — that field is also
+how `DailyBurndown` builds the filter-aware role link and how `ReportIssueButton` maps a pathname
+back to a role, so populating it changes two behaviours to fix one. **`authDenied` stays
+unclickable** everywhere: its stage is deliberately unbuilt (§7). `systemMgmt` is deliberately
 **not** in `ROLES` (reached via the Oversight button, not role assignment).
 
 ---
@@ -311,7 +316,18 @@ Benefits/Submit Auth/Auth Outstanding queues + counts (they linger in those grou
 group-move automation). All these rules live in useRoleCounts + BOTH baseline generators +
 the samantha/masheke `useMondayPatients` hooks; change them together. Roles
 **missing from the baseline** render as "not connected" in the Operations tab (never `0 → N`).
-The cron supports `DRY_RUN=1` (print, don't commit). **Second job (2026-07-21):** after the
+**`patientQuestions` + `updateClinicals` joined the baseline 2026-08-20** — `updateClinicals`
+reuses the Subscription group count (`useRoleCounts` derives both from one fetch, so it is not a
+copy-paste slip), and `patientQuestions` ports `lib/patientQuestions`' two-board open-question
+rule into both generators. ⚠️ `patientQuestions` publishes **no `patientIds`**, matching the hook,
+which merges an empty id map: ids on one side of the comparison only would manufacture phantom
++in/-out chips. Still absent by nature: **`fax`** (a RingCentral count — the generators only reach
+Monday and GitHub, so this needs RC credentials on the cron service) and **`assignedPatients`**
+(no board, no queue, no count anywhere — §4).
+The cron supports `DRY_RUN=1` (print, don't commit).
+⚠️ **`DRY_RUN=1` alone is NOT read-only** — it skips only the GitHub commit; the Days Auth
+Outstanding recalc below still WRITES to the Insurance board. Use `DRY_RUN=1 SKIP_DAYS_RECALC=1`
+for a genuinely side-effect-free run. **Second job (2026-07-21):** after the
 baseline commit it recalcs the Insurance board's **"Days Auth Outstanding"** number column
 (`numeric_mm5f5ars`, Auth Outstanding group) = days since the earliest per-product Auth
 Submission Date — idempotent recalc, not an increment; math mirrors

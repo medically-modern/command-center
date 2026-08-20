@@ -395,7 +395,16 @@ export function OperationsTab() {
                   d.current > 0 ? 4 : 0,
                 )
               : 0;
-          const hasRoute = d.role.route && d.role.id !== "authDenied";
+          // FAX carries no `route` in the registry on purpose — it is a
+          // count-only role — but the Fax Inbox page does exist, and
+          // DailyBurndown has always special-cased exactly this. Matching that
+          // here rather than giving the role a route in config.ts: `route` is
+          // also how DailyBurndown picks the filter-aware link and how
+          // ReportIssueButton maps a pathname back to a role, so filling it in
+          // would change two other behaviours to fix this one.
+          // authDenied stays unclickable — its stage is deliberately unbuilt (§7).
+          const isFax = d.role.id === "fax";
+          const hasRoute = isFax || (!!d.role.route && d.role.id !== "authDenied");
 
           return (
             <button
@@ -409,7 +418,10 @@ export function OperationsTab() {
                 hasRoute ? "cursor-pointer" : "cursor-default",
               )}
               onClick={() => {
-                if (hasRoute) navigate(`${d.role.route}?from=system-mgmt`);
+                if (!hasRoute) return;
+                // `?from=system-mgmt` on both paths so Back returns here
+                // rather than the app home (§9 back-navigation).
+                navigate(isFax ? "/fax-inbox?from=system-mgmt" : `${d.role.route}?from=system-mgmt`);
               }}
               title={hasRoute ? `Open ${d.role.label}` : d.role.label}
             >
