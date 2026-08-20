@@ -108,7 +108,9 @@
     },
     "masani@medicallymodern.com": {
       "name": "Masani",
-      "roles": []
+      "roles": [
+        "unverifiedReferrals"
+      ]
     }
   }
 }
