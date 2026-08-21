@@ -66,6 +66,10 @@ export interface Patient {
   currentOopCost: string;
   cgmDataAwareness: string;
   attemptCounter: string;
+  /** Automated follow-up texts sent by the intake form's own drop-off sequence
+   *  — the 30-minute nudge and the 24-hour one, and nothing else. Blank until
+   *  the first goes out. See COL.dropOffAttempt. */
+  dropOffAttempt: string;
   intakeCallComplete: string;
   /** "Manager Escalation Required" | "Done" | "Final Escalation Required" */
   intakeEscalation: string;

@@ -1386,7 +1386,7 @@ patient to another group and another role. Canonical rule: **`lib/profile/intake
 | route | `/unverified-referrals` | `/profile-cleanup` |
 | queue | the two DTC form groups | **`group_mm6c3rhb`** "Profile Clean-Up" |
 | panes | LEFT ONLY — the right one isn't blurred, it isn't rendered | left + right, right always open |
-| partial/completed selector | yes | no (one group; partials never advance) |
+| partial/completed selector | yes | no (one group — once advanced, which form group they came from is history) |
 | exit | **Advance** → Clean-Up | Advance to MN (unchanged) |
 
 ⚠️ **The id follows the QUEUE, not the screen.** Clean-Up is the half that looks like the old page,
@@ -1567,6 +1567,121 @@ strictly wider — two rules on one fact at two severities is how a check pack g
 4. **The checks** — `finalConfirm/checkPack.ts` C27/C28/C29.
 ⚠️ Welcome Call's own send gate (`validatePatientForSend`) is deliberately **unchanged** — this can
 only ever tell a rep MORE than before, never stop a call they could previously finish (§5.17's rule).
+
+### 5.23 The insurance step — one card answers it, and no card parks the patient (Aug 2026)
+Step 5 of the DTC intake form (`mm-track-widget/intake-form.html`, mirrored as the dtc-mm-form
+repo's `index.html`) offered three answers and mishandled two of them. Josh, 2026-08-21.
+
+**A card photo is now the WHOLE answer.** Uploading one used to hand the patient on to *"Who's your
+insurance with?"*, then *"A couple more details"* (member ID), then step 6's *"Good news — we're in
+network with Anthem or Blue Cross Blue Shield"* — three screens asking for, or asserting, things
+that are printed on the card they just sent. The photo path now goes straight from the confirmation
+to step 7, **"Ready for us to contact your doctor?"**. `leaveInsuranceStep()` is the one place that
+decides: `go(7)` for a card answer, `go(6)` for the manual path — which keeps the in-network screen
+because that is the only path where a carrier was actually named. `completedBack()` is its mirror,
+so Back never lands somebody on a screen they were never routed through.
+
+**"I don't have it on me" is a PARK, not an answer.** It used to count as complete: the patient
+walked to the confirmation screen, landed in *New Form — Completed*, and read a banner asking them
+to text a photo to a care navigator — which nothing tracked and nobody chased. Now:
+1. `parkForInsuranceCard()` POSTs **`/api/intake/insurance-link`**, which upserts the partial lead,
+   mints an **`insurance-card`** upload link and texts + emails it.
+2. The screen says *"No problem! We're sending you a link so you can upload your insurance
+   information whenever you have it"*, with a **disabled Continue**.
+3. The row stays a **partial lead**. Nothing advances.
+4. When the card lands on **Insurance Card Photo `file_mm5zhy1`** — by the texted page, by the
+   form's own uploader, or by a rep attaching one — Continue opens and step 7 is asked as normal.
+   Submitting then promotes them to Completed exactly as any other patient.
+
+**Upload links have a KIND** (`server/src/uploadLink.js` `UPLOAD_KINDS`). `cgm` is the original rep
+link (§8.3, `file_mm5zhsxh`, 24h); `insurance-card` is this one (`file_mm5zhy1`, **90 days** —
+"whenever you have it", and a parked patient has no automated route back if it dies).
+⚠️ The kind is **inside the signature** and `/api/upload/:token` takes its destination column from
+`verifyToken`, never from the request — so no link can be re-aimed at the other column. ⚠️ The
+DEFAULT kind is **absent from the payload**, so a CGM token minted today is byte-identical to one
+minted before kinds existed and every link already in a patient's messages still verifies. ⚠️ An
+*unrecognised* kind is rejected rather than falling back to the default: falling back would append
+the file to the wrong column, silently.
+
+**Two new "sent once" columns, and they live on the BOARD** — *Resume Link Sent* `date_mm6eakae`
+and *Insurance Link Sent* `date_mm6eev4b` (created 2026-08-21). Presence is the entire meaning;
+nothing does arithmetic on them, which is why a rep clearing one by hand is a legitimate way to let
+a link be re-sent. They are on the row rather than in the store because the store degrades to an
+in-process Map without `REDIS_URL` and Railway redeploys on every push, so a store-only guard
+forgets within days — and its failure mode is exactly what it exists to stop.
+> **Save & finish later sends ONE link, ever.** Tapping it on step 3, again on step 4 and again on
+> step 5 texted three links carrying three snapshots: it reads as spam, and it leaves the patient
+> choosing between links with no way to tell which is current. A repeat save now re-shows the link
+> on screen (`alreadySent: true` — a THIRD state on the sent screen, not the apology one, which
+> would teach them something false about a link that works).
+> ⚠️ **The snapshot id is reused per row** (`resumesnap:<itemId>`), and that is what makes "one
+> link" honest rather than merely quiet: a fresh id would leave the link they already have pointing
+> at their FIRST save forever. Reusing it overwrites the snapshot behind the same token.
+> ⚠️ The stamp goes down **after** the send, and for the text OR the email landing — the opposite
+> call from `deliverPatientDocs`' guard. That one protects against a double delivery; this one
+> protects a patient's only route back into their form, so the order favours a possible second text
+> over none at all.
+
+**A second nudge exemption** (`dropOffRules.awaitingInsuranceCard`). A parked patient already has a
+link, and the drop-off sequence would send them *"you're a couple of questions away, finish here"*
+pointing at a different one. ⚠️ Keyed on the **Insurance Link Sent stamp**, not on Insurance
+Provided Via — the status column is written the instant they tap the option, so keying on it would
+exempt a patient whose text never went out, which is precisely who a nudge should reach.
+Self-clearing, like the saved-for-later exemption: the card arriving makes them an ordinary lead.
+
+**The rep's half.** *Start Insurance Follow-Up* (`/unverified-referrals`) now appends **the same
+link** to its check-in text — same endpoint, same kind, same upload page, same column. Not a second
+mechanism: asking for a card is one thing whether a form or a rep does the asking. ⚠️ A failed mint
+does **not** block the text; the check-in is worth sending on its own and the rep is usually
+mid-call. It is also why `logTextSent` now reads a `textPurpose` alongside the body — two buttons
+put a `/u/` link in the composer and the Call Log has to name which.
+
+**Keep-in-agreement (three repos):**
+1. **The form** — `mm-track-widget/intake-form.html` ⇄ `dtc-mm-form-H7eG34s/index.html`. Byte-
+   identical, and not cosmetically: the upload page's *"Finish your form →"* lands patients on the
+   dtc copy, so a stale one would not know the parked screen exists.
+2. **The service** — `server/src/uploadLink.js` (kinds + copy) · `uploadPage.js` (per-kind page) ·
+   `server.js` (`/api/intake/insurance-link`, `/card-on-file/:token`, `/continue-link/:token`) ·
+   `resumeState.js` (`insuranceAnswered` — a card answer skips step 6 because the live form does).
+3. **The Command Center** — `lib/profile/uploadLink.ts` `UploadLinkKind`.
+⚠️ The parked screen's poll is **one loop**, with a generation counter, a phase re-check before
+every request and a 15-minute cap. A poll started per render is the shape that took RingCentral
+down for the whole company on 2026-08-20 (§10).
+
+### 5.24 Partial forms are workable — call them, and advance them (Aug 2026)
+Info Collection's *Ready to Advance?* card used to render a different thing for partials: a
+paragraph saying *"advancing a partial isn't defined yet — work it as outreach"*, a list of
+blockers, and **no buttons at all** — no Save, no Log call attempt, no Advance. Josh, 2026-08-21:
+*"partial and completed ready to advance section shouldn't be any different"*.
+
+That was the wrong way round. This is a **calling queue** — the partials are exactly the rows a rep
+rings — so the half of the stage with the most phone work had the fewest affordances, and a rep who
+filled a patient's details in on the phone had nowhere to record the call and no way to move them
+on. `canAdvanceToCleanUp` is now `unlock.unlocked` alone. The gate is identical for both because it
+reads the **columns**, not how they were filled: a partial that passes it has been completed, by a
+rep instead of by the patient.
+
+Nothing else changed. `advanceToProfileCleanUp` is group-agnostic (it writes, verifies, advances,
+then moves), so a partial advances by exactly the path a completed form does; and leaving the
+Partial Leads group is what cancels the drop-off sequence, which only ever sweeps that group.
+⚠️ **Drop-off Step is deliberately left saying where the PATIENT stopped** (e.g. "Step 3 - What
+they need"). Rewriting it to Completed would make "did this profile come from the patient or from a
+phone call?" unanswerable, and nothing downstream reads it as a queue rule.
+
+**Both counts render on the sidebar row and the patient header** — `Call Attempts: # | Auto. Texts:
+#`, one builder (`sidebarList.contactTally`) so the number a rep scanned the list by and the number
+on the patient they opened cannot disagree.
+⚠️ **"Auto. Texts" is Drop-off Attempt `numeric_mm67822b`, and it counts exactly two things** — the
+intake form's 30-minute and 24-hour nudges, nothing else. The backend claims that counter BEFORE
+each send, so it is the count of messages that actually went out rather than of messages we meant
+to send; the resume link, the insurance upload link and every rep-sent text leave it alone. It is
+clamped at 2 the same way the backend clamps it — a hand-typed 7 is a typo, not a seventh text, and
+reporting one would send a rep into a call believing we had hounded somebody. **This is the half a
+rep had no other way to see**: automated texts leave no note, no Call Log line and no trace on the
+screen, so a patient who had received two looked identical to one nobody had ever contacted.
+⚠️ `showContactTally` is passed by the intake page only. Verified Referrals and Already In System
+patients never receive those texts, so there the number would be a permanent honest zero that reads
+as broken.
 
 ---
 
@@ -2137,6 +2252,9 @@ these services; when their math changes, `oopEstimator.ts` must be updated to ma
 | The benefits check filled in a bad-looking address / "not confirmed" flag | §5.19 — `lib/profile/addressFormat.ts`, rendered by `pages/UnverifiedReferralsPage.tsx` |
 | A DTC form patient wasn't duplicate-checked / the "Already In System" pill is missing | §5.21 — `lib/profile/dupCheckFlag.ts` reads **Dup Check Result**, never `alreadyInSystem`; the service half is `josh-monday-automations` `automations/duplicate-patient-check.js` |
 | A DTC intake patient is in the wrong half of the split / Advance did nothing | §5.20 — `lib/profile/intakeSubStage.ts` (the queue is the GROUP), then `unverifiedWrite.advanceToProfileCleanUp`. Both roles are `UnverifiedReferralsPage` under a `variant` prop |
+| A patient got two "here's your link" texts / the insurance step asked for a card they already sent | §5.23 — the once-only stamps are **on the board** (`date_mm6eakae` / `date_mm6eev4b`), and `uploadLink.js` `UPLOAD_KINDS` decides which column a link writes to |
+| A patient is parked on "we're waiting for your insurance card" and can't get out | §5.23 — the gate is the FILE column `file_mm5zhy1`, read by `/api/intake/card-on-file/:token`. Nothing else unlocks it, and nothing else needs to |
+| "Auto. Texts" reads 0 for somebody we definitely texted | §5.24 — it counts **only** the intake form's 30-minute + 24-hour nudges (`numeric_mm67822b`). A rep's own text and both link families deliberately do not move it |
 | Cost estimate wrong | `lib/welcomeCall/oopEstimator.ts` (sync vs Railway financial backend) |
 | A pump shipped on a supplies-only patient / a Next Order Date came over blank | §5.22 — `lib/shared/servingLines.ts`; gate Pump Qty on `servingSellsPumpDevice`, **never** `servingIncludesPump` |
 | An address Cardinal won't accept / "Needs Review" on the orders board | §5.17 — `lib/shared/cardinalAddress.ts` (mirror of `Cardinal-api/src/address.js`), surfaced as C25/C26 in `lib/finalConfirm/checkPack.ts` |

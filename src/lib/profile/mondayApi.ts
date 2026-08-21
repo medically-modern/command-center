@@ -99,6 +99,19 @@ export const COL = {
    *  deliberately flagged and NOT filed, so `alreadyInSystem` stays blank for
    *  them (Josh, 2026-08-19). See lib/profile/dupCheckFlag.ts. */
   dupCheckResult: "color_mm65tv1m",
+  /**
+   * Drop-off Attempt — how many AUTOMATED follow-up texts the dtc-mm-form
+   * service has sent this patient. 1 = the 30-minute nudge, 2 = the 24-hour
+   * one, and the sequence is capped there.
+   *
+   * ⚠️ Read-only here, and it counts exactly two things (Josh, 2026-08-21:
+   * "only the 30 mins later and 24 hours later ones, nothing else"). The
+   * backend claims this counter BEFORE each send, which is what makes it the
+   * honest count of messages that actually went out — not a count of messages
+   * we meant to send. Nothing else in the pipeline writes it: the resume link,
+   * the insurance upload link and every rep-sent text leave it alone.
+   */
+  dropOffAttempt: "numeric_mm67822b",
 
   // ── Stedi ──
   runStediEligibility: "color_mm1yeksx",
@@ -276,7 +289,7 @@ export const READ_COLUMN_IDS: string[] = [
   COL.scheduledCallTime,
   // Rep-entered on the intake call
   COL.selfAdvocacy, COL.currentOopCost, COL.cgmDataAwareness,
-  COL.attemptCounter, COL.intakeCallComplete,
+  COL.attemptCounter, COL.intakeCallComplete, COL.dropOffAttempt,
   COL.intakeEscalation, COL.intakeSubStage, COL.dupCheckResult,
 ];
 

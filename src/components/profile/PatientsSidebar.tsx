@@ -15,7 +15,7 @@ import { Button } from "@/components/ui/button";
 import { Clock, Loader2, RefreshCw, User, AlertCircle, Undo2, Search, X, ChevronRight } from "lucide-react";
 import type { Patient } from "@/lib/profile/workflow";
 import { titleCaseName } from "@/lib/profile/workflow";
-import { attemptCount, sidebarSections } from "@/lib/profile/sidebarList";
+import { attemptCount, contactTally, sidebarSections } from "@/lib/profile/sidebarList";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { clearStatusColumn, clearDateColumn, COL } from "@/lib/profile/mondayApi";
@@ -56,13 +56,19 @@ interface Props {
    *  Referrals and Already In System use the column as a genuine follow-up flag
    *  and keep the split. */
   ignoreFollowUp?: boolean;
-  /** Order each group least-tried-first and show the count on the row. Patient
-   *  Intake sets this — see `SidebarOptions.sortByAttempts` for why that queue
-   *  needs an order at all. */
+  /** Order each group least-tried-first and call out the untried on the row.
+   *  Patient Intake sets this — see `SidebarOptions.sortByAttempts` for why
+   *  that queue needs an order at all. */
   sortByAttempts?: boolean;
+  /** Print "Call Attempts: # | Auto. Texts: #" under each row (Josh,
+   *  2026-08-21). Patient Intake only: the automated half counts the intake
+   *  form's own drop-off texts, which no other queue's patients receive, so on
+   *  Verified Referrals it would be a permanent honest zero that reads as
+   *  broken. */
+  showContactTally?: boolean;
 }
 
-export function PatientsSidebar({ patients, selectedId, onSelect, loading, error, onRefresh, hasOverlay, filters, ignoreFollowUp, sortByAttempts }: Props) {
+export function PatientsSidebar({ patients, selectedId, onSelect, loading, error, onRefresh, hasOverlay, filters, ignoreFollowUp, sortByAttempts, showContactTally }: Props) {
   const { state } = useSidebar();
   const [searchQuery, setSearchQuery] = useState("");
 
@@ -193,17 +199,30 @@ export function PatientsSidebar({ patients, selectedId, onSelect, loading, error
                                   puts at the top. */}
                               <p className="text-[11px] text-muted-foreground truncate">
                                 {p.dateOfIntake || "—"}
-                                {sortByAttempts && (
+                                {sortByAttempts && attemptCount(p) === 0 && (
                                   <>
                                     {" · "}
-                                    {attemptCount(p) === 0 ? (
-                                      <span className="font-semibold text-emerald-600">not tried yet</span>
-                                    ) : (
-                                      `${attemptCount(p)} ${attemptCount(p) === 1 ? "try" : "tries"}`
-                                    )}
+                                    <span className="font-semibold text-emerald-600">not tried yet</span>
                                   </>
                                 )}
                               </p>
+                              {/* How much this patient has already been
+                                  reached out to, both ways (Josh, 2026-08-21).
+                                  Its own line rather than appended to the date:
+                                  two labelled numbers do not fit beside a date
+                                  in an 11px truncating row, and the whole point
+                                  is that a rep can read them at a glance before
+                                  picking up the phone.
+                                  ⚠️ The AUTOMATED texts are the half a rep has
+                                  no other way to see — they leave no note, no
+                                  Call Log line and no trace on this screen — so
+                                  a patient who has had two of them looked
+                                  exactly like one we had never contacted. */}
+                              {showContactTally && (
+                                <p className="text-[11px] text-muted-foreground truncate">
+                                  {contactTally(p)}
+                                </p>
+                              )}
                             </div>
                           )}
                         </SidebarMenuButton>

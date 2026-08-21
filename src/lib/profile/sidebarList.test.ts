@@ -5,7 +5,9 @@
 // then unknown/other sources alphabetically — followed by the dimmed Follow Up
 // section. Run: npx vitest run src/lib/profile/sidebarList.test.ts
 import { describe, it, expect } from "vitest";
-import { attemptCount, sidebarSections, sidebarVisibleList } from "./sidebarList";
+import {
+  attemptCount, autoTextCount, contactTally, sidebarSections, sidebarVisibleList,
+} from "./sidebarList";
 import type { Patient } from "./workflow";
 
 const p = (over: Partial<Patient>): Patient =>
@@ -212,5 +214,41 @@ describe("sidebarSections", () => {
     const s = sidebarSections([p({ id: "fu", followUp: "Done" })]);
     expect(s.sourceGroups).toEqual([]);
     expect(ids(s.followUpPatients)).toEqual(["fu"]);
+  });
+});
+
+describe("contactTally — what a rep sees before picking up the phone", () => {
+  it("counts the two automated drop-off texts and nothing else", () => {
+    // Drop-off Attempt is claimed by the intake backend before each of its two
+    // sends (30 minutes, 24 hours) and written by nothing else — not the resume
+    // link, not the insurance upload link, not a rep's own text.
+    expect(autoTextCount(p({ dropOffAttempt: "" }))).toBe(0);
+    expect(autoTextCount(p({ dropOffAttempt: "1" }))).toBe(1);
+    expect(autoTextCount(p({ dropOffAttempt: "2" }))).toBe(2);
+  });
+
+  it("clamps a hand-typed number rather than reporting it", () => {
+    // The sequence caps at two, so a 7 in the column is somebody's typo — not
+    // seven texts this patient received. Reporting it would send a rep into a
+    // call believing we had hounded them.
+    expect(autoTextCount(p({ dropOffAttempt: "7" }))).toBe(2);
+    expect(autoTextCount(p({ dropOffAttempt: "-3" }))).toBe(0);
+    expect(autoTextCount(p({ dropOffAttempt: "not a number" }))).toBe(0);
+  });
+
+  it("prints both numbers even at zero", () => {
+    // "We have not tried" is as load-bearing an answer as "we tried twice";
+    // an omitted count reads as no data rather than as none.
+    expect(contactTally(p({}))).toBe("Call Attempts: 0 | Auto. Texts: 0");
+    expect(contactTally(p({ attemptCounter: "3", dropOffAttempt: "2" })))
+      .toBe("Call Attempts: 3 | Auto. Texts: 2");
+  });
+
+  it("is the format the sidebar row and the patient header BOTH render", () => {
+    // One builder on purpose: the number a rep scanned the list by and the
+    // number on the patient they opened cannot be allowed to disagree.
+    const patient = p({ attemptCounter: "1", dropOffAttempt: "1" });
+    expect(contactTally(patient)).toContain(`Call Attempts: ${attemptCount(patient)}`);
+    expect(contactTally(patient)).toContain(`Auto. Texts: ${autoTextCount(patient)}`);
   });
 });

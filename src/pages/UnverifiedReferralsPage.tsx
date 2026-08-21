@@ -106,7 +106,7 @@ import { optionsWithCurrent } from "@/lib/profile/selectOptions";
 import { splitName, joinName } from "@/lib/profile/nameParts";
 import {
   generateUploadLink, uploadLinkMessage, uploadLinksConfigured,
-  getRescheduleLink, formatBookedCall,
+  getRescheduleLink, formatBookedCall, type UploadLinkKind,
 } from "@/lib/profile/uploadLink";
 import { toast } from "sonner";
 // The shared bar, so this stage's Propose Stuck / Send back to pipeline are
@@ -119,7 +119,7 @@ import { proposeStuckLevel } from "@/lib/shared/stageActions";
 // The live sidebar and header, so this page sits in the same chrome as every
 // other Command Center stage instead of inventing its own.
 import { PatientsSidebar } from "@/components/profile/PatientsSidebar";
-import { sidebarVisibleList } from "@/lib/profile/sidebarList";
+import { contactTally, sidebarVisibleList } from "@/lib/profile/sidebarList";
 import { useAccessContext } from "@/components/AccessProvider";
 import { managerPeople, processorPeople } from "@/lib/people";
 import { coordinatorNoteLine, extractCoordinator } from "@/lib/profile/careCoordinator";
@@ -753,8 +753,10 @@ const UnverifiedReferralsPage = ({ variant = "infoCollection" }: { variant?: Int
   const {
     patients, loading, initialLoading, error, refetch, updateLocal, hasOverlay, getReceived,
     saveOverlay, clearOverlay,
-    // Clean-Up is ONE group, so the form selector doesn't apply there — the
-    // partials never advance, so nothing in that group came from one.
+    // Clean-Up is ONE group, so the form selector doesn't apply there. It now
+    // holds patients from BOTH form groups: a partial a rep completed on the
+    // phone advances like any other (2026-08-21), and once it has, which form
+    // group it came from is history rather than a queue it can be filtered by.
   } = useMondayPatients(
     searchParams.get("patientId"),
     isCleanUp ? GROUPS.profileCleanUp : SOURCE_GROUP[source],
@@ -1063,10 +1065,6 @@ const UnverifiedReferralsPage = ({ variant = "infoCollection" }: { variant?: Int
     }
   }, [selected, verified, refetch]);
 
-  /** A partial fill-out is an incomplete form, not a workable referral. The
-   *  advance path is meaningless for them — parked until that flow is designed. */
-  const isPartial = !isCleanUp && source === "partial";
-
   const switchSource = useCallback((next: Source) => {
     const params = new URLSearchParams(searchParams);
     if (next === "completed") params.delete("source");
@@ -1267,26 +1265,11 @@ const UnverifiedReferralsPage = ({ variant = "infoCollection" }: { variant?: Int
     setEscalateReason("");
   }, [selected?.id]);
 
-  /** The unlock checklist. One definition, rendered by BOTH branches of Ready
-   *  to Advance — the badge counts blockers on a partial as well, so hiding
-   *  the list there left a number nobody could act on. */
-  const blockerList = (
-    <ul className="space-y-2" style={{ margin: "4px 0 12px" }}>
-      {unlock.conditions.map((c) => (
-        <li key={c.id} className="flex items-start gap-2 text-sm">
-          {c.passed ? (
-            <Check className="h-4 w-4 mt-0.5 text-emerald-600 shrink-0" />
-          ) : (
-            <X className="h-4 w-4 mt-0.5 text-muted-foreground shrink-0" />
-          )}
-          <div className="min-w-0">
-            <div className={c.passed ? "" : "text-muted-foreground"}>{c.label}</div>
-            {!c.passed && <div className="text-[11px] text-amber-700">{c.hint}</div>}
-          </div>
-        </li>
-      ))}
-    </ul>
-  );
+  /* `blockerList` lived here — a second rendering of `unlock.conditions`, kept
+     because the partial branch of Ready to Advance had no gate panel of its
+     own. That branch is gone (2026-08-21), so both halves now render the ONE
+     list inside `.gate`, and a second copy would be a place for the two to
+     disagree about what is blocking. */
 
   /**
    * What the LEFT pane is responsible for: the unlock conditions, and nothing
@@ -1318,10 +1301,18 @@ const UnverifiedReferralsPage = ({ variant = "infoCollection" }: { variant?: Int
    * button hands the patient TO. Requiring it here would make the queue
    * unexitable.
    *
-   * Partials are excluded for the same reason they have no advance today —
-   * an incomplete form is not a workable referral.
+   * ⚠️ PARTIALS ADVANCE TOO, from 2026-08-21 (Josh: "should be able to advance
+   * from this view too — since if we get on the phone with them we can make it
+   * into a completed form"). They used to be excluded on the reasoning that an
+   * incomplete form is not a workable referral, which mistook where the form
+   * STOPPED for what we know about the patient. This queue is a calling queue:
+   * a rep rings somebody who abandoned the form at step 3, fills the rest in
+   * with them on the phone, and at that point the row is as complete as any
+   * submitted one. The gate is the same unlock checklist either way — it reads
+   * the COLUMNS, not how they got there — so a partial that passes it has
+   * genuinely been completed and one that hasn't still can't leave.
    */
-  const canAdvanceToCleanUp = unlock.unlocked && !isPartial;
+  const canAdvanceToCleanUp = unlock.unlocked;
 
   /** Which rung a Propose Stuck from here lands on. Hoisted out of the click
    *  handler so the card can NAME the destination — the previous copy told the
@@ -1542,9 +1533,15 @@ const UnverifiedReferralsPage = ({ variant = "infoCollection" }: { variant?: Int
    *  the patient's name must open an empty box — a rep texting about something
    *  else shouldn't have to clear a template first. */
   const [textPrefill, setTextPrefill] = useState<string | undefined>();
+  /** Which button seeded the composer, so the Call Log line can name what was
+   *  actually sent. Two buttons now put a `/u/` link in the box and they mean
+   *  different things to whoever reads the log later. Null for anything the
+   *  rep typed themselves. */
+  const [textPurpose, setTextPurpose] = useState<UploadLinkKind | null>(null);
   useEffect(() => {
     setTextComposerOpen(false);
     setTextPrefill(undefined);
+    setTextPurpose(null);
   }, [selected?.id]);
   const followUpTemplate = useCallback(() => {
     const first = splitName(selected?.name).first || "there";
@@ -1616,10 +1613,50 @@ const UnverifiedReferralsPage = ({ variant = "infoCollection" }: { variant?: Int
     }
   }, [selected, coordinator, refetch]);
 
-  const startInsuranceFollowUp = useCallback(() => {
-    setTextPrefill(followUpTemplate());
-    setTextComposerOpen(true);
-  }, [followUpTemplate]);
+  /**
+   * "Start Insurance Follow-Up" now carries the patient's own upload link
+   * (Josh, 2026-08-21: "add this same link to the Start insurance follow-up
+   * text button, as a link below it appended to the follow-up text").
+   *
+   * The SAME link the intake form texts a patient who answered "I don't have
+   * it on me" (§5.23) — same endpoint, same kind, same upload page, landing in
+   * the same Insurance Card Photo column. Deliberately not a second mechanism:
+   * asking somebody for their card is one thing whether a form or a rep is
+   * doing the asking, and two ways of asking is two things to keep in step.
+   *
+   * ⚠️ A failed mint does NOT block the text. The check-in question ("has
+   * anything changed with your coverage?") is worth asking on its own, the rep
+   * is often mid-call, and a composer that refuses to open because a link
+   * service is cold is a worse outcome than one that opens without the link.
+   * The toast says which half is missing so the rep isn't left wondering why
+   * the message is short.
+   */
+  const [followUpMinting, setFollowUpMinting] = useState(false);
+  const startInsuranceFollowUp = useCallback(async () => {
+    if (!selected || followUpMinting) return;
+    setFollowUpMinting(true);
+    try {
+      let body = followUpTemplate();
+      try {
+        const { url } = await generateUploadLink(selected.id, "insurance-card");
+        // Below the message, on its own, and LAST — the same rule the CGM
+        // link's copy follows: SMS clients truncate behind a "more" tap, and a
+        // link buried mid-paragraph is the one thing a patient must not have
+        // to hunt for.
+        body += `\n\nAnd if anything's changed, you can send us a photo of your card here:\n${url}`;
+        setTextPurpose("insurance-card");
+      } catch (e) {
+        setTextPurpose(null);
+        toast.warning("Sending the check-in without an upload link", {
+          description: e instanceof Error ? e.message : String(e),
+        });
+      }
+      setTextPrefill(body);
+      setTextComposerOpen(true);
+    } finally {
+      setFollowUpMinting(false);
+    }
+  }, [selected, followUpMinting, followUpTemplate]);
 
   // ── Referral email (Monday updates) + Files (item assets) ────────────────
   // Both fetchers already existed and had no caller. Loaded per patient and
@@ -1739,13 +1776,24 @@ const UnverifiedReferralsPage = ({ variant = "infoCollection" }: { variant?: Int
    */
   const logTextSent = useCallback((body: string) => {
     if (!selected) return;
-    const line = body.includes("/u/")
-      ? `Texted CGM data upload link to the patient — ${body}`
-      : `Text to patient: ${body}`;
+    /* The BODY decides whether a link went out and the PURPOSE decides which
+       kind it was — both, because either alone lies. The rep can delete the
+       link before sending (purpose alone would claim one was sent) and two
+       different buttons now produce a `/u/` link (the body alone can't tell
+       them apart). A link with no purpose recorded is a rep pasting one in,
+       so it is described as what the log can actually support. */
+    const hasLink = body.includes("/u/");
+    const line = !hasLink
+      ? `Text to patient: ${body}`
+      : textPurpose === "insurance-card"
+        ? `Texted insurance follow-up + card upload link to the patient — ${body}`
+        : textPurpose === "cgm"
+          ? `Texted CGM data upload link to the patient — ${body}`
+          : `Texted an upload link to the patient — ${body}`;
     void appendIntakeNote(selected.id, line, selected.notes)
       .then((res) => { if (res.ok) void refetch(true); })
       .catch((e) => console.error("[intake] couldn't log sent text", e));
-  }, [selected, refetch]);
+  }, [selected, refetch, textPurpose]);
 
   /** "Booking link" in the header — for a patient with no appointment yet. */
   const [bookingLinkOpen, setBookingLinkOpen] = useState(false);
@@ -1797,8 +1845,9 @@ const UnverifiedReferralsPage = ({ variant = "infoCollection" }: { variant?: Int
     if (!selected || linkGenerating) return;
     setLinkGenerating(true);
     try {
-      const { url } = await generateUploadLink(selected.id);
+      const { url } = await generateUploadLink(selected.id, "cgm");
       setTextPrefill(uploadLinkMessage(selected.name, url));
+      setTextPurpose("cgm");
       setTextComposerOpen(true);
     } catch (e) {
       // Every failure here is actionable by the rep (wrong stage, service
@@ -1947,6 +1996,14 @@ const UnverifiedReferralsPage = ({ variant = "infoCollection" }: { variant?: Int
              auto-select reads too — see there for what each one is for. */
           ignoreFollowUp={SIDEBAR_OPTIONS[variant].ignoreFollowUp}
           sortByAttempts={SIDEBAR_OPTIONS[variant].sortByAttempts}
+          /* On BOTH variants, unlike sortByAttempts. Every patient this page
+             serves came through the DTC form, so the automated drop-off texts
+             are real history for all of them — on Clean-Up it is the record of
+             how much reaching-out it took to get the information the rep is
+             now tidying. It is off on Verified Referrals / Already In System
+             because those patients never receive those texts, so the number
+             would be a permanent honest zero that reads as broken. */
+          showContactTally
           /* Clean-Up is one group, so there is nothing to filter — and the
              partial/completed pair describes the FORM, which only the queue
              upstream of the advance is reading. */
@@ -2060,6 +2117,24 @@ const UnverifiedReferralsPage = ({ variant = "infoCollection" }: { variant?: Int
                         <AlertTriangle className="h-3.5 w-3.5" /> Already In System
                       </span>
                     )}
+                    {/* "Call Attempts: 2 | Auto. Texts: 1" — beside the status
+                        badge, which is where Josh asked for it (2026-08-21:
+                        "have this on the top of the profile too, like next to
+                        active").
+
+                        Same builder as the sidebar row, so the number a rep
+                        scanned the list by and the number on the patient they
+                        opened cannot disagree. Neutral, never coloured: it is
+                        context for the call about to happen, not a state to
+                        act on — and a red or amber chip up here would compete
+                        with the Already In System pill beside it, which IS. */}
+                    <span
+                      className="inline-flex items-center gap-1.5 rounded-full border border-border bg-muted/60 px-3 py-1 text-xs font-semibold text-muted-foreground"
+                      title="Call attempts logged by reps · automated follow-up texts sent by the intake form (the 30-minute and 24-hour nudges)"
+                    >
+                      <Phone className="h-3.5 w-3.5 shrink-0" />
+                      {contactTally(selected)}
+                    </span>
                   </div>
                   <div className="mt-1 flex items-center gap-3 flex-wrap">
                     <span className="text-lg text-muted-foreground">
@@ -2748,16 +2823,16 @@ const UnverifiedReferralsPage = ({ variant = "infoCollection" }: { variant?: Int
                     {stedi.isRunning ? "Running benefits check…" : "Run benefits check"}
                   </button>
                   <button
-                    onClick={startInsuranceFollowUp}
-                    disabled={saving || !(selected.ptPhone ?? "").trim()}
+                    onClick={() => { void startInsuranceFollowUp(); }}
+                    disabled={saving || followUpMinting || !(selected.ptPhone ?? "").trim()}
                     className="btn secondary sm"
                     title={
                       (selected.ptPhone ?? "").trim()
-                        ? "Open the text composer with an insurance check-in ready to send"
+                        ? "Open the text composer with an insurance check-in and a card upload link"
                         : "No phone number on file"
                     }
                   >
-                    Start Insurance Follow-Up
+                    {followUpMinting ? "Preparing…" : "Start Insurance Follow-Up"}
                   </button>
                 </div>
                 {/* Names the field that is actually missing. It used to gate
@@ -3132,23 +3207,20 @@ const UnverifiedReferralsPage = ({ variant = "infoCollection" }: { variant?: Int
                   </span>
                 }
               >
-                {isPartial ? (
-                  <>
-                    <p className="text-sm text-muted-foreground">
-                      This is an incomplete form. Advancing a partial isn't defined yet — work it as
-                      outreach, or wait for the patient to finish.
-                    </p>
-                    {/* The badge counts blockers on a partial too, so the list
-                        has to be here — a bare "4 BLOCKING" with nothing under
-                        it tells the rep a number and no way to act on it. It
-                        also doubles as the outreach script: these are exactly
-                        the things to collect on the call. */}
-                    <p className="mt-3 mb-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                      Still needed
-                    </p>
-                    {blockerList}
-                  </>
-                ) : (
+                {/* ⚠️ THE PARTIAL BRANCH IS GONE (Josh, 2026-08-21: "partial and
+                    completed ready to advance section shouldn't be any
+                    different"). Partials used to get a paragraph saying
+                    "advancing a partial isn't defined yet — work it as
+                    outreach", a list of blockers and NO BUTTONS: no Save, no
+                    Log call attempt, no Advance. That is the wrong way round.
+                    This is a CALLING queue — the partials are exactly the rows
+                    a rep rings — so the half of the stage with the most phone
+                    work had the fewest affordances, and a rep who filled a
+                    patient's details in on the phone had nowhere to record the
+                    call and no way to move them on.
+                    The gate is identical for both because it reads the
+                    COLUMNS, not how they were filled: a partial that passes it
+                    has been completed, by a rep instead of by the patient. */}
                   <>
                     {/* ── The gate, ABOVE the actions ──
                         What's blocking is the thing a rep reads first and acts
@@ -3301,7 +3373,6 @@ const UnverifiedReferralsPage = ({ variant = "infoCollection" }: { variant?: Int
                     </div>
 
                   </>
-                )}
               </Card>
 
               {/* Info Collection has no right pane, so the manager ladder lives

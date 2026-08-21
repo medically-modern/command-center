@@ -87,9 +87,24 @@ const MINT_TIMEOUT_MS = 20_000;
 
 export interface UploadLink {
   url: string;
-  /** ISO 8601. Links last 24h — the server owns that, not this. */
+  /** ISO 8601. The server owns the lifetime, not this — and it differs per
+   *  kind: a CGM link lasts 24h, an insurance-card link 90 days. */
   expiresAt: string;
 }
+
+/**
+ * Which file column the patient's upload lands in.
+ *
+ * The kind travels to the service and is signed INTO the token there, so it
+ * decides the destination column server-side. Nothing here names a column —
+ * that is the point: a link cannot be re-aimed by anyone who has it.
+ *
+ * `insurance-card` is the same link the intake form texts a patient who
+ * answered "I don't have it on me" (§5.19). A rep sending it from Start
+ * Insurance Follow-Up is sending that patient the identical thing, which is
+ * why the two must not become two mechanisms.
+ */
+export type UploadLinkKind = "cgm" | "insurance-card";
 
 /**
  * Mint a link for one patient.
@@ -98,7 +113,10 @@ export interface UploadLink {
  * here is something the rep can act on (wrong stage, service down, not
  * configured), so a generic "request failed" would waste the call.
  */
-export async function generateUploadLink(itemId: string): Promise<UploadLink> {
+export async function generateUploadLink(
+  itemId: string,
+  kind: UploadLinkKind = "cgm",
+): Promise<UploadLink> {
   if (!API_BASE) {
     throw new UploadLinkError(
       "Upload links aren't configured — VITE_DTC_FORM_API_URL is overridden to an empty value.",
@@ -117,7 +135,7 @@ export async function generateUploadLink(itemId: string): Promise<UploadLink> {
     res = await fetch(`${API_BASE}/api/intake/upload-link`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ itemId }),
+      body: JSON.stringify({ itemId, kind }),
       signal: ctl.signal,
     });
   } catch (e) {

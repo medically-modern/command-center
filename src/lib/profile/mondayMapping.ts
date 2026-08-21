@@ -88,6 +88,7 @@ export function mondayItemToPatient(item: MondayItem): Patient {
     currentOopCost: col(item, COL.currentOopCost),
     cgmDataAwareness: col(item, COL.cgmDataAwareness),
     attemptCounter: col(item, COL.attemptCounter),
+    dropOffAttempt: col(item, COL.dropOffAttempt),
     intakeCallComplete: col(item, COL.intakeCallComplete),
     intakeEscalation: col(item, COL.intakeEscalation),
     intakeSubStage: col(item, COL.intakeSubStage),
