@@ -82,6 +82,7 @@ import { DoctorNotesPanel } from "@/components/shared/DoctorNotesPanel";
 import { CallHistoryButton } from "@/components/shared/CallHistoryButton";
 import { CardinalAddressNote } from "@/components/shared/CardinalAddressNote";
 import { WelcomeCallProfileStatus } from "@/components/shared/PatientProfileStatus";
+import { pumpQtyApplies } from "@/lib/shared/servingLines";
 
 interface Props {
   patient: Patient;
@@ -581,6 +582,15 @@ export function PatientInfoCard({ patient, onFieldChange, findings = [] }: Props
   const subType = patient.subscriptionType;
   const sensorsActive = subType === "Sensors" || subType === "Sensors & Supplies";
   const suppliesActive = subType === "Supplies" || subType === "Sensors & Supplies";
+
+  // Pump Qty applies only when Serving sells an actual insulin pump DEVICE —
+  // NOT `servingIncludesPump`, which is also true for `Supplies …` because
+  // infusion sets are pump supplies (Bradan French, 2026-08-03; see
+  // lib/shared/servingLines.ts). The field goes read-only rather than
+  // self-correcting: Serving is editable right here, so the fix is to say what
+  // is actually being served. `mondayWrite` coerces the value to 0 on send
+  // either way, and C27 states it in the check panel and the send dialog.
+  const canSellPump = pumpQtyApplies(patient.serving);
 
   // Prior Pump Purchase Date: Original Medicare (Medicare A&B) patients only,
   // only when Pump Qty is 0 (not "1"), and only when serving includes pump
@@ -1131,7 +1141,13 @@ export function PatientInfoCard({ patient, onFieldChange, findings = [] }: Props
                 value={patient.pumpQty}
                 onChange={(e) => onFieldChange("pumpQty", e.target.value)}
                 placeholder="0"
+                disabled={!canSellPump}
               />
+              {!canSellPump && (
+                <p className="mt-1 text-[11px] font-medium text-amber-700 dark:text-amber-300">
+                  Serving is {patient.serving} — no insulin pump. Sent as 0.
+                </p>
+              )}
             </div>
           </div>
 

@@ -1456,6 +1456,67 @@ Medical Evaluation, Insurance, Welcome Call and the two Subscription boards), so
 patient sitting on the *same* board is invisible to it. That case is the SPA's own read-only
 `dtcFormFlag` (§5.10), and the two are independent.
 
+
+### 5.22 Serving ↔ order lines — Pump Qty and the Next Order Dates (Aug 2026)
+Two August incidents, **one shape**: the **Serving** label and the per-product columns are allowed
+to disagree, and whichever one a downstream writer happens to key off decides what the patient
+actually receives. Canonical rule: **`lib/shared/servingLines.ts`** (+ tests, whose fixtures are the
+two real board rows).
+
+- **Bradan French (WC item `12676537026`), 2026-08-03 — a pump shipped that shouldn't have.**
+  Serving was `Supplies + CGM` (patient already owns the pump), but the Welcome Call save wrote
+  **Pump Qty = 1**. Final Confirm passed, and Cardinal order `1119501795` shipped a t:slim at
+  **$3,787.83** the next morning; caught 8/20, return opened 8/21.
+  ⚠️ **`servingIncludesPump()` is TRUE for anything containing "supplies"** — correctly, since
+  infusion sets and cartridges *are* pump supplies — so the Pump & Infusion section (and its live
+  Pump Qty toggle) renders for supplies-only patients. **Selling a pump and shipping supplies for a
+  pump the patient owns are different questions.** `servingSellsPumpDevice` (`/pump/i`) is the
+  second one; never gate Pump Qty on the first. The only rule that had looked at this,
+  `C14_PUMP_QTY_ON_CGM`, fired on `serving === "CGM"` **exactly**, so both `Supplies …` labels — the
+  precise population that already owns a pump — were its blind spot.
+- **Leann Austin (WC item `12740990902`), 2026-08-10 — a reorder was missed.**
+  Serving said `Insulin Pump` (no CGM) while CGM Type was `Dexcom G7` and Subscription Type was
+  `Sensors & Supplies`. `resolveNextOrderWrite` keys off **Serving alone**, read "CGM not served",
+  and **wrote blank** to Sensors Next Order Date — which carried to Subscription empty, so nothing
+  scheduled the reorder. A 2026-08-21 board scan found **28** patients on a Sensors subscription
+  with a blank Sensors Next Order Date.
+
+**A line is "served" here on the UNION of the evidence** — Serving, the product type column, the
+Subscription Type and the quantity each get a vote. That is deliberately wider than what the write
+paths use: the point is to notice when they disagree, which is exactly what neither stage could see.
+
+**The gate is the affordance; the coercion is the guarantee.** `coercePumpQty` runs in **all three**
+send paths (`welcomeCall/mondayWrite` ×2, `finalConfirm/mondayWrite`), because a value already on
+the board — or one set before Serving was corrected — still reaches the send otherwise, which is
+how Bradan French's `1` survived a Welcome Call save AND a Final Confirm send. Serving is trusted
+only when **KNOWN** (blank ⇒ leave alone), the same contract `finalConfirm/mondayWrite` already uses
+for the next-order-date clears and `needsPriorPumpDate`/`needsMonitorPurchaseDate` use for their
+fields — a column that failed to read must never silently disable a control or drop a real sale.
+⚠️ Safe on splits: `getSplitOverrides` gives the supplies half a coherent Serving (an
+`Insulin Pump + CGM` original keeps **`Insulin Pump`**, so its pump survives) and the sensors half
+`pumpQty: ""`, on which the coercion no-ops.
+
+**Three new Final Confirm checks, all RED** (`checkPack.ts`) — red because each is positive evidence
+the profile is wrong, not a missing input, and each one has already cost real money or a real order:
+| ID | Fires when |
+|---|---|
+| **C27_PUMP_QTY_WITHOUT_PUMP** | Pump Qty > 0 and Serving names no pump. Runs on split profiles too. |
+| **C28_SERVING_EXCLUDES_SERVED_PRODUCT** | Serving EXCLUDES a family the product columns / Subscription Type say we ARE serving. One-directional: the inverse is already C14. |
+| **C29_NEXT_ORDER_DATE_MISSING** | A served line's Next Order Date is blank. One finding per line. |
+
+`C14_PUMP_QTY_ON_CGM` kept its infusion-quantity half and **gave up its pump half to C27**, which is
+strictly wider — two rules on one fact at two severities is how a check pack gets ignored (§5.17).
+
+**Keep-in-agreement:**
+1. **The rule** — `lib/shared/servingLines.ts` (+ tests).
+2. **The gates** — `welcomeCall/WelcomeCallForm.tsx` (Switch disabled + zeroing effect) ·
+   `finalConfirm/PatientInfoCard.tsx` (Input disabled; read-only rather than self-correcting,
+   because Serving is editable right there and *that* is the fix).
+3. **The guarantees** — `welcomeCall/mondayWrite.ts` (both writers) · `finalConfirm/mondayWrite.ts`.
+4. **The checks** — `finalConfirm/checkPack.ts` C27/C28/C29.
+⚠️ Welcome Call's own send gate (`validatePatientForSend`) is deliberately **unchanged** — this can
+only ever tell a rep MORE than before, never stop a call they could previously finish (§5.17's rule).
+
 ---
 
 ## 6. Patient flow across boards (the big picture)
@@ -2010,6 +2071,7 @@ these services; when their math changes, `oopEstimator.ts` must be updated to ma
 | A DTC form patient wasn't duplicate-checked / the "Already In System" pill is missing | §5.21 — `lib/profile/dupCheckFlag.ts` reads **Dup Check Result**, never `alreadyInSystem`; the service half is `josh-monday-automations` `automations/duplicate-patient-check.js` |
 | A DTC intake patient is in the wrong half of the split / Advance did nothing | §5.20 — `lib/profile/intakeSubStage.ts` (the queue is the GROUP), then `unverifiedWrite.advanceToProfileCleanUp`. Both roles are `UnverifiedReferralsPage` under a `variant` prop |
 | Cost estimate wrong | `lib/welcomeCall/oopEstimator.ts` (sync vs Railway financial backend) |
+| A pump shipped on a supplies-only patient / a Next Order Date came over blank | §5.22 — `lib/shared/servingLines.ts`; gate Pump Qty on `servingSellsPumpDevice`, **never** `servingIncludesPump` |
 | An address Cardinal won't accept / "Needs Review" on the orders board | §5.17 — `lib/shared/cardinalAddress.ts` (mirror of `Cardinal-api/src/address.js`), surfaced as C25/C26 in `lib/finalConfirm/checkPack.ts` |
 | Who can see what | `lib/accessStore.ts`, `lib/roleView.ts`, `components/AccessProvider.tsx` |
 | Files won't load / PDF viewer | `lib/shared/mondayAssets.ts`, `components/shared/FileViewerModal.tsx`, `worker/src/index.js` |

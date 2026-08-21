@@ -2,6 +2,7 @@ import { writeStatusIndex, writeNumber, writeLocation, writeText, writeLongText,
 import { executeWritesWithVerification } from "../shared/verifiedWrite";
 import { expectedPos, POS_INDEX } from "../shared/pos";
 import { resolveNextOrderWrite, servingIncludesCgm, servingIncludesPump } from "./workflow";
+import { coercePumpQty } from "@/lib/shared/servingLines";
 import type { Patient } from "./workflow";
 
 const MAX_RETRIES = 2;
@@ -75,7 +76,13 @@ export async function sendPatientToMonday(p: Patient): Promise<void> {
     tasks.push({ label: "Member ID 2", columnId: COL.memberId2, fn: () => writeText(p.id, COL.memberId2, p.memberId2Edited!) });
 
   if (p.monitorQty !== "") tasks.push({ label: "Monitor Qty", columnId: COL.monitorQty, fn: () => writeNumber(p.id, COL.monitorQty, Number(p.monitorQty)) });
-  if (p.pumpQty !== "") tasks.push({ label: "Pump Qty", columnId: COL.pumpQty, fn: () => writeNumber(p.id, COL.pumpQty, Number(p.pumpQty)) });
+  // Pump Qty is coerced to 0 when Serving does not sell a pump DEVICE. The form
+  // disables the control, but a value already on the board — or one set before
+  // Serving was corrected — still reaches here otherwise, which is exactly how
+  // Bradan French's `1` survived a Welcome Call save on a `Supplies + CGM`
+  // profile and shipped a pump. See lib/shared/servingLines.ts.
+  const pumpQtyToWrite = coercePumpQty(p.pumpQty, p.servingEdited ?? p.serving);
+  if (pumpQtyToWrite !== "") tasks.push({ label: "Pump Qty", columnId: COL.pumpQty, fn: () => writeNumber(p.id, COL.pumpQty, Number(pumpQtyToWrite)) });
   if (p.qtyInf1 !== "") tasks.push({ label: "Infusion Set 1 Qty", columnId: COL.qtyInf1, fn: () => writeNumber(p.id, COL.qtyInf1, Number(p.qtyInf1)) });
   if (p.qtyInf2 !== "") tasks.push({ label: "Infusion Set 2 Qty", columnId: COL.qtyInf2, fn: () => writeNumber(p.id, COL.qtyInf2, Number(p.qtyInf2)) });
   if (p.qtyCartridge !== "") tasks.push({ label: "Qty Cartridge", columnId: COL.qtyCartridge, fn: () => writeNumber(p.id, COL.qtyCartridge, Number(p.qtyCartridge)) });
@@ -228,7 +235,11 @@ export async function sendWelcomeCallTextToMonday(p: Patient): Promise<void> {
 
   // Numbers
   if (p.monitorQty !== "") tasks.push(writeNumber(p.id, COL.monitorQty, Number(p.monitorQty)));
-  if (p.pumpQty !== "") tasks.push(writeNumber(p.id, COL.pumpQty, Number(p.pumpQty)));
+  // Same Serving coercion as buildDataTasks above — this writer fires the
+  // welcome-call autotext automation, so it must not stamp a pump quantity the
+  // Serving label does not support either.
+  const pumpQtyToWrite = coercePumpQty(p.pumpQty, p.servingEdited ?? p.serving);
+  if (pumpQtyToWrite !== "") tasks.push(writeNumber(p.id, COL.pumpQty, Number(pumpQtyToWrite)));
   if (p.qtyInf1 !== "") tasks.push(writeNumber(p.id, COL.qtyInf1, Number(p.qtyInf1)));
   if (p.qtyInf2 !== "") tasks.push(writeNumber(p.id, COL.qtyInf2, Number(p.qtyInf2)));
   if (p.qtyCartridge !== "") tasks.push(writeNumber(p.id, COL.qtyCartridge, Number(p.qtyCartridge)));

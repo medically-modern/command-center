@@ -76,7 +76,7 @@ describe("checkPack — insurance", () => {
   scenario("CGM-only Medicaid", { serving: "CGM", primaryInsurance: "Fidelis Medicaid", cgmType: "Dexcom G7", address: "12 Main St, Albany, NY 12203" }, ["C11_CGM_ONLY_MEDICAID"]);
   scenario("JLJ x CGM", { serving: "Insulin Pump + CGM", primaryInsurance: "Anthem BCBS Medicaid (JLJ)", cgmType: "Dexcom G7", pumpType: "t:slim", memberId1: "JLJ123456" }, ["C12_JLJ_NO_CGM"], ["C10_JLJ_PREFIX"]);
   scenario("NY Medicaid no MID2", { secondaryInsurance: "NY Medicaid" }, ["C3_MEDICAID_NO_MID2"]);
-  scenario("Medicare no secondary", { primaryInsurance: "Medicare A&B", secondaryInsurance: "None" }, ["C5_MEDICARE_NO_SECONDARY"]);
+  scenario("Medicare no secondary", { primaryInsurance: "Medicare A&B", secondaryInsurance: "None", nextOrderDateSensors: "2026-09-01", nextOrderDateSupplies: "2026-09-01" }, ["C5_MEDICARE_NO_SECONDARY"]);
   scenario("MA as Medicare", { primaryInsurance: "Medicare A&B", planName: "Wellcare Dual Liberty Sync", secondaryInsurance: "NY Medicaid", memberId2: "AB12345C" }, ["C6_MA_AS_MEDICARE"]);
   scenario("MLTC routing", { primaryInsurance: "Anthem BCBS Medicaid (JLJ)", planName: "Fidelis Care at Home MLTC" }, ["C9_MLTC_ROUTING"]);
   scenario("Horizon + TX", { primaryInsurance: "Horizon BCBS", address: "500 Oak Dr, Dallas, TX 75001" }, ["C1_LABEL_STATE_MISMATCH", "C23_POS_11"]);
@@ -235,10 +235,137 @@ describe("checkPack — silence guards", () => {
   // (added 2026-08-18) reads a blank clinic address as an amber, because
   // Cardinal validates doctorInfo.address on every order and blocks a blank
   // one at submit. "Clean" has to mean clean for the order too.
-  scenario("Clean profile", { primaryInsurance: "Anthem BCBS Commercial", address: "12 Cherry Ln, Albany, NY 12203", clinicAddress: "9 Medical Park Dr, Albany, NY 12203", serving: "Insulin Pump + CGM", pumpType: "t:slim", cgmType: "Dexcom G7", requestType: "Insulin Pump + CGM", infusionSet1: 'AutoSoft XC 6 mm 23"', infusionSet1Index: 1, qtyInf1: "10", subscriptionType: "Sensors & Supplies", cgmTypeIndex: 6, cgmCoveragePath: "Insulin", ipCoveragePath: "1st Pump >6M Diagnosed", cgmAuthResult: "No Auth Needed", sensorsAuthResult: "No Auth Needed", ipAuthResult: "No Auth Needed", infusionSetAuthResult: "No Auth Needed", cartridgeAuthResult: "No Auth Needed", dob: "1990-01-01", phone: "5185551234", coInsurance: "20%", deductibleRemaining: "0", oopMaxRemaining: "1200", mrExpiryDate: "2027-06-01", secondaryInsurance: "None" }, [], ["C11_CGM_ONLY_MEDICAID", "C24_SET_INCOMPATIBLE", "C14_CGM_NOT_SERVING", "C15_SUBSCRIPTION_MISMATCH", "C1_HOST_STATE", "C22_ADDRESS_CAPS"]);
+  scenario("Clean profile", { primaryInsurance: "Anthem BCBS Commercial", address: "12 Cherry Ln, Albany, NY 12203", clinicAddress: "9 Medical Park Dr, Albany, NY 12203", serving: "Insulin Pump + CGM", pumpType: "t:slim", cgmType: "Dexcom G7", requestType: "Insulin Pump + CGM", infusionSet1: 'AutoSoft XC 6 mm 23"', infusionSet1Index: 1, qtyInf1: "10", subscriptionType: "Sensors & Supplies", cgmTypeIndex: 6, cgmCoveragePath: "Insulin", ipCoveragePath: "1st Pump >6M Diagnosed", cgmAuthResult: "No Auth Needed", sensorsAuthResult: "No Auth Needed", ipAuthResult: "No Auth Needed", infusionSetAuthResult: "No Auth Needed", cartridgeAuthResult: "No Auth Needed", dob: "1990-01-01", phone: "5185551234", coInsurance: "20%", deductibleRemaining: "0", oopMaxRemaining: "1200", mrExpiryDate: "2027-06-01", secondaryInsurance: "None", nextOrderDateSensors: "2026-09-01", nextOrderDateSupplies: "2026-09-01" }, [], ["C11_CGM_ONLY_MEDICAID", "C24_SET_INCOMPATIBLE", "C14_CGM_NOT_SERVING", "C15_SUBSCRIPTION_MISMATCH", "C1_HOST_STATE", "C22_ADDRESS_CAPS"]);
 
   it("a clean commercial profile produces no findings at all", () => {
-    const clean: Partial<Patient> = { primaryInsurance: "Anthem BCBS Commercial", address: "12 Cherry Ln, Albany, NY 12203", clinicAddress: "9 Medical Park Dr, Albany, NY 12203", serving: "Insulin Pump + CGM", pumpType: "t:slim", cgmType: "Dexcom G7", requestType: "Insulin Pump + CGM", infusionSet1: 'AutoSoft XC 6 mm 23"', infusionSet1Index: 1, qtyInf1: "10", subscriptionType: "Sensors & Supplies", cgmTypeIndex: 6, cgmCoveragePath: "Insulin", ipCoveragePath: "1st Pump >6M Diagnosed", cgmAuthResult: "No Auth Needed", sensorsAuthResult: "No Auth Needed", ipAuthResult: "No Auth Needed", infusionSetAuthResult: "No Auth Needed", cartridgeAuthResult: "No Auth Needed", dob: "1990-01-01", phone: "5185551234", coInsurance: "20%", deductibleRemaining: "0", oopMaxRemaining: "1200", mrExpiryDate: "2027-06-01", secondaryInsurance: "None", pos: "Home" };
+    const clean: Partial<Patient> = { primaryInsurance: "Anthem BCBS Commercial", address: "12 Cherry Ln, Albany, NY 12203", clinicAddress: "9 Medical Park Dr, Albany, NY 12203", serving: "Insulin Pump + CGM", pumpType: "t:slim", cgmType: "Dexcom G7", requestType: "Insulin Pump + CGM", infusionSet1: 'AutoSoft XC 6 mm 23"', infusionSet1Index: 1, qtyInf1: "10", subscriptionType: "Sensors & Supplies", cgmTypeIndex: 6, cgmCoveragePath: "Insulin", ipCoveragePath: "1st Pump >6M Diagnosed", cgmAuthResult: "No Auth Needed", sensorsAuthResult: "No Auth Needed", ipAuthResult: "No Auth Needed", infusionSetAuthResult: "No Auth Needed", cartridgeAuthResult: "No Auth Needed", dob: "1990-01-01", phone: "5185551234", coInsurance: "20%", deductibleRemaining: "0", oopMaxRemaining: "1200", mrExpiryDate: "2027-06-01", secondaryInsurance: "None", nextOrderDateSensors: "2026-09-01", nextOrderDateSupplies: "2026-09-01", pos: "Home" };
     expect(runFinalChecks({ ...basePatient(), ...clean })).toEqual([]);
+  });
+});
+
+/**
+ * C27–C29 — Serving ↔ order-line coherence.
+ *
+ * Both fixtures are the REAL board rows from the two August 2026 incidents, so
+ * these cases fail if the rule ever stops catching the thing it was built for.
+ * The rule itself lives in lib/shared/servingLines.ts (unit-tested separately);
+ * this suite pins the wiring, the severities and the anchor fields.
+ */
+describe("checkPack — serving vs order lines (C27–C29)", () => {
+  const findings = (over: Partial<Patient>) => runFinalChecks({ ...basePatient(), ...over });
+  const idsOf = (over: Partial<Patient>) => findings(over).map((f) => f.id);
+
+  /** Welcome Call item 12676537026, as it stood when Final Confirm passed it. */
+  const BRADAN: Partial<Patient> = {
+    serving: "Supplies + CGM",
+    cgmType: "FreeStyle Libre 3 Plus",
+    pumpType: "t:slim",
+    subscriptionType: "Sensors & Supplies",
+    infusionSet1: 'AutoSoft XC 6 mm 43"',
+    infusionSet1Index: 2,
+    qtyInf1: "3",
+    qtyCartridge: "3",
+    monitorQty: "1",
+    pumpQty: "1", // ← shipped a t:slim at $3,787.83 the next morning
+    nextOrderDateSensors: "2026-08-03",
+    nextOrderDateSupplies: "2026-08-03",
+    nextOrderDateIp: "2026-08-03",
+  };
+
+  /** Welcome Call item 12740990902. */
+  const LEANN: Partial<Patient> = {
+    serving: "Insulin Pump", // ← says no CGM …
+    cgmType: "Dexcom G7", // … while these three say sensors
+    subscriptionType: "Sensors & Supplies",
+    monitorQty: "",
+    pumpType: "Mobi",
+    infusionSet1: 'AutoSoft 90 9 mm 23"',
+    infusionSet1Index: 1,
+    qtyInf1: "3",
+    pumpQty: "1",
+    nextOrderDateIp: "2026-08-10",
+    nextOrderDateSupplies: "2026-08-10",
+    nextOrderDateSensors: "", // ← written blank because Serving excluded CGM
+  };
+
+  it("C27 fires RED on Bradan French — a pump on a Supplies + CGM profile", () => {
+    const f = findings(BRADAN).find((x) => x.id === "C27_PUMP_QTY_WITHOUT_PUMP");
+    expect(f).toBeDefined();
+    expect(f?.severity).toBe("red");
+    expect(f?.field).toBe("pumpQty");
+    expect(f?.detail).toContain("Supplies + CGM");
+  });
+
+  it("C27 covers the case the old C14_PUMP_QTY_ON_CGM missed", () => {
+    // That rule fired on `serving === "CGM"` EXACTLY, so both Supplies labels —
+    // the ones meaning "patient already owns the pump" — were the blind spot.
+    expect(idsOf({ serving: "Supplies Only", pumpQty: "1" })).toContain("C27_PUMP_QTY_WITHOUT_PUMP");
+    expect(idsOf({ serving: "Supplies + CGM", pumpQty: "1" })).toContain("C27_PUMP_QTY_WITHOUT_PUMP");
+    expect(idsOf({ serving: "CGM", pumpQty: "1" })).toContain("C27_PUMP_QTY_WITHOUT_PUMP");
+  });
+
+  it("C27 is silent on a real pump sale, and on an unknown serving", () => {
+    expect(idsOf({ serving: "Insulin Pump", pumpQty: "1" })).not.toContain("C27_PUMP_QTY_WITHOUT_PUMP");
+    expect(idsOf({ serving: "Insulin Pump + CGM", pumpQty: "1" })).not.toContain("C27_PUMP_QTY_WITHOUT_PUMP");
+    expect(idsOf({ serving: "", pumpQty: "1" })).not.toContain("C27_PUMP_QTY_WITHOUT_PUMP");
+    expect(idsOf({ serving: "Supplies + CGM", pumpQty: "0" })).not.toContain("C27_PUMP_QTY_WITHOUT_PUMP");
+  });
+
+  it("C28 fires RED on Leann Austin — Serving leaves out CGM", () => {
+    const f = findings(LEANN).find((x) => x.id === "C28_SERVING_EXCLUDES_SERVED_PRODUCT");
+    expect(f).toBeDefined();
+    expect(f?.severity).toBe("red");
+    expect(f?.field).toBe("serving");
+    expect(f?.title).toBe("Serving leaves out CGM");
+    expect(f?.detail).toContain("CGM Type is Dexcom G7");
+  });
+
+  it("C29 fires RED on Leann Austin's blank Sensors Next Order Date", () => {
+    const f = findings(LEANN).find((x) => x.id === "C29_NEXT_ORDER_DATE_MISSING");
+    expect(f).toBeDefined();
+    expect(f?.severity).toBe("red");
+    expect(f?.field).toBe("nextOrderDateSensors");
+    expect(f?.title).toBe("Sensors Next Order Date is empty");
+  });
+
+  it("C29 flags every served line that is missing a date, and only those", () => {
+    const got = findings({
+      serving: "Insulin Pump + CGM",
+      cgmType: "Dexcom G7",
+      infusionSet1: 'AutoSoft XC 6 mm 23"',
+      infusionSet1Index: 1,
+      qtyInf1: "3",
+      pumpQty: "1",
+      nextOrderDateIp: "",
+      nextOrderDateSensors: "",
+      nextOrderDateSupplies: "2026-09-01",
+    })
+      .filter((f) => f.id === "C29_NEXT_ORDER_DATE_MISSING")
+      .map((f) => f.field);
+    expect(got).toEqual(["nextOrderDateIp", "nextOrderDateSensors"]);
+  });
+
+  it("C29 never asks for a date on a line that is not being served", () => {
+    // CGM-only: no pump, no supplies — those two blanks are correct.
+    expect(
+      idsOf({ serving: "CGM", cgmType: "Dexcom G7", subscriptionType: "Sensors", nextOrderDateSensors: "2026-09-01" }),
+    ).not.toContain("C29_NEXT_ORDER_DATE_MISSING");
+  });
+
+  it("C28/C29 stand down on a split profile's Subscription Type", () => {
+    // The supplies half of a split legitimately reads Serving `Supplies Only`
+    // with the sensor side zeroed out; nothing here is a mistake.
+    expect(
+      idsOf({
+        orderHandling: "Separate",
+        serving: "Supplies Only",
+        cgmType: "Not Serving",
+        subscriptionType: "Supplies",
+        infusionSet1: 'AutoSoft XC 6 mm 23"',
+        infusionSet1Index: 1,
+        qtyInf1: "3",
+        nextOrderDateSupplies: "2026-09-01",
+      }),
+    ).not.toContain("C29_NEXT_ORDER_DATE_MISSING");
   });
 });

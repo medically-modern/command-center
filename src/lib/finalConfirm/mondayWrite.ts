@@ -1,6 +1,7 @@
 import { writeStatusIndex, writeStatusLabel, writeLongText, writeText, writeNumber, writeLocation, writeDate, writePhone, writeEmail, writeDropdownIds, renameItem, readColumnTexts, COL } from "./mondayApi";
 import { executeWritesWithVerification } from "../shared/verifiedWrite";
 import { expectedPos, POS_INDEX } from "../shared/pos";
+import { coercePumpQty } from "../shared/servingLines";
 import type { Patient } from "./workflow";
 import { CLINIC_NAME_OPTIONS, servingIncludesCgm, servingIncludesPump } from "./workflow";
 
@@ -225,10 +226,17 @@ export async function sendPatientToMonday(p: Patient): Promise<void> {
     fn: () => writeNumber(p.id, COL.monitorQty, p.monitorQty === "" ? "" : Number(p.monitorQty)),
   });
 
+  // Pump Qty — coerced to 0 when Serving does not sell a pump DEVICE.
+  // This is the last gate before the Subscription hop creates the order, so it
+  // is the one that actually stops a pump. Bradan French (2026-08-03) cleared
+  // Final Confirm carrying Pump Qty 1 on a `Supplies + CGM` profile and Cardinal
+  // shipped a t:slim the next morning. Serving is trusted only when KNOWN — the
+  // same contract as the next-order-date clears below. See shared/servingLines.
+  const pumpQtyToWrite = coercePumpQty(p.pumpQty, p.serving);
   tasks.push({
     label: "Pump Qty",
     columnId: COL.pumpQty,
-    fn: () => writeNumber(p.id, COL.pumpQty, p.pumpQty === "" ? "" : Number(p.pumpQty)),
+    fn: () => writeNumber(p.id, COL.pumpQty, pumpQtyToWrite === "" ? "" : Number(pumpQtyToWrite)),
   });
 
   // Medicare Prior Pump Date (Original-Medicare-only MM/YYYY text). Always write

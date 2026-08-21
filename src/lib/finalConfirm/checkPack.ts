@@ -32,6 +32,27 @@ import {
   cardinalAddressHardReason,
   CARDINAL_FORMAT_HINT,
 } from "@/lib/shared/cardinalAddress";
+import {
+  servingSellsPumpDevice,
+  servingContradictions,
+  missingNextOrderDates,
+  ORDER_LINE_LABEL,
+  type OrderLine,
+} from "@/lib/shared/servingLines";
+
+/** Anchor field for each Next Order Date finding (C29). */
+const NEXT_ORDER_DATE_FIELD: Record<OrderLine, keyof Patient> = {
+  insulinPump: "nextOrderDateIp",
+  sensors: "nextOrderDateSensors",
+  supplies: "nextOrderDateSupplies",
+};
+
+/** "<this> being served, but the date is blank" — reads as one sentence in C29. */
+const SERVED_LINE_PHRASE: Record<OrderLine, string> = {
+  insulinPump: "An insulin pump is",
+  sensors: "Sensors are",
+  supplies: "Pump supplies are",
+};
 
 /* ─── Findings model ─── */
 
@@ -469,11 +490,11 @@ export function runFinalChecks(p: Patient): CheckFinding[] {
     }
     const qty1 = Number(p.qtyInf1) || 0;
     const qty2 = Number(p.qtyInf2) || 0;
-    if (p.serving === "CGM" && (Number(p.pumpQty) > 0 || qty1 > 0 || qty2 > 0)) {
+    if (p.serving === "CGM" && (qty1 > 0 || qty2 > 0)) {
       add({
         id: "C14_PUMP_QTY_ON_CGM", severity: "amber", field: "serving",
-        title: "Pump-side quantities on CGM-only",
-        detail: "Serving is CGM-only but pump/infusion quantities are > 0.",
+        title: "Infusion quantities on CGM-only",
+        detail: "Serving is CGM-only but infusion quantities are > 0.",
       });
     }
     // Set-selected/qty mismatches (mirror of the Welcome Call validation, as warnings).
@@ -500,6 +521,76 @@ export function runFinalChecks(p: Patient): CheckFinding[] {
         detail: "Qty Inf. 1 is > 0 but no Infusion Set 1 type is selected.",
       });
     }
+  }
+
+  /* ── C27–C29: Serving ↔ order-line coherence (Brandon, 2026-08-21) ──────
+   *
+   * Two August incidents, one shape — the Serving label and the per-product
+   * columns are allowed to disagree, and whichever one a downstream writer
+   * keys off decides what the patient actually gets. Full write-up and the
+   * rules live in lib/shared/servingLines.ts.
+   */
+  const lineInput = {
+    serving: p.serving,
+    subscriptionType: p.subscriptionType,
+    cgmType: p.cgmType,
+    infusionSet1: p.infusionSet1,
+    infusionSet2: p.infusionSet2,
+    pumpQty: p.pumpQty,
+    monitorQty: p.monitorQty,
+    qtyInf1: p.qtyInf1,
+    qtyInf2: p.qtyInf2,
+  };
+
+  // C27 — a pump DEVICE on a profile whose Serving does not sell one.
+  // This is the Bradan French check. It deliberately runs on split profiles
+  // too: getSplitOverrides gives each half a coherent Serving (a pump-serving
+  // original keeps "Insulin Pump" on the supplies half), so a split has
+  // nothing here to false-fire on — while a `Supplies …` half carrying a
+  // pump quantity is precisely the thing that must not ship.
+  if (Number(p.pumpQty) > 0 && p.serving.trim() !== "" && !servingSellsPumpDevice(p.serving)) {
+    add({
+      id: "C27_PUMP_QTY_WITHOUT_PUMP", severity: "red", field: "pumpQty",
+      title: "Pump Qty set on a non-pump serving",
+      detail: `Serving is ${p.serving}, which does not include an insulin pump, but Pump Qty is ${p.pumpQty} — this ships a pump the patient should not receive. Set Pump Qty to 0, or change Serving if a pump really is being sold.`,
+    });
+  }
+
+  // C28 — Serving EXCLUDES a family the product columns say we ARE serving.
+  // The inverse direction (Serving includes it, the product column is blank or
+  // Not Serving) is already C14. This is the half that silently REMOVES a
+  // product: every writer keyed on Serving treats the family as not served,
+  // which is how Leann Austin's Sensors Next Order Date was written blank.
+  for (const c of servingContradictions(lineInput)) {
+    add({
+      id: "C28_SERVING_EXCLUDES_SERVED_PRODUCT", severity: "red", field: "serving",
+      title: `Serving leaves out ${c.family}`,
+      detail: `Serving is ${p.serving}, which excludes ${c.family}, but ${listAnd(c.evidence)} — the profile is serving it. Anything keyed on Serving (next order dates, the order that reaches Subscription) will drop ${c.family}. Fix Serving or the product columns so they agree.`,
+    });
+  }
+
+  // C29 — a served line reaching the Subscription board with no reorder date.
+  // Brandon's ask, in his words: the next order date has to be populated when
+  // it matches the serving type and pump/monitor qty. Nothing schedules the
+  // reorder without it and the miss is silent — exactly how Leann Austin's
+  // sensor order was missed.
+  const missingDates = missingNextOrderDates(
+    lineInput,
+    {
+      insulinPump: p.nextOrderDateIp,
+      sensors: p.nextOrderDateSensors,
+      supplies: p.nextOrderDateSupplies,
+    },
+    // A just-split profile can still be holding the original Subscription Type
+    // for a moment, so it does not get a vote on that side of a split.
+    { ignoreSubscriptionType: isSplitProfile },
+  );
+  for (const line of missingDates) {
+    add({
+      id: "C29_NEXT_ORDER_DATE_MISSING", severity: "red", field: NEXT_ORDER_DATE_FIELD[line],
+      title: `${ORDER_LINE_LABEL[line]} is empty`,
+      detail: `${SERVED_LINE_PHRASE[line]} being served but ${ORDER_LINE_LABEL[line]} is blank. It carries to the Subscription board empty, so nothing schedules the reorder and the order gets missed.`,
+    });
   }
 
   // C15 — Subscription Type vs expected (same rule as the Welcome Call step).

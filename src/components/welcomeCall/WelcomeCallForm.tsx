@@ -44,6 +44,7 @@ import { Check, ChevronsUpDown, MessageSquare, Eye, EyeOff, AlertTriangle, Light
 import { cn } from "@/lib/utils";
 import { CardinalAddressNote } from "@/components/shared/CardinalAddressNote";
 import { cardinalAddressNote } from "@/lib/shared/cardinalAddress";
+import { pumpQtyApplies } from "@/lib/shared/servingLines";
 
 interface Props {
   patient: Patient;
@@ -197,6 +198,25 @@ export function WelcomeCallForm({ patient, onFieldChange, onSendWelcomeCallText 
   // includes pump supplies — a CGM-only patient is never asked for it.
   const effectivePrimaryInsurance = patient.primaryInsuranceEdited ?? patient.primaryInsurance;
   const showPriorPumpDate = needsPriorPumpDate(effectivePrimaryInsurance, patient.pumpQty, effectiveServing);
+
+  // Pump Qty applies only when Serving sells an actual insulin pump DEVICE.
+  // ⚠️ Deliberately NOT `servingIncludesPump` (the `showPump` gate above) —
+  // that is true for `Supplies …` as well, because infusion sets and cartridges
+  // ARE pump supplies. Selling a pump and shipping supplies for one the patient
+  // already owns are different questions, and conflating them is what left a
+  // live Pump Qty toggle on a `Supplies + CGM` profile and shipped a t:slim
+  // (Bradan French, 2026-08-03). See lib/shared/servingLines.ts.
+  const canSellPump = pumpQtyApplies(effectiveServing);
+
+  // Zero a quantity Serving no longer supports — same contract as the
+  // prior-pump-date effect below. The send writes local state, so a control
+  // going disabled has to take its value with it or the 1 still reaches Monday.
+  useEffect(() => {
+    if (!canSellPump && (Number(patient.pumpQty) || 0) > 0) {
+      onFieldChange("pumpQty", "0");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [patient.id, canSellPump, patient.pumpQty]);
 
   // Clear a stale prior-pump date if the patient stops being eligible (insurance
   // changed away from Medicare A&B, Pump Qty set to 1, or serving changed to
@@ -423,15 +443,24 @@ export function WelcomeCallForm({ patient, onFieldChange, onSendWelcomeCallText 
               </label>
               <div className="flex items-center gap-3 h-10">
                 <Switch
-                  checked={patient.pumpQty === "1"}
+                  checked={canSellPump && patient.pumpQty === "1"}
+                  disabled={!canSellPump}
                   onCheckedChange={(checked) =>
                     onFieldChange("pumpQty", checked ? "1" : "0")
                   }
                 />
-                <span className="text-sm font-medium">
-                  {patient.pumpQty === "1" ? "1 — Yes" : "0 — No"}
+                <span className={`text-sm font-medium ${canSellPump ? "" : "text-muted-foreground"}`}>
+                  {canSellPump && patient.pumpQty === "1" ? "1 — Yes" : "0 — No"}
                 </span>
               </div>
+              {!canSellPump && (
+                <div className="mt-2 flex items-start gap-1.5 rounded-md border border-amber-300 bg-amber-50 dark:bg-amber-950/30 px-2.5 py-1.5">
+                  <AlertTriangle className="h-3.5 w-3.5 text-amber-600 shrink-0 mt-0.5" />
+                  <span className="text-xs font-medium text-amber-700 dark:text-amber-300">
+                    Serving is {effectiveServing} — no insulin pump. Change Serving to sell a pump.
+                  </span>
+                </div>
+              )}
               {patient.neverBilledIsCar && (
                 <div className="mt-2 flex items-center gap-1.5 rounded-md border border-blue-300 bg-blue-50 dark:bg-blue-950/30 px-2.5 py-1.5">
                   <AlertTriangle className="h-3.5 w-3.5 text-blue-600 shrink-0" />
