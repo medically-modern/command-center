@@ -48,6 +48,13 @@ import { registerRingCentral } from "./ringcentral.mjs";
 import { registerMessaging } from "./messaging.mjs";
 import { registerInboundCalls } from "./inboundCalls.mjs";
 import { registerStageActor } from "./stageActor.mjs";
+import {
+  SCHEMA as REQUEST_LOG_SCHEMA,
+  RETENTION_DAYS as REQUEST_LOG_RETENTION_DAYS,
+  buildRequestLogQuery,
+  pruneRequestLog,
+  requestLogger,
+} from "./requestLog.mjs";
 import { verifyGoogleToken, authEnforced } from "./auth.mjs";
 import { extractColumns } from "./columns.mjs";
 import { buildAuditQuery } from "./auditQuery.mjs";
@@ -153,6 +160,16 @@ async function ensureSchema() {
     console.log("Postgres schema ready");
   } catch (e) {
     console.error("Schema init failed:", e.message);
+  }
+  // ⚠️ Its OWN statement, deliberately not appended to SCHEMA above. That block
+  // is one query ending in a DROP+CREATE VIEW, and the note on it records that
+  // a failure there takes every CREATE TABLE with it. Keeping the request log
+  // separate means the audit view and the request log cannot break each other.
+  try {
+    await pool.query(REQUEST_LOG_SCHEMA);
+    console.log("request_log schema ready");
+  } catch (e) {
+    console.error("request_log schema init failed:", e.message);
   }
 }
 
@@ -271,6 +288,13 @@ app.use((req, res, next) => {
   if (req.method === "OPTIONS") return res.status(204).end();
   next();
 });
+
+// Durable request log — every route except /gql (already in gql_log, in more
+// detail) and /health. Registered here, after CORS and before any route, so
+// res.on("finish") is attached in time and preflights are already answered.
+// ⚠️ Metadata only, query strings stripped: /calls/stream carries a Google ID
+// token in its URL. See requestLog.mjs.
+app.use(requestLogger({ pool, clientIp }));
 
 app.get("/health", async (_req, res) => {
   let db = "disabled";
@@ -623,6 +647,29 @@ app.get("/audit.json", async (req, res) => {
   }
 });
 
+/**
+ * Every request this gateway served — the durable replacement for Railway's
+ * HTTP log, which returns at most 500 lines (about thirteen minutes here).
+ *
+ *   /audit/requests.json?key=…&hours=168&path=/calls&failed=1
+ *
+ * `path` is a PREFIX match, so `/rc` covers the whole RingCentral proxy and
+ * `/calls` the whole inbound-call surface. Same AUDIT_KEY gate as /audit
+ * beside it: this returns actors, IPs and user agents.
+ */
+app.get("/audit/requests.json", async (req, res) => {
+  if (auditDenied(req, res)) return;
+  try {
+    const q = buildRequestLogQuery(req.query);
+    const { rows } = await pool.query(q.sql, q.args);
+    // Echo the window actually used — a request for two years comes back as
+    // one, and must SAY so or the missing rows read as "nothing happened".
+    res.json({ hours: q.hours, limit: q.limit, retentionDays: REQUEST_LOG_RETENTION_DAYS, rows });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // "Who marked this stage complete?" — the audit log is the only place that
 // answers it, since every Monday write carries the same API token. Read by the
 // completed-stage banner (components/shared/CompletedStageBanner).
@@ -642,6 +689,12 @@ registerMessaging({ app });
 registerInboundCalls({ app });
 
 ensureSchema().finally(() => {
+  // Retention. Once at boot, then daily — the table is the one durable log here
+  // that actually grows (~17k rows/day). unref() so a pending timer can never
+  // hold the process open during a redeploy.
+  void pruneRequestLog(pool);
+  setInterval(() => void pruneRequestLog(pool), 24 * 60 * 60 * 1000).unref?.();
+
   app.listen(PORT, () =>
     console.log(
       `monday-gateway listening on :${PORT} | origins=${ALLOWED_ORIGINS.join(

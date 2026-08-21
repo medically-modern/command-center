@@ -918,6 +918,17 @@ screens it actually reached**, which is the field that separates "their ring rul
   smaller loss than the subscription. Nothing here may throw into `handleEvent`.
 - ⚠️ Deliberately **UNPRUNED** — ~260 events/day, under 100k rows a year. An audit table that
   deletes the evidence somebody came looking for is worse than a big one.
+**A refused claim speaks English** (2026-08-21). `/calls/claim` used to pass **RingCentral's own
+refusal text** to the browser, which is a protocol string — a rep reported it as *"I received an
+error code"* (MM-1090) when nothing was wrong: the card was still up, the caller had hung up 0.7s
+earlier. `callRules.claimRefusal` (pure, tested) now maps RC **404/409 → 410 + one sentence**
+("That call already ended — the caller hung up or somebody else picked it up"), while the raw text
+still goes to `call_claims.detail` for `/calls/history`. ⚠️ **Everything else stays 502 with RC's
+words**: a throttle, a revoked `CallControl` permission and a dead upstream are real faults, and
+flattening them into the reassuring sentence would hide an outage behind a non-event. The client
+also treats **404 and 409 like 410** (`IncomingCallHost`) — they are the same verdict caught one
+layer earlier, and only 410 was handled, so the gateway's own "no longer ringing" came out as a red
+error toast *and* left the dead card on screen to be clicked again.
 - `/calls/history` is **authenticated** (`requireCaller`), unlike `/calls/health` beside it: it
   returns employee emails and per-call timing, health returns counts. Bounds + SQL are pure in
   **`callHistoryQuery.mjs`** (+ tests) — same split as `callRules` / `rcAllowlist` — clamped to 90
@@ -1923,6 +1934,22 @@ columns" automation on duplicated items). The SPA only flips the advancer; verif
   set → `/send` requires a verified medicallymodern.com token), **`LOG_MODE=all` but
   `LOG_PAYLOAD=false`** (every request audited, **no PHI** stored), audit viewer key-protected at
   `/audit`. `services/monday-gateway/send.mjs` is the durable, idempotent `send_jobs` queue.
+  **Every request is kept in Postgres** — `request_log` + `GET /audit/requests.json?key=…`
+  (`requestLog.mjs`, added 2026-08-21). Railway's HTTP log returns **at most 500 lines per query,
+  ≈13 minutes** of this gateway's traffic, so anything asked about a day later was unanswerable;
+  `gql_log` covered `/gql` and nothing else, leaving `/rc/*`, `/messaging/*`, `/send` and `/calls/*`
+  — exactly the routes in play when the phone system misbehaves — with no durable record. (The
+  2026-08-20 RingCentral incident was diagnosed from a request *rate*, which you can only see if
+  you kept the requests.) Metadata only, matching `LOG_PAYLOAD=false`: no bodies, no headers.
+  ⚠️ **Query strings are STRIPPED, and that is a security property, not tidiness** —
+  `/calls/stream?token=` carries the caller's **Google ID token** (EventSource cannot set headers),
+  and `/rc/fetch?url=` / `/calls/history?last4=` carry patient identifiers; `stripQuery` runs
+  before anything is stored. Skips `/gql` (already in `gql_log`, in more detail — re-logging would
+  duplicate ~130k rows/day to say less), `/health`, and `OPTIONS` preflights. ⚠️ Unlike
+  `call_events` (tiny, precious, unpruned) this one **grows** — ~17k rows/day — so it prunes at
+  **`REQUEST_LOG_RETENTION_DAYS`, default 180**, on boot and daily. Its schema runs as its OWN
+  statement, deliberately not appended to `index.mjs`' `SCHEMA` block, whose trailing
+  DROP+CREATE VIEW takes every `CREATE TABLE` with it when it fails.
 - **Worker (`worker/`)** deploys via `deploy-worker.yml` / `npx wrangler deploy`.
 
 ### Sync from Test Repo (`sync-from-test.yml`) — what carries over, what doesn't
@@ -2121,6 +2148,7 @@ these services; when their math changes, `oopEstimator.ts` must be updated to ma
 | A text was sent but the patient never got it | §5.5 — `lib/shared/smsDelivery.ts` (status decides, code explains), rendered by `components/shared/SmsDeliveryNote.tsx`; the gateway half is `/messaging/conversation` in `services/monday-gateway/messaging.mjs` |
 | "Serving ≠ requested" fires on a normal cross-sell | `lib/finalConfirm/checkPack.ts` `droppedProducts` — C13 fires on a DROPPED product only; adding one is a cross-sell and is silent |
 | Audit a write that "disappeared" | gateway `/audit` (Postgres `gql_log` / `send_jobs`) |
+| "What was the gateway doing at 4:46 last Thursday?" | `GET /audit/requests.json?key=…&hours=…&path=/rc&failed=1` (Postgres `request_log`, §8). NOT Railway logs — they cap at 500 lines ≈ 13 minutes |
 | "A call never reached me" / "taking it gave an error" | §5.13 — `GET /calls/history?hours=…&last4=…` (Postgres `call_events` + `call_claims`), NOT Railway logs: those cap at 500 lines ≈ 13 minutes. A `410` from `/calls/claim` is RingCentral saying the party is already gone — the caller hung up or somebody else picked up — never a throttle, which surfaces as `502` |
 | Manager pipeline / oversight charts | `components/oversight/OversightTab.tsx` + `lib/oversight/oversightApi.ts` (+ `priority.ts`); reached via `/system-mgmt?tab=oversight` |
 

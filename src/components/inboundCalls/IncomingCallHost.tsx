@@ -113,9 +113,18 @@ function CallCard({
       toast.success(`Picking up — your phone is ringing at ${fmtPhone(at)}`);
     } catch (e) {
       const err = e as Error & { status?: number; needsForwardNumber?: boolean };
-      // 410 is the ordinary race: the caller hung up, or a colleague was
-      // quicker. Neither is a failure worth an alarming red toast.
-      if (err.status === 410) {
+      // The ordinary race, in all three shapes it arrives in: the caller hung
+      // up, or a colleague was quicker. A ring is often only a few seconds
+      // long and the terminal webhook can land between the render and the
+      // click, so this is the COMMON outcome of a slow click — not a fault.
+      //
+      // ⚠️ 404 and 409 belong here too (2026-08-21). Only 410 was handled, so
+      // the gateway's own "That call is no longer ringing." (404) and "…has
+      // already ended." (409) — the same event, caught one layer earlier —
+      // came out as a red error toast AND left the dead card on screen to be
+      // clicked again. 410 is the same verdict reached via RingCentral; which
+      // layer noticed first is not something a rep should be able to tell.
+      if (err.status === 410 || err.status === 409 || err.status === 404) {
         toast.info(err.message);
         onDismiss(call.id);
       } else if (err.needsForwardNumber) {

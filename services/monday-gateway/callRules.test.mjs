@@ -7,6 +7,8 @@ import {
   sessionOutcome,
   shouldNotify,
   unwrapEvent,
+  claimRefusal,
+  CLAIM_GONE_MESSAGE,
 } from "./callRules.mjs";
 
 /** A telephony-session notification shaped like RingCentral's, trimmed to the
@@ -230,5 +232,51 @@ describe("last4", () => {
     expect(last4("123")).toBe("");
     expect(last4("")).toBe("");
     expect(last4(null)).toBe("");
+  });
+});
+
+describe("claimRefusal — what the rep is told when a forward is refused", () => {
+  // ⚠️ The whole reason this function exists: RingCentral's refusal text is a
+  // protocol string, and showing it to a rep turned an ordinary hung-up call
+  // into ticket MM-1090 ("I received an error code").
+  it("404 and 409 become the plain-English 410 the UI already treats as gone", () => {
+    for (const status of [404, 409]) {
+      const r = claimRefusal(status, "Party not found");
+      expect(r.status).toBe(410);
+      expect(r.error).toBe(CLAIM_GONE_MESSAGE);
+      expect(r.error).toMatch(/already ended/i);
+      // …and the protocol string survives for the audit row.
+      expect(r.detail).toBe("Party not found");
+    }
+  });
+
+  // ⚠️ The half that must NOT be flattened: a throttle, a revoked CallControl
+  // permission and a dead upstream are real faults. Reassuring the rep that the
+  // caller hung up would hide an outage behind a non-event.
+  it("every other status stays 502 and keeps RingCentral's own words", () => {
+    for (const status of [429, 401, 403, 500, 503]) {
+      const r = claimRefusal(status, "Request rate exceeded");
+      expect(r.status).toBe(502);
+      expect(r.error).toBe("Request rate exceeded");
+      expect(r.error).not.toBe(CLAIM_GONE_MESSAGE);
+    }
+  });
+
+  it("falls back to a status-bearing sentence when RingCentral says nothing", () => {
+    const r = claimRefusal(500, "");
+    expect(r.error).toBe("RingCentral refused the transfer (500)");
+    // null, not "", so a blank detail can't be read as a message it did send.
+    expect(r.detail).toBeNull();
+  });
+
+  it("a missing message on a gone status still reads as gone", () => {
+    const r = claimRefusal(404, undefined);
+    expect(r.status).toBe(410);
+    expect(r.error).toBe(CLAIM_GONE_MESSAGE);
+    expect(r.detail).toBeNull();
+  });
+
+  it("trims upstream whitespace rather than storing a padded string", () => {
+    expect(claimRefusal(500, "  boom  ").detail).toBe("boom");
   });
 });

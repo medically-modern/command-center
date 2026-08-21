@@ -186,3 +186,49 @@ export function last4(raw) {
   const d = String(raw ?? "").replace(/\D/g, "");
   return d.length >= 4 ? d.slice(-4) : "";
 }
+
+/* ── claiming ─────────────────────────────────────────────────────────────── */
+
+/**
+ * What a rep is told when RingCentral refuses to forward a ringing call.
+ *
+ * ⚠️ This sentence is the whole point. RingCentral's own refusal text is a
+ * protocol string — the kind of thing a rep reports as "I received an error
+ * code" (ticket MM-1090, 2026-08-20), which is exactly what happened: the card
+ * was still on screen, the caller had hung up 0.7 seconds earlier, and the rep
+ * was shown RingCentral's words for it. Nothing was broken and it read as a
+ * system fault.
+ *
+ * The raw text is still kept — it goes to call_claims.detail, where an
+ * engineer can read it months later (see /calls/history). The rep gets English.
+ */
+export const CLAIM_GONE_MESSAGE =
+  "That call already ended — the caller hung up or somebody else picked it up.";
+
+/**
+ * Map RingCentral's forward-refusal onto what the browser should see.
+ *
+ * 404/409 from RingCentral both mean "that party is no longer forwardable",
+ * i.e. the ordinary race the card cannot win: a ring is often only a few
+ * seconds long, and the terminal webhook can land between the render and the
+ * click. It is NOT a failure worth alarming anyone about, so it becomes 410,
+ * which the UI already treats as "gone" (info toast, dismiss the card).
+ *
+ * ⚠️ Anything else stays 502 and keeps RingCentral's own words: a throttle, a
+ * revoked CallControl permission and a dead upstream are all real faults, and
+ * flattening them into the reassuring sentence above would hide an outage
+ * behind "the caller hung up". The 502/410 split is the difference between
+ * "nothing is wrong" and "something is", so it must never key on anything
+ * softer than the upstream status.
+ */
+export function claimRefusal(rcStatus, rcMessage) {
+  const gone = rcStatus === 404 || rcStatus === 409;
+  const raw = String(rcMessage ?? "").trim();
+  return {
+    status: gone ? 410 : 502,
+    error: gone ? CLAIM_GONE_MESSAGE : raw || `RingCentral refused the transfer (${rcStatus})`,
+    // Verbatim upstream text for the audit row; null when RingCentral said
+    // nothing, so a blank detail can't be mistaken for a message it did send.
+    detail: raw || null,
+  };
+}

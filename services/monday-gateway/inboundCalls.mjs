@@ -55,6 +55,7 @@ import {
   normalizePrefs,
   pickInboundParty,
   sessionOutcome,
+  claimRefusal,
   shouldNotify,
   unwrapEvent,
 } from "./callRules.mjs";
@@ -861,17 +862,21 @@ export function registerInboundCalls({ app }) {
       const text = await up.text();
       if (!up.ok) {
         call.claiming = false;
-        let reason = `RingCentral refused the transfer (${up.status})`;
+        let raw = "";
         try {
           const j = JSON.parse(text);
-          reason = j.message || j.errors?.[0]?.message || reason;
+          raw = j.message || j.errors?.[0]?.message || "";
         } catch {
-          /* keep default */
+          /* RingCentral did not answer JSON; claimRefusal supplies a default */
         }
-        void logClaim(call, who, false, reason);
-        // 410 reads as "gone" to the UI: almost always the caller hung up or
-        // somebody else got there first.
-        return res.status(up.status === 404 || up.status === 409 ? 410 : 502).json({ error: reason });
+        // ⚠️ The REP and the AUDIT get different strings on purpose. `detail` is
+        // RingCentral's own words, kept forever in call_claims so /calls/history
+        // can still explain this months later; `error` is the sentence a person
+        // can act on. Sending the protocol text to the browser is what turned an
+        // ordinary "the caller hung up" into ticket MM-1090's "error code".
+        const refusal = claimRefusal(up.status, raw);
+        void logClaim(call, who, false, refusal.detail || `RingCentral ${up.status}`);
+        return res.status(refusal.status).json({ error: refusal.error });
       }
       call.claimedBy = who;
       call.claiming = false;
