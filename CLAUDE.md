@@ -1478,13 +1478,41 @@ of the doctor block only **Name and Phone survive the board hop** (the automatio
 in total — Doctor Name · Doctor Phone · Pt. Phone · Email · DOB · Gender · Member ID 1 · Referral
 Source · Request Type · CGM Type). Clinic Address is filled in later, by Select Correct Provider, so
 address-only would leave the field blank on precisely the fresh referral this exists for.
-> **Known gap, same cause:** the manual form also collects Patient Address, Primary Insurance,
-> Doctor NPI/Email/Fax, Clinic Name/Address, Doc Preferred Method, Key Clinic Contact, the referral
-> **clinicals file** and Additional Intake Comments — **none of which the create-item automation
-> copies**. Insurance is the sharp one: General Insurance `color_mm24ap4j` + working Member ID
-> `text_mm4t8gbq` are the whole benefits-check input (§5.11) and both arrive blank, while the ID the
-> employee typed sits in **Member ID 1** `text_mm1x2qk2`, which this pane doesn't render. Fixing
-> that is a Monday automation change, not an SPA one.
+**⚠️ THERE ARE TWO MANUAL INTAKE FORMS AND ONLY ONE OF THEM IS LOSSLESS.** Both feed this queue,
+so a patient's data completeness depends on which one somebody happened to open (audited
+2026-08-21).
+
+| | **Intake Form** — USE THIS | **Manual Patient Intake Form** — lossy |
+|---|---|---|
+| lives on | **Profile Send Off** (view `246988391`, owner Brandon) | DTC Intake `18392794310` (view `231897594`) |
+| writes | this board's own columns, **directly** | DTC Intake's columns, then a create-item automation copies **10** of them here |
+| clinicals file | **arrives** (`file_mm1w5vwp`) | dropped |
+| lands in | 1. Intake → automation **7921666432** moves Referral Source `CareCentrix` to New Form — Completed | same automation, same move |
+
+The lossless one is how real CareCentrix referrals arrive: **`ccx-pdf-intake`** (Railway) logs into
+the CareCentrix portal Mon–Fri at 10am/12pm/3pm/6pm ET, downloads the accepted referral's documents
+and posts them to Slack; a person then fills the Intake Form, PDFs attached. Monday records it as
+`create_pulse` with **`"source":"form"`** and the view id — that is how you tell the two paths apart
+on any item. (`ccx-monitor-ashburn` in the `ccx-2` project only accepts referrals in the portal; it
+holds no Monday credentials and creates nothing.)
+> The DTC Intake form's automation copies exactly: Doctor Name · Doctor Phone · Pt. Phone · Email ·
+> DOB · Gender · Member ID 1 · Referral Source · Request Type · CGM Type. It **drops** Patient
+> Address, Primary Insurance, Doctor NPI/Email/Fax, Clinic Name/Address, Doc Preferred Method, Key
+> Clinic Contact, the clinicals file and Additional Intake Comments (the last two have no
+> destination column here at all). Left as-is deliberately (Josh, 2026-08-21) — the fix is to use
+> the Profile Send Off form, not to widen the automation.
+
+**⚠️ Neither form fills the two columns the benefits check actually reads.** General Insurance
+`color_mm24ap4j` and the working Member ID `text_mm4t8gbq` are the whole Stedi input (§5.11); the
+forms write **Primary Insurance** `color_mm1xg10n` and **Member ID 1** `text_mm1x2qk2` instead, which
+are different columns and are not what `useStediRun` sends. So every CareCentrix patient is typed in
+twice — verified on NATIVIDAD GONZALEZ (`12854183914`), where a rep hand-set both before pressing Run.
+Adding them to the Profile Send Off Intake Form is the fix, and it must be done **in Monday's form
+editor** ("add existing column"): the API's `update_form_question` answers `Block not found` for a
+column the form has never carried, and `create_form_question` takes no column id, so it would mint a
+**duplicate** board column rather than bind to these. The Email question `text_mm1xc140` was already
+on that form, hidden, and was unhidden via the API on 2026-08-21 — it is the join key for Calendly
+bookings (§5.15) and for `IntakeMessages`.
 
 
 ### 5.21 DTC form leads get a duplicate check — completed filed, partials flagged (Aug 2026)
@@ -2278,6 +2306,7 @@ these services; when their math changes, `oopEstimator.ts` must be updated to ma
 | Stedi check output / eligibility results | **inline in `src/pages/ProfilePage.tsx`** — NOT `components/profile/StediPanel.tsx` (dead, §5.11) |
 | The benefits check filled in a bad-looking address / "not confirmed" flag | §5.19 — `lib/profile/addressFormat.ts`, rendered by `pages/UnverifiedReferralsPage.tsx` |
 | A DTC form patient wasn't duplicate-checked / the "Already In System" pill is missing | §5.21 — `lib/profile/dupCheckFlag.ts` reads **Dup Check Result**, never `alreadyInSystem`; the service half is `josh-monday-automations` `automations/duplicate-patient-check.js` |
+| A CareCentrix referral arrived half-empty / which intake form should reps use | §5.20 — the **Intake Form on Profile Send Off** (view `246988391`) is lossless; DTC Intake's Manual Patient Intake Form drops 12 fields at the board hop. `"source":"form"` in the item's `create_pulse` tells you which path it took |
 | Provided Doctor Name / Clinic Phone empty on a CareCentrix intake | §5.20 — `lib/profile/referralDoctorInfo.ts`; the manual intake form fills the VERIFIED doctor columns, and the fallback is display-only |
 | A DTC intake patient is in the wrong half of the split / Advance did nothing | §5.20 — `lib/profile/intakeSubStage.ts` (the queue is the GROUP), then `unverifiedWrite.advanceToProfileCleanUp`. Both roles are `UnverifiedReferralsPage` under a `variant` prop |
 | A patient got two "here's your link" texts / the insurance step asked for a card they already sent | §5.23 — the once-only stamps are **on the board** (`date_mm6eakae` / `date_mm6eev4b`), and `uploadLink.js` `UPLOAD_KINDS` decides which column a link writes to |
