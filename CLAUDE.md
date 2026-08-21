@@ -1502,17 +1502,30 @@ holds no Monday credentials and creates nothing.)
 > destination column here at all). Left as-is deliberately (Josh, 2026-08-21) — the fix is to use
 > the Profile Send Off form, not to widen the automation.
 
-**⚠️ Neither form fills the two columns the benefits check actually reads.** General Insurance
-`color_mm24ap4j` and the working Member ID `text_mm4t8gbq` are the whole Stedi input (§5.11); the
-forms write **Primary Insurance** `color_mm1xg10n` and **Member ID 1** `text_mm1x2qk2` instead, which
-are different columns and are not what `useStediRun` sends. So every CareCentrix patient is typed in
-twice — verified on NATIVIDAD GONZALEZ (`12854183914`), where a rep hand-set both before pressing Run.
-Adding them to the Profile Send Off Intake Form is the fix, and it must be done **in Monday's form
-editor** ("add existing column"): the API's `update_form_question` answers `Block not found` for a
-column the form has never carried, and `create_form_question` takes no column id, so it would mint a
-**duplicate** board column rather than bind to these. The Email question `text_mm1xc140` was already
-on that form, hidden, and was unhidden via the API on 2026-08-21 — it is the join key for Calendly
-bookings (§5.15) and for `IntakeMessages`.
+**The Intake Form asks for the benefits-check columns directly, from 2026-08-21.** General
+Insurance `color_mm24ap4j` and the working Member ID `text_mm4t8gbq` are the whole Stedi input
+(§5.11). Until that day the form collected **Primary Insurance** `color_mm1xg10n` and **Member ID 1**
+`text_mm1x2qk2` instead — different columns, not what `useStediRun` sends — so every CareCentrix
+patient was typed in twice (NATIVIDAD GONZALEZ `12854183914`: a rep hand-set both before pressing
+Run). The two real inputs were added and the two look-alikes hidden; Email `text_mm1xc140` was
+already on the form but hidden, and was unhidden the same day (it is the join key for Calendly
+bookings, §5.15, and for `IntakeMessages`).
+> ⚠️ **Hiding Member ID 1 is safe; hiding Primary Insurance costs a confirm.** The Clean-Up pane
+> seeds `verified.memberId1` from `workingMemberId` and `writeVerifiedInsurance` writes it on save,
+> so the "Member ID 1" readiness row still passes. Primary Insurance has no such backfill — it is
+> filled by `primaryInsurance.ts`' suggestion engine *after* the benefits check, for the rep to
+> confirm. **Serving is unaffected**: its auto-fill reads `primaryInsurance || generalInsurance`, and
+> the form now supplies the second.
+> ⚠️ **Add form questions in Monday's form editor ("add existing column"), never over the API.**
+> `update_form_question` answers `Block not found` for a column the form has never carried, and
+> `create_form_question` takes no column id — it would mint a **duplicate** board column instead of
+> binding to the real one. Verify a binding by the question's key in the view's `settings_str`: it
+> IS the column id.
+
+⚠️ **Serving `color_mm1w1cm9` is on neither form** and is a readiness row. It is auto-derived on the
+page (`canCrossSellCgm` × Request Type → `deriveServing`, fill-when-blank), and the board's CGM
+Cross-Sell column wins over the payer guess when set — which a create automation sets — so it lands
+on its own for the ordinary referral. Nothing types it in.
 
 
 ### 5.21 DTC form leads get a duplicate check — completed filed, partials flagged (Aug 2026)
