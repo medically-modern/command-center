@@ -58,6 +58,7 @@ import {
   shouldNotify,
   unwrapEvent,
 } from "./callRules.mjs";
+import { buildHistoryQuery } from "./callHistoryQuery.mjs";
 import { RETRY_STEPS_MS, retryAfterMs, retryDelayMs } from "./reconcileBackoff.mjs";
 
 const { ASSIGNMENTS_DATABASE_URL } = process.env;
@@ -142,6 +143,49 @@ CREATE TABLE IF NOT EXISTS call_claims (
   detail        TEXT,
   claimed_at    TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- The lifecycle of every inbound call, durably.
+--
+-- ⚠️ WHY THIS EXISTS (2026-08-21). Until now the only record of a ring was the
+-- in-memory registry above, which pruneCalls() drops after KEEP_ENDED_MS, plus
+-- Railway HTTP logs, which return at most 500 lines per query — about THIRTEEN
+-- MINUTES of this gateway sole traffic. Reconstructing one reported call
+-- ("the phone did not ring for me, and taking it in the Command Center gave an
+-- error") meant walking that window by hand before it aged out, and a report
+-- filed a week late could not be answered at all. eventStats below is counters
+-- only, and counters cannot tell you what happened to ONE call.
+--
+-- Rows are the SHAPE of a call, never its content: no payload, no transcript.
+-- ⚠️ phone_hmac, never the number — the same call call_ring_allow and
+-- messaging.mjs make, for the same reason (a number tied to a patient is PHI).
+-- last4 rides along as the display hint those tables already established: it is
+-- what lets a human line a row up against a patient without the log itself
+-- holding a dialable number.
+--
+-- Volume is trivial and deliberately UNPRUNED: this board runs ~260 events and
+-- ~17 real rings a day, so a year is under 100k rows. An audit table that
+-- silently deletes the evidence somebody came looking for is worse than a big
+-- one; if it ever needs a horizon, add it as an explicit job, not a default.
+CREATE TABLE IF NOT EXISTS call_events (
+  id          BIGSERIAL PRIMARY KEY,
+  at          TIMESTAMPTZ NOT NULL DEFAULT now(),
+  session_id  TEXT,
+  party_id    TEXT,
+  phone_hmac  TEXT,
+  last4       TEXT,
+  -- ring | end | end_unseen | self | ignored | unparsed
+  kind        TEXT NOT NULL,
+  -- for kind=end: answered | missed (see the claimed-call caveat in handleEvent)
+  state       TEXT,
+  -- how many connected employees the ring was fanned out to. 0 with a healthy
+  -- subscriber count is the signal that everyone rules filtered the call out.
+  audience    INT,
+  claimed_by  TEXT,
+  detail      TEXT
+);
+CREATE INDEX IF NOT EXISTS call_events_at_idx      ON call_events (at DESC);
+CREATE INDEX IF NOT EXISTS call_events_session_idx ON call_events (session_id);
+CREATE INDEX IF NOT EXISTS call_events_phone_idx   ON call_events (phone_hmac);
 `;
 
 async function ensureSchema() {
@@ -285,6 +329,43 @@ function broadcastUpdate(call) {
  */
 const eventStats = { seen: 0, rings: 0, unparsed: 0, selfCalls: 0, lastAt: 0 };
 
+/**
+ * Append one row to call_events — the durable half of the counters above.
+ *
+ * ⚠️ Fire-and-forget, and every caller uses `void`. This runs AFTER the webhook
+ * has already been acked (see /calls/webhook), but the ordering rule that put
+ * the ack first applies just as much to what follows it: a slow or dead
+ * Postgres must never become a slow webhook endpoint, because RingCentral
+ * retries those and eventually blacklists them. Losing an audit row is a
+ * strictly smaller failure than losing the subscription.
+ *
+ * ⚠️ Nothing here is allowed to throw into handleEvent either — a logging
+ * failure that dropped a real ring would be the audit trail causing the outage
+ * it exists to explain.
+ */
+function recordEvent(row) {
+  if (!pool) return;
+  const from = row.from || "";
+  pool
+    .query(
+      `INSERT INTO call_events
+         (session_id, party_id, phone_hmac, last4, kind, state, audience, claimed_by, detail)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+      [
+        row.sessionId || null,
+        row.partyId || null,
+        row.hmac || null,
+        last4(from) || null, // shared helper: digits only, never a formatted tail
+        row.kind,
+        row.state || null,
+        typeof row.audience === "number" ? row.audience : null,
+        row.claimedBy || null,
+        row.detail || null,
+      ],
+    )
+    .catch((e) => console.error("call_events insert failed:", e.message));
+}
+
 async function handleEvent(payload) {
   eventStats.seen++;
   eventStats.lastAt = Date.now();
@@ -298,9 +379,12 @@ async function handleEvent(payload) {
     eventStats.unparsed++;
     // Keys only: the payload carries patient phone numbers (PHI), so the SHAPE
     // is logged and the content never is. Enough to spot a schema change.
-    console.warn(
-      `call event: no telephonySessionId (outer keys: ${Object.keys(payload || {}).join(",") || "none"})`,
-    );
+    const keys = Object.keys(payload || {}).join(",") || "none";
+    console.warn(`call event: no telephonySessionId (outer keys: ${keys})`);
+    // Keys only, same rule as the console line: the payload carries patient
+    // numbers. This is the row that makes an envelope-shape change visible
+    // weeks later instead of only in a counter nobody was watching.
+    void recordEvent({ kind: "unparsed", detail: `outer keys: ${keys}` });
     return;
   }
 
@@ -318,19 +402,44 @@ async function handleEvent(payload) {
       existing.state = outcome === "answered" || existing.claimedBy ? "answered" : "missed";
       existing.endedAt = Date.now();
       broadcastUpdate(existing);
+      // The row that answers "how long was it actually takeable?". A short gap
+      // between the ring row and this one is the ordinary race behind a 410
+      // from /calls/claim: the card was still on screen, the party was gone.
+      void recordEvent({
+        kind: "end",
+        sessionId: existing.id,
+        partyId: existing.partyId,
+        hmac: existing.hmac,
+        from: existing.from,
+        state: existing.state,
+        audience: existing.audience.length,
+        claimedBy: existing.claimedBy,
+        detail: `rang ${Math.round((existing.endedAt - existing.startedAt) / 100) / 10}s`,
+      });
     }
     pruneCalls();
     return;
   }
 
-  if (outcome) return; // finished before we ever saw it ring
+  if (outcome) {
+    // Finished before we ever saw it ring. Worth a row: a RUN of these is what
+    // a delayed or partially-delivered webhook stream looks like from here, and
+    // it is otherwise indistinguishable from a quiet afternoon.
+    void recordEvent({ kind: "end_unseen", sessionId, state: outcome });
+    return;
+  }
   const party = pickInboundParty(body, SELF_NUMBERS);
   if (!party) {
     // Was it OUR OWN outbound leg? Asking the same pure function again without
     // the self list is cheaper than duplicating its matching rules here, and it
     // keeps the counter honest: `selfCalls` climbing is the click-to-call
     // suppression doing its job, not events going missing.
-    if (pickInboundParty(body)) eventStats.selfCalls++;
+    if (pickInboundParty(body)) {
+      eventStats.selfCalls++;
+      void recordEvent({ kind: "self", sessionId });
+    } else {
+      void recordEvent({ kind: "ignored", sessionId });
+    }
     return;
   }
 
@@ -356,6 +465,21 @@ async function handleEvent(payload) {
   const audience = await audienceFor(call.hmac);
   call.audience = audience.map((a) => a.email);
   for (const entry of audience) sendTo(entry, "call-ring", publicCall(call));
+  // Recorded AFTER the fan-out, so `audience` is the real number of screens
+  // this call reached — the single most useful field when somebody reports a
+  // call they never saw. 0 here with subscribers connected means their own
+  // ring rules filtered it out; 0 with no subscribers means nobody had a tab
+  // open, which is normal and not an outage (see calls-monitor, §5.13).
+  void recordEvent({
+    kind: "ring",
+    sessionId,
+    partyId: call.partyId,
+    hmac: call.hmac,
+    from: call.from,
+    state: "ringing",
+    audience: audience.length,
+    detail: `${subscribers.size} connected`,
+  });
 }
 
 /* ── subscription lifecycle ───────────────────────────────────────────────── */
@@ -915,6 +1039,106 @@ export function registerInboundCalls({ app }) {
       expiresAt: subscriptionState.expiresAt ? new Date(subscriptionState.expiresAt).toISOString() : null,
       error: subscriptionState.error,
     });
+  });
+
+  /**
+   * Call history — what actually happened, months later.
+   *
+   * /calls/health answers "is the pipe alive right now" in counters.
+   * This answers "what happened to the call Janelle could not take on the 20th",
+   * which counters cannot, and which Railway logs cannot either: they return at
+   * most 500 lines per query, roughly thirteen minutes of this gateway traffic.
+   *
+   *   GET /calls/history                      the last 24h
+   *   GET /calls/history?hours=168            the last week
+   *   GET /calls/history?session=<id>         one call, ring through end
+   *   GET /calls/history?last4=2514           one number (hint only, see below)
+   *
+   * Rows come back newest-first with the matching /calls/claim attempts folded
+   * in, so a single response shows the ring, who it reached, when it ended, and
+   * every attempt to take it with RingCentral own words for any refusal.
+   *
+   * ⚠️ AUTHENTICATED, deliberately unlike /calls/health beside it. This returns
+   * employee emails and per-call timing; health returns counts. Same reasoning
+   * as requireCaller on the routes above — the /calls surface does not fall
+   * back to an anonymous actor.
+   *
+   * ⚠️ last4 is a MATCHING HINT, not an identifier: four digits collide. Treat
+   * a last4 result as candidates to narrow by time, never as "this patient
+   * called". The number itself is not stored anywhere here (PHI, see SCHEMA).
+   */
+  app.get("/calls/history", async (req, res) => {
+    if (!configured()) return res.status(503).json({ error: "Inbound calls are not configured." });
+    const who = await requireCaller(req, res);
+    if (who === null) return;
+
+    const session = req.query?.session ? String(req.query.session) : "";
+    const last4 = req.query?.last4 ? String(req.query.last4).replace(/\D/g, "").slice(-4) : "";
+    // Clamped, because this is a table that only grows: an unbounded limit on
+    // an audit log is how one curious request becomes a slow query for everyone.
+    const hours = Math.min(Math.max(Number(req.query?.hours) || 24, 1), 24 * 90);
+    const limit = Math.min(Math.max(Number(req.query?.limit) || 200, 1), 1000);
+
+    try {
+      const where = [`at > now() - ($1 || ' hours')::interval`];
+      const args = [String(hours)];
+      if (session) {
+        args.push(session);
+        where.push(`session_id = $${args.length}`);
+      }
+      if (last4) {
+        args.push(last4);
+        where.push(`last4 = $${args.length}`);
+      }
+      args.push(limit);
+
+      const ev = await pool.query(
+        `SELECT at, session_id, kind, state, audience, claimed_by, last4, detail
+           FROM call_events
+          WHERE ${where.join(" AND ")}
+          ORDER BY at DESC
+          LIMIT $${args.length}`,
+        args,
+      );
+
+      // Claims are their own table (they predate this one and are written by a
+      // different path), so they are joined here rather than duplicated into
+      // call_events — one row per fact, written once by whoever owns it.
+      const ids = [...new Set(ev.rows.map((r) => r.session_id).filter(Boolean))];
+      let claims = { rows: [] };
+      if (ids.length) {
+        claims = await pool.query(
+          `SELECT claimed_at, session_id, claimed_by, ok, detail
+             FROM call_claims WHERE session_id = ANY($1) ORDER BY claimed_at DESC`,
+          [ids],
+        );
+      }
+
+      res.json({
+        hours,
+        events: ev.rows.map((r) => ({
+          at: r.at,
+          sessionId: r.session_id,
+          kind: r.kind,
+          state: r.state,
+          audience: r.audience,
+          claimedBy: r.claimed_by,
+          last4: r.last4,
+          detail: r.detail,
+        })),
+        claims: claims.rows.map((r) => ({
+          at: r.claimed_at,
+          sessionId: r.session_id,
+          by: r.claimed_by,
+          ok: r.ok,
+          // RingCentral own refusal text, verbatim. This is the field that
+          // explains a 410 to a human a month after the call.
+          detail: r.detail,
+        })),
+      });
+    } catch (e) {
+      res.status(500).json({ error: String((e && e.message) || e) });
+    }
   });
 
   /**

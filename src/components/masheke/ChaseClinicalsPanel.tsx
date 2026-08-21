@@ -5,8 +5,10 @@
  *   1. Review Context & Attempt History — referral source + the prior-stage
  *      receipt-confirmed chip, "What we're still missing" (identical to Send
  *      Request / Confirm Receipt), the chase attempts as three cards ("Still
- *      pending" instead of "Not confirmed"), and other activity (Send Request
- *      + Confirm Receipt).
+ *      pending" instead of "Not confirmed"), other activity (Send Request
+ *      + Confirm Receipt), and the MN Workflow Notes log with the shared
+ *      stamped "add a note" (2026-08-21 — see the block itself for why the
+ *      stage label is "Chase Clinicals" on both chase roles).
  *   2. Call & Complete the Chase — doctor name + a call button, call notes, and
  *      the single "Chase Clinicals Completed" action.
  *
@@ -51,6 +53,7 @@ import {
   parseAttemptValue,
 } from "@/lib/masheke/attemptLog";
 import { AttemptCards } from "@/components/masheke/AttemptCards";
+import { NotesPanel } from "@/components/masheke/NotesPanel";
 import { DoctorAppointmentRequiredDialog } from "@/components/masheke/DoctorAppointmentRequiredDialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -503,23 +506,39 @@ export function ChaseClinicalsPanel({ patient, onUpdate, managerMode = false, ro
           className="mt-6"
         />
 
-        {/* MN Workflow Notes — READ-ONLY here. Chase never writes to these; a
-            prior round's attempt notes get folded in on re-evaluation, so the
-            rep can read the running history without editing it. */}
-        {patient.mnEvalNotes?.trim() && (
-          <>
-            <h4 className="text-[1.05rem] font-bold tracking-tight mb-2.5 mt-6">
-              MN Workflow Notes{" "}
-              <span className="text-xs font-medium text-muted-foreground">(read-only)</span>
-            </h4>
-            <div
-              className="rounded-xl border px-4 py-3 text-sm leading-relaxed whitespace-pre-wrap text-muted-foreground bg-muted/30 max-h-64 overflow-y-auto"
-              style={{ borderColor: "var(--mm-card-border)" }}
-            >
-              {patient.mnEvalNotes}
-            </div>
-          </>
-        )}
+        {/* MN Workflow Notes — the running history, plus the SAME stamped
+            "add a note" every other stage has: "[Aug 21, 2026, 2:33 PM] Chase
+            Clinicals: <text> —JH", composed by lib/shared/noteStamp so the
+            format cannot drift from Evaluate / Send Request / Insurance.
+
+            Read-only here until 2026-08-21. A rep who learned something on a
+            chase call that was not an attempt OUTCOME had nowhere on this page
+            to put it, so it went into the attempt note (where it reads as the
+            outcome) or nowhere at all.
+
+            Adding a note writes straight to Monday (COL.mnEvalNotes) and is
+            NOT part of the chase transaction: it deliberately does not gate
+            "Chase Clinicals Completed", which still keys on the attempt note
+            in step 2. Those are different things — one is the running case
+            history, the other is the record of this attempt.
+
+            ⚠️ The stage label is "Chase Clinicals" on BOTH chase roles. They
+            are ONE Monday stage sharing ONE notes column; the fax vs
+            email/parachute split is already recorded by Clinicals Method
+            (§5.9), and NotesPanel's ATTEMPT_LABEL_REGEX bolds this exact
+            string — "Chase Clinicals — Fax:" would match neither.
+
+            ⚠️ No profileSendOffNotes prop: PriorStageNotes above already
+            renders it, and passing it here would print it twice. */}
+        <div className="mt-6">
+          <NotesPanel
+            variant="mm-inline"
+            notes={patient.mnEvalNotes ?? ""}
+            onNotesChange={(v) => onUpdate({ mnEvalNotes: v })}
+            onSaveToMonday={(v) => writeLongText(patient.id, COL.mnEvalNotes, v)}
+            notePrefix="Chase Clinicals"
+          />
+        </div>
       </MmStep>
 
       {/* ── Step 2 — Call & Complete the Chase ── */}

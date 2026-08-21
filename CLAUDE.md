@@ -363,6 +363,20 @@ fix all five (a future Claude keeps wanting to put Email back with Fax):
 (Fax/Email/Parachute/blank) — `ChaseClinicalsPanel.tsx` `nadBumpDays`. `config.ts`
 `chaseFax`/`chaseParachute` are the role registry entries.
 
+**Both chase roles carry the shared stamped NotesPanel** (2026-08-21). MN Workflow Notes were
+render-only on this panel, so a rep who learned something on a chase call that wasn't an attempt
+*outcome* had nowhere to put it — it went into the attempt note, where it reads as the outcome, or
+nowhere. It is now `components/masheke/NotesPanel` (`variant="mm-inline"`) writing
+`COL.mnEvalNotes` through `lib/shared/noteStamp`, identical to Evaluate / Send Request.
+⚠️ `notePrefix` is **"Chase Clinicals" on BOTH roles**, not per-method: they are ONE Monday stage
+sharing ONE notes column, the fax vs email/parachute split is already recorded by Clinicals Method,
+and `NotesPanel`'s `ATTEMPT_LABEL_REGEX` bolds that exact string — `"Chase Clinicals — Fax:"`
+matches neither. ⚠️ Adding a note writes **straight to Monday** and is deliberately **not** part of
+the chase transaction: it does not gate "Chase Clinicals Completed", which still keys on the
+attempt note in step 2. Those are different records — running case history vs. this attempt. The
+panel passes **no `profileSendOffNotes`**, because `PriorStageNotes` directly above already renders
+it (passing it would print the prior stage twice).
+
 ### 5.10 Profile Send Off split — Verified · Unverified · Already In System (July 2026)
 Same pattern as §5.9: **one Monday stage** (Profile Send Off board `18406352652`, group
 **1. Intake** `group_mm1xf2jb`) sliced into **three app roles** by three status columns —
@@ -886,8 +900,34 @@ like a quiet afternoon:
 question the bell will generate — so `WatchCallbackButton` warns on add and renders the watched-but-
 muted state as inert rather than active.
 
+**Every ring is recorded in Postgres — `call_events` + `GET /calls/history`** (2026-08-21). Until
+then the only record of a call was the in-memory `calls` registry (dropped by `pruneCalls` after
+`KEEP_ENDED_MS`) and Railway's HTTP log, which returns **at most 500 lines per query — about
+thirteen minutes** of this gateway's traffic. So "why did this call not reach me last Thursday"
+was unanswerable by the time it was asked, and `eventStats` is counters, which cannot describe ONE
+call. `recordEvent` appends a row per event — `ring` · `end` · `end_unseen` · `self` · `ignored` ·
+`unparsed` — carrying the session, the outcome, how long it rang, and **`audience`: how many
+screens it actually reached**, which is the field that separates "their ring rules filtered it out"
+(audience 0, subscribers >0) from "nobody had a tab open" (both 0, normal — §5.13's monitor note).
+- ⚠️ **HMAC + `last4`, never the number** — the same PHI call `call_ring_allow` and `messaging.mjs`
+  make. `last4` is a matching HINT (four digits collide), normalised by **`callRules.last4`, the
+  same helper that stamped the column on the way in** — a query that normalised differently would
+  silently match nothing.
+- ⚠️ **Fire-and-forget, `void`, never awaited.** The webhook acks first (RingCentral blacklists a
+  slow endpoint); a dead Postgres must not become a slow webhook, and an audit row is a strictly
+  smaller loss than the subscription. Nothing here may throw into `handleEvent`.
+- ⚠️ Deliberately **UNPRUNED** — ~260 events/day, under 100k rows a year. An audit table that
+  deletes the evidence somebody came looking for is worse than a big one.
+- `/calls/history` is **authenticated** (`requireCaller`), unlike `/calls/health` beside it: it
+  returns employee emails and per-call timing, health returns counts. Bounds + SQL are pure in
+  **`callHistoryQuery.mjs`** (+ tests) — same split as `callRules` / `rcAllowlist` — clamped to 90
+  days / 1000 rows, and it echoes back the window it *used*, since a silently narrowed window reads
+  as "nothing happened". Claims are joined from `call_claims` rather than duplicated, so
+  RingCentral's own refusal text still explains a 410 months later.
+
 Files: `services/monday-gateway/inboundCalls.mjs` (subscription lifecycle · webhook · SSE hub ·
-claim · prefs) + `callRules.mjs`/`callRules.test.mjs` (pure: which party, who gets rung),
+claim · prefs · `call_events`) + `callRules.mjs`/`callRules.test.mjs` (pure: which party, who gets
+rung) + `callHistoryQuery.mjs`/`callHistoryQuery.test.mjs` (pure: the history query's bounds),
 `lib/inboundCalls/callsApi.ts`, `hooks/inboundCalls/useInboundCalls.ts`,
 `components/inboundCalls/IncomingCallHost.tsx` (mounted **app-wide** in `App.tsx` — a call arrives
 wherever you're working) + `RingPreferencesDialog.tsx` (reached from the Patient Texting header).
@@ -2081,6 +2121,7 @@ these services; when their math changes, `oopEstimator.ts` must be updated to ma
 | A text was sent but the patient never got it | §5.5 — `lib/shared/smsDelivery.ts` (status decides, code explains), rendered by `components/shared/SmsDeliveryNote.tsx`; the gateway half is `/messaging/conversation` in `services/monday-gateway/messaging.mjs` |
 | "Serving ≠ requested" fires on a normal cross-sell | `lib/finalConfirm/checkPack.ts` `droppedProducts` — C13 fires on a DROPPED product only; adding one is a cross-sell and is silent |
 | Audit a write that "disappeared" | gateway `/audit` (Postgres `gql_log` / `send_jobs`) |
+| "A call never reached me" / "taking it gave an error" | §5.13 — `GET /calls/history?hours=…&last4=…` (Postgres `call_events` + `call_claims`), NOT Railway logs: those cap at 500 lines ≈ 13 minutes. A `410` from `/calls/claim` is RingCentral saying the party is already gone — the caller hung up or somebody else picked up — never a throttle, which surfaces as `502` |
 | Manager pipeline / oversight charts | `components/oversight/OversightTab.tsx` + `lib/oversight/oversightApi.ts` (+ `priority.ts`); reached via `/system-mgmt?tab=oversight` |
 
 ---
