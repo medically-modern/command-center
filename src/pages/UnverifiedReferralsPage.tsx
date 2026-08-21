@@ -135,6 +135,7 @@ import { IntakeProfileStatus } from "@/components/shared/PatientProfileStatus";
 // The duplicate automation's verdict — the ONLY thing a partial form lead
 // carries to say they are already a patient (§5.21).
 import { isAlreadyInSystemResult } from "@/lib/profile/dupCheckFlag";
+import { referralDoctorInfo } from "@/lib/profile/referralDoctorInfo";
 
 /** This queue is the DTC form's two groups and nothing else. "Referrals"
  *  (the 1. Intake group) was a third option here and is gone: that group is
@@ -819,6 +820,13 @@ const UnverifiedReferralsPage = ({ variant = "infoCollection" }: { variant?: Int
   );
 
   const unlock = useMemo(() => evaluateUnlock(selected), [selected]);
+
+  /** What the Provided Doctor Info card SHOWS — the patient's own form answers
+   *  where they gave them, and the CareCentrix referral's doctor where they
+   *  never filled a form in at all. Deliberately kept out of `selected`: it is
+   *  a display projection, and merging it would let Save write a verified
+   *  doctor into the "as provided" columns. See lib/profile/referralDoctorInfo.ts. */
+  const providedDoctor = useMemo(() => referralDoctorInfo(selected ?? {}), [selected]);
 
   const [verified, setVerified] = useState<VerifiedEdits>({});
 
@@ -2925,15 +2933,28 @@ const UnverifiedReferralsPage = ({ variant = "infoCollection" }: { variant?: Int
               </Card>
 
               <Card title="Provided Doctor Info">
+                {/* ⚠️ These two boxes show `referralDoctorInfo`, NOT the raw
+                    Provided columns. A CareCentrix patient never filled the DTC
+                    form in, so the manual intake form's automation puts their
+                    doctor in the VERIFIED columns and both Provided columns
+                    arrive blank — this card rendered empty for exactly the
+                    patients whose doctor we already knew (Josh, 2026-08-21).
+                    The fallback is DISPLAY ONLY: `selected` is untouched, so
+                    `intakeEditsFor` still sends a blank Provided column and a
+                    Save can never copy a verified value across. Don't "tidy"
+                    that by folding the fallback into the Patient object —
+                    Select Correct Provider can change the verified doctor
+                    later, and the write would then overwrite the as-provided
+                    record with the corrected one. See lib/profile/referralDoctorInfo.ts. */}
                 <div className="grid grid-cols-2 gap-3">
                   <EditText
                     label="Provided Doctor Name"
-                    value={selected.formProvidedDoctorName ?? ""}
+                    value={providedDoctor.doctorName}
                     onChange={(v) => edit({ formProvidedDoctorName: v })}
                   />
                   <EditText
                     label="Provided Clinic Phone / Location"
-                    value={selected.formProvidedClinicPhone ?? ""}
+                    value={providedDoctor.clinicPhoneOrLocation}
                     onChange={(v) => edit({ formProvidedClinicPhone: v })}
                   />
                   {/* Clinic Address — commented out, Josh 2026-08-10: not
@@ -2953,6 +2974,14 @@ const UnverifiedReferralsPage = ({ variant = "infoCollection" }: { variant?: Int
                   />
                   */}
                 </div>
+
+                {providedDoctor.fromReferral && (
+                  <p className="fhint">
+                    Filled in from the <strong>CareCentrix referral</strong> — the doctor details
+                    already on this item, not something the patient told us. Type over either box
+                    to record what they say on the call.
+                  </p>
+                )}
 
                 {/* The mockup's "Helpful Links / Identification Info" IS Doctor
                     Notes (Josh) — but the right pane's Select Correct Provider

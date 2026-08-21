@@ -1459,6 +1459,33 @@ because that queue is a calling queue with no snooze (§5.10); on Clean-Up the a
 calls made in the *previous* sub-stage and orders nothing, so the list keeps Monday's order (oldest
 first). `ignoreFollowUp` holds on both: neither has a snooze.
 
+**Provided Doctor Info falls back to the referral for CareCentrix** (Josh, 2026-08-21) —
+`lib/profile/referralDoctorInfo.ts` (+ tests). That card reads two columns the **DTC web form**
+owns (Provided Doctor Name `text_mm5z586h` · Provided Clinic Phone `text_mm5zjh88`). A CareCentrix
+patient never fills that form in: they arrive through the **Manual Patient Intake Form** on DTC
+Intake (board `18392794310`, view `231897594`), whose create-item automation writes the doctor into
+the **VERIFIED** columns instead — so the card rendered EMPTY for exactly the patients whose doctor
+we already knew, with the values one column over on the same item. The two populations are disjoint
+(every other item in the form groups is Referral Source "Patient", verified columns blank), so the
+fallback can't shadow anybody.
+⚠️ **DISPLAY ONLY — do not fold it into the `Patient` object.** `intakeEditsFor` passes
+`formProvidedDoctorName`/`formProvidedClinicPhone` back on EVERY save, so a merged fallback would
+write the verified doctor into the "as provided" columns — and Select Correct Provider can change
+the verified doctor later, which would then overwrite the as-provided record with the corrected one
+and lose the discrepancy the two column sets exist to show (`unverifiedWrite.ts` §2).
+⚠️ The clinic slot falls back to **Clinic Address and then Doctor Phone**, not Clinic Address alone:
+of the doctor block only **Name and Phone survive the board hop** (the automation copies 10 columns
+in total — Doctor Name · Doctor Phone · Pt. Phone · Email · DOB · Gender · Member ID 1 · Referral
+Source · Request Type · CGM Type). Clinic Address is filled in later, by Select Correct Provider, so
+address-only would leave the field blank on precisely the fresh referral this exists for.
+> **Known gap, same cause:** the manual form also collects Patient Address, Primary Insurance,
+> Doctor NPI/Email/Fax, Clinic Name/Address, Doc Preferred Method, Key Clinic Contact, the referral
+> **clinicals file** and Additional Intake Comments — **none of which the create-item automation
+> copies**. Insurance is the sharp one: General Insurance `color_mm24ap4j` + working Member ID
+> `text_mm4t8gbq` are the whole benefits-check input (§5.11) and both arrive blank, while the ID the
+> employee typed sits in **Member ID 1** `text_mm1x2qk2`, which this pane doesn't render. Fixing
+> that is a Monday automation change, not an SPA one.
+
 
 ### 5.21 DTC form leads get a duplicate check — completed filed, partials flagged (Aug 2026)
 The `duplicate-patient-check` webhook (`josh-monday-automations` on Railway) fires on **every**
@@ -2251,6 +2278,7 @@ these services; when their math changes, `oopEstimator.ts` must be updated to ma
 | Stedi check output / eligibility results | **inline in `src/pages/ProfilePage.tsx`** — NOT `components/profile/StediPanel.tsx` (dead, §5.11) |
 | The benefits check filled in a bad-looking address / "not confirmed" flag | §5.19 — `lib/profile/addressFormat.ts`, rendered by `pages/UnverifiedReferralsPage.tsx` |
 | A DTC form patient wasn't duplicate-checked / the "Already In System" pill is missing | §5.21 — `lib/profile/dupCheckFlag.ts` reads **Dup Check Result**, never `alreadyInSystem`; the service half is `josh-monday-automations` `automations/duplicate-patient-check.js` |
+| Provided Doctor Name / Clinic Phone empty on a CareCentrix intake | §5.20 — `lib/profile/referralDoctorInfo.ts`; the manual intake form fills the VERIFIED doctor columns, and the fallback is display-only |
 | A DTC intake patient is in the wrong half of the split / Advance did nothing | §5.20 — `lib/profile/intakeSubStage.ts` (the queue is the GROUP), then `unverifiedWrite.advanceToProfileCleanUp`. Both roles are `UnverifiedReferralsPage` under a `variant` prop |
 | A patient got two "here's your link" texts / the insurance step asked for a card they already sent | §5.23 — the once-only stamps are **on the board** (`date_mm6eakae` / `date_mm6eev4b`), and `uploadLink.js` `UPLOAD_KINDS` decides which column a link writes to |
 | A patient is parked on "we're waiting for your insurance card" and can't get out | §5.23 — the gate is the FILE column `file_mm5zhy1`, read by `/api/intake/card-on-file/:token`. Nothing else unlocks it, and nothing else needs to |
