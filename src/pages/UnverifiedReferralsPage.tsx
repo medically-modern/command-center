@@ -819,6 +819,26 @@ const UnverifiedReferralsPage = ({ variant = "infoCollection" }: { variant?: Int
     [ordered, selectedId],
   );
 
+  /**
+   * Who is open RIGHT NOW, readable from inside a stale closure.
+   *
+   * ⚠️ Correctness, not tidiness — the same class of bug as
+   * `useDeliveryRecheck`'s `cancel()` (§5.5). Both link-minting buttons await a
+   * network round trip that can take up to MINT_TIMEOUT_MS (20s, and the
+   * dtc-mm-form service is often cold), and their continuations then write the
+   * composer state. The `selected?.id` effect below clears that state on a
+   * patient switch, but it runs BEFORE the continuation, so clearing alone
+   * cannot help: the resolved mint re-opens the composer over the NEW patient,
+   * prefilled with the OLD patient's greeting and — the part that matters — a
+   * token signed for the OLD patient's item. `/api/upload/:token` honours only
+   * the token, so the new patient's card photo lands on the previous patient's
+   * row (and can satisfy THEIR §5.23 card-on-file gate) with nothing erroring
+   * anywhere. Every mint continuation must re-check this before touching the
+   * composer.
+   */
+  const selectedIdRef = useRef<string | null>(null);
+  useEffect(() => { selectedIdRef.current = selected?.id ?? null; }, [selected?.id]);
+
   const unlock = useMemo(() => evaluateUnlock(selected), [selected]);
 
   /** What the Provided Doctor Info card SHOWS — the patient's own form answers
@@ -1642,23 +1662,33 @@ const UnverifiedReferralsPage = ({ variant = "infoCollection" }: { variant?: Int
   const [followUpMinting, setFollowUpMinting] = useState(false);
   const startInsuranceFollowUp = useCallback(async () => {
     if (!selected || followUpMinting) return;
+    const forId = selected.id;
     setFollowUpMinting(true);
     try {
       let body = followUpTemplate();
+      let purpose: UploadLinkKind | null = null;
       try {
-        const { url } = await generateUploadLink(selected.id, "insurance-card");
+        const { url } = await generateUploadLink(forId, "insurance-card");
         // Below the message, on its own, and LAST — the same rule the CGM
         // link's copy follows: SMS clients truncate behind a "more" tap, and a
         // link buried mid-paragraph is the one thing a patient must not have
         // to hunt for.
         body += `\n\nAnd if anything's changed, you can send us a photo of your card here:\n${url}`;
-        setTextPurpose("insurance-card");
+        purpose = "insurance-card";
       } catch (e) {
-        setTextPurpose(null);
-        toast.warning("Sending the check-in without an upload link", {
-          description: e instanceof Error ? e.message : String(e),
-        });
+        // Reported below, and only if this patient is still open — a toast
+        // about a patient the rep has already left is noise they can't act on.
+        if (selectedIdRef.current === forId) {
+          toast.warning("Sending the check-in without an upload link", {
+            description: e instanceof Error ? e.message : String(e),
+          });
+        }
       }
+      // ⚠️ The mint can outlive the selection (see `selectedIdRef`). The link
+      // is signed for `forId`, so opening the composer over anyone else would
+      // text them a link that files their card on the previous patient's row.
+      if (selectedIdRef.current !== forId) return;
+      setTextPurpose(purpose);
       setTextPrefill(body);
       setTextComposerOpen(true);
     } finally {
@@ -1851,15 +1881,21 @@ const UnverifiedReferralsPage = ({ variant = "infoCollection" }: { variant?: Int
   const [linkGenerating, setLinkGenerating] = useState(false);
   const generateCgmLink = useCallback(async () => {
     if (!selected || linkGenerating) return;
+    const forId = selected.id;
+    const forName = selected.name;
     setLinkGenerating(true);
     try {
-      const { url } = await generateUploadLink(selected.id, "cgm");
-      setTextPrefill(uploadLinkMessage(selected.name, url));
+      const { url } = await generateUploadLink(forId, "cgm");
+      // ⚠️ Same race as `startInsuranceFollowUp` — see `selectedIdRef`. A CGM
+      // token aimed at the wrong patient files their data on someone else's row.
+      if (selectedIdRef.current !== forId) return;
+      setTextPrefill(uploadLinkMessage(forName, url));
       setTextPurpose("cgm");
       setTextComposerOpen(true);
     } catch (e) {
       // Every failure here is actionable by the rep (wrong stage, service
       // unreachable, unconfigured build), so the reason is the message.
+      if (selectedIdRef.current !== forId) return;
       toast.error("Couldn't generate an upload link", {
         description: e instanceof Error ? e.message : String(e),
       });
