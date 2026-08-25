@@ -75,11 +75,34 @@ function persistPatientCache(patients: Patient[], groupId?: GroupSelector): void
   } catch { /* ignore */ }
 }
 
-export function useMondayPatients(injectedPatientId?: string | null, groupId?: GroupSelector) {
+export interface UseMondayPatientsOptions {
+  /**
+   * Fetch the LIST with this narrow column set instead of all of
+   * `READ_COLUMN_IDS` (see `LIST_COLUMN_IDS`). Records built this way are
+   * stamped `partial` so they can never reach a write, and the patient the rep
+   * opens is fetched separately at full width via `loadDetail`.
+   *
+   * Omit it and the hook behaves exactly as before: full rows, and `detail`
+   * simply mirrors nothing (the caller keeps deriving `selected` from the list).
+   */
+  listColumns?: string[];
+}
+
+export function useMondayPatients(
+  injectedPatientId?: string | null,
+  groupId?: GroupSelector,
+  options?: UseMondayPatientsOptions,
+) {
   // The deep link the page currently has. Kept current here so the stable
   // `refetch` above can read it without becoming order-dependent on renders.
   const injectedIdRef = useRef(injectedPatientId);
   useEffect(() => { injectedIdRef.current = injectedPatientId; }, [injectedPatientId]);
+
+  // Read through a ref for the same reason as the deep link: `options` is a
+  // fresh object literal every render, so depending on it would rebuild
+  // `refetch`, restart the poll and re-raise the blocking overlay endlessly.
+  const listColumnsRef = useRef(options?.listColumns);
+  useEffect(() => { listColumnsRef.current = options?.listColumns; }, [options?.listColumns]);
   const cachedRef = useRef(loadCachedPatients(groupId));
   // Held in a ref so switching groups doesn't rebuild `refetch` (which the
   // poll interval depends on) — the effect below drives the re-fetch instead.
@@ -110,6 +133,86 @@ export function useMondayPatients(injectedPatientId?: string | null, groupId?: G
     return base.map((p) => (ov[p.id] ? { ...p, ...ov[p.id] } : p));
   }, []);
 
+  /** Single-record form of the above. The detail record has to run through the
+   *  same merge or an in-progress edit would vanish from the panes the moment
+   *  the record is (re)fetched — while still being saved. */
+  const applyOverlay = useCallback((p: Patient): Patient => {
+    const ov = overlayRef.current[p.id];
+    return ov ? { ...p, ...ov } : p;
+  }, []);
+
+  // ── The open patient, read at FULL width ──────────────────────────────
+  // The list may be narrow (see `listColumns`), so the panes, the readiness
+  // gate and every write read this record instead of a sidebar row.
+  const [detail, setDetail] = useState<Patient | null>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [detailError, setDetailError] = useState<string | null>(null);
+  /** Who `detail` is meant to be RIGHT NOW. Every async apply below re-checks
+   *  it, so a slow response for a patient the rep has already left can never
+   *  paint over the one they moved to. */
+  const detailIdRef = useRef<string | null>(null);
+
+  const fetchDetail = useCallback(
+    async (id: string, silent: boolean) => {
+      if (!silent) {
+        setDetailLoading(true);
+        setDetailError(null);
+      }
+      try {
+        const item = await fetchItemById(id);
+        if (!mountedRef.current || detailIdRef.current !== id) return;
+        if (!item) {
+          // Gone from the board (moved on, deleted). Say so rather than
+          // rendering an empty patient.
+          if (!silent) setDetail(null);
+          setDetailError("That patient could no longer be loaded from Monday.");
+          return;
+        }
+        const full = mondayItemToPatient(item);
+        // The as-received snapshot is taken HERE, not from the list: a narrow
+        // list row would freeze `getReceived` at nine columns, and the panes
+        // that read it (the patient's own form answers, e.g. the call slot they
+        // picked before a rep overrode it) would read blank forever.
+        if (!receivedRef.current[id]) receivedRef.current[id] = full;
+        setDetail(applyOverlay(full));
+        setDetailError(null);
+      } catch (e) {
+        if (!mountedRef.current || detailIdRef.current !== id) return;
+        setDetailError(e instanceof Error ? e.message : "Failed to load this patient from Monday");
+        // A silent refresh keeps whatever is already on screen; a first load
+        // has nothing to keep. Either way we never fall back to the list row —
+        // that record is partial, and showing it would put ~90 blank fields in
+        // front of a rep as though the board were empty.
+        if (!silent) setDetail(null);
+      } finally {
+        if (mountedRef.current && detailIdRef.current === id && !silent) setDetailLoading(false);
+      }
+    },
+    [applyOverlay],
+  );
+
+  /**
+   * Point the detail record at a patient (or `null` to clear it).
+   *
+   * Stable, so the page can call it straight from an effect keyed on the
+   * selected id. Re-selecting the patient already open is a no-op — without
+   * that guard the effect would refetch on every render.
+   */
+  const loadDetail = useCallback(
+    (id: string | null) => {
+      if (detailIdRef.current === id) return;
+      detailIdRef.current = id;
+      setDetail(null);
+      setDetailError(null);
+      if (!id) {
+        setDetailLoading(false);
+        return;
+      }
+      void fetchDetail(id, false);
+    },
+    [fetchDetail],
+  );
+
   const refetch = useCallback(async (maybeSilent: unknown = false) => {
     const silent = maybeSilent === true;
     if (!hasToken()) {
@@ -125,12 +228,28 @@ export function useMondayPatients(injectedPatientId?: string | null, groupId?: G
       setError(null);
     }
     try {
-      const items = await fetchGroupItems(groupIdRef.current);
+      const listColumns = listColumnsRef.current;
+      const items = await fetchGroupItems(groupIdRef.current, undefined, listColumns);
       if (!mountedRef.current) return;
       const safeItems = Array.isArray(items) ? items : [];
-      const ps = safeItems.map(mondayItemToPatient);
-      for (const base of ps) {
-        if (!receivedRef.current[base.id]) receivedRef.current[base.id] = base;
+      // Stamped `partial` whenever the read was narrow, so nothing downstream
+      // can mistake "never fetched" for "blank on the board".
+      const ps = safeItems.map((it) => mondayItemToPatient(it, { partial: !!listColumns }));
+      // ⚠️ Seed the as-received snapshot from the list ONLY when the list is
+      // full-width. The snapshot is first-write-wins, so a NARROW row would
+      // capture nine columns and keep them forever — which is why the two-tier
+      // caller takes it in `fetchDetail` instead, off the full record.
+      //
+      // But it must still be seeded here for full-width callers: ProfilePage
+      // reads `getReceived(selected.id) ?? selected` and never calls
+      // `loadDetail`, so skipping this unconditionally left its "as received"
+      // card falling through to the LIVE record — which then drifts as the rep
+      // edits and as Monday refreshes, silently losing the first-seen values
+      // the card exists to preserve.
+      if (!listColumns) {
+        for (const base of ps) {
+          if (!receivedRef.current[base.id]) receivedRef.current[base.id] = base;
+        }
       }
       const merged = applyOverlays(ps);
 
@@ -154,6 +273,14 @@ export function useMondayPatients(injectedPatientId?: string | null, groupId?: G
 
       setPatients(merged);
       persistPatientCache(merged, groupIdRef.current);
+
+      // Refresh the open patient in the same pass. This is what keeps every
+      // existing `refetch(true)` call site working unchanged — the post-save
+      // reconciles, and above all the Stedi settle watcher, which polls
+      // `refetch` waiting for the stedi* columns to land and would otherwise
+      // never see them now that the list no longer carries them.
+      const openId = detailIdRef.current;
+      if (openId) await fetchDetail(openId, true);
     } catch (e) {
       if (mountedRef.current)
         setError(e instanceof Error ? e.message : "Failed to load patients from Monday");
@@ -165,7 +292,9 @@ export function useMondayPatients(injectedPatientId?: string | null, groupId?: G
         setInitialLoading(false);
       }
     }
-  }, [applyOverlays]);
+    // Both deps are stable useCallbacks, so `refetch` stays stable — the poll
+    // interval and the groupKey effect below depend on that.
+  }, [applyOverlays, fetchDetail]);
 
   // Keyed on the group CONTENTS: a caller selecting several groups passes a new
   // array each render, and comparing references would re-fetch every time —
@@ -203,6 +332,9 @@ export function useMondayPatients(injectedPatientId?: string | null, groupId?: G
     setPatients((prev) =>
       prev.map((p) => (p.id === id ? { ...p, ...patch } : p)),
     );
+    // The panes render from `detail`, not from the list, so an optimistic edit
+    // that only patched `patients` would appear in the sidebar and nowhere else.
+    setDetail((prev) => (prev && prev.id === id ? { ...prev, ...patch } : prev));
   }, []);
 
   /**
@@ -253,5 +385,12 @@ export function useMondayPatients(injectedPatientId?: string | null, groupId?: G
   /** The as-received (first-seen, pre-edit) Monday values for a patient. */
   const getReceived = useCallback((id: string): Patient | undefined => receivedRef.current[id], []);
 
-  return { patients, loading, initialLoading, error, refetch, updateLocal, clearOverlay, removeOverlayKeys, saveOverlay, hasOverlay, getReceived };
+  return {
+    patients, loading, initialLoading, error, refetch, updateLocal, clearOverlay,
+    removeOverlayKeys, saveOverlay, hasOverlay, getReceived,
+    // The open patient at full width, plus its own load state. `detail` is null
+    // until the fetch resolves — callers must gate writes on that, never fall
+    // back to the (partial) list row.
+    detail, detailLoading, detailError, loadDetail,
+  };
 }

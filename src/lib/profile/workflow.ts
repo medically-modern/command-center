@@ -10,6 +10,24 @@ export interface Patient {
    *  missing group as "not in that group" and falls back to the status flag. */
   groupId?: string;
 
+  /**
+   * ⚠️ This record was built from a NARROW column read (the sidebar list), so
+   * every field outside that set is `""` because it was never fetched — NOT
+   * because the board is blank. The two are indistinguishable once
+   * `mondayItemToPatient` has run (`col()` defaults to `""`), which is why the
+   * marker exists rather than a value check.
+   *
+   * A partial record must never reach a write: `intakeEditsFor` sends every
+   * field back on every save, so one would blank ~90 real columns on the board.
+   * It throws on a partial record instead — see `assertNotPartial`. The panes
+   * and the readiness gate read the full record the detail fetch returns, never
+   * a list row.
+   *
+   * Absent (undefined) on any fully-read patient, so `if (p.partial)` is the
+   * whole test and existing fixtures need no change.
+   */
+  partial?: true;
+
   // ── Demographics ──
   dob: string;
   ptPhone: string;
@@ -433,3 +451,26 @@ export function normalizeDob(input: string): string {
   return `${m}/${d}/${y}`;
 }
 
+
+/**
+ * Refuse a partially-read patient at the door of a write path.
+ *
+ * The sidebar list is fetched with a narrow column set (LIST_COLUMN_IDS), so
+ * its rows carry `""` for every column that was never requested. Sending one
+ * of those to Monday would blank ~90 real columns and nothing would error —
+ * the board would simply lose the data. Throwing is deliberate: silently
+ * skipping would half-apply a save, which is worse than refusing it.
+ *
+ * Callers should never see this. `selected` is null until the detail fetch
+ * resolves and the Save/Advance controls are disabled while it is, so this is
+ * the second line of defence, not the first.
+ */
+export function assertNotPartial(p: Patient, context: string): void {
+  if (p.partial) {
+    throw new Error(
+      `${context}: refusing to write a partially-loaded patient (${p.id}). ` +
+        `Only the sidebar columns were read for this record, so writing it ` +
+        `would blank every other column on the board.`,
+    );
+  }
+}
