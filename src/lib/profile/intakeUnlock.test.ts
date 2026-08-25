@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   evaluateUnlock, patientAuthorised, stediRanCleanly, networkAnswer, inNetwork,
+  networkLabel,
 } from "./intakeUnlock";
 import type { Patient } from "./workflow";
 
@@ -74,6 +75,23 @@ describe("networkAnswer", () => {
 
   it("treats an unrecognised value as unknown rather than a negative", () => {
     expect(networkAnswer(p({ stediInNetwork: "Not applicable" }))).toBe("unknown");
+  });
+
+  // Josh, 2026-08-25: don't substitute our own word for the payer's answer.
+  it("prints an unrecognised answer verbatim, casing and all", () => {
+    expect(networkLabel(p({ stediInNetwork: "Unknown" }))).toBe("Unknown");
+    expect(networkLabel(p({ stediInNetwork: "Not applicable" }))).toBe("Not applicable");
+    expect(networkLabel(p({ stediInNetwork: "  PPO — see plan  " }))).toBe("PPO — see plan");
+  });
+
+  it("normalises the answers it does recognise", () => {
+    expect(networkLabel(p({ stediInNetwork: "in-network" }))).toBe("Yes");
+    expect(networkLabel(p({ stediInNetwork: "Out of Network" }))).toBe("No");
+  });
+
+  it("shows an em dash when nothing came back", () => {
+    expect(networkLabel(p({ stediInNetwork: "" }))).toBe("—");
+    expect(networkLabel(null)).toBe("—");
   });
 
   it("distinguishes nothing-came-back from a real answer", () => {

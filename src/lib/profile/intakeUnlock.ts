@@ -100,6 +100,30 @@ export function inNetwork(p: Patient): boolean {
   return networkAnswer(p) === "yes";
 }
 
+/**
+ * What the benefits readout prints. A recognised answer is normalised to
+ * Yes/No; ⚠️ anything else is shown **VERBATIM** (Josh, 2026-08-25) — the
+ * board's own `Unknown`, and equally whatever else the eligibility service
+ * writes there next.
+ *
+ * Substituting our own word for a value we don't recognise is a smaller
+ * version of the bug this file exists to record: the rep loses the one piece
+ * of evidence that would tell them what the payer actually said, and nobody
+ * finds out the column grew a new vocabulary. Printing it through means a new
+ * answer is visible on the page the day it first appears.
+ *
+ * Kept beside `networkAnswer` rather than in the page so the label and the
+ * rule can never disagree about what counts as a Yes.
+ */
+export function networkLabel(p: Patient | null | undefined): string {
+  switch (networkAnswer(p)) {
+    case "yes": return "Yes";
+    case "no": return "No";
+    case "none": return "—";
+    default: return (p?.stediInNetwork ?? "").trim();
+  }
+}
+
 /** Condition 1: the patient authorised us to send, or the rep completed the
  *  intake call in their place. A patient who asked for a call has NOT
  *  authorised us yet — that is the whole reason this condition exists. */

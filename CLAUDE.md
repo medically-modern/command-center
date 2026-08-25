@@ -1430,8 +1430,12 @@ Canonical rule: **`lib/profile/intakeUnlock.ts` `networkAnswer`** (+ tests) — 
 (`yes · no · unknown · none`), and ⚠️ an **unrecognised** value is `unknown`, never `no`: a string we
 have no rule for is a missing answer, and reporting it as a negative is the bug itself.
 `inNetwork()` survives as `networkAnswer(p) === "yes"` and now drives **only** the readout's green
-Yes. `UnverifiedReferralsPage`'s `NETWORK_LABEL` renders the four states; that field deliberately
-does **not** go through `stediYesNo`, which is a two-state helper and still correct for **Active**.
+Yes. ⚠️ The readout is **`networkLabel`**, in the same module, and it prints an unrecognised answer
+**VERBATIM** (Josh, 2026-08-25) — the board's `Unknown` included, and equally whatever the service
+writes there next. Substituting our own word is a smaller version of the same bug: the rep loses what
+the payer actually said, and a column that grew a new vocabulary announces itself to nobody. Only
+`yes`/`no` are normalised to Yes/No, and a blank is `—`. That field deliberately does **not** go
+through `stediYesNo`, which is a two-state helper and still correct for **Active**.
 ⚠️ **Coverage being INACTIVE still blocks** — that is a real, answerable fact about the patient and
 re-running the check is what clears it. Only the network condition was removed.
 
