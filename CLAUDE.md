@@ -1751,6 +1751,52 @@ screen, so a patient who had received two looked identical to one nobody had eve
 patients never receive those texts, so there the number would be a permanent honest zero that reads
 as broken.
 
+### 5.25 Patient Intake reads in TWO TIERS — slim list, full detail (Aug 2026)
+`New Form — Partial Leads` went from 8 items to 1,866 in one day. The intake page fetched its whole
+queue with all **104** `READ_COLUMN_IDS` on a 15-second poll — ~194k column values a poll, per open
+tab — which drained the account's **~10M/minute Monday complexity budget** within seconds of each
+reset. Monday then 429'd everything for the rest of every minute, so **every role's counts stopped
+loading**, not just this page. Two silent failures came out of the same measurement: the
+localStorage cache had been dead for weeks (`persistPatientCache` swallows the
+`QuotaExceededError` that 4–8 MB of patients throws against a ~5 MB quota), and `initialLoading`
+blocks the page on the first FULL fetch regardless of the cache, so the cache could never have
+helped the load time anyway.
+
+**The list now reads `LIST_COLUMN_IDS` — nine fields — and the patient the rep OPENS is fetched at
+full width into `detail`.** The seam is `selected`: it used to be a list row, and is now the detail
+record, so every pane, the readiness gate and every write are untouched — they cannot tell the
+difference. `useRoleCounts`, both baseline generators, Oversight and Search never went through this
+array and are unaffected.
+
+⚠️ **A list row is `partial` and must NEVER reach a write.** `col()` defaults a missing column to
+`""`, so a narrow row is indistinguishable from a patient whose board record is blank — which is why
+the marker exists rather than a value check. `intakeEditsFor` sends every field on every save, so one
+partial record would blank ~95 real columns with nothing erroring. Three layers stop it: `selected`
+is null until the detail fetch resolves; the whole pane block (Save, Advance, everything) renders
+inside the `selected ? …` branch so the controls do not exist before then; and `assertNotPartial`
+throws at the top of `intakeEditsFor`. **Never fall back to the row on a failed detail fetch** — show
+the error.
+
+⚠️ **`refetch` refreshes the open patient as well as the list, and that is load-bearing.** The Stedi
+settle watcher polls `refetch(true)` waiting for the `stedi*` columns to land (§5.11) — the list no
+longer carries them, so without the detail refresh the reveal would never fire and every run would
+hit the 90-second timeout. Keeping it inside `refetch` is also what leaves every existing
+post-write `refetch(true)` call site working unchanged.
+
+⚠️ **The as-received snapshot is seeded from the DETAIL read, never the list.** `receivedRef` is
+first-write-wins, so a narrow row would freeze `getReceived` at nine columns forever — and the pane
+that reads it shows the call slot the PATIENT picked before a rep overrode it (one column doing two
+jobs, §5.20). It would have read blank, silently. ⚠️ Optimistic overlays apply to `detail` too, or an
+edit shows in the sidebar and nowhere else while still being saved.
+
+**Keep-in-agreement:** every field read by `lib/profile/sidebarList.ts` or
+`components/profile/PatientsSidebar.tsx`, plus the page's `intakeEscalation` manager filter, must be
+in `LIST_COLUMN_IDS`. `listColumns.test.ts` scans those sources and fails the build otherwise —
+adding a field to a row and forgetting the column is the §5.11 trap, and it shows as a permanently
+blank value rather than an error. `useMondayPatients.twoTier.test.tsx` pins the two hazards above.
+Phase 2, when wanted, is **Subscription** (69 cols × 712 items); every other queue is in the tens and
+the waste is immaterial.
+
 ---
 
 ## 6. Patient flow across boards (the big picture)
@@ -2326,6 +2372,7 @@ these services; when their math changes, `oopEstimator.ts` must be updated to ma
 | A patient is parked on "we're waiting for your insurance card" and can't get out | §5.23 — the gate is the FILE column `file_mm5zhy1`, read by `/api/intake/card-on-file/:token`. Nothing else unlocks it, and nothing else needs to |
 | "Auto. Texts" reads 0 for somebody we definitely texted | §5.24 — it counts **only** the intake form's 30-minute + 24-hour nudges (`numeric_mm67822b`). A rep's own text and both link families deliberately do not move it |
 | Cost estimate wrong | `lib/welcomeCall/oopEstimator.ts` (sync vs Railway financial backend) |
+| The intake queue is slow, or a sidebar field reads blank on every row | §5.25 — `LIST_COLUMN_IDS` in `lib/profile/mondayApi.ts`; `listColumns.test.ts` names the missing column. A pane reading blank instead means it is rendering a list row, not `detail` |
 | A pump shipped on a supplies-only patient / a Next Order Date came over blank | §5.22 — `lib/shared/servingLines.ts`; gate Pump Qty on `servingSellsPumpDevice`, **never** `servingIncludesPump` |
 | An address Cardinal won't accept / "Needs Review" on the orders board | §5.17 — `lib/shared/cardinalAddress.ts` (mirror of `Cardinal-api/src/address.js`), surfaced as C25/C26 in `lib/finalConfirm/checkPack.ts` |
 | Who can see what | `lib/accessStore.ts`, `lib/roleView.ts`, `components/AccessProvider.tsx` |

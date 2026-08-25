@@ -39,7 +39,7 @@ import { Button } from "@/components/ui/button";
 import { useBackNavigation } from "@/hooks/useBackNavigation";
 
 import { useMondayPatients } from "@/hooks/profile/useMondayPatients";
-import { GROUPS, fetchClinicLabels, clearFileColumn } from "@/lib/profile/mondayApi";
+import { GROUPS, LIST_COLUMN_IDS, fetchClinicLabels, clearFileColumn } from "@/lib/profile/mondayApi";
 // §6.1: this is the EXISTING component, unchanged. Search, Parachute panel,
 // location grid, order count and notes all behave exactly as on /profile —
 // rebuilding it would fork behaviour reps already rely on.
@@ -57,7 +57,7 @@ import { evaluateUnlock, coverageActive, inNetwork } from "@/lib/profile/intakeU
 import { formatBenefitsFailure } from "@/lib/profile/benefitsFailure";
 // The serving suggestion engine — the same derivation the pre-rewrite panel
 // auto-filled with (canCrossSellCgm × requestType → deriveServing).
-import { canCrossSellCgm, deriveServing, titleCaseAddress } from "@/lib/profile/workflow";
+import { assertNotPartial, canCrossSellCgm, deriveServing, titleCaseAddress } from "@/lib/profile/workflow";
 import {
   addressFormatIssue, foldUnitOntoStreet, isBenefitsCheckAddress,
 } from "@/lib/profile/addressFormat";
@@ -603,6 +603,10 @@ function Card({
   );
 }
 
+/** Module-level so the reference is stable — a fresh object each render would
+ *  re-run the hook's options effect on every single render. */
+const LIST_FETCH_OPTIONS = { listColumns: LIST_COLUMN_IDS } as const;
+
 /**
  * The left pane's edits, as the write layer wants them.
  *
@@ -612,6 +616,16 @@ function Card({
  * can't be saved by one and dropped by the other.
  */
 function intakeEditsFor(p: Patient): IntakeEdits {
+  // ⚠️ Last line of defence. Every field below is sent on every save, so a
+  // sidebar row — which carries `""` for the ~95 columns the list never
+  // fetched — would blank them all on the board, silently.
+  //
+  // In practice this is unreachable: `selected` IS the full detail record, it
+  // is null until that fetch resolves, and the whole pane block (Save, Advance
+  // and every other control) renders inside the `selected ? …` branch, so the
+  // buttons do not exist until there is a full record to act on. This throws
+  // rather than trusting that to stay true.
+  assertNotPartial(p, "intakeEditsFor");
   return {
     name: p.name,
     ptPhone: p.ptPhone,
@@ -754,6 +768,7 @@ const UnverifiedReferralsPage = ({ variant = "infoCollection" }: { variant?: Int
   const {
     patients, loading, initialLoading, error, refetch, updateLocal, hasOverlay, getReceived,
     saveOverlay, clearOverlay,
+    detail, detailLoading, detailError, loadDetail,
     // Clean-Up is ONE group, so the form selector doesn't apply there. It now
     // holds patients from BOTH form groups: a partial a rep completed on the
     // phone advances like any other (2026-08-21), and once it has, which form
@@ -761,6 +776,13 @@ const UnverifiedReferralsPage = ({ variant = "infoCollection" }: { variant?: Int
   } = useMondayPatients(
     searchParams.get("patientId"),
     isCleanUp ? GROUPS.profileCleanUp : SOURCE_GROUP[source],
+    // ⚠️ Two-tier read. The list carries only what a sidebar ROW needs; the
+    // patient the rep opens is fetched at full width into `detail`. This queue
+    // is ~1,900 items on a timer, and reading all 104 columns for every row
+    // exhausted the account's Monday complexity budget (Aug 2026), which 429'd
+    // every other role's counts. Rows are stamped `partial` — they must never
+    // reach a write. See LIST_COLUMN_IDS.
+    LIST_FETCH_OPTIONS,
   );
 
   const [selectedId, setSelectedId] = useState<string | null>(searchParams.get("patientId"));
@@ -814,10 +836,33 @@ const UnverifiedReferralsPage = ({ variant = "infoCollection" }: { variant?: Int
     [visible, variant],
   );
 
-  const selected = useMemo(
+  /**
+   * The sidebar ROW the rep is on.
+   *
+   * ⚠️ PARTIAL — built from LIST_COLUMN_IDS, so every other field on it is `""`
+   * because it was never fetched. Safe for identity and for what the sidebar
+   * renders; safe for nothing else. Never pass it to a write, and never render
+   * a pane from it.
+   */
+  const selectedRow = useMemo(
     () => ordered.find((p) => p.id === selectedId) ?? ordered[0] ?? null,
     [ordered, selectedId],
   );
+
+  // Point the full-width read at whoever the sidebar has selected. `loadDetail`
+  // no-ops when the id is unchanged, so a re-sort of the list (logging an
+  // attempt re-orders least-tried-first) doesn't refetch the open patient.
+  useEffect(() => { loadDetail(selectedRow?.id ?? null); }, [selectedRow?.id, loadDetail]);
+
+  /**
+   * The patient every pane, the readiness gate and every write reads: full
+   * width, overlay-merged, and NULL until the detail fetch resolves.
+   *
+   * Deliberately not falling back to `selectedRow` while it loads — a partial
+   * record would put ~95 blank fields in front of a rep as though the board
+   * were empty, and could reach a save.
+   */
+  const selected = detail;
 
   /**
    * Who is open RIGHT NOW, readable from inside a stale closure.
@@ -2245,7 +2290,29 @@ const UnverifiedReferralsPage = ({ variant = "infoCollection" }: { variant?: Int
             </div>
           )}
 
-          {!selected ? (
+          {/* Three states, not two. The panes read the full-width `detail`
+              record, which arrives one fetch after the row is selected — so
+              "loading this patient" and "no patient selected" are different
+              things and must not share a message. An error is NOT a fall back
+              to `selectedRow`: that record is partial, and rendering it would
+              show ~95 blank fields as though the board held nothing. */}
+          {detailLoading && !selected ? (
+            <div className="m-6 flex items-center gap-2 text-sm text-muted-foreground">
+              <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+              <span>Loading {selectedRow?.name ?? "patient"}…</span>
+            </div>
+          ) : detailError && !selected ? (
+            <div className="m-6 flex flex-col items-start gap-2 text-sm">
+              <span className="text-destructive">{detailError}</span>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => { const id = selectedRow?.id; if (id) { loadDetail(null); loadDetail(id); } }}
+              >
+                Try again
+              </Button>
+            </div>
+          ) : !selected ? (
             <div className="m-6 text-sm text-muted-foreground">Select a patient.</div>
           ) : (
             <div className="pf-root flex-1 flex flex-col min-w-0 overflow-hidden">

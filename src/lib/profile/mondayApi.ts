@@ -293,6 +293,34 @@ export const READ_COLUMN_IDS: string[] = [
   COL.intakeEscalation, COL.intakeSubStage, COL.dupCheckResult,
 ];
 
+/**
+ * The columns a SIDEBAR ROW needs — nothing more.
+ *
+ * The intake queue is ~1,900 items and polls on a timer, so reading all 104
+ * columns for every row costs ~194k column values a poll, per open tab. That
+ * saturated the account's Monday complexity budget in Aug 2026 and 429'd every
+ * other role's counts. The list reads these nine; the patient a rep actually
+ * opens is fetched at full width by `fetchItemById`.
+ *
+ * ⚠️ KEEP IN AGREEMENT with what the list renders. Every field read by
+ * `lib/profile/sidebarList.ts` or `components/profile/PatientsSidebar.tsx`, and
+ * by the manager-view filter in `UnverifiedReferralsPage`, must appear here or
+ * it silently reads `""` on every row — the §5.11 trap. `listColumns.test.ts`
+ * fails the build if one is missing.
+ *
+ * Not here, deliberately: `alreadyInSystem` / `referralType` (this page's queue
+ * is the GROUP — it never runs `profileReferralRole`), and `dupCheckResult` /
+ * `intakeSubStage` (patient header only, i.e. the detail record).
+ */
+export const LIST_COLUMN_IDS: string[] = [
+  // Grouping + ordering in sidebarList.ts
+  COL.referralSource, COL.attemptCounter, COL.dropOffAttempt, COL.followUp,
+  // Rendered on the row itself
+  COL.followUpDate, COL.dateOfIntake,
+  // The page's manager-view filter (?origin=manager-intervention / final-decisions)
+  COL.intakeEscalation,
+];
+
 export interface MondayColumnValue {
   id: string;
   text: string | null;
@@ -353,9 +381,18 @@ const PAGE = 200;
  * Already-In-System patient when the status column was never written, so the
  * page can't route without it.
  */
+/**
+ * Every item in one or more groups.
+ *
+ * `cols` defaults to the full read set so existing callers are unchanged. The
+ * intake queue passes `LIST_COLUMN_IDS` instead — see the note there for why,
+ * and note that a narrow read produces records whose unfetched fields are `""`,
+ * which callers must mark `partial` so they can never reach a write.
+ */
 export async function fetchGroupItems(
   groupId: string | string[] = GROUPS.intake,
   onMore?: (items: MondayItem[]) => void,
+  cols: string[] = READ_COLUMN_IDS,
 ): Promise<MondayItem[]> {
   const groupIds = Array.isArray(groupId) ? groupId : [groupId];
   const query = `
@@ -375,7 +412,7 @@ export async function fetchGroupItems(
   `;
   const data = await gql<{ boards: { items_page: { cursor: string | null; items: MondayItem[] } }[] }>(query, {
     boardId: BOARD_ID,
-    cols: READ_COLUMN_IDS,
+    cols,
   });
   const firstPage = data.boards?.[0]?.items_page?.items ?? [];
   let cursor = data.boards?.[0]?.items_page?.cursor ?? null;
@@ -392,7 +429,7 @@ export async function fetchGroupItems(
           }
         }
       `;
-      const next = await gql<{ next_items_page: { cursor: string | null; items: MondayItem[] } }>(nextQuery, { cursor, cols: READ_COLUMN_IDS });
+      const next = await gql<{ next_items_page: { cursor: string | null; items: MondayItem[] } }>(nextQuery, { cursor, cols });
       const items = next.next_items_page?.items ?? [];
       cursor = next.next_items_page?.cursor ?? null;
       if (items.length > 0) {

@@ -36,11 +36,23 @@ function fileAssetIds(item: MondayItem, colId: string): string {
 
 /**
  * Convert a Monday board item into a Patient object.
+ *
+ * ⚠️ `col()` defaults a missing column to `""`, so an item fetched with a
+ * NARROW column set produces a Patient that looks fully-populated-but-blank.
+ * Pass `{ partial: true }` whenever the item came from anything less than
+ * `READ_COLUMN_IDS` — it stamps the record so a write path can refuse it
+ * (`assertNotPartial`) instead of blanking ~90 real columns on the board.
  */
-export function mondayItemToPatient(item: MondayItem): Patient {
+export function mondayItemToPatient(
+  item: MondayItem,
+  opts?: { partial?: boolean },
+): Patient {
   return {
     id: item.id,
     name: item.name,
+    // Only ever `true` or absent — never `false`, so `if (p.partial)` is the
+    // whole test and a full record serialises exactly as it did before.
+    ...(opts?.partial ? { partial: true as const } : {}),
     // Which board group the item is in. Already In System is a group as well as
     // a status column, and items land there with the column sometimes still
     // blank — so the queue split needs the group, not just the flag (§5.10).
