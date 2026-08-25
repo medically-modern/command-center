@@ -49,11 +49,15 @@ import BookingLinkDialog from "@/components/scheduledCalls/BookingLinkDialog";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
 } from "@/components/ui/dialog";
-// `coverageActive` / `inNetwork` are imported so the benefits-check readout
-// renders from the SAME predicates the unlock checklist gates on — a second
-// copy of "is this in network" is how a green readout ends up sitting next to
-// a blocked advance.
-import { evaluateUnlock, coverageActive, inNetwork } from "@/lib/profile/intakeUnlock";
+// `coverageActive` / `networkAnswer` are imported so the benefits-check
+// readout reads the SAME vocabulary the unlock checklist does — a second copy
+// of "is this in network" is how a green readout ends up sitting next to a
+// blocked advance. (`coverageActive` still gates; the network answer no
+// longer does — see `evaluateUnlock`.)
+import {
+  evaluateUnlock, coverageActive, inNetwork, networkAnswer,
+  type NetworkAnswer,
+} from "@/lib/profile/intakeUnlock";
 import { formatBenefitsFailure } from "@/lib/profile/benefitsFailure";
 // The serving suggestion engine — the same derivation the pre-rewrite panel
 // auto-filled with (canCrossSellCgm × requestType → deriveServing).
@@ -201,6 +205,20 @@ const SOURCE_LABEL: Record<Source, string> = {
  */
 const stediYesNo = (raw: string | undefined, decided: boolean): string =>
   (raw ?? "").trim() ? (decided ? "Yes" : "No") : "—";
+
+/** ⚠️ The network answer is NOT a Yes/No, so it does not go through
+ *  `stediYesNo` (Thomas Swan, 2026-08-25). The eligibility check returns the
+ *  literal `Unknown` whenever the payer has no network to be in or out of —
+ *  Original Medicare A&B every time — and printing that as "No" told the rep
+ *  the patient was out-of-network when nobody had said any such thing. The
+ *  vocabulary lives in `networkAnswer`, the same module the gate reads, so the
+ *  readout and the blocker list still cannot disagree. */
+const NETWORK_LABEL: Record<NetworkAnswer, string> = {
+  yes: "Yes",
+  no: "No",
+  unknown: "Unknown",
+  none: "—",
+};
 
 /** Dropdowns sort alphabetically (Josh, 2026-08-18) so every variant of a
  *  payer — all the Fidelis plans, all the Anthems — sits together. Only the
@@ -2924,9 +2942,12 @@ const UnverifiedReferralsPage = ({ variant = "infoCollection" }: { variant?: Int
                     Nothing was added to the read path — all four were already
                     in READ_COLUMN_IDS and on the Patient, just never rendered.
 
-                    ⚠️ Yes/No comes from `inNetwork()` / `coverageActive()`, the
-                    same predicates `evaluateUnlock` gates the advance on, so
-                    this readout cannot disagree with the blocker list. */}
+                    ⚠️ Both readouts come from `networkAnswer()` /
+                    `coverageActive()`, the same module `evaluateUnlock` reads,
+                    so this readout cannot disagree with the blocker list.
+                    Active still gates the advance; In Network no longer does —
+                    it is shown here so a rep can act on a genuine
+                    Out-of-Network, and blocks nothing. */}
                 {[
                   selected.stediInNetwork,
                   selected.stediEligibilityActive,
@@ -2934,13 +2955,13 @@ const UnverifiedReferralsPage = ({ variant = "infoCollection" }: { variant?: Int
                 ].some((v) => (v ?? "").trim()) && (
                   <div className="fgrid" style={{ marginTop: 18 }}>
                     {/* Green Yes (Josh, 2026-08-18): the two go/no-go answers
-                        read at a glance. Only Yes gets the colour — blank "—"
-                        and No stay neutral. */}
+                        read at a glance. Only Yes gets the colour — blank "—",
+                        "Unknown" and No stay neutral. */}
                     <Field
                       boxed
                       label="In Network"
-                      value={stediYesNo(selected.stediInNetwork, inNetwork(selected))}
-                      good={stediYesNo(selected.stediInNetwork, inNetwork(selected)) === "Yes"}
+                      value={NETWORK_LABEL[networkAnswer(selected)]}
+                      good={inNetwork(selected)}
                     />
                     <Field
                       boxed

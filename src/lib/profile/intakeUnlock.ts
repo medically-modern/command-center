@@ -1,6 +1,6 @@
 /**
  * The advance-unlock rule for the Unverified Referrals intake stage
- * (HANDOFF §2). All four conditions must pass before a rep can advance a
+ * (HANDOFF §2). Every condition must pass before a rep can advance a
  * patient to Profile Clean-Up.
  *
  * Kept as a pure module so the checklist the rep sees and the guard on the
@@ -11,7 +11,7 @@
 import type { Patient } from "./workflow";
 
 export interface UnlockCondition {
-  id: "authorised" | "stediRan" | "active" | "inNetwork" | "cgmPath" | "pumpPath";
+  id: "authorised" | "stediRan" | "active" | "cgmPath" | "pumpPath";
   label: string;
   passed: boolean;
   /** Shown when the condition fails — what the rep should actually do. */
@@ -61,9 +61,43 @@ export function coverageActive(p: Patient): boolean {
   return v === "yes" || v === "active" || v === "true";
 }
 
+/**
+ * The network answer has FOUR states, and collapsing them to two is the bug
+ * this replaces (Thomas Swan, 2026-08-25).
+ *
+ * `In Network?` (`text_mm1xehx8`) is written by the `stedi-monday-integration`
+ * service, and it does not always carry an answer: a 271 for Original Medicare
+ * A&B has no network indicator at all — fee-for-service Medicare has no
+ * network, only supplier participation — so the column comes back the literal
+ * string `Unknown`. The old boolean read anything-that-isn't-Yes as a No, so
+ * the page told the rep the patient was OUT-of-network, which is a different
+ * and false statement, and the advance gate then stranded them on a condition
+ * that could never come back Yes.
+ *
+ * ⚠️ An UNRECOGNISED value is `unknown`, never `no`. A string we have no rule
+ * for is a missing answer; reporting it as a negative is exactly what went
+ * wrong. On the live board (2026-08-25) this column held Yes x2 and Unknown x9
+ * across 500 rows — not one real negative had ever been written.
+ */
+export type NetworkAnswer = "yes" | "no" | "unknown" | "none";
+
+const NETWORK_YES = new Set(["yes", "in network", "in-network", "true"]);
+const NETWORK_NO = new Set([
+  "no", "out of network", "out-of-network", "not in network", "oon", "false",
+]);
+
+export function networkAnswer(p: Patient | null | undefined): NetworkAnswer {
+  const v = (p?.stediInNetwork ?? "").trim().toLowerCase();
+  if (!v) return "none";
+  if (NETWORK_YES.has(v)) return "yes";
+  if (NETWORK_NO.has(v)) return "no";
+  return "unknown";
+}
+
+/** Positively confirmed in-network. Drives the readout's green Yes ONLY — it
+ *  is deliberately not a gate any more (see `evaluateUnlock`). */
 export function inNetwork(p: Patient): boolean {
-  const v = (p.stediInNetwork ?? "").trim().toLowerCase();
-  return v === "yes" || v === "in network" || v === "in-network" || v === "true";
+  return networkAnswer(p) === "yes";
 }
 
 /** Condition 1: the patient authorised us to send, or the rep completed the
@@ -103,13 +137,19 @@ export function evaluateUnlock(p: Patient | null | undefined): UnlockState {
       passed: coverageActive(p),
       hint: "Coverage came back inactive — call the patient and confirm their plan.",
     },
-    {
-      id: "inNetwork",
-      label: "Plan is in-network",
-      passed: inNetwork(p),
-      hint: "Out-of-network — this needs escalation, not an advance.",
-    },
   ];
+
+  /* ⚠️ THE NETWORK ANSWER NO LONGER GATES THE ADVANCE (Josh, 2026-08-25).
+     There used to be a fourth condition here — "Plan is in-network", hinting
+     "Out-of-network — this needs escalation, not an advance" — and it was
+     unpassable for whole populations: Original Medicare returns `Unknown` for
+     network (see `networkAnswer`), which the old boolean read as a No, so
+     those patients sat in the queue with a greyed-out Advance and no route
+     out. That is the same dead end §5.10 records reversing for Verified
+     Referrals. The answer is still SHOWN in the benefits readout, where a rep
+     can act on a genuine Out-of-Network; this stage warns, it does not block.
+     Coverage being INACTIVE still blocks — that is a real, answerable fact
+     about the patient, and re-running the check is what clears it. */
 
   // Coverage paths block the advance (Josh, 2026-08-18) — but only for the
   // product categories actually in play, so a CGM-only patient is never asked

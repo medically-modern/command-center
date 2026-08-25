@@ -1415,6 +1415,26 @@ column, so unlike Already In System (§5.10) there is no "arrived with it blank"
 The Advance gate is `unlock.unlocked` **alone** — `readyMissing` counts the right pane's work, which
 is the stage this button hands the patient *to*, so requiring it would make the queue unexitable.
 
+⚠️ **The network answer is SHOWN, never gated — and `Unknown` is not a `No`** (Josh, 2026-08-25).
+`evaluateUnlock` used to carry a fourth condition, *"Plan is in-network"*, hinting *"Out-of-network —
+this needs escalation, not an advance"*. Both halves were wrong for whole populations. **In Network?**
+`text_mm1xehx8` is written by `stedi-monday-integration` and does not always carry an answer: a 271
+for **Original Medicare A&B** has no network indicator at all (fee-for-service Medicare has no
+network — only supplier participation), so the column comes back the literal string **`Unknown`**.
+The old boolean read anything-that-isn't-Yes as a No, so the readout printed **No** and the gate then
+stranded the patient on a condition that could never pass — the same dead end §5.10 records reversing
+for Verified Referrals. Reported on **Thomas Swan** (`12895859856`), Medicare A&B, DMERC Region C.
+A board scan the same day found the column held **Yes ×2 and Unknown ×9 across 500 rows — not one
+real negative had ever been written**, so the gate had only ever fired on missing data.
+Canonical rule: **`lib/profile/intakeUnlock.ts` `networkAnswer`** (+ tests) — four states
+(`yes · no · unknown · none`), and ⚠️ an **unrecognised** value is `unknown`, never `no`: a string we
+have no rule for is a missing answer, and reporting it as a negative is the bug itself.
+`inNetwork()` survives as `networkAnswer(p) === "yes"` and now drives **only** the readout's green
+Yes. `UnverifiedReferralsPage`'s `NETWORK_LABEL` renders the four states; that field deliberately
+does **not** go through `stediYesNo`, which is a two-state helper and still correct for **Active**.
+⚠️ **Coverage being INACTIVE still blocks** — that is a real, answerable fact about the patient and
+re-running the check is what clears it. Only the network condition was removed.
+
 **Propose Stuck is the SAME system on both** (Josh, 2026-08-19 — "doesn't matter if they came from
 either of the new roles"). Same ladder, same modal, same manager decisions. ⚠️ Which is why
 `EscalationCard` (the `StageActionBar`) was **extracted to one component rendered on both panes**:
@@ -2321,6 +2341,7 @@ these services; when their math changes, `oopEstimator.ts` must be updated to ma
 | A DTC form patient wasn't duplicate-checked / the "Already In System" pill is missing | §5.21 — `lib/profile/dupCheckFlag.ts` reads **Dup Check Result**, never `alreadyInSystem`; the service half is `josh-monday-automations` `automations/duplicate-patient-check.js` |
 | A CareCentrix referral arrived half-empty / which intake form should reps use | §5.20 — the **Intake Form on Profile Send Off** (view `246988391`) is lossless; DTC Intake's Manual Patient Intake Form drops 12 fields at the board hop. `"source":"form"` in the item's `create_pulse` tells you which path it took |
 | Provided Doctor Name / Clinic Phone empty on a CareCentrix intake | §5.20 — `lib/profile/referralDoctorInfo.ts`; the manual intake form fills the VERIFIED doctor columns, and the fallback is display-only |
+| A patient reads "not in network" / Advance is greyed out on an intake patient | §5.20 — `lib/profile/intakeUnlock.ts` `networkAnswer`. `Unknown` is what Original Medicare returns and is **not** a No; the network answer gates nothing |
 | A DTC intake patient is in the wrong half of the split / Advance did nothing | §5.20 — `lib/profile/intakeSubStage.ts` (the queue is the GROUP), then `unverifiedWrite.advanceToProfileCleanUp`. Both roles are `UnverifiedReferralsPage` under a `variant` prop |
 | A patient got two "here's your link" texts / the insurance step asked for a card they already sent | §5.23 — the once-only stamps are **on the board** (`date_mm6eakae` / `date_mm6eev4b`), and `uploadLink.js` `UPLOAD_KINDS` decides which column a link writes to |
 | A patient is parked on "we're waiting for your insurance card" and can't get out | §5.23 — the gate is the FILE column `file_mm5zhy1`, read by `/api/intake/card-on-file/:token`. Nothing else unlocks it, and nothing else needs to |

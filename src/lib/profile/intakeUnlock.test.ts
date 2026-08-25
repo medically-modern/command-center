@@ -1,5 +1,7 @@
 import { describe, it, expect } from "vitest";
-import { evaluateUnlock, patientAuthorised, stediRanCleanly } from "./intakeUnlock";
+import {
+  evaluateUnlock, patientAuthorised, stediRanCleanly, networkAnswer, inNetwork,
+} from "./intakeUnlock";
 import type { Patient } from "./workflow";
 
 const base = {
@@ -50,20 +52,50 @@ describe("stediRanCleanly", () => {
   });
 });
 
+describe("networkAnswer", () => {
+  it("reads the payer's Yes", () => {
+    expect(networkAnswer(p({ stediInNetwork: "Yes" }))).toBe("yes");
+    expect(networkAnswer(p({ stediInNetwork: "In-Network" }))).toBe("yes");
+    expect(inNetwork(p({ stediInNetwork: "yes" }))).toBe(true);
+  });
+
+  it("reads a real negative as a negative", () => {
+    expect(networkAnswer(p({ stediInNetwork: "No" }))).toBe("no");
+    expect(networkAnswer(p({ stediInNetwork: "Out of Network" }))).toBe("no");
+    expect(inNetwork(p({ stediInNetwork: "No" }))).toBe(false);
+  });
+
+  // The Thomas Swan case: Original Medicare has no network, so the eligibility
+  // service writes the literal string. It is NOT a No.
+  it("reports the board's literal Unknown as unknown, not as No", () => {
+    expect(networkAnswer(p({ stediInNetwork: "Unknown" }))).toBe("unknown");
+    expect(inNetwork(p({ stediInNetwork: "Unknown" }))).toBe(false);
+  });
+
+  it("treats an unrecognised value as unknown rather than a negative", () => {
+    expect(networkAnswer(p({ stediInNetwork: "Not applicable" }))).toBe("unknown");
+  });
+
+  it("distinguishes nothing-came-back from a real answer", () => {
+    expect(networkAnswer(p({ stediInNetwork: "" }))).toBe("none");
+    expect(networkAnswer(p({ stediInNetwork: "   " }))).toBe("none");
+    expect(networkAnswer(null)).toBe("none");
+  });
+});
+
 describe("evaluateUnlock", () => {
   it("stays locked until every condition passes", () => {
     const almost = evaluateUnlock(
       p({
         formProceedPreference: "Send request now",
-        stediEligibilityActive: "Yes",
-        stediInNetwork: "", // missing
+        stediEligibilityActive: "", // never ran
       }),
     );
     expect(almost.unlocked).toBe(false);
-    expect(almost.conditions.find((c) => c.id === "inNetwork")?.passed).toBe(false);
+    expect(almost.conditions.find((c) => c.id === "stediRan")?.passed).toBe(false);
   });
 
-  it("unlocks when all four pass", () => {
+  it("unlocks when every condition passes", () => {
     const ready = evaluateUnlock(
       p({
         formProceedPreference: "Send request now",
@@ -73,6 +105,36 @@ describe("evaluateUnlock", () => {
     );
     expect(ready.unlocked).toBe(true);
     expect(ready.conditions.every((c) => c.passed)).toBe(true);
+  });
+
+  // Josh, 2026-08-25. The network answer is shown, never gated: an Original
+  // Medicare patient can only ever come back Unknown, so gating on it left
+  // whole populations in the queue with a greyed-out Advance and no way out.
+  it("never blocks on the network answer, whatever it says", () => {
+    const authorisedAndActive = {
+      formProceedPreference: "Send request now",
+      stediEligibilityActive: "Yes",
+    };
+    for (const v of ["", "Unknown", "No", "Out of Network", "Yes"]) {
+      const s = evaluateUnlock(p({ ...authorisedAndActive, stediInNetwork: v }));
+      expect(s.unlocked, `stediInNetwork=${JSON.stringify(v)}`).toBe(true);
+      expect(s.conditions.some((c) => /network/i.test(c.label))).toBe(false);
+    }
+  });
+
+  // Inactive coverage is a real, answerable fact about the patient and still
+  // holds the advance — only the network condition was removed.
+  it("still blocks on inactive coverage", () => {
+    const s = evaluateUnlock(
+      p({
+        formProceedPreference: "Send request now",
+        stediPlanName: "Some Plan",
+        stediEligibilityActive: "No",
+        stediInNetwork: "Yes",
+      }),
+    );
+    expect(s.unlocked).toBe(false);
+    expect(s.conditions.find((c) => c.id === "active")?.passed).toBe(false);
   });
 
   it("surfaces the Stedi error text in the hint so the rep can act on it", () => {
