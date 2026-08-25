@@ -108,6 +108,42 @@ describe("two-tier read", () => {
   });
 });
 
+describe("full-width callers still get their snapshot from the LIST", () => {
+  // Regression, caught in review of the original two-tier PR. ProfilePage reads
+  // `getReceived(selected.id) ?? selected` and never calls `loadDetail`, so
+  // dropping the list seeding unconditionally left its "as received" card
+  // falling through to the LIVE record — which then drifts as the rep edits and
+  // as Monday refreshes, silently losing the first-seen values it exists to
+  // preserve. Seeding is skipped only when the read was narrow.
+  it("seeds receivedRef from the list when no column set is given", async () => {
+    fetchGroupItems.mockResolvedValue([fullItem("1", "Ann Lee", "Tue 9:00 AM")]);
+    const { result } = renderHook(() => useMondayPatients(null, "group_mm1xf2jb"));
+    await waitFor(() => expect(result.current.patients).toHaveLength(1));
+
+    // No loadDetail call anywhere — this is the full-width page's flow.
+    expect(result.current.getReceived("1")?.formCallSlot).toBe("Tue 9:00 AM");
+  });
+
+  it("does NOT seed from the list when the read was narrow", async () => {
+    const { result } = renderHook(() => useMondayPatients(null, "group_mm5z87zt", OPTS));
+    await waitFor(() => expect(result.current.patients).toHaveLength(1));
+    // The narrow row would have frozen the snapshot at nine columns.
+    expect(result.current.getReceived("1")).toBeUndefined();
+  });
+
+  it("a full-width snapshot survives later board changes", async () => {
+    fetchGroupItems.mockResolvedValue([fullItem("1", "Ann Lee", "Tue 9:00 AM")]);
+    const { result } = renderHook(() => useMondayPatients(null, "group_mm1xf2jb"));
+    await waitFor(() => expect(result.current.patients).toHaveLength(1));
+
+    fetchGroupItems.mockResolvedValue([fullItem("1", "Ann Lee", "Thu 3:00 PM")]);
+    await act(async () => { await result.current.refetch(true); });
+
+    expect(result.current.patients[0].formCallSlot).toBe("Thu 3:00 PM");
+    expect(result.current.getReceived("1")?.formCallSlot).toBe("Tue 9:00 AM");
+  });
+});
+
 describe("hazard 1 — the as-received snapshot comes from the DETAIL read", () => {
   it("keeps the patient's own form answer, not the narrow row's blank", async () => {
     const { result } = renderHook(() => useMondayPatients(null, "group_mm5z87zt", OPTS));

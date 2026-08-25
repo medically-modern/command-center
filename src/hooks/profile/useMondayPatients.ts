@@ -235,10 +235,22 @@ export function useMondayPatients(
       // Stamped `partial` whenever the read was narrow, so nothing downstream
       // can mistake "never fetched" for "blank on the board".
       const ps = safeItems.map((it) => mondayItemToPatient(it, { partial: !!listColumns }));
-      // ⚠️ The as-received snapshot is NOT taken here. It used to be, but a
-      // narrow list row would capture nine columns and — because the snapshot
-      // is first-write-wins — keep them forever. It is taken in `fetchDetail`
-      // instead, off the full record.
+      // ⚠️ Seed the as-received snapshot from the list ONLY when the list is
+      // full-width. The snapshot is first-write-wins, so a NARROW row would
+      // capture nine columns and keep them forever — which is why the two-tier
+      // caller takes it in `fetchDetail` instead, off the full record.
+      //
+      // But it must still be seeded here for full-width callers: ProfilePage
+      // reads `getReceived(selected.id) ?? selected` and never calls
+      // `loadDetail`, so skipping this unconditionally left its "as received"
+      // card falling through to the LIVE record — which then drifts as the rep
+      // edits and as Monday refreshes, silently losing the first-seen values
+      // the card exists to preserve.
+      if (!listColumns) {
+        for (const base of ps) {
+          if (!receivedRef.current[base.id]) receivedRef.current[base.id] = base;
+        }
+      }
       const merged = applyOverlays(ps);
 
       // Read through a ref: `refetch` is deliberately stable (recreating it

@@ -768,7 +768,10 @@ const UnverifiedReferralsPage = ({ variant = "infoCollection" }: { variant?: Int
   const {
     patients, loading, initialLoading, error, refetch, updateLocal, hasOverlay, getReceived,
     saveOverlay, clearOverlay,
-    detail, detailLoading, detailError, loadDetail,
+    // `detailLoading` is deliberately not taken: the pane keys off "a row is
+    // selected but has no usable record yet", which also covers the frame
+    // before the load has even started. See the render branch.
+    detail, detailError, loadDetail,
     // Clean-Up is ONE group, so the form selector doesn't apply there. It now
     // holds patients from BOTH form groups: a partial a rep completed on the
     // phone advances like any other (2026-08-21), and once it has, which form
@@ -861,8 +864,16 @@ const UnverifiedReferralsPage = ({ variant = "infoCollection" }: { variant?: Int
    * Deliberately not falling back to `selectedRow` while it loads — a partial
    * record would put ~95 blank fields in front of a rep as though the board
    * were empty, and could reach a save.
+   *
+   * ⚠️ The id check is not belt-and-braces. `loadDetail` runs in an effect,
+   * i.e. AFTER the render that changed the selection, so for one frame the
+   * sidebar highlights the new patient while `detail` still holds the previous
+   * one — with the panes rendered and every action live. A click landing in
+   * that frame would act on the patient the rep just left. Pinning `selected`
+   * to the selected ROW makes that state unrepresentable rather than merely
+   * unlikely; same reasoning as `selectedIdRef` below.
    */
-  const selected = detail;
+  const selected = detail && detail.id === selectedRow?.id ? detail : null;
 
   /**
    * Who is open RIGHT NOW, readable from inside a stale closure.
@@ -2296,22 +2307,29 @@ const UnverifiedReferralsPage = ({ variant = "infoCollection" }: { variant?: Int
               things and must not share a message. An error is NOT a fall back
               to `selectedRow`: that record is partial, and rendering it would
               show ~95 blank fields as though the board held nothing. */}
-          {detailLoading && !selected ? (
-            <div className="m-6 flex items-center gap-2 text-sm text-muted-foreground">
-              <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
-              <span>Loading {selectedRow?.name ?? "patient"}…</span>
-            </div>
-          ) : detailError && !selected ? (
-            <div className="m-6 flex flex-col items-start gap-2 text-sm">
-              <span className="text-destructive">{detailError}</span>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => { const id = selectedRow?.id; if (id) { loadDetail(null); loadDetail(id); } }}
-              >
-                Try again
-              </Button>
-            </div>
+          {selectedRow && !selected ? (
+            detailError ? (
+              <div className="m-6 flex flex-col items-start gap-2 text-sm">
+                <span className="text-destructive">{detailError}</span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => { const id = selectedRow.id; loadDetail(null); loadDetail(id); }}
+                >
+                  Try again
+                </Button>
+              </div>
+            ) : (
+              /* Keyed on "a row is selected but its full record isn't ready",
+                 not on `detailLoading` — the frame between the selection
+                 changing and the effect firing has neither a usable record nor
+                 a request in flight, and flashing "Select a patient." at a rep
+                 who just clicked one reads as the click having failed. */
+              <div className="m-6 flex items-center gap-2 text-sm text-muted-foreground">
+                <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                <span>Loading {selectedRow.name || "patient"}…</span>
+              </div>
+            )
           ) : !selected ? (
             <div className="m-6 text-sm text-muted-foreground">Select a patient.</div>
           ) : (
