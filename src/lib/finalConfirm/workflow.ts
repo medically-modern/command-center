@@ -321,6 +321,14 @@ export const CGM_TYPE_OPTIONS = [
   { index: 7, label: "Dexcom G7 15-Day" },
   { index: 8, label: "Dexcom G6" },
   { index: 9, label: "Not Serving" },
+  // Added to the board after this list was first written. Monday assigns a
+  // status index when the label is CREATED, taking the lowest free slot - so
+  // this is 10 here and must NOT be copied to another board's list, where 10
+  // means something else entirely (Subscription's Sensors Type uses 10 for
+  // "Not Serving"). Without this entry a Simplera Sync patient cannot be
+  // selected at all: the board holds the value, the dropdown has no option
+  // matching it, and the field renders blank with no error.
+  { index: 10, label: "Simplera Sync" },
 ];
 
 export const REQUEST_TYPE_OPTIONS = [

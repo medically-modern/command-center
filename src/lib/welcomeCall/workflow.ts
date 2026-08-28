@@ -2,6 +2,9 @@
  * Welcome Call Checklist — Data Model
  */
 
+import type { CallIntake } from "./callIntake";
+import { etToday } from "@/lib/masheke/etDate";
+
 export interface Patient {
   id: string;
   name: string;
@@ -93,6 +96,24 @@ export interface Patient {
   ipAuthResult: string;
   infusionSetAuthResult: string;
   cartridgeAuthResult: string;
+  /** Auth validity windows, YYYY-MM-DD or "" (MM-1080). Read-only; the status
+   *  alone doesn't say through when, and nothing writes a note when a retry
+   *  finally approves. The "CGM" pair is the board's MONITOR line. */
+  cgmAuthStart: string;
+  cgmAuthEnd: string;
+  sensorsAuthStart: string;
+  sensorsAuthEnd: string;
+  ipAuthStart: string;
+  ipAuthEnd: string;
+  infusionSetAuthStart: string;
+  infusionSetAuthEnd: string;
+  cartridgeAuthStart: string;
+  cartridgeAuthEnd: string;
+  /** POS as the board currently holds it ("Office" | "Home" | ""). This stage
+   *  WRITES it from Primary Insurance + address and never lets the rep set it,
+   *  so this is purely so the card can show what the rule decided — and flag a
+   *  board value that disagrees with the current inputs. */
+  pos: string;
   // Benefits (read-only)
   deductible: string;
   deductibleRemaining: string;
@@ -133,6 +154,13 @@ export interface Patient {
   sosNeverBilledMonitor: boolean;
   /** "CGM Monitor SoS Last Bill" — YYYY-MM-DD or "". */
   sosLastBillMonitor: string;
+  /** Welcome Call facts that have NO Monday column — the five confirmation
+   *  flags, caretaker, extra phone numbers, supply length, the OOP amount
+   *  quoted and free-text auth notes. Captured in the form, serialised into the
+   *  Notes column on send and parsed back out on load
+   *  (lib/welcomeCall/callIntake.ts). Optional because hand-built test fixtures
+   *  and the sidebar's slim patient objects predate it. */
+  callIntake?: CallIntake;
 }
 
 // Infusion Set 1 / 2 options are NOT hardcoded here any more.
@@ -182,6 +210,14 @@ export const CGM_TYPE_OPTIONS = [
   { index: 7, label: 'Dexcom G7 15-Day' },
   { index: 8, label: 'Dexcom G6' },
   { index: 9, label: 'Not Serving' },
+  // Added to the board after this list was first written. Monday assigns a
+  // status index when the label is CREATED, taking the lowest free slot - so
+  // this is 10 here and must NOT be copied to another board's list, where 10
+  // means something else entirely (Subscription's Sensors Type uses 10 for
+  // "Not Serving"). Without this entry a Simplera Sync patient cannot be
+  // selected at all: the board holds the value, the dropdown has no option
+  // matching it, and the field renders blank with no error.
+  { index: 10, label: 'Simplera Sync' },
 ];
 
 export const SERVING_OPTIONS = [
@@ -332,6 +368,57 @@ export function formatDateMDY(raw: string): string {
     return `${match[2]}/${match[3]}/${match[1]}`;
   }
   return raw;
+}
+
+/* ─── Auth validity windows (MM-1080) ─── */
+
+/** How a product's auth window reads today. */
+export type AuthWindowState = "none" | "ok" | "expiring" | "expired";
+
+export interface AuthWindow {
+  /** Rep-facing phrase, e.g. "through 03/15/2027" or "03/15/2026 – 03/15/2027". */
+  text: string;
+  state: AuthWindowState;
+  /** Whole days from today to the end date; negative once past. Null with no end date. */
+  daysLeft: number | null;
+}
+
+/** Auths inside this many days are called out rather than shown as simply valid. */
+export const AUTH_EXPIRING_SOON_DAYS = 30;
+
+/** Days between two YYYY-MM-DD strings, parsed as UTC on both sides so the
+ *  runtime's timezone can never shift the answer (CLAUDE.md §9 — Monday dates
+ *  are timezone-naive ET; comparing them via a bare `new Date()` in a UTC
+ *  container is the bug this avoids). */
+function daysBetweenIso(fromIso: string, toIso: string): number | null {
+  const a = fromIso.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  const b = toIso.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!a || !b) return null;
+  const from = Date.UTC(+a[1], +a[2] - 1, +a[3]);
+  const to = Date.UTC(+b[1], +b[2] - 1, +b[3]);
+  return Math.round((to - from) / 86400000);
+}
+
+/**
+ * Turn an auth start/end pair into something a rep can read out on the call.
+ *
+ * The END date is what decides the state: an auth with no end date can't be
+ * judged, so it reports "none" rather than guessing it is valid. A start date
+ * on its own is shown but still can't establish coverage.
+ */
+export function authWindow(start: string, end: string, today: string = etToday()): AuthWindow {
+  const s = formatDateMDY(start);
+  const e = formatDateMDY(end);
+  if (!e) {
+    return { text: s ? `from ${s}` : "", state: "none", daysLeft: null };
+  }
+  const daysLeft = daysBetweenIso(today, end);
+  const state: AuthWindowState =
+    daysLeft === null ? "none"
+      : daysLeft < 0 ? "expired"
+      : daysLeft <= AUTH_EXPIRING_SOON_DAYS ? "expiring"
+      : "ok";
+  return { text: s ? `${s} – ${e}` : `through ${e}`, state, daysLeft };
 }
 
 /* ─── Next order dates ─── */

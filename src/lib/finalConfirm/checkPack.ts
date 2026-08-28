@@ -27,6 +27,7 @@ import {
   BCBS_FAMILY,
   IN_FOOTPRINT_STATES,
 } from "@/lib/shared/pos";
+import { infusionSetIssue } from "@/lib/shared/infusionCompat";
 import {
   checkCardinalAddress,
   cardinalAddressHardReason,
@@ -206,25 +207,11 @@ const NY_CIN_RX = /^[A-Z]{2}\d{5}[A-Z]$/;
  * that and was removed — it flagged the common case, which is how a check pack
  * teaches reps to click past its reds.
  */
-type SetFamily = "tandem" | "ilet" | "medtronic" | "unknown";
 
-function infusionSetFamily(label: string): SetFamily {
-  const l = label.toLowerCase();
-  if (/autosoft|trusteel|varisoft/.test(l)) return "tandem";
-  if (/contact|inset/.test(l)) return "ilet";
-  if (/mio/.test(l)) return "medtronic";
-  return "unknown";
-}
-
-const PUMP_SET_FAMILY: Record<string, SetFamily> = {
-  "t:slim": "tandem",
-  "Mobi": "tandem",
-  "iLet": "ilet",
-  "Minimed 780G": "medtronic",
-};
-
-/** 5" tubing detector — 5" sets are Mobi-ONLY (Brandon, 2026-07-31). */
-const FIVE_INCH_RX = /5\s*(?:"|”|in\b)/i;
+/* The matrix moved to lib/shared/infusionCompat.ts so Welcome Call can run the
+ * SAME check inline, while the rep can still change the answer. Imported, not
+ * copied — two copies of this would drift, and the failure mode is an order
+ * that ships sets the patient can't attach to their pump. */
 
 /* ─── Small utils ─── */
 
@@ -627,28 +614,20 @@ export function runFinalChecks(p: Patient): CheckFinding[] {
   }
 
   // C24 — Pump ↔ infusion-set compatibility (NEW; matrix in header — confirm with ops).
-  if (pumpServed && p.pumpType && PUMP_SET_FAMILY[p.pumpType]) {
-    const pumpFamily = PUMP_SET_FAMILY[p.pumpType];
-    const slots: Array<{ label: string; idx: number | null; field: keyof Patient; qty: number }> = [
-      { label: p.infusionSet1, idx: p.infusionSet1Index, field: "infusionSet1", qty: Number(p.qtyInf1) || 0 },
-      { label: p.infusionSet2, idx: p.infusionSet2Index, field: "infusionSet2", qty: Number(p.qtyInf2) || 0 },
+  if (pumpServed && p.pumpType) {
+    const slots: Array<{ label: string; idx: number | null; field: keyof Patient }> = [
+      { label: p.infusionSet1, idx: p.infusionSet1Index, field: "infusionSet1" },
+      { label: p.infusionSet2, idx: p.infusionSet2Index, field: "infusionSet2" },
     ];
     for (const slot of slots) {
       if (slot.idx === null || slot.idx === INFUSION_NOT_SERVING_INDEX || blank(slot.label)) continue;
-      const fam = infusionSetFamily(slot.label);
-      if (fam !== "unknown" && fam !== pumpFamily) {
-        add({
-          id: "C24_SET_INCOMPATIBLE", severity: "red", field: slot.field,
-          title: `${slot.label} ✗ ${p.pumpType}`,
-          detail: `${slot.label} is not compatible with a ${p.pumpType} — the order would ship unusable sets. Pick a ${p.pumpType}-compatible set.`,
-        });
-      } else if (fam === "tandem" && FIVE_INCH_RX.test(slot.label) && p.pumpType !== "Mobi") {
-        add({
-          id: "C24_FIVE_INCH_NOT_MOBI", severity: "red", field: slot.field,
-          title: `5" tubing is Mobi-only`,
-          detail: `${slot.label} — 5" tubing sets are for the Mobi only; they can't be used with a ${p.pumpType}. Pick a standard-length set.`,
-        });
-      }
+      const issue = infusionSetIssue(p.pumpType, slot.label);
+      if (!issue) continue;
+      add({
+        id: issue.kind === "incompatible" ? "C24_SET_INCOMPATIBLE" : "C24_FIVE_INCH_NOT_MOBI",
+        severity: "red", field: slot.field,
+        title: issue.title, detail: issue.detail,
+      });
     }
   }
 

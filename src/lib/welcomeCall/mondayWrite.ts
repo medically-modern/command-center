@@ -1,5 +1,7 @@
 import { writeStatusIndex, writeNumber, writeLocation, writeText, writeLongText, writeDate, clearDateColumn, writePhone, readColumnTexts, COL } from "./mondayApi";
 import { executeWritesWithVerification } from "../shared/verifiedWrite";
+import { appendIntakeToNotes } from "./callIntake";
+import { assertLongTextFits } from "../shared/longText";
 import { expectedPos, POS_INDEX } from "../shared/pos";
 import { resolveNextOrderWrite, servingIncludesCgm, servingIncludesPump } from "./workflow";
 import { coercePumpQty } from "@/lib/shared/servingLines";
@@ -178,9 +180,19 @@ export async function sendPatientToMonday(p: Patient): Promise<void> {
     tasks.push({ label: w.label, columnId: w.columnId, fn });
   }
 
-  // Notes
-  if (typeof p.notes === "string" && p.notes.trim() !== "") {
-    tasks.push({ label: "Notes", columnId: COL.notes, fn: () => writeLongText(p.id, COL.notes, p.notes) });
+  // ---- Notes (+ the no-column intake block) ----
+  // The nine Welcome Call facts the board has no columns for ride out here,
+  // appended as one delimited, parseable block (lib/welcomeCall/callIntake.ts).
+  // Nothing is appended when the rep didn't touch those fields, so an ordinary
+  // call's notes log is unchanged.
+  const notesToWrite = appendIntakeToNotes(p.notes, p.callIntake);
+  if (typeof notesToWrite === "string" && notesToWrite.trim() !== "") {
+    // ⚠️ Monday long-text columns hold 2000 chars and truncate SILENTLY,
+    // dropping the NEWEST content — i.e. the block we just appended, which is
+    // the one thing here with no other home (CLAUDE.md §10). Fail loudly before
+    // the write instead of reporting success and losing the rep's answers.
+    assertLongTextFits(notesToWrite, "Welcome Call Notes");
+    tasks.push({ label: "Notes", columnId: COL.notes, fn: () => writeLongText(p.id, COL.notes, notesToWrite) });
   }
 
   // Escalation toggle — if flagged, write Escalation Required

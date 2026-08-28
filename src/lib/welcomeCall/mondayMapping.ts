@@ -1,6 +1,7 @@
 import { COL } from "./mondayApi";
 import type { Patient } from "./workflow";
 import type { MondayItem } from "./mondayApi";
+import { parseIntakeBlock, emptyIntake } from "./callIntake";
 
 /**
  * Convert a Monday board item into a Patient row.
@@ -67,6 +68,11 @@ export function mondayItemToPatient(item: MondayItem): Patient {
     referralReceivedDate: txt(COL.referralReceivedDate),
     diagnosis: txt(COL.diagnosis),
     notes: txt(COL.notes),
+    // Facts with no board column, recovered from the LAST intake block in the
+    // notes log (lib/welcomeCall/callIntake.ts). Monday stays the store: a rep
+    // who reloads, switches patients or picks the item up days later sees what
+    // was captured. Falls back to a blank form when the log has no block.
+    callIntake: parseIntakeBlock(txt(COL.notes)) ?? emptyIntake(),
     profileSendOffNotes: txt(COL.profileSendOffNotes),
     mnWorkflowNotes: txt(COL.mnWorkflowNotes),
     insuranceNotes: txt(COL.insuranceNotes),
@@ -91,6 +97,17 @@ export function mondayItemToPatient(item: MondayItem): Patient {
     followUp: txt(COL.followUp),
     followUpDate: txt(COL.followUpDate),
     cgmAuthResult: txt(COL.cgmAuthResult),
+    cgmAuthStart: txt(COL.cgmAuthStart),
+    cgmAuthEnd: txt(COL.cgmAuthEnd),
+    sensorsAuthStart: txt(COL.sensorsAuthStart),
+    sensorsAuthEnd: txt(COL.sensorsAuthEnd),
+    ipAuthStart: txt(COL.ipAuthStart),
+    ipAuthEnd: txt(COL.ipAuthEnd),
+    infusionSetAuthStart: txt(COL.infusionSetAuthStart),
+    infusionSetAuthEnd: txt(COL.infusionSetAuthEnd),
+    cartridgeAuthStart: txt(COL.cartridgeAuthStart),
+    cartridgeAuthEnd: txt(COL.cartridgeAuthEnd),
+    pos: txt(COL.pos),
     sensorsAuthResult: txt(COL.sensorsAuthResult),
     ipAuthResult: txt(COL.ipAuthResult),
     infusionSetAuthResult: txt(COL.infusionSetAuthResult),

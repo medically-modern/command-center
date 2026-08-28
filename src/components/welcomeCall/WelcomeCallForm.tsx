@@ -14,6 +14,17 @@ import {
   expectedSubscriptionType,
 } from "@/lib/welcomeCall/workflow";
 import { BOARD_ID, COL } from "@/lib/welcomeCall/mondayApi";
+import { emptyIntake } from "@/lib/welcomeCall/callIntake";
+import { expectedPos } from "@/lib/shared/pos";
+import { infusionSetIssue } from "@/lib/shared/infusionCompat";
+import { payerInfusionCap, payerCapNote, supplyLengthNote, supplyLengthDays } from "@/lib/welcomeCall/payerRules";
+import type { CallIntake, SupplyLength } from "@/lib/welcomeCall/callIntake";
+import {
+  ConfirmCheck,
+  SupplyLengthField,
+  ContactsSection,
+  InsuranceCostSection,
+} from "./CallIntakeFields";
 import { useStatusOptions } from "@/hooks/useStatusOptions";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -49,6 +60,10 @@ import { pumpQtyApplies } from "@/lib/shared/servingLines";
 interface Props {
   patient: Patient;
   onFieldChange: (field: keyof Patient, value: string | number | null) => void;
+  /** Updates the no-column intake payload (lib/welcomeCall/callIntake.ts).
+   *  Separate from `onFieldChange` because that one is typed for scalar column
+   *  values; this carries a whole object. */
+  onIntakeChange?: (next: CallIntake) => void;
   onSendWelcomeCallText?: () => Promise<void>;
 }
 
@@ -155,7 +170,73 @@ function QtySelect({
   );
 }
 
-export function WelcomeCallForm({ patient, onFieldChange, onSendWelcomeCallText }: Props) {
+/**
+ * Pump ↔ set compatibility, inline (was Final Confirm check C24 only). Runs the
+ * SHARED matrix in lib/shared/infusionCompat.ts, so this and the check pack
+ * can't drift. Silent when the pairing is fine or the set isn't recognised.
+ */
+function CompatNote({ pumpType, setLabel }: { pumpType: string; setLabel: string }) {
+  const issue = infusionSetIssue(pumpType, setLabel);
+  if (!issue) return null;
+  return (
+    <div className="mt-2 flex items-start gap-1.5 rounded-md border border-red-300 bg-red-50 dark:bg-red-950/30 px-2.5 py-1.5">
+      <AlertTriangle className="h-3.5 w-3.5 text-red-600 shrink-0 mt-0.5" />
+      <div>
+        <p className="text-xs font-semibold text-red-700 dark:text-red-300">{issue.title}</p>
+        <p className="text-xs text-red-700/90 dark:text-red-300/90">{issue.detail}</p>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Payer cap on infusion sets per order. A warning, never a block — the cap is a
+ * billing expectation, and a rep with a reason to exceed it should be able to,
+ * with the number visible rather than discovered at denial.
+ */
+function CapNote({ qty, cap, payerLabel }: { qty: number; cap: number; payerLabel: string | null }) {
+  const over = qty > cap;
+  return (
+    <p className={cn("mt-1 text-[11px]", over ? "font-medium text-amber-600" : "text-muted-foreground")}>
+      {over
+        ? `${qty} exceeds the ${cap}-per-order cap${payerLabel ? ` for ${payerLabel}` : " for this payer"} — likely to be denied.`
+        : payerCapNote({ cap, payerLabel })}
+    </p>
+  );
+}
+
+export function WelcomeCallForm({ patient, onFieldChange, onIntakeChange, onSendWelcomeCallText }: Props) {
+  // The no-column payload. Falls back to a blank one so a patient mapped before
+  // this field existed (or a test fixture) still renders.
+  const intake = patient.callIntake ?? emptyIntake();
+  // Payer-driven order rules (lib/welcomeCall/payerRules.ts). Both read the
+  // EFFECTIVE payer, so they react as the rep corrects insurance on the call.
+  const effectivePrimary = patient.primaryInsuranceEdited ?? patient.primaryInsurance;
+  const effectiveSecondary = patient.secondaryInsuranceEdited ?? patient.secondaryInsurance;
+  const infusionCap = payerInfusionCap(effectivePrimary);
+  const supplyNote = supplyLengthNote(effectivePrimary, effectiveSecondary);
+  const derivedSupplyDays = String(supplyLengthDays(effectivePrimary, effectiveSecondary)) as SupplyLength;
+  const setIntake = (next: CallIntake) => onIntakeChange?.(next);
+
+  // Seed Supply Length from the payer rule, and keep it following the payer
+  // until the rep takes it over.
+  //
+  // ⚠️ "Is this value the rep's, or ours?" is the whole problem, and it cannot
+  // be answered by comparing values: an override that happens to equal the
+  // derived number looks exactly like a derived one. Guarding on "is it empty"
+  // let a seeded 90 survive a correction to Medicaid while the note beneath it
+  // read "60 day supply"; guarding on "does it still equal what we seeded"
+  // fixed that but would discard a rep's override once a payer change made it
+  // coincide. So ownership is RECORDED (`supplyLengthManual`) rather than
+  // inferred — and recorded in the notes block, so it survives a reload, which
+  // is where any component-local guess would fail.
+  useEffect(() => {
+    if (!onIntakeChange) return;
+    if (intake.supplyLengthManual) return;
+    if (intake.supplyLength === derivedSupplyDays) return;
+    onIntakeChange({ ...intake, supplyLength: derivedSupplyDays });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [derivedSupplyDays, intake.supplyLength, intake.supplyLengthManual]);
   const [sendingWelcomeText, setSendingWelcomeText] = useState(false);
   // Infusion-set options are read from the LIVE board, never a hardcoded table —
   // the index is the only thing that reaches Monday, so a deleted index writes a
@@ -435,6 +516,8 @@ export function WelcomeCallForm({ patient, onFieldChange, onSendWelcomeCallText 
                   ))}
                 </SelectContent>
               </Select>
+              {/* No board column — rides out in the notes block on send. */}
+              <ConfirmCheck intake={intake} onChange={setIntake} field="pump" className="mt-2" />
             </div>
 
             <div>
@@ -512,6 +595,9 @@ export function WelcomeCallForm({ patient, onFieldChange, onSendWelcomeCallText 
                 {infusionHint && (
                   <p className="mt-1 text-[11px] text-muted-foreground">{infusionHint}</p>
                 )}
+                {isInfusionSelling(patient.infusionSet1Index) && (
+                  <CompatNote pumpType={patient.pumpType} setLabel={patient.infusionSet1} />
+                )}
               </div>
               <div>
                 <label className="text-xs text-muted-foreground block mb-1">Quantity</label>
@@ -519,6 +605,9 @@ export function WelcomeCallForm({ patient, onFieldChange, onSendWelcomeCallText 
                   value={patient.qtyInf1}
                   onChange={(val) => onFieldChange("qtyInf1", val)}
                 />
+                {isInfusionSelling(patient.infusionSet1Index) && (
+                  <CapNote qty={Number(patient.qtyInf1) || 0} cap={infusionCap.cap} payerLabel={infusionCap.payerLabel} />
+                )}
                 {isInfusionSelling(patient.infusionSet1Index) &&
                   (!patient.qtyInf1 || patient.qtyInf1 === "0") && (
                     <p className="mt-2 text-xs font-medium text-red-600">
@@ -547,6 +636,9 @@ export function WelcomeCallForm({ patient, onFieldChange, onSendWelcomeCallText 
                 {infusionHint && (
                   <p className="mt-1 text-[11px] text-muted-foreground">{infusionHint}</p>
                 )}
+                {isInfusionSelling(patient.infusionSet2Index) && (
+                  <CompatNote pumpType={patient.pumpType} setLabel={patient.infusionSet2} />
+                )}
               </div>
               <div>
                 <label className="text-xs text-muted-foreground block mb-1">Quantity</label>
@@ -554,6 +646,9 @@ export function WelcomeCallForm({ patient, onFieldChange, onSendWelcomeCallText 
                   value={patient.qtyInf2}
                   onChange={(val) => onFieldChange("qtyInf2", val)}
                 />
+                {isInfusionSelling(patient.infusionSet2Index) && (
+                  <CapNote qty={Number(patient.qtyInf2) || 0} cap={infusionCap.cap} payerLabel={infusionCap.payerLabel} />
+                )}
                 {isInfusionSelling(patient.infusionSet2Index) &&
                   (!patient.qtyInf2 || patient.qtyInf2 === "0") && (
                     <p className="mt-2 text-xs font-medium text-red-600">
@@ -641,6 +736,10 @@ export function WelcomeCallForm({ patient, onFieldChange, onSendWelcomeCallText 
             })()}
           </div>
 
+          {/* Supply length — no board column; sits with Subscription Type
+              because it describes the same order. */}
+          <SupplyLengthField intake={intake} onChange={setIntake} derivedNote={supplyNote} />
+
         </div>
 
         {/* Address — full width */}
@@ -686,6 +785,41 @@ export function WelcomeCallForm({ patient, onFieldChange, onSendWelcomeCallText 
               <p className="text-xs text-amber-600 mt-1">Address will be updated on sync</p>
             )}
           </div>
+          {/* No board column — rides out in the notes block on send. Placed with
+              the address so the rep ticks it while reading it back. */}
+          <ConfirmCheck intake={intake} onChange={setIntake} field="address" />
+
+          {/* Place of Service (MM-1030). The rule already ran on every send —
+              it was just invisible, because COL.pos is write-only and POS was
+              not in the read set, so nobody could see it had worked.
+              Computed from the EFFECTIVE values, matching what mondayWrite
+              will write, so it reacts as the rep corrects the address. */}
+          {(() => {
+            const primary = patient.primaryInsuranceEdited ?? patient.primaryInsurance;
+            const address = patient.addressEdited ?? patient.address;
+            const computed = expectedPos(primary, address);
+            const boardDiffers = !!patient.pos && patient.pos !== computed;
+            return (
+              <div className="rounded-md border border-border bg-muted/40 px-3 py-2">
+                <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+                  <span className="text-xs uppercase tracking-wider text-muted-foreground font-semibold">
+                    Place of Service
+                  </span>
+                  <span className="text-sm font-semibold">{computed}</span>
+                  <span className="text-xs text-muted-foreground">
+                    {computed === "Office"
+                      ? "— out-of-state Blue plan, billed via Anthem NY 803 BlueCard"
+                      : "— set from the primary payer and the patient's state"}
+                  </span>
+                </div>
+                {boardDiffers && (
+                  <p className="text-xs text-amber-600 mt-1">
+                    Board currently says {patient.pos} — this will be corrected on send.
+                  </p>
+                )}
+              </div>
+            );
+          })()}
         </div>
 
         {/* Welcome Call Text — button below address */}
@@ -731,9 +865,24 @@ export function WelcomeCallForm({ patient, onFieldChange, onSendWelcomeCallText 
         </div>
       </Card>
 
+      {/* ─── Section 4: Contacts & Caretaker ───
+          None of this has a Monday column. It is captured here and appended to
+          the Notes column as a parseable block on Send (§ callIntake.ts). */}
+      <Card className="p-6">
+        <SectionHeading number={4} title="Contacts & Caretaker" />
+        <ContactsSection intake={intake} onChange={setIntake} />
+      </Card>
+
+      {/* ─── Section 5: Insurance, Cost & Auth ───
+          Same story: no columns, so the answers ride out in the notes block. */}
+      <Card className="p-6">
+        <SectionHeading number={5} title="Insurance, Cost & Auth" />
+        <InsuranceCostSection intake={intake} onChange={setIntake} />
+      </Card>
+
       {/* ─── End-of-call decision: Advance? ─── */}
       <Card className="p-6">
-        <SectionHeading number={4} title="End of Call" />
+        <SectionHeading number={6} title="End of Call" />
         <p className="text-sm text-muted-foreground mb-4">
           After wrapping up the welcome call, decide whether this patient should
           advance to Order or hold here. Either choice routes the patient back

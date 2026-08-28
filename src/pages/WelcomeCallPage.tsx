@@ -4,6 +4,8 @@
 import confetti from "canvas-confetti";
 import { useMemo, useState } from "react";
 import { useMondayPatients } from "@/hooks/welcomeCall/useMondayPatients";
+import { emptyIntake } from "@/lib/welcomeCall/callIntake";
+import type { CallIntake } from "@/lib/welcomeCall/callIntake";
 import type { Patient } from "@/lib/welcomeCall/workflow";
 import { sidebarVisibleList } from "@/lib/welcomeCall/sidebarList";
 import { PatientInfoCard, NextOrderDatesCard } from "@/components/welcomeCall/PatientInfoCard";
@@ -90,6 +92,14 @@ const WelcomeCallPage = () => {
     update(selected.id, { [field]: value } as Partial<Patient>);
   };
 
+  /** The no-column intake payload (lib/welcomeCall/callIntake.ts). Rides the
+   *  same overlay as every other edit, so it survives a poll and a reload the
+   *  way a column edit does — and is serialised into Notes on send. */
+  const handleIntakeChange = (next: CallIntake) => {
+    if (!selected) return;
+    update(selected.id, { callIntake: next });
+  };
+
   const toggleEscalate = () => {
     if (!selected) return;
     update(selected.id, { escalated: !selected.escalated });
@@ -99,6 +109,7 @@ const WelcomeCallPage = () => {
     if (!selected) return;
     clearOverlay(selected.id);
     update(selected.id, {
+      callIntake: emptyIntake(),
       cgmTypeIndex: null,
       servingEdited: null,
       servingIndexEdited: null,
@@ -275,7 +286,7 @@ const WelcomeCallPage = () => {
                     onSaveSecondaryInsurance={(_label, index) => sendSecondaryInsuranceToMonday(selected.id, index)}
                   />
                   <OopEstimateCard patient={selected} />
-                  <WelcomeCallForm patient={selected} onFieldChange={handleFieldChange} onSendWelcomeCallText={handleSendWelcomeCallText} />
+                  <WelcomeCallForm patient={selected} onFieldChange={handleFieldChange} onIntakeChange={handleIntakeChange} onSendWelcomeCallText={handleSendWelcomeCallText} />
                   <NextOrderDatesCard patient={selected} onFieldChange={handleFieldChange} />
                   <NotesPanel
                     notes={selected.notes}
