@@ -70,7 +70,7 @@ const SystemMgmtPage = () => {
     else navigate("/?tab=roles&sub=dashboards");
   };
   const [searchParams, setSearchParams] = useSearchParams();
-  const { patients, escalated, completionMap, loading, error, refetch, removeEscalation } =
+  const { patients, escalated, completionMap, loading, hydrating, error, refetch, removeEscalation } =
     useSystemPatients();
 
   const tabParam = searchParams.get("tab");
@@ -335,6 +335,7 @@ const SystemMgmtPage = () => {
               onQueryChange={handleQueryChange}
               results={displayResults}
               totalCount={patients.length}
+              hydrating={hydrating}
               onPatientClick={handlePatientClick}
               completionMap={completionMap}
               onCompletedStageClick={handleCompletedStageClick}
@@ -465,6 +466,7 @@ function SearchView({
   onQueryChange,
   results,
   totalCount,
+  hydrating,
   onPatientClick,
   completionMap,
   onCompletedStageClick,
@@ -482,6 +484,7 @@ function SearchView({
   onQueryChange: (q: string) => void;
   results: SystemPatient[];
   totalCount: number;
+  hydrating: boolean;
   onPatientClick: (p: SystemPatient) => void;
   completionMap: Map<string, CompletedStage[]>;
   onCompletedStageClick: (stage: CompletedStage) => void;
@@ -510,6 +513,19 @@ function SearchView({
           {totalCount} patients across all boards
         </span>
       </div>
+
+      {/* Cached snapshot on screen, live fetch still running. Shown even when
+          there ARE results: the count beside the box reads as "all boards", and
+          a partial one silently understates the pipeline. */}
+      {hydrating && (
+        <div className="flex items-center gap-2 px-3 py-2 bg-amber-500/10 rounded-lg border border-amber-500/20">
+          <Loader2 className="w-3.5 h-3.5 animate-spin text-amber-600 dark:text-amber-400 shrink-0" />
+          <span className="text-xs text-amber-700 dark:text-amber-300">
+            Showing a saved snapshot while all boards load — a patient added
+            recently may not appear for a few more seconds.
+          </span>
+        </div>
+      )}
 
       {/* Pipeline chart — always visible, filters with search */}
       <PipelineChart patients={chartPatients} onSegmentClick={onChartSegmentClick} />
@@ -544,11 +560,23 @@ function SearchView({
         </div>
       )}
 
+      {/* ⚠️ "No patients found" is a CLAIM about every board, and while the
+          first live fetch is still running it is one this page cannot make —
+          the cached snapshot is not the pipeline. Saying it anyway is what had
+          reps reporting patients as missing from Search who were on Profile
+          Send Off the whole time (see patientCache.ts). */}
       {query.trim() && results.length === 0 && (
         <div className="rounded-xl bg-card border shadow-card p-10 text-center">
-          <p className="text-sm text-muted-foreground">
-            No patients found matching &ldquo;{query}&rdquo;
-          </p>
+          {hydrating ? (
+            <p className="text-sm text-muted-foreground flex items-center justify-center gap-2">
+              <Loader2 className="w-4 h-4 animate-spin text-primary" />
+              Still loading all boards — no match for &ldquo;{query}&rdquo; yet
+            </p>
+          ) : (
+            <p className="text-sm text-muted-foreground">
+              No patients found matching &ldquo;{query}&rdquo;
+            </p>
+          )}
         </div>
       )}
 
