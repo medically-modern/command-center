@@ -48,6 +48,21 @@ describe("secondaryAsk", () => {
     expect(secondaryAskNote("none")).toBe("");
   });
 
+  it("treats the board's 'Done' status artifact as no secondary, not a payer", () => {
+    // Secondary Insurance carries a 4th label, "Done", which is not an insurer.
+    // The app dropdown offers only the three real values, but the board holds
+    // this one and we read it.
+    expect(secondaryAsk("Medicare A&B", "Done")).toBe("none");
+    expect(secondaryAsk("Humana", "Done")).toBe("none");
+  });
+
+  it("covers every label on the live Secondary Insurance column", () => {
+    // The regression guard for the class of miss that produced this test.
+    const BOARD_SECONDARY = ["None", "NY Medicaid", "Medicare Supplement", "Done"];
+    const asks = BOARD_SECONDARY.map((s) => secondaryAsk("Medicare A&B", s));
+    expect(asks).toEqual(["none", "medicaid", "medicare-supplement", "none"]);
+  });
+
   it("shortcuts a Medicare supplement — the board label and a Medigap name", () => {
     expect(secondaryAsk("Medicare A&B", "Medicare Supplement")).toBe("medicare-supplement");
     expect(secondaryAsk("Medicare A&B", "Excellus BCBS Medigap Plan G")).toBe("medicare-supplement");

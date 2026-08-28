@@ -623,9 +623,18 @@ export function runFinalChecks(p: Patient): CheckFinding[] {
       if (slot.idx === null || slot.idx === INFUSION_NOT_SERVING_INDEX || blank(slot.label)) continue;
       const issue = infusionSetIssue(p.pumpType, slot.label);
       if (!issue) continue;
+      // ⚠️ Map the kind EXPLICITLY. A ternary here silently filed the newer
+      // "unverified" kind as C24_FIVE_INCH_NOT_MOBI at red severity — a
+      // specific claim we cannot support. Unverified means "nobody has checked
+      // this pairing", which is amber: a missing answer, not evidence of a
+      // wrong one (the pack's own red-vs-amber rule, §5.17).
+      const C24 = {
+        incompatible: { id: "C24_SET_INCOMPATIBLE", severity: "red" as const },
+        "five-inch-not-mobi": { id: "C24_FIVE_INCH_NOT_MOBI", severity: "red" as const },
+        unverified: { id: "C24_SET_UNVERIFIED", severity: "amber" as const },
+      }[issue.kind];
       add({
-        id: issue.kind === "incompatible" ? "C24_SET_INCOMPATIBLE" : "C24_FIVE_INCH_NOT_MOBI",
-        severity: "red", field: slot.field,
+        id: C24.id, severity: C24.severity, field: slot.field,
         title: issue.title, detail: issue.detail,
       });
     }

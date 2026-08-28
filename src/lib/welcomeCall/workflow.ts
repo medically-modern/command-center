@@ -428,7 +428,14 @@ export function secondaryAsk(primaryInsurance: string, secondaryInsurance: strin
   // Blank is "we have not asked yet" — the page's existing QMB and
   // Medicare-primary warnings already prompt for that, so this stays quiet
   // rather than stacking a third line under the same field.
-  if (!secondary || /^none$/i.test(secondary)) return "none";
+  //
+  // ⚠️ "Done" is on this column too, and it is NOT a payer — it is a status
+  // artifact the board carries (index 3, alongside None / NY Medicaid /
+  // Medicare Supplement). The app's own dropdown offers only the three real
+  // values, so a rep cannot select it, but the board can hold it and we read
+  // it. Without this it fell through to the payer branches and told the rep to
+  // "capture the member ID" for a secondary insurer literally called Done.
+  if (!secondary || /^(none|done)$/i.test(secondary)) return "none";
   if (/medigap|supplement/i.test(secondary)) return "medicare-supplement";
   if (/medicaid/i.test(secondary)) return "medicaid";
   return isOriginalMedicare(primaryInsurance) ? "member-id" : "full-details";

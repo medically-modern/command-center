@@ -189,12 +189,27 @@ function QtySelect({
 function CompatNote({ pumpType, setLabel }: { pumpType: string; setLabel: string }) {
   const issue = infusionSetIssue(pumpType, setLabel);
   if (!issue) return null;
+  // Amber for "we have not checked this pairing", red for "this pairing is
+  // wrong". Collapsing the two would either cry wolf on an unclassified set or
+  // — the bug this replaced — say nothing at all about one.
+  const unverified = issue.kind === "unverified";
   return (
-    <div className="mt-2 flex items-start gap-1.5 rounded-md border border-red-300 bg-red-50 dark:bg-red-950/30 px-2.5 py-1.5">
-      <AlertTriangle className="h-3.5 w-3.5 text-red-600 shrink-0 mt-0.5" />
+    <div
+      className={cn(
+        "mt-2 flex items-start gap-1.5 rounded-md border px-2.5 py-1.5",
+        unverified
+          ? "border-amber-300 bg-amber-50 dark:bg-amber-950/30"
+          : "border-red-300 bg-red-50 dark:bg-red-950/30",
+      )}
+    >
+      <AlertTriangle className={cn("h-3.5 w-3.5 shrink-0 mt-0.5", unverified ? "text-amber-600" : "text-red-600")} />
       <div>
-        <p className="text-xs font-semibold text-red-700 dark:text-red-300">{issue.title}</p>
-        <p className="text-xs text-red-700/90 dark:text-red-300/90">{issue.detail}</p>
+        <p className={cn("text-xs font-semibold", unverified ? "text-amber-700 dark:text-amber-300" : "text-red-700 dark:text-red-300")}>
+          {issue.title}
+        </p>
+        <p className={cn("text-xs", unverified ? "text-amber-700/90 dark:text-amber-300/90" : "text-red-700/90 dark:text-red-300/90")}>
+          {issue.detail}
+        </p>
       </div>
     </div>
   );

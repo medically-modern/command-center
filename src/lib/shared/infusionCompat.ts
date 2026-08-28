@@ -15,10 +15,17 @@
  * patient cannot attach to their pump.
  *
  * ⚠️ Families are matched on the set LABEL, against the live board vocabulary
- * (25 labels on `color_mm1x9paw`). An unrecognised label returns "unknown" and
- * is deliberately NOT flagged — a new set added to the board must not start
- * throwing false incompatibility errors at reps before anyone has classified
- * it. Silence on unknown, never a guess.
+ * (25 labels on `color_mm1x9paw`).
+ *
+ * ⚠️ **An unclassified set is reported as UNVERIFIED, never as silence.** This
+ * module originally returned null for an unknown family, reasoning that a set
+ * nobody had classified must not throw false errors at reps. That was the wrong
+ * trade: it left the check silently blind on 2 of the 24 real sets, and a rep
+ * picking one got a clean screen that looks exactly like a verified pass —
+ * reported from the floor on t:slim + Luer, which is a genuine mismatch. Silence
+ * reading as approval is the same failure class as a green UI that has not
+ * actually written (CLAUDE.md §10). Unknown now says so, in amber, and only a
+ * pairing we have positively checked stays quiet.
  */
 
 export type SetFamily = "tandem" | "ilet" | "medtronic" | "unknown";
@@ -28,7 +35,8 @@ export function infusionSetFamily(label: string): SetFamily {
   const l = (label ?? "").toLowerCase();
   if (/autosoft|trusteel|varisoft/.test(l)) return "tandem";
   if (/contact|inset/.test(l)) return "ilet";
-  if (/mio/.test(l)) return "medtronic";
+  // MiniMed QuickSet — Medtronic's own set.
+  if (/mio|quick\s*-?\s*set/.test(l)) return "medtronic";
   return "unknown";
 }
 
@@ -43,7 +51,21 @@ export const PUMP_SET_FAMILY: Record<string, SetFamily> = {
 /** 5" tubing detector — 5" sets are Mobi-ONLY (Brandon, 2026-07-31). */
 export const FIVE_INCH_RX = /5\s*(?:"|”|in\b)/i;
 
-export type InfusionIssueKind = "incompatible" | "five-inch-not-mobi";
+/**
+ * Luer-connector sets. Luer is a CONNECTOR standard, not a manufacturer, so it
+ * gets its own rule rather than a family: Tandem pumps (t:slim, Mobi) use a
+ * proprietary t:lock connector, so a Luer set physically cannot attach to them
+ * (reported from the floor, 2026-08-28).
+ * ⚠️ Deliberately NOT classified into a family. Which non-Tandem pumps a Luer
+ * set fits has not been established here, so those pairings fall through to
+ * "unverified" rather than being asserted either way.
+ */
+export const LUER_RX = /\bluer\b/i;
+
+/** Pumps that use Tandem's t:lock connector. */
+const TLOCK_PUMPS = new Set(["t:slim", "Mobi"]);
+
+export type InfusionIssueKind = "incompatible" | "five-inch-not-mobi" | "unverified";
 
 export interface InfusionIssue {
   kind: InfusionIssueKind;
@@ -68,8 +90,26 @@ export function infusionSetIssue(pumpType: string, setLabel: string): InfusionIs
   const pumpFamily = PUMP_SET_FAMILY[pump];
   if (!pumpFamily) return null;
 
+  // Connector rule, checked before family: a Luer set has no family here on
+  // purpose, so this would otherwise fall through to "unverified" for the one
+  // pairing we DO know is wrong.
+  if (LUER_RX.test(set) && TLOCK_PUMPS.has(pump)) {
+    return {
+      kind: "incompatible",
+      title: `${set} ✗ ${pump}`,
+      detail: `${set} uses a Luer connector; the ${pump} uses t:lock, so the set cannot attach. Pick a ${pump}-compatible set.`,
+    };
+  }
+
   const fam = infusionSetFamily(set);
-  if (fam !== "unknown" && fam !== pumpFamily) {
+  if (fam === "unknown") {
+    return {
+      kind: "unverified",
+      title: `${set} — compatibility not verified`,
+      detail: `We have no compatibility record for ${set} with a ${pump}. Check it against the pump before sending; this is not a confirmed match.`,
+    };
+  }
+  if (fam !== pumpFamily) {
     return {
       kind: "incompatible",
       title: `${set} ✗ ${pump}`,
