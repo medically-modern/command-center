@@ -7,6 +7,7 @@ import {
   PUMP_TYPE_OPTIONS,
   servingIncludesPump,
   isCrossSell,
+  isFirstTimePumpUser,
   isInfusionSelling,
   needsPriorPumpDate,
   needsMonitorPurchaseDate,
@@ -558,6 +559,23 @@ export function WelcomeCallForm({ patient, onFieldChange, onIntakeChange, onSend
                 <div className="mt-2 flex items-center gap-1.5 rounded-md border border-blue-300 bg-blue-50 dark:bg-blue-950/30 px-2.5 py-1.5">
                   <AlertTriangle className="h-3.5 w-3.5 text-blue-600 shrink-0" />
                   <span className="text-xs font-medium text-blue-700 dark:text-blue-300">Never billed, add to notes</span>
+                </div>
+              )}
+              {/* Shapes the CALL, not the order — a first pump needs a different
+                  conversation. Sits here because Pump Qty is the fact it keys
+                  on. Absence of billing history is weak evidence (see the rule),
+                  so it prompts and never gates. */}
+              {isFirstTimePumpUser({
+                serving: patient.servingEdited ?? patient.serving,
+                pumpQty: patient.pumpQty,
+                ipLastBillDate: patient.ipLastBillDate,
+                medicarePriorPumpDate: patient.medicarePriorPumpDate,
+              }) && (
+                <div className="mt-2 flex items-start gap-1.5 rounded-md border border-violet-300 bg-violet-50 dark:bg-violet-950/30 px-2.5 py-1.5">
+                  <AlertTriangle className="h-3.5 w-3.5 text-violet-600 shrink-0 mt-0.5" />
+                  <span className="text-xs font-medium text-violet-700 dark:text-violet-300">
+                    First-time pump user — no prior pump on file. Set training expectations on this call.
+                  </span>
                 </div>
               )}
             </div>

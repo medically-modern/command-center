@@ -1,7 +1,7 @@
 import { useState } from "react";
 import type { Patient } from "@/lib/welcomeCall/workflow";
 import { SECONDARY_INSURANCE_OPTIONS, PRIMARY_INSURANCE_OPTIONS, SERVING_OPTIONS, formatPhone, formatDateMDY, isCrossSell, effectiveNextOrder } from "@/lib/welcomeCall/workflow";
-import { authWindow } from "@/lib/welcomeCall/workflow";
+import { authWindow, secondaryAsk, secondaryAskNote } from "@/lib/welcomeCall/workflow";
 import { expectedPos } from "@/lib/shared/pos";
 import { phoneRejectionReason } from "@/lib/shared/phoneCell";
 import { Card } from "@/components/ui/card";
@@ -668,6 +668,29 @@ export function PatientInfoCard({ patient, onFieldChange, onSavePhone, onSaveSec
                   ))}
                 </SelectContent>
               </Select>
+              {/* How much detail this secondary actually needs. A Medigap
+                  secondary needs none — tagging it is the whole job — while a
+                  commercial one behind a non-Medicare primary needs the full
+                  record. Silent when nothing is on file: the two warnings below
+                  already prompt for that. */}
+              {(() => {
+                const ask = secondaryAsk(
+                  patient.primaryInsuranceEdited ?? patient.primaryInsurance,
+                  patient.secondaryInsuranceEdited ?? patient.secondaryInsurance,
+                );
+                const note = secondaryAskNote(ask);
+                if (!note) return null;
+                return (
+                  <p className={cn(
+                    "text-xs mt-1.5",
+                    ask === "medicare-supplement"
+                      ? "text-emerald-700 dark:text-emerald-400 font-medium"
+                      : "text-muted-foreground",
+                  )}>
+                    {note}
+                  </p>
+                );
+              })()}
               {showMedicareSecondaryWarning && (
                 <p className="text-xs text-red-600 font-semibold mt-1.5">
                   Patient likely has a secondary insurance, ask on welcome call.
@@ -715,7 +738,12 @@ export function PatientInfoCard({ patient, onFieldChange, onSavePhone, onSaveSec
 
         {(patient.cgmAuthResult || patient.sensorsAuthResult || patient.ipAuthResult || patient.infusionSetAuthResult || patient.cartridgeAuthResult || patient.cgmAuthEnd || patient.sensorsAuthEnd || patient.ipAuthEnd || patient.infusionSetAuthEnd || patient.cartridgeAuthEnd) && (
           <Card className="p-4">
-            <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-3">Auth Results</p>
+            {/* Says WHY this card is read-only: these results are the Insurance
+                stage's output, not something the rep sets on the call. */}
+            <div className="flex flex-wrap items-baseline gap-x-2 mb-3">
+              <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Auth Results</p>
+              <span className="text-[10px] uppercase tracking-wider text-muted-foreground/70 font-medium">From benefits stage</span>
+            </div>
             <div className="grid grid-cols-2 gap-3">
               {/* "CGM" is the board's MONITOR line — its dates are the Monitor
                   Auth Start/End pair, not a separate CGM one. */}

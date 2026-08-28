@@ -370,6 +370,86 @@ export function formatDateMDY(raw: string): string {
   return raw;
 }
 
+/* ─── Call-shaping signals (ported from the ops prototype) ─── */
+
+/**
+ * Is this the patient's FIRST pump?
+ *
+ * Rule ported verbatim from the prototype: we are selling them a pump
+ * (`pumpQty === "1"`, not just serving its supplies) and there is no evidence
+ * they have ever had one — no prior insulin-pump bill on file, and no Medicare
+ * prior-pump date collected.
+ *
+ * It changes the call rather than the order: a first-time user needs training
+ * expectations and a different conversation, and they are the population most
+ * likely to be surprised by what arrives.
+ *
+ * ⚠️ Gated on `pumpQty === "1"` and not on `servingSellsPumpDevice`. A supplies
+ * patient who already owns a pump serves "pump" in the §5.22 sense while buying
+ * no device — quantity is the fact that says we are shipping one.
+ * ⚠️ Absence of billing history is WEAK evidence: the SoS lookback only reaches
+ * so far, and a patient who bought a pump privately has no claim either. It is
+ * a prompt, never a gate.
+ */
+export function isFirstTimePumpUser(p: {
+  serving: string;
+  pumpQty: string;
+  ipLastBillDate: string;
+  medicarePriorPumpDate: string;
+}): boolean {
+  if (!servingIncludesPump(p.serving)) return false;
+  if (p.pumpQty !== "1") return false;
+  return !p.ipLastBillDate.trim() && !p.medicarePriorPumpDate.trim();
+}
+
+/** What the rep still has to get from the patient about secondary coverage. */
+export type SecondaryAsk =
+  | "none"
+  | "medicare-supplement"
+  | "medicaid"
+  | "member-id"
+  | "full-details";
+
+/**
+ * How much detail this secondary policy actually needs.
+ *
+ * The prototype's shortcut: a Medigap/supplement secondary needs no details at
+ * all — tagging it is the whole job — while a commercial secondary behind a
+ * non-Medicare primary needs the full record. Asking every patient for
+ * everything is how a Welcome Call runs long for no benefit.
+ *
+ * ⚠️ On this board the classification is a LABEL, not an inference: Secondary
+ * Insurance carries exactly None / NY Medicaid / Medicare Supplement. The
+ * regexes are belt-and-braces for a label that gets renamed or a value carried
+ * in from another board, and they read the same way round as the prototype's.
+ */
+export function secondaryAsk(primaryInsurance: string, secondaryInsurance: string): SecondaryAsk {
+  const secondary = (secondaryInsurance ?? "").trim();
+  // Blank is "we have not asked yet" — the page's existing QMB and
+  // Medicare-primary warnings already prompt for that, so this stays quiet
+  // rather than stacking a third line under the same field.
+  if (!secondary || /^none$/i.test(secondary)) return "none";
+  if (/medigap|supplement/i.test(secondary)) return "medicare-supplement";
+  if (/medicaid/i.test(secondary)) return "medicaid";
+  return isOriginalMedicare(primaryInsurance) ? "member-id" : "full-details";
+}
+
+/** The rep-facing sentence for each ask. "none" renders nothing. */
+export function secondaryAskNote(ask: SecondaryAsk): string {
+  switch (ask) {
+    case "medicare-supplement":
+      return "No details needed — tag as Medicare supplement.";
+    case "medicaid":
+      return "Medicaid secondary — capture the member ID.";
+    case "member-id":
+      return "Capture the member ID.";
+    case "full-details":
+      return "Primary is not Medicare — collect full secondary details from the patient.";
+    default:
+      return "";
+  }
+}
+
 /* ─── Auth validity windows (MM-1080) ─── */
 
 /** How a product's auth window reads today. */
