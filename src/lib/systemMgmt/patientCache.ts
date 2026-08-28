@@ -97,6 +97,31 @@ export function evictLegacyPatientCache(): void {
   } catch { /* storage disabled — nothing to evict */ }
 }
 
+/**
+ * Cache MUTATIONS run one at a time, in the order they were requested.
+ *
+ * ⚠️ Without this a failed write can delete a good one. `persistPatientCache`
+ * clears the record when its transaction fails (so a stale snapshot is never
+ * served in place of the write that was meant to replace it), and the poll
+ * fires every 90s — so a failing write and the next successful one overlap.
+ * When the clear was started unsequenced it opened its own connection and
+ * could land AFTER the newer snapshot had been stored, deleting it; the next
+ * visit then cold-loads despite a refresh having succeeded. Caught in review
+ * on PR #43.
+ *
+ * Reads are deliberately NOT queued — they are atomic on their own
+ * transaction, and putting hydration behind a chain of writes would delay
+ * exactly the thing this cache exists to make fast.
+ */
+let opQueue: Promise<unknown> = Promise.resolve();
+
+function serialize<T>(op: () => Promise<T>): Promise<T> {
+  // `.then(op, op)` so a rejected predecessor still lets the next op run.
+  const run = opQueue.then(op, op);
+  opQueue = run.catch(() => undefined);
+  return run;
+}
+
 /** Cached patients, or `[]` when there is no usable snapshot. Never rejects. */
 export async function loadCachedPatients(): Promise<SystemPatient[]> {
   evictLegacyPatientCache();
@@ -121,26 +146,24 @@ export async function loadCachedPatients(): Promise<SystemPatient[]> {
   }
 }
 
-/** Store the snapshot. Never rejects — a lost cache is only a slower load. */
-export async function persistPatientCache(patients: SystemPatient[]): Promise<void> {
+/** Writes the record. Resolves `true` only when the transaction committed. */
+async function writeRecord(patients: SystemPatient[]): Promise<boolean> {
   const db = await openDb();
-  if (!db) return;
+  if (!db) return false;
   try {
-    await new Promise<void>((resolve) => {
+    return await new Promise<boolean>((resolve) => {
       try {
         const tx = db.transaction(STORE, "readwrite");
         tx.objectStore(STORE).put(
           { version: SCHEMA_VERSION, savedAt: Date.now(), patients } satisfies CacheRecord,
           RECORD_KEY,
         );
-        tx.oncomplete = () => resolve();
-        // A quota or serialisation failure must leave NO record rather than an
-        // older one — IndexedDB aborts the whole transaction, so the previous
-        // value survives; clear it so a stale snapshot can never be served.
-        tx.onerror = () => { void clearCachedPatients(); resolve(); };
-        tx.onabort = () => { void clearCachedPatients(); resolve(); };
+        tx.oncomplete = () => resolve(true);
+        tx.onerror = () => resolve(false);
+        tx.onabort = () => resolve(false);
       } catch {
-        resolve();
+        // put() throws synchronously on a non-cloneable value.
+        resolve(false);
       }
     });
   } finally {
@@ -148,8 +171,8 @@ export async function persistPatientCache(patients: SystemPatient[]): Promise<vo
   }
 }
 
-/** Remove the snapshot. Never rejects. */
-export async function clearCachedPatients(): Promise<void> {
+/** Deletes the record. Never rejects. */
+async function deleteRecord(): Promise<void> {
   const db = await openDb();
   if (!db) return;
   try {
@@ -167,4 +190,26 @@ export async function clearCachedPatients(): Promise<void> {
   } finally {
     db.close();
   }
+}
+
+/** Store the snapshot. Never rejects — a lost cache is only a slower load. */
+export function persistPatientCache(patients: SystemPatient[]): Promise<void> {
+  return serialize(async () => {
+    const ok = await writeRecord(patients);
+    // A quota or serialisation failure must leave NO record rather than an
+    // older one — IndexedDB aborts the whole transaction, so the previous
+    // value survives; clear it so a stale snapshot can never be served in
+    // place of the write that was meant to replace it.
+    //
+    // ⚠️ Awaited INSIDE this queue slot, never fired off on its own. That
+    // ordering is the whole fix: a later successful persist cannot start until
+    // this clear has finished, so the clear can no longer outlive its own
+    // failure and delete a newer snapshot.
+    if (!ok) await deleteRecord();
+  });
+}
+
+/** Remove the snapshot. Never rejects. */
+export function clearCachedPatients(): Promise<void> {
+  return serialize(deleteRecord);
 }
