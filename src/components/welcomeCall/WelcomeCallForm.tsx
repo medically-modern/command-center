@@ -17,6 +17,16 @@ import { BOARD_ID, COL } from "@/lib/welcomeCall/mondayApi";
 import { emptyIntake } from "@/lib/welcomeCall/callIntake";
 import { expectedPos } from "@/lib/shared/pos";
 import { infusionSetIssue } from "@/lib/shared/infusionCompat";
+import { IntakeMessages } from "@/components/profile/IntakeMessages";
+// ⚠️ IntakeMessages is written against the intake page's design system
+// (`.sect`, `.pillbtn`), which lives entirely under `.pf-root` — 179 rules in
+// intake.css, 0 unscoped, and redesign.css deliberately hangs its theme tokens
+// on `.pf-root` rather than `:root` "so the app theme is untouched". So these
+// two imports cannot leak onto this page: nothing in them matches outside a
+// `.pf-root` element. The component is portable; its stylesheet is not, which
+// is why it needs the wrapper below rather than being a plain drop-in.
+import "@/pages/profile/redesign.css";
+import "@/pages/profile/intake.css";
 import { payerInfusionCap, payerCapNote, supplyLengthNote, supplyLengthDays } from "@/lib/welcomeCall/payerRules";
 import type { CallIntake, SupplyLength } from "@/lib/welcomeCall/callIntake";
 import {
@@ -862,6 +872,24 @@ export function WelcomeCallForm({ patient, onFieldChange, onIntakeChange, onSend
           <p className="text-xs text-muted-foreground mt-2">
             Pushes the form data above to Monday, then flips the Welcome Call Text trigger to Send.
           </p>
+        </div>
+
+        {/* The same Messages block Info Collection uses — the patient's text and
+            email history with the MM line, readable while the rep is on the call.
+            ⚠️ The `.pf-root` wrapper is REQUIRED, not decorative: every class this
+            component uses is scoped under it, so without the wrapper it renders
+            as unstyled markup. It contains ONLY this component, because
+            `.pf-root button` strips the styling off any shadcn control placed
+            inside (CLAUDE.md §9) — IntakeMessages is already written to survive
+            that, the rest of this form is not.
+            No `onTextSent`: that prop stamps the intake page's Call Log column,
+            which this board doesn't have. */}
+        <div className="pf-root mt-6">
+          <IntakeMessages
+            patientId={patient.id}
+            email={patient.email}
+            phone={patient.phoneEdited ?? patient.phone}
+          />
         </div>
       </Card>
 
