@@ -15,6 +15,8 @@
  */
 
 import { verifyGoogleToken } from "./auth.mjs";
+import { postNtfy, ntfyConfigured } from "./ntfy.mjs";
+import { alertKey, shouldAlert, takeSuppressed, createAlertState, formatSendFailure } from "./sendAlerts.mjs";
 
 const MONDAY_URL = "https://api.monday.com/v2";
 const TOKEN = process.env.MONDAY_API_TOKEN;
@@ -159,7 +161,10 @@ export function registerSend({ app, pool, clientIp }) {
     const gUser = await verifyGoogleToken(req.headers["x-mm-auth"]);
     const actor = gUser?.email || req.headers["x-mm-user"] || b.actor || null;
     const ip = clientIp ? clientIp(req) : null;
-    const payload = { itemId, boardId, dataColumns: dataColumns || {}, stageColumns: stageColumns || {}, verify: verify || [], createLabelsIfMissing: !!createLabelsIfMissing };
+    // `label` is the stage name the SPA gave this send ("Benefits send") — not
+    // PHI, and the one thing that makes a failure alert actionable without
+    // opening /audit. Stored here because the worker is where alerts fire.
+    const payload = { itemId, boardId, dataColumns: dataColumns || {}, stageColumns: stageColumns || {}, verify: verify || [], createLabelsIfMissing: !!createLabelsIfMissing, label: b.label ?? null };
 
     try {
       if (idempotencyKey) {
@@ -215,6 +220,29 @@ export function registerSend({ app, pool, clientIp }) {
     } catch (e) { console.error("send→audit log failed:", e.message); }
   }
 
+  /** Push once per failure shape per window — see sendAlerts.mjs for why both a
+   *  per-shape throttle and a global cap are needed. Never throws. */
+  const alertState = createAlertState();
+  async function alertSendFailure(job, err) {
+    try {
+      if (!ntfyConfigured()) return;
+      const message = String(err?.message ?? err ?? "");
+      const key = alertKey({ boardId: job.board_id, message });
+      if (!shouldAlert(alertState, key, Date.now())) return;
+      await postNtfy(
+        formatSendFailure({
+          boardId: job.board_id,
+          label: job.payload?.label,
+          attempts: job.attempts,
+          message,
+          suppressed: takeSuppressed(alertState),
+        }),
+      );
+    } catch (e) {
+      console.error("send failure alert failed:", e.message);
+    }
+  }
+
   // Worker: claim one queued job at a time (SKIP LOCKED → safe across replicas)
   async function tick() {
     const claim = await pool.query(
@@ -236,7 +264,15 @@ export function registerSend({ app, pool, clientIp }) {
       console.log(`send_job ${job.id} done (item ${job.item_id})`);
     } catch (e) {
       const failed = job.attempts >= MAX_JOB_ATTEMPTS;
-      if (failed) await logSendToAudit(job, false, Date.now() - t0); // FAIL row once retries exhausted
+      if (failed) {
+        await logSendToAudit(job, false, Date.now() - t0); // FAIL row once retries exhausted
+        // A job that has exhausted its retries means data did NOT reach Monday
+        // and a patient is sitting mid-stage. Nothing else notices: the browser
+        // returned long ago, and the audit row is only found by someone already
+        // looking. Fire-and-forget and never awaited — a dead ntfy must not
+        // become a stuck send worker (the discipline recordEvent follows).
+        void alertSendFailure(job, e);
+      }
       await pool.query(
         `UPDATE send_jobs SET status=$2, error=$3, updated_at=now() WHERE id=$1`,
         [job.id, failed ? "failed" : "queued", String(e.message).slice(0, 500)],
