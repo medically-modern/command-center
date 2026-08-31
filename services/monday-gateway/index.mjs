@@ -59,6 +59,7 @@ import { verifyGoogleToken, authEnforced } from "./auth.mjs";
 import { extractColumns } from "./columns.mjs";
 import { buildAuditQuery } from "./auditQuery.mjs";
 import { buildErrorGroupsQuery, buildTotalsQuery, summarize } from "./errorSummary.mjs";
+import { registerFailureWatch } from "./failureWatch.mjs";
 
 const {
   MONDAY_API_TOKEN,
@@ -760,6 +761,13 @@ ensureSchema().finally(() => {
   // hold the process open during a redeploy.
   void pruneRequestLog(pool);
   setInterval(() => void pruneRequestLog(pool), 24 * 60 * 60 * 1000).unref?.();
+
+  // Push to ntfy when Monday has been rejecting calls. Covers what the send
+  // worker's own alert cannot see: every inline /gql write (notes, attempt
+  // saves, the escalation modal) fails without ever becoming a send job, and
+  // that is the shape "Item link max locks exceeded" arrived in. Silent no-op
+  // without NTFY_TOPIC. See failureWatch.mjs.
+  registerFailureWatch({ pool });
 
   app.listen(PORT, () =>
     console.log(

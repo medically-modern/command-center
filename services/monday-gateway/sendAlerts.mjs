@@ -105,3 +105,40 @@ export function formatSendFailure({ boardId, label, attempts, message, suppresse
     tags: "rotating_light,floppy_disk",
   };
 }
+
+/**
+ * The periodic sweep's message: everything Monday rejected in a window,
+ * whatever path it came in on.
+ *
+ * ⚠️ This exists because the send-job alert above only sees the SEND worker.
+ * Inline panel writes — notes, attempt saves, the escalation modal — go through
+ * /gql and land in gql_log without ever becoming a send job, so they would
+ * otherwise never page. gql_log is the one table both paths reach.
+ *
+ * `groups` is already redacted by errorSummary.summarize — do not pass raw rows.
+ */
+export function formatFailureSweep({
+  groups = [],
+  windowMinutes,
+  failures = 0,
+  writes = 0,
+  suppressed = 0,
+} = {}) {
+  const top = groups.slice(0, 5).map((g) => `  ${g.count}× ${g.message}`);
+  const body = [
+    `${failures} failed Monday call${failures === 1 ? "" : "s"} in the last ${windowMinutes} min` +
+      (writes ? ` (of ${writes} writes)` : ""),
+    ...top,
+    groups.length > 5 ? `  …and ${groups.length - 5} more shapes` : "",
+    suppressed > 0 ? `(+${suppressed} earlier alerts suppressed)` : "",
+    "Detail: /audit on the gateway.",
+  ].filter(Boolean);
+  return {
+    title: "Command Center: Monday calls failing",
+    body: body.join("\n"),
+    // Lower than a send-job failure: these are individual rejected calls, and
+    // the rep usually saw a toast. Worth knowing, not worth waking someone.
+    priority: "default",
+    tags: "warning",
+  };
+}
