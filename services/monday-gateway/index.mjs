@@ -58,6 +58,7 @@ import {
 import { verifyGoogleToken, authEnforced } from "./auth.mjs";
 import { extractColumns } from "./columns.mjs";
 import { buildAuditQuery } from "./auditQuery.mjs";
+import { buildErrorGroupsQuery, buildTotalsQuery, summarize } from "./errorSummary.mjs";
 
 const {
   MONDAY_API_TOKEN,
@@ -667,6 +668,71 @@ app.get("/audit/requests.json", async (req, res) => {
     res.json({ hours: q.hours, limit: q.limit, retentionDays: REQUEST_LOG_RETENTION_DAYS, rows });
   } catch (e) {
     res.status(500).json({ error: e.message });
+  }
+});
+
+/**
+ * GET /audit/errors.json?hours=24 — what has been FAILING, as counts.
+ *
+ * ⚠️ UNAUTHENTICATED, deliberately, and the only route in the /audit family
+ * that is. A monitor should not need a shared secret to answer "is anything
+ * broken", and a secret pasted into a scheduled job's config is a secret that
+ * lives forever. This is the posture /calls/health already has beside it.
+ *
+ * The trade is that the RESPONSE has to be safe for a public URL, so this
+ * returns counts, timestamps and a SCRUBBED error string — never an actor, an
+ * IP, an item or board id, a column value or the query text. /audit and
+ * /audit.json keep their AUDIT_KEY gate precisely because they return those.
+ *
+ * Monday's error text is not a fixed vocabulary — it echoes values we sent
+ * ("The label 'St Anne Clinic' does not exist"), so redaction is a security
+ * boundary, not tidiness. It lives in errorSummary.mjs with its own tests.
+ *
+ * Built for the "Item link max locks exceeded" watch, but deliberately generic:
+ * it reports whatever Monday is rejecting, so it serves the next thing too.
+ */
+const errorSummaryCache = { at: 0, hours: 0, body: null };
+const ERROR_SUMMARY_TTL_MS = 60_000;
+
+app.get("/audit/errors.json", async (req, res) => {
+  if (!pool) return res.status(503).json({ error: "audit logging disabled" });
+  try {
+    const groups = buildErrorGroupsQuery({ hours: req.query.hours });
+    // Cache on the CLAMPED window: a public URL must not be able to drive
+    // unbounded Postgres load by varying the query string.
+    const now = Date.now();
+    if (
+      errorSummaryCache.body &&
+      errorSummaryCache.hours === groups.hours &&
+      now - errorSummaryCache.at < ERROR_SUMMARY_TTL_MS
+    ) {
+      return res.json(errorSummaryCache.body);
+    }
+    const totals = buildTotalsQuery({ hours: groups.hours });
+    const [g, t] = await Promise.all([
+      pool.query(groups.sql, groups.args),
+      pool.query(totals.sql, totals.args),
+    ]);
+    const row = t.rows[0] || {};
+    const body = {
+      // Echo the window actually used — a request for two years comes back as
+      // 30 days, and must SAY so or the missing rows read as "nothing happened".
+      windowHours: groups.hours,
+      generatedAt: new Date().toISOString(),
+      requests: row.requests ?? 0,
+      writes: row.writes ?? 0,
+      failures: row.failures ?? 0,
+      errors: summarize(g.rows),
+    };
+    errorSummaryCache.at = now;
+    errorSummaryCache.hours = groups.hours;
+    errorSummaryCache.body = body;
+    res.json(body);
+  } catch (e) {
+    // Never echo the driver's message at a public URL — it can name columns and
+    // the database. The detail goes to the service log instead.
+    console.error("/audit/errors.json failed:", e.message);
+    res.status(500).json({ error: "query failed" });
   }
 });
 
