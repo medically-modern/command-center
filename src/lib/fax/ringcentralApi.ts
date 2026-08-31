@@ -10,6 +10,7 @@
  */
 
 import { getIdToken } from "../shared/auth";
+import type { RcFaxRecord } from "./faxOutcome";
 import {
   callLogPhoneParam,
   toPatientCalls,
@@ -102,6 +103,46 @@ export async function fetchOutboundFaxStatus(
     lastModifiedTime: rec.lastModifiedTime || rec.creationTime || sinceIso || "",
     id: rec.id,
   };
+}
+
+/** Is RingCentral reachable at all? Every RC call goes through the gateway, so
+ *  a build without one (local dev, direct mode) must not even try. */
+export const RC_VIA_GATEWAY = GATEWAY.length > 0;
+
+/**
+ * Recent OUTBOUND faxes, newest first — the input to the "Fax Bad" badge.
+ *
+ * ⚠️ **One call for every patient on screen, not one call per patient.** The
+ * badge renders on every masheke header, and a per-patient status lookup is the
+ * shape that took the phone system down on 2026-08-20 (see
+ * INCIDENT_2026-08-20_RINGCENTRAL.md). Callers fold this into a number→outcome
+ * map once (`buildFaxOutcomes`) and every patient looks themselves up locally.
+ *
+ * Bounded on purpose: at most `maxPages` requests per refresh, and it stops
+ * early on a short page. `dateFrom` is explicit because RingCentral's message
+ * store otherwise defaults to roughly the last 24 hours — the same gotcha
+ * `fetchUnreadFaxCount` documents.
+ */
+export async function fetchRecentOutboundFaxes({
+  days = 14,
+  maxPages = 3,
+  perPage = 100,
+}: { days?: number; maxPages?: number; perPage?: number } = {}): Promise<RcFaxRecord[]> {
+  const dateFrom = new Date(Date.now() - days * 24 * 60 * 60_000).toISOString();
+  const out: RcFaxRecord[] = [];
+  for (let page = 1; page <= maxPages; page++) {
+    const path =
+      `/restapi/v1.0/account/~/extension/~/message-store` +
+      `?messageType=Fax&direction=Outbound&dateFrom=${encodeURIComponent(dateFrom)}` +
+      `&perPage=${perPage}&page=${page}`;
+    const res = await rcFetch(path);
+    if (!res.ok) throw new Error(`RingCentral outbound fax list failed (${res.status})`);
+    const json = (await res.json()) as { records?: RcFaxRecord[] };
+    const records = json.records ?? [];
+    out.push(...records);
+    if (records.length < perPage) break;
+  }
+  return out;
 }
 
 const RC_SMS_FROM = (import.meta.env.VITE_RC_SMS_FROM as string | undefined) || "+13475037148";

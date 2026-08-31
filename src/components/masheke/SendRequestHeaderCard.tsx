@@ -15,6 +15,7 @@ import type { Patient } from "@/lib/masheke/workflow";
 import { DoctorEditGrid, EditToggle, DaysInStagePill, PatientContact } from "@/components/masheke/mmKit";
 import { DoctorNotesPanel } from "@/components/shared/DoctorNotesPanel";
 import { MashekeProfileStatus } from "@/components/shared/PatientProfileStatus";
+import { FaxStatusBadge } from "@/components/shared/FaxStatusBadge";
 
 function formatPhone(raw?: string): string {
   if (!raw) return "—";
@@ -96,6 +97,10 @@ export function SendRequestHeaderCard({
         <div className="flex items-center gap-3 flex-wrap min-w-0">
           <h1 className="text-3xl font-black tracking-tight">{patient.name}</h1>
           <MashekeProfileStatus patient={patient} />
+          {/* Silent unless the last fax to this doctor actually failed — see
+              FaxStatusBadge. Sits beside the status chip so "is this patient
+              workable" and "did our fax land" read in one glance. */}
+          <FaxStatusBadge doctorFax={patient.doctorFax} />
         </div>
         <DaysInStagePill value={patient.daysSinceStageStart} />
       </div>
