@@ -59,22 +59,36 @@ const SENT_STATUSES = new Set(["Sent", "Delivered"]);
  * line was busy, just re-send" — a rep who can't tell those apart either edits
  * a number that was fine or re-sends into a dead line all week.
  */
-const REASONS: Record<string, string> = {
-  WrongNumber:
-    "The line answered but it isn't a fax machine — the number on the doctor record is wrong.",
-  CallFailed:
-    "The call never connected — the line is disconnected, or it never answered as a fax. Usually a wrong or dead number.",
-  LineBusy: "The line was busy. Worth re-sending.",
-  NoAnswer: "The line rang out with no answer. Worth re-sending.",
-  RenderingFailed:
-    "Our own document failed to render — this one is ours, not the doctor's number.",
+const FAILURES: Record<string, { label: string; reason: string }> = {
+  WrongNumber: {
+    label: "Wrong number",
+    reason: "The line answered but it isn't a fax machine — the number on the doctor record is wrong.",
+  },
+  CallFailed: {
+    label: "Call failed",
+    reason:
+      "The call never connected — the line is disconnected, or it never answered as a fax. Usually a wrong or dead number.",
+  },
+  LineBusy: { label: "Line busy", reason: "The line was busy. Worth re-sending." },
+  NoAnswer: { label: "No answer", reason: "The line rang out with no answer. Worth re-sending." },
+  RenderingFailed: {
+    label: "Render failed",
+    reason: "Our own document failed to render — this one is ours, not the doctor's number.",
+  },
 };
+
+/** Short headline for a failure code — what RingCentral called it, in our words. */
+export function faxFailureLabel(code?: string): string {
+  const c = (code ?? "").trim();
+  if (!c) return "Fax not delivered";
+  return FAILURES[c]?.label ?? c;
+}
 
 /** Plain-language reason for a failure code, or a usable fallback. */
 export function faxFailureReason(code?: string): string {
   const c = (code ?? "").trim();
   if (!c) return "RingCentral didn't say why.";
-  return REASONS[c] ?? `RingCentral reported "${c}".`;
+  return FAILURES[c]?.reason ?? `RingCentral reported "${c}".`;
 }
 
 /**

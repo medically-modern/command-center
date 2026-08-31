@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   buildFaxOutcomes,
+  faxFailureLabel,
   faxFailureReason,
   faxKey,
   faxOutcomeFor,
@@ -151,6 +152,16 @@ describe("failure wording", () => {
     expect(isRetryableFaxFailure("NoAnswer")).toBe(true);
     expect(isRetryableFaxFailure("WrongNumber")).toBe(false);
     expect(isRetryableFaxFailure("CallFailed")).toBe(false);
+  });
+
+  it("gives each code a short headline for the tooltip", () => {
+    expect(faxFailureLabel("LineBusy")).toBe("Line busy");
+    expect(faxFailureLabel("WrongNumber")).toBe("Wrong number");
+    expect(faxFailureLabel("CallFailed")).toBe("Call failed");
+    // An unknown code shows itself rather than a wrong guess; no code at all
+    // still names the fact we are sure of.
+    expect(faxFailureLabel("BrandNewCode")).toBe("BrandNewCode");
+    expect(faxFailureLabel(undefined)).toBe("Fax not delivered");
   });
 
   it("stays useful for a code we have never seen", () => {
