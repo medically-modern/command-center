@@ -8,10 +8,12 @@
  */
 import {
   writeStatusIndex, writeText, writePhone, writeEmail, writeNumber,
-  writeLocation, writeItemName, writeDropdownIds, writeDropdownLabels, writeDate,
-  fetchItem, clearStatusColumn, readColumnTexts, moveItemToGroup, GROUPS, COL,
+  writeLocation, writeItemName, writeDropdownIds, writeDropdownLabels, writeDate, cleanNumberValue,
+  fetchItem, clearStatusColumn, readColumnTexts, moveItemToGroup, GROUPS, COL, BOARD_ID,
 } from "./mondayApi";
 import { executeWritesWithVerification } from "../shared/verifiedWrite";
+import { planPhoneWrite } from "../shared/phoneCell";
+import { planEmailWrite } from "../shared/emailCell";
 import { stampNoteEntry } from "../shared/noteStamp";
 import type { Patient } from "./workflow";
 import {
@@ -30,6 +32,10 @@ interface WriteTask {
   label: string;
   columnId: string;
   fn: () => Promise<unknown>;
+  /** Raw Monday value in change_multiple_column_values shape — mirrors exactly
+   *  what this task's write helper hands JSON.stringify. Every task must carry
+   *  one or the gateway /send fast path stays disengaged. */
+  value?: unknown;
   expectedText?: string;
 }
 
@@ -94,7 +100,7 @@ function statusWriteTask(
     console.warn(`No index found for status label "${statusLabel}" in column ${colId}`);
     return;
   }
-  tasks.push({ label: taskLabel, columnId: colId, fn: () => writeStatusIndex(itemId, colId, idx) });
+  tasks.push({ label: taskLabel, columnId: colId, value: { index: idx }, fn: () => writeStatusIndex(itemId, colId, idx) });
 }
 
 /**
@@ -107,25 +113,37 @@ function buildDataTasks(p: Patient, clinicLabelId: number | null): WriteTask[] {
   const tasks: WriteTask[] = [];
 
   // ── Name ──
-  tasks.push({ label: "Name", columnId: "name", fn: () => writeItemName(p.id, p.name) });
+  // change_multiple_column_values expresses the item name as the key "name"
+  // carrying a PLAIN STRING — the same shape writeItemName already sends via
+  // change_simple_column_value, so batching this is behaviour-neutral.
+  tasks.push({ label: "Name", columnId: "name", value: p.name, fn: () => writeItemName(p.id, p.name) });
 
   // ── Demographics ──
-  tasks.push({ label: "DOB", columnId: COL.dob, fn: () => writeText(p.id, COL.dob, p.dob) });
-  if (p.ptPhone) tasks.push({ label: "Phone", columnId: COL.ptPhone, fn: () => writePhone(p.id, COL.ptPhone, p.ptPhone) });
-  if (p.email) tasks.push({ label: "Email", columnId: COL.email, fn: () => writeText(p.id, COL.email, p.email) });
+  tasks.push({ label: "DOB", columnId: COL.dob, value: p.dob, fn: () => writeText(p.id, COL.dob, p.dob) });
+  if (p.ptPhone) {
+    // writePhone SKIPS an unparseable number (writes nothing). A task carrying
+    // `{}` would CLEAR the column instead, so an unparseable value pushes no
+    // task at all — byte-for-byte today's no-op.
+    const ptPhonePlan = planPhoneWrite(p.ptPhone);
+    if (ptPhonePlan.action !== "skip")
+      tasks.push({ label: "Phone", columnId: COL.ptPhone, value: ptPhonePlan.action === "write" ? { phone: ptPhonePlan.phone, countryShortName: "US" } : {}, fn: () => writePhone(p.id, COL.ptPhone, p.ptPhone) });
+  }
+  // NB: COL.email is a TEXT column here (text_mm1xc140), written with writeText
+  // — not an email column, so it has no plan/skip/clear semantics.
+  if (p.email) tasks.push({ label: "Email", columnId: COL.email, value: p.email, fn: () => writeText(p.id, COL.email, p.email) });
   statusWriteTask(tasks, p.id, "Gender", COL.gender, p.gender, GENDER_INDEX);
-  if (p.patientAddress) tasks.push({ label: "Patient Address", columnId: COL.patientAddress, fn: () => writeLocation(p.id, COL.patientAddress, p.patientAddress, p.patientAddressLat ?? 0, p.patientAddressLng ?? 0) });
+  if (p.patientAddress) tasks.push({ label: "Patient Address", columnId: COL.patientAddress, value: { address: p.patientAddress, lat: p.patientAddressLat ?? 0, lng: p.patientAddressLng ?? 0 }, fn: () => writeLocation(p.id, COL.patientAddress, p.patientAddress, p.patientAddressLat ?? 0, p.patientAddressLng ?? 0) });
 
   // ── Insurance ──
   statusWriteTask(tasks, p.id, "General Insurance", COL.generalInsurance, p.generalInsurance, GENERAL_INSURANCE_INDEX);
   statusWriteTask(tasks, p.id, "Primary Insurance", COL.primaryInsurance, p.primaryInsurance, PRIMARY_INSURANCE_INDEX);
   statusWriteTask(tasks, p.id, "Secondary Insurance", COL.secondaryInsurance, p.secondaryInsurance, SECONDARY_INSURANCE_INDEX);
   // Working Member ID — the column the Stedi service reads (text_mm4t8gbq).
-  if (p.workingMemberId) tasks.push({ label: "Member ID (working)", columnId: COL.memberIdWorking, fn: () => writeText(p.id, COL.memberIdWorking, p.workingMemberId) });
+  if (p.workingMemberId) tasks.push({ label: "Member ID (working)", columnId: COL.memberIdWorking, value: p.workingMemberId, fn: () => writeText(p.id, COL.memberIdWorking, p.workingMemberId) });
   // Member ID 1 — the final advancing ID (may override the working value for the
   // Fidelis-supplies-only → NY Medicaid case).
-  if (p.memberId1) tasks.push({ label: "Member ID 1", columnId: COL.memberId1, fn: () => writeText(p.id, COL.memberId1, p.memberId1) });
-  if (p.memberId2) tasks.push({ label: "Member ID 2", columnId: COL.memberId2, fn: () => writeText(p.id, COL.memberId2, p.memberId2) });
+  if (p.memberId1) tasks.push({ label: "Member ID 1", columnId: COL.memberId1, value: p.memberId1, fn: () => writeText(p.id, COL.memberId1, p.memberId1) });
+  if (p.memberId2) tasks.push({ label: "Member ID 2", columnId: COL.memberId2, value: p.memberId2, fn: () => writeText(p.id, COL.memberId2, p.memberId2) });
 
   // ── Working cost-sharing (numeric) ──
   const wCoins = p.workingCoinsurance || p.stediCoinsurance;
@@ -133,36 +151,65 @@ function buildDataTasks(p: Patient, clinicLabelId: number | null): WriteTask[] {
   const wDeductRem = p.workingDeductibleRemaining || p.stediIndividualDeductibleRemaining;
   const wOop = p.workingOopMax || p.stediIndividualOopMax;
   const wOopRem = p.workingOopMaxRemaining || p.stediIndividualOopMaxRemaining;
-  if (wCoins) tasks.push({ label: "Working Coinsurance", columnId: COL.workingCoinsurance, fn: () => writeNumber(p.id, COL.workingCoinsurance, wCoins) });
-  if (wDeduct) tasks.push({ label: "Working Deductible", columnId: COL.workingDeductible, fn: () => writeNumber(p.id, COL.workingDeductible, wDeduct) });
-  if (wDeductRem) tasks.push({ label: "Working Deductible Rem", columnId: COL.workingDeductibleRemaining, fn: () => writeNumber(p.id, COL.workingDeductibleRemaining, wDeductRem) });
-  if (wOop) tasks.push({ label: "Working OOP Max", columnId: COL.workingOopMax, fn: () => writeNumber(p.id, COL.workingOopMax, wOop) });
-  if (wOopRem) tasks.push({ label: "Working OOP Max Rem", columnId: COL.workingOopMaxRemaining, fn: () => writeNumber(p.id, COL.workingOopMaxRemaining, wOopRem) });
+  // writeNumber CLEANS ($, %, commas) and then RETURNS EARLY when nothing is
+  // left, so the value Monday receives is the cleaned PLAIN STRING and a value
+  // like "%" writes nothing at all. Clean at build time with the helper the
+  // writer itself uses — never a second copy of the regex — and push no task
+  // when the result is empty; `fn` still passes the RAW value, so the client
+  // fallback path is byte-identical.
+  const wCoinsNum = cleanNumberValue(wCoins);
+  const wDeductNum = cleanNumberValue(wDeduct);
+  const wDeductRemNum = cleanNumberValue(wDeductRem);
+  const wOopNum = cleanNumberValue(wOop);
+  const wOopRemNum = cleanNumberValue(wOopRem);
+  if (wCoinsNum) tasks.push({ label: "Working Coinsurance", columnId: COL.workingCoinsurance, value: wCoinsNum, fn: () => writeNumber(p.id, COL.workingCoinsurance, wCoins) });
+  if (wDeductNum) tasks.push({ label: "Working Deductible", columnId: COL.workingDeductible, value: wDeductNum, fn: () => writeNumber(p.id, COL.workingDeductible, wDeduct) });
+  if (wDeductRemNum) tasks.push({ label: "Working Deductible Rem", columnId: COL.workingDeductibleRemaining, value: wDeductRemNum, fn: () => writeNumber(p.id, COL.workingDeductibleRemaining, wDeductRem) });
+  if (wOopNum) tasks.push({ label: "Working OOP Max", columnId: COL.workingOopMax, value: wOopNum, fn: () => writeNumber(p.id, COL.workingOopMax, wOop) });
+  if (wOopRemNum) tasks.push({ label: "Working OOP Max Rem", columnId: COL.workingOopMaxRemaining, value: wOopRemNum, fn: () => writeNumber(p.id, COL.workingOopMaxRemaining, wOopRem) });
 
   // ── OOP estimate (computed by the Calculate button; persisted on send-off too) ──
-  if (p.oopFirst?.trim()) tasks.push({ label: "OOP First-Order", columnId: COL.oopFirst, fn: () => writeText(p.id, COL.oopFirst, p.oopFirst) });
-  if (p.oopRecurring?.trim()) tasks.push({ label: "OOP Recurring", columnId: COL.oopRecurring, fn: () => writeText(p.id, COL.oopRecurring, p.oopRecurring) });
+  if (p.oopFirst?.trim()) tasks.push({ label: "OOP First-Order", columnId: COL.oopFirst, value: p.oopFirst, fn: () => writeText(p.id, COL.oopFirst, p.oopFirst) });
+  if (p.oopRecurring?.trim()) tasks.push({ label: "OOP Recurring", columnId: COL.oopRecurring, value: p.oopRecurring, fn: () => writeText(p.id, COL.oopRecurring, p.oopRecurring) });
 
   // ── Notes (running log) — persisted on send-off so edits aren't overlay-only ──
-  if (p.notes?.trim()) tasks.push({ label: "Notes", columnId: COL.notes, fn: () => writeText(p.id, COL.notes, p.notes) });
+  if (p.notes?.trim()) tasks.push({ label: "Notes", columnId: COL.notes, value: p.notes, fn: () => writeText(p.id, COL.notes, p.notes) });
 
   // ── Doctor ──
   statusWriteTask(tasks, p.id, "Doctor Status", COL.doctorStatus, p.doctorStatus, DOCTOR_STATUS_INDEX);
-  if (p.doctorName) tasks.push({ label: "Doctor Name", columnId: COL.doctorName, fn: () => writeText(p.id, COL.doctorName, p.doctorName) });
-  if (p.doctorPhone) tasks.push({ label: "Doctor Phone", columnId: COL.doctorPhone, fn: () => writePhone(p.id, COL.doctorPhone, p.doctorPhone) });
-  if (p.doctorNpi) tasks.push({ label: "Doctor NPI", columnId: COL.doctorNpi, fn: () => writeText(p.id, COL.doctorNpi, p.doctorNpi) });
-  statusWriteTask(tasks, p.id, "Clinicals Method", COL.clinicalsMethod, p.clinicalsMethod, CLINICALS_METHOD_INDEX);
-  if (p.doctorEmail) tasks.push({ label: "Doctor Email", columnId: COL.doctorEmail, fn: () => writeEmail(p.id, COL.doctorEmail, p.doctorEmail) });
-  if (p.doctorFax) tasks.push({ label: "Doctor Fax", columnId: COL.doctorFax, fn: () => writeEmail(p.id, COL.doctorFax, p.doctorFax) });
-  if (clinicLabelId !== null) {
-    tasks.push({ label: "Clinic Name", columnId: COL.clinicName, fn: () => writeDropdownIds(p.id, COL.clinicName, [clinicLabelId]) });
+  if (p.doctorName) tasks.push({ label: "Doctor Name", columnId: COL.doctorName, value: p.doctorName, fn: () => writeText(p.id, COL.doctorName, p.doctorName) });
+  if (p.doctorPhone) {
+    // Same skip semantics as the patient phone above: unparseable → no task.
+    const doctorPhonePlan = planPhoneWrite(p.doctorPhone);
+    if (doctorPhonePlan.action !== "skip")
+      tasks.push({ label: "Doctor Phone", columnId: COL.doctorPhone, value: doctorPhonePlan.action === "write" ? { phone: doctorPhonePlan.phone, countryShortName: "US" } : {}, fn: () => writePhone(p.id, COL.doctorPhone, p.doctorPhone) });
   }
-  if (p.clinicAddress) tasks.push({ label: "Clinic Address", columnId: COL.clinicAddress, fn: () => writeLocation(p.id, COL.clinicAddress, p.clinicAddress, p.clinicAddressLat ?? 0, p.clinicAddressLng ?? 0) });
+  if (p.doctorNpi) tasks.push({ label: "Doctor NPI", columnId: COL.doctorNpi, value: p.doctorNpi, fn: () => writeText(p.id, COL.doctorNpi, p.doctorNpi) });
+  statusWriteTask(tasks, p.id, "Clinicals Method", COL.clinicalsMethod, p.clinicalsMethod, CLINICALS_METHOD_INDEX);
+  if (p.doctorEmail) {
+    // writeEmail SKIPS an unparseable address (writes nothing) and CLEARS with
+    // { email: "", text: "" } — not {}. Mirror both branches exactly.
+    const doctorEmailPlan = planEmailWrite(p.doctorEmail);
+    const doctorEmailClean = doctorEmailPlan.action === "write" ? doctorEmailPlan.email : "";
+    if (doctorEmailPlan.action !== "skip")
+      tasks.push({ label: "Doctor Email", columnId: COL.doctorEmail, value: { email: doctorEmailClean, text: doctorEmailClean }, fn: () => writeEmail(p.id, COL.doctorEmail, p.doctorEmail) });
+  }
+  if (p.doctorFax) {
+    // Same as Doctor Email — this is the column emailCell's skip exists to
+    // protect (a fax number sitting behind a drifted label).
+    const doctorFaxPlan = planEmailWrite(p.doctorFax);
+    const doctorFaxClean = doctorFaxPlan.action === "write" ? doctorFaxPlan.email : "";
+    if (doctorFaxPlan.action !== "skip")
+      tasks.push({ label: "Doctor Fax", columnId: COL.doctorFax, value: { email: doctorFaxClean, text: doctorFaxClean }, fn: () => writeEmail(p.id, COL.doctorFax, p.doctorFax) });
+  }
+  if (clinicLabelId !== null) {
+    tasks.push({ label: "Clinic Name", columnId: COL.clinicName, value: { ids: [clinicLabelId] }, fn: () => writeDropdownIds(p.id, COL.clinicName, [clinicLabelId]) });
+  }
+  if (p.clinicAddress) tasks.push({ label: "Clinic Address", columnId: COL.clinicAddress, value: { address: p.clinicAddress, lat: p.clinicAddressLat ?? 0, lng: p.clinicAddressLng ?? 0 }, fn: () => writeLocation(p.id, COL.clinicAddress, p.clinicAddress, p.clinicAddressLat ?? 0, p.clinicAddressLng ?? 0) });
 
   // ── Insurance Plan (copied from Stedi plan name) ──
-  if (p.stediPlanName?.trim()) {
-    tasks.push({ label: "Insurance Plan", columnId: COL.insurancePlan, fn: () => writeDropdownLabels(p.id, COL.insurancePlan, [p.stediPlanName.trim()]) });
-  }
+  // HOISTED out of this task list — it is now written by sendPatientToMonday
+  // before the verified batch runs. See the comment there for why.
 
   // ── Plan Begin Date (date column, from the Stedi ISO text) ──
   // Written before the advancer so the create-item automation can copy it
@@ -171,15 +218,17 @@ function buildDataTasks(p: Patient, clinicLabelId: number | null): WriteTask[] {
   // "01 January 2022") when mapping it into the created item.
   const planBegin = (p.stediPlanBeginDate || "").trim();
   if (/^\d{4}-\d{2}-\d{2}$/.test(planBegin)) {
-    tasks.push({ label: "Plan Begin Date", columnId: COL.planBeginDate, fn: () => writeDate(p.id, COL.planBeginDate, planBegin) });
+    // profile's writeDate has NO blank guard — it always sends { date }. The
+    // regex above guarantees a non-blank ISO date here either way.
+    tasks.push({ label: "Plan Begin Date", columnId: COL.planBeginDate, value: { date: planBegin }, fn: () => writeDate(p.id, COL.planBeginDate, planBegin) });
   }
 
   // ── Active / Not Active (derived from Stedi Eligibility Active) ──
   const activeText = p.stediEligibilityActive?.toLowerCase().trim();
   if (activeText === "yes") {
-    tasks.push({ label: "Active/Not Active", columnId: COL.activeNotActive, fn: () => writeStatusIndex(p.id, COL.activeNotActive, 0) });
+    tasks.push({ label: "Active/Not Active", columnId: COL.activeNotActive, value: { index: 0 }, fn: () => writeStatusIndex(p.id, COL.activeNotActive, 0) });
   } else if (activeText === "no") {
-    tasks.push({ label: "Active/Not Active", columnId: COL.activeNotActive, fn: () => writeStatusIndex(p.id, COL.activeNotActive, 1) });
+    tasks.push({ label: "Active/Not Active", columnId: COL.activeNotActive, value: { index: 1 }, fn: () => writeStatusIndex(p.id, COL.activeNotActive, 1) });
   }
 
   // ── Serving / Product ──
@@ -210,17 +259,82 @@ export async function sendPatientToMonday(
   p: Patient,
   clinicLabelId: number | null,
 ): Promise<void> {
+  // ── Insurance Plan (copied from the Stedi plan name) ─────────────────────
+  // HOISTED out of the verified batch on purpose: profile's writeDropdownLabels
+  // hardcodes `create_labels_if_missing: true`, and
+  // change_multiple_column_values carries ONE transaction-wide flag — so
+  // batching this write would let every other label-shaped write in this send
+  // mint junk board labels (CLAUDE.md §5.6). Every remaining write here is
+  // index- or dropdown-id-based (strict), and this one stays a lone
+  // create-labels-allowed mutation.
+  //
+  // It keeps the module's own retry wrapper, so it still gets 3 attempts with
+  // backoff exactly as it did while it was a task in the batch, and a
+  // persistent failure still aborts the send with the stage NOT advanced.
+  //
+  // ⚠️ THE HOIST ONLY MAKES THE LABEL EXIST — it is NOT the write that counts.
+  // Monday acks a column write BEFORE the value is indexed (§5.2), so a write
+  // that left the batch would also leave `verifyColIds`, and the Stage Advancer
+  // could fire while this column was still stale — handing the create-item
+  // automation the previous or a blank value. "It was written first so it has
+  // had longer to index" is a timing argument, not the read-back guarantee §9
+  // requires ("verify before you advance").
+  //
+  // So the two jobs are split. The awaited call guarantees the LABEL EXISTS
+  // (it is the only write allowed to create one). The task pushed straight
+  // after writes the same value inside the STRICT batch — no create-labels
+  // flag needed, because the label exists by then — which puts the column back
+  // in `verifyColIds` and holds the advancer until Monday reads the value
+  // back. One extra mutation, and the stage boundary is honest again.
+  //
+  // The hoist is still a plain client-side write, so it does not ride the
+  // gateway's durable offline outbox: an offline send fails here rather than
+  // queueing, before anything else on the item has changed.
+  if (p.stediPlanName?.trim()) {
+    const planLabelFailure = await executeWithRetry({
+      label: "Insurance Plan (create label)",
+      columnId: COL.insurancePlan,
+      fn: () => writeDropdownLabels(p.id, COL.insurancePlan, [p.stediPlanName.trim()]),
+    });
+    if (planLabelFailure) {
+      throw new Error(`Insurance Plan failed after retries — stage NOT advanced. ${planLabelFailure}`);
+    }
+  }
+
   const tasks = buildDataTasks(p, clinicLabelId);
+
+  // The verified half of the Insurance Plan write — see the hoist comment above.
+  if (p.stediPlanName?.trim()) {
+    const planLabel = p.stediPlanName.trim();
+    // ⚠️ `expectedText` is REQUIRED here, not decoration. This column is written
+    // TWICE — once by the hoist above, once in the batch — so the Phase 2
+    // snapshot is taken AFTER the hoist rather than before the transaction.
+    // If the hoist has not indexed by snapshot time the baseline holds the OLD
+    // value, and snapshot-diff would then see "unchanged" on every poll and hit
+    // the 3-stable-reads escape hatch, which assumes unchanged means
+    // "same-value write, already correct". Here it can equally mean "still
+    // stale", and the advancer would fire on the old value. An exact-match
+    // check has no such escape hatch: it polls until Monday really reads the
+    // label back, or throws with the stage NOT advanced.
+    tasks.push({
+      label: "Insurance Plan",
+      columnId: COL.insurancePlan,
+      value: { labels: [planLabel] },
+      expectedText: planLabel,
+      fn: () => writeDropdownLabels(p.id, COL.insurancePlan, [planLabel]),
+    });
+  }
 
   // ── Move to Onboarding (stage advancer — written LAST after verification) ──
   const onboardingIdx = MOVE_TO_ONBOARDING_INDEX["Advance to MN"];
   if (onboardingIdx !== undefined) {
-    tasks.push({ label: "Move to Onboarding", columnId: COL.moveToOnboarding, fn: () => writeStatusIndex(p.id, COL.moveToOnboarding, onboardingIdx) });
+    tasks.push({ label: "Move to Onboarding", columnId: COL.moveToOnboarding, value: { index: onboardingIdx }, fn: () => writeStatusIndex(p.id, COL.moveToOnboarding, onboardingIdx) });
   }
 
   // ---- Execute with read-back verification before advancing stage ----
   const failures = await executeWritesWithVerification({
     itemId: p.id,
+    boardId: String(BOARD_ID),
     tasks,
     stageColumnId: COL.moveToOnboarding,
     executeWithRetry,

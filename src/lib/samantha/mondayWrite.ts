@@ -5,7 +5,7 @@
 // still fail after retries are logged to the "Josh Debug" column so
 // nothing is silently lost.
 
-import { writeStatusIndex, writeLongText, writeDropdownIds, writeDropdownLabels, writeText, writeDate, writeNumber, writeCheckbox, writeItemName, writePhone, writeEmail, writeSimpleValue, writeLocation, readColumnTexts, COL } from "./mondayApi";
+import { writeStatusIndex, writeLongText, writeDropdownIds, writeDropdownLabels, writeText, writeDate, writeNumber, writeCheckbox, writeItemName, writePhone, writeEmail, writeSimpleValue, writeLocation, readColumnTexts, BOARD_ID, COL } from "./mondayApi";
 import { executeWritesWithVerification, type WriteProgressPhase } from "../shared/verifiedWrite";
 import { resolveHcpcs, isAutoFilledMedicaidSupply, PRIMARY_INSURANCE_INDEX, SECONDARY_INSURANCE_INDEX } from "./hcpcRules";
 import type { PrimaryInsurance } from "./hcpcRules";
@@ -45,6 +45,8 @@ import { isMedicarePrimary } from "./medicareJurisdiction";
 import { allProductsDvsRouted, dvsAutoTrigger, hasDvsRoutedProducts } from "./dvsRouting";
 import { etNow } from "../masheke/etDate";
 import { userInitials } from "../shared/auth";
+import { planPhoneWrite } from "../shared/phoneCell";
+import { planEmailWrite } from "../shared/emailCell";
 
 const MAX_RETRIES = 2;
 const RETRY_DELAY_MS = 800;
@@ -56,6 +58,11 @@ interface WriteTask {
   /** Expected text value after the write. Used for read-back verification
    *  before the stage advancer is written. */
   expectedText?: string;
+  /** The RAW Monday column value — exactly what this task's `fn` hands to
+   *  JSON.stringify(). Every task must carry one, or `executeWritesWithVerification`
+   *  falls back to firing one mutation per column in parallel, which trips
+   *  Monday's "Item link max locks exceeded" on a big send (CLAUDE.md §5.2). */
+  value?: unknown;
 }
 
 /**
@@ -203,18 +210,21 @@ export async function sendPatientToMonday(
     tasks.push({
       label: "In-Network",
       columnId: COL.inNetwork,
+      value: { index: UNIVERSAL_INDEX.inNetwork.pass },
       fn: () => writeStatusIndex(p.id, COL.inNetwork, UNIVERSAL_INDEX.inNetwork.pass),
     });
   } else if (inNet === "medicare-not-primary") {
     tasks.push({
       label: "In-Network",
       columnId: COL.inNetwork,
+      value: { index: UNIVERSAL_INDEX.inNetwork.medicareNotPrimary },
       fn: () => writeStatusIndex(p.id, COL.inNetwork, UNIVERSAL_INDEX.inNetwork.medicareNotPrimary),
     });
   } else if (isNegUniversal(inNet)) {
     tasks.push({
       label: "In-Network",
       columnId: COL.inNetwork,
+      value: { index: UNIVERSAL_INDEX.inNetwork.fail },
       fn: () => writeStatusIndex(p.id, COL.inNetwork, UNIVERSAL_INDEX.inNetwork.fail),
     });
   }
@@ -222,12 +232,14 @@ export async function sendPatientToMonday(
     tasks.push({
       label: "Active",
       columnId: COL.active,
+      value: { index: UNIVERSAL_INDEX.active.pass },
       fn: () => writeStatusIndex(p.id, COL.active, UNIVERSAL_INDEX.active.pass),
     });
   } else if (isNegUniversal(active)) {
     tasks.push({
       label: "Active",
       columnId: COL.active,
+      value: { index: UNIVERSAL_INDEX.active.fail },
       fn: () => writeStatusIndex(p.id, COL.active, UNIVERSAL_INDEX.active.fail),
     });
   }
@@ -238,12 +250,14 @@ export async function sendPatientToMonday(
     tasks.push({
       label: "DME Benefits",
       columnId: COL.dmeBenefits,
+      value: { index: UNIVERSAL_INDEX.dmeBenefits.pass },
       fn: () => writeStatusIndex(p.id, COL.dmeBenefits, UNIVERSAL_INDEX.dmeBenefits.pass),
     });
   } else if (dme === "not-confirmed") {
     tasks.push({
       label: "DME Benefits",
       columnId: COL.dmeBenefits,
+      value: { index: UNIVERSAL_INDEX.dmeBenefits.fail },
       fn: () => writeStatusIndex(p.id, COL.dmeBenefits, UNIVERSAL_INDEX.dmeBenefits.fail),
     });
   }
@@ -330,12 +344,14 @@ export async function sendPatientToMonday(
         tasks.push({
           label: `Auth result: ${productId}`,
           columnId: authColumnId,
+          value: { index: AUTH_RESULT_INDEX.submitted },
           fn: () => writeStatusIndex(p.id, authColumnId, AUTH_RESULT_INDEX.submitted),
         });
       } else {
         tasks.push({
           label: `Auth result: ${productId}`,
           columnId: authColumnId,
+          value: { index: AUTH_RESULT_INDEX.required },
           fn: () => writeStatusIndex(p.id, authColumnId, AUTH_RESULT_INDEX.required),
         });
       }
@@ -344,6 +360,7 @@ export async function sendPatientToMonday(
       tasks.push({
         label: `Auth result: ${productId}`,
         columnId: authColumnId,
+        value: { index: AUTH_RESULT_INDEX.noAuthNeeded },
         fn: () => writeStatusIndex(p.id, authColumnId, AUTH_RESULT_INDEX.noAuthNeeded),
       });
     }
@@ -359,6 +376,7 @@ export async function sendPatientToMonday(
         tasks.push({
           label: `Auth result: ${prodKey} (not serving)`,
           columnId: COL.authResult[prodKey],
+          value: { index: AUTH_RESULT_INDEX.notServing },
           fn: () => writeStatusIndex(p.id, COL.authResult[prodKey], AUTH_RESULT_INDEX.notServing),
         });
       }
@@ -383,6 +401,7 @@ export async function sendPatientToMonday(
   tasks.push({
     label: "Not Clear Products",
     columnId: COL.notClearProducts,
+    value: { ids: notClearIds },
     fn: () => writeDropdownIds(p.id, COL.notClearProducts, notClearIds),
   });
 
@@ -393,6 +412,7 @@ export async function sendPatientToMonday(
   tasks.push({
     label: "Skip SoS Products",
     columnId: COL.skipSosProducts,
+    value: { ids: skipIds },
     fn: () => writeDropdownIds(p.id, COL.skipSosProducts, skipIds),
   });
   }
@@ -413,6 +433,7 @@ export async function sendPatientToMonday(
       tasks.push({
         label: `Last Bill Date: ${productId}`,
         columnId: lastBillDateCol,
+        value: { date: state.lastBillDate! },
         fn: () => writeDate(p.id, lastBillDateCol, state.lastBillDate!),
       });
     } else {
@@ -420,6 +441,7 @@ export async function sendPatientToMonday(
       tasks.push({
         label: `Last Bill Date (clear): ${productId}`,
         columnId: lastBillDateCol,
+        value: {},
         fn: () => writeDate(p.id, lastBillDateCol, ""),
       });
     }
@@ -442,18 +464,21 @@ export async function sendPatientToMonday(
     tasks.push({
       label: "IP Next Order Date",
       columnId: COL.nextOrderDate.insulin_pump,
+      value: nod.ipNextOrderDate ? { date: nod.ipNextOrderDate } : {},
       fn: () => writeDate(p.id, COL.nextOrderDate.insulin_pump, nod.ipNextOrderDate),
     });
     // Sensors Next Order Date
     tasks.push({
       label: "Sensors Next Order Date",
       columnId: COL.nextOrderDate.sensors,
+      value: nod.sensorsNextOrderDate ? { date: nod.sensorsNextOrderDate } : {},
       fn: () => writeDate(p.id, COL.nextOrderDate.sensors, nod.sensorsNextOrderDate),
     });
     // Supplies Next Order Date
     tasks.push({
       label: "Supplies Next Order Date",
       columnId: COL.nextOrderDate.supplies,
+      value: nod.suppliesNextOrderDate ? { date: nod.suppliesNextOrderDate } : {},
       fn: () => writeDate(p.id, COL.nextOrderDate.supplies, nod.suppliesNextOrderDate),
     });
   }
@@ -474,6 +499,7 @@ export async function sendPatientToMonday(
     tasks.push({
       label: "Auth aggregate",
       columnId: COL.auth,
+      value: { index: anyAuth ? UNIVERSAL_INDEX.auth.required : UNIVERSAL_INDEX.auth.noAuth },
       fn: () =>
         writeStatusIndex(p.id, COL.auth, anyAuth ? UNIVERSAL_INDEX.auth.required : UNIVERSAL_INDEX.auth.noAuth),
     });
@@ -488,6 +514,7 @@ export async function sendPatientToMonday(
     tasks.push({
       label: "SoS aggregate",
       columnId: COL.sos,
+      value: { index: sosIndex },
       fn: () => writeStatusIndex(p.id, COL.sos, sosIndex),
     });
   }
@@ -560,6 +587,7 @@ export async function sendPatientToMonday(
     tasks.push({
       label: "Follow Up Date (today)",
       columnId: COL.followUpDate,
+      value: todayEt ? { date: todayEt } : {},
       fn: () => writeDate(p.id, COL.followUpDate, todayEt),
     });
   } else if (context === "authOutstanding") {
@@ -672,6 +700,7 @@ export async function sendPatientToMonday(
     tasks.push({
       label: "Stage Advancer",
       columnId: COL.stageAdvancer,
+      value: { index: finalStageIndex },
       fn: () => writeStatusIndex(p.id, COL.stageAdvancer, finalStageIndex),
     });
     // Landing at DVS auto-flips the right bot trigger by serving (Josh,
@@ -685,12 +714,14 @@ export async function sendPatientToMonday(
         tasks.push({
           label: "Trigger Pump DVS (auto)",
           columnId: COL.triggerPumpDvs,
+          value: { index: TRIGGER_PUMP_DVS_INDEX.triggerPumpDvs },
           fn: () => writeStatusIndex(p.id, COL.triggerPumpDvs, TRIGGER_PUMP_DVS_INDEX.triggerPumpDvs),
         });
       } else if (trig === "supplies") {
         tasks.push({
           label: "Trigger Supplies DVS (auto)",
           columnId: COL.triggerDvs,
+          value: { index: TRIGGER_DVS_INDEX.triggerDvs },
           fn: () => writeStatusIndex(p.id, COL.triggerDvs, TRIGGER_DVS_INDEX.triggerDvs),
         });
       }
@@ -705,6 +736,14 @@ export async function sendPatientToMonday(
     tasks.push({
       label: "Escalation",
       columnId: COL.escalation,
+      value: {
+        index:
+          decided === "final"
+            ? ESCALATION_INDEX.finalRequired
+            : decided === "manager"
+              ? ESCALATION_INDEX.managerRequired
+              : ESCALATION_INDEX.done,
+      },
       fn: () =>
         writeStatusIndex(
           p.id,
@@ -747,6 +786,7 @@ export async function sendPatientToMonday(
     tasks.push({
       label: "Never billed IS/Car",
       columnId: COL.neverBilledIsCar,
+      value: { index: 0 },
       fn: () => writeStatusIndex(p.id, COL.neverBilledIsCar, 0),
     });
   }
@@ -754,6 +794,7 @@ export async function sendPatientToMonday(
     tasks.push({
       label: "Never billed CGM",
       columnId: COL.neverBilledCgm,
+      value: { index: 0 },
       fn: () => writeStatusIndex(p.id, COL.neverBilledCgm, 0),
     });
   }
@@ -781,12 +822,14 @@ export async function sendPatientToMonday(
       tasks.push({
         label: `SoS Last Bill: ${productId}`,
         columnId: COL.sosLastBill[productId],
+        value: dateVal ? { date: dateVal } : {},
         fn: () => writeDate(p.id, COL.sosLastBill[productId], dateVal),
       });
       const unitsVal = isBilledFact && isValidUnits(st?.units) ? st!.units! : "";
       tasks.push({
         label: `SoS Units: ${productId}`,
         columnId: COL.sosUnits[productId],
+        value: unitsVal || "",
         fn: () => writeNumber(p.id, COL.sosUnits[productId], unitsVal),
       });
       // "No Billing History" checkbox — the rep's answer for ALL payers
@@ -796,6 +839,7 @@ export async function sendPatientToMonday(
       tasks.push({
         label: `SoS No Billing History: ${productId}`,
         columnId: COL.sosNeverBilled[productId],
+        value: neverChecked ? { checked: "true" } : {},
         fn: () => writeCheckbox(p.id, COL.sosNeverBilled[productId], neverChecked),
       });
     }
@@ -835,6 +879,7 @@ export async function sendPatientToMonday(
         tasks.push({
           label: "Medicare Prior Pump Date (TBD)",
           columnId: COL.medicarePriorPumpDate,
+          value: "TBD",
           fn: () => writeText(p.id, COL.medicarePriorPumpDate, "TBD"),
           expectedText: "TBD",
         });
@@ -857,34 +902,40 @@ export async function sendPatientToMonday(
         tasks.push({
           label: `SoS Last Bill (recheck): ${productId}`,
           columnId: COL.sosLastBill[productId],
+          value: { date: state.lastBillDate! },
           fn: () => writeDate(p.id, COL.sosLastBill[productId], state.lastBillDate!),
         });
         if (isValidUnits(state.units)) {
           tasks.push({
             label: `SoS Units (recheck): ${productId}`,
             columnId: COL.sosUnits[productId],
+            value: state.units || "",
             fn: () => writeNumber(p.id, COL.sosUnits[productId], state.units!),
           });
         }
         tasks.push({
           label: `SoS No Billing History (recheck): ${productId}`,
           columnId: COL.sosNeverBilled[productId],
+          value: {},
           fn: () => writeCheckbox(p.id, COL.sosNeverBilled[productId], false),
         });
       } else if (state.sosEntry === "never") {
         tasks.push({
           label: `SoS No Billing History (recheck): ${productId}`,
           columnId: COL.sosNeverBilled[productId],
+          value: { checked: "true" },
           fn: () => writeCheckbox(p.id, COL.sosNeverBilled[productId], true),
         });
         tasks.push({
           label: `SoS Last Bill (recheck, clear): ${productId}`,
           columnId: COL.sosLastBill[productId],
+          value: {},
           fn: () => writeDate(p.id, COL.sosLastBill[productId], ""),
         });
         tasks.push({
           label: `SoS Units (recheck, clear): ${productId}`,
           columnId: COL.sosUnits[productId],
+          value: "",
           fn: () => writeNumber(p.id, COL.sosUnits[productId], ""),
         });
       }
@@ -898,6 +949,7 @@ export async function sendPatientToMonday(
     tasks.push({
       label: "Trigger DVS",
       columnId: COL.triggerDvs,
+      value: { index: TRIGGER_DVS_INDEX.triggerDvs },
       fn: () => writeStatusIndex(p.id, COL.triggerDvs, TRIGGER_DVS_INDEX.triggerDvs),
     });
   }
@@ -909,6 +961,7 @@ export async function sendPatientToMonday(
     tasks.push({
       label: "Trigger Pump DVS",
       columnId: COL.triggerPumpDvs,
+      value: { index: TRIGGER_PUMP_DVS_INDEX.triggerPumpDvs },
       fn: () => writeStatusIndex(p.id, COL.triggerPumpDvs, TRIGGER_PUMP_DVS_INDEX.triggerPumpDvs),
     });
   }
@@ -918,6 +971,17 @@ export async function sendPatientToMonday(
     if (!state) continue;
     const productId = PRODUCT_CODE_TO_PRODUCT_ID[cid];
 
+    // The Auth Outstanding "No Auth Needed" outcome BLANKS the four auth detail
+    // columns further down, precisely so a stale value cannot survive. Writing
+    // those stale values here first would give one transaction two opinions
+    // about one column: a race on the parallel client path (the shape that
+    // trips "Item link max locks exceeded"), and a silent last-wins collapse in
+    // the batch, where the task list folds into an object keyed by columnId.
+    // The clear is the intent, so don't write what is about to be blanked.
+    // Auth Method and Submission Date are NOT cleared there, so they still write.
+    const willClearAuthDetails =
+      context === "authOutstanding" && state.authOutstandingResult === "no-auth-needed";
+
     // Auth Submission Method (dropdown)
     if (state.authSubmissionMethod) {
       const optId = AUTH_METHOD_OPTION_ID[state.authSubmissionMethod];
@@ -925,6 +989,7 @@ export async function sendPatientToMonday(
         tasks.push({
           label: `Auth method: ${productId}`,
           columnId: COL.authMethod[productId],
+          value: { ids: [optId] },
           fn: () => writeDropdownIds(p.id, COL.authMethod[productId], [optId]),
         });
       }
@@ -935,42 +1000,47 @@ export async function sendPatientToMonday(
       tasks.push({
         label: `Auth submit date: ${productId}`,
         columnId: COL.authSubmissionDate[productId],
+        value: state.authSubmissionDate!,
         fn: () => writeText(p.id, COL.authSubmissionDate[productId], state.authSubmissionDate!),
       });
     }
 
     // Auth ID (text column)
-    if (state.authId) {
+    if (state.authId && !willClearAuthDetails) {
       tasks.push({
         label: `Auth ID: ${productId}`,
         columnId: COL.authId[productId],
+        value: state.authId!,
         fn: () => writeText(p.id, COL.authId[productId], state.authId!),
       });
     }
 
     // Auth Start (date column)
-    if (state.authStart) {
+    if (state.authStart && !willClearAuthDetails) {
       tasks.push({
         label: `Auth start: ${productId}`,
         columnId: COL.authStart[productId],
+        value: { date: state.authStart! },
         fn: () => writeDate(p.id, COL.authStart[productId], state.authStart!),
       });
     }
 
     // Auth End (date column)
-    if (state.authEnd) {
+    if (state.authEnd && !willClearAuthDetails) {
       tasks.push({
         label: `Auth end: ${productId}`,
         columnId: COL.authEnd[productId],
+        value: { date: state.authEnd! },
         fn: () => writeDate(p.id, COL.authEnd[productId], state.authEnd!),
       });
     }
 
     // Auth Units (numeric column)
-    if (state.authUnits) {
+    if (state.authUnits && !willClearAuthDetails) {
       tasks.push({
         label: `Auth units: ${productId}`,
         columnId: COL.authUnits[productId],
+        value: state.authUnits || "",
         fn: () => writeNumber(p.id, COL.authUnits[productId], state.authUnits!),
       });
     }
@@ -992,6 +1062,7 @@ export async function sendPatientToMonday(
       tasks.push({
         label: "Call/Fax Number",
         columnId: COL.callFaxNumber,
+        value: num,
         fn: () => writeText(p.id, COL.callFaxNumber, num),
       });
     }
@@ -1022,6 +1093,7 @@ export async function sendPatientToMonday(
       tasks.push({
         label: `Auth result: ${productId}`,
         columnId: authColumnId,
+        value: { index: resultIndex },
         fn: () => writeStatusIndex(p.id, authColumnId, resultIndex),
       });
 
@@ -1032,21 +1104,25 @@ export async function sendPatientToMonday(
         tasks.push({
           label: `Auth ID (clear): ${productId}`,
           columnId: COL.authId[productId],
+          value: "",
           fn: () => writeText(p.id, COL.authId[productId], ""),
         });
         tasks.push({
           label: `Auth Start (clear): ${productId}`,
           columnId: COL.authStart[productId],
+          value: {},
           fn: () => writeDate(p.id, COL.authStart[productId], ""),
         });
         tasks.push({
           label: `Auth End (clear): ${productId}`,
           columnId: COL.authEnd[productId],
+          value: {},
           fn: () => writeDate(p.id, COL.authEnd[productId], ""),
         });
         tasks.push({
           label: `Auth Units (clear): ${productId}`,
           columnId: COL.authUnits[productId],
+          value: "",
           fn: () => writeNumber(p.id, COL.authUnits[productId], ""),
         });
       }
@@ -1059,6 +1135,7 @@ export async function sendPatientToMonday(
     tasks.push({
       label: "Carecentrix Intake ID (profile)",
       columnId: COL.carecentrixIntakeId,
+      value: p.carecentrixIntakeId!,
       fn: () => writeText(p.id, COL.carecentrixIntakeId, p.carecentrixIntakeId!),
     });
   }
@@ -1069,92 +1146,53 @@ export async function sendPatientToMonday(
     tasks.push({
       label: "Carecentrix Intake ID",
       columnId: COL.carecentrixIntakeId,
+      value: intakeId,
       fn: () => writeText(p.id, COL.carecentrixIntakeId, intakeId),
     });
   }
 
 
-  // ----- Per-product auth submission fields (Authorizations tab) -----
-  for (const { cid, state } of entries) {
-    if (!state) continue;
-    const productId = PRODUCT_CODE_TO_PRODUCT_ID[cid];
-    const productLabel = cid;
-
-    // Auth Submission Method (dropdown)
-    if (state.authSubmissionMethod) {
-      const optId = AUTH_METHOD_OPTION_ID[state.authSubmissionMethod];
-      if (optId !== undefined) {
-        const colId = COL.authMethod[productId];
-        tasks.push({
-          label: `Auth Method (${productLabel})`,
-          columnId: colId,
-          fn: () => writeDropdownIds(p.id, colId, [optId]),
-        });
-      }
-    }
-
-    // Auth Submission Date (text column)
-    if (state.authSubmissionDate) {
-      const colId = COL.authSubmissionDate[productId];
-      const v = state.authSubmissionDate;
-      tasks.push({
-        label: `Auth Submission Date (${productLabel})`,
-        columnId: colId,
-        fn: () => writeText(p.id, colId, v),
-      });
-    }
-
-    // Auth ID (text column)
-    if (state.authId) {
-      const colId = COL.authId[productId];
-      const v = state.authId;
-      tasks.push({
-        label: `Auth ID (${productLabel})`,
-        columnId: colId,
-        fn: () => writeText(p.id, colId, v),
-      });
-    }
-
-    // Auth Start (date column)
-    if (state.authStart) {
-      const colId = COL.authStart[productId];
-      const v = state.authStart;
-      tasks.push({
-        label: `Auth Start (${productLabel})`,
-        columnId: colId,
-        fn: () => writeDate(p.id, colId, v),
-      });
-    }
-
-    // Auth End (date column)
-    if (state.authEnd) {
-      const colId = COL.authEnd[productId];
-      const v = state.authEnd;
-      tasks.push({
-        label: `Auth End (${productLabel})`,
-        columnId: colId,
-        fn: () => writeDate(p.id, colId, v),
-      });
-    }
-
-    // Auth Units (numeric column)
-    if (state.authUnits) {
-      const colId = COL.authUnits[productId];
-      const v = state.authUnits;
-      tasks.push({
-        label: `Auth Units (${productLabel})`,
-        columnId: colId,
-        fn: () => writeNumber(p.id, colId, v),
-      });
-    }
-  }
+  // ----- Per-product auth submission fields: DUPLICATE LOOP REMOVED -----
+  // A second, byte-for-byte equivalent copy of the "Per-product auth submission
+  // fields" loop above used to sit here: same `entries`, same guards, same six
+  // columns (Auth Method / Submission Date / ID / Start / End / Units), same
+  // values off the same `state` — only the task LABELS differed
+  // ("Auth ID: sensors" vs "Auth ID (cgm-sensors)").
+  //
+  // It was not merely redundant, it was destructive. The "No Auth Needed"
+  // branch above deliberately BLANKS those four detail columns so they cannot
+  // keep stale values, and this loop re-wrote the stale values straight back
+  // afterwards. On the old parallel client path that was a race — three
+  // mutations to one column, winner undefined, which is also precisely the
+  // shape that trips "Item link max locks exceeded". On the batched path the
+  // task list folds into an object keyed by columnId, so the LAST push would
+  // have won deterministically and the clear would never have landed again.
+  //
+  // Removing this copy makes the clear the last word, which is what its own
+  // comment says it is for, and drops five redundant mutations per send.
+  // Pinned by writeTaskParity.test.ts, which fails if any send writes one
+  // column twice.
 
   // ----- Profile fields (editable from PatientProfileCard) -----
   // Item name
   if (p.name) {
+    // ⚠️ REVIEW THIS ONE. `change_multiple_column_values` expresses the item
+    // name as the key "name" carrying a PLAIN STRING, which is what the batch
+    // path will now send. The CLIENT path calls `writeItemName`, which uses
+    // `change_column_value` on column_id "name" — and finalConfirm/mondayApi.ts
+    // `renameItem` carries a docstring claiming that shape "silently no-ops on
+    // the name column" (which is why THAT module uses change_simple_column_value
+    // instead). If that claim holds, this rename has never actually fired on the
+    // Insurance board, and batching it makes it START working — writing the name
+    // the rep edited in PatientProfileCard, which is what the code always
+    // intended. That is a fix rather than a regression, but it is a BEHAVIOUR
+    // change riding in a transport-only PR, so it is called out rather than
+    // smuggled: `p.name` is read from this same board, so the write is a no-op
+    // unless a rep actually edited it.
     tasks.push({
       label: 'Patient Name',
       columnId: 'name',
+      value: p.name,
       fn: () => writeItemName(p.id, p.name),
     });
   }
@@ -1163,6 +1201,7 @@ export async function sendPatientToMonday(
     tasks.push({
       label: 'DOB',
       columnId: COL.dob,
+      value: p.dob,
       fn: () => writeText(p.id, COL.dob, p.dob),
     });
   }
@@ -1173,6 +1212,7 @@ export async function sendPatientToMonday(
       tasks.push({
         label: 'Primary Insurance',
         columnId: COL.primaryInsurance,
+        value: { index: idx },
         fn: () => writeStatusIndex(p.id, COL.primaryInsurance, idx),
       });
     }
@@ -1182,6 +1222,7 @@ export async function sendPatientToMonday(
     tasks.push({
       label: 'Member ID 1',
       columnId: COL.memberId1,
+      value: p.memberId1 ?? '',
       fn: () => writeText(p.id, COL.memberId1, p.memberId1 ?? ''),
     });
   }
@@ -1189,6 +1230,7 @@ export async function sendPatientToMonday(
     tasks.push({
       label: 'Member ID 2',
       columnId: COL.memberId2,
+      value: p.memberId2 ?? '',
       fn: () => writeText(p.id, COL.memberId2, p.memberId2 ?? ''),
     });
   }
@@ -1199,6 +1241,7 @@ export async function sendPatientToMonday(
       tasks.push({
         label: 'Secondary Insurance',
         columnId: COL.secondaryInsurance,
+        value: { index: secIdx },
         fn: () => writeStatusIndex(p.id, COL.secondaryInsurance, secIdx),
       });
     }
@@ -1208,6 +1251,7 @@ export async function sendPatientToMonday(
     tasks.push({
       label: 'Diagnosis',
       columnId: COL.diagnosis,
+      value: { label: p.diagnosis! },
       fn: () => writeSimpleValue(p.id, COL.diagnosis, p.diagnosis!),
     });
   }
@@ -1216,70 +1260,106 @@ export async function sendPatientToMonday(
     tasks.push({
       label: 'Doctor Name',
       columnId: COL.doctorName,
+      value: p.doctorName ?? '',
       fn: () => writeText(p.id, COL.doctorName, p.doctorName ?? ''),
     });
   }
   if (p.doctorPhone !== undefined) {
-    tasks.push({
-      label: 'Doctor Phone',
-      columnId: COL.doctorPhone,
-      fn: () => writePhone(p.id, COL.doctorPhone, p.doctorPhone ?? ''),
-    });
+    // planPhoneWrite has THREE outcomes and only two of them write: a
+    // "skip" (something is there, but we can't parse it) is left ALONE by the
+    // helper, so the task must not exist at all — a `value: {}` here would
+    // CLEAR real data. clear -> {}, write -> the helper's exact shape.
+    const doctorPhonePlan = planPhoneWrite(p.doctorPhone ?? '');
+    if (doctorPhonePlan.action !== 'skip') {
+      tasks.push({
+        label: 'Doctor Phone',
+        columnId: COL.doctorPhone,
+        value:
+          doctorPhonePlan.action === 'write'
+            ? { phone: doctorPhonePlan.phone, countryShortName: 'US' }
+            : {},
+        fn: () => writePhone(p.id, COL.doctorPhone, p.doctorPhone ?? ''),
+      });
+    }
   }
   if (p.doctorNpi !== undefined) {
     tasks.push({
       label: 'Doctor NPI',
       columnId: COL.doctorNpi,
+      value: p.doctorNpi ?? '',
       fn: () => writeText(p.id, COL.doctorNpi, p.doctorNpi ?? ''),
     });
   }
   if (p.doctorEmail !== undefined) {
-    tasks.push({
-      label: 'Doctor Email',
-      columnId: COL.doctorEmail,
-      fn: () => writeEmail(p.id, COL.doctorEmail, p.doctorEmail ?? ''),
-    });
+    // planEmailWrite has THREE outcomes and only two of them write: a
+    // "skip" (something is there, but we can't parse it) is left ALONE by the
+    // helper, so the task must not exist at all — a `value: {}` here would
+    // CLEAR real data. clear -> {}, write -> the helper's exact shape.
+    const doctorEmailPlan = planEmailWrite(p.doctorEmail ?? '');
+    if (doctorEmailPlan.action !== 'skip') {
+      tasks.push({
+        label: 'Doctor Email',
+        columnId: COL.doctorEmail,
+        value:
+          doctorEmailPlan.action === 'write'
+            ? { email: doctorEmailPlan.email, text: doctorEmailPlan.email }
+            : {},
+        fn: () => writeEmail(p.id, COL.doctorEmail, p.doctorEmail ?? ''),
+      });
+    }
   }
   if (p.doctorFax !== undefined) {
-    tasks.push({
-      label: 'Doctor Fax',
-      columnId: COL.doctorFax,
-      fn: () => writeEmail(p.id, COL.doctorFax, p.doctorFax ?? ''),
-    });
+    // planEmailWrite has THREE outcomes and only two of them write: a
+    // "skip" (something is there, but we can't parse it) is left ALONE by the
+    // helper, so the task must not exist at all — a `value: {}` here would
+    // CLEAR real data. clear -> {}, write -> the helper's exact shape.
+    const doctorFaxPlan = planEmailWrite(p.doctorFax ?? '');
+    if (doctorFaxPlan.action !== 'skip') {
+      tasks.push({
+        label: 'Doctor Fax',
+        columnId: COL.doctorFax,
+        value:
+          doctorFaxPlan.action === 'write'
+            ? { email: doctorFaxPlan.email, text: doctorFaxPlan.email }
+            : {},
+        fn: () => writeEmail(p.id, COL.doctorFax, p.doctorFax ?? ''),
+      });
+    }
   }
   // Clinicals Method (status column — write by label)
   if (p.clinicalsMethod) {
     tasks.push({
       label: 'Clinicals Method',
       columnId: COL.clinicalsMethod,
+      value: { label: p.clinicalsMethod! },
       fn: () => writeSimpleValue(p.id, COL.clinicalsMethod, p.clinicalsMethod!),
-    });
-  }
-  // Clinic Name (dropdown — write by label, creating the label if this board
-  // doesn't have it yet). Clinic names are an open vocabulary and the source
-  // board's label can differ slightly from the Insurance board's (e.g.
-  // "The Office Don Zwickler" vs "The Office Don Zwickler, MD"), which would
-  // otherwise reject the write and block the whole send.
-  if (p.clinicName) {
-    tasks.push({
-      label: 'Clinic Name',
-      columnId: COL.clinicName,
-      fn: () => writeDropdownLabels(p.id, COL.clinicName, [p.clinicName!], true),
     });
   }
   // Patient Phone (phone column)
   if (p.patientPhone !== undefined) {
-    tasks.push({
-      label: 'Patient Phone',
-      columnId: COL.patientPhone,
-      fn: () => writePhone(p.id, COL.patientPhone, p.patientPhone ?? ''),
-    });
+    // planPhoneWrite has THREE outcomes and only two of them write: a
+    // "skip" (something is there, but we can't parse it) is left ALONE by the
+    // helper, so the task must not exist at all — a `value: {}` here would
+    // CLEAR real data. clear -> {}, write -> the helper's exact shape.
+    const patientPhonePlan = planPhoneWrite(p.patientPhone ?? '');
+    if (patientPhonePlan.action !== 'skip') {
+      tasks.push({
+        label: 'Patient Phone',
+        columnId: COL.patientPhone,
+        value:
+          patientPhonePlan.action === 'write'
+            ? { phone: patientPhonePlan.phone, countryShortName: 'US' }
+            : {},
+        fn: () => writePhone(p.id, COL.patientPhone, p.patientPhone ?? ''),
+      });
+    }
   }
   // Patient Address (location column)
   if (p.patientAddress) {
     tasks.push({
       label: 'Patient Address',
       columnId: COL.patientAddress,
+      value: { address: p.patientAddress ?? '', lat: 0, lng: 0 },
       fn: () => writeLocation(p.id, COL.patientAddress, p.patientAddress ?? ''),
     });
   }
@@ -1292,7 +1372,79 @@ export async function sendPatientToMonday(
     tasks.push({
       label: "Call Reference Notes",
       columnId: COL.callReferenceNotes,
+      value: { text: notesVal },
       fn: () => writeLongText(p.id, COL.callReferenceNotes, notesVal),
+    });
+  }
+
+  // ----- Clinic Name (dropdown — HOISTED OUT OF THE BATCH) -----
+  // Written by LABEL, creating the label if this board doesn't have it yet:
+  // clinic names are an open vocabulary and the source board's label can differ
+  // slightly from the Insurance board's (e.g. "The Office Don Zwickler" vs
+  // "The Office Don Zwickler, MD"), which would otherwise reject the write and
+  // block the whole send.
+  //
+  // It cannot ride in the verified batch: change_multiple_column_values carries
+  // ONE create_labels_if_missing flag for the WHOLE transaction, so turning it
+  // on for the batch would let every other label write in this send (Diagnosis,
+  // Clinicals Method, the status/dropdown writes above) silently mint duplicate
+  // board labels — exactly what CLAUDE.md §5.6 warns about. Everything else in
+  // this send must stay STRICT, so this one write is done on its own.
+  //
+  // One extra sequential mutation, landing strictly before the batch and
+  // therefore well before the Stage Advancer, so ordering is preserved. It
+  // keeps the module's own retry wrapper, so it still gets 3 attempts with
+  // backoff exactly as it did while it was task #N of the batch, and a
+  // persistent failure still aborts the send with the stage NOT advanced.
+  // Two deliberate consequences of hoisting, neither of them ceremony:
+  //   - It is no longer in `verifyColIds`, so it is not read-back verified.
+  //     That is acceptable HERE specifically because it is written FIRST: it
+  //     has strictly more time to index than any batched column before the
+  //     Stage Advancer fires, which is the §5.2 concern on its merits.
+  //   - It is a plain client-side write, so it does not ride the gateway's
+  //     durable offline outbox. An offline send now fails here rather than
+  //     queueing — one small write, before anything else has changed.
+  //
+  // ⚠️ THE HOIST ONLY MAKES THE LABEL EXIST — it is NOT the write that counts.
+  // Monday acks a column write BEFORE the value is indexed (§5.2), so a write
+  // that left the batch would also leave `verifyColIds`, and the Stage Advancer
+  // could fire while this column was still stale — handing the create-item
+  // automation the previous or a blank value. "It was written first so it has
+  // had longer to index" is a timing argument, not the read-back guarantee §9
+  // requires ("verify before you advance").
+  //
+  // So the two jobs are split. The awaited call guarantees the LABEL EXISTS
+  // (it is the only write allowed to create one). The task pushed straight
+  // after writes the same value inside the STRICT batch — no create-labels
+  // flag needed, because the label exists by then — which puts the column back
+  // in `verifyColIds` and holds the advancer until Monday reads the value
+  // back. One extra mutation, and the stage boundary is honest again.
+  if (p.clinicName) {
+    const clinicName = p.clinicName;
+    const clinicNameFailure = await executeWithRetry({
+      label: 'Clinic Name (create label)',
+      columnId: COL.clinicName,
+      fn: () => writeDropdownLabels(p.id, COL.clinicName, [clinicName], true),
+    });
+    if (clinicNameFailure) {
+      throw new Error(`Clinic Name failed after retries — stage NOT advanced. ${clinicNameFailure}`);
+    }
+    // ⚠️ `expectedText` is REQUIRED here, not decoration. This column is written
+    // TWICE — once by the hoist above, once in the batch — so the Phase 2
+    // snapshot is taken AFTER the hoist rather than before the transaction.
+    // If the hoist has not indexed by snapshot time the baseline holds the OLD
+    // value, and snapshot-diff would then see "unchanged" on every poll and hit
+    // the 3-stable-reads escape hatch, which assumes unchanged means
+    // "same-value write, already correct". Here it can equally mean "still
+    // stale", and the advancer would fire on the old value. An exact-match
+    // check has no such escape hatch: it polls until Monday really reads the
+    // label back, or throws with the stage NOT advanced.
+    tasks.push({
+      label: 'Clinic Name',
+      columnId: COL.clinicName,
+      value: { labels: [clinicName] },
+      expectedText: clinicName,
+      fn: () => writeDropdownLabels(p.id, COL.clinicName, [clinicName], true),
     });
   }
 
@@ -1302,6 +1454,7 @@ export async function sendPatientToMonday(
   // that trigger fires — otherwise the copy gets stale values.
   const failures = await executeWritesWithVerification({
     itemId: p.id,
+    boardId: String(BOARD_ID),
     tasks,
     stageColumnId: COL.stageAdvancer,
     executeWithRetry,
@@ -1346,6 +1499,7 @@ export async function saveNoAuthNeededToMonday(
       label: `Auth result: ${productId}`,
       columnId: authColumnId,
       expectedText: "No Auth Needed",
+      value: { index: AUTH_RESULT_INDEX.noAuthNeeded },
       fn: () => writeStatusIndex(p.id, authColumnId, AUTH_RESULT_INDEX.noAuthNeeded),
     },
     // No auth exists, so the per-product auth detail columns are wiped —
@@ -1353,21 +1507,25 @@ export async function saveNoAuthNeededToMonday(
     {
       label: `Auth ID (clear): ${productId}`,
       columnId: COL.authId[productId],
+      value: "",
       fn: () => writeText(p.id, COL.authId[productId], ""),
     },
     {
       label: `Auth Start (clear): ${productId}`,
       columnId: COL.authStart[productId],
+      value: {},
       fn: () => writeDate(p.id, COL.authStart[productId], ""),
     },
     {
       label: `Auth End (clear): ${productId}`,
       columnId: COL.authEnd[productId],
+      value: {},
       fn: () => writeDate(p.id, COL.authEnd[productId], ""),
     },
     {
       label: `Auth Units (clear): ${productId}`,
       columnId: COL.authUnits[productId],
+      value: "",
       fn: () => writeNumber(p.id, COL.authUnits[productId], ""),
     },
   ];
@@ -1376,6 +1534,7 @@ export async function saveNoAuthNeededToMonday(
   // (advance) writes nothing. Deliberate — see the function comment.
   const failures = await executeWritesWithVerification({
     itemId: p.id,
+    boardId: String(BOARD_ID),
     tasks,
     stageColumnId: [],
     executeWithRetry,

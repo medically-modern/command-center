@@ -686,10 +686,21 @@ export async function writeEmail(itemId: string, columnId: string, email: string
   await gql(query, { boardId: BOARD_ID, itemId, columnId, value: JSON.stringify({ email: clean, text: clean }) });
 }
 
-/** Write a numeric column. Strips non-numeric chars (\$, %, commas) before sending. */
+/**
+ * The cleaning `writeNumber` applies before sending: strip $, %, commas and
+ * spaces, keep digits, dots and minus signs. Exported because mondayWrite has
+ * to reproduce it EXACTLY when it declares a task's batched `value` — an
+ * inlined second copy is the hand-synced-mirror hazard, and here it would show
+ * up as the gateway writing a different number than the client path.
+ * An empty result means writeNumber writes nothing at all.
+ */
+export function cleanNumberValue(raw: string): string {
+  return raw.replace(/[^\d.-]/g, "");
+}
+
+/** Write a numeric column. Strips non-numeric chars ($, %, commas) before sending. */
 export async function writeNumber(itemId: string, columnId: string, raw: string): Promise<void> {
-  // Strip \$, %, commas, spaces — keep digits, dots, minus signs
-  const cleaned = raw.replace(/[^\d.\-]/g, "");
+  const cleaned = cleanNumberValue(raw);
   if (!cleaned) return; // nothing to write
   const query = `
     mutation ($boardId: ID!, $itemId: ID!, $columnId: String!, $value: JSON!) {
