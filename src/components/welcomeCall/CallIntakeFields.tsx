@@ -107,8 +107,18 @@ export function SupplyLengthField({
       </Select>
       {/* The payer rule decides this; the select is an override the rep can
           make on the call, and whichever value ends up here is what lands in
-          the notes block. */}
-      {derivedNote && <p className="mt-1 text-[11px] text-muted-foreground">{derivedNote}</p>}
+          the notes block.
+          ⚠️ Once the rep HAS overridden, the caption is no longer describing the
+          field above it — it is describing what the payer rule would have said.
+          Unprefixed, the two lines read as contradicting each other ("30 days"
+          over "Medicaid — 60 day supply"), and the caption is the more
+          sentence-like of the pair, so it reads as the live answer. Say whose
+          number is whose (reported 2026-08-31). */}
+      {derivedNote && (
+        <p className="mt-1 text-[11px] text-muted-foreground">
+          {intake.supplyLengthManual ? `Overrides ${derivedNote}` : derivedNote}
+        </p>
+      )}
     </div>
   );
 }

@@ -65,6 +65,22 @@ export const LUER_RX = /\bluer\b/i;
 /** Pumps that use Tandem's t:lock connector. */
 const TLOCK_PUMPS = new Set(["t:slim", "Mobi"]);
 
+/**
+ * "a" or "an" for a pump label, so the messages below read as English.
+ *
+ * `iLet` is the one board label of the four that takes "an", and it reached
+ * reps as "with a iLet" on both the amber and the red message (reported
+ * 2026-08-31). Hardcoding "an" is not the fix — the same template renders
+ * t:slim, Mobi and Minimed 780G, which all take "a".
+ *
+ * ⚠️ Keyed on the leading LETTER, which is right for every label this column
+ * carries today. A future label whose spelling and sound disagree ("an X2")
+ * would need the exception listing here rather than a cleverer rule.
+ */
+function article(word: string): "a" | "an" {
+  return /^[aeiou]/i.test(word.trim()) ? "an" : "a";
+}
+
 export type InfusionIssueKind = "incompatible" | "five-inch-not-mobi" | "unverified";
 
 export interface InfusionIssue {
@@ -97,7 +113,7 @@ export function infusionSetIssue(pumpType: string, setLabel: string): InfusionIs
     return {
       kind: "incompatible",
       title: `${set} ✗ ${pump}`,
-      detail: `${set} uses a Luer connector; the ${pump} uses t:lock, so the set cannot attach. Pick a ${pump}-compatible set.`,
+      detail: `${set} uses a Luer connector; the ${pump} uses t:lock, so the set cannot attach. Pick ${article(pump)} ${pump}-compatible set.`,
     };
   }
 
@@ -106,21 +122,21 @@ export function infusionSetIssue(pumpType: string, setLabel: string): InfusionIs
     return {
       kind: "unverified",
       title: `${set} — compatibility not verified`,
-      detail: `We have no compatibility record for ${set} with a ${pump}. Check it against the pump before sending; this is not a confirmed match.`,
+      detail: `We have no compatibility record for ${set} with ${article(pump)} ${pump}. Check it against the pump before sending; this is not a confirmed match.`,
     };
   }
   if (fam !== pumpFamily) {
     return {
       kind: "incompatible",
       title: `${set} ✗ ${pump}`,
-      detail: `${set} is not compatible with a ${pump} — the order would ship unusable sets. Pick a ${pump}-compatible set.`,
+      detail: `${set} is not compatible with ${article(pump)} ${pump} — the order would ship unusable sets. Pick ${article(pump)} ${pump}-compatible set.`,
     };
   }
   if (fam === "tandem" && FIVE_INCH_RX.test(set) && pump !== "Mobi") {
     return {
       kind: "five-inch-not-mobi",
       title: `5" tubing is Mobi-only`,
-      detail: `${set} — 5" tubing sets are for the Mobi only; they can't be used with a ${pump}. Pick a standard-length set.`,
+      detail: `${set} — 5" tubing sets are for the Mobi only; they can't be used with ${article(pump)} ${pump}. Pick a standard-length set.`,
     };
   }
   return null;
