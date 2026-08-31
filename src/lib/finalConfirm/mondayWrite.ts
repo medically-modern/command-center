@@ -1,5 +1,5 @@
 import { writeStatusIndex, writeStatusLabel, writeLongText, writeText, writeNumber, writeLocation, writeDate, writePhone, writeEmail, writeDropdownIds, renameItem, readColumnTexts, COL, BOARD_ID } from "./mondayApi";
-import { executeWritesWithVerification } from "../shared/verifiedWrite";
+import { executeWritesWithVerification, type WriteProgressPhase } from "../shared/verifiedWrite";
 import { planPhoneWrite } from "../shared/phoneCell";
 import { planEmailWrite } from "../shared/emailCell";
 import { expectedPos, POS_INDEX } from "../shared/pos";
@@ -49,7 +49,19 @@ async function executeWithRetry(task: WriteTask): Promise<string | null> {
  * Then flip Stage Advancer → Completed so Monday automations can
  * move the item to Subscription & Order boards.
  */
-export async function sendPatientToMonday(p: Patient): Promise<void> {
+export async function sendPatientToMonday(
+  p: Patient,
+  /** Blocking save: "the gateway accepted it" is NOT success — the call only
+   *  resolves once Monday CONFIRMS the write, and throws GatewayPendingError if
+   *  the wait runs out. The caller must surface that as "queued, don't repeat"
+   *  and must NOT retry: the job is durable and will run, so a second send
+   *  would write the same transaction twice. */
+  opts?: {
+    onProgress?: (phase: WriteProgressPhase) => void;
+    requireDone?: boolean;
+    waitForDoneMs?: number;
+  },
+): Promise<void> {
   const tasks: WriteTask[] = [];
 
   // ─── Item name (always write — cheap no-op if unchanged) ──
@@ -428,6 +440,9 @@ export async function sendPatientToMonday(p: Patient): Promise<void> {
     executeWithRetry,
     readColumns: readColumnTexts,
     writeDebug: (id, msg) => writeText(id, COL.joshDebug, msg),
+    onProgress: opts?.onProgress,
+    requireDone: opts?.requireDone,
+    waitForDoneMs: opts?.waitForDoneMs,
   });
 
   if (failures.length > 0) {

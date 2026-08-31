@@ -34,7 +34,7 @@ import {
   writeText,
 } from "@/lib/masheke/mondayApi";
 import { runVerifiedSend } from "@/lib/masheke/mondayWrite";
-import { GatewayPendingError, type WriteProgressPhase, type WriteTask } from "@/lib/shared/verifiedWrite";
+import { GatewayPendingError, SAVE_CONFIRM_MS, type WriteProgressPhase, type WriteTask } from "@/lib/shared/verifiedWrite";
 import { SaveProgressOverlay } from "@/components/shared/SaveProgressOverlay";
 import { PriorStageNotes } from "@/components/shared/PriorStageNotes";
 import { FILE_PROXY_URL, fetchAssetBytes } from "@/lib/shared/mondayAssets";
@@ -84,10 +84,6 @@ interface Props {
   /** Manager view: "Review the Request" starts as a collapsed dropdown. */
   managerMode?: boolean;
 }
-
-// How long a save blocks the screen waiting for Monday to confirm before we
-// surface "queued on the server, do not repeat" (same as Chase Clinicals).
-const SAVE_CONFIRM_MS = 120_000;
 
 // =====================================================================
 // Main panel

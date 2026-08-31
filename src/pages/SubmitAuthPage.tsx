@@ -44,7 +44,7 @@ import { sendPatientToMonday } from "@/lib/samantha/mondayWrite";
 import { writeLongText, COL } from "@/lib/samantha/mondayApi";
 import { PageLoadingOverlay } from "@/components/shared/PageLoadingOverlay";
 import { SaveProgressOverlay } from "@/components/shared/SaveProgressOverlay";
-import type { WriteProgressPhase } from "@/lib/shared/verifiedWrite";
+import { GatewayPendingError, SAVE_CONFIRM_MS, type WriteProgressPhase } from "@/lib/shared/verifiedWrite";
 import { EmptyPatientPane } from "@/components/shared/EmptyPatientPane";
 import { useSearchParams } from "react-router-dom";
 import { useBackNavigation } from "@/hooks/useBackNavigation";
@@ -145,12 +145,28 @@ const SubmitAuthPage = () => {
     setSaving(true);
     setSavePhase("posting");
     try {
-      await sendPatientToMonday(selected, "submitAuth", { onProgress: setSavePhase, managerResolve: isManager });
+      await sendPatientToMonday(selected, "submitAuth", {
+        onProgress: setSavePhase,
+        managerResolve: isManager,
+        requireDone: true,
+        waitForDoneMs: SAVE_CONFIRM_MS,
+      });
       clearOverlay(selected.id);
       setLastSentId(selected.id);
       toast.success("Auth submission complete — sent to Monday");
       refetch(true);
     } catch (e) {
+      if (e instanceof GatewayPendingError) {
+        // Durably queued on the gateway and it WILL run. Not a failure — and
+        // above all not retryable: a second send would write the transaction
+        // twice. Local edits are deliberately left in place (no clearOverlay,
+        // no refetch) so nothing looks lost while the job lands.
+        toast.warning("Queued — Monday is still writing this save", {
+          description: e.message,
+          duration: 15_000,
+        });
+        return;
+      }
       toast.error("Send to Monday failed", { description: e instanceof Error ? e.message : String(e) });
       throw e;
     } finally {

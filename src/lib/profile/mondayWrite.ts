@@ -11,7 +11,7 @@ import {
   writeLocation, writeItemName, writeDropdownIds, writeDropdownLabels, writeDate, cleanNumberValue,
   fetchItem, clearStatusColumn, readColumnTexts, moveItemToGroup, GROUPS, COL, BOARD_ID,
 } from "./mondayApi";
-import { executeWritesWithVerification } from "../shared/verifiedWrite";
+import { executeWritesWithVerification, type WriteProgressPhase } from "../shared/verifiedWrite";
 import { planPhoneWrite } from "../shared/phoneCell";
 import { planEmailWrite } from "../shared/emailCell";
 import { stampNoteEntry } from "../shared/noteStamp";
@@ -258,6 +258,16 @@ function buildDataTasks(p: Patient, clinicLabelId: number | null): WriteTask[] {
 export async function sendPatientToMonday(
   p: Patient,
   clinicLabelId: number | null,
+  /** Blocking save: "the gateway accepted it" is NOT success — the call only
+   *  resolves once Monday CONFIRMS the write, and throws GatewayPendingError if
+   *  the wait runs out. The caller must surface that as "queued, don't repeat"
+   *  and must NOT retry: the job is durable and will run, so a second send
+   *  would write the same transaction twice. */
+  opts?: {
+    onProgress?: (phase: WriteProgressPhase) => void;
+    requireDone?: boolean;
+    waitForDoneMs?: number;
+  },
 ): Promise<void> {
   // ── Insurance Plan (copied from the Stedi plan name) ─────────────────────
   // HOISTED out of the verified batch on purpose: profile's writeDropdownLabels
@@ -340,6 +350,9 @@ export async function sendPatientToMonday(
     executeWithRetry,
     readColumns: readColumnTexts,
     writeDebug: (id, msg) => writeText(id, COL.joshDebug, msg),
+    onProgress: opts?.onProgress,
+    requireDone: opts?.requireDone,
+    waitForDoneMs: opts?.waitForDoneMs,
   });
 
   if (failures.length > 0) {

@@ -51,6 +51,22 @@ export class GatewayPendingError extends Error {
   }
 }
 
+/**
+ * How long a BLOCKING save waits for Monday to confirm before it gives up and
+ * reports "queued, don't repeat" (GatewayPendingError).
+ *
+ * Two minutes, not the 20s `waitForDoneMs` default, because this is the wait a
+ * rep is watching a full-screen overlay through: cutting it short doesn't make
+ * the job finish any sooner, it just moves the same save into a state nobody
+ * can act on. A job that has not landed in two minutes is a real problem worth
+ * telling somebody about.
+ *
+ * ⚠️ It lives HERE, next to `waitForDoneMs`, because it used to be a `const`
+ * copied into four masheke panels — four places to change, and a partial change
+ * would give two panels different ideas of when a save has gone wrong.
+ */
+export const SAVE_CONFIRM_MS = 120_000;
+
 export interface WriteTask {
   label: string;
   columnId: string;

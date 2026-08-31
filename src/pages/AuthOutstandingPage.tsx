@@ -42,7 +42,7 @@ import { addDaysYmd, etTodayYmd, ymdToUs } from "@/lib/samantha/benefitsDerive";
 import { writeLongText, writeDate, COL } from "@/lib/samantha/mondayApi";
 import { PageLoadingOverlay } from "@/components/shared/PageLoadingOverlay";
 import { SaveProgressOverlay } from "@/components/shared/SaveProgressOverlay";
-import type { WriteProgressPhase } from "@/lib/shared/verifiedWrite";
+import { GatewayPendingError, SAVE_CONFIRM_MS, type WriteProgressPhase } from "@/lib/shared/verifiedWrite";
 import { EmptyPatientPane } from "@/components/shared/EmptyPatientPane";
 import { useSearchParams } from "react-router-dom";
 import { useBackNavigation } from "@/hooks/useBackNavigation";
@@ -119,11 +119,27 @@ const AuthOutstandingPage = () => {
     setSaving(true);
     setSavePhase("posting");
     try {
-      await sendPatientToMonday(selected, "authOutstanding", { onProgress: setSavePhase, managerResolve: isManager });
+      await sendPatientToMonday(selected, "authOutstanding", {
+        onProgress: setSavePhase,
+        managerResolve: isManager,
+        requireDone: true,
+        waitForDoneMs: SAVE_CONFIRM_MS,
+      });
       clearOverlay(selected.id);
       toast.success("Auth review complete — sent to Monday");
       refetch();
     } catch (e) {
+      if (e instanceof GatewayPendingError) {
+        // Durably queued on the gateway and it WILL run. Not a failure — and
+        // above all not retryable: a second send would write the transaction
+        // twice. Local edits are deliberately left in place (no clearOverlay,
+        // no refetch) so nothing looks lost while the job lands.
+        toast.warning("Queued — Monday is still writing this save", {
+          description: e.message,
+          duration: 15_000,
+        });
+        return;
+      }
       toast.error("Auth Review Complete failed", { description: e instanceof Error ? e.message : String(e) });
       throw e;
     } finally {
@@ -141,9 +157,20 @@ const AuthOutstandingPage = () => {
     setSaving(true);
     setSavePhase("posting");
     try {
-      await saveNoAuthNeededToMonday(selected, codeId, { onProgress: setSavePhase });
+      await saveNoAuthNeededToMonday(selected, codeId, {
+        onProgress: setSavePhase,
+        requireDone: true,
+        waitForDoneMs: SAVE_CONFIRM_MS,
+      });
       toast.success(`${label} saved as No Auth Needed — stage unchanged`);
     } catch (e) {
+      if (e instanceof GatewayPendingError) {
+        toast.warning(`${label} is queued — Monday is still writing it`, {
+          description: e.message,
+          duration: 15_000,
+        });
+        return;
+      }
       toast.error(`Save No Auth Needed failed (${label})`, { description: e instanceof Error ? e.message : String(e) });
     } finally {
       setSaving(false);

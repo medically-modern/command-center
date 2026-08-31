@@ -45,11 +45,9 @@ import {
 import { appendNoteLine } from "@/lib/masheke/attemptLog";
 import { etNow, etToday, formatDateTimeShort } from "@/lib/masheke/etDate";
 import { userInitials } from "@/lib/shared/auth";
-import { GatewayPendingError, type WriteProgressPhase } from "@/lib/shared/verifiedWrite";
+import { GatewayPendingError, SAVE_CONFIRM_MS, type WriteProgressPhase } from "@/lib/shared/verifiedWrite";
 import { SaveProgressOverlay } from "@/components/shared/SaveProgressOverlay";
 import { SUB_STAGE_INDEX } from "@/lib/masheke/mondayMapping";
-
-const SAVE_CONFIRM_MS = 120_000;
 
 type Branch = null | "scheduled" | "unscheduled";
 

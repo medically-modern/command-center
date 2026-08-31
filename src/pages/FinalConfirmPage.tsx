@@ -31,6 +31,8 @@ import { indexForLabel } from "@/lib/shared/statusOptions";
 import { EscalationFormModal } from "@/components/shared/EscalationFormModal";
 import { appendNoteEntry, stampNoteEntry } from "@/lib/shared/noteStamp";
 import { PageLoadingOverlay } from "@/components/shared/PageLoadingOverlay";
+import { SaveProgressOverlay } from "@/components/shared/SaveProgressOverlay";
+import { GatewayPendingError, SAVE_CONFIRM_MS, type WriteProgressPhase } from "@/lib/shared/verifiedWrite";
 import { EmptyPatientPane } from "@/components/shared/EmptyPatientPane";
 
 // Stage Advancer label index 0 = "Review Profile" — the stage that lands an
@@ -55,6 +57,11 @@ const FinalConfirmPage = () => {
   const [selectedId, setSelectedId] = useState<string | null>(
     searchParams.get("patientId") ?? null,
   );
+  // Blocks the screen while a send is in flight. It is not decoration: a
+  // mid-save patient switch clobbers panel state and can drop a column from the
+  // transaction (CLAUDE.md §5.2, the July 2026 dropped-date incident).
+  const [saving, setSaving] = useState(false);
+  const [savePhase, setSavePhase] = useState<WriteProgressPhase>("posting");
 
   const viewFilter = viewFilterFromParams(searchParams);
   const visiblePatients = useMemo(
@@ -152,8 +159,14 @@ const FinalConfirmPage = () => {
 
   const handleSend = async (overridden: CheckFinding[] = []) => {
     if (!selected) return;
+    setSaving(true);
+    setSavePhase("posting");
     try {
-      await sendPatientToMonday(selected);
+      await sendPatientToMonday(selected, {
+        onProgress: setSavePhase,
+        requireDone: true,
+        waitForDoneMs: SAVE_CONFIRM_MS,
+      });
       toast.success("Profile confirmed & sent to Monday — Stage Advancer set to Completed");
       confetti({ particleCount: 200, spread: 100, origin: { y: 0.6 } });
 
@@ -187,10 +200,32 @@ const FinalConfirmPage = () => {
       clearOverlay(selected.id);
       refetch();
     } catch (e) {
+      if (e instanceof GatewayPendingError) {
+        // Durably queued on the gateway and it WILL run — not a failure, and
+        // above all not retryable: a second send writes the transaction twice.
+        // No confetti, no clearOverlay and no refetch (the board still reads the
+        // OLD values until the job lands, so refetching would look like a loss).
+        //
+        // ⚠️ The override audit note is skipped ON PURPOSE. It is a direct
+        // writeLongText to COL.notes, and the queued transaction writes that
+        // same column with the PRE-override body — so writing it now would be
+        // silently overwritten when the job runs. The rep is told to add it by
+        // hand instead, which is the same fallback the failed-note branch uses.
+        toast.warning("Queued — Monday is still writing this save", {
+          description:
+            overridden.length > 0
+              ? `${e.message} Add the override reason to Notes by hand once it lands.`
+              : e.message,
+          duration: 15_000,
+        });
+        return;
+      }
       toast.error("Send to Monday failed", {
         description: e instanceof Error ? e.message : String(e),
       });
       throw e;
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -293,6 +328,7 @@ const FinalConfirmPage = () => {
   return (
     <SidebarProvider>
       <PageLoadingOverlay show={initialLoading} />
+      <SaveProgressOverlay open={saving} phase={savePhase} />
       <div className="min-h-screen flex w-full bg-gradient-subtle">
         <PatientsSidebar
           patients={patients}

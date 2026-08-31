@@ -72,7 +72,7 @@ import {
 } from "@/lib/masheke/mondayApi";
 import { runVerifiedSend } from "@/lib/masheke/mondayWrite";
 import { userInitials } from "@/lib/shared/auth";
-import { GatewayPendingError, type WriteProgressPhase, type WriteTask } from "@/lib/shared/verifiedWrite";
+import { GatewayPendingError, SAVE_CONFIRM_MS, type WriteProgressPhase, type WriteTask } from "@/lib/shared/verifiedWrite";
 import { SaveProgressOverlay } from "@/components/shared/SaveProgressOverlay";
 import { PriorStageNotes } from "@/components/shared/PriorStageNotes";
 import { FILE_PROXY_URL, fetchAssetBytes } from "@/lib/shared/mondayAssets";
@@ -99,10 +99,6 @@ interface Props {
    *  every Clinicals Method. */
   roleMethod?: "fax" | "parachute";
 }
-
-// How long a save blocks the screen waiting for Monday to confirm before we
-// give up and surface "queued on the server, do not repeat".
-const SAVE_CONFIRM_MS = 120_000;
 
 // =====================================================================
 // Main panel

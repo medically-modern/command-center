@@ -22,6 +22,8 @@ import { toast } from "sonner";
 import { sendPatientToMonday, sendNotesToMonday } from "@/lib/subscription/mondayWrite";
 import { validatePatientForSend } from "@/lib/subscription/workflow";
 import { PageLoadingOverlay } from "@/components/shared/PageLoadingOverlay";
+import { SaveProgressOverlay } from "@/components/shared/SaveProgressOverlay";
+import { GatewayPendingError, SAVE_CONFIRM_MS, type WriteProgressPhase } from "@/lib/shared/verifiedWrite";
 import { EmptyPatientPane } from "@/components/shared/EmptyPatientPane";
 import { useSearchParams } from "react-router-dom";
 import { useBackNavigation } from "@/hooks/useBackNavigation";
@@ -35,6 +37,11 @@ const SubscriptionPage = () => {
   const [selectedId, setSelectedId] = useState<string | null>(
     searchParams.get("patientId") ?? null,
   );
+  // Blocks the screen while a send is in flight. It is not decoration: a
+  // mid-save patient switch clobbers panel state and can drop a column from the
+  // transaction (CLAUDE.md §5.2, the July 2026 dropped-date incident).
+  const [saving, setSaving] = useState(false);
+  const [savePhase, setSavePhase] = useState<WriteProgressPhase>("posting");
 
   const viewFilter = viewFilterFromParams(searchParams);
   const visiblePatients = useMemo(
@@ -75,23 +82,44 @@ const SubscriptionPage = () => {
 
   const handleSend = async () => {
     if (!selected) return;
+    setSaving(true);
+    setSavePhase("posting");
     try {
-      await sendPatientToMonday(selected);
+      await sendPatientToMonday(selected, {
+        onProgress: setSavePhase,
+        requireDone: true,
+        waitForDoneMs: SAVE_CONFIRM_MS,
+      });
       toast.success("Sent to Monday");
       confetti({ particleCount: 200, spread: 100, origin: { y: 0.6 } });
       clearOverlay(selected.id);
       refetch();
     } catch (e) {
+      if (e instanceof GatewayPendingError) {
+        // Durably queued on the gateway and it WILL run — not a failure, and
+        // above all not retryable: a second send writes the transaction twice.
+        // No confetti, no clearOverlay and no refetch: the rep's edits stay on
+        // screen so nothing looks lost while the job lands, and the board would
+        // still read the OLD values if we refetched now.
+        toast.warning("Queued — Monday is still writing this save", {
+          description: e.message,
+          duration: 15_000,
+        });
+        return;
+      }
       toast.error("Send to Monday failed", {
         description: e instanceof Error ? e.message : String(e),
       });
       throw e;
+    } finally {
+      setSaving(false);
     }
   };
 
   return (
     <SidebarProvider>
       <PageLoadingOverlay show={initialLoading} />
+      <SaveProgressOverlay open={saving} phase={savePhase} />
       <div className="min-h-screen flex w-full bg-gradient-subtle">
         <PatientsSidebar
           patients={patients}

@@ -51,7 +51,7 @@ import { PriorStageNotes } from "@/components/shared/PriorStageNotes";
 import { SaveProgressOverlay } from "@/components/shared/SaveProgressOverlay";
 import { hasToken } from "@/lib/masheke/mondayApi";
 import { buildFreshChaseRound, logApptAttemptVerified, returnToChaseWithAppointment } from "@/lib/masheke/mondayWrite";
-import { GatewayPendingError, type WriteProgressPhase } from "@/lib/shared/verifiedWrite";
+import { GatewayPendingError, SAVE_CONFIRM_MS, type WriteProgressPhase } from "@/lib/shared/verifiedWrite";
 import { userInitials } from "@/lib/shared/auth";
 import { etNow, etToday, formatDateShort, formatDateTimeShort } from "@/lib/masheke/etDate";
 import { appendNoteLine, type AttemptChip } from "@/lib/masheke/attemptLog";
@@ -79,8 +79,6 @@ import {
   stampApptEscalated,
   stampReturnedToChase,
 } from "@/lib/masheke/apptOutreach";
-
-const SAVE_CONFIRM_MS = 120_000;
 
 const OUTCOME_ORDER: ApptOutcome[] = [
   "booked",

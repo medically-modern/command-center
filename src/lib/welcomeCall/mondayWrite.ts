@@ -1,5 +1,5 @@
 import { writeStatusIndex, writeNumber, writeLocation, writeText, writeLongText, writeDate, clearDateColumn, writePhone, readColumnTexts, COL, BOARD_ID } from "./mondayApi";
-import { executeWritesWithVerification } from "../shared/verifiedWrite";
+import { executeWritesWithVerification, type WriteProgressPhase } from "../shared/verifiedWrite";
 import { planPhoneWrite } from "../shared/phoneCell";
 import { appendIntakeToNotes } from "./callIntake";
 import { assertLongTextFits } from "../shared/longText";
@@ -42,7 +42,19 @@ async function executeWithRetry(task: WriteTask): Promise<string | null> {
   return null;
 }
 
-export async function sendPatientToMonday(p: Patient): Promise<void> {
+export async function sendPatientToMonday(
+  p: Patient,
+  /** Blocking save: "the gateway accepted it" is NOT success — the call only
+   *  resolves once Monday CONFIRMS the write, and throws GatewayPendingError if
+   *  the wait runs out. The caller must surface that as "queued, don't repeat"
+   *  and must NOT retry: the job is durable and will run, so a second send
+   *  would write the same transaction twice. */
+  opts?: {
+    onProgress?: (phase: WriteProgressPhase) => void;
+    requireDone?: boolean;
+    waitForDoneMs?: number;
+  },
+): Promise<void> {
   const tasks: WriteTask[] = [];
 
   // Phone edit
@@ -236,6 +248,9 @@ export async function sendPatientToMonday(p: Patient): Promise<void> {
     executeWithRetry,
     readColumns: readColumnTexts,
     writeDebug: (id, msg) => writeText(id, COL.joshDebug, msg),
+    onProgress: opts?.onProgress,
+    requireDone: opts?.requireDone,
+    waitForDoneMs: opts?.waitForDoneMs,
   });
 
   if (failures.length > 0) {

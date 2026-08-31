@@ -130,6 +130,12 @@ export async function sendPatientToMonday(
   context: SendContext = "benefits",
   opts?: {
     onProgress?: (phase: WriteProgressPhase) => void;
+    /** Block until Monday CONFIRMS the write — "the gateway accepted it" is not
+     *  success. Throws GatewayPendingError if the wait runs out, which the
+     *  caller must surface as "queued, don't repeat" and must NOT retry (the
+     *  job is durable and will run; a second send would write it twice). */
+    requireDone?: boolean;
+    waitForDoneMs?: number;
     /**
      * The sender is a MANAGER working the patient from an oversight view
      * (Josh, 2026-08-03). Doing the processor's job IS the resolution, so the
@@ -1461,6 +1467,8 @@ export async function sendPatientToMonday(
     readColumns: readColumnTexts,
     writeDebug: (id, msg) => writeText(id, COL.joshDebug, msg),
     onProgress: opts?.onProgress,
+    requireDone: opts?.requireDone,
+    waitForDoneMs: opts?.waitForDoneMs,
   });
 
   if (failures.length > 0) {
@@ -1489,7 +1497,11 @@ export async function sendPatientToMonday(
 export async function saveNoAuthNeededToMonday(
   p: Patient,
   codeId: ProductCodeId,
-  opts?: { onProgress?: (phase: WriteProgressPhase) => void },
+  opts?: {
+    onProgress?: (phase: WriteProgressPhase) => void;
+    requireDone?: boolean;
+    waitForDoneMs?: number;
+  },
 ): Promise<void> {
   const productId = PRODUCT_CODE_TO_PRODUCT_ID[codeId];
   const authColumnId = COL.authResult[productId];
@@ -1541,6 +1553,8 @@ export async function saveNoAuthNeededToMonday(
     readColumns: readColumnTexts,
     writeDebug: (id, msg) => writeText(id, COL.joshDebug, msg),
     onProgress: opts?.onProgress,
+    requireDone: opts?.requireDone,
+    waitForDoneMs: opts?.waitForDoneMs,
   });
 
   if (failures.length > 0) {

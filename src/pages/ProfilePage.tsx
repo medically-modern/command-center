@@ -54,6 +54,8 @@ import { DoctorSection } from "@/components/profile/DoctorSection";
 import { AddressAutocomplete } from "@/components/profile/AddressAutocomplete";
 import { PatientsSidebar } from "@/components/profile/PatientsSidebar";
 import { PageLoadingOverlay } from "@/components/shared/PageLoadingOverlay";
+import { SaveProgressOverlay } from "@/components/shared/SaveProgressOverlay";
+import { GatewayPendingError, SAVE_CONFIRM_MS, type WriteProgressPhase } from "@/lib/shared/verifiedWrite";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -208,6 +210,10 @@ const ProfilePage = ({ variant }: ProfilePageProps) => {
 
   const [selectedId, setSelectedId] = useState<string | null>(searchParams.get("patientId") ?? null);
   const [submitting, setSubmitting] = useState(false);
+  // Blocks the screen while Advance to MN is in flight. Not decoration: this
+  // handler moves to the NEXT patient on success, and a switch mid-transaction
+  // is what CLAUDE.md §5.2's dropped-date incident was.
+  const [savePhase, setSavePhase] = useState<WriteProgressPhase>("posting");
   // Which patient a Stedi run is in-flight for (null = none). Kept per-patient
   // so switching patients while a check polls doesn't leak the spinner.
   const [stediRunningId, setStediRunningId] = useState<string | null>(null);
@@ -531,14 +537,32 @@ const ProfilePage = ({ variant }: ProfilePageProps) => {
       return;
     }
     setSubmitting(true);
+    setSavePhase("posting");
     try {
-      await sendPatientToMonday(selected, selectedClinicId);
+      await sendPatientToMonday(selected, selectedClinicId, {
+        onProgress: setSavePhase,
+        requireDone: true,
+        waitForDoneMs: SAVE_CONFIRM_MS,
+      });
       clearOverlay(selected.id);
       toast.success(`${selected.name} advanced to MN`);
       clearDeepLink();
       setSelectedId(patients.find((p) => p.id !== selected.id)?.id ?? null);
       setTimeout(refetch, 1500);
     } catch (e) {
+      if (e instanceof GatewayPendingError) {
+        // Durably queued on the gateway and it WILL run — not a failure, and
+        // above all not retryable: a second send writes the transaction twice.
+        // ⚠️ Deliberately does NOT do the success half — no clearOverlay, no
+        // clearDeepLink, and above all no move to the next patient. The item
+        // has not left this queue yet, and walking the rep away from a save
+        // nobody has confirmed is how one goes missing.
+        toast.warning("Queued — Monday is still writing this advance", {
+          description: e.message,
+          duration: 15_000,
+        });
+        return;
+      }
       toast.error("Failed to advance", { description: e instanceof Error ? e.message : String(e) });
     } finally { setSubmitting(false); }
   };
@@ -635,6 +659,7 @@ const ProfilePage = ({ variant }: ProfilePageProps) => {
   return (
     <SidebarProvider>
       <PageLoadingOverlay show={initialLoading} />
+      <SaveProgressOverlay open={submitting} phase={savePhase} />
       <div className="min-h-screen flex w-full bg-gradient-subtle">
         <PatientsSidebar
           patients={patients}
