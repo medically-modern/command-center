@@ -1,5 +1,6 @@
-import { writeStatusIndex, writeNumber, writeLocation, writeText, writeLongText, writeDate, clearDateColumn, writePhone, readColumnTexts, COL } from "./mondayApi";
+import { writeStatusIndex, writeNumber, writeLocation, writeText, writeLongText, writeDate, clearDateColumn, writePhone, readColumnTexts, COL, BOARD_ID } from "./mondayApi";
 import { executeWritesWithVerification } from "../shared/verifiedWrite";
+import { planPhoneWrite } from "../shared/phoneCell";
 import { appendIntakeToNotes } from "./callIntake";
 import { assertLongTextFits } from "../shared/longText";
 import { expectedPos, POS_INDEX } from "../shared/pos";
@@ -14,6 +15,10 @@ interface WriteTask {
   label: string;
   columnId: string;
   fn: () => Promise<unknown>;
+  /** Raw Monday value in change_multiple_column_values shape — mirrors exactly
+   *  what this task's write helper hands JSON.stringify. Every task must carry
+   *  one or the gateway /send fast path stays disengaged. */
+  value?: unknown;
   expectedText?: string;
 }
 
@@ -42,81 +47,95 @@ export async function sendPatientToMonday(p: Patient): Promise<void> {
 
   // Phone edit
   if (p.phoneEdited !== null && p.phoneEdited !== "") {
-    tasks.push({
-      label: "Phone",
-      columnId: COL.phone,
-      fn: () => writePhone(p.id, COL.phone, p.phoneEdited!),
-    });
+    // writePhone SKIPS an unparseable number (writes nothing). A task carrying
+    // `{}` would CLEAR a real patient phone number instead, so an unparseable
+    // value pushes no task at all — byte-for-byte today's no-op.
+    const phonePlan = planPhoneWrite(p.phoneEdited);
+    if (phonePlan.action !== "skip") {
+      tasks.push({
+        label: "Phone",
+        columnId: COL.phone,
+        value: phonePlan.action === "write" ? { phone: phonePlan.phone, countryShortName: "US" } : {},
+        fn: () => writePhone(p.id, COL.phone, p.phoneEdited!),
+      });
+    }
   }
 
   // Serving override
   if (p.servingIndexEdited !== null)
-    tasks.push({ label: "Serving", columnId: COL.serving, fn: () => writeStatusIndex(p.id, COL.serving, p.servingIndexEdited!) });
+    tasks.push({ label: "Serving", columnId: COL.serving, value: { index: p.servingIndexEdited! }, fn: () => writeStatusIndex(p.id, COL.serving, p.servingIndexEdited!) });
 
   // CGM Type override
   if (p.cgmTypeIndex !== null)
-    tasks.push({ label: "CGM Type", columnId: COL.cgmType, fn: () => writeStatusIndex(p.id, COL.cgmType, p.cgmTypeIndex!) });
+    tasks.push({ label: "CGM Type", columnId: COL.cgmType, value: { index: p.cgmTypeIndex! }, fn: () => writeStatusIndex(p.id, COL.cgmType, p.cgmTypeIndex!) });
 
   // Pump Type override
   if (p.pumpTypeIndex !== null)
-    tasks.push({ label: "Pump Type", columnId: COL.pumpType, fn: () => writeStatusIndex(p.id, COL.pumpType, p.pumpTypeIndex!) });
+    tasks.push({ label: "Pump Type", columnId: COL.pumpType, value: { index: p.pumpTypeIndex! }, fn: () => writeStatusIndex(p.id, COL.pumpType, p.pumpTypeIndex!) });
 
   // Primary Insurance (only if edited)
   if (p.primaryInsuranceIndexEdited !== null)
-    tasks.push({ label: "Primary Insurance", columnId: COL.primaryInsurance, fn: () => writeStatusIndex(p.id, COL.primaryInsurance, p.primaryInsuranceIndexEdited!) });
+    tasks.push({ label: "Primary Insurance", columnId: COL.primaryInsurance, value: { index: p.primaryInsuranceIndexEdited! }, fn: () => writeStatusIndex(p.id, COL.primaryInsurance, p.primaryInsuranceIndexEdited!) });
 
   // Member ID 1 (only if edited)
   if (p.memberId1Edited !== null && p.memberId1Edited !== "")
-    tasks.push({ label: "Member ID 1", columnId: COL.memberId1, fn: () => writeText(p.id, COL.memberId1, p.memberId1Edited!) });
+    tasks.push({ label: "Member ID 1", columnId: COL.memberId1, value: p.memberId1Edited!, fn: () => writeText(p.id, COL.memberId1, p.memberId1Edited!) });
 
   // Secondary Insurance (only if edited)
   if (p.secondaryInsuranceEdited !== null && p.secondaryInsuranceIndex !== null)
-    tasks.push({ label: "Secondary Insurance", columnId: COL.secondaryInsurance, fn: () => writeStatusIndex(p.id, COL.secondaryInsurance, p.secondaryInsuranceIndex!) });
+    tasks.push({ label: "Secondary Insurance", columnId: COL.secondaryInsurance, value: { index: p.secondaryInsuranceIndex! }, fn: () => writeStatusIndex(p.id, COL.secondaryInsurance, p.secondaryInsuranceIndex!) });
 
   // Member ID 2 (only if edited)
   if (p.memberId2Edited !== null && p.memberId2Edited !== "")
-    tasks.push({ label: "Member ID 2", columnId: COL.memberId2, fn: () => writeText(p.id, COL.memberId2, p.memberId2Edited!) });
+    tasks.push({ label: "Member ID 2", columnId: COL.memberId2, value: p.memberId2Edited!, fn: () => writeText(p.id, COL.memberId2, p.memberId2Edited!) });
 
-  if (p.monitorQty !== "") tasks.push({ label: "Monitor Qty", columnId: COL.monitorQty, fn: () => writeNumber(p.id, COL.monitorQty, Number(p.monitorQty)) });
+  // ⚠️ This module's writeNumber takes a NUMBER and always sends String(num) as
+  // a PLAIN STRING — no skip, no cleaning (unlike profile's, which cleans and
+  // may write nothing). The `String(Number(...))` here is deliberate parity with
+  // the fn, not redundancy: a non-numeric field sends "NaN" today and must keep
+  // doing so.
+  if (p.monitorQty !== "") tasks.push({ label: "Monitor Qty", columnId: COL.monitorQty, value: String(Number(p.monitorQty)), fn: () => writeNumber(p.id, COL.monitorQty, Number(p.monitorQty)) });
   // Pump Qty is coerced to 0 when Serving does not sell a pump DEVICE. The form
   // disables the control, but a value already on the board — or one set before
   // Serving was corrected — still reaches here otherwise, which is exactly how
   // Bradan French's `1` survived a Welcome Call save on a `Supplies + CGM`
   // profile and shipped a pump. See lib/shared/servingLines.ts.
   const pumpQtyToWrite = coercePumpQty(p.pumpQty, p.servingEdited ?? p.serving);
-  if (pumpQtyToWrite !== "") tasks.push({ label: "Pump Qty", columnId: COL.pumpQty, fn: () => writeNumber(p.id, COL.pumpQty, Number(pumpQtyToWrite)) });
-  if (p.qtyInf1 !== "") tasks.push({ label: "Infusion Set 1 Qty", columnId: COL.qtyInf1, fn: () => writeNumber(p.id, COL.qtyInf1, Number(p.qtyInf1)) });
-  if (p.qtyInf2 !== "") tasks.push({ label: "Infusion Set 2 Qty", columnId: COL.qtyInf2, fn: () => writeNumber(p.id, COL.qtyInf2, Number(p.qtyInf2)) });
-  if (p.qtyCartridge !== "") tasks.push({ label: "Qty Cartridge", columnId: COL.qtyCartridge, fn: () => writeNumber(p.id, COL.qtyCartridge, Number(p.qtyCartridge)) });
+  if (pumpQtyToWrite !== "") tasks.push({ label: "Pump Qty", columnId: COL.pumpQty, value: String(Number(pumpQtyToWrite)), fn: () => writeNumber(p.id, COL.pumpQty, Number(pumpQtyToWrite)) });
+  if (p.qtyInf1 !== "") tasks.push({ label: "Infusion Set 1 Qty", columnId: COL.qtyInf1, value: String(Number(p.qtyInf1)), fn: () => writeNumber(p.id, COL.qtyInf1, Number(p.qtyInf1)) });
+  if (p.qtyInf2 !== "") tasks.push({ label: "Infusion Set 2 Qty", columnId: COL.qtyInf2, value: String(Number(p.qtyInf2)), fn: () => writeNumber(p.id, COL.qtyInf2, Number(p.qtyInf2)) });
+  if (p.qtyCartridge !== "") tasks.push({ label: "Qty Cartridge", columnId: COL.qtyCartridge, value: String(Number(p.qtyCartridge)), fn: () => writeNumber(p.id, COL.qtyCartridge, Number(p.qtyCartridge)) });
 
   // Medicare Prior Pump Date (Original-Medicare-only MM/YYYY text). Always write so
   // an empty value clears the cell — the form zeroes local state once the field is
   // no longer eligible (insurance changed / Pump Qty set to 1), so a date entered
   // and then reversed in-session is cleared on the board instead of persisting.
-  tasks.push({ label: "Medicare Prior Pump Date", columnId: COL.medicarePriorPumpDate, fn: () => writeText(p.id, COL.medicarePriorPumpDate, p.medicarePriorPumpDate) });
+  // writeText sends the bare string, so `value: ""` IS the clear here — it must
+  // not be turned into {} or skipped.
+  tasks.push({ label: "Medicare Prior Pump Date", columnId: COL.medicarePriorPumpDate, value: p.medicarePriorPumpDate, fn: () => writeText(p.id, COL.medicarePriorPumpDate, p.medicarePriorPumpDate) });
 
   // Monitor Purchase Date — same always-write contract as the pump date above,
   // for the same reason: the form zeroes local state once the field stops being
   // eligible, so writing unconditionally is what clears the board cell.
-  tasks.push({ label: "Monitor Purchase Date", columnId: COL.monitorPurchaseDate, fn: () => writeText(p.id, COL.monitorPurchaseDate, p.monitorPurchaseDate) });
+  tasks.push({ label: "Monitor Purchase Date", columnId: COL.monitorPurchaseDate, value: p.monitorPurchaseDate, fn: () => writeText(p.id, COL.monitorPurchaseDate, p.monitorPurchaseDate) });
 
   if (p.infusionSet1Index !== null)
-    tasks.push({ label: "Infusion Set 1", columnId: COL.infusionSet1, fn: () => writeStatusIndex(p.id, COL.infusionSet1, p.infusionSet1Index!) });
+    tasks.push({ label: "Infusion Set 1", columnId: COL.infusionSet1, value: { index: p.infusionSet1Index! }, fn: () => writeStatusIndex(p.id, COL.infusionSet1, p.infusionSet1Index!) });
   if (p.infusionSet2Index !== null)
-    tasks.push({ label: "Infusion Set 2", columnId: COL.infusionSet2, fn: () => writeStatusIndex(p.id, COL.infusionSet2, p.infusionSet2Index!) });
+    tasks.push({ label: "Infusion Set 2", columnId: COL.infusionSet2, value: { index: p.infusionSet2Index! }, fn: () => writeStatusIndex(p.id, COL.infusionSet2, p.infusionSet2Index!) });
   if (p.subscriptionTypeIndex !== null)
-    tasks.push({ label: "Subscription Type", columnId: COL.subscriptionType, fn: () => writeStatusIndex(p.id, COL.subscriptionType, p.subscriptionTypeIndex!) });
+    tasks.push({ label: "Subscription Type", columnId: COL.subscriptionType, value: { index: p.subscriptionTypeIndex! }, fn: () => writeStatusIndex(p.id, COL.subscriptionType, p.subscriptionTypeIndex!) });
   if (p.welcomeCallTextIndex !== null)
-    tasks.push({ label: "Welcome Call Text", columnId: COL.welcomeCallText, fn: () => writeStatusIndex(p.id, COL.welcomeCallText, p.welcomeCallTextIndex!) });
+    tasks.push({ label: "Welcome Call Text", columnId: COL.welcomeCallText, value: { index: p.welcomeCallTextIndex! }, fn: () => writeStatusIndex(p.id, COL.welcomeCallText, p.welcomeCallTextIndex!) });
   if (p.orderHandlingIndex !== null)
-    tasks.push({ label: "Order Handling", columnId: COL.orderHandling, fn: () => writeStatusIndex(p.id, COL.orderHandling, p.orderHandlingIndex!) });
+    tasks.push({ label: "Order Handling", columnId: COL.orderHandling, value: { index: p.orderHandlingIndex! }, fn: () => writeStatusIndex(p.id, COL.orderHandling, p.orderHandlingIndex!) });
   if (p.advanceDecisionIndex !== null)
-    tasks.push({ label: "Advance Decision", columnId: COL.advanceDecision, fn: () => writeStatusIndex(p.id, COL.advanceDecision, p.advanceDecisionIndex!) });
+    tasks.push({ label: "Advance Decision", columnId: COL.advanceDecision, value: { index: p.advanceDecisionIndex! }, fn: () => writeStatusIndex(p.id, COL.advanceDecision, p.advanceDecisionIndex!) });
 
   if (p.addressEdited !== null) {
     const lat = p.addressLat ?? 0;
     const lng = p.addressLng ?? 0;
-    tasks.push({ label: "Address", columnId: COL.address, fn: () => writeLocation(p.id, COL.address, p.addressEdited!, lat, lng) });
+    tasks.push({ label: "Address", columnId: COL.address, value: { address: p.addressEdited!, lat, lng }, fn: () => writeLocation(p.id, COL.address, p.addressEdited!, lat, lng) });
   }
 
   // POS — dictated by logic, never by the rep. A pure function of Primary
@@ -137,6 +156,7 @@ export async function sendPatientToMonday(p: Patient): Promise<void> {
   tasks.push({
     label: "POS",
     columnId: COL.pos,
+    value: { index: POS_INDEX[posLabel] },
     fn: () => writeStatusIndex(p.id, COL.pos, POS_INDEX[posLabel]),
   });
 
@@ -177,7 +197,11 @@ export async function sendPatientToMonday(p: Patient): Promise<void> {
     const fn = value === ""
       ? () => clearDateColumn(p.id, w.columnId)
       : () => writeDate(p.id, w.columnId, value);
-    tasks.push({ label: w.label, columnId: w.columnId, fn });
+    // The batched value mirrors the SAME ternary as the fn above. A flat
+    // `{ date: value }` would send `{ date: "" }` for the clear case, which
+    // Monday does not treat as a clear — it would silently leave a stale Next
+    // Order Date on the board (the MM-1042 class of bug).
+    tasks.push({ label: w.label, columnId: w.columnId, value: value === "" ? {} : { date: value }, fn });
   }
 
   // ---- Notes (+ the no-column intake block) ----
@@ -192,20 +216,21 @@ export async function sendPatientToMonday(p: Patient): Promise<void> {
     // the one thing here with no other home (CLAUDE.md §10). Fail loudly before
     // the write instead of reporting success and losing the rep's answers.
     assertLongTextFits(notesToWrite, "Welcome Call Notes");
-    tasks.push({ label: "Notes", columnId: COL.notes, fn: () => writeLongText(p.id, COL.notes, notesToWrite) });
+    tasks.push({ label: "Notes", columnId: COL.notes, value: { text: notesToWrite }, fn: () => writeLongText(p.id, COL.notes, notesToWrite) });
   }
 
   // Escalation toggle — if flagged, write Escalation Required
   if (p.escalated) {
-    tasks.push({ label: "Escalation", columnId: COL.escalation, fn: () => writeStatusIndex(p.id, COL.escalation, 0) });
+    tasks.push({ label: "Escalation", columnId: COL.escalation, value: { index: 0 }, fn: () => writeStatusIndex(p.id, COL.escalation, 0) });
   }
 
   // Stage advancer — Review Profile
-  tasks.push({ label: "Stage Advancer", columnId: COL.stageAdvancer, fn: () => writeStatusIndex(p.id, COL.stageAdvancer, 0) });
+  tasks.push({ label: "Stage Advancer", columnId: COL.stageAdvancer, value: { index: 0 }, fn: () => writeStatusIndex(p.id, COL.stageAdvancer, 0) });
 
   // ---- Execute with read-back verification before advancing stage ----
   const failures = await executeWritesWithVerification({
     itemId: p.id,
+    boardId: String(BOARD_ID),
     tasks,
     stageColumnId: COL.stageAdvancer,
     executeWithRetry,
