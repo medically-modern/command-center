@@ -1864,6 +1864,104 @@ The half that is actionable on a call — *did the rep confirm this with the pat
 ships as the `primary` / `secondary` confirm flags in the intake block. Build the rest only
 alongside the eligibility-date plumbing, never as UI alone.
 
+
+### 5.27 The Communications Hub, and the manager sidebars' contact marks (Sep 2026)
+Two halves of one ask (Josh, 2026-09-01): *"a rep can see the full context without having to go
+back and forth"*. Everything a patient does to reach the MM line — call, voicemail, text, fax —
+now sits on one page beside their Command Center profile, and a manager scanning a queue can see
+who is waiting on a reply without opening anybody.
+
+**A. Contact marks on the patient sidebars.** One or two 12px glyphs in the top-right of each row.
+Four situations, two icons, because the four are **two questions asked twice** and each question
+has one answer at a time — so the ceiling is a property of the rule, not a cap anyone enforces:
+
+| lane | answer | glyph |
+|---|---|---|
+| TEXT — who sent last | inbound → they're waiting on us | filled rose bubble |
+| | outbound → we replied | hollow bubble + check, muted |
+| CALL — the most recent call | inbound, nobody picked up | rose `PhoneMissed` |
+| | outbound | muted `PhoneOutgoing` |
+
+**Rose = they're waiting on us, muted = we've already acted**, so a manager finds the rows needing
+something by colour alone. Rule: **`lib/contactState/contactState.ts`** (+ tests);
+looks: `components/shared/ContactStateMarks.tsx`; feed: `hooks/useContactStates.ts`.
+- ⚠️ **`?mv=` gates it, not `?manager=1` and not the access level.** Same gate as the Doctor
+  Appointments manager folders and for the same reason (§5.12): `?manager=1` is set by only SOME
+  Oversight columns, and access level shows the marks permanently, including on the ordinary role
+  page a processor works from. **Accepted cost:** a manager opening a role page directly, rather
+  than clicking in from Oversight, sees no marks.
+- ⚠️ **ONE batched read, never one per patient.** The marks render on every row of all eight
+  sidebars, and a per-patient RingCentral lookup is exactly INCIDENT_2026-08-20. `useContactStates`
+  is a structural copy of `useFaxOutcomes`: module-scope store, `useSyncExternalStore` so the
+  returned identity is stable (incident rule 2), one coalescing `inflight`, page-capped reads, a
+  5-minute TTL, and **nothing fetched at all when the gate is closed**.
+- ⚠️ **MOST RECENT wins within a lane; it is not a high-water mark.** They ring, we miss it, we
+  ring back an hour later ⇒ *we called them*. A mark that latched onto the missed call would never
+  clear, and that is the noise that teaches people to stop reading the column.
+- ⚠️ `callConnected` reads the **legs** — a claimed (forwarded) inbound call is not a missed call
+  (§5.13/§5.16). And the account-wide message-store read **cannot use the multi-value
+  `messageType` filter** (400 on this account, the same quirk `/messaging/conversation`
+  documents), so SMS and MMS are fetched one type at a time and Fax/VoiceMail rows are dropped in
+  the rule instead. MMS is best-effort: its failure is swallowed, because missing one photo reply
+  beats blanking the whole column.
+- ⚠️ **Patient Intake needed `COL.ptPhone` adding to `LIST_COLUMN_IDS`** — that queue's slim
+  two-tier read (§5.25) carries no phone, so the marks would have read `""` on every row with no
+  error. `listColumns.test.ts` caught it, which is what that test is for.
+- The window is **7 days**, one window for all four situations, so "no marks" reliably means
+  nobody has touched this patient this week — and *we called them* stays a fact about now rather
+  than something true of every patient ever worked.
+
+**B. The Communications Hub** — `/assigned-patients`, three tabs on a left rail mirroring the
+RingCentral app a rep already has open ("the rc ui is fine"). The role kept its id
+`assignedPatients` and was **relabelled "Patient Texting" → "Communications"**; ids are what
+access.json assignments key off, so a rename is display-only (§5.10's precedent).
+
+| tab | list | middle | right third |
+|---|---|---|---|
+| **Phone** | recent calls · **Missed** filter · Voicemail sub-tab with transcripts | the thread with that number | the patient's profile |
+| **Text** | conversations, newest first · **Unread** filter · right-click → Mark as unread | `ConversationThread` | the patient's profile |
+| **Fax** | inbound faxes · Unread filter | the **sending office** + its patients | (n/a — a fax is an office's) |
+
+- ⚠️ **Read state is RingCentral's own `readStatus`, never a local flag.** Reps work this same
+  line in the RingCentral desktop app, so an invented read state would disagree with what they see
+  there within a day. Opening a conversation PUTs its unread inbound messages to Read; the context
+  menu PUTs the newest one back. The local override map covers only the seconds between the write
+  and the next poll. ⚠️ **Only INBOUND messages carry a meaningful read state** — RingCentral
+  reports outbound as Read on send, so counting both directions makes every conversation
+  permanently read and the filter permanently empty.
+- ⚠️ **Names in the list are RingCentral's caller ID, not Monday.** Resolving a name per row would
+  be one cross-board query per conversation per poll — the incident's shape again. The SELECTED
+  conversation gets its real record in the dossier pane: one lookup, on click, memoised.
+- **The dossier pane is the point of the whole page.** `PatientDossierPanel` renders, in this
+  order: the **path** (which stages they have completed profiles in, in tracker order — §6), then
+  the **notes FIRST** (Josh's explicit ask: the running case history is what tells a rep what to
+  say next; everything else on the pane is a lookup), then stage/next action/open-in-stage.
+  A completed step links with `?completedStage=`, so reading history can never re-advance a
+  finished patient (§7's review-mode gate).
+- ⚠️ **`fetchDossierItems` does TWO passes and the second is not optional.** The phone pass finds
+  most records; a COMPLETED record can carry a blank or differently-typed phone, and the completed
+  records ARE the stage history — so a phone-only lookup draws the path with the finished stages
+  missing. The name pass fills them in, keyed off a name that came from the phone pass, so a wrong
+  number can never pull in a stranger.
+- **Fax → office → patients** (`lib/commsHub/faxDirectory.ts` + tests). ⚠️ The Doctor Fax column
+  is an **EMAIL** column holding `<digits>@rcfax.com` (§ `shared/faxAddress.ts`), so the join
+  strips the address before comparing digits — comparing the stored value to a phone number
+  matches nothing, with no error. Patients in **Chase Clinicals** lead the list and are
+  highlighted, because an arriving fax is most likely the answer to that chase; within a group the
+  patient with **no** next-action date leads, since nothing will surface them on their own.
+- ⚠️ **Only the OPEN tab polls RingCentral.** All four reads go through
+  `hooks/commsHub/rcStore.ts`, one factory carrying the incident guards, so the four lists cannot
+  drift into having three of them.
+- ⚠️ **Voicemail transcription is written defensively and is UNVERIFIED against this account.**
+  RingCentral returns transcripts as a `text/plain` attachment with `vmTranscriptionStatus` saying
+  whether one exists, but transcription is a per-account feature that may be off here. It degrades
+  to a plain "no transcript" note rather than an error — the same posture `CallHistoryButton`
+  takes for absent recordings, where an account that doesn't produce them is the NORMAL case.
+  Confirm against the live account before relying on it.
+
+**Keep-in-agreement:** the tracker order lives in **`lib/commsHub/pipelineOrder.ts`** and is
+asserted by `dossier.test.ts`; §6's diagram is now downstream of it, not the other way round.
+
 ---
 
 ## 6. Patient flow across boards (the big picture)
@@ -1873,15 +1971,26 @@ DTC Intake (18392794310)
    │  "Send To Medical Necessity"
    ▼
 Profile Send Off (18406352652)  ──profile role: complete demographics/insurance/doctor
-   ▼
-Welcome Call (18410804557)      ──welcomeCall → finalConfirm roles
+   │  "Advance to MN" → automation 7917676280 creates the Medical Evaluation item
    ▼
 Medical Evaluation (18406060017)──evaluate → sendRequest → confirmReceipt → chase (fax | email+parachute)
    ▼
 Insurance (18410601299)         ──benefits → submitAuth → authOutstanding (→ authDenied)
    ▼
+Welcome Call (18410804557)      ──welcomeCall → finalConfirm roles
+   │  Final Confirm's advancer fires the create-item hop to Subscription (§5.14)
+   ▼
 Subscription (18407459988) / Claims boards  ──recurring orders, reconciliation
 ```
+
+> ⚠️ **This diagram had Welcome Call SECOND until 2026-09-01** — straight after Profile Send Off,
+> with Medical Evaluation third. It was wrong, and three things in the app say so and agree with
+> each other: Profile Send Off's only exit is **Advance to MN**, whose automation creates the
+> **Medical Evaluation** item (§3's own table says this); `config.ts` `ROLES` runs profile →
+> evaluate/chase → benefits/auth → welcomeCall → subscription; and `OVERSIGHT_SECTIONS` runs
+> intake → medical-evaluation → insurance → welcome-call. The order is now also a **module** —
+> `lib/commsHub/pipelineOrder.ts` — because the Communications Hub draws a patient's stage history
+> from it (§5.27), so a future disagreement shows up as a failing test rather than a wrong picture.
 
 Movement between groups/boards is performed by **Monday automations** (e.g. "when Stage Advancer
 status changes → set status / move item to group", and a "when item created → set statuses + copy
@@ -2507,6 +2616,11 @@ these services; when their math changes, `oopEstimator.ts` must be updated to ma
 | Audit a write that "disappeared" | gateway `/audit` (Postgres `gql_log` / `send_jobs`) |
 | "What was the gateway doing at 4:46 last Thursday?" | `GET /audit/requests.json?key=…&hours=…&path=/rc&failed=1` (Postgres `request_log`, §8). NOT Railway logs — they cap at 500 lines ≈ 13 minutes |
 | "A call never reached me" / "taking it gave an error" | §5.13 — `GET /calls/history?hours=…&last4=…` (Postgres `call_events` + `call_claims`), NOT Railway logs: those cap at 500 lines ≈ 13 minutes. A `410` from `/calls/claim` is RingCentral saying the party is already gone — the caller hung up or somebody else picked up — never a throttle, which surfaces as `502` |
+| A manager sees no contact icons on a sidebar row | §5.27 — the gate is **`?mv=`**, so they must have clicked in from Oversight; then check the patient's phone is in that queue's read set (`listColumns.test.ts` for Patient Intake) |
+| A contact icon says the wrong thing | §5.27 — `lib/contactState/contactState.ts`. Most recent wins per lane; a claimed inbound call is NOT a missed call (`callConnected` reads the legs) |
+| An inbound fax doesn't match a doctor / their patients are missing | §5.27 — `lib/commsHub/faxDirectory.ts`. The Doctor Fax column is an EMAIL column holding `<digits>@rcfax.com`, so the join strips the address first |
+| The profile widget shows the wrong stage, or none | §5.27 — `lib/commsHub/dossier.ts` (`pickActive` = furthest-along open board) and `pipelineOrder.ts` (the tracker order, which §6 now follows) |
+| A conversation won't stay read / unread | §5.27 — read state is RingCentral's `readStatus` on the INBOUND messages, written with `setMessageRead`; the local override only covers the gap before the next poll |
 | Manager pipeline / oversight charts | `components/oversight/OversightTab.tsx` + `lib/oversight/oversightApi.ts` (+ `priority.ts`); reached via `/system-mgmt?tab=oversight` |
 
 ---

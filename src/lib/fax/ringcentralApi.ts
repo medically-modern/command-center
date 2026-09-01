@@ -493,14 +493,10 @@ export async function fetchInboundFaxes(
   return { faxes, hasMore: page * perPage < total, total };
 }
 
-/** Mark a fax Read or Unread. */
+/** Mark a fax Read or Unread. Same write as `setMessageRead` below, which the
+ *  text inbox uses — the message store does not distinguish by type here. */
 export async function setFaxRead(id: number, read: boolean): Promise<void> {
-  const res = await rcFetch(`/restapi/v1.0/account/~/extension/~/message-store/${id}`, {
-    method: "PUT",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ readStatus: read ? "Read" : "Unread" }),
-  });
-  if (!res.ok) throw new Error(`RingCentral mark ${read ? "read" : "unread"} failed (${res.status})`);
+  return setMessageRead(id, read);
 }
 
 /** Download a fax PDF (through the gateway) and return a blob: URL. Caller
@@ -629,4 +625,118 @@ export async function fetchRecentCallActivity({
     if (records.length < perPage) break;
   }
   return out;
+}
+
+/**
+ * Mark any message-store record Read or Unread.
+ *
+ * The Communications Hub's text inbox uses RingCentral's own `readStatus`
+ * rather than a local flag, because reps also work this line in the
+ * RingCentral desktop app — a locally-invented read state would disagree with
+ * what they see there within a day.
+ */
+export async function setMessageRead(id: number, read: boolean): Promise<void> {
+  const res = await rcFetch(`/restapi/v1.0/account/~/extension/~/message-store/${id}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ readStatus: read ? "Read" : "Unread" }),
+  });
+  if (!res.ok) throw new Error(`RingCentral mark ${read ? "read" : "unread"} failed (${res.status})`);
+}
+
+export interface VoicemailRecord {
+  id: number;
+  fromNumber: string;
+  fromName: string;
+  creationTime: string;
+  read: boolean;
+  /** Seconds, from the audio attachment. 0 when RingCentral didn't say. */
+  durationSec: number;
+  /** Audio, for the player. Fetched through /rc/fetch like a fax page. */
+  audioUri: string;
+  /**
+   * RingCentral's transcription state — `Completed`, `CompletedPartially`,
+   * `InProgress`, `NotAvailable`, `Failed`, `TimedOut`, or "" when the account
+   * returns nothing at all.
+   */
+  transcriptionStatus: string;
+  /** Attachment holding the transcript text, when RingCentral produced one. */
+  transcriptUri: string;
+}
+
+/**
+ * Inbound voicemails, newest first.
+ *
+ * ⚠️ **The transcription half is written defensively and has NOT been verified
+ * against this account.** RingCentral returns voicemail transcripts as a
+ * `text/plain` attachment alongside the audio, with `vmTranscriptionStatus` on
+ * the record saying whether one exists — but transcription is a per-account
+ * feature that may simply be off here, in which case the status comes back
+ * `NotAvailable` and there is no text attachment. That degrades to "no
+ * transcript" in the UI rather than erroring, which is the same posture
+ * `fetchPatientCallHistory` takes for absent recordings: an account that
+ * doesn't produce them is the NORMAL case, not a fault.
+ *
+ * `dateFrom` is explicit for the reason `fetchUnreadFaxCount` documents — the
+ * message store otherwise defaults to roughly the last day.
+ */
+export async function fetchVoicemails(
+  opts: { perPage?: number; sinceDays?: number } = {},
+): Promise<VoicemailRecord[]> {
+  const perPage = opts.perPage ?? 50;
+  const dateFrom = new Date(Date.now() - (opts.sinceDays ?? 30) * 24 * 60 * 60_000).toISOString();
+  const path =
+    `/restapi/v1.0/account/~/extension/~/message-store` +
+    `?messageType=VoiceMail&direction=Inbound&perPage=${perPage}&dateFrom=${encodeURIComponent(dateFrom)}`;
+  const res = await rcFetch(path);
+  if (!res.ok) throw new Error(`RingCentral voicemail list failed (${res.status})`);
+  const json = (await res.json()) as {
+    records?: Array<{
+      id: number;
+      creationTime?: string;
+      readStatus?: string;
+      vmTranscriptionStatus?: string;
+      from?: { phoneNumber?: string; name?: string };
+      attachments?: Array<{ id?: number; type?: string; contentType?: string; uri?: string; vmDuration?: number }>;
+    }>;
+  };
+  return (json.records ?? [])
+    .map((r) => {
+      const atts = r.attachments ?? [];
+      const audio = atts.find((a) => /^audio\//i.test(a.contentType || "") || a.type === "AudioRecording");
+      // The transcript is the text part. Matched on contentType rather than on
+      // `type`, whose value for a transcript we have not seen on this account.
+      const transcript = atts.find((a) => /^text\//i.test(a.contentType || ""));
+      return {
+        id: r.id,
+        fromNumber: r.from?.phoneNumber ?? "",
+        fromName: (r.from?.name ?? "").trim(),
+        creationTime: r.creationTime ?? "",
+        read: r.readStatus === "Read",
+        durationSec: Number(audio?.vmDuration ?? 0),
+        audioUri: audio?.uri ?? "",
+        transcriptionStatus: String(r.vmTranscriptionStatus ?? ""),
+        transcriptUri: transcript?.uri ?? "",
+      };
+    })
+    .sort((a, b) => new Date(b.creationTime).getTime() - new Date(a.creationTime).getTime());
+}
+
+/**
+ * The text of a voicemail transcript.
+ *
+ * Returns "" rather than throwing when the account produced none — see
+ * `fetchVoicemails`. The attachment URI is the allowlisted
+ * `/message-store/{id}/content/{attachmentId}` shape, so it needs no gateway
+ * change (`rcAllowlist.fetchUrlAllowed`).
+ */
+export async function fetchVoicemailTranscript(transcriptUri: string): Promise<string> {
+  if (!transcriptUri) return "";
+  try {
+    const res = await rcFetch(transcriptUri);
+    if (!res.ok) return "";
+    return (await res.text()).trim();
+  } catch {
+    return "";
+  }
 }
