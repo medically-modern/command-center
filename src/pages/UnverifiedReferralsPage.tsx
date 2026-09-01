@@ -139,6 +139,7 @@ import { IntakeProfileStatus } from "@/components/shared/PatientProfileStatus";
 // carries to say they are already a patient (§5.21).
 import { isAlreadyInSystemResult } from "@/lib/profile/dupCheckFlag";
 import { referralDoctorInfo } from "@/lib/profile/referralDoctorInfo";
+import { StaleDataNotice } from "@/components/shared/StaleDataNotice";
 
 /** This queue is the DTC form's two groups and nothing else. "Referrals"
  *  (the 1. Intake group) was a third option here and is gone: that group is
@@ -2177,11 +2178,29 @@ const UnverifiedReferralsPage = ({ variant = "infoCollection" }: { variant?: Int
             </div>
           </header>
 
-          {error && (
-            <div className="m-4 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm flex-none">
-              {error}
-            </div>
-          )}
+          {/* The queue read and the OPEN PATIENT's detail read are separate
+              requests (§5.25) that fail independently, so they get separate
+              notices — "the list is stale" and "this patient didn't load" are
+              different problems and only one of them is safe to keep working
+              through. ⚠️ These sit OUTSIDE `.pf-root` — it deliberately does
+              not wrap the sidebar or the header — so they take the DEFAULT
+              Tailwind skin, NOT `skin="page"`. Inside `.pf-root` that is
+              inverted (§9); out here `.btn` has no styles to inherit at all.
+              Both self-clear on the next successful poll. */}
+          <div className="flex-none">
+            <StaleDataNotice
+              error={error}
+              scope="The patient list"
+              onRetry={() => { void refetch(); }}
+              className="m-4"
+            />
+            <StaleDataNotice
+              error={detailError}
+              scope="This patient's details"
+              onRetry={() => { if (selectedId) void loadDetail(selectedId); }}
+              className="m-4"
+            />
+          </div>
 
           {/* Contact strip. The NAME is not repeated here — it's already the
               header subtitle, and printing it twice at two sizes is most of

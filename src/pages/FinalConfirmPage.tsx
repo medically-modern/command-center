@@ -45,6 +45,7 @@ import { useBackNavigation } from "@/hooks/useBackNavigation";
 import { ReportIssueButton } from "@/components/shared/ReportIssueButton";
 import { useAutoSelectPatient } from "@/hooks/useAutoSelectPatient";
 import { viewFilterFromParams } from "@/lib/roleView";
+import { StaleDataNotice } from "@/components/shared/StaleDataNotice";
 
 const FinalConfirmPage = () => {
   const navigate = useNavigate();
@@ -384,6 +385,13 @@ const FinalConfirmPage = () => {
               </div>
             </div>
           </header>
+          <StaleDataNotice
+            error={error}
+            scope="The patient list"
+            onRetry={() => { void refetch(); }}
+            className="mx-3 sm:mx-6 mt-3"
+          />
+
 
           {unsubmittedSplits.length > 0 && (
             <div className="sticky top-0 z-30 bg-amber-100 border-b-2 border-amber-400 px-6 py-2.5 flex items-center gap-3 shadow-sm">

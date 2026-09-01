@@ -51,6 +51,7 @@ import { viewFilterFromParams } from "@/lib/roleView";
 import { managerOriginFromParams, managerChartFromParams, managerBucketFromParams } from "@/lib/shared/managerOrigin";
 import { railFilterFor, applyRail } from "@/lib/samantha/managerRail";
 import { sidebarVisibleList } from "@/lib/samantha/sidebarList";
+import { StaleDataNotice } from "@/components/shared/StaleDataNotice";
 
 const AuthOutstandingPage = () => {
   const { goBack } = useBackNavigation();
@@ -273,6 +274,13 @@ const AuthOutstandingPage = () => {
               </div>
             </div>
           </header>
+          <StaleDataNotice
+            error={error}
+            scope="The patient list"
+            onRetry={() => { void refetch(); }}
+            className="mx-3 sm:mx-6 mt-3"
+          />
+
 
           {isManager && selected && <ManagerResolveNote action="Auth Review Complete" />}
 

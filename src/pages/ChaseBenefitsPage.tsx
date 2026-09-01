@@ -53,6 +53,7 @@ import { managerOriginFromParams, managerChartFromParams, managerBucketFromParam
 import { railFilterFor, applyRail } from "@/lib/samantha/managerRail";
 import { sidebarVisibleList } from "@/lib/samantha/sidebarList";
 import { CompletedStageBanner, useCompletedStageReview } from "@/components/shared/CompletedStageBanner";
+import { StaleDataNotice } from "@/components/shared/StaleDataNotice";
 
 const ChaseBenefitsPage = () => {
   const { goBack } = useBackNavigation();
@@ -278,6 +279,13 @@ const ChaseBenefitsPage = () => {
               </div>
             </div>
           </header>
+          <StaleDataNotice
+            error={error}
+            scope="The patient list"
+            onRetry={() => { void refetch(); }}
+            className="mx-3 sm:mx-6 mt-3"
+          />
+
 
           {isManager && selected && <ManagerResolveNote action="Benefit Check Complete" />}
 

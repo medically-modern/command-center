@@ -17,6 +17,7 @@ import { PageLoadingOverlay } from "@/components/shared/PageLoadingOverlay";
 import { ArrowLeft, MessageCircleQuestion } from "lucide-react";
 import { useBackNavigation } from "@/hooks/useBackNavigation";
 import { ReportIssueButton } from "@/components/shared/ReportIssueButton";
+import { StaleDataNotice } from "@/components/shared/StaleDataNotice";
 
 const PatientQuestionsPage = () => {
   const { goBack } = useBackNavigation();
@@ -124,6 +125,13 @@ const PatientQuestionsPage = () => {
               </div>
             </div>
           </header>
+          <StaleDataNotice
+            error={error}
+            scope="The patient list"
+            onRetry={() => { void refetch(); }}
+            className="mx-3 sm:mx-6 mt-3"
+          />
+
 
           <main className="flex-1 px-6 py-6 overflow-y-auto">
             <section className="max-w-4xl xl:max-w-6xl 2xl:max-w-7xl mx-auto space-y-5">

@@ -8,6 +8,8 @@ import {
   formatSendFailure,
   COOLDOWN_MS,
   MAX_ALERTS_PER_WINDOW,
+  sweepAlertReason,
+  formatFailureSweep,
 } from "./sendAlerts.mjs";
 
 describe("throttle", () => {
@@ -101,5 +103,69 @@ describe("message is PHI-safe", () => {
 
   it("pages at high priority — data did not reach Monday", () => {
     expect(formatSendFailure({}).priority).toBe("high");
+  });
+});
+
+// ── Reads vs writes: what actually deserves a push ────────────────────────
+// 2026-09-01: two transient Monday blips paged Josh twice in two hours — 8
+// reads 500ing at 16:07, 2 reads 503ing at 17:55, out of 23,719 requests, with
+// ZERO writes lost. Neither was actionable. These pin the rule that keeps that
+// quiet without going quiet on a real one.
+describe("sweepAlertReason", () => {
+  it("pages on a single failed write — that is a save that did not land", () => {
+    expect(sweepAlertReason({ failedWrites: 1, failedReads: 0, requests: 5000 })).toBe("writes");
+  });
+
+  it("stays quiet on the 2026-09-01 16:07 burst (8 failed reads of 9,103)", () => {
+    expect(sweepAlertReason({ failedWrites: 0, failedReads: 8, requests: 9103 })).toBe(null);
+  });
+
+  it("stays quiet on the 17:55 burst (2 failed reads of 7,196)", () => {
+    expect(sweepAlertReason({ failedWrites: 0, failedReads: 2, requests: 7196 })).toBe(null);
+  });
+
+  it("still pages on a REAL read outage — both count and rate cleared", () => {
+    expect(sweepAlertReason({ failedWrites: 0, failedReads: 400, requests: 1000 })).toBe("reads");
+  });
+
+  it("needs BOTH thresholds: a high rate on tiny volume does not page", () => {
+    // 1-of-2 failing at 3am is not an outage. Rate alone would page here.
+    expect(sweepAlertReason({ failedWrites: 0, failedReads: 1, requests: 2 })).toBe(null);
+  });
+
+  it("needs BOTH thresholds: a big count on huge volume does not page", () => {
+    // Count alone would page on a busy afternoon that is actually fine.
+    expect(sweepAlertReason({ failedWrites: 0, failedReads: 30, requests: 100000 })).toBe(null);
+  });
+
+  it("a write failure outranks quiet reads", () => {
+    expect(sweepAlertReason({ failedWrites: 2, failedReads: 1, requests: 9000 })).toBe("writes");
+  });
+
+  it("no failures at all is silent", () => {
+    expect(sweepAlertReason({ failedWrites: 0, failedReads: 0, requests: 9000 })).toBe(null);
+  });
+});
+
+describe("formatFailureSweep wording", () => {
+  it("a read alert says plainly that nothing was lost", () => {
+    const m = formatFailureSweep({
+      windowMinutes: 60, reason: "reads", failedReads: 400, failedWrites: 0, requests: 1000,
+    });
+    expect(m.title).toContain("no writes lost");
+    expect(m.body).toContain("No writes lost");
+    expect(m.body).toContain("400 failed Monday READS");
+  });
+
+  it("a write alert leads with the writes, not a pooled total", () => {
+    // The old wording was "8 failed Monday calls (of 76 writes)", which reads
+    // as "8 of the 76 writes failed". It was 8 reads and zero writes.
+    const m = formatFailureSweep({
+      windowMinutes: 60, reason: "writes", failedWrites: 3, failedReads: 8, requests: 900,
+    });
+    expect(m.title).toContain("WRITES");
+    expect(m.body).toContain("3 failed Monday WRITES");
+    expect(m.body).toContain("did not land");
+    expect(m.body).toContain("+8 failed reads");
   });
 });

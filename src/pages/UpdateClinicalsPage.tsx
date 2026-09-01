@@ -49,6 +49,7 @@ import {
   subscriptionProfileStatus,
   type ProfileStatus,
 } from "@/lib/shared/profileStatus";
+import { StaleDataNotice } from "@/components/shared/StaleDataNotice";
 
 /* ── Unified patient row (both boards) ──────────────────────── */
 
@@ -522,6 +523,13 @@ const UpdateClinicalsPage = () => {
               </span>
             </div>
           </header>
+          <StaleDataNotice
+            error={error}
+            scope="The patient list"
+            onRetry={() => { void refetch(); }}
+            className="mx-3 sm:mx-6 mt-3"
+          />
+
 
           <main className="flex-1 px-6 py-6 overflow-y-auto">
             <section className="max-w-3xl mx-auto space-y-5">

@@ -117,24 +117,78 @@ export function formatSendFailure({ boardId, label, attempts, message, suppresse
  *
  * `groups` is already redacted by errorSummary.summarize — do not pass raw rows.
  */
+/**
+ * Reads and writes do not cost the same, so they must not page the same.
+ *
+ * A failed WRITE is a rep's save going nowhere — the thing this alerting exists
+ * for. A failed READ self-heals: every queue hook re-polls on a 15-30s timer, so
+ * the rep saw one stale render and the next tick fixed it. Nobody can act on a
+ * Monday 503 either way.
+ *
+ * Pooling them is what paged Josh twice in two hours on 2026-09-01 for two
+ * transient Monday blips (8 reads 500ing at 16:07, 2 reads 503ing at 17:55 —
+ * 10 failures out of 23,719 requests, zero writes lost). An alert channel that
+ * fires on nothing actionable is one people stop reading, which is the failure
+ * mode CLAUDE.md §5.13 documents for the calls monitor — and by then it is the
+ * alert about a REAL lost write that gets swiped away.
+ *
+ * ⚠️ The read thresholds are deliberately BOTH a count and a rate. A rate alone
+ * pages on 1-of-2 requests at 3am; a count alone pages on a busy afternoon that
+ * is actually fine. A genuine Monday outage clears both easily.
+ */
+export const READ_ALERT_MIN_COUNT = 25;
+export const READ_ALERT_MIN_RATIO = 0.02;
+
+/**
+ * Does this sweep deserve a push? Pure so the thresholds are testable.
+ * Returns the REASON as well, because the wording differs: a lost write names
+ * itself, a read outage has to explain that nothing was lost.
+ */
+export function sweepAlertReason(
+  { failedWrites = 0, failedReads = 0, requests = 0 } = {},
+  opts = {},
+) {
+  if (failedWrites > 0) return "writes";
+  const minCount = opts.minCount ?? READ_ALERT_MIN_COUNT;
+  const minRatio = opts.minRatio ?? READ_ALERT_MIN_RATIO;
+  if (failedReads >= minCount && requests > 0 && failedReads / requests >= minRatio) {
+    return "reads";
+  }
+  return null;
+}
+
 export function formatFailureSweep({
   groups = [],
   windowMinutes,
   failures = 0,
   writes = 0,
+  failedWrites = 0,
+  failedReads = 0,
+  requests = 0,
+  reason = null,
   suppressed = 0,
 } = {}) {
   const top = groups.slice(0, 5).map((g) => `  ${g.count}× ${g.message}`);
+  // Lead with what was lost, not with a total. "8 failed calls (of 76 writes)"
+  // reads as "8 of the 76 writes failed" — it was in fact 8 reads and zero
+  // writes, and that misreading cost real incident time on 2026-09-01.
+  const headline = reason === "reads"
+    ? `${failedReads} failed Monday READS in the last ${windowMinutes} min ` +
+      `(of ${requests} calls). No writes lost — reads retry on the next poll.`
+    : `${failedWrites} failed Monday ${failedWrites === 1 ? "WRITE" : "WRITES"} in the last ` +
+      `${windowMinutes} min${failedReads ? ` (+${failedReads} failed reads)` : ""}. ` +
+      `A write that failed is a save that did not land.`;
   const body = [
-    `${failures} failed Monday call${failures === 1 ? "" : "s"} in the last ${windowMinutes} min` +
-      (writes ? ` (of ${writes} writes)` : ""),
+    headline,
     ...top,
     groups.length > 5 ? `  …and ${groups.length - 5} more shapes` : "",
     suppressed > 0 ? `(+${suppressed} earlier alerts suppressed)` : "",
     "Detail: /audit on the gateway.",
   ].filter(Boolean);
   return {
-    title: "Command Center: Monday calls failing",
+    title: reason === "reads"
+      ? "Command Center: Monday reads failing (no writes lost)"
+      : "Command Center: Monday WRITES failing",
     body: body.join("\n"),
     // Lower than a send-job failure: these are individual rejected calls, and
     // the rep usually saw a toast. Worth knowing, not worth waking someone.

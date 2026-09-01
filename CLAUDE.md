@@ -2457,6 +2457,30 @@ these services; when their math changes, `oopEstimator.ts` must be updated to ma
   `.pf-root .btn` is two classes, so it wins; `StageActionBar` takes **`skin="page"`** for exactly
   this, and any other shared component dropped inside `.pf-root` needs the same treatment. Don't
   reach for `!important` — the page has a complete button language already.
+- **A failed READ is invisible unless a page says so — `components/shared/StaleDataNotice`.**
+  Every queue hook catches a failed Monday read into `error` and clears it on the next successful
+  poll (15s intake / 30s masheke), but most pages rendered that string only in the sidebar or in
+  `EmptyPatientPane` — i.e. only when the list is EMPTY. So the common case was silent: a rep works a
+  patient, a background poll fails, the screen keeps showing what it had. On 2026-09-01 Monday 500'd
+  eight reads at 12:07 ET and 503'd two more at 13:55 and nobody in the app saw anything.
+  The notice now sits under the header on all 14 queue pages, self-clears, and has no dismiss button
+  (dismissing a notice while the data is still stale is worse than not having one).
+  ⚠️ **Scope is required and per-FETCH.** On the intake page the queue list and the open patient's
+  detail are separate requests (§5.25) that fail independently, so they get separate notices.
+  ⚠️ **Field-level pinpointing is opportunistic, not promised.** `mondayError.fieldsFromGraphQLErrors`
+  reads `errors[].path` when Monday sends one; every real failure that day was either a bare HTTP 503
+  (no GraphQL body exists) or `Internal Server Error` with NO path. Never name fields the payload did
+  not — the honest unit is the scope.
+  ⚠️ **Both notices sit OUTSIDE `.pf-root`** on Profile / Patient Intake — it deliberately does not
+  wrap the sidebar or header — so they take the DEFAULT Tailwind skin. Inside `.pf-root` that is
+  inverted (see the `.pf-root` button note above); out here `.btn` has no styles to inherit.
+- **Alerting pages on failed WRITES, not on failed calls** (`sendAlerts.sweepAlertReason`,
+  2026-09-01). A failed write is a save that did not land; a failed read self-heals on the next poll
+  and nobody can act on a Monday 503 anyway. Pooling them paged Josh twice in two hours for two
+  transient blips (10 failures / 23,719 requests, zero writes lost). Reads now need BOTH a count
+  (≥25) and a rate (≥2%) — a rate alone pages on 1-of-2 at 3am, a count alone pages on a busy
+  afternoon that is fine. ⚠️ The old wording, *"8 failed Monday calls (of 76 writes)"*, read as
+  "8 of the 76 writes failed" and cost real incident time; the headline now leads with what was lost.
 - **Toasts are TOP-CENTRE (`App.tsx`), and both other corners are ruled out by past bugs.**
   Bottom-right is where every stage page puts its primary action, so a toast landed on the button
   the rep presses next — adding a note on Evaluate popped "Note saved to Monday" over **Completed
@@ -2561,6 +2585,7 @@ these services; when their math changes, `oopEstimator.ts` must be updated to ma
 | A role's page behaves wrong | `src/pages/<Role>Page.tsx` → `hooks/<role>/useMondayPatients.ts` → `lib/<role>/workflow.ts` |
 | A patient's status badge says the wrong thing (or nothing) | §5.18 — `lib/shared/profileStatus.ts` (the rule) → `components/shared/PatientProfileStatus.tsx` (which board adapter that header uses) |
 | A rep pressed Advance repeatedly and nothing moved | §9 — the advancer already held its target value, so no automation fired. `lib/shared/advancerNoop.ts`; grep Railway for `ADVANCER_NOOP`. Repair by moving the item to Completed, **never** by clearing the advancer (that duplicates the downstream item) |
+| A rep says the page showed stale/blank data | §9 — `components/shared/StaleDataNotice` + `lib/shared/mondayError.ts`. Check `/audit/errors.json?key=…&hours=N` on the gateway for the Monday-side failures |
 | A value isn't saving to Monday | `lib/<role>/mondayWrite.ts` + `lib/shared/verifiedWrite.ts`; cross-check `mondayMapping.ts` column IDs |
 | Medical-necessity logic | `lib/masheke/evalState.ts` (+ ipPaths, requestTemplate, mnRequestPdf) |
 | A returned patient can't log an attempt (cards greyed, Save disabled) | `lib/masheke/attemptRollup.ts` → `oversightApi.returnProposedToQueue`; the gate is **MN Attempts** `color_mm1wz0vg`, not the attempt columns (§7) |

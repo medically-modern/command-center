@@ -69,6 +69,7 @@ import { toast } from "sonner";
 import "./profile/redesign.css";
 import { IntakeProfileStatus } from "@/components/shared/PatientProfileStatus";
 import { optionsWithCurrent, displayFor } from "@/lib/profile/selectOptions";
+import { StaleDataNotice } from "@/components/shared/StaleDataNotice";
 
 // Every label the board has. These used to run through a `noNotServing`
 // filter, which meant a rep could read "Not Serving" on a patient but never
@@ -719,6 +720,13 @@ const ProfilePage = ({ variant }: ProfilePageProps) => {
               </div>
             </div>
           </header>
+          <StaleDataNotice
+            error={error}
+            scope="The patient list"
+            onRetry={() => { void refetch(); }}
+            className="mx-3 sm:mx-6 mt-3"
+          />
+
 
           <main className="flex-1 min-w-0">
             {reviewMode && (

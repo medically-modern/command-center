@@ -24,7 +24,7 @@
 
 import { buildErrorGroupsQuery, buildTotalsQuery, summarize } from "./errorSummary.mjs";
 import { postNtfy, ntfyConfigured } from "./ntfy.mjs";
-import { createAlertState, shouldAlert, takeSuppressed, formatFailureSweep } from "./sendAlerts.mjs";
+import { createAlertState, shouldAlert, takeSuppressed, formatFailureSweep, sweepAlertReason } from "./sendAlerts.mjs";
 
 /** How often to look. */
 export const SWEEP_MS = 15 * 60_000;
@@ -80,8 +80,19 @@ export function createFailureSweep({
       const failures = Number(totals.failures) || 0;
       if (!failures) return "quiet"; // the normal case — say nothing
 
+      // A failure is not automatically a page. Any failed WRITE is; failed
+      // READS have to be sustained, because they retry themselves and paging on
+      // a transient Monday blip is how this channel stops being read.
+      const failedWrites = Number(totals.failed_writes) || 0;
+      const failedReads = Number(totals.failed_reads) || 0;
+      const requests = Number(totals.requests) || 0;
+      const reason = sweepAlertReason({ failedWrites, failedReads, requests });
+      if (!reason) return "quiet";
+
       const groups = summarize(groupRows?.rows ?? []);
-      if (!shouldAlert(state, shapeSignature(groups), now(), { cooldownMs: repeatMs })) {
+      // Throttle per failure SHAPE and per reason: a read outage that turns
+      // into a write outage is new news, even with the same error text.
+      if (!shouldAlert(state, `${reason}::${shapeSignature(groups)}`, now(), { cooldownMs: repeatMs })) {
         return "throttled";
       }
       await send(
@@ -90,6 +101,10 @@ export function createFailureSweep({
           windowMinutes,
           failures,
           writes: Number(totals.writes) || 0,
+          failedWrites,
+          failedReads,
+          requests,
+          reason,
           suppressed: takeSuppressed(state),
         }),
       );

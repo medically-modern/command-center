@@ -25,6 +25,7 @@ import { ESCALATION_INDEX, isEscalatedIndex } from "@/lib/masheke/mondayMapping"
 import { useBackNavigation } from "@/hooks/useBackNavigation";
 import { ReportIssueButton } from "@/components/shared/ReportIssueButton";
 import { StageActionBar } from "@/components/shared/StageActionBar";
+import { StaleDataNotice } from "@/components/shared/StaleDataNotice";
 
 const ConfirmReceiptPage = () => {
   const navigate = useNavigate();
@@ -136,6 +137,13 @@ const ConfirmReceiptPage = () => {
               </div>
             </div>
           </header>
+          <StaleDataNotice
+            error={error}
+            scope="The patient list"
+            onRetry={() => { void refetch(); }}
+            className="mx-3 sm:mx-6 mt-3"
+          />
+
 
           <main className="flex-1 px-3 sm:px-6 py-6">
             <section className="max-w-5xl xl:max-w-7xl 2xl:max-w-[1800px] mx-auto space-y-5">

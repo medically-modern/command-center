@@ -10,14 +10,22 @@ import {
 /** A pool stand-in. The sweep fires two queries in one Promise.all — the groups
  *  query then the totals query — and tells them apart by nothing but order, so
  *  this answers in that order too. */
-function poolWith({ groups = [], requests = 0, failures = 0, writes = 0 } = {}) {
+// `failedWrites` defaults to ALL of `failures`, which preserves what these
+// tests were written to assert: that a window with real failures pages. The
+// read/write split (2026-09-01) only changed which failures deserve a push —
+// a failed WRITE always does, so modelling these as writes keeps each test
+// testing the thing it was about (throttling, redaction, wording).
+function poolWith({
+  groups = [], requests = 0, failures = 0, writes = 0,
+  failedWrites = failures, failedReads = 0,
+} = {}) {
   const calls = [];
   return {
     calls,
     async query(sql, args) {
       calls.push({ sql, args });
       if (/jsonb_array_elements/.test(sql)) return { rows: groups };
-      return { rows: [{ requests, failures, writes }] };
+      return { rows: [{ requests, failures, writes, failed_writes: failedWrites, failed_reads: failedReads }] };
     },
   };
 }
@@ -64,8 +72,12 @@ describe("a failing window", () => {
     });
     expect(await sweep()).toBe("sent");
     const msg = send.mock.calls[0][0];
-    expect(msg.body).toContain("803 failed Monday calls in the last 60 min");
-    expect(msg.body).toContain("of 900 writes");
+    expect(msg.body).toContain("803 failed Monday WRITES in the last 60 min");
+    // Wording changed 2026-09-01: the headline now leads with what was LOST
+    // rather than a pooled total over an unrelated write count. The old
+    // "803 failed Monday calls (of 900 writes)" read as "803 of the 900 writes
+    // failed", which is the misreading that cost incident time that day.
+        expect(msg.title).toContain("WRITES");
     expect(msg.body).toContain("801× Item link max locks exceeded");
     expect(msg.priority).toBe("default"); // not a wake-someone-up alert
   });
@@ -117,7 +129,7 @@ describe("throttling — the point is to stay readable", () => {
     const pool = {
       async query(sql) {
         if (/jsonb_array_elements/.test(sql)) return { rows: groups };
-        return { rows: [{ requests: 100, failures: 40, writes: 40 }] };
+        return { rows: [{ requests: 100, failures: 40, writes: 40, failed_writes: 40, failed_reads: 0 }] };
       },
     };
     const sweep = createFailureSweep({ pool, send, now: () => clock });

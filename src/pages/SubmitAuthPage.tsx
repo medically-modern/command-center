@@ -58,6 +58,7 @@ import { sidebarVisibleList } from "@/lib/samantha/sidebarList";
 import { cn } from "@/lib/utils";
 import "@/components/samantha/benefitsRedesign.css";
 import "@/components/samantha/submitAuthRedesign.css";
+import { StaleDataNotice } from "@/components/shared/StaleDataNotice";
 
 const SubmitAuthPage = () => {
   const { goBack } = useBackNavigation();
@@ -235,6 +236,13 @@ const SubmitAuthPage = () => {
               </div>
             </div>
           </header>
+          <StaleDataNotice
+            error={error}
+            scope="The patient list"
+            onRetry={() => { void refetch(); }}
+            className="mx-3 sm:mx-6 mt-3"
+          />
+
 
           {isManager && selected && <ManagerResolveNote action="Auth Submission Complete" />}
 

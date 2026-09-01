@@ -101,7 +101,17 @@ export function buildTotalsQuery({ hours } = {}) {
   const sql = `
     SELECT COUNT(*)::int                                         AS requests,
            COUNT(*) FILTER (WHERE ok IS NOT TRUE)::int            AS failures,
-           COUNT(*) FILTER (WHERE operation = 'mutation')::int    AS writes
+           COUNT(*) FILTER (WHERE operation = 'mutation')::int    AS writes,
+           -- Split the failures by what they cost. A failed WRITE is a rep's
+           -- save going nowhere; a failed READ self-heals on the next poll
+           -- (every 15-30s), so the rep saw one stale render at worst. Pooling
+           -- them made the number that matters unfindable under the one that
+           -- does not -- see failureWatch's alert rule.
+           COUNT(*) FILTER (WHERE ok IS NOT TRUE
+                              AND operation = 'mutation')::int    AS failed_writes,
+           COUNT(*) FILTER (WHERE ok IS NOT TRUE
+                              AND operation IS DISTINCT FROM 'mutation')::int
+                                                                  AS failed_reads
     FROM gql_log
     WHERE created_at > now() - ($1 || ' hours')::interval
   `;

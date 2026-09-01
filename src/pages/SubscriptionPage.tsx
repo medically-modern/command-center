@@ -28,6 +28,7 @@ import { EmptyPatientPane } from "@/components/shared/EmptyPatientPane";
 import { useSearchParams } from "react-router-dom";
 import { useBackNavigation } from "@/hooks/useBackNavigation";
 import { ReportIssueButton } from "@/components/shared/ReportIssueButton";
+import { StaleDataNotice } from "@/components/shared/StaleDataNotice";
 
 const SubscriptionPage = () => {
   const { goBack } = useBackNavigation();
@@ -166,6 +167,13 @@ const SubscriptionPage = () => {
               </div>
             </div>
           </header>
+          <StaleDataNotice
+            error={error}
+            scope="The patient list"
+            onRetry={() => { void refetch(); }}
+            className="mx-3 sm:mx-6 mt-3"
+          />
+
 
           <main className="flex-1 px-6 py-6 overflow-y-auto">
             <section className="max-w-6xl xl:max-w-7xl 2xl:max-w-[1800px] mx-auto space-y-5">
