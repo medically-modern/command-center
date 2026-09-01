@@ -34,6 +34,8 @@ import { verifyGoogleIdentity, authEnforced, setKeyStore } from "./auth.mjs";
 import { rcApiFetch, SIP_PROVISION_PATH } from "./ringcentral.mjs";
 import { toE164, phoneHmac, hashingConfigured } from "./phoneHash.mjs";
 import { confirmSmsAccepted } from "./smsSend.mjs";
+import { registerSmsArchive, readArchivedConversation } from "./smsArchive.mjs";
+import { mergeConversation } from "./smsArchiveRules.mjs";
 
 export { toE164, phoneHmac };
 
@@ -100,6 +102,9 @@ void ensureSchema().then(() => {
 });
 
 const RC_SMS_FROM = process.env.RC_SMS_FROM || "+13475037148";
+/** Serve saved history alongside what RingCentral still holds. OFF unless
+ *  explicitly enabled — see the note in POST /messaging/conversation. */
+const SERVE_ARCHIVE = process.env.SMS_ARCHIVE_SERVE === "1";
 const last10 = (s) => String(s || "").replace(/\D/g, "").slice(-10);
 
 export function registerMessaging({ app }) {
@@ -127,6 +132,14 @@ export function registerMessaging({ app }) {
     });
     return true;
   }
+
+  // The durable copy of every patient text, plus GET /messaging/archive-health.
+  // Registered here rather than in index.mjs so it lands on THIS pool: the audit
+  // Postgres keeps its "metadata only, no PHI" property, while the archive (which
+  // holds message bodies) sits beside sent_messages, where PHI already lives.
+  // Purely additive — its own tables, its own routes, and it reads RingCentral on
+  // the `background` tier, which is shed before anything a rep is waiting on.
+  registerSmsArchive({ app, pool, requireCaller });
 
   /**
    * Send a text to a patient and record who sent it.
@@ -306,6 +319,32 @@ export function registerMessaging({ app }) {
         if (records.length < PAGE_SIZE) {
           complete = true;
           break;
+        }
+      }
+
+      // ── Saved history (smsArchive.mjs) ───────────────────────────────────
+      // ⚠️ OFF BY DEFAULT, deliberately. The archive earns its keep on the
+      // WRITE side — copying texts out before RingCentral's ~30-day window
+      // purges them — and that needs nothing from this route. Serving the union
+      // changes what a rep sees in a live thread, so it is opt-in via
+      // SMS_ARCHIVE_SERVE=1 and can be switched back off without a deploy. With
+      // the flag unset, everything below runs exactly as it did before the
+      // archive existed.
+      //
+      // Even when on it can only ever ADD: the read is wrapped so a failing
+      // archive is logged and skipped rather than surfaced, and the merge
+      // prefers the LIVE copy of anything present on both sides — a stale
+      // archived `Queued` must never mask a live `SendingFailed`.
+      if (SERVE_ARCHIVE) {
+        try {
+          const archived = await readArchivedConversation({ pool, phone });
+          if (archived.length) {
+            // splice, not reassign: `messages` is const, and everything below
+            // (attribution, the sort, the response) already reads it.
+            messages.splice(0, messages.length, ...mergeConversation(messages, archived));
+          }
+        } catch (e) {
+          console.error("sms_archive read skipped:", (e && e.message) || e);
         }
       }
 
