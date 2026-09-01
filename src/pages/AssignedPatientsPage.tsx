@@ -50,7 +50,13 @@ import PatientDossierPanel from "@/components/commsHub/PatientDossierPanel";
 import { openFileViewer } from "@/components/shared/FileViewerModal";
 import { searchPatientsByName, type PatientRef } from "@/lib/assignedPatients/patientLookup";
 import { fmtPhone } from "@/lib/assignedPatients/format";
-import { setMessageRead, toE164, type InboundFax, type VoicemailRecord } from "@/lib/fax/ringcentralApi";
+import {
+  fetchFaxBlobUrl,
+  setMessageRead,
+  toE164,
+  type InboundFax,
+  type VoicemailRecord,
+} from "@/lib/fax/ringcentralApi";
 import {
   applyReadOverrides,
   pruneReadOverrides,
@@ -312,6 +318,56 @@ export default function AssignedPatientsPage() {
 
   const dialTarget = useMemo(() => toE164(dialInput), [dialInput]);
 
+  /**
+   * Open a fax page in the viewer.
+   *
+   * ⚠️ **Fetch the BYTES first, then hand the viewer a `blob:` URL** — the same
+   * thing FaxInboxPage does, and the reason it works there. A RingCentral
+   * attachment URI is NOT a Monday asset: passing it straight to
+   * `openFileViewer` sends it down `fetchAssetBytes`, which tries a direct CORS
+   * fetch (no RC bearer token, so it fails) and then the worker's `/asset`
+   * proxy, which allowlists MONDAY hosts and refuses. `fetchFaxBlobUrl` goes
+   * through the gateway's `/rc/fetch`, which is the only path that carries the
+   * RingCentral credential.
+   */
+  const [faxOpening, setFaxOpening] = useState(false);
+  /**
+   * The blob URL currently handed to the viewer.
+   *
+   * ⚠️ `FileViewerModal` revokes only the blobs it creates ITSELF, never one a
+   * caller passes in — so without this, every fax opened leaks a multi-MB blob
+   * for the life of the tab, and a rep works through a lot of faxes. Revoking
+   * the PREVIOUS one on each open (and on unmount) bounds it to one live blob
+   * without touching the shared modal's contract.
+   */
+  const faxBlobRef = useRef<string | null>(null);
+  useEffect(
+    () => () => {
+      if (faxBlobRef.current) URL.revokeObjectURL(faxBlobRef.current);
+    },
+    [],
+  );
+
+  const viewFax = useCallback(async (f: InboundFax) => {
+    if (!f.attachmentUri) {
+      toast.error("This fax has no document attached.");
+      return;
+    }
+    setFaxOpening(true);
+    try {
+      const url = await fetchFaxBlobUrl(f.attachmentUri);
+      // Safe here and not earlier: the viewer has moved on to the new document
+      // by the time the next open resolves.
+      if (faxBlobRef.current) URL.revokeObjectURL(faxBlobRef.current);
+      faxBlobRef.current = url;
+      openFileViewer({ url, name: `Fax from ${f.fromName || f.fromNumber}` });
+    } catch (e) {
+      toast.error(`Couldn't open the fax: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setFaxOpening(false);
+    }
+  }, []);
+
   return (
     <div className="flex h-screen flex-col bg-gradient-subtle">
       <header className="shrink-0 border-b border-sidebar-border bg-gradient-navy text-navy-foreground">
@@ -556,12 +612,8 @@ export default function AssignedPatientsPage() {
                 entry={faxEntry}
                 loading={faxEntryLoading}
                 error={faxEntryError}
-                onOpenFax={() =>
-                  openFileViewer({
-                    url: selectedFax.attachmentUri,
-                    name: `Fax from ${selectedFax.fromName || selectedFax.fromNumber}`,
-                  })
-                }
+                onOpenFax={() => void viewFax(selectedFax)}
+                opening={faxOpening}
               />
             ) : (
               <HubIdle title="Fax details" hint="Pick a fax to see the sending office and their patients." />
@@ -569,7 +621,9 @@ export default function AssignedPatientsPage() {
         </section>
 
         {/* ── Command Center profile widget ─────────────────── */}
-        <aside className="hidden w-[clamp(18rem,28%,26rem)] shrink-0 flex-col border-l border-border bg-card lg:flex">
+        {/* 30% wider than the original clamp(18rem,28%,26rem) (Josh, 2026-09-01) — the
+            pane now carries the per-stage call detail, not just notes. */}
+        <aside className="hidden w-[clamp(23.5rem,36%,34rem)] shrink-0 flex-col border-l border-border bg-card lg:flex">
           <div className="shrink-0 border-b border-border px-4 py-2">
             <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
               Command Center profile

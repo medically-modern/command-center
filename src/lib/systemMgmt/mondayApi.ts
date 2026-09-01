@@ -185,7 +185,13 @@ export const BOARDS: BoardDef[] = [
     phoneColId: "phone_mkp0q3cw",
     stageAdvancerColId: null,
     daysSinceStageColId: null,
-    notesColId: null,
+    // ⚠️ Was null until 2026-09-01, which read as "this board has no notes".
+    // It does — Subscription Patient Notes — and the Communications Hub's
+    // dossier reads notes through this field, so a Subscription patient's pane
+    // was blank while their notes sat on the item. Additive everywhere else:
+    // the only other consumer of `SystemPatient.notes` is Search's escalation
+    // modal, which now has something to show instead of nothing.
+    notesColId: "long_text_mm3rj7k7",
     nextActionDateColId: null,
   },
   {

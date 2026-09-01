@@ -130,12 +130,16 @@ export function FaxProviderDetail({
   loading,
   error,
   onOpenFax,
+  opening,
 }: {
   fax: InboundFax;
   entry: FaxDirectoryEntry | null;
   loading: boolean;
   error: string | null;
   onOpenFax: () => void;
+  /** The document is being fetched through the gateway — it is a real network
+   *  round trip for a multi-page scan, so the button has to say so. */
+  opening?: boolean;
 }) {
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
@@ -150,9 +154,12 @@ export function FaxProviderDetail({
         </div>
         <button
           onClick={onOpenFax}
-          className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-border px-2.5 py-1.5 text-xs font-medium hover:bg-muted"
+          disabled={opening || !fax.attachmentUri}
+          title={fax.attachmentUri ? "Open the fax document" : "This fax has no document attached"}
+          className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-border px-2.5 py-1.5 text-xs font-medium hover:bg-muted disabled:opacity-50"
         >
-          <FileText className="h-3.5 w-3.5" /> View fax
+          {opening ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FileText className="h-3.5 w-3.5" />}
+          View fax
         </button>
       </div>
 

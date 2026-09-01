@@ -1,25 +1,30 @@
 /**
- * The Command Center profile widget — the far-right third of the hub.
+ * The Command Center profile — the far-right pane of the Communications Hub.
  *
- * The point of the whole hub: a rep reading a text should see who this patient
- * IS and where they have got to, without leaving for a role page and coming
- * back. So this pane answers, in this order (Josh, 2026-09-01):
+ * The point of the whole hub: a rep reading a text or taking a call should see
+ * who this patient IS, where they have got to, and what is true right now,
+ * without leaving for a role page and coming back. Order, top to bottom
+ * (Josh, 2026-09-01):
  *
- *   1. **The path** — which stages they have completed profiles in, drawn in
+ *   1. **The path** — which stages they have completed profiles in, in
  *      patient-tracker order, so their history reads at a glance.
- *   2. **The notes** — deliberately the FIRST section under the path, because
- *      the running case history is what tells a rep what to say next. Every
- *      other fact on this pane is a lookup; the notes are the story.
- *   3. Everything else — stage, next action, the record's own numbers.
- *
- * The chain is `lib/commsHub/pipelineOrder.ts`; the state of each step is
- * `lib/commsHub/dossier.ts`. This file is only how it looks.
+ *   2. **The notes** — the main view, and now WRITABLE. The running case
+ *      history is what tells a rep what to say next, and the hub is where they
+ *      learn the things worth writing down.
+ *   3. **Open in <board>** — right under the notes, where a rep looks after
+ *      reading them.
+ *   4. **The stage detail** — what a rep needs on a call at THIS stage, which
+ *      differs completely per board. Rule: `lib/commsHub/stageDetail.ts`.
  */
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { AlertCircle, ArrowUpRight, Check, Loader2, Pause, StickyNote, User } from "lucide-react";
-import type { PathStep, PatientDossier, StepState } from "@/lib/commsHub/dossier";
+import { AlertCircle, ArrowUpRight, Check, Loader2, Pause, Plus, StickyNote, User } from "lucide-react";
+import { toast } from "sonner";
+import type { DossierItem, PathStep, PatientDossier, StepState } from "@/lib/commsHub/dossier";
 import { stagesCompleted } from "@/lib/commsHub/dossier";
+import { buildStageDetail, hasStageDetail, type RenderedField } from "@/lib/commsHub/stageDetail";
+import { appendNoteToRecord } from "@/lib/commsHub/dossierApi";
+import { splitFaxAddress } from "@/lib/shared/faxAddress";
 import { fmtPhone } from "@/lib/assignedPatients/format";
 import { cn } from "@/lib/utils";
 
@@ -27,7 +32,8 @@ import { cn } from "@/lib/utils";
  *  language: emerald = done, sky = the live one, amber = parked, and a ghost
  *  outline for a stage they simply haven't reached. */
 const STEP_STYLE: Record<StepState, string> = {
-  completed: "border-emerald-300 bg-emerald-50 text-emerald-900 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-100",
+  completed:
+    "border-emerald-300 bg-emerald-50 text-emerald-900 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-100",
   active: "border-sky-400 bg-sky-500 text-white shadow-sm dark:border-sky-500 dark:bg-sky-600",
   parked: "border-amber-300 bg-amber-50 text-amber-900 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-100",
   notReached: "border-dashed border-border bg-transparent text-muted-foreground",
@@ -76,12 +82,127 @@ function StepChip({ step }: { step: PathStep }) {
   );
 }
 
-function Field({ label, value }: { label: string; value: string }) {
-  if (!value) return null;
+/** Present a raw Monday value. Everything arrives as text; this only decides
+ *  how it reads — a fax stored as `<digits>@rcfax.com` is a number to a rep. */
+function fieldValue(f: RenderedField): string {
+  if (f.kind === "phone") return fmtPhone(f.value) || f.value;
+  if (f.kind === "fax") {
+    const { local, suffixed } = splitFaxAddress(f.value);
+    return suffixed ? fmtPhone(local) || local : f.value;
+  }
+  return f.value;
+}
+
+function DetailRow({ field }: { field: RenderedField }) {
   return (
-    <div className="flex items-baseline justify-between gap-3 py-1">
-      <span className="text-[11px] uppercase tracking-wide text-muted-foreground shrink-0">{label}</span>
-      <span className="text-xs text-right font-medium truncate">{value}</span>
+    <div className="flex items-baseline justify-between gap-3 py-[3px]">
+      <span className="shrink-0 text-[11px] text-muted-foreground">{field.label}</span>
+      <span
+        className={cn(
+          "min-w-0 break-words text-right text-xs",
+          field.lead ? "font-semibold" : "font-medium text-foreground/90",
+        )}
+      >
+        {fieldValue(field)}
+      </span>
+    </div>
+  );
+}
+
+/** Add a line to the stage's notes without leaving the hub. */
+function NoteComposer({
+  active,
+  onAppended,
+  phone,
+}: {
+  active: DossierItem;
+  onAppended: (next: string) => void;
+  phone: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const [text, setText] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  // The stamp names the SUB-STAGE where the board has one — "Chase Clinicals"
+  // rather than "Medical Evaluation" — because several roles share one notes
+  // column and the label is what makes a line traceable (§9).
+  const stage = active.stageAdvancerText || active.boardName;
+
+  async function save() {
+    const body = text.trim();
+    if (!body || saving) return;
+    setSaving(true);
+    try {
+      const next = await appendNoteToRecord({
+        boardId: active.boardId,
+        itemId: active.itemId,
+        columnId: active.notesColId,
+        text: body,
+        stage,
+        phone,
+      });
+      onAppended(next);
+      setText("");
+      setOpen(false);
+      toast.success(`Note added to ${stage}`);
+    } catch (e) {
+      // Includes the 2000-character refusal, which is the one error a rep must
+      // actually read — the alternative is Monday silently eating the note.
+      toast.error(e instanceof Error ? e.message : String(e));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (!active.notesColId) return null;
+
+  if (!open) {
+    return (
+      <button
+        onClick={() => setOpen(true)}
+        className="mx-4 mb-3 inline-flex items-center gap-1.5 self-start rounded-md border border-border px-2.5 py-1.5 text-xs font-medium hover:bg-muted"
+      >
+        <Plus className="h-3.5 w-3.5" /> Add a note
+      </button>
+    );
+  }
+
+  return (
+    <div className="mx-4 mb-3">
+      <textarea
+        autoFocus
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        onKeyDown={(e) => {
+          // Enter sends, Shift+Enter for a new line — the convention of every
+          // composer in this app.
+          if (e.key === "Enter" && !e.shiftKey) {
+            e.preventDefault();
+            void save();
+          }
+          if (e.key === "Escape") setOpen(false);
+        }}
+        rows={3}
+        placeholder={`Add to ${stage} notes…`}
+        className="w-full resize-y rounded-md border border-border bg-background p-2 text-xs outline-none focus:ring-1 focus:ring-ring"
+      />
+      <div className="mt-1.5 flex items-center gap-2">
+        <button
+          onClick={() => void save()}
+          disabled={!text.trim() || saving}
+          className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground disabled:opacity-40"
+        >
+          {saving && <Loader2 className="h-3 w-3 animate-spin" />}
+          Add note
+        </button>
+        <button
+          onClick={() => setOpen(false)}
+          className="rounded-md px-2 py-1.5 text-xs text-muted-foreground hover:text-foreground"
+        >
+          Cancel
+        </button>
+        <span className="ml-auto text-[10px] text-muted-foreground">Stamped with your initials</span>
+      </div>
     </div>
   );
 }
@@ -91,7 +212,6 @@ export function PatientDossierPanel({
   loading,
   error,
   phone,
-  /** Shown while nothing is selected — the pane should say what it is for. */
   idleHint = "Open a conversation, call or voicemail to see the patient's Command Center profile.",
 }: {
   dossier: PatientDossier | null;
@@ -101,20 +221,27 @@ export function PatientDossierPanel({
   idleHint?: string;
 }) {
   const notesRef = useRef<HTMLPreElement>(null);
+  /** A note added here shows immediately; the cached trail is patched too. */
+  const [notesOverride, setNotesOverride] = useState<string | null>(null);
+  const activeId = dossier?.active?.itemId ?? "";
+
+  // Drop the local copy when the pane moves to another patient, or it would
+  // print the previous one's notes under this one's name.
+  useEffect(() => setNotesOverride(null), [activeId]);
 
   // Notes columns are append-only with the newest line LAST (§9), so the
-  // useful end of a long history is the bottom. Land there rather than making
-  // a rep scroll past months of it.
+  // useful end of a long history is the bottom.
+  const notes = notesOverride ?? dossier?.active?.notes ?? "";
   useEffect(() => {
     const el = notesRef.current;
     if (el) el.scrollTop = el.scrollHeight;
-  }, [dossier?.active?.itemId, dossier?.active?.notes]);
+  }, [activeId, notes]);
 
   if (!phone) {
     return (
       <div className="flex flex-1 flex-col items-center justify-center gap-2 p-6 text-center">
         <User className="h-7 w-7 text-muted-foreground/50" />
-        <p className="max-w-[24ch] text-xs text-muted-foreground">{idleHint}</p>
+        <p className="max-w-[26ch] text-xs text-muted-foreground">{idleHint}</p>
       </div>
     );
   }
@@ -133,7 +260,7 @@ export function PatientDossierPanel({
         <span className="flex items-center gap-1.5 font-medium text-destructive">
           <AlertCircle className="h-4 w-4" /> Couldn't load the profile
         </span>
-        <span className="text-xs text-muted-foreground break-words">{error}</span>
+        <span className="break-words text-xs text-muted-foreground">{error}</span>
       </div>
     );
   }
@@ -143,9 +270,8 @@ export function PatientDossierPanel({
       <div className="flex flex-1 flex-col items-center justify-center gap-2 p-6 text-center">
         <User className="h-7 w-7 text-muted-foreground/50" />
         <p className="text-sm font-medium">{fmtPhone(phone)}</p>
-        {/* Not an error: texting a number that is on no board is a supported
-            thing to do (§ AssignedPatientsPage header). */}
-        <p className="max-w-[26ch] text-xs text-muted-foreground">
+        {/* Not an error: texting a number that is on no board is supported. */}
+        <p className="max-w-[28ch] text-xs text-muted-foreground">
           This number isn't on any pipeline board. You can still text and call it.
         </p>
       </div>
@@ -154,25 +280,26 @@ export function PatientDossierPanel({
 
   const { active, path } = dossier;
   const done = stagesCompleted(path);
+  const detail = active ? buildStageDetail(active.boardId, active.cols) : [];
 
   return (
-    <div className="flex flex-1 flex-col min-h-0 overflow-y-auto">
+    <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
       {/* ── Who ─────────────────────────────────────────────── */}
-      <div className="border-b border-border px-4 py-3 shrink-0">
-        <p className="text-sm font-semibold truncate">{dossier.name || fmtPhone(dossier.phone)}</p>
+      <div className="shrink-0 border-b border-border px-4 py-3">
+        <p className="truncate text-sm font-semibold">{dossier.name || fmtPhone(dossier.phone)}</p>
         <p className="text-[11px] text-muted-foreground">
           {fmtPhone(dossier.phone || phone)}
           {active ? ` · ${active.boardName}` : " · no live stage"}
         </p>
       </div>
 
-      {/* ── 1. The path, at the top ─────────────────────────── */}
-      <div className="border-b border-border px-4 py-3 shrink-0">
+      {/* ── 1. The path ─────────────────────────────────────── */}
+      <div className="shrink-0 border-b border-border px-4 py-3">
         <div className="mb-2 flex items-baseline justify-between gap-2">
           <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
             Profile path
           </span>
-          <span className="text-[10px] text-muted-foreground tabular-nums">
+          <span className="text-[10px] tabular-nums text-muted-foreground">
             {done} of {path.length} complete
           </span>
         </div>
@@ -183,44 +310,77 @@ export function PatientDossierPanel({
         </div>
         {dossier.alsoOn.length > 0 && (
           <p className="mt-2 text-[10px] text-muted-foreground">
-            {/* Not a stage — a parallel reconciliation board, so it is named
-                rather than drawn into the chain. */}
             Also on {dossier.alsoOn.map((i) => i.boardName).join(", ")}
           </p>
         )}
       </div>
 
-      {/* ── 2. Notes FIRST — the running case history ────────── */}
-      <div className="flex min-h-0 flex-col border-b border-border">
-        <div className="flex items-center gap-1.5 px-4 pt-3 pb-1.5 shrink-0">
+      {/* ── 2. Notes — the main view, and writable ──────────── */}
+      <div className="flex flex-col border-b border-border">
+        <div className="flex shrink-0 items-center gap-1.5 px-4 pb-1.5 pt-3">
           <StickyNote className="h-3.5 w-3.5 text-muted-foreground" />
           <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-            {active ? `${active.boardName} notes` : "Notes"}
+            {active ? `${active.stageAdvancerText || active.boardName} notes` : "Notes"}
           </span>
         </div>
         <pre
           ref={notesRef}
-          className="mx-4 mb-3 max-h-72 min-h-[5rem] overflow-y-auto whitespace-pre-wrap break-words rounded-md border border-border bg-muted/40 p-2.5 font-sans text-[11px] leading-relaxed"
+          className="mx-4 mb-2 max-h-80 min-h-[6rem] overflow-y-auto whitespace-pre-wrap break-words rounded-md border border-border bg-muted/40 p-2.5 font-sans text-[11px] leading-relaxed"
         >
-          {active?.notes?.trim() ||
-            (active ? "No notes on this stage yet." : "No live stage, so no working notes.")}
+          {notes.trim() || (active ? "No notes on this stage yet." : "No live stage, so no working notes.")}
         </pre>
+        {active && <NoteComposer active={active} phone={phone} onAppended={setNotesOverride} />}
       </div>
 
-      {/* ── 3. Everything else ──────────────────────────────── */}
+      {/* ── 3. Open in the stage ────────────────────────────── */}
+      {active?.route && (
+        <div className="border-b border-border px-4 py-3">
+          <Link
+            to={`${active.route}?patientId=${encodeURIComponent(active.itemId)}&from=system-mgmt`}
+            className="inline-flex w-full items-center justify-center gap-1.5 rounded-md bg-primary px-3 py-2 text-xs font-semibold text-primary-foreground hover:opacity-90"
+          >
+            Open on {active.boardName} <ArrowUpRight className="h-3.5 w-3.5" />
+          </Link>
+        </div>
+      )}
+
+      {/* ── 4. What matters at THIS stage ───────────────────── */}
       {active && (
         <div className="px-4 py-3">
-          <Field label="Stage" value={active.stageAdvancerText || active.groupTitle} />
-          <Field label="Group" value={active.groupTitle} />
-          <Field label="Days in stage" value={active.daysSinceStage} />
-          <Field label="Next action" value={active.nextActionDate} />
-          {active.route && (
-            <Link
-              to={`${active.route}?patientId=${encodeURIComponent(active.itemId)}&from=system-mgmt`}
-              className="mt-3 inline-flex w-full items-center justify-center gap-1.5 rounded-md bg-primary px-3 py-2 text-xs font-semibold text-primary-foreground hover:opacity-90"
-            >
-              Open in {active.boardName} <ArrowUpRight className="h-3.5 w-3.5" />
-            </Link>
+          <div className="mb-2 flex items-baseline justify-between gap-2">
+            <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+              {active.boardName} detail
+            </span>
+            <span className="text-[10px] text-muted-foreground">
+              {[active.daysSinceStage, active.nextActionDate && `next ${active.nextActionDate}`]
+                .filter(Boolean)
+                .join(" · ")}
+            </span>
+          </div>
+
+          {detail.map((section) => (
+            <section key={section.title} className="mb-2.5 rounded-md border border-border/70 px-2.5 py-2">
+              <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground/80">
+                {section.title}
+              </p>
+              {section.fields.map((f) => (
+                <DetailRow key={f.col} field={f} />
+              ))}
+            </section>
+          ))}
+
+          {!detail.length && (
+            <p className="text-xs text-muted-foreground">
+              {hasStageDetail(active.boardId)
+                ? "Nothing filled in on this stage yet."
+                : /* DTC Intake and Secondary Claims are not stages a rep calls
+                     from, so no detail is mapped for them (stageDetail.ts). */
+                  `No call detail is mapped for ${active.boardName}.`}
+            </p>
+          )}
+
+          {active.groupTitle && (
+            <p className="mt-1 text-[10px] text-muted-foreground">In group: {active.groupTitle}</p>
           )}
         </div>
       )}

@@ -34,8 +34,16 @@ export interface DossierItem {
   stageAdvancerText: string;
   /** The board's notes column, newest last. */
   notes: string;
+  /** Which column that is, so the hub can append to it. Empty on a board the
+   *  registry has no notes column for — the composer hides itself rather than
+   *  offering a write with nowhere to go. */
+  notesColId: string;
   nextActionDate: string;
   daysSinceStage: string;
+  /** Raw text of every stage-detail column for this board, keyed by column id.
+   *  Read once with the rest of the record so the detail pane needs no second
+   *  round trip — see `stageDetail.buildStageDetail`. */
+  cols: Record<string, string>;
 }
 
 export type StepState =

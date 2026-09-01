@@ -16,7 +16,11 @@ import { BOARDS, type BoardDef } from "../systemMgmt/mondayApi";
 import { toE164 } from "../fax/ringcentralApi";
 import { contactKey } from "../contactState/contactState";
 import { markStuck, nameMatchAccepted, type DossierItem, type PatientIdentity } from "./dossier";
+import { appendStampedNote } from "../shared/noteStamp";
+import { assertLongTextFits } from "../shared/longText";
+import { userInitials } from "../shared/auth";
 import type { FaxMatchRow } from "./faxDirectory";
+import { stageDetailColumns } from "./stageDetail";
 
 const MONDAY_API_VERSION = "2024-10";
 
@@ -117,8 +121,12 @@ function toDossierItem(board: BoardDef, it: RawItem): DossierItem {
     route: routeFor(board, groupId),
     stageAdvancerText: textOf(it, board.stageAdvancerColId).trim(),
     notes: textOf(it, board.notesColId),
+    notesColId: board.notesColId ?? "",
     nextActionDate: textOf(it, board.nextActionDateColId).trim(),
     daysSinceStage: textOf(it, board.daysSinceStageColId).trim(),
+    cols: Object.fromEntries(
+      (it.column_values ?? []).map((c) => [c.id, (c.text ?? "").trim()]),
+    ),
   };
   return { ...base, isStuck: markStuck(base) };
 }
@@ -146,6 +154,10 @@ function dossierCols(board: BoardDef): string[] {
     // name match fails closed — safe, but it would silently drop the completed
     // records the name pass exists to find.
     DOB_COLS[board.boardId] ?? null,
+    // The per-stage facts the dossier pane shows. Named in one place
+    // (stageDetail.ts) so a new field cannot go silently blank for want of a
+    // matching entry in a hand-maintained read set (§5.11).
+    ...stageDetailColumns(board.boardId),
   ].filter((c): c is string => !!c);
 }
 
@@ -324,4 +336,99 @@ export async function fetchFaxMatches(faxNumber: string): Promise<FaxMatchRow[]>
 export function clearDossierCaches(): void {
   dossierCache.clear();
   faxCache.clear();
+}
+
+
+/* ── Writing a note from the hub ───────────────────────────────────────────── */
+
+/**
+ * Read one item's notes column, right now.
+ *
+ * ⚠️ **This is the whole safety of the append below.** Monday has no
+ * compare-and-set on a column write: `change_column_value` REPLACES the value.
+ * So whatever body we build has to be built on the freshest text we can get,
+ * and the dossier's own copy is memoised for the session — minutes or hours
+ * old by the time a rep types. Between then and now another rep can have added
+ * a note on the role page, or an automation can have stamped an escalation
+ * reason, and appending onto the stale copy would silently DELETE theirs.
+ */
+async function readNotesNow(boardId: number, itemId: string, columnId: string): Promise<string> {
+  const data = await gql<{ items: Array<{ column_values?: Array<{ id: string; text: string | null }> }> }>(
+    `query ($ids: [ID!], $cols: [String!]) {
+       items (ids: $ids) { column_values (ids: $cols) { id text } }
+     }`,
+    { ids: [itemId], cols: [columnId] },
+  );
+  const found = data.items?.[0]?.column_values?.find((c) => c.id === columnId);
+  if (!found) {
+    // The item or column is gone. Refusing beats appending onto "" and wiping
+    // the history we could not read.
+    throw new Error("Couldn't read the current notes, so nothing was written.");
+  }
+  void boardId;
+  return found.text ?? "";
+}
+
+/**
+ * Append a stamped note to the patient's CURRENT stage, from the dossier pane.
+ *
+ * The hub is where a rep learns things — the patient mentions they are away
+ * next week, the office says the doctor has left. Until now that had to be
+ * retyped on the role page, so in practice it was lost. This writes the same
+ * stamped line every role's NotesPanel writes, through the same helper, so a
+ * note added here is indistinguishable from one added on the stage page.
+ *
+ * ⚠️ **The base is RE-READ immediately before the write**, never the dossier's
+ * cached copy — see `readNotesNow`. That narrows the lost-update window to one
+ * round trip, which is the same exposure every other note path in the app
+ * carries (they append onto a 15-second poll); the cached copy would have made
+ * it unbounded.
+ *
+ * ⚠️ **Stamped with the SUB-STAGE where there is one**, not just the board.
+ * Several roles share one notes column (§9), and "Chase Clinicals" tells the
+ * next reader far more than "Medical Evaluation" does.
+ *
+ * ⚠️ **`assertLongTextFits` before writing.** Monday long-text columns hold
+ * 2000 characters and TRUNCATE SILENTLY — a longer write returns success and
+ * stores the first 2000, so what gets dropped is always the note somebody just
+ * typed (§10). Nine items on the ME board already sit at exactly 2000. Failing
+ * loudly is the point; trimming old history to make room is the same harm,
+ * chosen by us.
+ *
+ * Returns the new full body so the caller can show it without a re-read.
+ */
+export async function appendNoteToRecord(opts: {
+  boardId: number;
+  itemId: string;
+  columnId: string;
+  text: string;
+  /** Stage label for the stamp, e.g. "Chase Clinicals". */
+  stage: string;
+  /** The number this dossier was looked up by, so the cache can be updated. */
+  phone: string;
+}): Promise<string> {
+  const body = (opts.text || "").trim();
+  if (!body) throw new Error("Nothing to add");
+  if (!opts.columnId) throw new Error("This board has no notes column to write to.");
+
+  const existing = await readNotesNow(opts.boardId, opts.itemId, opts.columnId);
+  const next = appendStampedNote(existing, body, opts.stage, { initials: userInitials() });
+  assertLongTextFits(next, `${opts.stage || "Stage"} notes`);
+
+  const value = JSON.stringify({ text: next });
+  await gql(
+    `mutation ($item: ID!, $board: ID!, $col: String!, $val: JSON!) {
+       change_column_value(item_id: $item, board_id: $board, column_id: $col, value: $val) { id }
+     }`,
+    { item: opts.itemId, board: String(opts.boardId), col: opts.columnId, val: value },
+  );
+
+  // Keep the memoised trail in step, or re-selecting the patient shows the
+  // note missing until the cache expires — which it never does in a session.
+  const cached = dossierCache.get(toE164(opts.phone));
+  if (cached) {
+    const hit = cached.find((i) => i.itemId === opts.itemId && i.boardId === opts.boardId);
+    if (hit) hit.notes = next;
+  }
+  return next;
 }
