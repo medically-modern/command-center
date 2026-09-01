@@ -21,7 +21,15 @@ const stageTask = (): WriteTask => ({ label: "stage", columnId: "stage", fn: noo
 const advanced = (exec: ReturnType<typeof vi.fn>) =>
   exec.mock.calls.some((c) => (c[0] as WriteTask).columnId === "stage");
 
-const base = (over: Partial<Parameters<typeof executeWritesWithVerification>[0]>) => ({
+// Typed as the real options object rather than a spread of a Partial: spreading
+// `Partial<Opts>` made every required field optional, so each call site failed
+// to typecheck (tsc -b, not CI's no-op `tsc --noEmit` — see CLAUDE.md §10).
+// The three injected deps are what every test must supply; the rest have
+// defaults here.
+type Opts = Parameters<typeof executeWritesWithVerification>[0];
+const base = (
+  over: Partial<Opts> & Pick<Opts, "tasks" | "executeWithRetry" | "readColumns">,
+): Opts => ({
   itemId: "1",
   stageColumnId: "stage",
   maxVerifyAttempts: 2,
@@ -100,6 +108,131 @@ describe("executeWritesWithVerification", () => {
 
     const result = await executeWritesWithVerification(
       base({ tasks: [dataTask("c1", "want"), stageTask()], executeWithRetry, readColumns }),
+    );
+
+    expect(result).toEqual([]);
+    expect(advanced(executeWithRetry)).toBe(true);
+  });
+});
+
+// ── Phase 2b: the advancer that fires no automation ───────────────────
+// Monday automations trigger on a status CHANGE. Writing the value a column
+// already holds fires nothing — 200, no activity-log entry, no automation — so
+// the engine used to report a clean send while the patient never moved.
+// Betty Dillingham (12895834887) sat in the intake queue for five days this way.
+describe("stage advancer no-op detection", () => {
+  const stageWithTarget = (expectedText: string): WriteTask => ({
+    label: "Move to Onboarding",
+    columnId: "stage",
+    expectedText,
+    fn: noopFn,
+  });
+
+  it("refuses to 'advance' a column already at its target, and says so", async () => {
+    const executeWithRetry = vi.fn().mockResolvedValue(null);
+    const readColumns = vi
+      .fn()
+      // Phase 0 snapshot — the advancer ALREADY reads "Advance to MN"
+      .mockResolvedValueOnce([
+        { id: "c1", text: "old" },
+        { id: "stage", text: "Advance to MN" },
+      ])
+      .mockResolvedValue([{ id: "c1", text: "new" }]);
+
+    const result = await executeWritesWithVerification(
+      base({
+        tasks: [dataTask("c1"), stageWithTarget("Advance to MN")],
+        executeWithRetry,
+        readColumns,
+      }),
+    );
+
+    expect(result).toHaveLength(1);
+    expect(result[0]).toContain("already");
+    expect(result[0]).toContain("Advance to MN");
+    // The whole point: the pointless mutation is never sent.
+    expect(advanced(executeWithRetry)).toBe(false);
+  });
+
+  it("still advances when the value genuinely changes", async () => {
+    const executeWithRetry = vi.fn().mockResolvedValue(null);
+    const readColumns = vi
+      .fn()
+      .mockResolvedValueOnce([
+        { id: "c1", text: "old" },
+        { id: "stage", text: "" }, // blank → "Advance to MN" is a real change
+      ])
+      .mockResolvedValue([{ id: "c1", text: "new" }]);
+
+    const result = await executeWritesWithVerification(
+      base({
+        tasks: [dataTask("c1"), stageWithTarget("Advance to MN")],
+        executeWithRetry,
+        readColumns,
+      }),
+    );
+
+    expect(result).toEqual([]);
+    expect(advanced(executeWithRetry)).toBe(true);
+  });
+
+  it("data columns are still written — only the ADVANCE is refused", async () => {
+    // The rep's typing is not thrown away; what did not happen is the move.
+    const executeWithRetry = vi.fn().mockResolvedValue(null);
+    const readColumns = vi
+      .fn()
+      .mockResolvedValueOnce([
+        { id: "c1", text: "old" },
+        { id: "stage", text: "Advance to MN" },
+      ])
+      .mockResolvedValue([{ id: "c1", text: "new" }]);
+
+    await executeWritesWithVerification(
+      base({
+        tasks: [dataTask("c1"), stageWithTarget("Advance to MN")],
+        executeWithRetry,
+        readColumns,
+      }),
+    );
+
+    expect(executeWithRetry.mock.calls.some((c) => (c[0] as WriteTask).columnId === "c1")).toBe(true);
+  });
+
+  it("an advancer with no declared target keeps the old behaviour exactly", async () => {
+    // Opt-in by design: flows that never pass expectedText are untouched.
+    const executeWithRetry = vi.fn().mockResolvedValue(null);
+    const readColumns = vi
+      .fn()
+      .mockResolvedValueOnce([{ id: "c1", text: "old" }])
+      .mockResolvedValue([{ id: "c1", text: "new" }]);
+
+    const result = await executeWritesWithVerification(
+      base({ tasks: [dataTask("c1"), stageTask()], executeWithRetry, readColumns }),
+    );
+
+    expect(result).toEqual([]);
+    expect(advanced(executeWithRetry)).toBe(true);
+  });
+
+  it("an unreadable snapshot never manufactures a no-op", async () => {
+    // Every data column carries expectedText, so Phase 2's exact-match path
+    // covers them without a baseline and the send proceeds. The advancer's
+    // current value is simply unknown — and unknown must not read as "already
+    // set", or a failed read would block a legitimate advance.
+    const executeWithRetry = vi.fn().mockResolvedValue(null);
+    const readColumns = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("network"))
+      .mockRejectedValueOnce(new Error("network"))
+      .mockRejectedValueOnce(new Error("network"))
+      .mockResolvedValue([{ id: "c1", text: "new" }]);
+
+    const result = await executeWritesWithVerification(
+      base({
+        tasks: [dataTask("c1", "new"), stageWithTarget("Advance to MN")],
+        executeWithRetry,
+        readColumns,
+      }),
     );
 
     expect(result).toEqual([]);

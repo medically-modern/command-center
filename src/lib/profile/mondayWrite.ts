@@ -338,7 +338,11 @@ export async function sendPatientToMonday(
   // ── Move to Onboarding (stage advancer — written LAST after verification) ──
   const onboardingIdx = MOVE_TO_ONBOARDING_INDEX["Advance to MN"];
   if (onboardingIdx !== undefined) {
-    tasks.push({ label: "Move to Onboarding", columnId: COL.moveToOnboarding, value: { index: onboardingIdx }, fn: () => writeStatusIndex(p.id, COL.moveToOnboarding, onboardingIdx) });
+    // `expectedText` lets verifiedWrite catch a column already sitting at
+    // "Advance to MN" before writing it — a same-value write fires no
+    // automation, so the send would otherwise report success having moved
+    // nothing (§ advancerNoop).
+    tasks.push({ label: "Move to Onboarding", columnId: COL.moveToOnboarding, value: { index: onboardingIdx }, expectedText: "Advance to MN", fn: () => writeStatusIndex(p.id, COL.moveToOnboarding, onboardingIdx) });
   }
 
   // ---- Execute with read-back verification before advancing stage ----

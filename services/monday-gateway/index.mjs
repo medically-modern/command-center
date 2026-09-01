@@ -318,6 +318,40 @@ app.get("/health", async (_req, res) => {
   });
 });
 
+/**
+ * A stage advancer the SPA declined to write because the column already held
+ * the target value — so no Monday automation could fire and the patient never
+ * moved (see src/lib/shared/advancerNoop.ts).
+ *
+ * The gateway's own /send detects this server-side, but the transaction that
+ * actually bit us runs on the CLIENT path (its advancer task carries no raw
+ * `value`, so the /send fast path never engages). A browser console.error
+ * reaches nobody, so this route exists to put the same line in Railway. Grep
+ * ADVANCER_NOOP to find every occurrence across both paths.
+ *
+ * ⚠️ No auth gate, matching /gql beside it: auth is enforced once at the site's
+ * sign-in gate (§7). It stores nothing and accepts no patient fields — item id,
+ * column id, label and status value only, matching LOG_PAYLOAD=false.
+ * ⚠️ Always 204, even on a malformed body: this is telemetry on a path that has
+ * already failed, and an error here would be a second failure the rep cannot
+ * act on.
+ */
+app.post("/telemetry/advancer-noop", (req, res) => {
+  try {
+    const b = req.body || {};
+    const str = (v) => (typeof v === "string" ? v.slice(0, 200) : "");
+    const actor = str(req.headers["x-mm-user"]) || "unknown";
+    console.error(
+      `[ADVANCER_NOOP] item=${str(b.itemId)} column=${str(b.columnId)} ` +
+      `label="${str(b.label)}" value="${str(b.value)}" actor=${actor} source=client ` +
+      `— advancer already at target; NO automation fired, nothing moved.`,
+    );
+  } catch {
+    /* never throw out of telemetry */
+  }
+  res.status(204).end();
+});
+
 app.post("/gql", async (req, res) => {
   if (GATEWAY_CLIENT_KEY && req.headers["x-mm-key"] !== GATEWAY_CLIENT_KEY) {
     return res.status(401).json({ errors: [{ message: "Unauthorized" }] });

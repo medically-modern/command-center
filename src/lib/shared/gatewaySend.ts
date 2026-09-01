@@ -30,6 +30,10 @@ export interface SendPayload {
   dataColumns: Record<string, unknown>;
   stageColumns: Record<string, unknown>;
   verify?: { columnId: string; expectedText?: string }[];
+  /** Target label per STAGE ADVANCER, so /send can run the same
+   *  before-the-write no-op check the client path does. Carried separately
+   *  from `verify`, which is data-column read-back. */
+  stageExpect?: { columnId: string; label: string; expectedText: string }[];
   idempotencyKey: string;
   label?: string;
   /** When true, the gateway writes columns with create_labels_if_missing

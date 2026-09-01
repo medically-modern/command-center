@@ -26,6 +26,8 @@
 // ── Types ──────────────────────────────────────────────────────
 
 import { gatewaySendAvailable, submitSend } from "./gatewaySend";
+import { isAdvancerNoop, advancerNoopMessage, advancerNoopLogLine } from "./advancerNoop";
+import { reportAdvancerNoop } from "./advancerNoopReport";
 
 /** Progress milestones for UIs that block the screen during a send.
  *  Gateway path: posting → accepted → confirmed.
@@ -173,9 +175,18 @@ export async function executeWritesWithVerification(
       const dataColumns: Record<string, unknown> = {};
       const stageColumns: Record<string, unknown> = {};
       const verify: { columnId: string; expectedText?: string }[] = [];
+      // `stageExpect` is the advancer's TARGET text, carried separately from
+      // `verify` (which is data-column read-back). The gateway uses it for the
+      // same before-the-write no-op check the client path runs below — without
+      // it, /send fires the advancer blind exactly as this path used to.
+      const stageExpect: { columnId: string; label: string; expectedText: string }[] = [];
       for (const t of tasks) {
-        if (stageSet.has(t.columnId)) stageColumns[t.columnId] = t.value;
-        else {
+        if (stageSet.has(t.columnId)) {
+          stageColumns[t.columnId] = t.value;
+          if (t.expectedText !== undefined) {
+            stageExpect.push({ columnId: t.columnId, label: t.label, expectedText: t.expectedText });
+          }
+        } else {
           dataColumns[t.columnId] = t.value;
           if (t.expectedText !== undefined) verify.push({ columnId: t.columnId, expectedText: t.expectedText });
         }
@@ -185,7 +196,7 @@ export async function executeWritesWithVerification(
       for (let i = 0; i < sig.length; i++) h = ((h << 5) + h + sig.charCodeAt(i)) | 0;
       const idempotencyKey = `${itemId}:${(h >>> 0).toString(36)}`;
       const outcome = await submitSend(
-        { itemId, boardId, dataColumns, stageColumns, verify, idempotencyKey, label, createLabelsIfMissing },
+        { itemId, boardId, dataColumns, stageColumns, verify, stageExpect, idempotencyKey, label, createLabelsIfMissing },
         { waitForDone: true, waitForDoneMs, onPhase: onProgress },
       );
       if (outcome === "done" || !requireDone) return [];
@@ -216,6 +227,13 @@ export async function executeWritesWithVerification(
   // Collect column IDs we need to verify
   const verifyColIds = dataTasks.map((t) => t.columnId);
 
+  // Stage advancers whose target text the caller told us. These are snapshotted
+  // alongside the data columns purely so Phase 2b can tell, BEFORE writing,
+  // whether the advancer already holds the value we are about to write — which
+  // fires no automation at all (see ./advancerNoop).
+  const stageCheckTasks = stageTasks.filter((t) => t.expectedText !== undefined);
+  const snapshotColIds = [...verifyColIds, ...stageCheckTasks.map((t) => t.columnId)];
+
   // ── Phase 0: snapshot BEFORE writing ─────────────────────
   // Columns without `expectedText` are verified by snapshot-diff (Phase 2), which
   // can ONLY work against a pre-write baseline. If the snapshot read fails we must
@@ -225,12 +243,15 @@ export async function executeWritesWithVerification(
   // utility exists to prevent). Retry a few times; if we still can't read a
   // baseline AND any column relies on snapshot-diff, abort before writing anything.
   let beforeSnapshot = new Map<string, string>();
-  if (verifyColIds.length > 0) {
+  if (snapshotColIds.length > 0) {
+    // Only DATA columns can force the abort below — a stage column joins the
+    // read as a bonus, and failing to read it just means we don't claim a
+    // no-op (isAdvancerNoop treats `undefined` as unknown, never as a match).
     const needsSnapshot = dataTasks.some((t) => t.expectedText === undefined);
     let snapped = false;
     for (let attempt = 1; attempt <= 3; attempt++) {
       try {
-        const snap = await readColumns(itemId, verifyColIds);
+        const snap = await readColumns(itemId, snapshotColIds);
         beforeSnapshot = new Map(snap.map((c) => [c.id, c.text ?? ""]));
         snapped = true;
         break;
@@ -340,6 +361,33 @@ export async function executeWritesWithVerification(
       throw new Error(msg);
     }
   }
+
+  // ── Phase 2b: refuse an advancer that would change nothing ─────────
+  // A Monday automation fires on a status CHANGE. Writing the value a column
+  // already holds fires NOTHING — Monday returns 200 and does not even record
+  // an activity-log entry — so the transaction used to report success while the
+  // patient never moved. Betty Dillingham / Eddie Quintero, Aug 2026: two
+  // patients sat in the intake queue for five days while the rep pressed
+  // Advance repeatedly and got a green toast every time.
+  //
+  // Reported, not silently skipped: the data columns above HAVE landed, but the
+  // advance genuinely did not happen, and the rep is the one who needs to know.
+  const noopFailures: string[] = [];
+  for (const st of stageCheckTasks) {
+    const current = beforeSnapshot.get(st.columnId);
+    if (!isAdvancerNoop(current, st.expectedText)) continue;
+    const value = st.expectedText as string;
+    console.error(advancerNoopLogLine(itemId, st.columnId, st.label, value));
+    // Fire-and-forget: puts the same line in Railway for a client-path send,
+    // which the gateway would otherwise never see. Must not block or throw.
+    void reportAdvancerNoop({ itemId, columnId: st.columnId, label: st.label, value });
+    const msg = advancerNoopMessage(st.label, value);
+    if (writeDebug) {
+      try { await writeDebug(itemId, `[${new Date().toISOString().slice(0, 19)}] ${msg}`); } catch { /* best-effort */ }
+    }
+    noopFailures.push(`${st.label}: ${msg}`);
+  }
+  if (noopFailures.length > 0) return noopFailures;
 
   // ── Phase 3: write stage advancer(s) ───────────────────
   for (const st of stageTasks) {

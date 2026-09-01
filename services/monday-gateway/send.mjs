@@ -110,6 +110,39 @@ async function executeSend(payload) {
     if (!ok) throw new Error(`verify timeout after ~${Math.round((VERIFY_ATTEMPTS * VERIFY_INTERVAL_MS) / 1000)}s`);
   }
 
+  // Phase 2b: an advancer already holding its target value is a NO-OP.
+  //
+  // Monday automations fire on a status CHANGE, not on a value. Writing
+  // "Advance to MN" onto a column that already reads "Advance to MN" triggers
+  // nothing — 200, no activity-log entry, no automation — so this used to
+  // report a clean send while the patient never moved. `stageExpect` is the
+  // target TEXT per advancer, sent by the SPA; without it we cannot tell an
+  // index apart from a label and so make no claim.
+  const stageExpect = Array.isArray(payload.stageExpect) ? payload.stageExpect : [];
+  if (stageIds.length && stageExpect.length) {
+    let cur = null;
+    try { cur = await readColumnTexts(itemId, stageIds); } catch { /* unknown != no-op */ }
+    if (cur) {
+      const noops = stageExpect.filter(
+        (e) => e && e.expectedText != null && cur.get(e.columnId) === e.expectedText,
+      );
+      if (noops.length) {
+        for (const n of noops) {
+          console.error(
+            `[ADVANCER_NOOP] item=${itemId} column=${n.columnId} label="${n.label ?? ""}" ` +
+            `value="${n.expectedText}" — advancer already at target; NO automation fired, nothing moved.`,
+          );
+        }
+        // Fail the job rather than reporting a clean send. The data columns
+        // landed and were verified above; the ADVANCE did not happen, and a job
+        // that says otherwise is exactly the silence this check exists to break.
+        throw new Error(
+          `advancer no-op: ${noops.map((n) => `${n.label ?? n.columnId} already "${n.expectedText}"`).join("; ")}`,
+        );
+      }
+    }
+  }
+
   // Phase 3: stage advancer(s) last
   if (stageIds.length) await withRetry(() => writeMultiple(itemId, boardId, stageColumns, createLabelsIfMissing));
 
@@ -149,7 +182,7 @@ export function registerSend({ app, pool, clientIp }) {
   // POST /send — enqueue (idempotent on idempotencyKey), return fast
   app.post("/send", async (req, res) => {
     const b = req.body || {};
-    const { itemId, boardId, dataColumns, stageColumns, verify, idempotencyKey, createLabelsIfMissing } = b;
+    const { itemId, boardId, dataColumns, stageColumns, verify, stageExpect, idempotencyKey, createLabelsIfMissing } = b;
     if (!itemId || !boardId) return res.status(400).json({ error: "itemId and boardId required" });
     if (!dataColumns && !stageColumns) return res.status(400).json({ error: "dataColumns or stageColumns required" });
 
@@ -164,7 +197,7 @@ export function registerSend({ app, pool, clientIp }) {
     // `label` is the stage name the SPA gave this send ("Benefits send") — not
     // PHI, and the one thing that makes a failure alert actionable without
     // opening /audit. Stored here because the worker is where alerts fire.
-    const payload = { itemId, boardId, dataColumns: dataColumns || {}, stageColumns: stageColumns || {}, verify: verify || [], createLabelsIfMissing: !!createLabelsIfMissing, label: b.label ?? null };
+    const payload = { itemId, boardId, dataColumns: dataColumns || {}, stageColumns: stageColumns || {}, verify: verify || [], stageExpect: stageExpect || [], createLabelsIfMissing: !!createLabelsIfMissing, label: b.label ?? null };
 
     try {
       if (idempotencyKey) {

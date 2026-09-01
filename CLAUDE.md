@@ -2298,6 +2298,38 @@ these services; when their math changes, `oopEstimator.ts` must be updated to ma
   branches or PRs unless he explicitly asks — commit, rebase onto `origin/main`, push `main`.
 - **Verify before you advance.** Any new write that a Monday automation keys on must go through
   `executeWritesWithVerification` with the trigger column as `stageColumnId`.
+- **⚠️ A stage advancer already holding its target value is a SILENT NO-OP — pass `expectedText`.**
+  Monday automations fire on a status **CHANGE**, not on a value (7917676280 is literally *"When
+  status **changes** to something, create item in board"*). Writing `Advance to MN` onto a column
+  that already reads `Advance to MN` returns **200, writes nothing, and does not even record an
+  activity-log entry** — so the automation never runs. `executeWritesWithVerification` could not see
+  this: it deliberately EXCLUDES the advancer from read-back verification (the advancer is the thing
+  being held back) and then fired it blind, returning `[]` — a clean send — while the patient never
+  moved. Betty Dillingham (`12895834887`) and Eddie Quintero (`12895852715`), Aug 2026: both
+  advanced correctly on 8/26, were dragged back out of **Completed** into Profile Clean-Up on 8/27,
+  and from then on every press of Advance to MN was a no-op. Katie pressed it on 8/28 and again on
+  8/31; **the 8/31 press produced ZERO activity-log entries** — `updated_at` moved and not one column
+  changed. Five days, a green toast every time.
+  **`lib/shared/advancerNoop.ts`** is the rule; an advancer task that carries **`expectedText`** is
+  now checked against the pre-write snapshot in **Phase 2b** and the send is REFUSED with a message
+  the rep sees, rather than firing a mutation that moves nobody. ⚠️ It is a **BEFORE**-the-write
+  check on purpose: comparing the advancer *after* writing it cannot tell "unchanged because it was
+  already that value" from "unchanged because Monday hasn't indexed it" — the very ambiguity that
+  makes Phase 2 poll. ⚠️ **Opt-in by `expectedText`**: an advancer that declares no target keeps the
+  old behaviour exactly, because guessing would flag real advances, and a false *"nothing moved"* is
+  worse than the silence it replaces. Same check runs server-side in `send.mjs` (via the payload's
+  `stageExpect`), and client-path hits POST to the gateway's `/telemetry/advancer-noop` — **grep
+  Railway for `ADVANCER_NOOP`** to find every occurrence across both paths.
+  ⚠️ **Do NOT "repair" a stuck patient by clearing the advancer.** Blanking it fires nothing, but the
+  next press is then a real change → the automation fires → a **duplicate** downstream item. Both
+  patients above already had theirs. The repair is to move the item to Completed, where the
+  automation already put it.
+  ⚠️ **How they got back into the queue** (unfixed, see §10): `advanceToProfileCleanUp` moves an item
+  into Clean-Up **without touching Move to Onboarding**, and `UnverifiedReferralsPage` is the ONLY
+  intake-family page that never wires `useCompletedStageReview` — `ProfilePage`, `EvaluatePage`,
+  `WelcomeCallPage` and `ChaseBenefitsPage` all do. Combined with `useMondayPatients` injecting a
+  deep-linked `?patientId=` into the sidebar **regardless of group**, a patient sitting in Completed
+  renders on Info Collection with fully live Advance buttons.
 - **Column IDs, not titles**, are the contract. Add new ones to `mondayMapping.ts` + the schema docs.
 - **Exact label strings** for status/dropdown writes (Evaluate "Option A", coverage paths, etc.) —
   a casing mismatch creates duplicate board labels. Prefer index writes where possible.
@@ -2413,6 +2445,17 @@ these services; when their math changes, `oopEstimator.ts` must be updated to ma
   reach RingCentral again, but the SPA still has no client-side guard. Full write-up:
   [`INCIDENT_2026-08-20_RINGCENTRAL.md`](INCIDENT_2026-08-20_RINGCENTRAL.md) — read rule 2
   there before putting a hook's return value in a dependency array.
+- **A completed patient can still be re-advanced from Patient Intake — KNOWN, deliberately left**
+  (Josh, 2026-09-01: detection only for now). `UnverifiedReferralsPage` is the only intake-family
+  page with no `useCompletedStageReview` / `reviewMode` gate, and `useMondayPatients` injects a
+  deep-linked `?patientId=` into the sidebar **whatever group the item is in** — so an item sitting
+  in **Completed** renders with live Advance buttons. `advanceToProfileCleanUp` then moves it into
+  Clean-Up **without clearing Move to Onboarding**, so it lands carrying a stale `Advance to MN` and
+  its only exit is permanently dead. That is exactly how Betty Dillingham and Eddie Quintero were
+  pulled back out of Completed on 2026-08-27 (§9). The no-op check now REFUSES the second advance
+  and tells the rep, so the patient can no longer be dragged backwards silently — but the button is
+  still offered on a finished patient. Fixing it properly means wiring the completed-stage gate on
+  that page, the same way the other four already do.
 - **CI's typecheck is a NO-OP.** `deploy.yml` runs `npx tsc --noEmit`, but the root tsconfig
   is solution-style (`"files": []` + project references), which `--noEmit` does not follow —
   it checks zero files and always exits 0. 23 real TS errors sit in the tree. Use `tsc -b`.
@@ -2426,6 +2469,7 @@ these services; when their math changes, `oopEstimator.ts` must be updated to ma
 |---|---|
 | A role's page behaves wrong | `src/pages/<Role>Page.tsx` → `hooks/<role>/useMondayPatients.ts` → `lib/<role>/workflow.ts` |
 | A patient's status badge says the wrong thing (or nothing) | §5.18 — `lib/shared/profileStatus.ts` (the rule) → `components/shared/PatientProfileStatus.tsx` (which board adapter that header uses) |
+| A rep pressed Advance repeatedly and nothing moved | §9 — the advancer already held its target value, so no automation fired. `lib/shared/advancerNoop.ts`; grep Railway for `ADVANCER_NOOP`. Repair by moving the item to Completed, **never** by clearing the advancer (that duplicates the downstream item) |
 | A value isn't saving to Monday | `lib/<role>/mondayWrite.ts` + `lib/shared/verifiedWrite.ts`; cross-check `mondayMapping.ts` column IDs |
 | Medical-necessity logic | `lib/masheke/evalState.ts` (+ ipPaths, requestTemplate, mnRequestPdf) |
 | A returned patient can't log an attempt (cards greyed, Save disabled) | `lib/masheke/attemptRollup.ts` → `oversightApi.returnProposedToQueue`; the gate is **MN Attempts** `color_mm1wz0vg`, not the attempt columns (§7) |

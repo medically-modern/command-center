@@ -100,6 +100,12 @@ interface WriteTask {
   label: string;
   columnId: string;
   fn: () => Promise<unknown>;
+  /** For a STAGE ADVANCER: the label this write is aiming at. It lets
+   *  `executeWritesWithVerification` notice, before writing, that the column
+   *  already holds that value — a write which fires no Monday automation and
+   *  moves nobody (see lib/shared/advancerNoop.ts). Structurally compatible
+   *  with the shared `WriteTask`, which this is passed to. */
+  expectedText?: string;
 }
 
 /** Resolve a status label to its index, or undefined when the label isn't one
@@ -692,6 +698,12 @@ export async function advanceToMedicalNecessity(
   tasks.push({
     label: "Move to Onboarding",
     columnId: COL.moveToOnboarding,
+    // `expectedText` is what makes the no-op check possible: it tells
+    // verifiedWrite the TARGET label, so a column already reading
+    // "Advance to MN" is caught BEFORE the write instead of firing a mutation
+    // that triggers no automation. Automation 7917676280 is "when status
+    // CHANGES to" — a same-value write moves nothing (§ advancerNoop).
+    expectedText: "Advance to MN",
     fn: () => writeStatusIndex(p.id, COL.moveToOnboarding, MOVE_TO_ONBOARDING_INDEX["Advance to MN"]),
   });
 
@@ -769,6 +781,11 @@ export async function advanceToProfileCleanUp(
   tasks.push({
     label: "Intake Sub-Stage",
     columnId: COL.intakeSubStage,
+    // See the note on Move to Onboarding above. This one matters twice over:
+    // an item already at "Profile Clean-Up" is one this page has ALREADY
+    // advanced, and continuing past it is what dragged Betty Dillingham and
+    // Eddie Quintero back out of Completed on 2026-08-27.
+    expectedText: "Profile Clean-Up",
     fn: () => writeStatusIndex(
       p.id, COL.intakeSubStage, INTAKE_SUB_STAGE_INDEX["Profile Clean-Up"],
     ),
