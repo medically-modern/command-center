@@ -15,7 +15,7 @@ import { MONDAY_API_URL, hasMondayAuth, mondayIdentityHeaders } from "../shared/
 import { BOARDS, type BoardDef } from "../systemMgmt/mondayApi";
 import { toE164 } from "../fax/ringcentralApi";
 import { contactKey } from "../contactState/contactState";
-import { markStuck, nameMatchAccepted, type DossierItem } from "./dossier";
+import { markStuck, nameMatchAccepted, type DossierItem, type PatientIdentity } from "./dossier";
 import type { FaxMatchRow } from "./faxDirectory";
 
 const MONDAY_API_VERSION = "2024-10";
@@ -67,6 +67,26 @@ interface RawItem {
 const textOf = (it: RawItem, colId: string | null): string =>
   (colId ? (it.column_values ?? []).find((c) => c.id === colId)?.text : "") ?? "";
 
+/**
+ * Date of birth, per board — the corroborating identity signal behind
+ * `nameMatchAccepted`. The five pipeline boards share one column id (it is
+ * copied across board hops); Subscription and Secondary Claims have their own.
+ *
+ * ⚠️ A board absent from this table yields a BLANK dob, which makes a
+ * blank-phone name match on it fail closed. DTC Intake is deliberately absent:
+ * it is the read-only top of the funnel (§3), so the cost is at most one
+ * missing first chip on a patient's path — and failing closed is the direction
+ * that cannot put another patient's notes on this conversation.
+ */
+const DOB_COLS: Record<number, string> = {
+  18406352652: "text_mm1xvxst", // Profile Send Off
+  18406060017: "text_mm1xvxst", // Medical Evaluation
+  18410601299: "text_mm1xvxst", // Insurance
+  18410804557: "text_mm1xvxst", // Welcome Call
+  18407459988: "text_mkvdefh1", // Subscription
+  18413019028: "text_mkp3y5ax", // Secondary Claims
+};
+
 /** Which groups on this board mean "finished", per the BOARDS registry. */
 function completedGroupIds(board: BoardDef): Set<string> {
   return new Set(board.groupRoutes.filter((g) => g.isCompleted).map((g) => g.id));
@@ -93,6 +113,7 @@ function toDossierItem(board: BoardDef, it: RawItem): DossierItem {
     groupId,
     groupTitle,
     isCompleted: completedGroupIds(board).has(groupId),
+    dob: textOf(it, DOB_COLS[board.boardId] ?? null).trim(),
     route: routeFor(board, groupId),
     stageAdvancerText: textOf(it, board.stageAdvancerColId).trim(),
     notes: textOf(it, board.notesColId),
@@ -121,6 +142,10 @@ function dossierCols(board: BoardDef): string[] {
     board.notesColId,
     board.nextActionDateColId,
     board.daysSinceStageColId,
+    // ⚠️ Without this the DOB reads "" on every record and every blank-phone
+    // name match fails closed — safe, but it would silently drop the completed
+    // records the name pass exists to find.
+    DOB_COLS[board.boardId] ?? null,
   ].filter((c): c is string => !!c);
 }
 
@@ -181,12 +206,15 @@ export async function fetchDossierItems(phone: string): Promise<DossierItem[]> {
   // The name to search for comes from the phone pass, so a wrong number can
   // never pull in a stranger who happens to share a name with somebody.
   const name = byPhone.find((i) => i.name.trim())?.name.trim() ?? "";
+  // The anchor identity comes from the PHONE pass, so everything the name pass
+  // admits is checked against a record we already know is this patient's.
+  const anchor: PatientIdentity = { phone: want, dob: byPhone.find((i) => i.dob)?.dob ?? "" };
   const byName = name
     ? (await Promise.all(BOARDS.map(async (b) => (await boardSearch(b, "name", name)).map((it) => toDossierItem(b, it)))))
         .flat()
         .filter((i) => i.name.trim().toLowerCase() === name.toLowerCase())
         // ⚠️ A name is not an identity — see `nameMatchAccepted`.
-        .filter((i) => nameMatchAccepted(i, want))
+        .filter((i) => nameMatchAccepted(i, anchor))
     : [];
 
   const seen = new Set<string>();

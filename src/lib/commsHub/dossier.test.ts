@@ -1,5 +1,12 @@
 import { describe, it, expect } from "vitest";
-import { buildDossier, nameMatchAccepted, pickActive, stagesCompleted, type DossierItem } from "./dossier";
+import {
+  buildDossier,
+  dobKey,
+  nameMatchAccepted,
+  pickActive,
+  stagesCompleted,
+  type DossierItem,
+} from "./dossier";
 import { PIPELINE_ORDER, pipelineIndex } from "./pipelineOrder";
 
 const PROFILE = 18406352652, ME = 18406060017, INS = 18410601299, WC = 18410804557, SUB = 18407459988;
@@ -16,6 +23,7 @@ function item(boardId: number, over: Partial<DossierItem> = {}): DossierItem {
     groupTitle: "Working",
     isCompleted: false,
     isStuck: false,
+    dob: "01/15/1957",
     route: "/x",
     stageAdvancerText: "",
     notes: "",
@@ -120,19 +128,41 @@ describe("buildDossier", () => {
 
 describe("nameMatchAccepted — a name is not an identity", () => {
   const WANT = "+13475550101";
+  const ANCHOR = { phone: WANT, dob: "01/15/1957" };
 
   it("accepts a record whose phone agrees", () => {
-    expect(nameMatchAccepted({ phone: WANT }, WANT)).toBe(true);
-  });
-
-  it("accepts a record with NO phone — that is the completed record this pass exists to find", () => {
-    expect(nameMatchAccepted({ phone: "" }, WANT)).toBe(true);
+    expect(nameMatchAccepted({ phone: WANT, dob: "" }, ANCHOR)).toBe(true);
   });
 
   it("REJECTS a namesake carrying a different number", () => {
     // Two patients called Maria Garcia. Admitting this would render one
     // person's notes and stage on the other's conversation, and hand
     // sendMessage the wrong Monday item to attribute an outbound text to.
-    expect(nameMatchAccepted({ phone: "+16095550199" }, WANT)).toBe(false);
+    expect(nameMatchAccepted({ phone: "+16095550199", dob: "01/15/1957" }, ANCHOR)).toBe(false);
+  });
+
+  it("accepts a blank-phone record when the DOB agrees — the completed record this pass exists to find", () => {
+    expect(nameMatchAccepted({ phone: "", dob: "01/15/1957" }, ANCHOR)).toBe(true);
+  });
+
+  it("REJECTS a blank-phone namesake with a different DOB", () => {
+    expect(nameMatchAccepted({ phone: "", dob: "03/02/1961" }, ANCHOR)).toBe(false);
+  });
+
+  it("FAILS CLOSED when there is no DOB to corroborate with", () => {
+    // The cost of a false reject is one missing chip in a patient's history;
+    // the cost of a false accept is another patient's notes on this thread.
+    expect(nameMatchAccepted({ phone: "", dob: "" }, ANCHOR)).toBe(false);
+    expect(nameMatchAccepted({ phone: "", dob: "01/15/1957" }, { phone: WANT, dob: "" })).toBe(false);
+  });
+
+  it("compares DOB by digits, so punctuation can't split a real match", () => {
+    expect(nameMatchAccepted({ phone: "", dob: "01-15-1957" }, ANCHOR)).toBe(true);
+    expect(dobKey("01/15/1957")).toBe(dobKey("01-15-1957"));
+  });
+
+  it("does NOT try to parse dates — a differently-ordered value rejects", () => {
+    // Rejecting is the safe direction; guessing which half is the month is not.
+    expect(nameMatchAccepted({ phone: "", dob: "1957-01-15" }, ANCHOR)).toBe(false);
   });
 });

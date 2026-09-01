@@ -25,6 +25,9 @@ export interface DossierItem {
   isCompleted: boolean;
   /** In a Stuck group — out of the pipeline until a manager moves them back. */
   isStuck: boolean;
+  /** Date of birth as the board holds it — the corroborating identity signal
+   *  when a record carries no phone. See `nameMatchAccepted`. */
+  dob: string;
   /** Where a click on this record goes. Empty when the board has no page. */
   route: string;
   /** Raw Stage Advancer text, e.g. "Chase Clinicals". */
@@ -80,6 +83,22 @@ export function markStuck<T extends { groupTitle: string }>(item: T): boolean {
   return isStuckGroup(item.groupTitle);
 }
 
+/** Digits of a date of birth, so `01/15/1957` and `01-15-1957` compare equal.
+ *  Deliberately NOT a date parse: an ISO value and a US value would normalise
+ *  to different digit strings, which REJECTS the match — the safe direction. */
+export function dobKey(raw: string): string {
+  return String(raw ?? "").replace(/\D/g, "");
+}
+
+/** What we know about the patient from the phone pass — the anchor every name
+ *  match is checked against. */
+export interface PatientIdentity {
+  /** E.164 number the lookup started from. */
+  phone: string;
+  /** DOB from the phone-matched records, where one carried it. */
+  dob: string;
+}
+
 /**
  * May a NAME match be admitted to this patient's trail?
  *
@@ -89,18 +108,26 @@ export function markStuck<T extends { groupTitle: string }>(item: T): boolean {
  * conversation, and the wrong Monday item handed to `sendMessage` to attribute
  * an outbound text to.
  *
- * So a name match needs a second signal, and the record's own phone is the one
- * available: accept it when the phone AGREES, or when it is BLANK. A different
- * patient of the same name almost always carries their own number; the
- * completed record this pass exists to find is precisely the one whose phone
- * column was never filled in.
+ * So a name match always needs a second signal, and there are exactly two:
+ *   - the record's **phone** agrees → accept;
+ *   - the phone is **blank** (the ordinary shape of the completed record this
+ *     pass exists to find) → accept only if the **date of birth** agrees.
  *
- * Not airtight — a same-named patient with a blank phone would still be
- * admitted — but it turns "any namesake" into "a namesake with no number on
- * file", which is rare where the first was not.
+ * Everything else is rejected, INCLUDING a blank-phone record with no DOB on
+ * either side. That is deliberate and it is the safe direction: the cost of a
+ * false reject is one missing chip in a patient's history, and the cost of a
+ * false accept is another patient's notes on this conversation. DOB rides on
+ * the same create-item automations as the phone, so a real completed record
+ * almost always carries one.
  */
-export function nameMatchAccepted(item: Pick<DossierItem, "phone">, wantPhone: string): boolean {
-  return !item.phone || item.phone === wantPhone;
+export function nameMatchAccepted(
+  item: Pick<DossierItem, "phone" | "dob">,
+  anchor: PatientIdentity,
+): boolean {
+  if (item.phone) return item.phone === anchor.phone;
+  const a = dobKey(anchor.dob);
+  const b = dobKey(item.dob);
+  return a.length > 0 && a === b;
 }
 
 /**

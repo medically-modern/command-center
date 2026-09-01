@@ -2026,10 +2026,15 @@ access.json assignments key off, so a rename is display-only (§5.10's precedent
   every dossier reads "not on any pipeline board" and every fax matches no provider, with nothing
   erroring. Caught in review before it shipped; the same trap §7 records for `oversightApi.ts`.
 - ⚠️ **A NAME IS NOT AN IDENTITY** (`dossier.nameMatchAccepted` + tests). Two patients called
-  Maria Garcia is ordinary at this size, so the name pass below admits a match only when the
-  record's own phone AGREES or is BLANK. Name-only would merge two people's trails — one
+  Maria Garcia is ordinary at this size, and name-only matching would merge their trails — one
   patient's notes and stage rendered on the other's conversation, and the wrong Monday item handed
-  to `sendMessage` to attribute an outbound text to.
+  to `sendMessage` to attribute an outbound text to. A name match therefore always needs a second
+  signal: the **phone** agrees, or the phone is blank (the ordinary shape of the completed record
+  the pass exists to find) and the **DOB** agrees. Everything else is rejected, blank-phone
+  records with no DOB on either side included — **failing closed is the point**: a false reject
+  costs one chip in a patient's history, a false accept puts another patient's notes on this
+  conversation. DOB rides the same create-item automations as the phone, so real completed records
+  carry one; `DOB_COLS` in `dossierApi` maps it per board and a board absent from it fails closed.
 - ⚠️ **A read/unread override carries the message it was a judgement about** (`ReadOverride
   .basedOnInboundId`). Without that it is a permanent lie: a rep reads a thread, the patient texts
   again an hour later, and the row stays looking read — gone from the very filter that exists to

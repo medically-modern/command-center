@@ -236,9 +236,14 @@ export default function AssignedPatientsPage() {
       setOverride(c, false);
       void Promise.all(c.unreadIds.map((id) => setMessageRead(id, true)))
         .then(() => reloadTexts())
-        .catch((e: unknown) =>
-          toast.error(`Couldn't mark read in RingCentral: ${e instanceof Error ? e.message : String(e)}`),
-        );
+        .catch((e: unknown) => {
+          // ⚠️ Drop the override too. Leaving it installed hides the thread
+          // from the Unread filter while RingCentral still holds it unread —
+          // the exact masking `basedOnInboundId` exists to bound, reintroduced
+          // by the one path that failed to clean up after itself.
+          clearOverride(c.key);
+          toast.error(`Couldn't mark read in RingCentral: ${e instanceof Error ? e.message : String(e)}`);
+        });
     },
     [clearOverride, setOverride],
   );
