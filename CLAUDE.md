@@ -1864,6 +1864,87 @@ The half that is actionable on a call — *did the rep confirm this with the pat
 ships as the `primary` / `secondary` confirm flags in the intake block. Build the rest only
 alongside the eligibility-date plumbing, never as UI alone.
 
+### 5.27 Patient texts are archived to Postgres — RingCentral keeps only 30 days (Sep 2026)
+**RingCentral's message store is a rolling ~30-day window on this account.** Measured
+2026-09-01: the oldest surviving record was **2026-08-01**, and every query with an earlier
+`dateTo` returns **0 rows for EVERY number**, not just a quiet one. Nothing chose that as a
+retention policy — it is what the phone vendor happens to keep — and patient texts are patient
+communications.
+
+⚠️ **The failure is silent and reads as an answer.** Asking what we texted a patient in June
+returns **200 OK with an empty `records` list**, which is indistinguishable from a patient nobody
+has ever contacted. That is exactly how a support question came back "no texts" on 2026-09-01 for
+a patient we had in fact called. Before assuming a thread is empty, check the window.
+
+**`services/monday-gateway/smsArchive.mjs`** copies that window into Postgres before it ages out;
+**`smsArchiveRules.mjs`** holds the pure rules (+ `smsArchiveRules.test.mjs`), the same split as
+`callRules` / `callHistoryQuery` beside `inboundCalls.mjs`.
+
+⚠️ **RECONCILE, NEVER INCREMENT.** Each run re-reads the ENTIRE window (`WINDOW_DAYS`, default
+**35** — deliberately longer than the ~30 RingCentral holds, since asking for more than it has
+costs nothing) and upserts on RingCentral's own message id. That is what makes **any single
+successful run repair every prior gap**: a week of failures costs nothing so long as one run lands
+before the oldest unsaved message ages out. An incremental "everything since my last cursor"
+design turns one bad run into a permanent hole — and this gateway redeploys on every push to
+`main`, so bad runs are a certainty. Same reasoning as the call-subscription reconcile (§5.13).
+⚠️ Cadence is **daily**, not the fortnightly first proposed: a 30-day window at 15-day intervals
+is two runs per window, so two consecutive failures lose data permanently and you learn about it a
+month later. Daily leaves ~29 days of slack. A boot run fires 60s after start unless one succeeded
+within `SMS_ARCHIVE_MIN_GAP_HOURS` (6), so a busy afternoon of redeploys doesn't re-scan each time.
+
+⚠️ **THIS TABLE HOLDS PHI, AND THAT IS A DEPARTURE — taken deliberately.** The gateway's standing
+posture is metadata-only (`LOG_PAYLOAD=false`; `gql_log` and `request_log` store no bodies and
+`request_log` strips query strings, §8). Message **bodies** are patient communications. Two things
+bound it: the table lives on the **messaging pool (`ASSIGNMENTS_DATABASE_URL`)**, never the audit
+pool — the separation `index.mjs` already draws so the audit DB keeps its no-PHI property, so
+**do not move this table** — and the number is stored as **HMAC + last4**, never in the clear,
+exactly as `sent_messages` and `call_events` do it. Unpruned, like `call_events`: ~4,300 texts a
+month, under 10 MB a year.
+
+**The read side is OFF by default and that is the point.** The archive earns its keep on the
+WRITE side, which needs nothing from the live thread. Serving the union changes what a rep sees,
+so `/messaging/conversation` merges archived history **only under `SMS_ARCHIVE_SERVE=1`**; with
+the flag unset that route behaves exactly as it did before. Even switched on it can only ever ADD
+— the read is wrapped so a failing archive is logged and skipped, never surfaced.
+⚠️ **LIVE WINS a collision**, and the direction matters: a text archived while `Queued` gets its
+real `SendingFailed` verdict seconds later (§5.5), so preferring the archive would pin the
+optimistic status and re-introduce the bug that field exists to prevent.
+`SMS_ARCHIVE_ENABLED=0` kills the whole service from Railway without a revert.
+The guard is pinned by source-scanning tests (the `listColumns.test.ts` convention) — a later
+cleanup deleting the flag as "dead config" fails the build.
+
+⚠️ Reconcile reads RingCentral on the **`background`** tier, shed first by `rcLimiter` — bulk work
+with nobody waiting must never crowd out a rep's thread load (§10, the 2026-08-20 incident).
+Hitting `MAX_PAGES` (`SMS_ARCHIVE_MAX_PAGES`, default 60) sets `truncated` — and ⚠️ **`archiveHealth`
+reads it**, so a pass that completed without reading the whole window reports **not ok**. Recording
+that run as `ok` is deliberate (we really did sync, and losing that signal is worse than the
+clipping), which is precisely why the verdict belongs in the health check instead. It shipped the
+other way round — stored on the row, never consulted — and review caught it: a clipped archive
+reporting healthy while the messages it never reached age out is the one outcome that looks exactly
+like success. And **no `messageType` param**, for the reason §5.5 records: the documented
+multi-value syntax 400s on this account.
+
+**Watch it, or it fails silently** — `GET /messaging/archive-health` (unauthenticated, same
+posture as `/calls/health`: counts and timestamps, never a number, a body or an email) reports
+`ok/stale/truncated/lastOkAt/rows/oldest/newest`. ⚠️ It is **not ok when no run has ever
+succeeded** — however many rows the table holds, so a job deployed but never actually running
+can't read healthy — nor when the last successful run was truncated.
+`POST /messaging/archive-run` forces a pass, and ⚠️ unlike the health route beside it, that one is
+**authenticated AND rate-floored** (`SMS_ARCHIVE_FORCE_MIN_GAP_MINUTES`, default 5). Health only
+reads counters; a forced run spends up to 60 RingCentral calls on the account shared with live
+patient texting, and `running` blocks only CONCURRENT runs — a client that posts again each time
+the last one finishes gets a fresh full scan every time. Both guards, not either: the 2026-08-20
+incident (§10) was a runaway **authenticated** client. Point `services/calls-monitor` at the health
+route.
+
+**Not covered: MMS media.** Attachment bytes live on RingCentral and purge with the message, so
+the archive stores the attachment **metadata and uris only** — a patient's insurance-card photo
+(§5.5) is recorded as having existed, not saved. Fetching the bytes through `/rc/fetch` into
+object storage is a separate job.
+
+⚠️ **Starting this recovers nothing.** Everything before 2026-08-01 was already gone when the
+archive was written. Every day it is not running is ~140 more texts purged.
+
 ---
 
 ## 6. Patient flow across boards (the big picture)
@@ -2493,6 +2574,7 @@ these services; when their math changes, `oopEstimator.ts` must be updated to ma
 | A patient got two "here's your link" texts / the insurance step asked for a card they already sent | §5.23 — the once-only stamps are **on the board** (`date_mm6eakae` / `date_mm6eev4b`), and `uploadLink.js` `UPLOAD_KINDS` decides which column a link writes to |
 | A patient is parked on "we're waiting for your insurance card" and can't get out | §5.23 — the gate is the FILE column `file_mm5zhy1`, read by `/api/intake/card-on-file/:token`. Nothing else unlocks it, and nothing else needs to |
 | "Auto. Texts" reads 0 for somebody we definitely texted | §5.24 — it counts **only** the intake form's 30-minute + 24-hour nudges (`numeric_mm67822b`). A rep's own text and both link families deliberately do not move it |
+| A patient's text thread looks empty, or stops ~30 days back | §5.27 — RingCentral retains ~30 days and answers **200 with an empty list**, which looks identical to "never texted". `GET /messaging/archive-health`, then `services/monday-gateway/smsArchive.mjs` |
 | Cost estimate wrong | `lib/welcomeCall/oopEstimator.ts` (sync vs Railway financial backend) |
 | The intake queue is slow, or a sidebar field reads blank on every row | §5.25 — `LIST_COLUMN_IDS` in `lib/profile/mondayApi.ts`; `listColumns.test.ts` names the missing column. A pane reading blank instead means it is rendering a list row, not `detail` |
 | A pump shipped on a supplies-only patient / a Next Order Date came over blank | §5.22 — `lib/shared/servingLines.ts`; gate Pump Qty on `servingSellsPumpDevice`, **never** `servingIncludesPump` |
