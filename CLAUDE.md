@@ -2015,11 +2015,40 @@ access.json assignments key off, so a rename is display-only (§5.10's precedent
   be one cross-board query per conversation per poll — the incident's shape again. The SELECTED
   conversation gets its real record in the dossier pane: one lookup, on click, memoised.
 - **The dossier pane is the point of the whole page.** `PatientDossierPanel` renders, in this
-  order: the **path** (which stages they have completed profiles in, in tracker order — §6), then
-  the **notes FIRST** (Josh's explicit ask: the running case history is what tells a rep what to
-  say next; everything else on the pane is a lookup), then stage/next action/open-in-stage.
-  A completed step links with `?completedStage=`, so reading history can never re-advance a
-  finished patient (§7's review-mode gate).
+  order: the **path** (which stages they have completed profiles in, in tracker order — §6), the
+  **notes** (Josh's explicit ask: the running case history is what tells a rep what to say next;
+  everything else on the pane is a lookup), **Open on <board>**, then the **per-stage call
+  detail**. A completed step links with `?completedStage=`, so reading history can never
+  re-advance a finished patient (§7's review-mode gate).
+- **The notes are WRITABLE from here** (`dossierApi.appendNoteToRecord`). The hub is where a rep
+  LEARNS things, so a note that had to be retyped on the role page was in practice lost. Same
+  `appendStampedNote` every NotesPanel uses, so a line added here is indistinguishable from one
+  added on the stage page. ⚠️ Stamped with the **sub-stage** where the board has one ("Chase
+  Clinicals", not "Medical Evaluation") — several roles share one notes column and the label is
+  what makes a line traceable (§9). ⚠️ Guarded by `assertLongTextFits`: Monday long-text columns
+  truncate **silently** at 2000 chars, so what gets dropped is always the note somebody just
+  typed (§10). Failing loudly is the point.
+- **What a rep needs on a call differs completely by stage**, so it is a per-board map —
+  `lib/commsHub/stageDetail.ts` (+ tests). Intake asks "what insurance are we running and did it
+  come back active"; Welcome Call asks "what does it cost and where does it ship"; Subscription
+  asks "when is the next order and is the auth still valid". `dossierApi` reads exactly the
+  columns that map names, so a new field cannot go blank for want of a matching read-set entry
+  (§5.11's trap). Empty fields and then empty sections are dropped — a pane full of em-dashes is
+  what makes a rep slow. ⚠️ Only boards whose column ids are **verified in this repo** are mapped;
+  DTC Intake and Secondary Claims have none, deliberately, because guessing ids yields a
+  permanently blank row rather than an error.
+- ⚠️ **The Subscription board's `notesColId` was `null` in the BOARDS registry until 2026-09-01**,
+  which read as "this board has no notes". It does — Subscription Patient Notes
+  `long_text_mm3rj7k7` — so the dossier pane was blank for exactly the patients it was being used
+  on. Fixed at the source; the only other consumer of `SystemPatient.notes` is Search's escalation
+  modal, so the change is additive.
+- ⚠️ **A fax is opened by fetching the BYTES first** (`fetchFaxBlobUrl` → the gateway's
+  `/rc/fetch`), then handing `openFileViewer` a `blob:` URL — the same thing `FaxInboxPage` does.
+  Passing a RingCentral attachment URI straight to the viewer sends it down `fetchAssetBytes`,
+  which tries a direct CORS fetch with no RC credential and then the worker's `/asset` proxy,
+  which allowlists MONDAY hosts and refuses. That shipped broken and was reported as "view fax is
+  broken". ⚠️ The viewer revokes only blobs it creates itself, so the hub revokes the previous one
+  on each open — `FaxInboxPage` still leaks one per fax viewed.
 - ⚠️ **The Monday gate is `hasMondayAuth()`, never a bundled-token check.** In production the SPA
   runs through the gateway and `VITE_MONDAY_API_TOKEN` is deliberately absent (§5.1), so a
   `!!getToken()` gate is FALSE in exactly the deployment that matters — and it fails silently:
