@@ -59,12 +59,15 @@ export const ROLES: RoleConfig[] = [
   { id: "finalConfirm",   label: "Final Profile Confirmation", color: "bg-lime-500", icon: "ShieldCheck", route: "/final-confirm" },
   { id: "subscription",   label: "Subscription",       color: "bg-rose-500",    icon: "RefreshCw",      route: "/subscription"     },
   { id: "updateClinicals", label: "Update Clinicals",   color: "bg-fuchsia-500", icon: "FileUp",         route: "/update-clinicals" },
-  // Patient Texting — look up ANY patient by name or number, read the
-  // conversation, text or call them. Not a Monday stage: no board, no group and
-  // no counting-contract entry, so the bar is an entry point rather than a
-  // queue with a daily number. The id stays "assignedPatients" so existing
-  // access.json role assignments keep working.
-  { id: "assignedPatients", label: "Patient Texting",    color: "bg-emerald-600", icon: "MessagesSquare", route: "/assigned-patients" },
+  // Communications — every way a patient reaches the MM line (calls,
+  // voicemail, texts, inbound faxes) with their Command Center profile beside
+  // it. Not a Monday stage: no board, no group and no counting-contract entry,
+  // so the bar is an entry point rather than a queue with a daily number.
+  // ⚠️ Relabelled from "Patient Texting" when the page grew its Phone and Fax
+  // tabs (2026-09-01). The id stays `assignedPatients` so existing access.json
+  // role assignments keep working — the same reason `profile` kept its id
+  // through two renames (CLAUDE.md §5.10).
+  { id: "assignedPatients", label: "Communications",    color: "bg-emerald-600", icon: "MessagesSquare", route: "/assigned-patients" },
   { id: "authDenied",      label: "Auth Denied",        color: "bg-red-500",     icon: "XCircle",        route: "/auth-denied"      },
   { id: "patientQuestions", label: "Patient Questions", color: "bg-sky-500",     icon: "MessageCircleQuestion", route: "/patient-questions" },
   // FAX — count-only role: bar shows RingCentral unread faxes (0 → Done!).

@@ -21,6 +21,7 @@ import { useSearchParams } from "react-router-dom";
 import { viewFilterFromParams } from "@/lib/roleView";
 import { sidebarSections } from "@/lib/samantha/sidebarList";
 import { managerOriginFromParams } from "@/lib/shared/managerOrigin";
+import { ContactStateMarks } from "@/components/shared/ContactStateMarks";
 
 const AUTH_TABS: { key: SidebarGroupType; label: string }[] = [
   { key: "submitAuth", label: "Submit Auth" },
@@ -146,6 +147,7 @@ export function PatientsSidebar({ patients, selectedId, onSelect, loading, error
               })()}
             </div>
           )}
+          <ContactStateMarks phone={p.patientPhone} />
         </SidebarMenuButton>
       </div>
     </SidebarMenuItem>

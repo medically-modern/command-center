@@ -20,6 +20,7 @@ import { clearStatusColumn, clearDateColumn, COL } from "@/lib/welcomeCall/monda
 import { useSearchParams } from "react-router-dom";
 import { viewFilterFromParams } from "@/lib/roleView";
 import { sidebarSections } from "@/lib/welcomeCall/sidebarList";
+import { ContactStateMarks } from "@/components/shared/ContactStateMarks";
 
 /** Convert YYYY-MM-DD → MM/DD/YYYY */
 function fmtDate(iso: string): string {
@@ -147,6 +148,7 @@ export function PatientsSidebar({ patients, selectedId, onSelect, loading, error
                         </p>
                       </div>
                     )}
+                    <ContactStateMarks phone={p.phone} />
                   </SidebarMenuButton>
                 </SidebarMenuItem>
               ))}
@@ -185,6 +187,7 @@ export function PatientsSidebar({ patients, selectedId, onSelect, loading, error
                           </p>
                         </div>
                       )}
+                      <ContactStateMarks phone={p.phone} />
                     </SidebarMenuButton>
                   </SidebarMenuItem>
                 ))}
@@ -220,6 +223,7 @@ export function PatientsSidebar({ patients, selectedId, onSelect, loading, error
                             Until {p.followUpDate ? fmtDate(p.followUpDate) : "—"}
                           </p>
                         </div>
+                        <ContactStateMarks phone={p.phone} />
                       </SidebarMenuButton>
                       <ClearFollowUpButton patientId={p.id} patientName={p.name} onSuccess={onRefresh} />
                     </div>
@@ -257,6 +261,7 @@ export function PatientsSidebar({ patients, selectedId, onSelect, loading, error
                             Escalated \u00b7 Follow up {p.followUpDate ? fmtDate(p.followUpDate) : ""}
                           </p>
                         </div>
+                        <ContactStateMarks phone={p.phone} />
                       </SidebarMenuButton>
                       <ClearFollowUpButton patientId={p.id} patientName={p.name} onSuccess={onRefresh} />
                     </div>

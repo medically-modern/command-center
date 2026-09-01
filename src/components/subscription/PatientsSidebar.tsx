@@ -16,6 +16,7 @@ import { AlertTriangle, Loader2, RefreshCw, User, AlertCircle, Pause, XCircle, S
 import type { Patient } from "@/lib/subscription/workflow";
 import { sidebarSections } from "@/lib/subscription/sidebarList";
 import { cn } from "@/lib/utils";
+import { ContactStateMarks } from "@/components/shared/ContactStateMarks";
 
 interface Props {
   patients: Patient[];
@@ -84,6 +85,7 @@ export function PatientsSidebar({ patients, selectedId, onSelect, loading, error
                       </p>
                     </div>
                   )}
+                  <ContactStateMarks phone={p.phone} />
                 </SidebarMenuButton>
               </SidebarMenuItem>
             ))}
@@ -180,6 +182,7 @@ export function PatientsSidebar({ patients, selectedId, onSelect, loading, error
                           </p>
                         </div>
                       )}
+                      <ContactStateMarks phone={p.phone} />
                     </SidebarMenuButton>
                   </SidebarMenuItem>
                 ))}

@@ -71,7 +71,7 @@ export default function WatchCallbackButton({ phone, label }: Props) {
         // will generate, so say it at the moment it happens.
         if (mode === "off") {
           toast.warning("Added — but your call alerts are set to Nothing, so this won't ring you.", {
-            description: "Change it under the bell in the Patient Texting header.",
+            description: "Change it under the bell in the Communications header.",
           });
         } else {
           toast.success("You'll be notified when this number calls.");
