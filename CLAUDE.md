@@ -2028,6 +2028,12 @@ access.json assignments key off, so a rename is display-only (§5.10's precedent
   what makes a line traceable (§9). ⚠️ Guarded by `assertLongTextFits`: Monday long-text columns
   truncate **silently** at 2000 chars, so what gets dropped is always the note somebody just
   typed (§10). Failing loudly is the point.
+  ⚠️ **The base is RE-READ immediately before the write** (`readNotesNow`), never the dossier's
+  cached copy. Monday has no compare-and-set — `change_column_value` REPLACES the value — and the
+  dossier is memoised for the whole session, so appending onto that copy would silently DELETE any
+  note another rep or an automation added in between. Re-reading narrows the lost-update window to
+  one round trip, the same exposure every other note path carries (they append onto a 15-second
+  poll). A failed re-read ABORTS rather than appending onto `""`.
 - **What a rep needs on a call differs completely by stage**, so it is a per-board map —
   `lib/commsHub/stageDetail.ts` (+ tests). Intake asks "what insurance are we running and did it
   come back active"; Welcome Call asks "what does it cost and where does it ship"; Subscription

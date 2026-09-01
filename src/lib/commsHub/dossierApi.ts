@@ -342,6 +342,34 @@ export function clearDossierCaches(): void {
 /* ── Writing a note from the hub ───────────────────────────────────────────── */
 
 /**
+ * Read one item's notes column, right now.
+ *
+ * ⚠️ **This is the whole safety of the append below.** Monday has no
+ * compare-and-set on a column write: `change_column_value` REPLACES the value.
+ * So whatever body we build has to be built on the freshest text we can get,
+ * and the dossier's own copy is memoised for the session — minutes or hours
+ * old by the time a rep types. Between then and now another rep can have added
+ * a note on the role page, or an automation can have stamped an escalation
+ * reason, and appending onto the stale copy would silently DELETE theirs.
+ */
+async function readNotesNow(boardId: number, itemId: string, columnId: string): Promise<string> {
+  const data = await gql<{ items: Array<{ column_values?: Array<{ id: string; text: string | null }> }> }>(
+    `query ($ids: [ID!], $cols: [String!]) {
+       items (ids: $ids) { column_values (ids: $cols) { id text } }
+     }`,
+    { ids: [itemId], cols: [columnId] },
+  );
+  const found = data.items?.[0]?.column_values?.find((c) => c.id === columnId);
+  if (!found) {
+    // The item or column is gone. Refusing beats appending onto "" and wiping
+    // the history we could not read.
+    throw new Error("Couldn't read the current notes, so nothing was written.");
+  }
+  void boardId;
+  return found.text ?? "";
+}
+
+/**
  * Append a stamped note to the patient's CURRENT stage, from the dossier pane.
  *
  * The hub is where a rep learns things — the patient mentions they are away
@@ -350,15 +378,21 @@ export function clearDossierCaches(): void {
  * stamped line every role's NotesPanel writes, through the same helper, so a
  * note added here is indistinguishable from one added on the stage page.
  *
+ * ⚠️ **The base is RE-READ immediately before the write**, never the dossier's
+ * cached copy — see `readNotesNow`. That narrows the lost-update window to one
+ * round trip, which is the same exposure every other note path in the app
+ * carries (they append onto a 15-second poll); the cached copy would have made
+ * it unbounded.
+ *
  * ⚠️ **Stamped with the SUB-STAGE where there is one**, not just the board.
  * Several roles share one notes column (§9), and "Chase Clinicals" tells the
  * next reader far more than "Medical Evaluation" does.
  *
- * ⚠️ **`assertLongTextFits` first.** Monday long-text columns hold 2000
- * characters and TRUNCATE SILENTLY — a longer write returns success and stores
- * the first 2000, so what gets dropped is always the note somebody just typed
- * (§10). Nine items on the ME board already sit at exactly 2000. Failing loudly
- * is the whole point; trimming old history to make room is the same harm,
+ * ⚠️ **`assertLongTextFits` before writing.** Monday long-text columns hold
+ * 2000 characters and TRUNCATE SILENTLY — a longer write returns success and
+ * stores the first 2000, so what gets dropped is always the note somebody just
+ * typed (§10). Nine items on the ME board already sit at exactly 2000. Failing
+ * loudly is the point; trimming old history to make room is the same harm,
  * chosen by us.
  *
  * Returns the new full body so the caller can show it without a re-read.
@@ -367,8 +401,6 @@ export async function appendNoteToRecord(opts: {
   boardId: number;
   itemId: string;
   columnId: string;
-  /** The notes column as it reads now — the base the line is appended to. */
-  existing: string;
   text: string;
   /** Stage label for the stamp, e.g. "Chase Clinicals". */
   stage: string;
@@ -379,7 +411,8 @@ export async function appendNoteToRecord(opts: {
   if (!body) throw new Error("Nothing to add");
   if (!opts.columnId) throw new Error("This board has no notes column to write to.");
 
-  const next = appendStampedNote(opts.existing, body, opts.stage, { initials: userInitials() });
+  const existing = await readNotesNow(opts.boardId, opts.itemId, opts.columnId);
+  const next = appendStampedNote(existing, body, opts.stage, { initials: userInitials() });
   assertLongTextFits(next, `${opts.stage || "Stage"} notes`);
 
   const value = JSON.stringify({ text: next });
