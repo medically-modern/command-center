@@ -31,6 +31,32 @@ const MAX_JOB_ATTEMPTS = 4;
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+/**
+ * One Monday GraphQL call. THROWS on anything that is not an unambiguous
+ * success — that strictness is the whole point.
+ *
+ * ⚠️ Checking only `j.errors` is not enough, and the gap was silent and total.
+ * Monday answers a rate-limited request with an HTTP 429 whose body is
+ * `{error_message, status_code}` — NO `errors` key — so `j.data` came back
+ * `undefined` and this returned it without complaint. Follow that through
+ * executeSend: the Phase 0 snapshot reads `data?.items?.[0]?...|| []` and
+ * yields an EMPTY map, the Phase 1 write "succeeds" having written nothing,
+ * and Phase 2 then compares "" against "" for every column, counts three
+ * stable reads and declares the write VERIFIED. The stage advancer no-ops the
+ * same way and the job is marked done. Nothing reached Monday, the rep saw a
+ * green toast, the audit row says ok, and the failure sweep stays quiet
+ * because there was no failure to see.
+ *
+ * That is not hypothetical: CLAUDE.md §5.25 records this account exhausting
+ * its ~10M/minute complexity budget and 429-ing everything for the rest of
+ * each minute. The client path never had this hole — samantha/mondayApi.ts's
+ * gql() throws on !res.ok.
+ *
+ * So: a non-2xx throws, a GraphQL `errors` array throws, and a response with
+ * no `data` throws even at 200. Every caller here wants data back; "no data"
+ * is never a success. Throwing puts the job on withRetry and then the job
+ * retry ladder, and a genuinely stuck one ends `failed` — which pages.
+ */
 async function callMonday(query, variables) {
   const r = await fetch(MONDAY_URL, {
     method: "POST",
@@ -41,6 +67,14 @@ async function callMonday(query, variables) {
   let j;
   try { j = JSON.parse(t); } catch { throw new Error(`Monday non-JSON (${r.status}): ${t.slice(0, 200)}`); }
   if (j.errors) throw new Error("Monday errors: " + JSON.stringify(j.errors));
+  if (!r.ok) {
+    throw new Error(
+      `Monday HTTP ${r.status}: ${j.error_message ?? j.error ?? t.slice(0, 200)}`,
+    );
+  }
+  if (j.data === undefined || j.data === null) {
+    throw new Error(`Monday returned no data (${r.status}): ${t.slice(0, 200)}`);
+  }
   return j.data;
 }
 

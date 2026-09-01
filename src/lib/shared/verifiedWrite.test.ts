@@ -6,7 +6,7 @@
 // advances. The gateway fast path is inert here (no boardId, gateway unconfigured).
 // Run: npx vitest run src/lib/shared/verifiedWrite.test.ts
 import { describe, it, expect, vi } from "vitest";
-import { executeWritesWithVerification, type WriteTask } from "./verifiedWrite";
+import { buildIdempotencyKey, executeWritesWithVerification, type WriteTask } from "./verifiedWrite";
 
 const noopFn = async () => null;
 const dataTask = (columnId: string, expectedText?: string): WriteTask => ({
@@ -237,5 +237,53 @@ describe("stage advancer no-op detection", () => {
 
     expect(result).toEqual([]);
     expect(advanced(executeWithRetry)).toBe(true);
+  });
+});
+
+
+/**
+ * The idempotency key is what the gateway dedupes a send on, and
+ * `send_jobs.idempotency_key` is UNIQUE and never pruned — so a key derived
+ * from the PAYLOAD ALONE made every repeat of an earlier DONE send a permanent
+ * silent no-op that still reported success. Three real shapes hit it:
+ *   · Subscription A → B → back to A (the third save matches the first)
+ *   · saveNoAuthNeededToMonday, whose payload is a constant per item+product
+ *   · a Final Confirm re-send after a manager's return, nothing edited
+ * The key must therefore identify the SEND ATTEMPT. What it still has to
+ * collapse — postSend's three POST tries and an offline-outbox replay — all
+ * reuse the ONE key string built per transaction, so they are unaffected.
+ */
+describe("buildIdempotencyKey", () => {
+  const data = { c1: "same", c2: { index: 3 } };
+  const stage = { stage: { index: 1 } };
+
+  it("gives two byte-identical sends DIFFERENT keys", () => {
+    const a = buildIdempotencyKey("12937566870", data, stage);
+    const b = buildIdempotencyKey("12937566870", data, stage);
+    expect(a).not.toBe(b);
+  });
+
+  it("agrees on the item and the payload hash — only the attempt differs", () => {
+    const a = buildIdempotencyKey("12937566870", data, stage).split(":");
+    const b = buildIdempotencyKey("12937566870", data, stage).split(":");
+    expect(a[0]).toBe("12937566870");
+    expect(a[1]).toBe(b[1]);   // same payload → same hash, still legible in /audit
+    expect(a[2]).not.toBe(b[2]); // …and that third part is why it still writes
+  });
+
+  it("separates different items and different payloads", () => {
+    const a = buildIdempotencyKey("1", data, stage).split(":");
+    const b = buildIdempotencyKey("2", data, stage).split(":");
+    const c = buildIdempotencyKey("1", { c1: "other" }, stage).split(":");
+    expect(a[0]).not.toBe(b[0]);
+    expect(a[1]).not.toBe(c[1]);
+  });
+
+  it("never returns an empty attempt segment", () => {
+    for (let i = 0; i < 200; i += 1) {
+      const parts = buildIdempotencyKey("1", data, stage).split(":");
+      expect(parts).toHaveLength(3);
+      expect(parts[2].length).toBeGreaterThan(6);
+    }
   });
 });

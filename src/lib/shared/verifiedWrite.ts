@@ -69,6 +69,46 @@ export class GatewayPendingError extends Error {
  */
 export const SAVE_CONFIRM_MS = 120_000;
 
+/**
+ * The key the gateway dedupes a send on.
+ *
+ * ⚠️ It identifies THIS SEND ATTEMPT, not this payload — hence the trailing
+ * nonce. What it must collapse is an AMBIGUOUS RETRY of this same attempt:
+ * postSend's three POST tries and any offline-outbox replay, all of which
+ * reuse the one payload object built at the call site and therefore this exact
+ * string. What it must NOT collapse is a LATER, deliberate send that happens
+ * to be byte-identical — and `send_jobs.idempotency_key` is UNIQUE while the
+ * table is never pruned, so a payload hash alone turned every repeat of an
+ * earlier DONE send into a permanent silent no-op that still reported success:
+ *   · Subscription A → B → back to A: the third save matched the first, wrote
+ *     nothing, and fired confetti while the board still held B.
+ *   · saveNoAuthNeededToMonday builds a CONSTANT payload per (item, product)
+ *     — no date, no note — so that button could only ever work ONCE per
+ *     product for the life of the database.
+ *   · A Final Confirm re-send after a manager's return, nothing edited, wrote
+ *     nothing at all — the Stage Advancer included.
+ * masheke was immune by accident: its payload carries the stamped MN notes
+ * body, which changes on nearly every send. The stages converted to this path
+ * carry no such stamp, so their payloads collide readily.
+ *
+ * The item id and the payload hash stay in the key so two attempts at one
+ * payload are still legible side by side in the audit table.
+ */
+export function buildIdempotencyKey(
+  itemId: string,
+  dataColumns: Record<string, unknown>,
+  stageColumns: Record<string, unknown>,
+): string {
+  let h = 5381;
+  const sig = JSON.stringify({ dataColumns, stageColumns });
+  for (let i = 0; i < sig.length; i++) h = ((h << 5) + h + sig.charCodeAt(i)) | 0;
+  // Time first so keys sort chronologically in `send_jobs`; random tail because
+  // two sends inside one millisecond are possible and a collision here is
+  // precisely the silent no-op this exists to prevent.
+  const nonce = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
+  return `${itemId}:${(h >>> 0).toString(36)}:${nonce}`;
+}
+
 export interface WriteTask {
   label: string;
   columnId: string;
@@ -191,10 +231,7 @@ export async function executeWritesWithVerification(
           if (t.expectedText !== undefined) verify.push({ columnId: t.columnId, expectedText: t.expectedText });
         }
       }
-      let h = 5381;
-      const sig = JSON.stringify({ dataColumns, stageColumns });
-      for (let i = 0; i < sig.length; i++) h = ((h << 5) + h + sig.charCodeAt(i)) | 0;
-      const idempotencyKey = `${itemId}:${(h >>> 0).toString(36)}`;
+      const idempotencyKey = buildIdempotencyKey(itemId, dataColumns, stageColumns);
       const outcome = await submitSend(
         { itemId, boardId, dataColumns, stageColumns, verify, stageExpect, idempotencyKey, label, createLabelsIfMissing },
         { waitForDone: true, waitForDoneMs, onPhase: onProgress },
