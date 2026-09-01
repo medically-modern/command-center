@@ -2307,9 +2307,14 @@ these services; when their math changes, `oopEstimator.ts` must be updated to ma
   being held back) and then fired it blind, returning `[]` — a clean send — while the patient never
   moved. Betty Dillingham (`12895834887`) and Eddie Quintero (`12895852715`), Aug 2026: both
   advanced correctly on 8/26, were dragged back out of **Completed** into Profile Clean-Up on 8/27,
-  and from then on every press of Advance to MN was a no-op. Katie pressed it on 8/28 and again on
-  8/31; **the 8/31 press produced ZERO activity-log entries** — `updated_at` moved and not one column
-  changed. Five days, a green toast every time.
+  and from then on every press of Advance to MN was a no-op. Confirmed against the GATEWAY audit log
+  (`/audit.json?item=…&all=1`), which is the only place these are visible: Katie wrote
+  `color_mm1zmeb3 = Advance to MN` **six times** — 8/26 6:54 PM (the real one), then 8/28 4:37 PM and
+  8/31 at 10:51, 11:42, 11:44 and 4:27 — and Monday answered **200 / ok=true to all six** while
+  recording an activity-log entry for only the first. Five days, a green toast every time.
+  ⚠️ **Monday's activity log CANNOT show you this and the gateway log can.** A no-op write leaves no
+  activity-log entry at all, so on the board it looks like the rep never pressed the button; only
+  `gql_log` proves they did. Diagnose this class from `/audit.json`, never from board history.
   **`lib/shared/advancerNoop.ts`** is the rule; an advancer task that carries **`expectedText`** is
   now checked against the pre-write snapshot in **Phase 2b** and the send is REFUSED with a message
   the rep sees, rather than firing a mutation that moves nobody. ⚠️ It is a **BEFORE**-the-write
@@ -2324,8 +2329,13 @@ these services; when their math changes, `oopEstimator.ts` must be updated to ma
   next press is then a real change → the automation fires → a **duplicate** downstream item. Both
   patients above already had theirs. The repair is to move the item to Completed, where the
   automation already put it.
-  ⚠️ **How they got back into the queue** (unfixed, see §10): `advanceToProfileCleanUp` moves an item
-  into Clean-Up **without touching Move to Onboarding**, and `UnverifiedReferralsPage` is the ONLY
+  ⚠️ **How they got back into the queue** (unfixed, see §10): the last line of
+  `advanceToProfileCleanUp` is `moveItemToGroup(p.id, GROUPS.profileCleanUp)` — an **UNCONDITIONAL**
+  move that never asks which group the item is currently in, so it drags an item out of **Completed**
+  as happily as out of a form group. Katie pressed "Advance →" on Info Collection at 11:57 AM (Eddie)
+  and 12:23 PM (Betty) on 8/27; the audit log shows the left pane written, then
+  `color_mm6ct431 = Profile Clean-Up` (itself a no-op — already set, ok=true, no activity-log entry),
+  then the group move one second later. It also **does not touch Move to Onboarding**, and `UnverifiedReferralsPage` is the ONLY
   intake-family page that never wires `useCompletedStageReview` — `ProfilePage`, `EvaluatePage`,
   `WelcomeCallPage` and `ChaseBenefitsPage` all do. Combined with `useMondayPatients` injecting a
   deep-linked `?patientId=` into the sidebar **regardless of group**, a patient sitting in Completed
