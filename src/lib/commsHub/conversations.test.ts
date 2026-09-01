@@ -2,6 +2,8 @@ import { describe, it, expect } from "vitest";
 import {
   applyReadOverrides,
   buildConversations,
+  overrideStillApplies,
+  pruneReadOverrides,
   totalUnread,
   type RcConversationRecord,
 } from "./conversations";
@@ -107,24 +109,63 @@ describe("buildConversations", () => {
   });
 });
 
-describe("applyReadOverrides", () => {
-  const base = buildConversations([
+describe("read overrides", () => {
+  const unreadThread = buildConversations([
     msg({ dir: "Inbound", at: "2026-09-01T10:00:00Z", readStatus: "Unread", id: 11 }),
   ]);
+  const readThread = buildConversations([msg({ dir: "Inbound", at: "2026-09-01T10:00:00Z", id: 11 })]);
+  const K = "3475550101";
 
   it("clears the badge the moment a rep opens the thread", () => {
-    const out = applyReadOverrides(base, new Map([["3475550101", false]]));
+    const out = applyReadOverrides(unreadThread, new Map([[K, { unread: false, basedOnInboundId: 11 }]]));
     expect(out[0].unread).toBe(0);
     expect(out[0].unreadIds).toEqual([]);
   });
 
   it("re-badges a conversation the rep marked unread", () => {
-    const read = buildConversations([msg({ dir: "Inbound", at: "2026-09-01T10:00:00Z", id: 11 })]);
-    expect(read[0].unread).toBe(0);
-    expect(applyReadOverrides(read, new Map([["3475550101", true]]))[0].unread).toBe(1);
+    expect(readThread[0].unread).toBe(0);
+    expect(applyReadOverrides(readThread, new Map([[K, { unread: true, basedOnInboundId: 11 }]]))[0].unread).toBe(1);
   });
 
   it("leaves untouched conversations alone", () => {
-    expect(applyReadOverrides(base, new Map())).toBe(base);
+    expect(applyReadOverrides(unreadThread, new Map())).toBe(unreadThread);
+  });
+
+  it("STOPS masking once the patient sends a newer message", () => {
+    // The bug this exists to prevent: a rep reads a thread, the patient texts
+    // again an hour later, and the row stays looking read — gone from the very
+    // filter that exists to surface it.
+    const withNewer = buildConversations([
+      msg({ dir: "Inbound", at: "2026-09-01T10:00:00Z", id: 11 }),
+      msg({ dir: "Inbound", at: "2026-09-01T11:00:00Z", readStatus: "Unread", id: 22 }),
+    ]);
+    const stale = new Map([[K, { unread: false, basedOnInboundId: 11 }]]);
+    expect(overrideStillApplies(withNewer[0], stale.get(K)!)).toBe(false);
+    expect(applyReadOverrides(withNewer, stale)[0].unread).toBe(1);
+  });
+
+  it("keeps masking while the same message is the newest", () => {
+    expect(overrideStillApplies(unreadThread[0], { unread: false, basedOnInboundId: 11 })).toBe(true);
+  });
+
+  it("prunes an override a newer message has retired", () => {
+    const withNewer = buildConversations([
+      msg({ dir: "Inbound", at: "2026-09-01T10:00:00Z", id: 11 }),
+      msg({ dir: "Inbound", at: "2026-09-01T11:00:00Z", readStatus: "Unread", id: 22 }),
+    ]);
+    const pruned = pruneReadOverrides(withNewer, new Map([[K, { unread: false, basedOnInboundId: 11 }]]));
+    expect(pruned.size).toBe(0);
+  });
+
+  it("returns the SAME map when nothing needs pruning, so callers can skip a render", () => {
+    const live = new Map([[K, { unread: false, basedOnInboundId: 11 }]]);
+    expect(pruneReadOverrides(unreadThread, live)).toBe(live);
+  });
+
+  it("keeps an override for a conversation that has scrolled out of the window", () => {
+    // Absence is not evidence — discarding it would re-badge the row if the
+    // conversation came back into the fetched window.
+    const live = new Map([["9998887777", { unread: true, basedOnInboundId: 5 }]]);
+    expect(pruneReadOverrides(unreadThread, live).size).toBe(1);
   });
 });

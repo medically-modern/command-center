@@ -165,21 +165,71 @@ export function totalUnread(conversations: Conversation[]): number {
 }
 
 /**
+ * A rep's own read/unread click, and the message it was a judgement about.
+ *
+ * ⚠️ **`basedOnInboundId` is what makes this reconcile**, and without it the
+ * override is a permanent lie. An override with no expiry masks RingCentral
+ * for as long as the page stays mounted: a rep opens a thread, the patient
+ * texts again an hour later, and the conversation stays looking read — gone
+ * from the Unread filter, which is precisely the state the filter exists to
+ * show. Recording WHICH message was read makes the override answer a question
+ * that can go stale, and a newer inbound message is the answer changing.
+ */
+export interface ReadOverride {
+  /** true = the rep marked it unread; false = they read it. */
+  unread: boolean;
+  /** Newest inbound message id at the moment of the click. */
+  basedOnInboundId: number;
+}
+
+/**
+ * Is this override still about the conversation in front of us?
+ *
+ * False once RingCentral reports an inbound message newer than the one the rep
+ * acted on — at which point their click says nothing about the new message and
+ * RingCentral's own answer is the truthful one.
+ */
+export function overrideStillApplies(c: Conversation, o: ReadOverride): boolean {
+  return c.newestInboundId <= o.basedOnInboundId;
+}
+
+/**
  * Apply the rep's own read/unread clicks on top of RingCentral's answer.
  *
  * The PUT and the next poll are seconds apart, so without an override layer a
  * conversation a rep just opened jumps back to unread until the store
- * refreshes. `true` = the rep marked it unread, `false` = they opened it.
+ * refreshes. That is the ONLY gap this covers — see `overrideStillApplies`.
  */
 export function applyReadOverrides(
   conversations: Conversation[],
-  overrides: Map<string, boolean>,
+  overrides: Map<string, ReadOverride>,
 ): Conversation[] {
   if (!overrides.size) return conversations;
   return conversations.map((c) => {
     const o = overrides.get(c.key);
-    if (o === undefined) return c;
-    if (o) return c.unread ? c : { ...c, unread: 1 };
+    if (!o || !overrideStillApplies(c, o)) return c;
+    if (o.unread) return c.unread ? c : { ...c, unread: 1 };
     return c.unread ? { ...c, unread: 0, unreadIds: [] } : c;
   });
+}
+
+/**
+ * Drop overrides that no longer apply, so a long session can't accumulate them.
+ * Returns the SAME map when nothing changed, so a caller can skip a re-render.
+ */
+export function pruneReadOverrides(
+  conversations: Conversation[],
+  overrides: Map<string, ReadOverride>,
+): Map<string, ReadOverride> {
+  if (!overrides.size) return overrides;
+  const byKey = new Map(conversations.map((c) => [c.key, c]));
+  const next = new Map<string, ReadOverride>();
+  for (const [key, o] of overrides) {
+    const c = byKey.get(key);
+    // An override for a conversation that has dropped out of the window is
+    // kept: it is not evidence of anything, and discarding it would re-badge
+    // the row if it scrolls back in.
+    if (!c || overrideStillApplies(c, o)) next.set(key, o);
+  }
+  return next.size === overrides.size ? overrides : next;
 }

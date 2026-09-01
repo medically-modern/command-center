@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { buildDossier, pickActive, stagesCompleted, type DossierItem } from "./dossier";
+import { buildDossier, nameMatchAccepted, pickActive, stagesCompleted, type DossierItem } from "./dossier";
 import { PIPELINE_ORDER, pipelineIndex } from "./pipelineOrder";
 
 const PROFILE = 18406352652, ME = 18406060017, INS = 18410601299, WC = 18410804557, SUB = 18407459988;
@@ -115,5 +115,24 @@ describe("buildDossier", () => {
     ]);
     expect(d.name).toBe("Richard Devane");
     expect(d.phone).toBe("+13475550101");
+  });
+});
+
+describe("nameMatchAccepted — a name is not an identity", () => {
+  const WANT = "+13475550101";
+
+  it("accepts a record whose phone agrees", () => {
+    expect(nameMatchAccepted({ phone: WANT }, WANT)).toBe(true);
+  });
+
+  it("accepts a record with NO phone — that is the completed record this pass exists to find", () => {
+    expect(nameMatchAccepted({ phone: "" }, WANT)).toBe(true);
+  });
+
+  it("REJECTS a namesake carrying a different number", () => {
+    // Two patients called Maria Garcia. Admitting this would render one
+    // person's notes and stage on the other's conversation, and hand
+    // sendMessage the wrong Monday item to attribute an outbound text to.
+    expect(nameMatchAccepted({ phone: "+16095550199" }, WANT)).toBe(false);
   });
 });

@@ -81,6 +81,29 @@ export function markStuck<T extends { groupTitle: string }>(item: T): boolean {
 }
 
 /**
+ * May a NAME match be admitted to this patient's trail?
+ *
+ * ⚠️ **A NAME IS NOT AN IDENTITY.** Two patients called Maria Garcia is an
+ * ordinary thing in a population this size, and admitting a name-only match
+ * merges their trails — one person's notes and stage rendered on the other's
+ * conversation, and the wrong Monday item handed to `sendMessage` to attribute
+ * an outbound text to.
+ *
+ * So a name match needs a second signal, and the record's own phone is the one
+ * available: accept it when the phone AGREES, or when it is BLANK. A different
+ * patient of the same name almost always carries their own number; the
+ * completed record this pass exists to find is precisely the one whose phone
+ * column was never filled in.
+ *
+ * Not airtight — a same-named patient with a blank phone would still be
+ * admitted — but it turns "any namesake" into "a namesake with no number on
+ * file", which is rare where the first was not.
+ */
+export function nameMatchAccepted(item: Pick<DossierItem, "phone">, wantPhone: string): boolean {
+  return !item.phone || item.phone === wantPhone;
+}
+
+/**
  * Which record is the live one?
  *
  * The item on the **furthest-along** pipeline board that is neither completed

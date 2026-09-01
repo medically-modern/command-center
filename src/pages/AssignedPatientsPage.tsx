@@ -51,7 +51,12 @@ import { openFileViewer } from "@/components/shared/FileViewerModal";
 import { searchPatientsByName, type PatientRef } from "@/lib/assignedPatients/patientLookup";
 import { fmtPhone } from "@/lib/assignedPatients/format";
 import { setMessageRead, toE164, type InboundFax, type VoicemailRecord } from "@/lib/fax/ringcentralApi";
-import { applyReadOverrides, type Conversation } from "@/lib/commsHub/conversations";
+import {
+  applyReadOverrides,
+  pruneReadOverrides,
+  type Conversation,
+  type ReadOverride,
+} from "@/lib/commsHub/conversations";
 import { buildFaxDirectory, type FaxDirectoryEntry } from "@/lib/commsHub/faxDirectory";
 import { fetchFaxMatches } from "@/lib/commsHub/dossierApi";
 import { contactKey } from "@/lib/contactState/contactState";
@@ -113,9 +118,13 @@ export default function AssignedPatientsPage() {
   const [faxEntryLoading, setFaxEntryLoading] = useState(false);
   const [faxEntryError, setFaxEntryError] = useState<string | null>(null);
 
-  /** Local read/unread clicks, covering the seconds between the PUT and the
-   *  next poll. Key → true means "the rep marked it unread". */
-  const [readOverrides, setReadOverrides] = useState<Map<string, boolean>>(new Map());
+  /**
+   * Local read/unread clicks, covering the seconds between the PUT and the next
+   * poll — and NOTHING longer. Each entry records the inbound message it was a
+   * judgement about, so a newer message from the patient retires it and
+   * RingCentral's own answer takes over again (`overrideStillApplies`).
+   */
+  const [readOverrides, setReadOverrides] = useState<Map<string, ReadOverride>>(new Map());
   /** Which fax lookup is current — see `openFax`. */
   const faxRequestRef = useRef(0);
 
@@ -130,6 +139,30 @@ export default function AssignedPatientsPage() {
   const conversations = useMemo(
     () => applyReadOverrides(texts.data ?? [], readOverrides),
     [texts.data, readOverrides],
+  );
+
+  /** Set an override, dropping any that the latest poll has retired. Pruning
+   *  here rather than in an effect keeps it bounded and loop-free: it only ever
+   *  runs on a click. */
+  const setOverride = useCallback(
+    (c: Conversation, unread: boolean) =>
+      setReadOverrides((m) => {
+        const next = new Map(pruneReadOverrides(conversations, m));
+        next.set(c.key, { unread, basedOnInboundId: c.newestInboundId });
+        return next;
+      }),
+    [conversations],
+  );
+
+  const clearOverride = useCallback(
+    (key: string) =>
+      setReadOverrides((m) => {
+        if (!m.has(key)) return m;
+        const next = new Map(m);
+        next.delete(key);
+        return next;
+      }),
+    [],
   );
 
   /** The one number the dossier pane follows, whichever tab is open. */
@@ -190,39 +223,61 @@ export default function AssignedPatientsPage() {
   /** Opening a conversation marks it read — in the UI immediately, in
    *  RingCentral in the background. A failed PUT is reported but does not undo
    *  the local state: the rep HAS read it. */
-  const openConversation = useCallback((c: Conversation) => {
-    setSelectedConv(c);
-    if (!c.unreadIds.length) return;
-    setReadOverrides((m) => new Map(m).set(c.key, false));
-    void Promise.all(c.unreadIds.map((id) => setMessageRead(id, true)))
-      .then(() => reloadTexts())
-      .catch((e: unknown) =>
-        toast.error(`Couldn't mark read in RingCentral: ${e instanceof Error ? e.message : String(e)}`),
-      );
-  }, []);
+  const openConversation = useCallback(
+    (c: Conversation) => {
+      setSelectedConv(c);
+      // Reading a thread also retires a stale "mark as unread" on it, even when
+      // RingCentral has nothing to write — otherwise a conversation the rep
+      // flagged and then read stays badged with no way to clear it.
+      if (!c.unreadIds.length) {
+        clearOverride(c.key);
+        return;
+      }
+      setOverride(c, false);
+      void Promise.all(c.unreadIds.map((id) => setMessageRead(id, true)))
+        .then(() => reloadTexts())
+        .catch((e: unknown) =>
+          toast.error(`Couldn't mark read in RingCentral: ${e instanceof Error ? e.message : String(e)}`),
+        );
+    },
+    [clearOverride, setOverride],
+  );
 
-  const markUnread = useCallback((c: Conversation) => {
-    if (!c.newestInboundId) return;
-    setReadOverrides((m) => new Map(m).set(c.key, true));
-    void setMessageRead(c.newestInboundId, false)
-      .then(() => reloadTexts())
-      .catch((e: unknown) => {
-        setReadOverrides((m) => {
-          const next = new Map(m);
-          next.delete(c.key);
-          return next;
+  const markUnread = useCallback(
+    (c: Conversation) => {
+      if (!c.newestInboundId) return;
+      setOverride(c, true);
+      void setMessageRead(c.newestInboundId, false)
+        .then(() => reloadTexts())
+        .catch((e: unknown) => {
+          // A failed write must not leave the row claiming a state RingCentral
+          // does not hold — the RC desktop app would disagree with it.
+          clearOverride(c.key);
+          toast.error(`Couldn't mark unread: ${e instanceof Error ? e.message : String(e)}`);
         });
-        toast.error(`Couldn't mark unread: ${e instanceof Error ? e.message : String(e)}`);
-      });
-  }, []);
+    },
+    [clearOverride, setOverride],
+  );
 
-  const markRead = useCallback((c: Conversation) => {
-    if (!c.unreadIds.length) return;
-    setReadOverrides((m) => new Map(m).set(c.key, false));
-    void Promise.all(c.unreadIds.map((id) => setMessageRead(id, true)))
-      .then(() => reloadTexts())
-      .catch((e: unknown) => toast.error(`Couldn't mark read: ${e instanceof Error ? e.message : String(e)}`));
-  }, []);
+  const markRead = useCallback(
+    (c: Conversation) => {
+      // Nothing for RingCentral to write, but the row may be badged by our own
+      // "mark as unread" — dropping that override IS the fix, and without this
+      // branch such a row could never be cleared.
+      if (!c.unreadIds.length) {
+        clearOverride(c.key);
+        return;
+      }
+      setOverride(c, false);
+      void Promise.all(c.unreadIds.map((id) => setMessageRead(id, true)))
+        .then(() => reloadTexts())
+        .catch((e: unknown) => {
+          clearOverride(c.key);
+          toast.error(`Couldn't mark read: ${e instanceof Error ? e.message : String(e)}`);
+        });
+    },
+    [clearOverride, setOverride],
+  );
 
   /** Selecting a fax joins its number to a provider and their patients. Bound
    *  to the fax that was open when the lookup started, so clicking down the

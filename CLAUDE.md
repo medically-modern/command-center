@@ -2020,6 +2020,20 @@ access.json assignments key off, so a rename is display-only (§5.10's precedent
   say next; everything else on the pane is a lookup), then stage/next action/open-in-stage.
   A completed step links with `?completedStage=`, so reading history can never re-advance a
   finished patient (§7's review-mode gate).
+- ⚠️ **The Monday gate is `hasMondayAuth()`, never a bundled-token check.** In production the SPA
+  runs through the gateway and `VITE_MONDAY_API_TOKEN` is deliberately absent (§5.1), so a
+  `!!getToken()` gate is FALSE in exactly the deployment that matters — and it fails silently:
+  every dossier reads "not on any pipeline board" and every fax matches no provider, with nothing
+  erroring. Caught in review before it shipped; the same trap §7 records for `oversightApi.ts`.
+- ⚠️ **A NAME IS NOT AN IDENTITY** (`dossier.nameMatchAccepted` + tests). Two patients called
+  Maria Garcia is ordinary at this size, so the name pass below admits a match only when the
+  record's own phone AGREES or is BLANK. Name-only would merge two people's trails — one
+  patient's notes and stage rendered on the other's conversation, and the wrong Monday item handed
+  to `sendMessage` to attribute an outbound text to.
+- ⚠️ **A read/unread override carries the message it was a judgement about** (`ReadOverride
+  .basedOnInboundId`). Without that it is a permanent lie: a rep reads a thread, the patient texts
+  again an hour later, and the row stays looking read — gone from the very filter that exists to
+  surface it. A newer inbound message retires the override and RingCentral's answer takes over.
 - ⚠️ **`fetchDossierItems` does TWO passes and the second is not optional.** The phone pass finds
   most records; a COMPLETED record can carry a blank or differently-typed phone, and the completed
   records ARE the stage history — so a phone-only lookup draws the path with the finished stages

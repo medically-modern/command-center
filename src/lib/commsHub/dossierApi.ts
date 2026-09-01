@@ -11,11 +11,11 @@
  * lot of conversations, so each lookup is also memoised for the session: the
  * trail behind a phone number does not change while somebody reads a text.
  */
-import { MONDAY_API_URL, mondayIdentityHeaders } from "../shared/mondayEndpoint";
+import { MONDAY_API_URL, hasMondayAuth, mondayIdentityHeaders } from "../shared/mondayEndpoint";
 import { BOARDS, type BoardDef } from "../systemMgmt/mondayApi";
 import { toE164 } from "../fax/ringcentralApi";
 import { contactKey } from "../contactState/contactState";
-import { markStuck, type DossierItem } from "./dossier";
+import { markStuck, nameMatchAccepted, type DossierItem } from "./dossier";
 import type { FaxMatchRow } from "./faxDirectory";
 
 const MONDAY_API_VERSION = "2024-10";
@@ -24,8 +24,20 @@ function getToken(): string {
   return (import.meta.env.VITE_MONDAY_API_TOKEN as string | undefined) ?? "";
 }
 
+/**
+ * Can we reach Monday at all?
+ *
+ * ⚠️ **`hasMondayAuth()`, NOT a bundled-token check.** In production the SPA
+ * runs through the gateway and `VITE_MONDAY_API_TOKEN` is deliberately absent —
+ * the gateway injects the token server-side (§5.1). A `!!getToken()` gate is
+ * therefore FALSE in exactly the deployment that matters, and its failure mode
+ * is silent: every dossier renders "this number isn't on any pipeline board"
+ * and every fax matches no provider, with nothing erroring. `getToken()` is
+ * still sent as the Authorization header below, empty or not, because that is
+ * what the gateway expects and ignores.
+ */
 export function dossierConfigured(): boolean {
-  return !!getToken();
+  return hasMondayAuth();
 }
 
 async function gql<T>(query: string, variables: Record<string, unknown> = {}): Promise<T> {
@@ -167,12 +179,14 @@ export async function fetchDossierItems(phone: string): Promise<DossierItem[]> {
     .filter((i) => i.phone === want);
 
   // The name to search for comes from the phone pass, so a wrong number can
-  // never pull in a stranger who happens to share a name.
+  // never pull in a stranger who happens to share a name with somebody.
   const name = byPhone.find((i) => i.name.trim())?.name.trim() ?? "";
   const byName = name
     ? (await Promise.all(BOARDS.map(async (b) => (await boardSearch(b, "name", name)).map((it) => toDossierItem(b, it)))))
         .flat()
         .filter((i) => i.name.trim().toLowerCase() === name.toLowerCase())
+        // ⚠️ A name is not an identity — see `nameMatchAccepted`.
+        .filter((i) => nameMatchAccepted(i, want))
     : [];
 
   const seen = new Set<string>();
