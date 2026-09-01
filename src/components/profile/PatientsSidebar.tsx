@@ -24,6 +24,7 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
+import { ContactStateMarks } from "@/components/shared/ContactStateMarks";
 
 /** Convert YYYY-MM-DD → MM/DD/YYYY */
 function fmtDate(iso: string): string {
@@ -225,6 +226,7 @@ export function PatientsSidebar({ patients, selectedId, onSelect, loading, error
                               )}
                             </div>
                           )}
+                          <ContactStateMarks phone={p.ptPhone} />
                         </SidebarMenuButton>
                       </SidebarMenuItem>
                     ))}
@@ -272,6 +274,7 @@ export function PatientsSidebar({ patients, selectedId, onSelect, loading, error
                             Until {p.followUpDate ? fmtDate(p.followUpDate) : "—"}
                           </p>
                         </div>
+                        <ContactStateMarks phone={p.ptPhone} />
                       </SidebarMenuButton>
                       <ClearFollowUpButton patientId={p.id} patientName={p.name} onSuccess={onRefresh} />
                     </div>

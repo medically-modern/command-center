@@ -18,6 +18,7 @@ import { cn } from "@/lib/utils";
 import { useSearchParams } from "react-router-dom";
 import { viewFilterFromParams } from "@/lib/roleView";
 import { sidebarSections } from "@/lib/finalConfirm/sidebarList";
+import { ContactStateMarks } from "@/components/shared/ContactStateMarks";
 
 interface Props {
   patients: Patient[];
@@ -120,6 +121,7 @@ export function PatientsSidebar({ patients, selectedId, onSelect, loading, error
                         </p>
                       </div>
                     )}
+                    <ContactStateMarks phone={p.phone} />
                   </SidebarMenuButton>
                 </SidebarMenuItem>
               ))}
@@ -162,6 +164,7 @@ export function PatientsSidebar({ patients, selectedId, onSelect, loading, error
                           </p>
                         </div>
                       )}
+                      <ContactStateMarks phone={p.phone} />
                     </SidebarMenuButton>
                   </SidebarMenuItem>
                 ))}

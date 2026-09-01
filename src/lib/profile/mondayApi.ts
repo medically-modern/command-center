@@ -319,6 +319,11 @@ export const LIST_COLUMN_IDS: string[] = [
   COL.followUpDate, COL.dateOfIntake,
   // The page's manager-view filter (?origin=manager-intervention / final-decisions)
   COL.intakeEscalation,
+  // The manager view's contact marks (ContactStateMarks) key on the patient's
+  // number. ⚠️ Without it the row reads "" and every patient looks like nobody
+  // has ever contacted them — no error, just a permanently empty corner, which
+  // is exactly the failure listColumns.test.ts exists to catch.
+  COL.ptPhone,
 ];
 
 export interface MondayColumnValue {

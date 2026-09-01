@@ -35,6 +35,7 @@ import { cn } from "@/lib/utils";
 import { apptSidebarSections } from "@/lib/masheke/sidebarList";
 import { etToday } from "@/lib/masheke/etDate";
 import { apptAttemptCount } from "@/lib/masheke/apptOutreach";
+import { ContactStateMarks } from "@/components/shared/ContactStateMarks";
 
 interface Props {
   patients: Patient[];
@@ -96,6 +97,7 @@ function ApptRow({
             </p>
           </div>
         )}
+        <ContactStateMarks phone={patient.phone} />
       </SidebarMenuButton>
     </SidebarMenuItem>
   );

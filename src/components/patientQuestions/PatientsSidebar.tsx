@@ -19,6 +19,7 @@ import { Button } from "@/components/ui/button";
 import { Loader2, RefreshCw, MessageCircle, Search, X, AlertCircle } from "lucide-react";
 import type { PatientQuestion } from "@/lib/patientQuestions/types";
 import { cn } from "@/lib/utils";
+import { ContactStateMarks } from "@/components/shared/ContactStateMarks";
 
 interface Props {
   patients: PatientQuestion[];
@@ -189,6 +190,7 @@ export function PatientsSidebar({
                         </p>
                       </div>
                     )}
+                    <ContactStateMarks phone={p.phone} />
                   </SidebarMenuButton>
                 </SidebarMenuItem>
               ))}

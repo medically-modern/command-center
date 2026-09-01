@@ -512,3 +512,121 @@ export async function fetchFaxBlobUrl(attachmentUri: string): Promise<string> {
   const blob = await res.blob();
   return URL.createObjectURL(blob);
 }
+
+/* ────────────────────────────────────────────────────────────────────────────
+ * Account-wide activity, for the manager sidebars' contact marks.
+ *
+ * ⚠️ **These are the ONLY reads behind those marks, and that is the design.**
+ * The marks render on every row of every patient sidebar; a lookup per patient
+ * is precisely INCIDENT_2026-08-20_RINGCENTRAL.md. Callers fold one window of
+ * activity into a number→state map once (`buildContactStates`) and every row
+ * looks itself up locally — the same shape as `fetchRecentOutboundFaxes` and
+ * the "Fax Bad" badge.
+ * ──────────────────────────────────────────────────────────────────────────── */
+
+/** How many pages of each read to take before giving up. Bounded on purpose:
+ *  a window that keeps growing is a window that eventually costs a rep their
+ *  RingCentral account. */
+const ACTIVITY_MAX_PAGES = 6;
+
+async function messageStorePage(
+  messageType: string,
+  dateFrom: string,
+  perPage: number,
+  page: number,
+): Promise<Array<Record<string, unknown>>> {
+  const path =
+    `/restapi/v1.0/account/~/extension/~/message-store` +
+    `?messageType=${encodeURIComponent(messageType)}&dateFrom=${encodeURIComponent(dateFrom)}` +
+    `&perPage=${perPage}&page=${page}`;
+  const res = await rcFetch(path);
+  if (!res.ok) throw new Error(`RingCentral ${messageType} activity failed (${res.status})`);
+  const json = (await res.json()) as { records?: Array<Record<string, unknown>> };
+  return json.records ?? [];
+}
+
+async function messageStoreAll(
+  messageType: string,
+  days: number,
+  perPage: number,
+): Promise<Array<Record<string, unknown>>> {
+  const dateFrom = new Date(Date.now() - days * 24 * 60 * 60_000).toISOString();
+  const out: Array<Record<string, unknown>> = [];
+  for (let page = 1; page <= ACTIVITY_MAX_PAGES; page++) {
+    const records = await messageStorePage(messageType, dateFrom, perPage, page);
+    out.push(...records);
+    if (records.length < perPage) break; // a short page is the last page
+  }
+  return out;
+}
+
+/**
+ * Every text on the MM line in the last `days` days, both directions.
+ *
+ * ⚠️ **Two requests, not one, and never the multi-value filter.** The
+ * documented `messageType=SMS&messageType=MMS` syntax comes back **400 on this
+ * account** — the same quirk the gateway's `/messaging/conversation` route
+ * documents, where it broke the whole thread load. Omitting `messageType`
+ * altogether works but drags in every Fax and VoiceMail row on a line that
+ * handles a great many faxes, so the window is fetched one single-valued type
+ * at a time instead.
+ *
+ * ⚠️ **MMS is best-effort and its failure is swallowed.** A patient who
+ * answers with a photo sends an MMS, so dropping the type would report them as
+ * never having replied — but if that read fails, degrading to "we missed one
+ * photo reply" is strictly better than the whole column going blank.
+ */
+export async function fetchRecentMessageActivity({
+  days = 7,
+  perPage = 250,
+}: { days?: number; perPage?: number } = {}): Promise<Array<Record<string, unknown>>> {
+  const sms = await messageStoreAll("SMS", days, perPage);
+  let mms: Array<Record<string, unknown>> = [];
+  try {
+    mms = await messageStoreAll("MMS", days, perPage);
+  } catch {
+    /* see the header — a missing MMS page must not blank the whole column */
+  }
+  return [...sms, ...mms];
+}
+
+/**
+ * Every voice call on the MM line in the last `days` days, both directions.
+ *
+ * `view=Detailed` is NOT optional — it is what returns `legs`, and the legs are
+ * the only way to tell that a claimed (forwarded) call was answered rather than
+ * missed (CLAUDE.md §5.13). Without it a call a rep actually took would show a
+ * rose "they called and nobody picked up" mark.
+ *
+ * No `phoneNumber` filter: this read is deliberately account-wide, because the
+ * alternative is one request per patient on screen.
+ */
+export async function fetchRecentCallActivity({
+  days = 7,
+  perPage = 100,
+}: { days?: number; perPage?: number } = {}): Promise<RcCallLogRecord[]> {
+  const dateFrom = new Date(Date.now() - days * 24 * 60 * 60_000).toISOString();
+  const out: RcCallLogRecord[] = [];
+  for (let page = 1; page <= ACTIVITY_MAX_PAGES; page++) {
+    const path =
+      `/restapi/v1.0/account/~/extension/~/call-log` +
+      `?type=Voice&view=Detailed&dateFrom=${encodeURIComponent(dateFrom)}` +
+      `&perPage=${perPage}&page=${page}`;
+    const res = await rcFetch(path);
+    if (!res.ok) {
+      // Same diagnosis as fetchPatientCallHistory: a 403 here is nearly always
+      // the app record missing ReadCallLog, not the request.
+      if (res.status === 403) {
+        throw new Error(
+          "RingCentral rejected the call-log read (403). The app record is probably missing the ReadCallLog permission.",
+        );
+      }
+      throw new Error(`RingCentral call activity failed (${res.status})`);
+    }
+    const json = (await res.json()) as { records?: RcCallLogRecord[] };
+    const records = json.records ?? [];
+    out.push(...records);
+    if (records.length < perPage) break;
+  }
+  return out;
+}

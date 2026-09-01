@@ -22,6 +22,7 @@ import { useSearchParams } from "react-router-dom";
 import { viewFilterFromParams } from "@/lib/roleView";
 import { sidebarSections } from "@/lib/masheke/sidebarList";
 import { etToday } from "@/lib/masheke/etDate";
+import { ContactStateMarks } from "@/components/shared/ContactStateMarks";
 
 /** Convert YYYY-MM-DD → MM/DD/YYYY */
 function fmtDate(iso: string): string {
@@ -76,6 +77,7 @@ function PatientRow({
             </p>
           </div>
         )}
+        <ContactStateMarks phone={patient.phone} />
       </SidebarMenuButton>
     </SidebarMenuItem>
   );
@@ -273,6 +275,7 @@ export function PatientsSidebar({ patients, selectedId, onSelect, loading, error
                           {p.mnAttempts ? ` · ${p.mnAttempts}` : ""}
                         </p>
                       </div>
+                      <ContactStateMarks phone={p.phone} />
                     </SidebarMenuButton>
                   </SidebarMenuItem>
                 ))}
@@ -329,6 +332,7 @@ export function PatientsSidebar({ patients, selectedId, onSelect, loading, error
                               <p className="text-sm font-medium truncate">{p.name}</p>
                               <p className={cn("text-[11px] truncate", tagColor)}>{tag}</p>
                             </div>
+                            <ContactStateMarks phone={p.phone} />
                           </SidebarMenuButton>
                           {action(p.id, p.name)}
                         </div>

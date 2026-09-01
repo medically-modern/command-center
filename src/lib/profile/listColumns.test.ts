@@ -28,6 +28,7 @@ const SLIM_FIELD_COLUMNS: Record<string, string> = {
   followUpDate: COL.followUpDate,
   dateOfIntake: COL.dateOfIntake,
   intakeEscalation: COL.intakeEscalation,
+  ptPhone: COL.ptPhone,
 };
 
 /** Present on every item regardless of the column set — they are not columns. */
