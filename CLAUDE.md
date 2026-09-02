@@ -2066,6 +2066,15 @@ access.json assignments key off, so a rename is display-only (§5.10's precedent
   resolves to one of them (same semantics as `findPatientByPhone`); the dossier pane is where a rep
   confirms who they are talking to. The SELECTED conversation still gets its real record there:
   one lookup, on click, memoised.
+- ⚠️ **Selecting another conversation BLANKS the pane; it never holds the last patient while the
+  next loads** (Josh, 2026-09-02). `useDossier` clears the dossier on a number change and
+  `PatientDossierPanel` keys its spinner on `loading` alone, not `loading && !dossier`. This is a
+  correctness rule, not a cosmetic one: the pane's note composer writes to `dossier.active.itemId`
+  and the page derives `threadPatient` — which carries `mondayItemId` onto an outbound text — from
+  the same object, so a rep typing during that window filed a note or a text against the patient
+  they had just navigated away from. A number already in the session cache renders synchronously
+  via `peekDossierItems`, so clicking between two threads doesn't flicker a spinner over data we
+  already hold. Pinned by `useDossier.test.tsx`.
 - **The dossier pane is the point of the whole page.** `PatientDossierPanel` renders, in this
   order: the **path** (which stages they have completed profiles in, in tracker order — §6), the
   **notes** (Josh's explicit ask: the running case history is what tells a rep what to say next;

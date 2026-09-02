@@ -204,6 +204,21 @@ const dossierCache = new Map<string, DossierItem[]>();
  * the only substring present in every rendering (`patientLookup` documents the
  * same trick).
  */
+/**
+ * The trail for this number IF it is already memoised — no network, no promise.
+ *
+ * Lets `useDossier` render a previously-opened patient with no loading flash,
+ * which matters because the pane must now BLANK while it loads (a stale profile
+ * beside a new conversation is what this exists to prevent). Without the sync
+ * peek, clicking back and forth between two threads flickers a spinner over
+ * data we already hold.
+ */
+export function peekDossierItems(phone: string): DossierItem[] | null {
+  const want = toE164(phone);
+  if (!want) return null;
+  return dossierCache.get(want) ?? null;
+}
+
 export async function fetchDossierItems(phone: string): Promise<DossierItem[]> {
   const want = toE164(phone);
   if (!want || !dossierConfigured()) return [];

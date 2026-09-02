@@ -310,7 +310,13 @@ export function PatientDossierPanel({
     );
   }
 
-  if (loading && !dossier) {
+  // ⚠️ `loading` alone, NOT `loading && !dossier`. Keeping the previous
+  // patient's profile up while the next one loads is what Josh reported on
+  // 2026-09-02, and it is not just stale UI: the composer below writes to
+  // `active.itemId` and the page's `threadPatient` carries `mondayItemId` onto
+  // an outbound text, so the window was long enough to file a note or a text
+  // against the wrong patient. `useDossier` clears the dossier to match.
+  if (loading) {
     return (
       <div className="flex flex-1 items-center justify-center gap-2 p-6 text-sm text-muted-foreground">
         <Loader2 className="h-4 w-4 animate-spin" /> Looking them up…
