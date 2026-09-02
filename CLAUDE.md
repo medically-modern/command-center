@@ -2052,11 +2052,15 @@ access.json assignments key off, so a rename is display-only (§5.10's precedent
   different value shapes** — `{"text": …}` vs a bare JSON string. Monday refuses the wrong one
   outright with *"invalid value, please check our API documentation for the correct data structure
   for this column"* (200 + a GraphQL `errors[]`), so the note is simply not written. The composer
-  shipped 2026-09-01 assuming long_text and therefore failed on **every Profile Send Off record** —
-  `text_mm389fs`, the odd one out, and the top of the funnel, i.e. exactly who a rep is on the
-  phone with here. Every other board worked, so it read as "notes are broken for these patients"
-  rather than as a type error; it surfaced as the "invalid value" spike the gateway error watch
-  escalated on 2026-09-02. `profile/unverifiedWrite.appendIntakeNote` already carried a comment
+  shipped 2026-09-01 assuming long_text, so it would have failed on **every Profile Send Off
+  record** — `text_mm389fs`, the odd one out, and the top of the funnel, i.e. exactly who a rep is
+  on the phone with here. ⚠️ Found by code audit on 2026-09-02, **never actually hit**: the audit
+  log shows 69 writes to that column that day, all successful, all from the intake page's own
+  `appendIntakeNote` (which writes it correctly). Nobody had yet used the Hub composer on a
+  Profile Send Off patient; the first one would have failed. It is deliberately NOT the cause of
+  that day's "invalid value" alert — see §10 for what was. Every other board works, so the failure
+  would have read as "notes are broken for these patients" rather than as a type error.
+  `profile/unverifiedWrite.appendIntakeNote` already carried a comment
   warning about this exact crossing — which could not help a second consumer in another file, so
   the type is now **declared** (`BoardDef.notesColType`), carried on the record
   (`DossierItem.notesColType`), and pinned by `dossierNotes.test.ts` in both directions (every
@@ -2760,6 +2764,25 @@ these services; when their math changes, `oopEstimator.ts` must be updated to ma
   and tells the rep, so the patient can no longer be dragged backwards silently — but the button is
   still offered on a finished patient. Fixing it properly means wiring the completed-stage gate on
   that page, the same way the other four already do.
+- **A Monday `location` column REJECTS a value with no `lat`/`lng`** — and an agent doing bulk
+  work is the one writer that reaches Monday without the app's helpers. On 2026-09-02 a Claude
+  Code session backfilling **Clinic Address `location_mm1xjnfv`** on the Welcome Call board sent
+  `{"address": "…"}` alone for four minutes: **73 writes, 71 distinct clinic addresses, every one
+  refused** with `ColumnValueException` — *"invalid value, please check our API documentation for
+  the correct data structure for this column"* — at HTTP **200**, so nothing threw. That is the
+  whole of the alert the gateway's failure watch raised that day. The run then switched to
+  `{"lat":"0","lng":"0","address":"…"}`, which is exactly what every module's own `writeLocation`
+  sends (*"Monday requires lat/lng; if we don't have coordinates yet we pass 0/0 — the address
+  text still lands"*), and all 71 landed; **nothing was lost and no rep was affected.**
+  ⚠️ Two lessons, both cheap: **bulk column writes belong in the module's `write*` helper**, which
+  already knows every shape — hand-rolling a mutation is opting out of that knowledge; and a
+  200-with-`errors[]` is the app's most common silent failure (§5.2, §9), so a bulk job must read
+  `errors[]` and stop, or it will report a clean run having written nothing.
+  ⚠️ **Diagnose this class from `/audit.json?key=…&failed=1&since=1`, never from `/audit/errors.json`.**
+  The public summary groups by a REDACTED message, which is identical for every column type and
+  every writer — it cannot tell you the board, the column or the actor, and the message alone
+  invites you to blame the nearest recent change. `error_data` in the failed rows names
+  `column_id`, `column_name`, `column_type` and the exact value sent.
 - **CI's typecheck is a NO-OP.** `deploy.yml` runs `npx tsc --noEmit`, but the root tsconfig
   is solution-style (`"files": []` + project references), which `--noEmit` does not follow —
   it checks zero files and always exits 0. 23 real TS errors sit in the tree. Use `tsc -b`.
@@ -2808,7 +2831,7 @@ these services; when their math changes, `oopEstimator.ts` must be updated to ma
 | An inbound fax doesn't match a doctor / their patients are missing | §5.28 — `lib/commsHub/faxDirectory.ts`. The Doctor Fax column is an EMAIL column holding `<digits>@rcfax.com`, so the join strips the address first |
 | The profile widget shows the wrong stage, or none | §5.28 — `lib/commsHub/dossier.ts` (`pickActive` = furthest-along open board) and `pipelineOrder.ts` (the tracker order, which §6 now follows) |
 | A conversation won't stay read / unread | §5.28 — read state is RingCentral's `readStatus` on the INBOUND messages, written with `setMessageRead`; the local override only covers the gap before the next poll |
-| Monday says "invalid value … data structure for this column" | The value shape doesn't match the column TYPE. Check the column's real type first (`boards { columns { id type } }`), then the writer: `long_text` takes `{"text": …}`, `text` a bare JSON string, and the notes columns are BOTH depending on the board (§5.28, `BoardDef.notesColType`). Find the offending write in the gateway audit log — `/audit.json?key=…&failed=1&since=1` shows the column and the value; `/audit/errors.json` only counts shapes |
+| Monday says "invalid value … data structure for this column" | **Start with `/audit.json?key=…&failed=1&since=1`** — its `error_data` names the `column_id`, `column_name`, `column_type` and the exact value sent. `/audit/errors.json` only counts redacted shapes and looks the same for every column and every writer, so it cannot tell you which (§10). Then match the value to the type: `location` needs `lat`+`lng` (§10), `long_text` takes `{"text": …}`, `text` a bare JSON string — and the notes columns are BOTH depending on the board (§5.28, `BoardDef.notesColType`) |
 | Manager pipeline / oversight charts | `components/oversight/OversightTab.tsx` + `lib/oversight/oversightApi.ts` (+ `priority.ts`); reached via `/system-mgmt?tab=oversight` |
 
 ---

@@ -94,9 +94,10 @@ export interface BoardDef {
    * as "notes are broken for these patients" rather than as a type error.
    *
    * That is not hypothetical: the Communications Hub's note composer shipped
-   * assuming long_text and failed on every Profile Send Off record until
-   * 2026-09-02 (`text_mm389fs`, "Profile Send Off Notes", is the one `text`
-   * column in this table). `profile/unverifiedWrite.appendIntakeNote` already
+   * assuming long_text, so until 2026-09-02 it would have failed on every
+   * Profile Send Off record (`text_mm389fs`, "Profile Send Off Notes", is the
+   * one `text` column in this table). It was caught by audit before any rep hit
+   * it. `profile/unverifiedWrite.appendIntakeNote` already
    * carried a comment warning about exactly this crossing; the Hub is a second
    * consumer that could not see it. Declaring the type is what stops a third.
    *

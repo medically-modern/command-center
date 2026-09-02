@@ -14,9 +14,14 @@
  * data structure for this column"* — so the note is not written, the rep gets a
  * toast full of protocol text, and it fails for Profile Send Off patients only:
  * the top of the funnel, i.e. the people a rep is most often on the phone with
- * in this hub. It read as "notes are broken for these patients", not as a type
- * error, and it accounted for the "invalid value" failures the gateway's error
- * watch escalated on 2026-09-02.
+ * in this hub. It would have read as "notes are broken for these patients", not
+ * as a type error.
+ *
+ * ⚠️ Found by audit, not by a failure: the gateway log shows this composer was
+ * never used on a Profile Send Off record before it was fixed, so no rep hit
+ * it. It is NOT the cause of the "invalid value" alert of the same day — that
+ * was a bulk Clinic Address backfill sending a `location` value with no
+ * lat/lng. Two different columns, two different writers, one error message.
  *
  * `profile/unverifiedWrite.appendIntakeNote` already carried a comment warning
  * about this exact crossing. A comment in one file cannot help a second
