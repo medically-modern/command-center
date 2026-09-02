@@ -729,6 +729,26 @@ export function runFinalChecks(p: Patient): CheckFinding[] {
   }
 
   // C19 — MR expiry.
+  //
+  // ⚠️ A BLANK date is reported too (Brandon, 2026-09-02). The date branches
+  // below are the only thing that ever spoke about medical records, and they
+  // need a parsable date to say anything — so the profile with NO expiry on
+  // file, which is the one nobody has checked, was the single case the pack
+  // stayed silent on. Amber, not red: a missing input, matching C22's blank
+  // DOB, rather than positive evidence the profile is wrong.
+  //
+  // Keyed on `blank`, deliberately not on `!mr`. A value that fails to parse
+  // (a rep typing "9/1/26" into what is a free-text field) is NOT blank, and
+  // reporting it as blank would describe the row wrongly. That case is still
+  // silent — known, and not what was asked for here.
+  if (blank(p.mrExpiryDate)) {
+    add({
+      id: "C19_MR_MISSING", severity: "amber", field: "mrExpiryDate",
+      title: "MR Expiry Date is blank",
+      detail: "No medical-records expiry on file — nothing here can say whether the records backing this order are still current.",
+    });
+  }
+
   const mr = parseYmd(p.mrExpiryDate);
   if (mr) {
     const days = daysFromToday(mr);

@@ -152,6 +152,32 @@ describe("checkPack — auth & demographics", () => {
 });
 
 /**
+ * C19 — a blank MR Expiry Date is reported (Brandon, 2026-09-02).
+ *
+ * The date branches need a parsable date to say anything, so the profile with
+ * nothing on file — the one nobody has checked — was the case the pack was
+ * silent on. Amber: a missing input, like C22's blank DOB.
+ */
+describe("checkPack — C19 blank MR Expiry", () => {
+  const MISSING = "C19_MR_MISSING";
+
+  it("fires amber, anchored to the field, when blank", () => {
+    const f = runFinalChecks({ ...basePatient(), mrExpiryDate: "" }).find((x) => x.id === MISSING);
+    expect(f?.severity).toBe("amber");
+    expect(f?.field).toBe("mrExpiryDate");
+  });
+
+  // A date on file answers the question, whichever side of today it falls.
+  scenario("a future date is silent", { mrExpiryDate: "2027-06-01" }, [], [MISSING]);
+  scenario("an expired date reports expiry, not absence", { mrExpiryDate: "2020-01-01" }, ["C19_MR_EXPIRED"], [MISSING]);
+
+  // ⚠️ Keyed on blank, never on "didn't parse". A rep typing a US-format date
+  // into what is a free-text field has entered something — calling that blank
+  // would describe the row wrongly. It stays silent, which is the known gap.
+  scenario("an unparsable value is not reported as blank", { mrExpiryDate: "9/1/26" }, [], [MISSING, "C19_MR_EXPIRED", "C19_MR_EXPIRING"]);
+});
+
+/**
  * C18 expiry vs ePACES Medicaid (Brandon, 2026-09-02).
  *
  * On Medicaid the recorded auth end date lapses on its own schedule and is not

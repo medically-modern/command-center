@@ -22,6 +22,17 @@ import {
   formatDateMDY,
 } from "@/lib/finalConfirm/workflow";
 import type { CheckFinding, CheckSeverity } from "@/lib/finalConfirm/checkPack";
+// ⚠️ Cross-slice import, deliberate. The CMS state→MAC map is itself already a
+// hand-synced copy of claims-ui-tool's (see that module's header), so a third
+// copy in the finalConfirm slice is the one thing that must not happen —
+// importing the live one is cheaper to keep honest than the §4 slice rule is
+// to obey here. Delete this import with the pill.
+import {
+  isMedicarePrimary,
+  medicareJurisdictionForState,
+  stateFromAddress,
+  MAC_CONTRACTORS,
+} from "@/lib/samantha/medicareJurisdiction";
 import { hasToken, fetchStatusOptions, BOARD_ID, COL } from "@/lib/finalConfirm/mondayApi";
 import { useStatusOptions } from "@/hooks/useStatusOptions";
 import { toast } from "sonner";
@@ -105,6 +116,20 @@ function severityByField(findings: CheckFinding[]): Map<keyof Patient, CheckSeve
   return map;
 }
 
+/**
+ * `emptyTone` picks what a BLANK value looks like (Brandon, 2026-09-02).
+ *
+ * The field had two states — red, or nothing (`suppressWarning`) — and the
+ * benefits row wanted neither: eligibility figures are frequently blank
+ * without the profile being wrong, so red overstated it, while suppressing
+ * left the row indistinguishable from a field nobody needs to fill. Amber is
+ * the pack's own word for "a missing input" (§5.17), so the page borrows it.
+ *
+ * `suppressWarning` still wins over `emptyTone` — it means "this blank is
+ * expected", which is a stronger statement than which colour to paint.
+ */
+type EmptyTone = "red" | "amber";
+
 function EditableTextField({
   icon,
   label,
@@ -113,6 +138,7 @@ function EditableTextField({
   placeholder,
   onChange,
   suppressWarning,
+  emptyTone = "red",
 }: {
   icon: React.ReactNode;
   label: string;
@@ -121,19 +147,35 @@ function EditableTextField({
   placeholder?: string;
   onChange: (v: string) => void;
   suppressWarning?: boolean;
+  emptyTone?: EmptyTone;
 }) {
   const displayValue = editedValue !== undefined && editedValue !== null ? editedValue : value;
   const isEmpty = !displayValue;
   const showWarning = isEmpty && !suppressWarning;
+  const amber = showWarning && emptyTone === "amber";
+  const red = showWarning && emptyTone === "red";
   return (
-    <div className={cn("flex items-start gap-2 min-w-0 rounded-lg p-1.5 -m-1.5 transition-colors", showWarning && "bg-red-50 dark:bg-red-950/20 ring-1 ring-red-200 dark:ring-red-800/40")}>
-      <div className={cn("h-8 w-8 rounded-md flex items-center justify-center shrink-0", showWarning ? "bg-red-100 dark:bg-red-900/30 text-red-500" : "bg-muted text-muted-foreground")}>
+    <div className={cn(
+      "flex items-start gap-2 min-w-0 rounded-lg p-1.5 -m-1.5 transition-colors",
+      red && "bg-red-50 dark:bg-red-950/20 ring-1 ring-red-200 dark:ring-red-800/40",
+      amber && "bg-amber-50 dark:bg-amber-950/20 ring-1 ring-amber-200 dark:ring-amber-800/40",
+    )}>
+      <div className={cn(
+        "h-8 w-8 rounded-md flex items-center justify-center shrink-0",
+        red ? "bg-red-100 dark:bg-red-900/30 text-red-500"
+          : amber ? "bg-amber-100 dark:bg-amber-900/30 text-amber-600"
+          : "bg-muted text-muted-foreground",
+      )}>
         {icon}
       </div>
       <div className="min-w-0 flex-1">
         <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1">{label}</p>
         <Input
-          className={cn("h-8 text-sm", showWarning && "border-red-300 dark:border-red-700")}
+          className={cn(
+            "h-8 text-sm",
+            red && "border-red-300 dark:border-red-700",
+            amber && "border-amber-300 dark:border-amber-700",
+          )}
           value={displayValue}
           onChange={(e) => onChange(e.target.value)}
           placeholder={placeholder ?? `Enter ${label.toLowerCase()}`}
@@ -151,6 +193,7 @@ function SelectField({
   onChange,
   suppressWarning,
   disabled,
+  badge,
 }: {
   label: string;
   icon?: React.ReactNode;
@@ -159,12 +202,17 @@ function SelectField({
   onChange: (index: number, label: string) => void;
   suppressWarning?: boolean;
   disabled?: boolean;
+  /** Optional chip rendered beside the label. Only the Medicare MAC
+   *  jurisdiction pill uses this today — see its note in the Insurance card. */
+  badge?: React.ReactNode;
 }) {
   const selectedOpt = options.find((o) => o.label === value);
   const isEmpty = !value && !suppressWarning && !disabled;
   const selectContent = (
     <div className={cn(icon ? "min-w-0 flex-1" : "", disabled && "opacity-40 pointer-events-none")}>
-      <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1">{label}</p>
+      <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1 flex items-center gap-1.5 flex-wrap">
+        {label}{badge}
+      </p>
       <Select
         value={selectedOpt ? String(selectedOpt.index) : ""}
         onValueChange={(v) => {
@@ -562,6 +610,38 @@ function DiagnosisCombobox({
 
 export function PatientInfoCard({ patient, onFieldChange, findings = [] }: Props) {
   const fieldSeverity = useMemo(() => severityByField(findings), [findings]);
+
+  /**
+   * Medicare A&B MAC jurisdiction pill, beside Primary Insurance
+   * (Brandon, 2026-09-02 — flagged as temporary; delete this block, the
+   * `badge` prop and the `medicareJurisdiction` import together).
+   *
+   * Display only. Writes nothing, gates nothing, and is unrelated to the
+   * `stediMedicareJurisdiction` column, which is separate Stedi output.
+   *
+   * ⚠️ Gated on `isMedicarePrimary`, NOT the `isMedicareABOnly` that the
+   * Benefits panel's own pill uses — so this one also shows for a Medicare
+   * A&B patient WHO HAS a secondary. That is deliberate and it is the ask
+   * ("if it says medicare A&B"): the MAC is decided by Medicare being the
+   * primary payer, and a supplement sitting behind it does not move the
+   * claim to another jurisdiction. Benefits is stricter because its pill is
+   * paired with a no-secondary hazard reminder. Don't "align" them without
+   * checking which question each is answering.
+   *
+   * Address, not the payer label, is the input — and it is the EDITED
+   * address when the rep has changed one, matching what the check pack
+   * resolves C1/C23 against, so the pill can't disagree with the POS
+   * warning sitting a card above it.
+   */
+  const macPill = useMemo(() => {
+    if (!isMedicarePrimary(patient.primaryInsurance)) return null;
+    const state = stateFromAddress(patient.addressEdited ?? patient.address ?? "");
+    const jurisdiction = medicareJurisdictionForState(state);
+    // No pill rather than a guess when the address has no usable state — an
+    // unmapped territory, or an address that hasn't been filled in yet.
+    if (!jurisdiction) return null;
+    return { jurisdiction, state, contractor: MAC_CONTRACTORS[jurisdiction] };
+  }, [patient.primaryInsurance, patient.addressEdited, patient.address]);
   // Infusion-set options are read from the LIVE board, never a hardcoded table.
   // Final Confirm and Welcome Call write the SAME two columns, and their
   // hardcoded tables had already drifted apart from each other ("6mm" here vs
@@ -795,6 +875,12 @@ export function PatientInfoCard({ patient, onFieldChange, findings = [] }: Props
             contradicts the rule, C23_POS_STALE says so in the panel and the
             send dialog, and the override lands in the audit note. Sits beside
             Address because address state is the rule's sole driver. */}
+        {/* ⚠️ A blank POS reads GRAY, not red (Brandon, 2026-09-02). It is
+            computed and written at Welcome Call, not typed here, so an empty
+            one is a stage that has not run rather than a rep who skipped a
+            field — and C23 still speaks up in the panel when the value that
+            IS there contradicts the address rule. `suppressWarning` only
+            removes the ring; it takes nothing away from the check pack. */}
         <SelectField
           label="POS (Place of Service)"
           icon={<MapPin className="h-4 w-4" />}
@@ -804,6 +890,7 @@ export function PatientInfoCard({ patient, onFieldChange, findings = [] }: Props
             onFieldChange("posIndex", index);
             onFieldChange("pos", label);
           }}
+          suppressWarning
         />
       </Card>
 
@@ -823,6 +910,14 @@ export function PatientInfoCard({ patient, onFieldChange, findings = [] }: Props
               const opt = PRIMARY_INSURANCE_OPTIONS.find((o) => o.index === index);
               if (opt) onFieldChange("primaryInsurance", opt.label);
             }}
+            badge={macPill && (
+              <span
+                title={`Medicare A&B MAC jurisdiction for ${macPill.state} — ${macPill.contractor}. Fee schedules and portals differ per jurisdiction.`}
+                className="inline-flex items-center whitespace-nowrap rounded-full px-2 py-0.5 font-mono text-[10px] font-bold tracking-wider cursor-help bg-emerald-50 text-emerald-800 ring-1 ring-inset ring-emerald-200 dark:bg-emerald-950/30 dark:text-emerald-300 dark:ring-emerald-800/40"
+              >
+                JUR {macPill.jurisdiction} · {macPill.state}
+              </span>
+            )}
           />
           <EditableTextField
             icon={<IdCard className="h-4 w-4" />}
@@ -863,37 +958,49 @@ export function PatientInfoCard({ patient, onFieldChange, findings = [] }: Props
           </div>
         )}
         <div className="h-px bg-border" />
+        {/* ⚠️ All five eligibility figures are AMBER when blank, never red and
+            never silent (Brandon, 2026-09-02). They came from Stedi at Profile
+            Send Off and are routinely blank for reasons that say nothing about
+            this profile — a payer that returns no cost-sharing, or a plan that
+            has none — so red overstated it. Co-Ins % had the opposite problem:
+            it carried `suppressWarning`, so it was the one figure of the five
+            that looked deliberately blank. One tone across the row, because
+            the rep reads them as one answer. */}
         <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">
           <EditableTextField
             icon={<Activity className="h-4 w-4" />}
             label="Deductible"
             value={patient.deductible}
             onChange={(v) => onFieldChange("deductible", v)}
+            emptyTone="amber"
           />
           <EditableTextField
             icon={<Activity className="h-4 w-4" />}
             label="Ded. Remaining"
             value={patient.deductibleRemaining}
             onChange={(v) => onFieldChange("deductibleRemaining", v)}
+            emptyTone="amber"
           />
           <EditableTextField
             icon={<Activity className="h-4 w-4" />}
             label="Co-Ins %"
             value={patient.coInsurance}
             onChange={(v) => onFieldChange("coInsurance", v)}
-            suppressWarning
+            emptyTone="amber"
           />
           <EditableTextField
             icon={<Activity className="h-4 w-4" />}
             label="OOP Max"
             value={patient.oopMax}
             onChange={(v) => onFieldChange("oopMax", v)}
+            emptyTone="amber"
           />
           <EditableTextField
             icon={<Activity className="h-4 w-4" />}
             label="OOP Remaining"
             value={patient.oopMaxRemaining}
             onChange={(v) => onFieldChange("oopMaxRemaining", v)}
+            emptyTone="amber"
           />
         </div>
         {patient.referralSource === "CareCentrix" && (
@@ -1155,11 +1262,13 @@ export function PatientInfoCard({ patient, onFieldChange, findings = [] }: Props
                 placeholder="0"
                 disabled={!canSellPump}
               />
-              {!canSellPump && (
-                <p className="mt-1 text-[11px] font-medium text-amber-700 dark:text-amber-300">
-                  Serving is {patient.serving} — no insulin pump. Sent as 0.
-                </p>
-              )}
+              {/* The "Serving is X — no insulin pump. Sent as 0." note was
+                  removed here (Brandon, 2026-09-02): the greyed-out, disabled
+                  input already says the field is not in play, and the sentence
+                  restated it on every CGM-only and supplies-only profile. The
+                  BEHAVIOUR is untouched — `coercePumpQty` still zeroes the
+                  quantity in all three send paths (§5.22), which is what
+                  actually stops a pump shipping to somebody who owns one. */}
             </div>
           </div>
 
