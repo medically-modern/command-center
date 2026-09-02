@@ -12,6 +12,7 @@
 import { MONDAY_API_URL, mondayIdentityHeaders } from "../shared/mondayEndpoint";
 import { BOARDS } from "../systemMgmt/mondayApi";
 import { toE164 } from "../fax/ringcentralApi";
+import { lookupDirectory } from "../commsHub/directoryApi";
 
 const MONDAY_API_VERSION = "2024-10";
 
@@ -116,6 +117,35 @@ export async function findPatientByPhone(phone: string): Promise<PatientRef | nu
   if (!want) return null;
   const tail = want.replace(/\D/g, "").slice(-4);
   if (tail.length < 4) return null;
+
+  /**
+   * ⚠️ **Postgres first, and this is the one caller where that really matters:
+   * this runs WHILE THE PHONE IS RINGING.** `IncomingCallHost` calls it the
+   * moment a call arrives, to put a name on the card the rep is about to press
+   * "Take it" on — and the fan-out below is seven Monday queries, on a budget
+   * shared with every page the office has open. The directory answers the same
+   * question from one indexed row.
+   *
+   * A miss falls through to the live fan-out unchanged, so a patient created
+   * this morning — or an outage, or a directory that has never run — costs the
+   * old behaviour rather than an anonymous card.
+   */
+  try {
+    const hit = (await lookupDirectory([want])).hits.get(want.replace(/\D/g, "").slice(-10));
+    if (hit) {
+      return {
+        itemId: hit.itemId,
+        name: hit.name,
+        // The caller asked about this number, so it IS the patient's — the
+        // directory stores only a hash and could not return it.
+        phone: want,
+        boardId: hit.boardId === null ? "" : String(hit.boardId),
+        boardName: hit.boardName,
+      };
+    }
+  } catch {
+    /* the fan-out below is the fallback — never let this path fail a ringing call */
+  }
 
   const perBoard = await Promise.all(
     BOARDS.map(async (b) => {

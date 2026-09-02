@@ -35,6 +35,7 @@ import { rcApiFetch, SIP_PROVISION_PATH } from "./ringcentral.mjs";
 import { toE164, phoneHmac, hashingConfigured } from "./phoneHash.mjs";
 import { confirmSmsAccepted } from "./smsSend.mjs";
 import { registerSmsArchive, readArchivedConversation } from "./smsArchive.mjs";
+import { registerPatientDirectory } from "./patientDirectory.mjs";
 import { mergeConversation } from "./smsArchiveRules.mjs";
 
 export { toE164, phoneHmac };
@@ -140,6 +141,13 @@ export function registerMessaging({ app }) {
   // Purely additive — its own tables, its own routes, and it reads RingCentral on
   // the `background` tier, which is shed before anything a rep is waiting on.
   registerSmsArchive({ app, pool, requireCaller });
+
+  // "Whose number is this?", answered from Postgres instead of seven Monday
+  // boards. Registered HERE for the same reason as the archive: it holds
+  // patient names, so it must land on THIS pool and leave the audit Postgres
+  // its "metadata only, no PHI" property. Additive — its own tables, its own
+  // routes, and every caller falls back to the live Monday lookup on a miss.
+  registerPatientDirectory({ app, pool, requireCaller });
 
   /**
    * Send a text to a patient and record who sent it.

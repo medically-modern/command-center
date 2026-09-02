@@ -25,6 +25,13 @@ const GATEWAY =
 /** True when traffic is routed through our gateway instead of api.monday.com. */
 export const MONDAY_VIA_GATEWAY = GATEWAY.length > 0;
 
+/**
+ * The gateway's base URL, for its NON-GraphQL routes (`/directory/lookup`,
+ * `/messaging/*`, `/calls/*`). Empty string when there is no gateway, which is
+ * how callers know those routes don't exist in this build.
+ */
+export const MONDAY_GATEWAY_BASE = GATEWAY;
+
 /** The GraphQL endpoint every module's gql() should fetch.
  *  Gateway mode → `${gateway}/gql`; otherwise Monday directly. */
 export const MONDAY_API_URL = MONDAY_VIA_GATEWAY

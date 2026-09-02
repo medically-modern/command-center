@@ -11,9 +11,12 @@
  * right.** "One cross-board query per conversation on every poll" is the
  * INCIDENT_2026-08-20 shape. What makes this safe is that it is not that:
  *
- *  1. **One request per BATCH, not per row.** `fetchDirectoryNames` puts 60
- *     numbers into a single `any_of` rule and all seven boards into a single
- *     aliased GraphQL request. A 300-row list is ~5 requests.
+ *  1. **One request per BATCH, not per row**, and the first stop is Postgres.
+ *     `resolveNames` asks the gateway's patient directory — a daily-refreshed
+ *     copy of number → name — and falls back to Monday only for what it didn't
+ *     know. The Monday half still batches 100 numbers into a single `any_of`
+ *     rule across all seven boards in one aliased request, so even a cold
+ *     directory costs a handful of requests rather than one per row.
  *  2. **Once per session, not per poll.** Every answer is cached at module
  *     scope, misses included — a number that is on no board is an ANSWER, and
  *     caching it is what stops the list re-asking about the same 200 unknown
@@ -37,7 +40,7 @@
  * they showed before this existed.
  */
 import { useEffect, useMemo, useRef, useSyncExternalStore } from "react";
-import { fetchDirectoryNames } from "@/lib/commsHub/dossierApi";
+import { resolveNames } from "@/lib/commsHub/directoryApi";
 
 /**
  * Numbers per Monday request. `any_of` takes three digit shapes each, so 100
@@ -122,7 +125,9 @@ async function run(keys: string[]): Promise<void> {
     for (;;) {
       const chunk = chunks[next++];
       if (!chunk) return;
-      const { ok, names } = await fetchDirectoryNames(chunk);
+      // Postgres first, Monday only for whatever it didn't know — on a warm
+      // directory the second half usually doesn't run at all.
+      const { ok, names } = await resolveNames(chunk);
       // ⚠️ Record the MISSES too — but ONLY on a read that actually happened.
       // Without the miss-caching every unmatched number is asked about again on
       // the next render that changes the list, forever; without the `ok` guard a

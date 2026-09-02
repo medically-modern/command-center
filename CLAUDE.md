@@ -2228,6 +2228,65 @@ would page the archive on every poll.
 **Keep-in-agreement:** the tracker order lives in **`lib/commsHub/pipelineOrder.ts`** and is
 asserted by `dossier.test.ts`; §6's diagram is now downstream of it, not the other way round.
 
+### 5.29 The patient name directory — "whose number is this" out of Postgres (Sep 2026)
+Every surface that names a caller resolved it by fanning out across **seven Monday boards** at the
+moment it was needed. §5.28's batching made that cheaper, not fast: a 900-conversation inbox still
+took several round trips before names appeared, and **`findPatientByPhone` runs its seven queries
+WHILE THE PHONE IS RINGING**. Names barely change, so the gateway now keeps a copy.
+Service: **`services/monday-gateway/patientDirectory.mjs`** (+ `patientDirectoryRules.mjs`, the
+pure half, tested — the same split as `callRules`/`smsArchiveRules`); browser side:
+**`lib/commsHub/directoryApi.ts`**.
+
+⚠️ **THIS TABLE HOLDS PHI, AND THAT IS A DEPARTURE** — taken explicitly (Josh, 2026-09-02) on the
+same terms as the SMS archive (§5.27), and bounded the same two ways: it lives on the **messaging
+pool** (`ASSIGNMENTS_DATABASE_URL`), never the audit pool, so that DB keeps its no-PHI property —
+**do not move this table**; and the number is stored as **HMAC + last4, never in the clear**, as
+`sent_messages`, `call_events` and `sms_archive` do it. What IS in the clear is the patient's
+**name**: a dump of this table is a list of our patients' names. That is the trade, and it buys a
+name on the card the instant a call rings.
+
+⚠️ **A MISS IS NOT AN ANSWER.** The copy is at most a day old, so a patient created this morning is
+genuinely absent — as is everybody if the reconcile has never run. `directoryApi.resolveNames` asks
+Postgres first and falls back to the live Monday `any_of` batch for **only** what it missed, which
+is what makes a stale, empty or dead directory a **performance** regression rather than a
+correctness one. Call `resolveNames`, never `lookupDirectory` alone. Both halves report `ok`
+separately and the result is `ok` only if BOTH ran, because the caller caches misses (§5.28).
+
+⚠️ **Reconcile, never increment.** Each run re-reads every board and upserts, so any single
+successful run repairs every prior gap; the gateway redeploys on every push to `main`, so bad runs
+are a certainty. Daily, with a boot run skipped if one landed inside
+`PATIENT_DIRECTORY_MIN_GAP_HOURS`. ⚠️ Rows are **never deleted for absence** — a board read that
+failed halfway would otherwise wipe real names, and a stale name is a far smaller harm than a blank
+one. ⚠️ `collapseRows` keeps **one row per number**, won by the furthest-along board (a later stage
+holds the name a rep corrected), with a **deterministic** id tie-break: two live items for one
+number is a household (John and Sue Hartley share `3046977788` live), and Monday's scan order is not
+stable, so without it the displayed name would flip between two real people day to day.
+
+⚠️ **The board list MIRRORS the SPA's `BOARDS` registry** — the gateway is a separate Node service
+that cannot import the SPA's TypeScript. Same hand-synced hazard as §5.7 and §5.17, and it fails
+silently: a board added there and not here is never scanned, so patients whose only record is on it
+resolve to a bare number with nothing erroring. **`directoryCoverage.test.ts` fails the build in
+both directions**, and names the file to edit.
+
+**Routes:** `POST /directory/lookup` is **authenticated** (it returns names; the caller supplies the
+numbers, so nothing is disclosed it did not bring). `GET /directory/health` is **not** — counts and
+timestamps only, never a name or a number, matching `/calls/health` and `/messaging/archive-health`;
+point `services/calls-monitor` at it. ⚠️ It is **not ok when no run has ever succeeded**, however
+many rows the table holds, nor when the last good run was **truncated**. `POST /directory/refresh`
+is authenticated **AND** rate-floored, for the §5.27 reason: `running` blocks only concurrent runs.
+`PATIENT_DIRECTORY_ENABLED=0` kills it from Railway without a revert.
+
+⚠️ **Name SEARCH cannot come from here, and that is structural.** The directory is keyed by the
+number's HMAC, so it answers "whose number is this" and can never answer "what is this patient's
+number" — `searchPatientsByName` stays on Monday. Fixing that would mean storing numbers in the
+clear, which is the thing the hash exists to avoid.
+
+**Measured, not assumed** (2026-09-02): a Monday `any_of` batch costs **370 complexity whether it
+carries 15 numbers or 100**, so viewport-only loading — the obvious "only fetch what's on screen"
+optimisation — would have been ~6× MORE expensive and more round trips, not less. Re-measure with
+`complexity { before query after }` before changing the batching.
+
+
 ---
 
 ## 6. Patient flow across boards (the big picture)
@@ -2930,6 +2989,8 @@ these services; when their math changes, `oopEstimator.ts` must be updated to ma
 | A manager sees no contact icons on a sidebar row | §5.28 — the gate is **`?mv=`**, so they must have clicked in from Oversight; then check the patient's phone is in that queue's read set (`listColumns.test.ts` for Patient Intake) |
 | A contact icon says the wrong thing | §5.28 — `lib/contactState/contactState.ts`. Most recent wins per lane; a claimed inbound call is NOT a missed call (`callConnected` reads the legs) |
 | An inbound fax doesn't match a doctor / their patients are missing | §5.28 — `lib/commsHub/faxDirectory.ts` joins the patient boards, `dossierApi.fetchDoctorDbByFax` the 2,290-office Doctor Database. The Doctor Fax column is an EMAIL column holding `<digits>@rcfax.com`, so the join strips the address first — that half was **audited clean 2026-09-02**, so re-run the audit before blaming it; the usual cause is an office sending from a line we don't have on file |
+| Names are slow to load, or an inbound call card shows a bare number | §5.29 — check `GET /directory/health` on the gateway first; a directory that has never run reports **not ok** however many rows it holds. A miss falls back to the live Monday batch, so this is slowness, not absence |
+| A whole board's patients resolve to phone numbers | §5.29 — the gateway's `DIRECTORY_BOARDS` mirrors the SPA registry and a missing board is never scanned. `directoryCoverage.test.ts` names it |
 | A hub list row shows a phone number instead of a name | §5.28 — `lib/commsHub/directory.ts` (RC contact → our boards → the number) fed by `hooks/commsHub/useDirectoryNames`. A permanent number means the batched `any_of` found nobody; check the board holds one of the digit shapes `phoneMatchVariants` asks for |
 | The profile widget shows the wrong stage, or none | §5.28 — `lib/commsHub/dossier.ts` (`pickActive` = furthest-along open board) and `pipelineOrder.ts` (the tracker order, which §6 now follows) |
 | A conversation won't stay read / unread | §5.28 — read state is RingCentral's `readStatus` on the INBOUND messages, written with `setMessageRead`; the local override only covers the gap before the next poll |
