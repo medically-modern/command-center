@@ -340,7 +340,15 @@ function AuthDetailBlock({
 }
 
 /** Editable date field — always renders; highlights empty as missing.
- *  Stores value as YYYY-MM-DD internally. */
+ *  Stores value as YYYY-MM-DD internally.
+ *
+ *  ⚠️ Empty is AMBER, not red (Brandon, 2026-09-02). Used only by the Last Bill
+ *  Dates block, whose five fields are empty together on any patient we have not
+ *  billed yet — a new patient, or one served on lines this profile does not
+ *  carry. That is the ordinary case, not evidence the profile is wrong, so a
+ *  wall of five red boxes was the pack's own severity language pointed at
+ *  nothing. Amber matches the meaning the panel already assigns it: red = we
+ *  believe this is wrong, amber = worth a look. */
 function EditableDateField({
   label,
   dateStr,
@@ -352,11 +360,11 @@ function EditableDateField({
 }) {
   const isEmpty = !dateStr;
   return (
-    <div className={cn("rounded-lg p-1.5 -m-1.5 transition-colors", isEmpty && "bg-red-50 dark:bg-red-950/20 ring-1 ring-red-200 dark:ring-red-800/40")}>
+    <div className={cn("rounded-lg p-1.5 -m-1.5 transition-colors", isEmpty && "bg-amber-50 dark:bg-amber-950/20 ring-1 ring-amber-200 dark:ring-amber-800/40")}>
       <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1">{label}</p>
       <Input
         type="date"
-        className={cn("h-8 text-sm", isEmpty && "border-red-300 dark:border-red-700")}
+        className={cn("h-8 text-sm", isEmpty && "border-amber-300 dark:border-amber-700")}
         value={dateStr}
         onChange={(e) => onChange(e.target.value)}
       />
@@ -487,13 +495,17 @@ function DiagnosisCombobox({
               variant="outline"
               role="combobox"
               aria-expanded={open}
+              /* ⚠️ A FILLED diagnosis gets no colour of its own (Brandon,
+                 2026-09-02). It used to render emerald-on-emerald, which made it
+                 the one green control on the page — every neighbouring field
+                 (Serving, Request Type, both Coverage Paths…) is a plain
+                 `SelectField`, neutral when filled and red-ringed when empty. A
+                 lone green box reads as a status, and the only status it could
+                 have meant — "this one is answered" — is true of every filled
+                 field beside it. Empty keeps the red ring the others use. */
               className={cn(
                 "w-full h-8 px-3 text-xs font-medium justify-between",
-                value
-                  ? "border-emerald-300 bg-emerald-50 text-emerald-900 hover:bg-emerald-50/80 hover:text-emerald-900"
-                  : isEmpty
-                    ? "border-red-300 dark:border-red-700"
-                    : "border-muted",
+                isEmpty && "border-red-300 dark:border-red-700",
               )}
             >
               {value || "Select diagnosis…"}

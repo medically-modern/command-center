@@ -76,7 +76,9 @@ describe("checkPack — insurance", () => {
   scenario("CGM-only Medicaid", { serving: "CGM", primaryInsurance: "Fidelis Medicaid", cgmType: "Dexcom G7", address: "12 Main St, Albany, NY 12203" }, ["C11_CGM_ONLY_MEDICAID"]);
   scenario("JLJ x CGM", { serving: "Insulin Pump + CGM", primaryInsurance: "Anthem BCBS Medicaid (JLJ)", cgmType: "Dexcom G7", pumpType: "t:slim", memberId1: "JLJ123456" }, ["C12_JLJ_NO_CGM"], ["C10_JLJ_PREFIX"]);
   scenario("NY Medicaid no MID2", { secondaryInsurance: "NY Medicaid" }, ["C3_MEDICAID_NO_MID2"]);
-  scenario("Medicare no secondary", { primaryInsurance: "Medicare A&B", secondaryInsurance: "None", nextOrderDateSensors: "2026-09-01", nextOrderDateSupplies: "2026-09-01" }, ["C5_MEDICARE_NO_SECONDARY"]);
+  // C5 retired at this stage (Brandon, 2026-09-02) — Welcome Call still shows
+  // it, on the call where a rep can actually ask. Silence is the assertion now.
+  scenario("Medicare no secondary — Welcome Call's, not ours", { primaryInsurance: "Medicare A&B", secondaryInsurance: "None", nextOrderDateSensors: "2026-09-01", nextOrderDateSupplies: "2026-09-01" }, [], ["C5_MEDICARE_NO_SECONDARY"]);
   scenario("MA as Medicare", { primaryInsurance: "Medicare A&B", planName: "Wellcare Dual Liberty Sync", secondaryInsurance: "NY Medicaid", memberId2: "AB12345C" }, ["C6_MA_AS_MEDICARE"]);
   scenario("MLTC routing", { primaryInsurance: "Anthem BCBS Medicaid (JLJ)", planName: "Fidelis Care at Home MLTC" }, ["C9_MLTC_ROUTING"]);
   scenario("Horizon + TX", { primaryInsurance: "Horizon BCBS", address: "500 Oak Dr, Dallas, TX 75001" }, ["C1_LABEL_STATE_MISMATCH", "C23_POS_11"]);
@@ -147,6 +149,95 @@ describe("checkPack — auth & demographics", () => {
   scenario("Auth expired", { serving: "Insulin Pump", pumpType: "t:slim", ipAuthResult: "Auth Valid", ipAuthId: "A1", ipAuthEnd: "2026-01-01" }, ["C18_AUTH_EXPIRED"]);
   scenario("Auth denied", { serving: "Insulin Pump", pumpType: "t:slim", ipAuthResult: "Denied" }, ["C17_AUTH_DENIED"]);
   scenario("Caps address", { address: "123 MAIN ST, ALBANY, NY 12203", addressEdited: null }, ["C22_ADDRESS_CAPS"]);
+});
+
+/**
+ * C18 expiry vs ePACES Medicaid (Brandon, 2026-09-02).
+ *
+ * On Medicaid the recorded auth end date lapses on its own schedule and is not
+ * the window a claim has to sit inside — so once that product has actually
+ * BILLED (a Last Bill Date on file), a lapsed date is not evidence of anything.
+ * Both halves are required, and the four combinations below are the whole rule.
+ */
+describe("checkPack — C18 expiry is moot once Medicaid has paid", () => {
+  const EXPIRED = "2026-01-01";
+  // Relative, so this case can't quietly stop testing "expiring soon" when the
+  // clock passes a hardcoded date.
+  const soon = () => {
+    const d = new Date();
+    d.setDate(d.getDate() + 10);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  };
+  /** A served insulin pump whose auth is valid-but-lapsed. */
+  const lapsedPump = (over: Partial<Patient>): Partial<Patient> => ({
+    serving: "Insulin Pump", pumpType: "t:slim",
+    ipAuthResult: "Auth Valid", ipAuthId: "A1", ipAuthEnd: EXPIRED,
+    ...over,
+  });
+
+  scenario("Medicaid primary + billed → silent",
+    lapsedPump({ primaryInsurance: "Fidelis Medicaid", lastBillDateIp: "2026-07-15" }),
+    [], ["C18_AUTH_EXPIRED"]);
+
+  scenario("NY Medicaid secondary + billed → silent",
+    lapsedPump({ primaryInsurance: "Medicare A&B", secondaryInsurance: "NY Medicaid", memberId2: "AB12345C", lastBillDateIp: "2026-07-15" }),
+    [], ["C18_AUTH_EXPIRED"]);
+
+  // Medicaid alone proves nothing: a patient we have never billed is exactly
+  // where a stale auth is the only signal there is.
+  scenario("Medicaid, never billed → still fires",
+    lapsedPump({ primaryInsurance: "Fidelis Medicaid" }),
+    ["C18_AUTH_EXPIRED"]);
+
+  // A commercial window IS enforced — "we billed it in March" says nothing
+  // about today, so Last Bill Date alone must not silence it.
+  scenario("Commercial + billed → still fires",
+    lapsedPump({ primaryInsurance: "Cigna", lastBillDateIp: "2026-07-15" }),
+    ["C18_AUTH_EXPIRED"]);
+
+  // The pairing is PER PRODUCT: billing sensors says nothing about the pump.
+  scenario("Medicaid, billed a different product → still fires",
+    lapsedPump({ primaryInsurance: "Fidelis Medicaid", lastBillDateSensors: "2026-07-15" }),
+    ["C18_AUTH_EXPIRED"]);
+
+  scenario("Silences the 30-day warning too",
+    lapsedPump({ primaryInsurance: "Fidelis Medicaid", ipAuthEnd: soon(), lastBillDateIp: "2026-07-15" }),
+    [], ["C18_AUTH_EXPIRING"]);
+
+  // Scoped to the EXPIRY branch. A denial is a statement about the auth's
+  // RESULT and is still a real reason not to ship, however well we have billed.
+  scenario("A denial still fires on a billed Medicaid patient",
+    lapsedPump({ primaryInsurance: "Fidelis Medicaid", ipAuthResult: "Denied", lastBillDateIp: "2026-07-15" }),
+    ["C17_AUTH_DENIED"]);
+
+  scenario("An unresolved auth still fires on a billed Medicaid patient",
+    lapsedPump({ primaryInsurance: "Fidelis Medicaid", ipAuthResult: "Submitted", lastBillDateIp: "2026-07-15" }),
+    ["C17_AUTH_UNRESOLVED"]);
+});
+
+/**
+ * Retired at Final Confirm (Brandon, 2026-09-02) — the rows that popped up on
+ * nearly every profile. Cost-sharing is the Welcome Call's conversation and
+ * still renders there (Benefits card + OopEstimateCard); repeating it here
+ * asked a rep to act on something the stage cannot act on. Pinned as SILENCE
+ * so nobody re-ports them the way C5 was ported in.
+ */
+describe("checkPack — retired cost-sharing rows stay retired", () => {
+  const RETIRED = ["C20_NO_COST_DATA", "C21_ZERO_OOP_EXPECTED", "C5_MEDICARE_NO_SECONDARY"];
+
+  // The exact profile from Brandon's screenshot: Medicare A&B, no secondary,
+  // no cost data — it carried C5 and C20 together.
+  scenario("Medicare A&B, no secondary, no cost data",
+    { primaryInsurance: "Medicare A&B", secondaryInsurance: "None" }, [], RETIRED);
+
+  // The other screenshot: NY Medicaid secondary, which used to add "$0 OOP".
+  scenario("Medicaid backstop no longer announces $0 OOP",
+    { primaryInsurance: "Medicare A&B", secondaryInsurance: "NY Medicaid", memberId2: "AB12345C" }, [], RETIRED);
+
+  // CareCentrix survives: a per-referral routing rule, not a cost-sharing
+  // readout, and it fires on a slice of profiles rather than on all of them.
+  scenario("CareCentrix pricing note survives",
+    { referralSource: "CareCentrix" }, ["C21_CARECENTRIX"], RETIRED);
 });
 
 describe("checkPack — POS (C23)", () => {

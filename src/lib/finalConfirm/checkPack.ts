@@ -344,14 +344,15 @@ export function runFinalChecks(p: Patient): CheckFinding[] {
     });
   }
 
-  // C5 — Medicare A&B with no secondary (port of the Welcome Call warning).
-  if (primary === "Medicare A&B" && (blank(secondary) || secondary === "None")) {
-    add({
-      id: "C5_MEDICARE_NO_SECONDARY", severity: "amber", field: "secondaryInsurance",
-      title: "Medicare A&B, no secondary",
-      detail: "Medicare pays 80% — with no supplement/Medicaid on file the patient owes 20%. Confirm no secondary exists (QMB members must NOT be billed).",
-    });
-  }
+  // C5 — RETIRED at Final Confirm (Brandon, 2026-09-02). It was a PORT of the
+  // Welcome Call warning, and the original is still there and still fires:
+  // `welcomeCall/PatientInfoCard` renders "Patient likely has a secondary
+  // insurance, ask on welcome call." on exactly `isMedicareAB && secondaryMissing`,
+  // plus the stronger QMB line when Stedi says QMB = YES. That is the stage where
+  // somebody is on the phone and can ASK; by Final Confirm the question has either
+  // been asked or it hasn't, and the row just repeats itself on every Medicare A&B
+  // profile with no secondary — a large, ordinary population. Re-porting it here
+  // does not make anyone ask sooner, it only teaches reps to click past the pack.
 
   // C6 (degraded) — plan name looks Medicare Advantage while Primary = Medicare A&B.
   if (primary === "Medicare A&B" && MA_PLAN_RX.test(planName)) {
@@ -642,17 +643,48 @@ export function runFinalChecks(p: Patient): CheckFinding[] {
 
   /* ── C. Authorization & documentation ─────────────────────────────── */
 
+  // Medicaid coverage on either line. Sourced the same way C11/C20 sourced it —
+  // a Medicaid-flavoured primary, or NY Medicaid sitting secondary as the backstop.
+  const medicaidCoverage = isMedicaidPrimary(primary) || secondary === "NY Medicaid";
+
+  /**
+   * Is the auth END DATE moot for this product? (Brandon, 2026-09-02.)
+   *
+   * On ePACES Medicaid the "auth" we record is not a prior authorization with a
+   * window we must stay inside — it is what eligibility told us at the time, and
+   * the end date goes stale on its own schedule. So a lapsed date is not evidence
+   * the profile is wrong. The evidence that matters is whether the claim PAID:
+   * a Last Bill Date on that product means Medicaid has already accepted and paid
+   * a claim for it, which settles the question the expiry row was asking.
+   *
+   * ⚠️ Scoped to the EXPIRY branch only. `C17_AUTH_DENIED` and `C17_AUTH_UNRESOLVED`
+   * still fire on a Medicaid patient however well they have billed — those are
+   * statements about the auth's RESULT, not about a date drifting past today, and
+   * a denial is a real reason not to ship. `C18_AUTH_NO_ID` (info) also stands.
+   *
+   * ⚠️ Both halves are required, and neither is redundant. Last Bill Date alone
+   * would silence a genuinely lapsed commercial auth, where the window is exactly
+   * what the payer enforces and "we billed it in March" says nothing about
+   * September. Medicaid alone would silence a Medicaid patient we have never
+   * successfully billed — the case where a stale auth is the only signal there is.
+   */
+  const authExpiryMoot = (lastBill: string): boolean =>
+    medicaidCoverage && !blank(lastBill);
+
   // C17/C18 — per-product auth state, expiry, and completeness (split-aware
   // via each product's own "Not Serving" auth result).
+  //
+  // `lastBill` is the per-product Last Bill Date, and it is what silences the
+  // EXPIRY half of C18 on Medicaid — see the note on `authExpiryMoot` above.
   const authProducts: Array<{
     name: string; served: boolean; result: string;
-    authId: string; end: string; field: keyof Patient;
+    authId: string; end: string; lastBill: string; field: keyof Patient;
   }> = [
-    { name: "CGM monitor", served: cgmServed, result: p.cgmAuthResult, authId: p.monitorAuthId, end: p.monitorAuthEnd, field: "cgmAuthResult" },
-    { name: "Sensors", served: cgmServed, result: p.sensorsAuthResult, authId: p.sensorsAuthId, end: p.sensorsAuthEnd, field: "sensorsAuthResult" },
-    { name: "Insulin pump", served: pumpServed, result: p.ipAuthResult, authId: p.ipAuthId, end: p.ipAuthEnd, field: "ipAuthResult" },
-    { name: "Infusion sets", served: pumpishInServing, result: p.infusionSetAuthResult, authId: p.infusionSetAuthId, end: p.infusionSetAuthEnd, field: "infusionSetAuthResult" },
-    { name: "Cartridges", served: pumpishInServing, result: p.cartridgeAuthResult, authId: p.cartridgeAuthId, end: p.cartridgeAuthEnd, field: "cartridgeAuthResult" },
+    { name: "CGM monitor", served: cgmServed, result: p.cgmAuthResult, authId: p.monitorAuthId, end: p.monitorAuthEnd, lastBill: p.lastBillDateMonitor, field: "cgmAuthResult" },
+    { name: "Sensors", served: cgmServed, result: p.sensorsAuthResult, authId: p.sensorsAuthId, end: p.sensorsAuthEnd, lastBill: p.lastBillDateSensors, field: "sensorsAuthResult" },
+    { name: "Insulin pump", served: pumpServed, result: p.ipAuthResult, authId: p.ipAuthId, end: p.ipAuthEnd, lastBill: p.lastBillDateIp, field: "ipAuthResult" },
+    { name: "Infusion sets", served: pumpishInServing, result: p.infusionSetAuthResult, authId: p.infusionSetAuthId, end: p.infusionSetAuthEnd, lastBill: p.lastBillDateInfusionSet, field: "infusionSetAuthResult" },
+    { name: "Cartridges", served: pumpishInServing, result: p.cartridgeAuthResult, authId: p.cartridgeAuthId, end: p.cartridgeAuthEnd, lastBill: p.lastBillDateCartridge, field: "cartridgeAuthResult" },
   ];
   for (const prod of authProducts) {
     if (!prod.served || prod.result === "Not Serving") continue;
@@ -670,7 +702,7 @@ export function runFinalChecks(p: Patient): CheckFinding[] {
       });
     } else if (prod.result === "Auth Valid") {
       const end = parseYmd(prod.end);
-      if (end) {
+      if (end && !authExpiryMoot(prod.lastBill)) {
         const days = daysFromToday(end);
         if (days < 0) {
           add({
@@ -715,27 +747,33 @@ export function runFinalChecks(p: Patient): CheckFinding[] {
     }
   }
 
-  /* ── D. Cost / benefits ───────────────────────────────────────────── */
+  /* ── D. Cost / benefits ───────────────────────────────────────────────
+   *
+   * ⚠️ COST-SHARING IS A WELCOME CALL CONCERN, NOT A FINAL CONFIRM ONE
+   * (Brandon, 2026-09-02). Two checks were retired from this section rather
+   * than downgraded, because the problem was not their severity:
+   *
+   *  - `C20_NO_COST_DATA` — "coinsurance, deductible and OOP max are all blank,
+   *    the OOP conversation may not have happened."
+   *  - `C21_ZERO_OOP_EXPECTED` — "Medicaid backstop on file, expect $0 OOP,
+   *    don't quote cost-sharing."
+   *
+   * Both are instructions for a conversation that has already finished by the
+   * time a profile reaches this stage. Welcome Call is where they belong and
+   * where they still live: `welcomeCall/PatientInfoCard` renders the Benefits
+   * card (Deductible · Deductible Remaining · Coinsurance % · OOP Max Remaining,
+   * with its own "No benefits data yet." line) and `welcomeCall/OopEstimateCard`
+   * quotes the number — while the rep is on the phone and can act on it. Final
+   * Confirm cannot; it just prints the same two rows on nearly every profile.
+   * Medicare A&B with no secondary is the population that carried BOTH at once,
+   * which is what made the pack read as noise.
+   *
+   * The CareCentrix note below survives on purpose. It is not a cost-sharing
+   * readout — it is a per-referral routing rule ("this one is priced elsewhere"),
+   * it fires on a small slice of profiles rather than on every one, and Brandon's
+   * ask was specifically about the rows that always pop up.
+   */
 
-  // C20 — cost-sharing plan with no cost data on file.
-  const medicaidish = isMedicaidPrimary(primary) || secondary === "NY Medicaid";
-  if (primary && !medicaidish &&
-      blank(p.coInsurance) && blank(p.deductibleRemaining) && blank(p.oopMaxRemaining)) {
-    add({
-      id: "C20_NO_COST_DATA", severity: "info", field: "coInsurance",
-      title: "No cost-sharing data",
-      detail: `${primary} is a cost-sharing plan but coinsurance, deductible remaining, and OOP max remaining are all blank — the OOP conversation may not have happened.`,
-    });
-  }
-
-  // C21 (lite) — OOP expectations.
-  if (secondary === "NY Medicaid") {
-    add({
-      id: "C21_ZERO_OOP_EXPECTED", severity: "info",
-      title: "Expect $0 patient OOP",
-      detail: "Medicaid backstop on file — patient out-of-pocket should be $0; don't quote cost-sharing.",
-    });
-  }
   if (p.referralSource === "CareCentrix") {
     add({
       id: "C21_CARECENTRIX", severity: "info", field: "referralSource",
