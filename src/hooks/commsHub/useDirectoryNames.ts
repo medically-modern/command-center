@@ -36,21 +36,41 @@
  * A failure is silent by design: the rows keep showing numbers, which is what
  * they showed before this existed.
  */
-import { useEffect, useMemo, useSyncExternalStore } from "react";
+import { useEffect, useMemo, useRef, useSyncExternalStore } from "react";
 import { fetchDirectoryNames } from "@/lib/commsHub/dossierApi";
 
-/** Numbers per Monday request. `any_of` takes three digit shapes each, so 60
- *  keys is 180 compare values — comfortably inside what the API accepts, and
- *  big enough that a typical list is one or two round trips. */
-const BATCH = 60;
+/**
+ * Numbers per Monday request. `any_of` takes three digit shapes each, so 100
+ * keys is 300 compare values across seven aliased boards.
+ *
+ * Verified against the live API 2026-09-02 at exactly this size: one request,
+ * 300 compare values, every known number resolved. It was 60, which turned a
+ * 900-conversation inbox into 15 round trips.
+ */
+const BATCH = 100;
 
 /**
- * Most numbers resolved in one pass. A bound, not a target: the Phone tab can
- * hold 600 calls and a rep only ever reads the top of it, so the cap keeps the
- * worst case at ~9 requests. Anything past it keeps showing its number and is
- * picked up on the next pass once the list changes.
+ * Batches in flight at once.
+ *
+ * ⚠️ This is not the incident's shape and the distinction is the whole point:
+ * INCIDENT_2026-08-20 was ~1,166 requests per SECOND from one browser, growing
+ * with the list. This is at most three, fixed, whatever the list holds. Running
+ * them strictly one after another was over-cautious rather than safe — a
+ * 900-row inbox took fifteen serial round trips, so names trickled in for
+ * fifteen seconds and reps reported the list as slow.
  */
-const MAX_PER_PASS = 500;
+const CONCURRENCY = 3;
+
+/**
+ * Most numbers resolved in one pass — a brake, not a target.
+ *
+ * ⚠️ It used to be 500, which was LOWER than a real inbox: the Text tab shows
+ * ~900 conversations, so 400 of them resolved to nothing and then waited for a
+ * poll to change the list before the effect fired again. That is the "it takes
+ * a really long time to load the names" report. At BATCH × CONCURRENCY this
+ * ceiling is 15 requests in 5 waves, once per session.
+ */
+const MAX_PER_PASS = 1500;
 
 /** key → name. `""` means "looked up, on no board" — a cached answer, not a
  *  missing one. See rule 2 in the header. */
@@ -77,25 +97,44 @@ function getSnapshot(): ReadonlyMap<string, string> {
   return snapshot;
 }
 
-/** Resolve everything we don't already have an answer for, in batches, one
- *  batch at a time. Sequential rather than parallel on purpose: this is
- *  background enrichment for a list somebody is reading, and it must never
- *  become a burst against the account. */
+/**
+ * Resolve everything we don't already have an answer for.
+ *
+ * ⚠️ **`keys` must arrive in the order the LIST shows them**, because the
+ * batches go out in that order and the cap trims the tail. Handing this the
+ * sorted key list (as the hook briefly did) meant the cap dropped whichever
+ * numbers happened to sort last — which is why every unresolved row in the
+ * reported screenshot had an area code in the 700s–900s, and why the rows a rep
+ * was actually looking at were not the ones that filled in first.
+ */
 async function run(keys: string[]): Promise<void> {
+  // `new Set` preserves insertion order, so the list's order survives here.
   const todo = [...new Set(keys)].filter((k) => k.length === 10 && !known.has(k)).slice(0, MAX_PER_PASS);
   if (!todo.length) return;
-  for (let i = 0; i < todo.length; i += BATCH) {
-    const chunk = todo.slice(i, i + BATCH);
-    const { ok, names } = await fetchDirectoryNames(chunk);
-    // ⚠️ Record the MISSES too — but ONLY on a read that actually happened.
-    // Without the miss-caching every unmatched number is asked about again on
-    // the next render that changes the list, forever; without the `ok` guard a
-    // single Monday blip turns 60 real patients into permanent bare numbers.
-    if (!ok) continue;
-    for (const k of chunk) known.set(k, names.get(k) ?? "");
-    // Emit per batch so names fill in as they land rather than all at the end.
-    emit();
+
+  const chunks: string[][] = [];
+  for (let i = 0; i < todo.length; i += BATCH) chunks.push(todo.slice(i, i + BATCH));
+
+  // Workers pull chunks in order, so the top of the list is always in the first
+  // wave and its names land within one round trip.
+  let next = 0;
+  async function worker(): Promise<void> {
+    for (;;) {
+      const chunk = chunks[next++];
+      if (!chunk) return;
+      const { ok, names } = await fetchDirectoryNames(chunk);
+      // ⚠️ Record the MISSES too — but ONLY on a read that actually happened.
+      // Without the miss-caching every unmatched number is asked about again on
+      // the next render that changes the list, forever; without the `ok` guard a
+      // single Monday blip turns a batch of real patients into permanent bare
+      // numbers.
+      if (!ok) continue;
+      for (const k of chunk) known.set(k, names.get(k) ?? "");
+      // Emit per batch so names fill in as they land rather than all at the end.
+      emit();
+    }
   }
+  await Promise.all(Array.from({ length: Math.min(CONCURRENCY, chunks.length) }, worker));
 }
 
 function resolve(keys: string[]): void {
@@ -133,16 +172,30 @@ function resolve(keys: string[]): void {
  */
 export function useDirectoryNames(keys: string[], enabled = true): ReadonlyMap<string, string> {
   const names = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
-  // Value-compared dependency — see rule 3 in the header. The sort makes the
-  // signature independent of list order, so re-sorting a list (a poll landing
-  // in a different order) is not treated as a new set of numbers.
+
+  /**
+   * ⚠️ The keys in LIST order, which is NOT what the signature below holds.
+   * The signature is sorted so that a poll returning the same conversations in
+   * a different order isn't treated as a new set; `run` needs the real order,
+   * because it batches in order and the top of the list is what a rep is
+   * looking at. Passing `signature.split(",")` to `resolve` conflated the two
+   * and made the resolution order alphabetical by phone number.
+   */
+  const keysRef = useRef<string[]>(keys);
+  // Declared FIRST, so it has already run by the time the effect below fires on
+  // this render — effects run in declaration order.
+  useEffect(() => {
+    keysRef.current = keys;
+  });
+
+  // Value-compared dependency — see rule 3 in the header.
   const signature = useMemo(
     () => (enabled ? [...new Set(keys)].filter((k) => k && k.length === 10).sort().join(",") : ""),
     [keys, enabled],
   );
   useEffect(() => {
     if (!signature) return;
-    resolve(signature.split(","));
+    resolve(keysRef.current);
   }, [signature]);
   return names;
 }

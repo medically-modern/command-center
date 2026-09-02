@@ -2026,10 +2026,19 @@ access.json assignments key off, so a rename is display-only (§5.10's precedent
   read as `(815) 523-7259`. "One cross-board query per conversation per poll" is still forbidden
   (it is the incident's shape); what makes this safe is that it is the opposite of that, on four
   properties that are all load-bearing:
-  1. **`any_of` takes the whole batch in ONE rule** (60 numbers), and every board rides in ONE
-     aliased GraphQL request (`b0:`, `b1:` …) — `boards(ids:)` can't be used because each board
-     names its own phone column. A 300-row list is ~5 requests. Verified live 2026-09-02: one
-     request resolved 8 of 9 numbers off Josh's screenshot across four boards.
+  1. **`any_of` takes the whole batch in ONE rule** (100 numbers = 300 compare values), and every
+     board rides in ONE aliased GraphQL request (`b0:`, `b1:` …) — `boards(ids:)` can't be used
+     because each board names its own phone column. Three batches run at once, so a 900-row inbox
+     is ~9 requests in 3 waves. Verified live at exactly that size 2026-09-02.
+     ⚠️ **`run` batches in LIST order and the cap trims the TAIL, so the order is load-bearing.**
+     The hook passes `keysRef.current`, NOT `signature.split(",")`: the signature is sorted so a
+     poll returning the same conversations in a different order isn't a new set, and feeding that
+     sorted list to `run` made the cap drop whichever numbers sorted last. Reported as "it takes a
+     really long time to load the names" — every unresolved row had a 700-900 area code, and the
+     rows a rep was looking at were not the ones that filled in first. Pinned by a test.
+     ⚠️ `MAX_PER_PASS` must stay ABOVE a real list. At 500 it was lower than the ~900-conversation
+     Text tab, so 400 rows resolved to nothing and then waited for a poll to change the list before
+     the effect fired again.
   2. **Once per session, not per poll** — every answer is cached at module scope, **misses
      included**. ⚠️ Caching the misses is what stops the list re-asking about the same 200 unknown
      numbers every 30 seconds forever; there is deliberately no TTL, because a patient's name does

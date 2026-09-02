@@ -111,6 +111,23 @@ describe("useDirectoryNames", () => {
     expect(fetchDirectoryNames).toHaveBeenCalledTimes(1);
   });
 
+  it("batches in LIST order, so the top of the list resolves first", async () => {
+    // ⚠️ The reported bug: the hook handed `run` the SORTED key list, so both
+    // the cap and the batch order followed the phone number rather than the
+    // list. Every unresolved row in the screenshot had a 700-900 area code, and
+    // the rows a rep was actually looking at were not the ones that filled in
+    // first.
+    const many = Array.from({ length: 150 }, (_, i) => String(9000000000 + i));
+    // A LOW-sorting number placed LAST in the list. It must land in the SECOND
+    // batch — list order is what counts, not its digits.
+    const lateButLowSorting = "2000000000";
+    render(<Probe keys={[...many, lateButLowSorting]} />);
+    await waitFor(() => expect(fetchDirectoryNames).toHaveBeenCalledTimes(2));
+    expect(fetchDirectoryNames.mock.calls[0][0][0]).toBe(many[0]);
+    expect(fetchDirectoryNames.mock.calls[0][0]).not.toContain(lateButLowSorting);
+    expect(fetchDirectoryNames.mock.calls[1][0]).toContain(lateButLowSorting);
+  });
+
   it("fetches nothing at all when disabled", async () => {
     function Off() {
       useDirectoryNames([TONASILA], false);
