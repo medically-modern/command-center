@@ -3,7 +3,9 @@ import {
   buildDossier,
   dobKey,
   nameMatchAccepted,
+  personKey,
   pickActive,
+  splitByPerson,
   stageNoteTrail,
   stagesCompleted,
   type DossierItem,
@@ -227,5 +229,92 @@ describe("stageNoteTrail — every stage's notes, not just the live one", () => 
     ]);
     expect(d.active).toBeNull();
     expect(stageNoteTrail(d).map((s) => s.itemId)).toEqual(["wc"]);
+  });
+});
+
+
+describe("splitByPerson — a phone match is not a person", () => {
+  it("keeps two people on one line APART", () => {
+    // John and Sue Hartley share 3046977788 on the live boards. Merged, the
+    // pane blended their stage paths and notes under one header — and the note
+    // composer and outbound-text attribution both read the merged record.
+    const people = splitByPerson([
+      item(WC, { itemId: "john-wc", name: "John Hartley Jr" }),
+      item(PROFILE, { itemId: "sue-p", name: "Sue Hartley" }),
+      item(ME, { itemId: "john-me", name: "John Hartley Jr", isCompleted: true, groupTitle: "Completed" }),
+    ]);
+    expect(people).toHaveLength(2);
+    const john = people.find((p) => p.name === "John Hartley Jr")!;
+    expect(john.items.map((i) => i.itemId).sort()).toEqual(["john-me", "john-wc"]);
+    expect(people.find((p) => p.name === "Sue Hartley")!.items).toHaveLength(1);
+  });
+
+  it("defaults to the patient furthest along the pipeline", () => {
+    // The one a rep most likely means, and stable across polls.
+    const people = splitByPerson([
+      item(PROFILE, { itemId: "a", name: "Sue Hartley" }),
+      item(SUB, { itemId: "b", name: "John Hartley Jr" }),
+    ]);
+    expect(people[0].name).toBe("John Hartley Jr");
+  });
+
+  it("orders deterministically when two people are at the same stage", () => {
+    const mk = () => [
+      item(WC, { itemId: "z", name: "Zoe Adams" }),
+      item(WC, { itemId: "a", name: "Amy Zeller" }),
+    ];
+    expect(splitByPerson(mk()).map((p) => p.name)).toEqual(["Amy Zeller", "Zoe Adams"]);
+    expect(splitByPerson(mk().reverse()).map((p) => p.name)).toEqual(["Amy Zeller", "Zoe Adams"]);
+  });
+
+  it("leaves the ordinary one-patient case as a single dossier", () => {
+    const people = splitByPerson([item(WC, { itemId: "1" }), item(ME, { itemId: "2" })]);
+    expect(people).toHaveLength(1);
+    expect(people[0].items).toHaveLength(2);
+  });
+
+  it("treats a rep annotation as the SAME person, not a second one", () => {
+    // Live board vocabulary: "(ip)", "(cgm)", "(copy)", "(OLD)", trailing "old".
+    const people = splitByPerson([
+      item(WC, { itemId: "1", name: "Gary Bariatti" }),
+      item(ME, { itemId: "2", name: "Gary Bariatti (ip)" }),
+      item(PROFILE, { itemId: "3", name: "Gary Bariatti (copy) (copy)" }),
+    ]);
+    expect(people).toHaveLength(1);
+  });
+
+  it("does NOT fuzzy-merge a near-miss name — over-splitting is the safe way", () => {
+    // "Bradley Comstock" / "Bradley Comstuck" is a duplicate RECORD, and
+    // showing a rep both makes that obvious. Merging two names that only look
+    // alike is the failure this split exists to prevent.
+    expect(splitByPerson([
+      item(WC, { itemId: "1", name: "Bradley Comstock" }),
+      item(WC, { itemId: "2", name: "Bradley Comstuck" }),
+    ])).toHaveLength(2);
+  });
+
+  it("never drops a nameless record on the floor", () => {
+    const people = splitByPerson([item(WC, { itemId: "x", name: "" })]);
+    expect(people).toHaveLength(1);
+    expect(people[0].items).toHaveLength(1);
+  });
+});
+
+describe("personKey", () => {
+  it("strips the annotations reps actually add", () => {
+    expect(personKey("Julius Montenegro (IP)")).toBe(personKey("Julius Montenegro (cgm)"));
+    expect(personKey("Janet Berry(OLD)")).toBe(personKey("Janet Berry"));
+    expect(personKey("Oscar Achuff old")).toBe(personKey("Oscar Achuff"));
+    expect(personKey("Kaila Meisner (pump - pa appealed)")).toBe(personKey("Kaila Meisner"));
+  });
+
+  it("ignores case and punctuation", () => {
+    expect(personKey("ALEXANDRA CHABEREK")).toBe(personKey("Alexandra Chaberek"));
+    expect(personKey("Robert Green Jr.")).toBe(personKey("robert green jr"));
+  });
+
+  it("keeps genuinely different names apart", () => {
+    expect(personKey("John Hartley Jr")).not.toBe(personKey("Sue Hartley"));
+    expect(personKey("Carolyn Torrence")).not.toBe(personKey("Herma Clunis"));
   });
 });

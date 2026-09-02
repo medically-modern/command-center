@@ -761,6 +761,9 @@ export default function AssignedPatientsPage() {
           ) : (
             <PatientDossierPanel
               dossier={dossier.dossier}
+              people={dossier.people}
+              selected={dossier.selected}
+              onSelectPerson={dossier.selectPerson}
               loading={dossier.loading}
               error={dossier.error}
               phone={selectedPhone || null}

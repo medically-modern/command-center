@@ -34,6 +34,7 @@ import {
   Loader2,
   Pause,
   Plus,
+  Users,
   StickyNote,
   User,
 } from "lucide-react";
@@ -273,12 +274,19 @@ function StageNotesBlock({ stage }: { stage: StageNotes }) {
 
 export function PatientDossierPanel({
   dossier,
+  people = [],
+  selected = 0,
+  onSelectPerson,
   loading,
   error,
   phone,
   idleHint = "Open a conversation, call or voicemail to see the patient's Command Center profile.",
 }: {
   dossier: PatientDossier | null;
+  /** Everyone who shares this number — usually one. */
+  people?: PatientDossier[];
+  selected?: number;
+  onSelectPerson?: (index: number) => void;
   loading: boolean;
   error: string | null;
   phone: string | null;
@@ -363,6 +371,43 @@ export function PatientDossierPanel({
           {fmtPhone(dossier.phone || phone)}
           {active ? ` · ${active.boardName}` : " · no live stage"}
         </p>
+
+        {/* ⚠️ A shared line, and the rep has to be told BEFORE they read the
+            notes or type one. 18 of our 3,140 numbers are shared by genuinely
+            different patients — households like the Hartleys, and several
+            pairs with different surnames. Everything below follows this
+            selection, including the note composer and the outbound text's
+            patient attribution. */}
+        {people.length > 1 && (
+          <div className="mt-2 rounded-md border border-amber-300 bg-amber-50 p-2 dark:border-amber-800 dark:bg-amber-950/60">
+            <p className="flex items-center gap-1.5 text-[11px] font-semibold text-amber-900 dark:text-amber-100">
+              <Users className="h-3.5 w-3.5 shrink-0" />
+              {people.length} patients share this number
+            </p>
+            <div className="mt-1.5 flex flex-wrap gap-1">
+              {people.map((p, i) => (
+                <button
+                  key={`${p.active?.itemId ?? p.name}-${i}`}
+                  onClick={() => onSelectPerson?.(i)}
+                  aria-pressed={i === selected}
+                  title={p.active ? `Working on ${p.active.boardName}` : "No live stage"}
+                  className={cn(
+                    "max-w-full truncate rounded px-2 py-1 text-[11px] font-medium transition-colors",
+                    i === selected
+                      ? "bg-amber-500 text-white"
+                      : "bg-white text-amber-900 hover:bg-amber-100 dark:bg-amber-900/40 dark:text-amber-100 dark:hover:bg-amber-900",
+                  )}
+                >
+                  {p.name || fmtPhone(p.phone)}
+                </button>
+              ))}
+            </div>
+            <p className="mt-1.5 text-[10px] text-amber-800 dark:text-amber-200">
+              {/* Say what the choice CHANGES, or a rep has no reason to make it. */}
+              Notes and outbound texts are filed against the patient selected here.
+            </p>
+          </div>
+        )}
       </div>
 
       {/* ── 1. The path ─────────────────────────────────────── */}

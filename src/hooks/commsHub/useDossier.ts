@@ -18,30 +18,48 @@
  * `peekDossierItems`, so clicking back and forth between two threads does not
  * flicker a spinner over data we already hold.
  */
-import { useEffect, useState } from "react";
-import { buildDossier, type PatientDossier } from "@/lib/commsHub/dossier";
+import { useCallback, useEffect, useState } from "react";
+import { splitByPerson, type PatientDossier } from "@/lib/commsHub/dossier";
 import { dossierConfigured, fetchDossierItems, peekDossierItems } from "@/lib/commsHub/dossierApi";
 
 export interface DossierState {
+  /** The SELECTED person's dossier — what every consumer reads. */
   dossier: PatientDossier | null;
+  /**
+   * Everyone who shares this number. Usually one; 18 of our 3,140 numbers are
+   * shared by genuinely different patients (audited 2026-09-02), and the pane
+   * offers a switcher for those.
+   */
+  people: PatientDossier[];
+  /** Index into `people`. */
+  selected: number;
   loading: boolean;
   error: string | null;
   /** Monday is reachable at all. False in a build with no API token. */
   configured: boolean;
 }
 
-export function useDossier(phone: string | null | undefined): DossierState {
+export function useDossier(phone: string | null | undefined): DossierState & { selectPerson: (i: number) => void } {
   const [state, setState] = useState<DossierState>({
     dossier: null,
+    people: [],
+    selected: 0,
     loading: false,
     error: null,
     configured: dossierConfigured(),
   });
 
+  /** Switch to another patient on this number. Everything downstream follows,
+   *  because `dossier` IS the selected one — including the pane's note
+   *  composer and the page's outbound-text attribution. */
+  const selectPerson = useCallback((index: number) => {
+    setState((s) => (index >= 0 && index < s.people.length ? { ...s, selected: index, dossier: s.people[index] } : s));
+  }, []);
+
   useEffect(() => {
     const num = (phone || "").trim();
     if (!num) {
-      setState((s) => ({ ...s, dossier: null, loading: false, error: null }));
+      setState((s) => ({ ...s, dossier: null, people: [], selected: 0, loading: false, error: null }));
       return;
     }
 
@@ -49,12 +67,8 @@ export function useDossier(phone: string | null | undefined): DossierState {
     // re-showing the same thing a microtask later.
     const cached = peekDossierItems(num);
     if (cached) {
-      setState({
-        dossier: cached.length ? buildDossier(cached) : null,
-        loading: false,
-        error: null,
-        configured: true,
-      });
+      const people = splitByPerson(cached);
+      setState({ dossier: people[0] ?? null, people, selected: 0, loading: false, error: null, configured: true });
       return;
     }
     // ⚠️ Bound to the number that was open when the fetch started. Without
@@ -64,21 +78,21 @@ export function useDossier(phone: string | null | undefined): DossierState {
     let alive = true;
     // ⚠️ `dossier: null`, not a spread that keeps it — see the header. The
     // previous patient must leave the pane the instant the rep selects another.
-    setState((s) => ({ ...s, dossier: null, loading: true, error: null }));
+    setState((s) => ({ ...s, dossier: null, people: [], selected: 0, loading: true, error: null }));
     fetchDossierItems(num)
       .then((items) => {
         if (!alive) return;
-        setState({
-          dossier: items.length ? buildDossier(items) : null,
-          loading: false,
-          error: null,
-          configured: true,
-        });
+        // ⚠️ Split by PERSON, not merged. A phone match is not a person: two
+        // patients on one line used to become a single blended profile.
+        const people = splitByPerson(items);
+        setState({ dossier: people[0] ?? null, people, selected: 0, loading: false, error: null, configured: true });
       })
       .catch((e: unknown) => {
         if (!alive) return;
         setState({
           dossier: null,
+          people: [],
+          selected: 0,
           loading: false,
           error: e instanceof Error ? e.message : String(e),
           configured: true,
@@ -89,5 +103,5 @@ export function useDossier(phone: string | null | undefined): DossierState {
     };
   }, [phone]);
 
-  return state;
+  return { ...state, selectPerson };
 }

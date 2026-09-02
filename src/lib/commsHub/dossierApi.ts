@@ -15,7 +15,7 @@ import { MONDAY_API_URL, hasMondayAuth, mondayIdentityHeaders } from "../shared/
 import { BOARDS, type BoardDef } from "../systemMgmt/mondayApi";
 import { toE164 } from "../fax/ringcentralApi";
 import { contactKey } from "../contactState/contactState";
-import { markStuck, nameMatchAccepted, type DossierItem, type PatientIdentity } from "./dossier";
+import { markStuck, nameMatchAccepted, personKey, type DossierItem, type PatientIdentity } from "./dossier";
 import { pipelineIndex } from "./pipelineOrder";
 import { phoneMatchVariants } from "./directory";
 import { appendStampedNote } from "../shared/noteStamp";
@@ -187,6 +187,10 @@ async function boardSearch(board: BoardDef, colId: string, needle: string, limit
  *  a text, and they click through conversations quickly. */
 const dossierCache = new Map<string, DossierItem[]>();
 
+/** Distinct people on one number whose COMPLETED (blank-phone) records are
+ *  chased. Each costs a seven-board fan-out — see `fetchDossierItems`. */
+const MAX_NAME_PASSES = 3;
+
 /**
  * Every board record for the patient on this number.
  *
@@ -234,19 +238,44 @@ export async function fetchDossierItems(phone: string): Promise<DossierItem[]> {
     .flat()
     .filter((i) => i.phone === want);
 
-  // The name to search for comes from the phone pass, so a wrong number can
-  // never pull in a stranger who happens to share a name with somebody.
-  const name = byPhone.find((i) => i.name.trim())?.name.trim() ?? "";
-  // The anchor identity comes from the PHONE pass, so everything the name pass
-  // admits is checked against a record we already know is this patient's.
-  const anchor: PatientIdentity = { phone: want, dob: byPhone.find((i) => i.dob)?.dob ?? "" };
-  const byName = name
-    ? (await Promise.all(BOARDS.map(async (b) => (await boardSearch(b, "name", name)).map((it) => toDossierItem(b, it)))))
-        .flat()
-        .filter((i) => i.name.trim().toLowerCase() === name.toLowerCase())
-        // ⚠️ A name is not an identity — see `nameMatchAccepted`.
-        .filter((i) => nameMatchAccepted(i, anchor))
-    : [];
+  /**
+   * The names to search for come from the phone pass, so a wrong number can
+   * never pull in a stranger who happens to share a name with somebody.
+   *
+   * ⚠️ **Every distinct person on the number, not just the first.** 18 of our
+   * 3,140 numbers are shared by genuinely different patients (audited
+   * 2026-09-02 — households like John and Sue Hartley, and several pairs with
+   * different surnames). Taking `byPhone.find(...)` meant the completed-record
+   * pass ran for ONE of them, so the other's history was silently missing from
+   * a pane that was already merging them into one profile.
+   *
+   * ⚠️ Capped: each name is a seven-board fan-out, and a number carrying a
+   * long tail of near-duplicate titles would otherwise multiply that. Three
+   * covers every real case on the boards today; the rest still get their phone
+   * records, just not their blank-phone completed ones.
+   */
+  const names = [...new Map(byPhone.filter((i) => i.name.trim()).map((i) => [personKey(i.name), i.name.trim()])).values()]
+    .slice(0, MAX_NAME_PASSES);
+  const byName = (
+    await Promise.all(
+      names.map(async (name) => {
+        // The anchor identity comes from the PHONE pass, so everything admitted
+        // is checked against a record we already know belongs to this person.
+        const anchor: PatientIdentity = {
+          phone: want,
+          dob: byPhone.find((i) => personKey(i.name) === personKey(name) && i.dob)?.dob ?? "",
+        };
+        const hits = await Promise.all(
+          BOARDS.map(async (b) => (await boardSearch(b, "name", name)).map((it) => toDossierItem(b, it))),
+        );
+        return hits
+          .flat()
+          .filter((i) => i.name.trim().toLowerCase() === name.toLowerCase())
+          // ⚠️ A name is not an identity — see `nameMatchAccepted`.
+          .filter((i) => nameMatchAccepted(i, anchor));
+      }),
+    )
+  ).flat();
 
   const seen = new Set<string>();
   const items = [...byPhone, ...byName].filter((i) => {

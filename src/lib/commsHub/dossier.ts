@@ -270,6 +270,61 @@ export function stageNoteTrail(dossier: PatientDossier): StageNotes[] {
     }));
 }
 
+/**
+ * Two board records are the same PERSON when their names agree once the rep
+ * annotations are stripped.
+ *
+ * ⚠️ Boards share nothing but the name (§7 gives `buildCompletionMap` the same
+ * reason), so this is the only key available. What it strips is the vocabulary
+ * reps actually add to an item title, verified against the live boards
+ * 2026-09-02: a parenthetical (`(ip)`, `(cgm)`, `(copy)`, `(pump - pa
+ * appealed)`, `(switches insurance aug 1)`) and a trailing `old`. Those are
+ * notes on a record, never a different human.
+ *
+ * ⚠️ It deliberately does NOT fuzzy-match. `Bradley Comstock` and `Bradley
+ * Comstuck` stay two people here, and that is the safe direction: over-
+ * splitting shows a rep both records and makes a duplicate obvious, while
+ * over-merging is the bug this whole split exists to fix. Same fail-closed
+ * posture as `nameMatchAccepted`.
+ */
+export function personKey(name: string): string {
+  return String(name ?? "")
+    .replace(/\([^)]*\)/g, " ")
+    .replace(/\bold\b/gi, " ")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+/**
+ * Split one number's board records into the people who actually share it.
+ *
+ * ⚠️ **A phone match is not a person.** 18 of the 3,140 numbers on our boards
+ * are shared by genuinely different patients (audited 2026-09-02) — households
+ * like John and Sue Hartley on `3046977788`, and a fair few pairs with
+ * different surnames. Folding them into one dossier merged two people's stage
+ * paths and notes under one header, and — because the pane's composer writes to
+ * `dossier.active.itemId` and the page derives `threadPatient` from the same
+ * object — a note or an outbound text could be filed against the wrong one.
+ *
+ * Ordered so the default selection is the patient a rep most likely means: the
+ * one with a live record furthest along the pipeline, then by name so the order
+ * cannot change between polls.
+ */
+export function splitByPerson(items: DossierItem[]): PatientDossier[] {
+  const byPerson = new Map<string, DossierItem[]>();
+  for (const it of items) {
+    const k = personKey(it.name) || it.itemId;
+    const list = byPerson.get(k);
+    if (list) list.push(it);
+    else byPerson.set(k, [it]);
+  }
+  const rank = (d: PatientDossier) => (d.active ? pipelineIndex(d.active.boardId) : -1);
+  return [...byPerson.values()]
+    .map(buildDossier)
+    .sort((a, b) => rank(b) - rank(a) || a.name.localeCompare(b.name));
+}
+
 /** How far along the chain the patient has actually got, for a caption like
  *  "3 of 6 stages complete". Counts completed steps only. */
 export function stagesCompleted(path: PathStep[]): number {

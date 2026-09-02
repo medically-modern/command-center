@@ -51,11 +51,14 @@ const item = (name: string, phone: string) => ({
  * outbound-text attribution read.
  */
 function Probe({ phone }: { phone: string }) {
-  const { dossier, loading } = useDossier(phone);
+  const { dossier, loading, people, selected, selectPerson } = useDossier(phone);
   return (
     <>
       <span data-testid="name">{dossier?.name ?? "NONE"}</span>
       <span data-testid="state">{loading ? "LOADING" : "IDLE"}</span>
+      <span data-testid="count">{people.length}</span>
+      <span data-testid="selected">{selected}</span>
+      <button data-testid="next" onClick={() => selectPerson(selected + 1)}>next</button>
     </>
   );
 }
@@ -125,5 +128,52 @@ describe("useDossier", () => {
     await waitFor(() => expect(screen.getByTestId("name")).toHaveTextContent("Robert Arkus"));
     rerender(<Probe phone="" />);
     await waitFor(() => expect(screen.getByTestId("name")).toHaveTextContent("NONE"));
+  });
+});
+
+
+describe("a number shared by two patients", () => {
+  // John and Sue Hartley share 3046977788 on the live boards.
+  const SHARED = "+13046977788";
+  const both = [
+    { ...item("Sue Hartley", SHARED), itemId: "sue", boardId: 18406352652, boardName: "Profile Send Off" },
+    item("John Hartley Jr", SHARED),
+  ];
+
+  it("reports BOTH people and defaults to the furthest along", () => {
+    // Merged, the pane blended their paths and notes under one header.
+    peekDossierItems.mockReturnValue(both);
+    render(<Probe phone={SHARED} />);
+    expect(screen.getByTestId("count")).toHaveTextContent("2");
+    // John is on Welcome Call, Sue on Profile Send Off.
+    expect(screen.getByTestId("name")).toHaveTextContent("John Hartley Jr");
+  });
+
+  it("switches the ACTIVE dossier, which is what notes and texts are filed against", () => {
+    peekDossierItems.mockReturnValue(both);
+    render(<Probe phone={SHARED} />);
+    act(() => screen.getByTestId("next").click());
+    expect(screen.getByTestId("selected")).toHaveTextContent("1");
+    expect(screen.getByTestId("name")).toHaveTextContent("Sue Hartley");
+  });
+
+  it("ignores a selection outside the list", () => {
+    peekDossierItems.mockReturnValue([item("Robert Arkus", "+17138254957")]);
+    render(<Probe phone="+17138254957" />);
+    act(() => screen.getByTestId("next").click());
+    expect(screen.getByTestId("name")).toHaveTextContent("Robert Arkus");
+    expect(screen.getByTestId("selected")).toHaveTextContent("0");
+  });
+
+  it("resets the selection when the number changes", () => {
+    // Or the next number opens on an index that means nothing on it.
+    peekDossierItems.mockReturnValue(both);
+    const { rerender } = render(<Probe phone={SHARED} />);
+    act(() => screen.getByTestId("next").click());
+    expect(screen.getByTestId("selected")).toHaveTextContent("1");
+    peekDossierItems.mockReturnValue([item("Robert Arkus", "+17138254957")]);
+    rerender(<Probe phone="+17138254957" />);
+    expect(screen.getByTestId("selected")).toHaveTextContent("0");
+    expect(screen.getByTestId("name")).toHaveTextContent("Robert Arkus");
   });
 });

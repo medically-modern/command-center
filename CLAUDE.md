@@ -2182,6 +2182,23 @@ access.json assignments key off, so a rename is display-only (§5.10's precedent
   `!!getToken()` gate is FALSE in exactly the deployment that matters — and it fails silently:
   every dossier reads "not on any pipeline board" and every fax matches no provider, with nothing
   erroring. Caught in review before it shipped; the same trap §7 records for `oversightApi.ts`.
+- ⚠️ **A PHONE MATCH IS NOT A PERSON either** (`dossier.splitByPerson` + `personKey`, tested).
+  Audited over the live boards 2026-09-02: of **3,140 distinct numbers, 18 are shared by genuinely
+  different patients** — households (John and Sue Hartley on `3046977788`, Charles and Linda
+  Stanley, Annie and Richard Higginbottom, Mariano Gonzalez and Mariano Gonzalez Jr) and several
+  pairs with different surnames (Raymond King / Ruth Bullock, Jimmie Woodruff / John Chadwell,
+  Carolyn Torrence / Herma Clunis). `fetchDossierItems` keeps every item whose phone matches, so
+  those used to become ONE blended dossier: two people's stage paths and notes under one header,
+  and — because the pane's composer writes to `dossier.active.itemId` and the page derives
+  `threadPatient` from the same object — a note or an outbound text could be filed against the
+  wrong one. The pane now says **"N patients share this number"** and offers a switcher; everything
+  downstream follows the selection. ⚠️ `personKey` strips only the annotations reps actually add to
+  a title (`(ip)`, `(cgm)`, `(copy)`, `(OLD)`, a trailing `old`) and deliberately does **not**
+  fuzzy-match: `Bradley Comstock` / `Bradley Comstuck` stay two entries, because over-splitting
+  shows a rep both records and makes a duplicate obvious, while over-merging is the bug this exists
+  to fix. ⚠️ The completed-record name pass runs for **every** person on the number, capped at 3 —
+  it used to run for `byPhone.find(...)` alone, so the second patient's history was silently
+  missing from a pane already merging them.
 - ⚠️ **A NAME IS NOT AN IDENTITY** (`dossier.nameMatchAccepted` + tests). Two patients called
   Maria Garcia is ordinary at this size, and name-only matching would merge their trails — one
   patient's notes and stage rendered on the other's conversation, and the wrong Monday item handed
