@@ -90,6 +90,7 @@ export function DoctorSection({ patient: pt, received, onUpdate, clinicLabels, o
   const [paraLoading, setParaLoading] = useState(false);
   const [paraSel, setParaSel] = useState<string | null>(null);
   const [paraQuery, setParaQuery] = useState(""); // the term actually searched
+  const [paraError, setParaError] = useState<string | null>(null);
 
   // ── Notes + followers (per selected profile) ──
   const [notes, setNotes] = useState("");
@@ -217,9 +218,10 @@ export function DoctorSection({ patient: pt, received, onUpdate, clinicLabels, o
     try {
       const res = await fetch(`${PARACHUTE_API}/api/search?term=${encodeURIComponent(npi)}`);
       const body = await res.json();
+      if (!res.ok) throw new Error(body?.message ?? body?.error ?? `Request failed (${res.status})`);
       const match = (body?.results ?? []).find((d: ParaDoctor) => d.npi === npi) ?? body?.results?.[0];
       setCount(match ? match.signature_count : 0);
-    } catch { toast.error("Parachute lookup failed"); }
+    } catch (e) { toast.error(`Parachute lookup failed — ${(e as Error).message}`); }
     finally { setCountLoading(false); }
   };
 
@@ -227,12 +229,22 @@ export function DoctorSection({ patient: pt, received, onUpdate, clinicLabels, o
     const query = q.trim();
     if (query.length < 2) return;
     setParaLoading(true);
+    setParaError(null);
     try {
       const res = await fetch(`${PARACHUTE_API}/api/search?term=${encodeURIComponent(query)}`);
       const body = await res.json();
+      // A 5xx still returns a valid JSON body, so `.json()` resolving is not
+      // success. Without this check the error body has no `results`, and the
+      // panel renders "no doctor matched" — a failed lookup disguised as a
+      // genuine zero result.
+      if (!res.ok) throw new Error(body?.message ?? body?.error ?? `Request failed (${res.status})`);
       setParaResults(body?.results ?? []);
       setParaQuery(query);
-    } catch { setParaResults([]); setParaQuery(query); }
+    } catch (e) {
+      setParaResults([]);
+      setParaQuery(query);
+      setParaError((e as Error).message);
+    }
     finally { setParaLoading(false); }
   };
 
@@ -459,6 +471,12 @@ export function DoctorSection({ patient: pt, received, onUpdate, clinicLabels, o
           </div>
           <div className="para-list">
             {paraLoading ? <div className="res-note">Searching…</div> :
+              paraError ? (
+                <div className="res-note" style={{ color: "var(--destructive, #df2f4a)" }}>
+                  Parachute lookup failed for <b>“{paraQuery}”</b> — {paraError}. This is <b>not</b> a
+                  “no doctor found” result; the search never completed. Try Search again.
+                </div>
+              ) :
               paraResults.length === 0 ? (
                 paraQuery
                   ? <div className="res-note">Nothing came up on Parachute for <b>“{paraQuery}”</b> — no doctor matched that name or NPI.</div>
