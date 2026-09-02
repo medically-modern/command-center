@@ -17,6 +17,7 @@ import { callConnected, isVoicemail, type RcCallLogRecord } from "@/lib/callHist
 import { contactKey } from "@/lib/contactState/contactState";
 import type { VoicemailRecord } from "@/lib/fax/ringcentralApi";
 import { fmtPhone } from "@/lib/assignedPatients/format";
+import { resolveDisplayName, type NameSource } from "@/lib/commsHub/directory";
 import { cn } from "@/lib/utils";
 import { FilterPill, HubListHeader, Initials, ListEmpty, ListError, listTime } from "./HubList";
 
@@ -44,7 +45,10 @@ function toRows(records: RcCallLogRecord[]): CallRow[] {
         id: String(r.id ?? r.sessionId ?? i),
         key: contactKey(party?.phoneNumber),
         phone: party?.phoneNumber ?? "",
-        name: "",
+        // RingCentral's own name for the party. It was dropped on the floor
+        // here until 2026-09-02 (`name: ""`), so every call row read as a bare
+        // number even for the offices a rep has in their RC contacts.
+        name: (party?.name ?? "").trim(),
         at: r.startTime ?? "",
         inbound,
         connected: callConnected(r),
@@ -63,6 +67,20 @@ function mmss(sec: number): string {
   return `${m}:${String(s).padStart(2, "0")}`;
 }
 
+/** Attach the display label to each row. Split out of the component so the
+ *  rule is applied in exactly one place for calls.
+ *
+ *  ⚠️ `source` is carried, not just the label. Two things downstream need to
+ *  know whether the label IS the number: the avatar (initials taken from
+ *  "(815) 523-7259" come out as "(5") and the subline, which would otherwise
+ *  print the same number twice. */
+function shownRows(rows: CallRow[], names: ReadonlyMap<string, string>): (CallRow & { label: string; source: NameSource })[] {
+  return rows.map((r) => ({
+    ...r,
+    ...resolveDisplayName({ rcName: r.name, directoryName: names.get(r.key), phone: r.phone }, fmtPhone),
+  }));
+}
+
 export function PhonePanel({
   mode,
   onMode,
@@ -77,6 +95,7 @@ export function PhonePanel({
   onQuery,
   missedOnly,
   onMissedOnly,
+  names,
 }: {
   mode: PhoneMode;
   onMode: (m: PhoneMode) => void;
@@ -91,6 +110,9 @@ export function PhonePanel({
   onQuery: (v: string) => void;
   missedOnly: boolean;
   onMissedOnly: (v: boolean) => void;
+  /** Patient names our boards hold, keyed by last-10 digits. One batched read
+   *  for the whole list — see `hooks/commsHub/useDirectoryNames`. */
+  names: ReadonlyMap<string, string>;
 }) {
   const rows = useMemo(() => toRows(calls ?? []), [calls]);
   const missedCount = useMemo(() => rows.filter((r) => r.inbound && !r.connected).length, [rows]);
@@ -99,28 +121,42 @@ export function PhonePanel({
   const digits = query.replace(/\D/g, "");
   const q = query.trim().toLowerCase();
 
+  /** The label each row shows: RingCentral's contact, else our boards, else the
+   *  number (`resolveDisplayName`). Computed once per row rather than in the
+   *  JSX so the search below can match what the rep can actually SEE — a list
+   *  that shows "Tonasila Gray" and then can't find her by that name is worse
+   *  than one that never showed it. */
+  const labelled = useMemo(
+    () => shownRows(rows, names),
+    [rows, names],
+  );
+
   const shownCalls = useMemo(
     () =>
-      rows.filter((r) => {
+      labelled.filter((r) => {
         // "Missed" is an INBOUND call nobody answered. An outbound call that
         // went unanswered is not a missed call — nobody was trying to reach us.
         if (missedOnly && !(r.inbound && !r.connected)) return false;
         if (!q) return true;
-        return digits.length >= 3 ? r.key.includes(digits) : false;
+        return r.label.toLowerCase().includes(q) || (digits.length >= 3 && r.key.includes(digits));
       }),
-    [rows, missedOnly, q, digits],
+    [labelled, missedOnly, q, digits],
   );
 
   const shownVoicemails = useMemo(
     () =>
-      (voicemails ?? []).filter((v) => {
-        if (missedOnly && v.read) return false;
+      (voicemails ?? []).map((v) => ({
+        vm: v,
+        ...resolveDisplayName(
+          { rcName: v.fromName, directoryName: names.get(contactKey(v.fromNumber)), phone: v.fromNumber },
+          fmtPhone,
+        ),
+      })).filter(({ vm, label }) => {
+        if (missedOnly && vm.read) return false;
         if (!q) return true;
-        return (
-          v.fromName.toLowerCase().includes(q) || (digits.length >= 3 && contactKey(v.fromNumber).includes(digits))
-        );
+        return label.toLowerCase().includes(q) || (digits.length >= 3 && contactKey(vm.fromNumber).includes(digits));
       }),
-    [voicemails, missedOnly, q, digits],
+    [voicemails, missedOnly, q, digits, names],
   );
 
   return (
@@ -181,14 +217,23 @@ export function PhonePanel({
                   )}
                 >
                   <Initials
-                    name={r.name}
+                    // "" when the label is the number itself — `Initials` then
+                    // falls back to the last two digits rather than reading
+                    // "(5" out of "(815) 523-7259".
+                    name={r.source === "number" ? "" : r.label}
                     phone={r.phone}
                     tone={missed ? "bg-rose-500/15 text-rose-600 dark:text-rose-400" : undefined}
                   />
                   <span className="min-w-0 flex-1">
-                    <span className="block truncate text-sm font-medium">{fmtPhone(r.phone)}</span>
+                    <span className="block truncate text-sm font-medium" title={fmtPhone(r.phone)}>
+                      {r.label}
+                    </span>
                     <span className="mt-0.5 flex items-center gap-1.5 text-[11px] text-muted-foreground">
                       <Icon className={cn("h-3 w-3 shrink-0", missed && "text-rose-500")} />
+                      {/* The number moves down here rather than disappearing:
+                          a rep reads back the number they are about to dial,
+                          and a list of names alone can't be checked. */}
+                      {r.source !== "number" && <span className="tabular-nums">{fmtPhone(r.phone)} ·</span>}
                       {r.voicemail ? "Voicemail" : missed ? "Missed" : r.inbound ? "Incoming" : "Outgoing"}
                       {r.connected && r.durationSec > 0 && <span className="tabular-nums">· {mmss(r.durationSec)}</span>}
                     </span>
@@ -215,7 +260,7 @@ export function PhonePanel({
                 )}
               </ListEmpty>
             )}
-            {shownVoicemails.map((v) => (
+            {shownVoicemails.map(({ vm: v, label, source }) => (
               <button
                 key={v.id}
                 onClick={() => onSelect(v.fromNumber)}
@@ -225,14 +270,14 @@ export function PhonePanel({
                 )}
               >
                 <Initials
-                  name={v.fromName}
+                  name={source === "number" ? "" : label}
                   phone={v.fromNumber}
                   tone={!v.read ? "bg-primary/15 text-primary" : undefined}
                 />
                 <span className="min-w-0 flex-1">
                   <span className="flex items-baseline gap-2">
                     <span className={cn("truncate text-sm", v.read ? "font-medium" : "font-semibold")}>
-                      {v.fromName || fmtPhone(v.fromNumber)}
+                      {label}
                     </span>
                     <span className="ml-auto shrink-0 text-[10px] text-muted-foreground tabular-nums">
                       {listTime(v.creationTime)}
@@ -240,6 +285,7 @@ export function PhonePanel({
                   </span>
                   <span className="mt-0.5 flex items-center gap-1.5 text-[11px] text-muted-foreground">
                     <Voicemail className="h-3 w-3 shrink-0" />
+                    {source !== "number" && <span className="tabular-nums">{fmtPhone(v.fromNumber)} ·</span>}
                     {v.durationSec ? mmss(v.durationSec) : "Voicemail"}
                     {!v.read && <span className="ml-1 h-1.5 w-1.5 rounded-full bg-primary" />}
                   </span>

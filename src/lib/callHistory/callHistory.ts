@@ -116,8 +116,12 @@ export interface RcCallLogRecord {
   duration?: number;
   direction?: string;
   result?: string;
-  from?: { phoneNumber?: string };
-  to?: { phoneNumber?: string };
+  /** RingCentral's own name for the party — a contact where it has one, else
+   *  the carrier CNAM. Read by the Communications Hub's call list; see
+   *  `commsHub/directory.rcNameStrength` for why the two can't be trusted
+   *  equally. */
+  from?: { phoneNumber?: string; name?: string };
+  to?: { phoneNumber?: string; name?: string };
   recording?: { id?: string | number; contentUri?: string };
   legs?: Array<{ result?: string; duration?: number; recording?: { id?: string | number; contentUri?: string } }>;
 }

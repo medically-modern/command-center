@@ -13,10 +13,12 @@
  * The local override map exists only to cover the seconds between the write and
  * the next poll — see `applyReadOverrides`.
  *
- * ⚠️ Names are RingCentral's caller ID, never a Monday lookup. Resolving a name
- * per row would be one cross-board query per conversation on every poll, which
- * is the shape INCIDENT_2026-08-20 was. The SELECTED conversation gets its real
- * patient record in the dossier pane, which is one lookup, on click.
+ * ⚠️ Names are RingCentral's caller ID FIRST, and only then our boards — and
+ * the board half is a single BATCHED read, never a lookup per row. "One
+ * cross-board query per conversation on every poll" is the INCIDENT_2026-08-20
+ * shape and is still forbidden; `hooks/commsHub/useDirectoryNames` resolves the
+ * whole list in a couple of requests and caches the answers (misses included)
+ * for the session. The rule itself is `lib/commsHub/directory.ts`.
  */
 import { useMemo } from "react";
 import { AlertTriangle, MailOpen, MessageSquare } from "lucide-react";
@@ -28,6 +30,7 @@ import {
 } from "@/components/ui/context-menu";
 import type { Conversation } from "@/lib/commsHub/conversations";
 import { fmtPhone } from "@/lib/assignedPatients/format";
+import { resolveDisplayName } from "@/lib/commsHub/directory";
 import { cn } from "@/lib/utils";
 import { HubListHeader, Initials, ListEmpty, ListError, listTime } from "./HubList";
 
@@ -44,6 +47,7 @@ export function TextInbox({
   onQuery,
   unreadOnly,
   onUnreadOnly,
+  names,
 }: {
   conversations: Conversation[];
   loading: boolean;
@@ -57,24 +61,36 @@ export function TextInbox({
   onQuery: (v: string) => void;
   unreadOnly: boolean;
   onUnreadOnly: (v: boolean) => void;
+  /** Patient names our boards hold, keyed by last-10 digits — one batched read
+   *  for the whole list (`hooks/commsHub/useDirectoryNames`). */
+  names: ReadonlyMap<string, string>;
 }) {
   const unreadTotal = useMemo(() => conversations.filter((c) => c.unread > 0).length, [conversations]);
 
   const shown = useMemo(() => {
     const q = query.trim().toLowerCase();
     const digits = q.replace(/\D/g, "");
-    return conversations.filter((c) => {
-      if (unreadOnly && !c.unread) return false;
-      if (!q) return true;
-      // Matched on the name, the preview, and the number's digits — a rep
-      // searching "555" means the number, not a message containing "555".
-      return (
-        c.rcName.toLowerCase().includes(q) ||
-        c.preview.toLowerCase().includes(q) ||
-        (digits.length >= 3 && c.key.includes(digits))
-      );
-    });
-  }, [conversations, query, unreadOnly]);
+    return conversations
+      .map((c) => ({
+        c,
+        // `source` rides along: the avatar must not take initials from a
+        // formatted phone number ("(815) 523-7259" → "(5").
+        ...resolveDisplayName({ rcName: c.rcName, directoryName: names.get(c.key), phone: c.phone }, fmtPhone),
+      }))
+      .filter(({ c, label }) => {
+        if (unreadOnly && !c.unread) return false;
+        if (!q) return true;
+        // Matched on what the row SHOWS, the preview, and the number's digits —
+        // a rep searching "555" means the number, not a message containing
+        // "555". Searching the label rather than `rcName` is what lets them
+        // find a patient by the name they can see (Josh, 2026-09-02).
+        return (
+          label.toLowerCase().includes(q) ||
+          c.preview.toLowerCase().includes(q) ||
+          (digits.length >= 3 && c.key.includes(digits))
+        );
+      });
+  }, [conversations, query, unreadOnly, names]);
 
   return (
     <>
@@ -105,7 +121,7 @@ export function TextInbox({
           </ListEmpty>
         )}
 
-        {shown.map((c) => {
+        {shown.map(({ c, label, source }) => {
           const selected = c.key === selectedKey;
           return (
             <ContextMenu key={c.key}>
@@ -118,14 +134,17 @@ export function TextInbox({
                   )}
                 >
                   <Initials
-                    name={c.rcName}
+                    name={source === "number" ? "" : label}
                     phone={c.phone}
                     tone={c.unread ? "bg-primary/15 text-primary" : undefined}
                   />
                   <span className="min-w-0 flex-1">
                     <span className="flex items-baseline gap-2">
-                      <span className={cn("truncate text-sm", c.unread ? "font-semibold" : "font-medium")}>
-                        {c.rcName || fmtPhone(c.phone)}
+                      <span
+                        className={cn("truncate text-sm", c.unread ? "font-semibold" : "font-medium")}
+                        title={fmtPhone(c.phone)}
+                      >
+                        {label}
                       </span>
                       <span className="ml-auto shrink-0 text-[10px] text-muted-foreground tabular-nums">
                         {listTime(c.lastAt)}

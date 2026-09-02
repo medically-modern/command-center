@@ -2011,15 +2011,59 @@ access.json assignments key off, so a rename is display-only (§5.10's precedent
   and the next poll. ⚠️ **Only INBOUND messages carry a meaningful read state** — RingCentral
   reports outbound as Read on send, so counting both directions makes every conversation
   permanently read and the filter permanently empty.
-- ⚠️ **Names in the list are RingCentral's caller ID, not Monday.** Resolving a name per row would
-  be one cross-board query per conversation per poll — the incident's shape again. The SELECTED
-  conversation gets its real record in the dossier pane: one lookup, on click, memoised.
+- ⚠️ **Names are RingCentral's caller ID FIRST, then our boards — and the board half is ONE
+  BATCHED read, never a lookup per row.** Rule: **`lib/commsHub/directory.ts`** (+ tests); batching
+  and caching: **`hooks/commsHub/useDirectoryNames.ts`**. Until 2026-09-02 the lists showed a bare
+  number whenever RingCentral had no contact, which is most patients — reps keep offices and
+  manufacturers in RingCentral, not the ~6,000 people on our boards — so a text from Tonasila Gray
+  read as `(815) 523-7259`. "One cross-board query per conversation per poll" is still forbidden
+  (it is the incident's shape); what makes this safe is that it is the opposite of that, on four
+  properties that are all load-bearing:
+  1. **`any_of` takes the whole batch in ONE rule** (60 numbers), and every board rides in ONE
+     aliased GraphQL request (`b0:`, `b1:` …) — `boards(ids:)` can't be used because each board
+     names its own phone column. A 300-row list is ~5 requests. Verified live 2026-09-02: one
+     request resolved 8 of 9 numbers off Josh's screenshot across four boards.
+  2. **Once per session, not per poll** — every answer is cached at module scope, **misses
+     included**. ⚠️ Caching the misses is what stops the list re-asking about the same 200 unknown
+     numbers every 30 seconds forever; there is deliberately no TTL, because a patient's name does
+     not change while a rep reads their texts.
+  3. ⚠️ **`any_of` is an EXACT match and this account stores BOTH digit shapes** — `9739511857`
+     and `16078737352` sit in the same column. One shape alone returns 200 with no rows, which
+     reads as "not a patient". `phoneMatchVariants` asks for both (plus `+1`).
+  4. **The effect's dependency is a STRING** (`keys.join(",")`), not the array — incident rule 2 —
+     and the returned Map is the module snapshot, so it is safe in a dep array.
+  ⚠️ **RC wins, except when its "name" is not one.** `rcNameStrength` grades it: a placeholder
+  (`WIRELESS CALLER`) or the number written back at us is **junk** and never renders; a `CITY ST`
+  carrier CNAM (`LA JOLLA CA`) is **weak** and loses to a patient name but still beats a bare
+  number. ⚠️ The row's avatar takes `""` rather than the label when the label IS the number —
+  `Initials` would otherwise read `(5` out of `(815) 523-7259`. A number shared by two people
+  resolves to one of them (same semantics as `findPatientByPhone`); the dossier pane is where a rep
+  confirms who they are talking to. The SELECTED conversation still gets its real record there:
+  one lookup, on click, memoised.
 - **The dossier pane is the point of the whole page.** `PatientDossierPanel` renders, in this
   order: the **path** (which stages they have completed profiles in, in tracker order — §6), the
   **notes** (Josh's explicit ask: the running case history is what tells a rep what to say next;
-  everything else on the pane is a lookup), **Open on <board>**, then the **per-stage call
-  detail**. A completed step links with `?completedStage=`, so reading history can never
-  re-advance a finished patient (§7's review-mode gate).
+  everything else on the pane is a lookup), **every OTHER stage's notes** collapsed underneath,
+  **Open on <board>**, then the **per-stage call detail**. A completed step links with
+  `?completedStage=`, so reading history can never re-advance a finished patient (§7's review-mode
+  gate).
+- **All stages' notes, not just the live one** (Josh, 2026-09-02: *"notes should be ALL notes from
+  all stages … but welcome call notes should be the main attraction, the others viewable on
+  scroll"*). Rule: `dossier.stageNoteTrail` (+ tests). ⚠️ **No extra Monday read** — every board's
+  notes column is already in `dossierCols`, so each `DossierItem` arrives carrying its own stage's
+  notes and the pane was simply throwing all but the active one away. Ordered by PIPELINE position
+  (non-pipeline boards last), and a board run twice keeps **both** records: collapsing them would
+  drop a cycle's history, which is what a rep scrolling this list is looking for. Collapsed by
+  default with the newest line on the header — five stages of running history inlined would push
+  the stage detail off the bottom of the pane.
+- **Welcome Call's detail is the widest on purpose** (Josh, same day: *"we have more room on here
+  for welcome call patients"*) — it is the one stage where the rep is on a scheduled call with the
+  PATIENT rather than chasing an office, so the order, the cost (incl. **QMB**, which means they
+  owe nothing), the per-product **authorisations and their end dates**, the first order dates and
+  the ship-to all render. ⚠️ Every id is read off the LIVE board, never inferred from a sibling:
+  Welcome Call's auth block is per-product with its own ids, and a guessed id is a permanently
+  blank row rather than an error (§5.11). `buildStageDetail` drops empty fields and then empty
+  sections, so a thin patient still renders short.
 - **The notes are WRITABLE from here** (`dossierApi.appendNoteToRecord`). The hub is where a rep
   LEARNS things, so a note that had to be retyped on the role page was in practice lost. Same
   `appendStampedNote` every NotesPanel uses, so a line added here is indistinguishable from one
@@ -2069,6 +2113,28 @@ access.json assignments key off, so a rename is display-only (§5.10's precedent
   2026-09-02 found live values up to 9,383 characters in `text_mm389fs` with none parked at a
   ceiling, so applying it there would refuse writes the board demonstrably accepts —
   `appendIntakeNote` writes that same column with no length assertion for the same reason.
+- ⚠️ **An unmatched fax is checked against TWO sources, and the second was missing until
+  2026-09-02.** `fetchFaxMatches` searched only the patient boards' doctor columns; the **MM Doctor
+  Database** (`18142847597`, Script Fax `email_mkwh2ywd`) holds **2,290 offices**, including every
+  practice we have on file but are not chasing anybody for. So a fax from a real, known office read
+  as *"No patient on any board lists this number as their doctor's fax"* — a dead end that reads as
+  a broken lookup. `fetchDoctorDbByFax` is the fallback identity; patient rows still win the card
+  (they are the doctor as WE recorded them for the people we are working), and the pane says which
+  source answered, because *"we know this office but nobody of ours is with them"* and *"we have
+  never heard of this number"* are different answers with different next moves.
+  ⚠️ **The `@rcfax.com` join itself is NOT the bug — audited live 2026-09-02** when Josh reported
+  `(858) 366-6900` as unmatched. `contains_text` on the last four digits works fine against the
+  EMAIL column (`8458775008` · `5008` · `rcfax` · the full address all return the right row), and
+  `faxDigits` strips the address before comparing. That number is genuinely on no board: not in any
+  doctor-fax column on any of the five boards, not in the Doctor Database, and not in any doctor
+  PHONE column either. The ordinary cause is that **an office sends from a different line than the
+  one we fax to**, which is why the empty state now says so and tells the rep to add the number to
+  the doctor record. Do not "fix" the rcfax join; re-run that audit first.
+- **Right-click a fax → Mark as read / unread** (Josh, 2026-09-02), same posture as the Text tab:
+  RingCentral's own `readStatus`, never a local flag, because reps work this line in the
+  RingCentral desktop app too. The page holds a per-id override covering only the seconds between
+  the PUT and the next poll, dropped as soon as RingCentral's answer agrees or the write fails.
+  Opening a fax sets the same override, or the row springs back to unread until the poll lands.
 - ⚠️ **A fax is opened by fetching the BYTES first** (`fetchFaxBlobUrl` → the gateway's
   `/rc/fetch`), then handing `openFileViewer` a `blob:` URL — the same thing `FaxInboxPage` does.
   Passing a RingCentral attachment URI straight to the viewer sends it down `fetchAssetBytes`,
@@ -2828,7 +2894,8 @@ these services; when their math changes, `oopEstimator.ts` must be updated to ma
 | "A call never reached me" / "taking it gave an error" | §5.13 — `GET /calls/history?hours=…&last4=…` (Postgres `call_events` + `call_claims`), NOT Railway logs: those cap at 500 lines ≈ 13 minutes. A `410` from `/calls/claim` is RingCentral saying the party is already gone — the caller hung up or somebody else picked up — never a throttle, which surfaces as `502` |
 | A manager sees no contact icons on a sidebar row | §5.28 — the gate is **`?mv=`**, so they must have clicked in from Oversight; then check the patient's phone is in that queue's read set (`listColumns.test.ts` for Patient Intake) |
 | A contact icon says the wrong thing | §5.28 — `lib/contactState/contactState.ts`. Most recent wins per lane; a claimed inbound call is NOT a missed call (`callConnected` reads the legs) |
-| An inbound fax doesn't match a doctor / their patients are missing | §5.28 — `lib/commsHub/faxDirectory.ts`. The Doctor Fax column is an EMAIL column holding `<digits>@rcfax.com`, so the join strips the address first |
+| An inbound fax doesn't match a doctor / their patients are missing | §5.28 — `lib/commsHub/faxDirectory.ts` joins the patient boards, `dossierApi.fetchDoctorDbByFax` the 2,290-office Doctor Database. The Doctor Fax column is an EMAIL column holding `<digits>@rcfax.com`, so the join strips the address first — that half was **audited clean 2026-09-02**, so re-run the audit before blaming it; the usual cause is an office sending from a line we don't have on file |
+| A hub list row shows a phone number instead of a name | §5.28 — `lib/commsHub/directory.ts` (RC contact → our boards → the number) fed by `hooks/commsHub/useDirectoryNames`. A permanent number means the batched `any_of` found nobody; check the board holds one of the digit shapes `phoneMatchVariants` asks for |
 | The profile widget shows the wrong stage, or none | §5.28 — `lib/commsHub/dossier.ts` (`pickActive` = furthest-along open board) and `pipelineOrder.ts` (the tracker order, which §6 now follows) |
 | A conversation won't stay read / unread | §5.28 — read state is RingCentral's `readStatus` on the INBOUND messages, written with `setMessageRead`; the local override only covers the gap before the next poll |
 | Monday says "invalid value … data structure for this column" | **Start with `/audit.json?key=…&failed=1&since=1`** — its `error_data` names the `column_id`, `column_name`, `column_type` and the exact value sent. `/audit/errors.json` only counts redacted shapes and looks the same for every column and every writer, so it cannot tell you which (§10). Then match the value to the type: `location` needs `lat`+`lng` (§10), `long_text` takes `{"text": …}`, `text` a bare JSON string — and the notes columns are BOTH depending on the board (§5.28, `BoardDef.notesColType`) |

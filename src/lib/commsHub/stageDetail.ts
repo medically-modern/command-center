@@ -146,16 +146,40 @@ const INSURANCE: StageSection[] = [
   { title: "Order", fields: [{ label: "Serving", col: "color_mm1w1cm9" }] },
 ];
 
+/**
+ * Welcome Call is the widest of these on purpose (Josh, 2026-09-02: *"we have
+ * more room on here for welcome call patients, we can fill it with more
+ * info"*). It is the one stage where the rep is on a scheduled call with the
+ * patient rather than chasing an office, so every question they will be asked —
+ * what am I getting, what does it cost, is it approved, where is it going — has
+ * to be answerable without leaving the hub.
+ *
+ * ⚠️ Every id below is read off the LIVE board (2026-09-02), not inferred from
+ * a sibling board. Welcome Call's auth block is per-product and its ids are its
+ * own; guessing one produces a permanently blank row rather than an error
+ * (§5.11). Empty values and then empty sections are dropped by
+ * `buildStageDetail`, so a stage with nothing filled in still renders short.
+ */
 const WELCOME_CALL: StageSection[] = [
   {
     title: "The order",
     fields: [
       { label: "Serving", col: "color_mm1w1cm9", lead: true },
+      { label: "Subscription type", col: "color_mm1xbqth", lead: true },
       { label: "Request type", col: "color_mm1w1978" },
       { label: "Pump type", col: "color_mm1wjjtk" },
       { label: "CGM type", col: "color_mm1w7pmf" },
       { label: "Pump qty", col: "numeric_mm1xa0z2" },
+      { label: "Monitor qty", col: "numeric_mm1xyfhc" },
       { label: "Infusion set", col: "color_mm1x9paw" },
+      { label: "Inf. set qty", col: "numeric_mm1xv7wr" },
+      { label: "Infusion set 2", col: "color_mm1xekaz" },
+      { label: "Inf. set 2 qty", col: "numeric_mm1xkq3b" },
+      { label: "Cartridge qty", col: "numeric_mm515sqv" },
+      // A split order ships as two Cardinal orders (§5.22), which changes what
+      // the rep tells the patient to expect in the post.
+      { label: "Split order", col: "color_mm381bgy" },
+      { label: "Order handling", col: "color_mm2776fg" },
     ],
   },
   {
@@ -166,13 +190,48 @@ const WELCOME_CALL: StageSection[] = [
       { label: "OOP max left", col: "text_mm1xx5f", lead: true },
       { label: "Deductible", col: "text_mm1xkbqc" },
       { label: "OOP max", col: "text_mm1xdtj7" },
+      { label: "Coinsurance", col: "text_mm391jq8" },
+      // QMB means Medicaid covers the patient's share — i.e. the answer to
+      // "what do I owe" is nothing, and saying otherwise is a real harm.
+      { label: "QMB", col: "text_mm2wms12", lead: true },
     ],
   },
   {
     title: "Coverage",
     fields: [
-      { label: "Primary", col: "color_mm1x157j" },
+      { label: "Primary", col: "color_mm1x157j", lead: true },
       { label: "Member ID", col: "text_mm1x2qk2" },
+      { label: "Secondary", col: "color_mm241kqp" },
+      { label: "Member ID 2", col: "text_mm1xaccx" },
+      { label: "Plan", col: "dropdown_mm2wrzrk" },
+      { label: "Plan begins", col: "date_mm4w5hbc" },
+      { label: "POS", col: "color_mm5wq0ys" },
+    ],
+  },
+  {
+    // "Is it approved, and how long for?" — the question that stops an order
+    // downstream, and the one a rep can only answer from these columns.
+    title: "Authorisations",
+    fields: [
+      { label: "Monitor auth", col: "color_mm1wgjd1" },
+      { label: "Monitor ends", col: "date_mm1whebp" },
+      { label: "Sensors auth", col: "color_mm1x5c99" },
+      { label: "Sensors ends", col: "date_mm1xvnqb" },
+      { label: "Pump auth", col: "color_mm1xnzmn" },
+      { label: "Pump ends", col: "date_mm1x2q3" },
+      { label: "Inf. set auth", col: "color_mm1xr2j1" },
+      { label: "Inf. set ends", col: "date_mm1xj3wp" },
+      { label: "Cartridge auth", col: "color_mm1xybvt" },
+      { label: "Cartridge ends", col: "date_mm1xznf9" },
+      { label: "MN expires", col: "date_mm1ymthz", lead: true },
+    ],
+  },
+  {
+    title: "First orders",
+    fields: [
+      { label: "Sensors", col: "date_mm35bdf8" },
+      { label: "Supplies", col: "date_mm351tva" },
+      { label: "Pump", col: "date_mm356crn" },
     ],
   },
   {
@@ -180,8 +239,21 @@ const WELCOME_CALL: StageSection[] = [
     fields: [
       { label: "Address", col: "location_mm1xhw17", lead: true },
       { label: "Doctor", col: "text_mm1x46et" },
+      { label: "Doctor phone", col: "phone_mm1xz8c0", kind: "phone" },
+      { label: "Clinic", col: "dropdown_mm1xbvas" },
+      { label: "Clinic address", col: "location_mm1xjnfv" },
       { label: "Prior pump date", col: "text_mm58k9x9" },
       { label: "Monitor purchased", col: "text_mm6693sn" },
+    ],
+  },
+  {
+    title: "Who they are",
+    fields: [
+      { label: "DOB", col: "text_mm1xvxst" },
+      { label: "Email", col: "text_mm1xc140" },
+      { label: "Diagnosis", col: "color_mm1wf7rv" },
+      { label: "Call attempts", col: "text_mm322fg9" },
+      { label: "Follow up", col: "date_mm38a7k7" },
     ],
   },
 ];

@@ -64,9 +64,10 @@ import {
   type ReadOverride,
 } from "@/lib/commsHub/conversations";
 import { buildFaxDirectory, type FaxDirectoryEntry } from "@/lib/commsHub/faxDirectory";
-import { fetchFaxMatches } from "@/lib/commsHub/dossierApi";
+import { fetchDoctorDbByFax, fetchFaxMatches } from "@/lib/commsHub/dossierApi";
 import { contactKey } from "@/lib/contactState/contactState";
 import { useDossier } from "@/hooks/commsHub/useDossier";
+import { useDirectoryNames } from "@/hooks/commsHub/useDirectoryNames";
 import {
   reloadFaxes,
   reloadTexts,
@@ -120,6 +121,13 @@ export default function AssignedPatientsPage() {
   const [faxQuery, setFaxQuery] = useState("");
   const [faxUnreadOnly, setFaxUnreadOnly] = useState(false);
   const [selectedFax, setSelectedFax] = useState<InboundFax | null>(null);
+  /**
+   * Local fax read/unread clicks, covering the seconds between the PUT and the
+   * next poll — the same job `readOverrides` does for texts. Keyed by message
+   * id, and dropped as soon as RingCentral's own answer agrees, so it can never
+   * mask a state the RingCentral desktop app is showing differently.
+   */
+  const [faxReadOverrides, setFaxReadOverrides] = useState<Map<number, boolean>>(new Map());
   const [faxEntry, setFaxEntry] = useState<FaxDirectoryEntry | null>(null);
   const [faxEntryLoading, setFaxEntryLoading] = useState(false);
   const [faxEntryError, setFaxEntryError] = useState<string | null>(null);
@@ -146,6 +154,27 @@ export default function AssignedPatientsPage() {
     () => applyReadOverrides(texts.data ?? [], readOverrides),
     [texts.data, readOverrides],
   );
+
+  /**
+   * The numbers the OPEN tab is showing, so a tab nobody is looking at costs
+   * nothing. RingCentral names most offices; our boards name the patients, and
+   * `useDirectoryNames` resolves the whole list in a couple of batched requests
+   * rather than one per row (the §5.28 rule, and why it is safe here).
+   */
+  const visibleKeys = useMemo(() => {
+    if (tab === "text") return conversations.map((c) => c.key);
+    if (tab === "phone") {
+      return [
+        ...(calls.data ?? []).map((r) =>
+          contactKey((String(r.direction) === "Outbound" ? r.to : r.from)?.phoneNumber),
+        ),
+        ...(voicemails.data ?? []).map((v) => contactKey(v.fromNumber)),
+      ];
+    }
+    return [];
+  }, [tab, conversations, calls.data, voicemails.data]);
+
+  const directoryNames = useDirectoryNames(visibleKeys, tab !== "fax");
 
   /** Set an override, dropping any that the latest poll has retired. Pruning
    *  here rather than in an effect keeps it bounded and loop-free: it only ever
@@ -290,6 +319,51 @@ export default function AssignedPatientsPage() {
     [clearOverride, setOverride],
   );
 
+  /** The fax list with the rep's own read/unread clicks applied. An override
+   *  that RingCentral has caught up with is simply a no-op — `pruneFaxOverrides`
+   *  below is what stops the map growing for the life of the tab. */
+  const faxList = useMemo(() => {
+    const list = faxes.data ?? [];
+    if (!faxReadOverrides.size) return list;
+    return list.map((f) => {
+      const o = faxReadOverrides.get(f.id);
+      return o === undefined || o === f.read ? f : { ...f, read: o };
+    });
+  }, [faxes.data, faxReadOverrides]);
+
+  /**
+   * Right-click → Mark as read / unread (Josh, 2026-09-02). Writes
+   * RingCentral's own `readStatus`, exactly as the Text tab does — this list is
+   * also the RingCentral desktop app's, so a local-only flag would disagree
+   * with what a rep sees there within a day.
+   */
+  const setFaxRead = useCallback((f: InboundFax, read: boolean) => {
+    setFaxReadOverrides((m) => {
+      const next = new Map(m);
+      // Drop entries RingCentral has already caught up with, so a long session
+      // can't accumulate them.
+      for (const [id, want] of next) {
+        const live = (faxes.data ?? []).find((x) => x.id === id);
+        if (live && live.read === want) next.delete(id);
+      }
+      next.set(f.id, read);
+      return next;
+    });
+    void setMessageRead(f.id, read)
+      .then(() => reloadFaxes())
+      .catch((e: unknown) => {
+        // A failed write must not leave the row claiming a state RingCentral
+        // does not hold.
+        setFaxReadOverrides((m) => {
+          if (!m.has(f.id)) return m;
+          const next = new Map(m);
+          next.delete(f.id);
+          return next;
+        });
+        toast.error(`Couldn't mark the fax ${read ? "read" : "unread"}: ${e instanceof Error ? e.message : String(e)}`);
+      });
+  }, [faxes.data]);
+
   /** Selecting a fax joins its number to a provider and their patients. Bound
    *  to the fax that was open when the lookup started, so clicking down the
    *  list can't paint one office's patients under another's header. */
@@ -305,13 +379,27 @@ export default function AssignedPatientsPage() {
     // longer holds it drops its result on the floor.
     const token = ++faxRequestRef.current;
     const current = () => faxRequestRef.current === token;
-    void fetchFaxMatches(f.fromNumber)
-      .then((rows) => current() && setFaxEntry(buildFaxDirectory(f.fromNumber, rows)))
+    // Two sources, in parallel: the patient boards (who of ours this office
+    // looks after) and the MM Doctor Database (who they ARE). The second is
+    // 2,290 offices against the patient boards' much smaller doctor slice, so
+    // without it a fax from a real, known practice reported "we have never
+    // heard of this number" (Josh, 2026-09-02).
+    void Promise.all([fetchFaxMatches(f.fromNumber), fetchDoctorDbByFax(f.fromNumber)])
+      .then(([rows, docs]) => current() && setFaxEntry(buildFaxDirectory(f.fromNumber, rows, docs)))
       .catch((e: unknown) => current() && setFaxEntryError(e instanceof Error ? e.message : String(e)))
       .finally(() => current() && setFaxEntryLoading(false));
     if (!f.read) {
+      // Show it read straight away — the same override the context menu writes,
+      // or the row springs back to unread until the next poll lands.
+      setFaxReadOverrides((m) => new Map(m).set(f.id, true));
       void setMessageRead(f.id, true).then(() => reloadFaxes()).catch(() => {
         /* a failed read-flag must not block reading the fax */
+        setFaxReadOverrides((m) => {
+          if (!m.has(f.id)) return m;
+          const next = new Map(m);
+          next.delete(f.id);
+          return next;
+        });
       });
     }
   }, []);
@@ -435,7 +523,7 @@ export default function AssignedPatientsPage() {
               id === "text"
                 ? conversations.filter((c) => c.unread > 0).length
                 : id === "fax"
-                  ? (faxes.data ?? []).filter((f) => !f.read).length
+                  ? faxList.filter((f) => !f.read).length
                   : (voicemails.data ?? []).filter((v) => !v.read).length;
             return (
               <button
@@ -475,6 +563,7 @@ export default function AssignedPatientsPage() {
                 onQuery={setTextQuery}
                 unreadOnly={textUnreadOnly}
                 onUnreadOnly={setTextUnreadOnly}
+                names={directoryNames}
               />
               {/* Reaching someone must never depend on them having texted
                   first, so a typed number and any name match are offered
@@ -552,12 +641,13 @@ export default function AssignedPatientsPage() {
               onQuery={setPhoneQuery}
               missedOnly={missedOnly}
               onMissedOnly={setMissedOnly}
+              names={directoryNames}
             />
           )}
 
           {tab === "fax" && (
             <FaxPanel
-              faxes={faxes.data}
+              faxes={faxList}
               loading={faxes.loading}
               error={faxes.error}
               onReload={faxes.reload}
@@ -567,6 +657,7 @@ export default function AssignedPatientsPage() {
               onQuery={setFaxQuery}
               unreadOnly={faxUnreadOnly}
               onUnreadOnly={setFaxUnreadOnly}
+              onSetRead={setFaxRead}
             />
           )}
         </aside>

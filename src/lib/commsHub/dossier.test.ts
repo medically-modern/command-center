@@ -4,6 +4,7 @@ import {
   dobKey,
   nameMatchAccepted,
   pickActive,
+  stageNoteTrail,
   stagesCompleted,
   type DossierItem,
 } from "./dossier";
@@ -167,5 +168,64 @@ describe("nameMatchAccepted — a name is not an identity", () => {
   it("does NOT try to parse dates — a differently-ordered value rejects", () => {
     // Rejecting is the safe direction; guessing which half is the month is not.
     expect(nameMatchAccepted({ phone: "", dob: "1957-01-15" }, ANCHOR)).toBe(false);
+  });
+});
+
+
+describe("stageNoteTrail — every stage's notes, not just the live one", () => {
+  it("lists the other stages in PIPELINE order, excluding the active record", () => {
+    const d = buildDossier([
+      item(WC, { itemId: "wc", notes: "welcome call line" }),
+      item(ME, { itemId: "me", notes: "chase line", isCompleted: true, groupTitle: "Completed" }),
+      item(PROFILE, { itemId: "pso", notes: "intake line", isCompleted: true, groupTitle: "Completed" }),
+    ]);
+    expect(d.active?.itemId).toBe("wc");
+    expect(stageNoteTrail(d).map((s) => s.itemId)).toEqual(["pso", "me"]);
+  });
+
+  it("drops stages with no notes — an empty box is noise, not history", () => {
+    const d = buildDossier([
+      item(WC, { itemId: "wc", notes: "live" }),
+      item(ME, { itemId: "me", notes: "   ", isCompleted: true, groupTitle: "Completed" }),
+      item(INS, { itemId: "ins", notes: "", isCompleted: true, groupTitle: "Completed" }),
+    ]);
+    expect(stageNoteTrail(d)).toEqual([]);
+  });
+
+  it("keeps BOTH records when a board was run twice", () => {
+    // Collapsing them would silently drop a cycle's history, which is exactly
+    // what a rep scrolling this list is looking for.
+    const d = buildDossier([
+      item(SUB, { itemId: "sub", notes: "live" }),
+      item(ME, { itemId: "me-1", notes: "first round", isCompleted: true, groupTitle: "Completed" }),
+      item(ME, { itemId: "me-2", notes: "second round" }),
+    ]);
+    expect(stageNoteTrail(d).map((s) => s.itemId)).toEqual(["me-1", "me-2"]);
+  });
+
+  it("puts a non-pipeline board last rather than mid-chain", () => {
+    const d = buildDossier([
+      item(SUB, { itemId: "sub", notes: "live" }),
+      item(CLAIMS, { itemId: "claims", notes: "claim note" }),
+      item(PROFILE, { itemId: "pso", notes: "intake", isCompleted: true, groupTitle: "Completed" }),
+    ]);
+    expect(stageNoteTrail(d).map((s) => s.itemId)).toEqual(["pso", "claims"]);
+  });
+
+  it("carries whether the record is finished or stuck, so a rep knows what they are reading", () => {
+    const d = buildDossier([
+      item(WC, { itemId: "wc", notes: "live" }),
+      item(ME, { itemId: "me", notes: "old", isStuck: true, groupTitle: "Stuck" }),
+    ]);
+    const [stuck] = stageNoteTrail(d);
+    expect(stuck).toMatchObject({ itemId: "me", isStuck: true, groupTitle: "Stuck" });
+  });
+
+  it("still lists everything when there is no live stage at all", () => {
+    const d = buildDossier([
+      item(WC, { itemId: "wc", notes: "done note", isCompleted: true, groupTitle: "Completed" }),
+    ]);
+    expect(d.active).toBeNull();
+    expect(stageNoteTrail(d).map((s) => s.itemId)).toEqual(["wc"]);
   });
 });

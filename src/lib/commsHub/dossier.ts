@@ -215,6 +215,65 @@ export function buildDossier(items: DossierItem[]): PatientDossier {
   };
 }
 
+/** One stage's running notes, for the hub's "notes from every stage" list. */
+export interface StageNotes {
+  boardId: number;
+  boardName: string;
+  itemId: string;
+  /** Which group the record sits in — "Completed", "Stuck", the working group.
+   *  Shown beside the board name so a rep knows whether they are reading
+   *  history or a live stage. */
+  groupTitle: string;
+  isCompleted: boolean;
+  isStuck: boolean;
+  notes: string;
+  /** Where the record opens, empty when the board has no page. */
+  route: string;
+}
+
+/**
+ * Every OTHER stage's notes, in pipeline order.
+ *
+ * Josh, 2026-09-02: *"notes should be ALL notes from all stages not just
+ * welcome call notes, but welcome call notes should be the main attraction,
+ * the others viewable on scroll"*. The active stage stays in its own box at the
+ * top with the composer; this is what sits under it.
+ *
+ * ⚠️ **No extra Monday read.** Every board's notes column is already in
+ * `dossierCols`, so each `DossierItem` arrives carrying its own stage's notes —
+ * the pane was simply throwing all but the active one away. Fetching them
+ * separately would be a second cross-board round trip for data already in hand.
+ *
+ * ⚠️ Ordered by PIPELINE position, not by the order the lookup returned them,
+ * so the list reads as the patient's journey. Non-pipeline boards (Secondary
+ * Claims) come last: they are a parallel reconciliation board, not a stage, and
+ * putting them mid-chain would misrepresent where the patient is.
+ *
+ * ⚠️ A board can hold TWO records (a completed one and a live one from a
+ * re-run). Both are listed — collapsing them would silently drop a cycle's
+ * history, which is exactly what a rep is scrolling for.
+ */
+export function stageNoteTrail(dossier: PatientDossier): StageNotes[] {
+  const activeId = dossier.active?.itemId ?? "";
+  const rank = (it: DossierItem) => {
+    const idx = pipelineIndex(it.boardId);
+    return idx < 0 ? PIPELINE_ORDER.length : idx;
+  };
+  return dossier.items
+    .filter((it) => it.itemId !== activeId && it.notes.trim().length > 0)
+    .sort((a, b) => rank(a) - rank(b) || a.itemId.localeCompare(b.itemId))
+    .map((it) => ({
+      boardId: it.boardId,
+      boardName: it.boardName,
+      itemId: it.itemId,
+      groupTitle: it.groupTitle,
+      isCompleted: it.isCompleted,
+      isStuck: it.isStuck,
+      notes: it.notes,
+      route: it.route,
+    }));
+}
+
 /** How far along the chain the patient has actually got, for a caption like
  *  "3 of 6 stages complete". Counts completed steps only. */
 export function stagesCompleted(path: PathStep[]): number {

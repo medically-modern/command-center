@@ -16,10 +16,12 @@ import { BOARDS, type BoardDef } from "../systemMgmt/mondayApi";
 import { toE164 } from "../fax/ringcentralApi";
 import { contactKey } from "../contactState/contactState";
 import { markStuck, nameMatchAccepted, type DossierItem, type PatientIdentity } from "./dossier";
+import { pipelineIndex } from "./pipelineOrder";
+import { phoneMatchVariants } from "./directory";
 import { appendStampedNote } from "../shared/noteStamp";
 import { assertLongTextFits } from "../shared/longText";
 import { userInitials } from "../shared/auth";
-import type { FaxMatchRow } from "./faxDirectory";
+import { faxDigits, type DoctorDbRow, type FaxMatchRow } from "./faxDirectory";
 import { stageDetailColumns } from "./stageDetail";
 
 const MONDAY_API_VERSION = "2024-10";
@@ -333,8 +335,169 @@ export async function fetchFaxMatches(faxNumber: string): Promise<FaxMatchRow[]>
   return rows;
 }
 
+/* ── Fax → the doctor directory ────────────────────────────────────────────── */
+
+/**
+ * MM Doctor Database — the fallback identity for an inbound fax.
+ *
+ * ⚠️ **The patient boards are not the whole directory.** They carry the doctor
+ * for the ~5,000 patients on them; this board carries **2,290 offices**,
+ * including every practice we have on file that we are not chasing for anybody
+ * right now. `fetchFaxMatches` searched only the former, so a fax from a real,
+ * known office could report "we have never heard of this number" — which is the
+ * dead end Josh hit on 2026-09-02.
+ *
+ * ⚠️ Its fax column is an EMAIL column holding `<digits>@rcfax.com`, exactly
+ * like the patient boards' (see `shared/faxAddress.ts`). The `contains_text`
+ * rule runs on the last four digits and `faxDigits` does the exact comparison,
+ * the same two-step `fetchFaxMatches` uses — verified against the live board
+ * 2026-09-02. Searching for a formatted phone number matches nothing here, with
+ * no error.
+ */
+const DOCTOR_DB_BOARD = 18142847597;
+const DOCTOR_DB_COLS = {
+  fax: "email_mkwh2ywd",
+  clinic: "dropdown_mm1vd9fs",
+  npi: "text_mkwhtqjb",
+  phone: "phone",
+} as const;
+
+const doctorDbCache = new Map<string, DoctorDbRow[]>();
+
+export async function fetchDoctorDbByFax(faxNumber: string): Promise<DoctorDbRow[]> {
+  const digits = contactKey(faxNumber);
+  if (digits.length !== 10 || !dossierConfigured()) return [];
+  const cached = doctorDbCache.get(digits);
+  if (cached) return cached;
+
+  const cols = Object.values(DOCTOR_DB_COLS);
+  let rows: DoctorDbRow[] = [];
+  try {
+    const data = await gql<{ boards: Array<{ items_page?: { items: RawItem[] } }> }>(DOSSIER_QUERY, {
+      board: [String(DOCTOR_DB_BOARD)],
+      col: DOCTOR_DB_COLS.fax,
+      q: [digits.slice(-4)],
+      cols,
+      limit: 50,
+    });
+    rows = (data.boards?.[0]?.items_page?.items ?? [])
+      .map((it) => ({
+        itemId: String(it.id),
+        // The doctor's name IS the item name on this board.
+        doctorName: (it.name || "").trim(),
+        clinicName: textOf(it, DOCTOR_DB_COLS.clinic).trim(),
+        npi: textOf(it, DOCTOR_DB_COLS.npi).trim(),
+        phone: textOf(it, DOCTOR_DB_COLS.phone).trim(),
+        fax: textOf(it, DOCTOR_DB_COLS.fax).trim(),
+      }))
+      // Narrow the last-four net to an exact match here as well as in
+      // `buildFaxDirectory`, so the cache never holds a coincidental tail.
+      .filter((r) => faxDigits(r.fax) === digits);
+  } catch {
+    // A failing directory must not blank the patient half of the answer.
+    return [];
+  }
+  doctorDbCache.set(digits, rows);
+  return rows;
+}
+
+/* ── Name directory: many numbers, one request ─────────────────────────────── */
+
+/**
+ * Resolve a batch of phone numbers to the patient names our boards hold.
+ *
+ * ⚠️ **This is the one thing §5.28 said not to do, made safe by doing it in
+ * bulk.** A per-row lookup is the INCIDENT_2026-08-20 shape; this is its
+ * opposite, and the two properties that make it so are both load-bearing:
+ *
+ *   1. **`any_of` takes the whole batch in ONE rule** — 50 numbers per board
+ *      instead of 50 requests. Verified against the live boards 2026-09-02.
+ *   2. **Every board rides in ONE aliased GraphQL request.** `boards(ids:)`
+ *      cannot be used for this because each board names its own phone column,
+ *      so the aliases (`b0:`, `b1:` …) are what collapse seven round trips
+ *      into one.
+ *
+ * ⚠️ Both digit shapes are asked for (`phoneMatchVariants`) — this account
+ * stores `9739511857` and `16078737352` in the same column, and `any_of` is an
+ * exact match, so one shape alone silently misses half the board.
+ *
+ * Returns only the numbers that matched. The caller records the misses itself,
+ * because "looked up and not on any board" is an answer worth caching and this
+ * function cannot tell it from "not asked about".
+ */
+export async function fetchDirectoryNames(keys: string[]): Promise<Map<string, string>> {
+  const out = new Map<string, string>();
+  const wanted = new Set(keys.map((k) => String(k).replace(/\D/g, "").slice(-10)).filter((k) => k.length === 10));
+  if (!wanted.size || !dossierConfigured()) return out;
+
+  const values = [...wanted].flatMap(phoneMatchVariants);
+  // Aliases + per-board variables, so no board id or column id is ever
+  // interpolated into the query text.
+  const varDefs = ["$vals: CompareValue!", "$limit: Int!"];
+  const parts: string[] = [];
+  // ⚠️ Headroom, not a guess. A truncated page would resolve to "not on any
+  // board" for the numbers that fell off, and the caller CACHES misses — so a
+  // clipped read would be remembered as an answer. `any_of` returns at most one
+  // row per matching item, and a number sits on a handful of boards at once, so
+  // 5× plus a floor is well clear of any real batch.
+  const variables: Record<string, unknown> = {
+    vals: values,
+    limit: Math.min(500, wanted.size * 5 + 20),
+  };
+  BOARDS.forEach((b, i) => {
+    varDefs.push(`$b${i}: ID!`, `$c${i}: ID!`, `$cc${i}: [String!]`);
+    variables[`b${i}`] = String(b.boardId);
+    variables[`c${i}`] = b.phoneColId;
+    variables[`cc${i}`] = [b.phoneColId];
+    parts.push(
+      `b${i}: boards (ids: [$b${i}]) {
+         items_page (limit: $limit, query_params: { rules: [{ column_id: $c${i}, compare_value: $vals, operator: any_of }] }) {
+           items { id name column_values (ids: $cc${i}) { id text } }
+         }
+       }`,
+    );
+  });
+
+  let data: Record<string, Array<{ items_page?: { items: RawItem[] } }>>;
+  try {
+    data = await gql(`query (${varDefs.join(", ")}) { ${parts.join("\n")} }`, variables);
+  } catch {
+    // A failed name lookup must never break a list a rep is reading: the rows
+    // simply keep showing numbers, which is what they showed before this
+    // existed. Same posture as every other cross-board read here.
+    return out;
+  }
+
+  // Later boards win, so a patient who has moved on is named by the record
+  // furthest along the pipeline rather than by a stale intake row. BOARDS is
+  // not in pipeline order, so the index is taken from `pipelineOrder`.
+  //
+  // ⚠️ A number shared by two people (a household — John and Sue Hartley on
+  // `3046977788`, live 2026-09-02) resolves to ONE of them. That is deliberate
+  // and matches `findPatientByPhone`: the list is a way to recognise a row, and
+  // one real name beats a bare number. The dossier pane resolves the actual
+  // identity on click, which is where a rep confirms who they are talking to.
+  const bestRank = new Map<string, number>();
+  BOARDS.forEach((b, i) => {
+    for (const board of data[`b${i}`] ?? []) {
+      for (const it of board.items_page?.items ?? []) {
+        const name = (it.name || "").trim();
+        const key = String(textOf(it, b.phoneColId)).replace(/\D/g, "").slice(-10);
+        if (!name || !wanted.has(key)) continue;
+        const rank = pipelineIndex(b.boardId);
+        if (!out.has(key) || rank > (bestRank.get(key) ?? -1)) {
+          out.set(key, name);
+          bestRank.set(key, rank);
+        }
+      }
+    }
+  });
+  return out;
+}
+
 /** Test seam / manual refresh — drops both memoised lookups. */
 export function clearDossierCaches(): void {
+  doctorDbCache.clear();
   dossierCache.clear();
   faxCache.clear();
 }

@@ -11,6 +11,14 @@
  *   2. **The notes** — the main view, and now WRITABLE. The running case
  *      history is what tells a rep what to say next, and the hub is where they
  *      learn the things worth writing down.
+ *   2b. **Every OTHER stage's notes**, collapsed, underneath (Josh, 2026-09-02:
+ *      *"notes should be ALL notes from all stages ... but welcome call notes
+ *      should be the main attraction, the others viewable on scroll"*). What a
+ *      patient was told at intake explains what they are asking now, and the
+ *      pane already had that text in hand — `stageNoteTrail` just stops
+ *      throwing it away. Collapsed rather than inlined because five stages of
+ *      running history would push the stage detail off the bottom of the pane;
+ *      each header carries the newest line so the list is scannable shut.
  *   3. **Open in <board>** — right under the notes, where a rep looks after
  *      reading them.
  *   4. **The stage detail** — what a rep needs on a call at THIS stage, which
@@ -18,10 +26,20 @@
  */
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { AlertCircle, ArrowUpRight, Check, Loader2, Pause, Plus, StickyNote, User } from "lucide-react";
+import {
+  AlertCircle,
+  ArrowUpRight,
+  Check,
+  ChevronRight,
+  Loader2,
+  Pause,
+  Plus,
+  StickyNote,
+  User,
+} from "lucide-react";
 import { toast } from "sonner";
-import type { DossierItem, PathStep, PatientDossier, StepState } from "@/lib/commsHub/dossier";
-import { stagesCompleted } from "@/lib/commsHub/dossier";
+import type { DossierItem, PathStep, PatientDossier, StageNotes, StepState } from "@/lib/commsHub/dossier";
+import { stageNoteTrail, stagesCompleted } from "@/lib/commsHub/dossier";
 import { buildStageDetail, hasStageDetail, type RenderedField } from "@/lib/commsHub/stageDetail";
 import { appendNoteToRecord } from "@/lib/commsHub/dossierApi";
 import { splitFaxAddress } from "@/lib/shared/faxAddress";
@@ -208,6 +226,51 @@ function NoteComposer({
   );
 }
 
+/** The last line of a notes body — the preview a collapsed stage shows.
+ *  Notes columns are append-only with the newest line LAST (§9), so the tail is
+ *  the interesting end; anything else would preview a note from months ago. */
+function newestLine(notes: string): string {
+  const lines = notes.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+  return lines.length ? lines[lines.length - 1] : "";
+}
+
+/** One earlier stage's running notes, shut by default. */
+function StageNotesBlock({ stage }: { stage: StageNotes }) {
+  const [open, setOpen] = useState(false);
+  const preview = newestLine(stage.notes);
+  return (
+    <div className="rounded-md border border-border/70">
+      <button
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        className="flex w-full items-start gap-1.5 px-2.5 py-2 text-left hover:bg-muted/40"
+      >
+        <ChevronRight
+          className={cn("mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform", open && "rotate-90")}
+        />
+        <span className="min-w-0 flex-1">
+          <span className="flex items-baseline gap-1.5">
+            <span className="truncate text-[11px] font-semibold">{stage.boardName}</span>
+            {/* Whether this is history or a parallel live record changes how a
+                rep should read it, so it is on the header rather than hidden
+                inside. */}
+            {stage.isCompleted && <span className="shrink-0 text-[10px] text-emerald-600">Completed</span>}
+            {stage.isStuck && <span className="shrink-0 text-[10px] text-amber-600">Stuck</span>}
+          </span>
+          {!open && preview && (
+            <span className="mt-0.5 block truncate text-[11px] text-muted-foreground">{preview}</span>
+          )}
+        </span>
+      </button>
+      {open && (
+        <pre className="mx-2.5 mb-2.5 max-h-64 overflow-y-auto whitespace-pre-wrap break-words rounded-md border border-border bg-muted/40 p-2 font-sans text-[11px] leading-relaxed">
+          {stage.notes.trim()}
+        </pre>
+      )}
+    </div>
+  );
+}
+
 export function PatientDossierPanel({
   dossier,
   loading,
@@ -282,6 +345,8 @@ export function PatientDossierPanel({
   const { active, path } = dossier;
   const done = stagesCompleted(path);
   const detail = active ? buildStageDetail(active.boardId, active.cols) : [];
+  // Already in hand — every board's notes column rides along with its record.
+  const otherNotes = stageNoteTrail(dossier);
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
@@ -331,6 +396,20 @@ export function PatientDossierPanel({
           {notes.trim() || (active ? "No notes on this stage yet." : "No live stage, so no working notes.")}
         </pre>
         {active && <NoteComposer active={active} phone={phone} onAppended={setNotesOverride} />}
+
+        {/* 2b. Every OTHER stage's notes. Shut by default with the newest line
+            on the header, so the whole history is one click away without
+            pushing the stage detail off the pane. */}
+        {otherNotes.length > 0 && (
+          <div className="mb-3 space-y-1.5 px-4">
+            <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+              Notes from other stages ({otherNotes.length})
+            </p>
+            {otherNotes.map((stage) => (
+              <StageNotesBlock key={`${stage.boardId}:${stage.itemId}`} stage={stage} />
+            ))}
+          </div>
+        )}
       </div>
 
       {/* ── 3. Open in the stage ────────────────────────────── */}

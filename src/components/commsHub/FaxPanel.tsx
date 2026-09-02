@@ -9,9 +9,22 @@
  * because an arriving fax is most likely the answer to that chase.
  *
  * The join rule is `lib/commsHub/faxDirectory.ts`; the query is `dossierApi`.
+ *
+ * ⚠️ **Read state is RingCentral's own `readStatus`, not a local flag** — the
+ * same rule the Text tab documents, and for the same reason: reps work this
+ * line in the RingCentral desktop app too, so an invented read state would
+ * disagree with what they see there within a day. Opening a fax PUTs it Read;
+ * the right-click menu PUTs it back to Unread (Josh, 2026-09-02). Both are the
+ * one `message-store/{id}` write `setMessageRead` makes.
  */
-import { AlertCircle, FileText, Loader2, Printer, Stethoscope } from "lucide-react";
+import { AlertCircle, FileText, Loader2, MailOpen, Printer, Stethoscope } from "lucide-react";
 import { Link } from "react-router-dom";
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuTrigger,
+} from "@/components/ui/context-menu";
 import type { InboundFax } from "@/lib/fax/ringcentralApi";
 import type { FaxDirectoryEntry } from "@/lib/commsHub/faxDirectory";
 import { fmtPhone } from "@/lib/assignedPatients/format";
@@ -29,6 +42,7 @@ export function FaxPanel({
   onQuery,
   unreadOnly,
   onUnreadOnly,
+  onSetRead,
 }: {
   faxes: InboundFax[] | null;
   loading: boolean;
@@ -40,6 +54,9 @@ export function FaxPanel({
   onQuery: (v: string) => void;
   unreadOnly: boolean;
   onUnreadOnly: (v: boolean) => void;
+  /** Right-click → Mark as unread / Mark as read. Writes RingCentral's own
+   *  `readStatus`; the page holds the optimistic override. */
+  onSetRead: (f: InboundFax, read: boolean) => void;
 }) {
   const list = faxes ?? [];
   const unread = list.filter((f) => !f.read).length;
@@ -85,35 +102,49 @@ export function FaxPanel({
           </ListEmpty>
         )}
         {shown.map((f) => (
-          <button
-            key={f.id}
-            onClick={() => onSelect(f)}
-            className={cn(
-              "flex w-full items-start gap-2.5 border-b border-border/60 px-3 py-2.5 text-left hover:bg-muted/40",
-              f.id === selectedId && "bg-muted/70",
-            )}
-          >
-            <Initials
-              name={f.fromName}
-              phone={f.fromNumber}
-              tone={!f.read ? "bg-primary/15 text-primary" : undefined}
-            />
-            <span className="min-w-0 flex-1">
-              <span className="flex items-baseline gap-2">
-                <span className={cn("truncate text-sm", f.read ? "font-medium" : "font-semibold")}>
-                  {f.fromName || fmtPhone(f.fromNumber)}
+          <ContextMenu key={f.id}>
+            <ContextMenuTrigger asChild>
+              <button
+                onClick={() => onSelect(f)}
+                className={cn(
+                  "flex w-full items-start gap-2.5 border-b border-border/60 px-3 py-2.5 text-left hover:bg-muted/40",
+                  f.id === selectedId && "bg-muted/70",
+                )}
+              >
+                <Initials
+                  name={f.fromName}
+                  phone={f.fromNumber}
+                  tone={!f.read ? "bg-primary/15 text-primary" : undefined}
+                />
+                <span className="min-w-0 flex-1">
+                  <span className="flex items-baseline gap-2">
+                    <span className={cn("truncate text-sm", f.read ? "font-medium" : "font-semibold")}>
+                      {f.fromName || fmtPhone(f.fromNumber)}
+                    </span>
+                    <span className="ml-auto shrink-0 text-[10px] text-muted-foreground tabular-nums">
+                      {listTime(f.creationTime)}
+                    </span>
+                  </span>
+                  <span className="mt-0.5 flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                    <Printer className="h-3 w-3 shrink-0" />
+                    Received {f.pages} {f.pages === 1 ? "page" : "pages"}
+                    {!f.read && <span className="ml-1 h-1.5 w-1.5 rounded-full bg-primary" />}
+                  </span>
                 </span>
-                <span className="ml-auto shrink-0 text-[10px] text-muted-foreground tabular-nums">
-                  {listTime(f.creationTime)}
-                </span>
-              </span>
-              <span className="mt-0.5 flex items-center gap-1.5 text-[11px] text-muted-foreground">
-                <Printer className="h-3 w-3 shrink-0" />
-                Received {f.pages} {f.pages === 1 ? "page" : "pages"}
-                {!f.read && <span className="ml-1 h-1.5 w-1.5 rounded-full bg-primary" />}
-              </span>
-            </span>
-          </button>
+              </button>
+            </ContextMenuTrigger>
+            <ContextMenuContent className="w-48">
+              {f.read ? (
+                <ContextMenuItem onSelect={() => onSetRead(f, false)}>
+                  <Printer className="mr-2 h-3.5 w-3.5" /> Mark as unread
+                </ContextMenuItem>
+              ) : (
+                <ContextMenuItem onSelect={() => onSetRead(f, true)}>
+                  <MailOpen className="mr-2 h-3.5 w-3.5" /> Mark as read
+                </ContextMenuItem>
+              )}
+            </ContextMenuContent>
+          </ContextMenu>
         ))}
       </div>
     </>
@@ -184,15 +215,35 @@ export function FaxProviderDetail({
                 {entry.provider.phone && (
                   <p className="text-muted-foreground">Office {fmtPhone(entry.provider.phone)}</p>
                 )}
+                {/* "We know this office but nobody of ours is with them" is a
+                    different answer from "this came off a patient's record",
+                    and the rep's next move differs. */}
+                {entry.provider.source === "doctorDb" && (
+                  <p className="pt-0.5 text-[11px] text-muted-foreground">
+                    Matched in the MM Doctor Database — no patient of ours currently lists them.
+                  </p>
+                )}
               </div>
             ) : (
-              <p className="flex items-start gap-1.5 text-xs text-muted-foreground">
-                <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-                {/* Not an error: plenty of faxes come from offices with no
-                    patient of ours, and plenty of doctor records have the fax
-                    number missing or typed differently. */}
-                No patient on any board lists this number as their doctor's fax.
-              </p>
+              <div className="space-y-1 text-xs text-muted-foreground">
+                <p className="flex items-start gap-1.5">
+                  <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                  {/* Not an error: plenty of faxes come from offices we have no
+                      record of. Saying exactly WHAT was checked is what stops
+                      this reading as a broken lookup — the `@rcfax.com` join
+                      was the first suspect when it was just a plain "no match"
+                      (Josh, 2026-09-02). */}
+                  This number isn't on any patient's doctor record or in the MM Doctor Database.
+                </p>
+                <p className="pl-5 text-[11px]">
+                  {/* The genuinely common cause, and the one a rep can act on:
+                      an office's outbound fax line is often not the number we
+                      send TO, so there is nothing wrong to fix — the fax just
+                      has to be read to find out whose it is. */}
+                  Offices often send from a different line than the one we fax. Open the document to see
+                  whose it is, then add the number to their doctor record so the next one matches.
+                </p>
+              </div>
             )}
           </section>
 
@@ -203,7 +254,9 @@ export function FaxProviderDetail({
             {!entry.patients.length && (
               <p className="text-xs text-muted-foreground">
                 {entry.provider
-                  ? "Nobody active — every patient for this office is finished or stuck."
+                  ? entry.provider.source === "doctorDb"
+                    ? "We have this office on file, but no patient of ours lists them as their doctor."
+                    : "Nobody active — every patient for this office is finished or stuck."
                   : "Nothing to show until the number matches a doctor record."}
               </p>
             )}

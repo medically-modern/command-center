@@ -44,13 +44,41 @@ export interface FaxPatient {
   nextActionDate: string;
 }
 
-/** What we know about the office, gathered from the matched patient rows. */
+/**
+ * Where the office identity came from.
+ *
+ * ⚠️ Worth showing on screen. "We know this office but nobody of ours is with
+ * them" and "we have never heard of this number" are different answers, and
+ * collapsing them into one line is what made the empty state a dead end.
+ */
+export type FaxProviderSource = "patients" | "doctorDb";
+
+/** What we know about the office, gathered from the matched rows. */
 export interface FaxProvider {
   doctorName: string;
   clinicName: string;
   npi: string;
   phone: string;
   /** The stored fax value, as typed on the board. */
+  fax: string;
+  source: FaxProviderSource;
+}
+
+/**
+ * A row of the MM Doctor Database (board 18142847597) matched on Script Fax.
+ *
+ * ⚠️ The doctor database is **2,290 offices** and the patient boards' doctor
+ * columns are a much smaller slice of that — an office we have on file but are
+ * not currently chasing for anybody appears in one and not the other. Searching
+ * only the patient boards is why a fax could report "we have never heard of
+ * this number" about a practice sitting in our own directory.
+ */
+export interface DoctorDbRow {
+  itemId: string;
+  doctorName: string;
+  clinicName: string;
+  npi: string;
+  phone: string;
   fax: string;
 }
 
@@ -123,6 +151,21 @@ function mergeProvider(rows: FaxMatchRow[]): FaxProvider | null {
     npi: first((r) => r.npi),
     phone: first((r) => r.doctorPhone),
     fax: first((r) => r.doctorFax),
+    source: "patients",
+  };
+}
+
+/** Same merge over Doctor Database rows — the fallback identity. */
+function mergeDoctorDb(rows: DoctorDbRow[]): FaxProvider | null {
+  if (!rows.length) return null;
+  const first = (pick: (r: DoctorDbRow) => string) => rows.map(pick).map((v) => (v || "").trim()).find(Boolean) || "";
+  return {
+    doctorName: first((r) => r.doctorName),
+    clinicName: first((r) => r.clinicName),
+    npi: first((r) => r.npi),
+    phone: first((r) => r.phone),
+    fax: first((r) => r.fax),
+    source: "doctorDb",
   };
 }
 
@@ -134,9 +177,17 @@ function mergeProvider(rows: FaxMatchRow[]): FaxProvider | null {
  * furthest-behind next action leads, so the oldest waiting patient is the first
  * name a rep reads.
  */
-export function buildFaxDirectory(faxNumber: string, rows: FaxMatchRow[]): FaxDirectoryEntry {
+export function buildFaxDirectory(
+  faxNumber: string,
+  rows: FaxMatchRow[],
+  doctorDb: DoctorDbRow[] = [],
+): FaxDirectoryEntry {
   const want = contactKey(faxNumber);
   const matched = want.length === 10 ? rows.filter((r) => faxDigits(r.doctorFax) === want) : [];
+  // ⚠️ Both sides are filtered through `faxDigits`, which strips the `@rcfax.com`
+  // before comparing. Comparing the stored value to a phone number matches
+  // nothing, with no error — the whole reason this helper exists.
+  const dbMatched = want.length === 10 ? doctorDb.filter((r) => faxDigits(r.fax) === want) : [];
 
   const active = matched.filter((r) => !r.isCompleted && !r.isStuck);
   // One patient can hold live items on two boards. The name is what a rep
@@ -175,7 +226,11 @@ export function buildFaxDirectory(faxNumber: string, rows: FaxMatchRow[]): FaxDi
 
   return {
     faxNumber,
-    provider: mergeProvider(matched),
+    // Patient rows win: they carry the doctor as WE recorded them for the
+    // people we are actually working, and the Doctor Database can hold an older
+    // clinic for the same NPI. The database is the fallback, not a merge — two
+    // half-records blended together would name an office nobody can check.
+    provider: mergeProvider(matched) ?? mergeDoctorDb(dbMatched),
     patients,
     inactiveCount: matched.length - active.length,
   };

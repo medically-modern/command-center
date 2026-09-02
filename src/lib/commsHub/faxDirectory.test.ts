@@ -1,5 +1,11 @@
 import { describe, it, expect } from "vitest";
-import { buildFaxDirectory, faxDigits, isChasing, type FaxMatchRow } from "./faxDirectory";
+import {
+  buildFaxDirectory,
+  faxDigits,
+  isChasing,
+  type DoctorDbRow,
+  type FaxMatchRow,
+} from "./faxDirectory";
 
 const ME = 18406060017, INS = 18410601299, WC = 18410804557;
 
@@ -120,5 +126,61 @@ describe("buildFaxDirectory", () => {
 
   it("matches nothing for an unusable fax number rather than everything", () => {
     expect(buildFaxDirectory("123", [row()]).patients).toEqual([]);
+  });
+});
+
+
+function dbRow(over: Partial<DoctorDbRow> = {}): DoctorDbRow {
+  return {
+    itemId: "d1",
+    doctorName: "Dr. Robert Hass",
+    clinicName: "Bradford Regional Medical Center",
+    npi: "1962819813",
+    phone: "7163757500",
+    fax: "7167016854@rcfax.com",
+    ...over,
+  };
+}
+
+describe("Doctor Database fallback — an office we know but aren't chasing", () => {
+  it("names the office when no patient carries the fax number", () => {
+    // The patient boards hold the doctor for the patients ON them; the Doctor
+    // Database holds every office we have on file. Searching only the former is
+    // what made a fax from a real practice read as an unknown number.
+    const entry = buildFaxDirectory("+17167016854", [], [dbRow()]);
+    expect(entry.provider).toMatchObject({
+      doctorName: "Dr. Robert Hass",
+      clinicName: "Bradford Regional Medical Center",
+      npi: "1962819813",
+      source: "doctorDb",
+    });
+    expect(entry.patients).toEqual([]);
+  });
+
+  it("strips the @rcfax.com suffix on the database side too", () => {
+    // Same join as the patient boards: comparing the stored value to a phone
+    // number matches nothing, with no error.
+    expect(buildFaxDirectory("(716) 701-6854", [], [dbRow()]).provider?.source).toBe("doctorDb");
+    expect(buildFaxDirectory("+17167016854", [], [dbRow({ fax: "7167016854" })]).provider?.source).toBe("doctorDb");
+  });
+
+  it("lets the PATIENT rows win — they are the doctor as we recorded them", () => {
+    const entry = buildFaxDirectory(
+      "+19843215678",
+      [row()],
+      [dbRow({ fax: "9843215678@rcfax.com", doctorName: "Dr. Someone Else" })],
+    );
+    expect(entry.provider).toMatchObject({ doctorName: "Dr. Alice Ng", source: "patients" });
+  });
+
+  it("ignores a database row whose fax is a coincidental tail match", () => {
+    const entry = buildFaxDirectory("+17167016854", [], [dbRow({ fax: "9996854@rcfax.com" })]);
+    expect(entry.provider).toBeNull();
+  });
+
+  it("still reports nothing when neither source knows the number", () => {
+    // (858) 366-6900 on 2026-09-02: audited against every doctor fax column,
+    // every doctor phone column and the Doctor Database — genuinely absent.
+    expect(buildFaxDirectory("+18583666900", [row()], [dbRow()]).provider).toBeNull();
   });
 });
