@@ -2048,6 +2048,23 @@ access.json assignments key off, so a rename is display-only (§5.10's precedent
   `long_text_mm3rj7k7` — so the dossier pane was blank for exactly the patients it was being used
   on. Fixed at the source; the only other consumer of `SystemPatient.notes` is Search's escalation
   modal, so the change is additive.
+- ⚠️ **A notes column is `long_text` on six boards and plain `text` on ONE, and the two take
+  different value shapes** — `{"text": …}` vs a bare JSON string. Monday refuses the wrong one
+  outright with *"invalid value, please check our API documentation for the correct data structure
+  for this column"* (200 + a GraphQL `errors[]`), so the note is simply not written. The composer
+  shipped 2026-09-01 assuming long_text and therefore failed on **every Profile Send Off record** —
+  `text_mm389fs`, the odd one out, and the top of the funnel, i.e. exactly who a rep is on the
+  phone with here. Every other board worked, so it read as "notes are broken for these patients"
+  rather than as a type error; it surfaced as the "invalid value" spike the gateway error watch
+  escalated on 2026-09-02. `profile/unverifiedWrite.appendIntakeNote` already carried a comment
+  warning about this exact crossing — which could not help a second consumer in another file, so
+  the type is now **declared** (`BoardDef.notesColType`), carried on the record
+  (`DossierItem.notesColType`), and pinned by `dossierNotes.test.ts` in both directions (every
+  notes column declares a type; the declaration matches the id's own prefix).
+  ⚠️ The **2000-character `assertLongTextFits` guard is long_text-ONLY**: a board scan on
+  2026-09-02 found live values up to 9,383 characters in `text_mm389fs` with none parked at a
+  ceiling, so applying it there would refuse writes the board demonstrably accepts —
+  `appendIntakeNote` writes that same column with no length assertion for the same reason.
 - ⚠️ **A fax is opened by fetching the BYTES first** (`fetchFaxBlobUrl` → the gateway's
   `/rc/fetch`), then handing `openFileViewer` a `blob:` URL — the same thing `FaxInboxPage` does.
   Passing a RingCentral attachment URI straight to the viewer sends it down `fetchAssetBytes`,
@@ -2791,6 +2808,7 @@ these services; when their math changes, `oopEstimator.ts` must be updated to ma
 | An inbound fax doesn't match a doctor / their patients are missing | §5.28 — `lib/commsHub/faxDirectory.ts`. The Doctor Fax column is an EMAIL column holding `<digits>@rcfax.com`, so the join strips the address first |
 | The profile widget shows the wrong stage, or none | §5.28 — `lib/commsHub/dossier.ts` (`pickActive` = furthest-along open board) and `pipelineOrder.ts` (the tracker order, which §6 now follows) |
 | A conversation won't stay read / unread | §5.28 — read state is RingCentral's `readStatus` on the INBOUND messages, written with `setMessageRead`; the local override only covers the gap before the next poll |
+| Monday says "invalid value … data structure for this column" | The value shape doesn't match the column TYPE. Check the column's real type first (`boards { columns { id type } }`), then the writer: `long_text` takes `{"text": …}`, `text` a bare JSON string, and the notes columns are BOTH depending on the board (§5.28, `BoardDef.notesColType`). Find the offending write in the gateway audit log — `/audit.json?key=…&failed=1&since=1` shows the column and the value; `/audit/errors.json` only counts shapes |
 | Manager pipeline / oversight charts | `components/oversight/OversightTab.tsx` + `lib/oversight/oversightApi.ts` (+ `priority.ts`); reached via `/system-mgmt?tab=oversight` |
 
 ---

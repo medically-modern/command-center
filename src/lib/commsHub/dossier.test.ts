@@ -25,6 +25,7 @@ function item(boardId: number, over: Partial<DossierItem> = {}): DossierItem {
     isStuck: false,
     dob: "01/15/1957",
     notesColId: "long_text_x",
+    notesColType: "long_text",
     cols: {},
     route: "/x",
     stageAdvancerText: "",
