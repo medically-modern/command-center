@@ -627,21 +627,61 @@ export async function fetchRecentCallActivity({
   return out;
 }
 
-/**
- * Mark any message-store record Read or Unread.
- *
- * The Communications Hub's text inbox uses RingCentral's own `readStatus`
- * rather than a local flag, because reps also work this line in the
- * RingCentral desktop app — a locally-invented read state would disagree with
- * what they see there within a day.
- */
-export async function setMessageRead(id: number, read: boolean): Promise<void> {
+async function putMessageRead(id: number, read: boolean): Promise<void> {
   const res = await rcFetch(`/restapi/v1.0/account/~/extension/~/message-store/${id}`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ readStatus: read ? "Read" : "Unread" }),
   });
   if (!res.ok) throw new Error(`RingCentral mark ${read ? "read" : "unread"} failed (${res.status})`);
+}
+
+/**
+ * In-flight read-state write per message id — see `setMessageRead`.
+ *
+ * Bounded: an entry is deleted as soon as its own chain settles and nothing
+ * newer has claimed the id.
+ */
+const readWrites = new Map<number, Promise<void>>();
+
+/**
+ * Mark any message-store record Read or Unread.
+ *
+ * The Communications Hub's text and fax lists use RingCentral's own
+ * `readStatus` rather than a local flag, because reps also work this line in
+ * the RingCentral desktop app — a locally-invented read state would disagree
+ * with what they see there within a day.
+ *
+ * ⚠️ **Writes to the SAME message id are serialised, so the rep's last click
+ * wins.** Two writes for one id are one click apart in the UI: mark a fax
+ * unread and then open it (Greptile, PR #52), or mark a conversation unread and
+ * then read it. Fired concurrently they race, and the loser can land LAST —
+ * RingCentral ends up holding Unread while the optimistic override says Read,
+ * so the row is hidden from the Unread filter and the override never retires,
+ * because pruning keeps exactly the entries RingCentral disagrees with. That is
+ * a permanent local lie, which is the one thing reading `readStatus` instead of
+ * a local flag exists to prevent.
+ *
+ * ⚠️ A failed write does NOT block the next one (`.catch` before the chain
+ * continues) — the rep's newer intent must still reach RingCentral. Different
+ * ids are untouched and still go in parallel, which is what keeps
+ * `Promise.all(unreadIds.map(...))` a single round of requests.
+ */
+export function setMessageRead(id: number, read: boolean): Promise<void> {
+  const prev = readWrites.get(id);
+  const next: Promise<void> = prev
+    ? prev.then(
+        () => putMessageRead(id, read),
+        () => putMessageRead(id, read),
+      )
+    : putMessageRead(id, read);
+  readWrites.set(id, next);
+  // Cleanup rides its OWN chain so it can't turn the caller's rejection into an
+  // unhandled one, and only the newest write may release the id.
+  void next.catch(() => {}).then(() => {
+    if (readWrites.get(id) === next) readWrites.delete(id);
+  });
+  return next;
 }
 
 export interface VoicemailRecord {

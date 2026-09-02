@@ -2007,7 +2007,14 @@ access.json assignments key off, so a rename is display-only (§5.10's precedent
 - ⚠️ **Read state is RingCentral's own `readStatus`, never a local flag.** Reps work this same
   line in the RingCentral desktop app, so an invented read state would disagree with what they see
   there within a day. Opening a conversation PUTs its unread inbound messages to Read; the context
-  menu PUTs the newest one back. The local override map covers only the seconds between the write
+  menu PUTs the newest one back. ⚠️ **`setMessageRead` serialises writes to the SAME message id**
+  (Greptile on PR #52): two writes for one id are one click apart — mark a fax unread and then open
+  it, or mark a conversation unread and then read it — and raced, the loser can land LAST, so
+  RingCentral holds Unread while the optimistic override says Read. The row then hides from the
+  Unread filter and the override never retires, because pruning keeps exactly the entries
+  RingCentral disagrees with: a permanent local lie, which is the one thing reading `readStatus`
+  exists to prevent. Different ids still go in parallel, so marking a whole conversation read stays
+  one round of requests. The local override map covers only the seconds between the write
   and the next poll. ⚠️ **Only INBOUND messages carry a meaningful read state** — RingCentral
   reports outbound as Read on send, so counting both directions makes every conversation
   permanently read and the filter permanently empty.
