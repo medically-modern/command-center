@@ -24,6 +24,7 @@ export function HubListHeader({
   extra,
   filterMenu,
   note,
+  action,
 }: {
   title: string;
   count?: number;
@@ -45,16 +46,22 @@ export function HubListHeader({
   /** A quiet line under the filter row: "naming 240 of 900…". Only rendered
    *  while something is genuinely in flight. */
   note?: React.ReactNode;
+  /** A primary action beside the refresh button — the Text tab's New text. */
+  action?: React.ReactNode;
 }) {
   return (
     <div className="shrink-0 border-b border-border">
       <div className="flex items-center gap-2 px-3 pt-3 pb-2">
         <h2 className="text-base font-semibold">{title}</h2>
         {typeof count === "number" && <span className="text-xs text-muted-foreground tabular-nums">({count})</span>}
+        {action && <span className="ml-auto">{action}</span>}
         <button
           onClick={onReload}
           title="Refresh"
-          className="ml-auto rounded-md p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
+          className={cn(
+            "rounded-md p-1 text-muted-foreground hover:bg-muted hover:text-foreground",
+            !action && "ml-auto",
+          )}
         >
           {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
         </button>

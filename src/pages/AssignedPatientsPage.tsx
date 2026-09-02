@@ -43,6 +43,7 @@ import CallOverlay from "@/components/assignedPatients/CallOverlay";
 import RingPreferencesDialog from "@/components/inboundCalls/RingPreferencesDialog";
 import ConversationThread from "@/components/assignedPatients/ConversationThread";
 import TextInbox from "@/components/commsHub/TextInbox";
+import NewTextPanel from "@/components/commsHub/NewTextPanel";
 import PhonePanel, { type PhoneMode } from "@/components/commsHub/PhonePanel";
 import FaxPanel, { FaxProviderDetail } from "@/components/commsHub/FaxPanel";
 import VoicemailDetail from "@/components/commsHub/VoicemailDetail";
@@ -115,6 +116,11 @@ export default function AssignedPatientsPage() {
    */
   const [directNumber, setDirectNumber] = useState<string>("");
   const [nameHits, setNameHits] = useState<PatientRef[]>([]);
+  /** The explicit "New text" pane. Its own query, so opening it doesn't wipe
+   *  whatever the rep had typed into the conversation search. */
+  const [composing, setComposing] = useState(false);
+  const [composeQuery, setComposeQuery] = useState("");
+  const [searchingNames, setSearchingNames] = useState(false);
   /**
    * The patient a rep picked BY NAME, so the profile pane opens on them.
    *
@@ -259,27 +265,46 @@ export default function AssignedPatientsPage() {
   /** A full number in the search box, offered as "start a conversation".
    *  Derived, so it can never overwrite what the rep has open. */
   const typedNumber = useMemo(() => toE164(textQuery.trim()), [textQuery]);
+  const composeNumber = useMemo(() => toE164(composeQuery.trim()), [composeQuery]);
+
+  /** Open a thread with whoever was picked, and leave compose. `name` is empty
+   *  for a typed number — nobody was chosen, so the profile pane must not be
+   *  told to open on anyone in particular. */
+  const startConversation = useCallback((phone: string, name: string) => {
+    setSelectedConv(null);
+    setDirectNumber(phone);
+    setDirectPerson(name);
+    setComposing(false);
+    setComposeQuery("");
+  }, []);
 
   // A typed name searches the boards, so a rep can start a conversation with
   // somebody who has never texted us. Debounced — the search fans out across
   // every pipeline board.
+  /** Whichever box is live — the compose pane's, or the conversation search.
+   *  One effect rather than two, so the debounce and the cancel rules can't
+   *  drift apart. */
+  const nameQuery = composing ? composeQuery : textQuery;
   useEffect(() => {
-    const q = textQuery.trim();
+    const q = nameQuery.trim();
     if (q.length < 2 || /^[\d\s()+-]+$/.test(q)) {
       setNameHits([]);
+      setSearchingNames(false);
       return;
     }
     let alive = true;
+    setSearchingNames(true);
     const id = setTimeout(() => {
       void searchPatientsByName(q)
         .then((r) => alive && setNameHits(r.filter((p) => p.phone)))
-        .catch(() => alive && setNameHits([]));
+        .catch(() => alive && setNameHits([]))
+        .finally(() => alive && setSearchingNames(false));
     }, 350);
     return () => {
       alive = false;
       clearTimeout(id);
     };
-  }, [textQuery]);
+  }, [nameQuery]);
 
   /** Opening a conversation marks it read — in the UI immediately, in
    *  RingCentral in the background. A failed PUT is reported but does not undo
@@ -599,7 +624,22 @@ export default function AssignedPatientsPage() {
 
         {/* ── List pane ─────────────────────────────────────── */}
         <aside className="flex w-80 shrink-0 flex-col border-r border-border bg-card">
-          {tab === "text" && (
+          {tab === "text" && composing && (
+            <NewTextPanel
+              query={composeQuery}
+              onQuery={setComposeQuery}
+              typedNumber={composeNumber}
+              hits={nameHits}
+              searching={searchingNames}
+              onPick={startConversation}
+              onClose={() => {
+                setComposing(false);
+                setComposeQuery("");
+              }}
+            />
+          )}
+
+          {tab === "text" && !composing && (
             <>
               <TextInbox
                 conversations={conversations}
@@ -616,6 +656,7 @@ export default function AssignedPatientsPage() {
                 onUnreadOnly={setTextUnreadOnly}
                 names={directoryNames}
                 naming={namingProgress}
+                onCompose={() => setComposing(true)}
               />
               {/* Reaching someone must never depend on them having texted
                   first, so a typed number and any name match are offered

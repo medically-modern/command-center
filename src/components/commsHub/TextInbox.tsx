@@ -21,7 +21,7 @@
  * for the session. The rule itself is `lib/commsHub/directory.ts`.
  */
 import { useMemo } from "react";
-import { AlertTriangle, MailOpen, MessageSquare } from "lucide-react";
+import { AlertTriangle, MailOpen, MessageSquare, SquarePen } from "lucide-react";
 import {
   ContextMenu,
   ContextMenuContent,
@@ -49,6 +49,7 @@ export function TextInbox({
   onUnreadOnly,
   names,
   naming,
+  onCompose,
 }: {
   conversations: Conversation[];
   loading: boolean;
@@ -68,6 +69,10 @@ export function TextInbox({
   /** Name-resolution progress, so a long list says how far along it is rather
    *  than filling in silently (Josh, 2026-09-02). */
   naming?: { done: number; total: number };
+  /** Open the explicit "New text" pane. The search box below only ever filters
+   *  what is already on screen; reaching somebody with no thread yet needs its
+   *  own door (Josh, 2026-09-02). */
+  onCompose?: () => void;
 }) {
   const unreadTotal = useMemo(() => conversations.filter((c) => c.unread > 0).length, [conversations]);
 
@@ -110,6 +115,17 @@ export function TextInbox({
         loading={loading}
         onReload={onReload}
         note={naming && <NamingProgress done={naming.done} total={naming.total} />}
+        action={
+          onCompose && (
+            <button
+              onClick={onCompose}
+              title="New text"
+              className="inline-flex items-center gap-1 rounded-md bg-primary px-2 py-1 text-[11px] font-semibold text-primary-foreground hover:opacity-90"
+            >
+              <SquarePen className="h-3.5 w-3.5" /> New
+            </button>
+          )
+        }
       />
 
       <div className="min-h-0 flex-1 overflow-y-auto">

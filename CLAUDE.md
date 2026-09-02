@@ -2004,6 +2004,15 @@ access.json assignments key off, so a rename is display-only (§5.10's precedent
 | **Text** | conversations, newest first · **Unread** filter · right-click → Mark as unread | `ConversationThread` | the patient's profile |
 | **Fax** | inbound faxes · Unread filter | the **sending office** + its patients | (n/a — a fax is an office's) |
 
+- **"New text" is its own door** (`components/commsHub/NewTextPanel`, Josh 2026-09-02). Starting a
+  conversation with somebody who has no thread yet was only reachable as a "Start a conversation"
+  section that appeared UNDER the list once a rep happened to type into the search box — a thing
+  you find by accident is a thing most people never find. The compose pane takes a number **or** a
+  patient name, searched on the BOARDS rather than filtered from what is on screen (filtering
+  answers the opposite question). ⚠️ It keeps its own query, so opening it doesn't wipe what the rep
+  had typed into the conversation search, and one shared effect debounces both — two would drift.
+  ⚠️ Picking a NAME passes it as `preferPerson`; picking a typed NUMBER passes `""`, because nobody
+  was chosen and the profile pane must not open on a guess.
 - ⚠️ **Read state is RingCentral's own `readStatus`, never a local flag.** Reps work this same
   line in the RingCentral desktop app, so an invented read state would disagree with what they see
   there within a day. Opening a conversation PUTs its unread inbound messages to Read; the context
