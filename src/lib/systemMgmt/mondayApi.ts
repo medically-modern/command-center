@@ -82,6 +82,28 @@ export interface BoardDef {
   daysSinceStageColId: string | null;
   /** Column ID for notes (long_text or text) */
   notesColId: string | null;
+  /**
+   * Which of the two that column is — and it is genuinely both across these
+   * boards, which is why it has to be declared rather than assumed.
+   *
+   * ⚠️ **The two take DIFFERENT value shapes and Monday refuses the wrong one.**
+   * A `long_text` write is `{"text": "…"}`; a `text` write is a bare JSON
+   * string. Send the long_text shape to a text column and Monday answers
+   * *"invalid value, please check our API documentation for the correct data
+   * structure for this column"* — every time, for that board only, so it reads
+   * as "notes are broken for these patients" rather than as a type error.
+   *
+   * That is not hypothetical: the Communications Hub's note composer shipped
+   * assuming long_text, so until 2026-09-02 it would have failed on every
+   * Profile Send Off record (`text_mm389fs`, "Profile Send Off Notes", is the
+   * one `text` column in this table). It was caught by audit before any rep hit
+   * it. `profile/unverifiedWrite.appendIntakeNote` already
+   * carried a comment warning about exactly this crossing; the Hub is a second
+   * consumer that could not see it. Declaring the type is what stops a third.
+   *
+   * `null` iff `notesColId` is null.
+   */
+  notesColType: "text" | "long_text" | null;
   /** Column ID for Next Action Date (date column, null = board has none) */
   nextActionDateColId: string | null;
 }
@@ -147,6 +169,7 @@ export const BOARDS: BoardDef[] = [
     stageAdvancerColId: "color_mkyw6287",
     daysSinceStageColId: "color_mkxn3nm5",
     notesColId: "long_text_mm1b4jf7",
+    notesColType: "long_text",
     nextActionDateColId: null,
   },
   {
@@ -171,6 +194,7 @@ export const BOARDS: BoardDef[] = [
     stageAdvancerColId: null,
     daysSinceStageColId: "color_mm29awe7",
     notesColId: "long_text_mkzrx7ke",
+    notesColType: "long_text",
     nextActionDateColId: "date_mkxpynj",
   },
   {
@@ -192,6 +216,7 @@ export const BOARDS: BoardDef[] = [
     // the only other consumer of `SystemPatient.notes` is Search's escalation
     // modal, which now has something to show instead of nothing.
     notesColId: "long_text_mm3rj7k7",
+    notesColType: "long_text",
     nextActionDateColId: null,
   },
   {
@@ -220,6 +245,7 @@ export const BOARDS: BoardDef[] = [
     stageAdvancerColId: null,
     daysSinceStageColId: null,
     notesColId: "text_mm389fs",
+    notesColType: "text",
     nextActionDateColId: null,
   },
   {
@@ -237,6 +263,7 @@ export const BOARDS: BoardDef[] = [
     stageAdvancerColId: "color_mm1wyr92",
     daysSinceStageColId: "color_mm1wwm05",
     notesColId: "long_text_mm27zjt2",
+    notesColType: "long_text",
     nextActionDateColId: "date_mm1wadgs",
   },
   {
@@ -258,6 +285,7 @@ export const BOARDS: BoardDef[] = [
     stageAdvancerColId: "color_mm1ws96t",
     daysSinceStageColId: "color_mm1wwm05",
     notesColId: "long_text_mm2ffsme",
+    notesColType: "long_text",
     nextActionDateColId: null,
   },
   {
@@ -276,6 +304,7 @@ export const BOARDS: BoardDef[] = [
     stageAdvancerColId: "color_mm1ws96t",
     daysSinceStageColId: "color_mm1wwm05",
     notesColId: "long_text_mm2ffsme",
+    notesColType: "long_text",
     nextActionDateColId: null,
   },
 ];

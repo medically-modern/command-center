@@ -122,6 +122,7 @@ function toDossierItem(board: BoardDef, it: RawItem): DossierItem {
     stageAdvancerText: textOf(it, board.stageAdvancerColId).trim(),
     notes: textOf(it, board.notesColId),
     notesColId: board.notesColId ?? "",
+    notesColType: board.notesColType,
     nextActionDate: textOf(it, board.nextActionDateColId).trim(),
     daysSinceStage: textOf(it, board.daysSinceStageColId).trim(),
     cols: Object.fromEntries(
@@ -388,12 +389,35 @@ async function readNotesNow(boardId: number, itemId: string, columnId: string): 
  * Several roles share one notes column (§9), and "Chase Clinicals" tells the
  * next reader far more than "Medical Evaluation" does.
  *
- * ⚠️ **`assertLongTextFits` before writing.** Monday long-text columns hold
- * 2000 characters and TRUNCATE SILENTLY — a longer write returns success and
- * stores the first 2000, so what gets dropped is always the note somebody just
- * typed (§10). Nine items on the ME board already sit at exactly 2000. Failing
- * loudly is the point; trimming old history to make room is the same harm,
- * chosen by us.
+ * ⚠️ **`assertLongTextFits` before writing — on a `long_text` column ONLY.**
+ * Monday long-text columns hold 2000 characters and TRUNCATE SILENTLY: a
+ * longer write returns success and stores the first 2000, so what gets dropped
+ * is always the note somebody just typed (§10). Nine items on the ME board
+ * already sit at exactly 2000. Failing loudly is the point; trimming old
+ * history to make room is the same harm, chosen by us. That limit is a
+ * long_text limit and is NOT applied to a `text` column — a scan of Profile
+ * Send Off on 2026-09-02 found live values up to 9,383 characters there and
+ * none parked at a ceiling, so asserting 2000 would refuse writes the board
+ * demonstrably accepts. `profile/unverifiedWrite.appendIntakeNote` writes that
+ * same column with no length assertion for the same reason.
+ *
+ * ⚠️ **THE VALUE SHAPE FOLLOWS THE COLUMN TYPE, and getting it wrong is a
+ * total, board-specific failure.** `long_text` takes `{"text": "…"}`; `text`
+ * takes a bare JSON string. Hand Monday the long_text shape for a text column
+ * and it answers *"invalid value, please check our API documentation for the
+ * correct data structure for this column"* — 200 OK with a GraphQL `errors[]`,
+ * so the rep gets a red toast full of Monday's protocol text and nothing is
+ * written.
+ *
+ * This shipped that way (2026-09-01) and failed on **every Profile Send Off
+ * record** — `text_mm389fs` is the one `text`-typed notes column in the
+ * registry, and it belongs to the top of the funnel, i.e. exactly the patients
+ * a rep is most often on the phone with in this hub. Every other board is
+ * long_text, so the composer looked fine wherever anyone tried it first.
+ * `profile/unverifiedWrite.appendIntakeNote` already carried a comment warning
+ * about this exact crossing; it could not help a second consumer in another
+ * file, which is why the type is now declared on `BoardDef` and carried on the
+ * record (`DossierItem.notesColType`) rather than assumed here.
  *
  * Returns the new full body so the caller can show it without a re-read.
  */
@@ -401,6 +425,10 @@ export async function appendNoteToRecord(opts: {
   boardId: number;
   itemId: string;
   columnId: string;
+  /** Which kind of column that is — decides the value shape AND whether the
+   *  2000-character long_text guard applies. Comes from `DossierItem
+   *  .notesColType`, i.e. from the board registry, never from a guess here. */
+  columnType: "text" | "long_text" | null;
   text: string;
   /** Stage label for the stamp, e.g. "Chase Clinicals". */
   stage: string;
@@ -410,12 +438,21 @@ export async function appendNoteToRecord(opts: {
   const body = (opts.text || "").trim();
   if (!body) throw new Error("Nothing to add");
   if (!opts.columnId) throw new Error("This board has no notes column to write to.");
+  // A column whose type the registry does not declare must not be guessed at:
+  // one of the two shapes would be rejected outright and the other could write
+  // a `{"text": …}` object into a text column's face. Refusing names the fix.
+  if (opts.columnType !== "text" && opts.columnType !== "long_text") {
+    throw new Error(
+      "This board's notes column has no declared type, so the note was not written. " +
+        "Add `notesColType` for it in systemMgmt/mondayApi BOARDS.",
+    );
+  }
 
   const existing = await readNotesNow(opts.boardId, opts.itemId, opts.columnId);
   const next = appendStampedNote(existing, body, opts.stage, { initials: userInitials() });
-  assertLongTextFits(next, `${opts.stage || "Stage"} notes`);
+  if (opts.columnType === "long_text") assertLongTextFits(next, `${opts.stage || "Stage"} notes`);
 
-  const value = JSON.stringify({ text: next });
+  const value = JSON.stringify(opts.columnType === "long_text" ? { text: next } : next);
   await gql(
     `mutation ($item: ID!, $board: ID!, $col: String!, $val: JSON!) {
        change_column_value(item_id: $item, board_id: $board, column_id: $col, value: $val) { id }

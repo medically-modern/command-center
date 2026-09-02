@@ -137,6 +137,7 @@ function NoteComposer({
         boardId: active.boardId,
         itemId: active.itemId,
         columnId: active.notesColId,
+        columnType: active.notesColType,
         text: body,
         stage,
         phone,

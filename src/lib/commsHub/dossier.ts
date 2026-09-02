@@ -38,6 +38,12 @@ export interface DossierItem {
    *  registry has no notes column for — the composer hides itself rather than
    *  offering a write with nowhere to go. */
   notesColId: string;
+  /** ⚠️ And which KIND it is — `text` and `long_text` take different value
+   *  shapes and Monday rejects the wrong one outright (see `BoardDef
+   *  .notesColType`). Carried on the record rather than looked up at write
+   *  time so the composer cannot write to one board's column with another
+   *  board's shape. `null` when there is no notes column. */
+  notesColType: "text" | "long_text" | null;
   nextActionDate: string;
   daysSinceStage: string;
   /** Raw text of every stage-detail column for this board, keyed by column id.
