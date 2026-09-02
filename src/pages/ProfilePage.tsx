@@ -416,6 +416,21 @@ const ProfilePage = ({ variant }: ProfilePageProps) => {
     if (servingIncludes(serv, "insulin pump")) {
       items.push({ label: "IP Coverage Path", ok: !!selected.insulinPumpCoveragePath?.trim() });
     }
+    // A doctor is what the whole NEXT stage is for: Medical Necessity exists to
+    // get clinicals out of them, and Send Request has nobody to send to without
+    // one. The intake page's route to this same exit has always required it
+    // (`readiness` in UnverifiedReferralsPage — "Doctor selected"); THIS page,
+    // the other route to Advance to MN, did not, so a referral could reach MN
+    // with no provider on it at all.
+    // ⚠️ The Doctor Fax row below does NOT cover this: it only fires when
+    // Clinicals Method is exactly "Fax", so Parachute, Email and — the common
+    // case — a BLANK method all sailed past. A blank method is also what §5.9
+    // routes to the fax chase queue, i.e. the patient lands in a queue whose
+    // whole job is faxing, with nothing to fax.
+    // Keyed on the NPI rather than the name, to match the intake page and
+    // because the NPI is what the MM Doctor Database and the Parachute lookup
+    // key on — a bare name can't be looked up, faxed, or matched.
+    items.push({ label: "Doctor selected", ok: !!selected.doctorNpi?.trim() });
     if (selected.clinicalsMethod === "Fax") items.push({ label: "Doctor Fax", ok: !!selected.doctorFax?.trim() });
     return items;
   }, [selected, addressIssue]);
