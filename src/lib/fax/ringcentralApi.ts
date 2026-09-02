@@ -541,6 +541,46 @@ async function messageStorePage(
   return json.records ?? [];
 }
 
+/**
+ * Every inbound fax in the window, paged — what the Communications Hub's Fax
+ * tab lists.
+ *
+ * ⚠️ Distinct from `fetchInboundFaxes`, which returns ONE page and a total for
+ * the paginated `/fax-inbox` screen. The hub's list has no pager, so a single
+ * page silently truncated it: reps saw exactly the newest 50 faxes and nothing
+ * older, with no indication there was more (Josh, 2026-09-02). Paged the same
+ * way the call and text activity reads are, and bounded by the same
+ * `ACTIVITY_MAX_PAGES` so a busy line cannot turn one list into an unbounded
+ * crawl.
+ *
+ * A short page is the last page — the same termination the other readers use,
+ * so this needs no `totalElements` and cannot loop on a miscounted total.
+ *
+ * ⚠️ **30 days is not a choice, it is everything there is.** RingCentral's
+ * message store is a rolling ~30-day window on this account (§5.27; confirmed
+ * again 2026-09-02, when the oldest fax it held was 8/2). Asking for more costs
+ * requests and returns nothing, and a fax older than that is gone from the
+ * vendor — the archive covers texts, not fax pages.
+ *
+ * Its own page cap rather than `ACTIVITY_MAX_PAGES`: that one bounds a 7-14 day
+ * activity read, and this is a 30-day window on a line that handles a great
+ * many faxes. 12 × 250 is ~100 faxes a day for a month, and a normal day
+ * finishes in one or two requests because a short page ends the loop.
+ */
+const FAX_MAX_PAGES = 12;
+
+export async function fetchInboundFaxesAll(
+  { sinceDays = 30, perPage = 250 }: { sinceDays?: number; perPage?: number } = {},
+): Promise<InboundFax[]> {
+  const out: InboundFax[] = [];
+  for (let page = 1; page <= FAX_MAX_PAGES; page++) {
+    const { faxes } = await fetchInboundFaxes({ page, perPage, sinceDays });
+    out.push(...faxes);
+    if (faxes.length < perPage) break;
+  }
+  return out;
+}
+
 async function messageStoreAll(
   messageType: string,
   days: number,

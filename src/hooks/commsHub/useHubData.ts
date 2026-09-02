@@ -5,7 +5,7 @@
  * means differs: an unanswered text is urgent, a fax from Tuesday is not.
  */
 import {
-  fetchInboundFaxes,
+  fetchInboundFaxesAll,
   fetchRecentCallActivity,
   fetchRecentMessageActivity,
   fetchVoicemails,
@@ -44,7 +44,10 @@ const callStore = createRcStore<RcCallLogRecord[]>(
 const voicemailStore = createRcStore<VoicemailRecord[]>(() => fetchVoicemails({ sinceDays: 30 }), SLOW_TTL_MS);
 
 const faxStore = createRcStore<InboundFax[]>(
-  async () => (await fetchInboundFaxes({ perPage: 50, sinceDays: 30 })).faxes,
+  // ⚠️ PAGED. A single `perPage: 50` page silently capped the tab at the newest
+  // 50 faxes with nothing to say there were more (Josh, 2026-09-02) — this list
+  // has no pager of its own, unlike /fax-inbox.
+  () => fetchInboundFaxesAll({ sinceDays: 30 }),
   SLOW_TTL_MS,
 );
 

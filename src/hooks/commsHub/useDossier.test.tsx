@@ -50,8 +50,8 @@ const item = (name: string, phone: string) => ({
  * null DURING the load, because that object is what the note composer and the
  * outbound-text attribution read.
  */
-function Probe({ phone }: { phone: string }) {
-  const { dossier, loading, people, selected, selectPerson } = useDossier(phone);
+function Probe({ phone, prefer }: { phone: string; prefer?: string }) {
+  const { dossier, loading, people, selected, selectPerson } = useDossier(phone, prefer);
   return (
     <>
       <span data-testid="name">{dossier?.name ?? "NONE"}</span>
@@ -175,5 +175,51 @@ describe("a number shared by two patients", () => {
     rerender(<Probe phone="+17138254957" />);
     expect(screen.getByTestId("selected")).toHaveTextContent("0");
     expect(screen.getByTestId("name")).toHaveTextContent("Robert Arkus");
+  });
+});
+
+
+describe("opening on the patient a rep actually picked", () => {
+  const SHARED = "+13046977788";
+  const both = [
+    { ...item("Sue Hartley", SHARED), itemId: "sue", boardId: 18406352652, boardName: "Profile Send Off" },
+    item("John Hartley Jr", SHARED),
+  ];
+
+  it("opens on the NAMED patient, not the default one", () => {
+    // Reported: searching "Sue Hartley" and clicking her opened John, who
+    // shares the line and wins the default ordering. The click passed only the
+    // phone number, throwing away the choice the rep had already made.
+    peekDossierItems.mockReturnValue(both);
+    render(<Probe phone={SHARED} prefer="Sue Hartley" />);
+    expect(screen.getByTestId("name")).toHaveTextContent("Sue Hartley");
+    expect(screen.getByTestId("selected")).toHaveTextContent("1");
+  });
+
+  it("still lists everyone, so the rep can switch back", () => {
+    peekDossierItems.mockReturnValue(both);
+    render(<Probe phone={SHARED} prefer="Sue Hartley" />);
+    expect(screen.getByTestId("count")).toHaveTextContent("2");
+  });
+
+  it("falls back to the default when the name matches nobody", () => {
+    peekDossierItems.mockReturnValue(both);
+    render(<Probe phone={SHARED} prefer="Someone Else" />);
+    expect(screen.getByTestId("name")).toHaveTextContent("John Hartley Jr");
+  });
+
+  it("matches through a rep annotation on the board title", () => {
+    peekDossierItems.mockReturnValue([
+      { ...item("Sue Hartley (copy)", SHARED), itemId: "sue" },
+      item("John Hartley Jr", SHARED),
+    ]);
+    render(<Probe phone={SHARED} prefer="Sue Hartley" />);
+    expect(screen.getByTestId("name")).toHaveTextContent("Sue Hartley");
+  });
+
+  it("ignores an empty preference", () => {
+    peekDossierItems.mockReturnValue(both);
+    render(<Probe phone={SHARED} prefer="" />);
+    expect(screen.getByTestId("name")).toHaveTextContent("John Hartley Jr");
   });
 });

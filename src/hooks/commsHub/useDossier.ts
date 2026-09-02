@@ -17,9 +17,15 @@
  * ⚠️ A number already in the session cache resolves SYNCHRONOUSLY via
  * `peekDossierItems`, so clicking back and forth between two threads does not
  * flicker a spinner over data we already hold.
+ *
+ * ⚠️ **`preferPerson` is not a nicety on a shared line.** Searching a patient
+ * by name and clicking THEM must open them — the click used to pass only the
+ * phone number, so picking "Sue Hartley" opened John, who shares the line and
+ * wins the default ordering. A rep who named a patient has already answered the
+ * question the switcher asks.
  */
 import { useCallback, useEffect, useState } from "react";
-import { splitByPerson, type PatientDossier } from "@/lib/commsHub/dossier";
+import { personKey, splitByPerson, type PatientDossier } from "@/lib/commsHub/dossier";
 import { dossierConfigured, fetchDossierItems, peekDossierItems } from "@/lib/commsHub/dossierApi";
 
 export interface DossierState {
@@ -39,7 +45,12 @@ export interface DossierState {
   configured: boolean;
 }
 
-export function useDossier(phone: string | null | undefined): DossierState & { selectPerson: (i: number) => void } {
+export function useDossier(
+  phone: string | null | undefined,
+  /** Open on THIS person when the number carries several — the name a rep
+   *  explicitly picked. Ignored when it matches nobody. */
+  preferPerson?: string | null,
+): DossierState & { selectPerson: (i: number) => void } {
   const [state, setState] = useState<DossierState>({
     dossier: null,
     people: [],
@@ -58,6 +69,14 @@ export function useDossier(phone: string | null | undefined): DossierState & { s
 
   useEffect(() => {
     const num = (phone || "").trim();
+    /** Which of the people on this number to open on. Falls back to the
+     *  furthest-along default when the preference matches nobody. */
+    const pick = (people: PatientDossier[]) => {
+      const want = personKey(preferPerson || "");
+      if (!want) return 0;
+      const i = people.findIndex((p) => personKey(p.name) === want);
+      return i >= 0 ? i : 0;
+    };
     if (!num) {
       setState((s) => ({ ...s, dossier: null, people: [], selected: 0, loading: false, error: null }));
       return;
@@ -68,7 +87,8 @@ export function useDossier(phone: string | null | undefined): DossierState & { s
     const cached = peekDossierItems(num);
     if (cached) {
       const people = splitByPerson(cached);
-      setState({ dossier: people[0] ?? null, people, selected: 0, loading: false, error: null, configured: true });
+      const i = pick(people);
+      setState({ dossier: people[i] ?? null, people, selected: i, loading: false, error: null, configured: true });
       return;
     }
     // ⚠️ Bound to the number that was open when the fetch started. Without
@@ -85,7 +105,8 @@ export function useDossier(phone: string | null | undefined): DossierState & { s
         // ⚠️ Split by PERSON, not merged. A phone match is not a person: two
         // patients on one line used to become a single blended profile.
         const people = splitByPerson(items);
-        setState({ dossier: people[0] ?? null, people, selected: 0, loading: false, error: null, configured: true });
+        const i = pick(people);
+        setState({ dossier: people[i] ?? null, people, selected: i, loading: false, error: null, configured: true });
       })
       .catch((e: unknown) => {
         if (!alive) return;
@@ -101,7 +122,7 @@ export function useDossier(phone: string | null | undefined): DossierState & { s
     return () => {
       alive = false;
     };
-  }, [phone]);
+  }, [phone, preferPerson]);
 
   return { ...state, selectPerson };
 }

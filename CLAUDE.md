@@ -2192,7 +2192,11 @@ access.json assignments key off, so a rename is display-only (§5.10's precedent
   and — because the pane's composer writes to `dossier.active.itemId` and the page derives
   `threadPatient` from the same object — a note or an outbound text could be filed against the
   wrong one. The pane now says **"N patients share this number"** and offers a switcher; everything
-  downstream follows the selection. ⚠️ `personKey` strips only the annotations reps actually add to
+  downstream follows the selection. ⚠️ **A rep who picked a patient BY NAME opens on them**
+  (`useDossier`'s `preferPerson`): the Start-a-conversation name hit passed only the phone number,
+  so searching "Sue Hartley" and clicking her opened John, who shares `(304) 697-7788` and wins the
+  default ordering. Navigating by NUMBER instead — a conversation row, a call, a typed number —
+  clears the preference, or it would follow the rep onto an unrelated thread. ⚠️ `personKey` strips only the annotations reps actually add to
   a title (`(ip)`, `(cgm)`, `(copy)`, `(OLD)`, a trailing `old`) and deliberately does **not**
   fuzzy-match: `Bradley Comstock` / `Bradley Comstuck` stay two entries, because over-splitting
   shows a rep both records and makes a duplicate obvious, while over-merging is the bug this exists

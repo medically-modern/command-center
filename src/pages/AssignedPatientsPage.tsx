@@ -113,6 +113,15 @@ export default function AssignedPatientsPage() {
    */
   const [directNumber, setDirectNumber] = useState<string>("");
   const [nameHits, setNameHits] = useState<PatientRef[]>([]);
+  /**
+   * The patient a rep picked BY NAME, so the profile pane opens on them.
+   *
+   * ⚠️ On a line two patients share, the number alone is not enough: searching
+   * "Sue Hartley" and clicking her opened John, who shares `(304) 697-7788` and
+   * wins the default ordering. Cleared whenever the rep navigates by number
+   * instead — a conversation, a call or a typed number carries no such choice.
+   */
+  const [directPerson, setDirectPerson] = useState<string>("");
 
   const [phoneMode, setPhoneMode] = useState<PhoneMode>("calls");
   const [phoneQuery, setPhoneQuery] = useState("");
@@ -212,7 +221,7 @@ export default function AssignedPatientsPage() {
     return "";
   }, [tab, selectedConv, directNumber, phoneMode, selectedVoicemail, selectedCallPhone]);
 
-  const dossier = useDossier(selectedPhone);
+  const dossier = useDossier(selectedPhone, directPerson);
 
   /**
    * The dossier's live record, in the shape `ConversationThread` wants.
@@ -266,6 +275,9 @@ export default function AssignedPatientsPage() {
   const openConversation = useCallback(
     (c: Conversation) => {
       setSelectedConv(c);
+      // Navigating by number, not by person — drop any earlier name choice or
+      // it would follow the rep onto an unrelated conversation.
+      setDirectPerson("");
       // Reading a thread also retires a stale "mark as unread" on it, even when
       // RingCentral has nothing to write — otherwise a conversation the rep
       // flagged and then read stays badged with no way to clear it.
@@ -605,6 +617,7 @@ export default function AssignedPatientsPage() {
                       onClick={() => {
                         setSelectedConv(null);
                         setDirectNumber(typedNumber);
+                        setDirectPerson("");
                       }}
                       className="flex w-full items-center gap-2 px-3 py-2 text-left hover:bg-muted/60"
                     >
@@ -618,6 +631,7 @@ export default function AssignedPatientsPage() {
                       onClick={() => {
                         setSelectedConv(null);
                         setDirectNumber(p.phone);
+                        setDirectPerson(p.name);
                       }}
                       className="flex w-full items-center gap-2 px-3 py-2 text-left hover:bg-muted/60"
                     >
@@ -657,6 +671,7 @@ export default function AssignedPatientsPage() {
                     : null
               }
               onSelect={(phone) => {
+                setDirectPerson("");
                 if (phoneMode === "voicemail") {
                   const vm = (voicemails.data ?? []).find((v) => contactKey(v.fromNumber) === contactKey(phone));
                   setSelectedVoicemail(vm ?? null);
