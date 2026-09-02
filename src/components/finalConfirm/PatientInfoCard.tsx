@@ -401,14 +401,17 @@ function EditableDateField({
   label,
   dateStr,
   onChange,
+  icon,
 }: {
   label: string;
   dateStr: string;
   onChange: (v: string) => void;
+  /** Optional leading icon, so this can sit in a grid of icon fields. */
+  icon?: React.ReactNode;
 }) {
   const isEmpty = !dateStr;
-  return (
-    <div className={cn("rounded-lg p-1.5 -m-1.5 transition-colors", isEmpty && "bg-amber-50 dark:bg-amber-950/20 ring-1 ring-amber-200 dark:ring-amber-800/40")}>
+  const body = (
+    <div className={icon ? "min-w-0 flex-1" : undefined}>
       <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1">{label}</p>
       <Input
         type="date"
@@ -416,6 +419,23 @@ function EditableDateField({
         value={dateStr}
         onChange={(e) => onChange(e.target.value)}
       />
+    </div>
+  );
+  return (
+    <div className={cn(
+      "rounded-lg p-1.5 -m-1.5 transition-colors",
+      icon && "flex items-start gap-2 min-w-0",
+      isEmpty && "bg-amber-50 dark:bg-amber-950/20 ring-1 ring-amber-200 dark:ring-amber-800/40",
+    )}>
+      {icon && (
+        <div className={cn(
+          "h-8 w-8 rounded-md flex items-center justify-center shrink-0",
+          isEmpty ? "bg-amber-100 dark:bg-amber-900/30 text-amber-600" : "bg-muted text-muted-foreground",
+        )}>
+          {icon}
+        </div>
+      )}
+      {body}
     </div>
   );
 }
@@ -1134,10 +1154,22 @@ export function PatientInfoCard({ patient, onFieldChange, findings = [] }: Props
                 onFieldChange("diagnosisIndex", index);
               }}
             />
-            <EditableTextField
+            {/* ⚠️ A DATE PICKER, not a text box (Brandon, 2026-09-02).
+                `COL.mrExpiryDate` is `date_mm1ymthz` — a Monday DATE column —
+                and the send writes `{date: p.mrExpiryDate}`, which Monday
+                accepts ONLY as YYYY-MM-DD. This was a free-text input, so a rep
+                typing the date the way they say it ("9/1/26") produced a value
+                Monday rejects with a ColumnValueException at HTTP 200 — the
+                silent-failure shape (§10): green toast, nothing stored.
+                `<input type="date">` closes it at the source. It shows the
+                browser's local format and a click-through mini calendar, while
+                its VALUE is always YYYY-MM-DD, so the rep can no longer produce
+                a string the column will refuse. Same control the Last Bill
+                Dates on this card already use. */}
+            <EditableDateField
               icon={<Stethoscope className="h-4 w-4" />}
               label="MR Expiry Date"
-              value={patient.mrExpiryDate}
+              dateStr={patient.mrExpiryDate}
               onChange={(v) => onFieldChange("mrExpiryDate", v)}
             />
             <SelectField
