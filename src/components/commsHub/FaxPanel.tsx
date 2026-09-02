@@ -17,7 +17,7 @@
  * the right-click menu PUTs it back to Unread (Josh, 2026-09-02). Both are the
  * one `message-store/{id}` write `setMessageRead` makes.
  */
-import { AlertCircle, FileText, Loader2, MailOpen, Printer, Stethoscope } from "lucide-react";
+import { AlertCircle, AlertTriangle, Check, ChevronDown, FileText, Loader2, MailOpen, Printer, Stethoscope } from "lucide-react";
 import { Link } from "react-router-dom";
 import {
   ContextMenu,
@@ -25,8 +25,23 @@ import {
   ContextMenuItem,
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import type { InboundFax } from "@/lib/fax/ringcentralApi";
 import type { FaxDirectoryEntry } from "@/lib/commsHub/faxDirectory";
+import {
+  FAX_VIEWS,
+  filterInbound,
+  filterOutbound,
+  viewIsOutbound,
+  type FaxView,
+  type OutboundFaxRow,
+} from "@/lib/commsHub/faxFilter";
+import { faxFailureLabel } from "@/lib/fax/faxOutcome";
 import { fmtPhone } from "@/lib/assignedPatients/format";
 import { cn } from "@/lib/utils";
 import { HubListHeader, Initials, ListEmpty, ListError, listTime } from "./HubList";
@@ -40,8 +55,10 @@ export function FaxPanel({
   onSelect,
   query,
   onQuery,
-  unreadOnly,
-  onUnreadOnly,
+  view,
+  onView,
+  outbound,
+  outboundLoading,
   onSetRead,
 }: {
   faxes: InboundFax[] | null;
@@ -52,8 +69,12 @@ export function FaxPanel({
   onSelect: (f: InboundFax) => void;
   query: string;
   onQuery: (v: string) => void;
-  unreadOnly: boolean;
-  onUnreadOnly: (v: boolean) => void;
+  /** Which slice of the fax history to show — mirrors RingCentral's own menu. */
+  view: FaxView;
+  onView: (v: FaxView) => void;
+  /** Faxes WE sent. Only loaded while a Sent/Failed view is chosen. */
+  outbound: OutboundFaxRow[] | null;
+  outboundLoading?: boolean;
   /** Right-click → Mark as unread / Mark as read. Writes RingCentral's own
    *  `readStatus`; the page holds the optimistic override. */
   onSetRead: (f: InboundFax, read: boolean) => void;
@@ -62,8 +83,9 @@ export function FaxPanel({
   const unread = list.filter((f) => !f.read).length;
   const q = query.trim().toLowerCase();
   const digits = query.replace(/\D/g, "");
-  const shown = list.filter((f) => {
-    if (unreadOnly && f.read) return false;
+  const outboundView = viewIsOutbound(view);
+
+  const shown = filterInbound(list, view).filter((f) => {
     if (!q) return true;
     return (
       f.fromName.toLowerCase().includes(q) ||
@@ -72,36 +94,109 @@ export function FaxPanel({
     );
   });
 
+  const shownOut = filterOutbound(outbound ?? [], view).filter((r) => {
+    if (!q) return true;
+    return r.name.toLowerCase().includes(q) || (digits.length >= 3 && r.number.replace(/\D/g, "").includes(digits));
+  });
+
   return (
     <>
       <HubListHeader
         title="Fax"
-        count={list.length}
+        count={outboundView ? shownOut.length : list.length}
         query={query}
         onQuery={onQuery}
         placeholder="Search faxes…"
-        unreadOnly={unreadOnly}
-        onUnreadOnly={onUnreadOnly}
-        unreadCount={unread}
-        loading={loading}
+        loading={loading || (outboundView && !!outboundLoading)}
         onReload={onReload}
+        filterMenu={
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button className="inline-flex items-center gap-1 rounded-full bg-primary px-2.5 py-1 text-[11px] font-semibold text-primary-foreground">
+                {FAX_VIEWS.find((v) => v.id === view)?.label ?? "All"}
+                {view === "unread" && !!unread && <span className="tabular-nums">{unread}</span>}
+                <ChevronDown className="h-3 w-3" />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-40">
+              {FAX_VIEWS.map((v) => (
+                <DropdownMenuItem key={v.id} onSelect={() => onView(v.id)}>
+                  <span className="flex-1">{v.label}</span>
+                  {v.id === "unread" && !!unread && (
+                    <span className="ml-2 text-[10px] tabular-nums text-muted-foreground">{unread}</span>
+                  )}
+                  {v.id === view && <Check className="ml-2 h-3.5 w-3.5" />}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        }
       />
       <div className="min-h-0 flex-1 overflow-y-auto">
         {error && <ListError error={error} />}
-        {!error && !shown.length && (
+        {!error && outboundView && !shownOut.length && (
+          <ListEmpty>
+            {outboundLoading ? (
+              <span className="inline-flex items-center gap-1.5">
+                <Loader2 className="h-3.5 w-3.5 animate-spin" /> Loading sent faxes…
+              </span>
+            ) : view === "failed" ? (
+              "No failed sends in the last 30 days."
+            ) : (
+              "Nothing sent in the last 30 days."
+            )}
+          </ListEmpty>
+        )}
+
+        {/* ⚠️ One row per RECIPIENT. RingCentral reports a fax's verdict per
+            number, so a send to three offices is three rows — collapsing them
+            would report one number's failure as the whole send's, or hide it. */}
+        {outboundView &&
+          shownOut.map((r) => (
+            <div
+              key={r.key}
+              className="flex w-full items-start gap-2.5 border-b border-border/60 px-3 py-2.5 text-left"
+            >
+              <Initials
+                name={r.name}
+                phone={r.number}
+                tone={r.state === "failed" ? "bg-rose-500/15 text-rose-600 dark:text-rose-400" : undefined}
+              />
+              <span className="min-w-0 flex-1">
+                <span className="flex items-baseline gap-2">
+                  <span className="truncate text-sm font-medium">{r.name || fmtPhone(r.number)}</span>
+                  <span className="ml-auto shrink-0 text-[10px] text-muted-foreground tabular-nums">
+                    {listTime(r.creationTime)}
+                  </span>
+                </span>
+                <span className="mt-0.5 flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                  {r.state === "failed" ? (
+                    <AlertTriangle className="h-3 w-3 shrink-0 text-rose-500" />
+                  ) : (
+                    <Printer className="h-3 w-3 shrink-0" />
+                  )}
+                  {r.state === "failed" ? faxFailureLabel(r.code) : "Sent"}
+                  {r.pages > 0 && <span> · {r.pages} {r.pages === 1 ? "page" : "pages"}</span>}
+                </span>
+              </span>
+            </div>
+          ))}
+
+        {!error && !outboundView && !shown.length && (
           <ListEmpty>
             {loading ? (
               <span className="inline-flex items-center gap-1.5">
                 <Loader2 className="h-3.5 w-3.5 animate-spin" /> Loading faxes…
               </span>
-            ) : unreadOnly ? (
+            ) : view === "unread" ? (
               "Nothing unread."
             ) : (
               "No inbound faxes in the last 30 days."
             )}
           </ListEmpty>
         )}
-        {shown.map((f) => (
+        {!outboundView &&
+          shown.map((f) => (
           <ContextMenu key={f.id}>
             <ContextMenuTrigger asChild>
               <button

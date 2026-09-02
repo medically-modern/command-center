@@ -23,10 +23,14 @@
 
 /** The slice of a RingCentral message-store fax record this rule reads. */
 export interface RcFaxRecord {
+  /** RingCentral's message id. Not needed by the outcome rule below, but the
+   *  Comms Hub's Sent/Failed list keys its rows off it. */
+  id?: number;
   messageStatus?: string;
   creationTime?: string;
   lastModifiedTime?: string;
-  to?: Array<{ phoneNumber?: string; messageStatus?: string; faxErrorCode?: string }>;
+  faxPageCount?: number;
+  to?: Array<{ phoneNumber?: string; name?: string; messageStatus?: string; faxErrorCode?: string }>;
 }
 
 export type FaxState = "sent" | "failed";

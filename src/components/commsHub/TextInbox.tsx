@@ -32,7 +32,7 @@ import type { Conversation } from "@/lib/commsHub/conversations";
 import { fmtPhone } from "@/lib/assignedPatients/format";
 import { resolveDisplayName } from "@/lib/commsHub/directory";
 import { cn } from "@/lib/utils";
-import { HubListHeader, Initials, ListEmpty, ListError, listTime } from "./HubList";
+import { HubListHeader, Initials, ListEmpty, ListError, NamingProgress, listTime } from "./HubList";
 
 export function TextInbox({
   conversations,
@@ -48,6 +48,7 @@ export function TextInbox({
   unreadOnly,
   onUnreadOnly,
   names,
+  naming,
 }: {
   conversations: Conversation[];
   loading: boolean;
@@ -64,6 +65,9 @@ export function TextInbox({
   /** Patient names our boards hold, keyed by last-10 digits — one batched read
    *  for the whole list (`hooks/commsHub/useDirectoryNames`). */
   names: ReadonlyMap<string, string>;
+  /** Name-resolution progress, so a long list says how far along it is rather
+   *  than filling in silently (Josh, 2026-09-02). */
+  naming?: { done: number; total: number };
 }) {
   const unreadTotal = useMemo(() => conversations.filter((c) => c.unread > 0).length, [conversations]);
 
@@ -105,6 +109,7 @@ export function TextInbox({
         unreadCount={unreadTotal}
         loading={loading}
         onReload={onReload}
+        note={naming && <NamingProgress done={naming.done} total={naming.total} />}
       />
 
       <div className="min-h-0 flex-1 overflow-y-auto">

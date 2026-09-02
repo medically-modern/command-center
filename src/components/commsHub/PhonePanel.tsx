@@ -19,7 +19,7 @@ import type { VoicemailRecord } from "@/lib/fax/ringcentralApi";
 import { fmtPhone } from "@/lib/assignedPatients/format";
 import { resolveDisplayName, type NameSource } from "@/lib/commsHub/directory";
 import { cn } from "@/lib/utils";
-import { FilterPill, HubListHeader, Initials, ListEmpty, ListError, listTime } from "./HubList";
+import { FilterPill, HubListHeader, Initials, ListEmpty, ListError, NamingProgress, listTime } from "./HubList";
 
 export type PhoneMode = "calls" | "voicemail";
 
@@ -96,6 +96,7 @@ export function PhonePanel({
   missedOnly,
   onMissedOnly,
   names,
+  naming,
 }: {
   mode: PhoneMode;
   onMode: (m: PhoneMode) => void;
@@ -113,6 +114,9 @@ export function PhonePanel({
   /** Patient names our boards hold, keyed by last-10 digits. One batched read
    *  for the whole list — see `hooks/commsHub/useDirectoryNames`. */
   names: ReadonlyMap<string, string>;
+  /** Name-resolution progress, so a long list says how far along it is rather
+   *  than filling in silently (Josh, 2026-09-02). */
+  naming?: { done: number; total: number };
 }) {
   const rows = useMemo(() => toRows(calls ?? []), [calls]);
   const missedCount = useMemo(() => rows.filter((r) => r.inbound && !r.connected).length, [rows]);
@@ -176,6 +180,7 @@ export function PhonePanel({
         unreadCount={mode === "calls" ? missedCount : unheardCount}
         loading={loading}
         onReload={onReload}
+        note={naming && <NamingProgress done={naming.done} total={naming.total} />}
         extra={
           <div className="flex items-center gap-1">
             <FilterPill active={mode === "calls"} onClick={() => onMode("calls")}>

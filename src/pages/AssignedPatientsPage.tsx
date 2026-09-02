@@ -66,6 +66,7 @@ import {
   type ReadOverride,
 } from "@/lib/commsHub/conversations";
 import { buildFaxDirectory, type FaxDirectoryEntry } from "@/lib/commsHub/faxDirectory";
+import { toOutboundRows, viewIsOutbound, type FaxView } from "@/lib/commsHub/faxFilter";
 import { DoctorDbUnavailable, fetchDoctorDbByFax, fetchFaxMatches } from "@/lib/commsHub/dossierApi";
 import { contactKey } from "@/lib/contactState/contactState";
 import { useDossier } from "@/hooks/commsHub/useDossier";
@@ -75,6 +76,7 @@ import {
   reloadTexts,
   useCallLog,
   useFaxList,
+  useOutboundFaxes,
   useTextInbox,
   useVoicemails,
 } from "@/hooks/commsHub/useHubData";
@@ -130,7 +132,10 @@ export default function AssignedPatientsPage() {
   const [selectedVoicemail, setSelectedVoicemail] = useState<VoicemailRecord | null>(null);
 
   const [faxQuery, setFaxQuery] = useState("");
-  const [faxUnreadOnly, setFaxUnreadOnly] = useState(false);
+  /** Which slice of the fax history is shown — mirrors RingCentral's own menu
+   *  (Josh, 2026-09-02). Sent/Failed read the OUTBOUND list, which is fetched
+   *  only while one of them is chosen. */
+  const [faxView, setFaxView] = useState<FaxView>("all");
   const [selectedFax, setSelectedFax] = useState<InboundFax | null>(null);
   /**
    * Local fax read/unread clicks, covering the seconds between the PUT and the
@@ -163,6 +168,13 @@ export default function AssignedPatientsPage() {
   const calls = useCallLog(tab === "phone");
   const voicemails = useVoicemails(tab === "phone");
   const faxes = useFaxList(tab === "fax");
+  // ⚠️ Loaded only while a Sent/Failed view is chosen — the default view is
+  // inbound, and this would otherwise be requests nobody asked for.
+  const outboundFaxes = useOutboundFaxes(tab === "fax" && viewIsOutbound(faxView));
+  const outboundRows = useMemo(
+    () => (outboundFaxes.data ? toOutboundRows(outboundFaxes.data) : null),
+    [outboundFaxes.data],
+  );
 
   const conversations = useMemo(
     () => applyReadOverrides(texts.data ?? [], readOverrides),
@@ -188,7 +200,7 @@ export default function AssignedPatientsPage() {
     return [];
   }, [tab, conversations, calls.data, voicemails.data]);
 
-  const directoryNames = useDirectoryNames(visibleKeys, tab !== "fax");
+  const { names: directoryNames, progress: namingProgress } = useDirectoryNames(visibleKeys, tab !== "fax");
 
   /** Set an override, dropping any that the latest poll has retired. Pruning
    *  here rather than in an effect keeps it bounded and loop-free: it only ever
@@ -603,6 +615,7 @@ export default function AssignedPatientsPage() {
                 unreadOnly={textUnreadOnly}
                 onUnreadOnly={setTextUnreadOnly}
                 names={directoryNames}
+                naming={namingProgress}
               />
               {/* Reaching someone must never depend on them having texted
                   first, so a typed number and any name match are offered
@@ -684,6 +697,7 @@ export default function AssignedPatientsPage() {
               missedOnly={missedOnly}
               onMissedOnly={setMissedOnly}
               names={directoryNames}
+              naming={namingProgress}
             />
           )}
 
@@ -697,8 +711,10 @@ export default function AssignedPatientsPage() {
               onSelect={openFax}
               query={faxQuery}
               onQuery={setFaxQuery}
-              unreadOnly={faxUnreadOnly}
-              onUnreadOnly={setFaxUnreadOnly}
+              view={faxView}
+              onView={setFaxView}
+              outbound={outboundRows}
+              outboundLoading={outboundFaxes.loading}
               onSetRead={setFaxRead}
             />
           )}

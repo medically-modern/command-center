@@ -22,6 +22,8 @@ export function HubListHeader({
   loading,
   onReload,
   extra,
+  filterMenu,
+  note,
 }: {
   title: string;
   count?: number;
@@ -37,6 +39,12 @@ export function HubListHeader({
   onReload: () => void;
   /** Extra controls on the filter row — the Phone tab's Calls/Voicemail split. */
   extra?: React.ReactNode;
+  /** Replaces the ALL/UNREAD pair when a list has more than two states — the
+   *  Fax tab's Unread/Received/Sent/Failed menu. */
+  filterMenu?: React.ReactNode;
+  /** A quiet line under the filter row: "naming 240 of 900…". Only rendered
+   *  while something is genuinely in flight. */
+  note?: React.ReactNode;
 }) {
   return (
     <div className="shrink-0 border-b border-border">
@@ -73,10 +81,11 @@ export function HubListHeader({
         </div>
       </div>
 
-      {(onUnreadOnly || extra) && (
+      {(onUnreadOnly || extra || filterMenu) && (
         <div className="flex items-center gap-1 px-3 pb-2">
           {extra}
-          {onUnreadOnly && (
+          {filterMenu && <div className="ml-auto">{filterMenu}</div>}
+          {!filterMenu && onUnreadOnly && (
             <div className="ml-auto flex items-center gap-1">
               <FilterPill active={!unreadOnly} onClick={() => onUnreadOnly(false)}>
                 All
@@ -89,6 +98,31 @@ export function HubListHeader({
           )}
         </div>
       )}
+
+      {note && <div className="px-3 pb-2">{note}</div>}
+    </div>
+  );
+}
+
+/**
+ * "Naming 240 of 900…" with a hairline bar.
+ *
+ * ⚠️ Rendered ONLY while a pass is in flight and there is something left to do.
+ * A progress bar that lingers at 100%, or shows up for a list already resolved
+ * from cache, is noise on a pane a rep reads all day — and this resolves in a
+ * couple of seconds on a warm directory.
+ */
+export function NamingProgress({ done, total }: { done: number; total: number }) {
+  if (total <= 0 || done >= total) return null;
+  const pct = Math.max(4, Math.min(100, Math.round((done / total) * 100)));
+  return (
+    <div className="flex items-center gap-2" aria-live="polite">
+      <div className="h-1 flex-1 overflow-hidden rounded-full bg-muted">
+        <div className="h-full rounded-full bg-primary transition-[width] duration-300" style={{ width: `${pct}%` }} />
+      </div>
+      <span className="shrink-0 text-[10px] tabular-nums text-muted-foreground">
+        naming {done}/{total}
+      </span>
     </div>
   );
 }

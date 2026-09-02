@@ -81,12 +81,29 @@ const known = new Map<string, string>();
 /** The snapshot handed to React. Replaced (never mutated) so identity changes
  *  exactly when the data does. */
 let snapshot: ReadonlyMap<string, string> = new Map();
+
+/**
+ * How far the current pass has got, for the list's progress line.
+ *
+ * ⚠️ Counted in NUMBERS, not batches: "naming 240 of 900" is a fact a rep can
+ * read, where "batch 3 of 9" is an implementation detail. Reset to zero when a
+ * pass finishes so the bar disappears rather than parking at 100%.
+ */
+let progress = { done: 0, total: 0 };
+const NO_PROGRESS = { done: 0, total: 0 };
 let inflight: Promise<void> | null = null;
 const listeners = new Set<() => void>();
 
 function emit() {
   snapshot = new Map(known);
+  progressSnapshot = { ...progress };
   for (const l of listeners) l();
+}
+
+/** Stable identity for the progress reading, same rule as the names map. */
+let progressSnapshot: { done: number; total: number } = NO_PROGRESS;
+function getProgress(): { done: number; total: number } {
+  return progressSnapshot;
 }
 
 function subscribe(fn: () => void): () => void {
@@ -117,6 +134,9 @@ async function run(keys: string[]): Promise<void> {
 
   const chunks: string[][] = [];
   for (let i = 0; i < todo.length; i += BATCH) chunks.push(todo.slice(i, i + BATCH));
+  // Additive: a pass that starts while another is finishing extends the same
+  // bar rather than restarting it at zero.
+  progress = { done: progress.done, total: progress.total + todo.length };
 
   // Workers pull chunks in order, so the top of the list is always in the first
   // wave and its names land within one round trip.
@@ -133,13 +153,25 @@ async function run(keys: string[]): Promise<void> {
       // the next render that changes the list, forever; without the `ok` guard a
       // single Monday blip turns a batch of real patients into permanent bare
       // numbers.
-      if (!ok) continue;
+      progress = { ...progress, done: progress.done + chunk.length };
+      if (!ok) {
+        // A failed chunk still counts as attempted, or the bar would never
+        // reach its total and would sit on screen for ever.
+        emit();
+        continue;
+      }
       for (const k of chunk) known.set(k, names.get(k) ?? "");
       // Emit per batch so names fill in as they land rather than all at the end.
       emit();
     }
   }
   await Promise.all(Array.from({ length: Math.min(CONCURRENCY, chunks.length) }, worker));
+  // Clear once nothing is outstanding, so the bar leaves rather than parking
+  // full. Guarded because a chained pass may already have added to the total.
+  if (progress.done >= progress.total) {
+    progress = NO_PROGRESS;
+    emit();
+  }
 }
 
 function resolve(keys: string[]): void {
@@ -175,8 +207,16 @@ function resolve(keys: string[]): void {
  * showing; `enabled` should be false for a tab nobody is looking at, so a
  * closed tab costs nothing.
  */
-export function useDirectoryNames(keys: string[], enabled = true): ReadonlyMap<string, string> {
+export interface DirectoryNames {
+  names: ReadonlyMap<string, string>;
+  /** Numbers resolved / numbers this pass set out to resolve. Both zero when
+   *  nothing is in flight. */
+  progress: { done: number; total: number };
+}
+
+export function useDirectoryNames(keys: string[], enabled = true): DirectoryNames {
   const names = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
+  const prog = useSyncExternalStore(subscribe, getProgress, getProgress);
 
   /**
    * ⚠️ The keys in LIST order, which is NOT what the signature below holds.
@@ -202,13 +242,15 @@ export function useDirectoryNames(keys: string[], enabled = true): ReadonlyMap<s
     if (!signature) return;
     resolve(keysRef.current);
   }, [signature]);
-  return names;
+  return { names, progress: enabled ? prog : NO_PROGRESS };
 }
 
 /** Test seam — resets the module store between cases. */
 export function __resetDirectoryNamesForTest(): void {
   known.clear();
   snapshot = new Map();
+  progress = NO_PROGRESS;
+  progressSnapshot = NO_PROGRESS;
   inflight = null;
   listeners.clear();
 }

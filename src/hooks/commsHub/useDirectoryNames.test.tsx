@@ -37,8 +37,13 @@ function Probe({ keys, tag = "out" }: { keys: string[]; tag?: string }) {
   // A NEW array identity every render — the caller shape this hook has to
   // survive. Handing an array straight to a dep array is how the incident
   // happened.
-  const names = useDirectoryNames([...keys]);
-  return <span data-testid={tag}>{names.get(TONASILA) ?? "—"}</span>;
+  const { names, progress } = useDirectoryNames([...keys]);
+  return (
+    <>
+      <span data-testid={tag}>{names.get(TONASILA) ?? "—"}</span>
+      <span data-testid="prog">{`${progress.done}/${progress.total}`}</span>
+    </>
+  );
 }
 
 describe("useDirectoryNames", () => {
@@ -181,5 +186,42 @@ describe("useDirectoryNames", () => {
       gate2.resolve(ok());
     });
     await waitFor(() => expect(fetchDirectoryNames).toHaveBeenCalledTimes(3));
+  });
+});
+
+
+describe("naming progress", () => {
+  it("counts NUMBERS, not batches, and clears when the pass finishes", async () => {
+    // ⚠️ It must clear rather than park at 100%: a bar that lingers is noise on
+    // a pane a rep reads all day, and this resolves in seconds on a warm
+    // directory.
+    const many = Array.from({ length: 150 }, (_, i) => String(9000000000 + i));
+    // Held open so the bar can be observed mid-pass rather than only at its end.
+    const gate = deferred();
+    fetchDirectoryNames.mockImplementationOnce(() => gate.promise);
+    render(<Probe keys={many} />);
+    await waitFor(() => expect(fetchDirectoryNames).toHaveBeenCalled());
+    // 150 numbers, not "2 batches" — the unit a rep can actually read.
+    await waitFor(() => expect(screen.getByTestId("prog")).toHaveTextContent("/150"));
+
+    await act(async () => gate.resolve(ok()));
+    // ⚠️ Clears rather than parking at 100%.
+    await waitFor(() => expect(screen.getByTestId("prog")).toHaveTextContent("0/0"));
+  });
+
+  it("still finishes when a batch FAILS, so the bar can't stick", async () => {
+    fetchDirectoryNames.mockResolvedValue({ ok: false, names: new Map() });
+    render(<Probe keys={[TONASILA]} />);
+    await waitFor(() => expect(fetchDirectoryNames).toHaveBeenCalled());
+    await waitFor(() => expect(screen.getByTestId("prog")).toHaveTextContent("0/0"));
+  });
+
+  it("reports nothing when the hook is disabled", () => {
+    function Off() {
+      const { progress } = useDirectoryNames([TONASILA], false);
+      return <span data-testid="off">{`${progress.done}/${progress.total}`}</span>;
+    }
+    render(<Off />);
+    expect(screen.getByTestId("off")).toHaveTextContent("0/0");
   });
 });

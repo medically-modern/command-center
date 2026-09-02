@@ -2165,6 +2165,24 @@ access.json assignments key off, so a rename is display-only (§5.10's precedent
   PHONE column either. The ordinary cause is that **an office sends from a different line than the
   one we fax to**, which is why the empty state now says so and tells the rep to add the number to
   the doctor record. Do not "fix" the rcfax join; re-run that audit first.
+- **The Fax tab has RingCentral's own view menu** — All · Unread · Received · Sent · Failed
+  (Josh, 2026-09-02), so a rep moving between the two apps doesn't relearn the pane. Rule:
+  **`lib/commsHub/faxFilter.ts`** (+ tests). ⚠️ **Sent and Failed read the OUTBOUND list**, which is
+  fetched only while one of them is chosen — the default view is inbound, and it would otherwise be
+  requests nobody asked for (the same posture as "only the open tab polls"). ⚠️ **One row per
+  RECIPIENT, not per record**: RingCentral reports a fax's verdict per number, so a send to three
+  offices is three rows — collapsing them to the parent would report one office's failure as the
+  whole send's, the same "read the legs" rule §5.16 needs for the call log.
+- ⚠️ **The Fax tab was capped at the newest 50** until 2026-09-02: it asked for one `perPage: 50`
+  page and never paged, and unlike `/fax-inbox` this list has no pager of its own, so it truncated
+  silently. `fetchInboundFaxesAll` pages it. **30 days stays the window and that is not a choice** —
+  RingCentral's message store is a rolling ~30 days (§5.27; the oldest fax it held on 2026-09-02 was
+  8/2), so asking for more spends requests and returns nothing.
+- **A long list says how far along the naming is** (`HubList.NamingProgress`, fed by
+  `useDirectoryNames`' `progress`). ⚠️ Counted in NUMBERS, not batches — "naming 240/900" is a fact
+  a rep can read where "batch 3 of 9" is an implementation detail — and it CLEARS when the pass
+  ends rather than parking at 100%, including when a batch fails, or the bar would sit there for
+  ever on a pane a rep reads all day.
 - **Right-click a fax → Mark as read / unread** (Josh, 2026-09-02), same posture as the Text tab:
   RingCentral's own `readStatus`, never a local flag, because reps work this line in the
   RingCentral desktop app too. The page holds a per-id override covering only the seconds between

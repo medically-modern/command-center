@@ -6,6 +6,7 @@
  */
 import {
   fetchInboundFaxesAll,
+  fetchRecentOutboundFaxes,
   fetchRecentCallActivity,
   fetchRecentMessageActivity,
   fetchVoicemails,
@@ -14,6 +15,7 @@ import {
   type VoicemailRecord,
 } from "@/lib/fax/ringcentralApi";
 import type { RcCallLogRecord } from "@/lib/callHistory/callHistory";
+import type { RcFaxRecord } from "@/lib/fax/faxOutcome";
 import { buildConversations, type Conversation, type RcConversationRecord } from "@/lib/commsHub/conversations";
 import { createRcStore } from "./rcStore";
 
@@ -56,6 +58,20 @@ export const useTextInbox = textStore.useStore;
 export const useCallLog = callStore.useStore;
 export const useVoicemails = voicemailStore.useStore;
 export const useFaxList = faxStore.useStore;
+
+/**
+ * Faxes WE sent, for the Fax tab's Sent and Failed filters.
+ *
+ * ⚠️ Its own store, and enabled only when one of those two filters is chosen —
+ * the tab's default view is inbound, and the outbound read would otherwise be
+ * requests spent on something nobody asked to see. Same posture as "only the
+ * OPEN tab polls" one level up.
+ */
+const outboundFaxStore = createRcStore<RcFaxRecord[]>(
+  () => fetchRecentOutboundFaxes({ days: 30, maxPages: 6, perPage: 250 }),
+  SLOW_TTL_MS,
+);
+export const useOutboundFaxes = outboundFaxStore.useStore;
 
 /** After a read/unread write, pull the affected list forward rather than
  *  waiting out the TTL. */
