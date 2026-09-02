@@ -60,6 +60,24 @@ function toRows(records: RcCallLogRecord[]): CallRow[] {
     .sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime());
 }
 
+/**
+ * What the row says happened, in the app's own language.
+ *
+ * ⚠️ "Outgoing" / "Incoming" name the call's DIRECTION, which is not the
+ * question a rep is asking — beside a patient's name, outgoing to whom?
+ * (Josh, 2026-09-02: "unclear what outgoing means here".) `contactState`
+ * already settled this vocabulary for the sidebar marks — `weCalledThem`,
+ * `missedTheirCall` — so the list says the same thing in words.
+ *
+ * ⚠️ **"We", never "You".** This is a shared line worked by several reps; the
+ * person reading the row is usually not the person who dialled.
+ */
+export function callLabel(r: { voicemail: boolean; inbound: boolean; connected: boolean }): string {
+  if (r.voicemail) return "Left voicemail";
+  if (r.inbound) return r.connected ? "They called" : "Missed their call";
+  return "We called";
+}
+
 function mmss(sec: number): string {
   if (!sec) return "";
   const m = Math.floor(sec / 60);
@@ -236,14 +254,25 @@ export function PhonePanel({
                     <span className="block truncate text-sm font-medium" title={fmtPhone(r.phone)}>
                       {r.label}
                     </span>
-                    <span className="mt-0.5 flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                    {/* ⚠️ One non-wrapping line. What happened and how long it
+                        lasted come FIRST and never clip; the number trails and
+                        truncates, because it is the least useful half once the
+                        name resolves — and it was the wrap that made this row
+                        hard to read at all. */}
+                    <span className="mt-0.5 flex items-center gap-1.5 overflow-hidden text-[11px] text-muted-foreground">
                       <Icon className={cn("h-3 w-3 shrink-0", missed && "text-rose-500")} />
-                      {/* The number moves down here rather than disappearing:
-                          a rep reads back the number they are about to dial,
-                          and a list of names alone can't be checked. */}
-                      {r.source !== "number" && <span className="tabular-nums">{fmtPhone(r.phone)} ·</span>}
-                      {r.voicemail ? "Voicemail" : missed ? "Missed" : r.inbound ? "Incoming" : "Outgoing"}
-                      {r.connected && r.durationSec > 0 && <span className="tabular-nums">· {mmss(r.durationSec)}</span>}
+                      <span className={cn("shrink-0", missed && "text-rose-600 dark:text-rose-400")}>
+                        {callLabel(r)}
+                      </span>
+                      {r.connected && r.durationSec > 0 && (
+                        <span className="shrink-0 tabular-nums">· {mmss(r.durationSec)}</span>
+                      )}
+                      {/* The number stays visible: a rep reads back the number
+                          they are about to dial, and a list of names alone
+                          can't be checked. */}
+                      {r.source !== "number" && (
+                        <span className="truncate tabular-nums">· {fmtPhone(r.phone)}</span>
+                      )}
                     </span>
                   </span>
                   <span className="shrink-0 text-[10px] text-muted-foreground tabular-nums">{listTime(r.at)}</span>
