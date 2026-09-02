@@ -10,11 +10,13 @@ import {
   boundLookup,
   collapseRows,
   directoryHealth,
+  isOrphanRow,
   last10,
+  prunePlan,
   toDirectoryRow,
   toE164,
 } from "./patientDirectoryRules.mjs";
-import { upsertSql } from "./patientDirectory.mjs";
+import { PRUNE_SQL, upsertSql } from "./patientDirectory.mjs";
 
 /** Same shape as smsArchiveRules.test.mjs: resolve from the repo root, since
  *  import.meta.url is not a file: URL under the jsdom environment. */
@@ -207,10 +209,18 @@ describe("the module's own guarantees, read from source", () => {
     expect(schema).not.toMatch(/^\s+phone\s+TEXT/m);
   });
 
-  it("never deletes rows for absence", () => {
-    // A board read that failed halfway would otherwise wipe real names, and a
-    // stale name is a far smaller harm than a blank one.
-    expect(src("patientDirectory.mjs")).not.toMatch(/DELETE\s+FROM\s+patient_directory\b/i);
+  it("never deletes rows for ABSENCE — only against positive evidence", () => {
+    // ⚠️ The guarantee is not "no DELETE": a number a patient has moved OFF has
+    // to go, or the old one resolves to them for ever. It is that every delete
+    // is gated on the SEEN-ITEMS list, so a board read that failed halfway can
+    // never wipe real names. An unconditional `DELETE FROM patient_directory`,
+    // or one gated only on "wasn't rewritten", is the dangerous shape.
+    const s = src("patientDirectory.mjs");
+    const deletes = [...s.matchAll(/DELETE\s+FROM\s+patient_directory\b[\s\S]{0,400}/gi)].map((m) => m[0]);
+    expect(deletes).toHaveLength(1);
+    expect(deletes[0]).toContain("pd.monday_item_id = ANY($1)");
+    // And nothing may delete the run history at all.
+    expect(s).not.toMatch(/DELETE\s+FROM\s+patient_directory_runs\b/i);
   });
 
   it("keeps the kill switch and the auth gate the docs promise", () => {
@@ -238,5 +248,70 @@ describe("the module's own guarantees, read from source", () => {
       expect(registry).toContain(b.phoneColId);
     }
     expect(DIRECTORY_BOARDS).toHaveLength(7);
+  });
+});
+
+
+describe("pruning a number a patient has MOVED OFF", () => {
+  const r = (item, hmac, name = "x") => ({ mondayItemId: item, phoneHmac: hmac, name, rank: 1, last4: "0000", boardId: 1 });
+
+  it("deletes the OLD number's row once the item holds a new one", () => {
+    // Change a phone number in Monday and the new row is written, but the old
+    // one is keyed by the old number and nothing overwrites it. Left alone it
+    // resolves to that patient for ever — and because it is a HIT, the live
+    // Monday fallback never runs to correct it.
+    const scanned = [r("tonasila", "H_NEW", "Tonasila Gray")];
+    const plan = prunePlan(scanned, scanned);
+    expect(isOrphanRow({ mondayItemId: "tonasila", phoneHmac: "H_OLD" }, plan)).toBe(true);
+    expect(isOrphanRow({ mondayItemId: "tonasila", phoneHmac: "H_NEW" }, plan)).toBe(false);
+  });
+
+  it("NEVER deletes for absence — an item we did not see keeps its row", () => {
+    // A board that failed, a deleted item, a filtered view: none of these are
+    // evidence the number is wrong, and a stale name beats a blank one.
+    const plan = prunePlan([r("seen", "H1")], [r("seen", "H1")]);
+    expect(isOrphanRow({ mondayItemId: "never-scanned", phoneHmac: "H_OTHER" }, plan)).toBe(false);
+  });
+
+  it("keeps a shared household number when one of the two moves away", () => {
+    // John and Sue share 3046977788 live. John moving to a new number must not
+    // delete the row — Sue still has it, and she won the collapse.
+    const scanned = [r("john", "H_JOHN_NEW", "John Hartley Jr"), r("sue", "H_SHARED", "Sue Hartley")];
+    const written = [r("john", "H_JOHN_NEW"), r("sue", "H_SHARED")];
+    const plan = prunePlan(scanned, written);
+    expect(isOrphanRow({ mondayItemId: "sue", phoneHmac: "H_SHARED" }, plan)).toBe(false);
+    // John's own stale row at the shared number IS gone — but the upsert has
+    // already rewritten that row to Sue, so this only fires on a leftover.
+    expect(isOrphanRow({ mondayItemId: "john", phoneHmac: "H_SHARED" }, plan)).toBe(true);
+  });
+
+  it("prunes a collapse LOSER's stale row — losing a tie is still evidence", () => {
+    // John shares Sue's number now, so he contributes no written pair. His row
+    // at an older number is still positively known to be wrong.
+    const scanned = [r("john", "H_SHARED"), r("sue", "H_SHARED")];
+    const written = [r("sue", "H_SHARED")];
+    const plan = prunePlan(scanned, written);
+    expect(isOrphanRow({ mondayItemId: "john", phoneHmac: "H_JOHN_OLD" }, plan)).toBe(true);
+  });
+
+  it("collects every scanned item, collapse losers included", () => {
+    const plan = prunePlan([r("a", "H"), r("b", "H"), null], [r("b", "H")]);
+    expect(plan.seenItemIds.sort()).toEqual(["a", "b"]);
+    expect(plan.pairItems).toEqual(["b"]);
+    expect(plan.pairHmacs).toEqual(["H"]);
+  });
+
+  it("the SQL implements the same rule as the predicate", () => {
+    // Two halves of one rule, so they are pinned together: seen-items gate,
+    // and NOT EXISTS over the written (item, hash) pairs.
+    expect(PRUNE_SQL).toContain("pd.monday_item_id = ANY($1)");
+    expect(PRUNE_SQL).toContain("NOT EXISTS");
+    expect(PRUNE_SQL).toContain("unnest($2::text[], $3::text[])");
+    expect(PRUNE_SQL).toContain("w.item = pd.monday_item_id AND w.hmac = pd.phone_hmac");
+  });
+
+  it("is skipped on a truncated run — that is the one claim we cannot make", () => {
+    const src = readFileSync(resolve(process.cwd(), "services/monday-gateway/patientDirectory.mjs"), "utf8");
+    expect(src).toMatch(/if \(!stats\.truncated\) \{[\s\S]{0,400}PRUNE_SQL/);
   });
 });

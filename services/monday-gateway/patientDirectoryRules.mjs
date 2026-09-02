@@ -132,6 +132,52 @@ export function collapseRows(rows) {
 }
 
 /**
+ * What a completed scan proves, for pruning numbers that have MOVED.
+ *
+ * ⚠️ This is the one thing the directory may delete, and the distinction from
+ * "delete anything not seen" is the whole safety argument. Changing a patient's
+ * phone number in Monday writes a row for the NEW number and leaves the old one
+ * behind — keyed by number, an old row is not overwritten by anything. Left
+ * alone it never expires, so the previous number keeps resolving to that
+ * patient's name for ever, and the lookup is a HIT so the live Monday fallback
+ * never runs to correct it. If the carrier later reassigns that number, we put
+ * a patient's name on a stranger's call.
+ *
+ * So: a row is pruned only when the scan carries POSITIVE EVIDENCE against it —
+ * we saw that exact Monday item, and the number it holds now is a different
+ * one. Absence still proves nothing and still deletes nothing: an item that
+ * didn't come back (a board that failed, a deleted item, a filtered view) keeps
+ * its row, because a stale name is a far smaller harm than a blank one.
+ *
+ * `seenItemIds` comes from EVERY scanned row, including the ones `collapseRows`
+ * dropped — losing a tie is still proof we saw the item and know its number.
+ * `writtenPairs` comes from the collapsed set, i.e. what is actually in the
+ * table after the upsert.
+ */
+export function prunePlan(scanned, written) {
+  const seenItemIds = [...new Set(scanned.filter(Boolean).map((r) => r.mondayItemId))];
+  const pairItems = [];
+  const pairHmacs = [];
+  for (const r of written) {
+    pairItems.push(r.mondayItemId);
+    pairHmacs.push(r.phoneHmac);
+  }
+  return { seenItemIds, pairItems, pairHmacs };
+}
+
+/**
+ * The rule the prune SQL implements, as a pure predicate — so it can be tested
+ * without a database, and so the SQL has something to be checked against.
+ */
+export function isOrphanRow(row, plan) {
+  if (!plan.seenItemIds.includes(row.mondayItemId)) return false;
+  for (let i = 0; i < plan.pairItems.length; i++) {
+    if (plan.pairItems[i] === row.mondayItemId && plan.pairHmacs[i] === row.phoneHmac) return false;
+  }
+  return true;
+}
+
+/**
  * Is this directory fit to be served?
  *
  * ⚠️ NOT ok when no run has ever succeeded, however many rows the table holds:

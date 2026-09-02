@@ -2257,7 +2257,14 @@ successful run repairs every prior gap; the gateway redeploys on every push to `
 are a certainty. Daily, with a boot run skipped if one landed inside
 `PATIENT_DIRECTORY_MIN_GAP_HOURS`. ⚠️ Rows are **never deleted for absence** — a board read that
 failed halfway would otherwise wipe real names, and a stale name is a far smaller harm than a blank
-one. ⚠️ `collapseRows` keeps **one row per number**, won by the furthest-along board (a later stage
+one. ⚠️ **The one thing it does delete is a number a patient has MOVED OFF.** Changing a phone
+number in Monday writes a row for the new number and leaves the old one behind — keyed by number,
+nothing overwrites it — so the previous number would resolve to that patient for ever, and because
+a stale row is a **HIT** the live Monday fallback never runs to correct it (if the carrier later
+reassigns that number, a stranger's call gets a patient's name). `prunePlan`/`isOrphanRow` delete
+only against **positive evidence**: we saw that exact item and it now holds a different number.
+Absence still deletes nothing, and the prune is **skipped entirely on a truncated run**, since
+"we saw this item and it moved" is exactly the claim a partial scan cannot make. ⚠️ `collapseRows` keeps **one row per number**, won by the furthest-along board (a later stage
 holds the name a rep corrected), with a **deterministic** id tie-break: two live items for one
 number is a household (John and Sue Hartley share `3046977788` live), and Monday's scan order is not
 stable, so without it the displayed name would flip between two real people day to day.

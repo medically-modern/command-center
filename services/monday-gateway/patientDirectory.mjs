@@ -52,6 +52,7 @@ import {
   boundLookup,
   collapseRows,
   directoryHealth,
+  prunePlan,
   toDirectoryRow,
 } from "./patientDirectoryRules.mjs";
 
@@ -199,6 +200,22 @@ export function upsertSql(count) {
   );
 }
 
+/**
+ * Delete rows for numbers a patient has MOVED OFF — and nothing else.
+ *
+ * Mirrors `isOrphanRow`: the row's item was seen in this scan, and the number
+ * it holds now is not the one on the row. Absence deletes nothing, which is why
+ * this takes the seen-item list rather than simply removing what wasn't
+ * rewritten.
+ */
+export const PRUNE_SQL = `
+  DELETE FROM patient_directory pd
+   WHERE pd.monday_item_id = ANY($1)
+     AND NOT EXISTS (
+       SELECT 1 FROM unnest($2::text[], $3::text[]) AS w(item, hmac)
+        WHERE w.item = pd.monday_item_id AND w.hmac = pd.phone_hmac
+     )`;
+
 async function upsertRows(pool, rows) {
   let written = 0;
   for (let i = 0; i < rows.length; i += CHUNK) {
@@ -223,7 +240,7 @@ export async function reconcilePatientDirectory({ pool } = {}) {
   if (running) return { ok: false, skipped: true, error: "a reconcile is already running" };
   running = true;
 
-  const stats = { boards: 0, pages: 0, seen: 0, written: 0, truncated: false };
+  const stats = { boards: 0, pages: 0, seen: 0, written: 0, pruned: 0, truncated: false };
   let runId = null;
   try {
     runId = (await pool.query(`INSERT INTO patient_directory_runs DEFAULT VALUES RETURNING id`)).rows[0]?.id;
@@ -244,13 +261,31 @@ export async function reconcilePatientDirectory({ pool } = {}) {
     // ⚠️ Collapse BEFORE writing. One number is several board items, and the
     // table is keyed by number — writing uncollapsed rows would make the
     // surviving name depend on upsert order, i.e. on Monday's scan order.
-    stats.written = await upsertRows(pool, collapseRows(all));
+    const collapsed = collapseRows(all);
+    stats.written = await upsertRows(pool, collapsed);
 
-    // ⚠️ Rows are never DELETED for absence. A board read that failed halfway,
+    // ⚠️ Rows are never deleted for ABSENCE — a board read that failed halfway,
     // or a board temporarily returning nothing, would otherwise wipe real
-    // names — and a stale name is a far smaller harm than a blank one. A
-    // patient who leaves keeps their entry, which only ever helps a rep
-    // recognise an old number.
+    // names, and a stale name is a far smaller harm than a blank one. An item
+    // that simply didn't come back keeps its row.
+    //
+    // What IS pruned is a number a patient has moved OFF: we saw that exact
+    // item and it now holds a different number, so the old row is positively
+    // known to be wrong. Without this, changing a phone number in Monday leaves
+    // the previous one resolving to that patient's name for ever — and because
+    // a stale row is a HIT, the live Monday fallback never runs to correct it.
+    //
+    // ⚠️ Skipped on a truncated run. Truncation means we did not read every
+    // item, so "we saw this item and it moved" is exactly the claim we cannot
+    // make. Positive evidence or nothing.
+    if (!stats.truncated) {
+      const plan = prunePlan(all, collapsed);
+      if (plan.seenItemIds.length) {
+        const del = await pool.query(PRUNE_SQL, [plan.seenItemIds, plan.pairItems, plan.pairHmacs]);
+        stats.pruned = del.rowCount || 0;
+      }
+    }
+
     await pool.query(
       `UPDATE patient_directory_runs
           SET finished_at = now(), ok = true, boards = $2, pages = $3, seen = $4, written = $5, truncated = $6
