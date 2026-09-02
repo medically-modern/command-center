@@ -58,13 +58,15 @@ import {
   type VoicemailRecord,
 } from "@/lib/fax/ringcentralApi";
 import {
+  applyFaxReadOverrides,
   applyReadOverrides,
+  pruneFaxReadOverrides,
   pruneReadOverrides,
   type Conversation,
   type ReadOverride,
 } from "@/lib/commsHub/conversations";
 import { buildFaxDirectory, type FaxDirectoryEntry } from "@/lib/commsHub/faxDirectory";
-import { fetchDoctorDbByFax, fetchFaxMatches } from "@/lib/commsHub/dossierApi";
+import { DoctorDbUnavailable, fetchDoctorDbByFax, fetchFaxMatches } from "@/lib/commsHub/dossierApi";
 import { contactKey } from "@/lib/contactState/contactState";
 import { useDossier } from "@/hooks/commsHub/useDossier";
 import { useDirectoryNames } from "@/hooks/commsHub/useDirectoryNames";
@@ -131,6 +133,9 @@ export default function AssignedPatientsPage() {
   const [faxEntry, setFaxEntry] = useState<FaxDirectoryEntry | null>(null);
   const [faxEntryLoading, setFaxEntryLoading] = useState(false);
   const [faxEntryError, setFaxEntryError] = useState<string | null>(null);
+  /** The Doctor Database read failed, so "not in the directory" is a thing we
+   *  cannot claim — see `openFax`. */
+  const [doctorDbFailed, setDoctorDbFailed] = useState(false);
 
   /**
    * Local read/unread clicks, covering the seconds between the PUT and the next
@@ -319,17 +324,33 @@ export default function AssignedPatientsPage() {
     [clearOverride, setOverride],
   );
 
-  /** The fax list with the rep's own read/unread clicks applied. An override
-   *  that RingCentral has caught up with is simply a no-op — `pruneFaxOverrides`
-   *  below is what stops the map growing for the life of the tab. */
-  const faxList = useMemo(() => {
-    const list = faxes.data ?? [];
-    if (!faxReadOverrides.size) return list;
-    return list.map((f) => {
-      const o = faxReadOverrides.get(f.id);
-      return o === undefined || o === f.read ? f : { ...f, read: o };
-    });
-  }, [faxes.data, faxReadOverrides]);
+  /** The fax list with the rep's own read/unread clicks applied. The rule is
+   *  `applyFaxReadOverrides`, beside the conversation one it mirrors, so the two
+   *  halves of the same mechanism are tested together rather than diverging. */
+  const faxList = useMemo(
+    () => applyFaxReadOverrides(faxes.data ?? [], faxReadOverrides),
+    [faxes.data, faxReadOverrides],
+  );
+
+  /** Record a click, dropping any override RingCentral has caught up with.
+   *  Pruning on the click rather than in an effect keeps it bounded and
+   *  loop-free — the same shape `setOverride` uses for texts. */
+  const setFaxOverride = useCallback(
+    (id: number, read: boolean) =>
+      setFaxReadOverrides((m) => new Map(pruneFaxReadOverrides(faxes.data ?? [], m)).set(id, read)),
+    [faxes.data],
+  );
+
+  const clearFaxOverride = useCallback(
+    (id: number) =>
+      setFaxReadOverrides((m) => {
+        if (!m.has(id)) return m;
+        const next = new Map(m);
+        next.delete(id);
+        return next;
+      }),
+    [],
+  );
 
   /**
    * Right-click → Mark as read / unread (Josh, 2026-09-02). Writes
@@ -337,32 +358,22 @@ export default function AssignedPatientsPage() {
    * also the RingCentral desktop app's, so a local-only flag would disagree
    * with what a rep sees there within a day.
    */
-  const setFaxRead = useCallback((f: InboundFax, read: boolean) => {
-    setFaxReadOverrides((m) => {
-      const next = new Map(m);
-      // Drop entries RingCentral has already caught up with, so a long session
-      // can't accumulate them.
-      for (const [id, want] of next) {
-        const live = (faxes.data ?? []).find((x) => x.id === id);
-        if (live && live.read === want) next.delete(id);
-      }
-      next.set(f.id, read);
-      return next;
-    });
-    void setMessageRead(f.id, read)
-      .then(() => reloadFaxes())
-      .catch((e: unknown) => {
-        // A failed write must not leave the row claiming a state RingCentral
-        // does not hold.
-        setFaxReadOverrides((m) => {
-          if (!m.has(f.id)) return m;
-          const next = new Map(m);
-          next.delete(f.id);
-          return next;
+  const setFaxRead = useCallback(
+    (f: InboundFax, read: boolean) => {
+      setFaxOverride(f.id, read);
+      void setMessageRead(f.id, read)
+        .then(() => reloadFaxes())
+        .catch((e: unknown) => {
+          // A failed write must not leave the row claiming a state RingCentral
+          // does not hold — the RC desktop app would disagree with it.
+          clearFaxOverride(f.id);
+          toast.error(
+            `Couldn't mark the fax ${read ? "read" : "unread"}: ${e instanceof Error ? e.message : String(e)}`,
+          );
         });
-        toast.error(`Couldn't mark the fax ${read ? "read" : "unread"}: ${e instanceof Error ? e.message : String(e)}`);
-      });
-  }, [faxes.data]);
+    },
+    [setFaxOverride, clearFaxOverride],
+  );
 
   /** Selecting a fax joins its number to a provider and their patients. Bound
    *  to the fax that was open when the lookup started, so clicking down the
@@ -371,6 +382,7 @@ export default function AssignedPatientsPage() {
     setSelectedFax(f);
     setFaxEntry(null);
     setFaxEntryError(null);
+    setDoctorDbFailed(false);
     setFaxEntryLoading(true);
     // ⚠️ A REF, not a local flag. This is a callback, not an effect, so there
     // is no cleanup to flip a local `cancelled` — a rep clicking down the list
@@ -384,25 +396,40 @@ export default function AssignedPatientsPage() {
     // 2,290 offices against the patient boards' much smaller doctor slice, so
     // without it a fax from a real, known practice reported "we have never
     // heard of this number" (Josh, 2026-09-02).
-    void Promise.all([fetchFaxMatches(f.fromNumber), fetchDoctorDbByFax(f.fromNumber)])
-      .then(([rows, docs]) => current() && setFaxEntry(buildFaxDirectory(f.fromNumber, rows, docs)))
+    void Promise.all([
+      fetchFaxMatches(f.fromNumber),
+      // ⚠️ Caught SEPARATELY, and the failure is remembered rather than folded
+      // into "no match". The pane tells a rep to go and add this number to a
+      // doctor record; saying that because Monday 503'd would have them create
+      // a duplicate for an office we already hold.
+      fetchDoctorDbByFax(f.fromNumber).then(
+        (docs) => ({ docs, failed: false }),
+        (e: unknown) => {
+          if (e instanceof DoctorDbUnavailable) return { docs: [], failed: true };
+          throw e;
+        },
+      ),
+    ])
+      .then(([rows, db]) => {
+        if (!current()) return;
+        setFaxEntry(buildFaxDirectory(f.fromNumber, rows, db.docs));
+        setDoctorDbFailed(db.failed);
+      })
       .catch((e: unknown) => current() && setFaxEntryError(e instanceof Error ? e.message : String(e)))
       .finally(() => current() && setFaxEntryLoading(false));
     if (!f.read) {
       // Show it read straight away — the same override the context menu writes,
-      // or the row springs back to unread until the next poll lands.
-      setFaxReadOverrides((m) => new Map(m).set(f.id, true));
+      // or the row springs back to unread until the next poll lands. Going
+      // through `setFaxOverride` rather than setting the map directly is what
+      // keeps this path pruning too: opening faxes all day would otherwise grow
+      // the map with entries RingCentral had long since caught up with.
+      setFaxOverride(f.id, true);
       void setMessageRead(f.id, true).then(() => reloadFaxes()).catch(() => {
         /* a failed read-flag must not block reading the fax */
-        setFaxReadOverrides((m) => {
-          if (!m.has(f.id)) return m;
-          const next = new Map(m);
-          next.delete(f.id);
-          return next;
-        });
+        clearFaxOverride(f.id);
       });
     }
-  }, []);
+  }, [setFaxOverride, clearFaxOverride]);
 
   const dialTarget = useMemo(() => toE164(dialInput), [dialInput]);
 
@@ -705,6 +732,7 @@ export default function AssignedPatientsPage() {
                 error={faxEntryError}
                 onOpenFax={() => void viewFax(selectedFax)}
                 opening={faxOpening}
+                doctorDbFailed={doctorDbFailed}
               />
             ) : (
               <HubIdle title="Fax details" hint="Pick a fax to see the sending office and their patients." />

@@ -22,6 +22,7 @@ import { appendStampedNote } from "../shared/noteStamp";
 import { assertLongTextFits } from "../shared/longText";
 import { userInitials } from "../shared/auth";
 import { faxDigits, type DoctorDbRow, type FaxMatchRow } from "./faxDirectory";
+import { DOCTOR_DB_BOARD, DOCTOR_DB_COLS } from "../shared/doctorDb";
 import { stageDetailColumns } from "./stageDetail";
 
 const MONDAY_API_VERSION = "2024-10";
@@ -354,15 +355,31 @@ export async function fetchFaxMatches(faxNumber: string): Promise<FaxMatchRow[]>
  * 2026-09-02. Searching for a formatted phone number matches nothing here, with
  * no error.
  */
-const DOCTOR_DB_BOARD = 18142847597;
-const DOCTOR_DB_COLS = {
-  fax: "email_mkwh2ywd",
-  clinic: "dropdown_mm1vd9fs",
-  npi: "text_mkwhtqjb",
-  phone: "phone",
-} as const;
+/* ⚠️ Imported from `shared/doctorDb.ts`, never re-typed. That module already
+ * owns this board's contract, and a second hand-kept copy is the §5.9 drift
+ * hazard with the worst possible failure mode here: if a column is deleted and
+ * recreated its ID changes and reads return EMPTY rather than erroring (§3), so
+ * whoever fixed doctorDb.ts would have no signal this copy existed and the fax
+ * directory would quietly go back to "we have never heard of this number". */
 
 const doctorDbCache = new Map<string, DoctorDbRow[]>();
+
+/**
+ * The directory could not be READ — as distinct from holding no match.
+ *
+ * ⚠️ The fax pane states "this number isn't in the MM Doctor Database" as a
+ * fact and tells the rep to go and add it. Saying that because Monday happened
+ * to 503 would have them create a duplicate doctor record for an office we
+ * already hold — an unsupportable verdict of exactly the kind §5.13 records
+ * fixing in the calls monitor. An empty array cannot carry the difference, so
+ * this can.
+ */
+export class DoctorDbUnavailable extends Error {
+  constructor() {
+    super("Couldn't read the MM Doctor Database");
+    this.name = "DoctorDbUnavailable";
+  }
+}
 
 export async function fetchDoctorDbByFax(faxNumber: string): Promise<DoctorDbRow[]> {
   const digits = contactKey(faxNumber);
@@ -394,8 +411,11 @@ export async function fetchDoctorDbByFax(faxNumber: string): Promise<DoctorDbRow
       // `buildFaxDirectory`, so the cache never holds a coincidental tail.
       .filter((r) => faxDigits(r.fax) === digits);
   } catch {
-    // A failing directory must not blank the patient half of the answer.
-    return [];
+    // ⚠️ A failing directory must not blank the patient half of the answer —
+    // but it must not be reported as "not in the directory" either. THROWING
+    // here would take the patient half down with it, so the miss is signalled
+    // by leaving the cache unwritten and re-raising a marker the caller reads.
+    throw new DoctorDbUnavailable();
   }
   doctorDbCache.set(digits, rows);
   return rows;
@@ -421,14 +441,28 @@ export async function fetchDoctorDbByFax(faxNumber: string): Promise<DoctorDbRow
  * stores `9739511857` and `16078737352` in the same column, and `any_of` is an
  * exact match, so one shape alone silently misses half the board.
  *
- * Returns only the numbers that matched. The caller records the misses itself,
- * because "looked up and not on any board" is an answer worth caching and this
- * function cannot tell it from "not asked about".
+ * Returns `{ ok, names }`. ⚠️ **`ok` is not decoration — the caller caches
+ * MISSES.** "Looked up and not on any board" is an answer worth remembering
+ * for the session, but a Monday 500 is not, and an empty Map cannot tell the
+ * two apart. Returning a bare Map here meant one transient failure (§9 records
+ * eight 500s and two 503s on 2026-09-01 alone) froze 60 conversations at a bare
+ * phone number for the rest of the browser session, with nothing retrying and
+ * nothing erroring. `fetchDoctorDbByFax` below has always had this property by
+ * returning BEFORE its cache write; this one has to carry the flag instead,
+ * because its caller owns the cache.
  */
-export async function fetchDirectoryNames(keys: string[]): Promise<Map<string, string>> {
+export interface DirectoryNameResult {
+  /** False when the read failed. The caller must not record misses. */
+  ok: boolean;
+  names: Map<string, string>;
+}
+
+export async function fetchDirectoryNames(keys: string[]): Promise<DirectoryNameResult> {
   const out = new Map<string, string>();
   const wanted = new Set(keys.map((k) => String(k).replace(/\D/g, "").slice(-10)).filter((k) => k.length === 10));
-  if (!wanted.size || !dossierConfigured()) return out;
+  // Nothing to ask and no way to ask are both honest "no answers" rather than
+  // failures — there is nothing to retry later.
+  if (!wanted.size || !dossierConfigured()) return { ok: true, names: out };
 
   const values = [...wanted].flatMap(phoneMatchVariants);
   // Aliases + per-board variables, so no board id or column id is ever
@@ -464,8 +498,9 @@ export async function fetchDirectoryNames(keys: string[]): Promise<Map<string, s
   } catch {
     // A failed name lookup must never break a list a rep is reading: the rows
     // simply keep showing numbers, which is what they showed before this
-    // existed. Same posture as every other cross-board read here.
-    return out;
+    // existed. Same posture as every other cross-board read here — but it is
+    // reported as a FAILURE so the caller doesn't remember it as an answer.
+    return { ok: false, names: out };
   }
 
   // Later boards win, so a patient who has moved on is named by the record
@@ -492,7 +527,7 @@ export async function fetchDirectoryNames(keys: string[]): Promise<Map<string, s
       }
     }
   });
-  return out;
+  return { ok: true, names: out };
 }
 
 /** Test seam / manual refresh — drops both memoised lookups. */

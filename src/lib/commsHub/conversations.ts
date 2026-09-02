@@ -233,3 +233,64 @@ export function pruneReadOverrides(
   }
   return next.size === overrides.size ? overrides : next;
 }
+
+
+/* ── Fax read state ────────────────────────────────────────────────────────── */
+
+/**
+ * The same read/unread override, for the Fax list.
+ *
+ * Lives here rather than inline in the page so it is one tested rule beside the
+ * conversation one, not a second implementation of the same mechanism that
+ * drifts from it. A fax needs no `basedOnInboundId`: a fax IS the message, so
+ * "the thing the rep made a judgement about" is the row itself, and the
+ * override retires when RingCentral's own answer agrees.
+ *
+ * ⚠️ Read state is RingCentral's `readStatus`, never a local flag — reps work
+ * this line in the RingCentral desktop app too, so an invented one would
+ * disagree with what they see there within a day. This covers ONLY the seconds
+ * between the PUT and the next poll.
+ */
+export interface FaxReadRow {
+  id: number;
+  read: boolean;
+}
+
+/** Apply the rep's clicks on top of RingCentral's answer. Returns the SAME
+ *  array when nothing is overridden, so a caller can skip a re-render. */
+export function applyFaxReadOverrides<T extends FaxReadRow>(
+  faxes: T[],
+  overrides: ReadonlyMap<number, boolean>,
+): T[] {
+  if (!overrides.size) return faxes;
+  let changed = false;
+  const next = faxes.map((f) => {
+    const want = overrides.get(f.id);
+    if (want === undefined || want === f.read) return f;
+    changed = true;
+    return { ...f, read: want };
+  });
+  return changed ? next : faxes;
+}
+
+/**
+ * Drop overrides RingCentral has caught up with, so a long session can't
+ * accumulate them. Returns the SAME map when nothing changed.
+ *
+ * ⚠️ An override for a fax that has dropped out of the window is KEPT, matching
+ * `pruneReadOverrides`: its absence is not evidence of anything, and discarding
+ * it would re-badge the row if it scrolled back in.
+ */
+export function pruneFaxReadOverrides<T extends FaxReadRow>(
+  faxes: T[],
+  overrides: ReadonlyMap<number, boolean>,
+): ReadonlyMap<number, boolean> {
+  if (!overrides.size) return overrides;
+  const live = new Map(faxes.map((f) => [f.id, f.read]));
+  const next = new Map<number, boolean>();
+  for (const [id, want] of overrides) {
+    const actual = live.get(id);
+    if (actual === undefined || actual !== want) next.set(id, want);
+  }
+  return next.size === overrides.size ? overrides : next;
+}

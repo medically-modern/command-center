@@ -19,6 +19,12 @@
  *     caching it is what stops the list re-asking about the same 200 unknown
  *     numbers every 30 seconds forever. Nothing here has a TTL for that reason:
  *     a patient's name does not change while a rep reads their texts.
+ *     ⚠️ **A FAILED read is not a miss.** Monday 500s and 503s happen (§9
+ *     records ten on 2026-09-01 alone); recording that batch as "on no board"
+ *     would freeze 60 conversations at a bare phone number for the rest of the
+ *     session, with nothing retrying and nothing erroring. `fetchDirectoryNames`
+ *     reports `ok` for exactly this, and a failed chunk is left UNKNOWN so the
+ *     next pass asks again.
  *  3. **The effect's dependency is a STRING, not an array** (incident rule 2 —
  *     "if a hook's return value goes in a dep array, that value must be
  *     memoized"). `keys.join(",")` compares by value, so a caller re-rendering
@@ -80,30 +86,42 @@ async function run(keys: string[]): Promise<void> {
   if (!todo.length) return;
   for (let i = 0; i < todo.length; i += BATCH) {
     const chunk = todo.slice(i, i + BATCH);
-    const found = await fetchDirectoryNames(chunk);
-    // ⚠️ Record the MISSES too. Without this every unmatched number is asked
-    // about again on the next render that changes the list, forever.
-    for (const k of chunk) known.set(k, found.get(k) ?? "");
+    const { ok, names } = await fetchDirectoryNames(chunk);
+    // ⚠️ Record the MISSES too — but ONLY on a read that actually happened.
+    // Without the miss-caching every unmatched number is asked about again on
+    // the next render that changes the list, forever; without the `ok` guard a
+    // single Monday blip turns 60 real patients into permanent bare numbers.
+    if (!ok) continue;
+    for (const k of chunk) known.set(k, names.get(k) ?? "");
     // Emit per batch so names fill in as they land rather than all at the end.
     emit();
   }
 }
 
 function resolve(keys: string[]): void {
-  if (inflight) {
-    // Chain rather than run alongside — two passes at once would double the
-    // request rate for no benefit, and the second would mostly ask about
-    // numbers the first is already resolving.
-    inflight = inflight.then(() => run(keys)).catch(() => {});
-    return;
-  }
-  inflight = run(keys)
+  // Chain rather than run alongside — two passes at once would double the
+  // request rate for no benefit, and the second would mostly ask about numbers
+  // the first is already resolving.
+  //
+  // ⚠️ The `finally` is attached to the CHAINED promise, and the previous one's
+  // is not left to fire on its own. Reassigning `inflight` to a bare
+  // `prev.then(...)` looks equivalent and is not: `prev`'s own `finally` would
+  // still run when IT settled and null out `inflight` while the chained pass
+  // was only just starting, so the very next call would see no pass in flight
+  // and start a third one alongside — the doubled request rate this guard
+  // exists to prevent.
+  const prev = inflight;
+  const started: Promise<void> = prev ? prev.then(() => run(keys)) : run(keys);
+  const chained: Promise<void> = started
     .catch(() => {
       /* silent — see the header */
     })
     .finally(() => {
-      inflight = null;
+      // Only the newest pass may clear the slot; an older one settling must not
+      // declare the queue empty.
+      if (inflight === chained) inflight = null;
     });
+  inflight = chained;
 }
 
 /**

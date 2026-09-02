@@ -17,14 +17,6 @@
  * the rule below is allowed to exist.
  */
 
-/** US state abbreviations — the tail of a carrier CNAM like `LA JOLLA CA`. */
-const STATES = new Set([
-  "AL", "AK", "AZ", "AR", "CA", "CO", "CT", "DE", "DC", "FL", "GA", "HI", "ID", "IL", "IN", "IA",
-  "KS", "KY", "LA", "ME", "MD", "MA", "MI", "MN", "MS", "MO", "MT", "NE", "NV", "NH", "NJ", "NM",
-  "NY", "NC", "ND", "OH", "OK", "OR", "PA", "PR", "RI", "SC", "SD", "TN", "TX", "UT", "VT", "VA",
-  "WA", "WV", "WI", "WY",
-]);
-
 /**
  * Carrier placeholders. RingCentral hands these back in the same `name` field a
  * real contact uses, so without this list a conversation reads "WIRELESS
@@ -60,10 +52,22 @@ const PLACEHOLDERS = new Set([
  * - `strong` — a real contact. Beats anything our boards say: RingCentral is
  *   where reps keep the office and manufacturer contacts, and Josh asked for it
  *   to win.
- * - `weak` — a `CITY ST` carrier CNAM. It is not a lie, but it names a place
- *   rather than a person, so a patient name from our boards is strictly better.
- *   Still rendered when we have nothing else — "LA JOLLA CA" beats a bare
- *   number.
+ * - `weak` — a carrier **CNAM** rather than a contact. It is not a lie, but it
+ *   names a place or a carrier rather than the person, so a patient name from
+ *   our boards is strictly better. Still rendered when we have nothing else —
+ *   "LA JOLLA CA" beats a bare number.
+ *
+ *   ⚠️ **ALL CAPS is the test, and it is the CNAM spec rather than a hunch.**
+ *   Caller ID name is a 15-character uppercase field, so `LA JOLLA CA`,
+ *   `CELLCO PARTNERSHIP`, `VERIZON WIRELESS` and `T-MOBILE USA` all arrive
+ *   shouting; a contact a rep typed into the RingCentral address book does not
+ *   ("CareCentrix", "Dr. Maju Lim"). Grading only `CITY ST` was too narrow and
+ *   REGRESSED the Phone tab: a patient calling from a Verizon line resolved to
+ *   `CELLCO PARTNERSHIP`, discarding the board name we had just looked up,
+ *   where before this module existed the row showed a clean number.
+ *   The cost of the wider rule is that an office genuinely stored in caps loses
+ *   to a patient name — which can only happen when our boards hold a patient
+ *   name for that same number, i.e. almost never for an office.
  * - `junk` — empty, a placeholder, or the number written back at us. Never
  *   rendered as a name.
  */
@@ -85,13 +89,12 @@ export function rcNameStrength(rcName: string, phone = ""): RcNameStrength {
     return "junk";
   }
 
-  // `LA JOLLA CA` — all caps, last token a state. Checked against the state set
-  // rather than "any two capitals" so a genuine contact ending in initials
-  // ("MEDICALLY MODERN LP") is not demoted.
-  const parts = raw.split(/\s+/);
-  if (parts.length >= 2 && raw === raw.toUpperCase() && STATES.has(parts[parts.length - 1])) {
-    return "weak";
-  }
+  // Shouting ⇒ carrier CNAM, not an address-book contact. `hasLower` rather
+  // than `=== toUpperCase()` so a name with no cased letters at all (digits and
+  // punctuation only) can't be graded on a technicality — those are caught
+  // above anyway.
+  const hasLower = /\p{Ll}/u.test(raw);
+  if (!hasLower) return "weak";
   return "strong";
 }
 

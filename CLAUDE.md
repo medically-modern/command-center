@@ -2033,9 +2033,19 @@ access.json assignments key off, so a rename is display-only (§5.10's precedent
   4. **The effect's dependency is a STRING** (`keys.join(",")`), not the array — incident rule 2 —
      and the returned Map is the module snapshot, so it is safe in a dep array.
   ⚠️ **RC wins, except when its "name" is not one.** `rcNameStrength` grades it: a placeholder
-  (`WIRELESS CALLER`) or the number written back at us is **junk** and never renders; a `CITY ST`
-  carrier CNAM (`LA JOLLA CA`) is **weak** and loses to a patient name but still beats a bare
-  number. ⚠️ The row's avatar takes `""` rather than the label when the label IS the number —
+  (`WIRELESS CALLER`) or the number written back at us is **junk** and never renders; a carrier
+  **CNAM** is **weak** and loses to a patient name but still beats a bare number. The CNAM test is
+  **ALL CAPS**, which is the spec rather than a hunch — caller ID name is a 15-character uppercase
+  field, so `LA JOLLA CA`, `CELLCO PARTNERSHIP` and `T-MOBILE USA` all arrive shouting while a
+  contact a rep typed into RingCentral does not. Grading only `CITY ST` was too narrow and
+  REGRESSED the Phone tab: a patient calling from a Verizon line resolved to `CELLCO PARTNERSHIP`,
+  discarding the board name just looked up, where before the row showed a clean number.
+  ⚠️ **A FAILED batch is not a set of misses.** `fetchDirectoryNames` returns `{ok, names}` and the
+  hook skips its miss-caching when `ok` is false — otherwise one Monday 503 (§9 records ten on
+  2026-09-01 alone) froze 60 conversations at a bare number for the rest of the session, with
+  nothing retrying and nothing erroring. Pinned by `useDirectoryNames.test.tsx`, along with the
+  `inflight` chain: the `finally` belongs to the CHAINED promise, or an older pass nulls the slot
+  while the one behind it is still running and the next call starts a third alongside. ⚠️ The row's avatar takes `""` rather than the label when the label IS the number —
   `Initials` would otherwise read `(5` out of `(815) 523-7259`. A number shared by two people
   resolves to one of them (same semantics as `findPatientByPhone`); the dossier pane is where a rep
   confirms who they are talking to. The SELECTED conversation still gets its real record there:

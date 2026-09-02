@@ -166,7 +166,10 @@ export function PhonePanel({
         count={mode === "calls" ? rows.length : (voicemails ?? []).length}
         query={query}
         onQuery={onQuery}
-        placeholder={mode === "calls" ? "Search calls by number…" : "Search voicemail…"}
+        // Both lists match the NAME the row shows as well as the digits, so the
+        // placeholder has to say so — a capability the rep can't see is one
+        // they don't have (the §5.15 fix-the-copy rule).
+        placeholder={mode === "calls" ? "Search calls by name or number…" : "Search voicemail by name or number…"}
         unreadOnly={missedOnly}
         onUnreadOnly={onMissedOnly}
         unreadLabel={mode === "calls" ? "Missed" : "Unheard"}

@@ -218,7 +218,7 @@ describe("stageNoteTrail — every stage's notes, not just the live one", () => 
       item(ME, { itemId: "me", notes: "old", isStuck: true, groupTitle: "Stuck" }),
     ]);
     const [stuck] = stageNoteTrail(d);
-    expect(stuck).toMatchObject({ itemId: "me", isStuck: true, groupTitle: "Stuck" });
+    expect(stuck).toMatchObject({ itemId: "me", isStuck: true, boardName: String(ME) });
   });
 
   it("still lists everything when there is no live stage at all", () => {

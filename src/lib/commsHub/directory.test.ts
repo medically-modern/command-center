@@ -26,16 +26,28 @@ describe("rcNameStrength", () => {
     expect(rcNameStrength("+18155237259", "+18155237259")).toBe("junk");
   });
 
-  it("demotes a CITY ST carrier CNAM to weak, not junk", () => {
-    // It names a place rather than a person, so a patient name beats it — but
-    // it still beats a bare number when we have nothing else.
+  it("demotes an ALL-CAPS carrier CNAM to weak, not junk", () => {
+    // CNAM is a 15-char uppercase field by spec, so a shouting name is the
+    // carrier talking, not a contact somebody typed. It names a place or a
+    // carrier rather than the person, so a patient name beats it — but it still
+    // beats a bare number when we have nothing else.
     expect(rcNameStrength("LA JOLLA CA", "+18583666900")).toBe("weak");
     expect(rcNameStrength("NEW YORK NY", "")).toBe("weak");
   });
 
-  it("does not demote an all-caps name whose last word is not a state", () => {
-    expect(rcNameStrength("MEDICALLY MODERN LP", "")).toBe("strong");
-    expect(rcNameStrength("TONASILA GRAY", "")).toBe("strong");
+  it("demotes a CARRIER CNAM, not just a CITY ST one", () => {
+    // ⚠️ Grading only `CITY ST` regressed the Phone tab: a patient calling from
+    // a Verizon line resolved to "CELLCO PARTNERSHIP", which discarded the
+    // board name — where before, the row showed a clean number.
+    for (const cnam of ["CELLCO PARTNERSHIP", "VERIZON WIRELESS", "T-MOBILE USA", "LEVEL 3 COMMUNI"]) {
+      expect(rcNameStrength(cnam, "+18583666900")).toBe("weak");
+    }
+  });
+
+  it("keeps a normally-typed address-book contact strong", () => {
+    expect(rcNameStrength("CareCentrix", "")).toBe("strong");
+    expect(rcNameStrength("Medically Modern LP", "")).toBe("strong");
+    expect(rcNameStrength("Tonasila Gray", "")).toBe("strong");
   });
 });
 
@@ -53,12 +65,14 @@ describe("resolveDisplayName", () => {
     expect(r).toEqual({ label: "Tonasila Gray", source: "directory" });
   });
 
-  it("beats a CITY ST CNAM with the patient name", () => {
-    const r = resolveDisplayName(
-      { rcName: "LA JOLLA CA", directoryName: "Tonasila Gray", phone: "+18155237259" },
-      fmt,
-    );
-    expect(r).toEqual({ label: "Tonasila Gray", source: "directory" });
+  it("beats a carrier CNAM with the patient name", () => {
+    for (const cnam of ["LA JOLLA CA", "CELLCO PARTNERSHIP"]) {
+      const r = resolveDisplayName(
+        { rcName: cnam, directoryName: "Tonasila Gray", phone: "+18155237259" },
+        fmt,
+      );
+      expect(r).toEqual({ label: "Tonasila Gray", source: "directory" });
+    }
   });
 
   it("still shows a CNAM when the boards know nobody", () => {

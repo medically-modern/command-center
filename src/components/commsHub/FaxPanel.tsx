@@ -162,6 +162,7 @@ export function FaxProviderDetail({
   error,
   onOpenFax,
   opening,
+  doctorDbFailed,
 }: {
   fax: InboundFax;
   entry: FaxDirectoryEntry | null;
@@ -171,6 +172,10 @@ export function FaxProviderDetail({
   /** The document is being fetched through the gateway — it is a real network
    *  round trip for a multi-page scan, so the button has to say so. */
   opening?: boolean;
+  /** ⚠️ The Doctor Database couldn't be READ, which is not the same as holding
+   *  no match. Without this the empty state below tells a rep to add a number
+   *  to a doctor record for an office we may already hold. */
+  doctorDbFailed?: boolean;
 }) {
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
@@ -232,16 +237,24 @@ export function FaxProviderDetail({
                       record of. Saying exactly WHAT was checked is what stops
                       this reading as a broken lookup — the `@rcfax.com` join
                       was the first suspect when it was just a plain "no match"
-                      (Josh, 2026-09-02). */}
-                  This number isn't on any patient's doctor record or in the MM Doctor Database.
+                      (Josh, 2026-09-02).
+
+                      ⚠️ But only claim what was actually checked. When the
+                      directory read failed, "it isn't in the MM Doctor
+                      Database" is a verdict we cannot support, and acting on it
+                      means a duplicate doctor record for an office we hold. */}
+                  {doctorDbFailed
+                    ? "No patient's doctor record lists this number — and the MM Doctor Database couldn't be read just now, so it hasn't been checked."
+                    : "This number isn't on any patient's doctor record or in the MM Doctor Database."}
                 </p>
                 <p className="pl-5 text-[11px]">
-                  {/* The genuinely common cause, and the one a rep can act on:
-                      an office's outbound fax line is often not the number we
-                      send TO, so there is nothing wrong to fix — the fax just
-                      has to be read to find out whose it is. */}
-                  Offices often send from a different line than the one we fax. Open the document to see
-                  whose it is, then add the number to their doctor record so the next one matches.
+                  {doctorDbFailed
+                    ? "Reopen this fax to try the directory again before adding the number anywhere."
+                    : /* The genuinely common cause, and the one a rep can act
+                         on: an office's outbound fax line is often not the
+                         number we send TO, so there is nothing wrong to fix —
+                         the fax just has to be read to find out whose it is. */
+                      "Offices often send from a different line than the one we fax. Open the document to see whose it is, then add the number to their doctor record so the next one matches."}
                 </p>
               </div>
             )}

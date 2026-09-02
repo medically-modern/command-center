@@ -1,8 +1,10 @@
 import { describe, it, expect } from "vitest";
 import {
+  applyFaxReadOverrides,
   applyReadOverrides,
   buildConversations,
   overrideStillApplies,
+  pruneFaxReadOverrides,
   pruneReadOverrides,
   totalUnread,
   type RcConversationRecord,
@@ -167,5 +169,53 @@ describe("read overrides", () => {
     // conversation came back into the fetched window.
     const live = new Map([["9998887777", { unread: true, basedOnInboundId: 5 }]]);
     expect(pruneReadOverrides(unreadThread, live).size).toBe(1);
+  });
+});
+
+
+describe("fax read overrides", () => {
+  const faxes = [
+    { id: 1, read: false },
+    { id: 2, read: true },
+  ];
+
+  it("returns the SAME array when nothing is overridden, so no re-render", () => {
+    expect(applyFaxReadOverrides(faxes, new Map())).toBe(faxes);
+    // An override RingCentral has already caught up with changes nothing.
+    expect(applyFaxReadOverrides(faxes, new Map([[2, true]]))).toBe(faxes);
+  });
+
+  it("applies a rep's click on top of RingCentral's answer", () => {
+    const out = applyFaxReadOverrides(faxes, new Map([[1, true]]));
+    expect(out).not.toBe(faxes);
+    expect(out.map((f) => f.read)).toEqual([true, true]);
+    // The source rows are untouched — the override layer never mutates.
+    expect(faxes[0].read).toBe(false);
+  });
+
+  it("marks a read fax back to unread", () => {
+    expect(applyFaxReadOverrides(faxes, new Map([[2, false]])).map((f) => f.read)).toEqual([false, false]);
+  });
+
+  it("prunes an override RingCentral has caught up with", () => {
+    // This is what stops the map growing for the life of the tab — a rep opens
+    // a lot of faxes in a day.
+    expect([...pruneFaxReadOverrides(faxes, new Map([[2, true]]))]).toEqual([]);
+  });
+
+  it("keeps an override RingCentral still disagrees with", () => {
+    expect([...pruneFaxReadOverrides(faxes, new Map([[1, true]]))]).toEqual([[1, true]]);
+  });
+
+  it("keeps an override for a fax that has dropped out of the window", () => {
+    // Its absence is not evidence of anything, and discarding it would re-badge
+    // the row if it scrolled back in — same rule as `pruneReadOverrides`.
+    expect([...pruneFaxReadOverrides(faxes, new Map([[99, true]]))]).toEqual([[99, true]]);
+  });
+
+  it("returns the SAME map when nothing was pruned", () => {
+    const m = new Map([[1, true]]);
+    expect(pruneFaxReadOverrides(faxes, m)).toBe(m);
+    expect(pruneFaxReadOverrides(faxes, new Map())).toEqual(new Map());
   });
 });

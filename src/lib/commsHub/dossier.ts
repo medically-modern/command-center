@@ -220,15 +220,13 @@ export interface StageNotes {
   boardId: number;
   boardName: string;
   itemId: string;
-  /** Which group the record sits in — "Completed", "Stuck", the working group.
-   *  Shown beside the board name so a rep knows whether they are reading
-   *  history or a live stage. */
-  groupTitle: string;
+  /** Whether the rep is reading history or a live parallel record — the two
+   *  badges on the block's header. Deliberately the flags rather than the raw
+   *  group title: the title varies per board ("Completed" vs "Complete") and
+   *  the flags already carry the only distinction that changes how it reads. */
   isCompleted: boolean;
   isStuck: boolean;
   notes: string;
-  /** Where the record opens, empty when the board has no page. */
-  route: string;
 }
 
 /**
@@ -266,11 +264,9 @@ export function stageNoteTrail(dossier: PatientDossier): StageNotes[] {
       boardId: it.boardId,
       boardName: it.boardName,
       itemId: it.itemId,
-      groupTitle: it.groupTitle,
       isCompleted: it.isCompleted,
       isStuck: it.isStuck,
       notes: it.notes,
-      route: it.route,
     }));
 }
 

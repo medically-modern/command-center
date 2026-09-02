@@ -7,7 +7,11 @@
 
 import { MONDAY_API_URL, mondayIdentityHeaders } from "./mondayEndpoint";
 const MONDAY_API_VERSION = "2024-10";
-const DOCTOR_DB_BOARD = 18142847597;
+/** ⚠️ EXPORTED because `commsHub/dossierApi` joins inbound faxes against this
+ *  board too. It reads these ids rather than keeping its own copy: a column
+ *  deleted and recreated changes its ID and then reads return EMPTY rather than
+ *  erroring (§3), so a second hand-kept list would go silently stale. */
+export const DOCTOR_DB_BOARD = 18142847597;
 const COL_DOCTOR_NOTES = "long_text_mm44az6q";
 const COL_NPI = "text_mkwhtqjb";
 // Order followers (Corey 9) — name + email pairs surfaced as mailto links.
@@ -29,6 +33,13 @@ const COL_DOC_PHONE = "phone";
 const COL_SCRIPT_FAX = "email_mkwh2ywd";
 const COL_SCRIPT_EMAIL = "email";
 const COL_CLINIC = "dropdown_mm1vd9fs";
+/** The subset of this board's contract the fax→office join needs. */
+export const DOCTOR_DB_COLS = {
+  fax: COL_SCRIPT_FAX,
+  clinic: COL_CLINIC,
+  npi: COL_NPI,
+  phone: COL_DOC_PHONE,
+} as const;
 const READ_COLS = [
   COL_NPI, COL_DOCTOR_NOTES,
   ...FOLLOWER_COLS.flatMap((f) => [f.name, f.email]),
