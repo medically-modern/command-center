@@ -223,8 +223,8 @@ export const BOARDS: BoardDef[] = [
     // was blank while their notes sat on the item. Additive everywhere else:
     // the only other consumer of `SystemPatient.notes` is Search's escalation
     // modal, which now has something to show instead of nothing.
-    notesColId: "long_text_mm3rj7k7",
-    notesColType: "long_text",
+    notesColId: "text_mm6vp1z3",
+    notesColType: "text",
     nextActionDateColId: null,
   },
   {
@@ -270,8 +270,8 @@ export const BOARDS: BoardDef[] = [
     phoneColId: "phone_mm1x44yk",
     stageAdvancerColId: "color_mm1wyr92",
     daysSinceStageColId: "color_mm1wwm05",
-    notesColId: "long_text_mm27zjt2",
-    notesColType: "long_text",
+    notesColId: "text_mm6vevjf",
+    notesColType: "text",
     nextActionDateColId: "date_mm1wadgs",
   },
   {
@@ -292,8 +292,8 @@ export const BOARDS: BoardDef[] = [
     phoneColId: "phone_mm1x44yk",
     stageAdvancerColId: "color_mm1ws96t",
     daysSinceStageColId: "color_mm1wwm05",
-    notesColId: "long_text_mm2ffsme",
-    notesColType: "long_text",
+    notesColId: "text_mm6vzc7q",
+    notesColType: "text",
     nextActionDateColId: null,
   },
   {
@@ -311,8 +311,8 @@ export const BOARDS: BoardDef[] = [
     phoneColId: "phone_mm1x44yk",
     stageAdvancerColId: "color_mm1ws96t",
     daysSinceStageColId: "color_mm1wwm05",
-    notesColId: "long_text_mm2ffsme",
-    notesColType: "long_text",
+    notesColId: "text_mm6vqq2k",
+    notesColType: "text",
     nextActionDateColId: null,
   },
 ];

@@ -163,8 +163,8 @@ export interface ChartDef {
    *  "[Proposed Stuck · date] …" line is appended to, so the drill-down can
    *  extract it back into the synthetic `__proposedReason__` column. It is NOT
    *  always the chart's `notesColId` — Medical Evaluation stamps the MN notes
-   *  (long_text_mm27zjt2) even on Chase charts whose notes column differs.
-   *  Insurance stamps its Reference Notes (long_text_mm2ffsme), which happens
+   *  (text_mm6vevjf) even on Chase charts whose notes column differs.
+   *  Insurance stamps its Reference Notes (text_mm6vzc7q), which happens
    *  to equal its notesColId. Keep it in agreement with the writer
    *  (masheke/ProposeStuckModal, samantha/ProposeStuckButton). */
   reasonColId?: string;
@@ -440,14 +440,14 @@ const RAW_CHART_DEFS: ChartDef[] = [
     id: "evaluate",
     title: "Evaluate",
     boardId: 18406060017,
-    notesColId: "long_text_mm27zjt2",
+    notesColId: "text_mm6vevjf",
     drilldownCols: EVALUATE_COLS,
   },
   {
     id: "send-request",
     title: "Send Request",
     boardId: 18406060017,
-    notesColId: "long_text_mm27zjt2",
+    notesColId: "text_mm6vevjf",
     drilldownCols: SEND_REQUEST_COLS,
   },
   {
@@ -481,14 +481,14 @@ const RAW_CHART_DEFS: ChartDef[] = [
     id: "doctor-appointments",
     title: "Doctor Appointments",
     boardId: 18406060017,
-    notesColId: "long_text_mm27zjt2",
+    notesColId: "text_mm6vevjf",
     drilldownCols: APPT_COLS,
   },
   {
     id: "doctor-appointments-manager",
     title: "Doctor Appointments",
     boardId: 18406060017,
-    notesColId: "long_text_mm27zjt2",
+    notesColId: "text_mm6vevjf",
     rowOf: "doctor-appointments",
     drilldownCols: APPT_COLS,
   },
@@ -496,10 +496,10 @@ const RAW_CHART_DEFS: ChartDef[] = [
     id: "doctor-appointments-final",
     title: "Doctor Appointments",
     boardId: 18406060017,
-    notesColId: "long_text_mm27zjt2",
+    notesColId: "text_mm6vevjf",
     rowOf: "doctor-appointments",
     decision: "proposed-stuck",
-    reasonColId: "long_text_mm27zjt2",
+    reasonColId: "text_mm6vevjf",
     drilldownCols: [
       { colId: "__proposedReason__", label: "Proposed Reason" },
       ...APPT_COLS,
@@ -539,14 +539,14 @@ const RAW_CHART_DEFS: ChartDef[] = [
     id: "evaluate-escalated-3rd",
     title: "Evaluate (Escalated · 3rd)",
     boardId: 18406060017,
-    notesColId: "long_text_mm27zjt2",
+    notesColId: "text_mm6vevjf",
     drilldownCols: EVALUATE_COLS,
   },
   {
     id: "send-request-escalated-3rd",
     title: "Send Request (Escalated · 3rd)",
     boardId: 18406060017,
-    notesColId: "long_text_mm27zjt2",
+    notesColId: "text_mm6vevjf",
     drilldownCols: SEND_REQUEST_COLS,
   },
   {
@@ -576,7 +576,7 @@ const RAW_CHART_DEFS: ChartDef[] = [
     id: "benefits",
     title: "Benefits",
     boardId: 18410601299,
-    notesColId: "long_text_mm2ffsme",
+    notesColId: "text_mm6vzc7q",
     drilldownCols: [
       { colId: "date_mm1wf43j", label: "Intake Date" },
       { colId: "color_mm1wwm05", label: "Days in Stage" },
@@ -595,7 +595,7 @@ const RAW_CHART_DEFS: ChartDef[] = [
     id: "submit-auth",
     title: "Submit Auth",
     boardId: 18410601299,
-    notesColId: "long_text_mm2ffsme",
+    notesColId: "text_mm6vzc7q",
     drilldownCols: [
       { colId: "date_mm1wf43j", label: "Intake Date" },
       { colId: "color_mm1wwm05", label: "Days in Stage" },
@@ -613,7 +613,7 @@ const RAW_CHART_DEFS: ChartDef[] = [
     id: "auth-outstanding",
     title: "Auth Outstanding",
     boardId: 18410601299,
-    notesColId: "long_text_mm2ffsme",
+    notesColId: "text_mm6vzc7q",
     snoozeDateColId: "date_mm34m2dz",
     drilldownCols: [
       { colId: "date_mm1wf43j", label: "Intake Date" },
@@ -667,7 +667,7 @@ const RAW_CHART_DEFS: ChartDef[] = [
     id: "evaluate-escalated-merged",
     title: "Evaluate (Escalated)",
     boardId: 18406060017,
-    notesColId: "long_text_mm27zjt2",
+    notesColId: "text_mm6vevjf",
     rowOf: "evaluate",
     stacked: { bId: "evaluate-escalated-3rd", aLabel: "Attempt 4+", bLabel: "3rd+ round", aColor: STACK_A_COLOR, bColor: STACK_B_COLOR },
     drilldownCols: [{ colId: "__series__", label: "Escalation Type", pill: true }, ...EVALUATE_COLS],
@@ -676,7 +676,7 @@ const RAW_CHART_DEFS: ChartDef[] = [
     id: "send-request-escalated-merged",
     title: "Send Request (Escalated)",
     boardId: 18406060017,
-    notesColId: "long_text_mm27zjt2",
+    notesColId: "text_mm6vevjf",
     rowOf: "send-request",
     stacked: { bId: "send-request-escalated-3rd", aLabel: "Attempt 4+", bLabel: "3rd+ round", aColor: STACK_A_COLOR, bColor: STACK_B_COLOR },
     drilldownCols: [{ colId: "__series__", label: "Escalation Type", pill: true }, ...SEND_REQUEST_COLS],
@@ -716,10 +716,10 @@ const RAW_CHART_DEFS: ChartDef[] = [
     id: "evaluate-proposed-stuck",
     title: "Evaluate (Proposed Stuck)",
     boardId: 18406060017,
-    notesColId: "long_text_mm27zjt2",
+    notesColId: "text_mm6vevjf",
     rowOf: "evaluate",
     decision: "proposed-stuck",
-    reasonColId: "long_text_mm27zjt2",
+    reasonColId: "text_mm6vevjf",
     drilldownCols: [
       { colId: "color_mm1wwm05", label: "Days in Stage" },
       { colId: "__proposedReason__", label: "Proposed Reason" },
@@ -734,10 +734,10 @@ const RAW_CHART_DEFS: ChartDef[] = [
     id: "send-request-proposed-stuck",
     title: "Send Request (Proposed Stuck)",
     boardId: 18406060017,
-    notesColId: "long_text_mm27zjt2",
+    notesColId: "text_mm6vevjf",
     rowOf: "send-request",
     decision: "proposed-stuck",
-    reasonColId: "long_text_mm27zjt2",
+    reasonColId: "text_mm6vevjf",
     drilldownCols: [
       { colId: "color_mm1wwm05", label: "Days in Stage" },
       { colId: "__proposedReason__", label: "Proposed Reason" },
@@ -755,7 +755,7 @@ const RAW_CHART_DEFS: ChartDef[] = [
     notesColId: "long_text_mm2ytsxp",
     rowOf: "confirm-receipt",
     decision: "proposed-stuck",
-    reasonColId: "long_text_mm27zjt2",
+    reasonColId: "text_mm6vevjf",
     drilldownCols: [
       { colId: "color_mm1wwm05", label: "Days in Stage" },
       { colId: "__proposedReason__", label: "Proposed Reason" },
@@ -773,7 +773,7 @@ const RAW_CHART_DEFS: ChartDef[] = [
     notesColId: "long_text_mm2ytsxp",
     rowOf: "chase-fax",
     decision: "proposed-stuck",
-    reasonColId: "long_text_mm27zjt2",
+    reasonColId: "text_mm6vevjf",
     drilldownCols: [
       { colId: "color_mm1wwm05", label: "Days in Stage" },
       { colId: "__proposedReason__", label: "Proposed Reason" },
@@ -791,7 +791,7 @@ const RAW_CHART_DEFS: ChartDef[] = [
     notesColId: "long_text_mm2ytsxp",
     rowOf: "chase-email-parachute",
     decision: "proposed-stuck",
-    reasonColId: "long_text_mm27zjt2",
+    reasonColId: "text_mm6vevjf",
     drilldownCols: [
       { colId: "color_mm1wwm05", label: "Days in Stage" },
       { colId: "__proposedReason__", label: "Proposed Reason" },
@@ -819,10 +819,10 @@ const RAW_CHART_DEFS: ChartDef[] = [
     id: "benefits-final-escalation",
     title: "Benefits",
     boardId: 18410601299,
-    notesColId: "long_text_mm2ffsme",
+    notesColId: "text_mm6vzc7q",
     rowOf: "benefits",
     decision: "insurance-final",
-    reasonColId: "long_text_mm2ffsme",
+    reasonColId: "text_mm6vzc7q",
     // Reason-bucketed x-axis (Katie 2026-07-29): HOW the patient got here —
     // a rep's Propose Stuck (filtered off the "[Proposed Stuck" note stamp)
     // vs an automatic failed universal check (filtered off the board columns
@@ -849,10 +849,10 @@ const RAW_CHART_DEFS: ChartDef[] = [
     id: "submit-auth-final-escalation",
     title: "Submit Auth",
     boardId: 18410601299,
-    notesColId: "long_text_mm2ffsme",
+    notesColId: "text_mm6vzc7q",
     rowOf: "submit-auth",
     decision: "insurance-final",
-    reasonColId: "long_text_mm2ffsme",
+    reasonColId: "text_mm6vzc7q",
     // REASON-BUCKETED, mirroring the Manager Intervention chart above it
     // (Josh, 2026-08-02) — same three reasons, one rung further up. Like that
     // chart this has NO CHART_FILTERS entry of its own: the population is the
@@ -876,11 +876,11 @@ const RAW_CHART_DEFS: ChartDef[] = [
     id: "auth-outstanding-final-escalation",
     title: "Auth Outstanding",
     boardId: 18410601299,
-    notesColId: "long_text_mm2ffsme",
+    notesColId: "text_mm6vzc7q",
     snoozeDateColId: "date_mm34m2dz",
     rowOf: "auth-outstanding",
     decision: "insurance-final",
-    reasonColId: "long_text_mm2ffsme",
+    reasonColId: "text_mm6vzc7q",
     // Reason bars rather than days (Josh, 2026-08-02) — "days in stage" said
     // nothing a manager could act on.
     //
@@ -922,7 +922,7 @@ const RAW_CHART_DEFS: ChartDef[] = [
     id: "benefits-manager-escalation",
     title: "Benefits",
     boardId: 18410601299,
-    notesColId: "long_text_mm2ffsme",
+    notesColId: "text_mm6vzc7q",
     rowOf: "benefits",
     reasonBuckets: [
       { key: "inactive", label: "Inactive insurance", short: "Inactive", filterId: "benefits-manager-inactive", color: REASON_COLORS.sky },
@@ -950,10 +950,10 @@ const RAW_CHART_DEFS: ChartDef[] = [
     id: "submit-auth-manager",
     title: "Submit Auth",
     boardId: 18410601299,
-    notesColId: "long_text_mm2ffsme",
+    notesColId: "text_mm6vzc7q",
     rowOf: "submit-auth",
     decision: "submit-auth-manager",
-    reasonColId: "long_text_mm2ffsme",
+    reasonColId: "text_mm6vzc7q",
     reasonBuckets: [
       { key: "dvs-retry", label: "DVS Retry", short: "DVS Retry", filterId: "dvs-retry-queue", color: REASON_COLORS.sky },
       { key: "dvs-manual", label: "DVS Manual Review", short: "DVS Manual", filterId: "dvs-manual-review", color: REASON_COLORS.amber },
@@ -981,7 +981,7 @@ const RAW_CHART_DEFS: ChartDef[] = [
     id: "welcome-call",
     title: "Welcome Call",
     boardId: 18410804557,
-    notesColId: "long_text_mm2ffsme",
+    notesColId: "text_mm6vqq2k",
     drilldownCols: [
       { colId: "date_mm1wf43j", label: "Intake Date" },
       { colId: "color_mm1wwm05", label: "Days in Stage" },
@@ -995,7 +995,7 @@ const RAW_CHART_DEFS: ChartDef[] = [
     id: "profile-review",
     title: "Profile Review",
     boardId: 18410804557,
-    notesColId: "long_text_mm2ffsme",
+    notesColId: "text_mm6vqq2k",
     drilldownCols: [
       { colId: "date_mm1wf43j", label: "Intake Date" },
       { colId: "color_mm1wwm05", label: "Days in Stage" },
@@ -1382,7 +1382,7 @@ function columnsForBoard(boardId: number): string[] {
     set.add("dropdown_mm2yd3a2"); // MN Request Consolidated
     // Escalation status backs the 3rd-attempt (index 0) filters AND the
     // Final-Decisions "Proposed Stuck" charts (index 2). The MN notes
-    // (long_text_mm27zjt2, a notesColId) carry the stamped reason.
+    // (text_mm6vevjf, a notesColId) carry the stamped reason.
     set.add("color_mm1x7997");
   }
 
@@ -1854,8 +1854,8 @@ const CHART_FILTERS: Record<string, FilterRule> = {
   // column as its Benefits twin. This bar moved up from the deleted
   // `auth-outstanding-manager` chart when the rung became Final.
   "auth-outstanding-pump-sos-final": { type: "stageAdvancer", boardId: 18410601299, value: "Auth. Outstanding", andCols: [{ colId: "color_mm2vsh2f", index: [0, 2] }, { colId: "dropdown_mm2vez5a", containsAny: ["Insulin Pump"] }] },
-  "auth-outstanding-proposed-final": { type: "stageAdvancer", boardId: 18410601299, value: "Auth. Outstanding", andCols: [{ colId: "color_mm2vsh2f", index: [0, 2] }, { colId: "long_text_mm2ffsme", containsAny: ["[Proposed Stuck"] }] },
-  "submit-auth-proposed-final": { type: "stageAdvancer", boardId: 18410601299, value: "Submit Auth.", andCols: [{ colId: "color_mm2vsh2f", value: "Final Escalation Required" }, { colId: "long_text_mm2ffsme", containsAny: ["[Proposed Stuck"] }] },
+  "auth-outstanding-proposed-final": { type: "stageAdvancer", boardId: 18410601299, value: "Auth. Outstanding", andCols: [{ colId: "color_mm2vsh2f", index: [0, 2] }, { colId: "text_mm6vzc7q", containsAny: ["[Proposed Stuck"] }] },
+  "submit-auth-proposed-final": { type: "stageAdvancer", boardId: 18410601299, value: "Submit Auth.", andCols: [{ colId: "color_mm2vsh2f", value: "Final Escalation Required" }, { colId: "text_mm6vzc7q", containsAny: ["[Proposed Stuck"] }] },
   // ── Manager Intervention: Benefits reason buckets (Katie 2026-07-29). ──
   // The chart id's own rule below is a SAFETY NET unioned with these three
   // bucket rules, not a filter over them (see `patientMatchesChart`): the bars
@@ -1913,7 +1913,7 @@ const CHART_FILTERS: Record<string, FilterRule> = {
   // the contract with samantha/ProposeStuckButton). A patient proposed once,
   // returned, then auto-escalated later can match BOTH bars — the stamp is an
   // audit trail and deliberately never removed.
-  "benefits-final-proposed": { type: "stageAdvancer", boardId: 18410601299, value: "Benefits / SoS", andCols: [{ colId: "color_mm2vsh2f", value: "Final Escalation Required" }, { colId: "long_text_mm2ffsme", containsAny: ["[Proposed Stuck"] }] },
+  "benefits-final-proposed": { type: "stageAdvancer", boardId: 18410601299, value: "Benefits / SoS", andCols: [{ colId: "color_mm2vsh2f", value: "Final Escalation Required" }, { colId: "text_mm6vzc7q", containsAny: ["[Proposed Stuck"] }] },
   // Universal Check: the failed check is on the board — In-Network? =
   // Out-of-Network / Medicare not Primary, or DME Benefits = Partial / No.
   // (Inactive is NOT here — it escalates to Manager Intervention instead.)
@@ -1929,7 +1929,7 @@ const CHART_FILTERS: Record<string, FilterRule> = {
   // two-step review). Escalation = Manager + the rep's stamp — the stamp
   // requirement keeps a manually-toggled Submit Auth escalation (the send's
   // escalate toggle also writes Manager) out of the Propose Stuck bar. ──
-  "submit-auth-proposed-manager": { type: "stageAdvancer", boardId: 18410601299, value: "Submit Auth.", andCols: [{ colId: "color_mm2vsh2f", value: "Manager Escalation Required" }, { colId: "long_text_mm2ffsme", containsAny: ["[Proposed Stuck"] }] },
+  "submit-auth-proposed-manager": { type: "stageAdvancer", boardId: 18410601299, value: "Submit Auth.", andCols: [{ colId: "color_mm2vsh2f", value: "Manager Escalation Required" }, { colId: "text_mm6vzc7q", containsAny: ["[Proposed Stuck"] }] },
   // Safety net for the chart itself (2026-08-03), unioned with the three bars
   // above — the DVS bars are stage "DVS" and keep coming in through the union.
   // The gap it closes is the one the Propose Stuck bar's stamp requirement
@@ -2129,7 +2129,7 @@ const MASHEKE_STAGE_STUCK_INDEX = 15;
 const MASHEKE_ESC_COL = "color_mm1x7997";       // Escalation (index 2 = proposed stuck)
 const MASHEKE_ESC_DONE_INDEX = 1;               // "Done" — clears an escalation/proposal
 const MASHEKE_NAD_COL = "date_mm1wadgs";        // Next Action Date
-const MASHEKE_NOTES_COL = "long_text_mm27zjt2"; // MN workflow notes (carry the stamped reason)
+const MASHEKE_NOTES_COL = "text_mm6vevjf"; // MN workflow notes (carry the stamped reason)
 /** MN Attempts — the counter that decides which attempt SLOT the next Confirm
  *  Receipt / Chase save writes into, and whose "Escalate" value locks both
  *  panels for a rep. masheke COL.mnAttempts; MN_ATTEMPTS_INDEX lives in
@@ -2326,7 +2326,7 @@ export async function returnProposedToQueue(
     // newest content. Folding six attempt columns in is exactly the write most
     // likely to cross it, so refuse rather than quietly lose the history this
     // rollup exists to preserve (lib/shared/longText).
-    await assertTextLikeFits(18406060017, "long_text_mm27zjt2", notes, "MN Workflow Notes");
+    await assertTextLikeFits(MASHEKE_BOARD_ID, MASHEKE_NOTES_COL, notes, "MN Workflow Notes");
     const values: Record<string, unknown> = {
       [MASHEKE_NOTES_COL]: notes, // bare: valid for long_text AND text (§10)
       [MASHEKE_MN_ATTEMPTS_COL]: { index: MN_ATTEMPTS_INDEX.attempt1 },
@@ -2343,7 +2343,7 @@ export async function returnProposedToQueue(
       const appended = appendStampedLine(existing, stamped);
       // The stamp is Doctor Appointments' attempt-counter reset marker — losing
       // it to truncation would silently leave the rep locked out.
-      await assertTextLikeFits(18406060017, "long_text_mm27zjt2", appended, "MN Workflow Notes");
+      await assertTextLikeFits(MASHEKE_BOARD_ID, MASHEKE_NOTES_COL, appended, "MN Workflow Notes");
       await writeLongTextOnBoard(MASHEKE_BOARD_ID, itemId, MASHEKE_NOTES_COL, appended);
     }
     await writeDateOnBoard(MASHEKE_BOARD_ID, itemId, MASHEKE_NAD_COL, today);
@@ -2364,7 +2364,7 @@ const INSURANCE_ESC_COL = "color_mm2vsh2f";
  *  (samantha COL.callReferenceNotes). This is the shared notes field the reps
  *  already read and write on every Insurance panel, so a proposal and its
  *  decision sit in the same history the rep works from. */
-const INSURANCE_NOTES_COL = "long_text_mm2ffsme";
+const INSURANCE_NOTES_COL = "text_mm6vzc7q";
 /** Follow Up Date (samantha COL.followUpDate) — Auth Outstanding buckets purely
  *  on this, so a Return to Queue must re-date or the patient stays snoozed. */
 const INSURANCE_FOLLOWUP_DATE_COL = "date_mm34m2dz";

@@ -37,7 +37,7 @@ const INNET_COL = "color_mm2vhwan";
 const DME_COL = "color_mm2vt8xg";
 const DAYS_COL = "color_mm1wwm05";
 const NOT_CLEAR_COL = "dropdown_mm2vez5a";
-const NOTES_COL = "long_text_mm2ffsme";
+const NOTES_COL = "text_mm6vzc7q";
 const SUPPLIES_DVS_COL = "color_mm26pk1a";
 const PUMP_DVS_COL = "color_mm578kbd";
 

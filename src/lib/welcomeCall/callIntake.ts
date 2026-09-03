@@ -13,7 +13,7 @@
  * schema change.
  *
  * So the rep's answers are serialised into ONE delimited block appended to the
- * Welcome Call Notes column (`long_text_mm2ffsme`) when they press Send to
+ * Welcome Call Notes column (`text_mm6vqq2k`) when they press Send to
  * Monday, and parsed back out on load. Monday is still the store; the notes
  * column is just carrying a structured payload alongside the prose.
  *

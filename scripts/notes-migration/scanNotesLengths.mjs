@@ -2,10 +2,10 @@
 // 2000-char cap. Prints id / name / group / length ONLY — never a note body.
 const GW = "https://monday-gateway-production.up.railway.app/gql";
 const TARGETS = [
-  { board: 18406060017, col: "long_text_mm27zjt2", label: "Medical Evaluation · MN Workflow Notes" },
-  { board: 18410601299, col: "long_text_mm2ffsme", label: "Insurance · Reference Notes" },
-  { board: 18410804557, col: "long_text_mm2ffsme", label: "Welcome Call · Notes" },
-  { board: 18407459988, col: "long_text_mm3rj7k7", label: "Subscription · Patient Notes" },
+  { board: 18406060017, col: "text_mm6vevjf", label: "Medical Evaluation · MN Workflow Notes" },
+  { board: 18410601299, col: "text_mm6vzc7q", label: "Insurance · Reference Notes" },
+  { board: 18410804557, col: "text_mm6vqq2k", label: "Welcome Call · Notes" },
+  { board: 18407459988, col: "text_mm6vp1z3", label: "Subscription · Patient Notes" },
 ];
 async function gql(query) {
   const r = await fetch(GW, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ query }) });

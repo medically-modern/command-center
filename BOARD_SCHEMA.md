@@ -407,9 +407,9 @@
   - `1` → Benefits Must Go Through Pharmacy
 
 ### Notes
-- **ID:** `long_text_mm2ffsme`
-- **Type:** `long_text`
-- ⚠️ Being converted to `text` (no 2,000-char cap) — CLAUDE.md §10, 2026-09-03. The id may or may not survive the UI conversion; check `columns { id type }`, never the prefix. The app already writes it as a bare string via `change_multiple_column_values`, which both types accept.
+- **ID:** `text_mm6vqq2k` (text; the capped `long_text_mm2ffsme` is hidden, retired 2026-09-03)
+- **Type:** `text`
+- ⚠️ Converted from `long_text` (no 2,000-char cap) — CLAUDE.md §10, 2026-09-03. The id may or may not survive the UI conversion; check `columns { id type }`, never the prefix. The app already writes it as a bare string via `change_multiple_column_values`, which both types accept.
 
 ### WELCOME CALL -->
 - **ID:** `color_mm1xmhbg`

@@ -209,14 +209,14 @@ describe("the real post-Benefits outcomes", () => {
 
   it("rep proposed stuck at Submit Auth → Manager Intervention", () => {
     const p = patient("Submit Auth.", "Manager Escalation Required", {
-      long_text_mm2ffsme: "[Proposed Stuck · 2026-08-02 · JR] payer will not budge",
+      text_mm6vzc7q: "[Proposed Stuck · 2026-08-02 · JR] payer will not budge",
     });
     expect(seenBy(p, MANAGER_CHARTS)).toContain("submit-auth-manager");
   });
 
   it("promoted to Final at Submit Auth → Final Decisions, and OUT of Manager Intervention", () => {
     const p = patient("Submit Auth.", "Final Escalation Required", {
-      long_text_mm2ffsme: "[Proposed Stuck · 2026-08-02 · JR] payer will not budge",
+      text_mm6vzc7q: "[Proposed Stuck · 2026-08-02 · JR] payer will not budge",
     });
     const seen = seenBy(p, MANAGER_CHARTS);
     expect(seen).toContain("submit-auth-final-escalation");

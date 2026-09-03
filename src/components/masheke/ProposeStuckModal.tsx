@@ -3,7 +3,7 @@
  * Reps don't write Stuck themselves; they PROPOSE it and a manager decides.
  *
  * On confirm: the reason is APPENDED to the MN workflow notes
- * (long_text_mm27zjt2, stamped "[Proposed Stuck · <date>] …") and Escalation is
+ * (text_mm6vevjf, stamped "[Proposed Stuck · <date>] …") and Escalation is
  * flipped to "Final Escalation Required" (color_mm1x7997 index 2). The patient
  * leaves this rep's stage queue immediately (useMondayPatients filters index-2
  * patients out) and lands in Pipeline Oversight → Final Decisions, where the

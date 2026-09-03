@@ -56,7 +56,7 @@ export function longTextFits(text: string | undefined | null): boolean {
  * Throw before writing a body Monday would truncate.
  *
  * `label` names the column for the rep-facing toast — "MN Workflow Notes" reads
- * far better in an error than `long_text_mm27zjt2`. The message says how far
+ * far better in an error than `text_mm6vevjf`. The message says how far
  * over it is, because "trim about 150 characters" is actionable and "too long"
  * is not.
  */

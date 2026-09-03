@@ -31,7 +31,7 @@
  * patient can leave the pipeline.
  *
  * WHERE THE ATTEMPTS LIVE. Every note this stage writes goes to MN Workflow
- * Notes (`long_text_mm27zjt2`) — there are no per-attempt columns (Josh,
+ * Notes (`text_mm6vevjf`) — there are no per-attempt columns (Josh,
  * 2026-08-03). The count is derived by matching attempt lines in that body
  * (`apptAttemptsFromNotes`), which is why the line format is a contract and why
  * a note is mandatory on every attempt: a note-less save would be
@@ -133,7 +133,7 @@ export interface ApptAttempt {
 /**
  * The one line an outreach attempt writes, appended to MN Workflow Notes
  * (Josh, 2026-08-03 — there are no per-attempt columns; every note this stage
- * produces lands in `long_text_mm27zjt2` alongside every other stage's):
+ * produces lands in `text_mm6vevjf` alongside every other stage's):
  *
  *   8/3/26, 1:38 PM · Phone call — No answer / no response · sent her a text… —JH
  *
@@ -456,7 +456,7 @@ export function isApptExhausted(
 }
 
 // ---------------------------------------------------------------------------
-// Note stamps (all land in MN Workflow Notes — long_text_mm27zjt2)
+// Note stamps (all land in MN Workflow Notes — text_mm6vevjf)
 // ---------------------------------------------------------------------------
 
 /** Prefix every Doctor Appointments note line carries, so a line is traceable

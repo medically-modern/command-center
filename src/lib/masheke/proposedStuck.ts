@@ -4,7 +4,7 @@
  * The stuck PROPOSAL no longer lives in its own column. A rep proposes stuck
  * by flipping Escalation → "Final Escalation Required" (color_mm1x7997 index 2,
  * ESCALATION_INDEX.finalRequired) and the reason is APPENDED to the MN workflow
- * notes (long_text_mm27zjt2), stamped so the manager can spot it. The Oversight
+ * notes (text_mm6vevjf), stamped so the manager can spot it. The Oversight
  * Final-Decisions drill-down extracts that stamped line back out for its
  * "Proposed Reason" column, and a manager returning the patient to the queue
  * can append their own stamped note to the same field.

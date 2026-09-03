@@ -51,7 +51,7 @@ The Python backends the SPA mirrors (financial estimate, DVS automations) live o
 |---|---|---|
 | **DTC Intake** | `18392794310` | Top of funnel; "Send To Medical Necessity" group feeds the pipeline. Read-only here (oversight/system-mgmt). |
 | **Profile Send Off** | `18406352652` | `profile` ("Referral Intake", relabelled from "Verified Referrals" 2026-08-19) + `unverifiedReferrals` ("Non-Referral Intake — Info Collection", §5.20) + `intakeCleanup` ("Intake — Profile Clean-Up", group `group_mm6c3rhb`, §5.20) + `inSystemReferrals` ("Already In System") — FOUR roles on one board, split by Already In System then Referral Type/Source (§5.10), and the DTC form queue split again into two sub-stages (§5.20). Its own board (groups: *Patient Intake → 1. Intake → New Form Partial/Completed → Profile Clean-Up → Already In System → Tests → Stuck → Completed*). `profile` and `inSystemReferrals` work **1. Intake** (`group_mm1xf2jb`); the send-off exit is **Advance to MN** (`Move to Onboarding` → automation creates the Masheke item + moves to Completed) — except Already In System, whose exits are **Move to Profile Send Off** (flag → No, back to 1. Intake as a Verified Referral; replaced Advance to MN there 2026-08-18) and **Mark as Stuck**. ⚠️ **Send back to Patient Intake was REMOVED** (Josh, 2026-08-14) — see §5.10. **Not** the Welcome Call board. |
-| **Medical Evaluation** ("Masheke") | `18406060017` | `evaluate`, `sendRequest`, `confirmReceipt`, `chaseFax`, `chaseParachute`, `doctorAppointments` (§5.12). Medical-necessity document collection. Stuck is propose→approve: reps flip **Escalation `color_mm1x7997` → "Final Escalation Required" (index 2)** and the reason is appended to the **MN notes `long_text_mm27zjt2`** (stamped `[Proposed Stuck …]`); managers approve/return from Oversight. (The old `color_mm5f37ve`/`text_mm5frng6` columns are retired.) |
+| **Medical Evaluation** ("Masheke") | `18406060017` | `evaluate`, `sendRequest`, `confirmReceipt`, `chaseFax`, `chaseParachute`, `doctorAppointments` (§5.12). Medical-necessity document collection. Stuck is propose→approve: reps flip **Escalation `color_mm1x7997` → "Final Escalation Required" (index 2)** and the reason is appended to the **MN notes `text_mm6vevjf`** (the capped `long_text_mm27zjt2` until 2026-09-03) (stamped `[Proposed Stuck …]`); managers approve/return from Oversight. (The old `color_mm5f37ve`/`text_mm5frng6` columns are retired.) |
 | **Insurance** ("Samantha") | `18410601299` | `benefits`, `submitAuth`, `authOutstanding`, `authDenied`, `dvs` (**stage**-based — Stage Advancer index 1 "DVS", read-only monitor at `/dvs`). Groups: Benefits, Submit Auth, Auth Outstanding, **DVS**, Auth Denied, Escalations, Complete, Stuck. ⚠️ The board grew a **DVS group** (`group_mm5gp2r2`, Aug 2026) but the role is still **stage**-defined: stage-DVS items linger in whichever group an automation last left them, so `useDvsPatients`/`useRoleCounts` read the STAGE board-wide and must not be "fixed" to filter on the group. |
 | **Welcome Call** | `18410804557` | `welcomeCall` + `finalConfirm` (two roles, same board, different groups). See `BOARD_SCHEMA.md`. |
 | **Subscription Board - Updated** | `18407459988` | `subscription` role + one source for Patient Questions. |
@@ -3039,7 +3039,7 @@ these services; when their math changes, `oopEstimator.ts` must be updated to ma
 - **Notes are stamped `[ET timestamp] <Stage>: <text> —<initials>`** — one implementation,
   `lib/shared/noteStamp.ts` (`appendStampedNote`), used by every role's NotesPanel. The stage label
   is what makes a line traceable when several roles share one column: Benefits / Submit Auth /
-  Auth Outstanding / DVS all append to Insurance `long_text_mm2ffsme`. A new NotesPanel must pass
+  Auth Outstanding / DVS all append to Insurance `text_mm6vzc7q` (was `long_text_mm2ffsme` until 2026-09-03). A new NotesPanel must pass
   `notePrefix`, and note-writing paths outside the panels (Benefits call log, Propose Stuck /
   Approve Stuck / Return to Queue stamps, the machine-composed `[Auto-escalated …]` reason) take an
   `initials` arg — pass `userInitials()`. **Every** line that lands in a notes column is now
@@ -3204,6 +3204,12 @@ these services; when their math changes, `oopEstimator.ts` must be updated to ma
   `{boardId, columnId}`. `notesWriteShape.test.ts` fails the build if a writer drifts back to
   `change_column_value` + `{text}`. Once a column is text the refusal stops firing within five
   minutes on its own, and the 16 blocked patients need no repair.
+  **Cut over 2026-09-03 → the new `text` columns:** ME `text_mm6vevjf` · Insurance `text_mm6vzc7q` · Welcome Call
+  `text_mm6vqq2k` (Notes), `text_mm6v4fny` (MN mirror), `text_mm6vvsjy` (Profile mirror) · Subscription `text_mm6vp1z3`.
+  Monday's UI conversion makes a NEW id (sandbox: `text_mm6vqvhz` beside `long_text_mm6vtxyh`), so the six were
+  created beside the originals, copied with `scripts/notes-migration/migrateNotes.mjs`, the app and the two hop
+  workflows re-pointed, and the long_text originals HIDDEN, not deleted. A 3,024-char text value crossed
+  7917676280 intact, so the mirrors carry full history from here on.
   ⚠️ **The flips themselves are an OFF-HOURS job** (Josh, 2026-09-03 — these are active boards): sandbox
   Phase 0 first, then the eight columns and the three hop workflows in one evening, then the lengths
   re-scan. Not during the day.

@@ -72,7 +72,7 @@ export const COL = {
    *  the SoS to Clear. Same option-id schema as notClearProducts. */
   skipSosProducts: "dropdown_mm31163t",
 
-  callReferenceNotes: "long_text_mm2ffsme",
+  callReferenceNotes: "text_mm6vzc7q",
   carecentrixIntakeId: "text_mm2wnhx",
   callFaxNumber: "text_mm2yd7st",
 

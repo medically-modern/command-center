@@ -5,7 +5,7 @@
  * PROPOSE it with a reason and a manager decides.
  *
  * On confirm: the reason is APPENDED to the Reference Notes
- * (long_text_mm2ffsme, stamped "[Proposed Stuck · <date>] …") and Escalation is
+ * (text_mm6vzc7q, stamped "[Proposed Stuck · <date>] …") and Escalation is
  * flipped. WHERE it lands depends on the stage (`escalateTo`):
  *
  *   - "final" (Benefits, Auth Outstanding — the default): "Final Escalation

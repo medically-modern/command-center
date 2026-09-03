@@ -8,7 +8,7 @@
  *   so notes are stamped in ET too, never the browser's local zone.
  * - **Stage label** — says WHICH role wrote the line. This matters most in the
  *   Insurance workflow, where Benefits / Submit Auth / Auth Outstanding / DVS
- *   all append to the SAME column (Call Reference Notes `long_text_mm2ffsme`):
+ *   all append to the SAME column (Call Reference Notes `text_mm6vzc7q`):
  *   without the label a line can't be traced back to the stage that wrote it.
  *   Welcome Call / Final Confirm / Subscription notes are also hop-copied
  *   forward, so the label survives as provenance on the next board.

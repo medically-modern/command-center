@@ -79,7 +79,7 @@ export const COL = {
   clinicalFiles: "file_mm1w5vwp",
   finalClinicals: "file_mm25m8c1",
   medicalNecessity: "color_mm1y6qrf",
-  mnEvalNotes: "long_text_mm27zjt2",
+  mnEvalNotes: "text_mm6vevjf",
   generalMnInvalidReasons: "dropdown_mm2xppn8",
   cgmMnInvalidReasons: "dropdown_mm2xncfh",
   ipMnInvalidReasons: "dropdown_mm2xgg2y",

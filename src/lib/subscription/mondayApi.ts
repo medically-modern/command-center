@@ -106,7 +106,7 @@ export const COL = {
   itemId: "pulse_id_mm2medsk",
 
   // Subscription Patient Notes
-  subscriptionNotes: "long_text_mm3rj7k7",
+  subscriptionNotes: "text_mm6vp1z3",
 
   // Auth Escalation Management
   authEscalation: "color_mm2n237s",

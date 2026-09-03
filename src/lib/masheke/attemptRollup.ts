@@ -15,7 +15,7 @@
  * arrives at Confirm Receipt looking at three greyed-out cards from a cycle
  * that closed weeks ago. But the notes in them are the record of what was
  * actually tried, so they can't just be deleted: they are rolled up into the
- * MN Workflow Notes (`long_text_mm27zjt2`) first, under a dated header, and the
+ * MN Workflow Notes (`text_mm6vevjf`) first, under a dated header, and the
  * columns are blanked in the SAME mutation.
  *
  * ⚠️ THE APPEND AND THE CLEARS MUST BE ONE WRITE. `change_multiple_column_values`

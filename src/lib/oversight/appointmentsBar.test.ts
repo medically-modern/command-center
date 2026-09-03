@@ -94,7 +94,7 @@ describe("Doctor Appointments — the Oversight row", () => {
 
   it("surfaces the attempt log — it lives in MN notes, not columns", () => {
     for (const id of [PROCESSOR, MANAGER, FINAL]) {
-      expect(chart(id).notesColId, id).toBe("long_text_mm27zjt2");
+      expect(chart(id).notesColId, id).toBe("text_mm6vevjf");
       expect(chart(id).drilldownCols.map((c) => c.colId), id).toContain("date_mm5w2vsf");
     }
   });

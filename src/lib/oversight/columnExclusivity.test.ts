@@ -243,10 +243,10 @@ describe("Insurance columns partition the stage", () => {
     ["inactive", { color_mm5q9y3: "Inactive" }, { color_mm5q9y3: 2 }],
     ["pump SoS", { dropdown_mm2vez5a: "Insulin Pump" }, {}],
     ["overdue", {}, { color_mm1wwm05: 3 }],
-    ["stamped", { long_text_mm2ffsme: "[Proposed Stuck · JR] payer won't budge" }, {}],
+    ["stamped", { text_mm6vzc7q: "[Proposed Stuck · JR] payer won't budge" }, {}],
     [
       "all",
-      { color_mm5q9y3: "Inactive", dropdown_mm2vez5a: "Insulin Pump", long_text_mm2ffsme: "[Proposed Stuck · JR] x" },
+      { color_mm5q9y3: "Inactive", dropdown_mm2vez5a: "Insulin Pump", text_mm6vzc7q: "[Proposed Stuck · JR] x" },
       { color_mm5q9y3: 2, color_mm1wwm05: 3 },
     ],
   ];

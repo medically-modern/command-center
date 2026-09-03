@@ -54,11 +54,11 @@ export const COL = {
   referralSource: "color_mm1w5wxr",
   referralReceivedDate: "date_mm1x4e1r",
   diagnosis: "color_mm1wf7rv",
-  notes: "long_text_mm2ffsme",
+  notes: "text_mm6vqq2k",
   // Carried-forward read-only notes from earlier stages (populated by a Monday
   // automation; the SPA only reads them). Columns created 2026-07.
-  profileSendOffNotes: "long_text_mm5g1txs",
-  mnWorkflowNotes: "long_text_mm5gx6j6",
+  profileSendOffNotes: "text_mm6vvsjy",
+  mnWorkflowNotes: "text_mm6v4fny",
   insuranceNotes: "text_mm5pegde",
 
   // Welcome Call editable fields

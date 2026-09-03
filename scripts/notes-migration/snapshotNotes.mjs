@@ -1,4 +1,5 @@
 // Pre/post verification for the long_text → text conversion.
+// Deliberately reads the OLD long_text columns: `compare` proves the originals were never touched.
 //   node snapshotNotes.mjs snapshot <outfile.json>   → per item: length + newline count for each in-scope column (no bodies)
 //   node snapshotNotes.mjs compare  <file.json>      → re-reads and reports any item whose length/newlines changed
 // A conversion that keeps every value produces ZERO diffs. Any diff is a stop-and-look.
