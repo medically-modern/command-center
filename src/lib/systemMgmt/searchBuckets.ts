@@ -27,6 +27,7 @@
  */
 import { STUCK_GROUP_IDS } from "@/lib/shared/profileStatus";
 import { STUCK_LABELS, type SystemPatient } from "./mondayApi";
+import { completedStageForPatient } from "./stageCompletion";
 
 export type SearchBucket = "active" | "completed" | "stuck";
 
@@ -80,4 +81,31 @@ export function bucketResults<T extends BucketInput>(results: readonly T[]): Buc
   const out: BucketedResults<T> = { active: [], completed: [], stuck: [] };
   for (const p of results) out[searchBucket(p)].push(p);
   return out;
+}
+
+/**
+ * Can a rep OPEN this row — is there a Command Center page for it?
+ *
+ * Two things open: a live stage page (`hasPage`), or a finished board's record
+ * in review mode (`completedStageForPatient`). Everything else — DTC Intake and
+ * Secondary Claims (no role page anywhere), a Subscription "Not Active" row,
+ * an item parked in a Stuck group — used to render as a full profile row that
+ * dead-ended on a toast when clicked: "shouldn't show a profile unless we have
+ * a UI for it" (Josh, 2026-09-03). Search renders those as a NOTE instead —
+ * the patient is in the system, here is the board and group, check Monday —
+ * rather than dropping them, because "not found" would be a lie about a
+ * patient we can see.
+ */
+export function rowIsWorkable(
+  p: Pick<SystemPatient, "id" | "boardId" | "boardName" | "isCompleted" | "hasPage">,
+): boolean {
+  return p.hasPage || completedStageForPatient(p) !== null;
+}
+
+/** Workable profiles first, then the "check Monday" notes, each in rank order. */
+export function workableFirst<T extends Parameters<typeof rowIsWorkable>[0]>(rows: readonly T[]): T[] {
+  const yes: T[] = [];
+  const no: T[] = [];
+  for (const r of rows) (rowIsWorkable(r) ? yes : no).push(r);
+  return [...yes, ...no];
 }

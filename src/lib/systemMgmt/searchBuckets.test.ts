@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { bucketResults, searchBucket } from "./searchBuckets";
+import { bucketResults, rowIsWorkable, searchBucket, workableFirst } from "./searchBuckets";
 import { BOARDS } from "./mondayApi";
 import { STUCK_GROUP_IDS, COMPLETED_GROUP_IDS } from "@/lib/shared/profileStatus";
 
@@ -78,5 +78,32 @@ describe("bucketResults", () => {
     expect(b.completed).toHaveLength(1);
     expect(b.stuck).toHaveLength(1);
     expect(b.active.length + b.completed.length + b.stuck.length).toBe(rows.length);
+  });
+});
+
+describe("rowIsWorkable", () => {
+  const base = { id: "1", boardName: "x", isCompleted: false, hasPage: false };
+  it("a live stage page opens", () => {
+    expect(rowIsWorkable({ ...base, boardId: 18406060017, hasPage: true })).toBe(true);
+  });
+  it("a finished record on a board with a review page opens", () => {
+    expect(rowIsWorkable({ ...base, boardId: 18406060017, isCompleted: true })).toBe(true);
+  });
+  it("DTC Intake never opens — no group has a page and no review route exists", () => {
+    expect(rowIsWorkable({ ...base, boardId: 18392794310 })).toBe(false);
+    expect(rowIsWorkable({ ...base, boardId: 18392794310, isCompleted: true })).toBe(false);
+  });
+  it("an item parked in a Stuck group has no page", () => {
+    // rowRouting gives a Stuck group roleRoute "" ⇒ hasPage false, not completed.
+    expect(rowIsWorkable({ ...base, boardId: 18410601299 })).toBe(false);
+  });
+  it("puts workable rows ahead of the check-Monday notes, keeping rank order within each", () => {
+    const rows = [
+      { ...base, id: "a", boardId: 18392794310 },
+      { ...base, id: "b", boardId: 18406060017, hasPage: true },
+      { ...base, id: "c", boardId: 18413019028 },
+      { ...base, id: "d", boardId: 18406352652, isCompleted: true },
+    ];
+    expect(workableFirst(rows).map((r) => r.id)).toEqual(["b", "d", "a", "c"]);
   });
 });

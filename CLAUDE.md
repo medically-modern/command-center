@@ -2647,6 +2647,20 @@ columns" automation on duplicated items). The SPA only flips the advancer; verif
   Proposed Stuck included, since a manager still owns them. Defaults to Active; an empty folder
   names the others' counts rather than saying "no patients found". Chart picks and stage filters go
   through the same folders.
+  **A row with no page is a NOTE, not a profile** (Josh, 2026-09-03, same day: *"it shouldn't show a
+  profile unless we have a UI for it … but if it is in an inaccessible board have a note that says
+  patient is in the system but not on a workable page, check Monday — and have it say what and where
+  it is"*). `searchBuckets.rowIsWorkable` = `hasPage` OR `completedStageForPatient` — a live stage
+  page or a finished record's review page. Everything else (every DTC Intake and Secondary Claims
+  row, Subscription "Not Active Patients", Profile Send Off "Patient Intake"/"Tests", any item parked
+  in a Stuck group) renders as `UnworkableRow`: name · *is in the system but not on a workable page —
+  check Monday* · board · group · stage · phone, with nothing to click. Workable profiles lead and
+  are **highlighted** (`PatientRow highlight`) whenever notes follow, under a divider label — the
+  Josh Hoffman search that prompted this had one Subscription row buried under eight dead rows. Not
+  hidden, deliberately: "not found" would be a lie about a patient we can see, and the note tells the
+  rep where to go instead. ⚠️ This is why the Stuck folder is mostly notes today — a Stuck GROUP has
+  no role page (`groupRoutes` roleRoute `""`) and no review route, so the folder tells you which
+  board the patient is stuck on rather than opening them.
   ⚠️ **Search reads EVERY group on EVERY patient board — never add a group filter** (2026-08-12).
   `BOARDS[].groupRoutes` is navigation metadata ("clicking this row goes where"), **not** the fetch
   list; `fetchBoardItems` queries `items_page` unfiltered. It *was* the fetch list, and every group

@@ -48,6 +48,7 @@ import {
   X,
   ArrowRightLeft,
   Ban,
+  Info,
 } from "lucide-react";
 import { toast } from "sonner";
 import { PipelineChart, DAY_BUCKETS } from "@/components/systemMgmt/PipelineChart";
@@ -60,6 +61,8 @@ import {
   SEARCH_BUCKETS,
   SEARCH_BUCKET_LABEL,
   bucketResults,
+  rowIsWorkable,
+  workableFirst,
   type SearchBucket,
 } from "@/lib/systemMgmt/searchBuckets";
 
@@ -695,20 +698,73 @@ function SearchView({
               ? `Showing 50 of ${results.length} ${SEARCH_BUCKET_LABEL[bucket].toLowerCase()} results — refine your search`
               : `${results.length} ${SEARCH_BUCKET_LABEL[bucket].toLowerCase()} result${results.length !== 1 ? "s" : ""}`}
           </p>
-          {results.slice(0, 50).map((p) => (
-            <PatientRow
-              key={`${p.boardId}-${p.id}`}
-              patient={p}
-              onClick={() => onPatientClick(p)}
-              completedStages={completionMap.get(p.name.trim().toLowerCase()) ?? []}
-              onCompletedStageClick={onCompletedStageClick}
-              onNotesClick={onNotesClick}
-              onEscalationClick={onEscalationClick}
-              onStageClick={onStageClick}
-            />
-          ))}
+          {/* A row with no page is not a profile — it is a note saying where the
+              patient is (Josh, 2026-09-03). Profiles lead, highlighted; the
+              notes follow under their own label. */}
+          {(() => {
+            const shown = workableFirst(results).slice(0, 50);
+            const profiles = shown.filter(rowIsWorkable);
+            const notes = shown.filter((p) => !rowIsWorkable(p));
+            return (
+              <>
+                {profiles.map((p) => (
+                  <PatientRow
+                    key={`${p.boardId}-${p.id}`}
+                    patient={p}
+                    highlight={notes.length > 0}
+                    onClick={() => onPatientClick(p)}
+                    completedStages={completionMap.get(p.name.trim().toLowerCase()) ?? []}
+                    onCompletedStageClick={onCompletedStageClick}
+                    onNotesClick={onNotesClick}
+                    onEscalationClick={onEscalationClick}
+                    onStageClick={onStageClick}
+                  />
+                ))}
+                {notes.length > 0 && (
+                  <p className="text-[11px] uppercase tracking-wider text-muted-foreground px-1 pt-3">
+                    In the system, but not on a workable page — check Monday
+                  </p>
+                )}
+                {notes.map((p) => (
+                  <UnworkableRow key={`${p.boardId}-${p.id}`} patient={p} />
+                ))}
+              </>
+            );
+          })()}
         </div>
       )}
+    </div>
+  );
+}
+
+// ── "In the system, but not on a workable page" ──────────────
+
+/**
+ * The row Search shows for a patient it can see but cannot open: no role page
+ * serves this board/group, and it is not a finished record with a review page.
+ * Says WHAT the patient is and WHERE (board · group · stage), and sends the rep
+ * to Monday — it never dead-ends on a click, because there is nothing to click.
+ */
+function UnworkableRow({ patient }: { patient: SystemPatient }) {
+  const where = [patient.boardName, patient.groupTitle];
+  if (patient.pipelineStage && patient.pipelineStage !== patient.groupTitle) {
+    where.push(patient.pipelineStage);
+  }
+  return (
+    <div className="w-full flex items-start gap-3 rounded-lg border border-dashed border-amber-300 dark:border-amber-800 bg-amber-50/60 dark:bg-amber-950/20 px-4 py-3 text-left">
+      <Info className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+      <div className="min-w-0 flex-1">
+        <div className="text-sm leading-snug">
+          <span className="font-semibold">{patient.name}</span>
+          <span className="text-amber-800 dark:text-amber-200">
+            {" "}is in the system but not on a workable page — check Monday.
+          </span>
+        </div>
+        <div className="text-xs text-muted-foreground mt-0.5 truncate">
+          {where.join(" · ")}
+          {patient.phone ? ` · ${patient.phone}` : ""}
+        </div>
+      </div>
     </div>
   );
 }
@@ -1358,6 +1414,7 @@ function getDayBucketColor(daysSinceStage: string): string {
 
 function PatientRow({
   patient,
+  highlight = false,
   onClick,
   completedStages,
   onCompletedStageClick,
@@ -1366,6 +1423,9 @@ function PatientRow({
   onStageClick,
 }: {
   patient: SystemPatient;
+  /** Make the row stand out — set when it sits above "check Monday" notes, so
+   *  the one row a rep can actually open is the one their eye lands on. */
+  highlight?: boolean;
   onClick: () => void;
   completedStages: CompletedStage[];
   onCompletedStageClick?: (stage: CompletedStage) => void;
@@ -1390,6 +1450,7 @@ function PatientRow({
     <div
       className={cn(
         "w-full flex items-stretch gap-0 rounded-lg border bg-card shadow-sm hover:shadow-md hover:border-primary/30 transition-all text-left",
+        highlight && "border-primary/60 ring-2 ring-primary/25 shadow-md",
         patient.escalated && "border-red-300 bg-red-50/50 dark:bg-red-950/20",
         // Last, so it wins: a finished board is finished whatever flags the
         // item still carries, and the whole row should read that way.
