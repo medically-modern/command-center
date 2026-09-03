@@ -2150,9 +2150,13 @@ access.json assignments key off, so a rename is display-only (§5.10's precedent
   would have read as "notes are broken for these patients" rather than as a type error.
   `profile/unverifiedWrite.appendIntakeNote` already carried a comment
   warning about this exact crossing — which could not help a second consumer in another file, so
-  the type is now **declared** (`BoardDef.notesColType`), carried on the record
-  (`DossierItem.notesColType`), and pinned by `dossierNotes.test.ts` in both directions (every
-  notes column declares a type; the declaration matches the id's own prefix).
+  the type was **declared** (`BoardDef.notesColType`) and carried on the record
+  (`DossierItem.notesColType`). ⚠️ **Superseded 2026-09-03:** the composer no longer branches on it —
+  every notes column is written as a **bare string through `change_multiple_column_values`**, which
+  Monday accepts for BOTH types, and the 2,000 cap is asked of the **live board**
+  (`lib/shared/columnType` → `assertTextLikeFits`). The declaration is documentation only, and
+  `dossierNotes.test.ts` no longer asserts it matches the id prefix, because the long_text → text
+  conversion (§10) may keep the id.
   ⚠️ The **2000-character `assertLongTextFits` guard is long_text-ONLY**: a board scan on
   2026-09-02 found live values up to 9,383 characters in `text_mm389fs` with none parked at a
   ceiling, so applying it there would refuse writes the board demonstrably accepts —
@@ -3000,6 +3004,43 @@ these services; when their math changes, `oopEstimator.ts` must be updated to ma
   Detect-and-refuse only (Josh, 2026-08-14) — trimming old history to make room is the same harm,
   just chosen by us. The escape hatch for a body that genuinely no longer fits is a Monday
   **item update**, which has no limit.
+- **The 2000 cap is being REMOVED by converting the notes columns to plain `text`** (decision: Josh,
+  2026-09-03). Monday's own docs: long_text *"accepts up to 2,000 characters"*; text has *"no fixed
+  character limit"* (~64KB per item, all columns together). Profile Send Off Notes `text_mm389fs` has
+  been a `text` column all along — 2,635 items, 15 over 2,000, longest 9,383, **none** piled at 2,000
+  — which is why it is the one notes column with no truncation history. Sandbox-verified the same day
+  (throwaway board `18429581848`): 4,782 chars stored intact in a text column, the same body cut to
+  2,000 in long_text; a hop into a text mirror preserved newlines on 174/240 Insurance items and
+  mangled **0** dates (the §9 sniffing hits bare date tokens, not prose).
+  **Columns to convert** (every app-appended long_text): ME `long_text_mm27zjt2` · Insurance
+  `long_text_mm2ffsme`, `long_text_mm59y5xt` (Benefits Call Log), `long_text_mm59rz2c` (SoS/Auth Call
+  Log) · Welcome Call `long_text_mm2ffsme` + its two capped mirrors `long_text_mm5g1txs`,
+  `long_text_mm5gx6j6` (6 items already cut at 2,000 there) · Subscription `long_text_mm3rj7k7`.
+  Optional: the four Escalation Notes, ME Request Message `long_text_mm4cnw52`. Notes do NOT hop into
+  Subscription (workflow 7918317925 copies none), and WC's live Notes arrives **pre-seeded** by the hop
+  (60/60 of the newest WC items), which is why WC fills fastest.
+  ⚠️ **The conversion is a Monday-UI action** ("Change column type → Text → Keep changes"); the API has
+  no type-change mutation (checked the Mutation schema). Monday says it *deletes and replaces* the
+  column and does not say whether the **id survives** — being tested on the sandbox (Phase 0). If ids
+  survive, the app's `COL` maps and the three hop workflows (7917676280 Profile→ME · 7918295320
+  ME→Insurance · 7918324247 Insurance→WC, column→column variable pairs) need nothing; if not, re-point
+  both. Either way, **never infer a column's type from its id prefix** again — `lib/shared/columnType`
+  asks the board.
+  **The app is already flip-safe (Phase 1, 2026-09-03)**, so the flips need no deploy and cannot strand
+  prod (which shares the boards but lags test by a sync): every notes writer — the six role
+  `writeLongText` helpers, the 17 verified-send payloads, the Comms Hub composer — sends a **bare
+  string via `change_multiple_column_values`**, which Monday accepts for BOTH types.
+  `change_column_value` does not: it rejects a bare string for long_text AND a `{text}` object for text
+  (sandbox A/B/E), so it would break on flip day in one direction or the other. Only the 2,000
+  **guard** needs the type, and it asks the live board — `columnType.isCappedColumn` (5-minute cache;
+  unknown id / 503 / first paint ⇒ **capped**, the safe default) behind `assertTextLikeFits` and
+  `longTextGuard.refuseLongTextOverflow(…, columnRef)`; every NotesPanel mount passes its
+  `{boardId, columnId}`. `notesWriteShape.test.ts` fails the build if a writer drifts back to
+  `change_column_value` + `{text}`. Once a column is text the refusal stops firing within five
+  minutes on its own, and the 16 blocked patients need no repair.
+  ⚠️ **The flips themselves are an OFF-HOURS job** (Josh, 2026-09-03 — these are active boards): sandbox
+  Phase 0 first, then the eight columns and the three hop workflows in one evening, then the lengths
+  re-scan. Not during the day.
 - **Welcome Call + Final Confirm escalation is WRITE-ONLY, and those two stages need a REWRITE —
   don't patch it piecemeal** (Josh, 2026-08-14, from the escalation audit). `mondayMapping`
   hardcodes **`escalated: false`** and `COL.escalation` (`color_mm1x7997`) is **not in the read
@@ -3107,7 +3148,7 @@ these services; when their math changes, `oopEstimator.ts` must be updated to ma
 | A hub list row shows a phone number instead of a name | §5.28 — `lib/commsHub/directory.ts` (RC contact → our boards → the number) fed by `hooks/commsHub/useDirectoryNames`. A permanent number means the batched `any_of` found nobody; check the board holds one of the digit shapes `phoneMatchVariants` asks for |
 | The profile widget shows the wrong stage, or none | §5.28 — `lib/commsHub/dossier.ts` (`pickActive` = furthest-along open board) and `pipelineOrder.ts` (the tracker order, which §6 now follows) |
 | A conversation won't stay read / unread | §5.28 — read state is RingCentral's `readStatus` on the INBOUND messages, written with `setMessageRead`; the local override only covers the gap before the next poll |
-| Monday says "invalid value … data structure for this column" | **Start with `/audit.json?key=…&failed=1&since=1`** — its `error_data` names the `column_id`, `column_name`, `column_type` and the exact value sent. `/audit/errors.json` only counts redacted shapes and looks the same for every column and every writer, so it cannot tell you which (§10). Then match the value to the type: `location` needs `lat`+`lng` (§10), `long_text` takes `{"text": …}`, `text` a bare JSON string — and the notes columns are BOTH depending on the board (§5.28, `BoardDef.notesColType`) |
+| Monday says "invalid value … data structure for this column" | **Start with `/audit.json?key=…&failed=1&since=1`** — its `error_data` names the `column_id`, `column_name`, `column_type` and the exact value sent. `/audit/errors.json` only counts redacted shapes and looks the same for every column and every writer, so it cannot tell you which (§10). Then match the value to the type: `location` needs `lat`+`lng` (§10), `long_text` takes `{"text": …}`, `text` a bare JSON string — and the notes columns are BOTH depending on the board (§5.28). The app's notes writers sidestep this since 2026-09-03 by sending a bare string via `change_multiple_column_values`, which both types accept (§10) — so a `{"text": …}` refusal on a notes column means a writer drifted back to `change_column_value` (`notesWriteShape.test.ts` should have caught it) |
 | System-wide Search is slow, stale, or shows a finished record as if it were live | §7 — Search is live per query (`searchPatientsLive` / `useLiveSearch`); the seven-board snapshot only feeds the chart. Folders come from `lib/systemMgmt/searchBuckets.ts`; a Stuck group missing from `STUCK_GROUP_IDS` fails `profileStatus.test.ts` |
 | Manager pipeline / oversight charts | `components/oversight/OversightTab.tsx` + `lib/oversight/oversightApi.ts` (+ `priority.ts`); reached via `/system-mgmt?tab=oversight` |
 
