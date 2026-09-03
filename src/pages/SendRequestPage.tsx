@@ -8,9 +8,10 @@ import type { Patient } from "@/lib/masheke/workflow";
 import { SendRequestPanel } from "@/components/masheke/SendRequestPanel";
 import { PatientsSidebar } from "@/components/masheke/PatientsSidebar";
 import { SendRequestHeaderCard } from "@/components/masheke/SendRequestHeaderCard";
+import { ReferralEmailPanel } from "@/components/masheke/ReferralEmailPanel";
 import { Button } from "@/components/ui/button";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
-import { RotateCcw, Stethoscope, ArrowLeft, Ban , Save} from "lucide-react";
+import { RotateCcw, Stethoscope, ArrowLeft, Ban , Save, Mail } from "lucide-react";
 import { toast } from "sonner";
 import { clearEvalState } from "@/lib/masheke/evalState";
 import { useNavigate, useSearchParams } from "react-router-dom";
@@ -40,6 +41,10 @@ const SendRequestPage = () => {
   const [resetVersion, setResetVersion] = useState(0);
   const [blockedModalOpen, setBlockedModalOpen] = useState(false);
   const [escalationModalOpen, setEscalationModalOpen] = useState(false);
+  // Same side-by-side referral email Evaluate has had (Josh, 2026-09-03).
+  // The referral is what the request is BUILT from, so a rep composing the
+  // fax needs it here at least as much as one evaluating.
+  const [referralEmailOpen, setReferralEmailOpen] = useState(false);
 
   // Auto-select the first patient the sidebar actually shows (same list math
   // as PatientsSidebar), never from the pre-fetch localStorage cache.
@@ -89,6 +94,18 @@ const SendRequestPage = () => {
                 </div>
               </div>
               <div className="flex items-center gap-2">
+                <Button
+                  onClick={() => setReferralEmailOpen((o) => !o)}
+                  disabled={!selected}
+                  variant={referralEmailOpen ? "default" : "outline"}
+                  className={referralEmailOpen
+                    ? "gap-2 shadow-elevate"
+                    : "gap-2 bg-white text-navy hover:bg-white/90 shadow-elevate"
+                  }
+                >
+                  <Mail className="h-4 w-4" />
+                  {referralEmailOpen ? "Hide Referral Email" : "See Referral Email"}
+                </Button>
                 {/* <Button
                   onClick={() => setBlockedModalOpen(true)}
                   disabled={!selected}
@@ -147,6 +164,17 @@ const SendRequestPage = () => {
             </section>
           </main>
         </div>
+
+        {/* Side-by-side referral email panel — sibling of the main column, so it
+            opens beside the request rather than over it (mirrors Evaluate). */}
+        {referralEmailOpen && selected && (
+          <ReferralEmailPanel
+            itemId={selected.id}
+            patientName={selected.name}
+            dob={selected.dob}
+            onClose={() => setReferralEmailOpen(false)}
+          />
+        )}
       </div>
 
       {selected && (

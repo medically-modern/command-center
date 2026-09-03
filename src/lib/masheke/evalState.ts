@@ -292,6 +292,20 @@ export function getMrExpiry(lastVisit?: string): { expiry: Date | null; expired:
   return { expiry, expired: expiry.getTime() <= Date.now() };
 }
 
+/**
+ * Board label for "this CGM path's language isn't in the records".
+ *
+ * ⚠️ These strings are written into the **CGM MN Invalid Reasons** dropdown
+ * (`dropdown_mm2xncfh`) and must match the board's labels exactly — a
+ * mismatch does not error, it creates a duplicate label (§5.6/§9). Both were
+ * verified against the live board on 2026-09-03; note the capital "Missing",
+ * which is the existing convention on this particular column and differs from
+ * its "CGM Script missing" siblings.
+ */
+export function cgmLanguageMissingLabel(path: "Insulin" | "Hypo"): string {
+  return path === "Hypo" ? "Hypoglycemia Language Missing" : "Insulin Language Missing";
+}
+
 export function deriveValidity(
   state: EvalState,
   patient: Patient,
@@ -322,6 +336,29 @@ export function deriveValidity(
     } else if (state.cgmCoveragePath === "Hypo Invalid") {
       cgmValid = false;
       cgmReasons.push("CGM Coverage Path invalid");
+    }
+    // ⚠️ CGM LANGUAGE BLOCKS MN, exactly as every IP requirement above does
+    // (Josh, 2026-09-03: "if its cgm language is no it should be medically
+    // necessity NOT established … insulin pump language works fine, it's just
+    // cgm language"). This section checked the script and the coverage path and
+    // then stopped, so a patient whose records carried no insulin or
+    // hypoglycemia language still read "Medical Necessity Established" — the
+    // banner is what routes the send (`validity.established` → Completed vs
+    // Send Request), so those patients skipped Send Request entirely.
+    //
+    // Only the two language-bearing paths ask for it: "Hypo Invalid" and
+    // "Missing" already failed above, and "Not Serving" never reaches here.
+    // `!== "Yes"` rather than `=== "No"` so an UNANSWERED language blocks too —
+    // the same test the IP requirements use, and MN cannot rest on a question
+    // nobody answered.
+    if (state.cgmCoveragePath === "Insulin" || state.cgmCoveragePath === "Hypo") {
+      if (state.cgmLanguage === "Invalid") {
+        cgmValid = false;
+        cgmReasons.push("CGM Language invalid");
+      } else if (state.cgmLanguage !== "Yes") {
+        cgmValid = false;
+        cgmReasons.push(cgmLanguageMissingLabel(state.cgmCoveragePath));
+      }
     }
   }
 
@@ -947,8 +984,17 @@ export function computeCgmInvalidReasons(state: EvalState, showCgm: boolean): st
   if (state.cgmCoveragePath === "Hypo Invalid") out.push("CGM Coverage Path invalid");
   else if (state.cgmScriptReceived === "Yes" && (!state.cgmCoveragePath || state.cgmCoveragePath === "Missing"))
     out.push("CGM Coverage Path missing");
-  // CGM Language (also its own Yes/No/Invalid column)
+  // CGM Language (also its own Yes/No/Invalid column, which stays the source of
+  // truth on read-back). ⚠️ Kept in step with `deriveValidity`'s CGM section:
+  // the banner, the Monday preview and this dropdown must give the rep the same
+  // answer, and before 2026-09-03 a missing language failed none of the three.
   if (state.cgmLanguage === "Invalid") out.push("CGM Language invalid");
+  else if (
+    (state.cgmCoveragePath === "Insulin" || state.cgmCoveragePath === "Hypo") &&
+    state.cgmLanguage !== "Yes"
+  ) {
+    out.push(cgmLanguageMissingLabel(state.cgmCoveragePath));
+  }
   return out;
 }
 

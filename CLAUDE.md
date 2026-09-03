@@ -269,6 +269,23 @@ routing on submit), a doctor-facing **ask list**, and an **MN checklist**.
 > silently creates a duplicate label**. Edit these only against the live board; the round-trip
 > tests (`evalState.roundtrip.test.ts`, `evalState.step2audit.test.ts`) guard it.
 
+> ⚠️ **CGM Language blocks MN — and did not until 2026-09-03.** `deriveValidity` is what
+> the Evaluate banner renders AND what routes the send (`validity.established` →
+> "Completed" vs "Send Request"), and its CGM section checked the script and the coverage
+> path and then stopped. So a patient whose records carried no insulin or hypoglycemia
+> language read **Medical Necessity Established** and skipped Send Request entirely. The
+> IP side always checked every one of its requirements, which is exactly why Josh
+> reported it as "insulin pump language works fine, it's just cgm language". Now the two
+> language-bearing paths (`Insulin`, `Hypo`) require `cgmLanguage === "Yes"` — `!== "Yes"`
+> so an UNANSWERED language blocks too, the same test the IP requirements use. Invalid had
+> the identical hole and is fixed with it. ⚠️ The reason strings go into **CGM MN Invalid
+> Reasons** `dropdown_mm2xncfh`, so they must match the board exactly (§9) —
+> `cgmLanguageMissingLabel` owns them, and `computeCgmInvalidReasons` (which writes the
+> column) is kept in step with `deriveValidity` (which drives the banner and the preview)
+> by `cgmLanguage.test.ts`. Note the board's capital "Missing" on these two labels, unlike
+> its "CGM Script missing" siblings. **"Hypoglycemia Language Missing" did not exist on the
+> board** and is created on first use by the send's `createLabelsIfMissing`.
+
 > **Evaluate UI rule** (`components/masheke/EvaluatePanel.tsx`): the CGM/IP **Coverage Path +
 > Language** controls only render once that product's script is **Received (Yes) or Invalid**
 > (mirrors how Clinicals detail shows only on receipt). It's a pure render gate — already-saved
@@ -376,6 +393,34 @@ the chase transaction: it does not gate "Chase Clinicals Completed", which still
 attempt note in step 2. Those are different records — running case history vs. this attempt. The
 panel passes **no `profileSendOffNotes`**, because `PriorStageNotes` directly above already renders
 it (passing it would print the prior stage twice).
+
+### 5.9b Send Request — sending is not advancing (Sep 2026)
+Pressing **Send fax/email** used to dispatch the request AND flip the Stage Advancer in
+one press, so the patient left Send Request before anyone could see whether the fax
+landed. ⚠️ **RingCentral reports `Failed` SECONDS AFTER it accepts a fax** — the same
+accepted-is-not-delivered trap §5.5 records for texts — by which point the item had
+already moved to Confirm Receipt and nothing there says the request never arrived
+(Josh, 2026-09-03).
+The send now writes **Request Message + Request Sent At and stops**
+(`mondayWrite.recordRequestSentVerified`, `stageColumnId: []`); the footer shows the live
+delivery status; the rep presses **Request Sent** to advance. Two presses, deliberately.
+⚠️ The send deliberately does **not** write the Next Action Date — that date is the
+ADVANCE's snooze, and writing it here would push an unadvanced patient out of the due
+queue (§5.10's disappearing-patient failure).
+⚠️ **Mark Complete skips Request Sent At when the send already stamped it** (`if
+(!sentNow)`): Confirm Receipt polls RingCentral from that timestamp, so re-stamping it at
+advance time points the next stage's fax status at the wrong minute. Parachute — whose
+single button still advances directly, unchanged — and a request faxed outside the app
+still get the stamp.
+⚠️ The advance is disabled only when **nothing** has ever been sent (`sentNow ||
+patient.requestSentAt`, the latter being in the read set) — permissive on purpose, so a
+rep who faxed earlier is never stranded. And the optimistic queue-hide (§9) belongs to
+Mark Complete alone: hiding on the send would remove the very screen the rep needs to
+read the status from. `sendRequestFlow.test.ts` scans for all of it, because a
+re-coupling would look exactly like the button working.
+The status pill is **`components/shared/FaxStatusChip`** — one component on every surface
+that faxes, extracted from ConfirmReceiptPanel for the reason `SmsDeliveryNote` exists
+(§5.5). Send Request also gained Evaluate's **See Referral Email** side panel.
 
 ### 5.10 Profile Send Off split — Verified · Unverified · Already In System (July 2026)
 Same pattern as §5.9: **one Monday stage** (Profile Send Off board `18406352652`, group

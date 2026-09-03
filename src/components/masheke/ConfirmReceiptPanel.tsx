@@ -68,7 +68,10 @@ import {
   SentChip,
   type TaggedFile,
 } from "@/components/masheke/mmKit";
-import { useFaxStatus, type FaxStage } from "@/hooks/masheke/useFaxStatus";
+import { useFaxStatus } from "@/hooks/masheke/useFaxStatus";
+// Shared with Send Request — one fax-status pill on every surface that faxes.
+import { FaxStatusChip, DeliveredChip } from "@/components/shared/FaxStatusChip";
+import { isSentToday, formatSent } from "@/lib/shared/sentTime";
 import { MissingChecklist } from "@/components/masheke/MissingChecklist";
 import { MethodBar } from "@/components/masheke/MethodBar";
 import { ActivityRow, formatActivityDate } from "@/components/masheke/PreviousActivityCard";
@@ -1175,64 +1178,6 @@ function CourtesyFax({
 }
 
 /** Small mint "delivered/sent" chip with a timestamp. */
-function DeliveredChip({ label }: { label: string }) {
-  return (
-    <span
-      className="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold text-[color:var(--mm-teal)] shadow-[inset_0_0_0_1px_var(--mm-mint-ring)]"
-      style={{ background: "var(--mm-mint)" }}
-    >
-      <CheckCircle2 className="h-3.5 w-3.5" /> {label}
-    </span>
-  );
-}
-
-/** Live RingCentral fax-status pill. Animated (spinner + pulse) while the fax is
- *  in flight (processing → queued), then settles to "Sent · <time>" (✓ mint) or
- *  "Fax failed" (✗ rose). Mirrors RingCentral's real Queued/Sent status. */
-function FaxStatusChip({ stage, at, sentAt }: { stage: FaxStage; at?: string; sentAt?: string }) {
-  if (stage === "sent") {
-    return (
-      <span
-        className="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold text-[color:var(--mm-teal)] shadow-[inset_0_0_0_1px_var(--mm-mint-ring)]"
-        style={{ background: "var(--mm-mint)" }}
-      >
-        <CheckCircle2 className="h-3.5 w-3.5" /> Sent · {formatSent(at || sentAt || "")}
-      </span>
-    );
-  }
-  if (stage === "failed") {
-    return (
-      <span
-        className="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold"
-        style={{ background: "var(--mm-rose-soft)", color: "var(--mm-rose)", boxShadow: "inset 0 0 0 1px oklch(0.62 0.13 18 / 0.35)" }}
-      >
-        <XCircle className="h-3.5 w-3.5" /> Fax failed{at ? ` · ${formatSent(at)}` : ""} — re-send
-      </span>
-    );
-  }
-  if (stage === "submitted") {
-    // RC has accepted the fax and it's in transit — no issues. Static (no
-    // spinner/pulse) so the rep knows it's safely handed off and can move on.
-    return (
-      <span
-        className="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold"
-        style={{ background: "oklch(0.95 0.05 240)", color: "oklch(0.45 0.13 250)", boxShadow: "inset 0 0 0 1px oklch(0.80 0.08 250)" }}
-      >
-        <Clock className="h-3.5 w-3.5" /> Submitted · {formatSent(at || sentAt || "")}
-      </span>
-    );
-  }
-  // processing — still waiting for RC to register the fax; keep it animated.
-  return (
-    <span
-      className="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold animate-pulse"
-      style={{ background: "oklch(0.97 0.04 85)", color: "oklch(0.48 0.10 70)", boxShadow: "inset 0 0 0 1px oklch(0.82 0.10 80)" }}
-    >
-      <Loader2 className="h-3.5 w-3.5 animate-spin" /> Processing · {formatSent(sentAt || "")}
-    </span>
-  );
-}
-
 /** Confirm-receipt attempts — always three cards, status per round
  *  (Corey's mockup). Worked attempts show "Not confirmed", the active round
  *  "In progress", future rounds "Scheduled" (3rd flags escalation). */
@@ -1618,31 +1563,6 @@ function formatDateTimeShort(d: Date): string {
 
 /** True when an ET-rendered Monday timestamp is today's ET date. The "Delivered"
  *  chip only shows for a same-day send; older sends are covered by attempt history. */
-function isSentToday(iso?: string): boolean {
-  if (!iso) return false;
-  const cleaned = iso.replace(/\s+UTC$/, "Z").replace(" ", "T");
-  const d = new Date(cleaned);
-  if (Number.isNaN(d.getTime())) return false;
-  const etDate = (x: Date) =>
-    x.toLocaleDateString("en-US", { timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit" });
-  return etDate(d) === etDate(new Date());
-}
-
-function formatSent(iso: string): string {
-  // Monday's date+time text comes back as "2026-04-30 20:00:00 UTC" or
-  // "2026-04-30 20:00:00" — normalize and render in ET.
-  const cleaned = iso.replace(/\s+UTC$/, "Z").replace(" ", "T");
-  const d = new Date(cleaned);
-  if (Number.isNaN(d.getTime())) return iso;
-  return d.toLocaleString("en-US", {
-    timeZone: "America/New_York",
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  }) + " ET";
-}
 
 /** Format raw phone digits for the Call box (same as profile card). */
 function formatPhoneDisplay(raw?: string): string {

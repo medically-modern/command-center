@@ -20,7 +20,7 @@ export const SUB_STAGE_INDEX = {
 } as const;
 
 /** Sub-Stage label text, keyed by index. The Sub-Stage column IS the stage
- *  advancer on this board (see mondayWrite.recordAndAdvanceVerified — it passes
+ *  advancer on this board (see SendRequestPanel's Mark Complete — it passes
  *  COL.subStage as `stageColumnId`, "the single write that moves the item"), so
  *  moving a patient between sub-stages needs no board automation. */
 export const SUB_STAGE_LABEL = {

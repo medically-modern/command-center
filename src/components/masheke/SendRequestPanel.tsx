@@ -45,7 +45,10 @@ import { BOARD_ID,
 } from "@/lib/masheke/mondayApi";
 import { FILE_PROXY_URL } from "@/lib/shared/mondayAssets";
 import { getIdToken, userInitials } from "@/lib/shared/auth";
-import { recordAndAdvanceVerified, runVerifiedSend } from "@/lib/masheke/mondayWrite";
+import { recordRequestSentVerified, runVerifiedSend } from "@/lib/masheke/mondayWrite";
+import { useFaxStatus } from "@/hooks/masheke/useFaxStatus";
+import { FaxStatusChip, DeliveredChip } from "@/components/shared/FaxStatusChip";
+import { isSentToday, formatSent } from "@/lib/shared/sentTime";
 import type { WriteTask } from "@/lib/shared/verifiedWrite";
 import { GEN_SCRIPT_STATUS } from "@/lib/masheke/mondayMapping";
 import {
@@ -278,6 +281,9 @@ export function SendRequestPanel({ patient, resetVersion = 0, onUpdate, onAdvanc
   //      the Request Sent At column.
   const [sending, setSending] = useState(false);
   const [sentNow, setSentNow] = useState(false);
+  // The moment this session's send landed, for the live fax status. Falls
+  // back to the board's Request Sent At for a send made earlier.
+  const [sentAtIso, setSentAtIso] = useState<string | undefined>(undefined);
   const handleSend = useCallback(
     async (payload: { recipients: string[]; cc: string[]; subject: string; body: string; files: File[] }) => {
       const { recipients, cc, subject, body, files } = payload;
@@ -346,34 +352,29 @@ export function SendRequestPanel({ patient, resetVersion = 0, onUpdate, onAdvanc
               : data.error || `HTTP ${res.status}`,
           );
         }
-        // Send succeeded → record what was sent AND auto-advance the stage.
-        // (This only runs on a confirmed success; a failed send throws above and
-        // never reaches here, so a failure leaves the item exactly where it is.)
-        // Parachute skips Confirm Receipt (handled in the portal) → Chase Clinicals.
-        const isParachute = patient.clinicalsMethod === "Parachute";
-        const nextStage = isParachute ? "Chase Clinicals" : "Confirm Receipt";
+        // ⚠️ SENDING IS NOT ADVANCING (Josh, 2026-09-03). This used to record
+        // the send and flip the Stage Advancer in the same breath, so the
+        // patient left Send Request before anyone could see whether the fax
+        // actually landed — and a fax fails SECONDS AFTER the API accepts it
+        // (§5.5 documents the same trap for texts). The rep now watches the
+        // status settle and presses Request Sent to advance.
         setSentNow(true);
         try {
-          // Verified write: every data column is written AND read-back confirmed
-          // before the Stage Advancer flips (same guarantee the other sends use).
-          // If verification fails it throws and the item does not move.
-          await recordAndAdvanceVerified(patient, {
-            body,
-            nextStage,
-            nextActionDate: toIsoDate(addBusinessDays(etNow(), isParachute ? 3 : 1)),
-          });
+          // Verified write, no stage column: the body and the timestamp the fax
+          // status polls from. Throws (no false success) if Monday didn't take it.
+          const iso = await recordRequestSentVerified(patient, { body });
+          setSentAtIso(iso);
           onUpdate({ requestBody: body });
           toast.success(
-            `Sent to ${to.length} recipient${to.length > 1 ? "s" : ""}${ccList.length ? ` (+${ccList.length} cc)` : ""}${data.sender ? " from " + data.sender : ""} — moved to ${nextStage}`,
+            `Sent to ${to.length} recipient${to.length > 1 ? "s" : ""}${ccList.length ? ` (+${ccList.length} cc)` : ""}${data.sender ? " from " + data.sender : ""}`,
+            { description: "Check the delivery status, then press Request Sent to advance." },
           );
-          // Advanced and confirmed — off the queue now. The catch below is the
-          // "sent but the advance failed" path and deliberately does NOT hide:
-          // that patient is still in this stage.
-          onAdvanced?.();
-        } catch (advErr) {
-          console.warn("[Send] sent OK but Monday update/advance failed:", advErr);
-          toast.error("Sent, but couldn't advance the stage", {
-            description: `Move this item to ${nextStage} manually. (${advErr instanceof Error ? advErr.message : String(advErr)})`,
+        } catch (recErr) {
+          // The request DID go out — only Monday's record of it failed. Say so
+          // precisely: telling the rep the send failed would get it sent twice.
+          console.warn("[Send] sent OK but Monday didn't record it:", recErr);
+          toast.error("Sent — but Monday didn't record it", {
+            description: `The request went out. ${recErr instanceof Error ? recErr.message : String(recErr)}`,
           });
         }
       } catch (e) {
@@ -384,7 +385,7 @@ export function SendRequestPanel({ patient, resetVersion = 0, onUpdate, onAdvanc
         setSending(false);
       }
     },
-    [patient, onUpdate, onAdvanced],
+    [patient, onUpdate],
   );
 
   // Notes gate — Mark as Complete requires ≥1 note added this session, and is
@@ -405,6 +406,7 @@ export function SendRequestPanel({ patient, resetVersion = 0, onUpdate, onAdvanc
     setPortalOpened(false);
     setCompleted(false);
     setSentNow(false);
+    setSentAtIso(undefined);
   }, [patient.id, resetVersion]);
 
   // ---- Mark as Complete: advance stage. ----
@@ -425,13 +427,22 @@ export function SendRequestPanel({ patient, resetVersion = 0, onUpdate, onAdvanc
     const nextAction = toIsoDate(addBusinessDays(etNow(), isParachute ? 3 : 1));
     const sentAt = new Date();
     const sentIso = sentAt.toISOString();
-    const tasks: WriteTask[] = [
-      {
+    const tasks: WriteTask[] = [];
+    // ⚠️ Only stamp Request Sent At when this session's send hasn't already.
+    // The send writes the REAL moment the fax went out, and Confirm Receipt
+    // polls RingCentral from that timestamp — re-stamping it at advance time
+    // would point the next stage's fax status at the wrong minute. Parachute
+    // (and a rep advancing a request faxed outside the app) still needs it, so
+    // it is skipped rather than dropped.
+    if (!sentNow) {
+      tasks.push({
         label: "Request Sent At",
         columnId: COL.requestSentAt,
         value: { date: sentIso.slice(0, 10), time: sentIso.slice(11, 19) },
         fn: () => writeDateTime(patient.id, COL.requestSentAt, sentAt),
-      },
+      });
+    }
+    tasks.push(
       {
         label: `Next Action Date → ${nextAction}`,
         columnId: COL.nextActionDate,
@@ -444,7 +455,7 @@ export function SendRequestPanel({ patient, resetVersion = 0, onUpdate, onAdvanc
         value: { label: nextStage },
         fn: () => writeStatusLabel(patient.id, COL.subStage, nextStage),
       },
-    ];
+    );
     if (escalatedRef.current) {
       tasks.push({
         label: "Escalation → Required",
@@ -478,7 +489,7 @@ export function SendRequestPanel({ patient, resetVersion = 0, onUpdate, onAdvanc
     } finally {
       setCompleting(false);
     }
-  }, [patient, onAdvanced]);
+  }, [patient, onAdvanced, sentNow]);
 
   const cgmIsGenerating = cgmIsGeneratingLocal || mondayFiles.generateCgmStatus === "Generate";
   const ipIsGenerating = ipIsGeneratingLocal || mondayFiles.generateIpStatus === "Generate";
@@ -632,6 +643,8 @@ export function SendRequestPanel({ patient, resetVersion = 0, onUpdate, onAdvanc
           onAddNote={handleAddNote}
           onMarkComplete={handleMarkComplete}
           completing={completing}
+          sentNow={sentNow}
+          sentAtIso={sentAtIso}
           generateSlot={isParachute ? generateScriptsBlock : undefined}
         />
       </MmStep>
@@ -1012,6 +1025,8 @@ function SendRequestComposer({
   onAddNote,
   onMarkComplete,
   completing,
+  sentNow,
+  sentAtIso,
   generateSlot,
 }: {
   patient: Patient;
@@ -1023,6 +1038,10 @@ function SendRequestComposer({
   onAddNote: (text: string) => void;
   onMarkComplete: () => void;
   completing: boolean;
+  /** A send landed THIS session. */
+  sentNow: boolean;
+  /** When it landed, for the live fax status. */
+  sentAtIso?: string;
   generateSlot?: React.ReactNode;
 }) {
   // The template derives live from the current checklist until the rep edits
@@ -1042,6 +1061,20 @@ function SendRequestComposer({
   const isParachute = method === "Parachute";
   const [open, setOpen] = useState(!isParachute);
   const [files, setFiles] = useState<File[]>([]);
+  // ── Delivery status of the request that was actually sent ──────────────
+  // The whole reason the send no longer advances: RingCentral accepts a fax
+  // immediately and only reports Sent or Failed seconds later, so the rep needs
+  // to SEE that verdict before moving the patient on.
+  // `sentAt` prefers this session's send, then the board's Request Sent At (a
+  // send made earlier today, e.g. after a reload).
+  const sentAt = sentAtIso || patient.requestSentAt;
+  const faxRecipient = recipients[0] || patient.doctorFax;
+  const faxActive = method === "Fax" && !!sentAt && isSentToday(sentAt);
+  const faxStatus = useFaxStatus(faxRecipient, sentAt, faxActive);
+  // A request has demonstrably gone out — this session, or already on the
+  // board. Advancing with NO record of any send at all is what let a patient
+  // reach Confirm Receipt with nothing ever faxed.
+  const hasSentRequest = sentNow || !!patient.requestSentAt;
   const [showNoFile, setShowNoFile] = useState(false);
   const [dragOver, setDragOver] = useState(false);
   const doSend = () => {
@@ -1295,21 +1328,55 @@ function SendRequestComposer({
               )}
             </Button>
           ) : (
-            <Button
-              onClick={trySend}
-              disabled={sending}
-              className="gap-2 text-white shadow-sm bg-[color:var(--mm-green)] hover:bg-[oklch(0.56_0.10_175)] disabled:bg-[oklch(0.85_0.01_200)]"
-            >
-              {sending ? (
-                <>
-                  <Loader2 className="h-4 w-4 animate-spin" /> Sending…
-                </>
-              ) : (
-                <>
-                  <Send className="h-4 w-4" /> Send request
-                </>
-              )}
-            </Button>
+            <>
+              {/* Delivery status of the send — the reason this stage no longer
+                  advances on the send itself. A fax reports Failed SECONDS
+                  after RingCentral accepts it, and the rep has to see that
+                  before moving the patient on. */}
+              {faxStatus ? (
+                <FaxStatusChip stage={faxStatus.stage} at={faxStatus.at} sentAt={sentAt} />
+              ) : sentNow ? (
+                <DeliveredChip label={`Sent · ${formatSent(sentAt || "")}`} />
+              ) : null}
+              <Button
+                onClick={trySend}
+                disabled={sending}
+                variant={sentNow ? "outline" : undefined}
+                className={sentNow
+                  ? "gap-2"
+                  : "gap-2 text-white shadow-sm bg-[color:var(--mm-teal)] hover:bg-[oklch(0.52_0.09_195)] disabled:bg-[oklch(0.85_0.01_200)]"}
+              >
+                {sending ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" /> Sending…
+                  </>
+                ) : (
+                  <>
+                    <Send className="h-4 w-4" /> {sentNow ? `Re-send ${method}` : `Send ${method}`}
+                  </>
+                )}
+              </Button>
+              {/* ⚠️ The advance is now its own press (Josh, 2026-09-03).
+                  Disabled only when NOTHING has ever been sent — a rep who
+                  faxed earlier, or from outside the app, still has the board's
+                  Request Sent At and can advance without re-sending. */}
+              <Button
+                onClick={onMarkComplete}
+                disabled={completing || !hasSentRequest}
+                title={hasSentRequest ? undefined : "Send the request first"}
+                className="gap-2 text-white shadow-sm bg-[color:var(--mm-green)] hover:bg-[oklch(0.56_0.10_175)] disabled:bg-[oklch(0.85_0.01_200)]"
+              >
+                {completing ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" /> Saving…
+                  </>
+                ) : (
+                  <>
+                    <Check className="h-4 w-4" /> Request Sent
+                  </>
+                )}
+              </Button>
+            </>
           )}
         </div>
       </div>

@@ -128,7 +128,7 @@ export type TabContext = "evaluate" | "sendRequest" | "confirmReceipt" | "chase"
 /**
  * ⚠️ NOT WIRED UP — and it would have thrown on the first call.
  *
- * Every masheke panel sends through `runVerifiedSend` / `recordAndAdvanceVerified`
+ * Every masheke panel sends through `runVerifiedSend` / `recordRequestSentVerified`
  * instead (EvaluatePanel, ConfirmReceiptPanel, ChaseClinicalsPanel,
  * SendRequestPanel); nothing has imported this function in a long time. It
  * referenced `YES_NO_MONDAY_OPTS` without importing it, so the Evaluate branch
@@ -326,26 +326,30 @@ export async function sendPatientToMonday(
 
 
 /**
- * Send Request — verified trigger.
+ * Record a request that was just faxed/emailed — WITHOUT advancing the stage.
  *
- * Writes the Request Message + Request Sent At FIRST, reads them back to
- * confirm Monday has indexed them, and ONLY THEN flips the Send Request
- * trigger column (which fires the SuperMail send). If the data columns can't
- * be verified, the trigger is NOT flipped and this throws — so SuperMail can
- * never dispatch off a stale or empty Request Message.
+ * ⚠️ Sending is not advancing (Josh, 2026-09-03). The Send button used to do
+ * both: the fax went out and the Stage Advancer flipped in the same breath, so
+ * the patient left Send Request before anyone could see whether RingCentral
+ * actually delivered it. A fax that fails does so SECONDS AFTER the API accepts
+ * it (§5.5 documents the same trap for SMS: an accepted message is not a
+ * delivered message), by which point the item had already moved on and nothing
+ * on the next stage says the request never arrived.
  *
- * Mirrors the stage-advancer pattern: the trigger is the "stage column",
- * written last only after read-back verification of the data columns.
+ * So the send now writes what it did — the approved body and the timestamp the
+ * fax status polls from — and stops. The rep watches the status settle and
+ * presses Request Sent to advance — `SendRequestPanel`'s Mark Complete, a
+ * `runVerifiedSend` with the Stage Advancer as its stage column.
+ *
+ * Deliberately does NOT write the Next Action Date: that date is the snooze
+ * that belongs to the ADVANCE. Writing it here would push the patient out of
+ * the due queue while they are still sitting in Send Request, unadvanced —
+ * exactly the disappearing-patient failure §5.10 records for Patient Intake.
  */
-export async function recordAndAdvanceVerified(
+export async function recordRequestSentVerified(
   p: Patient,
-  opts: { body: string; nextStage: string; nextActionDate: string },
-): Promise<void> {
-  // Same guarantee as every other send: write ALL data columns first, read them
-  // back to confirm Monday indexed them, and ONLY THEN flip the Stage Advancer
-  // (subStage) — the single write that moves the item. If verification fails the
-  // advancer is never written and this throws, so the item does not move.
-  // Stamp Request Sent At once so the raw `value` (used by /send) matches the fn.
+  opts: { body: string },
+): Promise<string> {
   const sentAt = new Date();
   const sentIso = sentAt.toISOString();
   const tasks: WriteTask[] = [
@@ -361,26 +365,17 @@ export async function recordAndAdvanceVerified(
       value: { date: sentIso.slice(0, 10), time: sentIso.slice(11, 19) },
       fn: () => writeDateTime(p.id, COL.requestSentAt, sentAt),
     },
-    {
-      label: "Next Action Date",
-      columnId: COL.nextActionDate,
-      value: { date: opts.nextActionDate },
-      fn: () => writeDate(p.id, COL.nextActionDate, opts.nextActionDate),
-    },
-    {
-      label: `Stage Advancer → ${opts.nextStage}`,
-      columnId: COL.subStage,
-      value: { label: opts.nextStage },
-      fn: () => writeStatusLabel(p.id, COL.subStage, opts.nextStage),
-    },
   ];
 
+  // No stage column: there is nothing to hold back, and nothing here fires a
+  // Monday automation. The read-back verification still runs, so a write that
+  // silently failed surfaces instead of looking saved.
   const failures = await executeWritesWithVerification({
     itemId: p.id,
     boardId: "18406060017",
-    label: "Send Request → advance",
+    label: "Send Request → record sent",
     tasks,
-    stageColumnId: COL.subStage,
+    stageColumnId: [],
     executeWithRetry,
     readColumns: readColumnTexts,
     writeDebug: (id, msg) => writeText(id, COL.joshDebug, msg),
@@ -388,11 +383,11 @@ export async function recordAndAdvanceVerified(
 
   if (failures.length > 0) {
     throw new Error(
-      `${failures.length} column(s) failed verification — item NOT moved. Check the Josh Debug column.`,
+      `${failures.length} column(s) failed verification — the request WAS sent, but Monday didn't record it. Check the Josh Debug column.`,
     );
   }
+  return sentIso;
 }
-
 
 /**
  * Return a patient to the Evaluate MN stage for re-review (Update Clinicals

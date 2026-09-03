@@ -175,6 +175,12 @@ export function BenefitsPatientHeader({ patient }: Props) {
             <HVal label="Email" value={patient.doctorEmail || ""} />
             <HVal label="Clinicals Method" value={patient.clinicalsMethod || ""} />
             <HVal label="Clinic" value={patient.clinicName || ""} span={2} />
+            {/* Clinic Address (Josh, 2026-09-03) — every Insurance stage calls
+                or faxes the office, and the address was the one doctor field
+                this header omitted. Already read (COL.clinicAddress is in the
+                read set and on the Patient) and already shown on the DVS card,
+                so this is display only: no new column, no new fetch. */}
+            <HVal label="Clinic Address" value={patient.clinicAddress || ""} span={2} />
             {/* Doctor Notes (Josh, 2026-08-03) — the shared MM Doctor Database
                 log that Evaluate has had all along. The Insurance stages call
                 the same offices about the same auths, so the "this office wants
