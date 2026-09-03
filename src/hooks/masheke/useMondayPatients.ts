@@ -5,6 +5,7 @@ import { fetchGroupItems, fetchItemById, writeDate, writeStatusIndex, COL, GROUP
 import { mondayItemToPatient, ESCALATION_INDEX } from "@/lib/masheke/mondayMapping";
 import { hasStaleEvaluateEscalation } from "@/lib/masheke/evaluateReentry";
 import { etToday } from "@/lib/masheke/etDate";
+import { pendingAdvanceVerdict } from "@/lib/masheke/pendingAdvance";
 
 const POLL_MS = 30_000;
 const LS_KEY = "mash-overlays";
@@ -110,6 +111,11 @@ export function useMondayPatients(activeTab: TabKey = "evaluate", injectedPatien
   // Patients whose stale Evaluate-MN escalation we've already cleared this
   // session (the returning-patient self-heal below) — avoids re-writing each poll.
   const unescalatedRef = useRef<Set<string>>(new Set());
+  // Patients hidden optimistically because their send resolved (id → when).
+  // Reconciled against the board on every poll — see lib/masheke/pendingAdvance.
+  // In-memory on purpose: a reload is a fresh read of the board, and a marker
+  // that outlived the tab would hide a patient nobody could bring back.
+  const pendingAdvanceRef = useRef<Map<string, number>>(new Map());
 
   const refetch = useCallback(async (maybeSilent: unknown = false) => {
     const silent = maybeSilent === true;
@@ -188,12 +194,30 @@ export function useMondayPatients(activeTab: TabKey = "evaluate", injectedPatien
         }
       }
 
+      // Re-ask the board about every optimistically-hidden patient BEFORE
+      // filtering. The marker is a question ("did the advance land?"), and this
+      // read is the answer: confirmed advances spend their marker, and one that
+      // never landed expires so the patient returns to the queue.
+      if (pendingAdvanceRef.current.size > 0) {
+        const now = Date.now();
+        for (const [id, markedAt] of [...pendingAdvanceRef.current]) {
+          const p = allPatients.find((x) => x.id === id);
+          const stillInStage = !!p && matchesTab(p.subStage, activeTab) && !p.proposedStuck;
+          if (pendingAdvanceVerdict(stillInStage, markedAt, now) !== "hide") {
+            pendingAdvanceRef.current.delete(id);
+          }
+        }
+      }
+
       // Filter to patients whose Stage Advancer matches this tab. A patient
       // with a pending stuck PROPOSAL leaves the stage queues immediately —
       // they sit in Pipeline Oversight's Final Decisions until the manager
       // approves (real Stuck) or returns them (proposal cleared).
       const filtered = allPatients.filter(
-        (p) => matchesTab(p.subStage, activeTab) && !p.proposedStuck,
+        (p) =>
+          matchesTab(p.subStage, activeTab) &&
+          !p.proposedStuck &&
+          !pendingAdvanceRef.current.has(p.id),
       );
 
       const merged = filtered.map((p) => {
@@ -223,8 +247,16 @@ export function useMondayPatients(activeTab: TabKey = "evaluate", injectedPatien
           return o ? { ...p, ...o } : p;
         });
 
-      // Inject deep-linked patient if not in this group/stage (e.g. from Escalations)
-      if (injectedPatientId && !merged.some((p) => p.id === injectedPatientId)) {
+      // Inject deep-linked patient if not in this group/stage (e.g. from Escalations).
+      // ⚠️ A deep link is normally exempt from this tab's queue rules — but NOT
+      // from an advance this session just made. Re-injecting a patient we hid a
+      // moment ago hands the rep back the live Send button the hide exists to
+      // take away, and the marker is short-lived and self-correcting anyway.
+      if (
+        injectedPatientId &&
+        !pendingAdvanceRef.current.has(injectedPatientId) &&
+        !merged.some((p) => p.id === injectedPatientId)
+      ) {
         try {
           const item = await fetchItemById(injectedPatientId);
           if (item) {
@@ -280,6 +312,16 @@ export function useMondayPatients(activeTab: TabKey = "evaluate", injectedPatien
     );
   }, []);
 
+  /** A send resolved — take the patient off screen NOW rather than leaving them
+   *  sitting in the queue with a live Send button until the next poll (that gap
+   *  is what got three patients re-sent on 2026-09-03). Purely a display
+   *  decision: the board still decides whether they stay gone, and the poll
+   *  brings them back if the advance never landed. */
+  const markAdvanced = useCallback((id: string) => {
+    pendingAdvanceRef.current.set(id, Date.now());
+    setPatients((prev) => prev.filter((p) => p.id !== id));
+  }, []);
+
   const clearOverlay = useCallback((id: string) => {
     overlayRef.current.delete(id);
     removeOverlay(id);
@@ -301,5 +343,5 @@ export function useMondayPatients(activeTab: TabKey = "evaluate", injectedPatien
   }, []);
 
 
-  return { patients, chaseViewerPatients, scheduledApptPatients, loading, initialLoading, error, refetch, update, clearOverlay, saveOverlay, hasOverlay };
+  return { patients, chaseViewerPatients, scheduledApptPatients, loading, initialLoading, error, refetch, update, markAdvanced, clearOverlay, saveOverlay, hasOverlay };
 }

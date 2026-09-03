@@ -131,6 +131,11 @@ interface Props {
    *  Management completion badge). The panel still renders every answer the rep
    *  gave — it just can't re-advance an item that has already moved on. */
   reviewMode?: boolean;
+  /** The send landed and the patient has left this stage — the page takes them
+   *  off screen immediately instead of leaving them in the queue, with a live
+   *  Send button, until the next 30s poll. Not called when the send escalates
+   *  without advancing: that patient stays in Evaluate MN. */
+  onAdvanced?: () => void;
 }
 
 // Compute "today + N months" — used for MR Expiry Date
@@ -152,7 +157,7 @@ function formatDate(iso?: string): string {
   return d.toLocaleDateString("en-US", { month: "2-digit", day: "2-digit", year: "numeric" });
 }
 
-export function EvaluatePanel({ patient, resetVersion = 0, onUpdate, onOpenForm, reviewMode = false }: Props) {
+export function EvaluatePanel({ patient, resetVersion = 0, onUpdate, onOpenForm, reviewMode = false, onAdvanced }: Props) {
   const accent = getServingAccent(patient.serving);
   // Monday is the source of truth: local drafts are merged UNDER Monday's
   // current column values (loadEvalStateForPatient), never over them.
@@ -572,6 +577,11 @@ export function EvaluatePanel({ patient, resetVersion = 0, onUpdate, onOpenForm,
           chaseAttempt1: undefined, chaseAttempt2: undefined, chaseAttempt3: undefined,
         });
       }
+      // LAST, and only on an advance: this unmounts the panel (the patient
+      // leaves the queue), so everything above must already have run. A send
+      // that escalated without advancing leaves them in Evaluate MN, where they
+      // still belong.
+      if (nextStage) onAdvanced?.();
     } catch (e) {
       setSending(false);
       const msg = e instanceof Error ? e.message : String(e);
@@ -581,7 +591,7 @@ export function EvaluatePanel({ patient, resetVersion = 0, onUpdate, onOpenForm,
         duration: 10000,
       });
     }
-  }, [patient, state, validity, preview, showCgm, showIp, filesUploading, noteAdded, pendingNoteText]);
+  }, [patient, state, validity, preview, showCgm, showIp, filesUploading, noteAdded, pendingNoteText, onAdvanced]);
 
   // ── Evaluate redesign (prototype) ──
   // Attempt counter — pulled from Monday's Evaluation Counter column.

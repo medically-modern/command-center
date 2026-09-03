@@ -2900,6 +2900,32 @@ these services; when their math changes, `oopEstimator.ts` must be updated to ma
   `WelcomeCallPage` and `ChaseBenefitsPage` all do. Combined with `useMondayPatients` injecting a
   deep-linked `?patientId=` into the sidebar **regardless of group**, a patient sitting in Completed
   renders on Info Collection with fully live Advance buttons.
+- **⚠️ A send that WORKED must take the patient off screen — or reps re-press it.** The queue only
+  learns about an advance on the next poll (masheke `POLL_MS` = 30s), and Monday may not have
+  indexed the write even then, so for up to half a minute after a successful send the patient sat
+  in the sidebar with the panel still rendering them and the Send button re-enabled — a screen
+  indistinguishable from "nothing happened". Masheke re-pressed on three patients on 2026-09-03
+  (Joseph Bowser `12936243860`, Robert Bianco `12936759879`, Frank Fuller `12937936786`): every
+  FIRST press landed, every second was refused by the advancer no-op guard above. Nothing was lost
+  — and nothing on screen had told her either way, because her second press ALSO showed green (see
+  the poll-window note below). `useMondayPatients.markAdvanced` now drops the patient the moment
+  the send resolves; `EvaluatePanel` calls it LAST in the try, and only when a stage was actually
+  advanced (an escalating send leaves them in Evaluate MN, where they belong).
+  ⚠️ **The marker is a QUESTION, not a claim** — `lib/masheke/pendingAdvance.ts` (+ tests). Hiding
+  on a write that did NOT land removes the patient from the only queue that would surface them,
+  which is the invisibility §5.10/§5.12/§7 keep recording. So every poll re-asks the BOARD: still
+  in this stage past `PENDING_ADVANCE_TTL_MS` (2 min) ⇒ the advance never happened and the patient
+  **comes back**; out of the stage ⇒ the marker is spent and they are filtered on their own merits
+  (so a manager's later return is not swallowed by a stale marker). It is deliberately in memory —
+  a reload is a fresh read, and a marker that outlived the tab could hide a patient nobody can
+  bring back.
+  ⚠️ **A TTL is needed because the SPA is never TOLD the send failed.** `EvaluatePanel`'s send
+  passes no `requireDone`, so when `pollDone`'s **20s** window closes on a still-running job
+  `submitSend` returns `"submitted"` and `verifiedWrite`'s `!requireDone` branch treats it as
+  success — green toast, doctor writes, everything — and the job can still FAIL seconds later.
+  That is exactly what the three sends above did. Expiry is therefore not a guess about why: it is
+  a direct reading of the board, the only thing that settles whether the patient still needs
+  working. Wire the same pair into the other masheke stage sends before assuming they are covered.
 - **Column IDs, not titles**, are the contract. Add new ones to `mondayMapping.ts` + the schema docs.
 - **Exact label strings** for status/dropdown writes (Evaluate "Option A", coverage paths, etc.) —
   a casing mismatch creates duplicate board labels. Prefer index writes where possible.
@@ -3143,6 +3169,7 @@ these services; when their math changes, `oopEstimator.ts` must be updated to ma
 |---|---|
 | A role's page behaves wrong | `src/pages/<Role>Page.tsx` → `hooks/<role>/useMondayPatients.ts` → `lib/<role>/workflow.ts` |
 | A patient's status badge says the wrong thing (or nothing) | §5.18 — `lib/shared/profileStatus.ts` (the rule) → `components/shared/PatientProfileStatus.tsx` (which board adapter that header uses) |
+| A rep re-sent a patient who had already gone through / a queue row won't disappear after a send | §9 — `lib/masheke/pendingAdvance.ts` (the rule) → `useMondayPatients.markAdvanced` (the hide) → `EvaluatePanel`'s `onAdvanced`. A patient who reappears after ~2 min means the board never showed the advance, i.e. the send did NOT land — check `/audit.json?key=…&failed=1` |
 | A rep pressed Advance repeatedly and nothing moved | §9 — the advancer already held its target value, so no automation fired. `lib/shared/advancerNoop.ts`; grep Railway for `ADVANCER_NOOP`. Repair by moving the item to Completed, **never** by clearing the advancer (that duplicates the downstream item) |
 | A rep says the page showed stale/blank data | §9 — `components/shared/StaleDataNotice` + `lib/shared/mondayError.ts`. Check `/audit/errors.json?key=…&hours=N` on the gateway for the Monday-side failures |
 | A note got a green "saved" toast but isn't on the board / a rep now gets *"N characters over"* on Add | §10 — the column is at Monday's 2000 cap. `components/shared/longTextGuard` (the refusal) → `lib/shared/longText` (the rule). Confirm with a lengths-only scan; repair by moving history to an item **update** FIRST, then trimming the column |

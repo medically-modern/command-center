@@ -35,7 +35,7 @@ const EvaluatePage = () => {
   const [searchParams] = useSearchParams();
   const isEscalated = searchParams.get("escalated") === "1";
   const isManager = searchParams.get("manager") === "1";
-  const { patients, loading, initialLoading, error, refetch, update, clearOverlay , saveOverlay, hasOverlay } = useMondayPatients("evaluate", searchParams.get("patientId"));
+  const { patients, loading, initialLoading, error, refetch, update, markAdvanced, clearOverlay , saveOverlay, hasOverlay } = useMondayPatients("evaluate", searchParams.get("patientId"));
   const [selectedId, setSelectedId] = useState<string | null>(
     searchParams.get("patientId") ?? null,
   );
@@ -163,7 +163,7 @@ const EvaluatePage = () => {
               {selected && (
                 <>
                   <PatientProfileCard patient={selected} onDoctorEdit={(patch) => update(selected.id, patch)} />
-                  <EvaluatePanel patient={selected} resetVersion={resetVersion} onUpdate={(patch) => update(selected.id, patch)} onOpenForm={() => setEscalationModalOpen(true)} reviewMode={reviewMode} />
+                  <EvaluatePanel patient={selected} resetVersion={resetVersion} onUpdate={(patch) => update(selected.id, patch)} onOpenForm={() => setEscalationModalOpen(true)} reviewMode={reviewMode} onAdvanced={() => markAdvanced(selected.id)} />
                 </>
               )}
             </section>
