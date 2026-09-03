@@ -2158,12 +2158,13 @@ async function writeStatusIndexOnBoard(boardId: number, itemId: string, columnId
 
 /** Write a long-text column on an arbitrary board. */
 async function writeLongTextOnBoard(boardId: number, itemId: string, columnId: string, text: string): Promise<void> {
-  const query = `
-    mutation ($boardId: ID!, $itemId: ID!, $columnId: String!, $value: JSON!) {
-      change_column_value(board_id: $boardId, item_id: $itemId, column_id: $columnId, value: $value) { id }
-    }
-  `;
-  await gql(query, { boardId: String(boardId), itemId, columnId, value: JSON.stringify({ text }) });
+  // A BARE string through change_multiple_column_values — accepted for BOTH a
+  // long_text and a plain text column (sandbox-verified 2026-09-03). The notes
+  // columns this writes (ME MN Workflow Notes, Insurance Notes) are being
+  // converted long_text → text (CLAUDE.md §10); change_column_value would
+  // reject this write on one side of that flip or the other. Same shape as
+  // every role's writeLongText, so the manager stamps can't drift from the reps'.
+  await writeColumnsOnBoard(boardId, itemId, { [columnId]: text });
 }
 
 /** Write a date column (YYYY-MM-DD) on an arbitrary board. */
@@ -2327,7 +2328,7 @@ export async function returnProposedToQueue(
     // rollup exists to preserve (lib/shared/longText).
     await assertTextLikeFits(18406060017, "long_text_mm27zjt2", notes, "MN Workflow Notes");
     const values: Record<string, unknown> = {
-      [MASHEKE_NOTES_COL]: { text: notes },
+      [MASHEKE_NOTES_COL]: notes, // bare: valid for long_text AND text (§10)
       [MASHEKE_MN_ATTEMPTS_COL]: { index: MN_ATTEMPTS_INDEX.attempt1 },
       [MASHEKE_NAD_COL]: { date: today },
     };

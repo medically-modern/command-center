@@ -45,4 +45,17 @@ describe("notes writes are flip-safe", () => {
       expect(lone, `${f}: ${lone.join(" | ")}`).toEqual([]);
     }
   });
+
+  it("the Oversight manager actions write notes the same flip-safe way (their own helper, not a role's)", () => {
+    const src = readFileSync("src/lib/oversight/oversightApi.ts", "utf8");
+    const m = src.match(/async function writeLongTextOnBoard\([\s\S]*?\n\}/);
+    expect(m, "writeLongTextOnBoard missing").toBeTruthy();
+    const code = m![0].replace(/\/\/[^\n]*/g, "");
+    expect(code).toMatch(/writeColumnsOnBoard|change_multiple_column_values/);
+    expect(code).not.toMatch(/change_column_value\(/);
+    expect(code).not.toMatch(/JSON\.stringify\(\s*\{\s*text\s*\}\s*\)/);
+    // The object-key form inside a multi-column write is the same hazard.
+    const keyed = src.match(/\[(MASHEKE|INSURANCE)_NOTES_COL\]:\s*\{\s*text:/g) ?? [];
+    expect(keyed, keyed.join(" | ")).toEqual([]);
+  });
 });
