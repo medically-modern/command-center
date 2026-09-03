@@ -670,7 +670,9 @@ function SearchView({
           incident that rule comes from). */}
       {query.trim() && !searchTooShort && results.length === 0 && (
         <div className="rounded-xl bg-card border shadow-card p-10 text-center">
-          {searching || searchedQuery !== query.trim() ? (
+          {/* A failed first search leaves `searchedQuery` empty; without the
+              error check that read as "still searching" forever. */}
+          {searching || (!searchError && searchedQuery !== query.trim()) ? (
             <p className="text-sm text-muted-foreground flex items-center justify-center gap-2">
               <Loader2 className="w-4 h-4 animate-spin text-primary" />
               Searching all boards for &ldquo;{query.trim()}&rdquo;…

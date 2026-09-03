@@ -712,7 +712,14 @@ export function liveSearchRules(query: string): LiveSearchRules | null {
     return digits.length >= LIVE_SEARCH_MIN_DIGITS ? { kind: "phone", digits } : null;
   }
   if (trimmed.length < LIVE_SEARCH_MIN_CHARS) return null;
-  const terms = trimmed.split(/\s+/).filter(Boolean).slice(0, MAX_NAME_TERMS);
+  // Trim punctuation off each end of a word — "Delgado," must reach Monday as
+  // "Delgado" or the contiguous-substring rule misses "Jose Delgado". Inner
+  // characters stay (O'Brien, Smith-Jones), because those ARE the name.
+  const terms = trimmed
+    .split(/\s+/)
+    .map((t) => t.replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, ""))
+    .filter((t) => t.length > 0)
+    .slice(0, MAX_NAME_TERMS);
   return terms.length ? { kind: "name", terms } : null;
 }
 

@@ -43,16 +43,27 @@ export type BucketInput = Pick<
   "isCompleted" | "groupId" | "boardId" | "stageAdvancerText"
 >;
 
-/** Does the Stage Advancer say Stuck, on a board whose vocabulary we know? */
+/**
+ * Every Stage Advancer label that means "stuck", per board — EXACT strings,
+ * read off the live boards' `settings_str` on 2026-09-03 (§9: labels are the
+ * contract). The three boards the app can itself mark Stuck reuse
+ * `STUCK_LABELS`; DTC Intake's MASTER STAGE `color_mkyw6287` has two of its
+ * own, and one of them ("Can't Proceed") does not contain the word Stuck at
+ * all — which is why this is a list and not a pattern. A board absent here
+ * classifies by group alone.
+ */
+export const STUCK_ADVANCER_LABELS: Record<number, readonly string[]> = {
+  18406060017: [STUCK_LABELS[18406060017]],           // Medical Evaluation — "Stuck"
+  18410601299: [STUCK_LABELS[18410601299]],           // Insurance — "Stuck / Don't Proceed"
+  18410804557: [STUCK_LABELS[18410804557]],           // Welcome Call — "Stuck / Don't Proceed"
+  18392794310: ["Stuck Final Review", "Can't Proceed"], // DTC Intake — MASTER STAGE
+};
+
+/** Does the Stage Advancer say Stuck, in this board's own vocabulary? */
 function advancerSaysStuck(p: BucketInput): boolean {
   const text = (p.stageAdvancerText ?? "").trim();
   if (!text) return false;
-  const label = STUCK_LABELS[p.boardId];
-  if (label && text === label) return true;
-  // The boards that have a Stuck label all spell it with "Stuck" first
-  // ("Stuck", "Stuck / Don't Proceed"). A board not in STUCK_LABELS that grows
-  // one is far likelier to follow that shape than to be a real stage.
-  return /^stuck\b/i.test(text);
+  return (STUCK_ADVANCER_LABELS[p.boardId] ?? []).includes(text);
 }
 
 export function searchBucket(p: BucketInput): SearchBucket {

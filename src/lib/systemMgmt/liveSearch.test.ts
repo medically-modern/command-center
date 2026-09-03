@@ -41,7 +41,18 @@ describe("liveSearchRules", () => {
 
   it("searches the name by word, ANDed, so word order doesn't matter to Monday", () => {
     expect(liveSearchRules("jose delgado")).toEqual({ kind: "name", terms: ["jose", "delgado"] });
-    expect(liveSearchRules("  Delgado,   Jose ")).toEqual({ kind: "name", terms: ["Delgado,", "Jose"] });
+    expect(liveSearchRules("  Delgado,   Jose ")).toEqual({ kind: "name", terms: ["Delgado", "Jose"] });
+  });
+
+  it("strips punctuation from the ends of words but not the middle of a name", () => {
+    expect(liveSearchRules("O'Brien, Mary.")).toEqual({ kind: "name", terms: ["O'Brien", "Mary"] });
+    expect(liveSearchRules("smith-jones")).toEqual({ kind: "name", terms: ["smith-jones"] });
+    // A word that is ONLY punctuation contributes no rule.
+    expect(liveSearchRules("jose , delgado")).toEqual({ kind: "name", terms: ["jose", "delgado"] });
+  });
+
+  it("still asks nothing when punctuation is all there is", () => {
+    expect(liveSearchRules(",,")).toBeNull();
   });
 
   it("caps the number of name terms", () => {

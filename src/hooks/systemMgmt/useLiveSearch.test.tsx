@@ -72,6 +72,25 @@ describe("useLiveSearch", () => {
     expect(result.current.searchedQuery).toBe("jose delgado");
   });
 
+  it("drops an older answer that lands DURING the debounce for a newer query", async () => {
+    const first = pending();
+    const second = pending();
+    searchPatientsLive.mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise);
+    const { result, rerender } = renderHook(({ q }) => useLiveSearch(q), { initialProps: { q: "jose" } });
+    await act(async () => { vi.advanceTimersByTime(LIVE_SEARCH_DEBOUNCE_MS); });
+    const firstSignal = searchPatientsLive.mock.calls[0][1] as AbortSignal;
+    // Rep keeps typing; the second request has NOT been sent yet …
+    rerender({ q: "jose delgado" });
+    expect(firstSignal.aborted).toBe(true);
+    // … and the first one resolves inside the debounce window.
+    await act(async () => { first.resolve([row("Jose Delgado"), row("Joseph Odom")]); });
+    expect(result.current.results).toHaveLength(0);
+    expect(result.current.searchedQuery).toBe("");
+    await act(async () => { vi.advanceTimersByTime(LIVE_SEARCH_DEBOUNCE_MS); });
+    await act(async () => { second.resolve([row("Jose Delgado")]); });
+    expect(result.current.results.map((r) => r.name)).toEqual(["Jose Delgado"]);
+  });
+
   it("asks nothing for a too-short query and clears what was on screen", async () => {
     searchPatientsLive.mockResolvedValue([row("Jose Delgado")]);
     const { result, rerender } = renderHook(({ q }) => useLiveSearch(q), { initialProps: { q: "jose" } });

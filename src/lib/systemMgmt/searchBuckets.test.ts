@@ -39,8 +39,18 @@ describe("searchBucket", () => {
       .toBe("stuck");
   });
 
-  it("does not mistake a stage that merely mentions stuck for Stuck", () => {
+  it("reads DTC Intake's own two labels, one of which never says Stuck", () => {
+    const dtc = { boardId: 18392794310, groupId: "group_mkywy9dj" };
+    expect(searchBucket(row({ ...dtc, stageAdvancerText: "Stuck Final Review" }))).toBe("stuck");
+    expect(searchBucket(row({ ...dtc, stageAdvancerText: "Can't Proceed" }))).toBe("stuck");
+    expect(searchBucket(row({ ...dtc, stageAdvancerText: "2. MN In Progress" }))).toBe("active");
+  });
+
+  it("matches labels exactly — a board's vocabulary, not a pattern", () => {
     expect(searchBucket(row({ stageAdvancerText: "Unstuck Review" }))).toBe("active");
+    expect(searchBucket(row({ stageAdvancerText: "Stuck / Don't Proceed" /* not ME's label */ }))).toBe("active");
+    // A board with no known Stuck label classifies by group alone.
+    expect(searchBucket(row({ boardId: 18407459988, groupId: "topics", stageAdvancerText: "Stuck" }))).toBe("active");
   });
 
   it("completed wins over a stale Stuck label or group", () => {

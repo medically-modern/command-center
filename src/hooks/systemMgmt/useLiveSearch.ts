@@ -5,10 +5,11 @@
  * — see `searchPatientsLive` for the measurements. Three rules here, each of
  * which is what makes "always up to date" true rather than aspirational:
  *
- * 1. **Latest wins.** Every keystroke after the debounce aborts the request
- *    in flight and bumps a generation counter; a response for an older query
- *    is dropped even if it arrives last. Without this, typing "jose del" then
- *    "jose delgado" can paint the broader result set over the narrower one.
+ * 1. **Latest wins.** Every keystroke — before the debounce, not after it —
+ *    aborts the request in flight and bumps a generation counter; a response
+ *    for an older query is dropped even if it arrives last. Without this,
+ *    typing "jose del" then "jose delgado" can paint the broader result set
+ *    over the narrower one, including during the 300ms the new query waits.
  * 2. **Nothing is served from a cache.** There is no snapshot to fall back to;
  *    a failed request reports `error` and leaves the previous results on
  *    screen marked as such, rather than substituting older data.
@@ -95,6 +96,12 @@ export function useLiveSearch(query: string): LiveSearchState {
       setError(null);
       return;
     }
+    // Invalidate NOW, not when the debounce fires: a request for the previous
+    // query that resolves inside this 300ms window would otherwise still be
+    // "current" and paint its (broader) answer under the new input. Aborting
+    // here is also what keeps `searching` honest for the query on screen.
+    generation.current++;
+    abortRef.current?.abort();
     const t = setTimeout(() => void run(query, false), LIVE_SEARCH_DEBOUNCE_MS);
     return () => clearTimeout(t);
     // `rules` is derived from `query`; depending on the string keeps the effect

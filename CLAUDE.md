@@ -2620,7 +2620,10 @@ columns" automation on duplicated items). The SPA only flips the advancer; verif
   (so "delgado, jose" finds Jose Delgado), or the phone column by digit substring — measured at
   **200 complexity vs 16,020 per full page**, sub-second, and re-run silently every 45s while a
   query is on screen. Latest-wins (older in-flight requests are aborted and their answers dropped);
-  a failure says so rather than substituting older rows. ⚠️ The Search tab is **exempt from the
+  a failure says so rather than substituting older rows — and the invalidation happens on the
+  keystroke, BEFORE the debounce, or an answer to the previous query landing inside those 300ms
+  would paint under the new one (Greptile, PR #53). Name terms are trimmed of edge punctuation so
+  "Delgado, Jose" reaches Monday as `Delgado` + `Jose`. ⚠️ The Search tab is **exempt from the
   page's LoadingState/ErrorState gates** — those belong to the seven-board snapshot, which survives
   ONLY for the pipeline chart, the totals and the other tabs, and whose banner now says exactly that.
   The fuzzy subsequence match ("jsoe") is gone by necessity; substring and word matching remain, and
@@ -2632,8 +2635,11 @@ columns" automation on duplicated items). The SPA only flips the advancer; verif
   finished Profile Send Off record, the finished ME record, the live Insurance record — and in a
   flat list a rep clicks the first row carrying the name: "Search shows the wrong profiles".
   `searchBucket`: Completed group ⇒ **completed** (checked first, as `profileStatus` does); a
-  `STUCK_GROUP_IDS` group OR the board's `STUCK_LABELS` advancer text ⇒ **stuck** (the label is
-  written before the automation moves the item); everything else ⇒ **active** — escalated and
+  `STUCK_GROUP_IDS` group OR an EXACT Stage Advancer label from `STUCK_ADVANCER_LABELS` ⇒ **stuck**
+  (the label is written before the automation moves the item; the list is read off the live
+  `settings_str` — DTC Intake's MASTER STAGE says "Stuck Final Review" and **"Can't Proceed"**, so
+  a `^Stuck` pattern would have missed one and over-matched elsewhere; Greptile caught the pattern on
+  PR #53); everything else ⇒ **active** — escalated and
   Proposed Stuck included, since a manager still owns them. Defaults to Active; an empty folder
   names the others' counts rather than saying "no patients found". Chart picks and stage filters go
   through the same folders.
