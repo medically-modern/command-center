@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { fetchOutboundFaxStatus } from "@/lib/fax/ringcentralApi";
+import { faxPollDelayMs } from "@/lib/fax/faxPoll";
 
 export type FaxStage = "processing" | "submitted" | "sent" | "failed";
 export interface FaxStatusState {
@@ -9,9 +10,10 @@ export interface FaxStatusState {
   at?: string;
 }
 
-const POLL_MS = 12_000;
-const FAST_POLL_MS = 5_000; // poll faster early to shrink the "processing" gap before RC registers the fax
-const MAX_POLLS = 40; // a few minutes, then stop polling (keeps the last state shown)
+// Backoff schedule + horizon live in lib/fax/faxPoll (pure, tested). The flat
+// 40 × 12s this replaced covered exactly 8 minutes, and a measurement of the
+// live account found five of twelve faxes — three of the four FAILURES —
+// settling after that, leaving the chip on "Processing" for ever.
 
 /** Live RingCentral status of the outbound fax to `recipient` sent at
  *  `sentAtIso`: processing → queued → sent (or failed), updating without a
@@ -58,8 +60,9 @@ export function useFaxStatus(
       } catch {
         // Transient network/RC hiccup — keep the last state and keep polling.
       }
-      if (!cancelled && !terminal && polls < MAX_POLLS) {
-        timer = setTimeout(tick, POLL_MS);
+      const delay = terminal ? null : faxPollDelayMs(polls);
+      if (!cancelled && delay !== null) {
+        timer = setTimeout(tick, delay);
       }
     };
     tick();

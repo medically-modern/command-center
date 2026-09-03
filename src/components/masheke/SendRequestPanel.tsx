@@ -1068,7 +1068,15 @@ function SendRequestComposer({
   // `sentAt` prefers this session's send, then the board's Request Sent At (a
   // send made earlier today, e.g. after a reload).
   const sentAt = sentAtIso || patient.requestSentAt;
-  const faxRecipient = recipients[0] || patient.doctorFax;
+  // ⚠️ The FAX recipient, not merely the first one. `fetchOutboundFaxStatus`
+  // matches on the last 10 digits, so a plain email address here yields fewer
+  // than 10 digits, the lookup returns null, and the chip sits on "Processing"
+  // for ever — indistinguishable from a fax RingCentral hasn't registered yet.
+  // A request can legitimately carry a mix (a fax to the office, a Cc to a
+  // coordinator), so pick the first entry that is actually a fax.
+  const faxRecipient =
+    recipients.find((r) => /@rcfax\.com$/i.test(r) || (r.replace(/\D/g, "").length >= 10)) ||
+    patient.doctorFax;
   const faxActive = method === "Fax" && !!sentAt && isSentToday(sentAt);
   const faxStatus = useFaxStatus(faxRecipient, sentAt, faxActive);
   // A request has demonstrably gone out — this session, or already on the

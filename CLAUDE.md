@@ -418,6 +418,19 @@ rep who faxed earlier is never stranded. And the optimistic queue-hide (§9) bel
 Mark Complete alone: hiding on the send would remove the very screen the rep needs to
 read the status from. `sendRequestFlow.test.ts` scans for all of it, because a
 re-coupling would look exactly like the button working.
+⚠️ **The status resolves — but not quickly, and the failures are the slow ones.**
+Measured live 2026-09-03 over the last 25 outbound faxes (**18 Sent, 7 SendingFailed — a
+28% failure rate**), creation → final status took 95s · 153s · 184s · 211s · 226s · 276s ·
+357s · 1435s · 1625s for the successes and **679s · 862s · 991s** for the failures. The
+poll was a flat 40 × 12s = **exactly 8 minutes** (its `FAST_POLL_MS` was declared and never
+used), so five of those twelve — and three of the four failures — settled after it had
+given up, leaving the chip on "Processing" for ever. `lib/fax/faxPoll.ts` (pure, tested)
+now backs off 5s → 12s → 30s → 60s out to ~33 minutes for 56 requests instead of 40. A rep
+who leaves before it settles is not stuck: `faxActive` keys on the fax being sent TODAY, so
+re-opening the patient re-polls and picks up the settled verdict.
+⚠️ The status polls the **fax** recipient, not `recipients[0]` — a request can carry a
+plain email too, and `fetchOutboundFaxStatus` matches on the last 10 DIGITS, so an email
+address yields a null lookup that is indistinguishable from "not registered yet".
 The status pill is **`components/shared/FaxStatusChip`** — one component on every surface
 that faxes, extracted from ConfirmReceiptPanel for the reason `SmsDeliveryNote` exists
 (§5.5). Send Request also gained Evaluate's **See Referral Email** side panel.
