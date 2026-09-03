@@ -30,6 +30,7 @@ import { NotesPanel } from "@/components/samantha/NotesPanel";
 import { AlertTriangle, CalendarDays, CheckCircle2, Clock, ShieldCheck, ShieldAlert, Repeat, Package, XCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useEffect, useMemo } from "react";
+import { BOARD_ID as SAMANTHA_BOARD_ID, COL as SAMANTHA_COL } from "@/lib/samantha/mondayApi";
 
 interface Props {
   patient: Patient;
@@ -309,6 +310,7 @@ export function InsurancePanel({
 
       {/* Reference Notes */}
       <NotesPanel
+        columnRef={{ boardId: SAMANTHA_BOARD_ID, columnId: SAMANTHA_COL.callReferenceNotes }}
         notes={patient.notes}
         onNotesChange={onNotesChange}
         onSaveToMonday={onSaveNotesToMonday}

@@ -58,7 +58,17 @@ beforeEach(() => {
   // assignment here only mutates THIS module's import.meta.env copy.
   vi.stubEnv("VITE_MONDAY_API_TOKEN", "test-token");
   globalThis.fetch = (async (_url: unknown, init: { body: string }) => {
-    sent.push(JSON.parse(init.body) as SentCall);
+    const call = JSON.parse(init.body) as SentCall;
+    // A send may READ before it writes — the notes guard asks the board for the
+    // column's live type (lib/shared/columnType) before building its tasks.
+    // That is a query, not a mutation: answer it (as long_text, so the guard
+    // behaves as it does today) and keep it out of `sent`, which is the record
+    // of what a task's fn WRITES.
+    if (/^\s*query\b/.test(call.query)) {
+      const cols = ((call.variables?.cols as string[] | undefined) ?? []).map((id) => ({ id, type: "long_text" }));
+      return { ok: true, status: 200, json: async () => ({ data: { boards: [{ columns: cols }] } }), text: async () => "{}" };
+    }
+    sent.push(call);
     return { ok: true, status: 200, json: async () => ({ data: {} }), text: async () => "{}" };
   }) as unknown as typeof fetch;
 });
@@ -79,6 +89,16 @@ function batchEquivalentOf(call: SentCall): { columnId: string; value: unknown }
         ? String(v.value)
         : JSON.parse(q.match(/value:\s*("(?:[^"\\]|\\.)*")/)?.[1] ?? '""');
     return { columnId, value: columnId === "name" ? raw : { label: raw } };
+  }
+  // change_multiple_column_values IS the batch shape: `vals` is a JSON object of
+  // { columnId: value }. The notes writers use it with a BARE string since
+  // 2026-09-03 (accepted for both long_text and text — the notes columns are
+  // mid-conversion, CLAUDE.md §10), so the batch equivalent is that one entry.
+  if (/change_multiple_column_values/.test(q)) {
+    const obj = JSON.parse(String(v.vals ?? v.column_values ?? "{}")) as Record<string, unknown>;
+    const keys = Object.keys(obj);
+    if (keys.length !== 1) throw new Error(`expected exactly one column in a helper's batch write, got ${keys.length}`);
+    return { columnId: keys[0], value: obj[keys[0]] };
   }
   // change_column_value takes JSON — exactly the per-column shape the batch uses.
   // Most helpers pass it as the $value GraphQL variable, but profile's

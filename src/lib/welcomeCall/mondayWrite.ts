@@ -2,7 +2,7 @@ import { writeStatusIndex, writeNumber, writeLocation, writeText, writeLongText,
 import { executeWritesWithVerification, type WriteProgressPhase } from "../shared/verifiedWrite";
 import { planPhoneWrite } from "../shared/phoneCell";
 import { appendIntakeToNotes } from "./callIntake";
-import { assertLongTextFits } from "../shared/longText";
+import { assertTextLikeFits } from "../shared/longText";
 import { expectedPos, POS_INDEX } from "../shared/pos";
 import { resolveNextOrderWrite, servingIncludesCgm, servingIncludesPump } from "./workflow";
 import { coercePumpQty } from "@/lib/shared/servingLines";
@@ -227,8 +227,8 @@ export async function sendPatientToMonday(
     // dropping the NEWEST content — i.e. the block we just appended, which is
     // the one thing here with no other home (CLAUDE.md §10). Fail loudly before
     // the write instead of reporting success and losing the rep's answers.
-    assertLongTextFits(notesToWrite, "Welcome Call Notes");
-    tasks.push({ label: "Notes", columnId: COL.notes, value: { text: notesToWrite }, fn: () => writeLongText(p.id, COL.notes, notesToWrite) });
+    await assertTextLikeFits(BOARD_ID, COL.notes, notesToWrite, "Welcome Call Notes");
+    tasks.push({ label: "Notes", columnId: COL.notes, value: notesToWrite, fn: () => writeLongText(p.id, COL.notes, notesToWrite) });
   }
 
   // Escalation toggle — if flagged, write Escalation Required

@@ -8,7 +8,7 @@ import { MONDAY_API_URL, mondayIdentityHeaders } from "../shared/mondayEndpoint"
 import { etToday } from "../masheke/etDate";
 import { stampReturnedToQueue, stampReturnedToManager, stampApprovedStuck, stampEscalatedToFinal, appendStampedLine } from "../masheke/proposedStuck";
 import { buildAttemptRollup, type AttemptResetScope } from "../masheke/attemptRollup";
-import { assertLongTextFits } from "../shared/longText";
+import { assertTextLikeFits } from "../shared/longText";
 import { MN_ATTEMPTS_INDEX } from "../masheke/mondayMapping";
 import { userInitials } from "../shared/auth";
 const MONDAY_API_VERSION = "2024-10";
@@ -2325,7 +2325,7 @@ export async function returnProposedToQueue(
     // newest content. Folding six attempt columns in is exactly the write most
     // likely to cross it, so refuse rather than quietly lose the history this
     // rollup exists to preserve (lib/shared/longText).
-    assertLongTextFits(notes, "MN Workflow Notes");
+    await assertTextLikeFits(18406060017, "long_text_mm27zjt2", notes, "MN Workflow Notes");
     const values: Record<string, unknown> = {
       [MASHEKE_NOTES_COL]: { text: notes },
       [MASHEKE_MN_ATTEMPTS_COL]: { index: MN_ATTEMPTS_INDEX.attempt1 },
@@ -2342,7 +2342,7 @@ export async function returnProposedToQueue(
       const appended = appendStampedLine(existing, stamped);
       // The stamp is Doctor Appointments' attempt-counter reset marker — losing
       // it to truncation would silently leave the rep locked out.
-      assertLongTextFits(appended, "MN Workflow Notes");
+      await assertTextLikeFits(18406060017, "long_text_mm27zjt2", appended, "MN Workflow Notes");
       await writeLongTextOnBoard(MASHEKE_BOARD_ID, itemId, MASHEKE_NOTES_COL, appended);
     }
     await writeDateOnBoard(MASHEKE_BOARD_ID, itemId, MASHEKE_NAD_COL, today);

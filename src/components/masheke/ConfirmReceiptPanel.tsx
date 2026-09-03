@@ -281,7 +281,7 @@ export function ConfirmReceiptPanel({ patient, onUpdate, managerMode = false }: 
           tasks: [
             // MN Workflow Notes is a DATA column (read-back verified). No
             // stage-advancer here — an escalated follow-up never advances.
-            { label: "MN Workflow Notes", columnId: COL.mnEvalNotes, value: { text: nextNotes }, fn: () => writeLongText(patient.id, COL.mnEvalNotes, nextNotes) },
+            { label: "MN Workflow Notes", columnId: COL.mnEvalNotes, value: nextNotes, fn: () => writeLongText(patient.id, COL.mnEvalNotes, nextNotes) },
             { label: "Next Action Date", columnId: COL.nextActionDate, value: { date: safeNextAction }, fn: () => writeDate(patient.id, COL.nextActionDate, safeNextAction) },
           ],
           onProgress,
@@ -433,7 +433,7 @@ export function ConfirmReceiptPanel({ patient, onUpdate, managerMode = false }: 
         label: "Confirm Receipt → courtesy re-send",
         stageColumnId: [],
         tasks: [
-          { label: "Request Body", columnId: COL.requestBody, value: { text: currentMessage }, fn: () => writeLongText(patient.id, COL.requestBody, currentMessage) },
+          { label: "Request Body", columnId: COL.requestBody, value: currentMessage, fn: () => writeLongText(patient.id, COL.requestBody, currentMessage) },
           { label: "Request Sent At", columnId: COL.requestSentAt, value: { date: sentIso.slice(0, 10), time: sentIso.slice(11, 19) }, fn: () => writeDateTime(patient.id, COL.requestSentAt, sentAt) },
         ],
       });

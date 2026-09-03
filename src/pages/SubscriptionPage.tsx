@@ -29,6 +29,7 @@ import { useSearchParams } from "react-router-dom";
 import { useBackNavigation } from "@/hooks/useBackNavigation";
 import { ReportIssueButton } from "@/components/shared/ReportIssueButton";
 import { StaleDataNotice } from "@/components/shared/StaleDataNotice";
+import { BOARD_ID as SUBSCRIPTION_BOARD_ID, COL as SUBSCRIPTION_COL } from "@/lib/subscription/mondayApi";
 
 const SubscriptionPage = () => {
   const { goBack } = useBackNavigation();
@@ -188,6 +189,7 @@ const SubscriptionPage = () => {
                   <PatientInfoCard patient={selected} onFieldChange={handleFieldChange} />
                   <SubscriptionForm patient={selected} onFieldChange={handleFieldChange} />
                   <NotesPanel
+                    columnRef={{ boardId: SUBSCRIPTION_BOARD_ID, columnId: SUBSCRIPTION_COL.subscriptionNotes }}
                     notes={selected.notes}
                     onNotesChange={(v) => update(selected.id, { notes: v })}
                     onSaveToMonday={(v) => sendNotesToMonday(selected.id, v)}

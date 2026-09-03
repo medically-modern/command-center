@@ -13,7 +13,7 @@ import {
   MN_ATTEMPTS_INDEX,
 } from "./mondayMapping";
 import { buildAttemptRollup, type AttemptSlots } from "./attemptRollup";
-import { assertLongTextFits } from "../shared/longText";
+import { assertTextLikeFits } from "../shared/longText";
 import {
   labelToIndex,
   STANDARD_EVAL,
@@ -170,7 +170,7 @@ export async function sendPatientToMonday(
       tasks.push({
         label: "MN Workflow Notes",
         columnId: COL.mnEvalNotes,
-        value: { text: p.mnEvalNotes },
+        value: p.mnEvalNotes ?? "",
         fn: () => writeLongText(p.id, COL.mnEvalNotes, p.mnEvalNotes!),
       });
     }
@@ -198,7 +198,7 @@ export async function sendPatientToMonday(
       tasks.push({
         label: "MN Workflow Notes",
         columnId: COL.mnEvalNotes,
-        value: { text: p.mnEvalNotes },
+        value: p.mnEvalNotes ?? "",
         fn: () => writeLongText(p.id, COL.mnEvalNotes, p.mnEvalNotes!),
       });
     }
@@ -241,7 +241,7 @@ export async function sendPatientToMonday(
       tasks.push({
         label: "MN Workflow Notes",
         columnId: COL.mnEvalNotes,
-        value: { text: p.mnEvalNotes },
+        value: p.mnEvalNotes ?? "",
         fn: () => writeLongText(p.id, COL.mnEvalNotes, p.mnEvalNotes!),
       });
     }
@@ -285,7 +285,7 @@ export async function sendPatientToMonday(
       tasks.push({
         label: "MN Workflow Notes",
         columnId: COL.mnEvalNotes,
-        value: { text: p.mnEvalNotes },
+        value: p.mnEvalNotes ?? "",
         fn: () => writeLongText(p.id, COL.mnEvalNotes, p.mnEvalNotes!),
       });
     }
@@ -352,7 +352,7 @@ export async function recordAndAdvanceVerified(
     {
       label: "Request Message",
       columnId: COL.requestBody,
-      value: { text: opts.body },
+      value: opts.body,
       fn: () => writeLongText(p.id, COL.requestBody, opts.body),
     },
     {
@@ -512,7 +512,7 @@ export async function scheduleAppointmentFromChase(opts: {
   // Monday truncates a long_text body over 2000 chars silently, dropping the
   // NEWEST content — for this stage that is the attempt line that IS the
   // counter. Fail loudly instead (lib/shared/longText).
-  assertLongTextFits(opts.notes, "MN Workflow Notes");
+  await assertTextLikeFits(BOARD_ID, COL.mnEvalNotes, opts.notes, "MN Workflow Notes");
   // The visit restarts the chase, so the counter goes back to Attempt 1 and the
   // spent columns fold into the notes — otherwise a patient whose button was
   // pressed at attempt 4+ comes back off the snooze to a locked panel.
@@ -530,7 +530,7 @@ export async function scheduleAppointmentFromChase(opts: {
       {
         label: "MN Workflow Notes",
         columnId: COL.mnEvalNotes,
-        value: { text: opts.notes },
+        value: opts.notes,
         fn: () => writeLongText(opts.itemId, COL.mnEvalNotes, opts.notes),
       },
       ...fresh,
@@ -580,7 +580,7 @@ export async function enterDoctorAppointments(opts: {
   // Monday truncates a long_text body over 2000 chars silently, dropping the
   // NEWEST content — for this stage that is the attempt line that IS the
   // counter. Fail loudly instead (lib/shared/longText).
-  assertLongTextFits(opts.notes, "MN Workflow Notes");
+  await assertTextLikeFits(BOARD_ID, COL.mnEvalNotes, opts.notes, "MN Workflow Notes");
   // NOT weekend-clamped: we want them due NOW, and clamping a Saturday forward
   // would re-hide the patient for the rest of the weekend.
   const today = etToday();
@@ -591,7 +591,7 @@ export async function enterDoctorAppointments(opts: {
       {
         label: "MN Workflow Notes",
         columnId: COL.mnEvalNotes,
-        value: { text: opts.notes },
+        value: opts.notes,
         fn: () => writeLongText(opts.itemId, COL.mnEvalNotes, opts.notes),
       },
       {
@@ -652,12 +652,12 @@ export async function logApptAttemptVerified(opts: {
   // Monday truncates a long_text body over 2000 chars silently, dropping the
   // NEWEST content — for this stage that is the attempt line that IS the
   // counter. Fail loudly instead (lib/shared/longText).
-  assertLongTextFits(opts.notes, "MN Workflow Notes");
+  await assertTextLikeFits(BOARD_ID, COL.mnEvalNotes, opts.notes, "MN Workflow Notes");
   const tasks: WriteTask[] = [
     {
       label: "MN Workflow Notes",
       columnId: COL.mnEvalNotes,
-      value: { text: opts.notes },
+      value: opts.notes,
       fn: () => writeLongText(opts.itemId, COL.mnEvalNotes, opts.notes),
     },
   ];
@@ -733,7 +733,7 @@ export async function returnToChaseWithAppointment(opts: {
   // Monday truncates a long_text body over 2000 chars silently, dropping the
   // NEWEST content — for this stage that is the attempt line that IS the
   // counter. Fail loudly instead (lib/shared/longText).
-  assertLongTextFits(opts.notes, "MN Workflow Notes");
+  await assertTextLikeFits(BOARD_ID, COL.mnEvalNotes, opts.notes, "MN Workflow Notes");
   // Same reset as scheduleAppointmentFromChase: this patient is being handed
   // BACK to the chase queue, and the pre-visit round is over.
   const fresh = freshChaseRoundTasks(opts.itemId, opts.clearChaseAttempts === true);
@@ -748,7 +748,7 @@ export async function returnToChaseWithAppointment(opts: {
     {
       label: "MN Workflow Notes",
       columnId: COL.mnEvalNotes,
-      value: { text: opts.notes },
+      value: opts.notes,
       fn: () => writeLongText(opts.itemId, COL.mnEvalNotes, opts.notes),
     },
     ...fresh,

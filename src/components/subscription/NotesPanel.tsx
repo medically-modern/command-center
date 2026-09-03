@@ -5,17 +5,20 @@ import { Textarea } from "@/components/ui/textarea";
 import { MessageSquare, Plus, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { appendStampedNote } from "@/lib/shared/noteStamp";
-import { refuseLongTextOverflow } from "@/components/shared/longTextGuard";
+import { refuseLongTextOverflow, type ColumnRef } from "@/components/shared/longTextGuard";
 
 interface Props {
   notes: string;
   onNotesChange: (notes: string) => void;
   onSaveToMonday?: (notes: string) => Promise<void>;
+  /** Board + column this panel writes, so the 2,000-char refusal can ask the
+   *  column's REAL type — a column already converted to plain text has no cap. */
+  columnRef?: ColumnRef;
   /** Stage label stamped into each appended note (see lib/shared/noteStamp). */
   notePrefix?: string;
 }
 
-export function NotesPanel({ notes, onNotesChange, onSaveToMonday, notePrefix }: Props) {
+export function NotesPanel({ notes, onNotesChange, onSaveToMonday, columnRef, notePrefix }: Props) {
   const [newNote, setNewNote] = useState("");
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -27,7 +30,7 @@ export function NotesPanel({ notes, onNotesChange, onSaveToMonday, notePrefix }:
     // Monday would accept the write, return 200 and keep only the first
     // 2000 chars, so an unguarded Add showed "Note saved to Monday" while
     // throwing the note away (components/shared/longTextGuard).
-    if (refuseLongTextOverflow(appended, "Notes")) return;
+    if (await refuseLongTextOverflow(appended, "Notes", columnRef)) return;
     onNotesChange(appended);
     setNewNote("");
 

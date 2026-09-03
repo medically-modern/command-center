@@ -4,7 +4,7 @@ import { MONDAY_API_URL, mondayIdentityHeaders } from "../shared/mondayEndpoint"
 import { planPhoneWrite } from "../shared/phoneCell";
 import { planEmailWrite } from "../shared/emailCell";
 const MONDAY_API_VERSION = "2024-10";
-const BOARD_ID = "18406060017";
+export const BOARD_ID = "18406060017";
 
 export const GROUPS = {
   medicalNecessity: "group_mm1xf2jb",
@@ -475,8 +475,19 @@ export async function writeText(itemId: string, columnId: string, text: string):
 }
 
 export async function writeLongText(itemId: string, columnId: string, text: string): Promise<void> {
-  const value = JSON.stringify({ text });
-  await gql(`mutation { change_column_value(item_id: ${itemId}, board_id: ${BOARD_ID}, column_id: "${columnId}", value: ${JSON.stringify(value)}) { id } }`);
+  // A BARE string through change_multiple_column_values — accepted for BOTH a
+  // long_text and a plain text column (sandbox-verified 2026-09-03), so this
+  // keeps working across the long_text → text conversion of the notes columns
+  // (CLAUDE.md §10) whichever side of it a given column is on. change_column_value
+  // is stricter in both directions: it rejects a bare string for long_text AND a
+  // {text} object for text, so it would break on flip day. Same mutation the
+  // gateway /send path uses, so the two paths cannot drift.
+  const query = `
+    mutation ($boardId: ID!, $itemId: ID!, $vals: JSON!) {
+      change_multiple_column_values(board_id: $boardId, item_id: $itemId, column_values: $vals) { id }
+    }
+  `;
+  await gql(query, { boardId: BOARD_ID, itemId, vals: JSON.stringify({ [columnId]: text }) });
 }
 
 export async function writeDate(itemId: string, columnId: string, dateStr: string): Promise<void> {

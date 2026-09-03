@@ -60,7 +60,7 @@ import { Input } from "@/components/ui/input";
 import { useMondayFiles } from "@/hooks/masheke/useMondayFiles";
 import { buildRequestTemplate, titleCase } from "@/lib/masheke/requestTemplate";
 import { openFileViewer } from "@/components/shared/FileViewerModal";
-import {
+import { BOARD_ID,
   COL,
   buildDoctorWriteTasks,
   hasToken,
@@ -239,7 +239,7 @@ export function ChaseClinicalsPanel({ patient, onUpdate, managerMode = false, ro
           tasks: [
             // MN Workflow Notes is a DATA column (read-back verified). No
             // stage-advancer here — an escalated follow-up never advances.
-            { label: "MN Workflow Notes", columnId: COL.mnEvalNotes, value: { text: nextNotes }, fn: () => writeLongText(patient.id, COL.mnEvalNotes, nextNotes) },
+            { label: "MN Workflow Notes", columnId: COL.mnEvalNotes, value: nextNotes, fn: () => writeLongText(patient.id, COL.mnEvalNotes, nextNotes) },
             { label: "Next Action Date", columnId: COL.nextActionDate, value: { date: safeNextAction }, fn: () => writeDate(patient.id, COL.nextActionDate, safeNextAction) },
           ],
           onProgress,
@@ -393,7 +393,7 @@ export function ChaseClinicalsPanel({ patient, onUpdate, managerMode = false, ro
         label: "Chase → courtesy re-send",
         stageColumnId: [],
         tasks: [
-          { label: "Request Body", columnId: COL.requestBody, value: { text: currentMessage }, fn: () => writeLongText(patient.id, COL.requestBody, currentMessage) },
+          { label: "Request Body", columnId: COL.requestBody, value: currentMessage, fn: () => writeLongText(patient.id, COL.requestBody, currentMessage) },
           { label: "Request Sent At", columnId: COL.requestSentAt, value: { date: sentIso.slice(0, 10), time: sentIso.slice(11, 19) }, fn: () => writeDateTime(patient.id, COL.requestSentAt, sentAt) },
         ],
       });
@@ -528,6 +528,7 @@ export function ChaseClinicalsPanel({ patient, onUpdate, managerMode = false, ro
             renders it, and passing it here would print it twice. */}
         <div className="mt-6">
           <NotesPanel
+            columnRef={{ boardId: BOARD_ID, columnId: COL.mnEvalNotes }}
             variant="mm-inline"
             notes={patient.mnEvalNotes ?? ""}
             onNotesChange={(v) => onUpdate({ mnEvalNotes: v })}

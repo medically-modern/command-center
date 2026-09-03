@@ -65,7 +65,7 @@ import {
   type Received4,
 } from "@/lib/masheke/evalState";
 import { useMondayFiles } from "@/hooks/masheke/useMondayFiles";
-import {
+import { BOARD_ID,
   COL,
   clearStatusColumn,
   clearDateColumn,
@@ -89,7 +89,7 @@ import type { WriteTask } from "@/lib/shared/verifiedWrite";
 import { GEN_SCRIPT_STATUS, ESCALATION_INDEX } from "@/lib/masheke/mondayMapping";
 import { etToday } from "@/lib/masheke/etDate";
 import { buildAttemptRollup } from "@/lib/masheke/attemptRollup";
-import { assertLongTextFits } from "@/lib/shared/longText";
+import { assertTextLikeFits } from "@/lib/shared/longText";
 import { EscalateButton } from "@/components/masheke/EscalateButton";
 import { openFileViewer } from "@/components/shared/FileViewerModal";
 import { ConfirmDeleteDialog } from "@/components/shared/ConfirmDeleteDialog";
@@ -484,7 +484,7 @@ export function EvaluatePanel({ patient, resetVersion = 0, onUpdate, onOpenForm,
     tasks.push({
       label: "MN Workflow Notes",
       columnId: COL.mnEvalNotes,
-      value: { text: mergedNotes },
+      value: mergedNotes,
       fn: () => writeLongText(patient.id, COL.mnEvalNotes, mergedNotes),
     });
     if (hasLeftover) {
@@ -544,7 +544,7 @@ export function EvaluatePanel({ patient, resetVersion = 0, onUpdate, onOpenForm,
       // written. Inside the try so the failure reaches the rep as the "Send
       // failed — stage not advanced" toast (carrying longText's character
       // count, which is actionable) and the button is released.
-      assertLongTextFits(mergedNotes, "MN Workflow Notes");
+      await assertTextLikeFits(BOARD_ID, COL.mnEvalNotes, mergedNotes, "MN Workflow Notes");
       // Verified write → gateway /send when available. createLabelsIfMissing so
       // Diagnosis + the dynamic consolidated ask can add labels server-side.
       // Every data column is read-back confirmed before the trigger column flips
@@ -1011,6 +1011,7 @@ export function EvaluatePanel({ patient, resetVersion = 0, onUpdate, onOpenForm,
 
       {/* Notes */}
       <NotesPanel
+        columnRef={{ boardId: BOARD_ID, columnId: COL.mnEvalNotes }}
         notes={patient.mnEvalNotes ?? ""}
         onNotesChange={(v) => onUpdate({ mnEvalNotes: v })}
         onSaveToMonday={(v) => writeLongText(patient.id, COL.mnEvalNotes, v)}

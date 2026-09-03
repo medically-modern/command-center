@@ -114,8 +114,9 @@ export interface WriteTask {
   columnId: string;
   fn: () => Promise<unknown>;
   /** Raw Monday value for this column in change_multiple_column_values shape
-   *  ({ index } for status, { text } for long_text, { date } for date, a plain
-   *  string for text). When EVERY task in a send carries one AND the gateway is
+   *  ({ index } for status, { date } for date, and a BARE string for text AND
+   *  long_text — change_multiple_column_values accepts it for both, and the
+   *  notes columns are mid-conversion long_text → text, CLAUDE.md §10). When EVERY task in a send carries one AND the gateway is
    *  configured, the whole transaction is handed to the server-side /send.
    *  Optional, so flows adopt it incrementally; without it the client-side path
    *  runs unchanged. */

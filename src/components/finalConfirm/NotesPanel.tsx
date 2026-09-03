@@ -6,12 +6,15 @@ import { MessageSquare, Plus, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { PriorStageNotes } from "@/components/shared/PriorStageNotes";
 import { appendStampedNote } from "@/lib/shared/noteStamp";
-import { refuseLongTextOverflow } from "@/components/shared/longTextGuard";
+import { refuseLongTextOverflow, type ColumnRef } from "@/components/shared/longTextGuard";
 
 interface Props {
   notes: string;
   onNotesChange: (notes: string) => void;
   onSaveToMonday?: (notes: string) => Promise<void>;
+  /** Board + column this panel writes, so the 2,000-char refusal can ask the
+   *  column's REAL type — a column already converted to plain text has no cap. */
+  columnRef?: ColumnRef;
   /** Read-only notes carried from earlier stages, shown above the current notes
    *  in pipeline order (Profile Send-Off → Medical Necessity → Insurance). */
   profileSendOffNotes?: string;
@@ -21,7 +24,7 @@ interface Props {
   notePrefix?: string;
 }
 
-export function NotesPanel({ notes, onNotesChange, onSaveToMonday, profileSendOffNotes, mnWorkflowNotes, insuranceNotes, notePrefix }: Props) {
+export function NotesPanel({ notes, onNotesChange, onSaveToMonday, columnRef, profileSendOffNotes, mnWorkflowNotes, insuranceNotes, notePrefix }: Props) {
   const priorStages = [
     { label: "Profile Send-Off Notes", text: profileSendOffNotes },
     { label: "MN Workflow Notes", text: mnWorkflowNotes },
@@ -38,7 +41,7 @@ export function NotesPanel({ notes, onNotesChange, onSaveToMonday, profileSendOf
     // Monday would accept the write, return 200 and keep only the first
     // 2000 chars, so an unguarded Add showed "Note saved to Monday" while
     // throwing the note away (components/shared/longTextGuard).
-    if (refuseLongTextOverflow(appended, "Notes")) return;
+    if (await refuseLongTextOverflow(appended, "Notes", columnRef)) return;
     onNotesChange(appended);
     setNewNote("");
 

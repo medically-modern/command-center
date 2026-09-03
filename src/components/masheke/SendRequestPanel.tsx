@@ -28,7 +28,7 @@ import { etNow } from "@/lib/masheke/etDate";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useMondayFiles } from "@/hooks/masheke/useMondayFiles";
-import {
+import { BOARD_ID,
   COL,
   buildDoctorWriteTasks,
   clearStatusColumn,
@@ -499,6 +499,7 @@ export function SendRequestPanel({ patient, resetVersion = 0, onUpdate }: Props)
 
   const notesPanel = (variant: "mm" | "mm-inline") => (
     <NotesPanel
+      columnRef={{ boardId: BOARD_ID, columnId: COL.mnEvalNotes }}
       variant={variant}
       notes={patient.mnEvalNotes ?? ""}
       onNotesChange={(v) => onUpdate({ mnEvalNotes: v })}

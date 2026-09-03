@@ -5,12 +5,15 @@ import { MessageSquare, Plus, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { PriorStageNotes } from "@/components/shared/PriorStageNotes";
 import { appendStampedNote } from "@/lib/shared/noteStamp";
-import { refuseLongTextOverflow } from "@/components/shared/longTextGuard";
+import { refuseLongTextOverflow, type ColumnRef } from "@/components/shared/longTextGuard";
 
 interface Props {
   notes: string;
   onNotesChange: (notes: string) => void;
   onSaveToMonday?: (notes: string) => Promise<void>;
+  /** Board + column this panel writes, so the 2,000-char refusal can ask the
+   *  column's REAL type — a column already converted to plain text has no cap. */
+  columnRef?: ColumnRef;
   placeholder?: string;
   description?: string;
   /** Stage label stamped into each appended note ("Benefits", "Submit Auth",
@@ -26,7 +29,7 @@ interface Props {
   fillHeight?: boolean;
 }
 
-export function NotesPanel({ notes, onNotesChange, onSaveToMonday, placeholder, description, notePrefix, profileSendOffNotes, mnWorkflowNotes, fillHeight }: Props) {
+export function NotesPanel({ notes, onNotesChange, onSaveToMonday, columnRef, placeholder, description, notePrefix, profileSendOffNotes, mnWorkflowNotes, fillHeight }: Props) {
   // Earlier pipeline stages, oldest first, rendered read-only above the
   // current (editable) insurance Reference Notes.
   const priorStages = [
@@ -44,7 +47,7 @@ export function NotesPanel({ notes, onNotesChange, onSaveToMonday, placeholder, 
     // Monday would accept the write, return 200 and keep only the first
     // 2000 chars, so an unguarded Add showed "Note saved to Monday" while
     // throwing the note away (components/shared/longTextGuard).
-    if (refuseLongTextOverflow(appended, "Reference Notes")) return;
+    if (await refuseLongTextOverflow(appended, "Reference Notes", columnRef)) return;
     onNotesChange(appended);
     setNewNote("");
 

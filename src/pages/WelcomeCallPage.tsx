@@ -34,7 +34,7 @@ import {
 import { RotateCcw, ClipboardCheck, ArrowLeft, Save, Clock, OctagonX } from "lucide-react";
 import { toast } from "sonner";
 import { sendPatientToMonday, sendWelcomeCallTextToMonday, sendNotesToMonday, sendPhoneToMonday, sendSecondaryInsuranceToMonday } from "@/lib/welcomeCall/mondayWrite";
-import { writeStatusIndex, writeLongText, COL } from "@/lib/welcomeCall/mondayApi";
+import { BOARD_ID, writeStatusIndex, writeLongText, COL } from "@/lib/welcomeCall/mondayApi";
 import { EscalationFormModal } from "@/components/shared/EscalationFormModal";
 import { PageLoadingOverlay } from "@/components/shared/PageLoadingOverlay";
 import { SaveProgressOverlay } from "@/components/shared/SaveProgressOverlay";
@@ -325,6 +325,7 @@ const WelcomeCallPage = () => {
                   <WelcomeCallForm patient={selected} onFieldChange={handleFieldChange} onIntakeChange={handleIntakeChange} onSendWelcomeCallText={handleSendWelcomeCallText} />
                   <NextOrderDatesCard patient={selected} onFieldChange={handleFieldChange} />
                   <NotesPanel
+                    columnRef={{ boardId: BOARD_ID, columnId: COL.notes }}
                     notes={selected.notes}
                     profileSendOffNotes={selected.profileSendOffNotes}
                     mnWorkflowNotes={selected.mnWorkflowNotes}

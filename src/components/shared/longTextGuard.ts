@@ -1,5 +1,12 @@
 import { toast } from "sonner";
 import { assertLongTextFits } from "@/lib/shared/longText";
+import { isCappedColumn } from "@/lib/shared/columnType";
+
+/** The board + column a notes body is headed for, so the guard can ask its real type. */
+export interface ColumnRef {
+  boardId: number | string;
+  columnId: string;
+}
 
 /**
  * Refuse a notes body Monday would silently truncate — and TELL the rep.
@@ -14,9 +21,16 @@ import { assertLongTextFits } from "@/lib/shared/longText";
  * Call this BEFORE touching local state or clearing the textarea, so a refused
  * note stays in the box to be shortened rather than retyped.
  *
+ * Pass `ref` when the column is known: a column that is already plain `text`
+ * has no 2,000 cap and must not be refused.
+ *
  * @returns true when the write was refused (the toast has already been shown).
  */
-export function refuseLongTextOverflow(text: string, label: string): boolean {
+export async function refuseLongTextOverflow(text: string, label: string, ref?: ColumnRef): Promise<boolean> {
+  // Only a column the board confirms as plain `text` is exempt. No ref, a
+  // long_text column, an unknown id or a failed lookup all keep the refusal
+  // (lib/shared/columnType) — losing a note silently is the worse failure.
+  if (ref && !(await isCappedColumn(ref.boardId, ref.columnId))) return false;
   try {
     assertLongTextFits(text, label);
     return false;

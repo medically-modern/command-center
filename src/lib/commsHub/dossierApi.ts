@@ -19,7 +19,7 @@ import { markStuck, nameMatchAccepted, personKey, type DossierItem, type Patient
 import { pipelineIndex } from "./pipelineOrder";
 import { phoneMatchVariants } from "./directory";
 import { appendStampedNote } from "../shared/noteStamp";
-import { assertLongTextFits } from "../shared/longText";
+import { assertTextLikeFits } from "../shared/longText";
 import { userInitials } from "../shared/auth";
 import { faxDigits, type DoctorDbRow, type FaxMatchRow } from "./faxDirectory";
 import { DOCTOR_DB_BOARD, DOCTOR_DB_COLS } from "../shared/doctorDb";
@@ -661,15 +661,23 @@ async function readNotesNow(boardId: number, itemId: string, columnId: string): 
  * file, which is why the type is now declared on `BoardDef` and carried on the
  * record (`DossierItem.notesColType`) rather than assumed here.
  *
+ * ⚠️ Since 2026-09-03 the write NO LONGER BRANCHES on that declaration: every
+ * notes column is written as a bare string through
+ * `change_multiple_column_values`, which Monday accepts for both types, and the
+ * 2,000-character cap is asked of the live board (`assertTextLikeFits`) —
+ * because the notes columns are mid-conversion long_text → text (CLAUDE.md
+ * §10) and a static declaration would be wrong for weeks at a time. The
+ * declaration stays as documentation of what the registry believes.
+ *
  * Returns the new full body so the caller can show it without a re-read.
  */
 export async function appendNoteToRecord(opts: {
   boardId: number;
   itemId: string;
   columnId: string;
-  /** Which kind of column that is — decides the value shape AND whether the
-   *  2000-character long_text guard applies. Comes from `DossierItem
-   *  .notesColType`, i.e. from the board registry, never from a guess here. */
+  /** The registry's DECLARED type for that column (`DossierItem.notesColType`).
+   *  Informational since 2026-09-03: the write no longer branches on it — see
+   *  the body. Kept on the call so the panel keeps passing what it knows. */
   columnType: "text" | "long_text" | null;
   text: string;
   /** Stage label for the stamp, e.g. "Chase Clinicals". */
@@ -680,26 +688,24 @@ export async function appendNoteToRecord(opts: {
   const body = (opts.text || "").trim();
   if (!body) throw new Error("Nothing to add");
   if (!opts.columnId) throw new Error("This board has no notes column to write to.");
-  // A column whose type the registry does not declare must not be guessed at:
-  // one of the two shapes would be rejected outright and the other could write
-  // a `{"text": …}` object into a text column's face. Refusing names the fix.
-  if (opts.columnType !== "text" && opts.columnType !== "long_text") {
-    throw new Error(
-      "This board's notes column has no declared type, so the note was not written. " +
-        "Add `notesColType` for it in systemMgmt/mondayApi BOARDS.",
-    );
-  }
-
   const existing = await readNotesNow(opts.boardId, opts.itemId, opts.columnId);
   const next = appendStampedNote(existing, body, opts.stage, { initials: userInitials() });
-  if (opts.columnType === "long_text") assertLongTextFits(next, `${opts.stage || "Stage"} notes`);
+  // The 2,000 cap is asked of the BOARD, not read off `columnType`: the notes
+  // columns are being converted long_text → text in the Monday UI, possibly
+  // keeping their ids, so a declared type (or an id prefix) can be stale for
+  // weeks while the live column is already uncapped — or the other way round.
+  await assertTextLikeFits(opts.boardId, opts.columnId, next, `${opts.stage || "Stage"} notes`);
 
-  const value = JSON.stringify(opts.columnType === "long_text" ? { text: next } : next);
+  // A BARE string through change_multiple_column_values is accepted for BOTH
+  // column types (sandbox-verified 2026-09-03), which is what makes this write
+  // safe on either side of that conversion. change_column_value is not: it
+  // rejects a bare string for long_text AND a {text} object for text, so the
+  // old per-type branch here would have failed on flip day in one direction.
   await gql(
-    `mutation ($item: ID!, $board: ID!, $col: String!, $val: JSON!) {
-       change_column_value(item_id: $item, board_id: $board, column_id: $col, value: $val) { id }
+    `mutation ($item: ID!, $board: ID!, $vals: JSON!) {
+       change_multiple_column_values(item_id: $item, board_id: $board, column_values: $vals) { id }
      }`,
-    { item: opts.itemId, board: String(opts.boardId), col: opts.columnId, val: value },
+    { item: opts.itemId, board: String(opts.boardId), vals: JSON.stringify({ [opts.columnId]: next }) },
   );
 
   // Keep the memoised trail in step, or re-selecting the patient shows the

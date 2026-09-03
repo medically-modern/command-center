@@ -40,7 +40,7 @@ import { ClinicalsDownloadButton } from "@/components/samantha/ClinicalsDownload
 import { StageActionBar } from "@/components/shared/StageActionBar";
 import { toast } from "sonner";
 import { sendPatientToMonday } from "@/lib/samantha/mondayWrite";
-import { writeLongText, COL } from "@/lib/samantha/mondayApi";
+import { BOARD_ID, writeLongText, COL } from "@/lib/samantha/mondayApi";
 import { PageLoadingOverlay } from "@/components/shared/PageLoadingOverlay";
 import { SaveProgressOverlay } from "@/components/shared/SaveProgressOverlay";
 import { GatewayPendingError, SAVE_CONFIRM_MS, type WriteProgressPhase } from "@/lib/shared/verifiedWrite";
@@ -331,6 +331,7 @@ const ChaseBenefitsPage = () => {
                     {/* Notes rail (sticky, full viewport height) */}
                     <aside className="notes-rail">
                       <NotesPanel
+                        columnRef={{ boardId: BOARD_ID, columnId: COL.callReferenceNotes }}
                         notes={selected.notes}
                         profileSendOffNotes={selected.profileSendOffNotes}
                         mnWorkflowNotes={selected.mnWorkflowNotes}

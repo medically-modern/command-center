@@ -70,6 +70,7 @@ import {
 } from "lucide-react";
 import { ClinicalsDownloadButton } from "./ClinicalsDownloadButton";
 import { FinalClinicalsUpload } from "./FinalClinicalsUpload";
+import { BOARD_ID as SAMANTHA_BOARD_ID, COL as SAMANTHA_COL } from "@/lib/samantha/mondayApi";
 
 interface Props {
   patient: Patient;
@@ -187,6 +188,7 @@ export function AuthOutstandingPanel({ patient, onCodeChange, onNotesChange, onS
 
       {/* Notes — same Call Reference Notes column as Benefits + Submit Auth. */}
       <NotesPanel
+        columnRef={{ boardId: SAMANTHA_BOARD_ID, columnId: SAMANTHA_COL.callReferenceNotes }}
         notes={patient.notes}
         profileSendOffNotes={patient.profileSendOffNotes}
         mnWorkflowNotes={patient.mnWorkflowNotes}

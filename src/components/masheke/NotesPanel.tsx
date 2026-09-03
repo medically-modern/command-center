@@ -5,12 +5,15 @@ import { MessageSquare, Plus, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { PriorStageNotes } from "@/components/shared/PriorStageNotes";
 import { appendStampedNote } from "@/lib/shared/noteStamp";
-import { refuseLongTextOverflow } from "@/components/shared/longTextGuard";
+import { refuseLongTextOverflow, type ColumnRef } from "@/components/shared/longTextGuard";
 
 interface Props {
   notes: string;
   onNotesChange: (notes: string) => void;
   onSaveToMonday?: (notes: string) => Promise<void>;
+  /** Board + column this panel writes, so the 2,000-char refusal can ask the
+   *  column's REAL type — a column already converted to plain text has no cap. */
+  columnRef?: ColumnRef;
   /** Optional prefix inserted after timestamp, e.g. "Confirm Receipt Attempt 1" */
   notePrefix?: string;
   /** Profile intake notes (read-only) — renders a view button next to the header */
@@ -57,7 +60,7 @@ export function renderNoteLines(notes: string): React.ReactNode {
   ));
 }
 
-export function NotesPanel({ notes, onNotesChange, onSaveToMonday, notePrefix, profileSendOffNotes, onNoteAdded, onPendingTextChange, variant = "default" }: Props) {
+export function NotesPanel({ notes, onNotesChange, onSaveToMonday, columnRef, notePrefix, profileSendOffNotes, onNoteAdded, onPendingTextChange, variant = "default" }: Props) {
   const [newNote, setNewNote] = useState("");
   const setNewNoteAndReport = (v: string) => {
     setNewNote(v);
@@ -75,7 +78,7 @@ export function NotesPanel({ notes, onNotesChange, onSaveToMonday, notePrefix, p
     // Monday would accept the write, return 200 and keep only the first
     // 2000 chars, so an unguarded Add showed "Note saved to Monday" while
     // throwing the note away (components/shared/longTextGuard).
-    if (refuseLongTextOverflow(appended, "MN Workflow Notes")) return;
+    if (await refuseLongTextOverflow(appended, "MN Workflow Notes", columnRef)) return;
     onNotesChange(appended);
     setNewNoteAndReport("");
 
@@ -126,7 +129,7 @@ export function NotesPanel({ notes, onNotesChange, onSaveToMonday, notePrefix, p
             onClick={async () => {
               if (editing && onSaveToMonday) {
                 // Over the cap → refuse and STAY in edit mode so the body can be trimmed.
-                if (refuseLongTextOverflow(notes, "MN Workflow Notes")) return;
+                if (await refuseLongTextOverflow(notes, "MN Workflow Notes", columnRef)) return;
                 setSaving(true);
                 try {
                   await onSaveToMonday(notes);
@@ -206,7 +209,7 @@ export function NotesPanel({ notes, onNotesChange, onSaveToMonday, notePrefix, p
           onClick={async () => {
             if (editing && onSaveToMonday) {
               // Over the cap → refuse and STAY in edit mode so the body can be trimmed.
-              if (refuseLongTextOverflow(notes, "MN Workflow Notes")) return;
+              if (await refuseLongTextOverflow(notes, "MN Workflow Notes", columnRef)) return;
               setSaving(true);
               try {
                 await onSaveToMonday(notes);

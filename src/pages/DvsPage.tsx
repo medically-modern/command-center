@@ -41,7 +41,7 @@ import { managerChartFromParams, managerBucketFromParams } from "@/lib/shared/ma
 import { railFilterFor } from "@/lib/samantha/managerRail";
 import { resolveHcpcs, isAutoFilledMedicaidSupply, PRODUCT_LABELS, type ProductId } from "@/lib/samantha/hcpcRules";
 import { allProductsDvsRouted, isStraightMedicaidPrimary, nyMedicaidCin, pumpClaimStatus } from "@/lib/samantha/dvsRouting";
-import {
+import { BOARD_ID,
   writeStatusIndex, writeLongText, writeText, writePhone, writeEmail,
   writeDropdownLabels, writeLocation, writeSimpleValue, COL,
 } from "@/lib/samantha/mondayApi";
@@ -634,6 +634,7 @@ const DvsPage = () => {
             {selected && (
               <div className="xl:sticky xl:top-4">
                 <NotesPanel
+                  columnRef={{ boardId: BOARD_ID, columnId: COL.callReferenceNotes }}
                   notes={noteDrafts[selected.id] ?? selected.notes}
                   profileSendOffNotes={selected.profileSendOffNotes}
                   mnWorkflowNotes={selected.mnWorkflowNotes}

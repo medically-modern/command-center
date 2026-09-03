@@ -420,6 +420,7 @@ const FinalConfirmPage = () => {
                   <PatientInfoCard patient={selected} onFieldChange={handleFieldChange} findings={findings} />
                   <SplitOrderButton patient={selected} onSplit={handleSplit} />
                   <NotesPanel
+                    columnRef={{ boardId: BOARD_ID, columnId: COL.notes }}
                     notes={selected.notes}
                     profileSendOffNotes={selected.profileSendOffNotes}
                     mnWorkflowNotes={selected.mnWorkflowNotes}

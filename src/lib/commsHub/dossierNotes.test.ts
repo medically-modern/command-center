@@ -33,6 +33,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { BOARDS } from "../systemMgmt/mondayApi";
 import { appendNoteToRecord } from "./dossierApi";
 import { MONDAY_LONG_TEXT_MAX } from "../shared/longText";
+import { invalidateColumnTypes } from "../shared/columnType";
 
 const PROFILE_SEND_OFF = 18406352652;
 
@@ -50,25 +51,11 @@ describe("BOARDS notes column types", () => {
     }
   });
 
-  /**
-   * Monday derives an auto-generated column id from the column's TYPE, so the
-   * prefix and the declaration must agree. This is the check that catches the
-   * crossing above at build time rather than at a rep's desk — it fails if
-   * somebody adds a `text_…` notes column declared `long_text`, which is
-   * exactly the mistake that shipped.
-   */
-  it("declares the type the column id itself says it is", () => {
-    for (const b of BOARDS) {
-      if (!b.notesColId) continue;
-      const fromId = b.notesColId.startsWith("long_text")
-        ? "long_text"
-        : b.notesColId.startsWith("text")
-          ? "text"
-          : null;
-      if (!fromId) continue; // a legacy id with no type prefix — nothing to check
-      expect(b.notesColType, `${b.boardName} (${b.notesColId})`).toBe(fromId);
-    }
-  });
+  // There is deliberately NO "declaration matches the id prefix" test any more:
+  // the notes columns are being converted long_text → text in the Monday UI
+  // (CLAUDE.md §10) and that conversion may KEEP the id, so a `long_text_…` id
+  // can legitimately be a text column. Nothing infers type from the prefix now;
+  // the writer asks the live board (lib/shared/columnType).
 
   it("still has Profile Send Off as the one `text` notes column", () => {
     // Pinned by name because it is the odd one out and the whole reason the
@@ -77,39 +64,38 @@ describe("BOARDS notes column types", () => {
     const profile = BOARDS.find((b) => b.boardId === PROFILE_SEND_OFF);
     expect(profile?.notesColId).toBe("text_mm389fs");
     expect(profile?.notesColType).toBe("text");
-    expect(BOARDS.filter((b) => b.notesColType === "text")).toHaveLength(1);
+    // No longer "the only one": the other boards' notes columns are being
+    // converted to text too (§10). The declaration is documentation now.
   });
 });
 
-describe("appendNoteToRecord — value shape follows the column type", () => {
+describe("appendNoteToRecord — bare string for every column type; the cap is asked of the board", () => {
   /** Bodies of every request the writer made, newest last. */
   let sent: Array<{ query: string; variables: Record<string, unknown> }>;
+  /** What the LIVE board reports each column to be — deliberately independent
+   *  of what the caller declares, because the two can disagree for weeks while
+   *  a column is being converted long_text → text with its id kept. */
+  let liveType: Record<string, string>;
 
   beforeEach(() => {
     sent = [];
+    invalidateColumnTypes();
+    liveType = { text_mm389fs: "text", long_text_mm27zjt2: "long_text" };
     vi.stubEnv("VITE_MONDAY_API_TOKEN", "test-token");
     globalThis.fetch = (async (_url: unknown, init: { body: string }) => {
       const call = JSON.parse(init.body) as { query: string; variables: Record<string, unknown> };
       sent.push(call);
-      // The writer re-reads the current body before appending (readNotesNow).
       const isRead = call.query.includes("column_values (ids: $cols)");
+      const isTypeLookup = call.query.includes("columns(ids: $cols) { id type }");
       return {
         ok: true,
         status: 200,
         json: async () =>
-          isRead
-            ? {
-                data: {
-                  items: [
-                    {
-                      column_values: [
-                        { id: (call.variables.cols as string[])[0], text: "old line" },
-                      ],
-                    },
-                  ],
-                },
-              }
-            : { data: { change_column_value: { id: "1" } } },
+          isTypeLookup
+            ? { data: { boards: [{ columns: (call.variables.cols as string[]).map((id) => ({ id, type: liveType[id] })) }] } }
+            : isRead
+              ? { data: { items: [{ column_values: [{ id: (call.variables.cols as string[])[0], text: "old line" }] }] } }
+              : { data: { change_multiple_column_values: { id: "1" } } },
       };
     }) as unknown as typeof fetch;
   });
@@ -118,68 +104,69 @@ describe("appendNoteToRecord — value shape follows the column type", () => {
     vi.unstubAllEnvs();
   });
 
-  /** The `value` argument of the write, parsed back from what was sent. */
-  async function writtenValue(columnType: "text" | "long_text", text = "spoke to the office") {
+  /** The value the write carried for its column, parsed back from what was sent. */
+  async function writtenValue(
+    columnId: "text_mm389fs" | "long_text_mm27zjt2",
+    text = "spoke to the office",
+    declared: "text" | "long_text" | null = columnId === "text_mm389fs" ? "text" : "long_text",
+  ) {
     await appendNoteToRecord({
       boardId: PROFILE_SEND_OFF,
       itemId: "12345",
-      columnId: columnType === "text" ? "text_mm389fs" : "long_text_mm27zjt2",
-      columnType,
+      columnId,
+      columnType: declared,
       text,
       stage: "Profile Send Off",
       phone: "+13475550101",
     });
     const write = sent.at(-1)!;
-    return JSON.parse(write.variables.val as string);
+    expect(write.query, "the flip-safe mutation").toContain("change_multiple_column_values");
+    const vals = JSON.parse(write.variables.vals as string) as Record<string, unknown>;
+    expect(Object.keys(vals)).toEqual([columnId]);
+    return vals[columnId];
   }
 
   it("sends a BARE STRING to a text column", async () => {
-    const value = await writtenValue("text");
+    const value = await writtenValue("text_mm389fs");
     expect(typeof value).toBe("string");
     expect(value).toContain("spoke to the office");
-    // The shape that was being sent before, and that Monday refuses here.
-    expect(value).not.toHaveProperty("text");
   });
 
-  it("sends { text } to a long_text column", async () => {
-    const value = await writtenValue("long_text");
-    expect(typeof value).toBe("object");
-    expect(value.text).toContain("spoke to the office");
+  it("sends a BARE STRING to a long_text column too — the one shape both types accept", async () => {
+    const value = await writtenValue("long_text_mm27zjt2");
+    expect(typeof value).toBe("string");
+    expect(value).toContain("spoke to the office");
   });
 
   it("appends onto the re-read body rather than replacing it", async () => {
-    const value = await writtenValue("text");
-    // `readNotesNow` returned "old line"; losing it is the lost-update bug the
-    // re-read exists to narrow, so pin that it survives the append.
+    const value = await writtenValue("text_mm389fs");
     expect(value).toContain("old line");
   });
 
-  it("refuses a long_text body Monday would silently truncate", async () => {
-    await expect(writtenValue("long_text", "x".repeat(MONDAY_LONG_TEXT_MAX + 1))).rejects.toThrow();
+  it("refuses a body Monday would silently truncate on a column the BOARD says is long_text", async () => {
+    await expect(writtenValue("long_text_mm27zjt2", "x".repeat(MONDAY_LONG_TEXT_MAX + 1))).rejects.toThrow(/2000-character limit/);
   });
 
   it("does NOT apply the long_text limit to a text column", async () => {
-    // Profile Send Off carries live values well past 2000 characters (9,383 at
-    // the longest, measured 2026-09-02) with nothing parked at a ceiling, so
-    // the long_text guard here would refuse writes the board accepts.
-    const value = await writtenValue("text", "x".repeat(MONDAY_LONG_TEXT_MAX + 1));
-    expect(typeof value).toBe("string");
+    const value = await writtenValue("text_mm389fs", "x".repeat(MONDAY_LONG_TEXT_MAX + 1));
     expect((value as string).length).toBeGreaterThan(MONDAY_LONG_TEXT_MAX);
   });
 
-  it("writes nothing at all when the board declares no type", async () => {
-    await expect(
-      appendNoteToRecord({
-        boardId: PROFILE_SEND_OFF,
-        itemId: "12345",
-        columnId: "text_mm389fs",
-        columnType: null,
-        text: "spoke to the office",
-        stage: "Profile Send Off",
-        phone: "+13475550101",
-      }),
-    ).rejects.toThrow(/notesColType/);
-    // Not even the re-read fired — guessing a shape is what this prevents.
-    expect(sent).toHaveLength(0);
+  it("asks the BOARD, not the declaration: a column declared long_text that is live text is uncapped", async () => {
+    // The UI conversion can keep the id, so the registry (and the id prefix)
+    // can say long_text for weeks after the column stopped being one.
+    liveType.long_text_mm27zjt2 = "text";
+    const value = await writtenValue("long_text_mm27zjt2", "x".repeat(MONDAY_LONG_TEXT_MAX + 1), "long_text");
+    expect((value as string).length).toBeGreaterThan(MONDAY_LONG_TEXT_MAX);
+  });
+
+  it("treats a column the board cannot type as capped (the safe default)", async () => {
+    delete liveType.text_mm389fs;
+    await expect(writtenValue("text_mm389fs", "x".repeat(MONDAY_LONG_TEXT_MAX + 1))).rejects.toThrow(/2000-character limit/);
+  });
+
+  it("still writes when the registry declares no type — the shape no longer depends on it", async () => {
+    const value = await writtenValue("text_mm389fs", "spoke to the office", null);
+    expect(typeof value).toBe("string");
   });
 });

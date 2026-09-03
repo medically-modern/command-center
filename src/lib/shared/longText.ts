@@ -37,6 +37,8 @@
  * attempt history was preserved.
  */
 
+import { isCappedColumn } from "./columnType";
+
 /** Monday's hard limit for a `long-text` column value. */
 export const MONDAY_LONG_TEXT_MAX = 2000;
 
@@ -66,4 +68,22 @@ export function assertLongTextFits(text: string, label: string): void {
       `Monday would silently drop the newest ${over}, so nothing was saved. ` +
       `Shorten the note, or move older history to an update on the item.`,
   );
+}
+
+/**
+ * `assertLongTextFits`, but only when the cap actually applies to THIS column.
+ *
+ * The notes columns are being converted long_text → text (no cap) in the Monday
+ * UI, board by board, possibly keeping their ids — so the rule cannot key off a
+ * static list or an id prefix. `isCappedColumn` asks the board (cached) and
+ * answers "capped" for anything it cannot confirm is plain text, which keeps the
+ * refusal in place until a flip is really live.
+ */
+export async function assertTextLikeFits(
+  boardId: number | string,
+  columnId: string,
+  text: string,
+  label: string,
+): Promise<void> {
+  if (await isCappedColumn(boardId, columnId)) assertLongTextFits(text, label);
 }

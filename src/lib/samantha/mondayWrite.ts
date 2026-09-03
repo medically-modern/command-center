@@ -1378,7 +1378,7 @@ export async function sendPatientToMonday(
     tasks.push({
       label: "Call Reference Notes",
       columnId: COL.callReferenceNotes,
-      value: { text: notesVal },
+      value: notesVal,
       fn: () => writeLongText(p.id, COL.callReferenceNotes, notesVal),
     });
   }

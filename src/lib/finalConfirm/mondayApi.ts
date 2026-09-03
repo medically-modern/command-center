@@ -392,17 +392,19 @@ export async function fetchStatusOptions(
  * Write a long_text column.
  */
 export async function writeLongText(itemId: string, columnId: string, text: string): Promise<void> {
+  // A BARE string through change_multiple_column_values — accepted for BOTH a
+  // long_text and a plain text column (sandbox-verified 2026-09-03), so this
+  // keeps working across the long_text → text conversion of the notes columns
+  // (CLAUDE.md §10) whichever side of it a given column is on. change_column_value
+  // is stricter in both directions: it rejects a bare string for long_text AND a
+  // {text} object for text, so it would break on flip day. Same mutation the
+  // gateway /send path uses, so the two paths cannot drift.
   const query = `
-    mutation ($boardId: ID!, $itemId: ID!, $columnId: String!, $value: JSON!) {
-      change_column_value(board_id: $boardId, item_id: $itemId, column_id: $columnId, value: $value) { id }
+    mutation ($boardId: ID!, $itemId: ID!, $vals: JSON!) {
+      change_multiple_column_values(board_id: $boardId, item_id: $itemId, column_values: $vals) { id }
     }
   `;
-  await gql(query, {
-    boardId: BOARD_ID,
-    itemId,
-    columnId,
-    value: JSON.stringify({ text }),
-  });
+  await gql(query, { boardId: BOARD_ID, itemId, vals: JSON.stringify({ [columnId]: text }) });
 }
 
 /**

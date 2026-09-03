@@ -380,7 +380,7 @@ export async function sendPatientToMonday(
 
   // ─── Notes ────────────────────────────────────────────────
   if (typeof p.notes === "string" && p.notes.trim() !== "")
-    tasks.push({ label: "Notes", columnId: COL.notes, value: { text: p.notes }, fn: () => writeLongText(p.id, COL.notes, p.notes) });
+    tasks.push({ label: "Notes", columnId: COL.notes, value: p.notes ?? "", fn: () => writeLongText(p.id, COL.notes, p.notes) });
 
   // ─── Last Bill Dates (always write current value) ────────────
   const lastBillDateEntries: { label: string; dateVal: string; colId: string }[] = [
