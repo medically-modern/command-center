@@ -64,6 +64,7 @@ import {
   type SearchBucket,
 } from "@/lib/systemMgmt/searchBuckets";
 import { rowIsWorkable, searchOpenUrl, workableFirst } from "@/lib/systemMgmt/searchOpen";
+import { boardStageLabel, boardTone } from "@/lib/systemMgmt/boardTone";
 
 type Tab = "search" | "escalations" | "operations" | "stageManager" | "oversight";
 
@@ -1408,29 +1409,6 @@ function getDayBucketColor(daysSinceStage: string): string {
   return bucket?.color ?? UNKNOWN_COLOR;
 }
 
-/**
- * A board's colour on the stage column, so a manager scanning a list can tell
- * "Insurance" from "Medical Evaluation" before reading a word. Boards without
- * a Command Center page (DTC Intake, Secondary Claims) never reach a PatientRow.
- */
-const BOARD_TONE: Record<number, { bar: string; label: string; stage: string }> = {
-  18406352652: { bar: "border-l-sky-500",     label: "text-sky-700 dark:text-sky-300",         stage: "text-sky-950 dark:text-sky-100" },     // Profile Send Off
-  18406060017: { bar: "border-l-amber-500",   label: "text-amber-700 dark:text-amber-300",     stage: "text-amber-950 dark:text-amber-100" }, // Medical Evaluation
-  18410601299: { bar: "border-l-violet-500",  label: "text-violet-700 dark:text-violet-300",   stage: "text-violet-950 dark:text-violet-100" }, // Insurance
-  18410804557: { bar: "border-l-emerald-500", label: "text-emerald-700 dark:text-emerald-300", stage: "text-emerald-950 dark:text-emerald-100" }, // Welcome Call
-  18407459988: { bar: "border-l-teal-500",    label: "text-teal-700 dark:text-teal-300",       stage: "text-teal-950 dark:text-teal-100" },   // Subscription
-};
-const DEFAULT_TONE = { bar: "border-l-slate-400", label: "text-muted-foreground", stage: "text-foreground" };
-
-/** The board as a manager says it: "Medical Necessity", not "Medical Evaluation". */
-const BOARD_STAGE_LABEL: Record<number, string> = {
-  18406352652: "Intake",
-  18406060017: "Medical Necessity",
-  18410601299: "Insurance",
-  18410804557: "Welcome Call",
-  18407459988: "Subscription",
-};
-
 function PatientRow({
   patient,
   highlight = false,
@@ -1464,8 +1442,8 @@ function PatientRow({
    *  from `completed` so a board without a review route still READS as
    *  finished, but doesn't show an arrow that dead-ends on a toast. */
   const opensRecord = !!completedStageForPatient(patient);
-  const tone = BOARD_TONE[patient.boardId] ?? DEFAULT_TONE;
-  const boardLabel = BOARD_STAGE_LABEL[patient.boardId] ?? patient.boardName;
+  const tone = boardTone(patient.boardId);
+  const boardLabel = boardStageLabel(patient.boardId, patient.boardName);
   /** The stage as the rep will say it. A completed record says so instead of
    *  repeating "Completed" twice; a Stuck group says which board it is stuck on. */
   const stageText = completed ? `Completed` : patient.pipelineStage || patient.groupTitle || "—";

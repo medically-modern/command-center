@@ -68,7 +68,7 @@ import {
 } from "@/lib/commsHub/conversations";
 import { buildFaxDirectory, type FaxDirectoryEntry } from "@/lib/commsHub/faxDirectory";
 import { toOutboundRows, viewIsOutbound, type FaxView } from "@/lib/commsHub/faxFilter";
-import { DoctorDbUnavailable, fetchDoctorDbByFax, fetchFaxMatches } from "@/lib/commsHub/dossierApi";
+import { DoctorDbUnavailable, fetchDoctorDbByFax, fetchFaxMatches, type DossierPick } from "@/lib/commsHub/dossierApi";
 import { contactKey } from "@/lib/contactState/contactState";
 import { useDossier } from "@/hooks/commsHub/useDossier";
 import { useDirectoryNames } from "@/hooks/commsHub/useDirectoryNames";
@@ -239,7 +239,17 @@ export default function AssignedPatientsPage() {
     return "";
   }, [tab, selectedConv, directNumber, phoneMode, selectedVoicemail, selectedCallPhone]);
 
-  const dossier = useDossier(selectedPhone, directPerson);
+  /**
+   * A patient the rep found through the profile pane's own search, because the
+   * number on the line is on no board (§5.28). Bound to the number it was
+   * chosen for: moving to another conversation, call or voicemail drops it, or
+   * the next caller would inherit somebody else's profile — and the composer
+   * and outbound-text attribution read from that profile.
+   */
+  const [dossierPick, setDossierPick] = useState<DossierPick | null>(null);
+  useEffect(() => setDossierPick(null), [selectedPhone]);
+
+  const dossier = useDossier(selectedPhone, dossierPick?.name || directPerson, dossierPick);
 
   /**
    * The dossier's live record, in the shape `ConversationThread` wants.
@@ -839,6 +849,11 @@ export default function AssignedPatientsPage() {
               loading={dossier.loading}
               error={dossier.error}
               phone={selectedPhone || null}
+              picked={dossierPick}
+              onClearPick={() => setDossierPick(null)}
+              onPick={(row) =>
+                setDossierPick({ itemId: row.id, boardId: row.boardId, name: row.name, phone: row.phone })
+              }
             />
           )}
         </aside>

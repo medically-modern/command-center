@@ -26,7 +26,13 @@
  */
 import { useCallback, useEffect, useState } from "react";
 import { personKey, splitByPerson, type PatientDossier } from "@/lib/commsHub/dossier";
-import { dossierConfigured, fetchDossierItems, peekDossierItems } from "@/lib/commsHub/dossierApi";
+import {
+  dossierConfigured,
+  fetchDossierItems,
+  fetchDossierItemsForPick,
+  peekDossierItems,
+  type DossierPick,
+} from "@/lib/commsHub/dossierApi";
 
 export interface DossierState {
   /** The SELECTED person's dossier — what every consumer reads. */
@@ -50,6 +56,13 @@ export function useDossier(
   /** Open on THIS person when the number carries several — the name a rep
    *  explicitly picked. Ignored when it matches nobody. */
   preferPerson?: string | null,
+  /**
+   * A patient the rep found through the pane's own search, because the number
+   * on the line is on no board. Wins over the number entirely while set: the
+   * trail is loaded from the PICKED record (`fetchDossierItemsForPick`), and the
+   * page clears it the moment the rep moves to another number.
+   */
+  pick?: DossierPick | null,
 ): DossierState & { selectPerson: (i: number) => void } {
   const [state, setState] = useState<DossierState>({
     dossier: null,
@@ -71,12 +84,31 @@ export function useDossier(
     const num = (phone || "").trim();
     /** Which of the people on this number to open on. Falls back to the
      *  furthest-along default when the preference matches nobody. */
-    const pick = (people: PatientDossier[]) => {
+    const pickIndex = (people: PatientDossier[]) => {
       const want = personKey(preferPerson || "");
       if (!want) return 0;
       const i = people.findIndex((p) => personKey(p.name) === want);
       return i >= 0 ? i : 0;
     };
+    if (pick) {
+      let alive = true;
+      setState((s) => ({ ...s, dossier: null, people: [], selected: 0, loading: true, error: null }));
+      fetchDossierItemsForPick(pick)
+        .then((items) => {
+          if (!alive) return;
+          const people = splitByPerson(items);
+          const want = personKey(pick.name);
+          const i = Math.max(0, people.findIndex((p) => personKey(p.name) === want));
+          setState({ dossier: people[i] ?? null, people, selected: i, loading: false, error: null, configured: true });
+        })
+        .catch((e: unknown) => {
+          if (!alive) return;
+          setState({ dossier: null, people: [], selected: 0, loading: false, error: e instanceof Error ? e.message : String(e), configured: true });
+        });
+      return () => {
+        alive = false;
+      };
+    }
     if (!num) {
       setState((s) => ({ ...s, dossier: null, people: [], selected: 0, loading: false, error: null }));
       return;
@@ -87,7 +119,7 @@ export function useDossier(
     const cached = peekDossierItems(num);
     if (cached) {
       const people = splitByPerson(cached);
-      const i = pick(people);
+      const i = pickIndex(people);
       setState({ dossier: people[i] ?? null, people, selected: i, loading: false, error: null, configured: true });
       return;
     }
@@ -105,7 +137,7 @@ export function useDossier(
         // ⚠️ Split by PERSON, not merged. A phone match is not a person: two
         // patients on one line used to become a single blended profile.
         const people = splitByPerson(items);
-        const i = pick(people);
+        const i = pickIndex(people);
         setState({ dossier: people[i] ?? null, people, selected: i, loading: false, error: null, configured: true });
       })
       .catch((e: unknown) => {
@@ -122,7 +154,10 @@ export function useDossier(
     return () => {
       alive = false;
     };
-  }, [phone, preferPerson]);
+    // `pick` is keyed by its item, not its identity — the page hands down a
+    // fresh object per render otherwise (INCIDENT_2026-08-20 rule 2).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phone, preferPerson, pick?.boardId, pick?.itemId]);
 
   return { ...state, selectPerson };
 }

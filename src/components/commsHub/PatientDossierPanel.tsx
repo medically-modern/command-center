@@ -42,7 +42,9 @@ import { toast } from "sonner";
 import type { DossierItem, PathStep, PatientDossier, StageNotes, StepState } from "@/lib/commsHub/dossier";
 import { stageNoteTrail, stagesCompleted } from "@/lib/commsHub/dossier";
 import { buildStageDetail, hasStageDetail, type RenderedField } from "@/lib/commsHub/stageDetail";
-import { appendNoteToRecord } from "@/lib/commsHub/dossierApi";
+import { appendNoteToRecord, type DossierPick } from "@/lib/commsHub/dossierApi";
+import type { SystemPatient } from "@/lib/systemMgmt/mondayApi";
+import DossierSearch from "./DossierSearch";
 import { splitFaxAddress } from "@/lib/shared/faxAddress";
 import { fmtPhone } from "@/lib/assignedPatients/format";
 import { cn } from "@/lib/utils";
@@ -281,8 +283,18 @@ export function PatientDossierPanel({
   error,
   phone,
   idleHint = "Open a conversation, call or voicemail to see the patient's Command Center profile.",
+  onPick,
+  picked = null,
+  onClearPick,
 }: {
   dossier: PatientDossier | null;
+  /** The rep found this patient through the pane's search — the number on the
+   *  line is NOT on their record. Shown as a banner so nobody mistakes it for a
+   *  matched number. */
+  picked?: DossierPick | null;
+  /** Offer the search when the number matches nobody. Absent = no search. */
+  onPick?: (row: SystemPatient) => void;
+  onClearPick?: () => void;
   /** Everyone who shares this number — usually one. */
   people?: PatientDossier[];
   selected?: number;
@@ -345,13 +357,25 @@ export function PatientDossierPanel({
 
   if (!dossier) {
     return (
-      <div className="flex flex-1 flex-col items-center justify-center gap-2 p-6 text-center">
+      <div className="flex flex-1 flex-col items-center gap-3 p-4 pt-8 text-center">
         <User className="h-7 w-7 text-muted-foreground/50" />
         <p className="text-sm font-medium">{fmtPhone(phone)}</p>
         {/* Not an error: texting a number that is on no board is supported. */}
-        <p className="max-w-[28ch] text-xs text-muted-foreground">
+        <p className="max-w-[30ch] text-xs text-muted-foreground">
           This number isn't on any pipeline board. You can still text and call it.
         </p>
+        {/* The usual reason: the patient is calling from a line their record
+            doesn't carry (James McDowell, 2026-09-03). Same search as System
+            Management, so the rep can pull the right profile up beside the
+            call anyway. */}
+        {onPick && (
+          <div className="mt-2 w-full text-left">
+            <p className="mb-1.5 text-[11px] font-medium text-muted-foreground">
+              Calling from a different number? Find their profile:
+            </p>
+            <DossierSearch onPick={onPick} />
+          </div>
+        )}
       </div>
     );
   }
@@ -364,6 +388,18 @@ export function PatientDossierPanel({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+      {picked && (
+        <div className="shrink-0 border-b border-amber-200 bg-amber-50 px-4 py-2 text-[11px] text-amber-900 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-100">
+          <span className="font-semibold">Found by search.</span>{" "}
+          {fmtPhone(phone)} isn't on this patient's record
+          {dossier.phone && dossier.phone !== phone ? <> — on file: {fmtPhone(dossier.phone)}</> : null}.
+          {onClearPick && (
+            <button onClick={onClearPick} className="ml-2 underline hover:text-amber-700 dark:hover:text-amber-200">
+              Clear
+            </button>
+          )}
+        </div>
+      )}
       {/* ── Who ─────────────────────────────────────────────── */}
       <div className="shrink-0 border-b border-border px-4 py-3">
         <p className="truncate text-sm font-semibold">{dossier.name || fmtPhone(dossier.phone)}</p>

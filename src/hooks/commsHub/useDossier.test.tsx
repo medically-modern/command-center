@@ -13,10 +13,12 @@ import { render, screen, waitFor, act } from "@testing-library/react";
 
 const fetchDossierItems = vi.fn();
 const peekDossierItems = vi.fn();
+const fetchDossierItemsForPick = vi.fn();
 vi.mock("@/lib/commsHub/dossierApi", () => ({
   dossierConfigured: () => true,
   fetchDossierItems: (...a: unknown[]) => fetchDossierItems(...a),
   peekDossierItems: (...a: unknown[]) => peekDossierItems(...a),
+  fetchDossierItemsForPick: (...a: unknown[]) => fetchDossierItemsForPick(...a),
 }));
 
 import { useDossier } from "./useDossier";
@@ -221,5 +223,47 @@ describe("opening on the patient a rep actually picked", () => {
     peekDossierItems.mockReturnValue(both);
     render(<Probe phone={SHARED} prefer="" />);
     expect(screen.getByTestId("name")).toHaveTextContent("John Hartley Jr");
+  });
+});
+
+describe("useDossier with a picked patient", () => {
+  beforeEach(() => {
+    fetchDossierItems.mockReset();
+    peekDossierItems.mockReset();
+    fetchDossierItemsForPick.mockReset();
+  });
+
+  function PickProbe({ phone, pick }: { phone: string; pick: { itemId: string; boardId: number; name: string; phone: string } | null }) {
+    const { dossier, loading } = useDossier(phone, pick?.name, pick);
+    return (
+      <>
+        <span data-testid="name">{dossier?.name ?? "NONE"}</span>
+        <span data-testid="state">{loading ? "LOADING" : "IDLE"}</span>
+      </>
+    );
+  }
+
+  it("loads the PICKED patient's trail, not the number's, when the rep chose one", async () => {
+    peekDossierItems.mockReturnValue(null);
+    fetchDossierItems.mockResolvedValue([]); // the number is on no board
+    fetchDossierItemsForPick.mockResolvedValue([item("James McDowell", "+12028675900")]);
+    const pick = { itemId: "x", boardId: 18407459988, name: "James McDowell", phone: "2028675900" };
+    render(<PickProbe phone="+12028674525" pick={pick} />);
+    await waitFor(() => expect(screen.getByTestId("state").textContent).toBe("IDLE"));
+    expect(fetchDossierItemsForPick).toHaveBeenCalledWith(pick);
+    expect(fetchDossierItems).not.toHaveBeenCalled();
+    expect(screen.getByTestId("name").textContent).toBe("James McDowell");
+  });
+
+  it("clears the picked profile the moment the pick is dropped", async () => {
+    peekDossierItems.mockReturnValue(null);
+    fetchDossierItems.mockResolvedValue([]);
+    fetchDossierItemsForPick.mockResolvedValue([item("James McDowell", "+12028675900")]);
+    const pick = { itemId: "x", boardId: 18407459988, name: "James McDowell", phone: "2028675900" };
+    const { rerender } = render(<PickProbe phone="+12028674525" pick={pick} />);
+    await waitFor(() => expect(screen.getByTestId("name").textContent).toBe("James McDowell"));
+    await act(async () => { rerender(<PickProbe phone="+12028674525" pick={null} />); });
+    await waitFor(() => expect(screen.getByTestId("state").textContent).toBe("IDLE"));
+    expect(screen.getByTestId("name").textContent).toBe("NONE");
   });
 });

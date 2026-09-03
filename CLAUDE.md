@@ -2292,6 +2292,22 @@ access.json assignments key off, so a rename is display-only (§5.10's precedent
   to fix. ⚠️ The completed-record name pass runs for **every** person on the number, capped at 3 —
   it used to run for `byPhone.find(...)` alone, so the second patient's history was silently
   missing from a pane already merging them.
+- **When the number is on no board, the pane offers the SEARCH** (Josh, 2026-09-03 —
+  `components/commsHub/DossierSearch`). James McDowell rang from (202) 867-4525; every board holds
+  him at (202) 867-5900, so the pane correctly said the number was on no board and the rep had no way
+  to get his profile up beside the call. The empty state now carries the **same search as System
+  Management** — the same `useLiveSearch` hook, the same Active / Completed / Stuck folders, the same
+  stage-first row (`lib/systemMgmt/boardTone` is shared so the two cannot drift). Picking a row is an
+  EXPLICIT identity choice, so `dossierApi.fetchDossierItemsForPick` admits the picked record
+  unconditionally, finds the rest of the trail through that record's OWN number, and still runs any
+  further name hits through `nameMatchAccepted` anchored on the picked record — one James McDowell
+  must not be handed another's history. Cached under the ITEM, never the number on the line, which is
+  exactly what does not identify this patient. ⚠️ The pick is held by the PAGE and cleared on every
+  change of `selectedPhone` (`AssignedPatientsPage` `dossierPick`), because the composer and the
+  outbound-text attribution read from the dossier it produces — a pick surviving a patient switch
+  would file the next caller's note against the previous one. An amber "Found by search — this
+  number isn't on their record, on file: …" banner sits over the profile while a pick is active.
+  Nothing is written: the new number is not added to the record from here.
 - ⚠️ **A NAME IS NOT AN IDENTITY** (`dossier.nameMatchAccepted` + tests). Two patients called
   Maria Garcia is ordinary at this size, and name-only matching would merge their trails — one
   patient's notes and stage rendered on the other's conversation, and the wrong Monday item handed

@@ -288,6 +288,77 @@ export async function fetchDossierItems(phone: string): Promise<DossierItem[]> {
   return items;
 }
 
+/**
+ * The patient a rep PICKED from the profile pane's search (`DossierSearch`).
+ * A Search row is one Monday item; this is enough to find the whole trail.
+ */
+export interface DossierPick {
+  itemId: string;
+  boardId: number;
+  name: string;
+  /** The phone on the picked record — may be blank on a completed record. */
+  phone: string;
+}
+
+/**
+ * Every board record for a patient the rep chose BY HAND — the profile pane's
+ * search, used when the number on the line is on no board (James McDowell
+ * calling from a line his record does not carry, 2026-09-03).
+ *
+ * The identity question `fetchDossierItems` guards so carefully is already
+ * answered here: the rep looked at a row that named the patient, their stage
+ * and their number, and clicked it. So the picked record is admitted
+ * unconditionally. Everything ELSE still earns its place the same way as on the
+ * phone path: the picked record's own number finds the trail (`fetchDossierItems`,
+ * so the cache and the completed-record pass are shared), and any further name
+ * hits pass `nameMatchAccepted` against the picked record's phone/DOB. A rep
+ * choosing one James McDowell must not be handed a second one's history.
+ *
+ * Cached under the item, not the number: the number on the line is exactly
+ * what does NOT identify this patient.
+ */
+export async function fetchDossierItemsForPick(pick: DossierPick): Promise<DossierItem[]> {
+  if (!dossierConfigured()) return [];
+  const key = `pick:${pick.boardId}:${pick.itemId}`;
+  const cached = dossierCache.get(key);
+  if (cached) return cached;
+
+  const e164 = toE164(pick.phone);
+  const byNumber = e164 ? await fetchDossierItems(e164) : [];
+  // The phone path keeps every PERSON on that number; we want only the one the
+  // rep picked — `splitByPerson` would separate them again, but a foreign
+  // household member's record must not even reach the cache under this key.
+  const mine = byNumber.filter((i) => personKey(i.name) === personKey(pick.name));
+
+  let items = mine;
+  if (!items.some((i) => i.itemId === pick.itemId)) {
+    const board = BOARDS.find((b) => b.boardId === pick.boardId);
+    const own = board
+      ? (await boardSearch(board, "name", pick.name)).map((it) => toDossierItem(board, it)).find((i) => i.itemId === pick.itemId)
+      : undefined;
+    if (own) {
+      const anchor: PatientIdentity = { phone: own.phone, dob: own.dob };
+      const byName = (
+        await Promise.all(BOARDS.map(async (b) => (await boardSearch(b, "name", pick.name)).map((it) => toDossierItem(b, it))))
+      )
+        .flat()
+        .filter((i) => i.name.trim().toLowerCase() === pick.name.trim().toLowerCase())
+        .filter((i) => i.itemId === pick.itemId || nameMatchAccepted(i, anchor));
+      items = [...items, own, ...byName];
+    }
+  }
+
+  const seen = new Set<string>();
+  const out = items.filter((i) => {
+    const k = `${i.boardId}:${i.itemId}`;
+    if (seen.has(k)) return false;
+    seen.add(k);
+    return true;
+  });
+  dossierCache.set(key, out);
+  return out;
+}
+
 /* ── Fax → doctor → their patients ─────────────────────────────────────────── */
 
 /**
