@@ -2643,24 +2643,44 @@ columns" automation on duplicated items). The SPA only flips the advancer; verif
   (the label is written before the automation moves the item; the list is read off the live
   `settings_str` — DTC Intake's MASTER STAGE says "Stuck Final Review" and **"Can't Proceed"**, so
   a `^Stuck` pattern would have missed one and over-matched elsewhere; Greptile caught the pattern on
-  PR #53); everything else ⇒ **active** — escalated and
-  Proposed Stuck included, since a manager still owns them. Defaults to Active; an empty folder
+  PR #53) OR **Proposed Stuck** (Escalation index 2, awaiting Final Decisions — Josh, 2026-09-03,
+  pointing at Gregory White on that screen: *"stuck patients absolutely do have a UI"*; to the
+  manager this search serves a proposal and an approval are one queue, and the Profile Status badge
+  still tells them apart) ⇒ **stuck**; everything else ⇒ **active** — Manager Intervention (index 0)
+  included, since that patient is being worked, by a manager. Defaults to Active; an empty folder
   names the others' counts rather than saying "no patients found". Chart picks and stage filters go
   through the same folders.
+  **Search is a MANAGER's tool, so a row opens the OVERSIGHT screen for that patient** —
+  `lib/systemMgmt/searchOpen.ts` `searchOpenUrl` (+ tests), one rule for every click: a finished
+  record → its review page (`?completedStage=`); **stuck or Proposed Stuck → the stage page as Final
+  Decisions** (`?mv=final-decisions&manager=1`, Approve Stuck / Return to Queue on the action bar);
+  escalated → Manager Intervention (`?mv=manager-intervention&manager=1&escalated=1`); ordinary work
+  → the plain stage page. ⚠️ Those params are `OversightTab.handlePatientClick`'s contract, read by
+  every stage page via `lib/shared/managerOrigin` — keep the two writers aligned or the same patient
+  opens two different screens. ⚠️ An item parked in a **Stuck GROUP** has `roleRoute ""`, so it
+  falls back to the board's canonical page from `COMPLETED_STAGE_ROUTES` (Evaluate · Benefits ·
+  Welcome Call · Profile); the pages inject a deep-linked `?patientId=` whatever group it sits in.
+  Stuck rows on DTC Intake / Secondary Claims / Subscription have no canonical page and stay notes.
+  `MASHEKE_STAGE_ROUTES` gained `Doctor Appointment → /doctor-appointments` the same day — Search
+  had been sending that sub-stage to /evaluate while Oversight sent it to the outreach page.
+  **The row leads with the STAGE** (Josh, same day: *"we need the person's stage — like Medical
+  Necessity or Insurance · Auth Outstanding — more clear from here"*): its own 210px column with a
+  board-coloured left bar (`BOARD_TONE`), the board as a manager says it (`BOARD_STAGE_LABEL`:
+  "Medical Necessity", not "Medical Evaluation") in small caps over the stage in the largest type on
+  the row, the group beneath when it differs. Notes keep the flexible middle. The stage text still
+  filters the list to that stage.
   **A row with no page is a NOTE, not a profile** (Josh, 2026-09-03, same day: *"it shouldn't show a
   profile unless we have a UI for it … but if it is in an inaccessible board have a note that says
   patient is in the system but not on a workable page, check Monday — and have it say what and where
-  it is"*). `searchBuckets.rowIsWorkable` = `hasPage` OR `completedStageForPatient` — a live stage
-  page or a finished record's review page. Everything else (every DTC Intake and Secondary Claims
+  it is"*). `searchOpen.rowIsWorkable` = `searchOpenUrl(row) !== null` — a live stage page, a
+  finished record's review page, or a stuck patient's Final Decisions view. Everything else (every DTC Intake and Secondary Claims
   row, Subscription "Not Active Patients", Profile Send Off "Patient Intake"/"Tests", any item parked
   in a Stuck group) renders as `UnworkableRow`: name · *is in the system but not on a workable page —
   check Monday* · board · group · stage · phone, with nothing to click. Workable profiles lead and
   are **highlighted** (`PatientRow highlight`) whenever notes follow, under a divider label — the
   Josh Hoffman search that prompted this had one Subscription row buried under eight dead rows. Not
   hidden, deliberately: "not found" would be a lie about a patient we can see, and the note tells the
-  rep where to go instead. ⚠️ This is why the Stuck folder is mostly notes today — a Stuck GROUP has
-  no role page (`groupRoutes` roleRoute `""`) and no review route, so the folder tells you which
-  board the patient is stuck on rather than opening them.
+  rep where to go instead.
   ⚠️ **Search reads EVERY group on EVERY patient board — never add a group filter** (2026-08-12).
   `BOARDS[].groupRoutes` is navigation metadata ("clicking this row goes where"), **not** the fetch
   list; `fetchBoardItems` queries `items_page` unfiltered. It *was* the fetch list, and every group
@@ -3164,6 +3184,7 @@ these services; when their math changes, `oopEstimator.ts` must be updated to ma
 | A conversation won't stay read / unread | §5.28 — read state is RingCentral's `readStatus` on the INBOUND messages, written with `setMessageRead`; the local override only covers the gap before the next poll |
 | Monday says "invalid value … data structure for this column" | **Start with `/audit.json?key=…&failed=1&since=1`** — its `error_data` names the `column_id`, `column_name`, `column_type` and the exact value sent. `/audit/errors.json` only counts redacted shapes and looks the same for every column and every writer, so it cannot tell you which (§10). Then match the value to the type: `location` needs `lat`+`lng` (§10), `long_text` takes `{"text": …}`, `text` a bare JSON string — and the notes columns are BOTH depending on the board (§5.28). The app's notes writers sidestep this since 2026-09-03 by sending a bare string via `change_multiple_column_values`, which both types accept (§10) — so a `{"text": …}` refusal on a notes column means a writer drifted back to `change_column_value` (`notesWriteShape.test.ts` should have caught it) |
 | System-wide Search is slow, stale, or shows a finished record as if it were live | §7 — Search is live per query (`searchPatientsLive` / `useLiveSearch`); the seven-board snapshot only feeds the chart. Folders come from `lib/systemMgmt/searchBuckets.ts`; a Stuck group missing from `STUCK_GROUP_IDS` fails `profileStatus.test.ts` |
+| A Search row opens the wrong screen, or a different one from Oversight | §7 — `lib/systemMgmt/searchOpen.ts` `searchOpenUrl` is the one rule; it must send the same `?mv=` / `manager` / `escalated` params `OversightTab.handlePatientClick` sends |
 | Manager pipeline / oversight charts | `components/oversight/OversightTab.tsx` + `lib/oversight/oversightApi.ts` (+ `priority.ts`); reached via `/system-mgmt?tab=oversight` |
 
 ---

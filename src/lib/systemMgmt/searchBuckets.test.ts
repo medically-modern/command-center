@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { bucketResults, rowIsWorkable, searchBucket, workableFirst } from "./searchBuckets";
+import { bucketResults, searchBucket } from "./searchBuckets";
 import { BOARDS } from "./mondayApi";
 import { STUCK_GROUP_IDS, COMPLETED_GROUP_IDS } from "@/lib/shared/profileStatus";
 
@@ -8,6 +8,7 @@ const row = (over: Partial<Parameters<typeof searchBucket>[0]> = {}) => ({
   groupId: "group_mm1xf2jb",
   boardId: 18406060017,
   stageAdvancerText: "Evaluate MN",
+  escalationLevel: null as "manager" | "final" | "flat" | null,
   ...over,
 });
 
@@ -58,10 +59,18 @@ describe("searchBucket", () => {
       .toBe("completed");
   });
 
-  it("escalated and proposed-stuck rows stay active — a manager still owns them", () => {
-    // Escalation is not an input to the bucket at all; only the group and the
-    // advancer are. Pinning that here so nobody adds it.
-    expect(searchBucket(row({ groupId: "group_mm33pdpm" /* ME Escalations */ }))).toBe("active");
+  it("Manager Intervention (index 0) stays active — being worked, by a manager", () => {
+    expect(searchBucket(row({ groupId: "group_mm33pdpm" /* ME Escalations */, escalationLevel: "manager" }))).toBe("active");
+    expect(searchBucket(row({ escalationLevel: "flat" }))).toBe("active");
+  });
+
+  it("Proposed Stuck (Final Decisions) is stuck — Gregory White's case", () => {
+    expect(searchBucket(row({ boardId: 18410601299, groupId: "group_mm1xr3q3", stageAdvancerText: "Benefits / SoS", escalationLevel: "final" })))
+      .toBe("stuck");
+  });
+
+  it("completed still wins over a stale Final escalation", () => {
+    expect(searchBucket(row({ isCompleted: true, groupId: COMPLETED_GROUP_IDS[3], escalationLevel: "final" }))).toBe("completed");
   });
 });
 
@@ -81,29 +90,3 @@ describe("bucketResults", () => {
   });
 });
 
-describe("rowIsWorkable", () => {
-  const base = { id: "1", boardName: "x", isCompleted: false, hasPage: false };
-  it("a live stage page opens", () => {
-    expect(rowIsWorkable({ ...base, boardId: 18406060017, hasPage: true })).toBe(true);
-  });
-  it("a finished record on a board with a review page opens", () => {
-    expect(rowIsWorkable({ ...base, boardId: 18406060017, isCompleted: true })).toBe(true);
-  });
-  it("DTC Intake never opens — no group has a page and no review route exists", () => {
-    expect(rowIsWorkable({ ...base, boardId: 18392794310 })).toBe(false);
-    expect(rowIsWorkable({ ...base, boardId: 18392794310, isCompleted: true })).toBe(false);
-  });
-  it("an item parked in a Stuck group has no page", () => {
-    // rowRouting gives a Stuck group roleRoute "" ⇒ hasPage false, not completed.
-    expect(rowIsWorkable({ ...base, boardId: 18410601299 })).toBe(false);
-  });
-  it("puts workable rows ahead of the check-Monday notes, keeping rank order within each", () => {
-    const rows = [
-      { ...base, id: "a", boardId: 18392794310 },
-      { ...base, id: "b", boardId: 18406060017, hasPage: true },
-      { ...base, id: "c", boardId: 18413019028 },
-      { ...base, id: "d", boardId: 18406352652, isCompleted: true },
-    ];
-    expect(workableFirst(rows).map((r) => r.id)).toEqual(["b", "d", "a", "c"]);
-  });
-});

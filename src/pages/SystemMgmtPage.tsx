@@ -61,10 +61,9 @@ import {
   SEARCH_BUCKETS,
   SEARCH_BUCKET_LABEL,
   bucketResults,
-  rowIsWorkable,
-  workableFirst,
   type SearchBucket,
 } from "@/lib/systemMgmt/searchBuckets";
+import { rowIsWorkable, searchOpenUrl, workableFirst } from "@/lib/systemMgmt/searchOpen";
 
 type Tab = "search" | "escalations" | "operations" | "stageManager" | "oversight";
 
@@ -198,25 +197,22 @@ const SystemMgmtPage = () => {
     return map;
   }, [escalated]);
 
-  const handlePatientClick = (patient: SystemPatient, fromEscalation = false) => {
-    // A finished board is a row of its own here, and `hasPage` is false for
-    // everything in a Completed group — so this row used to dead-end on a
-    // toast. It holds exactly the record a completion badge opens, so open it.
-    const completed = completedStageForPatient(patient);
-    if (completed) {
-      navigate(completedStageUrl(completed));
-      return;
-    }
-    if (!patient.hasPage) {
+  /**
+   * One rule for where a row opens — `searchOpenUrl` (lib/systemMgmt/searchOpen):
+   * a finished record's review page, a stuck / proposed-stuck patient's stage
+   * page as Final Decisions, an escalated one as Manager Intervention, or the
+   * plain stage page. Same URL contract Oversight's drill-down uses, so Search
+   * and Oversight open the same screen for the same patient.
+   */
+  const handlePatientClick = (patient: SystemPatient) => {
+    const url = searchOpenUrl(patient);
+    if (!url) {
       toast.info(`${patient.pipelineStage} doesn't have a dedicated page yet`, {
-        description: `${patient.name} is on the ${patient.boardName}`,
+        description: `${patient.name} is on the ${patient.boardName} — check Monday`,
       });
       return;
     }
-    const params = new URLSearchParams({ patientId: patient.id });
-    if (fromEscalation || patient.escalated) params.set("escalated", "1");
-    params.set("from", "system-mgmt");
-    navigate(`${patient.roleRoute}?${params.toString()}`);
+    navigate(url);
   };
 
   /**
@@ -878,7 +874,7 @@ function EscalationView({
   onMarkStuck,
 }: {
   escalatedByStage: Map<string, SystemPatient[]>;
-  onPatientClick: (p: SystemPatient, fromEscalation?: boolean) => void;
+  onPatientClick: (p: SystemPatient) => void;
   onRemoveEscalation: (p: SystemPatient) => void;
   removingId: string | null;
   completionMap: Map<string, CompletedStage[]>;
@@ -939,7 +935,7 @@ function EscalationView({
                     OUTSIDE the row button rather than nested inside it. */}
                 <div className="flex-1 min-w-0">
                   <button
-                    onClick={() => onPatientClick(p, true)}
+                    onClick={() => onPatientClick(p)}
                     className="w-full flex items-center gap-3 text-left min-w-0"
                   >
                     <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs shrink-0 ${avatarBg}`}>
@@ -1412,6 +1408,29 @@ function getDayBucketColor(daysSinceStage: string): string {
   return bucket?.color ?? UNKNOWN_COLOR;
 }
 
+/**
+ * A board's colour on the stage column, so a manager scanning a list can tell
+ * "Insurance" from "Medical Evaluation" before reading a word. Boards without
+ * a Command Center page (DTC Intake, Secondary Claims) never reach a PatientRow.
+ */
+const BOARD_TONE: Record<number, { bar: string; label: string; stage: string }> = {
+  18406352652: { bar: "border-l-sky-500",     label: "text-sky-700 dark:text-sky-300",         stage: "text-sky-950 dark:text-sky-100" },     // Profile Send Off
+  18406060017: { bar: "border-l-amber-500",   label: "text-amber-700 dark:text-amber-300",     stage: "text-amber-950 dark:text-amber-100" }, // Medical Evaluation
+  18410601299: { bar: "border-l-violet-500",  label: "text-violet-700 dark:text-violet-300",   stage: "text-violet-950 dark:text-violet-100" }, // Insurance
+  18410804557: { bar: "border-l-emerald-500", label: "text-emerald-700 dark:text-emerald-300", stage: "text-emerald-950 dark:text-emerald-100" }, // Welcome Call
+  18407459988: { bar: "border-l-teal-500",    label: "text-teal-700 dark:text-teal-300",       stage: "text-teal-950 dark:text-teal-100" },   // Subscription
+};
+const DEFAULT_TONE = { bar: "border-l-slate-400", label: "text-muted-foreground", stage: "text-foreground" };
+
+/** The board as a manager says it: "Medical Necessity", not "Medical Evaluation". */
+const BOARD_STAGE_LABEL: Record<number, string> = {
+  18406352652: "Intake",
+  18406060017: "Medical Necessity",
+  18410601299: "Insurance",
+  18410804557: "Welcome Call",
+  18407459988: "Subscription",
+};
+
 function PatientRow({
   patient,
   highlight = false,
@@ -1445,6 +1464,11 @@ function PatientRow({
    *  from `completed` so a board without a review route still READS as
    *  finished, but doesn't show an arrow that dead-ends on a toast. */
   const opensRecord = !!completedStageForPatient(patient);
+  const tone = BOARD_TONE[patient.boardId] ?? DEFAULT_TONE;
+  const boardLabel = BOARD_STAGE_LABEL[patient.boardId] ?? patient.boardName;
+  /** The stage as the rep will say it. A completed record says so instead of
+   *  repeating "Completed" twice; a Stuck group says which board it is stuck on. */
+  const stageText = completed ? `Completed` : patient.pipelineStage || patient.groupTitle || "—";
 
   return (
     <div
@@ -1460,7 +1484,7 @@ function PatientRow({
       {/* Left: avatar + name + days badge — clickable to navigate to the
           patient's CURRENT stage. The completion badges below are their own
           links (each opens a finished stage), so they sit outside the button. */}
-      <div className="flex flex-col px-4 py-3 min-w-0 shrink-0 w-[260px]">
+      <div className="flex flex-col px-4 py-3 min-w-0 shrink-0 w-[240px]">
         <button onClick={onClick} className="flex gap-3 min-w-0 text-left">
           <div
             className={cn(
@@ -1530,6 +1554,40 @@ function PatientRow({
         />
       </div>
 
+      {/* STAGE — the second thing a manager reads after the name, so it gets
+          its own column, the board's colour and the biggest type on the row
+          (Josh, 2026-09-03: "we need the person's stage more clear"). The
+          whole block is the same click as the name; the stage text alone also
+          filters the list to that stage, as it always did. */}
+      <button
+        onClick={onClick}
+        className={cn(
+          "shrink-0 w-[210px] flex flex-col justify-center gap-0.5 px-4 py-3 border-l-4 text-left",
+          tone.bar,
+        )}
+        title={`${patient.boardName} · ${patient.groupTitle}`}
+      >
+        <span className={cn("text-[10px] font-semibold uppercase tracking-[0.14em]", tone.label)}>
+          {boardLabel}
+        </span>
+        <span
+          role="link"
+          onClick={(e) => {
+            e.stopPropagation();
+            onStageClick?.(patient.pipelineStage);
+          }}
+          className={cn(
+            "text-[15px] font-bold leading-tight hover:underline decoration-dotted underline-offset-2",
+            completed ? "text-green-700 dark:text-green-400" : tone.stage,
+          )}
+        >
+          {stageText}
+        </span>
+        {patient.groupTitle && patient.groupTitle !== patient.pipelineStage && !completed && (
+          <span className="text-[11px] text-muted-foreground truncate">{patient.groupTitle}</span>
+        )}
+      </button>
+
       {/* Center: notes preview — large, uses available space. Click opens sidebar (or escalation form for escalated patients). */}
       <div
         className={cn(
@@ -1595,32 +1653,10 @@ function PatientRow({
         )}
       </div>
 
-      {/* Right: stage (clickable) + days */}
-      <div className="shrink-0 w-[160px] flex flex-col items-end justify-center px-4 py-3 gap-0.5">
-        <div className="text-[10px] uppercase tracking-wider text-muted-foreground">
-          {patient.boardName}
-        </div>
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            onStageClick?.(patient.pipelineStage);
-          }}
-          className="text-xs font-medium text-primary hover:text-blue-600 dark:hover:text-blue-400 transition-colors text-right"
-        >
-          {patient.pipelineStage}
-        </button>
-        {patient.daysSinceStage && (
-          <div className="text-[10px] text-muted-foreground">{patient.daysSinceStage}</div>
-        )}
-      </div>
-
-      {/* Arrow */}
-      <button onClick={onClick} className="shrink-0 flex items-center px-2 hover:bg-muted/30 transition-colors rounded-r-lg">
-        {patient.hasPage || opensRecord ? (
-          <ChevronRight className={cn("w-4 h-4", opensRecord ? "text-green-600 dark:text-green-500" : "text-muted-foreground")} />
-        ) : (
-          <span className="text-[10px] text-muted-foreground">No page</span>
-        )}
+      {/* Arrow — every PatientRow opens something (rows that don't render as
+          UnworkableRow instead), so this is never "No page" any more. */}
+      <button onClick={onClick} className="shrink-0 flex items-center px-3 hover:bg-muted/30 transition-colors rounded-r-lg" title="Open">
+        <ChevronRight className={cn("w-4 h-4", opensRecord ? "text-green-600 dark:text-green-500" : "text-muted-foreground")} />
       </button>
     </div>
   );

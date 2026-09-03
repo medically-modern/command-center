@@ -122,6 +122,9 @@ export const MASHEKE_STAGE_ROUTES: Record<string, string> = {
   "Send Request":   "/send-request",
   "Confirm Receipt": "/confirm-receipt",
   "Chase Clinicals": "/chase-fax", // chase split June 2026 — deep links keep working via ?patientId injection
+  // §5.12 — Sub-Stage IS the advancer on this board; Oversight already routes
+  // these to the outreach page, and Search fell through to /evaluate.
+  "Doctor Appointment": "/doctor-appointments",
 };
 
 /** Insurance board Stage Advancer → route */

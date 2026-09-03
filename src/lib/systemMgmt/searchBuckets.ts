@@ -17,7 +17,15 @@
  * - **stuck**     — the item sits in a Stuck group, or its Stage Advancer reads
  *                   that board's Stuck label (the app's own "Mark as Stuck"
  *                   writes the label and a board automation does the move, so
- *                   for a moment only the label says so).
+ *                   for a moment only the label says so) — OR it is **Proposed
+ *                   Stuck** (Escalation index 2, "Final Escalation Required"),
+ *                   awaiting a manager's decision in Final Decisions. Josh,
+ *                   2026-09-03, pointing at Gregory White on that very screen:
+ *                   *"stuck patients absolutely do have a UI"*. To the manager
+ *                   this search is for, a proposal and an approval are the same
+ *                   queue; the Profile Status badge still tells them apart.
+ *                   Manager Intervention (index 0) stays ACTIVE — that patient
+ *                   is being worked, just by a manager.
  *
  * Completed is checked FIRST, as `profileStatus` does: a stale Stuck label on a
  * finished item must not resurrect it. The group lists are the shared ones from
@@ -27,7 +35,6 @@
  */
 import { STUCK_GROUP_IDS } from "@/lib/shared/profileStatus";
 import { STUCK_LABELS, type SystemPatient } from "./mondayApi";
-import { completedStageForPatient } from "./stageCompletion";
 
 export type SearchBucket = "active" | "completed" | "stuck";
 
@@ -41,7 +48,7 @@ export const SEARCH_BUCKET_LABEL: Record<SearchBucket, string> = {
 
 export type BucketInput = Pick<
   SystemPatient,
-  "isCompleted" | "groupId" | "boardId" | "stageAdvancerText"
+  "isCompleted" | "groupId" | "boardId" | "stageAdvancerText" | "escalationLevel"
 >;
 
 /**
@@ -71,6 +78,7 @@ export function searchBucket(p: BucketInput): SearchBucket {
   if (p.isCompleted) return "completed";
   if (p.groupId && STUCK_GROUP_IDS.includes(p.groupId)) return "stuck";
   if (advancerSaysStuck(p)) return "stuck";
+  if (p.escalationLevel === "final") return "stuck";
   return "active";
 }
 
@@ -83,29 +91,3 @@ export function bucketResults<T extends BucketInput>(results: readonly T[]): Buc
   return out;
 }
 
-/**
- * Can a rep OPEN this row — is there a Command Center page for it?
- *
- * Two things open: a live stage page (`hasPage`), or a finished board's record
- * in review mode (`completedStageForPatient`). Everything else — DTC Intake and
- * Secondary Claims (no role page anywhere), a Subscription "Not Active" row,
- * an item parked in a Stuck group — used to render as a full profile row that
- * dead-ended on a toast when clicked: "shouldn't show a profile unless we have
- * a UI for it" (Josh, 2026-09-03). Search renders those as a NOTE instead —
- * the patient is in the system, here is the board and group, check Monday —
- * rather than dropping them, because "not found" would be a lie about a
- * patient we can see.
- */
-export function rowIsWorkable(
-  p: Pick<SystemPatient, "id" | "boardId" | "boardName" | "isCompleted" | "hasPage">,
-): boolean {
-  return p.hasPage || completedStageForPatient(p) !== null;
-}
-
-/** Workable profiles first, then the "check Monday" notes, each in rank order. */
-export function workableFirst<T extends Parameters<typeof rowIsWorkable>[0]>(rows: readonly T[]): T[] {
-  const yes: T[] = [];
-  const no: T[] = [];
-  for (const r of rows) (rowIsWorkable(r) ? yes : no).push(r);
-  return [...yes, ...no];
-}
