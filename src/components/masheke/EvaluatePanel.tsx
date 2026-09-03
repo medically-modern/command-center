@@ -474,7 +474,13 @@ export function EvaluatePanel({ patient, resetVersion = 0, onUpdate, onOpenForm,
     });
     // Monday silently truncates a long_text body over 2000 chars, dropping the
     // NEWEST content — this rollup can add ~700 in one go (lib/shared/longText).
-    assertLongTextFits(mergedNotes, "MN Workflow Notes");
+    // ⚠️ The overflow check lives INSIDE the try below, deliberately not here.
+    // It threw from this point, which is outside every catch in this handler:
+    // the rep got no toast, `setSending(false)` never ran, and the Send button
+    // stuck in its spinner forever. Bridget Browne (12604305734) sat like that
+    // for five days — her notes were already at exactly 2000, so the send
+    // required a note, any note overflowed, and every send aborted in silence
+    // with nothing written to the board at all. Keep it in the try.
     tasks.push({
       label: "MN Workflow Notes",
       columnId: COL.mnEvalNotes,
@@ -534,6 +540,11 @@ export function EvaluatePanel({ patient, resetVersion = 0, onUpdate, onOpenForm,
     }
 
     try {
+      // Refuse a body Monday would silently truncate BEFORE any column is
+      // written. Inside the try so the failure reaches the rep as the "Send
+      // failed — stage not advanced" toast (carrying longText's character
+      // count, which is actionable) and the button is released.
+      assertLongTextFits(mergedNotes, "MN Workflow Notes");
       // Verified write → gateway /send when available. createLabelsIfMissing so
       // Diagnosis + the dynamic consolidated ask can add labels server-side.
       // Every data column is read-back confirmed before the trigger column flips

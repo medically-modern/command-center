@@ -5,6 +5,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { MessageSquare, Plus, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { appendStampedNote } from "@/lib/shared/noteStamp";
+import { refuseLongTextOverflow } from "@/components/shared/longTextGuard";
 
 interface Props {
   notes: string;
@@ -22,6 +23,11 @@ export function NotesPanel({ notes, onNotesChange, onSaveToMonday, notePrefix }:
   const handleAppend = async () => {
     if (!newNote.trim()) return;
     const appended = appendStampedNote(notes, newNote, notePrefix);
+    // Refuse BEFORE the optimistic overlay and before clearing the box —
+    // Monday would accept the write, return 200 and keep only the first
+    // 2000 chars, so an unguarded Add showed "Note saved to Monday" while
+    // throwing the note away (components/shared/longTextGuard).
+    if (refuseLongTextOverflow(appended, "Notes")) return;
     onNotesChange(appended);
     setNewNote("");
 
