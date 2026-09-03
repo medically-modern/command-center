@@ -1,4 +1,4 @@
-// TONIGHT, ONLY IF the UI conversion does NOT keep the column id:
+// TONIGHT (Branch B — sandbox proved the UI conversion creates a NEW column id):
 // copy every item's notes from the old long_text column to the new text column.
 //   node migrateNotes.mjs <boardId> <fromColId> <toColId>          → dry run: counts only
 //   node migrateNotes.mjs <boardId> <fromColId> <toColId> --apply  → writes, then re-reads and verifies
@@ -17,9 +17,17 @@ do {
   for (const it of pg.items) { const g = id => it.column_values.find(c => c.id === id)?.text ?? ""; rows.push({ id: it.id, src: g(from), dst: g(to) }); }
   cursor = pg.cursor; page++;
 } while (cursor && page < 20);
-const todo = rows.filter(r => r.src && r.src !== r.dst);
-const already = rows.filter(r => r.src && r.src === r.dst).length;
-console.log(`board ${board}: ${rows.length} items · ${rows.filter(r => r.src).length} with source notes · ${already} already identical · ${todo.length} to copy · ${rows.filter(r => !r.src && r.dst).length} have dest but no source (left alone)`);
+// SAFE TO RE-RUN, including after the app has cut over to the new column:
+//   dest empty, or dest is a PREFIX of source  → source grew (a note landed in the old column) → copy
+//   source is a PREFIX of dest                 → dest grew (a note landed in the NEW column)   → leave it
+//   identical                                  → nothing to do
+//   neither is a prefix of the other           → both changed (a real race) → report, never overwrite
+const cls = (r) => !r.src ? "nosrc" : r.src === r.dst ? "same" : (!r.dst || r.src.startsWith(r.dst)) ? "copy" : r.dst.startsWith(r.src) ? "destAhead" : "conflict";
+for (const r of rows) r.cls = cls(r);
+const todo = rows.filter(r => r.cls === "copy");
+const count = (k) => rows.filter(r => r.cls === k).length;
+console.log(`board ${board}: ${rows.length} items · ${rows.filter(r => r.src).length} with source notes · same=${count("same")} · to copy=${todo.length} · dest ahead (leave)=${count("destAhead")} · CONFLICT=${count("conflict")}`);
+for (const r of rows.filter(r => r.cls === "conflict")) console.log(`  CONFLICT item ${r.id}: source ${r.src.length} chars vs dest ${r.dst.length} chars diverge — resolve by hand`);
 if (!APPLY) { console.log("dry run — pass --apply to write"); process.exit(0); }
 let ok = 0, bad = 0;
 for (const r of todo) {
