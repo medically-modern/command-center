@@ -26,7 +26,11 @@ export function hasToken(): boolean {
   return !!getToken();
 }
 
-async function gql<T>(query: string, variables: Record<string, unknown> = {}): Promise<T> {
+async function gql<T>(
+  query: string,
+  variables: Record<string, unknown> = {},
+  signal?: AbortSignal,
+): Promise<T> {
   const token = getToken();
   if (!token) throw new Error("VITE_MONDAY_API_TOKEN is not set");
   const res = await fetch(MONDAY_API_URL, {
@@ -38,6 +42,7 @@ async function gql<T>(query: string, variables: Record<string, unknown> = {}): P
       "API-Version": MONDAY_API_VERSION,
     },
     body: JSON.stringify({ query, variables }),
+    signal,
   });
   if (!res.ok) {
     const body = await res.text();
@@ -373,8 +378,13 @@ interface RawItem {
  * that should never have a queue rule: if a patient is on a board the Command
  * Center works, somebody must be able to find them.
  */
-async function fetchBoardItems(board: BoardDef): Promise<SystemPatient[]> {
-  const PAGE = 500;
+/**
+ * The columns one search row needs. Shared by the whole-board fetch and the
+ * live search so a row reads the same whichever path produced it — a column
+ * present on one path and not the other would render as a blank field with no
+ * error (§5.11's trap).
+ */
+export function searchColumnIds(board: BoardDef): string[] {
   const colIds = [board.phoneColId];
   if (board.escalationColId) colIds.push(board.escalationColId);
   if (board.escalationNotesColId) colIds.push(board.escalationNotesColId);
@@ -382,6 +392,12 @@ async function fetchBoardItems(board: BoardDef): Promise<SystemPatient[]> {
   if (board.daysSinceStageColId) colIds.push(board.daysSinceStageColId);
   if (board.notesColId) colIds.push(board.notesColId);
   if (board.nextActionDateColId) colIds.push(board.nextActionDateColId);
+  return colIds;
+}
+
+async function fetchBoardItems(board: BoardDef): Promise<SystemPatient[]> {
+  const PAGE = 500;
+  const colIds = searchColumnIds(board);
 
   const query = `
     query ($bid: ID!, $cols: [String!]) {
@@ -648,6 +664,127 @@ export async function fetchAllPatients(): Promise<SystemPatient[]> {
   const results = await Promise.all(BOARDS.map(fetchBoardItems));
   const patients = results.flat();
   // Patch Auth Denied patients with their real origin stage from activity logs
+  await patchAuthDeniedOrigins(patients);
+  return patients;
+}
+
+
+// ── Live search — ask Monday, don't filter a copy ────────────
+
+/**
+ * Fewest characters a live search will run on. Below this Monday would return
+ * a large slice of every board for one or two letters, and the rep is still
+ * typing anyway.
+ */
+export const LIVE_SEARCH_MIN_CHARS = 2;
+/** Fewest digits for a phone search — matches `searchPatients`' local rule. */
+export const LIVE_SEARCH_MIN_DIGITS = 3;
+/**
+ * Rows fetched per board per search. Search renders 50 rows, and a query that
+ * matches more than 100 on ONE board is not a name — it is a fragment the rep
+ * is about to lengthen.
+ */
+export const LIVE_SEARCH_PER_BOARD = 100;
+/** Words of a name query that become rules; more than this is noise. */
+const MAX_NAME_TERMS = 4;
+
+export type LiveSearchRules =
+  | { kind: "phone"; digits: string }
+  | { kind: "name"; terms: string[] };
+
+/**
+ * What a typed query asks Monday for — pure, so it is testable without a board.
+ *
+ * Digits (with the usual phone punctuation) search the phone column by digit
+ * SUBSTRING, so `555-0101` finds `(347) 555-0101` however the board stored it —
+ * this account holds both `3475550101` and `13475550101` shapes (§5.28), and a
+ * substring covers both where an exact match covers one. Anything else searches
+ * the item NAME, one `contains_text` rule per word ANDed together, so
+ * "jose delgado" and "delgado, jose" both find Jose Delgado. Returns null when
+ * the query is too short to be worth a request.
+ */
+export function liveSearchRules(query: string): LiveSearchRules | null {
+  const trimmed = query.trim();
+  if (!trimmed) return null;
+  const isDigits = /^\d+$/.test(trimmed.replace(/[\s\-().+]/g, ""));
+  if (isDigits) {
+    const digits = trimmed.replace(/\D/g, "");
+    return digits.length >= LIVE_SEARCH_MIN_DIGITS ? { kind: "phone", digits } : null;
+  }
+  if (trimmed.length < LIVE_SEARCH_MIN_CHARS) return null;
+  // Trim punctuation off each end of a word — "Delgado," must reach Monday as
+  // "Delgado" or the contiguous-substring rule misses "Jose Delgado". Inner
+  // characters stay (O'Brien, Smith-Jones), because those ARE the name.
+  const terms = trimmed
+    .split(/\s+/)
+    .map((t) => t.replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, ""))
+    .filter((t) => t.length > 0)
+    .slice(0, MAX_NAME_TERMS);
+  return terms.length ? { kind: "name", terms } : null;
+}
+
+/** GraphQL `query_params` literal for one board. Strings go through
+ *  JSON.stringify, whose escaping is valid GraphQL string syntax. */
+function rulesLiteral(board: BoardDef, rules: LiveSearchRules): string {
+  const rule = (columnId: string, value: string) =>
+    `{column_id: ${JSON.stringify(columnId)}, compare_value: [${JSON.stringify(value)}], operator: contains_text}`;
+  const list =
+    rules.kind === "phone"
+      ? [rule(board.phoneColId, rules.digits)]
+      : rules.terms.map((t) => rule("name", t));
+  return `{rules: [${list.join(", ")}], operator: and}`;
+}
+
+/**
+ * Search every board for one query, live.
+ *
+ * ⚠️ This is what replaced "download all 5,657 patients, then filter in the
+ * browser" as the thing behind the search box (2026-09-03). That design cost
+ * a 15–20s cold load — Profile Send Off alone is 2,635 items in six sequential
+ * 500-item pages, each ~680 KB with the notes column — and it papered over the
+ * wait with a cached snapshot up to 24h old, so for the first seconds of every
+ * visit the rep was searching yesterday's boards. Katie stopped using it and
+ * looked patients up on Monday instead. One aliased request across all seven
+ * boards with `contains_text` rules measured **200 complexity** against
+ * **16,020 per full page**, and comes back in under a second with exactly what
+ * Monday holds at that instant. There is nothing here to be stale.
+ *
+ * Same columns, same mapping and the same Auth Denied origin patch as the
+ * whole-board fetch, so a row is identical whichever path produced it. The
+ * whole-board fetch survives for the pipeline chart and the other tabs — it
+ * just no longer stands between a rep and a name.
+ */
+export async function searchPatientsLive(
+  query: string,
+  signal?: AbortSignal,
+): Promise<SystemPatient[]> {
+  const rules = liveSearchRules(query);
+  if (!rules || !hasToken()) return [];
+
+  const aliases = BOARDS.map(
+    (b, i) => `
+      b${i}: boards(ids: [${b.boardId}]) {
+        items_page(limit: ${LIVE_SEARCH_PER_BOARD}, query_params: ${rulesLiteral(b, rules)}) {
+          items {
+            id
+            name
+            group { id title }
+            column_values(ids: ${JSON.stringify(searchColumnIds(b))}) { id text value }
+          }
+        }
+      }`,
+  );
+  const data = await gql<Record<string, { items_page: { items: RawItem[] } }[]>>(
+    `query { ${aliases.join("\n")} }`,
+    {},
+    signal,
+  );
+
+  const patients: SystemPatient[] = [];
+  BOARDS.forEach((b, i) => {
+    const items = data[`b${i}`]?.[0]?.items_page?.items ?? [];
+    for (const item of items) patients.push(mapToSystemPatient(item, b));
+  });
   await patchAuthDeniedOrigins(patients);
   return patients;
 }
