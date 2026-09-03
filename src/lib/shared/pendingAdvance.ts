@@ -1,12 +1,14 @@
 /**
  * Optimistic stage-advance hiding — "it went through, get them off my screen".
  *
- * A successful Evaluate send flips the Stage Advancer, but the queue only
- * learns about it on the next 30s poll (`useMondayPatients` POLL_MS), and
- * Monday itself may not have indexed the write by then. So for up to half a
- * minute after a send that WORKED, the patient sat in the sidebar with the
- * panel still rendering them and the Send button re-enabled — a screen
- * indistinguishable from "the send didn't happen".
+ * Shared by every role queue (masheke · Insurance · Welcome Call · Final
+ * Confirm · the four Profile Send Off queues). A successful send flips a Stage
+ * Advancer, but the queue only learns about it on the next poll (15-30s), and
+ * on the group-fetch boards it must additionally wait for the Monday
+ * automation to MOVE the item. So for up to half a minute after a send that
+ * WORKED, the patient sat in the sidebar with the panel still rendering them
+ * and the Send button re-enabled — a screen indistinguishable from "the send
+ * didn't happen".
  *
  * Reps re-pressed. Masheke did it on three patients on 2026-09-03 (Joseph
  * Bowser 12936243860, Robert Bianco 12936759879, Frank Fuller 12937936786):
@@ -60,10 +62,10 @@ export type PendingAdvanceVerdict =
 /**
  * Decide what to do with one optimistically-hidden patient on a poll.
  *
- * @param stillInStage does the freshly-fetched board still place this patient
- *   in the stage they were sent out of? A patient missing from the fetch
- *   entirely counts as NOT still in stage — they are not in this queue either
- *   way, so there is nothing left to hide.
+ * @param stillInStage does this queue's OWN filter still return the patient
+ *   from the freshly-fetched board? A patient missing from the fetch entirely
+ *   counts as NOT still in stage — they are not in this queue either way, so
+ *   there is nothing left to hide.
  * @param markedAt when the send resolved (ms since epoch).
  * @param now current time (ms since epoch) — passed in so this is pure.
  */
@@ -76,4 +78,37 @@ export function pendingAdvanceVerdict(
   if (!stillInStage) return "landed";
   if (now - markedAt >= ttlMs) return "expired";
   return "hide";
+}
+
+
+/**
+ * Apply a queue's pending markers to the list it just built, and reconcile them
+ * against it.
+ *
+ * ⚠️ `queue` must be the list AFTER the caller's own filter — the same
+ * membership test the sidebar renders. That is the point of taking a list
+ * rather than a predicate: every queue draws its boundary differently (masheke
+ * matches a Stage Advancer, Insurance and Welcome Call fetch a GROUP and wait
+ * on an automation to move the item, Patient Intake splits on referral type),
+ * and a re-implementation of any of those here would drift from the real one
+ * and hide the wrong patients — the §5.9/§5.10 keep-in-agreement trap. Passing
+ * the built list makes agreement structural.
+ *
+ * Mutates `pending`: a marker is dropped as soon as the board settles it,
+ * either way. What comes back is the list minus whoever is still hidden.
+ */
+export function applyPendingAdvances<T extends { id: string }>(
+  queue: T[],
+  pending: Map<string, number>,
+  now: number = Date.now(),
+  ttlMs: number = PENDING_ADVANCE_TTL_MS,
+): T[] {
+  if (pending.size === 0) return queue;
+  const present = new Set(queue.map((p) => p.id));
+  for (const [id, markedAt] of [...pending]) {
+    if (pendingAdvanceVerdict(present.has(id), markedAt, now, ttlMs) !== "hide") {
+      pending.delete(id);
+    }
+  }
+  return pending.size === 0 ? queue : queue.filter((p) => !pending.has(p.id));
 }

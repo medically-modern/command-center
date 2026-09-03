@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { Patient } from "@/lib/finalConfirm/workflow";
 import { fetchGroupItems, fetchItemById, hasToken } from "@/lib/finalConfirm/mondayApi";
 import { mondayItemToPatient } from "@/lib/finalConfirm/mondayMapping";
+import { applyPendingAdvances } from "@/lib/shared/pendingAdvance";
 
 const POLL_MS = 30_000;
 const LS_KEY = "fc-overlays";
@@ -68,6 +69,11 @@ export function useMondayPatients(injectedPatientId?: string | null) {
   const overlayRef = useRef<Map<string, Partial<Patient>>>(loadOverlays());
   const mountedRef = useRef(true);
 
+  // Patients hidden optimistically because a send advanced them out of this
+  // group (id → when). Reconciled against the board on every poll — see
+  // lib/shared/pendingAdvance. In memory on purpose: a reload is a fresh read.
+  const pendingAdvanceRef = useRef<Map<string, number>>(new Map());
+
   const refetch = useCallback(async (maybeSilent: unknown = false) => {
     const silent = maybeSilent === true;
     if (!hasToken()) {
@@ -86,7 +92,12 @@ export function useMondayPatients(injectedPatientId?: string | null) {
       const items = await fetchGroupItems(undefined);
       if (!mountedRef.current) return;
       const safeItems = Array.isArray(items) ? items : [];
-      const ps = safeItems.map(mondayItemToPatient);
+      // The group fetch IS this queue's membership test, so the optimistic hide
+      // is applied to exactly that list and can never disagree with the sidebar.
+      const ps = applyPendingAdvances(
+        safeItems.map(mondayItemToPatient),
+        pendingAdvanceRef.current,
+      );
       const merged = ps.map((p) => {
         const o = overlayRef.current.get(p.id);
         return o ? { ...p, ...o } : p;
@@ -95,7 +106,14 @@ export function useMondayPatients(injectedPatientId?: string | null) {
       persistPatientCache(merged);
 
       // If a patientId was injected (deep-link), fetch that item if not already present
-      if (injectedPatientId && !merged.some((p) => p.id === injectedPatientId)) {
+      // ⚠️ A deep link is exempt from this group's queue rules but NOT from an
+      // advance made this session — re-injecting a patient we just hid hands
+      // back the live Send button the hide exists to take away.
+      if (
+        injectedPatientId &&
+        !pendingAdvanceRef.current.has(injectedPatientId) &&
+        !merged.some((p) => p.id === injectedPatientId)
+      ) {
         try {
           const item = await fetchItemById(injectedPatientId);
           if (item && mountedRef.current) {
@@ -185,5 +203,14 @@ export function useMondayPatients(injectedPatientId?: string | null) {
     });
   }, []);
 
-  return { patients, loading, initialLoading, error, refetch, update, clearOverlay, saveOverlay, hasOverlay, addPatient };
+  /** A send advanced this patient off the stage — take them off screen now
+   *  rather than leaving them in the queue with a live Send button until the
+   *  next poll AND the Monday automation that moves the item. Display only: the
+   *  board still decides, and the poll brings them back if nothing moved. */
+  const markAdvanced = useCallback((id: string) => {
+    pendingAdvanceRef.current.set(id, Date.now());
+    setPatients((prev) => prev.filter((p) => p.id !== id));
+  }, []);
+
+  return { patients, loading, initialLoading, error, refetch, update, markAdvanced, clearOverlay, saveOverlay, hasOverlay, addPatient };
 }

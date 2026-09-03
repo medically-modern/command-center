@@ -770,7 +770,7 @@ const UnverifiedReferralsPage = ({ variant = "infoCollection" }: { variant?: Int
   const source: Source = sourceParam === "partial" ? "partial" : "completed";
 
   const {
-    patients, loading, initialLoading, error, refetch, updateLocal, hasOverlay, getReceived,
+    patients, loading, initialLoading, error, refetch, updateLocal, markAdvanced, hasOverlay, getReceived,
     saveOverlay, clearOverlay,
     // `detailLoading` is deliberately not taken: the pane keys off "a row is
     // selected but has no usable record yet", which also covers the frame
@@ -1544,6 +1544,13 @@ const UnverifiedReferralsPage = ({ variant = "infoCollection" }: { variant?: Int
             params.delete("patientId");
             setSearchParams(params, { replace: true });
             setSelectedId(null);
+            // ...and off the queue immediately, rather than at the mercy of the
+            // 15s poll AND the group move behind it. Scoped to the two ADVANCES
+            // on purpose: they are the exits that take the patient out of this
+            // stage outright. The escalation exits are manager actions whose own
+            // filter already removes them from the rep's view, and Send back to
+            // pipeline puts the patient back INTO a queue.
+            markAdvanced(selected.id);
           }
           await refetch(true);
         }
@@ -1554,7 +1561,7 @@ const UnverifiedReferralsPage = ({ variant = "infoCollection" }: { variant?: Int
       }
     },
     [selected, escalateReason, refetch, verified, clinicLabelId, stuckLevel, liveIndex,
-      logChangedFacts, clearOverlay, searchParams, setSearchParams],
+      logChangedFacts, clearOverlay, markAdvanced, searchParams, setSearchParams],
   );
 
   /**

@@ -80,6 +80,13 @@ import { shouldShowCgmBlock, shouldShowIpBlock } from "@/lib/masheke/ipPaths";
 interface Props {
   patient: Patient;
   onUpdate: (patch: Partial<Patient>) => void;
+  /** The send advanced this patient off the stage — the page takes them off
+   *  screen immediately instead of leaving them in the queue, with a live Send
+   *  button, until the next 30s poll. Only called on a CONFIRMED advance: a
+   *  send that stayed in the stage (an attempt, an escalated follow-up) and a
+   *  durably-queued-but-unconfirmed one both leave the patient where they are. */
+  onAdvanced?: () => void;
+
   onOpenForm?: () => void;
   /** Manager view: "Review the Request" starts as a collapsed dropdown. */
   managerMode?: boolean;
@@ -89,7 +96,7 @@ interface Props {
 // Main panel
 // =====================================================================
 
-export function ConfirmReceiptPanel({ patient, onUpdate, managerMode = false }: Props) {
+export function ConfirmReceiptPanel({ patient, onUpdate, managerMode = false, onAdvanced }: Props) {
   const mondayFiles = useMondayFiles(patient.id);
 
   // "What we're still missing" + courtesy-fax message body are derived from
@@ -243,6 +250,9 @@ export function ConfirmReceiptPanel({ patient, onUpdate, managerMode = false }: 
     let patch: Partial<Patient> | undefined;
     let successMsg = "";
     let confirmedBanner: { note: string; ts: string } | null = null;
+    // Only the "receipt confirmed" branch moves the patient to Chase; an
+    // attempt and an escalated follow-up both stay in Confirm Receipt.
+    let advanced = false;
     setSaving(true);
     setSavePhase("posting");
     toast.loading("Sending to server…", { id: toastId });
@@ -261,6 +271,7 @@ export function ConfirmReceiptPanel({ patient, onUpdate, managerMode = false }: 
           : { [fieldKey]: value, subStage: "Chase Clinicals" };
         successMsg = "Receipt confirmed — moved to Chase Clinicals";
         confirmedBanner = { note: attemptNote.trim(), ts: formatDateShort(etNow()) };
+        advanced = true;
         await saveYes(patient, slot, value, onProgress, isEscalated);
       } else if (isEscalated) {
         // Manager follow-up on an escalated patient: all 3 attempt slots are
@@ -330,6 +341,10 @@ export function ConfirmReceiptPanel({ patient, onUpdate, managerMode = false }: 
       setConfirmed(null);
       setAttemptNote("");
       toast.success(`${successMsg} — confirmed in Monday`, { id: toastId });
+      // Confirmed in Monday AND it advanced — off the queue now. The pending
+      // branch below deliberately does not hide: that job is still in flight
+      // and its own toast already says "don't repeat".
+      if (advanced) onAdvanced?.();
     } catch (e) {
       if (e instanceof GatewayPendingError && patch) {
         // The gateway durably queued the job; it WILL complete server-side.

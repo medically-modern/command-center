@@ -100,13 +100,19 @@ interface Props {
   /** Bumped by parent on Reset — forces local state reload. */
   resetVersion?: number;
   onOpenForm?: () => void;
+  /** The send advanced this patient off the stage — the page takes them off
+   *  screen immediately instead of leaving them in the queue, with a live Send
+   *  button, until the next 30s poll. Only called on a CONFIRMED advance: a
+   *  send that stayed in the stage (an attempt, an escalated follow-up) and a
+   *  durably-queued-but-unconfirmed one both leave the patient where they are. */
+  onAdvanced?: () => void;
 }
 
 // =====================================================================
 // Main panel
 // =====================================================================
 
-export function SendRequestPanel({ patient, resetVersion = 0, onUpdate }: Props) {
+export function SendRequestPanel({ patient, resetVersion = 0, onUpdate, onAdvanced }: Props) {
   const [state, setState] = useState<EvalState>(() => loadEvalStateForPatient(patient));
   const showCgm = shouldShowCgmBlock(patient.serving);
   const showIp = shouldShowIpBlock(patient.serving);
@@ -360,6 +366,10 @@ export function SendRequestPanel({ patient, resetVersion = 0, onUpdate }: Props)
           toast.success(
             `Sent to ${to.length} recipient${to.length > 1 ? "s" : ""}${ccList.length ? ` (+${ccList.length} cc)` : ""}${data.sender ? " from " + data.sender : ""} — moved to ${nextStage}`,
           );
+          // Advanced and confirmed — off the queue now. The catch below is the
+          // "sent but the advance failed" path and deliberately does NOT hide:
+          // that patient is still in this stage.
+          onAdvanced?.();
         } catch (advErr) {
           console.warn("[Send] sent OK but Monday update/advance failed:", advErr);
           toast.error("Sent, but couldn't advance the stage", {
@@ -374,7 +384,7 @@ export function SendRequestPanel({ patient, resetVersion = 0, onUpdate }: Props)
         setSending(false);
       }
     },
-    [patient, onUpdate],
+    [patient, onUpdate, onAdvanced],
   );
 
   // Notes gate — Mark as Complete requires ≥1 note added this session, and is
@@ -459,6 +469,7 @@ export function SendRequestPanel({ patient, resetVersion = 0, onUpdate }: Props)
       if (docTasks.length) await Promise.all(docTasks.map((t) => t.run()));
       toast.success(`Marked complete — moved to ${nextStage}`);
       setCompleted(true);
+      onAdvanced?.();
       escalatedRef.current = false;
     } catch (e) {
       toast.error("Mark complete failed", {
@@ -467,7 +478,7 @@ export function SendRequestPanel({ patient, resetVersion = 0, onUpdate }: Props)
     } finally {
       setCompleting(false);
     }
-  }, [patient]);
+  }, [patient, onAdvanced]);
 
   const cgmIsGenerating = cgmIsGeneratingLocal || mondayFiles.generateCgmStatus === "Generate";
   const ipIsGenerating = ipIsGeneratingLocal || mondayFiles.generateIpStatus === "Generate";

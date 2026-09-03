@@ -31,7 +31,7 @@ vi.mock("@/lib/masheke/mondayApi", async () => {
 });
 
 import { useMondayPatients } from "./useMondayPatients";
-import { PENDING_ADVANCE_TTL_MS } from "@/lib/masheke/pendingAdvance";
+import { PENDING_ADVANCE_TTL_MS } from "@/lib/shared/pendingAdvance";
 
 /** A board row at the given Stage Advancer value. */
 function row(id: string, name: string, subStage: string) {

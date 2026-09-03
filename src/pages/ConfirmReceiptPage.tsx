@@ -35,7 +35,7 @@ const ConfirmReceiptPage = () => {
   // Manager view (?manager=1): sidebar lists ONLY escalated patients and
   // the panel tucks "Review the Request" behind a collapsed dropdown.
   const isManager = searchParams.get("manager") === "1";
-  const { patients, loading, initialLoading, error, refetch, update, clearOverlay , saveOverlay, hasOverlay } = useMondayPatients("confirmReceipt", searchParams.get("patientId"));
+  const { patients, loading, initialLoading, error, refetch, update, markAdvanced, clearOverlay , saveOverlay, hasOverlay } = useMondayPatients("confirmReceipt", searchParams.get("patientId"));
   const [selectedId, setSelectedId] = useState<string | null>(
     searchParams.get("patientId") ?? null,
   );
@@ -160,7 +160,7 @@ const ConfirmReceiptPage = () => {
                     editHint="Edits are saved to Monday when you Save Attempt (or via the Save button above)."
                     fullDetails
                   />
-                  <ConfirmReceiptPanel patient={selected} onUpdate={onUpdate} onOpenForm={() => setEscalationModalOpen(true)} managerMode={isManager} />
+                  <ConfirmReceiptPanel patient={selected} onUpdate={onUpdate} onOpenForm={() => setEscalationModalOpen(true)} managerMode={isManager} onAdvanced={() => markAdvanced(selected.id)} />
                 </>
               )}
             </section>

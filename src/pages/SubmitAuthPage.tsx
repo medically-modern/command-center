@@ -59,13 +59,14 @@ import { cn } from "@/lib/utils";
 import "@/components/samantha/benefitsRedesign.css";
 import "@/components/samantha/submitAuthRedesign.css";
 import { StaleDataNotice } from "@/components/shared/StaleDataNotice";
+import { stageLeavesQueue } from "@/lib/samantha/stageQueue";
 
 const SubmitAuthPage = () => {
   const { goBack } = useBackNavigation();
   const [searchParams] = useSearchParams();
   const isEscalated = searchParams.get("escalated") === "1";
   const isManager = searchParams.get("manager") === "1";
-  const { patients, loading, initialLoading, error, refetch, update, clearOverlay, saveOverlay, hasOverlay } =
+  const { patients, loading, initialLoading, error, refetch, update, markAdvanced, clearOverlay, saveOverlay, hasOverlay } =
     useMondayPatients("submitAuth", searchParams.get("patientId"));
   const [selectedId, setSelectedId] = useState<string | null>(
     searchParams.get("patientId") ?? null,
@@ -146,7 +147,7 @@ const SubmitAuthPage = () => {
     setSaving(true);
     setSavePhase("posting");
     try {
-      await sendPatientToMonday(selected, "submitAuth", {
+      const sent = await sendPatientToMonday(selected, "submitAuth", {
         onProgress: setSavePhase,
         managerResolve: isManager,
         requireDone: true,
@@ -155,6 +156,11 @@ const SubmitAuthPage = () => {
       clearOverlay(selected.id);
       setLastSentId(selected.id);
       toast.success("Auth submission complete — sent to Monday");
+      // The send moved them on — take them off screen now rather than
+      // leaving a live Send button until the poll AND the Monday automation
+      // that moves the item catch up. A send that wrote no stage, or wrote
+      // this queue's own stage, is NOT an advance and must not hide anyone.
+      if (stageLeavesQueue(sent.stageIndex, "submitAuth")) markAdvanced(selected.id);
       refetch(true);
     } catch (e) {
       if (e instanceof GatewayPendingError) {

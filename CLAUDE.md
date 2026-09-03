@@ -2925,7 +2925,28 @@ these services; when their math changes, `oopEstimator.ts` must be updated to ma
   success — green toast, doctor writes, everything — and the job can still FAIL seconds later.
   That is exactly what the three sends above did. Expiry is therefore not a guess about why: it is
   a direct reading of the board, the only thing that settles whether the patient still needs
-  working. Wire the same pair into the other masheke stage sends before assuming they are covered.
+  working.
+  ⚠️ **Now on every queue** — masheke (Evaluate · Send Request · Confirm Receipt), Insurance
+  (Benefits · Submit Auth · Auth Outstanding), Welcome Call, Final Confirm and all four Profile
+  Send Off exits. `applyPendingAdvances` takes the list the sidebar renders rather than a
+  predicate, so each queue's hide uses that queue's OWN membership test and cannot drift from it
+  (the §5.9/§5.10 keep-in-agreement trap). On the group-fetch boards the window it closes is even
+  wider than masheke's: the patient sits there until the poll AND the Monday automation that moves
+  the item.
+  ⚠️ **Only a send that LEAVES the queue may hide.** Insurance is the trap: `authOutstandingOutcome`
+  returns a null stage for "nothing resolved yet" and Benefits writes `benefitsSos` for a blocker —
+  both leave the patient in place, and hiding them takes live work off the rep's screen.
+  `sendPatientToMonday` therefore returns the stage it wrote and the three pages gate on
+  **`lib/samantha/stageQueue.stageLeavesQueue`** (+ tests). masheke's panels gate the same way in
+  their own vocabulary: Evaluate on `nextStage`, Confirm Receipt on its confirmed branch only,
+  Send Request never on the "sent but the advance failed" path.
+  ⚠️ **Deliberate carve-outs, not omissions:** Subscription writes no Stage Advancer at all; both
+  Chase pages log attempts and re-date rather than advancing; DVS is a read-only monitor; the
+  intake page's escalation exits already leave the rep's view by their own filter, and Send back to
+  pipeline puts the patient back INTO a queue. A durably-queued-but-unconfirmed send
+  (`GatewayPendingError`) never hides either — its own toast already says "don't repeat".
+  `hooks/pendingAdvanceCoverage.test.ts` scans for the wiring, because a queue that loses it does
+  not fail, it just goes back to re-sending.
 - **Column IDs, not titles**, are the contract. Add new ones to `mondayMapping.ts` + the schema docs.
 - **Exact label strings** for status/dropdown writes (Evaluate "Option A", coverage paths, etc.) —
   a casing mismatch creates duplicate board labels. Prefer index writes where possible.

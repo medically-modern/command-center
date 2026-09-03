@@ -33,7 +33,7 @@ const SendRequestPage = () => {
   const [searchParams] = useSearchParams();
   const isEscalated = searchParams.get("escalated") === "1";
   const isManager = searchParams.get("manager") === "1";
-  const { patients, loading, initialLoading, error, refetch, update, clearOverlay , saveOverlay, hasOverlay } = useMondayPatients("sendRequest", searchParams.get("patientId"));
+  const { patients, loading, initialLoading, error, refetch, update, markAdvanced, clearOverlay , saveOverlay, hasOverlay } = useMondayPatients("sendRequest", searchParams.get("patientId"));
   const [selectedId, setSelectedId] = useState<string | null>(
     searchParams.get("patientId") ?? null,
   );
@@ -141,7 +141,7 @@ const SendRequestPage = () => {
               {selected && (
                 <>
                   <SendRequestHeaderCard patient={selected} onDoctorEdit={(patch) => update(selected.id, patch)} />
-                  <SendRequestPanel patient={selected} resetVersion={resetVersion} onUpdate={(patch) => update(selected.id, patch)} onOpenForm={() => setEscalationModalOpen(true)} />
+                  <SendRequestPanel patient={selected} resetVersion={resetVersion} onUpdate={(patch) => update(selected.id, patch)} onOpenForm={() => setEscalationModalOpen(true)} onAdvanced={() => markAdvanced(selected.id)} />
                 </>
               )}
             </section>

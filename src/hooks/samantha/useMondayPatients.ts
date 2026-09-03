@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { Patient, ProductCodeId, ProductCodeState } from "@/lib/samantha/workflow";
 import { fetchGroupItems, fetchItemById, GROUPS, hasToken } from "@/lib/samantha/mondayApi";
 import { mondayItemToPatient } from "@/lib/samantha/mondayMapping";
+import { applyPendingAdvances } from "@/lib/shared/pendingAdvance";
 
 /**
  * Apply the local-edit overlay on top of a freshly-fetched patient.
@@ -115,6 +116,11 @@ export function useMondayPatients(activeGroup: SidebarGroup = "benefits", inject
 
   const mountedRef = useRef(true);
 
+  // Patients hidden optimistically because a send advanced them out of this
+  // group (id → when). Reconciled against the board on every poll — see
+  // lib/shared/pendingAdvance. In memory on purpose: a reload is a fresh read.
+  const pendingAdvanceRef = useRef<Map<string, number>>(new Map());
+
   const refetch = useCallback(async (maybeSilent: unknown = false) => {
     const silent = maybeSilent === true;
     if (!hasToken()) {
@@ -139,13 +145,26 @@ export function useMondayPatients(activeGroup: SidebarGroup = "benefits", inject
       // patient the send already routed to DVS. They belong to the /dvs
       // monitor now — drop them here and in the counting twins (§5.8:
       // useRoleCounts samActive + both baseline countSamGroup).
-      const ps = safeItems
-        .map(mondayItemToPatient)
-        .filter((p) => p.stageAdvancerText !== "DVS");
+      // The group fetch minus stage-DVS is this queue's membership test, so the
+      // optimistic hide is applied to exactly that list — it can never disagree
+      // with what the sidebar renders.
+      const ps = applyPendingAdvances(
+        safeItems
+          .map(mondayItemToPatient)
+          .filter((p) => p.stageAdvancerText !== "DVS"),
+        pendingAdvanceRef.current,
+      );
       const merged = ps.map((p) => applyOverlay(p, overlayRef.current.get(p.id)));
 
       // If a specific patient was deep-linked but isn't in this group, fetch individually.
-      if (injectedPatientId && !merged.some((p) => p.id === injectedPatientId)) {
+      // ⚠️ A deep link is exempt from this group's queue rules but NOT from an
+      // advance made this session: re-injecting a patient we just hid hands the
+      // rep back the live Send button the hide exists to take away.
+      if (
+        injectedPatientId &&
+        !pendingAdvanceRef.current.has(injectedPatientId) &&
+        !merged.some((p) => p.id === injectedPatientId)
+      ) {
         try {
           // Both Submit Auth and Auth Outstanding need the per-product auth
           // columns (AUTH_READ_COLUMN_IDS) — mirror AUTH_GROUP_IDS. Omitting
@@ -219,5 +238,17 @@ export function useMondayPatients(activeGroup: SidebarGroup = "benefits", inject
   }, []);
 
 
-  return { patients, loading, initialLoading, error, refetch, update, clearOverlay, saveOverlay, hasOverlay };
+  /** A send advanced this patient out of the group — take them off screen now
+   *  rather than leaving them in the queue with a live Send button until the
+   *  next poll AND the Monday automation that moves the item. Display only: the
+   *  board still decides, and the poll brings them back if nothing moved.
+   *  ⚠️ Call ONLY when the send actually left this queue — `stageLeavesQueue`
+   *  in lib/samantha/stageQueue owns that question, because a send here can
+   *  legitimately write no stage at all. */
+  const markAdvanced = useCallback((id: string) => {
+    pendingAdvanceRef.current.set(id, Date.now());
+    setPatients((prev) => prev.filter((p) => p.id !== id));
+  }, []);
+
+  return { patients, loading, initialLoading, error, refetch, update, markAdvanced, clearOverlay, saveOverlay, hasOverlay };
 }

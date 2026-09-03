@@ -54,7 +54,7 @@ const FinalConfirmPage = () => {
   const isEscalated = searchParams.get("escalated") === "1";
   const isManager = searchParams.get("manager") === "1";
   const [escalationModalOpen, setEscalationModalOpen] = useState(false);
-  const { patients, loading, initialLoading, error, refetch, update, clearOverlay, saveOverlay, hasOverlay, addPatient } = useMondayPatients(searchParams.get("patientId"));
+  const { patients, loading, initialLoading, error, refetch, update, markAdvanced, clearOverlay, saveOverlay, hasOverlay, addPatient } = useMondayPatients(searchParams.get("patientId"));
   const [selectedId, setSelectedId] = useState<string | null>(
     searchParams.get("patientId") ?? null,
   );
@@ -199,6 +199,11 @@ const FinalConfirmPage = () => {
       }
 
       clearOverlay(selected.id);
+      // The send set the Stage Advancer, so the patient has left this stage —
+      // take them off screen now rather than leaving a live Send button until
+      // the poll AND the Monday automation that moves the item catch up.
+      // Unconditional here: unlike Insurance, this send always advances.
+      markAdvanced(selected.id);
       refetch();
     } catch (e) {
       if (e instanceof GatewayPendingError) {

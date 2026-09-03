@@ -125,6 +125,14 @@ export function autoEscalationWrite(
  *
  * Throws if any columns failed (after logging), so the UI shows an error.
  */
+/** What a send did to the Stage Advancer. `stageIndex` is null when the send
+ *  deliberately left the column alone (Auth Outstanding with nothing resolved
+ *  yet) — the caller needs that to tell an advance from a save-in-place, which
+ *  is what decides whether the patient may be hidden from the queue. */
+export interface SendResult {
+  stageIndex: number | null;
+}
+
 export async function sendPatientToMonday(
   p: Patient,
   context: SendContext = "benefits",
@@ -150,7 +158,7 @@ export async function sendPatientToMonday(
      */
     managerResolve?: boolean;
   },
-): Promise<void> {
+): Promise<SendResult> {
   const rawIns = p.insurance ?? EMPTY_INSURANCE;
   const tasks: WriteTask[] = [];
 
@@ -1477,6 +1485,8 @@ export async function sendPatientToMonday(
       `${failures.length} column(s) failed after retries (${succeeded} succeeded). Check "Josh Debug" column. Failed: ${failures.map((f) => f.split(":")[0]).join(", ")}`,
     );
   }
+
+  return { stageIndex: stageWriteIndex };
 }
 
 /**

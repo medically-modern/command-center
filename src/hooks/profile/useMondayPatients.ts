@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { Patient } from "@/lib/profile/workflow";
 import { fetchGroupItems, fetchItemById, hasToken } from "@/lib/profile/mondayApi";
 import { mondayItemToPatient } from "@/lib/profile/mondayMapping";
+import { applyPendingAdvances } from "@/lib/shared/pendingAdvance";
 
 const POLL_MS = 15_000;
 const LS_CACHE_KEY_BASE = "prof-patients-cache";
@@ -95,6 +96,10 @@ export function useMondayPatients(
 ) {
   // The deep link the page currently has. Kept current here so the stable
   // `refetch` above can read it without becoming order-dependent on renders.
+  // Patients hidden optimistically because an exit advanced them out of this
+  // queue (id → when). Reconciled against the board on every poll — see
+  // lib/shared/pendingAdvance. In memory on purpose: a reload is a fresh read.
+  const pendingAdvanceRef = useRef<Map<string, number>>(new Map());
   const injectedIdRef = useRef(injectedPatientId);
   useEffect(() => { injectedIdRef.current = injectedPatientId; }, [injectedPatientId]);
 
@@ -251,7 +256,10 @@ export function useMondayPatients(
           if (!receivedRef.current[base.id]) receivedRef.current[base.id] = base;
         }
       }
-      const merged = applyOverlays(ps);
+      // The group fetch IS this queue's membership test (the role split runs in
+      // the page, over this list), so the optimistic hide is applied to exactly
+      // that list and can never disagree with what the sidebar renders.
+      const merged = applyPendingAdvances(applyOverlays(ps), pendingAdvanceRef.current);
 
       // Read through a ref: `refetch` is deliberately stable (recreating it
       // restarts the poll and re-raises the blocking overlay — see the groupKey
@@ -259,8 +267,16 @@ export function useMondayPatients(
       // first-render value. It was: a patient who LEFT this queue, and whose
       // ?patientId= the page had since dropped, kept being re-injected on every
       // poll and sat in the sidebar forever.
+      // ⚠️ A deep link is exempt from this queue's rules but NOT from an exit
+      // taken this session. These pages already drop `?patientId=` on every
+      // exit (clearDeepLink) — this is the belt to that braces, since the URL
+      // can be re-pasted and the marker expires on its own.
       const injectedId = injectedIdRef.current;
-      if (injectedId && !merged.some((p) => p.id === injectedId)) {
+      if (
+        injectedId &&
+        !pendingAdvanceRef.current.has(injectedId) &&
+        !merged.some((p) => p.id === injectedId)
+      ) {
         try {
           const item = await fetchItemById(injectedId);
           if (item) {
@@ -385,8 +401,18 @@ export function useMondayPatients(
   /** The as-received (first-seen, pre-edit) Monday values for a patient. */
   const getReceived = useCallback((id: string): Patient | undefined => receivedRef.current[id], []);
 
+  /** An exit moved this patient out of the queue (Advance to MN, Advance to
+   *  Clean-Up, Move to Profile Send Off, Mark as Stuck) — take them off screen
+   *  now rather than leaving a live exit button until the next 15s poll AND the
+   *  group move behind it. Display only: the board still decides, and the poll
+   *  brings them back if nothing moved. */
+  const markAdvanced = useCallback((id: string) => {
+    pendingAdvanceRef.current.set(id, Date.now());
+    setPatients((prev) => prev.filter((p) => p.id !== id));
+  }, []);
+
   return {
-    patients, loading, initialLoading, error, refetch, updateLocal, clearOverlay,
+    patients, loading, initialLoading, error, refetch, updateLocal, markAdvanced, clearOverlay,
     removeOverlayKeys, saveOverlay, hasOverlay, getReceived,
     // The open patient at full width, plus its own load state. `detail` is null
     // until the fetch resolves — callers must gate writes on that, never fall

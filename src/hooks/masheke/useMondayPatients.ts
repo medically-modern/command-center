@@ -5,7 +5,7 @@ import { fetchGroupItems, fetchItemById, writeDate, writeStatusIndex, COL, GROUP
 import { mondayItemToPatient, ESCALATION_INDEX } from "@/lib/masheke/mondayMapping";
 import { hasStaleEvaluateEscalation } from "@/lib/masheke/evaluateReentry";
 import { etToday } from "@/lib/masheke/etDate";
-import { pendingAdvanceVerdict } from "@/lib/masheke/pendingAdvance";
+import { applyPendingAdvances } from "@/lib/shared/pendingAdvance";
 
 const POLL_MS = 30_000;
 const LS_KEY = "mash-overlays";
@@ -194,30 +194,15 @@ export function useMondayPatients(activeTab: TabKey = "evaluate", injectedPatien
         }
       }
 
-      // Re-ask the board about every optimistically-hidden patient BEFORE
-      // filtering. The marker is a question ("did the advance land?"), and this
-      // read is the answer: confirmed advances spend their marker, and one that
-      // never landed expires so the patient returns to the queue.
-      if (pendingAdvanceRef.current.size > 0) {
-        const now = Date.now();
-        for (const [id, markedAt] of [...pendingAdvanceRef.current]) {
-          const p = allPatients.find((x) => x.id === id);
-          const stillInStage = !!p && matchesTab(p.subStage, activeTab) && !p.proposedStuck;
-          if (pendingAdvanceVerdict(stillInStage, markedAt, now) !== "hide") {
-            pendingAdvanceRef.current.delete(id);
-          }
-        }
-      }
-
       // Filter to patients whose Stage Advancer matches this tab. A patient
       // with a pending stuck PROPOSAL leaves the stage queues immediately —
       // they sit in Pipeline Oversight's Final Decisions until the manager
       // approves (real Stuck) or returns them (proposal cleared).
-      const filtered = allPatients.filter(
-        (p) =>
-          matchesTab(p.subStage, activeTab) &&
-          !p.proposedStuck &&
-          !pendingAdvanceRef.current.has(p.id),
+      // Then re-ask the board about anyone hidden by a resolved send: the list
+      // ABOVE is the membership test, so the hide can never disagree with it.
+      const filtered = applyPendingAdvances(
+        allPatients.filter((p) => matchesTab(p.subStage, activeTab) && !p.proposedStuck),
+        pendingAdvanceRef.current,
       );
 
       const merged = filtered.map((p) => {

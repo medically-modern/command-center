@@ -173,7 +173,7 @@ const ProfilePage = ({ variant }: ProfilePageProps) => {
   // but there is no reason to hand it a fresh one every time).
   const {
     patients: allProfilePatients, loading, initialLoading, error, refetch,
-    updateLocal, clearOverlay, removeOverlayKeys, saveOverlay, hasOverlay, getReceived,
+    updateLocal, markAdvanced, clearOverlay, removeOverlayKeys, saveOverlay, hasOverlay, getReceived,
   } = useMondayPatients(searchParams.get("patientId"), VARIANT_GROUPS[variant]);
 
   // Role split (three-way, mutually exclusive): inSystem = Already In System
@@ -563,6 +563,9 @@ const ProfilePage = ({ variant }: ProfilePageProps) => {
       clearOverlay(selected.id);
       toast.success(`${selected.name} advanced to MN`);
       clearDeepLink();
+      // Off the queue now: the item is moving to another group, and the
+      // refetch below still sees it here until that move lands.
+      markAdvanced(selected.id);
       setSelectedId(patients.find((p) => p.id !== selected.id)?.id ?? null);
       setTimeout(refetch, 1500);
     } catch (e) {
@@ -614,6 +617,9 @@ const ProfilePage = ({ variant }: ProfilePageProps) => {
       clearOverlay(selected.id);
       toast.success(`${selected.name} moved to Stuck`);
       clearDeepLink();
+      // Off the queue now: the item is moving to another group, and the
+      // refetch below still sees it here until that move lands.
+      markAdvanced(selected.id);
       setStuckOpen(false);
       setStuckReason("");
       setSelectedId(patients.find((p) => p.id !== selected.id)?.id ?? null);
@@ -642,6 +648,9 @@ const ProfilePage = ({ variant }: ProfilePageProps) => {
       clearOverlay(selected.id);
       toast.success(`${selected.name} moved to Profile Send Off — now in Referral Intake`);
       clearDeepLink();
+      // Off the queue now: the item is moving to another group, and the
+      // refetch below still sees it here until that move lands.
+      markAdvanced(selected.id);
       setMoveOpen(false);
       setSelectedId(patients.find((p) => p.id !== selected.id)?.id ?? null);
       setTimeout(refetch, 1500);
