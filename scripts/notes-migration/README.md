@@ -16,3 +16,18 @@ Scope is the SIX notes columns in active use (the two Insurance call-log long_te
 Phase 0 result (2026-09-03): Monday's "Change column type" creates a NEW column with a new id and deletes the old one — so we do NOT convert live columns in place. Order for the evening: `snapshotNotes snapshot` →
 `hopTest --apply` → convert the eight columns in the Monday UI → re-point the three hop
 workflows if ids changed → `scanNotesLengths` should then show 0 at 2,000 everywhere.
+
+## The columns (created 2026-09-03 15:xx ET; copy started the same afternoon)
+
+| Board | Old (long_text, capped) | New (text) | Title |
+|---|---|---|---|
+| Medical Evaluation 18406060017 | `long_text_mm27zjt2` | `text_mm6vevjf` | MN Workflow Notes |
+| Insurance 18410601299 | `long_text_mm2ffsme` | `text_mm6vzc7q` | Insurance Notes |
+| Welcome Call 18410804557 | `long_text_mm2ffsme` | `text_mm6vqq2k` | Notes |
+| Welcome Call 18410804557 | `long_text_mm5gx6j6` | `text_mm6v4fny` | MN Workflow Notes (mirror ← Insurance `text_mm3xbvss`) |
+| Welcome Call 18410804557 | `long_text_mm5g1txs` | `text_mm6vvsjy` | Profile Send-Off Notes (mirror ← Insurance `text_mm3xfw5a`) |
+| Subscription 18407459988 | `long_text_mm3rj7k7` | `text_mm6vp1z3` | Subscription Patient Notes |
+
+Hop test 2026-09-03: a 3,024-char text value crossed 7917676280 (Profile → ME) **intact**.
+The evening sweep, run BEFORE the cutover, is `migrateNotes … --apply --source-wins`; after the
+cutover, plain `--apply` (prefix rule) only.

@@ -2,11 +2,14 @@
 // copy every item's notes from the old long_text column to the new text column.
 //   node migrateNotes.mjs <boardId> <fromColId> <toColId>          → dry run: counts only
 //   node migrateNotes.mjs <boardId> <fromColId> <toColId> --apply  → writes, then re-reads and verifies
+//   … --apply --source-wins  → BEFORE the app cutover only: the old column is still the truth, so any
+//                              divergence (an edit, not just an append) is copied old → new outright.
 // Prints counts and lengths only — never a note body. Bare string via
 // change_multiple_column_values (accepted for text; sandbox-verified 2026-09-03).
-const [board, from, to, flag] = process.argv.slice(2);
-if (!board || !from || !to) { console.log("usage: node migrateNotes.mjs <boardId> <fromColId> <toColId> [--apply]"); process.exit(1); }
-const APPLY = flag === "--apply";
+const [board, from, to, ...flags] = process.argv.slice(2);
+if (!board || !from || !to) { console.log("usage: node migrateNotes.mjs <boardId> <fromColId> <toColId> [--apply] [--source-wins]"); process.exit(1); }
+const APPLY = flags.includes("--apply");
+const SOURCE_WINS = flags.includes("--source-wins"); // pre-cutover only — never after the app writes to the new column
 const GW = "https://monday-gateway-production.up.railway.app/gql";
 async function gql(query, variables = {}) { const r = await fetch(GW, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ query, variables }) }); const j = await r.json(); if (j.errors) throw new Error(JSON.stringify(j.errors).slice(0, 300)); return j.data; }
 const rows = []; let cursor = null, page = 0;
@@ -22,7 +25,7 @@ do {
 //   source is a PREFIX of dest                 → dest grew (a note landed in the NEW column)   → leave it
 //   identical                                  → nothing to do
 //   neither is a prefix of the other           → both changed (a real race) → report, never overwrite
-const cls = (r) => !r.src ? "nosrc" : r.src === r.dst ? "same" : (!r.dst || r.src.startsWith(r.dst)) ? "copy" : r.dst.startsWith(r.src) ? "destAhead" : "conflict";
+const cls = (r) => !r.src ? "nosrc" : r.src === r.dst ? "same" : (!r.dst || r.src.startsWith(r.dst)) ? "copy" : r.dst.startsWith(r.src) ? "destAhead" : SOURCE_WINS ? "copy" : "conflict";
 for (const r of rows) r.cls = cls(r);
 const todo = rows.filter(r => r.cls === "copy");
 const count = (k) => rows.filter(r => r.cls === k).length;
