@@ -2932,17 +2932,41 @@ these services; when their math changes, `oopEstimator.ts` must be updated to ma
   the response. Because every notes column here is append-only (history first, newest last), what
   gets dropped is always the note somebody just wrote. ⚠️ The all-or-nothing property of
   `change_multiple_column_values` does NOT help: it guarantees the transaction doesn't half-apply,
-  not that the value is stored in full. A scan of the ME board found **9 items already sitting at
-  exactly 2000** — every note appended to those is currently being thrown away. ⚠️ **Worst case is
+  not that the value is stored in full. A scan of the ME board found **9 items already sitting at exactly 2000** (11 by 2026-09-03 — see below) — every note appended to those is being thrown away. ⚠️ **Worst case is
   Doctor Appointments**, where the attempt LINES in MN Workflow Notes *are* the counter
   (`apptAttemptsFromNotes`): truncation drops the newest lines, so the counter freezes, the rep gets
   unlimited retries and the third-attempt escalation never fires. `lib/shared/longText.ts`
   (`assertLongTextFits`) now makes the big-append paths fail LOUDLY instead — the four masheke
   appointment/chase writers, `returnProposedToQueue` (both branches) and `EvaluatePanel`'s re-eval
-  rollup. **Still unguarded:** every role's NotesPanel `appendStampedNote`, and the Insurance /
-  profile / welcomeCall note writers. Deliberate detect-and-warn only (Josh, 2026-08-14) — trimming
-  old history to make room is the same harm, just chosen by us. The escape hatch for a body that
-  genuinely no longer fits is a Monday **item update**, which has no limit.
+  **Guarded 2026-09-03 — every live NotesPanel** (masheke incl. its two edit-mode saves · samantha ·
+  finalConfirm · welcomeCall · subscription) now refuses through
+  `components/shared/longTextGuard.refuseLongTextOverflow` BEFORE the optimistic overlay and before
+  clearing the box, so the rep's text survives to be shortened and the toast names the column and
+  the overflow. Until then "Add" wrote straight through: green **"Note saved to Monday"**, note on
+  screen, note gone from the board. Same day, `EvaluatePanel`'s send-time `assertLongTextFits` moved
+  INSIDE its try — it threw outside every catch, so a full notes column produced no toast and a Send
+  button stuck in its spinner; Bridget Browne (`12604305734`) sat like that 2026-08-28 → 09-02 with
+  **zero** board writes while "it kept saving" (§11).
+  ⚠️ **Refusing is a HARD BLOCK on a full column — and the population is not small.** Scan
+  2026-09-03 (gateway `/gql`, lengths only, never bodies): **ME 11 at exactly 2000 (3 in 2. Medical
+  Necessity) · Insurance 18 (13 ACTIVE: 3 Benefits, 1 Submit Auth, 7 Auth Outstanding, 2 Auth
+  Denied) · Welcome Call 8 (all Completed) · Subscription 0 — 37 items, 16 in live stages**, up from
+  9 on 2026-08-14. Those 16 now get a red *"N characters over"* on Add instead of silent loss, until
+  their history is moved. Repair in THIS order: create the item **update** holding the full body,
+  confirm it landed, THEN trim the column — never trim first. Trimming also moves a parser's input:
+  Doctor Appointments counts attempt lines after the last reset marker (§5.12), so that marker must
+  stay in the column.
+  **Still unguarded (same silent loss; each sits inside a transaction or a stamp and needs its own
+  reading, not a blanket guard):** the attempt-save MN-notes task in `ChaseClinicalsPanel` and
+  `ConfirmReceiptPanel`, `SendRequestPanel`'s fire-and-forget append, both Propose Stuck stamps
+  (`masheke/ProposeStuckModal`, `samantha/ProposeStuckButton` — a refusal there must not leave the
+  escalation half-raised), the notes task in `samantha/mondayWrite`, `finalConfirm/mondayWrite` and
+  `subscription/mondayWrite`, `FinalConfirmPage`'s FPC-override stamp, and the Request Body writes
+  (`long_text_mm4cnw52`, Chase + Confirm Receipt). `profile/unverifiedWrite.appendIntakeNote` is
+  deliberately NOT guarded — `text_mm389fs` is a plain `text` column with no 2000 cap (§5.28).
+  Detect-and-refuse only (Josh, 2026-08-14) — trimming old history to make room is the same harm,
+  just chosen by us. The escape hatch for a body that genuinely no longer fits is a Monday
+  **item update**, which has no limit.
 - **Welcome Call + Final Confirm escalation is WRITE-ONLY, and those two stages need a REWRITE —
   don't patch it piecemeal** (Josh, 2026-08-14, from the escalation audit). `mondayMapping`
   hardcodes **`escalated: false`** and `COL.escalation` (`color_mm1x7997`) is **not in the read
@@ -3013,6 +3037,7 @@ these services; when their math changes, `oopEstimator.ts` must be updated to ma
 | A patient's status badge says the wrong thing (or nothing) | §5.18 — `lib/shared/profileStatus.ts` (the rule) → `components/shared/PatientProfileStatus.tsx` (which board adapter that header uses) |
 | A rep pressed Advance repeatedly and nothing moved | §9 — the advancer already held its target value, so no automation fired. `lib/shared/advancerNoop.ts`; grep Railway for `ADVANCER_NOOP`. Repair by moving the item to Completed, **never** by clearing the advancer (that duplicates the downstream item) |
 | A rep says the page showed stale/blank data | §9 — `components/shared/StaleDataNotice` + `lib/shared/mondayError.ts`. Check `/audit/errors.json?key=…&hours=N` on the gateway for the Monday-side failures |
+| A note got a green "saved" toast but isn't on the board / a rep now gets *"N characters over"* on Add | §10 — the column is at Monday's 2000 cap. `components/shared/longTextGuard` (the refusal) → `lib/shared/longText` (the rule). Confirm with a lengths-only scan; repair by moving history to an item **update** FIRST, then trimming the column |
 | A value isn't saving to Monday | `lib/<role>/mondayWrite.ts` + `lib/shared/verifiedWrite.ts`; cross-check `mondayMapping.ts` column IDs |
 | Medical-necessity logic | `lib/masheke/evalState.ts` (+ ipPaths, requestTemplate, mnRequestPdf) |
 | A returned patient can't log an attempt (cards greyed, Save disabled) | `lib/masheke/attemptRollup.ts` → `oversightApi.returnProposedToQueue`; the gate is **MN Attempts** `color_mm1wz0vg`, not the attempt columns (§7) |
