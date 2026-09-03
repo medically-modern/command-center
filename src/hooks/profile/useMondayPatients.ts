@@ -256,10 +256,7 @@ export function useMondayPatients(
           if (!receivedRef.current[base.id]) receivedRef.current[base.id] = base;
         }
       }
-      // The group fetch IS this queue's membership test (the role split runs in
-      // the page, over this list), so the optimistic hide is applied to exactly
-      // that list and can never disagree with what the sidebar renders.
-      const merged = applyPendingAdvances(applyOverlays(ps), pendingAdvanceRef.current);
+      const merged = applyOverlays(ps);
 
       // Read through a ref: `refetch` is deliberately stable (recreating it
       // restarts the poll and re-raises the blocking overlay — see the groupKey
@@ -287,8 +284,13 @@ export function useMondayPatients(
         } catch { /* ignore */ }
       }
 
-      setPatients(merged);
-      persistPatientCache(merged, groupIdRef.current);
+      // ⚠️ Hide at the POINT OF COMMIT, not where the list was built: everything
+      // in between is an await during which a send can resolve, and a list
+      // filtered earlier would put that patient — Send button and all — back on
+      // screen (Greptile, PR #54).
+      const visible = applyPendingAdvances(merged, pendingAdvanceRef.current);
+      setPatients(visible);
+      persistPatientCache(visible, groupIdRef.current);
 
       // Refresh the open patient in the same pass. This is what keeps every
       // existing `refetch(true)` call site working unchanged — the post-save

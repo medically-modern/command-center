@@ -145,15 +145,9 @@ export function useMondayPatients(activeGroup: SidebarGroup = "benefits", inject
       // patient the send already routed to DVS. They belong to the /dvs
       // monitor now — drop them here and in the counting twins (§5.8:
       // useRoleCounts samActive + both baseline countSamGroup).
-      // The group fetch minus stage-DVS is this queue's membership test, so the
-      // optimistic hide is applied to exactly that list — it can never disagree
-      // with what the sidebar renders.
-      const ps = applyPendingAdvances(
-        safeItems
-          .map(mondayItemToPatient)
-          .filter((p) => p.stageAdvancerText !== "DVS"),
-        pendingAdvanceRef.current,
-      );
+      const ps = safeItems
+        .map(mondayItemToPatient)
+        .filter((p) => p.stageAdvancerText !== "DVS");
       const merged = ps.map((p) => applyOverlay(p, overlayRef.current.get(p.id)));
 
       // If a specific patient was deep-linked but isn't in this group, fetch individually.
@@ -180,8 +174,13 @@ export function useMondayPatients(activeGroup: SidebarGroup = "benefits", inject
         } catch { /* ignore \u2014 patient may not be on this board */ }
       }
 
-      setPatients(merged);
-      persistPatientCache(activeGroup, merged);
+      // ⚠️ Hide at the POINT OF COMMIT, not where the list was built: everything
+      // in between is an await during which a send can resolve, and a list
+      // filtered earlier would put that patient — Send button and all — back on
+      // screen (Greptile, PR #54).
+      const visible = applyPendingAdvances(merged, pendingAdvanceRef.current);
+      setPatients(visible);
+      persistPatientCache(activeGroup, visible);
     } catch (e) {
       if (mountedRef.current)
         setError(e instanceof Error ? e.message : "Failed to load patients from Monday");

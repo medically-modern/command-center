@@ -198,11 +198,8 @@ export function useMondayPatients(activeTab: TabKey = "evaluate", injectedPatien
       // with a pending stuck PROPOSAL leaves the stage queues immediately —
       // they sit in Pipeline Oversight's Final Decisions until the manager
       // approves (real Stuck) or returns them (proposal cleared).
-      // Then re-ask the board about anyone hidden by a resolved send: the list
-      // ABOVE is the membership test, so the hide can never disagree with it.
-      const filtered = applyPendingAdvances(
-        allPatients.filter((p) => matchesTab(p.subStage, activeTab) && !p.proposedStuck),
-        pendingAdvanceRef.current,
+      const filtered = allPatients.filter(
+        (p) => matchesTab(p.subStage, activeTab) && !p.proposedStuck,
       );
 
       const merged = filtered.map((p) => {
@@ -252,10 +249,15 @@ export function useMondayPatients(activeTab: TabKey = "evaluate", injectedPatien
         } catch { /* ignore */ }
       }
 
-      setPatients(merged);
+      // ⚠️ Hide at the POINT OF COMMIT, not where the list was built: everything
+      // in between is an await during which a send can resolve, and a list
+      // filtered earlier would put that patient — Send button and all — back on
+      // screen (Greptile, PR #54).
+      const visible = applyPendingAdvances(merged, pendingAdvanceRef.current);
+      setPatients(visible);
       setChaseViewerPatients(chase);
       setScheduledApptPatients(scheduledAppt);
-      persistPatientCache(activeTab, merged);
+      persistPatientCache(activeTab, visible);
     } catch (e) {
       if (mountedRef.current)
         setError(e instanceof Error ? e.message : "Failed to load patients from Monday");

@@ -92,18 +92,18 @@ export function useMondayPatients(injectedPatientId?: string | null) {
       const items = await fetchGroupItems(undefined);
       if (!mountedRef.current) return;
       const safeItems = Array.isArray(items) ? items : [];
-      // The group fetch IS this queue's membership test, so the optimistic hide
-      // is applied to exactly that list and can never disagree with the sidebar.
-      const ps = applyPendingAdvances(
-        safeItems.map(mondayItemToPatient),
-        pendingAdvanceRef.current,
-      );
+      const ps = safeItems.map(mondayItemToPatient);
       const merged = ps.map((p) => {
         const o = overlayRef.current.get(p.id);
         return o ? { ...p, ...o } : p;
       });
-      setPatients(merged);
-      persistPatientCache(merged);
+      // ⚠️ Hide at the POINT OF COMMIT, not where the list was built: everything
+      // in between is an await during which a send can resolve, and a list
+      // filtered earlier would put that patient — Send button and all — back on
+      // screen (Greptile, PR #54).
+      const visible = applyPendingAdvances(merged, pendingAdvanceRef.current);
+      setPatients(visible);
+      persistPatientCache(visible);
 
       // If a patientId was injected (deep-link), fetch that item if not already present
       // ⚠️ A deep link is exempt from this group's queue rules but NOT from an

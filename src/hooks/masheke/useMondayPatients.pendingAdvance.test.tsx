@@ -15,6 +15,7 @@ import { act, renderHook, waitFor } from "@testing-library/react";
  */
 
 const fetchGroupItems = vi.fn();
+const fetchItemById = vi.fn();
 
 vi.mock("@/lib/masheke/mondayApi", async () => {
   const actual = await vi.importActual<typeof import("@/lib/masheke/mondayApi")>(
@@ -24,7 +25,7 @@ vi.mock("@/lib/masheke/mondayApi", async () => {
     ...actual,
     hasToken: () => true,
     fetchGroupItems: (...a: unknown[]) => fetchGroupItems(...a),
-    fetchItemById: vi.fn(async () => null),
+    fetchItemById: (...a: unknown[]) => fetchItemById(...a),
     writeDate: vi.fn(async () => undefined),
     writeStatusIndex: vi.fn(async () => undefined),
   };
@@ -54,6 +55,8 @@ beforeEach(() => {
   vi.useRealTimers();
   localStorage.clear();
   fetchGroupItems.mockReset();
+  fetchItemById.mockReset();
+  fetchItemById.mockResolvedValue(null);
 });
 
 describe("useMondayPatients — optimistic advance", () => {
@@ -111,26 +114,70 @@ describe("useMondayPatients — optimistic advance", () => {
     expect(ids(result.current.patients)).toEqual(["1"]);
   });
 
-  it("stops hiding once the board confirms the new stage", async () => {
-    // The marker is spent on confirmation — from then on the patient is
-    // filtered out on their own merits, so a return to Evaluate MN later (a
-    // manager sending them back) shows up immediately rather than being
-    // swallowed by a stale marker.
-    fetchGroupItems.mockResolvedValue([row("1", "Joseph Bowser", "Evaluate MN")]);
+  it("a PARTIAL poll that omits the patient does not un-hide them", async () => {
+    // Greptile, PR #54. `fetchGroupItems` swallows a pagination error and
+    // returns the pages it got (`catch { break }`), so a patient still sitting
+    // in Evaluate can simply be missing from a poll. Reading that absence as
+    // "the advance landed" spends the marker early and hands back the live Send
+    // button before the TTL — the re-send window this exists to close.
+    fetchGroupItems.mockResolvedValue([
+      row("1", "Joseph Bowser", "Evaluate MN"),
+      row("2", "Robert Bianco", "Evaluate MN"),
+    ]);
     const { result } = renderHook(() => useMondayPatients("evaluate"));
-    await waitFor(() => expect(ids(result.current.patients)).toEqual(["1"]));
+    await waitFor(() => expect(ids(result.current.patients)).toEqual(["1", "2"]));
 
     act(() => result.current.markAdvanced("1"));
 
-    // Poll 1: the advance is visible on the board.
-    fetchGroupItems.mockResolvedValue([row("1", "Joseph Bowser", "Send Request")]);
+    // A truncated poll: page two never arrived, so patient 1 is simply absent.
+    fetchGroupItems.mockResolvedValue([row("2", "Robert Bianco", "Evaluate MN")]);
     await act(async () => { await result.current.refetch(true); });
-    expect(ids(result.current.patients)).toEqual([]);
 
-    // Poll 2: a manager returned them to Evaluate MN. No marker survives.
-    fetchGroupItems.mockResolvedValue([row("1", "Joseph Bowser", "Evaluate MN")]);
+    // The next COMPLETE poll must still find them hidden.
+    fetchGroupItems.mockResolvedValue([
+      row("1", "Joseph Bowser", "Evaluate MN"),
+      row("2", "Robert Bianco", "Evaluate MN"),
+    ]);
     await act(async () => { await result.current.refetch(true); });
-    expect(ids(result.current.patients)).toEqual(["1"]);
+
+    expect(ids(result.current.patients)).toEqual(["2"]);
+  });
+
+  it("a send resolving DURING an in-flight poll is not clobbered by it", async () => {
+    // Greptile, PR #54. The poll assembles its list, then awaits the deep-link
+    // fetch, then commits. A list filtered before that await would put the
+    // just-advanced patient — Send button and all — straight back on screen.
+    fetchGroupItems.mockResolvedValue([
+      row("1", "Joseph Bowser", "Evaluate MN"),
+      row("2", "Robert Bianco", "Evaluate MN"),
+    ]);
+
+    // A deep link that is NOT in the group, so the injection fetch is awaited.
+    // The first call (initial mount) resolves; the second is held open.
+    let releaseInjection: (v: unknown) => void = () => {};
+    let calls = 0;
+    fetchItemById.mockImplementation(() => {
+      calls += 1;
+      if (calls === 1) return Promise.resolve(null);
+      return new Promise((res) => { releaseInjection = res; });
+    });
+
+    const { result } = renderHook(() => useMondayPatients("evaluate", "999"));
+    await waitFor(() => expect(ids(result.current.patients)).toEqual(["1", "2"]));
+
+    // A poll is now parked on the injection fetch...
+    let pending!: Promise<unknown>;
+    act(() => { pending = result.current.refetch(true) as unknown as Promise<unknown>; });
+    await waitFor(() => expect(calls).toBe(2));
+
+    // ...and the rep's send lands while it is parked.
+    act(() => result.current.markAdvanced("1"));
+    expect(ids(result.current.patients)).toEqual(["2"]);
+
+    // The poll now commits the list it assembled BEFORE the marker existed.
+    await act(async () => { releaseInjection(null); await pending; });
+
+    expect(ids(result.current.patients)).toEqual(["2"]);
   });
 
   it("never hides anyone but the patient who was sent", async () => {

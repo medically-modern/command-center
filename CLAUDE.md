@@ -2911,14 +2911,25 @@ these services; when their math changes, `oopEstimator.ts` must be updated to ma
   the poll-window note below). `useMondayPatients.markAdvanced` now drops the patient the moment
   the send resolves; `EvaluatePanel` calls it LAST in the try, and only when a stage was actually
   advanced (an escalating send leaves them in Evaluate MN, where they belong).
-  ⚠️ **The marker is a QUESTION, not a claim** — `lib/masheke/pendingAdvance.ts` (+ tests). Hiding
-  on a write that did NOT land removes the patient from the only queue that would surface them,
-  which is the invisibility §5.10/§5.12/§7 keep recording. So every poll re-asks the BOARD: still
-  in this stage past `PENDING_ADVANCE_TTL_MS` (2 min) ⇒ the advance never happened and the patient
-  **comes back**; out of the stage ⇒ the marker is spent and they are filtered on their own merits
-  (so a manager's later return is not swallowed by a stale marker). It is deliberately in memory —
-  a reload is a fresh read, and a marker that outlived the tab could hide a patient nobody can
-  bring back.
+  ⚠️ **The marker is a CLAIM WITH AN EXPIRY, never a permanent verdict** —
+  `lib/shared/pendingAdvance.ts` (+ tests). Hiding a patient whose write did NOT land removes them
+  from the only queue that would surface them, which is the invisibility §5.10/§5.12/§7 keep
+  recording. So it lapses after `PENDING_ADVANCE_TTL_MS` (2 min): if the advance landed the board
+  stopped returning them long ago and the lapse changes nothing; if it did not, the patient is back
+  in the rep's queue. Deliberately in memory — a reload is a fresh read, and a marker that outlived
+  the tab could hide a patient nobody can bring back.
+  ⚠️ **A marker is NEVER spent on ABSENCE** (Greptile, PR #54). The obvious optimisation — "not in
+  the fetched queue any more, so the advance landed, drop it" — reads a missing row as evidence,
+  and on these boards it is not: **every `fetchGroupItems` swallows a pagination error and returns
+  the pages it got** (`catch { break }`), so a patient still in the stage can simply be missing from
+  a poll. Spending the marker there un-hides them early, with a live Send button — the re-send
+  window this exists to close. Same rule and same reasoning as the patient directory's
+  `isOrphanRow` (§5.29): act on positive evidence, let absence mean nothing. The one cost is a
+  nicety: a patient a manager returns to the queue inside the TTL stays hidden until it lapses.
+  ⚠️ **Hide at the POINT OF COMMIT** (`setPatients(applyPendingAdvances(...))`), not where the list
+  is built — same review. Everything in between is an await (the deep-link `fetchItemById`, above
+  all) during which a send can resolve, and a list filtered earlier commits an array assembled
+  before the marker existed, putting the patient and their Send button straight back on screen.
   ⚠️ **A TTL is needed because the SPA is never TOLD the send failed.** `EvaluatePanel`'s send
   passes no `requireDone`, so when `pollDone`'s **20s** window closes on a still-running job
   `submitSend` returns `"submitted"` and `verifiedWrite`'s `!requireDone` branch treats it as
