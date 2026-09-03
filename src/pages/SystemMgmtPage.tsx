@@ -14,7 +14,7 @@ import {
   searchPatients,
 } from "@/hooks/systemMgmt/useSystemPatients";
 import type { CompletedStage, SystemPatient } from "@/lib/systemMgmt/mondayApi";
-import { writeStageAdvancer, STAGE_OPTIONS, STUCK_LABELS } from "@/lib/systemMgmt/mondayApi";
+import { writeStageAdvancer, buildCompletionMap, STAGE_OPTIONS, STUCK_LABELS } from "@/lib/systemMgmt/mondayApi";
 import { completedStageForPatient, completedStageUrl } from "@/lib/systemMgmt/stageCompletion";
 import { EscalationDetailModal } from "@/components/systemMgmt/EscalationDetailModal";
 import {
@@ -55,6 +55,13 @@ import { OperationsTab } from "@/components/systemMgmt/OperationsTab";
 import OversightTab from "@/components/oversight/OversightTab";
 import { ProfileStatusBadge } from "@/components/shared/ProfileStatusBadge";
 import { systemProfileStatus } from "@/lib/shared/profileStatus";
+import { useLiveSearch } from "@/hooks/systemMgmt/useLiveSearch";
+import {
+  SEARCH_BUCKETS,
+  SEARCH_BUCKET_LABEL,
+  bucketResults,
+  type SearchBucket,
+} from "@/lib/systemMgmt/searchBuckets";
 
 type Tab = "search" | "escalations" | "operations" | "stageManager" | "oversight";
 
@@ -86,6 +93,14 @@ const SystemMgmtPage = () => {
     setSearchParams(next, { replace: true });
   };
   const [query, setQuery] = useState("");
+  /**
+   * The search box asks Monday directly (§7 — live search, 2026-09-03). The
+   * seven-board snapshot below still feeds the chart, the count and the other
+   * tabs, but nothing typed into the box is ever answered from it.
+   */
+  const live = useLiveSearch(query);
+  /** Which folder of results is open — Active by default (§7). */
+  const [bucket, setBucket] = useState<SearchBucket>("active");
   const [removingId, setRemovingId] = useState<string | null>(null);
   const [detailPatient, setDetailPatient] = useState<SystemPatient | null>(null);
   const [chartSelection, setChartSelection] = useState<SystemPatient[] | null>(null);
@@ -113,6 +128,7 @@ const SystemMgmtPage = () => {
 
   const handleRefresh = async () => {
     setRefreshing(true);
+    live.refresh();
     try {
       await refetch();
       toast.success("Refreshed all boards");
@@ -123,11 +139,22 @@ const SystemMgmtPage = () => {
     }
   };
 
-  // Search results
-  const searchResults = useMemo(
-    () => searchPatients(patients, query),
-    [patients, query],
-  );
+  // Search results — live from Monday, already ranked by the hook.
+  const searchResults = live.results;
+
+  /**
+   * Completion badges for search rows come from the LIVE result set: a name
+   * query matches the patient's finished items too, so the badges describe
+   * what Monday holds now rather than what the snapshot held. Rows that come
+   * from the snapshot (chart selection, stage filter) keep the snapshot's map;
+   * the live entries win where both have a name.
+   */
+  const searchCompletionMap = useMemo(() => {
+    if (live.results.length === 0) return completionMap;
+    const merged = new Map(completionMap);
+    for (const [k, v] of buildCompletionMap(live.results)) merged.set(k, v);
+    return merged;
+  }, [completionMap, live.results]);
 
   // Stage filter results — sorted by longest days in pipeline first
   const stageResults = useMemo(() => {
@@ -143,7 +170,12 @@ const SystemMgmtPage = () => {
   }, [patients, stageFilter]);
 
   // Effective results: stage filter > chart selection > search
-  const displayResults = stageResults ?? chartSelection ?? (query.trim() ? searchResults : []);
+  const displayResults = useMemo(
+    () => stageResults ?? chartSelection ?? (query.trim() ? searchResults : []),
+    [stageResults, chartSelection, query, searchResults],
+  );
+  /** The same rows sorted into Active / Completed / Stuck (§7). */
+  const bucketed = useMemo(() => bucketResults(displayResults), [displayResults]);
 
   // Patients to show in the chart (filtered by search when typing)
   const chartPatients = useMemo(() => {
@@ -319,9 +351,13 @@ const SystemMgmtPage = () => {
       {/* Content */}
       <main className={cn("flex-1 px-3 sm:px-6 py-6 overflow-y-auto transition-[margin] duration-300", notesPatient ? "mr-[400px]" : "mr-0")}>
         <div className={cn("mx-auto", activeTab === "oversight" ? "max-w-full" : "max-w-4xl xl:max-w-6xl 2xl:max-w-[1800px]")}>
-          {loading && patients.length === 0 ? (
+          {/* ⚠️ Search is exempt from both gates. The snapshot below takes
+              15–20s cold and can fail outright; the search box asks Monday
+              directly and must not sit behind either. The chart and count on
+              that tab say for themselves when the snapshot isn't there yet. */}
+          {loading && patients.length === 0 && activeTab !== "search" ? (
             <LoadingState />
-          ) : error ? (
+          ) : error && activeTab !== "search" ? (
             <ErrorState error={error} onRetry={handleRefresh} />
           ) : activeTab === "stageManager" ? (
             <StageManagerView patients={patients} onMoved={refetch} />
@@ -333,11 +369,24 @@ const SystemMgmtPage = () => {
             <SearchView
               query={query}
               onQueryChange={handleQueryChange}
-              results={displayResults}
+              results={bucketed[bucket]}
+              bucket={bucket}
+              onBucketChange={setBucket}
+              bucketCounts={{
+                active: bucketed.active.length,
+                completed: bucketed.completed.length,
+                stuck: bucketed.stuck.length,
+              }}
+              searching={live.searching}
+              searchedQuery={live.searchedQuery}
+              searchTooShort={live.tooShort}
+              searchError={live.error}
               totalCount={patients.length}
+              snapshotLoading={loading && patients.length === 0}
+              snapshotError={error}
               hydrating={hydrating}
               onPatientClick={handlePatientClick}
-              completionMap={completionMap}
+              completionMap={searchCompletionMap}
               onCompletedStageClick={handleCompletedStageClick}
               chartPatients={chartPatients}
               onChartSegmentClick={handleChartSegmentClick}
@@ -465,7 +514,16 @@ function SearchView({
   query,
   onQueryChange,
   results,
+  bucket,
+  onBucketChange,
+  bucketCounts,
+  searching,
+  searchedQuery,
+  searchTooShort,
+  searchError,
   totalCount,
+  snapshotLoading,
+  snapshotError,
   hydrating,
   onPatientClick,
   completionMap,
@@ -482,8 +540,18 @@ function SearchView({
 }: {
   query: string;
   onQueryChange: (q: string) => void;
+  /** Rows in the OPEN folder only. */
   results: SystemPatient[];
+  bucket: SearchBucket;
+  onBucketChange: (b: SearchBucket) => void;
+  bucketCounts: Record<SearchBucket, number>;
+  searching: boolean;
+  searchedQuery: string;
+  searchTooShort: boolean;
+  searchError: string | null;
   totalCount: number;
+  snapshotLoading: boolean;
+  snapshotError: string | null;
   hydrating: boolean;
   onPatientClick: (p: SystemPatient) => void;
   completionMap: Map<string, CompletedStage[]>;
@@ -509,20 +577,32 @@ function SearchView({
           className="pl-10 h-12 text-base"
           autoFocus
         />
-        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">
-          {totalCount} patients across all boards
+        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground flex items-center gap-1.5">
+          {searching && <Loader2 className="w-3.5 h-3.5 animate-spin text-primary" />}
+          {snapshotLoading
+            ? "Loading pipeline totals…"
+            : `${totalCount} patients across all boards`}
         </span>
       </div>
 
-      {/* Cached snapshot on screen, live fetch still running. Shown even when
-          there ARE results: the count beside the box reads as "all boards", and
-          a partial one silently understates the pipeline. */}
-      {hydrating && (
+      {/* The snapshot behind the CHART is still loading or failed. Search
+          results are live and unaffected, and the note has to say so — the old
+          banner read as "your results may be stale", which is now false. */}
+      {(hydrating || snapshotLoading) && (
         <div className="flex items-center gap-2 px-3 py-2 bg-amber-500/10 rounded-lg border border-amber-500/20">
           <Loader2 className="w-3.5 h-3.5 animate-spin text-amber-600 dark:text-amber-400 shrink-0" />
           <span className="text-xs text-amber-700 dark:text-amber-300">
-            Showing a saved snapshot while all boards load — a patient added
-            recently may not appear for a few more seconds.
+            Pipeline chart and totals are still loading from all boards.
+            Search results are live from Monday and unaffected.
+          </span>
+        </div>
+      )}
+      {snapshotError && !snapshotLoading && (
+        <div className="flex items-center gap-2 px-3 py-2 bg-red-500/10 rounded-lg border border-red-500/20">
+          <AlertTriangle className="w-3.5 h-3.5 text-red-600 dark:text-red-400 shrink-0" />
+          <span className="text-xs text-red-700 dark:text-red-300">
+            Pipeline chart and totals could not load: {snapshotError}. Search
+            still works — it asks Monday directly.
           </span>
         </div>
       )}
@@ -560,23 +640,49 @@ function SearchView({
         </div>
       )}
 
-      {/* ⚠️ "No patients found" is a CLAIM about every board, and while the
-          first live fetch is still running it is one this page cannot make —
-          the cached snapshot is not the pipeline. Saying it anyway is what had
-          reps reporting patients as missing from Search who were on Profile
-          Send Off the whole time (see patientCache.ts). */}
-      {query.trim() && results.length === 0 && (
+      {/* A failed live search leaves the last answer on screen but must say
+          so: the one thing this box promises is that what it shows is current. */}
+      {searchError && query.trim() && (
+        <div className="flex items-center gap-2 px-3 py-2 bg-red-500/10 rounded-lg border border-red-500/20">
+          <AlertTriangle className="w-3.5 h-3.5 text-red-600 dark:text-red-400 shrink-0" />
+          <span className="text-xs text-red-700 dark:text-red-300">
+            Search failed: {searchError}.
+            {searchedQuery ? ` Results below are from an earlier search for “${searchedQuery}”.` : ""}
+          </span>
+        </div>
+      )}
+
+      {/* Active / Completed / Stuck folders (§7). Shown whenever there is
+          something to sort — a search answer, a chart pick or a stage filter. */}
+      {(query.trim() || chartSelectionActive || stageFilter) && !searchTooShort && (
+        <BucketTabs bucket={bucket} counts={bucketCounts} onChange={onBucketChange} />
+      )}
+
+      {searchTooShort && (
+        <p className="text-xs text-muted-foreground px-1">
+          Keep typing — at least 2 letters of a name, or 3 digits of a phone number.
+        </p>
+      )}
+
+      {/* ⚠️ "No patients found" is a CLAIM about every board. It is only made
+          once Monday has answered THIS query — never while the request is in
+          flight, and never from a snapshot (see patientCache.ts for the
+          incident that rule comes from). */}
+      {query.trim() && !searchTooShort && results.length === 0 && (
         <div className="rounded-xl bg-card border shadow-card p-10 text-center">
-          {hydrating ? (
+          {searching || searchedQuery !== query.trim() ? (
             <p className="text-sm text-muted-foreground flex items-center justify-center gap-2">
               <Loader2 className="w-4 h-4 animate-spin text-primary" />
-              Still loading all boards — no match for &ldquo;{query}&rdquo; yet
+              Searching all boards for &ldquo;{query.trim()}&rdquo;…
             </p>
           ) : (
-            <p className="text-sm text-muted-foreground">
-              No patients found matching &ldquo;{query}&rdquo;
-            </p>
+            <EmptyBucket query={query.trim()} bucket={bucket} counts={bucketCounts} onChange={onBucketChange} />
           )}
+        </div>
+      )}
+      {!query.trim() && (chartSelectionActive || !!stageFilter) && results.length === 0 && (
+        <div className="rounded-xl bg-card border shadow-card p-10 text-center">
+          <EmptyBucket query="" bucket={bucket} counts={bucketCounts} onChange={onBucketChange} />
         </div>
       )}
 
@@ -584,8 +690,8 @@ function SearchView({
         <div className="space-y-1.5">
           <p className="text-xs text-muted-foreground px-1">
             {results.length > 50
-              ? `Showing 50 of ${results.length} results — refine your search`
-              : `${results.length} result${results.length !== 1 ? "s" : ""}`}
+              ? `Showing 50 of ${results.length} ${SEARCH_BUCKET_LABEL[bucket].toLowerCase()} results — refine your search`
+              : `${results.length} ${SEARCH_BUCKET_LABEL[bucket].toLowerCase()} result${results.length !== 1 ? "s" : ""}`}
           </p>
           {results.slice(0, 50).map((p) => (
             <PatientRow
@@ -601,6 +707,102 @@ function SearchView({
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+// ── Result folders: Active · Completed · Stuck ───────────────
+
+const BUCKET_ACTIVE_CLASS: Record<SearchBucket, string> = {
+  active: "bg-primary text-primary-foreground border-primary",
+  completed: "bg-green-600 text-white border-green-600",
+  stuck: "bg-red-600 text-white border-red-600",
+};
+
+function BucketTabs({
+  bucket,
+  counts,
+  onChange,
+}: {
+  bucket: SearchBucket;
+  counts: Record<SearchBucket, number>;
+  onChange: (b: SearchBucket) => void;
+}) {
+  return (
+    <div className="flex items-center gap-1.5" role="tablist" aria-label="Result folders">
+      {SEARCH_BUCKETS.map((b) => {
+        const selected = b === bucket;
+        return (
+          <button
+            key={b}
+            role="tab"
+            aria-selected={selected}
+            onClick={() => onChange(b)}
+            className={cn(
+              "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-xs font-semibold transition-colors",
+              selected
+                ? BUCKET_ACTIVE_CLASS[b]
+                : "bg-card text-muted-foreground border-border hover:border-primary/40 hover:text-foreground",
+            )}
+          >
+            {b === "completed" && <CheckCircle2 className="w-3 h-3" />}
+            {b === "stuck" && <Ban className="w-3 h-3" />}
+            {SEARCH_BUCKET_LABEL[b]}
+            <span
+              className={cn(
+                "inline-flex items-center justify-center min-w-[1.25rem] px-1 rounded-full text-[10px] font-bold leading-4",
+                selected ? "bg-white/25" : "bg-muted",
+              )}
+            >
+              {counts[b]}
+            </span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+/**
+ * The open folder is empty. Say whether the OTHER folders have anything, so a
+ * rep looking for a completed patient under Active is told where they are
+ * rather than told they don't exist.
+ */
+function EmptyBucket({
+  query,
+  bucket,
+  counts,
+  onChange,
+}: {
+  query: string;
+  bucket: SearchBucket;
+  counts: Record<SearchBucket, number>;
+  onChange: (b: SearchBucket) => void;
+}) {
+  const others = SEARCH_BUCKETS.filter((b) => b !== bucket && counts[b] > 0);
+  const subject = query ? <>matching &ldquo;{query}&rdquo;</> : <>in this selection</>;
+  if (others.length === 0) {
+    return (
+      <p className="text-sm text-muted-foreground">No patients found {subject}</p>
+    );
+  }
+  return (
+    <div className="space-y-2">
+      <p className="text-sm text-muted-foreground">
+        No {SEARCH_BUCKET_LABEL[bucket].toLowerCase()} patients {subject}
+      </p>
+      <p className="text-xs text-muted-foreground flex items-center justify-center gap-2 flex-wrap">
+        <span>Found in:</span>
+        {others.map((b) => (
+          <button
+            key={b}
+            onClick={() => onChange(b)}
+            className="underline text-primary hover:text-primary/80"
+          >
+            {SEARCH_BUCKET_LABEL[b]} ({counts[b]})
+          </button>
+        ))}
+      </p>
     </div>
   );
 }

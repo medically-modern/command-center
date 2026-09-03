@@ -2610,6 +2610,33 @@ columns" automation on duplicated items). The SPA only flips the advancer; verif
 - **System Management** (`/system-mgmt`, `lib/systemMgmt/mondayApi.ts`) aggregates counts/pipeline
   across *all* boards (hardcoded board + stage-advancer column IDs); `OperationsTab` + `PipelineChart`
   render burndown and day-bucket distributions.
+  **Search is LIVE — it asks Monday per query and never answers from a snapshot** (2026-09-03,
+  `mondayApi.searchPatientsLive` + `hooks/systemMgmt/useLiveSearch`). Until then the box filtered a
+  browser-side copy of all seven boards: a 15–20s cold download (Profile Send Off alone is 2,635
+  items in six sequential 500-item pages, ~680 KB each with notes), repeated every 90s, fronted by an
+  IndexedDB snapshot up to **24h old** — so the first seconds of every visit searched yesterday's
+  boards. Katie stopped using it and looked patients up on Monday instead. Now each debounced query
+  is ONE aliased request across all seven boards with `contains_text` rules — name by WORD, ANDed
+  (so "delgado, jose" finds Jose Delgado), or the phone column by digit substring — measured at
+  **200 complexity vs 16,020 per full page**, sub-second, and re-run silently every 45s while a
+  query is on screen. Latest-wins (older in-flight requests are aborted and their answers dropped);
+  a failure says so rather than substituting older rows. ⚠️ The Search tab is **exempt from the
+  page's LoadingState/ErrorState gates** — those belong to the seven-board snapshot, which survives
+  ONLY for the pipeline chart, the totals and the other tabs, and whose banner now says exactly that.
+  The fuzzy subsequence match ("jsoe") is gone by necessity; substring and word matching remain, and
+  `rankLiveResults` orders what Monday returned WITHOUT dropping rows the local ranker can't score
+  (`searchPatients` would). Same `searchColumnIds`, same `mapToSystemPatient`, so a row is identical
+  whichever path produced it.
+  **Results are FOLDERED — Active · Completed · Stuck** (`lib/systemMgmt/searchBuckets.ts` + tests,
+  same day). A patient is one item per board (§6), so one name returns three to five rows — the
+  finished Profile Send Off record, the finished ME record, the live Insurance record — and in a
+  flat list a rep clicks the first row carrying the name: "Search shows the wrong profiles".
+  `searchBucket`: Completed group ⇒ **completed** (checked first, as `profileStatus` does); a
+  `STUCK_GROUP_IDS` group OR the board's `STUCK_LABELS` advancer text ⇒ **stuck** (the label is
+  written before the automation moves the item); everything else ⇒ **active** — escalated and
+  Proposed Stuck included, since a manager still owns them. Defaults to Active; an empty folder
+  names the others' counts rather than saying "no patients found". Chart picks and stage filters go
+  through the same folders.
   ⚠️ **Search reads EVERY group on EVERY patient board — never add a group filter** (2026-08-12).
   `BOARDS[].groupRoutes` is navigation metadata ("clicking this row goes where"), **not** the fetch
   list; `fetchBoardItems` queries `items_page` unfiltered. It *was* the fetch list, and every group
@@ -3050,6 +3077,7 @@ these services; when their math changes, `oopEstimator.ts` must be updated to ma
 | The profile widget shows the wrong stage, or none | §5.28 — `lib/commsHub/dossier.ts` (`pickActive` = furthest-along open board) and `pipelineOrder.ts` (the tracker order, which §6 now follows) |
 | A conversation won't stay read / unread | §5.28 — read state is RingCentral's `readStatus` on the INBOUND messages, written with `setMessageRead`; the local override only covers the gap before the next poll |
 | Monday says "invalid value … data structure for this column" | **Start with `/audit.json?key=…&failed=1&since=1`** — its `error_data` names the `column_id`, `column_name`, `column_type` and the exact value sent. `/audit/errors.json` only counts redacted shapes and looks the same for every column and every writer, so it cannot tell you which (§10). Then match the value to the type: `location` needs `lat`+`lng` (§10), `long_text` takes `{"text": …}`, `text` a bare JSON string — and the notes columns are BOTH depending on the board (§5.28, `BoardDef.notesColType`) |
+| System-wide Search is slow, stale, or shows a finished record as if it were live | §7 — Search is live per query (`searchPatientsLive` / `useLiveSearch`); the seven-board snapshot only feeds the chart. Folders come from `lib/systemMgmt/searchBuckets.ts`; a Stuck group missing from `STUCK_GROUP_IDS` fails `profileStatus.test.ts` |
 | Manager pipeline / oversight charts | `components/oversight/OversightTab.tsx` + `lib/oversight/oversightApi.ts` (+ `priority.ts`); reached via `/system-mgmt?tab=oversight` |
 
 ---

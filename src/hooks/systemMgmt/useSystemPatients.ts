@@ -198,6 +198,30 @@ function matchRank(
 }
 
 /**
+ * Order rows Monday has ALREADY matched, best first — and keep every one.
+ *
+ * The live search (`searchPatientsLive`) returns rows Monday matched by
+ * `contains_text`, per word. `searchPatients` would DROP some of them: its
+ * fuzzy fallback is a subsequence test, so "jose delgado" against
+ * "Delgado, Jose" finds no rank and the row vanishes from a result set the
+ * server just said it belongs in. Unmatched-locally rows rank last instead.
+ */
+export function rankLiveResults(
+  patients: SystemPatient[],
+  query: string,
+): SystemPatient[] {
+  const trimmed = query.trim();
+  if (!trimmed) return patients;
+  const isDigits = /^\d+$/.test(trimmed.replace(/[\s\-()]/g, ""));
+  const normalizedQuery = normalizePhone(trimmed);
+  const UNRANKED = RANK_FUZZY + 1;
+  return patients
+    .map((p, i) => ({ p, i, rank: matchRank(p, trimmed, isDigits, normalizedQuery) ?? UNRANKED }))
+    .sort((a, b) => a.rank - b.rank || a.i - b.i)
+    .map((r) => r.p);
+}
+
+/**
  * Search patients by name (fuzzy) or phone (digit substring), best match first.
  */
 export function searchPatients(
