@@ -3231,12 +3231,26 @@ these services; when their math changes, `oopEstimator.ts` must be updated to ma
   **Cut over 2026-09-03 → the new `text` columns:** ME `text_mm6vevjf` · Insurance `text_mm6vzc7q` · Welcome Call
   `text_mm6vqq2k` (Notes), `text_mm6v4fny` (MN mirror), `text_mm6vvsjy` (Profile mirror) · Subscription `text_mm6vp1z3`.
   Monday's UI conversion makes a NEW id (sandbox: `text_mm6vqvhz` beside `long_text_mm6vtxyh`), so the six were
-  created beside the originals, copied with `scripts/notes-migration/migrateNotes.mjs`, the app and the two hop
-  workflows re-pointed, and the long_text originals HIDDEN, not deleted. A 3,024-char text value crossed
-  7917676280 intact, so the mirrors carry full history from here on.
-  ⚠️ **The flips themselves are an OFF-HOURS job** (Josh, 2026-09-03 — these are active boards): sandbox
-  Phase 0 first, then the eight columns and the three hop workflows in one evening, then the lengths
-  re-scan. Not during the day.
+  created beside the originals, copied with `scripts/notes-migration/migrateNotes.mjs` (1,591 items, 0 mismatches
+  after the sweeps), the app re-pointed (74381d4, 2026-09-03 ~8 PM ET), and the long_text originals retitled
+  **"(retired)"** — hiding them from the views is Josh's remaining click; they are NOT deleted. A 3,024-char text
+  value crossed 7917676280 intact, so the mirrors carry full history from here on.
+  ⚠️ **The two hop automations that copy notes — 7918295320 ME→Insurance · 7918324247 Insurance→WC — are
+  board automations the workflow-builder API cannot load** (`validate_workflow` / `invoke_workflow_expert`
+  answer "General error" for them while a freshly created workflow works), so their column mappings can only be
+  changed in Monday's UI, by a person. Josh re-pointed them the next morning (2026-09-04, 10:01 and 10:08 ET);
+  verified from fresh `list_automations` dumps (every notes pair on the new ids — `scripts/notes-migration`'s
+  README says how) and by the first live hop after the edit (Insurance `12977325713`: MN mirror 141 chars =
+  its ME source's `text_mm6vevjf`, the retired column 0). In the ~14 hours between the app cutover and that
+  edit every hop copied the retired, now-frozen column, so the destination mirror arrived EMPTY —
+  `scripts/notes-migration/backfillMirrors.mjs` filled the three Insurance items that hopped in the window
+  (kept for the day a hop is ever pointed at a retired column again). ⚠️ 7918324247 still carries three rows
+  writing the WC **"(retired)"** columns (Notes ← Insurance "Insurance Notes (retired)"; the MN / Profile
+  mirrors ← Insurance `text_mm3xbvss` / `text_mm3xfw5a`) — harmless, nothing reads them, but clear those rows
+  when hiding the columns or capped copies keep being written into columns nobody looks at.
+  ⚠️ **Live-board changes like these are an OFF-HOURS job** (Josh, 2026-09-03 — these are active boards):
+  sandbox first, then the columns, the copies and the hop workflows in one evening, then the lengths re-scan.
+  Not during the day.
 - **Welcome Call + Final Confirm escalation is WRITE-ONLY, and those two stages need a REWRITE —
   don't patch it piecemeal** (Josh, 2026-08-14, from the escalation audit). `mondayMapping`
   hardcodes **`escalated: false`** and `COL.escalation` (`color_mm1x7997`) is **not in the read
@@ -3308,7 +3322,7 @@ these services; when their math changes, `oopEstimator.ts` must be updated to ma
 | A rep re-sent a patient who had already gone through / a queue row won't disappear after a send | §9 — `lib/masheke/pendingAdvance.ts` (the rule) → `useMondayPatients.markAdvanced` (the hide) → `EvaluatePanel`'s `onAdvanced`. A patient who reappears after ~2 min means the board never showed the advance, i.e. the send did NOT land — check `/audit.json?key=…&failed=1` |
 | A rep pressed Advance repeatedly and nothing moved | §9 — the advancer already held its target value, so no automation fired. `lib/shared/advancerNoop.ts`; grep Railway for `ADVANCER_NOOP`. Repair by moving the item to Completed, **never** by clearing the advancer (that duplicates the downstream item) |
 | A rep says the page showed stale/blank data | §9 — `components/shared/StaleDataNotice` + `lib/shared/mondayError.ts`. Check `/audit/errors.json?key=…&hours=N` on the gateway for the Monday-side failures |
-| A note got a green "saved" toast but isn't on the board / a rep now gets *"N characters over"* on Add | §10 — the column is at Monday's 2000 cap. `components/shared/longTextGuard` (the refusal) → `lib/shared/longText` (the rule). Confirm with a lengths-only scan; repair by moving history to an item **update** FIRST, then trimming the column |
+| A note got a green "saved" toast but isn't on the board / a rep now gets *"N characters over"* on Add | §10 — the column is at Monday's 2000 cap. `components/shared/longTextGuard` (the refusal) → `lib/shared/longText` (the rule). Since the 2026-09-03 cutover the six live notes columns are uncapped `text`, so this now means a column still `long_text` (Request Message `long_text_mm4cnw52`, the Escalation Notes, the two Insurance call logs) — `columnType.isCappedColumn` asks the board. Confirm with a lengths-only scan; repair by moving history to an item **update** FIRST, then trimming the column |
 | A value isn't saving to Monday | `lib/<role>/mondayWrite.ts` + `lib/shared/verifiedWrite.ts`; cross-check `mondayMapping.ts` column IDs |
 | Medical-necessity logic | `lib/masheke/evalState.ts` (+ ipPaths, requestTemplate, mnRequestPdf) |
 | A returned patient can't log an attempt (cards greyed, Save disabled) | `lib/masheke/attemptRollup.ts` → `oversightApi.returnProposedToQueue`; the gate is **MN Attempts** `color_mm1wz0vg`, not the attempt columns (§7) |
