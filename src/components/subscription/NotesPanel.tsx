@@ -6,6 +6,7 @@ import { MessageSquare, Plus, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { appendStampedNote } from "@/lib/shared/noteStamp";
 import { refuseLongTextOverflow, type ColumnRef } from "@/components/shared/longTextGuard";
+import { usePendingNoteReport, pendingNoteKey } from "@/components/shared/pendingNoteGuard";
 
 interface Props {
   notes: string;
@@ -20,6 +21,7 @@ interface Props {
 
 export function NotesPanel({ notes, onNotesChange, onSaveToMonday, columnRef, notePrefix }: Props) {
   const [newNote, setNewNote] = useState("");
+  usePendingNoteReport(pendingNoteKey(columnRef, "subscription:notes"), newNote);
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
 

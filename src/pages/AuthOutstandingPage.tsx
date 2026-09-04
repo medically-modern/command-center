@@ -35,6 +35,7 @@ import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { RotateCcw, Stethoscope, ArrowLeft, Clock, Save, Send, Loader2 } from "lucide-react";
 import { resolveHcpcs, isAutoFilledMedicaidSupply } from "@/lib/samantha/hcpcRules";
 import { toast } from "sonner";
+import { refusePendingNote } from "@/components/shared/pendingNoteGuard";
 import { sendPatientToMonday, saveNoAuthNeededToMonday } from "@/lib/samantha/mondayWrite";
 import { daysAuthOutstanding } from "@/lib/samantha/authOutstandingDays";
 import { validateAuthReviewForComplete } from "@/lib/samantha/authOutstandingReview";
@@ -118,6 +119,7 @@ const AuthOutstandingPage = () => {
 
   const handleSend = async () => {
     if (!selected) return;
+    if (refusePendingNote()) return;
     setSaving(true);
     setSavePhase("posting");
     try {

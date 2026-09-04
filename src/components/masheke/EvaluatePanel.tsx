@@ -1020,7 +1020,7 @@ export function EvaluatePanel({ patient, resetVersion = 0, onUpdate, onOpenForm,
       </MmStep>
 
       {/* Notes */}
-      <NotesPanel
+      <NotesPanel key={patient.id}
         columnRef={{ boardId: BOARD_ID, columnId: COL.mnEvalNotes }}
         notes={patient.mnEvalNotes ?? ""}
         onNotesChange={(v) => onUpdate({ mnEvalNotes: v })}

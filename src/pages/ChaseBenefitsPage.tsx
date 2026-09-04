@@ -39,6 +39,7 @@ import { RotateCcw, Stethoscope, ArrowLeft, Save } from "lucide-react";
 import { ClinicalsDownloadButton } from "@/components/samantha/ClinicalsDownloadButton";
 import { StageActionBar } from "@/components/shared/StageActionBar";
 import { toast } from "sonner";
+import { refusePendingNote } from "@/components/shared/pendingNoteGuard";
 import { sendPatientToMonday } from "@/lib/samantha/mondayWrite";
 import { BOARD_ID, writeLongText, COL } from "@/lib/samantha/mondayApi";
 import { PageLoadingOverlay } from "@/components/shared/PageLoadingOverlay";
@@ -176,6 +177,7 @@ const ChaseBenefitsPage = () => {
 
   const handleSend = async () => {
     if (!selected) return;
+    if (refusePendingNote()) return;
     if (benefitsMissing.length > 0) return;
     // Failed-check path (handoff §3–§4): the patient STAYS at Benefits —
     // no automation moves them, so keep the local answers visible (no
@@ -336,7 +338,7 @@ const ChaseBenefitsPage = () => {
 
                     {/* Notes rail (sticky, full viewport height) */}
                     <aside className="notes-rail">
-                      <NotesPanel
+                      <NotesPanel key={selected.id}
                         columnRef={{ boardId: BOARD_ID, columnId: COL.callReferenceNotes }}
                         notes={selected.notes}
                         profileSendOffNotes={selected.profileSendOffNotes}

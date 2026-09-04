@@ -66,6 +66,7 @@ import { useBackNavigation } from "@/hooks/useBackNavigation";
 import { ReportIssueButton } from "@/components/shared/ReportIssueButton";
 import { ClipboardCheck, ArrowLeft, Save, AlertTriangle, ChevronDown, FileText } from "lucide-react";
 import { toast } from "sonner";
+import { refusePendingNote, usePendingNoteReport } from "@/components/shared/pendingNoteGuard";
 import "./profile/redesign.css";
 import { IntakeProfileStatus } from "@/components/shared/PatientProfileStatus";
 import { optionsWithCurrent, displayFor } from "@/lib/profile/selectOptions";
@@ -548,6 +549,7 @@ const ProfilePage = ({ variant }: ProfilePageProps) => {
 
   const handleAdvance = async () => {
     if (!selected) return;
+    if (refusePendingNote()) return;
     if (selected.clinicAddress && !hasValidZip(selected.clinicAddress)) {
       toast.error("Clinic address must include a valid 5-digit zip code");
       return;
@@ -606,6 +608,7 @@ const ProfilePage = ({ variant }: ProfilePageProps) => {
 
   const handleMarkStuck = async () => {
     if (!selected || !stuckReason.trim()) return;
+    if (refusePendingNote()) return;
     setMarkingStuck(true);
     try {
       // Stamped with the SELECTED patient's own queue, not the page variant:
@@ -642,6 +645,7 @@ const ProfilePage = ({ variant }: ProfilePageProps) => {
 
   const handleMoveToPipeline = async () => {
     if (!selected) return;
+    if (refusePendingNote()) return;
     setMovingToPipeline(true);
     try {
       await moveToProfileSendOff(selected);
@@ -1848,6 +1852,7 @@ function ProfileBody(p: BodyProps) {
 function NotesComposer({ notes, onAppend }: { notes: string; onAppend: (full: string) => Promise<void> }) {
   const [draft, setDraft] = useState("");
   const [adding, setAdding] = useState(false);
+  usePendingNoteReport("profile:notes", draft);
   const add = async () => {
     if (!draft.trim() || adding) return;
     setAdding(true);

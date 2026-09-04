@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { PriorStageNotes } from "@/components/shared/PriorStageNotes";
 import { appendStampedNote } from "@/lib/shared/noteStamp";
 import { refuseLongTextOverflow, type ColumnRef } from "@/components/shared/longTextGuard";
+import { usePendingNoteReport, pendingNoteKey } from "@/components/shared/pendingNoteGuard";
 
 interface Props {
   notes: string;
@@ -37,6 +38,7 @@ export function NotesPanel({ notes, onNotesChange, onSaveToMonday, columnRef, pl
     { label: "MN Workflow Notes", text: mnWorkflowNotes },
   ];
   const [newNote, setNewNote] = useState("");
+  usePendingNoteReport(pendingNoteKey(columnRef, "insurance:notes"), newNote);
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
 

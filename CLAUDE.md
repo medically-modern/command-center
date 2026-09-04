@@ -3116,6 +3116,20 @@ these services; when their math changes, `oopEstimator.ts` must be updated to ma
   (≥25) and a rate (≥2%) — a rate alone pages on 1-of-2 at 3am, a count alone pages on a busy
   afternoon that is fine. ⚠️ The old wording, *"8 failed Monday calls (of 76 writes)"*, read as
   "8 of the 76 writes failed" and cost real incident time; the headline now leads with what was lost.
+- **A notes box is keyed by its patient, and no send leaves the page while it holds un-added text**
+  (Brandon, 2026-09-03; fixed 2026-09-04). He typed a note on Final Profile Confirmation, pressed
+  *Confirm Profile & Send* without pressing Add, opened the next patient — and the text was still
+  sitting in that patient's box: never written, one click from the wrong chart. Cause: the stage
+  pages mounted `<NotesPanel notes={selected.notes} …>` with **no `key`**, so React reused the same
+  box (draft included) across a patient switch. Eleven mounts had it. Every mount now carries
+  `key={selected.id}` / `key={patient.id}`, every box reports its draft to **`lib/shared/pendingNote`**
+  (`components/shared/pendingNoteGuard` `usePendingNoteReport`), and every action that leaves the
+  patient — the six stage sends, the three Profile Send Off exits, the intake exits, the Chase attempt
+  save — opens with **`refusePendingNote()`**: *"Press Add on your note before sending"*, the gate
+  EvaluatePanel already had for its own box. Nothing is discarded for the rep; Add or clear, then
+  send. `notesDraftIsolation.test.ts` scans for all three. ⚠️ Keying is required on top of the guard:
+  a remounted box starts empty, and the masheke panels reset their lifted `pendingNoteText` on
+  `patient.id` for the same reason — a lifted flag that outlives the box blocks the NEXT patient's send.
 - **Toasts are TOP-CENTRE (`App.tsx`), and both other corners are ruled out by past bugs.**
   Bottom-right is where every stage page puts its primary action, so a toast landed on the button
   the rep presses next — adding a note on Evaluate popped "Note saved to Monday" over **Completed

@@ -40,6 +40,7 @@ import { Button } from "@/components/ui/button";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { RotateCcw, Stethoscope, ArrowLeft, Save } from "lucide-react";
 import { toast } from "sonner";
+import { refusePendingNote } from "@/components/shared/pendingNoteGuard";
 import { sendPatientToMonday } from "@/lib/samantha/mondayWrite";
 import { BOARD_ID, writeLongText, COL } from "@/lib/samantha/mondayApi";
 import { PageLoadingOverlay } from "@/components/shared/PageLoadingOverlay";
@@ -143,6 +144,7 @@ const SubmitAuthPage = () => {
 
   const handleSend = async () => {
     if (!selected) return;
+    if (refusePendingNote()) return;
     if (missing.length > 0) return;
     setSaving(true);
     setSavePhase("posting");
@@ -311,7 +313,7 @@ const SubmitAuthPage = () => {
 
                     {/* Notes rail (sticky, full viewport height) */}
                     <aside className="notes-rail">
-                      <NotesPanel
+                      <NotesPanel key={selected.id}
                         columnRef={{ boardId: BOARD_ID, columnId: COL.callReferenceNotes }}
                         notes={selected.notes}
                         profileSendOffNotes={selected.profileSendOffNotes}

@@ -309,7 +309,7 @@ export function InsurancePanel({
       })()}
 
       {/* Reference Notes */}
-      <NotesPanel
+      <NotesPanel key={patient.id}
         columnRef={{ boardId: SAMANTHA_BOARD_ID, columnId: SAMANTHA_COL.callReferenceNotes }}
         notes={patient.notes}
         onNotesChange={onNotesChange}

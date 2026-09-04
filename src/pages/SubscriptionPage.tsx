@@ -19,6 +19,7 @@ import { Button } from "@/components/ui/button";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { RotateCcw, RefreshCw, ArrowLeft, Save } from "lucide-react";
 import { toast } from "sonner";
+import { refusePendingNote } from "@/components/shared/pendingNoteGuard";
 import { sendPatientToMonday, sendNotesToMonday } from "@/lib/subscription/mondayWrite";
 import { validatePatientForSend } from "@/lib/subscription/workflow";
 import { PageLoadingOverlay } from "@/components/shared/PageLoadingOverlay";
@@ -84,6 +85,7 @@ const SubscriptionPage = () => {
 
   const handleSend = async () => {
     if (!selected) return;
+    if (refusePendingNote()) return;
     setSaving(true);
     setSavePhase("posting");
     try {
@@ -188,7 +190,7 @@ const SubscriptionPage = () => {
                 <>
                   <PatientInfoCard patient={selected} onFieldChange={handleFieldChange} />
                   <SubscriptionForm patient={selected} onFieldChange={handleFieldChange} />
-                  <NotesPanel
+                  <NotesPanel key={selected.id}
                     columnRef={{ boardId: SUBSCRIPTION_BOARD_ID, columnId: SUBSCRIPTION_COL.subscriptionNotes }}
                     notes={selected.notes}
                     onNotesChange={(v) => update(selected.id, { notes: v })}

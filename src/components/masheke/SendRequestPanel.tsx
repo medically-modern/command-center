@@ -520,7 +520,7 @@ export function SendRequestPanel({ patient, resetVersion = 0, onUpdate, onAdvanc
   const noteBlocked = !noteAdded || hasPendingNote;
 
   const notesPanel = (variant: "mm" | "mm-inline") => (
-    <NotesPanel
+    <NotesPanel key={patient.id}
       columnRef={{ boardId: BOARD_ID, columnId: COL.mnEvalNotes }}
       variant={variant}
       notes={patient.mnEvalNotes ?? ""}

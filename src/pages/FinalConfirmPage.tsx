@@ -24,6 +24,7 @@ import { Button } from "@/components/ui/button";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { RotateCcw, ShieldCheck, ArrowLeft, AlertTriangle, Save } from "lucide-react";
 import { toast } from "sonner";
+import { refusePendingNote } from "@/components/shared/pendingNoteGuard";
 import { sendPatientToMonday } from "@/lib/finalConfirm/mondayWrite";
 import { duplicateItem, writeStatusIndex, writeDate, writeLongText, BOARD_ID, COL } from "@/lib/finalConfirm/mondayApi";
 import { useStatusOptions } from "@/hooks/useStatusOptions";
@@ -160,6 +161,7 @@ const FinalConfirmPage = () => {
 
   const handleSend = async (overridden: CheckFinding[] = []) => {
     if (!selected) return;
+    if (refusePendingNote()) return;
     setSaving(true);
     setSavePhase("posting");
     try {
@@ -424,7 +426,7 @@ const FinalConfirmPage = () => {
                   <FinalCheckPanel findings={findings} />
                   <PatientInfoCard patient={selected} onFieldChange={handleFieldChange} findings={findings} />
                   <SplitOrderButton patient={selected} onSplit={handleSplit} />
-                  <NotesPanel
+                  <NotesPanel key={selected.id}
                     columnRef={{ boardId: BOARD_ID, columnId: COL.notes }}
                     notes={selected.notes}
                     profileSendOffNotes={selected.profileSendOffNotes}

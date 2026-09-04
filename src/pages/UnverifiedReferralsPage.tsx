@@ -112,6 +112,7 @@ import {
   getRescheduleLink, formatBookedCall, type UploadLinkKind,
 } from "@/lib/profile/uploadLink";
 import { toast } from "sonner";
+import { refusePendingNote, usePendingNoteReport } from "@/components/shared/pendingNoteGuard";
 // The shared bar, so this stage's Propose Stuck / Send back to pipeline are
 // literally the same component and copy Medical Evaluation uses — not a
 // lookalike that can drift from it.
@@ -1460,6 +1461,7 @@ const UnverifiedReferralsPage = ({ variant = "infoCollection" }: { variant?: Int
     // they'd have to retype.
     async (kind: "advance" | "advanceCleanUp" | "escalate" | "proposeStuck" | "return"): Promise<boolean> => {
       if (!selected) return false;
+      if (refusePendingNote()) return false;
       const isAdvance = kind === "advance" || kind === "advanceCleanUp";
       if (!isAdvance && !escalateReason.trim()) {
         toast.error("Add a reason first", {
@@ -1648,6 +1650,7 @@ const UnverifiedReferralsPage = ({ variant = "infoCollection" }: { variant?: Int
   /** Append one stamped line to the Call Log and write it straight to Monday. */
   const [noteDraft, setNoteDraft] = useState("");
   useEffect(() => { setNoteDraft(""); }, [selected?.id]);
+  usePendingNoteReport("intake:notes", noteDraft);
   const addNote = useCallback(async () => {
     if (!selected || !noteDraft.trim()) return;
     setSaving(true);
@@ -1993,6 +1996,9 @@ const UnverifiedReferralsPage = ({ variant = "infoCollection" }: { variant?: Int
    *  referral already lives (the card above reads updates, not a column). */
   const [addRefOpen, setAddRefOpen] = useState(false);
   const [refDraft, setRefDraft] = useState("");
+  // Same leak class as the notes box (Brandon, 2026-09-03): a draft update must not follow a patient switch.
+  useEffect(() => { setRefDraft(""); }, [selected?.id]);
+  usePendingNoteReport("intake:update", refDraft);
   useEffect(() => { setAddRefOpen(false); setRefDraft(""); }, [selected?.id]);
   const addReferralEmail = useCallback(async () => {
     if (!selected || !refDraft.trim()) return;

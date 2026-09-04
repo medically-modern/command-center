@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { PriorStageNotes } from "@/components/shared/PriorStageNotes";
 import { appendStampedNote } from "@/lib/shared/noteStamp";
 import { refuseLongTextOverflow, type ColumnRef } from "@/components/shared/longTextGuard";
+import { usePendingNoteReport, pendingNoteKey } from "@/components/shared/pendingNoteGuard";
 
 interface Props {
   notes: string;
@@ -62,6 +63,7 @@ export function renderNoteLines(notes: string): React.ReactNode {
 
 export function NotesPanel({ notes, onNotesChange, onSaveToMonday, columnRef, notePrefix, profileSendOffNotes, onNoteAdded, onPendingTextChange, variant = "default" }: Props) {
   const [newNote, setNewNote] = useState("");
+  usePendingNoteReport(pendingNoteKey(columnRef, "masheke:notes"), newNote);
   const setNewNoteAndReport = (v: string) => {
     setNewNote(v);
     onPendingTextChange?.(v);

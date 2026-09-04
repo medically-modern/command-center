@@ -79,6 +79,7 @@ import { FILE_PROXY_URL, fetchAssetBytes } from "@/lib/shared/mondayAssets";
 import { getIdToken } from "@/lib/shared/auth";
 import { ESCALATION_INDEX, MN_ATTEMPTS_INDEX } from "@/lib/masheke/mondayMapping";
 import { toast } from "sonner";
+import { refusePendingNote } from "@/components/shared/pendingNoteGuard";
 import { AlertTriangle, Check, CheckCircle2, ChevronRight, FileText, Loader2, Phone, Send } from "lucide-react";
 import { CalendarClock } from "lucide-react";
 import { FileList, LoadingRow, MmStep } from "@/components/masheke/mmKit";
@@ -195,6 +196,7 @@ export function ChaseClinicalsPanel({ patient, onUpdate, managerMode = false, ro
 
   async function handleSave() {
     if (!canSave) return;
+    if (refusePendingNote()) return;
     if (!hasToken()) {
       toast.error("Monday token not configured");
       return;
@@ -527,7 +529,7 @@ export function ChaseClinicalsPanel({ patient, onUpdate, managerMode = false, ro
             ⚠️ No profileSendOffNotes prop: PriorStageNotes above already
             renders it, and passing it here would print it twice. */}
         <div className="mt-6">
-          <NotesPanel
+          <NotesPanel key={patient.id}
             columnRef={{ boardId: BOARD_ID, columnId: COL.mnEvalNotes }}
             variant="mm-inline"
             notes={patient.mnEvalNotes ?? ""}

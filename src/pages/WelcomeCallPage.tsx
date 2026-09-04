@@ -33,6 +33,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { RotateCcw, ClipboardCheck, ArrowLeft, Save, Clock, OctagonX } from "lucide-react";
 import { toast } from "sonner";
+import { refusePendingNote } from "@/components/shared/pendingNoteGuard";
 import { sendPatientToMonday, sendWelcomeCallTextToMonday, sendNotesToMonday, sendPhoneToMonday, sendSecondaryInsuranceToMonday } from "@/lib/welcomeCall/mondayWrite";
 import { BOARD_ID, writeStatusIndex, writeLongText, COL } from "@/lib/welcomeCall/mondayApi";
 import { EscalationFormModal } from "@/components/shared/EscalationFormModal";
@@ -162,6 +163,7 @@ const WelcomeCallPage = () => {
 
   const handleSend = async () => {
     if (!selected) return;
+    if (refusePendingNote()) return;
     setSaving(true);
     setSavePhase("posting");
     try {
@@ -329,7 +331,7 @@ const WelcomeCallPage = () => {
                   <OopEstimateCard patient={selected} />
                   <WelcomeCallForm patient={selected} onFieldChange={handleFieldChange} onIntakeChange={handleIntakeChange} onSendWelcomeCallText={handleSendWelcomeCallText} />
                   <NextOrderDatesCard patient={selected} onFieldChange={handleFieldChange} />
-                  <NotesPanel
+                  <NotesPanel key={selected.id}
                     columnRef={{ boardId: BOARD_ID, columnId: COL.notes }}
                     notes={selected.notes}
                     profileSendOffNotes={selected.profileSendOffNotes}

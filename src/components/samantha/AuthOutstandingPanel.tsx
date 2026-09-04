@@ -187,7 +187,7 @@ export function AuthOutstandingPanel({ patient, onCodeChange, onNotesChange, onS
       )}
 
       {/* Notes — same Call Reference Notes column as Benefits + Submit Auth. */}
-      <NotesPanel
+      <NotesPanel key={patient.id}
         columnRef={{ boardId: SAMANTHA_BOARD_ID, columnId: SAMANTHA_COL.callReferenceNotes }}
         notes={patient.notes}
         profileSendOffNotes={patient.profileSendOffNotes}

@@ -633,7 +633,7 @@ const DvsPage = () => {
             {/* notes rail — same Call Reference Notes column as the auth rail */}
             {selected && (
               <div className="xl:sticky xl:top-4">
-                <NotesPanel
+                <NotesPanel key={selected.id}
                   columnRef={{ boardId: BOARD_ID, columnId: COL.callReferenceNotes }}
                   notes={noteDrafts[selected.id] ?? selected.notes}
                   profileSendOffNotes={selected.profileSendOffNotes}
