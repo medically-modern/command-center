@@ -4,8 +4,6 @@
 import confetti from "canvas-confetti";
 import { useMemo, useState } from "react";
 import { useMondayPatients } from "@/hooks/welcomeCall/useMondayPatients";
-import { emptyIntake } from "@/lib/welcomeCall/callIntake";
-import type { CallIntake } from "@/lib/welcomeCall/callIntake";
 import type { Patient } from "@/lib/welcomeCall/workflow";
 import { sidebarVisibleList } from "@/lib/welcomeCall/sidebarList";
 import { PatientInfoCard, NextOrderDatesCard } from "@/components/welcomeCall/PatientInfoCard";
@@ -37,8 +35,6 @@ import { sendPatientToMonday, sendWelcomeCallTextToMonday, sendNotesToMonday, se
 import { BOARD_ID, writeStatusIndex, writeLongText, COL } from "@/lib/welcomeCall/mondayApi";
 import { EscalationFormModal } from "@/components/shared/EscalationFormModal";
 import { PageLoadingOverlay } from "@/components/shared/PageLoadingOverlay";
-import { SaveProgressOverlay } from "@/components/shared/SaveProgressOverlay";
-import { GatewayPendingError, SAVE_CONFIRM_MS, type WriteProgressPhase } from "@/lib/shared/verifiedWrite";
 import { EmptyPatientPane } from "@/components/shared/EmptyPatientPane";
 import { CompletedStageBanner, useCompletedStageReview } from "@/components/shared/CompletedStageBanner";
 import { validatePatientForSend } from "@/lib/welcomeCall/workflow";
@@ -47,7 +43,6 @@ import { useBackNavigation } from "@/hooks/useBackNavigation";
 import { ReportIssueButton } from "@/components/shared/ReportIssueButton";
 import { useAutoSelectPatient } from "@/hooks/useAutoSelectPatient";
 import { viewFilterFromParams } from "@/lib/roleView";
-import { StaleDataNotice } from "@/components/shared/StaleDataNotice";
 
 const WelcomeCallPage = () => {
   const navigate = useNavigate();
@@ -63,11 +58,6 @@ const WelcomeCallPage = () => {
   const [selectedId, setSelectedId] = useState<string | null>(
     searchParams.get("patientId") ?? null,
   );
-  // Blocks the screen while a send is in flight. It is not decoration: a
-  // mid-save patient switch clobbers panel state and can drop a column from the
-  // transaction (CLAUDE.md §5.2, the July 2026 dropped-date incident).
-  const [saving, setSaving] = useState(false);
-  const [savePhase, setSavePhase] = useState<WriteProgressPhase>("posting");
 
   const viewFilter = viewFilterFromParams(searchParams);
   const visiblePatients = useMemo(
@@ -100,14 +90,6 @@ const WelcomeCallPage = () => {
     update(selected.id, { [field]: value } as Partial<Patient>);
   };
 
-  /** The no-column intake payload (lib/welcomeCall/callIntake.ts). Rides the
-   *  same overlay as every other edit, so it survives a poll and a reload the
-   *  way a column edit does — and is serialised into Notes on send. */
-  const handleIntakeChange = (next: CallIntake) => {
-    if (!selected) return;
-    update(selected.id, { callIntake: next });
-  };
-
   const toggleEscalate = () => {
     if (!selected) return;
     update(selected.id, { escalated: !selected.escalated });
@@ -117,7 +99,6 @@ const WelcomeCallPage = () => {
     if (!selected) return;
     clearOverlay(selected.id);
     update(selected.id, {
-      callIntake: emptyIntake(),
       cgmTypeIndex: null,
       servingEdited: null,
       servingIndexEdited: null,
@@ -162,14 +143,8 @@ const WelcomeCallPage = () => {
 
   const handleSend = async () => {
     if (!selected) return;
-    setSaving(true);
-    setSavePhase("posting");
     try {
-      await sendPatientToMonday(selected, {
-        onProgress: setSavePhase,
-        requireDone: true,
-        waitForDoneMs: SAVE_CONFIRM_MS,
-      });
+      await sendPatientToMonday(selected);
       toast.success("Sent to Monday");
       confetti({ particleCount: 200, spread: 100, origin: { y: 0.6 } });
       clearOverlay(selected.id);
@@ -180,24 +155,10 @@ const WelcomeCallPage = () => {
       markAdvanced(selected.id);
       refetch();
     } catch (e) {
-      if (e instanceof GatewayPendingError) {
-        // Durably queued on the gateway and it WILL run — not a failure, and
-        // above all not retryable: a second send writes the transaction twice.
-        // No confetti, no clearOverlay and no refetch: the rep's edits stay on
-        // screen so nothing looks lost while the job lands, and the board would
-        // still read the OLD values if we refetched now.
-        toast.warning("Queued — Monday is still writing this save", {
-          description: e.message,
-          duration: 15_000,
-        });
-        return;
-      }
       toast.error("Send to Monday failed", {
         description: e instanceof Error ? e.message : String(e),
       });
       throw e;
-    } finally {
-      setSaving(false);
     }
   };
 
@@ -239,7 +200,6 @@ const WelcomeCallPage = () => {
   return (
     <SidebarProvider>
       <PageLoadingOverlay show={initialLoading} />
-      <SaveProgressOverlay open={saving} phase={savePhase} />
       <div className="min-h-screen flex w-full bg-gradient-subtle">
         <PatientsSidebar
           patients={patients}
@@ -301,13 +261,6 @@ const WelcomeCallPage = () => {
               </div>
             </div>
           </header>
-          <StaleDataNotice
-            error={error}
-            scope="The patient list"
-            onRetry={() => { void refetch(); }}
-            className="mx-3 sm:mx-6 mt-3"
-          />
-
 
           <main className="flex-1 px-3 sm:px-6 py-6 overflow-y-auto">
             <section className="max-w-5xl xl:max-w-7xl 2xl:max-w-[1800px] mx-auto space-y-5">
@@ -327,7 +280,7 @@ const WelcomeCallPage = () => {
                     onSaveSecondaryInsurance={(_label, index) => sendSecondaryInsuranceToMonday(selected.id, index)}
                   />
                   <OopEstimateCard patient={selected} />
-                  <WelcomeCallForm patient={selected} onFieldChange={handleFieldChange} onIntakeChange={handleIntakeChange} onSendWelcomeCallText={handleSendWelcomeCallText} />
+                  <WelcomeCallForm patient={selected} onFieldChange={handleFieldChange} onSendWelcomeCallText={handleSendWelcomeCallText} />
                   <NextOrderDatesCard patient={selected} onFieldChange={handleFieldChange} />
                   <NotesPanel
                     columnRef={{ boardId: BOARD_ID, columnId: COL.notes }}

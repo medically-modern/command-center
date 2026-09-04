@@ -1,8 +1,6 @@
 import { useState } from "react";
 import type { Patient } from "@/lib/welcomeCall/workflow";
 import { SECONDARY_INSURANCE_OPTIONS, PRIMARY_INSURANCE_OPTIONS, SERVING_OPTIONS, formatPhone, formatDateMDY, isCrossSell, effectiveNextOrder } from "@/lib/welcomeCall/workflow";
-import { authWindow, secondaryAsk, secondaryAskNote } from "@/lib/welcomeCall/workflow";
-import { expectedPos } from "@/lib/shared/pos";
 import { phoneRejectionReason } from "@/lib/shared/phoneCell";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -44,56 +42,6 @@ function fmtCoinsurance(raw: string): string {
   if (isNaN(n)) return raw;
   const pct = n < 1 ? n * 100 : n;
   return `${pct}%`;
-}
-
-/**
- * One product's auth line: the status, plus the validity window under it
- * (MM-1080). The status on its own is what caused the reported confusion — an
- * auth that failed, went to the retry queue and was later approved reads
- * "Auth Valid" with nothing saying through when, and the bot writes no note.
- *
- * The window is colour-coded only when it needs attention: an expired auth is
- * positive evidence the order can't ship, and one lapsing inside a month is
- * worth saying out loud while the rep still has the patient on the phone.
- */
-function AuthField({
-  label,
-  status,
-  start,
-  end,
-}: {
-  label: string;
-  status: string;
-  start: string;
-  end: string;
-}) {
-  if (!status && !end) return null;
-  const w = authWindow(start, end);
-  const tone =
-    w.state === "expired"
-      ? "text-red-600 dark:text-red-400"
-      : w.state === "expiring"
-        ? "text-amber-600 dark:text-amber-400"
-        : "text-muted-foreground";
-  return (
-    <div>
-      <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
-        {label}
-      </p>
-      <p className="text-sm font-medium" title={status}>
-        {status || "—"}
-      </p>
-      {w.text && (
-        <p className={cn("text-[11px] leading-tight", tone)}>
-          {w.state === "expired"
-            ? `Expired ${w.text}`
-            : w.state === "expiring"
-              ? `${w.text} · ${w.daysLeft === 0 ? "ends today" : `${w.daysLeft}d left`}`
-              : w.text}
-        </p>
-      )}
-    </div>
-  );
 }
 
 function Field({ label, value }: { label: string; value: string }) {
@@ -668,29 +616,6 @@ export function PatientInfoCard({ patient, onFieldChange, onSavePhone, onSaveSec
                   ))}
                 </SelectContent>
               </Select>
-              {/* How much detail this secondary actually needs. A Medigap
-                  secondary needs none — tagging it is the whole job — while a
-                  commercial one behind a non-Medicare primary needs the full
-                  record. Silent when nothing is on file: the two warnings below
-                  already prompt for that. */}
-              {(() => {
-                const ask = secondaryAsk(
-                  patient.primaryInsuranceEdited ?? patient.primaryInsurance,
-                  patient.secondaryInsuranceEdited ?? patient.secondaryInsurance,
-                );
-                const note = secondaryAskNote(ask);
-                if (!note) return null;
-                return (
-                  <p className={cn(
-                    "text-xs mt-1.5",
-                    ask === "medicare-supplement"
-                      ? "text-emerald-700 dark:text-emerald-400 font-medium"
-                      : "text-muted-foreground",
-                  )}>
-                    {note}
-                  </p>
-                );
-              })()}
               {showMedicareSecondaryWarning && (
                 <p className="text-xs text-red-600 font-semibold mt-1.5">
                   Patient likely has a secondary insurance, ask on welcome call.
@@ -736,22 +661,15 @@ export function PatientInfoCard({ patient, onFieldChange, onSavePhone, onSaveSec
           )}
         </Card>
 
-        {(patient.cgmAuthResult || patient.sensorsAuthResult || patient.ipAuthResult || patient.infusionSetAuthResult || patient.cartridgeAuthResult || patient.cgmAuthEnd || patient.sensorsAuthEnd || patient.ipAuthEnd || patient.infusionSetAuthEnd || patient.cartridgeAuthEnd) && (
+        {(patient.cgmAuthResult || patient.sensorsAuthResult || patient.ipAuthResult || patient.infusionSetAuthResult || patient.cartridgeAuthResult) && (
           <Card className="p-4">
-            {/* Says WHY this card is read-only: these results are the Insurance
-                stage's output, not something the rep sets on the call. */}
-            <div className="flex flex-wrap items-baseline gap-x-2 mb-3">
-              <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Auth Results</p>
-              <span className="text-[10px] uppercase tracking-wider text-muted-foreground/70 font-medium">From benefits stage</span>
-            </div>
+            <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-3">Auth Results</p>
             <div className="grid grid-cols-2 gap-3">
-              {/* "CGM" is the board's MONITOR line — its dates are the Monitor
-                  Auth Start/End pair, not a separate CGM one. */}
-              <AuthField label="CGM" status={patient.cgmAuthResult} start={patient.cgmAuthStart} end={patient.cgmAuthEnd} />
-              <AuthField label="Sensors" status={patient.sensorsAuthResult} start={patient.sensorsAuthStart} end={patient.sensorsAuthEnd} />
-              <AuthField label="Insulin Pump" status={patient.ipAuthResult} start={patient.ipAuthStart} end={patient.ipAuthEnd} />
-              <AuthField label="Infusion Set" status={patient.infusionSetAuthResult} start={patient.infusionSetAuthStart} end={patient.infusionSetAuthEnd} />
-              <AuthField label="Cartridge" status={patient.cartridgeAuthResult} start={patient.cartridgeAuthStart} end={patient.cartridgeAuthEnd} />
+              <Field label="CGM" value={patient.cgmAuthResult} />
+              <Field label="Sensors" value={patient.sensorsAuthResult} />
+              <Field label="Insulin Pump" value={patient.ipAuthResult} />
+              <Field label="Infusion Set" value={patient.infusionSetAuthResult} />
+              <Field label="Cartridge" value={patient.cartridgeAuthResult} />
             </div>
           </Card>
         )}

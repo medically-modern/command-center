@@ -1879,49 +1879,32 @@ blank value rather than an error. `useMondayPatients.twoTier.test.tsx` pins the 
 Phase 2, when wanted, is **Subscription** (69 cols × 712 items); every other queue is in the tens and
 the waste is immaterial.
 
-### 5.26 The Welcome Call ops layer — what shipped, and the two that didn't (Aug 2026)
-The Aug-2026 ops redesign (a Lovable prototype) was taken as a **logic change, not a schema
-change**: no Monday columns were added and no board automation was touched. Most of what it asked
-for landed — the nine no-column facts in the Notes block (`lib/welcomeCall/callIntake.ts`), the
-payer rules (`payerRules.ts`), pump↔set compatibility pulled forward from Final Confirm
-(`shared/infusionCompat.ts`), auth validity windows, a visible POS, and two call-shaping prompts
-(`workflow.ts` `isFirstTimePumpUser` / `secondaryAsk`).
+### 5.26 The Welcome Call ops layer — HELD BACK from this repo (Aug 2026)
+⚠️ **This section is deliberately a stub here, and the UI it describes is deliberately absent.**
+The Aug-2026 Welcome Call ops redesign — the nine no-column facts in the Notes block
+(`lib/welcomeCall/callIntake.ts`), the payer rules (`payerRules.ts`), the supply-length caption, the
+first-time-pump flag, the secondary-detail shortcut, the auth provenance and the Messages card —
+shipped to **command-center-test** and was held back from this repo at the sync. So
+`pages/WelcomeCallPage.tsx`, `components/welcomeCall/*` and `lib/welcomeCall/*` here are the
+PREVIOUS generation, and none of `callIntake.ts`, `payerRules.ts` or `CallIntakeFields.tsx` exists.
 
-⚠️ **The prototype's option lists do NOT match the board — do not port them.** Audited against the
-live label sets 2026-08-28: its CGM list omits **Simplera Sync**, it writes `Sensors and Supplies`
-where the board says `Sensors & Supplies`, only **4 of its 10 infusion sets** are real board labels
-(the board has 25, and the app already reads them live via `useStatusOptions`), and its cross-sell
-test reads `requestType.includes("cross")` against a Request Type column whose five labels contain
-no such word — so that rule could never fire here. The app's own `isCrossSell` is
-`servingIncludesCgm(serving) && !servingIncludesCgm(requestType)`. Pump Type and Serving are the
-only two vocabularies that match exactly.
+Same reason the parity suite says so in its own words: `lib/shared/writeTaskParity.test.ts` carries
+no *"Welcome Call send"* block, because this repo also has neither the batching change nor the
+blocking-save change for `welcomeCall/mondayWrite.ts`. Read that comment before "fixing" its
+absence.
 
-**Two asks were deliberately not built.**
+**What DID come across, because it is not Welcome Call UI:** `lib/shared/infusionCompat.ts` (the
+pump↔infusion-set matrix, extracted from Final Confirm's check pack and imported by it), Final
+Confirm's `C24_SET_UNVERIFIED` amber kind, and the `Simplera Sync` CGM option — all live and
+load-bearing here.
 
-**The Calendly "call scheduled" link — wanted, blocked on the board.** The prototype shows the
-booked slot and a "View Calendly booking" link on this stage. The data exists — Scheduled Call Time
-`date_mm63na19`, Calendly Event URI `text_mm63e086` — but on **Profile Send Off**, not Welcome Call
-(§5.15). Nothing copies them across the board hop, so this needs either those columns added to the
-create-item automation's copy list or a cross-board read; it is not a UI change. ⚠️ Whoever builds
-it must render off **`scheduledCallTime`**, never Booking Status: the intake form writes
-`Scheduled` the moment a patient picks a time STRING, before any Calendly event exists, so the
-status column cannot tell a real booking from an abandoned one (§5.15).
-
-**Per-policy verified / needs-update state — declined.** The prototype carries `primaryVerifiedOn`,
-`primaryNeedsUpdate`, `secondaryVerifiedOn`, `secondaryNeedsUpdate`, plus plan type, group ID and
-effective date per policy, and lets `secondaryNeedsUpdate` block readiness. Two reasons it was not
-built, and both would have to be answered first:
-1. **The columns do not exist.** This board has primary Plan Name `dropdown_mm2wrzrk` and Plan
-   Begin Date `date_mm4w5hbc` and nothing else — no group ID, no verified-on, no needs-update, and
-   nothing secondary beyond the payer label and Member ID 2.
-2. ⚠️ **There is no SOURCE for "verified on".** Stedi runs at Profile Send Off (§5.11) and this
-   board carries no eligibility-check timestamp, so the date would have nothing behind it — a
-   confidence signal a rep would reasonably trust, backed by nothing. That is worse than its
-   absence.
-The half that is actionable on a call — *did the rep confirm this with the patient?* — already
-ships as the `primary` / `secondary` confirm flags in the intake block. Build the rest only
-alongside the eligibility-date plumbing, never as UI alone.
-
+**When the stage is promoted**, bring these across together or the port is half-applied: the six
+`lib/welcomeCall/*` modules, the three `components/welcomeCall/*` files, `WelcomeCallPage.tsx`, the
+parity fixture + suite, and the real §5.26 — which exists verbatim in **command-center-test** and
+is the only written record of what the redesign decided, including the **two asks that were
+declined** (the Calendly "call scheduled" link, blocked on the board; and per-policy verified /
+needs-update state, which has no source for its date). Do not re-derive those from the prototype:
+its option lists do not match the live board.
 
 ### 5.27 Patient texts are archived to Postgres — RingCentral keeps only 30 days (Sep 2026)
 **RingCentral's message store is a rolling ~30-day window on this account.** Measured

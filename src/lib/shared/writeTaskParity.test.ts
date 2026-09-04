@@ -368,70 +368,6 @@ function profilePatient(overrides: Record<string, unknown> = {}) {
   };
 }
 
-function welcomeCallPatient(overrides: Record<string, unknown> = {}) {
-  // Every field the welcomeCall Patient interface requires, defaulted, so the fixture
-  // keeps compiling as the stage grows. The overlay turns on the branches that
-  // actually build write tasks.
-  const blank = {
-    id: "", name: "", dob: "", phone: "", email: "", address: "", gender: "", primaryInsurance: "",
-     primaryInsuranceIndex: null, primaryInsuranceEdited: null, primaryInsuranceIndexEdited: null,
-     memberId1: "", memberId1Edited: null, secondaryInsurance: "", memberId2: "", serving: "",
-     servingIndex: null, servingEdited: null, servingIndexEdited: null, pumpType: "",
-     pumpTypeIndex: null, cgmType: "", cgmTypeIndex: null, requestType: "", doctorName: "",
-     doctorNpi: "", referralSource: "", referralReceivedDate: "", diagnosis: "", notes: "",
-     secondaryInsuranceIndex: null, secondaryInsuranceEdited: null, memberId2Edited: null,
-     monitorQty: "", pumpQty: "", qtyInf1: "", infusionSet1: "", infusionSet1Index: null,
-     qtyInf2: "", infusionSet2: "", infusionSet2Index: null, qtyCartridge: "",
-     medicarePriorPumpDate: "", monitorPurchaseDate: "", subscriptionType: "",
-     subscriptionTypeIndex: null, welcomeCallText: "", welcomeCallTextIndex: null,
-     orderHandling: "", orderHandlingIndex: null, callAttempts: "", followUp: "", followUpDate: "",
-     cgmAuthResult: "", sensorsAuthResult: "", ipAuthResult: "", infusionSetAuthResult: "",
-     cartridgeAuthResult: "", cgmAuthStart: "", cgmAuthEnd: "", sensorsAuthStart: "",
-     sensorsAuthEnd: "", ipAuthStart: "", ipAuthEnd: "", infusionSetAuthStart: "",
-     infusionSetAuthEnd: "", cartridgeAuthStart: "", cartridgeAuthEnd: "", pos: "", deductible: "",
-     deductibleRemaining: "", oopMax: "", oopMaxRemaining: "", stediCoinsurance: "", stediQmb: "",
-     cgmLastBillDate: "", sensorsLastBillDate: "", ipLastBillDate: "", infusionSetLastBillDate: "",
-     cartridgeLastBillDate: "", ipNextOrderDate: "", sensorsNextOrderDate: "",
-     suppliesNextOrderDate: "", ipNextOrderDateEdited: null, sensorsNextOrderDateEdited: null,
-     suppliesNextOrderDateEdited: null, advanceDecision: "", advanceDecisionIndex: null,
-     phoneEdited: null, addressEdited: null, addressLat: null, addressLng: null, escalated: false,
-     receivedAt: "", lastUpdated: "", neverBilledIsCar: false, neverBilledCgm: false,
-     sosNeverBilledMonitor: false, sosLastBillMonitor: "",
-  };
-  return {
-    ...blank,
-    id: "302",
-    name: "Parity Welcome",
-    dob: "1970-01-01",
-    phone: "3475550401",
-    email: "pt@example.com",
-    address: "5 Cedar Ave, Albany, NY 12207",
-    gender: "Female",
-    primaryInsurance: "Medicare A&B",
-    primaryInsuranceIndex: 8,
-    memberId1: "M1",
-    serving: "Insulin Pump + CGM",
-    servingIndex: 4,
-    pumpType: "Tandem t:slim X2",
-    pumpTypeIndex: 1,
-    cgmType: "Dexcom G7",
-    cgmTypeIndex: 1,
-    doctorName: "Dr Who",
-    doctorNpi: "1234567890",
-    diagnosis: "Type 1 Diabetes",
-    monitorQty: "1",
-    pumpQty: "1",
-    qtyInf1: "10",
-    qtyInf2: "0",
-    qtyCartridge: "3",
-    infusionSet1Index: 1,
-    subscriptionTypeIndex: 1,
-    orderHandlingIndex: 1,
-    pos: "Home",
-    notes: "parity note",
-    ...overrides,
-  };
-}
 
 function subscriptionPatient(overrides: Record<string, unknown> = {}) {
   // Every field the subscription Patient interface requires, defaulted, so the fixture
@@ -659,26 +595,14 @@ describe("Patient Intake (profile) send — task.value matches task.fn", () => {
   });
 });
 
-describe("Welcome Call send — task.value matches task.fn", () => {
-  it("every task's declared value is the bytes its fn writes", async () => {
-    const { sendPatientToMonday } = await import("../welcomeCall/mondayWrite");
-    await sendPatientToMonday(welcomeCallPatient() as never);
-    expect(captured.length).toBe(1);
-    await expectParity(captured[0], "welcomeCall");
-  });
-
-  it("an UNPARSEABLE phone is not written at all", async () => {
-    const { sendPatientToMonday } = await import("../welcomeCall/mondayWrite");
-    await sendPatientToMonday(welcomeCallPatient({ phoneEdited: "555-121" }) as never);
-    await expectParity(captured[0], "welcomeCall/garbage-phone");
-  });
-
-  it("an edited blank phone clears the column rather than being skipped", async () => {
-    const { sendPatientToMonday } = await import("../welcomeCall/mondayWrite");
-    await sendPatientToMonday(welcomeCallPatient({ phoneEdited: "" }) as never);
-    await expectParity(captured[0], "welcomeCall/blank-phone");
-  });
-});
+// ⚠️ NO "Welcome Call send" SUITE HERE, and its absence is deliberate.
+// This repo has not been given the batching change for welcomeCall/mondayWrite.ts
+// — that stage is still being worked on and was held back from the port of
+// command-center-test ae2f7b7. Its tasks therefore carry no `value` and its send
+// passes no boardId, so the suite would fail by design rather than find a bug.
+// When Welcome Call is promoted, bring the fixture and the suite over with it:
+// they exist verbatim in command-center-test and are what proves the ported
+// values match what each task's fn actually writes.
 
 describe("Subscription send — task.value matches task.fn", () => {
   it("every task's declared value is the bytes its fn writes", async () => {

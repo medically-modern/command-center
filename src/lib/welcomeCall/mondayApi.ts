@@ -90,26 +90,6 @@ export const COL = {
   infusionSetAuthResult: "color_mm1xr2j1",
   cartridgeAuthResult: "color_mm1xybvt",
 
-  /* Auth validity windows (read-only, added for MM-1080).
-   * These columns have always existed on the board and were simply never read.
-   * A status alone can't answer the question the rep is actually being asked on
-   * the call — "am I covered?" — and it goes stale silently: an auth that was
-   * invalid, went to the retry queue and came back approved shows "Auth Valid"
-   * with nothing saying through when, and no note is written when the bot
-   * flips it. Showing the window is what resolves that.
-   * ⚠️ The "CGM" auth result is the MONITOR line on this board — its dates are
-   * the Monitor Auth Start/End pair, not a separate CGM one. */
-  cgmAuthStart: "date_mm1wj1bz",
-  cgmAuthEnd: "date_mm1whebp",
-  sensorsAuthStart: "date_mm1x929",
-  sensorsAuthEnd: "date_mm1xvnqb",
-  ipAuthStart: "date_mm1xxbkz",
-  ipAuthEnd: "date_mm1x2q3",
-  infusionSetAuthStart: "date_mm1xrk1c",
-  infusionSetAuthEnd: "date_mm1xj3wp",
-  cartridgeAuthStart: "date_mm1xp0vm",
-  cartridgeAuthEnd: "date_mm1xznf9",
-
   // Benefits (read-only)
   deductible: "text_mm1xkbqc",
   deductibleRemaining: "text_mm1xdzxw",
@@ -166,15 +146,6 @@ export const READ_COLUMN_IDS = [
   COL.callAttempts,
   COL.cgmAuthResult, COL.sensorsAuthResult, COL.ipAuthResult,
   COL.infusionSetAuthResult, COL.cartridgeAuthResult,
-  COL.cgmAuthStart, COL.cgmAuthEnd,
-  COL.sensorsAuthStart, COL.sensorsAuthEnd,
-  COL.ipAuthStart, COL.ipAuthEnd,
-  COL.infusionSetAuthStart, COL.infusionSetAuthEnd,
-  COL.cartridgeAuthStart, COL.cartridgeAuthEnd,
-  // POS is WRITTEN by this stage (mondayWrite computes it from Primary
-  // Insurance + address). Reading it back lets the card show the rep what the
-  // rule decided — it was write-only, so the value was invisible in the app.
-  COL.pos,
   COL.deductible, COL.deductibleRemaining, COL.oopMax, COL.oopMaxRemaining, COL.stediCoinsurance, COL.stediQmb,
   COL.cgmLastBillDate, COL.sensorsLastBillDate, COL.ipLastBillDate,
   COL.infusionSetLastBillDate, COL.cartridgeLastBillDate,
