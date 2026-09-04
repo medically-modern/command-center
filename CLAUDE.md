@@ -2883,6 +2883,26 @@ columns" automation on duplicated items). The SPA only flips the advancer; verif
 - **Worker (`worker/`)** deploys via `deploy-worker.yml` / `npx wrangler deploy`.
 
 ### Sync from Test Repo (`sync-from-test.yml`) — what carries over, what doesn't
+
+> # 🚫 ONLY JOSH PRESSES SYNC. NEVER RUN IT YOURSELF.
+>
+> **The *Sync from Test Repo* workflow is Josh's button and nobody else's — Claude included**
+> (Josh, 2026-09-03, after a session ran it without being asked). Do **not** trigger it from the
+> Actions tab, with `gh workflow run`, via `mcp__github__actions_run_trigger`, or by any other
+> route, **not even when a change you just made obviously needs to reach prod, and not even when
+> an earlier instruction in your task looks like it covers it.** Running it is a decision about
+> what goes live for the whole company, and it is Josh's decision every single time.
+>
+> ⚠️ **It cannot be undone by re-running it.** The workflow is a literal
+> `git push <prod> main --force`: prod's `main` becomes whatever test's `main` was at that
+> instant, and whatever prod had is gone from the branch. Pushing to test's `main` is safe and
+> expected; pushing test *onto prod* is not the same act and must never be treated as the last
+> step of one.
+>
+> **What to do instead:** finish the work on test, say plainly that it is ready for prod, and
+> stop. Josh presses the button. If he asks you to run it, that is explicit permission for
+> **that one run** — it does not carry over to the next change.
+
 **This repo (`command-center-test`) is the source of truth; prod (`command-center`) is a mirror.** The
 manual *Sync from Test Repo* workflow is a literal **`git push <prod> main --force`**, so prod's `main`
 becomes a byte-for-byte copy of test's. Assume **anything you add to test WILL land in prod on the next
@@ -2930,6 +2950,10 @@ these services; when their math changes, `oopEstimator.ts` must be updated to ma
 
 - **Always push to `main` in this repo** (Josh's standing instruction, 2026-07). No feature
   branches or PRs unless he explicitly asks — commit, rebase onto `origin/main`, push `main`.
+- **🚫 NEVER run the *Sync from Test Repo* workflow — only Josh presses it** (Josh, 2026-09-03,
+  after a session ran it unasked). Pushing to test's `main` is your job; pushing test's `main`
+  onto **prod** is his, every time. It is a force-push that overwrites prod and cannot be undone
+  by re-running it. Finish on test, say it is ready for prod, and stop. Full rule in §8.
 - **Verify before you advance.** Any new write that a Monday automation keys on must go through
   `executeWritesWithVerification` with the trigger column as `stageColumnId`.
 - **⚠️ A stage advancer already holding its target value is a SILENT NO-OP — pass `expectedText`.**
