@@ -1,5 +1,5 @@
 {
-  "dateKey": "2026-09-07",
+  "dateKey": "2026-09-08",
   "counts": {
     "benefits": 3,
     "submitAuth": 0,
@@ -7,21 +7,21 @@
     "evaluate": 5,
     "sendRequest": 40,
     "confirmReceipt": 72,
-    "chaseFax": 2,
+    "chaseFax": 3,
     "chaseParachute": 42,
-    "chaseBenefits": 44,
+    "chaseBenefits": 45,
     "doctorAppointments": 0,
     "dvs": 4,
     "welcomeCall": 40,
     "finalConfirm": 15,
     "profile": 12,
-    "unverifiedReferrals": 1558,
+    "unverifiedReferrals": 1559,
     "inSystemReferrals": 28,
     "intakeCleanup": 6,
-    "scheduledCalls": 0,
+    "scheduledCalls": 1,
     "subscription": 772,
     "updateClinicals": 772,
-    "patientQuestions": 27,
+    "patientQuestions": 28,
     "systemMgmt": 68
   },
   "patientIds": {
@@ -164,7 +164,8 @@
     ],
     "chaseFax": [
       "12682404084",
-      "12864381410"
+      "12864381410",
+      "12896418383"
     ],
     "chaseParachute": [
       "12778576676",
@@ -223,6 +224,7 @@
       "12895311046",
       "12895675393",
       "12896363002",
+      "12896418383",
       "12896523589",
       "12896530790",
       "12896526268",
@@ -361,6 +363,7 @@
       "12979538562",
       "12981115284",
       "12983674020",
+      "12995534826",
       "12860131148",
       "12895834883",
       "12895834885",
@@ -3483,6 +3486,6 @@
       "12973802102"
     ]
   },
-  "takenAt": "2026-09-07T13:02:10.096Z",
+  "takenAt": "2026-09-08T13:04:38.212Z",
   "source": "github-actions"
 }
