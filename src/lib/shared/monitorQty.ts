@@ -1,22 +1,40 @@
 /**
  * Monitor Qty is BINARY on the board — always "0" or "1", never blank.
  *
- * ⚠️ THE WELCOME CALL BOARD'S ORDER-CREATION AUTOMATIONS COMPARE IT WITH
- * `is equal to`, SO A BLANK CELL MATCHES NOTHING. All four fire on Stage
- * Advancer `color_mm1ws96t` → "Completed" (Final Confirm's advancer) and then
- * branch on exact numeric equality into the New Order Board (18405457690):
+ * ⚠️ THE WELCOME CALL BOARD'S ORDER-CREATION AUTOMATIONS CANNOT READ A BLANK.
+ * All four fire on Stage Advancer `color_mm1ws96t` → "Completed" (Final
+ * Confirm's advancer) and branch into the New Order Board (18405457690).
+ * Read the WHOLE chain — two of them open with an `is empty` guard, which is
+ * the part that makes this column's blank load-bearing today:
  *
- *   7918341001  "pump only"          Pump Qty = 1
- *   7918341011  "monitor only"                          Monitor Qty = 1
- *   7918340959  "pump and monitor"   Pump Qty = 1  AND  Monitor Qty = 1
- *   7921725444  "monitor = 0"        Pump Qty = 1  AND  Monitor Qty = 0
+ *   7918341001  "pump only"        LIVE      Monitor Qty IS EMPTY → Pump Qty = 1
+ *   7918341011  "monitor only"     LIVE      Pump Qty IS EMPTY    → Monitor Qty = 1
+ *   7918340959  "pump and monitor" LIVE      Pump Qty = 1         → Monitor Qty = 1
+ *   7921725444  "monitor = 0"      INACTIVE  Pump Qty = 1         → Monitor Qty = 0
  *
- * An empty cell is not 0 and not 1, so it silently falls out of every branch
- * that names the monitor. Nothing errors — the order is simply classified as
- * though the question had never been asked. A board scan on 2026-09-08 found
- * **379 of 449 items (84%) with Monitor Qty blank**, 118 of them carrying
- * Pump Qty 1: exactly the population the "monitor = 0" branch was built for
- * and the one it could never match.
+ * ⚠️⚠️ **THIS MODULE AND 7918341001 CANNOT BOTH BE LIVE.** "pump only" is the
+ * automation that serves a pump patient with no monitor, and it identifies them
+ * by Monitor Qty being EMPTY — the exact state this module abolishes. Ship the
+ * coercion while "pump only" is still enabled and a pump-only order stops being
+ * created AT ALL: the guard fails, and 7921725444, the branch built to catch
+ * those patients as `Monitor Qty = 0`, was still switched off when this landed
+ * (2026-09-08). Nothing errors either way — the board just goes quiet.
+ * **The cutover is one move: enable 7921725444 and retire 7918341001 as this
+ * deploys.** That is a Monday-side change and Josh's to make (CLAUDE.md §10 —
+ * live-board edits are an off-hours job).
+ *
+ * The everyday failure this fixes is the mirror image. A blank matches neither
+ * `= 0` nor `= 1`, so every branch that names the monitor by VALUE skips it
+ * silently: "pump and monitor" cannot see a real monitor sale whose cell was
+ * never written, and "monitor = 0" can never fire at all. A board scan on
+ * 2026-09-08 found **379 of 449 items (84%) blank**, 118 of them carrying
+ * Pump Qty 1 — exactly the population 7921725444 was built for. Only 52 read
+ * "1" and 18 read "0".
+ *
+ * ⚠️ Note the SYMMETRIC trap next door: "monitor only" opens with `Pump Qty is
+ * empty`. Nothing here touches Pump Qty (`coercePumpQty` leaves a blank blank),
+ * but making that column binary the same way would silence 7918341011 in
+ * exactly this fashion. Read the chain before coercing either one.
  *
  * The blanks came from the app. Welcome Call SKIPPED the write when the field
  * was empty (`if (p.monitorQty !== "")`) while its own toggle rendered a blank
